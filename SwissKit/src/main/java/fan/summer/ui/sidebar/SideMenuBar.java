@@ -25,7 +25,7 @@ public class SideMenuBar extends JPanel {
     private static final Color SELECTED_TEXT = new Color(0xBB, 0x86, 0xFC);
     private static final Color HOVER_BG = new Color(0xE8, 0xE8, 0xE8);
 
-    private final List<KitPage> pages;
+    private List<KitPage> pages;
     private final List<JLabel> menuItems;
     private final JPanel contentPanel;
     private int selectedIndex;
@@ -242,8 +242,8 @@ public class SideMenuBar extends JPanel {
      * Set page list (will rebuild menu)
      */
     public void setPages(List<KitPage> newPages) {
-        pages.clear();
-        pages.addAll(newPages);
+        // Re-assign the reference so SideMenuBar.pages always matches HomePage.pages
+        this.pages = newPages;
         rebuildMenu();
     }
 }

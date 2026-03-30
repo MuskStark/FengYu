@@ -14,6 +14,7 @@ import fan.summer.kitpage.setting.second.EmailAddressBookView;
 import fan.summer.kitpage.setting.worker.second.QueryAllEmailInfoCallBack;
 import fan.summer.kitpage.setting.worker.second.QueryAllEmailInfoWorker;
 import fan.summer.plugin.PluginLoader;
+import fan.summer.ui.home.HomePage;
 import fan.summer.utils.EmailUtil;
 import fan.summer.utils.ui.TableUtil;
 import net.miginfocom.swing.MigLayout;
@@ -25,12 +26,12 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.io.File;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Settings page for application configuration.
@@ -181,32 +182,125 @@ public class SettingKitPage implements KitPage {
     }
 
     /**
-     * Handles the plugin upload/installation action.
-     * Copies the selected plugin JAR file to the plugins directory.
+     * Handles the plugin deploy action.
+     * Copies the selected JAR to plugin directory and loads it immediately (hot-deploy).
      *
      * @param e the action event
      */
-    private void pluginUploadBtAction(ActionEvent e) {
-        File pluginDir = Path.of(PluginLoader.PLUGIN_DIR).toFile();
-        pluginDir.mkdirs();
-        try {
-            Path source = Path.of(pluginPath.getText());
-            Path target = pluginDir.toPath().resolve(source.toFile().getName());
-            log.debug("Installing plugin from {} to {}", source, target);
-            Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
-            log.info("Successfully installed plugin: {}", source.toFile().getName());
+    private void deployPluginBtAction(ActionEvent e) {
+        String path = pluginPath.getText();
+        if (path == null || path.isEmpty()) {
             JOptionPane.showMessageDialog(settingTable,
-                    "✅ Installed:" + Path.of(pluginPath.getText()).toFile().getName() + "（Need ReOpen SwissKitJ）",
-                    "Plugin Install Success",
-                    JOptionPane.INFORMATION_MESSAGE);
-        } catch (IOException ex) {
-            log.error("Failed to install plugin: {}", pluginPath.getText(), ex);
-            JOptionPane.showMessageDialog(settingTable,
-                    "Error:" + ex.getMessage(),
-                    "Plugin Install Error",
-                    JOptionPane.ERROR_MESSAGE);
+                    "Please select a plugin JAR first",
+                    "No Selection", JOptionPane.WARNING_MESSAGE);
+            return;
         }
-        refreshPluginList();
+
+        File source = new File(path);
+        if (!source.exists() || !source.getName().toLowerCase().endsWith(".jar")) {
+            JOptionPane.showMessageDialog(settingTable,
+                    "Invalid JAR file selected",
+                    "Invalid File", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        new SwingWorker<List<KitPage>, Void>() {
+            @Override
+            protected List<KitPage> doInBackground() throws Exception {
+                File pluginDir = Path.of(PluginLoader.PLUGIN_DIR).toFile();
+                pluginDir.mkdirs();
+
+                Path target = pluginDir.toPath().resolve(source.getName());
+                log.debug("Copying plugin from {} to {}", source, target);
+                Files.copy(source.toPath(), target, StandardCopyOption.REPLACE_EXISTING);
+                log.info("Copied plugin to: {}", target);
+
+                return PluginLoader.deployPlugin(target.toFile());
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    List<KitPage> newPages = get();
+                    SwingUtilities.invokeLater(() -> {
+                        HomePage.getInstance().refreshSidebar(newPages);
+                        refreshPluginList();
+                    });
+
+                    if (!newPages.isEmpty()) {
+                        String names = newPages.stream()
+                                .map(KitPage::getMenuName)
+                                .collect(Collectors.joining(", "));
+                        JOptionPane.showMessageDialog(settingTable,
+                                "Deployed successfully:\n" + names,
+                                "Deploy Success", JOptionPane.INFORMATION_MESSAGE);
+                    } else {
+                        JOptionPane.showMessageDialog(settingTable,
+                                "Plugin loaded but no visible KitPages found.\nCheck that the JAR contains a valid KitPage implementation.",
+                                "Warning", JOptionPane.WARNING_MESSAGE);
+                    }
+                } catch (Exception ex) {
+                    log.error("Deploy failed", ex);
+                    JOptionPane.showMessageDialog(settingTable,
+                            "Deploy failed: " + ex.getMessage(),
+                            "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }.execute();
+    }
+
+    /**
+     * Handles the plugin hot-reload action.
+     * Reloads the selected plugin JAR without restarting the application.
+     *
+     * @param e the action event
+     */
+    private void reloadPluginBtAction(ActionEvent e) {
+        int selectedRow = installedPluginTable.getSelectedRow();
+        if (selectedRow < 0) {
+            JOptionPane.showMessageDialog(settingTable,
+                    "Please select a plugin to reload",
+                    "No Selection", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        String pluginName = (String) installedPluginTable.getValueAt(selectedRow, 0);
+
+        int confirm = JOptionPane.showConfirmDialog(settingTable,
+                "Hot-reload plugin: " + pluginName + "?\nThe sidebar will update immediately.",
+                "Confirm Reload", JOptionPane.YES_NO_OPTION);
+
+        if (confirm == JOptionPane.YES_OPTION) {
+            new SwingWorker<List<KitPage>, Void>() {
+                @Override
+                protected List<KitPage> doInBackground() throws Exception {
+                    return PluginLoader.reloadPlugin(pluginName);
+                }
+
+                @Override
+                protected void done() {
+                    try {
+                        List<KitPage> newPages = get();
+                        SwingUtilities.invokeLater(() -> {
+                            HomePage.getInstance().refreshSidebar(newPages);
+                            refreshPluginList();
+                        });
+
+                        String names = newPages.stream()
+                                .map(KitPage::getMenuName)
+                                .collect(Collectors.joining(", "));
+                        JOptionPane.showMessageDialog(settingTable,
+                                "Reloaded successfully:\n" + names,
+                                "Reload Success", JOptionPane.INFORMATION_MESSAGE);
+                    } catch (Exception ex) {
+                        log.error("Reload failed", ex);
+                        JOptionPane.showMessageDialog(settingTable,
+                                "Reload failed: " + ex.getMessage(),
+                                "Error", JOptionPane.ERROR_MESSAGE);
+                    }
+                }
+            }.execute();
+        }
     }
 
     /**
@@ -227,17 +321,23 @@ public class SettingKitPage implements KitPage {
 
         String pluginName = (String) installedPluginTable.getValueAt(selectedRow, 0);
         int confirm = JOptionPane.showConfirmDialog(settingTable,
-                "Uninstall plugin: " + pluginName + "?\n(Need restart SwissKitJ)",
+                "Uninstall plugin: " + pluginName + "?",
                 "Confirm Uninstall", JOptionPane.YES_NO_OPTION);
 
         if (confirm == JOptionPane.YES_OPTION) {
+            // Close the ClassLoader first to release the JAR file handle
+            PluginLoader.unloadPlugin(pluginName);
+
             File pluginFile = new File(PluginLoader.PLUGIN_DIR, pluginName);
             if (pluginFile.delete()) {
+                SwingUtilities.invokeLater(() -> {
+                    HomePage.getInstance().refreshSidebar();
+                    refreshPluginList();
+                });
                 JOptionPane.showMessageDialog(settingTable,
-                        "Plugin uninstalled. Please restart SwissKitJ.",
+                        "Plugin uninstalled successfully.",
                         "Uninstall Success",
                         JOptionPane.INFORMATION_MESSAGE);
-                refreshPluginList();
             } else {
                 JOptionPane.showMessageDialog(settingTable,
                         "Failed to delete plugin file.",
@@ -459,7 +559,8 @@ public class SettingKitPage implements KitPage {
         installedPluginTable = new JTable();
         choicePluginBt = new JButton();
         pluginPath = new JTextField();
-        pluginUploadBt = new JButton();
+        deployPluginBt = new JButton();
+        reloadPluginBt = new JButton();
         uninstallPluginBt = new JButton();
 
         //======== settingPanle ========
@@ -573,6 +674,7 @@ public class SettingKitPage implements KitPage {
                         "[200:200,fill]" +
                         "[]" +
                         "[]" +
+                        "[]" +
                         "[]"));
 
                     //======== pluginScrollPane ========
@@ -590,15 +692,20 @@ public class SettingKitPage implements KitPage {
                     pluginPath.setEditable(false);
                     plugin.add(pluginPath, "cell 1 1");
 
-                    //---- pluginUploadBt ----
-                    pluginUploadBt.setText("Upload");
-                    pluginUploadBt.addActionListener(e -> pluginUploadBtAction(e));
-                    plugin.add(pluginUploadBt, "cell 0 2 2 1");
+                    //---- deployPluginBt ----
+                    deployPluginBt.setText("Deploy");
+                    deployPluginBt.addActionListener(e -> deployPluginBtAction(e));
+                    plugin.add(deployPluginBt, "cell 0 2 2 1");
+
+                    //---- reloadPluginBt ----
+                    reloadPluginBt.setText("Reload");
+                    reloadPluginBt.addActionListener(e -> reloadPluginBtAction(e));
+                    plugin.add(reloadPluginBt, "cell 0 3 2 1");
 
                     //---- uninstallPluginBt ----
                     uninstallPluginBt.setText("Uninstall");
                     uninstallPluginBt.addActionListener(e -> uninstallPluginBtAction(e));
-                    plugin.add(uninstallPluginBt, "cell 0 3 2 1");
+                    plugin.add(uninstallPluginBt, "cell 0 4 2 1");
                 }
                 settingTable.addTab("Plugin", plugin);
             }
@@ -633,7 +740,8 @@ public class SettingKitPage implements KitPage {
     private JTable installedPluginTable;
     private JButton choicePluginBt;
     private JTextField pluginPath;
-    private JButton pluginUploadBt;
+    private JButton deployPluginBt;
+    private JButton reloadPluginBt;
     private JButton uninstallPluginBt;
     // JFormDesigner - End of variables declaration  //GEN-END:variables  @formatter:on
 }

@@ -124,7 +124,7 @@ new FormModel {
 				add( new FormContainer( "javax.swing.JPanel", new FormLayoutManager( class net.miginfocom.swing.MigLayout ) {
 					"$layoutConstraints": "hidemode 3"
 					"$columnConstraints": "[fill][465,fill]"
-					"$rowConstraints": "[200:200,fill][][][]"
+					"$rowConstraints": "[200:200,fill][][][][]"
 				} ) {
 					name: "plugin"
 					add( new FormContainer( "javax.swing.JScrollPane", new FormLayoutManager( class javax.swing.JScrollPane ) ) {
@@ -149,18 +149,25 @@ new FormModel {
 						"value": "cell 1 1"
 					} )
 					add( new FormComponent( "javax.swing.JButton" ) {
-						name: "pluginUploadBt"
-						"text": "Upload"
-						addEvent( new FormEvent( "java.awt.event.ActionListener", "actionPerformed", "pluginUploadBtAction", true ) )
+						name: "deployPluginBt"
+						"text": "Deploy"
+						addEvent( new FormEvent( "java.awt.event.ActionListener", "actionPerformed", "deployPluginBtAction", true ) )
 					}, new FormLayoutConstraints( class net.miginfocom.layout.CC ) {
 						"value": "cell 0 2 2 1"
+					} )
+					add( new FormComponent( "javax.swing.JButton" ) {
+						name: "reloadPluginBt"
+						"text": "Reload"
+						addEvent( new FormEvent( "java.awt.event.ActionListener", "actionPerformed", "reloadPluginBtAction", true ) )
+					}, new FormLayoutConstraints( class net.miginfocom.layout.CC ) {
+						"value": "cell 0 3 2 1"
 					} )
 					add( new FormComponent( "javax.swing.JButton" ) {
 						name: "uninstallPluginBt"
 						"text": "Uninstall"
 						addEvent( new FormEvent( "java.awt.event.ActionListener", "actionPerformed", "uninstallPluginBtAction", true ) )
 					}, new FormLayoutConstraints( class net.miginfocom.layout.CC ) {
-						"value": "cell 0 3 2 1"
+						"value": "cell 0 4 2 1"
 					} )
 				}, new FormLayoutConstraints( null ) {
 					"title": "Plugin"

@@ -1,7 +1,9 @@
 package fan.summer.ui.home;
 
 import com.formdev.flatlaf.FlatIntelliJLaf;
+import fan.summer.annoattion.SwissKitPage;
 import fan.summer.api.KitPage;
+import fan.summer.plugin.PluginLoader;
 import fan.summer.scaner.SwissKitPageScaner;
 import fan.summer.ui.sidebar.SideMenuBar;
 import fan.summer.utils.AppInfo;
@@ -12,7 +14,10 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Home page class that serves as the main application container.
@@ -25,6 +30,8 @@ import java.util.List;
 public class HomePage {
 
     private static final Logger logger = LoggerFactory.getLogger(HomePage.class);
+
+    private static HomePage instance;
 
     private SideMenuBar sideMenuBar;
     private List<KitPage> pages;
@@ -62,6 +69,9 @@ public class HomePage {
         // Side menu bar
         sideMenuBar = new SideMenuBar(pages, contentPanel);
 
+        // Set singleton instance for hot-deploy coordination
+        instance = this;
+
         // Main panel
         JPanel mainPanel = new JPanel(new BorderLayout());
         mainPanel.add(sideMenuBar, BorderLayout.WEST);
@@ -76,7 +86,7 @@ public class HomePage {
         frame.setMinimumSize(new Dimension(800, 500));
         frame.setLocationRelativeTo(null);
         frame.setVisible(true);
-        
+
         logger.info("Application started with {} pages", pages.size());
     }
 
@@ -96,5 +106,54 @@ public class HomePage {
         }
         // Use default when icon file not found
         logger.info("Application icon not found. Please add icon.png to resources directory");
+    }
+
+    /**
+     * Returns the singleton HomePage instance.
+     *
+     * @return the HomePage instance, or null if not yet initialized
+     */
+    public static HomePage getInstance() {
+        return instance;
+    }
+
+    /**
+     * Refreshes the sidebar menu after plugin hot-deploy/reload/uninstall.
+     *
+     * @param newPluginPages KitPages from deployed/reloaded plugin (pass null for uninstall)
+     */
+    public void refreshSidebar(List<KitPage> newPluginPages) {
+        if (sideMenuBar == null) {
+            return;
+        }
+
+        if (newPluginPages != null && !newPluginPages.isEmpty()) {
+            // Deploy/reload: merge new plugin pages
+            List<String> newClassNames = newPluginPages.stream()
+                    .map(p -> p.getClass().getName())
+                    .collect(Collectors.toList());
+
+            pages.removeIf(p -> newClassNames.contains(p.getClass().getName()));
+            pages.addAll(newPluginPages);
+        } else {
+            // Uninstall: re-scan plugin dir to get current pages (removed JAR no longer appears)
+            pages.clear();
+            pages.addAll(SwissKitPageScaner.scanBuiltinPages());
+            pages.addAll(PluginLoader.loadFromPluginDir());
+        }
+
+        pages.sort(Comparator.comparingInt(
+                p -> p.getClass().getAnnotation(SwissKitPage.class).order()
+        ));
+
+        sideMenuBar.setPages(pages);
+    }
+
+    /**
+     * @deprecated Use {@link #refreshSidebar(List)} instead.
+     */
+    @Deprecated
+    public void refreshSidebar() {
+        refreshSidebar(null);
     }
 }

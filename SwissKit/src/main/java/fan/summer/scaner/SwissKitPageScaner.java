@@ -24,6 +24,25 @@ public class SwissKitPageScaner {
 
     public static List<KitPage> scan() {
         List<KitPage> pages = new ArrayList<>();
+        pages.addAll(scanBuiltinPages());
+        pages.addAll(PluginLoader.loadFromPluginDir());
+
+        pages.sort(Comparator.comparingInt(
+                p -> p.getClass().getAnnotation(SwissKitPage.class).order()
+        ));
+
+        logger.info("Total KitPage(s) loaded: {}", pages.size());
+        return pages;
+    }
+
+    /**
+     * Scans and returns only built-in KitPages (loaded by the application ClassLoader).
+     * Does not include plugin pages from external JARs.
+     *
+     * @return List of built-in KitPages
+     */
+    public static List<KitPage> scanBuiltinPages() {
+        List<KitPage> pages = new ArrayList<>();
 
         ServiceLoader<KitPage> loader = ServiceLoader.load(
                 KitPage.class,
@@ -33,13 +52,11 @@ public class SwissKitPageScaner {
         for (KitPage page : loader) {
             SwissKitPage annotation = page.getClass().getAnnotation(SwissKitPage.class);
 
-            // Skip if no annotation
             if (annotation == null) {
                 logger.debug("Skipped (no annotation): {}", page.getClass().getName());
                 continue;
             }
 
-            // Skip if visible=false
             if (!annotation.visible()) {
                 logger.debug("Skipped (invisible): {}", page.getClass().getName());
                 continue;
@@ -49,16 +66,7 @@ public class SwissKitPageScaner {
             logger.info("Registered KitPage: {} (order: {})",
                     annotation.menuName(), annotation.order());
         }
-        // Load plugin
-        List<KitPage> pluginPages = PluginLoader.loadFromPluginDir();
-        pages.addAll(pluginPages);
 
-        // Sort by order
-        pages.sort(Comparator.comparingInt(
-                p -> p.getClass().getAnnotation(SwissKitPage.class).order()
-        ));
-
-        logger.info("Total KitPage(s) loaded: {}", pages.size());
         return pages;
     }
 }

@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Path;
@@ -13,6 +14,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.ServiceLoader;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Dynamic plugin loader.
@@ -39,8 +41,79 @@ public class PluginLoader {
             .toString()
             .replace("\\", "/");
 
+    /**
+     * Tracks plugin JAR file path → its ClassLoader.
+     * Used to release file handles when uninstalling plugins.
+     */
+    private static final ConcurrentHashMap<String, URLClassLoader> pluginClassLoaders = new ConcurrentHashMap<>();
+
     public static List<KitPage> loadFromPluginDir() {
         return loadFromDir(Path.of(PLUGIN_DIR).toFile());
+    }
+
+    /**
+     * Closes the ClassLoader for a plugin JAR and removes it from tracking.
+     * Must be called before deleting a plugin JAR file.
+     *
+     * @param jarName the JAR file name (e.g., "MyPlugin-1.0.0.jar")
+     * @return true if the ClassLoader was found and closed, false otherwise
+     */
+    public static boolean unloadPlugin(String jarName) {
+        URLClassLoader classLoader = pluginClassLoaders.remove(jarName);
+        if (classLoader != null) {
+            try {
+                classLoader.close();
+                logger.info("Closed ClassLoader for plugin: {}", jarName);
+                return true;
+            } catch (IOException e) {
+                logger.warn("Failed to close ClassLoader for plugin {}: {}", jarName, e.getMessage());
+                return false;
+            }
+        }
+        logger.debug("No ClassLoader found for plugin: {}", jarName);
+        return false;
+    }
+
+    /**
+     * Deploys (loads) a plugin JAR that has already been copied to PLUGIN_DIR.
+     * If the plugin is already loaded, it will be hot-reloaded (old ClassLoader closed, new one created).
+     *
+     * @param jarFile the JAR file to deploy (must exist in PLUGIN_DIR)
+     * @return List of loaded KitPages, or empty list on failure
+     */
+    public static List<KitPage> deployPlugin(File jarFile) {
+        if (jarFile == null || !jarFile.exists() || !jarFile.getName().toLowerCase().endsWith(".jar")) {
+            logger.warn("Invalid plugin file for deploy: {}", jarFile);
+            return Collections.emptyList();
+        }
+
+        String jarName = jarFile.getName();
+
+        // If already loaded, unload first for hot-reload
+        if (pluginClassLoaders.containsKey(jarName)) {
+            logger.info("Plugin {} already loaded, hot-reloading...", jarName);
+            unloadPlugin(jarName);
+        }
+
+        return loadFromJar(jarFile);
+    }
+
+    /**
+     * Hot-reloads an already-loaded plugin JAR.
+     * Unloads the old ClassLoader and loads the new version from disk.
+     *
+     * @param jarName the JAR file name (e.g., "MyPlugin-1.0.0.jar")
+     * @return List of reloaded KitPages, or empty list if JAR not found or reload fails
+     */
+    public static List<KitPage> reloadPlugin(String jarName) {
+        File jarFile = new File(PLUGIN_DIR, jarName);
+        if (!jarFile.exists()) {
+            logger.warn("Plugin JAR not found for reload: {}", jarName);
+            return Collections.emptyList();
+        }
+
+        unloadPlugin(jarName);
+        return loadFromJar(jarFile);
     }
 
     /**
@@ -104,6 +177,9 @@ public class PluginLoader {
             URLClassLoader pluginClassLoader = new IsolatedPluginClassLoader(
                     new URL[]{jarUrl}, appClassLoader
             );
+
+            // Track the classloader so it can be closed on uninstall
+            pluginClassLoaders.put(jarFile.getName(), pluginClassLoader);
 
             ServiceLoader<KitPage> loader = ServiceLoader.load(KitPage.class, pluginClassLoader);
 
