@@ -17,8 +17,8 @@ This skill executes a multi-agent release process:
 ### 1. Software Development Agent (SDA)
 
 - Update main `pom.xml` version to specified version
-- Update `Happy-learning/pom.xml` version to specified version
-- Update `SwissKitJ-Plugin-Qcc/pom.xml` version to specified version (if not gitignored)
+- Update `OfficalPlugin/SwissKitJ-Plugin-HappyLearning/pom.xml` version to specified version
+- Update `OfficalPlugin/SwissKitJ-Plugin-Qcc/pom.xml` version to specified version (if not gitignored)
 - Create/update `CHANGELOG.md` at project root with:
   - Software introduction
   - Feature summary

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## 1.1.0
+
+**Release Date:** 2026-03-30
+
+---
+
+### ✨ New Features
+
+- **Plugin Hot-Deployment**: Deploy, reload, and uninstall plugins without restarting the application
+- **HappyLearning Enhancement**: Add class hours tracking and status display
+
+### 🔄 Changes
+
+- **Project Restructuring**: Renamed `Happy-learning` → `SwissKitJ-Plugin-HappyLearning`, moved plugins to `OfficalPlugin/` directory
+- **Module Organization**: Added `SwissKitJ-Api` as a shared API module
+
+---
+
 ## 1.0.0
 
 **Release Date:** 2026-03-29
@@ -96,10 +114,12 @@ mvn exec:java -Dexec.mainClass="fan.summer.Main"
 #### Project Structure
 ```
 SwissKitJ/
-├── SwissKitJ-Api/         # Shared API module
-├── SwissKit/              # Main application
-├── Happy-learning/        # Sample plugin
-└── SwissKitJ-Plugin-Qcc/ # QccToExcel plugin
+├── SwissKitJ-Api/                         # Shared API module (interfaces, annotations)
+├── SwissKit/                              # Main application
+├── OfficalPlugin/
+│   ├── SwissKitJ-Plugin-HappyLearning/   # Auto-learning plugin
+│   └── SwissKitJ-Plugin-Qcc/              # CSV to Excel conversion plugin
+└── docs/                                  # Documentation
 ```
 
 #### Plugin Development
