@@ -39,17 +39,24 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Derive version from tag
+        run: |
+          RAW="${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }}"
+          VERSION=$(echo "$RAW" | sed 's/^v//' | sed 's/-.*//')
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Resolved build version: ${VERSION}"
+
       - name: Install SwissKitJ-Api to local repository
-        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests
+        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests -Dproject.version=${{ env.VERSION }}
 
       - name: Build with Maven
-        run: mvn clean package -DskipTests
+        run: mvn clean package -DskipTests -Dproject.version=${{ env.VERSION }} -pl SwissKit -am
 
       - name: Assemble and compress Windows package
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release\SwissKit | Out-Null
-          Move-Item target\SwissKit.exe release\SwissKit\SwissKit.exe
+          Move-Item SwissKit\target\SwissKit.exe release\SwissKit\SwissKit.exe
           Copy-Item README.md release\SwissKit\
           Compress-Archive -Path release\SwissKit -DestinationPath release\SwissKit-windows.zip -Force
           Write-Host "Created: release\SwissKit-windows.zip"
@@ -80,23 +87,30 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Derive version from tag
+        run: |
+          RAW="${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }}"
+          VERSION=$(echo "$RAW" | sed 's/^v//' | sed 's/-.*//')
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Resolved build version: ${VERSION}"
+
       - name: Install SwissKitJ-Api to local repository
-        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests
+        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests -Dproject.version=${{ env.VERSION }}
 
       - name: Build with Maven
-        run: mvn clean package -DskipTests
+        run: mvn clean package -DskipTests -Dproject.version=${{ env.VERSION }} -pl SwissKit -am
 
       - name: Assemble Linux package
         run: |
-          JAR_FILE=$(find target -maxdepth 1 -name "SwissKit-*.jar" -type f | head -1)
+          JAR_FILE=$(find SwissKit/target -maxdepth 1 -name "SwissKit-*.jar" -type f | head -1)
           if [ -z "$JAR_FILE" ]; then
-            echo "ERROR: No SwissKit-*.jar found in target/" >&2
+            echo "ERROR: No SwissKit-*.jar found in SwissKit/target/" >&2
             exit 1
           fi
           mkdir -p release/SwissKit
           cp "$JAR_FILE" release/SwissKit/SwissKit.jar
           cp README.md   release/SwissKit/
-          cp src/main/resources/icons/icon-256.png release/SwissKit/swisskit.png
+          cp SwissKit/src/main/resources/icons/icon-256.png release/SwissKit/swisskit.png
 
       # Write launcher with printf in a separate step to avoid any
       # heredoc / YAML block-mapping conflict.
@@ -178,11 +192,18 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Derive version from tag
+        run: |
+          RAW="${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }}"
+          VERSION=$(echo "$RAW" | sed 's/^v//' | sed 's/-.*//')
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Resolved build version: ${VERSION}"
+
       - name: Install SwissKitJ-Api to local repository
-        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests
+        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests -Dproject.version=${{ env.VERSION }}
 
       - name: Build with Maven
-        run: mvn clean package -DskipTests
+        run: mvn clean package -DskipTests -Dproject.version=${{ env.VERSION }} -pl SwissKit -am
 
       # Derive a clean semver string (e.g. "1.2.3") from the git tag.
       - name: Resolve version for Info.plist
@@ -195,15 +216,15 @@ jobs:
 
       - name: Create .app bundle skeleton
         run: |
-          JAR_FILE=$(find target -maxdepth 1 -name "SwissKit-*.jar" -type f | head -1)
+          JAR_FILE=$(find SwissKit/target -maxdepth 1 -name "SwissKit-*.jar" -type f | head -1)
           if [ -z "$JAR_FILE" ]; then
-            echo "ERROR: No SwissKit-*.jar found in target/" >&2
+            echo "ERROR: No SwissKit-*.jar found in SwissKit/target/" >&2
             exit 1
           fi
           mkdir -p release/SwissKit.app/Contents/MacOS
           mkdir -p release/SwissKit.app/Contents/Resources
           cp "$JAR_FILE" release/SwissKit.app/Contents/Resources/SwissKit.jar
-          cp src/main/resources/icons/SwissKit.icns release/SwissKit.app/Contents/Resources/
+          cp SwissKit/src/main/resources/icons/SwissKit.icns release/SwissKit.app/Contents/Resources/
 
       # Write launcher with printf in a separate step to avoid any
       # heredoc / YAML block-mapping conflict.

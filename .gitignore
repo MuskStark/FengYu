@@ -1,5 +1,6 @@
 target/
-!.mvn/wrapper/maven-wrapper.jar
+!/mvn/wrapper/maven-wrapper.jar
+/out/
 !**/src/main/**/target/
 !**/src/test/**/target/
 .kotlin
@@ -37,4 +38,3 @@ build/
 /SwissKit-main/
 /AGENTS.md
 /.swisskit/
-/SwissKitJ-Plugin-Qcc/
