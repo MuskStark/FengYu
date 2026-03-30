@@ -34,7 +34,8 @@ public class HappyLearningWorker extends SwingWorker<Void, HappyLearningWorker.L
     private final JButton stopBt;
     private final JTextField subjectIdTextField;
     private final JTextField subjectName;
-
+    private final JLabel statusLabel;
+    private final JTextField classHoursField;
     /**
      * Holds progress and lesson info for UI updates.
      */
@@ -43,12 +44,14 @@ public class HappyLearningWorker extends SwingWorker<Void, HappyLearningWorker.L
         public final int electiveProgress;
         public final Long lessonId;
         public final String lessonName;
+        public final Float classHours;
 
-        public LearningUpdate(int majorProgress, int electiveProgress, Long lessonId, String lessonName) {
+        public LearningUpdate(int majorProgress, int electiveProgress, Long lessonId, String lessonName, Float classHours) {
             this.majorProgress = majorProgress;
             this.electiveProgress = electiveProgress;
             this.lessonId = lessonId;
             this.lessonName = lessonName;
+            this.classHours = classHours;
         }
     }
 
@@ -60,7 +63,8 @@ public class HappyLearningWorker extends SwingWorker<Void, HappyLearningWorker.L
     public HappyLearningWorker(String passKey, JProgressBar majorSubjectProgressBar,
                                JProgressBar electiveSubjectProgressBar, String type,
                                JButton startBt, JButton stopBt,
-                               JTextField subjectIdTextField, JTextField subjectName) {
+                               JTextField subjectIdTextField, JTextField subjectName,
+                               JLabel statusLabel, JTextField classHoursField) {
         this.passKey = passKey;
         this.majorSubjectProgressBar = majorSubjectProgressBar;
         this.electiveSubjectProgressBar = electiveSubjectProgressBar;
@@ -69,6 +73,8 @@ public class HappyLearningWorker extends SwingWorker<Void, HappyLearningWorker.L
         this.stopBt = stopBt;
         this.subjectIdTextField = subjectIdTextField;
         this.subjectName = subjectName;
+        this.statusLabel = statusLabel;
+        this.classHoursField = classHoursField;
         this.service = new HappyLearningService();
         log.debug("HappyLearningWorker created with type: {}", type);
     }
@@ -217,6 +223,9 @@ public class HappyLearningWorker extends SwingWorker<Void, HappyLearningWorker.L
         if (latest.lessonName != null && subjectName != null) {
             subjectName.setText(latest.lessonName);
         }
+        if (latest.classHours != null && classHoursField != null) {
+            classHoursField.setText(String.valueOf(latest.classHours));
+        }
     }
 
     private void initProcess() {
@@ -301,7 +310,8 @@ public class HappyLearningWorker extends SwingWorker<Void, HappyLearningWorker.L
                     majorMax > 0 ? majorCurrent : -1,
                     electiveMax > 0 ? electiveCurrent : -1,
                     service.getCurrentLessonId(),
-                    service.getCurrentLessonName()));
+                    service.getCurrentLessonName(),
+                    service.getClassHours()));
         } catch (Exception e) {
             if (!isCancelled()) {
                 log.error("[Worker] Failed to update progress: {}", e.getMessage(), e);
@@ -327,6 +337,9 @@ public class HappyLearningWorker extends SwingWorker<Void, HappyLearningWorker.L
                 if (stopBt != null) {
                     stopBt.setEnabled(false);
                 }
+                if (statusLabel != null) {
+                    statusLabel.setText("LearningStatus: Cancelled");
+                }
                 JOptionPane.showMessageDialog(
                         null,
                         "Learning was cancelled",
@@ -348,6 +361,9 @@ public class HappyLearningWorker extends SwingWorker<Void, HappyLearningWorker.L
                 if (stopBt != null) {
                     stopBt.setEnabled(false);
                 }
+                if (statusLabel != null) {
+                    statusLabel.setText("LearningStatus: Error");
+                }
                 // Show error dialog to user
                 JOptionPane.showMessageDialog(
                         null,
@@ -368,6 +384,9 @@ public class HappyLearningWorker extends SwingWorker<Void, HappyLearningWorker.L
             if (stopBt != null) {
                 stopBt.setEnabled(false);
                 log.debug("[Worker] Stop button disabled");
+            }
+            if (statusLabel != null) {
+                statusLabel.setText("LearningStatus: Completed");
             }
         });
     }

@@ -25,6 +25,7 @@ public class HappyLearningService {
 
     private volatile Long currentLessonId;
     private volatile String currentLessonName;
+    private volatile Float classHours;
 
     public Long getCurrentLessonId() {
         return currentLessonId;
@@ -34,6 +35,9 @@ public class HappyLearningService {
         return currentLessonName;
     }
 
+    public Float getClassHours() {
+        return classHours;
+    }
 
     // -------------------------  Public API  -------------------------
 
@@ -131,7 +135,8 @@ public class HappyLearningService {
 
                         if (lessonDetailResp != null && lessonDetailResp.getData() != null) {
                             this.currentLessonId = Long.valueOf(lessonInfo.getLessonId());
-                            this.currentLessonName = lessonDetailResp.getData().getLessonDetailVO().getBrief();
+                            this.currentLessonName = lessonDetailResp.getData().getLessonDetailVO().getName();
+                            this.classHours = lessonDetailResp.getData().getLessonDetailVO().getClasshour();
                             log.info("Current lesson set - ID: {}, Name: {}", this.currentLessonId, this.currentLessonName);
 
                             List<UserLearnCourseWareVOList> subLessons =

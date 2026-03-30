@@ -14,7 +14,7 @@ import java.util.List;
 public class LessonDetailVO {
     private Long lessonId;
     private String name;
-    private Integer classhour;
+    private Float classhour;
     private Integer letime;
     private Integer isonline;
     private String picfilename;

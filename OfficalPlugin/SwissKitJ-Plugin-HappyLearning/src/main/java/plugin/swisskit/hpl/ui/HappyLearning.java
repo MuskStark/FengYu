@@ -54,6 +54,24 @@ public class HappyLearning implements KitPage {
         majorSubjiectPB.setStringPainted(true);
         electiveSubjectPB.setStringPainted(true);
         stopBt.setEnabled(false);
+
+        // Show config file name in configFilePath if config file exists
+        Path configFile = Path.of(ConfigLoader.CONFIG_DIR, "netschool-headers.json");
+        if (configFile.toFile().exists()) {
+            configFilePath.setText(configFile.toAbsolutePath().toString());
+        }
+
+        // Mutual exclusion for checkboxes
+        onlyMajorCheckBox.addItemListener(e -> {
+            if (onlyMajorCheckBox.isSelected()) {
+                onlyElectiveCheckBox.setSelected(false);
+            }
+        });
+        onlyElectiveCheckBox.addItemListener(e -> {
+            if (onlyElectiveCheckBox.isSelected()) {
+                onlyMajorCheckBox.setSelected(false);
+            }
+        });
     }
 
     /**
@@ -177,9 +195,10 @@ public class HappyLearning implements KitPage {
         }
 
         log.info("[UI] Starting learning plugin.swisskit.hpl.worker, lessonType: {}", lessonType);
+        statusLabel.setText("LearningStatus: Learning...");
         currentWorker = new HappyLearningWorker(key, majorSubjiectPB, electiveSubjectPB,
                 "Auto".equals(lessonType) ? null : lessonType, startBt, stopBt,
-                subjectIdTextField, subjectName);
+                subjectIdTextField, subjectName, statusLabel, classHoursField);
         currentWorker.execute();
         startBt.setEnabled(false);
         stopBt.setEnabled(true);
@@ -190,6 +209,7 @@ public class HappyLearning implements KitPage {
         if (currentWorker != null && !currentWorker.isDone()) {
             log.info("[UI] Stop button clicked, cancelling plugin.swisskit.hpl.worker");
             currentWorker.cancel(true);
+            statusLabel.setText("LearningStatus: Stopped");
             startBt.setEnabled(true);
             stopBt.setEnabled(false);
             log.info("[UI] Worker cancelled, UI buttons updated");
@@ -220,12 +240,15 @@ public class HappyLearning implements KitPage {
         onlyElectiveCheckBox = new JCheckBox();
         startBt = new JButton();
         stopBt = new JButton();
-        label7 = new JLabel();
+        statusLabel = new JLabel();
         subjectInfo = new JPanel();
         label5 = new JLabel();
         subjectIdTextField = new JTextField();
+        label7 = new JLabel();
+        classHoursField = new JTextField();
         label6 = new JLabel();
         subjectName = new JTextField();
+        skipClassBt = new JButton();
 
         //======== learningPanel ========
         {
@@ -249,6 +272,9 @@ public class HappyLearning implements KitPage {
             //---- label4 ----
             label4.setText("ConfigFile");
             learningPanel.add(label4, "cell 0 0");
+
+            //---- configFilePath ----
+            configFilePath.setEditable(false);
             learningPanel.add(configFilePath, "cell 1 0");
 
             //---- uploadBt ----
@@ -304,13 +330,13 @@ public class HappyLearning implements KitPage {
             learningPanel.add(startBt, "cell 1 5");
 
             //---- stopBt ----
-            stopBt.setText("UnHAppy");
+            stopBt.setText("UnHappy");
             stopBt.addActionListener(e -> stopBtAction(e));
             learningPanel.add(stopBt, "cell 1 6");
 
-            //---- label7 ----
-            label7.setText("---------------------- Happy Info ----------------------");
-            learningPanel.add(label7, "cell 1 7,align center center,grow 0 0");
+            //---- statusLabel ----
+            statusLabel.setText("LearningStatus: Idle");
+            learningPanel.add(statusLabel, "cell 0 7 3 1,align center center,grow 0 0");
 
             //======== subjectInfo ========
             {
@@ -325,6 +351,8 @@ public class HappyLearning implements KitPage {
                     // rows
                     "[]" +
                     "[]" +
+                    "[]" +
+                    "[]" +
                     "[]"));
 
                 //---- label5 ----
@@ -335,13 +363,26 @@ public class HappyLearning implements KitPage {
                 subjectIdTextField.setEditable(false);
                 subjectInfo.add(subjectIdTextField, "cell 1 0 2 1");
 
+                //---- label7 ----
+                label7.setText("ClassHours");
+                subjectInfo.add(label7, "cell 3 0");
+
+                //---- classHoursField ----
+                classHoursField.setEditable(false);
+                subjectInfo.add(classHoursField, "cell 4 0");
+
                 //---- label6 ----
                 label6.setText("SubjectName:");
-                subjectInfo.add(label6, "cell 3 0");
+                subjectInfo.add(label6, "cell 0 1");
 
                 //---- subjectName ----
                 subjectName.setEditable(false);
-                subjectInfo.add(subjectName, "cell 4 0");
+                subjectInfo.add(subjectName, "cell 1 1 4 1");
+
+                //---- skipClassBt ----
+                skipClassBt.setText("SkipClass");
+                skipClassBt.setEnabled(false);
+                subjectInfo.add(skipClassBt, "cell 0 2 5 1");
             }
             learningPanel.add(subjectInfo, "cell 0 8 3 1");
         }
@@ -365,11 +406,14 @@ public class HappyLearning implements KitPage {
     private JCheckBox onlyElectiveCheckBox;
     private JButton startBt;
     private JButton stopBt;
-    private JLabel label7;
+    private JLabel statusLabel;
     private JPanel subjectInfo;
     private JLabel label5;
     private JTextField subjectIdTextField;
+    private JLabel label7;
+    private JTextField classHoursField;
     private JLabel label6;
     private JTextField subjectName;
+    private JButton skipClassBt;
     // JFormDesigner - End of variables declaration  //GEN-END:variables  @formatter:on
 }
