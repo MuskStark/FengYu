@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>plugin.swisskitj</groupId>
-    <artifactId>happy-learning</artifactId>
+    <artifactId>SwissKitJ-Plugin-HappyLearning</artifactId>
     <version>1.0.0</version>
 
     <properties>

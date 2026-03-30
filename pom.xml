@@ -12,7 +12,7 @@
     <modules>
         <module>SwissKit</module>
         <module>SwissKitJ-Api</module>
-        <module>OfficalPlugin/Happy-learning</module>
+        <module>OfficalPlugin/SwissKitJ-Plugin-HappyLearning</module>
         <module>OfficalPlugin/SwissKitJ-Plugin-Qcc</module>
     </modules>
 
