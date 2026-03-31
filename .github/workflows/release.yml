@@ -48,9 +48,11 @@ jobs:
           echo "Resolved build version: ${VERSION}"
 
       - name: Install SwissKitJ-Api to local repository
+        shell: pwsh
         run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests -Dproject.version=${{ env.VERSION }}
 
       - name: Build with Maven
+        shell: pwsh
         run: mvn clean package -DskipTests -Dproject.version=${{ env.VERSION }} -pl SwissKit -am
 
       - name: Assemble and compress Windows package
