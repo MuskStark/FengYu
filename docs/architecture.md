@@ -58,7 +58,7 @@ SwissKitJ-Api/
 <dependency>
     <groupId>fan.summer.api</groupId>
     <artifactId>SwissKitJ-Api</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
 </dependency>
 ```
 
@@ -70,7 +70,7 @@ The core application with Excel, Email, and Settings tools.
 
 Example plugin project demonstrating plugin development.
 
-### Happy-learning Plugin
+### SwissKitJ-Plugin-HappyLearning
 
 Auto-learning plugin demonstrating isolated plugin classloading with Java 11 HttpClient and fastjson2.
 
@@ -198,22 +198,23 @@ SwissKit/
     │       └── EmailTagMapper.xml
     └── META-INF/services/           # SPI plugin.swisskit.hpl.service files
         └── fan.summer.api.KitPage
-├── Happy-learning/                   # Auto-learning plugin
-│   └── src/main/java/plugin/swisskit/hpl/
-│       ├── HappyLearning.java        # Main UI page
-│       ├── HappyLearningService.java  # Service layer
-│       ├── HappyLearningWorker.java  # SwingWorker for background tasks
-│       ├── DevLauncher.java          # Dev launcher
-│       ├── dto/                       # Data transfer objects
-│       │   ├── UserSearchResp.java
-│       │   ├── LessonSearchResp.java
-│       │   ├── LessonDetailResp.java
-│       │   ├── EnterLessonResp.java
-│       │   └── LearnProcess.java
-│       └── util/
-│           ├── WebUtil.java          # HTTP client with gzip support
-│           └── ConfigLoader.java      # JSON config loader
-└── SwissKitJ-Plugin-Qcc/             # Example plugin
+├── OfficalPlugin/
+│   ├── SwissKitJ-Plugin-HappyLearning/  # Auto-learning plugin
+│   │   └── src/main/java/plugin/swisskit/hpl/
+│   │       ├── HappyLearning.java        # Main UI page
+│   │       ├── HappyLearningService.java  # Service layer
+│   │       ├── HappyLearningWorker.java  # SwingWorker for background tasks
+│   │       ├── DevLauncher.java          # Dev launcher
+│   │       ├── dto/                       # Data transfer objects
+│   │       │   ├── UserSearchResp.java
+│   │       │   ├── LessonSearchResp.java
+│   │       │   ├── LessonDetailResp.java
+│   │       │   ├── EnterLessonResp.java
+│   │       │   └── LearnProcess.java
+│   │       └── util/
+│   │           ├── WebUtil.java          # HTTP client with gzip support
+│   │           └── ConfigLoader.java      # JSON config loader
+│   └── SwissKitJ-Plugin-Qcc/             # Example plugin
 ```
 
 ## Plugin System

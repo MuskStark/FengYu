@@ -31,7 +31,7 @@ mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package
 
 # Run the application (executable JAR)
-java -jar target/SwissKit-1.0.0.jar
+java -jar target/SwissKit-1.1.0.jar
 ```
 
 Or using Maven exec plugin:
@@ -120,7 +120,7 @@ SwissKit uses a multi-module Maven structure:
 | `SwissKitJ-Api`        | Shared API module containing interfaces, annotations, and UI components |
 | `SwissKit` (main)      | Core application with Excel, Email, and Settings tools                  |
 | `SwissKitJ-Plugin-Qcc` | Example plugin project demonstrating plugin development                 |
-| `Happy-learning`       | Auto-learning plugin with progress tracking                             |
+| `SwissKitJ-Plugin-HappyLearning` | Auto-learning plugin with progress tracking                     |
 
 ### Project Structure
 
@@ -195,8 +195,9 @@ SwissKit/
 │       └── plugin.swisskit.hpl.ui/
 │           └── TableUtil.java
 └── SwissKitJ-Plugin-Qcc/            # Example plugin
-Happy-learning/                    # Auto-learning plugin
-    └── src/main/java/plugin/swisskit/hpl/
+    └── OfficalPlugin/
+        └── SwissKitJ-Plugin-HappyLearning/  # Auto-learning plugin
+            └── src/main/java/plugin/swisskit/hpl/
         ├── ui/HappyLearning.java  # Main UI page
         ├── service/HappyLearningService.java
         ├── worker/HappyLearningWorker.java
@@ -304,7 +305,7 @@ public class MyToolPage implements KitPage {
    <dependency>
        <groupId>fan.summer.api</groupId>
        <artifactId>SwissKitJ-Api</artifactId>
-       <version>1.0.0</version>
+       <version>1.1.0</version>
    </dependency>
    ```
 2. Implement `KitPage` interface
@@ -334,7 +335,7 @@ mvn clean package
 mvn clean package -DskipTests
 
 # Run executable JAR
-java -jar target/SwissKit-1.0.0.jar
+java -jar target/SwissKit-1.1.0.jar
 ```
 
 ---

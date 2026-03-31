@@ -202,6 +202,7 @@ public class HappyLearning implements KitPage {
         currentWorker.execute();
         startBt.setEnabled(false);
         stopBt.setEnabled(true);
+        skipClassBt.setEnabled(true);
         log.info("[UI] Learning plugin.swisskit.hpl.worker started, UI buttons updated");
     }
 
@@ -212,6 +213,7 @@ public class HappyLearning implements KitPage {
             statusLabel.setText("LearningStatus: Stopped");
             startBt.setEnabled(true);
             stopBt.setEnabled(false);
+            skipClassBt.setEnabled(false);
             log.info("[UI] Worker cancelled, UI buttons updated");
         }
     }
@@ -219,6 +221,12 @@ public class HappyLearning implements KitPage {
     private void createUIComponents() {
         majorSubjiectPB = new GradientProgressBar();
         electiveSubjectPB = new GradientProgressBar();
+    }
+
+    private void skipClassBt(ActionEvent e) {
+        if (currentWorker != null && !currentWorker.isDone()) {
+            currentWorker.skipClass();
+        }
     }
 
     private void initComponents() {
@@ -381,7 +389,7 @@ public class HappyLearning implements KitPage {
 
                 //---- skipClassBt ----
                 skipClassBt.setText("SkipClass");
-                skipClassBt.setEnabled(false);
+                skipClassBt.addActionListener(e -> skipClassBt(e));
                 subjectInfo.add(skipClassBt, "cell 0 2 5 1");
             }
             learningPanel.add(subjectInfo, "cell 0 8 3 1");

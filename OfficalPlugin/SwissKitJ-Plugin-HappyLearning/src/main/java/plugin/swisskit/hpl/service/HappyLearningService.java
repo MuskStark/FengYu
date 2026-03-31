@@ -26,6 +26,8 @@ public class HappyLearningService {
     private volatile Long currentLessonId;
     private volatile String currentLessonName;
     private volatile Float classHours;
+    private volatile boolean skipSignal = false;
+    private volatile Long skipLessonId;
 
     public Long getCurrentLessonId() {
         return currentLessonId;
@@ -135,6 +137,11 @@ public class HappyLearningService {
 
                         if (lessonDetailResp != null && lessonDetailResp.getData() != null) {
                             this.currentLessonId = Long.valueOf(lessonInfo.getLessonId());
+                            if (this.skipLessonId != null && Objects.equals(this.skipLessonId, this.currentLessonId)) {
+                                this.skipLessonId = null;
+                                this.skipSignal = false;
+                                continue;
+                            }
                             this.currentLessonName = lessonDetailResp.getData().getLessonDetailVO().getName();
                             this.classHours = lessonDetailResp.getData().getLessonDetailVO().getClasshour();
                             log.info("Current lesson set - ID: {}, Name: {}", this.currentLessonId, this.currentLessonName);
@@ -144,6 +151,9 @@ public class HappyLearningService {
                             log.info("Sub-course count: " + subLessons.size());
 
                             for (UserLearnCourseWareVOList subLesson : subLessons) {
+                                if (this.skipSignal) {
+                                    break;
+                                }
                                 if (subLesson.getPassed() == null) {
                                     subLesson.setPassed(0);
                                 }
@@ -250,6 +260,11 @@ public class HappyLearningService {
         final double minSecond = 60.0;
         int retryTimes = 0;
         float learnProgressHistory = 0f;
+
+        if (this.skipSignal) {
+            this.skipLessonId = lessonId;
+            return false;
+        }
 
         while (isLearning) {
             double learnTime = minSecond + (maxSecond - minSecond) * Math.random();
@@ -401,5 +416,9 @@ public class HappyLearningService {
         Map<String, List<String>> result = new LinkedHashMap<>();
         source.forEach((k, v) -> result.put(k, List.of(v)));
         return result;
+    }
+
+    public void setSkipSignal(boolean skipSignal) {
+        this.skipSignal = skipSignal;
     }
 }

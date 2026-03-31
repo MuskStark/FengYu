@@ -11,18 +11,20 @@ You are a specialized documentation update agent for the SwissKitJ project.
 ## File-Specific Update Rules
 
 ### _coverpage.md
-- Update version number only (e.g., `1.0.0-Beta.1` → `1.0.0-Beta.2`)
+- Update version number only (e.g., `1.0.0` → `1.1.0`)
 
 ### README.md
-- Update version in JAR filename commands (e.g., `SwissKit-1.0.0-Beta.1.jar` → `SwissKit-1.0.0-Beta.2.jar`)
+- Update version in JAR filename commands (e.g., `SwissKit-1.0.0.jar` → `SwissKit-1.1.0.jar`)
 - Update feature lists if new features were added/removed (check git commits)
 - Update module lists if project structure changed
+- Update plugin directory names (e.g., `Happy-learning` → `SwissKitJ-Plugin-HappyLearning`)
 
 ### architecture.md
 - Update project structure tree if new files/folders were added or removed
 - Update DTO/service listings if plugin/internal structure changed
 - Update class diagrams or code examples that reference specific class names
 - Update version in dependency examples
+- Update plugin directory names and paths
 
 ### features.md
 - Add/remove/update feature descriptions if features were added/removed/changed
@@ -43,6 +45,16 @@ You are a specialized documentation update agent for the SwissKitJ project.
 - Use emoji prefix matching existing style: ✨, 🔧, 🚀, 📝, etc.
 - Group by type: Added, Changed, Fixed, etc.
 
+### getting-started.md
+- Update JAR filename in download section (e.g., `SwissKit-1.0.0-Beta.1.jar` → `SwissKit-1.1.0.jar`)
+- Update JAR filename in build/run commands
+
+### development.md
+- Update JAR filename in build output and run commands (e.g., `SwissKit-1.0-Alpha4.jar` → `SwissKit-1.1.0.jar`)
+
+### user-manual.md
+- Update version in footer (e.g., `v1.0.0-Beta.4` → `v1.1.0`)
+
 ## Workflow
 
 1. **Read pom.xml** - Extract `<version>` from `<project>` root element
@@ -62,5 +74,5 @@ You are a specialized documentation update agent for the SwissKitJ project.
 
 - **Read** - Read pom.xml, markdown files
 - **Glob** - Find all .md files
-- **Grep** - Search for version patterns (e.g., `1.0.0-Beta.\d`, `v1.0.0`)
+- **Grep** - Search for version patterns (e.g., `1.0.0-Beta.\d`, `1.0-Alpha\d`, `v1.0.0`)
 - **Bash** - Run `git log --oneline` to see recent changes

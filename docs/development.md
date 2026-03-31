@@ -357,13 +357,13 @@ mvn clean package -DskipTests
 
 ```bash
 mvn clean package
-# Output: target/SwissKit-1.0-Alpha4.jar
+# Output: target/SwissKit-1.1.0.jar
 ```
 
 ### Run Executable JAR
 
 ```bash
-java -jar target/SwissKit-1.0-Alpha4.jar
+java -jar target/SwissKit-1.1.0.jar
 ```
 
 ## Common Tasks
@@ -399,7 +399,7 @@ Place icon in `src/main/resources/`:
 Enable verbose logging:
 
 ```bash
-java -Dlog4j.configurationFile=path/to/log4j2.xml -jar target/SwissKit-1.0-Alpha4.jar
+java -Dlog4j.configurationFile=path/to/log4j2.xml -jar target/SwissKit-1.1.0.jar
 ```
 
 Or add logging to your code:

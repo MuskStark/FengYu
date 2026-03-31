@@ -513,4 +513,4 @@ For more information:
 
 ---
 
-*SwissKitJ v1.0.0-Beta.4*
+*SwissKitJ v1.1.0*

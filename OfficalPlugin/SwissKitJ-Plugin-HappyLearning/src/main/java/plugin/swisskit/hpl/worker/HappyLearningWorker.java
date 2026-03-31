@@ -36,6 +36,7 @@ public class HappyLearningWorker extends SwingWorker<Void, HappyLearningWorker.L
     private final JTextField subjectName;
     private final JLabel statusLabel;
     private final JTextField classHoursField;
+
     /**
      * Holds progress and lesson info for UI updates.
      */
@@ -77,6 +78,10 @@ public class HappyLearningWorker extends SwingWorker<Void, HappyLearningWorker.L
         this.classHoursField = classHoursField;
         this.service = new HappyLearningService();
         log.debug("HappyLearningWorker created with type: {}", type);
+    }
+
+    public void skipClass() {
+        this.service.setSkipSignal(true);
     }
 
     @Override
