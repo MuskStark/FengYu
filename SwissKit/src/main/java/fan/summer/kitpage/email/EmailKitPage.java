@@ -18,6 +18,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
+import java.awt.Color;
+import java.awt.FlowLayout;
+import java.awt.Font;
 import java.awt.event.ActionEvent;
 import java.util.ArrayList;
 import java.util.List;
@@ -41,6 +44,7 @@ public class EmailKitPage implements KitPage {
      */
     public EmailKitPage() {
         initComponents();
+        setupRichTextEditor();
     }
 
     /**
@@ -164,7 +168,7 @@ public class EmailKitPage implements KitPage {
      * @param e the action event triggered by sentButton
      */
     private void sentBtAction(ActionEvent e) {
-        new EmailSentWorker(subject.getText(), body.getText(), taskId, massSentCheckBox.isSelected(), progressBar1).execute();
+        new EmailSentWorker(subject.getText(), getEditorHtmlContent(), taskId, massSentCheckBox.isSelected(), progressBar1).execute();
     }
 
     /**
@@ -217,7 +221,7 @@ public class EmailKitPage implements KitPage {
         emailPanel = new JPanel();
         emailTitle = new JLabel();
         subject = new JTextField();
-        body = new JTextArea();
+        body = new JEditorPane();
         massSentCheckBox = new JCheckBox();
         setMassSentConfigBt = new JButton();
         viewSentConfigBt = new JButton();
@@ -236,6 +240,7 @@ public class EmailKitPage implements KitPage {
                 "[fill]",
                 // rows
                 "[fill]" +
+                "[]" +
                 "[grow,fill]" +
                 "[]" +
                 "[]" +
@@ -249,37 +254,36 @@ public class EmailKitPage implements KitPage {
             emailPanel.add(subject, "cell 1 0 3 1,aligny center,grow 100 0");
 
             //---- body ----
-            body.setLineWrap(false);
-            body.setText("");
-            emailPanel.add(body, "cell 0 1 4 1,grow");
+            body.setContentType("text/html");
+            emailPanel.add(body, "cell 0 2 4 1,grow");
 
             //---- massSentCheckBox ----
             massSentCheckBox.setText("MassSent");
             massSentCheckBox.addActionListener(e -> massSentCheckBoxActionListener(e));
-            emailPanel.add(massSentCheckBox, "cell 0 2");
+            emailPanel.add(massSentCheckBox, "cell 0 3");
 
             //---- setMassSentConfigBt ----
             setMassSentConfigBt.setText("MassSendConfig");
             setMassSentConfigBt.setEnabled(false);
             setMassSentConfigBt.addActionListener(e -> setMassSentConfigBtAction(e));
-            emailPanel.add(setMassSentConfigBt, "cell 1 2");
+            emailPanel.add(setMassSentConfigBt, "cell 1 3");
 
             //---- viewSentConfigBt ----
             viewSentConfigBt.setText("ViewSentConfig");
             viewSentConfigBt.setEnabled(false);
             viewSentConfigBt.addActionListener(e -> viewSentConfigBtAction(e));
-            emailPanel.add(viewSentConfigBt, "cell 2 2");
+            emailPanel.add(viewSentConfigBt, "cell 2 3");
 
             //---- sentButton ----
             sentButton.setText("Sent");
             sentButton.addActionListener(e -> sentBtAction(e));
-            emailPanel.add(sentButton, "cell 0 3 4 1");
+            emailPanel.add(sentButton, "cell 0 4 4 1");
 
             //---- viewSentLogBt ----
             viewSentLogBt.setText("ViewSentLog");
             viewSentLogBt.addActionListener(e -> viewSentLogBtAction(e));
-            emailPanel.add(viewSentLogBt, "cell 0 4 4 1");
-            emailPanel.add(progressBar1, "cell 0 5 4 1");
+            emailPanel.add(viewSentLogBt, "cell 0 5 4 1");
+            emailPanel.add(progressBar1, "cell 0 6 4 1");
         }
         // JFormDesigner - End of component initialization  //GEN-END:initComponents  @formatter:on
     }
@@ -288,7 +292,7 @@ public class EmailKitPage implements KitPage {
     private JPanel emailPanel;
     private JLabel emailTitle;
     private JTextField subject;
-    private JTextArea body;
+    private JEditorPane body;
     private JCheckBox massSentCheckBox;
     private JButton setMassSentConfigBt;
     private JButton viewSentConfigBt;
@@ -296,4 +300,221 @@ public class EmailKitPage implements KitPage {
     private JButton viewSentLogBt;
     private JProgressBar progressBar1;
     // JFormDesigner - End of variables declaration  //GEN-END:variables  @formatter:on
+
+    // Formatting toolbar components
+    private JPanel formattingToolbar;
+    private JButton boldButton;
+    private JButton italicButton;
+    private JButton underlineButton;
+    private JComboBox<String> fontFamilyCombo;
+    private JComboBox<Integer> fontSizeCombo;
+    private JButton textColorButton;
+    private JButton alignLeftButton;
+    private JButton alignCenterButton;
+    private JButton alignRightButton;
+
+    /**
+     * Sets up the rich text editor after initComponents().
+     * Creates the formatting toolbar and configures the JEditorPane with HTMLEditorKit.
+     */
+    private void setupRichTextEditor() {
+        createFormattingToolbar();
+        configureEditorKit();
+    }
+
+    /**
+     * Creates the formatting toolbar with Bold, Italic, Underline, Font, Size, and Color controls.
+     */
+    private void createFormattingToolbar() {
+        formattingToolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 2));
+
+        // Font family combo box
+        fontFamilyCombo = new JComboBox<>(new String[]{"SansSerif", "Serif", "Monospaced", "Dialog"});
+        fontFamilyCombo.setSelectedItem("SansSerif");
+        fontFamilyCombo.addActionListener(e -> applyFontStyle());
+        formattingToolbar.add(fontFamilyCombo);
+
+        // Font size combo box
+        fontSizeCombo = new JComboBox<>(new Integer[]{9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36});
+        fontSizeCombo.setSelectedItem(12);
+        fontSizeCombo.addActionListener(e -> applyFontStyle());
+        formattingToolbar.add(fontSizeCombo);
+
+        formattingToolbar.add(Box.createHorizontalStrut(5));
+
+        // Bold button
+        boldButton = new JButton("B");
+        boldButton.setFont(new Font("SansSerif", Font.BOLD, 12));
+        boldButton.addActionListener(e -> toggleBold());
+        formattingToolbar.add(boldButton);
+
+        // Italic button
+        italicButton = new JButton("I");
+        italicButton.setFont(new Font("SansSerif", Font.ITALIC, 12));
+        italicButton.addActionListener(e -> toggleItalic());
+        formattingToolbar.add(italicButton);
+
+        // Underline button
+        underlineButton = new JButton("U");
+        underlineButton.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        underlineButton.addActionListener(e -> toggleUnderline());
+        formattingToolbar.add(underlineButton);
+
+        formattingToolbar.add(Box.createHorizontalStrut(5));
+
+        // Text color button
+        textColorButton = new JButton("Color");
+        textColorButton.addActionListener(e -> changeTextColor());
+        formattingToolbar.add(textColorButton);
+
+        formattingToolbar.add(Box.createHorizontalStrut(5));
+
+        // Alignment buttons
+        alignLeftButton = new JButton("L");
+        alignLeftButton.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        alignLeftButton.addActionListener(e -> setAlignment(javax.swing.text.StyleConstants.ALIGN_LEFT));
+        formattingToolbar.add(alignLeftButton);
+
+        alignCenterButton = new JButton("C");
+        alignCenterButton.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        alignCenterButton.addActionListener(e -> setAlignment(javax.swing.text.StyleConstants.ALIGN_CENTER));
+        formattingToolbar.add(alignCenterButton);
+
+        alignRightButton = new JButton("R");
+        alignRightButton.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        alignRightButton.addActionListener(e -> setAlignment(javax.swing.text.StyleConstants.ALIGN_RIGHT));
+        formattingToolbar.add(alignRightButton);
+
+        // Add toolbar to panel above the body editor
+        emailPanel.add(formattingToolbar, "cell 0 1 4 1,aligny top,grow 0 0");
+    }
+
+    /**
+     * Configures the JEditorPane with HTMLEditorKit and default styles.
+     */
+    private void configureEditorKit() {
+        body.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
+        body.setFont(new Font("SansSerif", Font.PLAIN, 12));
+    }
+
+    /**
+     * Applies the selected font family and size to the current selection.
+     */
+    private void applyFontStyle() {
+        String fontFamily = (String) fontFamilyCombo.getSelectedItem();
+        Integer fontSize = (Integer) fontSizeCombo.getSelectedItem();
+
+        if (body.getSelectionEnd() > body.getSelectionStart()) {
+            javax.swing.text.html.HTMLDocument doc = (javax.swing.text.html.HTMLDocument) body.getDocument();
+            javax.swing.text.Style style = doc.addStyle("temp", null);
+            javax.swing.text.StyleConstants.setFontFamily(style, fontFamily);
+            javax.swing.text.StyleConstants.setFontSize(style, fontSize);
+            doc.setCharacterAttributes(body.getSelectionStart(), body.getSelectionEnd() - body.getSelectionStart(), style, true);
+        }
+    }
+
+    /**
+     * Toggles bold formatting on the current selection.
+     */
+    private void toggleBold() {
+        int start = body.getSelectionStart();
+        int end = body.getSelectionEnd();
+        if (start == end) return;
+
+        javax.swing.text.html.HTMLDocument doc = (javax.swing.text.html.HTMLDocument) body.getDocument();
+        javax.swing.text.Style style = doc.addStyle("bold", null);
+        Boolean currentBold = javax.swing.text.StyleConstants.isBold(doc.getCharacterElement(start).getAttributes());
+        javax.swing.text.StyleConstants.setBold(style, !currentBold);
+        doc.setCharacterAttributes(start, end - start, style, true);
+    }
+
+    /**
+     * Toggles italic formatting on the current selection.
+     */
+    private void toggleItalic() {
+        int start = body.getSelectionStart();
+        int end = body.getSelectionEnd();
+        if (start == end) return;
+
+        javax.swing.text.html.HTMLDocument doc = (javax.swing.text.html.HTMLDocument) body.getDocument();
+        javax.swing.text.Style style = doc.addStyle("italic", null);
+        Boolean currentItalic = javax.swing.text.StyleConstants.isItalic(doc.getCharacterElement(start).getAttributes());
+        javax.swing.text.StyleConstants.setItalic(style, !currentItalic);
+        doc.setCharacterAttributes(start, end - start, style, true);
+    }
+
+    /**
+     * Toggles underline formatting on the current selection.
+     */
+    private void toggleUnderline() {
+        int start = body.getSelectionStart();
+        int end = body.getSelectionEnd();
+        if (start == end) return;
+
+        javax.swing.text.html.HTMLDocument doc = (javax.swing.text.html.HTMLDocument) body.getDocument();
+        javax.swing.text.Style style = doc.addStyle("underline", null);
+        Boolean currentUnderline = javax.swing.text.StyleConstants.isUnderline(doc.getCharacterElement(start).getAttributes());
+        javax.swing.text.StyleConstants.setUnderline(style, !currentUnderline);
+        doc.setCharacterAttributes(start, end - start, style, true);
+    }
+
+    /**
+     * Opens a color chooser dialog and applies the selected color to the current selection.
+     */
+    private void changeTextColor() {
+        Color color = JColorChooser.showDialog(body, "Choose Text Color", Color.BLACK);
+        if (color != null) {
+            int start = body.getSelectionStart();
+            int end = body.getSelectionEnd();
+            if (start == end) return;
+
+            javax.swing.text.html.HTMLDocument doc = (javax.swing.text.html.HTMLDocument) body.getDocument();
+            javax.swing.text.Style style = doc.addStyle("color", null);
+            javax.swing.text.StyleConstants.setForeground(style, color);
+            doc.setCharacterAttributes(start, end - start, style, true);
+        }
+    }
+
+    /**
+     * Sets the alignment of the current paragraph or selection.
+     *
+     * @param alignment StyleConstants.ALIGN_LEFT, ALIGN_CENTER, or ALIGN_RIGHT
+     */
+    private void setAlignment(int alignment) {
+        int start = body.getSelectionStart();
+        int end = body.getSelectionEnd();
+
+        javax.swing.text.html.HTMLDocument doc = (javax.swing.text.html.HTMLDocument) body.getDocument();
+        javax.swing.text.SimpleAttributeSet attrs = new javax.swing.text.SimpleAttributeSet();
+        javax.swing.text.StyleConstants.setAlignment(attrs, alignment);
+
+        if (start == end) {
+            // Apply to entire paragraph
+            javax.swing.text.Element elem = doc.getParagraphElement(start);
+            doc.setParagraphAttributes(elem.getStartOffset(), elem.getEndOffset() - elem.getStartOffset(), attrs, true);
+        } else {
+            doc.setParagraphAttributes(start, end - start, attrs, true);
+        }
+    }
+
+    /**
+     * Extracts HTML content from the editor for email sending.
+     * Removes the outer html and body tags to get just the body content.
+     *
+     * @return HTML string suitable for email body
+     */
+    private String getEditorHtmlContent() {
+        String html = body.getText();
+        if (html.startsWith("<html>")) {
+            int bodyStart = html.toLowerCase().indexOf("<body");
+            if (bodyStart != -1) {
+                bodyStart = html.indexOf(">", bodyStart) + 1;
+                int bodyEnd = html.toLowerCase().indexOf("</body>");
+                if (bodyEnd != -1) {
+                    html = html.substring(bodyStart, bodyEnd).trim();
+                }
+            }
+        }
+        return html;
+    }
 }

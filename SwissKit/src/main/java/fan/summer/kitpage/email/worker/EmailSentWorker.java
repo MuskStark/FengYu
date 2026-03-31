@@ -283,7 +283,7 @@ public class EmailSentWorker extends SwingWorker<Void, Integer> {
                         .to(toList)
                         .cc(ccList.isEmpty() ? null : ccList)
                         .subject(subject)
-                        .textBody(body)
+                        .htmlBody(body)
                         .attachments(files)
                         .build();
 
