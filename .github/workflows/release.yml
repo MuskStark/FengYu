@@ -40,17 +40,24 @@ jobs:
           cache: maven
 
       - name: Derive version from tag
+        shell: pwsh
         run: |
-          RAW="${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }}"
-          VERSION=$(echo "$RAW" | sed 's/^v//' | sed 's/-.*//')
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          $RAW = "${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }}"
+          $VERSION = ($RAW -replace '^v', '' -replace '-.*', '')
+          echo "VERSION=$VERSION" >> "$env:GITHUB_ENV"
           echo "Resolved build version: ${VERSION}"
 
       - name: Install SwissKitJ-Api to local repository
-        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests -Dproject.version=${{ env.VERSION }}
+        shell: pwsh
+        run: |
+          $v = "${{ env.VERSION }}"
+          mvn install -f SwissKitJ-Api/pom.xml -DskipTests "-Dproject.version=$v"
 
       - name: Build with Maven
-        run: mvn clean package -DskipTests -Dproject.version=${{ env.VERSION }} -pl SwissKit -am
+        shell: pwsh
+        run: |
+          $v = "${{ env.VERSION }}"
+          mvn clean package -DskipTests "-Dproject.version=$v" -pl SwissKit -am
 
       - name: Assemble and compress Windows package
         shell: pwsh
