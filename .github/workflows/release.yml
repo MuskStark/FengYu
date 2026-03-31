@@ -49,11 +49,15 @@ jobs:
 
       - name: Install SwissKitJ-Api to local repository
         shell: pwsh
-        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests -Dproject.version=${{ env.VERSION }}
+        run: |
+          $v = "${{ env.VERSION }}"
+          mvn install -f SwissKitJ-Api/pom.xml -DskipTests "-Dproject.version=$v"
 
       - name: Build with Maven
         shell: pwsh
-        run: mvn clean package -DskipTests -Dproject.version=${{ env.VERSION }} -pl SwissKit -am
+        run: |
+          $v = "${{ env.VERSION }}"
+          mvn clean package -DskipTests "-Dproject.version=$v" -pl SwissKit -am
 
       - name: Assemble and compress Windows package
         shell: pwsh
