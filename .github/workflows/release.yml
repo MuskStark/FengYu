@@ -40,10 +40,11 @@ jobs:
           cache: maven
 
       - name: Derive version from tag
+        shell: pwsh
         run: |
-          RAW="${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }}"
-          VERSION=$(echo "$RAW" | sed 's/^v//' | sed 's/-.*//')
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          $RAW = "${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }}"
+          $VERSION = ($RAW -replace '^v', '' -replace '-.*', '')
+          echo "VERSION=$VERSION" >> "$env:GITHUB_ENV"
           echo "Resolved build version: ${VERSION}"
 
       - name: Install SwissKitJ-Api to local repository
