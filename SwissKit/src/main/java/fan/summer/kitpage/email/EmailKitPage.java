@@ -18,10 +18,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
+import javax.swing.text.html.HTMLEditorKit;
 import java.awt.Color;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.event.ActionEvent;
+import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -369,20 +371,20 @@ public class EmailKitPage implements KitPage {
 
         formattingToolbar.add(Box.createHorizontalStrut(5));
 
-        // Alignment buttons
+        // Alignment buttons using StyledEditorKit actions
         alignLeftButton = new JButton("L");
         alignLeftButton.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        alignLeftButton.addActionListener(e -> setAlignment(javax.swing.text.StyleConstants.ALIGN_LEFT));
+        alignLeftButton.addActionListener(new javax.swing.text.StyledEditorKit.AlignmentAction("Left", javax.swing.text.StyleConstants.ALIGN_LEFT));
         formattingToolbar.add(alignLeftButton);
 
         alignCenterButton = new JButton("C");
         alignCenterButton.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        alignCenterButton.addActionListener(e -> setAlignment(javax.swing.text.StyleConstants.ALIGN_CENTER));
+        alignCenterButton.addActionListener(new javax.swing.text.StyledEditorKit.AlignmentAction("Center", javax.swing.text.StyleConstants.ALIGN_CENTER));
         formattingToolbar.add(alignCenterButton);
 
         alignRightButton = new JButton("R");
         alignRightButton.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        alignRightButton.addActionListener(e -> setAlignment(javax.swing.text.StyleConstants.ALIGN_RIGHT));
+        alignRightButton.addActionListener(new javax.swing.text.StyledEditorKit.AlignmentAction("Right", javax.swing.text.StyleConstants.ALIGN_RIGHT));
         formattingToolbar.add(alignRightButton);
 
         // Add toolbar to panel above the body editor
@@ -395,6 +397,12 @@ public class EmailKitPage implements KitPage {
     private void configureEditorKit() {
         body.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
         body.setFont(new Font("SansSerif", Font.PLAIN, 12));
+
+        // Set initial document style to preserve spaces
+        javax.swing.text.html.HTMLDocument doc = (javax.swing.text.html.HTMLDocument) body.getDocument();
+        javax.swing.text.SimpleAttributeSet attrs = new javax.swing.text.SimpleAttributeSet();
+        attrs.addAttribute(javax.swing.text.html.CSS.Attribute.WHITE_SPACE, "pre-wrap");
+        doc.getStyleSheet().addRule("body { white-space: pre-wrap; }");
     }
 
     /**
@@ -476,35 +484,23 @@ public class EmailKitPage implements KitPage {
     }
 
     /**
-     * Sets the alignment of the current paragraph or selection.
-     *
-     * @param alignment StyleConstants.ALIGN_LEFT, ALIGN_CENTER, or ALIGN_RIGHT
-     */
-    private void setAlignment(int alignment) {
-        int start = body.getSelectionStart();
-        int end = body.getSelectionEnd();
-
-        javax.swing.text.html.HTMLDocument doc = (javax.swing.text.html.HTMLDocument) body.getDocument();
-        javax.swing.text.SimpleAttributeSet attrs = new javax.swing.text.SimpleAttributeSet();
-        javax.swing.text.StyleConstants.setAlignment(attrs, alignment);
-
-        if (start == end) {
-            // Apply to entire paragraph
-            javax.swing.text.Element elem = doc.getParagraphElement(start);
-            doc.setParagraphAttributes(elem.getStartOffset(), elem.getEndOffset() - elem.getStartOffset(), attrs, true);
-        } else {
-            doc.setParagraphAttributes(start, end - start, attrs, true);
-        }
-    }
-
-    /**
      * Extracts HTML content from the editor for email sending.
+     * Uses HTMLEditorKit to properly get the HTML content including multi-line text and formatting.
      * Removes the outer html and body tags to get just the body content.
      *
      * @return HTML string suitable for email body
      */
     private String getEditorHtmlContent() {
-        String html = body.getText();
+        String html;
+        try {
+            HTMLEditorKit kit = (HTMLEditorKit) body.getEditorKit();
+            StringWriter writer = new StringWriter();
+            kit.write(writer, body.getDocument(), 0, body.getDocument().getLength());
+            html = writer.toString();
+        } catch (Exception e) {
+            log.error("Failed to get HTML content from editor, falling back to getText()", e);
+            html = body.getText();
+        }
         if (html.startsWith("<html>")) {
             int bodyStart = html.toLowerCase().indexOf("<body");
             if (bodyStart != -1) {
