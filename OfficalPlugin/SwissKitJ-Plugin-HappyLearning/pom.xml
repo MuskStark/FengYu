@@ -6,7 +6,7 @@
 
     <groupId>plugin.swisskitj</groupId>
     <artifactId>SwissKitJ-Plugin-HappyLearning</artifactId>
-    <version>v1.1.0</version>
+    <version>v1.1.1</version>
 
     <properties>
         <maven.compiler.source>11</maven.compiler.source>

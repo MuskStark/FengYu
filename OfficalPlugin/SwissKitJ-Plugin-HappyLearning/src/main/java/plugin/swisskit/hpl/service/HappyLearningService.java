@@ -28,6 +28,7 @@ public class HappyLearningService {
     private volatile Float classHours;
     private volatile boolean skipSignal = false;
     private volatile Long skipLessonId;
+    private volatile int lessonTypeCode;
 
     public Long getCurrentLessonId() {
         return currentLessonId;
@@ -92,8 +93,10 @@ public class HappyLearningService {
         if (lessonType == null || lessonType.isEmpty()) {
             if (periodDataRU.getSelfLearningGoal() - periodDataRU.getSelfLearningTotal() > 0) {
                 lessonType = "ElectiveSubject";
+                this.lessonTypeCode = 1;
             } else if (periodDataRU.getGroupLearningGoal() - periodDataRU.getGroupLearningTotal() > 0) {
                 lessonType = "MajorSubject";
+                this.lessonTypeCode = 64;
             }
         } else {
             if (isLessonTypePassed(lessonType, periodDataRU)) {
@@ -161,7 +164,7 @@ public class HappyLearningService {
                                     log.info("Starting sub-course, course ID: " + subLesson.getCoursewareId());
                                     upLoadLessonLearning(
                                             Long.valueOf(lessonInfo.getLessonId()),
-                                            subLesson.getCoursewareId(), token);
+                                            subLesson.getCoursewareId(), token, this.lessonTypeCode);
                                 }
                             }
                         }
@@ -213,7 +216,7 @@ public class HappyLearningService {
             }
             if (subLesson.getPassed() != 1) {
                 log.info("Starting sub-course, course ID: " + subLesson.getCoursewareId());
-                upLoadLessonLearning(Long.valueOf(lessonId), subLesson.getCoursewareId(), token);
+                upLoadLessonLearning(Long.valueOf(lessonId), subLesson.getCoursewareId(), token, this.lessonTypeCode);
             }
         }
     }
@@ -244,7 +247,7 @@ public class HappyLearningService {
      * Upload learning progress, loop until sub-course passed or retry threshold exceeded.
      * Supports breakpoint learning: resumes from the server's recorded exitplaytime.
      */
-    private boolean upLoadLessonLearning(Long lessonId, Long coursewareId, String token) {
+    private boolean upLoadLessonLearning(Long lessonId, Long coursewareId, String token, int lessonTypeCode) {
         Map<String, List<String>> headers = toMultiValueMap(
                 ConfigLoader.headers("portalJsonPost", Map.of("M0biletoken", token)));
 
@@ -277,7 +280,7 @@ public class HappyLearningService {
             // Build request body as array with single entry per specification
             Map<String, Object> body = new HashMap<>();
             body.put("businessId", lessonId);
-            body.put("businesstype", 1);
+            body.put("businesstype", lessonTypeCode);
             body.put("coursewareId", coursewareId);
             body.put("exitplaytime", exitPlaytime);
             body.put("finished", 0);
