@@ -6,7 +6,7 @@
 
     <groupId>fan.summer</groupId>
     <artifactId>SwissKit</artifactId>
-    <version>1.1.0</version>
+    <version>1.2.0</version>
 
     <properties>
         <maven.compiler.source>11</maven.compiler.source>
