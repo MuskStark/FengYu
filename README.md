@@ -31,7 +31,7 @@ mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package
 
 # Run the application (executable JAR)
-java -jar target/SwissKit-1.1.0.jar
+java -jar target/SwissKit-1.2.0.jar
 ```
 
 Or using Maven exec plugin:
@@ -305,7 +305,7 @@ public class MyToolPage implements KitPage {
    <dependency>
        <groupId>fan.summer.api</groupId>
        <artifactId>SwissKitJ-Api</artifactId>
-       <version>1.1.0</version>
+       <version>1.2.0</version>
    </dependency>
    ```
 2. Implement `KitPage` interface
@@ -335,7 +335,7 @@ mvn clean package
 mvn clean package -DskipTests
 
 # Run executable JAR
-java -jar target/SwissKit-1.1.0.jar
+java -jar target/SwissKit-1.2.0.jar
 ```
 
 ---

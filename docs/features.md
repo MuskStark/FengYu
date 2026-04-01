@@ -106,6 +106,7 @@ The email tool allows you to compose and send emails, with support for single an
 **Features**:
 
 - Email composition with subject and body
+- **Rich text editor** with formatting toolbar (bold, italic, underline, font size, text color, alignment)
 - Mass email mode with tag-based recipients
 - SMTP configuration integration (via Simple Java Mail)
 - Attachment support by tag-based folder selection
