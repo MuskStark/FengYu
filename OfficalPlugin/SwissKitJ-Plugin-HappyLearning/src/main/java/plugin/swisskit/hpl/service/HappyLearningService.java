@@ -155,6 +155,7 @@ public class HappyLearningService {
 
                             for (UserLearnCourseWareVOList subLesson : subLessons) {
                                 if (this.skipSignal) {
+                                    this.skipLessonId = this.currentLessonId;
                                     break;
                                 }
                                 if (subLesson.getPassed() == null) {
@@ -162,9 +163,13 @@ public class HappyLearningService {
                                 }
                                 if (subLesson.getPassed() != 1) {
                                     log.info("Starting sub-course, course ID: " + subLesson.getCoursewareId());
-                                    upLoadLessonLearning(
+                                    boolean result = upLoadLessonLearning(
                                             Long.valueOf(lessonInfo.getLessonId()),
                                             subLesson.getCoursewareId(), token, this.lessonTypeCode);
+                                    if (!result) {
+                                        this.skipLessonId = this.currentLessonId;
+                                        break;
+                                    }
                                 }
                             }
                         }
