@@ -329,7 +329,20 @@ public class SettingKitPage implements KitPage {
             PluginLoader.unloadPlugin(pluginName);
 
             File pluginFile = new File(PluginLoader.PLUGIN_DIR, pluginName);
-            if (pluginFile.delete()) {
+            // Retry deletion with delay to handle Windows file handle release latency
+            boolean deleted = false;
+            for (int i = 0; i < 3; i++) {
+                if (pluginFile.delete()) {
+                    deleted = true;
+                    break;
+                }
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException ignored) {
+                }
+            }
+
+            if (deleted) {
                 SwingUtilities.invokeLater(() -> {
                     HomePage.getInstance().refreshSidebar();
                     refreshPluginList();
@@ -340,7 +353,7 @@ public class SettingKitPage implements KitPage {
                         JOptionPane.INFORMATION_MESSAGE);
             } else {
                 JOptionPane.showMessageDialog(settingTable,
-                        "Failed to delete plugin file.",
+                        "Failed to delete plugin file. Please restart the application and try again.",
                         "Error",
                         JOptionPane.ERROR_MESSAGE);
             }
