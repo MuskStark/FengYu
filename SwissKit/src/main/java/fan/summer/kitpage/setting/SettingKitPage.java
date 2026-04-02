@@ -325,38 +325,76 @@ public class SettingKitPage implements KitPage {
                 "Confirm Uninstall", JOptionPane.YES_NO_OPTION);
 
         if (confirm == JOptionPane.YES_OPTION) {
-            // Close the ClassLoader first to release the JAR file handle
-            PluginLoader.unloadPlugin(pluginName);
+            // Disable button during uninstall
+            uninstallPluginBt.setEnabled(false);
 
-            File pluginFile = new File(PluginLoader.PLUGIN_DIR, pluginName);
-            // Retry deletion with delay to handle Windows file handle release latency
-            boolean deleted = false;
-            for (int i = 0; i < 3; i++) {
-                if (pluginFile.delete()) {
-                    deleted = true;
-                    break;
-                }
-                try {
-                    Thread.sleep(500);
-                } catch (InterruptedException ignored) {
-                }
-            }
+            // Use SwingWorker to handle background deletion with GC
+            new SwingWorker<Boolean, Void>() {
+                @Override
+                protected Boolean doInBackground() {
+                    // Step 1: Refresh sidebar to remove plugin page references
+                    SwingUtilities.invokeLater(() -> HomePage.getInstance().refreshSidebar());
+                    SwingUtilities.invokeLater(() -> refreshPluginList());
 
-            if (deleted) {
-                SwingUtilities.invokeLater(() -> {
-                    HomePage.getInstance().refreshSidebar();
-                    refreshPluginList();
-                });
-                JOptionPane.showMessageDialog(settingTable,
-                        "Plugin uninstalled successfully.",
-                        "Uninstall Success",
-                        JOptionPane.INFORMATION_MESSAGE);
-            } else {
-                JOptionPane.showMessageDialog(settingTable,
-                        "Failed to delete plugin file. Please restart the application and try again.",
-                        "Error",
-                        JOptionPane.ERROR_MESSAGE);
-            }
+                    // Step 2: Close the ClassLoader and trigger GC
+                    PluginLoader.unloadPlugin(pluginName);
+
+                    // Step 3: Retry deletion with GC between attempts
+                    File pluginFile = new File(PluginLoader.PLUGIN_DIR, pluginName);
+                    log.info("Attempting to delete plugin file: {}", pluginFile.getAbsolutePath());
+                    log.info("File exists before delete: {}", pluginFile.exists());
+
+                    for (int i = 0; i < 5; i++) {
+                        boolean deleteResult = pluginFile.delete();
+                        boolean existsAfter = pluginFile.exists();
+                        log.info("Delete attempt {}: delete()={}, exists()={}", i + 1, deleteResult, existsAfter);
+
+                        if (deleteResult && !existsAfter) {
+                            log.info("Plugin file deleted successfully on attempt {}", i + 1);
+                            return true;
+                        }
+
+                        // Wait and suggest GC for Windows file handle release
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException ignored) {
+                        }
+                        System.gc();
+                    }
+
+                    // Final check: verify file is actually deleted
+                    boolean finalExists = pluginFile.exists();
+                    log.info("Final exists check: {}", finalExists);
+                    return !finalExists;
+                }
+
+                @Override
+                protected void done() {
+                    uninstallPluginBt.setEnabled(true);
+                    boolean deleted;
+                    try {
+                        deleted = get();
+                    } catch (Exception e) {
+                        deleted = false;
+                    }
+                    SwingUtilities.invokeLater(() -> {
+                        HomePage.getInstance().refreshSidebar();
+                        refreshPluginList();
+                    });
+
+                    if (deleted) {
+                        JOptionPane.showMessageDialog(settingTable,
+                                "Plugin uninstalled successfully.",
+                                "Uninstall Success",
+                                JOptionPane.INFORMATION_MESSAGE);
+                    } else {
+                        JOptionPane.showMessageDialog(settingTable,
+                                "Failed to delete plugin file. Please restart the application and try again.",
+                                "Error",
+                                JOptionPane.ERROR_MESSAGE);
+                    }
+                }
+            }.execute();
         }
     }
 

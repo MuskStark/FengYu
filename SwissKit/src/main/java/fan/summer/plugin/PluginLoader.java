@@ -64,6 +64,8 @@ public class PluginLoader {
             try {
                 classLoader.close();
                 logger.info("Closed ClassLoader for plugin: {}", jarName);
+                // Force GC to release JAR file handles - critical for Windows file deletion
+                System.gc();
                 return true;
             } catch (IOException e) {
                 logger.warn("Failed to close ClassLoader for plugin {}: {}", jarName, e.getMessage());
