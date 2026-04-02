@@ -389,6 +389,7 @@ public class HappyLearning implements KitPage {
 
                 //---- skipClassBt ----
                 skipClassBt.setText("SkipClass");
+                skipClassBt.setEnabled(false);
                 skipClassBt.addActionListener(e -> skipClassBt(e));
                 subjectInfo.add(skipClassBt, "cell 0 2 5 1");
             }

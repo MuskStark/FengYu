@@ -173,7 +173,6 @@ public class HappyLearningWorker extends SwingWorker<Void, HappyLearningWorker.L
         });
         learningThread.start();
         log.info("[Worker] Learning thread started, thread id: {}", learningThread.getId());
-
         // Poll progress periodically while learning is running
         while (latch.getCount() > 0) {
             if (isCancelled()) {
