@@ -20,7 +20,7 @@ public class UserLearnCourseWareVOList {
     @JSONField(name = "learnprogress")
     private Float learnProgress;
 
-    private Integer totaltime;
+    private Float totaltime;
     private Integer passed;
     private Integer status;
     private Integer isallowlearn;
