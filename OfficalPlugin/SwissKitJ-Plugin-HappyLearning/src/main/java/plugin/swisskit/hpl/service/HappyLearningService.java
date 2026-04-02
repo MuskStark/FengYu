@@ -6,6 +6,8 @@ import plugin.swisskit.hpl.dto.*;
 import plugin.swisskit.hpl.util.ConfigLoader;
 import plugin.swisskit.hpl.util.WebUtil;
 
+import plugin.swisskit.hpl.service.LearningConstants;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -93,10 +95,10 @@ public class HappyLearningService {
         if (lessonType == null || lessonType.isEmpty()) {
             if (periodDataRU.getSelfLearningGoal() - periodDataRU.getSelfLearningTotal() > 0) {
                 lessonType = "ElectiveSubject";
-                this.lessonTypeCode = 1;
+                this.lessonTypeCode = LearningConstants.LESSON_TYPE_ELECTIVE;
             } else if (periodDataRU.getGroupLearningGoal() - periodDataRU.getGroupLearningTotal() > 0) {
                 lessonType = "MajorSubject";
-                this.lessonTypeCode = 64;
+                this.lessonTypeCode = LearningConstants.LESSON_TYPE_MAJOR;
             }
         } else {
             if (isLessonTypePassed(lessonType, periodDataRU)) {
@@ -125,9 +127,9 @@ public class HappyLearningService {
 
                 for (LessonInfo lessonInfo : lessons) {
                     if (lessonInfo.getIsPass() == null) {
-                        lessonInfo.setIsPass(0);
+                        lessonInfo.setIsPass(LearningConstants.DEFAULT_PASSED);
                     }
-                    if (lessonInfo.getIsPass() != 1.0f) {
+                    if (lessonInfo.getIsPass() != LearningConstants.PASS_CHECK) {
                         log.info("Found unpassed course, course ID: " + lessonInfo.getLessonId());
 
                         if (!enterLesson(Long.valueOf(lessonInfo.getLessonId()), token)) {
@@ -159,9 +161,9 @@ public class HappyLearningService {
                                     break;
                                 }
                                 if (subLesson.getPassed() == null) {
-                                    subLesson.setPassed(0);
+                                    subLesson.setPassed(LearningConstants.DEFAULT_PASSED);
                                 }
-                                if (subLesson.getPassed() != 1) {
+                                if (subLesson.getPassed() != LearningConstants.PASS_CHECK) {
                                     log.info("Starting sub-course, course ID: " + subLesson.getCoursewareId());
                                     boolean result = upLoadLessonLearning(
                                             Long.valueOf(lessonInfo.getLessonId()),
@@ -170,6 +172,10 @@ public class HappyLearningService {
                                         this.skipLessonId = this.currentLessonId;
                                         break;
                                     }
+                                } else if (this.lessonTypeCode == LearningConstants.LESSON_TYPE_MAJOR) {
+                                    upLoadLessonLearning(
+                                            Long.valueOf(lessonInfo.getLessonId()),
+                                            subLesson.getCoursewareId(), token, this.lessonTypeCode);
                                 }
                             }
                         }
@@ -195,19 +201,20 @@ public class HappyLearningService {
      *
      * @param lessonId Course ID
      * @param token    Mobile token
+     * @param lessonTypeCode LearningConstants.LESSON_TYPE_ELECTIVE or LESSON_TYPE_MAJOR
      */
-    public void studyLesson(String lessonId, String token) {
-        LessonDetailResp lessonDetailResp = getLessonInfo(Long.valueOf(lessonId), token);
+    public void studyLesson(String lessonId, String token, int lessonTypeCode) {
+        LessonDetailResp lessonDetailResp = getLessonInfo(toLong(lessonId), token);
         log.info("Course details: " + lessonDetailResp);
 
         if (lessonDetailResp == null || lessonDetailResp.getData() == null) {
             return;
         }
         if (lessonDetailResp.getData().getPassed() != null
-                && lessonDetailResp.getData().getPassed() == 1) {
+                && lessonDetailResp.getData().getPassed() == LearningConstants.PASS_CHECK) {
             throw new RuntimeException("Course already passed, no need to learn");
         }
-        if (!enterLesson(Long.valueOf(lessonId), token)) {
+        if (!enterLesson(toLong(lessonId), token)) {
             throw new RuntimeException("Failed to open course");
         }
 
@@ -217,11 +224,11 @@ public class HappyLearningService {
 
         for (UserLearnCourseWareVOList subLesson : subLessons) {
             if (subLesson.getPassed() == null) {
-                subLesson.setPassed(0);
+                subLesson.setPassed(LearningConstants.DEFAULT_PASSED);
             }
-            if (subLesson.getPassed() != 1) {
+            if (subLesson.getPassed() != LearningConstants.PASS_CHECK) {
                 log.info("Starting sub-course, course ID: " + subLesson.getCoursewareId());
-                upLoadLessonLearning(Long.valueOf(lessonId), subLesson.getCoursewareId(), token, this.lessonTypeCode);
+                upLoadLessonLearning(toLong(lessonId), subLesson.getCoursewareId(), token, lessonTypeCode);
             }
         }
     }
@@ -238,14 +245,14 @@ public class HappyLearningService {
 
         Map<String, Object> body = new HashMap<>();
         body.put("businessId", lessonId);
-        body.put("businesstype", 1);
+        body.put("businesstype", LearningConstants.LESSON_TYPE_ELECTIVE);
         body.put("m0biletoken", token);
         body.put("lessonId", lessonId);
 
         String uri = ConfigLoader.rawUrl("enterLesson") + "?_t=" + System.currentTimeMillis();
         EnterLessonResp resp = WebUtil.sendPostRequest(
                 ConfigLoader.rawUrl("baseUrl"), uri, headers, body, EnterLessonResp.class);
-        return resp != null && resp.getStatus() != null && resp.getStatus() == 200;
+        return resp != null && resp.getStatus() != null && resp.getStatus() == LearningConstants.HTTP_OK;
     }
 
     /**
@@ -264,8 +271,6 @@ public class HappyLearningService {
 
         boolean isLearning = true;
         boolean isFinished = false;
-        final double maxSecond = 61.0;
-        final double minSecond = 60.0;
         int retryTimes = 0;
         float learnProgressHistory = 0f;
 
@@ -275,9 +280,10 @@ public class HappyLearningService {
         }
 
         while (isLearning) {
-            double learnTime = minSecond + (maxSecond - minSecond) * Math.random();
+            double learnTime = LearningConstants.LEARN_TIME_MIN
+                    + (LearningConstants.LEARN_TIME_MAX - LearningConstants.LEARN_TIME_MIN) * Math.random();
             log.info("Simulated learning time: {}", learnTime);
-            exitPlaytime = exitPlaytime + learnTime - 0.99999 * Math.random();
+            exitPlaytime = exitPlaytime + learnTime - LearningConstants.EXIT_TIME_DEDUCTION * Math.random();
 
             learnTime = BigDecimal.valueOf(learnTime).setScale(3, RoundingMode.HALF_UP).doubleValue();
             exitPlaytime = BigDecimal.valueOf(exitPlaytime).setScale(6, RoundingMode.HALF_UP).doubleValue();
@@ -288,8 +294,8 @@ public class HappyLearningService {
             body.put("businesstype", lessonTypeCode);
             body.put("coursewareId", coursewareId);
             body.put("exitplaytime", exitPlaytime);
-            body.put("finished", 0);
-            body.put("learncount", 0);
+            body.put("finished", LearningConstants.DEFAULT_FINISHED);
+            body.put("learncount", LearningConstants.DEFAULT_LEARN_COUNT);
             body.put("learndate", LocalDate.now().format(dtf));
             body.put("learntime", learnTime);
             body.put("lessonId", lessonId);
@@ -316,7 +322,7 @@ public class HappyLearningService {
             for (UserLearnCourseWareVOList info :
                     lessonDetailResp.getData().getUserlearncoursewareVOList()) {
                 if (info.getCoursewareId().equals(coursewareId)) {
-                    if (info.getPassed() != null && info.getPassed() == 1) {
+                    if (info.getPassed() != null && info.getPassed() == LearningConstants.PASS_CHECK) {
                         isLearning = false;
                         isFinished = true;
                         log.info("Learning completed, sub-course ID: " + info.getCoursewareId());
@@ -328,7 +334,7 @@ public class HappyLearningService {
                             log.info("Course: " + info.getCoursewareId()
                                     + ", progress stalled, retrying: " + retryTimes + " times");
                         }
-                        if (retryTimes >= 2) {
+                        if (retryTimes >= LearningConstants.MAX_RETRY_STALL) {
                             log.info("Course: " + info.getCoursewareId()
                                     + ", progress stalled, skipping this course.");
                             isLearning = false;
@@ -395,7 +401,7 @@ public class HappyLearningService {
         Map<String, List<String>> params = new LinkedHashMap<>();
         params.put("_t", List.of(String.valueOf(System.currentTimeMillis())));
         params.put("pageNumber", List.of(String.valueOf(page)));
-        params.put("pageSize", List.of("16"));
+        params.put("pageSize", List.of(String.valueOf(LearningConstants.PAGE_SIZE)));
         params.put("classHourTypes", List.of(lessonType));
 
         return WebUtil.sendGetRequest(
@@ -424,6 +430,20 @@ public class HappyLearningService {
         Map<String, List<String>> result = new LinkedHashMap<>();
         source.forEach((k, v) -> result.put(k, List.of(v)));
         return result;
+    }
+
+    /**
+     * Convert String to Long safely
+     */
+    private Long toLong(String id) {
+        return Long.valueOf(id);
+    }
+
+    /**
+     * Check if a course is passed (null-safe)
+     */
+    private boolean isPassed(Float isPass) {
+        return isPass != null && isPass == LearningConstants.PASS_CHECK;
     }
 
     public void setSkipSignal(boolean skipSignal) {
