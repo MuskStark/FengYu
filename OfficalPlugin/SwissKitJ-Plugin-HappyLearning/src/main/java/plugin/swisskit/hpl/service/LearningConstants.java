@@ -25,7 +25,7 @@ public class LearningConstants {
     public static final float EXIT_TIME_DEDUCTION = 0.99999f;
 
     // Completion check
-    public static final float PASS_CHECK = 1.0f;
+    public static final int PASS_CHECK = 1;
 
     // Default values
     public static final int DEFAULT_PASSED = 0;
