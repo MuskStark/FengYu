@@ -33,6 +33,8 @@ public class KeepMove implements KitPage {
         } catch (AWTException e) {
             e.printStackTrace();
         }
+        // Set initial button states - Stop is disabled until movement starts
+        stopMoveBt.setEnabled(false);
         setupEventHandlers();
     }
 
@@ -66,6 +68,10 @@ public class KeepMove implements KitPage {
      * to prevent screen saver from activating.
      */
     private void startMouseMove() {
+        // Disable Start, enable Stop - button interlock
+        startMoveBt.setEnabled(false);
+        stopMoveBt.setEnabled(true);
+
         timer = new Timer(true); // daemon timer
         // Schedule task to run every 60,000 ms (1 minute)
         timer.scheduleAtFixedRate(new TimerTask() {
@@ -84,6 +90,9 @@ public class KeepMove implements KitPage {
             timer.cancel();
             timer = null;
         }
+        // Enable Start, disable Stop - button interlock
+        startMoveBt.setEnabled(true);
+        stopMoveBt.setEnabled(false);
     }
 
     /**
