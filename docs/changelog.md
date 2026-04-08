@@ -5,6 +5,19 @@ All notable changes to SwissKit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.2.1
+
+### ✨ Added
+
+- Excel: Support copying entire sheet to all split files when headerIndex=-1 and columnIndex=-1
+
+### 🔧 Fixed
+
+- HappyLearning: Change totaltime from Integer to Float
+- HappyLearning: Update UI when course is found
+
+---
+
 ## 1.2.0
 
 ### ✨ Added
