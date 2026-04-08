@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.*;
@@ -270,7 +271,45 @@ public class ExcelSplitWorker extends SwingWorker<Void, Integer> {
                 throw new RuntimeException("Empty Config");
             } else {
                 logger.debug("Complex split loaded {} configs", splitConfigs.size());
-                for (ComplexSplitConfigEntity splitConfig : splitConfigs) {
+
+                // Separate normal configs from copy-all configs (headerIndex=-1 AND columnIndex=-1)
+                List<ComplexSplitConfigEntity> normalConfigs = new ArrayList<>();
+                List<ComplexSplitConfigEntity> copyAllConfigs = new ArrayList<>();
+                for (ComplexSplitConfigEntity cfg : splitConfigs) {
+                    if (cfg.getHeaderIndex() != null && cfg.getColumnIndex() != null
+                            && cfg.getHeaderIndex() == -1 && cfg.getColumnIndex() == -1) {
+                        copyAllConfigs.add(cfg);
+                    } else {
+                        normalConfigs.add(cfg);
+                    }
+                }
+
+                // Calculate total work: count groups per normal config + copy-all operations
+                int totalNormalGroups = 0;
+                Map<String, Integer> configGroupCounts = new HashMap<>();
+                for (ComplexSplitConfigEntity splitConfig : normalConfigs) {
+                    NoModelDataListener noModelDataListener = new NoModelDataListener();
+                    try (ExcelReader excelReader = FesodSheet.read(orgFilePath.toFile()).build()) {
+                        ReadSheet sheet = FesodSheet.readSheet(splitConfig.getSheetName()).headRowNumber(splitConfig.getHeaderIndex()).registerReadListener(noModelDataListener).build();
+                        excelReader.read(sheet);
+                        List<Map<Integer, Object>> cachedDataList = noModelDataListener.getCachedDataList();
+                        Map<Object, List<Map<Integer, Object>>> group = cachedDataList.stream().collect(Collectors.groupingBy(row -> {
+                            Object val = row.getOrDefault(splitConfig.getColumnIndex() - 1, null);
+                            return ExcelUtil.normalizeOrInvalid(val);
+                        }));
+                        configGroupCounts.put(splitConfig.getSheetName() + "_" + splitConfig.getColumnIndex(), group.size());
+                        totalNormalGroups += group.size();
+                    }
+                }
+
+                // Copy-all operations: each copy-all config appends to all output files
+                // Total output files = totalNormalGroups, copy-all operations = copyAllConfigs.size() * totalNormalGroups
+                int totalCopyAllOps = copyAllConfigs.isEmpty() ? 0 : copyAllConfigs.size() * totalNormalGroups;
+                final int totalOperations = totalNormalGroups + totalCopyAllOps;
+                AtomicInteger currentOperation = new AtomicInteger(0);
+
+                // Process normal configs - creates split files
+                for (ComplexSplitConfigEntity splitConfig : normalConfigs) {
                     NoModelDataListener noModelDataListener = new NoModelDataListener();
                     try (ExcelReader excelReader = FesodSheet.read(orgFilePath.toFile()).build()) {
                         ReadSheet sheet = FesodSheet.readSheet(splitConfig.getSheetName()).headRowNumber(splitConfig.getHeaderIndex()).registerReadListener(noModelDataListener).build();
@@ -290,11 +329,39 @@ public class ExcelSplitWorker extends SwingWorker<Void, Integer> {
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
+                            publish(currentOperation.incrementAndGet() * 100 / totalOperations);
                         });
                         noModelDataListener.clear();
                     }
                 }
-                logger.info("Complex split completed | file={}, configs={}", orgFilePath.getFileName(), splitConfigs.size());
+
+                // After all normal configs, process copy-all configs
+                // Append the entire sheet to ALL split files in output directory
+                if (!copyAllConfigs.isEmpty() && !normalConfigs.isEmpty()) {
+                    logger.debug("Processing {} copy-all configs", copyAllConfigs.size());
+                    File[] outputFiles = outputPath.toFile().listFiles((dir, name) ->
+                            name.endsWith(".xlsx") && !name.endsWith("_metadata.xlsx"));
+
+                    if (outputFiles != null && outputFiles.length > 0) {
+                        for (ComplexSplitConfigEntity copyConfig : copyAllConfigs) {
+                            for (File targetFile : outputFiles) {
+                                try {
+                                    ExcelUtil.copyEntireSheet(
+                                            orgFilePath.toString(),
+                                            targetFile.getAbsolutePath(),
+                                            copyConfig.getSheetName()
+                                    );
+                                } catch (IOException e) {
+                                    logger.error("Failed to append sheet {} to {}", copyConfig.getSheetName(), targetFile.getName(), e);
+                                    // Continue with other files
+                                }
+                                publish(currentOperation.incrementAndGet() * 100 / totalOperations);
+                            }
+                        }
+                    }
+                }
+
+                logger.info("Complex split completed | file={}, configs={}, copyAll={}", orgFilePath.getFileName(), normalConfigs.size(), copyAllConfigs.size());
             }
         } catch (Exception e) {
             logger.error("Complex split failed | file={}", orgFilePath.getFileName(), e);
