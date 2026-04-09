@@ -33,7 +33,7 @@ SwissKit is a modular desktop toolbox built with Java Swing. It uses a multi-mod
 
 - **SwissKitJ-Api** - Shared API module (interfaces, annotations, UI components). Must be installed to local Maven repo before building the main module.
 - **SwissKit** (main) - Core application with Excel, Email, and Settings tools.
-- **SwissKitJ-Plugin-Qcc** - Example plugin project.
+- **SwissKitJ-Plugin-HappyLearning** - Auto-learning plugin (in `OfficalPlugin/` directory).
 
 ### Plugin System
 
@@ -49,6 +49,7 @@ SwissKit auto-discovers tools using Java SPI (Service Provider Interface). To ad
 - `Main.java` - Application entry point
 - `SwissKitPageScaner` - Discovers all `KitPage` implementations via SPI
 - `PluginLoader` - Loads external JAR plugins from `.swisskit/plugins/`
+- `IsolatedPluginClassLoader` - Isolated classloading with break-parent-delegation (delegates `fan.summer.*`, `java.*`, `javax.*`, `sun.*`, `com.sun.*` to main ClassLoader; loads plugin classes and third-party libs from plugin JAR)
 - `DatabaseInit` - Initializes H2 database at `.swisskit/swisskit.db`
 - `SideMenuBar` - Dynamic sidebar menu showing all discovered pages
 

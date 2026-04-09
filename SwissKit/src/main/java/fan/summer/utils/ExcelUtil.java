@@ -103,6 +103,45 @@ public class ExcelUtil {
     }
 
     /**
+     * Copies an entire sheet from source file to target file as-is.
+     * Preserves all styles, column widths, merged regions, and formulas.
+     * Unlike appendSheet which copies rows 0 to endRowIndex, this copies the entire sheet.
+     *
+     * @param sourceFilePath source Excel file path
+     * @param targetFilePath target Excel file path (creates if not exists)
+     * @param sheetName      sheet name to copy entirely
+     */
+    public static void copyEntireSheet(String sourceFilePath, String targetFilePath,
+                                       String sheetName) throws IOException {
+        try (FileInputStream srcFis = new FileInputStream(sourceFilePath);
+             Workbook sourceWorkbook = WorkbookFactory.create(srcFis)) {
+
+            Sheet sourceSheet = sourceWorkbook.getSheet(sheetName);
+            if (sourceSheet == null) {
+                throw new IllegalArgumentException("Sheet not found: " + sheetName
+                        + ", available sheets: " + getSheetNames(sourceWorkbook));
+            }
+
+            Workbook targetWorkbook = loadOrCreate(targetFilePath);
+
+            if (targetWorkbook.getSheet(sheetName) != null) {
+                targetWorkbook.close();
+                throw new IllegalArgumentException("Target file already has sheet: " + sheetName);
+            }
+
+            copySheetRows(sourceSheet, targetWorkbook, sheetName, sourceSheet.getLastRowNum());
+
+            try (FileOutputStream fos = new FileOutputStream(targetFilePath)) {
+                targetWorkbook.write(fos);
+            }
+            targetWorkbook.close();
+
+            logger.debug("Entire sheet copied | sheet={}, rows=0-{}, target={}",
+                    sheetName, sourceSheet.getLastRowNum(), targetFilePath);
+        }
+    }
+
+    /**
      * Appends data rows to an existing sheet in target file.
      *
      * @param orgFilePath   source file path (for getting style template)

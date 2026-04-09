@@ -31,7 +31,7 @@ mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package
 
 # Run the application (executable JAR)
-java -jar target/SwissKit-1.2.0.jar
+java -jar target/SwissKit-1.2.1.jar
 ```
 
 Or using Maven exec plugin:
@@ -119,90 +119,33 @@ SwissKit uses a multi-module Maven structure:
 |------------------------|-------------------------------------------------------------------------|
 | `SwissKitJ-Api`        | Shared API module containing interfaces, annotations, and UI components |
 | `SwissKit` (main)      | Core application with Excel, Email, and Settings tools                  |
-| `SwissKitJ-Plugin-Qcc` | Example plugin project demonstrating plugin development                 |
-| `SwissKitJ-Plugin-HappyLearning` | Auto-learning plugin with progress tracking                     |
+| `OfficalPlugin/SwissKitJ-Plugin-HappyLearning` | Auto-learning plugin with progress tracking     |
 
 ### Project Structure
 
 ```
-SwissKit/
-├── SwissKitJ-Api/                   # Shared API module
+SwissKitJ/                          # Project root
+├── SwissKitJ-Api/                  # Shared API module
 │   └── src/main/java/fan/summer/
 │       ├── annoattion/
-│       │   └── SwissKitPage.java    # Page annotation
+│       │   └── SwissKitPage.java
 │       ├── api/
-│       │   └── KitPage.java         # Plugin interface
+│       │   └── KitPage.java
 │       └── plugin.swisskit.hpl.ui/components/
 │           ├── GradientProgressBar.java
 │           └── FixedWidthComboBox.java
-├── src/main/java/fan/summer/
-│   ├── Main.java                    # Application entry point
-│   ├── database/                    # Database layer (H2 + MyBatis)
-│   │   ├── DatabaseInit.java
-│   │   ├── entity/
-│   │   │   ├── email/
-│   │   │   │   ├── EmailMassSentConfigEntity.java
-│   │   │   │   └── EmailSentLogEntity.java
-│   │   │   ├── excel/
-│   │   │   │   └── ComplexSplitConfigEntity.java
-│   │   │   └── setting/
-│   │   │       ├── SwissKitSettingEmailEntity.java
-│   │   │       ├── EmailAddressBookEntity.java
-│   │   │       └── EmailTagEntity.java
-│   │   ├── mapper/
-│   │   │   ├── email/
-│   │   │   │   ├── EmailMassSentConfigMapper.java
-│   │   │   │   └── EmailSentLogMapper.java
-│   │   │   ├── excel/
-│   │   │   │   └── ComplexSplitConfigMapper.java
-│   │   │   └── setting/
-│   │   │       ├── SwissKitSettingEmailMapper.java
-│   │   │       ├── EmailAddressBookMapper.java
-│   │   │       └── EmailTagMapper.java
-│   │   └── table/
-│   ├── kitpage/                     # Tool page modules
-│   │   ├── welcome/
-│   │   ├── email/
-│   │   │   ├── second/
-│   │   │   │   ├── MassSentConfigView.java
-│   │   │   │   └── ViewEmailSentLogView.java
-│   │   │   └── plugin.swisskit.hpl.worker/
-│   │   ├── excel/
-│   │   │   ├── second/
-│   │   │   ├── listener/
-│   │   │   └── plugin.swisskit.hpl.worker/
-│   │   └── setting/
-│   │       ├── second/
-│   │       └── plugin.swisskit.hpl.worker/second/
-│   ├── plugin/
-│   │   ├── PluginLoader.java
-│   │   └── PluginDiagnostic.java
-│   ├── scaner/
-│   │   └── SwissKitPageScaner.java
-│   ├── plugin.swisskit.hpl.ui/
-│   │   ├── StartLoadingPage.java
-│   │   ├── home/
-│   │   │   └── HomePage.java
-│   │   └── sidebar/
-│   │       └── SideMenuBar.java
-│   └── utils/
-│       ├── AppInfo.java
-│       ├── EmailUtil.java
-│       ├── ExcelUtil.java
-│       ├── FileNameUtil.java
-│       ├── StringUtil.java
-│       ├── UIUtils.java
-│       └── plugin.swisskit.hpl.ui/
-│           └── TableUtil.java
-└── SwissKitJ-Plugin-Qcc/            # Example plugin
-    └── OfficalPlugin/
-        └── SwissKitJ-Plugin-HappyLearning/  # Auto-learning plugin
-            └── src/main/java/plugin/swisskit/hpl/
-        ├── ui/HappyLearning.java  # Main UI page
-        ├── service/HappyLearningService.java
-        ├── worker/HappyLearningWorker.java
-        ├── dto/                    # Data transfer objects
-        └── util/                  # WebUtil, ConfigLoader
+├── SwissKit/                       # Main application
+│   └── src/main/java/fan/summer/
+│       ├── Main.java
+│       ├── database/               # H2 + MyBatis
+│       ├── kitpage/                # Excel, Email, Settings pages
+│       ├── plugin/                 # PluginLoader, IsolatedPluginClassLoader
+│       ├── scaner/                 # SwissKitPageScaner (SPI)
+│       ├── plugin.swisskit.hpl.ui/ # UI components
+│       └── utils/                  # ExcelUtil, EmailUtil, etc.
+├── OfficalPlugin/
+│   └── SwissKitJ-Plugin-HappyLearning/  # Built-in plugin
+└── docs/                           # Documentation
 ```
 
 ### Plugin System
@@ -305,7 +248,7 @@ public class MyToolPage implements KitPage {
    <dependency>
        <groupId>fan.summer.api</groupId>
        <artifactId>SwissKitJ-Api</artifactId>
-       <version>1.2.0</version>
+       <version>1.2.1</version>
    </dependency>
    ```
 2. Implement `KitPage` interface
@@ -335,7 +278,7 @@ mvn clean package
 mvn clean package -DskipTests
 
 # Run executable JAR
-java -jar target/SwissKit-1.2.0.jar
+java -jar target/SwissKit-1.2.1.jar
 ```
 
 ---
