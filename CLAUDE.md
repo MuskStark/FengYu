@@ -37,21 +37,30 @@ SwissKit is a modular desktop toolbox built with Java Swing. It uses a multi-mod
 
 ### Plugin System
 
-SwissKit auto-discovers tools using Java SPI (Service Provider Interface). To add a new tool:
+SwissKit auto-discovers tools using Java SPI (Service Provider Interface).
 
-1. Create a class implementing `KitPage` interface (from `fan.summer.api`)
-2. Annotate with `@SwissKitPage` (from `fan.summer.annoattion`)
-3. Register in `META-INF/services/fan.summer.api.KitPage`
-4. Tool appears automatically in sidebar, sorted by `order()` value
+**Built-in pages** (in `SwissKit/` or `OfficalPlugin/` modules):
+1. Create a class implementing `KitPage` interface
+2. Annotate with `@SwissKitPage`
+3. Register in `META-INF/services/fan.summer.api.KitPage` **within the module's classpath**
+
+**External plugins** (installed JARs):
+1. Package as JAR with `SwissKitJ-Api` dependency
+2. Include `META-INF/services/fan.summer.api.KitPage` in the JAR
+3. Install via Settings page → copies JAR to `.swisskit/plugins/`
+4. `PluginLoader.deployPlugin()` hot-loads the JAR via `IsolatedPluginClassLoader`
+
+Pages are sorted by `order()` value from `@SwissKitPage` annotation.
 
 ### Key Components
 
 - `Main.java` - Application entry point
-- `SwissKitPageScaner` - Discovers all `KitPage` implementations via SPI
+- `HomePage.java` - Main orchestrator; initializes `SwissKitPageScaner`, `SideMenuBar`, and content panel
+- `SwissKitPageScaner` - Scans **both** built-in pages (via SPI) and external plugins (via `PluginLoader`), sorts by `order()`
 - `PluginLoader` - Loads external JAR plugins from `.swisskit/plugins/`
-- `IsolatedPluginClassLoader` - Isolated classloading with break-parent-delegation (delegates `fan.summer.*`, `java.*`, `javax.*`, `sun.*`, `com.sun.*` to main ClassLoader; loads plugin classes and third-party libs from plugin JAR)
+- `IsolatedPluginClassLoader` - Break-parent-delegation ClassLoader: `fan.summer.*`/`java.*`/`javax.*`/`sun.*`/`com.sun.*` delegate to main ClassLoader (shared interfaces/annotations); all other classes load from plugin JAR first
 - `DatabaseInit` - Initializes H2 database at `.swisskit/swisskit.db`
-- `SideMenuBar` - Dynamic sidebar menu showing all discovered pages
+- `SideMenuBar` - Dynamic sidebar menu showing all discovered pages, handles page switching
 
 ### Database
 
