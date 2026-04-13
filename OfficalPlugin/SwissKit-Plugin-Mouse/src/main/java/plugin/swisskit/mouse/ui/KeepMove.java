@@ -10,8 +10,8 @@ import net.miginfocom.swing.MigLayout;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
+import java.awt.event.*;
+import java.util.Random;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -24,6 +24,22 @@ public class KeepMove implements KitPage {
     private Robot robot;
     // Timer for scheduling periodic mouse movement
     private Timer timer;
+    // Random for expert mode movement randomization
+    private Random random = new Random();
+    // Track last human input time for expert mode
+    private volatile long lastHumanInputTime = System.currentTimeMillis();
+    // Global input listeners for detecting human activity
+    private AWTEventListener humanInputListener;
+    // Expert mode state
+    private boolean expertMode = true;
+    // Expert mode: minimum interval between synthetic events
+    private static final int EXPERT_MIN_INTERVAL_MS = 15_000;  // 15 seconds minimum
+    // Expert mode: maximum interval between synthetic events
+    private static final int EXPERT_MAX_INTERVAL_MS = 45_000;  // 45 seconds maximum
+    // Expert mode: minimum movement distance
+    private static final int EXPERT_MIN_MOVE = 10;
+    // Expert mode: maximum movement distance
+    private static final int EXPERT_MAX_MOVE = 50;
 
     public KeepMove() {
         initComponents();
@@ -36,6 +52,41 @@ public class KeepMove implements KitPage {
         // Set initial button states - Stop is disabled until movement starts
         stopMoveBt.setEnabled(false);
         setupEventHandlers();
+        setupHumanInputDetection();
+    }
+
+    /**
+     * Sets up global input listeners to detect human activity.
+     * Expert mode: pause when human is moving, resume after 20s idle.
+     */
+    private void setupHumanInputDetection() {
+        humanInputListener = new AWTEventListener() {
+            @Override
+            public void eventDispatched(AWTEvent event) {
+                int id = event.getID();
+                if (id == MouseEvent.MOUSE_MOVED ||
+                        id == MouseEvent.MOUSE_DRAGGED ||
+                        id == MouseEvent.MOUSE_PRESSED ||
+                        id == MouseEvent.MOUSE_RELEASED ||
+                        id == KeyEvent.KEY_PRESSED ||
+                        id == KeyEvent.KEY_RELEASED) {
+                    lastHumanInputTime = System.currentTimeMillis();
+                }
+            }
+        };
+        Toolkit.getDefaultToolkit().addAWTEventListener(
+                humanInputListener,
+                AWTEvent.MOUSE_MOTION_EVENT_MASK |
+                        AWTEvent.MOUSE_EVENT_MASK |
+                        AWTEvent.KEY_EVENT_MASK
+        );
+    }
+
+    /**
+     * Checks if human has been idle for 20 seconds (resume condition).
+     */
+    private boolean isHumanIdle20Seconds() {
+        return System.currentTimeMillis() - lastHumanInputTime >= 20_000;
     }
 
     @Override
@@ -64,8 +115,9 @@ public class KeepMove implements KitPage {
     }
 
     /**
-     * Starts periodic mouse movement - moves cursor 1 pixel every minute
-     * to prevent screen saver from activating.
+     * Starts periodic mouse movement in expert mode.
+     * Uses randomized intervals (15-45s) and movements (10-50px) to appear human-like
+     * while ensuring any screensaver is prevented.
      */
     private void startMouseMove() {
         // Disable Start, enable Stop - button interlock
@@ -73,13 +125,27 @@ public class KeepMove implements KitPage {
         stopMoveBt.setEnabled(true);
 
         timer = new Timer(true); // daemon timer
-        // Schedule task to run every 60,000 ms (1 minute)
-        timer.scheduleAtFixedRate(new TimerTask() {
+        // Schedule with expert mode: random interval to avoid pattern detection
+        scheduleNextExpertMove();
+    }
+
+    /**
+     * Schedules the next expert mode move with randomized delay.
+     */
+    private void scheduleNextExpertMove() {
+        if (timer == null) return;
+
+        // Random interval between 15-45 seconds (avoids screensaver pattern detection)
+        int delay = EXPERT_MIN_INTERVAL_MS +
+                random.nextInt(EXPERT_MAX_INTERVAL_MS - EXPERT_MIN_INTERVAL_MS);
+
+        timer.schedule(new TimerTask() {
             @Override
             public void run() {
-                moveMouse();
+                moveMouseExpert();
+                scheduleNextExpertMove();
             }
-        }, 0, 60_000); // 1 minute = 60,000 ms
+        }, delay);
     }
 
     /**
@@ -96,12 +162,25 @@ public class KeepMove implements KitPage {
     }
 
     /**
-     * Moves the mouse cursor by 1 pixel from its current position.
-     * Uses Robot class to control the mouse programmatically.
+     * Expert mode: Moves mouse with random offset and simulates human-like key activity.
+     * Only runs when human has been idle for 20+ seconds.
      */
-    private void moveMouse() {
+    private void moveMouseExpert() {
+        // Only execute when human has been idle for 20 seconds
+        if (!isHumanIdle20Seconds()) {
+            return;
+        }
+
         Point location = MouseInfo.getPointerInfo().getLocation();
-        robot.mouseMove((int) location.getX() + 1, (int) location.getY() + 1);
+
+        // Random movement distance (10-50 pixels) in random direction
+        int moveDistance = EXPERT_MIN_MOVE +
+                random.nextInt(EXPERT_MAX_MOVE - EXPERT_MIN_MOVE);
+        int angle = random.nextInt(360);
+        int dx = (int) (moveDistance * Math.cos(Math.toRadians(angle)));
+        int dy = (int) (moveDistance * Math.sin(Math.toRadians(angle)));
+
+        robot.mouseMove((int) location.getX() + dx, (int) location.getY() + dy);
     }
 
     private void initComponents() {
