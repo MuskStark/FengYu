@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### 🐛 Bug Fixes
+
+- **Plugin Loading**: Handle plugin loading errors gracefully to ensure app startup when corrupted plugins exist
+
+---
+
 ## 1.1.0
 
 **Release Date:** 2026-03-30
