@@ -183,29 +183,35 @@ public class PluginLoader {
             // Track the classloader so it can be closed on uninstall
             pluginClassLoaders.put(jarFile.getName(), pluginClassLoader);
 
-            ServiceLoader<KitPage> loader = ServiceLoader.load(KitPage.class, pluginClassLoader);
+            // Wrap ServiceLoader iteration to handle plugin class loading errors gracefully
+            try {
+                ServiceLoader<KitPage> loader = ServiceLoader.load(KitPage.class, pluginClassLoader);
 
-            for (KitPage page : loader) {
-                // Fix duplicate loading: filter out built-in pages loaded by main ClassLoader
-                if (page.getClass().getClassLoader() == appClassLoader) {
-                    logger.debug("Skipped built-in page (loaded by app classloader): {}", page.getClass().getName());
-                    continue;
+                for (KitPage page : loader) {
+                    // Fix duplicate loading: filter out built-in pages loaded by main ClassLoader
+                    if (page.getClass().getClassLoader() == appClassLoader) {
+                        logger.debug("Skipped built-in page (loaded by app classloader): {}", page.getClass().getName());
+                        continue;
+                    }
+
+                    fan.summer.annoattion.SwissKitPage annotation =
+                            page.getClass().getAnnotation(fan.summer.annoattion.SwissKitPage.class);
+
+                    if (annotation == null) {
+                        logger.debug("Plugin page skipped (no @SwissKitPage): {}", page.getClass().getName());
+                        continue;
+                    }
+                    if (!annotation.visible()) {
+                        logger.debug("Plugin page skipped (invisible): {}", page.getClass().getName());
+                        continue;
+                    }
+
+                    result.add(page);
+                    logger.info("Plugin KitPage loaded: [{}] from {}", annotation.menuName(), jarFile.getName());
                 }
-
-                fan.summer.annoattion.SwissKitPage annotation =
-                        page.getClass().getAnnotation(fan.summer.annoattion.SwissKitPage.class);
-
-                if (annotation == null) {
-                    logger.debug("Plugin page skipped (no @SwissKitPage): {}", page.getClass().getName());
-                    continue;
-                }
-                if (!annotation.visible()) {
-                    logger.debug("Plugin page skipped (invisible): {}", page.getClass().getName());
-                    continue;
-                }
-
-                result.add(page);
-                logger.info("Plugin KitPage loaded: [{}] from {}", annotation.menuName(), jarFile.getName());
+            } catch (Throwable t) {
+                // Catch both Error (e.g., OOM, StackOverflow) and Exception during page iteration
+                logger.error("Error during plugin page iteration for {}: {}", jarFile.getName(), t.getMessage());
             }
 
         } catch (Exception e) {
