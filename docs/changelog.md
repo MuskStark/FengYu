@@ -5,6 +5,20 @@ All notable changes to SwissKit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.2.2
+
+### ✨ Added
+
+- Mouse Plugin: Add KeepMove plugin to prevent screen saver
+- Mouse Plugin: Add button interlock for KeepMove
+- SwissKit-Plugin-Mouse module added to build
+
+### 🔧 Fixed
+
+- Plugin loading: Handle errors gracefully to ensure app startup
+
+---
+
 ## 1.2.1
 
 ### ✨ Added
