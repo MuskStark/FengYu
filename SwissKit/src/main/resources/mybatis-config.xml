@@ -30,6 +30,8 @@
         <mapper resource="mapper/setting/email/EmailTagMapper.xml"/>
         <mapper resource="mapper/email/EmailMassSentConfigMapper.xml"/>
         <mapper resource="mapper/email/EmailSentLogMapper.xml"/>
+        <mapper resource="mapper/MenuOrderMapper.xml"/>
+
     </mappers>
 
 </configuration>
