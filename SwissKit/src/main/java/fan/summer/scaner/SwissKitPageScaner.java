@@ -3,14 +3,16 @@ package fan.summer.scaner;
 
 import fan.summer.annoattion.SwissKitPage;
 import fan.summer.api.KitPage;
+import fan.summer.database.DatabaseInit;
+import fan.summer.database.entity.MenuOrderEntity;
+import fan.summer.database.mapper.MenuOrderMapper;
 import fan.summer.plugin.PluginLoader;
+import org.apache.ibatis.session.SqlSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.ServiceLoader;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * KitPage scanner that uses Java SPI to discover and register all KitPage implementations
@@ -22,17 +24,102 @@ import java.util.ServiceLoader;
 public class SwissKitPageScaner {
     private static final Logger logger = LoggerFactory.getLogger(SwissKitPageScaner.class);
 
+    /** Cached saved menu orders: className -> menuOrder */
+    private static Map<String, Integer> savedMenuOrders;
+
     public static List<KitPage> scan() {
         List<KitPage> pages = new ArrayList<>();
         pages.addAll(scanBuiltinPages());
         pages.addAll(PluginLoader.loadFromPluginDir());
 
-        pages.sort(Comparator.comparingInt(
-                p -> p.getClass().getAnnotation(SwissKitPage.class).order()
-        ));
+        // Load saved menu orders from DB if not yet loaded
+        if (savedMenuOrders == null) {
+            loadSavedMenuOrders();
+        }
+
+        // Sort: first by saved user order (ascending), then by annotation order, then by class name (stable)
+        pages.sort(Comparator
+                .comparingInt((KitPage p) -> {
+                    Integer saved = savedMenuOrders.get(p.getClass().getName());
+                    return saved != null ? saved : Integer.MAX_VALUE;
+                })
+                .thenComparingInt(p -> p.getClass().getAnnotation(SwissKitPage.class).order())
+                .thenComparing(p -> p.getClass().getName())
+        );
 
         logger.info("Total KitPage(s) loaded: {}", pages.size());
         return pages;
+    }
+
+    private static void loadSavedMenuOrders() {
+        savedMenuOrders = new HashMap<>();
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            MenuOrderMapper mapper = session.getMapper(MenuOrderMapper.class);
+            List<MenuOrderEntity> orders = mapper.selectAll();
+            for (MenuOrderEntity entity : orders) {
+                savedMenuOrders.put(entity.getPageClass(), entity.getMenuOrder());
+            }
+            logger.info("Loaded {} saved menu order(s)", orders.size());
+        } catch (Exception e) {
+            logger.warn("Failed to load saved menu orders, using defaults: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Saves the current page order to the database.
+     *
+     * @param pages ordered list of pages
+     */
+    public static void saveMenuOrder(List<KitPage> pages) {
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            MenuOrderMapper mapper = session.getMapper(MenuOrderMapper.class);
+            mapper.deleteAll();
+            List<MenuOrderEntity> entities = new ArrayList<>();
+            for (int i = 0; i < pages.size(); i++) {
+                MenuOrderEntity entity = new MenuOrderEntity();
+                entity.setPageClass(pages.get(i).getClass().getName());
+                entity.setMenuOrder(i);
+                entities.add(entity);
+            }
+            mapper.insertBatch(entities);
+            session.commit();
+
+            // Update cache
+            savedMenuOrders.clear();
+            for (int i = 0; i < pages.size(); i++) {
+                savedMenuOrders.put(pages.get(i).getClass().getName(), i);
+            }
+            logger.info("Saved menu order for {} page(s)", pages.size());
+        } catch (Exception e) {
+            logger.error("Failed to save menu order", e);
+        }
+    }
+
+    /**
+     * Clears the cached menu orders, forcing a reload on next scan.
+     */
+    public static void clearCache() {
+        savedMenuOrders = null;
+    }
+
+    /**
+     * Applies saved menu order to a list of pages (e.g., after plugin install/uninstall).
+     * Pages not in saved order are sorted by annotation order, then class name.
+     *
+     * @param pages list of pages to sort
+     */
+    public static void applySavedOrder(List<KitPage> pages) {
+        if (savedMenuOrders == null) {
+            loadSavedMenuOrders();
+        }
+        pages.sort(Comparator
+                .comparingInt((KitPage p) -> {
+                    Integer saved = savedMenuOrders.get(p.getClass().getName());
+                    return saved != null ? saved : Integer.MAX_VALUE;
+                })
+                .thenComparingInt(p -> p.getClass().getAnnotation(SwissKitPage.class).order())
+                .thenComparing(p -> p.getClass().getName())
+        );
     }
 
     /**

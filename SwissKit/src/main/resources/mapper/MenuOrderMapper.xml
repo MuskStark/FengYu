@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="fan.summer.database.mapper.MenuOrderMapper">
+
+    <!-- Select all menu order records -->
+    <select id="selectAll" resultType="fan.summer.database.entity.MenuOrderEntity">
+        SELECT id, page_class AS pageClass, menu_order AS menuOrder
+        FROM menu_order
+        ORDER BY menu_order
+    </select>
+
+    <!-- Delete all menu order records -->
+    <delete id="deleteAll">
+        DELETE FROM menu_order
+    </delete>
+
+    <!-- Batch insert menu order records -->
+    <insert id="insertBatch" parameterType="fan.summer.database.entity.MenuOrderEntity">
+        INSERT INTO menu_order (page_class, menu_order) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.pageClass}, #{item.menuOrder})
+        </foreach>
+    </insert>
+
+</mapper>

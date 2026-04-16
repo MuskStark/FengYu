@@ -15,7 +15,6 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.net.URL;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -142,9 +141,7 @@ public class HomePage {
             pages.addAll(PluginLoader.loadFromPluginDir());
         }
 
-        pages.sort(Comparator.comparingInt(
-                p -> p.getClass().getAnnotation(SwissKitPage.class).order()
-        ));
+        SwissKitPageScaner.applySavedOrder(pages);
 
         sideMenuBar.setPages(pages);
     }
