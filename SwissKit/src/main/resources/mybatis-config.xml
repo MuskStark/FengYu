@@ -16,9 +16,11 @@
     <environments default="swisskit">
         <environment id="swisskit">
             <transactionManager type="JDBC"/>
-            <dataSource type="UNPOOLED">
+            <dataSource type="POOLED">
                 <property name="driver" value="org.h2.Driver"/>
                 <property name="url" value="${db.url}"/>
+                <property name="poolMaximumActiveConnections" value="10"/>
+                <property name="poolMaximumIdleConnections" value="5"/>
             </dataSource>
         </environment>
     </environments>

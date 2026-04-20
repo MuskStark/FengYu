@@ -197,9 +197,24 @@ public class SettingKitPage implements KitPage {
         }
 
         File source = new File(path);
-        if (!source.exists() || !source.getName().toLowerCase().endsWith(".jar")) {
+        try {
+            File canonical = source.getCanonicalFile();
+            if (!canonical.exists() || !canonical.getName().toLowerCase().endsWith(".jar")) {
+                JOptionPane.showMessageDialog(settingTable,
+                        "Invalid JAR file selected",
+                        "Invalid File", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+            // Prevent path traversal attacks
+            if (!canonical.getParentFile().equals(source.getParentFile())) {
+                JOptionPane.showMessageDialog(settingTable,
+                        "Invalid JAR file path: path traversal not allowed",
+                        "Invalid File", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+        } catch (java.io.IOException ex) {
             JOptionPane.showMessageDialog(settingTable,
-                    "Invalid JAR file selected",
+                    "Invalid JAR file path",
                     "Invalid File", JOptionPane.ERROR_MESSAGE);
             return;
         }

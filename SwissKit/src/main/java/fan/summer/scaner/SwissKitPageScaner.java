@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -25,17 +26,15 @@ public class SwissKitPageScaner {
     private static final Logger logger = LoggerFactory.getLogger(SwissKitPageScaner.class);
 
     /** Cached saved menu orders: className -> menuOrder */
-    private static Map<String, Integer> savedMenuOrders;
+    private static final Map<String, Integer> savedMenuOrders = new ConcurrentHashMap<>();
 
     public static List<KitPage> scan() {
         List<KitPage> pages = new ArrayList<>();
         pages.addAll(scanBuiltinPages());
         pages.addAll(PluginLoader.loadFromPluginDir());
 
-        // Load saved menu orders from DB if not yet loaded
-        if (savedMenuOrders == null) {
-            loadSavedMenuOrders();
-        }
+        // Load saved menu orders from DB
+        loadSavedMenuOrders();
 
         // Sort: first by saved user order (ascending), then by annotation order, then by class name (stable)
         pages.sort(Comparator
@@ -52,7 +51,7 @@ public class SwissKitPageScaner {
     }
 
     private static void loadSavedMenuOrders() {
-        savedMenuOrders = new HashMap<>();
+        savedMenuOrders.clear();
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             MenuOrderMapper mapper = session.getMapper(MenuOrderMapper.class);
             List<MenuOrderEntity> orders = mapper.selectAll();
@@ -99,7 +98,7 @@ public class SwissKitPageScaner {
      * Clears the cached menu orders, forcing a reload on next scan.
      */
     public static void clearCache() {
-        savedMenuOrders = null;
+        savedMenuOrders.clear();
     }
 
     /**
@@ -109,9 +108,7 @@ public class SwissKitPageScaner {
      * @param pages list of pages to sort
      */
     public static void applySavedOrder(List<KitPage> pages) {
-        if (savedMenuOrders == null) {
-            loadSavedMenuOrders();
-        }
+        loadSavedMenuOrders();
         pages.sort(Comparator
                 .comparingInt((KitPage p) -> {
                     Integer saved = savedMenuOrders.get(p.getClass().getName());

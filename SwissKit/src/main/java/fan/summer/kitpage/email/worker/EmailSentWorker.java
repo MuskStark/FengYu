@@ -116,7 +116,7 @@ public class EmailSentWorker extends SwingWorker<Void, Integer> {
 
     @Override
     protected void process(List<Integer> chunks) {
-        if (!chunks.isEmpty()) {
+        if (progressBar != null && !chunks.isEmpty()) {
             int latestProgress = chunks.get(chunks.size() - 1);
             progressBar.setValue(latestProgress);
             progressBar.setString("Sending... " + latestProgress + "%");
@@ -126,6 +126,9 @@ public class EmailSentWorker extends SwingWorker<Void, Integer> {
     @Override
     protected void done() {
         // EDT thread: Task completion
+        if (progressBar == null) {
+            return;
+        }
         try {
             get(); // Check for exceptions
             progressBar.setValue(100);
