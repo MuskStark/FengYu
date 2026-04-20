@@ -29,6 +29,7 @@
         <junit.version>5.10.0</junit.version>
     </properties>
 
+    <!-- BOM: import this in your plugin pom.xml to get aligned dependency versions -->
     <dependencyManagement>
         <dependencies>
             <!-- MigLayout -->
@@ -136,6 +137,7 @@
         </dependencies>
     </dependencyManagement>
 
+    <!-- Actual dependencies used when compiling this JAR -->
     <dependencies>
         <dependency>
             <groupId>com.miglayout</groupId>
