@@ -15,18 +15,18 @@ import java.util.List;
  */
 public class CsvToExcelProcessor {
 
-    // ── 输出表头 ──────────────────────────────────────────────────────────
+    // -- Output headers --------------------------------------------------------
     private static final String[] HEADERS = {
-            "公司名称", "控制类型", "序号",
-            "控制人姓名/机构",
-            "直接持股比例", "总持股比例", "表决权比例",
-            "控制链", "判定依据"
+            "Company Name", "Control Type", "Sequence",
+            "Controller Name/Institution",
+            "Direct Shareholding Ratio", "Total Shareholding Ratio", "Voting Rights Ratio",
+            "Control Chain", "Basis for Determination"
     };
 
-    // ── 控制类型常量 ──────────────────────────────────────────────────────
-    private static final String TYPE_ACTUAL    = "实际控制人";
-    private static final String TYPE_SUSPECTED = "疑似实际控制人";
-    private static final String TYPE_CONCERT   = "一致行动人";
+    // -- Control type constants ------------------------------------------------
+    private static final String TYPE_ACTUAL    = "Actual Controller";
+    private static final String TYPE_SUSPECTED = "Suspected Actual Controller";
+    private static final String TYPE_CONCERT   = "Concert Party";
 
     // ── Main Process ────────────────────────────────────────────────────────────
     public static void process(String inputCsv, String outputXlsx) throws Exception {
@@ -151,13 +151,13 @@ public class CsvToExcelProcessor {
 
             // ③ Header row
             if (isHeaderRow(row)) {
-                colName   = findCol(row, new String[]{"实际控制人","疑似实际控制人","一致行动人"},
-                        new String[]{"直接","总持","表决","链"});
-                colDirect = findColContains(row, "直接持股");
-                colTotal  = findColContains(row, "总持股");
-                colVote   = findColContains(row, "表决");
-                colChain  = findColContains(row, "控制链");
-                colBasis  = findColContains(row, "判定依据");
+                colName   = findCol(row, new String[]{"Actual Controller","Suspected Actual Controller","Concert Party"},
+                        new String[]{"Direct","Total","Voting","Chain"});
+                colDirect = findColContains(row, "Direct Shareholding");
+                colTotal  = findColContains(row, "Total Shareholding");
+                colVote   = findColContains(row, "Voting");
+                colChain  = findColContains(row, "Control Chain");
+                colBasis  = findColContains(row, "Basis");
                 continue;
             }
 
@@ -204,7 +204,7 @@ public class CsvToExcelProcessor {
      * Checks if row is a header row (starts with "Sequence").
      */
     private static boolean isHeaderRow(List<String> row) {
-        return row.get(0).trim().equals("序号");
+        return row.get(0).trim().equals("Sequence");
     }
 
     /**
