@@ -112,8 +112,8 @@
     </dependencyManagement>
 
     <modules>
-        <module>SwissKit</module>
         <module>SwissKitJ-Api</module>
+        <module>SwissKit</module>
         <module>OfficalPlugin/SwissKitJ-Plugin-HappyLearning</module>
         <module>OfficalPlugin/SwissKitJ-Plugin-Qcc</module>
         <module>OfficalPlugin/SwissKit-Plugin-Mouse</module>
