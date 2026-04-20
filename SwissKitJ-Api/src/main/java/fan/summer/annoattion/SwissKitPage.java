@@ -1,6 +1,5 @@
 package fan.summer.annoattion;
 
-import javax.swing.*;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -28,12 +27,28 @@ import java.lang.annotation.Target;
 public @interface SwissKitPage {
 
     /**
-     * Menu display name shown in the sidebar.
-     * If empty, the class simple name will be used.
+     * Unique identifier for the plugin.
+     * Used for plugin lifecycle management and dependency resolution.
+     *
+     * @return plugin name
+     */
+    String pluginName();
+
+    /**
+     * Version string of the plugin in semver format (e.g., "1.0.0").
+     * Used for compatibility checks and update detection.
+     *
+     * @return plugin version
+     */
+    String pluginVersion();
+
+    /**
+     * Menu display name shown in the sidebar navigation.
+     * If empty, the simple class name will be used as fallback.
      *
      * @return menu display name
      */
-    String menuName() default "";
+    String menuName();
 
     /**
      * Menu tooltip text shown on hover.
