@@ -4,13 +4,6 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <parent>
-        <groupId>fan.summer</groupId>
-        <artifactId>SwissKit-parent</artifactId>
-        <version>2.0.0</version>
-        <relativePath>../pom.xml</relativePath>
-    </parent>
-
     <groupId>fan.summer</groupId>
     <artifactId>SwissKit</artifactId>
     <version>2.0.0</version>
@@ -22,11 +15,23 @@
         <lombok.version>1.18.42</lombok.version>
     </properties>
 
+    <!-- Import SwissKitJ-Api BOM for aligned dependency versions -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>fan.summer.api</groupId>
+                <artifactId>SwissKitJ-Api</artifactId>
+                <version>2.0.0</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
         <dependency>
             <groupId>fan.summer.api</groupId>
             <artifactId>SwissKitJ-Api</artifactId>
-            <version>2.0.0</version>
         </dependency>
 
         <!-- SwingX  -->
