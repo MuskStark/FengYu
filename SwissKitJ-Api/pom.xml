@@ -32,6 +32,13 @@
     <!-- BOM: import this in your plugin pom.xml to get aligned dependency versions -->
     <dependencyManagement>
         <dependencies>
+            <!-- SwissKitJ-Api itself: declared here so importers can omit <version> -->
+            <dependency>
+                <groupId>fan.summer.api</groupId>
+                <artifactId>SwissKitJ-Api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
             <!-- MigLayout -->
             <dependency>
                 <groupId>com.miglayout</groupId>

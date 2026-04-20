@@ -31,7 +31,7 @@
         <dependency>
             <groupId>fan.summer.api</groupId>
             <artifactId>SwissKitJ-Api</artifactId>
-            <scope>provided</scope>
+        <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
