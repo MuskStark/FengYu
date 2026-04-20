@@ -30,10 +30,14 @@ import java.util.concurrent.ConcurrentHashMap;
 public class SwissKitPageScaner {
     private static final Logger logger = LoggerFactory.getLogger(SwissKitPageScaner.class);
 
-    /** Cached saved menu orders: className -> menuOrder */
+    /**
+     * Cached saved menu orders: className -> menuOrder
+     */
     private static final Map<String, Integer> savedMenuOrders = new ConcurrentHashMap<>();
 
-    /** Built-in page classes */
+    /**
+     * Built-in page classes
+     */
     private static final List<Class<?>> BUILTIN_PAGE_CLASSES = Arrays.asList(
             WelcomePage.class,
             ExcelKitPage.class,
@@ -52,6 +56,7 @@ public class SwissKitPageScaner {
         // Sort: first by saved user order (ascending), then by annotation order, then by class name (stable)
         pages.sort(Comparator
                 .comparingInt((Object p) -> {
+                    // TODO:增加使用插件名称进行比对
                     Integer saved = savedMenuOrders.get(p.getClass().getName());
                     return saved != null ? saved : Integer.MAX_VALUE;
                 })
@@ -92,6 +97,7 @@ public class SwissKitPageScaner {
             MenuOrderMapper mapper = session.getMapper(MenuOrderMapper.class);
             mapper.deleteAll();
             List<MenuOrderEntity> entities = new ArrayList<>();
+            // TODO:增加使用插件名称
             for (int i = 0; i < pages.size(); i++) {
                 MenuOrderEntity entity = new MenuOrderEntity();
                 entity.setPageClass(pages.get(i).getClass().getName());
