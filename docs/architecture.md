@@ -58,7 +58,7 @@ SwissKitJ-Api/
 <dependency>
     <groupId>fan.summer.api</groupId>
     <artifactId>SwissKitJ-Api</artifactId>
-    <version>1.2.2</version>
+    <version>2.0.0</version>
 </dependency>
 ```
 
@@ -574,8 +574,8 @@ public class NoModelDataListener extends AnalysisEventListener<Map<Integer, Obje
 |-------------------|------------------|------------------------|
 | flatlaf           | 3.5              | Modern UI theme        |
 | fesod-sheet       | 2.0.1-incubating | Excel streaming        |
-| log4j-core        | 2.25.3           | Logging                |
-| log4j-slf4j2-impl | 2.25.3           | SLF4J binding          |
+| log4j-core        | 2.25.4           | Logging                |
+| log4j-slf4j2-impl | 2.25.4           | SLF4J binding          |
 | slf4j-api         | 2.0.16           | Logging API            |
 | lombok            | 1.18.42          | Code simplification    |
 | fastjson2         | 2.0.59           | JSON processing        |
