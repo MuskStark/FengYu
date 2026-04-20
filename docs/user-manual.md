@@ -1,7 +1,7 @@
 # SwissKitJ User Manual
 
 > **SwissKitJ** is a modular desktop toolbox that provides various productivity tools including Excel file processing,
-> email management, and plugin support.
+> email management, and plugin support. <small>v2.0.0</small>
 
 ---
 
