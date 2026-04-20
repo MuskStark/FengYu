@@ -37,7 +37,7 @@ public class NoModelDataListener extends AnalysisEventListener<Map<Integer, Obje
 
     @Override
     public void invoke(Map<Integer, Object> data, AnalysisContext context) {
-        log.info("Parsed one data row: {}", JSON.toJSONString(data));
+        log.debug("Parsed one data row: {}", JSON.toJSONString(data));
         usedDataBase = false;
         cachedDataList.add(data);
         if (cachedDataList.size() >= BATCH_COUNT) {

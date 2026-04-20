@@ -1,5 +1,6 @@
 package fan.summer.annoattion;
 
+import javax.swing.*;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -12,10 +13,9 @@ import java.lang.annotation.Target;
  * <h2>Usage Example:</h2>
  * <pre>
  * {@code @SwissKitPage(menuName = "Excel", menuTooltip = "Excel file processing", order = 1)}
- * public class ExcelKitPage implements KitPage {
- *     {@code @Override}
- *     public JPanel getPanel() {
- *         return panel;
+ * public class ExcelKitPage extends JPanel {
+ *     public ExcelKitPage() {
+ *         // initialize your UI
  *     }
  * }
  * </pre>
@@ -57,4 +57,12 @@ public @interface SwissKitPage {
      * @return order value
      */
     int order() default 0;
+
+    /**
+     * Menu icon path (optional).
+     * Can be a classpath resource path or file path.
+     *
+     * @return icon path, or empty string for no icon
+     */
+    String iconPath() default "";
 }

@@ -6,61 +6,56 @@
 
     <groupId>fan.summer</groupId>
     <artifactId>SwissKit</artifactId>
-    <version>1.2.2</version>
+    <version>2.0.0</version>
 
     <properties>
         <maven.compiler.source>11</maven.compiler.source>
         <maven.compiler.target>11</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <lombok.version>1.18.42</lombok.version>
     </properties>
 
     <dependencies>
         <dependency>
             <groupId>fan.summer.api</groupId>
             <artifactId>SwissKitJ-Api</artifactId>
-            <version>1.0.0</version>
+            <version>2.0.0</version>
         </dependency>
 
         <!-- SwingX  -->
         <dependency>
             <groupId>org.swinglabs.swingx</groupId>
             <artifactId>swingx-all</artifactId>
-            <version>1.6.5</version>
         </dependency>
 
         <!-- Excel -->
         <dependency>
             <groupId>org.apache.fesod</groupId>
             <artifactId>fesod-sheet</artifactId>
-            <version>2.0.1-incubating</version>
         </dependency>
 
         <!-- H2 Database -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
-            <version>2.4.240</version>
         </dependency>
 
         <!-- Mybatis -->
         <dependency>
             <groupId>org.mybatis</groupId>
             <artifactId>mybatis</artifactId>
-            <version>3.5.19</version>
         </dependency>
 
         <!-- Email -->
         <dependency>
             <groupId>org.simplejavamail</groupId>
             <artifactId>simple-java-mail</artifactId>
-            <version>8.12.6</version>
         </dependency>
 
         <!-- Force override vulnerable version transitively brought in by simple-java-mail -->
         <dependency>
             <groupId>org.eclipse.angus</groupId>
             <artifactId>angus-mail</artifactId>
-            <version>2.0.4</version>
         </dependency>
 
     </dependencies>
@@ -162,7 +157,7 @@
                         <path>
                             <groupId>org.projectlombok</groupId>
                             <artifactId>lombok</artifactId>
-                            <version>1.18.42</version>
+                            <version>${lombok.version}</version>
                         </path>
                     </annotationProcessorPaths>
                 </configuration>

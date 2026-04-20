@@ -1,6 +1,5 @@
 package plugin.swisskit.mouse;
 
-import fan.summer.api.KitPage;
 import plugin.swisskit.mouse.ui.KeepMove;
 
 import javax.swing.*;
@@ -15,7 +14,7 @@ public class DevLauncher {
             frame.setSize(900, 600);
 
             // 直接实例化你的页面
-            KitPage page = new KeepMove();
+            KeepMove page = new KeepMove();
             frame.add(page.getPanel());
 
             frame.setLocationRelativeTo(null);

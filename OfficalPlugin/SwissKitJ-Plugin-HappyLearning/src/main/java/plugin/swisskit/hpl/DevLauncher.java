@@ -1,6 +1,5 @@
 package plugin.swisskit.hpl;
 
-import fan.summer.api.KitPage;
 import plugin.swisskit.hpl.ui.HappyLearning;
 
 import javax.swing.*;
@@ -15,7 +14,7 @@ public class DevLauncher {
             frame.setSize(900, 600);
 
             // 直接实例化你的页面
-            KitPage page = new HappyLearning();
+            HappyLearning page = new HappyLearning();
             frame.add(page.getPanel());
 
             frame.setLocationRelativeTo(null);

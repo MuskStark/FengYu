@@ -9,7 +9,6 @@ import java.nio.file.Path;
 import javax.swing.*;
 
 import fan.summer.annoattion.SwissKitPage;
-import fan.summer.api.KitPage;
 import fan.summer.ui.components.GradientProgressBar;
 import net.miginfocom.swing.*;
 
@@ -17,7 +16,7 @@ import net.miginfocom.swing.*;
  * @author summer
  */
 @SwissKitPage(menuName = "QccToExcel", menuTooltip = "QccToExcel", order = 88)
-public class QccToExcel implements KitPage {
+public class QccToExcel {
     public QccToExcel() {
         initComponents();
     }
@@ -102,7 +101,6 @@ public class QccToExcel implements KitPage {
         // JFormDesigner - End of component initialization  //GEN-END:initComponents  @formatter:on
     }
 
-    @Override
     public JPanel getPanel() {
         return qccToExcel;
     }

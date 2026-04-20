@@ -5,7 +5,7 @@
 package fan.summer.kitpage.setting;
 
 import fan.summer.annoattion.SwissKitPage;
-import fan.summer.api.KitPage;
+import fan.summer.scaner.SwissKitPageScaner;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.setting.email.EmailAddressBookEntity;
 import fan.summer.database.entity.setting.email.SwissKitSettingEmailEntity;
@@ -40,7 +40,7 @@ import java.util.stream.Collectors;
  * @author phoebej
  */
 @SwissKitPage(menuName = "Setting", menuTooltip = "Setting", order = 99999)
-public class SettingKitPage implements KitPage {
+public class SettingKitPage {
     private static final Logger log = LoggerFactory.getLogger(SettingKitPage.class);
 
     /**
@@ -197,16 +197,31 @@ public class SettingKitPage implements KitPage {
         }
 
         File source = new File(path);
-        if (!source.exists() || !source.getName().toLowerCase().endsWith(".jar")) {
+        try {
+            File canonical = source.getCanonicalFile();
+            if (!canonical.exists() || !canonical.getName().toLowerCase().endsWith(".jar")) {
+                JOptionPane.showMessageDialog(settingTable,
+                        "Invalid JAR file selected",
+                        "Invalid File", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+            // Prevent path traversal attacks
+            if (!canonical.getParentFile().equals(source.getParentFile())) {
+                JOptionPane.showMessageDialog(settingTable,
+                        "Invalid JAR file path: path traversal not allowed",
+                        "Invalid File", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+        } catch (java.io.IOException ex) {
             JOptionPane.showMessageDialog(settingTable,
-                    "Invalid JAR file selected",
+                    "Invalid JAR file path",
                     "Invalid File", JOptionPane.ERROR_MESSAGE);
             return;
         }
 
-        new SwingWorker<List<KitPage>, Void>() {
+        new SwingWorker<List<Object>, Void>() {
             @Override
-            protected List<KitPage> doInBackground() throws Exception {
+            protected List<Object> doInBackground() throws Exception {
                 File pluginDir = Path.of(PluginLoader.PLUGIN_DIR).toFile();
                 pluginDir.mkdirs();
 
@@ -221,7 +236,7 @@ public class SettingKitPage implements KitPage {
             @Override
             protected void done() {
                 try {
-                    List<KitPage> newPages = get();
+                    List<Object> newPages = get();
                     SwingUtilities.invokeLater(() -> {
                         HomePage.getInstance().refreshSidebar(newPages);
                         refreshPluginList();
@@ -229,7 +244,7 @@ public class SettingKitPage implements KitPage {
 
                     if (!newPages.isEmpty()) {
                         String names = newPages.stream()
-                                .map(KitPage::getMenuName)
+                                .map(p -> SwissKitPageScaner.getMenuName(p))
                                 .collect(Collectors.joining(", "));
                         JOptionPane.showMessageDialog(settingTable,
                                 "Deployed successfully:\n" + names,
@@ -271,23 +286,23 @@ public class SettingKitPage implements KitPage {
                 "Confirm Reload", JOptionPane.YES_NO_OPTION);
 
         if (confirm == JOptionPane.YES_OPTION) {
-            new SwingWorker<List<KitPage>, Void>() {
+            new SwingWorker<List<Object>, Void>() {
                 @Override
-                protected List<KitPage> doInBackground() throws Exception {
+                protected List<Object> doInBackground() throws Exception {
                     return PluginLoader.reloadPlugin(pluginName);
                 }
 
                 @Override
                 protected void done() {
                     try {
-                        List<KitPage> newPages = get();
+                        List<Object> newPages = get();
                         SwingUtilities.invokeLater(() -> {
                             HomePage.getInstance().refreshSidebar(newPages);
                             refreshPluginList();
                         });
 
                         String names = newPages.stream()
-                                .map(KitPage::getMenuName)
+                                .map(p -> SwissKitPageScaner.getMenuName(p))
                                 .collect(Collectors.joining(", "));
                         JOptionPane.showMessageDialog(settingTable,
                                 "Reloaded successfully:\n" + names,

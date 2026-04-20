@@ -1,6 +1,6 @@
 package fan.summer.ui.sidebar;
 
-import fan.summer.api.KitPage;
+import fan.summer.scaner.SwissKitPageScaner;
 import fan.summer.utils.UIUtils;
 
 import javax.swing.*;
@@ -13,8 +13,7 @@ import java.util.List;
 
 /**
  * Side menu bar component.
- * Dynamically generates menu items based on registered KitPage implementations.
- * Provides navigation between different tool pages in the application.
+ * Click to navigate, drag to reorder.
  *
  * @author summer
  */
@@ -24,26 +23,31 @@ public class SideMenuBar extends JPanel {
     private static final Color SELECTED_BG = new Color(0x2D, 0x2D, 0x2D);
     private static final Color SELECTED_TEXT = new Color(0xBB, 0x86, 0xFC);
     private static final Color HOVER_BG = new Color(0xE8, 0xE8, 0xE8);
+    private static final Color DRAG_HIGHLIGHT = new Color(0xCC, 0xCC, 0xDD);
 
-    private List<KitPage> pages;
+    /**
+     * Minimum pixel movement to be considered a drag (not a click)
+     */
+    private static final int DRAG_THRESHOLD = 8;
+
+    private List<Object> pages;
     private final List<JLabel> menuItems;
     private final JPanel contentPanel;
-    private int selectedIndex;
+    private int selectedIndex = -1;
 
     private final JLabel titleLabel;
     private final JPanel menuContainer;
+    private JPanel menuItemsPanel;
 
-    /**
-     * Create side menu bar
-     *
-     * @param pages        List of pages
-     * @param contentPanel Content panel (for switching pages)
-     */
-    public SideMenuBar(List<KitPage> pages, JPanel contentPanel) {
+    // ── Drag state ────────────────────────────────────────────────────────────
+    private int draggedItemIndex = -1;
+    private Point dragStartPoint = null;
+    private boolean isDragging = false;
+
+    public SideMenuBar(List<Object> pages, JPanel contentPanel) {
         this.pages = pages;
         this.contentPanel = contentPanel;
         this.menuItems = new ArrayList<>();
-        this.selectedIndex = -1;
 
         setLayout(new BorderLayout());
         setPreferredSize(new Dimension(MENU_WIDTH, 0));
@@ -59,14 +63,11 @@ public class SideMenuBar extends JPanel {
         titlePanel.add(titleLabel, BorderLayout.NORTH);
         titlePanel.setBackground(UIUtils.LIGHT_GRAY);
 
-        // Menu container - use BorderLayout for top alignment without filling
-        menuContainer = new JPanel(new BorderLayout(0, 0));
+        menuContainer = new JPanel(new BorderLayout());
         menuContainer.setBackground(UIUtils.LIGHT_GRAY);
 
-        // Build menu items
         rebuildMenu();
 
-        // Footer copyright
         JLabel footerLabel = new JLabel("© 2025 Summer", SwingConstants.CENTER);
         footerLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
         footerLabel.setForeground(new Color(0x90, 0x90, 0x90));
@@ -76,56 +77,36 @@ public class SideMenuBar extends JPanel {
         footerPanel.add(footerLabel, BorderLayout.SOUTH);
         footerPanel.setBackground(UIUtils.LIGHT_GRAY);
 
-        // Assemble
         add(titlePanel, BorderLayout.NORTH);
         add(menuContainer, BorderLayout.CENTER);
         add(footerPanel, BorderLayout.SOUTH);
     }
 
-    /**
-     * Rebuild menu (for dynamic menu updates)
-     */
+    // ── Menu construction ─────────────────────────────────────────────────────
+
     public void rebuildMenu() {
         menuContainer.removeAll();
         menuItems.clear();
 
-        // Create a vertical panel for menu items
-        JPanel menuItemsPanel = new JPanel();
+        menuItemsPanel = new JPanel();
         menuItemsPanel.setLayout(new BoxLayout(menuItemsPanel, BoxLayout.Y_AXIS));
         menuItemsPanel.setBackground(UIUtils.LIGHT_GRAY);
 
         for (int i = 0; i < pages.size(); i++) {
-            KitPage page = pages.get(i);
-            JLabel menuItem = createMenuItem(page, i);
-
-            // Wrap in centered panel
-            JPanel menuItemPanel = new JPanel(new GridBagLayout());
-            menuItemPanel.setBackground(UIUtils.LIGHT_GRAY);
-            GridBagConstraints gbc = new GridBagConstraints();
-            gbc.gridx = 0;
-            gbc.fill = GridBagConstraints.HORIZONTAL;
-            gbc.weightx = 1.0;
-            menuItemPanel.add(menuItem, gbc);
-
-            menuItems.add(menuItem);
-            menuItemsPanel.add(menuItemPanel);
+            JLabel item = createMenuItem(pages.get(i), i);
+            menuItems.add(item);
+            menuItemsPanel.add(wrapWithDragSupport(item, i));
         }
 
-        // Add to NORTH position for top alignment without filling
         menuContainer.add(menuItemsPanel, BorderLayout.NORTH);
-
         menuContainer.revalidate();
         menuContainer.repaint();
     }
 
-    /**
-     * Create menu item
-     */
-    private JLabel createMenuItem(KitPage page, int index) {
-        String menuName = page.getMenuName();
-        Icon menuIcon = page.getMenuIcon();
-        String tooltip = page.getMenuTooltip();
-
+    private JLabel createMenuItem(Object page, int index) {
+        String menuName = SwissKitPageScaner.getMenuName(page);
+        String iconPath = SwissKitPageScaner.getMenuIconPath(page);
+        Icon menuIcon = iconPath != null && !iconPath.isEmpty() ? new ImageIcon(iconPath) : null;
         JLabel label = new JLabel(menuName, menuIcon, SwingConstants.CENTER);
         label.setFont(new Font("SansSerif", Font.PLAIN, 13));
         label.setForeground(UIUtils.TEXT_COLOR);
@@ -133,116 +114,233 @@ public class SideMenuBar extends JPanel {
         label.setOpaque(true);
         label.setBorder(new EmptyBorder(12, 10, 12, 10));
         label.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        label.setFocusable(true);
         label.setAlignmentX(Component.CENTER_ALIGNMENT);
         label.setHorizontalAlignment(SwingConstants.CENTER);
+        label.putClientProperty("pageIndex", index);
 
-        if (tooltip != null) {
-            label.setToolTipText(tooltip);
-        }
+        String tip = SwissKitPageScaner.getMenuTooltip(page);
+        if (tip != null) label.setToolTipText(tip);
 
-        // Click event
-        label.addMouseListener(new MouseAdapter() {
+        return label;
+    }
+
+    /**
+     * Wrap a menu label in a full-width panel and attach all mouse logic.
+     * Key fix: listeners go on BOTH the panel AND the label so events
+     * are never swallowed by the child component.
+     */
+    private JPanel wrapWithDragSupport(JLabel label, int index) {
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBackground(UIUtils.LIGHT_GRAY);
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+        panel.add(label, gbc);
+
+        // Shared handler — attached to both panel and label
+        MouseAdapter handler = new MouseAdapter() {
+
             @Override
-            public void mouseClicked(MouseEvent e) {
-                selectPage(index);
+            public void mousePressed(MouseEvent e) {
+                dragStartPoint = SwingUtilities.convertPoint(e.getComponent(), e.getPoint(), menuItemsPanel);
+                draggedItemIndex = index;
+                isDragging = false;
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                boolean wasDragging = isDragging;
+                int dragFromIndex = draggedItemIndex;
+                Point releasePoint = SwingUtilities.convertPoint(e.getComponent(), e.getPoint(), menuItemsPanel);
+
+                // Reset state before any UI change
+                dragStartPoint = null;
+                draggedItemIndex = -1;
+                isDragging = false;
+                clearDragHighlight();
+
+                if (wasDragging && dragFromIndex >= 0) {
+                    int dropIndex = getDropIndex(releasePoint);
+                    if (dropIndex != dragFromIndex && dropIndex != dragFromIndex + 1) {
+                        reorderPages(dragFromIndex, dropIndex);
+                    }
+                } else {
+                    // Plain click → navigate
+                    selectPage(index);
+                }
             }
 
             @Override
             public void mouseEntered(MouseEvent e) {
-                if (index != selectedIndex) {
+                if (!isDragging && index != selectedIndex) {
                     label.setBackground(HOVER_BG);
                 }
             }
 
             @Override
             public void mouseExited(MouseEvent e) {
-                if (index != selectedIndex) {
+                if (!isDragging && index != selectedIndex) {
                     label.setBackground(UIUtils.LIGHT_GRAY);
                 }
             }
-        });
 
-        return label;
+            @Override
+            public void mouseDragged(MouseEvent e) {
+                if (dragStartPoint == null) return;
+
+                Point current = SwingUtilities.convertPoint(e.getComponent(), e.getPoint(), menuItemsPanel);
+                int dx = Math.abs(current.x - dragStartPoint.x);
+                int dy = Math.abs(current.y - dragStartPoint.y);
+
+                if (!isDragging && (dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD)) {
+                    isDragging = true;
+                }
+
+                if (isDragging) {
+                    updateDragHighlight(current, draggedItemIndex);
+                }
+            }
+        };
+
+        panel.addMouseListener(handler);
+        panel.addMouseMotionListener(handler);
+        // Also attach to label so clicks/drags on the text are captured
+        label.addMouseListener(handler);
+        label.addMouseMotionListener(handler);
+
+        return panel;
     }
 
+    // ── Drag visuals ──────────────────────────────────────────────────────────
+
+    private void updateDragHighlight(Point mouseInPanel, int draggedIndex) {
+        int dropIndex = getDropIndex(mouseInPanel);
+
+        for (int i = 0; i < menuItems.size(); i++) {
+            JLabel lbl = menuItems.get(i);
+            if (i == draggedIndex) {
+                lbl.setBackground(DRAG_HIGHLIGHT);
+            } else if (i == selectedIndex) {
+                lbl.setBackground(SELECTED_BG);
+            } else {
+                lbl.setBackground(UIUtils.LIGHT_GRAY);
+            }
+        }
+
+        // Highlight insertion target
+        if (dropIndex >= 0 && dropIndex < menuItems.size() && dropIndex != draggedIndex) {
+            menuItems.get(dropIndex).setBackground(DRAG_HIGHLIGHT);
+        }
+    }
+
+    private void clearDragHighlight() {
+        for (int i = 0; i < menuItems.size(); i++) {
+            menuItems.get(i).setBackground(i == selectedIndex ? SELECTED_BG : UIUtils.LIGHT_GRAY);
+        }
+    }
+
+    // ── Drop index calculation ─────────────────────────────────────────────────
+
     /**
-     * Select page
+     * Returns the index at which the dragged item should be inserted.
+     * Compares mouse Y against the midpoint of each row.
      */
+    private int getDropIndex(Point locationInPanel) {
+        int count = menuItemsPanel.getComponentCount();
+        if (count == 0) return 0;
+
+        int y = locationInPanel.y;
+        int cumulative = 0;
+
+        for (int i = 0; i < count; i++) {
+            Component comp = menuItemsPanel.getComponent(i);
+            int h = comp.getHeight();
+            // Insert before this row when cursor is in its upper half
+            if (y < cumulative + h / 2) {
+                return i;
+            }
+            cumulative += h;
+        }
+        return count; // insert at end
+    }
+
+    // ── Reorder logic ─────────────────────────────────────────────────────────
+
+    private void reorderPages(int fromIndex, int toIndex) {
+        // Clamp to valid insertion range
+        toIndex = Math.max(0, Math.min(toIndex, pages.size()));
+
+        // Remember which page was selected
+        Object selectedPage = (selectedIndex >= 0 && selectedIndex < pages.size())
+                ? pages.get(selectedIndex) : null;
+
+        Object moved = pages.remove(fromIndex);
+        // Adjust insertion index after removal
+        int insertAt = (toIndex > fromIndex) ? toIndex - 1 : toIndex;
+        insertAt = Math.max(0, Math.min(insertAt, pages.size()));
+        pages.add(insertAt, moved);
+
+        SwissKitPageScaner.saveMenuOrder(pages);
+        rebuildMenu();
+
+        // Restore selection by page identity, not stale index
+        if (selectedPage != null) {
+            int newIdx = pages.indexOf(selectedPage);
+            if (newIdx >= 0) {
+                selectedIndex = -1; // force refresh
+                selectPage(newIdx);
+                return;
+            }
+        }
+        selectPage(0);
+    }
+
+    // ── Public API ────────────────────────────────────────────────────────────
+
     public void selectPage(int index) {
-        if (index < 0 || index >= pages.size()) {
-            return;
+        if (index < 0 || index >= pages.size()) return;
+
+        // Deselect previous
+        if (selectedIndex >= 0 && selectedIndex < menuItems.size()) {
+            menuItems.get(selectedIndex).setBackground(UIUtils.LIGHT_GRAY);
+            menuItems.get(selectedIndex).setForeground(UIUtils.TEXT_COLOR);
         }
 
-        // Update selected state
-        int previousIndex = selectedIndex;
         selectedIndex = index;
+        menuItems.get(index).setBackground(SELECTED_BG);
+        menuItems.get(index).setForeground(SELECTED_TEXT);
 
-        // Update menu item styles
-        if (previousIndex >= 0 && previousIndex < menuItems.size()) {
-            JLabel prevLabel = menuItems.get(previousIndex);
-            prevLabel.setBackground(UIUtils.LIGHT_GRAY);
-            prevLabel.setForeground(UIUtils.TEXT_COLOR);
-        }
-
-        JLabel selectedLabel = menuItems.get(index);
-        selectedLabel.setBackground(SELECTED_BG);
-        selectedLabel.setForeground(SELECTED_TEXT);
-
-        // Switch content panel
         if (contentPanel != null) {
             contentPanel.removeAll();
-            contentPanel.add(pages.get(index).getPanel(), BorderLayout.CENTER);
+            contentPanel.add(SwissKitPageScaner.getPanel(pages.get(index)), BorderLayout.CENTER);
             contentPanel.revalidate();
             contentPanel.repaint();
         }
     }
 
-    /**
-     * Get current selected page index
-     */
     public int getSelectedIndex() {
         return selectedIndex;
     }
 
-    /**
-     * Set title
-     */
     public void setTitle(String title) {
         titleLabel.setText(title);
     }
 
-    /**
-     * Add page
-     */
-    public void addPage(KitPage page) {
+    public void addPage(Object page) {
         pages.add(page);
-        JLabel menuItem = createMenuItem(page, pages.size() - 1);
-        menuItems.add(menuItem);
-        menuContainer.add(menuItem);
-        menuContainer.revalidate();
-        menuContainer.repaint();
+        rebuildMenu();
+        SwissKitPageScaner.saveMenuOrder(pages);
     }
 
-    /**
-     * Remove page
-     */
     public void removePage(int index) {
         if (index >= 0 && index < pages.size()) {
             pages.remove(index);
-            menuItems.get(index).setVisible(false);
-            menuContainer.remove(index);
-            menuItems.remove(index);
-            menuContainer.revalidate();
-            menuContainer.repaint();
+            rebuildMenu();
+            SwissKitPageScaner.saveMenuOrder(pages);
         }
     }
 
-    /**
-     * Set page list (will rebuild menu)
-     */
-    public void setPages(List<KitPage> newPages) {
-        // Re-assign the reference so SideMenuBar.pages always matches HomePage.pages
+    public void setPages(List<Object> newPages) {
         this.pages = newPages;
         rebuildMenu();
     }
