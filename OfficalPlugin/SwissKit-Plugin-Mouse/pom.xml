@@ -8,15 +8,28 @@
     <artifactId>SwissKit-Plugin-Mouse</artifactId>
     <version>v1.0.0</version>
     <properties>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
+
+    <!-- Import SwissKitJ-Api BOM for aligned dependency versions -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>fan.summer.api</groupId>
+                <artifactId>SwissKitJ-Api</artifactId>
+                <version>2.0.0</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
         <dependency>
             <groupId>fan.summer.api</groupId>
             <artifactId>SwissKitJ-Api</artifactId>
-            <version>2.0.0</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -36,6 +49,5 @@
             </plugin>
         </plugins>
     </build>
-
 
 </project>
