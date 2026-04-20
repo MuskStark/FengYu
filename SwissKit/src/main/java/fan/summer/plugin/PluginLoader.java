@@ -1,6 +1,6 @@
 package fan.summer.plugin;
 
-import fan.summer.api.KitPage;
+import fan.summer.annoattion.SwissKitPage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -9,22 +9,19 @@ import java.io.IOException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.ServiceLoader;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.jar.JarEntry;
+import java.util.jar.JarInputStream;
 
 /**
  * Dynamic plugin loader.
- * Scans JAR files from specified directory and loads KitPage implementations via SPI.
+ * Scans JAR files from specified directory and loads KitPage implementations via @SwissKitPage annotation.
  *
  * <p>Plugin JAR requirements:</p>
  * <ul>
- *   <li>Implement {@link KitPage} interface</li>
- *   <li>Class annotated with {@link fan.summer.annoattion.SwissKitPage}</li>
- *   <li>Declare implementation class fully qualified name in META-INF/services/fan.summer.api.KitPage file within the JAR</li>
+ *   <li>Class annotated with {@link SwissKitPage}</li>
+ *   <li>Page class must have a no-arg constructor</li>
  * </ul>
  */
 public class PluginLoader {
@@ -47,7 +44,7 @@ public class PluginLoader {
      */
     private static final ConcurrentHashMap<String, URLClassLoader> pluginClassLoaders = new ConcurrentHashMap<>();
 
-    public static List<KitPage> loadFromPluginDir() {
+    public static List<Object> loadFromPluginDir() {
         return loadFromDir(Path.of(PLUGIN_DIR).toFile());
     }
 
@@ -81,9 +78,9 @@ public class PluginLoader {
      * If the plugin is already loaded, it will be hot-reloaded (old ClassLoader closed, new one created).
      *
      * @param jarFile the JAR file to deploy (must exist in PLUGIN_DIR)
-     * @return List of loaded KitPages, or empty list on failure
+     * @return List of loaded page instances, or empty list on failure
      */
-    public static List<KitPage> deployPlugin(File jarFile) {
+    public static List<Object> deployPlugin(File jarFile) {
         if (jarFile == null || !jarFile.exists() || !jarFile.getName().toLowerCase().endsWith(".jar")) {
             logger.warn("Invalid plugin file for deploy: {}", jarFile);
             return Collections.emptyList();
@@ -105,9 +102,9 @@ public class PluginLoader {
      * Unloads the old ClassLoader and loads the new version from disk.
      *
      * @param jarName the JAR file name (e.g., "MyPlugin-1.0.0.jar")
-     * @return List of reloaded KitPages, or empty list if JAR not found or reload fails
+     * @return List of reloaded pages, or empty list if JAR not found or reload fails
      */
-    public static List<KitPage> reloadPlugin(String jarName) {
+    public static List<Object> reloadPlugin(String jarName) {
         File jarFile = new File(PLUGIN_DIR, jarName);
         if (!jarFile.exists()) {
             logger.warn("Plugin JAR not found for reload: {}", jarName);
@@ -132,8 +129,8 @@ public class PluginLoader {
         return jars != null ? Arrays.asList(jars) : Collections.emptyList();
     }
 
-    public static List<KitPage> loadFromDir(File dir) {
-        List<KitPage> result = new ArrayList<>();
+    public static List<Object> loadFromDir(File dir) {
+        List<Object> result = new ArrayList<>();
 
         if (!dir.exists()) {
             if (dir.mkdirs()) {
@@ -154,28 +151,22 @@ public class PluginLoader {
             result.addAll(loadFromJar(jar));
         }
 
-        logger.info("Total plugin KitPage(s) loaded from {}: {}", dir.getAbsolutePath(), result.size());
+        logger.info("Total plugin pages loaded from {}: {}", dir.getAbsolutePath(), result.size());
         return result;
     }
 
-    public static List<KitPage> loadFromJar(File jarFile) {
-        List<KitPage> result = new ArrayList<>();
+    public static List<Object> loadFromJar(File jarFile) {
+        List<Object> result = new ArrayList<>();
 
         if (!jarFile.exists() || !jarFile.getName().endsWith(".jar")) {
             logger.warn("Invalid plugin file: {}", jarFile.getAbsolutePath());
             return result;
         }
 
+        ClassLoader appClassLoader = PluginLoader.class.getClassLoader();
+
         try {
             URL jarUrl = jarFile.toURI().toURL();
-
-            // Fix duplicate loading: use isolated ClassLoader
-            // Parent loader uses KitPage.class.getClassLoader() (i.e., main app's AppClassLoader),
-            // and overrides loadClass to prioritize loading plugin classes from the plugin JAR,
-            // without triggering parent chain's SPI scan.
-            // fan.summer.* interfaces/annotations/UI components are still delegated to parent loader
-            // to ensure consistent instanceof behavior.
-            ClassLoader appClassLoader = KitPage.class.getClassLoader();
             URLClassLoader pluginClassLoader = new IsolatedPluginClassLoader(
                     new URL[]{jarUrl}, appClassLoader
             );
@@ -183,35 +174,39 @@ public class PluginLoader {
             // Track the classloader so it can be closed on uninstall
             pluginClassLoaders.put(jarFile.getName(), pluginClassLoader);
 
-            // Wrap ServiceLoader iteration to handle plugin class loading errors gracefully
-            try {
-                ServiceLoader<KitPage> loader = ServiceLoader.load(KitPage.class, pluginClassLoader);
+            // First scan: discover classes with @SwissKitPage annotation
+            Set<String> pageClassNames = discoverPageClasses(jarFile);
 
-                for (KitPage page : loader) {
-                    // Fix duplicate loading: filter out built-in pages loaded by main ClassLoader
-                    if (page.getClass().getClassLoader() == appClassLoader) {
-                        logger.debug("Skipped built-in page (loaded by app classloader): {}", page.getClass().getName());
+            // Second pass: instantiate and validate pages
+            for (String className : pageClassNames) {
+                try {
+                    Class<?> clazz = pluginClassLoader.loadClass(className);
+
+                    // Skip if loaded by app classloader (shouldn't happen with isolation)
+                    if (clazz.getClassLoader() == appClassLoader) {
+                        logger.debug("Skipped built-in class: {}", className);
                         continue;
                     }
 
-                    fan.summer.annoattion.SwissKitPage annotation =
-                            page.getClass().getAnnotation(fan.summer.annoattion.SwissKitPage.class);
-
+                    SwissKitPage annotation = clazz.getAnnotation(SwissKitPage.class);
                     if (annotation == null) {
-                        logger.debug("Plugin page skipped (no @SwissKitPage): {}", page.getClass().getName());
-                        continue;
-                    }
-                    if (!annotation.visible()) {
-                        logger.debug("Plugin page skipped (invisible): {}", page.getClass().getName());
+                        logger.debug("Plugin page skipped (no @SwissKitPage): {}", className);
                         continue;
                     }
 
+                    if (!annotation.visible()) {
+                        logger.debug("Plugin page skipped (invisible): {}", className);
+                        continue;
+                    }
+
+                    // Instantiate the page
+                    Object page = clazz.getDeclaredConstructor().newInstance();
                     result.add(page);
-                    logger.info("Plugin KitPage loaded: [{}] from {}", annotation.menuName(), jarFile.getName());
+                    logger.info("Plugin page loaded: [{}] from {}", annotation.menuName(), jarFile.getName());
+
+                } catch (Exception e) {
+                    logger.error("Failed to load plugin page: {} - {}", className, e.getMessage());
                 }
-            } catch (Throwable t) {
-                // Catch both Error (e.g., OOM, StackOverflow) and Exception during page iteration
-                logger.error("Error during plugin page iteration for {}: {}", jarFile.getName(), t.getMessage());
             }
 
         } catch (Exception e) {
@@ -222,30 +217,42 @@ public class PluginLoader {
     }
 
     /**
+     * Scans a JAR file for classes that have @SwissKitPage annotation.
+     * Uses JarInputStream to avoid needing a ClassLoader for initial scan.
+     */
+    private static Set<String> discoverPageClasses(File jarFile) {
+        Set<String> pageClasses = new HashSet<>();
+        try (JarInputStream jar = new JarInputStream(jarFile.toURI().toURL().openStream())) {
+            JarEntry entry;
+            while ((entry = jar.getNextJarEntry()) != null) {
+                String name = entry.getName();
+                if (name.endsWith(".class")) {
+                    String className = name.replace('/', '.').substring(0, name.length() - 6);
+                    pageClasses.add(className);
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to scan JAR for classes: {}", jarFile.getName());
+        }
+        return pageClasses;
+    }
+
+    /**
      * Isolated plugin ClassLoader.
      *
      * <p>Loading strategy (break default parent delegation):</p>
      * <pre>
      * Class name starts with fan.summer.?
-     *   YES → delegate to parent (main app) ClassLoader   ← interfaces/annotations/UI components share same Class object
-     *   NO  → first search in plugin JAR itself          ← plugin implementation classes isolated, no parent chain SPI duplicate scan
+     *   YES → delegate to parent (main app) ClassLoader   ← annotations/UI components share same Class object
+     *   NO  → first search in plugin JAR itself          ← plugin implementation classes isolated
      *         if not found, then delegate to parent ClassLoader
      * </pre>
-     *
-     * <p>Why fan.summer.* are delegated to parent loader:</p>
-     * <ul>
-     *   <li>fan.summer.api.KitPage — interface must be same Class, otherwise instanceof fails</li>
-     *   <li>fan.summer.annoattion.* — annotation must be same Class, otherwise getAnnotation returns null</li>
-     *   <li>fan.summer.plugin.swisskit.hpl.ui.components.* — plugins can directly use main app's UI components (e.g., GradientProgressBar)</li>
-     * </ul>
      */
     private static class IsolatedPluginClassLoader extends URLClassLoader {
 
         private final ClassLoader appClassLoader;
 
         public IsolatedPluginClassLoader(URL[] urls, ClassLoader appClassLoader) {
-            // Parent loader set to null (bootstrap) for complete isolation,
-            // then manually delegate via appClassLoader
             super(urls, null);
             this.appClassLoader = appClassLoader;
         }
@@ -253,41 +260,36 @@ public class PluginLoader {
         @Override
         protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
             synchronized (getClassLoadingLock(name)) {
-                // 1. Already cached
                 Class<?> cached = findLoadedClass(name);
                 if (cached != null) {
                     if (resolve) resolveClass(cached);
                     return cached;
                 }
 
-                // 2. fan.summer.* → delegate to main app ClassLoader (interfaces/annotations/UI components shared)
+                // fan.summer.* → delegate to main app ClassLoader
                 if (name.startsWith("fan.summer.")) {
                     return appClassLoader.loadClass(name);
                 }
 
-                // 3. JDK core classes → delegate to app ClassLoader (supports Java 9+ modules like java.net.http)
+                // JDK core classes → delegate to app ClassLoader
                 if (name.startsWith("java.") || name.startsWith("javax.")
                         || name.startsWith("sun.") || name.startsWith("com.sun.")) {
                     return appClassLoader.loadClass(name);
                 }
 
-                // 4. All other classes (plugin's own dto/service/util and third-party libs like fastjson2):
-                //    Try appClassLoader first → then plugin JAR → then appClassLoader again as last resort.
-                //    This ensures classes in plugin JAR (dto.*, fastjson2 ASM-generated classes, etc.) are found
-                //    even when called via Class.forName(name, resolve, null) from third-party library internals.
+                // Try appClassLoader first
                 try {
                     return appClassLoader.loadClass(name);
                 } catch (ClassNotFoundException e) {
                     // Not in appClassLoader, try plugin JAR
                 }
 
-                // 5. Others (plugin's own classes, third-party libraries) → prioritize loading from plugin JAR
+                // Plugin's own classes and third-party libraries → load from plugin JAR
                 try {
                     Class<?> c = findClass(name);
                     if (resolve) resolveClass(c);
                     return c;
                 } catch (ClassNotFoundException e) {
-                    // 5. Not found in plugin JAR → then try main app ClassLoader
                     return appClassLoader.loadClass(name);
                 }
             }

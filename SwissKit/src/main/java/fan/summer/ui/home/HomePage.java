@@ -2,7 +2,6 @@ package fan.summer.ui.home;
 
 import com.formdev.flatlaf.FlatIntelliJLaf;
 import fan.summer.annoattion.SwissKitPage;
-import fan.summer.api.KitPage;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.scaner.SwissKitPageScaner;
 import fan.summer.ui.sidebar.SideMenuBar;
@@ -33,7 +32,7 @@ public class HomePage {
     private static HomePage instance;
 
     private SideMenuBar sideMenuBar;
-    private List<KitPage> pages;
+    private List<Object> pages;
 
     /**
      * Initializes and displays the main application window.
@@ -121,7 +120,7 @@ public class HomePage {
      *
      * @param newPluginPages KitPages from deployed/reloaded plugin (pass null for uninstall)
      */
-    public void refreshSidebar(List<KitPage> newPluginPages) {
+    public void refreshSidebar(List<Object> newPluginPages) {
         if (sideMenuBar == null) {
             return;
         }

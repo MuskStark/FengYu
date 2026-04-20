@@ -1,7 +1,6 @@
 package fan.summer.kitpage.welcome;
 
 import fan.summer.annoattion.SwissKitPage;
-import fan.summer.api.KitPage;
 import net.miginfocom.swing.MigLayout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,8 +18,8 @@ import java.net.URI;
  * @version 1.00
  * @date 2026/3/1
  */
-@SwissKitPage(order = 0)
-public class WelcomePage implements KitPage {
+@SwissKitPage(menuName = "🏠 Welcome", order = 0)
+public class WelcomePage {
     private static final Logger logger = LoggerFactory.getLogger(WelcomePage.class);
 
     /**
@@ -46,19 +45,8 @@ public class WelcomePage implements KitPage {
      *
      * @return the welcome JPanel
      */
-    @Override
     public JPanel getPanel() {
         return welcome;
-    }
-
-    /**
-     * Returns the menu display name for this page.
-     *
-     * @return menu name with emoji prefix
-     */
-    @Override
-    public String getMenuName() {
-        return "🏠 Welcome";
     }
 
     private void initComponents() {

@@ -1,6 +1,5 @@
 package fan.summer.ui.sidebar;
 
-import fan.summer.api.KitPage;
 import fan.summer.scaner.SwissKitPageScaner;
 import fan.summer.utils.UIUtils;
 
@@ -31,7 +30,7 @@ public class SideMenuBar extends JPanel {
      */
     private static final int DRAG_THRESHOLD = 8;
 
-    private List<KitPage> pages;
+    private List<Object> pages;
     private final List<JLabel> menuItems;
     private final JPanel contentPanel;
     private int selectedIndex = -1;
@@ -45,7 +44,7 @@ public class SideMenuBar extends JPanel {
     private Point dragStartPoint = null;
     private boolean isDragging = false;
 
-    public SideMenuBar(List<KitPage> pages, JPanel contentPanel) {
+    public SideMenuBar(List<Object> pages, JPanel contentPanel) {
         this.pages = pages;
         this.contentPanel = contentPanel;
         this.menuItems = new ArrayList<>();
@@ -104,8 +103,11 @@ public class SideMenuBar extends JPanel {
         menuContainer.repaint();
     }
 
-    private JLabel createMenuItem(KitPage page, int index) {
-        JLabel label = new JLabel(page.getMenuName(), page.getMenuIcon(), SwingConstants.CENTER);
+    private JLabel createMenuItem(Object page, int index) {
+        String menuName = SwissKitPageScaner.getMenuName(page);
+        String iconPath = SwissKitPageScaner.getMenuIconPath(page);
+        Icon menuIcon = iconPath != null && !iconPath.isEmpty() ? new ImageIcon(iconPath) : null;
+        JLabel label = new JLabel(menuName, menuIcon, SwingConstants.CENTER);
         label.setFont(new Font("SansSerif", Font.PLAIN, 13));
         label.setForeground(UIUtils.TEXT_COLOR);
         label.setBackground(UIUtils.LIGHT_GRAY);
@@ -116,7 +118,7 @@ public class SideMenuBar extends JPanel {
         label.setHorizontalAlignment(SwingConstants.CENTER);
         label.putClientProperty("pageIndex", index);
 
-        String tip = page.getMenuTooltip();
+        String tip = SwissKitPageScaner.getMenuTooltip(page);
         if (tip != null) label.setToolTipText(tip);
 
         return label;
@@ -269,10 +271,10 @@ public class SideMenuBar extends JPanel {
         toIndex = Math.max(0, Math.min(toIndex, pages.size()));
 
         // Remember which page was selected
-        KitPage selectedPage = (selectedIndex >= 0 && selectedIndex < pages.size())
+        Object selectedPage = (selectedIndex >= 0 && selectedIndex < pages.size())
                 ? pages.get(selectedIndex) : null;
 
-        KitPage moved = pages.remove(fromIndex);
+        Object moved = pages.remove(fromIndex);
         // Adjust insertion index after removal
         int insertAt = (toIndex > fromIndex) ? toIndex - 1 : toIndex;
         insertAt = Math.max(0, Math.min(insertAt, pages.size()));
@@ -310,7 +312,7 @@ public class SideMenuBar extends JPanel {
 
         if (contentPanel != null) {
             contentPanel.removeAll();
-            contentPanel.add(pages.get(index).getPanel(), BorderLayout.CENTER);
+            contentPanel.add(SwissKitPageScaner.getPanel(pages.get(index)), BorderLayout.CENTER);
             contentPanel.revalidate();
             contentPanel.repaint();
         }
@@ -324,7 +326,7 @@ public class SideMenuBar extends JPanel {
         titleLabel.setText(title);
     }
 
-    public void addPage(KitPage page) {
+    public void addPage(Object page) {
         pages.add(page);
         rebuildMenu();
         SwissKitPageScaner.saveMenuOrder(pages);
@@ -338,7 +340,7 @@ public class SideMenuBar extends JPanel {
         }
     }
 
-    public void setPages(List<KitPage> newPages) {
+    public void setPages(List<Object> newPages) {
         this.pages = newPages;
         rebuildMenu();
     }
