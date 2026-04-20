@@ -1,7 +1,6 @@
 package fan.summer.kitpage.excel;
 
 import fan.summer.annoattion.SwissKitPage;
-import fan.summer.api.KitPage;
 import fan.summer.kitpage.excel.worker.*;
 import fan.summer.ui.components.FixedWidthComboBox;
 import fan.summer.ui.components.GradientProgressBar;
@@ -27,7 +26,7 @@ import java.util.UUID;
  * @date 2026/2/26
  */
 @SwissKitPage(menuName = "Excel", menuTooltip = "Excel", order = 1)
-public class ExcelKitPage implements KitPage {
+public class ExcelKitPage {
     private static final Logger logger = LoggerFactory.getLogger(ExcelKitPage.class);
 
     private Path excelFilePath;
@@ -165,11 +164,10 @@ public class ExcelKitPage implements KitPage {
     }
 
     /**
-     * Get the main panel of this Excel tool page
+     * Returns the main panel of this Excel tool page
      *
      * @return the JPanel component containing all UI elements
      */
-    @Override
     public JPanel getPanel() {
         return excelKitPage;
     }

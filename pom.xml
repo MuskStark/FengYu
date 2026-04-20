@@ -6,7 +6,6 @@
 
     <groupId>fan.summer</groupId>
     <artifactId>SwissKit-parent</artifactId>
-    <version>1.2.2</version>
     <packaging>pom</packaging>
 
     <modules>

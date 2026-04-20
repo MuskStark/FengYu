@@ -62,17 +62,18 @@ jobs:
       - name: Assemble and compress Windows package
         shell: pwsh
         run: |
+          $v = "${{ env.VERSION }}"
           New-Item -ItemType Directory -Force -Path release\SwissKit | Out-Null
           Move-Item SwissKit\target\SwissKit.exe release\SwissKit\SwissKit.exe
           Copy-Item README.md release\SwissKit\
-          Compress-Archive -Path release\SwissKit -DestinationPath release\SwissKit-windows.zip -Force
-          Write-Host "Created: release\SwissKit-windows.zip"
+          Compress-Archive -Path release\SwissKit -DestinationPath "release/SwissKit-${v}-windows.zip" -Force
+          Write-Host "Created: release/SwissKit-${v}-windows.zip"
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: swisskit-windows
-          path: release/SwissKit-windows.zip
+          path: release/SwissKit-${{ env.VERSION }}-windows.zip
           retention-days: 30
 
   # -------------------------------------------------
@@ -151,14 +152,14 @@ jobs:
       - name: Compress Linux package
         run: |
           cd release
-          zip -r SwissKit-linux.zip SwissKit
-          echo "Created: release/SwissKit-linux.zip"
+          zip -r "SwissKit-${{ env.VERSION }}-linux.zip" SwissKit
+          echo "Created: release/SwissKit-${{ env.VERSION }}-linux.zip"
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
           name: swisskit-linux
-          path: release/SwissKit-linux.zip
+          path: release/SwissKit-${{ env.VERSION }}-linux.zip
           retention-days: 30
 
   # -------------------------------------------------
@@ -313,14 +314,14 @@ jobs:
           find release/SwissKit.app -type f | sort
           cd release
           # -y preserves symbolic links inside .app (required for a valid bundle)
-          zip -ry SwissKit-macos-apple-silicon.zip SwissKit.app
-          echo "Created: release/SwissKit-macos-apple-silicon.zip"
+          zip -ry "SwissKit-${{ env.VERSION }}-macos-apple-silicon.zip" SwissKit.app
+          echo "Created: release/SwissKit-${{ env.VERSION }}-macos-apple-silicon.zip"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: swisskit-macos
-          path: release/SwissKit-macos-apple-silicon.zip
+          path: release/SwissKit-${{ env.VERSION }}-macos-apple-silicon.zip
           retention-days: 30
 
   # -------------------------------------------------
@@ -394,9 +395,9 @@ jobs:
 
             | Platform | File | How to run |
             |---|---|---|
-            | Windows 10/11 (64-bit) | `SwissKit-windows.zip` | Extract then double-click `SwissKit.exe` |
-            | Linux x64 | `SwissKit-linux.zip` | Extract then run `./run.sh` |
-            | macOS Apple Silicon (M1/M2/M3) | `SwissKit-macos-apple-silicon.zip` | Extract then double-click `SwissKit.app` |
+            | Windows 10/11 (64-bit) | `SwissKit-${{ steps.get_version.outputs.version }}-windows.zip` | Extract then double-click `SwissKit.exe` |
+            | Linux x64 | `SwissKit-${{ steps.get_version.outputs.version }}-linux.zip` | Extract then run `./run.sh` |
+            | macOS Apple Silicon (M1/M2/M3) | `SwissKit-${{ steps.get_version.outputs.version }}-macos-apple-silicon.zip` | Extract then double-click `SwissKit.app` |
 
             ### What's New
             See the [CHANGELOG](https://github.com/MuskStark/SwissKitJ/blob/main/CHANGELOG.md) for details.

@@ -6,7 +6,7 @@
 
     <groupId>plugin.swisskitj</groupId>
     <artifactId>SwissKitJ-Plugin-Qcc</artifactId>
-    <version>1.0.0</version>
+    <version>2.0.0</version>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
@@ -24,13 +24,11 @@
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
-            <version>1.18.42</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.apache.fesod</groupId>
             <artifactId>fesod-sheet</artifactId>
-            <version>2.0.1-incubating</version>
             <scope>provided</scope>
         </dependency>
     </dependencies>

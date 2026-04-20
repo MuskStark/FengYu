@@ -2,7 +2,6 @@ package fan.summer.ui.home;
 
 import com.formdev.flatlaf.FlatIntelliJLaf;
 import fan.summer.annoattion.SwissKitPage;
-import fan.summer.api.KitPage;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.scaner.SwissKitPageScaner;
 import fan.summer.ui.sidebar.SideMenuBar;
@@ -15,7 +14,6 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.net.URL;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -34,7 +32,7 @@ public class HomePage {
     private static HomePage instance;
 
     private SideMenuBar sideMenuBar;
-    private List<KitPage> pages;
+    private List<Object> pages;
 
     /**
      * Initializes and displays the main application window.
@@ -122,7 +120,7 @@ public class HomePage {
      *
      * @param newPluginPages KitPages from deployed/reloaded plugin (pass null for uninstall)
      */
-    public void refreshSidebar(List<KitPage> newPluginPages) {
+    public void refreshSidebar(List<Object> newPluginPages) {
         if (sideMenuBar == null) {
             return;
         }
@@ -142,9 +140,7 @@ public class HomePage {
             pages.addAll(PluginLoader.loadFromPluginDir());
         }
 
-        pages.sort(Comparator.comparingInt(
-                p -> p.getClass().getAnnotation(SwissKitPage.class).order()
-        ));
+        SwissKitPageScaner.applySavedOrder(pages);
 
         sideMenuBar.setPages(pages);
     }

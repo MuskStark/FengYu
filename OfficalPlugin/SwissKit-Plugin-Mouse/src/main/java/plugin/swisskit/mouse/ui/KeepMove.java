@@ -5,7 +5,6 @@
 package plugin.swisskit.mouse.ui;
 
 import fan.summer.annoattion.SwissKitPage;
-import fan.summer.api.KitPage;
 import net.miginfocom.swing.MigLayout;
 
 import javax.swing.*;
@@ -19,7 +18,7 @@ import java.util.TimerTask;
  * @author summer
  */
 @SwissKitPage(menuName = "KeepMove", menuTooltip = "KeepMove", order = 9)
-public class KeepMove implements KitPage {
+public class KeepMove {
     // Robot instance for controlling mouse movement
     private Robot robot;
     // Timer for scheduling periodic mouse movement
@@ -89,7 +88,6 @@ public class KeepMove implements KitPage {
         return System.currentTimeMillis() - lastHumanInputTime >= 20_000;
     }
 
-    @Override
     public JPanel getPanel() {
         return mouse;
     }

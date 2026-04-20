@@ -35,12 +35,14 @@ public abstract class AppInfo {
             if (classPath.startsWith("jar:")) {
                 String manifestPath = classPath.substring(0, classPath.lastIndexOf("!") + 1)
                         + "/META-INF/MANIFEST.MF";
-                Manifest manifest = new Manifest(new URL(manifestPath).openStream());
-                Attributes attrs = manifest.getMainAttributes();
-                String version = attrs.getValue("Implementation-Version");
-                if (version != null && !version.isBlank()) {
-                    logger.debug("Version from MANIFEST: {}", version);
-                    return version;
+                try (InputStream is = new URL(manifestPath).openStream()) {
+                    Manifest manifest = new Manifest(is);
+                    Attributes attrs = manifest.getMainAttributes();
+                    String version = attrs.getValue("Implementation-Version");
+                    if (version != null && !version.isBlank()) {
+                        logger.debug("Version from MANIFEST: {}", version);
+                        return version;
+                    }
                 }
             }
         } catch (Exception e) {

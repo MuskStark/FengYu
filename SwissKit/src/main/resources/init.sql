@@ -65,4 +65,12 @@ CREATE TABLE IF NOT EXISTS email_sent_log
     is_success  INTEGER     NOT NULL DEFAULT 0
 );
 
+-- Menu Order Table (for drag-and-drop reordering)
+CREATE TABLE IF NOT EXISTS menu_order
+(
+    id         INTEGER PRIMARY KEY AUTO_INCREMENT,
+    page_class VARCHAR(500) NOT NULL UNIQUE,
+    menu_order INTEGER NOT NULL
+);
+
 

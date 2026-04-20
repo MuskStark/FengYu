@@ -1,7 +1,6 @@
 package fan.summer.kitpage.email;
 
 import fan.summer.annoattion.SwissKitPage;
-import fan.summer.api.KitPage;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.email.EmailMassSentConfigEntity;
 import fan.summer.database.entity.email.EmailSentLogEntity;
@@ -37,7 +36,7 @@ import java.util.UUID;
  * @date 2026/2/26
  */
 @SwissKitPage(menuName = "Email", menuTooltip = "Email", order = 2)
-public class EmailKitPage implements KitPage {
+public class EmailKitPage {
     private static final Logger log = LoggerFactory.getLogger(EmailKitPage.class);
     private String taskId;
 
@@ -54,7 +53,6 @@ public class EmailKitPage implements KitPage {
      *
      * @return the email JPanel
      */
-    @Override
     public JPanel getPanel() {
         return emailPanel;
     }

@@ -6,7 +6,6 @@ package plugin.swisskit.hpl.ui;
 
 
 import fan.summer.annoattion.SwissKitPage;
-import fan.summer.api.KitPage;
 import fan.summer.ui.components.GradientProgressBar;
 import net.miginfocom.swing.MigLayout;
 import org.slf4j.Logger;
@@ -32,7 +31,7 @@ import java.nio.file.StandardCopyOption;
  * @author summer
  */
 @SwissKitPage(menuName = "HappyLearn", menuTooltip = "HappyLearn", order = 6)
-public class HappyLearning implements KitPage {
+public class HappyLearning {
 
     private static final Logger log = LoggerFactory.getLogger(HappyLearning.class);
 
@@ -79,7 +78,6 @@ public class HappyLearning implements KitPage {
      *
      * @return the learning panel
      */
-    @Override
     public JPanel getPanel() {
         return learningPanel;
     }
