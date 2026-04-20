@@ -47,18 +47,11 @@ jobs:
           echo "VERSION=$VERSION" >> "$env:GITHUB_ENV"
           echo "Resolved build version: ${VERSION}"
 
-      - name: Set version in parent POM
-        shell: pwsh
-        run: |
-          $v = "${{ env.VERSION }}"
-          (Get-Content pom.xml) -replace 'PLACEHOLDER_VERSION', $v | Set-Content pom.xml
-          echo "Parent POM version set to: $v"
-
       - name: Install SwissKitJ-Api to local repository
         shell: pwsh
         run: |
           $v = "${{ env.VERSION }}"
-          mvn install -f SwissKitJ-Api/pom.xml -DskipTests "-Dproject.version=$v"
+          mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 
       - name: Build with Maven
         shell: pwsh
@@ -109,13 +102,8 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "Resolved build version: ${VERSION}"
 
-      - name: Set version in parent POM
-        run: |
-          sed -i 's/PLACEHOLDER_VERSION/'"${{ env.VERSION }}"'/g' pom.xml
-          echo "Parent POM version set to: ${{ env.VERSION }}"
-
       - name: Install SwissKitJ-Api to local repository
-        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests -Dproject.version=${{ env.VERSION }}
+        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 
       - name: Build with Maven
         run: mvn clean package -DskipTests -Dproject.version=${{ env.VERSION }} -pl SwissKit -am
@@ -219,13 +207,8 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "Resolved build version: ${VERSION}"
 
-      - name: Set version in parent POM
-        run: |
-          sed -i 's/PLACEHOLDER_VERSION/'"${{ env.VERSION }}"'/g' pom.xml
-          echo "Parent POM version set to: ${{ env.VERSION }}"
-
       - name: Install SwissKitJ-Api to local repository
-        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests -Dproject.version=${{ env.VERSION }}
+        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 
       - name: Build with Maven
         run: mvn clean package -DskipTests -Dproject.version=${{ env.VERSION }} -pl SwissKit -am
