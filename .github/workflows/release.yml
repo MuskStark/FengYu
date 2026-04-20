@@ -19,13 +19,49 @@ permissions:
 
 jobs:
   # -------------------------------------------------
+  # Resolve version strings once; all build jobs use
+  # these outputs so there is a single source of truth.
+  #
+  # RAW_TAG  : original tag, e.g. v2.1.0-beta.1
+  # VERSION  : semver digits only, e.g. 2.1.0   (used as Maven project.version)
+  # FULL_TAG : tag without leading 'v', e.g. 2.1.0-beta.1 (used for pre-release detection)
+  # -------------------------------------------------
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      version:    ${{ steps.resolve.outputs.version }}
+      full_tag:   ${{ steps.resolve.outputs.full_tag }}
+      raw_tag:    ${{ steps.resolve.outputs.raw_tag }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+    steps:
+      - name: Resolve version strings
+        id: resolve
+        run: |
+          RAW="${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }}"
+          FULL_TAG="${RAW#v}"
+          VERSION=$(echo "$FULL_TAG" | sed 's/-.*//')
+          if [[ "$FULL_TAG" == *"-alpha."* || "$FULL_TAG" == *"-beta."* || "$FULL_TAG" == *"-rc."* ]]; then
+            PRERELEASE=true
+          else
+            PRERELEASE=false
+          fi
+          echo "raw_tag=${RAW}"         >> "$GITHUB_OUTPUT"
+          echo "full_tag=${FULL_TAG}"   >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}"     >> "$GITHUB_OUTPUT"
+          echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
+          echo "RAW_TAG=${RAW}  FULL_TAG=${FULL_TAG}  VERSION=${VERSION}  PRERELEASE=${PRERELEASE}"
+
+  # -------------------------------------------------
   # Windows - Launch4j wraps JAR into a GUI .exe
   # headerType=gui compiles as /SUBSYSTEM:WINDOWS so
   # no console window appears on launch.
   # Requires Java 11+ installed on the end user's machine.
   # -------------------------------------------------
   build-windows:
+    needs: setup
     runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.setup.outputs.version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -39,41 +75,31 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Derive version from tag
-        shell: pwsh
-        run: |
-          $RAW = "${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }}"
-          $VERSION = ($RAW -replace '^v', '' -replace '-.*', '')
-          echo "VERSION=$VERSION" >> "$env:GITHUB_ENV"
-          echo "Resolved build version: ${VERSION}"
-
+      # FIX: pass -Dproject.version to install so the artifact version in the
+      # local repo matches the version used by the subsequent package step.
       - name: Install SwissKitJ-Api to local repository
         shell: pwsh
-        run: |
-          $v = "${{ env.VERSION }}"
-          mvn install -f SwissKitJ-Api/pom.xml -DskipTests
+        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests "-Dproject.version=$env:VERSION"
 
       - name: Build with Maven
         shell: pwsh
-        run: |
-          $v = "${{ env.VERSION }}"
-          mvn clean package -DskipTests "-Dproject.version=$v" -pl SwissKit -am
+        run: mvn clean package -DskipTests "-Dproject.version=$env:VERSION" -pl SwissKit -am
 
       - name: Assemble and compress Windows package
         shell: pwsh
         run: |
-          $v = "${{ env.VERSION }}"
           New-Item -ItemType Directory -Force -Path release\SwissKit | Out-Null
+          # FIX: launch4j outfile is target/SwissKit.exe (hardcoded in pom); reference that exact name.
           Move-Item SwissKit\target\SwissKit.exe release\SwissKit\SwissKit.exe
           Copy-Item README.md release\SwissKit\
-          Compress-Archive -Path release\SwissKit -DestinationPath "release/SwissKit-${v}-windows.zip" -Force
-          Write-Host "Created: release/SwissKit-${v}-windows.zip"
+          Compress-Archive -Path release\SwissKit -DestinationPath "release\SwissKit-${env:VERSION}-windows.zip" -Force
+          Write-Host "Created: release/SwissKit-${env:VERSION}-windows.zip"
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: swisskit-windows
-          path: release/SwissKit-${{ env.VERSION }}-windows.zip
+          path: release/SwissKit-${{ needs.setup.outputs.version }}-windows.zip
           retention-days: 30
 
   # -------------------------------------------------
@@ -81,7 +107,10 @@ jobs:
   # No bundled JRE; requires Java 11+ on the target machine.
   # -------------------------------------------------
   build-linux:
+    needs: setup
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.setup.outputs.version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -95,18 +124,12 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Derive version from tag
-        run: |
-          RAW="${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }}"
-          VERSION=$(echo "$RAW" | sed 's/^v//' | sed 's/-.*//')
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "Resolved build version: ${VERSION}"
-
+      # FIX: pass -Dproject.version so install and package use the same version.
       - name: Install SwissKitJ-Api to local repository
-        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests
+        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests -Dproject.version=$VERSION
 
       - name: Build with Maven
-        run: mvn clean package -DskipTests -Dproject.version=${{ env.VERSION }} -pl SwissKit -am
+        run: mvn clean package -DskipTests -Dproject.version=$VERSION -pl SwissKit -am
 
       - name: Assemble Linux package
         run: |
@@ -152,14 +175,14 @@ jobs:
       - name: Compress Linux package
         run: |
           cd release
-          zip -r "SwissKit-${{ env.VERSION }}-linux.zip" SwissKit
-          echo "Created: release/SwissKit-${{ env.VERSION }}-linux.zip"
+          zip -r "SwissKit-${VERSION}-linux.zip" SwissKit
+          echo "Created: release/SwissKit-${VERSION}-linux.zip"
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
           name: swisskit-linux
-          path: release/SwissKit-${{ env.VERSION }}-linux.zip
+          path: release/SwissKit-${{ needs.setup.outputs.version }}-linux.zip
           retention-days: 30
 
   # -------------------------------------------------
@@ -186,7 +209,13 @@ jobs:
   #   If none found, shows a native alert dialog then exits.
   # -------------------------------------------------
   build-macos:
-    runs-on: macos-latest
+    needs: setup
+    # FIX: macos-14 is the first runner image with Apple Silicon (M1).
+    # macos-latest resolves to macos-13 (x86_64) which contradicts the
+    # 'apple-silicon' label in the artifact name.
+    runs-on: macos-14
+    env:
+      VERSION: ${{ needs.setup.outputs.version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -200,27 +229,12 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Derive version from tag
-        run: |
-          RAW="${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }}"
-          VERSION=$(echo "$RAW" | sed 's/^v//' | sed 's/-.*//')
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "Resolved build version: ${VERSION}"
-
+      # FIX: pass -Dproject.version so install and package use the same version.
       - name: Install SwissKitJ-Api to local repository
-        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests
+        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests -Dproject.version=$VERSION
 
       - name: Build with Maven
-        run: mvn clean package -DskipTests -Dproject.version=${{ env.VERSION }} -pl SwissKit -am
-
-      # Derive a clean semver string (e.g. "1.2.3") from the git tag.
-      - name: Resolve version for Info.plist
-        id: app_version
-        run: |
-          RAW="${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }}"
-          VERSION=$(echo "$RAW" | sed 's/^v//' | sed 's/-.*//')
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Resolved app version: ${VERSION}"
+        run: mvn clean package -DskipTests -Dproject.version=$VERSION -pl SwissKit -am
 
       - name: Create .app bundle skeleton
         run: |
@@ -272,7 +286,7 @@ jobs:
       # shell runs, so ${{ }} and shell variables do not conflict.
       - name: Write Info.plist
         run: |
-          APP_VERSION="${{ steps.app_version.outputs.version }}"
+          APP_VERSION="${VERSION}"
           INFO="release/SwissKit.app/Contents/Info.plist"
           printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>'                                 > "$INFO"
           printf '%s\n' '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"'                  >> "$INFO"
@@ -302,7 +316,7 @@ jobs:
           printf '%s\n' '  <key>LSUIElement</key>'                                               >> "$INFO"
           printf '%s\n' '  <false/>'                                                             >> "$INFO"
           printf '%s\n' '  <key>CFBundleIconFile</key>'                                          >> "$INFO"
-          printf '%s\n' '  <string>SwissKit.icns</string>'                                        >> "$INFO"
+          printf '%s\n' '  <string>SwissKit.icns</string>'                                       >> "$INFO"
           printf '%s\n' '</dict>'                                                                 >> "$INFO"
           printf '%s\n' '</plist>'                                                                >> "$INFO"
           echo "--- Info.plist ---"
@@ -314,14 +328,14 @@ jobs:
           find release/SwissKit.app -type f | sort
           cd release
           # -y preserves symbolic links inside .app (required for a valid bundle)
-          zip -ry "SwissKit-${{ env.VERSION }}-macos-apple-silicon.zip" SwissKit.app
-          echo "Created: release/SwissKit-${{ env.VERSION }}-macos-apple-silicon.zip"
+          zip -ry "SwissKit-${VERSION}-macos-apple-silicon.zip" SwissKit.app
+          echo "Created: release/SwissKit-${VERSION}-macos-apple-silicon.zip"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: swisskit-macos
-          path: release/SwissKit-${{ env.VERSION }}-macos-apple-silicon.zip
+          path: release/SwissKit-${{ needs.setup.outputs.version }}-macos-apple-silicon.zip
           retention-days: 30
 
   # -------------------------------------------------
@@ -329,8 +343,13 @@ jobs:
   # Runs only after all three platform builds succeed.
   # -------------------------------------------------
   create-release:
-    needs: [ build-windows, build-linux, build-macos ]
+    needs: [ setup, build-windows, build-linux, build-macos ]
     runs-on: ubuntu-latest
+    env:
+      VERSION:    ${{ needs.setup.outputs.version }}
+      FULL_TAG:   ${{ needs.setup.outputs.full_tag }}
+      RAW_TAG:    ${{ needs.setup.outputs.raw_tag }}
+      PRERELEASE: ${{ needs.setup.outputs.prerelease }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -344,25 +363,17 @@ jobs:
       - name: List downloaded artifacts
         run: ls -lh artifacts/
 
-      - name: Resolve version string
-        id: get_version
-        run: |
-          VERSION="${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }}"
-          VERSION="${VERSION#v}"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-
-      - name: Determine pre-release status
+      # FIX: pre-release label and warning are derived from FULL_TAG (which
+      # retains the -beta.1 / -rc.1 suffix), not from VERSION (digits only).
+      - name: Determine pre-release label and warning
         id: prerelease
         run: |
-          VERSION="${{ steps.get_version.outputs.version }}"
-          if [[ "$VERSION" == *"-alpha."* || "$VERSION" == *"-beta."* || "$VERSION" == *"-rc."* ]]; then
-            echo "is_prerelease=true"   >> "$GITHUB_OUTPUT"
+          if [[ "$PRERELEASE" == "true" ]]; then
             echo "label= (Pre-release)" >> "$GITHUB_OUTPUT"
             echo "warning=> ⚠️ This is a pre-release version. Use with caution and please report any bugs!" >> "$GITHUB_OUTPUT"
           else
-            echo "is_prerelease=false"  >> "$GITHUB_OUTPUT"
-            echo "label="               >> "$GITHUB_OUTPUT"
-            echo "warning="             >> "$GITHUB_OUTPUT"
+            echo "label="    >> "$GITHUB_OUTPUT"
+            echo "warning="  >> "$GITHUB_OUTPUT"
           fi
 
       - name: Generate SHA-256 checksums
@@ -374,10 +385,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }}
-          name: SwissKit ${{ steps.get_version.outputs.version }}${{ steps.prerelease.outputs.label }}
+          tag_name: ${{ env.RAW_TAG }}
+          name: SwissKit ${{ env.FULL_TAG }}${{ steps.prerelease.outputs.label }}
           body: |
-            ## SwissKit ${{ steps.get_version.outputs.version }}${{ steps.prerelease.outputs.label }}
+            ## SwissKit ${{ env.FULL_TAG }}${{ steps.prerelease.outputs.label }}
 
             ${{ steps.prerelease.outputs.warning }}
 
@@ -395,9 +406,9 @@ jobs:
 
             | Platform | File | How to run |
             |---|---|---|
-            | Windows 10/11 (64-bit) | `SwissKit-${{ steps.get_version.outputs.version }}-windows.zip` | Extract then double-click `SwissKit.exe` |
-            | Linux x64 | `SwissKit-${{ steps.get_version.outputs.version }}-linux.zip` | Extract then run `./run.sh` |
-            | macOS Apple Silicon (M1/M2/M3) | `SwissKit-${{ steps.get_version.outputs.version }}-macos-apple-silicon.zip` | Extract then double-click `SwissKit.app` |
+            | Windows 10/11 (64-bit) | `SwissKit-${{ env.VERSION }}-windows.zip` | Extract then double-click `SwissKit.exe` |
+            | Linux x64 | `SwissKit-${{ env.VERSION }}-linux.zip` | Extract then run `./run.sh` |
+            | macOS Apple Silicon (M1/M2/M3) | `SwissKit-${{ env.VERSION }}-macos-apple-silicon.zip` | Extract then double-click `SwissKit.app` |
 
             ### What's New
             See the [CHANGELOG](https://github.com/MuskStark/SwissKitJ/blob/main/CHANGELOG.md) for details.
@@ -409,7 +420,7 @@ jobs:
             artifacts/*.zip
             artifacts/checksums.txt
           draft: false
-          prerelease: ${{ steps.prerelease.outputs.is_prerelease == 'true' }}
+          prerelease: ${{ needs.setup.outputs.prerelease == 'true' }}
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
