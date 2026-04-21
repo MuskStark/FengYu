@@ -5,7 +5,8 @@ import javax.swing.table.DefaultTableModel;
 import java.util.List;
 
 /**
- * 类的详细说明
+ * Utility class for JTable initialization and configuration.
+ * Provides methods to create tables with editable cells control.
  *
  * @author summer
  * @version 1.00

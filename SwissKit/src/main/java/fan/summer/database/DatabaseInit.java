@@ -105,7 +105,7 @@ public class DatabaseInit {
                 throw new RuntimeException("Cannot find mybatis-config.xml");
             }
 
-            // 通过 Properties 将动态 URL 注入 mybatis-config.xml 的 ${db.url} 占位符
+            // Inject dynamic URL into mybatis-config.xml ${db.url} placeholder via Properties
             Properties props = new Properties();
             props.setProperty("db.url", DB_URL);
 
