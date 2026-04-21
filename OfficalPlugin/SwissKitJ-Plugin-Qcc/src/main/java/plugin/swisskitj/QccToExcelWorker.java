@@ -3,7 +3,8 @@ package plugin.swisskitj;
 import javax.swing.*;
 
 /**
- * 类的详细说明
+ * SwingWorker for converting Qichacha CSV data to Excel format.
+ * Processes the CSV file and generates an Excel workbook with styled output.
  *
  * @author summer
  * @version 1.00
