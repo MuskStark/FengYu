@@ -1,6 +1,8 @@
 package fan.summer.plugin;
 
 import fan.summer.annoattion.SwissKitPage;
+import fan.summer.plugin.dto.DeployResult;
+import fan.summer.plugin.dto.PluginMetadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,6 +15,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
+import java.util.stream.Collectors;
 
 /**
  * Dynamic plugin loader.
@@ -39,13 +42,147 @@ public class PluginLoader {
             .replace("\\", "/");
 
     /**
-     * Tracks plugin JAR file path → its ClassLoader.
-     * Used to release file handles when uninstalling plugins.
+     * Tracks plugin state including ClassLoader, enabled status, and metadata.
      */
-    private static final ConcurrentHashMap<String, URLClassLoader> pluginClassLoaders = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, PluginState> pluginStates = new ConcurrentHashMap<>();
+
+    /**
+     * Holds plugin state including ClassLoader, enabled status, and metadata.
+     */
+    public static class PluginState {
+        private final URLClassLoader classLoader;
+        private boolean isEnabled;
+        private final String pluginName;
+        private final String pluginVersion;
+
+        PluginState(URLClassLoader classLoader, String pluginName, String pluginVersion) {
+            this.classLoader = classLoader;
+            this.isEnabled = true;
+            this.pluginName = pluginName;
+            this.pluginVersion = pluginVersion;
+        }
+
+        public URLClassLoader getClassLoader() {
+            return classLoader;
+        }
+
+        public boolean isEnabled() {
+            return isEnabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.isEnabled = enabled;
+        }
+
+        public String getPluginName() {
+            return pluginName;
+        }
+
+        public String getPluginVersion() {
+            return pluginVersion;
+        }
+    }
 
     public static List<Object> loadFromPluginDir() {
         return loadFromDir(Path.of(PLUGIN_DIR).toFile());
+    }
+
+    /**
+     * Disables a plugin without unloading its ClassLoader.
+     * The plugin pages will be hidden from the sidebar but remain loaded in memory.
+     *
+     * @param jarName the JAR file name
+     * @return true if plugin was found and disabled
+     */
+    public static boolean disablePlugin(String jarName) {
+        PluginState state = pluginStates.get(jarName);
+        if (state != null) {
+            state.setEnabled(false);
+            logger.info("Plugin disabled (not unloaded): {}", jarName);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Re-enables a previously disabled plugin.
+     *
+     * @param jarName the JAR file name
+     * @return true if plugin was found and enabled
+     */
+    public static boolean enablePlugin(String jarName) {
+        PluginState state = pluginStates.get(jarName);
+        if (state != null) {
+            state.setEnabled(true);
+            logger.info("Plugin enabled: {}", jarName);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Returns whether a plugin is currently enabled.
+     *
+     * @param jarName the JAR file name
+     * @return true if enabled or not found (assumes enabled by default)
+     */
+    public static boolean isPluginEnabled(String jarName) {
+        PluginState state = pluginStates.get(jarName);
+        return state == null || state.isEnabled();
+    }
+
+    /**
+     * Returns list of all registered plugin JAR names (regardless of enabled state).
+     */
+    public static List<String> getRegisteredPlugins() {
+        return new ArrayList<>(pluginStates.keySet());
+    }
+
+    /**
+     * Returns list of enabled plugin JAR names.
+     */
+    public static List<String> getEnabledPlugins() {
+        return pluginStates.entrySet().stream()
+                .filter(e -> e.getValue().isEnabled())
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Gets plugin state by JAR name.
+     *
+     * @param jarName the JAR file name
+     * @return PluginState or null if not found
+     */
+    public static PluginState getPluginState(String jarName) {
+        return pluginStates.get(jarName);
+    }
+
+    /**
+     * Checks if a page from an external plugin is enabled.
+     * Pages from built-in classes (loaded by app classloader) are always considered enabled.
+     *
+     * @param page the page instance
+     * @return true if enabled or not an external plugin page
+     */
+    public static boolean isPageEnabled(Object page) {
+        ClassLoader pageClassLoader = page.getClass().getClassLoader();
+        ClassLoader appClassLoader = PluginLoader.class.getClassLoader();
+
+        // Built-in pages are always enabled
+        if (pageClassLoader == appClassLoader) {
+            return true;
+        }
+
+        // Find the plugin state for this page's classloader
+        for (PluginState state : pluginStates.values()) {
+            if (state.getClassLoader() == pageClassLoader) {
+                return state.isEnabled();
+            }
+        }
+
+        // Unknown classloader, assume enabled
+        return true;
     }
 
     /**
@@ -56,12 +193,11 @@ public class PluginLoader {
      * @return true if the ClassLoader was found and closed, false otherwise
      */
     public static boolean unloadPlugin(String jarName) {
-        URLClassLoader classLoader = pluginClassLoaders.remove(jarName);
-        if (classLoader != null) {
+        PluginState state = pluginStates.remove(jarName);
+        if (state != null) {
             try {
-                classLoader.close();
+                state.getClassLoader().close();
                 logger.info("Closed ClassLoader for plugin: {}", jarName);
-                // Force GC to release JAR file handles - critical for Windows file deletion
                 System.gc();
                 return true;
             } catch (IOException e) {
@@ -71,30 +207,6 @@ public class PluginLoader {
         }
         logger.debug("No ClassLoader found for plugin: {}", jarName);
         return false;
-    }
-
-    /**
-     * Deploys (loads) a plugin JAR that has already been copied to PLUGIN_DIR.
-     * If the plugin is already loaded, it will be hot-reloaded (old ClassLoader closed, new one created).
-     *
-     * @param jarFile the JAR file to deploy (must exist in PLUGIN_DIR)
-     * @return List of loaded page instances, or empty list on failure
-     */
-    public static List<Object> deployPlugin(File jarFile) {
-        if (jarFile == null || !jarFile.exists() || !jarFile.getName().toLowerCase().endsWith(".jar")) {
-            logger.warn("Invalid plugin file for deploy: {}", jarFile);
-            return Collections.emptyList();
-        }
-
-        String jarName = jarFile.getName();
-
-        // If already loaded, unload first for hot-reload
-        if (pluginClassLoaders.containsKey(jarName)) {
-            logger.info("Plugin {} already loaded, hot-reloading...", jarName);
-            unloadPlugin(jarName);
-        }
-
-        return loadFromJar(jarFile);
     }
 
     /**
@@ -165,14 +277,26 @@ public class PluginLoader {
 
         ClassLoader appClassLoader = PluginLoader.class.getClassLoader();
 
+        // Extract plugin metadata from JAR
+        String pluginName = null;
+        String pluginVersion = null;
+        try {
+            fan.summer.plugin.dto.PluginMetadata metadata = extractMetadata(jarFile);
+            pluginName = metadata.getPluginName();
+            pluginVersion = metadata.getPluginVersion();
+        } catch (Exception e) {
+            logger.warn("Could not extract plugin metadata from {}: {}", jarFile.getName(), e.getMessage());
+        }
+
         try {
             URL jarUrl = jarFile.toURI().toURL();
-            URLClassLoader pluginClassLoader = new IsolatedPluginClassLoader(
+            IsolatedPluginClassLoader pluginClassLoader = new IsolatedPluginClassLoader(
                     new URL[]{jarUrl}, appClassLoader
             );
 
-            // Track the classloader so it can be closed on uninstall
-            pluginClassLoaders.put(jarFile.getName(), pluginClassLoader);
+            // Track the classloader with plugin state
+            PluginState state = new PluginState(pluginClassLoader, pluginName, pluginVersion);
+            pluginStates.put(jarFile.getName(), state);
 
             // First scan: discover classes with @SwissKitPage annotation
             Set<String> pageClassNames = discoverPageClasses(jarFile);
@@ -217,6 +341,84 @@ public class PluginLoader {
     }
 
     /**
+     * Extracts plugin metadata from a JAR file by loading the class with @SwissKitPage annotation.
+     */
+    private static fan.summer.plugin.dto.PluginMetadata extractMetadata(File jarFile) {
+        fan.summer.plugin.dto.PluginMetadata metadata = new fan.summer.plugin.dto.PluginMetadata();
+        metadata.setPluginName(jarFile.getName().replace(".jar", ""));
+
+        try {
+            URL jarUrl = jarFile.toURI().toURL();
+            ClassLoader appClassLoader = PluginLoader.class.getClassLoader();
+            URLClassLoader tempClassLoader = new IsolatedPluginClassLoader(
+                    new URL[]{jarUrl}, appClassLoader
+            );
+
+            Set<String> pageClasses = discoverPageClasses(jarFile);
+            for (String className : pageClasses) {
+                try {
+                    Class<?> clazz = tempClassLoader.loadClass(className);
+                    SwissKitPage annotation = clazz.getAnnotation(SwissKitPage.class);
+                    if (annotation != null) {
+                        metadata.setPluginName(annotation.pluginName());
+                        metadata.setPluginVersion(annotation.pluginVersion());
+                        metadata.setMenuName(annotation.menuName());
+                        metadata.setMenuTooltip(annotation.menuTooltip());
+                        metadata.setIconPath(annotation.iconPath());
+                        metadata.setVisible(annotation.visible());
+                        metadata.setOrder(annotation.order());
+                        metadata.setJarName(jarFile.getName());
+                        break;
+                    }
+                } catch (Exception e) {
+                    // Continue trying other classes
+                }
+            }
+            tempClassLoader.close();
+        } catch (Exception e) {
+            logger.warn("Failed to extract metadata from JAR: {}", jarFile.getName());
+        }
+        return metadata;
+    }
+
+    /**
+     * Deploys a plugin JAR and returns both pages and metadata.
+     *
+     * @param jarFile the JAR file to deploy
+     * @return DeployResult containing pages and metadata
+     */
+    public static DeployResult deployPluginWithMetadata(File jarFile) {
+        if (jarFile == null || !jarFile.exists() || !jarFile.getName().toLowerCase().endsWith(".jar")) {
+            logger.warn("Invalid plugin file for deploy: {}", jarFile);
+            return new DeployResult(Collections.emptyList(), new fan.summer.plugin.dto.PluginMetadata());
+        }
+
+        String jarName = jarFile.getName();
+
+        // If already loaded, unload first for hot-reload
+        if (pluginStates.containsKey(jarName)) {
+            logger.info("Plugin {} already loaded, hot-reloading...", jarName);
+            unloadPlugin(jarName);
+        }
+
+        List<Object> pages = loadFromJar(jarFile);
+        fan.summer.plugin.dto.PluginMetadata metadata = extractMetadata(jarFile);
+
+        return new DeployResult(pages, metadata);
+    }
+
+    /**
+     * Deploys (loads) a plugin JAR that has already been copied to PLUGIN_DIR.
+     * If the plugin is already loaded, it will be hot-reloaded (old ClassLoader closed, new one created).
+     *
+     * @param jarFile the JAR file to deploy (must exist in PLUGIN_DIR)
+     * @return List of loaded page instances, or empty list on failure
+     */
+    public static List<Object> deployPlugin(File jarFile) {
+        return deployPluginWithMetadata(jarFile).getPages();
+    }
+
+    /**
      * Scans a JAR file for classes that have @SwissKitPage annotation.
      * Uses JarInputStream to avoid needing a ClassLoader for initial scan.
      */
@@ -235,64 +437,5 @@ public class PluginLoader {
             logger.warn("Failed to scan JAR for classes: {}", jarFile.getName());
         }
         return pageClasses;
-    }
-
-    /**
-     * Isolated plugin ClassLoader.
-     *
-     * <p>Loading strategy (break default parent delegation):</p>
-     * <pre>
-     * Class name starts with fan.summer.?
-     *   YES → delegate to parent (main app) ClassLoader   ← annotations/UI components share same Class object
-     *   NO  → first search in plugin JAR itself          ← plugin implementation classes isolated
-     *         if not found, then delegate to parent ClassLoader
-     * </pre>
-     */
-    private static class IsolatedPluginClassLoader extends URLClassLoader {
-
-        private final ClassLoader appClassLoader;
-
-        public IsolatedPluginClassLoader(URL[] urls, ClassLoader appClassLoader) {
-            super(urls, null);
-            this.appClassLoader = appClassLoader;
-        }
-
-        @Override
-        protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
-            synchronized (getClassLoadingLock(name)) {
-                Class<?> cached = findLoadedClass(name);
-                if (cached != null) {
-                    if (resolve) resolveClass(cached);
-                    return cached;
-                }
-
-                // fan.summer.* → delegate to main app ClassLoader
-                if (name.startsWith("fan.summer.")) {
-                    return appClassLoader.loadClass(name);
-                }
-
-                // JDK core classes → delegate to app ClassLoader
-                if (name.startsWith("java.") || name.startsWith("javax.")
-                        || name.startsWith("sun.") || name.startsWith("com.sun.")) {
-                    return appClassLoader.loadClass(name);
-                }
-
-                // Try appClassLoader first
-                try {
-                    return appClassLoader.loadClass(name);
-                } catch (ClassNotFoundException e) {
-                    // Not in appClassLoader, try plugin JAR
-                }
-
-                // Plugin's own classes and third-party libraries → load from plugin JAR
-                try {
-                    Class<?> c = findClass(name);
-                    if (resolve) resolveClass(c);
-                    return c;
-                } catch (ClassNotFoundException e) {
-                    return appClassLoader.loadClass(name);
-                }
-            }
-        }
     }
 }

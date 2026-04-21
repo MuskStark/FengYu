@@ -33,6 +33,7 @@
         <mapper resource="mapper/email/EmailMassSentConfigMapper.xml"/>
         <mapper resource="mapper/email/EmailSentLogMapper.xml"/>
         <mapper resource="mapper/MenuOrderMapper.xml"/>
+        <mapper resource="mapper/plugin/PluginManagerMapper.xml"/>
 
     </mappers>
 

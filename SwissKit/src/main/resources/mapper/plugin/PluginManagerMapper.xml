@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="fan.summer.database.mapper.plugin.PluginManagerMapper">
+
+    <resultMap id="PluginManagerResultMap" type="fan.summer.database.entity.plugin.PluginManagerEntity">
+        <id property="id" column="id"/>
+        <result property="jarName" column="jar_name"/>
+        <result property="pluginName" column="plugin_name"/>
+        <result property="pluginVersion" column="plugin_version"/>
+        <result property="isDisabled" column="is_disabled"/>
+        <result property="updateUrl" column="update_url"/>
+        <result property="lastCheck" column="last_check"/>
+        <result property="installedAt" column="installed_at"/>
+    </resultMap>
+
+    <select id="selectAll" resultMap="PluginManagerResultMap">
+        SELECT id, jar_name, plugin_name, plugin_version, is_disabled,
+               update_url, last_check, installed_at
+        FROM plugin_manager
+        ORDER BY plugin_name
+    </select>
+
+    <select id="selectEnabled" resultMap="PluginManagerResultMap">
+        SELECT id, jar_name, plugin_name, plugin_version, is_disabled,
+               update_url, last_check, installed_at
+        FROM plugin_manager
+        WHERE is_disabled = 0
+        ORDER BY plugin_name
+    </select>
+
+    <select id="selectDisabled" resultMap="PluginManagerResultMap">
+        SELECT id, jar_name, plugin_name, plugin_version, is_disabled,
+               update_url, last_check, installed_at
+        FROM plugin_manager
+        WHERE is_disabled = 1
+        ORDER BY plugin_name
+    </select>
+
+    <select id="selectByJarName" resultMap="PluginManagerResultMap">
+        SELECT id, jar_name, plugin_name, plugin_version, is_disabled,
+               update_url, last_check, installed_at
+        FROM plugin_manager
+        WHERE jar_name = #{jarName}
+    </select>
+
+    <select id="selectByPluginName" resultMap="PluginManagerResultMap">
+        SELECT id, jar_name, plugin_name, plugin_version, is_disabled,
+               update_url, last_check, installed_at
+        FROM plugin_manager
+        WHERE plugin_name = #{pluginName}
+    </select>
+
+    <insert id="insert" parameterType="fan.summer.database.entity.plugin.PluginManagerEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO plugin_manager (jar_name, plugin_name, plugin_version, is_disabled, update_url, last_check)
+        VALUES (#{jarName}, #{pluginName}, #{pluginVersion}, #{isDisabled}, #{updateUrl}, #{lastCheck})
+    </insert>
+
+    <update id="updateDisabled">
+        UPDATE plugin_manager
+        SET is_disabled = #{isDisabled}
+        WHERE jar_name = #{jarName}
+    </update>
+
+    <update id="updateVersion">
+        UPDATE plugin_manager
+        SET plugin_version = #{version}
+        WHERE jar_name = #{jarName}
+    </update>
+
+    <update id="updateLastCheck">
+        UPDATE plugin_manager
+        SET last_check = CURRENT_TIMESTAMP
+        WHERE jar_name = #{jarName}
+    </update>
+
+    <update id="updateUpdateUrl">
+        UPDATE plugin_manager
+        SET update_url = #{updateUrl}
+        WHERE jar_name = #{jarName}
+    </update>
+
+    <delete id="deleteByJarName">
+        DELETE FROM plugin_manager WHERE jar_name = #{jarName}
+    </delete>
+
+    <delete id="deleteByPluginName">
+        DELETE FROM plugin_manager WHERE plugin_name = #{pluginName}
+    </delete>
+
+</mapper>
