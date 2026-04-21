@@ -30,7 +30,11 @@ public class SideMenuBar extends JPanel {
      */
     private static final int DRAG_THRESHOLD = 8;
 
-    private List<Object> pages;
+    /**
+     * Flat list of all pages in display order.
+     * A null entry represents the separator between built-in and plugin sections.
+     */
+    private final List<Object> allPages;
     private final List<JLabel> menuItems;
     private final JPanel contentPanel;
     private int selectedIndex = -1;
@@ -44,10 +48,18 @@ public class SideMenuBar extends JPanel {
     private Point dragStartPoint = null;
     private boolean isDragging = false;
 
-    public SideMenuBar(List<Object> pages, JPanel contentPanel) {
-        this.pages = pages;
+    public SideMenuBar(SwissKitPageScaner.ScannedPages scannedPages, JPanel contentPanel) {
         this.contentPanel = contentPanel;
         this.menuItems = new ArrayList<>();
+
+        // Build flat list: builtin + separator + plugin
+        this.allPages = new ArrayList<>();
+        this.allPages.addAll(scannedPages.builtinPages());
+        int builtinCount = scannedPages.builtinPages().size();
+        if (!scannedPages.pluginPages().isEmpty()) {
+            this.allPages.add(null); // separator marker
+        }
+        this.allPages.addAll(scannedPages.pluginPages());
 
         setLayout(new BorderLayout());
         setPreferredSize(new Dimension(MENU_WIDTH, 0));
@@ -92,10 +104,25 @@ public class SideMenuBar extends JPanel {
         menuItemsPanel.setLayout(new BoxLayout(menuItemsPanel, BoxLayout.Y_AXIS));
         menuItemsPanel.setBackground(UIUtils.LIGHT_GRAY);
 
-        for (int i = 0; i < pages.size(); i++) {
-            JLabel item = createMenuItem(pages.get(i), i);
-            menuItems.add(item);
-            menuItemsPanel.add(wrapWithDragSupport(item, i));
+        for (int i = 0; i < allPages.size(); i++) {
+            Object page = allPages.get(i);
+
+            if (page == null) {
+                // Separator between built-in and plugin sections
+                JSeparator separator = new JSeparator(SwingConstants.HORIZONTAL);
+                separator.setForeground(new Color(0xCC, 0xCC, 0xCC));
+                separator.setMaximumSize(new Dimension(Integer.MAX_VALUE, 2));
+                JPanel sepPanel = new JPanel(new BorderLayout());
+                sepPanel.setBackground(UIUtils.LIGHT_GRAY);
+                sepPanel.add(separator, BorderLayout.NORTH);
+                sepPanel.setBorder(new EmptyBorder(4, 0, 4, 0));
+                menuItemsPanel.add(sepPanel);
+            } else {
+                // Regular menu item
+                JLabel item = createMenuItem(page, i);
+                menuItems.add(item);
+                menuItemsPanel.add(wrapWithDragSupport(item, i));
+            }
         }
 
         menuContainer.add(menuItemsPanel, BorderLayout.NORTH);
@@ -103,7 +130,7 @@ public class SideMenuBar extends JPanel {
         menuContainer.repaint();
     }
 
-    private JLabel createMenuItem(Object page, int index) {
+    private JLabel createMenuItem(Object page, int flatIndex) {
         String menuName = SwissKitPageScaner.getMenuName(page);
         String iconPath = SwissKitPageScaner.getMenuIconPath(page);
         Icon menuIcon = iconPath != null && !iconPath.isEmpty() ? new ImageIcon(iconPath) : null;
@@ -116,7 +143,7 @@ public class SideMenuBar extends JPanel {
         label.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         label.setAlignmentX(Component.CENTER_ALIGNMENT);
         label.setHorizontalAlignment(SwingConstants.CENTER);
-        label.putClientProperty("pageIndex", index);
+        label.putClientProperty("pageIndex", flatIndex);
 
         String tip = SwissKitPageScaner.getMenuTooltip(page);
         if (tip != null) label.setToolTipText(tip);
@@ -129,7 +156,7 @@ public class SideMenuBar extends JPanel {
      * Key fix: listeners go on BOTH the panel AND the label so events
      * are never swallowed by the child component.
      */
-    private JPanel wrapWithDragSupport(JLabel label, int index) {
+    private JPanel wrapWithDragSupport(JLabel label, int flatIndex) {
         JPanel panel = new JPanel(new GridBagLayout());
         panel.setBackground(UIUtils.LIGHT_GRAY);
         GridBagConstraints gbc = new GridBagConstraints();
@@ -143,7 +170,7 @@ public class SideMenuBar extends JPanel {
             @Override
             public void mousePressed(MouseEvent e) {
                 dragStartPoint = SwingUtilities.convertPoint(e.getComponent(), e.getPoint(), menuItemsPanel);
-                draggedItemIndex = index;
+                draggedItemIndex = flatIndex;
                 isDragging = false;
             }
 
@@ -166,20 +193,20 @@ public class SideMenuBar extends JPanel {
                     }
                 } else {
                     // Plain click → navigate
-                    selectPage(index);
+                    selectPage(flatIndex);
                 }
             }
 
             @Override
             public void mouseEntered(MouseEvent e) {
-                if (!isDragging && index != selectedIndex) {
+                if (!isDragging && flatIndex != selectedIndex) {
                     label.setBackground(HOVER_BG);
                 }
             }
 
             @Override
             public void mouseExited(MouseEvent e) {
-                if (!isDragging && index != selectedIndex) {
+                if (!isDragging && flatIndex != selectedIndex) {
                     label.setBackground(UIUtils.LIGHT_GRAY);
                 }
             }
@@ -268,24 +295,24 @@ public class SideMenuBar extends JPanel {
 
     private void reorderPages(int fromIndex, int toIndex) {
         // Clamp to valid insertion range
-        toIndex = Math.max(0, Math.min(toIndex, pages.size()));
+        toIndex = Math.max(0, Math.min(toIndex, allPages.size()));
 
         // Remember which page was selected
-        Object selectedPage = (selectedIndex >= 0 && selectedIndex < pages.size())
-                ? pages.get(selectedIndex) : null;
+        Object selectedPage = (selectedIndex >= 0 && selectedIndex < allPages.size())
+                ? allPages.get(selectedIndex) : null;
 
-        Object moved = pages.remove(fromIndex);
+        Object moved = allPages.remove(fromIndex);
         // Adjust insertion index after removal
         int insertAt = (toIndex > fromIndex) ? toIndex - 1 : toIndex;
-        insertAt = Math.max(0, Math.min(insertAt, pages.size()));
-        pages.add(insertAt, moved);
+        insertAt = Math.max(0, Math.min(insertAt, allPages.size()));
+        allPages.add(insertAt, moved);
 
-        SwissKitPageScaner.saveMenuOrder(pages);
+        SwissKitPageScaner.saveMenuOrder(allPages);
         rebuildMenu();
 
         // Restore selection by page identity, not stale index
         if (selectedPage != null) {
-            int newIdx = pages.indexOf(selectedPage);
+            int newIdx = allPages.indexOf(selectedPage);
             if (newIdx >= 0) {
                 selectedIndex = -1; // force refresh
                 selectPage(newIdx);
@@ -297,8 +324,11 @@ public class SideMenuBar extends JPanel {
 
     // ── Public API ────────────────────────────────────────────────────────────
 
-    public void selectPage(int index) {
-        if (index < 0 || index >= pages.size()) return;
+    public void selectPage(int flatIndex) {
+        if (flatIndex < 0 || flatIndex >= allPages.size()) return;
+
+        Object page = allPages.get(flatIndex);
+        if (page == null) return; // separator, not selectable
 
         // Deselect previous
         if (selectedIndex >= 0 && selectedIndex < menuItems.size()) {
@@ -306,13 +336,13 @@ public class SideMenuBar extends JPanel {
             menuItems.get(selectedIndex).setForeground(UIUtils.TEXT_COLOR);
         }
 
-        selectedIndex = index;
-        menuItems.get(index).setBackground(SELECTED_BG);
-        menuItems.get(index).setForeground(SELECTED_TEXT);
+        selectedIndex = flatIndex;
+        menuItems.get(flatIndex).setBackground(SELECTED_BG);
+        menuItems.get(flatIndex).setForeground(SELECTED_TEXT);
 
         if (contentPanel != null) {
             contentPanel.removeAll();
-            contentPanel.add(SwissKitPageScaner.getPanel(pages.get(index)), BorderLayout.CENTER);
+            contentPanel.add(SwissKitPageScaner.getPanel(page), BorderLayout.CENTER);
             contentPanel.revalidate();
             contentPanel.repaint();
         }
@@ -326,22 +356,14 @@ public class SideMenuBar extends JPanel {
         titleLabel.setText(title);
     }
 
-    public void addPage(Object page) {
-        pages.add(page);
-        rebuildMenu();
-        SwissKitPageScaner.saveMenuOrder(pages);
-    }
-
-    public void removePage(int index) {
-        if (index >= 0 && index < pages.size()) {
-            pages.remove(index);
-            rebuildMenu();
-            SwissKitPageScaner.saveMenuOrder(pages);
+    public void setPages(SwissKitPageScaner.ScannedPages scannedPages) {
+        this.allPages.clear();
+        this.allPages.addAll(scannedPages.builtinPages());
+        int builtinCount = scannedPages.builtinPages().size();
+        if (!scannedPages.pluginPages().isEmpty()) {
+            this.allPages.add(null);
         }
-    }
-
-    public void setPages(List<Object> newPages) {
-        this.pages = newPages;
+        this.allPages.addAll(scannedPages.pluginPages());
         rebuildMenu();
     }
 }

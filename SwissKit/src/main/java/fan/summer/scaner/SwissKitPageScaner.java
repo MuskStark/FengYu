@@ -45,27 +45,67 @@ public class SwissKitPageScaner {
             SettingKitPage.class
     );
 
-    public static List<Object> scan() {
-        List<Object> pages = new ArrayList<>();
-        pages.addAll(scanBuiltinPages());
-        pages.addAll(PluginLoader.loadFromPluginDir());
+    /**
+     * Holds scanned pages separated by category.
+     */
+    public static class ScannedPages {
+        private final List<Object> builtinPages;
+        private final List<Object> pluginPages;
+
+        public ScannedPages(List<Object> builtinPages, List<Object> pluginPages) {
+            this.builtinPages = new ArrayList<>(builtinPages);
+            this.pluginPages = new ArrayList<>(pluginPages);
+        }
+
+        public List<Object> builtinPages() {
+            return new ArrayList<>(builtinPages);
+        }
+
+        public List<Object> pluginPages() {
+            return new ArrayList<>(pluginPages);
+        }
+
+        /**
+         * Returns total number of pages across both categories.
+         */
+        public int totalCount() {
+            return builtinPages.size() + pluginPages.size();
+        }
+
+        /**
+         * Returns all pages in order (builtin first, then plugins).
+         */
+        public List<Object> toFlatList() {
+            List<Object> all = new ArrayList<>(builtinPages);
+            all.addAll(pluginPages);
+            return all;
+        }
+    }
+
+    public static ScannedPages scan() {
+        List<Object> builtinPages = scanBuiltinPages();
+        List<Object> pluginPages = PluginLoader.loadFromPluginDir();
 
         // Load saved menu orders from DB
         loadSavedMenuOrders();
 
-        // Sort: first by saved user order (ascending), then by annotation order, then by class name (stable)
+        // Sort each category independently: saved user order → annotation order → class name
+        sortPages(builtinPages);
+        sortPages(pluginPages);
+
+        logger.info("Scanned KitPages - builtin: {}, plugin: {}", builtinPages.size(), pluginPages.size());
+        return new ScannedPages(builtinPages, pluginPages);
+    }
+
+    private static void sortPages(List<Object> pages) {
         pages.sort(Comparator
                 .comparingInt((Object p) -> {
-                    // TODO:增加使用插件名称进行比对
                     Integer saved = savedMenuOrders.get(p.getClass().getName());
                     return saved != null ? saved : Integer.MAX_VALUE;
                 })
                 .thenComparingInt(p -> getAnnotationOrder(p))
                 .thenComparing(p -> p.getClass().getName())
         );
-
-        logger.info("Total KitPage(s) loaded: {}", pages.size());
-        return pages;
     }
 
     private static int getAnnotationOrder(Object page) {
@@ -126,6 +166,15 @@ public class SwissKitPageScaner {
     }
 
     /**
+     * Refreshes the plugin pages after a plugin install/uninstall/reload.
+     * This should be called by PluginService after making changes to plugins.
+     */
+    public static void refreshPluginPages() {
+        clearCache();
+        logger.info("Plugin pages cache cleared for refresh");
+    }
+
+    /**
      * Applies saved menu order to a list of pages (e.g., after plugin install/uninstall).
      * Pages not in saved order are sorted by annotation order, then class name.
      *
@@ -141,6 +190,18 @@ public class SwissKitPageScaner {
                 .thenComparingInt(p -> getAnnotationOrder(p))
                 .thenComparing(p -> p.getClass().getName())
         );
+    }
+
+    /**
+     * Applies saved menu order to a ScannedPages instance.
+     * Each category is sorted independently.
+     *
+     * @param scannedPages the scanned pages to sort
+     */
+    public static void applySavedOrder(ScannedPages scannedPages) {
+        loadSavedMenuOrders();
+        sortPages(scannedPages.builtinPages());
+        sortPages(scannedPages.pluginPages());
     }
 
     /**
@@ -190,6 +251,37 @@ public class SwissKitPageScaner {
             return annotation.menuName();
         }
         return page.getClass().getSimpleName();
+    }
+
+    /**
+     * Gets the plugin name for a page from its @SwissKitPage annotation.
+     *
+     * @param page the page instance
+     * @return plugin name or null if built-in page
+     */
+    public static String getPluginName(Object page) {
+        SwissKitPage annotation = page.getClass().getAnnotation(SwissKitPage.class);
+        if (annotation != null) {
+            String pluginName = annotation.pluginName();
+            // Built-in pages have empty pluginName, external plugins have non-empty
+            return pluginName.isEmpty() ? null : pluginName;
+        }
+        return null;
+    }
+
+    /**
+     * Gets the plugin version for a page from its @SwissKitPage annotation.
+     *
+     * @param page the page instance
+     * @return plugin version or null if built-in page
+     */
+    public static String getPluginVersion(Object page) {
+        SwissKitPage annotation = page.getClass().getAnnotation(SwissKitPage.class);
+        if (annotation != null) {
+            String pluginVersion = annotation.pluginVersion();
+            return pluginVersion.isEmpty() ? null : pluginVersion;
+        }
+        return null;
     }
 
     /**
