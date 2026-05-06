@@ -1,6 +1,9 @@
 package fan.summer.kitpage.welcome;
 
 import fan.summer.annoattion.SwissKitPage;
+import fan.summer.i18n.I18nManager;
+import fan.summer.i18n.Language;
+import fan.summer.i18n.LocaleChangeListener;
 import net.miginfocom.swing.MigLayout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,8 +21,8 @@ import java.net.URI;
  * @version 1.00
  * @date 2026/3/1
  */
-@SwissKitPage(menuName = "🏠 Welcome", order = 0)
-public class WelcomePage {
+@SwissKitPage(menuName = "Welcome", menuNameKey = "menu.welcome", order = 0)
+public class WelcomePage implements LocaleChangeListener {
     private static final Logger logger = LoggerFactory.getLogger(WelcomePage.class);
 
     /**
@@ -28,6 +31,8 @@ public class WelcomePage {
      */
     public WelcomePage() {
         initComponents();
+        I18nManager.addListener(this);
+        refreshI18n();
         doc.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -38,6 +43,17 @@ public class WelcomePage {
                 }
             }
         });
+    }
+
+    @Override
+    public void onLocaleChanged(Language newLanguage) {
+        refreshI18n();
+    }
+
+    private void refreshI18n() {
+        label1.setText(I18nManager.get("welcome.title"));
+        label2.setText(I18nManager.get("welcome.subtitle"));
+        doc.setText("<html><a href=''>" + I18nManager.get("welcome.document") + "</a></html>");
     }
 
     /**
@@ -52,8 +68,8 @@ public class WelcomePage {
     private void initComponents() {
         // JFormDesigner - Component initialization - DO NOT MODIFY  //GEN-BEGIN:initComponents  @formatter:off
         welcome = new JPanel();
-        var label1 = new JLabel();
-        var label2 = new JLabel();
+        label1 = new JLabel();
+        label2 = new JLabel();
         doc = new JLabel();
 
         //======== welcome ========
@@ -92,6 +108,8 @@ public class WelcomePage {
 
     // JFormDesigner - Variables declaration - DO NOT MODIFY  //GEN-BEGIN:variables  @formatter:off
     private JPanel welcome;
+    private JLabel label1;
+    private JLabel label2;
     private JLabel doc;
     // JFormDesigner - End of variables declaration  //GEN-END:variables  @formatter:on
 }

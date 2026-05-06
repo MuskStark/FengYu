@@ -1,6 +1,7 @@
 package fan.summer;
 
 import fan.summer.database.DatabaseInit;
+import fan.summer.i18n.I18nManager;
 import fan.summer.plugin.PluginDiagnostic;
 import fan.summer.ui.StartLoadingPage;
 import fan.summer.ui.home.HomePage;
@@ -42,6 +43,7 @@ public class Main {
                 protected Void doInBackground() {
                     try {
                         DatabaseInit.init();
+                        I18nManager.init();
                     } catch (Exception e) {
                         publish((Void) null);
                     }
