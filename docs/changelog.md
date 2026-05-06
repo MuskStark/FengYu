@@ -5,6 +5,15 @@ All notable changes to SwissKit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 2.0.2
+
+### ✨ Added
+
+- i18n: Implement i18n support for official plugins (HappyLearning, KeepMove, QccToExcel)
+- i18n: Move I18nManager, Language, LocaleChangeListener to SwissKitJ-Api module
+
+---
+
 ## 2.0.1
 
 ### ✨ Added
