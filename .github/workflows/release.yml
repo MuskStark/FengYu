@@ -29,9 +29,9 @@ jobs:
   setup:
     runs-on: ubuntu-latest
     outputs:
-      version:    ${{ steps.resolve.outputs.version }}
-      full_tag:   ${{ steps.resolve.outputs.full_tag }}
-      raw_tag:    ${{ steps.resolve.outputs.raw_tag }}
+      version: ${{ steps.resolve.outputs.version }}
+      full_tag: ${{ steps.resolve.outputs.full_tag }}
+      raw_tag: ${{ steps.resolve.outputs.raw_tag }}
       prerelease: ${{ steps.resolve.outputs.prerelease }}
     steps:
       - name: Resolve version strings
@@ -346,9 +346,9 @@ jobs:
     needs: [ setup, build-windows, build-linux, build-macos ]
     runs-on: ubuntu-latest
     env:
-      VERSION:    ${{ needs.setup.outputs.version }}
-      FULL_TAG:   ${{ needs.setup.outputs.full_tag }}
-      RAW_TAG:    ${{ needs.setup.outputs.raw_tag }}
+      VERSION: ${{ needs.setup.outputs.version }}
+      FULL_TAG: ${{ needs.setup.outputs.full_tag }}
+      RAW_TAG: ${{ needs.setup.outputs.raw_tag }}
       PRERELEASE: ${{ needs.setup.outputs.prerelease }}
     steps:
       - name: Checkout code
@@ -411,7 +411,7 @@ jobs:
             | macOS Apple Silicon (M1/M2/M3) | `SwissKit-${{ env.VERSION }}-macos-apple-silicon.zip` | Extract then double-click `SwissKit.app` |
 
             ### What's New
-            See the [CHANGELOG](https://github.com/MuskStark/SwissKitJ/blob/main/CHANGELOG.md) for details.
+            See the [CHANGELOG](https://muskstark.github.io/SwissKitJ/#/changelog) for details.
 
             ---
             SHA-256 checksums are provided in `checksums.txt`.
