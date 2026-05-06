@@ -73,4 +73,17 @@ CREATE TABLE IF NOT EXISTS menu_order
     menu_order INTEGER NOT NULL
 );
 
+-- Plugin Manager Table (for external plugin management)
+CREATE TABLE IF NOT EXISTS plugin_manager
+(
+    id              INTEGER PRIMARY KEY AUTO_INCREMENT,
+    jar_name        VARCHAR(500) NOT NULL UNIQUE,
+    plugin_name     VARCHAR(255) NOT NULL,
+    plugin_version  VARCHAR(50)  NOT NULL,
+    is_disabled     INTEGER      NOT NULL DEFAULT 0,
+    update_url      VARCHAR(1000),
+    last_check      TIMESTAMP,
+    installed_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+);
+
 

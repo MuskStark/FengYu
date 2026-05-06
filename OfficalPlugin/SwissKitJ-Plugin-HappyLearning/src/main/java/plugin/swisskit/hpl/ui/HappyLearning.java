@@ -14,6 +14,7 @@ import plugin.swisskit.hpl.util.ConfigLoader;
 import plugin.swisskit.hpl.worker.HappyLearningWorker;
 
 import javax.swing.*;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.event.ActionEvent;
 import java.io.File;
 import java.io.IOException;
@@ -30,7 +31,7 @@ import java.nio.file.StandardCopyOption;
  *
  * @author summer
  */
-@SwissKitPage(menuName = "HappyLearn", menuTooltip = "HappyLearn", order = 6)
+@SwissKitPage(pluginName = "HappyLearn", pluginVersion = "v1.1.2", menuName = "HappyLearn", menuTooltip = "HappyLearn", order = 6)
 public class HappyLearning {
 
     private static final Logger log = LoggerFactory.getLogger(HappyLearning.class);
@@ -96,7 +97,7 @@ public class HappyLearning {
             fileChooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
 
             // Set config file filter
-            fileChooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter(
+            fileChooser.setFileFilter(new FileNameExtensionFilter(
                     "Config Files (*.json)", "json"
             ));
             fileChooser.setDialogTitle("Select Config File");

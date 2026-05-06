@@ -32,7 +32,7 @@ public class HomePage {
     private static HomePage instance;
 
     private SideMenuBar sideMenuBar;
-    private List<Object> pages;
+    private SwissKitPageScaner.ScannedPages scannedPages;
 
     /**
      * Initializes and displays the main application window.
@@ -57,7 +57,7 @@ public class HomePage {
         setAppIcon(frame);
 
         // Initialize pages using KitPageScanner
-        pages = SwissKitPageScaner.scan();
+        scannedPages = SwissKitPageScaner.scan();
 
         // Content panel
         JPanel contentPanel = new JPanel(new BorderLayout());
@@ -65,7 +65,7 @@ public class HomePage {
         contentPanel.setBackground(Color.WHITE);
 
         // Side menu bar
-        sideMenuBar = new SideMenuBar(pages, contentPanel);
+        sideMenuBar = new SideMenuBar(scannedPages, contentPanel);
 
         // Set singleton instance for hot-deploy coordination
         instance = this;
@@ -85,7 +85,7 @@ public class HomePage {
         frame.setLocationRelativeTo(null);
         frame.setVisible(true);
 
-        logger.info("Application started with {} pages", pages.size());
+        logger.info("Application started with {} pages", scannedPages.totalCount());
     }
 
     /**
@@ -126,23 +126,29 @@ public class HomePage {
         }
 
         if (newPluginPages != null && !newPluginPages.isEmpty()) {
-            // Deploy/reload: merge new plugin pages
+            // Deploy/reload: merge new plugin pages into current plugin list
+            List<Object> currentPlugins = new ArrayList<>(scannedPages.pluginPages());
             List<String> newClassNames = newPluginPages.stream()
                     .map(p -> p.getClass().getName())
                     .collect(Collectors.toList());
 
-            pages.removeIf(p -> newClassNames.contains(p.getClass().getName()));
-            pages.addAll(newPluginPages);
+            currentPlugins.removeIf(p -> newClassNames.contains(p.getClass().getName()));
+            currentPlugins.addAll(newPluginPages);
+
+            // Filter disabled
+            currentPlugins.removeIf(p -> !PluginLoader.isPageEnabled(p));
+
+            // Rebuild ScannedPages with merged plugins
+            SwissKitPageScaner.ScannedPages merged = new SwissKitPageScaner.ScannedPages(
+                    scannedPages.builtinPages(), currentPlugins);
+            SwissKitPageScaner.applySavedOrder(merged);
+            scannedPages = merged;
         } else {
-            // Uninstall: re-scan plugin dir to get current pages (removed JAR no longer appears)
-            pages.clear();
-            pages.addAll(SwissKitPageScaner.scanBuiltinPages());
-            pages.addAll(PluginLoader.loadFromPluginDir());
+            // Uninstall or refresh: re-scan everything
+            scannedPages = SwissKitPageScaner.scan();
         }
 
-        SwissKitPageScaner.applySavedOrder(pages);
-
-        sideMenuBar.setPages(pages);
+        sideMenuBar.setPages(scannedPages);
     }
 
     /**
