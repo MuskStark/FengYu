@@ -499,8 +499,8 @@ Planned enhancements:
 
 - [ ] PDF processing tool
 - [ ] Image processing tool
-- [ ] Theme switching
-- [ ] Multi-language support
+- [x] Theme switching
+- [x] Multi-language support
 
 ---
 

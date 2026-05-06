@@ -58,7 +58,7 @@ SwissKitJ-Api/
 <dependency>
     <groupId>fan.summer.api</groupId>
     <artifactId>SwissKitJ-Api</artifactId>
-    <version>2.0.0</version>
+    <version>2.0.1</version>
 </dependency>
 ```
 
