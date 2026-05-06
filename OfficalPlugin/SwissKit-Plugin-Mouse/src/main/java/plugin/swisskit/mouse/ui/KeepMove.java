@@ -17,7 +17,7 @@ import java.util.TimerTask;
 /**
  * @author summer
  */
-@SwissKitPage(menuName = "KeepMove", menuTooltip = "KeepMove", order = 9)
+@SwissKitPage(pluginName = "KeepMove", pluginVersion = "1.0.0", menuName = "KeepMove", menuTooltip = "KeepMove", order = 9)
 public class KeepMove {
     // Robot instance for controlling mouse movement
     private Robot robot;
