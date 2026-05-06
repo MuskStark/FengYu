@@ -6,6 +6,9 @@ package plugin.swisskit.hpl.ui;
 
 
 import fan.summer.annoattion.SwissKitPage;
+import fan.summer.i18n.I18nManager;
+import fan.summer.i18n.Language;
+import fan.summer.i18n.LocaleChangeListener;
 import fan.summer.ui.components.GradientProgressBar;
 import net.miginfocom.swing.MigLayout;
 import org.slf4j.Logger;
@@ -32,7 +35,7 @@ import java.nio.file.StandardCopyOption;
  * @author summer
  */
 @SwissKitPage(pluginName = "HappyLearn", pluginVersion = "v1.1.2", menuName = "HappyLearn", menuTooltip = "HappyLearn", order = 6)
-public class HappyLearning {
+public class HappyLearning implements LocaleChangeListener {
 
     private static final Logger log = LoggerFactory.getLogger(HappyLearning.class);
 
@@ -51,6 +54,8 @@ public class HappyLearning {
      */
     public HappyLearning() {
         initComponents();
+        I18nManager.addListener(this);
+        refreshI18n();
         majorSubjiectPB.setStringPainted(true);
         electiveSubjectPB.setStringPainted(true);
         stopBt.setEnabled(false);
@@ -72,6 +77,34 @@ public class HappyLearning {
                 onlyMajorCheckBox.setSelected(false);
             }
         });
+    }
+
+    @Override
+    public void onLocaleChanged(Language newLanguage) {
+        refreshI18n();
+    }
+
+    private void refreshI18n() {
+        String prefix = "plugin.hpl.";
+        label4.setText(i18n(prefix + "configFile"));
+        uploadBt.setText(i18n(prefix + "uploadConfig"));
+        label1.setText(i18n(prefix + "passKey"));
+        setPassKeyBt.setText(i18n(prefix + "setPassKey"));
+        label2.setText(i18n(prefix + "majorSubject"));
+        label3.setText(i18n(prefix + "electiveSubject"));
+        onlyMajorCheckBox.setText(i18n(prefix + "onlyMajorSubject"));
+        onlyElectiveCheckBox.setText(i18n(prefix + "onlyElectiveSubject"));
+        startBt.setText(i18n(prefix + "startHappy"));
+        stopBt.setText(i18n(prefix + "unHappy"));
+        label5.setText(i18n(prefix + "subjectId"));
+        label7.setText(i18n(prefix + "classHours"));
+        label6.setText(i18n(prefix + "subjectName"));
+        skipClassBt.setText(i18n(prefix + "skipClass"));
+        statusLabel.setText(i18n(prefix + "learningStatus") + ": " + i18n(prefix + "idle"));
+    }
+
+    private String i18n(String key) {
+        return I18nManager.getPluginString("i18n.messages", key, getClass().getClassLoader());
     }
 
     /**
@@ -100,7 +133,7 @@ public class HappyLearning {
             fileChooser.setFileFilter(new FileNameExtensionFilter(
                     "Config Files (*.json)", "json"
             ));
-            fileChooser.setDialogTitle("Select Config File");
+            fileChooser.setDialogTitle(i18n("plugin.hpl.selectConfigFile"));
             int result = fileChooser.showOpenDialog(learningPanel);
             if (result == JFileChooser.APPROVE_OPTION) {
                 configFilePath.setText(fileChooser.getSelectedFile().getAbsolutePath());
@@ -115,14 +148,14 @@ public class HappyLearning {
             Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
             log.info("Successfully installed config: {}", source.toFile().getName());
             JOptionPane.showMessageDialog(null,
-                    "✅ Installed:" + Path.of(configFilePath.getText()).toFile().getName() + "（Need ReOpen SwissKitJ）",
-                    "Plugin Install Success",
+                    i18n("plugin.hpl.configInstallSuccess") + Path.of(configFilePath.getText()).toFile().getName(),
+                    i18n("plugin.hpl.configInstallSuccess"),
                     JOptionPane.INFORMATION_MESSAGE);
         } catch (IOException ex) {
             log.error("Failed to install config: {}", configFilePath.getText(), ex);
             JOptionPane.showMessageDialog(null,
-                    "Error:" + ex.getMessage(),
-                    "Plugin Install Error",
+                    i18n("plugin.hpl.configInstallError") + ex.getMessage(),
+                    i18n("plugin.hpl.configInstallError"),
                     JOptionPane.ERROR_MESSAGE);
         }
 
@@ -138,15 +171,15 @@ public class HappyLearning {
         if (passKey.getText().isEmpty()) {
             log.warn("[UI] Passkey is empty, showing error dialog");
             JOptionPane.showMessageDialog(null,
-                    "PASSKEY IS EMPTY",
-                    "PASSKEY EMPTY Error",
+                    i18n("plugin.hpl.passkeyEmpty"),
+                    i18n("plugin.hpl.passkeyEmpty"),
                     JOptionPane.ERROR_MESSAGE);
 
         } else {
             this.key = passKey.getText();
             JOptionPane.showMessageDialog(null,
-                    "PASSKEY SET SUCCESS",
-                    "Success",
+                    i18n("plugin.hpl.passkeySuccess"),
+                    i18n("plugin.hpl.passkeySuccess"),
                     JOptionPane.INFORMATION_MESSAGE);
             log.info("[UI] Passkey set successfully，value:{}", this.key);
         }
@@ -168,7 +201,7 @@ public class HappyLearning {
         if (currentWorker != null && !currentWorker.isDone()) {
             log.warn("[UI] Start button clicked but learning is already running");
             JOptionPane.showMessageDialog(null,
-                    "Learning is already running",
+                    i18n("plugin.hpl.learningAlreadyRunning"),
                     "Info",
                     JOptionPane.INFORMATION_MESSAGE);
             return;
@@ -177,7 +210,7 @@ public class HappyLearning {
         if (key == null || key.isEmpty()) {
             log.warn("[UI] Start button clicked but passkey is not set");
             JOptionPane.showMessageDialog(null,
-                    "Please set PASSKEY first",
+                    i18n("plugin.hpl.pleaseSetPasskey"),
                     "PASSKEY Not Set",
                     JOptionPane.WARNING_MESSAGE);
             return;
@@ -194,7 +227,7 @@ public class HappyLearning {
         }
 
         log.info("[UI] Starting learning plugin.swisskit.hpl.worker, lessonType: {}", lessonType);
-        statusLabel.setText("LearningStatus: Learning...");
+        statusLabel.setText(i18n("plugin.hpl.learningStatus") + ": " + i18n("plugin.hpl.learning"));
         currentWorker = new HappyLearningWorker(key, majorSubjiectPB, electiveSubjectPB,
                 "Auto".equals(lessonType) ? null : lessonType, startBt, stopBt,
                 subjectIdTextField, subjectName, statusLabel, classHoursField);
@@ -209,7 +242,7 @@ public class HappyLearning {
         if (currentWorker != null && !currentWorker.isDone()) {
             log.info("[UI] Stop button clicked, cancelling plugin.swisskit.hpl.worker");
             currentWorker.cancel(true);
-            statusLabel.setText("LearningStatus: Stopped");
+            statusLabel.setText(i18n("plugin.hpl.learningStatus") + ": " + i18n("plugin.hpl.stopped"));
             startBt.setEnabled(true);
             stopBt.setEnabled(false);
             skipClassBt.setEnabled(false);
