@@ -31,7 +31,7 @@ mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package
 
 # Run the application (executable JAR)
-java -jar target/SwissKit-2.0.0.jar
+java -jar target/SwissKit-2.0.1.jar
 ```
 
 Or using Maven exec plugin:
@@ -248,7 +248,7 @@ public class MyToolPage implements KitPage {
    <dependency>
        <groupId>fan.summer.api</groupId>
        <artifactId>SwissKitJ-Api</artifactId>
-       <version>2.0.0</version>
+       <version>2.0.1</version>
    </dependency>
    ```
 2. Implement `KitPage` interface
@@ -278,7 +278,7 @@ mvn clean package
 mvn clean package -DskipTests
 
 # Run executable JAR
-java -jar target/SwissKit-2.0.0.jar
+java -jar target/SwissKit-2.0.1.jar
 ```
 
 ---
@@ -297,9 +297,9 @@ java -jar target/SwissKit-2.0.0.jar
 - [x] Email sent log viewing functionality
 - [ ] Add PDF processing tool
 - [ ] Add image processing tool
-- [ ] Support theme switching
+- [x] Support theme switching
 - [ ] Add unit tests
-- [ ] Add multi-language support
+- [x] Add multi-language support
 
 ---
 
