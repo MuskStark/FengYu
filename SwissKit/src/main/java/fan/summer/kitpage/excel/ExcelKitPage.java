@@ -1,6 +1,9 @@
 package fan.summer.kitpage.excel;
 
 import fan.summer.annoattion.SwissKitPage;
+import fan.summer.i18n.I18nManager;
+import fan.summer.i18n.Language;
+import fan.summer.i18n.LocaleChangeListener;
 import fan.summer.kitpage.excel.worker.*;
 import fan.summer.ui.components.FixedWidthComboBox;
 import fan.summer.ui.components.GradientProgressBar;
@@ -25,8 +28,8 @@ import java.util.UUID;
  * @version 1.00
  * @date 2026/2/26
  */
-@SwissKitPage(menuName = "Excel", menuTooltip = "Excel", order = 1)
-public class ExcelKitPage {
+@SwissKitPage(menuName = "Excel", menuNameKey = "menu.excel", menuTooltip = "Excel", order = 1)
+public class ExcelKitPage implements LocaleChangeListener {
     private static final Logger logger = LoggerFactory.getLogger(ExcelKitPage.class);
 
     private Path excelFilePath;
@@ -45,6 +48,8 @@ public class ExcelKitPage {
      */
     public ExcelKitPage() {
         initComponents();
+        I18nManager.addListener(this);
+        refreshI18n();
         excelSplitBt.setEnabled(false);
         // ActionListener for file selection button - opens file chooser dialog and updates file path
         fileSelectBt.addActionListener(e -> {
@@ -197,6 +202,28 @@ public class ExcelKitPage {
     private void restSimpleSplitConfig() {
         selectedSheetNm = null;
         selectedColumnNm = null;
+    }
+
+    @Override
+    public void onLocaleChanged(Language newLanguage) {
+        refreshI18n();
+    }
+
+    private void refreshI18n() {
+        fileSelectBt.setText(I18nManager.get("excel.file.select"));
+        outputPathBt.setText(I18nManager.get("excel.output.path.select"));
+        splitBySheetCheckBox.setText(I18nManager.get("excel.split.by.sheet"));
+        splitByColumnCheckBox.setText(I18nManager.get("excel.split.by.column"));
+        label3.setText(I18nManager.get("excel.choice.sheet"));
+        label4.setText(I18nManager.get("excel.header.row.index"));
+        label5.setText(I18nManager.get("excel.split.column.index"));
+        clearConfigBt.setText(I18nManager.get("excel.config.clear"));
+        viewConfigBt.setText(I18nManager.get("excel.config.view"));
+        setConfigBt.setText(I18nManager.get("excel.config.set"));
+        excelSplitBt.setText(I18nManager.get("excel.split.execute"));
+        excelFileAnalysisBt.setText(I18nManager.get("excel.file.analysis"));
+        splitWayPane.setTitleAt(0, I18nManager.get("excel.simple.split"));
+        splitWayPane.setTitleAt(1, I18nManager.get("excel.complex.split"));
     }
 
     /*

@@ -8,6 +8,9 @@ import fan.summer.database.entity.setting.email.EmailTagEntity;
 import fan.summer.database.mapper.email.EmailMassSentConfigMapper;
 import fan.summer.database.mapper.email.EmailSentLogMapper;
 import fan.summer.database.mapper.setting.email.EmailTagMapper;
+import fan.summer.i18n.I18nManager;
+import fan.summer.i18n.Language;
+import fan.summer.i18n.LocaleChangeListener;
 import fan.summer.kitpage.email.second.MassSentConfigView;
 import fan.summer.kitpage.email.second.ViewEmailSentLogView;
 import fan.summer.kitpage.email.worker.EmailSentWorker;
@@ -35,8 +38,8 @@ import java.util.UUID;
  * @version 1.00
  * @date 2026/2/26
  */
-@SwissKitPage(menuName = "Email", menuTooltip = "Email", order = 2)
-public class EmailKitPage {
+@SwissKitPage(menuName = "Email", menuNameKey = "menu.email", menuTooltip = "Email", order = 2)
+public class EmailKitPage implements LocaleChangeListener {
     private static final Logger log = LoggerFactory.getLogger(EmailKitPage.class);
     private String taskId;
 
@@ -45,6 +48,8 @@ public class EmailKitPage {
      */
     public EmailKitPage() {
         initComponents();
+        I18nManager.addListener(this);
+        refreshI18n();
         setupRichTextEditor();
     }
 
@@ -55,6 +60,20 @@ public class EmailKitPage {
      */
     public JPanel getPanel() {
         return emailPanel;
+    }
+
+    @Override
+    public void onLocaleChanged(Language newLanguage) {
+        refreshI18n();
+    }
+
+    private void refreshI18n() {
+        emailTitle.setText(I18nManager.get("email.subject"));
+        massSentCheckBox.setText(I18nManager.get("email.mass.sent"));
+        setMassSentConfigBt.setText(I18nManager.get("email.mass.send.config"));
+        viewSentConfigBt.setText(I18nManager.get("email.view.sent.config"));
+        sentButton.setText(I18nManager.get("email.sent"));
+        viewSentLogBt.setText(I18nManager.get("email.view.sent.log"));
     }
 
     /**

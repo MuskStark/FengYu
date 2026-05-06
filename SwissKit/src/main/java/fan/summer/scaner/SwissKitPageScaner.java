@@ -5,6 +5,7 @@ import fan.summer.annoattion.SwissKitPage;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.MenuOrderEntity;
 import fan.summer.database.mapper.MenuOrderMapper;
+import fan.summer.i18n.I18nManager;
 import fan.summer.kitpage.email.EmailKitPage;
 import fan.summer.kitpage.excel.ExcelKitPage;
 import fan.summer.kitpage.setting.SettingKitPage;
@@ -137,10 +138,13 @@ public class SwissKitPageScaner {
             MenuOrderMapper mapper = session.getMapper(MenuOrderMapper.class);
             mapper.deleteAll();
             List<MenuOrderEntity> entities = new ArrayList<>();
-            // TODO:增加使用插件名称
             for (int i = 0; i < pages.size(); i++) {
+                Object page = pages.get(i);
+                if (page == null) {
+                    continue;
+                }
                 MenuOrderEntity entity = new MenuOrderEntity();
-                entity.setPageClass(pages.get(i).getClass().getName());
+                entity.setPageClass(page.getClass().getName());
                 entity.setMenuOrder(i);
                 entities.add(entity);
             }
@@ -241,14 +245,25 @@ public class SwissKitPageScaner {
 
     /**
      * Gets the menu name for a page from its @SwissKitPage annotation.
+     * Supports i18n: if menuNameKey is set, resolves from i18n bundle first.
      *
      * @param page the page instance
-     * @return menu name
+     * @return localized menu name
      */
     public static String getMenuName(Object page) {
         SwissKitPage annotation = page.getClass().getAnnotation(SwissKitPage.class);
-        if (annotation != null && !annotation.menuName().isEmpty()) {
-            return annotation.menuName();
+        if (annotation != null) {
+            String nameKey = annotation.menuNameKey();
+            if (nameKey != null && !nameKey.isEmpty()) {
+                String localized = I18nManager.get(nameKey);
+                if (!nameKey.equals(localized)) {
+                    return localized;
+                }
+            }
+            String menuName = annotation.menuName();
+            if (menuName != null && !menuName.isEmpty()) {
+                return menuName;
+            }
         }
         return page.getClass().getSimpleName();
     }

@@ -73,6 +73,19 @@ CREATE TABLE IF NOT EXISTS menu_order
     menu_order INTEGER NOT NULL
 );
 
+-- App Settings Table (key-value store for application settings)
+CREATE TABLE IF NOT EXISTS app_setting
+(
+    id           INTEGER PRIMARY KEY AUTO_INCREMENT,
+    setting_key  VARCHAR(255) NOT NULL UNIQUE,
+    setting_value VARCHAR(1000)
+);
+
+-- Insert default language setting only if not exists
+INSERT INTO app_setting (setting_key, setting_value)
+SELECT 'language', 'en'
+WHERE NOT EXISTS (SELECT 1 FROM app_setting WHERE setting_key = 'language');
+
 -- Plugin Manager Table (for external plugin management)
 CREATE TABLE IF NOT EXISTS plugin_manager
 (

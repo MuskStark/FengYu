@@ -34,6 +34,7 @@
         <mapper resource="mapper/email/EmailSentLogMapper.xml"/>
         <mapper resource="mapper/MenuOrderMapper.xml"/>
         <mapper resource="mapper/plugin/PluginManagerMapper.xml"/>
+        <mapper resource="mapper/AppSettingMapper.xml"/>
 
     </mappers>
 
