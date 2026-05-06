@@ -5,6 +5,9 @@
 package fan.summer.kitpage.setting;
 
 import fan.summer.annoattion.SwissKitPage;
+import fan.summer.i18n.I18nManager;
+import fan.summer.i18n.Language;
+import fan.summer.i18n.LocaleChangeListener;
 import fan.summer.scaner.SwissKitPageScaner;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.setting.email.EmailAddressBookEntity;
@@ -41,8 +44,8 @@ import java.util.stream.Collectors;
  *
  * @author phoebej
  */
-@SwissKitPage(menuName = "Setting", menuTooltip = "Setting", order = 99999)
-public class SettingKitPage {
+@SwissKitPage(menuName = "Setting", menuNameKey = "menu.setting", menuTooltip = "Setting", order = 99999)
+public class SettingKitPage implements LocaleChangeListener {
     private static final Logger log = LoggerFactory.getLogger(SettingKitPage.class);
 
     /**
@@ -55,8 +58,42 @@ public class SettingKitPage {
      */
     public SettingKitPage() {
         initComponents();
+        I18nManager.addListener(this);
+        refreshI18n();
+        initLanguageSelector();
         initSettingPageInfo();
         refreshPluginList();
+    }
+
+    @Override
+    public void onLocaleChanged(Language newLanguage) {
+        refreshI18n();
+    }
+
+    private void refreshI18n() {
+        languageLabel.setText(I18nManager.get("setting.language"));
+    }
+
+    /**
+     * Initializes the language selector in the General tab.
+     */
+    private void initLanguageSelector() {
+        languageComboBox.setModel(new DefaultComboBoxModel<>(Language.values()));
+        languageComboBox.setSelectedItem(I18nManager.getCurrentLanguage());
+    }
+
+    /**
+     * Handles language change event.
+     */
+    private void languageComboBoxActionPerformed(ActionEvent e) {
+        Language selected = (Language) languageComboBox.getSelectedItem();
+        if (selected != null && selected != I18nManager.getCurrentLanguage()) {
+            I18nManager.setLanguage(selected);
+            JOptionPane.showMessageDialog(settingPanle,
+                    I18nManager.get("message.language.changed"),
+                    I18nManager.get("setting.language"),
+                    JOptionPane.INFORMATION_MESSAGE);
+        }
     }
 
     /**
@@ -719,6 +756,9 @@ public class SettingKitPage {
         // JFormDesigner - Component initialization - DO NOT MODIFY  //GEN-BEGIN:initComponents  @formatter:off
         settingPanle = new JPanel();
         settingTable = new JTabbedPane();
+        general = new JPanel();
+        languageLabel = new JLabel();
+        languageComboBox = new JComboBox();
         email = new JPanel();
         label1 = new JLabel();
         label6 = new JLabel();
@@ -763,6 +803,26 @@ public class SettingKitPage {
 
             //======== settingTable ========
             {
+
+                //======== general ========
+                {
+                    general.setLayout(new MigLayout(
+                        "hidemode 3",
+                        // columns
+                        "[fill]" +
+                        "[fill]",
+                        // rows
+                        "[][]"));
+
+                    //---- languageLabel ----
+                    languageLabel.setText("Language");
+                    general.add(languageLabel, "cell 0 0");
+
+                    //---- languageComboBox ----
+                    languageComboBox.addActionListener(e -> languageComboBoxActionPerformed(e));
+                    general.add(languageComboBox, "cell 1 0");
+                }
+                settingTable.addTab("General", general);
 
                 //======== email ========
                 {
@@ -913,6 +973,9 @@ public class SettingKitPage {
     // JFormDesigner - Variables declaration - DO NOT MODIFY  //GEN-BEGIN:variables  @formatter:off
     private JPanel settingPanle;
     private JTabbedPane settingTable;
+    private JPanel general;
+    private JLabel languageLabel;
+    private JComboBox<Language> languageComboBox;
     private JPanel email;
     private JLabel label1;
     private JLabel label6;

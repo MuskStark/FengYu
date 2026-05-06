@@ -1,5 +1,8 @@
 package fan.summer.ui.sidebar;
 
+import fan.summer.i18n.I18nManager;
+import fan.summer.i18n.Language;
+import fan.summer.i18n.LocaleChangeListener;
 import fan.summer.scaner.SwissKitPageScaner;
 import fan.summer.utils.UIUtils;
 
@@ -17,7 +20,7 @@ import java.util.List;
  *
  * @author summer
  */
-public class SideMenuBar extends JPanel {
+public class SideMenuBar extends JPanel implements LocaleChangeListener {
 
     private static final int MENU_WIDTH = 160;
     private static final Color SELECTED_BG = new Color(0x2D, 0x2D, 0x2D);
@@ -65,8 +68,11 @@ public class SideMenuBar extends JPanel {
         setPreferredSize(new Dimension(MENU_WIDTH, 0));
         setBackground(UIUtils.LIGHT_GRAY);
 
+        // Register for locale change notifications
+        I18nManager.addListener(this);
+
         // Title
-        titleLabel = new JLabel("Swiss Kit", SwingConstants.CENTER);
+        titleLabel = new JLabel(I18nManager.get("app.name"), SwingConstants.CENTER);
         titleLabel.setFont(new Font("SansSerif", Font.BOLD, 18));
         titleLabel.setForeground(UIUtils.TEXT_COLOR);
         titleLabel.setBorder(new EmptyBorder(20, 10, 20, 10));
@@ -330,15 +336,23 @@ public class SideMenuBar extends JPanel {
         Object page = allPages.get(flatIndex);
         if (page == null) return; // separator, not selectable
 
+        // Calculate actual menu item index (menuItems excludes separators)
+        int menuIdx = 0;
+        for (int i = 0; i < flatIndex; i++) {
+            if (allPages.get(i) != null) {
+                menuIdx++;
+            }
+        }
+
         // Deselect previous
         if (selectedIndex >= 0 && selectedIndex < menuItems.size()) {
             menuItems.get(selectedIndex).setBackground(UIUtils.LIGHT_GRAY);
             menuItems.get(selectedIndex).setForeground(UIUtils.TEXT_COLOR);
         }
 
-        selectedIndex = flatIndex;
-        menuItems.get(flatIndex).setBackground(SELECTED_BG);
-        menuItems.get(flatIndex).setForeground(SELECTED_TEXT);
+        selectedIndex = menuIdx;
+        menuItems.get(menuIdx).setBackground(SELECTED_BG);
+        menuItems.get(menuIdx).setForeground(SELECTED_TEXT);
 
         if (contentPanel != null) {
             contentPanel.removeAll();
@@ -364,6 +378,12 @@ public class SideMenuBar extends JPanel {
             this.allPages.add(null);
         }
         this.allPages.addAll(scannedPages.pluginPages());
+        rebuildMenu();
+    }
+
+    @Override
+    public void onLocaleChanged(Language newLanguage) {
+        titleLabel.setText(I18nManager.get("app.name"));
         rebuildMenu();
     }
 }

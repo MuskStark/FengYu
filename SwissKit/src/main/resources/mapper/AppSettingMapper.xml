@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="fan.summer.database.mapper.AppSettingMapper">
+
+    <select id="selectByKey" resultType="fan.summer.database.entity.AppSettingEntity">
+        SELECT id, setting_key AS settingKey, setting_value AS settingValue
+        FROM app_setting
+        WHERE setting_key = #{key}
+    </select>
+
+    <insert id="insert" parameterType="fan.summer.database.entity.AppSettingEntity">
+        INSERT INTO app_setting (setting_key, setting_value) VALUES (#{settingKey}, #{settingValue})
+    </insert>
+
+    <update id="update" parameterType="fan.summer.database.entity.AppSettingEntity">
+        UPDATE app_setting SET setting_value = #{settingValue} WHERE setting_key = #{settingKey}
+    </update>
+
+</mapper>

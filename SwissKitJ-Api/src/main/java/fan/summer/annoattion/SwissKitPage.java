@@ -32,7 +32,7 @@ public @interface SwissKitPage {
      *
      * @return plugin name
      */
-    String pluginName();
+    String pluginName() default "";
 
     /**
      * Version string of the plugin in semver format (e.g., "1.0.0").
@@ -40,7 +40,7 @@ public @interface SwissKitPage {
      *
      * @return plugin version
      */
-    String pluginVersion();
+    String pluginVersion() default "";
 
     /**
      * Menu display name shown in the sidebar navigation.
@@ -49,6 +49,16 @@ public @interface SwissKitPage {
      * @return menu display name
      */
     String menuName();
+
+    /**
+     * Resource bundle key for menu display name (for i18n support).
+     * If non-empty, the menu name will be looked up from the i18n bundle
+     * instead of using menuName directly.
+     * Example: "menu.excel" will resolve to localized text.
+     *
+     * @return menu name i18n key, or empty for no i18n lookup
+     */
+    String menuNameKey() default "";
 
     /**
      * Menu tooltip text shown on hover.

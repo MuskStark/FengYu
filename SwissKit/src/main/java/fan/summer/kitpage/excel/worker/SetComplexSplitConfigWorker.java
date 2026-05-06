@@ -65,8 +65,13 @@ public class SetComplexSplitConfigWorker extends SwingWorker<Void, Integer> {
         this.columnRowIndexField = columnRowIndex;
         Object selectedItem = comboBox.getSelectedItem();
         this.selectedSheetName = selectedItem != null ? selectedItem.toString() : "";
-        this.headerIndexValue = Integer.parseInt(headerRowIndex.getText());
-        this.columnIndexValue = Integer.parseInt(columnRowIndex.getText());
+        try {
+            this.headerIndexValue = Integer.parseInt(headerRowIndex.getText().trim());
+            this.columnIndexValue = Integer.parseInt(columnRowIndex.getText().trim());
+        } catch (NumberFormatException e) {
+            log.error("Invalid numeric input for split config");
+            throw e;
+        }
         this.selectedComboIndex = comboBox.getSelectedIndex();
     }
 
