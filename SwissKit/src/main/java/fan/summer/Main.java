@@ -1,10 +1,14 @@
 package fan.summer;
 
 import fan.summer.database.DatabaseInit;
+import fan.summer.database.entity.AppSettingEntity;
+import fan.summer.database.mapper.AppSettingMapper;
 import fan.summer.i18n.I18nManager;
+import fan.summer.i18n.Language;
 import fan.summer.plugin.PluginDiagnostic;
 import fan.summer.ui.StartLoadingPage;
 import fan.summer.ui.home.HomePage;
+import org.apache.ibatis.session.SqlSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,7 +47,8 @@ public class Main {
                 protected Void doInBackground() {
                     try {
                         DatabaseInit.init();
-                        I18nManager.init();
+                        Language language = loadLanguageFromDb();
+                        I18nManager.init(language);
                     } catch (Exception e) {
                         publish((Void) null);
                     }
@@ -66,5 +71,18 @@ public class Main {
                 }
             }.execute();
         });
+    }
+
+    private static Language loadLanguageFromDb() {
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            AppSettingEntity setting = mapper.selectByKey("language");
+            if (setting != null && setting.getSettingValue() != null) {
+                return Language.fromCode(setting.getSettingValue());
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to load language from database: {}", e.getMessage());
+        }
+        return Language.ENGLISH;
     }
 }

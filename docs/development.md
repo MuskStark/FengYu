@@ -357,13 +357,13 @@ mvn clean package -DskipTests
 
 ```bash
 mvn clean package
-# Output: target/SwissKit-2.0.1.jar
+# Output: target/SwissKit-2.0.2.jar
 ```
 
 ### Run Executable JAR
 
 ```bash
-java -jar target/SwissKit-2.0.1.jar
+java -jar target/SwissKit-2.0.2.jar
 ```
 
 ## Common Tasks

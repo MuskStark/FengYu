@@ -9,6 +9,9 @@ import java.nio.file.Path;
 import javax.swing.*;
 
 import fan.summer.annoattion.SwissKitPage;
+import fan.summer.i18n.I18nManager;
+import fan.summer.i18n.Language;
+import fan.summer.i18n.LocaleChangeListener;
 import fan.summer.ui.components.GradientProgressBar;
 import net.miginfocom.swing.*;
 
@@ -16,9 +19,26 @@ import net.miginfocom.swing.*;
  * @author summer
  */
 @SwissKitPage(pluginName = "QccToExcel", pluginVersion = "2.0.0", menuName = "QccToExcel", menuTooltip = "QccToExcel", order = 88)
-public class QccToExcel {
+public class QccToExcel implements LocaleChangeListener {
     public QccToExcel() {
         initComponents();
+        I18nManager.addListener(this);
+        refreshI18n();
+    }
+
+    @Override
+    public void onLocaleChanged(Language newLanguage) {
+        refreshI18n();
+    }
+
+    private void refreshI18n() {
+        button1.setText(i18n("plugin.qcc.choiceFile"));
+        button3.setText(i18n("plugin.qcc.choiceOutPutPath"));
+        button2.setText(i18n("plugin.qcc.qccToExcel"));
+    }
+
+    private String i18n(String key) {
+        return I18nManager.getPluginString("i18n.messages", key, getClass().getClassLoader());
     }
 
     private void qccToexcelAction(ActionEvent e) {
