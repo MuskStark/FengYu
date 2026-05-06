@@ -15,7 +15,7 @@ import net.miginfocom.swing.*;
 /**
  * @author summer
  */
-@SwissKitPage(menuName = "QccToExcel", menuTooltip = "QccToExcel", order = 88)
+@SwissKitPage(pluginName = "QccToExcel", pluginVersion = "2.0.0", menuName = "QccToExcel", menuTooltip = "QccToExcel", order = 88)
 public class QccToExcel {
     public QccToExcel() {
         initComponents();

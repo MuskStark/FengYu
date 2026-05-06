@@ -1,13 +1,11 @@
 package plugin.swisskitj;
 
-import com.formdev.flatlaf.FlatIntelliJLaf;
-
 import javax.swing.*;
 
 public class DevLauncher {
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
-            FlatIntelliJLaf.setup(); // Use same theme as main application
+//            FlatIntelliJLaf.setup(); // Use same theme as main application
 
             JFrame frame = new JFrame("Plugin Dev");
             frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
