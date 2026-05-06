@@ -37,18 +37,26 @@ SwissKit is a modular desktop toolbox built with Java Swing. It uses a multi-mod
 
 ### Plugin System
 
-SwissKit auto-discovers tools using Java SPI (Service Provider Interface).
+SwissKit auto-discovers tools using annotation-based discovery.
+
+**All pages** (built-in and external):
+1. Annotate with `@SwissKitPage`
+2. External JAR plugins are discovered by `PluginLoader` scanning for `@SwissKitPage` annotation
 
 **Built-in pages** (in `SwissKit/` or `OfficalPlugin/` modules):
-1. Create a class implementing `KitPage` interface
-2. Annotate with `@SwissKitPage`
-3. Register in `META-INF/services/fan.summer.api.KitPage` **within the module's classpath**
+- Scanned via `SwissKitPageScaner` using the classpath
+- SPI registration in `META-INF/services/fan.summer.api.KitPage` is for module pages, not required for JAR plugins
 
 **External plugins** (installed JARs):
 1. Package as JAR with `SwissKitJ-Api` dependency
-2. Include `META-INF/services/fan.summer.api.KitPage` in the JAR
+2. Classes annotated with `@SwissKitPage` are auto-discovered when JAR is loaded
 3. Install via Settings page → copies JAR to `.swisskit/plugins/`
-4. `PluginLoader.deployPlugin()` hot-loads the JAR via `IsolatedPluginClassLoader`
+4. `PluginService.deployPlugin()` coordinates `PluginLoader` + `PluginManager` to hot-load
+
+**Plugin architecture** (3-layer coordination):
+- `PluginService` - Facade coordinating deployment, uninstallation, and state sync
+- `PluginLoader` - Loads JARs via `IsolatedPluginClassLoader`, annotation-based discovery
+- `PluginManager` - Persists plugin registry to database (plugin_manager table)
 
 Pages are sorted by `order()` value from `@SwissKitPage` annotation.
 
@@ -56,8 +64,10 @@ Pages are sorted by `order()` value from `@SwissKitPage` annotation.
 
 - `Main.java` - Application entry point
 - `HomePage.java` - Main orchestrator; initializes `SwissKitPageScaner`, `SideMenuBar`, and content panel
-- `SwissKitPageScaner` - Scans **both** built-in pages (via SPI) and external plugins (via `PluginLoader`), sorts by `order()`
-- `PluginLoader` - Loads external JAR plugins from `.swisskit/plugins/`
+- `SwissKitPageScaner` - Scans **both** built-in pages and external plugins (via `PluginLoader`), sorts by `order()`
+- `PluginService` - Facade for plugin operations; coordinates `PluginLoader` and `PluginManager`
+- `PluginManager` - Manages plugin lifecycle persistence in database (plugin_manager table)
+- `PluginLoader` - Loads/unloads external JAR plugins from `.swisskit/plugins/`
 - `IsolatedPluginClassLoader` - Break-parent-delegation ClassLoader: `fan.summer.*`/`java.*`/`javax.*`/`sun.*`/`com.sun.*` delegate to main ClassLoader (shared interfaces/annotations); all other classes load from plugin JAR first
 - `DatabaseInit` - Initializes H2 database at `.swisskit/swisskit.db`
 - `SideMenuBar` - Dynamic sidebar menu showing all discovered pages, handles page switching

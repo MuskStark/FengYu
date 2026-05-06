@@ -14,6 +14,8 @@ import fan.summer.kitpage.setting.second.EmailAddressBookView;
 import fan.summer.kitpage.setting.worker.second.QueryAllEmailInfoCallBack;
 import fan.summer.kitpage.setting.worker.second.QueryAllEmailInfoWorker;
 import fan.summer.plugin.PluginLoader;
+import fan.summer.plugin.PluginManager;
+import fan.summer.plugin.dto.PluginUpdateInfo;
 import fan.summer.ui.home.HomePage;
 import fan.summer.utils.EmailUtil;
 import fan.summer.utils.ui.TableUtil;
@@ -353,6 +355,7 @@ public class SettingKitPage {
 
                     // Step 2: Close the ClassLoader and trigger GC
                     PluginLoader.unloadPlugin(pluginName);
+                    PluginManager.unregisterPlugin(pluginName);
 
                     // Step 3: Retry deletion with GC between attempts
                     File pluginFile = new File(PluginLoader.PLUGIN_DIR, pluginName);
@@ -429,10 +432,124 @@ public class SettingKitPage {
             } else {
                 size = String.format("%.1f MB", bytes / (1024.0 * 1024.0));
             }
-            rowData.add(new Object[]{plugin.getName(), plugin.getAbsolutePath(), size});
+
+            PluginLoader.PluginState state = PluginLoader.getPluginState(plugin.getName());
+            String version = state != null && state.getPluginVersion() != null ? state.getPluginVersion() : "N/A";
+            boolean isEnabled = state == null || state.isEnabled();
+            String status = isEnabled ? "Enabled" : "Disabled";
+
+            rowData.add(new Object[]{plugin.getName(), version, status, size});
         }
-        String[] columns = {"Plugin Name", "Path", "Size"};
-        TableUtil.initTable(installedPluginTable, columns, rowData, 99);
+        String[] columns = {"Plugin Name", "Version", "Status", "Size"};
+        TableUtil.initTable(installedPluginTable, columns, rowData, 2);
+    }
+
+    /**
+     * Handles the plugin enable/disable toggle action.
+     *
+     * @param e the action event
+     */
+    private void enableDisablePluginBtAction(ActionEvent e) {
+        int selectedRow = installedPluginTable.getSelectedRow();
+        if (selectedRow < 0) {
+            JOptionPane.showMessageDialog(settingTable,
+                    "Please select a plugin to enable/disable",
+                    "No Selection", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        String jarName = (String) installedPluginTable.getValueAt(selectedRow, 0);
+        PluginLoader.PluginState state = PluginLoader.getPluginState(jarName);
+        boolean currentlyEnabled = state == null || state.isEnabled();
+
+        String action = currentlyEnabled ? "disable" : "enable";
+        int confirm = JOptionPane.showConfirmDialog(settingTable,
+                (currentlyEnabled ? "Disable" : "Enable") + " plugin: " + jarName + "?",
+                "Confirm " + action, JOptionPane.YES_NO_OPTION);
+
+        if (confirm == JOptionPane.YES_OPTION) {
+            new SwingWorker<Boolean, Void>() {
+                @Override
+                protected Boolean doInBackground() throws Exception {
+                    if (currentlyEnabled) {
+                        return PluginLoader.disablePlugin(jarName);
+                    } else {
+                        return PluginLoader.enablePlugin(jarName);
+                    }
+                }
+
+                @Override
+                protected void done() {
+                    boolean success;
+                    try {
+                        success = get();
+                    } catch (Exception ex) {
+                        success = false;
+                    }
+
+                    if (success) {
+                        SwingUtilities.invokeLater(() -> {
+                            HomePage.getInstance().refreshSidebar();
+                            refreshPluginList();
+                        });
+                        JOptionPane.showMessageDialog(settingTable,
+                                "Plugin " + (currentlyEnabled ? "disabled" : "enabled") + " successfully.",
+                                "Success", JOptionPane.INFORMATION_MESSAGE);
+                    } else {
+                        JOptionPane.showMessageDialog(settingTable,
+                                "Failed to " + action + " plugin.",
+                                "Error", JOptionPane.ERROR_MESSAGE);
+                    }
+                }
+            }.execute();
+        }
+    }
+
+    /**
+     * Handles the check updates action.
+     *
+     * @param e the action event
+     */
+    private void checkUpdatesBtAction(ActionEvent e) {
+        checkUpdatesBt.setEnabled(false);
+
+        new SwingWorker<List<PluginUpdateInfo>, Void>() {
+            @Override
+            protected List<PluginUpdateInfo> doInBackground() throws Exception {
+                return PluginManager.checkAllForUpdates();
+            }
+
+            @Override
+            protected void done() {
+                checkUpdatesBt.setEnabled(true);
+                List<PluginUpdateInfo> updates;
+                try {
+                    updates = get();
+                } catch (Exception ex) {
+                    updates = new ArrayList<>();
+                }
+
+                refreshPluginList();
+
+                if (updates.isEmpty()) {
+                    JOptionPane.showMessageDialog(settingTable,
+                            "All plugins are up to date!",
+                            "Check Complete", JOptionPane.INFORMATION_MESSAGE);
+                } else {
+                    StringBuilder msg = new StringBuilder();
+                    msg.append(updates.size()).append(" plugin(s) have updates available:\n\n");
+                    for (PluginUpdateInfo update : updates) {
+                        msg.append(update.getPluginName())
+                           .append(": ").append(update.getCurrentVersion())
+                           .append(" -> ").append(update.getLatestVersion())
+                           .append("\n");
+                    }
+                    JOptionPane.showMessageDialog(settingTable,
+                            msg.toString(),
+                            "Updates Found", JOptionPane.INFORMATION_MESSAGE);
+                }
+            }
+        }.execute();
     }
 
     /**
@@ -628,6 +745,8 @@ public class SettingKitPage {
         deployPluginBt = new JButton();
         reloadPluginBt = new JButton();
         uninstallPluginBt = new JButton();
+        enableDisablePluginBt = new JButton();
+        checkUpdatesBt = new JButton();
 
         //======== settingPanle ========
         {
@@ -741,6 +860,7 @@ public class SettingKitPage {
                         "[]" +
                         "[]" +
                         "[]" +
+                        "[]" +
                         "[]"));
 
                     //======== pluginScrollPane ========
@@ -763,15 +883,25 @@ public class SettingKitPage {
                     deployPluginBt.addActionListener(e -> deployPluginBtAction(e));
                     plugin.add(deployPluginBt, "cell 0 2 2 1");
 
+                    //---- enableDisablePluginBt ----
+                    enableDisablePluginBt.setText("Enable/Disable");
+                    enableDisablePluginBt.addActionListener(e -> enableDisablePluginBtAction(e));
+                    plugin.add(enableDisablePluginBt, "cell 0 3 2 1");
+
+                    //---- checkUpdatesBt ----
+                    checkUpdatesBt.setText("CheckUpdates");
+                    checkUpdatesBt.addActionListener(e -> checkUpdatesBtAction(e));
+                    plugin.add(checkUpdatesBt, "cell 0 4 2 1");
+
                     //---- reloadPluginBt ----
                     reloadPluginBt.setText("Reload");
                     reloadPluginBt.addActionListener(e -> reloadPluginBtAction(e));
-                    plugin.add(reloadPluginBt, "cell 0 3 2 1");
+                    plugin.add(reloadPluginBt, "cell 0 5 2 1");
 
                     //---- uninstallPluginBt ----
                     uninstallPluginBt.setText("Uninstall");
                     uninstallPluginBt.addActionListener(e -> uninstallPluginBtAction(e));
-                    plugin.add(uninstallPluginBt, "cell 0 4 2 1");
+                    plugin.add(uninstallPluginBt, "cell 0 6 2 1");
                 }
                 settingTable.addTab("Plugin", plugin);
             }
@@ -809,5 +939,7 @@ public class SettingKitPage {
     private JButton deployPluginBt;
     private JButton reloadPluginBt;
     private JButton uninstallPluginBt;
+    private JButton enableDisablePluginBt;
+    private JButton checkUpdatesBt;
     // JFormDesigner - End of variables declaration  //GEN-END:variables  @formatter:on
 }
