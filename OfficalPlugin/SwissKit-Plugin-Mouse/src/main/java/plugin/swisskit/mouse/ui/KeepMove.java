@@ -5,6 +5,9 @@
 package plugin.swisskit.mouse.ui;
 
 import fan.summer.annoattion.SwissKitPage;
+import fan.summer.i18n.I18nManager;
+import fan.summer.i18n.Language;
+import fan.summer.i18n.LocaleChangeListener;
 import net.miginfocom.swing.MigLayout;
 
 import javax.swing.*;
@@ -18,7 +21,7 @@ import java.util.TimerTask;
  * @author summer
  */
 @SwissKitPage(pluginName = "KeepMove", pluginVersion = "1.0.0", menuName = "KeepMove", menuTooltip = "KeepMove", order = 9)
-public class KeepMove {
+public class KeepMove implements LocaleChangeListener {
     // Robot instance for controlling mouse movement
     private Robot robot;
     // Timer for scheduling periodic mouse movement
@@ -42,6 +45,8 @@ public class KeepMove {
 
     public KeepMove() {
         initComponents();
+        I18nManager.addListener(this);
+        refreshI18n();
         // Initialize Robot to control mouse cursor
         try {
             robot = new Robot();
@@ -52,6 +57,20 @@ public class KeepMove {
         stopMoveBt.setEnabled(false);
         setupEventHandlers();
         setupHumanInputDetection();
+    }
+
+    @Override
+    public void onLocaleChanged(Language newLanguage) {
+        refreshI18n();
+    }
+
+    private void refreshI18n() {
+        startMoveBt.setText(i18n("plugin.mouse.startMove"));
+        stopMoveBt.setText(i18n("plugin.mouse.stopMove"));
+    }
+
+    private String i18n(String key) {
+        return I18nManager.getPluginString("i18n.messages", key, getClass().getClassLoader());
     }
 
     /**
