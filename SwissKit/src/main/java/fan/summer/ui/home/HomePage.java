@@ -2,6 +2,9 @@ package fan.summer.ui.home;
 
 import com.formdev.flatlaf.FlatIntelliJLaf;
 import fan.summer.annoattion.SwissKitPage;
+import fan.summer.i18n.I18nManager;
+import fan.summer.i18n.Language;
+import fan.summer.i18n.LocaleChangeListener;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.scaner.SwissKitPageScaner;
 import fan.summer.ui.sidebar.SideMenuBar;
@@ -25,7 +28,7 @@ import java.util.stream.Collectors;
  * @version 1.00
  * @date 2026/3/1
  */
-public class HomePage {
+public class HomePage implements LocaleChangeListener {
 
     private static final Logger logger = LoggerFactory.getLogger(HomePage.class);
 
@@ -41,6 +44,9 @@ public class HomePage {
      * Should be called once from the EDT after DatabaseInit completes successfully.
      */
     public void init() {
+        // Register for locale change notifications
+        I18nManager.addListener(this);
+
         FlatIntelliJLaf.setup();
 
         UIManager.put("ProgressBar.arc", 10);
@@ -157,5 +163,12 @@ public class HomePage {
     @Deprecated
     public void refreshSidebar() {
         refreshSidebar(null);
+    }
+
+    @Override
+    public void onLocaleChanged(Language newLanguage) {
+        if (sideMenuBar != null) {
+            SwingUtilities.invokeLater(() -> sideMenuBar.rebuildMenu());
+        }
     }
 }
