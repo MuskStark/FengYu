@@ -71,7 +71,34 @@ public class SettingKitPage implements LocaleChangeListener {
     }
 
     private void refreshI18n() {
+        // General tab
         languageLabel.setText(I18nManager.get("setting.language"));
+
+        // Tab titles
+        settingTable.setTitleAt(0, I18nManager.get("setting.general.tab"));
+        settingTable.setTitleAt(1, I18nManager.get("setting.email.tab"));
+        settingTable.setTitleAt(2, I18nManager.get("setting.plugin.tab"));
+
+        // Email tab labels
+        label1.setText(I18nManager.get("setting.protocol"));
+        label2.setText(I18nManager.get("setting.server.url"));
+        label3.setText(I18nManager.get("setting.server.port"));
+        label4.setText(I18nManager.get("setting.username"));
+        label5.setText(I18nManager.get("setting.password"));
+        label7.setText(I18nManager.get("setting.from.address"));
+        isTsl.setText(I18nManager.get("setting.tls"));
+        isSsl.setText(I18nManager.get("setting.ssl"));
+        sentTestEmailBt.setText(I18nManager.get("setting.sent.test.email"));
+        saveBtAction.setText(I18nManager.get("setting.save"));
+        button3.setText(I18nManager.get("setting.open.address.book"));
+
+        // Plugin tab buttons
+        choicePluginBt.setText(I18nManager.get("setting.choice.plugin"));
+        deployPluginBt.setText(I18nManager.get("setting.deploy"));
+        enableDisablePluginBt.setText(I18nManager.get("setting.enable.disable"));
+        checkUpdatesBt.setText(I18nManager.get("setting.check.updates"));
+        reloadPluginBt.setText(I18nManager.get("setting.reload"));
+        uninstallPluginBt.setText(I18nManager.get("setting.uninstall"));
     }
 
     /**
