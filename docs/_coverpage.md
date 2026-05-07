@@ -1,4 +1,4 @@
-# SwissKitJ <small>2.1.0</small>
+# SwissKitJ <small>2.1.1</small>
 
 > A Swiss Army Knife of Productivity Tools
 > Happy Birthday To My Sunshine
