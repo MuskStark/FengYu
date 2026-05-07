@@ -5,20 +5,22 @@
 package fan.summer.kitpage.setting;
 
 import fan.summer.annoattion.SwissKitPage;
+import fan.summer.database.DatabaseInit;
+import fan.summer.database.entity.AppSettingEntity;
+import fan.summer.database.entity.setting.email.EmailAddressBookEntity;
+import fan.summer.database.entity.setting.email.SwissKitSettingEmailEntity;
+import fan.summer.database.mapper.AppSettingMapper;
+import fan.summer.database.mapper.setting.email.SwissKitSettingEmailMapper;
 import fan.summer.i18n.I18nManager;
 import fan.summer.i18n.Language;
 import fan.summer.i18n.LocaleChangeListener;
-import fan.summer.scaner.SwissKitPageScaner;
-import fan.summer.database.DatabaseInit;
-import fan.summer.database.entity.setting.email.EmailAddressBookEntity;
-import fan.summer.database.entity.setting.email.SwissKitSettingEmailEntity;
-import fan.summer.database.mapper.setting.email.SwissKitSettingEmailMapper;
 import fan.summer.kitpage.setting.second.EmailAddressBookView;
 import fan.summer.kitpage.setting.worker.second.QueryAllEmailInfoCallBack;
 import fan.summer.kitpage.setting.worker.second.QueryAllEmailInfoWorker;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.plugin.PluginManager;
 import fan.summer.plugin.dto.PluginUpdateInfo;
+import fan.summer.scaner.SwissKitPageScaner;
 import fan.summer.ui.home.HomePage;
 import fan.summer.utils.EmailUtil;
 import fan.summer.utils.ui.TableUtil;
@@ -116,11 +118,35 @@ public class SettingKitPage implements LocaleChangeListener {
         Language selected = (Language) languageComboBox.getSelectedItem();
         if (selected != null && selected != I18nManager.getCurrentLanguage()) {
             I18nManager.setLanguage(selected);
+            saveLanguageToDb(selected);
             JOptionPane.showMessageDialog(settingPanle,
                     I18nManager.get("message.language.changed"),
                     I18nManager.get("setting.language"),
                     JOptionPane.INFORMATION_MESSAGE);
         }
+    }
+
+    private void saveLanguageToDb(Language language) {
+        new SwingWorker<Void, Void>() {
+            @Override
+            protected Void doInBackground() throws Exception {
+                try (SqlSession session = DatabaseInit.getSqlSession()) {
+                    AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+                    AppSettingEntity existing = mapper.selectByKey("language");
+                    if (existing != null) {
+                        existing.setSettingValue(language.getCode());
+                        mapper.update(existing);
+                    } else {
+                        AppSettingEntity entity = new AppSettingEntity();
+                        entity.setSettingKey("language");
+                        entity.setSettingValue(language.getCode());
+                        mapper.insert(entity);
+                    }
+                    session.commit();
+                }
+                return null;
+            }
+        }.execute();
     }
 
     /**
