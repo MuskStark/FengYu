@@ -95,7 +95,7 @@ public class I18nManager {
 
     /**
      * Gets a message by key from the current bundle with fallback chain.
-     * Fallback order: page bundles -> main bundle -> English main bundle -> key
+     * Fallback order: page bundles &gt; main bundle &gt; English main bundle &gt; key
      *
      * @param key message key
      * @return message text or key itself if not found
@@ -162,7 +162,7 @@ public class I18nManager {
     /**
      * Gets a message from a plugin's resource bundle.
      * Loads the bundle from the plugin's classloader and caches it.
-     * Fallback: requested locale -> English locale -> key itself
+     * Fallback: requested locale &gt; English locale &gt; key itself
      *
      * @param baseName the base name of the resource bundle (e.g., "i18n.messages")
      * @param key the message key
