@@ -43,21 +43,17 @@ public class IsolatedPluginClassLoader extends URLClassLoader {
                 return appClassLoader.loadClass(name);
             }
 
-            // Try appClassLoader first
-            try {
-                return appClassLoader.loadClass(name);
-            } catch (ClassNotFoundException e) {
-                // Not in appClassLoader, try plugin JAR
-            }
-
-            // Plugin's own classes and third-party libraries → load from plugin JAR
+            // Plugin's own classes and third-party libraries → try plugin JAR first
             try {
                 Class<?> c = findClass(name);
                 if (resolve) resolveClass(c);
                 return c;
             } catch (ClassNotFoundException e) {
-                return appClassLoader.loadClass(name);
+                // Not in plugin JAR, try appClassLoader
             }
+
+            // Fall back to appClassLoader
+            return appClassLoader.loadClass(name);
         }
     }
 }
