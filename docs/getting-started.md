@@ -25,10 +25,10 @@ mvn -version
 
 The easiest way to get started is to download the pre-built JAR file from the [GitHub Releases](https://github.com/MuskStark/SwissKitJ/releases) page.
 
-1. Download `SwissKit-2.0.2.jar`
+1. Download `SwissKit-2.1.0.jar`
 2. Run the application:
    ```bash
-   java -jar SwissKit-2.0.2.jar
+   java -jar SwissKit-2.1.0.jar
    ```
 
 ### Option 2: Build from Source
@@ -47,7 +47,7 @@ mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package
 
 # Run the application
-java -jar target/SwissKit-2.0.2.jar
+java -jar target/SwissKit-2.1.0.jar
 ```
 
 ## Configuration

@@ -328,8 +328,10 @@ public class SwissKitPageScaner {
      * @return the JPanel
      */
     public static JPanel getPanel(Object page) {
+        SwissKitPage annotation = page.getClass().getAnnotation(SwissKitPage.class);
+        String methodName = annotation != null ? annotation.panelMethod() : "getPanel";
         try {
-            Method method = page.getClass().getMethod("getPanel");
+            Method method = page.getClass().getMethod(methodName);
             return (JPanel) method.invoke(page);
         } catch (Exception e) {
             logger.error("Failed to get panel from page: {}", page.getClass().getName(), e);

@@ -90,4 +90,13 @@ public @interface SwissKitPage {
      * @return icon path, or empty string for no icon
      */
     String iconPath() default "";
+
+    /**
+     * Method name to retrieve the panel from the page.
+     * The annotated class must have a public method with this name
+     * that returns a {@link javax.swing.JPanel}.
+     *
+     * @return panel retrieval method name
+     */
+    String panelMethod() default "getPanel";
 }
