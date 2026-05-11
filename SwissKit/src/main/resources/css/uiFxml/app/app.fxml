@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import io.github.palexdev.materialfx.controls.MFXScrollPane?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+
+<BorderPane
+        prefHeight="700.0"
+        prefWidth="1100.0"
+        xmlns="http://javafx.com/javafx/21"
+        xmlns:fx="http://javafx.com/fxml/1"
+        fx:controller="fan.summer.controller.MainController">
+
+    <left>
+        <VBox prefWidth="220" styleClass="sidebar">
+            <HBox styleClass="sidebar-header" alignment="CENTER_LEFT">
+                <Label text="SwissKit" styleClass="app-title"/>
+            </HBox>
+            <MFXScrollPane fitToWidth="true" VBox.vgrow="ALWAYS">
+                <VBox fx:id="menuContainer" styleClass="menu-container" spacing="4"/>
+            </MFXScrollPane>
+        </VBox>
+    </left>
+
+    <center>
+        <StackPane fx:id="contentArea" styleClass="content-area"/>
+    </center>
+
+</BorderPane>
