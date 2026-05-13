@@ -30,6 +30,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+/*
+/////////////////////////////////////////////////////////////////////////////////
+// IMPORTANT: This file contains Swing-based UI code that is being commented out
+// for the JavaFX migration. The code below is preserved but not compiled.
+// To re-enable, remove the opening /* and closing */ markers.
+/////////////////////////////////////////////////////////////////////////////////
+
 /**
  * Email Tool Page
  * Provides email sending functionality with support for single and mass email sending.
@@ -38,6 +45,7 @@ import java.util.UUID;
  * @version 1.00
  * @date 2026/2/26
  */
+/*
 @SwissKitPage(menuName = "Email", menuNameKey = "menu.email", menuTooltip = "Email", order = 2)
 public class EmailKitPage implements LocaleChangeListener {
     private static final Logger log = LoggerFactory.getLogger(EmailKitPage.class);
@@ -45,7 +53,7 @@ public class EmailKitPage implements LocaleChangeListener {
 
     /**
      * Creates a new EmailKitPage and initializes all UI components.
-     */
+     *\/
     public EmailKitPage() {
         initComponents();
         I18nManager.addListener(this);
@@ -57,7 +65,7 @@ public class EmailKitPage implements LocaleChangeListener {
      * Returns the main panel for this email page.
      *
      * @return the email JPanel
-     */
+     *\/
     public JPanel getPanel() {
         return emailPanel;
     }
@@ -82,7 +90,7 @@ public class EmailKitPage implements LocaleChangeListener {
      * When enabled, To and Cc fields are disabled as recipients are loaded from configuration.
      *
      * @param e the action event
-     */
+     *\/
     private void massSentCheckBoxActionListener(ActionEvent e) {
         if (massSentCheckBox.isSelected()) {
             taskId = "MassTask-" + UUID.randomUUID();
@@ -110,7 +118,7 @@ public class EmailKitPage implements LocaleChangeListener {
      * Allows user to set To/Cc tags and attachment folder for mass email sending.
      *
      * @param e the action event triggered by setMassSentConfigBt
-     */
+     *\/
     private void setMassSentConfigBtAction(ActionEvent e) {
         if (taskId != null) {
             new MassSentConfigView(emailPanel, taskId).setVisible(true);
@@ -122,7 +130,7 @@ public class EmailKitPage implements LocaleChangeListener {
      * Shows To/Cc tags, attachment settings, and folder path in a dialog.
      *
      * @param e the action event triggered by viewSentConfigBt
-     */
+     *\/
     private void viewSentConfigBtAction(ActionEvent e) {
         if (taskId == null) {
             return;
@@ -185,7 +193,7 @@ public class EmailKitPage implements LocaleChangeListener {
      * Executes in background to avoid blocking the UI.
      *
      * @param e the action event triggered by sentButton
-     */
+     *\/
     private void sentBtAction(ActionEvent e) {
         new EmailSentWorker(subject.getText(), getEditorHtmlContent(), taskId, massSentCheckBox.isSelected(), progressBar1).execute();
     }
@@ -193,7 +201,7 @@ public class EmailKitPage implements LocaleChangeListener {
     /**
      * Handles the view sent log button action.
      * Loads all email sent logs from database and displays them in a dialog.
-     */
+     *\/
     private void viewSentLogBtAction(ActionEvent e) {
         log.debug("View sent log button clicked");
         new SwingWorker<List<EmailSentLogEntity>, Void>() {
@@ -335,7 +343,7 @@ public class EmailKitPage implements LocaleChangeListener {
     /**
      * Sets up the rich text editor after initComponents().
      * Creates the formatting toolbar and configures the JEditorPane with HTMLEditorKit.
-     */
+     *\/
     private void setupRichTextEditor() {
         createFormattingToolbar();
         configureEditorKit();
@@ -343,7 +351,7 @@ public class EmailKitPage implements LocaleChangeListener {
 
     /**
      * Creates the formatting toolbar with Bold, Italic, Underline, Font, Size, and Color controls.
-     */
+     *\/
     private void createFormattingToolbar() {
         formattingToolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 2));
 
@@ -410,7 +418,7 @@ public class EmailKitPage implements LocaleChangeListener {
 
     /**
      * Configures the JEditorPane with HTMLEditorKit and default styles.
-     */
+     *\/
     private void configureEditorKit() {
         body.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
         body.setFont(new Font("SansSerif", Font.PLAIN, 12));
@@ -424,7 +432,7 @@ public class EmailKitPage implements LocaleChangeListener {
 
     /**
      * Applies the selected font family and size to the current selection.
-     */
+     *\/
     private void applyFontStyle() {
         String fontFamily = (String) fontFamilyCombo.getSelectedItem();
         Integer fontSize = (Integer) fontSizeCombo.getSelectedItem();
@@ -440,7 +448,7 @@ public class EmailKitPage implements LocaleChangeListener {
 
     /**
      * Toggles bold formatting on the current selection.
-     */
+     *\/
     private void toggleBold() {
         int start = body.getSelectionStart();
         int end = body.getSelectionEnd();
@@ -455,7 +463,7 @@ public class EmailKitPage implements LocaleChangeListener {
 
     /**
      * Toggles italic formatting on the current selection.
-     */
+     *\/
     private void toggleItalic() {
         int start = body.getSelectionStart();
         int end = body.getSelectionEnd();
@@ -470,7 +478,7 @@ public class EmailKitPage implements LocaleChangeListener {
 
     /**
      * Toggles underline formatting on the current selection.
-     */
+     *\/
     private void toggleUnderline() {
         int start = body.getSelectionStart();
         int end = body.getSelectionEnd();
@@ -485,7 +493,7 @@ public class EmailKitPage implements LocaleChangeListener {
 
     /**
      * Opens a color chooser dialog and applies the selected color to the current selection.
-     */
+     *\/
     private void changeTextColor() {
         Color color = JColorChooser.showDialog(body, "Choose Text Color", Color.BLACK);
         if (color != null) {
@@ -506,7 +514,7 @@ public class EmailKitPage implements LocaleChangeListener {
      * Removes the outer html and body tags to get just the body content.
      *
      * @return HTML string suitable for email body
-     */
+     *\/
     private String getEditorHtmlContent() {
         String html;
         try {
@@ -531,3 +539,4 @@ public class EmailKitPage implements LocaleChangeListener {
         return html;
     }
 }
+*/

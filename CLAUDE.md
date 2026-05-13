@@ -4,155 +4,91 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build Commands
 
+**Critical: SwissKitJ-Api must be installed before the main module:**
+
 ```bash
-# Install API module to local Maven repo (required before building main project)
+# Install API module first (required for any build)
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 
-# Compile
-mvn clean compile
-
-# Run (development)
-mvn exec:java -Dexec.mainClass="fan.summer.Main"
-
-# Package executable JAR
+# Clean build with executable JAR
 mvn clean package
 
-# Package without tests
+# Skip tests during build
 mvn clean package -DskipTests
+
+# Run application directly (no JAR packaging)
+mvn exec:java -Dexec.mainClass="fan.summer.Main"
 
 # Run tests
 mvn test
-
-# Run a single test class
-mvn test -Dtest=ClassName
 ```
 
 ## Architecture
 
-SwissKit is a modular desktop toolbox built with Java Swing. It uses a multi-module Maven structure:
+### Multi-Module Maven Structure
 
-- **SwissKitJ-Api** - Shared API module (interfaces, annotations, UI components). Must be installed to local Maven repo before building the main module.
-- **SwissKit** (main) - Core application with Excel, Email, and Settings tools.
-- **SwissKitJ-Plugin-HappyLearning** - Auto-learning plugin (in `OfficalPlugin/` directory).
+Build order matters:
+1. `SwissKitJ-Api` - Shared API (interfaces, annotations, UI components)
+2. `SwissKit` - Main application
+3. `OfficalPlugin/*` - Built-in plugins
 
 ### Plugin System
 
-SwissKit auto-discovers tools using annotation-based discovery.
+SwissKit uses SPI (Service Provider Interface) for automatic tool discovery:
 
-**All pages** (built-in and external):
-1. Annotate with `@SwissKitPage`
-2. External JAR plugins are discovered by `PluginLoader` scanning for `@SwissKitPage` annotation
+1. Implement `KitPage` interface from `fan.summer.api`
+2. Annotate with `@SwissKitPage` from `fan.summer.annoattion`
+3. Register in `META-INF/services/fan.summer.api.KitPage`
+4. Pages auto-discovered and sorted by `order()` value at runtime
 
-**Built-in pages** (in `SwissKit/` or `OfficalPlugin/` modules):
-- Scanned via `SwissKitPageScaner` using the classpath
-- SPI registration in `META-INF/services/fan.summer.api.KitPage` is for module pages, not required for JAR plugins
+**Plugin Architecture:**
+- `PluginAPI` - Interface for plugins to communicate with host app
+- `PluginRegistry` - Manages plugin UI injection and lifecycle
+- `PluginLoader` - Hot-loads JAR plugins with isolated classloaders
+- `PluginService` - Facade for plugin lifecycle (deploy/upgrade/uninstall)
 
-**External plugins** (installed JARs):
-1. Package as JAR with `SwissKitJ-Api` dependency
-2. Classes annotated with `@SwissKitPage` are auto-discovered when JAR is loaded
-3. Install via Settings page → copies JAR to `.swisskit/plugins/`
-4. `PluginService.deployPlugin()` coordinates `PluginLoader` + `PluginManager` to hot-load
+**Content Injection:**
+Plugins provide content via `getContent()` method (returns `Node` for JavaFX or `JPanel` for Swing). The `PluginRegistry` handles injecting plugin content into the main window's content area via `ContentProvider` callbacks.
 
-**Plugin architecture** (3-layer coordination):
-- `PluginService` - Facade coordinating deployment, uninstallation, and state sync
-- `PluginLoader` - Loads JARs via `IsolatedPluginClassLoader`, annotation-based discovery
-- `PluginManager` - Persists plugin registry to database (plugin_manager table)
+### Entry Point
 
-Pages are sorted by `order()` value from `@SwissKitPage` annotation.
-
-### Key Components
-
-- `Main.java` - Application entry point
-- `HomePage.java` - Main orchestrator; initializes `SwissKitPageScaner`, `SideMenuBar`, and content panel
-- `SwissKitPageScaner` - Scans **both** built-in pages and external plugins (via `PluginLoader`), sorts by `order()`
-- `PluginService` - Facade for plugin operations; coordinates `PluginLoader` and `PluginManager`
-- `PluginManager` - Manages plugin lifecycle persistence in database (plugin_manager table)
-- `PluginLoader` - Loads/unloads external JAR plugins from `.swisskit/plugins/`
-- `IsolatedPluginClassLoader` - Break-parent-delegation ClassLoader: `fan.summer.*`/`java.*`/`javax.*`/`sun.*`/`com.sun.*` delegate to main ClassLoader (shared interfaces/annotations); all other classes load from plugin JAR first
-- `DatabaseInit` - Initializes H2 database at `.swisskit/swisskit.db`
-- `SideMenuBar` - Dynamic sidebar menu showing all discovered pages, handles page switching
+- `fan.summer.Main` - Application entry point (Swing → being migrated to JavaFX)
+- `fan.summer.ui.home.HomePage` - Main JavaFX container
+- `fan.summer.controller.MainController` - JavaFX window controller
+- `SwissKitPageScaner` - Discovers all `KitPage` implementations via SPI
 
 ### Database
 
-- H2 embedded database with MyBatis ORM
-- Database stored at `.swisskit/swisskit.db`
-- MyBatis mappers in `src/main/resources/mapper/` with corresponding Java mapper interfaces
+- **Location**: `.swisskit/swisskit.db` (relative to runtime directory)
+- **Type**: H2 embedded database
+- **Access**: MyBatis `SqlSession` via `DatabaseInit.getSqlSession()`
+- **Auto-initialized**: Tables created on first run via `init.sql`
 
-### UI Conventions
+### UI Pattern
 
-- Use `SansSerif` font for UI components
-- Use color constants from `UIUtils`
-- All long-running operations must use `SwingWorker` to avoid blocking EDT
-- UI updates from background threads must use `SwingUtilities.invokeLater()`
+- JavaFX with MaterialFX 11.17.0 theming
+- FXML-based UI layouts in `css/uiFxml/` directories
+- Background tasks via `Task` subclasses (javafx.concurrent)
+- Custom UI components and theming in `fan.summer.ui` packages
+- Theme management via `ThemeManager`, scaling via `ScaleManager`
 
-### JFormDesigner UI Files
+### Key Packages
 
-Project UI is built with **JFormDesigner** (IntelliJ IDEA plugin). UI classes store the GUI layout in `.java` files using MigLayout, not XML.
+- `fan.summer.kitpage/` - Tool pages (Excel, Email, Settings, Welcome)
+- `fan.summer.ui/` - JavaFX UI components, theme, scaling, loading screens
+- `fan.summer.database/` - MyBatis entities and mappers
+- `fan.summer.plugin/` - Plugin loading system
+- `fan.summer.utils/` - Utilities (EmailUtil, ExcelUtil, etc.)
 
-**JFormDesigner file structure:**
-```java
-/*
- * Created by JFormDesigner on [date]
- */
-public class SomePage {
-    public SomePage() {
-        initComponents();
-    }
+## Tech Stack
 
-    private void initComponents() {
-        // JFormDesigner - Component initialization - DO NOT MODIFY  //GEN-BEGIN:initComponents  @formatter:off
-        // ... auto-generated layout code ...
-        // JFormDesigner - End of component initialization  //GEN-END:initComponents  @formatter:on
-    }
-
-    // JFormDesigner - Variables declaration - DO NOT MODIFY  //GEN-BEGIN:variables  @formatter:off
-    private JPanel panel1;
-    private JLabel label1;
-    // JFormDesigner - End of variables declaration  //GEN-END:variables  @formatter:on
-}
-```
-
-**Critical rules for JFormDesigner files:**
-
-1. **NEVER modify** code between `//GEN-BEGIN:initComponents` and `//GEN-END:initComponents`
-2. **NEVER modify** variable declarations between `//GEN-BEGIN:variables` and `//GEN-END:variables`
-3. **NEVER remove** the `@formatter:off` / `@formatter:on` comments — these prevent IDE formatting from corrupting generated code
-4. To add custom components or event handlers, write **separate methods** outside the generated blocks and call them after `initComponents()`
-5. To edit the UI, use **JFormDesigner UI designer in IntelliJ** — do not edit the `.java` file manually
-
-**Example — adding a custom button handler in a JFormDesigner class:**
-```java
-public class SomePage {
-    private JButton submitBtn;
-
-    public SomePage() {
-        initComponents();
-        setupEventHandlers();  // Custom method outside generated blocks
-    }
-
-    private void setupEventHandlers() {
-        submitBtn.addActionListener(e -> {
-            // handle submit
-        });
-    }
-
-    // JFormDesigner blocks remain untouched...
-}
-```
-
-### Technology Stack
-
-- Java 11
-- Maven 3.6+
-- Swing + FlatLaf 3.5 (UI theme)
-- Apache FESOD 2.0.1-incubating (Excel processing)
-- H2 2.4.240 + MyBatis 3.5.19 (database)
-- Simple Java Mail 8.12.6 (email)
-- Lombok 1.18.42 (code generation)
-
-## Code Standards
-
-- All code comments and UI text in English
-- camelCase for methods/variables, PascalCase for class names
-- Javadoc for public methods
-- Thread safety: always update UI on EDT using `SwingUtilities.invokeLater()`
+| Component       | Technology                  |
+|-----------------|-----------------------------|
+| Language        | Java 21                     |
+| Build           | Maven 3.6+                  |
+| UI              | JavaFX 21 + MaterialFX 11.17|
+| Excel           | Apache FESOD 2.0.1         |
+| Database        | H2 2.4.240 + MyBatis 3.5.19|
+| Email           | Simple Java Mail 8.12.6    |
+| JSON            | FastJSON2 2.0.59           |
+| Logging         | Log4j2 + SLF4J             |

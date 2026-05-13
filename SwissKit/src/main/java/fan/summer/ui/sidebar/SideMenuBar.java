@@ -14,12 +14,20 @@ import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.List;
 
+/*
+/////////////////////////////////////////////////////////////////////////////////
+// IMPORTANT: This file contains Swing-based UI code that is being commented out
+// for the JavaFX migration. The code below is preserved but not compiled.
+// To re-enable, remove the opening /* and closing */ markers.
+/////////////////////////////////////////////////////////////////////////////////
+
 /**
  * Side menu bar component.
  * Click to navigate, drag to reorder.
  *
  * @author summer
  */
+/*
 public class SideMenuBar extends JPanel implements LocaleChangeListener {
 
     private static final int MENU_WIDTH = 160;
@@ -30,13 +38,13 @@ public class SideMenuBar extends JPanel implements LocaleChangeListener {
 
     /**
      * Minimum pixel movement to be considered a drag (not a click)
-     */
+     *\/
     private static final int DRAG_THRESHOLD = 8;
 
     /**
      * Flat list of all pages in display order.
      * A null entry represents the separator between built-in and plugin sections.
-     */
+     *\/
     private final List<Object> allPages;
     private final List<JLabel> menuItems;
     private final JPanel contentPanel;
@@ -161,7 +169,7 @@ public class SideMenuBar extends JPanel implements LocaleChangeListener {
      * Wrap a menu label in a full-width panel and attach all mouse logic.
      * Key fix: listeners go on BOTH the panel AND the label so events
      * are never swallowed by the child component.
-     */
+     *\/
     private JPanel wrapWithDragSupport(JLabel label, int flatIndex) {
         JPanel panel = new JPanel(new GridBagLayout());
         panel.setBackground(UIUtils.LIGHT_GRAY);
@@ -277,7 +285,7 @@ public class SideMenuBar extends JPanel implements LocaleChangeListener {
     /**
      * Returns the index at which the dragged item should be inserted.
      * Compares mouse Y against the midpoint of each row.
-     */
+     *\/
     private int getDropIndex(Point locationInPanel) {
         int count = menuItemsPanel.getComponentCount();
         if (count == 0) return 0;
@@ -387,3 +395,4 @@ public class SideMenuBar extends JPanel implements LocaleChangeListener {
         rebuildMenu();
     }
 }
+*/

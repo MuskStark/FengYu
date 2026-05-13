@@ -6,16 +6,12 @@ import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.MenuOrderEntity;
 import fan.summer.database.mapper.MenuOrderMapper;
 import fan.summer.i18n.I18nManager;
-import fan.summer.kitpage.email.EmailKitPage;
-import fan.summer.kitpage.excel.ExcelKitPage;
-import fan.summer.kitpage.setting.SettingKitPage;
-import fan.summer.kitpage.welcome.WelcomePage;
 import fan.summer.plugin.PluginLoader;
+import javafx.scene.Node;
 import org.apache.ibatis.session.SqlSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.swing.*;
 import java.lang.reflect.Method;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,14 +33,9 @@ public class SwissKitPageScaner {
     private static final Map<String, Integer> savedMenuOrders = new ConcurrentHashMap<>();
 
     /**
-     * Built-in page classes
+     * Built-in page classes (currently empty - pending JavaFX migration)
      */
-    private static final List<Class<?>> BUILTIN_PAGE_CLASSES = Arrays.asList(
-            WelcomePage.class,
-            ExcelKitPage.class,
-            EmailKitPage.class,
-            SettingKitPage.class
-    );
+    private static final List<Class<?>> BUILTIN_PAGE_CLASSES = Collections.emptyList();
 
     /**
      * Holds scanned pages separated by category.
@@ -322,20 +313,26 @@ public class SwissKitPageScaner {
     }
 
     /**
-     * Gets the panel from a page using reflection.
+     * Gets the content Node from a page using reflection.
+     * Supports both JavaFX (getNode/getContent) and legacy Swing (getPanel) methods.
      *
      * @param page the page instance
-     * @return the JPanel
+     * @return the Node (JavaFX) or null
      */
-    public static JPanel getPanel(Object page) {
+    public static Node getNode(Object page) {
         SwissKitPage annotation = page.getClass().getAnnotation(SwissKitPage.class);
-        String methodName = annotation != null ? annotation.panelMethod() : "getPanel";
+        // Try nodeMethod first, then fallback to panelMethod
+        String methodName = annotation != null && annotation.nodeMethod() != null && !annotation.nodeMethod().isEmpty()
+                ? annotation.nodeMethod() : "getNode";
         try {
             Method method = page.getClass().getMethod(methodName);
-            return (JPanel) method.invoke(page);
+            Object result = method.invoke(page);
+            if (result instanceof Node) {
+                return (Node) result;
+            }
         } catch (Exception e) {
-            logger.error("Failed to get panel from page: {}", page.getClass().getName(), e);
-            return new JPanel();
+            logger.debug("Failed to get Node from page {} via {}: {}", page.getClass().getName(), methodName, e.getMessage());
         }
+        return null;
     }
 }

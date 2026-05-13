@@ -16,6 +16,12 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.List;
 
+/*
+/////////////////////////////////////////////////////////////////////////////////
+// IMPORTANT: This file contains Swing-based UI code that is being commented out
+// for the JavaFX migration. The code below is preserved but not compiled.
+// To re-enable, remove the opening /* and closing */ markers.
+/////////////////////////////////////////////////////////////////////////////////
 
 /**
  * Configuration View Dialog.
@@ -24,6 +30,7 @@ import java.util.List;
  *
  * @author phoebej
  */
+/*
 public class ConfigView extends JDialog {
     private static final Logger log = LoggerFactory.getLogger(ConfigView.class);
 
@@ -33,7 +40,7 @@ public class ConfigView extends JDialog {
      * Constructor - Creates the configuration view dialog
      *
      * @param panel Parent panel for dialog positioning
-     */
+     *\/
     public ConfigView(JPanel panel, String taskId) {
         super(SwingUtilities.getWindowAncestor(panel));
         initComponents();
@@ -47,7 +54,7 @@ public class ConfigView extends JDialog {
      *
      * @param rowDatas List of row data arrays containing configuration values
      * @return This ConfigView instance for method chaining
-     */
+     *\/
     public ConfigView setTableModel(List<Object[]> rowDatas) {
         String[] columns = {"FileName", "SheetName", "HeaderIndex", "SplitBYColumnIndex"};
         // Override isCellEditable to make columns beyond index 4 editable
@@ -69,7 +76,7 @@ public class ConfigView extends JDialog {
      * Handles OK button action - closes the dialog
      *
      * @param e ActionEvent triggered by button click
-     */
+     *\/
     private void okBtAction(ActionEvent e) {
         this.setVisible(false);
     }
@@ -79,7 +86,7 @@ public class ConfigView extends JDialog {
      * Opens editor dialog when user double-clicks on a row.
      *
      * @param e MouseEvent containing click coordinates and information
-     */
+     *\/
     private void configInfoMouseClicked(MouseEvent e) {
         // Check for double-click (>=2 to handle any multi-click scenario)
         if (e.getClickCount() >= 2) {
@@ -172,3 +179,4 @@ public class ConfigView extends JDialog {
     private JButton okButton;
     // JFormDesigner - End of variables declaration  //GEN-END:variables  @formatter:on
 }
+*/
