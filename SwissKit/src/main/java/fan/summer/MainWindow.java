@@ -1,0 +1,259 @@
+package fan.summer;
+
+import javafx.animation.*;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.control.Label;
+import javafx.scene.layout.*;
+import javafx.scene.paint.*;
+import javafx.scene.shape.*;
+import javafx.stage.Stage;
+import javafx.util.Duration;
+
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+ /* Main window root node.
+ * Assembles TitleBar / Sidebar / ContentArea / StatusBar,
+ * and holds PluginLoader and PluginRegistry lifecycles.
+ */
+public class MainWindow extends StackPane {
+
+    private final Stage        stage;
+    private final PluginLoader loader;
+    private final PluginRegistry registry;
+
+    private final TitleBar    titleBar;
+    private final Sidebar     sidebar;
+    private final ContentArea contentArea;
+
+    // Status bar labels
+    private final Label statusToolCount    = statusText("0 tools");
+    private final Label statusPluginCount  = statusText("0 plugins");
+    private final Label clockLabel         = statusText("");
+
+    private Timeline clockTimeline;
+
+    public MainWindow(Stage stage, PluginLoader loader, PluginRegistry registry) {
+        this.stage    = stage;
+        this.loader   = loader;
+        this.registry = registry;
+
+        titleBar    = new TitleBar(stage, this::openSettings);
+        sidebar     = new Sidebar();
+        contentArea = new ContentArea();
+
+        buildScene();
+        wireEvents();
+        startClock();
+        playEntryAnimation();
+    }
+
+    // ── Build Scene Tree ────────────────────────────────────────
+
+    private void buildScene() {
+        // Background orb layer (at bottom)
+        Pane orbLayer = buildOrbLayer();
+
+        // Main window glass panel
+        BorderPane windowPane = new BorderPane();
+        windowPane.getStyleClass().add("app-root");
+        windowPane.setStyle(
+            "-fx-background-color: rgba(13,14,17,0.72);" +
+            "-fx-background-radius: 20;" +
+            "-fx-border-radius: 20;" +
+            "-fx-border-color: rgba(255,255,255,0.10);" +
+            "-fx-border-width: 1;" +
+            "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.6), 60, 0, 0, 20);"
+        );
+
+        // Title bar
+        windowPane.setTop(titleBar);
+
+        // Center: sidebar + content area
+        HBox body = new HBox(sidebar, contentArea);
+        HBox.setHgrow(contentArea, Priority.ALWAYS);
+        windowPane.setCenter(body);
+
+        // Status bar
+        windowPane.setBottom(buildStatusBar());
+
+        // Top highlight border (simulates glass thickness)
+        Rectangle topHighlight = new Rectangle();
+        topHighlight.setMouseTransparent(true);
+        topHighlight.setStyle(
+            "-fx-fill: transparent;" +
+            "-fx-stroke: rgba(255,255,255,0.12);" +
+            "-fx-stroke-width: 1;" +
+            "-fx-arc-width: 40; -fx-arc-height: 40;"
+        );
+        topHighlight.widthProperty().bind(widthProperty());
+        topHighlight.heightProperty().bind(heightProperty());
+
+        getChildren().addAll(orbLayer, windowPane, topHighlight);
+        setAlignment(windowPane, Pos.CENTER);
+        setAlignment(topHighlight, Pos.CENTER);
+    }
+
+    // ── Background Orbs ──────────────────────────────────────────
+
+    private Pane buildOrbLayer() {
+        Pane layer = new Pane();
+        layer.setMouseTransparent(true);
+        layer.setStyle("-fx-background-color: #0d0e11;");
+
+        // Three colored gaussian blur orbs
+        layer.getChildren().addAll(
+            orb(480, "#3b5bdb", -80, -120, 0),
+            orb(360, "#7048e8",  -60, 200,  -6000),
+            orb(300, "#1c7ed6",  300, 400, -12000)
+        );
+        return layer;
+    }
+
+    private StackPane orb(double size, String color, double x, double y, double animDelay) {
+        Circle c = new Circle(size / 2,
+            Color.web(color, 0.28));
+        c.setEffect(new javafx.scene.effect.GaussianBlur(60));
+
+        StackPane wrap = new StackPane(c);
+        wrap.setTranslateX(x);
+        wrap.setTranslateY(y);
+        wrap.setMouseTransparent(true);
+
+        // Floating animation
+        TranslateTransition drift = new TranslateTransition(Duration.millis(18000), wrap);
+        drift.setByX(30); drift.setByY(20);
+        drift.setAutoReverse(true);
+        drift.setCycleCount(Animation.INDEFINITE);
+        drift.setDelay(Duration.millis(Math.abs(animDelay)));
+        drift.setInterpolator(Interpolator.EASE_BOTH);
+        drift.play();
+
+        ScaleTransition breathe = new ScaleTransition(Duration.millis(12000), wrap);
+        breathe.setFromX(1.0); breathe.setFromY(1.0);
+        breathe.setToX(1.08);  breathe.setToY(1.08);
+        breathe.setAutoReverse(true);
+        breathe.setCycleCount(Animation.INDEFINITE);
+        breathe.setInterpolator(Interpolator.EASE_BOTH);
+        breathe.play();
+
+        return wrap;
+    }
+
+    // ── Status Bar ────────────────────────────────────────────
+
+    private HBox buildStatusBar() {
+        // Activity indicator dot
+        Circle dot = new Circle(3, Color.web("#4cd97b"));
+        dot.setEffect(new javafx.scene.effect.Glow(0.8));
+        FadeTransition pulse = new FadeTransition(Duration.millis(2500), dot);
+        pulse.setFromValue(1.0); pulse.setToValue(0.4);
+        pulse.setAutoReverse(true); pulse.setCycleCount(Animation.INDEFINITE);
+        pulse.play();
+
+        Label sep = statusText("·");
+        sep.setStyle("-fx-text-fill: rgba(255,255,255,0.15); -fx-font-size: 11px;");
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        HBox bar = new HBox(10);
+        bar.getStyleClass().add("statusbar");
+        bar.setAlignment(Pos.CENTER_LEFT);
+        bar.setPadding(new Insets(0, 16, 0, 16));
+        bar.getChildren().addAll(dot, statusToolCount, sep, statusPluginCount, spacer, clockLabel);
+        return bar;
+    }
+
+    private Label statusText(String text) {
+        Label l = new Label(text);
+        l.getStyleClass().add("status-text");
+        return l;
+    }
+
+    // ── Event Wiring ──────────────────────────────────────────
+
+    private void wireEvents() {
+        // Bind plugin list to content area
+        contentArea.setPlugins(registry.getPlugins());
+
+        // Sidebar category switch → content area filter
+        sidebar.setOnCategorySelect(categoryId -> {
+            if ("settings".equals(categoryId)) { openSettings(); return; }
+            contentArea.showCategory(categoryId);
+        });
+
+        // Plugin list change → update status bar
+        registry.getPlugins().addListener(
+            (javafx.collections.ListChangeListener<com.toolbox.api.ToolPlugin>) c -> {
+                int total   = registry.getPlugins().size();
+                int plugins = (int) registry.getPlugins().stream()
+                    .filter(p -> !"builtin".equals(p.getType())).count();
+                statusToolCount.setText(total + " tools");
+                statusPluginCount.setText(plugins + " plugins");
+                sidebar.updateBadge("plugins", plugins);
+            }
+        );
+
+        // Tool launch callback
+        contentArea.setOnLaunch(plugin -> {
+            registry.activate(plugin);
+            contentArea.showPage(plugin.createView(), plugin.getName());
+        });
+    }
+
+    // ── Settings Page ──────────────────────────────────────────
+
+    private void openSettings() {
+        Label placeholder = new Label("⚙️  Settings Panel\n(Coming Soon)");
+        placeholder.setStyle(
+            "-fx-text-fill: rgba(255,255,255,0.40); -fx-font-size: 16px;" +
+            "-fx-alignment: center; -fx-text-alignment: center;"
+        );
+        StackPane page = new StackPane(placeholder);
+        page.setStyle("-fx-background-color: transparent;");
+        contentArea.showPage(page, "Settings");
+    }
+
+    // ── Entry Animation ──────────────────────────────────────────
+
+    private void playEntryAnimation() {
+        // Get windowPane (second child node)
+        javafx.scene.Node windowPane = getChildren().get(1);
+        windowPane.setOpacity(0);
+        windowPane.setScaleX(0.94);
+        windowPane.setScaleY(0.94);
+        windowPane.setTranslateY(16);
+
+        FadeTransition ft = new FadeTransition(Duration.millis(500), windowPane);
+        ft.setToValue(1);
+
+        ScaleTransition st = new ScaleTransition(Duration.millis(500), windowPane);
+        st.setToX(1); st.setToY(1);
+        st.setInterpolator(Interpolator.SPLINE(0.34, 1.4, 0.64, 1));
+
+        TranslateTransition tt = new TranslateTransition(Duration.millis(500), windowPane);
+        tt.setToY(0);
+        tt.setInterpolator(Interpolator.SPLINE(0.34, 1.4, 0.64, 1));
+
+        new ParallelTransition(ft, st, tt).play();
+    }
+
+    // ── Clock ──────────────────────────────────────────────
+
+    private void startClock() {
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("HH:mm:ss");
+        clockTimeline = new Timeline(new KeyFrame(Duration.seconds(1), e ->
+            clockLabel.setText(LocalTime.now().format(fmt))
+        ));
+        clockTimeline.setCycleCount(Animation.INDEFINITE);
+        clockTimeline.play();
+        clockLabel.setText(LocalTime.now().format(fmt)); // Show immediately
+    }
+
+    /** Called on application exit to clean up resources */
+    public void shutdown() {
+        if (clockTimeline != null) clockTimeline.stop();
+        loader.stop();
+    }
+}
