@@ -23,6 +23,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
+/*
+/////////////////////////////////////////////////////////////////////////////////
+// IMPORTANT: This file contains Swing-based UI code that is being commented out
+// for the JavaFX migration. The code below is preserved but not compiled.
+// To re-enable, remove the opening /* and closing */ markers.
+/////////////////////////////////////////////////////////////////////////////////
+
 /**
  * Dialog window for managing email tags.
  * Allows users to view, add, and update email tags stored in the database.
@@ -30,17 +37,18 @@ import java.util.concurrent.ExecutionException;
  *
  * @author phoebej
  */
+/*
 public class EmailTagsView extends JDialog {
     private static final Logger log = LoggerFactory.getLogger(EmailTagsView.class);
 
-    /** ID of the tag being updated (null for new tag creation) */
+    /** ID of the tag being updated (null for new tag creation) *\/
     private Long needUpdateId;
 
     /**
      * Creates a new EmailTagsView dialog.
      *
      * @param panel the parent panel to determine the window ancestor
-     */
+     *\/
     public EmailTagsView(JPanel panel) {
         super(SwingUtilities.getWindowAncestor(panel));
         ;
@@ -51,7 +59,7 @@ public class EmailTagsView extends JDialog {
      * Opens the tag view and loads all existing tags from database.
      * Displays tags in a table with ID and Tag columns.
      * Uses SwingWorker for background database query.
-     */
+     *\/
     public void openTagView() {
         new SwingWorker<List<EmailTagEntity>, Void>() {
             @Override
@@ -108,7 +116,7 @@ public class EmailTagsView extends JDialog {
      * If button text is "Update", updates the existing tag with needUpdateId.
      *
      * @param e the action event
-     */
+     *\/
     private void addTagBtAction(ActionEvent e) {
         if (addTagBt.getText().equals("AddNewTag")) {
             new SwingWorker<Void, Void>() {
@@ -192,7 +200,7 @@ public class EmailTagsView extends JDialog {
      * Handles close button action - hides the dialog.
      *
      * @param e the action event
-     */
+     *\/
     private void closeBtAction(ActionEvent e) {
         this.setVisible(false);
     }
@@ -200,7 +208,7 @@ public class EmailTagsView extends JDialog {
     /**
      * Creates custom UI components for the dialog.
      * Called by JFormDesigner during component initialization.
-     */
+     *\/
     private void createUIComponents() {
         progressBar1 = new GradientProgressBar();
     }
@@ -210,7 +218,7 @@ public class EmailTagsView extends JDialog {
      * Double-click on a row enables edit mode for that tag.
      *
      * @param e the mouse event
-     */
+     *\/
     private void tagTableMouseClicked(MouseEvent e) {
         if (e.getClickCount() >= 2) {
             // Convert click point to row index
@@ -320,3 +328,4 @@ public class EmailTagsView extends JDialog {
     private JButton closeBt;
     // JFormDesigner - End of variables declaration  //GEN-END:variables  @formatter:on
 }
+*/

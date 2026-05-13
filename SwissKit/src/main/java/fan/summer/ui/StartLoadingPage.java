@@ -8,16 +8,24 @@ import java.awt.*;
 import javax.swing.*;
 import net.miginfocom.swing.*;
 
+/*
+/////////////////////////////////////////////////////////////////////////////////
+// IMPORTANT: This file contains Swing-based UI code that is being commented out
+// for the JavaFX migration. The code below is preserved but not compiled.
+// To re-enable, remove the opening /* and closing */ markers.
+/////////////////////////////////////////////////////////////////////////////////
+
 /**
  * Splash screen window displayed during application initialization.
  * Shows a loading message while the database and UI are being initialized.
  *
  * @author summer
  */
+/*
 public class StartLoadingPage {
     /**
      * Creates a new StartLoadingPage and initializes the splash screen components.
-     */
+     *\/
     public StartLoadingPage() {
         initComponents();
     }
@@ -80,7 +88,7 @@ public class StartLoadingPage {
      * Returns the JWindow instance for display control.
      *
      * @return the splash screen JWindow
-     */
+     *\/
     public JWindow getWindow() {
         return startLoading;
     }
@@ -91,3 +99,4 @@ public class StartLoadingPage {
     private JLabel label1;
     // JFormDesigner - End of variables declaration  //GEN-END:variables  @formatter:on
 }
+*/

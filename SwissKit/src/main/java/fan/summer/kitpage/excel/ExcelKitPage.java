@@ -20,6 +20,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+/*
+/////////////////////////////////////////////////////////////////////////////////
+// IMPORTANT: This file contains Swing-based UI code that is being commented out
+// for the JavaFX migration. The code below is preserved but not compiled.
+// To re-enable, remove the opening /* and closing */ markers.
+/////////////////////////////////////////////////////////////////////////////////
+
 /**
  * Excel Tool Page
  * Provides file analysis and splitting functionality
@@ -28,6 +35,7 @@ import java.util.UUID;
  * @version 1.00
  * @date 2026/2/26
  */
+/*
 @SwissKitPage(menuName = "Excel", menuNameKey = "menu.excel", menuTooltip = "Excel", order = 1)
 public class ExcelKitPage implements LocaleChangeListener {
     private static final Logger logger = LoggerFactory.getLogger(ExcelKitPage.class);
@@ -45,7 +53,7 @@ public class ExcelKitPage implements LocaleChangeListener {
 
     /**
      * Constructor - Initialize the Excel tool page and set up all event listeners
-     */
+     *\/
     public ExcelKitPage() {
         initComponents();
         I18nManager.addListener(this);
@@ -172,7 +180,7 @@ public class ExcelKitPage implements LocaleChangeListener {
      * Returns the main panel of this Excel tool page
      *
      * @return the JPanel component containing all UI elements
-     */
+     *\/
     public JPanel getPanel() {
         return excelKitPage;
     }
@@ -180,7 +188,7 @@ public class ExcelKitPage implements LocaleChangeListener {
     /**
      * Handle the mutual exclusion logic between splitBySheetCheckBox and splitByColumnCheckBox
      * When one checkbox is selected, the other is disabled and unselected
-     */
+     *\/
     private void checkBoxInterlocked() {
         if (splitBySheetCheckBox.isSelected()) {
             splitByColumnCheckBox.setSelected(false);
@@ -198,7 +206,7 @@ public class ExcelKitPage implements LocaleChangeListener {
 
     /**
      * Resets the simple split configuration by clearing selected sheet and column names.
-     */
+     *\/
     private void restSimpleSplitConfig() {
         selectedSheetNm = null;
         selectedColumnNm = null;
@@ -228,12 +236,12 @@ public class ExcelKitPage implements LocaleChangeListener {
 
     /*
     JFrom Functions
-     */
+     *\/
 
     /**
      * Initialize and create custom UI components.
      * Creates the gradient progress bar and fixed-width combo boxes for sheet and column selection.
-     */
+     *\/
     private void createUIComponents() {
         progressBar1 = new GradientProgressBar();
         choiceSheetBox = new FixedWidthComboBox(200);
@@ -241,14 +249,14 @@ public class ExcelKitPage implements LocaleChangeListener {
     }
     /*
     JForm Events
-     */
+     *\/
 
     /**
      * Handles tab switching in the split way pane.
      * When the complex split tab is selected, initializes the task ID and populates sheet options.
      *
      * @param e the change event triggered by tab selection
-     */
+     *\/
     private void splitWayPaneStateChanged(ChangeEvent e) {
         int selectedIndex = splitWayPane.getSelectedIndex();
         if (selectedIndex == -1) return;
@@ -271,7 +279,7 @@ public class ExcelKitPage implements LocaleChangeListener {
      * Saves sheet name, header row index, and column row index to the database.
      *
      * @param e the action event triggered by setConfigBt
-     */
+     *\/
     private void setConfigBtActionListener(ActionEvent e) {
         new SetComplexSplitConfigWorker(
                 excelKitPage, progressBar1, setConfigBt,
@@ -284,7 +292,7 @@ public class ExcelKitPage implements LocaleChangeListener {
      * Deletes all complex split configurations for the current task from the database.
      *
      * @param e the action event triggered by clearConfigBt
-     */
+     *\/
     private void deleteComplexSplitConfigBtAction(ActionEvent e) {
         new ClearComplexSplitConfigWorker(
                 excelKitPage, splitTaskId, clearConfigBt, progressBar1
@@ -295,7 +303,7 @@ public class ExcelKitPage implements LocaleChangeListener {
      * Opens a dialog to view the saved complex split configuration for the current task.
      *
      * @param e the action event triggered by viewConfigBt
-     */
+     *\/
     private void viewConfigBtAction(ActionEvent e) {
         new ShowConfigViewWorker(excelKitPage, splitTaskId).execute();
     }
@@ -530,3 +538,4 @@ public class ExcelKitPage implements LocaleChangeListener {
     private JProgressBar progressBar1;
     // JFormDesigner - End of variables declaration  //GEN-END:variables  @formatter:on
 }
+*/

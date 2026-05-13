@@ -1,7 +1,3 @@
-/*
- * Created by JFormDesigner on Thu Mar 05 23:18:59 CST 2026
- */
-
 package fan.summer.kitpage.setting;
 
 import fan.summer.annoattion.SwissKitPage;
@@ -40,24 +36,32 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/*
+/////////////////////////////////////////////////////////////////////////////////
+// IMPORTANT: This file contains Swing-based UI code that is being commented out
+// for the JavaFX migration. The code below is preserved but not compiled.
+// To re-enable, remove the opening /* and closing */ markers.
+/////////////////////////////////////////////////////////////////////////////////
+
 /**
  * Settings page for application configuration.
  * Includes email server settings, address book management, and plugin installation.
  *
  * @author phoebej
  */
+/*
 @SwissKitPage(menuName = "Setting", menuNameKey = "menu.setting", menuTooltip = "Setting", order = 99999)
 public class SettingKitPage implements LocaleChangeListener {
     private static final Logger log = LoggerFactory.getLogger(SettingKitPage.class);
 
     /**
      * Cached email address book data
-     */
+     *\/
     private List<EmailAddressBookEntity> dataBaseInfo;
 
     /**
      * Creates a new SettingKitPage and initializes all UI components, settings, and plugin list.
-     */
+     *\/
     public SettingKitPage() {
         initComponents();
         I18nManager.addListener(this);
@@ -105,7 +109,7 @@ public class SettingKitPage implements LocaleChangeListener {
 
     /**
      * Initializes the language selector in the General tab.
-     */
+     *\/
     private void initLanguageSelector() {
         languageComboBox.setModel(new DefaultComboBoxModel<>(Language.values()));
         languageComboBox.setSelectedItem(I18nManager.getCurrentLanguage());
@@ -113,7 +117,7 @@ public class SettingKitPage implements LocaleChangeListener {
 
     /**
      * Handles language change event.
-     */
+     *\/
     private void languageComboBoxActionPerformed(ActionEvent e) {
         Language selected = (Language) languageComboBox.getSelectedItem();
         if (selected != null && selected != I18nManager.getCurrentLanguage()) {
@@ -153,7 +157,7 @@ public class SettingKitPage implements LocaleChangeListener {
      * Returns the main panel for this settings page.
      *
      * @return the settings JPanel
-     */
+     *\/
     public JPanel getPanel() {
         return settingPanle;
     }
@@ -162,7 +166,7 @@ public class SettingKitPage implements LocaleChangeListener {
      * Initializes the settings page with data from database.
      * Queries the latest email settings and populates the UI fields.
      * This method is called when the settings page is loaded.
-     */
+     *\/
     private void initSettingPageInfo() {
         log.debug("Initializing settings page info from database");
 
@@ -212,7 +216,7 @@ public class SettingKitPage implements LocaleChangeListener {
     /**
      * Opens the email address book view dialog.
      * Queries all email addresses from database and displays them in a table.
-     */
+     *\/
     private void openAddressBookBtActionListener(ActionEvent e) {
         log.debug("Opening address book view");
         new QueryAllEmailInfoWorker(new QueryAllEmailInfoCallBack() {
@@ -249,7 +253,7 @@ public class SettingKitPage implements LocaleChangeListener {
      * Opens a file chooser dialog for selecting a JAR plugin file.
      *
      * @param e the action event
-     */
+     *\/
     private void choicePluginBtAction(ActionEvent e) {
         JFileChooser fileChooser = new JFileChooser();
         fileChooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
@@ -278,7 +282,7 @@ public class SettingKitPage implements LocaleChangeListener {
      * Copies the selected JAR to plugin directory and loads it immediately (hot-deploy).
      *
      * @param e the action event
-     */
+     *\/
     private void deployPluginBtAction(ActionEvent e) {
         String path = pluginPath.getText();
         if (path == null || path.isEmpty()) {
@@ -361,7 +365,7 @@ public class SettingKitPage implements LocaleChangeListener {
      * Reloads the selected plugin JAR without restarting the application.
      *
      * @param e the action event
-     */
+     *\/
     private void reloadPluginBtAction(ActionEvent e) {
         int selectedRow = installedPluginTable.getSelectedRow();
         if (selectedRow < 0) {
@@ -415,7 +419,7 @@ public class SettingKitPage implements LocaleChangeListener {
      * Deletes the selected plugin JAR file from the plugins directory.
      *
      * @param e the action event
-     */
+     *\/
     private void uninstallPluginBtAction(ActionEvent e) {
         int selectedRow = installedPluginTable.getSelectedRow();
         if (selectedRow < 0) {
@@ -508,7 +512,7 @@ public class SettingKitPage implements LocaleChangeListener {
 
     /**
      * Refreshes the installed plugins table with current plugin directory contents.
-     */
+     *\/
     private void refreshPluginList() {
         List<File> plugins = PluginLoader.getInstalledPlugins();
         List<Object[]> rowData = new ArrayList<>();
@@ -538,7 +542,7 @@ public class SettingKitPage implements LocaleChangeListener {
      * Handles the plugin enable/disable toggle action.
      *
      * @param e the action event
-     */
+     *\/
     private void enableDisablePluginBtAction(ActionEvent e) {
         int selectedRow = installedPluginTable.getSelectedRow();
         if (selectedRow < 0) {
@@ -599,7 +603,7 @@ public class SettingKitPage implements LocaleChangeListener {
      * Handles the check updates action.
      *
      * @param e the action event
-     */
+     *\/
     private void checkUpdatesBtAction(ActionEvent e) {
         checkUpdatesBt.setEnabled(false);
 
@@ -647,7 +651,7 @@ public class SettingKitPage implements LocaleChangeListener {
      * Reads SMTP address, port, email address, and password from the form fields.
      *
      * @param e the action event triggered by saveBtAction
-     */
+     *\/
     private void saveBtAction(ActionEvent e) {
         // Validate required fields before saving
         String smtpAddress = textField1.getText().trim();
@@ -794,7 +798,7 @@ public class SettingKitPage implements LocaleChangeListener {
      * Validates that settings are saved before attempting to send.
      *
      * @param e the action event triggered by sentTestEmailBt
-     */
+     *\/
     private void sentTestEmailBtAction(ActionEvent e) {
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             SwissKitSettingEmailMapper mapper = session.getMapper(SwissKitSettingEmailMapper.class);
@@ -1059,3 +1063,4 @@ public class SettingKitPage implements LocaleChangeListener {
     private JButton checkUpdatesBt;
     // JFormDesigner - End of variables declaration  //GEN-END:variables  @formatter:on
 }
+*/

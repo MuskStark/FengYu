@@ -14,23 +14,31 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.util.List;
 
+/*
+/////////////////////////////////////////////////////////////////////////////////
+// IMPORTANT: This file contains Swing-based UI code that is being commented out
+// for the JavaFX migration. The code below is preserved but not compiled.
+// To re-enable, remove the opening /* and closing */ markers.
+/////////////////////////////////////////////////////////////////////////////////
+
 /**
  * Dialog for viewing email sent logs.
  * Displays a table with email sending history including recipients, content, and status.
  *
  * @author summer
  */
+/*
 public class ViewEmailSentLogView extends JDialog {
     private static final Logger log = LoggerFactory.getLogger(ViewEmailSentLogView.class);
 
-    /** Column names for the email sent log table */
+    /** Column names for the email sent log table *\/
     private final String[] columns = {"ID", "Subject", "To", "Cc", "Bcc", "Content", "Attachment", "Send Time", "Success"};
 
     /**
      * Creates a new ViewEmailSentLogView dialog.
      *
      * @param panel the parent panel used to find the parent window
-     */
+     *\/
     public ViewEmailSentLogView(JPanel panel) {
         super(SwingUtilities.getWindowAncestor(panel));
         log.debug("Initializing ViewEmailSentLogView dialog");
@@ -42,7 +50,7 @@ public class ViewEmailSentLogView extends JDialog {
      *
      * @param rowData list of row data arrays to display in the table
      * @return this dialog instance for method chaining
-     */
+     *\/
     public ViewEmailSentLogView updateTable(List<Object[]> rowData) {
         log.debug("Updating table with {} rows of email sent log data", rowData.size());
         TableUtil.initTable(shentLog, columns, rowData, 99);
@@ -54,7 +62,7 @@ public class ViewEmailSentLogView extends JDialog {
      * Closes the dialog.
      *
      * @param e the action event
-     */
+     *\/
     private void okBtAction(ActionEvent e) {
         log.debug("OK button clicked, closing dialog");
         dispose();
@@ -128,3 +136,4 @@ public class ViewEmailSentLogView extends JDialog {
     private JButton okButton;
     // JFormDesigner - End of variables declaration  //GEN-END:variables  @formatter:on
 }
+*/

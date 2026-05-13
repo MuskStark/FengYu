@@ -1,0 +1,490 @@
+/* SwissKitJ - Glass UI Theme
+   Inspired by macOS titlebar + glass morphism + dark accents
+   Based on: toolbox-main-window.html design
+*/
+
+/* ── Root Variables ─────────────────────────────────────── */
+.root {
+    -sw-bg-base: #0d0e11;
+    -sw-bg-layer: #13151a;
+    -sw-glass-bg: rgba(255, 255, 255, 0.055);
+    -sw-glass-bg-hover: rgba(255, 255, 255, 0.09);
+    -sw-glass-border: rgba(255, 255, 255, 0.10);
+    -sw-glass-border-hi: rgba(255, 255, 255, 0.22);
+    -sw-accent: #5b8cf7;
+    -sw-accent-soft: rgba(91, 140, 247, 0.18);
+    -sw-accent-glow: rgba(91, 140, 247, 0.35);
+    -sw-text-primary: rgba(255, 255, 255, 0.92);
+    -sw-text-secondary: rgba(255, 255, 255, 0.48);
+    -sw-text-tertiary: rgba(255, 255, 255, 0.28);
+    -sw-danger: #f25c5c;
+    -sw-success: #4cd97b;
+    -sw-warning: #f5a623;
+
+    -sw-sidebar-w: 220px;
+    -sw-titlebar-h: 44px;
+    -sw-radius-sm: 8px;
+    -sw-radius-md: 12px;
+    -sw-radius-lg: 18px;
+    -sw-radius-xl: 24px;
+
+    -fx-font-family: "DM Sans", "Segoe UI", sans-serif;
+    -fx-font-size: 14;
+    -fx-background-color: -sw-bg-base;
+}
+
+/* ── App Window Frame ───────────────────────────────────── */
+.app-window {
+    -fx-background-color: rgba(13, 14, 17, 0.72);
+    -fx-border-color: -sw-glass-border;
+    -fx-border-width: 1;
+    -fx-border-radius: 24;
+    -fx-background-radius: 24;
+    -fx-padding: 0;
+}
+
+/* ── Titlebar (Custom Borderless) ───────────────────────── */
+.titlebar {
+    -fx-background-color: rgba(255, 255, 255, 0.025);
+    -fx-border-color: -sw-glass-border;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 0 16;
+    -fx-alignment: CENTER_LEFT;
+    -fx-pref-height: 44;
+}
+
+.titlebar-title {
+    -fx-text-fill: -sw-text-secondary;
+    -fx-font-size: 13;
+    -fx-font-weight: 500;
+    -fx-alignment: CENTER;
+    -fx-translate-x: 0;
+}
+
+/* Traffic Lights */
+.traffic-lights {
+    -fx-spacing: 8;
+    -fx-alignment: CENTER_LEFT;
+}
+
+.tl-close { -fx-fill: #ff5f57; }
+.tl-min   { -fx-fill: #febc2e; }
+.tl-max   { -fx-fill: #28c840; }
+.tl-icon {
+    -fx-font-size: 7;
+    -fx-text-fill: rgba(0, 0, 0, 0.5);
+    -fx-opacity: 0;
+}
+
+/* Titlebar Buttons */
+.titlebar-btn {
+    -fx-background-color: -sw-glass-bg;
+    -fx-border-color: -sw-glass-border;
+    -fx-border-width: 1;
+    -fx-border-radius: 8;
+    -fx-text-fill: -sw-text-secondary;
+    -fx-pref-width: 28;
+    -fx-pref-height: 28;
+    -fx-font-size: 14;
+    -fx-cursor: hand;
+}
+
+.titlebar-btn:hover {
+    -fx-background-color: -sw-glass-bg-hover;
+    -fx-border-color: -sw-glass-border-hi;
+    -fx-text-fill: -sw-text-primary;
+}
+
+/* ── App Body ────────────────────────────────────────────── */
+.app-body {
+    -fx-background-color: transparent;
+}
+
+/* ── Sidebar ──────────────────────────────────────────────── */
+.sidebar {
+    -fx-background-color: rgba(255, 255, 255, 0.022);
+    -fx-border-color: -sw-glass-border;
+    -fx-border-width: 0 1 0 0;
+    -fx-padding: 12 8;
+    -fx-spacing: 2;
+    -fx-pref-width: 220;
+}
+
+.sidebar-section-label {
+    -fx-font-size: 10;
+    -fx-font-weight: 500;
+    -fx-text-fill: -sw-text-tertiary;
+    -fx-letter-spacing: 0.08em;
+    -fx-translate-y: 0;
+    -fx-padding: 10 10 4 10;
+}
+
+.nav-list {
+    -fx-spacing: 2;
+}
+
+/* Nav Item */
+.nav-item {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-border-width: 1;
+    -fx-border-radius: 8;
+    -fx-text-fill: -sw-text-secondary;
+    -fx-font-size: 13.5;
+    -fx-font-weight: 400;
+    -fx-cursor: hand;
+    -fx-padding: 8 10;
+    -fx-alignment: CENTER_LEFT;
+    -fx-graphic-gap: 10;
+}
+
+.nav-item:hover {
+    -fx-background-color: -sw-glass-bg;
+    -fx-text-fill: -sw-text-primary;
+    -fx-border-color: -sw-glass-border;
+}
+
+.nav-item:selected {
+    -fx-background-color: -sw-accent-soft;
+    -fx-text-fill: -sw-accent;
+    -fx-border-color: rgba(91, 140, 247, 0.25);
+    -fx-font-weight: 500;
+}
+
+.nav-icon {
+    -fx-font-size: 15;
+    -fx-text-fill: -sw-text-tertiary;
+    -fx-pref-width: 18;
+    -fx-alignment: CENTER;
+}
+
+.nav-badge {
+    -fx-font-size: 10;
+    -fx-font-weight: 500;
+    -fx-background-color: -sw-accent-soft;
+    -fx-text-fill: -sw-accent;
+    -fx-background-radius: 20;
+    -fx-padding: 1 6;
+    -fx-font-family: "DM Mono", monospace;
+}
+
+.nav-badge.new {
+    -fx-background-color: rgba(76, 217, 123, 0.18);
+    -fx-text-fill: -sw-success;
+}
+
+.sidebar-footer {
+    -fx-padding: 0 4;
+}
+
+/* ── Content Area ────────────────────────────────────────── */
+.content-area {
+    -fx-background-color: transparent;
+    -fx-spacing: 0;
+    -fx-padding: 0;
+}
+
+/* Search Bar */
+.search-wrap {
+    -fx-padding: 12 16 0 16;
+    -fx-pref-height: 56;
+    -fx-alignment: CENTER_LEFT;
+}
+
+.search-bar {
+    -fx-background-color: -sw-glass-bg;
+    -fx-border-color: -sw-glass-border;
+    -fx-border-width: 1;
+    -fx-border-radius: 12;
+    -fx-padding: 0 14;
+    -fx-pref-height: 38;
+}
+
+.search-bar:focused {
+    -fx-background-color: -sw-glass-bg-hover;
+    -fx-border-color: -sw-glass-border-hi;
+}
+
+.search-kbd {
+    -fx-font-size: 10;
+    -fx-font-family: "DM Mono", monospace;
+    -fx-text-fill: -sw-text-tertiary;
+    -fx-background-color: rgba(255, 255, 255, 0.06);
+    -fx-border-color: -sw-glass-border;
+    -fx-border-radius: 4;
+    -fx-padding: 1 5;
+}
+
+/* Content Scroll */
+.content-scroll {
+    -fx-padding: 16;
+    -fx-background-color: transparent;
+}
+
+/* Section Headers */
+.section-header {
+    -fx-spacing: 0;
+    -fx-padding: 0 0 12 0;
+}
+
+.section-title {
+    -fx-font-size: 12;
+    -fx-font-weight: 500;
+    -fx-text-fill: -sw-text-tertiary;
+    -fx-letter-spacing: 0.06em;
+}
+
+.section-action {
+    -fx-font-size: 12;
+    -fx-text-fill: -sw-accent;
+    -fx-cursor: hand;
+    -fx-opacity: 0.8;
+}
+
+.section-action:hover {
+    -fx-opacity: 1;
+}
+
+/* ── Tools Grid ──────────────────────────────────────────── */
+.tools-grid {
+    -fx-hgap: 10;
+    -fx-vgap: 10;
+    -fx-padding: 0;
+}
+
+/* Tool Card */
+.tool-card {
+    -fx-background-color: -sw-glass-bg;
+    -fx-border-color: -sw-glass-border;
+    -fx-border-width: 1;
+    -fx-border-radius: 12;
+    -fx-padding: 16 14 14 14;
+    -fx-cursor: hand;
+    -fx-pref-width: 148;
+    -fx-pref-height: 120;
+}
+
+.tool-card:hover {
+    -fx-background-color: -sw-glass-bg-hover;
+    -fx-border-color: -sw-glass-border-hi;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.35), 8, 0, 0, 2);
+}
+
+.tool-card:pressed {
+    -fx-scale-x: 0.98;
+    -fx-scale-y: 0.98;
+}
+
+.tool-card.featured {
+    -fx-border-color: rgba(91, 140, 247, 0.3);
+    -fx-background-color: linear-gradient(135deg, rgba(91, 140, 247, 0.08), rgba(91, 140, 247, 0.03));
+}
+
+.tool-icon-wrap {
+    -fx-pref-width: 40;
+    -fx-pref-height: 40;
+    -fx-border-radius: 10;
+    -fx-alignment: CENTER;
+    -fx-font-size: 20;
+    -fx-border-color: rgba(255, 255, 255, 0.08);
+    -fx-border-width: 1;
+    -fx-margin: 0 0 10 0;
+}
+
+.ic-blue   { -fx-background-color: rgba(59, 91, 219, 0.22); }
+.ic-purple { -fx-background-color: rgba(112, 72, 232, 0.22); }
+.ic-teal   { -fx-background-color: rgba(16, 160, 106, 0.20); }
+.ic-amber  { -fx-background-color: rgba(245, 166, 35, 0.20); }
+.ic-red    { -fx-background-color: rgba(242, 92, 92, 0.20); }
+.ic-pink   { -fx-background-color: rgba(230, 73, 128, 0.20); }
+.ic-gray   { -fx-background-color: rgba(255, 255, 255, 0.08); }
+
+.tool-name {
+    -fx-font-size: 13;
+    -fx-font-weight: 500;
+    -fx-text-fill: -sw-text-primary;
+    -fx-margin: 0 0 3 0;
+}
+
+.tool-desc {
+    -fx-font-size: 11;
+    -fx-text-fill: -sw-text-tertiary;
+    -fx-line-spacing: 1.45;
+    -fx-max-width: 130;
+}
+
+.tool-tag {
+    -fx-font-size: 10;
+    -fx-font-weight: 500;
+    -fx-font-family: "DM Mono", monospace;
+    -fx-background-color: rgba(255, 255, 255, 0.06);
+    -fx-text-fill: -sw-text-tertiary;
+    -fx-border-color: -sw-glass-border;
+    -fx-border-radius: 4;
+    -fx-padding: 2 6;
+    -fx-margin: 8 0 0 0;
+}
+
+.tool-tag.plugin {
+    -fx-background-color: rgba(76, 217, 123, 0.12);
+    -fx-text-fill: -sw-success;
+    -fx-border-color: rgba(76, 217, 123, 0.2);
+}
+
+/* ── Detail Panel ────────────────────────────────────────── */
+.detail-panel {
+    -fx-background-color: rgba(255, 255, 255, 0.022);
+    -fx-border-color: -sw-glass-border;
+    -fx-border-width: 0 0 0 1;
+    -fx-pref-width: 0;
+    -fx-padding: 20 16;
+}
+
+.detail-panel:visible {
+    -fx-pref-width: 260;
+}
+
+.detail-close {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-text-fill: -sw-text-tertiary;
+    -fx-font-size: 16;
+    -fx-cursor: hand;
+}
+
+.detail-close:hover {
+    -fx-text-fill: -sw-text-primary;
+}
+
+.detail-icon-wrap {
+    -fx-pref-width: 56;
+    -fx-pref-height: 56;
+    -fx-border-radius: 14;
+    -fx-border-color: rgba(255, 255, 255, 0.10);
+    -fx-border-width: 1;
+    -fx-alignment: CENTER;
+    -fx-font-size: 28;
+    -fx-margin: 12 0 14 0;
+}
+
+.detail-name {
+    -fx-font-size: 17;
+    -fx-font-weight: 500;
+    -fx-text-fill: -sw-text-primary;
+}
+
+.detail-meta {
+    -fx-font-size: 11;
+    -fx-text-fill: -sw-text-tertiary;
+    -fx-font-family: "DM Mono", monospace;
+}
+
+.detail-desc {
+    -fx-font-size: 13;
+    -fx-text-fill: -sw-text-secondary;
+    -fx-line-spacing: 1.6;
+    -fx-wrap-text: true;
+}
+
+.detail-launch {
+    -fx-background-color: -sw-accent;
+    -fx-text-fill: white;
+    -fx-font-size: 13;
+    -fx-font-weight: 500;
+    -fx-border-radius: 8;
+    -fx-pref-height: 36;
+    -fx-pref-width: 260;
+    -fx-cursor: hand;
+}
+
+.detail-launch:hover {
+    -fx-background-color: #4a7bf5;
+}
+
+.detail-divider {
+    -fx-border-color: -sw-glass-border;
+    -fx-border-width: 1 0 0 0;
+    -fx-padding: 16 0;
+}
+
+.detail-prop {
+    -fx-spacing: 0;
+    -fx-padding: 0;
+}
+
+.detail-prop-key {
+    -fx-font-size: 12;
+    -fx-text-fill: -sw-text-tertiary;
+}
+
+.detail-prop-val {
+    -fx-font-size: 12;
+    -fx-text-fill: -sw-text-secondary;
+    -fx-font-family: "DM Mono", monospace;
+}
+
+/* ── Status Bar ──────────────────────────────────────────── */
+.statusbar {
+    -fx-background-color: rgba(255, 255, 255, 0.015);
+    -fx-border-color: -sw-glass-border;
+    -fx-border-width: 1 0 0 0;
+    -fx-pref-height: 28;
+    -fx-padding: 0 16;
+    -fx-spacing: 16;
+    -fx-alignment: CENTER_LEFT;
+}
+
+.status-dot {
+    -fx-fill: -sw-success;
+    -fx-effect: dropshadow(gaussian, rgba(76, 217, 123, 0.6), 6, 0, 0, 0);
+}
+
+.status-text {
+    -fx-font-size: 11;
+    -fx-text-fill: -sw-text-tertiary;
+    -fx-font-family: "DM Mono", monospace;
+}
+
+.status-sep {
+    -fx-text-fill: -sw-text-tertiary;
+    -fx-opacity: 0.3;
+}
+
+.status-right {
+    -fx-spacing: 12;
+}
+
+/* ── Scrollbar Styling ───────────────────────────────────── */
+.content-scroll .scroll-bar:vertical {
+    -fx-pref-width: 4;
+}
+
+.content-scroll .scroll-bar:vertical .thumb {
+    -fx-background-color: rgba(255, 255, 255, 0.12);
+    -fx-background-radius: 4;
+}
+
+.content-scroll .scroll-bar:vertical .thumb:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.20);
+}
+
+/* ── Animation Keyframes ────────────────────────────────── */
+@keyframes orb-drift {
+    from { -fx-translate-x: 0; -fx-translate-y: 0; -fx-scale: 1; }
+    to   { -fx-translate-x: 30; -fx-translate-y: 20; -fx-scale: 1.08; }
+}
+
+@keyframes window-in {
+    from { -fx-opacity: 0; -fx-scale-x: 0.92; -fx-scale-y: 0.92; }
+    to   { -fx-opacity: 1; -fx-scale-x: 1; -fx-scale-y: 1; }
+}
+
+@keyframes card-in {
+    from { -fx-opacity: 0; -fx-translate-y: 10; -fx-scale-x: 0.96; -fx-scale-y: 0.96; }
+    to   { -fx-opacity: 1; -fx-translate-y: 0; -fx-scale-x: 1; -fx-scale-y: 1; }
+}
+
+@keyframes pulse-dot {
+    0%, 100% { -fx-opacity: 1; -fx-scale-x: 1; -fx-scale-y: 1; }
+    50%       { -fx-opacity: 0.6; -fx-scale-x: 0.85; -fx-scale-y: 0.85; }
+}

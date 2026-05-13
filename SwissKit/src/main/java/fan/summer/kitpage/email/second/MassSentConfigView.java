@@ -21,6 +21,13 @@ import java.awt.event.ItemEvent;
 import java.io.File;
 import java.util.List;
 
+/*
+/////////////////////////////////////////////////////////////////////////////////
+// IMPORTANT: This file contains Swing-based UI code that is being commented out
+// for the JavaFX migration. The code below is preserved but not compiled.
+// To re-enable, remove the opening /* and closing */ markers.
+/////////////////////////////////////////////////////////////////////////////////
+
 /**
  * Mass sent config view dialog for configuring email mass sending settings.
  *
@@ -28,6 +35,7 @@ import java.util.List;
  * @version 1.00
  * @date 2026/3/11
  */
+/*
 public class MassSentConfigView extends JDialog {
     private static final Logger log = LoggerFactory.getLogger(MassSentConfigView.class);
 
@@ -39,7 +47,7 @@ public class MassSentConfigView extends JDialog {
      *
      * @param panel  Parent panel for getting the top-level window
      * @param taskId Task ID for associating with configuration
-     */
+     *\/
     public MassSentConfigView(JPanel panel, String taskId) {
         super(SwingUtilities.getWindowAncestor(panel));
         this.taskId = taskId;
@@ -53,7 +61,7 @@ public class MassSentConfigView extends JDialog {
      * Checks if required fields are filled and if attachment folder is selected when required.
      *
      * @return true if validation passes, false otherwise
-     */
+     *\/
     private boolean validateForm() {
         // Validate To tag is required
         if (toTagcomboBox.getSelectedItem() == null || toTagcomboBox.getSelectedItem().toString().trim().isEmpty()) {
@@ -75,7 +83,7 @@ public class MassSentConfigView extends JDialog {
 
     /**
      * Save button action event. Saves configuration to database in background.
-     */
+     *\/
     private void saveBtAction(ActionEvent e) {
         if (!validateForm()) {
             return;
@@ -122,14 +130,14 @@ public class MassSentConfigView extends JDialog {
 
     /**
      * Close button action event. Closes the dialog.
-     */
+     *\/
     private void closedBtAction(ActionEvent e) {
         dispose();
     }
 
     /**
      * Attachment checkbox state changed event. Controls enabled state of attachment path field and selection button.
-     */
+     *\/
     private void attachmentByTagCheckBoxItemStateChanged(ItemEvent e) {
         choiceAttFolderBt.setEnabled(attachmentByTagCheckBox.isSelected());
         if (!attachmentByTagCheckBox.isSelected()) {
@@ -139,7 +147,7 @@ public class MassSentConfigView extends JDialog {
 
     /**
      * Select attachment folder button action event. Opens folder selection dialog.
-     */
+     *\/
     private void choiceAttFolderBtAction(ActionEvent e) {
         JFileChooser folderChooser = new JFileChooser();
         folderChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
@@ -155,7 +163,7 @@ public class MassSentConfigView extends JDialog {
 
     /**
      * Loads tags from database into combo boxes.
-     */
+     *\/
     private void loadTags() {
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             EmailTagMapper tagMapper = session.getMapper(EmailTagMapper.class);
@@ -179,7 +187,7 @@ public class MassSentConfigView extends JDialog {
 
     /**
      * Loads existing config for current task from database and populates the UI.
-     */
+     *\/
     private void loadConfig() {
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             EmailMassSentConfigMapper mapper = session.getMapper(EmailMassSentConfigMapper.class);
@@ -290,3 +298,4 @@ public class MassSentConfigView extends JDialog {
     private JButton closedBt;                   // Close button
     // JFormDesigner - End of variables declaration  //GEN-END:variables  @formatter:on
 }
+*/

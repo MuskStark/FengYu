@@ -18,12 +18,20 @@ import java.awt.event.ActionEvent;
 import java.util.ArrayList;
 import java.util.List;
 
+/*
+/////////////////////////////////////////////////////////////////////////////////
+// IMPORTANT: This file contains Swing-based UI code that is being commented out
+// for the JavaFX migration. The code below is preserved but not compiled.
+// To re-enable, remove the opening /* and closing */ markers.
+/////////////////////////////////////////////////////////////////////////////////
+
 /**
  * Dialog for editing complex split configuration details.
  * Allows users to modify header index and column index for Excel file splitting.
  *
  * @author summer
  */
+/*
 public class ConfigEditorView extends JDialog {
     private static final Logger log = LoggerFactory.getLogger(ConfigEditorView.class);
 
@@ -33,13 +41,13 @@ public class ConfigEditorView extends JDialog {
 
     /**
      * Creates a new ConfigEditorView dialog.
-     * 
+     *
      * @param panel the parent panel to determine the window ancestor
      * @param configView the parent config view to update after save
      * @param table the table containing the configuration data
      * @param row the row index in the table to edit
      * @param taskId the task ID for the configuration
-     */
+     *\/
     public ConfigEditorView(JPanel panel, ConfigView configView, JTable table, int row, String taskId) {
         super(SwingUtilities.getWindowAncestor(panel));
         initComponents();
@@ -55,7 +63,7 @@ public class ConfigEditorView extends JDialog {
     /**
      * Handles the update button action.
      * Saves the modified configuration to database and refreshes the table view.
-     */
+     *\/
     private void updateBtActionListener(ActionEvent e) {
         log.debug("Updating config for taskId: {}, file: {}", taskId, fileNameText.getText());
         try (SqlSession session = DatabaseInit.getSqlSession()) {
@@ -84,7 +92,7 @@ public class ConfigEditorView extends JDialog {
 
     /**
      * Converts an object to string, returning empty string if null.
-     */
+     *\/
     private String objToString(Object obj) {
         return obj != null ? obj.toString() : "";
     }
@@ -192,3 +200,4 @@ public class ConfigEditorView extends JDialog {
     private JButton updateButton;
     // JFormDesigner - End of variables declaration  //GEN-END:variables  @formatter:on
 }
+*/
