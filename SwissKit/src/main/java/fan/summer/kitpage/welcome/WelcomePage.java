@@ -14,6 +14,13 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.net.URI;
 
+/*
+/////////////////////////////////////////////////////////////////////////////////
+// IMPORTANT: This file contains Swing-based UI code that is being commented out
+// for the JavaFX migration. The code below is preserved but not compiled.
+// To re-enable, remove the opening /* and closing */ markers.
+/////////////////////////////////////////////////////////////////////////////////
+
 /**
  * Welcome page with quick access to documentation
  *
@@ -21,6 +28,7 @@ import java.net.URI;
  * @version 1.00
  * @date 2026/3/1
  */
+/*
 @SwissKitPage(menuName = "Welcome", menuNameKey = "menu.welcome", order = 0)
 public class WelcomePage implements LocaleChangeListener {
     private static final Logger logger = LoggerFactory.getLogger(WelcomePage.class);
@@ -28,7 +36,7 @@ public class WelcomePage implements LocaleChangeListener {
     /**
      * Creates a new WelcomePage and initializes the documentation link listener.
      * Clicking the documentation label will open the SwissKitJ user manual in the browser.
-     */
+     *\/
     public WelcomePage() {
         initComponents();
         I18nManager.addListener(this);
@@ -60,7 +68,7 @@ public class WelcomePage implements LocaleChangeListener {
      * Returns the main panel for this welcome page.
      *
      * @return the welcome JPanel
-     */
+     *\/
     public JPanel getPanel() {
         return welcome;
     }
@@ -113,3 +121,4 @@ public class WelcomePage implements LocaleChangeListener {
     private JLabel doc;
     // JFormDesigner - End of variables declaration  //GEN-END:variables  @formatter:on
 }
+*/

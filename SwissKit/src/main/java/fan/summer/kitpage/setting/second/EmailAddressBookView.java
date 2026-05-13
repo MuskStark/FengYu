@@ -16,6 +16,13 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.List;
 
+/*
+/////////////////////////////////////////////////////////////////////////////////
+// IMPORTANT: This file contains Swing-based UI code that is being commented out
+// for the JavaFX migration. The code below is preserved but not compiled.
+// To re-enable, remove the opening /* and closing */
+/////////////////////////////////////////////////////////////////////////////////
+
 /**
  * Dialog window for displaying and managing email address book entries.
  * Shows a table with email address, nickname, and tags columns.
@@ -23,6 +30,7 @@ import java.util.List;
  *
  * @author phoebej
  */
+/*
 public class EmailAddressBookView extends JDialog {
     private static final Logger log = LoggerFactory.getLogger(EmailAddressBookView.class);
 
@@ -43,7 +51,7 @@ public class EmailAddressBookView extends JDialog {
      * @param rowData list of row data arrays containing [id, address, nickname, tags]
      * @param entities list of email address book entities corresponding to each row
      * @return this EmailAddressBookView instance for method chaining
-     */
+     *\/
     public EmailAddressBookView initTable(List<Object[]> rowData, List<EmailAddressBookEntity> entities) {
         this.entities = entities;
         String[] columns = {"Id", "Address", "NickName", "Tags"};
@@ -77,7 +85,7 @@ public class EmailAddressBookView extends JDialog {
      * Handles add address button action - opens the add address dialog.
      *
      * @param e the action event
-     */
+     *\/
     private void addAddressBtAction(ActionEvent e) {
         log.debug("Opening add address view");
         new AddAddressView(pannel, this).initTagsCompBox().setVisible(true);
@@ -88,7 +96,7 @@ public class EmailAddressBookView extends JDialog {
      * Handles close button action - hides the dialog.
      *
      * @param e the action event
-     */
+     *\/
     private void closeBtAction(ActionEvent e) {
         log.debug("Closing address book view");
         this.setVisible(false);
@@ -98,7 +106,7 @@ public class EmailAddressBookView extends JDialog {
      * Handles modify tags button action - opens the tag management view.
      *
      * @param e the action event
-     */
+     *\/
     private void modifyTagsBtAction(ActionEvent e) {
         log.debug("Opening tags view");
         new EmailTagsView(pannel).openTagView();
@@ -177,3 +185,4 @@ public class EmailAddressBookView extends JDialog {
     private JButton closeBt;
     // JFormDesigner - End of variables declaration  //GEN-END:variables  @formatter:on
 }
+*/

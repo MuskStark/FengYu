@@ -20,6 +20,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/*
+/////////////////////////////////////////////////////////////////////////////////
+// IMPORTANT: This file contains Swing-based UI code that is being commented out
+// for the JavaFX migration. The code below is preserved but not compiled.
+// To re-enable, remove the opening /* and closing */
+/////////////////////////////////////////////////////////////////////////////////
+
 /**
  * Home page class that serves as the main application container.
  * Manages the application window, side menu bar, and automatic page discovery.
@@ -28,6 +35,7 @@ import java.util.stream.Collectors;
  * @version 1.00
  * @date 2026/3/1
  */
+/*
 public class HomePage implements LocaleChangeListener {
 
     private static final Logger logger = LoggerFactory.getLogger(HomePage.class);
@@ -42,7 +50,7 @@ public class HomePage implements LocaleChangeListener {
      * Sets up the FlatLaf theme, discovers all KitPage plugins, creates the side menu,
      * and displays the first registered page by default.
      * Should be called once from the EDT after DatabaseInit completes successfully.
-     */
+     *\/
     public void init() {
         // Register for locale change notifications
         I18nManager.addListener(this);
@@ -97,7 +105,7 @@ public class HomePage implements LocaleChangeListener {
     /**
      * Set application icon
      * Place icon file in resources directory, supports: icon.png, icon.jpg, app.png
-     */
+     *\/
     private void setAppIcon(JFrame frame) {
         String[] iconPaths = {"/icon.png", "/icon.jpg", "/app.png"};
 
@@ -116,7 +124,7 @@ public class HomePage implements LocaleChangeListener {
      * Returns the singleton HomePage instance.
      *
      * @return the HomePage instance, or null if not yet initialized
-     */
+     *\/
     public static HomePage getInstance() {
         return instance;
     }
@@ -125,7 +133,7 @@ public class HomePage implements LocaleChangeListener {
      * Refreshes the sidebar menu after plugin hot-deploy/reload/uninstall.
      *
      * @param newPluginPages KitPages from deployed/reloaded plugin (pass null for uninstall)
-     */
+     *\/
     public void refreshSidebar(List<Object> newPluginPages) {
         if (sideMenuBar == null) {
             return;
@@ -159,7 +167,7 @@ public class HomePage implements LocaleChangeListener {
 
     /**
      * @deprecated Use {@link #refreshSidebar(List)} instead.
-     */
+     *\/
     @Deprecated
     public void refreshSidebar() {
         refreshSidebar(null);
@@ -172,3 +180,4 @@ public class HomePage implements LocaleChangeListener {
         }
     }
 }
+*/

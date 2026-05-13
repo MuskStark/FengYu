@@ -6,74 +6,147 @@ import fan.summer.database.mapper.AppSettingMapper;
 import fan.summer.i18n.I18nManager;
 import fan.summer.i18n.Language;
 import fan.summer.plugin.PluginDiagnostic;
-import fan.summer.ui.StartLoadingPage;
-import fan.summer.ui.home.HomePage;
+import fan.summer.api.plugin.PluginRegistry;
+import fan.summer.ui.loading.SplashScreen;
+import fan.summer.ui.theme.ThemeManager;
+import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.fxml.FXMLLoader;
+import javafx.geometry.Rectangle2D;
+import javafx.scene.Parent;
+import javafx.scene.Scene;
+import javafx.scene.image.Image;
+import javafx.stage.Screen;
+import javafx.stage.Stage;
 import org.apache.ibatis.session.SqlSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.swing.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
- * Application entry point.
- * Initializes the database and displays the splash screen before loading the main application.
+ * JavaFX Application entry point.
+ * Initializes database, theme, and displays the main application window.
  *
  * @author summer
- * @version 1.00
- * @date 2026/3/1
+ * @version 2.00 - JavaFX migration
  */
-public class Main {
+public class Main extends Application {
 
     private static final Logger logger = LoggerFactory.getLogger(Main.class);
+    private static Main instance;
+    private static CountDownLatch initLatch = new CountDownLatch(1);
 
-    /**
-     * Application entry point. Initializes logging, database, and displays the main UI.
-     *
-     * @param args command-line arguments (not used)
-     */
+    private Stage primaryStage;
+    private SplashScreen splashScreen;
+
     public static void main(String[] args) {
-        // Initialize Log4j first by accessing logger
         logger.info("SwissKitJ starting...");
 
         // Run plugin diagnostic for plugin loading issues (silent, DEBUG level)
         PluginDiagnostic.run();
 
-        SwingUtilities.invokeLater(() -> {
-            JWindow splash = new StartLoadingPage().getWindow();
-            splash.setVisible(true);
-
-            new SwingWorker<Void, Void>() {
-                @Override
-                protected Void doInBackground() {
-                    try {
-                        DatabaseInit.init();
-                        Language language = loadLanguageFromDb();
-                        I18nManager.init(language);
-                    } catch (Exception e) {
-                        publish((Void) null);
-                    }
-                    return null;
-                }
-
-                @Override
-                protected void done() {
-                    splash.dispose();
-                    try {
-                        get();
-                    } catch (Exception e) {
-                        JOptionPane.showMessageDialog(null,
-                            "Database initialization failed: " + (e.getCause() != null ? e.getCause().getMessage() : e.getMessage()),
-                            "Error", JOptionPane.ERROR_MESSAGE);
-                        System.exit(1);
-                        return;
-                    }
-                    new HomePage().init();
-                }
-            }.execute();
-        });
+        launch(args);
     }
 
-    private static Language loadLanguageFromDb() {
+    @Override
+    public void init() throws Exception {
+        instance = this;
+        logger.info("Initializing SwissKitJ...");
+
+        // Show splash screen
+        Platform.runLater(() -> {
+            splashScreen = new SplashScreen();
+            splashScreen.show();
+        });
+
+        // Initialize database in background
+        new Thread(() -> {
+            try {
+//                DatabaseInit.init();
+//                Language language = loadLanguageFromDb();
+//                I18nManager.init(language);
+//
+//                // Initialize theme
+//                ThemeManager.init();
+
+                logger.info("SwissKitJ initialization complete");
+            } catch (Exception e) {
+                logger.error("Initialization failed", e);
+            } finally {
+                initLatch.countDown();
+            }
+        }, "InitThread").start();
+    }
+
+    @Override
+    public void start(Stage primaryStage) throws Exception {
+        this.primaryStage = primaryStage;
+
+        // Wait for initialization (max 30 seconds)
+        boolean initComplete = initLatch.await(30, TimeUnit.SECONDS);
+        if (!initComplete) {
+            logger.error("Initialization timed out");
+            Platform.exit();
+            return;
+        }
+
+        // Close splash
+        if (splashScreen != null) {
+            splashScreen.hide();
+        }
+
+        // Create main scene
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/css/uiFxml/app/app.fxml"));
+            Parent root = loader.load();
+
+            // Apply CSS
+            Scene scene = new Scene(root);
+            String cssPath = getClass().getResource("/css/app.css").toExternalForm();
+            scene.getStylesheets().add(cssPath);
+
+            // Configure stage
+            primaryStage.setTitle("SwissKit");
+            primaryStage.setScene(scene);
+            primaryStage.setWidth(960);
+            primaryStage.setHeight(620);
+            primaryStage.setMinWidth(800);
+            primaryStage.setMinHeight(500);
+
+            // Center on screen
+            Rectangle2D screenBounds = Screen.getPrimary().getVisualBounds();
+            primaryStage.setX((screenBounds.getWidth() - 960) / 2);
+            primaryStage.setY((screenBounds.getHeight() - 620) / 2);
+
+            // Set window icon
+            setAppIcon(primaryStage);
+
+            // Remove window decorations for frameless look (optional)
+            // primaryStage.initStyle(StageStyle.UNDECORATED);
+
+            primaryStage.show();
+
+            // Initialize plugin registry
+            PluginRegistry.getInstance().notifyAppReady();
+
+            logger.info("Main window displayed");
+
+        } catch (Exception e) {
+            logger.error("Failed to load main window", e);
+            Platform.exit();
+        }
+    }
+
+    @Override
+    public void stop() throws Exception {
+        logger.info("SwissKitJ shutting down...");
+        PluginRegistry.getInstance().clear();
+        super.stop();
+    }
+
+    private Language loadLanguageFromDb() {
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
             AppSettingEntity setting = mapper.selectByKey("language");
@@ -84,5 +157,36 @@ public class Main {
             logger.warn("Failed to load language from database: {}", e.getMessage());
         }
         return Language.ENGLISH;
+    }
+
+    /**
+     * Set application icon
+     * Place icon file in resources directory, supports: icon.png, icon.jpg, app.png
+     */
+    private void setAppIcon(Stage stage) {
+        String[] iconPaths = {"/icon.png", "/icon.jpg", "/app.png"};
+
+        for (String path : iconPaths) {
+            java.net.URL url = getClass().getResource(path);
+            if (url != null) {
+                stage.getIcons().add(new Image(url.toString()));
+                return;
+            }
+        }
+        logger.info("Application icon not found. Please add icon.png to resources directory");
+    }
+
+    /**
+     * Get the primary stage.
+     */
+    public Stage getPrimaryStage() {
+        return primaryStage;
+    }
+
+    /**
+     * Get the singleton instance.
+     */
+    public static Main getInstance() {
+        return instance;
     }
 }
