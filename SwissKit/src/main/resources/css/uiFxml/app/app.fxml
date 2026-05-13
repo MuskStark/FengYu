@@ -17,7 +17,7 @@
         fx:controller="fan.summer.controller.MainController"
         styleClass="app-window">
 
-    <!-- 标题栏 - 无边框窗口 -->
+    <!-- Title Bar - Frameless Window -->
     <top>
         <HBox styleClass="titlebar" prefHeight="44">
             <!-- Traffic Lights -->
@@ -36,81 +36,81 @@
                 </StackPane>
             </HBox>
 
-            <!-- 标题 -->
+            <!-- Title -->
             <Label text="SwissKit" styleClass="titlebar-title" maxWidth="1" HBox.hgrow="ALWAYS"/>
 
-            <!-- 操作按钮 -->
+            <!-- Action Buttons -->
             <HBox styleClass="titlebar-actions" spacing="8">
-                <MFXButton styleClass="titlebar-btn" text="🔔" tooltip="通知"/>
-                <MFXButton styleClass="titlebar-btn" text="⚙️" tooltip="设置" onAction="#openSettings"/>
+                <MFXButton styleClass="titlebar-btn" text="🔔" tooltip="Notifications"/>
+                <MFXButton styleClass="titlebar-btn" text="⚙️" tooltip="Settings" onAction="#openSettings"/>
             </HBox>
         </HBox>
     </top>
 
-    <!-- 主体区域 -->
+    <!-- Main Content Area -->
     <center>
         <HBox styleClass="app-body">
 
-            <!-- 侧边栏 -->
+            <!-- Sidebar -->
             <VBox styleClass="sidebar" prefWidth="220">
-                <!-- 工具分类列表 -->
+                <!-- Tool Categories -->
                 <VBox styleClass="sidebar-section">
-                    <Label text="工具" styleClass="sidebar-section-label"/>
+                    <Label text="TOOLS" styleClass="sidebar-section-label"/>
                     <VBox fx:id="navTools" styleClass="nav-list" spacing="2"/>
                 </VBox>
 
-                <!-- 插件列表 -->
+                <!-- Plugins List -->
                 <VBox styleClass="sidebar-section">
-                    <Label text="插件" styleClass="sidebar-section-label"/>
+                    <Label text="PLUGINS" styleClass="sidebar-section-label"/>
                     <VBox fx:id="navPlugins" styleClass="nav-list" spacing="2"/>
                 </VBox>
 
-                <!-- 收藏夹 -->
+                <!-- Favorites -->
                 <VBox styleClass="sidebar-section">
-                    <Label text="收藏" styleClass="sidebar-section-label"/>
+                    <Label text="FAVORITES" styleClass="sidebar-section-label"/>
                     <VBox fx:id="navFavorites" styleClass="nav-list" spacing="2"/>
                 </VBox>
 
-                <!-- 设置入口 -->
+                <!-- Settings Entry -->
                 <VBox VBox.vgrow="ALWAYS"/>
                 <HBox styleClass="sidebar-footer" alignment="CENTER_LEFT">
-                    <MFXButton text="⚙️ 设置" styleClass="nav-item" onAction="#openSettings"/>
+                    <MFXButton text="⚙️ Settings" styleClass="nav-item" onAction="#openSettings"/>
                 </HBox>
             </VBox>
 
-            <!-- 内容区 -->
+            <!-- Content Area -->
             <VBox styleClass="content-area" HBox.hgrow="ALWAYS">
 
-                <!-- 搜索栏 -->
+                <!-- Search Bar -->
                 <HBox styleClass="search-wrap">
                     <MFXTextField fx:id="searchField"
                                   styleClass="search-bar"
-                                  promptText="搜索工具..."
+                                  promptText="Search tools..."
                                   prefHeight="38"
                                   floatMode="DISABLED"/>
                     <Label text="⌘K" styleClass="search-kbd"/>
                 </HBox>
 
-                <!-- 工具网格和内容切换区 -->
+                <!-- Tool Grid and Content Switch Area -->
                 <StackPane fx:id="contentArea" styleClass="content-stack" VBox.vgrow="ALWAYS">
 
-                    <!-- 工具网格区域 (默认显示) -->
+                    <!-- Tool Grid Area (Default Display) -->
                     <MFXScrollPane styleClass="content-scroll">
                         <VBox spacing="16">
-                            <!-- 常用工具 -->
+                            <!-- Tools -->
                             <VBox styleClass="section">
                                 <HBox styleClass="section-header" alignment="CENTER_LEFT">
-                                    <Label text="常用工具" styleClass="section-title"/>
-                                    <Label text="查看全部 →" styleClass="section-action"/>
+                                    <Label text="TOOLS" styleClass="section-title"/>
+                                    <Label text="View All →" styleClass="section-action"/>
                                 </HBox>
                                 <ScrollPane styleClass="tools-scroll" hbarPolicy="NEVER" vbarPolicy="NEVER">
                                     <FlowPane fx:id="toolsGrid" styleClass="tools-grid" hgap="10" vgap="10"/>
                                 </ScrollPane>
                             </VBox>
 
-                            <!-- 最近使用 -->
+                            <!-- Recent -->
                             <VBox styleClass="section">
-                                <Label text="最近使用" styleClass="section-title"/>
+                                <Label text="RECENT" styleClass="section-title"/>
                                 <ScrollPane styleClass="tools-scroll" hbarPolicy="NEVER" vbarPolicy="NEVER">
                                     <FlowPane fx:id="recentGrid" styleClass="tools-grid" hgap="10" vgap="10"/>
                                 </ScrollPane>
@@ -118,7 +118,7 @@
                         </VBox>
                     </MFXScrollPane>
 
-                    <!-- 详情面板 (初始隐藏) -->
+                    <!-- Detail Panel (Initially Hidden) -->
                     <VBox fx:id="detailPanel" styleClass="detail-panel" managed="false" visible="false" prefWidth="260">
                         <HBox alignment="CENTER_RIGHT">
                             <MFXButton text="✕" styleClass="detail-close" onAction="#closeDetail"/>
@@ -127,19 +127,19 @@
                             <HBox styleClass="detail-icon-wrap" alignment="CENTER" prefWidth="56" prefHeight="56">
                                 <Label fx:id="detailIcon" text="🔧" styleClass="detail-icon"/>
                             </HBox>
-                            <Label fx:id="detailName" text="工具名称" styleClass="detail-name"/>
-                            <Label fx:id="detailMeta" text="v1.0.0 · 内置" styleClass="detail-meta"/>
-                            <Label fx:id="detailDesc" text="工具描述内容" styleClass="detail-desc" wrapText="true"/>
-                            <MFXButton text="启动工具" styleClass="detail-launch" onAction="#launchTool"/>
+                            <Label fx:id="detailName" text="Tool Name" styleClass="detail-name"/>
+                            <Label fx:id="detailMeta" text="v1.0.0 · Built-in" styleClass="detail-meta"/>
+                            <Label fx:id="detailDesc" text="Tool description" styleClass="detail-desc" wrapText="true"/>
+                            <MFXButton text="Launch" styleClass="detail-launch" onAction="#launchTool"/>
                             <Separator styleClass="detail-divider"/>
                             <GridPane styleClass="detail-props" vgap="8">
-                                <Label text="版本" styleClass="detail-prop-key"/>
+                                <Label text="Version" styleClass="detail-prop-key"/>
                                 <Label fx:id="dpVersion" text="—" styleClass="detail-prop-val"/>
-                                <Label text="类型" styleClass="detail-prop-key"/>
+                                <Label text="Type" styleClass="detail-prop-key"/>
                                 <Label fx:id="dpType" text="—" styleClass="detail-prop-val"/>
-                                <Label text="分类" styleClass="detail-prop-key"/>
+                                <Label text="Category" styleClass="detail-prop-key"/>
                                 <Label fx:id="dpCat" text="—" styleClass="detail-prop-val"/>
-                                <Label text="上次使用" styleClass="detail-prop-key"/>
+                                <Label text="Last Used" styleClass="detail-prop-key"/>
                                 <Label fx:id="dpLast" text="—" styleClass="detail-prop-val"/>
                             </GridPane>
                         </VBox>
@@ -151,13 +151,13 @@
         </HBox>
     </center>
 
-    <!-- 状态栏 -->
+    <!-- Status Bar -->
     <bottom>
         <HBox styleClass="statusbar" prefHeight="28" alignment="CENTER_LEFT" spacing="16">
             <Circle radius="3" styleClass="status-dot"/>
-            <Label fx:id="statusTools" text="12 个工具" styleClass="status-text"/>
+            <Label fx:id="statusTools" text="12 tools" styleClass="status-text"/>
             <Label text="·" styleClass="status-sep"/>
-            <Label fx:id="statusPlugins" text="3 个插件已加载" styleClass="status-text"/>
+            <Label fx:id="statusPlugins" text="3 plugins loaded" styleClass="status-text"/>
             <Region HBox.hgrow="ALWAYS"/>
             <Label fx:id="statusClock" text="00:00:00" styleClass="status-text"/>
         </HBox>
