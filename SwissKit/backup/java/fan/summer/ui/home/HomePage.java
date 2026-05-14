@@ -1,4 +1,4 @@
-package fan.summer.ui.home;
+package fan.summer.api.home;
 
 import com.formdev.flatlaf.FlatIntelliJLaf;
 import fan.summer.annoattion.SwissKitPage;
@@ -7,7 +7,7 @@ import fan.summer.i18n.Language;
 import fan.summer.i18n.LocaleChangeListener;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.scaner.SwissKitPageScaner;
-import fan.summer.ui.sidebar.SideMenuBar;
+import fan.summer.api.sidebar.SideMenuBar;
 import fan.summer.utils.AppInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

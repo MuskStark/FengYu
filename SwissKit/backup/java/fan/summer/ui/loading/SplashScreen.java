@@ -1,4 +1,4 @@
-package fan.summer.ui.loading;
+package fan.summer.api.loading;
 
 import fan.summer.api.config.UIConfig;
 import fan.summer.i18n.I18nManager;
