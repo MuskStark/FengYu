@@ -4,24 +4,36 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>fan.summer</groupId>
+    <parent>
+        <groupId>fan.summer</groupId>
+        <artifactId>SwissKit-parent</artifactId>
+        <version>3.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
     <artifactId>SwissKit</artifactId>
     <version>2.1.1</version>
 
-    <properties>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <lombok.version>1.18.42</lombok.version>
-    </properties>
-
     <dependencies>
 
-        <!-- SwissKitJ-Api: provided at compile time; bundled in fat-JAR at runtime for plugins -->
+        <!-- SwissKitJ-Api: bundled in fat-JAR at runtime so plugins can load against it -->
         <dependency>
             <groupId>fan.summer.api</groupId>
             <artifactId>SwissKitJ-Api</artifactId>
-            <version>3.0.0</version>
+        </dependency>
+
+        <!-- JavaFX: the main app is the runtime provider, so compile scope to bundle in fat-JAR -->
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-graphics</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-controls</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-web</artifactId>
         </dependency>
 
         <!-- Lombok -->
@@ -152,7 +164,7 @@
                             <transformers>
                                 <transformer
                                         implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>fan.summer.Main</mainClass>
+                                    <mainClass>fan.summer.Launcher</mainClass>
                                     <manifestEntries>
                                         <Implementation-Version>${project.version}</Implementation-Version>
                                     </manifestEntries>
