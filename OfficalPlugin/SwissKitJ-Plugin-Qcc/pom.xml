@@ -4,29 +4,16 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
+    <parent>
+        <groupId>fan.summer</groupId>
+        <artifactId>SwissKit-parent</artifactId>
+        <version>3.0.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
     <groupId>plugin.swisskitj</groupId>
     <artifactId>SwissKitJ-Plugin-Qcc</artifactId>
     <version>2.0.0</version>
-
-    <properties>
-        <lombok.version>1.18.42</lombok.version>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    </properties>
-
-    <!-- Import SwissKitJ-Api BOM for aligned dependency versions -->
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>fan.summer.api</groupId>
-                <artifactId>SwissKitJ-Api</artifactId>
-                <version>3.0.0</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -45,9 +32,9 @@
             <scope>provided</scope>
         </dependency>
     </dependencies>
+
     <build>
         <plugins>
-            <!-- Maven Shade Plugin - Package all dependencies into executable JAR -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -60,20 +47,15 @@
                         </goals>
                         <configuration>
                             <transformers>
-                                <!-- Merge plugin.swisskit.hpl.service files (resolve SPI issues for FlatLaf etc.) -->
                                 <transformer
                                         implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                             </transformers>
-                            <!-- Output file name -->
                             <finalName>QccToExcel-${project.version}</finalName>
-                            <!-- Compress output -->
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                         </configuration>
                     </execution>
                 </executions>
             </plugin>
-
-            <!-- Maven Compiler Plugin - Ensure correct compilation configuration -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
