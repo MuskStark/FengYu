@@ -17,7 +17,7 @@ import fan.summer.plugin.PluginLoader;
 import fan.summer.plugin.PluginManager;
 import fan.summer.plugin.dto.PluginUpdateInfo;
 import fan.summer.scaner.SwissKitPageScaner;
-import fan.summer.ui.home.HomePage;
+import fan.summer.api.home.HomePage;
 import fan.summer.utils.EmailUtil;
 import fan.summer.utils.ui.TableUtil;
 import net.miginfocom.swing.MigLayout;

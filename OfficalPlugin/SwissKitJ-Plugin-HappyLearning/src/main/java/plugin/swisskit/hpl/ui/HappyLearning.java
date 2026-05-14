@@ -9,7 +9,7 @@ import fan.summer.annoattion.SwissKitPage;
 import fan.summer.i18n.I18nManager;
 import fan.summer.i18n.Language;
 import fan.summer.i18n.LocaleChangeListener;
-import fan.summer.ui.components.GradientProgressBar;
+import fan.summer.api.components.GradientProgressBar;
 import net.miginfocom.swing.MigLayout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -181,7 +181,7 @@ public class HappyLearning implements LocaleChangeListener {
                     i18n("plugin.hpl.passkeySuccess"),
                     i18n("plugin.hpl.passkeySuccess"),
                     JOptionPane.INFORMATION_MESSAGE);
-            log.info("[UI] Passkey set successfully，value:{}", this.key);
+            log.info("[UI] Passkey set successfully, value:{}", this.key);
         }
 
     }

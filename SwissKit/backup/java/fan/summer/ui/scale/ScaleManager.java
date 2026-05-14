@@ -1,4 +1,4 @@
-package fan.summer.ui.scale;
+package fan.summer.api.scale;
 
 import fan.summer.api.KitPage;
 import javafx.beans.property.DoubleProperty;

@@ -2,7 +2,7 @@
  * Created by JFormDesigner on Tue Mar 03 15:53:51 CST 2026
  */
 
-package fan.summer.ui;
+package fan.summer.api;
 
 import java.awt.*;
 import javax.swing.*;
