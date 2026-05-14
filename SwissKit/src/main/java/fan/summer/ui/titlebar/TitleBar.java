@@ -1,13 +1,19 @@
-package fan.summer;
+package fan.summer.ui.titlebar;
 
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.control.*;
-import javafx.scene.layout.*;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.Tooltip;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.StackPane;
 import javafx.stage.Stage;
- /* Custom macOS-style title bar.
- * Contains: traffic lights / centered title / right-side action buttons.
- * Supports window drag (with FX-BorderlessScene or directly binding Stage).
+
+/**
+ * Custom macOS-style title bar.
+ * Contains: traffic light buttons / centered title / right-side action buttons.
+ * Supports dragging to move window (with FX-BorderlessScene or directly bound to Stage).
  */
 public class TitleBar extends HBox {
 
@@ -20,16 +26,16 @@ public class TitleBar extends HBox {
         setMinHeight(44);
         setPadding(new Insets(0, 12, 0, 16));
 
-        // ── Traffic Lights ──────────────────────────────────────
+        // ── Traffic lights ──────────────────────────────────────
         HBox lights = buildTrafficLights(stage);
 
-        // ── Centered Title (wrapped in StackPane for absolute centering) ───
+        // ── Centered title (wrapped with StackPane for absolute centering) ───
         Label titleLabel = new Label("ToolBox");
         titleLabel.getStyleClass().add("titlebar-title");
         StackPane titleWrap = new StackPane(titleLabel);
         HBox.setHgrow(titleWrap, Priority.ALWAYS);
 
-        // ── Right-side Buttons ────────────────────────────────────
+        // ── Right-side buttons ────────────────────────────────────
         HBox actions = new HBox(8);
         actions.setAlignment(Pos.CENTER_RIGHT);
         actions.getChildren().addAll(
@@ -39,7 +45,7 @@ public class TitleBar extends HBox {
 
         getChildren().addAll(lights, titleWrap, actions);
 
-        // ── Window Drag ────────────────────────────────────
+        // ── Window drag ────────────────────────────────────
         setOnMousePressed(e -> {
             dragOffsetX = e.getSceneX();
             dragOffsetY = e.getSceneY();
@@ -50,7 +56,7 @@ public class TitleBar extends HBox {
         });
     }
 
-    // ── Traffic Lights ────────────────────────────────────────────
+    // ── Traffic lights ────────────────────────────────────────────
 
     private HBox buildTrafficLights(Stage stage) {
         Button close = trafficLight("traffic-light-close", "✕");
@@ -64,7 +70,7 @@ public class TitleBar extends HBox {
         HBox box = new HBox(8, close, min, max);
         box.setAlignment(Pos.CENTER_LEFT);
 
-        // Show icons only on hover
+        // Only show icon on hover
         Label[] icons = {
             findIcon(close), findIcon(min), findIcon(max)
         };
@@ -101,7 +107,7 @@ public class TitleBar extends HBox {
         return (Label) sp.getChildren().get(0);
     }
 
-    // ── Title Bar Action Buttons ────────────────────────────────────
+    // ── Title bar tool buttons ────────────────────────────────────
 
     private Button titlebarBtn(String icon, String tooltip, Runnable action) {
         Button btn = new Button(icon);

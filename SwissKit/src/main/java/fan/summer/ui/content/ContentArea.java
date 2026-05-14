@@ -1,20 +1,28 @@
-package fan.summer;
+package fan.summer.ui.content;
 
-import javafx.animation.*;
+import fan.summer.api.SwissKitJPlugin;
+import javafx.animation.FadeTransition;
+import javafx.animation.ParallelTransition;
+import javafx.animation.PauseTransition;
+import javafx.animation.TranslateTransition;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.control.*;
+import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.TextField;
 import javafx.scene.layout.*;
 import javafx.util.Duration;
 
 import java.util.List;
 import java.util.function.Consumer;
- /* Main content area.
- * Contains: search bar / tool grid / detail panel / page transition animations.
- * Binds plugin data via setPlugins(ObservableList), auto-responds to additions/removals.
+
+/**
+ * Main content area.
+ * Contains: Search bar / Tool grid / Detail panel / Page transition animations.
+ * Bind plugin data via setPlugins(ObservableList), auto-respond to add/remove.
  */
 public class ContentArea extends BorderPane {
 
@@ -26,10 +34,10 @@ public class ContentArea extends BorderPane {
     private final ScrollPane  scrollPane;
 
     // ── State ──────────────────────────────────────────────
-    private ObservableList<SwissKitPlugin> plugins;
+    private ObservableList<SwissKitJPlugin> plugins;
     private String   currentCategory = "all";
     private String   currentQuery    = "";
-    private Consumer<SwissKitPlugin> onLaunch;
+    private Consumer<SwissKitJPlugin> onLaunch;
 
     public ContentArea() {
         scrollPane = buildScrollPane();
@@ -39,36 +47,37 @@ public class ContentArea extends BorderPane {
 
     // ── Public API ──────────────────────────────────────────
 
-    public void setOnLaunch(Consumer<SwissKitPlugin> handler) { this.onLaunch = handler; }
+    public void setOnLaunch(Consumer<SwissKitJPlugin> handler) { this.onLaunch = handler; }
 
-    /** Bind plugin list; auto-refreshes on add/remove */
-    public void setPlugins(ObservableList<SwissKitPlugin> list) {
+    /** Bind plugin list, auto-refresh on add/remove */
+    public void setPlugins(ObservableList<SwissKitJPlugin> list) {
         this.plugins = list;
-        list.addListener((ListChangeListener<SwissKitPlugin>) c -> refresh());
+        list.addListener((ListChangeListener<SwissKitJPlugin>) c -> refresh());
         refresh();
     }
 
-    /** Switch display category */
+    /** Switch category display */
     public void showCategory(String categoryId) {
         currentCategory = categoryId;
         searchField.clear();
         currentQuery = "";
+        crossFadeTo(scrollPane);
         refresh();
         animateGridIn();
     }
 
-    /** Switch to custom page (e.g., settings, plugin store) */
+    /** Switch to custom page (e.g. settings, plugin market) */
     public void showPage(Node page, String title) {
         crossFadeTo(page);
         detailPanel.hide();
     }
 
-    /** Return to tool grid main page */
+    /** Back to tool grid home */
     public void showToolGrid() {
         crossFadeTo(scrollPane);
     }
 
-    // ── Layout Build ──────────────────────────────────────────
+    // ── Layout build ──────────────────────────────────────────
 
     private void buildLayout() {
         // Search bar
@@ -123,7 +132,7 @@ public class ContentArea extends BorderPane {
         toolGrid.setPrefWrapLength(600);
 
         VBox wrapper = new VBox(
-            sectionHeader("Tools", ""),
+            sectionHeader("FREQUENT", ""),
             toolGrid
         );
         wrapper.setPadding(new Insets(8, 16, 16, 16));
@@ -138,12 +147,12 @@ public class ContentArea extends BorderPane {
         return sp;
     }
 
-    // ── Grid Refresh ──────────────────────────────────────────
+    // ── Grid refresh ──────────────────────────────────────────
 
     private void refresh() {
         if (plugins == null) return;
 
-        List<SwissKitPlugin> filtered = plugins.stream()
+        List<SwissKitJPlugin> filtered = plugins.stream()
             .filter(this::matchesCategory)
             .filter(this::matchesQuery)
             .toList();
@@ -151,7 +160,7 @@ public class ContentArea extends BorderPane {
         toolGrid.getChildren().clear();
 
         for (int i = 0; i < filtered.size(); i++) {
-            SwissKitPlugin p = filtered.get(i);
+            SwissKitJPlugin p = filtered.get(i);
             ToolCard card = new ToolCard(p, this::onCardSelect);
             card.setPrefWidth(152);
             card.setPrefHeight(130);
@@ -181,9 +190,9 @@ public class ContentArea extends BorderPane {
         }
     }
 
-    // ── Filter Logic ──────────────────────────────────────────
+    // ── Filter logic ──────────────────────────────────────────
 
-    private boolean matchesCategory(SwissKitPlugin p) {
+    private boolean matchesCategory(SwissKitJPlugin p) {
         return switch (currentCategory) {
             case "all"     -> true;
             case "plugins" -> !"builtin".equals(p.getType());
@@ -192,25 +201,23 @@ public class ContentArea extends BorderPane {
         };
     }
 
-    private boolean matchesQuery(SwissKitPlugin p) {
+    private boolean matchesQuery(SwissKitJPlugin p) {
         if (currentQuery.isEmpty()) return true;
         return p.getName().toLowerCase().contains(currentQuery)
             || p.getDescription().toLowerCase().contains(currentQuery);
     }
 
-    // ── Card Selection ──────────────────────────────────────────
+    // ── Card selection ──────────────────────────────────────────
 
-    private void onCardSelect(SwissKitPlugin plugin) {
+    private void onCardSelect(SwissKitJPlugin plugin) {
         detailPanel.show(plugin);
     }
 
-    // ── Page Transition Animation (Cross-fade) ──────────────────────
+    // ── Page transition animation (cross-fade) ──────────────────────
 
     private void crossFadeTo(Node next) {
         Node current = pageStack.getChildren().isEmpty()
             ? null : pageStack.getChildren().get(0);
-
-        if (current == next) return;
 
         next.setOpacity(0);
         if (!pageStack.getChildren().contains(next))
@@ -220,7 +227,7 @@ public class ContentArea extends BorderPane {
         FadeTransition fadeIn = new FadeTransition(Duration.millis(220), next);
         fadeIn.setToValue(1);
 
-        if (current != null) {
+        if (current != null && current != next) {
             FadeTransition fadeOut = new FadeTransition(Duration.millis(180), current);
             fadeOut.setToValue(0);
             Node finalCurrent = current;
@@ -240,7 +247,7 @@ public class ContentArea extends BorderPane {
         new ParallelTransition(tt, ft).play();
     }
 
-    // ── Helper Node Factory ──────────────────────────────────────
+    // ── Helper node factory ──────────────────────────────────────
 
     private HBox sectionHeader(String title, String action) {
         Label titleLabel = new Label(title.toUpperCase());
