@@ -1,20 +1,29 @@
-package fan.summer;
+package fan.summer.ui;
 
+import fan.summer.plugin.PluginLoader;
+import fan.summer.plugin.PluginRegistry;
+import fan.summer.ui.content.ContentArea;
+import fan.summer.ui.sidebar.Sidebar;
+import fan.summer.ui.titlebar.TitleBar;
+import fan.summer.api.SwissKitJPlugin;
 import javafx.animation.*;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Label;
 import javafx.scene.layout.*;
-import javafx.scene.paint.*;
-import javafx.scene.shape.*;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
+import javafx.scene.shape.Rectangle;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
- /* Main window root node.
+
+/**
+ * Root node of the main window.
  * Assembles TitleBar / Sidebar / ContentArea / StatusBar,
- * and holds PluginLoader and PluginRegistry lifecycles.
+ * and holds the lifecycle for PluginLoader and PluginRegistry.
  */
 public class MainWindow extends StackPane {
 
@@ -48,10 +57,10 @@ public class MainWindow extends StackPane {
         playEntryAnimation();
     }
 
-    // ── Build Scene Tree ────────────────────────────────────────
+    // ── Build scene graph ────────────────────────────────
 
     private void buildScene() {
-        // Background orb layer (at bottom)
+        // Background orb layer (bottom layer)
         Pane orbLayer = buildOrbLayer();
 
         // Main window glass panel
@@ -69,7 +78,7 @@ public class MainWindow extends StackPane {
         // Title bar
         windowPane.setTop(titleBar);
 
-        // Center: sidebar + content area
+        // Body: sidebar + content area
         HBox body = new HBox(sidebar, contentArea);
         HBox.setHgrow(contentArea, Priority.ALWAYS);
         windowPane.setCenter(body);
@@ -77,7 +86,7 @@ public class MainWindow extends StackPane {
         // Status bar
         windowPane.setBottom(buildStatusBar());
 
-        // Top highlight border (simulates glass thickness)
+        // Top highlight border (glass thickness simulation)
         Rectangle topHighlight = new Rectangle();
         topHighlight.setMouseTransparent(true);
         topHighlight.setStyle(
@@ -94,14 +103,14 @@ public class MainWindow extends StackPane {
         setAlignment(topHighlight, Pos.CENTER);
     }
 
-    // ── Background Orbs ──────────────────────────────────────────
+    // ── Background orbs ───────────────────────────────────
 
     private Pane buildOrbLayer() {
         Pane layer = new Pane();
         layer.setMouseTransparent(true);
         layer.setStyle("-fx-background-color: #0d0e11;");
 
-        // Three colored gaussian blur orbs
+        // Three colored Gaussian blur orbs
         layer.getChildren().addAll(
             orb(480, "#3b5bdb", -80, -120, 0),
             orb(360, "#7048e8",  -60, 200,  -6000),
@@ -140,7 +149,7 @@ public class MainWindow extends StackPane {
         return wrap;
     }
 
-    // ── Status Bar ────────────────────────────────────────────
+    // ── Status bar ───────────────────────────────────────
 
     private HBox buildStatusBar() {
         // Activity indicator dot
@@ -171,7 +180,7 @@ public class MainWindow extends StackPane {
         return l;
     }
 
-    // ── Event Wiring ──────────────────────────────────────────
+    // ── Event wiring ─────────────────────────────────────
 
     private void wireEvents() {
         // Bind plugin list to content area
@@ -179,13 +188,15 @@ public class MainWindow extends StackPane {
 
         // Sidebar category switch → content area filter
         sidebar.setOnCategorySelect(categoryId -> {
-            if ("settings".equals(categoryId)) { openSettings(); return; }
             contentArea.showCategory(categoryId);
         });
 
+        // Settings (standalone, not part of nav state machine)
+        sidebar.setOnSettingsSelect(this::openSettings);
+
         // Plugin list change → update status bar
         registry.getPlugins().addListener(
-            (javafx.collections.ListChangeListener<com.toolbox.api.ToolPlugin>) c -> {
+            (javafx.collections.ListChangeListener<SwissKitJPlugin>) c -> {
                 int total   = registry.getPlugins().size();
                 int plugins = (int) registry.getPlugins().stream()
                     .filter(p -> !"builtin".equals(p.getType())).count();
@@ -202,10 +213,10 @@ public class MainWindow extends StackPane {
         });
     }
 
-    // ── Settings Page ──────────────────────────────────────────
+    // ── Settings page ────────────────────────────────────
 
     private void openSettings() {
-        Label placeholder = new Label("⚙️  Settings Panel\n(Coming Soon)");
+        Label placeholder = new Label("⚙️  Settings Panel\n(Coming soon)");
         placeholder.setStyle(
             "-fx-text-fill: rgba(255,255,255,0.40); -fx-font-size: 16px;" +
             "-fx-alignment: center; -fx-text-alignment: center;"
@@ -215,7 +226,7 @@ public class MainWindow extends StackPane {
         contentArea.showPage(page, "Settings");
     }
 
-    // ── Entry Animation ──────────────────────────────────────────
+    // ── Entry animation ──────────────────────────────────
 
     private void playEntryAnimation() {
         // Get windowPane (second child node)
@@ -230,16 +241,16 @@ public class MainWindow extends StackPane {
 
         ScaleTransition st = new ScaleTransition(Duration.millis(500), windowPane);
         st.setToX(1); st.setToY(1);
-        st.setInterpolator(Interpolator.SPLINE(0.34, 1.4, 0.64, 1));
+        st.setInterpolator(Interpolator.SPLINE(0.34, 0.9, 0.64, 1.0));
 
         TranslateTransition tt = new TranslateTransition(Duration.millis(500), windowPane);
         tt.setToY(0);
-        tt.setInterpolator(Interpolator.SPLINE(0.34, 1.4, 0.64, 1));
+        tt.setInterpolator(Interpolator.SPLINE(0.34, 0.9, 0.64, 1.0));
 
         new ParallelTransition(ft, st, tt).play();
     }
 
-    // ── Clock ──────────────────────────────────────────────
+    // ── Clock ────────────────────────────────────────────
 
     private void startClock() {
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("HH:mm:ss");
@@ -248,7 +259,7 @@ public class MainWindow extends StackPane {
         ));
         clockTimeline.setCycleCount(Animation.INDEFINITE);
         clockTimeline.play();
-        clockLabel.setText(LocalTime.now().format(fmt)); // Show immediately
+        clockLabel.setText(LocalTime.now().format(fmt)); // Initial display
     }
 
     /** Called on application exit to clean up resources */

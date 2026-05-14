@@ -1,20 +1,25 @@
-package fan.summer;
+package fan.summer.ui.content;
 
+import fan.summer.api.SwissKitJPlugin;
 import javafx.animation.*;
 import javafx.geometry.Insets;
 import javafx.scene.control.Label;
-import javafx.scene.layout.*;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
 import javafx.util.Duration;
 
 import java.util.function.Consumer;
- /* Single card in the tool grid.
- * Clicking triggers onSelect callback; parent decides whether to open detail panel or launch tool.
+
+/**
+ * Single card in the tool grid.
+ * After clicking, callbacks onSelect, parent component decides to open detail panel or launch tool.
  */
 public class ToolCard extends VBox {
 
-    private final SwissKitPlugin plugin;
+    private final SwissKitJPlugin plugin;
 
-    public ToolCard(SwissKitPlugin plugin, Consumer<SwissKitPlugin> onSelect) {
+    public ToolCard(SwissKitJPlugin plugin, Consumer<SwissKitJPlugin> onSelect) {
         this.plugin = plugin;
         getStyleClass().add("tool-card");
         setSpacing(3);
@@ -47,7 +52,7 @@ public class ToolCard extends VBox {
 
         getChildren().addAll(iconWrap, nameLabel, descLabel, tag);
 
-        // ── Hover Animation ─────────────────────────────────────
+        // ── Hover animation ─────────────────────────────────────
         ScaleTransition hoverIn  = new ScaleTransition(Duration.millis(150), this);
         ScaleTransition hoverOut = new ScaleTransition(Duration.millis(150), this);
         hoverIn.setToX(1.03); hoverIn.setToY(1.03);
@@ -56,7 +61,7 @@ public class ToolCard extends VBox {
         setOnMouseEntered(e -> { hoverOut.stop(); hoverIn.play(); });
         setOnMouseExited( e -> { hoverIn.stop(); hoverOut.play(); });
 
-        // ── Click Animation + Callback ───────────────────────────────
+        // ── Click animation + callback ───────────────────────────────
         setOnMouseClicked(e -> {
             ScaleTransition click = new ScaleTransition(Duration.millis(100), this);
             click.setToX(0.97); click.setToY(0.97);
@@ -65,7 +70,7 @@ public class ToolCard extends VBox {
             click.play();
         });
 
-        // ── Entry Animation ─────────────────────────────────────
+        // ── Entry animation ─────────────────────────────────────
         setOpacity(0);
         setScaleX(0.94); setScaleY(0.94);
         setTranslateY(8);
@@ -80,15 +85,15 @@ public class ToolCard extends VBox {
         ParallelTransition entry = new ParallelTransition(ft, tt, st);
         entry.setInterpolator(new Interpolator() {
             @Override protected double curve(double t) {
-                // Simple elastic curve
+                // Simple spring curve
                 return 1 - Math.pow(1 - t, 3) * Math.cos(t * Math.PI * 2);
             }
         });
-        // Delay is set by caller, see ToolGrid
+        // Delay set by caller, see ToolGrid
         entry.play();
 
         setCursor(javafx.scene.Cursor.HAND);
     }
 
-    public SwissKitPlugin getPlugin() { return plugin; }
+    public SwissKitJPlugin getPlugin() { return plugin; }
 }

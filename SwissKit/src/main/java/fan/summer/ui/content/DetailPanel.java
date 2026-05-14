@@ -1,14 +1,22 @@
-package fan.summer;
+package fan.summer.ui.content;
 
-import javafx.animation.*;
+import fan.summer.api.SwissKitJPlugin;
+import javafx.animation.Interpolator;
+import javafx.animation.KeyFrame;
+import javafx.animation.KeyValue;
+import javafx.animation.Timeline;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.control.*;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.Separator;
 import javafx.scene.layout.*;
 import javafx.util.Duration;
 
 import java.util.function.Consumer;
- /* Tool detail panel, slides in/out from the right.
+
+/**
+ * Tool detail panel, slides in from right.
  * show(plugin) fills data and expands; hide() collapses.
  */
 public class DetailPanel extends VBox {
@@ -23,12 +31,12 @@ public class DetailPanel extends VBox {
     private final Label   versionVal  = new Label();
     private final Label   typeVal     = new Label();
     private final Label   categoryVal = new Label();
-    private final Button  launchBtn   = new Button("Launch");
+    private final Button  launchBtn   = new Button("Launch Tool");
     private final Button  closeBtn    = new Button("✕");
 
-    private Consumer<ToolPlugin> onLaunch;
-    private ToolPlugin currentPlugin;
-    private boolean    visible = false;
+    private Consumer<SwissKitJPlugin> onLaunch;
+    private SwissKitJPlugin currentPlugin;
+    private boolean    panelOpen = false;
 
     public DetailPanel() {
         getStyleClass().add("detail-panel");
@@ -42,23 +50,23 @@ public class DetailPanel extends VBox {
 
     // ── Public API ──────────────────────────────────────────
 
-    public void setOnLaunch(Consumer<ToolPlugin> handler) {
+    public void setOnLaunch(Consumer<SwissKitJPlugin> handler) {
         this.onLaunch = handler;
     }
 
-    /** Shows plugin details; first call triggers slide-in animation */
-    public void show(ToolPlugin plugin) {
+    /** Show plugin details, auto-slides in on first call */
+    public void show(SwissKitJPlugin plugin) {
         this.currentPlugin = plugin;
         fillData(plugin);
-        if (!visible) slideIn();
+        if (!panelOpen) slideIn();
     }
 
-    /** Slides out and hides */
+    /** Slide out and hide */
     public void hide() {
-        if (visible) slideOut();
+        if (panelOpen) slideOut();
     }
 
-    public boolean isVisible() { return visible; }
+    public boolean isPanelOpen() { return panelOpen; }
 
     // ── Build UI ───────────────────────────────────────────
 
@@ -127,9 +135,9 @@ public class DetailPanel extends VBox {
         return new HBox(keyLabel, spacer, valLabel);
     }
 
-    // ── Data Fill ──────────────────────────────────────────
+    // ── Data fill ─────────────────────────────────────────
 
-    private void fillData(ToolPlugin p) {
+    private void fillData(SwissKitJPlugin p) {
         iconLabel.setText(p.getIconText());
         iconWrap.getStyleClass().removeIf(c -> c.startsWith("ic-"));
         iconWrap.getStyleClass().add(p.getIconStyle());
@@ -153,10 +161,10 @@ public class DetailPanel extends VBox {
         };
     }
 
-    // ── Slide In/Out Animation ───────────────────────────────────
+    // ── Slide in / out animations ─────────────────────────
 
     private void slideIn() {
-        visible = true;
+        panelOpen = true;
         setVisible(true);
 
         Timeline tl = new Timeline(
@@ -175,7 +183,7 @@ public class DetailPanel extends VBox {
     }
 
     private void slideOut() {
-        visible = false;
+        panelOpen = false;
         Timeline tl = new Timeline(
             new KeyFrame(Duration.ZERO,
                 new KeyValue(prefWidthProperty(), PANEL_WIDTH),
