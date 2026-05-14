@@ -7,7 +7,7 @@ package fan.summer.kitpage.setting.second;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.setting.email.EmailTagEntity;
 import fan.summer.database.mapper.setting.email.EmailTagMapper;
-import fan.summer.ui.components.GradientProgressBar;
+import fan.summer.api.components.GradientProgressBar;
 import net.miginfocom.swing.MigLayout;
 import org.apache.ibatis.session.SqlSession;
 import org.slf4j.Logger;

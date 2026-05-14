@@ -1,4 +1,4 @@
-package fan.summer.ui.sidebar;
+package fan.summer.api.sidebar;
 
 import fan.summer.i18n.I18nManager;
 import fan.summer.i18n.Language;

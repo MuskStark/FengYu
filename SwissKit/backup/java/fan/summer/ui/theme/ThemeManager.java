@@ -1,4 +1,4 @@
-package fan.summer.ui.theme;
+package fan.summer.api.theme;
 
 import fan.summer.i18n.I18nManager;
 import fan.summer.i18n.Language;
