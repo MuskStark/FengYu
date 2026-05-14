@@ -15,25 +15,13 @@
         <lombok.version>1.18.42</lombok.version>
     </properties>
 
-    <!-- Import SwissKitJ-Api BOM for aligned dependency versions -->
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>fan.summer.api</groupId>
-                <artifactId>SwissKitJ-Api</artifactId>
-                <version>3.0.0</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
-
     <dependencies>
 
-        <!-- SwissKitJ-Api -->
+        <!-- SwissKitJ-Api: provided at compile time; bundled in fat-JAR at runtime for plugins -->
         <dependency>
             <groupId>fan.summer.api</groupId>
             <artifactId>SwissKitJ-Api</artifactId>
+            <version>3.0.0</version>
         </dependency>
 
         <!-- Lombok -->
