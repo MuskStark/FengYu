@@ -11,6 +11,7 @@ import javafx.scene.layout.*;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.usermodel.Cell;
 
 import java.io.File;
 import java.nio.file.*;
@@ -27,7 +28,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
     @Override public String getId()          { return "com.toolbox.excel-splitter"; }
     @Override public String getName()        { return "Excel Splitter"; }
     @Override public String getDescription() { return "Split Excel files by Sheet / Column Value / Row Count"; }
-    @Override public String getCategory()    { return "dev"; }
+    @Override public String getCategory()    { return "other"; }
     @Override public String getVersion()     { return "1.0.0"; }
     @Override public String getIconText()    { return "⊘"; }
     @Override public String getIconStyle()   { return "ic-teal"; }

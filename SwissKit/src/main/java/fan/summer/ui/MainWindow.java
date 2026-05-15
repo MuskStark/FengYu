@@ -211,6 +211,9 @@ public class MainWindow extends StackPane {
             registry.activate(plugin);
             contentArea.showPage(plugin.createView(), plugin.getName());
         });
+
+        // Back / exit plugin view callback
+        contentArea.setOnBack(() -> registry.deactivate());
     }
 
     // ── Settings page ────────────────────────────────────

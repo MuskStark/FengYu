@@ -1,11 +1,13 @@
 package fan.summer.app;
 
+import fan.summer.database.DatabaseInit;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.plugin.PluginRegistry;
 import fan.summer.ui.MainWindow;
 import fan.summer.Registrar.BuiltinToolRegistrar;
 import javafx.application.Application;
 import javafx.scene.Scene;
+import javafx.scene.image.Image;
 import javafx.scene.paint.Color;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
@@ -29,6 +31,9 @@ public class SwissKitJApp extends Application {
     @Override
     public void start(Stage stage) throws Exception {
 
+        // ── Database (H2 + MyBatis) ─────────────────────────────────
+        DatabaseInit.init();
+
         // ── Plugin directory (prefer JAR sibling, fallback to working directory during dev) ──
         Path pluginsDir = resolvePluginsDir();
 
@@ -46,12 +51,18 @@ public class SwissKitJApp extends Application {
         Scene scene = new Scene(mainWindow, 960, 620);
         scene.setFill(Color.TRANSPARENT);
         scene.getStylesheets().add(
-            getClass().getResource("/com/toolbox/css/glass.css").toExternalForm()
+            getClass().getResource("/css/glass.css").toExternalForm()
         );
+
+        // App icon (shown in Dock / taskbar)
+        var iconUrl = getClass().getResource("/icon.png");
+        if (iconUrl != null) {
+            stage.getIcons().add(new Image(iconUrl.toExternalForm()));
+        }
 
         // Undecorated window (custom titlebar via TitleBar)
         stage.initStyle(StageStyle.TRANSPARENT);
-        stage.setTitle("ToolBox");
+        stage.setTitle("SwissKitJ");
         stage.setScene(scene);
         stage.setMinWidth(800);
         stage.setMinHeight(520);

@@ -179,7 +179,14 @@ public class ExcelSplitter {
                     dest.setCellValue(src.getNumericCellValue());
             }
             case BOOLEAN -> dest.setCellValue(src.getBooleanCellValue());
-            case FORMULA -> dest.setCellValue(src.getRawValue()); // preserve computed result
+            case FORMULA -> {
+                switch (src.getCachedFormulaResultType()) {
+                    case NUMERIC  -> dest.setCellValue(src.getNumericCellValue());
+                    case STRING   -> dest.setCellValue(src.getStringCellValue());
+                    case BOOLEAN  -> dest.setCellValue(src.getBooleanCellValue());
+                    default       -> dest.setCellFormula(src.getCellFormula());
+                }
+            }
             case BLANK   -> dest.setBlank();
             default      -> dest.setCellValue(src.toString());
         }

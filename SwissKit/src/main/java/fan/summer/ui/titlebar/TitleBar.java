@@ -30,7 +30,7 @@ public class TitleBar extends HBox {
         HBox lights = buildTrafficLights(stage);
 
         // ── Centered title (wrapped with StackPane for absolute centering) ───
-        Label titleLabel = new Label("ToolBox");
+        Label titleLabel = new Label("SwissKitJ");
         titleLabel.getStyleClass().add("titlebar-title");
         StackPane titleWrap = new StackPane(titleLabel);
         HBox.setHgrow(titleWrap, Priority.ALWAYS);
