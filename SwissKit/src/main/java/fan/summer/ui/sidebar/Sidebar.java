@@ -59,11 +59,12 @@ public class Sidebar extends VBox {
 
         // ── Tools section ────────────────────────────────────
         getChildren().add(sectionLabel("TOOLS"));
-        addNavItem("all",     "⊞", "All Tools", 12, false);
-        addNavItem("text",    "✏️", "Text Processing",  4, false);
-        addNavItem("image",   "🖼", "Image Processing",  3, false);
-        addNavItem("dev",     "⌨️", "Developer Tools",  3, false);
-        addNavItem("net",     "📡", "Network Tools",  2, false);
+        addNavItem("all",     "⊞", "All Tools",        0, false);
+        addNavItem("text",    "✏️", "Text Processing",  0, false);
+        addNavItem("image",   "🖼", "Image Processing", 0, false);
+        addNavItem("dev",     "⌨️", "Developer Tools",  0, false);
+        addNavItem("net",     "📡", "Network Tools",    0, false);
+        addNavItem("other",   "📦", "Other Tools",      0, false);
 
         getChildren().add(divider());
 

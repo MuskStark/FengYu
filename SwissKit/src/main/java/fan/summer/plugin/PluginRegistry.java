@@ -59,4 +59,11 @@ public class PluginRegistry {
     public SwissKitJPlugin getActivePlugin() {
         return activePlugin;
     }
+
+    public void deactivate() {
+        if (activePlugin != null) {
+            activePlugin.onDeactivate();
+            activePlugin = null;
+        }
+    }
 }
