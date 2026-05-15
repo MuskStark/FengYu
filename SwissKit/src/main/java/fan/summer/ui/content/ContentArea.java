@@ -32,12 +32,14 @@ public class ContentArea extends BorderPane {
     private final DetailPanel detailPanel  = new DetailPanel();
     private final StackPane   pageStack    = new StackPane();
     private final ScrollPane  scrollPane;
+    private final HBox        backBar      = buildBackBar();
 
     // ── State ──────────────────────────────────────────────
     private ObservableList<SwissKitJPlugin> plugins;
     private String   currentCategory = "all";
     private String   currentQuery    = "";
     private Consumer<SwissKitJPlugin> onLaunch;
+    private Runnable onBack;
 
     public ContentArea() {
         scrollPane = buildScrollPane();
@@ -48,6 +50,7 @@ public class ContentArea extends BorderPane {
     // ── Public API ──────────────────────────────────────────
 
     public void setOnLaunch(Consumer<SwissKitJPlugin> handler) { this.onLaunch = handler; }
+    public void setOnBack(Runnable handler) { this.onBack = handler; }
 
     /** Bind plugin list, auto-refresh on add/remove */
     public void setPlugins(ObservableList<SwissKitJPlugin> list) {
@@ -61,6 +64,7 @@ public class ContentArea extends BorderPane {
         currentCategory = categoryId;
         searchField.clear();
         currentQuery = "";
+        setTopMode(false, null);
         crossFadeTo(scrollPane);
         refresh();
         animateGridIn();
@@ -68,13 +72,31 @@ public class ContentArea extends BorderPane {
 
     /** Switch to custom page (e.g. settings, plugin market) */
     public void showPage(Node page, String title) {
+        setTopMode(true, title);
         crossFadeTo(page);
         detailPanel.hide();
     }
 
     /** Back to tool grid home */
     public void showToolGrid() {
+        setTopMode(false, null);
         crossFadeTo(scrollPane);
+    }
+
+    private void setTopMode(boolean pageMode, String title) {
+        if (pageMode) {
+            Label titleLabel = (Label) backBar.lookup(".back-title");
+            if (titleLabel != null) titleLabel.setText(title != null ? title : "");
+            backBar.setVisible(true);
+            backBar.setManaged(true);
+            searchField.getParent().setVisible(false);
+            searchField.getParent().setManaged(false);
+        } else {
+            backBar.setVisible(false);
+            backBar.setManaged(false);
+            searchField.getParent().setVisible(true);
+            searchField.getParent().setManaged(true);
+        }
     }
 
     // ── Layout build ──────────────────────────────────────────
@@ -82,7 +104,11 @@ public class ContentArea extends BorderPane {
     private void buildLayout() {
         // Search bar
         HBox searchBar = buildSearchBar();
-        VBox top = new VBox(searchBar);
+
+        // Top area: back bar (hidden by default) + search bar
+        backBar.setVisible(false);
+        backBar.setManaged(false);
+        VBox top = new VBox(backBar, searchBar);
         top.setPadding(new Insets(12, 16, 0, 16));
         setTop(top);
 
@@ -93,6 +119,38 @@ public class ContentArea extends BorderPane {
         HBox center = new HBox(pageStack, detailPanel);
         HBox.setHgrow(pageStack, Priority.ALWAYS);
         setCenter(center);
+    }
+
+    private HBox buildBackBar() {
+        Label backBtn = new Label("← 返回");
+        backBtn.setStyle(
+            "-fx-text-fill: rgba(255,255,255,0.70); -fx-font-size: 13px;" +
+            "-fx-cursor: hand; -fx-padding: 4 10 4 0;"
+        );
+        backBtn.setOnMouseEntered(e ->
+            backBtn.setStyle("-fx-text-fill: rgba(255,255,255,1); -fx-font-size: 13px;" +
+                             "-fx-cursor: hand; -fx-padding: 4 10 4 0;")
+        );
+        backBtn.setOnMouseExited(e ->
+            backBtn.setStyle("-fx-text-fill: rgba(255,255,255,0.70); -fx-font-size: 13px;" +
+                             "-fx-cursor: hand; -fx-padding: 4 10 4 0;")
+        );
+        backBtn.setOnMouseClicked(e -> {
+            showToolGrid();
+            if (onBack != null) onBack.run();
+        });
+
+        Label sep = new Label("/");
+        sep.setStyle("-fx-text-fill: rgba(255,255,255,0.25); -fx-font-size: 13px; -fx-padding: 4 6 4 0;");
+
+        Label titleLabel = new Label();
+        titleLabel.getStyleClass().add("back-title");
+        titleLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.90); -fx-font-size: 13px; -fx-font-weight: bold;");
+
+        HBox bar = new HBox(6, backBtn, sep, titleLabel);
+        bar.setAlignment(Pos.CENTER_LEFT);
+        bar.setPrefHeight(38);
+        return bar;
     }
 
     private HBox buildSearchBar() {
