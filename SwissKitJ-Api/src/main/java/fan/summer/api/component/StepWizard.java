@@ -101,6 +101,7 @@ public class StepWizard extends BorderPane {
             if (i < steps.size() - 1) {
                 Region line = new Region();
                 line.setPrefHeight(2);
+                line.setMaxHeight(2);
                 line.setMinWidth(40);
                 HBox.setHgrow(line, Priority.ALWAYS);
                 line.setStyle("-fx-background-color: " + IDLE_COLOR + "; -fx-background-radius: 1;");
@@ -112,22 +113,14 @@ public class StepWizard extends BorderPane {
     }
 
     private StackPane makeDot(int idx) {
-        Circle circle = new Circle(14);
+        Circle circle = new Circle(12);
         circle.setStrokeWidth(1.5);
 
         Label num = new Label(String.valueOf(idx + 1));
         num.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
 
-        Label title = new Label(steps.get(idx).title());
-        title.setStyle("-fx-font-size: 10px; -fx-text-fill: rgba(255,255,255,0.45);");
-
-        VBox labelBox = new VBox(2, num, title);
-        labelBox.setAlignment(Pos.CENTER);
-
-        StackPane dot = new StackPane(circle, labelBox);
-        dot.setPrefSize(28, 28);
-        StackPane.setAlignment(title, Pos.BOTTOM_CENTER);
-        StackPane.setMargin(title, new Insets(42, 0, 0, 0));
+        StackPane dot = new StackPane(circle, num);
+        dot.setPrefSize(24, 24);
         return dot;
     }
 
@@ -136,44 +129,33 @@ public class StepWizard extends BorderPane {
         int childIdx = 0;
         for (int i = 0; i < steps.size(); i++) {
             if (childIdx >= stepIndicator.getChildren().size()) break;
-            StackPane dot = (StackPane) stepIndicator.getChildren().get(childIdx);
-            Circle  circle = (Circle)  dot.getChildren().get(0);
-            StackPane labelBox = (StackPane) dot.getChildren().get(1);
-            Label   num    = (Label)   ((VBox) dot.getChildren().get(1)).getChildren().get(0);
-            Label   title  = (Label)   ((VBox) dot.getChildren().get(1)).getChildren().get(1);
+            StackPane dot    = (StackPane) stepIndicator.getChildren().get(childIdx);
+            Circle    circle = (Circle)    dot.getChildren().get(0);
+            Label     num    = (Label)     dot.getChildren().get(1);
             childIdx++;
 
             if (i < current) {
-                // Done
                 circle.setFill(Color.web(DONE_COLOR, 0.9));
                 circle.setStroke(Color.web(DONE_COLOR));
                 num.setText("✓");
                 num.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #0d0e11;");
-                title.setStyle("-fx-font-size: 10px; -fx-text-fill: " + DONE_COLOR + ";");
             } else if (i == current) {
-                // Current step
                 circle.setFill(Color.web(ACCENT, 0.9));
                 circle.setStroke(Color.web(ACCENT));
                 num.setText(String.valueOf(i + 1));
                 num.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: white;");
-                title.setStyle("-fx-font-size: 10px; -fx-text-fill: " + ACCENT + "; -fx-font-weight: 500;");
-
-                // Pulse animation
                 ScaleTransition pulse = new ScaleTransition(Duration.millis(600), dot);
                 pulse.setFromX(1.0); pulse.setFromY(1.0);
                 pulse.setToX(1.12); pulse.setToY(1.12);
                 pulse.setAutoReverse(true); pulse.setCycleCount(2);
                 pulse.play();
             } else {
-                // Not yet reached
                 circle.setFill(Color.web("rgba(255,255,255,0.06)"));
                 circle.setStroke(Color.web(IDLE_COLOR));
                 num.setText(String.valueOf(i + 1));
                 num.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: rgba(255,255,255,0.35);");
-                title.setStyle("-fx-font-size: 10px; -fx-text-fill: rgba(255,255,255,0.35);");
             }
 
-            // Connector line
             if (i < steps.size() - 1 && childIdx < stepIndicator.getChildren().size()) {
                 Region line = (Region) stepIndicator.getChildren().get(childIdx);
                 line.setStyle("-fx-background-color: "

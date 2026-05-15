@@ -229,6 +229,68 @@ public class ExcelUtil {
         return str;
     }
 
+    /**
+     * Copies rows 0 to endRowIndex from sourceSheet into targetWorkbook as a new sheet.
+     * No file I/O is performed — both objects must already be in memory.
+     *
+     * @param sourceSheet    already-loaded source Sheet
+     * @param targetWorkbook already-open target Workbook (in memory)
+     * @param sheetName      name to give the new sheet in targetWorkbook
+     * @param endRowIndex    end row index (0-based, inclusive)
+     */
+    public static void copyHeaderToWorkbook(Sheet sourceSheet, Workbook targetWorkbook,
+                                             String sheetName, int endRowIndex) {
+        copySheetRows(sourceSheet, targetWorkbook, sheetName, endRowIndex);
+    }
+
+    /**
+     * Writes data rows into an already-existing in-memory sheet, starting at startRowIndex.
+     * No file I/O is performed.
+     *
+     * @param targetSheet    already-created Sheet inside targetWorkbook
+     * @param targetWorkbook the Workbook that owns targetSheet (needed for CellStyle creation)
+     * @param templateRow    row whose cell styles are used as template (may be null)
+     * @param startRowIndex  first row index to write at (0-based)
+     * @param rows           data rows to write
+     */
+    public static void writeDataRowsToSheet(Sheet targetSheet, Workbook targetWorkbook,
+                                             Row templateRow, int startRowIndex,
+                                             List<Map<Integer, Object>> rows) {
+        Map<Integer, CellStyle> styleCache = new HashMap<>();
+        int rowIdx = startRowIndex;
+        for (Map<Integer, Object> rowData : rows) {
+            Row row = targetSheet.createRow(rowIdx++);
+            rowData.forEach((colIdx, value) -> {
+                Cell cell = row.createCell(colIdx);
+                if (templateRow != null) {
+                    Cell templateCell = templateRow.getCell(colIdx);
+                    if (templateCell != null) {
+                        CellStyle style = styleCache.computeIfAbsent(colIdx, k -> {
+                            CellStyle s = targetWorkbook.createCellStyle();
+                            s.cloneStyleFrom(templateCell.getCellStyle());
+                            return s;
+                        });
+                        cell.setCellStyle(style);
+                    }
+                }
+                if (value instanceof Number) cell.setCellValue(((Number) value).doubleValue());
+                else if (value instanceof Boolean) cell.setCellValue((Boolean) value);
+                else if (value != null) cell.setCellValue(value.toString());
+            });
+        }
+    }
+
+    /**
+     * Copies an entire sourceSheet into targetWorkbook as a new sheet.
+     * The sheet name is taken from sourceSheet. No file I/O is performed.
+     *
+     * @param sourceSheet    already-loaded source Sheet
+     * @param targetWorkbook already-open target Workbook (in memory)
+     */
+    public static void copySheetToWorkbook(Sheet sourceSheet, Workbook targetWorkbook) {
+        copySheetRows(sourceSheet, targetWorkbook, sourceSheet.getSheetName(), sourceSheet.getLastRowNum());
+    }
+
     // ==================== Private Helper Methods ====================
 
     /**
