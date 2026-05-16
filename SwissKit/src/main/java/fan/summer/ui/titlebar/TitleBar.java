@@ -35,15 +35,8 @@ public class TitleBar extends HBox {
         StackPane titleWrap = new StackPane(titleLabel);
         HBox.setHgrow(titleWrap, Priority.ALWAYS);
 
-        // ── Right-side buttons ────────────────────────────────────
-        HBox actions = new HBox(8);
-        actions.setAlignment(Pos.CENTER_RIGHT);
-        actions.getChildren().addAll(
-            titlebarBtn("🔔", "Notifications", () -> {}),
-            titlebarBtn("⚙️", "Settings", onSettings)
-        );
 
-        getChildren().addAll(lights, titleWrap, actions);
+        getChildren().addAll(lights, titleWrap);
 
         // ── Window drag ────────────────────────────────────
         setOnMousePressed(e -> {
@@ -59,20 +52,17 @@ public class TitleBar extends HBox {
     // ── Traffic lights ────────────────────────────────────────────
 
     private HBox buildTrafficLights(Stage stage) {
-        Button close = trafficLight("traffic-light-close", "✕");
-        Button min   = trafficLight("traffic-light-min",   "−");
-        Button max   = trafficLight("traffic-light-max",   "+");
+        Button close = trafficLight("traffic-light-close", "✕");   // ✕
+
 
         close.setOnAction(e -> stage.close());
-        min.setOnAction(e   -> stage.setIconified(true));
-        max.setOnAction(e   -> stage.setMaximized(!stage.isMaximized()));
 
-        HBox box = new HBox(8, close, min, max);
+        HBox box = new HBox(8, close);
         box.setAlignment(Pos.CENTER_LEFT);
 
         // Only show icon on hover
         Label[] icons = {
-            findIcon(close), findIcon(min), findIcon(max)
+            findIcon(close)
         };
         box.setOnMouseEntered(e -> { for (Label l : icons) l.setOpacity(1); });
         box.setOnMouseExited( e -> { for (Label l : icons) l.setOpacity(0); });
@@ -82,13 +72,16 @@ public class TitleBar extends HBox {
     private Button trafficLight(String colorClass, String iconText) {
         Label icon = new Label(iconText);
         icon.setStyle(
-            "-fx-font-size: 7px; -fx-text-fill: rgba(0,0,0,0.5);" +
+            "-fx-font-size: 9px;" +
+            "-fx-font-weight: bold;" +
+            "-fx-text-fill: rgba(0,0,0,0.65);" +
             "-fx-alignment: center;"
         );
         icon.setOpacity(0);
 
         StackPane content = new StackPane(icon);
         content.setPrefSize(12, 12);
+        content.setMouseTransparent(true);
 
         Button btn = new Button();
         btn.setGraphic(content);
@@ -98,6 +91,7 @@ public class TitleBar extends HBox {
         btn.setMaxSize(12, 12);
         btn.setPadding(Insets.EMPTY);
         btn.setStyle("-fx-background-insets: 0; -fx-padding: 0;");
+        btn.setFocusTraversable(false);
         return btn;
     }
 
