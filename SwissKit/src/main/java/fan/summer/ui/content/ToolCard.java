@@ -1,12 +1,16 @@
 package fan.summer.ui.content;
 
+import fan.summer.api.MdiIconUtil;
 import fan.summer.api.SwissKitJPlugin;
 import javafx.animation.*;
 import javafx.geometry.Insets;
 import javafx.scene.control.Label;
+import javafx.scene.effect.DropShadow;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
+import javafx.scene.text.Text;
 import javafx.util.Duration;
 
 import java.util.function.Consumer;
@@ -26,13 +30,25 @@ public class ToolCard extends VBox {
         setPadding(new Insets(16, 14, 14, 14));
 
         // ── Icon ────────────────────────────────────────
-        Label iconLabel = new Label(plugin.getIconText());
-        iconLabel.setStyle("-fx-font-size: 18px;");
+        Color iconColor = resolveColor(plugin.getIconStyle());
+        String fillStyle = String.format("-fx-fill: rgba(%d,%d,%d,1.0);",
+                (int)(iconColor.getRed()*255),
+                (int)(iconColor.getGreen()*255),
+                (int)(iconColor.getBlue()*255));
 
-        StackPane iconWrap = new StackPane(iconLabel);
+        Text iconText = MdiIconUtil.createIcon(plugin.getMdiIcon(), 45);
+        iconText.setStyle(fillStyle);
+
+        DropShadow glow = new DropShadow();
+        glow.setColor(iconColor.deriveColor(0, 1, 1, 0.75));
+        glow.setRadius(12);
+        glow.setSpread(0.15);
+        iconText.setEffect(glow);
+
+        StackPane iconWrap = new StackPane(iconText);
         iconWrap.getStyleClass().addAll("tool-icon-wrap", plugin.getIconStyle());
-        iconWrap.setPrefSize(40, 40);
-        iconWrap.setMinSize(40, 40);
+        iconWrap.setPrefSize(48, 48);
+        iconWrap.setMinSize(48, 48);
 
         // ── Text ────────────────────────────────────────
         Label nameLabel = new Label(plugin.getName());
@@ -52,14 +68,22 @@ public class ToolCard extends VBox {
 
         getChildren().addAll(iconWrap, nameLabel, descLabel, tag);
 
-        // ── Hover animation ─────────────────────────────────────
+        // ── Hover: intensify glow ────────────────────────────────
         ScaleTransition hoverIn  = new ScaleTransition(Duration.millis(150), this);
         ScaleTransition hoverOut = new ScaleTransition(Duration.millis(150), this);
         hoverIn.setToX(1.03); hoverIn.setToY(1.03);
         hoverOut.setToX(1.0); hoverOut.setToY(1.0);
 
-        setOnMouseEntered(e -> { hoverOut.stop(); hoverIn.play(); });
-        setOnMouseExited( e -> { hoverIn.stop(); hoverOut.play(); });
+        setOnMouseEntered(e -> {
+            hoverOut.stop(); hoverIn.play();
+            glow.setRadius(20);
+            glow.setSpread(0.25);
+        });
+        setOnMouseExited(e -> {
+            hoverIn.stop(); hoverOut.play();
+            glow.setRadius(12);
+            glow.setSpread(0.15);
+        });
 
         // ── Click animation + callback ───────────────────────────────
         setOnMouseClicked(e -> {
@@ -85,14 +109,24 @@ public class ToolCard extends VBox {
         ParallelTransition entry = new ParallelTransition(ft, tt, st);
         entry.setInterpolator(new Interpolator() {
             @Override protected double curve(double t) {
-                // Simple spring curve
                 return 1 - Math.pow(1 - t, 3) * Math.cos(t * Math.PI * 2);
             }
         });
-        // Delay set by caller, see ToolGrid
         entry.play();
 
         setCursor(javafx.scene.Cursor.HAND);
+    }
+
+    private static Color resolveColor(String iconStyle) {
+        return switch (iconStyle) {
+            case "ic-blue"   -> Color.rgb(99, 130, 255);
+            case "ic-purple" -> Color.rgb(160, 110, 255);
+            case "ic-teal"   -> Color.rgb(40, 210, 140);
+            case "ic-amber"  -> Color.rgb(255, 185, 50);
+            case "ic-red"    -> Color.rgb(255, 100, 100);
+            case "ic-pink"   -> Color.rgb(245, 100, 160);
+            default          -> Color.rgb(200, 200, 210);
+        };
     }
 
     public SwissKitJPlugin getPlugin() { return plugin; }
