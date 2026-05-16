@@ -1,5 +1,6 @@
 package fan.summer.ui.content;
 
+import fan.summer.api.MdiIconUtil;
 import fan.summer.api.SwissKitJPlugin;
 import javafx.animation.Interpolator;
 import javafx.animation.KeyFrame;
@@ -11,6 +12,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.Separator;
 import javafx.scene.layout.*;
+import javafx.scene.text.Text;
 import javafx.util.Duration;
 
 import java.util.function.Consumer;
@@ -23,16 +25,16 @@ public class DetailPanel extends VBox {
 
     private static final double PANEL_WIDTH = 260;
 
-    private final Label   iconLabel   = new Label();
-    private final StackPane iconWrap  = new StackPane(iconLabel);
+    private final Text     iconText    = new Text();
+    private final StackPane iconWrap   = new StackPane(iconText);
     private final Label   nameLabel   = new Label();
     private final Label   metaLabel   = new Label();
     private final Label   descLabel   = new Label();
     private final Label   versionVal  = new Label();
     private final Label   typeVal     = new Label();
     private final Label   categoryVal = new Label();
-    private final Button  launchBtn   = new Button("Launch Tool");
-    private final Button  closeBtn    = new Button("✕");
+    private final Button  launchBtn  = new Button("Launch Tool");
+    private final Button  closeBtn   = new Button("✕");
 
     private Consumer<SwissKitJPlugin> onLaunch;
     private SwissKitJPlugin currentPlugin;
@@ -71,7 +73,7 @@ public class DetailPanel extends VBox {
     // ── Build UI ───────────────────────────────────────────
 
     private void buildUI() {
-        iconLabel.setStyle("-fx-font-size: 26px;");
+        iconText.setStyle("-fx-font-size: 26px; -fx-fill: white;");
         iconWrap.setPrefSize(56, 56);
         iconWrap.setMinSize(56, 56);
         iconWrap.getStyleClass().add("tool-icon-wrap");
@@ -138,7 +140,8 @@ public class DetailPanel extends VBox {
     // ── Data fill ─────────────────────────────────────────
 
     private void fillData(SwissKitJPlugin p) {
-        iconLabel.setText(p.getIconText());
+        iconText.setText(MdiIconUtil.getCodepoint(p.getMdiIcon()));
+        iconText.setFont(MdiIconUtil.getFont(28));
         iconWrap.getStyleClass().removeIf(c -> c.startsWith("ic-"));
         iconWrap.getStyleClass().add(p.getIconStyle());
 

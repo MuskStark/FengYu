@@ -32,6 +32,7 @@ public class ContentArea extends BorderPane {
     private final DetailPanel detailPanel  = new DetailPanel();
     private final StackPane   pageStack    = new StackPane();
     private final ScrollPane  scrollPane;
+    private final ScrollPane  pageScrollPane;
     private final HBox        backBar      = buildBackBar();
 
     // ── State ──────────────────────────────────────────────
@@ -42,7 +43,8 @@ public class ContentArea extends BorderPane {
     private Runnable onBack;
 
     public ContentArea() {
-        scrollPane = buildScrollPane();
+        scrollPane     = buildScrollPane();
+        pageScrollPane = buildPageScrollPane();
         buildLayout();
         detailPanel.setOnLaunch(p -> { if (onLaunch != null) onLaunch.accept(p); });
     }
@@ -72,8 +74,9 @@ public class ContentArea extends BorderPane {
 
     /** Switch to custom page (e.g. settings, plugin market) */
     public void showPage(Node page, String title) {
+        pageScrollPane.setContent(page);
         setTopMode(true, title);
-        crossFadeTo(page);
+        crossFadeTo(pageScrollPane);
         detailPanel.hide();
     }
 
@@ -180,6 +183,15 @@ public class ContentArea extends BorderPane {
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.setPrefHeight(38);
         return bar;
+    }
+
+    private ScrollPane buildPageScrollPane() {
+        ScrollPane sp = new ScrollPane();
+        sp.setFitToWidth(true);
+        sp.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        sp.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        sp.setStyle("-fx-background-color: transparent; -fx-background: transparent;");
+        return sp;
     }
 
     private ScrollPane buildScrollPane() {

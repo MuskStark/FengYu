@@ -143,24 +143,31 @@ jobs:
           cp README.md   release/SwissKit/
           cp SwissKit/src/main/resources/icons/icon-256.png release/SwissKit/swisskit.png
 
-      # Write launcher with printf in a separate step to avoid any
-      # heredoc / YAML block-mapping conflict.
-      # 'exec' replaces the shell process with java for a cleaner process tree.
-      - name: Create Linux .desktop file
+      # install.sh self-detects its own location at runtime and writes
+      # swisskit.desktop with absolute Exec/Icon paths, then registers it
+      # under ~/.local/share/applications/.  Users run it once after extracting.
+      - name: Create Linux install script
         run: |
           printf '%s\n' \
+            '#!/bin/bash' \
+            'INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"' \
+            'cat > "$INSTALL_DIR/swisskit.desktop" << DESKTOP' \
             '[Desktop Entry]' \
             'Name=SwissKit' \
             'Comment=Swiss Army Knife of Productivity Tools' \
-            'Exec=./run.sh' \
-            'Icon=swisskit' \
+            'Exec=$INSTALL_DIR/run.sh' \
+            'Icon=$INSTALL_DIR/swisskit.png' \
             'Terminal=false' \
             'Type=Application' \
             'Categories=Office;Utility;' \
-            > release/SwissKit/swisskit.desktop
+            'DESKTOP' \
+            'mkdir -p "$HOME/.local/share/applications"' \
+            'cp "$INSTALL_DIR/swisskit.desktop" "$HOME/.local/share/applications/"' \
+            'command -v update-desktop-database &>/dev/null && update-desktop-database "$HOME/.local/share/applications/" 2>/dev/null || true' \
+            'echo "SwissKit installed. You can now find it in your application launcher."' \
+            > release/SwissKit/install.sh
+          chmod +x release/SwissKit/install.sh
 
-      # Write launcher with printf in a separate step to avoid any
-      # heredoc / YAML block-mapping conflict.
       # 'exec' replaces the shell process with java for a cleaner process tree.
       - name: Write Linux launcher script
         run: |

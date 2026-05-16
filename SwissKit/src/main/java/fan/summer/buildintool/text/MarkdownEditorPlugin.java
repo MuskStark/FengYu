@@ -17,7 +17,7 @@ public class MarkdownEditorPlugin implements SwissKitJPlugin {
     @Override public String getDescription() { return "Real-time Markdown editor with preview"; }
     @Override public String getCategory()    { return "text"; }
     @Override public String getVersion()     { return "1.0.0"; }
-    @Override public String getIconText()    { return "M↓"; }
+    @Override public String getMdiIcon()    { return "language-markdown"; }
     @Override public String getIconStyle()   { return "ic-blue"; }
     @Override public String getType()        { return "builtin"; }
 

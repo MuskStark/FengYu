@@ -16,6 +16,7 @@ import javafx.scene.shape.Circle;
 import javafx.scene.shape.Rectangle;
 import javafx.stage.Stage;
 import javafx.util.Duration;
+import org.apache.ibatis.plugin.Plugin;
 
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -36,8 +37,8 @@ public class MainWindow extends StackPane {
     private final ContentArea contentArea;
 
     // Status bar labels
-    private final Label statusToolCount    = statusText("0 tools");
-    private final Label statusPluginCount  = statusText("0 plugins");
+    private Label statusToolCount    = statusText("0 tools");
+    private Label statusPluginCount  = statusText("0 plugins");
     private final Label clockLabel         = statusText("");
 
     private Timeline clockTimeline;
@@ -50,6 +51,19 @@ public class MainWindow extends StackPane {
         titleBar    = new TitleBar(stage, this::openSettings);
         sidebar     = new Sidebar();
         contentArea = new ContentArea();
+
+        int buildInTool = 0;
+        int pluginInTool = 0;
+        for (SwissKitJPlugin plugin : registry.getPlugins()) {
+            if(plugin.getType().equals("plugin") ) {
+                pluginInTool++;
+            }else {
+                buildInTool++;
+            }
+        }
+
+        statusPluginCount = statusText(pluginInTool + "plugins");
+        statusToolCount = statusText(pluginInTool + buildInTool +  "tools");
 
         buildScene();
         wireEvents();
