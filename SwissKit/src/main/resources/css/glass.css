@@ -58,13 +58,26 @@
     -fx-background-radius: 6px;
     -fx-border-radius: 6px;
     -fx-border-width: 0.5px;
-    -fx-border-color: rgba(0,0,0,0.2);
+    -fx-border-color: rgba(0,0,0,0.20);
     -fx-cursor: hand;
+    -fx-effect: innershadow(gaussian, rgba(255,255,255,0.35), 1, 0, 0, 0.5);
 }
-.traffic-light-close  { -fx-background-color: #ff5f57; }
-.traffic-light-min    { -fx-background-color: #febc2e; }
-.traffic-light-max    { -fx-background-color: #28c840; }
-.traffic-light:hover  { -fx-opacity: 0.85; }
+.traffic-light-close {
+    -fx-background-color: linear-gradient(to bottom, #ff6259 0%, #ee4f44 100%);
+}
+.traffic-light-min {
+    -fx-background-color: linear-gradient(to bottom, #ffbe2f 0%, #efaa18 100%);
+}
+.traffic-light-max {
+    -fx-background-color: linear-gradient(to bottom, #2bc940 0%, #1eaf2f 100%);
+}
+.traffic-light:hover {
+    -fx-effect: innershadow(gaussian, rgba(255,255,255,0.45), 1, 0, 0, 0.5),
+                dropshadow(gaussian, rgba(0,0,0,0.15), 2, 0, 0, 0.5);
+}
+.traffic-light:pressed {
+    -fx-opacity: 0.78;
+}
 
 .titlebar-title {
     -fx-text-fill: rgba(255,255,255,0.50);
@@ -183,26 +196,24 @@
 }
 
 .tool-icon-wrap {
-    -fx-pref-width: 40px;
-    -fx-pref-height: 40px;
-    -fx-min-width: 40px;
-    -fx-min-height: 40px;
-    -fx-background-radius: 10px;
-    -fx-border-radius: 10px;
-    -fx-border-color: rgba(255,255,255,0.08);
-    -fx-border-width: 1px;
+    -fx-pref-width: 48px;
+    -fx-pref-height: 48px;
+    -fx-min-width: 48px;
+    -fx-min-height: 48px;
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-border-width: 0;
     -fx-alignment: center;
-    -fx-font-size: 18px;
 }
 
-/* 图标配色 */
-.ic-blue   { -fx-background-color: rgba(59,91,219,0.22); }
-.ic-purple { -fx-background-color: rgba(112,72,232,0.22); }
-.ic-teal   { -fx-background-color: rgba(16,160,106,0.20); }
-.ic-amber  { -fx-background-color: rgba(245,166,35,0.20); }
-.ic-red    { -fx-background-color: rgba(242,92,92,0.20); }
-.ic-pink   { -fx-background-color: rgba(230,73,128,0.20); }
-.ic-gray   { -fx-background-color: rgba(255,255,255,0.08); }
+/* 图标配色 — 颜色注入到 Text 节点上，glow 由 Java 代码通过 DropShadow 设置 */
+.ic-blue   { }
+.ic-purple { }
+.ic-teal   { }
+.ic-amber  { }
+.ic-red    { }
+.ic-pink   { }
+.ic-gray   { }
 
 .tool-name {
     -fx-text-fill: rgba(255,255,255,0.92);
