@@ -42,10 +42,11 @@ public interface SwissKitJPlugin {
     String getVersion();
 
     /**
-     * Icon character (emoji or single char) shown in the card icon area.
+     * Material Design Icons class name (without "mdi" prefix), e.g. "file-excel".
+     * Full list: https://pictogrammers.com/library/mdi/
      * Override getIconNode() if a custom icon Node is needed.
      */
-    String getIconText();
+    String getMdiIcon();
 
     /**
      * CSS class for the icon background colour, corresponding to variants in glass.css:

@@ -29,7 +29,7 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
     @Override public String getDescription() { return "MD5 / SHA-1 / SHA-256 / SHA-512"; }
     @Override public String getCategory()    { return "dev"; }
     @Override public String getVersion()     { return "1.0.0"; }
-    @Override public String getIconText()    { return "#"; }
+    @Override public String getMdiIcon()    { return "key-variant"; }
     @Override public String getIconStyle()   { return "ic-amber"; }
     @Override public String getType()        { return "builtin"; }
 

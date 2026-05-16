@@ -70,14 +70,14 @@ public class Sidebar extends VBox {
 
         // ── Plugins section ────────────────────────────────────
         getChildren().add(sectionLabel("PLUGINS"));
-        addNavItem("plugins", "🧩", "Installed Plugins", 3, true);
+        addNavItem("plugins", "🧩", "Installed Plugins", 0, true);
         addNavItem("store",   "🏪", "Plugin Store",   0, false);
 
         getChildren().add(divider());
 
         // ── Favorites section ────────────────────────────────────
         getChildren().add(sectionLabel("FAVORITES"));
-        addNavItem("fav", "⭐", "My Favorites", 5, false);
+        addNavItem("fav", "⭐", "My Favorites", 0, false);
 
         // ── Bottom spacer + Settings ──────────────────────────────
         Region spacer = new Region();

@@ -17,7 +17,7 @@ public class JsonFormatterPlugin implements SwissKitJPlugin {
     @Override public String getDescription() { return "Format, compress, and validate JSON data"; }
     @Override public String getCategory()    { return "dev"; }
     @Override public String getVersion()     { return "1.0.0"; }
-    @Override public String getIconText()    { return "{ }"; }
+    @Override public String getMdiIcon()    { return "code-json"; }
     @Override public String getIconStyle()   { return "ic-blue"; }
     @Override public String getType()        { return "builtin"; }
 

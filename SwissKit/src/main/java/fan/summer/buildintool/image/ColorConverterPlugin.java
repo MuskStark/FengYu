@@ -19,7 +19,7 @@ public class ColorConverterPlugin implements SwissKitJPlugin {
     @Override public String getDescription() { return "HEX / RGB / HSL conversion with live preview"; }
     @Override public String getCategory()    { return "image"; }
     @Override public String getVersion()     { return "1.0.0"; }
-    @Override public String getIconText()    { return "◉"; }
+    @Override public String getMdiIcon()    { return "palette"; }
     @Override public String getIconStyle()   { return "ic-pink"; }
     @Override public String getType()        { return "builtin"; }
 

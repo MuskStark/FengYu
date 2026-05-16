@@ -20,7 +20,7 @@ public class Base64Plugin implements SwissKitJPlugin {
     @Override public String getDescription() { return "Base64 Encode / Decode"; }
     @Override public String getCategory()    { return "dev"; }
     @Override public String getVersion()     { return "1.0.0"; }
-    @Override public String getIconText()    { return "64"; }
+    @Override public String getMdiIcon()    { return "base64"; }
     @Override public String getIconStyle()   { return "ic-teal"; }
     @Override public String getType()        { return "builtin"; }
 

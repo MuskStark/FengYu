@@ -2,104 +2,73 @@ package fan.summer.buildintool.excelsplitter;
 
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.component.StepWizard;
+import fan.summer.database.DatabaseInit;
+import fan.summer.database.entity.excel.ComplexSplitConfigEntity;
+import fan.summer.database.mapper.excel.ComplexSplitConfigMapper;
 import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.geometry.*;
 import javafx.scene.Node;
 import javafx.scene.control.*;
+import javafx.scene.input.TransferMode;
 import javafx.scene.layout.*;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
-import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.ss.usermodel.Cell;
+import org.apache.ibatis.session.SqlSession;
 
 import java.io.File;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
-    private Node      view;
-    private SplitConfig config;
+    private Node view;
 
-    // ── Meta info ────────────────────────────────────────────
-
-    @Override public String getId()          { return "com.toolbox.excel-splitter"; }
-    @Override public String getName()        { return "Excel Splitter"; }
-    @Override public String getDescription() { return "Split Excel files by Sheet / Column Value / Row Count"; }
+    @Override public String getId()          { return "fan.summer.buildin.excelsplitter"; }
+    @Override public String getName()        { return "Excel拆分"; }
+    @Override public String getDescription() { return "按Sheet/列值/复杂配置拆分Excel文件"; }
     @Override public String getCategory()    { return "other"; }
-    @Override public String getVersion()     { return "1.0.0"; }
-    @Override public String getIconText()    { return "⊘"; }
+    @Override public String getVersion()     { return "2.0.0"; }
+    @Override public String getMdiIcon()    { return "file-excel"; }
     @Override public String getIconStyle()   { return "ic-teal"; }
-    @Override public String getType()        { return "plugin"; }
+    @Override public String getType()        { return "builtin"; }
 
     @Override
     public void onActivate() {
-        // Reset wizard on each entry for easy re-split
         view = null;
     }
 
     @Override
     public Node createView() {
         if (view != null) return view;
-        config = new SplitConfig();
-        view   = buildWizardView();
+        view = buildWizardView();
         return view;
     }
 
-    // ════════════════════════════════════════════════════
-    // Wizard build
-    // ════════════════════════════════════════════════════
-
     private Node buildWizardView() {
+        SplitConfig config = new SplitConfig();
         StepWizard wizard = new StepWizard();
 
-        // ── Step 1: Select file ─────────────────────────────
-        Step1View step1 = new Step1View(config);
-        wizard.addStep("Select file", step1,
-            () -> config.sourceFile != null && Files.exists(config.sourceFile)
-        );
-
-        // ── Step 2: Split mode ─────────────────────────────
+        Step1View step1 = new Step1View(config, wizard);
         Step2View step2 = new Step2View(config);
-        wizard.addStep("Split mode", step2, () -> {
-            if (config.mode == SplitConfig.SplitMode.BY_COLUMN
-                    && (config.splitColumn == null || config.splitColumn.isBlank())) {
-                return false;
-            }
-            if (config.mode == SplitConfig.SplitMode.BY_ROW_COUNT
-                    && config.rowsPerFile <= 0) {
-                return false;
-            }
-            return true;
-        });
-
-        // ── Step 3: Output settings ─────────────────────────────
         Step3View step3 = new Step3View(config);
-        wizard.addStep("Output settings", step3,
-            () -> config.outputDir != null && Files.isDirectory(config.outputDir)
-        );
-
-        // ── Step 4: Execute split ─────────────────────────────
         Step4View step4 = new Step4View(config);
-        wizard.addStep("Execute split", step4, () -> true);
 
-        // Wire step-change callbacks
+        wizard.addStep("选择文件", step1, step1.canProceedSupplier());
+        wizard.addStep("拆分模式", step2, step2.canProceedSupplier());
+        wizard.addStep("确认配置", step3, step3.canProceedSupplier());
+        wizard.addStep("执行拆分", step4, () -> true);
+
+        wizard.build();
+
         wizard.setOnStepChanged((from, to, total) -> {
-            // On entering step 2: refresh the column selector (file is already selected)
-            if (to == 1) step2.refresh(config);
-            // On entering step 4: start the split automatically
-            if (to == 3) step4.startSplit();
+            if (from == 0 && to == 1) step2.refresh(config);
+            if (from == 1 && to == 2) step3.refresh(config);
+            if (from == 2 && to == 3) step4.startSplit();
         });
 
-        // Second listener overwrites the first — kept intentionally for step 4 trigger
-        wizard.setOnStepChanged((from, to, total) -> {
-            if (to == 1) step2.refresh(config);
-            if (to == 3) step4.startSplit();
-        });
-
-        // Wrap in a VBox to add outer padding
         VBox root = new VBox(wizard);
         VBox.setVgrow(wizard, Priority.ALWAYS);
         root.setPadding(new Insets(24));
@@ -108,76 +77,148 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
     }
 
     // ════════════════════════════════════════════════════
-    // Step 1: Select source file
+    // Step 1: 选择文件 + 异步分析
     // ════════════════════════════════════════════════════
 
     static class Step1View extends VBox {
         private final SplitConfig config;
-        private final Label       fileLabel;
-        private final Label       previewLabel;
+        private final StepWizard wizard;
+        private final Label fileLabel;
+        private final Label statusLabel;
+        private final VBox dropZone;
+        private final VBox loadingOverlay;
 
-        Step1View(SplitConfig config) {
+        // Signals that analysis is already running so canProceed doesn't restart it
+        private final AtomicBoolean analysisRunning = new AtomicBoolean(false);
+        // Set to true once to prevent re-triggering the first canProceed → analyze chain
+        private boolean analysisTriggered = false;
+
+        Step1View(SplitConfig config, StepWizard wizard) {
             this.config = config;
-            setSpacing(16);
+            this.wizard = wizard;
             setStyle("-fx-background-color: transparent;");
+            setSpacing(16);
 
-            Label title = sectionTitle("Select Excel file to split");
+            Label title = sectionTitle("选择 Excel 文件");
 
-            fileLabel = new Label("No file selected");
+            fileLabel = new Label("未选择文件");
             fileLabel.setStyle(
                 "-fx-text-fill: rgba(255,255,255,0.40); -fx-font-size: 13px;" +
                 "-fx-font-family: 'SF Mono','Consolas',monospace;"
             );
             fileLabel.setWrapText(true);
 
-            Button pickBtn = glassBtn("📂  Select file", true);
+            Button pickBtn = glassBtn("📂  选择文件", true);
             pickBtn.setOnAction(e -> pickFile());
 
-            // Drop zone
-            VBox dropZone = new VBox(12, pickBtn, fileLabel);
+            dropZone = new VBox(14, pickBtn, fileLabel);
             dropZone.setAlignment(Pos.CENTER);
-            dropZone.setPrefHeight(140);
-            dropZone.setStyle(
-                "-fx-background-color: rgba(255,255,255,0.03);" +
-                "-fx-border-color: rgba(255,255,255,0.12);" +
-                "-fx-border-width: 1; -fx-border-style: dashed;" +
-                "-fx-border-radius: 12; -fx-background-radius: 12;"
-            );
+            dropZone.setPrefHeight(150);
+            dropZone.setPadding(new Insets(20));
+            dropZone.setStyle(dropNormalStyle());
 
-            // Drag and drop support
             dropZone.setOnDragOver(e -> {
                 if (e.getDragboard().hasFiles()) {
-                    e.acceptTransferModes(javafx.scene.input.TransferMode.COPY);
-                    dropZone.setStyle(dropZone.getStyle()
-                        .replace("rgba(255,255,255,0.03)", "rgba(91,140,247,0.10)")
-                        .replace("rgba(255,255,255,0.12)", "rgba(91,140,247,0.40)"));
+                    e.acceptTransferModes(TransferMode.COPY);
+                    dropZone.setStyle(dropHighlightStyle());
                 }
                 e.consume();
             });
-            dropZone.setOnDragExited(e ->
-                dropZone.setStyle(dropZone.getStyle()
-                    .replace("rgba(91,140,247,0.10)", "rgba(255,255,255,0.03)")
-                    .replace("rgba(91,140,247,0.40)", "rgba(255,255,255,0.12)"))
-            );
+            dropZone.setOnDragExited(e -> dropZone.setStyle(dropNormalStyle()));
             dropZone.setOnDragDropped(e -> {
                 List<File> files = e.getDragboard().getFiles();
                 if (!files.isEmpty()) loadFile(files.get(0).toPath());
+                dropZone.setStyle(dropNormalStyle());
                 e.setDropCompleted(true);
                 e.consume();
             });
 
-            previewLabel = new Label();
-            previewLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
-            previewLabel.setWrapText(true);
+            statusLabel = new Label();
+            statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+            statusLabel.setWrapText(true);
 
-            getChildren().addAll(title, dropZone, previewLabel);
+            // Loading overlay placed over the drop zone
+            ProgressIndicator spinner = new ProgressIndicator(-1);
+            spinner.setPrefSize(32, 32);
+            spinner.setStyle("-fx-accent: #5b8cf7;");
+            Label analyzingLabel = new Label("正在分析...");
+            analyzingLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.75); -fx-font-size: 13px;");
+            loadingOverlay = new VBox(8, spinner, analyzingLabel);
+            loadingOverlay.setAlignment(Pos.CENTER);
+            loadingOverlay.setStyle(
+                "-fx-background-color: rgba(0,0,0,0.55);" +
+                "-fx-background-radius: 12;"
+            );
+            loadingOverlay.setVisible(false);
+            loadingOverlay.setMouseTransparent(true);
+
+            StackPane container = new StackPane(dropZone, loadingOverlay);
+            StackPane.setAlignment(loadingOverlay, Pos.CENTER);
+            // Make loading overlay fill the entire drop zone area
+            loadingOverlay.prefWidthProperty().bind(container.widthProperty());
+            loadingOverlay.prefHeightProperty().bind(container.heightProperty());
+
+            getChildren().addAll(title, container, statusLabel);
+        }
+
+        void showLoading(boolean show) {
+            loadingOverlay.setVisible(show);
+            dropZone.setDisable(show);
+        }
+
+        java.util.function.BooleanSupplier canProceedSupplier() {
+            return () -> {
+                if (config.analysisResult != null) return true;
+                if (config.sourceFile == null) return false;
+                // Analysis hasn't started yet — trigger it now (first Next click with file selected)
+                if (!analysisRunning.get() && !analysisTriggered) {
+                    analysisTriggered = true;
+                    analysisRunning.set(true);
+                    Platform.runLater(() -> showLoading(true));
+                    startAnalysis();
+                }
+                // While running, return false silently (no shake — wizard sees false and stays)
+                return false;
+            };
+        }
+
+        private void startAnalysis() {
+            Task<Map<String, Map<Integer, String>>> task = new Task<>() {
+                @Override
+                protected Map<String, Map<Integer, String>> call() throws Exception {
+                    return ExcelSplitter.analyze(config.sourceFile);
+                }
+            };
+
+            task.setOnSucceeded(e -> {
+                config.analysisResult = task.getValue();
+                analysisRunning.set(false);
+                showLoading(false);
+                int sheetCount = config.analysisResult.size();
+                statusLabel.setText("✓ 共 " + sheetCount + " 个Sheet：" +
+                    config.analysisResult.keySet().stream().limit(5).collect(Collectors.joining(", ")) +
+                    (sheetCount > 5 ? " …" : ""));
+                statusLabel.setStyle("-fx-text-fill: #4cd97b; -fx-font-size: 12px;");
+                // Automatically advance to step 2 now that analysis is done
+                wizard.goTo(1);
+            });
+
+            task.setOnFailed(e -> {
+                analysisRunning.set(false);
+                analysisTriggered = false;
+                showLoading(false);
+                statusLabel.setText("❌ 分析失败：" + task.getException().getMessage());
+                statusLabel.setStyle("-fx-text-fill: #f25c5c; -fx-font-size: 12px;");
+            });
+
+            new Thread(task) {{ setDaemon(true); }}.start();
         }
 
         private void pickFile() {
             FileChooser fc = new FileChooser();
-            fc.setTitle("Select Excel file");
+            fc.setTitle("选择 Excel 文件");
             fc.getExtensionFilters().add(
-                new FileChooser.ExtensionFilter("Excel files", "*.xlsx", "*.xls", "*.xlsm")
+                new FileChooser.ExtensionFilter("Excel 文件", "*.xlsx", "*.xls", "*.xlsm")
             );
             File f = fc.showOpenDialog(getScene() != null ? getScene().getWindow() : null);
             if (f != null) loadFile(f.toPath());
@@ -185,217 +226,367 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
         private void loadFile(Path path) {
             config.sourceFile = path;
+            config.analysisResult = null;
+            analysisTriggered = false;
+            analysisRunning.set(false);
             fileLabel.setText(path.getFileName().toString());
-            fileLabel.setStyle(fileLabel.getStyle()
-                .replace("rgba(255,255,255,0.40)", "rgba(255,255,255,0.88)"));
+            fileLabel.setStyle(
+                "-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 13px;" +
+                "-fx-font-family: 'SF Mono','Consolas',monospace;"
+            );
+            statusLabel.setText("已选择文件，点击「下一步」开始分析");
+            statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+        }
 
-            // Read sheet names
-            try (Workbook wb = WorkbookFactory.create(path.toFile(), null, true)) {
-                List<String> names = new ArrayList<>();
-                for (int i = 0; i < wb.getNumberOfSheets(); i++)
-                    names.add(wb.getSheetName(i));
-                config.sheetNames      = names;
-                config.selectedSheets  = new ArrayList<>(names);
-                previewLabel.setText("✓ Contains " + names.size() + "  sheets：" +
-                    names.stream().limit(5).collect(Collectors.joining(", ")) +
-                    (names.size() > 5 ? " …" : ""));
-            } catch (Exception ex) {
-                previewLabel.setText("❌ Failed to read file：" + ex.getMessage());
-                config.sourceFile = null;
-            }
+        private static String dropNormalStyle() {
+            return "-fx-background-color: rgba(255,255,255,0.03);" +
+                   "-fx-border-color: rgba(255,255,255,0.12);" +
+                   "-fx-border-width: 1; -fx-border-style: dashed;" +
+                   "-fx-border-radius: 12; -fx-background-radius: 12;";
+        }
+
+        private static String dropHighlightStyle() {
+            return "-fx-background-color: rgba(91,140,247,0.10);" +
+                   "-fx-border-color: rgba(91,140,247,0.40);" +
+                   "-fx-border-width: 1; -fx-border-style: dashed;" +
+                   "-fx-border-radius: 12; -fx-background-radius: 12;";
         }
     }
 
     // ════════════════════════════════════════════════════
-    // Step 2: Split mode
+    // Step 2: 拆分模式选择
     // ════════════════════════════════════════════════════
 
     static class Step2View extends VBox {
         private final SplitConfig config;
-        private VBox detailPane;
+        private final VBox detailPane;
+        private final ToggleGroup modeGroup;
 
-        // BY_COLUMN control
+        // BY_SHEET controls
+        private VBox sheetCheckBoxes;
+        // BY_COLUMN controls
+        private ComboBox<String> sheetCombo;
         private ComboBox<String> columnCombo;
-        // BY_ROW_COUNT control
-        private Spinner<Integer> rowSpinner;
-        // BY_SHEET control
-        private ListView<String> sheetList;
+        // COMPLEX controls
+        private ComboBox<String> complexSheetCombo;
+        private TextField headerIndexField;
+        private TextField columnIndexField;
+        private Label complexCountLabel;
 
         Step2View(SplitConfig config) {
             this.config = config;
             setSpacing(16);
             setStyle("-fx-background-color: transparent;");
-            build();
-        }
 
-        private void build() {
-            Label title = sectionTitle("Select split mode");
+            Label title = sectionTitle("拆分模式");
 
-            // Three radio-button cards
-            ToggleGroup group = new ToggleGroup();
-            VBox modeCards = new VBox(8,
-                modeCard(group, SplitConfig.SplitMode.BY_SHEET,
-                    "⊞  Split by sheet", "Each sheet outputs one independent file"),
-                modeCard(group, SplitConfig.SplitMode.BY_COLUMN,
-                    "🔤  Split by column value",  "Group by different values in a column, one file per group"),
-                modeCard(group, SplitConfig.SplitMode.BY_ROW_COUNT,
-                    "📏  Split by row count",  "Output one file every N rows")
-            );
+            modeGroup = new ToggleGroup();
 
-            // Default select first
-            ((RadioButton) modeCards.getChildren().get(0)
-                .lookup(".radio-button") != null
-                ? modeCards.getChildren().get(0)
-                : modeCards.getChildren().get(0))
-                .getClass(); // Trigger once to ensure initialization
+            HBox bySheetCard   = modeCard(modeGroup, SplitConfig.SplitMode.BY_SHEET,
+                "⊞", "按Sheet拆分",   "每个Sheet输出一个独立文件");
+            HBox byColumnCard  = modeCard(modeGroup, SplitConfig.SplitMode.BY_COLUMN,
+                "≡", "按列值拆分",    "按某列的不同取值分组，每组输出一个文件");
+            HBox complexCard   = modeCard(modeGroup, SplitConfig.SplitMode.COMPLEX,
+                "⚙", "复杂拆分",      "多配置规则，支持列值拆分+整Sheet复制");
 
-            // Select first Toggle
-            group.getToggles().get(0).setSelected(true);
+            VBox modeCards = new VBox(8, bySheetCard, byColumnCard, complexCard);
+
+            modeGroup.getToggles().get(0).setSelected(true);
             config.mode = SplitConfig.SplitMode.BY_SHEET;
 
-            detailPane = new VBox();
+            detailPane = new VBox(8);
             detailPane.setStyle("-fx-background-color: transparent;");
+            detailPane.setPadding(new Insets(4, 0, 0, 0));
 
-            group.selectedToggleProperty().addListener((obs, o, n) -> {
+            modeGroup.selectedToggleProperty().addListener((obs, o, n) -> {
                 if (n != null) {
                     config.mode = (SplitConfig.SplitMode) n.getUserData();
                     refreshDetail();
                 }
             });
 
-            refreshDetail();
             getChildren().addAll(title, modeCards, detailPane);
         }
 
-        /** Refresh dynamic content (column list etc.) when the source file changes */
-        void refresh(SplitConfig config) {
+        void refresh(SplitConfig cfg) {
             refreshDetail();
+        }
+
+        java.util.function.BooleanSupplier canProceedSupplier() {
+            return () -> switch (config.mode) {
+                case BY_SHEET  -> config.selectedSheets != null && !config.selectedSheets.isEmpty();
+                case BY_COLUMN -> config.splitSheet != null && config.splitColumn != null;
+                case COMPLEX   -> {
+                    if (config.complexTaskId == null) yield false;
+                    try (SqlSession session = DatabaseInit.getSqlSession()) {
+                        ComplexSplitConfigMapper mapper = session.getMapper(ComplexSplitConfigMapper.class);
+                        List<ComplexSplitConfigEntity> rows = mapper.selectAllByTaskId(config.complexTaskId);
+                        yield rows != null && !rows.isEmpty();
+                    } catch (Exception e) {
+                        yield false;
+                    }
+                }
+            };
         }
 
         private void refreshDetail() {
             detailPane.getChildren().clear();
-            detailPane.setPadding(new Insets(4, 0, 0, 0));
+            if (config.analysisResult == null) return;
+            List<String> sheets = new ArrayList<>(config.analysisResult.keySet());
 
             switch (config.mode) {
-                case BY_SHEET -> {
-                    if (config.sheetNames == null || config.sheetNames.isEmpty()) return;
-                    sheetList = new ListView<>();
-                    sheetList.getItems().addAll(config.sheetNames);
-                    sheetList.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
-                    sheetList.getSelectionModel().selectAll();
-                    sheetList.setPrefHeight(Math.min(config.sheetNames.size() * 32 + 8, 160));
-                    sheetList.setStyle(
-                        "-fx-background-color: rgba(255,255,255,0.04);" +
-                        "-fx-border-color: rgba(255,255,255,0.10); -fx-border-radius: 8;" +
-                        "-fx-background-radius: 8; -fx-text-fill: white;"
-                    );
-                    sheetList.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) ->
-                        config.selectedSheets = new ArrayList<>(
-                            sheetList.getSelectionModel().getSelectedItems())
-                    );
-                    detailPane.getChildren().addAll(
-                        subLabel("Select sheets to export (multiple allowed)"), sheetList
-                    );
-                }
-                case BY_COLUMN -> {
-                    columnCombo = new ComboBox<>();
-                    columnCombo.setPromptText("Column to split by...…");
-                    columnCombo.setMaxWidth(Double.MAX_VALUE);
-                    columnCombo.setStyle(comboStyle());
+                case BY_SHEET -> buildBySheetDetail(sheets);
+                case BY_COLUMN -> buildByColumnDetail(sheets);
+                case COMPLEX -> buildComplexDetail(sheets);
+            }
+        }
 
-                    // Read first row header from file
-                    if (config.sourceFile != null) {
-                        try (Workbook wb = WorkbookFactory.create(
-                                config.sourceFile.toFile(), null, true)) {
-                            Sheet s = wb.getSheetAt(0);
-                            Row header = s.getRow(s.getFirstRowNum());
-                            if (header != null) {
-                                for (int c = header.getFirstCellNum();
-                                     c < header.getLastCellNum(); c++) {
-                                    Cell cell = header.getCell(c);
-                                    if (cell != null) {
-                                        String val = cell.toString().trim();
-                                        if (!val.isEmpty()) {
-                                            columnCombo.getItems().add(val);
-                                        }
-                                    }
-                                }
+        private void buildBySheetDetail(List<String> sheets) {
+            Label lbl = subLabel("选择要导出的Sheet（可多选）");
+
+            sheetCheckBoxes = new VBox(4);
+            sheetCheckBoxes.setStyle(
+                "-fx-background-color: rgba(255,255,255,0.04);" +
+                "-fx-border-color: rgba(255,255,255,0.10); -fx-border-radius: 8;" +
+                "-fx-background-radius: 8; -fx-padding: 10;"
+            );
+
+            config.selectedSheets = new ArrayList<>(sheets);
+
+            for (String sheet : sheets) {
+                CheckBox cb = new CheckBox(sheet);
+                cb.setSelected(true);
+                cb.setStyle("-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 13px;");
+                cb.selectedProperty().addListener((o, ov, nv) -> {
+                    if (nv) {
+                        if (!config.selectedSheets.contains(sheet)) config.selectedSheets.add(sheet);
+                    } else {
+                        config.selectedSheets.remove(sheet);
+                    }
+                });
+                sheetCheckBoxes.getChildren().add(cb);
+            }
+
+            ScrollPane scroll = new ScrollPane(sheetCheckBoxes);
+            scroll.setFitToWidth(true);
+            scroll.setPrefHeight(Math.min(sheets.size() * 30 + 20, 180));
+            scroll.setStyle("-fx-background-color: transparent; -fx-border-color: transparent;");
+
+            Button selectAll = glassBtn("全选", false);
+            Button clearAll  = glassBtn("清空", false);
+            selectAll.setOnAction(e -> {
+                sheetCheckBoxes.getChildren().forEach(node -> ((CheckBox) node).setSelected(true));
+            });
+            clearAll.setOnAction(e -> {
+                sheetCheckBoxes.getChildren().forEach(node -> ((CheckBox) node).setSelected(false));
+            });
+
+            HBox btns = new HBox(8, selectAll, clearAll);
+            detailPane.getChildren().addAll(lbl, scroll, btns);
+        }
+
+        private void buildByColumnDetail(List<String> sheets) {
+            Label sheetLbl = subLabel("选择Sheet");
+            sheetCombo = new ComboBox<>();
+            sheetCombo.getItems().addAll(sheets);
+            sheetCombo.setMaxWidth(Double.MAX_VALUE);
+            sheetCombo.setPromptText("请选择Sheet...");
+            sheetCombo.setStyle(comboStyle());
+
+            Label colLbl = subLabel("选择拆分列");
+            columnCombo = new ComboBox<>();
+            columnCombo.setMaxWidth(Double.MAX_VALUE);
+            columnCombo.setPromptText("请先选择Sheet...");
+            columnCombo.setStyle(comboStyle());
+            columnCombo.setDisable(true);
+
+            sheetCombo.valueProperty().addListener((o, ov, nv) -> {
+                config.splitSheet = nv;
+                config.splitColumn = null;
+                config.splitColumnIndex = -1;
+                columnCombo.getItems().clear();
+                columnCombo.setDisable(true);
+                if (nv != null) {
+                    Map<Integer, String> headers = config.analysisResult.get(nv);
+                    if (headers != null) {
+                        // Preserve column order
+                        new TreeMap<>(headers).forEach((idx, name) -> columnCombo.getItems().add(name));
+                    }
+                    columnCombo.setDisable(false);
+                    columnCombo.setPromptText("请选择列...");
+                }
+            });
+
+            columnCombo.valueProperty().addListener((o, ov, nv) -> {
+                config.splitColumn = nv;
+                if (nv != null && config.splitSheet != null) {
+                    Map<Integer, String> headers = config.analysisResult.get(config.splitSheet);
+                    if (headers != null) {
+                        for (Map.Entry<Integer, String> entry : headers.entrySet()) {
+                            if (nv.equals(entry.getValue())) {
+                                config.splitColumnIndex = entry.getKey();
+                                break;
                             }
-                        } catch (Exception ex) {
-                            columnCombo.getItems().add("（Read failed：" + ex.getMessage() + "）");
                         }
                     }
-
-                    columnCombo.valueProperty().addListener((o, ov, nv) -> {
-                        config.splitColumn = nv;
-                        config.splitColumnIndex = columnCombo.getItems().indexOf(nv);
-                    });
-
-                    detailPane.getChildren().addAll(subLabel("Which column to group by"), columnCombo);
                 }
-                case BY_ROW_COUNT -> {
-                    rowSpinner = new Spinner<>(1, 1_000_000, 1000, 100);
-                    rowSpinner.setEditable(true);
-                    rowSpinner.setMaxWidth(Double.MAX_VALUE);
-                    rowSpinner.setStyle(
-                        "-fx-background-color: rgba(255,255,255,0.06);" +
-                        "-fx-border-color: rgba(255,255,255,0.12); -fx-border-radius: 8;"
-                    );
-                    rowSpinner.valueProperty().addListener((o, ov, nv) ->
-                        config.rowsPerFile = nv);
-                    config.rowsPerFile = 1000;
+            });
 
-                    detailPane.getChildren().addAll(subLabel("Max rows per file"), rowSpinner);
+            detailPane.getChildren().addAll(sheetLbl, sheetCombo, colLbl, columnCombo);
+        }
+
+        private void buildComplexDetail(List<String> sheets) {
+            // Generate a stable task ID for this complex config session
+            if (config.complexTaskId == null) {
+                config.complexTaskId = UUID.randomUUID().toString();
+            }
+
+            Label sheetLbl      = subLabel("Sheet名称");
+            complexSheetCombo   = new ComboBox<>();
+            complexSheetCombo.getItems().addAll(sheets);
+            complexSheetCombo.setMaxWidth(Double.MAX_VALUE);
+            complexSheetCombo.setPromptText("选择Sheet...");
+            complexSheetCombo.setStyle(comboStyle());
+
+            Label headerLbl   = subLabel("表头行号（1起，-1表示整Sheet复制）");
+            headerIndexField  = new TextField();
+            headerIndexField.setPromptText("例：1");
+            headerIndexField.setStyle(fieldStyle());
+
+            Label colIdxLbl    = subLabel("拆分列号（1起，-1表示整Sheet复制）");
+            columnIndexField   = new TextField();
+            columnIndexField.setPromptText("例：3  或 -1");
+            columnIndexField.setStyle(fieldStyle());
+
+            Button addBtn = glassBtn("添加配置", true);
+
+            complexCountLabel = new Label();
+            refreshComplexCount();
+            complexCountLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.60); -fx-font-size: 12px;");
+
+            Button clearBtn = glassBtn("清空全部", false);
+            clearBtn.setOnAction(e -> {
+                try (SqlSession session = DatabaseInit.getSqlSession()) {
+                    ComplexSplitConfigMapper mapper = session.getMapper(ComplexSplitConfigMapper.class);
+                    mapper.deleteAllByTaskId(config.complexTaskId);
+                    session.commit();
+                } catch (Exception ex) {
+                    // ignore
                 }
+                refreshComplexCount();
+            });
+
+            addBtn.setOnAction(e -> {
+                String sheet = complexSheetCombo.getValue();
+                String headerText = headerIndexField.getText().trim();
+                String colText    = columnIndexField.getText().trim();
+                if (sheet == null || headerText.isEmpty() || colText.isEmpty()) return;
+
+                int headerIdx, colIdx;
+                try {
+                    headerIdx = Integer.parseInt(headerText);
+                    colIdx    = Integer.parseInt(colText);
+                } catch (NumberFormatException ex) {
+                    return;
+                }
+
+                ComplexSplitConfigEntity entity = new ComplexSplitConfigEntity();
+                entity.setTaskId(config.complexTaskId);
+                entity.setFieldName(config.sourceFile != null ? config.sourceFile.getFileName().toString() : "");
+                entity.setSheetName(sheet);
+                entity.setHeaderIndex(headerIdx);
+                entity.setColumnIndex(colIdx);
+
+                try (SqlSession session = DatabaseInit.getSqlSession()) {
+                    ComplexSplitConfigMapper mapper = session.getMapper(ComplexSplitConfigMapper.class);
+                    mapper.insert(entity);
+                    session.commit();
+                } catch (Exception ex) {
+                    // ignore
+                }
+
+                headerIndexField.clear();
+                columnIndexField.clear();
+                refreshComplexCount();
+            });
+
+            HBox footer = new HBox(8, complexCountLabel, new Region() {{
+                HBox.setHgrow(this, Priority.ALWAYS);
+            }}, clearBtn);
+            footer.setAlignment(Pos.CENTER_LEFT);
+
+            detailPane.getChildren().addAll(
+                sheetLbl, complexSheetCombo,
+                headerLbl, headerIndexField,
+                colIdxLbl, columnIndexField,
+                addBtn, footer
+            );
+        }
+
+        private void refreshComplexCount() {
+            if (config.complexTaskId == null || complexCountLabel == null) return;
+            try (SqlSession session = DatabaseInit.getSqlSession()) {
+                ComplexSplitConfigMapper mapper = session.getMapper(ComplexSplitConfigMapper.class);
+                int count = mapper.selectAllByTaskId(config.complexTaskId).size();
+                complexCountLabel.setText("已添加 " + count + " 条配置");
+            } catch (Exception e) {
+                complexCountLabel.setText("已添加 0 条配置");
             }
         }
 
         private HBox modeCard(ToggleGroup group, SplitConfig.SplitMode mode,
-                              String label, String desc) {
+                              String icon, String title, String desc) {
             RadioButton rb = new RadioButton();
             rb.setToggleGroup(group);
             rb.setUserData(mode);
             rb.setStyle("-fx-text-fill: transparent;");
 
-            Label mainL = new Label(label);
-            mainL.setStyle("-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 13px; -fx-font-weight: 500;");
-            Label descL = new Label(desc);
-            descL.setStyle("-fx-text-fill: rgba(255,255,255,0.40); -fx-font-size: 11px;");
+            Label iconLabel = new Label(icon);
+            iconLabel.setStyle(
+                "-fx-text-fill: rgba(255,255,255,0.70); -fx-font-size: 16px;" +
+                "-fx-min-width: 24; -fx-alignment: center;"
+            );
+            Label titleLabel = new Label(title);
+            titleLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 13px; -fx-font-weight: 500;");
+            Label descLabel = new Label(desc);
+            descLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.40); -fx-font-size: 11px;");
 
-            VBox text = new VBox(2, mainL, descL);
-            HBox.setHgrow(text, Priority.ALWAYS);
-            HBox card = new HBox(10, rb, text);
+            VBox textBox = new VBox(2, titleLabel, descLabel);
+            HBox.setHgrow(textBox, Priority.ALWAYS);
+
+            HBox card = new HBox(12, rb, iconLabel, textBox);
             card.setAlignment(Pos.CENTER_LEFT);
             card.setPadding(new Insets(12, 16, 12, 16));
-            card.setStyle(
-                "-fx-background-color: rgba(255,255,255,0.04);" +
-                "-fx-border-color: rgba(255,255,255,0.10); -fx-border-width: 1;" +
-                "-fx-border-radius: 10; -fx-background-radius: 10; -fx-cursor: hand;"
-            );
+            card.setStyle(cardNormalStyle());
             card.setOnMouseClicked(e -> rb.setSelected(true));
 
-            rb.selectedProperty().addListener((o, ov, nv) -> {
-                if (nv) {
-                    card.setStyle(card.getStyle()
-                        .replace("rgba(255,255,255,0.04)", "rgba(91,140,247,0.10)")
-                        .replace("rgba(255,255,255,0.10)", "rgba(91,140,247,0.35)"));
-                } else {
-                    card.setStyle(card.getStyle()
-                        .replace("rgba(91,140,247,0.10)", "rgba(255,255,255,0.04)")
-                        .replace("rgba(91,140,247,0.35)", "rgba(255,255,255,0.10)"));
-                }
-            });
+            rb.selectedProperty().addListener((o, ov, nv) ->
+                card.setStyle(nv ? cardSelectedStyle() : cardNormalStyle())
+            );
 
             return card;
+        }
+
+        private static String cardNormalStyle() {
+            return "-fx-background-color: rgba(255,255,255,0.04);" +
+                   "-fx-border-color: rgba(255,255,255,0.10); -fx-border-width: 1;" +
+                   "-fx-border-radius: 10; -fx-background-radius: 10; -fx-cursor: hand;";
+        }
+
+        private static String cardSelectedStyle() {
+            return "-fx-background-color: rgba(91,140,247,0.10);" +
+                   "-fx-border-color: rgba(91,140,247,0.35); -fx-border-width: 1;" +
+                   "-fx-border-radius: 10; -fx-background-radius: 10; -fx-cursor: hand;";
         }
     }
 
     // ════════════════════════════════════════════════════
-    // Step 3: Output settings
+    // Step 3: 确认配置 + 选择输出目录
     // ════════════════════════════════════════════════════
 
     static class Step3View extends VBox {
         private final SplitConfig config;
+        private final VBox        summaryContent;
         private final Label       dirLabel;
 
         Step3View(SplitConfig config) {
@@ -403,61 +594,138 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             setSpacing(16);
             setStyle("-fx-background-color: transparent;");
 
-            Label title = sectionTitle("Output settings");
+            Label configTitle = sectionTitle("确认配置");
 
-            dirLabel = new Label("No directory selected");
-            dirLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.40); -fx-font-size: 12px;" +
-                              "-fx-font-family: 'SF Mono','Consolas',monospace;");
+            summaryContent = new VBox(8);
+            summaryContent.setStyle("-fx-background-color: transparent;");
+
+            VBox summaryCard = new VBox(summaryContent);
+            summaryCard.setPadding(new Insets(14, 16, 14, 16));
+            summaryCard.setStyle(
+                "-fx-background-color: rgba(255,255,255,0.04);" +
+                "-fx-border-color: rgba(255,255,255,0.10); -fx-border-width: 1;" +
+                "-fx-border-radius: 10; -fx-background-radius: 10;"
+            );
+
+            Separator sep = new Separator();
+            sep.setStyle("-fx-border-color: rgba(255,255,255,0.08);");
+
+            Label outputTitle = sectionTitle("输出目录");
+
+            dirLabel = new Label("未选择");
+            dirLabel.setStyle(
+                "-fx-text-fill: rgba(255,255,255,0.40); -fx-font-size: 12px;" +
+                "-fx-font-family: 'SF Mono','Consolas',monospace;"
+            );
             dirLabel.setWrapText(true);
 
-            Button dirBtn = glassBtn("📁  Select output directory", true);
+            Button dirBtn = glassBtn("📁  选择输出目录", false);
             dirBtn.setOnAction(e -> {
                 DirectoryChooser dc = new DirectoryChooser();
-                dc.setTitle("Select output directory");
-                // Default to source file directory
+                dc.setTitle("选择输出目录");
                 if (config.sourceFile != null)
                     dc.setInitialDirectory(config.sourceFile.getParent().toFile());
                 File dir = dc.showDialog(getScene() != null ? getScene().getWindow() : null);
                 if (dir != null) {
                     config.outputDir = dir.toPath();
                     dirLabel.setText(dir.getAbsolutePath());
-                    dirLabel.setStyle(dirLabel.getStyle()
-                        .replace("rgba(255,255,255,0.40)", "rgba(255,255,255,0.88)"));
+                    dirLabel.setStyle(
+                        "-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 12px;" +
+                        "-fx-font-family: 'SF Mono','Consolas',monospace;"
+                    );
                 }
             });
 
-            // File name prefix
-            Label prefixLabel = subLabel("Output file name prefix (optional)");
-            TextField prefixField = new TextField();
-            prefixField.setPromptText("example: output → output_Sheet1.xlsx");
-            prefixField.setStyle(fieldStyle());
-            prefixField.textProperty().addListener((o, ov, nv) -> config.filePrefix = nv);
+            getChildren().addAll(configTitle, summaryCard, sep, outputTitle, dirBtn, dirLabel);
+        }
 
-            // Keep header
-            CheckBox keepHeader = new CheckBox("Keep header row when splitting by column or row count");
-            keepHeader.setSelected(true);
-            keepHeader.setStyle("-fx-text-fill: rgba(255,255,255,0.75); -fx-font-size: 13px;");
-            keepHeader.selectedProperty().addListener((o, ov, nv) -> config.keepHeader = nv);
+        void refresh(SplitConfig cfg) {
+            summaryContent.getChildren().clear();
+            if (cfg.analysisResult == null) return;
 
-            getChildren().addAll(
-                title,
-                dirBtn, dirLabel,
-                new Separator() {{ setStyle("-fx-border-color: rgba(255,255,255,0.08);"); }},
-                prefixLabel, prefixField,
-                keepHeader
-            );
+            addRow("来源文件", cfg.sourceFile != null ? cfg.sourceFile.getFileName().toString() : "—");
+            addRow("文件总 Sheet 数", String.valueOf(cfg.analysisResult.size()));
+
+            switch (cfg.mode) {
+                case BY_SHEET -> {
+                    List<String> sel = cfg.selectedSheets != null ? cfg.selectedSheets : List.of();
+                    addRow("拆分模式", "按 Sheet 拆分");
+                    addRow("待导出 Sheet 数", String.valueOf(sel.size()));
+                    addRow("预计输出文件数", String.valueOf(sel.size()));
+                    if (!sel.isEmpty()) {
+                        addRow("导出 Sheet", String.join("、", sel));
+                    }
+                }
+                case BY_COLUMN -> {
+                    Map<Integer, String> headers = cfg.analysisResult.get(cfg.splitSheet);
+                    int totalCols = headers != null ? headers.size() : 0;
+                    // Find 1-based column position
+                    int colPos = cfg.splitColumnIndex + 1;
+                    addRow("拆分模式", "按列值拆分");
+                    addRow("目标 Sheet", cfg.splitSheet != null ? cfg.splitSheet : "—");
+                    addRow("拆分列", (cfg.splitColumn != null ? cfg.splitColumn : "—")
+                        + "（第 " + colPos + " 列，共 " + totalCols + " 列）");
+                }
+                case COMPLEX -> {
+                    addRow("拆分模式", "复杂拆分");
+                    if (cfg.complexTaskId != null) {
+                        List<ComplexSplitConfigEntity> rows = List.of();
+                        try (SqlSession session = DatabaseInit.getSqlSession()) {
+                            rows = session.getMapper(ComplexSplitConfigMapper.class)
+                                         .selectAllByTaskId(cfg.complexTaskId);
+                        } catch (Exception ignored) {}
+                        addRow("配置条数", String.valueOf(rows.size()));
+                        for (ComplexSplitConfigEntity r : rows) {
+                            boolean isCopyAll = Integer.valueOf(-1).equals(r.getHeaderIndex())
+                                             && Integer.valueOf(-1).equals(r.getColumnIndex());
+                            String detail = isCopyAll
+                                ? "整Sheet复制"
+                                : "表头行 " + r.getHeaderIndex() + "，拆分列 " + r.getColumnIndex();
+                            addDetailRow("• " + r.getSheetName(), detail);
+                        }
+                    }
+                }
+            }
+        }
+
+        private void addRow(String key, String value) {
+            Label keyL = new Label(key + "：");
+            keyL.setStyle("-fx-text-fill: rgba(255,255,255,0.45); -fx-font-size: 12px; -fx-min-width: 130;");
+            Label valL = new Label(value);
+            valL.setStyle("-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 12px;");
+            valL.setWrapText(true);
+            HBox row = new HBox(4, keyL, valL);
+            row.setAlignment(Pos.TOP_LEFT);
+            summaryContent.getChildren().add(row);
+        }
+
+        private void addDetailRow(String key, String value) {
+            Label keyL = new Label(key);
+            keyL.setStyle("-fx-text-fill: rgba(255,255,255,0.60); -fx-font-size: 12px; -fx-min-width: 130;" +
+                          "-fx-font-family: 'SF Mono','Consolas',monospace;");
+            Label valL = new Label(value);
+            valL.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 11px;");
+            valL.setWrapText(true);
+            HBox row = new HBox(8, keyL, valL);
+            row.setAlignment(Pos.TOP_LEFT);
+            row.setPadding(new Insets(0, 0, 0, 12));
+            summaryContent.getChildren().add(row);
+        }
+
+        java.util.function.BooleanSupplier canProceedSupplier() {
+            return () -> config.outputDir != null && Files.isDirectory(config.outputDir);
         }
     }
 
     // ════════════════════════════════════════════════════
-    // Step 4: Execute split and show results
+    // Step 4: 执行拆分 + 展示结果
     // ════════════════════════════════════════════════════
 
     static class Step4View extends VBox {
         private final SplitConfig config;
-        private final ProgressBar  progressBar;
-        private final Label        progressLabel;
-        private final VBox         resultBox;
+        private final ProgressBar progressBar;
+        private final Label progressLabel;
+        private final VBox resultBox;
         private boolean started = false;
 
         Step4View(SplitConfig config) {
@@ -465,14 +733,18 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             setSpacing(16);
             setStyle("-fx-background-color: transparent;");
 
-            Label title = sectionTitle("Splitting...…");
+            Label title = sectionTitle("执行拆分");
 
             progressBar = new ProgressBar(0);
             progressBar.setMaxWidth(Double.MAX_VALUE);
             progressBar.setPrefHeight(6);
-            progressBar.setStyle("-fx-accent: #5b8cf7; -fx-background-radius: 3; -fx-background-color: rgba(255,255,255,0.08);");
+            progressBar.setStyle(
+                "-fx-accent: #5b8cf7;" +
+                "-fx-background-radius: 3;" +
+                "-fx-background-color: rgba(255,255,255,0.08);"
+            );
 
-            progressLabel = new Label("Preparing...…");
+            progressLabel = new Label("准备中...");
             progressLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
 
             resultBox = new VBox(8);
@@ -500,19 +772,27 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             };
 
             task.setOnSucceeded(e -> showSuccess(task.getValue()));
-            task.setOnFailed(e  -> showError(task.getException()));
+            task.setOnFailed(e   -> showError(task.getException()));
 
-            Thread t = new Thread(task);
-            t.setDaemon(true);
-            t.start();
+            new Thread(task) {{ setDaemon(true); }}.start();
         }
 
         private void showSuccess(ExcelSplitter.SplitResult result) {
             progressBar.setProgress(1.0);
             progressBar.setStyle(progressBar.getStyle().replace("#5b8cf7", "#4cd97b"));
-            progressLabel.setText("✓ Split complete, output " + result.fileCount() + "  files");
+            progressLabel.setText("✓ 拆分完成，输出 " + result.fileCount() + " 个文件");
+            progressLabel.setStyle("-fx-text-fill: #4cd97b; -fx-font-size: 12px;");
 
-            resultBox.getChildren().add(subLabel("Output files"));
+            resultBox.getChildren().add(subLabel("输出文件列表"));
+
+            ScrollPane scroll = new ScrollPane();
+            scroll.setFitToWidth(true);
+            scroll.setPrefHeight(Math.min(result.outputFiles().size() * 46 + 10, 220));
+            scroll.setStyle("-fx-background-color: transparent; -fx-border-color: transparent;");
+
+            VBox fileList = new VBox(6);
+            fileList.setStyle("-fx-background-color: transparent;");
+
             for (Path p : result.outputFiles()) {
                 HBox row = new HBox(10);
                 row.setAlignment(Pos.CENTER_LEFT);
@@ -525,37 +805,44 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
                 Label icon = new Label("📄");
                 Label name = new Label(p.getFileName().toString());
-                name.setStyle("-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 12px;" +
-                              "-fx-font-family: 'SF Mono','Consolas',monospace;");
+                name.setStyle(
+                    "-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 12px;" +
+                    "-fx-font-family: 'SF Mono','Consolas',monospace;"
+                );
                 HBox.setHgrow(name, Priority.ALWAYS);
 
-                Button open = new Button("Open folder");
-                open.setStyle(
-                    "-fx-background-color: transparent; -fx-border-color: rgba(76,217,123,0.4);" +
-                    "-fx-border-width: 1; -fx-border-radius: 5; -fx-text-fill: #4cd97b;" +
+                Button openBtn = new Button("打开文件夹");
+                openBtn.setStyle(
+                    "-fx-background-color: transparent;" +
+                    "-fx-border-color: rgba(76,217,123,0.4); -fx-border-width: 1;" +
+                    "-fx-border-radius: 5; -fx-text-fill: #4cd97b;" +
                     "-fx-font-size: 11px; -fx-padding: 3 8 3 8; -fx-cursor: hand;"
                 );
-                open.setOnAction(e -> {
+                openBtn.setOnAction(e -> {
                     try {
                         java.awt.Desktop.getDesktop().open(p.getParent().toFile());
-                    } catch (Exception ex) { /* Skip */ }
+                    } catch (Exception ex) { /* skip */ }
                 });
 
-                row.getChildren().addAll(icon, name, open);
-                resultBox.getChildren().add(row);
+                row.getChildren().addAll(icon, name, openBtn);
+                fileList.getChildren().add(row);
             }
+
+            scroll.setContent(fileList);
+            resultBox.getChildren().add(scroll);
         }
 
         private void showError(Throwable err) {
-            progressBar.setProgress(0);
+            progressBar.setProgress(1.0);
             progressBar.setStyle(progressBar.getStyle().replace("#5b8cf7", "#f25c5c"));
-            progressLabel.setText("❌ Split failed");
+            progressLabel.setText("❌ 拆分失败");
+            progressLabel.setStyle("-fx-text-fill: #f25c5c; -fx-font-size: 12px;");
 
-            Label errLabel = new Label(err.getMessage());
+            Label errLabel = new Label(err.getMessage() != null ? err.getMessage() : err.toString());
             errLabel.setStyle(
-                "-fx-text-fill: #f25c5c; -fx-font-size: 12px; -fx-wrap-text: true;" +
-                "-fx-background-color: rgba(242,92,92,0.08); -fx-padding: 12;" +
-                "-fx-background-radius: 8;"
+                "-fx-text-fill: #f25c5c; -fx-font-size: 12px;" +
+                "-fx-background-color: rgba(242,92,92,0.08);" +
+                "-fx-padding: 12; -fx-background-radius: 8;"
             );
             errLabel.setWrapText(true);
             resultBox.getChildren().add(errLabel);
@@ -563,10 +850,10 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
     }
 
     // ════════════════════════════════════════════════════
-    // Shared UI tools
+    // Shared UI helpers (package-accessible for inner classes)
     // ════════════════════════════════════════════════════
 
-    private static Label sectionTitle(String text) {
+    static Label sectionTitle(String text) {
         Label l = new Label(text);
         l.setStyle("-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 15px; -fx-font-weight: 500;");
         return l;
@@ -574,8 +861,10 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
     static Label subLabel(String text) {
         Label l = new Label(text.toUpperCase());
-        l.setStyle("-fx-text-fill: rgba(255,255,255,0.30); -fx-font-size: 10px;" +
-                   "-fx-font-weight: bold; -fx-letter-spacing: 0.08em;");
+        l.setStyle(
+            "-fx-text-fill: rgba(255,255,255,0.30); -fx-font-size: 10px;" +
+            "-fx-font-weight: bold;"
+        );
         return l;
     }
 
@@ -603,12 +892,14 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
         return "-fx-background-color: rgba(255,255,255,0.05);" +
                "-fx-border-color: rgba(255,255,255,0.12); -fx-border-width: 1;" +
                "-fx-border-radius: 8; -fx-background-radius: 8;" +
-               "-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 13px; -fx-padding: 9 12 9 12;";
+               "-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 13px;" +
+               "-fx-padding: 9 12 9 12;";
     }
 
     private static String comboStyle() {
         return "-fx-background-color: rgba(255,255,255,0.05);" +
                "-fx-border-color: rgba(255,255,255,0.12); -fx-border-width: 1;" +
-               "-fx-border-radius: 8; -fx-background-radius: 8; -fx-text-fill: rgba(255,255,255,0.88);";
+               "-fx-border-radius: 8; -fx-background-radius: 8;" +
+               "-fx-text-fill: rgba(255,255,255,0.88);";
     }
 }
