@@ -187,6 +187,7 @@ public class ContentArea extends BorderPane {
 
     private ScrollPane buildPageScrollPane() {
         ScrollPane sp = new ScrollPane();
+        sp.getStyleClass().add("content-scroll");
         sp.setFitToWidth(true);
         sp.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         sp.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
