@@ -114,6 +114,25 @@ public interface SwissKitJPlugin {
 
 **Built-in tools** skip SPI entirely — `BuiltinToolRegistrar.register()` adds them directly to `PluginRegistry`. See existing tools there as templates.
 
+### Plugin logging
+
+Plugins should use `fan.summer.api.log.LoggerFactory` (in `SwissKitJ-Api`) rather than depending on SLF4J directly. The host installs a binder at startup that routes plugin log calls into the same SLF4J + Logback backbone used by the host (console at INFO+, rolling file at DEBUG+ under `.swisskit/logs/swisskit.log`, daily rotation, 7-day retention).
+
+```java
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
+
+public class MyPlugin implements SwissKitJPlugin {
+    private static final PluginLogger log = LoggerFactory.getLogger(MyPlugin.class);
+
+    @Override public void onActivate() {
+        log.info("Activated, taskId={}", currentTaskId);
+    }
+}
+```
+
+Use SLF4J-style `{}` placeholders — formatting is deferred until the level is actually enabled. If the host has not installed a binder (e.g. plugin unit tests), `LoggerFactory` returns a silent no-op logger, so it is safe to call from anywhere.
+
 ## Branch Status — v3.0.0-JavaFX
 
 This branch is an active migration from Swing/FlatLaf to JavaFX. Legacy Swing classes live in `SwissKit/backup/` and are **excluded from Maven compilation** via `<excludes>` in `SwissKit/pom.xml`. Do not move files out of `backup/` unless completing their JavaFX port.

@@ -1,6 +1,8 @@
 package fan.summer.app;
 
+import fan.summer.api.log.LoggerBinder;
 import fan.summer.database.DatabaseInit;
+import fan.summer.log.Slf4jPluginLoggerBinder;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.plugin.PluginRegistry;
 import fan.summer.ui.MainWindow;
@@ -11,6 +13,8 @@ import javafx.scene.image.Image;
 import javafx.scene.paint.Color;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -26,16 +30,26 @@ import java.nio.file.Paths;
  */
 public class SwissKitJApp extends Application {
 
+    private static final Logger log = LoggerFactory.getLogger(SwissKitJApp.class);
+
     private MainWindow mainWindow;
 
     @Override
     public void start(Stage stage) throws Exception {
+        log.info("SwissKitJ application starting up");
+
+        // ── Plugin logging bridge: plugins use fan.summer.api.log.LoggerFactory,
+        //    which delegates to SLF4J via this binder. ──────────────────────
+        LoggerBinder.bind(new Slf4jPluginLoggerBinder());
+        log.debug("Plugin logger binder installed (SLF4J)");
 
         // ── Database (H2 + MyBatis) ─────────────────────────────────
+        log.info("Initialising database");
         DatabaseInit.init();
 
         // ── Plugin directory (prefer JAR sibling, fallback to working directory during dev) ──
         Path pluginsDir = resolvePluginsDir();
+        log.info("Plugin directory resolved to: {}", pluginsDir.toAbsolutePath());
 
         // ── Plugin system ──────────────────────────────────────
         PluginLoader   loader   = new PluginLoader(pluginsDir);
@@ -43,6 +57,7 @@ public class SwissKitJApp extends Application {
 
         // ── Register built-in tools ──────────────────────────────
         BuiltinToolRegistrar.register(loader, registry);
+        log.info("Built-in tools registered, count={}", registry.getPlugins().size());
 
         // ── Main window ────────────────────────────────────────
         mainWindow = new MainWindow(stage, loader, registry);
@@ -67,14 +82,18 @@ public class SwissKitJApp extends Application {
         stage.setMinWidth(800);
         stage.setMinHeight(520);
         stage.show();
+        log.info("Main window displayed");
 
         // ── Start plugin loading (after UI is displayed) ────────
         loader.start();
+        log.info("Plugin loader started");
     }
 
     @Override
     public void stop() {
+        log.info("SwissKitJ application shutting down");
         if (mainWindow != null) mainWindow.shutdown();
+        log.info("Shutdown complete");
     }
 
     // ── Helper: locate plugins directory ───────────────────────────

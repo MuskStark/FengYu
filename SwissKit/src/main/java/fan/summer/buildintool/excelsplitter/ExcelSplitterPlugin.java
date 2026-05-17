@@ -30,7 +30,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
     @Override public String getName()        { return "Excel拆分"; }
     @Override public String getDescription() { return "按Sheet/列值/复杂配置拆分Excel文件"; }
     @Override public String getCategory()    { return "other"; }
-    @Override public String getVersion()     { return "2.0.0"; }
+    @Override public String getVersion()     { return "3.0.0"; }
     @Override public String getMdiIcon()    { return "file-excel"; }
     @Override public String getIconStyle()   { return "ic-teal"; }
     @Override public String getType()        { return "builtin"; }
@@ -737,12 +737,6 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
             progressBar = new ProgressBar(0);
             progressBar.setMaxWidth(Double.MAX_VALUE);
-            progressBar.setPrefHeight(6);
-            progressBar.setStyle(
-                "-fx-accent: #5b8cf7;" +
-                "-fx-background-radius: 3;" +
-                "-fx-background-color: rgba(255,255,255,0.08);"
-            );
 
             progressLabel = new Label("准备中...");
             progressLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
@@ -779,7 +773,8 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
         private void showSuccess(ExcelSplitter.SplitResult result) {
             progressBar.setProgress(1.0);
-            progressBar.setStyle(progressBar.getStyle().replace("#5b8cf7", "#4cd97b"));
+            progressBar.getStyleClass().removeAll("success", "danger");
+            progressBar.getStyleClass().add("success");
             progressLabel.setText("✓ 拆分完成，输出 " + result.fileCount() + " 个文件");
             progressLabel.setStyle("-fx-text-fill: #4cd97b; -fx-font-size: 12px;");
 
@@ -834,7 +829,8 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
         private void showError(Throwable err) {
             progressBar.setProgress(1.0);
-            progressBar.setStyle(progressBar.getStyle().replace("#5b8cf7", "#f25c5c"));
+            progressBar.getStyleClass().removeAll("success", "danger");
+            progressBar.getStyleClass().add("danger");
             progressLabel.setText("❌ 拆分失败");
             progressLabel.setStyle("-fx-text-fill: #f25c5c; -fx-font-size: 12px;");
 

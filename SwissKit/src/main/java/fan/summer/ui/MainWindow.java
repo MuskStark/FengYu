@@ -3,6 +3,7 @@ package fan.summer.ui;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.plugin.PluginRegistry;
 import fan.summer.ui.content.ContentArea;
+import fan.summer.ui.setting.SwissKitJSettingUi;
 import fan.summer.ui.sidebar.Sidebar;
 import fan.summer.ui.titlebar.TitleBar;
 import fan.summer.api.SwissKitJPlugin;
@@ -16,7 +17,8 @@ import javafx.scene.shape.Circle;
 import javafx.scene.shape.Rectangle;
 import javafx.stage.Stage;
 import javafx.util.Duration;
-import org.apache.ibatis.plugin.Plugin;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -27,6 +29,8 @@ import java.time.format.DateTimeFormatter;
  * and holds the lifecycle for PluginLoader and PluginRegistry.
  */
 public class MainWindow extends StackPane {
+
+    private static final Logger log = LoggerFactory.getLogger(MainWindow.class);
 
     private final Stage        stage;
     private final PluginLoader loader;
@@ -44,6 +48,7 @@ public class MainWindow extends StackPane {
     private Timeline clockTimeline;
 
     public MainWindow(Stage stage, PluginLoader loader, PluginRegistry registry) {
+        log.debug("Initialising MainWindow");
         this.stage    = stage;
         this.loader   = loader;
         this.registry = registry;
@@ -202,7 +207,13 @@ public class MainWindow extends StackPane {
 
         // Sidebar category switch → content area filter
         sidebar.setOnCategorySelect(categoryId -> {
-            contentArea.showCategory(categoryId);
+            if ("store".equals(categoryId)) {
+                contentArea.showPage(fan.summer.ui.store.PluginStoreUi.build(), "Plugin Store");
+            } else if ("settings".equals(categoryId)) {
+                // settings is handled by setOnSettingsSelect
+            } else {
+                contentArea.showCategory(categoryId);
+            }
         });
 
         // Settings (standalone, not part of nav state machine)
@@ -222,23 +233,26 @@ public class MainWindow extends StackPane {
 
         // Tool launch callback
         contentArea.setOnLaunch(plugin -> {
+            log.info("Launching tool: id={}, name={}", plugin.getId(), plugin.getName());
             registry.activate(plugin);
-            contentArea.showPage(plugin.createView(), plugin.getName());
+            try {
+                contentArea.showPage(plugin.createView(), plugin.getName());
+            } catch (Exception e) {
+                log.error("Failed to create view for plugin {}: {}", plugin.getId(), e.getMessage(), e);
+            }
         });
 
         // Back / exit plugin view callback
-        contentArea.setOnBack(() -> registry.deactivate());
+        contentArea.setOnBack(() -> {
+            log.debug("Returning to home from active plugin");
+            registry.deactivate();
+        });
     }
 
     // ── Settings page ────────────────────────────────────
 
     private void openSettings() {
-        Label placeholder = new Label("⚙️  Settings Panel\n(Coming soon)");
-        placeholder.setStyle(
-            "-fx-text-fill: rgba(255,255,255,0.40); -fx-font-size: 16px;" +
-            "-fx-alignment: center; -fx-text-alignment: center;"
-        );
-        StackPane page = new StackPane(placeholder);
+        StackPane page = new StackPane(SwissKitJSettingUi.build());
         page.setStyle("-fx-background-color: transparent;");
         contentArea.showPage(page, "Settings");
     }
@@ -281,6 +295,7 @@ public class MainWindow extends StackPane {
 
     /** Called on application exit to clean up resources */
     public void shutdown() {
+        log.debug("MainWindow shutting down resources");
         if (clockTimeline != null) clockTimeline.stop();
         loader.stop();
     }

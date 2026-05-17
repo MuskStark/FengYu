@@ -11,7 +11,9 @@ import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.Separator;
+import javafx.scene.effect.DropShadow;
 import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
 import javafx.scene.text.Text;
 import javafx.util.Duration;
 
@@ -25,7 +27,7 @@ public class DetailPanel extends VBox {
 
     private static final double PANEL_WIDTH = 260;
 
-    private final Text     iconText    = new Text();
+    private Text        iconText    = new Text();
     private final StackPane iconWrap   = new StackPane(iconText);
     private final Label   nameLabel   = new Label();
     private final Label   metaLabel   = new Label();
@@ -42,7 +44,7 @@ public class DetailPanel extends VBox {
 
     public DetailPanel() {
         getStyleClass().add("detail-panel");
-        setPrefWidth(0);   // Initially collapsed
+        setPrefWidth(0);
         setMinWidth(0);
         setMaxWidth(PANEL_WIDTH);
 
@@ -50,34 +52,26 @@ public class DetailPanel extends VBox {
         setVisible(false);
     }
 
-    // ── Public API ──────────────────────────────────────────
-
     public void setOnLaunch(Consumer<SwissKitJPlugin> handler) {
         this.onLaunch = handler;
     }
 
-    /** Show plugin details, auto-slides in on first call */
     public void show(SwissKitJPlugin plugin) {
         this.currentPlugin = plugin;
         fillData(plugin);
         if (!panelOpen) slideIn();
     }
 
-    /** Slide out and hide */
     public void hide() {
         if (panelOpen) slideOut();
     }
 
     public boolean isPanelOpen() { return panelOpen; }
 
-    // ── Build UI ───────────────────────────────────────────
-
     private void buildUI() {
-        iconText.setStyle("-fx-font-size: 26px; -fx-fill: white;");
         iconWrap.setPrefSize(56, 56);
         iconWrap.setMinSize(56, 56);
         iconWrap.getStyleClass().add("tool-icon-wrap");
-        iconWrap.getStyleClass().add("ic-blue");
 
         nameLabel.getStyleClass().add("tool-name");
         nameLabel.setStyle("-fx-font-size: 16px;");
@@ -112,11 +106,10 @@ public class DetailPanel extends VBox {
         Separator sep = new Separator();
         sep.setStyle("-fx-border-color: rgba(255,255,255,0.10); -fx-padding: 8 0 8 0;");
 
-        // Property rows
         VBox propsBox = new VBox(6,
             propRow("Version",   versionVal),
-            propRow("Type",   typeVal),
-            propRow("Category",   categoryVal)
+            propRow("Type",      typeVal),
+            propRow("Category",  categoryVal)
         );
 
         setSpacing(10);
@@ -137,13 +130,25 @@ public class DetailPanel extends VBox {
         return new HBox(keyLabel, spacer, valLabel);
     }
 
-    // ── Data fill ─────────────────────────────────────────
-
     private void fillData(SwissKitJPlugin p) {
-        iconText.setText(MdiIconUtil.getCodepoint(p.getMdiIcon()));
-        iconText.setFont(MdiIconUtil.getFont(28));
-        iconWrap.getStyleClass().removeIf(c -> c.startsWith("ic-"));
-        iconWrap.getStyleClass().add(p.getIconStyle());
+        // Rebuild icon the same way as ToolCard
+        Color color = resolveColor(p.getIconStyle());
+        String fillStyle = String.format("-fx-fill: rgba(%d,%d,%d,1.0);",
+                (int)(color.getRed()*255),
+                (int)(color.getGreen()*255),
+                (int)(color.getBlue()*255));
+
+        Text newIcon = MdiIconUtil.createIcon(p.getMdiIcon(), 50);
+        newIcon.setStyle(fillStyle);
+
+        DropShadow glow = new DropShadow();
+        glow.setColor(color.deriveColor(0, 1, 1, 0.75));
+        glow.setRadius(14);
+        glow.setSpread(0.18);
+        newIcon.setEffect(glow);
+
+        iconWrap.getChildren().setAll(newIcon);
+        this.iconText = newIcon;
 
         nameLabel.setText(p.getName());
         metaLabel.setText("v" + p.getVersion() + " · " + p.getType());
@@ -152,6 +157,18 @@ public class DetailPanel extends VBox {
         versionVal.setText(p.getVersion());
         typeVal.setText(p.getType());
         categoryVal.setText(categoryName(p.getCategory()));
+    }
+
+    private static Color resolveColor(String iconStyle) {
+        return switch (iconStyle) {
+            case "ic-blue"   -> Color.rgb(99, 130, 255);
+            case "ic-purple" -> Color.rgb(160, 110, 255);
+            case "ic-teal"   -> Color.rgb(40, 210, 140);
+            case "ic-amber"  -> Color.rgb(255, 185, 50);
+            case "ic-red"    -> Color.rgb(255, 100, 100);
+            case "ic-pink"   -> Color.rgb(245, 100, 160);
+            default          -> Color.rgb(200, 200, 210);
+        };
     }
 
     private String categoryName(String cat) {
@@ -163,8 +180,6 @@ public class DetailPanel extends VBox {
             default      -> cat;
         };
     }
-
-    // ── Slide in / out animations ─────────────────────────
 
     private void slideIn() {
         panelOpen = true;

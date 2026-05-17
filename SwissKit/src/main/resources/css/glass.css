@@ -98,7 +98,7 @@
 }
 
 .sidebar-section-label {
-    -fx-text-fill: rgba(255,255,255,0.28);
+    -fx-text-fill: rgba(255,255,255,1);
     -fx-font-size: 10px;
     -fx-font-weight: bold;
     -fx-padding: 10 10 4 10;
@@ -112,22 +112,36 @@
     -fx-border-width: 1px;
     -fx-padding: 8 10 8 10;
     -fx-cursor: hand;
-    -fx-text-fill: rgba(255,255,255,0.50);
-    -fx-font-size: 13px;
     -fx-alignment: center-left;
     -fx-spacing: 10px;
     -fx-pref-height: 34px;
 }
+.nav-item-icon {
+    -fx-font-size: 14px;
+    -fx-min-width: 18px;
+    -fx-alignment: center;
+    -fx-text-fill: rgba(255,255,255,0.75);
+}
+.nav-item-text {
+    -fx-font-size: 13px;
+    -fx-text-fill: rgba(255,255,255,0.75);
+}
+.nav-item:hover .nav-item-icon,
+.nav-item:hover .nav-item-text {
+    -fx-text-fill: rgba(255,255,255,1);
+}
 .nav-item:hover {
     -fx-background-color: rgba(255,255,255,0.055);
     -fx-border-color: rgba(255,255,255,0.10);
-    -fx-text-fill: rgba(255,255,255,0.92);
 }
 .nav-item.active {
     -fx-background-color: rgba(91,140,247,0.18);
     -fx-border-color: rgba(91,140,247,0.25);
-    -fx-text-fill: #5b8cf7;
     -fx-font-weight: 500;
+}
+.nav-item.active .nav-item-icon,
+.nav-item.active .nav-item-text {
+    -fx-text-fill: #5b8cf7;
 }
 
 .nav-badge {
@@ -287,13 +301,16 @@
     -fx-font-family: "SF Mono", "Consolas", monospace;
 }
 
-/* ── 内容区滚动面板 ───────────────────────────────────────────── */
-.content-scroll .scroll-bar {
-    -fx-pref-width: 4px;
-}
+/* ── 内容区滚动面板（首页 / 工具页主滚动条，纤细 4px） ─────────── */
+.content-scroll .scroll-bar:vertical { -fx-pref-width: 4px; }
+.content-scroll .scroll-bar:horizontal { -fx-pref-height: 4px; }
 .content-scroll .scroll-bar .thumb {
     -fx-background-color: rgba(255,255,255,0.12);
     -fx-background-radius: 4px;
+}
+.content-scroll .scroll-bar .thumb:hover,
+.content-scroll .scroll-bar .thumb:pressed {
+    -fx-background-color: rgba(255,255,255,0.22);
 }
 .content-scroll .scroll-bar .track,
 .content-scroll .scroll-bar .track-background,
@@ -302,6 +319,74 @@
     -fx-background-color: transparent;
     -fx-border-color: transparent;
 }
+.content-scroll .increment-arrow,
+.content-scroll .decrement-arrow {
+    -fx-shape: " ";
+    -fx-padding: 0;
+}
+
+/* ── 全局滚动条（插件内部的 ScrollPane / TableView / TextArea / WebView / ComboBox 下拉等） ─── */
+.scroll-bar:vertical { -fx-pref-width: 8px; }
+.scroll-bar:horizontal { -fx-pref-height: 8px; }
+.scroll-bar {
+    -fx-background-color: transparent;
+}
+.scroll-bar .track,
+.scroll-bar .track-background {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+.scroll-bar .thumb {
+    -fx-background-color: rgba(255,255,255,0.14);
+    -fx-background-radius: 6px;
+    -fx-border-color: transparent;
+}
+.scroll-bar .thumb:hover,
+.scroll-bar .thumb:pressed {
+    -fx-background-color: rgba(255,255,255,0.26);
+}
+.scroll-bar .increment-button,
+.scroll-bar .decrement-button {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-padding: 0;
+}
+.scroll-bar .increment-arrow,
+.scroll-bar .decrement-arrow {
+    -fx-shape: " ";
+    -fx-padding: 0;
+}
+/* ScrollPane / TableView 视口背景，避免插件嵌入后出现浅灰色边角 */
+.scroll-pane,
+.scroll-pane > .viewport,
+.scroll-pane .corner {
+    -fx-background-color: transparent;
+}
+
+/* ── 全局进度条（与首页 accent 主题色一致，纤细 6px） ────────── */
+.progress-bar {
+    -fx-pref-height: 6px;
+}
+.progress-bar > .track {
+    -fx-background-color: rgba(255,255,255,0.08);
+    -fx-background-radius: 3px;
+    -fx-border-color: transparent;
+}
+.progress-bar > .bar {
+    -fx-background-color: #5b8cf7;
+    -fx-background-radius: 3px;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+.progress-bar:indeterminate > .bar {
+    -fx-background-color: linear-gradient(to right,
+        rgba(91,140,247,0.0) 0%,
+        rgba(91,140,247,1.0) 50%,
+        rgba(91,140,247,0.0) 100%);
+}
+/* 成功 / 失败 状态：在 ProgressBar 上加 style class 即可 */
+.progress-bar.success > .bar { -fx-background-color: #4cd97b; }
+.progress-bar.danger  > .bar { -fx-background-color: #f25c5c; }
 
 /* ── 区块标题 ─────────────────────────────────────────────────── */
 .section-title {

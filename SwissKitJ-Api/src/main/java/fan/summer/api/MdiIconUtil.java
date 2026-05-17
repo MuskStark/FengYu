@@ -833,7 +833,4 @@ public class MdiIconUtil {
         return Font.loadFont(MdiIconUtil.class.getResourceAsStream("/fonts/materialdesignicons-webfont.ttf"), size);
     }
 
-    public static void main(String[] args) {
-        System.out.println("MdiIconUtil codemap contains " + CODEMAP.size() + " icons.");
-    }
 }

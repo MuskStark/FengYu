@@ -78,6 +78,16 @@
             <groupId>org.eclipse.angus</groupId>
             <artifactId>angus-mail</artifactId>
         </dependency>
+
+        <!-- Logging: slf4j API + logback binding -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+        </dependency>
     </dependencies>
 
     <profiles>

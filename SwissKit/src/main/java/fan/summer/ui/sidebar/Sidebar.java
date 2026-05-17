@@ -151,14 +151,15 @@ public class Sidebar extends VBox {
             setPrefHeight(34);
 
             Label iconLabel = new Label(icon);
-            iconLabel.setStyle("-fx-font-size: 14px; -fx-min-width: 18px; -fx-alignment: center;");
+            iconLabel.getStyleClass().add("nav-item-icon");
 
             Label textLabel = new Label(label);
-            textLabel.setStyle("-fx-font-size: 13px;");
+            textLabel.getStyleClass().add("nav-item-text");
             HBox.setHgrow(textLabel, Priority.ALWAYS);
 
             badgeLabel = new Label(count > 0 ? String.valueOf(count) : "");
-            badgeLabel.getStyleClass().add(isNew ? "nav-badge nav-badge-new" : "nav-badge");
+            badgeLabel.getStyleClass().add("nav-badge");
+            if (isNew) badgeLabel.getStyleClass().add("nav-badge-new");
             badgeLabel.setVisible(count > 0);
 
             getChildren().addAll(iconLabel, textLabel, badgeLabel);
