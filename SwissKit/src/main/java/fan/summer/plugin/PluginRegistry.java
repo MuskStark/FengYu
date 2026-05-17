@@ -3,6 +3,8 @@ package fan.summer.plugin;
 import fan.summer.api.SwissKitJPlugin;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
@@ -12,6 +14,8 @@ import java.util.List;
  * external JAR plugins are added/removed by PluginLoader.
  */
 public class PluginRegistry {
+
+    private static final Logger log = LoggerFactory.getLogger(PluginRegistry.class);
 
     private final ObservableList<SwissKitJPlugin> plugins =
         FXCollections.observableArrayList();
@@ -30,16 +34,26 @@ public class PluginRegistry {
 
     // Called by PluginLoader (already on FX thread via Platform.runLater)
     void addPlugins(List<SwissKitJPlugin> toAdd) {
+        log.debug("Adding {} plugin(s) to registry", toAdd.size());
         plugins.addAll(toAdd);
     }
 
     // Called by PluginLoader (already on FX thread via Platform.runLater)
     void removePlugin(SwissKitJPlugin plugin) {
+        log.debug("Removing plugin from registry: id={}", plugin.getId());
         if (activePlugin == plugin) {
-            plugin.onDeactivate();
+            try {
+                plugin.onDeactivate();
+            } catch (Exception e) {
+                log.warn("Plugin {} threw on onDeactivate(): {}", plugin.getId(), e.getMessage(), e);
+            }
             activePlugin = null;
         }
-        plugin.onUnload();
+        try {
+            plugin.onUnload();
+        } catch (Exception e) {
+            log.warn("Plugin {} threw on onUnload(): {}", plugin.getId(), e.getMessage(), e);
+        }
         plugins.remove(plugin);
     }
 
@@ -50,10 +64,20 @@ public class PluginRegistry {
      */
     public void activate(SwissKitJPlugin plugin) {
         if (activePlugin != null && activePlugin != plugin) {
-            activePlugin.onDeactivate();
+            log.debug("Deactivating previous plugin: id={}", activePlugin.getId());
+            try {
+                activePlugin.onDeactivate();
+            } catch (Exception e) {
+                log.warn("Plugin {} threw on onDeactivate(): {}", activePlugin.getId(), e.getMessage(), e);
+            }
         }
         activePlugin = plugin;
-        plugin.onActivate();
+        log.info("Activating plugin: id={}, name={}", plugin.getId(), plugin.getName());
+        try {
+            plugin.onActivate();
+        } catch (Exception e) {
+            log.warn("Plugin {} threw on onActivate(): {}", plugin.getId(), e.getMessage(), e);
+        }
     }
 
     public SwissKitJPlugin getActivePlugin() {
@@ -62,7 +86,12 @@ public class PluginRegistry {
 
     public void deactivate() {
         if (activePlugin != null) {
-            activePlugin.onDeactivate();
+            log.debug("Deactivating plugin: id={}", activePlugin.getId());
+            try {
+                activePlugin.onDeactivate();
+            } catch (Exception e) {
+                log.warn("Plugin {} threw on onDeactivate(): {}", activePlugin.getId(), e.getMessage(), e);
+            }
             activePlugin = null;
         }
     }
