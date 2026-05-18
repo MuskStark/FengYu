@@ -1,6 +1,7 @@
 package fan.summer.app;
 
 import fan.summer.api.log.LoggerBinder;
+import fan.summer.api.theme.Themes;
 import fan.summer.database.DatabaseInit;
 import fan.summer.log.Slf4jPluginLoggerBinder;
 import fan.summer.plugin.PluginLoader;
@@ -65,8 +66,10 @@ public class SwissKitJApp extends Application {
         // Transparent scene (for rounded window to display correctly)
         Scene scene = new Scene(mainWindow, 960, 620);
         scene.setFill(Color.TRANSPARENT);
-        scene.getStylesheets().add(
-            getClass().getResource("/css/glass.css").toExternalForm()
+        scene.getStylesheets().addAll(
+            Themes.commonStylesheetUrl(),
+            getClass().getResource("/css/shell.css").toExternalForm(),
+            getClass().getResource("/css/builtin.css").toExternalForm()
         );
 
         // App icon (shown in Dock / taskbar)

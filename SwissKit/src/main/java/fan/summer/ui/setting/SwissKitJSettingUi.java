@@ -1,5 +1,6 @@
 package fan.summer.ui.setting;
 
+import fan.summer.api.theme.Themes;
 import fan.summer.database.DatabaseInit;
 import fan.summer.ui.sidebar.Sidebar.NavItem;
 import fan.summer.database.entity.setting.email.EmailAddressBookEntity;
@@ -527,9 +528,7 @@ public class SwissKitJSettingUi {
 
         javafx.scene.Scene scene = new javafx.scene.Scene(root);
         scene.setFill(javafx.scene.paint.Color.web("#0d0e11"));
-        try {
-            scene.getStylesheets().add(SwissKitJSettingUi.class.getResource("/css/glass.css").toExternalForm());
-        } catch (Exception ignored) {}
+        Themes.applyTo(scene);
         dialog.setScene(scene);
         dialog.show();
     }
@@ -662,9 +661,7 @@ public class SwissKitJSettingUi {
 
         javafx.scene.Scene scene = new javafx.scene.Scene(root);
         scene.setFill(javafx.scene.paint.Color.web("#0d0e11"));
-        try {
-            scene.getStylesheets().add(SwissKitJSettingUi.class.getResource("/css/glass.css").toExternalForm());
-        } catch (Exception ignored) {}
+        Themes.applyTo(scene);
         dialog.setScene(scene);
         dialog.show();
     }
@@ -772,9 +769,7 @@ public class SwissKitJSettingUi {
 
         javafx.scene.Scene scene = new javafx.scene.Scene(root);
         scene.setFill(javafx.scene.paint.Color.web("#0d0e11"));
-        try {
-            scene.getStylesheets().add(SwissKitJSettingUi.class.getResource("/css/glass.css").toExternalForm());
-        } catch (Exception ignored) {}
+        Themes.applyTo(scene);
         dialog.setScene(scene);
         dialog.show();
     }

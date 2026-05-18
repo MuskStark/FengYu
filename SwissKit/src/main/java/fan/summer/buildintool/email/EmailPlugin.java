@@ -4,6 +4,7 @@ import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
+import fan.summer.api.theme.Themes;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.email.EmailMassSentConfigEntity;
 import fan.summer.database.entity.email.EmailSentLogEntity;
@@ -380,9 +381,7 @@ public class EmailPlugin implements SwissKitJPlugin {
         root.setPrefWidth(520);
 
         Scene scene = new Scene(root);
-        try {
-            scene.getStylesheets().add(getClass().getResource("/css/glass.css").toExternalForm());
-        } catch (Exception ignored) {}
+        Themes.applyTo(scene);
         dialog.setScene(scene);
         dialog.showAndWait();
     }
@@ -507,9 +506,7 @@ public class EmailPlugin implements SwissKitJPlugin {
         root.setPrefSize(960, 520);
 
         Scene scene = new Scene(root);
-        try {
-            scene.getStylesheets().add(getClass().getResource("/css/glass.css").toExternalForm());
-        } catch (Exception ignored) {}
+        Themes.applyTo(scene);
         dialog.setScene(scene);
         dialog.show();
     }

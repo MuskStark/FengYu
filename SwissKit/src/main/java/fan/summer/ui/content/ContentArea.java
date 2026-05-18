@@ -115,12 +115,15 @@ public class ContentArea extends BorderPane {
         top.setPadding(new Insets(12, 16, 0, 16));
         setTop(top);
 
-        // Center: StackPane (switchable content) + Detail panel
+        // Center: pageStack (switchable content) with DetailPanel overlaid on the right.
+        // Stacking instead of side-by-side keeps the tool grid width constant while the
+        // panel slides in, so FlowPane doesn't reflow mid-animation.
         pageStack.getChildren().add(scrollPane);
         pageStack.setAlignment(Pos.TOP_LEFT);
 
-        HBox center = new HBox(pageStack, detailPanel);
-        HBox.setHgrow(pageStack, Priority.ALWAYS);
+        StackPane center = new StackPane(pageStack, detailPanel);
+        StackPane.setAlignment(detailPanel, Pos.TOP_RIGHT);
+        detailPanel.setPickOnBounds(false);
         setCenter(center);
     }
 
