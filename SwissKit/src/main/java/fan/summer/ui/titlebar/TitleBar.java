@@ -22,8 +22,8 @@ public class TitleBar extends HBox {
     public TitleBar(Stage stage, Runnable onSettings) {
         getStyleClass().add("titlebar");
         setAlignment(Pos.CENTER_LEFT);
-        setPrefHeight(44);
-        setMinHeight(44);
+        setPrefHeight(48);
+        setMinHeight(48);
         setPadding(new Insets(0, 12, 0, 16));
 
         // ── Traffic lights ──────────────────────────────────────
@@ -32,7 +32,9 @@ public class TitleBar extends HBox {
         // ── Centered title (wrapped with StackPane for absolute centering) ───
         Label titleLabel = new Label("SwissKitJ");
         titleLabel.getStyleClass().add("titlebar-title");
+        titleLabel.setEllipsisString("…");
         StackPane titleWrap = new StackPane(titleLabel);
+        titleWrap.setMinWidth(0);
         HBox.setHgrow(titleWrap, Priority.ALWAYS);
 
 

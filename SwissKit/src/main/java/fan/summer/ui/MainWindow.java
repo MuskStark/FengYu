@@ -109,11 +109,12 @@ public class MainWindow extends StackPane {
         // Top highlight border (glass thickness simulation)
         Rectangle topHighlight = new Rectangle();
         topHighlight.setMouseTransparent(true);
+        topHighlight.setArcWidth(40);
+        topHighlight.setArcHeight(40);
         topHighlight.setStyle(
             "-fx-fill: transparent;" +
             "-fx-stroke: rgba(255,255,255,0.12);" +
-            "-fx-stroke-width: 1;" +
-            "-fx-arc-width: 40; -fx-arc-height: 40;"
+            "-fx-stroke-width: 1;"
         );
         topHighlight.widthProperty().bind(widthProperty());
         topHighlight.heightProperty().bind(heightProperty());
@@ -121,6 +122,15 @@ public class MainWindow extends StackPane {
         getChildren().addAll(orbLayer, windowPane, topHighlight);
         setAlignment(windowPane, Pos.CENTER);
         setAlignment(topHighlight, Pos.CENTER);
+
+        // Clip whole window to rounded rectangle so the dark orbLayer behind
+        // never bleeds outside the rounded corners on any platform.
+        Rectangle windowClip = new Rectangle();
+        windowClip.setArcWidth(40);
+        windowClip.setArcHeight(40);
+        windowClip.widthProperty().bind(widthProperty());
+        windowClip.heightProperty().bind(heightProperty());
+        setClip(windowClip);
     }
 
     // ── Background orbs ───────────────────────────────────
@@ -190,6 +200,7 @@ public class MainWindow extends StackPane {
         bar.getStyleClass().add("statusbar");
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.setPadding(new Insets(0, 16, 0, 16));
+        bar.setMinHeight(Region.USE_PREF_SIZE);
         bar.getChildren().addAll(dot, statusToolCount, sep, statusPluginCount, spacer, clockLabel);
         return bar;
     }
