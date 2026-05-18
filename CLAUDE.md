@@ -135,13 +135,13 @@ Use SLF4J-style `{}` placeholders — formatting is deferred until the level is 
 
 ## Branch Status — v3.0.0-JavaFX
 
-This branch is an active migration from Swing/FlatLaf to JavaFX. Legacy Swing classes live in `SwissKit/backup/` and are **excluded from Maven compilation** via `<excludes>` in `SwissKit/pom.xml`. Do not move files out of `backup/` unless completing their JavaFX port.
+This branch is an active migration from Swing/FlatLaf to JavaFX. Legacy Swing classes live in `backup/SwissKit/` and `backup/SwissKitJ-Api/` under the project root, and are **excluded from Maven compilation** via `<excludes>` in `SwissKit/pom.xml`. Do not move files out of `backup/` unless completing their JavaFX port.
 
 The plugin interface was also renamed: the old `fan.summer.api.KitPage` (Swing `JPanel`-based) is replaced by `fan.summer.api.SwissKitJPlugin` (JavaFX `Node`-based).
 
 ## Excel Splitter — Porting Reference
 
-The backup Swing implementation at `SwissKit/backup/java/fan/summer/kitpage/excel/` is the authoritative reference for the Excel split logic. Key classes:
+The backup Swing implementation at `backup/SwissKit/java/fan/summer/kitpage/excel/` is the authoritative reference for the Excel split logic. Key classes:
 
 | Backup class | Role |
 |---|---|

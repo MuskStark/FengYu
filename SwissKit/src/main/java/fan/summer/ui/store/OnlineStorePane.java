@@ -8,7 +8,6 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.ScrollPane;
-import javafx.scene.control.TextField;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -35,21 +34,15 @@ public class OnlineStorePane extends VBox {
 
     private static final Logger log = LoggerFactory.getLogger(OnlineStorePane.class);
 
-    /** Default plugin store API endpoint */
-    private static final String DEFAULT_STORE_URL = "https://swisskit-summer.github.io/plugins/store.json";
-
     private final Runnable onInstallComplete;
-    private final TextField urlField;
     private final VBox pluginListContainer;
     private final ProgressBar fetchProgress;
     private final Label statusLabel;
     private final ScrollPane scrollPane;
     private final HBox loadingRow;
-    private String currentStoreUrl;
 
     public OnlineStorePane(Runnable onInstallComplete) {
         this.onInstallComplete = onInstallComplete;
-        this.currentStoreUrl = DEFAULT_STORE_URL;
         setSpacing(20);
         setStyle("-fx-background-color: transparent;");
         setPadding(new Insets(24));
@@ -62,25 +55,20 @@ public class OnlineStorePane extends VBox {
         );
 
         Label desc = new Label(
-            "Browse and install plugins from the online store. " +
-            "Enter a custom store URL or use the default."
+            "Browse and install plugins from the online store."
         );
         desc.setStyle(
             "-fx-text-fill: rgba(255,255,255,0.45);" +
             "-fx-font-size: 12px;"
         );
         desc.setWrapText(true);
+        desc.maxWidthProperty().bind(
+            widthProperty().subtract(48)  // 24px padding on each side
+        );
 
-        // Store URL input
-        urlField = new TextField();
-        urlField.setText(DEFAULT_STORE_URL);
-        urlField.setPromptText("Enter plugin store URL...");
-        urlField.setStyle(fieldStyle());
-
-        Button fetchBtn = glassBtn("Fetch", false);
-        fetchBtn.setOnAction(e -> fetchPluginList());
-
-        HBox urlRow = new HBox(10, urlField, fetchBtn);
+        // Refresh button
+        Button refreshBtn = glassBtn("↻ Refresh", false);
+        refreshBtn.setOnAction(e -> fetchPluginList());
 
         // Plugin list scroll area
         pluginListContainer = new VBox(12);
@@ -116,19 +104,14 @@ public class OnlineStorePane extends VBox {
         );
         statusLabel.setWrapText(true);
 
-        getChildren().addAll(title, desc, urlRow, scrollPane, loadingRow, statusLabel);
+        getChildren().addAll(title, desc, refreshBtn, scrollPane, loadingRow, statusLabel);
 
         // Auto-fetch on creation
         fetchPluginList();
     }
 
     private void fetchPluginList() {
-        String urlStr = urlField.getText().trim();
-        if (urlStr.isEmpty()) {
-            showError("Please enter a store URL.");
-            return;
-        }
-        currentStoreUrl = urlStr;
+        String urlStr = fan.summer.ui.setting.SwissKitJSettingUi.getStoreUrl();
         showLoading(true);
         statusLabel.setText("");
 
@@ -409,14 +392,6 @@ public class OnlineStorePane extends VBox {
     private void showError(String msg) {
         statusLabel.setText("❌ " + msg);
         statusLabel.setStyle("-fx-text-fill: #f25c5c; -fx-font-size: 12px;");
-    }
-
-    private static String fieldStyle() {
-        return "-fx-background-color: rgba(255,255,255,0.05);" +
-               "-fx-border-color: rgba(255,255,255,0.12); -fx-border-width: 1;" +
-               "-fx-border-radius: 8; -fx-background-radius: 8;" +
-               "-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 13px;" +
-               "-fx-padding: 9 12 9 12;";
     }
 
     private static Button glassBtn(String text, boolean primary) {
