@@ -1,15 +1,16 @@
 package fan.summer.ui.store;
 
-import javafx.geometry.Insets;
+import fan.summer.ui.sidebar.Sidebar.NavItem;
 import javafx.scene.Node;
-import javafx.scene.control.Tab;
-import javafx.scene.control.TabPane;
+import javafx.scene.control.Label;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 
 /**
- * Plugin Store UI — combines Online Store and Local Install tabs.
- * Shown when user clicks the "Plugin Store" sidebar item.
+ * Plugin Store UI — sidebar menu with Online Store and Local Install sections.
  */
 public class PluginStoreUi {
 
@@ -18,79 +19,62 @@ public class PluginStoreUi {
     public static Node build() {
         if (view != null) return view;
 
-        VBox container = new VBox();
-        container.setStyle(
-            "-fx-background-color: transparent;" +
-            "-fx-padding: 0;"
-        );
+        // ── Content pages ──────────────────────────────────
+        Node onlinePage = new OnlineStorePane(null);
+        Node localPage  = new LocalInstallPane(null);
 
-        // Tab pane for Online / Local tabs
-        TabPane tabs = new TabPane();
-        tabs.setStyle("-fx-background-color: transparent; -fx-pref-height: 56;");
+        StackPane contentStack = new StackPane(onlinePage, localPage);
+        contentStack.setStyle("-fx-background-color: transparent;");
+        localPage.setVisible(false);
 
-        Tab onlineTab = new Tab("Online Store");
-        onlineTab.setContent(new OnlineStorePane(null));
-        onlineTab.setStyle(
-            "-fx-background-color: transparent;" +
-            "-fx-padding: 12 28 12 28;" +
-            "-fx-text-fill: rgba(255,255,255,0.55);" +
-            "-fx-font-size: 13px; -fx-font-weight: 500;"
-        );
+        // ── Sidebar ────────────────────────────────────────
+        VBox sidebar = new VBox();
+        sidebar.getStyleClass().add("sidebar");
+        sidebar.setPrefWidth(180);
+        sidebar.setMinWidth(160);
+        sidebar.setMaxWidth(200);
 
-        Tab localTab = new Tab("Local Install");
-        localTab.setContent(new LocalInstallPane(null));
-        localTab.setStyle(
-            "-fx-background-color: transparent;" +
-            "-fx-padding: 12 28 12 28;" +
-            "-fx-text-fill: rgba(255,255,255,0.55);" +
-            "-fx-font-size: 13px; -fx-font-weight: 500;"
-        );
+        sidebar.getChildren().add(sidebarSectionLabel("STORE"));
 
-        // Style active tab
-        tabs.getTabs().addAll(onlineTab, localTab);
+        NavItem onlineNav = new NavItem("online", "🌐", "Online Store", 0, false);
+        NavItem localNav  = new NavItem("local",  "📦", "Local Install", 0, false);
 
-        for (int i = 0; i < tabs.getTabs().size(); i++) {
-            Tab t = tabs.getTabs().get(i);
-            int index = i;
-            String baseStyle = t.getStyle();
-            t.selectedProperty().addListener((obs, old, selected) -> {
-                if (selected) {
-                    t.setStyle(
-                        "-fx-background-color: rgba(91,140,247,0.12);" +
-                        "-fx-border-color: #5b8cf7;" +
-                        "-fx-border-width: 0 0 2 0;" +
-                        "-fx-text-fill: #5b8cf7;" +
-                        "-fx-font-size: 13px; -fx-font-weight: 500;" +
-                        "-fx-padding: 12 28 12 28;"
-                    );
-                } else {
-                    t.setStyle(
-                        "-fx-background-color: transparent;" +
-                        "-fx-border-color: transparent;" +
-                        "-fx-border-width: 0 0 2 0;" +
-                        "-fx-text-fill: rgba(255,255,255,0.55);" +
-                        "-fx-font-size: 13px; -fx-font-weight: 500;" +
-                        "-fx-padding: 12 28 12 28;"
-                    );
-                }
+        onlineNav.setActive(true);
+        sidebar.getChildren().addAll(onlineNav, localNav);
+
+        Region spacer = new Region();
+        VBox.setVgrow(spacer, Priority.ALWAYS);
+        sidebar.getChildren().add(spacer);
+
+        // ── Selection wiring ───────────────────────────────
+        NavItem[] items = {onlineNav, localNav};
+        Node[]    pages = {onlinePage, localPage};
+
+        for (int i = 0; i < items.length; i++) {
+            final int idx = i;
+            items[i].setOnMouseClicked(e -> {
+                for (NavItem ni : items) ni.setActive(false);
+                for (Node p : pages) p.setVisible(false);
+                items[idx].setActive(true);
+                pages[idx].setVisible(true);
             });
-            // Set initial state
-            if (index == 0) {
-                t.setStyle(
-                    "-fx-background-color: rgba(91,140,247,0.12);" +
-                    "-fx-border-color: #5b8cf7;" +
-                    "-fx-border-width: 0 0 2 0;" +
-                    "-fx-text-fill: #5b8cf7;" +
-                    "-fx-font-size: 13px; -fx-font-weight: 500;" +
-                    "-fx-padding: 12 28 12 28;"
-                );
-            }
         }
 
-        container.getChildren().add(tabs);
-        VBox.setVgrow(tabs, Priority.ALWAYS);
+        // ── Layout ─────────────────────────────────────────
+        HBox body = new HBox(sidebar, contentStack);
+        HBox.setHgrow(contentStack, Priority.ALWAYS);
+
+        VBox container = new VBox(body);
+        container.setStyle("-fx-background-color: transparent; -fx-padding: 0;");
+        VBox.setVgrow(body, Priority.ALWAYS);
 
         view = container;
         return view;
+    }
+
+    private static Label sidebarSectionLabel(String text) {
+        Label l = new Label(text.toUpperCase());
+        l.getStyleClass().add("sidebar-section-label");
+        return l;
     }
 }

@@ -189,6 +189,7 @@ public class ContentArea extends BorderPane {
         ScrollPane sp = new ScrollPane();
         sp.getStyleClass().add("content-scroll");
         sp.setFitToWidth(true);
+        sp.setFitToHeight(true);
         sp.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         sp.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         sp.setStyle("-fx-background-color: transparent; -fx-background: transparent;");

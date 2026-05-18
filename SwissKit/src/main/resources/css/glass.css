@@ -394,3 +394,204 @@
     -fx-font-size: 11px;
     -fx-font-weight: bold;
 }
+.section-header {
+    -fx-text-fill: rgba(255,255,255,0.92);
+    -fx-font-size: 15px;
+    -fx-font-weight: 500;
+}
+
+/* ── 玻璃对话框（独立 Stage 窗口） ────────────────────────────── */
+.glass-dialog {
+    -fx-background-color: rgba(13,14,17,0.85);
+    -fx-border-color: rgba(255,255,255,0.10);
+    -fx-border-width: 1px;
+    -fx-border-radius: 12px;
+    -fx-background-radius: 12px;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.55), 40, 0, 0, 16);
+}
+
+/* ── 输入字段 ────────────────────────────────────────────────── */
+.glass-field {
+    -fx-background-color: rgba(255,255,255,0.05);
+    -fx-border-color: rgba(255,255,255,0.12);
+    -fx-border-width: 1px;
+    -fx-border-radius: 8px;
+    -fx-background-radius: 8px;
+    -fx-text-fill: rgba(255,255,255,0.92);
+    -fx-font-size: 13px;
+    -fx-padding: 8 12 8 12;
+}
+.glass-field:focused {
+    -fx-background-color: rgba(255,255,255,0.085);
+    -fx-border-color: rgba(91,140,247,0.45);
+    -fx-effect: dropshadow(gaussian, rgba(91,140,247,0.25), 8, 0, 0, 0);
+}
+
+.glass-field-label {
+    -fx-text-fill: rgba(255,255,255,0.50);
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+}
+
+/* ── TabPane 玻璃标签页 ───────────────────────────────────────── */
+.glass-tab-pane {
+    -fx-background-color: transparent;
+    -fx-tab-min-width: 100px;
+    -fx-tab-max-height: 36px;
+}
+.glass-tab-pane .tab-header-area {
+    -fx-padding: 4 8 0 8;
+}
+.glass-tab-pane .tab-header-area .tab-header-background {
+    -fx-background-color: rgba(255,255,255,0.025);
+    -fx-border-color: rgba(255,255,255,0.08);
+    -fx-border-width: 0 0 1 0;
+}
+.glass-tab-pane .tab {
+    -fx-background-color: transparent;
+    -fx-background-radius: 8px 8px 0 0;
+    -fx-border-radius: 8px 8px 0 0;
+    -fx-border-color: transparent;
+    -fx-border-width: 0;
+    -fx-padding: 8 20 8 20;
+    -fx-cursor: hand;
+}
+.glass-tab-pane .tab .tab-label {
+    -fx-text-fill: rgba(255,255,255,0.50);
+    -fx-font-size: 13px;
+    -fx-font-weight: 500;
+}
+.glass-tab-pane .tab:hover {
+    -fx-background-color: rgba(255,255,255,0.04);
+}
+.glass-tab-pane .tab:selected {
+    -fx-background-color: rgba(91,140,247,0.15);
+    -fx-border-color: rgba(91,140,247,0.25);
+    -fx-border-width: 1px;
+    -fx-border-radius: 8px 8px 0 0;
+}
+.glass-tab-pane .tab:selected .tab-label {
+    -fx-text-fill: #5b8cf7;
+}
+.glass-tab-pane .tab:selected .focus-indicator {
+    -fx-border-color: transparent;
+}
+
+/* ── 下拉框 ──────────────────────────────────────────────────── */
+.glass-combo {
+    -fx-background-color: rgba(255,255,255,0.05);
+    -fx-border-color: rgba(255,255,255,0.12);
+    -fx-border-width: 1px;
+    -fx-border-radius: 8px;
+    -fx-background-radius: 8px;
+    -fx-text-fill: rgba(255,255,255,0.92);
+    -fx-font-size: 13px;
+}
+.glass-combo .list-cell {
+    -fx-text-fill: rgba(255,255,255,0.92);
+    -fx-background-color: transparent;
+}
+
+/* ── 表格视图 ────────────────────────────────────────────────── */
+.glass-table {
+    -fx-background-color: rgba(255,255,255,0.03);
+    -fx-border-color: rgba(255,255,255,0.10);
+    -fx-border-width: 1px;
+    -fx-border-radius: 8px;
+    -fx-background-radius: 8px;
+    -fx-table-cell-border-color: transparent;
+}
+.glass-table .column-header-background {
+    -fx-background-color: rgba(255,255,255,0.04);
+}
+.glass-table .column-header {
+    -fx-background-color: transparent;
+    -fx-border-color: rgba(255,255,255,0.08);
+    -fx-border-width: 0 0 1 0;
+}
+.glass-table .column-header .label {
+    -fx-text-fill: rgba(255,255,255,0.50);
+    -fx-font-size: 12px;
+    -fx-font-weight: 500;
+}
+.glass-table .table-cell {
+    -fx-text-fill: rgba(255,255,255,0.85);
+    -fx-font-size: 13px;
+    -fx-border-color: transparent;
+    -fx-padding: 6 10 6 10;
+}
+.glass-table .table-row-cell {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-table-cell-border-color: transparent;
+}
+.glass-table .table-row-cell:selected {
+    -fx-background-color: rgba(91,140,247,0.15);
+}
+.glass-table .table-row-cell:selected .table-cell {
+    -fx-text-fill: #5b8cf7;
+}
+.glass-table .table-row-cell:hover {
+    -fx-background-color: rgba(255,255,255,0.04);
+}
+.glass-table .placeholder .label {
+    -fx-text-fill: rgba(255,255,255,0.28);
+}
+
+/* ── 复选框 ──────────────────────────────────────────────────── */
+.glass-checkbox {
+    -fx-text-fill: rgba(255,255,255,0.75);
+    -fx-font-size: 13px;
+}
+.glass-checkbox .box {
+    -fx-background-color: rgba(255,255,255,0.05);
+    -fx-border-color: rgba(255,255,255,0.12);
+    -fx-border-width: 1px;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
+}
+.glass-checkbox:selected .box {
+    -fx-background-color: #5b8cf7;
+    -fx-border-color: #5b8cf7;
+}
+.glass-checkbox:selected .mark {
+    -fx-background-color: white;
+}
+
+/* ── 主按钮 ──────────────────────────────────────────────────── */
+.glass-btn-primary {
+    -fx-background-color: #5b8cf7;
+    -fx-text-fill: white;
+    -fx-font-size: 13px;
+    -fx-font-weight: 500;
+    -fx-background-radius: 8px;
+    -fx-border-width: 0;
+    -fx-padding: 9 18 9 18;
+    -fx-cursor: hand;
+}
+.glass-btn-primary:hover {
+    -fx-background-color: #4a7bf5;
+    -fx-effect: dropshadow(gaussian, rgba(91,140,247,0.4), 12, 0, 0, 3);
+    -fx-translate-y: -1px;
+}
+.glass-btn-primary:pressed {
+    -fx-translate-y: 0;
+    -fx-effect: none;
+}
+
+/* ── 次按钮 ──────────────────────────────────────────────────── */
+.glass-btn-secondary {
+    -fx-background-color: rgba(255,255,255,0.07);
+    -fx-border-color: rgba(255,255,255,0.12);
+    -fx-border-width: 1px;
+    -fx-text-fill: rgba(255,255,255,0.75);
+    -fx-font-size: 13px;
+    -fx-background-radius: 8px;
+    -fx-border-radius: 8px;
+    -fx-padding: 9 18 9 18;
+    -fx-cursor: hand;
+}
+.glass-btn-secondary:hover {
+    -fx-background-color: rgba(255,255,255,0.12);
+    -fx-border-color: rgba(255,255,255,0.22);
+}

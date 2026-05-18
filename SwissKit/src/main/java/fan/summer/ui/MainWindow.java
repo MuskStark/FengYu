@@ -11,6 +11,7 @@ import javafx.animation.*;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Label;
+import javafx.scene.Node;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
@@ -252,9 +253,8 @@ public class MainWindow extends StackPane {
     // ── Settings page ────────────────────────────────────
 
     private void openSettings() {
-        StackPane page = new StackPane(SwissKitJSettingUi.build());
-        page.setStyle("-fx-background-color: transparent;");
-        contentArea.showPage(page, "Settings");
+        Node settingsPage = SwissKitJSettingUi.build();
+        contentArea.showPage(settingsPage, "Settings");
     }
 
     // ── Entry animation ──────────────────────────────────
