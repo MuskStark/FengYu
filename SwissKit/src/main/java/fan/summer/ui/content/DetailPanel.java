@@ -11,7 +11,6 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-import javafx.scene.control.Separator;
 import javafx.scene.effect.DropShadow;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
@@ -45,9 +44,11 @@ public class DetailPanel extends VBox {
 
     public DetailPanel() {
         getStyleClass().add("detail-panel");
-        setPrefWidth(0);
-        setMinWidth(0);
+        setPrefWidth(PANEL_WIDTH);
+        setMinWidth(PANEL_WIDTH);
         setMaxWidth(PANEL_WIDTH);
+        // Park offscreen to the right; slideIn animates translateX → 0.
+        setTranslateX(PANEL_WIDTH);
 
         buildUI();
         setVisible(false);
@@ -104,20 +105,18 @@ public class DetailPanel extends VBox {
         HBox topRow = new HBox(closeBtn);
         topRow.setAlignment(Pos.CENTER_RIGHT);
 
-        Separator sep = new Separator();
-        sep.setStyle("-fx-border-color: rgba(255,255,255,0.10); -fx-padding: 8 0 8 0;");
-
         VBox propsBox = new VBox(6,
             propRow("Version",   versionVal),
             propRow("Type",      typeVal),
             propRow("Category",  categoryVal)
         );
+        VBox.setMargin(propsBox, new Insets(12, 0, 0, 0));
 
         setSpacing(10);
         setPadding(new Insets(16));
         getChildren().addAll(
             topRow, iconWrap, nameLabel, metaLabel, descLabel,
-            launchBtn, sep, propsBox
+            launchBtn, propsBox
         );
     }
 
@@ -176,11 +175,11 @@ public class DetailPanel extends VBox {
 
         Timeline tl = new Timeline(
             new KeyFrame(Duration.ZERO,
-                new KeyValue(prefWidthProperty(), 0),
+                new KeyValue(translateXProperty(), PANEL_WIDTH),
                 new KeyValue(opacityProperty(), 0)
             ),
             new KeyFrame(Duration.millis(300),
-                new KeyValue(prefWidthProperty(), PANEL_WIDTH,
+                new KeyValue(translateXProperty(), 0,
                     Interpolator.SPLINE(0.4, 0, 0.2, 1)),
                 new KeyValue(opacityProperty(), 1,
                     Interpolator.EASE_OUT)
@@ -193,11 +192,11 @@ public class DetailPanel extends VBox {
         panelOpen = false;
         Timeline tl = new Timeline(
             new KeyFrame(Duration.ZERO,
-                new KeyValue(prefWidthProperty(), PANEL_WIDTH),
+                new KeyValue(translateXProperty(), 0),
                 new KeyValue(opacityProperty(), 1)
             ),
             new KeyFrame(Duration.millis(250),
-                new KeyValue(prefWidthProperty(), 0,
+                new KeyValue(translateXProperty(), PANEL_WIDTH,
                     Interpolator.SPLINE(0.4, 0, 0.2, 1)),
                 new KeyValue(opacityProperty(), 0,
                     Interpolator.EASE_IN)

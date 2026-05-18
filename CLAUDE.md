@@ -56,7 +56,17 @@ All plugins declare `SwissKitJ-Api` as `provided` scope. The main app provides i
 
 **Navigation flow**: `ToolCard` click → `DetailPanel.show()` → Launch button → `MainWindow.wireEvents` callback → `registry.activate(plugin)` + `contentArea.showPage(plugin.createView(), title)`. The back bar (shown by `ContentArea`) calls `registry.deactivate()` on return.
 
-**Theming**: Single CSS file at `src/main/resources/css/glass.css` (glassmorphism). Plugin icon background colors are CSS classes: `ic-blue / ic-purple / ic-teal / ic-amber / ic-red / ic-pink / ic-gray`.
+**Theming**: Three-layer CSS structure (glassmorphism dark theme).
+
+| File | Module | Scope |
+|---|---|---|
+| `css/swisskit-common.css` | `SwissKitJ-Api` | Shared variables, scrollbars, progress bar, `.glass-*` utility classes (dialog/field/tab-pane/combo/table/checkbox/btn-primary/btn-secondary), `.section-title`/`.section-header`. Loaded into the main Scene + available to any third-party plugin. |
+| `css/shell.css` | `SwissKit` | App-shell only — `.titlebar`, `.sidebar`, `.search-bar`, `.tool-card`, `.detail-panel`, `.statusbar`. Loaded into the main Scene by `SwissKitJApp`. |
+| `css/builtin.css` | `SwissKit` | Reserved for built-in tool styling. Currently empty placeholder. |
+
+Plugins embedded in the main Scene (the normal `createView()` flow) automatically inherit all three stylesheets via scene graph propagation — no action needed. Plugins that open their own `Stage`/`Scene` should call `fan.summer.api.theme.Themes.applyTo(scene)` to get the common utility classes.
+
+Plugin icon background colors are CSS classes: `ic-blue / ic-purple / ic-teal / ic-amber / ic-red / ic-pink / ic-gray` (declared in `shell.css`; actual color injection happens in Java via `DropShadow` per `IconStyle`).
 
 **Database**: H2 file at `.swisskit/swisskit.db` relative to the runtime working directory. Schema initialized from `init.sql`. Accessed via MyBatis; mapper XMLs are in `src/main/resources/mapper/`.
 
