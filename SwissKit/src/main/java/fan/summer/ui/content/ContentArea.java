@@ -267,9 +267,9 @@ public class ContentArea extends BorderPane {
     private boolean matchesCategory(SwissKitJPlugin p) {
         return switch (currentCategory) {
             case "all"     -> true;
-            case "plugins" -> !"builtin".equals(p.getType());
+            case "plugins" -> p.getType().isPlugin();
             case "fav"     -> false; // TODO: integrate favorites persistence
-            default        -> p.getCategory().equalsIgnoreCase(currentCategory);
+            default        -> p.getCategory().getId().equalsIgnoreCase(currentCategory);
         };
     }
 
