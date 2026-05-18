@@ -1,6 +1,9 @@
 package fan.summer.buildintool.dev;
 
+import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.ToolCategory;
+import fan.summer.api.ToolType;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -18,11 +21,11 @@ public class Base64Plugin implements SwissKitJPlugin {
     @Override public String getId()          { return "builtin.base64"; }
     @Override public String getName()        { return "Base64"; }
     @Override public String getDescription() { return "Base64 Encode / Decode"; }
-    @Override public String getCategory()    { return "dev"; }
+    @Override public ToolCategory getCategory()    { return ToolCategory.DEV; }
     @Override public String getVersion()     { return "1.0.0"; }
     @Override public String getMdiIcon()    { return "base64"; }
-    @Override public String getIconStyle()   { return "ic-teal"; }
-    @Override public String getType()        { return "builtin"; }
+    @Override public IconStyle getIconStyle()   { return IconStyle.TEAL; }
+    @Override public ToolType getType()        { return ToolType.BUILTIN; }
 
     @Override
     public Node createView() {

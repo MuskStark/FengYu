@@ -1,6 +1,9 @@
 package fan.summer.buildintool.excelsplitter;
 
+import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.ToolCategory;
+import fan.summer.api.ToolType;
 import fan.summer.api.component.StepWizard;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.excel.ComplexSplitConfigEntity;
@@ -29,11 +32,11 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
     @Override public String getId()          { return "fan.summer.buildin.excelsplitter"; }
     @Override public String getName()        { return "Excel拆分"; }
     @Override public String getDescription() { return "按Sheet/列值/复杂配置拆分Excel文件"; }
-    @Override public String getCategory()    { return "other"; }
+    @Override public ToolCategory getCategory()    { return ToolCategory.OTHER; }
     @Override public String getVersion()     { return "3.0.0"; }
     @Override public String getMdiIcon()    { return "file-excel"; }
-    @Override public String getIconStyle()   { return "ic-teal"; }
-    @Override public String getType()        { return "builtin"; }
+    @Override public IconStyle getIconStyle()   { return IconStyle.TEAL; }
+    @Override public ToolType getType()        { return ToolType.BUILTIN; }
 
     @Override
     public void onActivate() {

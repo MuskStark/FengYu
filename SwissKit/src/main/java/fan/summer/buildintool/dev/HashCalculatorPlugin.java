@@ -1,6 +1,9 @@
 package fan.summer.buildintool.dev;
 
+import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.ToolCategory;
+import fan.summer.api.ToolType;
 import javafx.animation.PauseTransition;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -27,11 +30,11 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
     @Override public String getId()          { return "builtin.hash"; }
     @Override public String getName()        { return "Hash Calculator"; }
     @Override public String getDescription() { return "MD5 / SHA-1 / SHA-256 / SHA-512"; }
-    @Override public String getCategory()    { return "dev"; }
+    @Override public ToolCategory getCategory()    { return ToolCategory.DEV; }
     @Override public String getVersion()     { return "1.0.0"; }
     @Override public String getMdiIcon()    { return "key-variant"; }
-    @Override public String getIconStyle()   { return "ic-amber"; }
-    @Override public String getType()        { return "builtin"; }
+    @Override public IconStyle getIconStyle()   { return IconStyle.AMBER; }
+    @Override public ToolType getType()        { return ToolType.BUILTIN; }
 
     @Override
     public Node createView() {

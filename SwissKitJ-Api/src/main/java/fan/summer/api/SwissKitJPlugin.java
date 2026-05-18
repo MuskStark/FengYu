@@ -35,8 +35,8 @@ public interface SwissKitJPlugin {
     /** One-line description shown on the card and detail panel */
     String getDescription();
 
-    /** Category matching sidebar navigation: dev / text / image / net / other */
-    String getCategory();
+    /** Category matching sidebar navigation. See {@link ToolCategory}. */
+    ToolCategory getCategory();
 
     /** Version string, e.g. "1.0.0" */
     String getVersion();
@@ -49,16 +49,15 @@ public interface SwissKitJPlugin {
     String getMdiIcon();
 
     /**
-     * CSS class for the icon background colour, corresponding to variants in glass.css:
-     *   ic-blue / ic-purple / ic-teal / ic-amber / ic-red / ic-pink / ic-gray
+     * CSS class and colour for the icon background. See {@link IconStyle}.
      */
-    default String getIconStyle() { return "ic-blue"; }
+    default IconStyle getIconStyle() { return IconStyle.BLUE; }
 
     /**
-     * Type tag: built-in tools return "builtin", external plugins return "plugin" (default).
-     * Used for card badge colour and detail panel rendering.
+     * Type tag: built-in tools return {@link ToolType#BUILTIN},
+     * external plugins return {@link ToolType#PLUGIN} (default).
      */
-    default String getType() { return "plugin"; }
+    default ToolType getType() { return ToolType.PLUGIN; }
 
     // ── UI lifecycle ──────────────────────────────────────
 

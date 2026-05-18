@@ -2,6 +2,7 @@ package fan.summer.ui.content;
 
 import fan.summer.api.MdiIconUtil;
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.ToolCategory;
 import javafx.animation.Interpolator;
 import javafx.animation.KeyFrame;
 import javafx.animation.KeyValue;
@@ -132,7 +133,7 @@ public class DetailPanel extends VBox {
 
     private void fillData(SwissKitJPlugin p) {
         // Rebuild icon the same way as ToolCard
-        Color color = resolveColor(p.getIconStyle());
+        Color color = p.getIconStyle().getColor();
         String fillStyle = String.format("-fx-fill: rgba(%d,%d,%d,1.0);",
                 (int)(color.getRed()*255),
                 (int)(color.getGreen()*255),
@@ -151,33 +152,21 @@ public class DetailPanel extends VBox {
         this.iconText = newIcon;
 
         nameLabel.setText(p.getName());
-        metaLabel.setText("v" + p.getVersion() + " · " + p.getType());
+        metaLabel.setText("v" + p.getVersion() + " · " + p.getType().getId());
         descLabel.setText(p.getDescription());
 
         versionVal.setText(p.getVersion());
-        typeVal.setText(p.getType());
+        typeVal.setText(p.getType().getId());
         categoryVal.setText(categoryName(p.getCategory()));
     }
 
-    private static Color resolveColor(String iconStyle) {
-        return switch (iconStyle) {
-            case "ic-blue"   -> Color.rgb(99, 130, 255);
-            case "ic-purple" -> Color.rgb(160, 110, 255);
-            case "ic-teal"   -> Color.rgb(40, 210, 140);
-            case "ic-amber"  -> Color.rgb(255, 185, 50);
-            case "ic-red"    -> Color.rgb(255, 100, 100);
-            case "ic-pink"   -> Color.rgb(245, 100, 160);
-            default          -> Color.rgb(200, 200, 210);
-        };
-    }
-
-    private String categoryName(String cat) {
+    private String categoryName(ToolCategory cat) {
         return switch (cat) {
-            case "dev"   -> "Developer Tools";
-            case "text"  -> "Text Processing";
-            case "image" -> "Image Processing";
-            case "net"   -> "Network Tools";
-            default      -> cat;
+            case DEV   -> "Developer Tools";
+            case TEXT  -> "Text Processing";
+            case IMAGE -> "Image Processing";
+            case NET   -> "Network Tools";
+            default    -> "Other Tools";
         };
     }
 

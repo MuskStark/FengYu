@@ -1,6 +1,9 @@
 package fan.summer.buildintool.image;
 
+import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.ToolCategory;
+import fan.summer.api.ToolType;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -17,11 +20,11 @@ public class ColorConverterPlugin implements SwissKitJPlugin {
     @Override public String getId()          { return "builtin.color"; }
     @Override public String getName()        { return "Color Converter"; }
     @Override public String getDescription() { return "HEX / RGB / HSL conversion with live preview"; }
-    @Override public String getCategory()    { return "image"; }
+    @Override public ToolCategory getCategory()    { return ToolCategory.IMAGE; }
     @Override public String getVersion()     { return "1.0.0"; }
     @Override public String getMdiIcon()    { return "palette"; }
-    @Override public String getIconStyle()   { return "ic-pink"; }
-    @Override public String getType()        { return "builtin"; }
+    @Override public IconStyle getIconStyle()   { return IconStyle.PINK; }
+    @Override public ToolType getType()        { return ToolType.BUILTIN; }
 
     @Override
     public Node createView() {

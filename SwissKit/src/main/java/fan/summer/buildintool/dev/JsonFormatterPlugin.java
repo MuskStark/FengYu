@@ -1,6 +1,9 @@
 package fan.summer.buildintool.dev;
 
+import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.ToolCategory;
+import fan.summer.api.ToolType;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -15,11 +18,11 @@ public class JsonFormatterPlugin implements SwissKitJPlugin {
     @Override public String getId()          { return "builtin.json-formatter"; }
     @Override public String getName()        { return "JSON Formatter"; }
     @Override public String getDescription() { return "Format, compress, and validate JSON data"; }
-    @Override public String getCategory()    { return "dev"; }
+    @Override public ToolCategory getCategory()    { return ToolCategory.DEV; }
     @Override public String getVersion()     { return "1.0.0"; }
     @Override public String getMdiIcon()    { return "code-json"; }
-    @Override public String getIconStyle()   { return "ic-blue"; }
-    @Override public String getType()        { return "builtin"; }
+    @Override public IconStyle getIconStyle()   { return IconStyle.BLUE; }
+    @Override public ToolType getType()        { return ToolType.BUILTIN; }
 
     @Override
     public Node createView() {

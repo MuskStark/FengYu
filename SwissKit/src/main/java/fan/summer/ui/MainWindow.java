@@ -61,7 +61,7 @@ public class MainWindow extends StackPane {
         int buildInTool = 0;
         int pluginInTool = 0;
         for (SwissKitJPlugin plugin : registry.getPlugins()) {
-            if(plugin.getType().equals("plugin") ) {
+            if(plugin.getType().isPlugin() ) {
                 pluginInTool++;
             }else {
                 buildInTool++;
@@ -225,7 +225,7 @@ public class MainWindow extends StackPane {
             (javafx.collections.ListChangeListener<SwissKitJPlugin>) c -> {
                 int total   = registry.getPlugins().size();
                 int plugins = (int) registry.getPlugins().stream()
-                    .filter(p -> !"builtin".equals(p.getType())).count();
+                    .filter(p -> p.getType().isPlugin()).count();
                 statusToolCount.setText(total + " tools");
                 statusPluginCount.setText(plugins + " plugins");
                 sidebar.updateBadge("plugins", plugins);

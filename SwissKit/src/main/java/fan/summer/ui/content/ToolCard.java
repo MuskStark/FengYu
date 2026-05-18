@@ -1,5 +1,6 @@
 package fan.summer.ui.content;
 
+import fan.summer.api.IconStyle;
 import fan.summer.api.MdiIconUtil;
 import fan.summer.api.SwissKitJPlugin;
 import javafx.animation.*;
@@ -30,7 +31,7 @@ public class ToolCard extends VBox {
         setPadding(new Insets(16, 14, 14, 14));
 
         // ── Icon ────────────────────────────────────────
-        Color iconColor = resolveColor(plugin.getIconStyle());
+        Color iconColor = plugin.getIconStyle().getColor();
         String fillStyle = String.format("-fx-fill: rgba(%d,%d,%d,1.0);",
                 (int)(iconColor.getRed()*255),
                 (int)(iconColor.getGreen()*255),
@@ -46,7 +47,7 @@ public class ToolCard extends VBox {
         iconText.setEffect(glow);
 
         StackPane iconWrap = new StackPane(iconText);
-        iconWrap.getStyleClass().addAll("tool-icon-wrap", plugin.getIconStyle());
+        iconWrap.getStyleClass().addAll("tool-icon-wrap", plugin.getIconStyle().getCssClass());
         iconWrap.setPrefSize(48, 48);
         iconWrap.setMinSize(48, 48);
 
@@ -62,7 +63,7 @@ public class ToolCard extends VBox {
         VBox.setVgrow(descLabel, Priority.ALWAYS);
 
         // ── Tag ────────────────────────────────────────
-        boolean isPlugin = !"builtin".equals(plugin.getType());
+        boolean isPlugin = plugin.getType().isPlugin();
         Label tag = new Label(isPlugin ? "Plugin" : "Built-in");
         tag.getStyleClass().addAll("tool-tag", isPlugin ? "tool-tag-plugin" : "");
 
@@ -115,18 +116,6 @@ public class ToolCard extends VBox {
         entry.play();
 
         setCursor(javafx.scene.Cursor.HAND);
-    }
-
-    private static Color resolveColor(String iconStyle) {
-        return switch (iconStyle) {
-            case "ic-blue"   -> Color.rgb(99, 130, 255);
-            case "ic-purple" -> Color.rgb(160, 110, 255);
-            case "ic-teal"   -> Color.rgb(40, 210, 140);
-            case "ic-amber"  -> Color.rgb(255, 185, 50);
-            case "ic-red"    -> Color.rgb(255, 100, 100);
-            case "ic-pink"   -> Color.rgb(245, 100, 160);
-            default          -> Color.rgb(200, 200, 210);
-        };
     }
 
     public SwissKitJPlugin getPlugin() { return plugin; }
