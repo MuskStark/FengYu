@@ -1,6 +1,9 @@
 package fan.summer.buildintool.text;
 
+import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.ToolCategory;
+import fan.summer.api.ToolType;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
@@ -15,11 +18,11 @@ public class MarkdownEditorPlugin implements SwissKitJPlugin {
     @Override public String getId()          { return "builtin.markdown"; }
     @Override public String getName()        { return "Markdown"; }
     @Override public String getDescription() { return "Real-time Markdown editor with preview"; }
-    @Override public String getCategory()    { return "text"; }
+    @Override public ToolCategory getCategory()    { return ToolCategory.TEXT; }
     @Override public String getVersion()     { return "1.0.0"; }
     @Override public String getMdiIcon()    { return "language-markdown"; }
-    @Override public String getIconStyle()   { return "ic-blue"; }
-    @Override public String getType()        { return "builtin"; }
+    @Override public IconStyle getIconStyle()   { return IconStyle.BLUE; }
+    @Override public ToolType getType()        { return ToolType.BUILTIN; }
 
     @Override
     public Node createView() {

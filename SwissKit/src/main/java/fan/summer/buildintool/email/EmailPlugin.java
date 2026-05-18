@@ -1,6 +1,9 @@
 package fan.summer.buildintool.email;
 
+import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.ToolCategory;
+import fan.summer.api.ToolType;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.email.EmailMassSentConfigEntity;
 import fan.summer.database.entity.email.EmailSentLogEntity;
@@ -57,11 +60,11 @@ public class EmailPlugin implements SwissKitJPlugin {
     @Override public String getId()          { return "builtin.email"; }
     @Override public String getName()        { return "邮件发送"; }
     @Override public String getDescription() { return "支持单发与按标签群发，含附件路由与发送日志"; }
-    @Override public String getCategory()    { return "net"; }
+    @Override public ToolCategory getCategory()    { return ToolCategory.NET; }
     @Override public String getVersion()     { return "1.0.0"; }
     @Override public String getMdiIcon()     { return "email"; }
-    @Override public String getIconStyle()   { return "ic-blue"; }
-    @Override public String getType()        { return "builtin"; }
+    @Override public IconStyle getIconStyle()   { return IconStyle.BLUE; }
+    @Override public ToolType getType()        { return ToolType.BUILTIN; }
 
     @Override
     public Node createView() {

@@ -1,5 +1,7 @@
 package fan.summer.ui.store;
 
+import fan.summer.api.IconStyle;
+import fan.summer.api.ToolCategory;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -180,8 +182,8 @@ public class OnlineStorePane extends VBox {
                 p.description = extractJsonString(obj, "description");
                 p.version = extractJsonString(obj, "version");
                 p.jarUrl = extractJsonString(obj, "jarUrl");
-                p.iconStyle = extractJsonString(obj, "iconStyle", "ic-blue");
-                p.category = extractJsonString(obj, "category", "other");
+                p.iconStyle = IconStyle.fromCssClass(extractJsonString(obj, "iconStyle", "ic-blue"));
+                p.category = ToolCategory.fromId(extractJsonString(obj, "category", "other"));
 
                 if (p.id != null && p.name != null && p.jarUrl != null) {
                     result.add(p);
@@ -260,7 +262,7 @@ public class OnlineStorePane extends VBox {
             "-fx-background-radius: 4; -fx-padding: 2 6 2 6;"
         );
 
-        Label categoryBadge = new Label(plugin.category);
+        Label categoryBadge = new Label(plugin.category.getId());
         categoryBadge.setStyle(
             "-fx-text-fill: rgba(255,255,255,0.35);" +
             "-fx-font-size: 10px; -fx-background-color: rgba(255,255,255,0.05);" +
@@ -422,7 +424,7 @@ public class OnlineStorePane extends VBox {
         public String description;
         public String version;
         public String jarUrl;
-        public String iconStyle;
-        public String category;
+        public IconStyle iconStyle;
+        public ToolCategory category;
     }
 }
