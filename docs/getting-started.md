@@ -6,8 +6,10 @@ Welcome to SwissKit! This guide will help you install, configure, and run SwissK
 
 Before you begin, ensure you have the following installed:
 
-- **JDK 11 or higher**
+- **JDK 21 or higher**
 - **Maven 3.6 or higher** (required for building from source)
+
+SwissKit bundles JavaFX for all platforms inside the fat JAR -- no separate JavaFX SDK is needed.
 
 ### Verify Installation
 
@@ -25,11 +27,13 @@ mvn -version
 
 The easiest way to get started is to download the pre-built JAR file from the [GitHub Releases](https://github.com/MuskStark/SwissKitJ/releases) page.
 
-1. Download `SwissKit-2.1.1.jar`
+1. Download `SwissKitJ-3.0.0-alpha.1.jar`
 2. Run the application:
    ```bash
-   java -jar SwissKit-2.1.1.jar
+   java -jar SwissKitJ-3.0.0-alpha.1.jar
    ```
+
+The fat JAR includes all dependencies including JavaFX libraries for every supported platform (macOS, Windows, Linux), so no additional setup is required.
 
 ### Option 2: Build from Source
 
@@ -44,11 +48,13 @@ cd SwissKitJ
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 
 # Build the main project
-mvn clean package
+mvn clean package -DskipTests
 
 # Run the application
-java -jar target/SwissKit-2.1.1.jar
+java -jar SwissKit/target/SwissKitJ-3.0.0-alpha.1.jar
 ```
+
+**Build order matters**: The `SwissKitJ-Api` module provides the shared plugin interface and reusable UI components. It must be installed into the local Maven repository before the main app module can compile.
 
 ## Configuration
 
@@ -61,7 +67,16 @@ SwissKit comes with sensible defaults, but you can customize certain aspects:
 Default window settings:
 - **Minimum Size**: 800x500 pixels
 - **Default Size**: 900x600 pixels
-- **Theme**: FlatIntelliJLaf
+- **Theme**: Glassmorphism dark theme (three-layer CSS architecture)
+- **Window Style**: `StageStyle.TRANSPARENT` with a custom title bar
+
+The glassmorphism theme is implemented as three CSS layers:
+
+| File | Module | Scope |
+|------|--------|-------|
+| `css/swisskit-common.css` | `SwissKitJ-Api` | Shared variables, scrollbars, utility classes |
+| `css/shell.css` | `SwissKit` | App-shell: titlebar, sidebar, cards, panels |
+| `css/builtin.css` | `SwissKit` | Built-in tool styling |
 
 #### Custom Icon
 
@@ -74,36 +89,43 @@ If not found, a log message will be displayed.
 
 ## Running the Application
 
+### Using the Fat JAR
+
+```bash
+java -jar SwissKit/target/SwissKitJ-3.0.0-alpha.1.jar
+```
+
 ### Using Maven Exec Plugin
 
 ```bash
-mvn exec:java -Dexec.mainClass="fan.summer.Main"
-```
-
-### Using JAR File
-
-```bash
-java -jar target/SwissKit-2.0.2.jar
+mvn exec:java -Dexec.mainClass="fan.summer.Launcher"
 ```
 
 ### Using IDE
 
-If you're using IntelliJ IDEA:
+If you are using IntelliJ IDEA:
 
 1. Open the project
-2. Locate `Main.java` in `src/main/java/fan/summer/`
-3. Right-click and select "Run 'Main.main()'"
+2. Locate `Launcher.java` in `SwissKit/src/main/java/fan/summer/`
+3. Right-click and select "Run 'Launcher.main()'"
+
+The `Launcher` class is the fat-JAR manifest entry point and the canonical way to start the application.
 
 ## First Steps
 
 Once SwissKit is running:
 
-1. **Splash Screen** - You'll see a loading screen while the application initializes
-2. **Welcome Page** - After loading, you'll see the welcome page with an overview
-3. **Select a Tool** - Choose a tool from the left sidebar:
-   - **Excel Tool** - Process and split Excel files
-   - **Email Tool** - Compose and send emails, view sent history
-4. **Explore** - Click around to explore the available features
+1. **Glassmorphism Window** -- The application opens with a transparent window frame and custom title bar
+2. **Main Window** -- After launch, you will see the sidebar with tool categories and the content area
+3. **Select a Tool** -- Choose a tool from the left sidebar, organized by category:
+   - **All** -- View all available tools
+   - **Text** -- Text processing tools
+   - **Image** -- Image manipulation tools
+   - **Dev** -- Developer utilities
+   - **Net** -- Network tools
+   - **Other** -- Miscellaneous tools
+4. **Launch a Tool** -- Click on a tool card to see its detail panel, then click **Launch** to open it
+5. **Explore** -- Click around to explore the available features
 
 ## Troubleshooting
 
@@ -112,9 +134,9 @@ Once SwissKit is running:
 **Issue**: Application fails to start
 
 **Solution**:
-- Ensure JDK 11+ is installed
+- Ensure JDK 21 or higher is installed
 - Check `JAVA_HOME` environment variable
-- Verify you're using the correct Java version
+- Verify you are using the correct Java version
 
 ```bash
 # Check Java version
@@ -135,12 +157,12 @@ java -version
 **Issue**: User interface appears broken or misaligned
 
 **Solution**:
-- Update FlatLaf dependencies
-- Rebuild the project
-- Try running with a fresh build
+- Ensure you are running the fat JAR (which bundles JavaFX) rather than a plain module JAR
+- Rebuild the project from a clean state
+- Verify the CSS files are present in the JAR
 
 ```bash
-mvn clean package
+mvn clean package -DskipTests
 ```
 
 ### API Module Not Found
@@ -157,9 +179,9 @@ mvn clean package
 
 Now that you have SwissKit running, you can:
 
-- [Explore Features](features.md) - Learn about available tools
-- [Read Architecture](architecture.md) - Understand how it works
-- [Start Developing](development.md) - Contribute to the project
+- [Explore Features](features.md) -- Learn about available tools
+- [Read Architecture](architecture.md) -- Understand how it works
+- [Start Developing](development.md) -- Contribute to the project
 
 ## Getting Help
 
