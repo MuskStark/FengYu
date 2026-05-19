@@ -1,9 +1,0 @@
-{
-  "id": "2",
-  "subject": "Port DB layer and utility classes",
-  "description": "Create DatabaseInit.java, ComplexSplitConfigEntity.java, ComplexSplitConfigMapper.java, NoModelDataListener.java, ExcelUtil.java, FileNameUtil.java",
-  "activeForm": "Porting DB layer and utilities",
-  "status": "in_progress",
-  "blocks": [],
-  "blockedBy": []
-}
