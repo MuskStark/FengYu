@@ -1,0 +1,9 @@
+{
+  "id": "1",
+  "subject": "Port utility classes to excelsplitter package",
+  "description": "Create NoModelDataListener, ExcelUtil, FileNameUtil in fan.summer.buildintool.excelsplitter package, ported from backup",
+  "activeForm": "Porting utility classes",
+  "status": "in_progress",
+  "blocks": [],
+  "blockedBy": []
+}
