@@ -6,8 +6,99 @@
 
     <groupId>fan.summer</groupId>
     <artifactId>SwissKit-parent</artifactId>
-    <version>PLACEHOLDER_VERSION</version>
+    <version>3.0.0-alpha.1</version>
     <packaging>pom</packaging>
+
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <javafx.version>21.0.2</javafx.version>
+        <lombok.version>1.18.42</lombok.version>
+        <swisskit.api.version>3.0.0-alpha.1</swisskit.api.version>
+        <fesod.version>2.0.1-incubating</fesod.version>
+        <h2.version>2.4.240</h2.version>
+        <mybatis.version>3.5.19</mybatis.version>
+        <simplejavamail.version>8.12.6</simplejavamail.version>
+        <angusmail.version>2.0.4</angusmail.version>
+        <slf4j.version>2.0.13</slf4j.version>
+        <logback.version>1.5.6</logback.version>
+        <junit.jupiter.version>5.10.2</junit.jupiter.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- SwissKitJ API (consumed by main app and all plugins) -->
+            <dependency>
+                <groupId>fan.summer.api</groupId>
+                <artifactId>SwissKitJ-Api</artifactId>
+                <version>${swisskit.api.version}</version>
+            </dependency>
+
+            <!-- JavaFX (provided by host app at runtime) -->
+            <dependency>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-graphics</artifactId>
+                <version>${javafx.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-controls</artifactId>
+                <version>${javafx.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-web</artifactId>
+                <version>${javafx.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.fesod</groupId>
+                <artifactId>fesod-sheet</artifactId>
+                <version>${fesod.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.h2database</groupId>
+                <artifactId>h2</artifactId>
+                <version>${h2.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.mybatis</groupId>
+                <artifactId>mybatis</artifactId>
+                <version>${mybatis.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.simplejavamail</groupId>
+                <artifactId>simple-java-mail</artifactId>
+                <version>${simplejavamail.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse.angus</groupId>
+                <artifactId>angus-mail</artifactId>
+                <version>${angusmail.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-classic</artifactId>
+                <version>${logback.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${junit.jupiter.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <!-- Build order: SwissKitJ-Api must be built before SwissKit, which must be built before plugins -->
     <modules>

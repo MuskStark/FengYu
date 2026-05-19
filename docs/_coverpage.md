@@ -1,7 +1,6 @@
-# SwissKitJ <small>2.1.1</small>
+# SwissKitJ <small>3.0.0-alpha.1</small>
 
 > A Swiss Army Knife of Productivity Tools
-> Happy Birthday To My Sunshine
 
 - Simple and lightweight
 - Built for Professionals

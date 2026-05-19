@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SwissKitJ logging configuration.
+
+  The host application sets the system property `swisskit.log.dir` to the absolute
+  path of the runtime log directory (typically `.swisskit/logs/` next to the JAR
+  or the working directory) before SLF4J initialises. A fallback default keeps the
+  config valid when logback is loaded outside the host (tests, IDE).
+-->
+<configuration scan="true" scanPeriod="30 seconds">
+
+    <!-- Fallback: if the host hasn't set swisskit.log.dir yet, write next to CWD. -->
+    <property name="LOG_DIR" value="${swisskit.log.dir:-.swisskit/logs}"/>
+
+    <!-- ── Console: human-friendly, INFO and above ──────────────────────── -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>INFO</level>
+        </filter>
+    </appender>
+
+    <!-- ── Rolling file: full DEBUG history, daily rotation, 7-day retention ─ -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/swisskit.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/swisskit.%d{yyyy-MM-dd}.log.gz</fileNamePattern>
+            <maxHistory>7</maxHistory>
+            <totalSizeCap>200MB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger - %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- ── Tame the noisy frameworks ────────────────────────────────────── -->
+    <logger name="org.apache.ibatis"   level="WARN"/>
+    <logger name="org.mybatis"          level="WARN"/>
+    <logger name="org.simplejavamail"   level="INFO"/>
+    <logger name="org.eclipse.angus"    level="WARN"/>
+    <logger name="com.h2database"       level="WARN"/>
+    <logger name="org.apache.poi"       level="WARN"/>
+    <logger name="org.apache.fesod"     level="WARN"/>
+    <logger name="javafx"               level="INFO"/>
+
+    <!-- ── App + plugin loggers: DEBUG to file, INFO to console (via filter) ─ -->
+    <logger name="fan.summer"           level="DEBUG"/>
+    <logger name="plugin"               level="DEBUG"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+</configuration>
