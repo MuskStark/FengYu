@@ -1,0 +1,628 @@
+name: SwissKitJ-Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v3.0.0 or v3.0.0-alpha.1)'
+        required: true
+        type: string
+  push:
+    tags:
+      - 'v[0-9]+\.[0-9]+\.[0-9]+'
+      - 'v[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+'
+      - 'v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+'
+      - 'v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  # ==========================================================================
+  # Setup — resolve version strings once, shared by all downstream jobs
+  # ==========================================================================
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      full_tag: ${{ steps.resolve.outputs.full_tag }}
+      raw_tag: ${{ steps.resolve.outputs.raw_tag }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+    steps:
+      - name: Resolve version strings
+        id: resolve
+        run: |
+          RAW="${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }}"
+          FULL_TAG="${RAW#v}"
+          VERSION=$(echo "$FULL_TAG" | sed 's/-.*//')
+          if [[ "$FULL_TAG" == *"-alpha."* || "$FULL_TAG" == *"-beta."* || "$FULL_TAG" == *"-rc."* ]]; then
+            PRERELEASE=true
+          else
+            PRERELEASE=false
+          fi
+          echo "raw_tag=${RAW}"           >> "$GITHUB_OUTPUT"
+          echo "full_tag=${FULL_TAG}"     >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}"       >> "$GITHUB_OUTPUT"
+          echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
+          echo "RAW_TAG=${RAW}  FULL_TAG=${FULL_TAG}  VERSION=${VERSION}  PRERELEASE=${PRERELEASE}"
+
+  # ==========================================================================
+  # Windows — two packages:
+  #   1. SwissKitJ-{ver}-windows-x64.zip       (no JRE, Launch4j .exe)
+  #   2. SwissKitJ-{ver}-windows-x64-jre.zip   (with bundled JRE, jpackage)
+  # ==========================================================================
+  build-windows:
+    needs: setup
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.setup.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Install SwissKitJ-Api to local repository
+        shell: pwsh
+        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests "-Dproject.version=$env:VERSION"
+
+      - name: Build with Maven (shade JAR + Launch4j exe)
+        shell: pwsh
+        run: mvn clean package -DskipTests "-Dproject.version=$env:VERSION" -pl SwissKit -am
+
+      # --- Without JRE: Launch4j .exe + fat JAR ---
+      - name: Package Windows (without JRE)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release\SwissKitJ | Out-Null
+          Move-Item SwissKit\target\SwissKit.exe release\SwissKitJ\SwissKitJ.exe -Force
+          Copy-Item SwissKit\target\SwissKitJ-$env:VERSION.jar release\SwissKitJ\
+          Copy-Item README.md release\SwissKitJ\
+          Compress-Archive -Path release\SwissKitJ -DestinationPath "release\SwissKitJ-$env:VERSION-windows-x64.zip" -Force
+          Write-Host "Created: release/SwissKitJ-$env:VERSION-windows-x64.zip"
+
+      # --- With JRE: jpackage app-image ---
+      - name: Package Windows (with JRE)
+        shell: pwsh
+        run: |
+          $jarName = "SwissKitJ-$env:VERSION.jar"
+          $inputDir = "release\jpackage-input"
+          New-Item -ItemType Directory -Force -Path $inputDir | Out-Null
+          Copy-Item SwissKit\target\$jarName $inputDir\
+
+          jpackage --type app-image `
+            --name SwissKitJ `
+            --input $inputDir `
+            --main-jar $jarName `
+            --main-class fan.summer.Launcher `
+            --dest release\with-jre `
+            --java-options "-Xms64m -Xmx512m" `
+            --icon SwissKit\src\main\resources\icons\SwissKit.ico `
+            --vendor "SwissKit" `
+            --app-version "$env:VERSION"
+
+          Compress-Archive -Path release\with-jre\SwissKitJ `
+            -DestinationPath "release\SwissKitJ-$env:VERSION-windows-x64-jre.zip" -Force
+          Write-Host "Created: release/SwissKitJ-$env:VERSION-windows-x64-jre.zip"
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: swisskitj-windows
+          path: |
+            release/SwissKitJ-${{ env.VERSION }}-windows-x64.zip
+            release/SwissKitJ-${{ env.VERSION }}-windows-x64-jre.zip
+          retention-days: 30
+
+  # ==========================================================================
+  # macOS Apple Silicon — two packages:
+  #   1. SwissKitJ-{ver}-macos-arm64.zip       (no JRE, hand-crafted .app)
+  #   2. SwissKitJ-{ver}-macos-arm64-jre.zip   (with bundled JRE, jpackage)
+  # ==========================================================================
+  build-macos:
+    needs: setup
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.setup.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Install SwissKitJ-Api to local repository
+        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests -Dproject.version=$VERSION
+
+      - name: Build fat JAR
+        run: mvn clean package -DskipTests -Dproject.version=$VERSION -pl SwissKit -am
+
+      # --- Without JRE: hand-crafted .app bundle with shell launcher ---
+      - name: Create .app skeleton (without JRE)
+        run: |
+          JAR_FILE=$(find SwissKit/target -maxdepth 1 -name "SwissKitJ-*.jar" -type f | head -1)
+          if [ -z "$JAR_FILE" ]; then
+            echo "ERROR: No SwissKitJ-*.jar found in SwissKit/target/" >&2
+            exit 1
+          fi
+          mkdir -p release/SwissKitJ.app/Contents/MacOS
+          mkdir -p release/SwissKitJ.app/Contents/Resources
+          cp "$JAR_FILE" release/SwissKitJ.app/Contents/Resources/SwissKitJ.jar
+          cp SwissKit/src/main/resources/icons/SwissKit.icns release/SwissKitJ.app/Contents/Resources/
+
+      - name: Write macOS launcher (without JRE)
+        run: |
+          printf '%s\n' \
+            '#!/bin/bash' \
+            'SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"' \
+            'RESOURCES_DIR="$SCRIPT_DIR/../Resources"' \
+            '' \
+            'JAVA_BIN=""' \
+            'if [ -n "$JAVA_HOME" ] && [ -x "$JAVA_HOME/bin/java" ]; then' \
+            '  JAVA_BIN="$JAVA_HOME/bin/java"' \
+            'elif command -v java &>/dev/null; then' \
+            '  JAVA_BIN="$(command -v java)"' \
+            'elif [ -d "/Library/Java/JavaVirtualMachines" ]; then' \
+            '  JVM_HOME=$(ls /Library/Java/JavaVirtualMachines/ 2>/dev/null | sort -r | head -1)' \
+            '  CANDIDATE="/Library/Java/JavaVirtualMachines/${JVM_HOME}/Contents/Home/bin/java"' \
+            '  if [ -x "$CANDIDATE" ]; then' \
+            '    JAVA_BIN="$CANDIDATE"' \
+            '  fi' \
+            'fi' \
+            '' \
+            'if [ -z "$JAVA_BIN" ]; then' \
+            '  osascript -e "display alert \"Java Not Found\" message \"SwissKit requires Java 17 or later.\n\nDownload from https://adoptium.net/\" as critical"' \
+            '  exit 1' \
+            'fi' \
+            '' \
+            'exec "$JAVA_BIN" -jar "$RESOURCES_DIR/SwissKitJ.jar" "$@"' \
+            > release/SwissKitJ.app/Contents/MacOS/SwissKitJ
+          chmod +x release/SwissKitJ.app/Contents/MacOS/SwissKitJ
+
+      - name: Write Info.plist (without JRE)
+        run: |
+          INFO="release/SwissKitJ.app/Contents/Info.plist"
+          printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>'                                 > "$INFO"
+          printf '%s\n' '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"'                  >> "$INFO"
+          printf '%s\n' '  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'                   >> "$INFO"
+          printf '%s\n' '<plist version="1.0">'                                                  >> "$INFO"
+          printf '%s\n' '<dict>'                                                                  >> "$INFO"
+          printf '%s\n' '  <key>CFBundleName</key>'                                              >> "$INFO"
+          printf '%s\n' '  <string>SwissKit</string>'                                            >> "$INFO"
+          printf '%s\n' '  <key>CFBundleDisplayName</key>'                                       >> "$INFO"
+          printf '%s\n' '  <string>SwissKit</string>'                                            >> "$INFO"
+          printf '%s\n' '  <key>CFBundleIdentifier</key>'                                        >> "$INFO"
+          printf '%s\n' '  <string>com.muskstark.swisskit</string>'                              >> "$INFO"
+          printf '%s\n' '  <key>CFBundleVersion</key>'                                           >> "$INFO"
+          printf '%s'   '  <string>'                                                              >> "$INFO"
+          printf '%s\n' "${VERSION}"'</string>'                                                   >> "$INFO"
+          printf '%s\n' '  <key>CFBundleShortVersionString</key>'                                >> "$INFO"
+          printf '%s'   '  <string>'                                                              >> "$INFO"
+          printf '%s\n' "${VERSION}"'</string>'                                                   >> "$INFO"
+          printf '%s\n' '  <key>CFBundlePackageType</key>'                                       >> "$INFO"
+          printf '%s\n' '  <string>APPL</string>'                                                >> "$INFO"
+          printf '%s\n' '  <key>CFBundleExecutable</key>'                                        >> "$INFO"
+          printf '%s\n' '  <string>SwissKitJ</string>'                                           >> "$INFO"
+          printf '%s\n' '  <key>LSMinimumSystemVersion</key>'                                    >> "$INFO"
+          printf '%s\n' '  <string>10.13</string>'                                               >> "$INFO"
+          printf '%s\n' '  <key>NSHighResolutionCapable</key>'                                   >> "$INFO"
+          printf '%s\n' '  <true/>'                                                              >> "$INFO"
+          printf '%s\n' '  <key>LSUIElement</key>'                                               >> "$INFO"
+          printf '%s\n' '  <false/>'                                                             >> "$INFO"
+          printf '%s\n' '  <key>CFBundleIconFile</key>'                                          >> "$INFO"
+          printf '%s\n' '  <string>SwissKit.icns</string>'                                       >> "$INFO"
+          printf '%s\n' '</dict>'                                                                 >> "$INFO"
+          printf '%s\n' '</plist>'                                                                >> "$INFO"
+
+      - name: Compress macOS package (without JRE)
+        run: |
+          cd release
+          zip -ry "SwissKitJ-${VERSION}-macos-arm64.zip" SwissKitJ.app
+          echo "Created: release/SwissKitJ-${VERSION}-macos-arm64.zip"
+
+      # --- With JRE: jpackage .app bundle ---
+      - name: Package macOS (with JRE)
+        run: |
+          JAR_FILE=$(find SwissKit/target -maxdepth 1 -name "SwissKitJ-*.jar" -type f | head -1)
+          if [ -z "$JAR_FILE" ]; then
+            echo "ERROR: No SwissKitJ-*.jar found in SwissKit/target/" >&2
+            exit 1
+          fi
+          mkdir -p release/jpackage-input
+          cp "$JAR_FILE" release/jpackage-input/
+
+          jpackage --type app-image \
+            --name SwissKitJ \
+            --input release/jpackage-input \
+            --main-jar "$(basename "$JAR_FILE")" \
+            --main-class fan.summer.Launcher \
+            --dest release/with-jre \
+            --java-options "-Xms64m -Xmx512m" \
+            --icon SwissKit/src/main/resources/icons/SwissKit.icns \
+            --vendor "SwissKit" \
+            --app-version "${VERSION}" \
+            --mac-package-identifier com.muskstark.swisskit
+
+          cd release/with-jre
+          zip -ry "../../SwissKitJ-${VERSION}-macos-arm64-jre.zip" SwissKitJ.app
+          echo "Created: release/SwissKitJ-${VERSION}-macos-arm64-jre.zip"
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: swisskitj-macos
+          path: |
+            release/SwissKitJ-${{ env.VERSION }}-macos-arm64.zip
+            release/SwissKitJ-${{ env.VERSION }}-macos-arm64-jre.zip
+          retention-days: 30
+
+  # ==========================================================================
+  # Linux — four artifacts:
+  #   1. SwissKitJ-{ver}-linux-x64.zip         (no JRE, shell launcher)
+  #   2. SwissKitJ-{ver}-linux-x64-jre.zip     (with bundled JRE, jpackage)
+  #   3. SwissKitJ-UOS-{ver}.zip               (UOS with JRE + .desktop)
+  #   4. SwissKitJ-{ver}.jar                   (fat JAR, cross-platform)
+  # ==========================================================================
+  build-linux:
+    needs: setup
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.setup.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Install SwissKitJ-Api to local repository
+        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests -Dproject.version=$VERSION
+
+      - name: Build fat JAR
+        run: mvn clean package -DskipTests -Dproject.version=$VERSION -pl SwissKit -am
+
+      # --- Without JRE: fat JAR + shell scripts ---
+      - name: Assemble Linux package (without JRE)
+        run: |
+          JAR_FILE=$(find SwissKit/target -maxdepth 1 -name "SwissKitJ-*.jar" -type f | head -1)
+          if [ -z "$JAR_FILE" ]; then
+            echo "ERROR: No SwissKitJ-*.jar found in SwissKit/target/" >&2
+            exit 1
+          fi
+          mkdir -p release/SwissKitJ
+          cp "$JAR_FILE" release/SwissKitJ/SwissKitJ.jar
+          cp README.md release/SwissKitJ/
+          cp SwissKit/src/main/resources/icons/icon-256.png release/SwissKitJ/swisskit.png
+
+          printf '%s\n' \
+            '#!/bin/bash' \
+            'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"' \
+            'cd "$SCRIPT_DIR"' \
+            '' \
+            'JAVA_BIN=""' \
+            'if [ -n "$JAVA_HOME" ] && [ -x "$JAVA_HOME/bin/java" ]; then' \
+            '  JAVA_BIN="$JAVA_HOME/bin/java"' \
+            'elif command -v java &>/dev/null; then' \
+            '  JAVA_BIN="$(command -v java)"' \
+            'fi' \
+            '' \
+            'if [ -z "$JAVA_BIN" ]; then' \
+            '  echo "ERROR: Java 17 or later is required but was not found." >&2' \
+            '  echo "Install: sudo apt install openjdk-17-jre" >&2' \
+            '  exit 1' \
+            'fi' \
+            '' \
+            'exec "$JAVA_BIN" -jar SwissKitJ.jar "$@"' \
+            > release/SwissKitJ/run.sh
+          chmod +x release/SwissKitJ/run.sh
+
+          cd release
+          zip -r "SwissKitJ-${VERSION}-linux-x64.zip" SwissKitJ
+          echo "Created: release/SwissKitJ-${VERSION}-linux-x64.zip"
+
+      # --- With JRE: jpackage app-image ---
+      - name: Package Linux (with JRE)
+        run: |
+          JAR_FILE=$(find SwissKit/target -maxdepth 1 -name "SwissKitJ-*.jar" -type f | head -1)
+          if [ -z "$JAR_FILE" ]; then
+            echo "ERROR: No SwissKitJ-*.jar found in SwissKit/target/" >&2
+            exit 1
+          fi
+          mkdir -p release/jpackage-input
+          cp "$JAR_FILE" release/jpackage-input/
+
+          jpackage --type app-image \
+            --name SwissKitJ \
+            --input release/jpackage-input \
+            --main-jar "$(basename "$JAR_FILE")" \
+            --main-class fan.summer.Launcher \
+            --dest release/with-jre \
+            --java-options "-Xms64m -Xmx512m" \
+            --icon SwissKit/src/main/resources/icons/icon-256.png \
+            --vendor "SwissKit" \
+            --app-version "${VERSION}" \
+            --linux-short-name swisskit
+
+          cd release/with-jre
+          zip -r "../../SwissKitJ-${VERSION}-linux-x64-jre.zip" SwissKitJ
+          echo "Created: release/SwissKitJ-${VERSION}-linux-x64-jre.zip"
+
+      # --- UOS with JRE: jpackage app-image + .desktop launcher ---
+      - name: Package Linux UOS (with JRE + .desktop)
+        run: |
+          JAR_FILE=$(find SwissKit/target -maxdepth 1 -name "SwissKitJ-*.jar" -type f | head -1)
+          if [ -z "$JAR_FILE" ]; then
+            echo "ERROR: No SwissKitJ-*.jar found in SwissKit/target/" >&2
+            exit 1
+          fi
+          mkdir -p release/jpackage-input-uos
+          cp "$JAR_FILE" release/jpackage-input-uos/
+
+          jpackage --type app-image \
+            --name SwissKitJ \
+            --input release/jpackage-input-uos \
+            --main-jar "$(basename "$JAR_FILE")" \
+            --main-class fan.summer.Launcher \
+            --dest release/uos-jre/SwissKitJ-UOS \
+            --java-options "-Xms64m -Xmx512m" \
+            --icon SwissKit/src/main/resources/icons/icon-256.png \
+            --vendor "SwissKit" \
+            --app-version "${VERSION}" \
+            --linux-short-name swisskit
+
+          cp SwissKit/src/main/resources/icons/icon-256.png release/uos-jre/SwissKitJ-UOS/swisskit.png
+          cp README.md release/uos-jre/SwissKitJ-UOS/
+
+          printf '%s\n' \
+            '#!/bin/bash' \
+            'set -e' \
+            'INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"' \
+            '' \
+            'echo "正在安装 SwissKit 桌面入口..."' \
+            '' \
+            'cat > "$INSTALL_DIR/swisskit.desktop" << DESKTOP' \
+            '[Desktop Entry]' \
+            'Version=1.0' \
+            'Name=SwissKit' \
+            'Name[zh_CN]=SwissKit 瑞士军刀' \
+            'Comment=Swiss Army Knife of Productivity Tools' \
+            'Comment[zh_CN]=高效生产力工具集' \
+            'Exec=$INSTALL_DIR/SwissKitJ/bin/SwissKitJ' \
+            'Icon=$INSTALL_DIR/swisskit.png' \
+            'Terminal=false' \
+            'Type=Application' \
+            'Categories=Office;Utility;' \
+            'StartupNotify=true' \
+            'X-Deepin-Vendor=fan.summer' \
+            'DESKTOP' \
+            '' \
+            'mkdir -p "$HOME/.local/share/applications"' \
+            'cp "$INSTALL_DIR/swisskit.desktop" "$HOME/.local/share/applications/"' \
+            '' \
+            'if command -v update-desktop-database &>/dev/null; then' \
+            '  update-desktop-database "$HOME/.local/share/applications/" 2>/dev/null || true' \
+            'fi' \
+            '' \
+            'echo "SwissKit 安装完成，在启动器中即可找到。"' \
+            'echo "如未立即显示图标，请注销后重新登录。"' \
+            > release/uos-jre/SwissKitJ-UOS/install.sh
+          chmod +x release/uos-jre/SwissKitJ-UOS/install.sh
+
+          cd release/uos-jre
+          zip -r "../../SwissKitJ-UOS-${VERSION}-jre.zip" SwissKitJ-UOS
+          echo "Created: release/SwissKitJ-UOS-${VERSION}-jre.zip"
+
+      # --- UOS without JRE: fat JAR + .desktop launcher ---
+      - name: Package Linux UOS (without JRE + .desktop)
+        run: |
+          JAR_FILE=$(find SwissKit/target -maxdepth 1 -name "SwissKitJ-*.jar" -type f | head -1)
+          if [ -z "$JAR_FILE" ]; then
+            echo "ERROR: No SwissKitJ-*.jar found in SwissKit/target/" >&2
+            exit 1
+          fi
+          mkdir -p release/uos-nojre/SwissKitJ-UOS
+          cp "$JAR_FILE" release/uos-nojre/SwissKitJ-UOS/SwissKitJ.jar
+          cp README.md release/uos-nojre/SwissKitJ-UOS/
+          cp SwissKit/src/main/resources/icons/icon-256.png release/uos-nojre/SwissKitJ-UOS/swisskit.png
+
+          printf '%s\n' \
+            '#!/bin/bash' \
+            'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"' \
+            'cd "$SCRIPT_DIR"' \
+            '' \
+            'JAVA_BIN=""' \
+            'if [ -n "$JAVA_HOME" ] && [ -x "$JAVA_HOME/bin/java" ]; then' \
+            '  JAVA_BIN="$JAVA_HOME/bin/java"' \
+            'elif command -v java &>/dev/null; then' \
+            '  JAVA_BIN="$(command -v java)"' \
+            'fi' \
+            '' \
+            'if [ -z "$JAVA_BIN" ]; then' \
+            '  echo "ERROR: Java 17 or later is required but was not found." >&2' \
+            '  echo "Install: sudo apt install openjdk-17-jre" >&2' \
+            '  exit 1' \
+            'fi' \
+            '' \
+            'exec "$JAVA_BIN" -jar SwissKitJ.jar "$@"' \
+            > release/uos-nojre/SwissKitJ-UOS/run.sh
+          chmod +x release/uos-nojre/SwissKitJ-UOS/run.sh
+
+          printf '%s\n' \
+            '#!/bin/bash' \
+            'set -e' \
+            'INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"' \
+            '' \
+            'echo "正在安装 SwissKit 桌面入口..."' \
+            '' \
+            'cat > "$INSTALL_DIR/swisskit.desktop" << DESKTOP' \
+            '[Desktop Entry]' \
+            'Version=1.0' \
+            'Name=SwissKit' \
+            'Name[zh_CN]=SwissKit 瑞士军刀' \
+            'Comment=Swiss Army Knife of Productivity Tools' \
+            'Comment[zh_CN]=高效生产力工具集' \
+            'Exec=$INSTALL_DIR/run.sh' \
+            'Icon=$INSTALL_DIR/swisskit.png' \
+            'Terminal=false' \
+            'Type=Application' \
+            'Categories=Office;Utility;' \
+            'StartupNotify=true' \
+            'X-Deepin-Vendor=fan.summer' \
+            'DESKTOP' \
+            '' \
+            'mkdir -p "$HOME/.local/share/applications"' \
+            'cp "$INSTALL_DIR/swisskit.desktop" "$HOME/.local/share/applications/"' \
+            '' \
+            'if command -v update-desktop-database &>/dev/null; then' \
+            '  update-desktop-database "$HOME/.local/share/applications/" 2>/dev/null || true' \
+            'fi' \
+            '' \
+            'echo "SwissKit 安装完成，在启动器中即可找到。"' \
+            'echo "如未立即显示图标，请注销后重新登录。"' \
+            > release/uos-nojre/SwissKitJ-UOS/install.sh
+          chmod +x release/uos-nojre/SwissKitJ-UOS/install.sh
+
+          cd release/uos-nojre
+          zip -r "../../SwissKitJ-UOS-${VERSION}-nojre.zip" SwissKitJ-UOS
+          echo "Created: release/SwissKitJ-UOS-${VERSION}-nojre.zip"
+
+      # --- Fat JAR ---
+      - name: Stage fat JAR
+        run: |
+          JAR_FILE=$(find SwissKit/target -maxdepth 1 -name "SwissKitJ-*.jar" -type f | head -1)
+          cp "$JAR_FILE" "release/SwissKitJ-${VERSION}.jar"
+          echo "Staged: release/SwissKitJ-${VERSION}.jar"
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: swisskitj-linux
+          path: |
+            release/SwissKitJ-${{ env.VERSION }}-linux-x64.zip
+            release/SwissKitJ-${{ env.VERSION }}-linux-x64-jre.zip
+            release/SwissKitJ-UOS-${{ env.VERSION }}-jre.zip
+            release/SwissKitJ-UOS-${{ env.VERSION }}-nojre.zip
+          retention-days: 30
+
+      - name: Upload fat JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: swisskitj-fatjar
+          path: release/SwissKitJ-${{ env.VERSION }}.jar
+          retention-days: 30
+
+  # ==========================================================================
+  # Create GitHub Release — collects all artifacts into a single release
+  # ==========================================================================
+  create-release:
+    needs: [setup, build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.setup.outputs.version }}
+      FULL_TAG: ${{ needs.setup.outputs.full_tag }}
+      RAW_TAG: ${{ needs.setup.outputs.raw_tag }}
+      PRERELEASE: ${{ needs.setup.outputs.prerelease }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List downloaded artifacts
+        run: ls -lh artifacts/
+
+      - name: Determine pre-release label and warning
+        id: prerelease
+        run: |
+          if [[ "$PRERELEASE" == "true" ]]; then
+            echo "label= (Pre-release)" >> "$GITHUB_OUTPUT"
+            echo "warning=> ⚠️ This is a pre-release version. Use with caution and please report any bugs!" >> "$GITHUB_OUTPUT"
+          else
+            echo "label="    >> "$GITHUB_OUTPUT"
+            echo "warning="  >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate SHA-256 checksums
+        run: |
+          cd artifacts
+          sha256sum *.zip *.jar > checksums.txt 2>/dev/null || true
+          cat checksums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RAW_TAG }}
+          name: SwissKitJ ${{ env.FULL_TAG }}${{ steps.prerelease.outputs.label }}
+          body: |
+            ## SwissKitJ ${{ env.FULL_TAG }}${{ steps.prerelease.outputs.label }}
+
+            ${{ steps.prerelease.outputs.warning }}
+
+            ### Downloads
+
+            #### With JRE (no Java installation required — extract and run)
+            | Platform | File |
+            |---|---|
+            | Windows 10/11 x64 | `SwissKitJ-${{ env.VERSION }}-windows-x64-jre.zip` |
+            | Linux x64 | `SwissKitJ-${{ env.VERSION }}-linux-x64-jre.zip` |
+            | Linux UOS (统信) | `SwissKitJ-UOS-${{ env.VERSION }}-jre.zip` |
+            | macOS Apple Silicon | `SwissKitJ-${{ env.VERSION }}-macos-arm64-jre.zip` |
+
+            #### Without JRE (requires Java 17+)
+            | Platform | File | How to run |
+            |---|---|---|
+            | Windows 10/11 x64 | `SwissKitJ-${{ env.VERSION }}-windows-x64.zip` | Extract, double-click `SwissKitJ.exe` |
+            | Linux x64 | `SwissKitJ-${{ env.VERSION }}-linux-x64.zip` | Extract, run `./run.sh` |
+            | Linux UOS (统信) | `SwissKitJ-UOS-${{ env.VERSION }}-nojre.zip` | Extract, run `./install.sh` |
+            | macOS Apple Silicon | `SwissKitJ-${{ env.VERSION }}-macos-arm64.zip` | Extract, double-click `SwissKitJ.app` |
+
+            #### Fat JAR (requires Java 17+)
+            `SwissKitJ-${{ env.VERSION }}.jar` — `java -jar SwissKitJ-${{ env.VERSION }}.jar`
+
+            #### Java Installation (for no-JRE packages)
+            - Windows: [Adoptium](https://adoptium.net/)
+            - macOS: `brew install --cask temurin@17`
+            - Linux (Debian/Ubuntu): `sudo apt install openjdk-17-jre`
+            - Linux (Fedora/RHEL): `sudo dnf install java-17-openjdk`
+
+            #### UOS (统信UOS)
+            Both JRE and no-JRE variants include `install.sh` — extract and run it to register the `.desktop` entry in your application launcher.
+
+            ### What's New
+            See the [CHANGELOG](https://muskstark.github.io/SwissKitJ/#/changelog) for details.
+
+            ---
+            SHA-256 checksums are provided in `checksums.txt`.
+            This release was automatically created by GitHub Actions.
+          files: |
+            artifacts/*.zip
+            artifacts/*.jar
+            artifacts/checksums.txt
+          draft: false
+          prerelease: ${{ needs.setup.outputs.prerelease == 'true' }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

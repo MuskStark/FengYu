@@ -12,7 +12,7 @@ import fan.summer.annoattion.SwissKitPage;
 import fan.summer.i18n.I18nManager;
 import fan.summer.i18n.Language;
 import fan.summer.i18n.LocaleChangeListener;
-import fan.summer.ui.components.GradientProgressBar;
+import fan.summer.api.components.GradientProgressBar;
 import net.miginfocom.swing.*;
 
 /**

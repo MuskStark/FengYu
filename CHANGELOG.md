@@ -7,11 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [3.0.0-alpha.1] — First JavaFX Preview
 
-### 🐛 Bug Fixes
+**Release Date:** 2026-05-19
 
-- **Plugin Loading**: Handle plugin loading errors gracefully to ensure app startup when corrupted plugins exist
+### ✨ Highlights
+
+The entire application has been migrated from Swing/FlatLaf to **JavaFX 21**,
+with a new glassmorphism dark theme, a redesigned plugin API, and a rebuilt
+Excel Splitter with a multi-step wizard UI.
+
+### ✨ New Features
+
+- **JavaFX UI**: Complete migration from Swing/FlatLaf to JavaFX 21 with custom window chrome (`StageStyle.TRANSPARENT`), glassmorphism sidebar, glow-effect ToolCards, and animated step wizard
+- **Plugin API v3**: New `SwissKitJPlugin` interface replaces the Swing-based `KitPage`; plugins return JavaFX `Node` instead of `JPanel`
+- **Plugin Logger**: `fan.summer.api.log.LoggerFactory` with SLF4J/Logback backbone; plugin log calls are safe to call even before the host installs a binder
+- **StepWizard**: Reusable multi-step wizard component in `SwissKitJ-Api` with dot navigation, slide transitions, step validation, and programmatic navigation
+- **Plugin Store**: Online plugin catalog + local JAR install with hot-reload via `PluginLoader` file watcher
+- **Three-Layer CSS Architecture**: `swisskit-common.css` (shared variables + glass utilities), `shell.css` (app chrome), `builtin.css` (tool styling) with automatic scene-graph inheritance
+- **Type / Category / IconStyle Enums**: Type-safe enums replace String-based plugin metadata in the API module
+- **Excel Splitter Wizard**: Redesigned with 4-step `StepWizard` flow: file select → analysis → split config → output
+
+### 🔧 Fixes
+
+- **Cross-Platform Native Libraries**: Fat JAR now bundles JavaFX native `.dll` (Windows), `.so` (Linux), and `.dylib` (macOS) so the same JAR runs on all three platforms regardless of build host
+
+### ♻️ Refactors
+
+- **Dependency Management**: All version properties centralized in parent POM (`javafx.version`, `lombok.version`, etc.)
+- **Module Structure**: `SwissKitJ-Api` for shared API/UI, `SwissKit` for the app shell, `OfficalPlugin/` for bundled plugins
+- **Backup Consolidation**: Legacy Swing sources moved to `backup/SwissKit/` and excluded from Maven compilation
+
+### 📝 Documentation
+
+- **README**: Complete rewrite for v3.0.0 JavaFX including build instructions, architecture overview, plugin development guide, and UI component reference
 
 ---
 
