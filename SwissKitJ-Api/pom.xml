@@ -8,13 +8,13 @@
   <parent>
     <groupId>fan.summer</groupId>
     <artifactId>SwissKit-parent</artifactId>
-    <version>3.0.0-SNAPSHOT</version>
+    <version>3.0.0-alpha.1</version>
     <relativePath>../pom.xml</relativePath>
   </parent>
 
   <groupId>fan.summer.api</groupId>
   <artifactId>SwissKitJ-Api</artifactId>
-  <version>3.0.0</version>
+  <version>3.0.0-alpha.1</version>
   <name>SwissKitJ Api</name>
   <description>Plugin API for SwissKitJ. Third-party plugin developers depend on this artifact with provided scope.</description>
 
