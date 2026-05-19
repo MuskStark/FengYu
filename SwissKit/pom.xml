@@ -7,12 +7,12 @@
     <parent>
         <groupId>fan.summer</groupId>
         <artifactId>SwissKit-parent</artifactId>
-        <version>3.0.0-SNAPSHOT</version>
+        <version>3.0.0-alpha.1</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
     <artifactId>SwissKit</artifactId>
-    <version>3.0.0</version>
+    <version>3.0.0-alpha.1</version>
 
     <dependencies>
 
@@ -262,35 +262,6 @@
                             <version>${lombok.version}</version>
                         </path>
                     </annotationProcessorPaths>
-                    <!-- Exclude ALL legacy Swing files pending JavaFX migration -->
-                    <excludes>
-                        <exclude>**/StartLoadingPage.java</exclude>
-                        <exclude>**/HomePage.java</exclude>
-                        <exclude>**/SideMenuBar.java</exclude>
-                        <exclude>**/TableUtil.java</exclude>
-                        <exclude>**/UIUtils.java</exclude>
-                        <exclude>**/WelcomePage.java</exclude>
-                        <exclude>**/EmailKitPage.java</exclude>
-                        <exclude>**/EmailTagsView.java</exclude>
-                        <exclude>**/EmailAddressBookView.java</exclude>
-                        <exclude>**/AddAddressView.java</exclude>
-                        <exclude>**/SettingKitPage.java</exclude>
-                        <exclude>**/ExcelKitPage.java</exclude>
-                        <exclude>**/ConfigView.java</exclude>
-                        <exclude>**/ConfigEditorView.java</exclude>
-                        <exclude>**/MassSentConfigView.java</exclude>
-                        <exclude>**/ViewEmailSentLogView.java</exclude>
-                        <exclude>**/QueryAllEmailInfoWorker.java</exclude>
-                        <exclude>**/ShowConfigViewWorker.java</exclude>
-                        <exclude>**/SetComplexSplitConfigWorker.java</exclude>
-                        <exclude>**/ExcelSplitWorker.java</exclude>
-                        <exclude>**/ExcelAnalysisWorker.java</exclude>
-                        <exclude>**/ClearComplexSplitConfigWorker.java</exclude>
-                        <exclude>**/EmailSentWorker.java</exclude>
-                        <exclude>**/plugin/swisskitj/QccToExcel.java</exclude>
-                        <exclude>**/plugin/swisskit/hpl/ui/HappyLearning.java</exclude>
-                        <exclude>**/plugin/swisskit/mouse/ui/KeepMove.java</exclude>
-                    </excludes>
                 </configuration>
             </plugin>
         </plugins>

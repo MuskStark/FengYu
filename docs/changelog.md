@@ -5,113 +5,180 @@ All notable changes to SwissKit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 2.1.1
+---
 
-### 🔧 Fixed
+## [3.0.0-alpha.1] — First JavaFX Preview
 
-- SettingKitPage: Persist language preference to database on change
-- IsolatedPluginClassLoader: Prioritize plugin JAR over app ClassLoader for third-party dependencies
+**Release Date:** 2026-05-19
+
+### ✨ Highlights
+
+The entire application has been migrated from Swing/FlatLaf to **JavaFX 21**,
+with a new glassmorphism dark theme, a redesigned plugin API, and a rebuilt
+Excel Splitter with a multi-step wizard UI.
+
+### ✨ New Features
+
+- **JavaFX UI**: Complete migration from Swing/FlatLaf to JavaFX 21 with custom window chrome (`StageStyle.TRANSPARENT`), glassmorphism sidebar, glow-effect ToolCards, and animated step wizard
+- **Plugin API v3**: New `SwissKitJPlugin` interface replaces the Swing-based `KitPage`; plugins return JavaFX `Node` instead of `JPanel`
+- **Plugin Logger**: `fan.summer.api.log.LoggerFactory` with SLF4J/Logback backbone; plugin log calls are safe to call even before the host installs a binder
+- **StepWizard**: Reusable multi-step wizard component in `SwissKitJ-Api` with dot navigation, slide transitions, step validation, and programmatic navigation
+- **Plugin Store**: Online plugin catalog + local JAR install with hot-reload via `PluginLoader` file watcher
+- **Three-Layer CSS Architecture**: `swisskit-common.css` (shared variables + glass utilities), `shell.css` (app chrome), `builtin.css` (tool styling) with automatic scene-graph inheritance
+- **Type / Category / IconStyle Enums**: Type-safe enums replace String-based plugin metadata in the API module
+- **Excel Splitter Wizard**: Redesigned with 4-step `StepWizard` flow: file select → analysis → split config → output
+
+### 🔧 Fixes
+
+- **Cross-Platform Native Libraries**: Fat JAR now bundles JavaFX native `.dll` (Windows), `.so` (Linux), and `.dylib` (macOS) so the same JAR runs on all three platforms regardless of build host
+
+### ♻️ Refactors
+
+- **Dependency Management**: All version properties centralized in parent POM (`javafx.version`, `lombok.version`, etc.)
+- **Module Structure**: `SwissKitJ-Api` for shared API/UI, `SwissKit` for the app shell, `OfficalPlugin/` for bundled plugins
+- **Backup Consolidation**: Legacy Swing sources moved to `backup/SwissKit/` and excluded from Maven compilation
+
+### 📝 Documentation
+
+- **README**: Complete rewrite for v3.0.0 JavaFX including build instructions, architecture overview, plugin development guide, and UI component reference
 
 ---
 
-## 2.1.0
+## 1.1.0
 
-### ✨ Added
-
-- `@SwissKitPage`: Add `panelMethod` attribute to specify custom panel retrieval method name
-- `@SwissKitPage`: Add Javadoc documentation for the panel method constraint
-
-### 🔧 Fixed
-
-- Settings page: Fix i18n not updating all UI components when language is changed (Tab titles, labels, and buttons now refresh properly)
+**Release Date:** 2026-03-30
 
 ---
 
-## 2.0.2
+### ✨ New Features
 
-### ✨ Added
-
-- i18n: Implement i18n support for official plugins (HappyLearning, KeepMove, QccToExcel)
-- i18n: Move I18nManager, Language, LocaleChangeListener to SwissKitJ-Api module
-
----
-
-## 2.0.1
-
-### ✨ Added
-
-- i18n: Add internationalization system with English and Chinese support
-- i18n: Each page has its own i18n properties file in pages/ directory
-- i18n: Runtime language switching via Settings page
-- Plugin: Plugin registry and annotation-based plugin discovery
-- Plugin: Add menuNameKey to @SwissKitPage for menu name i18n
-
-### 🔧 Fixed
-
-- SideMenuBar: Fix separator index calculation causing IndexOutOfBoundsException
-- SetComplexSplitConfigWorker: Fix NumberFormatException on empty input
-
----
-
-## 2.0.0
+- **Plugin Hot-Deployment**: Deploy, reload, and uninstall plugins without restarting the application
+- **HappyLearning Enhancement**: Add class hours tracking and status display
 
 ### 🔄 Changes
 
-- **Breaking**: Remove `KitPage` interface, use annotation-only plugin discovery with `@SwissKitPage`
-
-### 🔧 Fixed
-
-- Menu click navigation and drag-to-reorder functionality
-
----
-
-## 1.2.2
-
-### ✨ Added
-
-- Mouse Plugin: Add KeepMove plugin to prevent screen saver
-- Mouse Plugin: Add button interlock for KeepMove
-- SwissKit-Plugin-Mouse module added to build
-
-### 🔧 Fixed
-
-- Plugin loading: Handle errors gracefully to ensure app startup
-
----
-
-## 1.2.1
-
-### ✨ Added
-
-- Excel: Support copying entire sheet to all split files when headerIndex=-1 and columnIndex=-1
-
-### 🔧 Fixed
-
-- HappyLearning: Change totaltime from Integer to Float
-- HappyLearning: Update UI when course is found
-
----
-
-## 1.2.0
-
-### ✨ Added
-
-- Email: Rich text editor with formatting toolbar (bold, italic, underline, font size, text color)
-- HappyLearning: skipClass button with enable/disable control
-
-### 🔧 Fixed
-
-- Email: Improve rich text editor alignment and HTML extraction
+- **Project Restructuring**: Renamed `Happy-learning` → `SwissKitJ-Plugin-HappyLearning`, moved plugins to `OfficalPlugin/` directory
+- **Module Organization**: Added `SwissKitJ-Api` as a shared API module
 
 ---
 
 ## 1.0.0
 
-### 🔧 Fixes
+**Release Date:** 2026-03-29
 
-- EmailSentWorker: Use proper window ancestor for error dialog
-- SetComplexSplitConfigWorker: Add null check for selectedItem
-- StringUtil: Pre-compile email regex pattern as static constant
+---
+
+### Introduction
+
+SwissKit is a modular desktop productivity toolkit built with Java Swing, designed to simplify daily office tasks. It provides powerful Excel processing capabilities, email management with mass-sending features, and a flexible plugin system for extensibility.
+
+**Key Characteristics:**
+- Cross-platform: Windows, Linux, macOS (Apple Silicon)
+- Plugin Architecture: Auto-discovers and loads plugins via Java SPI
+- Modern UI: FlatLaf Look and Feel
+- Database: H2 embedded database with MyBatis ORM
+- Requirements: Java 11 or higher
+
+---
+
+### Features
+
+#### Excel Kit
+- **Complex Split Mode**: Split Excel files with complex configurations
+- **Configuration Editor**: Visual editor for split parameters
+- **Progress Tracking**: Real-time progress bar with animation
+
+#### Email Kit
+- **Mass Email Sending**: Send emails to recipients based on tags
+- **Address Book**: Manage contacts with tag associations
+- **Tag Management**: Organize recipients by tags
+- **Sent Log**: Track email sending history with status
+
+#### Plugin System
+- **Auto-Discovery**: Automatically finds plugins in `META-INF/services`
+- **Isolated Loading**: Plugins loaded in isolated ClassLoader
+- **Easy Extension**: Implement `KitPage` interface to add new tools
+
+#### Settings
+- **Unified Configuration**: Centralized settings management
+- **Plugin Management**: View and manage installed plugins
+
+---
+
+### Installation
+
+#### System Requirements
+- Java 11 or higher (JDK/JRE)
+- Windows 10+, Linux (glibc 2.17+), or macOS 11+
+
+#### Windows Installation
+1. Download `SwissKit-windows.zip`
+2. Extract to desired location
+3. Run `SwissKit.exe`
+
+#### Linux Installation
+1. Download `SwissKit-linux.zip`
+2. Extract: `unzip SwissKit-linux.zip`
+3. Run: `./run.sh`
+
+#### macOS Installation
+1. Download `SwissKit-macos-apple-silicon.zip`
+2. Extract: `unzip SwissKit-macos-apple-silicon.zip`
+3. Run: `open SwissKit.app` or `./run.sh`
+
+**Note:** Java 11+ is required. Download from [Adoptium](https://adoptium.net/).
+
+---
+
+### For Developers
+
+#### Build from Source
+
+```bash
+# Install API module to local Maven repo (required)
+mvn install -f SwissKitJ-Api/pom.xml -DskipTests
+
+# Compile
+mvn clean compile
+
+# Package executable JAR
+mvn clean package -DskipTests
+
+# Run (development)
+mvn exec:java -Dexec.mainClass="fan.summer.Main"
+```
+
+#### Project Structure
+```
+SwissKitJ/
+├── SwissKitJ-Api/                         # Shared API module (interfaces, annotations)
+├── SwissKit/                              # Main application
+├── OfficalPlugin/
+│   ├── SwissKitJ-Plugin-HappyLearning/   # Auto-learning plugin
+│   └── SwissKitJ-Plugin-Qcc/              # CSV to Excel conversion plugin
+└── docs/                                  # Documentation
+```
+
+#### Plugin Development
+1. Create class implementing `KitPage` interface
+2. Annotate with `@SwissKitPage`
+3. Register in `META-INF/services/fan.summer.api.KitPage`
+4. Tool appears automatically in sidebar
+
+#### API Dependency
+```xml
+<dependency>
+    <groupId>fan.summer.api</groupId>
+    <artifactId>SwissKitJ-Api</artifactId>
+    <version>1.0.0</version>
+</dependency>
+```
+
+---
+
+### Changelog
+
+The following is the complete version history.
 
 ---
 
