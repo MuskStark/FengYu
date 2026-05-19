@@ -1,0 +1,65 @@
+[
+    {
+        "id": "builtin.excelsplitter",
+        "name": "Excel拆分",
+        "description": "按Sheet/列值/复杂配置拆分Excel文件",
+        "version": "3.0.0",
+        "jarUrl": "https://muskstark.github.io/SwissKitJ/plugins/builtin.excelsplitter.jar",
+        "iconStyle": "ic-teal",
+        "category": "other"
+    },
+    {
+        "id": "builtin.email",
+        "name": "邮件发送",
+        "description": "支持单发与按标签群发，含附件路由与发送日志",
+        "version": "1.0.0",
+        "jarUrl": "https://muskstark.github.io/SwissKitJ/plugins/builtin.email.jar",
+        "iconStyle": "ic-blue",
+        "category": "net"
+    },
+    {
+        "id": "builtin.base64",
+        "name": "Base64",
+        "description": "Base64 Encode / Decode",
+        "version": "1.0.0",
+        "jarUrl": "https://muskstark.github.io/SwissKitJ/plugins/builtin.base64.jar",
+        "iconStyle": "ic-teal",
+        "category": "dev"
+    },
+    {
+        "id": "builtin.hash",
+        "name": "Hash Calculator",
+        "description": "MD5 / SHA-1 / SHA-256 / SHA-512",
+        "version": "1.0.0",
+        "jarUrl": "https://muskstark.github.io/SwissKitJ/plugins/builtin.hash.jar",
+        "iconStyle": "ic-amber",
+        "category": "dev"
+    },
+    {
+        "id": "builtin.json-formatter",
+        "name": "JSON Formatter",
+        "description": "Format, compress, and validate JSON data",
+        "version": "1.0.0",
+        "jarUrl": "https://muskstark.github.io/SwissKitJ/plugins/builtin.json-formatter.jar",
+        "iconStyle": "ic-blue",
+        "category": "dev"
+    },
+    {
+        "id": "builtin.markdown",
+        "name": "Markdown",
+        "description": "Real-time Markdown editor with preview",
+        "version": "1.0.0",
+        "jarUrl": "https://muskstark.github.io/SwissKitJ/plugins/builtin.markdown.jar",
+        "iconStyle": "ic-blue",
+        "category": "text"
+    },
+    {
+        "id": "builtin.color",
+        "name": "Color Converter",
+        "description": "HEX / RGB / HSL conversion with live preview",
+        "version": "1.0.0",
+        "jarUrl": "https://muskstark.github.io/SwissKitJ/plugins/builtin.color.jar",
+        "iconStyle": "ic-pink",
+        "category": "image"
+    }
+]

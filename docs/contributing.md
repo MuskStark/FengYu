@@ -2,187 +2,61 @@
 
 Thank you for your interest in contributing to SwissKit! This document provides guidelines and instructions for contributing to the project.
 
-## Table of Contents
+## Prerequisites
 
-- [Code of Conduct](#code-of-conduct)
-- [Getting Started](#getting-started)
-- [How to Contribute](#how-to-contribute)
-- [Development Workflow](#development-workflow)
-- [Pull Request Process](#pull-request-process)
-- [Coding Standards](#coding-standards)
-- [Reporting Issues](#reporting-issues)
-
-## Code of Conduct
-
-- Be respectful and inclusive
-- Provide constructive feedback
-- Welcome new contributors
-- Focus on what is best for the community
-
-## Getting Started
-
-### Prerequisites
-
-- JDK 11 or higher
+- JDK 21 or higher
 - Maven 3.6 or higher
 - Git
 - IntelliJ IDEA (recommended)
 
-### Setup
+## Setup
 
 ```bash
-# Fork the repository
-# Clone your fork
+# Fork the repository, then clone your fork
 git clone https://github.com/YOUR_USERNAME/SwissKitJ.git
-cd SwissKit
+cd SwissKitJ
 
 # Add upstream remote
 git remote add upstream https://github.com/MuskStark/SwissKitJ.git
 
+# Install API module first (required)
+mvn install -f SwissKitJ-Api/pom.xml -DskipTests
+
 # Build the project
-mvn clean compile
+mvn clean compile -DskipTests
 
 # Run the application
-mvn exec:java -Dexec.mainClass="fan.summer.Main"
+java -jar SwissKit/target/SwissKitJ-3.0.0-alpha.1.jar
 ```
-
-## How to Contribute
-
-There are many ways to contribute:
-
-### Reporting Bugs
-
-1. Check existing [Issues](https://github.com/MuskStark/SwissKitJ/issues)
-2. Create a new issue with:
-   - Clear title
-   - Detailed description
-   - Steps to reproduce
-   - Expected behavior
-   - Actual behavior
-   - Environment details (OS, Java version)
-
-### Suggesting Features
-
-1. Check existing feature requests
-2. Create a new issue with:
-   - Clear description of the feature
-   - Use cases and benefits
-   - Possible implementation approach
-
-### Submitting Code
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
 
 ## Development Workflow
 
-### 1. Create a Branch
+### Branch naming
 
-```bash
-git checkout -b feature/your-feature-name
-```
+- `feature/` — New features
+- `bugfix/` — Bug fixes
+- `docs/` — Documentation updates
+- `refactor/` — Code refactoring
 
-Branch naming conventions:
-- `feature/` - New features
-- `bugfix/` - Bug fixes
-- `docs/` - Documentation updates
-- `refactor/` - Code refactoring
+### Commit message format
 
-### 2. Make Changes
+Use conventional commits with emojis:
 
-- Write clean, readable code
-- Add comments where necessary
-- Update documentation
-- Follow coding standards
+| Prefix | Emoji | Purpose |
+|--------|-------|---------|
+| `✨ feat:` | `:sparkles:` | New feature |
+| `🐛 fix:` | `:bug:` | Bug fix |
+| `♻️ refactor:` | `:recycle:` | Refactoring |
+| `📝 docs:` | `:memo:` | Documentation |
+| `⬆️ deps:` | `:arrow_up:` | Dependency upgrade |
 
-### 3. Test Your Changes
+### Creating a PR
 
-```bash
-# Compile
-mvn clean compile
-
-# Run tests
-mvn test
-
-# Build
-mvn clean package
-
-# Run application
-mvn exec:java -Dexec.mainClass="fan.summer.Main"
-```
-
-### 4. Commit Your Changes
-
-```bash
-git add .
-git commit -m "type: description"
-```
-
-Commit message format:
-- `:sparkles:` - New feature
-- `:art:` - Improve structure/format
-- `:memo:` - Documentation
-- `:bug:` - Bug fix
-- `:arrow_up:` - Upgrade dependency
-- `:recycle:` - Refactor code
-
-Examples:
-```bash
-git commit -m ":sparkles: Add PDF processing tool"
-git commit -m ":bug: Fix progress bar not updating"
-git commit -m ":memo: Update API documentation"
-```
-
-### 5. Push to Your Fork
-
-```bash
-git push origin feature/your-feature-name
-```
-
-### 6. Create Pull Request
-
-1. Go to the original repository on GitHub
-2. Click "New Pull Request"
-3. Select your branch
-4. Fill in the PR template
-5. Submit
-
-## Pull Request Process
-
-### PR Template
-
-```markdown
-## Description
-Brief description of changes
-
-## Type of Change
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Breaking change
-- [ ] Documentation update
-
-## Testing
-Describe how you tested your changes
-
-## Checklist
-- [ ] Code follows project style
-- [ ] Self-reviewed the code
-- [ ] Commented complex code
-- [ ] Updated documentation
-- [ ] No new warnings
-- [ ] Added tests
-- [ ] All tests pass
-```
-
-### Review Process
-
-1. Automated checks run (CI)
-2. Maintainer reviews your PR
-3. Address any feedback
-4. PR is merged
+1. Fork the repository and create a feature branch
+2. Make your changes, following the coding standards below
+3. Build and test: `mvn clean package -DskipTests`
+4. Commit with conventional commit format
+5. Push to your fork and open a pull request against `main`
 
 ## Coding Standards
 
@@ -192,111 +66,49 @@ Describe how you tested your changes
 - All UI text in English
 - Variable and method names in English
 
-### Code Style
-
-- Follow existing code conventions
-- Use meaningful names
-- Add Javadoc for public APIs
-- Keep methods focused and small
-
-### UI Standards
-
-- Use `SansSerif` font
-- Use color constants from `UIUtils`
-- Ensure consistent layout
-
 ### Thread Safety
 
-- Update UI components in EDT thread only
-- Use `SwingUtilities.invokeLater()` for UI updates
+JavaFX has a single UI thread. All UI updates must happen on it:
 
 ```java
-// Correct
-SwingUtilities.invokeLater(() -> progressBar.setValue(50));
+// Correct — update UI from background thread
+Platform.runLater(() -> progressBar.setProgress(0.5));
 
-// Incorrect
-progressBar.setValue(50); // From background thread
+// Also correct — update on JavaFX Application Thread directly
+label.setText("Done");
 ```
 
 ### Error Handling
 
-- Handle exceptions gracefully
-- Provide user-friendly error messages
-- Log errors for debugging
-
 ```java
+import javafx.scene.control.Alert;
+import javafx.scene.control.Alert.AlertType;
+
 try {
     // Operation
 } catch (Exception e) {
-    logger.error("Operation failed", e);
-    JOptionPane.showMessageDialog(parent,
-            "Operation failed: " + e.getMessage(),
-            "Error", JOptionPane.ERROR_MESSAGE);
+    log.error("Operation failed", e);
+    Alert alert = new Alert(AlertType.ERROR, "Operation failed: " + e.getMessage());
+    alert.showAndWait();
 }
 ```
 
 ## Reporting Issues
 
-### Bug Report Template
-
-```markdown
-## Description
-Clear description of the bug
-
-## Steps to Reproduce
-1. Step one
-2. Step two
-3. Step three
-
-## Expected Behavior
-What should happen
-
-## Actual Behavior
-What actually happens
-
-## Environment
-- OS: [e.g., Windows 10, macOS 12]
-- Java Version: [e.g., 11.0.15]
-- SwissKit Version: [e.g., 1.0-SNAPSHOT]
-
-## Screenshots
-If applicable, add screenshots
-
-## Additional Context
-Any other relevant information
-```
-
-### Feature Request Template
-
-```markdown
-## Feature Description
-Clear description of the feature
-
-## Use Cases
-Describe the use cases
-
-## Proposed Solution
-How you envision this feature working
-
-## Alternatives Considered
-Other approaches you considered
-
-## Additional Context
-Any other relevant information
-```
+Include:
+- OS and version
+- Java version (`java -version`)
+- SwissKit version
+- Steps to reproduce
+- Expected vs actual behavior
+- Screenshots if applicable
 
 ## Getting Help
 
-If you need help:
-
-1. Check existing documentation
-2. Search existing issues
-3. Ask in discussions or issues
-
-## Recognition
-
-Contributors will be acknowledged in the project's AUTHORS file.
+1. Check the documentation in `docs/`
+2. Search existing [GitHub Issues](https://github.com/MuskStark/SwissKitJ/issues)
+3. Create a new issue with details
 
 ---
 
-**Thank you for contributing to SwissKit!** 🎉
+**Thank you for contributing to SwissKit!**

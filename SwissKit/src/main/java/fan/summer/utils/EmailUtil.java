@@ -20,58 +20,14 @@ import java.util.List;
  * Utility class for sending emails via SMTP using Simple Java Mail.
  * SMTP configuration is loaded automatically from the database
  * ({@code swiss_kit_setting_email} table).
- *
- * <p>Usage examples:</p>
- * <pre>
- *   // Plain text
- *   EmailUtil.sendText("to@example.com", "Subject", "Hello!");
- *
- *   // HTML with attachments
- *   EmailUtil.sendEmail(
- *       EmailMessage.builder()
- *           .to("a@example.com", "b@example.com")
- *           .cc("c@example.com")
- *           .subject("Monthly Report")
- *           .htmlBody("&lt;h1&gt;Report&lt;/h1&gt;")
- *           .attachments(new File("report.pdf"), new File("data.xlsx"))
- *           .build()
- *   );
- *
- *   // Test SMTP connection (bind to "Send Test Email" button)
- *   EmailUtil.testConnection();
- * </pre>
- *
- * <p>Maven dependency:</p>
- * <pre>
- *   &lt;dependency&gt;
- *       &lt;groupId&gt;org.simplejavamail&lt;/groupId&gt;
- *       &lt;artifactId&gt;simple-java-mail&lt;/artifactId&gt;
- *       &lt;version&gt;8.12.2&lt;/version&gt;
- *   &lt;/dependency&gt;
- * </pre>
- *
- * @author phoebej
  */
 public class EmailUtil {
 
     private static final Logger log = LoggerFactory.getLogger(EmailUtil.class);
 
-    // Utility class — no instantiation
     private EmailUtil() {
     }
 
-    // ─────────────────────────────────────────────────────────
-    // Public API
-    // ─────────────────────────────────────────────────────────
-
-    /**
-     * Sends a plain text email to a single recipient.
-     *
-     * @param to      recipient email address
-     * @param subject email subject
-     * @param text    plain text body
-     * @throws EmailException if config is missing or sending fails
-     */
     public static void sendText(String to, String subject, String text) throws EmailException {
         sendEmail(EmailMessage.builder()
                 .to(to)
@@ -80,14 +36,6 @@ public class EmailUtil {
                 .build());
     }
 
-    /**
-     * Sends an HTML email to a single recipient.
-     *
-     * @param to      recipient email address
-     * @param subject email subject
-     * @param html    HTML body content
-     * @throws EmailException if config is missing or sending fails
-     */
     public static void sendHtml(String to, String subject, String html) throws EmailException {
         sendEmail(EmailMessage.builder()
                 .to(to)
@@ -96,12 +44,6 @@ public class EmailUtil {
                 .build());
     }
 
-    /**
-     * Sends a full email with optional CC, BCC, HTML body, and file attachments.
-     *
-     * @param message the email message descriptor
-     * @throws EmailException if config is missing or sending fails
-     */
     public static void sendEmail(EmailMessage message) throws EmailException {
         validateMessage(message);
         SwissKitSettingEmailEntity config = loadConfig();
@@ -117,12 +59,6 @@ public class EmailUtil {
         }
     }
 
-    /**
-     * Tests the SMTP connection using the database config, without sending any email.
-     * Bind this to the "Send Test Email" button in {@code SettingKitPage}.
-     *
-     * @throws EmailException if config is missing or the connection fails
-     */
     public static void testConnection() throws EmailException {
         SwissKitSettingEmailEntity config = loadConfig();
         log.debug("Testing SMTP connection | host={}:{}", config.getSmtpAddress(), config.getSmtpPort());
@@ -136,12 +72,7 @@ public class EmailUtil {
         }
     }
 
-    // ─────────────────────────────────────────────────────────
-    // Build Email & Mailer
-    // ─────────────────────────────────────────────────────────
-
     private static Email buildEmail(SwissKitSettingEmailEntity config, EmailMessage message) {
-        // from: prefer fromAddress field, fall back to login email
         String from = (config.getFromAddress() != null && !config.getFromAddress().isBlank())
                 ? config.getFromAddress()
                 : config.getEmail();
@@ -150,7 +81,6 @@ public class EmailUtil {
                 .from(from)
                 .withSubject(message.subject);
 
-        // Recipients
         for (String to : message.to) {
             builder.to(to);
         }
@@ -165,7 +95,6 @@ public class EmailUtil {
             }
         }
 
-        // Body — support plain text, HTML, or both simultaneously
         if (message.textBody != null) {
             builder.withPlainText(message.textBody);
         }
@@ -173,14 +102,12 @@ public class EmailUtil {
             builder.withHTMLText(message.htmlBody);
         }
 
-        // Attachments
         if (message.attachments != null) {
             for (File file : message.attachments) {
                 if (!file.exists() || !file.isFile()) {
                     log.warn("Attachment not found, skipping: {}", file.getAbsolutePath());
                     continue;
                 }
-                // Simple Java Mail handles filename encoding internally (RFC 2047)
                 builder.withAttachment(file.getName(), new FileDataSource(file));
                 log.debug("Adding attachment: {} ({} bytes)", file.getName(), file.length());
             }
@@ -204,16 +131,6 @@ public class EmailUtil {
                 .buildMailer();
     }
 
-    /**
-     * Resolves the correct {@link TransportStrategy} from the entity's TLS/SSL flags.
-     * SSL takes priority when both flags are somehow enabled.
-     *
-     * <ul>
-     *   <li>{@code needSSL=true}  → SMTPS (port 465, direct SSL)</li>
-     *   <li>{@code needTLS=true}  → SMTP_TLS (port 587, STARTTLS)</li>
-     *   <li>neither               → SMTP (port 25, no encryption)</li>
-     * </ul>
-     */
     private static TransportStrategy resolveTransportStrategy(SwissKitSettingEmailEntity config) {
         if (Boolean.TRUE.equals(config.getNeedSSL())) {
             return TransportStrategy.SMTPS;
@@ -224,15 +141,6 @@ public class EmailUtil {
         return TransportStrategy.SMTP;
     }
 
-    // ─────────────────────────────────────────────────────────
-    // Config loading from DB
-    // ─────────────────────────────────────────────────────────
-
-    /**
-     * Loads the latest email config from the database via MyBatis.
-     *
-     * @throws EmailException if no config record exists
-     */
     private static SwissKitSettingEmailEntity loadConfig() throws EmailException {
         log.debug("Loading SMTP config from database");
         try (SqlSession session = DatabaseInit.getSqlSession()) {
@@ -249,10 +157,6 @@ public class EmailUtil {
         }
     }
 
-    // ─────────────────────────────────────────────────────────
-    // Validation
-    // ─────────────────────────────────────────────────────────
-
     private static void validateMessage(EmailMessage message) {
         if (message == null)
             throw new IllegalArgumentException("EmailMessage must not be null");
@@ -263,13 +167,11 @@ public class EmailUtil {
         if (message.textBody == null && message.htmlBody == null)
             throw new IllegalArgumentException("Either textBody or htmlBody must be provided");
 
-        // Prevent SMTP injection: filter out \r \n characters from recipient addresses
         for (String to : message.to) {
             if (containsCRLF(to)) {
                 throw new IllegalArgumentException("Invalid recipient address: " + to);
             }
         }
-        // Same filter for subject
         if (containsCRLF(message.subject)) {
             throw new IllegalArgumentException("Invalid subject: contains illegal characters");
         }
@@ -279,14 +181,6 @@ public class EmailUtil {
         return value != null && (value.contains("\r") || value.contains("\n"));
     }
 
-    // ─────────────────────────────────────────────────────────
-    // EmailMessage
-    // ─────────────────────────────────────────────────────────
-
-    /**
-     * Describes the content of an outgoing email.
-     * Construct via {@link Builder}.
-     */
     public static class EmailMessage {
 
         private final List<String> to;
@@ -381,13 +275,6 @@ public class EmailUtil {
         }
     }
 
-    // ─────────────────────────────────────────────────────────
-    // Exception
-    // ─────────────────────────────────────────────────────────
-
-    /**
-     * Checked exception for email sending or configuration failures.
-     */
     public static class EmailException extends Exception {
         public EmailException(String message, Throwable cause) {
             super(message, cause);
