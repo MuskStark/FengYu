@@ -1,0 +1,9 @@
+{
+  "id": "3",
+  "subject": "Rewrite ExcelSplitterPlugin with 3-step wizard",
+  "description": "Redesign wizard: Step0=file select, Step1=async analysis + Simple/Complex mode, Step2=output path + split button. Port complex split logic from backup.",
+  "activeForm": "Rewriting ExcelSplitterPlugin wizard",
+  "status": "pending",
+  "blocks": [],
+  "blockedBy": []
+}
