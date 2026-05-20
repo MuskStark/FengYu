@@ -64,8 +64,39 @@
     -fx-pref-width: 220px;
     -fx-min-width: 200px;
     -fx-max-width: 260px;
+    -fx-padding: 0;
+    -fx-spacing: 0;
+}
+
+.sidebar-scroll {
+    -fx-background-color: transparent;
+    -fx-background: transparent;
     -fx-padding: 12 8 12 8;
-    -fx-spacing: 2px;
+}
+.sidebar-scroll > .viewport {
+    -fx-background-color: transparent;
+}
+.sidebar-scroll > .scroll-bar:vertical {
+    -fx-background-color: transparent;
+    -fx-opacity: 0.3;
+    -fx-pref-width: 4px;
+}
+.sidebar-scroll:hover > .scroll-bar:vertical {
+    -fx-opacity: 0.6;
+}
+.sidebar-scroll > .scroll-bar:vertical .thumb {
+    -fx-background-color: rgba(255,255,255,0.30);
+    -fx-background-radius: 2;
+}
+.sidebar-scroll > .scroll-bar:vertical .track {
+    -fx-background-color: transparent;
+}
+.sidebar-scroll > .scroll-bar:vertical .increment-button,
+.sidebar-scroll > .scroll-bar:vertical .decrement-button {
+    -fx-padding: 0;
+    -fx-background-color: transparent;
+    -fx-min-height: 0;
+    -fx-pref-height: 0;
 }
 
 .sidebar-section-label {
