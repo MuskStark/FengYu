@@ -1,3 +1,4 @@
+
 # Plugin Preview Window — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -15,7 +16,7 @@
 **Files:**
 - Create: `SwissKitJ-Api/src/main/resources/css/swisskit-preview.css`
 
-- [ ] **Step 1: Write the CSS file**
+- [x] **Step 1: Write the CSS file**
 
 Create `SwissKitJ-Api/src/main/resources/css/swisskit-preview.css`:
 
@@ -227,13 +228,13 @@ Create `SwissKitJ-Api/src/main/resources/css/swisskit-preview.css`:
 }
 ```
 
-- [ ] **Step 2: Verify the file exists**
+- [x] **Step 2: Verify the file exists**
 
 ```bash
 ls -la SwissKitJ-Api/src/main/resources/css/swisskit-preview.css
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add SwissKitJ-Api/src/main/resources/css/swisskit-preview.css
@@ -247,7 +248,7 @@ git commit -m "✨ feat: add swisskit-preview.css stylesheet for PluginPreviewWi
 **Files:**
 - Create: `SwissKitJ-Api/src/main/java/fan/summer/api/preview/PreviewTitleBar.java`
 
-- [ ] **Step 1: Write PreviewTitleBar**
+- [x] **Step 1: Write PreviewTitleBar**
 
 ```java
 package fan.summer.api.preview;
@@ -305,13 +306,13 @@ class PreviewTitleBar extends HBox {
 }
 ```
 
-- [ ] **Step 2: Verify compilation**
+- [x] **Step 2: Verify compilation**
 
 ```bash
 mvn compile -f SwissKitJ-Api/pom.xml
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add SwissKitJ-Api/src/main/java/fan/summer/api/preview/PreviewTitleBar.java
@@ -325,7 +326,7 @@ git commit -m "✨ feat: add PreviewTitleBar for PluginPreviewWindow"
 **Files:**
 - Create: `SwissKitJ-Api/src/main/java/fan/summer/api/preview/PreviewSidebar.java`
 
-- [ ] **Step 1: Write PreviewSidebar**
+- [x] **Step 1: Write PreviewSidebar**
 
 ```java
 package fan.summer.api.preview;
@@ -376,13 +377,13 @@ class PreviewSidebar extends VBox {
 }
 ```
 
-- [ ] **Step 2: Verify compilation**
+- [x] **Step 2: Verify compilation**
 
 ```bash
 mvn compile -f SwissKitJ-Api/pom.xml
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add SwissKitJ-Api/src/main/java/fan/summer/api/preview/PreviewSidebar.java
@@ -396,7 +397,7 @@ git commit -m "✨ feat: add PreviewSidebar for PluginPreviewWindow"
 **Files:**
 - Create: `SwissKitJ-Api/src/main/java/fan/summer/api/preview/PreviewToolCard.java`
 
-- [ ] **Step 1: Write PreviewToolCard**
+- [x] **Step 1: Write PreviewToolCard**
 
 ```java
 package fan.summer.api.preview;
@@ -488,13 +489,13 @@ class PreviewToolCard extends VBox {
 }
 ```
 
-- [ ] **Step 2: Verify compilation**
+- [x] **Step 2: Verify compilation**
 
 ```bash
 mvn compile -f SwissKitJ-Api/pom.xml
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add SwissKitJ-Api/src/main/java/fan/summer/api/preview/PreviewToolCard.java
@@ -508,7 +509,7 @@ git commit -m "✨ feat: add PreviewToolCard for PluginPreviewWindow"
 **Files:**
 - Create: `SwissKitJ-Api/src/main/java/fan/summer/api/preview/PreviewDetailPanel.java`
 
-- [ ] **Step 1: Write PreviewDetailPanel**
+- [x] **Step 1: Write PreviewDetailPanel**
 
 ```java
 package fan.summer.api.preview;
@@ -704,13 +705,13 @@ class PreviewDetailPanel extends VBox {
 }
 ```
 
-- [ ] **Step 2: Verify compilation**
+- [x] **Step 2: Verify compilation**
 
 ```bash
 mvn compile -f SwissKitJ-Api/pom.xml
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add SwissKitJ-Api/src/main/java/fan/summer/api/preview/PreviewDetailPanel.java
@@ -724,7 +725,7 @@ git commit -m "✨ feat: add PreviewDetailPanel for PluginPreviewWindow"
 **Files:**
 - Create: `SwissKitJ-Api/src/main/java/fan/summer/api/preview/PreviewShell.java`
 
-- [ ] **Step 1: Write PreviewShell**
+- [x] **Step 1: Write PreviewShell**
 
 ```java
 package fan.summer.api.preview;
@@ -1054,13 +1055,13 @@ class PreviewShell extends BorderPane {
 }
 ```
 
-- [ ] **Step 2: Verify compilation**
+- [x] **Step 2: Verify compilation**
 
 ```bash
 mvn compile -f SwissKitJ-Api/pom.xml
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add SwissKitJ-Api/src/main/java/fan/summer/api/preview/PreviewShell.java
@@ -1074,7 +1075,7 @@ git commit -m "✨ feat: add PreviewShell for PluginPreviewWindow"
 **Files:**
 - Create: `SwissKitJ-Api/src/main/java/fan/summer/api/preview/PluginPreviewWindow.java`
 
-- [ ] **Step 1: Write PluginPreviewWindow with Builder**
+- [x] **Step 1: Write PluginPreviewWindow with Builder**
 
 ```java
 package fan.summer.api.preview;
@@ -1266,13 +1267,13 @@ public final class PluginPreviewWindow {
 }
 ```
 
-- [ ] **Step 2: Verify compilation**
+- [x] **Step 2: Verify compilation**
 
 ```bash
 mvn compile -f SwissKitJ-Api/pom.xml
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add SwissKitJ-Api/src/main/java/fan/summer/api/preview/PluginPreviewWindow.java
@@ -1285,7 +1286,7 @@ git commit -m "✨ feat: add PluginPreviewWindow — self-contained plugin previ
 
 **Files:** (none — verification only)
 
-- [ ] **Step 1: Install the API module**
+- [x] **Step 1: Install the API module**
 
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
@@ -1293,7 +1294,7 @@ mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 
 Expected: BUILD SUCCESS
 
-- [ ] **Step 2: Build the full project**
+- [x] **Step 2: Build the full project**
 
 ```bash
 mvn clean package -DskipTests
@@ -1301,7 +1302,7 @@ mvn clean package -DskipTests
 
 Expected: BUILD SUCCESS across all modules
 
-- [ ] **Step 3: Verify the API JAR contains the new classes and CSS**
+- [x] **Step 3: Verify the API JAR contains the new classes and CSS**
 
 ```bash
 jar tf SwissKitJ-Api/target/SwissKitJ-Api-*.jar | grep -E "(preview|swisskit-preview)"
@@ -1318,7 +1319,7 @@ fan/summer/api/preview/PreviewTitleBar.class
 css/swisskit-preview.css
 ```
 
-- [ ] **Step 4: Commit if any build fixes were needed**
+- [x] **Step 4: Commit if any build fixes were needed**
 
 ```bash
 git status
