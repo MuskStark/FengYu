@@ -272,6 +272,7 @@ public class ContentArea extends BorderPane {
             case "all"     -> true;
             case "plugins" -> p.getType().isPlugin();
             case "fav"     -> false; // TODO: integrate favorites persistence
+            case "ai"      -> false; // AI chat is launched directly from sidebar, not shown as card
             default        -> p.getCategory().getId().equalsIgnoreCase(currentCategory);
         };
     }

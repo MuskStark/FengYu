@@ -2,7 +2,161 @@
    builtin.css — SwissKitJ 主程序内置工具专属样式
    仅在主 Scene 加载，供 buildintool/ 与 ui/setting/ 中的内置工具页面使用。
    插件代码请勿依赖这里的样式 class。
-
-   当前内置工具大多直接使用 swisskit-common.css 中的 .glass-* 工具类，
-   或在 Java 代码中以内联 style 控制视觉。本文件作为后续抽取占位。
    ================================================================ */
+
+/* ── AI Chat ────────────────────────────────────────────────── */
+
+.ai-chat-root {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+.ai-message-list {
+    -fx-background-color: transparent;
+    -fx-padding: 16 20 16 20;
+    -fx-spacing: 12;
+}
+
+.ai-msg-bubble {
+    -fx-padding: 10 16 10 16;
+    -fx-background-radius: 14px;
+    -fx-max-width: 560px;
+    -fx-wrap-text: true;
+}
+
+.ai-msg-user .ai-msg-bubble {
+    -fx-background-color: rgba(91,140,247,0.22);
+    -fx-border-color: rgba(91,140,247,0.18);
+    -fx-border-width: 1px;
+    -fx-border-radius: 14px;
+}
+
+.ai-msg-assistant .ai-msg-bubble {
+    -fx-background-color: rgba(255,255,255,0.055);
+    -fx-border-color: rgba(255,255,255,0.10);
+    -fx-border-width: 1px;
+    -fx-border-radius: 14px;
+}
+
+.ai-msg-system .ai-msg-bubble {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-alignment: center;
+}
+
+.ai-msg-text {
+    -fx-font-size: 13.5px;
+    -fx-line-spacing: 4px;
+    -fx-fill: rgba(255,255,255,0.90);
+    -fx-wrap-text: true;
+}
+
+.ai-msg-user .ai-msg-text {
+    -fx-fill: rgba(255,255,255,0.95);
+}
+
+.ai-msg-label {
+    -fx-font-size: 11px;
+    -fx-text-fill: rgba(255,255,255,0.35);
+    -fx-font-weight: bold;
+    -fx-padding: 0 0 3 0;
+}
+
+.ai-chat-input-bar {
+    -fx-background-color: rgba(255,255,255,0.055);
+    -fx-border-color: rgba(255,255,255,0.12);
+    -fx-border-width: 1px;
+    -fx-border-radius: 14px;
+    -fx-background-radius: 14px;
+    -fx-padding: 6 12 6 12;
+    -fx-spacing: 8;
+    -fx-alignment: center;
+}
+
+.ai-chat-input-bar:focused-within {
+    -fx-background-color: rgba(255,255,255,0.085);
+    -fx-border-color: rgba(91,140,247,0.45);
+    -fx-effect: dropshadow(gaussian, rgba(91,140,247,0.25), 8, 0, 0, 0);
+}
+
+.ai-chat-textarea {
+    -fx-background-color: transparent;
+    -fx-border-width: 0;
+    -fx-text-fill: rgba(255,255,255,0.92);
+    -fx-prompt-text-fill: rgba(255,255,255,0.28);
+    -fx-font-size: 13.5px;
+    -fx-control-inner-background: transparent;
+    -fx-padding: 4 0 4 0;
+    -fx-max-height: 120px;
+    -fx-min-height: 28px;
+    -fx-pref-height: 28px;
+    -fx-wrap-text: true;
+}
+
+.ai-send-btn {
+    -fx-background-color: #5b8cf7;
+    -fx-text-fill: white;
+    -fx-font-size: 16px;
+    -fx-background-radius: 10px;
+    -fx-border-radius: 10px;
+    -fx-border-width: 0;
+    -fx-min-width: 36px;
+    -fx-min-height: 36px;
+    -fx-pref-width: 36px;
+    -fx-pref-height: 36px;
+    -fx-cursor: hand;
+    -fx-alignment: center;
+}
+
+.ai-send-btn:hover {
+    -fx-background-color: #4a7bf5;
+    -fx-effect: dropshadow(gaussian, rgba(91,140,247,0.4), 10, 0, 0, 3);
+}
+
+.ai-send-btn:disabled {
+    -fx-background-color: rgba(255,255,255,0.08);
+    -fx-text-fill: rgba(255,255,255,0.25);
+    -fx-cursor: default;
+}
+
+.ai-chat-toolbar {
+    -fx-padding: 0 20 0 20;
+    -fx-spacing: 8;
+    -fx-alignment: center-left;
+}
+
+.ai-toolbar-btn {
+    -fx-background-color: rgba(255,255,255,0.06);
+    -fx-border-color: rgba(255,255,255,0.10);
+    -fx-border-width: 1px;
+    -fx-background-radius: 8px;
+    -fx-border-radius: 8px;
+    -fx-text-fill: rgba(255,255,255,0.60);
+    -fx-font-size: 12px;
+    -fx-padding: 4 10 4 10;
+    -fx-cursor: hand;
+}
+
+.ai-toolbar-btn:hover {
+    -fx-background-color: rgba(255,255,255,0.10);
+    -fx-text-fill: rgba(255,255,255,0.85);
+}
+
+.ai-status-label {
+    -fx-font-size: 11px;
+    -fx-text-fill: rgba(255,255,255,0.30);
+    -fx-font-family: "SF Mono", "Consolas", "Microsoft YaHei", monospace;
+}
+
+.ai-typing-indicator {
+    -fx-font-size: 12px;
+    -fx-text-fill: rgba(255,255,255,0.40);
+}
+
+/* ── AI Model selector (in sidebar or toolbar) ─────────────── */
+
+.ai-model-hint {
+    -fx-font-size: 11px;
+    -fx-text-fill: rgba(255,255,255,0.28);
+    -fx-padding: 0 20 8 20;
+}
