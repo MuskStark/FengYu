@@ -91,6 +91,13 @@
     -fx-font-size: 13px;
     -fx-text-fill: rgba(255,255,255,0.55);
 }
+.preview-nav-item:hover {
+    -fx-background-color: rgba(255,255,255,0.055);
+    -fx-border-color: rgba(255,255,255,0.10);
+}
+.preview-nav-item:hover .preview-nav-item-text {
+    -fx-text-fill: rgba(255,255,255,1);
+}
 .preview-nav-item.active {
     -fx-background-color: rgba(91,140,247,0.18);
     -fx-border-color: rgba(91,140,247,0.25);
