@@ -4,22 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Run
 
-**Build order is required** — the API module must be installed before anything else compiles:
+All modules have **standalone POMs** with no parent dependency — each can be built independently.
 
 ```bash
-# Step 1: Install the API module
+# Build and install the API module (required first — other modules depend on it)
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 
-# Step 2: Build the full project (from repo root)
-mvn clean package -DskipTests
+# Build the main app
+mvn clean package -f SwissKit/pom.xml -DskipTests
 
 # Run the application
-java -jar SwissKit/target/SwissKit-2.1.1.jar
+java -jar SwissKit/target/SwissKitJ-3.0.0-alpha.1.jar
 ```
 
-To build and run only the main app module:
+To build all modules from the repo root (root POM is a simple aggregator):
 ```bash
-mvn clean package -pl SwissKit -am -DskipTests
+mvn install -f SwissKitJ-Api/pom.xml -DskipTests && mvn clean package -f SwissKit/pom.xml -DskipTests
 ```
 
 On Windows, the `windows-exe` Maven profile is auto-activated and produces `SwissKit.exe` via Launch4j. GitHub Actions handles multi-platform builds — local Maven is not required for releases.
@@ -30,11 +30,8 @@ On Windows, the `windows-exe` Maven profile is auto-activated and produces `Swis
 |--------|---------|
 | `SwissKitJ-Api` | Shared plugin interface + reusable UI components (`SwissKitJPlugin`, `StepWizard`) |
 | `SwissKit` | Main JavaFX application — UI shell, plugin loading, built-in tools |
-| `OfficalPlugin/SwissKitJ-Plugin-HappyLearning` | Auto-learning plugin |
-| `OfficalPlugin/SwissKitJ-Plugin-Qcc` | CSV-to-Excel converter plugin |
-| `OfficalPlugin/SwissKit-Plugin-Mouse` | Mouse automation plugin |
 
-All plugins declare `SwissKitJ-Api` as `provided` scope. The main app provides it at runtime via the fat JAR.
+Official plugins live in a separate repository: [MuskStark/SwissKiJ-Plugin](https://github.com/MuskStark/SwissKiJ-Plugin). They are built independently and dropped into `plugins/` as JARs at runtime. All plugins declare `SwissKitJ-Api` as `provided` scope. The main app provides it at runtime via the fat JAR.
 
 ## Architecture
 
