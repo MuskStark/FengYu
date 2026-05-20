@@ -29,14 +29,17 @@
     -fx-font-weight: 500;
 }
 .preview-titlebar-close {
-    -fx-background-color: transparent;
+    -fx-background-color: rgba(255,255,255,0.06);
+    -fx-background-radius: 8px;
     -fx-border-width: 0;
-    -fx-text-fill: rgba(255,255,255,0.35);
+    -fx-text-fill: rgba(255,255,255,0.50);
     -fx-font-size: 14px;
     -fx-cursor: hand;
+    -fx-alignment: center;
 }
 .preview-titlebar-close:hover {
-    -fx-text-fill: rgba(255,255,255,0.85);
+    -fx-background-color: rgba(255,70,70,0.25);
+    -fx-text-fill: #ff6b6b;
 }
 
 /* ── Search bar ────────────────────────────────────────────── */
