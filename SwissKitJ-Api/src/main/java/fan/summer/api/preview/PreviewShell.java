@@ -258,6 +258,11 @@ class PreviewShell extends BorderPane {
     private void showPluginView(SwissKitJPlugin plugin) {
         detailPanel.hide();
 
+        if (showSearchBar) {
+            searchBarNode.setVisible(false);
+            searchBarNode.setManaged(false);
+        }
+
         Label titleLabel = (Label) backBar.lookup(".preview-back-title");
         if (titleLabel != null) titleLabel.setText(plugin.getName());
         backBar.setVisible(true);
@@ -288,6 +293,12 @@ class PreviewShell extends BorderPane {
             try { activePlugin.onDeactivate(); } catch (Exception ignored) {}
             activePlugin = null;
         }
+
+        if (showSearchBar) {
+            searchBarNode.setVisible(true);
+            searchBarNode.setManaged(true);
+        }
+
         backBar.setVisible(false);
         backBar.setManaged(false);
 

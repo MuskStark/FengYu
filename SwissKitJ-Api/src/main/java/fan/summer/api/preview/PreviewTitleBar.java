@@ -28,9 +28,11 @@ class PreviewTitleBar extends HBox {
 
         Label closeBtn = new Label("✕");
         closeBtn.getStyleClass().add("preview-titlebar-close");
+        closeBtn.setPadding(new Insets(4, 8, 4, 8));
+        closeBtn.setMinSize(28, 28);
 
         getChildren().addAll(titleLabel, spacer, closeBtn);
-        setPadding(new Insets(0, 16, 0, 16));
+        setPadding(new Insets(8, 12, 8, 16));
     }
 
     /** Wire the close button and drag-to-move after the Stage is available. */
