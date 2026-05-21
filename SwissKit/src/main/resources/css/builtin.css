@@ -119,6 +119,62 @@
     -fx-cursor: default;
 }
 
+.ai-attach-btn {
+    -fx-background-color: transparent;
+    -fx-text-fill: rgba(255,255,255,0.55);
+    -fx-font-size: 16px;
+    -fx-background-radius: 10px;
+    -fx-border-radius: 10px;
+    -fx-border-width: 0;
+    -fx-min-width: 36px;
+    -fx-min-height: 36px;
+    -fx-pref-width: 36px;
+    -fx-pref-height: 36px;
+    -fx-cursor: hand;
+    -fx-alignment: center;
+}
+
+.ai-attach-btn:hover {
+    -fx-background-color: rgba(255,255,255,0.08);
+    -fx-text-fill: rgba(255,255,255,0.90);
+}
+
+.ai-attach-btn:disabled {
+    -fx-text-fill: rgba(255,255,255,0.20);
+    -fx-cursor: default;
+}
+
+.ai-attachment-bar {
+    -fx-background-color: transparent;
+}
+
+.ai-attachment-chip {
+    -fx-background-color: rgba(91,140,247,0.12);
+    -fx-border-color: rgba(91,140,247,0.22);
+    -fx-border-width: 1px;
+    -fx-border-radius: 10px;
+    -fx-background-radius: 10px;
+    -fx-padding: 3 6 3 8;
+}
+
+.ai-chip-remove {
+    -fx-background-color: transparent;
+    -fx-text-fill: rgba(255,255,255,0.55);
+    -fx-font-size: 13px;
+    -fx-min-width: 18px;
+    -fx-min-height: 18px;
+    -fx-pref-width: 18px;
+    -fx-pref-height: 18px;
+    -fx-padding: 0;
+    -fx-background-radius: 9px;
+    -fx-cursor: hand;
+}
+
+.ai-chip-remove:hover {
+    -fx-background-color: rgba(255,107,107,0.30);
+    -fx-text-fill: rgba(255,255,255,0.95);
+}
+
 .ai-chat-toolbar {
     -fx-padding: 0 20 0 20;
     -fx-spacing: 8;

@@ -85,4 +85,25 @@ public interface AiService {
      * @return true if a generation is currently in progress
      */
     boolean isGenerating();
+
+    // ── Tool management ───────────────────────────────────────
+
+    /**
+     * Register a tool that the AI model can invoke during generation.
+     *
+     * @param tool the tool to register
+     */
+    void registerTool(AiTool tool);
+
+    /**
+     * Unregister a previously registered tool.
+     *
+     * @param toolName the name of the tool to remove
+     */
+    void unregisterTool(String toolName);
+
+    /**
+     * @return list of currently registered tools
+     */
+    List<AiTool> getTools();
 }

@@ -372,6 +372,7 @@ public class SwissKitJSettingUi {
                         modelPathLabel.setText(path.trim());
                         loadBtn.setDisable(false);
                         unloadBtn.setDisable(false);
+                        AiServiceProvider.notifyStateChanged();
                     });
                 } catch (Exception ex) {
                     log.error("Failed to load AI model", ex);
@@ -391,6 +392,7 @@ public class SwissKitJSettingUi {
             modelStatusLabel.setText("No model loaded");
             modelPathLabel.setText("—");
             unloadBtn.setDisable(true);
+            AiServiceProvider.notifyStateChanged();
         });
 
         HBox modelBtnRow = new HBox(8, browseBtn, loadBtn, unloadBtn);
