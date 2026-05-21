@@ -196,6 +196,10 @@ public class ContentArea extends BorderPane {
         sp.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         sp.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         sp.setStyle("-fx-background-color: transparent; -fx-background: transparent;");
+        // Control's default maxWidth is USE_COMPUTED_SIZE, which equals prefWidth.
+        // Force MAX_VALUE so StackPane can stretch this to fill the page area.
+        sp.setMaxWidth(Double.MAX_VALUE);
+        sp.setMaxHeight(Double.MAX_VALUE);
         return sp;
     }
 
