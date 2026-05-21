@@ -18,7 +18,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
-import java.nio.file.Paths;
 
 /**
  * Application entry point.
@@ -48,8 +47,8 @@ public class SwissKitJApp extends Application {
         log.info("Initialising database");
         DatabaseInit.init();
 
-        // ── Plugin directory (prefer JAR sibling, fallback to working directory during dev) ──
-        Path pluginsDir = resolvePluginsDir();
+        // ── Plugin directory (.swisskit/plugin/ under working directory) ──
+        Path pluginsDir = PluginLoader.resolvePluginsDir();
         log.info("Plugin directory resolved to: {}", pluginsDir.toAbsolutePath());
 
         // ── Plugin system ──────────────────────────────────────
@@ -97,23 +96,6 @@ public class SwissKitJApp extends Application {
         log.info("SwissKitJ application shutting down");
         if (mainWindow != null) mainWindow.shutdown();
         log.info("Shutdown complete");
-    }
-
-    // ── Helper: locate plugins directory ───────────────────────────
-
-    private Path resolvePluginsDir() {
-        // Try JAR sibling directory
-        try {
-            Path jar = Paths.get(
-                SwissKitJApp.class.getProtectionDomain()
-                    .getCodeSource().getLocation().toURI()
-            );
-            Path candidate = jar.getParent().resolve("plugins");
-            if (candidate.toFile().isDirectory()) return candidate;
-        } catch (Exception ignored) {}
-
-        // Dev mode: plugins/ under working directory
-        return Paths.get("plugins");
     }
 
     public static void main(String[] args) {
