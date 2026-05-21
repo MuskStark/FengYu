@@ -38,3 +38,6 @@ build/
 /SwissKit-main/
 /AGENTS.md
 /.swisskit/
+
+### MCP ###
+.mcp.json
