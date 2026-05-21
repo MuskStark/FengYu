@@ -1,6 +1,7 @@
 package fan.summer.Registrar;
 
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.buildintool.ai.AiChatPlugin;
 import fan.summer.buildintool.dev.Base64Plugin;
 import fan.summer.buildintool.dev.HashCalculatorPlugin;
 import fan.summer.buildintool.dev.JsonFormatterPlugin;
@@ -24,6 +25,7 @@ public class BuiltinToolRegistrar {
 
     public static void register(PluginLoader loader, PluginRegistry registry) {
         List<SwissKitJPlugin> builtins = List.of(
+            new AiChatPlugin(),
             new JsonFormatterPlugin(),
             new Base64Plugin(),
             new HashCalculatorPlugin(),

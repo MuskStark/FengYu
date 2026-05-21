@@ -1,5 +1,7 @@
 package fan.summer.ui.setting;
 
+import fan.summer.api.ai.AiService;
+import fan.summer.api.ai.AiServiceProvider;
 import fan.summer.api.theme.Themes;
 import fan.summer.database.DatabaseInit;
 import fan.summer.ui.sidebar.Sidebar.NavItem;
@@ -16,13 +18,17 @@ import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.control.Alert;
+import fan.summer.api.component.GlassNotification;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
+import javafx.scene.control.ProgressBar;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.Slider;
+import javafx.scene.control.Spinner;
+import javafx.scene.control.SpinnerValueFactory;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
@@ -32,15 +38,21 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.stage.FileChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
+import javafx.stage.Window;
 import org.apache.ibatis.session.SqlSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 /**
@@ -57,11 +69,13 @@ public class SwissKitJSettingUi {
         // ── Content pages (created once, cached) ──────────────
         Node generalPage      = buildGeneralTab();
         Node storePage        = buildPluginStoreSettings();
+        Node aiModelPage      = buildAiModelTab();
         Node emailPage        = buildEmailTab();
 
-        StackPane contentStack = new StackPane(generalPage, storePage, emailPage);
+        StackPane contentStack = new StackPane(generalPage, storePage, aiModelPage, emailPage);
         contentStack.setStyle("-fx-background-color: transparent;");
         storePage.setVisible(false);
+        aiModelPage.setVisible(false);
         emailPage.setVisible(false);
 
         // ── Sidebar ──────────────────────────────────────────
@@ -78,6 +92,12 @@ public class SwissKitJSettingUi {
 
         sidebar.getChildren().add(sidebarDivider());
 
+        sidebar.getChildren().add(sidebarSectionLabel("AI"));
+        NavItem aiModelNav = sidebarNavItem("🤖", "AI Model");
+        sidebar.getChildren().add(aiModelNav);
+
+        sidebar.getChildren().add(sidebarDivider());
+
         sidebar.getChildren().add(sidebarSectionLabel("BUILD-IN TOOLS"));
         NavItem emailNav = sidebarNavItem("✉", "Email");
         sidebar.getChildren().add(emailNav);
@@ -90,8 +110,8 @@ public class SwissKitJSettingUi {
         sidebar.getChildren().add(spacer);
 
         // ── Selection wiring ─────────────────────────────────
-        NavItem[] items = {generalNav, storeNav, emailNav};
-        Node[]    pages = {generalPage, storePage, emailPage};
+        NavItem[] items = {generalNav, storeNav, aiModelNav, emailNav};
+        Node[]    pages = {generalPage, storePage, aiModelPage, emailPage};
 
         for (int i = 0; i < items.length; i++) {
             final int idx = i;
@@ -104,8 +124,16 @@ public class SwissKitJSettingUi {
         }
 
         // ── Layout: sidebar + content ────────────────────────
-        HBox body = new HBox(sidebar, contentStack);
-        HBox.setHgrow(contentStack, Priority.ALWAYS);
+        ScrollPane contentScroll = new ScrollPane(contentStack);
+        contentScroll.setFitToWidth(true);
+        contentScroll.setFitToHeight(true);
+        contentScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        contentScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        contentScroll.setStyle("-fx-background-color: transparent; -fx-background: transparent;");
+        contentScroll.getStyleClass().add("content-scroll");
+
+        HBox body = new HBox(sidebar, contentScroll);
+        HBox.setHgrow(contentScroll, Priority.ALWAYS);
 
         VBox container = new VBox(body);
         container.setStyle("-fx-background-color: transparent; -fx-padding: 0;");
@@ -168,13 +196,9 @@ public class SwissKitJSettingUi {
                     mapper.insert(newEntity);
                 }
                 session.commit();
-                Platform.runLater(() -> {
-                    Alert a = new Alert(Alert.AlertType.INFORMATION);
-                    a.setTitle("Settings");
-                    a.setHeaderText(null);
-                    a.setContentText("Language changed. Restart may be required for full effect.");
-                    a.showAndWait();
-                });
+                Platform.runLater(() ->
+                    GlassNotification.toast((Window) null, GlassNotification.Type.INFO,
+                        "Language changed. Restart may be required for full effect."));
             } catch (Exception e) {
                 log.error("Failed to save language setting", e);
             }
@@ -224,7 +248,7 @@ public class SwissKitJSettingUi {
         saveBtn.setOnAction(e -> {
             String url = urlField.getText();
             if (url == null || url.isBlank()) {
-                alert(Alert.AlertType.WARNING, "Validation Error", "URL cannot be empty.");
+                GlassNotification.notify((Window) null, GlassNotification.Type.WARNING, "URL cannot be empty.");
                 return;
             }
             saveStoreUrl(url.trim());
@@ -257,18 +281,295 @@ public class SwissKitJSettingUi {
                     mapper.insert(newEntity);
                 }
                 session.commit();
-                Platform.runLater(() -> {
-                    Alert a = new Alert(Alert.AlertType.INFORMATION);
-                    a.setTitle("Saved");
-                    a.setHeaderText(null);
-                    a.setContentText("Plugin store URL saved.");
-                    a.showAndWait();
-                });
+                Platform.runLater(() ->
+                    GlassNotification.toast((Window) null, GlassNotification.Type.SUCCESS,
+                        "Plugin store URL saved."));
             } catch (Exception ex) {
                 log.error("Failed to save store URL", ex);
-                Platform.runLater(() -> alert(Alert.AlertType.ERROR, "Error", "Failed to save: " + ex.getMessage()));
+                Platform.runLater(() -> GlassNotification.notify((Window) null, GlassNotification.Type.ERROR, "Failed to save: " + ex.getMessage()));
             }
         }).start();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // AI Model Tab
+    // ═══════════════════════════════════════════════════════════════════
+
+    private static final String AI_MODEL_PATH_KEY = "ai.model.path";
+    private static final String AI_TEMPERATURE_KEY = "ai.temperature";
+    private static final String AI_TOP_P_KEY = "ai.top_p";
+    private static final String AI_MAX_TOKENS_KEY = "ai.max_tokens";
+    private static final String AI_SYSTEM_PROMPT_KEY = "ai.system_prompt";
+
+    private static VBox buildAiModelTab() {
+        VBox root = new VBox(16);
+        root.setPadding(new Insets(20));
+        root.setStyle("-fx-background-color: transparent;");
+
+        Label title = sectionTitle("AI Model Management");
+
+        // ── Model status section ─────────────────────────────
+        Label modelStatusLabel = new Label("No model loaded");
+        modelStatusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 13px;");
+
+        Label modelPathLabel = new Label("—");
+        modelPathLabel.setWrapText(true);
+        modelPathLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.35); -fx-font-size: 12px;");
+
+        TextField modelPathField = textField(null, "Select a GGUF model file...");
+        loadAiSetting(AI_MODEL_PATH_KEY, val -> modelPathField.setText(val));
+
+        Button browseBtn = glassBtn("Browse", false);
+        Button loadBtn = glassBtn("Load Model", true);
+        Button unloadBtn = glassBtn("Unload", false);
+        unloadBtn.setDisable(true);
+
+        browseBtn.setOnAction(e -> {
+            FileChooser chooser = new FileChooser();
+            chooser.setTitle("Select GGUF Model");
+            chooser.getExtensionFilters().add(
+                new FileChooser.ExtensionFilter("GGUF Model", "*.gguf")
+            );
+            File file = chooser.showOpenDialog(browseBtn.getScene().getWindow());
+            if (file != null) {
+                modelPathField.setText(file.getAbsolutePath());
+                saveAiSetting(AI_MODEL_PATH_KEY, file.getAbsolutePath());
+            }
+        });
+
+        loadBtn.setOnAction(e -> {
+            String path = modelPathField.getText();
+            if (path == null || path.isBlank()) {
+                GlassNotification.notify((Window) null, GlassNotification.Type.WARNING, "Please select a model file first.");
+                return;
+            }
+
+            loadBtn.setDisable(true);
+            modelStatusLabel.setText("Loading model...");
+            saveAiSetting(AI_MODEL_PATH_KEY, path.trim());
+
+            Thread.ofVirtual().start(() -> {
+                try {
+                    Optional<AiService> opt = AiServiceProvider.getService();
+                    if (opt.isEmpty()) {
+                        Platform.runLater(() -> {
+                            modelStatusLabel.setText("Error: AI service not available");
+                            loadBtn.setDisable(false);
+                        });
+                        return;
+                    }
+                    AiService service = opt.get();
+                    service.loadModel(Path.of(path.trim()));
+                    Platform.runLater(() -> {
+                        modelStatusLabel.setText("Model: " + service.getModelName().orElse("Unknown"));
+                        modelPathLabel.setText(path.trim());
+                        loadBtn.setDisable(false);
+                        unloadBtn.setDisable(false);
+                        AiServiceProvider.notifyStateChanged();
+                    });
+                } catch (Exception ex) {
+                    log.error("Failed to load AI model", ex);
+                    Platform.runLater(() -> {
+                        modelStatusLabel.setText("Failed to load model: " + ex.getMessage());
+                        loadBtn.setDisable(false);
+                    });
+                }
+            });
+        });
+
+        unloadBtn.setOnAction(e -> {
+            Optional<AiService> opt = AiServiceProvider.getService();
+            if (opt.isPresent()) {
+                opt.get().unloadModel();
+            }
+            modelStatusLabel.setText("No model loaded");
+            modelPathLabel.setText("—");
+            unloadBtn.setDisable(true);
+            AiServiceProvider.notifyStateChanged();
+        });
+
+        HBox modelBtnRow = new HBox(8, browseBtn, loadBtn, unloadBtn);
+        modelBtnRow.setAlignment(Pos.CENTER_LEFT);
+
+        // Memory usage bar
+        Label memLabel = new Label("Memory Usage");
+        memLabel.getStyleClass().add("glass-field-label");
+        ProgressBar memBar = new ProgressBar(0);
+        memBar.setPrefWidth(300);
+        Label memText = new Label("—");
+        memText.setStyle("-fx-text-fill: rgba(255,255,255,0.35); -fx-font-size: 11px;");
+
+        HBox memRow = new HBox(10, memBar, memText);
+        memRow.setAlignment(Pos.CENTER_LEFT);
+
+        // ── Generation parameters ────────────────────────────
+        Label paramTitle = sectionTitle("Generation Parameters");
+
+        // Temperature
+        Label tempLabel = subLabel("Temperature");
+        Label tempValue = new Label("0.7");
+        tempValue.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+        Slider tempSlider = new Slider(0, 2, 0.7);
+        tempSlider.setShowTickLabels(true);
+        tempSlider.setShowTickMarks(true);
+        tempSlider.setMajorTickUnit(0.5);
+        tempSlider.setMinorTickCount(4);
+        tempSlider.setBlockIncrement(0.1);
+        tempSlider.setPrefWidth(300);
+        tempSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
+            tempValue.setText(String.format("%.2f", newVal.doubleValue()));
+            saveAiSetting(AI_TEMPERATURE_KEY, String.format("%.2f", newVal.doubleValue()));
+        });
+        loadAiSetting(AI_TEMPERATURE_KEY, val -> {
+            try { tempSlider.setValue(Double.parseDouble(val)); } catch (NumberFormatException ignored) {}
+        });
+        HBox tempRow = new HBox(10, tempSlider, tempValue);
+        tempRow.setAlignment(Pos.CENTER_LEFT);
+
+        // Top P
+        Label topPLabel = subLabel("Top P");
+        Label topPValue = new Label("0.9");
+        topPValue.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+        Slider topPSlider = new Slider(0, 1, 0.9);
+        topPSlider.setShowTickLabels(true);
+        topPSlider.setShowTickMarks(true);
+        topPSlider.setMajorTickUnit(0.25);
+        topPSlider.setMinorTickCount(3);
+        topPSlider.setBlockIncrement(0.05);
+        topPSlider.setPrefWidth(300);
+        topPSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
+            topPValue.setText(String.format("%.2f", newVal.doubleValue()));
+            saveAiSetting(AI_TOP_P_KEY, String.format("%.2f", newVal.doubleValue()));
+        });
+        loadAiSetting(AI_TOP_P_KEY, val -> {
+            try { topPSlider.setValue(Double.parseDouble(val)); } catch (NumberFormatException ignored) {}
+        });
+        HBox topPRow = new HBox(10, topPSlider, topPValue);
+        topPRow.setAlignment(Pos.CENTER_LEFT);
+
+        // Max tokens
+        Label maxTokensLabel = subLabel("Max Tokens");
+        Spinner<Integer> maxTokensSpinner = new Spinner<>();
+        maxTokensSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(64, 4096, 512, 64));
+        maxTokensSpinner.getStyleClass().add("glass-field");
+        maxTokensSpinner.setPrefWidth(120);
+        maxTokensSpinner.valueProperty().addListener((obs, oldVal, newVal) -> {
+            saveAiSetting(AI_MAX_TOKENS_KEY, String.valueOf(newVal));
+        });
+        loadAiSetting(AI_MAX_TOKENS_KEY, val -> {
+            try { maxTokensSpinner.getValueFactory().setValue(Integer.parseInt(val)); } catch (NumberFormatException ignored) {}
+        });
+
+        // System prompt
+        Label sysPromptLabel = subLabel("System Prompt");
+        TextField sysPromptField = textField(null, "You are a helpful assistant.");
+        HBox.setHgrow(sysPromptField, Priority.ALWAYS);
+        sysPromptField.textProperty().addListener((obs, oldVal, newVal) -> {
+            saveAiSetting(AI_SYSTEM_PROMPT_KEY, newVal);
+        });
+        loadAiSetting(AI_SYSTEM_PROMPT_KEY, val -> sysPromptField.setText(val));
+
+        // Assemble
+        root.getChildren().addAll(
+            title,
+            modelStatusLabel, modelPathLabel,
+            labeled("Model Path", modelPathField),
+            modelBtnRow,
+            memLabel, memRow,
+            paramTitle,
+            labeled(null, tempRow),
+            labeled(null, topPRow),
+            labeled(null, maxTokensSpinner),
+            labeled(null, sysPromptField)
+        );
+
+        // Initial state refresh
+        refreshAiModelState(modelStatusLabel, modelPathLabel, unloadBtn);
+
+        return root;
+    }
+
+    private static void refreshAiModelState(Label statusLabel, Label pathLabel, Button unloadBtn) {
+        Optional<AiService> opt = AiServiceProvider.getService();
+        if (opt.isPresent() && opt.get().isReady()) {
+            AiService service = opt.get();
+            statusLabel.setText("Model: " + service.getModelName().orElse("Unknown"));
+            unloadBtn.setDisable(false);
+            loadAiSetting(AI_MODEL_PATH_KEY, val -> pathLabel.setText(val));
+        }
+    }
+
+    private static void loadAiSetting(String key, Consumer<String> consumer) {
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            AppSettingEntity entity = mapper.selectByKey(key);
+            if (entity != null && entity.getSettingValue() != null && !entity.getSettingValue().isBlank()) {
+                consumer.accept(entity.getSettingValue());
+            }
+        } catch (Exception e) {
+            log.debug("Could not read AI setting: {}", key, e);
+        }
+    }
+
+    private static void saveAiSetting(String key, String value) {
+        new Thread(() -> {
+            try (SqlSession session = DatabaseInit.getSqlSession()) {
+                AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+                AppSettingEntity entity = mapper.selectByKey(key);
+                if (entity != null) {
+                    entity.setSettingValue(value);
+                    mapper.update(entity);
+                } else {
+                    AppSettingEntity newEntity = new AppSettingEntity();
+                    newEntity.setSettingKey(key);
+                    newEntity.setSettingValue(value);
+                    mapper.insert(newEntity);
+                }
+                session.commit();
+            } catch (Exception e) {
+                log.error("Failed to save AI setting: {}", key, e);
+            }
+        }).start();
+    }
+
+    /** Get the saved AI temperature, or default 0.7 */
+    public static float getAiTemperature() {
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            AppSettingEntity entity = mapper.selectByKey(AI_TEMPERATURE_KEY);
+            if (entity != null) return Float.parseFloat(entity.getSettingValue());
+        } catch (Exception ignored) {}
+        return 0.7f;
+    }
+
+    /** Get the saved AI top_p, or default 0.9 */
+    public static float getAiTopP() {
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            AppSettingEntity entity = mapper.selectByKey(AI_TOP_P_KEY);
+            if (entity != null) return Float.parseFloat(entity.getSettingValue());
+        } catch (Exception ignored) {}
+        return 0.9f;
+    }
+
+    /** Get the saved AI max tokens, or default 512 */
+    public static int getAiMaxTokens() {
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            AppSettingEntity entity = mapper.selectByKey(AI_MAX_TOKENS_KEY);
+            if (entity != null) return Integer.parseInt(entity.getSettingValue());
+        } catch (Exception ignored) {}
+        return 512;
+    }
+
+    /** Get the saved AI system prompt, or default */
+    public static String getAiSystemPrompt() {
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            AppSettingEntity entity = mapper.selectByKey(AI_SYSTEM_PROMPT_KEY);
+            if (entity != null && !entity.getSettingValue().isBlank()) return entity.getSettingValue();
+        } catch (Exception ignored) {}
+        return "You are a helpful assistant.";
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -409,12 +710,12 @@ public class SwissKitJSettingUi {
         if (smtp == null || smtp.isBlank() || port == null || port.isBlank()
                 || user == null || user.isBlank() || pass == null || pass.isBlank()
                 || from == null || from.isBlank()) {
-            alert(Alert.AlertType.WARNING, "Validation Error", "All fields are required.");
+            GlassNotification.notify((Window) null, GlassNotification.Type.WARNING, "All fields are required.");
             return;
         }
 
         if (tls && ssl) {
-            alert(Alert.AlertType.WARNING, "Validation Error", "TLS and SSL cannot be both selected.");
+            GlassNotification.notify((Window) null, GlassNotification.Type.WARNING, "TLS and SSL cannot be both selected.");
             return;
         }
 
@@ -441,16 +742,12 @@ public class SwissKitJSettingUi {
                 mapper.insert(entity);
                 session.commit();
                 log.info("Email settings saved: smtp={}:{}", fSmtp, fPort);
-                Platform.runLater(() -> {
-                    Alert a = new Alert(Alert.AlertType.INFORMATION);
-                    a.setTitle("Success");
-                    a.setHeaderText(null);
-                    a.setContentText("Email settings saved successfully.");
-                    a.showAndWait();
-                });
+                Platform.runLater(() ->
+                    GlassNotification.toast((Window) null, GlassNotification.Type.SUCCESS,
+                        "Email settings saved successfully."));
             } catch (Exception ex) {
                 log.error("Failed to save email settings", ex);
-                Platform.runLater(() -> alert(Alert.AlertType.ERROR, "Error", "Failed to save: " + ex.getMessage()));
+                Platform.runLater(() -> GlassNotification.notify((Window) null, GlassNotification.Type.ERROR, "Failed to save: " + ex.getMessage()));
             }
         }).start();
     }
@@ -471,7 +768,7 @@ public class SwissKitJSettingUi {
             entities = session.getMapper(EmailAddressBookMapper.class).selectEmailAddressBook();
             if (entities == null) entities = new ArrayList<>();
         } catch (Exception e) {
-            alert(Alert.AlertType.ERROR, "Error", "Failed to load address book: " + e.getMessage());
+            GlassNotification.notify((Window) null, GlassNotification.Type.ERROR, "Failed to load address book: " + e.getMessage());
             return;
         }
 
@@ -614,7 +911,7 @@ public class SwissKitJSettingUi {
         okBtn.setOnAction(e -> {
             String address = addressField.getText();
             if (address == null || address.isBlank() || !address.matches(".+@.+\\..+")) {
-                alert(Alert.AlertType.WARNING, "Validation Error", "Valid email address is required.");
+                GlassNotification.notify((Window) null, GlassNotification.Type.WARNING, "Valid email address is required.");
                 return;
             }
             try (SqlSession session = DatabaseInit.getSqlSession()) {
@@ -635,7 +932,7 @@ public class SwissKitJSettingUi {
                 openAddressBookDialog();
             } catch (Exception ex) {
                 log.error("Failed to save address", ex);
-                alert(Alert.AlertType.ERROR, "Error", "Failed to save: " + ex.getMessage());
+                GlassNotification.notify((Window) null, GlassNotification.Type.ERROR, "Failed to save: " + ex.getMessage());
             }
         });
 
@@ -676,7 +973,7 @@ public class SwissKitJSettingUi {
             tags = session.getMapper(EmailTagMapper.class).selectAll();
             if (tags == null) tags = new ArrayList<>();
         } catch (Exception e) {
-            alert(Alert.AlertType.ERROR, "Error", "Failed to load tags: " + e.getMessage());
+            GlassNotification.notify((Window) null, GlassNotification.Type.ERROR, "Failed to load tags: " + e.getMessage());
             return;
         }
 
@@ -852,13 +1149,5 @@ public class SwissKitJSettingUi {
         d.setPrefHeight(1);
         VBox.setMargin(d, new Insets(6, 4, 6, 4));
         return d;
-    }
-
-    private static void alert(Alert.AlertType type, String title, String message) {
-        Alert a = new Alert(type);
-        a.setTitle(title);
-        a.setHeaderText(null);
-        a.setContentText(message);
-        a.showAndWait();
     }
 }

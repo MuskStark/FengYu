@@ -5,6 +5,7 @@ import javafx.animation.ScaleTransition;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -16,13 +17,14 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * Left navigation sidebar.
+ * Left navigation sidebar with scrollable content.
  * Listen for category switch events via setOnCategorySelect.
  */
 public class Sidebar extends VBox {
 
     public record Category(String id, String icon, String label, int count, boolean isNew) {}
 
+    private final VBox content = new VBox();
     private final List<NavItem> navItems = new ArrayList<>();
     private NavItem activeItem;
     private Consumer<String> onCategorySelect;
@@ -33,6 +35,7 @@ public class Sidebar extends VBox {
         setPrefWidth(220);
         setMinWidth(200);
         setMaxWidth(260);
+        setSpacing(0);
         build();
     }
 
@@ -55,10 +58,16 @@ public class Sidebar extends VBox {
     // ── Build static navigation structure ──────────────────────────────────
 
     private void build() {
-        setSpacing(0);
+        content.setSpacing(0);
+
+        // ── AI section (first position) ────────────────────────────────
+        content.getChildren().add(sectionLabel("AI ASSISTANT"));
+        addNavItem("ai", "🤖", "AI Chat", 0, true);
+
+        content.getChildren().add(divider());
 
         // ── Tools section ────────────────────────────────────
-        getChildren().add(sectionLabel("TOOLS"));
+        content.getChildren().add(sectionLabel("TOOLS"));
         addNavItem("all",     "⊞", "All Tools",        0, false);
         addNavItem("text",    "✏️", "Text Processing",  0, false);
         addNavItem("image",   "🖼", "Image Processing", 0, false);
@@ -66,27 +75,37 @@ public class Sidebar extends VBox {
         addNavItem("net",     "📡", "Network Tools",    0, false);
         addNavItem("other",   "📦", "Other Tools",      0, false);
 
-        getChildren().add(divider());
+        content.getChildren().add(divider());
 
         // ── Plugins section ────────────────────────────────────
-        getChildren().add(sectionLabel("PLUGINS"));
+        content.getChildren().add(sectionLabel("PLUGINS"));
         addNavItem("plugins", "🧩", "Installed Plugins", 0, true);
         addNavItem("store",   "🏪", "Plugin Store",   0, false);
 
-        getChildren().add(divider());
+        content.getChildren().add(divider());
 
         // ── Favorites section ────────────────────────────────────
-        getChildren().add(sectionLabel("FAVORITES"));
+        content.getChildren().add(sectionLabel("FAVORITES"));
         addNavItem("fav", "⭐", "My Favorites", 0, false);
 
-        // ── Bottom spacer + Settings ──────────────────────────────
-        Region spacer = new Region();
-        VBox.setVgrow(spacer, Priority.ALWAYS);
-        getChildren().add(spacer);
-        getChildren().add(divider());
+        content.getChildren().add(divider());
+
+        // ── Settings (always at bottom) ──────────────────────────
         addSettingsItem("⚙️", "Settings");
 
-        // Activate "All Tools" by default
+        // ── Wrap in ScrollPane ────────────────────────────────────
+        ScrollPane scrollPane = new ScrollPane(content);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setFitToHeight(true);
+        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        scrollPane.setStyle("-fx-background-color: transparent; -fx-background: transparent;");
+        scrollPane.getStyleClass().add("sidebar-scroll");
+
+        getChildren().add(scrollPane);
+        VBox.setVgrow(scrollPane, Priority.ALWAYS);
+
+        // Activate "AI Chat" by default (first item)
         if (!navItems.isEmpty()) {
             activate(navItems.get(0), false);
         }
@@ -96,7 +115,7 @@ public class Sidebar extends VBox {
         NavItem item = new NavItem(id, icon, label, count, isNew);
         item.setOnMouseClicked(e -> activate(item, true));
         navItems.add(item);
-        getChildren().add(item);
+        content.getChildren().add(item);
     }
 
     private void addSettingsItem(String icon, String label) {
@@ -104,7 +123,7 @@ public class Sidebar extends VBox {
         item.setOnMouseClicked(e -> {
             if (onSettingsSelect != null) onSettingsSelect.run();
         });
-        getChildren().add(item);
+        content.getChildren().add(item);
     }
 
     private void activate(NavItem item, boolean fireEvent) {
@@ -172,7 +191,6 @@ public class Sidebar extends VBox {
             this.active = active;
             if (active) {
                 getStyleClass().add("active");
-                // Spring scale feedback
                 ScaleTransition st = new ScaleTransition(Duration.millis(160), this);
                 st.setFromX(0.97); st.setFromY(0.97);
                 st.setToX(1.0); st.setToY(1.0);

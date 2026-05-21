@@ -7,6 +7,9 @@ import fan.summer.ui.setting.SwissKitJSettingUi;
 import fan.summer.ui.sidebar.Sidebar;
 import fan.summer.ui.titlebar.TitleBar;
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.ai.AiServiceProvider;
+import fan.summer.ai.service.AiServiceImpl;
+import fan.summer.buildintool.ai.AiChatPlugin;
 import javafx.animation.*;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -40,6 +43,9 @@ public class MainWindow extends StackPane {
     private final TitleBar    titleBar;
     private final Sidebar     sidebar;
     private final ContentArea contentArea;
+    private final AiServiceImpl aiService;
+    private final AiChatPlugin  aiChatPlugin;
+    private Node aiChatView;
 
     // Status bar labels
     private Label statusToolCount    = statusText("0 tools");
@@ -57,6 +63,12 @@ public class MainWindow extends StackPane {
         titleBar    = new TitleBar(stage, this::openSettings);
         sidebar     = new Sidebar();
         contentArea = new ContentArea();
+        contentArea.setMinHeight(0);
+
+        // AI service
+        aiService = new AiServiceImpl();
+        AiServiceProvider.setService(aiService);
+        aiChatPlugin = new AiChatPlugin();
 
         int buildInTool = 0;
         int pluginInTool = 0;
@@ -75,6 +87,9 @@ public class MainWindow extends StackPane {
         wireEvents();
         startClock();
         playEntryAnimation();
+
+        // Open AI chat after the scene is ready (avoids animation conflicts)
+        javafx.application.Platform.runLater(this::openAiChat);
     }
 
     // ── Build scene graph ────────────────────────────────
@@ -96,15 +111,19 @@ public class MainWindow extends StackPane {
         );
 
         // Title bar
+        BorderPane.setAlignment(titleBar, Pos.TOP_LEFT);
         windowPane.setTop(titleBar);
 
         // Body: sidebar + content area
         HBox body = new HBox(sidebar, contentArea);
         HBox.setHgrow(contentArea, Priority.ALWAYS);
+        body.setMinHeight(0);
         windowPane.setCenter(body);
 
         // Status bar
-        windowPane.setBottom(buildStatusBar());
+        HBox statusBar = buildStatusBar();
+        BorderPane.setAlignment(statusBar, Pos.BOTTOM_LEFT);
+        windowPane.setBottom(statusBar);
 
         // Top highlight border (glass thickness simulation)
         Rectangle topHighlight = new Rectangle();
@@ -120,7 +139,8 @@ public class MainWindow extends StackPane {
         topHighlight.heightProperty().bind(heightProperty());
 
         getChildren().addAll(orbLayer, windowPane, topHighlight);
-        setAlignment(windowPane, Pos.CENTER);
+        // Use TOP_LEFT so the windowPane fills from top — titlebar is always visible
+        setAlignment(windowPane, Pos.TOP_LEFT);
         setAlignment(topHighlight, Pos.CENTER);
 
         // Clip whole window to rounded rectangle so the dark orbLayer behind
@@ -219,7 +239,9 @@ public class MainWindow extends StackPane {
 
         // Sidebar category switch → content area filter
         sidebar.setOnCategorySelect(categoryId -> {
-            if ("store".equals(categoryId)) {
+            if ("ai".equals(categoryId)) {
+                openAiChat();
+            } else if ("store".equals(categoryId)) {
                 contentArea.showPage(fan.summer.ui.store.PluginStoreUi.build(), "Plugin Store");
             } else if ("settings".equals(categoryId)) {
                 // settings is handled by setOnSettingsSelect
@@ -268,6 +290,15 @@ public class MainWindow extends StackPane {
         contentArea.showPage(settingsPage, "Settings");
     }
 
+    // ── AI Chat page ────────────────────────────────────
+
+    private void openAiChat() {
+        if (aiChatView == null) {
+            aiChatView = aiChatPlugin.createView();
+        }
+        contentArea.showPage(aiChatView, "AI Assistant");
+    }
+
     // ── Entry animation ──────────────────────────────────
 
     private void playEntryAnimation() {
@@ -289,7 +320,15 @@ public class MainWindow extends StackPane {
         tt.setToY(0);
         tt.setInterpolator(Interpolator.SPLINE(0.34, 0.9, 0.64, 1.0));
 
-        new ParallelTransition(ft, st, tt).play();
+        ParallelTransition entry = new ParallelTransition(ft, st, tt);
+        entry.setOnFinished(e -> {
+            // Ensure full visibility after animation
+            windowPane.setOpacity(1);
+            windowPane.setScaleX(1);
+            windowPane.setScaleY(1);
+            windowPane.setTranslateY(0);
+        });
+        entry.play();
     }
 
     // ── Clock ────────────────────────────────────────────
