@@ -26,13 +26,18 @@ public class PluginStoreUi {
         StackPane contentStack = new StackPane(onlinePage, localPage);
         contentStack.setStyle("-fx-background-color: transparent;");
         localPage.setVisible(false);
+        localPage.setManaged(false);
 
-        // ── Sidebar ────────────────────────────────────────
+        // ── Sidebar (inline-styled to avoid CSS .sidebar width conflicts) ──
         VBox sidebar = new VBox();
-        sidebar.getStyleClass().add("sidebar");
         sidebar.setPrefWidth(180);
         sidebar.setMinWidth(160);
         sidebar.setMaxWidth(200);
+        sidebar.setStyle(
+            "-fx-background-color: rgba(255,255,255,0.022);" +
+            "-fx-border-color: rgba(255,255,255,0.10);" +
+            "-fx-border-width: 0 1 0 0;"
+        );
 
         sidebar.getChildren().add(sidebarSectionLabel("STORE"));
 
@@ -53,19 +58,22 @@ public class PluginStoreUi {
         for (int i = 0; i < items.length; i++) {
             final int idx = i;
             items[i].setOnMouseClicked(e -> {
-                for (NavItem ni : items) ni.setActive(false);
-                for (Node p : pages) p.setVisible(false);
-                items[idx].setActive(true);
-                pages[idx].setVisible(true);
+                for (int j = 0; j < items.length; j++) {
+                    items[j].setActive(j == idx);
+                    pages[j].setVisible(j == idx);
+                    pages[j].setManaged(j == idx);
+                }
             });
         }
 
         // ── Layout ─────────────────────────────────────────
         HBox body = new HBox(sidebar, contentStack);
         HBox.setHgrow(contentStack, Priority.ALWAYS);
+        body.setMinWidth(0);
 
         VBox container = new VBox(body);
         container.setStyle("-fx-background-color: transparent; -fx-padding: 0;");
+        container.setMinWidth(0);
         VBox.setVgrow(body, Priority.ALWAYS);
 
         view = container;
