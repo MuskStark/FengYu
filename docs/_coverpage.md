@@ -1,9 +1,9 @@
-# SwissKitJ <small>3.0.0-alpha.1</small>
+# SwissKitJ <small>3.0.0</small>
 
 > A Swiss Army Knife of Productivity Tools
 
-- Simple and lightweight
-- Built for Professionals
+- Modular & Extensible
+- Built with JavaFX 21
 
 [GitHub](https://github.com/MuskStark/SwissKitJ)
 [Get Started](README)

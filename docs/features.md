@@ -1,96 +1,84 @@
 # Features
 
-SwissKit provides a variety of built-in tools organized by category. You can also extend functionality with external plugins.
+SwissKitJ provides 8 built-in tools organized by category, plus support for external plugins.
 
 ## Categories
 
-The sidebar organizes tools into six categories:
-
-| Category | Icon | Purpose |
-|----------|------|---------|
-| ALL | — | Show all tools |
-| TEXT | `T` | Text processing |
-| IMAGE | `I` | Image tools |
-| DEV | `<>` | Developer utilities |
-| NET | `@` | Network / communication |
-| OTHER | `···` | Everything else |
+| Category | Purpose |
+|----------|---------|
+| ALL | Show all tools |
+| TEXT | Text processing |
+| IMAGE | Image tools |
+| DEV | Developer utilities |
+| NET | Network / communication |
+| OTHER | Miscellaneous |
 
 ## Built-in Tools
 
-### Developer Tools (`DEV`)
+### AI Chat (`DEV`)
 
-#### JSON Formatter
-Format, compress, and validate JSON data. Paste raw JSON and get pretty-printed output instantly.
+Chat with local LLM models in GGUF format. Supports:
 
-#### Base64
+- Loading GGUF models with multiple quantization formats (Q3_K, Q5_0, Q4_0, Q8_0, IQ4_NL)
+- Streaming inference with real-time token generation
+- Tool calling support with custom tool definitions
+- Chat session management with history
+- JNI native acceleration layer for inference
+
+### JSON Formatter (`DEV`)
+
+Format, compress, and validate JSON data. Paste raw JSON and get pretty-printed output.
+
+### Base64 (`DEV`)
+
 Encode text to Base64 or decode Base64 strings back to plain text.
 
-#### Hash Calculator
-Compute MD5, SHA-1, SHA-256, and SHA-512 checksums for any text input.
+### Hash Calculator (`DEV`)
 
----
+Compute MD5, SHA-1, SHA-256, and SHA-512 checksums for text input.
 
-### Text Tools (`TEXT`)
+### Markdown Editor (`TEXT`)
 
-#### Markdown Editor
-Real-time Markdown editor with side-by-side preview. Write in Markdown on the left, see rendered HTML on the right.
+Real-time Markdown editor with side-by-side preview.
 
----
+### Color Converter (`IMAGE`)
 
-### Image Tools (`IMAGE`)
-
-#### Color Converter
 Convert between HEX, RGB, and HSL color formats with a live color preview swatch.
 
----
+### Email (`NET`)
 
-### Network Tools (`NET`)
+Send emails with SMTP configuration:
 
-#### Email
-Send emails with SMTP configuration. Supports:
 - Single and mass email sending by recipient tags
+- Rich text editor with formatting toolbar
 - Attachment routing by tag-based folder
 - Address book with tag management
 - Sent mail history log
 
----
+### Excel Splitter (`OTHER`)
 
-### Other Tools (`OTHER`)
-
-#### Excel Splitter
-Split Excel files using a 4-step wizard:
+Split Excel files using a multi-step wizard:
 
 1. **Select File** — Choose the source `.xlsx` or `.xls` file
 2. **Analysis** — Auto-detects all sheets and their headers
-3. **Split Mode** — Choose from three modes:
-   - **Split by Sheet** — One output file per sheet
-   - **Split by Column** — Group rows by unique column values
-   - **Complex Split** — Multi-config split from database settings
+3. **Split Mode** — Split by Sheet, by Column, or Complex Split (multi-config)
 4. **Output** — Choose output directory and start processing
-
-Progress is shown in real-time with percentage updates.
-
----
 
 ## System Features
 
 ### Plugin Store
+
 Browse and install plugins from the online catalog, or load a local plugin JAR. Installed plugins are hot-reloaded automatically.
 
 ### Settings
-Configure SMTP email server settings, manage the email address book and tags, and view installed plugins.
 
----
+Configure SMTP email server settings, manage the email address book and tags, and view installed plugins.
 
 ## Plugin System
 
-SwissKit discovers plugins in two ways:
+SwissKitJ discovers plugins in two ways:
 
-- **Built-in tools** are registered directly by `BuiltinToolRegistrar` at startup.
-- **External plugins** implement `SwissKitJPlugin` and declare it in `META-INF/services/`. Drop the JAR into the `plugins/` directory and it is loaded automatically with hot-reload support.
+- **Built-in tools** — registered directly by `BuiltinToolRegistrar` at startup
+- **External plugins** — implement `SwissKitJPlugin`, declare in `META-INF/services/`, drop JAR into `plugins/` directory with hot-reload
 
-See the [Architecture](architecture.md) page for how plugins are loaded, and [Development](development.md) for building your own.
-
----
-
-**Ready to build one?** Head to the [Development Guide](development.md).
+See [Architecture](architecture.md) for how plugins are loaded, and [Development Guide](development.md) for building your own.
