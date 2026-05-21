@@ -19,7 +19,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
-import javafx.scene.control.Alert;
+import fan.summer.api.component.GlassNotification;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
@@ -187,11 +187,11 @@ public class EmailPlugin implements SwissKitJPlugin {
         String body = bodyEditor.getHtml();
         String plain = bodyEditor.getPlainText();
         if (subject == null || subject.isBlank()) {
-            alert(Alert.AlertType.WARNING, "提示", "请填写主题");
+            GlassNotification.notify(view, GlassNotification.Type.WARNING, "请填写主题");
             return;
         }
         if (plain == null || plain.isBlank()) {
-            alert(Alert.AlertType.WARNING, "提示", "请填写正文");
+            GlassNotification.notify(view, GlassNotification.Type.WARNING, "请填写正文");
             return;
         }
 
@@ -286,7 +286,7 @@ public class EmailPlugin implements SwissKitJPlugin {
             tags = session.getMapper(EmailTagMapper.class).selectAll();
             if (tags == null) tags = new ArrayList<>();
         } catch (Exception e) {
-            alert(Alert.AlertType.ERROR, "错误", "加载标签失败：" + e.getMessage());
+            GlassNotification.notify(view, GlassNotification.Type.ERROR, "加载标签失败：" + e.getMessage());
             return;
         }
 
@@ -336,11 +336,11 @@ public class EmailPlugin implements SwissKitJPlugin {
         saveBtn.setOnAction(e -> {
             EmailTagEntity to = toCombo.getValue();
             if (to == null) {
-                alert(Alert.AlertType.WARNING, "提示", "请选择收件人标签");
+                GlassNotification.notify(view, GlassNotification.Type.WARNING, "请选择收件人标签");
                 return;
             }
             if (attCheckBox.isSelected() && (attFolderField.getText() == null || attFolderField.getText().isBlank())) {
-                alert(Alert.AlertType.WARNING, "提示", "请选择附件文件夹");
+                GlassNotification.notify(view, GlassNotification.Type.WARNING, "请选择附件文件夹");
                 return;
             }
             EmailMassSentConfigEntity cfg = new EmailMassSentConfigEntity();
@@ -355,10 +355,10 @@ public class EmailPlugin implements SwissKitJPlugin {
                 session.getMapper(EmailMassSentConfigMapper.class).upsert(cfg);
                 session.commit();
                 dialog.close();
-                alert(Alert.AlertType.INFORMATION, "成功", "配置已保存");
+                GlassNotification.toast(view, GlassNotification.Type.SUCCESS, "配置已保存");
             } catch (Exception ex) {
                 log.error("Save config failed", ex);
-                alert(Alert.AlertType.ERROR, "错误", "保存失败：" + ex.getMessage());
+                GlassNotification.notify(view, GlassNotification.Type.ERROR, "保存失败：" + ex.getMessage());
             }
         });
         cancelBtn.setOnAction(e -> dialog.close());
@@ -426,7 +426,7 @@ public class EmailPlugin implements SwissKitJPlugin {
             EmailMassSentConfigEntity cfg =
                     session.getMapper(EmailMassSentConfigMapper.class).selectByTaskId(taskId);
             if (cfg == null) {
-                alert(Alert.AlertType.INFORMATION, "提示", "当前任务暂无配置");
+                GlassNotification.notify(view, GlassNotification.Type.INFO, "当前任务暂无配置");
                 return;
             }
             List<EmailTagEntity> tags = session.getMapper(EmailTagMapper.class).selectAll();
@@ -437,9 +437,9 @@ public class EmailPlugin implements SwissKitJPlugin {
                     "抄送标签：" + (ccName != null ? ccName : "—") + "\n" +
                     "附件发送：" + (cfg.isSentAtt() ? "是" : "否") + "\n" +
                     "附件目录：" + (cfg.getAttFolderPath() != null ? cfg.getAttFolderPath() : "—");
-            alert(Alert.AlertType.INFORMATION, "群发配置", text);
+            GlassNotification.notify(view, GlassNotification.Type.INFO, "群发配置", text);
         } catch (Exception e) {
-            alert(Alert.AlertType.ERROR, "错误", "加载配置失败：" + e.getMessage());
+            GlassNotification.notify(view, GlassNotification.Type.ERROR, "加载配置失败：" + e.getMessage());
         }
     }
 
@@ -466,11 +466,11 @@ public class EmailPlugin implements SwissKitJPlugin {
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             logs = session.getMapper(EmailSentLogMapper.class).selectAll();
         } catch (Exception e) {
-            alert(Alert.AlertType.ERROR, "错误", "加载日志失败：" + e.getMessage());
+            GlassNotification.notify(view, GlassNotification.Type.ERROR, "加载日志失败：" + e.getMessage());
             return;
         }
         if (logs == null || logs.isEmpty()) {
-            alert(Alert.AlertType.INFORMATION, "提示", "暂无发送日志");
+            GlassNotification.notify(view, GlassNotification.Type.INFO, "暂无发送日志");
             return;
         }
 
@@ -579,13 +579,5 @@ public class EmailPlugin implements SwissKitJPlugin {
         Region r = new Region();
         HBox.setHgrow(r, Priority.ALWAYS);
         return r;
-    }
-
-    private static void alert(Alert.AlertType type, String title, String message) {
-        Alert a = new Alert(type);
-        a.setTitle(title);
-        a.setHeaderText(null);
-        a.setContentText(message);
-        a.showAndWait();
     }
 }
