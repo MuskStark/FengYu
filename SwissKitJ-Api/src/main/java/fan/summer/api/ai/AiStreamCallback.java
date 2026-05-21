@@ -1,14 +1,12 @@
 package fan.summer.api.ai;
 
 /**
- * Callback for receiving streamed AI response tokens.
+ * Callback for receiving streamed AI response tokens and tool call events.
  */
 public interface AiStreamCallback {
 
     /**
      * Called for each generated text fragment during streaming inference.
-     *
-     * @param fragment the decoded text piece (may be a partial word or punctuation)
      */
     void onToken(String fragment);
 
@@ -25,4 +23,21 @@ public interface AiStreamCallback {
      * Called when an error occurs during generation.
      */
     default void onError(Throwable error) {}
+
+    /**
+     * Called when the model requests a tool invocation.
+     * The engine will execute the tool and feed the result back to the model
+     * before continuing generation.
+     *
+     * @param toolCall the tool call requested by the model
+     */
+    default void onToolCall(AiToolCall toolCall) {}
+
+    /**
+     * Called when a tool execution completes, before the result is fed back to the model.
+     *
+     * @param toolCallId the ID of the tool call
+     * @param result the execution result
+     */
+    default void onToolResult(String toolCallId, AiToolResult result) {}
 }

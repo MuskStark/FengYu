@@ -98,10 +98,26 @@ public class LlamaRunner {
 
             while (genTokens < maxTokens && nextToken != tokenizer.getEosToken() && !cancelled) {
                 String piece = tokenizer.decode(nextToken);
+                int prevLen = response.length();
+                response.append(piece);
+
+                // Text-level stop sequence detection — needed because chat-template
+                // turn markers (<|im_end|>, <|eot_id|>, etc.) often are NOT the same
+                // token as tokenizer.ggml.eos_token_id, so the loop above never trips
+                // on them and the model rolls into a hallucinated next turn.
+                int stopIdx = StopDetector.findStop(response);
+                if (stopIdx >= 0) {
+                    response.setLength(stopIdx);
+                    int safeLen = stopIdx - prevLen;
+                    if (callback != null && safeLen > 0) {
+                        callback.onToken(piece.substring(0, Math.min(piece.length(), safeLen)));
+                    }
+                    break;
+                }
+
                 if (callback != null) {
                     callback.onToken(piece);
                 }
-                response.append(piece);
                 genTokens++;
 
                 pos++;
