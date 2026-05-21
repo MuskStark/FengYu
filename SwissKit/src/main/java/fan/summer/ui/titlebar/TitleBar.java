@@ -13,7 +13,7 @@ import javafx.stage.Stage;
 /**
  * Custom macOS-style title bar.
  * Contains: traffic light buttons / centered title / right-side action buttons.
- * Supports dragging to move window (with FX-BorderlessScene or directly bound to Stage).
+ * Supports dragging to move window.
  */
 public class TitleBar extends HBox {
 
@@ -37,8 +37,15 @@ public class TitleBar extends HBox {
         titleWrap.setMinWidth(0);
         HBox.setHgrow(titleWrap, Priority.ALWAYS);
 
+        // ── Right-side action buttons ───────────────────────────
+        HBox actions = new HBox(4);
+        actions.setAlignment(Pos.CENTER_RIGHT);
+        if (onSettings != null) {
+            Button settingsBtn = titlebarBtn("⚙", "Settings", onSettings);
+            actions.getChildren().add(settingsBtn);
+        }
 
-        getChildren().addAll(lights, titleWrap);
+        getChildren().addAll(lights, titleWrap, actions);
 
         // ── Window drag ────────────────────────────────────
         setOnMousePressed(e -> {
@@ -54,17 +61,20 @@ public class TitleBar extends HBox {
     // ── Traffic lights ────────────────────────────────────────────
 
     private HBox buildTrafficLights(Stage stage) {
-        Button close = trafficLight("traffic-light-close", "✕");   // ✕
-
+        Button close    = trafficLight("traffic-light-close", "✕");
+        Button minimize = trafficLight("traffic-light-min", "−");
+        Button maximize = trafficLight("traffic-light-max", "+");
 
         close.setOnAction(e -> stage.close());
+        minimize.setOnAction(e -> stage.setIconified(true));
+        maximize.setOnAction(e -> stage.setMaximized(!stage.isMaximized()));
 
-        HBox box = new HBox(8, close);
+        HBox box = new HBox(8, close, minimize, maximize);
         box.setAlignment(Pos.CENTER_LEFT);
 
         // Only show icon on hover
         Label[] icons = {
-            findIcon(close)
+            findIcon(close), findIcon(minimize), findIcon(maximize)
         };
         box.setOnMouseEntered(e -> { for (Label l : icons) l.setOpacity(1); });
         box.setOnMouseExited( e -> { for (Label l : icons) l.setOpacity(0); });
@@ -98,7 +108,6 @@ public class TitleBar extends HBox {
     }
 
     private Label findIcon(Button btn) {
-        // Extract Label from StackPane
         StackPane sp = (StackPane) btn.getGraphic();
         return (Label) sp.getChildren().get(0);
     }
