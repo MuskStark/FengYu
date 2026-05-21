@@ -19,6 +19,11 @@ public class PluginLoader {
 
     private static final Logger log = LoggerFactory.getLogger(PluginLoader.class);
 
+    /** Centralized plugin directory: .swisskit/plugin/ under the working directory */
+    public static Path resolvePluginsDir() {
+        return Path.of(System.getProperty("user.dir"), ".swisskit", "plugin");
+    }
+
     private final Path        pluginsDir;
     private PluginRegistry registry;
     private WatchService      watchService;
@@ -48,6 +53,13 @@ public class PluginLoader {
             return;
         }
         log.info("Starting plugin loader, directory={}", pluginsDir.toAbsolutePath());
+
+        // Ensure plugin directory exists
+        try {
+            Files.createDirectories(pluginsDir);
+        } catch (IOException e) {
+            log.warn("Cannot create plugin directory {}: {}", pluginsDir, e.getMessage());
+        }
 
         // Initial scan
         scanAll();
