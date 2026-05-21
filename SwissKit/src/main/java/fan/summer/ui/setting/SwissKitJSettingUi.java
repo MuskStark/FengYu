@@ -18,7 +18,7 @@ import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.control.Alert;
+import fan.summer.api.component.GlassNotification;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
@@ -41,6 +41,7 @@ import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
+import javafx.stage.Window;
 import org.apache.ibatis.session.SqlSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -195,13 +196,9 @@ public class SwissKitJSettingUi {
                     mapper.insert(newEntity);
                 }
                 session.commit();
-                Platform.runLater(() -> {
-                    Alert a = new Alert(Alert.AlertType.INFORMATION);
-                    a.setTitle("Settings");
-                    a.setHeaderText(null);
-                    a.setContentText("Language changed. Restart may be required for full effect.");
-                    a.showAndWait();
-                });
+                Platform.runLater(() ->
+                    GlassNotification.toast((Window) null, GlassNotification.Type.INFO,
+                        "Language changed. Restart may be required for full effect."));
             } catch (Exception e) {
                 log.error("Failed to save language setting", e);
             }
@@ -251,7 +248,7 @@ public class SwissKitJSettingUi {
         saveBtn.setOnAction(e -> {
             String url = urlField.getText();
             if (url == null || url.isBlank()) {
-                alert(Alert.AlertType.WARNING, "Validation Error", "URL cannot be empty.");
+                GlassNotification.notify((Window) null, GlassNotification.Type.WARNING, "URL cannot be empty.");
                 return;
             }
             saveStoreUrl(url.trim());
@@ -284,16 +281,12 @@ public class SwissKitJSettingUi {
                     mapper.insert(newEntity);
                 }
                 session.commit();
-                Platform.runLater(() -> {
-                    Alert a = new Alert(Alert.AlertType.INFORMATION);
-                    a.setTitle("Saved");
-                    a.setHeaderText(null);
-                    a.setContentText("Plugin store URL saved.");
-                    a.showAndWait();
-                });
+                Platform.runLater(() ->
+                    GlassNotification.toast((Window) null, GlassNotification.Type.SUCCESS,
+                        "Plugin store URL saved."));
             } catch (Exception ex) {
                 log.error("Failed to save store URL", ex);
-                Platform.runLater(() -> alert(Alert.AlertType.ERROR, "Error", "Failed to save: " + ex.getMessage()));
+                Platform.runLater(() -> GlassNotification.notify((Window) null, GlassNotification.Type.ERROR, "Failed to save: " + ex.getMessage()));
             }
         }).start();
     }
@@ -347,7 +340,7 @@ public class SwissKitJSettingUi {
         loadBtn.setOnAction(e -> {
             String path = modelPathField.getText();
             if (path == null || path.isBlank()) {
-                alert(Alert.AlertType.WARNING, "Validation Error", "Please select a model file first.");
+                GlassNotification.notify((Window) null, GlassNotification.Type.WARNING, "Please select a model file first.");
                 return;
             }
 
@@ -717,12 +710,12 @@ public class SwissKitJSettingUi {
         if (smtp == null || smtp.isBlank() || port == null || port.isBlank()
                 || user == null || user.isBlank() || pass == null || pass.isBlank()
                 || from == null || from.isBlank()) {
-            alert(Alert.AlertType.WARNING, "Validation Error", "All fields are required.");
+            GlassNotification.notify((Window) null, GlassNotification.Type.WARNING, "All fields are required.");
             return;
         }
 
         if (tls && ssl) {
-            alert(Alert.AlertType.WARNING, "Validation Error", "TLS and SSL cannot be both selected.");
+            GlassNotification.notify((Window) null, GlassNotification.Type.WARNING, "TLS and SSL cannot be both selected.");
             return;
         }
 
@@ -749,16 +742,12 @@ public class SwissKitJSettingUi {
                 mapper.insert(entity);
                 session.commit();
                 log.info("Email settings saved: smtp={}:{}", fSmtp, fPort);
-                Platform.runLater(() -> {
-                    Alert a = new Alert(Alert.AlertType.INFORMATION);
-                    a.setTitle("Success");
-                    a.setHeaderText(null);
-                    a.setContentText("Email settings saved successfully.");
-                    a.showAndWait();
-                });
+                Platform.runLater(() ->
+                    GlassNotification.toast((Window) null, GlassNotification.Type.SUCCESS,
+                        "Email settings saved successfully."));
             } catch (Exception ex) {
                 log.error("Failed to save email settings", ex);
-                Platform.runLater(() -> alert(Alert.AlertType.ERROR, "Error", "Failed to save: " + ex.getMessage()));
+                Platform.runLater(() -> GlassNotification.notify((Window) null, GlassNotification.Type.ERROR, "Failed to save: " + ex.getMessage()));
             }
         }).start();
     }
@@ -779,7 +768,7 @@ public class SwissKitJSettingUi {
             entities = session.getMapper(EmailAddressBookMapper.class).selectEmailAddressBook();
             if (entities == null) entities = new ArrayList<>();
         } catch (Exception e) {
-            alert(Alert.AlertType.ERROR, "Error", "Failed to load address book: " + e.getMessage());
+            GlassNotification.notify((Window) null, GlassNotification.Type.ERROR, "Failed to load address book: " + e.getMessage());
             return;
         }
 
@@ -922,7 +911,7 @@ public class SwissKitJSettingUi {
         okBtn.setOnAction(e -> {
             String address = addressField.getText();
             if (address == null || address.isBlank() || !address.matches(".+@.+\\..+")) {
-                alert(Alert.AlertType.WARNING, "Validation Error", "Valid email address is required.");
+                GlassNotification.notify((Window) null, GlassNotification.Type.WARNING, "Valid email address is required.");
                 return;
             }
             try (SqlSession session = DatabaseInit.getSqlSession()) {
@@ -943,7 +932,7 @@ public class SwissKitJSettingUi {
                 openAddressBookDialog();
             } catch (Exception ex) {
                 log.error("Failed to save address", ex);
-                alert(Alert.AlertType.ERROR, "Error", "Failed to save: " + ex.getMessage());
+                GlassNotification.notify((Window) null, GlassNotification.Type.ERROR, "Failed to save: " + ex.getMessage());
             }
         });
 
@@ -984,7 +973,7 @@ public class SwissKitJSettingUi {
             tags = session.getMapper(EmailTagMapper.class).selectAll();
             if (tags == null) tags = new ArrayList<>();
         } catch (Exception e) {
-            alert(Alert.AlertType.ERROR, "Error", "Failed to load tags: " + e.getMessage());
+            GlassNotification.notify((Window) null, GlassNotification.Type.ERROR, "Failed to load tags: " + e.getMessage());
             return;
         }
 
@@ -1160,13 +1149,5 @@ public class SwissKitJSettingUi {
         d.setPrefHeight(1);
         VBox.setMargin(d, new Insets(6, 4, 6, 4));
         return d;
-    }
-
-    private static void alert(Alert.AlertType type, String title, String message) {
-        Alert a = new Alert(type);
-        a.setTitle(title);
-        a.setHeaderText(null);
-        a.setContentText(message);
-        a.showAndWait();
     }
 }
