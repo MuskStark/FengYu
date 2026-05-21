@@ -25,6 +25,69 @@ public class GGUFReader {
         return load(Path.of(modelPath));
     }
 
+    /**
+     * Read only the GGUF header + scalar/string metadata, skipping all array values
+     * (vocab, scores, etc.) and tensor info. Useful when the caller only needs a
+     * handful of small metadata entries — e.g. the native backend reading the
+     * chat template without paying for full vocab parsing.
+     */
+    public static Map<String, Object> loadMetadata(Path path) throws IOException {
+        try (var channel = FileChannel.open(path, StandardOpenOption.READ)) {
+            long fileSize = channel.size();
+            if (fileSize < 32) throw new IOException("File too small to be a GGUF model");
+
+            var buffer = channel.map(FileChannel.MapMode.READ_ONLY, 0, fileSize);
+            buffer.order(ByteOrder.LITTLE_ENDIAN);
+
+            int magic = buffer.getInt();
+            if (magic != GGUF_MAGIC) {
+                throw new IOException("Not a GGUF file (magic: 0x" + Integer.toHexString(magic) + ")");
+            }
+            int version = buffer.getInt();
+            if (version < 2) throw new IOException("Unsupported GGUF version: " + version);
+            buffer.getLong(); // tensorCount, unused
+            long metaCount = buffer.getLong();
+
+            return parseMetadataLite(buffer, metaCount);
+        }
+    }
+
+    private static Map<String, Object> parseMetadataLite(ByteBuffer buf, long count) {
+        var meta = new LinkedHashMap<String, Object>();
+        for (long i = 0; i < count; i++) {
+            String key = readString(buf);
+            int typeId = buf.getInt();
+            var type = ValueType.fromId(typeId);
+            if (type == ValueType.ARRAY) {
+                skipArray(buf);
+            } else {
+                meta.put(key, readValue(buf, type));
+            }
+        }
+        return meta;
+    }
+
+    private static void skipArray(ByteBuffer buf) {
+        int elemTypeId = buf.getInt();
+        long len = buf.getLong();
+        var elemType = ValueType.fromId(elemTypeId);
+        for (long i = 0; i < len; i++) skipValue(buf, elemType);
+    }
+
+    private static void skipValue(ByteBuffer buf, ValueType type) {
+        switch (type) {
+            case UINT8, INT8, BOOL -> buf.get();
+            case UINT16, INT16     -> buf.getShort();
+            case UINT32, INT32, FLOAT32 -> buf.getInt();
+            case UINT64, INT64, FLOAT64 -> buf.getLong();
+            case STRING -> {
+                long len = buf.getLong();
+                buf.position(buf.position() + (int) len);
+            }
+            case ARRAY -> skipArray(buf);
+        }
+    }
+
     public static GGUFModel load(Path path) throws IOException {
         long t0 = System.nanoTime();
         log.info("Loading GGUF model: {}", path.toAbsolutePath());

@@ -17,7 +17,11 @@ public class ChatTemplate {
     private final String bosToken;
 
     public ChatTemplate(GGUFModel model) {
-        String rawTemplate = model.getMetaString("tokenizer.chat_template", "");
+        this(model.getMetaString("tokenizer.chat_template", ""));
+    }
+
+    public ChatTemplate(String rawTemplate) {
+        if (rawTemplate == null) rawTemplate = "";
 
         if (rawTemplate.contains("begin_of_text") || rawTemplate.contains("start_header_id")) {
             type = TemplateType.LLAMA3;
@@ -36,11 +40,16 @@ public class ChatTemplate {
             eosToken = "<end_of_turn>";
             bosToken = "";
         } else {
-            type = TemplateType.GENERIC;
-            eosToken = "</s>";
+            // Empty / unrecognized template → default to ChatML, which is the
+            // most common modern format and matches the native backend's prior
+            // hard-coded behaviour.
+            type = TemplateType.CHATML;
+            eosToken = "<|im_end|>";
             bosToken = "";
         }
     }
+
+    public TemplateType getType() { return type; }
 
     public String getEosToken() { return eosToken; }
     public String getBosToken() { return bosToken; }
@@ -78,8 +87,18 @@ public class ChatTemplate {
             sb.append("<|im_start|>system\n").append(system).append(eosToken).append("\n");
         }
         for (var msg : history) {
-            sb.append("<|im_start|>").append(roleStr(msg)).append("\n")
-              .append(msg.content()).append(eosToken).append("\n");
+            if (msg.role() == AiChatMessage.Role.TOOL) {
+                sb.append("<|im_start|>tool\n").append(msg.content()).append(eosToken).append("\n");
+            } else if (msg.role() == AiChatMessage.Role.ASSISTANT && msg.hasToolCalls()) {
+                sb.append("<|im_start|>assistant\n");
+                if (msg.content() != null && !msg.content().isEmpty()) {
+                    sb.append(msg.content()).append("\n");
+                }
+                sb.append(eosToken).append("\n");
+            } else {
+                sb.append("<|im_start|>").append(roleStr(msg)).append("\n")
+                  .append(msg.content()).append(eosToken).append("\n");
+            }
         }
         sb.append("<|im_start|>assistant\n");
         return sb.toString();
@@ -105,14 +124,32 @@ public class ChatTemplate {
     }
 
     private String buildGemma(List<AiChatMessage> history, String system) {
+        // Gemma protocol rules that bit us before:
+        //  • assistant role is rendered as "model" (NOT "assistant")
+        //  • Gemma 3 supports a dedicated `<start_of_turn>system` block; merging
+        //    the system prompt into the user turn made the model treat the system
+        //    text as the user's first sentence and parrot it back as its answer.
         var sb = new StringBuilder();
+
         if (system != null && !system.isEmpty()) {
-            sb.append("<start_of_turn>user\n").append(system).append(eosToken).append("\n");
+            sb.append("<start_of_turn>system\n")
+              .append(system).append(eosToken).append("\n");
         }
+
         for (var msg : history) {
-            sb.append("<start_of_turn>").append(roleStr(msg)).append("\n")
-              .append(msg.content()).append(eosToken).append("\n");
+            if (msg.role() == AiChatMessage.Role.SYSTEM) {
+                if (msg.content() != null && !msg.content().isEmpty()) {
+                    sb.append("<start_of_turn>system\n")
+                      .append(msg.content()).append(eosToken).append("\n");
+                }
+                continue;
+            }
+            String role = (msg.role() == AiChatMessage.Role.ASSISTANT) ? "model" : "user";
+            sb.append("<start_of_turn>").append(role).append("\n")
+              .append(msg.content() == null ? "" : msg.content())
+              .append(eosToken).append("\n");
         }
+
         sb.append("<start_of_turn>model\n");
         return sb.toString();
     }
@@ -127,6 +164,9 @@ public class ChatTemplate {
     }
 
     private String roleStr(AiChatMessage msg) {
-        return msg.role().name().toLowerCase();
+        return switch (msg.role()) {
+            case TOOL -> "tool";
+            default -> msg.role().name().toLowerCase();
+        };
     }
 }
