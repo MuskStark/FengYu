@@ -230,15 +230,17 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
         private void loadFile(Path path) {
             config.sourceFile = path;
             config.analysisResult = null;
-            analysisTriggered = false;
-            analysisRunning.set(false);
+            analysisTriggered = true;
+            analysisRunning.set(true);
             fileLabel.setText(path.getFileName().toString());
             fileLabel.setStyle(
                 "-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 13px;" +
                 "-fx-font-family: 'SF Mono','Consolas',monospace;"
             );
-            statusLabel.setText("已选择文件，点击「下一步」开始分析");
+            statusLabel.setText("正在分析...");
             statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+            showLoading(true);
+            startAnalysis();
         }
 
         private static String dropNormalStyle() {
@@ -265,8 +267,6 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
         private final VBox detailPane;
         private final ToggleGroup modeGroup;
 
-        // BY_SHEET controls
-        private VBox sheetCheckBoxes;
         // BY_COLUMN controls
         private ComboBox<String> sheetCombo;
         private ComboBox<String> columnCombo;
@@ -317,7 +317,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
         java.util.function.BooleanSupplier canProceedSupplier() {
             return () -> switch (config.mode) {
-                case BY_SHEET  -> config.selectedSheets != null && !config.selectedSheets.isEmpty();
+                case BY_SHEET  -> true;
                 case BY_COLUMN -> config.splitSheet != null && config.splitColumn != null;
                 case COMPLEX   -> {
                     if (config.complexTaskId == null) yield false;
@@ -345,47 +345,21 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
         }
 
         private void buildBySheetDetail(List<String> sheets) {
-            Label lbl = subLabel("选择要导出的Sheet（可多选）");
-
-            sheetCheckBoxes = new VBox(4);
-            sheetCheckBoxes.setStyle(
-                "-fx-background-color: rgba(255,255,255,0.04);" +
-                "-fx-border-color: rgba(255,255,255,0.10); -fx-border-radius: 8;" +
-                "-fx-background-radius: 8; -fx-padding: 10;"
-            );
-
             config.selectedSheets = new ArrayList<>(sheets);
 
-            for (String sheet : sheets) {
-                CheckBox cb = new CheckBox(sheet);
-                cb.setSelected(true);
-                cb.setStyle("-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 13px;");
-                cb.selectedProperty().addListener((o, ov, nv) -> {
-                    if (nv) {
-                        if (!config.selectedSheets.contains(sheet)) config.selectedSheets.add(sheet);
-                    } else {
-                        config.selectedSheets.remove(sheet);
-                    }
-                });
-                sheetCheckBoxes.getChildren().add(cb);
-            }
+            Label lbl = new Label("将拆分全部 " + sheets.size() + " 个Sheet，每个Sheet输出为独立文件");
+            lbl.setStyle("-fx-text-fill: rgba(255,255,255,0.60); -fx-font-size: 13px;");
+            lbl.setWrapText(true);
 
-            ScrollPane scroll = new ScrollPane(sheetCheckBoxes);
-            scroll.setFitToWidth(true);
-            scroll.setPrefHeight(Math.min(sheets.size() * 30 + 20, 180));
-            scroll.setStyle("-fx-background-color: transparent; -fx-border-color: transparent;");
+            VBox infoBox = new VBox(6, lbl);
+            infoBox.setPadding(new Insets(12, 16, 12, 16));
+            infoBox.setStyle(
+                "-fx-background-color: rgba(255,255,255,0.04);" +
+                "-fx-border-color: rgba(255,255,255,0.10); -fx-border-radius: 8;" +
+                "-fx-background-radius: 8;"
+            );
 
-            Button selectAll = glassBtn("全选", false);
-            Button clearAll  = glassBtn("清空", false);
-            selectAll.setOnAction(e -> {
-                sheetCheckBoxes.getChildren().forEach(node -> ((CheckBox) node).setSelected(true));
-            });
-            clearAll.setOnAction(e -> {
-                sheetCheckBoxes.getChildren().forEach(node -> ((CheckBox) node).setSelected(false));
-            });
-
-            HBox btns = new HBox(8, selectAll, clearAll);
-            detailPane.getChildren().addAll(lbl, scroll, btns);
+            detailPane.getChildren().add(infoBox);
         }
 
         private void buildByColumnDetail(List<String> sheets) {

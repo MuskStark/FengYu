@@ -3,7 +3,6 @@ package fan.summer.ui.store;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressIndicator;
@@ -11,6 +10,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import fan.summer.plugin.PluginLoader;
 import javafx.stage.FileChooser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,6 +59,7 @@ public class LocalInstallPane extends VBox {
             "-fx-font-size: 12px;"
         );
         desc.setWrapText(true);
+        desc.setMaxWidth(Double.MAX_VALUE);
 
         // Drop zone
         dropZone = buildDropZone();
@@ -101,6 +102,8 @@ public class LocalInstallPane extends VBox {
             "-fx-text-fill: rgba(255,255,255,0.28);" +
             "-fx-font-size: 11px;"
         );
+        hint.setWrapText(true);
+        hint.setMaxWidth(Double.MAX_VALUE);
 
         HBox progressRow = new HBox(10, progress, statusLabel);
         progressRow.setAlignment(Pos.CENTER_LEFT);
@@ -127,6 +130,7 @@ public class LocalInstallPane extends VBox {
             "-fx-text-fill: rgba(255,255,255,0.55);" +
             "-fx-font-size: 13px;"
         );
+        dropText.setWrapText(true);
 
         Button browseBtn = glassBtn("Browse Files", false);
         browseBtn.setOnAction(e -> browseAndSelect());
@@ -191,7 +195,7 @@ public class LocalInstallPane extends VBox {
 
         new Thread(() -> {
             try {
-                Path pluginDir = Path.of(System.getProperty("user.dir"), "plugins");
+                Path pluginDir = PluginLoader.resolvePluginsDir();
                 Files.createDirectories(pluginDir);
 
                 Path target = pluginDir.resolve(source.getName());

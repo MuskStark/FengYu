@@ -2,10 +2,10 @@ package fan.summer.ui.store;
 
 import fan.summer.api.IconStyle;
 import fan.summer.api.ToolCategory;
+import fan.summer.plugin.PluginLoader;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
@@ -64,9 +64,7 @@ public class OnlineStorePane extends VBox {
             "-fx-font-size: 12px;"
         );
         desc.setWrapText(true);
-        desc.maxWidthProperty().bind(
-            widthProperty().subtract(48)  // 24px padding on each side
-        );
+        desc.setMaxWidth(Double.MAX_VALUE);
 
         // Refresh button
         Button refreshBtn = glassBtn("↻ Refresh", false);
@@ -79,11 +77,13 @@ public class OnlineStorePane extends VBox {
         scrollPane = new ScrollPane(pluginListContainer);
         scrollPane.setFitToWidth(true);
         scrollPane.setPrefHeight(400);
+        scrollPane.setMaxWidth(Double.MAX_VALUE);
         scrollPane.setStyle(
             "-fx-background-color: transparent;" +
             "-fx-border-color: transparent;" +
             "-fx-background: transparent;"
         );
+        VBox.setVgrow(scrollPane, Priority.ALWAYS);
 
         // Loading row
         Label spinner = new Label("⏳");
@@ -105,6 +105,7 @@ public class OnlineStorePane extends VBox {
             "-fx-font-size: 12px;"
         );
         statusLabel.setWrapText(true);
+        statusLabel.setMaxWidth(Double.MAX_VALUE);
 
         getChildren().addAll(title, desc, refreshBtn, scrollPane, loadingRow, statusLabel);
 
@@ -282,6 +283,7 @@ public class OnlineStorePane extends VBox {
             "-fx-font-size: 12px;"
         );
         descLabel.setWrapText(true);
+        descLabel.setMaxWidth(Double.MAX_VALUE);
 
         // ID
         Label idLabel = new Label(plugin.id);
@@ -292,9 +294,10 @@ public class OnlineStorePane extends VBox {
 
         // Action: Install button + progress
         ProgressBar installProgress = new ProgressBar();
-        installProgress.setPrefWidth(Double.MAX_VALUE);
+        installProgress.setMaxWidth(Double.MAX_VALUE);
         installProgress.setStyle("-fx-accent: #4cd97b;");
         installProgress.setVisible(false);
+        HBox.setHgrow(installProgress, Priority.ALWAYS);
 
         Button installBtn = glassBtn("Install", true);
         installBtn.setOnAction(e -> installPlugin(plugin, installBtn, installProgress));
@@ -315,7 +318,7 @@ public class OnlineStorePane extends VBox {
 
         new Thread(() -> {
             try {
-                Path pluginDir = Path.of(System.getProperty("user.dir"), "plugins");
+                Path pluginDir = PluginLoader.resolvePluginsDir();
                 Files.createDirectories(pluginDir);
 
                 // Download JAR
