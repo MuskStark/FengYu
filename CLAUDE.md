@@ -140,6 +140,78 @@ public class MyPlugin implements SwissKitJPlugin {
 
 Use SLF4J-style `{}` placeholders — formatting is deferred until the level is actually enabled. If the host has not installed a binder (e.g. plugin unit tests), `LoggerFactory` returns a silent no-op logger, so it is safe to call from anywhere.
 
+## JavaFX Layout Pitfalls
+
+The glassmorphism shell relies on deeply nested `StackPane` / `HBox` / `VBox` / `ScrollPane` containers. The following layout traps have all caused real bugs in this codebase — review them before changing any plugin/page layout.
+
+### 1. `Control.maxWidth` defaults to `USE_COMPUTED_SIZE`, not `MAX_VALUE`
+
+`ScrollPane`, `Button`, `ProgressBar`, and every other `Control` subclass have `maxWidth = USE_COMPUTED_SIZE` by default — meaning `getMaxWidth()` returns `prefWidth`. Inside a `StackPane` (or any parent that tries to stretch children), a `Control` therefore stops growing at its preferred size and leaves the rest of the area unused. Pane subclasses (`VBox`, `HBox`, `StackPane`, `Pane`) default to `Double.MAX_VALUE` and stretch correctly.
+
+When a `Control` needs to fill its parent (e.g. a page-level `ScrollPane` inside a `StackPane`):
+```java
+sp.setMaxWidth(Double.MAX_VALUE);
+sp.setMaxHeight(Double.MAX_VALUE);
+```
+
+### 2. Never set `prefWidth = Double.MAX_VALUE` on any control
+
+Use `setMaxWidth(Double.MAX_VALUE)` plus `HBox.setHgrow(node, Priority.ALWAYS)` (or `VBox.setVgrow`) instead. `prefWidth = MAX_VALUE` poisons the parent chain — every ancestor's `prefWidth` becomes infinite, which makes `ScrollPane.fitToWidth` and viewport sizing collapse so the whole page renders at its minimum width. This bug bit the plugin store install row: a `ProgressBar` with `setPrefWidth(Double.MAX_VALUE)` made the entire `OnlineStorePane` content collapse to ~160px once plugin cards were displayed.
+
+Correct pattern for "fill the rest of an HBox":
+```java
+ProgressBar bar = new ProgressBar();
+bar.setMaxWidth(Double.MAX_VALUE);     // allow stretching
+HBox.setHgrow(bar, Priority.ALWAYS);   // ask the HBox to give it the leftover space
+```
+
+### 3. Never bind `maxWidthProperty` to the node's own `widthProperty`
+
+This pattern is a circular dependency:
+```java
+desc.maxWidthProperty().bind(widthProperty().subtract(48));  // ❌
+```
+
+On the first layout pass, `widthProperty()` is `0`, so `maxWidth` becomes `-48`, and the layout converges to the node's `minWidth`. Use this instead:
+```java
+desc.setWrapText(true);
+desc.setMaxWidth(Double.MAX_VALUE);    // ✅ let the parent VBox constrain the width
+```
+
+For a wrapping `Label` inside a `VBox` with padding, `setMaxWidth(Double.MAX_VALUE) + setWrapText(true)` is sufficient — the `VBox` already constrains the label to its inner width, and the label wraps at that width.
+
+### 4. CSS stylesheet rules override Java property setters
+
+Inline styles (`setStyle(...)`) override stylesheet rules, but Java property setters (`setPrefWidth`, `setMinWidth`, `setMaxWidth`, ...) do NOT — stylesheet wins. The shell's `.sidebar` CSS class declares `-fx-min-width: 200px; -fx-pref-width: 220px; -fx-max-width: 260px;`, so re-using `.sidebar` on a nested navigation pane silently forces that pane to 200–260px regardless of any `setPrefWidth(180)` calls in Java.
+
+When you need different dimensions for a visually-similar pane, either pick a new style class or set the appearance via `setStyle(...)`:
+```java
+sidebar.setPrefWidth(180);
+sidebar.setStyle(
+    "-fx-background-color: rgba(255,255,255,0.022);" +
+    "-fx-border-color: rgba(255,255,255,0.10);" +
+    "-fx-border-width: 0 1 0 0;"
+);
+```
+
+### 5. Toggling page visibility in a `StackPane`: also toggle `managed`
+
+`setVisible(false)` hides a node but leaves it `managed`, so it still contributes to the `StackPane`'s preferred size and consumes layout cycles. When swapping pages, toggle both:
+```java
+for (int j = 0; j < pages.length; j++) {
+    pages[j].setVisible(j == idx);
+    pages[j].setManaged(j == idx);
+}
+```
+
+### Checklist before changing any page/plugin layout
+
+- [ ] If you add a `ScrollPane` inside a `StackPane`, set `setMaxWidth(Double.MAX_VALUE)` and `setMaxHeight(Double.MAX_VALUE)`.
+- [ ] If you want a node to "fill the rest", use `setMaxWidth(Double.MAX_VALUE)` + `HBox/VBox.setHgrow/Vgrow(node, Priority.ALWAYS)`. Never `setPrefWidth(Double.MAX_VALUE)`.
+- [ ] No binding of `maxWidthProperty` to the node's own `widthProperty` (or any property of an ancestor that itself depends on the node's size).
+- [ ] If you re-use a shell CSS class (`.sidebar`, `.tool-card`, etc.) on a different component, verify the CSS doesn't impose size constraints you didn't intend; otherwise use a fresh class or inline style.
+- [ ] When swapping `StackPane` children, toggle both `setVisible` and `setManaged`.
+
 ## Branch Status — v3.0.0-JavaFX
 
 This branch is an active migration from Swing/FlatLaf to JavaFX. Legacy Swing classes live in `backup/SwissKit/` and `backup/SwissKitJ-Api/` under the project root, and are **excluded from Maven compilation** via `<excludes>` in `SwissKit/pom.xml`. Do not move files out of `backup/` unless completing their JavaFX port.
