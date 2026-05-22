@@ -3,6 +3,7 @@ package fan.summer.ui.content;
 import fan.summer.api.MdiIconUtil;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
+import fan.summer.api.i18n.I18n;
 import javafx.animation.Interpolator;
 import javafx.animation.KeyFrame;
 import javafx.animation.KeyValue;
@@ -35,7 +36,7 @@ public class DetailPanel extends VBox {
     private final Label   versionVal  = new Label();
     private final Label   typeVal     = new Label();
     private final Label   categoryVal = new Label();
-    private final Button  launchBtn  = new Button("Launch Tool");
+    private final Button  launchBtn  = new Button(I18n.get("detail.btn.launch"));
     private final Button  closeBtn   = new Button("✕");
 
     private Consumer<SwissKitJPlugin> onLaunch;
@@ -52,6 +53,13 @@ public class DetailPanel extends VBox {
 
         buildUI();
         setVisible(false);
+
+        I18n.addListener(() -> {
+            if (panelOpen && currentPlugin != null) {
+                fillData(currentPlugin);
+                launchBtn.setText(I18n.get("detail.btn.launch"));
+            }
+        });
     }
 
     public void setOnLaunch(Consumer<SwissKitJPlugin> handler) {
@@ -106,9 +114,9 @@ public class DetailPanel extends VBox {
         topRow.setAlignment(Pos.CENTER_RIGHT);
 
         VBox propsBox = new VBox(6,
-            propRow("Version",   versionVal),
-            propRow("Type",      typeVal),
-            propRow("Category",  categoryVal)
+            propRow(I18n.get("detail.prop.version"),   versionVal),
+            propRow(I18n.get("detail.prop.type"),      typeVal),
+            propRow(I18n.get("detail.prop.category"),  categoryVal)
         );
         VBox.setMargin(propsBox, new Insets(12, 0, 0, 0));
 
@@ -161,11 +169,11 @@ public class DetailPanel extends VBox {
 
     private String categoryName(ToolCategory cat) {
         return switch (cat) {
-            case DEV   -> "Developer Tools";
-            case TEXT  -> "Text Processing";
-            case IMAGE -> "Image Processing";
-            case NET   -> "Network Tools";
-            default    -> "Other Tools";
+            case DEV   -> I18n.get("detail.category.dev");
+            case TEXT  -> I18n.get("detail.category.text");
+            case IMAGE -> I18n.get("detail.category.image");
+            case NET   -> I18n.get("detail.category.net");
+            default    -> I18n.get("detail.category.other");
         };
     }
 
