@@ -67,7 +67,21 @@ public class SwissKitJSettingUi {
 
     private static final Pattern NUMERIC_ID_PATTERN = Pattern.compile("\\d+");
 
+    /** Active nav index, preserved across locale rebuilds. */
+    private static int activeNavIndex = 0;
+
     public static Node build() {
+        StackPane wrapper = new StackPane();
+        wrapper.setStyle("-fx-background-color: transparent;");
+
+        Runnable rebuild = () -> wrapper.getChildren().setAll(buildContent());
+        rebuild.run();
+
+        I18n.addListener(() -> Platform.runLater(rebuild));
+        return wrapper;
+    }
+
+    private static VBox buildContent() {
         // ── Content pages (created once, cached) ──────────────
         Node generalPage      = buildGeneralTab();
         Node storePage        = buildPluginStoreSettings();
@@ -104,8 +118,6 @@ public class SwissKitJSettingUi {
         NavItem emailNav = sidebarNavItem("✉", I18n.get("setting.nav.email"));
         sidebar.getChildren().add(emailNav);
 
-        generalNav.setActive(true);
-
         // Spacer to push items to top
         Region spacer = new Region();
         VBox.setVgrow(spacer, Priority.ALWAYS);
@@ -115,9 +127,17 @@ public class SwissKitJSettingUi {
         NavItem[] items = {generalNav, storeNav, aiModelNav, emailNav};
         Node[]    pages = {generalPage, storePage, aiModelPage, emailPage};
 
+        // Restore previously active tab
+        int active = Math.min(activeNavIndex, items.length - 1);
+        items[active].setActive(true);
+        for (int i = 0; i < pages.length; i++) {
+            pages[i].setVisible(i == active);
+        }
+
         for (int i = 0; i < items.length; i++) {
             final int idx = i;
             items[i].setOnMouseClicked(e -> {
+                activeNavIndex = idx;
                 for (NavItem item : items) item.setActive(false);
                 for (Node page : pages) page.setVisible(false);
                 items[idx].setActive(true);
