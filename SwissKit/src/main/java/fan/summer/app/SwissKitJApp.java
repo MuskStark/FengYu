@@ -1,8 +1,11 @@
 package fan.summer.app;
 
+import fan.summer.api.i18n.I18n;
 import fan.summer.api.log.LoggerBinder;
 import fan.summer.api.theme.Themes;
 import fan.summer.database.DatabaseInit;
+import fan.summer.database.entity.AppSettingEntity;
+import fan.summer.database.mapper.AppSettingMapper;
 import fan.summer.log.Slf4jPluginLoggerBinder;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.plugin.PluginRegistry;
@@ -14,10 +17,12 @@ import javafx.scene.image.Image;
 import javafx.scene.paint.Color;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
+import org.apache.ibatis.session.SqlSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
+import java.util.Locale;
 
 /**
  * Application entry point.
@@ -46,6 +51,13 @@ public class SwissKitJApp extends Application {
         // ── Database (H2 + MyBatis) ─────────────────────────────────
         log.info("Initialising database");
         DatabaseInit.init();
+
+        // ── I18n ───────────────────────────────────────────────
+        I18n.registerBundle("i18n.messages", getClass().getClassLoader());
+        String savedLang = readLanguageFromDb();
+        if ("zh".equals(savedLang)) {
+            I18n.setLocale(Locale.CHINESE);
+        }
 
         // ── Plugin directory (.swisskit/plugin/ under working directory) ──
         Path pluginsDir = PluginLoader.resolvePluginsDir();
@@ -100,5 +112,16 @@ public class SwissKitJApp extends Application {
 
     public static void main(String[] args) {
         launch(args);
+    }
+
+    private String readLanguageFromDb() {
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            AppSettingEntity entity = mapper.selectByKey("language");
+            if (entity != null) return entity.getSettingValue();
+        } catch (Exception e) {
+            log.debug("Could not read language setting", e);
+        }
+        return "en";
     }
 }
