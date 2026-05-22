@@ -4,6 +4,7 @@ import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
+import fan.summer.api.i18n.I18n;
 import javafx.animation.PauseTransition;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -28,8 +29,8 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
     };
 
     @Override public String getId()          { return "builtin.hash"; }
-    @Override public String getName()        { return "Hash Calculator"; }
-    @Override public String getDescription() { return "MD5 / SHA-1 / SHA-256 / SHA-512"; }
+    @Override public String getName()        { return I18n.get("builtin.hash-calculator.name"); }
+    @Override public String getDescription() { return I18n.get("builtin.hash-calculator.desc"); }
     @Override public ToolCategory getCategory()    { return ToolCategory.DEV; }
     @Override public String getVersion()     { return "1.0.0"; }
     @Override public String getMdiIcon()    { return "key-variant"; }
@@ -41,7 +42,7 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
         TextArea input = styledTextArea("Input text...");
         VBox results   = new VBox(8);
 
-        Button calcBtn = actionButton("Calculate Hash", "#5b8cf7");
+        Button calcBtn = actionButton(I18n.get("builtin.hash.calculate"), "#5b8cf7");
         calcBtn.setOnAction(e -> {
             results.getChildren().clear();
             for (String[] algo : ALGOS) {
@@ -57,7 +58,7 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
             }
         });
 
-        VBox root = new VBox(12, sectionLabel("Input Text"), input, calcBtn, sectionLabel("Result"), results);
+        VBox root = new VBox(12, sectionLabel(I18n.get("builtin.hash.inputText")), input, calcBtn, sectionLabel(I18n.get("builtin.hash.result")), results);
         VBox.setVgrow(input, Priority.ALWAYS);
         root.setPadding(new Insets(20));
         root.setStyle("-fx-background-color: transparent;");
@@ -78,7 +79,7 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
         valueLabel.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(valueLabel, Priority.ALWAYS);
 
-        Button copy = new Button("Copy");
+        Button copy = new Button(I18n.get("builtin.hash.copy"));
         copy.setStyle(
             "-fx-background-color: rgba(255,255,255,0.08); -fx-border-width: 0;" +
             "-fx-text-fill: rgba(255,255,255,0.5); -fx-font-size: 10px;" +
@@ -90,7 +91,7 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
             Clipboard.getSystemClipboard().setContent(cc);
             copy.setText("✓");
             PauseTransition pt = new PauseTransition(Duration.seconds(1.5));
-            pt.setOnFinished(ev -> copy.setText("Copy"));
+            pt.setOnFinished(ev -> copy.setText(I18n.get("builtin.hash.copy")));
             pt.play();
         });
 
