@@ -1,5 +1,6 @@
 package fan.summer.ui.content;
 
+import fan.summer.api.i18n.I18n;
 import fan.summer.api.SwissKitJPlugin;
 import javafx.animation.FadeTransition;
 import javafx.animation.ParallelTransition;
@@ -47,6 +48,7 @@ public class ContentArea extends BorderPane {
         pageScrollPane = buildPageScrollPane();
         buildLayout();
         detailPanel.setOnLaunch(p -> { if (onLaunch != null) onLaunch.accept(p); });
+        I18n.addListener(() -> javafx.application.Platform.runLater(this::refresh));
     }
 
     // ── Public API ──────────────────────────────────────────
@@ -128,7 +130,7 @@ public class ContentArea extends BorderPane {
     }
 
     private HBox buildBackBar() {
-        Label backBtn = new Label("← 返回");
+        Label backBtn = new Label("← " + I18n.get("content.back"));
         backBtn.setStyle(
             "-fx-text-fill: rgba(255,255,255,0.70); -fx-font-size: 13px;" +
             "-fx-cursor: hand; -fx-padding: 4 10 4 0;"
@@ -164,7 +166,7 @@ public class ContentArea extends BorderPane {
         searchIcon.setStyle("-fx-font-size: 13px; -fx-text-fill: rgba(255,255,255,0.28);");
 
         searchField.getStyleClass().add("search-field");
-        searchField.setPromptText("Search tools...");
+        searchField.setPromptText(I18n.get("content.search.prompt"));
         searchField.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(searchField, Priority.ALWAYS);
         searchField.textProperty().addListener((obs, oldVal, newVal) -> {
@@ -211,7 +213,7 @@ public class ContentArea extends BorderPane {
         toolGrid.setPrefWrapLength(600);
 
         VBox wrapper = new VBox(
-            sectionHeader("FREQUENT", ""),
+            sectionHeader("content.section.frequent", ""),
             toolGrid
         );
         wrapper.setPadding(new Insets(8, 16, 16, 16));
@@ -262,7 +264,7 @@ public class ContentArea extends BorderPane {
 
         // Empty state message
         if (filtered.isEmpty()) {
-            Label empty = new Label("No matching tools found");
+            Label empty = new Label(I18n.get("content.emptyState"));
             empty.setStyle("-fx-text-fill: rgba(255,255,255,0.28); -fx-font-size: 13px;");
             empty.setPadding(new Insets(40, 0, 0, 0));
             toolGrid.getChildren().add(empty);
@@ -329,8 +331,8 @@ public class ContentArea extends BorderPane {
 
     // ── Helper node factory ──────────────────────────────────────
 
-    private HBox sectionHeader(String title, String action) {
-        Label titleLabel = new Label(title.toUpperCase());
+    private HBox sectionHeader(String titleKey, String action) {
+        Label titleLabel = new Label(I18n.get(titleKey).toUpperCase());
         titleLabel.getStyleClass().add("section-title");
 
         Region spacer = new Region();
