@@ -4,6 +4,7 @@ import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
+import fan.summer.api.i18n.I18n;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -16,8 +17,8 @@ import javafx.scene.layout.VBox;
 public class JsonFormatterPlugin implements SwissKitJPlugin {
 
     @Override public String getId()          { return "builtin.json-formatter"; }
-    @Override public String getName()        { return "JSON Formatter"; }
-    @Override public String getDescription() { return "Format, compress, and validate JSON data"; }
+    @Override public String getName()        { return I18n.get("builtin.json-formatter.name"); }
+    @Override public String getDescription() { return I18n.get("builtin.json-formatter.desc"); }
     @Override public ToolCategory getCategory()    { return ToolCategory.DEV; }
     @Override public String getVersion()     { return "1.0.0"; }
     @Override public String getMdiIcon()    { return "code-json"; }
@@ -30,8 +31,8 @@ public class JsonFormatterPlugin implements SwissKitJPlugin {
         TextArea output = styledTextArea("");
         output.setEditable(false);
 
-        Button formatBtn  = actionButton("Format",  "#5b8cf7");
-        Button compactBtn = actionButton("Compact", "rgba(255,255,255,0.12)");
+        Button formatBtn  = actionButton(I18n.get("builtin.json.format"),  "#5b8cf7");
+        Button compactBtn = actionButton(I18n.get("builtin.json.compress"), "rgba(255,255,255,0.12)");
         Button clearBtn   = actionButton("Clear",   "rgba(255,255,255,0.08)");
 
         formatBtn.setOnAction(e -> {
@@ -47,8 +48,8 @@ public class JsonFormatterPlugin implements SwissKitJPlugin {
         HBox btnRow = new HBox(8, formatBtn, compactBtn, clearBtn);
         btnRow.setPadding(new Insets(0, 0, 12, 0));
 
-        VBox left  = new VBox(6, sectionLabel("Input"),  input);
-        VBox right = new VBox(6, sectionLabel("Output"), output);
+        VBox left  = new VBox(6, sectionLabel(I18n.get("builtin.json.input")),  input);
+        VBox right = new VBox(6, sectionLabel(I18n.get("builtin.json.output")), output);
         VBox.setVgrow(input,  Priority.ALWAYS);
         VBox.setVgrow(output, Priority.ALWAYS);
         HBox.setHgrow(left,   Priority.ALWAYS);

@@ -4,6 +4,7 @@ import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
+import fan.summer.api.i18n.I18n;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -18,8 +19,8 @@ import javafx.scene.paint.Color;
 public class ColorConverterPlugin implements SwissKitJPlugin {
 
     @Override public String getId()          { return "builtin.color"; }
-    @Override public String getName()        { return "Color Converter"; }
-    @Override public String getDescription() { return "HEX / RGB / HSL conversion with live preview"; }
+    @Override public String getName()        { return I18n.get("builtin.color-converter.name"); }
+    @Override public String getDescription() { return I18n.get("builtin.color-converter.desc"); }
     @Override public ToolCategory getCategory()    { return ToolCategory.IMAGE; }
     @Override public String getVersion()     { return "1.0.0"; }
     @Override public String getMdiIcon()    { return "palette"; }
@@ -53,16 +54,16 @@ public class ColorConverterPlugin implements SwissKitJPlugin {
         hexField.textProperty().addListener((o, oldV, newV) -> updatePreview.run());
 
         VBox fields = new VBox(10,
-            fieldRow("HEX", hexField),
-            fieldRow("RGB", rgbField),
-            fieldRow("HSL", hslField)
+            fieldRow(I18n.get("builtin.color.hex"), hexField),
+            fieldRow(I18n.get("builtin.color.rgb"), rgbField),
+            fieldRow(I18n.get("builtin.color.hsl"), hslField)
         );
         HBox.setHgrow(fields, Priority.ALWAYS);
 
         HBox top = new HBox(20, preview, fields);
         top.setAlignment(Pos.CENTER_LEFT);
 
-        VBox root = new VBox(20, sectionLabel("Color Converter"), top);
+        VBox root = new VBox(20, sectionLabel(I18n.get("builtin.color.converter")), top);
         root.setPadding(new Insets(20));
         root.setStyle("-fx-background-color: transparent;");
         updatePreview.run();

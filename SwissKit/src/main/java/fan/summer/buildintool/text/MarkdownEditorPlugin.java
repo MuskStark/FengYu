@@ -4,6 +4,7 @@ import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
+import fan.summer.api.i18n.I18n;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
@@ -16,8 +17,8 @@ import javafx.scene.web.WebView;
 public class MarkdownEditorPlugin implements SwissKitJPlugin {
 
     @Override public String getId()          { return "builtin.markdown"; }
-    @Override public String getName()        { return "Markdown"; }
-    @Override public String getDescription() { return "Real-time Markdown editor with preview"; }
+    @Override public String getName()        { return I18n.get("builtin.markdown-editor.name"); }
+    @Override public String getDescription() { return I18n.get("builtin.markdown-editor.desc"); }
     @Override public ToolCategory getCategory()    { return ToolCategory.TEXT; }
     @Override public String getVersion()     { return "1.0.0"; }
     @Override public String getMdiIcon()    { return "language-markdown"; }
@@ -55,8 +56,8 @@ public class MarkdownEditorPlugin implements SwissKitJPlugin {
 
         editor.textProperty().addListener((o, oldV, newV) -> render.run());
 
-        VBox left  = new VBox(6, sectionLabel("Editor"),  editor);
-        VBox right = new VBox(6, sectionLabel("Preview"), preview);
+        VBox left  = new VBox(6, sectionLabel(I18n.get("builtin.markdown.editor")),  editor);
+        VBox right = new VBox(6, sectionLabel(I18n.get("builtin.markdown.preview")), preview);
         VBox.setVgrow(editor,   Priority.ALWAYS);
         VBox.setVgrow(preview,  Priority.ALWAYS);
         HBox.setHgrow(left,  Priority.ALWAYS);
