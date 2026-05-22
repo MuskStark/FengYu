@@ -1,7 +1,9 @@
 package fan.summer.ui.sidebar;
 
+import fan.summer.api.i18n.I18n;
 import javafx.animation.Interpolator;
 import javafx.animation.ScaleTransition;
+import javafx.beans.property.StringProperty;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Label;
@@ -61,37 +63,37 @@ public class Sidebar extends VBox {
         content.setSpacing(0);
 
         // ── AI section (first position) ────────────────────────────────
-        content.getChildren().add(sectionLabel("AI ASSISTANT"));
-        addNavItem("ai", "🤖", "AI Chat", 0, true);
+        content.getChildren().add(sectionLabel("sidebar.section.aiAssistant"));
+        addNavItem("ai", "🤖", "sidebar.label.aiChat", 0, true);
 
         content.getChildren().add(divider());
 
         // ── Tools section ────────────────────────────────────
-        content.getChildren().add(sectionLabel("TOOLS"));
-        addNavItem("all",     "⊞", "All Tools",        0, false);
-        addNavItem("text",    "✏️", "Text Processing",  0, false);
-        addNavItem("image",   "🖼", "Image Processing", 0, false);
-        addNavItem("dev",     "⌨️", "Developer Tools",  0, false);
-        addNavItem("net",     "📡", "Network Tools",    0, false);
-        addNavItem("other",   "📦", "Other Tools",      0, false);
+        content.getChildren().add(sectionLabel("sidebar.section.tools"));
+        addNavItem("all",     "⊞", "sidebar.label.allTools",        0, false);
+        addNavItem("text",    "✏️", "sidebar.label.textProcessing",  0, false);
+        addNavItem("image",   "🖼", "sidebar.label.imageProcessing", 0, false);
+        addNavItem("dev",     "⌨️", "sidebar.label.developerTools",  0, false);
+        addNavItem("net",     "📡", "sidebar.label.networkTools",    0, false);
+        addNavItem("other",   "📦", "sidebar.label.otherTools",      0, false);
 
         content.getChildren().add(divider());
 
         // ── Plugins section ────────────────────────────────────
-        content.getChildren().add(sectionLabel("PLUGINS"));
-        addNavItem("plugins", "🧩", "Installed Plugins", 0, true);
-        addNavItem("store",   "🏪", "Plugin Store",   0, false);
+        content.getChildren().add(sectionLabel("sidebar.section.plugins"));
+        addNavItem("plugins", "🧩", "sidebar.label.installedPlugins", 0, true);
+        addNavItem("store",   "🏪", "sidebar.label.pluginStore",   0, false);
 
         content.getChildren().add(divider());
 
         // ── Favorites section ────────────────────────────────────
-        content.getChildren().add(sectionLabel("FAVORITES"));
-        addNavItem("fav", "⭐", "My Favorites", 0, false);
+        content.getChildren().add(sectionLabel("sidebar.section.favorites"));
+        addNavItem("fav", "⭐", "sidebar.label.myFavorites", 0, false);
 
         content.getChildren().add(divider());
 
         // ── Settings (always at bottom) ──────────────────────────
-        addSettingsItem("⚙️", "Settings");
+        addSettingsItem("⚙️", "sidebar.label.settings");
 
         // ── Wrap in ScrollPane ────────────────────────────────────
         ScrollPane scrollPane = new ScrollPane(content);
@@ -111,19 +113,23 @@ public class Sidebar extends VBox {
         }
     }
 
-    private void addNavItem(String id, String icon, String label, int count, boolean isNew) {
+    private void addNavItem(String id, String icon, String i18nKey, int count, boolean isNew) {
+        String label = I18n.get(i18nKey);
         NavItem item = new NavItem(id, icon, label, count, isNew);
         item.setOnMouseClicked(e -> activate(item, true));
         navItems.add(item);
         content.getChildren().add(item);
+        I18n.bind(item.textLabelProperty(), i18nKey);
     }
 
-    private void addSettingsItem(String icon, String label) {
+    private void addSettingsItem(String icon, String i18nKey) {
+        String label = I18n.get(i18nKey);
         NavItem item = new NavItem("settings", icon, label, 0, false);
         item.setOnMouseClicked(e -> {
             if (onSettingsSelect != null) onSettingsSelect.run();
         });
         content.getChildren().add(item);
+        I18n.bind(item.textLabelProperty(), i18nKey);
     }
 
     private void activate(NavItem item, boolean fireEvent) {
@@ -137,9 +143,10 @@ public class Sidebar extends VBox {
 
     // ── Helper node factory ──────────────────────────────────────
 
-    private Label sectionLabel(String text) {
-        Label l = new Label(text.toUpperCase());
+    private Label sectionLabel(String i18nKey) {
+        Label l = new Label(I18n.get(i18nKey).toUpperCase());
         l.getStyleClass().add("sidebar-section-label");
+        I18n.bind(l.textProperty(), i18nKey);
         return l;
     }
 
@@ -158,6 +165,7 @@ public class Sidebar extends VBox {
     public static class NavItem extends HBox {
 
         private final String categoryId;
+        private final Label  textLabel;
         private final Label  badgeLabel;
         private boolean active = false;
 
@@ -172,7 +180,7 @@ public class Sidebar extends VBox {
             Label iconLabel = new Label(icon);
             iconLabel.getStyleClass().add("nav-item-icon");
 
-            Label textLabel = new Label(label);
+            textLabel = new Label(label);
             textLabel.getStyleClass().add("nav-item-text");
             HBox.setHgrow(textLabel, Priority.ALWAYS);
 
@@ -186,6 +194,8 @@ public class Sidebar extends VBox {
         }
 
         public String getCategoryId() { return categoryId; }
+
+        public StringProperty textLabelProperty() { return textLabel.textProperty(); }
 
         public void setActive(boolean active) {
             this.active = active;
