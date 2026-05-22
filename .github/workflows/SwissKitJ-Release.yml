@@ -81,9 +81,11 @@ jobs:
       - name: Package Windows (without JRE)
         shell: pwsh
         run: |
+          $jarFile = Get-ChildItem -Path SwissKit\target -Filter "SwissKitJ-*.jar" | Select-Object -First 1
+          if (-not $jarFile) { throw "No SwissKitJ-*.jar found in SwissKit\target\" }
           New-Item -ItemType Directory -Force -Path release\SwissKitJ | Out-Null
           Move-Item SwissKit\target\SwissKit.exe release\SwissKitJ\SwissKitJ.exe -Force
-          Copy-Item SwissKit\target\SwissKitJ-$env:VERSION.jar release\SwissKitJ\
+          Copy-Item $jarFile.FullName release\SwissKitJ\
           Copy-Item README.md release\SwissKitJ\
           Compress-Archive -Path release\SwissKitJ -DestinationPath "release\SwissKitJ-$env:VERSION-windows-x64.zip" -Force
           Write-Host "Created: release/SwissKitJ-$env:VERSION-windows-x64.zip"
@@ -92,10 +94,12 @@ jobs:
       - name: Package Windows (with JRE)
         shell: pwsh
         run: |
-          $jarName = "SwissKitJ-$env:VERSION.jar"
+          $jarFile = Get-ChildItem -Path SwissKit\target -Filter "SwissKitJ-*.jar" | Select-Object -First 1
+          if (-not $jarFile) { throw "No SwissKitJ-*.jar found in SwissKit\target\" }
+          $jarName = $jarFile.Name
           $inputDir = "release\jpackage-input"
           New-Item -ItemType Directory -Force -Path $inputDir | Out-Null
-          Copy-Item SwissKit\target\$jarName $inputDir\
+          Copy-Item $jarFile.FullName $inputDir\
 
           jpackage --type app-image `
             --name SwissKitJ `
@@ -359,8 +363,7 @@ jobs:
             --java-options "-Xms64m -Xmx512m" \
             --icon SwissKit/src/main/resources/icons/icon-256.png \
             --vendor "SwissKit" \
-            --app-version "${VERSION}" \
-            --linux-short-name swisskit
+            --app-version "${VERSION}"
 
           cd release/with-jre
           zip -r "../../SwissKitJ-${VERSION}-linux-x64-jre.zip" SwissKitJ
@@ -386,8 +389,7 @@ jobs:
             --java-options "-Xms64m -Xmx512m" \
             --icon SwissKit/src/main/resources/icons/icon-256.png \
             --vendor "SwissKit" \
-            --app-version "${VERSION}" \
-            --linux-short-name swisskit
+            --app-version "${VERSION}"
 
           cp SwissKit/src/main/resources/icons/icon-256.png release/uos-jre/SwissKitJ-UOS/swisskit.png
           cp README.md release/uos-jre/SwissKitJ-UOS/
