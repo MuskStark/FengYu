@@ -35,6 +35,9 @@ Then scaffold the project following the templates below. Create all files, do no
 │   └── worker/                    # Background tasks
 ├── src/main/resources/
 │   ├── META-INF/services/fan.summer.api.SwissKitJPlugin
+│   ├── i18n/
+│   │   ├── messages.properties        # Default (English) i18n translations
+│   │   └── messages_zh.properties     # Chinese translations (add locales as needed)
 │   ├── init.sql                   # DDL (if database needed)
 │   ├── mybatis-config.xml         # MyBatis config (if database needed)
 │   ├── mapper/                    # MyBatis XML mappers
@@ -198,6 +201,7 @@ File: `src/main/resources/META-INF/services/fan.summer.api.SwissKitJPlugin`
 package {{base-package}};
 
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.i18n.I18n;
 import javafx.scene.Node;
 import {{base-package}}.ui.{{Name}}PluginUi;
 
@@ -240,6 +244,9 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
 
     @Override
     public Node createView() {
+        // Register i18n bundle so I18n.get/bind can resolve plugin keys.
+        // Must be called before the UI is created, with the plugin's own ClassLoader.
+        I18n.registerPluginBundle("i18n.messages", getClass().getClassLoader());
         return new {{Name}}PluginUi().getView();
     }
 }
@@ -293,10 +300,14 @@ Call chain: `java DevLauncher` (no JavaFX imports) → `{{Name}}DevApp.main()` �
 ```java
 package {{base-package}}.ui;
 
+import fan.summer.api.i18n.I18n;
+import fan.summer.api.theme.Themes;
 import javafx.geometry.HPos;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.Label;
 import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.Priority;
@@ -304,6 +315,8 @@ import javafx.scene.layout.Priority;
 public class {{Name}}PluginUi {
 
     private GridPane rootPanel;
+    private Label exampleLabel = new Label();
+    private Button exampleButton = new Button();
 
     public {{Name}}PluginUi() {
         initComponents();
@@ -315,23 +328,84 @@ public class {{Name}}PluginUi {
         rootPanel.setVgap(5);
         rootPanel.setPadding(new Insets(0));
 
-        // Add UI components here
-        // Use rootPanel.add(node, col, row) for grid placement
-
         ColumnConstraints col0 = new ColumnConstraints();
         col0.setHgrow(Priority.NEVER);
         ColumnConstraints col1 = new ColumnConstraints();
         col1.setHgrow(Priority.ALWAYS);
         rootPanel.getColumnConstraints().addAll(col0, col1);
+
+        // Example: add components
+        rootPanel.add(exampleLabel, 0, 0);
+        rootPanel.add(exampleButton, 1, 0);
+
+        // Bind i18n keys to properties — auto-updates on locale change
+        String p = "plugin.{{slug}}.";
+        I18n.bind(exampleLabel.textProperty(), p + "exampleLabel");
+        I18n.bind(exampleButton.textProperty(), p + "exampleButton");
     }
 
     public Node getView() {
         return rootPanel;
     }
+
+    // Alert helper — applies host theme so dialogs match the main app style
+    private void showAlert(Alert.AlertType type, String message) {
+        Alert alert = new Alert(type);
+        alert.setHeaderText(null);
+        alert.setContentText(message);
+        // Dialog creates its own Scene; apply common CSS for visual consistency
+        alert.getDialogPane().sceneProperty().addListener((obs, old, scene) -> {
+            if (scene != null) Themes.applyTo(scene);
+        });
+        alert.showAndWait();
+    }
 }
 ```
 
-### 6. Database Layer (if database needed)
+**i18n usage patterns:**
+
+| Pattern | Use case | Example |
+|---------|----------|---------|
+| `I18n.bind(property, key)` | Static labels, buttons — auto-updates on locale change | `I18n.bind(label.textProperty(), "plugin.xxx.title")` |
+| `I18n.get(key)` | Dynamic text (status, formatted messages) | `statusLabel.setText(I18n.get("plugin.xxx.idle"))` |
+| `I18n.addListener(runnable)` | Custom refresh when locale changes | `I18n.addListener(this::refreshStatus)` |
+
+**Theme rules:**
+- Nodes embedded in the host Scene inherit `swisskit-common.css` automatically — no action needed.
+- Only independent windows (Alert, custom Stage) need `Themes.applyTo(scene)` to match the host theme.
+
+### 6. i18n Resource Files
+
+Properties files live under `src/main/resources/i18n/`. The base name `i18n.messages` is what gets passed to `I18n.registerPluginBundle()`.
+
+**Key convention**: Prefix all keys with `plugin.<slug>.` to avoid collisions with the host or other plugins.
+
+File: `src/main/resources/i18n/messages.properties` (default / English)
+```properties
+# {{Name}} Plugin i18n
+plugin.{{slug}}.exampleLabel=Example Label
+plugin.{{slug}}.exampleButton=Example Button
+plugin.{{slug}}.idle=Idle
+plugin.{{slug}}.running=Running...
+plugin.{{slug}}.error=Error
+```
+
+File: `src/main/resources/i18n/messages_zh.properties` (Chinese)
+```properties
+# {{Name}} Plugin i18n Chinese
+plugin.{{slug}}.exampleLabel=示例标签
+plugin.{{slug}}.exampleButton=示例按钮
+plugin.{{slug}}.idle=空闲
+plugin.{{slug}}.running=运行中...
+plugin.{{slug}}.error=错误
+```
+
+**IMPORTANT**:
+- The base name `i18n.messages` must match the path — if files are in `i18n/` and named `messages.properties`, the base name is `i18n.messages`.
+- Both files must use the **exact same keys**. Missing keys in a locale file fall back to the default `messages.properties`.
+- Key prefix `plugin.<slug>.` is a convention, not enforced — but it prevents collisions.
+
+### 7. Database Layer (if database needed)
 
 **DatabaseInit** — Bootstraps H2 and MyBatis. Database files stored at `~/.swisskit/plugins/database/pl_{{slug}}`.
 
@@ -500,7 +574,7 @@ XML mapper (`src/main/resources/mapper/{{Name}}Mapper.xml`):
 
 **IMPORTANT**: The XML `namespace` MUST match the Java interface's fully qualified name exactly. A mismatch causes `org.apache.ibatis.binding.BindingException`.
 
-### 7. Excel Reading (if Excel input needed)
+### 8. Excel Reading (if Excel input needed)
 
 **DTO** — Maps Excel columns by index using `@ExcelProperty`:
 
@@ -590,7 +664,7 @@ FesodSheet.read(inputStream, {{Name}}Dto.class, new {{Name}}Listener())
     .sheet().doRead();
 ```
 
-### 8. Background Worker (if file upload needed)
+### 9. Background Worker (if file upload needed)
 
 Extends JavaFX `Task<Void>` for async execution with success/failure callbacks:
 
@@ -629,7 +703,7 @@ worker.setOnFailed(ev -> { /* show error with worker.getException() */ });
 new Thread(worker).start();
 ```
 
-### 9. File Chooser Utility
+### 10. File Chooser Utility
 
 ```java
 package {{base-package}}.util;
@@ -671,6 +745,10 @@ public abstract class FileChoiceUtil {
 7. **H2 database path**: Uses `user.dir` (current working directory), not `user.home`. In production, the host app sets `user.dir` appropriately. The database directory path must use forward slashes even on Windows.
 
 8. **Dev profile mainClass**: Must match the actual `DevLauncher` package path, not an old or placeholder name.
+
+9. **i18n bundle registration**: `I18n.registerPluginBundle("i18n.messages", getClass().getClassLoader())` MUST be called in `createView()` before the UI is constructed. Without this, `I18n.get()` and `I18n.bind()` return raw keys instead of translated text. The ClassLoader must be the plugin's own (`getClass().getClassLoader()`), not the system ClassLoader.
+
+10. **Theme on Alert dialogs**: `Alert` creates its own Scene, which does NOT inherit the host's stylesheet. Always apply `Themes.applyTo(scene)` via a `sceneProperty` listener on `alert.getDialogPane()`. Nodes embedded directly in the host Scene inherit the theme automatically — only independent windows need this.
 
 ---
 
