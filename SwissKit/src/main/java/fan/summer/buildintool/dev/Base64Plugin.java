@@ -4,6 +4,7 @@ import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
+import fan.summer.api.i18n.I18n;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -19,8 +20,8 @@ import java.util.Base64;
 public class Base64Plugin implements SwissKitJPlugin {
 
     @Override public String getId()          { return "builtin.base64"; }
-    @Override public String getName()        { return "Base64"; }
-    @Override public String getDescription() { return "Base64 Encode / Decode"; }
+    @Override public String getName()        { return I18n.get("builtin.base64.name"); }
+    @Override public String getDescription() { return I18n.get("builtin.base64.desc"); }
     @Override public ToolCategory getCategory()    { return ToolCategory.DEV; }
     @Override public String getVersion()     { return "1.0.0"; }
     @Override public String getMdiIcon()    { return "base64"; }
@@ -33,8 +34,8 @@ public class Base64Plugin implements SwissKitJPlugin {
         TextArea output = styledTextArea("");
         output.setEditable(false);
 
-        Button encodeBtn = actionButton("Encode →",  "#5b8cf7");
-        Button decodeBtn = actionButton("← Decode",  "rgba(255,255,255,0.12)");
+        Button encodeBtn = actionButton(I18n.get("builtin.base64.encode"),  "#5b8cf7");
+        Button decodeBtn = actionButton(I18n.get("builtin.base64.decode"),  "rgba(255,255,255,0.12)");
         Button swapBtn   = actionButton("↕ Swap",    "rgba(255,255,255,0.08)");
 
         encodeBtn.setOnAction(e -> {
@@ -62,8 +63,8 @@ public class Base64Plugin implements SwissKitJPlugin {
         HBox btnRow = new HBox(8, encodeBtn, decodeBtn, swapBtn);
         btnRow.setPadding(new Insets(0, 0, 12, 0));
 
-        VBox left  = new VBox(6, sectionLabel("Input"),  input);
-        VBox right = new VBox(6, sectionLabel("Output"), output);
+        VBox left  = new VBox(6, sectionLabel(I18n.get("builtin.base64.input")),  input);
+        VBox right = new VBox(6, sectionLabel(I18n.get("builtin.base64.output")), output);
         VBox.setVgrow(input,  Priority.ALWAYS);
         VBox.setVgrow(output, Priority.ALWAYS);
         HBox.setHgrow(left,   Priority.ALWAYS);

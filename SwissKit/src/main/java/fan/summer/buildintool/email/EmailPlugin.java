@@ -4,6 +4,7 @@ import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
+import fan.summer.api.i18n.I18n;
 import fan.summer.api.theme.Themes;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.email.EmailMassSentConfigEntity;
@@ -59,8 +60,8 @@ public class EmailPlugin implements SwissKitJPlugin {
     private String massTaskId;
 
     @Override public String getId()          { return "builtin.email"; }
-    @Override public String getName()        { return "邮件发送"; }
-    @Override public String getDescription() { return "支持单发与按标签群发，含附件路由与发送日志"; }
+    @Override public String getName()        { return I18n.get("builtin.email.name"); }
+    @Override public String getDescription() { return I18n.get("builtin.email.desc"); }
     @Override public ToolCategory getCategory()    { return ToolCategory.NET; }
     @Override public String getVersion()     { return "1.0.0"; }
     @Override public String getMdiIcon()     { return "email"; }
@@ -75,20 +76,20 @@ public class EmailPlugin implements SwissKitJPlugin {
     }
 
     private Node buildView() {
-        Label title = sectionTitle("撰写邮件");
+        Label title = sectionTitle(I18n.get("builtin.email.compose"));
 
         // Subject
         TextField subjectField = new TextField();
-        subjectField.setPromptText("邮件主题");
+        subjectField.setPromptText(I18n.get("builtin.email.subjectPrompt"));
         subjectField.setStyle(fieldStyle());
 
         // Recipients (single mode)
         TextField toField = new TextField();
-        toField.setPromptText("收件人，多个用逗号或分号分隔");
+        toField.setPromptText(I18n.get("builtin.email.toPrompt"));
         toField.setStyle(fieldStyle());
 
         TextField ccField = new TextField();
-        ccField.setPromptText("抄送（可选）");
+        ccField.setPromptText(I18n.get("builtin.email.ccPrompt"));
         ccField.setStyle(fieldStyle());
 
         // Body — rich text HTML editor (WebView + contenteditable + formatting toolbar)
@@ -96,13 +97,13 @@ public class EmailPlugin implements SwissKitJPlugin {
         VBox.setVgrow(bodyEditor, Priority.ALWAYS);
 
         // Mass send controls
-        CheckBox massCheckBox = new CheckBox("群发模式");
+        CheckBox massCheckBox = new CheckBox(I18n.get("builtin.email.massMode"));
         massCheckBox.setStyle("-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 13px;");
 
-        Button configBtn = glassBtn("群发配置", false);
+        Button configBtn = glassBtn(I18n.get("builtin.email.massConfig"), false);
         configBtn.setDisable(true);
 
-        Button viewConfigBtn = glassBtn("查看配置", false);
+        Button viewConfigBtn = glassBtn(I18n.get("builtin.email.viewConfig"), false);
         viewConfigBtn.setDisable(true);
 
         massCheckBox.selectedProperty().addListener((obs, old, sel) -> {
@@ -139,8 +140,8 @@ public class EmailPlugin implements SwissKitJPlugin {
         Label progressLabel = new Label("");
         progressLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
 
-        Button sendBtn = glassBtn("发送", true);
-        Button viewLogBtn = glassBtn("查看发送日志", false);
+        Button sendBtn = glassBtn(I18n.get("builtin.email.send"), true);
+        Button viewLogBtn = glassBtn(I18n.get("builtin.email.viewSentLog"), false);
 
         sendBtn.setOnAction(e -> handleSend(
                 subjectField, toField, ccField, bodyEditor,
@@ -152,12 +153,12 @@ public class EmailPlugin implements SwissKitJPlugin {
 
         // Header rows
         VBox headerBox = new VBox(8,
-                labeled("主题", subjectField),
-                labeled("收件人", toField),
-                labeled("抄送", ccField)
+                labeled(I18n.get("builtin.email.subject"), subjectField),
+                labeled(I18n.get("builtin.email.to"), toField),
+                labeled(I18n.get("builtin.email.cc"), ccField)
         );
 
-        VBox bodyBox = new VBox(6, subLabel("正文"), bodyEditor);
+        VBox bodyBox = new VBox(6, subLabel(I18n.get("builtin.email.body")), bodyEditor);
         VBox.setVgrow(bodyBox, Priority.ALWAYS);
         VBox.setVgrow(bodyEditor, Priority.ALWAYS);
 
@@ -187,18 +188,18 @@ public class EmailPlugin implements SwissKitJPlugin {
         String body = bodyEditor.getHtml();
         String plain = bodyEditor.getPlainText();
         if (subject == null || subject.isBlank()) {
-            GlassNotification.notify(view, GlassNotification.Type.WARNING, "请填写主题");
+            GlassNotification.notify(view, GlassNotification.Type.WARNING, I18n.get("builtin.email.subjectRequired"));
             return;
         }
         if (plain == null || plain.isBlank()) {
-            GlassNotification.notify(view, GlassNotification.Type.WARNING, "请填写正文");
+            GlassNotification.notify(view, GlassNotification.Type.WARNING, I18n.get("builtin.email.bodyRequired"));
             return;
         }
 
         sendBtn.setDisable(true);
         progressBar.setProgress(0);
         progressBar.getStyleClass().removeAll("success", "danger");
-        progressLabel.setText("准备发送...");
+        progressLabel.setText(I18n.get("builtin.email.preparingSend"));
         progressLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
 
         Task<EmailSendService.Result> task = new Task<>() {
@@ -208,7 +209,7 @@ public class EmailPlugin implements SwissKitJPlugin {
                 if (massMode) {
                     if (massTaskId == null) {
                         EmailSendService.Result r = new EmailSendService.Result();
-                        r.errorMessage = "未配置群发任务";
+                        r.errorMessage = I18n.get("builtin.email.noMassConfig");
                         return r;
                     }
                     return service.sendMass(subject, body, massTaskId,
@@ -220,13 +221,13 @@ public class EmailPlugin implements SwissKitJPlugin {
                     List<String> toList = splitAddresses(toField.getText());
                     if (toList.isEmpty()) {
                         EmailSendService.Result r = new EmailSendService.Result();
-                        r.errorMessage = "请填写收件人";
+                        r.errorMessage = I18n.get("builtin.email.toRequired");
                         return r;
                     }
                     List<String> ccList = splitAddresses(ccField.getText());
                     Platform.runLater(() -> {
                         progressBar.setProgress(-1);
-                        progressLabel.setText("发送中...");
+                        progressLabel.setText(I18n.get("builtin.email.sending"));
                     });
                     return service.sendSingle(subject, body, toList, ccList, null, null);
                 }
@@ -240,11 +241,11 @@ public class EmailPlugin implements SwissKitJPlugin {
             progressBar.getStyleClass().removeAll("success", "danger");
             if (r.errorMessage != null) {
                 progressBar.getStyleClass().add("danger");
-                progressLabel.setText("❌ " + r.errorMessage);
+                progressLabel.setText(I18n.get("builtin.email.sendFailed", r.errorMessage));
                 progressLabel.setStyle("-fx-text-fill: #f25c5c; -fx-font-size: 12px;");
             } else {
                 progressBar.getStyleClass().add("success");
-                progressLabel.setText("✓ 完成：成功 " + r.successCount + "，失败 " + r.failCount);
+                progressLabel.setText(I18n.get("builtin.email.sendComplete", r.successCount, r.failCount));
                 progressLabel.setStyle("-fx-text-fill: #4cd97b; -fx-font-size: 12px;");
             }
         });
@@ -254,7 +255,7 @@ public class EmailPlugin implements SwissKitJPlugin {
             progressBar.getStyleClass().removeAll("success", "danger");
             progressBar.getStyleClass().add("danger");
             Throwable ex = task.getException();
-            progressLabel.setText("❌ 发送任务异常：" + (ex != null ? ex.getMessage() : "unknown"));
+            progressLabel.setText(I18n.get("builtin.email.sendTaskFailed", ex != null ? ex.getMessage() : "unknown"));
             progressLabel.setStyle("-fx-text-fill: #f25c5c; -fx-font-size: 12px;");
             log.error("Send task failed", ex);
         });
@@ -279,34 +280,34 @@ public class EmailPlugin implements SwissKitJPlugin {
     private void openMassConfigDialog(String taskId) {
         Stage dialog = new Stage();
         dialog.initModality(Modality.APPLICATION_MODAL);
-        dialog.setTitle("群发配置");
+        dialog.setTitle(I18n.get("builtin.email.massConfigTitle"));
 
         List<EmailTagEntity> tags;
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             tags = session.getMapper(EmailTagMapper.class).selectAll();
             if (tags == null) tags = new ArrayList<>();
         } catch (Exception e) {
-            GlassNotification.notify(view, GlassNotification.Type.ERROR, "加载标签失败：" + e.getMessage());
+            GlassNotification.notify(view, GlassNotification.Type.ERROR, I18n.get("builtin.email.loadTagsFailed", e.getMessage()));
             return;
         }
 
-        ComboBox<EmailTagEntity> toCombo = tagComboBox(tags, "选择收件人标签");
-        ComboBox<EmailTagEntity> ccCombo = tagComboBox(tags, "选择抄送标签（可选）");
+        ComboBox<EmailTagEntity> toCombo = tagComboBox(tags, I18n.get("builtin.email.selectToTag"));
+        ComboBox<EmailTagEntity> ccCombo = tagComboBox(tags, I18n.get("builtin.email.selectCcTag"));
 
-        CheckBox attCheckBox = new CheckBox("根据标签附带附件");
+        CheckBox attCheckBox = new CheckBox(I18n.get("builtin.email.attachByTag"));
         attCheckBox.setStyle("-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 13px;");
 
         TextField attFolderField = new TextField();
-        attFolderField.setPromptText("选择附件文件夹");
+        attFolderField.setPromptText(I18n.get("builtin.email.attachmentFolderPrompt"));
         attFolderField.setEditable(false);
         attFolderField.setStyle(fieldStyle());
         HBox.setHgrow(attFolderField, Priority.ALWAYS);
 
-        Button chooseFolderBtn = glassBtn("选择文件夹", false);
+        Button chooseFolderBtn = glassBtn(I18n.get("builtin.email.chooseAttachmentFolder"), false);
         chooseFolderBtn.setDisable(true);
         chooseFolderBtn.setOnAction(e -> {
             DirectoryChooser dc = new DirectoryChooser();
-            dc.setTitle("选择附件文件夹");
+            dc.setTitle(I18n.get("builtin.email.chooseAttachmentFolderTitle"));
             File dir = dc.showDialog(dialog);
             if (dir != null) attFolderField.setText(dir.getAbsolutePath());
         });
@@ -330,17 +331,17 @@ public class EmailPlugin implements SwissKitJPlugin {
             }
         } catch (Exception ignored) {}
 
-        Button saveBtn = glassBtn("保存", true);
-        Button cancelBtn = glassBtn("取消", false);
+        Button saveBtn = glassBtn(I18n.get("builtin.email.save"), true);
+        Button cancelBtn = glassBtn(I18n.get("builtin.email.cancel"), false);
 
         saveBtn.setOnAction(e -> {
             EmailTagEntity to = toCombo.getValue();
             if (to == null) {
-                GlassNotification.notify(view, GlassNotification.Type.WARNING, "请选择收件人标签");
+                GlassNotification.notify(view, GlassNotification.Type.WARNING, I18n.get("builtin.email.selectToTagWarning"));
                 return;
             }
             if (attCheckBox.isSelected() && (attFolderField.getText() == null || attFolderField.getText().isBlank())) {
-                GlassNotification.notify(view, GlassNotification.Type.WARNING, "请选择附件文件夹");
+                GlassNotification.notify(view, GlassNotification.Type.WARNING, I18n.get("builtin.email.selectFolderWarning"));
                 return;
             }
             EmailMassSentConfigEntity cfg = new EmailMassSentConfigEntity();
@@ -355,10 +356,10 @@ public class EmailPlugin implements SwissKitJPlugin {
                 session.getMapper(EmailMassSentConfigMapper.class).upsert(cfg);
                 session.commit();
                 dialog.close();
-                GlassNotification.toast(view, GlassNotification.Type.SUCCESS, "配置已保存");
+                GlassNotification.toast(view, GlassNotification.Type.SUCCESS, I18n.get("builtin.email.configSaved"));
             } catch (Exception ex) {
                 log.error("Save config failed", ex);
-                GlassNotification.notify(view, GlassNotification.Type.ERROR, "保存失败：" + ex.getMessage());
+                GlassNotification.notify(view, GlassNotification.Type.ERROR, I18n.get("builtin.email.saveFailed", ex.getMessage()));
             }
         });
         cancelBtn.setOnAction(e -> dialog.close());
@@ -369,9 +370,9 @@ public class EmailPlugin implements SwissKitJPlugin {
         buttons.setAlignment(Pos.CENTER_RIGHT);
 
         VBox root = new VBox(12,
-                sectionTitle("群发配置"),
-                labeled("收件标签", toCombo),
-                labeled("抄送标签", ccCombo),
+                sectionTitle(I18n.get("builtin.email.massConfigTitle")),
+                labeled(I18n.get("builtin.email.toTag"), toCombo),
+                labeled(I18n.get("builtin.email.ccTag"), ccCombo),
                 attCheckBox,
                 attRow,
                 buttons
@@ -426,20 +427,20 @@ public class EmailPlugin implements SwissKitJPlugin {
             EmailMassSentConfigEntity cfg =
                     session.getMapper(EmailMassSentConfigMapper.class).selectByTaskId(taskId);
             if (cfg == null) {
-                GlassNotification.notify(view, GlassNotification.Type.INFO, "当前任务暂无配置");
+                GlassNotification.notify(view, GlassNotification.Type.INFO, I18n.get("builtin.email.noConfig"));
                 return;
             }
             List<EmailTagEntity> tags = session.getMapper(EmailTagMapper.class).selectAll();
             String toName = resolveTagName(tags, cfg.getToTag());
             String ccName = resolveTagName(tags, cfg.getCcTag());
             String text = "Task ID：" + cfg.getTaskId() + "\n" +
-                    "收件标签：" + (toName != null ? toName : "—") + "\n" +
-                    "抄送标签：" + (ccName != null ? ccName : "—") + "\n" +
-                    "附件发送：" + (cfg.isSentAtt() ? "是" : "否") + "\n" +
-                    "附件目录：" + (cfg.getAttFolderPath() != null ? cfg.getAttFolderPath() : "—");
-            GlassNotification.notify(view, GlassNotification.Type.INFO, "群发配置", text);
+                    I18n.get("builtin.email.toTag") + "：" + (toName != null ? toName : "—") + "\n" +
+                    I18n.get("builtin.email.ccTag") + "：" + (ccName != null ? ccName : "—") + "\n" +
+                    I18n.get("builtin.email.attachByTag") + "：" + (cfg.isSentAtt() ? "✓" : "✗") + "\n" +
+                    I18n.get("builtin.email.chooseAttachmentFolder") + "：" + (cfg.getAttFolderPath() != null ? cfg.getAttFolderPath() : "—");
+            GlassNotification.notify(view, GlassNotification.Type.INFO, I18n.get("builtin.email.massConfigTitle"), text);
         } catch (Exception e) {
-            GlassNotification.notify(view, GlassNotification.Type.ERROR, "加载配置失败：" + e.getMessage());
+            GlassNotification.notify(view, GlassNotification.Type.ERROR, I18n.get("builtin.email.loadConfigFailed", e.getMessage()));
         }
     }
 
@@ -466,40 +467,40 @@ public class EmailPlugin implements SwissKitJPlugin {
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             logs = session.getMapper(EmailSentLogMapper.class).selectAll();
         } catch (Exception e) {
-            GlassNotification.notify(view, GlassNotification.Type.ERROR, "加载日志失败：" + e.getMessage());
+            GlassNotification.notify(view, GlassNotification.Type.ERROR, I18n.get("builtin.email.loadLogFailed", e.getMessage()));
             return;
         }
         if (logs == null || logs.isEmpty()) {
-            GlassNotification.notify(view, GlassNotification.Type.INFO, "暂无发送日志");
+            GlassNotification.notify(view, GlassNotification.Type.INFO, I18n.get("builtin.email.noSentLog"));
             return;
         }
 
         Stage dialog = new Stage();
         dialog.initModality(Modality.APPLICATION_MODAL);
-        dialog.setTitle("发送日志");
+        dialog.setTitle(I18n.get("builtin.email.sentLog"));
 
         TableView<EmailSentLogEntity> table = new TableView<>(FXCollections.observableArrayList(logs));
         table.setStyle("-fx-background-color: transparent;");
-        table.setPlaceholder(new Label("无数据"));
+        table.setPlaceholder(new Label(I18n.get("builtin.email.noData")));
 
-        table.getColumns().add(column("ID", "id", 60));
-        table.getColumns().add(column("主题", "subject", 160));
-        table.getColumns().add(column("收件人", "to", 200));
-        table.getColumns().add(column("抄送", "cc", 160));
-        table.getColumns().add(column("附件", "attachment", 200));
-        table.getColumns().add(column("发送时间", "sendTime", 160));
-        TableColumn<EmailSentLogEntity, Boolean> successCol = new TableColumn<>("成功");
+        table.getColumns().add(column(I18n.get("builtin.email.colId"), "id", 60));
+        table.getColumns().add(column(I18n.get("builtin.email.colSubject"), "subject", 160));
+        table.getColumns().add(column(I18n.get("builtin.email.colTo"), "to", 200));
+        table.getColumns().add(column(I18n.get("builtin.email.colCc"), "cc", 160));
+        table.getColumns().add(column(I18n.get("builtin.email.colAttachment"), "attachment", 200));
+        table.getColumns().add(column(I18n.get("builtin.email.colSendTime"), "sendTime", 160));
+        TableColumn<EmailSentLogEntity, Boolean> successCol = new TableColumn<>(I18n.get("builtin.email.colSuccess"));
         successCol.setCellValueFactory(new PropertyValueFactory<>("success"));
         successCol.setPrefWidth(60);
         table.getColumns().add(successCol);
 
-        Button closeBtn = glassBtn("关闭", false);
+        Button closeBtn = glassBtn(I18n.get("builtin.email.close"), false);
         closeBtn.setOnAction(e -> dialog.close());
 
         HBox footer = new HBox(spacer(), closeBtn);
         footer.setAlignment(Pos.CENTER_RIGHT);
 
-        VBox root = new VBox(12, sectionTitle("发送日志"), table, footer);
+        VBox root = new VBox(12, sectionTitle(I18n.get("builtin.email.sentLog")), table, footer);
         VBox.setVgrow(table, Priority.ALWAYS);
         root.setPadding(new Insets(24));
         root.setStyle("-fx-background-color: #1f2937;");

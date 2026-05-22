@@ -1,5 +1,6 @@
 package fan.summer.ui.store;
 
+import fan.summer.api.i18n.I18n;
 import fan.summer.ui.sidebar.Sidebar.NavItem;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
@@ -39,10 +40,10 @@ public class PluginStoreUi {
             "-fx-border-width: 0 1 0 0;"
         );
 
-        sidebar.getChildren().add(sidebarSectionLabel("STORE"));
+        sidebar.getChildren().add(sidebarSectionLabel(I18n.get("store.section")));
 
-        NavItem onlineNav = new NavItem("online", "🌐", "Online Store", 0, false);
-        NavItem localNav  = new NavItem("local",  "📦", "Local Install", 0, false);
+        NavItem onlineNav = new NavItem("online", "🌐", I18n.get("store.nav.online"), 0, false);
+        NavItem localNav  = new NavItem("local",  "📦", I18n.get("store.nav.local"), 0, false);
 
         onlineNav.setActive(true);
         sidebar.getChildren().addAll(onlineNav, localNav);

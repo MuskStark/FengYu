@@ -1,5 +1,6 @@
 package fan.summer.ui.store;
 
+import fan.summer.api.i18n.I18n;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -44,16 +45,13 @@ public class LocalInstallPane extends VBox {
         setStyle("-fx-background-color: transparent;");
         setPadding(new Insets(24));
 
-        Label title = new Label("Install from Local File");
+        Label title = new Label(I18n.get("store.local.title"));
         title.setStyle(
             "-fx-text-fill: rgba(255,255,255,0.90);" +
             "-fx-font-size: 18px; -fx-font-weight: 500;"
         );
 
-        Label desc = new Label(
-            "Select a SwissKitJ plugin JAR file to install. " +
-            "The plugin will be automatically loaded after installation."
-        );
+        Label desc = new Label(I18n.get("store.local.desc"));
         desc.setStyle(
             "-fx-text-fill: rgba(255,255,255,0.45);" +
             "-fx-font-size: 12px;"
@@ -72,7 +70,7 @@ public class LocalInstallPane extends VBox {
         );
 
         // Install button
-        installBtn = glassBtn("Install Plugin", true);
+        installBtn = glassBtn(I18n.get("store.local.installPlugin"), true);
         installBtn.setDisable(true);
         installBtn.setOnAction(e -> {
             File file = selectedFile.get();
@@ -94,10 +92,7 @@ public class LocalInstallPane extends VBox {
         );
         statusLabel.setWrapText(true);
 
-        Label hint = new Label(
-            "Plugin JAR files must contain META-INF/services/fan.summer.api.SwissKitJPlugin " +
-            "to be recognized."
-        );
+        Label hint = new Label(I18n.get("store.local.hint"));
         hint.setStyle(
             "-fx-text-fill: rgba(255,255,255,0.28);" +
             "-fx-font-size: 11px;"
@@ -125,14 +120,14 @@ public class LocalInstallPane extends VBox {
         Label iconLabel = new Label("📦");
         iconLabel.setStyle("-fx-font-size: 32px;");
 
-        Label dropText = new Label("Drop JAR file here or click to browse");
+        Label dropText = new Label(I18n.get("store.local.dropHint"));
         dropText.setStyle(
             "-fx-text-fill: rgba(255,255,255,0.55);" +
             "-fx-font-size: 13px;"
         );
         dropText.setWrapText(true);
 
-        Button browseBtn = glassBtn("Browse Files", false);
+        Button browseBtn = glassBtn(I18n.get("store.local.browseFiles"), false);
         browseBtn.setOnAction(e -> browseAndSelect());
 
         zone.getChildren().addAll(iconLabel, dropText, browseBtn);
@@ -159,7 +154,7 @@ public class LocalInstallPane extends VBox {
 
     private void browseAndSelect() {
         FileChooser fc = new FileChooser();
-        fc.setTitle("Select Plugin JAR");
+        fc.setTitle(I18n.get("store.local.installPlugin"));
         fc.getExtensionFilters().add(
             new FileChooser.ExtensionFilter("JAR Files", "*.jar")
         );
@@ -169,7 +164,7 @@ public class LocalInstallPane extends VBox {
 
     private void handleFile(File file) {
         if (!file.getName().toLowerCase().endsWith(".jar")) {
-            showError("Please select a JAR file.");
+            showError(I18n.get("store.local.selectJar"));
             return;
         }
         selectedFile.set(file);
@@ -190,7 +185,7 @@ public class LocalInstallPane extends VBox {
         installBtn.setDisable(true);
         progress.setVisible(true);
         statusLabel.setVisible(true);
-        statusLabel.setText("Installing...");
+        statusLabel.setText(I18n.get("store.local.installing"));
         statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
 
         new Thread(() -> {
@@ -205,7 +200,7 @@ public class LocalInstallPane extends VBox {
 
                 javafx.application.Platform.runLater(() -> {
                     progress.setVisible(false);
-                    statusLabel.setText("✓ Successfully installed: " + source.getName());
+                    statusLabel.setText(I18n.get("store.local.installed", source.getName()));
                     statusLabel.setStyle("-fx-text-fill: #4cd97b; -fx-font-size: 12px;");
                     installBtn.setDisable(false);
                     if (onInstallComplete != null) onInstallComplete.run();
@@ -214,7 +209,7 @@ public class LocalInstallPane extends VBox {
                 log.error("Plugin install failed", ex);
                 javafx.application.Platform.runLater(() -> {
                     progress.setVisible(false);
-                    showError("Install failed: " + ex.getMessage());
+                    showError(I18n.get("store.online.installFailed", ex.getMessage()));
                     installBtn.setDisable(false);
                 });
             }
