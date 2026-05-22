@@ -2,6 +2,7 @@ package fan.summer.ui.setting;
 
 import fan.summer.api.ai.AiService;
 import fan.summer.api.ai.AiServiceProvider;
+import fan.summer.api.i18n.I18n;
 import fan.summer.api.theme.Themes;
 import fan.summer.database.DatabaseInit;
 import fan.summer.ui.sidebar.Sidebar.NavItem;
@@ -50,6 +51,7 @@ import java.io.File;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -85,21 +87,21 @@ public class SwissKitJSettingUi {
         sidebar.setMinWidth(160);
         sidebar.setMaxWidth(200);
 
-        sidebar.getChildren().add(sidebarSectionLabel("SETTINGS"));
-        NavItem generalNav = sidebarNavItem("⚙", "General");
-        NavItem storeNav   = sidebarNavItem("🏪", "Plugin Store");
+        sidebar.getChildren().add(sidebarSectionLabel(I18n.get("setting.section")));
+        NavItem generalNav = sidebarNavItem("⚙", I18n.get("setting.nav.general"));
+        NavItem storeNav   = sidebarNavItem("🏪", I18n.get("setting.nav.pluginStore"));
         sidebar.getChildren().addAll(generalNav, storeNav);
 
         sidebar.getChildren().add(sidebarDivider());
 
         sidebar.getChildren().add(sidebarSectionLabel("AI"));
-        NavItem aiModelNav = sidebarNavItem("🤖", "AI Model");
+        NavItem aiModelNav = sidebarNavItem("🤖", I18n.get("setting.nav.aiModel"));
         sidebar.getChildren().add(aiModelNav);
 
         sidebar.getChildren().add(sidebarDivider());
 
-        sidebar.getChildren().add(sidebarSectionLabel("BUILD-IN TOOLS"));
-        NavItem emailNav = sidebarNavItem("✉", "Email");
+        sidebar.getChildren().add(sidebarSectionLabel(I18n.get("setting.nav.buildInTools")));
+        NavItem emailNav = sidebarNavItem("✉", I18n.get("setting.nav.email"));
         sidebar.getChildren().add(emailNav);
 
         generalNav.setActive(true);
@@ -147,8 +149,8 @@ public class SwissKitJSettingUi {
     // ═══════════════════════════════════════════════════════════════════
 
     private static VBox buildGeneralTab() {
-        Label title = sectionTitle("General Settings");
-        Label langLabel = subLabel("Language");
+        Label title = sectionTitle(I18n.get("setting.general.title"));
+        Label langLabel = subLabel(I18n.get("setting.general.language"));
 
         ComboBox<String> langCombo = new ComboBox<>(FXCollections.observableArrayList("中文", "English"));
         langCombo.setValue(getCurrentLanguageLabel());
@@ -182,23 +184,28 @@ public class SwissKitJSettingUi {
     }
 
     private static void saveLanguageSetting(String label) {
+        boolean isZh = "中文".equals(label);
+        String code = isZh ? "zh" : "en";
+        Locale locale = isZh ? Locale.CHINESE : Locale.ENGLISH;
         new Thread(() -> {
             try (SqlSession session = DatabaseInit.getSqlSession()) {
                 AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
                 AppSettingEntity entity = mapper.selectByKey("language");
                 if (entity != null) {
-                    entity.setSettingValue("中文".equals(label) ? "zh" : "en");
+                    entity.setSettingValue(code);
                     mapper.update(entity);
                 } else {
                     AppSettingEntity newEntity = new AppSettingEntity();
                     newEntity.setSettingKey("language");
-                    newEntity.setSettingValue("中文".equals(label) ? "zh" : "en");
+                    newEntity.setSettingValue(code);
                     mapper.insert(newEntity);
                 }
                 session.commit();
-                Platform.runLater(() ->
+                Platform.runLater(() -> {
+                    I18n.setLocale(locale);
                     GlassNotification.toast((Window) null, GlassNotification.Type.INFO,
-                        "Language changed. Restart may be required for full effect."));
+                        I18n.get("setting.general.languageChanged"));
+                });
             } catch (Exception e) {
                 log.error("Failed to save language setting", e);
             }
@@ -235,26 +242,26 @@ public class SwissKitJSettingUi {
         root.setPadding(new Insets(20));
         root.setStyle("-fx-background-color: transparent;");
 
-        Label title = sectionTitle("Plugin Store Settings");
-        Label descLabel = subLabel("Plugin Store URL");
-        Label desc = new Label("Configure the endpoint for fetching remote plugin lists.");
+        Label title = sectionTitle(I18n.get("setting.store.title"));
+        Label descLabel = subLabel(I18n.get("setting.store.label"));
+        Label desc = new Label(I18n.get("setting.store.desc"));
         desc.setStyle("-fx-text-fill: rgba(255,255,255,0.35); -fx-font-size: 12px;");
         desc.setWrapText(true);
 
         TextField urlField = textField(null, DEFAULT_STORE_URL);
         urlField.setText(getStoreUrl());
 
-        Button saveBtn = glassBtn("Save", true);
+        Button saveBtn = glassBtn(I18n.get("button.save"), true);
         saveBtn.setOnAction(e -> {
             String url = urlField.getText();
             if (url == null || url.isBlank()) {
-                GlassNotification.notify((Window) null, GlassNotification.Type.WARNING, "URL cannot be empty.");
+                GlassNotification.notify((Window) null, GlassNotification.Type.WARNING, I18n.get("setting.store.urlEmpty"));
                 return;
             }
             saveStoreUrl(url.trim());
         });
 
-        Button resetBtn = glassBtn("Reset to Default", false);
+        Button resetBtn = glassBtn(I18n.get("button.resetToDefault"), false);
         resetBtn.setOnAction(e -> {
             urlField.setText(DEFAULT_STORE_URL);
             saveStoreUrl(DEFAULT_STORE_URL);
@@ -283,10 +290,10 @@ public class SwissKitJSettingUi {
                 session.commit();
                 Platform.runLater(() ->
                     GlassNotification.toast((Window) null, GlassNotification.Type.SUCCESS,
-                        "Plugin store URL saved."));
+                        I18n.get("setting.store.saved")));
             } catch (Exception ex) {
                 log.error("Failed to save store URL", ex);
-                Platform.runLater(() -> GlassNotification.notify((Window) null, GlassNotification.Type.ERROR, "Failed to save: " + ex.getMessage()));
+                Platform.runLater(() -> GlassNotification.notify((Window) null, GlassNotification.Type.ERROR, I18n.get("setting.store.saveFailed", ex.getMessage())));
             }
         }).start();
     }
@@ -306,27 +313,27 @@ public class SwissKitJSettingUi {
         root.setPadding(new Insets(20));
         root.setStyle("-fx-background-color: transparent;");
 
-        Label title = sectionTitle("AI Model Management");
+        Label title = sectionTitle(I18n.get("setting.ai.title"));
 
         // ── Model status section ─────────────────────────────
-        Label modelStatusLabel = new Label("No model loaded");
+        Label modelStatusLabel = new Label(I18n.get("setting.ai.noModelLoaded"));
         modelStatusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 13px;");
 
         Label modelPathLabel = new Label("—");
         modelPathLabel.setWrapText(true);
         modelPathLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.35); -fx-font-size: 12px;");
 
-        TextField modelPathField = textField(null, "Select a GGUF model file...");
+        TextField modelPathField = textField(null, I18n.get("setting.ai.selectModel"));
         loadAiSetting(AI_MODEL_PATH_KEY, val -> modelPathField.setText(val));
 
-        Button browseBtn = glassBtn("Browse", false);
-        Button loadBtn = glassBtn("Load Model", true);
-        Button unloadBtn = glassBtn("Unload", false);
+        Button browseBtn = glassBtn(I18n.get("setting.ai.browse"), false);
+        Button loadBtn = glassBtn(I18n.get("setting.ai.loadModel"), true);
+        Button unloadBtn = glassBtn(I18n.get("setting.ai.unload"), false);
         unloadBtn.setDisable(true);
 
         browseBtn.setOnAction(e -> {
             FileChooser chooser = new FileChooser();
-            chooser.setTitle("Select GGUF Model");
+            chooser.setTitle(I18n.get("setting.ai.selectModel"));
             chooser.getExtensionFilters().add(
                 new FileChooser.ExtensionFilter("GGUF Model", "*.gguf")
             );
@@ -340,12 +347,13 @@ public class SwissKitJSettingUi {
         loadBtn.setOnAction(e -> {
             String path = modelPathField.getText();
             if (path == null || path.isBlank()) {
-                GlassNotification.notify((Window) null, GlassNotification.Type.WARNING, "Please select a model file first.");
+                GlassNotification.notify((Window) null, GlassNotification.Type.WARNING,
+                    I18n.get("setting.ai.selectModelFile"));
                 return;
             }
 
             loadBtn.setDisable(true);
-            modelStatusLabel.setText("Loading model...");
+            modelStatusLabel.setText(I18n.get("setting.ai.loadingModel"));
             saveAiSetting(AI_MODEL_PATH_KEY, path.trim());
 
             Thread.ofVirtual().start(() -> {
@@ -353,7 +361,7 @@ public class SwissKitJSettingUi {
                     Optional<AiService> opt = AiServiceProvider.getService();
                     if (opt.isEmpty()) {
                         Platform.runLater(() -> {
-                            modelStatusLabel.setText("Error: AI service not available");
+                            modelStatusLabel.setText(I18n.get("setting.ai.aiServiceError"));
                             loadBtn.setDisable(false);
                         });
                         return;
@@ -361,7 +369,7 @@ public class SwissKitJSettingUi {
                     AiService service = opt.get();
                     service.loadModel(Path.of(path.trim()));
                     Platform.runLater(() -> {
-                        modelStatusLabel.setText("Model: " + service.getModelName().orElse("Unknown"));
+                        modelStatusLabel.setText(I18n.get("setting.ai.modelLoaded", service.getModelName().orElse("Unknown")));
                         modelPathLabel.setText(path.trim());
                         loadBtn.setDisable(false);
                         unloadBtn.setDisable(false);
@@ -370,7 +378,7 @@ public class SwissKitJSettingUi {
                 } catch (Exception ex) {
                     log.error("Failed to load AI model", ex);
                     Platform.runLater(() -> {
-                        modelStatusLabel.setText("Failed to load model: " + ex.getMessage());
+                        modelStatusLabel.setText(I18n.get("setting.ai.modelLoadFailed", ex.getMessage()));
                         loadBtn.setDisable(false);
                     });
                 }
@@ -382,7 +390,7 @@ public class SwissKitJSettingUi {
             if (opt.isPresent()) {
                 opt.get().unloadModel();
             }
-            modelStatusLabel.setText("No model loaded");
+            modelStatusLabel.setText(I18n.get("setting.ai.noModelLoaded"));
             modelPathLabel.setText("—");
             unloadBtn.setDisable(true);
             AiServiceProvider.notifyStateChanged();
@@ -392,7 +400,7 @@ public class SwissKitJSettingUi {
         modelBtnRow.setAlignment(Pos.CENTER_LEFT);
 
         // Memory usage bar
-        Label memLabel = new Label("Memory Usage");
+        Label memLabel = new Label(I18n.get("setting.ai.memoryUsage"));
         memLabel.getStyleClass().add("glass-field-label");
         ProgressBar memBar = new ProgressBar(0);
         memBar.setPrefWidth(300);
@@ -403,10 +411,10 @@ public class SwissKitJSettingUi {
         memRow.setAlignment(Pos.CENTER_LEFT);
 
         // ── Generation parameters ────────────────────────────
-        Label paramTitle = sectionTitle("Generation Parameters");
+        Label paramTitle = sectionTitle(I18n.get("setting.ai.genParams"));
 
         // Temperature
-        Label tempLabel = subLabel("Temperature");
+        Label tempLabel = subLabel(I18n.get("setting.ai.temperature"));
         Label tempValue = new Label("0.7");
         tempValue.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
         Slider tempSlider = new Slider(0, 2, 0.7);
@@ -427,7 +435,7 @@ public class SwissKitJSettingUi {
         tempRow.setAlignment(Pos.CENTER_LEFT);
 
         // Top P
-        Label topPLabel = subLabel("Top P");
+        Label topPLabel = subLabel(I18n.get("setting.ai.topP"));
         Label topPValue = new Label("0.9");
         topPValue.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
         Slider topPSlider = new Slider(0, 1, 0.9);
@@ -448,7 +456,7 @@ public class SwissKitJSettingUi {
         topPRow.setAlignment(Pos.CENTER_LEFT);
 
         // Max tokens
-        Label maxTokensLabel = subLabel("Max Tokens");
+        Label maxTokensLabel = subLabel(I18n.get("setting.ai.maxTokens"));
         Spinner<Integer> maxTokensSpinner = new Spinner<>();
         maxTokensSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(64, 4096, 512, 64));
         maxTokensSpinner.getStyleClass().add("glass-field");
@@ -461,7 +469,7 @@ public class SwissKitJSettingUi {
         });
 
         // System prompt
-        Label sysPromptLabel = subLabel("System Prompt");
+        Label sysPromptLabel = subLabel(I18n.get("setting.ai.systemPrompt"));
         TextField sysPromptField = textField(null, "You are a helpful assistant.");
         HBox.setHgrow(sysPromptField, Priority.ALWAYS);
         sysPromptField.textProperty().addListener((obs, oldVal, newVal) -> {
@@ -473,7 +481,7 @@ public class SwissKitJSettingUi {
         root.getChildren().addAll(
             title,
             modelStatusLabel, modelPathLabel,
-            labeled("Model Path", modelPathField),
+            labeled(I18n.get("setting.ai.modelPath"), modelPathField),
             modelBtnRow,
             memLabel, memRow,
             paramTitle,
@@ -493,7 +501,7 @@ public class SwissKitJSettingUi {
         Optional<AiService> opt = AiServiceProvider.getService();
         if (opt.isPresent() && opt.get().isReady()) {
             AiService service = opt.get();
-            statusLabel.setText("Model: " + service.getModelName().orElse("Unknown"));
+            statusLabel.setText(I18n.get("setting.ai.modelLoaded", service.getModelName().orElse("Unknown")));
             unloadBtn.setDisable(false);
             loadAiSetting(AI_MODEL_PATH_KEY, val -> pathLabel.setText(val));
         }
@@ -581,14 +589,30 @@ public class SwissKitJSettingUi {
         root.setPadding(new Insets(20));
         root.setStyle("-fx-background-color: transparent;");
 
+        TextField smtpField = textField(null, "smtp.example.com");
+        TextField portField = textField(null, "587");
+        TextField userField = textField(null, "user@example.com");
+        PasswordField passField = passwordField();
+        TextField fromField = textField(null, "noreply@example.com");
+
+        // Use userData for stable field identification (label text changes with locale)
+        HBox smtpRow = labeled(I18n.get("setting.email.smtpServer"), smtpField);
+        smtpRow.setUserData("smtp");
+        HBox portRow = labeled(I18n.get("setting.email.port"), portField);
+        portRow.setUserData("port");
+        HBox userRow = labeled(I18n.get("setting.email.username"), userField);
+        userRow.setUserData("username");
+        HBox passRow = labeled(I18n.get("setting.email.password"), passField);
+        passRow.setUserData("password");
+        HBox fromRow = labeled(I18n.get("setting.email.fromAddress"), fromField);
+        fromRow.setUserData("from");
+
+        VBox tlsSslBox = tlsSslRow();
+
         root.getChildren().addAll(
-            sectionTitle("Email Server Settings"),
-            labeled("SMTP Server", textField(null, "smtp.example.com")),
-            labeled("Port", textField(null, "587")),
-            labeled("Username", textField(null, "user@example.com")),
-            labeled("Password", passwordField()),
-            labeled("From Address", textField(null, "noreply@example.com")),
-            tlsSslRow(),
+            sectionTitle(I18n.get("setting.email.title")),
+            smtpRow, portRow, userRow, passRow, fromRow,
+            tlsSslBox,
             saveEmailBtn(),
             openAddressBookBtn()
         );
@@ -607,38 +631,32 @@ public class SwissKitJSettingUi {
                 if (entity != null) {
                     Platform.runLater(() -> {
                         for (Node child : root.getChildren()) {
-                            if (child instanceof HBox hb) {
-                                Object labelNode = hb.getChildren().get(0);
-                                if (labelNode instanceof Label lbl) {
-                                    String text = lbl.getText();
-                                    if (text != null) {
-                                        Object fieldNode = hb.getChildren().get(1);
-                                        if ("SMTP Server".equals(text) && fieldNode instanceof TextField tf) {
-                                            tf.setText(entity.getSmtpAddress());
-                                        } else if ("Port".equals(text) && fieldNode instanceof TextField tf2) {
-                                            tf2.setText(String.valueOf(entity.getSmtpPort()));
-                                        } else if ("Username".equals(text) && fieldNode instanceof TextField tf3) {
-                                            tf3.setText(entity.getEmail());
-                                        } else if ("Password".equals(text) && fieldNode instanceof PasswordField pf) {
-                                            pf.setText(entity.getPassword());
-                                        } else if ("From Address".equals(text) && fieldNode instanceof TextField tf4) {
-                                            tf4.setText(entity.getFromAddress());
-                                        }
-                                    }
+                            if (child instanceof HBox hb && hb.getUserData() instanceof String key) {
+                                Object fieldNode = hb.getChildren().get(1);
+                                switch (key) {
+                                    case "smtp" -> { if (fieldNode instanceof TextField tf) tf.setText(entity.getSmtpAddress()); }
+                                    case "port" -> { if (fieldNode instanceof TextField tf) tf.setText(String.valueOf(entity.getSmtpPort())); }
+                                    case "username" -> { if (fieldNode instanceof TextField tf) tf.setText(entity.getEmail()); }
+                                    case "password" -> { if (fieldNode instanceof PasswordField pf) pf.setText(entity.getPassword()); }
+                                    case "from" -> { if (fieldNode instanceof TextField tf) tf.setText(entity.getFromAddress()); }
                                 }
                             }
                         }
                         // Update TLS/SSL checkboxes
-                        for (Node child : root.getChildren()) {
-                            if (child instanceof VBox vb && vb.getChildren().size() == 2) {
-                                Node inner = vb.getChildren().get(1);
-                                if (inner instanceof HBox hb && hb.getChildren().size() == 2) {
-                                    Object first = hb.getChildren().get(0);
-                                    Object second = hb.getChildren().get(1);
-                                    if (first instanceof CheckBox tlsCb && "TLS".equals(tlsCb.getText()) && entity.getNeedTLS() != null) {
-                                        tlsCb.setSelected(entity.getNeedTLS());
-                                    } else if (second instanceof CheckBox sslCb && "SSL".equals(sslCb.getText()) && entity.getNeedSSL() != null) {
-                                        sslCb.setSelected(entity.getNeedSSL());
+                        if (entity.getNeedTLS() != null || entity.getNeedSSL() != null) {
+                            for (Node child : root.getChildren()) {
+                                if (child instanceof VBox vb) {
+                                    for (Node vbChild : vb.getChildren()) {
+                                        if (vbChild instanceof HBox hb && hb.getChildren().size() == 2) {
+                                            Object first = hb.getChildren().get(0);
+                                            Object second = hb.getChildren().get(1);
+                                            if (first instanceof CheckBox tlsCb && tlsCb.getUserData() == "TLS" && entity.getNeedTLS() != null) {
+                                                tlsCb.setSelected(entity.getNeedTLS());
+                                            }
+                                            if (second instanceof CheckBox sslCb && sslCb.getUserData() == "SSL" && entity.getNeedSSL() != null) {
+                                                sslCb.setSelected(entity.getNeedSSL());
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -653,9 +671,11 @@ public class SwissKitJSettingUi {
 
     private static VBox tlsSslRow() {
         CheckBox tlsCheck = new CheckBox("TLS");
+        tlsCheck.setUserData("TLS");
         tlsCheck.getStyleClass().add("glass-checkbox");
 
         CheckBox sslCheck = new CheckBox("SSL");
+        sslCheck.setUserData("SSL");
         sslCheck.getStyleClass().add("glass-checkbox");
 
         HBox checkRow = new HBox(16, tlsCheck, sslCheck);
@@ -670,7 +690,7 @@ public class SwissKitJSettingUi {
     }
 
     private static Button saveEmailBtn() {
-        Button btn = glassBtn("Save", true);
+        Button btn = glassBtn(I18n.get("button.save"), true);
         btn.setOnAction(e -> {
             VBox parent = (VBox) btn.getParent();
             saveEmailSettings(parent);
@@ -684,24 +704,22 @@ public class SwissKitJSettingUi {
         List<Node> children = form.getChildren();
 
         for (Node child : children) {
-            if (child instanceof HBox hb && hb.getChildren().size() >= 2) {
-                Object first = hb.getChildren().get(0);
-                if (first instanceof Label lbl) {
-                    String text = lbl.getText();
-                    Object field = hb.getChildren().get(1);
-                    if ("SMTP Server".equals(text) && field instanceof TextField tf) smtp = tf.getText();
-                    else if ("Port".equals(text) && field instanceof TextField tf) port = tf.getText();
-                    else if ("Username".equals(text) && field instanceof TextField tf) user = tf.getText();
-                    else if ("Password".equals(text) && field instanceof PasswordField pf) pass = pf.getText();
-                    else if ("From Address".equals(text) && field instanceof TextField tf) from = tf.getText();
+            if (child instanceof HBox hb && hb.getUserData() instanceof String key && hb.getChildren().size() >= 2) {
+                Object field = hb.getChildren().get(1);
+                switch (key) {
+                    case "smtp" -> { if (field instanceof TextField tf) smtp = tf.getText(); }
+                    case "port" -> { if (field instanceof TextField tf) port = tf.getText(); }
+                    case "username" -> { if (field instanceof TextField tf) user = tf.getText(); }
+                    case "password" -> { if (field instanceof PasswordField pf) pass = pf.getText(); }
+                    case "from" -> { if (field instanceof TextField tf) from = tf.getText(); }
                 }
             } else if (child instanceof VBox vb) {
                 for (Node vbChild : vb.getChildren()) {
                     if (vbChild instanceof HBox hb && hb.getChildren().size() == 2) {
                         Object first = hb.getChildren().get(0);
                         Object second = hb.getChildren().get(1);
-                        if (first instanceof CheckBox tlsCb && "TLS".equals(tlsCb.getText())) tls = tlsCb.isSelected();
-                        if (second instanceof CheckBox sslCb && "SSL".equals(sslCb.getText())) ssl = sslCb.isSelected();
+                        if (first instanceof CheckBox tlsCb && tlsCb.getUserData() == "TLS") tls = tlsCb.isSelected();
+                        if (second instanceof CheckBox sslCb && sslCb.getUserData() == "SSL") ssl = sslCb.isSelected();
                     }
                 }
             }
@@ -710,12 +728,14 @@ public class SwissKitJSettingUi {
         if (smtp == null || smtp.isBlank() || port == null || port.isBlank()
                 || user == null || user.isBlank() || pass == null || pass.isBlank()
                 || from == null || from.isBlank()) {
-            GlassNotification.notify((Window) null, GlassNotification.Type.WARNING, "All fields are required.");
+            GlassNotification.notify((Window) null, GlassNotification.Type.WARNING,
+                I18n.get("setting.email.allFieldsRequired"));
             return;
         }
 
         if (tls && ssl) {
-            GlassNotification.notify((Window) null, GlassNotification.Type.WARNING, "TLS and SSL cannot be both selected.");
+            GlassNotification.notify((Window) null, GlassNotification.Type.WARNING,
+                I18n.get("setting.email.tlsSslConflict"));
             return;
         }
 
@@ -744,16 +764,17 @@ public class SwissKitJSettingUi {
                 log.info("Email settings saved: smtp={}:{}", fSmtp, fPort);
                 Platform.runLater(() ->
                     GlassNotification.toast((Window) null, GlassNotification.Type.SUCCESS,
-                        "Email settings saved successfully."));
+                        I18n.get("setting.email.saved")));
             } catch (Exception ex) {
                 log.error("Failed to save email settings", ex);
-                Platform.runLater(() -> GlassNotification.notify((Window) null, GlassNotification.Type.ERROR, "Failed to save: " + ex.getMessage()));
+                Platform.runLater(() -> GlassNotification.notify((Window) null, GlassNotification.Type.ERROR,
+                    I18n.get("setting.email.failedToSave", ex.getMessage())));
             }
         }).start();
     }
 
     private static Button openAddressBookBtn() {
-        Button btn = glassBtn("Address Book", false);
+        Button btn = glassBtn(I18n.get("setting.email.addressBook"), false);
         btn.setOnAction(e -> openAddressBookDialog());
         return btn;
     }
@@ -761,34 +782,35 @@ public class SwissKitJSettingUi {
     private static void openAddressBookDialog() {
         Stage dialog = new Stage();
         dialog.initModality(Modality.APPLICATION_MODAL);
-        dialog.setTitle("Email Address Book");
+        dialog.setTitle(I18n.get("setting.email.addressBookTitle"));
 
         List<EmailAddressBookEntity> entities;
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             entities = session.getMapper(EmailAddressBookMapper.class).selectEmailAddressBook();
             if (entities == null) entities = new ArrayList<>();
         } catch (Exception e) {
-            GlassNotification.notify((Window) null, GlassNotification.Type.ERROR, "Failed to load address book: " + e.getMessage());
+            GlassNotification.notify((Window) null, GlassNotification.Type.ERROR,
+                I18n.get("setting.email.failedToSave", e.getMessage()));
             return;
         }
 
         TableView<EmailAddressBookEntity> table = new TableView<>(FXCollections.observableArrayList(entities));
         table.getStyleClass().add("glass-table");
-        table.setPlaceholder(new Label("No addresses saved"));
+        table.setPlaceholder(new Label(I18n.get("setting.email.noAddresses")));
 
-        TableColumn<EmailAddressBookEntity, Integer> idCol = new TableColumn<>("ID");
+        TableColumn<EmailAddressBookEntity, Integer> idCol = new TableColumn<>(I18n.get("setting.email.colId"));
         idCol.setCellValueFactory(new PropertyValueFactory<>("id"));
         idCol.setPrefWidth(60);
 
-        TableColumn<EmailAddressBookEntity, String> addrCol = new TableColumn<>("Address");
+        TableColumn<EmailAddressBookEntity, String> addrCol = new TableColumn<>(I18n.get("setting.email.address"));
         addrCol.setCellValueFactory(new PropertyValueFactory<>("emailAddress"));
         addrCol.setPrefWidth(200);
 
-        TableColumn<EmailAddressBookEntity, String> nickCol = new TableColumn<>("NickName");
+        TableColumn<EmailAddressBookEntity, String> nickCol = new TableColumn<>(I18n.get("setting.email.nickname"));
         nickCol.setCellValueFactory(new PropertyValueFactory<>("nickname"));
         nickCol.setPrefWidth(150);
 
-        TableColumn<EmailAddressBookEntity, String> tagsCol = new TableColumn<>("Tags");
+        TableColumn<EmailAddressBookEntity, String> tagsCol = new TableColumn<>(I18n.get("setting.email.tags"));
         tagsCol.setCellValueFactory(new PropertyValueFactory<>("tags"));
         tagsCol.setPrefWidth(150);
 
@@ -803,16 +825,16 @@ public class SwissKitJSettingUi {
             }
         });
 
-        Button addBtn = glassBtn("Add Address", true);
+        Button addBtn = glassBtn(I18n.get("setting.email.addAddress"), true);
         addBtn.setOnAction(e -> {
             openAddAddressDialog(null);
             dialog.close();
         });
 
-        Button manageTagsBtn = glassBtn("Manage Tags", false);
+        Button manageTagsBtn = glassBtn(I18n.get("setting.email.manageTags"), false);
         manageTagsBtn.setOnAction(e -> openTagsDialog());
 
-        Button closeBtn = glassBtn("Close", false);
+        Button closeBtn = glassBtn(I18n.get("button.close"), false);
         closeBtn.setOnAction(e -> dialog.close());
 
         HBox btnRow = new HBox(8, addBtn, manageTagsBtn, spacer(), closeBtn);
@@ -833,7 +855,7 @@ public class SwissKitJSettingUi {
     private static void openAddAddressDialog(EmailAddressBookEntity editEntity) {
         Stage dialog = new Stage();
         dialog.initModality(Modality.APPLICATION_MODAL);
-        dialog.setTitle(editEntity == null ? "Add Address" : "Edit Address");
+        dialog.setTitle(editEntity == null ? I18n.get("setting.email.addAddressTitle") : I18n.get("setting.email.editAddressTitle"));
 
         TextField addressField = textField(null, "");
         TextField nicknameField = textField(null, "");
@@ -842,7 +864,7 @@ public class SwissKitJSettingUi {
         tagsField.getStyleClass().add(FIELD_STYLE_CLASS);
 
         ComboBox<EmailTagEntity> tagCombo = new ComboBox<>();
-        tagCombo.setPromptText("Select Tag");
+        tagCombo.setPromptText(I18n.get("setting.email.selectTag"));
         tagCombo.getStyleClass().add("glass-combo");
         tagCombo.setMaxWidth(Double.MAX_VALUE);
 
@@ -870,7 +892,7 @@ public class SwissKitJSettingUi {
             }
         });
 
-        Button resetBtn = glassBtn("Reset", false);
+        Button resetBtn = glassBtn(I18n.get("button.resetToDefault"), false);
         final List<EmailTagEntity> tagsSnapshot = new ArrayList<>(allTags);
         resetBtn.setOnAction(e -> {
             selectedTagsRef.set(new ArrayList<>());
@@ -907,11 +929,12 @@ public class SwissKitJSettingUi {
             }
         }
 
-        Button okBtn = glassBtn("Save", true);
+        Button okBtn = glassBtn(I18n.get("button.save"), true);
         okBtn.setOnAction(e -> {
             String address = addressField.getText();
             if (address == null || address.isBlank() || !address.matches(".+@.+\\..+")) {
-                GlassNotification.notify((Window) null, GlassNotification.Type.WARNING, "Valid email address is required.");
+                GlassNotification.notify((Window) null, GlassNotification.Type.WARNING,
+                    I18n.get("setting.email.validEmailRequired"));
                 return;
             }
             try (SqlSession session = DatabaseInit.getSqlSession()) {
@@ -932,11 +955,12 @@ public class SwissKitJSettingUi {
                 openAddressBookDialog();
             } catch (Exception ex) {
                 log.error("Failed to save address", ex);
-                GlassNotification.notify((Window) null, GlassNotification.Type.ERROR, "Failed to save: " + ex.getMessage());
+                GlassNotification.notify((Window) null, GlassNotification.Type.ERROR,
+                    I18n.get("setting.email.failedToSave", ex.getMessage()));
             }
         });
 
-        Button closeBtn = glassBtn("Cancel", false);
+        Button closeBtn = glassBtn(I18n.get("button.cancel"), false);
         closeBtn.setOnAction(e -> dialog.close());
 
         HBox tagRow = new HBox(8, tagsField, resetBtn);
@@ -946,10 +970,10 @@ public class SwissKitJSettingUi {
         btnRow.setAlignment(Pos.CENTER_RIGHT);
 
         VBox root = new VBox(14,
-            labeled("Address", addressField),
-            labeled("NickName", nicknameField),
-            labeled("Tags", tagRow),
-            labeled("Select Tag", tagCombo),
+            labeled(I18n.get("setting.email.address"), addressField),
+            labeled(I18n.get("setting.email.nickname"), nicknameField),
+            labeled(I18n.get("setting.email.tags"), tagRow),
+            labeled(I18n.get("setting.email.selectTag"), tagCombo),
             btnRow
         );
         root.setPadding(new Insets(24));
@@ -966,25 +990,26 @@ public class SwissKitJSettingUi {
     private static void openTagsDialog() {
         Stage dialog = new Stage();
         dialog.initModality(Modality.APPLICATION_MODAL);
-        dialog.setTitle("Manage Tags");
+        dialog.setTitle(I18n.get("setting.email.manageTagsTitle"));
 
         List<EmailTagEntity> tags;
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             tags = session.getMapper(EmailTagMapper.class).selectAll();
             if (tags == null) tags = new ArrayList<>();
         } catch (Exception e) {
-            GlassNotification.notify((Window) null, GlassNotification.Type.ERROR, "Failed to load tags: " + e.getMessage());
+            GlassNotification.notify((Window) null, GlassNotification.Type.ERROR,
+                I18n.get("setting.email.failedToSave", e.getMessage()));
             return;
         }
 
         TableView<EmailTagEntity> table = new TableView<>(FXCollections.observableArrayList(tags));
         table.getStyleClass().add("glass-table");
 
-        TableColumn<EmailTagEntity, Long> idCol = new TableColumn<>("ID");
+        TableColumn<EmailTagEntity, Long> idCol = new TableColumn<>(I18n.get("setting.email.colId"));
         idCol.setCellValueFactory(new PropertyValueFactory<>("id"));
         idCol.setPrefWidth(80);
 
-        TableColumn<EmailTagEntity, String> tagCol = new TableColumn<>("Tag");
+        TableColumn<EmailTagEntity, String> tagCol = new TableColumn<>(I18n.get("setting.email.tags"));
         tagCol.setCellValueFactory(new PropertyValueFactory<>("tag"));
         tagCol.setPrefWidth(200);
 
@@ -992,7 +1017,7 @@ public class SwissKitJSettingUi {
 
         AtomicReference<Long> updateIdRef = new AtomicReference<>(null);
         TextField tagField = textField(null, "");
-        Button addTagBtn = glassBtn("Add Tag", true);
+        Button addTagBtn = glassBtn(I18n.get("setting.email.addTag"), true);
 
         table.setOnMouseClicked(e -> {
             if (e.getClickCount() >= 2) {
@@ -1000,7 +1025,7 @@ public class SwissKitJSettingUi {
                 if (selected != null) {
                     updateIdRef.set(selected.getId());
                     tagField.setText(selected.getTag());
-                    addTagBtn.setText("Update");
+                    addTagBtn.setText(I18n.get("setting.email.update"));
                 }
             }
         });
@@ -1010,8 +1035,7 @@ public class SwissKitJSettingUi {
             if (tagText == null || tagText.isBlank()) return;
 
             Long currentUpdateId = updateIdRef.get();
-            if ("Update".equals(addTagBtn.getText()) && currentUpdateId != null) {
-                // Update existing tag
+            if (I18n.get("setting.email.update").equals(addTagBtn.getText()) && currentUpdateId != null) {
                 final Long uid = currentUpdateId;
                 new Thread(() -> {
                     try (SqlSession session = DatabaseInit.getSqlSession()) {
@@ -1030,7 +1054,6 @@ public class SwissKitJSettingUi {
                     }
                 }).start();
             } else {
-                // Insert new tag
                 new Thread(() -> {
                     try (SqlSession session = DatabaseInit.getSqlSession()) {
                         EmailTagMapper mapper = session.getMapper(EmailTagMapper.class);
@@ -1050,7 +1073,7 @@ public class SwissKitJSettingUi {
             }
         });
 
-        Button closeBtn = glassBtn("Close", false);
+        Button closeBtn = glassBtn(I18n.get("button.close"), false);
         closeBtn.setOnAction(e -> dialog.close());
 
         HBox inputRow = new HBox(8, tagField, addTagBtn);
