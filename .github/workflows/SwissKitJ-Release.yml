@@ -58,12 +58,12 @@ jobs:
       VERSION: ${{ needs.setup.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -117,7 +117,7 @@ jobs:
           Write-Host "Created: release/SwissKitJ-$env:VERSION-windows-x64-jre.zip"
 
       - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: swisskitj-windows
           path: |
@@ -137,12 +137,12 @@ jobs:
       VERSION: ${{ needs.setup.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -265,7 +265,7 @@ jobs:
           echo "Created: release/SwissKitJ-${VERSION}-macos-arm64-jre.zip"
 
       - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: swisskitj-macos
           path: |
@@ -287,12 +287,12 @@ jobs:
       VERSION: ${{ needs.setup.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -515,7 +515,7 @@ jobs:
           echo "Staged: release/SwissKitJ-${VERSION}.jar"
 
       - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: swisskitj-linux
           path: |
@@ -526,7 +526,7 @@ jobs:
           retention-days: 30
 
       - name: Upload fat JAR
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: swisskitj-fatjar
           path: release/SwissKitJ-${{ env.VERSION }}.jar
@@ -545,10 +545,10 @@ jobs:
       PRERELEASE: ${{ needs.setup.outputs.prerelease }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download all build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: artifacts
           merge-multiple: true
