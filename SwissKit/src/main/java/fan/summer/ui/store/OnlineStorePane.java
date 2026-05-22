@@ -2,6 +2,7 @@ package fan.summer.ui.store;
 
 import fan.summer.api.IconStyle;
 import fan.summer.api.ToolCategory;
+import fan.summer.api.i18n.I18n;
 import fan.summer.plugin.PluginLoader;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
@@ -50,15 +51,13 @@ public class OnlineStorePane extends VBox {
         setPadding(new Insets(24));
 
         // Title + description
-        Label title = new Label("Plugin Store");
+        Label title = new Label(I18n.get("store.online.title"));
         title.setStyle(
             "-fx-text-fill: rgba(255,255,255,0.90);" +
             "-fx-font-size: 18px; -fx-font-weight: 500;"
         );
 
-        Label desc = new Label(
-            "Browse and install plugins from the online store."
-        );
+        Label desc = new Label(I18n.get("store.online.desc"));
         desc.setStyle(
             "-fx-text-fill: rgba(255,255,255,0.45);" +
             "-fx-font-size: 12px;"
@@ -67,7 +66,7 @@ public class OnlineStorePane extends VBox {
         desc.setMaxWidth(Double.MAX_VALUE);
 
         // Refresh button
-        Button refreshBtn = glassBtn("↻ Refresh", false);
+        Button refreshBtn = glassBtn(I18n.get("store.online.refresh"), false);
         refreshBtn.setOnAction(e -> fetchPluginList());
 
         // Plugin list scroll area
@@ -88,7 +87,7 @@ public class OnlineStorePane extends VBox {
         // Loading row
         Label spinner = new Label("⏳");
         spinner.setStyle("-fx-font-size: 16px;");
-        Label loadingText = new Label("Fetching plugin list...");
+        Label loadingText = new Label(I18n.get("store.online.fetching"));
         loadingText.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
         fetchProgress = new ProgressBar();
         fetchProgress.setPrefWidth(200);
@@ -129,7 +128,7 @@ public class OnlineStorePane extends VBox {
                 log.error("Failed to fetch plugin list from {}", urlStr, e);
                 Platform.runLater(() -> {
                     showLoading(false);
-                    showError("Failed to fetch: " + e.getMessage());
+                    showError(I18n.get("store.online.installFailed", e.getMessage()));
                     displayEmptyState();
                 });
             }
@@ -161,16 +160,12 @@ public class OnlineStorePane extends VBox {
 
     private List<StorePlugin> parsePluginJson(String json) {
         List<StorePlugin> result = new ArrayList<>();
-        // Simple JSON parser for the plugin list array
-        // Expected format: [{ "id": "...", "name": "...", "description": "...", "version": "...", "jarUrl": "...", "iconStyle": "...", "category": "..." }, ...]
         try {
-            // Find array start
             int arrayStart = json.indexOf('[');
             int arrayEnd = json.lastIndexOf(']');
             if (arrayStart == -1 || arrayEnd == -1) return result;
 
             String arrayContent = json.substring(arrayStart + 1, arrayEnd);
-            // Split by }{ (avoiding full regex for safety)
             String[] objects = arrayContent.split("\\},\\s*\\{");
 
             for (String obj : objects) {
@@ -225,7 +220,7 @@ public class OnlineStorePane extends VBox {
             return;
         }
 
-        Label countLabel = new Label(plugins.size() + " plugin(s) available");
+        Label countLabel = new Label(I18n.get("store.online.pluginCount", plugins.size()));
         countLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px; -fx-font-weight: 500;");
         pluginListContainer.getChildren().add(countLabel);
 
@@ -234,7 +229,7 @@ public class OnlineStorePane extends VBox {
             pluginListContainer.getChildren().add(card);
         }
 
-        statusLabel.setText("Found " + plugins.size() + " plugin(s)");
+        statusLabel.setText(I18n.get("store.online.foundPlugins", plugins.size()));
         statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.45); -fx-font-size: 12px;");
     }
 
@@ -299,7 +294,7 @@ public class OnlineStorePane extends VBox {
         installProgress.setVisible(false);
         HBox.setHgrow(installProgress, Priority.ALWAYS);
 
-        Button installBtn = glassBtn("Install", true);
+        Button installBtn = glassBtn(I18n.get("store.online.install"), true);
         installBtn.setOnAction(e -> installPlugin(plugin, installBtn, installProgress));
 
         HBox actionRow = new HBox(10, installBtn, installProgress);
@@ -321,7 +316,6 @@ public class OnlineStorePane extends VBox {
                 Path pluginDir = PluginLoader.resolvePluginsDir();
                 Files.createDirectories(pluginDir);
 
-                // Download JAR
                 HttpURLConnection conn = (HttpURLConnection) new URL(plugin.jarUrl).openConnection();
                 conn.setConnectTimeout(15000);
                 conn.setReadTimeout(30000);
@@ -340,7 +334,6 @@ public class OnlineStorePane extends VBox {
                 }
                 Path target = pluginDir.resolve(jarFileName);
 
-                // Stream to file
                 try (var in = conn.getInputStream();
                      var out = new FileOutputStream(target.toFile())) {
                     byte[] buffer = new byte[8192];
@@ -361,7 +354,7 @@ public class OnlineStorePane extends VBox {
 
                 Platform.runLater(() -> {
                     progress.setProgress(1.0);
-                    statusLabel.setText("✓ Installed: " + plugin.name + " → " + jarFileName);
+                    statusLabel.setText(I18n.get("store.online.installed", plugin.name, jarFileName));
                     statusLabel.setStyle("-fx-text-fill: #4cd97b; -fx-font-size: 12px;");
                     installBtn.setDisable(false);
                     if (onInstallComplete != null) onInstallComplete.run();
@@ -370,7 +363,7 @@ public class OnlineStorePane extends VBox {
                 log.error("Plugin install failed for {}", plugin.id, ex);
                 Platform.runLater(() -> {
                     progress.setVisible(false);
-                    showError("Install failed: " + ex.getMessage());
+                    showError(I18n.get("store.online.installFailed", ex.getMessage()));
                     installBtn.setDisable(false);
                 });
             }
@@ -379,7 +372,7 @@ public class OnlineStorePane extends VBox {
 
     private void displayEmptyState() {
         pluginListContainer.getChildren().clear();
-        Label empty = new Label("No plugins available or store unreachable.");
+        Label empty = new Label(I18n.get("store.online.noPlugins"));
         empty.setStyle(
             "-fx-text-fill: rgba(255,255,255,0.30);" +
             "-fx-font-size: 13px;"
