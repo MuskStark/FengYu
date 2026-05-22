@@ -39,6 +39,9 @@ public class RichTextEditor extends VBox {
                 "-fx-border-color: rgba(255,255,255,0.10); -fx-border-width: 1;" +
                 "-fx-border-radius: 10; -fx-background-radius: 10;"
         );
+        webView.setMinHeight(200);
+        webView.setPrefHeight(400);
+        webView.setMaxHeight(Double.MAX_VALUE);
         VBox.setVgrow(webView, Priority.ALWAYS);
 
         HBox toolbar = buildToolbar();
@@ -265,11 +268,6 @@ public class RichTextEditor extends VBox {
                 "  document.getElementById('editor').focus();" +
                 "  try { document.execCommand(cmd, false, value); } catch(e) {}" +
                 "}" +
-                "document.getElementById('editor').addEventListener('paste', function(e) {" +
-                "  e.preventDefault();" +
-                "  var text = (e.clipboardData || window.clipboardData).getData('text/plain');" +
-                "  document.execCommand('insertText', false, text);" +
-                "});" +
                 "</script></body></html>";
     }
 }
