@@ -3,6 +3,7 @@ package fan.summer.ui.content;
 import fan.summer.api.IconStyle;
 import fan.summer.api.MdiIconUtil;
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.i18n.I18n;
 import javafx.animation.*;
 import javafx.geometry.Insets;
 import javafx.scene.control.Label;
@@ -64,7 +65,7 @@ public class ToolCard extends VBox {
 
         // ── Tag ────────────────────────────────────────
         boolean isPlugin = plugin.getType().isPlugin();
-        Label tag = new Label(isPlugin ? "Plugin" : "Built-in");
+        Label tag = new Label(isPlugin ? I18n.get("detail.tag.plugin") : I18n.get("detail.tag.builtin"));
         tag.getStyleClass().addAll("tool-tag", isPlugin ? "tool-tag-plugin" : "");
 
         getChildren().addAll(iconWrap, nameLabel, descLabel, tag);
