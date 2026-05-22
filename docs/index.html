@@ -19,13 +19,17 @@
       loadSidebar: true,
       maxLevel: 4,
       subMaxLevel: 3,
-      search: {
-        placeholder: 'Search docs',
-        noData: 'No results'
+      search: { placeholder: 'Search docs', noData: 'No results' },
+      alias: {
+        '/_sidebar.md': '/_sidebar.md',
+        '/zh/_sidebar.md': '/zh/_sidebar.md',
+        '/plugins/_sidebar.md': '/plugins/_sidebar.md',
+        '/zh/plugins/_sidebar.md': '/zh/plugins/_sidebar.md',
       }
     }
   </script>
   <script src="//cdn.jsdelivr.net/npm/docsify@4"></script>
-  <script src="//cdn.jsdelivr.net/npm/docsify@4/lib/plugins/search.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/docsify@4/lib/plugins/search.max.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/docsify-plugin-flexible-i18n@1/dist/docsify-plugin-flexible-i18n.js"></script>
 </body>
 </html>
