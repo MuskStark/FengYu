@@ -1,5 +1,6 @@
 package fan.summer.ui.titlebar;
 
+import fan.summer.api.i18n.I18n;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
@@ -41,7 +42,7 @@ public class TitleBar extends HBox {
         HBox actions = new HBox(4);
         actions.setAlignment(Pos.CENTER_RIGHT);
         if (onSettings != null) {
-            Button settingsBtn = titlebarBtn("⚙", "Settings", onSettings);
+            Button settingsBtn = titlebarBtn("⚙", I18n.get("titlebar.tooltip.settings"), onSettings);
             actions.getChildren().add(settingsBtn);
         }
 
