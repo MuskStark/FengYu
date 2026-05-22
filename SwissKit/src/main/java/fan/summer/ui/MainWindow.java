@@ -1,5 +1,6 @@
 package fan.summer.ui;
 
+import fan.summer.api.i18n.I18n;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.plugin.PluginRegistry;
 import fan.summer.ui.content.ContentArea;
@@ -80,8 +81,8 @@ public class MainWindow extends StackPane {
             }
         }
 
-        statusPluginCount = statusText(pluginInTool + "plugins");
-        statusToolCount = statusText(pluginInTool + buildInTool +  "tools");
+        statusPluginCount = statusText(I18n.get("status.plugins", pluginInTool));
+        statusToolCount = statusText(I18n.get("status.tools", pluginInTool + buildInTool));
 
         buildScene();
         wireEvents();
@@ -242,7 +243,7 @@ public class MainWindow extends StackPane {
             if ("ai".equals(categoryId)) {
                 openAiChat();
             } else if ("store".equals(categoryId)) {
-                contentArea.showPage(fan.summer.ui.store.PluginStoreUi.build(), "Plugin Store");
+                contentArea.showPage(fan.summer.ui.store.PluginStoreUi.build(), I18n.get("store.online.title"));
             } else if ("settings".equals(categoryId)) {
                 // settings is handled by setOnSettingsSelect
             } else {
@@ -259,8 +260,8 @@ public class MainWindow extends StackPane {
                 int total   = registry.getPlugins().size();
                 int plugins = (int) registry.getPlugins().stream()
                     .filter(p -> p.getType().isPlugin()).count();
-                statusToolCount.setText(total + " tools");
-                statusPluginCount.setText(plugins + " plugins");
+                statusToolCount.setText(I18n.get("status.tools", total));
+                statusPluginCount.setText(I18n.get("status.plugins", plugins));
                 sidebar.updateBadge("plugins", plugins);
             }
         );
@@ -287,7 +288,7 @@ public class MainWindow extends StackPane {
 
     private void openSettings() {
         Node settingsPage = SwissKitJSettingUi.build();
-        contentArea.showPage(settingsPage, "Settings");
+        contentArea.showPage(settingsPage, I18n.get("sidebar.label.settings"));
     }
 
     // ── AI Chat page ────────────────────────────────────
@@ -296,7 +297,7 @@ public class MainWindow extends StackPane {
         if (aiChatView == null) {
             aiChatView = aiChatPlugin.createView();
         }
-        contentArea.showPage(aiChatView, "AI Assistant");
+        contentArea.showPage(aiChatView, I18n.get("builtin.ai-chat.name"));
     }
 
     // ── Entry animation ──────────────────────────────────
