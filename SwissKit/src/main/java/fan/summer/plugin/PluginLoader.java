@@ -1,6 +1,7 @@
 package fan.summer.plugin;
 
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.i18n.I18n;
 import javafx.application.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -147,6 +148,16 @@ public class PluginLoader {
             openLoaders.put(jar, cl);
             jarPlugins.put(jar, loaded);
 
+            // Register plugin i18n bundle if present
+            try {
+                if (cl.getResource("i18n/messages.properties") != null) {
+                    I18n.registerPluginBundle("i18n.messages", cl);
+                    log.debug("Registered i18n bundle for plugin: {}", jar.getFileName());
+                }
+            } catch (Exception e) {
+                log.debug("No i18n bundle found for plugin: {}", jar.getFileName());
+            }
+
             if (registry != null) {
                 Platform.runLater(() -> registry.addPlugins(loaded));
             }
@@ -166,6 +177,7 @@ public class PluginLoader {
 
         URLClassLoader cl = openLoaders.remove(jar);
         if (cl != null) {
+            I18n.unregisterPluginBundle(cl);
             try {
                 cl.close();
             } catch (IOException e) {
