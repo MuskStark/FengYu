@@ -596,15 +596,15 @@ public class SwissKitJSettingUi {
         TextField fromField = textField(null, "noreply@example.com");
 
         // Use userData for stable field identification (label text changes with locale)
-        HBox smtpRow = labeled(I18n.get("setting.email.smtpServer"), smtpField);
+        VBox smtpRow = labeled(I18n.get("setting.email.smtpServer"), smtpField);
         smtpRow.setUserData("smtp");
-        HBox portRow = labeled(I18n.get("setting.email.port"), portField);
+        VBox portRow = labeled(I18n.get("setting.email.port"), portField);
         portRow.setUserData("port");
-        HBox userRow = labeled(I18n.get("setting.email.username"), userField);
+        VBox userRow = labeled(I18n.get("setting.email.username"), userField);
         userRow.setUserData("username");
-        HBox passRow = labeled(I18n.get("setting.email.password"), passField);
+        VBox passRow = labeled(I18n.get("setting.email.password"), passField);
         passRow.setUserData("password");
-        HBox fromRow = labeled(I18n.get("setting.email.fromAddress"), fromField);
+        VBox fromRow = labeled(I18n.get("setting.email.fromAddress"), fromField);
         fromRow.setUserData("from");
 
         VBox tlsSslBox = tlsSslRow();
