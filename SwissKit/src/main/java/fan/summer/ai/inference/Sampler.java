@@ -1,5 +1,8 @@
 package fan.summer.ai.inference;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -7,6 +10,8 @@ import java.util.concurrent.ThreadLocalRandom;
  * Token sampler with temperature and top-p (nucleus) sampling.
  */
 public class Sampler {
+
+    private static final Logger log = LoggerFactory.getLogger(Sampler.class);
 
     private final float temperature;
     private final float topP;
@@ -20,6 +25,7 @@ public class Sampler {
         this.temperature = temperature;
         this.topP = topP;
         this.random = seed >= 0 ? new Random(seed) : new Random();
+        log.info("Sampler created: temperature={}, topP={}, seed={}", temperature, topP, seed);
     }
 
     /**
@@ -30,7 +36,9 @@ public class Sampler {
 
         // Greedy
         if (temperature == 0f) {
-            return argmax(logits);
+            int token = argmax(logits);
+            log.debug("Sampler.greedy: vocabSize={}, selectedToken={}", vocabSize, token);
+            return token;
         }
 
         // Apply temperature
@@ -44,11 +52,15 @@ public class Sampler {
 
         // Top-p sampling
         if (topP < 1.0f) {
-            return sampleTopP(probs);
+            int token = sampleTopP(probs);
+            log.debug("Sampler.topP: vocabSize={}, selectedToken={}", vocabSize, token);
+            return token;
         }
 
         // Multinomial
-        return sampleMultinomial(probs);
+        int token = sampleMultinomial(probs);
+        log.debug("Sampler.multinomial: vocabSize={}, selectedToken={}", vocabSize, token);
+        return token;
     }
 
     private int argmax(float[] arr) {
@@ -64,31 +76,13 @@ public class Sampler {
     }
 
     private void softmax(float[] probs) {
-        float max = Float.NEGATIVE_INFINITY;
-        for (float p : probs) if (p > max) max = p;
-
-        float sum = 0f;
-        for (int i = 0; i < probs.length; i++) {
-            probs[i] = (float) Math.exp(probs[i] - max);
-            sum += probs[i];
-        }
-        float invSum = 1f / sum;
-        for (int i = 0; i < probs.length; i++) {
-            probs[i] *= invSum;
-        }
+        MathUtil.softmax(probs, 0, probs.length);
     }
 
     private int sampleTopP(float[] probs) {
-        // Create index array sorted by probability descending
-        int[] indices = new int[probs.length];
+        Integer[] indices = new Integer[probs.length];
         for (int i = 0; i < indices.length; i++) indices[i] = i;
-        // Partial sort: find top-p cutoff
-        // Use simple selection for small vocab sizes
-        indices = java.util.Arrays.stream(indices)
-            .boxed()
-            .sorted((a, b) -> Float.compare(probs[b], probs[a]))
-            .mapToInt(Integer::intValue)
-            .toArray();
+        java.util.Arrays.sort(indices, (a, b) -> Float.compare(probs[b], probs[a]));
 
         float cumProb = 0f;
         int lastIdx = indices.length - 1;

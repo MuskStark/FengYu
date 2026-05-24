@@ -1,5 +1,8 @@
 package fan.summer.ai.tensor;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.nio.ByteBuffer;
 
 /**
@@ -9,6 +12,7 @@ import java.nio.ByteBuffer;
  */
 public class Q4_0Tensor extends FloatTensor {
 
+    private static final Logger log = LoggerFactory.getLogger(Q4_0Tensor.class);
     private static final int BLOCK_SIZE = 32;
     private static final int BLOCK_BYTES = 2 + BLOCK_SIZE / 2; // 18
 
@@ -20,6 +24,7 @@ public class Q4_0Tensor extends FloatTensor {
         this.buffer = buffer;
         this.size = size;
         this.nBlocks = (size + BLOCK_SIZE - 1) / BLOCK_SIZE;
+        log.debug("Q4_0Tensor created: size={}, nBlocks={}", size, nBlocks);
     }
 
     @Override public int size() { return size; }
@@ -45,19 +50,5 @@ public class Q4_0Tensor extends FloatTensor {
     @Override
     public void set(int index, float value) {
         throw new UnsupportedOperationException("Read-only quantized tensor");
-    }
-
-    /**
-     * Optimized dot product: accumulates block by block with direct buffer access.
-     */
-    @Override
-    public float dot(int offset, FloatTensor other, int otherOffset, int len) {
-        float sum = 0f;
-        // Simple scalar fallback — the block-optimized path is complex;
-        // rely on matmul parallelism for speed instead.
-        for (int i = 0; i < len; i++) {
-            sum += get(offset + i) * other.get(otherOffset + i);
-        }
-        return sum;
     }
 }

@@ -47,7 +47,18 @@ public class AiChatPlugin implements SwissKitJPlugin {
 
     @Override
     public Node createView() {
+        log.debug("Creating AI Chat view");
         return new AiChatView();
+    }
+
+    @Override
+    public void onActivate() {
+        log.info("AI Chat plugin activated");
+    }
+
+    @Override
+    public void onDeactivate() {
+        log.info("AI Chat plugin deactivated");
     }
 
     private record Attachment(String name, String content, long sizeBytes) {}
