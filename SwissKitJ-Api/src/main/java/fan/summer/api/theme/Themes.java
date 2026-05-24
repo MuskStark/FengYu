@@ -3,25 +3,54 @@ package fan.summer.api.theme;
 import javafx.scene.Scene;
 
 /**
- * SwissKitJ 主题样式加载工具。
+ * SwissKitJ theme stylesheet loading utility.
  *
- * <p>主程序在 Scene 上加载 {@link #commonStylesheetUrl()} 后，所有嵌入主 Scene 的
- * 插件 Node 都自动继承共性样式。仅当插件自建独立 Stage / Scene 时才需要
- * 调用 {@link #applyTo(Scene)} 主动加载。</p>
+ * <p>Provides the common CSS stylesheet URL that defines the shared glassmorphism
+ * utility classes (such as {@code .glass-dialog}, {@code .glass-field},
+ * {@code .btn-primary}, {@code .btn-secondary}, and scrollbar styling). These
+ * styles are declared once in the API module and are automatically available
+ * to all plugins embedded in the main Scene.</p>
+ *
+ * <p>Plugins that create their own {@link Scene} or {@code Stage} (for example,
+ * a modal dialog or a standalone tool window) should call {@link #applyTo(Scene)}
+ * to ensure their nodes receive the same CSS classes. Calling this method on a
+ * scene that already has the stylesheet loaded is a no-op.</p>
+ *
+ * <p>Plugins embedded in the main window via {@code createView()} do not need
+ * to call this class — the host application loads the stylesheet into the
+ * root scene automatically.</p>
+ *
+ * @see Scene#getStylesheets()
+ * @since 1.0
  */
 public final class Themes {
 
-    /** 共性样式表资源路径（位于本 jar 中）。 */
+    /** Resource path of the shared common stylesheet within the API JAR. */
     public static final String COMMON_CSS = "/css/swisskit-common.css";
 
     private Themes() {}
 
-    /** 返回共性样式表的外部 URL，可直接放入 {@code Scene#getStylesheets()}。 */
+    /**
+     * Returns the external form URL of the shared common stylesheet.
+     *
+     * <p>The returned string can be added directly to a {@link Scene}'s
+     * stylesheet list via {@code scene.getStylesheets().add(url)}.</p>
+     *
+     * @return the stylesheet URL as a string
+     */
     public static String commonStylesheetUrl() {
         return Themes.class.getResource(COMMON_CSS).toExternalForm();
     }
 
-    /** 对独立 Stage（弹窗 / 插件自带 Scene）一键应用基础主题，已加载则忽略。 */
+    /**
+     * Applies the common theme stylesheet to the given scene if not already present.
+     *
+     * <p>This is intended for plugins that open their own {@code Stage} or build
+     * a separate {@code Scene} and need access to the shared CSS utility classes.
+     * If the scene already has the stylesheet loaded, this method does nothing.</p>
+     *
+     * @param scene the {@link Scene} to apply the theme to; ignored if {@code null}
+     */
     public static void applyTo(Scene scene) {
         if (scene == null) return;
         String url = commonStylesheetUrl();
