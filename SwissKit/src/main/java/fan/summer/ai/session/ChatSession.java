@@ -2,6 +2,8 @@ package fan.summer.ai.session;
 
 import fan.summer.api.ai.AiChatMessage;
 import fan.summer.api.ai.AiToolCall;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -14,6 +16,8 @@ import java.util.List;
  */
 public class ChatSession {
 
+    private static final Logger log = LoggerFactory.getLogger(ChatSession.class);
+
     private final List<AiChatMessage> history = new ArrayList<>();
     private final int maxHistoryRounds;
 
@@ -24,14 +28,18 @@ public class ChatSession {
      */
     public ChatSession(int maxHistoryRounds) {
         this.maxHistoryRounds = maxHistoryRounds;
+        log.info("ChatSession created: maxHistoryRounds={}", maxHistoryRounds);
     }
 
     public ChatSession() {
         this(20);
+        log.info("ChatSession created: maxHistoryRounds=20 (default)");
     }
 
     public void add(AiChatMessage message) {
         history.add(message);
+        log.debug("add: role={}, contentLength={}, historySize={}",
+                  message.role(), message.content() != null ? message.content().length() : 0, history.size());
         trim();
     }
 
@@ -57,6 +65,7 @@ public class ChatSession {
 
     public void clear() {
         history.clear();
+        log.info("ChatSession cleared");
     }
 
     public int size() {

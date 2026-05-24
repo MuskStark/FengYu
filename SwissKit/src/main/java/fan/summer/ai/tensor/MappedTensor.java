@@ -1,5 +1,8 @@
 package fan.summer.ai.tensor;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.nio.ByteBuffer;
 
 /**
@@ -7,6 +10,8 @@ import java.nio.ByteBuffer;
  * Supports F32 and F16 types.
  */
 public class MappedTensor extends FloatTensor {
+
+    private static final Logger log = LoggerFactory.getLogger(MappedTensor.class);
 
     private final ByteBuffer buffer;
     private final int size;
@@ -16,6 +21,7 @@ public class MappedTensor extends FloatTensor {
         this.buffer = buffer;
         this.size = size;
         this.fp16 = fp16;
+        log.debug("MappedTensor created: size={}, fp16={}", size, fp16);
     }
 
     @Override public int size() { return size; }

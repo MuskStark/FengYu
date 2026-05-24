@@ -1,5 +1,8 @@
 package fan.summer.ai.tensor;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.nio.ByteBuffer;
 
 /**
@@ -10,6 +13,7 @@ import java.nio.ByteBuffer;
  */
 public class IQ4NLTensor extends FloatTensor {
 
+    private static final Logger log = LoggerFactory.getLogger(IQ4NLTensor.class);
     private static final int BLOCK_SIZE = 32;
     private static final int BLOCK_BYTES = 2 + BLOCK_SIZE / 2; // 18
 
@@ -25,6 +29,7 @@ public class IQ4NLTensor extends FloatTensor {
     public IQ4NLTensor(ByteBuffer buffer, int size) {
         this.buffer = buffer;
         this.size = size;
+        log.debug("IQ4NLTensor created: size={}", size);
     }
 
     @Override public int size() { return size; }
@@ -36,9 +41,11 @@ public class IQ4NLTensor extends FloatTensor {
         int blockOffset = blockIdx * BLOCK_BYTES;
 
         if (blockOffset + 1 >= buffer.limit()) {
-            throw new IndexOutOfBoundsException(
+            IndexOutOfBoundsException ex = new IndexOutOfBoundsException(
                 "IQ4_NL: index=" + index + " blockIdx=" + blockIdx + " blockOffset=" + blockOffset +
                 " bufferLimit=" + buffer.limit() + " declaredSize=" + size);
+            log.warn("IQ4_NL buffer access out of bounds: {}", ex.getMessage());
+            throw ex;
         }
 
         short scaleRaw = buffer.getShort(blockOffset);
@@ -54,14 +61,5 @@ public class IQ4NLTensor extends FloatTensor {
     @Override
     public void set(int index, float value) {
         throw new UnsupportedOperationException("Read-only quantized tensor");
-    }
-
-    @Override
-    public float dot(int offset, FloatTensor other, int otherOffset, int len) {
-        float sum = 0f;
-        for (int i = 0; i < len; i++) {
-            sum += get(offset + i) * other.get(otherOffset + i);
-        }
-        return sum;
     }
 }

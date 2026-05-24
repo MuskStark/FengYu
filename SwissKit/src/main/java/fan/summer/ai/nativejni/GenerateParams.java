@@ -1,10 +1,15 @@
 package fan.summer.ai.nativejni;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Sampling parameters for token generation via llama.cpp JNI.
  * Builder-style: {@code new GenerateParams().temperature(0.8).topP(0.95).maxTokens(1024)}
  */
 public class GenerateParams {
+
+    private static final Logger log = LoggerFactory.getLogger(GenerateParams.class);
 
     private int maxNewTokens = 512;
     private float temperature = 0.7f;
@@ -23,4 +28,10 @@ public class GenerateParams {
     public float getTopP() { return topP; }
     public float getRepeatPenalty() { return repeatPenalty; }
     public long getSeed() { return seed; }
+
+    @Override
+    public String toString() {
+        return "GenerateParams{maxNewTokens=" + maxNewTokens + ", temperature=" + temperature +
+               ", topP=" + topP + ", repeatPenalty=" + repeatPenalty + ", seed=" + seed + "}";
+    }
 }

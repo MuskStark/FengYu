@@ -1,9 +1,13 @@
 package fan.summer.ai.model;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * GGML quantization type constants (aligned with llama.cpp ggml.h).
  */
 public enum GGMLType {
+
     F32(0, 4),
     F16(1, 2),
     Q4_0(2, 18, 32),
@@ -35,6 +39,8 @@ public enum GGMLType {
     IQ1_M(29, 56, 256),
     BF16(30, 2);
 
+    private static final Logger log = LoggerFactory.getLogger(GGMLType.class);
+
     public final int id;
     public final int blockSize;
     public final int typeSize;
@@ -53,6 +59,7 @@ public enum GGMLType {
         for (GGMLType t : values()) {
             if (t.id == id) return t;
         }
+        log.error("Unknown GGML type id: {}", id);
         throw new IllegalArgumentException("Unknown GGML type: " + id);
     }
 }

@@ -1,5 +1,8 @@
 package fan.summer.ai.tensor;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.nio.ByteBuffer;
 
 /**
@@ -18,6 +21,7 @@ import java.nio.ByteBuffer;
  */
 public class Q3KTensor extends FloatTensor {
 
+    private static final Logger log = LoggerFactory.getLogger(Q3KTensor.class);
     private static final int SUPER_BLOCK_SIZE = 256;
     private static final int SUPER_BLOCK_BYTES = 110;
 
@@ -30,6 +34,7 @@ public class Q3KTensor extends FloatTensor {
     public Q3KTensor(ByteBuffer buffer, int size) {
         this.buffer = buffer;
         this.size = size;
+        log.debug("Q3KTensor created: size={}", size);
     }
 
     @Override public int size() { return size; }
