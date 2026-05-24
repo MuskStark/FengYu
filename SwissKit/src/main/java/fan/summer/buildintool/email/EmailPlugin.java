@@ -23,9 +23,7 @@ import javafx.scene.Scene;
 import fan.summer.api.component.GlassNotification;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
-import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
-import javafx.scene.control.ListCell;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
@@ -48,9 +46,31 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Email built-in tool. Supports composing HTML email body, single-recipient send,
- * mass-by-tag send (with attachment folder + tag-based filename routing), and viewing
- * the persisted send log.
+ * Built-in email composition and sending tool.
+ *
+ * <p>Supports three modes of operation:
+ * <ul>
+ *   <li><b>Single send</b> — directly send to one or more recipients with optional CC/BCC
+ *       and a file picker for attachments.</li>
+ *   <li><b>Mass send by tag</b> — route a single email + attachment set to all contacts
+ *       whose address-book record carries one of the selected tags; to-tag and cc-tag
+ *       selectors accept multiple tags for fine-grained recipient filtering.</li>
+ *   <li><b>Mass send by filename</b> — parse attachment filenames to extract a tag suffix
+ *       (text between the last underscore and the extension dot); match each suffix against
+ *       address-book tag names and send one email per matched group.</li>
+ * </ul>
+ *
+ * <p>The rich text body is composed using {@link RichTextEditor}, a WebView-backed
+ * contenteditable editor with a formatting toolbar. The resulting HTML is sent as the
+ * email body.
+ *
+ * <p>All sent emails are logged to the H2 database via {@link EmailSentLogMapper},
+ * and mass configurations are persisted via {@link EmailMassSentConfigMapper}.
+ *
+ * @since 1.0.0
+ * @see SwissKitJPlugin
+ * @see RichTextEditor
+ * @see EmailSendService
  */
 public class EmailPlugin implements SwissKitJPlugin {
 
@@ -68,6 +88,12 @@ public class EmailPlugin implements SwissKitJPlugin {
     @Override public IconStyle getIconStyle()   { return IconStyle.BLUE; }
     @Override public ToolType getType()        { return ToolType.BUILTIN; }
 
+    /**
+     * Creates and returns the email composition UI.
+     * The view is built lazily on first call and cached for the lifetime of the plugin.
+     *
+     * @return the root JavaFX node of the email tool view
+     */
     @Override
     public Node createView() {
         if (view != null) return view;
@@ -142,6 +168,7 @@ public class EmailPlugin implements SwissKitJPlugin {
 
         Button sendBtn = glassBtn(I18n.get("builtin.email.send"), true);
         Button viewLogBtn = glassBtn(I18n.get("builtin.email.viewSentLog"), false);
+        Button addressBookBtn = glassBtn(I18n.get("builtin.email.addressBook"), false);
 
         sendBtn.setOnAction(e -> handleSend(
                 subjectField, toField, ccField, bodyEditor,
@@ -149,7 +176,7 @@ public class EmailPlugin implements SwissKitJPlugin {
         ));
         viewLogBtn.setOnAction(e -> openSentLogDialog());
 
-        HBox actionRow = new HBox(8, sendBtn, viewLogBtn);
+        HBox actionRow = new HBox(8, sendBtn, viewLogBtn, addressBookBtn);
 
         // Header rows
         VBox headerBox = new VBox(8,
@@ -162,7 +189,7 @@ public class EmailPlugin implements SwissKitJPlugin {
         VBox.setVgrow(bodyBox, Priority.ALWAYS);
         VBox.setVgrow(bodyEditor, Priority.ALWAYS);
 
-        VBox root = new VBox(14,
+        VBox composePane = new VBox(14,
                 title,
                 headerBox,
                 bodyBox,
@@ -172,7 +199,22 @@ public class EmailPlugin implements SwissKitJPlugin {
                 progressLabel
         );
         VBox.setVgrow(bodyBox, Priority.ALWAYS);
-        root.setPadding(new Insets(24));
+        composePane.setPadding(new Insets(24));
+        composePane.setStyle("-fx-background-color: transparent;");
+        HBox.setHgrow(composePane, Priority.ALWAYS);
+
+        // Address book side panel (toggleable)
+        AddressBookPane addressBookPane = new AddressBookPane();
+        addressBookPane.setVisible(false);
+        addressBookPane.setManaged(false);
+
+        addressBookBtn.setOnAction(e -> {
+            boolean show = !addressBookPane.isVisible();
+            addressBookPane.setVisible(show);
+            addressBookPane.setManaged(show);
+        });
+
+        HBox root = new HBox(composePane, addressBookPane);
         root.setStyle("-fx-background-color: transparent;");
         return root;
     }
@@ -291,9 +333,34 @@ public class EmailPlugin implements SwissKitJPlugin {
             return;
         }
 
-        ComboBox<EmailTagEntity> toCombo = tagComboBox(tags, I18n.get("builtin.email.selectToTag"));
-        ComboBox<EmailTagEntity> ccCombo = tagComboBox(tags, I18n.get("builtin.email.selectCcTag"));
+        // ── Filename-only mode toggle ───────────────────────────────
+        CheckBox filenameModeCheckBox = new CheckBox(I18n.get("builtin.email.filenameMode"));
+        filenameModeCheckBox.setStyle("-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 13px;");
 
+        // ── Multi-tag checkboxes for to/cc ───────────────────────────
+        VBox toCheckBoxes = new VBox(4);
+        toCheckBoxes.setPadding(new Insets(6));
+        toCheckBoxes.setStyle("-fx-background-color: rgba(255,255,255,0.03); -fx-background-radius: 8;");
+        for (EmailTagEntity tag : tags) {
+            CheckBox cb = new CheckBox(tag.getTag());
+            cb.setUserData(tag.getId());
+            cb.getStyleClass().add("glass-checkbox");
+            toCheckBoxes.getChildren().add(cb);
+        }
+        if (tags.isEmpty()) toCheckBoxes.getChildren().add(new Label(I18n.get("builtin.email.noTagsHint")));
+
+        VBox ccCheckBoxes = new VBox(4);
+        ccCheckBoxes.setPadding(new Insets(6));
+        ccCheckBoxes.setStyle("-fx-background-color: rgba(255,255,255,0.03); -fx-background-radius: 8;");
+        for (EmailTagEntity tag : tags) {
+            CheckBox cb = new CheckBox(tag.getTag());
+            cb.setUserData(tag.getId());
+            cb.getStyleClass().add("glass-checkbox");
+            ccCheckBoxes.getChildren().add(cb);
+        }
+        if (tags.isEmpty()) ccCheckBoxes.getChildren().add(new Label(I18n.get("builtin.email.noTagsHint")));
+
+        // ── Attachment folder ────────────────────────────────────────
         CheckBox attCheckBox = new CheckBox(I18n.get("builtin.email.attachByTag"));
         attCheckBox.setStyle("-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 13px;");
 
@@ -317,13 +384,35 @@ public class EmailPlugin implements SwissKitJPlugin {
             if (!n) attFolderField.setText("");
         });
 
-        // Pre-fill from existing config
+        HBox attRow = new HBox(8, attFolderField, chooseFolderBtn);
+
+        // ── Filename mode toggles visibility of to/cc selectors ──────
+        Label toLabel = new Label(I18n.get("builtin.email.toTag"));
+        toLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.50); -fx-font-size: 11px; -fx-font-weight: bold;");
+        Label ccLabel = new Label(I18n.get("builtin.email.ccTag"));
+        ccLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.50); -fx-font-size: 11px; -fx-font-weight: bold;");
+
+        VBox toSection = new VBox(4, toLabel, toCheckBoxes);
+        VBox ccSection = new VBox(4, ccLabel, ccCheckBoxes);
+
+        Runnable updateVisibility = () -> {
+            boolean filenameMode = filenameModeCheckBox.isSelected();
+            toSection.setVisible(!filenameMode);
+            toSection.setManaged(!filenameMode);
+            ccSection.setVisible(!filenameMode);
+            ccSection.setManaged(!filenameMode);
+        };
+        filenameModeCheckBox.selectedProperty().addListener((obs, o, n) -> updateVisibility.run());
+        updateVisibility.run();
+
+        // ── Pre-fill from existing config ────────────────────────────
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             EmailMassSentConfigEntity existing =
                     session.getMapper(EmailMassSentConfigMapper.class).selectByTaskId(taskId);
             if (existing != null) {
-                selectTagById(toCombo, existing.getToTag());
-                selectTagById(ccCombo, existing.getCcTag());
+                filenameModeCheckBox.setSelected(existing.isSendByFilename());
+                selectCheckboxesByIds(toCheckBoxes, existing.getToTag());
+                selectCheckboxesByIds(ccCheckBoxes, existing.getCcTag());
                 attCheckBox.setSelected(existing.isSentAtt());
                 if (existing.getAttFolderPath() != null) {
                     attFolderField.setText(existing.getAttFolderPath());
@@ -331,24 +420,47 @@ public class EmailPlugin implements SwissKitJPlugin {
             }
         } catch (Exception ignored) {}
 
+        // ── Save / Cancel ────────────────────────────────────────────
         Button saveBtn = glassBtn(I18n.get("builtin.email.save"), true);
         Button cancelBtn = glassBtn(I18n.get("builtin.email.cancel"), false);
 
         saveBtn.setOnAction(e -> {
-            EmailTagEntity to = toCombo.getValue();
-            if (to == null) {
-                GlassNotification.notify(view, GlassNotification.Type.WARNING, I18n.get("builtin.email.selectToTagWarning"));
+            boolean filenameMode = filenameModeCheckBox.isSelected();
+
+            // Validate: non-filename mode needs at least one to-tag
+            if (!filenameMode) {
+                List<Long> toIds = collectCheckedIds(toCheckBoxes);
+                if (toIds.isEmpty()) {
+                    GlassNotification.notify(view, GlassNotification.Type.WARNING, I18n.get("builtin.email.selectToTagWarning"));
+                    return;
+                }
+            }
+
+            // Filename mode requires attachment folder
+            if (filenameMode && (attFolderField.getText() == null || attFolderField.getText().isBlank())) {
+                GlassNotification.notify(view, GlassNotification.Type.WARNING, I18n.get("builtin.email.selectFolderWarning"));
                 return;
             }
+
             if (attCheckBox.isSelected() && (attFolderField.getText() == null || attFolderField.getText().isBlank())) {
                 GlassNotification.notify(view, GlassNotification.Type.WARNING, I18n.get("builtin.email.selectFolderWarning"));
                 return;
             }
+
             EmailMassSentConfigEntity cfg = new EmailMassSentConfigEntity();
             cfg.setTaskId(taskId);
-            cfg.setToTag(String.valueOf(to.getId()));
-            EmailTagEntity cc = ccCombo.getValue();
-            cfg.setCcTag(cc != null ? String.valueOf(cc.getId()) : null);
+            cfg.setSendByFilename(filenameMode);
+
+            if (!filenameMode) {
+                List<Long> toIds = collectCheckedIds(toCheckBoxes);
+                cfg.setToTag(toIds.stream().map(String::valueOf).reduce((a, b) -> a + "," + b).orElse(null));
+                List<Long> ccIds = collectCheckedIds(ccCheckBoxes);
+                cfg.setCcTag(ccIds.isEmpty() ? null : ccIds.stream().map(String::valueOf).reduce((a, b) -> a + "," + b).orElse(null));
+            } else {
+                cfg.setToTag(null);
+                cfg.setCcTag(null);
+            }
+
             cfg.setSentAtt(attCheckBox.isSelected());
             cfg.setAttFolderPath(attCheckBox.isSelected() ? attFolderField.getText() : null);
 
@@ -364,15 +476,14 @@ public class EmailPlugin implements SwissKitJPlugin {
         });
         cancelBtn.setOnAction(e -> dialog.close());
 
-        HBox attRow = new HBox(8, attFolderField, chooseFolderBtn);
-
         HBox buttons = new HBox(8, spacer(), saveBtn, cancelBtn);
         buttons.setAlignment(Pos.CENTER_RIGHT);
 
         VBox root = new VBox(12,
                 sectionTitle(I18n.get("builtin.email.massConfigTitle")),
-                labeled(I18n.get("builtin.email.toTag"), toCombo),
-                labeled(I18n.get("builtin.email.ccTag"), ccCombo),
+                filenameModeCheckBox,
+                toSection,
+                ccSection,
                 attCheckBox,
                 attRow,
                 buttons
@@ -387,39 +498,29 @@ public class EmailPlugin implements SwissKitJPlugin {
         dialog.showAndWait();
     }
 
-    private ComboBox<EmailTagEntity> tagComboBox(List<EmailTagEntity> tags, String prompt) {
-        ComboBox<EmailTagEntity> cb = new ComboBox<>(FXCollections.observableArrayList(tags));
-        cb.setMaxWidth(Double.MAX_VALUE);
-        cb.setPromptText(prompt);
-        cb.setStyle(comboStyle());
-        cb.setCellFactory(lv -> new ListCell<>() {
-            @Override
-            protected void updateItem(EmailTagEntity item, boolean empty) {
-                super.updateItem(item, empty);
-                setText(empty || item == null ? null : item.getTag());
+    /** Select checkboxes whose tag ID appears in the comma-separated idStr. */
+    private void selectCheckboxesByIds(VBox checkBoxContainer, String idStr) {
+        if (idStr == null) return;
+        List<Long> ids = new ArrayList<>();
+        for (String part : idStr.split("[,\\[\\]\"]+")) {
+            try { ids.add(Long.parseLong(part.trim())); } catch (NumberFormatException ignored) {}
+        }
+        for (Node node : checkBoxContainer.getChildren()) {
+            if (node instanceof CheckBox cb && cb.getUserData() instanceof Long id) {
+                cb.setSelected(ids.contains(id));
             }
-        });
-        cb.setButtonCell(new ListCell<>() {
-            @Override
-            protected void updateItem(EmailTagEntity item, boolean empty) {
-                super.updateItem(item, empty);
-                setText(empty || item == null ? null : item.getTag());
-            }
-        });
-        return cb;
+        }
     }
 
-    private void selectTagById(ComboBox<EmailTagEntity> combo, String idStr) {
-        if (idStr == null) return;
-        try {
-            long id = Long.parseLong(idStr);
-            for (EmailTagEntity t : combo.getItems()) {
-                if (t.getId() != null && t.getId() == id) {
-                    combo.setValue(t);
-                    return;
-                }
+    /** Collect tag IDs from checked checkboxes in the container. */
+    private List<Long> collectCheckedIds(VBox checkBoxContainer) {
+        List<Long> ids = new ArrayList<>();
+        for (Node node : checkBoxContainer.getChildren()) {
+            if (node instanceof CheckBox cb && cb.isSelected() && cb.getUserData() instanceof Long id) {
+                ids.add(id);
             }
-        } catch (NumberFormatException ignored) {}
+        }
+        return ids;
     }
 
     private void showCurrentConfigSummary(String taskId) {
@@ -431,31 +532,38 @@ public class EmailPlugin implements SwissKitJPlugin {
                 return;
             }
             List<EmailTagEntity> tags = session.getMapper(EmailTagMapper.class).selectAll();
-            String toName = resolveTagName(tags, cfg.getToTag());
-            String ccName = resolveTagName(tags, cfg.getCcTag());
-            String text = "Task ID：" + cfg.getTaskId() + "\n" +
-                    I18n.get("builtin.email.toTag") + "：" + (toName != null ? toName : "—") + "\n" +
-                    I18n.get("builtin.email.ccTag") + "：" + (ccName != null ? ccName : "—") + "\n" +
-                    I18n.get("builtin.email.attachByTag") + "：" + (cfg.isSentAtt() ? "✓" : "✗") + "\n" +
-                    I18n.get("builtin.email.chooseAttachmentFolder") + "：" + (cfg.getAttFolderPath() != null ? cfg.getAttFolderPath() : "—");
-            GlassNotification.notify(view, GlassNotification.Type.INFO, I18n.get("builtin.email.massConfigTitle"), text);
+            String toNames = resolveTagNames(tags, cfg.getToTag());
+            String ccNames = resolveTagNames(tags, cfg.getCcTag());
+            StringBuilder text = new StringBuilder();
+            text.append("Task ID：").append(cfg.getTaskId()).append("\n");
+            text.append(I18n.get("builtin.email.filenameMode")).append("：").append(cfg.isSendByFilename() ? "✓" : "✗").append("\n");
+            if (!cfg.isSendByFilename()) {
+                text.append(I18n.get("builtin.email.toTag")).append("：").append(toNames != null ? toNames : "—").append("\n");
+                text.append(I18n.get("builtin.email.ccTag")).append("：").append(ccNames != null ? ccNames : "—").append("\n");
+            }
+            text.append(I18n.get("builtin.email.attachByTag")).append("：").append(cfg.isSentAtt() ? "✓" : "✗").append("\n");
+            text.append(I18n.get("builtin.email.chooseAttachmentFolder")).append("：").append(cfg.getAttFolderPath() != null ? cfg.getAttFolderPath() : "—");
+            GlassNotification.notify(view, GlassNotification.Type.INFO, I18n.get("builtin.email.massConfigTitle"), text.toString());
         } catch (Exception e) {
             GlassNotification.notify(view, GlassNotification.Type.ERROR, I18n.get("builtin.email.loadConfigFailed", e.getMessage()));
         }
     }
 
-    private String resolveTagName(List<EmailTagEntity> tags, String idStr) {
+    /** Resolve comma-separated tag IDs to comma-separated tag names. */
+    private String resolveTagNames(List<EmailTagEntity> tags, String idStr) {
         if (idStr == null || tags == null) return null;
-        try {
-            long id = Long.parseLong(idStr);
-            return tags.stream()
-                    .filter(t -> t.getId() != null && t.getId() == id)
-                    .findFirst()
-                    .map(EmailTagEntity::getTag)
-                    .orElse(null);
-        } catch (NumberFormatException e) {
-            return null;
+        List<String> names = new ArrayList<>();
+        for (String part : idStr.split("[,\\[\\]\"]+")) {
+            try {
+                long id = Long.parseLong(part.trim());
+                tags.stream()
+                        .filter(t -> t.getId() != null && t.getId() == id)
+                        .findFirst()
+                        .map(EmailTagEntity::getTag)
+                        .ifPresent(names::add);
+            } catch (NumberFormatException ignored) {}
         }
+        return names.isEmpty() ? null : String.join(", ", names);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -567,13 +675,6 @@ public class EmailPlugin implements SwissKitJPlugin {
                 "-fx-border-radius: 8; -fx-background-radius: 8;" +
                 "-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 13px;" +
                 "-fx-padding: 8 12 8 12;";
-    }
-
-    private static String comboStyle() {
-        return "-fx-background-color: rgba(255,255,255,0.05);" +
-                "-fx-border-color: rgba(255,255,255,0.12); -fx-border-width: 1;" +
-                "-fx-border-radius: 8; -fx-background-radius: 8;" +
-                "-fx-text-fill: rgba(255,255,255,0.88);";
     }
 
     private static Region spacer() {
