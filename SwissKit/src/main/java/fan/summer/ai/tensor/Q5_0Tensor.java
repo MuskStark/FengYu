@@ -1,5 +1,8 @@
 package fan.summer.ai.tensor;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.nio.ByteBuffer;
 
 /**
@@ -17,6 +20,7 @@ import java.nio.ByteBuffer;
  */
 public class Q5_0Tensor extends FloatTensor {
 
+    private static final Logger log = LoggerFactory.getLogger(Q5_0Tensor.class);
     private static final int BLOCK_SIZE = 32;
     private static final int BLOCK_BYTES = 22;
 
@@ -26,6 +30,7 @@ public class Q5_0Tensor extends FloatTensor {
     public Q5_0Tensor(ByteBuffer buffer, int size) {
         this.buffer = buffer;
         this.size = size;
+        log.debug("Q5_0Tensor created: size={}", size);
     }
 
     @Override public int size() { return size; }

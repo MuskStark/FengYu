@@ -1,11 +1,16 @@
 package fan.summer.ai.tensor;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.stream.IntStream;
 
 /**
  * Abstract base for all tensor types. Provides element access and dot product.
  */
 public abstract class FloatTensor {
+
+    private static final Logger log = LoggerFactory.getLogger(FloatTensor.class);
 
     public abstract int size();
     public abstract float get(int index);
@@ -27,6 +32,7 @@ public abstract class FloatTensor {
      * out[i] = dot of row i with vec.
      */
     public void matmul(FloatTensor vec, float[] out, int rows, int cols) {
+        log.debug("matmul: rows={}, cols={}, vecSize={}", rows, cols, vec.size());
         IntStream.range(0, rows).parallel().forEach(i -> {
             out[i] = dot(i * cols, vec, 0, cols);
         });

@@ -3,6 +3,8 @@ package fan.summer.ai.tools;
 import fan.summer.api.ai.AiTool;
 import fan.summer.api.ai.AiToolParam;
 import fan.summer.api.ai.AiToolResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -13,14 +15,18 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class ToolRegistry {
 
+    private static final Logger log = LoggerFactory.getLogger(ToolRegistry.class);
+
     private final Map<String, AiTool> tools = new ConcurrentHashMap<>();
 
     public void register(AiTool tool) {
         tools.put(tool.getName(), tool);
+        log.info("Registered tool: name={}", tool.getName());
     }
 
     public void unregister(String name) {
         tools.remove(name);
+        log.info("Unregistered tool: name={}", name);
     }
 
     public List<AiTool> getAll() {
@@ -39,11 +45,14 @@ public class ToolRegistry {
     public AiToolResult execute(String toolName, Map<String, Object> arguments) {
         AiTool tool = tools.get(toolName);
         if (tool == null) {
+            log.warn("Tool not found: {}", toolName);
             return AiToolResult.error("Tool not found: " + toolName);
         }
         try {
+            log.debug("Executing tool: name={}, arguments={}", toolName, arguments);
             return tool.execute(arguments);
         } catch (Exception e) {
+            log.error("Tool execution error: tool={}, error={}", toolName, e.getMessage());
             return AiToolResult.error("Tool execution error: " + e.getMessage());
         }
     }
@@ -53,7 +62,10 @@ public class ToolRegistry {
      * the system prompt so the model knows which tools are available.
      */
     public String buildToolDefinitions() {
-        if (tools.isEmpty()) return "";
+        if (tools.isEmpty()) {
+            log.debug("buildToolDefinitions: no tools registered");
+            return "";
+        }
 
         var sb = new StringBuilder();
         sb.append("You have access to the following tools. ");
@@ -78,6 +90,7 @@ public class ToolRegistry {
 
         sb.append("When you need to use a tool, output ONLY the JSON block. ");
         sb.append("After receiving the tool result, you can continue answering.\n");
+        log.debug("buildToolDefinitions: built definitions for {} tools", tools.size());
         return sb.toString();
     }
 }

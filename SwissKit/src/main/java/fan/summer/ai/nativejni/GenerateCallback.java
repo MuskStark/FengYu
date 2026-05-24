@@ -18,12 +18,18 @@ public interface GenerateCallback {
      *
      * @param fullText the complete generated text
      */
-    default void onDone(String fullText) {}
+    default void onDone(String fullText) {
+        org.slf4j.LoggerFactory.getLogger(GenerateCallback.class)
+            .debug("Generation done: length={}", fullText != null ? fullText.length() : 0);
+    }
 
     /**
      * Called when an error occurs during generation.
      *
      * @param message error description
      */
-    default void onError(String message) {}
+    default void onError(String message) {
+        org.slf4j.LoggerFactory.getLogger(GenerateCallback.class)
+            .error("Generation error: {}", message);
+    }
 }
