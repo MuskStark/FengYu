@@ -4,6 +4,8 @@ import fan.summer.api.IconStyle;
 import fan.summer.api.MdiIconUtil;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.i18n.I18n;
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
 import javafx.animation.*;
 import javafx.geometry.Insets;
 import javafx.scene.control.Label;
@@ -18,14 +20,30 @@ import javafx.util.Duration;
 import java.util.function.Consumer;
 
 /**
- * Single card in the tool grid.
- * After clicking, callbacks onSelect, parent component decides to open detail panel or launch tool.
+ * A single card in the tool grid display. Each card shows the plugin's
+ * icon (rendered from its MDI code), name, description, and a tag indicating
+ * whether it is a built-in tool or an external plugin.
+ * <p>
+ * Cards animate in with a staggered fade + scale transition and have a
+ * hover effect that intensifies the icon's glow. Clicking the card triggers
+ * a brief scale-down animation before invoking the selection callback.
+ *
+ * @since 1.0
  */
 public class ToolCard extends VBox {
 
+    private static final PluginLogger LOG = LoggerFactory.getLogger(ToolCard.class);
+
     private final SwissKitJPlugin plugin;
 
+    /**
+     * Constructs a ToolCard for the given plugin with a selection callback.
+     *
+     * @param plugin   the plugin to display; must not be null
+     * @param onSelect called when the user clicks this card; receives the plugin
+     */
     public ToolCard(SwissKitJPlugin plugin, Consumer<SwissKitJPlugin> onSelect) {
+        LOG.info("Creating ToolCard for plugin: name={}, id={}", plugin.getName(), plugin.getId());
         this.plugin = plugin;
         getStyleClass().add("tool-card");
         setSpacing(3);
@@ -119,5 +137,10 @@ public class ToolCard extends VBox {
         setCursor(javafx.scene.Cursor.HAND);
     }
 
+    /**
+     * Returns the plugin displayed by this card.
+     *
+     * @return the plugin instance passed at construction time
+     */
     public SwissKitJPlugin getPlugin() { return plugin; }
 }

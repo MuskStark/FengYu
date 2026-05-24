@@ -5,6 +5,8 @@ import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
 import fan.summer.api.i18n.I18n;
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -19,6 +21,8 @@ import java.util.Base64;
 
 public class Base64Plugin implements SwissKitJPlugin {
 
+    private static final PluginLogger log = LoggerFactory.getLogger(Base64Plugin.class);
+
     @Override public String getId()          { return "builtin.base64"; }
     @Override public String getName()        { return I18n.get("builtin.base64.name"); }
     @Override public String getDescription() { return I18n.get("builtin.base64.desc"); }
@@ -30,6 +34,7 @@ public class Base64Plugin implements SwissKitJPlugin {
 
     @Override
     public Node createView() {
+        log.debug("Creating Base64 encode/decode view");
         TextArea input  = styledTextArea("Input text...");
         TextArea output = styledTextArea("");
         output.setEditable(false);
@@ -40,21 +45,26 @@ public class Base64Plugin implements SwissKitJPlugin {
 
         encodeBtn.setOnAction(e -> {
             try {
+                log.debug("Encoding text to Base64");
                 byte[] encoded = Base64.getEncoder().encode(input.getText().getBytes(StandardCharsets.UTF_8));
                 output.setText(new String(encoded));
             } catch (Exception ex) {
+                log.error("Failed to encode Base64: {}", ex.getMessage());
                 output.setText("Error: " + ex.getMessage());
             }
         });
         decodeBtn.setOnAction(e -> {
             try {
+                log.debug("Decoding Base64 to text");
                 byte[] decoded = Base64.getDecoder().decode(input.getText().trim());
                 output.setText(new String(decoded, StandardCharsets.UTF_8));
             } catch (Exception ex) {
+                log.warn("Invalid Base64 input: {}", ex.getMessage());
                 output.setText("❌ Invalid Base64");
             }
         });
         swapBtn.setOnAction(e -> {
+            log.debug("Swapping input and output fields");
             String tmp = input.getText();
             input.setText(output.getText());
             output.setText(tmp);
