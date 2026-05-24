@@ -50,16 +50,27 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 /**
- * Settings UI for SwissKit.
- * Sidebar menu: General (language), Build-In Tools > Email (SMTP config + address book).
+ * Settings UI for SwissKitJ, displayed as a multi-tab page with a sidebar.
+ * Tabs include: General (language selection), Plugin Store (store URL configuration),
+ * AI Model (LLM configuration and generation parameters), and Email
+ * (SMTP configuration, address book management, and tag management).
+ * <p>
+ * All settings are persisted to the H2 database via MyBatis. The UI rebuilds
+ * itself when the locale changes, preserving the active tab selection.
+ *
+ * @since 1.0
  */
 public class SwissKitJSettingUi {
 
@@ -70,6 +81,13 @@ public class SwissKitJSettingUi {
     /** Active nav index, preserved across locale rebuilds. */
     private static int activeNavIndex = 0;
 
+    /**
+     * Builds (or returns the cached) settings UI with a sidebar navigation.
+     * The view automatically rebuilds when the locale changes, preserving
+     * the last active tab.
+     *
+     * @return the root Node of the settings UI
+     */
     public static Node build() {
         StackPane wrapper = new StackPane();
         wrapper.setStyle("-fx-background-color: transparent;");
@@ -91,15 +109,21 @@ public class SwissKitJSettingUi {
         StackPane contentStack = new StackPane(generalPage, storePage, aiModelPage, emailPage);
         contentStack.setStyle("-fx-background-color: transparent;");
         storePage.setVisible(false);
+        storePage.setManaged(false);
         aiModelPage.setVisible(false);
+        aiModelPage.setManaged(false);
         emailPage.setVisible(false);
+        emailPage.setManaged(false);
 
         // ── Sidebar ──────────────────────────────────────────
         VBox sidebar = new VBox();
-        sidebar.getStyleClass().add("sidebar");
-        sidebar.setPrefWidth(180);
-        sidebar.setMinWidth(160);
-        sidebar.setMaxWidth(200);
+        sidebar.setStyle(
+            "-fx-background-color: rgba(255,255,255,0.022);" +
+            "-fx-border-color: rgba(255,255,255,0.10);" +
+            "-fx-border-width: 0 1 0 0;" +
+            "-fx-min-width: 160px; -fx-pref-width: 180px; -fx-max-width: 200px;" +
+            "-fx-padding: 12 8;"
+        );
 
         sidebar.getChildren().add(sidebarSectionLabel(I18n.get("setting.section")));
         NavItem generalNav = sidebarNavItem("⚙", I18n.get("setting.nav.general"));
@@ -132,6 +156,7 @@ public class SwissKitJSettingUi {
         items[active].setActive(true);
         for (int i = 0; i < pages.length; i++) {
             pages[i].setVisible(i == active);
+            pages[i].setManaged(i == active);
         }
 
         for (int i = 0; i < items.length; i++) {
@@ -139,9 +164,13 @@ public class SwissKitJSettingUi {
             items[i].setOnMouseClicked(e -> {
                 activeNavIndex = idx;
                 for (NavItem item : items) item.setActive(false);
-                for (Node page : pages) page.setVisible(false);
+                for (Node page : pages) {
+                    page.setVisible(false);
+                    page.setManaged(false);
+                }
                 items[idx].setActive(true);
                 pages[idx].setVisible(true);
+                pages[idx].setManaged(true);
             });
         }
 
@@ -207,29 +236,11 @@ public class SwissKitJSettingUi {
         boolean isZh = "中文".equals(label);
         String code = isZh ? "zh" : "en";
         Locale locale = isZh ? Locale.CHINESE : Locale.ENGLISH;
-        new Thread(() -> {
-            try (SqlSession session = DatabaseInit.getSqlSession()) {
-                AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-                AppSettingEntity entity = mapper.selectByKey("language");
-                if (entity != null) {
-                    entity.setSettingValue(code);
-                    mapper.update(entity);
-                } else {
-                    AppSettingEntity newEntity = new AppSettingEntity();
-                    newEntity.setSettingKey("language");
-                    newEntity.setSettingValue(code);
-                    mapper.insert(newEntity);
-                }
-                session.commit();
-                Platform.runLater(() -> {
-                    I18n.setLocale(locale);
-                    GlassNotification.toast((Window) null, GlassNotification.Type.INFO,
-                        I18n.get("setting.general.languageChanged"));
-                });
-            } catch (Exception e) {
-                log.error("Failed to save language setting", e);
-            }
-        }).start();
+        saveSettingAsync("language", code, () -> Platform.runLater(() -> {
+            I18n.setLocale(locale);
+            GlassNotification.toast((Window) null, GlassNotification.Type.INFO,
+                I18n.get("setting.general.languageChanged"));
+        }));
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -239,7 +250,16 @@ public class SwissKitJSettingUi {
     private static final String STORE_URL_KEY = "plugin.store.url";
     private static final String DEFAULT_STORE_URL = "https://muskstark.github.io/SwissKitJ/plugins/store.json";
 
-    /** Returns the stored plugin store URL, or the default if none is set. */
+    /**
+     * Returns the configured plugin store URL, checking in order:
+     * &lt;ol&gt;
+     *   &lt;li&gt;System property {@code store.url}&lt;/li&gt;
+     *   &lt;li&gt;Database setting for {@code plugin.store.url}&lt;/li&gt;
+     *   &lt;li&gt;Hard-coded default URL&lt;/li&gt;
+     * &lt;/ol&gt;
+     *
+     * @return the active store URL string, never null
+     */
     public static String getStoreUrl() {
         String override = System.getProperty("store.url");
         if (override != null && !override.isBlank()) {
@@ -294,28 +314,9 @@ public class SwissKitJSettingUi {
     }
 
     private static void saveStoreUrl(String url) {
-        new Thread(() -> {
-            try (SqlSession session = DatabaseInit.getSqlSession()) {
-                AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-                AppSettingEntity entity = mapper.selectByKey(STORE_URL_KEY);
-                if (entity != null) {
-                    entity.setSettingValue(url);
-                    mapper.update(entity);
-                } else {
-                    AppSettingEntity newEntity = new AppSettingEntity();
-                    newEntity.setSettingKey(STORE_URL_KEY);
-                    newEntity.setSettingValue(url);
-                    mapper.insert(newEntity);
-                }
-                session.commit();
-                Platform.runLater(() ->
-                    GlassNotification.toast((Window) null, GlassNotification.Type.SUCCESS,
-                        I18n.get("setting.store.saved")));
-            } catch (Exception ex) {
-                log.error("Failed to save store URL", ex);
-                Platform.runLater(() -> GlassNotification.notify((Window) null, GlassNotification.Type.ERROR, I18n.get("setting.store.saveFailed", ex.getMessage())));
-            }
-        }).start();
+        saveSettingAsync(STORE_URL_KEY, url, () -> Platform.runLater(() ->
+            GlassNotification.toast((Window) null, GlassNotification.Type.SUCCESS,
+                I18n.get("setting.store.saved"))));
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -527,19 +528,7 @@ public class SwissKitJSettingUi {
         }
     }
 
-    private static void loadAiSetting(String key, Consumer<String> consumer) {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(key);
-            if (entity != null && entity.getSettingValue() != null && !entity.getSettingValue().isBlank()) {
-                consumer.accept(entity.getSettingValue());
-            }
-        } catch (Exception e) {
-            log.debug("Could not read AI setting: {}", key, e);
-        }
-    }
-
-    private static void saveAiSetting(String key, String value) {
+    private static void saveSettingAsync(String key, String value, Runnable onSuccess) {
         new Thread(() -> {
             try (SqlSession session = DatabaseInit.getSqlSession()) {
                 AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
@@ -554,13 +543,34 @@ public class SwissKitJSettingUi {
                     mapper.insert(newEntity);
                 }
                 session.commit();
+                if (onSuccess != null) onSuccess.run();
             } catch (Exception e) {
-                log.error("Failed to save AI setting: {}", key, e);
+                log.error("Failed to save setting: {}", key, e);
             }
         }).start();
     }
 
-    /** Get the saved AI temperature, or default 0.7 */
+    private static void loadAiSetting(String key, Consumer<String> consumer) {
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            AppSettingEntity entity = mapper.selectByKey(key);
+            if (entity != null && entity.getSettingValue() != null && !entity.getSettingValue().isBlank()) {
+                consumer.accept(entity.getSettingValue());
+            }
+        } catch (Exception e) {
+            log.debug("Could not read AI setting: {}", key, e);
+        }
+    }
+
+    private static void saveAiSetting(String key, String value) {
+        saveSettingAsync(key, value, null);
+    }
+
+    /**
+     * Returns the saved AI temperature value, or 0.7 if not set or invalid.
+     *
+     * @return the temperature value between 0 and 2
+     */
     public static float getAiTemperature() {
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
@@ -570,7 +580,11 @@ public class SwissKitJSettingUi {
         return 0.7f;
     }
 
-    /** Get the saved AI top_p, or default 0.9 */
+    /**
+     * Returns the saved AI top-p value, or 0.9 if not set or invalid.
+     *
+     * @return the top-p value between 0 and 1
+     */
     public static float getAiTopP() {
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
@@ -580,7 +594,11 @@ public class SwissKitJSettingUi {
         return 0.9f;
     }
 
-    /** Get the saved AI max tokens, or default 512 */
+    /**
+     * Returns the saved AI max tokens value, or 512 if not set or invalid.
+     *
+     * @return the max tokens value between 64 and 4096
+     */
     public static int getAiMaxTokens() {
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
@@ -590,7 +608,11 @@ public class SwissKitJSettingUi {
         return 512;
     }
 
-    /** Get the saved AI system prompt, or default */
+    /**
+     * Returns the saved AI system prompt, or "You are a helpful assistant." if not set.
+     *
+     * @return the system prompt string
+     */
     public static String getAiSystemPrompt() {
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
@@ -805,14 +827,21 @@ public class SwissKitJSettingUi {
         dialog.setTitle(I18n.get("setting.email.addressBookTitle"));
 
         List<EmailAddressBookEntity> entities;
+        List<EmailTagEntity> allTags;
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             entities = session.getMapper(EmailAddressBookMapper.class).selectEmailAddressBook();
             if (entities == null) entities = new ArrayList<>();
+            allTags = session.getMapper(EmailTagMapper.class).selectAll();
+            if (allTags == null) allTags = new ArrayList<>();
         } catch (Exception e) {
             GlassNotification.notify((Window) null, GlassNotification.Type.ERROR,
                 I18n.get("setting.email.failedToSave", e.getMessage()));
             return;
         }
+
+        // Build tag ID → name map for chip display
+        Map<Long, String> tagNameMap = new HashMap<>();
+        for (EmailTagEntity t : allTags) tagNameMap.put(t.getId(), t.getTag());
 
         TableView<EmailAddressBookEntity> table = new TableView<>(FXCollections.observableArrayList(entities));
         table.getStyleClass().add("glass-table");
@@ -820,7 +849,7 @@ public class SwissKitJSettingUi {
 
         TableColumn<EmailAddressBookEntity, Integer> idCol = new TableColumn<>(I18n.get("setting.email.colId"));
         idCol.setCellValueFactory(new PropertyValueFactory<>("id"));
-        idCol.setPrefWidth(60);
+        idCol.setPrefWidth(50);
 
         TableColumn<EmailAddressBookEntity, String> addrCol = new TableColumn<>(I18n.get("setting.email.address"));
         addrCol.setCellValueFactory(new PropertyValueFactory<>("emailAddress"));
@@ -828,13 +857,53 @@ public class SwissKitJSettingUi {
 
         TableColumn<EmailAddressBookEntity, String> nickCol = new TableColumn<>(I18n.get("setting.email.nickname"));
         nickCol.setCellValueFactory(new PropertyValueFactory<>("nickname"));
-        nickCol.setPrefWidth(150);
+        nickCol.setPrefWidth(120);
 
+        // Tag chips column: resolve IDs to readable names
         TableColumn<EmailAddressBookEntity, String> tagsCol = new TableColumn<>(I18n.get("setting.email.tags"));
-        tagsCol.setCellValueFactory(new PropertyValueFactory<>("tags"));
-        tagsCol.setPrefWidth(150);
+        tagsCol.setPrefWidth(200);
+        tagsCol.setCellValueFactory(cellData -> {
+            String tagsJson = cellData.getValue().getTags();
+            if (tagsJson == null || tagsJson.isBlank()) return new javafx.beans.property.SimpleStringProperty("—");
+            java.util.regex.Matcher m = NUMERIC_ID_PATTERN.matcher(tagsJson);
+            List<String> names = new ArrayList<>();
+            while (m.find()) {
+                try {
+                    long id = Long.parseLong(m.group());
+                    String name = tagNameMap.get(id);
+                    if (name != null) names.add(name);
+                } catch (NumberFormatException ignored) {}
+            }
+            return new javafx.beans.property.SimpleStringProperty(names.isEmpty() ? "—" : String.join(", ", names));
+        });
 
-        table.getColumns().addAll(idCol, addrCol, nickCol, tagsCol);
+        // Delete action column
+        TableColumn<EmailAddressBookEntity, Void> actionCol = new TableColumn<>("");
+        actionCol.setPrefWidth(70);
+        actionCol.setCellFactory(col -> new javafx.scene.control.TableCell<>() {
+            private final Button delBtn = new Button(I18n.get("button.delete"));
+            { delBtn.getStyleClass().add("glass-btn-secondary"); delBtn.setStyle("-fx-padding: 4 10 4 10; -fx-font-size: 11px;"); }
+            @Override
+            protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty) { setGraphic(null); return; }
+                EmailAddressBookEntity addr = getTableView().getItems().get(getIndex());
+                delBtn.setOnAction(e -> {
+                    new Thread(() -> {
+                        try (SqlSession session = DatabaseInit.getSqlSession()) {
+                            session.getMapper(EmailAddressBookMapper.class).deleteById(addr.getId());
+                            session.commit();
+                            Platform.runLater(() -> { dialog.close(); openAddressBookDialog(); });
+                        } catch (Exception ex) {
+                            log.error("Failed to delete address", ex);
+                        }
+                    }).start();
+                });
+                setGraphic(delBtn);
+            }
+        });
+
+        table.getColumns().addAll(idCol, addrCol, nickCol, tagsCol, actionCol);
         table.setOnMouseClicked(e -> {
             if (e.getClickCount() >= 2) {
                 EmailAddressBookEntity entity = table.getSelectionModel().getSelectedItem();
@@ -851,19 +920,25 @@ public class SwissKitJSettingUi {
             dialog.close();
         });
 
+        Button importBtn = glassBtn(I18n.get("setting.email.importExcel"), false);
+        importBtn.setOnAction(e -> {
+            dialog.close();
+            openImportExcelDialog(null);
+        });
+
         Button manageTagsBtn = glassBtn(I18n.get("setting.email.manageTags"), false);
         manageTagsBtn.setOnAction(e -> openTagsDialog());
 
         Button closeBtn = glassBtn(I18n.get("button.close"), false);
         closeBtn.setOnAction(e -> dialog.close());
 
-        HBox btnRow = new HBox(8, addBtn, manageTagsBtn, spacer(), closeBtn);
+        HBox btnRow = new HBox(8, addBtn, importBtn, manageTagsBtn, spacer(), closeBtn);
         btnRow.setAlignment(Pos.CENTER_RIGHT);
 
         VBox root = new VBox(12, table, btnRow);
         root.setPadding(new Insets(24));
         root.getStyleClass().add("glass-dialog");
-        root.setPrefSize(700, 450);
+        root.setPrefSize(750, 480);
 
         javafx.scene.Scene scene = new javafx.scene.Scene(root);
         scene.setFill(javafx.scene.paint.Color.web("#0d0e11"));
@@ -879,74 +954,42 @@ public class SwissKitJSettingUi {
 
         TextField addressField = textField(null, "");
         TextField nicknameField = textField(null, "");
-        TextField tagsField = new TextField();
-        tagsField.setEditable(false);
-        tagsField.getStyleClass().add(FIELD_STYLE_CLASS);
 
-        ComboBox<EmailTagEntity> tagCombo = new ComboBox<>();
-        tagCombo.setPromptText(I18n.get("setting.email.selectTag"));
-        tagCombo.getStyleClass().add("glass-combo");
-        tagCombo.setMaxWidth(Double.MAX_VALUE);
-
+        // Load all tags and build checkbox list
         List<EmailTagEntity> allTags = new ArrayList<>();
         try (SqlSession session = DatabaseInit.getSqlSession()) {
-            allTags = session.getMapper(EmailTagMapper.class).selectAll();
-            if (allTags != null) {
-                tagCombo.getItems().addAll(allTags);
-            }
+            List<EmailTagEntity> loaded = session.getMapper(EmailTagMapper.class).selectAll();
+            if (loaded != null) allTags = loaded;
         } catch (Exception e) {
             log.debug("Could not load tags", e);
         }
 
-        AtomicReference<List<String>> selectedTagsRef = new AtomicReference<>(new ArrayList<>());
-        AtomicReference<List<String>> selectedTagNamesRef = new AtomicReference<>(new ArrayList<>());
-
-        tagCombo.setOnAction(e -> {
-            EmailTagEntity selected = tagCombo.getValue();
-            if (selected != null) {
-                selectedTagsRef.get().add(String.valueOf(selected.getId()));
-                selectedTagNamesRef.get().add(selected.getTag());
-                tagsField.setText(String.join(", ", selectedTagNamesRef.get()));
-                tagCombo.getItems().remove(selected);
-                tagCombo.setValue(null);
-            }
-        });
-
-        Button resetBtn = glassBtn(I18n.get("button.resetToDefault"), false);
-        final List<EmailTagEntity> tagsSnapshot = new ArrayList<>(allTags);
-        resetBtn.setOnAction(e -> {
-            selectedTagsRef.set(new ArrayList<>());
-            selectedTagNamesRef.set(new ArrayList<>());
-            tagsField.setText("");
-            tagsSnapshot.forEach(t -> {
-                if (!tagCombo.getItems().contains(t)) {
-                    tagCombo.getItems().add(t);
-                }
-            });
-        });
-
+        // Parse existing tag IDs from edit entity
+        List<Long> preSelectedTagIds = new ArrayList<>();
         if (editEntity != null) {
             addressField.setText(editEntity.getEmailAddress());
             nicknameField.setText(editEntity.getNickname());
-            try {
-                String tagsJson = editEntity.getTags();
-                if (tagsJson != null && !tagsJson.isBlank()) {
-                    java.util.regex.Matcher m = NUMERIC_ID_PATTERN.matcher(tagsJson);
-                    while (m.find()) {
-                        String idStr = m.group();
-                        for (EmailTagEntity tag : allTags) {
-                            if (String.valueOf(tag.getId()).equals(idStr)) {
-                                selectedTagsRef.get().add(idStr);
-                                selectedTagNamesRef.get().add(tag.getTag());
-                                break;
-                            }
-                        }
-                    }
-                    tagsField.setText(String.join(", ", selectedTagNamesRef.get()));
+            if (editEntity.getTags() != null && !editEntity.getTags().isBlank()) {
+                java.util.regex.Matcher m = NUMERIC_ID_PATTERN.matcher(editEntity.getTags());
+                while (m.find()) {
+                    try { preSelectedTagIds.add(Long.parseLong(m.group())); } catch (NumberFormatException ignored) {}
                 }
-            } catch (Exception ex) {
-                log.debug("Could not parse existing tags", ex);
             }
+        }
+
+        // Build checkboxes for each tag
+        VBox tagCheckBoxes = new VBox(6);
+        tagCheckBoxes.setPadding(new Insets(8));
+        tagCheckBoxes.setStyle("-fx-background-color: rgba(255,255,255,0.03); -fx-background-radius: 8;");
+        for (EmailTagEntity tag : allTags) {
+            CheckBox cb = new CheckBox(tag.getTag());
+            cb.setUserData(tag.getId());
+            cb.getStyleClass().add("glass-checkbox");
+            cb.setSelected(preSelectedTagIds.contains(tag.getId()));
+            tagCheckBoxes.getChildren().add(cb);
+        }
+        if (allTags.isEmpty()) {
+            tagCheckBoxes.getChildren().add(new Label(I18n.get("setting.email.noTagsHint")));
         }
 
         Button okBtn = glassBtn(I18n.get("button.save"), true);
@@ -957,14 +1000,22 @@ public class SwissKitJSettingUi {
                     I18n.get("setting.email.validEmailRequired"));
                 return;
             }
+
+            // Collect selected tag IDs from checkboxes
+            List<String> selectedIds = new ArrayList<>();
+            for (Node node : tagCheckBoxes.getChildren()) {
+                if (node instanceof CheckBox cb && cb.isSelected() && cb.getUserData() instanceof Long id) {
+                    selectedIds.add(String.valueOf(id));
+                }
+            }
+
             try (SqlSession session = DatabaseInit.getSqlSession()) {
                 EmailAddressBookMapper mapper = session.getMapper(EmailAddressBookMapper.class);
                 EmailAddressBookEntity entity = new EmailAddressBookEntity();
                 if (editEntity != null) entity.setId(editEntity.getId());
                 entity.setEmailAddress(address.trim());
                 entity.setNickname(nicknameField.getText() != null ? nicknameField.getText().trim() : "");
-                List<String> tagsList = selectedTagsRef.get();
-                entity.setTags("[" + String.join(",", tagsList.stream().map(s -> "\"" + s + "\"").toList()) + "]");
+                entity.setTags(selectedIds.isEmpty() ? null : "[" + String.join(",", selectedIds.stream().map(s -> "\"" + s + "\"").toList()) + "]");
                 if (editEntity != null) {
                     mapper.update(entity);
                 } else {
@@ -983,17 +1034,13 @@ public class SwissKitJSettingUi {
         Button closeBtn = glassBtn(I18n.get("button.cancel"), false);
         closeBtn.setOnAction(e -> dialog.close());
 
-        HBox tagRow = new HBox(8, tagsField, resetBtn);
-        HBox.setHgrow(tagsField, Priority.ALWAYS);
-
         HBox btnRow = new HBox(8, spacer(), okBtn, closeBtn);
         btnRow.setAlignment(Pos.CENTER_RIGHT);
 
         VBox root = new VBox(14,
             labeled(I18n.get("setting.email.address"), addressField),
             labeled(I18n.get("setting.email.nickname"), nicknameField),
-            labeled(I18n.get("setting.email.tags"), tagRow),
-            labeled(I18n.get("setting.email.selectTag"), tagCombo),
+            labeled(I18n.get("setting.email.selectTag"), tagCheckBoxes),
             btnRow
         );
         root.setPadding(new Insets(24));
@@ -1013,13 +1060,26 @@ public class SwissKitJSettingUi {
         dialog.setTitle(I18n.get("setting.email.manageTagsTitle"));
 
         List<EmailTagEntity> tags;
+        List<EmailAddressBookEntity> allAddresses;
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             tags = session.getMapper(EmailTagMapper.class).selectAll();
             if (tags == null) tags = new ArrayList<>();
+            allAddresses = session.getMapper(EmailAddressBookMapper.class).selectEmailAddressBook();
+            if (allAddresses == null) allAddresses = new ArrayList<>();
         } catch (Exception e) {
             GlassNotification.notify((Window) null, GlassNotification.Type.ERROR,
                 I18n.get("setting.email.failedToSave", e.getMessage()));
             return;
+        }
+
+        // Build tag ID → contact count map
+        List<EmailAddressBookEntity> finalAllAddresses = allAddresses;
+        Map<Long, Long> tagContactCount = new HashMap<>();
+        for (EmailTagEntity tag : tags) {
+            long count = finalAllAddresses.stream()
+                .filter(a -> a.getTags() != null && a.getTags().contains(String.valueOf(tag.getId())))
+                .count();
+            tagContactCount.put(tag.getId(), count);
         }
 
         TableView<EmailTagEntity> table = new TableView<>(FXCollections.observableArrayList(tags));
@@ -1027,13 +1087,56 @@ public class SwissKitJSettingUi {
 
         TableColumn<EmailTagEntity, Long> idCol = new TableColumn<>(I18n.get("setting.email.colId"));
         idCol.setCellValueFactory(new PropertyValueFactory<>("id"));
-        idCol.setPrefWidth(80);
+        idCol.setPrefWidth(60);
 
-        TableColumn<EmailTagEntity, String> tagCol = new TableColumn<>(I18n.get("setting.email.tags"));
+        TableColumn<EmailTagEntity, String> tagCol = new TableColumn<>(I18n.get("setting.email.tagName"));
         tagCol.setCellValueFactory(new PropertyValueFactory<>("tag"));
-        tagCol.setPrefWidth(200);
+        tagCol.setPrefWidth(160);
 
-        table.getColumns().addAll(idCol, tagCol);
+        TableColumn<EmailTagEntity, String> countCol = new TableColumn<>(I18n.get("setting.email.contactCount"));
+        countCol.setPrefWidth(100);
+        countCol.setCellValueFactory(cellData -> {
+            Long count = tagContactCount.getOrDefault(cellData.getValue().getId(), 0L);
+            return new javafx.beans.property.SimpleStringProperty(String.valueOf(count));
+        });
+
+        TableColumn<EmailTagEntity, Void> actionCol = new TableColumn<>("");
+        actionCol.setPrefWidth(80);
+        actionCol.setCellFactory(col -> new javafx.scene.control.TableCell<>() {
+            private final Button delBtn = new Button(I18n.get("button.delete"));
+            {
+                delBtn.getStyleClass().add("glass-btn-secondary");
+                delBtn.setStyle("-fx-padding: 4 10 4 10; -fx-font-size: 11px;");
+            }
+            @Override
+            protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty) { setGraphic(null); return; }
+                EmailTagEntity tag = getTableView().getItems().get(getIndex());
+                delBtn.setOnAction(e -> {
+                    long count = tagContactCount.getOrDefault(tag.getId(), 0L);
+                    if (count > 0) {
+                        GlassNotification.notify(dialog, GlassNotification.Type.WARNING,
+                            I18n.get("setting.email.tagInUse", tag.getTag(), count));
+                        return;
+                    }
+                    new Thread(() -> {
+                        try (SqlSession session = DatabaseInit.getSqlSession()) {
+                            session.getMapper(EmailTagMapper.class).deleteById(tag.getId());
+                            session.commit();
+                            Platform.runLater(() -> { dialog.close(); openTagsDialog(); });
+                        } catch (Exception ex) {
+                            log.error("Failed to delete tag", ex);
+                            Platform.runLater(() -> GlassNotification.notify(dialog, GlassNotification.Type.ERROR,
+                                I18n.get("setting.email.failedToSave", ex.getMessage())));
+                        }
+                    }).start();
+                });
+                setGraphic(delBtn);
+            }
+        });
+
+        table.getColumns().addAll(idCol, tagCol, countCol, actionCol);
 
         AtomicReference<Long> updateIdRef = new AtomicReference<>(null);
         TextField tagField = textField(null, "");
@@ -1105,13 +1208,324 @@ public class SwissKitJSettingUi {
         VBox root = new VBox(14, table, inputRow, btnRow);
         root.setPadding(new Insets(24));
         root.getStyleClass().add("glass-dialog");
-        root.setPrefSize(400, 400);
+        root.setPrefSize(480, 420);
 
         javafx.scene.Scene scene = new javafx.scene.Scene(root);
         scene.setFill(javafx.scene.paint.Color.web("#0d0e11"));
         Themes.applyTo(scene);
         dialog.setScene(scene);
         dialog.show();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Excel import
+    // ═══════════════════════════════════════════════════════════════════
+
+    private static void openImportExcelDialog(Window owner) {
+        Stage dialog = new Stage();
+        dialog.initModality(Modality.APPLICATION_MODAL);
+        dialog.setTitle(I18n.get("setting.email.importExcel"));
+
+        Label desc = new Label(I18n.get("setting.email.importDesc"));
+        desc.setWrapText(true);
+        desc.setMaxWidth(Double.MAX_VALUE);
+        desc.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+
+        // Template download button
+        Button templateBtn = glassBtn(I18n.get("setting.email.downloadTemplate"), false);
+
+        // File selection
+        TextField fileField = new TextField();
+        fileField.setEditable(false);
+        fileField.setPromptText(I18n.get("setting.email.selectExcelFile"));
+        fileField.getStyleClass().add(FIELD_STYLE_CLASS);
+        HBox.setHgrow(fileField, Priority.ALWAYS);
+
+        Button browseBtn = glassBtn(I18n.get("button.browse"), false);
+        AtomicReference<File> selectedFile = new AtomicReference<>(null);
+        browseBtn.setOnAction(e -> {
+            FileChooser fc = new FileChooser();
+            fc.setTitle(I18n.get("setting.email.selectExcelFile"));
+            fc.getExtensionFilters().addAll(
+                new FileChooser.ExtensionFilter("Excel Files", "*.xlsx", "*.xls"),
+                new FileChooser.ExtensionFilter("All Files", "*.*")
+            );
+            File f = fc.showOpenDialog(dialog);
+            if (f != null) {
+                selectedFile.set(f);
+                fileField.setText(f.getName());
+            }
+        });
+
+        templateBtn.setOnAction(e -> {
+            FileChooser saveFc = new FileChooser();
+            saveFc.setTitle(I18n.get("setting.email.saveTemplate"));
+            saveFc.setInitialFileName("address_book_template.xlsx");
+            saveFc.getExtensionFilters().add(
+                new FileChooser.ExtensionFilter("Excel Files", "*.xlsx")
+            );
+            File target = saveFc.showSaveDialog(dialog);
+            if (target != null) downloadImportTemplate(target);
+        });
+
+        HBox fileRow = new HBox(8, fileField, browseBtn);
+
+        // Import button + progress area
+        Button importBtn = glassBtn(I18n.get("setting.email.importExcel"), true);
+        importBtn.setDisable(true);
+
+        Label statusLabel = new Label("");
+        statusLabel.setWrapText(true);
+        statusLabel.setMaxWidth(Double.MAX_VALUE);
+        statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+
+        ProgressBar progressBar = new ProgressBar(0);
+        progressBar.setMaxWidth(Double.MAX_VALUE);
+        progressBar.setVisible(false);
+        progressBar.setManaged(false);
+
+        fileField.textProperty().addListener((obs, o, n) -> importBtn.setDisable(n == null || n.isBlank()));
+
+        importBtn.setOnAction(e -> {
+            File file = selectedFile.get();
+            if (file == null) return;
+            importBtn.setDisable(true);
+            browseBtn.setDisable(true);
+            progressBar.setVisible(true);
+            progressBar.setManaged(true);
+            progressBar.setProgress(-1);
+            statusLabel.setText(I18n.get("setting.email.importing"));
+            statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+
+            new Thread(() -> {
+                try {
+                    ImportResult result = doImportFromExcel(file);
+                    Platform.runLater(() -> {
+                        progressBar.setProgress(1.0);
+                        boolean allOk = result.failed == 0 && result.skipped == 0;
+                        String msg = I18n.get("setting.email.importResultDetail",
+                            result.imported, result.failed, result.skipped, result.tagsCreated);
+                        statusLabel.setText(msg);
+                        statusLabel.setStyle(allOk
+                            ? "-fx-text-fill: #4cd97b; -fx-font-size: 13px; -fx-font-weight: 500;"
+                            : "-fx-text-fill: #f5a623; -fx-font-size: 13px; -fx-font-weight: 500;");
+                        progressBar.getStyleClass().removeAll("success", "danger");
+                        progressBar.getStyleClass().add(allOk ? "success" : "danger");
+                        importBtn.setDisable(false);
+                        browseBtn.setDisable(false);
+                    });
+                } catch (Exception ex) {
+                    log.error("Excel import failed", ex);
+                    Platform.runLater(() -> {
+                        progressBar.setProgress(0);
+                        progressBar.setVisible(false);
+                        progressBar.setManaged(false);
+                        statusLabel.setText(I18n.get("setting.email.importFailed", ex.getMessage()));
+                        statusLabel.setStyle("-fx-text-fill: #f25c5c; -fx-font-size: 13px;");
+                        importBtn.setDisable(false);
+                        browseBtn.setDisable(false);
+                    });
+                }
+            }).start();
+        });
+
+        Button closeBtn = glassBtn(I18n.get("button.close"), false);
+        closeBtn.setOnAction(e -> {
+            dialog.close();
+            openAddressBookDialog();
+        });
+
+        HBox btnRow = new HBox(8, spacer(), closeBtn);
+        btnRow.setAlignment(Pos.CENTER_RIGHT);
+
+        VBox root = new VBox(14,
+            sectionTitle(I18n.get("setting.email.importExcel")),
+            desc,
+            templateBtn,
+            fileRow,
+            importBtn,
+            progressBar,
+            statusLabel,
+            btnRow
+        );
+        root.setPadding(new Insets(24));
+        root.getStyleClass().add("glass-dialog");
+        root.setPrefWidth(520);
+
+        javafx.scene.Scene scene = new javafx.scene.Scene(root);
+        scene.setFill(javafx.scene.paint.Color.web("#0d0e11"));
+        Themes.applyTo(scene);
+        dialog.setScene(scene);
+        dialog.show();
+    }
+
+    private static void downloadImportTemplate(File target) {
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+            org.apache.poi.ss.usermodel.Sheet sheet = wb.createSheet("Address Book");
+            org.apache.poi.ss.usermodel.Row header = sheet.createRow(0);
+            header.createCell(0).setCellValue("email");
+            header.createCell(1).setCellValue("nickname");
+            header.createCell(2).setCellValue("tags");
+
+            // Example rows
+            org.apache.poi.ss.usermodel.Row ex1 = sheet.createRow(1);
+            ex1.createCell(0).setCellValue("alice@example.com");
+            ex1.createCell(1).setCellValue("Alice");
+            ex1.createCell(2).setCellValue("部门A, 项目X");
+
+            org.apache.poi.ss.usermodel.Row ex2 = sheet.createRow(2);
+            ex2.createCell(0).setCellValue("bob@example.com");
+            ex2.createCell(1).setCellValue("Bob");
+            ex2.createCell(2).setCellValue("部门B");
+
+            sheet.setColumnWidth(0, 8000);
+            sheet.setColumnWidth(1, 5000);
+            sheet.setColumnWidth(2, 6000);
+
+            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(target)) {
+                wb.write(fos);
+            }
+            GlassNotification.toast((Window) null, GlassNotification.Type.SUCCESS,
+                I18n.get("setting.email.templateSaved", target.getName()));
+        } catch (Exception e) {
+            log.error("Failed to save template", e);
+            GlassNotification.notify((Window) null, GlassNotification.Type.ERROR,
+                I18n.get("setting.email.templateSaveFailed", e.getMessage()));
+        }
+    }
+
+    private static class ImportResult {
+        int imported;
+        int failed;
+        int skipped;
+        int tagsCreated;
+    }
+
+    private static ImportResult doImportFromExcel(File file) throws Exception {
+        ImportResult result = new ImportResult();
+
+        // Load existing tags into a name→id map
+        Map<String, Long> tagNameToId = new HashMap<>();
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            List<EmailTagEntity> existingTags = session.getMapper(EmailTagMapper.class).selectAll();
+            if (existingTags != null) {
+                for (EmailTagEntity t : existingTags) tagNameToId.put(t.getTag().trim(), t.getId());
+            }
+        }
+
+        // Load existing emails to skip duplicates
+        Set<String> existingEmails = new HashSet<>();
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            List<EmailAddressBookEntity> existing = session.getMapper(EmailAddressBookMapper.class).selectEmailAddressBook();
+            if (existing != null) {
+                for (EmailAddressBookEntity e : existing) {
+                    if (e.getEmailAddress() != null) existingEmails.add(e.getEmailAddress().toLowerCase().trim());
+                }
+            }
+        }
+
+        // Read Excel using Apache POI
+        try (org.apache.poi.ss.usermodel.Workbook workbook = org.apache.poi.ss.usermodel.WorkbookFactory.create(file, null, true)) {
+            org.apache.poi.ss.usermodel.Sheet sheet = workbook.getSheetAt(0);
+            if (sheet.getPhysicalNumberOfRows() < 2) {
+                throw new RuntimeException(I18n.get("setting.email.importEmpty"));
+            }
+
+            // Read header row to determine column indices
+            org.apache.poi.ss.usermodel.Row headerRow = sheet.getRow(0);
+            int emailCol = -1, nickCol = -1, tagCol = -1;
+            for (int c = 0; c < headerRow.getLastCellNum(); c++) {
+                org.apache.poi.ss.usermodel.Cell cell = headerRow.getCell(c);
+                if (cell == null) continue;
+                String header = cell.toString().trim().toLowerCase();
+                if (header.contains("email") || header.contains("邮件") || header.contains("地址") || header.contains("address")) {
+                    emailCol = c;
+                } else if (header.contains("nick") || header.contains("昵称") || header.contains("name") || header.contains("姓名")) {
+                    nickCol = c;
+                } else if (header.contains("tag") || header.contains("标签") || header.contains("group") || header.contains("分组")) {
+                    tagCol = c;
+                }
+            }
+            // Fallback: if no header match, assume column order: email, nickname, tags
+            if (emailCol < 0 && headerRow.getLastCellNum() >= 1) emailCol = 0;
+            if (nickCol < 0 && headerRow.getLastCellNum() >= 2) nickCol = 1;
+            if (tagCol < 0 && headerRow.getLastCellNum() >= 3) tagCol = 2;
+
+            if (emailCol < 0) {
+                throw new RuntimeException(I18n.get("setting.email.importNoEmailCol"));
+            }
+
+            // Process data rows
+            for (int r = 1; r <= sheet.getLastRowNum(); r++) {
+                org.apache.poi.ss.usermodel.Row row = sheet.getRow(r);
+                if (row == null) continue;
+
+                String email = getCellString(row, emailCol);
+                if (email == null || email.isBlank()) { result.failed++; continue; }
+                email = email.trim();
+                if (!email.matches(".+@.+\\..+")) { result.failed++; continue; }
+                if (existingEmails.contains(email.toLowerCase())) { result.skipped++; continue; }
+
+                String nickname = nickCol >= 0 ? getCellString(row, nickCol) : null;
+                if (nickname != null) nickname = nickname.trim();
+
+                // Parse tags: comma or Chinese comma separated
+                List<Long> tagIds = new ArrayList<>();
+                if (tagCol >= 0) {
+                    String tagStr = getCellString(row, tagCol);
+                    if (tagStr != null && !tagStr.isBlank()) {
+                        for (String part : tagStr.split("[,，;；/\\s]+")) {
+                            String tagName = part.trim();
+                            if (tagName.isEmpty()) continue;
+                            Long tagId = tagNameToId.get(tagName);
+                            if (tagId == null) {
+                                // Auto-create tag
+                                EmailTagEntity newTag = new EmailTagEntity();
+                                newTag.setTag(tagName);
+                                try (SqlSession session = DatabaseInit.getSqlSession()) {
+                                    session.getMapper(EmailTagMapper.class).insert(newTag);
+                                    session.commit();
+                                }
+                                tagNameToId.put(tagName, newTag.getId());
+                                tagId = newTag.getId();
+                                result.tagsCreated++;
+                            }
+                            tagIds.add(tagId);
+                        }
+                    }
+                }
+
+                // Insert address book entry
+                EmailAddressBookEntity entity = new EmailAddressBookEntity();
+                entity.setEmailAddress(email);
+                entity.setNickname(nickname != null ? nickname : "");
+                entity.setTags(tagIds.isEmpty() ? null
+                    : "[" + tagIds.stream().map(id -> "\"" + id + "\"").collect(java.util.stream.Collectors.joining(",")) + "]");
+
+                try (SqlSession session = DatabaseInit.getSqlSession()) {
+                    session.getMapper(EmailAddressBookMapper.class).insert(entity);
+                    session.commit();
+                }
+                existingEmails.add(email.toLowerCase());
+                result.imported++;
+            }
+        }
+
+        return result;
+    }
+
+    private static String getCellString(org.apache.poi.ss.usermodel.Row row, int col) {
+        org.apache.poi.ss.usermodel.Cell cell = row.getCell(col);
+        if (cell == null) return null;
+        return switch (cell.getCellType()) {
+            case STRING -> cell.getStringCellValue();
+            case NUMERIC -> {
+                double v = cell.getNumericCellValue();
+                yield v == Math.floor(v) ? String.valueOf((long) v) : String.valueOf(v);
+            }
+            case BOOLEAN -> String.valueOf(cell.getBooleanCellValue());
+            default -> null;
+        };
     }
 
     // ═══════════════════════════════════════════════════════════════════
