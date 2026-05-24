@@ -5,6 +5,8 @@ import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
 import fan.summer.api.i18n.I18n;
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
@@ -15,6 +17,8 @@ import javafx.scene.layout.VBox;
 import javafx.scene.web.WebView;
 
 public class MarkdownEditorPlugin implements SwissKitJPlugin {
+
+    private static final PluginLogger log = LoggerFactory.getLogger(MarkdownEditorPlugin.class);
 
     @Override public String getId()          { return "builtin.markdown"; }
     @Override public String getName()        { return I18n.get("builtin.markdown-editor.name"); }
@@ -27,6 +31,7 @@ public class MarkdownEditorPlugin implements SwissKitJPlugin {
 
     @Override
     public Node createView() {
+        log.debug("Creating Markdown Editor view");
         TextArea editor = styledTextArea(
             "# Hello SwissKitJ\n\n" +
             "This is a **Markdown** editor.\n\n" +
@@ -40,6 +45,7 @@ public class MarkdownEditorPlugin implements SwissKitJPlugin {
         preview.setStyle("-fx-background-color: transparent;");
 
         Runnable render = () -> {
+            log.debug("Rendering markdown preview");
             String html = mdToHtml(editor.getText());
             String page =
                 "<html><head><style>" +

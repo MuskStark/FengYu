@@ -6,17 +6,29 @@ import java.nio.file.Path;
 /**
  * Fat JAR / classpath launch entry point.
  *
- * Must be separate from ToolboxApp (extends Application).
- * JavaFX module system requires: when using a class that extends Application
- * as the main class, javafx.graphics needs to be on the module-path,
- * not classpath. Using this non-Application intermediate class for launch
- * allows compatibility with classpath mode (lib/ directory).
+ * <p>This class must be separate from {@link fan.summer.app.SwissKitJApp} because it does not
+ * extend {@link javafx.application.Application}. The JavaFX module system requires that when
+ * a class extending {@code Application} is used as the main class, {@code javafx.graphics} must
+ * be on the module-path rather than the classpath. Using this intermediate non-Application class
+ * as the entry point allows the application to run in classpath mode (with JARs in {@code lib/}),
+ * which simplifies distribution and is compatible with the fat JAR layout produced by Maven.
  *
- * Also primes the logback log directory system property before any logger is
- * initialised — must happen before the first SLF4J class is touched.
+ * <p>This class also primes the log directory system property before any logger is initialized.
+ * The {@code swisskit.log.dir} property must be set before the first SLF4J logger is accessed,
+ * as logback.xml references it during configuration.
+ *
+ * @since 1.0
+ * @author SwissKitJ
+ * @see fan.summer.app.SwissKitJApp
  */
 public class Launcher {
 
+    /**
+     * Application entry point. Initializes the log directory and delegates to
+     * {@link fan.summer.app.SwissKitJApp#main(String[])}.
+     *
+     * @param args command-line arguments passed to the Java virtual machine
+     */
     public static void main(String[] args) {
         primeLogDirectory();
         fan.summer.app.SwissKitJApp.main(args);
@@ -25,7 +37,9 @@ public class Launcher {
     /**
      * Resolves and creates the log directory, then exports its absolute path as the
      * {@code swisskit.log.dir} system property so that logback.xml can reference it.
-     * Honours an override if the user has already set the property externally.
+     * If the user has already set this property externally, this method does nothing.
+     *
+     * @since 1.0
      */
     private static void primeLogDirectory() {
         if (System.getProperty("swisskit.log.dir") != null) {

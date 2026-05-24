@@ -2,6 +2,8 @@ package fan.summer.ui.store;
 
 import fan.summer.api.i18n.I18n;
 import fan.summer.ui.sidebar.Sidebar.NavItem;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.layout.HBox;
@@ -11,14 +13,33 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 
 /**
- * Plugin Store UI — sidebar menu with Online Store and Local Install sections.
+ * Plugin Store UI container that combines Online Store and Local Install panes
+ * in a sidebar-content layout. The sidebar allows switching between the two modes.
+ * <p>
+ * The view is built lazily on first access and cached for the lifetime of the session.
+ *
+ * @see OnlineStorePane
+ * @see LocalInstallPane
+ * @since 1.0
  */
 public class PluginStoreUi {
 
+    private static final Logger LOG = LoggerFactory.getLogger(PluginStoreUi.class);
+
     private static Node view;
 
+    /**
+     * Builds (or returns the cached) plugin store UI containing the sidebar
+     * and both the online store and local install content panes.
+     *
+     * @return the root Node of the plugin store UI
+     */
     public static Node build() {
-        if (view != null) return view;
+        if (view != null) {
+            LOG.info("Returning cached PluginStoreUi view");
+            return view;
+        }
+        LOG.info("Building new PluginStoreUi view");
 
         // ── Content pages ──────────────────────────────────
         Node onlinePage = new OnlineStorePane(null);
@@ -59,6 +80,7 @@ public class PluginStoreUi {
         for (int i = 0; i < items.length; i++) {
             final int idx = i;
             items[i].setOnMouseClicked(e -> {
+                LOG.info("PluginStore nav switched to index: {}", idx);
                 for (int j = 0; j < items.length; j++) {
                     items[j].setActive(j == idx);
                     pages[j].setVisible(j == idx);
@@ -78,9 +100,16 @@ public class PluginStoreUi {
         VBox.setVgrow(body, Priority.ALWAYS);
 
         view = container;
+        LOG.info("PluginStoreUi view built and cached");
         return view;
     }
 
+    /**
+     * Creates a section label styled as uppercase text for use in the sidebar.
+     *
+     * @param text the label text to display (will be uppercased)
+     * @return a styled Label node
+     */
     private static Label sidebarSectionLabel(String text) {
         Label l = new Label(text.toUpperCase());
         l.getStyleClass().add("sidebar-section-label");

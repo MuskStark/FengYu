@@ -6,6 +6,8 @@ import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
 import fan.summer.api.component.StepWizard;
 import fan.summer.api.i18n.I18n;
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.excel.ComplexSplitConfigEntity;
 import fan.summer.database.mapper.excel.ComplexSplitConfigMapper;
@@ -26,7 +28,29 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
+/**
+ * Built-in Excel splitting tool implemented as a four-step wizard using {@link StepWizard}.
+ *
+ * <p>Step 1 — File Selection: drag-and-drop or file picker to select the source Excel file.
+ * An async analysis pass reads all sheet headers and populates {@link SplitConfig#analysisResult}.
+ *
+ * <p>Step 2 — Split Mode: choose between BY_SHEET (one output per sheet), BY_COLUMN
+ * (group rows by unique values in a selected column), or COMPLEX (DB-backed multi-config).
+ *
+ * <p>Step 3 — Confirm: display a summary of the chosen configuration and select the output
+ * directory.
+ *
+ * <p>Step 4 — Execute: run the split on a background thread and display a progress bar
+ * followed by the list of output files with an "open folder" button.
+ *
+ * @since 3.0.0
+ * @see SwissKitJPlugin
+ * @see SplitConfig
+ * @see ExcelSplitter
+ */
 public class ExcelSplitterPlugin implements SwissKitJPlugin {
+
+    private static final PluginLogger log = LoggerFactory.getLogger(ExcelSplitterPlugin.class);
 
     private Node view;
 
@@ -41,16 +65,29 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
     @Override
     public void onActivate() {
+        log.info("Excel Splitter plugin activated");
         view = null;
     }
 
     @Override
+    public void onDeactivate() {
+        log.info("Excel Splitter plugin deactivated");
+    }
+
+    @Override
     public Node createView() {
+        log.debug("Creating Excel Splitter view");
         if (view != null) return view;
         view = buildWizardView();
         return view;
     }
 
+    /**
+     * Builds and returns the wizard view, constructing all four step views and wiring
+     * step-change callbacks.
+     *
+     * @return the root JavaFX node (a VBox containing the StepWizard)
+     */
     private Node buildWizardView() {
         SplitConfig config = new SplitConfig();
         StepWizard wizard = new StepWizard();
@@ -68,6 +105,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
         wizard.build();
 
         wizard.setOnStepChanged((from, to, total) -> {
+            log.debug("Wizard step changed: {} -> {} (total steps: {})", from, to, total);
             if (from == 0 && to == 1) step2.refresh(config);
             if (from == 1 && to == 2) step3.refresh(config);
             if (from == 2 && to == 3) step4.startSplit();
@@ -194,6 +232,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
                 showLoading(false);
                 int sheetCount = config.analysisResult.size();
                 String sheetNames = config.analysisResult.keySet().stream().limit(5).collect(Collectors.joining(", "));
+                log.info("Excel analysis complete: {} sheets found in {}", sheetCount, config.sourceFile.getFileName());
                 statusLabel.setText(I18n.get("builtin.excel.analysisSuccess", sheetCount, sheetNames + (sheetCount > 5 ? " …" : "")));
                 statusLabel.setStyle("-fx-text-fill: #4cd97b; -fx-font-size: 12px;");
                 wizard.goTo(1);
@@ -203,6 +242,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
                 analysisRunning.set(false);
                 analysisTriggered = false;
                 showLoading(false);
+                log.error("Excel analysis failed: {}", task.getException().getMessage());
                 statusLabel.setText(I18n.get("builtin.excel.analysisFailed", task.getException().getMessage()));
                 statusLabel.setStyle("-fx-text-fill: #f25c5c; -fx-font-size: 12px;");
             });
@@ -221,6 +261,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
         }
 
         private void loadFile(Path path) {
+            log.info("Loading Excel file: {}", path.getFileName());
             config.sourceFile = path;
             config.analysisResult = null;
             analysisTriggered = true;
@@ -295,6 +336,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             modeGroup.selectedToggleProperty().addListener((obs, o, n) -> {
                 if (n != null) {
                     config.mode = (SplitConfig.SplitMode) n.getUserData();
+                    log.debug("Split mode changed to: {}", config.mode);
                     refreshDetail();
                 }
             });
@@ -715,6 +757,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
         void startSplit() {
             if (started) return;
+            log.info("Starting Excel split operation");
             started = true;
             resultBox.getChildren().clear();
 
@@ -738,6 +781,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
         }
 
         private void showSuccess(ExcelSplitter.SplitResult result) {
+            log.info("Excel split complete: {} output files created", result.fileCount());
             progressBar.setProgress(1.0);
             progressBar.getStyleClass().removeAll("success", "danger");
             progressBar.getStyleClass().add("success");
@@ -794,6 +838,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
         }
 
         private void showError(Throwable err) {
+            log.error("Excel split failed: {}", err.getMessage());
             progressBar.setProgress(1.0);
             progressBar.getStyleClass().removeAll("success", "danger");
             progressBar.getStyleClass().add("danger");

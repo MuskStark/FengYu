@@ -5,6 +5,8 @@ import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
 import fan.summer.api.i18n.I18n;
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
 import javafx.animation.PauseTransition;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -24,6 +26,8 @@ import java.security.MessageDigest;
 
 public class HashCalculatorPlugin implements SwissKitJPlugin {
 
+    private static final PluginLogger log = LoggerFactory.getLogger(HashCalculatorPlugin.class);
+
     private static final String[][] ALGOS = {
         {"MD5", "MD5"}, {"SHA-1", "SHA-1"}, {"SHA-256", "SHA-256"}, {"SHA-512", "SHA-512"}
     };
@@ -39,11 +43,13 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
 
     @Override
     public Node createView() {
+        log.debug("Creating Hash Calculator view");
         TextArea input = styledTextArea("Input text...");
         VBox results   = new VBox(8);
 
         Button calcBtn = actionButton(I18n.get("builtin.hash.calculate"), "#5b8cf7");
         calcBtn.setOnAction(e -> {
+            log.info("Calculate hash button clicked");
             results.getChildren().clear();
             for (String[] algo : ALGOS) {
                 try {
@@ -52,7 +58,9 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
                     StringBuilder hex  = new StringBuilder();
                     for (byte b : hash) hex.append(String.format("%02x", b));
                     results.getChildren().add(hashRow(algo[0], hex.toString()));
+                    log.debug("Calculated {} hash successfully", algo[0]);
                 } catch (Exception ex) {
+                    log.error("Failed to calculate {} hash: {}", algo[0], ex.getMessage());
                     results.getChildren().add(hashRow(algo[0], "Error"));
                 }
             }
@@ -86,6 +94,7 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
             "-fx-background-radius: 4; -fx-cursor: hand; -fx-padding: 2 8 2 8;"
         );
         copy.setOnAction(e -> {
+            log.debug("Copying {} hash to clipboard", algo);
             ClipboardContent cc = new ClipboardContent();
             cc.putString(value);
             Clipboard.getSystemClipboard().setContent(cc);
