@@ -8,4 +8,6 @@ public interface EmailAddressBookMapper {
     List<EmailAddressBookEntity> selectEmailAddressBook();
     void insert(EmailAddressBookEntity emailAddressBookEntity);
     void update(EmailAddressBookEntity emailAddressBookEntity);
+    void deleteById(Integer id);
+    int countByTagId(Long tagId);
 }

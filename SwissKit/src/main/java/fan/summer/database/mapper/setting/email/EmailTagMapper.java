@@ -8,4 +8,5 @@ public interface EmailTagMapper {
     void insert(EmailTagEntity emailTagEntity);
     void update(EmailTagEntity emailTagEntity);
     List<EmailTagEntity> selectAll();
+    void deleteById(Long id);
 }

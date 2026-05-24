@@ -43,13 +43,18 @@ CREATE TABLE IF NOT EXISTS email_tag
 -- Email Mass Sent Config Table
 CREATE TABLE IF NOT EXISTS email_mass_sent_config
 (
-    id              INTEGER PRIMARY KEY AUTO_INCREMENT,
-    task_id         VARCHAR(255) NOT NULL UNIQUE,
-    to_tag          VARCHAR(255),
-    cc_tag          VARCHAR(255),
-    is_sent_att     INTEGER      NOT NULL DEFAULT 0,
-    att_folder_path VARCHAR(255)
+    id               INTEGER PRIMARY KEY AUTO_INCREMENT,
+    task_id          VARCHAR(255) NOT NULL UNIQUE,
+    to_tag           VARCHAR(255),
+    cc_tag           VARCHAR(255),
+    is_sent_att      INTEGER      NOT NULL DEFAULT 0,
+    att_folder_path  VARCHAR(255),
+    send_by_filename INTEGER      NOT NULL DEFAULT 0
 );
+
+-- Add send_by_filename column if it doesn't exist (for existing databases)
+-- H2 doesn't support IF NOT EXISTS in ALTER TABLE ADD COLUMN before 2.x, so use a script-safe approach
+ALTER TABLE email_mass_sent_config ADD COLUMN IF NOT EXISTS send_by_filename INTEGER NOT NULL DEFAULT 0;
 
 -- Email Sent Log Table
 CREATE TABLE IF NOT EXISTS email_sent_log
