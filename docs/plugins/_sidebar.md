@@ -1,11 +1,5 @@
 - 🌐 [English](/) | [中文](/zh/)
-- [Home](/)
-- [Getting Started](/getting-started.md)
-- [Features](/features.md)
-- [Architecture](/architecture.md)
-- [Development Guide](/development.md)
-- [API Reference](/api.md)
-- [Changelog](/changelog.md)
+- [← Back to Main Docs](/)
 - **Plugin Development**
   - [Overview](/plugins/index.md)
   - [Getting Started](/plugins/getting-started.md)
