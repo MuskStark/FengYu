@@ -14,20 +14,58 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 
 /**
- * Generic multi-step wizard container.
+ * Generic multi-step wizard container for JavaFX-based plugins.
  *
- * Usage:
- *   wizard.addStep("Select file", node, () -> validate());
- *   wizard.addStep("Split mode",  node, () -> true);
- *   wizard.addStep("Run split",   node, () -> true);
- *   wizard.build();
+ * <p>StepWizard renders a linear sequence of steps with animated transitions,
+ * a visual step indicator (dots + connector lines), and Back/Next navigation
+ * buttons. It handles all layout and animation, requiring only that each step
+ * provide its content Node and a forward-validation predicate.</p>
+ *
+ * <p>Usage example:</p>
+ * <pre>{@code
+ * StepWizard wizard = new StepWizard();
+ * wizard.addStep("Select file",  selectNode,  () -> filePath != null);
+ * wizard.addStep("Configure",   configNode,  () -> configValid);
+ * wizard.addStep("Confirm",     confirmNode, () -> true);
+ * wizard.build();
+ * }</pre>
+ *
+ * <p>Step transitions are animated (slide + fade). When the user clicks Next,
+ * the {@code canProceed} predicate for the current step is evaluated; if it
+ * returns {@code false}, the Next button shakes and navigation is blocked.
+ * The current step index can also be set programmatically via {@link #goTo(int)}.</p>
+ *
+ * <p>Call {@link #setOnStepChanged(StepChangeListener)} to be notified whenever
+ * the user moves between steps, including programmatic navigation.</p>
+ *
+ * @since 1.0
+ * @author SwissKitJ
  */
 public class StepWizard extends BorderPane {
 
+    /**
+     * Listener interface for step transition events.
+     *
+     * @see StepWizard#setOnStepChanged(StepChangeListener)
+     */
     public interface StepChangeListener {
+        /**
+         * Called after a step transition completes.
+         *
+         * @param from the previous step index (0-based), or -1 on initial display
+         * @param to   the new step index (0-based)
+         * @param total the total number of steps
+         */
         void onStepChanged(int from, int to, int total);
     }
 
+    /**
+     * Internal record holding data for a single wizard step.
+     *
+     * @param title       display label shown in the step indicator
+     * @param content     the JavaFX Node to render as the step body
+     * @param canProceed  a predicate evaluated when the user attempts to advance
+     */
     private record Step(String title, Node content, BooleanSupplier canProceed) {}
 
     // ── State ─────────────────────────────────────────────
@@ -51,13 +89,40 @@ public class StepWizard extends BorderPane {
         setStyle("-fx-background-color: transparent;");
     }
 
+    /**
+     * Adds a new step to the wizard.
+     *
+     * <p>Steps must be added before {@link #build()} is called. The order of
+     * addition defines the step order.</p>
+     *
+     * @param title       a short label for this step (shown in the dot indicator)
+     * @param content     the JavaFX Node to display as the step body
+     * @param canProceed  a supplier evaluated when the user clicks Next; return
+     *                    {@code true} to allow advance, {@code false} to trigger
+     *                    a shake animation and block navigation
+     * @throws IllegalStateException if called after {@link #build()}
+     */
     public void addStep(String title, Node content, BooleanSupplier canProceed) {
         steps.add(new Step(title, content, canProceed));
     }
 
+    /**
+     * Registers a listener for step change events.
+     *
+     * @param l the listener to invoke on step transitions
+     */
     public void setOnStepChanged(StepChangeListener l) { this.stepListener = l; }
 
-    /** Called once after all steps are added to build UI */
+    /**
+     * Builds the wizard UI from the previously added steps.
+     *
+     * <p>This method constructs the step indicator bar, the content stack, and
+     * the footer buttons. It must be called exactly once after all steps have
+     * been added via {@link #addStep(String, Node, BooleanSupplier)} and before
+     * the wizard is shown. Calling it more than once has no effect.</p>
+     *
+     * <p>After calling {@code build()}, the first step is displayed automatically.</p>
+     */
     public void build() {
         stepIndicator = buildStepIndicator();
         contentPane   = new StackPane();
@@ -124,7 +189,13 @@ public class StepWizard extends BorderPane {
         return dot;
     }
 
-    /** Refresh all step dots and connector line styles */
+    /**
+     * Refreshes all step dots and connector line styles to reflect the current step.
+     *
+     * <p>Dots before the current step show a checkmark in green; the active step
+     * shows its number in the accent color with a brief pulse animation; future
+     * steps appear idle. Connector lines between completed steps turn green.</p>
+     */
     private void refreshIndicator() {
         int childIdx = 0;
         for (int i = 0; i < steps.size(); i++) {
@@ -219,6 +290,15 @@ public class StepWizard extends BorderPane {
 
     // ── Step transition ──────────────────────────────────────────
 
+    /**
+     * Navigates programmatically to the specified step.
+     *
+     * <p>If the target index is out of bounds, the call is silently ignored.
+     * The {@link StepChangeListener} (if registered) is notified after the
+     * transition animation completes.</p>
+     *
+     * @param idx the zero-based step index to navigate to
+     */
     public void goTo(int idx) {
         if (idx < 0 || idx >= steps.size()) return;
         int from = current;
@@ -276,7 +356,14 @@ public class StepWizard extends BorderPane {
         stepHint.setText("Step " + (current + 1) + "  of " + steps.size() + "  steps");
     }
 
-    /** Shake feedback when button validation fails */
+    /**
+     * Applies a horizontal shake animation to the given node.
+     *
+     * <p>Used as visual feedback when the user attempts to advance but
+     * {@code canProceed} returns {@code false}.</p>
+     *
+     * @param node the JavaFX Node to shake
+     */
     private void shakeButton(Node node) {
         TranslateTransition shake = new TranslateTransition(Duration.millis(60), node);
         shake.setFromX(0); shake.setByX(8);
@@ -286,7 +373,24 @@ public class StepWizard extends BorderPane {
 
     // ── Public queries ──────────────────────────────────────────
 
+    /**
+     * Returns the zero-based index of the currently displayed step.
+     *
+     * @return the current step index
+     */
     public int  getCurrentStep()  { return current; }
+
+    /**
+     * Returns the total number of steps in this wizard.
+     *
+     * @return the total step count
+     */
     public int  getTotalSteps()   { return steps.size(); }
+
+    /**
+     * Returns whether the current step is the last step.
+     *
+     * @return {@code true} if the current step is the last one
+     */
     public boolean isLastStep()   { return current == steps.size() - 1; }
 }
