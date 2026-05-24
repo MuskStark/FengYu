@@ -1,5 +1,8 @@
 package fan.summer.ai.inference;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.List;
 
 /**
@@ -17,6 +20,8 @@ import java.util.List;
  * abort the streaming loop.
  */
 public final class StopDetector {
+
+    private static final Logger log = LoggerFactory.getLogger(StopDetector.class);
 
     private static final List<String> STOP_SEQUENCES = List.of(
         // ChatML / Qwen
@@ -53,6 +58,7 @@ public final class StopDetector {
             int idx = s.indexOf(stop);
             if (idx >= 0 && (best < 0 || idx < best)) best = idx;
         }
+        log.debug("findStop: textLength={}, foundStop={}", text.length(), best >= 0);
         return best;
     }
 
@@ -69,7 +75,10 @@ public final class StopDetector {
         for (String stop : STOP_SEQUENCES) {
             int max = Math.min(stop.length() - 1, len);
             for (int k = max; k >= 1; k--) {
-                if (s.regionMatches(len - k, stop, 0, k)) return true;
+                if (s.regionMatches(len - k, stop, 0, k)) {
+                    log.debug("endsWithPartialStop: matched prefix of '{}', length={}", stop, k);
+                    return true;
+                }
             }
         }
         return false;

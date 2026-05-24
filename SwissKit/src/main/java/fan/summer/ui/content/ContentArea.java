@@ -1,6 +1,9 @@
 package fan.summer.ui.content;
 
+import fan.summer.api.i18n.I18n;
 import fan.summer.api.SwissKitJPlugin;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import javafx.animation.FadeTransition;
 import javafx.animation.ParallelTransition;
 import javafx.animation.PauseTransition;
@@ -20,11 +23,21 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * Main content area.
- * Contains: Search bar / Tool grid / Detail panel / Page transition animations.
- * Bind plugin data via setPlugins(ObservableList), auto-respond to add/remove.
+ * Main content area of the application, displayed between the Sidebar and StatusBar.
+ * Contains a search bar, a scrollable tool grid, a detail panel that slides in from
+ * the right, and a switchable page stack for custom views (e.g. Settings, Plugin Store).
+ * <p>
+ * Plugin data is bound via {@link #setPlugins(ObservableList)} and the grid
+ * automatically refreshes when plugins are added or removed. Category filtering
+ * and search queries are applied client-side against the bound list.
+ *
+ * @see ToolCard
+ * @see DetailPanel
+ * @since 1.0
  */
 public class ContentArea extends BorderPane {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ContentArea.class);
 
     // ── Sub-components ────────────────────────────────────────────
     private final TextField   searchField  = new TextField();
@@ -43,26 +56,59 @@ public class ContentArea extends BorderPane {
     private Runnable onBack;
 
     public ContentArea() {
+        LOG.info("ContentArea initializing");
         scrollPane     = buildScrollPane();
         pageScrollPane = buildPageScrollPane();
         buildLayout();
         detailPanel.setOnLaunch(p -> { if (onLaunch != null) onLaunch.accept(p); });
+        I18n.addListener(() -> javafx.application.Platform.runLater(this::refresh));
+        LOG.info("ContentArea initialized");
     }
 
     // ── Public API ──────────────────────────────────────────
 
-    public void setOnLaunch(Consumer<SwissKitJPlugin> handler) { this.onLaunch = handler; }
-    public void setOnBack(Runnable handler) { this.onBack = handler; }
+    /**
+     * Sets the callback invoked when the user clicks the Launch button in the detail panel.
+     *
+     * @param handler the consumer that receives the selected plugin; must not be null
+     */
+    public void setOnLaunch(Consumer<SwissKitJPlugin> handler) {
+        LOG.debug("setOnLaunch callback set");
+        this.onLaunch = handler;
+    }
 
-    /** Bind plugin list, auto-refresh on add/remove */
+    /**
+     * Sets the callback invoked when the user navigates back from an active tool view.
+     *
+     * @param handler the runnable to execute on back navigation; may be null
+     */
+    public void setOnBack(Runnable handler) {
+        LOG.debug("setOnBack callback set");
+        this.onBack = handler;
+    }
+
+    /**
+     * Binds the plugin list to this content area, automatically refreshing the tool grid
+     * whenever plugins are added or removed.
+     *
+     * @param list the observable list of plugins to display; must not be null
+     */
     public void setPlugins(ObservableList<SwissKitJPlugin> list) {
+        LOG.info("Binding plugin list with {} plugins", list.size());
         this.plugins = list;
         list.addListener((ListChangeListener<SwissKitJPlugin>) c -> refresh());
         refresh();
     }
 
-    /** Switch category display */
+    /**
+     * Filters the tool grid to show only plugins in the specified category
+     * and clears any active search query.
+     *
+     * @param categoryId the category identifier ({@code "all"}, {@code "text"}, {@code "image"},
+     *                   {@code "dev"}, {@code "net"}, {@code "other"}, {@code "plugins"}, etc.)
+     */
     public void showCategory(String categoryId) {
+        LOG.info("Showing category: id={}", categoryId);
         currentCategory = categoryId;
         searchField.clear();
         currentQuery = "";
@@ -72,8 +118,15 @@ public class ContentArea extends BorderPane {
         animateGridIn();
     }
 
-    /** Switch to custom page (e.g. settings, plugin market) */
+    /**
+     * Switches the center content to a custom page (such as Settings or Plugin Store),
+     * hiding the tool grid and the detail panel.
+     *
+     * @param page the JavaFX Node to display as the center content; must not be null
+     * @param title the title to display in the back bar; may be null
+     */
     public void showPage(Node page, String title) {
+        LOG.info("Showing page: title={}", title);
         pageScrollPane.setContent(page);
         setTopMode(true, title);
         crossFadeTo(pageScrollPane);
@@ -82,6 +135,7 @@ public class ContentArea extends BorderPane {
 
     /** Back to tool grid home */
     public void showToolGrid() {
+        LOG.info("Returning to tool grid");
         setTopMode(false, null);
         crossFadeTo(scrollPane);
     }
@@ -128,7 +182,7 @@ public class ContentArea extends BorderPane {
     }
 
     private HBox buildBackBar() {
-        Label backBtn = new Label("← 返回");
+        Label backBtn = new Label("← " + I18n.get("content.back"));
         backBtn.setStyle(
             "-fx-text-fill: rgba(255,255,255,0.70); -fx-font-size: 13px;" +
             "-fx-cursor: hand; -fx-padding: 4 10 4 0;"
@@ -164,7 +218,7 @@ public class ContentArea extends BorderPane {
         searchIcon.setStyle("-fx-font-size: 13px; -fx-text-fill: rgba(255,255,255,0.28);");
 
         searchField.getStyleClass().add("search-field");
-        searchField.setPromptText("Search tools...");
+        searchField.setPromptText(I18n.get("content.search.prompt"));
         searchField.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(searchField, Priority.ALWAYS);
         searchField.textProperty().addListener((obs, oldVal, newVal) -> {
@@ -196,6 +250,10 @@ public class ContentArea extends BorderPane {
         sp.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         sp.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         sp.setStyle("-fx-background-color: transparent; -fx-background: transparent;");
+        // Control's default maxWidth is USE_COMPUTED_SIZE, which equals prefWidth.
+        // Force MAX_VALUE so StackPane can stretch this to fill the page area.
+        sp.setMaxWidth(Double.MAX_VALUE);
+        sp.setMaxHeight(Double.MAX_VALUE);
         return sp;
     }
 
@@ -207,7 +265,7 @@ public class ContentArea extends BorderPane {
         toolGrid.setPrefWrapLength(600);
 
         VBox wrapper = new VBox(
-            sectionHeader("FREQUENT", ""),
+            sectionHeader("content.section.frequent", ""),
             toolGrid
         );
         wrapper.setPadding(new Insets(8, 16, 16, 16));
@@ -258,7 +316,7 @@ public class ContentArea extends BorderPane {
 
         // Empty state message
         if (filtered.isEmpty()) {
-            Label empty = new Label("No matching tools found");
+            Label empty = new Label(I18n.get("content.emptyState"));
             empty.setStyle("-fx-text-fill: rgba(255,255,255,0.28); -fx-font-size: 13px;");
             empty.setPadding(new Insets(40, 0, 0, 0));
             toolGrid.getChildren().add(empty);
@@ -286,6 +344,7 @@ public class ContentArea extends BorderPane {
     // ── Card selection ──────────────────────────────────────────
 
     private void onCardSelect(SwissKitJPlugin plugin) {
+        LOG.info("Card selected: plugin={}", plugin.getName());
         detailPanel.show(plugin);
     }
 
@@ -325,8 +384,8 @@ public class ContentArea extends BorderPane {
 
     // ── Helper node factory ──────────────────────────────────────
 
-    private HBox sectionHeader(String title, String action) {
-        Label titleLabel = new Label(title.toUpperCase());
+    private HBox sectionHeader(String titleKey, String action) {
+        Label titleLabel = new Label(I18n.get(titleKey).toUpperCase());
         titleLabel.getStyleClass().add("section-title");
 
         Region spacer = new Region();

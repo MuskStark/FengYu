@@ -16,12 +16,13 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Utility class for Excel file operations.
- * Provides methods for appending sheets and data rows to Excel files.
+ * Utility class for Excel file operations using Apache POI.
+ * Provides methods for appending sheets, copying rows, writing data, and normalizing values.
  *
- * @author summer
- * @version 1.00
- * @date 2026/3/4
+ * <p>All public methods perform no file I/O on their own unless the method signature
+ * includes a file path — in-memory operations take already-loaded Workbook/Sheet objects.
+ *
+ * @since 3.0.0
  */
 public class ExcelUtil {
     private static final Logger logger = LoggerFactory.getLogger(ExcelUtil.class);
@@ -294,7 +295,12 @@ public class ExcelUtil {
     // ==================== Private Helper Methods ====================
 
     /**
-     * Loads existing workbook or creates new one if file doesn't exist.
+     * Loads an existing XSSFWorkbook from the given path, or creates a new empty one
+     * if the file does not yet exist or is empty.
+     *
+     * @param targetFilePath path to the target Excel file
+     * @return a Workbook ( caller must close)
+     * @throws IOException if an I/O error occurs opening the file
      */
     private static Workbook loadOrCreate(String targetFilePath) throws IOException {
         File file = new File(targetFilePath);
@@ -307,7 +313,16 @@ public class ExcelUtil {
     }
 
     /**
-     * Copies rows 0 to endRowIndex from sourceSheet to a new sheet in targetWorkbook.
+     * Copies rows 0 to {@code endRowIndex} from {@code sourceSheet} to a newly created
+     * sheet in {@code targetWorkbook}. Cell styles, column widths, row heights, and
+     * merged regions are all preserved. No file is written.
+     *
+     * @param sourceSheet    already-loaded source Sheet
+     * @param targetWorkbook already-open target Workbook (in memory)
+     * @param targetSheetName name to give the new sheet in targetWorkbook
+     * @param endRowIndex    end row index (0-based, inclusive); the source sheet's
+     *                       {@code lastRowNum} is used as the upper bound if this value
+     *                       exceeds it
      */
     private static void copySheetRows(Sheet sourceSheet, Workbook targetWorkbook,
                                       String targetSheetName, int endRowIndex) {

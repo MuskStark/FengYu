@@ -6,6 +6,28 @@ All notable changes to SwissKitJ. Format based on [Keep a Changelog](https://kee
 
 ## [3.0.0] — JavaFX Migration
 
+**v3.0.0-beta.1** — 2026-05-24
+
+### ✨ New Features
+
+- **I18n Framework**: Core `I18n` classes in SwissKitJ-Api with DB-persisted locale, plugin bundle registration/unregistration, and live language switching
+- **Bilingual Docs**: Full English/Chinese documentation via docsify-flexible-i18n
+
+### ♻️ Refactoring
+
+- Convert all UI components (TitleBar, MainWindow, Sidebar, ContentArea, ToolCard, DetailPanel) to use I18n
+- Complete i18n conversion for Settings UI (AI, Email, Address Book tabs)
+- Complete i18n for all built-in tools and plugin store UI
+- Rewrite resource bundles — English default + Chinese
+
+### 🔧 Fixes
+
+- Fix VBox→HBox type mismatch in email tab field rows
+- Fix email editor — expand WebView height and allow rich-text paste from Word
+- Rebuild Settings UI on locale change for live language switch
+
+---
+
 **v3.0.0-alpha.2** — 2026-05-21
 
 ### ✨ New Features

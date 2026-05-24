@@ -5,6 +5,9 @@ import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
 import fan.summer.api.component.StepWizard;
+import fan.summer.api.i18n.I18n;
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.excel.ComplexSplitConfigEntity;
 import fan.summer.database.mapper.excel.ComplexSplitConfigMapper;
@@ -25,13 +28,35 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
+/**
+ * Built-in Excel splitting tool implemented as a four-step wizard using {@link StepWizard}.
+ *
+ * <p>Step 1 — File Selection: drag-and-drop or file picker to select the source Excel file.
+ * An async analysis pass reads all sheet headers and populates {@link SplitConfig#analysisResult}.
+ *
+ * <p>Step 2 — Split Mode: choose between BY_SHEET (one output per sheet), BY_COLUMN
+ * (group rows by unique values in a selected column), or COMPLEX (DB-backed multi-config).
+ *
+ * <p>Step 3 — Confirm: display a summary of the chosen configuration and select the output
+ * directory.
+ *
+ * <p>Step 4 — Execute: run the split on a background thread and display a progress bar
+ * followed by the list of output files with an "open folder" button.
+ *
+ * @since 3.0.0
+ * @see SwissKitJPlugin
+ * @see SplitConfig
+ * @see ExcelSplitter
+ */
 public class ExcelSplitterPlugin implements SwissKitJPlugin {
+
+    private static final PluginLogger log = LoggerFactory.getLogger(ExcelSplitterPlugin.class);
 
     private Node view;
 
     @Override public String getId()          { return "fan.summer.buildin.excelsplitter"; }
-    @Override public String getName()        { return "Excel拆分"; }
-    @Override public String getDescription() { return "按Sheet/列值/复杂配置拆分Excel文件"; }
+    @Override public String getName()        { return I18n.get("builtin.excel-splitter.name"); }
+    @Override public String getDescription() { return I18n.get("builtin.excel-splitter.desc"); }
     @Override public ToolCategory getCategory()    { return ToolCategory.OTHER; }
     @Override public String getVersion()     { return "3.0.0"; }
     @Override public String getMdiIcon()    { return "file-excel"; }
@@ -40,16 +65,29 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
     @Override
     public void onActivate() {
+        log.info("Excel Splitter plugin activated");
         view = null;
     }
 
     @Override
+    public void onDeactivate() {
+        log.info("Excel Splitter plugin deactivated");
+    }
+
+    @Override
     public Node createView() {
+        log.debug("Creating Excel Splitter view");
         if (view != null) return view;
         view = buildWizardView();
         return view;
     }
 
+    /**
+     * Builds and returns the wizard view, constructing all four step views and wiring
+     * step-change callbacks.
+     *
+     * @return the root JavaFX node (a VBox containing the StepWizard)
+     */
     private Node buildWizardView() {
         SplitConfig config = new SplitConfig();
         StepWizard wizard = new StepWizard();
@@ -59,14 +97,15 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
         Step3View step3 = new Step3View(config);
         Step4View step4 = new Step4View(config);
 
-        wizard.addStep("选择文件", step1, step1.canProceedSupplier());
-        wizard.addStep("拆分模式", step2, step2.canProceedSupplier());
-        wizard.addStep("确认配置", step3, step3.canProceedSupplier());
-        wizard.addStep("执行拆分", step4, () -> true);
+        wizard.addStep(I18n.get("builtin.excel.step.selectFile"), step1, step1.canProceedSupplier());
+        wizard.addStep(I18n.get("builtin.excel.step.splitMode"), step2, step2.canProceedSupplier());
+        wizard.addStep(I18n.get("builtin.excel.step.confirmConfig"), step3, step3.canProceedSupplier());
+        wizard.addStep(I18n.get("builtin.excel.step.executeSplit"), step4, () -> true);
 
         wizard.build();
 
         wizard.setOnStepChanged((from, to, total) -> {
+            log.debug("Wizard step changed: {} -> {} (total steps: {})", from, to, total);
             if (from == 0 && to == 1) step2.refresh(config);
             if (from == 1 && to == 2) step3.refresh(config);
             if (from == 2 && to == 3) step4.startSplit();
@@ -80,7 +119,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
     }
 
     // ════════════════════════════════════════════════════
-    // Step 1: 选择文件 + 异步分析
+    // Step 1: Select file + async analysis
     // ════════════════════════════════════════════════════
 
     static class Step1View extends VBox {
@@ -91,9 +130,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
         private final VBox dropZone;
         private final VBox loadingOverlay;
 
-        // Signals that analysis is already running so canProceed doesn't restart it
         private final AtomicBoolean analysisRunning = new AtomicBoolean(false);
-        // Set to true once to prevent re-triggering the first canProceed → analyze chain
         private boolean analysisTriggered = false;
 
         Step1View(SplitConfig config, StepWizard wizard) {
@@ -102,16 +139,16 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             setStyle("-fx-background-color: transparent;");
             setSpacing(16);
 
-            Label title = sectionTitle("选择 Excel 文件");
+            Label title = sectionTitle(I18n.get("builtin.excel.selectExcelFile"));
 
-            fileLabel = new Label("未选择文件");
+            fileLabel = new Label(I18n.get("builtin.excel.noFileSelected"));
             fileLabel.setStyle(
                 "-fx-text-fill: rgba(255,255,255,0.40); -fx-font-size: 13px;" +
                 "-fx-font-family: 'SF Mono','Consolas',monospace;"
             );
             fileLabel.setWrapText(true);
 
-            Button pickBtn = glassBtn("📂  选择文件", true);
+            Button pickBtn = glassBtn(I18n.get("builtin.excel.chooseFile"), true);
             pickBtn.setOnAction(e -> pickFile());
 
             dropZone = new VBox(14, pickBtn, fileLabel);
@@ -140,11 +177,10 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
             statusLabel.setWrapText(true);
 
-            // Loading overlay placed over the drop zone
             ProgressIndicator spinner = new ProgressIndicator(-1);
             spinner.setPrefSize(32, 32);
             spinner.setStyle("-fx-accent: #5b8cf7;");
-            Label analyzingLabel = new Label("正在分析...");
+            Label analyzingLabel = new Label(I18n.get("builtin.excel.analyzing"));
             analyzingLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.75); -fx-font-size: 13px;");
             loadingOverlay = new VBox(8, spinner, analyzingLabel);
             loadingOverlay.setAlignment(Pos.CENTER);
@@ -157,7 +193,6 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
             StackPane container = new StackPane(dropZone, loadingOverlay);
             StackPane.setAlignment(loadingOverlay, Pos.CENTER);
-            // Make loading overlay fill the entire drop zone area
             loadingOverlay.prefWidthProperty().bind(container.widthProperty());
             loadingOverlay.prefHeightProperty().bind(container.heightProperty());
 
@@ -173,14 +208,12 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             return () -> {
                 if (config.analysisResult != null) return true;
                 if (config.sourceFile == null) return false;
-                // Analysis hasn't started yet — trigger it now (first Next click with file selected)
                 if (!analysisRunning.get() && !analysisTriggered) {
                     analysisTriggered = true;
                     analysisRunning.set(true);
                     Platform.runLater(() -> showLoading(true));
                     startAnalysis();
                 }
-                // While running, return false silently (no shake — wizard sees false and stays)
                 return false;
             };
         }
@@ -198,11 +231,10 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
                 analysisRunning.set(false);
                 showLoading(false);
                 int sheetCount = config.analysisResult.size();
-                statusLabel.setText("✓ 共 " + sheetCount + " 个Sheet：" +
-                    config.analysisResult.keySet().stream().limit(5).collect(Collectors.joining(", ")) +
-                    (sheetCount > 5 ? " …" : ""));
+                String sheetNames = config.analysisResult.keySet().stream().limit(5).collect(Collectors.joining(", "));
+                log.info("Excel analysis complete: {} sheets found in {}", sheetCount, config.sourceFile.getFileName());
+                statusLabel.setText(I18n.get("builtin.excel.analysisSuccess", sheetCount, sheetNames + (sheetCount > 5 ? " …" : "")));
                 statusLabel.setStyle("-fx-text-fill: #4cd97b; -fx-font-size: 12px;");
-                // Automatically advance to step 2 now that analysis is done
                 wizard.goTo(1);
             });
 
@@ -210,7 +242,8 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
                 analysisRunning.set(false);
                 analysisTriggered = false;
                 showLoading(false);
-                statusLabel.setText("❌ 分析失败：" + task.getException().getMessage());
+                log.error("Excel analysis failed: {}", task.getException().getMessage());
+                statusLabel.setText(I18n.get("builtin.excel.analysisFailed", task.getException().getMessage()));
                 statusLabel.setStyle("-fx-text-fill: #f25c5c; -fx-font-size: 12px;");
             });
 
@@ -219,15 +252,16 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
         private void pickFile() {
             FileChooser fc = new FileChooser();
-            fc.setTitle("选择 Excel 文件");
+            fc.setTitle(I18n.get("builtin.excel.fileChooserTitle"));
             fc.getExtensionFilters().add(
-                new FileChooser.ExtensionFilter("Excel 文件", "*.xlsx", "*.xls", "*.xlsm")
+                new FileChooser.ExtensionFilter(I18n.get("builtin.excel.fileFilter"), "*.xlsx", "*.xls", "*.xlsm")
             );
             File f = fc.showOpenDialog(getScene() != null ? getScene().getWindow() : null);
             if (f != null) loadFile(f.toPath());
         }
 
         private void loadFile(Path path) {
+            log.info("Loading Excel file: {}", path.getFileName());
             config.sourceFile = path;
             config.analysisResult = null;
             analysisTriggered = true;
@@ -237,7 +271,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
                 "-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 13px;" +
                 "-fx-font-family: 'SF Mono','Consolas',monospace;"
             );
-            statusLabel.setText("正在分析...");
+            statusLabel.setText(I18n.get("builtin.excel.analyzing"));
             statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
             showLoading(true);
             startAnalysis();
@@ -259,7 +293,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
     }
 
     // ════════════════════════════════════════════════════
-    // Step 2: 拆分模式选择
+    // Step 2: Split mode selection
     // ════════════════════════════════════════════════════
 
     static class Step2View extends VBox {
@@ -267,10 +301,8 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
         private final VBox detailPane;
         private final ToggleGroup modeGroup;
 
-        // BY_COLUMN controls
         private ComboBox<String> sheetCombo;
         private ComboBox<String> columnCombo;
-        // COMPLEX controls
         private ComboBox<String> complexSheetCombo;
         private TextField headerIndexField;
         private TextField columnIndexField;
@@ -281,16 +313,16 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             setSpacing(16);
             setStyle("-fx-background-color: transparent;");
 
-            Label title = sectionTitle("拆分模式");
+            Label title = sectionTitle(I18n.get("builtin.excel.splitMode.title"));
 
             modeGroup = new ToggleGroup();
 
             HBox bySheetCard   = modeCard(modeGroup, SplitConfig.SplitMode.BY_SHEET,
-                "⊞", "按Sheet拆分",   "每个Sheet输出一个独立文件");
+                "⊞", I18n.get("builtin.excel.splitMode.bySheet"), I18n.get("builtin.excel.splitMode.bySheetDesc"));
             HBox byColumnCard  = modeCard(modeGroup, SplitConfig.SplitMode.BY_COLUMN,
-                "≡", "按列值拆分",    "按某列的不同取值分组，每组输出一个文件");
+                "≡", I18n.get("builtin.excel.splitMode.byColumn"), I18n.get("builtin.excel.splitMode.byColumnDesc"));
             HBox complexCard   = modeCard(modeGroup, SplitConfig.SplitMode.COMPLEX,
-                "⚙", "复杂拆分",      "多配置规则，支持列值拆分+整Sheet复制");
+                "⚙", I18n.get("builtin.excel.splitMode.complex"), I18n.get("builtin.excel.splitMode.complexDesc"));
 
             VBox modeCards = new VBox(8, bySheetCard, byColumnCard, complexCard);
 
@@ -304,6 +336,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             modeGroup.selectedToggleProperty().addListener((obs, o, n) -> {
                 if (n != null) {
                     config.mode = (SplitConfig.SplitMode) n.getUserData();
+                    log.debug("Split mode changed to: {}", config.mode);
                     refreshDetail();
                 }
             });
@@ -347,7 +380,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
         private void buildBySheetDetail(List<String> sheets) {
             config.selectedSheets = new ArrayList<>(sheets);
 
-            Label lbl = new Label("将拆分全部 " + sheets.size() + " 个Sheet，每个Sheet输出为独立文件");
+            Label lbl = new Label(I18n.get("builtin.excel.bySheetSummary", sheets.size()));
             lbl.setStyle("-fx-text-fill: rgba(255,255,255,0.60); -fx-font-size: 13px;");
             lbl.setWrapText(true);
 
@@ -363,17 +396,17 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
         }
 
         private void buildByColumnDetail(List<String> sheets) {
-            Label sheetLbl = subLabel("选择Sheet");
+            Label sheetLbl = subLabel(I18n.get("builtin.excel.selectSheet"));
             sheetCombo = new ComboBox<>();
             sheetCombo.getItems().addAll(sheets);
             sheetCombo.setMaxWidth(Double.MAX_VALUE);
-            sheetCombo.setPromptText("请选择Sheet...");
+            sheetCombo.setPromptText(I18n.get("builtin.excel.selectSheetPrompt"));
             sheetCombo.setStyle(comboStyle());
 
-            Label colLbl = subLabel("选择拆分列");
+            Label colLbl = subLabel(I18n.get("builtin.excel.selectColumn"));
             columnCombo = new ComboBox<>();
             columnCombo.setMaxWidth(Double.MAX_VALUE);
-            columnCombo.setPromptText("请先选择Sheet...");
+            columnCombo.setPromptText(I18n.get("builtin.excel.selectColumnPrompt"));
             columnCombo.setStyle(comboStyle());
             columnCombo.setDisable(true);
 
@@ -386,11 +419,10 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
                 if (nv != null) {
                     Map<Integer, String> headers = config.analysisResult.get(nv);
                     if (headers != null) {
-                        // Preserve column order
                         new TreeMap<>(headers).forEach((idx, name) -> columnCombo.getItems().add(name));
                     }
                     columnCombo.setDisable(false);
-                    columnCombo.setPromptText("请选择列...");
+                    columnCombo.setPromptText(I18n.get("builtin.excel.selectColumnPrompt2"));
                 }
             });
 
@@ -413,35 +445,34 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
         }
 
         private void buildComplexDetail(List<String> sheets) {
-            // Generate a stable task ID for this complex config session
             if (config.complexTaskId == null) {
                 config.complexTaskId = UUID.randomUUID().toString();
             }
 
-            Label sheetLbl      = subLabel("Sheet名称");
+            Label sheetLbl      = subLabel(I18n.get("builtin.excel.sheetName"));
             complexSheetCombo   = new ComboBox<>();
             complexSheetCombo.getItems().addAll(sheets);
             complexSheetCombo.setMaxWidth(Double.MAX_VALUE);
-            complexSheetCombo.setPromptText("选择Sheet...");
+            complexSheetCombo.setPromptText(I18n.get("builtin.excel.sheetNamePrompt"));
             complexSheetCombo.setStyle(comboStyle());
 
-            Label headerLbl   = subLabel("表头行号（1起，-1表示整Sheet复制）");
+            Label headerLbl   = subLabel(I18n.get("builtin.excel.headerRow"));
             headerIndexField  = new TextField();
-            headerIndexField.setPromptText("例：1");
+            headerIndexField.setPromptText(I18n.get("builtin.excel.headerRowPrompt"));
             headerIndexField.setStyle(fieldStyle());
 
-            Label colIdxLbl    = subLabel("拆分列号（1起，-1表示整Sheet复制）");
+            Label colIdxLbl    = subLabel(I18n.get("builtin.excel.splitColumn"));
             columnIndexField   = new TextField();
-            columnIndexField.setPromptText("例：3  或 -1");
+            columnIndexField.setPromptText(I18n.get("builtin.excel.splitColumnPrompt"));
             columnIndexField.setStyle(fieldStyle());
 
-            Button addBtn = glassBtn("添加配置", true);
+            Button addBtn = glassBtn(I18n.get("builtin.excel.addConfig"), true);
 
             complexCountLabel = new Label();
             refreshComplexCount();
             complexCountLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.60); -fx-font-size: 12px;");
 
-            Button clearBtn = glassBtn("清空全部", false);
+            Button clearBtn = glassBtn(I18n.get("builtin.excel.clearAll"), false);
             clearBtn.setOnAction(e -> {
                 try (SqlSession session = DatabaseInit.getSqlSession()) {
                     ComplexSplitConfigMapper mapper = session.getMapper(ComplexSplitConfigMapper.class);
@@ -505,9 +536,9 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             try (SqlSession session = DatabaseInit.getSqlSession()) {
                 ComplexSplitConfigMapper mapper = session.getMapper(ComplexSplitConfigMapper.class);
                 int count = mapper.selectAllByTaskId(config.complexTaskId).size();
-                complexCountLabel.setText("已添加 " + count + " 条配置");
+                complexCountLabel.setText(I18n.get("builtin.excel.configCount", count));
             } catch (Exception e) {
-                complexCountLabel.setText("已添加 0 条配置");
+                complexCountLabel.setText(I18n.get("builtin.excel.configCount", 0));
             }
         }
 
@@ -558,7 +589,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
     }
 
     // ════════════════════════════════════════════════════
-    // Step 3: 确认配置 + 选择输出目录
+    // Step 3: Confirm config + select output directory
     // ════════════════════════════════════════════════════
 
     static class Step3View extends VBox {
@@ -571,7 +602,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             setSpacing(16);
             setStyle("-fx-background-color: transparent;");
 
-            Label configTitle = sectionTitle("确认配置");
+            Label configTitle = sectionTitle(I18n.get("builtin.excel.confirmConfig"));
 
             summaryContent = new VBox(8);
             summaryContent.setStyle("-fx-background-color: transparent;");
@@ -587,19 +618,19 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             Separator sep = new Separator();
             sep.setStyle("-fx-border-color: rgba(255,255,255,0.08);");
 
-            Label outputTitle = sectionTitle("输出目录");
+            Label outputTitle = sectionTitle(I18n.get("builtin.excel.outputDir"));
 
-            dirLabel = new Label("未选择");
+            dirLabel = new Label(I18n.get("builtin.excel.notSelected"));
             dirLabel.setStyle(
                 "-fx-text-fill: rgba(255,255,255,0.40); -fx-font-size: 12px;" +
                 "-fx-font-family: 'SF Mono','Consolas',monospace;"
             );
             dirLabel.setWrapText(true);
 
-            Button dirBtn = glassBtn("📁  选择输出目录", false);
+            Button dirBtn = glassBtn(I18n.get("builtin.excel.chooseOutputDir"), false);
             dirBtn.setOnAction(e -> {
                 DirectoryChooser dc = new DirectoryChooser();
-                dc.setTitle("选择输出目录");
+                dc.setTitle(I18n.get("builtin.excel.chooseOutputDirTitle"));
                 if (config.sourceFile != null)
                     dc.setInitialDirectory(config.sourceFile.getParent().toFile());
                 File dir = dc.showDialog(getScene() != null ? getScene().getWindow() : null);
@@ -620,44 +651,44 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             summaryContent.getChildren().clear();
             if (cfg.analysisResult == null) return;
 
-            addRow("来源文件", cfg.sourceFile != null ? cfg.sourceFile.getFileName().toString() : "—");
-            addRow("文件总 Sheet 数", String.valueOf(cfg.analysisResult.size()));
+            addRow(I18n.get("builtin.excel.sourceFile"), cfg.sourceFile != null ? cfg.sourceFile.getFileName().toString() : "—");
+            addRow(I18n.get("builtin.excel.totalSheets"), String.valueOf(cfg.analysisResult.size()));
 
             switch (cfg.mode) {
                 case BY_SHEET -> {
                     List<String> sel = cfg.selectedSheets != null ? cfg.selectedSheets : List.of();
-                    addRow("拆分模式", "按 Sheet 拆分");
-                    addRow("待导出 Sheet 数", String.valueOf(sel.size()));
-                    addRow("预计输出文件数", String.valueOf(sel.size()));
+                    addRow(I18n.get("builtin.excel.splitModeLabel"), I18n.get("builtin.excel.splitModeBySheet"));
+                    addRow(I18n.get("builtin.excel.sheetsToExport"), String.valueOf(sel.size()));
+                    addRow(I18n.get("builtin.excel.expectedFiles"), String.valueOf(sel.size()));
                     if (!sel.isEmpty()) {
-                        addRow("导出 Sheet", String.join("、", sel));
+                        addRow(I18n.get("builtin.excel.sheetsToExport"), String.join(", ", sel));
                     }
                 }
                 case BY_COLUMN -> {
                     Map<Integer, String> headers = cfg.analysisResult.get(cfg.splitSheet);
                     int totalCols = headers != null ? headers.size() : 0;
-                    // Find 1-based column position
                     int colPos = cfg.splitColumnIndex + 1;
-                    addRow("拆分模式", "按列值拆分");
-                    addRow("目标 Sheet", cfg.splitSheet != null ? cfg.splitSheet : "—");
-                    addRow("拆分列", (cfg.splitColumn != null ? cfg.splitColumn : "—")
-                        + "（第 " + colPos + " 列，共 " + totalCols + " 列）");
+                    addRow(I18n.get("builtin.excel.splitModeLabel"), I18n.get("builtin.excel.splitModeByColumn"));
+                    addRow(I18n.get("builtin.excel.targetSheet"), cfg.splitSheet != null ? cfg.splitSheet : "—");
+                    addRow(I18n.get("builtin.excel.splitColumnLabel"),
+                        I18n.get("builtin.excel.columnInfo",
+                            cfg.splitColumn != null ? cfg.splitColumn : "—", colPos, totalCols));
                 }
                 case COMPLEX -> {
-                    addRow("拆分模式", "复杂拆分");
+                    addRow(I18n.get("builtin.excel.splitModeLabel"), I18n.get("builtin.excel.splitModeComplex"));
                     if (cfg.complexTaskId != null) {
                         List<ComplexSplitConfigEntity> rows = List.of();
                         try (SqlSession session = DatabaseInit.getSqlSession()) {
                             rows = session.getMapper(ComplexSplitConfigMapper.class)
                                          .selectAllByTaskId(cfg.complexTaskId);
                         } catch (Exception ignored) {}
-                        addRow("配置条数", String.valueOf(rows.size()));
+                        addRow(I18n.get("builtin.excel.configCountLabel"), String.valueOf(rows.size()));
                         for (ComplexSplitConfigEntity r : rows) {
                             boolean isCopyAll = Integer.valueOf(-1).equals(r.getHeaderIndex())
                                              && Integer.valueOf(-1).equals(r.getColumnIndex());
                             String detail = isCopyAll
-                                ? "整Sheet复制"
-                                : "表头行 " + r.getHeaderIndex() + "，拆分列 " + r.getColumnIndex();
+                                ? I18n.get("builtin.excel.fullSheetCopy")
+                                : I18n.get("builtin.excel.headerRowLabel", r.getHeaderIndex(), r.getColumnIndex());
                             addDetailRow("• " + r.getSheetName(), detail);
                         }
                     }
@@ -695,7 +726,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
     }
 
     // ════════════════════════════════════════════════════
-    // Step 4: 执行拆分 + 展示结果
+    // Step 4: Execute split + show results
     // ════════════════════════════════════════════════════
 
     static class Step4View extends VBox {
@@ -710,12 +741,12 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             setSpacing(16);
             setStyle("-fx-background-color: transparent;");
 
-            Label title = sectionTitle("执行拆分");
+            Label title = sectionTitle(I18n.get("builtin.excel.executeSplit"));
 
             progressBar = new ProgressBar(0);
             progressBar.setMaxWidth(Double.MAX_VALUE);
 
-            progressLabel = new Label("准备中...");
+            progressLabel = new Label(I18n.get("builtin.excel.preparing"));
             progressLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
 
             resultBox = new VBox(8);
@@ -726,6 +757,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
         void startSplit() {
             if (started) return;
+            log.info("Starting Excel split operation");
             started = true;
             resultBox.getChildren().clear();
 
@@ -749,13 +781,14 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
         }
 
         private void showSuccess(ExcelSplitter.SplitResult result) {
+            log.info("Excel split complete: {} output files created", result.fileCount());
             progressBar.setProgress(1.0);
             progressBar.getStyleClass().removeAll("success", "danger");
             progressBar.getStyleClass().add("success");
-            progressLabel.setText("✓ 拆分完成，输出 " + result.fileCount() + " 个文件");
+            progressLabel.setText(I18n.get("builtin.excel.splitComplete", result.fileCount()));
             progressLabel.setStyle("-fx-text-fill: #4cd97b; -fx-font-size: 12px;");
 
-            resultBox.getChildren().add(subLabel("输出文件列表"));
+            resultBox.getChildren().add(subLabel(I18n.get("builtin.excel.outputFileList")));
 
             ScrollPane scroll = new ScrollPane();
             scroll.setFitToWidth(true);
@@ -783,7 +816,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
                 );
                 HBox.setHgrow(name, Priority.ALWAYS);
 
-                Button openBtn = new Button("打开文件夹");
+                Button openBtn = new Button(I18n.get("builtin.excel.openFolder"));
                 openBtn.setStyle(
                     "-fx-background-color: transparent;" +
                     "-fx-border-color: rgba(76,217,123,0.4); -fx-border-width: 1;" +
@@ -805,10 +838,11 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
         }
 
         private void showError(Throwable err) {
+            log.error("Excel split failed: {}", err.getMessage());
             progressBar.setProgress(1.0);
             progressBar.getStyleClass().removeAll("success", "danger");
             progressBar.getStyleClass().add("danger");
-            progressLabel.setText("❌ 拆分失败");
+            progressLabel.setText(I18n.get("builtin.excel.splitFailed"));
             progressLabel.setStyle("-fx-text-fill: #f25c5c; -fx-font-size: 12px;");
 
             Label errLabel = new Label(err.getMessage() != null ? err.getMessage() : err.toString());

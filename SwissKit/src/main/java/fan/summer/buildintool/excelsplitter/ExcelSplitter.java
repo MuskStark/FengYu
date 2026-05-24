@@ -26,20 +26,63 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
+/**
+ * Core Excel splitting engine that performs file analysis and three split modes
+ * ({@link SplitConfig.SplitMode#BY_SHEET}, {@link SplitConfig.SplitMode#BY_COLUMN},
+ * {@link SplitConfig.SplitMode#COMPLEX}).
+ *
+ * <p>An {@link ExcelSplitter} instance is constructed with a {@link SplitConfig} containing
+ * all parameters (source file, mode, output directory, etc.) and a progress callback. The
+ * {@link #split()} method executes synchronously on the calling thread; callers should
+ * typically invoke it on a background thread.
+ *
+ * <p>Analysis (reading headers from all sheets) is provided as a static method so the UI
+ * layer can populate the configuration before the user commits to a split.
+ *
+ * @since 3.0.0
+ * @see SplitConfig
+ * @see ExcelSplitterPlugin
+ */
 public class ExcelSplitter {
 
     private static final Logger logger = LoggerFactory.getLogger(ExcelSplitter.class);
 
+    /**
+     * Result of a split operation, containing the number of output files produced and
+     * the absolute paths of those files.
+     *
+     * @param fileCount  total output file count
+     * @param outputFiles ordered list of output file paths
+     */
     public record SplitResult(int fileCount, List<Path> outputFiles) {}
 
     private final SplitConfig config;
     private final BiConsumer<Double, String> progress;
 
+    /**
+     * Creates a new splitter for the given configuration and progress callback.
+     *
+     * @param config   split configuration (must not be null)
+     * @param progress callback invoked repeatedly with (0.0–1.0 progress, status message);
+     *                 may be null
+     * @throws NullPointerException if config is null
+     */
     public ExcelSplitter(SplitConfig config, BiConsumer<Double, String> progress) {
-        this.config = config;
+        this.config = Objects.requireNonNull(config);
         this.progress = progress;
     }
 
+    /**
+     * Reads all sheets of the given Excel file and returns the header row of each sheet
+     * as a map of column index to header string.
+     *
+     * <p>This method is static and thread-safe; it may be called from a background thread.
+     *
+     * @param file the path to the Excel file (.xls or .xlsx)
+     * @return an ordered map keyed by sheet name; each value maps zero-based column index
+     *         to the trimmed header string found in row 0
+     * @throws Exception if the file cannot be opened or read (IOException, POI exception)
+     */
     public static Map<String, Map<Integer, String>> analyze(Path file) throws Exception {
         Map<String, Map<Integer, String>> result = new LinkedHashMap<>();
         try (Workbook workbook = WorkbookFactory.create(file.toFile(), null, true)) {
@@ -61,6 +104,15 @@ public class ExcelSplitter {
         return result;
     }
 
+    /**
+     * Executes the configured split operation and returns the result.
+     *
+     * <p>This method blocks until all output files are written. The current thread
+     * should therefore be a background thread to avoid freezing the UI.
+     *
+     * @return a {@link SplitResult} containing the file count and output paths
+     * @throws Exception if the split fails (file access, DB query, etc.)
+     */
     public SplitResult split() throws Exception {
         progress.accept(0.0, "Starting...");
         return switch (config.mode) {

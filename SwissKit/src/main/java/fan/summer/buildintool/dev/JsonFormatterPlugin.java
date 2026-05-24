@@ -4,6 +4,9 @@ import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
+import fan.summer.api.i18n.I18n;
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -15,9 +18,11 @@ import javafx.scene.layout.VBox;
 
 public class JsonFormatterPlugin implements SwissKitJPlugin {
 
+    private static final PluginLogger log = LoggerFactory.getLogger(JsonFormatterPlugin.class);
+
     @Override public String getId()          { return "builtin.json-formatter"; }
-    @Override public String getName()        { return "JSON Formatter"; }
-    @Override public String getDescription() { return "Format, compress, and validate JSON data"; }
+    @Override public String getName()        { return I18n.get("builtin.json-formatter.name"); }
+    @Override public String getDescription() { return I18n.get("builtin.json-formatter.desc"); }
     @Override public ToolCategory getCategory()    { return ToolCategory.DEV; }
     @Override public String getVersion()     { return "1.0.0"; }
     @Override public String getMdiIcon()    { return "code-json"; }
@@ -26,29 +31,39 @@ public class JsonFormatterPlugin implements SwissKitJPlugin {
 
     @Override
     public Node createView() {
+        log.debug("Creating JSON Formatter view");
         TextArea input  = styledTextArea("Paste JSON......");
         TextArea output = styledTextArea("");
         output.setEditable(false);
 
-        Button formatBtn  = actionButton("Format",  "#5b8cf7");
-        Button compactBtn = actionButton("Compact", "rgba(255,255,255,0.12)");
+        Button formatBtn  = actionButton(I18n.get("builtin.json.format"),  "#5b8cf7");
+        Button compactBtn = actionButton(I18n.get("builtin.json.compress"), "rgba(255,255,255,0.12)");
         Button clearBtn   = actionButton("Clear",   "rgba(255,255,255,0.08)");
 
         formatBtn.setOnAction(e -> {
             try {
+                log.debug("Formatting JSON");
                 output.setText(prettyPrint(input.getText().trim()));
             } catch (Exception ex) {
+                log.warn("Invalid JSON input: {}", ex.getMessage());
                 output.setText("❌ Invalid JSON: " + ex.getMessage());
             }
         });
-        compactBtn.setOnAction(e -> output.setText(input.getText().replaceAll("\\s+", "")));
-        clearBtn.setOnAction(e -> { input.clear(); output.clear(); });
+        compactBtn.setOnAction(e -> {
+            log.debug("Compacting JSON");
+            output.setText(input.getText().replaceAll("\\s+", ""));
+        });
+        clearBtn.setOnAction(e -> {
+            log.debug("Clearing input and output");
+            input.clear();
+            output.clear();
+        });
 
         HBox btnRow = new HBox(8, formatBtn, compactBtn, clearBtn);
         btnRow.setPadding(new Insets(0, 0, 12, 0));
 
-        VBox left  = new VBox(6, sectionLabel("Input"),  input);
-        VBox right = new VBox(6, sectionLabel("Output"), output);
+        VBox left  = new VBox(6, sectionLabel(I18n.get("builtin.json.input")),  input);
+        VBox right = new VBox(6, sectionLabel(I18n.get("builtin.json.output")), output);
         VBox.setVgrow(input,  Priority.ALWAYS);
         VBox.setVgrow(output, Priority.ALWAYS);
         HBox.setHgrow(left,   Priority.ALWAYS);
