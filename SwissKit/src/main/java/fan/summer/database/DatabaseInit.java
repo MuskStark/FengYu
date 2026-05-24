@@ -14,6 +14,21 @@ import java.sql.DriverManager;
 import java.sql.Statement;
 import java.util.Properties;
 
+/**
+ * Database initialization and MyBatis configuration for the SwissKit application.
+ * <p>
+ * This class manages the H2 database connection lifecycle, including:
+ * <ul>
+ *   <li>Creating the database file and schema directory under {@code .swisskit/}</li>
+ *   <li>Executing {@code init.sql} to create/verify all tables</li>
+ *   <li>Initializing MyBatis SqlSessionFactory with dynamic database URL injection</li>
+ * </ul>
+ * <p>
+ * Must be called once at application startup via {@link #init()}. After initialization,
+ * use {@link #getSqlSession()} to obtain database sessions for MyBatis operations.
+ *
+ * @since 3.0.0
+ */
 public class DatabaseInit {
 
     private static final Logger logger = LoggerFactory.getLogger(DatabaseInit.class);

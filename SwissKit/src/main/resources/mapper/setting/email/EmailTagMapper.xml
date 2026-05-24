@@ -24,4 +24,9 @@
         SELECT id, tag FROM email_tag ORDER BY id
     </select>
 
+    <!-- Delete tag by id -->
+    <delete id="deleteById" parameterType="long">
+        DELETE FROM email_tag WHERE id = #{id}
+    </delete>
+
 </mapper>

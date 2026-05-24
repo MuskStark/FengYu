@@ -10,9 +10,9 @@
             parameterType="fan.summer.database.entity.email.EmailMassSentConfigEntity"
             useGeneratedKeys="true"
             keyProperty="id">
-        MERGE INTO email_mass_sent_config (task_id, to_tag, cc_tag, is_sent_att, att_folder_path)
+        MERGE INTO email_mass_sent_config (task_id, to_tag, cc_tag, is_sent_att, att_folder_path, send_by_filename)
         KEY (task_id)
-        VALUES (#{taskId}, #{toTag}, #{ccTag}, #{isSentAtt}, #{attFolderPath})
+        VALUES (#{taskId}, #{toTag}, #{ccTag}, #{isSentAtt}, #{attFolderPath}, #{sendByFilename})
     </insert>
 
     <!-- Select mass sent config by task_id -->
@@ -24,7 +24,8 @@
                to_tag AS toTag,
                cc_tag AS ccTag,
                is_sent_att AS isSentAtt,
-               att_folder_path AS attFolderPath
+               att_folder_path AS attFolderPath,
+               send_by_filename AS sendByFilename
         FROM email_mass_sent_config
         WHERE task_id = #{taskId}
     </select>
@@ -37,7 +38,8 @@
                to_tag AS toTag,
                cc_tag AS ccTag,
                is_sent_att AS isSentAtt,
-               att_folder_path AS attFolderPath
+               att_folder_path AS attFolderPath,
+               send_by_filename AS sendByFilename
         FROM email_mass_sent_config
         ORDER BY id DESC
     </select>
