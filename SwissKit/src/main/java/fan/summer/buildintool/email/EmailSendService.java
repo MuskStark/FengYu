@@ -18,32 +18,52 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * Email sending service supporting both single recipient and mass-by-tag modes.
+ * Email sending service supporting single, mass-by-tag, and filename-tag modes.
  *
- * Mass mode workflow:
- *  1. Load all address book entries
- *  2. Load mass sending config by taskId
- *  3. Parse attachment folder, grouping files by tag suffix (between last "_" and ".")
- *  4. For each tag, resolve recipients from address book and send
+ * @since 1.0.0
  */
 public class EmailSendService {
 
     private static final Logger log = LoggerFactory.getLogger(EmailSendService.class);
     private static final Pattern TAG_ID_PATTERN = Pattern.compile("\\d+");
 
+    /**
+     * Callback interface for reporting mass-send progress back to the caller.
+     */
     public interface ProgressCallback {
+        /**
+         * Called periodically during a mass send operation.
+         *
+         * @param progress progress value between 0.0 and 1.0
+         * @param message  a human-readable status message describing the current step
+         */
         void update(double progress, String message);
     }
 
     /**
-     * Sends a single email immediately. Recipients are concrete addresses, not tags.
+     * Sends a single email immediately, with optional CC/BCC recipients and attachments.
+     * The operation is synchronous and blocks until the email is handed off to the SMTP server.
+     *
+     * <p>Either list may be null or empty. At least one To recipient must be provided.
+     *
+     * @param subject    email subject line (must not be blank)
+     * @param htmlBody   HTML content of the email body
+     * @param toList     primary recipient email addresses (may be null or empty; a
+     *                   validation error is returned if null and empty)
+     * @param ccList     CC recipient addresses (nullable)
+     * @param bccList    BCC recipient addresses (nullable)
+     * @param attachments files to attach; may be null
+     * @return a {@link Result} indicating success/failure counts and an error message if applicable
      */
     public Result sendSingle(String subject, String htmlBody,
                              List<String> toList, List<String> ccList, List<String> bccList,
@@ -89,10 +109,59 @@ public class EmailSendService {
     }
 
     /**
-     * Executes mass sending for the given taskId. Reads address book, tag list, config and
-     * attachment folder; sends one email per tag with the matching attachments.
+     * Executes a mass send for the given taskId, which must correspond to a row in the
+     * {@code EmailMassSentConfigEntity} table.
+     *
+     * <p>Delegates to {@link #sendMassByFilename(String, String, String, ProgressCallback)}
+     * when {@code config.isSendByFilename()} is true, otherwise to
+     * {@link #sendMassByTag(String, String, EmailMassSentConfigEntity, ProgressCallback)}.
+     *
+     * @param subject   email subject line
+     * @param htmlBody  HTML body content
+     * @param taskId    the mass-send configuration task ID stored in the database
+     * @param progress  progress callback (may be null)
+     * @return a {@link Result} summarizing successes, failures, and any error message
      */
     public Result sendMass(String subject, String htmlBody, String taskId, ProgressCallback progress) {
+        EmailMassSentConfigEntity config;
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            config = session.getMapper(EmailMassSentConfigMapper.class).selectByTaskId(taskId);
+            if (config == null) {
+                Result r = new Result();
+                r.errorMessage = "No configuration found for taskId: " + taskId;
+                return r;
+            }
+        } catch (Exception e) {
+            log.error("Failed to load mass config", e);
+            Result r = new Result();
+            r.errorMessage = "Failed to load config: " + e.getMessage();
+            return r;
+        }
+
+        if (config.isSendByFilename()) {
+            return sendMassByFilename(subject, htmlBody, config.getAttFolderPath(), progress);
+        }
+        return sendMassByTag(subject, htmlBody, config, progress);
+    }
+
+    /**
+     * Tag-based mass send with multi-tag to/cc support.
+     * For each attachment group (tagged by filename suffix), the method:
+     * <ol>
+     *   <li>Finds all contacts whose tag set overlaps the attachment's tag.</li>
+     *   <li>Further filters contacts by to-tag / cc-tag inclusion rules.</li>
+     *   <li>Sends one email to the matched recipients with the group's files attached.</li>
+     * </ol>
+     * If no attachment files with a valid tag format are found, all matching contacts
+     * receive a single email without attachments.
+     *
+     * @param subject   email subject line
+     * @param htmlBody  HTML body content
+     * @param config    mass-send configuration loaded from the database
+     * @param progress  progress callback (may be null)
+     * @return a {@link Result} summarizing successes and failures
+     */
+    private Result sendMassByTag(String subject, String htmlBody, EmailMassSentConfigEntity config, ProgressCallback progress) {
         Result result = new Result();
         if (progress != null) progress.update(0.0, "Loading address book...");
 
@@ -121,28 +190,14 @@ public class EmailSendService {
         Map<String, List<EmailTagEntity>> tagByName =
                 emailTags.stream().collect(Collectors.groupingBy(EmailTagEntity::getTag));
 
-        if (progress != null) progress.update(0.1, "Loading config...");
-        EmailMassSentConfigEntity config;
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            config = session.getMapper(EmailMassSentConfigMapper.class).selectByTaskId(taskId);
-            if (config == null) {
-                result.errorMessage = "No configuration found for taskId: " + taskId;
-                return result;
-            }
-        } catch (Exception e) {
-            log.error("Failed to load mass config", e);
-            result.errorMessage = "Failed to load config: " + e.getMessage();
-            return result;
-        }
-
         if (progress != null) progress.update(0.15, "Parsing attachments...");
         Map<String, List<File>> taggedFiles = parseAttachmentFiles(config.getAttFolderPath());
-        if (taggedFiles.isEmpty()) {
-            result.errorMessage = "No attachment files found with valid tag format in: " + config.getAttFolderPath();
-            return result;
-        }
 
-        int total = taggedFiles.size();
+        // Parse multi-tag to/cc IDs
+        Set<Long> toTagIds = parseTagIdSet(config.getToTag());
+        Set<Long> ccTagIds = parseTagIdSet(config.getCcTag());
+
+        int total = taggedFiles.isEmpty() ? 1 : taggedFiles.size();
         int processed = 0;
         List<String> toList = new ArrayList<>();
         List<String> ccList = new ArrayList<>();
@@ -161,17 +216,15 @@ public class EmailSendService {
 
             toList.clear();
             ccList.clear();
-            Long toTagId = parseLong(config.getToTag());
-            Long ccTagId = parseLong(config.getCcTag());
 
             for (EmailAddressBookEntity addr : allAddresses) {
-                List<Long> contactTagIds = parseTagIds(addr.getTags());
+                Set<Long> contactTagIds = parseTagIdSet(addr.getTags());
                 if (!contactTagIds.contains(fileTag.getId())) continue;
 
-                if (toTagId != null && contactTagIds.contains(toTagId)) {
+                if (toTagIds.isEmpty() || contactTagIds.stream().anyMatch(toTagIds::contains)) {
                     toList.add(addr.getEmailAddress());
                 }
-                if (ccTagId != null && contactTagIds.contains(ccTagId)) {
+                if (!ccTagIds.isEmpty() && contactTagIds.stream().anyMatch(ccTagIds::contains)) {
                     ccList.add(addr.getEmailAddress());
                 }
             }
@@ -186,37 +239,23 @@ public class EmailSendService {
                 progress.update(pct, "Sending [" + processed + "/" + total + "] " + tagName);
             }
 
-            EmailSentLogEntity logEntity = new EmailSentLogEntity();
-            logEntity.setSubject(subject);
-            logEntity.setTo(toList.toString());
-            logEntity.setCc(ccList.isEmpty() ? null : ccList.toString());
-            logEntity.setContent(htmlBody);
-            logEntity.setAttachment(files.toString());
-            logEntity.setSendTime(new Date());
+            sendOneWithLog(subject, htmlBody, toList, ccList, config.isSentAtt() ? files : null, result, tagName);
+        }
 
-            try {
-                EmailUtil.EmailMessage message = EmailUtil.EmailMessage.builder()
-                        .to(new ArrayList<>(toList))
-                        .cc(ccList.isEmpty() ? null : new ArrayList<>(ccList))
-                        .subject(subject)
-                        .htmlBody(htmlBody)
-                        .attachments(config.isSentAtt() ? files : null)
-                        .build();
-                EmailUtil.sendEmail(message);
-                logEntity.setSuccess(true);
-                result.successCount++;
-                log.info("Email sent successfully for tag {} to {} recipients", tagName, toList.size());
-            } catch (Exception e) {
-                logEntity.setSuccess(false);
-                result.failCount++;
-                log.error("Email send failed for tag {}", tagName, e);
+        if (taggedFiles.isEmpty()) {
+            // No files with tag format — send to all matching contacts in one batch
+            for (EmailAddressBookEntity addr : allAddresses) {
+                Set<Long> contactTagIds = parseTagIdSet(addr.getTags());
+                if (toTagIds.isEmpty() || contactTagIds.stream().anyMatch(toTagIds::contains)) {
+                    toList.add(addr.getEmailAddress());
+                }
+                if (!ccTagIds.isEmpty() && contactTagIds.stream().anyMatch(ccTagIds::contains)) {
+                    ccList.add(addr.getEmailAddress());
+                }
             }
-
-            try (SqlSession session = DatabaseInit.getSqlSession()) {
-                session.getMapper(EmailSentLogMapper.class).insert(logEntity);
-                session.commit();
-            } catch (Exception dbEx) {
-                log.error("Failed to persist sent log", dbEx);
+            if (!toList.isEmpty()) {
+                if (progress != null) progress.update(0.5, "Sending to all matching contacts...");
+                sendOneWithLog(subject, htmlBody, toList, ccList, null, result, "all");
             }
         }
 
@@ -225,12 +264,162 @@ public class EmailSendService {
     }
 
     /**
-     * Parses attachment files in the given directory. Tag is the substring between the last
-     * underscore (_) and the file extension dot (.).
-     * Example: report_2024_Q1.xlsx → tag "Q1"; data_test_important.xlsx → tag "important".
+     * Filename-tag mode: parses attachment filenames to extract a tag suffix
+     * (text between the last underscore and the dot), looks up each tag name in
+     * the address book to find matching contacts, and sends one email per tag group.
+     *
+     * <p>Example: files {@code report_Q1.xlsx} and {@code report_Q2.xlsx} in the
+     * attachment folder will send one email to all contacts tagged "Q1" and a
+     * separate email to all contacts tagged "Q2".
+     *
+     * @param subject   email subject line
+     * @param htmlBody  HTML body content
+     * @param attachmentPath directory containing the attachment files
+     * @param progress  progress callback (may be null)
+     * @return a {@link Result} summarizing successes and failures
+     */
+    private Result sendMassByFilename(String subject, String htmlBody, String attachmentPath, ProgressCallback progress) {
+        Result result = new Result();
+        if (progress != null) progress.update(0.0, "Loading address book...");
+
+        List<EmailAddressBookEntity> allAddresses;
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            allAddresses = session.getMapper(EmailAddressBookMapper.class).selectEmailAddressBook();
+        } catch (Exception e) {
+            log.error("Failed to load address book", e);
+            result.errorMessage = "Failed to load address book: " + e.getMessage();
+            return result;
+        }
+
+        if (progress != null) progress.update(0.05, "Loading tags...");
+        List<EmailTagEntity> allTags;
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            allTags = session.getMapper(EmailTagMapper.class).selectAll();
+            if (allTags == null) allTags = new ArrayList<>();
+        } catch (Exception e) {
+            log.error("Failed to load tags", e);
+            result.errorMessage = "Failed to load tags: " + e.getMessage();
+            return result;
+        }
+
+        // Build tagName → tagId map
+        Map<String, Long> tagNameToId = new HashMap<>();
+        for (EmailTagEntity t : allTags) tagNameToId.put(t.getTag(), t.getId());
+
+        if (progress != null) progress.update(0.1, "Parsing attachments...");
+        Map<String, List<File>> taggedFiles = parseAttachmentFiles(attachmentPath);
+        if (taggedFiles.isEmpty()) {
+            result.errorMessage = "No attachment files found with valid tag format in: " + attachmentPath;
+            return result;
+        }
+
+        int total = taggedFiles.size();
+        int processed = 0;
+
+        for (Map.Entry<String, List<File>> entry : taggedFiles.entrySet()) {
+            processed++;
+            String tagName = entry.getKey();
+            List<File> files = entry.getValue();
+
+            // Look up tag ID by name
+            Long tagId = tagNameToId.get(tagName);
+            if (tagId == null) {
+                log.warn("No tag found in database matching filename tag: {}", tagName);
+                continue;
+            }
+
+            // Find all contacts that have this tag
+            List<String> recipients = new ArrayList<>();
+            for (EmailAddressBookEntity addr : allAddresses) {
+                Set<Long> contactTagIds = parseTagIdSet(addr.getTags());
+                if (contactTagIds.contains(tagId)) {
+                    recipients.add(addr.getEmailAddress());
+                }
+            }
+
+            if (recipients.isEmpty()) {
+                log.warn("No recipients found for filename tag {}", tagName);
+                continue;
+            }
+
+            if (progress != null) {
+                double pct = 0.1 + 0.9 * processed / total;
+                progress.update(pct, "Sending [" + processed + "/" + total + "] " + tagName);
+            }
+
+            sendOneWithLog(subject, htmlBody, recipients, null, files, result, tagName);
+        }
+
+        if (progress != null) progress.update(1.0, "Done");
+        return result;
+    }
+
+    /**
+     * Sends one email and records the send outcome in the database log.
+     *
+     * @param subject     email subject line
+     * @param htmlBody    HTML body content
+     * @param toList      primary recipient addresses (must not be empty)
+     * @param ccList      CC addresses (may be null)
+     * @param attachments attachment files (may be null)
+     * @param result      the Result object to accumulate success/failure counts into
+     * @param label       human-readable label for this send operation (used in log messages)
+     */
+    private void sendOneWithLog(String subject, String htmlBody, List<String> toList, List<String> ccList,
+                                List<File> attachments, Result result, String label) {
+        EmailSentLogEntity logEntity = new EmailSentLogEntity();
+        logEntity.setSubject(subject);
+        logEntity.setTo(toList.toString());
+        logEntity.setCc(ccList != null && !ccList.isEmpty() ? ccList.toString() : null);
+        logEntity.setContent(htmlBody);
+        logEntity.setAttachment(attachments != null ? attachments.toString() : null);
+        logEntity.setSendTime(new Date());
+
+        try {
+            EmailUtil.EmailMessage message = EmailUtil.EmailMessage.builder()
+                    .to(new ArrayList<>(toList))
+                    .cc(ccList != null && !ccList.isEmpty() ? new ArrayList<>(ccList) : null)
+                    .subject(subject)
+                    .htmlBody(htmlBody)
+                    .attachments(attachments)
+                    .build();
+            EmailUtil.sendEmail(message);
+            logEntity.setSuccess(true);
+            result.successCount++;
+            log.info("Email sent successfully for tag {} to {} recipients", label, toList.size());
+        } catch (Exception e) {
+            logEntity.setSuccess(false);
+            result.failCount++;
+            log.error("Email send failed for tag {}", label, e);
+        }
+
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            session.getMapper(EmailSentLogMapper.class).insert(logEntity);
+            session.commit();
+        } catch (Exception dbEx) {
+            log.error("Failed to persist sent log", dbEx);
+        }
+    }
+
+    /**
+     * Parses attachment files in the given directory and groups them by tag.
+     * The tag is extracted as the substring between the last underscore ({@code _})
+     * and the last dot ({@code .}) in the filename.
+     *
+     * <p>Examples:
+     * <ul>
+     *   <li>{@code report_2024_Q1.xlsx} → tag {@code "Q1"}</li>
+     *   <li>{@code data_test_important.xlsx} → tag {@code "important"}</li>
+     *   <li>{@code plainfile.xlsx} → no tag (ignored)</li>
+     * </ul>
+     *
+     * @param attachmentPath directory path to scan for attachment files (may be null or blank;
+     *                       in that case an empty map is returned)
+     * @return an ordered map from tag name to the list of files sharing that tag;
+     *         never null
      */
     public Map<String, List<File>> parseAttachmentFiles(String attachmentPath) {
-        Map<String, List<File>> result = new HashMap<>();
+        Map<String, List<File>> result = new LinkedHashMap<>();
         if (attachmentPath == null || attachmentPath.trim().isEmpty()) return result;
         File dir = new File(attachmentPath);
         if (!dir.exists() || !dir.isDirectory()) return result;
@@ -251,34 +440,36 @@ public class EmailSendService {
     }
 
     /**
-     * Parses a tag JSON array string (e.g. "[1,2,3]") into a list of longs without using
-     * a JSON library — extracts all numeric literals.
+     * Parses a tag field (stored as a JSON array string like {@code "[1,2,3]"} or a
+     * comma-separated string like {@code "1,2,3"}) into a set of Long tag IDs.
+     *
+     * @param tagsJson the raw tag string from the database; may be null or blank,
+     *                 in which case an empty set is returned
+     * @return a set of parsed tag IDs (never null)
      */
-    private List<Long> parseTagIds(String tagsJson) {
-        List<Long> ids = new ArrayList<>();
+    private Set<Long> parseTagIdSet(String tagsJson) {
+        Set<Long> ids = new HashSet<>();
         if (tagsJson == null || tagsJson.isBlank()) return ids;
+        // Support both "[1,2,3]" and "1,2,3" formats
         Matcher m = TAG_ID_PATTERN.matcher(tagsJson);
         while (m.find()) {
             try {
                 ids.add(Long.parseLong(m.group()));
-            } catch (NumberFormatException ignored) {
-            }
+            } catch (NumberFormatException ignored) {}
         }
         return ids;
     }
 
-    private Long parseLong(String s) {
-        if (s == null || s.isBlank()) return null;
-        try {
-            return Long.parseLong(s);
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
+    /**
+     * Result of an email send operation, containing success and failure counts
+     * and an optional error message.
+     */
     public static class Result {
+        /** Number of emails sent successfully. */
         public int successCount;
+        /** Number of emails that failed to send. */
         public int failCount;
+        /** Error message describing the failure, or null on full success. */
         public String errorMessage;
     }
 }
