@@ -17,12 +17,47 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 
 /**
- * Registers all built-in tools directly into PluginRegistry, bypassing the JAR plugin loader.
+ * Registers all built-in tools directly into the {@link PluginRegistry}, bypassing
+ * the external JAR plugin loading mechanism.
+ *
+ * <p>This class is responsible for populating the application with the set of tools
+ * that are compiled into the main application JAR rather than loaded at runtime from
+ * the {@code plugins/} directory. Each built-in tool is instantiated directly and
+ * added to the registry's plugin list during application startup, before
+ * {@link PluginLoader#start()} is called.</p>
+ *
+ * <p>Built-in tools do not use the Java ServiceLoader mechanism; they implement
+ * {@link SwissKitJPlugin} and are registered programmatically via
+ * {@link #register(PluginLoader, PluginRegistry)}. This allows them to be activated
+ * and deactivated through the same {@link PluginRegistry} API as external plugins.</p>
+ *
+ * @see PluginRegistry
+ * @see PluginLoader
+ * @see SwissKitJPlugin
+ * @since 1.0
  */
 public class BuiltinToolRegistrar {
 
     private static final Logger log = LoggerFactory.getLogger(BuiltinToolRegistrar.class);
 
+    /**
+     * Instantiates and registers all built-in tools into the given registry.
+     *
+     * <p>This method creates a new instance of each built-in plugin, adds them all to
+     * the registry's observable plugin list, and logs the outcome at INFO level.
+     * It does not interact with {@link PluginLoader} beyond the mandatory wiring in
+     * {@link PluginRegistry} constructor.</p>
+     *
+     * <p>This method should be called exactly once during application startup,
+     * after the {@link PluginRegistry} is constructed but before
+     * {@link PluginLoader#start()} is invoked.</p>
+     *
+     * @param loader  the PluginLoader instance (used only to pass to
+     *                {@link PluginRegistry#PluginRegistry(PluginLoader)} wiring;
+     *                may be {@code null} if already wired)
+     * @param registry the PluginRegistry to register built-in tools into; must not be {@code null}
+     * @since 1.0
+     */
     public static void register(PluginLoader loader, PluginRegistry registry) {
         List<SwissKitJPlugin> builtins = List.of(
             new AiChatPlugin(),

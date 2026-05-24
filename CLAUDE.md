@@ -14,7 +14,7 @@ mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
 
 # Run the application
-java -jar SwissKit/target/SwissKitJ-3.0.0-alpha.1.jar
+java -jar SwissKit/target/SwissKitJ-3.0.0-beta.1.jar
 ```
 
 To build all modules from the repo root (root POM is a simple aggregator):

@@ -5,6 +5,8 @@ import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
 import fan.summer.api.i18n.I18n;
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -15,6 +17,8 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 
 public class JsonFormatterPlugin implements SwissKitJPlugin {
+
+    private static final PluginLogger log = LoggerFactory.getLogger(JsonFormatterPlugin.class);
 
     @Override public String getId()          { return "builtin.json-formatter"; }
     @Override public String getName()        { return I18n.get("builtin.json-formatter.name"); }
@@ -27,6 +31,7 @@ public class JsonFormatterPlugin implements SwissKitJPlugin {
 
     @Override
     public Node createView() {
+        log.debug("Creating JSON Formatter view");
         TextArea input  = styledTextArea("Paste JSON......");
         TextArea output = styledTextArea("");
         output.setEditable(false);
@@ -37,13 +42,22 @@ public class JsonFormatterPlugin implements SwissKitJPlugin {
 
         formatBtn.setOnAction(e -> {
             try {
+                log.debug("Formatting JSON");
                 output.setText(prettyPrint(input.getText().trim()));
             } catch (Exception ex) {
+                log.warn("Invalid JSON input: {}", ex.getMessage());
                 output.setText("❌ Invalid JSON: " + ex.getMessage());
             }
         });
-        compactBtn.setOnAction(e -> output.setText(input.getText().replaceAll("\\s+", "")));
-        clearBtn.setOnAction(e -> { input.clear(); output.clear(); });
+        compactBtn.setOnAction(e -> {
+            log.debug("Compacting JSON");
+            output.setText(input.getText().replaceAll("\\s+", ""));
+        });
+        clearBtn.setOnAction(e -> {
+            log.debug("Clearing input and output");
+            input.clear();
+            output.clear();
+        });
 
         HBox btnRow = new HBox(8, formatBtn, compactBtn, clearBtn);
         btnRow.setPadding(new Insets(0, 0, 12, 0));

@@ -10,20 +10,55 @@ import java.util.concurrent.ConcurrentMap;
 
 /**
  * Host-side {@link LoggerBinder} that delegates every {@link PluginLogger} call to the
- * application's SLF4J + Logback backbone. Plugins call {@code LoggerFactory.getLogger(...)}
- * from the public API and their log entries flow into the same console and rolling file
- * appenders used by the host itself.
+ * application's SLF4J + Logback backbone.
+ *
+ * <p>Plugins call {@code LoggerFactory.getLogger(...)} from the public API ({@code fan.summer.api.log})
+ * and their log entries flow into the same console and rolling file appenders used by the host
+ * itself. This class is installed by the host at startup as the single {@link LoggerBinder}
+ * implementation returned by {@code LoggerFactory.getBinder()}.</p>
+ *
+ * <p>Loggers are cached by name in a {@link ConcurrentHashMap} so repeated lookups for the same
+ * name return the identical {@link PluginLogger} instance. Each delegating logger holds a strong
+ * reference to the underlying SLF4J {@link Logger} for the corresponding name.</p>
+ *
+ * @since 1.0
+ * @author SwissKitJ
+ * @see LoggerBinder
+ * @see PluginLogger
  */
 public final class Slf4jPluginLoggerBinder implements LoggerBinder {
 
     /** Loggers are cached by name so repeated lookups return the same instance. */
     private final ConcurrentMap<String, PluginLogger> cache = new ConcurrentHashMap<>();
 
+    /**
+     * Returns a {@link PluginLogger} for the given name, caching the result for
+     * subsequent lookups.
+     *
+     * <p>The first call for any given name creates a new {@link Slf4jPluginLogger}
+     * wrapping the SLF4J {@link Logger} for that name and stores it in the cache.
+     * Subsequent calls for the same name return the cached instance.</p>
+     *
+     * @param name the logger name; passed to {@link LoggerFactory#getLogger(String)}
+     * @return a {@link PluginLogger} delegating to the SLF4J logger for {@code name};
+     *         never {@code null}
+     * @since 1.0
+     */
     @Override
     public PluginLogger getLogger(String name) {
         return cache.computeIfAbsent(name, n -> new Slf4jPluginLogger(LoggerFactory.getLogger(n)));
     }
 
+    /**
+     * A {@link PluginLogger} implementation that delegates all logging calls to an
+     * underlying SLF4J {@link Logger}.
+     *
+     * <p>This class is immutable and thread-safe. Each instance is tied to a single
+     * SLF4J {@code Logger} and forwards all log levels (trace, debug, info, warn, error)
+     * without transformation.</p>
+     *
+     * @since 1.0
+     */
     private static final class Slf4jPluginLogger implements PluginLogger {
 
         private final Logger delegate;

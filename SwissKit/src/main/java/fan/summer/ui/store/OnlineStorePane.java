@@ -30,8 +30,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Online plugin store pane — fetches plugin list from a remote JSON API
- * and allows one-click installation of JAR files.
+ * Online plugin store pane that fetches the plugin catalog from a remote JSON API
+ * and displays each plugin as a card with a one-click install button.
+ * The JAR file is downloaded and written directly to the {@code plugins/} directory.
+ * <p>
+ * The list is fetched automatically on construction. A refresh button allows
+ * re-fetching the catalog at any time.
+ *
+ * @param onInstallComplete an optional callback invoked after a successful installation;
+ *                          may be null; useful to trigger UI refreshes in the parent
+ * @see PluginLoader#resolvePluginsDir()
+ * @since 1.0
  */
 public class OnlineStorePane extends VBox {
 
@@ -44,6 +53,11 @@ public class OnlineStorePane extends VBox {
     private final ScrollPane scrollPane;
     private final HBox loadingRow;
 
+    /**
+     * Constructs the online store pane, auto-fetching the plugin list on creation.
+     *
+     * @param onInstallComplete callback invoked after each successful install; may be null
+     */
     public OnlineStorePane(Runnable onInstallComplete) {
         this.onInstallComplete = onInstallComplete;
         setSpacing(20);
@@ -112,6 +126,10 @@ public class OnlineStorePane extends VBox {
         fetchPluginList();
     }
 
+    /**
+     * Initiates an async fetch of the plugin list from the configured store URL.
+     * Displays the loading indicator and clears any previous status message.
+     */
     private void fetchPluginList() {
         String urlStr = fan.summer.ui.setting.SwissKitJSettingUi.getStoreUrl();
         showLoading(true);
@@ -414,6 +432,12 @@ public class OnlineStorePane extends VBox {
 
     // ── Data model ────────────────────────────────────────────────
 
+    /**
+     * Lightweight data class representing a plugin available in the online store.
+     * Instances are created by parsing the store's JSON catalog.
+     *
+     * @since 1.0
+     */
     public static class StorePlugin {
         public String id;
         public String name;

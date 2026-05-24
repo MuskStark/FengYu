@@ -5,6 +5,8 @@ import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
 import fan.summer.api.i18n.I18n;
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -18,6 +20,8 @@ import javafx.scene.paint.Color;
 
 public class ColorConverterPlugin implements SwissKitJPlugin {
 
+    private static final PluginLogger log = LoggerFactory.getLogger(ColorConverterPlugin.class);
+
     @Override public String getId()          { return "builtin.color"; }
     @Override public String getName()        { return I18n.get("builtin.color-converter.name"); }
     @Override public String getDescription() { return I18n.get("builtin.color-converter.desc"); }
@@ -29,6 +33,7 @@ public class ColorConverterPlugin implements SwissKitJPlugin {
 
     @Override
     public Node createView() {
+        log.debug("Creating Color Converter view");
         TextField hexField = styledField("#5b8cf7");
         TextField rgbField = styledField("91, 140, 247");
         TextField hslField = styledField("220°, 90%, 66%");
@@ -48,6 +53,7 @@ public class ColorConverterPlugin implements SwissKitJPlugin {
                     c.getRed() * 255, c.getGreen() * 255, c.getBlue() * 255));
                 hslField.setText(String.format("%.0f°, %.0f%%, %.0f%%",
                     c.getHue(), c.getSaturation() * 100, c.getBrightness() * 100));
+                log.debug("Color updated: hex={}", hex);
             } catch (Exception ignored) {}
         };
 

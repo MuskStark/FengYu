@@ -25,7 +25,13 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Local JAR installation pane for the Plugin Store.
- * Allows users to select a JAR file and deploy it to the plugins directory.
+ * Allows users to select a JAR file via file browser or drag-and-drop,
+ * then deploys it to the application's {@code plugins/} directory.
+ *
+ * @param onInstallComplete an optional callback invoked after a successful installation;
+ *                          may be null
+ * @see PluginLoader#resolvePluginsDir()
+ * @since 1.0
  */
 public class LocalInstallPane extends VBox {
 
@@ -39,6 +45,11 @@ public class LocalInstallPane extends VBox {
     private final AtomicReference<File> selectedFile = new AtomicReference<>();
     private final VBox dropZone;
 
+    /**
+     * Constructs the local install pane.
+     *
+     * @param onInstallComplete callback invoked after each successful install; may be null
+     */
     public LocalInstallPane(Runnable onInstallComplete) {
         this.onInstallComplete = onInstallComplete;
         setSpacing(20);
