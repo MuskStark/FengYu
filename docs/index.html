@@ -14,22 +14,39 @@
     window.$docsify = {
       name: 'SwissKitJ',
       repo: 'https://github.com/MuskStark/SwissKitJ',
-      coverpage: true,
       themeColor: '#3F51B5',
       loadSidebar: true,
+      loadNavbar: true,
       maxLevel: 4,
       subMaxLevel: 3,
-      search: { placeholder: 'Search docs', noData: 'No results' },
-      alias: {
-        '/_sidebar.md': '/_sidebar.md',
-        '/zh/_sidebar.md': '/zh/_sidebar.md',
-        '/plugins/_sidebar.md': '/plugins/_sidebar.md',
-        '/zh/plugins/_sidebar.md': '/zh/plugins/_sidebar.md',
-      }
+
+      // Multiple covers — docsify loads /_coverpage.md and /zh/_coverpage.md
+      // based on the current URL prefix
+      coverpage: ['/', '/zh/'],
+
+      // Site name links to language-appropriate root
+      nameLink: {
+        '/zh/': '#/zh/',
+        '/':    '#/'
+      },
+
+      // Per-language search placeholders
+      search: {
+        placeholder: {
+          '/zh/': '搜索文档',
+          '/':    'Search docs'
+        },
+        noData: {
+          '/zh/': '没有结果',
+          '/':    'No results'
+        }
+      },
+
+      // If a Chinese page is requested but missing, fall back to English
+      fallbackLanguages: ['zh']
     }
   </script>
   <script src="//cdn.jsdelivr.net/npm/docsify@4"></script>
-  <script src="//cdn.jsdelivr.net/npm/docsify@4/lib/plugins/search.max.js"></script>
-  <script src="//cdn.jsdelivr.net/npm/docsify-plugin-flexible-i18n@1/dist/docsify-plugin-flexible-i18n.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/docsify@4/lib/plugins/search.min.js"></script>
 </body>
 </html>
