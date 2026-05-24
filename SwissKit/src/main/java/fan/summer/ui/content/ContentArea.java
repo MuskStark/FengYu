@@ -2,6 +2,8 @@ package fan.summer.ui.content;
 
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.SwissKitJPlugin;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import javafx.animation.FadeTransition;
 import javafx.animation.ParallelTransition;
 import javafx.animation.PauseTransition;
@@ -21,11 +23,21 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * Main content area.
- * Contains: Search bar / Tool grid / Detail panel / Page transition animations.
- * Bind plugin data via setPlugins(ObservableList), auto-respond to add/remove.
+ * Main content area of the application, displayed between the Sidebar and StatusBar.
+ * Contains a search bar, a scrollable tool grid, a detail panel that slides in from
+ * the right, and a switchable page stack for custom views (e.g. Settings, Plugin Store).
+ * <p>
+ * Plugin data is bound via {@link #setPlugins(ObservableList)} and the grid
+ * automatically refreshes when plugins are added or removed. Category filtering
+ * and search queries are applied client-side against the bound list.
+ *
+ * @see ToolCard
+ * @see DetailPanel
+ * @since 1.0
  */
 public class ContentArea extends BorderPane {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ContentArea.class);
 
     // ── Sub-components ────────────────────────────────────────────
     private final TextField   searchField  = new TextField();
@@ -44,27 +56,59 @@ public class ContentArea extends BorderPane {
     private Runnable onBack;
 
     public ContentArea() {
+        LOG.info("ContentArea initializing");
         scrollPane     = buildScrollPane();
         pageScrollPane = buildPageScrollPane();
         buildLayout();
         detailPanel.setOnLaunch(p -> { if (onLaunch != null) onLaunch.accept(p); });
         I18n.addListener(() -> javafx.application.Platform.runLater(this::refresh));
+        LOG.info("ContentArea initialized");
     }
 
     // ── Public API ──────────────────────────────────────────
 
-    public void setOnLaunch(Consumer<SwissKitJPlugin> handler) { this.onLaunch = handler; }
-    public void setOnBack(Runnable handler) { this.onBack = handler; }
+    /**
+     * Sets the callback invoked when the user clicks the Launch button in the detail panel.
+     *
+     * @param handler the consumer that receives the selected plugin; must not be null
+     */
+    public void setOnLaunch(Consumer<SwissKitJPlugin> handler) {
+        LOG.debug("setOnLaunch callback set");
+        this.onLaunch = handler;
+    }
 
-    /** Bind plugin list, auto-refresh on add/remove */
+    /**
+     * Sets the callback invoked when the user navigates back from an active tool view.
+     *
+     * @param handler the runnable to execute on back navigation; may be null
+     */
+    public void setOnBack(Runnable handler) {
+        LOG.debug("setOnBack callback set");
+        this.onBack = handler;
+    }
+
+    /**
+     * Binds the plugin list to this content area, automatically refreshing the tool grid
+     * whenever plugins are added or removed.
+     *
+     * @param list the observable list of plugins to display; must not be null
+     */
     public void setPlugins(ObservableList<SwissKitJPlugin> list) {
+        LOG.info("Binding plugin list with {} plugins", list.size());
         this.plugins = list;
         list.addListener((ListChangeListener<SwissKitJPlugin>) c -> refresh());
         refresh();
     }
 
-    /** Switch category display */
+    /**
+     * Filters the tool grid to show only plugins in the specified category
+     * and clears any active search query.
+     *
+     * @param categoryId the category identifier ({@code "all"}, {@code "text"}, {@code "image"},
+     *                   {@code "dev"}, {@code "net"}, {@code "other"}, {@code "plugins"}, etc.)
+     */
     public void showCategory(String categoryId) {
+        LOG.info("Showing category: id={}", categoryId);
         currentCategory = categoryId;
         searchField.clear();
         currentQuery = "";
@@ -74,8 +118,15 @@ public class ContentArea extends BorderPane {
         animateGridIn();
     }
 
-    /** Switch to custom page (e.g. settings, plugin market) */
+    /**
+     * Switches the center content to a custom page (such as Settings or Plugin Store),
+     * hiding the tool grid and the detail panel.
+     *
+     * @param page the JavaFX Node to display as the center content; must not be null
+     * @param title the title to display in the back bar; may be null
+     */
     public void showPage(Node page, String title) {
+        LOG.info("Showing page: title={}", title);
         pageScrollPane.setContent(page);
         setTopMode(true, title);
         crossFadeTo(pageScrollPane);
@@ -84,6 +135,7 @@ public class ContentArea extends BorderPane {
 
     /** Back to tool grid home */
     public void showToolGrid() {
+        LOG.info("Returning to tool grid");
         setTopMode(false, null);
         crossFadeTo(scrollPane);
     }
@@ -292,6 +344,7 @@ public class ContentArea extends BorderPane {
     // ── Card selection ──────────────────────────────────────────
 
     private void onCardSelect(SwissKitJPlugin plugin) {
+        LOG.info("Card selected: plugin={}", plugin.getName());
         detailPanel.show(plugin);
     }
 
