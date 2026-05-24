@@ -1,5 +1,6 @@
 package fan.summer.ui;
 
+import fan.summer.api.i18n.I18n;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.plugin.PluginRegistry;
 import fan.summer.ui.content.ContentArea;
@@ -28,9 +29,20 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 
 /**
- * Root node of the main window.
- * Assembles TitleBar / Sidebar / ContentArea / StatusBar,
- * and holds the lifecycle for PluginLoader and PluginRegistry.
+ * Root node of the main window that assembles the complete SwissKitJ UI.
+ * Composes TitleBar, Sidebar, ContentArea, and StatusBar into a single
+ * glassmorphism-styled container, and owns the lifecycle for PluginLoader
+ * and PluginRegistry.
+ * <p>
+ * The window displays animated background orbs for visual depth, and
+ * wires up navigation events from the Sidebar to the ContentArea, including
+ * tool launching and the AI chat panel. A live clock is displayed in the
+ * status bar at the bottom.
+ *
+ * @see ContentArea
+ * @see Sidebar
+ * @see TitleBar
+ * @since 1.0
  */
 public class MainWindow extends StackPane {
 
@@ -54,6 +66,16 @@ public class MainWindow extends StackPane {
 
     private Timeline clockTimeline;
 
+    /**
+     * Constructs the main window and assembles the complete UI hierarchy.
+     * Initializes the AI service, counts built-in tools and plugins,
+     * builds the scene graph, wires navigation events, starts the clock,
+     * and plays the entry animation.
+     *
+     * @param stage    the primary JavaFX Stage to attach this window to
+     * @param loader   the PluginLoader that manages plugin discovery and hot-reload
+     * @param registry the PluginRegistry holding all registered plugins and built-in tools
+     */
     public MainWindow(Stage stage, PluginLoader loader, PluginRegistry registry) {
         log.debug("Initialising MainWindow");
         this.stage    = stage;
@@ -80,8 +102,8 @@ public class MainWindow extends StackPane {
             }
         }
 
-        statusPluginCount = statusText(pluginInTool + "plugins");
-        statusToolCount = statusText(pluginInTool + buildInTool +  "tools");
+        statusPluginCount = statusText(I18n.get("status.plugins", pluginInTool));
+        statusToolCount = statusText(I18n.get("status.tools", pluginInTool + buildInTool));
 
         buildScene();
         wireEvents();
@@ -233,6 +255,11 @@ public class MainWindow extends StackPane {
 
     // ── Event wiring ─────────────────────────────────────
 
+    /**
+     * Wires navigation events between sub-components:
+     * sidebar category selection, plugin list changes, tool launch callbacks,
+     * and back navigation from active tools.
+     */
     private void wireEvents() {
         // Bind plugin list to content area
         contentArea.setPlugins(registry.getPlugins());
@@ -242,7 +269,7 @@ public class MainWindow extends StackPane {
             if ("ai".equals(categoryId)) {
                 openAiChat();
             } else if ("store".equals(categoryId)) {
-                contentArea.showPage(fan.summer.ui.store.PluginStoreUi.build(), "Plugin Store");
+                contentArea.showPage(fan.summer.ui.store.PluginStoreUi.build(), I18n.get("store.online.title"));
             } else if ("settings".equals(categoryId)) {
                 // settings is handled by setOnSettingsSelect
             } else {
@@ -259,8 +286,8 @@ public class MainWindow extends StackPane {
                 int total   = registry.getPlugins().size();
                 int plugins = (int) registry.getPlugins().stream()
                     .filter(p -> p.getType().isPlugin()).count();
-                statusToolCount.setText(total + " tools");
-                statusPluginCount.setText(plugins + " plugins");
+                statusToolCount.setText(I18n.get("status.tools", total));
+                statusPluginCount.setText(I18n.get("status.plugins", plugins));
                 sidebar.updateBadge("plugins", plugins);
             }
         );
@@ -285,18 +312,24 @@ public class MainWindow extends StackPane {
 
     // ── Settings page ────────────────────────────────────
 
+    /**
+     * Opens the Settings page in the content area.
+     */
     private void openSettings() {
         Node settingsPage = SwissKitJSettingUi.build();
-        contentArea.showPage(settingsPage, "Settings");
+        contentArea.showPage(settingsPage, I18n.get("sidebar.label.settings"));
     }
 
     // ── AI Chat page ────────────────────────────────────
 
+    /**
+     * Opens the AI chat panel in the content area, creating the view on first access.
+     */
     private void openAiChat() {
         if (aiChatView == null) {
             aiChatView = aiChatPlugin.createView();
         }
-        contentArea.showPage(aiChatView, "AI Assistant");
+        contentArea.showPage(aiChatView, I18n.get("builtin.ai-chat.name"));
     }
 
     // ── Entry animation ──────────────────────────────────
@@ -343,7 +376,10 @@ public class MainWindow extends StackPane {
         clockLabel.setText(LocalTime.now().format(fmt)); // Initial display
     }
 
-    /** Called on application exit to clean up resources */
+    /**
+     * Called on application exit to clean up resources.
+     * Stops the clock timeline and shuts down the plugin loader.
+     */
     public void shutdown() {
         log.debug("MainWindow shutting down resources");
         if (clockTimeline != null) clockTimeline.stop();

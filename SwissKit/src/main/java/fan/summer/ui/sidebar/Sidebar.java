@@ -1,7 +1,11 @@
 package fan.summer.ui.sidebar;
 
+import fan.summer.api.i18n.I18n;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import javafx.animation.Interpolator;
 import javafx.animation.ScaleTransition;
+import javafx.beans.property.StringProperty;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Label;
@@ -17,10 +21,20 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * Left navigation sidebar with scrollable content.
- * Listen for category switch events via setOnCategorySelect.
+ * Left navigation sidebar displaying all available tool categories and
+ * quick-access items (AI Chat, Plugin Store, Settings). Each navigation
+ * item shows an icon, label, and an optional badge for counts (e.g. plugin count).
+ * <p>
+ * Navigation selection is communicated via the {@link #setOnCategorySelect}
+ * callback. The sidebar also supports a dedicated settings callback via
+ * {@link #setOnSettingsSelect}.
+ *
+ * @see NavItem
+ * @since 1.0
  */
 public class Sidebar extends VBox {
+
+    private static final Logger LOG = LoggerFactory.getLogger(Sidebar.class);
 
     public record Category(String id, String icon, String label, int count, boolean isNew) {}
 
@@ -31,24 +45,40 @@ public class Sidebar extends VBox {
     private Runnable onSettingsSelect;
 
     public Sidebar() {
+        LOG.info("Sidebar initializing");
         getStyleClass().add("sidebar");
         setPrefWidth(220);
         setMinWidth(200);
         setMaxWidth(260);
         setSpacing(0);
         build();
+        LOG.info("Sidebar initialized with {} nav items", navItems.size());
     }
 
+    /**
+     * Sets the consumer to receive category ID strings whenever the user clicks
+     * a navigation item (excluding Settings).
+     *
+     * @param handler a consumer that receives the selected category ID; may be null
+     */
     public void setOnCategorySelect(Consumer<String> handler) {
+        LOG.debug("setOnCategorySelect callback set");
         this.onCategorySelect = handler;
     }
 
+    /**
+     * Sets the runnable to execute when the user clicks the Settings item.
+     *
+     * @param handler the runnable to execute; may be null
+     */
     public void setOnSettingsSelect(Runnable handler) {
+        LOG.debug("setOnSettingsSelect callback set");
         this.onSettingsSelect = handler;
     }
 
     /** Dynamically update plugin category badge numbers */
     public void updateBadge(String categoryId, int count) {
+        LOG.debug("Updating badge for category: id={}, count={}", categoryId, count);
         navItems.stream()
             .filter(item -> item.getCategoryId().equals(categoryId))
             .findFirst()
@@ -61,37 +91,37 @@ public class Sidebar extends VBox {
         content.setSpacing(0);
 
         // ── AI section (first position) ────────────────────────────────
-        content.getChildren().add(sectionLabel("AI ASSISTANT"));
-        addNavItem("ai", "🤖", "AI Chat", 0, true);
+        content.getChildren().add(sectionLabel("sidebar.section.aiAssistant"));
+        addNavItem("ai", "🤖", "sidebar.label.aiChat", 0, true);
 
         content.getChildren().add(divider());
 
         // ── Tools section ────────────────────────────────────
-        content.getChildren().add(sectionLabel("TOOLS"));
-        addNavItem("all",     "⊞", "All Tools",        0, false);
-        addNavItem("text",    "✏️", "Text Processing",  0, false);
-        addNavItem("image",   "🖼", "Image Processing", 0, false);
-        addNavItem("dev",     "⌨️", "Developer Tools",  0, false);
-        addNavItem("net",     "📡", "Network Tools",    0, false);
-        addNavItem("other",   "📦", "Other Tools",      0, false);
+        content.getChildren().add(sectionLabel("sidebar.section.tools"));
+        addNavItem("all",     "⊞", "sidebar.label.allTools",        0, false);
+        addNavItem("text",    "✏️", "sidebar.label.textProcessing",  0, false);
+        addNavItem("image",   "🖼", "sidebar.label.imageProcessing", 0, false);
+        addNavItem("dev",     "⌨️", "sidebar.label.developerTools",  0, false);
+        addNavItem("net",     "📡", "sidebar.label.networkTools",    0, false);
+        addNavItem("other",   "📦", "sidebar.label.otherTools",      0, false);
 
         content.getChildren().add(divider());
 
         // ── Plugins section ────────────────────────────────────
-        content.getChildren().add(sectionLabel("PLUGINS"));
-        addNavItem("plugins", "🧩", "Installed Plugins", 0, true);
-        addNavItem("store",   "🏪", "Plugin Store",   0, false);
+        content.getChildren().add(sectionLabel("sidebar.section.plugins"));
+        addNavItem("plugins", "🧩", "sidebar.label.installedPlugins", 0, true);
+        addNavItem("store",   "🏪", "sidebar.label.pluginStore",   0, false);
 
         content.getChildren().add(divider());
 
         // ── Favorites section ────────────────────────────────────
-        content.getChildren().add(sectionLabel("FAVORITES"));
-        addNavItem("fav", "⭐", "My Favorites", 0, false);
+        content.getChildren().add(sectionLabel("sidebar.section.favorites"));
+        addNavItem("fav", "⭐", "sidebar.label.myFavorites", 0, false);
 
         content.getChildren().add(divider());
 
         // ── Settings (always at bottom) ──────────────────────────
-        addSettingsItem("⚙️", "Settings");
+        addSettingsItem("⚙️", "sidebar.label.settings");
 
         // ── Wrap in ScrollPane ────────────────────────────────────
         ScrollPane scrollPane = new ScrollPane(content);
@@ -111,22 +141,28 @@ public class Sidebar extends VBox {
         }
     }
 
-    private void addNavItem(String id, String icon, String label, int count, boolean isNew) {
+    private void addNavItem(String id, String icon, String i18nKey, int count, boolean isNew) {
+        LOG.debug("Adding nav item: id={}, i18nKey={}", id, i18nKey);
+        String label = I18n.get(i18nKey);
         NavItem item = new NavItem(id, icon, label, count, isNew);
         item.setOnMouseClicked(e -> activate(item, true));
         navItems.add(item);
         content.getChildren().add(item);
+        I18n.bind(item.textLabelProperty(), i18nKey);
     }
 
-    private void addSettingsItem(String icon, String label) {
+    private void addSettingsItem(String icon, String i18nKey) {
+        String label = I18n.get(i18nKey);
         NavItem item = new NavItem("settings", icon, label, 0, false);
         item.setOnMouseClicked(e -> {
             if (onSettingsSelect != null) onSettingsSelect.run();
         });
         content.getChildren().add(item);
+        I18n.bind(item.textLabelProperty(), i18nKey);
     }
 
     private void activate(NavItem item, boolean fireEvent) {
+        LOG.info("Activating nav item: id={}, fireEvent={}", item.getCategoryId(), fireEvent);
         if (activeItem != null) activeItem.setActive(false);
         activeItem = item;
         item.setActive(true);
@@ -137,9 +173,10 @@ public class Sidebar extends VBox {
 
     // ── Helper node factory ──────────────────────────────────────
 
-    private Label sectionLabel(String text) {
-        Label l = new Label(text.toUpperCase());
+    private Label sectionLabel(String i18nKey) {
+        Label l = new Label(I18n.get(i18nKey).toUpperCase());
         l.getStyleClass().add("sidebar-section-label");
+        I18n.bind(l.textProperty(), i18nKey);
         return l;
     }
 
@@ -155,12 +192,27 @@ public class Sidebar extends VBox {
     // Inner class: single navigation item
     // ════════════════════════════════════════════════════
 
+    /**
+     * A single navigation item rendered inside the Sidebar.
+     * Displays an icon, a label (which may be i18n-bound), and an optional badge.
+     * Supports visual activation state with a subtle scale animation.
+     */
     public static class NavItem extends HBox {
 
         private final String categoryId;
+        private final Label  textLabel;
         private final Label  badgeLabel;
         private boolean active = false;
 
+        /**
+         * Constructs a NavItem with the given display properties.
+         *
+         * @param id        the category identifier this item represents
+         * @param icon      the emoji or text icon to display
+         * @param label     the display label; may be i18n-bound for reactive updates
+         * @param count     the initial badge count (0 means no badge shown)
+         * @param isNew     whether to style this badge with a "new" indicator
+         */
         public NavItem(String id, String icon, String label, int count, boolean isNew) {
             this.categoryId = id;
 
@@ -172,7 +224,7 @@ public class Sidebar extends VBox {
             Label iconLabel = new Label(icon);
             iconLabel.getStyleClass().add("nav-item-icon");
 
-            Label textLabel = new Label(label);
+            textLabel = new Label(label);
             textLabel.getStyleClass().add("nav-item-text");
             HBox.setHgrow(textLabel, Priority.ALWAYS);
 
@@ -185,8 +237,26 @@ public class Sidebar extends VBox {
             setCursor(javafx.scene.Cursor.HAND);
         }
 
+        /**
+         * Returns the category identifier for this nav item.
+         *
+         * @return the category ID passed at construction time
+         */
         public String getCategoryId() { return categoryId; }
 
+        /**
+         * Returns the text label's text property so callers can bind it to i18n.
+         *
+         * @return the StringProperty of the text label
+         */
+        public StringProperty textLabelProperty() { return textLabel.textProperty(); }
+
+        /**
+         * Sets the visual active state of this item, adding or removing the
+         * {@code active} CSS class and playing a brief scale animation.
+         *
+         * @param active true to mark this item as active; false to deactivate it
+         */
         public void setActive(boolean active) {
             this.active = active;
             if (active) {
@@ -201,6 +271,12 @@ public class Sidebar extends VBox {
             }
         }
 
+        /**
+         * Updates the badge display with the given count.
+         * If count is zero or negative, the badge is hidden entirely.
+         *
+         * @param count the count to display in the badge
+         */
         public void setBadge(int count) {
             badgeLabel.setText(count > 0 ? String.valueOf(count) : "");
             badgeLabel.setVisible(count > 0);

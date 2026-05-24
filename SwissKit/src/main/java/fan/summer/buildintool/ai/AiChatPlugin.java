@@ -5,6 +5,7 @@ import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
 import fan.summer.api.ai.*;
+import fan.summer.api.i18n.I18n;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
 import fan.summer.ui.setting.SwissKitJSettingUi;
@@ -36,8 +37,8 @@ public class AiChatPlugin implements SwissKitJPlugin {
     private static final PluginLogger log = LoggerFactory.getLogger(AiChatPlugin.class);
 
     @Override public String getId()          { return "builtin.ai-chat"; }
-    @Override public String getName()        { return "AI Assistant"; }
-    @Override public String getDescription() { return "Local AI chat powered by GGUF models"; }
+    @Override public String getName()        { return I18n.get("builtin.ai-chat.name"); }
+    @Override public String getDescription() { return I18n.get("builtin.ai-chat.desc"); }
     @Override public ToolCategory getCategory()    { return ToolCategory.OTHER; }
     @Override public String getVersion()     { return "1.0.0"; }
     @Override public String getMdiIcon()    { return "robot-outline"; }
@@ -46,7 +47,18 @@ public class AiChatPlugin implements SwissKitJPlugin {
 
     @Override
     public Node createView() {
+        log.debug("Creating AI Chat view");
         return new AiChatView();
+    }
+
+    @Override
+    public void onActivate() {
+        log.info("AI Chat plugin activated");
+    }
+
+    @Override
+    public void onDeactivate() {
+        log.info("AI Chat plugin deactivated");
     }
 
     private record Attachment(String name, String content, long sizeBytes) {}
@@ -64,7 +76,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
         private final Button attachBtn = new Button("📎");
         private final FlowPane attachmentBar = new FlowPane();
         private final Label statusLabel = new Label();
-        private final Label modelLabel = new Label("No model loaded");
+        private final Label modelLabel = new Label(I18n.get("builtin.ai.noModelLoaded"));
 
         private AiService aiService;
         private boolean generating = false;
@@ -98,7 +110,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
             attachmentBar.setVisible(false);
 
             inputArea.getStyleClass().add("ai-chat-textarea");
-            inputArea.setPromptText("Type a message...");
+            inputArea.setPromptText(I18n.get("builtin.ai.typeMessage"));
             inputArea.setPrefRowCount(1);
             inputArea.setMaxHeight(120);
             HBox.setHgrow(inputArea, Priority.ALWAYS);
@@ -128,7 +140,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
 
             getChildren().addAll(toolbar, scrollPane, statusLabel, attachmentBar, inputBar);
 
-            addSystemMessage("Welcome to AI Assistant. Configure a model in Settings → AI Model to start chatting.");
+            addSystemMessage(I18n.get("builtin.ai.welcomeMessage"));
 
             refreshServiceState();
             AiServiceProvider.addOnStateChangeListener(this::refreshServiceState);
@@ -141,9 +153,9 @@ public class AiChatPlugin implements SwissKitJPlugin {
                 if (opt.isPresent()) {
                     aiService = opt.get();
                     ready = aiService.isReady();
-                    modelLabel.setText(ready ? aiService.getModelName().orElse("Model loaded") : "No model loaded");
+                    modelLabel.setText(ready ? aiService.getModelName().orElse(I18n.get("builtin.ai.modelLoaded")) : I18n.get("builtin.ai.noModelLoaded"));
                 } else {
-                    modelLabel.setText("No model loaded");
+                    modelLabel.setText(I18n.get("builtin.ai.noModelLoaded"));
                 }
                 sendBtn.setDisable(!ready);
                 attachBtn.setDisable(!ready);
@@ -155,7 +167,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
         private void onPickAttachment() {
             if (generating) return;
             FileChooser chooser = new FileChooser();
-            chooser.setTitle("Attach files");
+            chooser.setTitle(I18n.get("builtin.ai.attachFiles"));
             chooser.getExtensionFilters().addAll(
                 new FileChooser.ExtensionFilter("Text files",
                     "*.txt", "*.md", "*.markdown", "*.log",
@@ -181,18 +193,18 @@ public class AiChatPlugin implements SwissKitJPlugin {
             try {
                 long size = Files.size(path);
                 if (size > MAX_ATTACHMENT_BYTES) {
-                    addSystemMessage("File too large (max " + (MAX_ATTACHMENT_BYTES / 1024) + " KB): " + path.getFileName());
+                    addSystemMessage(I18n.get("builtin.ai.fileTooLarge", MAX_ATTACHMENT_BYTES / 1024, path.getFileName()));
                     return Optional.empty();
                 }
                 byte[] bytes = Files.readAllBytes(path);
                 if (isLikelyBinary(bytes)) {
-                    addSystemMessage("Cannot attach binary file: " + path.getFileName());
+                    addSystemMessage(I18n.get("builtin.ai.cannotAttachBinary", path.getFileName()));
                     return Optional.empty();
                 }
                 String content = new String(bytes, StandardCharsets.UTF_8);
                 return Optional.of(new Attachment(path.getFileName().toString(), content, size));
             } catch (IOException e) {
-                addSystemMessage("Failed to read file: " + path.getFileName() + " — " + e.getMessage());
+                addSystemMessage(I18n.get("builtin.ai.failedToRead", path.getFileName(), e.getMessage()));
                 return Optional.empty();
             }
         }
@@ -248,7 +260,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
             if (text.isEmpty() && pendingAttachments.isEmpty()) return;
             if (generating) return;
             if (aiService == null || !aiService.isReady()) {
-                addSystemMessage("No model loaded. Go to Settings → AI Model to configure one.");
+                addSystemMessage(I18n.get("builtin.ai.noModelConfigured"));
                 return;
             }
 
@@ -268,7 +280,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
             generating = true;
             sendBtn.setDisable(true);
             attachBtn.setDisable(true);
-            statusLabel.setText("Generating...");
+            statusLabel.setText(I18n.get("builtin.ai.generating"));
 
             float temperature = SwissKitJSettingUi.getAiTemperature();
             float topP = SwissKitJSettingUi.getAiTopP();
@@ -379,7 +391,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
         }
 
         private void addUserMessage(String text, List<Attachment> attachments) {
-            Label label = new Label("You");
+            Label label = new Label(I18n.get("builtin.ai.you"));
             label.getStyleClass().add("ai-msg-label");
 
             VBox wrapper = new VBox(4, label);
@@ -468,7 +480,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
             Label icon = new Label("⚙");
             icon.setStyle("-fx-text-fill: #f59f00; -fx-font-size: 13px;");
 
-            Label name = new Label("Calling: " + toolCall.name());
+            Label name = new Label(I18n.get("builtin.ai.calling", toolCall.name()));
             name.setStyle("-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 12px; -fx-font-weight: bold;");
 
             String argsStr = toolCall.arguments().entrySet().stream()
@@ -503,7 +515,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
             Label icon = new Label(result.success() ? "✓" : "✗");
             icon.setStyle("-fx-text-fill: " + (result.success() ? "#51cf66" : "#ff6b6b") + "; -fx-font-size: 13px;");
 
-            Label label = new Label(result.success() ? "Tool Result" : "Tool Error");
+            Label label = new Label(result.success() ? I18n.get("builtin.ai.toolResult") : I18n.get("builtin.ai.toolError"));
             label.setStyle("-fx-text-fill: rgba(255,255,255,0.70); -fx-font-size: 11px; -fx-font-weight: bold;");
 
             Label output = new Label(result.output());
@@ -556,13 +568,9 @@ public class AiChatPlugin implements SwissKitJPlugin {
 
         private String stripSpecialTokens(String text) {
             String r = text;
-            // Complete thinking blocks (with content)
             r = r.replaceAll("(?s)<think[^>]*>.*?</think\\s*>", "");
-            // Incomplete thinking blocks (still generating)
             r = r.replaceAll("(?s)<think[^>]*>.*", "");
-            // All remaining <...> tags (catch-all for any model control tokens)
             r = r.replaceAll("<[^>]+>", "");
-            // Incomplete tag at end of string
             r = r.replaceAll("<[^>]*$", "");
             return r;
         }

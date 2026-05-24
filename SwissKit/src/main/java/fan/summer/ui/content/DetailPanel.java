@@ -3,6 +3,9 @@ package fan.summer.ui.content;
 import fan.summer.api.MdiIconUtil;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
+import fan.summer.api.i18n.I18n;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import javafx.animation.Interpolator;
 import javafx.animation.KeyFrame;
 import javafx.animation.KeyValue;
@@ -20,10 +23,21 @@ import javafx.util.Duration;
 import java.util.function.Consumer;
 
 /**
- * Tool detail panel, slides in from right.
- * show(plugin) fills data and expands; hide() collapses.
+ * Slide-in detail panel shown on the right side of the ContentArea when a
+ * tool card is selected. Displays the plugin's icon, name, version, type,
+ * category, and description, with a Launch button to activate the tool.
+ * <p>
+ * The panel is initially parked offscreen to the right and animates in
+ * via {@link #slideIn()}; calling {@link #hide()} triggers the reverse
+ * animation and then hides the panel.
+ *
+ * @see ToolCard
+ * @see ContentArea
+ * @since 1.0
  */
 public class DetailPanel extends VBox {
+
+    private static final Logger LOG = LoggerFactory.getLogger(DetailPanel.class);
 
     private static final double PANEL_WIDTH = 260;
 
@@ -35,7 +49,7 @@ public class DetailPanel extends VBox {
     private final Label   versionVal  = new Label();
     private final Label   typeVal     = new Label();
     private final Label   categoryVal = new Label();
-    private final Button  launchBtn  = new Button("Launch Tool");
+    private final Button  launchBtn  = new Button(I18n.get("detail.btn.launch"));
     private final Button  closeBtn   = new Button("✕");
 
     private Consumer<SwissKitJPlugin> onLaunch;
@@ -43,6 +57,7 @@ public class DetailPanel extends VBox {
     private boolean    panelOpen = false;
 
     public DetailPanel() {
+        LOG.info("DetailPanel initializing");
         getStyleClass().add("detail-panel");
         setPrefWidth(PANEL_WIDTH);
         setMinWidth(PANEL_WIDTH);
@@ -52,19 +67,44 @@ public class DetailPanel extends VBox {
 
         buildUI();
         setVisible(false);
+
+        I18n.addListener(() -> {
+            if (panelOpen && currentPlugin != null) {
+                fillData(currentPlugin);
+                launchBtn.setText(I18n.get("detail.btn.launch"));
+            }
+        });
+        LOG.info("DetailPanel initialized");
     }
 
+    /**
+     * Sets the consumer to invoke when the user clicks the Launch button.
+     *
+     * @param handler the consumer that receives the currently displayed plugin
+     */
     public void setOnLaunch(Consumer<SwissKitJPlugin> handler) {
+        LOG.debug("setOnLaunch callback set");
         this.onLaunch = handler;
     }
 
+    /**
+     * Displays the detail panel for the given plugin, populating all fields
+     * and animating the panel into view if it is currently hidden.
+     *
+     * @param plugin the plugin to display; must not be null
+     */
     public void show(SwissKitJPlugin plugin) {
+        LOG.info("Showing detail panel for plugin: name={}, id={}", plugin.getName(), plugin.getId());
         this.currentPlugin = plugin;
         fillData(plugin);
         if (!panelOpen) slideIn();
     }
 
+    /**
+     * Hides the detail panel, animating it back offscreen to the right.
+     */
     public void hide() {
+        LOG.info("Hiding detail panel");
         if (panelOpen) slideOut();
     }
 
@@ -106,9 +146,9 @@ public class DetailPanel extends VBox {
         topRow.setAlignment(Pos.CENTER_RIGHT);
 
         VBox propsBox = new VBox(6,
-            propRow("Version",   versionVal),
-            propRow("Type",      typeVal),
-            propRow("Category",  categoryVal)
+            propRow(I18n.get("detail.prop.version"),   versionVal),
+            propRow(I18n.get("detail.prop.type"),      typeVal),
+            propRow(I18n.get("detail.prop.category"),  categoryVal)
         );
         VBox.setMargin(propsBox, new Insets(12, 0, 0, 0));
 
@@ -161,15 +201,16 @@ public class DetailPanel extends VBox {
 
     private String categoryName(ToolCategory cat) {
         return switch (cat) {
-            case DEV   -> "Developer Tools";
-            case TEXT  -> "Text Processing";
-            case IMAGE -> "Image Processing";
-            case NET   -> "Network Tools";
-            default    -> "Other Tools";
+            case DEV   -> I18n.get("detail.category.dev");
+            case TEXT  -> I18n.get("detail.category.text");
+            case IMAGE -> I18n.get("detail.category.image");
+            case NET   -> I18n.get("detail.category.net");
+            default    -> I18n.get("detail.category.other");
         };
     }
 
     private void slideIn() {
+        LOG.debug("Slide-in animation starting");
         panelOpen = true;
         setVisible(true);
 
@@ -189,6 +230,7 @@ public class DetailPanel extends VBox {
     }
 
     private void slideOut() {
+        LOG.debug("Slide-out animation starting");
         panelOpen = false;
         Timeline tl = new Timeline(
             new KeyFrame(Duration.ZERO,

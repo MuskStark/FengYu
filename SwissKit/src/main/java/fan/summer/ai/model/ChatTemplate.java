@@ -1,6 +1,8 @@
 package fan.summer.ai.model;
 
 import fan.summer.api.ai.AiChatMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
@@ -9,6 +11,8 @@ import java.util.List;
  * Detects template format from GGUF metadata.
  */
 public class ChatTemplate {
+
+    private static final Logger log = LoggerFactory.getLogger(ChatTemplate.class);
 
     public enum TemplateType { LLAMA3, CHATML, MISTRAL, GEMMA, GENERIC }
 
@@ -47,6 +51,7 @@ public class ChatTemplate {
             eosToken = "<|im_end|>";
             bosToken = "";
         }
+        log.info("ChatTemplate created: type={}, eosToken={}, bosToken={}", type, eosToken, bosToken);
     }
 
     public TemplateType getType() { return type; }
@@ -58,6 +63,8 @@ public class ChatTemplate {
      * Build the full prompt string from chat history.
      */
     public String buildPrompt(List<AiChatMessage> history, String systemPrompt) {
+        log.debug("buildPrompt: historySize={}, systemPromptLength={}", history.size(),
+                  systemPrompt != null ? systemPrompt.length() : 0);
         return switch (type) {
             case LLAMA3 -> buildLlama3(history, systemPrompt);
             case CHATML -> buildChatML(history, systemPrompt);

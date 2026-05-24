@@ -10,4 +10,5 @@ public class EmailMassSentConfigEntity {
     private String ccTag;
     private boolean isSentAtt;
     private String attFolderPath;
+    private boolean sendByFilename;
 }

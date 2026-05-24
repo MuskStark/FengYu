@@ -20,12 +20,14 @@ permissions:
 jobs:
   # ==========================================================================
   # Setup — resolve version strings once, shared by all downstream jobs
+  #   version:     full version string (e.g. "3.0.0-alpha.2") — for JAR/zip names
+  #   app_version: numeric-only version (e.g. "3.0.0") — for jpackage/Info.plist
   # ==========================================================================
   setup:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.resolve.outputs.version }}
-      full_tag: ${{ steps.resolve.outputs.full_tag }}
+      app_version: ${{ steps.resolve.outputs.app_version }}
       raw_tag: ${{ steps.resolve.outputs.raw_tag }}
       prerelease: ${{ steps.resolve.outputs.prerelease }}
     steps:
@@ -33,18 +35,18 @@ jobs:
         id: resolve
         run: |
           RAW="${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }}"
-          FULL_TAG="${RAW#v}"
-          VERSION=$(echo "$FULL_TAG" | sed 's/-.*//')
-          if [[ "$FULL_TAG" == *"-alpha."* || "$FULL_TAG" == *"-beta."* || "$FULL_TAG" == *"-rc."* ]]; then
+          VERSION="${RAW#v}"
+          APP_VERSION=$(echo "$VERSION" | sed 's/-.*//')
+          if [[ "$VERSION" == *"-alpha."* || "$VERSION" == *"-beta."* || "$VERSION" == *"-rc."* ]]; then
             PRERELEASE=true
           else
             PRERELEASE=false
           fi
-          echo "raw_tag=${RAW}"           >> "$GITHUB_OUTPUT"
-          echo "full_tag=${FULL_TAG}"     >> "$GITHUB_OUTPUT"
-          echo "version=${VERSION}"       >> "$GITHUB_OUTPUT"
-          echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
-          echo "RAW_TAG=${RAW}  FULL_TAG=${FULL_TAG}  VERSION=${VERSION}  PRERELEASE=${PRERELEASE}"
+          echo "raw_tag=${RAW}"              >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}"          >> "$GITHUB_OUTPUT"
+          echo "app_version=${APP_VERSION}"  >> "$GITHUB_OUTPUT"
+          echo "prerelease=${PRERELEASE}"    >> "$GITHUB_OUTPUT"
+          echo "RAW_TAG=${RAW}  VERSION=${VERSION}  APP_VERSION=${APP_VERSION}  PRERELEASE=${PRERELEASE}"
 
   # ==========================================================================
   # Windows — two packages:
@@ -56,6 +58,7 @@ jobs:
     runs-on: windows-latest
     env:
       VERSION: ${{ needs.setup.outputs.version }}
+      APP_VERSION: ${{ needs.setup.outputs.app_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -71,18 +74,21 @@ jobs:
 
       - name: Install SwissKitJ-Api to local repository
         shell: pwsh
-        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests "-Dproject.version=$env:VERSION"
+        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 
       - name: Build with Maven (shade JAR + Launch4j exe)
         shell: pwsh
-        run: mvn clean package -DskipTests "-Dproject.version=$env:VERSION" -pl SwissKit -am
+        run: mvn clean package -DskipTests -f SwissKit/pom.xml
 
       # --- Without JRE: Launch4j .exe + fat JAR ---
       - name: Package Windows (without JRE)
         shell: pwsh
         run: |
-          $jarFile = Get-ChildItem -Path SwissKit\target -Filter "SwissKitJ-*.jar" | Select-Object -First 1
-          if (-not $jarFile) { throw "No SwissKitJ-*.jar found in SwissKit\target\" }
+          $jarFile = Get-ChildItem SwissKit\target -Filter "SwissKitJ-*.jar" | Select-Object -First 1
+          if (-not $jarFile) {
+            Write-Error "ERROR: No SwissKitJ-*.jar found in SwissKit\target\"
+            exit 1
+          }
           New-Item -ItemType Directory -Force -Path release\SwissKitJ | Out-Null
           Move-Item SwissKit\target\SwissKit.exe release\SwissKitJ\SwissKitJ.exe -Force
           Copy-Item $jarFile.FullName release\SwissKitJ\
@@ -94,8 +100,11 @@ jobs:
       - name: Package Windows (with JRE)
         shell: pwsh
         run: |
-          $jarFile = Get-ChildItem -Path SwissKit\target -Filter "SwissKitJ-*.jar" | Select-Object -First 1
-          if (-not $jarFile) { throw "No SwissKitJ-*.jar found in SwissKit\target\" }
+          $jarFile = Get-ChildItem SwissKit\target -Filter "SwissKitJ-*.jar" | Select-Object -First 1
+          if (-not $jarFile) {
+            Write-Error "ERROR: No SwissKitJ-*.jar found in SwissKit\target\"
+            exit 1
+          }
           $jarName = $jarFile.Name
           $inputDir = "release\jpackage-input"
           New-Item -ItemType Directory -Force -Path $inputDir | Out-Null
@@ -110,7 +119,7 @@ jobs:
             --java-options "-Xms64m -Xmx512m" `
             --icon SwissKit\src\main\resources\icons\SwissKit.ico `
             --vendor "SwissKit" `
-            --app-version "$env:VERSION"
+            --app-version "$env:APP_VERSION"
 
           Compress-Archive -Path release\with-jre\SwissKitJ `
             -DestinationPath "release\SwissKitJ-$env:VERSION-windows-x64-jre.zip" -Force
@@ -135,6 +144,7 @@ jobs:
     runs-on: macos-latest
     env:
       VERSION: ${{ needs.setup.outputs.version }}
+      APP_VERSION: ${{ needs.setup.outputs.app_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -149,10 +159,10 @@ jobs:
           cache: maven
 
       - name: Install SwissKitJ-Api to local repository
-        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests -Dproject.version=$VERSION
+        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 
       - name: Build fat JAR
-        run: mvn clean package -DskipTests -Dproject.version=$VERSION -pl SwissKit -am
+        run: mvn clean package -DskipTests -f SwissKit/pom.xml
 
       # --- Without JRE: hand-crafted .app bundle with shell launcher ---
       - name: Create .app skeleton (without JRE)
@@ -211,11 +221,9 @@ jobs:
           printf '%s\n' '  <key>CFBundleIdentifier</key>'                                        >> "$INFO"
           printf '%s\n' '  <string>com.muskstark.swisskit</string>'                              >> "$INFO"
           printf '%s\n' '  <key>CFBundleVersion</key>'                                           >> "$INFO"
-          printf '%s'   '  <string>'                                                              >> "$INFO"
-          printf '%s\n' "${VERSION}"'</string>'                                                   >> "$INFO"
+          printf '%s\n' "  <string>${APP_VERSION}</string>"                                      >> "$INFO"
           printf '%s\n' '  <key>CFBundleShortVersionString</key>'                                >> "$INFO"
-          printf '%s'   '  <string>'                                                              >> "$INFO"
-          printf '%s\n' "${VERSION}"'</string>'                                                   >> "$INFO"
+          printf '%s\n' "  <string>${APP_VERSION}</string>"                                      >> "$INFO"
           printf '%s\n' '  <key>CFBundlePackageType</key>'                                       >> "$INFO"
           printf '%s\n' '  <string>APPL</string>'                                                >> "$INFO"
           printf '%s\n' '  <key>CFBundleExecutable</key>'                                        >> "$INFO"
@@ -257,7 +265,7 @@ jobs:
             --java-options "-Xms64m -Xmx512m" \
             --icon SwissKit/src/main/resources/icons/SwissKit.icns \
             --vendor "SwissKit" \
-            --app-version "${VERSION}" \
+            --app-version "${APP_VERSION}" \
             --mac-package-identifier com.muskstark.swisskit
 
           cd release/with-jre
@@ -277,14 +285,16 @@ jobs:
   # Linux — four artifacts:
   #   1. SwissKitJ-{ver}-linux-x64.zip         (no JRE, shell launcher)
   #   2. SwissKitJ-{ver}-linux-x64-jre.zip     (with bundled JRE, jpackage)
-  #   3. SwissKitJ-UOS-{ver}.zip               (UOS with JRE + .desktop)
-  #   4. SwissKitJ-{ver}.jar                   (fat JAR, cross-platform)
+  #   3. SwissKitJ-UOS-{ver}-jre.zip           (UOS with JRE + .desktop)
+  #   4. SwissKitJ-UOS-{ver}-nojre.zip         (UOS without JRE + .desktop)
+  #   5. SwissKitJ-{ver}.jar                   (fat JAR, cross-platform)
   # ==========================================================================
   build-linux:
     needs: setup
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.setup.outputs.version }}
+      APP_VERSION: ${{ needs.setup.outputs.app_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -299,10 +309,10 @@ jobs:
           cache: maven
 
       - name: Install SwissKitJ-Api to local repository
-        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests -Dproject.version=$VERSION
+        run: mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 
       - name: Build fat JAR
-        run: mvn clean package -DskipTests -Dproject.version=$VERSION -pl SwissKit -am
+        run: mvn clean package -DskipTests -f SwissKit/pom.xml
 
       # --- Without JRE: fat JAR + shell scripts ---
       - name: Assemble Linux package (without JRE)
@@ -363,7 +373,7 @@ jobs:
             --java-options "-Xms64m -Xmx512m" \
             --icon SwissKit/src/main/resources/icons/icon-256.png \
             --vendor "SwissKit" \
-            --app-version "${VERSION}"
+            --app-version "${APP_VERSION}"
 
           cd release/with-jre
           zip -r "../SwissKitJ-${VERSION}-linux-x64-jre.zip" SwissKitJ
@@ -389,7 +399,7 @@ jobs:
             --java-options "-Xms64m -Xmx512m" \
             --icon SwissKit/src/main/resources/icons/icon-256.png \
             --vendor "SwissKit" \
-            --app-version "${VERSION}"
+            --app-version "${APP_VERSION}"
 
           cp SwissKit/src/main/resources/icons/icon-256.png release/uos-jre/SwissKitJ-UOS/swisskit.png
           cp README.md release/uos-jre/SwissKitJ-UOS/
@@ -540,7 +550,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.setup.outputs.version }}
-      FULL_TAG: ${{ needs.setup.outputs.full_tag }}
       RAW_TAG: ${{ needs.setup.outputs.raw_tag }}
       PRERELEASE: ${{ needs.setup.outputs.prerelease }}
     steps:
@@ -577,9 +586,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RAW_TAG }}
-          name: SwissKitJ ${{ env.FULL_TAG }}${{ steps.prerelease.outputs.label }}
+          name: SwissKitJ ${{ env.VERSION }}${{ steps.prerelease.outputs.label }}
           body: |
-            ## SwissKitJ ${{ env.FULL_TAG }}${{ steps.prerelease.outputs.label }}
+            ## SwissKitJ ${{ env.VERSION }}${{ steps.prerelease.outputs.label }}
 
             ${{ steps.prerelease.outputs.warning }}
 

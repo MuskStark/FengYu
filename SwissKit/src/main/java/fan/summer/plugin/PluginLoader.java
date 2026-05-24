@@ -1,6 +1,7 @@
 package fan.summer.plugin;
 
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.i18n.I18n;
 import javafx.application.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,14 +13,44 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Scans a plugins/ directory for JAR files, loads SwissKitJPlugin implementations
- * via ServiceLoader, and watches for hot-reload on file changes.
+ * Scans a plugins/ directory for JAR files, loads {@link SwissKitJPlugin} implementations
+ * via {@link ServiceLoader}, and watches for hot-reload on file changes.
+ *
+ * <p>This class is responsible for discovering external plugins packaged as JAR files
+ * in the configured plugins directory. Each JAR is loaded via a dedicated
+ * {@link URLClassLoader} to allow proper unloading on JAR removal. Plugin discovery
+ * uses the Java ServiceLoader mechanism, expecting implementations of
+ * {@code fan.summer.api.SwissKitJPlugin} to be declared in
+ * {@code META-INF/services/fan.summer.api.SwissKitJPlugin} within the JAR.</p>
+ *
+ * <p>After startup, a {@link WatchService} is registered on the plugins directory to
+ * detect {@code ENTRY_CREATE}, {@code ENTRY_DELETE}, and {@code ENTRY_MODIFY} events.
+ * New or modified JARs trigger (re)loading; deleted JARs trigger unloading.
+ * All registry updates are pushed onto the JavaFX Application Thread via
+ * {@link Platform#runLater} to ensure thread safety with the UI.</p>
+ *
+ * <p>This class is thread-safe and designed to be operated from a single {@code start()}
+ * / {@code stop()} lifecycle. The actual plugins directory is resolved via
+ * {@link #resolvePluginsDir()}; callers may pass any directory to the constructor
+ * to override the default location.</p>
+ *
+ * @see PluginRegistry
+ * @see SwissKitJPlugin
+ * @since 1.0
  */
 public class PluginLoader {
 
     private static final Logger log = LoggerFactory.getLogger(PluginLoader.class);
 
-    /** Centralized plugin directory: .swisskit/plugin/ under the working directory */
+    /**
+     * Returns the canonical plugin directory path resolved from the current working directory.
+     *
+     * <p>The path is {@code <user.dir>/.swisskit/plugin/}, created automatically on first scan
+     * if it does not yet exist.</p>
+     *
+     * @return the absolute path to the plugins directory
+     * @since 1.0
+     */
     public static Path resolvePluginsDir() {
         return Path.of(System.getProperty("user.dir"), ".swisskit", "plugin");
     }
@@ -36,6 +67,13 @@ public class PluginLoader {
     /** Maps JAR path → plugins loaded from that JAR */
     private final Map<Path, List<SwissKitJPlugin>> jarPlugins = new LinkedHashMap<>();
 
+    /**
+     * Constructs a PluginLoader that will scan the given directory for plugin JARs.
+     *
+     * @param pluginsDir the directory to scan for JAR files; may be any directory,
+     *                    not necessarily the one returned by {@link #resolvePluginsDir()}
+     * @since 1.0
+     */
     public PluginLoader(Path pluginsDir) {
         this.pluginsDir = pluginsDir;
     }
@@ -47,6 +85,17 @@ public class PluginLoader {
 
     // ── Lifecycle ────────────────────────────────────────────────
 
+    /**
+     * Starts the plugin loader: creates the plugins directory if absent,
+     * performs an initial scan of all existing JARs, and starts the directory watcher
+     * for hot-reload events.
+     *
+     * <p>This method is idempotent: calling it when the loader is already running
+     * is a no-op. This method must be called before {@link #stop()}.</p>
+     *
+     * @see #stop()
+     * @since 1.0
+     */
     public void start() {
         if (!running.compareAndSet(false, true)) {
             log.debug("PluginLoader already running, ignoring duplicate start()");
@@ -85,6 +134,16 @@ public class PluginLoader {
         }
     }
 
+    /**
+     * Stops the plugin loader: interrupts the directory watcher, unloads all loaded
+     * plugin JARs, and releases resources.
+     *
+     * <p>After this method returns all plugins previously loaded from JARs will have
+     * been unloaded via {@link #unloadJar(Path)}. This method is idempotent.</p>
+     *
+     * @see #start()
+     * @since 1.0
+     */
     public void stop() {
         log.info("Stopping plugin loader");
         running.set(false);
@@ -147,6 +206,16 @@ public class PluginLoader {
             openLoaders.put(jar, cl);
             jarPlugins.put(jar, loaded);
 
+            // Register plugin i18n bundle if present
+            try {
+                if (cl.getResource("i18n/messages.properties") != null) {
+                    I18n.registerPluginBundle("i18n.messages", cl);
+                    log.debug("Registered i18n bundle for plugin: {}", jar.getFileName());
+                }
+            } catch (Exception e) {
+                log.debug("No i18n bundle found for plugin: {}", jar.getFileName());
+            }
+
             if (registry != null) {
                 Platform.runLater(() -> registry.addPlugins(loaded));
             }
@@ -166,6 +235,7 @@ public class PluginLoader {
 
         URLClassLoader cl = openLoaders.remove(jar);
         if (cl != null) {
+            I18n.unregisterPluginBundle(cl);
             try {
                 cl.close();
             } catch (IOException e) {

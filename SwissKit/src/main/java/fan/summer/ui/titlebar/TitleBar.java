@@ -1,5 +1,8 @@
 package fan.summer.ui.titlebar;
 
+import fan.summer.api.i18n.I18n;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
@@ -11,15 +14,27 @@ import javafx.scene.layout.StackPane;
 import javafx.stage.Stage;
 
 /**
- * Custom macOS-style title bar.
- * Contains: traffic light buttons / centered title / right-side action buttons.
- * Supports dragging to move window.
+ * Custom macOS-style title bar for the main window.
+ * Contains the traffic-light window controls (close/minimize/maximize),
+ * a centered application title, and an optional settings button on the right.
+ * The entire bar supports window dragging to reposition the stage.
+ *
+ * @since 1.0
  */
 public class TitleBar extends HBox {
 
+    private static final Logger LOG = LoggerFactory.getLogger(TitleBar.class);
+
     private double dragOffsetX, dragOffsetY;
 
+    /**
+     * Constructs the title bar with the given stage and optional settings callback.
+     *
+     * @param stage      the JavaFX Stage to control with traffic lights and dragging
+     * @param onSettings runnable to execute when the settings button is clicked; may be null
+     */
     public TitleBar(Stage stage, Runnable onSettings) {
+        LOG.info("TitleBar initializing with stage");
         getStyleClass().add("titlebar");
         setAlignment(Pos.CENTER_LEFT);
         setPrefHeight(48);
@@ -41,7 +56,10 @@ public class TitleBar extends HBox {
         HBox actions = new HBox(4);
         actions.setAlignment(Pos.CENTER_RIGHT);
         if (onSettings != null) {
-            Button settingsBtn = titlebarBtn("⚙", "Settings", onSettings);
+            Button settingsBtn = titlebarBtn("⚙", I18n.get("titlebar.tooltip.settings"), () -> {
+                LOG.info("Settings button clicked");
+                onSettings.run();
+            });
             actions.getChildren().add(settingsBtn);
         }
 
@@ -56,18 +74,35 @@ public class TitleBar extends HBox {
             stage.setX(e.getScreenX() - dragOffsetX);
             stage.setY(e.getScreenY() - dragOffsetY);
         });
+        LOG.info("TitleBar initialized");
     }
 
     // ── Traffic lights ────────────────────────────────────────────
 
+    /**
+     * Builds the macOS-style traffic light buttons (close, minimize, maximize)
+     * and wires their actions to the given stage.
+     *
+     * @param stage the JavaFX Stage to control
+     * @return an HBox containing the three styled traffic light buttons
+     */
     private HBox buildTrafficLights(Stage stage) {
         Button close    = trafficLight("traffic-light-close", "✕");
         Button minimize = trafficLight("traffic-light-min", "−");
         Button maximize = trafficLight("traffic-light-max", "+");
 
-        close.setOnAction(e -> stage.close());
-        minimize.setOnAction(e -> stage.setIconified(true));
-        maximize.setOnAction(e -> stage.setMaximized(!stage.isMaximized()));
+        close.setOnAction(e -> {
+            LOG.info("Close button clicked");
+            stage.close();
+        });
+        minimize.setOnAction(e -> {
+            LOG.debug("Minimize button clicked");
+            stage.setIconified(true);
+        });
+        maximize.setOnAction(e -> {
+            LOG.debug("Maximize button clicked, current state: {}", stage.isMaximized());
+            stage.setMaximized(!stage.isMaximized());
+        });
 
         HBox box = new HBox(8, close, minimize, maximize);
         box.setAlignment(Pos.CENTER_LEFT);
@@ -81,6 +116,15 @@ public class TitleBar extends HBox {
         return box;
     }
 
+    /**
+     * Creates a single traffic light button with the given CSS class and icon.
+     * The icon is initially hidden and only appears on hover.
+     *
+     * @param colorClass  the CSS class determining the button's color ({@code "traffic-light-close"},
+     *                    {@code "traffic-light-min"}, {@code "traffic-light-max"})
+     * @param iconText    the unicode character to display as the icon (e.g. {@code "✕"})
+     * @return a styled Button ready to be placed in the traffic light row
+     */
     private Button trafficLight(String colorClass, String iconText) {
         Label icon = new Label(iconText);
         icon.setStyle(

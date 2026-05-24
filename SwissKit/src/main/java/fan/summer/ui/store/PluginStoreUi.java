@@ -1,6 +1,9 @@
 package fan.summer.ui.store;
 
+import fan.summer.api.i18n.I18n;
 import fan.summer.ui.sidebar.Sidebar.NavItem;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.layout.HBox;
@@ -10,14 +13,33 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 
 /**
- * Plugin Store UI — sidebar menu with Online Store and Local Install sections.
+ * Plugin Store UI container that combines Online Store and Local Install panes
+ * in a sidebar-content layout. The sidebar allows switching between the two modes.
+ * <p>
+ * The view is built lazily on first access and cached for the lifetime of the session.
+ *
+ * @see OnlineStorePane
+ * @see LocalInstallPane
+ * @since 1.0
  */
 public class PluginStoreUi {
 
+    private static final Logger LOG = LoggerFactory.getLogger(PluginStoreUi.class);
+
     private static Node view;
 
+    /**
+     * Builds (or returns the cached) plugin store UI containing the sidebar
+     * and both the online store and local install content panes.
+     *
+     * @return the root Node of the plugin store UI
+     */
     public static Node build() {
-        if (view != null) return view;
+        if (view != null) {
+            LOG.info("Returning cached PluginStoreUi view");
+            return view;
+        }
+        LOG.info("Building new PluginStoreUi view");
 
         // ── Content pages ──────────────────────────────────
         Node onlinePage = new OnlineStorePane(null);
@@ -26,18 +48,23 @@ public class PluginStoreUi {
         StackPane contentStack = new StackPane(onlinePage, localPage);
         contentStack.setStyle("-fx-background-color: transparent;");
         localPage.setVisible(false);
+        localPage.setManaged(false);
 
-        // ── Sidebar ────────────────────────────────────────
+        // ── Sidebar (inline-styled to avoid CSS .sidebar width conflicts) ──
         VBox sidebar = new VBox();
-        sidebar.getStyleClass().add("sidebar");
         sidebar.setPrefWidth(180);
         sidebar.setMinWidth(160);
         sidebar.setMaxWidth(200);
+        sidebar.setStyle(
+            "-fx-background-color: rgba(255,255,255,0.022);" +
+            "-fx-border-color: rgba(255,255,255,0.10);" +
+            "-fx-border-width: 0 1 0 0;"
+        );
 
-        sidebar.getChildren().add(sidebarSectionLabel("STORE"));
+        sidebar.getChildren().add(sidebarSectionLabel(I18n.get("store.section")));
 
-        NavItem onlineNav = new NavItem("online", "🌐", "Online Store", 0, false);
-        NavItem localNav  = new NavItem("local",  "📦", "Local Install", 0, false);
+        NavItem onlineNav = new NavItem("online", "🌐", I18n.get("store.nav.online"), 0, false);
+        NavItem localNav  = new NavItem("local",  "📦", I18n.get("store.nav.local"), 0, false);
 
         onlineNav.setActive(true);
         sidebar.getChildren().addAll(onlineNav, localNav);
@@ -53,25 +80,36 @@ public class PluginStoreUi {
         for (int i = 0; i < items.length; i++) {
             final int idx = i;
             items[i].setOnMouseClicked(e -> {
-                for (NavItem ni : items) ni.setActive(false);
-                for (Node p : pages) p.setVisible(false);
-                items[idx].setActive(true);
-                pages[idx].setVisible(true);
+                LOG.info("PluginStore nav switched to index: {}", idx);
+                for (int j = 0; j < items.length; j++) {
+                    items[j].setActive(j == idx);
+                    pages[j].setVisible(j == idx);
+                    pages[j].setManaged(j == idx);
+                }
             });
         }
 
         // ── Layout ─────────────────────────────────────────
         HBox body = new HBox(sidebar, contentStack);
         HBox.setHgrow(contentStack, Priority.ALWAYS);
+        body.setMinWidth(0);
 
         VBox container = new VBox(body);
         container.setStyle("-fx-background-color: transparent; -fx-padding: 0;");
+        container.setMinWidth(0);
         VBox.setVgrow(body, Priority.ALWAYS);
 
         view = container;
+        LOG.info("PluginStoreUi view built and cached");
         return view;
     }
 
+    /**
+     * Creates a section label styled as uppercase text for use in the sidebar.
+     *
+     * @param text the label text to display (will be uppercased)
+     * @return a styled Label node
+     */
     private static Label sidebarSectionLabel(String text) {
         Label l = new Label(text.toUpperCase());
         l.getStyleClass().add("sidebar-section-label");
