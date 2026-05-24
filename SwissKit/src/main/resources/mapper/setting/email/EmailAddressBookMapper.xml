@@ -25,4 +25,14 @@
         select *
         from email_address_book
     </select>
+
+    <!-- Delete address book entry by id -->
+    <delete id="deleteById" parameterType="int">
+        DELETE FROM email_address_book WHERE id = #{id}
+    </delete>
+
+    <!-- Count contacts that reference a specific tag ID -->
+    <select id="countByTagId" parameterType="long" resultType="int">
+        SELECT COUNT(*) FROM email_address_book WHERE tags LIKE CONCAT('%', #{tagId}, '%')
+    </select>
 </mapper>
