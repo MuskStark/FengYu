@@ -1,5 +1,7 @@
 package fan.summer.buildintool.email;
 
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -26,10 +28,13 @@ import netscape.javascript.JSObject;
  */
 public class RichTextEditor extends VBox {
 
+    private static final PluginLogger log = LoggerFactory.getLogger(RichTextEditor.class);
+
     private final WebView webView;
     private boolean ready = false;
 
     public RichTextEditor() {
+        log.debug("Initializing RichTextEditor");
         setSpacing(6);
         setStyle("-fx-background-color: transparent;");
 
@@ -50,6 +55,7 @@ public class RichTextEditor extends VBox {
 
         webView.getEngine().getLoadWorker().stateProperty().addListener((obs, oldS, newS) -> {
             if (newS == javafx.concurrent.Worker.State.SUCCEEDED) {
+                log.debug("RichTextEditor WebView loaded successfully");
                 ready = true;
             }
         });
@@ -164,7 +170,11 @@ public class RichTextEditor extends VBox {
     }
 
     private void exec(String command, String value) {
-        if (!ready) return;
+        if (!ready) {
+            log.warn("exec called but editor not ready, command={}", command);
+            return;
+        }
+        log.debug("Executing editor command: {} with value: {}", command, value);
         String js;
         if (value == null) {
             js = "applyCommand('" + command + "', null);";
@@ -173,7 +183,8 @@ public class RichTextEditor extends VBox {
         }
         try {
             webView.getEngine().executeScript(js);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.error("Failed to execute editor command {}: {}", command, e.getMessage());
         }
     }
 
@@ -193,11 +204,15 @@ public class RichTextEditor extends VBox {
      * loading yet, returns an empty string.
      */
     public String getHtml() {
-        if (!ready) return "";
+        if (!ready) {
+            log.debug("getHtml called but editor not ready, returning empty string");
+            return "";
+        }
         try {
             Object result = webView.getEngine().executeScript("document.getElementById('editor').innerHTML");
             return result != null ? result.toString() : "";
         } catch (Exception e) {
+            log.error("Failed to get HTML from editor: {}", e.getMessage());
             return "";
         }
     }
@@ -206,11 +221,15 @@ public class RichTextEditor extends VBox {
      * Returns the editor's plain-text content (with newlines preserved between blocks).
      */
     public String getPlainText() {
-        if (!ready) return "";
+        if (!ready) {
+            log.debug("getPlainText called but editor not ready, returning empty string");
+            return "";
+        }
         try {
             Object result = webView.getEngine().executeScript("document.getElementById('editor').innerText");
             return result != null ? result.toString() : "";
         } catch (Exception e) {
+            log.error("Failed to get plain text from editor: {}", e.getMessage());
             return "";
         }
     }
@@ -221,12 +240,15 @@ public class RichTextEditor extends VBox {
      */
     public void setHtml(String html) {
         String safe = html == null ? "" : html;
+        log.debug("Setting editor HTML content ({} chars)", safe.length());
         Runnable apply = () -> {
             try {
                 JSObject window = (JSObject) webView.getEngine().executeScript("window");
                 window.setMember("__incomingHtml", safe);
                 webView.getEngine().executeScript("document.getElementById('editor').innerHTML = window.__incomingHtml;");
-            } catch (Exception ignored) {
+                log.debug("HTML content applied successfully");
+            } catch (Exception e) {
+                log.error("Failed to set HTML content: {}", e.getMessage());
             }
         };
         if (ready) {
