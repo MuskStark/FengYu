@@ -1,8 +1,8 @@
 package fan.summer.api.ai;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
 /**
@@ -24,7 +24,7 @@ import java.util.function.Consumer;
 public final class AiServiceProvider {
 
     private static volatile AiService instance;
-    private static final List<Runnable> stateChangeListeners = new ArrayList<>();
+    private static final List<Runnable> stateChangeListeners = new CopyOnWriteArrayList<>();
 
     private AiServiceProvider() {}
 

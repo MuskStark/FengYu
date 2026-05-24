@@ -2,10 +2,22 @@ package fan.summer.api.log;
 
 /**
  * Fallback {@link LoggerBinder} used when the host has not yet installed a real one.
- * All log calls are silent. Useful for plugin unit tests and standalone tooling.
+ *
+ * <p>This binder is the default in {@link LoggerFactory} and is silently substituted
+ * whenever {@link LoggerBinder#bind(LoggerBinder)} is called with {@code null}.
+ * All log calls are discarded without any side effects.</p>
+ *
+ * <p>This makes plugin code safe to execute in isolation — for example, in unit tests
+ * or when a plugin JAR is loaded outside the host application — without requiring
+ * any real logging infrastructure to be present on the classpath.</p>
+ *
+ * @see LoggerBinder
+ * @see LoggerFactory
+ * @since 1.0
  */
 final class NoOpLoggerBinder implements LoggerBinder {
 
+    /** The singleton instance used directly by {@link LoggerFactory}. */
     static final NoOpLoggerBinder INSTANCE = new NoOpLoggerBinder();
 
     private NoOpLoggerBinder() {
@@ -16,6 +28,10 @@ final class NoOpLoggerBinder implements LoggerBinder {
         return new NoOpLogger(name);
     }
 
+    /**
+     * A no-op logger that discards all log events.
+     * All level checks return {@code false} and all log methods are no-ops.
+     */
     private static final class NoOpLogger implements PluginLogger {
         private final String name;
 

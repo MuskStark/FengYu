@@ -7,8 +7,25 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Utility for rendering Material Design Icons in JavaFX.
- * Font file: resources/fonts/materialdesignicons-webfont.ttf
+ * Utility class for rendering Material Design Icons (MDI) glyphs in JavaFX.
+ *
+ * <p>This class maps icon names (e.g. {@code "file-excel"}) to their Unicode
+ * codepoints in the <b>Material Design Icons</b> webfont
+ * ({@code materialdesignicons-webfont.ttf}, bundled as a classpath resource at
+ * {@code /fonts/}).</p>
+ *
+ * <p>The font must be loaded at runtime via {@link Font#loadFont(InputStream, double)}
+ * so that JavaFX can render the glyphs. The {@link #ensureFontLoaded()} method
+ * handles this lazily on first use; the public {@code createIcon} methods call it
+ * automatically.</p>
+ *
+ * <p>Example usage:
+ * {@code
+ * Text icon = MdiIconUtil.createIcon("file-excel", 24.0);
+ * icon.setStyle("-fx-fill: #4CAF50;");
+ * }
+ *
+ * @see <a href="https://pictogrammers.com/library/mdi/">Material Design Icons — Pictogrammers</a>
  */
 public class MdiIconUtil {
 
@@ -766,6 +783,11 @@ public class MdiIconUtil {
         CODEMAP.putAll(Map.of("zodiac-leo", "\uDB82\uDE82", "zodiac-libra", "\uDB82\uDE83", "zodiac-pisces", "\uDB82\uDE84", "zodiac-sagittarius", "\uDB82\uDE85", "zodiac-scorpio", "\uDB82\uDE86", "zodiac-taurus", "\uDB82\uDE87", "zodiac-virgo", "\uDB82\uDE88", "blank", "\uF68C"));
     }
 
+    /**
+     * Loads the MDI webfont into the JavaFX font cache if it has not already been loaded.
+     * Idempotent and safe to call repeatedly. Called automatically by the
+     * {@code createIcon} methods, but may be invoked eagerly to avoid latency on first use.
+     */
     public static synchronized void ensureFontLoaded() {
         if (fontLoaded) return;
         try {
@@ -803,10 +825,31 @@ public class MdiIconUtil {
         }
     }
 
+    /**
+     * Creates a JavaFX {@link Text} node rendering the named MDI icon at the given size,
+     * with a default white fill and no additional styling.
+     *
+     * @param iconName the icon name from the MDI library, e.g. {@code "file-excel"}
+     * @param size     the font size in logical pixels (used both for the glyph and the DropShadow blur radius)
+     * @return a {@code Text} node with the icon glyph; falls back to the {@code "star"} icon
+     *         if the name is not found
+     * @see #createIcon(String, double, String)
+     */
     public static Text createIcon(String iconName, double size) {
         return createIcon(iconName, size, null);
     }
 
+    /**
+     * Creates a JavaFX {@link Text} node rendering the named MDI icon at the given size,
+     * with optional additional inline CSS applied to the {@code Text} node.
+     *
+     * @param iconName   the icon name from the MDI library, e.g. {@code "folder-open"}
+     * @param size       the font size in logical pixels
+     * @param extraStyle additional inline CSS to append to the default white fill
+     *                   (e.g. {@code "-fx-fill: #FF5722;"}); may be {@code null}
+     * @return a {@code Text} node with the icon glyph; falls back to the {@code "star"} icon
+     *         if the name is not found
+     */
     public static Text createIcon(String iconName, double size, String extraStyle) {
         String codepoint = CODEMAP.getOrDefault(iconName, CODEMAP.get("star"));
         Text text = new Text(codepoint);
@@ -821,14 +864,34 @@ public class MdiIconUtil {
         return text;
     }
 
+    /**
+     * Adds or overrides a single icon name → codepoint mapping at runtime.
+     * Useful for plugins that extend the icon set with custom glyphs.
+     *
+     * @param name      the icon name to register, e.g. {@code "my-custom-icon"}
+     * @param codepoint the Unicode string representation of the glyph, e.g. {@code "󰇉"}
+     */
     public static void putIcon(String name, String codepoint) {
         CODEMAP.put(name, codepoint);
     }
 
+    /**
+     * Returns the Unicode codepoint string for the given icon name.
+     *
+     * @param iconName the icon name, e.g. {@code "check-bold"}
+     * @return the codepoint string; falls back to the {@code "star"} icon if unknown
+     * @see #putIcon(String, String)
+     */
     public static String getCodepoint(String iconName) {
         return CODEMAP.getOrDefault(iconName, CODEMAP.get("star"));
     }
 
+    /**
+     * Loads and returns a {@link Font} instance for the MDI webfont at the specified size.
+     *
+     * @param size the desired font size in logical pixels
+     * @return the loaded {@code Font}, or {@code null} if the font resource cannot be found
+     */
     public static Font getFont(double size) {
         return Font.loadFont(MdiIconUtil.class.getResourceAsStream("/fonts/materialdesignicons-webfont.ttf"), size);
     }
