@@ -1,6 +1,8 @@
 package fan.summer.ai.tools;
 
 import fan.summer.api.ai.AiToolCall;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.regex.Matcher;
@@ -18,6 +20,8 @@ import java.util.regex.Pattern;
  * </ol>
  */
 public class ToolCallParser {
+
+    private static final Logger log = LoggerFactory.getLogger(ToolCallParser.class);
 
     private static final Pattern QWEN_TOOL_CALL = Pattern.compile(
         "<\\|tool_call_begin\\|>.*?\"name\"\\s*:\\s*\"(.*?)\".*?\"arguments\"\\s*:\\s*(\\{.*?}).*?<\\|tool_call_end\\|>",
@@ -43,13 +47,17 @@ public class ToolCallParser {
         while (m.find()) {
             calls.add(buildCall(m.group(1), m.group(2)));
         }
-        if (!calls.isEmpty()) return calls;
+        if (!calls.isEmpty()) {
+            log.debug("Parsed {} tool call(s) via Qwen pattern", calls.size());
+            return calls;
+        }
 
         // Try generic JSON
         m = GENERIC_TOOL_CALL.matcher(text);
         while (m.find()) {
             calls.add(buildCall(m.group(1), m.group(2)));
         }
+        log.debug("Parsed {} tool call(s) via generic pattern", calls.size());
         return calls;
     }
 
@@ -69,6 +77,7 @@ public class ToolCallParser {
     public static String stripToolCalls(String text) {
         if (text == null) return "";
         String result = QWEN_TOOL_CALL.matcher(text).replaceAll("");
+        log.debug("stripToolCalls: originalLength={}, resultLength={}", text.length(), result.length());
         return result.trim();
     }
 

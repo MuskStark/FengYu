@@ -3,12 +3,16 @@ package fan.summer.ai.inference;
 import fan.summer.ai.model.*;
 import fan.summer.ai.tensor.ArrayFloatTensor;
 import fan.summer.ai.tensor.FloatTensor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Transformer inference engine — single-token forward pass.
  * Implements LLaMA-style architecture: Pre-norm attention + SwiGLU FFN.
  */
 public class Transformer {
+
+    private static final Logger log = LoggerFactory.getLogger(Transformer.class);
 
     private final ModelConfig config;
     private final ModelWeights weights;
@@ -21,7 +25,10 @@ public class Transformer {
     private final float[] k;       // [kvDim]
     private final float[] v;       // [kvDim]
     private final float[] xbAtt;   // [dim] — attention output
-    private final float[] xbFFN;   // [dim] — FFN output
+    private final float[] attOut;  // [dim] — post-WO attention
+    private final float[] gate;    // [hiddenDim] — SwiGLU gate
+    private final float[] up;      // [hiddenDim] — SwiGLU up
+    private final float[] ffnOut;  // [dim] — FFN output
     private final float[] logits;  // [vocabSize]
 
     public Transformer(GGUFModel model) {
@@ -35,14 +42,16 @@ public class Transformer {
         this.k = new float[config.kvDim];
         this.v = new float[config.kvDim];
         this.xbAtt = new float[config.dim];
-        this.xbFFN = new float[config.hiddenDim];
+        this.attOut = new float[config.dim];
+        this.gate = new float[config.hiddenDim];
+        this.up = new float[config.hiddenDim];
+        this.ffnOut = new float[config.dim];
         this.logits = new float[config.vocabSize];
 
         Runtime runtime = Runtime.getRuntime();
         long usedMB = (runtime.totalMemory() - runtime.freeMemory()) / 1024 / 1024;
         long kvMB = kvCache.memoryBytes() / 1024 / 1024;
-        org.slf4j.LoggerFactory.getLogger(Transformer.class)
-            .info("Transformer initialized: kvCache={}MB, heap={}MB", kvMB, usedMB);
+        log.info("Transformer initialized: kvCache={}MB, heap={}MB", kvMB, usedMB);
     }
 
     /**
@@ -86,7 +95,6 @@ public class Transformer {
 
             // 2f: Output projection + residual
             FloatTensor wo = weights.getWO(layer);
-            float[] attOut = new float[dim];
             matmulInto(wo, xbAtt, attOut, dim, config.nHeads * config.headSize);
             for (int i = 0; i < dim; i++) {
                 xb[i] += attOut[i];
@@ -101,8 +109,6 @@ public class Transformer {
             FloatTensor w3 = weights.getW3(layer);
             FloatTensor w2 = weights.getW2(layer);
 
-            float[] gate = new float[config.hiddenDim];
-            float[] up = new float[config.hiddenDim];
             matmulInto(w1, xb2, gate, config.hiddenDim, dim);
             matmulInto(w3, xb2, up, config.hiddenDim, dim);
 
@@ -111,7 +117,6 @@ public class Transformer {
                 gate[i] = silu(gate[i]) * up[i];
             }
 
-            float[] ffnOut = new float[dim];
             matmulInto(w2, gate, ffnOut, dim, config.hiddenDim);
             for (int i = 0; i < dim; i++) {
                 xb[i] += ffnOut[i];
@@ -145,31 +150,23 @@ public class Transformer {
     }
 
     private void applyRoPE(float[] q, float[] k, int pos) {
+        applyRoPEVectors(q, config.nHeads, pos);
+        applyRoPEVectors(k, config.nKVHeads, pos);
+    }
+
+    private void applyRoPEVectors(float[] vec, int nHeads, int pos) {
         int headSize = config.headSize;
-        for (int h = 0; h < config.nHeads; h++) {
+        for (int h = 0; h < nHeads; h++) {
             for (int i = 0; i < headSize; i += 2) {
                 double freq = 1.0 / Math.pow(config.ropeTheta, (double) i / headSize);
                 double angle = pos * freq;
                 float cos = (float) Math.cos(angle);
                 float sin = (float) Math.sin(angle);
 
-                int qOff = h * headSize + i;
-                float q0 = q[qOff], q1 = q[qOff + 1];
-                q[qOff]     = q0 * cos - q1 * sin;
-                q[qOff + 1] = q0 * sin + q1 * cos;
-            }
-        }
-        for (int h = 0; h < config.nKVHeads; h++) {
-            for (int i = 0; i < headSize; i += 2) {
-                double freq = 1.0 / Math.pow(config.ropeTheta, (double) i / headSize);
-                double angle = pos * freq;
-                float cos = (float) Math.cos(angle);
-                float sin = (float) Math.sin(angle);
-
-                int kOff = h * headSize + i;
-                float k0 = k[kOff], k1 = k[kOff + 1];
-                k[kOff]     = k0 * cos - k1 * sin;
-                k[kOff + 1] = k0 * sin + k1 * cos;
+                int off = h * headSize + i;
+                float v0 = vec[off], v1 = vec[off + 1];
+                vec[off]     = v0 * cos - v1 * sin;
+                vec[off + 1] = v0 * sin + v1 * cos;
             }
         }
     }
@@ -196,15 +193,7 @@ public class Transformer {
             }
 
             // Softmax
-            float max = Float.NEGATIVE_INFINITY;
-            for (float s : scores) if (s > max) max = s;
-            float sum = 0f;
-            for (int t = 0; t <= pos; t++) {
-                scores[t] = (float) Math.exp(scores[t] - max);
-                sum += scores[t];
-            }
-            float invSum = 1f / sum;
-            for (int t = 0; t <= pos; t++) scores[t] *= invSum;
+            MathUtil.softmax(scores, 0, pos + 1);
 
             // Weighted sum of V
             for (int t = 0; t <= pos; t++) {
@@ -217,10 +206,6 @@ public class Transformer {
     }
 
     private void matmulInto(FloatTensor weight, float[] input, float[] output, int outDim, int inDim) {
-        // Parallel matmul
-        org.slf4j.LoggerFactory.getLogger(Transformer.class)
-            .debug("matmul: outDim={}, inDim={}, weightSize={}, weightClass={}",
-                   outDim, inDim, weight.size(), weight.getClass().getSimpleName());
         java.util.stream.IntStream.range(0, outDim).parallel().forEach(o -> {
             float sum = 0f;
             for (int i = 0; i < inDim; i++) {

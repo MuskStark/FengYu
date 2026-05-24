@@ -1,5 +1,8 @@
 package fan.summer.ai.tensor;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.nio.ByteBuffer;
 
 /**
@@ -18,6 +21,7 @@ import java.nio.ByteBuffer;
  */
 public class Q2KTensor extends FloatTensor {
 
+    private static final Logger log = LoggerFactory.getLogger(Q2KTensor.class);
     private static final int QK_K = 256;
     // struct layout: d(2) + dmin(2) + scales(16) + qs(64) = 84 bytes
     private static final int BLOCK_BYTES = 84;
@@ -34,6 +38,7 @@ public class Q2KTensor extends FloatTensor {
         this.buffer = buffer;
         this.size = size;
         this.nBlocks = (size + QK_K - 1) / QK_K;
+        log.debug("Q2KTensor created: size={}, nBlocks={}", size, nBlocks);
     }
 
     @Override public int size() { return size; }
@@ -72,14 +77,5 @@ public class Q2KTensor extends FloatTensor {
     @Override
     public void set(int index, float value) {
         throw new UnsupportedOperationException("Read-only quantized tensor");
-    }
-
-    @Override
-    public float dot(int offset, FloatTensor other, int otherOffset, int len) {
-        float sum = 0f;
-        for (int i = 0; i < len; i++) {
-            sum += get(offset + i) * other.get(otherOffset + i);
-        }
-        return sum;
     }
 }

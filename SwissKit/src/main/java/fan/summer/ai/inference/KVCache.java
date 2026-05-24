@@ -1,6 +1,8 @@
 package fan.summer.ai.inference;
 
 import fan.summer.ai.model.ModelConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 
@@ -9,6 +11,8 @@ import java.util.Arrays;
  * Stores historical K/V vectors to avoid recomputation during autoregressive generation.
  */
 public class KVCache {
+
+    private static final Logger log = LoggerFactory.getLogger(KVCache.class);
 
     private final int nLayers;
     private final int maxSeqLen;
@@ -25,6 +29,8 @@ public class KVCache {
 
         this.keyCache = new float[nLayers][maxSeqLen * kvDim];
         this.valueCache = new float[nLayers][maxSeqLen * kvDim];
+        log.info("KVCache initialized: nLayers={}, maxSeqLen={}, kvDim={}, memoryMB={}",
+                 nLayers, maxSeqLen, kvDim, memoryBytes() / 1024 / 1024);
     }
 
     public void storeKey(int layer, int pos, float[] k) {
@@ -43,18 +49,6 @@ public class KVCache {
         return valueCache[layer][pos * kvDim + i];
     }
 
-    public float[] getKeySlice(int layer, int pos) {
-        float[] slice = new float[kvDim];
-        System.arraycopy(keyCache[layer], pos * kvDim, slice, 0, kvDim);
-        return slice;
-    }
-
-    public float[] getValueSlice(int layer, int pos) {
-        float[] slice = new float[kvDim];
-        System.arraycopy(valueCache[layer], pos * kvDim, slice, 0, kvDim);
-        return slice;
-    }
-
     /**
      * Reset the entire cache (e.g. when starting a new conversation).
      */
@@ -63,6 +57,7 @@ public class KVCache {
             Arrays.fill(keyCache[l], 0f);
             Arrays.fill(valueCache[l], 0f);
         }
+        log.info("KVCache reset");
     }
 
     /**
