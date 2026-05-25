@@ -110,6 +110,7 @@ public final class I18n {
     private static void rebuildHostBundle() {
         if (hostBaseName == null || hostLoader == null) return;
         try {
+            ResourceBundle.clearCache(hostLoader);
             hostBundle.set(ResourceBundle.getBundle(hostBaseName, currentLocale, hostLoader));
         } catch (MissingResourceException ignored) {}
     }
