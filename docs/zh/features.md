@@ -17,13 +17,15 @@ SwissKitJ 提供 8 个内置工具，按分类组织，并支持外部插件。
 
 ### AI 聊天（开发者）
 
-与本地 GGUF 格式的 LLM 模型对话。支持：
+支持多种后端的 AI 对话。功能包括：
 
-- 加载多种量化格式的 GGUF 模型（Q3_K、Q5_0、Q4_0、Q8_0、IQ4_NL）
+- **本地 GGUF 模型** — 加载并运行本地模型，JNI 原生加速
+- **OpenAI 兼容 API** — 连接任何 OpenAI Chat Completions 端点
+- **Anthropic Claude API** — 连接任何 Anthropic Messages API 端点
 - 实时生成令牌流的流式推理
 - 支持工具调用和自定义工具定义
 - 带历史记录的聊天会话管理
-- JNI 原生加速层进行推理
+- 启动时自动激活已配置的后端
 
 ### JSON 格式化（开发者）
 
