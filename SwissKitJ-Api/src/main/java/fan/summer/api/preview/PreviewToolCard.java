@@ -2,14 +2,19 @@ package fan.summer.api.preview;
 
 import fan.summer.api.MdiIconUtil;
 import fan.summer.api.SwissKitJPlugin;
+import javafx.animation.Animation;
+import javafx.animation.FadeTransition;
 import javafx.animation.ScaleTransition;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.control.Label;
 import javafx.scene.effect.DropShadow;
+import javafx.scene.effect.Glow;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
 import javafx.scene.text.Text;
 import javafx.util.Duration;
 
@@ -17,13 +22,15 @@ import java.util.function.Consumer;
 
 /**
  * Simplified tool card for the preview window.
+ * Shows a green pulse indicator when the plugin is running in the background.
  */
-class PreviewToolCard extends VBox {
+class PreviewToolCard extends StackPane {
 
-    PreviewToolCard(SwissKitJPlugin plugin, Consumer<SwissKitJPlugin> onSelect) {
-        getStyleClass().add("preview-tool-card");
-        setSpacing(3);
-        setPadding(new Insets(16, 14, 14, 14));
+    PreviewToolCard(SwissKitJPlugin plugin, Consumer<SwissKitJPlugin> onSelect, boolean isBackground) {
+        VBox card = new VBox();
+        card.getStyleClass().add("preview-tool-card");
+        card.setSpacing(3);
+        card.setPadding(new Insets(16, 14, 14, 14));
 
         // Icon
         Color iconColor = plugin.getIconStyle().getColor();
@@ -61,7 +68,25 @@ class PreviewToolCard extends VBox {
         Label tag = new Label(plugin.getType().isPlugin() ? "Plugin" : "Built-in");
         tag.getStyleClass().add("preview-tool-tag");
 
-        getChildren().addAll(iconWrap, nameLabel, descLabel, tag);
+        card.getChildren().addAll(iconWrap, nameLabel, descLabel, tag);
+
+        getChildren().add(card);
+
+        // Background running indicator
+        if (isBackground) {
+            Circle dot = new Circle(4, Color.web("#4cd97b"));
+            dot.setEffect(new Glow(0.8));
+            dot.setMouseTransparent(true);
+            StackPane.setAlignment(dot, Pos.TOP_RIGHT);
+            StackPane.setMargin(dot, new Insets(8));
+            FadeTransition pulse = new FadeTransition(Duration.millis(2500), dot);
+            pulse.setFromValue(1.0);
+            pulse.setToValue(0.4);
+            pulse.setAutoReverse(true);
+            pulse.setCycleCount(Animation.INDEFINITE);
+            pulse.play();
+            getChildren().add(dot);
+        }
 
         // Hover scale
         ScaleTransition hoverIn = new ScaleTransition(Duration.millis(150), this);

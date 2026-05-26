@@ -19,8 +19,7 @@ Then scaffold the project following the templates below. Create all files, do no
 ├── pom.xml
 ├── src/main/java/<package-path>/
 │   ├── <Name>Plugin.java          # SPI entry point
-│   ├── <Name>DevApp.java          # JavaFX Application for dev mode
-│   ├── DevLauncher.java           # Module-system bypass launcher
+│   ├── DevLauncher.java           # Module-system bypass launcher with PluginPreviewWindow
 │   ├── database/
 │   │   ├── DatabaseInit.java      # H2 + MyBatis bootstrap
 │   │   ├── entity/                # MyBatis entity classes
@@ -128,6 +127,23 @@ Then scaffold the project following the templates below. Create all files, do no
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <source>21</source>
+                    <target>21</target>
+                    <encoding>UTF-8</encoding>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>1.18.42</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
             </plugin>
@@ -200,7 +216,9 @@ File: `src/main/resources/META-INF/services/fan.summer.api.SwissKitJPlugin`
 ```java
 package {{base-package}};
 
+import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.ToolCategory;
 import fan.summer.api.i18n.I18n;
 import javafx.scene.Node;
 import {{base-package}}.ui.{{Name}}PluginUi;
@@ -223,8 +241,8 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
     }
 
     @Override
-    public String getCategory() {
-        return "OTHER";
+    public ToolCategory getCategory() {
+        return ToolCategory.OTHER;
     }
 
     @Override
@@ -238,62 +256,69 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
     }
 
     @Override
-    public String getIconStyle() {
-        return "BLUE";
+    public IconStyle getIconStyle() {
+        return IconStyle.BLUE;
     }
 
     @Override
     public Node createView() {
-        // Register i18n bundle so I18n.get/bind can resolve plugin keys.
-        // Must be called before the UI is created, with the plugin's own ClassLoader.
         I18n.registerPluginBundle("i18n.messages", getClass().getClassLoader());
         return new {{Name}}PluginUi().getView();
+    }
+
+    @Override
+    public boolean hasRunningTasks() {
+        // Return true when this plugin has background tasks that should
+        // continue running after the user navigates away.
+        // Example: return worker != null && worker.isRunning();
+        return false;
+    }
+
+    @Override
+    public void onBackground() {
+        // Called when the user navigates away while hasRunningTasks() is true.
+        // Use to disable UI polling, reduce update frequency, etc.
+    }
+
+    @Override
+    public void onForeground() {
+        // Called when the user returns to this plugin from a background state.
+        // Use to refresh UI elements that need manual updates after scene detach.
     }
 }
 ```
 
 ### 4. Dev Launcher (JavaFX Module-System Bypass)
 
-**DevLauncher** — This class has ZERO JavaFX imports. The JVM module system only checks module dependencies starting from the class containing `main()`. By keeping JavaFX references out of this class, no `--module-path` or `--add-modules` flags are needed.
+**DevLauncher** — This class has ZERO JavaFX imports except `Platform`. Uses `PluginPreviewWindow` to launch the plugin in a SwissKitJ-like shell for development. The JVM module system only checks module dependencies starting from the class containing `main()`. By keeping JavaFX references minimal in this class, no `--module-path` or `--add-modules` flags are needed.
 
 ```java
 package {{base-package}};
+
+import fan.summer.api.preview.PluginPreviewWindow;
+import javafx.application.Platform;
 
 public class DevLauncher {
     public static void main(String[] args) {
-        {{Name}}DevApp.main(args);
+        Platform.startup(() -> {
+            PluginPreviewWindow.configure().withPlugin(new {{Name}}Plugin()).launch();
+        });
     }
 }
 ```
 
-**{{Name}}DevApp** — The actual JavaFX Application. Wraps the plugin UI in a standalone window for development.
+Call chain: `java DevLauncher` → `Platform.startup()` → `PluginPreviewWindow.configure().withPlugin(...).launch()` → opens a SwissKitJ-like preview shell with the plugin embedded.
 
+The `PluginPreviewWindow` supports additional configuration:
 ```java
-package {{base-package}};
-
-import {{base-package}}.ui.{{Name}}PluginUi;
-import javafx.application.Application;
-import javafx.scene.Group;
-import javafx.scene.Scene;
-import javafx.stage.Stage;
-
-public class {{Name}}DevApp extends Application {
-
-    public static void main(String[] args) {
-        launch(args);
-    }
-
-    @Override
-    public void start(Stage stage) {
-        Scene scene = new Scene(new Group(new {{Name}}PluginUi().getView()), 800, 600);
-        stage.setTitle("{{plugin-name}} Dev");
-        stage.setScene(scene);
-        stage.show();
-    }
-}
+PluginPreviewWindow.configure()
+    .withPlugin(new MyPlugin())
+    .title("My Plugin — Preview")
+    .windowSize(900, 600)
+    .showSidebar(false)
+    .showStatusBar(true)
+    .launch();
 ```
-
-Call chain: `java DevLauncher` (no JavaFX imports) → `{{Name}}DevApp.main()` → `launch()` → `start(Stage)`.
 
 ### 5. Plugin UI
 
@@ -353,7 +378,6 @@ public class {{Name}}PluginUi {
         Alert alert = new Alert(type);
         alert.setHeaderText(null);
         alert.setContentText(message);
-        // Dialog creates its own Scene; apply common CSS for visual consistency
         alert.getDialogPane().sceneProperty().addListener((obs, old, scene) -> {
             if (scene != null) Themes.applyTo(scene);
         });
@@ -703,7 +727,42 @@ worker.setOnFailed(ev -> { /* show error with worker.getException() */ });
 new Thread(worker).start();
 ```
 
-### 10. File Chooser Utility
+### 10. Background Execution
+
+Plugins with long-running tasks (file processing, uploads, etc.) can opt into background execution. Override `hasRunningTasks()` to return `true` when tasks are active:
+
+```java
+private javafx.concurrent.Task<Void> activeWorker;
+
+@Override
+public boolean hasRunningTasks() {
+    return activeWorker != null && activeWorker.isRunning();
+}
+
+@Override
+public void onBackground() {
+    // Optional: reduce UI update frequency while in background
+}
+
+@Override
+public void onForeground() {
+    // Optional: refresh UI elements that may need manual updates
+}
+```
+
+**How it works in the host:**
+- When the user navigates away and `hasRunningTasks()` returns `true`, the host calls `onBackground()` instead of `onDeactivate()` and keeps the plugin's view cached
+- The plugin's view Node retains all JavaFX property bindings even when detached from the scene graph — progress bars, labels, and status text continue updating automatically
+- When the user clicks the same ToolCard again, the cached view is re-attached and `onForeground()` is called
+- A green pulse indicator appears on the ToolCard while the plugin is backgrounded
+- Multiple plugins can run in the background simultaneously
+
+**Key rules:**
+1. `hasRunningTasks()` is polled at navigation time — return the current state, not a cached value
+2. `onBackground()` / `onForeground()` are optional — most plugins only need `hasRunningTasks()`
+3. Always call `super` or use the default no-op implementations — these are default methods on the interface
+
+### 11. File Chooser Utility
 
 ```java
 package {{base-package}}.util;
@@ -736,19 +795,17 @@ public abstract class FileChoiceUtil {
 
 3. **SPI file content**: Must contain the fully qualified class name of the plugin class (e.g. `fan.swisskitj.plugin.star.StarPlugin`), not a partial or old name.
 
-4. **JavaFX module system**: `DevLauncher` must have zero JavaFX imports. All JavaFX code lives in `{{Name}}DevApp` which is called indirectly.
+4. **JavaFX module system**: `DevLauncher` uses `Platform.startup()` to bootstrap JavaFX, then launches `PluginPreviewWindow`. No separate `DevApp` class is needed.
 
-5. **JavaFX `Scene` requires `Parent`**: `StarPluginUi.getView()` returns `Node`, but `Scene` constructor takes `Parent`. Wrap in `new Group(node)` to bridge the type mismatch.
+5. **Shade plugin**: The `ServicesResourceTransformer` is required to merge SPI files from dependencies into the fat JAR. Without it, SPI files get overwritten.
 
-6. **Shade plugin**: The `ServicesResourceTransformer` is required to merge SPI files from dependencies into the fat JAR. Without it, SPI files get overwritten.
+6. **H2 database path**: Uses `user.dir` (current working directory), not `user.home`. In production, the host app sets `user.dir` appropriately. The database directory path must use forward slashes even on Windows.
 
-7. **H2 database path**: Uses `user.dir` (current working directory), not `user.home`. In production, the host app sets `user.dir` appropriately. The database directory path must use forward slashes even on Windows.
+7. **Dev profile mainClass**: Must match the actual `DevLauncher` package path, not an old or placeholder name.
 
-8. **Dev profile mainClass**: Must match the actual `DevLauncher` package path, not an old or placeholder name.
+8. **i18n bundle registration**: `I18n.registerPluginBundle("i18n.messages", getClass().getClassLoader())` MUST be called in `createView()` before the UI is constructed. Without this, `I18n.get()` and `I18n.bind()` return raw keys instead of translated text. The ClassLoader must be the plugin's own (`getClass().getClassLoader()`), not the system ClassLoader.
 
-9. **i18n bundle registration**: `I18n.registerPluginBundle("i18n.messages", getClass().getClassLoader())` MUST be called in `createView()` before the UI is constructed. Without this, `I18n.get()` and `I18n.bind()` return raw keys instead of translated text. The ClassLoader must be the plugin's own (`getClass().getClassLoader()`), not the system ClassLoader.
-
-10. **Theme on Alert dialogs**: `Alert` creates its own Scene, which does NOT inherit the host's stylesheet. Always apply `Themes.applyTo(scene)` via a `sceneProperty` listener on `alert.getDialogPane()`. Nodes embedded directly in the host Scene inherit the theme automatically — only independent windows need this.
+9. **Theme on Alert dialogs**: `Alert` creates its own Scene, which does NOT inherit the host's stylesheet. Always apply `Themes.applyTo(scene)` via a `sceneProperty` listener on `alert.getDialogPane()`. Nodes embedded directly in the host Scene inherit the theme automatically — only independent windows need this.
 
 ---
 
