@@ -6,7 +6,9 @@ import javafx.collections.ObservableList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Holds the live plugin list and manages plugin activation lifecycle.
@@ -38,6 +40,8 @@ public class PluginRegistry {
         FXCollections.observableArrayList();
 
     private SwissKitJPlugin activePlugin;
+
+    private final Set<SwissKitJPlugin> backgroundPlugins = new LinkedHashSet<>();
 
     /**
      * Constructs a PluginRegistry and wires it to the given PluginLoader.
@@ -99,6 +103,7 @@ public class PluginRegistry {
      */
     void removePlugin(SwissKitJPlugin plugin) {
         log.debug("Removing plugin from registry: id={}", plugin.getId());
+        backgroundPlugins.remove(plugin);
         if (activePlugin == plugin) {
             try {
                 plugin.onDeactivate();
@@ -130,7 +135,8 @@ public class PluginRegistry {
      * @since 1.0
      */
     public void activate(SwissKitJPlugin plugin) {
-        if (activePlugin != null && activePlugin != plugin) {
+        boolean fromBackground = backgroundPlugins.remove(plugin);
+        if (!fromBackground && activePlugin != null && activePlugin != plugin) {
             log.debug("Deactivating previous plugin: id={}", activePlugin.getId());
             try {
                 activePlugin.onDeactivate();
@@ -144,6 +150,14 @@ public class PluginRegistry {
             plugin.onActivate();
         } catch (Exception e) {
             log.warn("Plugin {} threw on onActivate(): {}", plugin.getId(), e.getMessage(), e);
+        }
+        if (fromBackground) {
+            log.debug("Plugin {} restored from background", plugin.getId());
+            try {
+                plugin.onForeground();
+            } catch (Exception e) {
+                log.warn("Plugin {} threw on onForeground(): {}", plugin.getId(), e.getMessage(), e);
+            }
         }
     }
 
@@ -169,12 +183,31 @@ public class PluginRegistry {
     public void deactivate() {
         if (activePlugin != null) {
             log.debug("Deactivating plugin: id={}", activePlugin.getId());
-            try {
-                activePlugin.onDeactivate();
-            } catch (Exception e) {
-                log.warn("Plugin {} threw on onDeactivate(): {}", activePlugin.getId(), e.getMessage(), e);
+            if (activePlugin.hasRunningTasks()) {
+                backgroundPlugins.add(activePlugin);
+                try {
+                    activePlugin.onBackground();
+                } catch (Exception e) {
+                    log.warn("Plugin {} threw on onBackground(): {}", activePlugin.getId(), e.getMessage(), e);
+                }
+            } else {
+                try {
+                    activePlugin.onDeactivate();
+                } catch (Exception e) {
+                    log.warn("Plugin {} threw on onDeactivate(): {}", activePlugin.getId(), e.getMessage(), e);
+                }
             }
             activePlugin = null;
         }
+    }
+
+    /**
+     * Returns whether the given plugin is currently running in the background.
+     *
+     * @param plugin the plugin to check
+     * @return {@code true} if the plugin was backgrounded and has not been reactivated
+     */
+    public boolean isBackground(SwissKitJPlugin plugin) {
+        return backgroundPlugins.contains(plugin);
     }
 }

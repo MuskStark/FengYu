@@ -6,14 +6,18 @@ import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
+import fan.summer.plugin.PluginRegistry;
 import javafx.animation.*;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.control.Label;
 import javafx.scene.effect.DropShadow;
+import javafx.scene.effect.Glow;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
 import javafx.scene.text.Text;
 import javafx.util.Duration;
 
@@ -21,16 +25,12 @@ import java.util.function.Consumer;
 
 /**
  * A single card in the tool grid display. Each card shows the plugin's
- * icon (rendered from its MDI code), name, description, and a tag indicating
- * whether it is a built-in tool or an external plugin.
- * <p>
- * Cards animate in with a staggered fade + scale transition and have a
- * hover effect that intensifies the icon's glow. Clicking the card triggers
- * a brief scale-down animation before invoking the selection callback.
+ * icon, name, description, a tag, and optionally a green pulse indicator
+ * when the plugin has background tasks running.
  *
  * @since 1.0
  */
-public class ToolCard extends VBox {
+public class ToolCard extends StackPane {
 
     private static final PluginLogger LOG = LoggerFactory.getLogger(ToolCard.class);
 
@@ -41,13 +41,17 @@ public class ToolCard extends VBox {
      *
      * @param plugin   the plugin to display; must not be null
      * @param onSelect called when the user clicks this card; receives the plugin
+     * @param registry the plugin registry for background state queries; may be null
      */
-    public ToolCard(SwissKitJPlugin plugin, Consumer<SwissKitJPlugin> onSelect) {
+    public ToolCard(SwissKitJPlugin plugin, Consumer<SwissKitJPlugin> onSelect, PluginRegistry registry) {
         LOG.info("Creating ToolCard for plugin: name={}, id={}", plugin.getName(), plugin.getId());
         this.plugin = plugin;
-        getStyleClass().add("tool-card");
-        setSpacing(3);
-        setPadding(new Insets(16, 14, 14, 14));
+
+        // ── Inner card VBox (actual visual card) ────────────────────
+        VBox card = new VBox();
+        card.getStyleClass().add("tool-card");
+        card.setSpacing(3);
+        card.setPadding(new Insets(16, 14, 14, 14));
 
         // ── Icon ────────────────────────────────────────
         Color iconColor = plugin.getIconStyle().getColor();
@@ -86,7 +90,24 @@ public class ToolCard extends VBox {
         Label tag = new Label(isPlugin ? I18n.get("detail.tag.plugin") : I18n.get("detail.tag.builtin"));
         tag.getStyleClass().addAll("tool-tag", isPlugin ? "tool-tag-plugin" : "");
 
-        getChildren().addAll(iconWrap, nameLabel, descLabel, tag);
+        card.getChildren().addAll(iconWrap, nameLabel, descLabel, tag);
+
+        // ── Background running indicator (green pulse dot, top-right) ──
+        getChildren().add(card);
+        if (registry != null && registry.isBackground(plugin)) {
+            Circle dot = new Circle(4, Color.web("#4cd97b"));
+            dot.setEffect(new Glow(0.8));
+            dot.setMouseTransparent(true);
+            StackPane.setAlignment(dot, Pos.TOP_RIGHT);
+            StackPane.setMargin(dot, new Insets(8));
+            FadeTransition pulse = new FadeTransition(Duration.millis(2500), dot);
+            pulse.setFromValue(1.0);
+            pulse.setToValue(0.4);
+            pulse.setAutoReverse(true);
+            pulse.setCycleCount(Animation.INDEFINITE);
+            pulse.play();
+            getChildren().add(dot);
+        }
 
         // ── Hover: intensify glow ────────────────────────────────
         ScaleTransition hoverIn  = new ScaleTransition(Duration.millis(150), this);
