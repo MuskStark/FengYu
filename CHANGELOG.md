@@ -1,315 +1,184 @@
 # Changelog
 
-All notable changes to SwissKit will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes to SwissKitJ. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [3.0.0-alpha.1] — First JavaFX Preview
+## [3.0.0] — JavaFX Migration
 
-**Release Date:** 2026-05-19
+**v3.0.0-beta.2** — 2026-05-26
+
+### ✨ New Features
+
+- **AI Remote Backends**: Switch between local GGUF, OpenAI Chat Completions, and Anthropic Messages API via a global selector in AI settings; supports SSE streaming with token-by-token delivery and tool calling on all backends
+- **Plugin Background Execution**: Plugins can run tasks in the background with view caching and a ToolCard indicator showing running status
+- **AI Auto-Initialize**: Configured AI backend (including remote API mode) activates automatically on startup without manual re-configuration
+
+### 🔧 Fixes
+
+- Fix AI backend not activating on restart — stale `MainWindow` initialization was overwriting the configured service
+- Fix plugin i18n bundles returning host translations due to ClassLoader parent delegation
+- Fix ToolCard background indicator not showing and preview i18n not working
+- Fix ExcelSplitterPlugin missing `hasRunningTasks` implementation
+
+---
+
+**v3.0.0-beta.1** — 2026-05-24
+
+### ✨ New Features
+
+- **I18n Framework**: Core `I18n` classes in SwissKitJ-Api with DB-persisted locale, plugin bundle registration/unregistration, and live language switching
+
+### ♻️ Changes
+
+- Convert all UI components (TitleBar, MainWindow, Sidebar, ContentArea, ToolCard, DetailPanel) to use I18n
+- Complete i18n conversion for Settings UI (AI, Email, Address Book tabs)
+- Complete i18n for all built-in tools and plugin store UI
+
+### 🔧 Fixes
+
+- Fix VBox→HBox type mismatch in email tab field rows
+- Fix email editor — expand WebView height and allow rich-text paste from Word
+- Rebuild Settings UI on locale change for live language switch
+
+---
+
+**v3.0.0-alpha.2** — 2026-05-21
+
+### ✨ New Features
+
+- **AI Chat**: Built-in tool for chatting with local GGUF models; supports Q3_K/Q5_0/Q4_0/Q8_0/IQ4_NL dequantization, streaming inference, tool calling, and chat session management
+- **JNI Native Inference**: C++ `llama_jni` native layer with `GenerateCallback`, `LlamaContext`, `ModelParams`, `GenerateParams` bindings; bundles `libllama_jni-aarch64.dylib` for macOS
+- **Tool Calling API**: `AiTool`, `AiToolCall`, `AiToolParam`, `AiToolResult` in the API module; `ToolCallParser` and `ToolRegistry` in the host
+- **Chat Sessions**: `ChatSession` class managing message history and context
+
+---
+
+**v3.0.0-alpha.1** — 2026-05-19
 
 ### ✨ Highlights
 
-The entire application has been migrated from Swing/FlatLaf to **JavaFX 21**,
-with a new glassmorphism dark theme, a redesigned plugin API, and a rebuilt
-Excel Splitter with a multi-step wizard UI.
+Complete migration from Swing/FlatLaf to **JavaFX 21** with a glassmorphism dark theme, redesigned plugin API, and rebuilt Excel Splitter.
 
 ### ✨ New Features
 
-- **JavaFX UI**: Complete migration from Swing/FlatLaf to JavaFX 21 with custom window chrome (`StageStyle.TRANSPARENT`), glassmorphism sidebar, glow-effect ToolCards, and animated step wizard
-- **Plugin API v3**: New `SwissKitJPlugin` interface replaces the Swing-based `KitPage`; plugins return JavaFX `Node` instead of `JPanel`
-- **Plugin Logger**: `fan.summer.api.log.LoggerFactory` with SLF4J/Logback backbone; plugin log calls are safe to call even before the host installs a binder
-- **StepWizard**: Reusable multi-step wizard component in `SwissKitJ-Api` with dot navigation, slide transitions, step validation, and programmatic navigation
-- **Plugin Store**: Online plugin catalog + local JAR install with hot-reload via `PluginLoader` file watcher
-- **Three-Layer CSS Architecture**: `swisskit-common.css` (shared variables + glass utilities), `shell.css` (app chrome), `builtin.css` (tool styling) with automatic scene-graph inheritance
-- **Type / Category / IconStyle Enums**: Type-safe enums replace String-based plugin metadata in the API module
-- **Excel Splitter Wizard**: Redesigned with 4-step `StepWizard` flow: file select → analysis → split config → output
+- **JavaFX UI**: Custom window chrome (`StageStyle.TRANSPARENT`), glassmorphism sidebar, glow-effect ToolCards, animated step wizard
+- **Plugin API v3**: `SwissKitJPlugin` interface replaces `KitPage`; plugins return JavaFX `Node`
+- **Plugin Logger**: `LoggerFactory` with SLF4J/Logback backbone; safe no-op in tests
+- **StepWizard**: Reusable multi-step wizard with dot navigation, slide transitions, validation
+- **Plugin Store**: Online catalog + local JAR install with hot-reload
+- **Three-Layer CSS**: `swisskit-common.css`, `shell.css`, `builtin.css` with scene-graph inheritance
+- **Type-Safe Enums**: `ToolCategory`, `ToolType`, `IconStyle` replace String-based metadata
+- **Excel Splitter Wizard**: Redesigned with 4-step `StepWizard` flow
 
 ### 🔧 Fixes
 
-- **Cross-Platform Native Libraries**: Fat JAR now bundles JavaFX native `.dll` (Windows), `.so` (Linux), and `.dylib` (macOS) so the same JAR runs on all three platforms regardless of build host
-
-### ♻️ Refactors
-
-- **Dependency Management**: All version properties centralized in parent POM (`javafx.version`, `lombok.version`, etc.)
-- **Module Structure**: `SwissKitJ-Api` for shared API/UI, `SwissKit` for the app shell, `OfficalPlugin/` for bundled plugins
-- **Backup Consolidation**: Legacy Swing sources moved to `backup/SwissKit/` and excluded from Maven compilation
-
-### 📝 Documentation
-
-- **README**: Complete rewrite for v3.0.0 JavaFX including build instructions, architecture overview, plugin development guide, and UI component reference
+- Fat JAR bundles JavaFX native `.dll` / `.so` / `.dylib` for all platforms
 
 ---
 
-## 1.1.0
+## [2.x] — Swing Era (Stable)
 
-**Release Date:** 2026-03-30
+### v2.1.1 — 2026-05-07
+
+- Fix: persist language setting and improve plugin classloader
+
+### v2.1.0 — 2026-05-07
+
+- Feat: i18n `panelMethod` attribute and Settings i18n refresh
+
+### v2.0.2 — 2026-05-06
+
+- Feat: i18n support for official plugins
+
+### v2.0.1 — 2026-05-06
+
+- Feat: internationalization system with English and Chinese support
+- Feat: required `pluginName`/`pluginVersion` in `@SwissKitPage`
+- Refactor: plugin registry and annotation-based plugin discovery
+
+### v2.0.0 — 2026-04-20
+
+- **Breaking**: remove `KitPage` interface, annotation-only plugin discovery
+- Feat: menu click navigation and drag-to-reorder functionality
 
 ---
 
-### ✨ New Features
+## [1.x] — Swing Era (Initial)
 
-- **Plugin Hot-Deployment**: Deploy, reload, and uninstall plugins without restarting the application
-- **HappyLearning Enhancement**: Add class hours tracking and status display
+### v1.2.2 — 2026-04-15
 
-### 🔄 Changes
+- Feat: Mouse plugin (KeepMove to prevent screen saver)
+- Fix: handle plugin loading errors gracefully
 
-- **Project Restructuring**: Renamed `Happy-learning` → `SwissKitJ-Plugin-HappyLearning`, moved plugins to `OfficalPlugin/` directory
-- **Module Organization**: Added `SwissKitJ-Api` as a shared API module
+### v1.2.1 — 2026-04-08
 
----
+- Feat: Excel copy entire sheet to all split files
+- Fix: HappyLearning lesson type code, skip class, UI updates
+- Fix: improve plugin uninstall reliability on Windows
 
-## 1.0.0
+### v1.2.0 — 2026-04-01
 
-**Release Date:** 2026-03-29
+- Feat: Email rich text editor with formatting toolbar
+- Feat: HappyLearning skip class button
 
----
+### v1.1.0 — 2026-03-31
 
-### Introduction
+- **Feat: Plugin hot-deployment** — deploy, reload, and uninstall without restart
+- Feat: HappyLearning class hours tracking and status display
 
-SwissKit is a modular desktop productivity toolkit built with Java Swing, designed to simplify daily office tasks. It provides powerful Excel processing capabilities, email management with mass-sending features, and a flexible plugin system for extensibility.
+### v1.0.0 — 2026-03-28
 
-**Key Characteristics:**
+Initial stable release.
+
+- Excel Kit: complex split, configuration editor, progress tracking
+- Email Kit: mass sending, address book, tag management, sent log
+- Plugin System: auto-discovery via Java SPI, isolated ClassLoader
+- Settings: unified configuration, plugin management
 - Cross-platform: Windows, Linux, macOS (Apple Silicon)
-- Plugin Architecture: Auto-discovers and loads plugins via Java SPI
-- Modern UI: FlatLaf Look and Feel
-- Database: H2 embedded database with MyBatis ORM
-- Requirements: Java 11 or higher
+- Database: H2 embedded + MyBatis
 
 ---
 
-### Features
+## Pre-release
 
-#### Excel Kit
-- **Complex Split Mode**: Split Excel files with complex configurations
-- **Configuration Editor**: Visual editor for split parameters
-- **Progress Tracking**: Real-time progress bar with animation
+### v1.0.0-RC.1 — 2026-03-28
 
-#### Email Kit
-- **Mass Email Sending**: Send emails to recipients based on tags
-- **Address Book**: Manage contacts with tag associations
-- **Tag Management**: Organize recipients by tags
-- **Sent Log**: Track email sending history with status
+- 11 bug fixes: EDT violations, NPE guards, resource leaks, silent failures
 
-#### Plugin System
-- **Auto-Discovery**: Automatically finds plugins in `META-INF/services`
-- **Isolated Loading**: Plugins loaded in isolated ClassLoader
-- **Easy Extension**: Implement `KitPage` interface to add new tools
-
-#### Settings
-- **Unified Configuration**: Centralized settings management
-- **Plugin Management**: View and manage installed plugins
+### v1.0.0-Beta.4 — 2026-03-27
 
----
+- Plugin management UI, HappyLearning lesson display
+- EDT violation fixes, resource leak fixes, NPE guards
 
-### Installation
+### v1.0.0-Beta.3 — 2026-03-27
 
-#### System Requirements
-- Java 11 or higher (JDK/JRE)
-- Windows 10+, Linux (glibc 2.17+), or macOS 11+
+- Email address book double-click editing
 
-#### Windows Installation
-1. Download `SwissKit-windows.zip`
-2. Extract to desired location
-3. Run `SwissKit.exe`
+### v1.0.0-Beta.2 — 2026-03-27
 
-#### Linux Installation
-1. Download `SwissKit-linux.zip`
-2. Extract: `unzip SwissKit-linux.zip`
-3. Run: `./run.sh`
+- IsolatedPluginClassLoader JDK delegation fix
 
-#### macOS Installation
-1. Download `SwissKit-macos-apple-silicon.zip`
-2. Extract: `unzip SwissKit-macos-apple-silicon.zip`
-3. Run: `open SwissKit.app` or `./run.sh`
+### v1.0.0-Beta.1 — 2026-03-26
 
-**Note:** Java 11+ is required. Download from [Adoptium](https://adoptium.net/).
+- Error dialog on email send failure
 
----
+### v1.0.0-Alpha.5 — 2026-03-26
 
-### For Developers
+- SwissKitJ-Api module, email sent log viewing
 
-#### Build from Source
+### v1.0.0-Alpha.4 — 2026-03-26
 
-```bash
-# Install API module to local Maven repo (required)
-mvn install -f SwissKitJ-Api/pom.xml -DskipTests
+- Email progress bar, tag name display
 
-# Compile
-mvn clean compile
+### v1.0.0-Alpha.3 — 2026-03-26
 
-# Package executable JAR
-mvn clean package -DskipTests
+- Tag association refactored to use tag ID
 
-# Run (development)
-mvn exec:java -Dexec.mainClass="fan.summer.Main"
-```
+### v1.0.0-Alpha.2 — 2026-03-25
 
-#### Project Structure
-```
-SwissKitJ/
-├── SwissKitJ-Api/                         # Shared API module (interfaces, annotations)
-├── SwissKit/                              # Main application
-├── OfficalPlugin/
-│   ├── SwissKitJ-Plugin-HappyLearning/   # Auto-learning plugin
-│   └── SwissKitJ-Plugin-Qcc/              # CSV to Excel conversion plugin
-└── docs/                                  # Documentation
-```
+- Email sending, mass sending, tag-based attachments
 
-#### Plugin Development
-1. Create class implementing `KitPage` interface
-2. Annotate with `@SwissKitPage`
-3. Register in `META-INF/services/fan.summer.api.KitPage`
-4. Tool appears automatically in sidebar
+### v1.0.0-Alpha.1 — 2026-03-24
 
-#### API Dependency
-```xml
-<dependency>
-    <groupId>fan.summer.api</groupId>
-    <artifactId>SwissKitJ-Api</artifactId>
-    <version>1.0.0</version>
-</dependency>
-```
-
----
-
-### Changelog
-
-The following is the complete version history.
-
----
-
-## 1.0.0-RC.1
-
-### 🔧 Fixes
-
-- ExcelSplitWorker: Fix EDT violation by using GradientProgressBar type instead of JProgressBar for proper animation
-- EmailSentWorker: Division by zero guard when totalEmails is zero
-- EmailSentWorker: NPE guard when tagCollect returns null
-- SetComplexSplitConfigWorker: EDT violation fix - read Swing component values in constructor
-- MassSentConfigView: NPE guard for config.getToTag()
-- EmailKitPage: NPE guard for config.getToTag()/getCcTag() in equals comparison
-- QueryAllEmailInfoWorker: NPE guard when JSON.parseArray returns null
-- ConfigEditorView: Add null-safe objToString() helper for table values
-- PluginLoader: Check mkdirs() return value
-- GradientProgressBar: Stop animation timer in removeNotify() to prevent resource leaks
-- ShowConfigViewWorker: Re-throw exceptions instead of silent catch
-
-### 🔄 Changes
-
-- Maven: Disable resource filtering to prevent binary icon files from being corrupted
-
----
-
-## 1.0.0-Beta.4
-
-### 🚀 Enhancements
-
-- Settings: Add plugin management UI with installed plugins table and uninstall functionality
-- HappyLearning: Display current lesson ID and name (brief) during learning sessions
-- HappyLearning: Add progress bar text display showing "current/max h" format
-
-### 🔧 Fixes
-
-- EDT violations: SetComplexSplitConfigWorker and ClearComplexSplitConfigWorker now properly wrap UI updates in SwingUtilities.invokeLater()
-- Resource leaks: EmailSentWorker SqlSession usage restructured with try-with-resources
-- Resource leaks: ExcelUtil Workbook leaks fixed on exception paths
-- NullPointerExceptions: Fixed in EmailSentWorker (progressBar, emailTags), EmailKitPage (tagList), EmailTagsView (parseLong), Main.java (getCause())
-- Silent failures: QueryAllEmailInfoWorker now returns null instead of empty list on error for proper error handling
-- Cancellation support: EmailSentWorker mass-sending loop now checks isCancelled()
-
----
-
-## 1.0.0-Beta.3
-
-### 🚀 Enhancements
-
-- Email Address Book: Add double-click editing functionality for contacts
-- Email Address Book: Reset button now clears only tag information
-
----
-
-## 1.0.0-Beta.2
-
-### 🔧 Fixes
-
-- PluginLoader: IsolatedPluginClassLoader now properly delegates JDK classes (java.*, javax.*, sun.*, com.sun.*) to main
-  app ClassLoader
-- PluginLoader: Universal classloading fallback ensures plugin DTOs and third-party library classes are accessible from
-  isolated plugin JARs
-
-### 📝 Documentation
-
-- Add IsolatedPluginClassLoader classloading strategy to architecture.md
-- Fix JAR filename typos: Bata.1.jar → Beta.2.jar in documentation
-- Update table alignment and spacing in README.md and docs/
-
----
-
-## 1.0.0-Beta.1
-
-### 🚀 Enhancements
-
-- Add error dialog display when email sending fails
-
-### 🔧 Fixes
-
-- Center email sent log table layout in viewing dialog
-
----
-
-## 1.0.0-Alpha5
-
-### 🚀 Enhancements
-
-- Add SwissKitJ-Api module for shared components and plugin development
-- Add email sent log viewing functionality with status tracking
-
-### 🔄 Changes
-
-- Move KitPage interface to SwissKitJ-Api module
-- Move SwissKitPage annotation to SwissKitJ-Api module
-- Move UI components (GradientProgressBar, FixedWidthComboBox) to SwissKitJ-Api module
-
----
-
-## 1.0-Alpha4
-
-### 🚀 Enhancements
-
-- Add progress bar support for email sending
-- Display tag names instead of IDs in configuration view
-- Improve progress bar real-time updates
-
----
-
-## 1.0-Alpha3
-
-### 🔄 Changes
-
-- Refactor tag association mechanism to use tag ID instead of tag name
-
----
-
-## 1.0-Alpha2
-
-### 🚀 Enhancements
-
-- Add email sending functionality with SMTP support
-- Add mass email sending feature with tag-based recipients
-- Add attachment support by tag-based folder selection
-
----
-
-## 1.0-Alpha
-
-### 🚀 Enhancements
-
-- Add Excel complex split mode with custom configuration
-- Add email address book management feature
-- Add email tag management feature
-- Add plugin loading system
-- Add custom UI components (GradientProgressBar, FixedWidthComboBox)
+- Excel complex split, email address book, tag management, plugin loading

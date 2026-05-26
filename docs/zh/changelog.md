@@ -6,19 +6,34 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 
 ## [3.0.0] — JavaFX 迁移
 
+**v3.0.0-beta.2** — 2026-05-26
+
+### ✨ 新功能
+
+- **AI 远程后端**：通过 AI 设置中的全局选择器，支持在本地 GGUF、OpenAI Chat Completions 和 Anthropic Messages API 之间切换；所有后端均支持 SSE 流式响应（逐令牌输出）和工具调用
+- **插件后台执行**：插件可在后台运行任务，支持视图缓存和 ToolCard 运行状态指示器
+- **AI 自动初始化**：配置的 AI 后端（包括远程 API 模式）在启动时自动激活，无需手动重新配置
+
+### 🔧 修复
+
+- 修复 AI 后端在重启后不生效的问题 — `MainWindow` 中的残留初始化覆盖了已配置的服务
+- 修复插件 i18n 资源包因 ClassLoader 父级委托返回主机翻译的问题
+- 修复 ToolCard 后台指示器不显示及预览 i18n 不工作的问题
+- 修复 ExcelSplitterPlugin 缺少 `hasRunningTasks` 实现的问题
+
+---
+
 **v3.0.0-beta.1** — 2026-05-24
 
 ### ✨ 新功能
 
 - **国际化框架**：SwissKitJ-Api 中的核心 `I18n` 类，支持数据库持久化语言设置、插件资源包注册/注销和实时语言切换
-- **双语文档**：通过 docsify-flexible-i18n 实现完整的英文/中文文档
 
-### ♻️ 重构
+### ♻️ 变更
 
 - 将所有 UI 组件（标题栏、主窗口、侧边栏、内容区、工具卡片、详情面板）转换为使用 I18n
 - 完成 Settings UI（AI、邮件、通讯录选项卡）的国际化转换
 - 完成所有内置工具和插件商店 UI 的国际化
-- 重写资源包 — 英文默认 + 中文
 
 ### 🔧 修复
 
@@ -36,11 +51,6 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 - **JNI 原生推理**：C++ `llama_jni` 原生层，含 `GenerateCallback`、`LlamaContext`、`ModelParams`、`GenerateParams` 绑定；捆绑 macOS 的 `libllama_jni-aarch64.dylib`
 - **工具调用 API**：`SwissKitJ-Api` 模块中的 `AiTool`、`AiToolCall`、`AiToolParam`、`AiToolResult`；主机中的 `ToolCallParser` 和 `ToolRegistry`
 - **聊天会话**：`ChatSession` 类管理消息历史和上下文
-
-### 🔧 修复
-
-- 从 git 跟踪中移除 `.idea/`、`.mcp.json` 和备份工作流文件
-- 将 `.mcp.json` 添加到 `.gitignore`
 
 ---
 
@@ -65,11 +75,6 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 
 - 胖 JAR 捆绑所有平台的 JavaFX 原生 `.dll` / `.so` / `.dylib`
 
-### ♻️ 重构
-
-- 依赖管理集中到父 POM
-- 遗留 Swing 源码移到 `backup/`，排除在构建外
-
 ---
 
 ## [2.x] — Swing 时代（稳定版）
@@ -81,12 +86,10 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 ### v2.1.0 — 2026-05-07
 
 - 新功能：i18n `panelMethod` 属性和设置 i18n 刷新
-- 修复：转义 Javadoc 中的 `>` 以防止生成错误
 
 ### v2.0.2 — 2026-05-06
 
 - 新功能：官方插件 i18n 支持
-- 维护：更新发布工作流格式
 
 ### v2.0.1 — 2026-05-06
 
@@ -97,10 +100,7 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 ### v2.0.0 — 2026-04-20
 
 - **破坏性变更**：移除 `KitPage` 接口，纯注解插件发现
-- 重构：解耦所有模块 POM（独立，无父依赖）
-- 重构：在 SwissKitJ-Api BOM 中集中依赖版本
 - 新功能：菜单点击导航和拖拽排序功能
-- CI：在发布 zip 文件名中包含版本号
 
 ---
 
@@ -126,7 +126,6 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 
 - **新功能：插件热部署** — 无需重启即可部署、重载和卸载插件
 - 新功能：HappyLearning 课时跟踪和状态显示
-- 重构：项目重构，重命名模块
 
 ### v1.0.0 — 2026-03-28
 
@@ -146,7 +145,6 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 ### v1.0.0-RC.1 — 2026-03-28
 
 - 11 个错误修复：EDT 违规、NPE 防护、资源泄漏、静默失败
-- Maven：禁用资源过滤以保留二进制图标
 
 ### v1.0.0-Beta.4 — 2026-03-27
 

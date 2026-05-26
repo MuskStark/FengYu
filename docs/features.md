@@ -17,13 +17,15 @@ SwissKitJ provides 8 built-in tools organized by category, plus support for exte
 
 ### AI Chat (`DEV`)
 
-Chat with local LLM models in GGUF format. Supports:
+Chat with AI models using multiple backends. Supports:
 
-- Loading GGUF models with multiple quantization formats (Q3_K, Q5_0, Q4_0, Q8_0, IQ4_NL)
+- **Local GGUF models** — Load and run models locally with JNI native acceleration
+- **OpenAI-compatible APIs** — Connect to any OpenAI Chat Completions endpoint
+- **Anthropic Claude APIs** — Connect to any Anthropic Messages API endpoint
 - Streaming inference with real-time token generation
 - Tool calling support with custom tool definitions
 - Chat session management with history
-- JNI native acceleration layer for inference
+- Auto-activates the configured backend on startup
 
 ### JSON Formatter (`DEV`)
 
