@@ -96,8 +96,15 @@ public final class I18n {
 
     public static void registerPluginBundle(String baseName, ClassLoader loader) {
         try {
-            ResourceBundle bundle = ResourceBundle.getBundle(baseName, currentLocale, loader);
-            pluginBundles.put(loader, bundle);
+            ResourceBundle bundle;
+            if (loader instanceof java.net.URLClassLoader ucl) {
+                bundle = loadBundleFromUrlClassLoader(ucl, baseName, currentLocale);
+            } else {
+                bundle = ResourceBundle.getBundle(baseName, currentLocale, loader);
+            }
+            if (bundle != null) {
+                pluginBundles.put(loader, bundle);
+            }
         } catch (MissingResourceException ignored) {}
     }
 
@@ -118,11 +125,19 @@ public final class I18n {
     private static void rebuildPluginBundles() {
         for (Map.Entry<ClassLoader, ResourceBundle> entry : pluginBundles.entrySet()) {
             ClassLoader cl = entry.getKey();
-            ResourceBundle old = entry.getValue();
             try {
-                ResourceBundle newBundle = ResourceBundle.getBundle(old.getBaseBundleName() != null
-                        ? old.getBaseBundleName() : "i18n.messages", currentLocale, cl);
-                pluginBundles.put(cl, newBundle);
+                ResourceBundle newBundle;
+                if (cl instanceof java.net.URLClassLoader ucl) {
+                    newBundle = loadBundleFromUrlClassLoader(ucl, "i18n.messages", currentLocale);
+                } else {
+                    ResourceBundle old = entry.getValue();
+                    String baseName = old.getBaseBundleName() != null
+                            ? old.getBaseBundleName() : "i18n.messages";
+                    newBundle = ResourceBundle.getBundle(baseName, currentLocale, cl);
+                }
+                if (newBundle != null) {
+                    pluginBundles.put(cl, newBundle);
+                }
             } catch (MissingResourceException ignored) {}
         }
     }
@@ -135,5 +150,28 @@ public final class I18n {
         for (Runnable l : listeners) {
             l.run();
         }
+    }
+
+    private static ResourceBundle loadBundleFromUrlClassLoader(
+            java.net.URLClassLoader ucl, String baseName, Locale locale) {
+        String path = baseName.replace('.', '/');
+        String[] candidates;
+        if (locale != null && !locale.getLanguage().isEmpty()) {
+            candidates = new String[]{
+                path + "_" + locale.getLanguage() + ".properties",
+                path + ".properties"
+            };
+        } else {
+            candidates = new String[]{ path + ".properties" };
+        }
+        for (String resource : candidates) {
+            java.net.URL url = ucl.findResource(resource);
+            if (url != null) {
+                try (java.io.InputStream is = url.openStream()) {
+                    return new java.util.PropertyResourceBundle(is);
+                } catch (Exception ignored) {}
+            }
+        }
+        return null;
     }
 }
