@@ -8,8 +8,6 @@ import fan.summer.ui.setting.SwissKitJSettingUi;
 import fan.summer.ui.sidebar.Sidebar;
 import fan.summer.ui.titlebar.TitleBar;
 import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.ai.AiServiceProvider;
-import fan.summer.ai.service.AiServiceImpl;
 import fan.summer.buildintool.ai.AiChatPlugin;
 import javafx.animation.*;
 import javafx.geometry.Insets;
@@ -57,7 +55,6 @@ public class MainWindow extends StackPane {
     private final TitleBar    titleBar;
     private final Sidebar     sidebar;
     private final ContentArea contentArea;
-    private final AiServiceImpl aiService;
     private final AiChatPlugin  aiChatPlugin;
     private Node aiChatView;
     private final Map<SwissKitJPlugin, Node> cachedViews = new HashMap<>();
@@ -91,9 +88,7 @@ public class MainWindow extends StackPane {
         contentArea.setRegistry(registry);
         contentArea.setMinHeight(0);
 
-        // AI service
-        aiService = new AiServiceImpl();
-        AiServiceProvider.setService(aiService);
+        // AI service (initialized by SwissKitJApp.initializeAiBackend())
         aiChatPlugin = new AiChatPlugin();
 
         int buildInTool = 0;
