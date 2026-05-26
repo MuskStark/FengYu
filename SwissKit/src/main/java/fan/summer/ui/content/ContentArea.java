@@ -2,6 +2,7 @@ package fan.summer.ui.content;
 
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.plugin.PluginRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import javafx.animation.FadeTransition;
@@ -54,6 +55,7 @@ public class ContentArea extends BorderPane {
     private String   currentQuery    = "";
     private Consumer<SwissKitJPlugin> onLaunch;
     private Runnable onBack;
+    private PluginRegistry registry;
 
     public ContentArea() {
         LOG.info("ContentArea initializing");
@@ -85,6 +87,15 @@ public class ContentArea extends BorderPane {
     public void setOnBack(Runnable handler) {
         LOG.debug("setOnBack callback set");
         this.onBack = handler;
+    }
+
+    /**
+     * Sets the plugin registry for querying background state (used by ToolCard indicators).
+     *
+     * @param registry the PluginRegistry; must not be null
+     */
+    public void setRegistry(PluginRegistry registry) {
+        this.registry = registry;
     }
 
     /**
@@ -294,7 +305,7 @@ public class ContentArea extends BorderPane {
 
         for (int i = 0; i < filtered.size(); i++) {
             SwissKitJPlugin p = filtered.get(i);
-            ToolCard card = new ToolCard(p, this::onCardSelect);
+            ToolCard card = new ToolCard(p, this::onCardSelect, registry);
             card.setPrefWidth(152);
             card.setPrefHeight(130);
 
