@@ -10,7 +10,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
+
 public final class I18n {
+
+    private static final PluginLogger log = LoggerFactory.getLogger(I18n.class);
 
     private I18n() {}
 
@@ -30,6 +35,7 @@ public final class I18n {
         for (ResourceBundle pb : pluginBundles.values()) {
             if (pb.containsKey(key)) return pb.getString(key);
         }
+        log.trace("i18n key not found: {}", key);
         return key;
     }
 
@@ -91,7 +97,12 @@ public final class I18n {
         try {
             ResourceBundle bundle = ResourceBundle.getBundle(baseName, currentLocale, loader);
             hostBundle.set(bundle);
-        } catch (MissingResourceException ignored) {}
+            log.info("Registered host i18n bundle: baseName={}, locale={}, keys={}",
+                    baseName, currentLocale, bundle.keySet().size());
+        } catch (MissingResourceException e) {
+            log.warn("Failed to load host i18n bundle: baseName={}, locale={}, error={}",
+                    baseName, currentLocale, e.getMessage());
+        }
     }
 
     public static void registerPluginBundle(String baseName, ClassLoader loader) {
@@ -104,8 +115,13 @@ public final class I18n {
             }
             if (bundle != null) {
                 pluginBundles.put(loader, bundle);
+                log.debug("Registered plugin i18n bundle: baseName={}, locale={}, keys={}",
+                        baseName, currentLocale, bundle.keySet().size());
             }
-        } catch (MissingResourceException ignored) {}
+        } catch (MissingResourceException e) {
+            log.warn("Failed to load plugin i18n bundle: baseName={}, locale={}, loader={}, error={}",
+                    baseName, currentLocale, loader, e.getMessage());
+        }
     }
 
     public static void unregisterPluginBundle(ClassLoader loader) {

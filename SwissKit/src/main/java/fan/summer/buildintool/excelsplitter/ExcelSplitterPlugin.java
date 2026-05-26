@@ -53,6 +53,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
     private static final PluginLogger log = LoggerFactory.getLogger(ExcelSplitterPlugin.class);
 
     private Node view;
+    private static final AtomicBoolean hasRunningTask = new AtomicBoolean(false);
 
     @Override public String getId()          { return "fan.summer.buildin.excelsplitter"; }
     @Override public String getName()        { return I18n.get("builtin.excel-splitter.name"); }
@@ -62,6 +63,11 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
     @Override public String getMdiIcon()    { return "file-excel"; }
     @Override public IconStyle getIconStyle()   { return IconStyle.TEAL; }
     @Override public ToolType getType()        { return ToolType.BUILTIN; }
+
+    @Override
+    public boolean hasRunningTasks() {
+        return hasRunningTask.get();
+    }
 
     @Override
     public void onActivate() {
@@ -211,6 +217,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
                 if (!analysisRunning.get() && !analysisTriggered) {
                     analysisTriggered = true;
                     analysisRunning.set(true);
+                    hasRunningTask.set(true);
                     Platform.runLater(() -> showLoading(true));
                     startAnalysis();
                 }
@@ -229,6 +236,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             task.setOnSucceeded(e -> {
                 config.analysisResult = task.getValue();
                 analysisRunning.set(false);
+                hasRunningTask.set(false);
                 showLoading(false);
                 int sheetCount = config.analysisResult.size();
                 String sheetNames = config.analysisResult.keySet().stream().limit(5).collect(Collectors.joining(", "));
@@ -240,6 +248,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
             task.setOnFailed(e -> {
                 analysisRunning.set(false);
+                hasRunningTask.set(false);
                 analysisTriggered = false;
                 showLoading(false);
                 log.error("Excel analysis failed: {}", task.getException().getMessage());
@@ -777,10 +786,12 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             task.setOnSucceeded(e -> showSuccess(task.getValue()));
             task.setOnFailed(e   -> showError(task.getException()));
 
+            hasRunningTask.set(true);
             new Thread(task) {{ setDaemon(true); }}.start();
         }
 
         private void showSuccess(ExcelSplitter.SplitResult result) {
+            hasRunningTask.set(false);
             log.info("Excel split complete: {} output files created", result.fileCount());
             progressBar.setProgress(1.0);
             progressBar.getStyleClass().removeAll("success", "danger");
@@ -838,6 +849,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
         }
 
         private void showError(Throwable err) {
+            hasRunningTask.set(false);
             log.error("Excel split failed: {}", err.getMessage());
             progressBar.setProgress(1.0);
             progressBar.getStyleClass().removeAll("success", "danger");
