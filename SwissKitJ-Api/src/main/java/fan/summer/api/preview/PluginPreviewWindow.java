@@ -1,6 +1,7 @@
 package fan.summer.api.preview;
 
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.i18n.I18n;
 import fan.summer.api.theme.Themes;
 import javafx.scene.Scene;
 import javafx.scene.paint.Color;
@@ -151,6 +152,8 @@ public final class PluginPreviewWindow {
         // Build the window
         final URLClassLoader finalCl = classLoader;
         final List<SwissKitJPlugin> finalPlugins = List.copyOf(loadedPlugins);
+
+        I18n.setLocale(java.util.Locale.getDefault());
 
         Stage stage = new Stage();
         stage.initStyle(StageStyle.TRANSPARENT);

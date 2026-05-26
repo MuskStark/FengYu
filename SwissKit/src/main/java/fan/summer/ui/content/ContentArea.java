@@ -148,6 +148,7 @@ public class ContentArea extends BorderPane {
     public void showToolGrid() {
         LOG.info("Returning to tool grid");
         setTopMode(false, null);
+        refresh();
         crossFadeTo(scrollPane);
     }
 
@@ -207,8 +208,8 @@ public class ContentArea extends BorderPane {
                              "-fx-cursor: hand; -fx-padding: 4 10 4 0;")
         );
         backBtn.setOnMouseClicked(e -> {
-            showToolGrid();
             if (onBack != null) onBack.run();
+            showToolGrid();
         });
 
         Label sep = new Label("/");
