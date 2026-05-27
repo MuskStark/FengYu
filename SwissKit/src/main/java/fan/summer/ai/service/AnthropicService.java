@@ -1,7 +1,9 @@
 package fan.summer.ai.service;
 
 import fan.summer.ai.tools.ToolCallParser;
-import fan.summer.ai.tools.ToolRegistry;
+import fan.summer.ai.tools.ToolExecutor;
+import fan.summer.ai.tools.ToolSchemaBuilder;
+import fan.summer.ai.util.JsonHelper;
 import fan.summer.api.ai.*;
 import fan.summer.ui.setting.SwissKitJSettingUi;
 import javafx.application.Platform;
@@ -20,7 +22,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
 
 public class AnthropicService implements AiService {
 
@@ -28,7 +29,6 @@ public class AnthropicService implements AiService {
     private static final int MAX_TOOL_ROUNDS = 5;
 
     private final HttpClient httpClient;
-    private final ToolRegistry toolRegistry = new ToolRegistry();
     private volatile boolean generating = false;
     private volatile InputStream activeStream;
 
@@ -61,10 +61,7 @@ public class AnthropicService implements AiService {
             && modelName != null && !modelName.isBlank();
     }
 
-    @Override public Optional<String> getModelName() {
-        return Optional.ofNullable(modelName);
-    }
-
+    @Override public Optional<String> getModelName() { return Optional.ofNullable(modelName); }
     @Override public long getMemoryUsage() { return -1; }
     @Override public boolean isGenerating() { return generating; }
 
@@ -101,7 +98,7 @@ public class AnthropicService implements AiService {
         if (round >= MAX_TOOL_ROUNDS) return;
 
         String systemPrompt = SwissKitJSettingUi.getAiSystemPrompt();
-        String toolDefs = toolRegistry.buildToolDefinitions();
+        String toolDefs = ToolSchemaBuilder.buildPromptDefinitions(AiServiceProvider.getTools());
         if (!toolDefs.isEmpty()) systemPrompt += "\n\n" + toolDefs;
 
         List<Object> messages = buildAnthropicMessages(history);
@@ -113,11 +110,11 @@ public class AnthropicService implements AiService {
         body.put("stream", true);
         body.put("system", systemPrompt);
         body.put("messages", messages);
-        if (toolRegistry.hasTools()) {
-            body.put("tools", buildAnthropicTools());
+        if (AiServiceProvider.hasTools()) {
+            body.put("tools", ToolSchemaBuilder.buildAnthropicTools(AiServiceProvider.getTools()));
         }
 
-        String jsonBody = JsonBuilder.toJson(body);
+        String jsonBody = JsonHelper.toJson(body);
         String url = endpoint + "/v1/messages";
 
         HttpRequest request = HttpRequest.newBuilder()
@@ -162,7 +159,7 @@ public class AnthropicService implements AiService {
 
                 Map<String, Object> chunk;
                 try {
-                    chunk = JsonParser.parseObject(data);
+                    chunk = JsonHelper.parseObject(data);
                 } catch (Exception e) {
                     log.warn("Malformed SSE chunk, skipping: {}", e.getMessage());
                     continue;
@@ -194,7 +191,7 @@ public class AnthropicService implements AiService {
                         if (currentToolName[0] != null && currentToolId[0] != null) {
                             Map<String, Object> args;
                             try {
-                                Object parsed = JsonParser.parse(currentToolArgs.toString());
+                                Object parsed = JsonHelper.parse(currentToolArgs.toString());
                                 args = parsed instanceof Map ? (Map<String, Object>) parsed : Map.of("raw", currentToolArgs.toString());
                             } catch (Exception e) {
                                 args = Map.of("raw", currentToolArgs.toString());
@@ -211,15 +208,10 @@ public class AnthropicService implements AiService {
         long elapsed = System.nanoTime() - startTime;
         double tokPerSec = tokenCount[0] > 0 ? tokenCount[0] * 1_000_000_000.0 / elapsed : 0;
 
-        if (!toolCalls.isEmpty() && toolRegistry.hasTools()) {
+        if (!toolCalls.isEmpty() && AiServiceProvider.hasTools()) {
             hadToolCall.set(true);
             history.add(AiChatMessage.assistantWithTools(fullResponse.toString(), toolCalls));
-            for (AiToolCall tc : toolCalls) {
-                Platform.runLater(() -> callback.onToolCall(tc));
-                AiToolResult result = toolRegistry.execute(tc.name(), tc.arguments());
-                Platform.runLater(() -> callback.onToolResult(tc.id(), result));
-                history.add(AiChatMessage.toolResult(tc.id(), tc.name(), result.output()));
-            }
+            ToolExecutor.executeAndFeed(toolCalls, history, callback);
             chatWithToolLoop(history, temperature, topP, maxTokens, callback, round + 1, hadToolCall);
         } else {
             String clean = hadToolCall.get() ? ToolCallParser.stripToolCalls(fullResponse.toString()) : fullResponse.toString();
@@ -261,35 +253,6 @@ public class AnthropicService implements AiService {
         return messages;
     }
 
-    private List<Object> buildAnthropicTools() {
-        List<Object> tools = new ArrayList<>();
-        for (AiTool tool : toolRegistry.getAll()) {
-            Map<String, Object> t = new LinkedHashMap<>();
-            t.put("name", tool.getName());
-            t.put("description", tool.getDescription());
-            t.put("input_schema", buildJsonSchema(tool.getParameters()));
-            tools.add(t);
-        }
-        return tools;
-    }
-
-    private static Map<String, Object> buildJsonSchema(List<AiToolParam> params) {
-        Map<String, Object> schema = new LinkedHashMap<>();
-        schema.put("type", "object");
-        Map<String, Object> properties = new LinkedHashMap<>();
-        List<String> required = new ArrayList<>();
-        for (AiToolParam p : params) {
-            Map<String, Object> prop = new LinkedHashMap<>();
-            prop.put("type", p.type());
-            prop.put("description", p.description());
-            properties.put(p.name(), prop);
-            if (p.required()) required.add(p.name());
-        }
-        schema.put("properties", properties);
-        if (!required.isEmpty()) schema.put("required", required);
-        return schema;
-    }
-
     @Override public void cancelGeneration() {
         generating = false;
         InputStream stream = activeStream;
@@ -298,9 +261,9 @@ public class AnthropicService implements AiService {
         }
     }
 
-    @Override public void registerTool(AiTool tool) { toolRegistry.register(tool); }
-    @Override public void unregisterTool(String toolName) { toolRegistry.unregister(toolName); }
-    @Override public List<AiTool> getTools() { return toolRegistry.getAll(); }
+    @Override public void registerTool(AiTool tool) { AiServiceProvider.registerTool(tool); }
+    @Override public void unregisterTool(String toolName) { AiServiceProvider.unregisterTool(toolName); }
+    @Override public List<AiTool> getTools() { return AiServiceProvider.getTools(); }
 
     private HttpResponse<InputStream> sendWithRetry(HttpRequest request) throws Exception {
         try {
@@ -314,7 +277,7 @@ public class AnthropicService implements AiService {
     public String testConnection() {
         try {
             String url = endpoint + "/v1/messages";
-            String body = JsonBuilder.toJson(Map.of(
+            String body = JsonHelper.toJson(Map.of(
                 "model", modelName,
                 "max_tokens", 5,
                 "messages", List.of(Map.of("role", "user", "content", "Hi"))
