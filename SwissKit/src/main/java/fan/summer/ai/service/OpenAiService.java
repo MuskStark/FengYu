@@ -273,10 +273,27 @@ public class OpenAiService implements AiService {
             Map<String, Object> fn = new LinkedHashMap<>();
             fn.put("name", tool.getName());
             fn.put("description", tool.getDescription());
-            fn.put("parameters", tool.getParameters());
+            fn.put("parameters", buildJsonSchema(tool.getParameters()));
             tools.add(Map.of("type", "function", "function", fn));
         }
         return tools;
+    }
+
+    private static Map<String, Object> buildJsonSchema(List<AiToolParam> params) {
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        Map<String, Object> properties = new LinkedHashMap<>();
+        List<String> required = new ArrayList<>();
+        for (AiToolParam p : params) {
+            Map<String, Object> prop = new LinkedHashMap<>();
+            prop.put("type", p.type());
+            prop.put("description", p.description());
+            properties.put(p.name(), prop);
+            if (p.required()) required.add(p.name());
+        }
+        schema.put("properties", properties);
+        if (!required.isEmpty()) schema.put("required", required);
+        return schema;
     }
 
     @Override public void cancelGeneration() {
