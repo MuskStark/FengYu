@@ -25,6 +25,20 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * {@link AiService} implementation for local AI models (GGUF format).
+ * Supports two backends: a native llama.cpp JNI backend when native libraries
+ * are available, or a pure Java fallback ({@link LlamaRunner}) when they are not.
+ *
+ * <p>Both backends support streaming, tool calling, and multi-round conversations
+ * with automatic stop-sequence detection (native) or fixed-length generation (Java).
+ *
+ * <p>To use, call {@link #loadModel(Path)} with the path to a GGUF model file,
+ * then invoke {@link #chat(List, AiStreamCallback)}.
+ *
+ * @see AiService
+ * @see LlamaRunner
+ */
 public class AiServiceImpl implements AiService {
 
     private static final Logger log = LoggerFactory.getLogger(AiServiceImpl.class);
@@ -38,6 +52,13 @@ public class AiServiceImpl implements AiService {
     private ChatTemplate nativeChatTemplate;
     private volatile String loadedModelPath;
 
+    /**
+     * Constructs an {@code AiServiceImpl}, automatically selecting the native
+     * JNI backend if native libraries are loaded, otherwise falling back to
+     * the pure Java {@link LlamaRunner}.
+     *
+     * @see NativeLoader#isLoaded()
+     */
     public AiServiceImpl() {
         NativeLoader.load();
         if (NativeLoader.isLoaded()) {
@@ -53,6 +74,13 @@ public class AiServiceImpl implements AiService {
 
     // ── Model management ──────────────────────────────────────
 
+    /**
+     * Loads a GGUF model from the given path, initializing either the native
+     * llama.cpp context or the Java runner depending on the selected backend.
+     *
+     * @param modelPath the path to the GGUF model file
+     * @throws AiServiceException if loading fails for any reason
+     */
     @Override
     public void loadModel(Path modelPath) throws AiServiceException {
         try {
@@ -87,6 +115,11 @@ public class AiServiceImpl implements AiService {
         }
     }
 
+    /**
+     * Unloads the currently loaded model, releasing resources.
+     * Closes the native context if using the native backend, or calls
+     * {@code unload()} on the Java runner.
+     */
     @Override
     public void unloadModel() {
         if (backend == Backend.NATIVE && nativeContext != null) {
@@ -99,11 +132,24 @@ public class AiServiceImpl implements AiService {
         loadedModelPath = null;
     }
 
+    /**
+     * Returns {@code true} if a model is ready for inference.
+     * For the native backend, checks that {@code nativeContext} is non-null;
+     * for the Java backend, delegates to {@link LlamaRunner#isReady()}.
+     *
+     * @return true if a model is loaded and ready, false otherwise
+     */
     @Override public boolean isReady() {
         if (backend == Backend.NATIVE) return nativeContext != null;
         return javaRunner != null && javaRunner.isReady();
     }
 
+    /**
+     * Returns the name of the currently loaded model, derived from the file path
+     * for the native backend, or from the runner for the Java backend.
+     *
+     * @return an {@link Optional} containing the model name, or empty if no model is loaded
+     */
     @Override
     public Optional<String> getModelName() {
         if (backend == Backend.NATIVE) {
@@ -113,6 +159,11 @@ public class AiServiceImpl implements AiService {
         return Optional.ofNullable(javaRunner != null ? javaRunner.getModelName() : null);
     }
 
+    /**
+     * Returns the approximate JVM memory usage (total minus free memory).
+     *
+     * @return estimated memory usage in bytes, or -1 if not applicable
+     */
     @Override public long getMemoryUsage() {
         Runtime rt = Runtime.getRuntime();
         return rt.totalMemory() - rt.freeMemory();
@@ -120,12 +171,32 @@ public class AiServiceImpl implements AiService {
 
     // ── Chat ──────────────────────────────────────────────────
 
+    /**
+     * Initiates a chat session using the default settings from
+     * {@link SwissKitJSettingUi#getAiTemperature()}, {@link SwissKitJSettingUi#getAiTopP()},
+     * and {@link SwissKitJSettingUi#getAiMaxTokens()}.
+     *
+     * @param history  the conversation history
+     * @param callback the stream callback for tokens and completion events
+     * @throws AiServiceException if the service is not ready or generation fails
+     */
     @Override
     public void chat(List<AiChatMessage> history, AiStreamCallback callback) throws AiServiceException {
         chat(history, SwissKitJSettingUi.getAiTemperature(), SwissKitJSettingUi.getAiTopP(),
              SwissKitJSettingUi.getAiMaxTokens(), callback);
     }
 
+    /**
+     * Initiates a chat session with explicit generation parameters.
+     * Dispatches to either the native or Java backend depending on which is active.
+     *
+     * @param history    the conversation history
+     * @param temperature sampling temperature (0.0 - 2.0)
+     * @param topP       nucleus sampling top-p value (0.0 - 1.0)
+     * @param maxTokens  maximum tokens to generate
+     * @param callback   the stream callback for tokens and completion events
+     * @throws AiServiceException if the service is not ready or generation fails
+     */
     @Override
     public void chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
                      AiStreamCallback callback) throws AiServiceException {
@@ -159,6 +230,10 @@ public class AiServiceImpl implements AiService {
         });
     }
 
+    /**
+     * Runs generation in the native llama.cpp backend with automatic stop-sequence
+     * detection. Supports a multi-round tool-call loop up to {@code MAX_TOOL_ROUNDS}.
+     */
     private void generateNativeWithToolLoop(String prompt, float temperature, float topP,
                                              int maxTokens, List<AiChatMessage> history,
                                              AiStreamCallback callback, int round,
@@ -252,6 +327,10 @@ public class AiServiceImpl implements AiService {
         });
     }
 
+    /**
+     * Runs generation in the pure Java backend with a multi-round tool-call loop
+     * up to {@code MAX_TOOL_ROUNDS}. Resets the runner's cache between rounds.
+     */
     private void generateJavaWithToolLoop(String prompt, float temperature, float topP, int maxTokens,
                                            List<AiChatMessage> history, AiStreamCallback callback,
                                            int round, AtomicBoolean hadToolCall) {
@@ -290,6 +369,12 @@ public class AiServiceImpl implements AiService {
 
     // ── Prompt building ───────────────────────────────────────
 
+    /**
+     * Builds the system prompt by combining the base prompt from settings
+     * with the tool definitions from {@link ToolSchemaBuilder}.
+     *
+     * @return the complete system prompt string, or just the base prompt if no tools are registered
+     */
     private String buildSystemPrompt() {
         String base = SwissKitJSettingUi.getAiSystemPrompt();
         String toolDefs = ToolSchemaBuilder.buildPromptDefinitions(AiServiceProvider.getTools());
@@ -297,6 +382,13 @@ public class AiServiceImpl implements AiService {
         return base + "\n\n" + toolDefs;
     }
 
+    /**
+     * Builds a prompt for the native backend using the loaded chat template.
+     *
+     * @param history      the conversation history
+     * @param systemPrompt the system prompt to include
+     * @return the formatted prompt string
+     */
     private String buildNativePrompt(List<AiChatMessage> history, String systemPrompt) {
         ChatTemplate template = nativeChatTemplate != null ? nativeChatTemplate : new ChatTemplate("");
         return template.buildPrompt(history, systemPrompt);
@@ -304,16 +396,26 @@ public class AiServiceImpl implements AiService {
 
     // ── Lifecycle ─────────────────────────────────────────────
 
+    /**
+     * Cancels any in-progress generation. For the Java backend, calls
+     * {@link LlamaRunner#cancel()}; the native backend is non-interruptible.
+     */
     @Override public void cancelGeneration() {
         if (javaRunner != null) javaRunner.cancel();
     }
 
+    /**
+     * Returns {@code true} if generation is currently in progress in the Java backend.
+     * For the native backend, always returns {@code false} (non-interruptible).
+     *
+     * @return true if generating, false otherwise
+     */
     @Override public boolean isGenerating() {
         if (backend == Backend.NATIVE) return false;
         return javaRunner != null && javaRunner.isGenerating();
     }
 
-    // ── Tool management (delegate to AiServiceProvider) ───────
+    // ── Tool management (delegate to AiServiceProvider) ────────
 
     @Override public void registerTool(AiTool tool) { AiServiceProvider.registerTool(tool); }
     @Override public void unregisterTool(String toolName) { AiServiceProvider.unregisterTool(toolName); }

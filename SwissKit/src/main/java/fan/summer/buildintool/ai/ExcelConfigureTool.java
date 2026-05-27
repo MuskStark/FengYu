@@ -8,6 +8,43 @@ import fan.summer.api.log.PluginLogger;
 
 import java.util.*;
 
+/**
+ * AI tool that configures the Excel split mode and its parameters.
+ *
+ * <p>Must be called after {@link ExcelAnalyzeTool} has populated the shared
+ * {@link SplitConfig} with an analysis result. This tool sets the split mode
+ * and any associated parameters, but does not execute the split itself.</p>
+ *
+ * <p>Supported modes:</p>
+ * <ul>
+ *   <li>{@code BY_SHEET} — one output file per sheet. Optional {@code sheets} arg
+ *       selects a subset; otherwise all sheets are exported.</li>
+ *   <li>{@code BY_COLUMN} — groups rows by unique values in a column and produces
+ *       one output file per distinct value. Requires {@code splitSheet} and
+ *       {@code splitColumn} arguments.</li>
+ *   <li>{@code COMPLEX} — multi-configuration split backed by the database.
+ *       Requires a {@code taskId} (UUID string) that identifies the configuration
+ *       stored in the database.</li>
+ * </ul>
+ *
+ * <p>Required arguments:</p>
+ * <ul>
+ *   <li>{@code mode} (string) — one of {@code BY_SHEET}, {@code BY_COLUMN}, or {@code COMPLEX}</li>
+ * </ul>
+ *
+ * <p>Conditional arguments:</p>
+ * <ul>
+ *   <li>{@code sheets} (string[]) — sheet names to export (BY_SHEET mode, optional)</li>
+ *   <li>{@code splitSheet} (string) — sheet name to split on (BY_COLUMN mode)</li>
+ *   <li>{@code splitColumn} (string) — column header name to split by (BY_COLUMN mode)</li>
+ *   <li>{@code taskId} (string) — complex split task ID from the database (COMPLEX mode)</li>
+ * </ul>
+ *
+ * @see ExcelAnalyzeTool
+ * @see ExcelExecuteTool
+ * @see ExcelQueryTool
+ */
+
 @SuppressWarnings("unchecked")
 public class ExcelConfigureTool implements AiTool {
     private static final PluginLogger log = LoggerFactory.getLogger(ExcelConfigureTool.class);

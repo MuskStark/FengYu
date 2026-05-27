@@ -10,6 +10,31 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 
+/**
+ * AI tool that analyzes an Excel file and returns its structure.
+ *
+ * <p>Reads the source Excel file and produces a summary containing all sheet names,
+ * the number of columns in each sheet (as determined by the header row), and the
+ * header names themselves. The result is stored in the shared {@link SplitConfig}
+ * for use by subsequent tools in the workflow.</p>
+ *
+ * <p>Required arguments:</p>
+ * <ul>
+ *   <li>{@code filePath} (string, required) — absolute path to the {@code .xlsx} or {@code .xls} file</li>
+ * </ul>
+ *
+ * <p>Workflow order:</p>
+ * <ol>
+ *   <li>{@code ExcelAnalyzeTool} — analyze (first step)</li>
+ *   <li>{@link ExcelConfigureTool} — configure split mode</li>
+ *   <li>{@link ExcelExecuteTool} — execute split</li>
+ * </ol>
+ *
+ * @see ExcelConfigureTool
+ * @see ExcelExecuteTool
+ * @see ExcelQueryTool
+ */
+
 public class ExcelAnalyzeTool implements AiTool {
     private static final PluginLogger log = LoggerFactory.getLogger(ExcelAnalyzeTool.class);
     private final ExcelSplitterPlugin plugin;

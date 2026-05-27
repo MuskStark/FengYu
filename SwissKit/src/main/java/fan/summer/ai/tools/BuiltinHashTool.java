@@ -9,6 +9,21 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.*;
 
+/**
+ * Built-in AI tool that calculates a cryptographic hash digest of input text.
+ *
+ * <p>Supports MD5, SHA-1, SHA-256, and SHA-512 algorithms. The computed hash is
+ * returned as a lowercase hexadecimal string.</p>
+ *
+ * <p>Required arguments:</p>
+ * <ul>
+ *   <li>{@code text} (string) — the input text to hash</li>
+ *   <li>{@code algorithm} (string) — one of {@code MD5}, {@code SHA-1}, {@code SHA-256}, {@code SHA-512}</li>
+ * </ul>
+ *
+ * @see BuiltinBase64Tool
+ */
+
 public class BuiltinHashTool implements AiTool {
     private static final PluginLogger log = LoggerFactory.getLogger(BuiltinHashTool.class);
 

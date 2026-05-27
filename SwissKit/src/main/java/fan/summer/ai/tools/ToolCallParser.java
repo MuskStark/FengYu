@@ -9,6 +9,23 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * Parses raw model output text and extracts structured AI tool-call objects.
+ *
+ * <p>This class recognises two patterns:</p>
+ * <ul>
+ *   <li><b>Qwen pattern</b> — delimited by {@code <|tool_call_begin|>} and
+ *       {@code <|tool_call_end|>} tokens with JSON fields {@code name} and
+ *       {@code arguments} inside.</li>
+ *   <li><b>Generic pattern</b> — a bare JSON object with {@code name} and
+ *       {@code arguments} fields, optionally wrapped in a markdown code fence.</li>
+ * </ul>
+ *
+ * <p>The Qwen pattern is checked first; if nothing matches, the generic pattern
+ * is tried. Extracted calls are returned as {@link AiToolCall} instances.</p>
+ *
+ * @see AiToolCall
+ */
 public class ToolCallParser {
 
     private static final Logger log = LoggerFactory.getLogger(ToolCallParser.class);
@@ -23,6 +40,14 @@ public class ToolCallParser {
         Pattern.DOTALL
     );
 
+    /**
+     * Parses all tool calls from the given model output text.
+     *
+     * @param text the raw text emitted by the AI model; may contain zero or more tool calls
+     * @return an unmodifiable list of {@link AiToolCall}; empty if no calls were found or
+     *         {@code text} is null/blank
+     * @see #containsToolCallPattern(String)
+     */
     public static List<AiToolCall> parse(String text) {
         if (text == null || text.isBlank()) return List.of();
 
@@ -45,12 +70,31 @@ public class ToolCallParser {
         return calls;
     }
 
+    /**
+     * Quick-check whether the given text <i>looks like</i> it contains a tool-call
+     * pattern without doing full parsing.
+     *
+     * @param text the text to inspect; may be null
+     * @return true if {@code text} contains the Qwen delimiter or both
+     *         {@code "name"} and {@code "arguments"} substrings
+     */
     public static boolean containsToolCallPattern(String text) {
         if (text == null) return false;
         return text.contains("<|tool_call_begin|>")
             || text.contains("\"name\"") && text.contains("\"arguments\"");
     }
 
+    /**
+     * Removes all tool-call artefacts from the text, leaving only the conversational
+     * content intended for the user.
+     *
+     * <p>Both the Qwen-delimited form and the generic JSON form are stripped.
+     * Surrounding whitespace is trimmed from the result.</p>
+     *
+     * @param text the original model output; may be null
+     * @return the text with all detected tool-call blocks removed; empty string if
+     *         {@code text} is null
+     */
     public static String stripToolCalls(String text) {
         if (text == null) return "";
         String result = QWEN_TOOL_CALL.matcher(text).replaceAll("");

@@ -5,6 +5,17 @@ import fan.summer.buildintool.excelsplitter.*;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
 
+/**
+ * AI tool that cancels a currently running Excel split operation.
+ *
+ * <p>Sends a cancellation signal to the shared {@link ExcelSplitterPlugin} execution
+ * context. It is safe to call even if no operation is currently in progress.</p>
+ *
+ * <p>No arguments are required.</p>
+ *
+ * @see ExcelExecuteTool
+ */
+
 public class ExcelCancelTool implements AiTool {
     private static final PluginLogger log = LoggerFactory.getLogger(ExcelCancelTool.class);
 

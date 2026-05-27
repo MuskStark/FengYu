@@ -8,6 +8,17 @@ import fan.summer.api.log.PluginLogger;
 
 import java.util.*;
 
+/**
+ * Built-in AI tool that formats or minifies JSON strings.
+ *
+ * <p>This tool wraps {@link fan.summer.ai.util.JsonHelper} and {@code Gson} to
+ * provide pretty-printed or compact JSON output. It accepts a JSON string and
+ * an optional flag to minify rather than prettify.</p>
+ *
+ * <p>Tool name: {@code json_format}</p>
+ *
+ * @see AiTool
+ */
 public class BuiltinJsonFormatTool implements AiTool {
     private static final PluginLogger log = LoggerFactory.getLogger(BuiltinJsonFormatTool.class);
 

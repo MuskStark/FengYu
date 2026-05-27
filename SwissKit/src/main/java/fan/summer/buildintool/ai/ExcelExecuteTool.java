@@ -10,6 +10,26 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 
+/**
+ * AI tool that executes an Excel file split operation.
+ *
+ * <p>This tool performs the actual split based on the configuration previously set by
+ * {@link ExcelConfigureTool}. It validates that analysis and configuration have been
+ * performed, then runs the split operation asynchronously and reports the resulting
+ * output files.</p>
+ *
+ * <p>Required execution order:</p>
+ * <ol>
+ *   <li>{@link ExcelAnalyzeTool} — analyze the source file</li>
+ *   <li>{@link ExcelConfigureTool} — configure the split mode and parameters</li>
+ *   <li>{@code ExcelExecuteTool} — execute the split</li>
+ * </ol>
+ *
+ * @see ExcelAnalyzeTool
+ * @see ExcelConfigureTool
+ * @see ExcelQueryTool
+ */
+
 public class ExcelExecuteTool implements AiTool {
     private static final PluginLogger log = LoggerFactory.getLogger(ExcelExecuteTool.class);
     private final ExcelSplitterPlugin plugin;

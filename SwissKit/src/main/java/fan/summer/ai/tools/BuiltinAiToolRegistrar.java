@@ -9,10 +9,31 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Optional;
 
+/**
+ * Registers all built-in AI tools with {@link AiServiceProvider}.
+ *
+ * <p>This class wires together the built-in tools ({@link BuiltinBase64Tool},
+ * {@link BuiltinHashTool}, {@link BuiltinJsonFormatTool}, {@link BuiltinColorConvertTool})
+ * and the Excel-related tools obtained from a live {@link ExcelSplitterPlugin}
+ * instance via the {@link PluginRegistry}.</p>
+ *
+ * <p>Call {@link #register()} once during application startup to make all
+ * built-in tools available to the AI layer.</p>
+ *
+ * @see AiServiceProvider
+ * @see PluginRegistry
+ */
 public class BuiltinAiToolRegistrar {
 
     private static final Logger log = LoggerFactory.getLogger(BuiltinAiToolRegistrar.class);
 
+    /**
+     * Registers all built-in tools with {@link AiServiceProvider}.
+     * Idempotent — safe to call more than once, though tools are registered only once
+     * because the underlying provider ignores duplicate registrations.
+     *
+     * @see AiServiceProvider#registerTool(AiTool)
+     */
     public static void register() {
         AiServiceProvider.registerTool(new BuiltinBase64Tool());
         AiServiceProvider.registerTool(new BuiltinHashTool());

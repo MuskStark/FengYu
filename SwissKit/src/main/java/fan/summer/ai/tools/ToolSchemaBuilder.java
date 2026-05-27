@@ -5,10 +5,39 @@ import fan.summer.api.ai.AiToolParam;
 
 import java.util.*;
 
+/**
+ * Builds tool schema representations suitable for different AI provider APIs.
+ *
+ * <p>This class provides factory methods to produce tool definition maps for:</p>
+ * <ul>
+ *   <li><b>OpenAI</b> — {@link #buildOpenAiTools(List)} produces the
+ *       {@code tools} array format using a JSON Schema for the
+ *       {@code parameters} field.</li>
+ *   <li><b>Anthropic</b> — {@link #buildAnthropicTools(List)} produces the
+ *       Claude tool definition format with an {@code input_schema}.</li>
+ * </ul>
+ *
+ * <p>{@link #buildPromptDefinitions(List)} generates a human-readable markdown
+ * section describing all tools for insertion into a system prompt, including
+ * parameter names, types, required/optional markers, and the calling convention.</p>
+ *
+ * @see AiTool
+ * @see AiToolParam
+ */
 public class ToolSchemaBuilder {
 
     private ToolSchemaBuilder() {}
 
+    /**
+     * Builds an OpenAI-format tool definitions list from a collection of tools.
+     *
+     * <p>Each entry in the returned list has the shape:</p>
+     * <pre>{@code {"type": "function", "function": {"name": "...", "description": "...", "parameters": {...}}}}
+     *
+     * @param tools the list of {@link AiTool} instances to convert
+     * @return a new list of maps ready for JSON serialisation as the OpenAI {@code tools} array
+     * @see #buildJsonSchema(List)
+     */
     public static List<Map<String, Object>> buildOpenAiTools(List<AiTool> tools) {
         List<Map<String, Object>> result = new ArrayList<>();
         for (AiTool tool : tools) {
@@ -21,6 +50,16 @@ public class ToolSchemaBuilder {
         return result;
     }
 
+    /**
+     * Builds an Anthropic-format tool definitions list from a collection of tools.
+     *
+     * <p>Each entry in the returned list has the shape:</p>
+     * <pre>{@code {"name": "...", "description": "...", "input_schema": {...}}}
+     *
+     * @param tools the list of {@link AiTool} instances to convert
+     * @return a new list of maps ready for JSON serialisation as the Anthropic {@code tools} array
+     * @see #buildJsonSchema(List)
+     */
     public static List<Map<String, Object>> buildAnthropicTools(List<AiTool> tools) {
         List<Map<String, Object>> result = new ArrayList<>();
         for (AiTool tool : tools) {
@@ -33,6 +72,16 @@ public class ToolSchemaBuilder {
         return result;
     }
 
+    /**
+     * Generates a markdown section that describes all provided tools in a format
+     * suitable for inclusion in a system prompt.
+     *
+     * <p>The output includes the JSON calling convention, the "important" usage rule,
+     * an example invocation, and a parameter table for each tool.</p>
+     *
+     * @param tools the list of tools to document; an empty list yields an empty string
+     * @return a markdown string beginning with {@code # Tools\n\n}
+     */
     public static String buildPromptDefinitions(List<AiTool> tools) {
         if (tools.isEmpty()) return "";
 

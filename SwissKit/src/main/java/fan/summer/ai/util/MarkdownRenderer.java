@@ -4,6 +4,29 @@ import org.commonmark.node.Node;
 import org.commonmark.parser.Parser;
 import org.commonmark.renderer.html.HtmlRenderer;
 
+/**
+ * Renders Markdown text to styled HTML for display in a JavaFX {@code WebView}.
+ *
+ * <p>Uses the <a href="https://commonmark.us/">CommonMark</a> library for parsing
+ * and produces self-contained HTML wrapped in a {@code <html>} document with an
+ * embedded dark-theme stylesheet. The renderer is safe to use with any WebView
+ * in the application.</p>
+ *
+ * <p>The embedded CSS uses a dark palette ({@code #1e1e2e} background) with
+ * monospaced font for code blocks and inline code, and supports the full CommonMark
+ * spec including tables, blockquotes, and images.</p>
+ *
+ * <p>Two rendering modes are provided:</p>
+ * <ul>
+ *   <li>{@link #render(String)} — full CommonMark parsing (headers, lists, code
+ *       blocks, links, images, etc.)</li>
+ *   <li>{@link #renderPlain(String)} — HTML-escapes the input and converts newlines
+ *       to {@code <br>} tags without parsing Markdown syntax.</li>
+ * </ul>
+ *
+ * @see org.commonmark.parser.Parser
+ * @see org.commonmark.renderer.html.HtmlRenderer
+ */
 public final class MarkdownRenderer {
 
     private static final Parser PARSER = Parser.builder().build();
@@ -58,12 +81,29 @@ public final class MarkdownRenderer {
 
     private MarkdownRenderer() {}
 
+    /**
+     * Parses the given Markdown and renders it to a complete HTML document.
+     *
+     * @param markdown the Markdown source to render; {@code null} or blank yields
+     *                 an empty HTML document
+     * @return a full HTML document string wrapped in {@code <html><head>...</head><body>...</body></html>}
+     */
     public static String render(String markdown) {
         if (markdown == null || markdown.isBlank()) return wrapHtml("");
         Node document = PARSER.parse(markdown);
         return wrapHtml(RENDERER.render(document));
     }
 
+    /**
+     * Escapes HTML special characters and converts newlines to {@code <br>} tags.
+     *
+     * <p>Unlike {@link #render(String)}, this does not parse Markdown syntax —
+     * it is intended for plain text that should appear verbatim with basic
+     * HTML line breaks and entity encoding.</p>
+     *
+     * @param text the plain text to escape; {@code null} or blank yields an empty HTML document
+     * @return a full HTML document string with the escaped text inside {@code <body>}
+     */
     public static String renderPlain(String text) {
         if (text == null || text.isBlank()) return wrapHtml("");
         String escaped = text
