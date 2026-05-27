@@ -72,7 +72,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
                 aiService.registerTool(new ExcelConfigureTool(excelPlugin));
                 aiService.registerTool(new ExcelExecuteTool(excelPlugin));
                 aiService.registerTool(new ExcelQueryTool(excelPlugin));
-                aiService.registerTool(new ExcelCancelTool(excelPlugin));
+                aiService.registerTool(new ExcelCancelTool());
                 log.info("Registered 5 AI tools for Excel Splitter");
             }
         }
