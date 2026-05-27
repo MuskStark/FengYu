@@ -55,6 +55,10 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
     private Node view;
     private final SplitConfig sharedConfig = new SplitConfig();
     private static final AtomicBoolean hasRunningTask = new AtomicBoolean(false);
+    private static final AtomicBoolean cancelled = new AtomicBoolean(false);
+
+    public static void cancel() { cancelled.set(true); }
+    public static boolean isCancelled() { return cancelled.get(); }
 
     @Override public String getId()          { return "fan.summer.buildin.excelsplitter"; }
     @Override public String getName()        { return I18n.get("builtin.excel-splitter.name"); }
