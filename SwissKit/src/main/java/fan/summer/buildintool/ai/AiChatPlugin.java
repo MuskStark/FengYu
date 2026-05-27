@@ -8,6 +8,7 @@ import fan.summer.api.ai.*;
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
+import fan.summer.ai.util.MarkdownRenderer;
 import fan.summer.ui.setting.SwissKitJSettingUi;
 import javafx.animation.Animation;
 import javafx.animation.FadeTransition;
@@ -20,6 +21,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.layout.*;
+import javafx.scene.web.WebView;
 import javafx.stage.FileChooser;
 import javafx.util.Duration;
 
@@ -65,7 +67,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
 
     private static class AiChatView extends VBox {
 
-        private static final long MAX_ATTACHMENT_BYTES = 200 * 1024; // 200 KB per file
+        private static final long MAX_ATTACHMENT_BYTES = 200 * 1024;
 
         private final List<AiChatMessage> history = new ArrayList<>();
         private final List<Attachment> pendingAttachments = new ArrayList<>();
@@ -80,7 +82,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
 
         private AiService aiService;
         private boolean generating = false;
-        private Label currentResponseLabel;
+        private WebView currentResponseView;
         private StringBuilder currentResponseText;
 
         AiChatView() {
@@ -125,7 +127,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
             HBox inputBar = new HBox(6, attachBtn, inputArea, sendBtn);
             inputBar.getStyleClass().add("ai-chat-input-bar");
             inputBar.setPadding(new Insets(8, 20, 12, 20));
-            HBox.setHgrow(inputBar, Priority.NEVER);
+            HBox.setHgrow(inputBar, Priority.ALWAYS);
             inputBar.setMaxWidth(Double.MAX_VALUE);
 
             statusLabel.getStyleClass().add("ai-status-label");
@@ -275,7 +277,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
             addUserMessage(text, snapshot);
 
             currentResponseText = new StringBuilder();
-            currentResponseLabel = addAssistantBubble();
+            currentResponseView = addAssistantBubble();
 
             generating = true;
             sendBtn.setDisable(true);
@@ -292,21 +294,21 @@ public class AiChatPlugin implements SwissKitJPlugin {
                     public void onToken(String fragment) {
                         currentResponseText.append(fragment);
                         String display = stripSpecialTokens(currentResponseText.toString());
-                        updateResponseBubble(display);
+                        updateResponseBubble(display, false);
                         scrollToBottom();
                     }
 
                     @Override
                     public void onToolCall(AiToolCall toolCall) {
                         Platform.runLater(() -> {
-                            stopTypingAnimation(currentResponseLabel);
                             if (currentResponseText.isEmpty()) {
                                 messageList.getChildren().removeIf(n ->
-                                    n instanceof VBox vb && vb.getChildren().contains(currentResponseLabel));
+                                    n instanceof VBox vb && vb.getChildren().stream()
+                                        .anyMatch(c -> c instanceof WebView));
                             }
                             addToolCallCard(toolCall);
                             currentResponseText = new StringBuilder();
-                            currentResponseLabel = addAssistantBubble();
+                            currentResponseView = addAssistantBubble();
                             scrollToBottom();
                         });
                     }
@@ -327,7 +329,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
                         statusLabel.setText(String.format("%d tokens · %.1f tok/s", tokensGenerated, tokensPerSecond));
                         if (currentResponseText != null) {
                             String display = stripSpecialTokens(currentResponseText.toString());
-                            updateResponseBubble(display);
+                            updateResponseBubble(display, true);
                         }
                         if (fullResponse != null && !fullResponse.isBlank()) {
                             String cleaned = stripSpecialTokens(fullResponse);
@@ -436,44 +438,53 @@ public class AiChatPlugin implements SwissKitJPlugin {
             scrollToBottom();
         }
 
-        private Label addAssistantBubble() {
-            Label label = new Label("AI");
+        private WebView addAssistantBubble() {
+            Label label = new Label("SwissKitJClaw");
             label.getStyleClass().add("ai-msg-label");
 
-            Label bubble = new Label("●●●");
-            bubble.getStyleClass().add("ai-msg-bubble");
-            bubble.setWrapText(true);
-            bubble.setMaxWidth(560);
-            bubble.setStyle(
+            WebView webView = new WebView();
+            webView.setMaxWidth(560);
+            webView.setPrefWidth(560);
+            webView.setStyle(
                 "-fx-background-color: rgba(255,255,255,0.055);" +
                 "-fx-border-color: rgba(255,255,255,0.10);" +
-                "-fx-border-width: 1px; -fx-border-radius: 14px; -fx-background-radius: 14px;" +
-                "-fx-text-fill: rgba(255,255,255,0.40); -fx-font-size: 12px;"
+                "-fx-border-width: 1px; -fx-border-radius: 14px; -fx-background-radius: 14px;"
             );
+            webView.getEngine().loadContent(MarkdownRenderer.renderPlain("●●●"));
 
-            FadeTransition blink = new FadeTransition(Duration.millis(800), bubble);
+            FadeTransition blink = new FadeTransition(Duration.millis(800), webView);
             blink.setFromValue(1.0);
             blink.setToValue(0.3);
             blink.setAutoReverse(true);
             blink.setCycleCount(Animation.INDEFINITE);
             blink.play();
-            bubble.setUserData(blink);
+            webView.setUserData(blink);
 
-            VBox wrapper = new VBox(4, label, bubble);
+            VBox wrapper = new VBox(4, label, webView);
             wrapper.getStyleClass().add("ai-msg-assistant");
             wrapper.setAlignment(Pos.CENTER_LEFT);
             wrapper.setPadding(new Insets(2, 0, 2, 0));
 
             messageList.getChildren().add(wrapper);
             scrollToBottom();
-            return bubble;
+            return webView;
         }
 
-        private void stopTypingAnimation(Label bubble) {
-            if (bubble == null) return;
-            if (bubble.getUserData() instanceof Animation anim) {
-                anim.stop();
-            }
+        private void updateResponseBubble(String displayText, boolean isFinal) {
+            Platform.runLater(() -> {
+                if (currentResponseView == null) return;
+                if (displayText.isEmpty()) return;
+
+                if (currentResponseView.getUserData() instanceof Animation anim) {
+                    anim.stop();
+                    currentResponseView.setUserData(null);
+                }
+
+                String html = isFinal
+                    ? MarkdownRenderer.render(displayText)
+                    : MarkdownRenderer.renderPlain(displayText);
+                currentResponseView.getEngine().loadContent(html);
+            });
         }
 
         private void addToolCallCard(AiToolCall toolCall) {
@@ -544,26 +555,6 @@ public class AiChatPlugin implements SwissKitJPlugin {
 
             messageList.getChildren().add(wrapper);
             scrollToBottom();
-        }
-
-        private void updateResponseBubble(String displayText) {
-            Platform.runLater(() -> {
-                if (currentResponseLabel == null) return;
-                if (displayText.isEmpty()) return;
-
-                if (currentResponseLabel.getUserData() instanceof Animation anim) {
-                    anim.stop();
-                    currentResponseLabel.setUserData(null);
-                    currentResponseLabel.setStyle(
-                        "-fx-background-color: rgba(255,255,255,0.055);" +
-                        "-fx-border-color: rgba(255,255,255,0.10);" +
-                        "-fx-border-width: 1px; -fx-border-radius: 14px; -fx-background-radius: 14px;" +
-                        "-fx-text-fill: rgba(255,255,255,0.90); -fx-font-size: 13.5px;"
-                    );
-                }
-
-                currentResponseLabel.setText(displayText);
-            });
         }
 
         private String stripSpecialTokens(String text) {
