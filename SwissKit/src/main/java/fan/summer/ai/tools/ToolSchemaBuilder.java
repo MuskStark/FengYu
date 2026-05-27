@@ -72,7 +72,12 @@ public class ToolSchemaBuilder {
         List<String> required = new ArrayList<>();
         for (AiToolParam p : params) {
             Map<String, Object> prop = new LinkedHashMap<>();
-            prop.put("type", p.type());
+            if (p.type().endsWith("[]")) {
+                prop.put("type", "array");
+                prop.put("items", Map.of("type", p.type().replace("[]", "")));
+            } else {
+                prop.put("type", p.type());
+            }
             prop.put("description", p.description());
             properties.put(p.name(), prop);
             if (p.required()) required.add(p.name());
