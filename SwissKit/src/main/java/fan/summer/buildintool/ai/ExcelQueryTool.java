@@ -8,6 +8,20 @@ import fan.summer.api.log.PluginLogger;
 
 import java.util.*;
 
+/**
+ * AI tool that queries the current Excel split configuration state.
+ *
+ * <p>Returns the live state of the shared {@link SplitConfig} without modifying it.
+ * This can be used at any point in the workflow to check what file has been analyzed,
+ * which mode is configured, and what output directory has been set.</p>
+ *
+ * <p>No arguments are required.</p>
+ *
+ * @see ExcelAnalyzeTool
+ * @see ExcelConfigureTool
+ * @see ExcelExecuteTool
+ */
+
 public class ExcelQueryTool implements AiTool {
     private static final PluginLogger log = LoggerFactory.getLogger(ExcelQueryTool.class);
     private final ExcelSplitterPlugin plugin;

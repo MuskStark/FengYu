@@ -16,6 +16,15 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 
+/**
+ * Built-in plugin for formatting and validating JSON strings.
+ * Provides three actions: Pretty Print, Compress, and Clear.
+ *
+ * <p>The pretty-print implementation performs its own minimal formatting
+ * without external dependencies, handling braces, brackets, colons, and commas.
+ *
+ * @see SwissKitJPlugin
+ */
 public class JsonFormatterPlugin implements SwissKitJPlugin {
 
     private static final PluginLogger log = LoggerFactory.getLogger(JsonFormatterPlugin.class);
@@ -29,6 +38,12 @@ public class JsonFormatterPlugin implements SwissKitJPlugin {
     @Override public IconStyle getIconStyle()   { return IconStyle.BLUE; }
     @Override public ToolType getType()        { return ToolType.BUILTIN; }
 
+    /**
+     * Creates and returns the plugin view containing input/output text areas
+     * and Format, Compress, Clear buttons.
+     *
+     * @return the root JavaFX Node for this plugin's UI
+     */
     @Override
     public Node createView() {
         log.debug("Creating JSON Formatter view");
@@ -79,6 +94,13 @@ public class JsonFormatterPlugin implements SwissKitJPlugin {
         return root;
     }
 
+    /**
+     * Performs a minimal pretty-print on a JSON string, indenting with two spaces
+     * per nesting level and placing newlines after structural characters.
+     *
+     * @param json the raw JSON string to format
+     * @return the formatted JSON string
+     */
     private String prettyPrint(String json) {
         StringBuilder sb = new StringBuilder();
         int indent = 0;
@@ -112,6 +134,12 @@ public class JsonFormatterPlugin implements SwissKitJPlugin {
         return sb.toString();
     }
 
+    /**
+     * Creates a styled TextArea with the given prompt text.
+     *
+     * @param prompt the placeholder text shown when the area is empty
+     * @return a styled, wrap-enabled TextArea
+     */
     private static TextArea styledTextArea(String prompt) {
         TextArea ta = new TextArea();
         ta.setPromptText(prompt);
@@ -129,6 +157,13 @@ public class JsonFormatterPlugin implements SwissKitJPlugin {
         return ta;
     }
 
+    /**
+     * Creates an action button with the given text and background color.
+     *
+     * @param text the button label
+     * @param bg   the CSS background color value
+     * @return a styled Button control
+     */
     private static Button actionButton(String text, String bg) {
         Button btn = new Button(text);
         btn.setStyle(
@@ -140,6 +175,12 @@ public class JsonFormatterPlugin implements SwissKitJPlugin {
         return btn;
     }
 
+    /**
+     * Creates an uppercase section label with muted styling.
+     *
+     * @param text the label text
+     * @return a styled Label control
+     */
     private static Label sectionLabel(String text) {
         Label l = new Label(text.toUpperCase());
         l.setStyle(

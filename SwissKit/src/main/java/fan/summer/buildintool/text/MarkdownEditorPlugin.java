@@ -16,6 +16,15 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.scene.web.WebView;
 
+/**
+ * Built-in plugin providing a split-pane Markdown editor with live HTML preview.
+ *
+ * <p>The editor pane supports basic Markdown syntax (headings, bold, italic,
+ * inline code, blockquotes, and list items) which is rendered in real time
+ * into a WebView using a dark-themed inline stylesheet.
+ *
+ * @see SwissKitJPlugin
+ */
 public class MarkdownEditorPlugin implements SwissKitJPlugin {
 
     private static final PluginLogger log = LoggerFactory.getLogger(MarkdownEditorPlugin.class);
@@ -29,6 +38,12 @@ public class MarkdownEditorPlugin implements SwissKitJPlugin {
     @Override public IconStyle getIconStyle()   { return IconStyle.BLUE; }
     @Override public ToolType getType()        { return ToolType.BUILTIN; }
 
+    /**
+     * Creates and returns the plugin view containing a split editor/preview pane
+     * with a pre-populated sample document.
+     *
+     * @return the root JavaFX Node for this plugin's UI
+     */
     @Override
     public Node createView() {
         log.debug("Creating Markdown Editor view");
@@ -78,6 +93,13 @@ public class MarkdownEditorPlugin implements SwissKitJPlugin {
         return root;
     }
 
+    /**
+     * Converts a Markdown string to basic HTML by applying regex replacements
+     * for headings, bold, italic, inline code, blockquotes, and list items.
+     *
+     * @param md the raw Markdown text
+     * @return the converted HTML string (no document wrapper)
+     */
     private String mdToHtml(String md) {
         return md
             .replaceAll("(?m)^### (.+)$", "<h3>$1</h3>")
@@ -91,6 +113,12 @@ public class MarkdownEditorPlugin implements SwissKitJPlugin {
             .replaceAll("(?m)^$",             "<br/>");
     }
 
+    /**
+     * Creates a styled TextArea pre-filled with the initial text.
+     *
+     * @param initial the initial content of the text area
+     * @return a styled, wrap-enabled TextArea that grows vertically in a VBox
+     */
     private static TextArea styledTextArea(String initial) {
         TextArea ta = new TextArea(initial);
         ta.setStyle(
@@ -107,6 +135,12 @@ public class MarkdownEditorPlugin implements SwissKitJPlugin {
         return ta;
     }
 
+    /**
+     * Creates an uppercase section label with muted styling.
+     *
+     * @param text the label text
+     * @return a styled Label control
+     */
     private static Label sectionLabel(String text) {
         Label l = new Label(text.toUpperCase());
         l.setStyle(

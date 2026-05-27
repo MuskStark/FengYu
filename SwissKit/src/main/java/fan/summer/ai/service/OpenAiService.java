@@ -23,6 +23,16 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * {@link AiService} implementation for calling OpenAI-compatible chat completion APIs.
+ * Supports streaming responses, tool calling, and multi-round conversations.
+ * Does not support local model loading.
+ *
+ * <p>Configure the service using {@link #configure(String, String, String)}
+ * before invoking {@link #chat(List, AiStreamCallback)}.
+ *
+ * @see AiService
+ */
 public class OpenAiService implements AiService {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiService.class);
@@ -36,6 +46,10 @@ public class OpenAiService implements AiService {
     private String apiKey;
     private String modelName;
 
+    /**
+     * Constructs an {@code OpenAiService} with a default HTTP/1.1 client
+     * and a 30-second connection timeout.
+     */
     public OpenAiService() {
         this.httpClient = HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_1_1)
@@ -43,18 +57,32 @@ public class OpenAiService implements AiService {
             .build();
     }
 
+    /**
+     * Configures the endpoint, API key, and model name for this service.
+     *
+     * @param endpoint  the base URL of the OpenAI-compatible API; trailing slashes are stripped
+     * @param apiKey    the API key for authentication
+     * @param modelName the model identifier (e.g., {@code "gpt-4o"})
+     */
     public void configure(String endpoint, String apiKey, String modelName) {
         this.endpoint = endpoint == null ? "" : (endpoint.endsWith("/") ? endpoint.substring(0, endpoint.length() - 1) : endpoint);
         this.apiKey = apiKey;
         this.modelName = modelName;
     }
 
-    @Override public void loadModel(Path modelPath) throws AiServiceException {
+    @Override
+    public void loadModel(Path modelPath) throws AiServiceException {
         throw new AiServiceException("Local model loading not supported for OpenAI mode");
     }
 
     @Override public void unloadModel() {}
 
+    /**
+     * Returns {@code true} if the service has been configured with non-blank
+     * endpoint, API key, and model name.
+     *
+     * @return true if ready, false otherwise
+     */
     @Override public boolean isReady() {
         return endpoint != null && !endpoint.isBlank()
             && apiKey != null && !apiKey.isBlank()
@@ -91,6 +119,11 @@ public class OpenAiService implements AiService {
         });
     }
 
+    /**
+     * Sends a chat completion request and handles a multi-round tool-call loop.
+     * The loop terminates when either no more tool calls are generated or
+     * {@code MAX_TOOL_ROUNDS} rounds have been completed.
+     */
     @SuppressWarnings("unchecked")
     private void chatWithToolLoop(List<AiChatMessage> history, float temperature, float topP,
                                   int maxTokens, AiStreamCallback callback, int round,
@@ -221,6 +254,15 @@ public class OpenAiService implements AiService {
         }
     }
 
+    /**
+     * Builds the list of messages in OpenAI format from the conversation history.
+     * A system message is prepended with the provided system prompt, and tool call
+     * messages are converted to the {@code tool_calls} structure used by the API.
+     *
+     * @param history      the conversation history
+     * @param systemPrompt the system prompt to prepend
+     * @return a list of message maps suitable for the OpenAI chat completions API
+     */
     private List<Object> buildMessages(List<AiChatMessage> history, String systemPrompt) {
         List<Object> messages = new ArrayList<>();
         messages.add(Map.of("role", "system", "content", systemPrompt));
@@ -267,6 +309,13 @@ public class OpenAiService implements AiService {
     @Override public void unregisterTool(String toolName) { AiServiceProvider.unregisterTool(toolName); }
     @Override public List<AiTool> getTools() { return AiServiceProvider.getTools(); }
 
+    /**
+     * Sends the HTTP request, retrying once on socket timeout.
+     *
+     * @param request the {@link HttpRequest} to send
+     * @return the HTTP response with an {@link InputStream} body
+     * @throws Exception if both the initial and retry attempts fail
+     */
     private HttpResponse<InputStream> sendWithRetry(HttpRequest request) throws Exception {
         try {
             return httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
@@ -276,6 +325,12 @@ public class OpenAiService implements AiService {
         }
     }
 
+    /**
+     * Tests connectivity to the configured endpoint with a minimal request.
+     *
+     * @return {@code null} if the connection succeeds (HTTP 200), otherwise
+     *         an error string describing the failure
+     */
     public String testConnection() {
         try {
             String url = endpoint + "/v1/chat/completions";

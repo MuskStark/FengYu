@@ -7,6 +7,20 @@ import fan.summer.api.log.PluginLogger;
 
 import java.util.*;
 
+/**
+ * Built-in AI tool that converts colors between HEX, RGB, and HSL representations.
+ *
+ * <p>This tool wraps {@link java.awt.Color} to parse and re-format color values.
+ * Supported transformations:</p>
+ * <ul>
+ *   <li>HEX (e.g. {@code #5b8cf7}) to RGB or HSL</li>
+ *   <li>RGB (e.g. {@code 91, 140, 247}) to HEX or HSL</li>
+ * </ul>
+ *
+ * <p>Tool name: {@code color_convert}</p>
+ *
+ * @see AiTool
+ */
 public class BuiltinColorConvertTool implements AiTool {
     private static final PluginLogger log = LoggerFactory.getLogger(BuiltinColorConvertTool.class);
 
@@ -19,6 +33,13 @@ public class BuiltinColorConvertTool implements AiTool {
                "to (string, required) — target format: HEX, RGB, or HSL.";
     }
 
+    /**
+     * Returns the list of parameter definitions for this tool.
+     *
+     * @return a list containing three required parameters:
+     *         {@code color} (string), {@code from} (string), and {@code to} (string)
+     * @see AiToolParam
+     */
     @Override public List<AiToolParam> getParameters() {
         return List.of(
             AiToolParam.of("color", "string", "Color value to convert", true),
@@ -27,6 +48,17 @@ public class BuiltinColorConvertTool implements AiTool {
         );
     }
 
+    /**
+     * Executes the color conversion based on the supplied arguments.
+     *
+     * @param args must contain:
+     *             {@code color} — the color value to convert;
+     *             {@code from} — source format ({@code HEX}, {@code RGB}, or {@code HSL});
+     *             {@code to} — target format ({@code HEX}, {@code RGB}, or {@code HSL})
+     * @return a result map containing {@code success}, {@code input}, {@code output},
+     *         and {@code targetFormat}; or an error result if arguments are missing or invalid
+     * @see AiToolResult
+     */
     @Override public AiToolResult execute(Map<String, Object> args) {
         String color = (String) args.get("color");
         String from = (String) args.get("from");

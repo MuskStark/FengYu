@@ -19,6 +19,13 @@ import javafx.scene.layout.VBox;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
+/**
+ * Built-in plugin for encoding and decoding Base64 strings.
+ * Provides a two-pane interface with input/output text areas and
+ * Encode, Decode, and Swap action buttons.
+ *
+ * @see SwissKitJPlugin
+ */
 public class Base64Plugin implements SwissKitJPlugin {
 
     private static final PluginLogger log = LoggerFactory.getLogger(Base64Plugin.class);
@@ -32,6 +39,12 @@ public class Base64Plugin implements SwissKitJPlugin {
     @Override public IconStyle getIconStyle()   { return IconStyle.TEAL; }
     @Override public ToolType getType()        { return ToolType.BUILTIN; }
 
+    /**
+     * Creates and returns the plugin view containing input/output text areas
+     * and Encode, Decode, Swap buttons.
+     *
+     * @return the root JavaFX Node for this plugin's UI
+     */
     @Override
     public Node createView() {
         log.debug("Creating Base64 encode/decode view");
@@ -89,6 +102,12 @@ public class Base64Plugin implements SwissKitJPlugin {
         return root;
     }
 
+    /**
+     * Creates a styled TextArea with the given prompt text.
+     *
+     * @param prompt the placeholder text shown when the area is empty
+     * @return a styled, wrap-enabled TextArea
+     */
     private static TextArea styledTextArea(String prompt) {
         TextArea ta = new TextArea();
         ta.setPromptText(prompt);
@@ -106,6 +125,13 @@ public class Base64Plugin implements SwissKitJPlugin {
         return ta;
     }
 
+    /**
+     * Creates an action button with the given text and background color.
+     *
+     * @param text the button label
+     * @param bg   the CSS background color value
+     * @return a styled Button control
+     */
     private static Button actionButton(String text, String bg) {
         Button btn = new Button(text);
         btn.setStyle(
@@ -117,6 +143,12 @@ public class Base64Plugin implements SwissKitJPlugin {
         return btn;
     }
 
+    /**
+     * Creates an uppercase section label with muted styling.
+     *
+     * @param text the label text
+     * @return a styled Label control
+     */
     private static Label sectionLabel(String text) {
         Label l = new Label(text.toUpperCase());
         l.setStyle(

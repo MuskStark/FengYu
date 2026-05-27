@@ -34,6 +34,26 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+/**
+ * Built-in AI chat plugin for SwissKitJ.
+ *
+ * <p>Provides a conversational interface backed by a language model via
+ * {@link AiService}. Supports file attachments, streaming token delivery,
+ * tool-call orchestration through {@link AiToolCall}, and Markdown rendering
+ * in assistant responses.</p>
+ *
+ * <p>The plugin maintains a message history that is sent to the model on each
+ * user turn, including any attached file contents as part of the prompt.</p>
+ *
+ * <p>Tool execution is handled transparently: when the model emits a tool-call
+ * message, the result is injected back into the conversation via
+ * {@link AiStreamCallback#onToolResult(String, AiToolResult)}.</p>
+ *
+ * @see AiService
+ * @see AiStreamCallback
+ * @see AiToolCall
+ */
+
 public class AiChatPlugin implements SwissKitJPlugin {
 
     private static final PluginLogger log = LoggerFactory.getLogger(AiChatPlugin.class);

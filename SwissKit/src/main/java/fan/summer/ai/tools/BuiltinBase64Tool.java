@@ -8,6 +8,20 @@ import fan.summer.api.log.PluginLogger;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
+/**
+ * Built-in AI tool that encodes text to Base64 or decodes Base64 back to plain text.
+ *
+ * <p>Performs standard Base64 encoding and decoding using UTF-8 character encoding.</p>
+ *
+ * <p>Required arguments:</p>
+ * <ul>
+ *   <li>{@code text} (string) — the input text to encode or the Base64 string to decode</li>
+ *   <li>{@code mode} (string) — either {@code encode} or {@code decode}</li>
+ * </ul>
+ *
+ * @see BuiltinHashTool
+ */
+
 public class BuiltinBase64Tool implements AiTool {
     private static final PluginLogger log = LoggerFactory.getLogger(BuiltinBase64Tool.class);
 
