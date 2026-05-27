@@ -72,9 +72,9 @@ public class ExcelAnalyzeTool implements AiTool {
             sheetsJson.append("]");
 
             String json = "{\"success\":true,\"sheets\":" + sheetsJson +
-                    ",\"totalSheets\":" + sheets.size() +
+                    ",\"totalSheets\":" + analysisResult.size() +
                     ",\"sourceFile\":\"" + jsonEscape(filePath.getFileName().toString()) + "\"}";
-            log.info("excel_analyze success: {} sheets found", sheets.size());
+            log.info("excel_analyze success: {} sheets found", analysisResult.size());
             return AiToolResult.success(json);
         } catch (Exception e) {
             log.error("excel_analyze failed: {}", e.getMessage());
