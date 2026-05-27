@@ -447,7 +447,11 @@ public class AiChatPlugin implements SwissKitJPlugin {
             webView.setPrefWidth(560);
             webView.setMinHeight(24);
             webView.setPrefHeight(24);
-            webView.setStyle("-fx-background-color: #1e1e2e;");
+            webView.setStyle(
+                "-fx-background-color: #1e1e2e;" +
+                "-fx-border-color: rgba(255,255,255,0.10);" +
+                "-fx-border-width: 1px; -fx-border-radius: 14px; -fx-background-radius: 14px;"
+            );
             webView.getEngine().loadContent(MarkdownRenderer.renderPlain("●●●"));
             autoResizeWebView(webView);
 

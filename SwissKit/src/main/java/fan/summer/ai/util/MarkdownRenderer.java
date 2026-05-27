@@ -14,8 +14,9 @@ public final class MarkdownRenderer {
             margin: 0; padding: 10px 14px;
             font-family: -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
             font-size: 13.5px; line-height: 1.55;
-            color: rgba(255,255,255,0.92);
+            color: rgba(255,255,255,0.98);
             background: #1e1e2e;
+            border-radius: 14px;
             overflow-wrap: break-word; word-wrap: break-word;
         }
         pre {
