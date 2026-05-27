@@ -1,6 +1,7 @@
 package fan.summer.buildintool.ai;
 
 import fan.summer.api.ai.*;
+import fan.summer.ai.util.JsonHelper;
 import fan.summer.buildintool.excelsplitter.*;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
@@ -59,7 +60,7 @@ public class ExcelExecuteTool implements AiTool {
                 log.debug("Split progress: {}% - {}", (int)(pct * 100), msg);
             });
 
-            ExcelSplitter.SplitResult result = CompletableFuture.supplyAsync(() -> {
+            ExcelSplitter.SplitResult splitResult = CompletableFuture.supplyAsync(() -> {
                 try {
                     return splitter.split();
                 } catch (Exception e) {
@@ -67,19 +68,19 @@ public class ExcelExecuteTool implements AiTool {
                 }
             }).get();
 
-            // 手动构建JSON（无Jackson）
-            StringBuilder filesJson = new StringBuilder("[");
-            for (int i = 0; i < result.outputFiles().size(); i++) {
-                if (i > 0) filesJson.append(",");
-                filesJson.append("\"").append(jsonEscape(result.outputFiles().get(i).getFileName().toString())).append("\"");
+            List<String> fileNames = new ArrayList<>();
+            for (Path f : splitResult.outputFiles()) {
+                fileNames.add(f.getFileName().toString());
             }
-            filesJson.append("]");
 
-            String json = "{\"success\":true,\"outputFiles\":" + filesJson +
-                    ",\"fileCount\":" + result.fileCount() +
-                    ",\"summary\":\"Created " + result.fileCount() + " output file(s) in " + jsonEscape(outputDirStr) + "\"}";
-            log.info("excel_execute success: {} files created", result.fileCount());
-            return AiToolResult.success(json);
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("success", true);
+            result.put("outputFiles", fileNames);
+            result.put("fileCount", splitResult.fileCount());
+            result.put("summary", "Created " + splitResult.fileCount() + " output file(s) in " + outputDirStr);
+
+            log.info("excel_execute success: {} files created", splitResult.fileCount());
+            return AiToolResult.success(JsonHelper.toJson(result));
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             log.error("excel_execute failed: {}", cause.getMessage());
@@ -88,13 +89,5 @@ public class ExcelExecuteTool implements AiTool {
             log.error("excel_execute error: {}", e.getMessage());
             return AiToolResult.error("Unexpected error: " + e.getMessage());
         }
-    }
-
-    private static String jsonEscape(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r");
     }
 }
