@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -209,5 +210,15 @@ public class PluginRegistry {
      */
     public boolean isBackground(SwissKitJPlugin plugin) {
         return backgroundPlugins.contains(plugin);
+    }
+
+    /**
+     * Finds a plugin by its ID.
+     *
+     * @param id the plugin reverse-domain ID
+     * @return an Optional containing the plugin if found
+     */
+    public Optional<SwissKitJPlugin> findPlugin(String id) {
+        return plugins.stream().filter(p -> p.getId().equals(id)).findFirst();
     }
 }

@@ -8,6 +8,13 @@ import fan.summer.api.ai.*;
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
+import fan.summer.buildintool.excelsplitter.ExcelSplitterPlugin;
+import fan.summer.buildintool.ai.ExcelAnalyzeTool;
+import fan.summer.buildintool.ai.ExcelConfigureTool;
+import fan.summer.buildintool.ai.ExcelExecuteTool;
+import fan.summer.buildintool.ai.ExcelQueryTool;
+import fan.summer.buildintool.ai.ExcelCancelTool;
+import fan.summer.plugin.PluginRegistry;
 import fan.summer.ui.setting.SwissKitJSettingUi;
 import javafx.animation.Animation;
 import javafx.animation.FadeTransition;
@@ -54,6 +61,21 @@ public class AiChatPlugin implements SwissKitJPlugin {
     @Override
     public void onActivate() {
         log.info("AI Chat plugin activated");
+        Optional<AiService> aiOpt = AiServiceProvider.getService();
+        if (aiOpt.isPresent()) {
+            AiService aiService = aiOpt.get();
+            PluginRegistry registry = PluginRegistry.getInstance();
+            Optional<SwissKitJPlugin> excelOpt = registry.findPlugin("fan.summer.buildin.excelsplitter");
+            if (excelOpt.isPresent()) {
+                ExcelSplitterPlugin excelPlugin = (ExcelSplitterPlugin) excelOpt.get();
+                aiService.registerTool(new ExcelAnalyzeTool(excelPlugin));
+                aiService.registerTool(new ExcelConfigureTool(excelPlugin));
+                aiService.registerTool(new ExcelExecuteTool(excelPlugin));
+                aiService.registerTool(new ExcelQueryTool(excelPlugin));
+                aiService.registerTool(new ExcelCancelTool(excelPlugin));
+                log.info("Registered 5 AI tools for Excel Splitter");
+            }
+        }
     }
 
     @Override
