@@ -53,6 +53,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
     private static final PluginLogger log = LoggerFactory.getLogger(ExcelSplitterPlugin.class);
 
     private Node view;
+    private final SplitConfig sharedConfig = new SplitConfig();
     private static final AtomicBoolean hasRunningTask = new AtomicBoolean(false);
 
     @Override public String getId()          { return "fan.summer.buildin.excelsplitter"; }
@@ -88,6 +89,10 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
         return view;
     }
 
+    public SplitConfig getSharedSplitConfig() {
+        return sharedConfig;
+    }
+
     /**
      * Builds and returns the wizard view, constructing all four step views and wiring
      * step-change callbacks.
@@ -95,7 +100,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
      * @return the root JavaFX node (a VBox containing the StepWizard)
      */
     private Node buildWizardView() {
-        SplitConfig config = new SplitConfig();
+        SplitConfig config = sharedConfig;
         StepWizard wizard = new StepWizard();
 
         Step1View step1 = new Step1View(config, wizard);
