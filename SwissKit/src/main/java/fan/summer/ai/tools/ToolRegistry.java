@@ -68,9 +68,13 @@ public class ToolRegistry {
         }
 
         var sb = new StringBuilder();
-        sb.append("You have access to the following tools. ");
-        sb.append("To call a tool, output a JSON block in this exact format:\n");
-        sb.append("```json\n{\"name\": \"tool_name\", \"arguments\": {\"param\": \"value\"}}\n```\n\n");
+        sb.append("# Tools\n\n");
+        sb.append("You can call tools by outputting a JSON object with \"name\" and \"arguments\" fields.\n");
+        sb.append("Format:\n```\n{\"name\": \"<tool_name>\", \"arguments\": {<param>: <value>}}\n```\n\n");
+        sb.append("IMPORTANT: When a user's request requires using a tool, you MUST call the tool directly. ");
+        sb.append("Do NOT describe how to use it or ask for confirmation. Just call it.\n\n");
+        sb.append("Example — user says \"analyze this Excel file /path/to/file.xlsx\":\n");
+        sb.append("{\"name\": \"excel_analyze\", \"arguments\": {\"filePath\": \"/path/to/file.xlsx\"}}\n\n");
         sb.append("Available tools:\n\n");
 
         for (AiTool tool : tools.values()) {
@@ -88,8 +92,7 @@ public class ToolRegistry {
             sb.append("\n");
         }
 
-        sb.append("When you need to use a tool, output ONLY the JSON block. ");
-        sb.append("After receiving the tool result, you can continue answering.\n");
+        sb.append("After receiving a tool result, you may call another tool or provide a final answer.\n");
         log.debug("buildToolDefinitions: built definitions for {} tools", tools.size());
         return sb.toString();
     }
