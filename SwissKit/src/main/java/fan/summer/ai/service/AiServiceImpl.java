@@ -10,7 +10,8 @@ import fan.summer.ai.nativejni.LlamaContext;
 import fan.summer.ai.nativejni.ModelParams;
 import fan.summer.ai.nativejni.NativeLoader;
 import fan.summer.ai.tools.ToolCallParser;
-import fan.summer.ai.tools.ToolRegistry;
+import fan.summer.ai.tools.ToolExecutor;
+import fan.summer.ai.tools.ToolSchemaBuilder;
 import fan.summer.api.ai.*;
 import fan.summer.ui.setting.SwissKitJSettingUi;
 import javafx.application.Platform;
@@ -24,17 +25,6 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * AiService implementation with dual-backend support:
- * <ol>
- *   <li><b>Native (JNI/llama.cpp)</b> — if the native library is available,
- *       uses llama.cpp for maximum performance with GPU acceleration.</li>
- *   <li><b>Pure Java</b> — fallback using the built-in GGUF reader + transformer
- *       inference engine. No native dependencies required.</li>
- * </ol>
- * Backend selection is automatic: native is preferred when the shared library
- * is found at startup. Both backends support tool calling.
- */
 public class AiServiceImpl implements AiService {
 
     private static final Logger log = LoggerFactory.getLogger(AiServiceImpl.class);
@@ -43,14 +33,12 @@ public class AiServiceImpl implements AiService {
     private enum Backend { NATIVE, JAVA }
 
     private final Backend backend;
-    private final LlamaRunner javaRunner;        // pure Java backend
-    private LlamaContext nativeContext;           // JNI/llama.cpp backend
-    private ChatTemplate nativeChatTemplate;      // template auto-detected for native backend
-    private final ToolRegistry toolRegistry = new ToolRegistry();
+    private final LlamaRunner javaRunner;
+    private LlamaContext nativeContext;
+    private ChatTemplate nativeChatTemplate;
     private volatile String loadedModelPath;
 
     public AiServiceImpl() {
-        // Attempt to load native library
         NativeLoader.load();
         if (NativeLoader.isLoaded()) {
             backend = Backend.NATIVE;
@@ -79,10 +67,6 @@ public class AiServiceImpl implements AiService {
                     .threads(Runtime.getRuntime().availableProcessors());
                 nativeContext = new LlamaContext(params);
 
-                // Read the model's chat_template metadata directly from the GGUF
-                // file so the native path stops hard-coding ChatML — that mismatch
-                // is why non-Qwen models (Llama 3 / Gemma / Mistral) used to just
-                // echo the user's input back verbatim.
                 try {
                     Map<String, Object> meta = GGUFReader.loadMetadata(modelPath);
                     String rawTemplate = meta.get("tokenizer.chat_template") instanceof String s ? s : "";
@@ -115,8 +99,7 @@ public class AiServiceImpl implements AiService {
         loadedModelPath = null;
     }
 
-    @Override
-    public boolean isReady() {
+    @Override public boolean isReady() {
         if (backend == Backend.NATIVE) return nativeContext != null;
         return javaRunner != null && javaRunner.isReady();
     }
@@ -130,8 +113,7 @@ public class AiServiceImpl implements AiService {
         return Optional.ofNullable(javaRunner != null ? javaRunner.getModelName() : null);
     }
 
-    @Override
-    public long getMemoryUsage() {
+    @Override public long getMemoryUsage() {
         Runtime rt = Runtime.getRuntime();
         return rt.totalMemory() - rt.freeMemory();
     }
@@ -218,22 +200,20 @@ public class AiServiceImpl implements AiService {
 
             @Override
             public void onDone(String fullText) {
-                // Prefer our locally-tracked response: it has been truncated at the
-                // first stop sequence, while fullText from native may include extra
-                // tokens that slipped past the EOG check.
                 String finalText = response.toString();
                 int n = tokenCount.get();
-                // Exclude prefill (time before first token) so tok/s reflects pure
-                // generation throughput, matching how the Java backend reports it.
                 long baseNanos = firstTokenNanos[0] != 0L ? firstTokenNanos[0] : genStartNanos;
                 long elapsedMs = (System.nanoTime() - baseNanos) / 1_000_000;
                 double tokPerSec = (n > 0 && elapsedMs > 0) ? n * 1000.0 / elapsedMs : 0;
 
                 List<AiToolCall> toolCalls = ToolCallParser.parse(finalText);
-                if (!toolCalls.isEmpty() && toolRegistry.hasTools()) {
+                if (!toolCalls.isEmpty() && AiServiceProvider.hasTools()) {
                     hadToolCall.set(true);
-                    handleToolCallsNative(toolCalls, history, temperature, topP, maxTokens,
-                                          callback, round, hadToolCall);
+                    history.add(AiChatMessage.assistantWithTools("", toolCalls));
+                    ToolExecutor.executeAndFeed(toolCalls, history, callback);
+                    String newPrompt = buildNativePrompt(history, buildSystemPrompt());
+                    generateNativeWithToolLoop(newPrompt, temperature, topP, maxTokens,
+                                               history, callback, round + 1, hadToolCall);
                 } else {
                     String clean = hadToolCall.get() ? ToolCallParser.stripToolCalls(finalText) : finalText;
                     Platform.runLater(() -> callback.onComplete(clean, n, tokPerSec));
@@ -245,16 +225,6 @@ public class AiServiceImpl implements AiService {
                 Platform.runLater(() -> callback.onError(new RuntimeException(message)));
             }
         });
-    }
-
-    private void handleToolCallsNative(List<AiToolCall> toolCalls, List<AiChatMessage> history,
-                                       float temperature, float topP, int maxTokens,
-                                       AiStreamCallback callback, int round, AtomicBoolean hadToolCall) {
-        history.add(AiChatMessage.assistantWithTools("", toolCalls));
-        executeAndFeedToolResults(toolCalls, history, callback);
-        String newPrompt = buildNativePrompt(history, buildSystemPrompt());
-        generateNativeWithToolLoop(newPrompt, temperature, topP, maxTokens,
-                                   history, callback, round + 1, hadToolCall);
     }
 
     // ── Java backend chat ─────────────────────────────────────
@@ -298,10 +268,18 @@ public class AiServiceImpl implements AiService {
             @Override
             public void onComplete(String fullResponse, int tokensGenerated, double tokensPerSecond) {
                 List<AiToolCall> toolCalls = ToolCallParser.parse(fullResponse);
-                if (!toolCalls.isEmpty() && toolRegistry.hasTools()) {
+                if (!toolCalls.isEmpty() && AiServiceProvider.hasTools()) {
                     hadToolCall.set(true);
-                    handleToolCallsJava(toolCalls, history, temperature, topP, maxTokens,
-                                        callback, round, hadToolCall);
+                    history.add(AiChatMessage.assistantWithTools("", toolCalls));
+                    ToolExecutor.executeAndFeed(toolCalls, history, callback);
+                    try {
+                        String newPrompt = javaRunner.buildPrompt(history, buildSystemPrompt());
+                        javaRunner.resetCache();
+                        generateJavaWithToolLoop(newPrompt, temperature, topP, maxTokens,
+                                                 history, callback, round + 1, hadToolCall);
+                    } catch (Exception e) {
+                        Platform.runLater(() -> callback.onError(e));
+                    }
                 } else {
                     String clean = hadToolCall.get() ? ToolCallParser.stripToolCalls(fullResponse) : fullResponse;
                     Platform.runLater(() -> callback.onComplete(clean, tokensGenerated, tokensPerSecond));
@@ -310,48 +288,15 @@ public class AiServiceImpl implements AiService {
         });
     }
 
-    private void handleToolCallsJava(List<AiToolCall> toolCalls, List<AiChatMessage> history,
-                                     float temperature, float topP, int maxTokens,
-                                     AiStreamCallback callback, int round, AtomicBoolean hadToolCall) {
-        history.add(AiChatMessage.assistantWithTools("", toolCalls));
-        executeAndFeedToolResults(toolCalls, history, callback);
-        try {
-            String newPrompt = javaRunner.buildPrompt(history, buildSystemPrompt());
-            javaRunner.resetCache();
-            generateJavaWithToolLoop(newPrompt, temperature, topP, maxTokens,
-                                     history, callback, round + 1, hadToolCall);
-        } catch (Exception e) {
-            Platform.runLater(() -> callback.onError(e));
-        }
-    }
-
-    // ── Shared tool execution ─────────────────────────────────
-
-    private void executeAndFeedToolResults(List<AiToolCall> toolCalls, List<AiChatMessage> history,
-                                           AiStreamCallback callback) {
-        for (AiToolCall toolCall : toolCalls) {
-            Platform.runLater(() -> callback.onToolCall(toolCall));
-            log.info("Executing tool: name={}, args={}", toolCall.name(), toolCall.arguments());
-            AiToolResult result = toolRegistry.execute(toolCall.name(), toolCall.arguments());
-            log.info("Tool result: success={}", result.success());
-            Platform.runLater(() -> callback.onToolResult(toolCall.id(), result));
-            history.add(AiChatMessage.toolResult(toolCall.id(), toolCall.name(), result.output()));
-        }
-    }
-
     // ── Prompt building ───────────────────────────────────────
 
     private String buildSystemPrompt() {
         String base = SwissKitJSettingUi.getAiSystemPrompt();
-        String toolDefs = toolRegistry.buildToolDefinitions();
+        String toolDefs = ToolSchemaBuilder.buildPromptDefinitions(AiServiceProvider.getTools());
         if (toolDefs.isEmpty()) return base;
         return base + "\n\n" + toolDefs;
     }
 
-    /**
-     * Build prompt for the native backend using the model's GGUF-declared chat template.
-     * Falls back to ChatML if metadata could not be read at load time.
-     */
     private String buildNativePrompt(List<AiChatMessage> history, String systemPrompt) {
         ChatTemplate template = nativeChatTemplate != null ? nativeChatTemplate : new ChatTemplate("");
         return template.buildPrompt(history, systemPrompt);
@@ -359,34 +304,18 @@ public class AiServiceImpl implements AiService {
 
     // ── Lifecycle ─────────────────────────────────────────────
 
-    @Override
-    public void cancelGeneration() {
+    @Override public void cancelGeneration() {
         if (javaRunner != null) javaRunner.cancel();
-        // Native cancellation would require interrupting the native thread
     }
 
-    @Override
-    public boolean isGenerating() {
-        if (backend == Backend.NATIVE) return false; // native runs synchronously on virtual thread
+    @Override public boolean isGenerating() {
+        if (backend == Backend.NATIVE) return false;
         return javaRunner != null && javaRunner.isGenerating();
     }
 
-    // ── Tool management ───────────────────────────────────────
+    // ── Tool management (delegate to AiServiceProvider) ───────
 
-    @Override
-    public void registerTool(AiTool tool) {
-        toolRegistry.register(tool);
-        log.info("Registered AI tool: {}", tool.getName());
-    }
-
-    @Override
-    public void unregisterTool(String toolName) {
-        toolRegistry.unregister(toolName);
-        log.info("Unregistered AI tool: {}", toolName);
-    }
-
-    @Override
-    public List<AiTool> getTools() {
-        return toolRegistry.getAll();
-    }
+    @Override public void registerTool(AiTool tool) { AiServiceProvider.registerTool(tool); }
+    @Override public void unregisterTool(String toolName) { AiServiceProvider.unregisterTool(toolName); }
+    @Override public List<AiTool> getTools() { return AiServiceProvider.getTools(); }
 }
