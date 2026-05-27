@@ -1,7 +1,9 @@
 package fan.summer.ai.service;
 
 import fan.summer.ai.tools.ToolCallParser;
-import fan.summer.ai.tools.ToolRegistry;
+import fan.summer.ai.tools.ToolExecutor;
+import fan.summer.ai.tools.ToolSchemaBuilder;
+import fan.summer.ai.util.JsonHelper;
 import fan.summer.api.ai.*;
 import fan.summer.ui.setting.SwissKitJSettingUi;
 import javafx.application.Platform;
@@ -20,7 +22,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
 
 public class OpenAiService implements AiService {
 
@@ -28,7 +29,6 @@ public class OpenAiService implements AiService {
     private static final int MAX_TOOL_ROUNDS = 5;
 
     private final HttpClient httpClient;
-    private final ToolRegistry toolRegistry = new ToolRegistry();
     private volatile boolean generating = false;
     private volatile InputStream activeStream;
 
@@ -61,12 +61,8 @@ public class OpenAiService implements AiService {
             && modelName != null && !modelName.isBlank();
     }
 
-    @Override public Optional<String> getModelName() {
-        return Optional.ofNullable(modelName);
-    }
-
+    @Override public Optional<String> getModelName() { return Optional.ofNullable(modelName); }
     @Override public long getMemoryUsage() { return -1; }
-
     @Override public boolean isGenerating() { return generating; }
 
     @Override
@@ -102,7 +98,7 @@ public class OpenAiService implements AiService {
         if (round >= MAX_TOOL_ROUNDS) return;
 
         String systemPrompt = SwissKitJSettingUi.getAiSystemPrompt();
-        String toolDefs = toolRegistry.buildToolDefinitions();
+        String toolDefs = ToolSchemaBuilder.buildPromptDefinitions(AiServiceProvider.getTools());
         if (!toolDefs.isEmpty()) systemPrompt += "\n\n" + toolDefs;
 
         List<Object> messages = buildMessages(history, systemPrompt);
@@ -113,11 +109,11 @@ public class OpenAiService implements AiService {
         body.put("max_tokens", maxTokens);
         body.put("stream", true);
         body.put("messages", messages);
-        if (toolRegistry.hasTools()) {
-            body.put("tools", buildOpenAiTools());
+        if (AiServiceProvider.hasTools()) {
+            body.put("tools", ToolSchemaBuilder.buildOpenAiTools(AiServiceProvider.getTools()));
         }
 
-        String jsonBody = JsonBuilder.toJson(body);
+        String jsonBody = JsonHelper.toJson(body);
         String url = endpoint + "/v1/chat/completions";
 
         HttpRequest request = HttpRequest.newBuilder()
@@ -156,15 +152,14 @@ public class OpenAiService implements AiService {
 
                 Map<String, Object> chunk;
                 try {
-                    chunk = JsonParser.parseObject(data);
+                    chunk = JsonHelper.parseObject(data);
                 } catch (Exception e) {
                     log.warn("Malformed SSE chunk, skipping: {}", e.getMessage());
                     continue;
                 }
-                Map<String, Object> delta = JsonParser.getMap(chunk, "choices.0.delta");
+                Map<String, Object> delta = JsonHelper.getMap(chunk, "choices.0.delta");
                 if (delta == null) continue;
 
-                // Text content
                 String content = (String) delta.get("content");
                 if (content != null) {
                     fullResponse.append(content);
@@ -173,7 +168,6 @@ public class OpenAiService implements AiService {
                     Platform.runLater(() -> callback.onToken(text));
                 }
 
-                // Tool calls
                 List<Object> toolCallsDelta = (List<Object>) delta.get("tool_calls");
                 if (toolCallsDelta != null) {
                     for (Object tcObj : toolCallsDelta) {
@@ -194,13 +188,12 @@ public class OpenAiService implements AiService {
             }
         }
 
-        // Assemble tool calls
         List<AiToolCall> toolCalls = new ArrayList<>();
         for (int idx : toolCallArgs.keySet()) {
             String argsJson = toolCallArgs.get(idx).toString();
             Map<String, Object> args;
             try {
-                args = (Map<String, Object>) JsonParser.parse(argsJson);
+                args = JsonHelper.parseObject(argsJson);
                 if (args == null) args = Map.of();
             } catch (Exception e) {
                 args = Map.of("raw", argsJson);
@@ -215,15 +208,10 @@ public class OpenAiService implements AiService {
         long elapsed = System.nanoTime() - startTime;
         double tokPerSec = tokenCount[0] > 0 ? tokenCount[0] * 1_000_000_000.0 / elapsed : 0;
 
-        if (!toolCalls.isEmpty() && toolRegistry.hasTools()) {
+        if (!toolCalls.isEmpty() && AiServiceProvider.hasTools()) {
             hadToolCall.set(true);
             history.add(AiChatMessage.assistantWithTools(fullResponse.toString(), toolCalls));
-            for (AiToolCall tc : toolCalls) {
-                Platform.runLater(() -> callback.onToolCall(tc));
-                AiToolResult result = toolRegistry.execute(tc.name(), tc.arguments());
-                Platform.runLater(() -> callback.onToolResult(tc.id(), result));
-                history.add(AiChatMessage.toolResult(tc.id(), tc.name(), result.output()));
-            }
+            ToolExecutor.executeAndFeed(toolCalls, history, callback);
             chatWithToolLoop(history, temperature, topP, maxTokens, callback, round + 1, hadToolCall);
         } else {
             String clean = hadToolCall.get() ? ToolCallParser.stripToolCalls(fullResponse.toString()) : fullResponse.toString();
@@ -251,7 +239,7 @@ public class OpenAiService implements AiService {
                 for (AiToolCall tc : msg.toolCalls()) {
                     Map<String, Object> fn = new LinkedHashMap<>();
                     fn.put("name", tc.name());
-                    fn.put("arguments", JsonBuilder.toJson(tc.arguments()));
+                    fn.put("arguments", JsonHelper.toJson(tc.arguments()));
                     Map<String, Object> toolCall = new LinkedHashMap<>();
                     toolCall.put("id", tc.id());
                     toolCall.put("type", "function");
@@ -267,35 +255,6 @@ public class OpenAiService implements AiService {
         return messages;
     }
 
-    private List<Object> buildOpenAiTools() {
-        List<Object> tools = new ArrayList<>();
-        for (AiTool tool : toolRegistry.getAll()) {
-            Map<String, Object> fn = new LinkedHashMap<>();
-            fn.put("name", tool.getName());
-            fn.put("description", tool.getDescription());
-            fn.put("parameters", buildJsonSchema(tool.getParameters()));
-            tools.add(Map.of("type", "function", "function", fn));
-        }
-        return tools;
-    }
-
-    private static Map<String, Object> buildJsonSchema(List<AiToolParam> params) {
-        Map<String, Object> schema = new LinkedHashMap<>();
-        schema.put("type", "object");
-        Map<String, Object> properties = new LinkedHashMap<>();
-        List<String> required = new ArrayList<>();
-        for (AiToolParam p : params) {
-            Map<String, Object> prop = new LinkedHashMap<>();
-            prop.put("type", p.type());
-            prop.put("description", p.description());
-            properties.put(p.name(), prop);
-            if (p.required()) required.add(p.name());
-        }
-        schema.put("properties", properties);
-        if (!required.isEmpty()) schema.put("required", required);
-        return schema;
-    }
-
     @Override public void cancelGeneration() {
         generating = false;
         InputStream stream = activeStream;
@@ -304,9 +263,9 @@ public class OpenAiService implements AiService {
         }
     }
 
-    @Override public void registerTool(AiTool tool) { toolRegistry.register(tool); }
-    @Override public void unregisterTool(String toolName) { toolRegistry.unregister(toolName); }
-    @Override public List<AiTool> getTools() { return toolRegistry.getAll(); }
+    @Override public void registerTool(AiTool tool) { AiServiceProvider.registerTool(tool); }
+    @Override public void unregisterTool(String toolName) { AiServiceProvider.unregisterTool(toolName); }
+    @Override public List<AiTool> getTools() { return AiServiceProvider.getTools(); }
 
     private HttpResponse<InputStream> sendWithRetry(HttpRequest request) throws Exception {
         try {
@@ -320,7 +279,7 @@ public class OpenAiService implements AiService {
     public String testConnection() {
         try {
             String url = endpoint + "/v1/chat/completions";
-            String body = JsonBuilder.toJson(Map.of(
+            String body = JsonHelper.toJson(Map.of(
                 "model", modelName,
                 "messages", List.of(Map.of("role", "user", "content", "Hi")),
                 "max_tokens", 5
