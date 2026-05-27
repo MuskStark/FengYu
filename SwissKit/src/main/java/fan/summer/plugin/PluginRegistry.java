@@ -37,6 +37,8 @@ public class PluginRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(PluginRegistry.class);
 
+    private static PluginRegistry INSTANCE;
+
     private final ObservableList<SwissKitJPlugin> plugins =
         FXCollections.observableArrayList();
 
@@ -56,6 +58,11 @@ public class PluginRegistry {
      */
     public PluginRegistry(PluginLoader loader) {
         loader.setRegistry(this);
+        INSTANCE = this;
+    }
+
+    public static PluginRegistry getInstance() {
+        return INSTANCE;
     }
 
     // ── Plugin list ──────────────────────────────────────────────
