@@ -1,6 +1,7 @@
 package fan.summer.buildintool.ai;
 
 import fan.summer.api.ai.*;
+import fan.summer.ai.util.JsonHelper;
 import fan.summer.buildintool.excelsplitter.*;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
@@ -52,41 +53,26 @@ public class ExcelAnalyzeTool implements AiTool {
 
             config.analysisResult = analysisResult;
 
-            // 手动构建JSON（无Jackson）
-            StringBuilder sheetsJson = new StringBuilder("[");
-            int idx = 0;
+            List<Map<String, Object>> sheets = new ArrayList<>();
             for (Map.Entry<String, Map<Integer, String>> e : analysisResult.entrySet()) {
-                if (idx > 0) sheetsJson.append(",");
-                sheetsJson.append("{\"name\":\"").append(jsonEscape(e.getKey()))
-                    .append("\",\"headerCount\":").append(e.getValue().size())
-                    .append(",\"headers\":[");
-                int hIdx = 0;
-                for (String header : e.getValue().values()) {
-                    if (hIdx > 0) sheetsJson.append(",");
-                    sheetsJson.append("\"").append(jsonEscape(header)).append("\"");
-                    hIdx++;
-                }
-                sheetsJson.append("]}");
-                idx++;
+                Map<String, Object> sheet = new LinkedHashMap<>();
+                sheet.put("name", e.getKey());
+                sheet.put("headerCount", e.getValue().size());
+                sheet.put("headers", new ArrayList<>(e.getValue().values()));
+                sheets.add(sheet);
             }
-            sheetsJson.append("]");
 
-            String json = "{\"success\":true,\"sheets\":" + sheetsJson +
-                    ",\"totalSheets\":" + analysisResult.size() +
-                    ",\"sourceFile\":\"" + jsonEscape(filePath.getFileName().toString()) + "\"}";
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("success", true);
+            result.put("sheets", sheets);
+            result.put("totalSheets", analysisResult.size());
+            result.put("sourceFile", filePath.getFileName().toString());
+
             log.info("excel_analyze success: {} sheets found", analysisResult.size());
-            return AiToolResult.success(json);
+            return AiToolResult.success(JsonHelper.toJson(result));
         } catch (Exception e) {
             log.error("excel_analyze failed: {}", e.getMessage());
             return AiToolResult.error("Analysis failed: " + e.getMessage());
         }
-    }
-
-    private static String jsonEscape(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r");
     }
 }
