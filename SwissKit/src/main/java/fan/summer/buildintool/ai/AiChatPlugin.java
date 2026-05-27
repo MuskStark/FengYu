@@ -43,6 +43,9 @@ public class AiChatPlugin implements SwissKitJPlugin {
 
     private static final PluginLogger log = LoggerFactory.getLogger(AiChatPlugin.class);
 
+    private ExcelSplitterPlugin excelPlugin;
+    private final Runnable toolRegistrationListener = this::registerExcelTools;
+
     @Override public String getId()          { return "builtin.ai-chat"; }
     @Override public String getName()        { return I18n.get("builtin.ai-chat.name"); }
     @Override public String getDescription() { return I18n.get("builtin.ai-chat.desc"); }
@@ -61,26 +64,35 @@ public class AiChatPlugin implements SwissKitJPlugin {
     @Override
     public void onActivate() {
         log.info("AI Chat plugin activated");
-        Optional<AiService> aiOpt = AiServiceProvider.getService();
-        if (aiOpt.isPresent()) {
-            AiService aiService = aiOpt.get();
-            PluginRegistry registry = PluginRegistry.getInstance();
-            Optional<SwissKitJPlugin> excelOpt = registry.findPlugin("fan.summer.buildin.excelsplitter");
-            if (excelOpt.isPresent()) {
-                ExcelSplitterPlugin excelPlugin = (ExcelSplitterPlugin) excelOpt.get();
-                aiService.registerTool(new ExcelAnalyzeTool(excelPlugin));
-                aiService.registerTool(new ExcelConfigureTool(excelPlugin));
-                aiService.registerTool(new ExcelExecuteTool(excelPlugin));
-                aiService.registerTool(new ExcelQueryTool(excelPlugin));
-                aiService.registerTool(new ExcelCancelTool());
-                log.info("Registered 5 AI tools for Excel Splitter");
-            }
-        }
+        PluginRegistry registry = PluginRegistry.getInstance();
+        registry.findPlugin("fan.summer.buildin.excelsplitter")
+            .map(p -> (ExcelSplitterPlugin) p)
+            .ifPresent(p -> {
+                excelPlugin = p;
+                registerExcelTools();
+                AiServiceProvider.addOnStateChangeListener(toolRegistrationListener);
+            });
     }
 
     @Override
     public void onDeactivate() {
         log.info("AI Chat plugin deactivated");
+        AiServiceProvider.removeOnStateChangeListener(toolRegistrationListener);
+    }
+
+    private void registerExcelTools() {
+        if (excelPlugin == null) return;
+        Optional<AiService> aiOpt = AiServiceProvider.getService();
+        if (aiOpt.isEmpty()) return;
+        AiService aiService = aiOpt.get();
+        List<AiTool> existing = aiService.getTools();
+        if (existing.stream().anyMatch(t -> t.getName().equals("excel_analyze"))) return;
+        aiService.registerTool(new ExcelAnalyzeTool(excelPlugin));
+        aiService.registerTool(new ExcelConfigureTool(excelPlugin));
+        aiService.registerTool(new ExcelExecuteTool(excelPlugin));
+        aiService.registerTool(new ExcelQueryTool(excelPlugin));
+        aiService.registerTool(new ExcelCancelTool());
+        log.info("Registered 5 AI tools for Excel Splitter");
     }
 
     private record Attachment(String name, String content, long sizeBytes) {}
