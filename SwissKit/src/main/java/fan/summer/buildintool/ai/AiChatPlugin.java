@@ -445,8 +445,11 @@ public class AiChatPlugin implements SwissKitJPlugin {
             WebView webView = new WebView();
             webView.setMaxWidth(560);
             webView.setPrefWidth(560);
+            webView.setMinHeight(24);
+            webView.setPrefHeight(24);
             webView.setStyle("-fx-background-color: #1e1e2e;");
             webView.getEngine().loadContent(MarkdownRenderer.renderPlain("●●●"));
+            autoResizeWebView(webView);
 
             FadeTransition blink = new FadeTransition(Duration.millis(800), webView);
             blink.setFromValue(1.0);
@@ -464,6 +467,21 @@ public class AiChatPlugin implements SwissKitJPlugin {
             messageList.getChildren().add(wrapper);
             scrollToBottom();
             return webView;
+        }
+
+        private void autoResizeWebView(WebView webView) {
+            webView.getEngine().getLoadWorker().stateProperty().addListener((obs, old, state) -> {
+                if (state == javafx.concurrent.Worker.State.SUCCEEDED) {
+                    Object result = webView.getEngine().executeScript(
+                        "document.body.scrollHeight || document.documentElement.scrollHeight"
+                    );
+                    if (result instanceof Number height) {
+                        Platform.runLater(() -> webView.setPrefHeight(
+                            Math.max(24, height.doubleValue() + 4)
+                        ));
+                    }
+                }
+            });
         }
 
         private void updateResponseBubble(String displayText, boolean isFinal) {
