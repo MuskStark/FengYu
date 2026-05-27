@@ -445,11 +445,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
             WebView webView = new WebView();
             webView.setMaxWidth(560);
             webView.setPrefWidth(560);
-            webView.setStyle(
-                "-fx-background-color: rgba(255,255,255,0.055);" +
-                "-fx-border-color: rgba(255,255,255,0.10);" +
-                "-fx-border-width: 1px; -fx-border-radius: 14px; -fx-background-radius: 14px;"
-            );
+            webView.setStyle("-fx-background-color: #1e1e2e;");
             webView.getEngine().loadContent(MarkdownRenderer.renderPlain("●●●"));
 
             FadeTransition blink = new FadeTransition(Duration.millis(800), webView);

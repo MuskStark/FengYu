@@ -15,7 +15,7 @@ public final class MarkdownRenderer {
             font-family: -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
             font-size: 13.5px; line-height: 1.55;
             color: rgba(255,255,255,0.92);
-            background: transparent;
+            background: #1e1e2e;
             overflow-wrap: break-word; word-wrap: break-word;
         }
         pre {
