@@ -35,4 +35,13 @@ public class SwissKitSettingEmailEntity {
 
     /** The "From" address displayed in sent emails. */
     private String fromAddress;
+
+    /** IMAP server hostname or IP address. */
+    private String imapAddress;
+
+    /** IMAP server port number (e.g., {@code 993} for SSL). */
+    private Integer imapPort;
+
+    /** Whether SSL/TLS is required for IMAP connection. */
+    private Boolean imapSSL;
 }

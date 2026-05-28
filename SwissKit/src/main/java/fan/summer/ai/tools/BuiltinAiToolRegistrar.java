@@ -2,6 +2,7 @@ package fan.summer.ai.tools;
 
 import fan.summer.api.ai.AiServiceProvider;
 import fan.summer.buildintool.ai.*;
+import fan.summer.buildintool.emailarchive.EmailArchivePlugin;
 import fan.summer.buildintool.excelsplitter.ExcelSplitterPlugin;
 import fan.summer.plugin.PluginRegistry;
 import org.slf4j.Logger;
@@ -41,8 +42,9 @@ public class BuiltinAiToolRegistrar {
         AiServiceProvider.registerTool(new BuiltinColorConvertTool());
 
         registerExcelTools();
+        registerEmailArchiveTools();
 
-        log.info("Built-in AI tools registered: base64, hash_calculate, json_format, color_convert, excel_*");
+        log.info("Built-in AI tools registered: base64, hash_calculate, json_format, color_convert, excel_*, email_archive_*");
     }
 
     private static void registerExcelTools() {
@@ -61,5 +63,19 @@ public class BuiltinAiToolRegistrar {
         AiServiceProvider.registerTool(new ExcelComplexConfigTool(plugin));
         AiServiceProvider.registerTool(new ExcelCancelTool());
         log.info("Excel AI tools registered (6 tools)");
+    }
+
+    private static void registerEmailArchiveTools() {
+        PluginRegistry registry = PluginRegistry.getInstance();
+        if (registry == null) return;
+
+        Optional<EmailArchivePlugin> opt = registry.findPlugin("fan.summer.buildin.email-archive")
+                .map(p -> (EmailArchivePlugin) p);
+        if (opt.isEmpty()) return;
+
+        EmailArchivePlugin plugin = opt.get();
+        AiServiceProvider.registerTool(new EmailArchiveFetchTool(plugin));
+        AiServiceProvider.registerTool(new EmailArchiveQueryTool());
+        log.info("Email archive AI tools registered (2 tools)");
     }
 }

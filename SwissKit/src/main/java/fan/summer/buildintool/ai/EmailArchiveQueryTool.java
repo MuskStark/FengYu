@@ -1,0 +1,89 @@
+package fan.summer.buildintool.ai;
+
+import fan.summer.api.ai.*;
+import fan.summer.ai.util.JsonHelper;
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
+import fan.summer.buildintool.emailarchive.*;
+import fan.summer.database.entity.email.EmailArchiveEntity;
+
+import java.sql.Date;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+
+public class EmailArchiveQueryTool implements AiTool {
+    private static final PluginLogger log = LoggerFactory.getLogger(EmailArchiveQueryTool.class);
+    private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_LOCAL_DATE;
+
+    @Override public String getName() { return "email_archive_query"; }
+
+    @Override public String getDescription() {
+        return "Search archived emails in the local database. " +
+               "All parameters are optional. " +
+               "Args: accountEmail (string) — filter by account; " +
+               "fromAddress (string) — filter by sender (partial match); " +
+               "subject (string) — filter by subject (partial match); " +
+               "startDate (string) — ISO date like 2026-01-01; " +
+               "endDate (string) — ISO date like 2026-05-28; " +
+               "limit (integer) — max results, default 20.";
+    }
+
+    @Override public List<AiToolParam> getParameters() {
+        return List.of(
+            AiToolParam.of("accountEmail", "string", "Filter by account email", false),
+            AiToolParam.of("fromAddress", "string", "Filter by sender (partial match)", false),
+            AiToolParam.of("subject", "string", "Filter by subject (partial match)", false),
+            AiToolParam.of("startDate", "string", "Start date (ISO: 2026-01-01)", false),
+            AiToolParam.of("endDate", "string", "End date (ISO: 2026-05-28)", false),
+            AiToolParam.of("limit", "integer", "Max results (default 20, max 100)", false)
+        );
+    }
+
+    @Override public AiToolResult execute(Map<String, Object> args) {
+        String accountEmail = (String) args.get("accountEmail");
+        String fromAddress = (String) args.get("fromAddress");
+        String subject = (String) args.get("subject");
+
+        Date startDate = null, endDate = null;
+        if (args.get("startDate") != null) {
+            startDate = Date.valueOf(LocalDate.parse((String) args.get("startDate"), ISO));
+        }
+        if (args.get("endDate") != null) {
+            endDate = Date.valueOf(LocalDate.parse((String) args.get("endDate"), ISO));
+        }
+
+        try {
+            EmailArchiveService service = new EmailArchiveService();
+            List<EmailArchiveEntity> results =
+                    service.query(accountEmail, fromAddress, subject, startDate, endDate);
+
+            int limit = args.get("limit") != null ? Math.min(((Number) args.get("limit")).intValue(), 100) : 20;
+            if (results.size() > limit) results = results.subList(0, limit);
+
+            List<Map<String, Object>> emails = new ArrayList<>();
+            for (EmailArchiveEntity e : results) {
+                Map<String, Object> map = new LinkedHashMap<>();
+                map.put("subject", e.getSubject());
+                map.put("from", e.getFromAddress());
+                map.put("to", e.getToAddress());
+                map.put("date", e.getSendDate() != null ? e.getSendDate().toString() : null);
+                map.put("hasAttachment", e.getHasAttachment());
+                map.put("preview", e.getBodyPreview());
+                map.put("folder", e.getFolder());
+                emails.add(map);
+            }
+
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("success", true);
+            out.put("totalResults", emails.size());
+            out.put("emails", emails);
+
+            log.info("email_archive_query: {} results", emails.size());
+            return AiToolResult.success(JsonHelper.toJson(out));
+        } catch (Exception e) {
+            log.error("email_archive_query error: {}", e.getMessage());
+            return AiToolResult.error("Query failed: " + e.getMessage());
+        }
+    }
+}
