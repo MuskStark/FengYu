@@ -169,6 +169,7 @@ public class OpenAiService implements AiService {
 
         activeStream = resp.body();
         StringBuilder fullResponse = new StringBuilder();
+        StringBuilder reasoningBuffer = new StringBuilder();
         Map<Integer, StringBuilder> toolCallArgs = new LinkedHashMap<>();
         Map<Integer, String> toolCallNames = new LinkedHashMap<>();
         Map<Integer, String> toolCallIds = new LinkedHashMap<>();
@@ -199,6 +200,11 @@ public class OpenAiService implements AiService {
                     tokenCount[0]++;
                     String text = content;
                     Platform.runLater(() -> callback.onToken(text));
+                }
+
+                String reasoningChunk = (String) delta.get("reasoning_content");
+                if (reasoningChunk != null) {
+                    reasoningBuffer.append(reasoningChunk);
                 }
 
                 List<Object> toolCallsDelta = (List<Object>) delta.get("tool_calls");
@@ -241,13 +247,16 @@ public class OpenAiService implements AiService {
         long elapsed = System.nanoTime() - startTime;
         double tokPerSec = tokenCount[0] > 0 ? tokenCount[0] * 1_000_000_000.0 / elapsed : 0;
 
+        String reasoningText = reasoningBuffer.isEmpty() ? null : reasoningBuffer.toString();
+
         if (!toolCalls.isEmpty() && AiServiceProvider.hasTools()) {
             hadToolCall.set(true);
-            history.add(AiChatMessage.assistantWithTools(fullResponse.toString(), toolCalls));
+            history.add(AiChatMessage.assistantWithToolsAndReasoning(fullResponse.toString(), toolCalls, reasoningText));
             ToolExecutor.executeAndFeed(toolCalls, history, callback);
             chatWithToolLoop(history, temperature, topP, maxTokens, callback, round + 1, hadToolCall);
         } else {
             String clean = hadToolCall.get() ? ToolCallParser.stripToolCalls(fullResponse.toString()) : fullResponse.toString();
+            history.add(AiChatMessage.assistantWithReasoning(clean, reasoningText));
             String finalClean = clean;
             int count = tokenCount[0];
             Platform.runLater(() -> callback.onComplete(finalClean, count, tokPerSec));
@@ -277,6 +286,7 @@ public class OpenAiService implements AiService {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("role", "assistant");
                 m.put("content", msg.content() != null ? msg.content() : "");
+                if (msg.hasReasoningContent()) m.put("reasoning_content", msg.reasoningContent());
                 List<Object> tcList = new ArrayList<>();
                 for (AiToolCall tc : msg.toolCalls()) {
                     Map<String, Object> fn = new LinkedHashMap<>();
@@ -289,6 +299,12 @@ public class OpenAiService implements AiService {
                     tcList.add(toolCall);
                 }
                 m.put("tool_calls", tcList);
+                messages.add(m);
+            } else if (msg.role() == AiChatMessage.Role.ASSISTANT && msg.hasReasoningContent()) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("role", "assistant");
+                m.put("content", msg.content() != null ? msg.content() : "");
+                m.put("reasoning_content", msg.reasoningContent());
                 messages.add(m);
             } else {
                 messages.add(Map.of("role", msg.role().name().toLowerCase(), "content", msg.content()));

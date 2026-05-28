@@ -115,7 +115,7 @@ public final class MarkdownRenderer {
     }
 
     private static String wrapHtml(String bodyContent) {
-        return "<html><head><style>" + CSS + "</style></head><body>"
+        return "<html><head><meta charset=\"UTF-8\"><style>" + CSS + "</style></head><body>"
             + bodyContent + "</body></html>";
     }
 }

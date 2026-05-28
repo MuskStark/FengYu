@@ -10,7 +10,8 @@ public record AiChatMessage(
     String content,
     List<AiToolCall> toolCalls,
     String toolCallId,
-    String toolName
+    String toolName,
+    String reasoningContent
 ) {
 
     public enum Role {
@@ -22,7 +23,7 @@ public record AiChatMessage(
     }
 
     public AiChatMessage(Role role, String content) {
-        this(role, content, List.of(), null, null);
+        this(role, content, List.of(), null, null, null);
     }
 
     public static AiChatMessage system(String content) {
@@ -37,15 +38,27 @@ public record AiChatMessage(
         return new AiChatMessage(Role.ASSISTANT, content);
     }
 
+    public static AiChatMessage assistantWithReasoning(String content, String reasoningContent) {
+        return new AiChatMessage(Role.ASSISTANT, content, List.of(), null, null, reasoningContent);
+    }
+
     public static AiChatMessage assistantWithTools(String content, List<AiToolCall> toolCalls) {
-        return new AiChatMessage(Role.ASSISTANT, content, toolCalls, null, null);
+        return new AiChatMessage(Role.ASSISTANT, content, toolCalls, null, null, null);
+    }
+
+    public static AiChatMessage assistantWithToolsAndReasoning(String content, List<AiToolCall> toolCalls, String reasoningContent) {
+        return new AiChatMessage(Role.ASSISTANT, content, toolCalls, null, null, reasoningContent);
     }
 
     public static AiChatMessage toolResult(String toolCallId, String toolName, String content) {
-        return new AiChatMessage(Role.TOOL, content, List.of(), toolCallId, toolName);
+        return new AiChatMessage(Role.TOOL, content, List.of(), toolCallId, toolName, null);
     }
 
     public boolean hasToolCalls() {
         return toolCalls != null && !toolCalls.isEmpty();
+    }
+
+    public boolean hasReasoningContent() {
+        return reasoningContent != null && !reasoningContent.isEmpty();
     }
 }

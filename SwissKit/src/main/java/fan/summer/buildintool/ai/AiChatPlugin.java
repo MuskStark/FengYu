@@ -351,12 +351,6 @@ public class AiChatPlugin implements SwissKitJPlugin {
                             String display = stripSpecialTokens(currentResponseText.toString());
                             updateResponseBubble(display, true);
                         }
-                        if (fullResponse != null && !fullResponse.isBlank()) {
-                            String cleaned = stripSpecialTokens(fullResponse);
-                            if (!cleaned.isBlank()) {
-                                history.add(AiChatMessage.assistant(cleaned));
-                            }
-                        }
                     }
 
                     @Override
