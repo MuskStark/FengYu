@@ -58,7 +58,8 @@ public class BuiltinAiToolRegistrar {
         AiServiceProvider.registerTool(new ExcelConfigureTool(plugin));
         AiServiceProvider.registerTool(new ExcelExecuteTool(plugin));
         AiServiceProvider.registerTool(new ExcelQueryTool(plugin));
+        AiServiceProvider.registerTool(new ExcelComplexConfigTool(plugin));
         AiServiceProvider.registerTool(new ExcelCancelTool());
-        log.info("Excel AI tools registered (5 tools)");
+        log.info("Excel AI tools registered (6 tools)");
     }
 }
