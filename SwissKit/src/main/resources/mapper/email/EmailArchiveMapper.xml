@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="fan.summer.database.mapper.email.EmailArchiveMapper">
+
+    <insert id="insert" parameterType="fan.summer.database.entity.email.EmailArchiveEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO email_archive (account_email, folder, message_uid, subject,
+                from_address, to_address, cc_address, send_date, has_attachment,
+                eml_path, body_preview, archived_at)
+        VALUES (#{accountEmail}, #{folder}, #{messageUid}, #{subject},
+                #{fromAddress}, #{toAddress}, #{ccAddress}, #{sendDate}, #{hasAttachment},
+                #{emlPath}, #{bodyPreview}, #{archivedAt})
+    </insert>
+
+    <select id="selectByUid" resultType="fan.summer.database.entity.email.EmailArchiveEntity">
+        SELECT id, account_email AS accountEmail, folder, message_uid AS messageUid,
+               subject, from_address AS fromAddress, to_address AS toAddress,
+               cc_address AS ccAddress, send_date AS sendDate,
+               has_attachment AS hasAttachment, eml_path AS emlPath,
+               body_preview AS bodyPreview, archived_at AS archivedAt
+        FROM email_archive
+        WHERE account_email = #{accountEmail} AND folder = #{folder} AND message_uid = #{messageUid}
+    </select>
+
+    <select id="selectByQuery" resultType="fan.summer.database.entity.email.EmailArchiveEntity">
+        SELECT id, account_email AS accountEmail, folder, message_uid AS messageUid,
+               subject, from_address AS fromAddress, to_address AS toAddress,
+               cc_address AS ccAddress, send_date AS sendDate,
+               has_attachment AS hasAttachment, eml_path AS emlPath,
+               body_preview AS bodyPreview, archived_at AS archivedAt
+        FROM email_archive
+        <where>
+            <if test="accountEmail != null">AND account_email = #{accountEmail}</if>
+            <if test="fromAddress != null">AND from_address LIKE '%' || #{fromAddress} || '%'</if>
+            <if test="subject != null">AND subject LIKE '%' || #{subject} || '%'</if>
+            <if test="startDate != null">AND send_date &gt;= #{startDate}</if>
+            <if test="endDate != null">AND send_date &lt;= #{endDate}</if>
+        </where>
+        ORDER BY send_date DESC
+        LIMIT 100
+    </select>
+
+</mapper>

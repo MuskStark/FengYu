@@ -880,6 +880,9 @@ public class SwissKitJSettingUi {
         PasswordField passField = passwordField();
         TextField fromField = textField(null, "noreply@example.com");
 
+        TextField imapField = textField(null, "imap.example.com");
+        TextField imapPortField = textField(null, "993");
+
         // Use userData for stable field identification (label text changes with locale)
         VBox smtpRow = labeled(I18n.get("setting.email.smtpServer"), smtpField);
         smtpRow.setUserData("smtp");
@@ -894,10 +897,29 @@ public class SwissKitJSettingUi {
 
         VBox tlsSslBox = tlsSslRow();
 
+        VBox imapRow = labeled(I18n.get("setting.email.imapServer"), imapField);
+        imapRow.setUserData("imap");
+        VBox imapPortRow = labeled(I18n.get("setting.email.imapPort"), imapPortField);
+        imapPortRow.setUserData("imapPort");
+
+        CheckBox imapSslCheck = new CheckBox("SSL");
+        imapSslCheck.setUserData("IMAP_SSL");
+        imapSslCheck.getStyleClass().add("glass-checkbox");
+        imapSslCheck.setSelected(true);
+        HBox imapSslRow = new HBox(16, imapSslCheck);
+        imapSslRow.setAlignment(Pos.CENTER_LEFT);
+        VBox imapSslBox = new VBox(4);
+        Label imapSslLabel = new Label("");
+        imapSslLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.50); -fx-font-size: 11px; -fx-font-weight: bold;");
+        imapSslBox.getChildren().addAll(imapSslLabel, imapSslRow);
+        imapSslBox.setUserData("imapSslBox");
+
         root.getChildren().addAll(
             sectionTitle(I18n.get("setting.email.title")),
             smtpRow, portRow, userRow, passRow, fromRow,
             tlsSslBox,
+            sectionTitle(I18n.get("setting.email.imapSection")),
+            imapRow, imapPortRow, imapSslBox,
             saveEmailBtn(),
             openAddressBookBtn()
         );
@@ -924,6 +946,8 @@ public class SwissKitJSettingUi {
                                     case "username" -> { if (fieldNode instanceof TextField tf) tf.setText(entity.getEmail()); }
                                     case "password" -> { if (fieldNode instanceof PasswordField pf) pf.setText(entity.getPassword()); }
                                     case "from" -> { if (fieldNode instanceof TextField tf) tf.setText(entity.getFromAddress()); }
+                                    case "imap" -> { if (fieldNode instanceof TextField tf) tf.setText(entity.getImapAddress() != null ? entity.getImapAddress() : ""); }
+                                    case "imapPort" -> { if (fieldNode instanceof TextField tf) tf.setText(entity.getImapPort() != null ? String.valueOf(entity.getImapPort()) : "993"); }
                                 }
                             }
                         }
@@ -940,6 +964,20 @@ public class SwissKitJSettingUi {
                                             }
                                             if (second instanceof CheckBox sslCb && sslCb.getUserData() == "SSL" && entity.getNeedSSL() != null) {
                                                 sslCb.setSelected(entity.getNeedSSL());
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // Update IMAP SSL checkbox
+                        for (Node child : root.getChildren()) {
+                            if (child instanceof VBox vb && "imapSslBox".equals(vb.getUserData())) {
+                                for (Node vbChild : vb.getChildren()) {
+                                    if (vbChild instanceof HBox hb) {
+                                        for (Node n : hb.getChildren()) {
+                                            if (n instanceof CheckBox cb && "IMAP_SSL".equals(cb.getUserData()) && entity.getImapSSL() != null) {
+                                                cb.setSelected(entity.getImapSSL());
                                             }
                                         }
                                     }
@@ -985,7 +1023,8 @@ public class SwissKitJSettingUi {
 
     private static void saveEmailSettings(VBox form) {
         String smtp = null, port = null, user = null, pass = null, from = null;
-        boolean tls = false, ssl = false;
+        String imap = null, imapPort = null;
+        boolean tls = false, ssl = false, imapSsl = true;
         List<Node> children = form.getChildren();
 
         for (Node child : children) {
@@ -997,14 +1036,19 @@ public class SwissKitJSettingUi {
                     case "username" -> { if (field instanceof TextField tf) user = tf.getText(); }
                     case "password" -> { if (field instanceof PasswordField pf) pass = pf.getText(); }
                     case "from" -> { if (field instanceof TextField tf) from = tf.getText(); }
+                    case "imap" -> { if (field instanceof TextField tf) imap = tf.getText(); }
+                    case "imapPort" -> { if (field instanceof TextField tf) imapPort = tf.getText(); }
                 }
             } else if (child instanceof VBox vb) {
                 for (Node vbChild : vb.getChildren()) {
-                    if (vbChild instanceof HBox hb && hb.getChildren().size() == 2) {
-                        Object first = hb.getChildren().get(0);
-                        Object second = hb.getChildren().get(1);
-                        if (first instanceof CheckBox tlsCb && tlsCb.getUserData() == "TLS") tls = tlsCb.isSelected();
-                        if (second instanceof CheckBox sslCb && sslCb.getUserData() == "SSL") ssl = sslCb.isSelected();
+                    if (vbChild instanceof HBox hb) {
+                        for (Node n : hb.getChildren()) {
+                            if (n instanceof CheckBox cb && cb.getUserData() instanceof String ud) {
+                                if ("TLS".equals(ud)) tls = cb.isSelected();
+                                if ("SSL".equals(ud)) ssl = cb.isSelected();
+                                if ("IMAP_SSL".equals(ud)) imapSsl = cb.isSelected();
+                            }
+                        }
                     }
                 }
             }
@@ -1031,6 +1075,9 @@ public class SwissKitJSettingUi {
         final String fFrom = from.trim();
         final boolean fTls = tls;
         final boolean fSsl = ssl;
+        final String fImap = (imap != null && !imap.isBlank()) ? imap.trim() : null;
+        final int fImapPort = (imapPort != null && !imapPort.isBlank()) ? Integer.parseInt(imapPort.trim()) : 993;
+        final boolean fImapSsl = imapSsl;
 
         new Thread(() -> {
             try (SqlSession session = DatabaseInit.getSqlSession()) {
@@ -1044,6 +1091,9 @@ public class SwissKitJSettingUi {
                 entity.setFromAddress(fFrom);
                 entity.setNeedTLS(fTls);
                 entity.setNeedSSL(fSsl);
+                entity.setImapAddress(fImap);
+                entity.setImapPort(fImapPort);
+                entity.setImapSSL(fImapSsl);
                 mapper.insert(entity);
                 session.commit();
                 log.info("Email settings saved: smtp={}:{}", fSmtp, fPort);

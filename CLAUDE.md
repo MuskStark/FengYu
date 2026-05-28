@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 All modules have **standalone POMs** with no parent dependency — each can be built independently.
 
+**No system Maven installed.** All Maven operations (compile, package, install, clean) must go through **IntelliJ IDEA's built-in Maven** — either the Maven tool window (right sidebar) or the IDEA MCP tools (`mcp__idea__build_project`, `mcp__idea__execute_terminal_command`). Never run `mvn` in a regular shell — it will fail.
+
 ```bash
 # Build and install the API module (required first — other modules depend on it)
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
