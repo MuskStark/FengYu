@@ -69,6 +69,12 @@ Plugin icon background colors are CSS classes: `ic-blue / ic-purple / ic-teal / 
 
 **i18n**: `src/main/resources/i18n/messages.properties` (Chinese default), `messages_en.properties` (English).
 
+**JSON**: Use `fan.summer.api.json.JsonHelper` (Gson-based). Old `JsonBuilder`/`JsonParser` are deleted.
+
+**AI Markdown**: AI responses render via `WebView` with dark theme `#1e1e2e`; auto-resize height to content.
+
+**AI tools**: Register via `BuiltinAiToolRegistrar`; use `ToolExecutor` + `ToolSchemaBuilder` for execution and schema generation.
+
 ## Reusable UI Component: StepWizard
 
 `fan.summer.api.component.StepWizard` (in `SwissKitJ-Api`) is a ready-made multi-step wizard container for use inside any plugin's `createView()`.
