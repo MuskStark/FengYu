@@ -8,6 +8,7 @@ import fan.summer.buildintool.dev.JsonFormatterPlugin;
 import fan.summer.buildintool.email.EmailPlugin;
 import fan.summer.buildintool.emailarchive.EmailArchivePlugin;
 import fan.summer.buildintool.excelsplitter.ExcelSplitterPlugin;
+import fan.summer.buildintool.pdftool.PdfToolPlugin;
 import fan.summer.buildintool.image.ColorConverterPlugin;
 import fan.summer.buildintool.text.MarkdownEditorPlugin;
 import fan.summer.plugin.PluginLoader;
@@ -69,7 +70,8 @@ public class BuiltinToolRegistrar {
             new ColorConverterPlugin(),
             new MarkdownEditorPlugin(),
             new EmailPlugin(),
-            new EmailArchivePlugin()
+            new EmailArchivePlugin(),
+            new PdfToolPlugin()
         );
         registry.getPlugins().addAll(builtins);
         for (SwissKitJPlugin p : builtins) {
