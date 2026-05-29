@@ -521,7 +521,7 @@ public class SwissKitJSettingUi {
         browseBtn.setOnAction(e -> {
             FileChooser chooser = new FileChooser();
             chooser.setTitle(I18n.get("setting.ai.selectModel"));
-            chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("GGUF Model", "*.gguf"));
+            chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("GGUF Model", "*.gguf", "*.ggufz"));
             File file = chooser.showOpenDialog(browseBtn.getScene().getWindow());
             if (file != null) {
                 modelPathField.setText(file.getAbsolutePath());
