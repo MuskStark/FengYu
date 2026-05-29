@@ -9,6 +9,7 @@ import fan.summer.ai.nativejni.GenerateParams;
 import fan.summer.ai.nativejni.LlamaContext;
 import fan.summer.ai.nativejni.ModelParams;
 import fan.summer.ai.nativejni.NativeLoader;
+import fan.summer.ai.tools.FunctionGemmaAdapter;
 import fan.summer.ai.tools.ToolCallParser;
 import fan.summer.ai.tools.ToolExecutor;
 import fan.summer.ai.tools.ToolSchemaBuilder;
@@ -51,6 +52,8 @@ public class AiServiceImpl implements AiService {
     private LlamaContext nativeContext;
     private ChatTemplate nativeChatTemplate;
     private volatile String loadedModelPath;
+    private FunctionGemmaAdapter functionGemmaAdapter;
+    private boolean isFunctionGemma;
 
     /**
      * Constructs an {@code AiServiceImpl}, automatically selecting the native
@@ -72,6 +75,22 @@ public class AiServiceImpl implements AiService {
         }
     }
 
+    /**
+     * Detect if the loaded model is FunctionGemma by filename.
+     * Only applies in local model mode (native or Java backend).
+     */
+    private void detectModelType(String modelPath) {
+        isFunctionGemma = false;
+        functionGemmaAdapter = null;
+        if (backend != Backend.NATIVE && backend != Backend.JAVA) return;
+        String name = Path.of(modelPath).getFileName().toString().toLowerCase();
+        isFunctionGemma = name.contains("functiongemma");
+        if (isFunctionGemma) {
+            functionGemmaAdapter = new FunctionGemmaAdapter();
+            log.info("FunctionGemma detected — using native tool calling protocol");
+        }
+    }
+
     // ── Model management ──────────────────────────────────────
 
     /**
@@ -85,6 +104,7 @@ public class AiServiceImpl implements AiService {
     public void loadModel(Path modelPath) throws AiServiceException {
         try {
             loadedModelPath = modelPath.toString();
+            detectModelType(modelPath.toString());
             log.info("Loading AI model [{}]: {}", backend, modelPath);
 
             if (backend == Backend.NATIVE) {
@@ -129,6 +149,8 @@ public class AiServiceImpl implements AiService {
         } else if (javaRunner != null) {
             javaRunner.unload();
         }
+        isFunctionGemma = false;
+        functionGemmaAdapter = null;
         loadedModelPath = null;
     }
 
@@ -216,6 +238,10 @@ public class AiServiceImpl implements AiService {
 
     private void chatNative(List<AiChatMessage> history, float temperature, float topP,
                             int maxTokens, AiStreamCallback callback) {
+        if (isFunctionGemma) {
+            chatFunctionGemmaNative(history, temperature, topP, maxTokens, callback);
+            return;
+        }
         Thread.ofVirtual().start(() -> {
             try {
                 String systemPrompt = buildSystemPrompt();
@@ -302,6 +328,142 @@ public class AiServiceImpl implements AiService {
         });
     }
 
+    // ── FunctionGemma single-turn tool calling ────────────────
+
+    private void chatFunctionGemmaNative(List<AiChatMessage> history, float temperature,
+                                          float topP, int maxTokens, AiStreamCallback callback) {
+        Thread.ofVirtual().start(() -> {
+            try {
+                String toolDecls = functionGemmaAdapter.buildToolDeclarations(AiServiceProvider.getTools());
+                String prompt = functionGemmaAdapter.buildPrompt(history, toolDecls);
+
+                StringBuilder response = new StringBuilder();
+                AtomicBoolean stopped = new AtomicBoolean(false);
+                AtomicInteger tokenCount = new AtomicInteger(0);
+                long[] firstTokenNanos = {0L};
+                long genStartNanos = System.nanoTime();
+
+                GenerateParams genParams = new GenerateParams()
+                    .temperature(temperature).topP(topP).maxTokens(maxTokens);
+
+                nativeContext.generate(prompt, genParams, new GenerateCallback() {
+                    @Override
+                    public boolean onToken(String tokenText) {
+                        if (stopped.get()) return false;
+                        if (firstTokenNanos[0] == 0L) firstTokenNanos[0] = System.nanoTime();
+                        tokenCount.incrementAndGet();
+
+                        int prevLen = response.length();
+                        response.append(tokenText);
+                        int stopIdx = StopDetector.findStop(response);
+                        if (stopIdx >= 0) {
+                            response.setLength(stopIdx);
+                            int safeLen = stopIdx - prevLen;
+                            if (safeLen > 0) {
+                                String safe = tokenText.substring(0, Math.min(tokenText.length(), safeLen));
+                                Platform.runLater(() -> callback.onToken(safe));
+                            }
+                            stopped.set(true);
+                            return false;
+                        }
+                        Platform.runLater(() -> callback.onToken(tokenText));
+                        return true;
+                    }
+
+                    @Override
+                    public void onDone(String fullText) {
+                        String output = response.toString();
+
+                        if (functionGemmaAdapter.containsToolCall(output)) {
+                            List<AiToolCall> toolCalls = functionGemmaAdapter.parseToolCalls(output);
+                            if (!toolCalls.isEmpty() && AiServiceProvider.hasTools()) {
+                                AiToolCall tc = toolCalls.get(0);
+                                Platform.runLater(() -> callback.onToolCall(tc));
+
+                                AiToolResult result = ToolExecutor.execute(tc.name(), tc.arguments());
+                                Platform.runLater(() -> callback.onToolResult(tc.id(), result));
+
+                                history.add(AiChatMessage.assistantWithTools(
+                                    functionGemmaAdapter.stripToolCalls(output), toolCalls));
+                                history.add(AiChatMessage.toolResult(tc.id(), tc.name(), result.output()));
+
+                                String newPrompt = functionGemmaAdapter.buildPrompt(history, toolDecls);
+                                generateFinalAnswer(newPrompt, temperature, topP, maxTokens, callback);
+                                return;
+                            }
+                        }
+
+                        int n = tokenCount.get();
+                        long baseNanos = firstTokenNanos[0] != 0L ? firstTokenNanos[0] : genStartNanos;
+                        long elapsedMs = (System.nanoTime() - baseNanos) / 1_000_000;
+                        double tokPerSec = (n > 0 && elapsedMs > 0) ? n * 1000.0 / elapsedMs : 0;
+                        Platform.runLater(() -> callback.onComplete(output, n, tokPerSec));
+                    }
+
+                    @Override
+                    public void onError(String message) {
+                        Platform.runLater(() -> callback.onError(new RuntimeException(message)));
+                    }
+                });
+            } catch (Exception e) {
+                log.error("FunctionGemma generation error", e);
+                Platform.runLater(() -> callback.onError(e));
+            }
+        });
+    }
+
+    /**
+     * Generate the final answer after a FunctionGemma tool call.
+     */
+    private void generateFinalAnswer(String prompt, float temperature, float topP,
+                                      int maxTokens, AiStreamCallback callback) {
+        GenerateParams genParams = new GenerateParams()
+            .temperature(temperature).topP(topP).maxTokens(maxTokens);
+
+        StringBuilder finalResponse = new StringBuilder();
+        AtomicInteger finalTokenCount = new AtomicInteger(0);
+        long[] finalFirstToken = {0L};
+        long finalStart = System.nanoTime();
+
+        nativeContext.generate(prompt, genParams, new GenerateCallback() {
+            @Override
+            public boolean onToken(String tokenText) {
+                if (finalFirstToken[0] == 0L) finalFirstToken[0] = System.nanoTime();
+                finalTokenCount.incrementAndGet();
+
+                int prevLen = finalResponse.length();
+                finalResponse.append(tokenText);
+                int stopIdx = StopDetector.findStop(finalResponse);
+                if (stopIdx >= 0) {
+                    finalResponse.setLength(stopIdx);
+                    int safeLen = stopIdx - prevLen;
+                    if (safeLen > 0) {
+                        String safe = tokenText.substring(0, Math.min(tokenText.length(), safeLen));
+                        Platform.runLater(() -> callback.onToken(safe));
+                    }
+                    return false;
+                }
+                Platform.runLater(() -> callback.onToken(tokenText));
+                return true;
+            }
+
+            @Override
+            public void onDone(String fullText) {
+                String output = finalResponse.toString();
+                int n = finalTokenCount.get();
+                long base = finalFirstToken[0] != 0L ? finalFirstToken[0] : finalStart;
+                long elapsedMs = (System.nanoTime() - base) / 1_000_000;
+                double tokPerSec = (n > 0 && elapsedMs > 0) ? n * 1000.0 / elapsedMs : 0;
+                Platform.runLater(() -> callback.onComplete(output, n, tokPerSec));
+            }
+
+            @Override
+            public void onError(String message) {
+                Platform.runLater(() -> callback.onError(new RuntimeException(message)));
+            }
+        });
+    }
+
     // ── Java backend chat ─────────────────────────────────────
 
     private void chatJava(List<AiChatMessage> history, float temperature, float topP,
@@ -376,6 +538,8 @@ public class AiServiceImpl implements AiService {
      * @return the complete system prompt string, or just the base prompt if no tools are registered
      */
     private String buildSystemPrompt() {
+        // FunctionGemma: adapter handles tool declarations in the prompt builder
+        if (isFunctionGemma) return "";
         String base = SwissKitJSettingUi.getAiSystemPrompt();
         String toolDefs = ToolSchemaBuilder.buildPromptDefinitions(AiServiceProvider.getTools());
         if (toolDefs.isEmpty()) return base;
