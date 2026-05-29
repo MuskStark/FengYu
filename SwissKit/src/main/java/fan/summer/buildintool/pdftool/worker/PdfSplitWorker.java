@@ -46,7 +46,7 @@ public class PdfSplitWorker extends Task<List<Path>> {
     }
 
     @Override
-    protected List<Path> call() throws Exception {
+    public List<Path> call() throws Exception {
         List<Path> outputFiles = new ArrayList<>();
         String baseName = extractBaseName(pdfPath);
 

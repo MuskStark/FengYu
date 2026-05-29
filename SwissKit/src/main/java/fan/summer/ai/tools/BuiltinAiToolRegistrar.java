@@ -4,6 +4,9 @@ import fan.summer.api.ai.AiServiceProvider;
 import fan.summer.buildintool.ai.*;
 import fan.summer.buildintool.emailarchive.EmailArchivePlugin;
 import fan.summer.buildintool.excelsplitter.ExcelSplitterPlugin;
+import fan.summer.buildintool.pdftool.ai.PdfMergeAiTool;
+import fan.summer.buildintool.pdftool.ai.PdfSplitAiTool;
+import fan.summer.buildintool.pdftool.ai.PdfToDocxAiTool;
 import fan.summer.plugin.PluginRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,7 +47,11 @@ public class BuiltinAiToolRegistrar {
         registerExcelTools();
         registerEmailArchiveTools();
 
-        log.info("Built-in AI tools registered: base64, hash_calculate, json_format, color_convert, excel_*, email_archive_*");
+        AiServiceProvider.registerTool(new PdfSplitAiTool());
+        AiServiceProvider.registerTool(new PdfMergeAiTool());
+        AiServiceProvider.registerTool(new PdfToDocxAiTool());
+
+        log.info("Built-in AI tools registered: base64, hash_calculate, json_format, color_convert, excel_*, email_archive_*, pdf_split, pdf_merge, pdf_to_docx");
     }
 
     private static void registerExcelTools() {
