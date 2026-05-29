@@ -126,24 +126,40 @@ Select file(s) → OfficeDetector checks available backend
 
 ## Office Backend Detection (OfficeDetector)
 
-Detection priority: WPS → LibreOffice → MS Word.
+Detection priority: WPS → LibreOffice → MS Word. Uses `System.getProperty("os.name")` to pick the platform-specific strategy (no existing OS utility in the project, so OfficeDetector contains its own detection).
 
-**macOS:**
-- WPS: check `/Applications/wpsoffice.app` exists
-- LibreOffice: check `/Applications/LibreOffice.app` exists
-- MS Word: check `/Applications/Microsoft Word.app` exists
+### Windows
 
-**Windows:**
-- WPS: check registry or common install paths
-- LibreOffice: check `C:\Program Files\LibreOffice`
-- MS Word: check COM registration
+| Backend | Detection Method | Details |
+|---|---|---|
+| **WPS** | 1. Registry: `HKEY_LOCAL_MACHINE\SOFTWARE\Kingsoft\Office\6.0\common\InstallRoot` → `Path` value. 2. Fallback paths: `C:\Users\<user>\AppData\Local\Kingsoft\WPS Office\`, `C:\Program Files*\Kingsoft\WPS Office\*\office6\` | Look for `wps.exe` or `et.exe` in the install dir |
+| **LibreOffice** | 1. Registry: `HKEY_LOCAL_MACHINE\SOFTWARE\LibreOffice\LibreOffice\` → `Path` value. 2. Fallback: `C:\Program Files\LibreOffice\program\soffice.exe` | `soffice.exe` is the conversion binary |
+| **MS Word** | 1. Registry: `HKEY_CLASSES_ROOT\Word.Application\CLSID` (COM registration). 2. Fallback: `C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE`, check `C:\Program Files (x86)\` too | If COM CLSID exists, documents4j can use it directly |
 
-**Linux:**
-- WPS: check `which wps` or `/opt/kingsoft/wps-office`
-- LibreOffice: check `which libreoffice`
-- MS Word: N/A on Linux
+### macOS
 
-Result cached after first detection. Converter selected based on detection result.
+| Backend | Detection Method | Details |
+|---|---|---|
+| **WPS** | Check `/Applications/wpsoffice.app/Contents/MacOS/` for executable. Also check `~/Applications/wpsoffice.app/` for user-installed copies | Look for `wps` binary inside the .app bundle |
+| **LibreOffice** | Check `/Applications/LibreOffice.app/Contents/MacOS/soffice` exists. Also check Apple Silicon path: same location works under Rosetta or native | `soffice` is the conversion binary |
+| **MS Word** | Check `/Applications/Microsoft Word.app/Contents/MacOS/Microsoft Word` exists. Also check Microsoft 365 path | MS Word on macOS does not support command-line headless mode — documents4j may not work. LibreOffice/WPS preferred on macOS |
+
+### Linux
+
+| Backend | Detection Method | Details |
+|---|---|---|
+| **WPS** | `which wps` or check `/opt/kingsoft/wps-office/office6/wps` | WPS Linux binary |
+| **LibreOffice** | `which libreoffice` or `which soffice` | Standard LibreOffice binary |
+| **MS Word** | N/A | Not available on Linux |
+
+### Detection Result
+
+`OfficeDetector.detect()` returns an `Optional<DetectedBackend>` containing:
+- Backend type enum (`WPS`, `LIBRE_OFFICE`, `MS_WORD`)
+- Absolute path to the conversion executable
+- Whether the backend supports headless conversion
+
+Result is cached after first detection. The `PdfConvertPane` displays the detected backend name. If no backend is found, the convert tab shows install guidance with platform-appropriate download links.
 
 ## WPS Converter (WpsConverter)
 
@@ -225,23 +241,70 @@ AI tools reuse the same Worker classes. On success, return the output file path(
 
 ## i18n Keys
 
-Add to `messages.properties` (Chinese) and `messages_en.properties` (English):
+English is the default (`messages.properties`). Chinese goes in `messages_zh.properties`. Follow existing key pattern: `builtin.<tool>.<section>.<field>`.
+
+### messages.properties (English, default)
 
 ```properties
-# Chinese
+builtin.pdf.name=PDF Tool
+builtin.pdf.desc=PDF split, merge and convert to Word
+builtin.pdf.tab.split=Split
+builtin.pdf.tab.merge=Merge
+builtin.pdf.tab.convert=To Word
+builtin.pdf.drop.hint=Drag and drop PDF files here
+builtin.pdf.select.file=Select File
+builtin.pdf.select.files=Select Files
+builtin.pdf.file.info={0} pages, {1}
+builtin.pdf.split.ranges=Page Ranges
+builtin.pdf.split.ranges.hint=e.g. 1-3, 5, 8-10
+builtin.pdf.split.range.invalid=Page range exceeds total pages ({0})
+builtin.pdf.split.output.dir=Output Directory
+builtin.pdf.split.start=Start Split
+builtin.pdf.merge.add=Add Files
+builtin.pdf.merge.total={0} files, {1} pages total
+builtin.pdf.merge.output.name=Output Filename
+builtin.pdf.merge.output.default=merged_output.pdf
+builtin.pdf.merge.start=Start Merge
+builtin.pdf.convert.no.backend=No WPS, LibreOffice or MS Word detected. Please install one to enable PDF to Word conversion.
+builtin.pdf.convert.detecting=Detecting Office backend...
+builtin.pdf.convert.backend.found=Detected: {0}
+builtin.pdf.convert.start=Start Conversion
+builtin.pdf.execute=Execute
+builtin.pdf.complete=Operation completed
+builtin.pdf.complete.open=Open Folder
+builtin.pdf.error.encrypted=Encrypted PDF files are not supported
+builtin.pdf.error.no.backend=Conversion failed: no Office backend available
+```
+
+### messages_zh.properties (Chinese)
+
+```properties
 builtin.pdf.name=PDF 工具
 builtin.pdf.desc=PDF 拆分、合并与转 Word 工具
 builtin.pdf.tab.split=拆分
 builtin.pdf.tab.merge=合并
 builtin.pdf.tab.convert=转 Word
-builtin.pdf.split.hint=请选择 PDF 文件
+builtin.pdf.drop.hint=拖拽 PDF 文件到此处
+builtin.pdf.select.file=选择文件
+builtin.pdf.select.files=选择文件
+builtin.pdf.file.info={0} 页, {1}
 builtin.pdf.split.ranges=页码范围
 builtin.pdf.split.ranges.hint=例如: 1-3, 5, 8-10
+builtin.pdf.split.range.invalid=页码超出总页数 ({0})
+builtin.pdf.split.output.dir=输出目录
+builtin.pdf.split.start=开始拆分
 builtin.pdf.merge.add=添加文件
-builtin.pdf.merge.output=输出文件名
-builtin.pdf.convert.no-backend=未检测到 WPS/LibreOffice/MS Word，请安装后重试
+builtin.pdf.merge.total=共 {0} 个文件, {1} 页
+builtin.pdf.merge.output.name=输出文件名
+builtin.pdf.merge.output.default=merged_output.pdf
+builtin.pdf.merge.start=开始合并
+builtin.pdf.convert.no.backend=未检测到 WPS/LibreOffice/MS Word，请安装后重试
 builtin.pdf.convert.detecting=正在检测 Office 后端...
 builtin.pdf.convert.backend.found=已检测到: {0}
+builtin.pdf.convert.start=开始转换
 builtin.pdf.execute=开始执行
 builtin.pdf.complete=操作完成
+builtin.pdf.complete.open=打开目录
+builtin.pdf.error.encrypted=不支持加密的 PDF 文件
+builtin.pdf.error.no.backend=转换失败: 未检测到 Office 后端
 ```
