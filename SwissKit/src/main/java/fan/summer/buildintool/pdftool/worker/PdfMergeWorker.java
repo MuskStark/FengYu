@@ -40,7 +40,7 @@ public class PdfMergeWorker extends Task<Path> {
     }
 
     @Override
-    protected Path call() throws Exception {
+    public Path call() throws Exception {
         if (pdfPaths.isEmpty()) {
             throw new IllegalArgumentException("No PDF files to merge");
         }

@@ -48,7 +48,7 @@ public class PdfConvertWorker extends Task<List<Path>> {
     }
 
     @Override
-    protected List<Path> call() throws Exception {
+    public List<Path> call() throws Exception {
         if (pdfPaths.isEmpty()) {
             throw new IllegalArgumentException("No PDF files to convert");
         }
