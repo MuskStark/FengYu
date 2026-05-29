@@ -24,6 +24,8 @@
         <logback.version>1.5.6</logback.version>
         <gson.version>2.13.1</gson.version>
         <commonmark.version>0.24.0</commonmark.version>
+        <pdfbox.version>3.0.4</pdfbox.version>
+        <documents4j.version>1.1.0</documents4j.version>
     </properties>
 
     <dependencies>
@@ -172,6 +174,25 @@
             <groupId>org.commonmark</groupId>
             <artifactId>commonmark</artifactId>
             <version>${commonmark.version}</version>
+        </dependency>
+
+        <!-- PDF -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>${pdfbox.version}</version>
+        </dependency>
+
+        <!-- Document conversion (PDF to DOCX via LibreOffice/MS Word) -->
+        <dependency>
+            <groupId>com.documents4j</groupId>
+            <artifactId>documents4j-local</artifactId>
+            <version>${documents4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.documents4j</groupId>
+            <artifactId>documents4j-transformer-msoffice-word</artifactId>
+            <version>${documents4j.version}</version>
         </dependency>
 
         <dependency>
