@@ -24,6 +24,18 @@ public interface GenerateCallback {
     }
 
     /**
+     * Called when generation completes, with performance statistics.
+     * Default implementation delegates to {@link #onDone(String)} ignoring stats.
+     *
+     * @param fullText       the complete generated text
+     * @param tokenCount     number of tokens generated
+     * @param tokensPerSecond generation speed (tokens/second)
+     */
+    default void onDone(String fullText, int tokenCount, double tokensPerSecond) {
+        onDone(fullText);
+    }
+
+    /**
      * Called when an error occurs during generation.
      *
      * @param message error description
