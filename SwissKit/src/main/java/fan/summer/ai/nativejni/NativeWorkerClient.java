@@ -169,7 +169,6 @@ public class NativeWorkerClient implements AutoCloseable {
         switch (type) {
             case "loaded" -> {
                 log.info("AI worker loaded model: {}", resp.get("modelPath"));
-                consecutiveCrashes = 0;
                 if (loadFuture != null) loadFuture.complete(null);
             }
             case "token" -> {
@@ -189,6 +188,7 @@ public class NativeWorkerClient implements AutoCloseable {
                     double tokPerSec = doubleVal(resp, "tokPerSec", 0.0);
                     pg.callback.onDone(fullText, tokenCount, tokPerSec);
                 }
+                consecutiveCrashes = 0;
             }
             case "error" -> {
                 String id = (String) resp.get("id");
