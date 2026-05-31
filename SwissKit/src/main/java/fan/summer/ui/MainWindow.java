@@ -8,8 +8,6 @@ import fan.summer.ui.setting.SwissKitJSettingUi;
 import fan.summer.ui.sidebar.Sidebar;
 import fan.summer.ui.titlebar.TitleBar;
 import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.ai.AiServiceProvider;
-import fan.summer.ai.service.AiServiceImpl;
 import fan.summer.buildintool.ai.AiChatPlugin;
 import javafx.animation.*;
 import javafx.geometry.Insets;
@@ -27,6 +25,8 @@ import org.slf4j.LoggerFactory;
 
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Root node of the main window that assembles the complete SwissKitJ UI.
@@ -55,9 +55,9 @@ public class MainWindow extends StackPane {
     private final TitleBar    titleBar;
     private final Sidebar     sidebar;
     private final ContentArea contentArea;
-    private final AiServiceImpl aiService;
     private final AiChatPlugin  aiChatPlugin;
     private Node aiChatView;
+    private final Map<SwissKitJPlugin, Node> cachedViews = new HashMap<>();
 
     // Status bar labels
     private Label statusToolCount    = statusText("0 tools");
@@ -85,11 +85,10 @@ public class MainWindow extends StackPane {
         titleBar    = new TitleBar(stage, this::openSettings);
         sidebar     = new Sidebar();
         contentArea = new ContentArea();
+        contentArea.setRegistry(registry);
         contentArea.setMinHeight(0);
 
-        // AI service
-        aiService = new AiServiceImpl();
-        AiServiceProvider.setService(aiService);
+        // AI service (initialized by SwissKitJApp.initializeAiBackend())
         aiChatPlugin = new AiChatPlugin();
 
         int buildInTool = 0;
@@ -295,17 +294,27 @@ public class MainWindow extends StackPane {
         // Tool launch callback
         contentArea.setOnLaunch(plugin -> {
             log.info("Launching tool: id={}, name={}", plugin.getId(), plugin.getName());
-            registry.activate(plugin);
-            try {
-                contentArea.showPage(plugin.createView(), plugin.getName());
-            } catch (Exception e) {
-                log.error("Failed to create view for plugin {}: {}", plugin.getId(), e.getMessage(), e);
+            Node view = cachedViews.get(plugin);
+            if (view == null) {
+                try {
+                    view = plugin.createView();
+                    cachedViews.put(plugin, view);
+                } catch (Exception e) {
+                    log.error("Failed to create view for plugin {}: {}", plugin.getId(), e.getMessage(), e);
+                    return;
+                }
             }
+            registry.activate(plugin);
+            contentArea.showPage(view, plugin.getName());
         });
 
         // Back / exit plugin view callback
         contentArea.setOnBack(() -> {
             log.debug("Returning to home from active plugin");
+            SwissKitJPlugin current = registry.getActivePlugin();
+            if (current != null && !current.hasRunningTasks()) {
+                cachedViews.remove(current);
+            }
             registry.deactivate();
         });
     }

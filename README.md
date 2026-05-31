@@ -52,6 +52,7 @@ All platforms require Java 11+ installed on the target machine.
 
 - **🎨 Glassmorphism UI** — Modern JavaFX UI with frosted glass effects, animated sidebar, and glowing accents
 - **📦 Modular Architecture** — Plugin-based design with Java ServiceLoader auto-discovery
+- **🤖 Multi-Backend AI Chat** — Local GGUF models, OpenAI-compatible APIs, and Anthropic Claude APIs with streaming and tool calling
 - **⚡ High Performance** — Uses Apache FESOD for efficient Excel processing
 - **🔌 Plugin Store** — Browse and install plugins from the online store with one-click installation
 - **💾 Database Support** — H2 + MyBatis for persistent storage

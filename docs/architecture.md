@@ -20,8 +20,9 @@ In `SwissKitJApp.start()`:
 1. Resolve `plugins/` directory (JAR sibling in production, `./plugins/` in dev)
 2. Create `PluginLoader` + `PluginRegistry`
 3. Register built-in tools via `BuiltinToolRegistrar`
-4. Build `MainWindow` and display it
-5. Start `PluginLoader` (scans `plugins/` dir and watches for changes)
+4. Initialize AI backend based on saved mode (local GGUF / OpenAI / Anthropic)
+5. Build `MainWindow` and display it
+6. Start `PluginLoader` (scans `plugins/` dir and watches for changes)
 
 ## UI Structure
 

@@ -164,4 +164,42 @@ public interface SwissKitJPlugin {
      * <p>The default implementation is a no-op.</p>
      */
     default void onUnload() {}
+
+    /**
+     * Returns whether this plugin has background tasks currently running.
+     *
+     * <p>The host calls this method when the user navigates away from this
+     * plugin. If it returns {@code true}, the host keeps the plugin's view
+     * cached and calls {@link #onBackground()} instead of
+     * {@link #onDeactivate()}, allowing tasks to continue.</p>
+     *
+     * <p>The default implementation returns {@code false}.</p>
+     *
+     * @return {@code true} if this plugin has running tasks that should
+     *         continue in the background
+     */
+    default boolean hasRunningTasks() { return false; }
+
+    /**
+     * Called when this plugin moves to the background while having running tasks.
+     *
+     * <p>Replaces {@link #onDeactivate()} when {@link #hasRunningTasks()}
+     * returns {@code true}. Use to perform any state adjustments needed
+     * for background operation (e.g. disabling UI polling).</p>
+     *
+     * <p>The default implementation is a no-op.</p>
+     */
+    default void onBackground() {}
+
+    /**
+     * Called when this plugin returns to the foreground from a background state.
+     *
+     * <p>Fired after {@link #onActivate()} when the plugin was previously
+     * backgrounded. Use to refresh any UI state that may need manual updates
+     * after being detached from the scene graph (e.g. layout recalculations
+     * based on node dimensions).</p>
+     *
+     * <p>The default implementation is a no-op.</p>
+     */
+    default void onForeground() {}
 }

@@ -14,7 +14,11 @@ import javafx.scene.layout.*;
 import javafx.util.Duration;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Assembles the full shell layout: title bar, search bar, sidebar, content area,
@@ -24,6 +28,8 @@ class PreviewShell extends BorderPane {
 
     private final List<SwissKitJPlugin> plugins = new ArrayList<>();
     private SwissKitJPlugin activePlugin;
+    private final Set<SwissKitJPlugin> backgroundPlugins = new LinkedHashSet<>();
+    private final Map<SwissKitJPlugin, Node> cachedViews = new LinkedHashMap<>();
 
     private final PreviewDetailPanel detailPanel = new PreviewDetailPanel();
     private final FlowPane            toolGrid    = new FlowPane();
@@ -75,6 +81,10 @@ class PreviewShell extends BorderPane {
         wireEvents();
     }
 
+    boolean isBackground(SwissKitJPlugin plugin) {
+        return backgroundPlugins.contains(plugin);
+    }
+
     void close() {
         for (SwissKitJPlugin p : plugins) {
             try {
@@ -82,6 +92,8 @@ class PreviewShell extends BorderPane {
                 p.onUnload();
             } catch (Exception ignored) {}
         }
+        backgroundPlugins.clear();
+        cachedViews.clear();
         if (onClose != null) onClose.run();
     }
 
@@ -228,7 +240,7 @@ class PreviewShell extends BorderPane {
             .toList();
 
         for (SwissKitJPlugin p : filtered) {
-            PreviewToolCard card = new PreviewToolCard(p, this::onCardSelect);
+            PreviewToolCard card = new PreviewToolCard(p, this::onCardSelect, backgroundPlugins.contains(p));
             card.setPrefWidth(152);
             card.setPrefHeight(130);
             toolGrid.getChildren().add(card);
@@ -268,14 +280,25 @@ class PreviewShell extends BorderPane {
         backBar.setVisible(true);
         backBar.setManaged(true);
 
-        Node view;
-        try {
-            view = plugin.createView();
-        } catch (Exception e) {
-            Label errorLabel = new Label("Error creating view:\n" + e.getMessage());
-            errorLabel.setStyle("-fx-text-fill: #ff6b6b; -fx-font-size: 13px; -fx-padding: 20;");
-            errorLabel.setWrapText(true);
-            view = errorLabel;
+        boolean fromBackground = backgroundPlugins.remove(plugin);
+
+        Node view = cachedViews.get(plugin);
+        if (view == null) {
+            try {
+                view = plugin.createView();
+                cachedViews.put(plugin, view);
+            } catch (Exception e) {
+                Label errorLabel = new Label("Error creating view:\n" + e.getMessage());
+                errorLabel.setStyle("-fx-text-fill: #ff6b6b; -fx-font-size: 13px; -fx-padding: 20;");
+                errorLabel.setWrapText(true);
+                view = errorLabel;
+            }
+        }
+
+        activePlugin = plugin;
+        try { plugin.onActivate(); } catch (Exception ignored) {}
+        if (fromBackground) {
+            try { plugin.onForeground(); } catch (Exception ignored) {}
         }
 
         ScrollPane pageScroll = new ScrollPane(view);
@@ -290,7 +313,13 @@ class PreviewShell extends BorderPane {
 
     private void showToolGrid() {
         if (activePlugin != null) {
-            try { activePlugin.onDeactivate(); } catch (Exception ignored) {}
+            if (activePlugin.hasRunningTasks()) {
+                backgroundPlugins.add(activePlugin);
+                try { activePlugin.onBackground(); } catch (Exception ignored) {}
+            } else {
+                cachedViews.remove(activePlugin);
+                try { activePlugin.onDeactivate(); } catch (Exception ignored) {}
+            }
             activePlugin = null;
         }
 
@@ -302,7 +331,8 @@ class PreviewShell extends BorderPane {
         backBar.setVisible(false);
         backBar.setManaged(false);
 
-        // Rebuild grid scroll
+        refreshToolGrid();
+
         ScrollPane gridScroll = new ScrollPane(toolGrid);
         gridScroll.setFitToWidth(true);
         gridScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);

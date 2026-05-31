@@ -104,4 +104,27 @@ CREATE TABLE IF NOT EXISTS plugin_manager
     installed_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Add IMAP fields to email settings (unified send/receive)
+ALTER TABLE swiss_kit_setting_email ADD COLUMN IF NOT EXISTS imap_address VARCHAR(255);
+ALTER TABLE swiss_kit_setting_email ADD COLUMN IF NOT EXISTS imap_port INTEGER DEFAULT 993;
+ALTER TABLE swiss_kit_setting_email ADD COLUMN IF NOT EXISTS imap_ssl INTEGER NOT NULL DEFAULT 1;
+
+-- Email Archive Table
+CREATE TABLE IF NOT EXISTS email_archive
+(
+    id             INTEGER PRIMARY KEY AUTO_INCREMENT,
+    account_email  VARCHAR(255) NOT NULL,
+    folder         VARCHAR(255) NOT NULL DEFAULT 'INBOX',
+    message_uid    VARCHAR(255) NOT NULL,
+    subject        VARCHAR(500),
+    from_address   VARCHAR(500),
+    to_address     VARCHAR(1000),
+    cc_address     VARCHAR(1000),
+    send_date      TIMESTAMP,
+    has_attachment INTEGER      DEFAULT 0,
+    eml_path       VARCHAR(1000),
+    body_preview   VARCHAR(500),
+    archived_at    TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(account_email, folder, message_uid)
+);
 

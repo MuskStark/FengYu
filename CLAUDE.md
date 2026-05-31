@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 All modules have **standalone POMs** with no parent dependency — each can be built independently.
 
+**No system Maven installed.** All Maven operations (compile, package, install, clean) must go through **IntelliJ IDEA's built-in Maven** — either the Maven tool window (right sidebar) or the IDEA MCP tools (`mcp__idea__build_project`, `mcp__idea__execute_terminal_command`). Never run `mvn` in a regular shell — it will fail.
+
 ```bash
 # Build and install the API module (required first — other modules depend on it)
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
@@ -68,6 +70,12 @@ Plugin icon background colors are CSS classes: `ic-blue / ic-purple / ic-teal / 
 **Database**: H2 file at `.swisskit/swisskit.db` relative to the runtime working directory. Schema initialized from `init.sql`. Accessed via MyBatis; mapper XMLs are in `src/main/resources/mapper/`.
 
 **i18n**: `src/main/resources/i18n/messages.properties` (Chinese default), `messages_en.properties` (English).
+
+**JSON**: Use `fan.summer.api.json.JsonHelper` (Gson-based). Old `JsonBuilder`/`JsonParser` are deleted.
+
+**AI Markdown**: AI responses render via `WebView` with dark theme `#1e1e2e`; auto-resize height to content.
+
+**AI tools**: Register via `BuiltinAiToolRegistrar`; use `ToolExecutor` + `ToolSchemaBuilder` for execution and schema generation.
 
 ## Reusable UI Component: StepWizard
 

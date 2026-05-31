@@ -6,19 +6,34 @@ All notable changes to SwissKitJ. Format based on [Keep a Changelog](https://kee
 
 ## [3.0.0] — JavaFX Migration
 
+**v3.0.0-beta.2** — 2026-05-26
+
+### ✨ New Features
+
+- **AI Remote Backends**: Switch between local GGUF, OpenAI Chat Completions, and Anthropic Messages API via a global selector in AI settings; supports SSE streaming with token-by-token delivery and tool calling on all backends
+- **Plugin Background Execution**: Plugins can run tasks in the background with view caching and a ToolCard indicator showing running status
+- **AI Auto-Initialize**: Configured AI backend (including remote API mode) activates automatically on startup without manual re-configuration
+
+### 🔧 Fixes
+
+- Fix AI backend not activating on restart — stale `MainWindow` initialization was overwriting the configured service
+- Fix plugin i18n bundles returning host translations due to ClassLoader parent delegation
+- Fix ToolCard background indicator not showing and preview i18n not working
+- Fix ExcelSplitterPlugin missing `hasRunningTasks` implementation
+
+---
+
 **v3.0.0-beta.1** — 2026-05-24
 
 ### ✨ New Features
 
 - **I18n Framework**: Core `I18n` classes in SwissKitJ-Api with DB-persisted locale, plugin bundle registration/unregistration, and live language switching
-- **Bilingual Docs**: Full English/Chinese documentation via docsify-flexible-i18n
 
-### ♻️ Refactoring
+### ♻️ Changes
 
 - Convert all UI components (TitleBar, MainWindow, Sidebar, ContentArea, ToolCard, DetailPanel) to use I18n
 - Complete i18n conversion for Settings UI (AI, Email, Address Book tabs)
 - Complete i18n for all built-in tools and plugin store UI
-- Rewrite resource bundles — English default + Chinese
 
 ### 🔧 Fixes
 
@@ -36,11 +51,6 @@ All notable changes to SwissKitJ. Format based on [Keep a Changelog](https://kee
 - **JNI Native Inference**: C++ `llama_jni` native layer with `GenerateCallback`, `LlamaContext`, `ModelParams`, `GenerateParams` bindings; bundles `libllama_jni-aarch64.dylib` for macOS
 - **Tool Calling API**: `AiTool`, `AiToolCall`, `AiToolParam`, `AiToolResult` in the API module; `ToolCallParser` and `ToolRegistry` in the host
 - **Chat Sessions**: `ChatSession` class managing message history and context
-
-### 🔧 Fixes
-
-- Remove `.idea/`, `.mcp.json`, and backup workflow files from git tracking
-- Add `.mcp.json` to `.gitignore`
 
 ---
 
@@ -65,11 +75,6 @@ Complete migration from Swing/FlatLaf to **JavaFX 21** with a glassmorphism dark
 
 - Fat JAR bundles JavaFX native `.dll` / `.so` / `.dylib` for all platforms
 
-### ♻️ Refactors
-
-- Dependency management centralized in parent POM
-- Legacy Swing sources moved to `backup/` and excluded from build
-
 ---
 
 ## [2.x] — Swing Era (Stable)
@@ -81,12 +86,10 @@ Complete migration from Swing/FlatLaf to **JavaFX 21** with a glassmorphism dark
 ### v2.1.0 — 2026-05-07
 
 - Feat: i18n `panelMethod` attribute and Settings i18n refresh
-- Fix: escape `>` in Javadoc to prevent generation errors
 
 ### v2.0.2 — 2026-05-06
 
 - Feat: i18n support for official plugins
-- Chore: update release workflow formatting
 
 ### v2.0.1 — 2026-05-06
 
@@ -97,10 +100,7 @@ Complete migration from Swing/FlatLaf to **JavaFX 21** with a glassmorphism dark
 ### v2.0.0 — 2026-04-20
 
 - **Breaking**: remove `KitPage` interface, annotation-only plugin discovery
-- Refactor: decouple all module POMs (standalone, no parent dependency)
-- Refactor: centralize dependency versions in SwissKitJ-Api BOM
 - Feat: menu click navigation and drag-to-reorder functionality
-- CI: include version number in release zip filenames
 
 ---
 
@@ -126,7 +126,6 @@ Complete migration from Swing/FlatLaf to **JavaFX 21** with a glassmorphism dark
 
 - **Feat: Plugin hot-deployment** — deploy, reload, and uninstall without restart
 - Feat: HappyLearning class hours tracking and status display
-- Refactor: project restructuring, renamed modules
 
 ### v1.0.0 — 2026-03-28
 
@@ -146,7 +145,6 @@ Initial stable release.
 ### v1.0.0-RC.1 — 2026-03-28
 
 - 11 bug fixes: EDT violations, NPE guards, resource leaks, silent failures
-- Maven: disable resource filtering to preserve binary icons
 
 ### v1.0.0-Beta.4 — 2026-03-27
 
