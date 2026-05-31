@@ -34,7 +34,7 @@ public class NativeWorkerClient implements AutoCloseable {
     private final ConcurrentHashMap<String, PendingGenerate> pendingGenerates = new ConcurrentHashMap<>();
     private volatile CompletableFuture<Void> loadFuture;
 
-    private int consecutiveCrashes;
+    private final AtomicInteger consecutiveCrashes = new AtomicInteger(0);
     private volatile ModelParams lastModelParams;
 
     /**
@@ -75,13 +75,13 @@ public class NativeWorkerClient implements AutoCloseable {
      * @param params model parameters
      * @throws Exception if loading fails or times out (120 s)
      */
-    public void loadModel(ModelParams params) throws Exception {
+    public synchronized void loadModel(ModelParams params) throws Exception {
         lastModelParams = params;
 
         if (!isAlive()) spawn();
 
         loadFuture = new CompletableFuture<>();
-        sendCommand(Map.of(
+        boolean sent = sendCommand(Map.of(
             "cmd", "load",
             "modelPath", params.getModelPath(),
             "ctxLength", params.getCtxLength(),
@@ -89,8 +89,13 @@ public class NativeWorkerClient implements AutoCloseable {
             "gpuLayers", params.getGpuLayers(),
             "flashAttention", params.isFlashAttention()
         ));
+        if (!sent) {
+            loadFuture = null;
+            throw new RuntimeException("Failed to send load command to AI worker");
+        }
 
         loadFuture.get(120, TimeUnit.SECONDS);
+        loadFuture = null;
     }
 
     /**
@@ -100,7 +105,7 @@ public class NativeWorkerClient implements AutoCloseable {
     public void generate(String prompt, GenerateParams params, GenerateCallback callback) {
         String id = "gen-" + genIdCounter.incrementAndGet();
         pendingGenerates.put(id, new PendingGenerate(callback));
-        sendCommand(Map.of(
+        boolean sent = sendCommand(Map.of(
             "cmd", "generate",
             "id", id,
             "prompt", prompt,
@@ -110,6 +115,10 @@ public class NativeWorkerClient implements AutoCloseable {
             "repeatPenalty", params.getRepeatPenalty(),
             "seed", params.getSeed()
         ));
+        if (!sent) {
+            pendingGenerates.remove(id);
+            callback.onError("Failed to send generate command to AI worker");
+        }
     }
 
     /** Sends an unload command. */
@@ -124,7 +133,7 @@ public class NativeWorkerClient implements AutoCloseable {
 
     /** @return true if the child has crashed too many times and Java fallback should be used */
     public boolean shouldFallback() {
-        return consecutiveCrashes >= MAX_CONSECUTIVE_CRASHES;
+        return consecutiveCrashes.get() >= MAX_CONSECUTIVE_CRASHES;
     }
 
     @Override
@@ -188,7 +197,7 @@ public class NativeWorkerClient implements AutoCloseable {
                     double tokPerSec = doubleVal(resp, "tokPerSec", 0.0);
                     pg.callback.onDone(fullText, tokenCount, tokPerSec);
                 }
-                consecutiveCrashes = 0;
+                consecutiveCrashes.set(0);
             }
             case "error" -> {
                 String id = (String) resp.get("id");
@@ -226,17 +235,17 @@ public class NativeWorkerClient implements AutoCloseable {
                 new RuntimeException("AI worker process crashed during load"));
         }
 
-        consecutiveCrashes++;
+        consecutiveCrashes.incrementAndGet();
         running = false;
 
-        if (consecutiveCrashes >= MAX_CONSECUTIVE_CRASHES) {
+        if (consecutiveCrashes.get() >= MAX_CONSECUTIVE_CRASHES) {
             log.error("AI worker crashed {} consecutive times — giving up, should fall back to Java backend",
-                consecutiveCrashes);
+                consecutiveCrashes.get());
             return;
         }
 
         if (lastModelParams != null) {
-            log.info("Auto-restarting AI worker (attempt {}/{})", consecutiveCrashes, MAX_CONSECUTIVE_CRASHES);
+            log.info("Auto-restarting AI worker (attempt {}/{})", consecutiveCrashes.get(), MAX_CONSECUTIVE_CRASHES);
             try {
                 spawn();
                 loadModel(lastModelParams);
@@ -249,13 +258,15 @@ public class NativeWorkerClient implements AutoCloseable {
 
     // ── Helpers ───────────────────────────────────────────────
 
-    private void sendCommand(Map<String, Object> cmd) {
+    private synchronized boolean sendCommand(Map<String, Object> cmd) {
         try {
             writer.write(JsonHelper.toJson(cmd));
             writer.newLine();
             writer.flush();
+            return true;
         } catch (IOException e) {
             log.error("Failed to send command to AI worker: {}", e.getMessage());
+            return false;
         }
     }
 
