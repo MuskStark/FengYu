@@ -18,6 +18,15 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 
+/**
+ * Built-in plugin for converting colors between HEX, RGB, and HSL formats.
+ * Provides a live preview swatch that updates as the user types in any field.
+ *
+ * <p>All three formats (HEX, RGB, HSL) are kept in sync automatically —
+ * editing one field updates the other two via a shared listener.
+ *
+ * @see SwissKitJPlugin
+ */
 public class ColorConverterPlugin implements SwissKitJPlugin {
 
     private static final PluginLogger log = LoggerFactory.getLogger(ColorConverterPlugin.class);
@@ -31,6 +40,12 @@ public class ColorConverterPlugin implements SwissKitJPlugin {
     @Override public IconStyle getIconStyle()   { return IconStyle.PINK; }
     @Override public ToolType getType()        { return ToolType.BUILTIN; }
 
+    /**
+     * Creates and returns the plugin view containing HEX/RGB/HSL input fields
+     * and a color preview swatch.
+     *
+     * @return the root JavaFX Node for this plugin's UI
+     */
     @Override
     public Node createView() {
         log.debug("Creating Color Converter view");
@@ -76,6 +91,13 @@ public class ColorConverterPlugin implements SwissKitJPlugin {
         return root;
     }
 
+    /**
+     * Builds a label-field row for the color input section.
+     *
+     * @param label the display text for the field label
+     * @param field the TextField control to place beside the label
+     * @return an HBox containing the label and field, with the field growing to fill space
+     */
     private HBox fieldRow(String label, TextField field) {
         Label l = new Label(label);
         l.setStyle("-fx-text-fill: rgba(255,255,255,0.40); -fx-min-width: 40px; -fx-font-size: 12px;");
@@ -85,6 +107,12 @@ public class ColorConverterPlugin implements SwissKitJPlugin {
         return row;
     }
 
+    /**
+     * Creates a styled TextField pre-filled with the given text.
+     *
+     * @param text the initial text value
+     * @return a styled TextField control
+     */
     private static TextField styledField(String text) {
         TextField tf = new TextField(text);
         tf.setStyle(
@@ -97,6 +125,12 @@ public class ColorConverterPlugin implements SwissKitJPlugin {
         return tf;
     }
 
+    /**
+     * Creates an uppercase section label with muted styling.
+     *
+     * @param text the label text
+     * @return a styled Label control
+     */
     private static Label sectionLabel(String text) {
         Label l = new Label(text.toUpperCase());
         l.setStyle(

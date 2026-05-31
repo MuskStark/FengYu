@@ -328,6 +328,13 @@ public class SwissKitJSettingUi {
     private static final String AI_TOP_P_KEY = "ai.top_p";
     private static final String AI_MAX_TOKENS_KEY = "ai.max_tokens";
     private static final String AI_SYSTEM_PROMPT_KEY = "ai.system_prompt";
+    private static final String AI_MODE_KEY = "ai.mode";
+    private static final String AI_OPENAI_ENDPOINT_KEY = "ai.openai.endpoint";
+    private static final String AI_OPENAI_API_KEY_KEY = "ai.openai.api_key";
+    private static final String AI_OPENAI_MODEL_KEY = "ai.openai.model";
+    private static final String AI_ANTHROPIC_ENDPOINT_KEY = "ai.anthropic.endpoint";
+    private static final String AI_ANTHROPIC_API_KEY_KEY = "ai.anthropic.api_key";
+    private static final String AI_ANTHROPIC_MODEL_KEY = "ai.anthropic.model";
 
     private static VBox buildAiModelTab() {
         VBox root = new VBox(16);
@@ -336,7 +343,166 @@ public class SwissKitJSettingUi {
 
         Label title = sectionTitle(I18n.get("setting.ai.title"));
 
-        // ── Model status section ─────────────────────────────
+        // ── Mode selector ─────────────────────────────
+        Label modeLabel = subLabel(I18n.get("setting.ai.mode"));
+        ComboBox<String> modeCombo = new ComboBox<>(
+            FXCollections.observableArrayList(
+                I18n.get("setting.ai.mode.local"),
+                I18n.get("setting.ai.mode.openai"),
+                I18n.get("setting.ai.mode.anthropic")
+            )
+        );
+        modeCombo.getStyleClass().add("glass-combo");
+        modeCombo.setMaxWidth(250);
+        loadAiSetting(AI_MODE_KEY, val -> {
+            String label = switch (val) {
+                case "openai" -> I18n.get("setting.ai.mode.openai");
+                case "anthropic" -> I18n.get("setting.ai.mode.anthropic");
+                default -> I18n.get("setting.ai.mode.local");
+            };
+            modeCombo.setValue(label);
+        });
+        if (modeCombo.getValue() == null) modeCombo.setValue(I18n.get("setting.ai.mode.local"));
+
+        HBox modeRow = new HBox(10, modeLabel, modeCombo);
+        modeRow.setAlignment(Pos.CENTER_LEFT);
+
+        // ── Mode-specific panels ───────────────────────
+        VBox localPanel = buildLocalModelPanel();
+        VBox openaiPanel = buildOpenAiPanel();
+        VBox anthropicPanel = buildAnthropicPanel();
+
+        StackPane modeStack = new StackPane(localPanel, openaiPanel, anthropicPanel);
+        modeStack.setStyle("-fx-background-color: transparent;");
+        showModePanel(modeStack, modeCombo.getValue());
+
+        modeCombo.setOnAction(e -> {
+            String selected = modeCombo.getValue();
+            showModePanel(modeStack, selected);
+            String modeKey = modeLabelToKey(selected);
+            saveAiSetting(AI_MODE_KEY, modeKey);
+            initializeAiService(modeKey);
+        });
+
+        // ── Shared generation parameters ───────────────
+        Label paramTitle = sectionTitle(I18n.get("setting.ai.genParams"));
+
+        Label tempValue = new Label("0.7");
+        tempValue.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+        Slider tempSlider = new Slider(0, 2, 0.7);
+        tempSlider.setShowTickLabels(true);
+        tempSlider.setShowTickMarks(true);
+        tempSlider.setMajorTickUnit(0.5);
+        tempSlider.setMinorTickCount(4);
+        tempSlider.setBlockIncrement(0.1);
+        tempSlider.setPrefWidth(300);
+        tempSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
+            tempValue.setText(String.format("%.2f", newVal.doubleValue()));
+            saveAiSetting(AI_TEMPERATURE_KEY, String.format("%.2f", newVal.doubleValue()));
+        });
+        loadAiSetting(AI_TEMPERATURE_KEY, val -> {
+            try { tempSlider.setValue(Double.parseDouble(val)); } catch (NumberFormatException ignored) {}
+        });
+        HBox tempRow = new HBox(10, tempSlider, tempValue);
+        tempRow.setAlignment(Pos.CENTER_LEFT);
+
+        Label topPValue = new Label("0.9");
+        topPValue.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+        Slider topPSlider = new Slider(0, 1, 0.9);
+        topPSlider.setShowTickLabels(true);
+        topPSlider.setShowTickMarks(true);
+        topPSlider.setMajorTickUnit(0.25);
+        topPSlider.setMinorTickCount(3);
+        topPSlider.setBlockIncrement(0.05);
+        topPSlider.setPrefWidth(300);
+        topPSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
+            topPValue.setText(String.format("%.2f", newVal.doubleValue()));
+            saveAiSetting(AI_TOP_P_KEY, String.format("%.2f", newVal.doubleValue()));
+        });
+        loadAiSetting(AI_TOP_P_KEY, val -> {
+            try { topPSlider.setValue(Double.parseDouble(val)); } catch (NumberFormatException ignored) {}
+        });
+        HBox topPRow = new HBox(10, topPSlider, topPValue);
+        topPRow.setAlignment(Pos.CENTER_LEFT);
+
+        Spinner<Integer> maxTokensSpinner = new Spinner<>();
+        maxTokensSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(64, 4096, 512, 64));
+        maxTokensSpinner.getStyleClass().add("glass-field");
+        maxTokensSpinner.setPrefWidth(120);
+        maxTokensSpinner.valueProperty().addListener((obs, oldVal, newVal) -> {
+            saveAiSetting(AI_MAX_TOKENS_KEY, String.valueOf(newVal));
+        });
+        loadAiSetting(AI_MAX_TOKENS_KEY, val -> {
+            try { maxTokensSpinner.getValueFactory().setValue(Integer.parseInt(val)); } catch (NumberFormatException ignored) {}
+        });
+
+        TextField sysPromptField = textField(null, "You are a helpful assistant.");
+        HBox.setHgrow(sysPromptField, Priority.ALWAYS);
+        sysPromptField.textProperty().addListener((obs, oldVal, newVal) -> {
+            saveAiSetting(AI_SYSTEM_PROMPT_KEY, newVal);
+        });
+        loadAiSetting(AI_SYSTEM_PROMPT_KEY, val -> sysPromptField.setText(val));
+
+        root.getChildren().addAll(
+            title, modeRow, modeStack,
+            paramTitle,
+            labeled(I18n.get("setting.ai.temperature"), tempRow),
+            labeled(I18n.get("setting.ai.topP"), topPRow),
+            labeled(I18n.get("setting.ai.maxTokens"), maxTokensSpinner),
+            labeled(I18n.get("setting.ai.systemPrompt"), sysPromptField)
+        );
+
+        return root;
+    }
+
+    private static String modeLabelToKey(String label) {
+        if (label == null) return "local";
+        if (label.equals(I18n.get("setting.ai.mode.openai"))) return "openai";
+        if (label.equals(I18n.get("setting.ai.mode.anthropic"))) return "anthropic";
+        return "local";
+    }
+
+    private static void showModePanel(StackPane stack, String modeLabel) {
+        String key = modeLabelToKey(modeLabel);
+        var panels = stack.getChildren();
+        int idx = switch (key) {
+            case "openai" -> 1;
+            case "anthropic" -> 2;
+            default -> 0;
+        };
+        for (int i = 0; i < panels.size(); i++) {
+            panels.get(i).setVisible(i == idx);
+            panels.get(i).setManaged(i == idx);
+        }
+    }
+
+    static void initializeAiService(String mode) {
+        switch (mode) {
+            case "openai" -> {
+                fan.summer.ai.service.OpenAiService svc = new fan.summer.ai.service.OpenAiService();
+                svc.configure(getAiOpenAiEndpoint(), getAiOpenAiApiKey(), getAiOpenAiModel());
+                AiServiceProvider.switchMode(mode, svc);
+            }
+            case "anthropic" -> {
+                fan.summer.ai.service.AnthropicService svc = new fan.summer.ai.service.AnthropicService();
+                svc.configure(getAiAnthropicEndpoint(), getAiAnthropicApiKey(), getAiAnthropicModel());
+                AiServiceProvider.switchMode(mode, svc);
+            }
+            default -> {
+                // Local: AiServiceImpl should already be set; just notify
+                var svc = AiServiceProvider.getService();
+                if (svc.isEmpty() || !(svc.get() instanceof fan.summer.ai.service.AiServiceImpl)) {
+                    AiServiceProvider.switchMode(mode, new fan.summer.ai.service.AiServiceImpl());
+                } else {
+                    AiServiceProvider.notifyStateChanged();
+                }
+            }
+        }
+    }
+
+    private static VBox buildLocalModelPanel() {
+        VBox panel = new VBox(12);
+
         Label modelStatusLabel = new Label(I18n.get("setting.ai.noModelLoaded"));
         modelStatusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 13px;");
 
@@ -355,9 +521,7 @@ public class SwissKitJSettingUi {
         browseBtn.setOnAction(e -> {
             FileChooser chooser = new FileChooser();
             chooser.setTitle(I18n.get("setting.ai.selectModel"));
-            chooser.getExtensionFilters().add(
-                new FileChooser.ExtensionFilter("GGUF Model", "*.gguf")
-            );
+            chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("GGUF Model", "*.gguf", "*.ggufz"));
             File file = chooser.showOpenDialog(browseBtn.getScene().getWindow());
             if (file != null) {
                 modelPathField.setText(file.getAbsolutePath());
@@ -368,11 +532,9 @@ public class SwissKitJSettingUi {
         loadBtn.setOnAction(e -> {
             String path = modelPathField.getText();
             if (path == null || path.isBlank()) {
-                GlassNotification.notify((Window) null, GlassNotification.Type.WARNING,
-                    I18n.get("setting.ai.selectModelFile"));
+                GlassNotification.notify((Window) null, GlassNotification.Type.WARNING, I18n.get("setting.ai.selectModelFile"));
                 return;
             }
-
             loadBtn.setDisable(true);
             modelStatusLabel.setText(I18n.get("setting.ai.loadingModel"));
             saveAiSetting(AI_MODEL_PATH_KEY, path.trim());
@@ -408,9 +570,7 @@ public class SwissKitJSettingUi {
 
         unloadBtn.setOnAction(e -> {
             Optional<AiService> opt = AiServiceProvider.getService();
-            if (opt.isPresent()) {
-                opt.get().unloadModel();
-            }
+            if (opt.isPresent()) opt.get().unloadModel();
             modelStatusLabel.setText(I18n.get("setting.ai.noModelLoaded"));
             modelPathLabel.setText("—");
             unloadBtn.setDisable(true);
@@ -420,102 +580,122 @@ public class SwissKitJSettingUi {
         HBox modelBtnRow = new HBox(8, browseBtn, loadBtn, unloadBtn);
         modelBtnRow.setAlignment(Pos.CENTER_LEFT);
 
-        // Memory usage bar
-        Label memLabel = new Label(I18n.get("setting.ai.memoryUsage"));
-        memLabel.getStyleClass().add("glass-field-label");
         ProgressBar memBar = new ProgressBar(0);
         memBar.setPrefWidth(300);
         Label memText = new Label("—");
         memText.setStyle("-fx-text-fill: rgba(255,255,255,0.35); -fx-font-size: 11px;");
-
         HBox memRow = new HBox(10, memBar, memText);
         memRow.setAlignment(Pos.CENTER_LEFT);
 
-        // ── Generation parameters ────────────────────────────
-        Label paramTitle = sectionTitle(I18n.get("setting.ai.genParams"));
-
-        // Temperature
-        Label tempLabel = subLabel(I18n.get("setting.ai.temperature"));
-        Label tempValue = new Label("0.7");
-        tempValue.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
-        Slider tempSlider = new Slider(0, 2, 0.7);
-        tempSlider.setShowTickLabels(true);
-        tempSlider.setShowTickMarks(true);
-        tempSlider.setMajorTickUnit(0.5);
-        tempSlider.setMinorTickCount(4);
-        tempSlider.setBlockIncrement(0.1);
-        tempSlider.setPrefWidth(300);
-        tempSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
-            tempValue.setText(String.format("%.2f", newVal.doubleValue()));
-            saveAiSetting(AI_TEMPERATURE_KEY, String.format("%.2f", newVal.doubleValue()));
-        });
-        loadAiSetting(AI_TEMPERATURE_KEY, val -> {
-            try { tempSlider.setValue(Double.parseDouble(val)); } catch (NumberFormatException ignored) {}
-        });
-        HBox tempRow = new HBox(10, tempSlider, tempValue);
-        tempRow.setAlignment(Pos.CENTER_LEFT);
-
-        // Top P
-        Label topPLabel = subLabel(I18n.get("setting.ai.topP"));
-        Label topPValue = new Label("0.9");
-        topPValue.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
-        Slider topPSlider = new Slider(0, 1, 0.9);
-        topPSlider.setShowTickLabels(true);
-        topPSlider.setShowTickMarks(true);
-        topPSlider.setMajorTickUnit(0.25);
-        topPSlider.setMinorTickCount(3);
-        topPSlider.setBlockIncrement(0.05);
-        topPSlider.setPrefWidth(300);
-        topPSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
-            topPValue.setText(String.format("%.2f", newVal.doubleValue()));
-            saveAiSetting(AI_TOP_P_KEY, String.format("%.2f", newVal.doubleValue()));
-        });
-        loadAiSetting(AI_TOP_P_KEY, val -> {
-            try { topPSlider.setValue(Double.parseDouble(val)); } catch (NumberFormatException ignored) {}
-        });
-        HBox topPRow = new HBox(10, topPSlider, topPValue);
-        topPRow.setAlignment(Pos.CENTER_LEFT);
-
-        // Max tokens
-        Label maxTokensLabel = subLabel(I18n.get("setting.ai.maxTokens"));
-        Spinner<Integer> maxTokensSpinner = new Spinner<>();
-        maxTokensSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(64, 4096, 512, 64));
-        maxTokensSpinner.getStyleClass().add("glass-field");
-        maxTokensSpinner.setPrefWidth(120);
-        maxTokensSpinner.valueProperty().addListener((obs, oldVal, newVal) -> {
-            saveAiSetting(AI_MAX_TOKENS_KEY, String.valueOf(newVal));
-        });
-        loadAiSetting(AI_MAX_TOKENS_KEY, val -> {
-            try { maxTokensSpinner.getValueFactory().setValue(Integer.parseInt(val)); } catch (NumberFormatException ignored) {}
-        });
-
-        // System prompt
-        Label sysPromptLabel = subLabel(I18n.get("setting.ai.systemPrompt"));
-        TextField sysPromptField = textField(null, "You are a helpful assistant.");
-        HBox.setHgrow(sysPromptField, Priority.ALWAYS);
-        sysPromptField.textProperty().addListener((obs, oldVal, newVal) -> {
-            saveAiSetting(AI_SYSTEM_PROMPT_KEY, newVal);
-        });
-        loadAiSetting(AI_SYSTEM_PROMPT_KEY, val -> sysPromptField.setText(val));
-
-        // Assemble
-        root.getChildren().addAll(
-            title,
+        panel.getChildren().addAll(
             modelStatusLabel, modelPathLabel,
             labeled(I18n.get("setting.ai.modelPath"), modelPathField),
             modelBtnRow,
-            memLabel, memRow,
-            paramTitle,
-            labeled(null, tempRow),
-            labeled(null, topPRow),
-            labeled(null, maxTokensSpinner),
-            labeled(null, sysPromptField)
+            labeled(I18n.get("setting.ai.memoryUsage"), memRow)
         );
 
-        // Initial state refresh
         refreshAiModelState(modelStatusLabel, modelPathLabel, unloadBtn);
+        return panel;
+    }
 
-        return root;
+    private static VBox buildOpenAiPanel() {
+        VBox panel = new VBox(12);
+
+        TextField endpointField = textField(null, "https://api.openai.com");
+        loadAiSetting(AI_OPENAI_ENDPOINT_KEY, val -> endpointField.setText(val));
+
+        PasswordField apiKeyField = new PasswordField();
+        apiKeyField.getStyleClass().add(FIELD_STYLE_CLASS);
+        loadAiSetting(AI_OPENAI_API_KEY_KEY, val -> apiKeyField.setText(val));
+
+        TextField modelField = textField(null, "gpt-4o");
+        loadAiSetting(AI_OPENAI_MODEL_KEY, val -> modelField.setText(val));
+
+        endpointField.textProperty().addListener((obs, o, n) -> saveAiSetting(AI_OPENAI_ENDPOINT_KEY, n));
+        apiKeyField.textProperty().addListener((obs, o, n) -> saveAiSetting(AI_OPENAI_API_KEY_KEY, n));
+        modelField.textProperty().addListener((obs, o, n) -> saveAiSetting(AI_OPENAI_MODEL_KEY, n));
+
+        Label statusLabel = new Label("");
+        statusLabel.setWrapText(true);
+        statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+
+        Button testBtn = glassBtn(I18n.get("setting.ai.testConnection"), false);
+        testBtn.setOnAction(e -> {
+            testBtn.setDisable(true);
+            Thread.ofVirtual().start(() -> {
+                fan.summer.ai.service.OpenAiService svc = new fan.summer.ai.service.OpenAiService();
+                svc.configure(endpointField.getText(), apiKeyField.getText(), modelField.getText());
+                String err = svc.testConnection();
+                Platform.runLater(() -> {
+                    if (err == null) {
+                        statusLabel.setStyle("-fx-text-fill: #4cd97b; -fx-font-size: 12px;");
+                        statusLabel.setText(I18n.get("setting.ai.testSuccess"));
+                    } else {
+                        statusLabel.setStyle("-fx-text-fill: #f25c5c; -fx-font-size: 12px;");
+                        statusLabel.setText(I18n.get("setting.ai.testFailed", err));
+                    }
+                    testBtn.setDisable(false);
+                });
+            });
+        });
+
+        panel.getChildren().addAll(
+            labeled(I18n.get("setting.ai.endpoint"), endpointField),
+            labeled(I18n.get("setting.ai.apiKey"), apiKeyField),
+            labeled(I18n.get("setting.ai.modelName"), modelField),
+            testBtn, statusLabel
+        );
+        return panel;
+    }
+
+    private static VBox buildAnthropicPanel() {
+        VBox panel = new VBox(12);
+
+        TextField endpointField = textField(null, "https://api.anthropic.com");
+        loadAiSetting(AI_ANTHROPIC_ENDPOINT_KEY, val -> endpointField.setText(val));
+
+        PasswordField apiKeyField = new PasswordField();
+        apiKeyField.getStyleClass().add(FIELD_STYLE_CLASS);
+        loadAiSetting(AI_ANTHROPIC_API_KEY_KEY, val -> apiKeyField.setText(val));
+
+        TextField modelField = textField(null, "claude-sonnet-4-20250514");
+        loadAiSetting(AI_ANTHROPIC_MODEL_KEY, val -> modelField.setText(val));
+
+        endpointField.textProperty().addListener((obs, o, n) -> saveAiSetting(AI_ANTHROPIC_ENDPOINT_KEY, n));
+        apiKeyField.textProperty().addListener((obs, o, n) -> saveAiSetting(AI_ANTHROPIC_API_KEY_KEY, n));
+        modelField.textProperty().addListener((obs, o, n) -> saveAiSetting(AI_ANTHROPIC_MODEL_KEY, n));
+
+        Label statusLabel = new Label("");
+        statusLabel.setWrapText(true);
+        statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+
+        Button testBtn = glassBtn(I18n.get("setting.ai.testConnection"), false);
+        testBtn.setOnAction(e -> {
+            testBtn.setDisable(true);
+            Thread.ofVirtual().start(() -> {
+                fan.summer.ai.service.AnthropicService svc = new fan.summer.ai.service.AnthropicService();
+                svc.configure(endpointField.getText(), apiKeyField.getText(), modelField.getText());
+                String err = svc.testConnection();
+                Platform.runLater(() -> {
+                    if (err == null) {
+                        statusLabel.setStyle("-fx-text-fill: #4cd97b; -fx-font-size: 12px;");
+                        statusLabel.setText(I18n.get("setting.ai.testSuccess"));
+                    } else {
+                        statusLabel.setStyle("-fx-text-fill: #f25c5c; -fx-font-size: 12px;");
+                        statusLabel.setText(I18n.get("setting.ai.testFailed", err));
+                    }
+                    testBtn.setDisable(false);
+                });
+            });
+        });
+
+        panel.getChildren().addAll(
+            labeled(I18n.get("setting.ai.endpoint"), endpointField),
+            labeled(I18n.get("setting.ai.apiKey"), apiKeyField),
+            labeled(I18n.get("setting.ai.modelName"), modelField),
+            testBtn, statusLabel
+        );
+        return panel;
     }
 
     private static void refreshAiModelState(Label statusLabel, Label pathLabel, Button unloadBtn) {
@@ -622,6 +802,69 @@ public class SwissKitJSettingUi {
         return "You are a helpful assistant.";
     }
 
+    public static String getAiMode() {
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            AppSettingEntity entity = mapper.selectByKey(AI_MODE_KEY);
+            if (entity != null && entity.getSettingValue() != null) return entity.getSettingValue();
+        } catch (Exception ignored) {}
+        return "local";
+    }
+
+    public static String getAiOpenAiEndpoint() {
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            AppSettingEntity entity = mapper.selectByKey(AI_OPENAI_ENDPOINT_KEY);
+            if (entity != null && !entity.getSettingValue().isBlank()) return entity.getSettingValue();
+        } catch (Exception ignored) {}
+        return "https://api.openai.com";
+    }
+
+    public static String getAiOpenAiApiKey() {
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            AppSettingEntity entity = mapper.selectByKey(AI_OPENAI_API_KEY_KEY);
+            if (entity != null) return entity.getSettingValue();
+        } catch (Exception ignored) {}
+        return "";
+    }
+
+    public static String getAiOpenAiModel() {
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            AppSettingEntity entity = mapper.selectByKey(AI_OPENAI_MODEL_KEY);
+            if (entity != null && !entity.getSettingValue().isBlank()) return entity.getSettingValue();
+        } catch (Exception ignored) {}
+        return "gpt-4o";
+    }
+
+    public static String getAiAnthropicEndpoint() {
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            AppSettingEntity entity = mapper.selectByKey(AI_ANTHROPIC_ENDPOINT_KEY);
+            if (entity != null && !entity.getSettingValue().isBlank()) return entity.getSettingValue();
+        } catch (Exception ignored) {}
+        return "https://api.anthropic.com";
+    }
+
+    public static String getAiAnthropicApiKey() {
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            AppSettingEntity entity = mapper.selectByKey(AI_ANTHROPIC_API_KEY_KEY);
+            if (entity != null) return entity.getSettingValue();
+        } catch (Exception ignored) {}
+        return "";
+    }
+
+    public static String getAiAnthropicModel() {
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            AppSettingEntity entity = mapper.selectByKey(AI_ANTHROPIC_MODEL_KEY);
+            if (entity != null && !entity.getSettingValue().isBlank()) return entity.getSettingValue();
+        } catch (Exception ignored) {}
+        return "claude-sonnet-4-20250514";
+    }
+
     // ═══════════════════════════════════════════════════════════════════
     // Email Tab
     // ═══════════════════════════════════════════════════════════════════
@@ -637,6 +880,9 @@ public class SwissKitJSettingUi {
         PasswordField passField = passwordField();
         TextField fromField = textField(null, "noreply@example.com");
 
+        TextField imapField = textField(null, "imap.example.com");
+        TextField imapPortField = textField(null, "993");
+
         // Use userData for stable field identification (label text changes with locale)
         VBox smtpRow = labeled(I18n.get("setting.email.smtpServer"), smtpField);
         smtpRow.setUserData("smtp");
@@ -651,10 +897,29 @@ public class SwissKitJSettingUi {
 
         VBox tlsSslBox = tlsSslRow();
 
+        VBox imapRow = labeled(I18n.get("setting.email.imapServer"), imapField);
+        imapRow.setUserData("imap");
+        VBox imapPortRow = labeled(I18n.get("setting.email.imapPort"), imapPortField);
+        imapPortRow.setUserData("imapPort");
+
+        CheckBox imapSslCheck = new CheckBox("SSL");
+        imapSslCheck.setUserData("IMAP_SSL");
+        imapSslCheck.getStyleClass().add("glass-checkbox");
+        imapSslCheck.setSelected(true);
+        HBox imapSslRow = new HBox(16, imapSslCheck);
+        imapSslRow.setAlignment(Pos.CENTER_LEFT);
+        VBox imapSslBox = new VBox(4);
+        Label imapSslLabel = new Label("");
+        imapSslLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.50); -fx-font-size: 11px; -fx-font-weight: bold;");
+        imapSslBox.getChildren().addAll(imapSslLabel, imapSslRow);
+        imapSslBox.setUserData("imapSslBox");
+
         root.getChildren().addAll(
             sectionTitle(I18n.get("setting.email.title")),
             smtpRow, portRow, userRow, passRow, fromRow,
             tlsSslBox,
+            sectionTitle(I18n.get("setting.email.imapSection")),
+            imapRow, imapPortRow, imapSslBox,
             saveEmailBtn(),
             openAddressBookBtn()
         );
@@ -681,6 +946,8 @@ public class SwissKitJSettingUi {
                                     case "username" -> { if (fieldNode instanceof TextField tf) tf.setText(entity.getEmail()); }
                                     case "password" -> { if (fieldNode instanceof PasswordField pf) pf.setText(entity.getPassword()); }
                                     case "from" -> { if (fieldNode instanceof TextField tf) tf.setText(entity.getFromAddress()); }
+                                    case "imap" -> { if (fieldNode instanceof TextField tf) tf.setText(entity.getImapAddress() != null ? entity.getImapAddress() : ""); }
+                                    case "imapPort" -> { if (fieldNode instanceof TextField tf) tf.setText(entity.getImapPort() != null ? String.valueOf(entity.getImapPort()) : "993"); }
                                 }
                             }
                         }
@@ -697,6 +964,20 @@ public class SwissKitJSettingUi {
                                             }
                                             if (second instanceof CheckBox sslCb && sslCb.getUserData() == "SSL" && entity.getNeedSSL() != null) {
                                                 sslCb.setSelected(entity.getNeedSSL());
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // Update IMAP SSL checkbox
+                        for (Node child : root.getChildren()) {
+                            if (child instanceof VBox vb && "imapSslBox".equals(vb.getUserData())) {
+                                for (Node vbChild : vb.getChildren()) {
+                                    if (vbChild instanceof HBox hb) {
+                                        for (Node n : hb.getChildren()) {
+                                            if (n instanceof CheckBox cb && "IMAP_SSL".equals(cb.getUserData()) && entity.getImapSSL() != null) {
+                                                cb.setSelected(entity.getImapSSL());
                                             }
                                         }
                                     }
@@ -742,7 +1023,8 @@ public class SwissKitJSettingUi {
 
     private static void saveEmailSettings(VBox form) {
         String smtp = null, port = null, user = null, pass = null, from = null;
-        boolean tls = false, ssl = false;
+        String imap = null, imapPort = null;
+        boolean tls = false, ssl = false, imapSsl = true;
         List<Node> children = form.getChildren();
 
         for (Node child : children) {
@@ -754,14 +1036,19 @@ public class SwissKitJSettingUi {
                     case "username" -> { if (field instanceof TextField tf) user = tf.getText(); }
                     case "password" -> { if (field instanceof PasswordField pf) pass = pf.getText(); }
                     case "from" -> { if (field instanceof TextField tf) from = tf.getText(); }
+                    case "imap" -> { if (field instanceof TextField tf) imap = tf.getText(); }
+                    case "imapPort" -> { if (field instanceof TextField tf) imapPort = tf.getText(); }
                 }
             } else if (child instanceof VBox vb) {
                 for (Node vbChild : vb.getChildren()) {
-                    if (vbChild instanceof HBox hb && hb.getChildren().size() == 2) {
-                        Object first = hb.getChildren().get(0);
-                        Object second = hb.getChildren().get(1);
-                        if (first instanceof CheckBox tlsCb && tlsCb.getUserData() == "TLS") tls = tlsCb.isSelected();
-                        if (second instanceof CheckBox sslCb && sslCb.getUserData() == "SSL") ssl = sslCb.isSelected();
+                    if (vbChild instanceof HBox hb) {
+                        for (Node n : hb.getChildren()) {
+                            if (n instanceof CheckBox cb && cb.getUserData() instanceof String ud) {
+                                if ("TLS".equals(ud)) tls = cb.isSelected();
+                                if ("SSL".equals(ud)) ssl = cb.isSelected();
+                                if ("IMAP_SSL".equals(ud)) imapSsl = cb.isSelected();
+                            }
+                        }
                     }
                 }
             }
@@ -788,6 +1075,9 @@ public class SwissKitJSettingUi {
         final String fFrom = from.trim();
         final boolean fTls = tls;
         final boolean fSsl = ssl;
+        final String fImap = (imap != null && !imap.isBlank()) ? imap.trim() : null;
+        final int fImapPort = (imapPort != null && !imapPort.isBlank()) ? Integer.parseInt(imapPort.trim()) : 993;
+        final boolean fImapSsl = imapSsl;
 
         new Thread(() -> {
             try (SqlSession session = DatabaseInit.getSqlSession()) {
@@ -801,6 +1091,9 @@ public class SwissKitJSettingUi {
                 entity.setFromAddress(fFrom);
                 entity.setNeedTLS(fTls);
                 entity.setNeedSSL(fSsl);
+                entity.setImapAddress(fImap);
+                entity.setImapPort(fImapPort);
+                entity.setImapSSL(fImapSsl);
                 mapper.insert(entity);
                 session.commit();
                 log.info("Email settings saved: smtp={}:{}", fSmtp, fPort);

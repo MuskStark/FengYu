@@ -24,6 +24,15 @@ import javafx.util.Duration;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 
+/**
+ * Built-in plugin for calculating cryptographic hashes (MD5, SHA-1, SHA-256, SHA-512)
+ * from free-form text input.
+ *
+ * <p>Displays results in a scrollable list with per-hash copy-to-clipboard buttons.
+ * Each hash algorithm is computed concurrently on the UI thread on button click.
+ *
+ * @see SwissKitJPlugin
+ */
 public class HashCalculatorPlugin implements SwissKitJPlugin {
 
     private static final PluginLogger log = LoggerFactory.getLogger(HashCalculatorPlugin.class);
@@ -41,6 +50,12 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
     @Override public IconStyle getIconStyle()   { return IconStyle.AMBER; }
     @Override public ToolType getType()        { return ToolType.BUILTIN; }
 
+    /**
+     * Creates and returns the plugin view containing a text input area,
+     * a Calculate button, and a results list with per-hash copy buttons.
+     *
+     * @return the root JavaFX Node for this plugin's UI
+     */
     @Override
     public Node createView() {
         log.debug("Creating Hash Calculator view");
@@ -73,6 +88,14 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
         return root;
     }
 
+    /**
+     * Builds a single hash result row showing algorithm name, hash value,
+     * and a copy button that copies the value to the system clipboard.
+     *
+     * @param algo  the algorithm display name (e.g. "MD5")
+     * @param value the hexadecimal hash string
+     * @return an HBox representing the result row
+     */
     private HBox hashRow(String algo, String value) {
         Label algoLabel = new Label(algo);
         algoLabel.setStyle(
@@ -113,6 +136,12 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
         return row;
     }
 
+    /**
+     * Creates a styled TextArea with monospace font and the given prompt text.
+     *
+     * @param prompt the placeholder text shown when the area is empty
+     * @return a styled, wrap-enabled TextArea that grows vertically in a VBox
+     */
     private static TextArea styledTextArea(String prompt) {
         TextArea ta = new TextArea();
         ta.setPromptText(prompt);
@@ -130,6 +159,13 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
         return ta;
     }
 
+    /**
+     * Creates an action button with the given text and background color.
+     *
+     * @param text the button label
+     * @param bg   the CSS background color value
+     * @return a styled Button control
+     */
     private static Button actionButton(String text, String bg) {
         Button btn = new Button(text);
         btn.setStyle(
@@ -141,6 +177,12 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
         return btn;
     }
 
+    /**
+     * Creates an uppercase section label with muted styling.
+     *
+     * @param text the label text
+     * @return a styled Label control
+     */
     private static Label sectionLabel(String text) {
         Label l = new Label(text.toUpperCase());
         l.setStyle(
