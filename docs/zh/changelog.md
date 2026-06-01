@@ -11,15 +11,56 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 ### ✨ 新功能
 
 - **AI 远程后端**：通过 AI 设置中的全局选择器，支持在本地 GGUF、OpenAI Chat Completions 和 Anthropic Messages API 之间切换；所有后端均支持 SSE 流式响应（逐令牌输出）和工具调用
-- **插件后台执行**：插件可在后台运行任务，支持视图缓存和 ToolCard 运行状态指示器
+- **AI 原生工作进程**：通过 `NativeWorkerClient`/`NativeWorkerMain` 子进程实现进程外 JNI 推理，提供崩溃隔离和线程安全；`GenerateCallback.onDone` 新增统计回调重载
+- **FunctionGemma 适配器**：为 FunctionGemma 模型实现原生工具调用协议适配器，包含自定义停止序列和 `AiServiceImpl` 中的单轮工具循环集成
+- **AI 内置工具**：Base64 编解码、哈希计算（MD5/SHA-256/SHA-512）、JSON 格式化/验证和颜色转换（HEX/RGB/HSL）—— 全部通过 `BuiltinAiToolRegistrar` 注册，配合 `ToolExecutor` 和 `ToolSchemaBuilder` 工具
+- **AI Markdown 渲染**：AI 响应通过 `WebView` 渲染 Markdown，使用深色主题（#1e1e2e）并自动调整高度以适应内容
+- **AI→Excel 工具**：分析、配置、执行、取消、查询和复杂配置 AI 工具，使 AI 聊天可以操作 Excel 拆分器；包括拖放/选择文件时自动分析及取消支持
 - **AI 自动初始化**：配置的 AI 后端（包括远程 API 模式）在启动时自动激活，无需手动重新配置
+- **PDF 工具**：支持拆分、合并和转 Word（通过 WPS 或 documents4j），配备 `OfficeDetector` 自动检测；3 标签页 UI 注册为内置工具；所有三项 PDF 操作均有 AI 工具支持
+- **邮件归档**：内置邮件归档工具，支持 IMAP（`EmailArchivePlugin`、`EmailArchiveService`），新增地址簿面板并扩展群发服务
+- **插件后台执行**：插件可在后台运行任务，支持视图缓存和 ToolCard 运行状态指示器
+- **插件预览窗口**：为第三方插件开发者提供的独立预览套件，包含 `PreviewTitleBar`、`PreviewSidebar`、`PreviewToolCard`、`PreviewDetailPanel` 和 `swisskit-preview.css`
+- **玻璃通知组件**：玻璃拟态风格的通知组件，替换所有 `Alert` 弹窗
+- **应用图标**：为 macOS（.icns）、Windows（.ico）和 Linux（.png）提供原生分辨率的应用图标
+- **内置工具**：Base64 编解码器、哈希计算器、JSON 格式化器、颜色转换器和 Markdown 编辑器插件，全部注册为内置工具
+- **国际化框架**：SwissKitJ-Api 中的核心 `I18n` 类，支持数据库持久化语言设置、插件资源包注册/注销，以及所有 UI 组件（TitleBar、MainWindow、Sidebar、ContentArea、ToolCard、DetailPanel、Settings）的实时语言切换
+- **设置界面**：重新设计的设置页面，包含 AI、邮件和地址簿标签页
+- **三层 CSS 架构**：`swisskit-common.css`（共享变量和 glass-* 工具类）、`shell.css`（应用外壳）和 `builtin.css`（内置工具），支持场景图继承
+- **类型安全枚举**：SwissKitJ-Api 中 `ToolCategory`、`ToolType` 和 `IconStyle` 枚举替代基于字符串的元数据
+- **GGUFZ 支持**：模型文件选择器支持 `*.ggufz` 压缩模型文件
+- **Gson/JsonHelper**：`JsonHelper` 工具类（基于 Gson）替代 `JsonBuilder`/`JsonParser`；`ToolCallParser` 和所有服务均使用 Gson
+- **双语文档**：中英文文档，配合 docsify-flexible-i18n；所有公共 API 提供完整的英文 Javadoc
 
 ### 🔧 修复
 
 - 修复 AI 后端在重启后不生效的问题 — `MainWindow` 中的残留初始化覆盖了已配置的服务
+- 修复 `NativeWorkerClient` 线程安全问题，修正崩溃计数器在成功生成时而非模型加载时重置
 - 修复插件 i18n 资源包因 ClassLoader 父级委托返回主机翻译的问题
 - 修复 ToolCard 后台指示器不显示及预览 i18n 不工作的问题
 - 修复 ExcelSplitterPlugin 缺少 `hasRunningTasks` 实现的问题
+- 修复 AI 消息气泡中 WebView 白色背景 —— 使用深色主题 #1e1e2e 并添加圆角
+- 修复 AI 消息气泡高度 —— WebView 自动调整高度以适应内容，替代过大的默认尺寸
+- 修复工具参数中 JSON Schema 数组类型的处理
+- 修复邮件标签页字段行中 VBox→HBox 类型不匹配
+- 修复邮件编辑器 —— 扩展 WebView 高度并允许从 Word 粘贴富文本
+- 修复设置界面语言切换后不更新 —— 语言切换时重建界面
+- 修复插件存储路径 —— 移至 `.swisskit/plugin/` 并修复先安装后加载失败的问题
+- 修复 CI 中 Windows JAR 发现和发布产物路径问题
+- 修复跨平台 JavaFX 原生库在 Fat JAR 中的打包
+
+### ♻️ 变更
+
+- 将 JNI 推理提取到进程外 `NativeWorkerClient` 以实现崩溃隔离
+- 重构 AI 服务（`OpenAiService`、`AnthropicService`、`AiServiceImpl`）使用共享工具注册表、Gson 和 `JsonHelper`
+- 删除 `JsonBuilder` 和 `JsonParser`，全面替换为 Gson/`JsonHelper`
+- 将工具注册表迁移至 `AiServiceProvider`，删除独立的 `ToolRegistry`
+- 将所有模块 POM 解耦为独立构建（无父级继承）
+- 优化插件日志 API、元数据和共享组件
+- 将官方插件迁移至独立的 `SwissKiJ-Plugin` 仓库
+- 集中依赖管理并添加 PDFBox、documents4j 依赖
+- 为推理指标统计在 `GenerateCallback.onDone` 中新增重载
+- GitHub Actions 升级至 v5 以兼容 Node.js 24
 
 ---
 
