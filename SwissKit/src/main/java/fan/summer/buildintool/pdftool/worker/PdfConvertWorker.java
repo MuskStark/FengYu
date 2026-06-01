@@ -3,9 +3,7 @@ package fan.summer.buildintool.pdftool.worker;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
 import fan.summer.buildintool.pdftool.converter.DocumentConverter;
-import fan.summer.buildintool.pdftool.converter.Documents4jConverter;
-import fan.summer.buildintool.pdftool.converter.OfficeDetector;
-import fan.summer.buildintool.pdftool.converter.WpsConverter;
+import fan.summer.buildintool.pdftool.converter.PdfBoxToDocxConverter;
 import javafx.concurrent.Task;
 
 import java.nio.file.Files;
@@ -15,14 +13,8 @@ import java.util.List;
 
 /**
  * JavaFX {@link Task} that converts a list of PDF files to DOCX format using
- * a detected Office back-end (WPS Office, LibreOffice, or MS Word).
- *
- * <p>The converter is selected based on the result of
- * {@link OfficeDetector#detect()}:</p>
- * <ul>
- *   <li>{@code WPS} &rarr; {@link WpsConverter}</li>
- *   <li>{@code LIBRE_OFFICE} or {@code MS_WORD} &rarr; {@link Documents4jConverter}</li>
- * </ul>
+ * a pure-Java converter (PDFBox + Apache POI).  No external Office application
+ * is required.
  *
  * <p>Each output file uses the same base name as the input with a
  * {@code .docx} extension. Progress is updated per file converted.</p>
@@ -53,15 +45,10 @@ public class PdfConvertWorker extends Task<List<Path>> {
             throw new IllegalArgumentException("No PDF files to convert");
         }
 
-        log.info("Starting PDF conversion: {} files", pdfPaths.size());
+        log.info("Starting PDF to DOCX conversion: {} files", pdfPaths.size());
 
-        // Detect Office back-end and create converter
-        OfficeDetector.DetectedBackend backend = OfficeDetector.detect()
-                .orElseThrow(() -> new IllegalStateException(
-                        "No Office application found. Please install WPS Office, LibreOffice, or Microsoft Word."));
-
-        DocumentConverter converter = createConverter(backend);
-        log.info("Using converter: {} ({})", backend.displayName(), backend.type());
+        DocumentConverter converter = new PdfBoxToDocxConverter();
+        log.info("Using pure-Java converter (PDFBox + POI)");
 
         // Ensure output directory exists
         if (!Files.exists(outputDir)) {
@@ -87,18 +74,8 @@ public class PdfConvertWorker extends Task<List<Path>> {
             updateProgress(i + 1, pdfPaths.size());
         }
 
-        log.info("PDF conversion completed: {} files converted", outputFiles.size());
+        log.info("PDF to DOCX conversion completed: {} files converted", outputFiles.size());
         return outputFiles;
-    }
-
-    /**
-     * Creates the appropriate {@link DocumentConverter} for the detected back-end.
-     */
-    private static DocumentConverter createConverter(OfficeDetector.DetectedBackend backend) {
-        return switch (backend.type()) {
-            case WPS -> new WpsConverter(backend.executablePath());
-            case LIBRE_OFFICE, MS_WORD -> new Documents4jConverter();
-        };
     }
 
     /**

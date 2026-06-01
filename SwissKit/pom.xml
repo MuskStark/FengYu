@@ -26,6 +26,7 @@
         <commonmark.version>0.24.0</commonmark.version>
         <pdfbox.version>3.0.4</pdfbox.version>
         <documents4j.version>1.1.0</documents4j.version>
+        <poi.version>5.4.1</poi.version>
     </properties>
 
     <dependencies>
@@ -183,16 +184,11 @@
             <version>${pdfbox.version}</version>
         </dependency>
 
-        <!-- Document conversion (PDF to DOCX via LibreOffice/MS Word) -->
+        <!-- Document conversion: PDF to DOCX (pure Java via PDFBox + Apache POI) -->
         <dependency>
-            <groupId>com.documents4j</groupId>
-            <artifactId>documents4j-local</artifactId>
-            <version>${documents4j.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.documents4j</groupId>
-            <artifactId>documents4j-transformer-msoffice-word</artifactId>
-            <version>${documents4j.version}</version>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>${poi.version}</version>
         </dependency>
 
         <dependency>
