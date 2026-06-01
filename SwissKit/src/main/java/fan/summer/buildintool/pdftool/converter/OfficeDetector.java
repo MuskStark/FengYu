@@ -104,9 +104,11 @@ public final class OfficeDetector {
     // ── macOS detection ─────────────────────────────────────────
 
     private static Optional<DetectedBackend> detectMac() {
-        // WPS
+        // WPS — macOS binary is named "wpsoffice" (not "wps")
         Optional<DetectedBackend> wps = findMacApp(
                 List.of(
+                        "/Applications/wpsoffice.app/Contents/MacOS/wpsoffice",
+                        "/Applications/WPS Office.app/Contents/MacOS/wpsoffice",
                         "/Applications/wpsoffice.app/Contents/MacOS/wps",
                         "/Applications/WPS Office.app/Contents/MacOS/wps"
                 ),
@@ -117,7 +119,9 @@ public final class OfficeDetector {
 
         String home = System.getProperty("user.home", "");
         wps = findMacApp(
-                List.of(home + "/Applications/wpsoffice.app/Contents/MacOS/wps",
+                List.of(home + "/Applications/wpsoffice.app/Contents/MacOS/wpsoffice",
+                        home + "/Applications/WPS Office.app/Contents/MacOS/wpsoffice",
+                        home + "/Applications/wpsoffice.app/Contents/MacOS/wps",
                         home + "/Applications/WPS Office.app/Contents/MacOS/wps"),
                 "WPS Office",
                 BackendType.WPS
