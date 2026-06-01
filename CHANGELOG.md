@@ -11,15 +11,56 @@ All notable changes to SwissKitJ. Format based on [Keep a Changelog](https://kee
 ### ✨ New Features
 
 - **AI Remote Backends**: Switch between local GGUF, OpenAI Chat Completions, and Anthropic Messages API via a global selector in AI settings; supports SSE streaming with token-by-token delivery and tool calling on all backends
-- **Plugin Background Execution**: Plugins can run tasks in the background with view caching and a ToolCard indicator showing running status
+- **AI Native Worker**: Out-of-process JNI inference via `NativeWorkerClient`/`NativeWorkerMain` child process for crash isolation and thread safety; stats callback overload on `GenerateCallback.onDone`
+- **FunctionGemma Adapter**: Native tool calling protocol adapter for FunctionGemma models with custom stop sequences and single-round tool loop integration in `AiServiceImpl`
+- **AI Built-in Tools**: Base64 encode/decode, Hash calculator (MD5/SHA-256/SHA-512), JSON format/validate, and Color converter (HEX/RGB/HSL) — all registered via `BuiltinAiToolRegistrar` with `ToolExecutor` and `ToolSchemaBuilder` utilities
+- **AI Markdown Rendering**: AI responses render Markdown via `WebView` with dark theme (#1e1e2e) and auto-resize height to content
+- **AI→Excel Tools**: Analyze, configure, execute, cancel, query, and complex-config AI tools that allow the AI chat to operate the Excel Splitter; includes auto-analyze on file drop/pick and cancel support
 - **AI Auto-Initialize**: Configured AI backend (including remote API mode) activates automatically on startup without manual re-configuration
+- **PDF Tools**: Split, merge, and convert-to-Word (via WPS or documents4j) with `OfficeDetector` auto-detection; 3-tab UI registered as a built-in tool; AI tools for all three PDF operations
+- **Email Archive**: Built-in email archive tool with IMAP support (`EmailArchivePlugin`, `EmailArchiveService`), address book pane, and expanded mass-send service
+- **Plugin Background Execution**: Plugins can run tasks in the background with view caching and a ToolCard indicator showing running status
+- **Plugin Preview Window**: Self-contained preview shell for third-party plugin developers with `PreviewTitleBar`, `PreviewSidebar`, `PreviewToolCard`, `PreviewDetailPanel`, and `swisskit-preview.css`
+- **GlassNotification**: Glassmorphism-styled notification component replacing all `Alert` dialogs
+- **Application Icons**: Native-resolution application icons for macOS (.icns), Windows (.ico), and Linux (.png)
+- **Built-in Tools**: Base64 encoder/decoder, Hash Calculator, JSON Formatter, Color Converter, and Markdown Editor plugins registered as built-in tools
+- **I18n Framework**: Core `I18n` classes in SwissKitJ-Api with DB-persisted locale, plugin bundle registration/unregistration, and live language switching across all UI components (TitleBar, MainWindow, Sidebar, ContentArea, ToolCard, DetailPanel, Settings)
+- **Settings UI**: Redesigned settings with AI, Email, and Address Book tabs
+- **Three-Layer CSS**: `swisskit-common.css` (shared variables and glass-* utilities), `shell.css` (app shell), and `builtin.css` (built-in tools) with scene-graph inheritance
+- **Type-Safe Enums**: `ToolCategory`, `ToolType`, and `IconStyle` enums in SwissKitJ-Api replacing String-based metadata
+- **GGUFZ Support**: Accept `*.ggufz` compressed model files in the model file chooser
+- **Gson/JsonHelper**: `JsonHelper` utility (Gson-based) replaces `JsonBuilder`/`JsonParser`; `ToolCallParser` and all services use Gson
+- **Bilingual Docs**: English/Chinese documentation with docsify-flexible-i18n; complete English Javadoc on all public APIs
 
 ### 🔧 Fixes
 
 - Fix AI backend not activating on restart — stale `MainWindow` initialization was overwriting the configured service
+- Fix `NativeWorkerClient` thread safety and reset crash counter on successful generation, not model load
 - Fix plugin i18n bundles returning host translations due to ClassLoader parent delegation
 - Fix ToolCard background indicator not showing and preview i18n not working
 - Fix ExcelSplitterPlugin missing `hasRunningTasks` implementation
+- Fix WebView white background in AI message bubbles — use dark theme #1e1e2e with rounded corners
+- Fix AI message bubble height — auto-resize WebView to match content instead of oversized default
+- Fix JSON Schema array type handling in tool parameters
+- Fix VBox→HBox type mismatch in email tab field rows
+- Fix email editor — expand WebView height and allow rich-text paste from Word
+- Fix Settings UI not reflecting language change — rebuild on locale switch
+- Fix plugin storage path — moved to `.swisskit/plugin/` and fixed install-then-load failure
+- Fix Windows JAR discovery and release artifact path in CI
+- Fix cross-platform JavaFX native library bundling in fat JAR
+
+### ♻️ Changes
+
+- Extract JNI inference to out-of-process `NativeWorkerClient` for crash isolation
+- Refactor AI services (`OpenAiService`, `AnthropicService`, `AiServiceImpl`) to use shared tool registry, Gson, and `JsonHelper`
+- Delete `JsonBuilder` and `JsonParser`, fully replaced by Gson/`JsonHelper`
+- Move tool registry to `AiServiceProvider`, delete standalone `ToolRegistry`
+- Decouple all module POMs to standalone (no parent inheritance)
+- Polish plugin logging API, metadata, and shared components
+- Migrate official plugins to separate `SwissKiJ-Plugin` repository
+- Centralize dependency management and add PDFBox, documents4j dependencies
+- Add stats overload to `GenerateCallback.onDone` for inference metrics
+- Bump GitHub Actions to v5 for Node.js 24 compatibility
 
 ---
 
