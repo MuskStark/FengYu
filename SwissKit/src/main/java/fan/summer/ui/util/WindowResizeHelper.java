@@ -181,11 +181,15 @@ public final class WindowResizeHelper {
 
         private static Cursor cursorFor(Direction d) {
             return switch (d) {
-                case N, S  -> Cursor.V_RESIZE;
-                case E, W  -> Cursor.H_RESIZE;
-                case NW, SE -> Cursor.NW_RESIZE;
-                case NE, SW -> Cursor.NE_RESIZE;
-                default     -> Cursor.DEFAULT;
+                case N  -> Cursor.N_RESIZE;
+                case S  -> Cursor.S_RESIZE;
+                case E  -> Cursor.E_RESIZE;
+                case W  -> Cursor.W_RESIZE;
+                case NW -> Cursor.NW_RESIZE;
+                case SE -> Cursor.SE_RESIZE;
+                case NE -> Cursor.NE_RESIZE;
+                case SW -> Cursor.SW_RESIZE;
+                default -> Cursor.DEFAULT;
             };
         }
     }
