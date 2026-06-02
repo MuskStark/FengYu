@@ -121,6 +121,8 @@ public class MainWindow extends StackPane {
 
         // Main window glass panel
         BorderPane windowPane = new BorderPane();
+        windowPane.setMaxWidth(Double.MAX_VALUE);
+        windowPane.setMaxHeight(Double.MAX_VALUE);
         windowPane.getStyleClass().add("app-root");
         windowPane.setStyle(
             "-fx-background-color: rgba(13,14,17,0.72);" +
@@ -160,8 +162,6 @@ public class MainWindow extends StackPane {
         topHighlight.heightProperty().bind(heightProperty());
 
         getChildren().addAll(orbLayer, windowPane, topHighlight);
-        // Use TOP_LEFT so the windowPane fills from top — titlebar is always visible
-        setAlignment(windowPane, Pos.TOP_LEFT);
         setAlignment(topHighlight, Pos.CENTER);
 
         // Clip whole window to rounded rectangle so the dark orbLayer behind
