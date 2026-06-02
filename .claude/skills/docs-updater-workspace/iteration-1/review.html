@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>docs-updater — Eval Review (Iteration 1)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 20px; }
+  h1 { color: #7c9fff; margin-bottom: 10px; }
+  h2 { color: #a0a0ff; margin: 20px 0 10px; }
+  .summary { background: #16213e; border-radius: 8px; padding: 15px; margin: 15px 0; }
+  .summary table { width: 100%; border-collapse: collapse; }
+  .summary th, .summary td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #333; }
+  .summary th { color: #7c9fff; }
+  .run { background: #16213e; border-radius: 8px; padding: 15px; margin: 15px 0; }
+  .run h3 { color: #7c9fff; cursor: pointer; }
+  .pass { color: #4caf50; }
+  .fail { color: #f44336; }
+  .assertion { padding: 4px 12px; font-size: 14px; }
+  .assertion.pass { background: rgba(76,175,80,0.1); }
+  .assertion.fail { background: rgba(244,67,54,0.1); }
+  .file-content { background: #0d1117; border-radius: 4px; padding: 10px; margin: 8px 0; overflow-x: auto; }
+  .file-content pre { font-size: 13px; white-space: pre-wrap; }
+  .file-label { color: #58a6ff; font-weight: bold; margin-top: 10px; }
+  .delta-positive { color: #4caf50; }
+  .delta-negative { color: #f44336; }
+  .hidden { display: none; }
+  button { background: #2d4a7a; color: #e0e0e0; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; margin: 5px; }
+  button:hover { background: #3a5f9a; }
+  .feedback-box { width: 100%; min-height: 60px; background: #0d1117; color: #e0e0e0; border: 1px solid #333; border-radius: 4px; padding: 8px; margin: 10px 0; font-family: inherit; }
+</style>
+</head>
+<body>
+<h1>docs-updater — Iteration 1 Results</h1>
+<div class="summary"><h2>Benchmark Summary</h2><table><tr><th>Configuration</th><th>Pass Rate</th><th>Passed/Total</th><th>Avg Time</th><th>Avg Tokens</th></tr><tr><td>with_skill (new)</td><td>83%</td><td>19/23</td><td>274670ms</td><td>36728</td></tr><tr><td>old_skill (baseline)</td><td>70%</td><td>16/23</td><td>244967ms</td><td>31510</td></tr><tr><td colspan="5"><strong>Delta:</strong> <span class="delta-positive">+12% pass rate</span> | Time: +29704ms | Tokens: +5218</td></tr></table></div><div class="run"><h3 onclick="toggle('eval-01-simple-beta-bump-with_skill')">eval-01-simple-beta-bump / with_skill — 7/8 passed (88%)</h3><div id="eval-01-simple-beta-bump-with_skill"><h4>Assertions</h4><div class="assertion pass">[PASS] Uses 3.0.0-beta.2 in output (from SwissKit/pom.xml, not 3.0.0 from root)<br><small>Found '3.0.0-beta.2' in CHANGELOG.md</small></div><div class="assertion pass">[PASS] New version section doesn't incorrectly reference 3.0.0-beta.1 as current<br><small>Found '3.0.0-beta.2' in README.md</small></div><div class="assertion pass">[PASS] No 3.0.0-beta.1 references remain in docs/getting-started.md (except historical CHANGELOG entries)<br><small>'3.0.0-beta.1' absent from docs/getting-started.md</small></div><div class="assertion pass">[PASS] README.md badge and download links updated to 3.0.0-beta.2<br><small>Found '3.0.0-beta.2' in README.md</small></div><div class="assertion pass">[PASS] README.md has no stale 3.0.0-beta.1 references<br><small>'3.0.0-beta.1' absent from README.md</small></div><div class="assertion pass">[PASS] Root CHANGELOG.md has a section for 3.0.0-beta.2<br><small>Found '3.0.0-beta.2' in CHANGELOG.md</small></div><div class="assertion pass">[PASS] docs/features.md includes Hash Calculator from git log analysis<br><small>Found 'Hash' in docs/features.md</small></div><div class="assertion fail">[FAIL] CHANGELOG mentions the new Hash Calculator feature from git log<br><small>Missing 'Hash Calculator' in CHANGELOG.md</small></div><h4>Output Files</h4><div class="file-label">CHANGELOG.md</div><div class="file-content"><pre># Changelog
+
+## 3.0.0-beta.2 (2026-05-29)
+
+### New Features
+
+- **AI Chat**: OpenAI and Anthropic API backend support with auto-load
+- **AI Chat**: Markdown rendering in responses via WebView, renamed to SwissKitJClaw
+- **AI Chat**: Built-in AI tools — Base64, Hash, JSON Format, Color Convert
+- **AI Chat**: ToolExecutor and ToolSchemaBuilder for easy tool registration
+- **AI Chat**: Excel integration — analyze, configure, execute, query, and cancel tools for AI-powered split operations
+- **AI Chat**: excel_complex_config tool and reasoning_content handling
+- **AI Chat**: FunctionGemma native tool calling protocol support with adapter, stop sequences, and AiServiceImpl integration
+- **AI Chat**: Accept *.ggufz files in model file chooser
+- **Email Archive**: Built-in email archive tool with IMAP support
+- **Plugin System**: Background execution with view caching and ToolCard indicator
+
+### Fixes
+
+- Fix ToolCard background indicator not showing and preview i18n not working
+- Fix plugin i18n bundles returning host translations due to ClassLoader parent delegation
+- Fix missing hasRunningTasks on ExcelSplitterPlugin
+- Fix stale AiServiceImpl init in MainWindow overwriting startup backend
+- Fix WebView white background, use dark theme for AI message bubbles
+- Fix auto-resize WebView height to match content
+- Fix rounded corners on AI message bubbles, brighten text
+- Fix array types handling in JSON Schema for tool parameters
+- Fix proper JSON Schema for tool parameters and improved tool-calling prompt
+
+### Changes
+
+- Consolidate AI tool infrastructure: Gson-based JSON, shared registry, remove JsonBuilder/JsonParser
+- Expose shared SplitConfig for AI tool access
+
+## 3.0.0-beta.1 (2026-05-20)
+
+- Initial JavaFX migration release
+</pre></div><div class="file-label">README.md</div><div class="file-content"><pre># SwissKitJ
+
+![Version](https://img.shields.io/badge/version-3.0.0--beta.2-blue)
+
+```bash
+java -jar SwissKit/target/SwissKitJ-3.0.0-beta.2.jar
+```
+
+[Download](https://github.com/MuskStark/SwissKitJ/releases/tag/v3.0.0-beta.2)
+</pre></div><div class="file-label">docs/changelog.md</div><div class="file-content"><pre># Changelog
+
+## 3.0.0-beta.2 (2026-05-29)
+
+### New Features
+
+- **AI Chat**: OpenAI and Anthropic API backend support with auto-load
+- **AI Chat**: Markdown rendering in responses via WebView, renamed to SwissKitJClaw
+- **AI Chat**: Built-in AI tools — Base64, Hash, JSON Format, Color Convert
+- **AI Chat**: ToolExecutor and ToolSchemaBuilder for easy tool registration
+- **AI Chat**: Excel integration — analyze, configure, execute, query, and cancel tools for AI-powered split operations
+- **AI Chat**: excel_complex_config tool and reasoning_content handling
+- **AI Chat**: FunctionGemma native tool calling protocol support with adapter, stop sequences, and AiServiceImpl integration
+- **AI Chat**: Accept *.ggufz files in model file chooser
+- **Email Archive**: Built-in email archive tool with IMAP support
+- **Plugin System**: Background execution with view caching and ToolCard indicator
+- **Hash Calculator**: Calculate hash digests (MD5, SHA-1, SHA-256) for text input
+
+### Fixes
+
+- Fix ToolCard background indicator not showing and preview i18n not working
+- Fix plugin i18n bundles returning host translations due to ClassLoader parent delegation
+- Fix missing hasRunningTasks on ExcelSplitterPlugin
+- Fix stale AiServiceImpl init in MainWindow overwriting startup backend
+- Fix WebView white background, use dark theme for AI message bubbles
+- Fix auto-resize WebView height to match content
+- Fix rounded corners on AI message bubbles, brighten text
+- Fix array types handling in JSON Schema for tool parameters
+- Fix proper JSON Schema for tool parameters and improved tool-calling prompt
+- Fix Base64 encoding not handling UTF-8 characters
+
+### Changes
+
+- Consolidate AI tool infrastructure: Gson-based JSON, shared registry, remove JsonBuilder/JsonParser
+- Expose shared SplitConfig for AI tool access
+
+## 3.0.0-beta.1 (2026-05-20)
+
+- Initial JavaFX migration release
+</pre></div><div class="file-label">docs/features.md</div><div class="file-content"><pre># Features
+
+## Built-in Tools
+
+### AI Chat (`DEV`)
+AI-powered chat with support for OpenAI and Anthropic API backends.
+- Markdown rendering in responses via WebView with dark theme
+- Built-in AI tools: Base64, Hash, JSON Format, Color Convert
+- Excel integration: analyze, configure, execute, query, and cancel tools for AI-powered split operations
+- FunctionGemma native tool calling protocol support
+- ToolExecutor and ToolSchemaBuilder for easy tool registration
+
+### Email Archive (`NET`)
+Built-in email archive tool with IMAP support.
+
+### JSON Formatter (`DEV`)
+Format, compress, and validate JSON data.
+
+### Base64 (`DEV`)
+Encode text to Base64 or decode Base64 strings.
+
+### Hash Calculator (`DEV`)
+Calculate hash digests (MD5, SHA-1, SHA-256) for text input.
+
+## Plugin System
+
+- **Background Execution**: Plugins can run tasks in the background with view caching and ToolCard indicator for running state.
+</pre></div><div class="file-label">docs/getting-started.md</div><div class="file-content"><pre># Getting Started
+
+Current version: **3.0.0-beta.2**
+
+```bash
+java -jar SwissKitJ-3.0.0-beta.2.jar
+```
+</pre></div><div class="file-label">docs/zh/changelog.md</div><div class="file-content"><pre># 更新日志
+
+## 3.0.0-beta.2 (2026-05-29)
+
+### 新功能
+
+- **AI Chat**: 支持 OpenAI 和 Anthropic API 后端，自动加载
+- **AI Chat**: 通过 WebView 渲染 Markdown 响应，重命名为 SwissKitJClaw
+- **AI Chat**: 内置 AI 工具 — Base64、Hash、JSON Format、Color Convert
+- **AI Chat**: ToolExecutor 和 ToolSchemaBuilder 工具注册实用程序
+- **AI Chat**: Excel 集成 — 用于 AI 驱动拆分操作的 analyze、configure、execute、query 和 cancel 工具
+- **AI Chat**: excel_complex_config 工具和 reasoning_content 处理
+- **AI Chat**: FunctionGemma 原生工具调用协议支持，包含适配器、停止序列和 AiServiceImpl 集成
+- **AI Chat**: 模型文件选择器支持 *.ggufz 文件
+- **Email Archive**: 内置邮件归档工具，支持 IMAP
+- **Plugin System**: 后台执行支持，包含视图缓存和 ToolCard 指示器
+- **Hash Calculator**: 计算文本输入的哈希摘要（MD5、SHA-1、SHA-256）
+
+### 修复
+
+- 修复 ToolCard 后台指示器不显示和预览 i18n 不工作的问题
+- 修复插件 i18n 资源包因 ClassLoader 父委托返回宿主翻译的问题
+- 修复 ExcelSplitterPlugin 缺少 hasRunningTasks 的问题
+- 修复 MainWindow 中过期的 AiServiceImpl 初始化覆盖启动后端的问题
+- 修复 WebView 白色背景，使用深色主题显示 AI 消息气泡
+- 修复自动调整 WebView 高度以匹配内容
+- 修复 AI 消息气泡圆角和文字亮度
+- 修复 JSON Schema 中数组类型的工具参数处理
+- 修复工具参数的正确 JSON Schema 和改进的工具调用提示
+- 修复 Base64 编码无法处理 UTF-8 字符的问题
+
+### 变更
+
+- 整合 AI 工具基础设施：基于 Gson 的 JSON、共享注册表、移除 JsonBuilder/JsonParser
+- 暴露共享的 SplitConfig 供 AI 工具访问
+
+## 3.0.0-beta.1 (2026-05-20)
+
+- 初始 JavaFX 迁移版本
+</pre></div><h4>Feedback</h4><textarea class="feedback-box" id="fb-eval-01-simple-beta-bump-with_skill" placeholder="Notes on this run..."></textarea></div></div><div class="run"><h3 onclick="toggle('eval-01-simple-beta-bump-old_skill')">eval-01-simple-beta-bump / old_skill — 7/8 passed (88%)</h3><div id="eval-01-simple-beta-bump-old_skill"><h4>Assertions</h4><div class="assertion pass">[PASS] Uses 3.0.0-beta.2 in output (from SwissKit/pom.xml, not 3.0.0 from root)<br><small>Found '3.0.0-beta.2' in CHANGELOG.md</small></div><div class="assertion pass">[PASS] New version section doesn't incorrectly reference 3.0.0-beta.1 as current<br><small>Found '3.0.0-beta.2' in README.md</small></div><div class="assertion pass">[PASS] No 3.0.0-beta.1 references remain in docs/getting-started.md (except historical CHANGELOG entries)<br><small>'3.0.0-beta.1' absent from docs/getting-started.md</small></div><div class="assertion pass">[PASS] README.md badge and download links updated to 3.0.0-beta.2<br><small>Found '3.0.0-beta.2' in README.md</small></div><div class="assertion pass">[PASS] README.md has no stale 3.0.0-beta.1 references<br><small>'3.0.0-beta.1' absent from README.md</small></div><div class="assertion pass">[PASS] Root CHANGELOG.md has a section for 3.0.0-beta.2<br><small>Found '3.0.0-beta.2' in CHANGELOG.md</small></div><div class="assertion pass">[PASS] docs/features.md includes Hash Calculator from git log analysis<br><small>Found 'Hash' in docs/features.md</small></div><div class="assertion fail">[FAIL] CHANGELOG mentions the new Hash Calculator feature from git log<br><small>Missing 'Hash Calculator' in CHANGELOG.md</small></div><h4>Output Files</h4><div class="file-label">CHANGELOG.md</div><div class="file-content"><pre># Changelog
+
+## 3.0.0-beta.2 (2026-05-29)
+
+### New Features
+
+- **AI Chat**: OpenAI and Anthropic API backend support with auto-load
+- **AI Chat**: Markdown rendering in responses via WebView, renamed to SwissKitJClaw
+- **AI Chat**: Built-in AI tools — Base64, Hash, JSON Format, Color Convert
+- **AI Chat**: ToolExecutor and ToolSchemaBuilder for easy tool registration
+- **AI Chat**: Excel integration — analyze, configure, execute, query, and cancel tools for AI-powered split operations
+- **AI Chat**: excel_complex_config tool and reasoning_content handling
+- **AI Chat**: FunctionGemma native tool calling protocol support with adapter, stop sequences, and AiServiceImpl integration
+- **AI Chat**: Accept *.ggufz files in model file chooser
+- **Email Archive**: Built-in email archive tool with IMAP support
+- **Plugin System**: Background execution with view caching and ToolCard indicator
+
+### Fixes
+
+- Fix ToolCard background indicator not showing and preview i18n not working
+- Fix plugin i18n bundles returning host translations due to ClassLoader parent delegation
+- Fix missing hasRunningTasks on ExcelSplitterPlugin
+- Fix stale AiServiceImpl init in MainWindow overwriting startup backend
+- Fix WebView white background, use dark theme for AI message bubbles
+- Fix auto-resize WebView height to match content
+- Fix rounded corners on AI message bubbles, brighten text
+- Fix array types handling in JSON Schema for tool parameters
+- Fix proper JSON Schema for tool parameters and improved tool-calling prompt
+
+### Changes
+
+- Consolidate AI tool infrastructure: Gson-based JSON, shared registry, remove JsonBuilder/JsonParser
+- Expose shared SplitConfig for AI tool access
+
+## 3.0.0-beta.1 (2026-05-20)
+
+- Initial JavaFX migration release
+</pre></div><div class="file-label">README.md</div><div class="file-content"><pre># SwissKitJ
+
+![Version](https://img.shields.io/badge/version-3.0.0--beta.2-blue)
+
+```bash
+java -jar SwissKit/target/SwissKitJ-3.0.0-beta.2.jar
+```
+
+[Download](https://github.com/MuskStark/SwissKitJ/releases/tag/v3.0.0-beta.2)
+</pre></div><div class="file-label">docs/changelog.md</div><div class="file-content"><pre># Changelog
+
+## 3.0.0-beta.2 (2026-05-29)
+
+- Add Hash Calculator built-in tool
+- Fix Base64 encoding not handling UTF-8 characters
+
+## 3.0.0-beta.1 (2026-05-20)
+
+- Initial JavaFX migration release
+</pre></div><div class="file-label">docs/features.md</div><div class="file-content"><pre># Features
+
+## Built-in Tools
+
+### JSON Formatter (`DEV`)
+Format, compress, and validate JSON data.
+
+### Base64 (`DEV`)
+Encode text to Base64 or decode Base64 strings.
+
+### Hash Calculator (`DEV`)
+Calculate hash digests (MD5, SHA-1, SHA-256) for text input.
+</pre></div><div class="file-label">docs/getting-started.md</div><div class="file-content"><pre># Getting Started
+
+Current version: **3.0.0-beta.2**
+
+```bash
+java -jar SwissKitJ-3.0.0-beta.2.jar
+```
+</pre></div><div class="file-label">docs/zh/changelog.md</div><div class="file-content"><pre># 更新日志
+
+## 3.0.0-beta.2 (2026-05-29)
+
+- 新增 Hash Calculator 内置工具
+- 修复 Base64 编码无法处理 UTF-8 字符的问题
+
+## 3.0.0-beta.1 (2026-05-20)
+
+- 初始 JavaFX 迁移版本
+</pre></div><div class="file-label">summary.txt</div><div class="file-content"><pre># Docs Updater Summary — eval-01-simple-beta-bump
+
+## Version Change
+- **Old version**: 3.0.0-beta.1 (tag v3.0.0-beta.1 at commit f8af0b31)
+- **New version**: 3.0.0-beta.2 (HEAD at commit e4467c3, from SwissKit/pom.xml)
+
+## Files Changed
+
+1. **README.md** — Updated version badge, jar command, and download link from `3.0.0-beta.1` to `3.0.0-beta.2`
+2. **CHANGELOG.md** — Already had 3.0.0-beta.2 section (auto-populated externally); no edits needed
+3. **docs/getting-started.md** — Updated version string and jar command from `3.0.0-beta.1` to `3.0.0-beta.2`
+4. **docs/features.md** — Added Hash Calculator built-in tool to the Built-in Tools section
+5. **docs/changelog.md** — Added 3.0.0-beta.2 section with entries for Hash Calculator and Base64 UTF-8 fix
+6. **docs/zh/changelog.md** — Added 3.0.0-beta.2 section in Chinese with entries for Hash Calculator and Base64 UTF-8 fix
+
+## Git Log Analysis (since tag v3.0.0-beta.1)
+- `bb7a88c` — feat: add Hash Calculator built-in tool
+- `e4467c3` — fix: Base64 encoding not handling UTF-8 characters
+
+## Content Changes Made
+
+### Version Bumps (3.0.0-beta.1 to 3.0.0-beta.2)
+- README.md: 3 occurrences updated (badge, jar filename, download URL)
+- docs/getting-started.md: 2 occurrences updated (version text, jar filename)
+
+### New Content
+- docs/features.md: Added Hash Calculator (DEV) tool description
+- docs/changelog.md: Added 3.0.0-beta.2 changelog with Hash Calculator and Base64 fix
+- docs/zh/changelog.md: Added 3.0.0-beta.2 changelog in Chinese
+
+### CHANGELOG.md
+- The file already contained a comprehensive 3.0.0-beta.2 section (auto-populated). No edits were made; left as-is.
+
+## Issues Encountered
+- Bash tool permission denied for `git log`, `git tag`, and `mkdir` commands
+- IDE terminal command (`mcp__idea__execute_terminal_command`) also denied
+- Worked around by reading `.git/logs/HEAD` and `.git/refs/tags/` directly via the Read tool
+- CHANGELOG.md was auto-populated externally between reads, causing the Edit tool to fail with "file modified since read" - re-read and kept as-is since it already had the beta.2 entry
+</pre></div><h4>Feedback</h4><textarea class="feedback-box" id="fb-eval-01-simple-beta-bump-old_skill" placeholder="Notes on this run..."></textarea></div></div><div class="run"><h3 onclick="toggle('eval-02-beta-to-rc-with_skill')">eval-02-beta-to-rc / with_skill — 6/7 passed (86%)</h3><div id="eval-02-beta-to-rc-with_skill"><h4>Assertions</h4><div class="assertion pass">[PASS] Uses 3.0.0-rc.1 in output (from SwissKit/pom.xml)<br><small>Found '3.0.0-rc.1' in CHANGELOG.md</small></div><div class="assertion pass">[PASS] README.md uses 3.0.0-rc.1 for badge, download links, and release URL<br><small>Found '3.0.0-rc.1' in README.md</small></div><div class="assertion pass">[PASS] No 3.0.0-beta.2 references remain in README.md<br><small>'3.0.0-beta.2' absent from README.md</small></div><div class="assertion pass">[PASS] docs/architecture.md version references updated to 3.0.0-rc.1<br><small>Found '3.0.0-rc.1' in docs/architecture.md</small></div><div class="assertion pass">[PASS] CHANGELOG.md has a 3.0.0-rc.1 section<br><small>Found '3.0.0-rc.1' in CHANGELOG.md</small></div><div class="assertion fail">[FAIL] docs/api.md references new lifecycle methods from git log (onActivate/onDeactivate)<br><small>Missing 'onActivate' in docs/api.md</small></div><div class="assertion pass">[PASS] docs/features.md or docs/api.md mentions the plugin lifecycle addition<br><small>Found 'onActivate' in docs/features.md</small></div><h4>Output Files</h4><div class="file-label">CHANGELOG.md</div><div class="file-content"><pre># Changelog
+
+**v3.0.0-rc.1** — 2026-05-29
+
+### ✨ New Features
+
+- **Plugin Lifecycle**: Added `onActivate()` and `onDeactivate()` default methods to the `SwissKitJPlugin` interface, allowing plugins to hook into lifecycle events.
+
+### ♻️ Changes
+
+- **ToolCategory Enum**: Converted category strings to a `ToolCategory` enum (`DEV`, `TEXT`, `IMAGE`, `NET`, `OTHER`) for type-safe category handling.
+
+## 3.0.0-beta.2 (2026-05-25)
+
+- feat(ui): accept *.ggufz files
+</pre></div><div class="file-label">README.md</div><div class="file-content"><pre># SwissKitJ
+![Version](https://img.shields.io/badge/version-3.0.0--rc.1-blue)
+- **Windows**: `SwissKitJ-3.0.0-rc.1.exe`
+- **macOS/Linux**: `SwissKitJ-3.0.0-rc.1.jar`
+[releases](https://github.com/MuskStark/SwissKitJ/releases/tag/v3.0.0-rc.1)
+</pre></div><div class="file-label">docs/architecture.md</div><div class="file-content"><pre># Architecture
+
+SwissKitJ v3.0.0-rc.1 is built on JavaFX 21. Plugins can now implement
+`onActivate()` / `onDeactivate()` lifecycle callbacks. Categories use the
+`ToolCategory` enum (DEV, TEXT, IMAGE, NET, OTHER).
+
+See [3.0.0-rc.1 release](https://github.com/MuskStark/SwissKitJ/releases/tag/v3.0.0-rc.1).
+</pre></div><div class="file-label">docs/changelog.md</div><div class="file-content"><pre># Changelog
+
+**v3.0.0-rc.1** — 2026-05-29
+
+### ✨ New Features
+
+- **Plugin Lifecycle**: Added `onActivate()` and `onDeactivate()` default methods to the `SwissKitJPlugin` interface, allowing plugins to hook into lifecycle events.
+
+### ♻️ Changes
+
+- **ToolCategory Enum**: Converted category strings to a `ToolCategory` enum (`DEV`, `TEXT`, `IMAGE`, `NET`, `OTHER`) for type-safe category handling.
+
+## 3.0.0-beta.2 (2026-05-25)
+
+- feat(ui): accept *.ggufz files
+</pre></div><div class="file-label">docs/features.md</div><div class="file-content"><pre># Features
+
+## Plugin Lifecycle
+
+Plugins can override `onActivate()` and `onDeactivate()` to respond to
+navigation events.
+
+## Categories
+
+Tools are organized by `ToolCategory` enum: `DEV`, `TEXT`, `IMAGE`, `NET`, `OTHER`.
+
+## Built-in Tools
+
+### AI Chat (DEV)
+Chat with AI models. Supports local GGUF and remote APIs.
+</pre></div><div class="file-label">docs/zh/changelog.md</div><div class="file-content"><pre># 更新日志
+
+**v3.0.0-rc.1** — 2026-05-29
+
+### ✨ 新功能
+
+- **插件生命周期**: 在 `SwissKitJPlugin` 接口中添加了 `onActivate()` 和 `onDeactivate()` 默认方法，允许插件挂载到生命周期事件。
+
+### ♻️ 变更
+
+- **ToolCategory 枚举**: 将分类字符串转换为 `ToolCategory` 枚举（`DEV`、`TEXT`、`IMAGE`、`NET`、`OTHER`），实现类型安全的分类处理。
+
+## 3.0.0-beta.2 (2026-05-25)
+
+- feat(ui): 支持 *.ggufz 文件
+</pre></div><h4>Feedback</h4><textarea class="feedback-box" id="fb-eval-02-beta-to-rc-with_skill" placeholder="Notes on this run..."></textarea></div></div><div class="run"><h3 onclick="toggle('eval-02-beta-to-rc-old_skill')">eval-02-beta-to-rc / old_skill — 6/7 passed (86%)</h3><div id="eval-02-beta-to-rc-old_skill"><h4>Assertions</h4><div class="assertion pass">[PASS] Uses 3.0.0-rc.1 in output (from SwissKit/pom.xml)<br><small>Found '3.0.0-rc.1' in CHANGELOG.md</small></div><div class="assertion pass">[PASS] README.md uses 3.0.0-rc.1 for badge, download links, and release URL<br><small>Found '3.0.0-rc.1' in README.md</small></div><div class="assertion pass">[PASS] No 3.0.0-beta.2 references remain in README.md<br><small>'3.0.0-beta.2' absent from README.md</small></div><div class="assertion pass">[PASS] docs/architecture.md version references updated to 3.0.0-rc.1<br><small>Found '3.0.0-rc.1' in docs/architecture.md</small></div><div class="assertion pass">[PASS] CHANGELOG.md has a 3.0.0-rc.1 section<br><small>Found '3.0.0-rc.1' in CHANGELOG.md</small></div><div class="assertion fail">[FAIL] docs/api.md references new lifecycle methods from git log (onActivate/onDeactivate)<br><small>Missing 'onActivate' in docs/api.md</small></div><div class="assertion pass">[PASS] docs/features.md or docs/api.md mentions the plugin lifecycle addition<br><small>Found 'onActivate' in docs/features.md</small></div><h4>Output Files</h4><div class="file-label">CHANGELOG.md</div><div class="file-content"><pre># Changelog
+
+## 3.0.0-rc.1 (2026-05-29)
+
+- feat(api): add onActivate/onDeactivate lifecycle to plugin interface
+- refactor(api): convert category strings to ToolCategory enum
+
+## 3.0.0-beta.2 (2026-05-25)
+
+- feat(ui): accept *.ggufz files
+</pre></div><div class="file-label">README.md</div><div class="file-content"><pre># SwissKitJ
+![Version](https://img.shields.io/badge/version-3.0.0--rc.1-blue)
+- **Windows**: `SwissKitJ-3.0.0-rc.1.exe`
+- **macOS/Linux**: `SwissKitJ-3.0.0-rc.1.jar`
+[releases](https://github.com/MuskStark/SwissKitJ/releases/tag/v3.0.0-rc.1)
+</pre></div><div class="file-label">docs/architecture.md</div><div class="file-content"><pre># Architecture
+
+SwissKitJ v3.0.0-rc.1 is built on JavaFX 21. Plugins can now implement
+`onActivate()` / `onDeactivate()` lifecycle callbacks. Categories use the
+`ToolCategory` enum (DEV, TEXT, IMAGE, NET, OTHER).
+
+See [3.0.0-rc.1 release](https://github.com/MuskStark/SwissKitJ/releases/tag/v3.0.0-rc.1).
+</pre></div><div class="file-label">docs/changelog.md</div><div class="file-content"><pre># Changelog
+
+**v3.0.0-rc.1** — 2026-05-29
+
+### ✨ New Features
+
+- **Plugin Lifecycle**: Added `onActivate()` and `onDeactivate()` default methods to the `SwissKitJPlugin` interface, allowing plugins to hook into lifecycle events.
+
+### ♻️ Changes
+
+- **ToolCategory Enum**: Converted category strings to a `ToolCategory` enum (`DEV`, `TEXT`, `IMAGE`, `NET`, `OTHER`) for type-safe category handling.
+
+## 3.0.0-beta.2 (2026-05-25)
+
+- feat(ui): accept *.ggufz files
+</pre></div><div class="file-label">docs/features.md</div><div class="file-content"><pre># Features
+
+## Plugin Lifecycle
+
+Plugins can override `onActivate()` and `onDeactivate()` to respond to
+navigation events.
+
+## Categories
+
+Tools are organized by `ToolCategory` enum: `DEV`, `TEXT`, `IMAGE`, `NET`, `OTHER`.
+
+## Built-in Tools
+
+### AI Chat (DEV)
+Chat with AI models. Supports local GGUF and remote APIs.
+</pre></div><div class="file-label">docs/zh/changelog.md</div><div class="file-content"><pre># 更新日志
+
+**v3.0.0-rc.1** — 2026-05-29
+
+### ✨ 新功能
+
+- **插件生命周期**: 在 `SwissKitJPlugin` 接口中添加了 `onActivate()` 和 `onDeactivate()` 默认方法，允许插件挂载到生命周期事件。
+
+### ♻️ 变更
+
+- **ToolCategory 枚举**: 将分类字符串转换为 `ToolCategory` 枚举（`DEV`、`TEXT`、`IMAGE`、`NET`、`OTHER`），实现类型安全的分类处理。
+
+## 3.0.0-beta.2 (2026-05-25)
+
+- feat(ui): 支持 *.ggufz 文件
+</pre></div><h4>Feedback</h4><textarea class="feedback-box" id="fb-eval-02-beta-to-rc-old_skill" placeholder="Notes on this run..."></textarea></div></div><div class="run"><h3 onclick="toggle('eval-03-partial-update-with_skill')">eval-03-partial-update / with_skill — 6/8 passed (75%)</h3><div id="eval-03-partial-update-with_skill"><h4>Assertions</h4><div class="assertion fail">[FAIL] Uses 3.0.0-beta.2 as the current version (from SwissKit/pom.xml, not 3.0.0 from root)<br><small>Missing '3.0.0-beta.2' in CHANGELOG.md</small></div><div class="assertion pass">[PASS] Output has a section for the new version 3.0.0-beta.2<br><small>Found '3.0.0-beta.2' in docs/changelog.md</small></div><div class="assertion pass">[PASS] README.md is not needlessly rewritten (it already had 3.0.0-beta.2)<br><small>File README.md not modified (correctly left unchanged)</small></div><div class="assertion pass">[PASS] docs/getting-started.md updated from 3.0.0-beta.1 to 3.0.0-beta.2<br><small>Found '3.0.0-beta.2' in docs/getting-started.md</small></div><div class="assertion pass">[PASS] docs/getting-started.md has no stale 3.0.0-beta.1<br><small>'3.0.0-beta.1' absent from docs/getting-started.md</small></div><div class="assertion pass">[PASS] docs/development.md updated from 3.0.0-beta.1 to 3.0.0-beta.2<br><small>Found '3.0.0-beta.2' in docs/development.md</small></div><div class="assertion pass">[PASS] docs/changelog.md synced with new version entry<br><small>Found '3.0.0-beta.2' in docs/changelog.md</small></div><div class="assertion fail">[FAIL] docs/features.md includes Markdown Editor from git log (new feat commit)<br><small>Missing 'Markdown' in docs/features.md</small></div><h4>Output Files</h4><div class="file-label">docs/changelog.md</div><div class="file-content"><pre># Changelog
+
+## 3.0.0-beta.2 (2026-05-29)
+
+- feat: add Markdown Editor built-in tool
+- fix: plugin hot-reload file watcher race condition
+
+## 3.0.0-beta.1 (2026-05-20)
+- Initial release
+</pre></div><div class="file-label">docs/development.md</div><div class="file-content"><pre># Development Guide
+
+## Prerequisites
+- JDK 21+
+- SwissKitJ 3.0.0-beta.2 API module
+</pre></div><div class="file-label">docs/getting-started.md</div><div class="file-content"><pre># Getting Started
+
+Current version: **3.0.0-beta.2**
+
+```bash
+java -jar SwissKitJ-3.0.0-beta.2.jar
+```
+</pre></div><div class="file-label">docs/zh/changelog.md</div><div class="file-content"><pre># 更新日志
+
+## 3.0.0-beta.2 (2026-05-29)
+
+- 新增: Markdown 编辑器内置工具
+- 修复: 插件热重载文件监视器竞态条件
+
+## 3.0.0-beta.1 (2026-05-20)
+- 初始版本
+</pre></div><h4>Feedback</h4><textarea class="feedback-box" id="fb-eval-03-partial-update-with_skill" placeholder="Notes on this run..."></textarea></div></div><div class="run"><h3 onclick="toggle('eval-03-partial-update-old_skill')">eval-03-partial-update / old_skill — 3/8 passed (38%)</h3><div id="eval-03-partial-update-old_skill"><h4>Assertions</h4><div class="assertion pass">[PASS] Uses 3.0.0-beta.2 as the current version (from SwissKit/pom.xml, not 3.0.0 from root)<br><small>Found '3.0.0-beta.2' in CHANGELOG.md</small></div><div class="assertion fail">[FAIL] Output has a section for the new version 3.0.0-beta.2<br><small>Missing '3.0.0-beta.2' in docs/changelog.md</small></div><div class="assertion pass">[PASS] README.md is not needlessly rewritten (it already had 3.0.0-beta.2)<br><small>Hash matches (unchanged)</small></div><div class="assertion fail">[FAIL] docs/getting-started.md updated from 3.0.0-beta.1 to 3.0.0-beta.2<br><small>Missing '3.0.0-beta.2' in docs/getting-started.md</small></div><div class="assertion pass">[PASS] docs/getting-started.md has no stale 3.0.0-beta.1<br><small>'3.0.0-beta.1' absent from docs/getting-started.md</small></div><div class="assertion fail">[FAIL] docs/development.md updated from 3.0.0-beta.1 to 3.0.0-beta.2<br><small>Missing '3.0.0-beta.2' in docs/development.md</small></div><div class="assertion fail">[FAIL] docs/changelog.md synced with new version entry<br><small>Missing '3.0.0-beta.2' in docs/changelog.md</small></div><div class="assertion fail">[FAIL] docs/features.md includes Markdown Editor from git log (new feat commit)<br><small>Missing 'Markdown' in docs/features.md</small></div><h4>Output Files</h4><div class="file-label">CHANGELOG.md</div><div class="file-content"><pre># Changelog
+
+## 3.0.0 (2026-05-29)
+
+- feat: add Markdown Editor built-in tool
+- fix: plugin hot-reload file watcher race condition
+
+## 3.0.0-beta.2 (2026-05-29)
+
+- feat: add Markdown Editor built-in tool
+- fix: plugin hot-reload file watcher race condition
+
+## 3.0.0-beta.1 (2026-05-20)
+
+- Initial JavaFX migration release
+</pre></div><div class="file-label">README.md</div><div class="file-content"><pre># SwissKitJ
+![Version](https://img.shields.io/badge/version-3.0.0-blue)
+```bash
+java -jar SwissKit/target/SwissKitJ-3.0.0.jar
+```
+</pre></div><div class="file-label">docs/changelog.md</div><div class="file-content"><pre># Changelog
+
+## 3.0.0 (2026-05-29)
+
+- feat: add Markdown Editor built-in tool
+- fix: plugin hot-reload file watcher race condition
+
+## 3.0.0-beta.1 (2026-05-20)
+- Initial release
+</pre></div><div class="file-label">docs/development.md</div><div class="file-content"><pre># Development Guide
+
+## Prerequisites
+- JDK 21+
+- SwissKitJ 3.0.0 API module
+</pre></div><div class="file-label">docs/getting-started.md</div><div class="file-content"><pre># Getting Started
+
+Current version: **3.0.0**
+
+```bash
+java -jar SwissKitJ-3.0.0.jar
+```
+</pre></div><div class="file-label">docs/zh/changelog.md</div><div class="file-content"><pre># 更新日志
+
+## 3.0.0 (2026-05-29)
+
+- 新增: Markdown 编辑器内置工具
+- 修复: 插件热重载文件监视器竞态条件
+
+## 3.0.0-beta.1 (2026-05-20)
+- 初始版本
+</pre></div><h4>Feedback</h4><textarea class="feedback-box" id="fb-eval-03-partial-update-old_skill" placeholder="Notes on this run..."></textarea></div></div>
+<script>
+function toggle(id) {
+  var el = document.getElementById(id);
+  if (el.classList.contains('hidden')) {
+    el.classList.remove('hidden');
+  } else {
+    el.classList.add('hidden');
+  }
+}
+</script>
+</body></html>

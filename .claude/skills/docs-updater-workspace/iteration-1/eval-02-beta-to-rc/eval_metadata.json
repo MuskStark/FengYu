@@ -1,0 +1,56 @@
+{
+  "eval_id": "eval-02-beta-to-rc",
+  "eval_name": "Beta to RC with API changes and refactoring",
+  "prompt": "Update the docs for this project. The version has been bumped in SwissKit/pom.xml. Look at the git history since the last tag, figure out what changed, and update all documentation accordingly. The project root is /Users/phoebej/Develop/Java/SwissKitJ/.claude/skills/docs-updater-workspace/test-fixtures/eval-02-beta-to-rc",
+  "assertions": [
+    {
+      "id": "version-extracted-correctly",
+      "description": "Uses 3.0.0-rc.1 in output (from SwissKit/pom.xml)",
+      "check_type": "grep",
+      "file_pattern": "CHANGELOG.md",
+      "must_contain": "3.0.0-rc.1"
+    },
+    {
+      "id": "readme-has-rc-version",
+      "description": "README.md uses 3.0.0-rc.1 for badge, download links, and release URL",
+      "check_type": "grep",
+      "file_pattern": "README.md",
+      "must_contain": "3.0.0-rc.1"
+    },
+    {
+      "id": "no-stale-version-in-readme",
+      "description": "No 3.0.0-beta.2 references remain in README.md",
+      "check_type": "grep_invert",
+      "file_pattern": "README.md",
+      "must_not_contain": "3.0.0-beta.2"
+    },
+    {
+      "id": "architecture-version-updated",
+      "description": "docs/architecture.md version references updated to 3.0.0-rc.1",
+      "check_type": "grep",
+      "file_pattern": "docs/architecture.md",
+      "must_contain": "3.0.0-rc.1"
+    },
+    {
+      "id": "changelog-has-rc-entry",
+      "description": "CHANGELOG.md has a 3.0.0-rc.1 section",
+      "check_type": "grep",
+      "file_pattern": "CHANGELOG.md",
+      "must_contain": "3.0.0-rc.1"
+    },
+    {
+      "id": "api-docs-updated-lifecycle",
+      "description": "docs/api.md references new lifecycle methods from git log (onActivate/onDeactivate)",
+      "check_type": "grep",
+      "file_pattern": "docs/api.md",
+      "must_contain": "onActivate"
+    },
+    {
+      "id": "features-mentions-lifecycle",
+      "description": "docs/features.md or docs/api.md mentions the plugin lifecycle addition",
+      "check_type": "grep_any",
+      "file_patterns": ["docs/features.md", "docs/api.md"],
+      "must_contain_one_of": ["onActivate", "lifecycle", "ToolCategory"]
+    }
+  ]
+}
