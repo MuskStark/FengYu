@@ -89,6 +89,14 @@ public interface AiService {
     // ── Tool management ───────────────────────────────────────
 
     /**
+     * @return true if the native (JNI) inference backend is loaded and healthy.
+     *         Returns false when using pure-Java fallback or cloud backends.
+     */
+    default boolean isNativeAvailable() {
+        return false;
+    }
+
+    /**
      * Register a tool that the AI model can invoke during generation.
      *
      * @param tool the tool to register
