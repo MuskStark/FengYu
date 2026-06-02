@@ -1,0 +1,63 @@
+{
+  "eval_id": "eval-01-simple-beta-bump",
+  "eval_name": "Simple beta version bump with new feature",
+  "prompt": "Update the docs for this project. The version has been bumped in SwissKit/pom.xml. Look at the git history since the last tag, figure out what changed, and update all documentation accordingly. The project root is /Users/phoebej/Develop/Java/SwissKitJ/.claude/skills/docs-updater-workspace/test-fixtures/eval-01-simple-beta-bump",
+  "assertions": [
+    {
+      "id": "version-extracted-correctly",
+      "description": "Uses 3.0.0-beta.2 in output (from SwissKit/pom.xml, not 3.0.0 from root)",
+      "check_type": "grep",
+      "file_pattern": "CHANGELOG.md",
+      "must_contain": "3.0.0-beta.2"
+    },
+    {
+      "id": "old-version-not-in-new-content",
+      "description": "New version section doesn't incorrectly reference 3.0.0-beta.1 as current",
+      "check_type": "grep",
+      "file_pattern": "README.md",
+      "must_contain": "3.0.0-beta.2"
+    },
+    {
+      "id": "no-stale-version-in-docs",
+      "description": "No 3.0.0-beta.1 references remain in docs/getting-started.md (except historical CHANGELOG entries)",
+      "check_type": "grep_invert",
+      "file_pattern": "docs/getting-started.md",
+      "must_not_contain": "3.0.0-beta.1"
+    },
+    {
+      "id": "readme-version-updated",
+      "description": "README.md badge and download links updated to 3.0.0-beta.2",
+      "check_type": "grep",
+      "file_pattern": "README.md",
+      "must_contain": "3.0.0-beta.2"
+    },
+    {
+      "id": "readme-no-old-version",
+      "description": "README.md has no stale 3.0.0-beta.1 references",
+      "check_type": "grep_invert",
+      "file_pattern": "README.md",
+      "must_not_contain": "3.0.0-beta.1"
+    },
+    {
+      "id": "changelog-has-new-version",
+      "description": "Root CHANGELOG.md has a section for 3.0.0-beta.2",
+      "check_type": "grep",
+      "file_pattern": "CHANGELOG.md",
+      "must_contain": "3.0.0-beta.2"
+    },
+    {
+      "id": "features-updated-with-hash-calculator",
+      "description": "docs/features.md includes Hash Calculator from git log analysis",
+      "check_type": "grep",
+      "file_pattern": "docs/features.md",
+      "must_contain": "Hash"
+    },
+    {
+      "id": "changelog-has-feat-entry",
+      "description": "CHANGELOG mentions the new Hash Calculator feature from git log",
+      "check_type": "grep",
+      "file_pattern": "CHANGELOG.md",
+      "must_contain": "Hash Calculator"
+    }
+  ]
+}

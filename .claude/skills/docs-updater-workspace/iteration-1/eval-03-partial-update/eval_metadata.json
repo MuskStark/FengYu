@@ -1,0 +1,62 @@
+{
+  "eval_id": "eval-03-partial-update",
+  "eval_name": "Partial update where README and CHANGELOG are already updated but docs are stale",
+  "prompt": "Update the docs for this project. The version has been bumped in SwissKit/pom.xml. Look at the git history since the last tag, figure out what changed, and update all documentation accordingly. The project root is /Users/phoebej/Develop/Java/SwissKitJ/.claude/skills/docs-updater-workspace/test-fixtures/eval-03-partial-update",
+  "assertions": [
+    {
+      "id": "version-extracted-correctly",
+      "description": "Uses 3.0.0-beta.2 as the current version (from SwissKit/pom.xml, not 3.0.0 from root)",
+      "check_type": "grep",
+      "file_pattern": "CHANGELOG.md",
+      "must_contain": "3.0.0-beta.2"
+    },
+    {
+      "id": "new-version-section-exists",
+      "description": "Output has a section for the new version 3.0.0-beta.2",
+      "check_type": "grep",
+      "file_pattern": "docs/changelog.md",
+      "must_contain": "3.0.0-beta.2"
+    },
+    {
+      "id": "readme-not-re-modified",
+      "description": "README.md is not needlessly rewritten (it already had 3.0.0-beta.2)",
+      "check_type": "file_hash_same",
+      "file": "README.md"
+    },
+    {
+      "id": "getting-started-updated",
+      "description": "docs/getting-started.md updated from 3.0.0-beta.1 to 3.0.0-beta.2",
+      "check_type": "grep",
+      "file_pattern": "docs/getting-started.md",
+      "must_contain": "3.0.0-beta.2"
+    },
+    {
+      "id": "getting-started-no-old-version",
+      "description": "docs/getting-started.md has no stale 3.0.0-beta.1",
+      "check_type": "grep_invert",
+      "file_pattern": "docs/getting-started.md",
+      "must_not_contain": "3.0.0-beta.1"
+    },
+    {
+      "id": "development-updated",
+      "description": "docs/development.md updated from 3.0.0-beta.1 to 3.0.0-beta.2",
+      "check_type": "grep",
+      "file_pattern": "docs/development.md",
+      "must_contain": "3.0.0-beta.2"
+    },
+    {
+      "id": "docs-changelog-synced",
+      "description": "docs/changelog.md synced with new version entry",
+      "check_type": "grep",
+      "file_pattern": "docs/changelog.md",
+      "must_contain": "3.0.0-beta.2"
+    },
+    {
+      "id": "features-updated-markdown-editor",
+      "description": "docs/features.md includes Markdown Editor from git log (new feat commit)",
+      "check_type": "grep",
+      "file_pattern": "docs/features.md",
+      "must_contain": "Markdown"
+    }
+  ]
+}
