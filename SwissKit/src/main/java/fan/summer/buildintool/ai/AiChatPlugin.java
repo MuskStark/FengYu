@@ -99,6 +99,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
         private final FlowPane attachmentBar = new FlowPane();
         private final Label statusLabel = new Label();
         private final Label modelLabel = new Label(I18n.get("builtin.ai.noModelLoaded"));
+        private final Label nativeUnavailableBanner = new Label();
 
         private AiService aiService;
         private boolean generating = false;
@@ -119,6 +120,19 @@ public class AiChatPlugin implements SwissKitJPlugin {
             VBox.setVgrow(scrollPane, Priority.ALWAYS);
 
             modelLabel.getStyleClass().add("ai-model-hint");
+
+            nativeUnavailableBanner.setText(I18n.get("builtin.ai.nativeUnavailable"));
+            nativeUnavailableBanner.setStyle(
+                "-fx-background-color: rgba(245,159,0,0.12);" +
+                "-fx-border-color: rgba(245,159,0,0.25);" +
+                "-fx-border-width: 0 0 1px 0;" +
+                "-fx-text-fill: rgba(255,255,255,0.75);" +
+                "-fx-font-size: 12px; -fx-padding: 6 20 6 20;" +
+                "-fx-alignment: center;"
+            );
+            nativeUnavailableBanner.setMaxWidth(Double.MAX_VALUE);
+            nativeUnavailableBanner.setManaged(false);
+            nativeUnavailableBanner.setVisible(false);
 
             HBox toolbar = new HBox(8, modelLabel);
             toolbar.getStyleClass().add("ai-chat-toolbar");
@@ -160,7 +174,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
                 }
             });
 
-            getChildren().addAll(toolbar, scrollPane, statusLabel, attachmentBar, inputBar);
+            getChildren().addAll(toolbar, nativeUnavailableBanner, scrollPane, statusLabel, attachmentBar, inputBar);
 
             addSystemMessage(I18n.get("builtin.ai.welcomeMessage"));
 
@@ -172,6 +186,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
             Platform.runLater(() -> {
                 Optional<AiService> opt = AiServiceProvider.getService();
                 boolean ready = false;
+                boolean isLocal = "local".equals(AiServiceProvider.getCurrentMode());
                 if (opt.isPresent()) {
                     aiService = opt.get();
                     ready = aiService.isReady();
@@ -181,6 +196,11 @@ public class AiChatPlugin implements SwissKitJPlugin {
                 }
                 sendBtn.setDisable(!ready);
                 attachBtn.setDisable(!ready);
+
+                // Show native-unavailable banner when using local backend without native acceleration
+                boolean showDegraded = isLocal && opt.isPresent() && !AiServiceProvider.isNativeAvailable();
+                nativeUnavailableBanner.setVisible(showDegraded);
+                nativeUnavailableBanner.setManaged(showDegraded);
             });
         }
 
