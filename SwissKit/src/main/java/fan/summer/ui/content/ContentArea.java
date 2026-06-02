@@ -293,7 +293,7 @@ public class ContentArea extends BorderPane {
 
         // Dynamic wrap length: viewport width minus 32px wrapper padding (16 left + 16 right)
         toolGrid.prefWrapLengthProperty().bind(
-            sp.viewportBoundsProperty().map(b -> b.getWidth() - 32)
+            sp.viewportBoundsProperty().map(b -> Math.max(b.getWidth() - 32, 0))
         );
 
         return sp;
