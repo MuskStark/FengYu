@@ -130,7 +130,7 @@ public class SwissKitJApp extends Application {
         log.info("Main window displayed");
 
         // ── Window resize (edge/corner drag) ────────────────
-        WindowResizeHelper.attach(stage, mainWindow);
+        WindowResizeHelper.attach(stage);
 
         // ── Start plugin loading (after UI is displayed) ────────
         loader.start();

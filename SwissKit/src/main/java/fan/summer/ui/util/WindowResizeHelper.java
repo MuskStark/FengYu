@@ -1,21 +1,17 @@
 package fan.summer.ui.util;
 
-import javafx.event.EventHandler;
-import javafx.geometry.Bounds;
-import javafx.geometry.Rectangle2D;
 import javafx.scene.Cursor;
+import javafx.scene.Scene;
 import javafx.scene.input.MouseEvent;
-import javafx.scene.layout.Region;
-import javafx.stage.Screen;
 import javafx.stage.Stage;
 
 /**
  * Attaches edge and corner resize behaviour to an undecorated JavaFX Stage.
  * <p>
- * Call {@link #attach(Stage, Region)} once after the stage is shown. The helper
- * registers mouse listeners on the root region for an 8-direction resize hot-zone
- * (6 px from each edge/corner). Dragging mutates the stage's position and size
- * directly, respecting minWidth / minHeight constraints.
+ * Call {@link #attach(Stage)} once after the stage is shown. The helper
+ * registers scene-level event filters for an 8-direction resize hot-zone
+ * (6 px from each edge/corner). Dragging mutates the stage's position and
+ * size directly, respecting minWidth / minHeight constraints.
  */
 public final class WindowResizeHelper {
 
@@ -24,17 +20,17 @@ public final class WindowResizeHelper {
     private WindowResizeHelper() {}
 
     /**
-     * Attaches resize detection to the given stage via the root region.
+     * Attaches resize detection to the given stage via its Scene.
      *
-     * @param stage the Stage to resize
-     * @param root  the root Region of the scene (mouse events are captured here)
+     * @param stage the Stage to resize (must have a Scene set)
      */
-    public static void attach(Stage stage, Region root) {
-        ResizeHandler handler = new ResizeHandler(stage, root);
-        root.setOnMouseMoved(handler::onMove);
-        root.setOnMousePressed(handler::onPress);
-        root.setOnMouseDragged(handler::onDrag);
-        root.setOnMouseReleased(handler::onRelease);
+    public static void attach(Stage stage) {
+        ResizeHandler handler = new ResizeHandler(stage);
+        Scene scene = stage.getScene();
+        scene.addEventFilter(MouseEvent.MOUSE_MOVED, handler::onMove);
+        scene.addEventFilter(MouseEvent.MOUSE_PRESSED, handler::onPress);
+        scene.addEventFilter(MouseEvent.MOUSE_DRAGGED, handler::onDrag);
+        scene.addEventFilter(MouseEvent.MOUSE_RELEASED, handler::onRelease);
     }
 
     private enum Direction {
@@ -43,25 +39,23 @@ public final class WindowResizeHelper {
 
     private static final class ResizeHandler {
         private final Stage stage;
-        private final Region root;
 
         private Direction direction = Direction.NONE;
         private double dragStartX, dragStartY;
         private double startStageX, startStageY;
         private double startStageW, startStageH;
 
-        ResizeHandler(Stage stage, Region root) {
+        ResizeHandler(Stage stage) {
             this.stage = stage;
-            this.root = root;
         }
 
         void onMove(MouseEvent e) {
             if (stage.isMaximized()) {
-                root.setCursor(Cursor.DEFAULT);
+                stage.getScene().setCursor(Cursor.DEFAULT);
                 return;
             }
             Direction d = detect(e);
-            root.setCursor(cursorFor(d));
+            stage.getScene().setCursor(cursorFor(d));
         }
 
         void onPress(MouseEvent e) {
@@ -156,17 +150,18 @@ public final class WindowResizeHelper {
             direction = Direction.NONE;
         }
 
+        /** Uses screen coordinates relative to stage bounds — no node coordinate system issues. */
         private Direction detect(MouseEvent e) {
-            double w = root.getWidth();
-            double h = root.getHeight();
-            double x = e.getX();
-            double y = e.getY();
+            double relX = e.getScreenX() - stage.getX();
+            double relY = e.getScreenY() - stage.getY();
+            double w = stage.getWidth();
+            double h = stage.getHeight();
             int b = BORDER_WIDTH;
 
-            boolean top    = y < b;
-            boolean bottom = y > h - b;
-            boolean left   = x < b;
-            boolean right  = x > w - b;
+            boolean top    = relY < b;
+            boolean bottom = relY > h - b;
+            boolean left   = relX < b;
+            boolean right  = relX > w - b;
 
             if (top    && left)  return Direction.NW;
             if (top    && right) return Direction.NE;
