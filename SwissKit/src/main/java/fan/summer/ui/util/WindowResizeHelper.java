@@ -4,18 +4,31 @@ import javafx.scene.Cursor;
 import javafx.scene.Scene;
 import javafx.scene.input.MouseEvent;
 import javafx.stage.Stage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Attaches edge and corner resize behaviour to an undecorated JavaFX Stage.
  * <p>
  * Call {@link #attach(Stage)} once after the stage is shown. The helper
  * registers scene-level event filters for an 8-direction resize hot-zone
- * (6 px from each edge/corner). Dragging mutates the stage's position and
- * size directly, respecting minWidth / minHeight constraints.
+ * (8 px from each edge/corner). Detection uses scene-local coordinates so
+ * it is independent of any stage-vs-scene offset that some platforms
+ * (notably macOS with {@code StageStyle.TRANSPARENT}) can introduce.
+ * Dragging mutates the stage's position and size directly, respecting
+ * minWidth / minHeight constraints.
+ * <p>
+ * Note: {@code stage.isMaximized()} is intentionally NOT consulted here
+ * — JavaFX on macOS with {@code StageStyle.TRANSPARENT} returns spurious
+ * {@code true} values from app start (see JDK-8253378 and related). Edge
+ * drags on a truly-maximized window naturally un-maximize and resize,
+ * which is the correct UX anyway.
  */
 public final class WindowResizeHelper {
 
-    private static final int BORDER_WIDTH = 6;
+    private static final Logger log = LoggerFactory.getLogger(WindowResizeHelper.class);
+
+    private static final int BORDER_WIDTH = 8;
 
     private WindowResizeHelper() {}
 
@@ -25,12 +38,18 @@ public final class WindowResizeHelper {
      * @param stage the Stage to resize (must have a Scene set)
      */
     public static void attach(Stage stage) {
-        ResizeHandler handler = new ResizeHandler(stage);
         Scene scene = stage.getScene();
+        if (scene == null) {
+            log.warn("WindowResizeHelper.attach called but stage has no Scene; nothing wired");
+            return;
+        }
+        ResizeHandler handler = new ResizeHandler(stage, scene);
         scene.addEventFilter(MouseEvent.MOUSE_MOVED, handler::onMove);
         scene.addEventFilter(MouseEvent.MOUSE_PRESSED, handler::onPress);
         scene.addEventFilter(MouseEvent.MOUSE_DRAGGED, handler::onDrag);
         scene.addEventFilter(MouseEvent.MOUSE_RELEASED, handler::onRelease);
+        log.debug("WindowResizeHelper attached: scene={}x{}",
+            scene.getWidth(), scene.getHeight());
     }
 
     private enum Direction {
@@ -39,27 +58,29 @@ public final class WindowResizeHelper {
 
     private static final class ResizeHandler {
         private final Stage stage;
+        private final Scene scene;
 
         private Direction direction = Direction.NONE;
+        private Direction lastHover = Direction.NONE;
         private double dragStartX, dragStartY;
         private double startStageX, startStageY;
         private double startStageW, startStageH;
 
-        ResizeHandler(Stage stage) {
+        ResizeHandler(Stage stage, Scene scene) {
             this.stage = stage;
+            this.scene = scene;
         }
 
         void onMove(MouseEvent e) {
-            if (stage.isMaximized()) {
-                stage.getScene().setCursor(Cursor.DEFAULT);
-                return;
-            }
             Direction d = detect(e);
-            stage.getScene().setCursor(cursorFor(d));
+            if (d != lastHover) {
+                log.debug("hover {} -> {}", lastHover, d);
+                lastHover = d;
+            }
+            scene.setCursor(cursorFor(d));
         }
 
         void onPress(MouseEvent e) {
-            if (stage.isMaximized()) return;
             Direction d = detect(e);
             if (d == Direction.NONE) return;
             direction = d;
@@ -69,12 +90,14 @@ public final class WindowResizeHelper {
             startStageY = stage.getY();
             startStageW = stage.getWidth();
             startStageH = stage.getHeight();
+            log.debug("press dir={} screen=({},{}) stage=({},{}) {}x{}",
+                d, dragStartX, dragStartY,
+                startStageX, startStageY, startStageW, startStageH);
             e.consume();
         }
 
         void onDrag(MouseEvent e) {
             if (direction == Direction.NONE) return;
-            if (stage.isMaximized()) return;
 
             double dx = e.getScreenX() - dragStartX;
             double dy = e.getScreenY() - dragStartY;
@@ -150,18 +173,23 @@ public final class WindowResizeHelper {
             direction = Direction.NONE;
         }
 
-        /** Uses screen coordinates relative to stage bounds — no node coordinate system issues. */
+        /**
+         * Detect resize direction using scene-local coordinates.  This is
+         * independent of any stage / scene offset (macOS TRANSPARENT stages
+         * can have such an offset for the shadow margin), so it stays correct
+         * regardless of platform.
+         */
         private Direction detect(MouseEvent e) {
-            double relX = e.getScreenX() - stage.getX();
-            double relY = e.getScreenY() - stage.getY();
-            double w = stage.getWidth();
-            double h = stage.getHeight();
+            double x = e.getSceneX();
+            double y = e.getSceneY();
+            double w = scene.getWidth();
+            double h = scene.getHeight();
             int b = BORDER_WIDTH;
 
-            boolean top    = relY < b;
-            boolean bottom = relY > h - b;
-            boolean left   = relX < b;
-            boolean right  = relX > w - b;
+            boolean top    = y >= 0 && y < b;
+            boolean bottom = y > h - b && y <= h;
+            boolean left   = x >= 0 && x < b;
+            boolean right  = x > w - b && x <= w;
 
             if (top    && left)  return Direction.NW;
             if (top    && right) return Direction.NE;
