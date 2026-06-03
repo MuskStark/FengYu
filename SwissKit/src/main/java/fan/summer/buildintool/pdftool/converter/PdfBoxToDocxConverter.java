@@ -6,6 +6,8 @@ import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.graphics.PDXObject;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
@@ -18,19 +20,23 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Pure-Java PDF-to-DOCX converter using Apache PDFBox for extraction and
- * Apache POI for DOCX generation.  Does <strong>not</strong> require any
- * external Office application.
+ * Apache POI for DOCX generation.
  *
  * <p>Conversion strategy per page:</p>
  * <ol>
- *   <li>Extract text with {@link PDFTextStripper} and write it as a styled
- *       paragraph (font size derived from the page dimensions).</li>
- *   <li>If a page yields very little text (&le; 10 characters) it is treated
- *       as image-only and rendered to a PNG that is embedded in the DOCX.</li>
+ *   <li>Extract text with {@link PDFTextStripper} and individual images via
+ *       page-resource enumeration.</li>
+ *   <li>If the page has text, write styled paragraphs <em>and</em> embed any
+ *       extracted images after the text.</li>
+ *   <li>If the page has no significant text but has extracted images, embed
+ *       those images at their original resolution.</li>
+ *   <li>If the page has neither text nor extractable images (e.g. vector
+ *       graphics), render the whole page to a PNG as a fallback.</li>
  * </ol>
  *
  * @since 3.0.0
@@ -39,11 +45,10 @@ public class PdfBoxToDocxConverter implements DocumentConverter {
 
     private static final PluginLogger log = LoggerFactory.getLogger(PdfBoxToDocxConverter.class);
 
-    /** Minimum characters on a page to consider it "textual". */
     private static final int TEXT_THRESHOLD = 10;
-
-    /** Resolution (DPI) used when rendering image-only pages. */
     private static final float RENDER_DPI = 150f;
+    private static final int MIN_IMAGE_SIZE = 10;
+    private static final int IMAGE_WIDTH_EMU = 5486400; // ~6 inches
 
     @Override
     public void convert(Path inputPath, Path outputPath) throws Exception {
@@ -63,17 +68,25 @@ public class PdfBoxToDocxConverter implements DocumentConverter {
 
                     PDPage page = pdfDoc.getPage(i);
                     String text = extractPageText(pdfDoc, i);
+                    List<ExtractedImage> images = extractPageImages(page);
 
                     if (text.length() > TEXT_THRESHOLD) {
-                        // Text page — write content as paragraphs
                         writeTextPage(docx, text, page);
+                        for (ExtractedImage img : images) {
+                            writeExtractedImage(docx, img);
+                        }
+                    } else if (!images.isEmpty()) {
+                        log.debug("Page {} has {} extracted images, no significant text",
+                                i + 1, images.size());
+                        for (ExtractedImage img : images) {
+                            writeExtractedImage(docx, img);
+                        }
                     } else {
-                        // Image-only / scanned page — render and embed as image
-                        log.debug("Page {} has little text ({} chars), rendering as image", i + 1, text.length());
+                        log.debug("Page {} has little text ({} chars), rendering as image",
+                                i + 1, text.length());
                         writeImagePage(docx, renderer, i);
                     }
 
-                    // Page separator (except after the last page)
                     if (i < pageCount - 1) {
                         XWPFParagraph sep = docx.createParagraph();
                         sep.setSpacingAfter(200);
@@ -81,7 +94,6 @@ public class PdfBoxToDocxConverter implements DocumentConverter {
                     }
                 }
 
-                // Write DOCX
                 Path parent = outputPath.getParent();
                 if (parent != null && !Files.exists(parent)) {
                     Files.createDirectories(parent);
@@ -95,11 +107,41 @@ public class PdfBoxToDocxConverter implements DocumentConverter {
         log.info("PDF to DOCX conversion completed: {}", outputPath);
     }
 
+    // ── Image extraction ───────────────────────────────────────
+
+    private static List<ExtractedImage> extractPageImages(PDPage page) {
+        List<ExtractedImage> images = new ArrayList<>();
+        try {
+            var resources = page.getResources();
+            if (resources == null) return images;
+
+            for (var name : resources.getXObjectNames()) {
+                try {
+                    PDXObject xobj = resources.getXObject(name);
+                    if (xobj instanceof PDImageXObject img) {
+                        BufferedImage bi = img.getImage();
+                        if (bi.getWidth() < MIN_IMAGE_SIZE || bi.getHeight() < MIN_IMAGE_SIZE) continue;
+                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                        ImageIO.write(bi, "png", baos);
+                        images.add(new ExtractedImage(baos.toByteArray(), bi.getWidth(), bi.getHeight()));
+                    }
+                } catch (Exception e) {
+                    log.debug("Failed to extract image {}: {}", name.getName(), e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Failed to enumerate page resources: {}", e.getMessage());
+        }
+        return images;
+    }
+
+    private record ExtractedImage(byte[] pngBytes, int width, int height) {}
+
     // ── Text extraction ────────────────────────────────────────
 
     private static String extractPageText(PDDocument doc, int pageIndex) throws IOException {
         PDFTextStripper stripper = new PDFTextStripper();
-        stripper.setStartPage(pageIndex + 1); // 1-based
+        stripper.setStartPage(pageIndex + 1);
         stripper.setEndPage(pageIndex + 1);
         stripper.setSortByPosition(true);
         return stripper.getText(doc).trim();
@@ -108,37 +150,49 @@ public class PdfBoxToDocxConverter implements DocumentConverter {
     // ── Text page → DOCX paragraphs ────────────────────────────
 
     private static void writeTextPage(XWPFDocument docx, String text, PDPage page) {
-        // Derive a sensible font size from the page dimensions.
-        // A standard A4 page is ~842pt tall and typically uses 10-12pt fonts.
         int fontSize = deriveFontSize(page);
-
-        // Split text into lines and write each as a paragraph.
         String[] lines = text.split("\\R");
         for (String line : lines) {
             XWPFParagraph para = docx.createParagraph();
             para.setSpacingAfter(0);
 
             if (line.isEmpty()) {
-                // Empty line — keep as blank paragraph for spacing
                 continue;
             }
 
             XWPFRun run = para.createRun();
             run.setText(line);
             run.setFontSize(fontSize);
-            run.setFontFamily("SimSun"); // Good CJK coverage
+            run.setFontFamily("SimSun");
         }
     }
 
     private static int deriveFontSize(PDPage page) {
         PDRectangle mediaBox = page.getMediaBox();
         float heightPt = mediaBox.getHeight();
-        // A4 = 842pt → font 11; scale roughly linearly, clamped to [8, 16].
         int size = Math.round(heightPt / 842f * 11f);
         return Math.max(8, Math.min(16, size));
     }
 
-    // ── Image page → rendered PNG embedded in DOCX ─────────────
+    // ── Extracted image → DOCX embed ───────────────────────────
+
+    private static void writeExtractedImage(XWPFDocument docx, ExtractedImage img)
+            throws IOException, org.apache.poi.openxml4j.exceptions.InvalidFormatException {
+        XWPFParagraph para = docx.createParagraph();
+        para.setSpacingAfter(0);
+
+        int heightEmu = Math.round((float) img.height / img.width * IMAGE_WIDTH_EMU);
+        try (var bis = new java.io.ByteArrayInputStream(img.pngBytes)) {
+            XWPFRun picRun = para.createRun();
+            @SuppressWarnings("deprecation")
+            Object unused = picRun.addPicture(bis,
+                    org.apache.poi.xwpf.usermodel.Document.PICTURE_TYPE_PNG,
+                    "extracted_image.png",
+                    IMAGE_WIDTH_EMU, heightEmu);
+        }
+    }
+
+    // ── Full-page render fallback → DOCX embed ─────────────────
 
     private static void writeImagePage(XWPFDocument docx, PDFRenderer renderer, int pageIndex)
             throws IOException, org.apache.poi.openxml4j.exceptions.InvalidFormatException {
@@ -150,9 +204,7 @@ public class PdfBoxToDocxConverter implements DocumentConverter {
         XWPFParagraph para = docx.createParagraph();
         para.setSpacingAfter(0);
 
-        // Compute width in EMUs (English Metric Units) for the DOCX image.
-        // Target ~6 inches wide, which is ~5486400 EMUs.
-        int widthEmu = 5486400;
+        int widthEmu = IMAGE_WIDTH_EMU;
         int heightEmu = Math.round((float) image.getHeight() / image.getWidth() * widthEmu);
 
         try (var bis = new java.io.ByteArrayInputStream(imageBytes)) {
