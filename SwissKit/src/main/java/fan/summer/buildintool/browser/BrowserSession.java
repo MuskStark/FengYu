@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Manages a Playwright browser session using the system's already-installed
@@ -44,7 +45,11 @@ public class BrowserSession implements AutoCloseable {
         }
         log.info("Using system browser: {}", browserPath);
 
-        playwright = Playwright.create();
+        // Explicitly skip any browser download — only use the system's installed browser
+        Playwright.CreateOptions createOptions = new Playwright.CreateOptions()
+            .setEnv(Map.of("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1"));
+
+        playwright = Playwright.create(createOptions);
         browser = playwright.chromium().launch(new BrowserType.LaunchOptions()
             .setHeadless(false)
             .setExecutablePath(browserPath)
