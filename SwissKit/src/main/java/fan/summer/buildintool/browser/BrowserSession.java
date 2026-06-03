@@ -1,6 +1,7 @@
 package fan.summer.buildintool.browser;
 
 import com.microsoft.playwright.*;
+import com.microsoft.playwright.options.LoadState;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
 
