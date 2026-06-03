@@ -90,6 +90,16 @@ public class OpenAiService implements AiService {
     }
 
     @Override public Optional<String> getModelName() { return Optional.ofNullable(modelName); }
+
+    /** Returns the configured API endpoint (for planner direct calls). */
+    public String getEndpoint() { return endpoint; }
+
+    /** Returns the configured API key (for planner direct calls). */
+    public String getApiKey() { return apiKey; }
+
+    /** Returns the configured model name string (for planner direct calls). */
+    public String getModelNameInternal() { return modelName; }
+
     @Override public long getMemoryUsage() { return -1; }
     @Override public boolean isGenerating() { return generating; }
 
