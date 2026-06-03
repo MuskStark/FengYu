@@ -5,10 +5,19 @@ import com.microsoft.playwright.options.LoadState;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Base64;
+import java.util.List;
 
 /**
- * Manages a Playwright browser session — one headed Chromium instance with a single page.
+ * Manages a Playwright browser session using the system's already-installed
+ * Chrome or Edge browser — no separate browser download required.
+ *
+ * <p>On construction, the session detects the system browser (Chrome, then Edge,
+ * then Chromium) and launches it in headed mode via Playwright. The Playwright
+ * driver (Node.js wrapper) is bundled in the Maven dependency, so no manual
+ * installation is needed at all.</p>
  *
  * <p>All methods are synchronous and blocking. The session must be {@link #close()}'d
  * when done to release the browser process.</p>
@@ -22,17 +31,28 @@ public class BrowserSession implements AutoCloseable {
     private Page page;
 
     /**
-     * Launches a headed Chromium browser and opens a new page.
+     * Launches a headed browser and opens a new page.
+     * Uses the system's Chrome/Edge/Chromium — no browser download required.
+     *
+     * @throws RuntimeException if no supported browser is found on the system
      */
     public BrowserSession() {
+        Path browserPath = detectSystemBrowser();
+        if (browserPath == null) {
+            throw new RuntimeException(
+                "No supported browser found. Please install Google Chrome, Microsoft Edge, or Chromium.");
+        }
+        log.info("Using system browser: {}", browserPath);
+
         playwright = Playwright.create();
         browser = playwright.chromium().launch(new BrowserType.LaunchOptions()
             .setHeadless(false)
-            .setArgs(java.util.List.of("--start-maximized")));
+            .setExecutablePath(browserPath)
+            .setArgs(List.of("--start-maximized")));
         BrowserContext context = browser.newContext(new Browser.NewContextOptions()
             .setViewportSize(null));
         page = context.newPage();
-        log.info("Browser session started (headed Chromium)");
+        log.info("Browser session started (headed, system browser)");
     }
 
     /**
@@ -189,5 +209,58 @@ public class BrowserSession implements AutoCloseable {
         playwright = null;
         page = null;
         log.info("Browser session closed");
+    }
+
+    // ── System browser detection ────────────────────────────────
+
+    /**
+     * Detects the system's installed browser.
+     * Checks Chrome, then Edge, then Chromium.
+     *
+     * @return the browser executable path, or null if none found
+     */
+    private static Path detectSystemBrowser() {
+        String os = System.getProperty("os.name", "").toLowerCase();
+
+        List<Path> candidates;
+        if (os.contains("mac")) {
+            candidates = List.of(
+                Path.of("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+                Path.of("/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
+                Path.of("/Applications/Chromium.app/Contents/MacOS/Chromium")
+            );
+        } else if (os.contains("win")) {
+            candidates = List.of(
+                Path.of(System.getenv("PROGRAMFILES") != null
+                    ? System.getenv("PROGRAMFILES") + "\\Google\\Chrome\\Application\\chrome.exe"
+                    : "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"),
+                Path.of(System.getenv("PROGRAMFILES(X86)") != null
+                    ? System.getenv("PROGRAMFILES(X86)") + "\\Google\\Chrome\\Application\\chrome.exe"
+                    : "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"),
+                Path.of(System.getenv("PROGRAMFILES") != null
+                    ? System.getenv("PROGRAMFILES") + "\\Microsoft\\Edge\\Application\\msedge.exe"
+                    : "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe"),
+                Path.of(System.getenv("LOCALAPPDATA") != null
+                    ? System.getenv("LOCALAPPDATA") + "\\Google\\Chrome\\Application\\chrome.exe"
+                    : "C:\\Users\\Default\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe")
+            );
+        } else {
+            // Linux
+            candidates = List.of(
+                Path.of("/usr/bin/google-chrome"),
+                Path.of("/usr/bin/google-chrome-stable"),
+                Path.of("/usr/bin/chromium-browser"),
+                Path.of("/usr/bin/chromium"),
+                Path.of("/usr/bin/microsoft-edge"),
+                Path.of("/usr/bin/microsoft-edge-stable")
+            );
+        }
+
+        for (Path candidate : candidates) {
+            if (Files.exists(candidate)) {
+                return candidate;
+            }
+        }
+        return null;
     }
 }

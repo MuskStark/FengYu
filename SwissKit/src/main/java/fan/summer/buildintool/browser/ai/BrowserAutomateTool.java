@@ -11,7 +11,8 @@ import java.util.*;
  * AI-callable tool that accepts a natural language instruction and automates a
  * Chromium browser to accomplish the task.
  *
- * <p>The tool launches a headed Chromium browser via Playwright and runs an
+ * <p>The tool launches the system's already-installed browser (Chrome/Edge/Chromium)
+ * via Playwright — no separate browser download required. It then runs an
  * observe-think-act loop: it snapshots the page DOM, sends it to the configured
  * AI service as a planner, parses the returned action JSON, executes it via
  * Playwright, and repeats until the task is done or max iterations are reached.</p>
@@ -34,8 +35,9 @@ public class BrowserAutomateTool implements AiTool {
     @Override
     public String getDescription() {
         return "Automate a web browser using natural language instructions. " +
-               "Opens a visible Chromium browser and performs actions such as navigation, " +
+               "Opens the system's Chrome/Edge browser and performs actions such as navigation, " +
                "clicking, typing, form filling, data extraction, and more. " +
+               "No browser driver installation required — uses the system's existing browser. " +
                "Args: instruction (string, required) — a natural language description of " +
                "what to do, e.g. \"Open github.com and search for 'playwright java'\"";
     }
@@ -68,6 +70,15 @@ public class BrowserAutomateTool implements AiTool {
             String result = runThinkActLoop(session, instruction);
             log.info("Browser automation completed: {}", result);
             return AiToolResult.success(result);
+        } catch (RuntimeException e) {
+            log.error("Browser automation failed: {}", e.getMessage());
+            String msg = e.getMessage();
+            if (msg != null && msg.contains("No supported browser found")) {
+                return AiToolResult.error(
+                    "No supported browser found on this system. " +
+                    "Please install Google Chrome, Microsoft Edge, or Chromium.");
+            }
+            return AiToolResult.error("Browser automation failed: " + msg);
         } catch (Exception e) {
             log.error("Browser automation failed: {}", e.getMessage());
             return AiToolResult.error("Browser automation failed: " + e.getMessage());
