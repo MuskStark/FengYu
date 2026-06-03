@@ -117,7 +117,7 @@ public class BrowserAutomateTool implements AiTool {
 
             // 4. Parse action
             BrowserAction action = BrowserAction.fromJson(plannerResponse);
-            log.info("Iteration {}: action={} params={}", i + 1, action.type(), action.params);
+            log.info("Iteration {}: action={} params={}", i + 1, action.type(), action.params());
 
             // 5. Execute action
             if (action.type() == BrowserAction.Type.DONE) {
