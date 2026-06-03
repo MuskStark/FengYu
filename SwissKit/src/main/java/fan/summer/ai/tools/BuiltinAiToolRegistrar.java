@@ -2,6 +2,7 @@ package fan.summer.ai.tools;
 
 import fan.summer.api.ai.AiServiceProvider;
 import fan.summer.buildintool.ai.*;
+import fan.summer.buildintool.browser.ai.BrowserAutomateTool;
 import fan.summer.buildintool.emailarchive.EmailArchivePlugin;
 import fan.summer.buildintool.excelsplitter.ExcelSplitterPlugin;
 import fan.summer.buildintool.pdftool.ai.PdfMergeAiTool;
@@ -51,7 +52,9 @@ public class BuiltinAiToolRegistrar {
         AiServiceProvider.registerTool(new PdfMergeAiTool());
         AiServiceProvider.registerTool(new PdfToDocxAiTool());
 
-        log.info("Built-in AI tools registered: base64, hash_calculate, json_format, color_convert, excel_*, email_archive_*, pdf_split, pdf_merge, pdf_to_docx");
+        AiServiceProvider.registerTool(new BrowserAutomateTool());
+
+        log.info("Built-in AI tools registered: base64, hash_calculate, json_format, color_convert, excel_*, email_archive_*, pdf_split, pdf_merge, pdf_to_docx, browser_automate");
     }
 
     private static void registerExcelTools() {
