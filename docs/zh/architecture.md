@@ -21,7 +21,8 @@ SwissKitJ 基于 JavaFX 21 构建，采用模块化、插件化的架构。
 2. 创建 `PluginLoader` + `PluginRegistry`
 3. 通过 `BuiltinToolRegistrar` 注册内置工具
 4. 构建并显示 `MainWindow`
-5. 启动 `PluginLoader`（扫描 `plugins/` 目录并监听变化）
+5. 挂载 `WindowResizeHelper` 实现边缘/角落拖拽缩放
+6. 启动 `PluginLoader`（扫描 `plugins/` 目录并监听变化）
 
 ## UI 结构
 
@@ -91,7 +92,7 @@ H2 文件数据库位于工作目录下的 `.swisskit/swisskit.db`。Schema 从 
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.0.0.jar
+java -jar SwissKit/target/SwissKitJ-3.0.0-rc.1.jar
 ```
 
 胖 JAR 通过 `maven-shade-plugin` 构建，捆绑所有平台的 JavaFX 原生库（`.dll`、`.so`、`.dylib`）。

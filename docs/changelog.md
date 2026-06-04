@@ -6,7 +6,7 @@ All notable changes to SwissKitJ. Format based on [Keep a Changelog](https://kee
 
 ## [3.0.0] — JavaFX Migration
 
-**v3.0.0-rc1** — 2026-06-04
+**v3.0.0-rc.1** — 2026-06-04
 
 ### ✨ New Features
 
