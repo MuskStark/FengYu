@@ -122,8 +122,6 @@ public class NativeLoader {
     private static String getLibName() {
         String suffix = getPlatformSuffix(OS_NAME);
         String archTag = getArchTag(OS_ARCH);
-        String suffix = getPlatformSuffix(os);
-        String archTag = getArchTag(arch);
 
         // e.g. libllama_jni-aarch64.dylib, libllama_jni-x86_64.so
         String baseName = "libllama_jni";
