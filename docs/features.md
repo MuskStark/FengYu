@@ -1,6 +1,6 @@
 # Features
 
-SwissKitJ provides 8 built-in tools organized by category, plus support for external plugins.
+SwissKitJ provides 9 built-in tools organized by category, plus support for external plugins.
 
 ## Categories
 
@@ -57,6 +57,15 @@ Send emails with SMTP configuration:
 - Address book with tag management
 - Sent mail history log
 
+### Browser Automation (`DEV`)
+
+Automate web browsers via natural language instructions:
+
+- Uses the system's installed Chrome, Edge, or Chromium — no separate browser download
+- Observe-think-act loop with page DOM snapshots and CSS selector targeting
+- AI planner decides actions (navigate, click, type, extract, scroll, etc.)
+- Registered as `browser_automate` AI tool — callable from AI chat
+
 ### Excel Splitter (`OTHER`)
 
 Split Excel files using a multi-step wizard:
@@ -67,6 +76,10 @@ Split Excel files using a multi-step wizard:
 4. **Output** — Choose output directory and start processing
 
 ## System Features
+
+### Resizable Window
+
+The undecorated glassmorphism window supports edge and corner drag resize via `WindowResizeHelper`. Resize detection uses screen coordinates for compatibility across platforms, including macOS where `stage.isMaximized()` is unreliable with `StageStyle.TRANSPARENT`.
 
 ### Plugin Store
 
