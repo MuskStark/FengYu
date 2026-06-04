@@ -5,9 +5,8 @@ import java.nio.file.Path;
 /**
  * Strategy interface for converting a document from one format to another.
  *
- * <p>Implementations target specific back-ends (WPS Office, documents4j / MS Word,
- * LibreOffice, etc.). Callers obtain a suitable instance via
- * {@link OfficeDetector#detect()} and then invoke {@link #convert(Path, Path)}.</p>
+ * <p>Callers create a suitable implementation directly (e.g.
+ * {@link PdfBoxToDocxConverter}) and invoke {@link #convert(Path, Path)}.</p>
  *
  * @since 3.0.0
  */
