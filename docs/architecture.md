@@ -22,7 +22,8 @@ In `SwissKitJApp.start()`:
 3. Register built-in tools via `BuiltinToolRegistrar`
 4. Initialize AI backend based on saved mode (local GGUF / OpenAI / Anthropic)
 5. Build `MainWindow` and display it
-6. Start `PluginLoader` (scans `plugins/` dir and watches for changes)
+6. Attach `WindowResizeHelper` for edge/corner drag resize
+7. Start `PluginLoader` (scans `plugins/` dir and watches for changes)
 
 ## UI Structure
 
