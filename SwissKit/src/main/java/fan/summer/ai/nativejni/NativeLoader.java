@@ -116,9 +116,12 @@ public class NativeLoader {
         return failureReason;
     }
 
+    private static final String OS_NAME = System.getProperty("os.name", "").toLowerCase();
+    private static final String OS_ARCH = System.getProperty("os.arch", "").toLowerCase();
+
     private static String getLibName() {
-        String os = System.getProperty("os.name", "").toLowerCase();
-        String arch = System.getProperty("os.arch", "").toLowerCase();
+        String suffix = getPlatformSuffix(OS_NAME);
+        String archTag = getArchTag(OS_ARCH);
         String suffix = getPlatformSuffix(os);
         String archTag = getArchTag(arch);
 

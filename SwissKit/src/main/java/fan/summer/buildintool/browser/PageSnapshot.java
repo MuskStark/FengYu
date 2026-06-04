@@ -2,6 +2,8 @@ package fan.summer.buildintool.browser;
 
 import com.microsoft.playwright.ElementHandle;
 import com.microsoft.playwright.Page;
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
 
 import java.util.List;
 
@@ -14,6 +16,8 @@ import java.util.List;
  * to interact with.</p>
  */
 public final class PageSnapshot {
+
+    private static final PluginLogger log = LoggerFactory.getLogger(PageSnapshot.class);
 
     private PageSnapshot() {}
 
@@ -126,8 +130,9 @@ public final class PageSnapshot {
                         sb.append("... (truncated, more elements on page)\n");
                         return sb.toString();
                     }
-                } catch (Exception ignored) {
+                } catch (Exception e) {
                     // Skip elements that throw during property access
+                    log.debug("Skipped element during snapshot: {}", e.getMessage());
                 }
             }
         }

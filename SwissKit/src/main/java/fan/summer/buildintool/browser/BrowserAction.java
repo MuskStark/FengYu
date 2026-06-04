@@ -77,7 +77,9 @@ public record BrowserAction(
         Object val = params.get(key);
         if (val instanceof Number n) return n.doubleValue();
         if (val instanceof String s) {
-            try { return Double.parseDouble(s); } catch (NumberFormatException ignored) {}
+            try { return Double.parseDouble(s); } catch (NumberFormatException e) {
+                // Not a valid number — fall through to default
+            }
         }
         return defaultValue;
     }
