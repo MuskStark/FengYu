@@ -158,6 +158,55 @@ public class PluginLoader {
         jars.forEach(this::unloadJar);
     }
 
+    // ── Public API ────────────────────────────────────────────────
+
+    /**
+     * Returns the JAR file path that loaded the given plugin, or {@code null}
+     * if the plugin was not loaded from a JAR (e.g. a built-in tool).
+     *
+     * @param plugin the plugin to look up; must not be {@code null}
+     * @return the JAR path, or {@code null} if not found
+     * @since 3.0
+     */
+    public Path findJarPath(SwissKitJPlugin plugin) {
+        for (Map.Entry<Path, List<SwissKitJPlugin>> entry : jarPlugins.entrySet()) {
+            if (entry.getValue().contains(plugin)) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Uninstalls the given plugin by unloading its JAR and deleting the file
+     * from the plugins directory.
+     *
+     * <p>This method first unloads the JAR via {@link #unloadJar(Path)} (which
+     * closes the ClassLoader and removes the plugin from the registry), then
+     * deletes the JAR file from disk. The directory watcher will see the file
+     * deletion, but the second {@code unloadJar} call is a harmless no-op
+     * because the JAR was already removed from the internal maps.</p>
+     *
+     * @param plugin the plugin to uninstall; must not be {@code null}
+     * @throws IllegalArgumentException if the plugin's JAR cannot be found
+     * @since 3.0
+     */
+    public void uninstallPlugin(SwissKitJPlugin plugin) {
+        Path jar = findJarPath(plugin);
+        if (jar == null) {
+            throw new IllegalArgumentException("No JAR found for plugin: " + plugin.getId());
+        }
+        log.info("Uninstalling plugin: id={}, jar={}", plugin.getId(), jar.getFileName());
+        unloadJar(jar);
+        try {
+            Files.deleteIfExists(jar);
+            log.info("Deleted plugin JAR: {}", jar.getFileName());
+        } catch (IOException e) {
+            log.error("Failed to delete plugin JAR {}: {}", jar.getFileName(), e.getMessage(), e);
+            throw new RuntimeException("Failed to delete plugin JAR: " + e.getMessage(), e);
+        }
+    }
+
     // ── Scan ────────────────────────────────────────────────────
 
     private void scanAll() {
