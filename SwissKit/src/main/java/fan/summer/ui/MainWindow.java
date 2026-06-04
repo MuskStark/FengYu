@@ -1,6 +1,7 @@
 package fan.summer.ui;
 
 import fan.summer.api.i18n.I18n;
+import fan.summer.plugin.FavoriteService;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.plugin.PluginRegistry;
 import fan.summer.ui.content.ContentArea;
@@ -51,6 +52,7 @@ public class MainWindow extends StackPane {
     private final Stage        stage;
     private final PluginLoader loader;
     private final PluginRegistry registry;
+    private final FavoriteService favoriteService;
 
     private final TitleBar    titleBar;
     private final Sidebar     sidebar;
@@ -76,16 +78,18 @@ public class MainWindow extends StackPane {
      * @param loader   the PluginLoader that manages plugin discovery and hot-reload
      * @param registry the PluginRegistry holding all registered plugins and built-in tools
      */
-    public MainWindow(Stage stage, PluginLoader loader, PluginRegistry registry) {
+    public MainWindow(Stage stage, PluginLoader loader, PluginRegistry registry, FavoriteService favoriteService) {
         log.debug("Initialising MainWindow");
         this.stage    = stage;
         this.loader   = loader;
         this.registry = registry;
+        this.favoriteService = favoriteService;
 
         titleBar    = new TitleBar(stage, this::openSettings);
         sidebar     = new Sidebar();
         contentArea = new ContentArea();
         contentArea.setRegistry(registry);
+        contentArea.setFavoriteService(favoriteService);
         contentArea.setMinHeight(0);
 
         // AI service (initialized by SwissKitJApp.initializeAiBackend())
@@ -291,6 +295,12 @@ public class MainWindow extends StackPane {
             }
         );
 
+        // Favorites change → update sidebar badge + refresh content
+        sidebar.updateBadge("fav", favoriteService.count());
+        favoriteService.setOnFavoritesChanged(pluginId -> {
+            sidebar.updateBadge("fav", favoriteService.count());
+        });
+
         // Tool launch callback
         contentArea.setOnLaunch(plugin -> {
             log.info("Launching tool: id={}, name={}", plugin.getId(), plugin.getName());
@@ -316,6 +326,23 @@ public class MainWindow extends StackPane {
                 cachedViews.remove(current);
             }
             registry.deactivate();
+        });
+
+        // Plugin uninstall callback
+        contentArea.setOnUninstall(plugin -> {
+            log.info("Uninstalling plugin: id={}, name={}", plugin.getId(), plugin.getName());
+            // If the plugin is currently active, force deactivate and navigate back
+            SwissKitJPlugin active = registry.getActivePlugin();
+            if (active == plugin) {
+                cachedViews.remove(plugin);
+                registry.deactivate();
+                contentArea.showToolGrid();
+            }
+            try {
+                loader.uninstallPlugin(plugin);
+            } catch (Exception ex) {
+                log.error("Failed to uninstall plugin {}: {}", plugin.getId(), ex.getMessage(), ex);
+            }
         });
     }
 
