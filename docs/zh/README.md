@@ -42,7 +42,7 @@
 
 ```bash
 # 从 GitHub Releases 下载后：
-java -jar SwissKitJ-3.0.0-rc.1.jar
+java -jar SwissKitJ-3.0.0-rc.2.jar
 ```
 
 或从源码构建：

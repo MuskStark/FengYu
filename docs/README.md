@@ -42,7 +42,7 @@ A modular desktop toolbox that allows you to:
 
 ```bash
 # Download from GitHub Releases, then:
-java -jar SwissKitJ-3.0.0-rc.1.jar
+java -jar SwissKitJ-3.0.0-rc.2.jar
 ```
 
 Or build from source:

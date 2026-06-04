@@ -14,7 +14,7 @@ SwissKitJ 将 JavaFX 捆绑在胖 JAR 中，支持所有平台——无需单独
 从 [GitHub Releases](https://github.com/MuskStark/SwissKitJ/releases) 页面下载。
 
 ```bash
-java -jar SwissKitJ-3.0.0-rc.1.jar
+java -jar SwissKitJ-3.0.0-rc.2.jar
 ```
 
 胖 JAR 包含 macOS、Windows 和 Linux 的 JavaFX 原生库——无需额外设置。

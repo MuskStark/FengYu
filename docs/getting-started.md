@@ -14,7 +14,7 @@ SwissKitJ bundles JavaFX for all platforms inside the fat JAR — no separate Ja
 Download from the [GitHub Releases](https://github.com/MuskStark/SwissKitJ/releases) page.
 
 ```bash
-java -jar SwissKitJ-3.0.0-rc.1.jar
+java -jar SwissKitJ-3.0.0-rc.2.jar
 ```
 
 The fat JAR includes JavaFX native libraries for macOS, Windows, and Linux — no additional setup required.
