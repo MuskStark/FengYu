@@ -8,26 +8,11 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 
 **v3.0.0-rc.1** — 2026-06-04
 
-### ✨ 新功能
-
 - **浏览器自动化**：AI 可调用的 `browser_automate` 工具，通过自然语言自动化 Web 浏览器；使用 Playwright 驱动系统已安装的 Chrome/Edge/Chromium（无需额外下载浏览器）；观察-思考-行动循环，包含页面 DOM 快照、CSS 选择器定位和规划器 LLM
 - **窗口自由调整大小**：为无装饰的 `StageStyle.TRANSPARENT` 窗口添加边缘和角落拖拽缩放（`WindowResizeHelper`）；使用屏幕坐标确保 macOS 兼容性
 - **响应式布局**：`FlowPane` 换行长度动态绑定到视口宽度；`windowPane` 和 `ContentArea` 通过 `setMaxWidth/Height(Double.MAX_VALUE)` 正确填充父容器
 - **纯 Java PDF 转 DOCX**：`PdfBoxToDocxConverter` 使用 PDFBox 提取内容、Apache POI 生成 DOCX —— 无需安装外部 Office 软件；三级页面处理策略（文本 → 提取图片 → 全页渲染回退）
 - **原生后端健康追踪**：`NativeLoader.FailureReason` 枚举提供结构化故障诊断；原生加速不可用时在 AI 聊天中显示降级模式横幅
-
-### 🔧 修复
-
-- 修复浏览器自动化中的递归工具调用 —— 规划器通过直接 HTTP 调用绕过 `AiService` 工具注入
-- 修复 macOS 上窗口缩放被阻止 —— 不再依赖 `stage.isMaximized()` 判断（`StageStyle.TRANSPARENT` 下返回值不可靠）
-- 修复视口换行长度绑定时零宽度的边界问题
-- 修复 Playwright 运行时自动下载浏览器 —— 设置 `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD`
-- 修复 Playwright API 的 `LoadState` 导入和 `record` 访问器语法
-
-### ♻️ 变更
-
-- 将依赖 Office 的 PDF 转换器替换为纯 Java 实现（PDFBox + POI）；移除 `WpsConverter`、`Documents4jConverter` 和 `OfficeDetector`
-- 移除仅用于开发的计划文档和评估工作区数据
 
 ---
 
