@@ -2,6 +2,7 @@ package fan.summer.ui.store;
 
 import fan.summer.api.IconStyle;
 import fan.summer.api.ToolCategory;
+import fan.summer.api.component.GlassNotification;
 import fan.summer.api.i18n.I18n;
 import fan.summer.plugin.PluginLoader;
 import javafx.application.Platform;
@@ -375,6 +376,8 @@ public class OnlineStorePane extends VBox {
                     statusLabel.setText(I18n.get("store.online.installed", plugin.name, jarFileName));
                     statusLabel.setStyle("-fx-text-fill: #4cd97b; -fx-font-size: 12px;");
                     installBtn.setDisable(false);
+                    GlassNotification.toast(OnlineStorePane.this, GlassNotification.Type.SUCCESS,
+                            I18n.get("store.online.installed", plugin.name, jarFileName));
                     if (onInstallComplete != null) onInstallComplete.run();
                 });
             } catch (Exception ex) {
