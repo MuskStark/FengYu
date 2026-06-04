@@ -13,6 +13,10 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 - **响应式布局**：`FlowPane` 换行长度动态绑定到视口宽度；`windowPane` 和 `ContentArea` 通过 `setMaxWidth/Height(Double.MAX_VALUE)` 正确填充父容器
 - **纯 Java PDF 转 DOCX**：`PdfBoxToDocxConverter` 使用 PDFBox 提取内容、Apache POI 生成 DOCX —— 无需安装外部 Office 软件；三级页面处理策略（文本 → 提取图片 → 全页渲染回退）
 - **原生后端健康追踪**：`NativeLoader.FailureReason` 枚举提供结构化故障诊断；原生加速不可用时在 AI 聊天中显示降级模式横幅
+- 修复 macOS 上窗口缩放不生效（`StageStyle.TRANSPARENT` 下 `stage.isMaximized()` 返回值不可靠）
+- 修复工具卡片网格不随窗口宽度自适应
+- 修复 Playwright 运行时尝试下载浏览器驱动
+- 修复 AI 浏览器规划器通过工具注入循环递归调用 `browser_automate`
 
 ---
 
