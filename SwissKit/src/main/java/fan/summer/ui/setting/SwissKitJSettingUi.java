@@ -335,6 +335,7 @@ public class SwissKitJSettingUi {
     private static final String AI_ANTHROPIC_ENDPOINT_KEY = "ai.anthropic.endpoint";
     private static final String AI_ANTHROPIC_API_KEY_KEY = "ai.anthropic.api_key";
     private static final String AI_ANTHROPIC_MODEL_KEY = "ai.anthropic.model";
+    private static final String AI_LOCAL_BACKEND_KEY = "ai.local.backend";
 
     private static VBox buildAiModelTab() {
         VBox root = new VBox(16);
@@ -488,15 +489,74 @@ public class SwissKitJSettingUi {
                 svc.configure(getAiAnthropicEndpoint(), getAiAnthropicApiKey(), getAiAnthropicModel());
                 AiServiceProvider.switchMode(mode, svc);
             }
-            default -> {
-                // Local: AiServiceImpl should already be set; just notify
-                var svc = AiServiceProvider.getService();
-                if (svc.isEmpty() || !(svc.get() instanceof fan.summer.ai.service.AiServiceImpl)) {
-                    AiServiceProvider.switchMode(mode, new fan.summer.ai.service.AiServiceImpl());
-                } else {
-                    AiServiceProvider.notifyStateChanged();
-                }
+            default -> createLocalBackend(false);
+        }
+    }
+
+    /**
+     * Creates and registers a local AI backend (AiServiceImpl).
+     *
+     * @param autoLoadModel if true, auto-load the last saved model path from DB
+     */
+    private static void createLocalBackend(boolean autoLoadModel) {
+        String backendSetting = getAiLocalBackend();
+        boolean useNative = "native".equals(backendSetting);
+
+        if (useNative) {
+            fan.summer.ai.nativejni.NativeLoader.load();
+            if (!fan.summer.ai.nativejni.NativeLoader.isLoaded()) {
+                log.warn("Native library not available, falling back to Java engine");
+                useNative = false;
             }
+        }
+
+        fan.summer.ai.service.AiServiceImpl aiService =
+            new fan.summer.ai.service.AiServiceImpl(useNative);
+        AiServiceProvider.switchMode("local", aiService);
+
+        if (autoLoadModel) {
+            autoLoadModel(aiService);
+        }
+    }
+
+    /**
+     * Ensures the local AI backend is initialized. Called lazily when the AI tool is opened.
+     * No-op if already initialized. On first call, attempts native loading and auto-loads
+     * the last saved model.
+     */
+    public static synchronized void ensureLocalBackend() {
+        var svc = AiServiceProvider.getService();
+        if (svc.isPresent() && svc.get() instanceof fan.summer.ai.service.AiServiceImpl) {
+            return; // already initialized
+        }
+        log.info("Initializing local AI backend (lazy)");
+        createLocalBackend(true);
+    }
+
+    private static void autoLoadModel(fan.summer.ai.service.AiServiceImpl aiService) {
+        String modelPath = null;
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            AppSettingEntity entity = mapper.selectByKey(AI_MODEL_PATH_KEY);
+            if (entity != null && entity.getSettingValue() != null && !entity.getSettingValue().isBlank()) {
+                modelPath = entity.getSettingValue();
+            }
+        } catch (Exception e) {
+            log.debug("Could not read AI model path", e);
+        }
+
+        if (modelPath != null && java.nio.file.Files.exists(java.nio.file.Path.of(modelPath))) {
+            log.info("Auto-loading local AI model: {}", modelPath);
+            final String finalPath = modelPath;
+            Thread.ofVirtual().start(() -> {
+                try {
+                    aiService.loadModel(java.nio.file.Path.of(finalPath));
+                    AiServiceProvider.notifyStateChanged();
+                    log.info("Local AI model auto-loaded successfully");
+                } catch (Exception e) {
+                    log.warn("Auto-load failed: {}", e.getMessage());
+                }
+            });
         }
     }
 
@@ -588,6 +648,7 @@ public class SwissKitJSettingUi {
         memRow.setAlignment(Pos.CENTER_LEFT);
 
         panel.getChildren().addAll(
+            buildBackendToggle(),
             modelStatusLabel, modelPathLabel,
             labeled(I18n.get("setting.ai.modelPath"), modelPathField),
             modelBtnRow,
@@ -596,6 +657,48 @@ public class SwissKitJSettingUi {
 
         refreshAiModelState(modelStatusLabel, modelPathLabel, unloadBtn);
         return panel;
+    }
+
+    private static HBox buildBackendToggle() {
+        Label label = subLabel(I18n.get("setting.ai.backend"));
+
+        Button javaBtn = new Button(I18n.get("setting.ai.backend.java"));
+        Button nativeBtn = new Button(I18n.get("setting.ai.backend.native"));
+
+        // Segmented control: left button rounded on left, right button rounded on right
+        String baseStyle = "-fx-font-size: 12px; -fx-padding: 5 14 5 14; -fx-cursor: hand;";
+        javaBtn.setStyle(baseStyle + "-fx-background-radius: 4 0 0 4; -fx-border-radius: 4 0 0 4;");
+        nativeBtn.setStyle(baseStyle + "-fx-background-radius: 0 4 4 0; -fx-border-radius: 0 4 4 0;");
+
+        Runnable updateStyle = () -> {
+            String current = getAiLocalBackend();
+            boolean isJava = "java".equals(current);
+            javaBtn.getStyleClass().setAll(isJava ? "glass-btn-primary" : "glass-btn-secondary");
+            nativeBtn.getStyleClass().setAll(isJava ? "glass-btn-secondary" : "glass-btn-primary");
+            // Re-apply shape styles after class change (stylesheet may override)
+            javaBtn.setStyle(baseStyle + "-fx-background-radius: 4 0 0 4; -fx-border-radius: 4 0 0 4;");
+            nativeBtn.setStyle(baseStyle + "-fx-background-radius: 0 4 4 0; -fx-border-radius: 0 4 4 0;");
+        };
+        updateStyle.run();
+
+        javaBtn.setOnAction(e -> {
+            saveAiSetting(AI_LOCAL_BACKEND_KEY, "java");
+            updateStyle.run();
+            initializeAiService("local");
+        });
+
+        nativeBtn.setOnAction(e -> {
+            saveAiSetting(AI_LOCAL_BACKEND_KEY, "native");
+            updateStyle.run();
+            initializeAiService("local");
+        });
+
+        HBox toggle = new HBox(javaBtn, nativeBtn);
+        toggle.setAlignment(Pos.CENTER_LEFT);
+
+        HBox row = new HBox(10, label, toggle);
+        row.setAlignment(Pos.CENTER_LEFT);
+        return row;
     }
 
     private static VBox buildOpenAiPanel() {
@@ -863,6 +966,20 @@ public class SwissKitJSettingUi {
             if (entity != null && !entity.getSettingValue().isBlank()) return entity.getSettingValue();
         } catch (Exception ignored) {}
         return "claude-sonnet-4-20250514";
+    }
+
+    /**
+     * Returns the saved local AI backend choice, or "native" if not set.
+     *
+     * @return "java" or "native"
+     */
+    public static String getAiLocalBackend() {
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            AppSettingEntity entity = mapper.selectByKey(AI_LOCAL_BACKEND_KEY);
+            if (entity != null && entity.getSettingValue() != null) return entity.getSettingValue();
+        } catch (Exception ignored) {}
+        return "native";
     }
 
     // ═══════════════════════════════════════════════════════════════════

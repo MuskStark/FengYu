@@ -189,33 +189,9 @@ public class SwissKitJApp extends Application {
                 log.info("Anthropic backend initialized: model={}", fan.summer.ui.setting.SwissKitJSettingUi.getAiAnthropicModel());
             }
             default -> {
-                fan.summer.ai.service.AiServiceImpl aiService = new fan.summer.ai.service.AiServiceImpl();
-                AiServiceProvider.switchMode(mode, aiService);
-
-                String modelPath = null;
-                try (SqlSession session = DatabaseInit.getSqlSession()) {
-                    AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-                    AppSettingEntity entity = mapper.selectByKey("ai.model.path");
-                    if (entity != null && entity.getSettingValue() != null && !entity.getSettingValue().isBlank()) {
-                        modelPath = entity.getSettingValue();
-                    }
-                } catch (Exception e) {
-                    log.debug("Could not read AI model path", e);
-                }
-
-                if (modelPath != null && java.nio.file.Files.exists(java.nio.file.Path.of(modelPath))) {
-                    log.info("Auto-loading local AI model: {}", modelPath);
-                    final String finalPath = modelPath;
-                    Thread.ofVirtual().start(() -> {
-                        try {
-                            aiService.loadModel(java.nio.file.Path.of(finalPath));
-                            AiServiceProvider.notifyStateChanged();
-                            log.info("Local AI model auto-loaded successfully");
-                        } catch (Exception e) {
-                            log.warn("Auto-load failed: {}", e.getMessage());
-                        }
-                    });
-                }
+                // Local mode: defer initialization until AI tool is opened.
+                // See SwissKitJSettingUi.ensureLocalBackend() for the lazy init logic.
+                log.info("AI backend: local (deferred, will initialize when AI tool opens)");
             }
         }
     }

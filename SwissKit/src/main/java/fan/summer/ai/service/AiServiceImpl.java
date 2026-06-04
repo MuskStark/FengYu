@@ -6,7 +6,6 @@ import fan.summer.ai.model.GGUFReader;
 import fan.summer.ai.nativejni.GenerateCallback;
 import fan.summer.ai.nativejni.GenerateParams;
 import fan.summer.ai.nativejni.ModelParams;
-import fan.summer.ai.nativejni.NativeLoader;
 import fan.summer.ai.nativejni.NativeWorkerClient;
 import fan.summer.ai.tools.FunctionGemmaAdapter;
 import fan.summer.ai.tools.ToolCallParser;
@@ -47,16 +46,21 @@ public class AiServiceImpl implements AiService {
     private FunctionGemmaAdapter functionGemmaAdapter;
     private boolean isFunctionGemma;
 
-    public AiServiceImpl() {
-        NativeLoader.load();
-        if (NativeLoader.isLoaded()) {
+    /**
+     * Creates a new AI service with the specified backend.
+     *
+     * @param useNative if true, use llama.cpp JNI for inference;
+     *                  if false, use the pure Java inference engine.
+     *                  The caller must ensure the native library is loaded beforehand
+     *                  when useNative is true.
+     */
+    public AiServiceImpl(boolean useNative) {
+        if (useNative) {
             backend = Backend.NATIVE;
-            workerClient = new NativeWorkerClient();
             log.info("AI backend: native (llama.cpp JNI, out-of-process)");
         } else {
             backend = Backend.JAVA;
-            javaRunner = new LlamaRunner();
-            log.info("AI backend: pure Java (fallback)");
+            log.info("AI backend: pure Java");
         }
     }
 
@@ -103,6 +107,7 @@ public class AiServiceImpl implements AiService {
                     nativeChatTemplate = new ChatTemplate("");
                 }
             } else {
+                if (javaRunner == null) javaRunner = new LlamaRunner();
                 javaRunner.load(modelPath.toString());
             }
 
