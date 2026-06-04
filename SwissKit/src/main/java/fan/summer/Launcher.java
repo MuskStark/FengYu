@@ -56,19 +56,18 @@ public class Launcher {
     }
 
     /**
-     * Configures the JavaFX rendering pipeline before the toolkit initializes.
+     * Probes JavaFX native rendering support before the toolkit initializes.
      *
-     * <p>On hardened Linux distributions (e.g., UOS/Deepin), unsigned native libraries
-     * are blocked by system security verification. JavaFX's default hardware-accelerated
-     * renderer (Prism ES2 / OpenGL) ships unsigned native libraries ({@code libprism_es2.so}),
-     * which causes the application to crash on startup with a security verification error.
+     * <p>On macOS and Windows, hardware rendering always works — this method does nothing.
+     * On Linux, it probes whether the JavaFX Prism ES2 native library ({@code libprism_es2.so})
+     * can be loaded. On hardened Linux distributions (e.g., UOS/Deepin), unsigned native
+     * libraries are blocked by system security verification, which causes the application
+     * to crash when JavaFX tries to initialize the hardware pipeline. If the probe fails,
+     * this method sets {@code prism.order=sw} to fall back to pure-Java software rendering.
      *
-     * <p>This method checks if the user has explicitly set a rendering pipeline via the
-     * {@code prism.order} system property. If not, it defaults to software rendering
-     * ({@code sw}) which uses pure Java and does not require native OpenGL libraries.
-     *
-     * <p>Users who want hardware acceleration on supported platforms can override this
-     * by passing {@code -Dprism.order=es2} on the command line.
+     * <p>If the probe succeeds (or the platform is not Linux), JavaFX uses its default
+     * rendering pipeline (hardware-accelerated ES2). Users can override the choice by
+     * passing {@code -Dprism.order=es2} or {@code -Dprism.order=sw} on the command line.
      *
      * @since 3.0.0
      */
@@ -76,6 +75,34 @@ public class Launcher {
         if (System.getProperty("prism.order") != null) {
             return; // user has explicitly chosen a pipeline
         }
-        System.setProperty("prism.order", "sw");
+
+        String osName = System.getProperty("os.name", "").toLowerCase();
+        if (!osName.contains("linux")) {
+            return; // macOS and Windows don't block unsigned native libraries
+        }
+
+        // Probe: try loading the Prism ES2 native library from the JavaFX cache.
+        // If loading fails (UOS security verification, missing GPU drivers, etc.),
+        // fall back to software rendering which requires no native libraries.
+        Path cacheDir = Path.of(System.getProperty("user.home"), ".openjfx", "cache");
+        if (!Files.isDirectory(cacheDir)) return;
+
+        try (var stream = Files.walk(cacheDir, 3)) {
+            stream.filter(p -> p.getFileName().toString().equals("libprism_es2.so"))
+                  .findFirst()
+                  .ifPresent(Launcher::probePrismLib);
+        } catch (Exception ignored) {
+            // Can't probe — let JavaFX use its default pipeline
+        }
+    }
+
+    private static void probePrismLib(Path prismLib) {
+        try {
+            System.load(prismLib.toAbsolutePath().toString());
+            // Probe succeeded — native rendering available, keep default pipeline
+        } catch (Throwable t) {
+            // Probe failed (UOS security, missing GPU, etc.) — fall back to software
+            System.setProperty("prism.order", "sw");
+        }
     }
 }
