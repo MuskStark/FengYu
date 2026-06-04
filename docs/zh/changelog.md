@@ -6,7 +6,7 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 
 ## [3.0.0] — JavaFX 迁移
 
-**v3.0.0-rc1** — 2026-06-04
+**v3.0.0-rc.1** — 2026-06-04
 
 ### ✨ 新功能
 
