@@ -128,3 +128,11 @@ CREATE TABLE IF NOT EXISTS email_archive
     UNIQUE(account_email, folder, message_uid)
 );
 
+-- Plugin Favorites Table (tool bookmarks)
+CREATE TABLE IF NOT EXISTS plugin_favorites
+(
+    id         INTEGER PRIMARY KEY AUTO_INCREMENT,
+    plugin_id  VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMP   DEFAULT CURRENT_TIMESTAMP
+);
+

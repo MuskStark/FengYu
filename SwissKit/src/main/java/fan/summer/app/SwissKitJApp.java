@@ -8,6 +8,7 @@ import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.AppSettingEntity;
 import fan.summer.database.mapper.AppSettingMapper;
 import fan.summer.log.Slf4jPluginLoggerBinder;
+import fan.summer.plugin.FavoriteService;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.plugin.PluginRegistry;
 import fan.summer.ui.MainWindow;
@@ -91,6 +92,9 @@ public class SwissKitJApp extends Application {
         PluginLoader   loader   = new PluginLoader(pluginsDir);
         PluginRegistry registry = new PluginRegistry(loader);
 
+        // ── Favorites service (loads from DB) ──────────────────
+        FavoriteService favoriteService = new FavoriteService();
+
         // ── Register built-in tools ──────────────────────────────
         BuiltinToolRegistrar.register(loader, registry);
         log.info("Built-in tools registered, count={}", registry.getPlugins().size());
@@ -103,7 +107,7 @@ public class SwissKitJApp extends Application {
         log.info("Built-in AI tools registered");
 
         // ── Main window ────────────────────────────────────────
-        mainWindow = new MainWindow(stage, loader, registry);
+        mainWindow = new MainWindow(stage, loader, registry, favoriteService);
 
         // Transparent scene (for rounded window to display correctly)
         Scene scene = new Scene(mainWindow, 960, 620);
