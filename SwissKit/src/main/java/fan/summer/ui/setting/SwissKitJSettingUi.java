@@ -377,10 +377,19 @@ public class SwissKitJSettingUi {
         modeStack.setStyle("-fx-background-color: transparent;");
         showModePanel(modeStack, modeCombo.getValue());
 
+        // ── Backend toggle (Java / Native) — only visible in local mode ──
+        HBox backendToggleRow = buildBackendToggle();
+        boolean isLocalMode = "local".equals(modeLabelToKey(modeCombo.getValue()));
+        backendToggleRow.setVisible(isLocalMode);
+        backendToggleRow.setManaged(isLocalMode);
+
         modeCombo.setOnAction(e -> {
             String selected = modeCombo.getValue();
             showModePanel(modeStack, selected);
             String modeKey = modeLabelToKey(selected);
+            boolean showBackend = "local".equals(modeKey);
+            backendToggleRow.setVisible(showBackend);
+            backendToggleRow.setManaged(showBackend);
             saveAiSetting(AI_MODE_KEY, modeKey);
             initializeAiService(modeKey);
         });
@@ -445,7 +454,7 @@ public class SwissKitJSettingUi {
         loadAiSetting(AI_SYSTEM_PROMPT_KEY, val -> sysPromptField.setText(val));
 
         root.getChildren().addAll(
-            title, modeRow, modeStack,
+            title, modeRow, backendToggleRow, modeStack,
             paramTitle,
             labeled(I18n.get("setting.ai.temperature"), tempRow),
             labeled(I18n.get("setting.ai.topP"), topPRow),
@@ -648,7 +657,6 @@ public class SwissKitJSettingUi {
         memRow.setAlignment(Pos.CENTER_LEFT);
 
         panel.getChildren().addAll(
-            buildBackendToggle(),
             modelStatusLabel, modelPathLabel,
             labeled(I18n.get("setting.ai.modelPath"), modelPathField),
             modelBtnRow,
@@ -979,7 +987,7 @@ public class SwissKitJSettingUi {
             AppSettingEntity entity = mapper.selectByKey(AI_LOCAL_BACKEND_KEY);
             if (entity != null && entity.getSettingValue() != null) return entity.getSettingValue();
         } catch (Exception ignored) {}
-        return "native";
+        return "java";
     }
 
     // ═══════════════════════════════════════════════════════════════════
