@@ -170,7 +170,9 @@ public class BrowserSession implements AutoCloseable {
 
     /**
      * Waits for the specified number of seconds.
+     * This is an intentional wait action for browser automation, not a polling loop.
      */
+    @SuppressWarnings("BusyWait")
     public String wait(double seconds) {
         log.debug("wait: {}s", seconds);
         try {
@@ -218,6 +220,8 @@ public class BrowserSession implements AutoCloseable {
 
     // ── System browser detection ────────────────────────────────
 
+    private static final String OS_NAME = System.getProperty("os.name", "").toLowerCase();
+
     /**
      * Detects the system's installed browser.
      * Checks Chrome, then Edge, then Chromium.
@@ -225,16 +229,15 @@ public class BrowserSession implements AutoCloseable {
      * @return the browser executable path, or null if none found
      */
     private static Path detectSystemBrowser() {
-        String os = System.getProperty("os.name", "").toLowerCase();
 
         List<Path> candidates;
-        if (os.contains("mac")) {
+        if (OS_NAME.contains("mac")) {
             candidates = List.of(
                 Path.of("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
                 Path.of("/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
                 Path.of("/Applications/Chromium.app/Contents/MacOS/Chromium")
             );
-        } else if (os.contains("win")) {
+        } else if (OS_NAME.contains("win")) {
             candidates = List.of(
                 Path.of(System.getenv("PROGRAMFILES") != null
                     ? System.getenv("PROGRAMFILES") + "\\Google\\Chrome\\Application\\chrome.exe"

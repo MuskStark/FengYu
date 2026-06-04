@@ -64,9 +64,7 @@ public class BrowserAutomateTool implements AiTool {
 
         log.info("Starting browser automation: {}", instruction);
 
-        BrowserSession session = null;
-        try {
-            session = new BrowserSession();
+        try (BrowserSession session = new BrowserSession()) {
             String result = runThinkActLoop(session, instruction);
             log.info("Browser automation completed: {}", result);
             return AiToolResult.success(result);
@@ -82,14 +80,6 @@ public class BrowserAutomateTool implements AiTool {
         } catch (Exception e) {
             log.error("Browser automation failed: {}", e.getMessage());
             return AiToolResult.error("Browser automation failed: " + e.getMessage());
-        } finally {
-            if (session != null) {
-                try {
-                    session.close();
-                } catch (Exception e) {
-                    log.warn("Error closing browser session: {}", e.getMessage());
-                }
-            }
         }
     }
 
