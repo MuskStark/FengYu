@@ -212,6 +212,14 @@ for (int j = 0; j < pages.length; j++) {
 }
 ```
 
+### 6. `stage.isMaximized()` is unreliable on macOS `StageStyle.TRANSPARENT`
+
+JavaFX on macOS reports `stage.isMaximized() == true` from app start for transparent/undecorated stages, even though the window is visibly not maximized (and `stage.getWidth()/getHeight()` confirm normal size). Any code that gates behavior on `isMaximized()` will silently fail.
+
+This bit `WindowResizeHelper`: an early-bail `if (stage.isMaximized()) return;` killed cursor changes AND drag-resize, making it look like mouse events weren't reaching the scene at all. The fix is to not consult `isMaximized()` at all in resize logic — an edge drag on a truly-maximized window naturally un-maximizes via `stage.setX/setWidth`, which is the correct UX. The maximize button (`stage.setMaximized(!stage.isMaximized())`) still works because the toggle ends up correct after a click.
+
+If you genuinely need to know whether the stage is maximized, track it yourself via a listener on `stage.maximizedProperty()` *changes* rather than reading the current value.
+
 ### Checklist before changing any page/plugin layout
 
 - [ ] If you add a `ScrollPane` inside a `StackPane`, set `setMaxWidth(Double.MAX_VALUE)` and `setMaxHeight(Double.MAX_VALUE)`.
@@ -219,6 +227,7 @@ for (int j = 0; j < pages.length; j++) {
 - [ ] No binding of `maxWidthProperty` to the node's own `widthProperty` (or any property of an ancestor that itself depends on the node's size).
 - [ ] If you re-use a shell CSS class (`.sidebar`, `.tool-card`, etc.) on a different component, verify the CSS doesn't impose size constraints you didn't intend; otherwise use a fresh class or inline style.
 - [ ] When swapping `StackPane` children, toggle both `setVisible` and `setManaged`.
+- [ ] Never branch on `stage.isMaximized()` for `StageStyle.TRANSPARENT` windows on macOS — it lies. Track maximization state from the maximize toggle instead.
 
 ## Branch Status — v3.0.0-JavaFX
 

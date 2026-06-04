@@ -22,7 +22,8 @@ In `SwissKitJApp.start()`:
 3. Register built-in tools via `BuiltinToolRegistrar`
 4. Initialize AI backend based on saved mode (local GGUF / OpenAI / Anthropic)
 5. Build `MainWindow` and display it
-6. Start `PluginLoader` (scans `plugins/` dir and watches for changes)
+6. Attach `WindowResizeHelper` for edge/corner drag resize
+7. Start `PluginLoader` (scans `plugins/` dir and watches for changes)
 
 ## UI Structure
 
@@ -92,7 +93,7 @@ H2 file at `.swisskit/swisskit.db` relative to the working directory. Schema ini
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.0.0.jar
+java -jar SwissKit/target/SwissKitJ-3.0.0-rc.1.jar
 ```
 
 The fat JAR is built by `maven-shade-plugin` and bundles JavaFX native libraries for all platforms (`.dll`, `.so`, `.dylib`).

@@ -3,7 +3,6 @@ package fan.summer.buildintool.pdftool;
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
-import fan.summer.buildintool.pdftool.converter.OfficeDetector;
 import fan.summer.buildintool.pdftool.worker.PdfConvertWorker;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
@@ -31,8 +30,8 @@ import java.util.List;
  *
  * <p>Users drop or select PDF files, choose an output directory, and start
  * the conversion. The actual work is delegated to {@link PdfConvertWorker},
- * which uses a detected Office back-end (WPS, LibreOffice, or MS Word) via
- * {@link OfficeDetector}.</p>
+ * which uses a pure-Java converter (PDFBox + Apache POI) — no external
+ * Office installation required.</p>
  *
  * @since 3.0.0
  */
@@ -42,7 +41,6 @@ class PdfConvertPane extends VBox {
 
     private final List<Path> selectedFiles = new ArrayList<>();
     private Path outputDir;
-    private boolean backendAvailable;
 
     private final Label backendStatusLabel;
     private final VBox fileListBox;
@@ -56,11 +54,14 @@ class PdfConvertPane extends VBox {
         setPadding(new Insets(20, 24, 20, 24));
         setStyle("-fx-background-color: transparent;");
 
-        // ── Backend status ──────────────────────────────────
+        // ── Converter status ────────────────────────────────
         backendStatusLabel = new Label();
         backendStatusLabel.setMaxWidth(Double.MAX_VALUE);
         backendStatusLabel.setWrapText(true);
-        detectBackend();
+        backendStatusLabel.setText(I18n.get("builtin.pdf.convert.ready"));
+        backendStatusLabel.setStyle(
+            "-fx-text-fill: #4cd97b; -fx-font-size: 13px; -fx-padding: 10 14; " +
+            "-fx-background-color: rgba(76,217,123,0.08); -fx-background-radius: 6px;");
 
         // ── Drop zone ───────────────────────────────────────
         Label dropIcon = new Label("📄");
@@ -156,9 +157,6 @@ class PdfConvertPane extends VBox {
         );
         startButton.setMaxWidth(Double.MAX_VALUE);
         startButton.setOnAction(e -> startConvert());
-        if (!backendAvailable) {
-            startButton.setDisable(true);
-        }
 
         getChildren().addAll(
             backendStatusLabel, dropZone, fileListBox,
@@ -166,38 +164,6 @@ class PdfConvertPane extends VBox {
             progressBar, resultLabel,
             spacer, startButton
         );
-    }
-
-    // ── Backend detection ───────────────────────────────────
-
-    private void detectBackend() {
-        try {
-            var detected = OfficeDetector.detect();
-            if (detected.isPresent()) {
-                OfficeDetector.DetectedBackend backend = detected.get();
-                backendStatusLabel.setText(
-                    I18n.get("builtin.pdf.convert.backend.found", backend.displayName()));
-                backendStatusLabel.setStyle(
-                    "-fx-text-fill: #4cd97b; -fx-font-size: 13px; -fx-padding: 10 14; " +
-                    "-fx-background-color: rgba(76,217,123,0.08); -fx-background-radius: 6px;");
-                backendAvailable = true;
-                log.info("Detected Office backend: {}", backend.displayName());
-            } else {
-                backendStatusLabel.setText(I18n.get("builtin.pdf.convert.no.backend"));
-                backendStatusLabel.setStyle(
-                    "-fx-text-fill: #f5a623; -fx-font-size: 13px; -fx-padding: 10 14; " +
-                    "-fx-background-color: rgba(245,166,35,0.08); -fx-background-radius: 6px;");
-                backendAvailable = false;
-                log.warn("No Office backend detected");
-            }
-        } catch (Exception e) {
-            log.error("Error detecting Office backend: {}", e.getMessage());
-            backendStatusLabel.setText(I18n.get("builtin.pdf.convert.no.backend"));
-            backendStatusLabel.setStyle(
-                "-fx-text-fill: #f5a623; -fx-font-size: 13px; -fx-padding: 10 14; " +
-                "-fx-background-color: rgba(245,166,35,0.08); -fx-background-radius: 6px;");
-            backendAvailable = false;
-        }
     }
 
     // ── File handling ───────────────────────────────────────
@@ -326,10 +292,6 @@ class PdfConvertPane extends VBox {
     private void startConvert() {
         if (selectedFiles.isEmpty()) {
             showResult("Please select at least one PDF file", true);
-            return;
-        }
-        if (!backendAvailable) {
-            showResult(I18n.get("builtin.pdf.error.no.backend"), true);
             return;
         }
 

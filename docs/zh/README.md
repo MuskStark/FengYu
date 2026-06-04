@@ -42,7 +42,7 @@
 
 ```bash
 # 从 GitHub Releases 下载后：
-java -jar SwissKitJ-3.0.0.jar
+java -jar SwissKitJ-3.0.0-rc.1.jar
 ```
 
 或从源码构建：
@@ -50,7 +50,7 @@ java -jar SwissKitJ-3.0.0.jar
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.0.0.jar
+java -jar SwissKit/target/SwissKitJ-3.0.0-rc.1.jar
 ```
 
 ## 许可证

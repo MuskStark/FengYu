@@ -174,4 +174,16 @@ public final class AiServiceProvider {
     public static AiTool getTool(String name) {
         return tools.get(name);
     }
+
+    // ── Backend health ──────────────────────────────────────────
+
+    /**
+     * Returns {@code true} if the current AI service is using a healthy native
+     * (JNI) inference backend. Returns {@code false} for pure-Java fallback,
+     * cloud backends, or when no service is configured.
+     */
+    public static boolean isNativeAvailable() {
+        AiService svc = instance;
+        return svc != null && svc.isNativeAvailable();
+    }
 }

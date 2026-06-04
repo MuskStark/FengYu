@@ -57,9 +57,6 @@ public class PdfToDocxAiTool implements AiTool {
             return AiToolResult.success("Conversion complete: " + outputs.get(0).getFileName());
         } catch (CompletionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
-            if (cause instanceof IllegalStateException) {
-                return AiToolResult.error("No Office backend available. Install WPS, LibreOffice or MS Word.");
-            }
             log.error("AI pdf_to_docx failed: {}", cause.getMessage());
             return AiToolResult.error("PDF to DOCX failed: " + cause.getMessage());
         }
