@@ -76,6 +76,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
     @Override
     public void onActivate() {
         log.info("AI Chat plugin activated");
+        fan.summer.ui.setting.SwissKitJSettingUi.ensureLocalBackend();
     }
 
     @Override

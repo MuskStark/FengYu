@@ -25,10 +25,6 @@ public class LlamaContext implements AutoCloseable {
 
     private volatile long nativePtr; // LlamaWrapper* in C++
 
-    static {
-        NativeLoader.load();
-    }
-
     public LlamaContext(ModelParams params) {
         if (!NativeLoader.isLoaded()) {
             throw new IllegalStateException("Native llama library not loaded");
