@@ -13,6 +13,10 @@ All notable changes to SwissKitJ. Format based on [Keep a Changelog](https://kee
 - **Responsive Layout**: Dynamic `FlowPane` wrap length bound to viewport width; `windowPane` and `ContentArea` properly fill parent with `setMaxWidth/Height(Double.MAX_VALUE)`
 - **Pure Java PDF-to-DOCX**: `PdfBoxToDocxConverter` using PDFBox for extraction and Apache POI for DOCX generation — no external Office installation required; three-tier page strategy (text → extracted images → full-page render fallback)
 - **Native Backend Health Tracking**: `NativeLoader.FailureReason` enum for structured failure diagnostics; degraded-mode banner in AI chat when native acceleration is unavailable
+- Fix macOS window resize not working due to unreliable `stage.isMaximized()` with `StageStyle.TRANSPARENT`
+- Fix tool grid layout not responsive to window width changes
+- Fix Playwright runtime attempting to download browser driver unnecessarily
+- Fix AI browser planner recursively invoking `browser_automate` tool via tool injection loop
 
 ---
 
