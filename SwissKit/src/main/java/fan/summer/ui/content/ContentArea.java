@@ -185,9 +185,10 @@ public class ContentArea extends BorderPane {
         // Stacking instead of side-by-side keeps the tool grid width constant while the
         // panel slides in, so FlowPane doesn't reflow mid-animation.
         pageStack.getChildren().add(scrollPane);
-        pageStack.setAlignment(Pos.TOP_LEFT);
 
         StackPane center = new StackPane(pageStack, detailPanel);
+        center.setMaxWidth(Double.MAX_VALUE);
+        center.setMaxHeight(Double.MAX_VALUE);
         StackPane.setAlignment(detailPanel, Pos.TOP_RIGHT);
         detailPanel.setPickOnBounds(false);
         setCenter(center);
@@ -270,11 +271,9 @@ public class ContentArea extends BorderPane {
     }
 
     private ScrollPane buildScrollPane() {
-        // Tool grid
         toolGrid.setHgap(10);
         toolGrid.setVgap(10);
         toolGrid.setPadding(new Insets(16));
-        toolGrid.setPrefWrapLength(600);
 
         VBox wrapper = new VBox(
             sectionHeader("content.section.frequent", ""),
@@ -289,6 +288,14 @@ public class ContentArea extends BorderPane {
         sp.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         sp.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         sp.setStyle("-fx-background-color: transparent; -fx-background: transparent;");
+        sp.setMaxWidth(Double.MAX_VALUE);
+        sp.setMaxHeight(Double.MAX_VALUE);
+
+        // Dynamic wrap length: viewport width minus 32px wrapper padding (16 left + 16 right)
+        toolGrid.prefWrapLengthProperty().bind(
+            sp.viewportBoundsProperty().map(b -> Math.max(b.getWidth() - 32, 0))
+        );
+
         return sp;
     }
 

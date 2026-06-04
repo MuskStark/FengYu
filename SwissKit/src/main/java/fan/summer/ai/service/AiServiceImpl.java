@@ -145,6 +145,11 @@ public class AiServiceImpl implements AiService {
         return rt.totalMemory() - rt.freeMemory();
     }
 
+    @Override
+    public boolean isNativeAvailable() {
+        return backend == Backend.NATIVE && workerClient != null && !workerClient.shouldFallback();
+    }
+
     // ── Chat ──────────────────────────────────────────────────
 
     @Override

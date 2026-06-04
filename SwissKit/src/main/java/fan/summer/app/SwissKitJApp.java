@@ -11,6 +11,7 @@ import fan.summer.log.Slf4jPluginLoggerBinder;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.plugin.PluginRegistry;
 import fan.summer.ui.MainWindow;
+import fan.summer.ui.util.WindowResizeHelper;
 import fan.summer.Registrar.BuiltinToolRegistrar;
 import fan.summer.ai.tools.BuiltinAiToolRegistrar;
 import javafx.application.Application;
@@ -127,6 +128,9 @@ public class SwissKitJApp extends Application {
         stage.setMinHeight(520);
         stage.show();
         log.info("Main window displayed");
+
+        // ── Window resize (edge/corner drag) ────────────────
+        WindowResizeHelper.attach(stage);
 
         // ── Start plugin loading (after UI is displayed) ────────
         loader.start();
