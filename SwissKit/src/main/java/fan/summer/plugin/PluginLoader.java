@@ -188,6 +188,10 @@ public class PluginLoader {
      * deletion, but the second {@code unloadJar} call is a harmless no-op
      * because the JAR was already removed from the internal maps.</p>
      *
+     * <p>If the file is still locked by the OS after closing the ClassLoader,
+     * deletion is retried with short delays. If all retries fail, the file is
+     * marked for deletion on JVM exit.</p>
+     *
      * @param plugin the plugin to uninstall; must not be {@code null}
      * @throws IllegalArgumentException if the plugin's JAR cannot be found
      * @since 3.0
@@ -199,13 +203,48 @@ public class PluginLoader {
         }
         log.info("Uninstalling plugin: id={}, jar={}", plugin.getId(), jar.getFileName());
         unloadJar(jar);
-        try {
-            Files.deleteIfExists(jar);
+
+        // Retry deletion — the ClassLoader is closed but the OS may take a moment to release the file handle
+        boolean deleted = deleteWithRetry(jar, 5, 300);
+        if (deleted) {
             log.info("Deleted plugin JAR: {}", jar.getFileName());
-        } catch (IOException e) {
-            log.error("Failed to delete plugin JAR {}: {}", jar.getFileName(), e.getMessage(), e);
-            throw new RuntimeException("Failed to delete plugin JAR: " + e.getMessage(), e);
+        } else {
+            log.warn("JAR still locked after retries, marking for deleteOnExit: {}", jar.getFileName());
+            jar.toFile().deleteOnExit();
         }
+    }
+
+    /**
+     * Attempts to delete the given path, retrying up to {@code maxAttempts} times
+     * with {@code delayMs} delay between attempts. Each retry is preceded by
+     * {@code System.gc()} to encourage the JVM to release native file handles.
+     *
+     * @param path        the file to delete
+     * @param maxAttempts maximum number of delete attempts
+     * @param delayMs     milliseconds to wait between attempts
+     * @return {@code true} if the file was successfully deleted or did not exist
+     */
+    private boolean deleteWithRetry(Path path, int maxAttempts, long delayMs) {
+        for (int i = 0; i < maxAttempts; i++) {
+            try {
+                if (Files.deleteIfExists(path)) {
+                    return true;
+                }
+                // File doesn't exist — treat as success
+                return true;
+            } catch (IOException e) {
+                if (i < maxAttempts - 1) {
+                    log.debug("Delete attempt {}/{} failed for {}, retrying in {}ms: {}",
+                            i + 1, maxAttempts, path.getFileName(), delayMs, e.getMessage());
+                    System.gc(); // hint to release native file handles sooner
+                    try { Thread.sleep(delayMs); } catch (InterruptedException ignored) {
+                        Thread.currentThread().interrupt();
+                        return false;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     // ── Scan ────────────────────────────────────────────────────
@@ -278,6 +317,12 @@ public class PluginLoader {
         List<SwissKitJPlugin> plugins = jarPlugins.remove(jar);
         if (plugins != null) {
             log.info("Unloading plugin JAR: {} (contained {} plugin(s))", jar.getFileName(), plugins.size());
+            // Fire onUnload lifecycle callback
+            plugins.forEach(p -> {
+                try { p.onUnload(); } catch (Exception e) {
+                    log.warn("onUnload() failed for {}: {}", p.getId(), e.getMessage());
+                }
+            });
             if (registry != null) {
                 Platform.runLater(() -> plugins.forEach(registry::removePlugin));
             }

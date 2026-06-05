@@ -80,18 +80,12 @@ jobs:
         shell: pwsh
         run: mvn clean package -DskipTests -f SwissKit/pom.xml
 
-      # --- Without JRE: Launch4j .exe + fat JAR ---
+      # --- Without JRE: Launch4j .exe (JAR embedded inside exe) ---
       - name: Package Windows (without JRE)
         shell: pwsh
         run: |
-          $jarFile = Get-ChildItem SwissKit\target -Filter "SwissKitJ-*.jar" | Select-Object -First 1
-          if (-not $jarFile) {
-            Write-Error "ERROR: No SwissKitJ-*.jar found in SwissKit\target\"
-            exit 1
-          }
           New-Item -ItemType Directory -Force -Path release\SwissKitJ | Out-Null
           Move-Item SwissKit\target\SwissKit.exe release\SwissKitJ\SwissKitJ.exe -Force
-          Copy-Item $jarFile.FullName release\SwissKitJ\
           Copy-Item README.md release\SwissKitJ\
           Compress-Archive -Path release\SwissKitJ -DestinationPath "release\SwissKitJ-$env:VERSION-windows-x64.zip" -Force
           Write-Host "Created: release/SwissKitJ-$env:VERSION-windows-x64.zip"

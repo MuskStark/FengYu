@@ -24,6 +24,11 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 - 修复 `WindowResizeHelper` 重复挂载导致事件过滤器重复
 - 线程安全加固：`PluginLoader`、`PluginRegistry` 和 `MainWindow` 使用 `ConcurrentHashMap`、`volatile`、`synchronizedSet`
 - 工具卡片入场动画设置交错上限（最多 30 个），避免创建数百个 `PauseTransition` 实例
+- 修复 Windows 上插件 JAR 删除失败——增加重试机制（含 `System.gc()` 提示），文件仍被锁定时降级为 `deleteOnExit()`
+- 修复卸载插件 JAR 时未触发 `onUnload()` 生命周期回调
+- 修复卸载非活跃插件时缓存视图未清除，导致插件类无法被 GC 回收
+- 修复中文系统下切换英语界面仍返回中文——`ResourceBundle` 不再回退到 JVM 默认 locale
+- 修复 Windows 无 JRE 发行包冗余包含 fat JAR（Launch4j exe 已内嵌该 JAR）
 
 ---
 

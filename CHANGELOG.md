@@ -21,6 +21,11 @@ All notable changes to SwissKitJ. Format based on [Keep a Changelog](https://kee
 - Fix `WindowResizeHelper` double-attachment causing duplicate event filters
 - Thread-safety hardening across `PluginLoader`, `PluginRegistry`, and `MainWindow` (`ConcurrentHashMap`, `volatile`, `synchronizedSet`)
 - Stagger limit for tool card entry animations (max 30) to avoid creating hundreds of `PauseTransition` instances
+- Fix plugin JAR deletion on Windows — retry with `System.gc()` hint, fall back to `deleteOnExit()` if file is still locked
+- Fix `onUnload()` lifecycle callback not fired when unloading plugin JARs
+- Fix cached plugin view not cleared when uninstalling an inactive plugin, preventing GC of plugin classes
+- Fix English locale (`Locale.ENGLISH`) returning Chinese strings on Chinese-locale systems — `ResourceBundle` no longer falls back to JVM default locale
+- Fix Windows no-JRE release zip redundantly including the fat JAR alongside the Launch4j exe (which already embeds it)
 
 ---
 

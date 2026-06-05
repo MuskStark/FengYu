@@ -335,10 +335,11 @@ public class MainWindow extends StackPane {
         // Plugin uninstall callback
         contentArea.setOnUninstall(plugin -> {
             log.info("Uninstalling plugin: id={}, name={}", plugin.getId(), plugin.getName());
-            // If the plugin is currently active, force deactivate and navigate back
+            // Always clear cached view so the plugin's classes can be GC'd
+            cachedViews.remove(plugin);
+            // If the plugin is currently active, deactivate and navigate back to grid
             SwissKitJPlugin active = registry.getActivePlugin();
             if (active == plugin) {
-                cachedViews.remove(plugin);
                 registry.deactivate();
                 contentArea.showToolGrid();
             }
