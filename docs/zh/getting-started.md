@@ -32,7 +32,7 @@ mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
 
 # 运行
-java -jar SwissKit/target/SwissKitJ-3.0.0-rc.1.jar
+java -jar SwissKit/target/SwissKitJ-3.0.0-rc.2.jar
 ```
 
 **构建顺序很重要**：SwissKitJ-Api 提供共享的插件接口和可复用的 UI 组件。它必须先安装到本地 Maven 仓库，主应用才能编译。
@@ -42,7 +42,7 @@ java -jar SwissKit/target/SwissKitJ-3.0.0-rc.1.jar
 ### 胖 JAR
 
 ```bash
-java -jar SwissKit/target/SwissKitJ-3.0.0-rc.1.jar
+java -jar SwissKit/target/SwissKitJ-3.0.0-rc.2.jar
 ```
 
 ### IDE（IntelliJ IDEA）

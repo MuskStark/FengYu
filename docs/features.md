@@ -26,6 +26,7 @@ Chat with AI models using multiple backends. Supports:
 - Tool calling support with custom tool definitions
 - Chat session management with history
 - Auto-activates the configured backend on startup
+- **Java/Native inference engine toggle** in settings — native backend loads lazily when the AI tool is first opened
 
 ### JSON Formatter (`DEV`)
 
@@ -84,6 +85,14 @@ The undecorated glassmorphism window supports edge and corner drag resize via `W
 ### Plugin Store
 
 Browse and install plugins from the online catalog, or load a local plugin JAR. Installed plugins are hot-reloaded automatically.
+
+### Tool Favorites
+
+Bookmark any tool by clicking the star icon on its tool card or the detail panel. Favorites are persisted to the database and survive app restarts. The sidebar "Favorites" category filters to show only bookmarked tools.
+
+### Plugin Management
+
+Uninstall external plugins directly from the detail panel with a confirmation dialog. Install notifications (toast) confirm successful plugin installation from the online store or local JAR.
 
 ### Settings
 

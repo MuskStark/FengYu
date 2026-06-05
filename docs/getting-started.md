@@ -32,7 +32,7 @@ mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
 
 # Run
-java -jar SwissKit/target/SwissKitJ-3.0.0-rc.1.jar
+java -jar SwissKit/target/SwissKitJ-3.0.0-rc.2.jar
 ```
 
 **Build order matters**: `SwissKitJ-Api` provides the shared plugin interface and reusable UI components. It must be installed into the local Maven repository before the main app can compile.
@@ -42,7 +42,7 @@ java -jar SwissKit/target/SwissKitJ-3.0.0-rc.1.jar
 ### Fat JAR
 
 ```bash
-java -jar SwissKit/target/SwissKitJ-3.0.0-rc.1.jar
+java -jar SwissKit/target/SwissKitJ-3.0.0-rc.2.jar
 ```
 
 ### IDE (IntelliJ IDEA)

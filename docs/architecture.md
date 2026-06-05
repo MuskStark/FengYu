@@ -20,19 +20,20 @@ In `SwissKitJApp.start()`:
 1. Resolve `plugins/` directory (JAR sibling in production, `./plugins/` in dev)
 2. Create `PluginLoader` + `PluginRegistry`
 3. Register built-in tools via `BuiltinToolRegistrar`
-4. Initialize AI backend based on saved mode (local GGUF / OpenAI / Anthropic)
+4. Create `FavoriteService` (loads favorites from DB)
 5. Build `MainWindow` and display it
-6. Attach `WindowResizeHelper` for edge/corner drag resize
-7. Start `PluginLoader` (scans `plugins/` dir and watches for changes)
+6. Initialize remote AI backends (OpenAI/Anthropic) if configured; local backend is deferred until the AI tool is first opened
+7. Attach `WindowResizeHelper` for edge/corner drag resize
+8. Start `PluginLoader` (scans `plugins/` dir and watches for changes)
 
 ## UI Structure
 
 | Component | Role |
 |-----------|------|
 | `MainWindow` | Root `StackPane`; owns `TitleBar`, `Sidebar`, `ContentArea`, status bar |
-| `Sidebar` | Category-based navigation with search bar; categories: all / text / image / dev / net / other |
+| `Sidebar` | Category-based navigation with search bar; categories: all / text / image / dev / net / other / favorites |
 | `ContentArea` | Shows `ToolCard` grid or active tool view; manages `DetailPanel` and back-bar |
-| `DetailPanel` | Slide-in panel showing plugin metadata with a Launch button |
+| `DetailPanel` | Slide-in panel showing plugin metadata with Launch, Uninstall (external plugins only), and Favorite toggle buttons |
 | `TitleBar` | Custom window chrome (window is `StageStyle.TRANSPARENT`) |
 
 ### Navigation Flow
@@ -93,7 +94,7 @@ H2 file at `.swisskit/swisskit.db` relative to the working directory. Schema ini
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.0.0-rc.1.jar
+java -jar SwissKit/target/SwissKitJ-3.0.0-rc.2.jar
 ```
 
 The fat JAR is built by `maven-shade-plugin` and bundles JavaFX native libraries for all platforms (`.dll`, `.so`, `.dylib`).

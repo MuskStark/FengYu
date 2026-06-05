@@ -6,6 +6,27 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 
 ## [3.0.0] — JavaFX 迁移
 
+**v3.0.0-rc.2** — 2026-06-05
+
+### ✨ 新功能
+- **工具收藏**：通过工具卡片或详情面板的星标切换收藏工具；收藏数据通过 H2 数据库持久化，可从侧边栏"收藏"分类筛选
+- **AI 后端延迟加载**：本地 AI 后端（原生/Java）初始化推迟到首次打开 AI 工具时，提升启动性能；AI 设置中新增 Java/Native 推理引擎切换
+- **插件卸载**：从详情面板卸载外部插件，带确认对话框；关闭 ClassLoader、删除 JAR 文件并从注册表清理
+- **安装成功通知**：从在线商店或本地 JAR 安装插件后显示成功 Toast 通知
+- **令牌批处理**：AI 输出令牌以 50ms 间隔批量刷新，减少高速生成时的 FX 线程压力
+
+### 🔧 修复
+- **崩溃速率限制**：原生工作进程自动重启遵循时间窗口（5 分钟内 3 次崩溃），防止重启风暴
+- **设置缓存**：应用设置缓存在内存中，防抖写入数据库（300ms），减少快速 UI 交互时的数据库负载
+- 修复加固 Linux 发行版（UOS/Deepin/Kylin）上原生库加载失败（未签名的 `.so` 文件抛出 `SecurityException`）
+- 修复邮件群发时共享收件人列表被意外修改
+- 修复在线商店插件目录解析——用手写的字符串切片替换为基于 Gson 的 `JsonHelper`
+- 修复 `WindowResizeHelper` 重复挂载导致事件过滤器重复
+- 线程安全加固：`PluginLoader`、`PluginRegistry` 和 `MainWindow` 使用 `ConcurrentHashMap`、`volatile`、`synchronizedSet`
+- 工具卡片入场动画设置交错上限（最多 30 个），避免创建数百个 `PauseTransition` 实例
+
+---
+
 **v3.0.0-rc.1** — 2026-06-04
 
 - **浏览器自动化**：AI 可调用的 `browser_automate` 工具，通过自然语言自动化 Web 浏览器；使用 Playwright 驱动系统已安装的 Chrome/Edge/Chromium（无需额外下载浏览器）；观察-思考-行动循环，包含页面 DOM 快照、CSS 选择器定位和规划器 LLM
