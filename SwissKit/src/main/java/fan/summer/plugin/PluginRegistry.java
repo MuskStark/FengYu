@@ -37,14 +37,15 @@ public class PluginRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(PluginRegistry.class);
 
-    private static PluginRegistry INSTANCE;
+    private static volatile PluginRegistry INSTANCE;
 
     private final ObservableList<SwissKitJPlugin> plugins =
         FXCollections.observableArrayList();
 
-    private SwissKitJPlugin activePlugin;
+    private volatile SwissKitJPlugin activePlugin;
 
-    private final Set<SwissKitJPlugin> backgroundPlugins = new LinkedHashSet<>();
+    private final Set<SwissKitJPlugin> backgroundPlugins =
+        java.util.Collections.synchronizedSet(new LinkedHashSet<>());
 
     /**
      * Constructs a PluginRegistry and wires it to the given PluginLoader.

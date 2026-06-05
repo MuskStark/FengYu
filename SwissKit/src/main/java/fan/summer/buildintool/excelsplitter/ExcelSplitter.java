@@ -327,6 +327,7 @@ public class ExcelSplitter {
                         Objects.requireNonNull(config.outputDir.toFile().listFiles(
                                 (dir, name) -> name.endsWith(".xlsx") && !name.endsWith("_metadata.xlsx"))))
                 .map(File::toPath)
+                .sorted(java.util.Comparator.comparing(Path::getFileName))
                 .collect(Collectors.toList());
 
         progress.accept(1.0, "Done");

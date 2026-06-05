@@ -26,8 +26,8 @@ import org.slf4j.LoggerFactory;
 
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Root node of the main window that assembles the complete SwissKitJ UI.
@@ -59,7 +59,7 @@ public class MainWindow extends StackPane {
     private final ContentArea contentArea;
     private final AiChatPlugin  aiChatPlugin;
     private Node aiChatView;
-    private final Map<SwissKitJPlugin, Node> cachedViews = new HashMap<>();
+    private final Map<SwissKitJPlugin, Node> cachedViews = new ConcurrentHashMap<>();
 
     // Status bar labels
     private Label statusToolCount    = statusText("0 tools");
@@ -308,6 +308,10 @@ public class MainWindow extends StackPane {
             if (view == null) {
                 try {
                     view = plugin.createView();
+                    if (view == null) {
+                        log.error("Plugin {} returned null from createView()", plugin.getId());
+                        return;
+                    }
                     cachedViews.put(plugin, view);
                 } catch (Exception e) {
                     log.error("Failed to create view for plugin {}: {}", plugin.getId(), e.getMessage(), e);

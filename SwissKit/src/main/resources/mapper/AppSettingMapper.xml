@@ -10,6 +10,11 @@
         WHERE setting_key = #{key}
     </select>
 
+    <select id="selectAll" resultType="fan.summer.database.entity.AppSettingEntity">
+        SELECT id, setting_key AS settingKey, setting_value AS settingValue
+        FROM app_setting
+    </select>
+
     <insert id="insert" parameterType="fan.summer.database.entity.AppSettingEntity">
         INSERT INTO app_setting (setting_key, setting_value) VALUES (#{settingKey}, #{settingValue})
     </insert>

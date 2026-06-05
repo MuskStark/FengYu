@@ -57,6 +57,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
@@ -80,6 +81,19 @@ public class SwissKitJSettingUi {
 
     /** Active nav index, preserved across locale rebuilds. */
     private static int activeNavIndex = 0;
+
+    // ── Settings cache: avoids opening a SqlSession for every getter call ──────────
+    private static final ConcurrentHashMap<String, String> settingsCache = new ConcurrentHashMap<>();
+    private static volatile boolean cacheLoaded = false;
+
+    /** Debounce executor for saveAiSetting — coalesces rapid-fire text changes. */
+    private static final ScheduledExecutorService debounceExecutor =
+        Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "settings-debounce");
+            t.setDaemon(true);
+            return t;
+        });
+    private static final ConcurrentHashMap<String, ScheduledFuture<?>> pendingSaves = new ConcurrentHashMap<>();
 
     /**
      * Builds (or returns the cached) settings UI with a sidebar navigation.
@@ -820,7 +834,9 @@ public class SwissKitJSettingUi {
     }
 
     private static void saveSettingAsync(String key, String value, Runnable onSuccess) {
-        new Thread(() -> {
+        // Update cache immediately so subsequent getters see the new value
+        settingsCache.put(key, value);
+        Thread.ofVirtual().name("settings-save").start(() -> {
             try (SqlSession session = DatabaseInit.getSqlSession()) {
                 AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
                 AppSettingEntity entity = mapper.selectByKey(key);
@@ -838,14 +854,22 @@ public class SwissKitJSettingUi {
             } catch (Exception e) {
                 log.error("Failed to save setting: {}", key, e);
             }
-        }).start();
+        });
     }
 
     private static void loadAiSetting(String key, Consumer<String> consumer) {
+        ensureCacheLoaded();
+        String cached = settingsCache.get(key);
+        if (cached != null && !cached.isBlank()) {
+            consumer.accept(cached);
+            return;
+        }
+        // Fallback: load from DB and populate cache
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
             AppSettingEntity entity = mapper.selectByKey(key);
             if (entity != null && entity.getSettingValue() != null && !entity.getSettingValue().isBlank()) {
+                settingsCache.put(key, entity.getSettingValue());
                 consumer.accept(entity.getSettingValue());
             }
         } catch (Exception e) {
@@ -853,8 +877,77 @@ public class SwissKitJSettingUi {
         }
     }
 
+    /**
+     * Debounced save: coalesces rapid-fire changes (e.g. from Slider/TextField listeners)
+     * into a single DB write, 300 ms after the last change.
+     */
     private static void saveAiSetting(String key, String value) {
-        saveSettingAsync(key, value, null);
+        // Update cache immediately
+        settingsCache.put(key, value);
+        // Cancel any pending save for this key, schedule a new one
+        ScheduledFuture<?> prev = pendingSaves.get(key);
+        if (prev != null) prev.cancel(false);
+        ScheduledFuture<?> future = debounceExecutor.schedule(() -> {
+            pendingSaves.remove(key);
+            try (SqlSession session = DatabaseInit.getSqlSession()) {
+                AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+                AppSettingEntity entity = mapper.selectByKey(key);
+                if (entity != null) {
+                    entity.setSettingValue(value);
+                    mapper.update(entity);
+                } else {
+                    AppSettingEntity newEntity = new AppSettingEntity();
+                    newEntity.setSettingKey(key);
+                    newEntity.setSettingValue(value);
+                    mapper.insert(newEntity);
+                }
+                session.commit();
+            } catch (Exception e) {
+                log.error("Failed to save setting (debounced): {}", key, e);
+            }
+        }, 300, TimeUnit.MILLISECONDS);
+        pendingSaves.put(key, future);
+    }
+
+    /**
+     * Reads a setting from cache, falling back to DB on cache miss.
+     * Populates the cache on DB hit.
+     */
+    private static String getCachedSetting(String key, String defaultValue) {
+        ensureCacheLoaded();
+        String cached = settingsCache.get(key);
+        if (cached != null) return cached;
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            AppSettingEntity entity = mapper.selectByKey(key);
+            if (entity != null && entity.getSettingValue() != null) {
+                settingsCache.put(key, entity.getSettingValue());
+                return entity.getSettingValue();
+            }
+        } catch (Exception ignored) {}
+        return defaultValue;
+    }
+
+    /** Eagerly loads all app_settings rows into the in-memory cache. */
+    private static synchronized void ensureCacheLoaded() {
+        if (cacheLoaded) return;
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            List<AppSettingEntity> all = mapper.selectAll();
+            if (all != null) {
+                for (AppSettingEntity e : all) {
+                    if (e.getSettingKey() != null && e.getSettingValue() != null) {
+                        settingsCache.put(e.getSettingKey(), e.getSettingValue());
+                    }
+                }
+            }
+            cacheLoaded = true;
+            log.debug("Settings cache loaded: {} entries", settingsCache.size());
+        } catch (Exception e) {
+            // Cache load failure is non-fatal; individual getters will fall back to DB
+            log.debug("Could not preload settings cache", e);
+            cacheLoaded = true;
+        }
     }
 
     /**
@@ -863,11 +956,10 @@ public class SwissKitJSettingUi {
      * @return the temperature value between 0 and 2
      */
     public static float getAiTemperature() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_TEMPERATURE_KEY);
-            if (entity != null) return Float.parseFloat(entity.getSettingValue());
-        } catch (Exception ignored) {}
+        String val = getCachedSetting(AI_TEMPERATURE_KEY, null);
+        if (val != null) {
+            try { return Float.parseFloat(val); } catch (NumberFormatException ignored) {}
+        }
         return 0.7f;
     }
 
@@ -877,11 +969,10 @@ public class SwissKitJSettingUi {
      * @return the top-p value between 0 and 1
      */
     public static float getAiTopP() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_TOP_P_KEY);
-            if (entity != null) return Float.parseFloat(entity.getSettingValue());
-        } catch (Exception ignored) {}
+        String val = getCachedSetting(AI_TOP_P_KEY, null);
+        if (val != null) {
+            try { return Float.parseFloat(val); } catch (NumberFormatException ignored) {}
+        }
         return 0.9f;
     }
 
@@ -891,11 +982,10 @@ public class SwissKitJSettingUi {
      * @return the max tokens value between 64 and 4096
      */
     public static int getAiMaxTokens() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_MAX_TOKENS_KEY);
-            if (entity != null) return Integer.parseInt(entity.getSettingValue());
-        } catch (Exception ignored) {}
+        String val = getCachedSetting(AI_MAX_TOKENS_KEY, null);
+        if (val != null) {
+            try { return Integer.parseInt(val); } catch (NumberFormatException ignored) {}
+        }
         return 512;
     }
 
@@ -905,89 +995,49 @@ public class SwissKitJSettingUi {
      * @return the system prompt string
      */
     public static String getAiSystemPrompt() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_SYSTEM_PROMPT_KEY);
-            if (entity != null && !entity.getSettingValue().isBlank()) return entity.getSettingValue();
-        } catch (Exception ignored) {}
-        return "You are a helpful assistant.";
+        String val = getCachedSetting(AI_SYSTEM_PROMPT_KEY, null);
+        return (val != null && !val.isBlank()) ? val : "You are a helpful assistant.";
     }
 
     public static String getAiMode() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_MODE_KEY);
-            if (entity != null && entity.getSettingValue() != null) return entity.getSettingValue();
-        } catch (Exception ignored) {}
-        return "local";
+        return getCachedSetting(AI_MODE_KEY, "local");
     }
 
     public static String getAiOpenAiEndpoint() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_OPENAI_ENDPOINT_KEY);
-            if (entity != null && !entity.getSettingValue().isBlank()) return entity.getSettingValue();
-        } catch (Exception ignored) {}
-        return "https://api.openai.com";
+        String val = getCachedSetting(AI_OPENAI_ENDPOINT_KEY, null);
+        return (val != null && !val.isBlank()) ? val : "https://api.openai.com";
     }
 
     public static String getAiOpenAiApiKey() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_OPENAI_API_KEY_KEY);
-            if (entity != null) return entity.getSettingValue();
-        } catch (Exception ignored) {}
-        return "";
+        return getCachedSetting(AI_OPENAI_API_KEY_KEY, "");
     }
 
     public static String getAiOpenAiModel() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_OPENAI_MODEL_KEY);
-            if (entity != null && !entity.getSettingValue().isBlank()) return entity.getSettingValue();
-        } catch (Exception ignored) {}
-        return "gpt-4o";
+        String val = getCachedSetting(AI_OPENAI_MODEL_KEY, null);
+        return (val != null && !val.isBlank()) ? val : "gpt-4o";
     }
 
     public static String getAiAnthropicEndpoint() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_ANTHROPIC_ENDPOINT_KEY);
-            if (entity != null && !entity.getSettingValue().isBlank()) return entity.getSettingValue();
-        } catch (Exception ignored) {}
-        return "https://api.anthropic.com";
+        String val = getCachedSetting(AI_ANTHROPIC_ENDPOINT_KEY, null);
+        return (val != null && !val.isBlank()) ? val : "https://api.anthropic.com";
     }
 
     public static String getAiAnthropicApiKey() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_ANTHROPIC_API_KEY_KEY);
-            if (entity != null) return entity.getSettingValue();
-        } catch (Exception ignored) {}
-        return "";
+        return getCachedSetting(AI_ANTHROPIC_API_KEY_KEY, "");
     }
 
     public static String getAiAnthropicModel() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_ANTHROPIC_MODEL_KEY);
-            if (entity != null && !entity.getSettingValue().isBlank()) return entity.getSettingValue();
-        } catch (Exception ignored) {}
-        return "claude-sonnet-4-20250514";
+        String val = getCachedSetting(AI_ANTHROPIC_MODEL_KEY, null);
+        return (val != null && !val.isBlank()) ? val : "claude-sonnet-4-20250514";
     }
 
     /**
-     * Returns the saved local AI backend choice, or "native" if not set.
+     * Returns the saved local AI backend choice, or "java" if not set.
      *
      * @return "java" or "native"
      */
     public static String getAiLocalBackend() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_LOCAL_BACKEND_KEY);
-            if (entity != null && entity.getSettingValue() != null) return entity.getSettingValue();
-        } catch (Exception ignored) {}
-        return "java";
+        return getCachedSetting(AI_LOCAL_BACKEND_KEY, "java");
     }
 
     // ═══════════════════════════════════════════════════════════════════

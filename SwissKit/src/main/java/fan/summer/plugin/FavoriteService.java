@@ -27,10 +27,10 @@ public class FavoriteService {
 
     private static final Logger log = LoggerFactory.getLogger(FavoriteService.class);
 
-    private static FavoriteService INSTANCE;
+    private static volatile FavoriteService INSTANCE;
 
     private final ObservableSet<String> favorites = FXCollections.observableSet();
-    private Consumer<String> onFavoritesChanged;
+    private volatile Consumer<String> onFavoritesChanged;
 
     /**
      * Constructs a FavoriteService and loads all existing favorites from the database.
@@ -107,10 +107,11 @@ public class FavoriteService {
 
     /**
      * Adds a plugin to favorites and persists the change to the database.
+     * This method is synchronized to prevent concurrent duplicate inserts.
      *
      * @param pluginId the plugin ID to favorite
      */
-    public void add(String pluginId) {
+    public synchronized void add(String pluginId) {
         if (favorites.contains(pluginId)) return;
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             PluginFavoriteMapper mapper = session.getMapper(PluginFavoriteMapper.class);
@@ -128,10 +129,11 @@ public class FavoriteService {
 
     /**
      * Removes a plugin from favorites and persists the change to the database.
+     * This method is synchronized to prevent concurrent modification.
      *
      * @param pluginId the plugin ID to unfavorite
      */
-    public void remove(String pluginId) {
+    public synchronized void remove(String pluginId) {
         if (!favorites.contains(pluginId)) return;
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             PluginFavoriteMapper mapper = session.getMapper(PluginFavoriteMapper.class);

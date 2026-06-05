@@ -214,22 +214,22 @@ public class EmailSendService {
             }
             EmailTagEntity fileTag = matchedTags.get(0);
 
-            toList.clear();
-            ccList.clear();
+            List<String> batchTo = new ArrayList<>();
+            List<String> batchCc = new ArrayList<>();
 
             for (EmailAddressBookEntity addr : allAddresses) {
                 Set<Long> contactTagIds = parseTagIdSet(addr.getTags());
                 if (!contactTagIds.contains(fileTag.getId())) continue;
 
                 if (toTagIds.isEmpty() || contactTagIds.stream().anyMatch(toTagIds::contains)) {
-                    toList.add(addr.getEmailAddress());
+                    batchTo.add(addr.getEmailAddress());
                 }
                 if (!ccTagIds.isEmpty() && contactTagIds.stream().anyMatch(ccTagIds::contains)) {
-                    ccList.add(addr.getEmailAddress());
+                    batchCc.add(addr.getEmailAddress());
                 }
             }
 
-            if (toList.isEmpty()) {
+            if (batchTo.isEmpty()) {
                 log.warn("No recipients found for tag {}", tagName);
                 continue;
             }
@@ -239,23 +239,25 @@ public class EmailSendService {
                 progress.update(pct, "Sending [" + processed + "/" + total + "] " + tagName);
             }
 
-            sendOneWithLog(subject, htmlBody, toList, ccList, config.isSentAtt() ? files : null, result, tagName);
+            sendOneWithLog(subject, htmlBody, batchTo, batchCc, config.isSentAtt() ? files : null, result, tagName);
         }
 
         if (taggedFiles.isEmpty()) {
             // No files with tag format — send to all matching contacts in one batch
+            List<String> allToList = new ArrayList<>();
+            List<String> allCcList = new ArrayList<>();
             for (EmailAddressBookEntity addr : allAddresses) {
                 Set<Long> contactTagIds = parseTagIdSet(addr.getTags());
                 if (toTagIds.isEmpty() || contactTagIds.stream().anyMatch(toTagIds::contains)) {
-                    toList.add(addr.getEmailAddress());
+                    allToList.add(addr.getEmailAddress());
                 }
                 if (!ccTagIds.isEmpty() && contactTagIds.stream().anyMatch(ccTagIds::contains)) {
-                    ccList.add(addr.getEmailAddress());
+                    allCcList.add(addr.getEmailAddress());
                 }
             }
-            if (!toList.isEmpty()) {
+            if (!allToList.isEmpty()) {
                 if (progress != null) progress.update(0.5, "Sending to all matching contacts...");
-                sendOneWithLog(subject, htmlBody, toList, ccList, null, result, "all");
+                sendOneWithLog(subject, htmlBody, allToList, allCcList, null, result, "all");
             }
         }
 

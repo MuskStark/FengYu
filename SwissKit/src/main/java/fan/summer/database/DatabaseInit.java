@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -92,7 +93,7 @@ public class DatabaseInit {
             }
 
             // Read the SQL content
-            String initSqlContent = new String(initSqlStream.readAllBytes());
+            String initSqlContent = new String(initSqlStream.readAllBytes(), StandardCharsets.UTF_8);
 
             try (Connection conn = DriverManager.getConnection(DB_URL);
                  Statement stmt = conn.createStatement()) {
