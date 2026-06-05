@@ -6,6 +6,27 @@ All notable changes to SwissKitJ. Format based on [Keep a Changelog](https://kee
 
 ## [3.0.0] — JavaFX Migration
 
+**v3.0.0-rc.2** — 2026-06-05
+
+### ✨ New Features
+- **Tool Favorites**: Bookmark tools with a star toggle on tool cards and the detail panel; favorites persist across restarts via H2 database and are filterable from the sidebar "Favorites" category
+- **Lazy AI Backend**: Local AI backend (native/Java) initialization is deferred until the AI tool is first opened, improving startup performance; Java/Native inference engine toggle in AI settings
+- **Plugin Uninstall**: Uninstall external plugins from the detail panel with confirmation dialog; closes ClassLoader, removes JAR file, and cleans up from registry
+- **Install Toast Notifications**: Success toast notification when a plugin is installed from the online store or local JAR
+- **Token Batching**: AI token output is batched at 50ms intervals to reduce FX thread flooding during high-speed generation
+
+### 🔧 Fixes
+- **Crash Rate Limiting**: Native worker auto-restart respects a time window (3 crashes within 5 min) to prevent restart storms
+- **Settings Cache**: App settings are cached in memory with debounced DB writes (300ms) to reduce database load during rapid UI interaction
+- Fix native library loading on hardened Linux distros (UOS/Deepin/Kylin) where `SecurityException` is thrown for unsigned `.so` files
+- Fix email batch sending mutating shared recipient lists across iterations
+- Fix online store plugin catalog parsing — replaced hand-rolled string slicing with Gson-based `JsonHelper`
+- Fix `WindowResizeHelper` double-attachment causing duplicate event filters
+- Thread-safety hardening across `PluginLoader`, `PluginRegistry`, and `MainWindow` (`ConcurrentHashMap`, `volatile`, `synchronizedSet`)
+- Stagger limit for tool card entry animations (max 30) to avoid creating hundreds of `PauseTransition` instances
+
+---
+
 **v3.0.0-rc.1** — 2026-06-04
 ### ✨ New Features
 - **Browser Automation**: AI-callable `browser_automate` tool that automates web browsers via natural language; uses Playwright with the system's installed Chrome/Edge/Chromium (no separate browser download); observe-think-act loop with page DOM snapshots, CSS selector targeting, and a planner LLM

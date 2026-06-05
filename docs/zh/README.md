@@ -50,7 +50,7 @@ java -jar SwissKitJ-3.0.0-rc.2.jar
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.0.0-rc.1.jar
+java -jar SwissKit/target/SwissKitJ-3.0.0-rc.2.jar
 ```
 
 ## 许可证

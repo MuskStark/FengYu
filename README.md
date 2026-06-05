@@ -192,7 +192,7 @@ java -jar SwissKit/target/SwissKitJ-3.0.0-rc.2.jar
 Override the store URL for local testing:
 
 ```bash
-java -Dstore.url=http://localhost:8888/plugins/store.json -jar SwissKit/target/SwissKitJ-3.0.0-rc.1.jar
+java -Dstore.url=http://localhost:8888/plugins/store.json -jar SwissKit/target/SwissKitJ-3.0.0-rc.2.jar
 ```
 
 ---
