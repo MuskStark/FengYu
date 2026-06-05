@@ -19,6 +19,8 @@ import javafx.scene.layout.VBox;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import fan.summer.ai.util.JsonHelper;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -29,6 +31,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Online plugin store pane that fetches the plugin catalog from a remote JSON API
@@ -177,28 +180,27 @@ public class OnlineStorePane extends VBox {
         return parsePluginJson(sb.toString());
     }
 
+    @SuppressWarnings("unchecked")
     private List<StorePlugin> parsePluginJson(String json) {
         List<StorePlugin> result = new ArrayList<>();
         try {
-            int arrayStart = json.indexOf('[');
-            int arrayEnd = json.lastIndexOf(']');
-            if (arrayStart == -1 || arrayEnd == -1) return result;
+            List<Object> array = JsonHelper.parseList(json);
+            if (array == null) return result;
 
-            String arrayContent = json.substring(arrayStart + 1, arrayEnd);
-            String[] objects = arrayContent.split("\\},\\s*\\{");
-
-            for (String obj : objects) {
-                if (!obj.startsWith("{")) obj = "{" + obj;
-                if (!obj.endsWith("}")) obj = obj + "}";
+            for (Object item : array) {
+                if (!(item instanceof Map<?, ?> rawObj)) continue;
+                Map<String, Object> obj = (Map<String, Object>) rawObj;
 
                 StorePlugin p = new StorePlugin();
-                p.id = extractJsonString(obj, "id");
-                p.name = extractJsonString(obj, "name");
-                p.description = extractJsonString(obj, "description");
-                p.version = extractJsonString(obj, "version");
-                p.jarUrl = extractJsonString(obj, "jarUrl");
-                p.iconStyle = IconStyle.fromCssClass(extractJsonString(obj, "iconStyle", "ic-blue"));
-                p.category = ToolCategory.fromId(extractJsonString(obj, "category", "other"));
+                p.id = (String) obj.getOrDefault("id", null);
+                p.name = (String) obj.getOrDefault("name", null);
+                p.description = (String) obj.getOrDefault("description", null);
+                p.version = (String) obj.getOrDefault("version", null);
+                p.jarUrl = (String) obj.getOrDefault("jarUrl", null);
+                p.iconStyle = IconStyle.fromCssClass(
+                    (String) obj.getOrDefault("iconStyle", "ic-blue"));
+                p.category = ToolCategory.fromId(
+                    (String) obj.getOrDefault("category", "other"));
 
                 if (p.id != null && p.name != null && p.jarUrl != null) {
                     result.add(p);
@@ -208,27 +210,6 @@ public class OnlineStorePane extends VBox {
             log.warn("JSON parse error, showing partial results", e);
         }
         return result;
-    }
-
-    private String extractJsonString(String json, String key) {
-        return extractJsonString(json, key, null);
-    }
-
-    private String extractJsonString(String json, String key, String defaultVal) {
-        String search = "\"" + key + "\"";
-        int keyPos = json.indexOf(search);
-        if (keyPos == -1) return defaultVal;
-
-        int colonPos = json.indexOf(':', keyPos);
-        if (colonPos == -1) return defaultVal;
-
-        int valueStart = json.indexOf('"', colonPos + 1);
-        if (valueStart == -1) return defaultVal;
-
-        int valueEnd = json.indexOf('"', valueStart + 1);
-        if (valueEnd == -1) return defaultVal;
-
-        return json.substring(valueStart + 1, valueEnd);
     }
 
     private void displayPlugins(List<StorePlugin> plugins) {

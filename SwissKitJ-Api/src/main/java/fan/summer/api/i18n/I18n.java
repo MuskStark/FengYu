@@ -266,13 +266,20 @@ public final class I18n {
         }
     }
 
+    private static final int MAX_STALE_BINDINGS = 500;
+
     private static void updateAll() {
+        // Clean up GC'd bindings
         bindings.removeIf(e -> e.propertyRef().get() == null);
         for (BoundEntry e : bindings) {
             e.update();
         }
         for (Runnable l : listeners) {
             l.run();
+        }
+        // Safety: if the bindings list has grown excessively, force a full sweep
+        if (bindings.size() > MAX_STALE_BINDINGS) {
+            bindings.removeIf(e -> e.propertyRef().get() == null);
         }
     }
 

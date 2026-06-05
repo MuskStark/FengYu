@@ -10,6 +10,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Manages a child JVM process for isolated native AI inference.
@@ -24,6 +25,8 @@ public class NativeWorkerClient implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(NativeWorkerClient.class);
     private static final int MAX_CONSECUTIVE_CRASHES = 3;
+    /** Minimum time window (ms) between crash resets to prevent restart loops. */
+    private static final long CRASH_WINDOW_MS = TimeUnit.MINUTES.toMillis(5);
 
     private Process childProcess;
     private BufferedWriter writer;
@@ -35,6 +38,7 @@ public class NativeWorkerClient implements AutoCloseable {
     private volatile CompletableFuture<Void> loadFuture;
 
     private final AtomicInteger consecutiveCrashes = new AtomicInteger(0);
+    private final AtomicLong firstCrashTime = new AtomicLong(0);
     private volatile ModelParams lastModelParams;
 
     /**
@@ -197,7 +201,13 @@ public class NativeWorkerClient implements AutoCloseable {
                     double tokPerSec = doubleVal(resp, "tokPerSec", 0.0);
                     pg.callback.onDone(fullText, tokenCount, tokPerSec);
                 }
-                consecutiveCrashes.set(0);
+                // Only reset crash counter if enough time has passed since first crash
+                long firstCrash = firstCrashTime.get();
+                if (firstCrash > 0 && (System.currentTimeMillis() - firstCrash) > CRASH_WINDOW_MS) {
+                    // Enough time elapsed — safe to reset
+                    consecutiveCrashes.set(0);
+                    firstCrashTime.set(0);
+                }
             }
             case "error" -> {
                 String id = (String) resp.get("id");
@@ -235,17 +245,36 @@ public class NativeWorkerClient implements AutoCloseable {
                 new RuntimeException("AI worker process crashed during load"));
         }
 
-        consecutiveCrashes.incrementAndGet();
+        int crashes = consecutiveCrashes.incrementAndGet();
+        // Record the time of the first crash in this window
+        firstCrashTime.compareAndSet(0, System.currentTimeMillis());
         running = false;
 
-        if (consecutiveCrashes.get() >= MAX_CONSECUTIVE_CRASHES) {
-            log.error("AI worker crashed {} consecutive times — giving up, should fall back to Java backend",
-                consecutiveCrashes.get());
+        // Check if crash rate exceeds limit
+        boolean exceededRate = false;
+        long firstCrash = firstCrashTime.get();
+        if (firstCrash > 0) {
+            long elapsed = System.currentTimeMillis() - firstCrash;
+            // If we've had MAX crashes within the window, give up
+            if (crashes >= MAX_CONSECUTIVE_CRASHES && elapsed < CRASH_WINDOW_MS) {
+                exceededRate = true;
+            }
+            // If the window has passed, reset counters and allow retry
+            if (elapsed >= CRASH_WINDOW_MS) {
+                consecutiveCrashes.set(1);
+                firstCrashTime.set(System.currentTimeMillis());
+                exceededRate = false;
+            }
+        }
+
+        if (exceededRate) {
+            log.error("AI worker crashed {} times within {}s — giving up, should fall back to Java backend",
+                crashes, CRASH_WINDOW_MS / 1000);
             return;
         }
 
         if (lastModelParams != null) {
-            log.info("Auto-restarting AI worker (attempt {}/{})", consecutiveCrashes.get(), MAX_CONSECUTIVE_CRASHES);
+            log.info("Auto-restarting AI worker (attempt {}/{})", crashes, MAX_CONSECUTIVE_CRASHES);
             try {
                 spawn();
                 loadModel(lastModelParams);

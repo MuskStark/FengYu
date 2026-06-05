@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.net.URLClassLoader;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -62,10 +63,10 @@ public class PluginLoader {
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     /** Maps JAR path → the ClassLoader opened for it (for unloading) */
-    private final Map<Path, URLClassLoader> openLoaders = new LinkedHashMap<>();
+    private final Map<Path, URLClassLoader> openLoaders = new ConcurrentHashMap<>();
 
     /** Maps JAR path → plugins loaded from that JAR */
-    private final Map<Path, List<SwissKitJPlugin>> jarPlugins = new LinkedHashMap<>();
+    private final Map<Path, List<SwissKitJPlugin>> jarPlugins = new ConcurrentHashMap<>();
 
     /**
      * Constructs a PluginLoader that will scan the given directory for plugin JARs.

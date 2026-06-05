@@ -334,24 +334,33 @@ public class ContentArea extends BorderPane {
 
         toolGrid.getChildren().clear();
 
+        // Limit staggered animations to the first batch; cards beyond this
+        // are added immediately to avoid creating hundreds of PauseTransitions.
+        int staggerLimit = Math.min(filtered.size(), 30);
+
         for (int i = 0; i < filtered.size(); i++) {
             SwissKitJPlugin p = filtered.get(i);
             ToolCard card = new ToolCard(p, this::onCardSelect, registry, favoriteService);
             card.setPrefWidth(152);
             card.setPrefHeight(130);
 
-            // Staggered entry delay
-            int delay = i * 35;
-            card.setOpacity(0);
-            PauseTransition pause = new PauseTransition(Duration.millis(delay));
-            pause.setOnFinished(e -> {
-                FadeTransition ft = new FadeTransition(Duration.millis(240), card);
-                ft.setFromValue(0); ft.setToValue(1);
-                TranslateTransition tt = new TranslateTransition(Duration.millis(240), card);
-                tt.setFromY(10); tt.setToY(0);
-                new ParallelTransition(ft, tt).play();
-            });
-            pause.play();
+            if (i < staggerLimit) {
+                // Staggered entry animation for visible cards
+                int delay = i * 35;
+                card.setOpacity(0);
+                PauseTransition pause = new PauseTransition(Duration.millis(delay));
+                pause.setOnFinished(e -> {
+                    FadeTransition ft = new FadeTransition(Duration.millis(240), card);
+                    ft.setFromValue(0); ft.setToValue(1);
+                    TranslateTransition tt = new TranslateTransition(Duration.millis(240), card);
+                    tt.setFromY(10); tt.setToY(0);
+                    new ParallelTransition(ft, tt).play();
+                });
+                pause.play();
+            } else {
+                // Cards beyond the stagger limit appear immediately
+                card.setOpacity(1);
+            }
 
             toolGrid.getChildren().add(card);
         }
