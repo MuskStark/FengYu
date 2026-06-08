@@ -90,18 +90,19 @@ URLClassLoader cl = new ChildFirstResourceClassLoader(urls, getClass().getClassL
 
 ## 7. 测试
 
-无系统 Maven，构建经 IntelliJ。验证手段：
+本仓库**无系统 Maven、无测试运行器，且各处构建均 `-DskipTests`**，但 `javac`/`java`（JDK 21）
+可直接使用。为符合 YAGNI 且在本环境真正可执行，**不引入 JUnit 依赖**，验证手段为：
 
-1. 单元测试 `ChildFirstResourceClassLoaderTest`：构造两个临时目录/JAR，二者含同名资源
-   （如 `mybatis-config.xml`），父 loader 指向「宿主」目录，子 loader 指向「插件」JAR，
-   断言 `getResource` / `getResourceAsStream` 返回**子（插件）**的副本；并断言插件不含
-   的资源仍能从父级取得。
-2. IDEA `build_project` 确认编译通过。
+1. **JDK-only 一次性验证程序**（`javac`+`java` 运行，不入库）：构造两个临时目录，二者含同名资源
+   （`mybatis-config.xml`/`init.sql`/`dup.txt`），父 loader 指向「宿主」目录、子 loader 指向
+   「插件」目录，断言 `getResource`/`getResourceAsStream`/`getResources` 返回**子（插件）**副本，
+   且仅存在于宿主的资源仍能父级回退。打印 `ALL PASS`。
+2. IDEA `build_project` 确认实现类与接入点在项目内编译通过。
 
 ## 8. 影响面小结
 
 | 文件 | 改动 |
 |---|---|
 | `SwissKit/.../plugin/ChildFirstResourceClassLoader.java` | 新增 |
-| `SwissKit/.../plugin/PluginLoader.java` | 第 287 行替换构造器 |
-| `SwissKit/.../plugin/ChildFirstResourceClassLoaderTest.java` | 新增（测试） |
+| `SwissKit/.../plugin/PluginLoader.java` | 第 287-290 行替换构造器 |
+| `/tmp/cfrcl-verify/CfrclVerify.java` | 一次性 JDK-only 验证（不入库）|
