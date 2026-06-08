@@ -1,5 +1,6 @@
 package fan.summer.plugin;
 
+import fan.summer.api.PluginContext;
 import fan.summer.api.SwissKitJPlugin;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -115,14 +116,14 @@ public class PluginRegistry {
         backgroundPlugins.remove(plugin);
         if (activePlugin == plugin) {
             try {
-                plugin.onDeactivate();
+                PluginContext.runWith(plugin, plugin::onDeactivate);
             } catch (Exception e) {
                 log.warn("Plugin {} threw on onDeactivate(): {}", plugin.getId(), e.getMessage(), e);
             }
             activePlugin = null;
         }
         try {
-            plugin.onUnload();
+            PluginContext.runWith(plugin, plugin::onUnload);
         } catch (Exception e) {
             log.warn("Plugin {} threw on onUnload(): {}", plugin.getId(), e.getMessage(), e);
         }
@@ -148,7 +149,7 @@ public class PluginRegistry {
         if (!fromBackground && activePlugin != null && activePlugin != plugin) {
             log.debug("Deactivating previous plugin: id={}", activePlugin.getId());
             try {
-                activePlugin.onDeactivate();
+                PluginContext.runWith(activePlugin, activePlugin::onDeactivate);
             } catch (Exception e) {
                 log.warn("Plugin {} threw on onDeactivate(): {}", activePlugin.getId(), e.getMessage(), e);
             }
@@ -156,14 +157,14 @@ public class PluginRegistry {
         activePlugin = plugin;
         log.info("Activating plugin: id={}, name={}", plugin.getId(), plugin.getName());
         try {
-            plugin.onActivate();
+            PluginContext.runWith(plugin, plugin::onActivate);
         } catch (Exception e) {
             log.warn("Plugin {} threw on onActivate(): {}", plugin.getId(), e.getMessage(), e);
         }
         if (fromBackground) {
             log.debug("Plugin {} restored from background", plugin.getId());
             try {
-                plugin.onForeground();
+                PluginContext.runWith(plugin, plugin::onForeground);
             } catch (Exception e) {
                 log.warn("Plugin {} threw on onForeground(): {}", plugin.getId(), e.getMessage(), e);
             }
@@ -195,13 +196,13 @@ public class PluginRegistry {
             if (activePlugin.hasRunningTasks()) {
                 backgroundPlugins.add(activePlugin);
                 try {
-                    activePlugin.onBackground();
+                    PluginContext.runWith(activePlugin, activePlugin::onBackground);
                 } catch (Exception e) {
                     log.warn("Plugin {} threw on onBackground(): {}", activePlugin.getId(), e.getMessage(), e);
                 }
             } else {
                 try {
-                    activePlugin.onDeactivate();
+                    PluginContext.runWith(activePlugin, activePlugin::onDeactivate);
                 } catch (Exception e) {
                     log.warn("Plugin {} threw on onDeactivate(): {}", activePlugin.getId(), e.getMessage(), e);
                 }
