@@ -1113,8 +1113,8 @@ public class SwissKitJSettingUi {
                 if (entity != null) {
                     Platform.runLater(() -> {
                         for (Node child : root.getChildren()) {
-                            if (child instanceof HBox hb && hb.getUserData() instanceof String key) {
-                                Object fieldNode = hb.getChildren().get(1);
+                            if (child instanceof VBox vb && vb.getUserData() instanceof String key) {
+                                Object fieldNode = vb.getChildren().get(1);
                                 switch (key) {
                                     case "smtp" -> { if (fieldNode instanceof TextField tf) tf.setText(entity.getSmtpAddress()); }
                                     case "port" -> { if (fieldNode instanceof TextField tf) tf.setText(String.valueOf(entity.getSmtpPort())); }
@@ -1203,8 +1203,8 @@ public class SwissKitJSettingUi {
         List<Node> children = form.getChildren();
 
         for (Node child : children) {
-            if (child instanceof HBox hb && hb.getUserData() instanceof String key && hb.getChildren().size() >= 2) {
-                Object field = hb.getChildren().get(1);
+            if (child instanceof VBox vb && vb.getUserData() instanceof String key && vb.getChildren().size() >= 2) {
+                Object field = vb.getChildren().get(1);
                 switch (key) {
                     case "smtp" -> { if (field instanceof TextField tf) smtp = tf.getText(); }
                     case "port" -> { if (field instanceof TextField tf) port = tf.getText(); }
@@ -1229,11 +1229,15 @@ public class SwissKitJSettingUi {
             }
         }
 
-        if (smtp == null || smtp.isBlank() || port == null || port.isBlank()
-                || user == null || user.isBlank() || pass == null || pass.isBlank()
-                || from == null || from.isBlank()) {
+        List<String> missing = new ArrayList<>();
+        if (smtp == null || smtp.isBlank()) missing.add(I18n.get("setting.email.smtpServer"));
+        if (port == null || port.isBlank()) missing.add(I18n.get("setting.email.port"));
+        if (user == null || user.isBlank()) missing.add(I18n.get("setting.email.username"));
+        if (pass == null || pass.isBlank()) missing.add(I18n.get("setting.email.password"));
+        if (from == null || from.isBlank()) missing.add(I18n.get("setting.email.fromAddress"));
+        if (!missing.isEmpty()) {
             GlassNotification.notify((Window) null, GlassNotification.Type.WARNING,
-                I18n.get("setting.email.allFieldsRequired"));
+                I18n.get("setting.email.missingFields", String.join(", ", missing)));
             return;
         }
 
