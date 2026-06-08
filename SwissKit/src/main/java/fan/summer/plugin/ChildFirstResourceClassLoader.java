@@ -1,5 +1,8 @@
 package fan.summer.plugin;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -31,6 +34,8 @@ import java.util.List;
  * @see PluginLoader
  */
 public class ChildFirstResourceClassLoader extends URLClassLoader {
+
+    private static final Logger log = LoggerFactory.getLogger(ChildFirstResourceClassLoader.class);
 
     /**
      * Creates a child-first-resource loader over the given URLs.
@@ -67,6 +72,7 @@ public class ChildFirstResourceClassLoader extends URLClassLoader {
         try {
             return url.openStream();
         } catch (IOException e) {
+            log.warn("Failed to open resource stream for '{}': {}", name, e.getMessage());
             return null;
         }
     }
