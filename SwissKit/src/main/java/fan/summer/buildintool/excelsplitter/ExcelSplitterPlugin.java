@@ -57,7 +57,9 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
     private static final AtomicBoolean hasRunningTask = new AtomicBoolean(false);
     private static final AtomicBoolean cancelled = new AtomicBoolean(false);
 
+    /** Signals the running split operation to abort. */
     public static void cancel() { cancelled.set(true); }
+    /** Returns whether a cancellation has been requested. */
     public static boolean isCancelled() { return cancelled.get(); }
 
     @Override public String getId()          { return "fan.summer.buildin.excelsplitter"; }
@@ -77,7 +79,11 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
     @Override
     public void onActivate() {
         log.info("Excel Splitter plugin activated");
-        view = null;
+        // Note: view is intentionally NOT reset to null here. The wizard's
+        // cached view is reused across activations, matching the documented
+        // contract that createView() is called once and the result is cached.
+        // If a fresh wizard is needed, the plugin's onDeactivate/onUnload
+        // should clear the shared config instead.
     }
 
     @Override
@@ -265,7 +271,9 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
                 statusLabel.setStyle("-fx-text-fill: #f25c5c; -fx-font-size: 12px;");
             });
 
-            new Thread(task) {{ setDaemon(true); }}.start();
+            Thread t = new Thread(task);
+            t.setDaemon(true);
+            t.start();
         }
 
         private void pickFile() {
@@ -497,7 +505,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
                     mapper.deleteAllByTaskId(config.complexTaskId);
                     session.commit();
                 } catch (Exception ex) {
-                    // ignore
+                    log.warn("Failed to clear complex split configs: {}", ex.getMessage());
                 }
                 refreshComplexCount();
             });
@@ -528,7 +536,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
                     mapper.insert(entity);
                     session.commit();
                 } catch (Exception ex) {
-                    // ignore
+                    log.warn("Failed to insert complex split config: {}", ex.getMessage());
                 }
 
                 headerIndexField.clear();
@@ -536,9 +544,9 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
                 refreshComplexCount();
             });
 
-            HBox footer = new HBox(8, complexCountLabel, new Region() {{
-                HBox.setHgrow(this, Priority.ALWAYS);
-            }}, clearBtn);
+            Region spacer = new Region();
+            HBox.setHgrow(spacer, Priority.ALWAYS);
+            HBox footer = new HBox(8, complexCountLabel, spacer, clearBtn);
             footer.setAlignment(Pos.CENTER_LEFT);
 
             detailPane.getChildren().addAll(
@@ -796,7 +804,9 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             task.setOnFailed(e   -> showError(task.getException()));
 
             hasRunningTask.set(true);
-            new Thread(task) {{ setDaemon(true); }}.start();
+            Thread t = new Thread(task);
+            t.setDaemon(true);
+            t.start();
         }
 
         private void showSuccess(ExcelSplitter.SplitResult result) {

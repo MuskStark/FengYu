@@ -548,6 +548,15 @@ public class SwissKitJSettingUi {
      * the last saved model.
      */
     public static synchronized void ensureLocalBackend() {
+        // Only initialize the local backend if the current mode is "local".
+        // If the user has selected OpenAI or Anthropic mode, the service was
+        // already set up during startup or when the mode was changed in settings.
+        String mode = getCachedSetting(AI_MODE_KEY, "local");
+        if (!"local".equals(mode)) {
+            log.debug("ensureLocalBackend skipped — current mode is '{}'", mode);
+            return;
+        }
+
         var svc = AiServiceProvider.getService();
         if (svc.isPresent() && svc.get() instanceof fan.summer.ai.service.AiServiceImpl) {
             return; // already initialized
@@ -557,16 +566,7 @@ public class SwissKitJSettingUi {
     }
 
     private static void autoLoadModel(fan.summer.ai.service.AiServiceImpl aiService) {
-        String modelPath = null;
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_MODEL_PATH_KEY);
-            if (entity != null && entity.getSettingValue() != null && !entity.getSettingValue().isBlank()) {
-                modelPath = entity.getSettingValue();
-            }
-        } catch (Exception e) {
-            log.debug("Could not read AI model path", e);
-        }
+        String modelPath = fan.summer.ai.AiConfigService.getAiModelPath();
 
         if (modelPath != null && java.nio.file.Files.exists(java.nio.file.Path.of(modelPath))) {
             log.info("Auto-loading local AI model: {}", modelPath);
@@ -885,7 +885,7 @@ public class SwissKitJSettingUi {
         // Update cache immediately
         settingsCache.put(key, value);
         // Cancel any pending save for this key, schedule a new one
-        ScheduledFuture<?> prev = pendingSaves.get(key);
+        ScheduledFuture<?> prev = pendingSaves.remove(key);
         if (prev != null) prev.cancel(false);
         ScheduledFuture<?> future = debounceExecutor.schedule(() -> {
             pendingSaves.remove(key);
@@ -1106,7 +1106,7 @@ public class SwissKitJSettingUi {
     }
 
     private static void loadEmailSettings(VBox root) {
-        new Thread(() -> {
+        runAsync(() -> {
             try (SqlSession session = DatabaseInit.getSqlSession()) {
                 SwissKitSettingEmailMapper mapper = session.getMapper(SwissKitSettingEmailMapper.class);
                 SwissKitSettingEmailEntity entity = mapper.selectLatest();
@@ -1134,10 +1134,10 @@ public class SwissKitJSettingUi {
                                         if (vbChild instanceof HBox hb && hb.getChildren().size() == 2) {
                                             Object first = hb.getChildren().get(0);
                                             Object second = hb.getChildren().get(1);
-                                            if (first instanceof CheckBox tlsCb && tlsCb.getUserData() == "TLS" && entity.getNeedTLS() != null) {
+                                            if (first instanceof CheckBox tlsCb && "TLS".equals(tlsCb.getUserData()) && entity.getNeedTLS() != null) {
                                                 tlsCb.setSelected(entity.getNeedTLS());
                                             }
-                                            if (second instanceof CheckBox sslCb && sslCb.getUserData() == "SSL" && entity.getNeedSSL() != null) {
+                                            if (second instanceof CheckBox sslCb && "SSL".equals(sslCb.getUserData()) && entity.getNeedSSL() != null) {
                                                 sslCb.setSelected(entity.getNeedSSL());
                                             }
                                         }
@@ -1164,7 +1164,7 @@ public class SwissKitJSettingUi {
             } catch (Exception e) {
                 log.debug("No existing email settings found", e);
             }
-        }).start();
+        });
     }
 
     private static VBox tlsSslRow() {
@@ -1251,10 +1251,17 @@ public class SwissKitJSettingUi {
         final boolean fTls = tls;
         final boolean fSsl = ssl;
         final String fImap = (imap != null && !imap.isBlank()) ? imap.trim() : null;
-        final int fImapPort = (imapPort != null && !imapPort.isBlank()) ? Integer.parseInt(imapPort.trim()) : 993;
+        int parsedImapPort = 993;
+        if (imapPort != null && !imapPort.isBlank()) {
+            try {
+                parsedImapPort = Integer.parseInt(imapPort.trim());
+                if (parsedImapPort < 1 || parsedImapPort > 65535) parsedImapPort = 993;
+            } catch (NumberFormatException ignored) {}
+        }
+        final int fImapPort = parsedImapPort;
         final boolean fImapSsl = imapSsl;
 
-        new Thread(() -> {
+        runAsync(() -> {
             try (SqlSession session = DatabaseInit.getSqlSession()) {
                 SwissKitSettingEmailMapper mapper = session.getMapper(SwissKitSettingEmailMapper.class);
                 mapper.deleteAll();
@@ -1280,7 +1287,7 @@ public class SwissKitJSettingUi {
                 Platform.runLater(() -> GlassNotification.notify((Window) null, GlassNotification.Type.ERROR,
                     I18n.get("setting.email.failedToSave", ex.getMessage())));
             }
-        }).start();
+        });
     }
 
     private static Button openAddressBookBtn() {
@@ -1357,7 +1364,7 @@ public class SwissKitJSettingUi {
                 if (empty) { setGraphic(null); return; }
                 EmailAddressBookEntity addr = getTableView().getItems().get(getIndex());
                 delBtn.setOnAction(e -> {
-                    new Thread(() -> {
+                    runAsync(() -> {
                         try (SqlSession session = DatabaseInit.getSqlSession()) {
                             session.getMapper(EmailAddressBookMapper.class).deleteById(addr.getId());
                             session.commit();
@@ -1365,7 +1372,7 @@ public class SwissKitJSettingUi {
                         } catch (Exception ex) {
                             log.error("Failed to delete address", ex);
                         }
-                    }).start();
+                    });
                 });
                 setGraphic(delBtn);
             }
@@ -1544,8 +1551,12 @@ public class SwissKitJSettingUi {
         List<EmailAddressBookEntity> finalAllAddresses = allAddresses;
         Map<Long, Long> tagContactCount = new HashMap<>();
         for (EmailTagEntity tag : tags) {
+            String tagIdStr = String.valueOf(tag.getId());
+            // Match tag ID with word-boundary awareness in the JSON-like tags field
+            java.util.regex.Pattern p = java.util.regex.Pattern.compile(
+                "(?:^|[,\\[\"\\s])" + java.util.regex.Pattern.quote(tagIdStr) + "(?:[,\\]\"\\s]|$)");
             long count = finalAllAddresses.stream()
-                .filter(a -> a.getTags() != null && a.getTags().contains(String.valueOf(tag.getId())))
+                .filter(a -> a.getTags() != null && p.matcher(a.getTags()).find())
                 .count();
             tagContactCount.put(tag.getId(), count);
         }
@@ -1588,7 +1599,7 @@ public class SwissKitJSettingUi {
                             I18n.get("setting.email.tagInUse", tag.getTag(), count));
                         return;
                     }
-                    new Thread(() -> {
+                    runAsync(() -> {
                         try (SqlSession session = DatabaseInit.getSqlSession()) {
                             session.getMapper(EmailTagMapper.class).deleteById(tag.getId());
                             session.commit();
@@ -1598,7 +1609,7 @@ public class SwissKitJSettingUi {
                             Platform.runLater(() -> GlassNotification.notify(dialog, GlassNotification.Type.ERROR,
                                 I18n.get("setting.email.failedToSave", ex.getMessage())));
                         }
-                    }).start();
+                    });
                 });
                 setGraphic(delBtn);
             }
@@ -1628,7 +1639,7 @@ public class SwissKitJSettingUi {
             Long currentUpdateId = updateIdRef.get();
             if (I18n.get("setting.email.update").equals(addTagBtn.getText()) && currentUpdateId != null) {
                 final Long uid = currentUpdateId;
-                new Thread(() -> {
+                runAsync(() -> {
                     try (SqlSession session = DatabaseInit.getSqlSession()) {
                         EmailTagMapper mapper = session.getMapper(EmailTagMapper.class);
                         EmailTagEntity entity = new EmailTagEntity();
@@ -1643,9 +1654,9 @@ public class SwissKitJSettingUi {
                     } catch (Exception ex) {
                         log.error("Failed to update tag", ex);
                     }
-                }).start();
+                });
             } else {
-                new Thread(() -> {
+                runAsync(() -> {
                     try (SqlSession session = DatabaseInit.getSqlSession()) {
                         EmailTagMapper mapper = session.getMapper(EmailTagMapper.class);
                         EmailTagEntity entity = new EmailTagEntity();
@@ -1660,7 +1671,7 @@ public class SwissKitJSettingUi {
                     } catch (Exception ex) {
                         log.error("Failed to insert tag", ex);
                     }
-                }).start();
+                });
             }
         });
 
@@ -1765,7 +1776,7 @@ public class SwissKitJSettingUi {
             statusLabel.setText(I18n.get("setting.email.importing"));
             statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
 
-            new Thread(() -> {
+            runAsync(() -> {
                 try {
                     ImportResult result = doImportFromExcel(file);
                     Platform.runLater(() -> {
@@ -1794,7 +1805,7 @@ public class SwissKitJSettingUi {
                         browseBtn.setDisable(false);
                     });
                 }
-            }).start();
+            });
         });
 
         Button closeBtn = glassBtn(I18n.get("button.close"), false);
@@ -2074,5 +2085,12 @@ public class SwissKitJSettingUi {
         d.setPrefHeight(1);
         VBox.setMargin(d, new Insets(6, 4, 6, 4));
         return d;
+    }
+
+    /** Runs a task on a daemon thread (won't prevent JVM shutdown). */
+    private static void runAsync(Runnable task) {
+        Thread t = new Thread(task);
+        t.setDaemon(true);
+        t.start();
     }
 }

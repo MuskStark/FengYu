@@ -54,11 +54,12 @@ public class MainWindow extends StackPane {
     private final PluginLoader loader;
     private final PluginRegistry registry;
     private final FavoriteService favoriteService;
+    private BorderPane windowPane;
 
     private final TitleBar    titleBar;
     private final Sidebar     sidebar;
     private final ContentArea contentArea;
-    private final AiChatPlugin  aiChatPlugin;
+    private SwissKitJPlugin  aiChatPlugin;
     private Node aiChatView;
     private final Map<SwissKitJPlugin, Node> cachedViews = new ConcurrentHashMap<>();
 
@@ -93,21 +94,27 @@ public class MainWindow extends StackPane {
         contentArea.setFavoriteService(favoriteService);
         contentArea.setMinHeight(0);
 
-        // AI service (initialized by SwissKitJApp.initializeAiBackend())
-        aiChatPlugin = new AiChatPlugin();
+        // AI chat plugin — look up the registered instance from BuiltinToolRegistrar
+        // instead of creating a duplicate. Falls back to a new instance if not found.
+        aiChatPlugin = registry.findPlugin("builtin.ai-chat").orElse(null);
+        if (aiChatPlugin == null) {
+            // Fallback: shouldn't happen normally, but safe guard
+            aiChatPlugin = new AiChatPlugin();
+            log.warn("AiChatPlugin not found in registry, created standalone instance");
+        }
 
-        int buildInTool = 0;
-        int pluginInTool = 0;
+        int builtinCount = 0;
+        int pluginCount = 0;
         for (SwissKitJPlugin plugin : registry.getPlugins()) {
-            if(plugin.getType().isPlugin() ) {
-                pluginInTool++;
-            }else {
-                buildInTool++;
+            if (plugin.getType().isPlugin()) {
+                pluginCount++;
+            } else {
+                builtinCount++;
             }
         }
 
-        statusPluginCount = statusText(I18n.get("status.plugins", pluginInTool));
-        statusToolCount = statusText(I18n.get("status.tools", pluginInTool + buildInTool));
+        statusPluginCount = statusText(I18n.get("status.plugins", pluginCount));
+        statusToolCount = statusText(I18n.get("status.tools", pluginCount + builtinCount));
 
         buildScene();
         wireEvents();
@@ -125,7 +132,7 @@ public class MainWindow extends StackPane {
         Pane orbLayer = buildOrbLayer();
 
         // Main window glass panel
-        BorderPane windowPane = new BorderPane();
+        windowPane = new BorderPane();
         windowPane.setMaxWidth(Double.MAX_VALUE);
         windowPane.setMaxHeight(Double.MAX_VALUE);
         windowPane.getStyleClass().add("app-root");
@@ -313,6 +320,7 @@ public class MainWindow extends StackPane {
                         log.error("Plugin {} returned null from createView()", plugin.getId());
                         return;
                     }
+                    PluginContext.wrapEvents(plugin, view);
                     cachedViews.put(plugin, view);
                 } catch (Exception e) {
                     log.error("Failed to create view for plugin {}: {}", plugin.getId(), e.getMessage(), e);
@@ -366,8 +374,12 @@ public class MainWindow extends StackPane {
 
     /**
      * Opens the AI chat panel in the content area, creating the view on first access.
+     * Ensures the local AI backend is initialized lazily when the AI tool is opened.
      */
     private void openAiChat() {
+        // Ensure local backend is available (lazy init for local mode)
+        SwissKitJSettingUi.ensureLocalBackend();
+
         if (aiChatView == null) {
             try {
                 aiChatView = PluginContext.callWith(aiChatPlugin, aiChatPlugin::createView);
@@ -382,8 +394,6 @@ public class MainWindow extends StackPane {
     // ── Entry animation ──────────────────────────────────
 
     private void playEntryAnimation() {
-        // Get windowPane (second child node)
-        javafx.scene.Node windowPane = getChildren().get(1);
         windowPane.setOpacity(0);
         windowPane.setScaleX(0.94);
         windowPane.setScaleY(0.94);

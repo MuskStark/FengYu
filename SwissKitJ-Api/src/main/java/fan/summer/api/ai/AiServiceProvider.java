@@ -1,12 +1,13 @@
 package fan.summer.api.ai;
 
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * Central registry for the active {@link AiService} instance and its registered tools.
@@ -25,6 +26,8 @@ import java.util.logging.Logger;
  * @see AiTool
  */
 public final class AiServiceProvider {
+
+    private static final PluginLogger log = LoggerFactory.getLogger(AiServiceProvider.class);
 
     private static volatile AiService instance;
     private static volatile String currentMode = "local";
@@ -67,8 +70,7 @@ public final class AiServiceProvider {
             try {
                 instance.unloadModel();
             } catch (Exception e) {
-                Logger.getLogger(AiServiceProvider.class.getName())
-                    .log(Level.WARNING, "Failed to unload previous AI service", e);
+                log.warn("Failed to unload previous AI service: {}", e.getMessage());
             }
         }
         currentMode = mode;
@@ -173,6 +175,14 @@ public final class AiServiceProvider {
      */
     public static AiTool getTool(String name) {
         return tools.get(name);
+    }
+
+    /**
+     * Removes all registered tools. Useful during shutdown or when switching
+     * AI backends that require a fresh tool set.
+     */
+    public static void clearTools() {
+        tools.clear();
     }
 
     // ── Backend health ──────────────────────────────────────────

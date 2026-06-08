@@ -159,25 +159,29 @@ public class OnlineStorePane extends VBox {
 
     private List<StorePlugin> fetchPlugins(String urlStr) throws Exception {
         HttpURLConnection conn = (HttpURLConnection) new URL(urlStr).openConnection();
-        conn.setRequestMethod("GET");
-        conn.setConnectTimeout(10000);
-        conn.setReadTimeout(15000);
-        conn.setRequestProperty("Accept", "application/json");
+        try {
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(15000);
+            conn.setRequestProperty("Accept", "application/json");
 
-        int responseCode = conn.getResponseCode();
-        if (responseCode != 200) {
-            throw new RuntimeException("HTTP " + responseCode);
-        }
-
-        StringBuilder sb = new StringBuilder();
-        try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                sb.append(line);
+            int responseCode = conn.getResponseCode();
+            if (responseCode != 200) {
+                throw new RuntimeException("HTTP " + responseCode);
             }
-        }
 
-        return parsePluginJson(sb.toString());
+            StringBuilder sb = new StringBuilder();
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    sb.append(line);
+                }
+            }
+
+            return parsePluginJson(sb.toString());
+        } finally {
+            conn.disconnect();
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -312,56 +316,74 @@ public class OnlineStorePane extends VBox {
         final ProgressBar finalProgress = progress;
 
         new Thread(() -> {
+            Path tempFile = null;
             try {
                 Path pluginDir = PluginLoader.resolvePluginsDir();
                 Files.createDirectories(pluginDir);
 
                 HttpURLConnection conn = (HttpURLConnection) new URL(plugin.jarUrl).openConnection();
-                conn.setConnectTimeout(15000);
-                conn.setReadTimeout(30000);
+                try {
+                    conn.setConnectTimeout(15000);
+                    conn.setReadTimeout(30000);
 
-                int responseCode = conn.getResponseCode();
-                if (responseCode != 200) {
-                    throw new RuntimeException("Download failed: HTTP " + responseCode);
-                }
+                    int responseCode = conn.getResponseCode();
+                    if (responseCode != 200) {
+                        throw new RuntimeException("Download failed: HTTP " + responseCode);
+                    }
 
-                final String jarFileName;
-                String extractedName = plugin.jarUrl.substring(plugin.jarUrl.lastIndexOf('/') + 1);
-                if (extractedName.toLowerCase().endsWith(".jar")) {
-                    jarFileName = extractedName;
-                } else {
-                    jarFileName = plugin.id.replace('.', '-') + ".jar";
-                }
-                Path target = pluginDir.resolve(jarFileName);
+                    final String jarFileName;
+                    String extractedName = plugin.jarUrl.substring(plugin.jarUrl.lastIndexOf('/') + 1);
+                    if (extractedName.toLowerCase().endsWith(".jar")) {
+                        jarFileName = extractedName;
+                    } else {
+                        jarFileName = plugin.id.replace('.', '-') + ".jar";
+                    }
+                    Path target = pluginDir.resolve(jarFileName);
 
-                try (var in = conn.getInputStream();
-                     var out = new FileOutputStream(target.toFile())) {
-                    byte[] buffer = new byte[8192];
-                    int bytesRead;
-                    long total = 0;
-                    long contentLength = conn.getContentLengthLong();
-                    while ((bytesRead = in.read(buffer)) != -1) {
-                        out.write(buffer, 0, bytesRead);
-                        total += bytesRead;
-                        if (contentLength > 0) {
-                            double progressVal = (double) total / contentLength;
-                            Platform.runLater(() -> finalProgress.setProgress(progressVal));
+                    // Write to a temporary .part file first, then atomically move to target.
+                    // This prevents the directory watcher from loading a half-written JAR.
+                    tempFile = pluginDir.resolve(jarFileName + ".part");
+
+                    try (var in = conn.getInputStream();
+                         var out = new FileOutputStream(tempFile.toFile())) {
+                        byte[] buffer = new byte[8192];
+                        int bytesRead;
+                        long total = 0;
+                        long contentLength = conn.getContentLengthLong();
+                        while ((bytesRead = in.read(buffer)) != -1) {
+                            out.write(buffer, 0, bytesRead);
+                            total += bytesRead;
+                            if (contentLength > 0) {
+                                double progressVal = (double) total / contentLength;
+                                Platform.runLater(() -> finalProgress.setProgress(progressVal));
+                            }
                         }
                     }
+
+                    // Atomic move: .part → final name
+                    Files.move(tempFile, target, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    tempFile = null; // move succeeded, no cleanup needed
+
+                    log.info("Plugin downloaded and installed: {}", target);
+
+                    Platform.runLater(() -> {
+                        progress.setProgress(1.0);
+                        statusLabel.setText(I18n.get("store.online.installed", plugin.name, jarFileName));
+                        statusLabel.setStyle("-fx-text-fill: #4cd97b; -fx-font-size: 12px;");
+                        installBtn.setDisable(false);
+                        GlassNotification.toast(OnlineStorePane.this, GlassNotification.Type.SUCCESS,
+                                I18n.get("store.online.installed", plugin.name, jarFileName));
+                        if (onInstallComplete != null) onInstallComplete.run();
+                    });
+                } finally {
+                    conn.disconnect();
                 }
-
-                log.info("Plugin downloaded and installed: {}", target);
-
-                Platform.runLater(() -> {
-                    progress.setProgress(1.0);
-                    statusLabel.setText(I18n.get("store.online.installed", plugin.name, jarFileName));
-                    statusLabel.setStyle("-fx-text-fill: #4cd97b; -fx-font-size: 12px;");
-                    installBtn.setDisable(false);
-                    GlassNotification.toast(OnlineStorePane.this, GlassNotification.Type.SUCCESS,
-                            I18n.get("store.online.installed", plugin.name, jarFileName));
-                    if (onInstallComplete != null) onInstallComplete.run();
-                });
             } catch (Exception ex) {
+                // Clean up partial download
+                if (tempFile != null) {
+                    try { Files.deleteIfExists(tempFile); } catch (Exception ignored) {}
+                }
                 log.error("Plugin install failed for {}", plugin.id, ex);
                 Platform.runLater(() -> {
                     progress.setVisible(false);

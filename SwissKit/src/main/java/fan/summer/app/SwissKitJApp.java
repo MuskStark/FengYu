@@ -13,7 +13,7 @@ import fan.summer.plugin.PluginLoader;
 import fan.summer.plugin.PluginRegistry;
 import fan.summer.ui.MainWindow;
 import fan.summer.ui.util.WindowResizeHelper;
-import fan.summer.Registrar.BuiltinToolRegistrar;
+import fan.summer.registrar.BuiltinToolRegistrar;
 import fan.summer.ai.tools.BuiltinAiToolRegistrar;
 import javafx.application.Application;
 import javafx.scene.Scene;
@@ -168,29 +168,29 @@ public class SwissKitJApp extends Application {
     }
 
     private void initializeAiBackend() {
-        String mode = fan.summer.ui.setting.SwissKitJSettingUi.getAiMode();
+        String mode = fan.summer.ai.AiConfigService.getAiMode();
         log.info("AI backend mode: {}", mode);
 
         switch (mode) {
             case "openai" -> {
                 fan.summer.ai.service.OpenAiService svc = new fan.summer.ai.service.OpenAiService();
                 svc.configure(
-                    fan.summer.ui.setting.SwissKitJSettingUi.getAiOpenAiEndpoint(),
-                    fan.summer.ui.setting.SwissKitJSettingUi.getAiOpenAiApiKey(),
-                    fan.summer.ui.setting.SwissKitJSettingUi.getAiOpenAiModel()
+                    fan.summer.ai.AiConfigService.getAiOpenAiEndpoint(),
+                    fan.summer.ai.AiConfigService.getAiOpenAiApiKey(),
+                    fan.summer.ai.AiConfigService.getAiOpenAiModel()
                 );
                 AiServiceProvider.switchMode(mode, svc);
-                log.info("OpenAI backend initialized: model={}", fan.summer.ui.setting.SwissKitJSettingUi.getAiOpenAiModel());
+                log.info("OpenAI backend initialized: model={}", fan.summer.ai.AiConfigService.getAiOpenAiModel());
             }
             case "anthropic" -> {
                 fan.summer.ai.service.AnthropicService svc = new fan.summer.ai.service.AnthropicService();
                 svc.configure(
-                    fan.summer.ui.setting.SwissKitJSettingUi.getAiAnthropicEndpoint(),
-                    fan.summer.ui.setting.SwissKitJSettingUi.getAiAnthropicApiKey(),
-                    fan.summer.ui.setting.SwissKitJSettingUi.getAiAnthropicModel()
+                    fan.summer.ai.AiConfigService.getAiAnthropicEndpoint(),
+                    fan.summer.ai.AiConfigService.getAiAnthropicApiKey(),
+                    fan.summer.ai.AiConfigService.getAiAnthropicModel()
                 );
                 AiServiceProvider.switchMode(mode, svc);
-                log.info("Anthropic backend initialized: model={}", fan.summer.ui.setting.SwissKitJSettingUi.getAiAnthropicModel());
+                log.info("Anthropic backend initialized: model={}", fan.summer.ai.AiConfigService.getAiAnthropicModel());
             }
             default -> {
                 // Local mode: defer initialization until AI tool is opened.
