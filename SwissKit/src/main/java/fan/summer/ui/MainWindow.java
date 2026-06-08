@@ -1,5 +1,6 @@
 package fan.summer.ui;
 
+import fan.summer.api.PluginContext;
 import fan.summer.api.i18n.I18n;
 import fan.summer.plugin.FavoriteService;
 import fan.summer.plugin.PluginLoader;
@@ -307,7 +308,7 @@ public class MainWindow extends StackPane {
             Node view = cachedViews.get(plugin);
             if (view == null) {
                 try {
-                    view = plugin.createView();
+                    view = PluginContext.callWith(plugin, plugin::createView);
                     if (view == null) {
                         log.error("Plugin {} returned null from createView()", plugin.getId());
                         return;
@@ -368,7 +369,12 @@ public class MainWindow extends StackPane {
      */
     private void openAiChat() {
         if (aiChatView == null) {
-            aiChatView = aiChatPlugin.createView();
+            try {
+                aiChatView = PluginContext.callWith(aiChatPlugin, aiChatPlugin::createView);
+            } catch (Exception e) {
+                log.error("Failed to create AI chat view: {}", e.getMessage(), e);
+                return;
+            }
         }
         contentArea.showPage(aiChatView, I18n.get("builtin.ai-chat.name"));
     }

@@ -1,5 +1,6 @@
 package fan.summer.plugin;
 
+import fan.summer.api.PluginContext;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.i18n.I18n;
 import javafx.application.Platform;
@@ -282,6 +283,7 @@ public class PluginLoader {
             List<SwissKitJPlugin> loaded = new ArrayList<>();
             for (SwissKitJPlugin plugin : sl) {
                 loaded.add(plugin);
+                PluginContext.register(plugin, cl);
                 log.info("Loaded plugin: id={}, name={}, version={}, jar={}",
                         plugin.getId(), plugin.getName(), plugin.getVersion(), jar.getFileName());
             }
@@ -317,11 +319,14 @@ public class PluginLoader {
         List<SwissKitJPlugin> plugins = jarPlugins.remove(jar);
         if (plugins != null) {
             log.info("Unloading plugin JAR: {} (contained {} plugin(s))", jar.getFileName(), plugins.size());
-            // Fire onUnload lifecycle callback
+            // Fire onUnload lifecycle callback with TCCL set to the plugin's ClassLoader
             plugins.forEach(p -> {
-                try { p.onUnload(); } catch (Exception e) {
+                try {
+                    PluginContext.runWith(p, p::onUnload);
+                } catch (Exception e) {
                     log.warn("onUnload() failed for {}: {}", p.getId(), e.getMessage());
                 }
+                PluginContext.unregister(p);
             });
             if (registry != null) {
                 Platform.runLater(() -> plugins.forEach(registry::removePlugin));
