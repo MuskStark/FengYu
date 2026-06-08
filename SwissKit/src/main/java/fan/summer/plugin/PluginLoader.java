@@ -12,6 +12,7 @@ import java.net.URLClassLoader;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -68,6 +69,14 @@ public class PluginLoader {
 
     /** Maps JAR path → plugins loaded from that JAR */
     private final Map<Path, List<SwissKitJPlugin>> jarPlugins = new ConcurrentHashMap<>();
+
+    /** Scheduler for deferred JAR loads (avoids blocking the watch thread). */
+    private final java.util.concurrent.ScheduledExecutorService loadScheduler =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "plugin-load-scheduler");
+                t.setDaemon(true);
+                return t;
+            });
 
     /**
      * Constructs a PluginLoader that will scan the given directory for plugin JARs.
@@ -149,6 +158,7 @@ public class PluginLoader {
     public void stop() {
         log.info("Stopping plugin loader");
         running.set(false);
+        loadScheduler.shutdownNow();
         try {
             if (watchService != null) watchService.close();
         } catch (IOException ignored) {}
@@ -349,6 +359,10 @@ public class PluginLoader {
 
     // ── Watch loop ───────────────────────────────────────────────
 
+    /** Debounce map: JAR path → scheduled reload timestamp. Prevents rapid-fire reloads. */
+    private final ConcurrentHashMap<Path, Long> pendingReloads = new ConcurrentHashMap<>();
+    private static final long RELOAD_DEBOUNCE_MS = 1500;
+
     private void watchLoop() {
         while (running.get()) {
             try {
@@ -362,20 +376,34 @@ public class PluginLoader {
                     WatchEvent.Kind<?> kind = event.kind();
                     if (kind == StandardWatchEventKinds.ENTRY_CREATE) {
                         log.info("Detected new plugin JAR: {}", name);
-                        // Brief delay so the file is fully written before reading
-                        Thread.sleep(500);
-                        loadJar(fullPath);
+                        // Schedule load after a brief delay so the file is fully written
+                        loadScheduler.schedule(() -> loadJar(fullPath), 500, java.util.concurrent.TimeUnit.MILLISECONDS);
                     } else if (kind == StandardWatchEventKinds.ENTRY_DELETE) {
                         log.info("Detected plugin JAR removal: {}", name);
+                        pendingReloads.remove(fullPath);
                         unloadJar(fullPath);
                     } else if (kind == StandardWatchEventKinds.ENTRY_MODIFY) {
-                        log.info("Detected plugin JAR modification, reloading: {}", name);
-                        unloadJar(fullPath);
-                        Thread.sleep(500);
-                        loadJar(fullPath);
+                        // Debounce: schedule a reload, coalescing rapid-fire modify events
+                        long reloadAt = System.currentTimeMillis() + RELOAD_DEBOUNCE_MS;
+                        pendingReloads.put(fullPath, reloadAt);
+                        log.debug("Scheduled debounced reload for: {}", name);
                     }
                 }
                 key.reset();
+
+                // Process pending reloads whose debounce timer has expired
+                long now = System.currentTimeMillis();
+                for (Map.Entry<Path, Long> entry : pendingReloads.entrySet()) {
+                    if (now >= entry.getValue()) {
+                        pendingReloads.remove(entry.getKey());
+                        Path jar = entry.getKey();
+                        if (Files.exists(jar)) {
+                            log.info("Executing debounced reload for: {}", jar.getFileName());
+                            unloadJar(jar);
+                            loadJar(jar);
+                        }
+                    }
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;

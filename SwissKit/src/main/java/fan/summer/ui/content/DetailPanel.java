@@ -44,8 +44,8 @@ public class DetailPanel extends VBox {
 
     private static final double PANEL_WIDTH = 260;
 
-    private Text        iconText    = new Text();
-    private final StackPane iconWrap   = new StackPane(iconText);
+    private Text        iconText;
+    private final StackPane iconWrap   = new StackPane();
     private final Label   nameLabel   = new Label();
     private final Label   metaLabel   = new Label();
     private final Label   descLabel   = new Label();
@@ -193,10 +193,12 @@ public class DetailPanel extends VBox {
             "-fx-text-fill: rgba(255,255,255,0.35); -fx-cursor: hand; -fx-font-size: 14px;"
         );
         closeBtn.setOnAction(e -> hide());
-        closeBtn.setOnMouseEntered(e ->
-            closeBtn.setStyle(closeBtn.getStyle() + "-fx-text-fill: rgba(255,255,255,0.85);"));
-        closeBtn.setOnMouseExited(e ->
-            closeBtn.setStyle(closeBtn.getStyle().replace("-fx-text-fill: rgba(255,255,255,0.85);", "")));
+        final String closeBtnNormal = "-fx-background-color: transparent; -fx-border-width: 0;" +
+            "-fx-text-fill: rgba(255,255,255,0.35); -fx-cursor: hand; -fx-font-size: 14px;";
+        final String closeBtnHover = "-fx-background-color: transparent; -fx-border-width: 0;" +
+            "-fx-text-fill: rgba(255,255,255,0.85); -fx-cursor: hand; -fx-font-size: 14px;";
+        closeBtn.setOnMouseEntered(e -> closeBtn.setStyle(closeBtnHover));
+        closeBtn.setOnMouseExited(e -> closeBtn.setStyle(closeBtnNormal));
 
         HBox topRow = new HBox(closeBtn);
         topRow.setAlignment(Pos.CENTER_RIGHT);

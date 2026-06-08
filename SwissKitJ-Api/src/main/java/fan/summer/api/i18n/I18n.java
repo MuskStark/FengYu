@@ -291,7 +291,7 @@ public final class I18n {
         }
     }
 
-    private static final int MAX_STALE_BINDINGS = 500;
+    private static final int MAX_STALE_BINDINGS = 200;
 
     private static void updateAll() {
         // Clean up GC'd bindings

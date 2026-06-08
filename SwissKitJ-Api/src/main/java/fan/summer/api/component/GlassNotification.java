@@ -21,6 +21,10 @@ import javafx.stage.StageStyle;
 import javafx.stage.Window;
 import javafx.util.Duration;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
 /**
  * Glassmorphism-styled notification dialog that replaces the default JavaFX Alert.
  * <p>
@@ -97,17 +101,23 @@ public final class GlassNotification {
         if (Platform.isFxApplicationThread()) {
             return showOverlay(owner, Type.WARNING, title + "\n" + message, true, ButtonType.CANCEL);
         }
-        final boolean[] result = {false};
+        CompletableFuture<Boolean> future = new CompletableFuture<>();
         Platform.runLater(() -> {
-            result[0] = showOverlay(owner, Type.WARNING, title + "\n" + message, true, ButtonType.CANCEL);
-            synchronized (result) { result.notifyAll(); }
+            try {
+                boolean result = showOverlay(owner, Type.WARNING, title + "\n" + message, true, ButtonType.CANCEL);
+                future.complete(result);
+            } catch (Exception e) {
+                future.completeExceptionally(e);
+            }
         });
         try {
-            synchronized (result) { result.wait(); }
-        } catch (InterruptedException e) {
+            return future.get(60, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            return false;
+        } catch (Exception e) {
             Thread.currentThread().interrupt();
+            return false;
         }
-        return result[0];
     }
 
     public static boolean confirm(Node context, String title, String message) {

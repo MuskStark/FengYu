@@ -26,20 +26,14 @@ public class PluginStoreUi {
 
     private static final Logger LOG = LoggerFactory.getLogger(PluginStoreUi.class);
 
-    private static Node view;
-
     /**
-     * Builds (or returns the cached) plugin store UI containing the sidebar
+     * Builds the plugin store UI containing the sidebar
      * and both the online store and local install content panes.
+     * A fresh view is created each time so locale changes are reflected.
      *
      * @return the root Node of the plugin store UI
      */
     public static Node build() {
-        if (view != null) {
-            LOG.info("Returning cached PluginStoreUi view");
-            return view;
-        }
-        LOG.info("Building new PluginStoreUi view");
 
         // ── Content pages ──────────────────────────────────
         Node onlinePage = new OnlineStorePane(null);
@@ -99,9 +93,8 @@ public class PluginStoreUi {
         container.setMinWidth(0);
         VBox.setVgrow(body, Priority.ALWAYS);
 
-        view = container;
-        LOG.info("PluginStoreUi view built and cached");
-        return view;
+        LOG.debug("PluginStoreUi view built");
+        return container;
     }
 
     /**

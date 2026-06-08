@@ -259,7 +259,9 @@ public class ContentArea extends BorderPane {
         HBox.setHgrow(searchField, Priority.ALWAYS);
         searchField.textProperty().addListener((obs, oldVal, newVal) -> {
             currentQuery = newVal.trim().toLowerCase();
+            isSearchRefresh = true;
             refresh();
+            isSearchRefresh = false;
         });
 
         Label kbdHint = new Label("⌘K");
@@ -324,6 +326,12 @@ public class ContentArea extends BorderPane {
 
     // ── Grid refresh ──────────────────────────────────────────
 
+    /**
+     * Whether the current refresh is triggered by a search query change.
+     * When true, entry animations are suppressed to avoid flicker during typing.
+     */
+    private boolean isSearchRefresh = false;
+
     private void refresh() {
         if (plugins == null) return;
 
@@ -334,9 +342,12 @@ public class ContentArea extends BorderPane {
 
         toolGrid.getChildren().clear();
 
+        // Skip staggered animations when refreshing due to search typing —
+        // only animate on category switch (showCategory) which calls animateGridIn().
+        boolean animate = !isSearchRefresh;
         // Limit staggered animations to the first batch; cards beyond this
         // are added immediately to avoid creating hundreds of PauseTransitions.
-        int staggerLimit = Math.min(filtered.size(), 30);
+        int staggerLimit = animate ? Math.min(filtered.size(), 30) : 0;
 
         for (int i = 0; i < filtered.size(); i++) {
             SwissKitJPlugin p = filtered.get(i);
@@ -358,7 +369,7 @@ public class ContentArea extends BorderPane {
                 });
                 pause.play();
             } else {
-                // Cards beyond the stagger limit appear immediately
+                // Cards beyond the stagger limit (or during search) appear immediately
                 card.setOpacity(1);
             }
 

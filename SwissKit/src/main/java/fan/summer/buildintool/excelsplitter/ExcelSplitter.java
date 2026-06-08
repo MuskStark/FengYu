@@ -114,12 +114,16 @@ public class ExcelSplitter {
      * @throws Exception if the split fails (file access, DB query, etc.)
      */
     public SplitResult split() throws Exception {
-        progress.accept(0.0, "Starting...");
+        onProgress(0.0, "Starting...");
         return switch (config.mode) {
             case BY_SHEET  -> splitBySheet();
             case BY_COLUMN -> splitByColumn();
             case COMPLEX   -> complexSplit();
         };
+    }
+
+    private void onProgress(double pct, String msg) {
+        if (progress != null) progress.accept(pct, msg);
     }
 
     private SplitResult splitBySheet() throws Exception {
@@ -135,7 +139,7 @@ public class ExcelSplitter {
         try (ExcelReader reader = FesodSheet.read(config.sourceFile.toFile()).build()) {
             for (int i = 0; i < sheets.size(); i++) {
                 String sheetName = sheets.get(i);
-                progress.accept((double) i / sheets.size(), "Processing sheet: " + sheetName);
+                onProgress((double) i / sheets.size(), "Processing sheet: " + sheetName);
 
                 ReadSheet readSheet = FesodSheet.readSheet(sheetName)
                         .registerReadListener(listener).build();
@@ -155,7 +159,7 @@ public class ExcelSplitter {
             }
         }
 
-        progress.accept(1.0, "Done");
+        onProgress(1.0, "Done");
         logger.info("Split by sheet completed | files={}", outputs.size());
         return new SplitResult(outputs.size(), outputs);
     }
@@ -198,14 +202,14 @@ public class ExcelSplitter {
                             .doWrite(buildRows(headerMap, e.getValue()));
                     outputs.add(out);
                     int n = current.incrementAndGet();
-                    progress.accept((double) n / total, "Writing: " + key);
+                    onProgress((double) n / total, "Writing: " + key);
                 })
             ).get();
         } finally {
             pool.shutdown();
         }
 
-        progress.accept(1.0, "Done");
+        onProgress(1.0, "Done");
         logger.info("Split by column completed | groups={}", total);
         return new SplitResult(outputs.size(), outputs);
     }
@@ -240,7 +244,7 @@ public class ExcelSplitter {
 
         for (int i = 0; i < normalConfigs.size(); i++) {
             ComplexSplitConfigEntity cfg = normalConfigs.get(i);
-            progress.accept(0.05 + 0.3 * i / Math.max(1, normalConfigs.size()),
+            onProgress(0.05 + 0.3 * i / Math.max(1, normalConfigs.size()),
                     "Reading: " + cfg.getSheetName());
 
             NoModelDataListener listener = new NoModelDataListener();
@@ -268,6 +272,9 @@ public class ExcelSplitter {
         int totalFiles = plan.size();
         int writeDone = 0;
 
+        // Track only the files we create, so Phase 3 doesn't corrupt pre-existing files
+        List<Path> createdFiles = new ArrayList<>();
+
         try (FileInputStream srcFis = new FileInputStream(config.sourceFile.toFile());
              Workbook srcWb = WorkbookFactory.create(srcFis)) {
 
@@ -292,45 +299,38 @@ public class ExcelSplitter {
                     }
                 }
 
+                createdFiles.add(outPath);
                 writeDone++;
-                progress.accept(0.35 + 0.5 * writeDone / Math.max(1, totalFiles), "Writing: " + baseName);
+                onProgress(0.35 + 0.5 * writeDone / Math.max(1, totalFiles), "Writing: " + baseName);
             }
 
-            // Phase 3: copyAll sheets — reuse already-open source workbook
+            // Phase 3: copyAll sheets — only merge into files created by Phase 2
             if (!copyAllConfigs.isEmpty()) {
-                File[] outputFiles = config.outputDir.toFile().listFiles(
-                        (dir, name) -> name.endsWith(".xlsx") && !name.endsWith("_metadata.xlsx"));
-
-                if (outputFiles != null) {
-                    for (int i = 0; i < outputFiles.length; i++) {
-                        File targetFile = outputFiles[i];
-                        try (FileInputStream tgtFis = new FileInputStream(targetFile);
-                             Workbook tgtWb = WorkbookFactory.create(tgtFis)) {
-                            for (ComplexSplitConfigEntity copyConfig : copyAllConfigs) {
-                                Sheet srcSheet = srcWb.getSheet(copyConfig.getSheetName());
-                                if (srcSheet != null && tgtWb.getSheet(copyConfig.getSheetName()) == null) {
-                                    ExcelUtil.copySheetToWorkbook(srcSheet, tgtWb);
-                                }
-                            }
-                            try (FileOutputStream fos = new FileOutputStream(targetFile)) {
-                                tgtWb.write(fos);
+                for (int i = 0; i < createdFiles.size(); i++) {
+                    File targetFile = createdFiles.get(i).toFile();
+                    try (FileInputStream tgtFis = new FileInputStream(targetFile);
+                         Workbook tgtWb = WorkbookFactory.create(tgtFis)) {
+                        for (ComplexSplitConfigEntity copyConfig : copyAllConfigs) {
+                            Sheet srcSheet = srcWb.getSheet(copyConfig.getSheetName());
+                            if (srcSheet != null && tgtWb.getSheet(copyConfig.getSheetName()) == null) {
+                                ExcelUtil.copySheetToWorkbook(srcSheet, tgtWb);
                             }
                         }
-                        progress.accept(0.85 + 0.15 * (i + 1) / Math.max(1, outputFiles.length),
-                                "Copying sheets: " + targetFile.getName());
+                        try (FileOutputStream fos = new FileOutputStream(targetFile)) {
+                            tgtWb.write(fos);
+                        }
                     }
+                    onProgress(0.85 + 0.15 * (i + 1) / Math.max(1, createdFiles.size()),
+                            "Copying sheets: " + targetFile.getName());
                 }
             }
         }
 
-        List<Path> outputPaths = Arrays.stream(
-                        Objects.requireNonNull(config.outputDir.toFile().listFiles(
-                                (dir, name) -> name.endsWith(".xlsx") && !name.endsWith("_metadata.xlsx"))))
-                .map(File::toPath)
+        List<Path> outputPaths = createdFiles.stream()
                 .sorted(java.util.Comparator.comparing(Path::getFileName))
                 .collect(Collectors.toList());
 
-        progress.accept(1.0, "Done");
+        onProgress(1.0, "Done");
         logger.info("Complex split completed | normalConfigs={}, copyAllConfigs={}, outputFiles={}",
                 normalConfigs.size(), copyAllConfigs.size(), outputPaths.size());
         return new SplitResult(outputPaths.size(), outputPaths);
