@@ -274,7 +274,10 @@ public class PluginLoader {
     private void loadJar(Path jar) {
         log.debug("Loading plugin JAR: {}", jar.getFileName());
         try {
-            URLClassLoader cl = new URLClassLoader(
+            // Child-first RESOURCE lookup (parent-first class loading) so a plugin's
+            // own mybatis-config.xml / init.sql / mapper/** / i18n shadow the host's
+            // identically-named root resources. See ChildFirstResourceClassLoader.
+            URLClassLoader cl = new ChildFirstResourceClassLoader(
                 new java.net.URL[]{jar.toUri().toURL()},
                 getClass().getClassLoader()
             );
