@@ -50,8 +50,12 @@ JAR 内的文件。于是插件用宿主 config 构建 `SqlSessionFactory`（注
 
 - `getResource(String name)`：先 `findResource(name)`（仅查本 JAR 的 URL）；为 null
   时再 `super.getResource(name)`（父级 + 自身）。
-- `getResourceAsStream(String name)`：基于 `getResource(name)` 打开流；异常或 null
-  时回退 `super.getResourceAsStream(name)`。
+- `getResourceAsStream(String name)`：基于 child-first 的 `getResource(name)` 打开流；
+  `getResource` 返回 null（插件与宿主都没有）时返回 null；打开流抛 `IOException`（如插件
+  JAR 条目损坏）时记一条 `log.warn` 并返回 null。**此处刻意不回退到宿主的同名副本**——
+  否则插件资源损坏时会悄悄改用宿主的 `mybatis-config.xml` 等，正好重新引入本特性要根治的
+  跨污染。让插件「响亮地失败」并留下告警，比静默回退更安全，也与 JDK
+  `ClassLoader.getResourceAsStream` 在 `IOException` 时返回 null 的契约一致。
 - `getResources(String name)`：先枚举 `findResources(name)`（本 JAR），再追加父级
   `getParent().getResources(name)`，合并为一个 `Enumeration<URL>`；本 JAR 的资源排在前面。
 - 不重写 `loadClass` / `findClass`：类加载行为与今天完全一致（父优先）。
