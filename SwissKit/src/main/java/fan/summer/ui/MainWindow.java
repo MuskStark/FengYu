@@ -280,7 +280,7 @@ public class MainWindow extends StackPane {
             if ("ai".equals(categoryId)) {
                 openAiChat();
             } else if ("store".equals(categoryId)) {
-                contentArea.showPage(fan.summer.ui.store.PluginStoreUi.build(), I18n.get("store.online.title"));
+                contentArea.showPage(fan.summer.ui.store.PluginStoreUi.build(registry.getPlugins()), I18n.get("store.online.title"));
             } else if ("settings".equals(categoryId)) {
                 // settings is handled by setOnSettingsSelect
             } else {
