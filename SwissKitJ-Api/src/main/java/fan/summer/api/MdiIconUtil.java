@@ -97,9 +97,11 @@ public class MdiIconUtil {
     public static Text createIcon(String iconName, double size, String extraStyle) {
         String codepoint = CODEMAP.getOrDefault(iconName, CODEMAP.get("star"));
         Text text = new Text(codepoint);
-        Font iconFont = Font.loadFont(MdiIconUtil.class.getResourceAsStream("/fonts/materialdesignicons-webfont.ttf"), size);
-        if (iconFont != null) {
-            text.setFont(iconFont);
+
+        ensureFontLoaded();
+
+        if (loadedMdiFont != null) {
+            text.setFont(Font.font(loadedMdiFont.getFamily(), size));
         } else {
             text.setFont(Font.font("Material Design Icons", size));
         }
@@ -136,7 +138,11 @@ public class MdiIconUtil {
      * @return the loaded {@code Font}, or {@code null} if the font resource cannot be found
      */
     public static Font getFont(double size) {
-        return Font.loadFont(MdiIconUtil.class.getResourceAsStream("/fonts/materialdesignicons-webfont.ttf"), size);
+        ensureFontLoaded();
+        if (loadedMdiFont != null) {
+            return Font.font(loadedMdiFont.getFamily(), size);
+        }
+        return null;
     }
 
 }
