@@ -262,7 +262,7 @@ public class SwissKitJSettingUi {
     // ═══════════════════════════════════════════════════════════════════
 
     private static final String STORE_URL_KEY = "plugin.store.url";
-    private static final String DEFAULT_STORE_URL = "https://muskstark.github.io/SwissKitJ/plugins/store.json";
+    private static final String DEFAULT_STORE_URL = "https://muskstark.github.io/SwissKiJ-Plugin/store.json";
 
     /**
      * Returns the configured plugin store URL, checking in order:
