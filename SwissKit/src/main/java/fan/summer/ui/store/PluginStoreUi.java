@@ -1,9 +1,11 @@
 package fan.summer.ui.store;
 
+import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.i18n.I18n;
 import fan.summer.ui.sidebar.Sidebar.NavItem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import javafx.collections.ObservableList;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.layout.HBox;
@@ -11,6 +13,8 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Plugin Store UI container that combines Online Store and Local Install panes
@@ -33,10 +37,16 @@ public class PluginStoreUi {
      *
      * @return the root Node of the plugin store UI
      */
-    public static Node build() {
+    public static Node build(ObservableList<SwissKitJPlugin> installed) {
 
         // ── Content pages ──────────────────────────────────
-        Node onlinePage = new OnlineStorePane(null);
+        Map<String, String> installedVersions = new HashMap<>();
+        if (installed != null) {
+            for (SwissKitJPlugin p : installed) {
+                installedVersions.put(p.getId(), p.getVersion());
+            }
+        }
+        Node onlinePage = new OnlineStorePane(null, installedVersions);
         Node localPage  = new LocalInstallPane(null);
 
         StackPane contentStack = new StackPane(onlinePage, localPage);
