@@ -34,6 +34,12 @@ public final class AiServiceProvider {
     private static final List<Runnable> stateChangeListeners = new CopyOnWriteArrayList<>();
     private static final Map<String, AiTool> tools = new ConcurrentHashMap<>();
 
+    /** Tool filter used by guided slash-command execution to constrain
+     *  the model to a single tool. When set, {@link #getTools()} returns only that tool.
+     *  Uses a volatile field (not ThreadLocal) because inference runs on a virtual thread
+     *  spawned by AiService, which does not inherit thread-local state. */
+    private static volatile String constrainedTool;
+
     private AiServiceProvider() {}
 
     // ── Service management ────────────────────────────────────
@@ -150,11 +156,19 @@ public final class AiServiceProvider {
     }
 
     /**
-     * Returns an immutable list of all currently registered tools.
+     * Returns an immutable list of currently registered tools.
+     * If a constrained tool is set via {@link #setConstrainedTool(String)},
+     * only that single tool is returned — this allows guided slash-command
+     * execution to present a small model with exactly one tool.
      *
      * @return a list of registered {@link AiTool} instances
      */
     public static List<AiTool> getTools() {
+        String filter = constrainedTool;
+        if (filter != null) {
+            AiTool t = tools.get(filter);
+            if (t != null) return List.of(t);
+        }
         return List.copyOf(tools.values());
     }
 
@@ -183,6 +197,35 @@ public final class AiServiceProvider {
      */
     public static void clearTools() {
         tools.clear();
+    }
+
+    // ── Constrained tool filter (for guided slash-command execution) ──
+
+    /**
+     * Constrains subsequent {@link #getTools()} calls to return only the tool
+     * with the given name. This is used by guided slash-command execution so that
+     * small local models only see the single tool the user specified, rather than
+     * the full tool list.
+     *
+     * <p>Uses a volatile field (not ThreadLocal) because inference runs on a virtual
+     * thread that does not inherit thread-local state from the caller.</p>
+     *
+     * <p>Callers <strong>must</strong> call {@link #clearConstrainedTool()} when
+     * the constrained inference completes (typically in the callback's
+     * {@code onComplete}/{@code onError}).</p>
+     *
+     * @param toolName the tool to constrain to, or {@code null} to clear
+     * @see #clearConstrainedTool()
+     */
+    public static void setConstrainedTool(String toolName) {
+        constrainedTool = toolName;
+    }
+
+    /**
+     * Clears the constrained-tool filter set by {@link #setConstrainedTool(String)}.
+     */
+    public static void clearConstrainedTool() {
+        constrainedTool = null;
     }
 
     // ── Backend health ──────────────────────────────────────────

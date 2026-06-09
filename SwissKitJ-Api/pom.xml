@@ -11,6 +11,14 @@
   <name>SwissKitJ Api</name>
   <description>Plugin API for SwissKitJ. Third-party plugin developers depend on this artifact with provided scope.</description>
 
+  <licenses>
+    <license>
+      <name>GNU General Public License v3.0</name>
+      <url>https://www.gnu.org/licenses/gpl-3.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
   <properties>
     <maven.compiler.source>21</maven.compiler.source>
     <maven.compiler.target>21</maven.compiler.target>
