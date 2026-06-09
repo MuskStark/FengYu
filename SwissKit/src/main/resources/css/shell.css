@@ -119,16 +119,14 @@
     -fx-pref-height: 34px;
 }
 .nav-item-icon {
-    -fx-font-size: 14px;
+    -fx-fill: rgba(255,255,255,0.75);
     -fx-min-width: 18px;
     -fx-alignment: center;
-    -fx-text-fill: rgba(255,255,255,0.75);
 }
 .nav-item-text {
     -fx-font-size: 13px;
     -fx-text-fill: rgba(255,255,255,0.75);
 }
-.nav-item:hover .nav-item-icon,
 .nav-item:hover .nav-item-text {
     -fx-text-fill: rgba(255,255,255,1);
 }
@@ -141,7 +139,6 @@
     -fx-border-color: rgba(91,140,247,0.25);
     -fx-font-weight: 500;
 }
-.nav-item.active .nav-item-icon,
 .nav-item.active .nav-item-text {
     -fx-text-fill: #5b8cf7;
 }
