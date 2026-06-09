@@ -302,3 +302,79 @@
     -fx-font-size: 12px;
     -fx-font-family: "SF Mono", "Consolas", "Microsoft YaHei", monospace;
 }
+
+/* ============================================================
+   Plugin Store (online) — redesigned card grid
+   ============================================================ */
+
+.store-search {
+    -fx-background-color: rgba(255,255,255,0.05);
+    -fx-border-color: rgba(255,255,255,0.10);
+    -fx-border-width: 1;
+    -fx-border-radius: 9;
+    -fx-background-radius: 9;
+    -fx-text-fill: rgba(255,255,255,0.85);
+    -fx-prompt-text-fill: rgba(255,255,255,0.35);
+    -fx-font-size: 12.5px;
+    -fx-padding: 8 12 8 12;
+}
+.store-search:focused {
+    -fx-border-color: rgba(91,140,247,0.55);
+}
+
+.store-card {
+    -fx-background-color: rgba(255,255,255,0.035);
+    -fx-border-color: rgba(255,255,255,0.09);
+    -fx-border-width: 1;
+    -fx-border-radius: 12;
+    -fx-background-radius: 12;
+}
+.store-card:hover {
+    -fx-border-color: rgba(91,140,247,0.45);
+    -fx-background-color: rgba(255,255,255,0.055);
+}
+
+.store-card-name {
+    -fx-text-fill: rgba(255,255,255,0.92);
+    -fx-font-size: 13.5px;
+    -fx-font-weight: bold;
+}
+
+.store-badge {
+    -fx-text-fill: rgba(255,255,255,0.55);
+    -fx-font-size: 10px;
+    -fx-background-color: rgba(255,255,255,0.08);
+    -fx-background-radius: 5;
+    -fx-padding: 2 7 2 7;
+}
+
+.store-card-desc {
+    -fx-text-fill: rgba(255,255,255,0.50);
+    -fx-font-size: 11.5px;
+}
+
+.store-install-btn {
+    -fx-background-color: #5b8cf7;
+    -fx-text-fill: white;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-background-radius: 8;
+    -fx-border-width: 0;
+    -fx-padding: 7 0 7 0;
+    -fx-cursor: hand;
+}
+.store-install-btn.installed {
+    -fx-background-color: rgba(76,217,123,0.15);
+    -fx-text-fill: #4cd97b;
+    -fx-border-color: rgba(76,217,123,0.30);
+    -fx-border-width: 1;
+    -fx-border-radius: 8;
+    -fx-cursor: default;
+}
+.store-install-btn.update {
+    -fx-background-color: rgba(240,169,58,0.15);
+    -fx-text-fill: #f0a93a;
+    -fx-border-color: rgba(240,169,58,0.30);
+    -fx-border-width: 1;
+    -fx-border-radius: 8;
+}
