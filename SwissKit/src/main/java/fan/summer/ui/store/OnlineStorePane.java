@@ -436,21 +436,4 @@ public class OnlineStorePane extends VBox {
         return btn;
     }
 
-    // ── Data model ────────────────────────────────────────────────
-
-    /**
-     * Lightweight data class representing a plugin available in the online store.
-     * Instances are created by parsing the store's JSON catalog.
-     *
-     * @since 1.0
-     */
-    public static class StorePlugin {
-        public String id;
-        public String name;
-        public String description;
-        public String version;
-        public String jarUrl;
-        public IconStyle iconStyle;
-        public ToolCategory category;
-    }
 }
