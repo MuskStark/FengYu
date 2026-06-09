@@ -144,7 +144,7 @@
 
 ## 7. i18n
 
-复用现有 key,新增以下(`messages.properties` 中文 + `messages_en.properties` 英文):
+复用现有 key,新增以下。注意 i18n 文件实际为 **`messages.properties`(英文,默认)** 和 **`messages_zh.properties`(中文)**:
 
 | Key | 中文 | English |
 |---|---|---|
@@ -161,6 +161,7 @@
 | `store.online.noMatch` | 未找到匹配的插件 | No matching plugins |
 | `store.online.countWithInstalled` | 共 {0} 个插件 · 已安装 {1} | {0} plugins · {1} installed |
 
+> 「中文」列写入 `messages_zh.properties`,「English」列写入 `messages.properties`。
 > 现有 `store.online.pluginCount` / `foundPlugins` / `noPlugins` 等保留,用于无已安装信息的回退场景。
 
 ---
@@ -173,8 +174,11 @@
 | `SwissKit/.../ui/store/PluginStoreUi.java` | `build()` 改为 `build(ObservableList<SwissKitJPlugin> installed)`,归约为 id→version Map 传入 |
 | `SwissKit/.../ui/MainWindow.java` | 调用处改为 `PluginStoreUi.build(registry.getPlugins())` |
 | `SwissKit/src/main/resources/css/shell.css` | 新增 `.store-*` 类 |
-| `SwissKit/src/main/resources/i18n/messages.properties` | 新增上表 key(中文) |
-| `SwissKit/src/main/resources/i18n/messages_en.properties` | 新增上表 key(英文) |
+| `SwissKit/src/main/resources/i18n/messages.properties` | 新增上表 key(英文,默认) |
+| `SwissKit/src/main/resources/i18n/messages_zh.properties` | 新增上表 key(中文) |
+| `SwissKit/.../ui/store/StorePlugin.java` | 由 `OnlineStorePane` 内部类抽取为顶层类(字段不变),便于纯逻辑可测 |
+| `SwissKit/.../ui/store/StorePluginLogic.java` | 新增:版本比较 + 安装态判定 + 过滤匹配(纯静态方法) |
+| `SwissKit/pom.xml` | 新增 JUnit 5 测试依赖 + surefire 插件 |
 
 **不改动**:远程清单 JSON 格式、`StorePlugin` 字段、`LocalInstallPane`、下载/原子移动核心逻辑、`IconStyle` / `ToolCategory` 枚举。
 
