@@ -69,6 +69,12 @@ public interface SwissKitJPlugin {
 - **Built-in tools**: Registered directly by `BuiltinToolRegistrar` — no SPI needed.
 - **External plugins**: Implement `SwissKitJPlugin`, declare in `META-INF/services/fan.summer.api.SwissKitJPlugin`, drop JAR into `plugins/`. Hot-reload via file watcher.
 
+### Plugin Loading
+
+External plugins are loaded by a **child-first** `ClassLoader` (`ChildFirstResourceClassLoader`) that resolves classes and resources from the plugin JAR before delegating to the host. This prevents the host's classpath from shadowing plugin-bundled dependencies.
+
+Each loaded plugin is registered with `PluginContext`, which associates the plugin instance with its `ClassLoader`. The host wraps every plugin lifecycle call (`createView()`, `onActivate()`, etc.) with `PluginContext.runWith()`/`callWith()` to set the correct thread-context ClassLoader, and wraps the plugin node's `EventDispatcher` via `PluginContext.wrapEvents()` so background threads inherit the right TCCL.
+
 ### Plugin Logging
 
 Plugins use `fan.summer.api.log.LoggerFactory` which routes to SLF4J/Logback when the host is running, and returns a silent no-op logger in tests.
@@ -94,7 +100,7 @@ H2 file at `.swisskit/swisskit.db` relative to the working directory. Schema ini
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.0.0-rc.2.jar
+java -jar SwissKit/target/SwissKitJ-3.0.0-rc.3.jar
 ```
 
 The fat JAR is built by `maven-shade-plugin` and bundles JavaFX native libraries for all platforms (`.dll`, `.so`, `.dylib`).

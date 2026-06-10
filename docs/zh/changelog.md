@@ -6,6 +6,29 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 
 ## [3.0.0] — JavaFX 迁移
 
+**v3.0.0-rc.3** — 2026-06-10
+
+### ✨ 新功能
+- **斜杠命令**：在 AI 聊天中输入 `/` 列出可用工具、查看特定工具帮助，或直接调用工具而无需模型推理——支持直接执行和引导式模型参数提取
+- **插件资源隔离**：外部插件使用子优先 `ClassLoader`，确保插件资源优先从插件 JAR 解析；`PluginContext` 在每次插件生命周期调用和事件分发时提供线程上下文 ClassLoader 切换
+- **插件商店重设计**：在线插件商店改为可搜索、可筛选的卡片网格，带安装状态指示和版本比较
+- **AI 配置服务**：提取 `AiConfigService` 集中管理 AI 配置访问，解耦与 UI 设置代码的依赖
+- **邮件归档**：新增 `email_archive` 表、实体类和 Mapper，用于邮件归档存储
+
+### 🔧 修复
+- 修复 Windows 上侧边栏图标不显示——从 JavaFX `Font` 图标切换为 MDI 网页字体
+- 修复邮件设置保存始终失败；现在显示缺失的必填字段名
+- 修复 Excel 复杂拆分第三阶段损坏预先存在的输出文件——仅合并拆分操作期间创建的文件
+- 修复 POI 跨工作簿单元格样式克隆时数据格式字符串为 null 导致 `NullPointerException`
+- Excel 拆分器进度回调增加空值保护
+
+### ♻️ 变更
+- 从 `OnlineStorePane` 提取 `StorePlugin` 和 `StorePluginLogic`，并添加单元测试
+- 新增 GPLv3 许可证文件
+- 为 `SwissKit` 模块添加 JUnit 5 测试依赖
+
+---
+
 **v3.0.0-rc.2** — 2026-06-05
 
 ### ✨ 新功能
