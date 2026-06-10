@@ -70,6 +70,9 @@ public class PluginLoader {
     /** Maps JAR path → plugins loaded from that JAR */
     private final Map<Path, List<SwissKitJPlugin>> jarPlugins = new ConcurrentHashMap<>();
 
+    /** Maps original JAR path → temp copy used by the ClassLoader (avoids locking the original on Windows). */
+    private final Map<Path, Path> tempCopies = new ConcurrentHashMap<>();
+
     /** Scheduler for deferred JAR loads (avoids blocking the watch thread). */
     private final java.util.concurrent.ScheduledExecutorService loadScheduler =
             java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
@@ -120,6 +123,9 @@ public class PluginLoader {
         } catch (IOException e) {
             log.warn("Cannot create plugin directory {}: {}", pluginsDir, e.getMessage());
         }
+
+        // Clean up leftover temp copies from previous sessions (crash recovery)
+        cleanupStaleTempCopies();
 
         // Initial scan
         scanAll();
@@ -194,14 +200,14 @@ public class PluginLoader {
      * from the plugins directory.
      *
      * <p>This method first unloads the JAR via {@link #unloadJar(Path)} (which
-     * closes the ClassLoader and removes the plugin from the registry), then
-     * deletes the JAR file from disk. The directory watcher will see the file
-     * deletion, but the second {@code unloadJar} call is a harmless no-op
-     * because the JAR was already removed from the internal maps.</p>
+     * closes the ClassLoader, removes the plugin from the registry, and deletes
+     * the temp copy), then deletes the original JAR file from disk. Because the
+     * ClassLoader was opened against a temp copy, the original file is never
+     * locked and can be deleted immediately.</p>
      *
-     * <p>If the file is still locked by the OS after closing the ClassLoader,
-     * deletion is retried with short delays. If all retries fail, the file is
-     * marked for deletion on JVM exit.</p>
+     * <p>The directory watcher will see the file deletion, but the second
+     * {@code unloadJar} call is a harmless no-op because the JAR was already
+     * removed from the internal maps.</p>
      *
      * @param plugin the plugin to uninstall; must not be {@code null}
      * @throws IllegalArgumentException if the plugin's JAR cannot be found
@@ -215,47 +221,43 @@ public class PluginLoader {
         log.info("Uninstalling plugin: id={}, jar={}", plugin.getId(), jar.getFileName());
         unloadJar(jar);
 
-        // Retry deletion — the ClassLoader is closed but the OS may take a moment to release the file handle
-        boolean deleted = deleteWithRetry(jar, 5, 300);
-        if (deleted) {
+        // Original JAR was never locked (ClassLoader used temp copy), so deletion
+        // should succeed immediately without any retry/GC hacks.
+        try {
+            Files.deleteIfExists(jar);
             log.info("Deleted plugin JAR: {}", jar.getFileName());
-        } else {
-            log.warn("JAR still locked after retries, marking for deleteOnExit: {}", jar.getFileName());
+        } catch (IOException e) {
+            log.warn("Failed to delete plugin JAR {}: {}", jar.getFileName(), e.getMessage());
             jar.toFile().deleteOnExit();
         }
     }
 
+    // ── Temp file cleanup ─────────────────────────────────────
+
+    /** Prefix used for temp JAR copies, so stale files can be identified on startup. */
+    private static final String TEMP_PREFIX = "skj-plugin-";
+
     /**
-     * Attempts to delete the given path, retrying up to {@code maxAttempts} times
-     * with {@code delayMs} delay between attempts. Each retry is preceded by
-     * {@code System.gc()} to encourage the JVM to release native file handles.
-     *
-     * @param path        the file to delete
-     * @param maxAttempts maximum number of delete attempts
-     * @param delayMs     milliseconds to wait between attempts
-     * @return {@code true} if the file was successfully deleted or did not exist
+     * Deletes leftover temp JAR copies from previous sessions (crash recovery).
+     * Scans the system temp directory for files matching {@value #TEMP_PREFIX}*.jar.
      */
-    private boolean deleteWithRetry(Path path, int maxAttempts, long delayMs) {
-        for (int i = 0; i < maxAttempts; i++) {
-            try {
-                if (Files.deleteIfExists(path)) {
-                    return true;
-                }
-                // File doesn't exist — treat as success
-                return true;
-            } catch (IOException e) {
-                if (i < maxAttempts - 1) {
-                    log.debug("Delete attempt {}/{} failed for {}, retrying in {}ms: {}",
-                            i + 1, maxAttempts, path.getFileName(), delayMs, e.getMessage());
-                    System.gc(); // hint to release native file handles sooner
-                    try { Thread.sleep(delayMs); } catch (InterruptedException ignored) {
-                        Thread.currentThread().interrupt();
-                        return false;
+    private void cleanupStaleTempCopies() {
+        try {
+            Path tmpDir = Path.of(System.getProperty("java.io.tmpdir"));
+            if (!Files.isDirectory(tmpDir)) return;
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(tmpDir, TEMP_PREFIX + "*.jar")) {
+                for (Path leftover : stream) {
+                    try {
+                        Files.deleteIfExists(leftover);
+                        log.debug("Cleaned up leftover temp JAR: {}", leftover.getFileName());
+                    } catch (IOException e) {
+                        log.debug("Could not delete leftover temp JAR {}: {}", leftover.getFileName(), e.getMessage());
                     }
                 }
             }
+        } catch (IOException e) {
+            log.debug("Could not scan temp directory for cleanup: {}", e.getMessage());
         }
-        return false;
     }
 
     // ── Scan ────────────────────────────────────────────────────
@@ -284,11 +286,14 @@ public class PluginLoader {
     private void loadJar(Path jar) {
         log.debug("Loading plugin JAR: {}", jar.getFileName());
         try {
-            // Child-first RESOURCE lookup (parent-first class loading) so a plugin's
-            // own mybatis-config.xml / init.sql / mapper/** / i18n shadow the host's
-            // identically-named root resources. See ChildFirstResourceClassLoader.
+            // Copy the JAR to a temp file so the original is never locked by the ClassLoader.
+            // This is essential on Windows where URLClassLoader holds an exclusive native
+            // file handle, preventing deletion even after cl.close().
+            Path tempJar = Files.createTempFile("skj-plugin-", ".jar");
+            Files.copy(jar, tempJar, StandardCopyOption.REPLACE_EXISTING);
+
             URLClassLoader cl = new ChildFirstResourceClassLoader(
-                new java.net.URL[]{jar.toUri().toURL()},
+                new java.net.URL[]{tempJar.toUri().toURL()},
                 getClass().getClassLoader()
             );
             ServiceLoader<SwissKitJPlugin> sl = ServiceLoader.load(SwissKitJPlugin.class, cl);
@@ -304,10 +309,12 @@ public class PluginLoader {
             if (loaded.isEmpty()) {
                 log.warn("No SwissKitJPlugin services declared in {}", jar.getFileName());
                 cl.close();
+                Files.deleteIfExists(tempJar);
                 return;
             }
 
             openLoaders.put(jar, cl);
+            tempCopies.put(jar, tempJar);
             jarPlugins.put(jar, loaded);
 
             // Register plugin i18n bundle if present
@@ -353,6 +360,17 @@ public class PluginLoader {
                 cl.close();
             } catch (IOException e) {
                 log.warn("Error closing ClassLoader for {}: {}", jar.getFileName(), e.getMessage());
+            }
+        }
+
+        // Delete temp copy — ClassLoader is closed, so the lock is released
+        Path tempJar = tempCopies.remove(jar);
+        if (tempJar != null) {
+            try {
+                Files.deleteIfExists(tempJar);
+            } catch (IOException e) {
+                log.debug("Could not delete temp JAR {}: {}", tempJar, e.getMessage());
+                tempJar.toFile().deleteOnExit();
             }
         }
     }
