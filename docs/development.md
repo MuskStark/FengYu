@@ -24,6 +24,7 @@ SwissKitJ/
 ├── SwissKitJ-Api/                        # Shared API module
 │   └── src/main/java/fan/summer/api/
 │       ├── SwissKitJPlugin.java          # Plugin interface
+│       ├── PluginContext.java            # TCCL switching for plugin isolation
 │       ├── ToolCategory.java             # Category enum
 │       ├── IconStyle.java                # Icon style enum
 │       ├── ToolType.java                 # Type enum (BUILTIN / PLUGIN)
@@ -126,6 +127,10 @@ Package as a fat JAR and drop into the host's `plugins/` directory. Hot-reload i
 1. User clicks `ToolCard` → `DetailPanel` slides in
 2. User clicks Launch → `registry.activate(plugin)` → `contentArea.showPage(plugin.createView())`
 3. Back bar → `registry.deactivate()`
+
+### Plugin Resource Isolation
+
+External plugins are loaded with a child-first `ClassLoader` and registered with `PluginContext`. The host automatically handles TCCL switching — plugin authors do not need any `ClassLoader` awareness. For plugins that open their own `Stage`/`Scene`, resource lookups via `ServiceLoader` or resource bundles will work correctly as long as the code runs within a lifecycle method or an event handler on the plugin's view node.
 
 ## Built-in Tools
 

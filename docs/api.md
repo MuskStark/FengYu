@@ -106,6 +106,23 @@ static String commonStylesheetUrl()
 static void applyTo(Scene scene)
 ```
 
+## PluginContext
+
+**Location**: `SwissKitJ-Api/.../PluginContext.java`
+
+Associates external plugins with their dedicated `ClassLoader` and provides thread-context-classloader (TCCL) switching for safe plugin method invocation. The host wraps every call to a plugin method (`createView()`, `onActivate()`, etc.) with `runWith`/`callWith`, and wraps the plugin node's `EventDispatcher` via `wrapEvents` so that background threads spawned from event handlers inherit the correct TCCL.
+
+```java
+static void register(SwissKitJPlugin plugin, ClassLoader loader)
+static void unregister(SwissKitJPlugin plugin)
+static ClassLoader getClassLoader(SwissKitJPlugin plugin)
+static void runWith(SwissKitJPlugin plugin, Runnable action)
+static <T> T callWith(SwissKitJPlugin plugin, Callable<T> action) throws Exception
+static void wrapEvents(SwissKitJPlugin plugin, Node node)
+```
+
+Plugin keys are held via `WeakReference` so stale entries are eligible for GC even if the host fails to call `unregister`.
+
 ## Database Layer
 
 ### DatabaseInit
@@ -130,6 +147,7 @@ static SqlSessionFactory getSqlSessionFactory()
 | `ComplexSplitConfigMapper` | `insert`, `selectByTaskId`, `deleteByTaskId` |
 | `AppSettingMapper` | `selectByKey`, `upsert` |
 | `PluginManagerMapper` | `selectAll` |
+| `EmailArchiveMapper` | `insert`, `selectAll` |
 | `MenuOrderMapper` | `selectAll`, `updateOrder` |
 
 ## Entity Classes
@@ -172,6 +190,18 @@ static SqlSessionFactory getSqlSessionFactory()
 | `sheetName` | `String` | Sheet name |
 | `headerIndex` | `Integer` | 1-based header row (-1 = copy all) |
 | `columnIndex` | `Integer` | 1-based split column (-1 = copy all) |
+
+### EmailArchiveEntity
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `Long` | Primary key |
+| `messageId` | `String` | Email message ID |
+| `subject` | `String` | Email subject |
+| `fromAddr` | `String` | Sender address |
+| `toAddr` | `String` | Recipient addresses |
+| `sentTime` | `Date` | Send timestamp |
+| `folder` | `String` | Archive folder |
 
 ## Callback Interfaces
 

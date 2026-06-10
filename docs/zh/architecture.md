@@ -69,6 +69,12 @@ public interface SwissKitJPlugin {
 - **内置工具**：通过 `BuiltinToolRegistrar` 直接注册——无需 SPI。
 - **外部插件**：实现 `SwissKitJPlugin`，在 `META-INF/services/fan.summer.api.SwissKitJPlugin` 中声明，将 JAR 放入 `plugins/`。通过文件监听器热重载。
 
+### 插件加载
+
+外部插件通过**子优先** `ClassLoader`（`ChildFirstResourceClassLoader`）加载，优先从插件 JAR 解析类和资源，再委派给主机。这防止主机 classpath 遮蔽插件自带的依赖。
+
+每个已加载的插件通过 `PluginContext` 注册，将插件实例与其 `ClassLoader` 关联。主机通过 `PluginContext.runWith()`/`callWith()` 包装每次插件生命周期调用（`createView()`、`onActivate()` 等），设置正确的线程上下文 ClassLoader，并通过 `PluginContext.wrapEvents()` 包装插件节点的 `EventDispatcher`，使后台线程继承正确的 TCCL。
+
 ### 插件日志
 
 插件使用 `fan.summer.api.log.LoggerFactory`，在主机运行时路由到 SLF4J/Logback，在测试中返回静默的空操作日志器。
@@ -94,7 +100,7 @@ H2 文件数据库位于工作目录下的 `.swisskit/swisskit.db`。Schema 从 
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.0.0-rc.2.jar
+java -jar SwissKit/target/SwissKitJ-3.0.0-rc.3.jar
 ```
 
 胖 JAR 通过 `maven-shade-plugin` 构建，捆绑所有平台的 JavaFX 原生库（`.dll`、`.so`、`.dylib`）。

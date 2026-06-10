@@ -6,6 +6,24 @@ All notable changes to SwissKitJ. Format based on [Keep a Changelog](https://kee
 
 ## [3.0.0] — JavaFX Migration
 
+**v3.0.0-rc.3** — 2026-06-10
+
+- **Slash Commands**: Type `/` in AI chat to list available tools, get help on a specific tool, or invoke a tool directly without model inference — supports both direct execution and guided model parameter extraction
+- **Plugin Resource Isolation**: Child-first `ClassLoader` for external plugins ensures plugin resources are resolved from the plugin JAR before the host; `PluginContext` provides TCCL switching on every plugin lifecycle call and event dispatch
+- **Plugin Store Redesign**: Searchable, filterable card grid for the online plugin store with install state indicators and version comparison
+- **AI Configuration Service**: Extracted `AiConfigService` centralizes AI configuration access, decoupling it from UI settings code
+- **Email Archive**: New `email_archive` table, entity, and mapper for email archive storage
+- Fix sidebar icons not displaying on Windows — switched from JavaFX `Font` icons to MDI webfont
+- Fix email settings save always failing; now shows missing required field names
+- Fix Excel complex split Phase 3 corrupting pre-existing output files — only merge into files created during the split operation
+- Fix POI `NullPointerException` during cross-workbook cell style cloning when data format string is null
+- Harden Excel Splitter progress callback with null guard
+- Extract `StorePlugin` and `StorePluginLogic` from `OnlineStorePane` with unit tests
+- Add GPLv3 license file to the repository
+- Add JUnit 5 test dependency to `SwissKit` module
+
+---
+
 **v3.0.0-rc.2** — 2026-06-05
 
 - **Tool Favorites**: Bookmark tools with a star toggle on tool cards and the detail panel; favorites persist across restarts via H2 database and are filterable from the sidebar "Favorites" category
