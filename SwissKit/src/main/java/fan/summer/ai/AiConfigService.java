@@ -58,34 +58,42 @@ public final class AiConfigService {
 
     // ── Public getters ────────────────────────────────────────
 
+    /** Returns the AI mode: {@code "local"}, {@code "openai"}, or {@code "anthropic"}. */
     public static String getAiMode() {
         return readSetting(AI_MODE_KEY, "local");
     }
 
+    /** Returns the OpenAI-compatible API endpoint URL. */
     public static String getAiOpenAiEndpoint() {
         return readSetting(AI_OPENAI_ENDPOINT_KEY, "https://api.openai.com");
     }
 
+    /** Returns the OpenAI API key. */
     public static String getAiOpenAiApiKey() {
         return readSetting(AI_OPENAI_API_KEY_KEY, "");
     }
 
+    /** Returns the OpenAI model identifier. */
     public static String getAiOpenAiModel() {
         return readSetting(AI_OPENAI_MODEL_KEY, "gpt-4o");
     }
 
+    /** Returns the Anthropic API endpoint URL. */
     public static String getAiAnthropicEndpoint() {
         return readSetting(AI_ANTHROPIC_ENDPOINT_KEY, "https://api.anthropic.com");
     }
 
+    /** Returns the Anthropic API key. */
     public static String getAiAnthropicApiKey() {
         return readSetting(AI_ANTHROPIC_API_KEY_KEY, "");
     }
 
+    /** Returns the Anthropic model identifier. */
     public static String getAiAnthropicModel() {
         return readSetting(AI_ANTHROPIC_MODEL_KEY, "claude-sonnet-4-20250514");
     }
 
+    /** Returns the sampling temperature (0–2); defaults to 0.7. */
     public static float getAiTemperature() {
         String val = readSetting(AI_TEMPERATURE_KEY, null);
         if (val != null) {
@@ -94,6 +102,7 @@ public final class AiConfigService {
         return 0.7f;
     }
 
+    /** Returns the nucleus sampling threshold (0–1); defaults to 0.9. */
     public static float getAiTopP() {
         String val = readSetting(AI_TOP_P_KEY, null);
         if (val != null) {
@@ -102,6 +111,7 @@ public final class AiConfigService {
         return 0.9f;
     }
 
+    /** Returns the maximum number of tokens to generate; defaults to 512. */
     public static int getAiMaxTokens() {
         String val = readSetting(AI_MAX_TOKENS_KEY, null);
         if (val != null) {
@@ -110,15 +120,18 @@ public final class AiConfigService {
         return 512;
     }
 
+    /** Returns the system prompt; defaults to "You are a helpful assistant." */
     public static String getAiSystemPrompt() {
         String val = readSetting(AI_SYSTEM_PROMPT_KEY, null);
         return (val != null && !val.isBlank()) ? val : "You are a helpful assistant.";
     }
 
+    /** Returns the local backend type: {@code "java"} or {@code "native"}. */
     public static String getAiLocalBackend() {
         return readSetting(AI_LOCAL_BACKEND_KEY, "java");
     }
 
+    /** Returns the local GGUF model file path, or null if not set. */
     public static String getAiModelPath() {
         return readSetting(AI_MODEL_PATH_KEY, null);
     }

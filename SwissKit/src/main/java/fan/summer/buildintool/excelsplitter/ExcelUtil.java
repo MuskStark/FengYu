@@ -266,11 +266,8 @@ public class ExcelUtil {
                 if (templateRow != null) {
                     Cell templateCell = templateRow.getCell(colIdx);
                     if (templateCell != null) {
-                        CellStyle style = styleCache.computeIfAbsent(colIdx, k -> {
-                            CellStyle s = targetWorkbook.createCellStyle();
-                            s.cloneStyleFrom(templateCell.getCellStyle());
-                            return s;
-                        });
+                        CellStyle style = styleCache.computeIfAbsent(colIdx,
+                                k -> safeCloneStyle(targetWorkbook, templateCell.getCellStyle()));
                         cell.setCellStyle(style);
                     }
                 }
@@ -293,6 +290,31 @@ public class ExcelUtil {
     }
 
     // ==================== Private Helper Methods ====================
+
+    /**
+     * Clones {@code src} into a new cell style owned by {@code targetWb}, guarding against a
+     * POI cross-workbook bug.
+     *
+     * <p>When {@code src.getDataFormatString()} returns {@code null} (the style's number-format
+     * index is not resolvable in the source styles table — i.e. effectively "General"),
+     * {@link CellStyle#cloneStyleFrom} calls {@code StylesTable.putNumberFormat(null)}, which
+     * inserts a {@code null} value into the target workbook's number-format map. The very next
+     * clone then iterates that map in {@code StylesTable.getNumberFormatId} and throws
+     * {@code NullPointerException} on {@code entry.getValue().equals(fmt)}. To avoid poisoning the
+     * styles table we only clone when the data-format string is resolvable; otherwise the value is
+     * still written, just without the (meaningless "General") source styling.
+     *
+     * @param targetWb the workbook that will own the returned style
+     * @param src      the source cell style to clone (from any workbook); may be null
+     * @return a new style owned by {@code targetWb}
+     */
+    private static CellStyle safeCloneStyle(Workbook targetWb, CellStyle src) {
+        CellStyle style = targetWb.createCellStyle();
+        if (src != null && src.getDataFormatString() != null) {
+            style.cloneStyleFrom(src);
+        }
+        return style;
+    }
 
     /**
      * Loads an existing XSSFWorkbook from the given path, or creates a new empty one
@@ -354,11 +376,8 @@ public class ExcelUtil {
             Cell dst = dstRow.createCell(col);
 
             CellStyle style = styleCache.computeIfAbsent(
-                    src.getCellStyle().hashCode(), k -> {
-                        CellStyle s = targetWb.createCellStyle();
-                        s.cloneStyleFrom(src.getCellStyle());
-                        return s;
-                    });
+                    src.getCellStyle().hashCode(),
+                    k -> safeCloneStyle(targetWb, src.getCellStyle()));
             dst.setCellStyle(style);
 
             switch (src.getCellType()) {

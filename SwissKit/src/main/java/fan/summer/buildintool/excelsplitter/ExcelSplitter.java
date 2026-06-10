@@ -349,7 +349,8 @@ public class ExcelSplitter {
         for (Map<Integer, Object> rowMap : dataList) {
             List<Object> row = new ArrayList<>();
             for (Integer key : sortedKeys) {
-                row.add(rowMap.getOrDefault(key, ""));
+                Object val = rowMap.get(key);
+                row.add(val != null ? val : "");
             }
             rows.add(row);
         }

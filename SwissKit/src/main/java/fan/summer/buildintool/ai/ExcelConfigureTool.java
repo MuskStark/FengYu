@@ -119,9 +119,10 @@ public class ExcelConfigureTool implements AiTool {
                     Integer colIdx = null;
                     String foundCol = null;
                     for (Map.Entry<Integer, String> e : headers.entrySet()) {
-                        if (e.getValue().equalsIgnoreCase(splitColumn.trim())) {
+                        String headerName = e.getValue();
+                        if (headerName != null && headerName.equalsIgnoreCase(splitColumn.trim())) {
                             colIdx = e.getKey();
-                            foundCol = e.getValue();
+                            foundCol = headerName;
                             break;
                         }
                     }

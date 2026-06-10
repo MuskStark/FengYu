@@ -869,7 +869,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
         private void showError(Throwable err) {
             hasRunningTask.set(false);
-            log.error("Excel split failed: {}", err.getMessage());
+            log.error("Excel split failed: " + err.getMessage(), err);
             progressBar.setProgress(1.0);
             progressBar.getStyleClass().removeAll("success", "danger");
             progressBar.getStyleClass().add("danger");

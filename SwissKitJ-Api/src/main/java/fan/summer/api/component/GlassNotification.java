@@ -44,10 +44,15 @@ import java.util.concurrent.TimeoutException;
  */
 public final class GlassNotification {
 
+    /** Notification visual style. */
     public enum Type {
+        /** Informational notification with blue accent. */
         INFO("ℹ", "glass-notif-info"),
+        /** Success notification with green accent. */
         SUCCESS("✓", "glass-notif-success"),
+        /** Warning notification with amber accent. */
         WARNING("⚠", "glass-notif-warning"),
+        /** Error notification with red accent. */
         ERROR("✕", "glass-notif-error");
 
         final String icon;
@@ -63,40 +68,102 @@ public final class GlassNotification {
 
     // ── Resolve owner from Node ──────────────────────────────────
 
+    /**
+     * Resolves the {@link Window} containing the given JavaFX node.
+     *
+     * @param node a JavaFX node, or {@code null}
+     * @return the node's window, or {@code null} if the node is null or not in a scene
+     */
     private static Window windowOf(Node node) {
         return node != null && node.getScene() != null ? node.getScene().getWindow() : null;
     }
 
     // ── Toast (auto-dismiss) ─────────────────────────────────────
 
+    /**
+     * Shows a non-modal, auto-dismissing toast notification (fades out after ~2.5 s).
+     *
+     * @param owner   the owner window; may be {@code null}
+     * @param type    the visual style
+     * @param message the message to display
+     */
     public static void toast(Window owner, Type type, String message) {
         Platform.runLater(() -> showOverlay(owner, type, message, false, null));
     }
 
+    /**
+     * Shows a toast notification positioned over the given node's window.
+     *
+     * @param context a JavaFX node used to locate the owner window; may be {@code null}
+     * @param type    the visual style
+     * @param message the message to display
+     */
     public static void toast(Node context, Type type, String message) {
         toast(windowOf(context), type, message);
     }
 
     // ── Notify (modal with OK) ───────────────────────────────────
 
+    /**
+     * Shows a modal notification with an OK button.
+     *
+     * @param owner   the owner window; may be {@code null}
+     * @param type    the visual style
+     * @param title   the notification title
+     * @param message the body message
+     */
     public static void notify(Window owner, Type type, String title, String message) {
         Platform.runLater(() -> showOverlay(owner, type, title + "\n" + message, true, null));
     }
 
+    /**
+     * Shows a modal notification positioned over the given node's window.
+     *
+     * @param context a JavaFX node used to locate the owner window
+     * @param type    the visual style
+     * @param title   the notification title
+     * @param message the body message
+     */
     public static void notify(Node context, Type type, String title, String message) {
         notify(windowOf(context), type, title, message);
     }
 
+    /**
+     * Shows a modal notification with an OK button (title-only variant).
+     *
+     * @param owner   the owner window; may be {@code null}
+     * @param type    the visual style
+     * @param message the message to display
+     */
     public static void notify(Window owner, Type type, String message) {
         Platform.runLater(() -> showOverlay(owner, type, message, true, null));
     }
 
+    /**
+     * Shows a modal notification positioned over the given node's window (title-only variant).
+     *
+     * @param context a JavaFX node used to locate the owner window
+     * @param type    the visual style
+     * @param message the message to display
+     */
     public static void notify(Node context, Type type, String message) {
         notify(windowOf(context), type, message);
     }
 
     // ── Confirm (modal with OK / Cancel) ─────────────────────────
 
+    /**
+     * Shows a modal confirmation dialog with OK and Cancel buttons.
+     *
+     * <p>Safe to call from any thread — blocks the calling thread until the
+     * user responds (up to 60 seconds). Returns {@code false} on timeout
+     * or interruption.</p>
+     *
+     * @param owner   the owner window; may be {@code null}
+     * @param title   the confirmation title
+     * @param message the body message
+     * @return {@code true} if the user clicked OK, {@code false} otherwise
+     */
     public static boolean confirm(Window owner, String title, String message) {
         if (Platform.isFxApplicationThread()) {
             return showOverlay(owner, Type.WARNING, title + "\n" + message, true, ButtonType.CANCEL);
@@ -120,6 +187,14 @@ public final class GlassNotification {
         }
     }
 
+    /**
+     * Shows a modal confirmation dialog positioned over the given node's window.
+     *
+     * @param context a JavaFX node used to locate the owner window
+     * @param title   the confirmation title
+     * @param message the body message
+     * @return {@code true} if the user clicked OK, {@code false} otherwise
+     */
     public static boolean confirm(Node context, String title, String message) {
         return confirm(windowOf(context), title, message);
     }
