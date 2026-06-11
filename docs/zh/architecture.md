@@ -100,7 +100,7 @@ H2 文件数据库位于工作目录下的 `.swisskit/swisskit.db`。Schema 从 
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.0.0-rc.3.jar
+java -jar SwissKit/target/SwissKitJ-3.0.0.jar
 ```
 
 胖 JAR 通过 `maven-shade-plugin` 构建，捆绑所有平台的 JavaFX 原生库（`.dll`、`.so`、`.dylib`）。

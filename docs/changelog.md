@@ -6,6 +6,11 @@ All notable changes to SwissKitJ. Format based on [Keep a Changelog](https://kee
 
 ## [3.0.0] — JavaFX Migration
 
+**v3.0.0** — 2026-06-12
+
+- Update app icons for v3.0.0 release
+- Resolve static analysis warnings across codebase (Qodana)
+
 **v3.0.0-rc.3** — 2026-06-10
 
 ### ✨ New Features
