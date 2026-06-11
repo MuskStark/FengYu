@@ -6,7 +6,6 @@ import fan.summer.ai.model.GGUFReader;
 import fan.summer.ai.nativejni.GenerateCallback;
 import fan.summer.ai.nativejni.GenerateParams;
 import fan.summer.ai.nativejni.ModelParams;
-import fan.summer.ai.nativejni.NativeLoader;
 import fan.summer.ai.nativejni.NativeWorkerClient;
 import fan.summer.ai.tools.FunctionGemmaAdapter;
 import fan.summer.ai.tools.ToolCallParser;
@@ -23,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * {@link AiService} implementation for local AI models (GGUF format).
@@ -47,16 +47,21 @@ public class AiServiceImpl implements AiService {
     private FunctionGemmaAdapter functionGemmaAdapter;
     private boolean isFunctionGemma;
 
-    public AiServiceImpl() {
-        NativeLoader.load();
-        if (NativeLoader.isLoaded()) {
+    /**
+     * Creates a new AI service with the specified backend.
+     *
+     * @param useNative if true, use llama.cpp JNI for inference;
+     *                  if false, use the pure Java inference engine.
+     *                  The caller must ensure the native library is loaded beforehand
+     *                  when useNative is true.
+     */
+    public AiServiceImpl(boolean useNative) {
+        if (useNative) {
             backend = Backend.NATIVE;
-            workerClient = new NativeWorkerClient();
             log.info("AI backend: native (llama.cpp JNI, out-of-process)");
         } else {
             backend = Backend.JAVA;
-            javaRunner = new LlamaRunner();
-            log.info("AI backend: pure Java (fallback)");
+            log.info("AI backend: pure Java");
         }
     }
 
@@ -103,6 +108,7 @@ public class AiServiceImpl implements AiService {
                     nativeChatTemplate = new ChatTemplate("");
                 }
             } else {
+                if (javaRunner == null) javaRunner = new LlamaRunner();
                 javaRunner.load(modelPath.toString());
             }
 
@@ -211,15 +217,18 @@ public class AiServiceImpl implements AiService {
         GenerateParams genParams = new GenerateParams()
             .temperature(temperature).topP(topP).maxTokens(maxTokens);
 
+        TokenBatcher batcher = new TokenBatcher(callback);
+
         workerClient.generate(prompt, genParams, new GenerateCallback() {
             @Override
             public boolean onToken(String tokenText) {
-                Platform.runLater(() -> callback.onToken(tokenText));
+                batcher.add(tokenText);
                 return true;
             }
 
             @Override
             public void onDone(String fullText, int tokenCount, double tokPerSec) {
+                batcher.close();
                 List<AiToolCall> toolCalls = ToolCallParser.parse(fullText);
                 if (!toolCalls.isEmpty() && AiServiceProvider.hasTools()) {
                     hadToolCall.set(true);
@@ -236,6 +245,7 @@ public class AiServiceImpl implements AiService {
 
             @Override
             public void onError(String message) {
+                batcher.close();
                 Platform.runLater(() -> callback.onError(new RuntimeException(message)));
             }
         });
@@ -265,7 +275,7 @@ public class AiServiceImpl implements AiService {
                         if (functionGemmaAdapter.containsToolCall(fullText)) {
                             List<AiToolCall> toolCalls = functionGemmaAdapter.parseToolCalls(fullText);
                             if (!toolCalls.isEmpty() && AiServiceProvider.hasTools()) {
-                                AiToolCall tc = toolCalls.get(0);
+                                AiToolCall tc = toolCalls.getFirst();
                                 Platform.runLater(() -> callback.onToolCall(tc));
 
                                 AiToolResult result = ToolExecutor.execute(tc.name(), tc.arguments());
@@ -354,16 +364,17 @@ public class AiServiceImpl implements AiService {
                                            int round, AtomicBoolean hadToolCall) {
         if (round >= MAX_TOOL_ROUNDS) return;
 
-        StringBuilder response = new StringBuilder();
+        TokenBatcher batcher = new TokenBatcher(callback);
+
         javaRunner.generate(prompt, temperature, topP, maxTokens, new LlamaRunner.TokenCallback() {
             @Override
             public void onToken(String fragment) {
-                response.append(fragment);
-                Platform.runLater(() -> callback.onToken(fragment));
+                batcher.add(fragment);
             }
 
             @Override
             public void onComplete(String fullResponse, int tokensGenerated, double tokensPerSecond) {
+                batcher.close();
                 List<AiToolCall> toolCalls = ToolCallParser.parse(fullResponse);
                 if (!toolCalls.isEmpty() && AiServiceProvider.hasTools()) {
                     hadToolCall.set(true);
@@ -429,4 +440,66 @@ public class AiServiceImpl implements AiService {
     @Override public void registerTool(AiTool tool) { AiServiceProvider.registerTool(tool); }
     @Override public void unregisterTool(String toolName) { AiServiceProvider.unregisterTool(toolName); }
     @Override public List<AiTool> getTools() { return AiServiceProvider.getTools(); }
+
+    // ── Token batching ────────────────────────────────────────
+
+    /**
+     * Batches token text to avoid flooding the FX thread with individual
+     * {@code Platform.runLater} calls during high-speed generation.
+     * Tokens are accumulated in a StringBuffer and flushed every ~50ms or
+     * when the generation ends, whichever comes first.
+     */
+    static final class TokenBatcher {
+        private final AiStreamCallback callback;
+        private final StringBuilder buffer = new StringBuilder();
+        private final AtomicReference<javafx.animation.Animation> flushTimer = new AtomicReference<>();
+        private volatile boolean active = true;
+
+        TokenBatcher(AiStreamCallback callback) {
+            this.callback = callback;
+        }
+
+        /** Appends a token and schedules a flush if none is pending. */
+        void add(String token) {
+            synchronized (buffer) {
+                buffer.append(token);
+            }
+            scheduleFlush();
+        }
+
+        /** Flushes any remaining buffered tokens immediately. */
+        void flush() {
+            String batch;
+            synchronized (buffer) {
+                if (buffer.isEmpty()) return;
+                batch = buffer.toString();
+                buffer.setLength(0);
+            }
+            final String text = batch;
+            Platform.runLater(() -> callback.onToken(text));
+        }
+
+        /** Disables further batching. Call when generation ends. */
+        void close() {
+            active = false;
+            javafx.animation.Animation timer = flushTimer.getAndSet(null);
+            if (timer != null) timer.stop();
+            flush();
+        }
+
+        private void scheduleFlush() {
+            if (!active) return;
+            javafx.animation.Animation existing = flushTimer.get();
+            if (existing != null) return; // a flush is already scheduled
+            javafx.animation.PauseTransition pause =
+                new javafx.animation.PauseTransition(javafx.util.Duration.millis(50));
+            pause.setOnFinished(e -> {
+                flushTimer.compareAndSet(pause, null);
+                flush();
+            });
+            if (flushTimer.compareAndSet(null, pause)) {
+                pause.play();
+            }
+        }
+    }
 }

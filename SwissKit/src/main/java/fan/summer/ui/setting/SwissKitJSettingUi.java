@@ -57,6 +57,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
@@ -80,6 +81,19 @@ public class SwissKitJSettingUi {
 
     /** Active nav index, preserved across locale rebuilds. */
     private static int activeNavIndex = 0;
+
+    // ── Settings cache: avoids opening a SqlSession for every getter call ──────────
+    private static final ConcurrentHashMap<String, String> settingsCache = new ConcurrentHashMap<>();
+    private static volatile boolean cacheLoaded = false;
+
+    /** Debounce executor for saveAiSetting — coalesces rapid-fire text changes. */
+    private static final ScheduledExecutorService debounceExecutor =
+        Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "settings-debounce");
+            t.setDaemon(true);
+            return t;
+        });
+    private static final ConcurrentHashMap<String, ScheduledFuture<?>> pendingSaves = new ConcurrentHashMap<>();
 
     /**
      * Builds (or returns the cached) settings UI with a sidebar navigation.
@@ -248,7 +262,7 @@ public class SwissKitJSettingUi {
     // ═══════════════════════════════════════════════════════════════════
 
     private static final String STORE_URL_KEY = "plugin.store.url";
-    private static final String DEFAULT_STORE_URL = "https://muskstark.github.io/SwissKitJ/plugins/store.json";
+    private static final String DEFAULT_STORE_URL = "https://muskstark.github.io/SwissKiJ-Plugin/store.json";
 
     /**
      * Returns the configured plugin store URL, checking in order:
@@ -288,7 +302,7 @@ public class SwissKitJSettingUi {
         desc.setStyle("-fx-text-fill: rgba(255,255,255,0.35); -fx-font-size: 12px;");
         desc.setWrapText(true);
 
-        TextField urlField = textField(null, DEFAULT_STORE_URL);
+        TextField urlField = textField( DEFAULT_STORE_URL);
         urlField.setText(getStoreUrl());
 
         Button saveBtn = glassBtn(I18n.get("button.save"), true);
@@ -335,6 +349,7 @@ public class SwissKitJSettingUi {
     private static final String AI_ANTHROPIC_ENDPOINT_KEY = "ai.anthropic.endpoint";
     private static final String AI_ANTHROPIC_API_KEY_KEY = "ai.anthropic.api_key";
     private static final String AI_ANTHROPIC_MODEL_KEY = "ai.anthropic.model";
+    private static final String AI_LOCAL_BACKEND_KEY = "ai.local.backend";
 
     private static VBox buildAiModelTab() {
         VBox root = new VBox(16);
@@ -376,10 +391,19 @@ public class SwissKitJSettingUi {
         modeStack.setStyle("-fx-background-color: transparent;");
         showModePanel(modeStack, modeCombo.getValue());
 
+        // ── Backend toggle (Java / Native) — only visible in local mode ──
+        HBox backendToggleRow = buildBackendToggle();
+        boolean isLocalMode = "local".equals(modeLabelToKey(modeCombo.getValue()));
+        backendToggleRow.setVisible(isLocalMode);
+        backendToggleRow.setManaged(isLocalMode);
+
         modeCombo.setOnAction(e -> {
             String selected = modeCombo.getValue();
             showModePanel(modeStack, selected);
             String modeKey = modeLabelToKey(selected);
+            boolean showBackend = "local".equals(modeKey);
+            backendToggleRow.setVisible(showBackend);
+            backendToggleRow.setManaged(showBackend);
             saveAiSetting(AI_MODE_KEY, modeKey);
             initializeAiService(modeKey);
         });
@@ -429,22 +453,20 @@ public class SwissKitJSettingUi {
         maxTokensSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(64, 4096, 512, 64));
         maxTokensSpinner.getStyleClass().add("glass-field");
         maxTokensSpinner.setPrefWidth(120);
-        maxTokensSpinner.valueProperty().addListener((obs, oldVal, newVal) -> {
-            saveAiSetting(AI_MAX_TOKENS_KEY, String.valueOf(newVal));
-        });
+        maxTokensSpinner.valueProperty().addListener((obs, oldVal, newVal) ->
+            saveAiSetting(AI_MAX_TOKENS_KEY, String.valueOf(newVal)));
         loadAiSetting(AI_MAX_TOKENS_KEY, val -> {
             try { maxTokensSpinner.getValueFactory().setValue(Integer.parseInt(val)); } catch (NumberFormatException ignored) {}
         });
 
-        TextField sysPromptField = textField(null, "You are a helpful assistant.");
+        TextField sysPromptField = textField( "You are a helpful assistant.");
         HBox.setHgrow(sysPromptField, Priority.ALWAYS);
-        sysPromptField.textProperty().addListener((obs, oldVal, newVal) -> {
-            saveAiSetting(AI_SYSTEM_PROMPT_KEY, newVal);
-        });
-        loadAiSetting(AI_SYSTEM_PROMPT_KEY, val -> sysPromptField.setText(val));
+        sysPromptField.textProperty().addListener((obs, oldVal, newVal) ->
+            saveAiSetting(AI_SYSTEM_PROMPT_KEY, newVal));
+        loadAiSetting(AI_SYSTEM_PROMPT_KEY, sysPromptField::setText);
 
         root.getChildren().addAll(
-            title, modeRow, modeStack,
+            title, modeRow, backendToggleRow, modeStack,
             paramTitle,
             labeled(I18n.get("setting.ai.temperature"), tempRow),
             labeled(I18n.get("setting.ai.topP"), topPRow),
@@ -488,15 +510,74 @@ public class SwissKitJSettingUi {
                 svc.configure(getAiAnthropicEndpoint(), getAiAnthropicApiKey(), getAiAnthropicModel());
                 AiServiceProvider.switchMode(mode, svc);
             }
-            default -> {
-                // Local: AiServiceImpl should already be set; just notify
-                var svc = AiServiceProvider.getService();
-                if (svc.isEmpty() || !(svc.get() instanceof fan.summer.ai.service.AiServiceImpl)) {
-                    AiServiceProvider.switchMode(mode, new fan.summer.ai.service.AiServiceImpl());
-                } else {
-                    AiServiceProvider.notifyStateChanged();
-                }
+            default -> createLocalBackend(false);
+        }
+    }
+
+    /**
+     * Creates and registers a local AI backend (AiServiceImpl).
+     *
+     * @param autoLoadModel if true, auto-load the last saved model path from DB
+     */
+    private static void createLocalBackend(boolean autoLoadModel) {
+        String backendSetting = getAiLocalBackend();
+        boolean useNative = "native".equals(backendSetting);
+
+        if (useNative) {
+            fan.summer.ai.nativejni.NativeLoader.load();
+            if (!fan.summer.ai.nativejni.NativeLoader.isLoaded()) {
+                log.warn("Native library not available, falling back to Java engine");
+                useNative = false;
             }
+        }
+
+        fan.summer.ai.service.AiServiceImpl aiService =
+            new fan.summer.ai.service.AiServiceImpl(useNative);
+        AiServiceProvider.switchMode("local", aiService);
+
+        if (autoLoadModel) {
+            autoLoadModel(aiService);
+        }
+    }
+
+    /**
+     * Ensures the local AI backend is initialized. Called lazily when the AI tool is opened.
+     * No-op if already initialized. On first call, attempts native loading and auto-loads
+     * the last saved model.
+     */
+    public static synchronized void ensureLocalBackend() {
+        // Only initialize the local backend if the current mode is "local".
+        // If the user has selected OpenAI or Anthropic mode, the service was
+        // already set up during startup or when the mode was changed in settings.
+        String mode = getCachedSetting(AI_MODE_KEY, "local");
+        if (!"local".equals(mode)) {
+            log.debug("ensureLocalBackend skipped — current mode is '{}'", mode);
+            return;
+        }
+
+        var svc = AiServiceProvider.getService();
+        if (svc.isPresent() && svc.get() instanceof fan.summer.ai.service.AiServiceImpl) {
+            return; // already initialized
+        }
+        log.info("Initializing local AI backend (lazy)");
+        createLocalBackend(true);
+    }
+
+    private static void autoLoadModel(fan.summer.ai.service.AiServiceImpl aiService) {
+        String modelPath = fan.summer.ai.AiConfigService.getAiModelPath();
+
+        if (modelPath != null && java.nio.file.Files.exists(java.nio.file.Path.of(modelPath))) {
+            log.info("Auto-loading local AI model: {}", modelPath);
+            final String finalPath = modelPath;
+            Thread.ofVirtual().start(() -> {
+                try {
+                    aiService.loadModel(java.nio.file.Path.of(finalPath));
+                    AiServiceProvider.notifyStateChanged();
+                    log.info("Local AI model auto-loaded successfully");
+                } catch (Exception e) {
+                    log.warn("Auto-load failed: {}", e.getMessage());
+                }
+            });
         }
     }
 
@@ -510,8 +591,8 @@ public class SwissKitJSettingUi {
         modelPathLabel.setWrapText(true);
         modelPathLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.35); -fx-font-size: 12px;");
 
-        TextField modelPathField = textField(null, I18n.get("setting.ai.selectModel"));
-        loadAiSetting(AI_MODEL_PATH_KEY, val -> modelPathField.setText(val));
+        TextField modelPathField = textField( I18n.get("setting.ai.selectModel"));
+        loadAiSetting(AI_MODEL_PATH_KEY, modelPathField::setText);
 
         Button browseBtn = glassBtn(I18n.get("setting.ai.browse"), false);
         Button loadBtn = glassBtn(I18n.get("setting.ai.loadModel"), true);
@@ -570,7 +651,7 @@ public class SwissKitJSettingUi {
 
         unloadBtn.setOnAction(e -> {
             Optional<AiService> opt = AiServiceProvider.getService();
-            if (opt.isPresent()) opt.get().unloadModel();
+            opt.ifPresent(AiService::unloadModel);
             modelStatusLabel.setText(I18n.get("setting.ai.noModelLoaded"));
             modelPathLabel.setText("—");
             unloadBtn.setDisable(true);
@@ -598,18 +679,60 @@ public class SwissKitJSettingUi {
         return panel;
     }
 
+    private static HBox buildBackendToggle() {
+        Label label = subLabel(I18n.get("setting.ai.backend"));
+
+        Button javaBtn = new Button(I18n.get("setting.ai.backend.java"));
+        Button nativeBtn = new Button(I18n.get("setting.ai.backend.native"));
+
+        // Segmented control: left button rounded on left, right button rounded on right
+        String baseStyle = "-fx-font-size: 12px; -fx-padding: 5 14 5 14; -fx-cursor: hand;";
+        javaBtn.setStyle(baseStyle + "-fx-background-radius: 4 0 0 4; -fx-border-radius: 4 0 0 4;");
+        nativeBtn.setStyle(baseStyle + "-fx-background-radius: 0 4 4 0; -fx-border-radius: 0 4 4 0;");
+
+        Runnable updateStyle = () -> {
+            String current = getAiLocalBackend();
+            boolean isJava = "java".equals(current);
+            javaBtn.getStyleClass().setAll(isJava ? "glass-btn-primary" : "glass-btn-secondary");
+            nativeBtn.getStyleClass().setAll(isJava ? "glass-btn-secondary" : "glass-btn-primary");
+            // Re-apply shape styles after class change (stylesheet may override)
+            javaBtn.setStyle(baseStyle + "-fx-background-radius: 4 0 0 4; -fx-border-radius: 4 0 0 4;");
+            nativeBtn.setStyle(baseStyle + "-fx-background-radius: 0 4 4 0; -fx-border-radius: 0 4 4 0;");
+        };
+        updateStyle.run();
+
+        javaBtn.setOnAction(e -> {
+            saveAiSetting(AI_LOCAL_BACKEND_KEY, "java");
+            updateStyle.run();
+            initializeAiService("local");
+        });
+
+        nativeBtn.setOnAction(e -> {
+            saveAiSetting(AI_LOCAL_BACKEND_KEY, "native");
+            updateStyle.run();
+            initializeAiService("local");
+        });
+
+        HBox toggle = new HBox(javaBtn, nativeBtn);
+        toggle.setAlignment(Pos.CENTER_LEFT);
+
+        HBox row = new HBox(10, label, toggle);
+        row.setAlignment(Pos.CENTER_LEFT);
+        return row;
+    }
+
     private static VBox buildOpenAiPanel() {
         VBox panel = new VBox(12);
 
-        TextField endpointField = textField(null, "https://api.openai.com");
-        loadAiSetting(AI_OPENAI_ENDPOINT_KEY, val -> endpointField.setText(val));
+        TextField endpointField = textField( "https://api.openai.com");
+        loadAiSetting(AI_OPENAI_ENDPOINT_KEY, endpointField::setText);
 
         PasswordField apiKeyField = new PasswordField();
         apiKeyField.getStyleClass().add(FIELD_STYLE_CLASS);
-        loadAiSetting(AI_OPENAI_API_KEY_KEY, val -> apiKeyField.setText(val));
+        loadAiSetting(AI_OPENAI_API_KEY_KEY, apiKeyField::setText);
 
-        TextField modelField = textField(null, "gpt-4o");
-        loadAiSetting(AI_OPENAI_MODEL_KEY, val -> modelField.setText(val));
+        TextField modelField = textField( "gpt-4o");
+        loadAiSetting(AI_OPENAI_MODEL_KEY, modelField::setText);
 
         endpointField.textProperty().addListener((obs, o, n) -> saveAiSetting(AI_OPENAI_ENDPOINT_KEY, n));
         apiKeyField.textProperty().addListener((obs, o, n) -> saveAiSetting(AI_OPENAI_API_KEY_KEY, n));
@@ -651,15 +774,15 @@ public class SwissKitJSettingUi {
     private static VBox buildAnthropicPanel() {
         VBox panel = new VBox(12);
 
-        TextField endpointField = textField(null, "https://api.anthropic.com");
-        loadAiSetting(AI_ANTHROPIC_ENDPOINT_KEY, val -> endpointField.setText(val));
+        TextField endpointField = textField( "https://api.anthropic.com");
+        loadAiSetting(AI_ANTHROPIC_ENDPOINT_KEY, endpointField::setText);
 
         PasswordField apiKeyField = new PasswordField();
         apiKeyField.getStyleClass().add(FIELD_STYLE_CLASS);
-        loadAiSetting(AI_ANTHROPIC_API_KEY_KEY, val -> apiKeyField.setText(val));
+        loadAiSetting(AI_ANTHROPIC_API_KEY_KEY, apiKeyField::setText);
 
-        TextField modelField = textField(null, "claude-sonnet-4-20250514");
-        loadAiSetting(AI_ANTHROPIC_MODEL_KEY, val -> modelField.setText(val));
+        TextField modelField = textField( "claude-sonnet-4-20250514");
+        loadAiSetting(AI_ANTHROPIC_MODEL_KEY, modelField::setText);
 
         endpointField.textProperty().addListener((obs, o, n) -> saveAiSetting(AI_ANTHROPIC_ENDPOINT_KEY, n));
         apiKeyField.textProperty().addListener((obs, o, n) -> saveAiSetting(AI_ANTHROPIC_API_KEY_KEY, n));
@@ -704,12 +827,14 @@ public class SwissKitJSettingUi {
             AiService service = opt.get();
             statusLabel.setText(I18n.get("setting.ai.modelLoaded", service.getModelName().orElse("Unknown")));
             unloadBtn.setDisable(false);
-            loadAiSetting(AI_MODEL_PATH_KEY, val -> pathLabel.setText(val));
+            loadAiSetting(AI_MODEL_PATH_KEY, pathLabel::setText);
         }
     }
 
     private static void saveSettingAsync(String key, String value, Runnable onSuccess) {
-        new Thread(() -> {
+        // Update cache immediately so subsequent getters see the new value
+        settingsCache.put(key, value);
+        Thread.ofVirtual().name("settings-save").start(() -> {
             try (SqlSession session = DatabaseInit.getSqlSession()) {
                 AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
                 AppSettingEntity entity = mapper.selectByKey(key);
@@ -727,14 +852,22 @@ public class SwissKitJSettingUi {
             } catch (Exception e) {
                 log.error("Failed to save setting: {}", key, e);
             }
-        }).start();
+        });
     }
 
     private static void loadAiSetting(String key, Consumer<String> consumer) {
+        ensureCacheLoaded();
+        String cached = settingsCache.get(key);
+        if (cached != null && !cached.isBlank()) {
+            consumer.accept(cached);
+            return;
+        }
+        // Fallback: load from DB and populate cache
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
             AppSettingEntity entity = mapper.selectByKey(key);
             if (entity != null && entity.getSettingValue() != null && !entity.getSettingValue().isBlank()) {
+                settingsCache.put(key, entity.getSettingValue());
                 consumer.accept(entity.getSettingValue());
             }
         } catch (Exception e) {
@@ -742,8 +875,77 @@ public class SwissKitJSettingUi {
         }
     }
 
+    /**
+     * Debounced save: coalesces rapid-fire changes (e.g. from Slider/TextField listeners)
+     * into a single DB write, 300 ms after the last change.
+     */
     private static void saveAiSetting(String key, String value) {
-        saveSettingAsync(key, value, null);
+        // Update cache immediately
+        settingsCache.put(key, value);
+        // Cancel any pending save for this key, schedule a new one
+        ScheduledFuture<?> prev = pendingSaves.remove(key);
+        if (prev != null) prev.cancel(false);
+        ScheduledFuture<?> future = debounceExecutor.schedule(() -> {
+            pendingSaves.remove(key);
+            try (SqlSession session = DatabaseInit.getSqlSession()) {
+                AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+                AppSettingEntity entity = mapper.selectByKey(key);
+                if (entity != null) {
+                    entity.setSettingValue(value);
+                    mapper.update(entity);
+                } else {
+                    AppSettingEntity newEntity = new AppSettingEntity();
+                    newEntity.setSettingKey(key);
+                    newEntity.setSettingValue(value);
+                    mapper.insert(newEntity);
+                }
+                session.commit();
+            } catch (Exception e) {
+                log.error("Failed to save setting (debounced): {}", key, e);
+            }
+        }, 300, TimeUnit.MILLISECONDS);
+        pendingSaves.put(key, future);
+    }
+
+    /**
+     * Reads a setting from cache, falling back to DB on cache miss.
+     * Populates the cache on DB hit.
+     */
+    private static String getCachedSetting(String key, String defaultValue) {
+        ensureCacheLoaded();
+        String cached = settingsCache.get(key);
+        if (cached != null) return cached;
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            AppSettingEntity entity = mapper.selectByKey(key);
+            if (entity != null && entity.getSettingValue() != null) {
+                settingsCache.put(key, entity.getSettingValue());
+                return entity.getSettingValue();
+            }
+        } catch (Exception ignored) {}
+        return defaultValue;
+    }
+
+    /** Eagerly loads all app_settings rows into the in-memory cache. */
+    private static synchronized void ensureCacheLoaded() {
+        if (cacheLoaded) return;
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            List<AppSettingEntity> all = mapper.selectAll();
+            if (all != null) {
+                for (AppSettingEntity e : all) {
+                    if (e.getSettingKey() != null && e.getSettingValue() != null) {
+                        settingsCache.put(e.getSettingKey(), e.getSettingValue());
+                    }
+                }
+            }
+            cacheLoaded = true;
+            log.debug("Settings cache loaded: {} entries", settingsCache.size());
+        } catch (Exception e) {
+            // Cache load failure is non-fatal; individual getters will fall back to DB
+            log.debug("Could not preload settings cache", e);
+            cacheLoaded = true;
+        }
     }
 
     /**
@@ -752,11 +954,10 @@ public class SwissKitJSettingUi {
      * @return the temperature value between 0 and 2
      */
     public static float getAiTemperature() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_TEMPERATURE_KEY);
-            if (entity != null) return Float.parseFloat(entity.getSettingValue());
-        } catch (Exception ignored) {}
+        String val = getCachedSetting(AI_TEMPERATURE_KEY, null);
+        if (val != null) {
+            try { return Float.parseFloat(val); } catch (NumberFormatException ignored) {}
+        }
         return 0.7f;
     }
 
@@ -766,11 +967,10 @@ public class SwissKitJSettingUi {
      * @return the top-p value between 0 and 1
      */
     public static float getAiTopP() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_TOP_P_KEY);
-            if (entity != null) return Float.parseFloat(entity.getSettingValue());
-        } catch (Exception ignored) {}
+        String val = getCachedSetting(AI_TOP_P_KEY, null);
+        if (val != null) {
+            try { return Float.parseFloat(val); } catch (NumberFormatException ignored) {}
+        }
         return 0.9f;
     }
 
@@ -780,11 +980,10 @@ public class SwissKitJSettingUi {
      * @return the max tokens value between 64 and 4096
      */
     public static int getAiMaxTokens() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_MAX_TOKENS_KEY);
-            if (entity != null) return Integer.parseInt(entity.getSettingValue());
-        } catch (Exception ignored) {}
+        String val = getCachedSetting(AI_MAX_TOKENS_KEY, null);
+        if (val != null) {
+            try { return Integer.parseInt(val); } catch (NumberFormatException ignored) {}
+        }
         return 512;
     }
 
@@ -794,75 +993,45 @@ public class SwissKitJSettingUi {
      * @return the system prompt string
      */
     public static String getAiSystemPrompt() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_SYSTEM_PROMPT_KEY);
-            if (entity != null && !entity.getSettingValue().isBlank()) return entity.getSettingValue();
-        } catch (Exception ignored) {}
-        return "You are a helpful assistant.";
-    }
-
-    public static String getAiMode() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_MODE_KEY);
-            if (entity != null && entity.getSettingValue() != null) return entity.getSettingValue();
-        } catch (Exception ignored) {}
-        return "local";
+        String val = getCachedSetting(AI_SYSTEM_PROMPT_KEY, null);
+        return (val != null && !val.isBlank()) ? val : "You are a helpful assistant.";
     }
 
     public static String getAiOpenAiEndpoint() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_OPENAI_ENDPOINT_KEY);
-            if (entity != null && !entity.getSettingValue().isBlank()) return entity.getSettingValue();
-        } catch (Exception ignored) {}
-        return "https://api.openai.com";
+        String val = getCachedSetting(AI_OPENAI_ENDPOINT_KEY, null);
+        return (val != null && !val.isBlank()) ? val : "https://api.openai.com";
     }
 
     public static String getAiOpenAiApiKey() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_OPENAI_API_KEY_KEY);
-            if (entity != null) return entity.getSettingValue();
-        } catch (Exception ignored) {}
-        return "";
+        return getCachedSetting(AI_OPENAI_API_KEY_KEY, "");
     }
 
     public static String getAiOpenAiModel() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_OPENAI_MODEL_KEY);
-            if (entity != null && !entity.getSettingValue().isBlank()) return entity.getSettingValue();
-        } catch (Exception ignored) {}
-        return "gpt-4o";
+        String val = getCachedSetting(AI_OPENAI_MODEL_KEY, null);
+        return (val != null && !val.isBlank()) ? val : "gpt-4o";
     }
 
     public static String getAiAnthropicEndpoint() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_ANTHROPIC_ENDPOINT_KEY);
-            if (entity != null && !entity.getSettingValue().isBlank()) return entity.getSettingValue();
-        } catch (Exception ignored) {}
-        return "https://api.anthropic.com";
+        String val = getCachedSetting(AI_ANTHROPIC_ENDPOINT_KEY, null);
+        return (val != null && !val.isBlank()) ? val : "https://api.anthropic.com";
     }
 
     public static String getAiAnthropicApiKey() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_ANTHROPIC_API_KEY_KEY);
-            if (entity != null) return entity.getSettingValue();
-        } catch (Exception ignored) {}
-        return "";
+        return getCachedSetting(AI_ANTHROPIC_API_KEY_KEY, "");
     }
 
     public static String getAiAnthropicModel() {
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(AI_ANTHROPIC_MODEL_KEY);
-            if (entity != null && !entity.getSettingValue().isBlank()) return entity.getSettingValue();
-        } catch (Exception ignored) {}
-        return "claude-sonnet-4-20250514";
+        String val = getCachedSetting(AI_ANTHROPIC_MODEL_KEY, null);
+        return (val != null && !val.isBlank()) ? val : "claude-sonnet-4-20250514";
+    }
+
+    /**
+     * Returns the saved local AI backend choice, or "java" if not set.
+     *
+     * @return "java" or "native"
+     */
+    public static String getAiLocalBackend() {
+        return getCachedSetting(AI_LOCAL_BACKEND_KEY, "java");
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -874,14 +1043,14 @@ public class SwissKitJSettingUi {
         root.setPadding(new Insets(20));
         root.setStyle("-fx-background-color: transparent;");
 
-        TextField smtpField = textField(null, "smtp.example.com");
-        TextField portField = textField(null, "587");
-        TextField userField = textField(null, "user@example.com");
+        TextField smtpField = textField( "smtp.example.com");
+        TextField portField = textField( "587");
+        TextField userField = textField( "user@example.com");
         PasswordField passField = passwordField();
-        TextField fromField = textField(null, "noreply@example.com");
+        TextField fromField = textField( "noreply@example.com");
 
-        TextField imapField = textField(null, "imap.example.com");
-        TextField imapPortField = textField(null, "993");
+        TextField imapField = textField( "imap.example.com");
+        TextField imapPortField = textField( "993");
 
         // Use userData for stable field identification (label text changes with locale)
         VBox smtpRow = labeled(I18n.get("setting.email.smtpServer"), smtpField);
@@ -931,15 +1100,15 @@ public class SwissKitJSettingUi {
     }
 
     private static void loadEmailSettings(VBox root) {
-        new Thread(() -> {
+        runAsync(() -> {
             try (SqlSession session = DatabaseInit.getSqlSession()) {
                 SwissKitSettingEmailMapper mapper = session.getMapper(SwissKitSettingEmailMapper.class);
                 SwissKitSettingEmailEntity entity = mapper.selectLatest();
                 if (entity != null) {
                     Platform.runLater(() -> {
                         for (Node child : root.getChildren()) {
-                            if (child instanceof HBox hb && hb.getUserData() instanceof String key) {
-                                Object fieldNode = hb.getChildren().get(1);
+                            if (child instanceof VBox vb && vb.getUserData() instanceof String key) {
+                                Object fieldNode = vb.getChildren().get(1);
                                 switch (key) {
                                     case "smtp" -> { if (fieldNode instanceof TextField tf) tf.setText(entity.getSmtpAddress()); }
                                     case "port" -> { if (fieldNode instanceof TextField tf) tf.setText(String.valueOf(entity.getSmtpPort())); }
@@ -959,10 +1128,10 @@ public class SwissKitJSettingUi {
                                         if (vbChild instanceof HBox hb && hb.getChildren().size() == 2) {
                                             Object first = hb.getChildren().get(0);
                                             Object second = hb.getChildren().get(1);
-                                            if (first instanceof CheckBox tlsCb && tlsCb.getUserData() == "TLS" && entity.getNeedTLS() != null) {
+                                            if (first instanceof CheckBox tlsCb && "TLS".equals(tlsCb.getUserData()) && entity.getNeedTLS() != null) {
                                                 tlsCb.setSelected(entity.getNeedTLS());
                                             }
-                                            if (second instanceof CheckBox sslCb && sslCb.getUserData() == "SSL" && entity.getNeedSSL() != null) {
+                                            if (second instanceof CheckBox sslCb && "SSL".equals(sslCb.getUserData()) && entity.getNeedSSL() != null) {
                                                 sslCb.setSelected(entity.getNeedSSL());
                                             }
                                         }
@@ -989,7 +1158,7 @@ public class SwissKitJSettingUi {
             } catch (Exception e) {
                 log.debug("No existing email settings found", e);
             }
-        }).start();
+        });
     }
 
     private static VBox tlsSslRow() {
@@ -1028,8 +1197,8 @@ public class SwissKitJSettingUi {
         List<Node> children = form.getChildren();
 
         for (Node child : children) {
-            if (child instanceof HBox hb && hb.getUserData() instanceof String key && hb.getChildren().size() >= 2) {
-                Object field = hb.getChildren().get(1);
+            if (child instanceof VBox vb && vb.getUserData() instanceof String key && vb.getChildren().size() >= 2) {
+                Object field = vb.getChildren().get(1);
                 switch (key) {
                     case "smtp" -> { if (field instanceof TextField tf) smtp = tf.getText(); }
                     case "port" -> { if (field instanceof TextField tf) port = tf.getText(); }
@@ -1054,11 +1223,15 @@ public class SwissKitJSettingUi {
             }
         }
 
-        if (smtp == null || smtp.isBlank() || port == null || port.isBlank()
-                || user == null || user.isBlank() || pass == null || pass.isBlank()
-                || from == null || from.isBlank()) {
+        List<String> missing = new ArrayList<>();
+        if (smtp == null || smtp.isBlank()) missing.add(I18n.get("setting.email.smtpServer"));
+        if (port == null || port.isBlank()) missing.add(I18n.get("setting.email.port"));
+        if (user == null || user.isBlank()) missing.add(I18n.get("setting.email.username"));
+        if (pass == null || pass.isBlank()) missing.add(I18n.get("setting.email.password"));
+        if (from == null || from.isBlank()) missing.add(I18n.get("setting.email.fromAddress"));
+        if (!missing.isEmpty()) {
             GlassNotification.notify((Window) null, GlassNotification.Type.WARNING,
-                I18n.get("setting.email.allFieldsRequired"));
+                I18n.get("setting.email.missingFields", String.join(", ", missing)));
             return;
         }
 
@@ -1076,10 +1249,17 @@ public class SwissKitJSettingUi {
         final boolean fTls = tls;
         final boolean fSsl = ssl;
         final String fImap = (imap != null && !imap.isBlank()) ? imap.trim() : null;
-        final int fImapPort = (imapPort != null && !imapPort.isBlank()) ? Integer.parseInt(imapPort.trim()) : 993;
+        int parsedImapPort = 993;
+        if (imapPort != null && !imapPort.isBlank()) {
+            try {
+                parsedImapPort = Integer.parseInt(imapPort.trim());
+                if (parsedImapPort < 1 || parsedImapPort > 65535) parsedImapPort = 993;
+            } catch (NumberFormatException ignored) {}
+        }
+        final int fImapPort = parsedImapPort;
         final boolean fImapSsl = imapSsl;
 
-        new Thread(() -> {
+        runAsync(() -> {
             try (SqlSession session = DatabaseInit.getSqlSession()) {
                 SwissKitSettingEmailMapper mapper = session.getMapper(SwissKitSettingEmailMapper.class);
                 mapper.deleteAll();
@@ -1105,7 +1285,7 @@ public class SwissKitJSettingUi {
                 Platform.runLater(() -> GlassNotification.notify((Window) null, GlassNotification.Type.ERROR,
                     I18n.get("setting.email.failedToSave", ex.getMessage())));
             }
-        }).start();
+        });
     }
 
     private static Button openAddressBookBtn() {
@@ -1181,17 +1361,15 @@ public class SwissKitJSettingUi {
                 super.updateItem(item, empty);
                 if (empty) { setGraphic(null); return; }
                 EmailAddressBookEntity addr = getTableView().getItems().get(getIndex());
-                delBtn.setOnAction(e -> {
-                    new Thread(() -> {
-                        try (SqlSession session = DatabaseInit.getSqlSession()) {
-                            session.getMapper(EmailAddressBookMapper.class).deleteById(addr.getId());
-                            session.commit();
-                            Platform.runLater(() -> { dialog.close(); openAddressBookDialog(); });
-                        } catch (Exception ex) {
-                            log.error("Failed to delete address", ex);
-                        }
-                    }).start();
-                });
+                delBtn.setOnAction(e -> runAsync(() -> {
+                    try (SqlSession session = DatabaseInit.getSqlSession()) {
+                        session.getMapper(EmailAddressBookMapper.class).deleteById(addr.getId());
+                        session.commit();
+                        Platform.runLater(() -> { dialog.close(); openAddressBookDialog(); });
+                    } catch (Exception ex) {
+                        log.error("Failed to delete address", ex);
+                    }
+                }));
                 setGraphic(delBtn);
             }
         });
@@ -1216,7 +1394,7 @@ public class SwissKitJSettingUi {
         Button importBtn = glassBtn(I18n.get("setting.email.importExcel"), false);
         importBtn.setOnAction(e -> {
             dialog.close();
-            openImportExcelDialog(null);
+            openImportExcelDialog();
         });
 
         Button manageTagsBtn = glassBtn(I18n.get("setting.email.manageTags"), false);
@@ -1245,8 +1423,8 @@ public class SwissKitJSettingUi {
         dialog.initModality(Modality.APPLICATION_MODAL);
         dialog.setTitle(editEntity == null ? I18n.get("setting.email.addAddressTitle") : I18n.get("setting.email.editAddressTitle"));
 
-        TextField addressField = textField(null, "");
-        TextField nicknameField = textField(null, "");
+        TextField addressField = textField( "");
+        TextField nicknameField = textField( "");
 
         // Load all tags and build checkbox list
         List<EmailTagEntity> allTags = new ArrayList<>();
@@ -1369,8 +1547,12 @@ public class SwissKitJSettingUi {
         List<EmailAddressBookEntity> finalAllAddresses = allAddresses;
         Map<Long, Long> tagContactCount = new HashMap<>();
         for (EmailTagEntity tag : tags) {
+            String tagIdStr = String.valueOf(tag.getId());
+            // Match tag ID with word-boundary awareness in the JSON-like tags field
+            java.util.regex.Pattern p = java.util.regex.Pattern.compile(
+                "(?:^|[,\\[\"\\s])" + java.util.regex.Pattern.quote(tagIdStr) + "(?:[,\\]\"\\s]|$)");
             long count = finalAllAddresses.stream()
-                .filter(a -> a.getTags() != null && a.getTags().contains(String.valueOf(tag.getId())))
+                .filter(a -> a.getTags() != null && p.matcher(a.getTags()).find())
                 .count();
             tagContactCount.put(tag.getId(), count);
         }
@@ -1413,7 +1595,7 @@ public class SwissKitJSettingUi {
                             I18n.get("setting.email.tagInUse", tag.getTag(), count));
                         return;
                     }
-                    new Thread(() -> {
+                    runAsync(() -> {
                         try (SqlSession session = DatabaseInit.getSqlSession()) {
                             session.getMapper(EmailTagMapper.class).deleteById(tag.getId());
                             session.commit();
@@ -1423,7 +1605,7 @@ public class SwissKitJSettingUi {
                             Platform.runLater(() -> GlassNotification.notify(dialog, GlassNotification.Type.ERROR,
                                 I18n.get("setting.email.failedToSave", ex.getMessage())));
                         }
-                    }).start();
+                    });
                 });
                 setGraphic(delBtn);
             }
@@ -1432,7 +1614,7 @@ public class SwissKitJSettingUi {
         table.getColumns().addAll(idCol, tagCol, countCol, actionCol);
 
         AtomicReference<Long> updateIdRef = new AtomicReference<>(null);
-        TextField tagField = textField(null, "");
+        TextField tagField = textField( "");
         Button addTagBtn = glassBtn(I18n.get("setting.email.addTag"), true);
 
         table.setOnMouseClicked(e -> {
@@ -1453,7 +1635,7 @@ public class SwissKitJSettingUi {
             Long currentUpdateId = updateIdRef.get();
             if (I18n.get("setting.email.update").equals(addTagBtn.getText()) && currentUpdateId != null) {
                 final Long uid = currentUpdateId;
-                new Thread(() -> {
+                runAsync(() -> {
                     try (SqlSession session = DatabaseInit.getSqlSession()) {
                         EmailTagMapper mapper = session.getMapper(EmailTagMapper.class);
                         EmailTagEntity entity = new EmailTagEntity();
@@ -1468,9 +1650,9 @@ public class SwissKitJSettingUi {
                     } catch (Exception ex) {
                         log.error("Failed to update tag", ex);
                     }
-                }).start();
+                });
             } else {
-                new Thread(() -> {
+                runAsync(() -> {
                     try (SqlSession session = DatabaseInit.getSqlSession()) {
                         EmailTagMapper mapper = session.getMapper(EmailTagMapper.class);
                         EmailTagEntity entity = new EmailTagEntity();
@@ -1485,7 +1667,7 @@ public class SwissKitJSettingUi {
                     } catch (Exception ex) {
                         log.error("Failed to insert tag", ex);
                     }
-                }).start();
+                });
             }
         });
 
@@ -1514,7 +1696,7 @@ public class SwissKitJSettingUi {
     // Excel import
     // ═══════════════════════════════════════════════════════════════════
 
-    private static void openImportExcelDialog(Window owner) {
+    private static void openImportExcelDialog() {
         Stage dialog = new Stage();
         dialog.initModality(Modality.APPLICATION_MODAL);
         dialog.setTitle(I18n.get("setting.email.importExcel"));
@@ -1590,7 +1772,7 @@ public class SwissKitJSettingUi {
             statusLabel.setText(I18n.get("setting.email.importing"));
             statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
 
-            new Thread(() -> {
+            runAsync(() -> {
                 try {
                     ImportResult result = doImportFromExcel(file);
                     Platform.runLater(() -> {
@@ -1619,7 +1801,7 @@ public class SwissKitJSettingUi {
                         browseBtn.setDisable(false);
                     });
                 }
-            }).start();
+            });
         });
 
         Button closeBtn = glassBtn(I18n.get("button.close"), false);
@@ -1848,14 +2030,10 @@ public class SwissKitJSettingUi {
         return l;
     }
 
-    private static TextField textField(String style, String prompt) {
+    private static TextField textField(String prompt) {
         TextField tf = new TextField();
         tf.setPromptText(prompt);
-        if (style != null) {
-            tf.setStyle(style);
-        } else {
-            tf.getStyleClass().add(FIELD_STYLE_CLASS);
-        }
+        tf.getStyleClass().add(FIELD_STYLE_CLASS);
         return tf;
     }
 
@@ -1899,5 +2077,12 @@ public class SwissKitJSettingUi {
         d.setPrefHeight(1);
         VBox.setMargin(d, new Insets(6, 4, 6, 4));
         return d;
+    }
+
+    /** Runs a task on a daemon thread (won't prevent JVM shutdown). */
+    private static void runAsync(Runnable task) {
+        Thread t = new Thread(task);
+        t.setDaemon(true);
+        t.start();
     }
 }

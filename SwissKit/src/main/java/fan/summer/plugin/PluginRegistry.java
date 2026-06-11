@@ -1,5 +1,6 @@
 package fan.summer.plugin;
 
+import fan.summer.api.PluginContext;
 import fan.summer.api.SwissKitJPlugin;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -37,14 +38,15 @@ public class PluginRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(PluginRegistry.class);
 
-    private static PluginRegistry INSTANCE;
+    private static volatile PluginRegistry INSTANCE;
 
     private final ObservableList<SwissKitJPlugin> plugins =
         FXCollections.observableArrayList();
 
-    private SwissKitJPlugin activePlugin;
+    private volatile SwissKitJPlugin activePlugin;
 
-    private final Set<SwissKitJPlugin> backgroundPlugins = new LinkedHashSet<>();
+    private final Set<SwissKitJPlugin> backgroundPlugins =
+        java.util.Collections.synchronizedSet(new LinkedHashSet<>());
 
     /**
      * Constructs a PluginRegistry and wires it to the given PluginLoader.
@@ -99,12 +101,13 @@ public class PluginRegistry {
 
     // Called by PluginLoader (already on FX thread via Platform.runLater)
     /**
-     * Removes a plugin from the registry, invoking its {@link SwissKitJPlugin#onDeactivate()}
-     * and {@link SwissKitJPlugin#onUnload()} callbacks in sequence.
+     * Removes a plugin from the registry, invoking its
+     * {@link SwissKitJPlugin#onDeactivate()} callback if it is currently active.
      *
      * <p>If the plugin being removed is the currently active one, it is deactivated
-     * before removal. Both {@code onDeactivate} and {@code onUnload} are called even if
-     * one throws an exception; exceptions are logged but otherwise ignored.</p>
+     * before removal. The {@code onUnload} callback is <em>not</em> called here —
+     * it is already fired by {@link PluginLoader#unloadJar} before this method
+     * is invoked, ensuring lifecycle callbacks fire exactly once.</p>
      *
      * @param plugin the plugin to remove; must be present in the registry
      * @since 1.0
@@ -114,17 +117,14 @@ public class PluginRegistry {
         backgroundPlugins.remove(plugin);
         if (activePlugin == plugin) {
             try {
-                plugin.onDeactivate();
+                PluginContext.runWith(plugin, plugin::onDeactivate);
             } catch (Exception e) {
                 log.warn("Plugin {} threw on onDeactivate(): {}", plugin.getId(), e.getMessage(), e);
             }
             activePlugin = null;
         }
-        try {
-            plugin.onUnload();
-        } catch (Exception e) {
-            log.warn("Plugin {} threw on onUnload(): {}", plugin.getId(), e.getMessage(), e);
-        }
+        // Note: onUnload() is already called by PluginLoader.unloadJar(), so we
+        // must not call it again here — lifecycle callbacks must fire exactly once.
         plugins.remove(plugin);
     }
 
@@ -147,7 +147,7 @@ public class PluginRegistry {
         if (!fromBackground && activePlugin != null && activePlugin != plugin) {
             log.debug("Deactivating previous plugin: id={}", activePlugin.getId());
             try {
-                activePlugin.onDeactivate();
+                PluginContext.runWith(activePlugin, activePlugin::onDeactivate);
             } catch (Exception e) {
                 log.warn("Plugin {} threw on onDeactivate(): {}", activePlugin.getId(), e.getMessage(), e);
             }
@@ -155,14 +155,14 @@ public class PluginRegistry {
         activePlugin = plugin;
         log.info("Activating plugin: id={}, name={}", plugin.getId(), plugin.getName());
         try {
-            plugin.onActivate();
+            PluginContext.runWith(plugin, plugin::onActivate);
         } catch (Exception e) {
             log.warn("Plugin {} threw on onActivate(): {}", plugin.getId(), e.getMessage(), e);
         }
         if (fromBackground) {
             log.debug("Plugin {} restored from background", plugin.getId());
             try {
-                plugin.onForeground();
+                PluginContext.runWith(plugin, plugin::onForeground);
             } catch (Exception e) {
                 log.warn("Plugin {} threw on onForeground(): {}", plugin.getId(), e.getMessage(), e);
             }
@@ -194,13 +194,13 @@ public class PluginRegistry {
             if (activePlugin.hasRunningTasks()) {
                 backgroundPlugins.add(activePlugin);
                 try {
-                    activePlugin.onBackground();
+                    PluginContext.runWith(activePlugin, activePlugin::onBackground);
                 } catch (Exception e) {
                     log.warn("Plugin {} threw on onBackground(): {}", activePlugin.getId(), e.getMessage(), e);
                 }
             } else {
                 try {
-                    activePlugin.onDeactivate();
+                    PluginContext.runWith(activePlugin, activePlugin::onDeactivate);
                 } catch (Exception e) {
                     log.warn("Plugin {} threw on onDeactivate(): {}", activePlugin.getId(), e.getMessage(), e);
                 }

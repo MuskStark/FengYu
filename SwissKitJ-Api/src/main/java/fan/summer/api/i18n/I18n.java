@@ -48,6 +48,31 @@ public final class I18n {
     private static String hostBaseName;
     private static ClassLoader hostLoader;
 
+    /**
+     * A {@link ResourceBundle.Control} that never falls back to the JVM default locale.
+     * <p>
+     * Without this, on a Chinese system {@code Locale.getDefault()} returns a Chinese locale,
+     * causing {@code ResourceBundle.getBundle("i18n.messages", Locale.ENGLISH, loader)} to
+     * include Chinese candidates in the lookup chain. Since there is no {@code messages_en.properties}
+     * (English lives in the root bundle {@code messages.properties}), the Chinese bundle
+     * {@code messages_zh.properties} becomes the most-specific match and is returned — even
+     * though English was requested.
+     * <p>
+     * Returning {@code null} from {@link #getFallbackLocale} prevents the default locale from
+     * being injected into the candidate list, so only the explicitly requested locale and ROOT
+     * are considered.
+     */
+    @SuppressWarnings("serial")
+    private static final ResourceBundle.Control NO_FALLBACK_CONTROL = new ResourceBundle.Control() {
+        @Override
+        public Locale getFallbackLocale(String baseName, Locale locale) {
+            if (baseName == null || locale == null) {
+                throw new NullPointerException();
+            }
+            return null; // never fall back to JVM default locale
+        }
+    };
+
     // ── Core lookup ──────────────────────────────────────────
 
     /**
@@ -185,7 +210,7 @@ public final class I18n {
         hostBaseName = baseName;
         hostLoader = loader;
         try {
-            ResourceBundle bundle = ResourceBundle.getBundle(baseName, currentLocale, loader);
+            ResourceBundle bundle = ResourceBundle.getBundle(baseName, currentLocale, loader, NO_FALLBACK_CONTROL);
             hostBundle.set(bundle);
             log.info("Registered host i18n bundle: baseName={}, locale={}, keys={}",
                     baseName, currentLocale, bundle.keySet().size());
@@ -213,7 +238,7 @@ public final class I18n {
             if (loader instanceof java.net.URLClassLoader ucl) {
                 bundle = loadBundleFromUrlClassLoader(ucl, baseName, currentLocale);
             } else {
-                bundle = ResourceBundle.getBundle(baseName, currentLocale, loader);
+                bundle = ResourceBundle.getBundle(baseName, currentLocale, loader, NO_FALLBACK_CONTROL);
             }
             if (bundle != null) {
                 pluginBundles.put(loader, bundle);
@@ -242,7 +267,7 @@ public final class I18n {
         if (hostBaseName == null || hostLoader == null) return;
         try {
             ResourceBundle.clearCache(hostLoader);
-            hostBundle.set(ResourceBundle.getBundle(hostBaseName, currentLocale, hostLoader));
+            hostBundle.set(ResourceBundle.getBundle(hostBaseName, currentLocale, hostLoader, NO_FALLBACK_CONTROL));
         } catch (MissingResourceException ignored) {}
     }
 
@@ -257,7 +282,7 @@ public final class I18n {
                     ResourceBundle old = entry.getValue();
                     String baseName = old.getBaseBundleName() != null
                             ? old.getBaseBundleName() : "i18n.messages";
-                    newBundle = ResourceBundle.getBundle(baseName, currentLocale, cl);
+                    newBundle = ResourceBundle.getBundle(baseName, currentLocale, cl, NO_FALLBACK_CONTROL);
                 }
                 if (newBundle != null) {
                     pluginBundles.put(cl, newBundle);
@@ -266,13 +291,20 @@ public final class I18n {
         }
     }
 
+    private static final int MAX_STALE_BINDINGS = 200;
+
     private static void updateAll() {
+        // Clean up GC'd bindings
         bindings.removeIf(e -> e.propertyRef().get() == null);
         for (BoundEntry e : bindings) {
             e.update();
         }
         for (Runnable l : listeners) {
             l.run();
+        }
+        // Safety: if the bindings list has grown excessively, force a full sweep
+        if (bindings.size() > MAX_STALE_BINDINGS) {
+            bindings.removeIf(e -> e.propertyRef().get() == null);
         }
     }
 

@@ -24,6 +24,7 @@ SwissKitJ/
 ├── SwissKitJ-Api/                        # 共享 API 模块
 │   └── src/main/java/fan/summer/api/
 │       ├── SwissKitJPlugin.java          # 插件接口
+│       ├── PluginContext.java            # 插件隔离的 TCCL 切换
 │       ├── ToolCategory.java             # 分类枚举
 │       ├── IconStyle.java                # 图标样式枚举
 │       ├── ToolType.java                 # 类型枚举（BUILTIN / PLUGIN）
@@ -126,6 +127,10 @@ plugin.example.mytool.MyToolPlugin
 1. 用户点击 `ToolCard` → `DetailPanel` 滑入
 2. 用户点击启动 → `registry.activate(plugin)` → `contentArea.showPage(plugin.createView())`
 3. 返回栏 → `registry.deactivate()`
+
+### 插件资源隔离
+
+外部插件通过子优先 `ClassLoader` 加载并注册到 `PluginContext`。主机自动处理 TCCL 切换——插件作者无需了解任何 `ClassLoader` 知识。对于打开自己 `Stage`/`Scene` 的插件，只要代码在生命周期方法或插件视图节点的事件处理器中运行，通过 `ServiceLoader` 或资源包进行的资源查找就能正常工作。
 
 ## 内置工具
 

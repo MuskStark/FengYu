@@ -171,7 +171,7 @@ public class PdfBoxToDocxConverter implements DocumentConverter {
         PDRectangle mediaBox = page.getMediaBox();
         float heightPt = mediaBox.getHeight();
         int size = Math.round(heightPt / 842f * 11f);
-        return Math.max(8, Math.min(16, size));
+        return Math.clamp(size, 8, 16);
     }
 
     // ── Extracted image → DOCX embed ───────────────────────────
@@ -184,8 +184,7 @@ public class PdfBoxToDocxConverter implements DocumentConverter {
         int heightEmu = Math.round((float) img.height / img.width * IMAGE_WIDTH_EMU);
         try (var bis = new java.io.ByteArrayInputStream(img.pngBytes)) {
             XWPFRun picRun = para.createRun();
-            @SuppressWarnings("deprecation")
-            Object unused = picRun.addPicture(bis,
+            picRun.addPicture(bis,
                     org.apache.poi.xwpf.usermodel.Document.PICTURE_TYPE_PNG,
                     "extracted_image.png",
                     IMAGE_WIDTH_EMU, heightEmu);
@@ -209,8 +208,7 @@ public class PdfBoxToDocxConverter implements DocumentConverter {
 
         try (var bis = new java.io.ByteArrayInputStream(imageBytes)) {
             XWPFRun picRun = para.createRun();
-            @SuppressWarnings("deprecation")
-            Object unused = picRun.addPicture(bis,
+            picRun.addPicture(bis,
                     org.apache.poi.xwpf.usermodel.Document.PICTURE_TYPE_PNG,
                     "page_" + (pageIndex + 1) + ".png",
                     widthEmu, heightEmu);

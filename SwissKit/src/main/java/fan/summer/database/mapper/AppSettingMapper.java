@@ -2,6 +2,8 @@ package fan.summer.database.mapper;
 
 import fan.summer.database.entity.AppSettingEntity;
 
+import java.util.List;
+
 /**
  * MyBatis mapper for {@link AppSettingEntity} persistence operations.
  * <p>
@@ -18,6 +20,13 @@ public interface AppSettingMapper {
      * @return the setting entity, or {@code null} if not found
      */
     AppSettingEntity selectByKey(String key);
+
+    /**
+     * Retrieves all settings from the database.
+     *
+     * @return a list of all setting entities; never null but may be empty
+     */
+    List<AppSettingEntity> selectAll();
 
     /**
      * Inserts a new setting into the database.

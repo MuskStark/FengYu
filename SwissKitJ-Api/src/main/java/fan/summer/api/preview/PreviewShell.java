@@ -1,5 +1,6 @@
 package fan.summer.api.preview;
 
+import fan.summer.api.PluginContext;
 import fan.summer.api.SwissKitJPlugin;
 import javafx.animation.FadeTransition;
 import javafx.animation.ParallelTransition;
@@ -88,8 +89,8 @@ class PreviewShell extends BorderPane {
     void close() {
         for (SwissKitJPlugin p : plugins) {
             try {
-                if (p == activePlugin) p.onDeactivate();
-                p.onUnload();
+                if (p == activePlugin) PluginContext.runWith(p, p::onDeactivate);
+                PluginContext.runWith(p, p::onUnload);
             } catch (Exception ignored) {}
         }
         backgroundPlugins.clear();
@@ -222,7 +223,7 @@ class PreviewShell extends BorderPane {
     private void wireEvents() {
         detailPanel.setOnLaunch(plugin -> {
             activePlugin = plugin;
-            try { plugin.onActivate(); } catch (Exception ignored) {}
+            try { PluginContext.runWith(plugin, plugin::onActivate); } catch (Exception ignored) {}
             showPluginView(plugin);
         });
     }
@@ -260,7 +261,7 @@ class PreviewShell extends BorderPane {
         } else {
             // No detail panel — launch directly
             activePlugin = plugin;
-            try { plugin.onActivate(); } catch (Exception ignored) {}
+            try { PluginContext.runWith(plugin, plugin::onActivate); } catch (Exception ignored) {}
             showPluginView(plugin);
         }
     }
@@ -285,7 +286,7 @@ class PreviewShell extends BorderPane {
         Node view = cachedViews.get(plugin);
         if (view == null) {
             try {
-                view = plugin.createView();
+                view = PluginContext.callWith(plugin, plugin::createView);
                 cachedViews.put(plugin, view);
             } catch (Exception e) {
                 Label errorLabel = new Label("Error creating view:\n" + e.getMessage());
@@ -296,9 +297,9 @@ class PreviewShell extends BorderPane {
         }
 
         activePlugin = plugin;
-        try { plugin.onActivate(); } catch (Exception ignored) {}
+        try { PluginContext.runWith(plugin, plugin::onActivate); } catch (Exception ignored) {}
         if (fromBackground) {
-            try { plugin.onForeground(); } catch (Exception ignored) {}
+            try { PluginContext.runWith(plugin, plugin::onForeground); } catch (Exception ignored) {}
         }
 
         ScrollPane pageScroll = new ScrollPane(view);
@@ -315,10 +316,10 @@ class PreviewShell extends BorderPane {
         if (activePlugin != null) {
             if (activePlugin.hasRunningTasks()) {
                 backgroundPlugins.add(activePlugin);
-                try { activePlugin.onBackground(); } catch (Exception ignored) {}
+                try { PluginContext.runWith(activePlugin, activePlugin::onBackground); } catch (Exception ignored) {}
             } else {
                 cachedViews.remove(activePlugin);
-                try { activePlugin.onDeactivate(); } catch (Exception ignored) {}
+                try { PluginContext.runWith(activePlugin, activePlugin::onDeactivate); } catch (Exception ignored) {}
             }
             activePlugin = null;
         }

@@ -8,11 +8,12 @@ import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.AppSettingEntity;
 import fan.summer.database.mapper.AppSettingMapper;
 import fan.summer.log.Slf4jPluginLoggerBinder;
+import fan.summer.plugin.FavoriteService;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.plugin.PluginRegistry;
 import fan.summer.ui.MainWindow;
 import fan.summer.ui.util.WindowResizeHelper;
-import fan.summer.Registrar.BuiltinToolRegistrar;
+import fan.summer.registrar.BuiltinToolRegistrar;
 import fan.summer.ai.tools.BuiltinAiToolRegistrar;
 import javafx.application.Application;
 import javafx.scene.Scene;
@@ -91,6 +92,9 @@ public class SwissKitJApp extends Application {
         PluginLoader   loader   = new PluginLoader(pluginsDir);
         PluginRegistry registry = new PluginRegistry(loader);
 
+        // ── Favorites service (loads from DB) ──────────────────
+        FavoriteService favoriteService = new FavoriteService();
+
         // ── Register built-in tools ──────────────────────────────
         BuiltinToolRegistrar.register(loader, registry);
         log.info("Built-in tools registered, count={}", registry.getPlugins().size());
@@ -103,7 +107,7 @@ public class SwissKitJApp extends Application {
         log.info("Built-in AI tools registered");
 
         // ── Main window ────────────────────────────────────────
-        mainWindow = new MainWindow(stage, loader, registry);
+        mainWindow = new MainWindow(stage, loader, registry, favoriteService);
 
         // Transparent scene (for rounded window to display correctly)
         Scene scene = new Scene(mainWindow, 960, 620);
@@ -164,58 +168,34 @@ public class SwissKitJApp extends Application {
     }
 
     private void initializeAiBackend() {
-        String mode = fan.summer.ui.setting.SwissKitJSettingUi.getAiMode();
+        String mode = fan.summer.ai.AiConfigService.getAiMode();
         log.info("AI backend mode: {}", mode);
 
         switch (mode) {
             case "openai" -> {
                 fan.summer.ai.service.OpenAiService svc = new fan.summer.ai.service.OpenAiService();
                 svc.configure(
-                    fan.summer.ui.setting.SwissKitJSettingUi.getAiOpenAiEndpoint(),
-                    fan.summer.ui.setting.SwissKitJSettingUi.getAiOpenAiApiKey(),
-                    fan.summer.ui.setting.SwissKitJSettingUi.getAiOpenAiModel()
+                    fan.summer.ai.AiConfigService.getAiOpenAiEndpoint(),
+                    fan.summer.ai.AiConfigService.getAiOpenAiApiKey(),
+                    fan.summer.ai.AiConfigService.getAiOpenAiModel()
                 );
                 AiServiceProvider.switchMode(mode, svc);
-                log.info("OpenAI backend initialized: model={}", fan.summer.ui.setting.SwissKitJSettingUi.getAiOpenAiModel());
+                log.info("OpenAI backend initialized: model={}", fan.summer.ai.AiConfigService.getAiOpenAiModel());
             }
             case "anthropic" -> {
                 fan.summer.ai.service.AnthropicService svc = new fan.summer.ai.service.AnthropicService();
                 svc.configure(
-                    fan.summer.ui.setting.SwissKitJSettingUi.getAiAnthropicEndpoint(),
-                    fan.summer.ui.setting.SwissKitJSettingUi.getAiAnthropicApiKey(),
-                    fan.summer.ui.setting.SwissKitJSettingUi.getAiAnthropicModel()
+                    fan.summer.ai.AiConfigService.getAiAnthropicEndpoint(),
+                    fan.summer.ai.AiConfigService.getAiAnthropicApiKey(),
+                    fan.summer.ai.AiConfigService.getAiAnthropicModel()
                 );
                 AiServiceProvider.switchMode(mode, svc);
-                log.info("Anthropic backend initialized: model={}", fan.summer.ui.setting.SwissKitJSettingUi.getAiAnthropicModel());
+                log.info("Anthropic backend initialized: model={}", fan.summer.ai.AiConfigService.getAiAnthropicModel());
             }
             default -> {
-                fan.summer.ai.service.AiServiceImpl aiService = new fan.summer.ai.service.AiServiceImpl();
-                AiServiceProvider.switchMode(mode, aiService);
-
-                String modelPath = null;
-                try (SqlSession session = DatabaseInit.getSqlSession()) {
-                    AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-                    AppSettingEntity entity = mapper.selectByKey("ai.model.path");
-                    if (entity != null && entity.getSettingValue() != null && !entity.getSettingValue().isBlank()) {
-                        modelPath = entity.getSettingValue();
-                    }
-                } catch (Exception e) {
-                    log.debug("Could not read AI model path", e);
-                }
-
-                if (modelPath != null && java.nio.file.Files.exists(java.nio.file.Path.of(modelPath))) {
-                    log.info("Auto-loading local AI model: {}", modelPath);
-                    final String finalPath = modelPath;
-                    Thread.ofVirtual().start(() -> {
-                        try {
-                            aiService.loadModel(java.nio.file.Path.of(finalPath));
-                            AiServiceProvider.notifyStateChanged();
-                            log.info("Local AI model auto-loaded successfully");
-                        } catch (Exception e) {
-                            log.warn("Auto-load failed: {}", e.getMessage());
-                        }
-                    });
-                }
+                // Local mode: defer initialization until AI tool is opened.
+                // See SwissKitJSettingUi.ensureLocalBackend() for the lazy init logic.
+                log.info("AI backend: local (deferred, will initialize when AI tool opens)");
             }
         }
     }

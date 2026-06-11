@@ -34,16 +34,25 @@ public final class WindowResizeHelper {
 
     /**
      * Attaches resize detection to the given stage via its Scene.
+     * This method is idempotent: calling it multiple times on the same stage
+     * is safe — only one set of event filters will be active.
      *
      * @param stage the Stage to resize (must have a Scene set)
      */
     public static void attach(Stage stage) {
-        Scene scene = stage.getScene();
+        Scene scene = stage.sceneProperty().get();
         if (scene == null) {
             log.warn("WindowResizeHelper.attach called but stage has no Scene; nothing wired");
             return;
         }
+        // Idempotent guard: if a ResizeHandler is already attached, skip.
+        Object existing = scene.getProperties().get(ResizeHandler.class.getName());
+        if (existing instanceof ResizeHandler) {
+            log.debug("WindowResizeHelper already attached to this scene, skipping");
+            return;
+        }
         ResizeHandler handler = new ResizeHandler(stage, scene);
+        scene.getProperties().put(ResizeHandler.class.getName(), handler);
         scene.addEventFilter(MouseEvent.MOUSE_MOVED, handler::onMove);
         scene.addEventFilter(MouseEvent.MOUSE_PRESSED, handler::onPress);
         scene.addEventFilter(MouseEvent.MOUSE_DRAGGED, handler::onDrag);

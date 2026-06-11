@@ -19,20 +19,40 @@ public class ToolRegistry {
 
     private final Map<String, AiTool> tools = new ConcurrentHashMap<>();
 
+    /**
+     * Registers a tool, replacing any previous registration with the same name.
+     *
+     * @param tool the tool to register; must not be null
+     */
     public void register(AiTool tool) {
         tools.put(tool.getName(), tool);
         log.info("Registered tool: name={}", tool.getName());
     }
 
+    /**
+     * Removes the tool with the given name.
+     *
+     * @param name the tool name to unregister
+     */
     public void unregister(String name) {
         tools.remove(name);
         log.info("Unregistered tool: name={}", name);
     }
 
+    /**
+     * Returns an immutable snapshot of all currently registered tools.
+     *
+     * @return a list of all registered tools
+     */
     public List<AiTool> getAll() {
         return List.copyOf(tools.values());
     }
 
+    /**
+     * Returns {@code true} if at least one tool is registered.
+     *
+     * @return true if tools exist
+     */
     public boolean hasTools() {
         return !tools.isEmpty();
     }

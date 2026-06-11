@@ -3,7 +3,9 @@ package fan.summer.ui.content;
 import fan.summer.api.MdiIconUtil;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
+import fan.summer.api.component.GlassNotification;
 import fan.summer.api.i18n.I18n;
+import fan.summer.plugin.FavoriteService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import javafx.animation.Interpolator;
@@ -20,12 +22,13 @@ import javafx.scene.paint.Color;
 import javafx.scene.text.Text;
 import javafx.util.Duration;
 
+import java.text.MessageFormat;
 import java.util.function.Consumer;
 
 /**
  * Slide-in detail panel shown on the right side of the ContentArea when a
  * tool card is selected. Displays the plugin's icon, name, version, type,
- * category, and description, with a Launch button to activate the tool.
+ * category, and description, with Launch, Uninstall, and Favorite buttons.
  * <p>
  * The panel is initially parked offscreen to the right and animates in
  * via {@link #slideIn()}; calling {@link #hide()} triggers the reverse
@@ -41,8 +44,8 @@ public class DetailPanel extends VBox {
 
     private static final double PANEL_WIDTH = 260;
 
-    private Text        iconText    = new Text();
-    private final StackPane iconWrap   = new StackPane(iconText);
+    private Text        iconText;
+    private final StackPane iconWrap   = new StackPane();
     private final Label   nameLabel   = new Label();
     private final Label   metaLabel   = new Label();
     private final Label   descLabel   = new Label();
@@ -50,9 +53,13 @@ public class DetailPanel extends VBox {
     private final Label   typeVal     = new Label();
     private final Label   categoryVal = new Label();
     private final Button  launchBtn  = new Button(I18n.get("detail.btn.launch"));
+    private final Button  uninstallBtn = new Button(I18n.get("detail.btn.uninstall"));
+    private final Button  favoriteBtn = new Button();
     private final Button  closeBtn   = new Button("✕");
 
     private Consumer<SwissKitJPlugin> onLaunch;
+    private Consumer<SwissKitJPlugin> onUninstall;
+    private Consumer<SwissKitJPlugin> onFavoriteToggle;
     private SwissKitJPlugin currentPlugin;
     private boolean    panelOpen = false;
 
@@ -72,6 +79,7 @@ public class DetailPanel extends VBox {
             if (panelOpen && currentPlugin != null) {
                 fillData(currentPlugin);
                 launchBtn.setText(I18n.get("detail.btn.launch"));
+                uninstallBtn.setText(I18n.get("detail.btn.uninstall"));
             }
         });
         LOG.info("DetailPanel initialized");
@@ -85,6 +93,24 @@ public class DetailPanel extends VBox {
     public void setOnLaunch(Consumer<SwissKitJPlugin> handler) {
         LOG.debug("setOnLaunch callback set");
         this.onLaunch = handler;
+    }
+
+    /**
+     * Sets the consumer to invoke when the user confirms plugin uninstall.
+     *
+     * @param handler the consumer that receives the plugin to uninstall
+     */
+    public void setOnUninstall(Consumer<SwissKitJPlugin> handler) {
+        this.onUninstall = handler;
+    }
+
+    /**
+     * Sets the consumer to invoke when the user toggles the favorite state.
+     *
+     * @param handler the consumer that receives the affected plugin
+     */
+    public void setOnFavoriteToggle(Consumer<SwissKitJPlugin> handler) {
+        this.onFavoriteToggle = handler;
     }
 
     /**
@@ -132,15 +158,47 @@ public class DetailPanel extends VBox {
                 onLaunch.accept(currentPlugin);
         });
 
+        uninstallBtn.setMaxWidth(Double.MAX_VALUE);
+        uninstallBtn.setStyle(
+            "-fx-background-color: rgba(242,92,92,0.12);" +
+            "-fx-border-color: rgba(242,92,92,0.30); -fx-border-width: 1;" +
+            "-fx-text-fill: #f25c5c; -fx-font-size: 13px;" +
+            "-fx-background-radius: 8; -fx-border-radius: 8;" +
+            "-fx-padding: 8 20 8 20; -fx-cursor: hand;"
+        );
+        uninstallBtn.setOnAction(e -> showUninstallConfirm());
+
+        // Favorite toggle button
+        favoriteBtn.setMaxWidth(Double.MAX_VALUE);
+        favoriteBtn.setStyle(
+            "-fx-background-color: rgba(245,200,66,0.10);" +
+            "-fx-border-color: rgba(245,200,66,0.30); -fx-border-width: 1;" +
+            "-fx-text-fill: #f5c842; -fx-font-size: 13px;" +
+            "-fx-background-radius: 8; -fx-border-radius: 8;" +
+            "-fx-padding: 8 20 8 20; -fx-cursor: hand;"
+        );
+        favoriteBtn.setOnAction(e -> {
+            if (currentPlugin == null) return;
+            FavoriteService svc = FavoriteService.getInstance();
+            if (svc == null) return;
+            svc.toggle(currentPlugin.getId());
+            updateFavoriteBtnStyle();
+            if (onFavoriteToggle != null) onFavoriteToggle.accept(currentPlugin);
+        });
+
+        VBox buttonBox = new VBox(8, launchBtn, uninstallBtn, favoriteBtn);
+
         closeBtn.setStyle(
             "-fx-background-color: transparent; -fx-border-width: 0;" +
             "-fx-text-fill: rgba(255,255,255,0.35); -fx-cursor: hand; -fx-font-size: 14px;"
         );
         closeBtn.setOnAction(e -> hide());
-        closeBtn.setOnMouseEntered(e ->
-            closeBtn.setStyle(closeBtn.getStyle() + "-fx-text-fill: rgba(255,255,255,0.85);"));
-        closeBtn.setOnMouseExited(e ->
-            closeBtn.setStyle(closeBtn.getStyle().replace("-fx-text-fill: rgba(255,255,255,0.85);", "")));
+        final String closeBtnNormal = "-fx-background-color: transparent; -fx-border-width: 0;" +
+            "-fx-text-fill: rgba(255,255,255,0.35); -fx-cursor: hand; -fx-font-size: 14px;";
+        final String closeBtnHover = "-fx-background-color: transparent; -fx-border-width: 0;" +
+            "-fx-text-fill: rgba(255,255,255,0.85); -fx-cursor: hand; -fx-font-size: 14px;";
+        closeBtn.setOnMouseEntered(e -> closeBtn.setStyle(closeBtnHover));
+        closeBtn.setOnMouseExited(e -> closeBtn.setStyle(closeBtnNormal));
 
         HBox topRow = new HBox(closeBtn);
         topRow.setAlignment(Pos.CENTER_RIGHT);
@@ -156,8 +214,33 @@ public class DetailPanel extends VBox {
         setPadding(new Insets(16));
         getChildren().addAll(
             topRow, iconWrap, nameLabel, metaLabel, descLabel,
-            launchBtn, propsBox
+            buttonBox, propsBox
         );
+    }
+
+    private void updateFavoriteBtnStyle() {
+        if (currentPlugin == null) return;
+        FavoriteService svc = FavoriteService.getInstance();
+        boolean isFav = svc != null && svc.isFavorite(currentPlugin.getId());
+        if (isFav) {
+            favoriteBtn.setText(I18n.get("detail.btn.removeFavorite"));
+            favoriteBtn.setStyle(
+                "-fx-background-color: rgba(245,200,66,0.18);" +
+                "-fx-border-color: rgba(245,200,66,0.40); -fx-border-width: 1;" +
+                "-fx-text-fill: #f5c842; -fx-font-size: 13px;" +
+                "-fx-background-radius: 8; -fx-border-radius: 8;" +
+                "-fx-padding: 8 20 8 20; -fx-cursor: hand;"
+            );
+        } else {
+            favoriteBtn.setText(I18n.get("detail.btn.addFavorite"));
+            favoriteBtn.setStyle(
+                "-fx-background-color: rgba(245,200,66,0.10);" +
+                "-fx-border-color: rgba(245,200,66,0.30); -fx-border-width: 1;" +
+                "-fx-text-fill: #f5c842; -fx-font-size: 13px;" +
+                "-fx-background-radius: 8; -fx-border-radius: 8;" +
+                "-fx-padding: 8 20 8 20; -fx-cursor: hand;"
+            );
+        }
     }
 
     private HBox propRow(String key, Label valLabel) {
@@ -197,6 +280,41 @@ public class DetailPanel extends VBox {
         versionVal.setText(p.getVersion());
         typeVal.setText(p.getType().getId());
         categoryVal.setText(categoryName(p.getCategory()));
+
+        // Show uninstall button only for external plugins
+        uninstallBtn.setVisible(p.getType().isPlugin());
+        uninstallBtn.setManaged(p.getType().isPlugin());
+
+        // Update favorite button state
+        updateFavoriteBtnStyle();
+    }
+
+    private void showUninstallConfirm() {
+        if (currentPlugin == null) return;
+
+        String title = I18n.get("detail.uninstall.confirmTitle");
+        String msg = MessageFormat.format(I18n.get("detail.uninstall.confirmMsg"), currentPlugin.getName());
+
+        boolean confirmed = GlassNotification.confirm(this, title, msg);
+        if (confirmed) {
+            doUninstall();
+        }
+    }
+
+    private void doUninstall() {
+        if (currentPlugin == null) return;
+        SwissKitJPlugin plugin = currentPlugin;
+        String pluginName = plugin.getName();
+
+        try {
+            if (onUninstall != null) {
+                onUninstall.accept(plugin);
+            }
+            hide();
+            LOG.info("Plugin uninstalled: {}", pluginName);
+        } catch (Exception ex) {
+            LOG.error("Uninstall failed for plugin {}: {}", pluginName, ex.getMessage(), ex);
+        }
     }
 
     private String categoryName(ToolCategory cat) {

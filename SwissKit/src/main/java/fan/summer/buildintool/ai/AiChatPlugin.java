@@ -8,6 +8,8 @@ import fan.summer.api.ai.*;
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
+import fan.summer.ai.tools.SlashCommandHandler;
+import fan.summer.ai.tools.ToolExecutor;
 import fan.summer.ai.util.MarkdownRenderer;
 import fan.summer.ui.setting.SwissKitJSettingUi;
 import javafx.animation.Animation;
@@ -31,6 +33,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -76,6 +79,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
     @Override
     public void onActivate() {
         log.info("AI Chat plugin activated");
+        fan.summer.ui.setting.SwissKitJSettingUi.ensureLocalBackend();
     }
 
     @Override
@@ -301,6 +305,16 @@ public class AiChatPlugin implements SwissKitJPlugin {
             String text = inputArea.getText().trim();
             if (text.isEmpty() && pendingAttachments.isEmpty()) return;
             if (generating) return;
+
+            // Slash command interception — bypass model for direct tool execution
+            if (text.startsWith("/")) {
+                inputArea.clear();
+                pendingAttachments.clear();
+                renderAttachmentBar();
+                handleSlashCommand(text);
+                return;
+            }
+
             if (aiService == null || !aiService.isReady()) {
                 addSystemMessage(I18n.get("builtin.ai.noModelConfigured"));
                 return;
@@ -389,6 +403,185 @@ public class AiChatPlugin implements SwissKitJPlugin {
                 statusLabel.setText("Error: " + e.getMessage());
             }
         }
+
+        // ── Slash command handling ──────────────────────────────
+
+        private void handleSlashCommand(String input) {
+            SlashCommandHandler.Result result = SlashCommandHandler.handle(input);
+
+            switch (result.mode()) {
+                case LIST -> addCommandResultCard(result.message());
+                case HELP -> {
+                    if (result.tool() != null) {
+                        addCommandResultCard(result.message());
+                    } else {
+                        addCommandResultCard(result.message());
+                    }
+                }
+                case DIRECT -> executeSlashDirect(result.tool(), result.args());
+                case GUIDED_MODEL -> executeSlashGuided(result.tool(), result.message());
+            }
+        }
+
+        /**
+         * Direct tool execution from a slash command — no model inference needed.
+         */
+        private void executeSlashDirect(AiTool tool, Map<String, Object> args) {
+            // Show the user's command
+            addSystemMessage("⚡ /" + tool.getName() + " " + formatArgs(args));
+
+            // Show tool call card
+            AiToolCall tc = AiToolCall.of(tool.getName(), args);
+            addToolCallCard(tc);
+
+            // Execute synchronously on a background thread
+            Thread.ofVirtual().start(() -> {
+                AiToolResult execResult = ToolExecutor.execute(tool.getName(), args);
+                Platform.runLater(() -> {
+                    addToolResultCard(execResult);
+                    scrollToBottom();
+                });
+            });
+        }
+
+        /**
+         * Guided model execution — constrains the model to only see the specified tool,
+         * then asks the model to extract parameters from the user's natural language input.
+         */
+        private void executeSlashGuided(AiTool tool, String rawArgs) {
+            if (aiService == null || !aiService.isReady()) {
+                addSystemMessage(I18n.get("builtin.ai.noModelConfigured"));
+                return;
+            }
+
+            addSystemMessage("🔍 " + tool.getName() + " — asking model to extract parameters…");
+
+            String guidedMessage = "Use the tool `" + tool.getName() + "` to handle this request: " + rawArgs;
+            history.add(AiChatMessage.user(guidedMessage));
+
+            addUserMessage("/" + tool.getName() + " " + rawArgs, List.of());
+
+            currentResponseText = new StringBuilder();
+            currentResponseView = addAssistantBubble();
+
+            generating = true;
+            sendBtn.setDisable(true);
+            attachBtn.setDisable(true);
+            statusLabel.setText(I18n.get("builtin.ai.generating"));
+
+            float temperature = SwissKitJSettingUi.getAiTemperature();
+            float topP = SwissKitJSettingUi.getAiTopP();
+            int maxTokens = SwissKitJSettingUi.getAiMaxTokens();
+
+            // Constrain the model to only see this one tool.
+            // The constraint must stay active until the async generation completes,
+            // so it is cleared in onComplete/onError, not in a finally block here.
+            AiServiceProvider.setConstrainedTool(tool.getName());
+            try {
+                aiService.chat(history, temperature, topP, maxTokens, new AiStreamCallback() {
+                    @Override
+                    public void onToken(String fragment) {
+                        currentResponseText.append(fragment);
+                        String display = stripSpecialTokens(currentResponseText.toString());
+                        updateResponseBubble(display, false);
+                        scrollToBottom();
+                    }
+
+                    @Override
+                    public void onToolCall(AiToolCall toolCall) {
+                        Platform.runLater(() -> {
+                            if (currentResponseText.isEmpty()) {
+                                messageList.getChildren().removeIf(n ->
+                                    n instanceof VBox vb && vb.getChildren().stream()
+                                        .anyMatch(c -> c instanceof WebView));
+                            }
+                            addToolCallCard(toolCall);
+                            currentResponseText = new StringBuilder();
+                            currentResponseView = addAssistantBubble();
+                            scrollToBottom();
+                        });
+                    }
+
+                    @Override
+                    public void onToolResult(String toolCallId, AiToolResult execResult) {
+                        Platform.runLater(() -> {
+                            addToolResultCard(execResult);
+                            scrollToBottom();
+                        });
+                    }
+
+                    @Override
+                    public void onComplete(String fullResponse, int tokensGenerated, double tokensPerSecond) {
+                        AiServiceProvider.clearConstrainedTool();
+                        generating = false;
+                        sendBtn.setDisable(false);
+                        attachBtn.setDisable(false);
+                        statusLabel.setText(String.format("%d tokens · %.1f tok/s", tokensGenerated, tokensPerSecond));
+                        if (currentResponseText != null) {
+                            String display = stripSpecialTokens(currentResponseText.toString());
+                            updateResponseBubble(display, true);
+                        }
+                    }
+
+                    @Override
+                    public void onError(Throwable error) {
+                        AiServiceProvider.clearConstrainedTool();
+                        generating = false;
+                        sendBtn.setDisable(false);
+                        attachBtn.setDisable(false);
+                        statusLabel.setText("Error: " + error.getMessage());
+                        addSystemMessage("Error: " + error.getMessage());
+                    }
+                });
+            } catch (Exception e) {
+                AiServiceProvider.clearConstrainedTool();
+                generating = false;
+                sendBtn.setDisable(false);
+                attachBtn.setDisable(false);
+                statusLabel.setText("Error: " + e.getMessage());
+            }
+        }
+
+        /**
+         * Displays a slash command result (tool list, help text) in a formatted card.
+         */
+        private void addCommandResultCard(String text) {
+            Label label = new Label("🔧");
+            label.setStyle("-fx-text-fill: #74c0fc; -fx-font-size: 13px;");
+
+            Label content = new Label(text);
+            content.setWrapText(true);
+            content.setMaxWidth(540);
+            content.setStyle(
+                "-fx-text-fill: rgba(255,255,255,0.80); -fx-font-size: 12.5px; " +
+                "-fx-font-family: 'Menlo', 'Consolas', monospace;");
+
+            VBox body = new VBox(4, label, content);
+
+            HBox card = new HBox(body);
+            card.setStyle(
+                "-fx-background-color: rgba(116,192,252,0.08);" +
+                "-fx-border-color: rgba(116,192,252,0.18);" +
+                "-fx-border-width: 1px; -fx-border-radius: 10px; -fx-background-radius: 10px;" +
+                "-fx-padding: 10 16 10 16;");
+            card.setMaxWidth(560);
+
+            VBox wrapper = new VBox(card);
+            wrapper.setAlignment(Pos.CENTER_LEFT);
+            wrapper.setPadding(new Insets(4, 0, 4, 0));
+
+            messageList.getChildren().add(wrapper);
+            scrollToBottom();
+        }
+
+        private String formatArgs(Map<String, Object> args) {
+            if (args == null || args.isEmpty()) return "";
+            return args.entrySet().stream()
+                .map(e -> e.getKey() + "=" + e.getValue())
+                .collect(Collectors.joining(" "));
+        }
+
+        // ── Prompt building ────────────────────────────────────
 
         private String buildPromptWithAttachments(String userText, List<Attachment> attachments) {
             if (attachments.isEmpty()) return userText;

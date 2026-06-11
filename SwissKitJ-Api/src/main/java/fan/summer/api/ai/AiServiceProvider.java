@@ -1,12 +1,13 @@
 package fan.summer.api.ai;
 
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * Central registry for the active {@link AiService} instance and its registered tools.
@@ -26,10 +27,18 @@ import java.util.logging.Logger;
  */
 public final class AiServiceProvider {
 
+    private static final PluginLogger log = LoggerFactory.getLogger(AiServiceProvider.class);
+
     private static volatile AiService instance;
     private static volatile String currentMode = "local";
     private static final List<Runnable> stateChangeListeners = new CopyOnWriteArrayList<>();
     private static final Map<String, AiTool> tools = new ConcurrentHashMap<>();
+
+    /** Tool filter used by guided slash-command execution to constrain
+     *  the model to a single tool. When set, {@link #getTools()} returns only that tool.
+     *  Uses a volatile field (not ThreadLocal) because inference runs on a virtual thread
+     *  spawned by AiService, which does not inherit thread-local state. */
+    private static volatile String constrainedTool;
 
     private AiServiceProvider() {}
 
@@ -67,8 +76,7 @@ public final class AiServiceProvider {
             try {
                 instance.unloadModel();
             } catch (Exception e) {
-                Logger.getLogger(AiServiceProvider.class.getName())
-                    .log(Level.WARNING, "Failed to unload previous AI service", e);
+                log.warn("Failed to unload previous AI service: {}", e.getMessage());
             }
         }
         currentMode = mode;
@@ -148,11 +156,19 @@ public final class AiServiceProvider {
     }
 
     /**
-     * Returns an immutable list of all currently registered tools.
+     * Returns an immutable list of currently registered tools.
+     * If a constrained tool is set via {@link #setConstrainedTool(String)},
+     * only that single tool is returned — this allows guided slash-command
+     * execution to present a small model with exactly one tool.
      *
      * @return a list of registered {@link AiTool} instances
      */
     public static List<AiTool> getTools() {
+        String filter = constrainedTool;
+        if (filter != null) {
+            AiTool t = tools.get(filter);
+            if (t != null) return List.of(t);
+        }
         return List.copyOf(tools.values());
     }
 
@@ -173,6 +189,43 @@ public final class AiServiceProvider {
      */
     public static AiTool getTool(String name) {
         return tools.get(name);
+    }
+
+    /**
+     * Removes all registered tools. Useful during shutdown or when switching
+     * AI backends that require a fresh tool set.
+     */
+    public static void clearTools() {
+        tools.clear();
+    }
+
+    // ── Constrained tool filter (for guided slash-command execution) ──
+
+    /**
+     * Constrains subsequent {@link #getTools()} calls to return only the tool
+     * with the given name. This is used by guided slash-command execution so that
+     * small local models only see the single tool the user specified, rather than
+     * the full tool list.
+     *
+     * <p>Uses a volatile field (not ThreadLocal) because inference runs on a virtual
+     * thread that does not inherit thread-local state from the caller.</p>
+     *
+     * <p>Callers <strong>must</strong> call {@link #clearConstrainedTool()} when
+     * the constrained inference completes (typically in the callback's
+     * {@code onComplete}/{@code onError}).</p>
+     *
+     * @param toolName the tool to constrain to, or {@code null} to clear
+     * @see #clearConstrainedTool()
+     */
+    public static void setConstrainedTool(String toolName) {
+        constrainedTool = toolName;
+    }
+
+    /**
+     * Clears the constrained-tool filter set by {@link #setConstrainedTool(String)}.
+     */
+    public static void clearConstrainedTool() {
+        constrainedTool = null;
     }
 
     // ── Backend health ──────────────────────────────────────────

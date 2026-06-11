@@ -1,4 +1,4 @@
-package fan.summer.Registrar;
+package fan.summer.registrar;
 
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.buildintool.ai.AiChatPlugin;

@@ -63,7 +63,9 @@ public class NativeLoader {
                 failureReason = FailureReason.NONE;
                 log.info("Loaded native library from explicit path: {}", explicitPath);
                 return;
-            } catch (UnsatisfiedLinkError e) {
+            } catch (Throwable e) {
+                // Catch Throwable to handle SecurityException (e.g. UOS signature verification),
+                // UnsatisfiedLinkError, and any other platform-specific errors gracefully.
                 log.warn("Failed to load from explicit path {}: {}", explicitPath, e.getMessage());
                 failureReason = FailureReason.EXPLICIT_PATH_FAILED;
             }
@@ -84,8 +86,12 @@ public class NativeLoader {
                 log.info("Loaded native library from JAR: {}", tmpFile.toAbsolutePath());
                 return;
             }
-        } catch (IOException | UnsatisfiedLinkError e) {
-            log.debug("JAR-embedded native library not found or failed to load: {}", e.getMessage());
+        } catch (Throwable e) {
+            // Catch Throwable — UOS and similar hardened Linux distros enforce
+            // digital-signature verification on .so files and may throw SecurityException
+            // or custom errors that are NOT subclasses of IOException/UnsatisfiedLinkError.
+            log.info("JAR-embedded native library not found or failed to load: {} [{}]",
+                     e.getMessage(), e.getClass().getSimpleName());
         }
         failureReason = FailureReason.JAR_EMBEDDED_FAILED;
 
@@ -96,8 +102,10 @@ public class NativeLoader {
             failureReason = FailureReason.NONE;
             log.info("Loaded native library from java.library.path");
             return;
-        } catch (UnsatisfiedLinkError e) {
-            log.debug("Native library not found on java.library.path: {}", e.getMessage());
+        } catch (Throwable e) {
+            // Same rationale — platform security may block unsigned libraries.
+            log.debug("Native library not found on java.library.path: {} [{}]",
+                      e.getMessage(), e.getClass().getSimpleName());
         }
 
         failureReason = FailureReason.LIBRARY_PATH_FAILED;
@@ -122,8 +130,6 @@ public class NativeLoader {
     private static String getLibName() {
         String suffix = getPlatformSuffix(OS_NAME);
         String archTag = getArchTag(OS_ARCH);
-        String suffix = getPlatformSuffix(os);
-        String archTag = getArchTag(arch);
 
         // e.g. libllama_jni-aarch64.dylib, libllama_jni-x86_64.so
         String baseName = "libllama_jni";
