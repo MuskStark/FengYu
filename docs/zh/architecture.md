@@ -20,18 +20,20 @@ SwissKitJ 基于 JavaFX 21 构建，采用模块化、插件化的架构。
 1. 解析 `plugins/` 目录（生产环境为 JAR 同级目录，开发环境为 `./plugins/`）
 2. 创建 `PluginLoader` + `PluginRegistry`
 3. 通过 `BuiltinToolRegistrar` 注册内置工具
-4. 构建并显示 `MainWindow`
-5. 挂载 `WindowResizeHelper` 实现边缘/角落拖拽缩放
-6. 启动 `PluginLoader`（扫描 `plugins/` 目录并监听变化）
+4. 创建 `FavoriteService`（从数据库加载收藏）
+5. 构建并显示 `MainWindow`
+6. 如已配置则初始化远程 AI 后端（OpenAI/Anthropic）；本地后端延迟到首次打开 AI 工具时初始化
+7. 挂载 `WindowResizeHelper` 实现边缘/角落拖拽缩放
+8. 启动 `PluginLoader`（扫描 `plugins/` 目录并监听变化）
 
 ## UI 结构
 
 | 组件 | 职责 |
 |------|------|
 | `MainWindow` | 根 `StackPane`；拥有 `TitleBar`、`Sidebar`、`ContentArea`、状态栏 |
-| `Sidebar` | 基于分类的导航，带搜索栏；分类：全部/文本/图片/开发者/网络/其他 |
+| `Sidebar` | 基于分类的导航，带搜索栏；分类：全部/文本/图片/开发者/网络/其他/收藏 |
 | `ContentArea` | 显示 `ToolCard` 网格或活动工具视图；管理 `DetailPanel` 和返回栏 |
-| `DetailPanel` | 滑入面板，显示插件元数据，带启动按钮 |
+| `DetailPanel` | 滑入面板，显示插件元数据，带启动、卸载（仅外部插件）和收藏切换按钮 |
 | `TitleBar` | 自定义窗口装饰（窗口为 `StageStyle.TRANSPARENT`） |
 
 ### 导航流程
@@ -67,6 +69,12 @@ public interface SwissKitJPlugin {
 - **内置工具**：通过 `BuiltinToolRegistrar` 直接注册——无需 SPI。
 - **外部插件**：实现 `SwissKitJPlugin`，在 `META-INF/services/fan.summer.api.SwissKitJPlugin` 中声明，将 JAR 放入 `plugins/`。通过文件监听器热重载。
 
+### 插件加载
+
+外部插件通过**子优先** `ClassLoader`（`ChildFirstResourceClassLoader`）加载，优先从插件 JAR 解析类和资源，再委派给主机。这防止主机 classpath 遮蔽插件自带的依赖。
+
+每个已加载的插件通过 `PluginContext` 注册，将插件实例与其 `ClassLoader` 关联。主机通过 `PluginContext.runWith()`/`callWith()` 包装每次插件生命周期调用（`createView()`、`onActivate()` 等），设置正确的线程上下文 ClassLoader，并通过 `PluginContext.wrapEvents()` 包装插件节点的 `EventDispatcher`，使后台线程继承正确的 TCCL。
+
 ### 插件日志
 
 插件使用 `fan.summer.api.log.LoggerFactory`，在主机运行时路由到 SLF4J/Logback，在测试中返回静默的空操作日志器。
@@ -92,7 +100,7 @@ H2 文件数据库位于工作目录下的 `.swisskit/swisskit.db`。Schema 从 
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.0.0-rc.1.jar
+java -jar SwissKit/target/SwissKitJ-3.0.0.jar
 ```
 
 胖 JAR 通过 `maven-shade-plugin` 构建，捆绑所有平台的 JavaFX 原生库（`.dll`、`.so`、`.dylib`）。

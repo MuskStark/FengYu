@@ -117,7 +117,7 @@ public class NativeWorkerMain {
             .temperature(floatVal(cmd, "temperature", 0.7f))
             .topP(floatVal(cmd, "topP", 0.9f))
             .repeatPenalty(floatVal(cmd, "repeatPenalty", 1.1f))
-            .seed(longVal(cmd, "seed", -1));
+            .seed(cmd.get("seed") instanceof Number n ? n.longValue() : -1);
 
         StringBuilder response = new StringBuilder();
         AtomicInteger tokenCount = new AtomicInteger(0);
@@ -203,10 +203,5 @@ public class NativeWorkerMain {
     private static float floatVal(Map<String, Object> map, String key, float def) {
         Object v = map.get(key);
         return v instanceof Number n ? n.floatValue() : def;
-    }
-
-    private static long longVal(Map<String, Object> map, String key, long def) {
-        Object v = map.get(key);
-        return v instanceof Number n ? n.longValue() : def;
     }
 }

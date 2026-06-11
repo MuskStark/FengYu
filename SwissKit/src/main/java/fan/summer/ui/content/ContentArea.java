@@ -2,6 +2,7 @@ package fan.summer.ui.content;
 
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.plugin.FavoriteService;
 import fan.summer.plugin.PluginRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,8 +55,10 @@ public class ContentArea extends BorderPane {
     private String   currentCategory = "all";
     private String   currentQuery    = "";
     private Consumer<SwissKitJPlugin> onLaunch;
+    private Consumer<SwissKitJPlugin> onUninstall;
     private Runnable onBack;
     private PluginRegistry registry;
+    private FavoriteService favoriteService;
 
     public ContentArea() {
         LOG.info("ContentArea initializing");
@@ -63,6 +66,8 @@ public class ContentArea extends BorderPane {
         pageScrollPane = buildPageScrollPane();
         buildLayout();
         detailPanel.setOnLaunch(p -> { if (onLaunch != null) onLaunch.accept(p); });
+        detailPanel.setOnUninstall(p -> { if (onUninstall != null) onUninstall.accept(p); });
+        detailPanel.setOnFavoriteToggle(p -> refresh());
         I18n.addListener(() -> javafx.application.Platform.runLater(this::refresh));
         LOG.info("ContentArea initialized");
     }
@@ -77,6 +82,15 @@ public class ContentArea extends BorderPane {
     public void setOnLaunch(Consumer<SwissKitJPlugin> handler) {
         LOG.debug("setOnLaunch callback set");
         this.onLaunch = handler;
+    }
+
+    /**
+     * Sets the callback invoked when the user confirms uninstalling a plugin from the detail panel.
+     *
+     * @param handler the consumer that receives the plugin to uninstall; must not be null
+     */
+    public void setOnUninstall(Consumer<SwissKitJPlugin> handler) {
+        this.onUninstall = handler;
     }
 
     /**
@@ -96,6 +110,15 @@ public class ContentArea extends BorderPane {
      */
     public void setRegistry(PluginRegistry registry) {
         this.registry = registry;
+    }
+
+    /**
+     * Sets the favorite service for querying favorite state (used by ToolCard star icon).
+     *
+     * @param favoriteService the FavoriteService; must not be null
+     */
+    public void setFavoriteService(FavoriteService favoriteService) {
+        this.favoriteService = favoriteService;
     }
 
     /**
@@ -236,7 +259,9 @@ public class ContentArea extends BorderPane {
         HBox.setHgrow(searchField, Priority.ALWAYS);
         searchField.textProperty().addListener((obs, oldVal, newVal) -> {
             currentQuery = newVal.trim().toLowerCase();
+            isSearchRefresh = true;
             refresh();
+            isSearchRefresh = false;
         });
 
         Label kbdHint = new Label("⌘K");
@@ -301,6 +326,12 @@ public class ContentArea extends BorderPane {
 
     // ── Grid refresh ──────────────────────────────────────────
 
+    /**
+     * Whether the current refresh is triggered by a search query change.
+     * When true, entry animations are suppressed to avoid flicker during typing.
+     */
+    private boolean isSearchRefresh = false;
+
     private void refresh() {
         if (plugins == null) return;
 
@@ -311,24 +342,36 @@ public class ContentArea extends BorderPane {
 
         toolGrid.getChildren().clear();
 
+        // Skip staggered animations when refreshing due to search typing —
+        // only animate on category switch (showCategory) which calls animateGridIn().
+        boolean animate = !isSearchRefresh;
+        // Limit staggered animations to the first batch; cards beyond this
+        // are added immediately to avoid creating hundreds of PauseTransitions.
+        int staggerLimit = animate ? Math.min(filtered.size(), 30) : 0;
+
         for (int i = 0; i < filtered.size(); i++) {
             SwissKitJPlugin p = filtered.get(i);
-            ToolCard card = new ToolCard(p, this::onCardSelect, registry);
+            ToolCard card = new ToolCard(p, this::onCardSelect, registry, favoriteService);
             card.setPrefWidth(152);
             card.setPrefHeight(130);
 
-            // Staggered entry delay
-            int delay = i * 35;
-            card.setOpacity(0);
-            PauseTransition pause = new PauseTransition(Duration.millis(delay));
-            pause.setOnFinished(e -> {
-                FadeTransition ft = new FadeTransition(Duration.millis(240), card);
-                ft.setFromValue(0); ft.setToValue(1);
-                TranslateTransition tt = new TranslateTransition(Duration.millis(240), card);
-                tt.setFromY(10); tt.setToY(0);
-                new ParallelTransition(ft, tt).play();
-            });
-            pause.play();
+            if (i < staggerLimit) {
+                // Staggered entry animation for visible cards
+                int delay = i * 35;
+                card.setOpacity(0);
+                PauseTransition pause = new PauseTransition(Duration.millis(delay));
+                pause.setOnFinished(e -> {
+                    FadeTransition ft = new FadeTransition(Duration.millis(240), card);
+                    ft.setFromValue(0); ft.setToValue(1);
+                    TranslateTransition tt = new TranslateTransition(Duration.millis(240), card);
+                    tt.setFromY(10); tt.setToY(0);
+                    new ParallelTransition(ft, tt).play();
+                });
+                pause.play();
+            } else {
+                // Cards beyond the stagger limit (or during search) appear immediately
+                card.setOpacity(1);
+            }
 
             toolGrid.getChildren().add(card);
         }
@@ -348,7 +391,7 @@ public class ContentArea extends BorderPane {
         return switch (currentCategory) {
             case "all"     -> true;
             case "plugins" -> p.getType().isPlugin();
-            case "fav"     -> false; // TODO: integrate favorites persistence
+            case "fav"     -> favoriteService != null && favoriteService.isFavorite(p.getId());
             case "ai"      -> false; // AI chat is launched directly from sidebar, not shown as card
             default        -> p.getCategory().getId().equalsIgnoreCase(currentCategory);
         };

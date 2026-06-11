@@ -122,8 +122,14 @@ public class StepWizard extends BorderPane {
      * the wizard is shown. Calling it more than once has no effect.</p>
      *
      * <p>After calling {@code build()}, the first step is displayed automatically.</p>
+     *
+     * @throws IllegalStateException if no steps have been added or if called more than once
      */
     public void build() {
+        if (stepIndicator != null) return; // idempotent guard
+        if (steps.isEmpty()) {
+            throw new IllegalStateException("At least one step must be added before build()");
+        }
         stepIndicator = buildStepIndicator();
         contentPane   = new StackPane();
         contentPane.setStyle("-fx-background-color: transparent;");

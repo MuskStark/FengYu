@@ -6,6 +6,60 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 
 ## [3.0.0] — JavaFX 迁移
 
+**v3.0.0** — 2026-06-12
+
+- 更新 v3.0.0 发布图标
+- 解决代码库静态分析警告（Qodana）
+
+**v3.0.0-rc.3** — 2026-06-10
+
+### ✨ 新功能
+- **斜杠命令**：在 AI 聊天中输入 `/` 列出可用工具、查看特定工具帮助，或直接调用工具而无需模型推理——支持直接执行和引导式模型参数提取
+- **插件资源隔离**：外部插件使用子优先 `ClassLoader`，确保插件资源优先从插件 JAR 解析；`PluginContext` 在每次插件生命周期调用和事件分发时提供线程上下文 ClassLoader 切换
+- **插件商店重设计**：在线插件商店改为可搜索、可筛选的卡片网格，带安装状态指示和版本比较
+- **AI 配置服务**：提取 `AiConfigService` 集中管理 AI 配置访问，解耦与 UI 设置代码的依赖
+- **邮件归档**：新增 `email_archive` 表、实体类和 Mapper，用于邮件归档存储
+
+### 🔧 修复
+- 修复 Windows 上侧边栏图标不显示——从 JavaFX `Font` 图标切换为 MDI 网页字体
+- 修复邮件设置保存始终失败；现在显示缺失的必填字段名
+- 修复 Excel 复杂拆分第三阶段损坏预先存在的输出文件——仅合并拆分操作期间创建的文件
+- 修复 POI 跨工作簿单元格样式克隆时数据格式字符串为 null 导致 `NullPointerException`
+- Excel 拆分器进度回调增加空值保护
+
+### ♻️ 变更
+- 从 `OnlineStorePane` 提取 `StorePlugin` 和 `StorePluginLogic`，并添加单元测试
+- 新增 GPLv3 许可证文件
+- 为 `SwissKit` 模块添加 JUnit 5 测试依赖
+
+---
+
+**v3.0.0-rc.2** — 2026-06-05
+
+### ✨ 新功能
+- **工具收藏**：通过工具卡片或详情面板的星标切换收藏工具；收藏数据通过 H2 数据库持久化，可从侧边栏"收藏"分类筛选
+- **AI 后端延迟加载**：本地 AI 后端（原生/Java）初始化推迟到首次打开 AI 工具时，提升启动性能；AI 设置中新增 Java/Native 推理引擎切换
+- **插件卸载**：从详情面板卸载外部插件，带确认对话框；关闭 ClassLoader、删除 JAR 文件并从注册表清理
+- **安装成功通知**：从在线商店或本地 JAR 安装插件后显示成功 Toast 通知
+- **令牌批处理**：AI 输出令牌以 50ms 间隔批量刷新，减少高速生成时的 FX 线程压力
+
+### 🔧 修复
+- **崩溃速率限制**：原生工作进程自动重启遵循时间窗口（5 分钟内 3 次崩溃），防止重启风暴
+- **设置缓存**：应用设置缓存在内存中，防抖写入数据库（300ms），减少快速 UI 交互时的数据库负载
+- 修复加固 Linux 发行版（UOS/Deepin/Kylin）上原生库加载失败（未签名的 `.so` 文件抛出 `SecurityException`）
+- 修复邮件群发时共享收件人列表被意外修改
+- 修复在线商店插件目录解析——用手写的字符串切片替换为基于 Gson 的 `JsonHelper`
+- 修复 `WindowResizeHelper` 重复挂载导致事件过滤器重复
+- 线程安全加固：`PluginLoader`、`PluginRegistry` 和 `MainWindow` 使用 `ConcurrentHashMap`、`volatile`、`synchronizedSet`
+- 工具卡片入场动画设置交错上限（最多 30 个），避免创建数百个 `PauseTransition` 实例
+- 修复 Windows 上插件 JAR 删除失败——增加重试机制（含 `System.gc()` 提示），文件仍被锁定时降级为 `deleteOnExit()`
+- 修复卸载插件 JAR 时未触发 `onUnload()` 生命周期回调
+- 修复卸载非活跃插件时缓存视图未清除，导致插件类无法被 GC 回收
+- 修复中文系统下切换英语界面仍返回中文——`ResourceBundle` 不再回退到 JVM 默认 locale
+- 修复 Windows 无 JRE 发行包冗余包含 fat JAR（Launch4j exe 已内嵌该 JAR）
+
+---
+
 **v3.0.0-rc.1** — 2026-06-04
 
 - **浏览器自动化**：AI 可调用的 `browser_automate` 工具，通过自然语言自动化 Web 浏览器；使用 Playwright 驱动系统已安装的 Chrome/Edge/Chromium（无需额外下载浏览器）；观察-思考-行动循环，包含页面 DOM 快照、CSS 选择器定位和规划器 LLM

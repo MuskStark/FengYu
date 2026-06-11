@@ -7,6 +7,7 @@ You are guiding the user through creating a new SwissKitJ plugin. Ask them for:
 5. **Needs database?** — if yes, include H2 + MyBatis layer
 6. **Needs Excel I/O?** — if yes, include fesod-sheet dependencies and listener pattern
 7. **Needs file upload?** — if yes, include background worker pattern
+8. **Needs AI integration?** — if yes, include AiService integration pattern
 
 Then scaffold the project following the templates below. Create all files, do not leave placeholders.
 
@@ -219,11 +220,18 @@ package {{base-package}};
 import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
+import fan.summer.api.ToolType;
 import fan.summer.api.i18n.I18n;
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
 import javafx.scene.Node;
 import {{base-package}}.ui.{{Name}}PluginUi;
 
 public class {{Name}}Plugin implements SwissKitJPlugin {
+
+    private static final PluginLogger log = LoggerFactory.getLogger({{Name}}Plugin.class);
+
+    private {{Name}}PluginUi ui;
 
     @Override
     public String getId() {
@@ -252,18 +260,24 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
 
     @Override
     public String getMdiIcon() {
-        return "{{icon-name}}";
+        return "{{mdi-icon-name}}";  // e.g. "file-excel" — see https://pictogrammers.com/library/mdi/
     }
 
     @Override
     public IconStyle getIconStyle() {
-        return IconStyle.BLUE;
+        return IconStyle.BLUE;  // BLUE | PURPLE | TEAL | AMBER | RED | PINK | GRAY
+    }
+
+    @Override
+    public ToolType getType() {
+        return ToolType.PLUGIN;
     }
 
     @Override
     public Node createView() {
         I18n.registerPluginBundle("i18n.messages", getClass().getClassLoader());
-        return new {{Name}}PluginUi().getView();
+        ui = new {{Name}}PluginUi();
+        return ui.getView();
     }
 
     @Override
@@ -284,6 +298,12 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
     public void onForeground() {
         // Called when the user returns to this plugin from a background state.
         // Use to refresh UI elements that need manual updates after scene detach.
+    }
+
+    @Override
+    public void onUnload() {
+        // Called once when the plugin is being unloaded or the app is shutting down.
+        // Release threads, file handles, etc.
     }
 }
 ```
@@ -312,11 +332,13 @@ Call chain: `java DevLauncher` → `Platform.startup()` → `PluginPreviewWindow
 The `PluginPreviewWindow` supports additional configuration:
 ```java
 PluginPreviewWindow.configure()
-    .withPlugin(new MyPlugin())
+    .withPlugin(new MyPlugin())          // or .withJar(Path.of("build/libs/my-plugin.jar"))
     .title("My Plugin — Preview")
-    .windowSize(900, 600)
-    .showSidebar(false)
-    .showStatusBar(true)
+    .windowSize(960, 620)                // default 960 × 620
+    .showSidebar(true)                   // default true
+    .showSearchBar(true)                 // default true
+    .showStatusBar(true)                 // default true
+    .showDetailPanel(true)               // default true
     .launch();
 ```
 
@@ -325,12 +347,13 @@ PluginPreviewWindow.configure()
 ```java
 package {{base-package}}.ui;
 
+import fan.summer.api.component.GlassNotification;
+import fan.summer.api.component.UiUtils;
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.theme.Themes;
 import javafx.geometry.HPos;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
-import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.layout.ColumnConstraints;
@@ -341,7 +364,7 @@ public class {{Name}}PluginUi {
 
     private GridPane rootPanel;
     private Label exampleLabel = new Label();
-    private Button exampleButton = new Button();
+    private Button exampleButton = UiUtils.glassBtn("Example", true);
 
     public {{Name}}PluginUi() {
         initComponents();
@@ -366,37 +389,62 @@ public class {{Name}}PluginUi {
         // Bind i18n keys to properties — auto-updates on locale change
         String p = "plugin.{{slug}}.";
         I18n.bind(exampleLabel.textProperty(), p + "exampleLabel");
-        I18n.bind(exampleButton.textProperty(), p + "exampleButton");
     }
 
     public Node getView() {
         return rootPanel;
     }
 
-    // Alert helper — applies host theme so dialogs match the main app style
-    private void showAlert(Alert.AlertType type, String message) {
-        Alert alert = new Alert(type);
-        alert.setHeaderText(null);
-        alert.setContentText(message);
-        alert.getDialogPane().sceneProperty().addListener((obs, old, scene) -> {
-            if (scene != null) Themes.applyTo(scene);
-        });
-        alert.showAndWait();
+    // Notification helper — glassmorphism-styled, matches the host app theme
+    private void showSuccess(String message) {
+        GlassNotification.toast(rootPanel, GlassNotification.Type.SUCCESS, message);
+    }
+
+    private void showError(String message) {
+        GlassNotification.toast(rootPanel, GlassNotification.Type.ERROR, message);
+    }
+
+    private void showWarning(String title, String message) {
+        GlassNotification.notify(rootPanel, GlassNotification.Type.WARNING, title, message);
+    }
+
+    private boolean confirm(String title, String message) {
+        return GlassNotification.confirm(rootPanel, title, message);
     }
 }
 ```
+
+**Reusable UI components from `fan.summer.api.component`:**
+
+| Component | Use case | Example |
+|-----------|----------|---------|
+| `UiUtils.glassBtn(text, primary)` | Consistent styled buttons | `UiUtils.glassBtn("Save", true)` |
+| `UiUtils.hSpacer()` | Horizontal spacer in HBox | `HBox hBox = new HBox(label, UiUtils.hSpacer(), btn)` |
+| `UiUtils.subLabel(text)` | Muted form field label | `UiUtils.subLabel("Output path")` |
+| `UiUtils.sectionTitle(text)` | Section heading label | `UiUtils.sectionTitle("Settings")` |
+| `UiUtils.fieldStyle()` | CSS string for text inputs | `textField.setStyle(UiUtils.fieldStyle())` |
+| `UiUtils.comboStyle()` | CSS string for combo boxes | `comboBox.setStyle(UiUtils.comboStyle())` |
+| `GlassNotification.toast(context, type, msg)` | Auto-dismiss toast notification | `GlassNotification.toast(node, Type.SUCCESS, "Done")` |
+| `GlassNotification.notify(context, type, title, msg)` | Modal notification with OK | `GlassNotification.notify(node, Type.ERROR, "Error", details)` |
+| `GlassNotification.confirm(context, title, msg)` | Modal confirm with OK/Cancel | `GlassNotification.confirm(node, "Delete?", "Are you sure?")` |
+| `StepWizard` | Multi-step wizard container | See CLAUDE.md "StepWizard" section |
+
+**GlassNotification types:** `INFO`, `SUCCESS`, `WARNING`, `ERROR`
 
 **i18n usage patterns:**
 
 | Pattern | Use case | Example |
 |---------|----------|---------|
 | `I18n.bind(property, key)` | Static labels, buttons — auto-updates on locale change | `I18n.bind(label.textProperty(), "plugin.xxx.title")` |
+| `I18n.bind(property, key, args...)` | Formatted labels — re-evaluates on locale change | `I18n.bind(status.textProperty(), "plugin.xxx.count", count)` |
 | `I18n.get(key)` | Dynamic text (status, formatted messages) | `statusLabel.setText(I18n.get("plugin.xxx.idle"))` |
+| `I18n.get(key, args...)` | Dynamic formatted text | `I18n.get("plugin.xxx.loaded", fileCount)` |
 | `I18n.addListener(runnable)` | Custom refresh when locale changes | `I18n.addListener(this::refreshStatus)` |
 
 **Theme rules:**
 - Nodes embedded in the host Scene inherit `swisskit-common.css` automatically — no action needed.
-- Only independent windows (Alert, custom Stage) need `Themes.applyTo(scene)` to match the host theme.
+- Only independent windows (custom Stage) need `Themes.applyTo(scene)` to match the host theme.
+- `GlassNotification` applies the theme automatically — no manual `Themes.applyTo()` needed.
 
 ### 6. i18n Resource Files
 
@@ -442,11 +490,11 @@ Key details:
 ```java
 package {{base-package}}.database;
 
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.ibatis.session.SqlSessionFactoryBuilder;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -458,7 +506,7 @@ import java.util.Properties;
 
 public class DatabaseInit {
 
-    private static final Logger logger = LoggerFactory.getLogger(DatabaseInit.class);
+    private static final PluginLogger log = LoggerFactory.getLogger(DatabaseInit.class);
 
     private static final String DB_URL;
 
@@ -698,10 +746,14 @@ package {{base-package}}.worker;
 import {{base-package}}.database.DatabaseInit;
 import {{base-package}}.excel.dto.{{Name}}Dto;
 import {{base-package}}.excel.listener.{{Name}}Listener;
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
 import javafx.concurrent.Task;
 import org.apache.fesod.sheet.FesodSheet;
 
 public class {{Name}}UploadWorker extends Task<Void> {
+
+    private static final PluginLogger log = LoggerFactory.getLogger({{Name}}UploadWorker.class);
 
     private final String filePath;
 
@@ -722,8 +774,15 @@ public class {{Name}}UploadWorker extends Task<Void> {
 Usage in UI:
 ```java
 {{Name}}UploadWorker worker = new {{Name}}UploadWorker(filePath);
-worker.setOnSucceeded(ev -> { /* show success alert */ });
-worker.setOnFailed(ev -> { /* show error with worker.getException() */ });
+worker.setOnSucceeded(ev -> {
+    GlassNotification.toast(rootPanel, GlassNotification.Type.SUCCESS,
+        I18n.get("plugin.{{slug}}.upload.success"));
+});
+worker.setOnFailed(ev -> {
+    GlassNotification.notify(rootPanel, GlassNotification.Type.ERROR,
+        I18n.get("plugin.{{slug}}.error"),
+        worker.getException().getMessage());
+});
 new Thread(worker).start();
 ```
 
@@ -762,7 +821,92 @@ public void onForeground() {
 2. `onBackground()` / `onForeground()` are optional — most plugins only need `hasRunningTasks()`
 3. Always call `super` or use the default no-op implementations — these are default methods on the interface
 
-### 11. File Chooser Utility
+### 11. AI Integration (if AI integration needed)
+
+Plugins can access the host's AI service via `AiServiceProvider` to integrate AI capabilities (chat, tool calling) without depending on any specific inference implementation.
+
+**Getting the AI service:**
+```java
+import fan.summer.api.ai.AiService;
+import fan.summer.api.ai.AiServiceProvider;
+import java.util.Optional;
+
+Optional<AiService> aiOpt = AiServiceProvider.getService();
+if (aiOpt.isPresent() && aiOpt.get().isReady()) {
+    AiService ai = aiOpt.get();
+    // Use AI service
+}
+```
+
+**Sending a chat message with streaming:**
+```java
+import fan.summer.api.ai.AiChatMessage;
+import fan.summer.api.ai.AiStreamCallback;
+import java.util.List;
+
+List<AiChatMessage> messages = List.of(
+    AiChatMessage.system("You are a helpful assistant."),
+    AiChatMessage.user("Hello!")
+);
+
+ai.chat(messages, new AiStreamCallback() {
+    @Override
+    public void onToken(String fragment) {
+        Platform.runLater(() -> responseArea.appendText(fragment));
+    }
+
+    @Override
+    public void onComplete(String fullResponse, int tokensGenerated, double tokensPerSecond) {
+        Platform.runLater(() -> statusLabel.setText(
+            I18n.get("plugin.{{slug}}.done", tokensGenerated)));
+    }
+
+    @Override
+    public void onError(Throwable error) {
+        Platform.runLater(() -> GlassNotification.toast(view,
+            GlassNotification.Type.ERROR, error.getMessage()));
+    }
+});
+```
+
+**Registering a custom AI tool:**
+```java
+import fan.summer.api.ai.AiTool;
+import fan.summer.api.ai.AiToolParam;
+import fan.summer.api.ai.AiToolResult;
+import java.util.List;
+import java.util.Map;
+
+AiTool myTool = new AiTool() {
+    @Override public String getName()        { return "my_tool"; }
+    @Override public String getDescription() { return "Does something useful"; }
+    @Override public List<AiToolParam> getParameters() {
+        return List.of(AiToolParam.of("input", "string", "The input to process"));
+    }
+    @Override public AiToolResult execute(Map<String, Object> arguments) {
+        String input = (String) arguments.get("input");
+        return AiToolResult.success("Processed: " + input);
+    }
+};
+
+// Register globally via AiServiceProvider (visible to all AI backends)
+AiServiceProvider.registerTool(myTool);
+
+// Or register on a specific AiService instance
+ai.registerTool(myTool);
+```
+
+**Listening for AI state changes:**
+```java
+AiServiceProvider.addOnStateChangeListener(() -> {
+    // Called when mode switches, model loads/unloads, etc.
+    boolean ready = AiServiceProvider.getService()
+        .map(AiService::isReady).orElse(false);
+    Platform.runLater(() -> updateUI(ready));
+});
+```
+
+### 12. File Chooser Utility
 
 ```java
 package {{base-package}}.util;
@@ -785,6 +929,31 @@ public abstract class FileChoiceUtil {
 }
 ```
 
+### 13. Plugin Logging
+
+Use `fan.summer.api.log.LoggerFactory` (in `SwissKitJ-Api`) — do NOT depend on SLF4J directly. The host routes plugin log calls into the same SLF4J + Logback backbone (console at INFO+, rolling file at DEBUG+ under `.swisskit/logs/swisskit.log`). If the host has not installed a binder (e.g. plugin unit tests), `LoggerFactory` returns a silent no-op logger.
+
+```java
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
+
+public class MyService {
+    private static final PluginLogger log = LoggerFactory.getLogger(MyService.class);
+
+    public void process(String taskId) {
+        log.info("Processing task: {}", taskId);
+        try {
+            // ...
+            log.debug("Task {} completed, records={}", taskId, count);
+        } catch (Exception e) {
+            log.error("Task {} failed", taskId, e);
+        }
+    }
+}
+```
+
+Use SLF4J-style `{}` placeholders — formatting is deferred until the level is actually enabled.
+
 ---
 
 ## Common Pitfalls
@@ -805,7 +974,19 @@ public abstract class FileChoiceUtil {
 
 8. **i18n bundle registration**: `I18n.registerPluginBundle("i18n.messages", getClass().getClassLoader())` MUST be called in `createView()` before the UI is constructed. Without this, `I18n.get()` and `I18n.bind()` return raw keys instead of translated text. The ClassLoader must be the plugin's own (`getClass().getClassLoader()`), not the system ClassLoader.
 
-9. **Theme on Alert dialogs**: `Alert` creates its own Scene, which does NOT inherit the host's stylesheet. Always apply `Themes.applyTo(scene)` via a `sceneProperty` listener on `alert.getDialogPane()`. Nodes embedded directly in the host Scene inherit the theme automatically — only independent windows need this.
+9. **Use GlassNotification instead of Alert**: `Alert` creates its own Scene with default JavaFX styling, which does not match the SwissKitJ glassmorphism theme. Use `GlassNotification.toast()`, `.notify()`, and `.confirm()` for consistent themed notifications. If you must use `Alert`, apply `Themes.applyTo(scene)` via a `sceneProperty` listener on `alert.getDialogPane()`.
+
+10. **Plugin logging**: Use `fan.summer.api.log.LoggerFactory` + `PluginLogger`, NOT `org.slf4j.LoggerFactory` + `Logger`. The host installs a binder that routes plugin logs correctly; without it the no-op logger ensures safety in unit tests.
+
+11. **Icon name format**: `getMdiIcon()` returns an MDI icon name WITHOUT the `mdi-` prefix (e.g. `"file-excel"`, NOT `"mdi-file-excel"`). Full icon list: https://pictogrammers.com/library/mdi/
+
+12. **IconStyle is an enum**: `getIconStyle()` returns an `IconStyle` enum value (`BLUE`, `PURPLE`, `TEAL`, `AMBER`, `RED`, `PINK`, `GRAY`), NOT a CSS class string.
+
+13. **ToolCategory is an enum**: `getCategory()` returns a `ToolCategory` enum value (`DEV`, `TEXT`, `IMAGE`, `NET`, `OTHER`), NOT a raw string.
+
+14. **ToolType is an enum**: `getType()` returns a `ToolType` enum value (`PLUGIN` for external plugins, `BUILTIN` for built-in tools), NOT a raw string. External plugins should use the default `ToolType.PLUGIN`.
+
+15. **JavaFX Control maxWidth defaults**: `Control` subclasses (ScrollPane, Button, ProgressBar) have `maxWidth = USE_COMPUTED_SIZE` — they stop growing at their pref size inside a StackPane. Use `setMaxWidth(Double.MAX_VALUE)` + `HBox.setHgrow(node, Priority.ALWAYS)` to fill. Never use `setPrefWidth(Double.MAX_VALUE)` — it poisons the parent chain.
 
 ---
 

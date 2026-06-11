@@ -106,6 +106,23 @@ static String commonStylesheetUrl()
 static void applyTo(Scene scene)
 ```
 
+## PluginContext
+
+**位置**：`SwissKitJ-Api/.../PluginContext.java`
+
+将外部插件与其专属 `ClassLoader` 关联，并提供线程上下文 ClassLoader（TCCL）切换以安全调用插件方法。主机通过 `runWith`/`callWith` 包装每次插件方法调用（`createView()`、`onActivate()` 等），并通过 `wrapEvents` 包装插件节点的 `EventDispatcher`，使从事件处理器生成的后台线程继承正确的 TCCL。
+
+```java
+static void register(SwissKitJPlugin plugin, ClassLoader loader)
+static void unregister(SwissKitJPlugin plugin)
+static ClassLoader getClassLoader(SwissKitJPlugin plugin)
+static void runWith(SwissKitJPlugin plugin, Runnable action)
+static <T> T callWith(SwissKitJPlugin plugin, Callable<T> action) throws Exception
+static void wrapEvents(SwissKitJPlugin plugin, Node node)
+```
+
+插件键通过 `WeakReference` 持有，即使主机未调用 `unregister`，过期条目也可被 GC 回收。
+
 ## 数据库层
 
 ### DatabaseInit
@@ -130,6 +147,7 @@ static SqlSessionFactory getSqlSessionFactory()
 | `ComplexSplitConfigMapper` | `insert`、`selectByTaskId`、`deleteByTaskId` |
 | `AppSettingMapper` | `selectByKey`、`upsert` |
 | `PluginManagerMapper` | `selectAll` |
+| `EmailArchiveMapper` | `insert`、`selectAll` |
 | `MenuOrderMapper` | `selectAll`、`updateOrder` |
 
 ## 实体类
@@ -172,6 +190,18 @@ static SqlSessionFactory getSqlSessionFactory()
 | `sheetName` | `String` | 工作表名称 |
 | `headerIndex` | `Integer` | 1-based 表头行（-1 = 复制全部） |
 | `columnIndex` | `Integer` | 1-based 拆分列（-1 = 复制全部） |
+
+### EmailArchiveEntity
+
+| 字段 | 类型 | 描述 |
+|------|------|------|
+| `id` | `Long` | 主键 |
+| `messageId` | `String` | 邮件消息 ID |
+| `subject` | `String` | 邮件主题 |
+| `fromAddr` | `String` | 发件人地址 |
+| `toAddr` | `String` | 收件人地址 |
+| `sentTime` | `Date` | 发送时间戳 |
+| `folder` | `String` | 归档文件夹 |
 
 ## 回调接口
 

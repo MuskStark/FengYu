@@ -1,5 +1,6 @@
 package fan.summer.plugin;
 
+import fan.summer.api.PluginContext;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.i18n.I18n;
 import javafx.application.Platform;
@@ -10,6 +11,8 @@ import java.io.IOException;
 import java.net.URLClassLoader;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -62,10 +65,21 @@ public class PluginLoader {
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     /** Maps JAR path → the ClassLoader opened for it (for unloading) */
-    private final Map<Path, URLClassLoader> openLoaders = new LinkedHashMap<>();
+    private final Map<Path, URLClassLoader> openLoaders = new ConcurrentHashMap<>();
 
     /** Maps JAR path → plugins loaded from that JAR */
-    private final Map<Path, List<SwissKitJPlugin>> jarPlugins = new LinkedHashMap<>();
+    private final Map<Path, List<SwissKitJPlugin>> jarPlugins = new ConcurrentHashMap<>();
+
+    /** Maps original JAR path → temp copy used by the ClassLoader (avoids locking the original on Windows). */
+    private final Map<Path, Path> tempCopies = new ConcurrentHashMap<>();
+
+    /** Scheduler for deferred JAR loads (avoids blocking the watch thread). */
+    private final java.util.concurrent.ScheduledExecutorService loadScheduler =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "plugin-load-scheduler");
+                t.setDaemon(true);
+                return t;
+            });
 
     /**
      * Constructs a PluginLoader that will scan the given directory for plugin JARs.
@@ -110,6 +124,9 @@ public class PluginLoader {
             log.warn("Cannot create plugin directory {}: {}", pluginsDir, e.getMessage());
         }
 
+        // Clean up leftover temp copies from previous sessions (crash recovery)
+        cleanupStaleTempCopies();
+
         // Initial scan
         scanAll();
 
@@ -147,6 +164,7 @@ public class PluginLoader {
     public void stop() {
         log.info("Stopping plugin loader");
         running.set(false);
+        loadScheduler.shutdownNow();
         try {
             if (watchService != null) watchService.close();
         } catch (IOException ignored) {}
@@ -156,6 +174,90 @@ public class PluginLoader {
         List<Path> jars = new ArrayList<>(jarPlugins.keySet());
         log.debug("Unloading {} JAR(s) on shutdown", jars.size());
         jars.forEach(this::unloadJar);
+    }
+
+    // ── Public API ────────────────────────────────────────────────
+
+    /**
+     * Returns the JAR file path that loaded the given plugin, or {@code null}
+     * if the plugin was not loaded from a JAR (e.g. a built-in tool).
+     *
+     * @param plugin the plugin to look up; must not be {@code null}
+     * @return the JAR path, or {@code null} if not found
+     * @since 3.0
+     */
+    public Path findJarPath(SwissKitJPlugin plugin) {
+        for (Map.Entry<Path, List<SwissKitJPlugin>> entry : jarPlugins.entrySet()) {
+            if (entry.getValue().contains(plugin)) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Uninstalls the given plugin by unloading its JAR and deleting the file
+     * from the plugins directory.
+     *
+     * <p>This method first unloads the JAR via {@link #unloadJar(Path)} (which
+     * closes the ClassLoader, removes the plugin from the registry, and deletes
+     * the temp copy), then deletes the original JAR file from disk. Because the
+     * ClassLoader was opened against a temp copy, the original file is never
+     * locked and can be deleted immediately.</p>
+     *
+     * <p>The directory watcher will see the file deletion, but the second
+     * {@code unloadJar} call is a harmless no-op because the JAR was already
+     * removed from the internal maps.</p>
+     *
+     * @param plugin the plugin to uninstall; must not be {@code null}
+     * @throws IllegalArgumentException if the plugin's JAR cannot be found
+     * @since 3.0
+     */
+    public void uninstallPlugin(SwissKitJPlugin plugin) {
+        Path jar = findJarPath(plugin);
+        if (jar == null) {
+            throw new IllegalArgumentException("No JAR found for plugin: " + plugin.getId());
+        }
+        log.info("Uninstalling plugin: id={}, jar={}", plugin.getId(), jar.getFileName());
+        unloadJar(jar);
+
+        // Original JAR was never locked (ClassLoader used temp copy), so deletion
+        // should succeed immediately without any retry/GC hacks.
+        try {
+            Files.deleteIfExists(jar);
+            log.info("Deleted plugin JAR: {}", jar.getFileName());
+        } catch (IOException e) {
+            log.warn("Failed to delete plugin JAR {}: {}", jar.getFileName(), e.getMessage());
+            jar.toFile().deleteOnExit();
+        }
+    }
+
+    // ── Temp file cleanup ─────────────────────────────────────
+
+    /** Prefix used for temp JAR copies, so stale files can be identified on startup. */
+    private static final String TEMP_PREFIX = "skj-plugin-";
+
+    /**
+     * Deletes leftover temp JAR copies from previous sessions (crash recovery).
+     * Scans the system temp directory for files matching {@value #TEMP_PREFIX}*.jar.
+     */
+    private void cleanupStaleTempCopies() {
+        try {
+            Path tmpDir = Path.of(System.getProperty("java.io.tmpdir"));
+            if (!Files.isDirectory(tmpDir)) return;
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(tmpDir, TEMP_PREFIX + "*.jar")) {
+                for (Path leftover : stream) {
+                    try {
+                        Files.deleteIfExists(leftover);
+                        log.debug("Cleaned up leftover temp JAR: {}", leftover.getFileName());
+                    } catch (IOException e) {
+                        log.debug("Could not delete leftover temp JAR {}: {}", leftover.getFileName(), e.getMessage());
+                    }
+                }
+            }
+        } catch (IOException e) {
+            log.debug("Could not scan temp directory for cleanup: {}", e.getMessage());
+        }
     }
 
     // ── Scan ────────────────────────────────────────────────────
@@ -184,8 +286,14 @@ public class PluginLoader {
     private void loadJar(Path jar) {
         log.debug("Loading plugin JAR: {}", jar.getFileName());
         try {
-            URLClassLoader cl = new URLClassLoader(
-                new java.net.URL[]{jar.toUri().toURL()},
+            // Copy the JAR to a temp file so the original is never locked by the ClassLoader.
+            // This is essential on Windows where URLClassLoader holds an exclusive native
+            // file handle, preventing deletion even after cl.close().
+            Path tempJar = Files.createTempFile("skj-plugin-", ".jar");
+            Files.copy(jar, tempJar, StandardCopyOption.REPLACE_EXISTING);
+
+            URLClassLoader cl = new ChildFirstResourceClassLoader(
+                new java.net.URL[]{tempJar.toUri().toURL()},
                 getClass().getClassLoader()
             );
             ServiceLoader<SwissKitJPlugin> sl = ServiceLoader.load(SwissKitJPlugin.class, cl);
@@ -193,6 +301,7 @@ public class PluginLoader {
             List<SwissKitJPlugin> loaded = new ArrayList<>();
             for (SwissKitJPlugin plugin : sl) {
                 loaded.add(plugin);
+                PluginContext.register(plugin, cl);
                 log.info("Loaded plugin: id={}, name={}, version={}, jar={}",
                         plugin.getId(), plugin.getName(), plugin.getVersion(), jar.getFileName());
             }
@@ -200,10 +309,12 @@ public class PluginLoader {
             if (loaded.isEmpty()) {
                 log.warn("No SwissKitJPlugin services declared in {}", jar.getFileName());
                 cl.close();
+                Files.deleteIfExists(tempJar);
                 return;
             }
 
             openLoaders.put(jar, cl);
+            tempCopies.put(jar, tempJar);
             jarPlugins.put(jar, loaded);
 
             // Register plugin i18n bundle if present
@@ -228,6 +339,15 @@ public class PluginLoader {
         List<SwissKitJPlugin> plugins = jarPlugins.remove(jar);
         if (plugins != null) {
             log.info("Unloading plugin JAR: {} (contained {} plugin(s))", jar.getFileName(), plugins.size());
+            // Fire onUnload lifecycle callback with TCCL set to the plugin's ClassLoader
+            plugins.forEach(p -> {
+                try {
+                    PluginContext.runWith(p, p::onUnload);
+                } catch (Exception e) {
+                    log.warn("onUnload() failed for {}: {}", p.getId(), e.getMessage());
+                }
+                PluginContext.unregister(p);
+            });
             if (registry != null) {
                 Platform.runLater(() -> plugins.forEach(registry::removePlugin));
             }
@@ -242,9 +362,24 @@ public class PluginLoader {
                 log.warn("Error closing ClassLoader for {}: {}", jar.getFileName(), e.getMessage());
             }
         }
+
+        // Delete temp copy — ClassLoader is closed, so the lock is released
+        Path tempJar = tempCopies.remove(jar);
+        if (tempJar != null) {
+            try {
+                Files.deleteIfExists(tempJar);
+            } catch (IOException e) {
+                log.debug("Could not delete temp JAR {}: {}", tempJar, e.getMessage());
+                tempJar.toFile().deleteOnExit();
+            }
+        }
     }
 
     // ── Watch loop ───────────────────────────────────────────────
+
+    /** Debounce map: JAR path → scheduled reload timestamp. Prevents rapid-fire reloads. */
+    private final ConcurrentHashMap<Path, Long> pendingReloads = new ConcurrentHashMap<>();
+    private static final long RELOAD_DEBOUNCE_MS = 1500;
 
     private void watchLoop() {
         while (running.get()) {
@@ -259,20 +394,34 @@ public class PluginLoader {
                     WatchEvent.Kind<?> kind = event.kind();
                     if (kind == StandardWatchEventKinds.ENTRY_CREATE) {
                         log.info("Detected new plugin JAR: {}", name);
-                        // Brief delay so the file is fully written before reading
-                        Thread.sleep(500);
-                        loadJar(fullPath);
+                        // Schedule load after a brief delay so the file is fully written
+                        loadScheduler.schedule(() -> loadJar(fullPath), 500, java.util.concurrent.TimeUnit.MILLISECONDS);
                     } else if (kind == StandardWatchEventKinds.ENTRY_DELETE) {
                         log.info("Detected plugin JAR removal: {}", name);
+                        pendingReloads.remove(fullPath);
                         unloadJar(fullPath);
                     } else if (kind == StandardWatchEventKinds.ENTRY_MODIFY) {
-                        log.info("Detected plugin JAR modification, reloading: {}", name);
-                        unloadJar(fullPath);
-                        Thread.sleep(500);
-                        loadJar(fullPath);
+                        // Debounce: schedule a reload, coalescing rapid-fire modify events
+                        long reloadAt = System.currentTimeMillis() + RELOAD_DEBOUNCE_MS;
+                        pendingReloads.put(fullPath, reloadAt);
+                        log.debug("Scheduled debounced reload for: {}", name);
                     }
                 }
                 key.reset();
+
+                // Process pending reloads whose debounce timer has expired
+                long now = System.currentTimeMillis();
+                for (Map.Entry<Path, Long> entry : pendingReloads.entrySet()) {
+                    if (now >= entry.getValue()) {
+                        pendingReloads.remove(entry.getKey());
+                        Path jar = entry.getKey();
+                        if (Files.exists(jar)) {
+                            log.info("Executing debounced reload for: {}", jar.getFileName());
+                            unloadJar(jar);
+                            loadJar(jar);
+                        }
+                    }
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;

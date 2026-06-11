@@ -45,3 +45,6 @@ build/
 ### Plan / Work in progress ###
 /plan
 /testdata/
+
+# Superpowers brainstorm artifacts
+.superpowers/

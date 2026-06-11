@@ -6,6 +6,7 @@ import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
+import fan.summer.plugin.FavoriteService;
 import fan.summer.plugin.PluginRegistry;
 import javafx.animation.*;
 import javafx.geometry.Insets;
@@ -25,8 +26,8 @@ import java.util.function.Consumer;
 
 /**
  * A single card in the tool grid display. Each card shows the plugin's
- * icon, name, description, a tag, and optionally a green pulse indicator
- * when the plugin has background tasks running.
+ * icon, name, description, a tag, a favorite star toggle, and optionally
+ * a green pulse indicator when the plugin has background tasks running.
  *
  * @since 1.0
  */
@@ -39,11 +40,13 @@ public class ToolCard extends StackPane {
     /**
      * Constructs a ToolCard for the given plugin with a selection callback.
      *
-     * @param plugin   the plugin to display; must not be null
-     * @param onSelect called when the user clicks this card; receives the plugin
-     * @param registry the plugin registry for background state queries; may be null
+     * @param plugin         the plugin to display; must not be null
+     * @param onSelect       called when the user clicks this card; receives the plugin
+     * @param registry       the plugin registry for background state queries; may be null
+     * @param favoriteService the favorite service for star toggle; may be null
      */
-    public ToolCard(SwissKitJPlugin plugin, Consumer<SwissKitJPlugin> onSelect, PluginRegistry registry) {
+    public ToolCard(SwissKitJPlugin plugin, Consumer<SwissKitJPlugin> onSelect,
+                    PluginRegistry registry, FavoriteService favoriteService) {
         LOG.info("Creating ToolCard for plugin: name={}, id={}", plugin.getName(), plugin.getId());
         this.plugin = plugin;
 
@@ -99,7 +102,7 @@ public class ToolCard extends StackPane {
             dot.setEffect(new Glow(0.8));
             dot.setMouseTransparent(true);
             StackPane.setAlignment(dot, Pos.TOP_RIGHT);
-            StackPane.setMargin(dot, new Insets(8));
+            StackPane.setMargin(dot, new Insets(8, 28, 0, 0));
             FadeTransition pulse = new FadeTransition(Duration.millis(2500), dot);
             pulse.setFromValue(1.0);
             pulse.setToValue(0.4);
@@ -108,6 +111,28 @@ public class ToolCard extends StackPane {
             pulse.play();
             getChildren().add(dot);
         }
+
+        // ── Favorite star button (top-right corner) ──────────────
+        Label starBtn = new Label();
+        starBtn.setStyle("-fx-font-size: 13px; -fx-cursor: hand;");
+        StackPane.setAlignment(starBtn, Pos.TOP_RIGHT);
+        StackPane.setMargin(starBtn, new Insets(6, 6, 0, 0));
+        updateStarStyle(starBtn, favoriteService != null && favoriteService.isFavorite(plugin.getId()));
+
+        starBtn.setOnMouseClicked(e -> {
+            e.consume(); // prevent card click
+            if (favoriteService == null) return;
+            boolean nowFav = favoriteService.toggle(plugin.getId());
+            updateStarStyle(starBtn, nowFav);
+            // Brief scale pop on toggle
+            ScaleTransition pop = new ScaleTransition(Duration.millis(150), starBtn);
+            pop.setFromX(0.7); pop.setFromY(0.7);
+            pop.setToX(1.0); pop.setToY(1.0);
+            pop.setInterpolator(Interpolator.EASE_OUT);
+            pop.play();
+        });
+
+        getChildren().add(starBtn);
 
         // ── Hover: intensify glow ────────────────────────────────
         ScaleTransition hoverIn  = new ScaleTransition(Duration.millis(150), this);
@@ -164,4 +189,14 @@ public class ToolCard extends StackPane {
      * @return the plugin instance passed at construction time
      */
     public SwissKitJPlugin getPlugin() { return plugin; }
+
+    private void updateStarStyle(Label starBtn, boolean isFavorite) {
+        if (isFavorite) {
+            starBtn.setText("★");
+            starBtn.setStyle("-fx-font-size: 13px; -fx-cursor: hand; -fx-text-fill: #f5c842;");
+        } else {
+            starBtn.setText("☆");
+            starBtn.setStyle("-fx-font-size: 13px; -fx-cursor: hand; -fx-text-fill: rgba(255,255,255,0.22);");
+        }
+    }
 }

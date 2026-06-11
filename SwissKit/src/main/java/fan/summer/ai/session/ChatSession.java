@@ -36,6 +36,11 @@ public class ChatSession {
         log.info("ChatSession created: maxHistoryRounds=20 (default)");
     }
 
+    /**
+     * Appends a message to the history and trims if necessary.
+     *
+     * @param message the message to add; must not be null
+     */
     public void add(AiChatMessage message) {
         history.add(message);
         log.debug("add: role={}, contentLength={}, historySize={}",
@@ -43,31 +48,57 @@ public class ChatSession {
         trim();
     }
 
+    /** Convenience method — appends a USER role message. */
     public void addUser(String content) {
         add(AiChatMessage.user(content));
     }
 
+    /** Convenience method — appends an ASSISTANT role message. */
     public void addAssistant(String content) {
         add(AiChatMessage.assistant(content));
     }
 
+    /**
+     * Convenience method — appends an ASSISTANT message with tool calls.
+     *
+     * @param content   the text content (may be empty)
+     * @param toolCalls the tool calls issued by the assistant
+     */
     public void addAssistantWithTools(String content, List<AiToolCall> toolCalls) {
         add(AiChatMessage.assistantWithTools(content, toolCalls));
     }
 
+    /**
+     * Convenience method — appends a TOOL result message.
+     *
+     * @param toolCallId the ID of the tool call this result corresponds to
+     * @param toolName   the name of the tool that was executed
+     * @param content    the tool output text
+     */
     public void addToolResult(String toolCallId, String toolName, String content) {
         add(AiChatMessage.toolResult(toolCallId, toolName, content));
     }
 
+    /**
+     * Returns an unmodifiable view of the current message history.
+     *
+     * @return the conversation history
+     */
     public List<AiChatMessage> getHistory() {
         return Collections.unmodifiableList(history);
     }
 
+    /** Clears all messages from the history. */
     public void clear() {
         history.clear();
         log.info("ChatSession cleared");
     }
 
+    /**
+     * Returns the number of messages currently in the history.
+     *
+     * @return the history size
+     */
     public int size() {
         return history.size();
     }

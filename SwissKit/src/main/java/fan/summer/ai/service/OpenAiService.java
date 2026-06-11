@@ -208,8 +208,7 @@ public class OpenAiService implements AiService {
                 if (content != null) {
                     fullResponse.append(content);
                     tokenCount[0]++;
-                    String text = content;
-                    Platform.runLater(() -> callback.onToken(text));
+                    Platform.runLater(() -> callback.onToken(content));
                 }
 
                 String reasoningChunk = (String) delta.get("reasoning_content");
@@ -267,9 +266,8 @@ public class OpenAiService implements AiService {
         } else {
             String clean = hadToolCall.get() ? ToolCallParser.stripToolCalls(fullResponse.toString()) : fullResponse.toString();
             history.add(AiChatMessage.assistantWithReasoning(clean, reasoningText));
-            String finalClean = clean;
             int count = tokenCount[0];
-            Platform.runLater(() -> callback.onComplete(finalClean, count, tokPerSec));
+            Platform.runLater(() -> callback.onComplete(clean, count, tokPerSec));
         }
     }
 

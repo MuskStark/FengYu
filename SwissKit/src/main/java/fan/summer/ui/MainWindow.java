@@ -1,6 +1,8 @@
 package fan.summer.ui;
 
+import fan.summer.api.PluginContext;
 import fan.summer.api.i18n.I18n;
+import fan.summer.plugin.FavoriteService;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.plugin.PluginRegistry;
 import fan.summer.ui.content.ContentArea;
@@ -25,8 +27,8 @@ import org.slf4j.LoggerFactory;
 
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Root node of the main window that assembles the complete SwissKitJ UI.
@@ -51,13 +53,15 @@ public class MainWindow extends StackPane {
     private final Stage        stage;
     private final PluginLoader loader;
     private final PluginRegistry registry;
+    private final FavoriteService favoriteService;
+    private BorderPane windowPane;
 
     private final TitleBar    titleBar;
     private final Sidebar     sidebar;
     private final ContentArea contentArea;
-    private final AiChatPlugin  aiChatPlugin;
+    private SwissKitJPlugin  aiChatPlugin;
     private Node aiChatView;
-    private final Map<SwissKitJPlugin, Node> cachedViews = new HashMap<>();
+    private final Map<SwissKitJPlugin, Node> cachedViews = new ConcurrentHashMap<>();
 
     // Status bar labels
     private Label statusToolCount    = statusText("0 tools");
@@ -76,33 +80,41 @@ public class MainWindow extends StackPane {
      * @param loader   the PluginLoader that manages plugin discovery and hot-reload
      * @param registry the PluginRegistry holding all registered plugins and built-in tools
      */
-    public MainWindow(Stage stage, PluginLoader loader, PluginRegistry registry) {
+    public MainWindow(Stage stage, PluginLoader loader, PluginRegistry registry, FavoriteService favoriteService) {
         log.debug("Initialising MainWindow");
         this.stage    = stage;
         this.loader   = loader;
         this.registry = registry;
+        this.favoriteService = favoriteService;
 
         titleBar    = new TitleBar(stage, this::openSettings);
         sidebar     = new Sidebar();
         contentArea = new ContentArea();
         contentArea.setRegistry(registry);
+        contentArea.setFavoriteService(favoriteService);
         contentArea.setMinHeight(0);
 
-        // AI service (initialized by SwissKitJApp.initializeAiBackend())
-        aiChatPlugin = new AiChatPlugin();
+        // AI chat plugin — look up the registered instance from BuiltinToolRegistrar
+        // instead of creating a duplicate. Falls back to a new instance if not found.
+        aiChatPlugin = registry.findPlugin("builtin.ai-chat").orElse(null);
+        if (aiChatPlugin == null) {
+            // Fallback: shouldn't happen normally, but safe guard
+            aiChatPlugin = new AiChatPlugin();
+            log.warn("AiChatPlugin not found in registry, created standalone instance");
+        }
 
-        int buildInTool = 0;
-        int pluginInTool = 0;
+        int builtinCount = 0;
+        int pluginCount = 0;
         for (SwissKitJPlugin plugin : registry.getPlugins()) {
-            if(plugin.getType().isPlugin() ) {
-                pluginInTool++;
-            }else {
-                buildInTool++;
+            if (plugin.getType().isPlugin()) {
+                pluginCount++;
+            } else {
+                builtinCount++;
             }
         }
 
-        statusPluginCount = statusText(I18n.get("status.plugins", pluginInTool));
-        statusToolCount = statusText(I18n.get("status.tools", pluginInTool + buildInTool));
+        statusPluginCount = statusText(I18n.get("status.plugins", pluginCount));
+        statusToolCount = statusText(I18n.get("status.tools", pluginCount + builtinCount));
 
         buildScene();
         wireEvents();
@@ -120,7 +132,7 @@ public class MainWindow extends StackPane {
         Pane orbLayer = buildOrbLayer();
 
         // Main window glass panel
-        BorderPane windowPane = new BorderPane();
+        windowPane = new BorderPane();
         windowPane.setMaxWidth(Double.MAX_VALUE);
         windowPane.setMaxHeight(Double.MAX_VALUE);
         windowPane.getStyleClass().add("app-root");
@@ -268,7 +280,7 @@ public class MainWindow extends StackPane {
             if ("ai".equals(categoryId)) {
                 openAiChat();
             } else if ("store".equals(categoryId)) {
-                contentArea.showPage(fan.summer.ui.store.PluginStoreUi.build(), I18n.get("store.online.title"));
+                contentArea.showPage(fan.summer.ui.store.PluginStoreUi.build(registry.getPlugins()), I18n.get("store.online.title"));
             } else if ("settings".equals(categoryId)) {
                 // settings is handled by setOnSettingsSelect
             } else {
@@ -291,13 +303,24 @@ public class MainWindow extends StackPane {
             }
         );
 
+        // Favorites change → update sidebar badge + refresh content
+        sidebar.updateBadge("fav", favoriteService.count());
+        favoriteService.setOnFavoritesChanged(pluginId -> {
+            sidebar.updateBadge("fav", favoriteService.count());
+        });
+
         // Tool launch callback
         contentArea.setOnLaunch(plugin -> {
             log.info("Launching tool: id={}, name={}", plugin.getId(), plugin.getName());
             Node view = cachedViews.get(plugin);
             if (view == null) {
                 try {
-                    view = plugin.createView();
+                    view = PluginContext.callWith(plugin, plugin::createView);
+                    if (view == null) {
+                        log.error("Plugin {} returned null from createView()", plugin.getId());
+                        return;
+                    }
+                    PluginContext.wrapEvents(plugin, view);
                     cachedViews.put(plugin, view);
                 } catch (Exception e) {
                     log.error("Failed to create view for plugin {}: {}", plugin.getId(), e.getMessage(), e);
@@ -317,6 +340,24 @@ public class MainWindow extends StackPane {
             }
             registry.deactivate();
         });
+
+        // Plugin uninstall callback
+        contentArea.setOnUninstall(plugin -> {
+            log.info("Uninstalling plugin: id={}, name={}", plugin.getId(), plugin.getName());
+            // Always clear cached view so the plugin's classes can be GC'd
+            cachedViews.remove(plugin);
+            // If the plugin is currently active, deactivate and navigate back to grid
+            SwissKitJPlugin active = registry.getActivePlugin();
+            if (active == plugin) {
+                registry.deactivate();
+                contentArea.showToolGrid();
+            }
+            try {
+                loader.uninstallPlugin(plugin);
+            } catch (Exception ex) {
+                log.error("Failed to uninstall plugin {}: {}", plugin.getId(), ex.getMessage(), ex);
+            }
+        });
     }
 
     // ── Settings page ────────────────────────────────────
@@ -333,10 +374,19 @@ public class MainWindow extends StackPane {
 
     /**
      * Opens the AI chat panel in the content area, creating the view on first access.
+     * Ensures the local AI backend is initialized lazily when the AI tool is opened.
      */
     private void openAiChat() {
+        // Ensure local backend is available (lazy init for local mode)
+        SwissKitJSettingUi.ensureLocalBackend();
+
         if (aiChatView == null) {
-            aiChatView = aiChatPlugin.createView();
+            try {
+                aiChatView = PluginContext.callWith(aiChatPlugin, aiChatPlugin::createView);
+            } catch (Exception e) {
+                log.error("Failed to create AI chat view: {}", e.getMessage(), e);
+                return;
+            }
         }
         contentArea.showPage(aiChatView, I18n.get("builtin.ai-chat.name"));
     }
@@ -344,8 +394,6 @@ public class MainWindow extends StackPane {
     // ── Entry animation ──────────────────────────────────
 
     private void playEntryAnimation() {
-        // Get windowPane (second child node)
-        javafx.scene.Node windowPane = getChildren().get(1);
         windowPane.setOpacity(0);
         windowPane.setScaleX(0.94);
         windowPane.setScaleY(0.94);

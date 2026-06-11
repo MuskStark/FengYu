@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -92,7 +93,7 @@ public class DatabaseInit {
             }
 
             // Read the SQL content
-            String initSqlContent = new String(initSqlStream.readAllBytes());
+            String initSqlContent = new String(initSqlStream.readAllBytes(), StandardCharsets.UTF_8);
 
             try (Connection conn = DriverManager.getConnection(DB_URL);
                  Statement stmt = conn.createStatement()) {
@@ -169,5 +170,73 @@ public class DatabaseInit {
      */
     public static boolean isInitialized() {
         return sqlSessionFactory != null;
+    }
+
+    // ── Convenience session helpers ──────────────────────────────
+
+    /**
+     * Executes an action with a new {@link SqlSession}, committing and closing automatically.
+     *
+     * <p>The session is always closed in a {@code finally} block. If the action completes
+     * without throwing, {@code session.commit()} is called before closing.</p>
+     *
+     * @param action the action to execute; the session is passed as the argument
+     */
+    public static void withSession(java.util.function.Consumer<SqlSession> action) {
+        try (SqlSession session = getSqlSession()) {
+            action.accept(session);
+            session.commit();
+        }
+    }
+
+    /**
+     * Executes a function with a new {@link SqlSession}, committing and closing automatically.
+     *
+     * @param action the function to execute; the session is passed as the argument
+     * @param <T>    the return type
+     * @return the result of the function
+     */
+    public static <T> T withSession(java.util.function.Function<SqlSession, T> action) {
+        try (SqlSession session = getSqlSession()) {
+            T result = action.apply(session);
+            session.commit();
+            return result;
+        }
+    }
+
+    /**
+     * Executes an action with a MyBatis mapper, committing and closing automatically.
+     *
+     * <p>This is a convenience wrapper that obtains a session, retrieves the mapper,
+     * executes the action, commits, and closes the session.</p>
+     *
+     * @param mapperClass the MyBatis mapper interface class
+     * @param action      the action to execute; the mapper is passed as the argument
+     * @param <M>         the mapper type
+     */
+    public static <M> void withMapper(Class<M> mapperClass, java.util.function.Consumer<M> action) {
+        try (SqlSession session = getSqlSession()) {
+            M mapper = session.getMapper(mapperClass);
+            action.accept(mapper);
+            session.commit();
+        }
+    }
+
+    /**
+     * Executes a function with a MyBatis mapper, committing and closing automatically.
+     *
+     * @param mapperClass the MyBatis mapper interface class
+     * @param action      the function to execute; the mapper is passed as the argument
+     * @param <M>         the mapper type
+     * @param <T>         the return type
+     * @return the result of the function
+     */
+    public static <M, T> T withMapper(Class<M> mapperClass, java.util.function.Function<M, T> action) {
+        try (SqlSession session = getSqlSession()) {
+            M mapper = session.getMapper(mapperClass);
+            T result = action.apply(mapper);
+            session.commit();
+            return result;
+        }
     }
 }

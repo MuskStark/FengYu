@@ -14,7 +14,7 @@ SwissKitJ 将 JavaFX 捆绑在胖 JAR 中，支持所有平台——无需单独
 从 [GitHub Releases](https://github.com/MuskStark/SwissKitJ/releases) 页面下载。
 
 ```bash
-java -jar SwissKitJ-3.0.0-rc.1.jar
+java -jar SwissKitJ-3.0.0.jar
 ```
 
 胖 JAR 包含 macOS、Windows 和 Linux 的 JavaFX 原生库——无需额外设置。
@@ -32,7 +32,7 @@ mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
 
 # 运行
-java -jar SwissKit/target/SwissKitJ-3.0.0-rc.1.jar
+java -jar SwissKit/target/SwissKitJ-3.0.0.jar
 ```
 
 **构建顺序很重要**：SwissKitJ-Api 提供共享的插件接口和可复用的 UI 组件。它必须先安装到本地 Maven 仓库，主应用才能编译。
@@ -42,7 +42,7 @@ java -jar SwissKit/target/SwissKitJ-3.0.0-rc.1.jar
 ### 胖 JAR
 
 ```bash
-java -jar SwissKit/target/SwissKitJ-3.0.0-rc.1.jar
+java -jar SwissKit/target/SwissKitJ-3.0.0.jar
 ```
 
 ### IDE（IntelliJ IDEA）
