@@ -51,7 +51,7 @@ public class NativeWorkerClient implements AutoCloseable {
 
         String javaHome = System.getProperty("java.home");
         String classpath = System.getProperty("java.class.path");
-        String separator = System.getProperty("path.separator");
+        String separator = File.pathSeparator;
 
         String cleanCp = cleanClasspath(classpath, separator);
 
@@ -197,8 +197,8 @@ public class NativeWorkerClient implements AutoCloseable {
                 PendingGenerate pg = id != null ? pendingGenerates.remove(id) : null;
                 if (pg != null) {
                     String fullText = (String) resp.getOrDefault("fullText", "");
-                    int tokenCount = intVal(resp, "tokenCount", 0);
-                    double tokPerSec = doubleVal(resp, "tokPerSec", 0.0);
+                    int tokenCount = resp.get("tokenCount") instanceof Number n ? n.intValue() : 0;
+                    double tokPerSec = resp.get("tokPerSec") instanceof Number n ? n.doubleValue() : 0.0;
                     pg.callback.onDone(fullText, tokenCount, tokPerSec);
                 }
                 // Only reset crash counter if enough time has passed since first crash
@@ -225,7 +225,7 @@ public class NativeWorkerClient implements AutoCloseable {
                     loadFuture.complete(null);
                 }
             }
-            case "pong" -> {}
+            case "pong" -> { /* heartbeat, no action needed */ }
         }
     }
 
@@ -263,7 +263,6 @@ public class NativeWorkerClient implements AutoCloseable {
             if (elapsed >= CRASH_WINDOW_MS) {
                 consecutiveCrashes.set(1);
                 firstCrashTime.set(System.currentTimeMillis());
-                exceededRate = false;
             }
         }
 
@@ -309,15 +308,6 @@ public class NativeWorkerClient implements AutoCloseable {
         return sb.toString();
     }
 
-    private static int intVal(Map<String, Object> map, String key, int def) {
-        Object v = map.get(key);
-        return v instanceof Number n ? n.intValue() : def;
-    }
-
-    private static double doubleVal(Map<String, Object> map, String key, double def) {
-        Object v = map.get(key);
-        return v instanceof Number n ? n.doubleValue() : def;
-    }
 
     private static class PendingGenerate {
         final GenerateCallback callback;

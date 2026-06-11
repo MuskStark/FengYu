@@ -275,7 +275,7 @@ public class AiServiceImpl implements AiService {
                         if (functionGemmaAdapter.containsToolCall(fullText)) {
                             List<AiToolCall> toolCalls = functionGemmaAdapter.parseToolCalls(fullText);
                             if (!toolCalls.isEmpty() && AiServiceProvider.hasTools()) {
-                                AiToolCall tc = toolCalls.get(0);
+                                AiToolCall tc = toolCalls.getFirst();
                                 Platform.runLater(() -> callback.onToolCall(tc));
 
                                 AiToolResult result = ToolExecutor.execute(tc.name(), tc.arguments());
@@ -364,13 +364,11 @@ public class AiServiceImpl implements AiService {
                                            int round, AtomicBoolean hadToolCall) {
         if (round >= MAX_TOOL_ROUNDS) return;
 
-        StringBuilder response = new StringBuilder();
         TokenBatcher batcher = new TokenBatcher(callback);
 
         javaRunner.generate(prompt, temperature, topP, maxTokens, new LlamaRunner.TokenCallback() {
             @Override
             public void onToken(String fragment) {
-                response.append(fragment);
                 batcher.add(fragment);
             }
 

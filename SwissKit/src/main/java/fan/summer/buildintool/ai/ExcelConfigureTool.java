@@ -3,9 +3,6 @@ package fan.summer.buildintool.ai;
 import fan.summer.api.ai.*;
 import fan.summer.ai.util.JsonHelper;
 import fan.summer.buildintool.excelsplitter.*;
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
-
 import java.util.*;
 
 /**
@@ -47,7 +44,6 @@ import java.util.*;
 
 @SuppressWarnings("unchecked")
 public class ExcelConfigureTool implements AiTool {
-    private static final PluginLogger log = LoggerFactory.getLogger(ExcelConfigureTool.class);
     private final ExcelSplitterPlugin plugin;
 
     public ExcelConfigureTool(ExcelSplitterPlugin plugin) { this.plugin = plugin; }
