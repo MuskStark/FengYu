@@ -302,7 +302,7 @@ public class SwissKitJSettingUi {
         desc.setStyle("-fx-text-fill: rgba(255,255,255,0.35); -fx-font-size: 12px;");
         desc.setWrapText(true);
 
-        TextField urlField = textField(null, DEFAULT_STORE_URL);
+        TextField urlField = textField( DEFAULT_STORE_URL);
         urlField.setText(getStoreUrl());
 
         Button saveBtn = glassBtn(I18n.get("button.save"), true);
@@ -453,19 +453,17 @@ public class SwissKitJSettingUi {
         maxTokensSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(64, 4096, 512, 64));
         maxTokensSpinner.getStyleClass().add("glass-field");
         maxTokensSpinner.setPrefWidth(120);
-        maxTokensSpinner.valueProperty().addListener((obs, oldVal, newVal) -> {
-            saveAiSetting(AI_MAX_TOKENS_KEY, String.valueOf(newVal));
-        });
+        maxTokensSpinner.valueProperty().addListener((obs, oldVal, newVal) ->
+            saveAiSetting(AI_MAX_TOKENS_KEY, String.valueOf(newVal)));
         loadAiSetting(AI_MAX_TOKENS_KEY, val -> {
             try { maxTokensSpinner.getValueFactory().setValue(Integer.parseInt(val)); } catch (NumberFormatException ignored) {}
         });
 
-        TextField sysPromptField = textField(null, "You are a helpful assistant.");
+        TextField sysPromptField = textField( "You are a helpful assistant.");
         HBox.setHgrow(sysPromptField, Priority.ALWAYS);
-        sysPromptField.textProperty().addListener((obs, oldVal, newVal) -> {
-            saveAiSetting(AI_SYSTEM_PROMPT_KEY, newVal);
-        });
-        loadAiSetting(AI_SYSTEM_PROMPT_KEY, val -> sysPromptField.setText(val));
+        sysPromptField.textProperty().addListener((obs, oldVal, newVal) ->
+            saveAiSetting(AI_SYSTEM_PROMPT_KEY, newVal));
+        loadAiSetting(AI_SYSTEM_PROMPT_KEY, sysPromptField::setText);
 
         root.getChildren().addAll(
             title, modeRow, backendToggleRow, modeStack,
@@ -593,8 +591,8 @@ public class SwissKitJSettingUi {
         modelPathLabel.setWrapText(true);
         modelPathLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.35); -fx-font-size: 12px;");
 
-        TextField modelPathField = textField(null, I18n.get("setting.ai.selectModel"));
-        loadAiSetting(AI_MODEL_PATH_KEY, val -> modelPathField.setText(val));
+        TextField modelPathField = textField( I18n.get("setting.ai.selectModel"));
+        loadAiSetting(AI_MODEL_PATH_KEY, modelPathField::setText);
 
         Button browseBtn = glassBtn(I18n.get("setting.ai.browse"), false);
         Button loadBtn = glassBtn(I18n.get("setting.ai.loadModel"), true);
@@ -653,7 +651,7 @@ public class SwissKitJSettingUi {
 
         unloadBtn.setOnAction(e -> {
             Optional<AiService> opt = AiServiceProvider.getService();
-            if (opt.isPresent()) opt.get().unloadModel();
+            opt.ifPresent(AiService::unloadModel);
             modelStatusLabel.setText(I18n.get("setting.ai.noModelLoaded"));
             modelPathLabel.setText("—");
             unloadBtn.setDisable(true);
@@ -726,15 +724,15 @@ public class SwissKitJSettingUi {
     private static VBox buildOpenAiPanel() {
         VBox panel = new VBox(12);
 
-        TextField endpointField = textField(null, "https://api.openai.com");
-        loadAiSetting(AI_OPENAI_ENDPOINT_KEY, val -> endpointField.setText(val));
+        TextField endpointField = textField( "https://api.openai.com");
+        loadAiSetting(AI_OPENAI_ENDPOINT_KEY, endpointField::setText);
 
         PasswordField apiKeyField = new PasswordField();
         apiKeyField.getStyleClass().add(FIELD_STYLE_CLASS);
-        loadAiSetting(AI_OPENAI_API_KEY_KEY, val -> apiKeyField.setText(val));
+        loadAiSetting(AI_OPENAI_API_KEY_KEY, apiKeyField::setText);
 
-        TextField modelField = textField(null, "gpt-4o");
-        loadAiSetting(AI_OPENAI_MODEL_KEY, val -> modelField.setText(val));
+        TextField modelField = textField( "gpt-4o");
+        loadAiSetting(AI_OPENAI_MODEL_KEY, modelField::setText);
 
         endpointField.textProperty().addListener((obs, o, n) -> saveAiSetting(AI_OPENAI_ENDPOINT_KEY, n));
         apiKeyField.textProperty().addListener((obs, o, n) -> saveAiSetting(AI_OPENAI_API_KEY_KEY, n));
@@ -776,15 +774,15 @@ public class SwissKitJSettingUi {
     private static VBox buildAnthropicPanel() {
         VBox panel = new VBox(12);
 
-        TextField endpointField = textField(null, "https://api.anthropic.com");
-        loadAiSetting(AI_ANTHROPIC_ENDPOINT_KEY, val -> endpointField.setText(val));
+        TextField endpointField = textField( "https://api.anthropic.com");
+        loadAiSetting(AI_ANTHROPIC_ENDPOINT_KEY, endpointField::setText);
 
         PasswordField apiKeyField = new PasswordField();
         apiKeyField.getStyleClass().add(FIELD_STYLE_CLASS);
-        loadAiSetting(AI_ANTHROPIC_API_KEY_KEY, val -> apiKeyField.setText(val));
+        loadAiSetting(AI_ANTHROPIC_API_KEY_KEY, apiKeyField::setText);
 
-        TextField modelField = textField(null, "claude-sonnet-4-20250514");
-        loadAiSetting(AI_ANTHROPIC_MODEL_KEY, val -> modelField.setText(val));
+        TextField modelField = textField( "claude-sonnet-4-20250514");
+        loadAiSetting(AI_ANTHROPIC_MODEL_KEY, modelField::setText);
 
         endpointField.textProperty().addListener((obs, o, n) -> saveAiSetting(AI_ANTHROPIC_ENDPOINT_KEY, n));
         apiKeyField.textProperty().addListener((obs, o, n) -> saveAiSetting(AI_ANTHROPIC_API_KEY_KEY, n));
@@ -829,7 +827,7 @@ public class SwissKitJSettingUi {
             AiService service = opt.get();
             statusLabel.setText(I18n.get("setting.ai.modelLoaded", service.getModelName().orElse("Unknown")));
             unloadBtn.setDisable(false);
-            loadAiSetting(AI_MODEL_PATH_KEY, val -> pathLabel.setText(val));
+            loadAiSetting(AI_MODEL_PATH_KEY, pathLabel::setText);
         }
     }
 
@@ -999,10 +997,6 @@ public class SwissKitJSettingUi {
         return (val != null && !val.isBlank()) ? val : "You are a helpful assistant.";
     }
 
-    public static String getAiMode() {
-        return getCachedSetting(AI_MODE_KEY, "local");
-    }
-
     public static String getAiOpenAiEndpoint() {
         String val = getCachedSetting(AI_OPENAI_ENDPOINT_KEY, null);
         return (val != null && !val.isBlank()) ? val : "https://api.openai.com";
@@ -1049,14 +1043,14 @@ public class SwissKitJSettingUi {
         root.setPadding(new Insets(20));
         root.setStyle("-fx-background-color: transparent;");
 
-        TextField smtpField = textField(null, "smtp.example.com");
-        TextField portField = textField(null, "587");
-        TextField userField = textField(null, "user@example.com");
+        TextField smtpField = textField( "smtp.example.com");
+        TextField portField = textField( "587");
+        TextField userField = textField( "user@example.com");
         PasswordField passField = passwordField();
-        TextField fromField = textField(null, "noreply@example.com");
+        TextField fromField = textField( "noreply@example.com");
 
-        TextField imapField = textField(null, "imap.example.com");
-        TextField imapPortField = textField(null, "993");
+        TextField imapField = textField( "imap.example.com");
+        TextField imapPortField = textField( "993");
 
         // Use userData for stable field identification (label text changes with locale)
         VBox smtpRow = labeled(I18n.get("setting.email.smtpServer"), smtpField);
@@ -1367,17 +1361,15 @@ public class SwissKitJSettingUi {
                 super.updateItem(item, empty);
                 if (empty) { setGraphic(null); return; }
                 EmailAddressBookEntity addr = getTableView().getItems().get(getIndex());
-                delBtn.setOnAction(e -> {
-                    runAsync(() -> {
-                        try (SqlSession session = DatabaseInit.getSqlSession()) {
-                            session.getMapper(EmailAddressBookMapper.class).deleteById(addr.getId());
-                            session.commit();
-                            Platform.runLater(() -> { dialog.close(); openAddressBookDialog(); });
-                        } catch (Exception ex) {
-                            log.error("Failed to delete address", ex);
-                        }
-                    });
-                });
+                delBtn.setOnAction(e -> runAsync(() -> {
+                    try (SqlSession session = DatabaseInit.getSqlSession()) {
+                        session.getMapper(EmailAddressBookMapper.class).deleteById(addr.getId());
+                        session.commit();
+                        Platform.runLater(() -> { dialog.close(); openAddressBookDialog(); });
+                    } catch (Exception ex) {
+                        log.error("Failed to delete address", ex);
+                    }
+                }));
                 setGraphic(delBtn);
             }
         });
@@ -1402,7 +1394,7 @@ public class SwissKitJSettingUi {
         Button importBtn = glassBtn(I18n.get("setting.email.importExcel"), false);
         importBtn.setOnAction(e -> {
             dialog.close();
-            openImportExcelDialog(null);
+            openImportExcelDialog();
         });
 
         Button manageTagsBtn = glassBtn(I18n.get("setting.email.manageTags"), false);
@@ -1431,8 +1423,8 @@ public class SwissKitJSettingUi {
         dialog.initModality(Modality.APPLICATION_MODAL);
         dialog.setTitle(editEntity == null ? I18n.get("setting.email.addAddressTitle") : I18n.get("setting.email.editAddressTitle"));
 
-        TextField addressField = textField(null, "");
-        TextField nicknameField = textField(null, "");
+        TextField addressField = textField( "");
+        TextField nicknameField = textField( "");
 
         // Load all tags and build checkbox list
         List<EmailTagEntity> allTags = new ArrayList<>();
@@ -1622,7 +1614,7 @@ public class SwissKitJSettingUi {
         table.getColumns().addAll(idCol, tagCol, countCol, actionCol);
 
         AtomicReference<Long> updateIdRef = new AtomicReference<>(null);
-        TextField tagField = textField(null, "");
+        TextField tagField = textField( "");
         Button addTagBtn = glassBtn(I18n.get("setting.email.addTag"), true);
 
         table.setOnMouseClicked(e -> {
@@ -1704,7 +1696,7 @@ public class SwissKitJSettingUi {
     // Excel import
     // ═══════════════════════════════════════════════════════════════════
 
-    private static void openImportExcelDialog(Window owner) {
+    private static void openImportExcelDialog() {
         Stage dialog = new Stage();
         dialog.initModality(Modality.APPLICATION_MODAL);
         dialog.setTitle(I18n.get("setting.email.importExcel"));
@@ -2038,14 +2030,10 @@ public class SwissKitJSettingUi {
         return l;
     }
 
-    private static TextField textField(String style, String prompt) {
+    private static TextField textField(String prompt) {
         TextField tf = new TextField();
         tf.setPromptText(prompt);
-        if (style != null) {
-            tf.setStyle(style);
-        } else {
-            tf.getStyleClass().add(FIELD_STYLE_CLASS);
-        }
+        tf.getStyleClass().add(FIELD_STYLE_CLASS);
         return tf;
     }
 

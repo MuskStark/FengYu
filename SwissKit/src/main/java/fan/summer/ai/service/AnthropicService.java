@@ -248,9 +248,8 @@ public class AnthropicService implements AiService {
             chatWithToolLoop(history, temperature, topP, maxTokens, callback, round + 1, hadToolCall);
         } else {
             String clean = hadToolCall.get() ? ToolCallParser.stripToolCalls(fullResponse.toString()) : fullResponse.toString();
-            String finalClean = clean;
             int count = tokenCount[0];
-            Platform.runLater(() -> callback.onComplete(finalClean, count, tokPerSec));
+            Platform.runLater(() -> callback.onComplete(clean, count, tokPerSec));
         }
     }
 
@@ -260,7 +259,6 @@ public class AnthropicService implements AiService {
      * into the appropriate content block structures.
      * System messages are skipped as they are sent via the {@code system} field.
      */
-    @SuppressWarnings("unchecked")
     private List<Object> buildAnthropicMessages(List<AiChatMessage> history) {
         List<Object> messages = new ArrayList<>();
         for (AiChatMessage msg : history) {

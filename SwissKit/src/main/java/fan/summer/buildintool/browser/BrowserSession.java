@@ -172,7 +172,6 @@ public class BrowserSession implements AutoCloseable {
      * Waits for the specified number of seconds.
      * This is an intentional wait action for browser automation, not a polling loop.
      */
-    @SuppressWarnings("BusyWait")
     public String wait(double seconds) {
         log.debug("wait: {}s", seconds);
         try {

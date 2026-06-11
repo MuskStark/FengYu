@@ -116,11 +116,11 @@ public final class PageSnapshot {
                     if (name != null) sb.append(" name=\"").append(name).append("\"");
                     if (placeholder != null) sb.append(" placeholder=\"").append(placeholder).append("\"");
                     if (ariaLabel != null) sb.append(" aria-label=\"").append(ariaLabel).append("\"");
-                    if (href != null) sb.append(" href=\"").append(truncate(href, 80)).append("\"");
+                    if (href != null) sb.append(" href=\"").append(truncate(href)).append("\"");
                     sb.append(">");
 
                     if (text != null && !text.isEmpty()) {
-                        sb.append(" \"").append(truncate(text, 80)).append("\"");
+                        sb.append(" \"").append(truncate(text)).append("\"");
                     }
                     sb.append("  → selector: ").append(cssSelector);
                     sb.append("\n");
@@ -155,8 +155,10 @@ public final class PageSnapshot {
         return tag;
     }
 
-    private static String truncate(String s, int max) {
+    private static final int TRUNCATE_MAX = 80;
+
+    private static String truncate(String s) {
         if (s == null) return "";
-        return s.length() > max ? s.substring(0, max) + "..." : s;
+        return s.length() > TRUNCATE_MAX ? s.substring(0, TRUNCATE_MAX) + "..." : s;
     }
 }
