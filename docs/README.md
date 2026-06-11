@@ -42,7 +42,7 @@ A modular desktop toolbox that allows you to:
 
 ```bash
 # Download from GitHub Releases, then:
-java -jar SwissKitJ-3.0.0-rc.3.jar
+java -jar SwissKitJ-3.0.0.jar
 ```
 
 Or build from source:
@@ -50,7 +50,7 @@ Or build from source:
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.0.0-rc.3.jar
+java -jar SwissKit/target/SwissKitJ-3.0.0.jar
 ```
 
 ## License

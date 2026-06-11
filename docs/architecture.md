@@ -100,7 +100,7 @@ H2 file at `.swisskit/swisskit.db` relative to the working directory. Schema ini
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.0.0-rc.3.jar
+java -jar SwissKit/target/SwissKitJ-3.0.0.jar
 ```
 
 The fat JAR is built by `maven-shade-plugin` and bundles JavaFX native libraries for all platforms (`.dll`, `.so`, `.dylib`).
