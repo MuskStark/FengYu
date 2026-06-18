@@ -144,9 +144,19 @@ public class NativeWorkerClient implements AutoCloseable {
     public void close() {
         running = false;
         try { unload(); } catch (Exception ignored) {}
-        try { writer.close(); } catch (Exception ignored) {}
+        try { writer.close(); } catch (Exception ignored) {}   // EOF → child exits gracefully
         if (childProcess != null) {
-            childProcess.destroyForcibly();
+            // Give the child a moment to exit on stdin EOF (after it runs unload +
+            // ctx.close()), so we don't SIGKILL it mid-graceful-shutdown. Force-kill
+            // only as a fallback if it doesn't exit in time.
+            try {
+                if (!childProcess.waitFor(2, TimeUnit.SECONDS)) {
+                    childProcess.destroyForcibly();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                childProcess.destroyForcibly();
+            }
         }
         if (readerThread != null) {
             readerThread.interrupt();
