@@ -88,6 +88,14 @@ public class LlamaRunner {
             }
 
             if (cancelled) {
+                // Cancelled during prefill: emit an empty completion so the caller's
+                // "generating" state resolves — mirrors the decode-cancel path, which
+                // falls through to onComplete() at the end of the loop below. Without
+                // this, cancelling while a long prompt is still being prefilled leaves
+                // the UI stuck in the generating state.
+                if (callback != null) {
+                    callback.onComplete(response.toString(), genTokens, 0);
+                }
                 return response.toString();
             }
 
