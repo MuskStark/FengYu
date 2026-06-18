@@ -56,25 +56,23 @@ public class ExcelUtil {
                         + ", available sheets: " + getSheetNames(sourceWorkbook));
             }
 
-            // 2. Load or create target workbook
-            Workbook targetWorkbook = loadOrCreate(targetFilePath);
+            // 2. Load or create target workbook (try-with-resources so it is closed even on throw)
+            try (Workbook targetWorkbook = loadOrCreate(targetFilePath)) {
+                // 3. Target file must not have a sheet with the same name
+                if (targetWorkbook.getSheet(sheetName) != null) {
+                    throw new IllegalArgumentException("Target file already has sheet: " + sheetName);
+                }
 
-            // 3. Target file must not have a sheet with the same name
-            if (targetWorkbook.getSheet(sheetName) != null) {
-                targetWorkbook.close();
-                throw new IllegalArgumentException("Target file already has sheet: " + sheetName);
+                // 4. Append sheet
+                copySheetRows(sourceSheet, targetWorkbook, sheetName, endRowIndex);
+
+                // 5. Write back to target file
+                try (FileOutputStream fos = new FileOutputStream(targetFilePath)) {
+                    targetWorkbook.write(fos);
+                }
+
+                logger.debug("Sheet appended | sheet={}, rows=0-{}, target={}", sheetName, endRowIndex, targetFilePath);
             }
-
-            // 4. Append sheet
-            copySheetRows(sourceSheet, targetWorkbook, sheetName, endRowIndex);
-
-            // 5. Write back to target file
-            try (FileOutputStream fos = new FileOutputStream(targetFilePath)) {
-                targetWorkbook.write(fos);
-            }
-            targetWorkbook.close();
-
-            logger.debug("Sheet appended | sheet={}, rows=0-{}, target={}", sheetName, endRowIndex, targetFilePath);
         }
     }
 
@@ -123,22 +121,20 @@ public class ExcelUtil {
                         + ", available sheets: " + getSheetNames(sourceWorkbook));
             }
 
-            Workbook targetWorkbook = loadOrCreate(targetFilePath);
+            try (Workbook targetWorkbook = loadOrCreate(targetFilePath)) {
+                if (targetWorkbook.getSheet(sheetName) != null) {
+                    throw new IllegalArgumentException("Target file already has sheet: " + sheetName);
+                }
 
-            if (targetWorkbook.getSheet(sheetName) != null) {
-                targetWorkbook.close();
-                throw new IllegalArgumentException("Target file already has sheet: " + sheetName);
+                copySheetRows(sourceSheet, targetWorkbook, sheetName, sourceSheet.getLastRowNum());
+
+                try (FileOutputStream fos = new FileOutputStream(targetFilePath)) {
+                    targetWorkbook.write(fos);
+                }
+
+                logger.debug("Entire sheet copied | sheet={}, rows=0-{}, target={}",
+                        sheetName, sourceSheet.getLastRowNum(), targetFilePath);
             }
-
-            copySheetRows(sourceSheet, targetWorkbook, sheetName, sourceSheet.getLastRowNum());
-
-            try (FileOutputStream fos = new FileOutputStream(targetFilePath)) {
-                targetWorkbook.write(fos);
-            }
-            targetWorkbook.close();
-
-            logger.debug("Entire sheet copied | sheet={}, rows=0-{}, target={}",
-                    sheetName, sourceSheet.getLastRowNum(), targetFilePath);
         }
     }
 
