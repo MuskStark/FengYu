@@ -8,6 +8,9 @@ import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
+
 /**
  * Utility class for rendering Material Design Icons (MDI) glyphs in JavaFX.
  *
@@ -31,6 +34,8 @@ import java.util.Map;
 public class MdiIconUtil {
 
     private static final String FONT_FAMILY = "MaterialDesignIcons";
+    private static final PluginLogger log = LoggerFactory.getLogger(MdiIconUtil.class);
+
     private static volatile boolean fontLoaded = false;
     private static volatile Font loadedMdiFont = null;
 
@@ -66,7 +71,11 @@ public class MdiIconUtil {
                 if (fontStream != null) {
                     loadedMdiFont = Font.loadFont(fontStream, 12);
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                // The only realistic failure is a missing/corrupt bundled font; log it so a
+                // packaging bug is diagnosable instead of silently falling back to system font.
+                log.warn("Failed to load MDI webfont; icons will fall back to the system font", e);
+            }
             fontLoaded = true;
         }
     }

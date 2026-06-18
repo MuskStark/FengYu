@@ -200,7 +200,7 @@ public class LocalInstallPane extends VBox {
         statusLabel.setText(I18n.get("store.local.installing"));
         statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
 
-        new Thread(() -> {
+        Thread installThread = new Thread(() -> {
             try {
                 Path pluginDir = PluginLoader.resolvePluginsDir();
                 Files.createDirectories(pluginDir);
@@ -227,7 +227,10 @@ public class LocalInstallPane extends VBox {
                     installBtn.setDisable(false);
                 });
             }
-        }).start();
+        });
+        installThread.setName("local-install");
+        installThread.setDaemon(true);
+        installThread.start();
     }
 
     private void showError(String msg) {

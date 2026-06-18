@@ -76,7 +76,7 @@ public class AddressBookPane extends VBox {
 
     private void loadContacts() {
         log.debug("Loading contacts from database");
-        new Thread(() -> {
+        Thread loaderThread = new Thread(() -> {
             List<EmailTagEntity> tags;
             List<EmailAddressBookEntity> addresses;
             try (SqlSession session = DatabaseInit.getSqlSession()) {
@@ -121,7 +121,10 @@ public class AddressBookPane extends VBox {
 
             log.debug("Built address book view: {} tagged groups, {} untagged contacts", byTag.size(), untagged.size());
             Platform.runLater(() -> buildView(byTag, untagged));
-        }).start();
+        });
+        loaderThread.setName("address-book-load");
+        loaderThread.setDaemon(true);
+        loaderThread.start();
     }
 
     private void buildView(Map<String, List<String>> byTag, List<String> untagged) {
