@@ -73,7 +73,8 @@ public class PluginLoader {
     /** Maps original JAR path → temp copy used by the ClassLoader (avoids locking the original on Windows). */
     private final Map<Path, Path> tempCopies = new ConcurrentHashMap<>();
 
-    /** Scheduler for deferred JAR loads (avoids blocking the watch thread). */
+    /** Single-thread scheduler for all JAR load/unload/reload work — serialising these on one
+     *  thread prevents concurrent double-loads of the same JAR (and keeps file I/O off the watch thread). */
     private final java.util.concurrent.ScheduledExecutorService loadScheduler =
             java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "plugin-load-scheduler");
@@ -399,7 +400,9 @@ public class PluginLoader {
                     } else if (kind == StandardWatchEventKinds.ENTRY_DELETE) {
                         log.info("Detected plugin JAR removal: {}", name);
                         pendingReloads.remove(fullPath);
-                        unloadJar(fullPath);
+                        // Route through the single-thread loadScheduler so this unload
+                        // never overlaps a concurrent CREATE-load of the same JAR.
+                        loadScheduler.execute(() -> unloadJar(fullPath));
                     } else if (kind == StandardWatchEventKinds.ENTRY_MODIFY) {
                         // Debounce: schedule a reload, coalescing rapid-fire modify events
                         long reloadAt = System.currentTimeMillis() + RELOAD_DEBOUNCE_MS;
@@ -417,8 +420,9 @@ public class PluginLoader {
                         Path jar = entry.getKey();
                         if (Files.exists(jar)) {
                             log.info("Executing debounced reload for: {}", jar.getFileName());
-                            unloadJar(jar);
-                            loadJar(jar);
+                            // Route unload+load through the single-thread loadScheduler so a
+                            // reload never overlaps a concurrent CREATE-load of the same JAR.
+                            loadScheduler.execute(() -> { unloadJar(jar); loadJar(jar); });
                         }
                     }
                 }
