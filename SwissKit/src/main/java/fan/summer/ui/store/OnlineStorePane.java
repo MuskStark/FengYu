@@ -182,7 +182,7 @@ public class OnlineStorePane extends VBox {
         showLoading(true);
         statusLabel.setText("");
 
-        new Thread(() -> {
+        Thread fetchThread = new Thread(() -> {
             try {
                 List<StorePlugin> plugins = fetchPlugins(urlStr);
                 Platform.runLater(() -> {
@@ -200,7 +200,10 @@ public class OnlineStorePane extends VBox {
                     applyFilters();
                 });
             }
-        }).start();
+        });
+        fetchThread.setName("store-fetch");
+        fetchThread.setDaemon(true);
+        fetchThread.start();
     }
 
     private List<StorePlugin> fetchPlugins(String urlStr) throws Exception {
@@ -390,7 +393,7 @@ public class OnlineStorePane extends VBox {
         installBtn.setDisable(true);
         installBtn.setText(I18n.get("store.online.fetching"));
 
-        new Thread(() -> {
+        Thread installThread = new Thread(() -> {
             Path tempFile = null;
             try {
                 Path pluginDir = PluginLoader.resolvePluginsDir();
@@ -455,7 +458,10 @@ public class OnlineStorePane extends VBox {
                     applyInstallState(installBtn, plugin); // restore install/update button
                 });
             }
-        }).start();
+        });
+        installThread.setName("store-install");
+        installThread.setDaemon(true);
+        installThread.start();
     }
 
     // ── Small helpers ─────────────────────────────────────────────
