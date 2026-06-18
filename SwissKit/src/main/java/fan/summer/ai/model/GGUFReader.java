@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
@@ -15,6 +16,13 @@ import java.util.*;
 /**
  * Reads GGUF model files (llama.cpp format) into memory.
  * Uses memory-mapped I/O for zero-copy tensor access.
+ *
+ * <p>A GGUF file is untrusted, user-supplied input (frequently a partially
+ * downloaded or truncated file). Every length field read from the file is
+ * validated before any allocation, and stream truncation is converted to a
+ * clean {@link IOException}, so a malformed file can never destabilise the host
+ * process with {@link NegativeArraySizeException}, {@link OutOfMemoryError},
+ * or {@link ArithmeticException}.
  */
 public class GGUFReader {
 
@@ -39,20 +47,24 @@ public class GGUFReader {
             var buffer = channel.map(FileChannel.MapMode.READ_ONLY, 0, fileSize);
             buffer.order(ByteOrder.LITTLE_ENDIAN);
 
-            int magic = buffer.getInt();
-            if (magic != GGUF_MAGIC) {
-                throw new IOException("Not a GGUF file (magic: 0x" + Integer.toHexString(magic) + ")");
-            }
-            int version = buffer.getInt();
-            if (version < 2) throw new IOException("Unsupported GGUF version: " + version);
-            buffer.getLong(); // tensorCount, unused
-            long metaCount = buffer.getLong();
+            try {
+                int magic = buffer.getInt();
+                if (magic != GGUF_MAGIC) {
+                    throw new IOException("Not a GGUF file (magic: 0x" + Integer.toHexString(magic) + ")");
+                }
+                int version = buffer.getInt();
+                if (version < 2) throw new IOException("Unsupported GGUF version: " + version);
+                buffer.getLong(); // tensorCount, unused
+                long metaCount = buffer.getLong();
 
-            return parseMetadataLite(buffer, metaCount);
+                return parseMetadataLite(buffer, metaCount);
+            } catch (BufferUnderflowException e) {
+                throw new IOException("Malformed or truncated GGUF file: stream ended unexpectedly", e);
+            }
         }
     }
 
-    private static Map<String, Object> parseMetadataLite(ByteBuffer buf, long count) {
+    private static Map<String, Object> parseMetadataLite(ByteBuffer buf, long count) throws IOException {
         var meta = new LinkedHashMap<String, Object>();
         for (long i = 0; i < count; i++) {
             String key = readString(buf);
@@ -67,14 +79,17 @@ public class GGUFReader {
         return meta;
     }
 
-    private static void skipArray(ByteBuffer buf) {
+    private static void skipArray(ByteBuffer buf) throws IOException {
         int elemTypeId = buf.getInt();
         long len = buf.getLong();
+        if (len < 0) {
+            throw new IOException("Malformed GGUF: negative array length " + len);
+        }
         var elemType = ValueType.fromId(elemTypeId);
         for (long i = 0; i < len; i++) skipValue(buf, elemType);
     }
 
-    private static void skipValue(ByteBuffer buf, ValueType type) {
+    private static void skipValue(ByteBuffer buf, ValueType type) throws IOException {
         switch (type) {
             case UINT8, INT8, BOOL -> buf.get();
             case UINT16, INT16     -> buf.getShort();
@@ -82,6 +97,10 @@ public class GGUFReader {
             case UINT64, INT64, FLOAT64 -> buf.getLong();
             case STRING -> {
                 long len = buf.getLong();
+                if (len < 0 || len > buf.remaining()) {
+                    throw new IOException("Malformed GGUF: string length " + len
+                            + " is negative or exceeds remaining " + buf.remaining() + " bytes");
+                }
                 buf.position(buf.position() + (int) len);
             }
             case ARRAY -> skipArray(buf);
@@ -99,46 +118,53 @@ public class GGUFReader {
             var buffer = channel.map(FileChannel.MapMode.READ_ONLY, 0, fileSize);
             buffer.order(ByteOrder.LITTLE_ENDIAN);
 
-            // 1. Parse header
-            int magic = buffer.getInt();
-            if (magic != GGUF_MAGIC) {
-                throw new IOException("Not a GGUF file (magic: 0x" + Integer.toHexString(magic) + ")");
+            try {
+                // 1. Parse header
+                int magic = buffer.getInt();
+                if (magic != GGUF_MAGIC) {
+                    throw new IOException("Not a GGUF file (magic: 0x" + Integer.toHexString(magic) + ")");
+                }
+                int version = buffer.getInt();
+                if (version < 2) throw new IOException("Unsupported GGUF version: " + version);
+                long tensorCount = buffer.getLong();
+                long metaCount = buffer.getLong();
+
+                log.debug("GGUF version={}, tensors={}, metadata={}", version, tensorCount, metaCount);
+
+                // 2. Parse metadata
+                Map<String, Object> metadata = parseMetadata(buffer, metaCount);
+
+                // 3. Parse tensor infos
+                List<TensorInfo> tensorInfos = parseTensorInfos(buffer, tensorCount);
+
+                // 4. Align to data section
+                long alignment = (long) metadata.getOrDefault("general.alignment", 32L);
+                if (alignment <= 0) {
+                    throw new IOException("Malformed GGUF: invalid alignment " + alignment);
+                }
+                long dataOffset = alignUp(buffer.position(), alignment);
+
+                long loadMs = (System.nanoTime() - t0) / 1_000_000;
+                log.info("GGUF model loaded in {}ms, {} tensors, data at offset {}",
+                         loadMs, tensorInfos.size(), dataOffset);
+
+                // Log tensor type distribution for debugging
+                var typeCounts = new java.util.TreeMap<String, Integer>();
+                for (var ti : tensorInfos) {
+                    typeCounts.merge(ti.type.name(), 1, Integer::sum);
+                }
+                log.info("Tensor types: {}", typeCounts);
+
+                return new GGUFModel(metadata, tensorInfos, buffer, dataOffset, path.getFileName().toString());
+            } catch (BufferUnderflowException e) {
+                throw new IOException("Malformed or truncated GGUF file: stream ended unexpectedly", e);
             }
-            int version = buffer.getInt();
-            if (version < 2) throw new IOException("Unsupported GGUF version: " + version);
-            long tensorCount = buffer.getLong();
-            long metaCount = buffer.getLong();
-
-            log.debug("GGUF version={}, tensors={}, metadata={}", version, tensorCount, metaCount);
-
-            // 2. Parse metadata
-            Map<String, Object> metadata = parseMetadata(buffer, metaCount);
-
-            // 3. Parse tensor infos
-            List<TensorInfo> tensorInfos = parseTensorInfos(buffer, tensorCount);
-
-            // 4. Align to data section
-            long alignment = (long) metadata.getOrDefault("general.alignment", 32L);
-            long dataOffset = alignUp(buffer.position(), alignment);
-
-            long loadMs = (System.nanoTime() - t0) / 1_000_000;
-            log.info("GGUF model loaded in {}ms, {} tensors, data at offset {}",
-                     loadMs, tensorInfos.size(), dataOffset);
-
-            // Log tensor type distribution for debugging
-            var typeCounts = new java.util.TreeMap<String, Integer>();
-            for (var ti : tensorInfos) {
-                typeCounts.merge(ti.type.name(), 1, Integer::sum);
-            }
-            log.info("Tensor types: {}", typeCounts);
-
-            return new GGUFModel(metadata, tensorInfos, buffer, dataOffset, path.getFileName().toString());
         }
     }
 
     // ── Metadata parsing ──────────────────────────────────────
 
-    private static Map<String, Object> parseMetadata(ByteBuffer buf, long count) {
+    private static Map<String, Object> parseMetadata(ByteBuffer buf, long count) throws IOException {
         var meta = new LinkedHashMap<String, Object>();
         for (long i = 0; i < count; i++) {
             String key = readString(buf);
@@ -164,7 +190,7 @@ public class GGUFReader {
         }
     }
 
-    private static Object readValue(ByteBuffer buf, ValueType type) {
+    private static Object readValue(ByteBuffer buf, ValueType type) throws IOException {
         return switch (type) {
             case UINT8   -> Byte.toUnsignedInt(buf.get());
             case INT8    -> (int) buf.get();
@@ -182,9 +208,12 @@ public class GGUFReader {
         };
     }
 
-    private static Object readArray(ByteBuffer buf) {
+    private static Object readArray(ByteBuffer buf) throws IOException {
         int elemTypeId = buf.getInt();
         long len = buf.getLong();
+        if (len < 0) {
+            throw new IOException("Malformed GGUF: negative array length " + len);
+        }
         var elemType = ValueType.fromId(elemTypeId);
         var list = new ArrayList<>(len > 1000 ? 1000 : (int) Math.min(len, Integer.MAX_VALUE));
         for (long i = 0; i < len; i++) {
@@ -207,8 +236,12 @@ public class GGUFReader {
         };
     }
 
-    private static String readString(ByteBuffer buf) {
+    private static String readString(ByteBuffer buf) throws IOException {
         long len = buf.getLong();
+        if (len < 0 || len > buf.remaining()) {
+            throw new IOException("Malformed GGUF: string length " + len
+                    + " is negative or exceeds remaining " + buf.remaining() + " bytes");
+        }
         byte[] bytes = new byte[(int) len];
         buf.get(bytes);
         return new String(bytes, StandardCharsets.UTF_8);
@@ -216,8 +249,9 @@ public class GGUFReader {
 
     // ── Tensor info parsing ───────────────────────────────────
 
-    private static List<TensorInfo> parseTensorInfos(ByteBuffer buf, long count) {
-        var infos = new ArrayList<TensorInfo>((int) count);
+    private static List<TensorInfo> parseTensorInfos(ByteBuffer buf, long count) throws IOException {
+        int capacity = (int) Math.min(Math.max(count, 0L), Integer.MAX_VALUE);
+        var infos = new ArrayList<TensorInfo>(capacity);
         for (long i = 0; i < count; i++) {
             String name = readString(buf);
             int nDims = buf.getInt();
