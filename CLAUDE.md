@@ -16,7 +16,7 @@ mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
 
 # Run the application
-java -jar SwissKit/target/SwissKitJ-3.0.0-beta.1.jar
+java -jar SwissKit/target/SwissKitJ-3.0.0.jar
 ```
 
 To build all modules from the repo root (root POM is a simple aggregator):
@@ -30,25 +30,31 @@ On Windows, the `windows-exe` Maven profile is auto-activated and produces `Swis
 
 | Module | Purpose |
 |--------|---------|
-| `SwissKitJ-Api` | Shared plugin interface + reusable UI components (`SwissKitJPlugin`, `StepWizard`) |
+| `SwissKitJ-Api` | Shared plugin interface + plugin context isolation + AI service contract + reusable UI components (`SwissKitJPlugin`, `PluginContext`, `AiService`/`AiTool`, `StepWizard`) |
 | `SwissKit` | Main JavaFX application — UI shell, plugin loading, built-in tools |
 
-Official plugins live in a separate repository: [MuskStark/SwissKiJ-Plugin](https://github.com/MuskStark/SwissKiJ-Plugin). They are built independently and dropped into `plugins/` as JARs at runtime. All plugins declare `SwissKitJ-Api` as `provided` scope. The main app provides it at runtime via the fat JAR.
+Official plugins live in a separate repository: [MuskStark/SwissKiJ-Plugin](https://github.com/MuskStark/SwissKiJ-Plugin). They are built independently and dropped into `.swisskit/plugin/` as JARs at runtime. All plugins declare `SwissKitJ-Api` as `provided` scope. The main app provides it at runtime via the fat JAR.
 
 ## Architecture
 
 **Entry point**: `fan.summer.Launcher` (fat-JAR manifest) → `fan.summer.app.SwissKitJApp` (JavaFX `Application`).
 
 **Startup sequence** (in `SwissKitJApp.start()`):
-1. Resolve `plugins/` directory (JAR sibling in production, `./plugins/` in dev)
-2. Create `PluginLoader` + `PluginRegistry`
-3. Register built-in tools via `BuiltinToolRegistrar` (bypasses JAR loading, directly adds to registry)
-4. Build `MainWindow` and display it
-5. Start `PluginLoader` (scans `plugins/` dir and watches for changes)
+1. Install the plugin logger binder; init H2/MyBatis; apply the saved i18n language
+2. Resolve the plugins directory (`<user.dir>/.swisskit/plugin/`)
+3. Create `PluginLoader` + `PluginRegistry`
+4. Create `FavoriteService` (loads bookmarked plugin IDs from DB)
+5. Register built-in tools via `BuiltinToolRegistrar` (bypasses JAR loading, directly adds to registry)
+6. Initialize cloud AI backends if mode is `openai`/`anthropic`; **local mode is lazy** — deferred until the AI tool is first opened
+7. Register built-in AI tools via `BuiltinAiToolRegistrar`
+8. Build `MainWindow` and display it
+9. Start `PluginLoader` (scans the plugins dir and watches for changes)
+
+> Steps 5→7 are order-coupled: `BuiltinAiToolRegistrar` looks up `ExcelSplitterPlugin`/`EmailArchivePlugin` from the live registry, so those AI tools only register if the built-in tools registered first.
 
 **UI structure** (all in `fan.summer.ui.*`):
 - `MainWindow` — root `StackPane`; owns `TitleBar`, `Sidebar`, `ContentArea`, status bar
-- `Sidebar` — category-based navigation; categories are `all / text / image / dev / net / other`
+- `Sidebar` — category-based navigation; categories are `all / text / image / dev / net / other / favorites`
 - `ContentArea` — shows `ToolCard` grid or active tool view; manages `DetailPanel` and the back-bar for returning from a tool
 - `DetailPanel` — slide-in panel showing plugin metadata; has a Launch button that fires `onLaunch`
 - `TitleBar` — custom window chrome (window is `StageStyle.TRANSPARENT`)
@@ -106,26 +112,31 @@ The wizard renders step dots with done/active/idle states, animated slide transi
 
 ```java
 public interface SwissKitJPlugin {
-    String getId();          // reverse-domain ID, e.g. "com.example.my-tool"
+    String getId();                       // reverse-domain ID, e.g. "com.example.my-tool"
     String getName();
     String getDescription();
-    String getCategory();    // dev / text / image / net / other
+    ToolCategory getCategory();           // DEV / TEXT / IMAGE / NET / OTHER
     String getVersion();
-    String getIconText();    // emoji or single char
-    default String getIconStyle() { return "ic-blue"; }  // CSS class for icon bg
-    default String getType()      { return "plugin"; }   // "builtin" for built-ins
+    String getMdiIcon();                  // Material Design Icons name, e.g. "file-excel"
+    default IconStyle getIconStyle() { return IconStyle.BLUE; }   // maps to ic-* CSS class
+    default ToolType getType()     { return ToolType.PLUGIN; }    // PLUGIN / BUILTIN
 
-    Node createView();       // called once; result cached and reused
+    Node createView();                    // called once; result cached and reused
     default void onActivate()   {}
     default void onDeactivate() {}
     default void onUnload()     {}
+
+    // Background-task lifecycle (defaults are no-ops):
+    default boolean hasRunningTasks() { return false; }
+    default void onBackground() {}      // entered background while tasks running
+    default void onForeground() {}      // restored from background
 }
 ```
 
 **External plugins** (JAR-based):
 1. Implement `SwissKitJPlugin`
 2. Declare in `META-INF/services/fan.summer.api.SwissKitJPlugin`
-3. Drop JAR into `plugins/` directory; hot-reload is supported
+3. Drop JAR into `.swisskit/plugin/` directory; hot-reload is supported
 
 **Built-in tools** skip SPI entirely — `BuiltinToolRegistrar.register()` adds them directly to `PluginRegistry`. See existing tools there as templates.
 
@@ -231,7 +242,7 @@ If you genuinely need to know whether the stage is maximized, track it yourself 
 
 ## Branch Status — v3.0.0-JavaFX
 
-This branch is an active migration from Swing/FlatLaf to JavaFX. Legacy Swing classes live in `backup/SwissKit/` and `backup/SwissKitJ-Api/` under the project root, and are **excluded from Maven compilation** via `<excludes>` in `SwissKit/pom.xml`. Do not move files out of `backup/` unless completing their JavaFX port.
+This is the JavaFX codebase (the Swing/FlatLaf port shipped in 3.0.0). Legacy Swing classes remain in `backup/SwissKit/` and `backup/SwissKitJ-Api/` under the project root as a porting reference, and are **excluded from Maven compilation** via `<excludes>` in `SwissKit/pom.xml`. Do not move files out of `backup/` — treat them as read-only reference for any tool whose JavaFX port still needs work.
 
 The plugin interface was also renamed: the old `fan.summer.api.KitPage` (Swing `JPanel`-based) is replaced by `fan.summer.api.SwissKitJPlugin` (JavaFX `Node`-based).
 
