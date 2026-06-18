@@ -217,7 +217,7 @@ public class AiServiceImpl implements AiService {
         GenerateParams genParams = new GenerateParams()
             .temperature(temperature).topP(topP).maxTokens(maxTokens);
 
-        TokenBatcher batcher = new TokenBatcher(callback);
+        TokenBatcher batcher = TokenBatcher.forCallback(callback);
 
         workerClient.generate(prompt, genParams, new GenerateCallback() {
             @Override
@@ -364,7 +364,7 @@ public class AiServiceImpl implements AiService {
                                            int round, AtomicBoolean hadToolCall) {
         if (round >= MAX_TOOL_ROUNDS) return;
 
-        TokenBatcher batcher = new TokenBatcher(callback);
+        TokenBatcher batcher = TokenBatcher.forCallback(callback);
 
         javaRunner.generate(prompt, temperature, topP, maxTokens, new LlamaRunner.TokenCallback() {
             @Override
@@ -450,17 +450,38 @@ public class AiServiceImpl implements AiService {
      * when the generation ends, whichever comes first.
      */
     static final class TokenBatcher {
-        private final AiStreamCallback callback;
+        /** Shared daemon scheduler for all batchers — avoids one thread per generation. */
+        private static final java.util.concurrent.ScheduledExecutorService FLUSH_SCHEDULER =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "ai-token-flusher");
+                t.setDaemon(true);
+                return t;
+            });
+
+        private static final long FLUSH_DELAY_MS = 50;
+
+        private final java.util.function.Consumer<String> emitter;
         private final StringBuilder buffer = new StringBuilder();
-        private final AtomicReference<javafx.animation.Animation> flushTimer = new AtomicReference<>();
+        private final AtomicReference<java.util.concurrent.ScheduledFuture<?>> pendingFlush =
+            new AtomicReference<>();
         private volatile boolean active = true;
 
-        TokenBatcher(AiStreamCallback callback) {
-            this.callback = callback;
+        /**
+         * Test seam: batch tokens and emit each flushed batch via {@code emitter}
+         * (no JavaFX dependency, so the batching logic is unit-testable).
+         */
+        TokenBatcher(java.util.function.Consumer<String> emitter) {
+            this.emitter = emitter;
+        }
+
+        /** Production factory: emits each batch on the FX thread via the callback. */
+        static TokenBatcher forCallback(AiStreamCallback callback) {
+            return new TokenBatcher(text -> Platform.runLater(() -> callback.onToken(text)));
         }
 
         /** Appends a token and schedules a flush if none is pending. */
         void add(String token) {
+            if (!active) return;
             synchronized (buffer) {
                 buffer.append(token);
             }
@@ -475,31 +496,28 @@ public class AiServiceImpl implements AiService {
                 batch = buffer.toString();
                 buffer.setLength(0);
             }
-            final String text = batch;
-            Platform.runLater(() -> callback.onToken(text));
+            emitter.accept(batch);
         }
 
-        /** Disables further batching. Call when generation ends. */
+        /** Disables further batching, cancels the pending flush, and flushes any remainder. */
         void close() {
             active = false;
-            javafx.animation.Animation timer = flushTimer.getAndSet(null);
-            if (timer != null) timer.stop();
+            java.util.concurrent.ScheduledFuture<?> f = pendingFlush.getAndSet(null);
+            if (f != null) f.cancel(false);
             flush();
         }
 
         private void scheduleFlush() {
             if (!active) return;
-            javafx.animation.Animation existing = flushTimer.get();
-            if (existing != null) return; // a flush is already scheduled
-            javafx.animation.PauseTransition pause =
-                new javafx.animation.PauseTransition(javafx.util.Duration.millis(50));
-            pause.setOnFinished(e -> {
-                flushTimer.compareAndSet(pause, null);
-                flush();
-            });
-            if (flushTimer.compareAndSet(null, pause)) {
-                pause.play();
-            }
+            if (pendingFlush.get() != null) return; // a flush is already scheduled
+            java.util.concurrent.ScheduledFuture<?> task = FLUSH_SCHEDULER.schedule(
+                this::runScheduledFlush, FLUSH_DELAY_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
+            pendingFlush.compareAndSet(null, task);
+        }
+
+        private void runScheduledFlush() {
+            pendingFlush.set(null);   // allow the next add() to schedule again
+            flush();
         }
     }
 }
