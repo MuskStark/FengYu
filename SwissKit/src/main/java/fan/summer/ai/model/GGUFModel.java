@@ -9,7 +9,7 @@ import java.util.*;
 /**
  * Represents a loaded GGUF model: metadata, tensor descriptors, and mapped weight data.
  */
-public class GGUFModel {
+public class GGUFModel implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(GGUFModel.class);
 
@@ -197,5 +197,37 @@ public class GGUFModel {
             if (val instanceof Number n) return n.floatValue();
         }
         return defaultVal;
+    }
+
+    // ── Lifecycle ─────────────────────────────────────────────
+
+    /**
+     * Releases the memory-mapped weight buffer. Java exposes no public API to unmap a
+     * {@link java.nio.MappedByteBuffer}, so this best-effort path uses
+     * {@code sun.misc.Unsafe.invokeCleaner} when reachable — otherwise switching models
+     * in the pure-Java backend piles up multi-gigabyte mappings until GC runs. If Unsafe
+     * is unavailable (restrictive JDK / SecurityManager) it degrades gracefully and
+     * falls back to ordinary GC. Safe to call multiple times. (The native backend is
+     * unaffected: it runs in a child process whose mappings die with that process.)
+     */
+    @Override
+    public void close() {
+        unmapBuffer(dataBuffer);
+    }
+
+    /** Package-private so the no-throw contract can be unit-tested without a model. */
+    static void unmapBuffer(ByteBuffer buffer) {
+        if (buffer == null || !buffer.isDirect()) return;
+        try {
+            Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
+            java.lang.reflect.Field theUnsafe = unsafeClass.getDeclaredField("theUnsafe");
+            theUnsafe.setAccessible(true);
+            Object unsafe = theUnsafe.get(null);
+            java.lang.reflect.Method invokeCleaner =
+                unsafeClass.getMethod("invokeCleaner", ByteBuffer.class);
+            invokeCleaner.invoke(unsafe, buffer);
+        } catch (Throwable e) {
+            log.debug("Could not force-unmap direct buffer via sun.misc.Unsafe; relying on GC", e);
+        }
     }
 }

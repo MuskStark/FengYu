@@ -36,9 +36,14 @@ public class LlamaRunner {
     }
 
     public void unload() {
-        if (transformer != null) {
-            transformer = null;
+        if (model != null) {
+            try {
+                model.close();   // release the mmap'd weight buffer promptly on unload
+            } catch (Exception e) {
+                log.warn("Error closing GGUF model: {}", e.getMessage());
+            }
         }
+        transformer = null;
         model = null;
         tokenizer = null;
         chatTemplate = null;
