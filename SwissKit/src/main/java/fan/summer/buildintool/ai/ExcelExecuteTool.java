@@ -39,10 +39,9 @@ public class ExcelExecuteTool implements AiTool {
     @Override public String getName() { return "excel_execute"; }
 
     @Override public String getDescription() {
-        return "Execute the Excel split operation. " +
-               "Must be called after excel_analyze and excel_configure. " +
-               "Args: outputDir (string, required) — absolute path to output directory; " +
-               "filePrefix (string, optional) — prefix for output filenames.";
+        return "Execute (run) the configured Excel split and write the output files. "
+               + "Call AFTER excel_analyze and excel_configure. "
+               + "Example: excel_execute{outputDir:\"/out\", filePrefix:\"result_\"}.";
     }
 
     @Override public List<AiToolParam> getParameters() {
