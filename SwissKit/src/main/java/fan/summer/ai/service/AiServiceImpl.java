@@ -8,6 +8,7 @@ import fan.summer.ai.nativejni.GenerateParams;
 import fan.summer.ai.nativejni.ModelParams;
 import fan.summer.ai.nativejni.NativeWorkerClient;
 import fan.summer.ai.tools.FunctionGemmaAdapter;
+import fan.summer.ai.tools.OfflineNlNormalizer;
 import fan.summer.ai.tools.ToolCallParser;
 import fan.summer.ai.tools.ToolExecutor;
 import fan.summer.ai.tools.ToolSchemaBuilder;
@@ -35,7 +36,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class AiServiceImpl implements AiService {
 
     private static final Logger log = LoggerFactory.getLogger(AiServiceImpl.class);
-    private static final int MAX_TOOL_ROUNDS = 5;
+    private static final int MAX_TOOL_ROUNDS = 8;
 
     private enum Backend { NATIVE, JAVA }
 
@@ -92,7 +93,7 @@ public class AiServiceImpl implements AiService {
 
                 ModelParams params = new ModelParams()
                     .modelPath(modelPath.toString())
-                    .ctxLength(4096)
+                    .ctxLength(8192)
                     .threads(Runtime.getRuntime().availableProcessors());
                 workerClient.spawn();
                 workerClient.loadModel(params);
@@ -257,48 +258,11 @@ public class AiServiceImpl implements AiService {
                                           float topP, int maxTokens, AiStreamCallback callback) {
         Thread.ofVirtual().start(() -> {
             try {
+                OfflineNlNormalizer.normalizeLatestUser(history);   // offline CN→EN keywords
                 String toolDecls = functionGemmaAdapter.buildToolDeclarations(AiServiceProvider.getTools());
                 String prompt = functionGemmaAdapter.buildPrompt(history, toolDecls);
-
-                GenerateParams genParams = new GenerateParams()
-                    .temperature(temperature).topP(topP).maxTokens(maxTokens);
-
-                workerClient.generate(prompt, genParams, new GenerateCallback() {
-                    @Override
-                    public boolean onToken(String tokenText) {
-                        Platform.runLater(() -> callback.onToken(tokenText));
-                        return true;
-                    }
-
-                    @Override
-                    public void onDone(String fullText, int tokenCount, double tokPerSec) {
-                        if (functionGemmaAdapter.containsToolCall(fullText)) {
-                            List<AiToolCall> toolCalls = functionGemmaAdapter.parseToolCalls(fullText);
-                            if (!toolCalls.isEmpty() && AiServiceProvider.hasTools()) {
-                                AiToolCall tc = toolCalls.getFirst();
-                                Platform.runLater(() -> callback.onToolCall(tc));
-
-                                AiToolResult result = ToolExecutor.execute(tc.name(), tc.arguments());
-                                Platform.runLater(() -> callback.onToolResult(tc.id(), result));
-
-                                history.add(AiChatMessage.assistantWithTools(
-                                    functionGemmaAdapter.stripToolCalls(fullText), toolCalls));
-                                history.add(AiChatMessage.toolResult(tc.id(), tc.name(), result.output()));
-
-                                String newPrompt = functionGemmaAdapter.buildPrompt(history, toolDecls);
-                                generateFinalAnswer(newPrompt, temperature, topP, maxTokens, callback);
-                                return;
-                            }
-                        }
-
-                        Platform.runLater(() -> callback.onComplete(fullText, tokenCount, tokPerSec));
-                    }
-
-                    @Override
-                    public void onError(String message) {
-                        Platform.runLater(() -> callback.onError(new RuntimeException(message)));
-                    }
-                });
+                generateFunctionGemmaLoop(prompt, toolDecls, temperature, topP, maxTokens,
+                                          history, callback, 0);
             } catch (Exception e) {
                 log.error("FunctionGemma generation error", e);
                 Platform.runLater(() -> callback.onError(e));
@@ -306,21 +270,57 @@ public class AiServiceImpl implements AiService {
         });
     }
 
-    private void generateFinalAnswer(String prompt, float temperature, float topP,
-                                      int maxTokens, AiStreamCallback callback) {
+    /**
+     * FunctionGemma multi-round loop: each round the model emits one-or-more
+     * single-turn calls (its strength); the host executes ALL of them, feeds the
+     * results back, and re-prompts — until a round produces no call (final answer)
+     * or {@link #MAX_TOOL_ROUNDS} is reached. Intermediate tool-call rounds do not
+     * stream raw {@code call:…{…}} tokens; only the final answer is delivered.
+     */
+    private void generateFunctionGemmaLoop(String prompt, String toolDecls, float temperature,
+                                            float topP, int maxTokens, List<AiChatMessage> history,
+                                            AiStreamCallback callback, int round) {
+        if (round >= MAX_TOOL_ROUNDS || workerClient == null || !workerClient.isAlive()) {
+            log.warn("FunctionGemma loop stopped at round {} (max {})", round, MAX_TOOL_ROUNDS);
+            Platform.runLater(() -> callback.onComplete("", 0, 0));
+            return;
+        }
+
         GenerateParams genParams = new GenerateParams()
             .temperature(temperature).topP(topP).maxTokens(maxTokens);
 
         workerClient.generate(prompt, genParams, new GenerateCallback() {
             @Override
             public boolean onToken(String tokenText) {
-                Platform.runLater(() -> callback.onToken(tokenText));
+                // Tool-call rounds are discarded (no raw call:… tokens to the UI);
+                // the final-answer round forwards the cleaned text in onDone.
                 return true;
             }
 
             @Override
             public void onDone(String fullText, int tokenCount, double tokPerSec) {
-                Platform.runLater(() -> callback.onComplete(fullText, tokenCount, tokPerSec));
+                List<AiToolCall> toolCalls = functionGemmaAdapter.parseToolCalls(fullText);
+                if (!toolCalls.isEmpty() && AiServiceProvider.hasTools()) {
+                    // Record the assistant turn (text stripped of call noise), then execute every call.
+                    history.add(AiChatMessage.assistantWithTools(
+                        functionGemmaAdapter.stripToolCalls(fullText), toolCalls));
+                    for (AiToolCall tc : toolCalls) {
+                        Platform.runLater(() -> callback.onToolCall(tc));
+                        AiToolResult result = ToolExecutor.execute(tc.name(), tc.arguments());
+                        Platform.runLater(() -> callback.onToolResult(tc.id(), result));
+                        history.add(AiChatMessage.toolResult(tc.id(), tc.name(), result.output()));
+                    }
+                    String newPrompt = functionGemmaAdapter.buildPrompt(history, toolDecls);
+                    generateFunctionGemmaLoop(newPrompt, toolDecls, temperature, topP, maxTokens,
+                                              history, callback, round + 1);
+                } else {
+                    String clean = functionGemmaAdapter.stripToolCalls(fullText);
+                    final String answer = clean;
+                    Platform.runLater(() -> {
+                        if (!answer.isEmpty()) callback.onToken(answer);
+                        callback.onComplete(answer, tokenCount, tokPerSec);
+                    });
+                }
             }
 
             @Override
