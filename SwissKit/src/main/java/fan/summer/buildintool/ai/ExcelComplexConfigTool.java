@@ -36,22 +36,22 @@ public class ExcelComplexConfigTool implements AiTool {
     @Override public String getName() { return "excel_complex_config"; }
 
     @Override public String getDescription() {
-        return "Manage complex split configs stored in the database. " +
-               "Actions: 'add' (insert a config row), 'list' (show all configs for a taskId), " +
-               "'clear' (delete all configs for a taskId). " +
-               "For 'add': requires sheetName, headerIndex (1-based; -1 means copy entire sheet), " +
-               "columnIndex (1-based; -1 means copy to all output files). " +
-               "If taskId is omitted on 'add', one is auto-generated and returned. " +
-               "Returns the taskId so it can be used with excel_configure mode=COMPLEX.";
+        return "Manage database-backed complex split configs used by COMPLEX mode. "
+               + "Actions: 'add' (insert one config row: sheet + header row + split column), "
+               + "'list' (show all rows for a taskId), 'clear' (delete all rows for a taskId). "
+               + "'add' returns a taskId to pass to excel_configure mode=COMPLEX. "
+               + "headerIndex=-1 and columnIndex=-1 together means copy the whole sheet to every output file. "
+               + "Example: excel_complex_config{action:\"add\", sheetName:\"Sheet1\", headerIndex:1, columnIndex:2}.";
     }
 
     @Override public List<AiToolParam> getParameters() {
         return List.of(
-            AiToolParam.of("action", "string", "Action to perform: add, list, or clear", true),
+            AiToolParam.of("action", "string", "Action: add, list, or clear", true,
+                List.of("add", "list", "clear")),
             AiToolParam.of("taskId", "string", "Task ID (auto-generated on 'add' if omitted)", false),
             AiToolParam.of("sheetName", "string", "Sheet name (required for 'add')", false),
-            AiToolParam.of("headerIndex", "integer", "1-based header row index; -1 = no header / copy all (required for 'add')", false),
-            AiToolParam.of("columnIndex", "integer", "1-based column index to split by; -1 = copy to all outputs (required for 'add')", false)
+            AiToolParam.of("headerIndex", "integer", "1-based header row; -1 = no header / copy all (required for 'add')", false),
+            AiToolParam.of("columnIndex", "integer", "1-based column to split by; -1 = copy to all outputs (required for 'add')", false)
         );
     }
 

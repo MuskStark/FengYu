@@ -51,19 +51,18 @@ public class ExcelConfigureTool implements AiTool {
     @Override public String getName() { return "excel_configure"; }
 
     @Override public String getDescription() {
-        return "Configure the Excel split mode and parameters. " +
-               "Must be called after excel_analyze. " +
-               "Modes: BY_SHEET (one file per sheet), BY_COLUMN (group by column value), " +
-               "COMPLEX (DB-backed multi-config). " +
-               "Required args: mode (string). " +
-               "BY_SHEET optional: sheets (string[]). " +
-               "BY_COLUMN required: splitSheet (string), splitColumn (string). " +
-               "COMPLEX required: taskId (string, UUID).";
+        return "Configure how to split the Excel file. Call AFTER excel_analyze. "
+               + "Modes: BY_SHEET (export each sheet as its own file), "
+               + "BY_COLUMN (split one sheet into multiple files grouped by the unique values of a column), "
+               + "COMPLEX (database-backed multi-config). "
+               + "Examples: excel_configure{mode:\"BY_COLUMN\", splitSheet:\"Sheet1\", splitColumn:\"部门\"}; "
+               + "excel_configure{mode:\"BY_SHEET\"}.";
     }
 
     @Override public List<AiToolParam> getParameters() {
         return List.of(
-            AiToolParam.of("mode", "string", "Split mode: BY_SHEET, BY_COLUMN, or COMPLEX", true),
+            AiToolParam.of("mode", "string", "Split mode", true,
+                List.of("BY_SHEET", "BY_COLUMN", "COMPLEX")),
             AiToolParam.of("sheets", "string[]", "Sheet names to export (BY_SHEET mode)", false),
             AiToolParam.of("splitSheet", "string", "Sheet name to split on (BY_COLUMN mode)", false),
             AiToolParam.of("splitColumn", "string", "Column header name to split by (BY_COLUMN mode)", false),
