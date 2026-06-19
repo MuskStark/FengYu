@@ -44,7 +44,7 @@ public class FunctionGemmaAdapter {
     // ── Tool call parsing ──────────────────────────────────────
 
     private static final Pattern FG_CALL = Pattern.compile(
-        "<start_function_call>call:(\\w+)\\{([^}]*)}<end_function_call>"
+        "<start_function_call>call:(\\w+)\\{([\\s\\S]*?)\\}<end_function_call>"
     );
 
     /**
