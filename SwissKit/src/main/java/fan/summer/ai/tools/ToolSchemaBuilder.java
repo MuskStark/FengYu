@@ -128,6 +128,9 @@ public class ToolSchemaBuilder {
                 prop.put("type", p.type());
             }
             prop.put("description", p.description());
+            if (!p.type().endsWith("[]") && !p.enumValues().isEmpty()) {
+                prop.put("enum", p.enumValues());
+            }
             properties.put(p.name(), prop);
             if (p.required()) required.add(p.name());
         }

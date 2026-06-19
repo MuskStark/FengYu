@@ -204,7 +204,13 @@ public class FunctionGemmaAdapter {
                 List<String> required = new ArrayList<>();
                 for (AiToolParam p : params) {
                     String fgType = toFgType(p.type());
-                    propJoiner.add(p.name() + ":{description:" + p.description() + ",type:" + fgType + "}");
+                    StringBuilder prop = new StringBuilder()
+                        .append(p.name()).append(":{description:").append(p.description())
+                        .append(",type:").append(fgType);
+                    if (!p.enumValues().isEmpty()) {
+                        prop.append(",enum:[").append(String.join(",", p.enumValues())).append("]");
+                    }
+                    propJoiner.add(prop.append("}").toString());
                     if (p.required()) required.add(p.name());
                 }
                 sb.append(propJoiner);
