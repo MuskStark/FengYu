@@ -20,7 +20,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *
  * <p>Tool registration is global: tools registered via this provider are visible to all
  * {@link AiService} implementations that delegate to it (e.g., {@code AnthropicService},
- * {@code OpenAiService}, {@code AiServiceImpl}).
+ * {@code OpenAiService}, {@code LocalChatBackend}).
  *
  * @see AiService
  * @see AiTool
