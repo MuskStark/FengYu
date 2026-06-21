@@ -87,6 +87,23 @@ class ChatMessageMapperTest {
     }
 
     @Test
+    void preservesServerProvidedToolCallId() {
+        // Regression: round-trip AiChatMessage → LC4j → AiChatMessage must preserve the
+        // server-issued tool-call ID. Anthropic rejects tool_result.tool_use_id values that
+        // don't match the original tool_use.id (HTTP 400).
+        AiToolCall original = AiToolCall.of("server-id-abc123", "get_weather", Map.of("city", "Paris"));
+        AiChatMessage src = AiChatMessage.assistantWithTools("", List.of(original));
+
+        ChatMessage lc = ChatMessageMapper.toLc4j(src);
+        AiChatMessage back = ChatMessageMapper.fromLc4j(lc);
+
+        assertEquals(1, back.toolCalls().size());
+        assertEquals("server-id-abc123", back.toolCalls().get(0).id(),
+            "Server-provided tool-call ID must survive the round-trip");
+        assertEquals("get_weather", back.toolCalls().get(0).name());
+    }
+
+    @Test
     void fromLc4jThrowsOnUnsupportedType() {
         // CustomMessage is a ChatMessage subclass not handled by the mapper.
         // Its constructor takes a Map<String,Object>, not a String.

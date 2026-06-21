@@ -97,6 +97,33 @@ class StreamingResponseHandlerBridgeTest {
     }
 
     @Test
+    void preservesToolCallIdFromLc4j() {
+        // Regression: the bridge must NOT regenerate tool-call IDs. Anthropic's
+        // multi-round tool-use protocol rejects requests whose tool_result.tool_use_id
+        // does not match the original tool_use.id. Server-issued IDs (e.g.
+        // "toolu_01ABC…" for Anthropic, "call_…" for OpenAI) must be preserved.
+        CapturingCallback cb = new CapturingCallback();
+        StreamingResponseHandlerBridge bridge = new StreamingResponseHandlerBridge(cb);
+
+        ChatResponse resp = ChatResponse.builder()
+            .aiMessage(AiMessage.from("", List.of(
+                ToolExecutionRequest.builder()
+                    .id("toolu_01ABC")
+                    .name("get_weather")
+                    .arguments("{\"city\":\"Paris\"}")
+                    .build()
+            )))
+            .build();
+        bridge.onCompleteResponse(resp);
+
+        assertEquals(1, bridge.pendingToolCalls().size());
+        AiToolCall tc = bridge.pendingToolCalls().get(0);
+        assertEquals("toolu_01ABC", tc.id(),
+            "Server-provided tool-call ID must be preserved (Anthropic HTTP 400 blocker)");
+        assertEquals("get_weather", tc.name());
+    }
+
+    @Test
     void forwardsError() {
         CapturingCallback cb = new CapturingCallback();
         StreamingResponseHandlerBridge bridge = new StreamingResponseHandlerBridge(cb);
