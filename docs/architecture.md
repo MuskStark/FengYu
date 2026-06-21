@@ -188,8 +188,8 @@ There are three backends, all implementing `AiService`:
 | Backend | When | Notes |
 |---------|------|-------|
 | `AiServiceImpl` | local mode | GGUF inference. Native path runs in a **child JVM process** (`NativeWorkerClient`) so a native crash cannot kill the host; crashes ≤3 trigger an auto-restart, ≥3 trigger a fallback to the pure-Java engine. Configured as `java` or `native` via `ai.local.backend`. **Lazy-loaded** the first time the AI tool opens. |
-| `OpenAiService` | openai mode | OpenAI-compatible chat-completions API, streaming SSE, native tool schema. |
-| `AnthropicService` | anthropic mode | Anthropic Messages API, streaming SSE, native tool schema. |
+| `OpenAiService` | openai mode | OpenAI-compatible chat-completions API. Backed by LangChain4j `OpenAiStreamingChatModel`; HTTP/SSE and tool-loop plumbing delegated to the `fan.summer.ai.adapter` package. |
+| `AnthropicService` | anthropic mode | Anthropic Messages API. Backed by LangChain4j `AnthropicStreamingChatModel`; same adapter plumbing as OpenAI. |
 
 AI settings are read through `AiConfigService` (DB-direct, no UI dependency) so the startup
 path and AI services never depend on the settings UI class.
@@ -199,12 +199,13 @@ path and AI services never depend on the settings UI class.
 The model can invoke tools during generation. Each `AiTool` declares a name, description,
 parameter list, and an `execute(Map) → AiToolResult`. `ToolExecutor` dispatches calls and
 feeds results back into the conversation history; the multi-round loop is bounded at
-`MAX_TOOL_ROUNDS = 5` in every backend. `ToolSchemaBuilder` produces tool definitions in
-three shapes: OpenAI `tools`, Anthropic `tools`, and a markdown section injected into the
-system prompt (for local models). Local models emit tool calls as text, parsed by
-`ToolCallParser` (Qwen delimiter and generic-JSON patterns). Callbacks (`onToken`,
-`onToolCall`, `onToolResult`, `onComplete`, `onError`) are always delivered on the JavaFX
-Application Thread.
+`MAX_TOOL_ROUNDS = 5` in every backend. Schema generation is split: cloud backends
+(OpenAI / Anthropic) use `AiToolToToolSpecification` to build LangChain4j
+`ToolSpecification` objects (structurally forwarded to the API); local mode uses
+`ToolSchemaBuilder` to inject a markdown section into the system prompt. Local models emit
+tool calls as text, parsed by `ToolCallParser` (Qwen delimiter and generic-JSON patterns).
+Callbacks (`onToken`, `onToolCall`, `onToolResult`, `onComplete`, `onError`) are always
+delivered on the JavaFX Application Thread.
 
 ### Slash commands
 
@@ -264,7 +265,7 @@ placeholder at startup.
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.0.1.jar
+java -jar SwissKit/target/SwissKitJ-3.1.0.jar
 ```
 
 The fat JAR is built by `maven-shade-plugin` (main class `fan.summer.Launcher`) and bundles

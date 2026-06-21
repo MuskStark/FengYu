@@ -4,6 +4,44 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 
 ---
 
+## [3.1.0] — LangChain4j 云端模式迁移
+
+**v3.1.0** — 2026-06-21
+
+### ♻️ 变更
+
+- **云端 AI 后端迁移至 LangChain4j**：`OpenAiService` 和 `AnthropicService` 现在包装 `OpenAiStreamingChatModel` 和 `AnthropicStreamingChatModel` —— 删除了约 700 行手写的 HTTP/SSE/工具循环代码
+- 工具 schema 生成、消息映射、流式桥接抽取到新的 `fan.summer.ai.adapter` 包中作为可复用适配器（`ChatMessageMapper`、`AiToolToToolSpecification`、`StreamingResponseHandlerBridge`、`CloudAiConfigProvider`）
+- `SynchronousChatHelper`（浏览器规划器）通过新的 `CloudAiConfigProvider` 接口与具体的 `OpenAiService` 解耦 —— Anthropic 现在也可作为浏览器规划器后端（HTTP body 仍为 OpenAI 兼容格式）
+- 采样参数（temperature / topP / maxTokens）现在按调用生效，不再缓存到模型实例里
+
+### ✨ 新增
+
+- 新增 `fan.summer.ai.adapter` 包 —— 三个可复用适配器加一个标记接口
+- 三个 JUnit 5 适配器测试文件（共约 21 个测试用例）
+- `AiToolCall.of(id, name, arguments)` 重载，用于在 LangChain4j 桥接时保留服务端签发的工具调用 ID
+
+### 🐛 修复
+
+- **Anthropic 多轮工具调用**：服务端签发的 `tool_use_id` 现在在 `AiToolCall → LangChain4j → AiToolCall` 往返中保留 —— 之前用本地伪造 ID 导致第 2 轮工具调用 HTTP 400
+- **多轮对话上下文连续性**：assistant 的最终回复现在在 service 返回前追加到 `history`
+- **OpenAI 工具轮消息顺序**：`ToolExecutor.executeAndFeed` 之前先追加 assistant-with-tools 消息，满足 API 约束（`tool` 消息必须跟在带 `tool_calls` 的 `assistant` 后面）
+- `testConnection()` 的 `HttpClient` 改为 try-with-resources
+- 加固 `StreamingResponseHandlerBridge` 线程安全（`StringBuffer` 累加器、`volatile` 字段）
+
+### ⬆️ 依赖
+
+- `dev.langchain4j:langchain4j-open-ai:1.2.0`
+- `dev.langchain4j:langchain4j-anthropic:1.2.0`
+- （最初锁了 1.0.1，但 `langchain4j-anthropic` 从未在该版本发布；升到两个模块同时存在的最低 GA 版本）
+
+### ⚠️ 已知行为变化
+
+- 云端后端的 `cancelGeneration()` 现在是尽力而为（LangChain4j 1.x 不暴露流式模型的中途取消）；进行中标志仍会清除。本地模式不受影响
+- 中途 SSE 错误现在通过 JavaFX Application Thread 上的 `callback.onError` 上报，与本地模式行为一致
+
+---
+
 ## [3.0.1] — FunctionGemma 离线适配
 
 **v3.0.1** — 2026-06-21

@@ -175,8 +175,8 @@ PluginContext.wrapEvents(plugin, view);                           // 包装 Even
 | 后端 | 时机 | 说明 |
 |------|------|------|
 | `AiServiceImpl` | local 模式 | GGUF 推理。native 路径在**子 JVM 进程**（`NativeWorkerClient`）中运行，使 native 崩溃不会杀死宿主；崩溃 ≤3 次自动重启，≥3 次降级到纯 Java 引擎。通过 `ai.local.backend` 配置为 `java` 或 `native`。**懒加载**：首次打开 AI 工具时才加载。 |
-| `OpenAiService` | openai 模式 | OpenAI 兼容的 chat-completions API，流式 SSE，原生工具 schema。 |
-| `AnthropicService` | anthropic 模式 | Anthropic Messages API，流式 SSE，原生工具 schema。 |
+| `OpenAiService` | openai 模式 | OpenAI 兼容的 chat-completions API。底层基于 LangChain4j 的 `OpenAiStreamingChatModel`，HTTP/SSE 与工具循环逻辑委托给 `fan.summer.ai.adapter` 包。 |
+| `AnthropicService` | anthropic 模式 | Anthropic Messages API。底层基于 LangChain4j 的 `AnthropicStreamingChatModel`，与 OpenAI 共用同一套适配器。 |
 
 AI 设置通过 `AiConfigService`（直接读数据库，无 UI 依赖）读取，因此启动路径与 AI 服务
 永远不依赖设置 UI 类。
@@ -185,11 +185,12 @@ AI 设置通过 `AiConfigService`（直接读数据库，无 UI 依赖）读取�
 
 模型可在生成过程中调用工具。每个 `AiTool` 声明名称、描述、参数列表和一个
 `execute(Map) → AiToolResult`。`ToolExecutor` 分发调用并把结果喂回会话历史；
-多轮循环在每个后端中以上限 `MAX_TOOL_ROUNDS = 5` 约束。`ToolSchemaBuilder` 产出三种形状的
-工具定义：OpenAI `tools`、Anthropic `tools`，以及注入系统提示词的 markdown 段落（用于本地模型）。
-本地模型以文本形式发出工具调用，由 `ToolCallParser` 解析（Qwen 分隔符模式与通用 JSON 模式）。
-回调（`onToken`、`onToolCall`、`onToolResult`、`onComplete`、`onError`）始终在 JavaFX
-Application Thread 上投递。
+多轮循环在每个后端中以上限 `MAX_TOOL_ROUNDS = 5` 约束。Schema 生成分为两路：云端后端
+（OpenAI / Anthropic）用 `AiToolToToolSpecification` 构造 LangChain4j 的
+`ToolSpecification`（结构化地透传给 API），本地模式用 `ToolSchemaBuilder` 把工具定义作为
+markdown 段落注入系统提示词。本地模型以文本形式发出工具调用，由 `ToolCallParser` 解析
+（Qwen 分隔符模式与通用 JSON 模式）。回调（`onToken`、`onToolCall`、`onToolResult`、
+`onComplete`、`onError`）始终在 JavaFX Application Thread 上投递。
 
 ### 斜杠命令
 
@@ -247,7 +248,7 @@ Schema 从 `init.sql` 初始化，通过 MyBatis 访问，XML mapper 位于
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.0.1.jar
+java -jar SwissKit/target/SwissKitJ-3.1.0.jar
 ```
 
 胖 JAR 由 `maven-shade-plugin` 构建（主类 `fan.summer.Launcher`），并捆绑所有平台的
