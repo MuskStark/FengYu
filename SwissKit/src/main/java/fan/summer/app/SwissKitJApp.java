@@ -14,6 +14,7 @@ import fan.summer.plugin.PluginRegistry;
 import fan.summer.ui.MainWindow;
 import fan.summer.ui.util.WindowResizeHelper;
 import fan.summer.registrar.BuiltinToolRegistrar;
+import fan.summer.ai.service.CloudChatBackend;
 import fan.summer.ai.tools.BuiltinAiToolRegistrar;
 import javafx.application.Application;
 import javafx.scene.Scene;
@@ -173,8 +174,7 @@ public class SwissKitJApp extends Application {
 
         switch (mode) {
             case "openai" -> {
-                fan.summer.ai.service.OpenAiService svc = new fan.summer.ai.service.OpenAiService();
-                svc.configure(
+                CloudChatBackend svc = CloudChatBackend.openAi(
                     fan.summer.ai.AiConfigService.getAiOpenAiEndpoint(),
                     fan.summer.ai.AiConfigService.getAiOpenAiApiKey(),
                     fan.summer.ai.AiConfigService.getAiOpenAiModel()
@@ -183,8 +183,7 @@ public class SwissKitJApp extends Application {
                 log.info("OpenAI backend initialized: model={}", fan.summer.ai.AiConfigService.getAiOpenAiModel());
             }
             case "anthropic" -> {
-                fan.summer.ai.service.AnthropicService svc = new fan.summer.ai.service.AnthropicService();
-                svc.configure(
+                CloudChatBackend svc = CloudChatBackend.anthropic(
                     fan.summer.ai.AiConfigService.getAiAnthropicEndpoint(),
                     fan.summer.ai.AiConfigService.getAiAnthropicApiKey(),
                     fan.summer.ai.AiConfigService.getAiAnthropicModel()
