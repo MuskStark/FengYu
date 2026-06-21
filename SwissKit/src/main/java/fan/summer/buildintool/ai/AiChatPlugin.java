@@ -41,7 +41,7 @@ import java.util.stream.Collectors;
  * Built-in AI chat plugin for SwissKitJ.
  *
  * <p>Provides a conversational interface backed by a language model via
- * {@link AiService}. Supports file attachments, streaming token delivery,
+ * {@link ChatBackend}. Supports file attachments, streaming token delivery,
  * tool-call orchestration through {@link AiToolCall}, and Markdown rendering
  * in assistant responses.</p>
  *
@@ -52,7 +52,7 @@ import java.util.stream.Collectors;
  * message, the result is injected back into the conversation via
  * {@link AiStreamCallback#onToolResult(String, AiToolResult)}.</p>
  *
- * @see AiService
+ * @see ChatBackend
  * @see AiStreamCallback
  * @see AiToolCall
  */
@@ -105,7 +105,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
         private final Label modelLabel = new Label(I18n.get("builtin.ai.noModelLoaded"));
         private final Label nativeUnavailableBanner = new Label();
 
-        private AiService aiService;
+        private ChatBackend aiService;
         private boolean generating = false;
         private WebView currentResponseView;
         private StringBuilder currentResponseText;
@@ -188,7 +188,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
 
         private void refreshServiceState() {
             Platform.runLater(() -> {
-                Optional<AiService> opt = AiServiceProvider.getService();
+                Optional<ChatBackend> opt = AiServiceProvider.getService();
                 boolean ready = false;
                 boolean isLocal = "local".equals(AiServiceProvider.getCurrentMode());
                 if (opt.isPresent()) {
