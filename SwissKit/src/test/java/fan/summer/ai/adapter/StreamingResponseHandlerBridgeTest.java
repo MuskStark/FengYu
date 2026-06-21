@@ -22,15 +22,13 @@ class StreamingResponseHandlerBridgeTest {
         final List<String> tokens = new ArrayList<>();
         String completeResponse;
         Throwable error;
-        AiToolCall toolCall;
-        int toolCallCount = 0;
 
         public void onToken(String fragment) { tokens.add(fragment); }
         public void onComplete(String fullResponse, int tokensGenerated, double tokensPerSecond) {
             this.completeResponse = fullResponse;
         }
         public void onError(Throwable error) { this.error = error; }
-        public void onToolCall(AiToolCall toolCall) { this.toolCall = toolCall; toolCallCount++; }
+        public void onToolCall(AiToolCall toolCall) { /* no-op: bridge captures via pendingToolCalls() */ }
     }
 
     @BeforeAll
@@ -110,6 +108,40 @@ class StreamingResponseHandlerBridgeTest {
         assertNotNull(cb.error);
         assertEquals("boom", cb.error.getMessage());
     }
+
+    @Test
+    void resetForNextRoundClearsState() {
+        CapturingCallback cb = new CapturingCallback();
+        StreamingResponseHandlerBridge bridge = new StreamingResponseHandlerBridge(cb);
+
+        // Populate state
+        ChatResponse resp = ChatResponse.builder()
+            .aiMessage(AiMessage.from("", List.of(
+                ToolExecutionRequest.builder()
+                    .id("call_1").name("get_weather").arguments("{\"city\":\"Paris\"}")
+                    .build()
+            )))
+            .build();
+        bridge.onCompleteResponse(resp);
+        assertEquals(1, bridge.pendingToolCalls().size());
+
+        // Reset
+        bridge.resetForNextRound();
+
+        // Verify state cleared
+        assertTrue(bridge.pendingToolCalls().isEmpty());
+    }
+
+    // Note on "null text fallback" test (omitted by design):
+    // The bridge has a `ai.text() == null ? accumulated.toString() : ai.text()` fallback for
+    // responses where the model returned no text. However, langchain4j 1.0.1's public AiMessage
+    // API forbids null text: the single-arg AiMessage(String) constructor calls
+    // `ensureNotNull(text, "text")` and throws IllegalArgumentException. The only way to get
+    // text()==null is via the AiMessage(List<ToolExecutionRequest>) constructor, which always
+    // sets hasToolExecutionRequests()==true and therefore takes the tool-call branch, not the
+    // text-fallback branch. Constructing an AiMessage with null text and no tool requests
+    // requires reflection, which would not be a "clean" test. Per the task instructions, this
+    // test is intentionally skipped.
 
     /** Drains the JavaFX event queue so Platform.runLater callbacks have fired. */
     private static void waitForFx() {
