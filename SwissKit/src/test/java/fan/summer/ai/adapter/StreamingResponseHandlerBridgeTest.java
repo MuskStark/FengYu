@@ -132,6 +132,37 @@ class StreamingResponseHandlerBridgeTest {
         assertTrue(bridge.pendingToolCalls().isEmpty());
     }
 
+    @Test
+    void capturesLastAssistantText() {
+        CapturingCallback cb = new CapturingCallback();
+        StreamingResponseHandlerBridge bridge = new StreamingResponseHandlerBridge(cb);
+
+        bridge.onPartialResponse("Hi");
+        ChatResponse resp = ChatResponse.builder()
+            .aiMessage(AiMessage.from("Hi"))
+            .build();
+        bridge.onCompleteResponse(resp);
+
+        assertEquals("Hi", bridge.lastAssistantText());
+    }
+
+    @Test
+    void capturesLastAssistantTextWithToolRequests() {
+        CapturingCallback cb = new CapturingCallback();
+        StreamingResponseHandlerBridge bridge = new StreamingResponseHandlerBridge(cb);
+
+        ChatResponse resp = ChatResponse.builder()
+            .aiMessage(AiMessage.from("Let me check the weather", List.of(
+                ToolExecutionRequest.builder()
+                    .id("call_1").name("get_weather").arguments("{\"city\":\"Paris\"}")
+                    .build()
+            )))
+            .build();
+        bridge.onCompleteResponse(resp);
+
+        assertEquals("Let me check the weather", bridge.lastAssistantText());
+    }
+
     // Note on "null text fallback" test (omitted by design):
     // The bridge has a `ai.text() == null ? accumulated.toString() : ai.text()` fallback for
     // responses where the model returned no text. However, langchain4j 1.0.1's public AiMessage

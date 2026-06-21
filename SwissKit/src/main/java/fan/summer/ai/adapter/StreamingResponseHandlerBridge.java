@@ -37,6 +37,7 @@ public final class StreamingResponseHandlerBridge implements StreamingChatRespon
     private final AiStreamCallback callback;
     private final StringBuffer accumulated = new StringBuffer();
     private volatile List<AiToolCall> pendingToolCalls = List.of();
+    private volatile String lastAssistantText = "";
 
     public StreamingResponseHandlerBridge(AiStreamCallback callback) {
         this.callback = callback;
@@ -53,6 +54,14 @@ public final class StreamingResponseHandlerBridge implements StreamingChatRespon
     @Override
     public void onCompleteResponse(ChatResponse completeResponse) {
         AiMessage ai = completeResponse.aiMessage();
+        // Capture the assistant text BEFORE branching on tool calls so callers can
+        // retrieve it even when the response carries tool-execution requests. The
+        // OpenAI API contract requires the message sequence
+        // [user, assistantWithTools, toolResult] — the host loop reads
+        // {@link #lastAssistantText()} to populate the assistantWithTools message.
+        String text = ai.text() == null ? accumulated.toString() : ai.text();
+        this.lastAssistantText = text;
+
         if (ai.hasToolExecutionRequests()) {
             List<AiToolCall> calls = new ArrayList<>();
             for (ToolExecutionRequest req : ai.toolExecutionRequests()) {
@@ -61,9 +70,8 @@ public final class StreamingResponseHandlerBridge implements StreamingChatRespon
             this.pendingToolCalls = Collections.unmodifiableList(calls);
             return;
         }
-        String full = ai.text() == null ? accumulated.toString() : ai.text();
-        int tokens = estimateTokens(full);
-        Platform.runLater(() -> callback.onComplete(full, tokens, 0));
+        int tokens = estimateTokens(text);
+        Platform.runLater(() -> callback.onComplete(text, tokens, 0));
     }
 
     @Override
@@ -76,10 +84,16 @@ public final class StreamingResponseHandlerBridge implements StreamingChatRespon
         return pendingToolCalls;
     }
 
-    /** Resets accumulator and pending tool calls for the next round. Called by the loop driver between rounds. */
+    /** Returns the assistant text captured by the most recent {@link #onCompleteResponse}; empty if not yet fired. */
+    public String lastAssistantText() {
+        return lastAssistantText;
+    }
+
+    /** Resets accumulator, pending tool calls, and captured assistant text for the next round. Called by the loop driver between rounds. */
     public void resetForNextRound() {
         accumulated.setLength(0);
         pendingToolCalls = List.of();
+        lastAssistantText = "";
     }
 
     private static int estimateTokens(String text) {
