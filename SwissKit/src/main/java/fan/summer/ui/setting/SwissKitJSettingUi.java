@@ -1,9 +1,11 @@
 package fan.summer.ui.setting;
 
-import fan.summer.api.ai.AiService;
 import fan.summer.api.ai.AiServiceProvider;
+import fan.summer.api.ai.ChatBackend;
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.theme.Themes;
+import fan.summer.ai.service.CloudChatBackend;
+import fan.summer.ai.service.LocalChatBackend;
 import fan.summer.database.DatabaseInit;
 import fan.summer.ui.sidebar.Sidebar.NavItem;
 import fan.summer.database.entity.setting.email.EmailAddressBookEntity;
@@ -501,13 +503,13 @@ public class SwissKitJSettingUi {
     static void initializeAiService(String mode) {
         switch (mode) {
             case "openai" -> {
-                fan.summer.ai.service.OpenAiService svc = new fan.summer.ai.service.OpenAiService();
-                svc.configure(getAiOpenAiEndpoint(), getAiOpenAiApiKey(), getAiOpenAiModel());
+                CloudChatBackend svc = CloudChatBackend.openAi(
+                    getAiOpenAiEndpoint(), getAiOpenAiApiKey(), getAiOpenAiModel());
                 AiServiceProvider.switchMode(mode, svc);
             }
             case "anthropic" -> {
-                fan.summer.ai.service.AnthropicService svc = new fan.summer.ai.service.AnthropicService();
-                svc.configure(getAiAnthropicEndpoint(), getAiAnthropicApiKey(), getAiAnthropicModel());
+                CloudChatBackend svc = CloudChatBackend.anthropic(
+                    getAiAnthropicEndpoint(), getAiAnthropicApiKey(), getAiAnthropicModel());
                 AiServiceProvider.switchMode(mode, svc);
             }
             default -> createLocalBackend(false);
@@ -531,8 +533,7 @@ public class SwissKitJSettingUi {
             }
         }
 
-        fan.summer.ai.service.LocalChatBackend aiService =
-            new fan.summer.ai.service.LocalChatBackend(useNative);
+        LocalChatBackend aiService = new LocalChatBackend(useNative);
         AiServiceProvider.switchMode("local", aiService);
 
         if (autoLoadModel) {
@@ -555,15 +556,15 @@ public class SwissKitJSettingUi {
             return;
         }
 
-        var svc = AiServiceProvider.getService();
-        if (svc.isPresent() && svc.get() instanceof fan.summer.ai.service.LocalChatBackend) {
+        Optional<ChatBackend> svc = AiServiceProvider.getService();
+        if (svc.isPresent() && svc.get() instanceof LocalChatBackend) {
             return; // already initialized
         }
         log.info("Initializing local AI backend (lazy)");
         createLocalBackend(true);
     }
 
-    private static void autoLoadModel(fan.summer.ai.service.LocalChatBackend aiService) {
+    private static void autoLoadModel(LocalChatBackend aiService) {
         String modelPath = fan.summer.ai.AiConfigService.getAiModelPath();
 
         if (modelPath != null && java.nio.file.Files.exists(java.nio.file.Path.of(modelPath))) {
@@ -622,7 +623,7 @@ public class SwissKitJSettingUi {
 
             Thread.ofVirtual().start(() -> {
                 try {
-                    Optional<AiService> opt = AiServiceProvider.getService();
+                    Optional<ChatBackend> opt = AiServiceProvider.getService();
                     if (opt.isEmpty()) {
                         Platform.runLater(() -> {
                             modelStatusLabel.setText(I18n.get("setting.ai.aiServiceError"));
@@ -630,7 +631,7 @@ public class SwissKitJSettingUi {
                         });
                         return;
                     }
-                    AiService service = opt.get();
+                    ChatBackend service = opt.get();
                     service.loadModel(Path.of(path.trim()));
                     Platform.runLater(() -> {
                         modelStatusLabel.setText(I18n.get("setting.ai.modelLoaded", service.getModelName().orElse("Unknown")));
@@ -650,8 +651,8 @@ public class SwissKitJSettingUi {
         });
 
         unloadBtn.setOnAction(e -> {
-            Optional<AiService> opt = AiServiceProvider.getService();
-            opt.ifPresent(AiService::unloadModel);
+            Optional<ChatBackend> opt = AiServiceProvider.getService();
+            opt.ifPresent(ChatBackend::unloadModel);
             modelStatusLabel.setText(I18n.get("setting.ai.noModelLoaded"));
             modelPathLabel.setText("—");
             unloadBtn.setDisable(true);
@@ -746,8 +747,8 @@ public class SwissKitJSettingUi {
         testBtn.setOnAction(e -> {
             testBtn.setDisable(true);
             Thread.ofVirtual().start(() -> {
-                fan.summer.ai.service.OpenAiService svc = new fan.summer.ai.service.OpenAiService();
-                svc.configure(endpointField.getText(), apiKeyField.getText(), modelField.getText());
+                CloudChatBackend svc = CloudChatBackend.openAi(
+                    endpointField.getText(), apiKeyField.getText(), modelField.getText());
                 String err = svc.testConnection();
                 Platform.runLater(() -> {
                     if (err == null) {
@@ -796,8 +797,8 @@ public class SwissKitJSettingUi {
         testBtn.setOnAction(e -> {
             testBtn.setDisable(true);
             Thread.ofVirtual().start(() -> {
-                fan.summer.ai.service.AnthropicService svc = new fan.summer.ai.service.AnthropicService();
-                svc.configure(endpointField.getText(), apiKeyField.getText(), modelField.getText());
+                CloudChatBackend svc = CloudChatBackend.anthropic(
+                    endpointField.getText(), apiKeyField.getText(), modelField.getText());
                 String err = svc.testConnection();
                 Platform.runLater(() -> {
                     if (err == null) {
@@ -822,9 +823,9 @@ public class SwissKitJSettingUi {
     }
 
     private static void refreshAiModelState(Label statusLabel, Label pathLabel, Button unloadBtn) {
-        Optional<AiService> opt = AiServiceProvider.getService();
+        Optional<ChatBackend> opt = AiServiceProvider.getService();
         if (opt.isPresent() && opt.get().isReady()) {
-            AiService service = opt.get();
+            ChatBackend service = opt.get();
             statusLabel.setText(I18n.get("setting.ai.modelLoaded", service.getModelName().orElse("Unknown")));
             unloadBtn.setDisable(false);
             loadAiSetting(AI_MODEL_PATH_KEY, pathLabel::setText);
