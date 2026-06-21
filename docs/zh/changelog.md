@@ -4,6 +4,31 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 
 ---
 
+## [3.0.1] — FunctionGemma 离线适配
+
+**v3.0.1** — 2026-06-21
+
+### ✨ 新增
+
+- **FunctionGemma 多轮工具循环**：为 FunctionGemma-270m-it 本地模型实现宿主驱动的 `analyze → configure → execute` 循环；调用轮次期间抑制工具调用 token，仅将最终回复转发至 UI
+- **离线中→英关键词归一化**：`OfflineNlNormalizer` 在本地模型解析前将中文工具名关键词重写为英文，无需联网（基于资源文件 `nl-normalizer.properties`）
+- **工具参数 enum 约束**：`AiToolParam` 新增 `enumValues` 字段；工具声明现在向 FunctionGemma、OpenAI、Anthropic 三种后端输出 `enum:[...]` 约束 —— 显著提升小模型取参可靠性
+- 增强 Excel AI 工具描述，为 `mode`/`action` 参数添加 enum 约束
+
+### 🐛 修复
+
+- 加固 `FunctionGemmaAdapter` 解析器：使用 🪙（U+1FA99）字符串分隔符，正确处理值中含逗号、花括号以及单次响应中的多次工具调用
+- 卸载时尽力 `unmap` 释放 `GGUFModel` 的 mmap
+- 加固 `GGUFReader` 对损坏或截断模型文件的容错
+- 将 `PluginLoader` JAR 加载/卸载串行化到单线程调度器
+- 修复取消发生在 prefill 阶段时 `LlamaRunner` 不能干净结束生成的问题
+- 将 `TokenBatcher` 的刷新移出 FX 线程
+- 强杀前让 native AI worker 优雅退出
+- 修复 `ExcelUtil` 中即使复制/写入抛出也关闭目标 POI `Workbook`
+- 低优先级稳定性清理（MDI 字体日志、守护线程 UI）
+
+---
+
 ## [3.0.0] — JavaFX 迁移
 
 **v3.0.0** — 2026-06-12

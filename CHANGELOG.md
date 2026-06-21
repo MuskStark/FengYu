@@ -4,6 +4,31 @@ All notable changes to SwissKitJ. Format based on [Keep a Changelog](https://kee
 
 ---
 
+## [3.0.1] — FunctionGemma Offline Adaptation
+
+**v3.0.1** — 2026-06-21
+
+### ✨ New Features
+
+- **FunctionGemma Multi-Round Tool Loop**: Host-driven `analyze → configure → execute` loop for the FunctionGemma-270m-it local model; tool-call tokens are suppressed during call rounds and only the final response is forwarded to the UI
+- **Offline CN→EN Keyword Normalizer**: `OfflineNlNormalizer` rewrites Chinese tool-name keywords to English before local-model parsing, no network required (resource-backed `nl-normalizer.properties`)
+- **Enum-Schema Tool Parameters**: `AiToolParam` gains an `enumValues` field; tool declarations now emit `enum:[...]` constraints to FunctionGemma, OpenAI, and Anthropic backends — materially improves small-model parameter reliability
+- Enriched Excel AI tool descriptions and added enum constraints on `mode`/`action` parameters
+
+### 🐛 Fixes
+
+- Harden `FunctionGemmaAdapter` parser: 🪙 (U+1FA99) string delimiter correctly handles values containing commas, braces, and multiple tool calls in a single response
+- Release `GGUFModel` mmap on unload via best-effort `unmap`
+- Harden `GGUFReader` against malformed or truncated model files
+- Serialise `PluginLoader` JAR load/unload on a single-thread scheduler
+- Complete `LlamaRunner` generation cleanly when cancelled during prefill
+- Drive `TokenBatcher` flushes off the FX thread
+- Let the native AI worker exit gracefully before force-killing it
+- Close target POI `Workbook` in `ExcelUtil` even when copy/write throws
+- Low-priority stability cleanup (MDI font log, daemon UI threads)
+
+---
+
 ## [3.0.0] — JavaFX Migration
 
 **v3.0.0** — 2026-06-12
