@@ -7,6 +7,8 @@ import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import fan.summer.api.ai.AiStreamCallback;
 import fan.summer.api.ai.AiToolCall;
 import javafx.application.Platform;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -30,8 +32,10 @@ import java.util.Map;
  */
 public final class StreamingResponseHandlerBridge implements StreamingChatResponseHandler {
 
+    private static final Logger log = LoggerFactory.getLogger(StreamingResponseHandlerBridge.class);
+
     private final AiStreamCallback callback;
-    private final StringBuilder accumulated = new StringBuilder();
+    private final StringBuffer accumulated = new StringBuffer();
     private volatile List<AiToolCall> pendingToolCalls = List.of();
 
     public StreamingResponseHandlerBridge(AiStreamCallback callback) {
@@ -88,6 +92,7 @@ public final class StreamingResponseHandlerBridge implements StreamingChatRespon
         try {
             return fan.summer.ai.util.JsonHelper.parseObject(json);
         } catch (Exception e) {
+            log.warn("Failed to parse tool-call arguments JSON, falling back to empty map: '{}'", json, e);
             return Map.of();
         }
     }
