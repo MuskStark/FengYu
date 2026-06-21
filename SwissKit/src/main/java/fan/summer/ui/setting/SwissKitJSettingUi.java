@@ -515,7 +515,7 @@ public class SwissKitJSettingUi {
     }
 
     /**
-     * Creates and registers a local AI backend (AiServiceImpl).
+     * Creates and registers a local AI backend (LocalChatBackend).
      *
      * @param autoLoadModel if true, auto-load the last saved model path from DB
      */
@@ -531,8 +531,8 @@ public class SwissKitJSettingUi {
             }
         }
 
-        fan.summer.ai.service.AiServiceImpl aiService =
-            new fan.summer.ai.service.AiServiceImpl(useNative);
+        fan.summer.ai.service.LocalChatBackend aiService =
+            new fan.summer.ai.service.LocalChatBackend(useNative);
         AiServiceProvider.switchMode("local", aiService);
 
         if (autoLoadModel) {
@@ -556,14 +556,14 @@ public class SwissKitJSettingUi {
         }
 
         var svc = AiServiceProvider.getService();
-        if (svc.isPresent() && svc.get() instanceof fan.summer.ai.service.AiServiceImpl) {
+        if (svc.isPresent() && svc.get() instanceof fan.summer.ai.service.LocalChatBackend) {
             return; // already initialized
         }
         log.info("Initializing local AI backend (lazy)");
         createLocalBackend(true);
     }
 
-    private static void autoLoadModel(fan.summer.ai.service.AiServiceImpl aiService) {
+    private static void autoLoadModel(fan.summer.ai.service.LocalChatBackend aiService) {
         String modelPath = fan.summer.ai.AiConfigService.getAiModelPath();
 
         if (modelPath != null && java.nio.file.Files.exists(java.nio.file.Path.of(modelPath))) {

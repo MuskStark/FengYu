@@ -12,7 +12,13 @@ import fan.summer.ai.tools.OfflineNlNormalizer;
 import fan.summer.ai.tools.ToolCallParser;
 import fan.summer.ai.tools.ToolExecutor;
 import fan.summer.ai.tools.ToolSchemaBuilder;
-import fan.summer.api.ai.*;
+import fan.summer.api.ai.AiChatMessage;
+import fan.summer.api.ai.AiServiceException;
+import fan.summer.api.ai.AiStreamCallback;
+import fan.summer.api.ai.AiToolCall;
+import fan.summer.api.ai.AiToolResult;
+import fan.summer.api.ai.AiServiceProvider;
+import fan.summer.api.ai.ChatBackend;
 import fan.summer.ui.setting.SwissKitJSettingUi;
 import javafx.application.Platform;
 import org.slf4j.Logger;
@@ -26,16 +32,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * {@link AiService} implementation for local AI models (GGUF format).
+ * {@link ChatBackend} implementation for local AI models (GGUF format).
  * Uses a child JVM process ({@link NativeWorkerClient}) for native inference
  * to prevent native crashes from killing the main application.
  *
- * @see AiService
+ * @see ChatBackend
  * @see NativeWorkerClient
  */
-public class AiServiceImpl implements AiService {
+public class LocalChatBackend implements ChatBackend {
 
-    private static final Logger log = LoggerFactory.getLogger(AiServiceImpl.class);
+    private static final Logger log = LoggerFactory.getLogger(LocalChatBackend.class);
     private static final int MAX_TOOL_ROUNDS = 8;
 
     private enum Backend { NATIVE, JAVA }
@@ -56,7 +62,7 @@ public class AiServiceImpl implements AiService {
      *                  The caller must ensure the native library is loaded beforehand
      *                  when useNative is true.
      */
-    public AiServiceImpl(boolean useNative) {
+    public LocalChatBackend(boolean useNative) {
         if (useNative) {
             backend = Backend.NATIVE;
             log.info("AI backend: native (llama.cpp JNI, out-of-process)");
@@ -434,12 +440,6 @@ public class AiServiceImpl implements AiService {
             }
         }
     }
-
-    // ── Tool management ───────────────────────────────────────
-
-    @Override public void registerTool(AiTool tool) { AiServiceProvider.registerTool(tool); }
-    @Override public void unregisterTool(String toolName) { AiServiceProvider.unregisterTool(toolName); }
-    @Override public List<AiTool> getTools() { return AiServiceProvider.getTools(); }
 
     // ── Token batching ────────────────────────────────────────
 
