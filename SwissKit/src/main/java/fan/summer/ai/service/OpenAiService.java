@@ -48,7 +48,6 @@ public class OpenAiService implements AiService, CloudAiConfigProvider {
     private static final int MAX_TOOL_ROUNDS = 5;
     private static final Duration MODEL_TIMEOUT = Duration.ofSeconds(120);
 
-    private volatile OpenAiStreamingChatModel model;
     private final AtomicBoolean generating = new AtomicBoolean(false);
 
     private String endpoint;
@@ -68,7 +67,6 @@ public class OpenAiService implements AiService, CloudAiConfigProvider {
         this.endpoint = endpoint == null ? "" : (endpoint.endsWith("/") ? endpoint.substring(0, endpoint.length() - 1) : endpoint);
         this.apiKey = apiKey;
         this.modelName = modelName;
-        this.model = null; // force rebuild on next chat()
     }
 
     @Override
@@ -77,7 +75,7 @@ public class OpenAiService implements AiService, CloudAiConfigProvider {
     }
 
     @Override public void unloadModel() {
-        model = null;
+        // No-op — model is built fresh on each chat() call, so there is nothing to unload.
     }
 
     @Override public boolean isReady() {
@@ -126,10 +124,26 @@ public class OpenAiService implements AiService, CloudAiConfigProvider {
      * Drives the multi-round tool loop synchronously (caller runs on a virtual thread).
      * Terminates when either the model returns no more tool calls or {@code MAX_TOOL_ROUNDS}
      * rounds have been completed.
+     *
+     * <p>The model is built fresh on every invocation to honour per-call sampling
+     * parameters (temperature, topP, maxTokens). The OpenAI API contract requires the
+     * message sequence {@code [user, assistantWithTools, toolResult]} when tools are
+     * involved, so this method appends an {@code assistantWithTools} message to
+     * {@code history} before executing tools. On the final (no-tools) response it
+     * appends a plain assistant message so subsequent multi-turn user messages retain
+     * the prior assistant reply in context.</p>
      */
     private void runToolLoop(List<AiChatMessage> history, float temperature, float topP,
                              int maxTokens, AiStreamCallback callback) {
-        OpenAiStreamingChatModel m = getOrCreateModel(temperature, topP, maxTokens);
+        OpenAiStreamingChatModel m = OpenAiStreamingChatModel.builder()
+            .baseUrl(endpoint)
+            .apiKey(apiKey)
+            .modelName(modelName)
+            .temperature((double) temperature)
+            .topP((double) topP)
+            .maxTokens(maxTokens)
+            .timeout(MODEL_TIMEOUT)
+            .build();
 
         List<ToolSpecification> toolSpecs = null;
         List<AiTool> tools = AiServiceProvider.getTools();
@@ -159,7 +173,15 @@ public class OpenAiService implements AiService, CloudAiConfigProvider {
 
             List<AiToolCall> calls = bridge.pendingToolCalls();
             if (calls.isEmpty()) {
-                return; // final response already fired onComplete via the bridge
+                // Final response: append assistant message to history for multi-turn continuity.
+                // Callers like AiChatPlugin.onComplete only update UI; they rely on the service
+                // to mutate history, so without this the next user message would be sent with
+                // no memory of the prior assistant reply.
+                String finalText = bridge.lastAssistantText();
+                if (finalText != null && !finalText.isBlank()) {
+                    history.add(AiChatMessage.assistant(finalText));
+                }
+                return;
             }
             if (round == MAX_TOOL_ROUNDS) {
                 String warn = "Reached MAX_TOOL_ROUNDS (" + MAX_TOOL_ROUNDS + ")";
@@ -167,9 +189,13 @@ public class OpenAiService implements AiService, CloudAiConfigProvider {
                 Platform.runLater(() -> callback.onComplete(warn, 0, 0));
                 return;
             }
-            // Tool round: execute, append results to history, loop again
+            // Tool round: append the assistant-with-tool-calls message BEFORE executing
+            // tools to satisfy the OpenAI API contract that a tool result must follow
+            // an assistant-with-tool-calls message. Without this, round 2 sends
+            // [user, toolResult] and the server rejects it with HTTP 400.
+            history.add(AiChatMessage.assistantWithTools(bridge.lastAssistantText(), calls));
             ToolExecutor.executeAndFeed(calls, history, callback);
-            bridge.resetForNextRound();
+            // No resetForNextRound needed — a fresh bridge is constructed on the next iteration.
         }
     }
 
@@ -183,30 +209,6 @@ public class OpenAiService implements AiService, CloudAiConfigProvider {
     @Override public List<AiTool> getTools() { return AiServiceProvider.getTools(); }
 
     /**
-     * Lazily builds (and caches) the {@link OpenAiStreamingChatModel}. Double-checked
-     * locking ensures the model is built once per configuration. A new model is forced
-     * whenever {@link #configure} is called.
-     */
-    private OpenAiStreamingChatModel getOrCreateModel(float temperature, float topP, int maxTokens) {
-        OpenAiStreamingChatModel m = model;
-        if (m != null) return m;
-        synchronized (this) {
-            if (model == null) {
-                model = OpenAiStreamingChatModel.builder()
-                    .baseUrl(endpoint)
-                    .apiKey(apiKey)
-                    .modelName(modelName)
-                    .temperature((double) temperature)
-                    .topP((double) topP)
-                    .maxTokens(maxTokens)
-                    .timeout(MODEL_TIMEOUT)
-                    .build();
-            }
-            return model;
-        }
-    }
-
-    /**
      * Tests connectivity to the configured endpoint with a minimal non-streaming request.
      * Uses a direct HTTP call (independent of LangChain4j) so that connection issues
      * surface as actionable error strings rather than wrapped LC4j exceptions.
@@ -215,17 +217,16 @@ public class OpenAiService implements AiService, CloudAiConfigProvider {
      *         an error string describing the failure
      */
     public String testConnection() {
-        try {
+        try (HttpClient client = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(15))
+                .build()) {
             String url = endpoint + "/v1/chat/completions";
             String body = JsonHelper.toJson(Map.of(
                 "model", modelName,
                 "messages", List.of(Map.of("role", "user", "content", "Hi")),
                 "max_tokens", 5
             ));
-            HttpClient client = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
-                .connectTimeout(Duration.ofSeconds(15))
-                .build();
             HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Content-Type", "application/json")
