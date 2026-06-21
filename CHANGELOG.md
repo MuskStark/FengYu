@@ -4,30 +4,44 @@ All notable changes to SwissKitJ. Format based on [Keep a Changelog](https://kee
 
 ---
 
-## [3.1.0] — LangChain4j Cloud Mode Migration
+## [3.1.0] — LangChain4j + ChatBackend Unification
 
 **v3.1.0** — 2026-06-21
 
+This release rebuilds the AI subsystem on LangChain4j and unifies the two cloud providers (OpenAI + Anthropic) into a single `CloudChatBackend` class behind a new `ChatBackend` interface. Local mode (in-process GGUF) is renamed to `LocalChatBackend` but otherwise unchanged.
+
+### ⚠️ Breaking Changes
+
+- **`AiService` interface removed** — replaced by `ChatBackend`. External plugins calling `AiServiceProvider.getService()` must change the return type from `AiService` to `ChatBackend`. See [`docs/migration-3.1.md`](migration-3.1.md) for the migration guide.
+- **`OpenAiService` and `AnthropicService` concrete classes removed** — replaced by a single `CloudChatBackend` class with `openAi(...)` / `anthropic(...)` static factories. One unified class serves both providers.
+- **`CloudAiConfigProvider` and standalone `StreamingResponseHandlerBridge` removed** — their logic moved into `CloudChatBackend` (config accessors are public methods on the class; the stream bridge is a private inner class).
+- **`AiServiceImpl` renamed to `LocalChatBackend`** — pure rename, no behavior change.
+
 ### ♻️ Changed
 
-- **Cloud AI Backends Migrated to LangChain4j**: `OpenAiService` and `AnthropicService` now wrap `OpenAiStreamingChatModel` and `AnthropicStreamingChatModel` — eliminates ~700 lines of hand-rolled HTTP/SSE/tool-loop code
-- Tool-schema generation, message mapping, and stream bridging extracted into reusable adapters under the new `fan.summer.ai.adapter` package (`ChatMessageMapper`, `AiToolToToolSpecification`, `StreamingResponseHandlerBridge`, `CloudAiConfigProvider`)
-- `SynchronousChatHelper` (browser planner) decoupled from concrete `OpenAiService` via the new `CloudAiConfigProvider` interface — Anthropic is now also accepted as a browser-planner backend (HTTP body still OpenAI-compatible format, so OpenAI-compatible endpoints remain the practical recommendation)
-- Sampling parameters (temperature / topP / maxTokens) are now honoured per-call instead of being baked into a cached model — settings changes take effect on the next message without restarting the chat
+- **Unified `ChatBackend` interface** in `SwissKitJ-Api` — non-sealed (Java forbids cross-module sealed permits). Two known implementors: `CloudChatBackend`, `LocalChatBackend`. UI consumers use `instanceof` checks for backend-specific behavior; the `ChatBackend` interface itself is treated as opaque.
+- **`CloudChatBackend` unifies OpenAI + Anthropic** in one class (~450 LOC). HTTP/SSE, tool-loop plumbing, and stream bridging are entirely delegated to LangChain4j's `OpenAiStreamingChatModel` / `AnthropicStreamingChatModel`. Provider-specific differences isolated to a `buildStreamingModel(...)` switch on an internal `Provider` enum.
+- `SynchronousChatHelper` (browser planner) rewritten to use LC4j's synchronous `OpenAiChatModel` directly via `CloudChatBackend` config accessors.
+- `AiServiceProvider` exposes `ChatBackend` everywhere. Method names unchanged (`getService()`, `switchMode(...)`, `registerTool()`, etc.).
+- Sampling parameters (temperature / topP / maxTokens) are now honoured per-call instead of being baked into a cached model — settings changes take effect on the next message without restarting the chat.
 
 ### ✨ New
 
-- New `fan.summer.ai.adapter` package — three reusable adapters plus one marker interface
-- Three JUnit 5 test files for the adapters (~21 test cases total)
+- New `ChatBackend` interface (`fan.summer.api.ai.ChatBackend`)
+- New `CloudChatBackend` class with `openAi(...)` / `anthropic(...)` factories
+- `LocalChatBackend` (renamed from `AiServiceImpl`)
 - `AiToolCall.of(id, name, arguments)` overload to preserve server-issued tool-call IDs when bridging from LangChain4j
+- `CloudChatBackendTest` (11 tests) + adapter tests for `ChatMessageMapper` / `AiToolToToolSpecification` (~17 tests)
+- Migration guide at [`docs/migration-3.1.md`](migration-3.1.md) (EN + ZH) — covers type rename, `instanceof` migration, factory call patterns, custom backend extension
 
 ### 🐛 Fixes
 
-- **Anthropic multi-round tool calling**: server-issued `tool_use_id` is now preserved through the `AiToolCall → LangChain4j → AiToolCall` round-trip — previously a fabricated local ID caused HTTP 400 on tool round 2
-- **Multi-turn conversation continuity**: the assistant's final reply is now appended to `history` before the service returns (callers like `AiChatPlugin` relied on this and were silently losing context)
-- **OpenAI tool-round message ordering**: the assistant-with-tools message is now appended before `ToolExecutor.executeAndFeed`, satisfying the API contract that `tool` messages must follow an `assistant` with `tool_calls`
-- `testConnection()` `HttpClient` wrapped in try-with-resources (Java 21 `AutoCloseable`)
-- Thread-safety hardening on `StreamingResponseHandlerBridge` (`StringBuffer` accumulator, `volatile` fields)
+- **`testConnection()` null-message bug on macOS**: previously, `ConnectException` from an unreachable endpoint carried a `null` message on macOS JDKs, causing `testConnection()` to return `null` (interpreted as success by the Settings UI). Now falls back to `e.getClass().getSimpleName() + ": " + e` so the error always surfaces.
+- **Anthropic multi-round tool calling**: server-issued `tool_use_id` is now preserved through the `AiToolCall → LangChain4j → AiToolCall` round-trip — previously a fabricated local ID caused HTTP 400 on tool round 2.
+- **Multi-turn conversation continuity**: the assistant's final reply is now appended to `history` before the service returns (callers like `AiChatPlugin` relied on this and were silently losing context).
+- **OpenAI tool-round message ordering**: the assistant-with-tools message is now appended before `ToolExecutor.executeAndFeed`, satisfying the API contract that `tool` messages must follow an `assistant` with `tool_calls`.
+- `testConnection()` `HttpClient` wrapped in try-with-resources (Java 21 `AutoCloseable`).
+- Thread-safety hardening on the cloud stream handler (`StringBuffer` accumulator, `volatile` fields).
 
 ### ⬆️ Dependencies
 
@@ -39,6 +53,12 @@ All notable changes to SwissKitJ. Format based on [Keep a Changelog](https://kee
 
 - `cancelGeneration()` on cloud backends is now best-effort (LangChain4j 1.x does not expose mid-stream cancellation on streaming models); the in-progress flag is still cleared. Local mode is unaffected.
 - Mid-stream SSE errors now surface via `callback.onError` on the JavaFX Application Thread, same as existing local-mode behaviour.
+
+### 📉 Net Code Change
+
+- Deleted: `AiService` (117 LOC), `OpenAiService` (244 LOC), `AnthropicService` (283 LOC), `CloudAiConfigProvider` (22 LOC), `StreamingResponseHandlerBridge` (120 LOC), `StreamingResponseHandlerBridgeTest` (214 LOC) ≈ **1000 LOC removed**
+- Added: `ChatBackend` (86 LOC), `CloudChatBackend` (450 LOC), `CloudChatBackendTest` (87 LOC), adapter tests, migration guides (244 LOC) ≈ **1100 LOC added**
+- Net: roughly even on LOC, but cloud code is now one unified class instead of two parallel implementations.
 
 ---
 

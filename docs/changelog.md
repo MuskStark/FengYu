@@ -4,40 +4,61 @@ All notable changes to SwissKitJ. Format based on [Keep a Changelog](https://kee
 
 ---
 
-## [3.1.0] — LangChain4j Cloud Mode Migration
+## [3.1.0] — LangChain4j + ChatBackend Unification
 
 **v3.1.0** — 2026-06-21
 
+This release rebuilds the AI subsystem on LangChain4j and unifies the two cloud providers (OpenAI + Anthropic) into a single `CloudChatBackend` class behind a new `ChatBackend` interface. Local mode (in-process GGUF) is renamed to `LocalChatBackend` but otherwise unchanged.
+
+### ⚠️ Breaking Changes
+
+- **`AiService` interface removed** — replaced by `ChatBackend`. External plugins calling `AiServiceProvider.getService()` must change the return type from `AiService` to `ChatBackend`. See [migration-3.1.md](migration-3.1.md) for the migration guide.
+- **`OpenAiService` and `AnthropicService` concrete classes removed** — replaced by a single `CloudChatBackend` class with `openAi(...)` / `anthropic(...)` static factories.
+- **`CloudAiConfigProvider` and standalone `StreamingResponseHandlerBridge` removed** — their logic moved into `CloudChatBackend`.
+- **`AiServiceImpl` renamed to `LocalChatBackend`** — pure rename, no behavior change.
+
 ### ♻️ Changed
 
-- **Cloud AI Backends Migrated to LangChain4j**: `OpenAiService` and `AnthropicService` now wrap `OpenAiStreamingChatModel` and `AnthropicStreamingChatModel` — eliminates ~700 lines of hand-rolled HTTP/SSE/tool-loop code
-- Tool-schema generation, message mapping, and stream bridging extracted into reusable adapters under the new `fan.summer.ai.adapter` package (`ChatMessageMapper`, `AiToolToToolSpecification`, `StreamingResponseHandlerBridge`, `CloudAiConfigProvider`)
-- `SynchronousChatHelper` (browser planner) decoupled from concrete `OpenAiService` via the new `CloudAiConfigProvider` interface — Anthropic is now also accepted as a browser-planner backend (HTTP body still OpenAI-compatible format)
-- Sampling parameters (temperature / topP / maxTokens) are now honoured per-call instead of baked into a cached model
+- **Unified `ChatBackend` interface** in `SwissKitJ-Api` — non-sealed (Java forbids cross-module sealed permits). Two known implementors: `CloudChatBackend`, `LocalChatBackend`. UI consumers use `instanceof` for backend-specific behavior.
+- **`CloudChatBackend` unifies OpenAI + Anthropic** in one class (~450 LOC). HTTP/SSE, tool-loop plumbing, and stream bridging entirely delegated to LangChain4j's `OpenAiStreamingChatModel` / `AnthropicStreamingChatModel`. Provider differences isolated to a `buildStreamingModel(...)` switch on an internal `Provider` enum.
+- `SynchronousChatHelper` (browser planner) rewritten to use LC4j's synchronous `OpenAiChatModel` directly via `CloudChatBackend` config accessors.
+- `AiServiceProvider` exposes `ChatBackend` everywhere. Method names unchanged.
+- Sampling parameters (temperature / topP / maxTokens) honoured per-call instead of baked into a cached model.
 
 ### ✨ New
 
-- New `fan.summer.ai.adapter` package — three reusable adapters plus one marker interface
-- Three JUnit 5 test files for the adapters (~21 test cases total)
+- New `ChatBackend` interface
+- New `CloudChatBackend` class with `openAi(...)` / `anthropic(...)` factories
+- `LocalChatBackend` (renamed from `AiServiceImpl`)
 - `AiToolCall.of(id, name, arguments)` overload to preserve server-issued tool-call IDs
+- `CloudChatBackendTest` (11 tests) + adapter tests for `ChatMessageMapper` / `AiToolToToolSpecification`
+- Migration guide at [migration-3.1.md](migration-3.1.md) (EN + ZH)
 
 ### 🐛 Fixes
 
-- **Anthropic multi-round tool calling**: server-issued `tool_use_id` is now preserved through the `AiToolCall → LangChain4j → AiToolCall` round-trip — previously a fabricated local ID caused HTTP 400 on tool round 2
-- **Multi-turn conversation continuity**: the assistant's final reply is now appended to `history` before the service returns
-- **OpenAI tool-round message ordering**: the assistant-with-tools message is now appended before `ToolExecutor.executeAndFeed`, satisfying the API contract that `tool` messages must follow an `assistant` with `tool_calls`
-- `testConnection()` `HttpClient` wrapped in try-with-resources
-- Thread-safety hardening on `StreamingResponseHandlerBridge` (`StringBuffer` accumulator, `volatile` fields)
+- **`testConnection()` null-message bug on macOS**: `ConnectException` from an unreachable endpoint carried a `null` message on macOS JDKs, causing `testConnection()` to return `null` (interpreted as success by the Settings UI). Now falls back to `e.getClass().getSimpleName() + ": " + e`.
+- **Anthropic multi-round tool calling**: server-issued `tool_use_id` is now preserved through the `AiToolCall → LangChain4j → AiToolCall` round-trip — previously a fabricated local ID caused HTTP 400 on tool round 2.
+- **Multi-turn conversation continuity**: the assistant's final reply is now appended to `history` before the service returns.
+- **OpenAI tool-round message ordering**: the assistant-with-tools message is now appended before `ToolExecutor.executeAndFeed`, satisfying the API contract that `tool` messages must follow an `assistant` with `tool_calls`.
+- `testConnection()` `HttpClient` wrapped in try-with-resources (Java 21 `AutoCloseable`).
+- Thread-safety hardening on the cloud stream handler (`StringBuffer` accumulator, `volatile` fields).
 
 ### ⬆️ Dependencies
 
 - `dev.langchain4j:langchain4j-open-ai:1.2.0`
 - `dev.langchain4j:langchain4j-anthropic:1.2.0`
+- (1.0.1 was originally pinned but `langchain4j-anthropic` was never published at that version; bumped to the lowest GA where both modules co-exist)
 
 ### ⚠️ Known Behavior Changes
 
-- `cancelGeneration()` on cloud backends is now best-effort (LangChain4j 1.x does not expose mid-stream cancellation); the in-progress flag is still cleared
-- Mid-stream SSE errors now surface via `callback.onError` on the JavaFX Application Thread
+- `cancelGeneration()` on cloud backends is now best-effort (LangChain4j 1.x does not expose mid-stream cancellation on streaming models); the in-progress flag is still cleared. Local mode is unaffected.
+- Mid-stream SSE errors now surface via `callback.onError` on the JavaFX Application Thread.
+
+### 📉 Net Code Change
+
+- Deleted: ~1000 LOC (5 obsolete classes + 1 obsolete test)
+- Added: ~1100 LOC (new unified types + tests + migration guides)
+- Net: roughly even on LOC, but cloud code is now one unified class instead of two parallel implementations.
 
 ---
 
