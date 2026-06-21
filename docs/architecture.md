@@ -22,7 +22,7 @@ tool — whether built-in or shipped as an external JAR — implements the same
 ┌──────────────────────────────────────────────────────────────────┐
 │  SwissKit  —  JavaFX application shell + built-in tools           │
 │  UI Shell · Plugin Layer (Loader/Registry/Context/Favorites)      │
-│  AI Subsystem (3 backends · tools · local inference)              │
+│  AI Subsystem (2 backends · tools · local inference)              │
 │  H2 + MyBatis · i18n · Logback · JsonHelper                       │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -31,7 +31,7 @@ tool — whether built-in or shipped as an external JAR — implements the same
 
 | Module | Purpose |
 |--------|---------|
-| `SwissKitJ-Api` | Shared plugin interface (`SwissKitJPlugin`), plugin context & isolation (`PluginContext`), reusable components (`StepWizard`, `GlassNotification`, `UiUtils`), theming, i18n, logging API, and the AI service contract (`AiService`, `AiTool`, message records) |
+| `SwissKitJ-Api` | Shared plugin interface (`SwissKitJPlugin`), plugin context & isolation (`PluginContext`), reusable components (`StepWizard`, `GlassNotification`, `UiUtils`), theming, i18n, logging API, and the AI service contract (`ChatBackend`, `AiTool`, message records) |
 | `SwissKit` | JavaFX application shell — UI, plugin loading, favorites, the AI subsystem, and all built-in tools |
 
 Official plugins live in a [separate repository](https://github.com/MuskStark/SwissKiJ-Plugin). They are built independently and dropped into `.swisskit/plugin/` as JARs at runtime. All plugins declare `SwissKitJ-Api` as `provided` scope; the main app provides it at runtime via the fat JAR.
@@ -176,20 +176,20 @@ retention) and returns a silent no-op logger in tests. Use SLF4J-style `{}` plac
 
 ### Service abstraction
 
-`AiService` (`SwissKitJ-Api`) is the inference contract: `loadModel`/`unloadModel`/`isReady`,
-streaming `chat(history, callback)`, generation control (`cancelGeneration`/`isGenerating`),
-and tool registration. `AiServiceProvider` is the **static singleton** that holds the active
-service instance, the current mode label, state-change listeners, and the global tool
-registry. Mode switches go through `switchMode(mode, service)`, which unloads the previous
-service before installing the new one and notifies listeners.
+`ChatBackend` (`SwissKitJ-Api`) is the inference contract: `loadModel`/`unloadModel`/`isReady`,
+streaming `chat(history, callback)`, generation control (`cancelGeneration`/`isGenerating`).
+Tool registration is global via `AiServiceProvider` (no longer on the backend interface itself).
+`AiServiceProvider` is the **static singleton** that holds the active backend, the current
+mode label, state-change listeners, and the global tool registry. Mode switches go through
+`switchMode(mode, service)`, which unloads the previous backend before installing the new
+one and notifies listeners.
 
-There are three backends, all implementing `AiService`:
+There are two backends, both implementing the `ChatBackend` interface:
 
 | Backend | When | Notes |
 |---------|------|-------|
-| `AiServiceImpl` | local mode | GGUF inference. Native path runs in a **child JVM process** (`NativeWorkerClient`) so a native crash cannot kill the host; crashes ≤3 trigger an auto-restart, ≥3 trigger a fallback to the pure-Java engine. Configured as `java` or `native` via `ai.local.backend`. **Lazy-loaded** the first time the AI tool opens. |
-| `OpenAiService` | openai mode | OpenAI-compatible chat-completions API. Backed by LangChain4j `OpenAiStreamingChatModel`; HTTP/SSE and tool-loop plumbing delegated to the `fan.summer.ai.adapter` package. |
-| `AnthropicService` | anthropic mode | Anthropic Messages API. Backed by LangChain4j `AnthropicStreamingChatModel`; same adapter plumbing as OpenAI. |
+| `LocalChatBackend` | local mode | GGUF inference. Native path runs in a **child JVM process** (`NativeWorkerClient`) so a native crash cannot kill the host; crashes ≤3 trigger an auto-restart, ≥3 trigger a fallback to the pure-Java engine. Configured as `java` or `native` via `ai.local.backend`. **Lazy-loaded** the first time the AI tool opens. |
+| `CloudChatBackend` | openai / anthropic mode | Unified cloud backend for both providers. Constructed via `CloudChatBackend.openAi(...)` or `.anthropic(...)` static factories. Backed by LangChain4j's `OpenAiStreamingChatModel` / `AnthropicStreamingChatModel`. HTTP/SSE, tool-loop plumbing, and stream bridging are entirely delegated to LangChain4j; the host only provides `AiChatMessage`↔LC4j mapping and the multi-round tool loop driver. |
 
 AI settings are read through `AiConfigService` (DB-direct, no UI dependency) so the startup
 path and AI services never depend on the settings UI class.
