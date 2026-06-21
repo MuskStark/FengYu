@@ -36,6 +36,7 @@
         <documents4j.version>1.1.0</documents4j.version>
         <poi.version>5.4.1</poi.version>
         <playwright.version>1.49.0</playwright.version>
+        <langchain4j.version>1.0.1</langchain4j.version>
     </properties>
 
     <dependencies>
@@ -205,6 +206,18 @@
             <groupId>com.microsoft.playwright</groupId>
             <artifactId>playwright</artifactId>
             <version>${playwright.version}</version>
+        </dependency>
+
+        <!-- LangChain4j: OpenAI + Anthropic cloud backends (replaces hand-rolled HTTP/SSE code) -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-open-ai</artifactId>
+            <version>${langchain4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-anthropic</artifactId>
+            <version>${langchain4j.version}</version>
         </dependency>
 
         <dependency>
