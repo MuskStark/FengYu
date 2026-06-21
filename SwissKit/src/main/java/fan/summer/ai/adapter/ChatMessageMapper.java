@@ -9,6 +9,7 @@ import fan.summer.api.ai.AiToolCall;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Bidirectional mapper between SwissKitJ's {@link AiChatMessage} and LangChain4j's
@@ -52,14 +53,13 @@ public final class ChatMessageMapper {
                 yield AiMessage.from(text, reqs);
             }
             case TOOL -> ToolExecutionResultMessage.from(
-                src.toolCallId() == null ? "unknown" : src.toolCallId(),
-                src.toolName() == null ? "unknown" : src.toolName(),
+                Objects.requireNonNull(src.toolCallId(), "toolCallId"),
+                Objects.requireNonNull(src.toolName(), "toolName"),
                 text);
         };
     }
 
     /** Converts a LangChain4j message back to a SwissKitJ message. */
-    @SuppressWarnings("unchecked")
     public static AiChatMessage fromLc4j(ChatMessage src) {
         if (src instanceof SystemMessage sm) {
             return AiChatMessage.system(sm.text());
