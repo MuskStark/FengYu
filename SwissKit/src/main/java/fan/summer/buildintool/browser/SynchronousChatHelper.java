@@ -1,6 +1,6 @@
 package fan.summer.buildintool.browser;
 
-import fan.summer.ai.service.OpenAiService;
+import fan.summer.ai.adapter.CloudAiConfigProvider;
 import fan.summer.ai.util.JsonHelper;
 import fan.summer.api.ai.*;
 import fan.summer.api.log.LoggerFactory;
@@ -50,16 +50,16 @@ public class SynchronousChatHelper {
             return null;
         }
 
-        // Only support OpenAI-compatible services for direct API call
-        if (!(service instanceof OpenAiService openAiService)) {
-            log.warn("Browser planner only supports OpenAI-compatible backends, got: {}",
+        // Only support cloud AI services that expose raw API config for direct call
+        if (!(service instanceof CloudAiConfigProvider config)) {
+            log.warn("Browser planner requires a cloud AI backend exposing raw API config, got: {}",
                      service.getClass().getSimpleName());
             return null;
         }
 
-        String endpoint = openAiService.getEndpoint();
-        String apiKey = openAiService.getApiKey();
-        String model = openAiService.getModelNameInternal();
+        String endpoint = config.getEndpoint();
+        String apiKey = config.getApiKey();
+        String model = config.getModelNameInternal();
 
         if (endpoint == null || endpoint.isBlank() || apiKey == null || apiKey.isBlank()
             || model == null || model.isBlank()) {
