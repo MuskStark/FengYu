@@ -19,8 +19,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * notifications to all registered listeners.
  *
  * <p>Tool registration is global: tools registered via this provider are visible to all
- * {@link ChatBackend} implementations that delegate to it (e.g., {@code AnthropicService},
- * {@code OpenAiService}, {@code LocalChatBackend}).
+ * {@link ChatBackend} implementations that delegate to it (e.g., {@code CloudChatBackend},
+ * {@code LocalChatBackend}).
  *
  * @see ChatBackend
  * @see AiTool
