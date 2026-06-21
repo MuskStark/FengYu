@@ -334,7 +334,11 @@ public final class CloudChatBackend implements ChatBackend {
             if (resp.statusCode() == 200) return null;
             return "HTTP " + resp.statusCode() + ": " + resp.body();
         } catch (Exception e) {
-            return e.getMessage();
+            // Some IOExceptions (e.g. ConnectException on connection refused) carry a null
+            // message — falling back to e.toString() keeps testConnection() from returning
+            // null (which the Settings UI interprets as success).
+            String msg = e.getMessage();
+            return msg != null ? msg : e.getClass().getSimpleName() + ": " + e;
         }
     }
 
@@ -361,7 +365,9 @@ public final class CloudChatBackend implements ChatBackend {
             if (resp.statusCode() == 200) return null;
             return "HTTP " + resp.statusCode() + ": " + resp.body();
         } catch (Exception e) {
-            return e.getMessage();
+            // See testOpenAi() — ConnectException often carries a null message.
+            String msg = e.getMessage();
+            return msg != null ? msg : e.getClass().getSimpleName() + ": " + e;
         }
     }
 
