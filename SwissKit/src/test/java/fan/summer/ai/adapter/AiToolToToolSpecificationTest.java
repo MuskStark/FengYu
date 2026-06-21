@@ -68,4 +68,50 @@ class AiToolToToolSpecificationTest {
         assertNotNull(schema);
         assertTrue(schema.properties().isEmpty());
     }
+
+    @Test
+    void convertsNumberParam() {
+        AiTool t = tool("t5", List.of(AiToolParam.of("ratio", "number", "Sampling ratio")));
+        ToolSpecification spec = AiToolToToolSpecification.convert(t);
+        JsonObjectSchema schema = (JsonObjectSchema) spec.parameters();
+
+        assertInstanceOf(JsonNumberSchema.class, schema.properties().get("ratio"));
+    }
+
+    @Test
+    void convertsIntegerParam() {
+        AiTool t = tool("t6", List.of(AiToolParam.of("limit", "integer", "Max rows")));
+        ToolSpecification spec = AiToolToToolSpecification.convert(t);
+        JsonObjectSchema schema = (JsonObjectSchema) spec.parameters();
+
+        assertInstanceOf(JsonIntegerSchema.class, schema.properties().get("limit"));
+    }
+
+    @Test
+    void convertsArrayParam() {
+        AiTool t = tool("t7", List.of(
+            AiToolParam.of("sheets", "string[]", "Sheet names", false)
+        ));
+        ToolSpecification spec = AiToolToToolSpecification.convert(t);
+        JsonObjectSchema schema = (JsonObjectSchema) spec.parameters();
+
+        JsonArraySchema arr = (JsonArraySchema) schema.properties().get("sheets");
+        assertNotNull(arr.items());
+        assertInstanceOf(JsonStringSchema.class, arr.items());
+        assertFalse(schema.required().contains("sheets"));
+    }
+
+    @Test
+    void convertsEnumParamWithDescriptionAndOptional() {
+        AiTool t = tool("t8", List.of(
+            AiToolParam.of("mode", "string", "Split mode", false, List.of("SSM", "SCM", "SCPM"))
+        ));
+        ToolSpecification spec = AiToolToToolSpecification.convert(t);
+        JsonObjectSchema schema = (JsonObjectSchema) spec.parameters();
+
+        JsonEnumSchema mode = (JsonEnumSchema) schema.properties().get("mode");
+        assertEquals(List.of("SSM", "SCM", "SCPM"), mode.enumValues());
+        assertEquals("Split mode", mode.description());
+        assertFalse(schema.required().contains("mode"));
+    }
 }
