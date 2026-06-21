@@ -247,7 +247,7 @@ Schema 从 `init.sql` 初始化，通过 MyBatis 访问，XML mapper 位于
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.0.0.jar
+java -jar SwissKit/target/SwissKitJ-3.0.1.jar
 ```
 
 胖 JAR 由 `maven-shade-plugin` 构建（主类 `fan.summer.Launcher`），并捆绑所有平台的

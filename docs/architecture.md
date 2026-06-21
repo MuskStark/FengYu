@@ -264,7 +264,7 @@ placeholder at startup.
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.0.0.jar
+java -jar SwissKit/target/SwissKitJ-3.0.1.jar
 ```
 
 The fat JAR is built by `maven-shade-plugin` (main class `fan.summer.Launcher`) and bundles
