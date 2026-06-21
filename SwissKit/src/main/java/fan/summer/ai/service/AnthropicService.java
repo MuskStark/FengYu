@@ -1,8 +1,15 @@
 package fan.summer.ai.service;
 
-import fan.summer.ai.tools.ToolCallParser;
+import dev.langchain4j.agent.tool.ToolSpecification;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.model.anthropic.AnthropicStreamingChatModel;
+import dev.langchain4j.model.chat.request.ChatRequest;
+import fan.summer.ai.adapter.AiToolToToolSpecification;
+import fan.summer.ai.adapter.ChatMessageMapper;
+import fan.summer.ai.adapter.CloudAiConfigProvider;
+import fan.summer.ai.adapter.StreamingResponseHandlerBridge;
 import fan.summer.ai.tools.ToolExecutor;
-import fan.summer.ai.tools.ToolSchemaBuilder;
 import fan.summer.ai.util.JsonHelper;
 import fan.summer.api.ai.*;
 import fan.summer.ui.setting.SwissKitJSettingUi;
@@ -10,52 +17,52 @@ import javafx.application.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * {@link AiService} implementation for calling Anthropic's Messages API.
- * Supports streaming responses, tool calling, and multi-round conversations.
- * Does not support local model loading.
+ *
+ * <p>HTTP/SSE plumbing is delegated to LangChain4j's {@link AnthropicStreamingChatModel};
+ * the multi-round tool loop is driven manually via {@link StreamingResponseHandlerBridge}
+ * and {@link ToolExecutor#executeAndFeed} so that UI tool-call/tool-result events
+ * are preserved. Local model loading is not supported.</p>
  *
  * <p>Configure the service using {@link #configure(String, String, String)}
- * before invoking {@link #chat(List, AiStreamCallback)}.
+ * before invoking {@link #chat(List, AiStreamCallback)}.</p>
  *
  * @see AiService
+ * @see CloudAiConfigProvider
  */
-public class AnthropicService implements AiService {
+public class AnthropicService implements AiService, CloudAiConfigProvider {
 
     private static final Logger log = LoggerFactory.getLogger(AnthropicService.class);
     private static final int MAX_TOOL_ROUNDS = 5;
+    private static final Duration MODEL_TIMEOUT = Duration.ofSeconds(120);
 
-    private final HttpClient httpClient;
-    private volatile boolean generating = false;
-    private volatile InputStream activeStream;
+    /**
+     * Anthropic's default API base URL. {@code baseUrl} is only passed to the
+     * model builder when the configured endpoint differs from this, so users
+     * hitting the official API do not need to configure anything extra.
+     */
+    private static final String DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com";
+
+    private final AtomicBoolean generating = new AtomicBoolean(false);
 
     private String endpoint;
     private String apiKey;
     private String modelName;
 
-    /**
-     * Constructs an {@code AnthropicService} with a default HTTP/1.1 client
-     * and a 30-second connection timeout.
-     */
-    public AnthropicService() {
-        this.httpClient = HttpClient.newBuilder()
-            .version(HttpClient.Version.HTTP_1_1)
-            .connectTimeout(Duration.ofSeconds(30))
-            .build();
-    }
+    public AnthropicService() {}
 
     /**
      * Configures the endpoint, API key, and model name for this service.
@@ -75,14 +82,10 @@ public class AnthropicService implements AiService {
         throw new AiServiceException("Local model loading not supported for Anthropic mode");
     }
 
-    @Override public void unloadModel() {}
+    @Override public void unloadModel() {
+        // No-op — model is built fresh on each chat() call, so there is nothing to unload.
+    }
 
-    /**
-     * Returns {@code true} if the service has been configured with non-blank
-     * endpoint, API key, and model name.
-     *
-     * @return true if ready, false otherwise
-     */
     @Override public boolean isReady() {
         return endpoint != null && !endpoint.isBlank()
             && apiKey != null && !apiKey.isBlank()
@@ -91,7 +94,11 @@ public class AnthropicService implements AiService {
 
     @Override public Optional<String> getModelName() { return Optional.ofNullable(modelName); }
     @Override public long getMemoryUsage() { return -1; }
-    @Override public boolean isGenerating() { return generating; }
+    @Override public boolean isGenerating() { return generating.get(); }
+
+    @Override public String getEndpoint() { return endpoint; }
+    @Override public String getApiKey() { return apiKey; }
+    @Override public String getModelNameInternal() { return modelName; }
 
     @Override
     public void chat(List<AiChatMessage> history, AiStreamCallback callback) throws AiServiceException {
@@ -103,199 +110,136 @@ public class AnthropicService implements AiService {
     public void chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
                      AiStreamCallback callback) throws AiServiceException {
         if (!isReady()) {
-            callback.onError(new AiServiceException("Anthropic service not configured"));
-            return;
+            throw new AiServiceException("Anthropic service not configured");
         }
-        generating = true;
+        if (!generating.compareAndSet(false, true)) {
+            throw new AiServiceException("Generation already in progress");
+        }
+
         Thread.ofVirtual().start(() -> {
             try {
-                chatWithToolLoop(history, temperature, topP, maxTokens, callback, 0, new AtomicBoolean(false));
+                runToolLoop(history, temperature, topP, maxTokens, callback);
             } catch (Exception e) {
-                log.error("Anthropic generation error", e);
+                log.error("Anthropic chat failed", e);
                 Platform.runLater(() -> callback.onError(e));
             } finally {
-                generating = false;
+                generating.set(false);
             }
         });
     }
 
     /**
-     * Sends a message and handles a multi-round tool-call loop. The loop
-     * terminates when either no more tool calls are generated or
-     * {@code MAX_TOOL_ROUNDS} rounds have been completed.
+     * Drives the multi-round tool loop synchronously (caller runs on a virtual thread).
+     * Terminates when either the model returns no more tool calls or {@code MAX_TOOL_ROUNDS}
+     * rounds have been completed.
+     *
+     * <p>The model is built fresh on every invocation to honour per-call sampling
+     * parameters (temperature, topP, maxTokens). The Anthropic API requires the
+     * message sequence {@code [user, assistantWithTools, toolResult]} when tools are
+     * involved, so this method appends an {@code assistantWithTools} message to
+     * {@code history} before executing tools. On the final (no-tools) response it
+     * appends a plain assistant message so subsequent multi-turn user messages retain
+     * the prior assistant reply in context.</p>
+     *
+     * <p>The system prompt from {@code SwissKitJSettingUi.getAiSystemPrompt()} is
+     * injected as a leading {@link SystemMessage} on every round — LangChain4j's
+     * Anthropic mapper routes this to the API's {@code system} field. (Tool
+     * definitions no longer need to be text-embedded; they are passed structurally
+     * via {@link ToolSpecification}.)</p>
      */
-    @SuppressWarnings("unchecked")
-    private void chatWithToolLoop(List<AiChatMessage> history, float temperature, float topP,
-                                  int maxTokens, AiStreamCallback callback, int round,
-                                  AtomicBoolean hadToolCall) throws Exception {
-        if (round >= MAX_TOOL_ROUNDS) return;
+    private void runToolLoop(List<AiChatMessage> history, float temperature, float topP,
+                             int maxTokens, AiStreamCallback callback) {
+        AnthropicStreamingChatModel.AnthropicStreamingChatModelBuilder builder = AnthropicStreamingChatModel.builder()
+            .apiKey(apiKey)
+            .modelName(modelName)
+            .temperature((double) temperature)
+            .topP((double) topP)
+            .maxTokens(maxTokens)
+            .timeout(MODEL_TIMEOUT);
+        // Only override baseUrl for non-default endpoints (proxy/mirror setups).
+        // LC4j defaults to https://api.anthropic.com internally.
+        if (endpoint != null && !endpoint.isBlank()
+            && !DEFAULT_ANTHROPIC_BASE_URL.equalsIgnoreCase(endpoint)) {
+            builder.baseUrl(endpoint);
+        }
+        AnthropicStreamingChatModel m = builder.build();
 
-        String systemPrompt = SwissKitJSettingUi.getAiSystemPrompt();
-        String toolDefs = ToolSchemaBuilder.buildPromptDefinitions(AiServiceProvider.getTools());
-        if (!toolDefs.isEmpty()) systemPrompt += "\n\n" + toolDefs;
-
-        List<Object> messages = buildAnthropicMessages(history);
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", modelName);
-        body.put("max_tokens", maxTokens);
-        body.put("temperature", temperature);
-        body.put("top_p", topP);
-        body.put("stream", true);
-        body.put("system", systemPrompt);
-        body.put("messages", messages);
-        if (AiServiceProvider.hasTools()) {
-            body.put("tools", ToolSchemaBuilder.buildAnthropicTools(AiServiceProvider.getTools()));
+        List<ToolSpecification> toolSpecs = null;
+        List<AiTool> tools = AiServiceProvider.getTools();
+        if (!tools.isEmpty()) {
+            toolSpecs = tools.stream().map(AiToolToToolSpecification::convert).toList();
         }
 
-        String jsonBody = JsonHelper.toJson(body);
-        String url = endpoint + "/v1/messages";
+        String systemPrompt = currentSystemPrompt();
 
-        HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(url))
-            .header("Content-Type", "application/json")
-            .header("x-api-key", apiKey)
-            .header("anthropic-version", "2023-06-01")
-            .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-            .timeout(Duration.ofSeconds(120))
-            .build();
-
-        HttpResponse<InputStream> resp = sendWithRetry(request);
-
-        if (resp.statusCode() != 200) {
-            String errBody;
-            try (InputStream is = resp.body()) {
-                errBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+        for (int round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+            StreamingResponseHandlerBridge bridge = new StreamingResponseHandlerBridge(callback);
+            List<ChatMessage> lcMessages = new ArrayList<>(history.size() + 1);
+            if (systemPrompt != null && !systemPrompt.isBlank()) {
+                lcMessages.add(SystemMessage.from(systemPrompt));
             }
-            throw new AiServiceException("Anthropic API error (HTTP " + resp.statusCode() + "): " + errBody);
-        }
-
-        activeStream = resp.body();
-        StringBuilder fullResponse = new StringBuilder();
-        List<AiToolCall> toolCalls = new ArrayList<>();
-        StringBuilder currentToolArgs = new StringBuilder();
-        String[] currentToolName = {null};
-        String[] currentToolId = {null};
-        long startTime = System.nanoTime();
-        int[] tokenCount = {0};
-
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(resp.body(), StandardCharsets.UTF_8))) {
-            String line;
-            String eventType = "";
-            while ((line = reader.readLine()) != null) {
-                if (line.startsWith("event: ")) {
-                    eventType = line.substring(7).trim();
-                    continue;
-                }
-                if (!line.startsWith("data: ")) continue;
-                String data = line.substring(6).trim();
-                if (data.isEmpty()) continue;
-
-                Map<String, Object> chunk;
-                try {
-                    chunk = JsonHelper.parseObject(data);
-                } catch (Exception e) {
-                    log.warn("Malformed SSE chunk, skipping: {}", e.getMessage());
-                    continue;
-                }
-                String type = chunk.containsKey("type") ? String.valueOf(chunk.get("type")) : eventType;
-
-                switch (type) {
-                    case "content_block_delta" -> {
-                        Map<String, Object> delta = (Map<String, Object>) chunk.get("delta");
-                        if (delta == null) break;
-                        if (delta.containsKey("text")) {
-                            String text = (String) delta.get("text");
-                            fullResponse.append(text);
-                            tokenCount[0]++;
-                            Platform.runLater(() -> callback.onToken(text));
-                        } else if (delta.containsKey("partial_json")) {
-                            currentToolArgs.append(delta.get("partial_json"));
-                        }
-                    }
-                    case "content_block_start" -> {
-                        Map<String, Object> contentBlock = (Map<String, Object>) chunk.get("content_block");
-                        if (contentBlock != null && "tool_use".equals(contentBlock.get("type"))) {
-                            currentToolName[0] = (String) contentBlock.get("name");
-                            currentToolId[0] = (String) contentBlock.get("id");
-                            currentToolArgs.setLength(0);
-                        }
-                    }
-                    case "content_block_stop" -> {
-                        if (currentToolName[0] != null && currentToolId[0] != null) {
-                            Map<String, Object> args;
-                            try {
-                                Object parsed = JsonHelper.parse(currentToolArgs.toString());
-                                args = parsed instanceof Map ? (Map<String, Object>) parsed : Map.of("raw", currentToolArgs.toString());
-                            } catch (Exception e) {
-                                args = Map.of("raw", currentToolArgs.toString());
-                            }
-                            toolCalls.add(new AiToolCall(currentToolId[0], currentToolName[0], args));
-                            currentToolName[0] = null;
-                            currentToolId[0] = null;
-                        }
-                    }
-                }
+            for (AiChatMessage msg : history) {
+                lcMessages.add(ChatMessageMapper.toLc4j(msg));
             }
-        }
 
-        long elapsed = System.nanoTime() - startTime;
-        double tokPerSec = tokenCount[0] > 0 ? tokenCount[0] * 1_000_000_000.0 / elapsed : 0;
+            ChatRequest request;
+            if (toolSpecs != null) {
+                request = ChatRequest.builder()
+                    .messages(lcMessages)
+                    .toolSpecifications(toolSpecs)
+                    .build();
+            } else {
+                request = ChatRequest.builder()
+                    .messages(lcMessages)
+                    .build();
+            }
+            m.chat(request, bridge);
 
-        if (!toolCalls.isEmpty() && AiServiceProvider.hasTools()) {
-            hadToolCall.set(true);
-            history.add(AiChatMessage.assistantWithTools(fullResponse.toString(), toolCalls));
-            ToolExecutor.executeAndFeed(toolCalls, history, callback);
-            chatWithToolLoop(history, temperature, topP, maxTokens, callback, round + 1, hadToolCall);
-        } else {
-            String clean = hadToolCall.get() ? ToolCallParser.stripToolCalls(fullResponse.toString()) : fullResponse.toString();
-            int count = tokenCount[0];
-            Platform.runLater(() -> callback.onComplete(clean, count, tokPerSec));
+            List<AiToolCall> calls = bridge.pendingToolCalls();
+            if (calls.isEmpty()) {
+                // Final response: append assistant message to history for multi-turn continuity.
+                // Callers like AiChatPlugin.onComplete only update UI; they rely on the service
+                // to mutate history, so without this the next user message would be sent with
+                // no memory of the prior assistant reply.
+                String finalText = bridge.lastAssistantText();
+                if (finalText != null && !finalText.isBlank()) {
+                    history.add(AiChatMessage.assistant(finalText));
+                }
+                return;
+            }
+            if (round == MAX_TOOL_ROUNDS) {
+                String warn = "Reached MAX_TOOL_ROUNDS (" + MAX_TOOL_ROUNDS + ")";
+                log.warn(warn);
+                Platform.runLater(() -> callback.onComplete(warn, 0, 0));
+                return;
+            }
+            // Tool round: append the assistant-with-tool-calls message BEFORE executing
+            // tools to satisfy the Anthropic API contract that a tool result must follow
+            // an assistant-with-tool-calls message. Without this, round 2 sends
+            // [user, toolResult] and the server rejects it.
+            history.add(AiChatMessage.assistantWithTools(bridge.lastAssistantText(), calls));
+            ToolExecutor.executeAndFeed(calls, history, callback);
+            // No resetForNextRound needed — a fresh bridge is constructed on the next iteration.
         }
     }
 
     /**
-     * Builds the list of messages in Anthropic's internal format from the
-     * conversation history, converting tool roles and assistant tool calls
-     * into the appropriate content block structures.
-     * System messages are skipped as they are sent via the {@code system} field.
+     * Returns the user-configured system prompt, or {@code null} if blank.
+     * Tool definitions are no longer text-appended (LC4j sends them via
+     * {@code toolSpecifications}), so this is just the raw user prompt.
      */
-    private List<Object> buildAnthropicMessages(List<AiChatMessage> history) {
-        List<Object> messages = new ArrayList<>();
-        for (AiChatMessage msg : history) {
-            if (msg.role() == AiChatMessage.Role.SYSTEM) continue;
-            if (msg.role() == AiChatMessage.Role.TOOL) {
-                Map<String, Object> content = new LinkedHashMap<>();
-                content.put("type", "tool_result");
-                content.put("tool_use_id", msg.toolCallId() != null ? msg.toolCallId() : "");
-                content.put("content", msg.content() != null ? msg.content() : "");
-                messages.add(Map.of("role", "user", "content", List.of(content)));
-            } else if (msg.hasToolCalls()) {
-                List<Object> contentBlocks = new ArrayList<>();
-                if (msg.content() != null && !msg.content().isEmpty()) {
-                    contentBlocks.add(Map.of("type", "text", "text", msg.content()));
-                }
-                for (AiToolCall tc : msg.toolCalls()) {
-                    Map<String, Object> toolUse = new LinkedHashMap<>();
-                    toolUse.put("type", "tool_use");
-                    toolUse.put("id", tc.id());
-                    toolUse.put("name", tc.name());
-                    toolUse.put("input", tc.arguments());
-                    contentBlocks.add(toolUse);
-                }
-                messages.add(Map.of("role", "assistant", "content", contentBlocks));
-            } else {
-                messages.add(Map.of("role", msg.role().name().toLowerCase(), "content", msg.content()));
-            }
+    private static String currentSystemPrompt() {
+        try {
+            return SwissKitJSettingUi.getAiSystemPrompt();
+        } catch (Exception e) {
+            log.debug("Could not read system prompt from settings: {}", e.getMessage());
+            return null;
         }
-        return messages;
     }
 
-    @Override public void cancelGeneration() {
-        generating = false;
-        InputStream stream = activeStream;
-        if (stream != null) {
-            try { stream.close(); } catch (Exception ignored) {}
-        }
+    @Override
+    public void cancelGeneration() {
+        log.debug("cancelGeneration() requested; LangChain4j 1.x streaming model does not support mid-stream abort");
     }
 
     @Override public void registerTool(AiTool tool) { AiServiceProvider.registerTool(tool); }
@@ -303,29 +247,18 @@ public class AnthropicService implements AiService {
     @Override public List<AiTool> getTools() { return AiServiceProvider.getTools(); }
 
     /**
-     * Sends the HTTP request, retrying once on socket timeout.
-     *
-     * @param request the {@link HttpRequest} to send
-     * @return the HTTP response with an {@link InputStream} body
-     * @throws Exception if both the initial and retry attempts fail
-     */
-    private HttpResponse<InputStream> sendWithRetry(HttpRequest request) throws Exception {
-        try {
-            return httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
-        } catch (java.net.SocketTimeoutException e) {
-            log.warn("Request timed out, retrying once: {}", e.getMessage());
-            return httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
-        }
-    }
-
-    /**
-     * Tests connectivity to the configured endpoint with a minimal request.
+     * Tests connectivity to the configured endpoint with a minimal non-streaming request.
+     * Uses a direct HTTP call (independent of LangChain4j) so that connection issues
+     * surface as actionable error strings rather than wrapped LC4j exceptions.
      *
      * @return {@code null} if the connection succeeds (HTTP 200), otherwise
      *         an error string describing the failure
      */
     public String testConnection() {
-        try {
+        try (HttpClient client = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(15))
+                .build()) {
             String url = endpoint + "/v1/messages";
             String body = JsonHelper.toJson(Map.of(
                 "model", modelName,
@@ -340,7 +273,7 @@ public class AnthropicService implements AiService {
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .timeout(Duration.ofSeconds(15))
                 .build();
-            HttpResponse<String> resp = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> resp = client.send(request, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() == 200) return null;
             return "HTTP " + resp.statusCode() + ": " + resp.body();
         } catch (Exception e) {
