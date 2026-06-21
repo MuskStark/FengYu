@@ -65,7 +65,14 @@ public final class StreamingResponseHandlerBridge implements StreamingChatRespon
         if (ai.hasToolExecutionRequests()) {
             List<AiToolCall> calls = new ArrayList<>();
             for (ToolExecutionRequest req : ai.toolExecutionRequests()) {
-                calls.add(AiToolCall.of(req.name(), parseArgs(req.arguments())));
+                // Preserve the server-issued tool-call ID. Anthropic requires
+                // tool_result.tool_use_id to match the original tool_use.id exactly,
+                // so we must NOT regenerate it. Fall back only when the provider
+                // omits it (shouldn't happen in practice for Anthropic/OpenAI).
+                String id = req.id() != null && !req.id().isEmpty()
+                    ? req.id()
+                    : "tc_" + System.currentTimeMillis();
+                calls.add(AiToolCall.of(id, req.name(), parseArgs(req.arguments())));
             }
             this.pendingToolCalls = Collections.unmodifiableList(calls);
             return;

@@ -40,6 +40,28 @@ public record AiToolCall(
         return new AiToolCall(generateId(), name, arguments);
     }
 
+    /**
+     * Creates a tool call with an explicit ID — for use when the caller has a server-issued
+     * tool-call ID that must be preserved (e.g. when bridging from LangChain4j's
+     * {@code ToolExecutionRequest}, which already has an ID assigned by the cloud provider
+     * such as Anthropic's {@code toolu_…} or OpenAI's {@code call_…}).
+     *
+     * <p>Preserving the server-issued ID is required for Anthropic's multi-round tool-use
+     * protocol: {@code tool_result.tool_use_id} must match the original
+     * {@code tool_use.id} returned by the server, or the API rejects the request with
+     * HTTP 400.
+     *
+     * <p>Use {@link #of(String, Map)} for new tool calls without a server-issued ID.
+     *
+     * @param id        the tool-call ID (should not be {@code null})
+     * @param name      the tool name
+     * @param arguments the argument map (may be {@code null})
+     * @return a new {@code AiToolCall} instance with the given ID
+     */
+    public static AiToolCall of(String id, String name, Map<String, Object> arguments) {
+        return new AiToolCall(id, name, arguments);
+    }
+
     private static final AtomicLong counter = new AtomicLong(0);
 
     /** Generates a unique call ID combining timestamp and a monotonic counter. */

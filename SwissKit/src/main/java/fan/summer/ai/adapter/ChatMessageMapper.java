@@ -72,7 +72,15 @@ public final class ChatMessageMapper {
                 List<AiToolCall> calls = new ArrayList<>();
                 for (ToolExecutionRequest req : am.toolExecutionRequests()) {
                     Map<String, Object> args = parseArgs(req.arguments());
-                    AiToolCall call = AiToolCall.of(req.name(), args);
+                    // Preserve the server-issued tool-call ID: Anthropic requires
+                    // tool_result.tool_use_id to match the original tool_use.id,
+                    // so round-trip AiChatMessage → LC4j → AiChatMessage must not
+                    // regenerate the id. Fall back to a synthetic id only when the
+                    // provider omitted one.
+                    String id = req.id() != null && !req.id().isEmpty()
+                        ? req.id()
+                        : "tc_" + System.currentTimeMillis();
+                    AiToolCall call = AiToolCall.of(id, req.name(), args);
                     calls.add(call);
                 }
                 return AiChatMessage.assistantWithTools(am.text(), calls);
