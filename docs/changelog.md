@@ -4,6 +4,43 @@ All notable changes to SwissKitJ. Format based on [Keep a Changelog](https://kee
 
 ---
 
+## [3.1.0] — LangChain4j Cloud Mode Migration
+
+**v3.1.0** — 2026-06-21
+
+### ♻️ Changed
+
+- **Cloud AI Backends Migrated to LangChain4j**: `OpenAiService` and `AnthropicService` now wrap `OpenAiStreamingChatModel` and `AnthropicStreamingChatModel` — eliminates ~700 lines of hand-rolled HTTP/SSE/tool-loop code
+- Tool-schema generation, message mapping, and stream bridging extracted into reusable adapters under the new `fan.summer.ai.adapter` package (`ChatMessageMapper`, `AiToolToToolSpecification`, `StreamingResponseHandlerBridge`, `CloudAiConfigProvider`)
+- `SynchronousChatHelper` (browser planner) decoupled from concrete `OpenAiService` via the new `CloudAiConfigProvider` interface — Anthropic is now also accepted as a browser-planner backend (HTTP body still OpenAI-compatible format)
+- Sampling parameters (temperature / topP / maxTokens) are now honoured per-call instead of baked into a cached model
+
+### ✨ New
+
+- New `fan.summer.ai.adapter` package — three reusable adapters plus one marker interface
+- Three JUnit 5 test files for the adapters (~21 test cases total)
+- `AiToolCall.of(id, name, arguments)` overload to preserve server-issued tool-call IDs
+
+### 🐛 Fixes
+
+- **Anthropic multi-round tool calling**: server-issued `tool_use_id` is now preserved through the `AiToolCall → LangChain4j → AiToolCall` round-trip — previously a fabricated local ID caused HTTP 400 on tool round 2
+- **Multi-turn conversation continuity**: the assistant's final reply is now appended to `history` before the service returns
+- **OpenAI tool-round message ordering**: the assistant-with-tools message is now appended before `ToolExecutor.executeAndFeed`, satisfying the API contract that `tool` messages must follow an `assistant` with `tool_calls`
+- `testConnection()` `HttpClient` wrapped in try-with-resources
+- Thread-safety hardening on `StreamingResponseHandlerBridge` (`StringBuffer` accumulator, `volatile` fields)
+
+### ⬆️ Dependencies
+
+- `dev.langchain4j:langchain4j-open-ai:1.2.0`
+- `dev.langchain4j:langchain4j-anthropic:1.2.0`
+
+### ⚠️ Known Behavior Changes
+
+- `cancelGeneration()` on cloud backends is now best-effort (LangChain4j 1.x does not expose mid-stream cancellation); the in-progress flag is still cleared
+- Mid-stream SSE errors now surface via `callback.onError` on the JavaFX Application Thread
+
+---
+
 ## [3.0.1] — FunctionGemma Offline Adaptation
 
 **v3.0.1** — 2026-06-21
