@@ -69,4 +69,30 @@ class ChatMessageMapperTest {
         assertEquals(AiChatMessage.Role.USER, back.role());
         assertEquals("hi", back.content());
     }
+
+    @Test
+    void fromLc4jMapsAssistantWithToolCalls() {
+        AiMessage src = AiMessage.from("", List.of(
+            ToolExecutionRequest.builder()
+                .id("call_42").name("get_weather").arguments("{\"city\":\"Paris\"}")
+                .build()
+        ));
+        AiChatMessage out = ChatMessageMapper.fromLc4j(src);
+
+        assertEquals(AiChatMessage.Role.ASSISTANT, out.role());
+        assertEquals(1, out.toolCalls().size());
+        AiToolCall call = out.toolCalls().get(0);
+        assertEquals("get_weather", call.name());
+        assertEquals(Map.of("city", "Paris"), call.arguments());
+    }
+
+    @Test
+    void fromLc4jThrowsOnUnsupportedType() {
+        // CustomMessage is a ChatMessage subclass not handled by the mapper.
+        // Its constructor takes a Map<String,Object>, not a String.
+        dev.langchain4j.data.message.ChatMessage custom =
+            new dev.langchain4j.data.message.CustomMessage(Map.of("text", "text-only"));
+        assertThrows(IllegalArgumentException.class,
+            () -> ChatMessageMapper.fromLc4j(custom));
+    }
 }
