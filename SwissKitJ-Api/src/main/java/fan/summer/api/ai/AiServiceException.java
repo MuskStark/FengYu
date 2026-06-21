@@ -1,10 +1,10 @@
 package fan.summer.api.ai;
 
 /**
- * Exception thrown by {@link AiService} operations when model loading, inference,
+ * Exception thrown by {@link ChatBackend} operations when model loading, inference,
  * or tool execution fails.
  *
- * @see AiService
+ * @see ChatBackend
  */
 public class AiServiceException extends Exception {
 

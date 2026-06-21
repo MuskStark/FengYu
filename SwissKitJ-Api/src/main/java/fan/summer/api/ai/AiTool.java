@@ -6,7 +6,7 @@ import java.util.Map;
 /**
  * A tool that the AI model can invoke during generation.
  * <p>
- * Plugins register tools via {@link AiService#registerTool(AiTool)}.
+ * Plugins register tools via {@link AiServiceProvider#registerTool(AiTool)}.
  * When the model decides to call a tool, the inference engine invokes
  * {@link #execute(Map)} and feeds the result back to the model.
  *

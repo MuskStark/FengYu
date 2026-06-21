@@ -1,7 +1,6 @@
 package fan.summer.ai.tools;
 
 import fan.summer.api.ai.AiChatMessage;
-import fan.summer.api.ai.AiService;
 import fan.summer.api.ai.AiServiceProvider;
 import fan.summer.api.ai.AiTool;
 import fan.summer.api.ai.AiToolCall;
