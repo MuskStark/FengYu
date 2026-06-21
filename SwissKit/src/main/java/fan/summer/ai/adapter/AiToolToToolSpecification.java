@@ -5,6 +5,7 @@ import dev.langchain4j.model.chat.request.json.*;
 import fan.summer.api.ai.AiTool;
 import fan.summer.api.ai.AiToolParam;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,7 +20,7 @@ public final class AiToolToToolSpecification {
 
     public static ToolSpecification convert(AiTool tool) {
         Map<String, JsonSchemaElement> properties = new LinkedHashMap<>();
-        List<String> required = new java.util.ArrayList<>();
+        List<String> required = new ArrayList<>();
 
         for (AiToolParam param : tool.getParameters()) {
             properties.put(param.name(), buildSchema(param));
@@ -47,10 +48,23 @@ public final class AiToolToToolSpecification {
                 .description(param.description())
                 .build();
         }
-        return switch (param.type()) {
-            case "integer", "number" -> JsonIntegerSchema.builder().description(param.description()).build();
-            case "boolean" -> JsonBooleanSchema.builder().description(param.description()).build();
-            default -> JsonStringSchema.builder().description(param.description()).build();
+        String type = param.type() == null ? "string" : param.type();
+        if (type.endsWith("[]")) {
+            String elementType = type.substring(0, type.length() - 2);
+            return JsonArraySchema.builder()
+                .description(param.description())
+                .items(primitiveSchema(elementType, param.description()))
+                .build();
+        }
+        return primitiveSchema(type, param.description());
+    }
+
+    private static JsonSchemaElement primitiveSchema(String type, String description) {
+        return switch (type) {
+            case "integer" -> JsonIntegerSchema.builder().description(description).build();
+            case "number"  -> JsonNumberSchema.builder().description(description).build();
+            case "boolean" -> JsonBooleanSchema.builder().description(description).build();
+            default        -> JsonStringSchema.builder().description(description).build();
         };
     }
 }
