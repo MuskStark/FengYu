@@ -5,6 +5,7 @@ import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ai.AiTool;
+import fan.summer.api.i18n.I18n;
 import fan.summer.buildintool.browser.ai.BrowserAutomateTool;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
@@ -26,13 +27,10 @@ public class BrowserAutomatePlugin implements SwissKitJPlugin {
     public String getId() { return "fan.summer.buildin.browser-automate"; }
 
     @Override
-    public String getName() { return "Browser Automate"; }
+    public String getName() { return I18n.get("builtin.browser-automate.name"); }
 
     @Override
-    public String getDescription() {
-        return "Provides browser automation capability to the AI chat. "
-             + "Invoke by asking the AI to perform web tasks.";
-    }
+    public String getDescription() { return I18n.get("builtin.browser-automate.desc"); }
 
     @Override
     public ToolCategory getCategory() { return ToolCategory.DEV; }
@@ -53,7 +51,7 @@ public class BrowserAutomatePlugin implements SwissKitJPlugin {
     public Node createView() {
         VBox box = new VBox(8);
         box.setStyle("-fx-padding: 24;");
-        Label title = new Label("Browser Automation");
+        Label title = new Label(I18n.get("builtin.browser-automate.name"));
         title.setStyle("-fx-font-size: 16; -fx-font-weight: bold;");
         Label body = new Label(
             "This plugin provides browser automation to the AI chat. "
