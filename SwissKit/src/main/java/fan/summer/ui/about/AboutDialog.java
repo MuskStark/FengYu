@@ -2,6 +2,7 @@ package fan.summer.ui.about;
 
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.theme.Themes;
+import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
@@ -65,6 +66,7 @@ public final class AboutDialog {
     private VBox buildCard() {
         VBox card = new VBox(12);
         card.getStyleClass().add("glass-dialog");
+        card.setPadding(new Insets(20, 24, 20, 24));
         card.setMaxWidth(420);
         card.setMinWidth(380);
 
