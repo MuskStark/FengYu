@@ -75,7 +75,7 @@ Plugin icon background colors are CSS classes: `ic-blue / ic-purple / ic-teal / 
 
 **Database**: H2 file at `.swisskit/swisskit.db` relative to the runtime working directory. Schema initialized from `init.sql`. Accessed via MyBatis; mapper XMLs are in `src/main/resources/mapper/`.
 
-**i18n**: `src/main/resources/i18n/messages.properties` (Chinese default), `messages_en.properties` (English).
+**i18n**: `src/main/resources/i18n/messages.properties` (English default), `messages_zh.properties` (Chinese).
 
 **JSON**: Use `fan.summer.api.json.JsonHelper` (Gson-based). Old `JsonBuilder`/`JsonParser` are deleted.
 

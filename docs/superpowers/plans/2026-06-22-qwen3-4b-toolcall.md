@@ -1,5 +1,14 @@
 # Qwen3-4B Local Tool-Calling Implementation Plan
 
+> **Status (2026-06-22):** Tasks 1–8 and 10 are **complete and committed** on `v3.1.0`.
+> Commits: `6169830` (T1 remove FG) · `8d3cf71` (T2 Hermes) · `2e345a7` (T3 onThinking) ·
+> `f2abc77` (T4 segmenter) · `d4bf725` (T5 adapter) · `e826e7d` (T6 backend wiring) ·
+> `49e84e7` (T7 renderCollapsible) · `c2f508e` (T8 AiChatPlugin) · `8191818` (T10 docs).
+> Full SwissKit suite green: **78/78**. Deviations from the pseudocode below are documented
+> in the Task 6 / Task 8 commit messages (current API: `TokenBatcher.forCallback(callback)` +
+> `ToolExecutor.executeAndFeed`; i18n went into `messages.properties` + `messages_zh.properties`).
+> **Task 9 (end-to-end smoke) is BLOCKED** — pending a real `Qwen3-4B-Instruct` Q4_K_M GGUF.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the FunctionGemma-based local tool-calling backend with Qwen3-4B (Hermes tool-call format + displayed thinking), end-to-end verified by a manual smoke test with a real GGUF.
