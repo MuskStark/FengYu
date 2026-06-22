@@ -164,12 +164,13 @@ public final class AiServiceProvider {
      * @return a list of registered {@link AiTool} instances
      */
     public static List<AiTool> getTools() {
+        boolean isLocal = "local".equals(currentMode);
         String filter = constrainedTool;
-        if (filter != null) {
-            AiTool t = tools.get(filter);
-            if (t != null) return List.of(t);
-        }
-        return List.copyOf(tools.values());
+
+        return tools.values().stream()
+            .filter(t -> isLocal ? t.supportsLocal() : t.supportsCloud())
+            .filter(t -> filter == null || filter.equals(t.getName()))
+            .toList();
     }
 
     /**
