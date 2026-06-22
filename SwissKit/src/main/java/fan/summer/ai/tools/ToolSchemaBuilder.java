@@ -43,8 +43,8 @@ public class ToolSchemaBuilder {
         for (AiTool tool : tools) {
             Map<String, Object> fn = new LinkedHashMap<>();
             fn.put("name", tool.getName());
-            fn.put("description", tool.getDescription());
-            fn.put("parameters", buildJsonSchema(tool.getParameters()));
+            fn.put("description", AiToolDescriptions.pickDescription(tool));
+            fn.put("parameters", buildJsonSchema(AiToolDescriptions.pickParameters(tool)));
             result.add(Map.of("type", "function", "function", fn));
         }
         return result;
@@ -65,8 +65,8 @@ public class ToolSchemaBuilder {
         for (AiTool tool : tools) {
             Map<String, Object> t = new LinkedHashMap<>();
             t.put("name", tool.getName());
-            t.put("description", tool.getDescription());
-            t.put("input_schema", buildJsonSchema(tool.getParameters()));
+            t.put("description", AiToolDescriptions.pickDescription(tool));
+            t.put("input_schema", buildJsonSchema(AiToolDescriptions.pickParameters(tool)));
             result.add(t);
         }
         return result;
@@ -97,8 +97,8 @@ public class ToolSchemaBuilder {
 
         for (AiTool tool : tools) {
             sb.append("### ").append(tool.getName()).append("\n");
-            sb.append(tool.getDescription()).append("\n");
-            List<AiToolParam> params = tool.getParameters();
+            sb.append(AiToolDescriptions.pickDescription(tool)).append("\n");
+            List<AiToolParam> params = AiToolDescriptions.pickParameters(tool);
             if (!params.isEmpty()) {
                 sb.append("Parameters:\n");
                 for (AiToolParam p : params) {
