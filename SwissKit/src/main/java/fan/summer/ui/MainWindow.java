@@ -5,6 +5,7 @@ import fan.summer.api.i18n.I18n;
 import fan.summer.plugin.FavoriteService;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.plugin.PluginRegistry;
+import fan.summer.ui.about.AboutDialog;
 import fan.summer.ui.content.ContentArea;
 import fan.summer.ui.setting.SwissKitJSettingUi;
 import fan.summer.ui.sidebar.Sidebar;
@@ -290,6 +291,7 @@ public class MainWindow extends StackPane {
 
         // Settings (standalone, not part of nav state machine)
         sidebar.setOnSettingsSelect(this::openSettings);
+        sidebar.setOnAboutSelect(this::openAbout);
 
         // Plugin list change → update status bar
         registry.getPlugins().addListener(
@@ -368,6 +370,10 @@ public class MainWindow extends StackPane {
     private void openSettings() {
         Node settingsPage = SwissKitJSettingUi.build();
         contentArea.showPage(settingsPage, I18n.get("sidebar.label.settings"));
+    }
+
+    private void openAbout() {
+        new AboutDialog(stage).show();
     }
 
     // ── AI Chat page ────────────────────────────────────
