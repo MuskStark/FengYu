@@ -11,6 +11,18 @@ public interface AiStreamCallback {
     void onToken(String fragment);
 
     /**
+     * Called when the model emits a completed reasoning/thinking block (e.g. Qwen3's
+     * {@code <think>…</think>}). The fragment is the full text of one closed thinking
+     * block — callers render it as a unit. The default implementation discards it.
+     *
+     * <p>Only the local Qwen3 native backend invokes this today; cloud and Java-fallback
+     * paths never call it (thinking is simply not surfaced there).</p>
+     *
+     * @param fragment the complete text of one thinking block (never {@code null})
+     */
+    default void onThinking(String fragment) {}
+
+    /**
      * Called when generation is complete (either by EOS token or max tokens reached).
      *
      * @param fullResponse the complete response text
