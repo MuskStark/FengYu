@@ -27,10 +27,16 @@ public class BuiltinColorConvertTool implements AiTool {
     @Override public String getName() { return "color_convert"; }
 
     @Override public String getDescription() {
-        return "Convert a color between HEX, RGB, and HSL formats. " +
-               "Args: color (string, required) — color value (e.g. \"#5b8cf7\" or \"91,140,247\"); " +
-               "from (string, required) — source format: HEX, RGB, or HSL; " +
-               "to (string, required) — target format: HEX, RGB, or HSL.";
+        return "Convert a color between HEX, RGB, and HSL formats.\n"
+             + "Args: color (string, required) — the color value (e.g. \"#5b8cf7\" or \"91,140,247\");\n"
+             + "      from (string, required, enum: HEX|RGB|HSL) — source format;\n"
+             + "      to   (string, required, enum: HEX|RGB|HSL) — target format.\n"
+             + "Example: color_convert{\"color\":\"#5b8cf7\",\"from\":\"HEX\",\"to\":\"RGB\"}.";
+    }
+
+    @Override public String getLocalDescription() {
+        return "Convert color. Args: color (string), from (HEX|RGB|HSL), to (HEX|RGB|HSL).\n"
+             + "Example: color_convert{\"color\":\"#fff\",\"from\":\"HEX\",\"to\":\"RGB\"}.";
     }
 
     /**

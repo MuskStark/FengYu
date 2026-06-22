@@ -19,14 +19,31 @@ public class EmailArchiveQueryTool implements AiTool {
     @Override public String getName() { return "email_archive_query"; }
 
     @Override public String getDescription() {
-        return "Search archived emails in the local database. " +
-               "All parameters are optional. " +
-               "Args: accountEmail (string) — filter by account; " +
-               "fromAddress (string) — filter by sender (partial match); " +
-               "subject (string) — filter by subject (partial match); " +
-               "startDate (string) — ISO date like 2026-01-01; " +
-               "endDate (string) — ISO date like 2026-05-28; " +
-               "limit (integer) — max results, default 20.";
+        return "Search archived emails in the local database. All parameters are optional.\n"
+             + "Args: accountEmail (string) — filter by account;\n"
+             + "      fromAddress (string) — filter by sender (partial match);\n"
+             + "      subject (string) — filter by subject (partial match);\n"
+             + "      startDate (string) — ISO date like 2026-01-01;\n"
+             + "      endDate (string) — ISO date like 2026-05-28;\n"
+             + "      limit (integer, default 20) — max results.\n"
+             + "Example: email_archive_query{\"subject\":\"invoice\",\"limit\":10}.";
+    }
+
+    @Override public String getLocalDescription() {
+        return "Search archived emails. Args: subject (string), fromAddress (string), "
+             + "startDate (ISO), endDate (ISO), limit (integer).\n"
+             + "Example: email_archive_query{\"subject\":\"invoice\"}.";
+    }
+
+    @Override public List<AiToolParam> getLocalParameters() {
+        // Qwen3-friendly subset: drop accountEmail filtering (rarely useful for the 4B model)
+        return List.of(
+            AiToolParam.of("subject",     "string",  "Filter by subject (partial match)", false),
+            AiToolParam.of("fromAddress", "string",  "Filter by sender (partial match)",  false),
+            AiToolParam.of("startDate",   "string",  "ISO date (e.g. 2026-01-01)",        false),
+            AiToolParam.of("endDate",     "string",  "ISO date (e.g. 2026-05-28)",        false),
+            AiToolParam.of("limit",       "integer", "Max results (default 20)",          false)
+        );
     }
 
     @Override public List<AiToolParam> getParameters() {

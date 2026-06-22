@@ -34,13 +34,15 @@ public class BrowserAutomateTool implements AiTool {
 
     @Override
     public String getDescription() {
-        return "Automate a web browser using natural language instructions. " +
-               "Opens the system's Chrome/Edge browser and performs actions such as navigation, " +
-               "clicking, typing, form filling, data extraction, and more. " +
-               "No browser driver installation required — uses the system's existing browser. " +
-               "Args: instruction (string, required) — a natural language description of " +
-               "what to do, e.g. \"Open github.com and search for 'playwright java'\"";
+        return "Automate a web browser using natural language.\n"
+             + "Opens the system Chrome/Edge/Chromium and performs navigation, clicking, typing, "
+             + "form filling, data extraction. No driver install needed.\n"
+             + "Args: instruction (string, required) — natural language task description.\n"
+             + "Example: browser_automate{\"instruction\":\"Open github.com and search for 'playwright java'\"}.";
     }
+
+    @Override
+    public boolean supportsLocal() { return false; }
 
     @Override
     public List<AiToolParam> getParameters() {

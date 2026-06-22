@@ -30,9 +30,15 @@ public class BuiltinHashTool implements AiTool {
     @Override public String getName() { return "hash_calculate"; }
 
     @Override public String getDescription() {
-        return "Calculate hash digest of text. " +
-               "Args: text (string, required) — input text; " +
-               "algorithm (string, required) — hash algorithm: MD5, SHA-1, SHA-256, or SHA-512.";
+        return "Calculate cryptographic hash digest of input text.\n"
+             + "Args: text (string, required) — input text;\n"
+             + "      algorithm (string, required, enum: MD5|SHA-1|SHA-256|SHA-512).\n"
+             + "Example: hash_calculate{\"text\":\"abc\",\"algorithm\":\"SHA-256\"}.";
+    }
+
+    @Override public String getLocalDescription() {
+        return "Hash digest. Args: text (string), algorithm (MD5|SHA-1|SHA-256|SHA-512).\n"
+             + "Example: hash_calculate{\"text\":\"abc\",\"algorithm\":\"MD5\"}.";
     }
 
     @Override public List<AiToolParam> getParameters() {

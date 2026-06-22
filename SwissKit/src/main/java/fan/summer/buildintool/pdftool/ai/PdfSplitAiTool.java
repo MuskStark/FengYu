@@ -22,10 +22,16 @@ public class PdfSplitAiTool implements AiTool {
     @Override public String getName() { return "pdf_split"; }
 
     @Override public String getDescription() {
-        return "Split a PDF file into multiple files by page ranges. " +
-               "Args: filePath (string) — absolute path to PDF; " +
-               "ranges (string) — page ranges like '1-3,5,8-10'; " +
-               "outputDir (string) — output directory.";
+        return "Split a PDF file into multiple files by page ranges.\n"
+             + "Args: filePath (string, required) — absolute path to PDF;\n"
+             + "      ranges (string, required) — page ranges like '1-3,5,8-10';\n"
+             + "      outputDir (string, required) — output directory.\n"
+             + "Example: pdf_split{\"filePath\":\"/a.pdf\",\"ranges\":\"1-3,5\",\"outputDir\":\"/out\"}.";
+    }
+
+    @Override public String getLocalDescription() {
+        return "Split PDF by page ranges. Args: filePath (string), ranges (e.g. '1-3,5,8-10'), outputDir (string).\n"
+             + "Example: pdf_split{\"filePath\":\"/a.pdf\",\"ranges\":\"1-3\",\"outputDir\":\"/out\"}.";
     }
 
     @Override public List<AiToolParam> getParameters() {

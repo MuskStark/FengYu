@@ -31,8 +31,14 @@ public class ExcelQueryTool implements AiTool {
     @Override public String getName() { return "excel_query"; }
 
     @Override public String getDescription() {
-        return "Query (read) the current Excel split configuration state: source file, mode, selected sheets/columns, output directory. "
-               + "Call to inspect progress. No arguments. Example: excel_query{}.";
+        return "Query the current Excel split configuration state: source file, mode, selected sheets/columns, output directory.\n"
+             + "Call to inspect progress before or between operations. No arguments.\n"
+             + "Example: excel_query{}.";
+    }
+
+    @Override public String getLocalDescription() {
+        return "Query current Excel split state. No args.\n"
+             + "Example: excel_query{}.";
     }
 
     @Override public List<AiToolParam> getParameters() {

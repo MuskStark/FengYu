@@ -28,9 +28,15 @@ public class BuiltinBase64Tool implements AiTool {
     @Override public String getName() { return "base64"; }
 
     @Override public String getDescription() {
-        return "Encode text to Base64 or decode Base64 back to text. " +
-               "Args: text (string, required) — the input text; " +
-               "mode (string, required) — \"encode\" or \"decode\".";
+        return "Encode text to Base64 or decode Base64 back to text.\n"
+             + "Args: text (string, required) — input text to transform;\n"
+             + "      mode (string, required, enum: encode|decode) — direction of the conversion.\n"
+             + "Example: base64{\"text\":\"hello\",\"mode\":\"encode\"}.";
+    }
+
+    @Override public String getLocalDescription() {
+        return "Base64 encode or decode. Args: text (string), mode (encode|decode).\n"
+             + "Example: base64{\"text\":\"hello\",\"mode\":\"encode\"}.";
     }
 
     @Override public List<AiToolParam> getParameters() {
