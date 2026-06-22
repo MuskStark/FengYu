@@ -4,9 +4,11 @@ import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
+import fan.summer.api.ai.AiTool;
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
+import fan.summer.ai.tools.BuiltinColorConvertTool;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -17,6 +19,8 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
+
+import java.util.List;
 
 /**
  * Built-in plugin for converting colors between HEX, RGB, and HSL formats.
@@ -39,6 +43,11 @@ public class ColorConverterPlugin implements SwissKitJPlugin {
     @Override public String getMdiIcon()    { return "palette"; }
     @Override public IconStyle getIconStyle()   { return IconStyle.PINK; }
     @Override public ToolType getType()        { return ToolType.BUILTIN; }
+
+    @Override
+    public List<AiTool> aiTools() {
+        return List.of(new BuiltinColorConvertTool());
+    }
 
     /**
      * Creates and returns the plugin view containing HEX/RGB/HSL input fields
