@@ -29,7 +29,7 @@ public class PdfMergeAiTool implements AiTool {
 
     @Override public List<AiToolParam> getParameters() {
         return List.of(
-            AiToolParam.of("filePaths", "array", "Ordered list of PDF file paths to merge", true),
+            AiToolParam.of("filePaths", "string[]", "Ordered list of PDF file paths to merge", true),
             AiToolParam.of("outputPath", "string", "Output file path for merged PDF", true)
         );
     }
