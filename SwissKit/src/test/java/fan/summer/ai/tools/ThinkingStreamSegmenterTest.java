@@ -101,4 +101,13 @@ class ThinkingStreamSegmenterTest {
         assertEquals(List.of("t1", "t2"), c.think());
         assertEquals(List.of("A", "B"), c.content());
     }
+
+    @Test
+    void stripThinkRemovesClosedAndUnclosedBlocks() {
+        // Realistic shapes: a leading closed block, or a trailing unclosed one.
+        assertEquals("The answer", ThinkingStreamSegmenter.stripThink("<think>reasoning</think>The answer"));
+        assertEquals("a b", ThinkingStreamSegmenter.stripThink("a <think>x</think>b"));
+        assertEquals("Hello", ThinkingStreamSegmenter.stripThink("Hello<think>partial"));
+        assertEquals("", ThinkingStreamSegmenter.stripThink(null));
+    }
 }

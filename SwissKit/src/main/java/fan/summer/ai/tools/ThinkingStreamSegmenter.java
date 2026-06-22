@@ -40,6 +40,27 @@ public final class ThinkingStreamSegmenter {
         MAX_MARKER = m;
     }
 
+    private static final java.util.regex.Pattern THINK_BLOCK =
+        java.util.regex.Pattern.compile("<think>.*?</think>", java.util.regex.Pattern.DOTALL);
+    private static final java.util.regex.Pattern THINK_OPEN_ONLY =
+        java.util.regex.Pattern.compile("<think>.*", java.util.regex.Pattern.DOTALL);
+
+    /**
+     * Removes all {@code <think>…</think>} blocks (and a trailing unclosed
+     * {@code <think>…}) from text. Used to clean assistant turns before they are
+     * added to history or returned as the final answer — thinking is display-only
+     * and must never leak into the conversation history or the visible answer.
+     *
+     * @param text source text; may be {@code null}
+     * @return text with think blocks removed, trimmed; empty if input was {@code null}
+     */
+    public static String stripThink(String text) {
+        if (text == null) return "";
+        String out = THINK_BLOCK.matcher(text).replaceAll("");
+        out = THINK_OPEN_ONLY.matcher(out).replaceAll("");
+        return out.trim();
+    }
+
     private final StringBuilder pending = new StringBuilder();
     private boolean inThink = false;
     private boolean inToolCall = false;

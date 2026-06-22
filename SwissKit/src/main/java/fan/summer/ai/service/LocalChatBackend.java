@@ -7,6 +7,8 @@ import fan.summer.ai.nativejni.GenerateCallback;
 import fan.summer.ai.nativejni.GenerateParams;
 import fan.summer.ai.nativejni.ModelParams;
 import fan.summer.ai.nativejni.NativeWorkerClient;
+import fan.summer.ai.tools.Qwen3Adapter;
+import fan.summer.ai.tools.ThinkingStreamSegmenter;
 import fan.summer.ai.tools.ToolCallParser;
 import fan.summer.ai.tools.ToolExecutor;
 import fan.summer.ai.tools.ToolSchemaBuilder;
@@ -49,6 +51,8 @@ public class LocalChatBackend implements ChatBackend {
     private NativeWorkerClient workerClient;
     private ChatTemplate nativeChatTemplate;
     private volatile String loadedModelPath;
+    private Qwen3Adapter qwen3Adapter;
+    private boolean isQwen3;
 
     /**
      * Creates a new AI service with the specified backend.
@@ -69,8 +73,15 @@ public class LocalChatBackend implements ChatBackend {
     }
 
     private void detectModelType(String modelPath) {
-        // Model-specific detection hook. The Qwen3 branch is added in the Qwen3 task.
-        // The generic native/java path handles every other model.
+        isQwen3 = false;
+        qwen3Adapter = null;
+        if (backend != Backend.NATIVE && backend != Backend.JAVA) return;
+        String name = Path.of(modelPath).getFileName().toString().toLowerCase();
+        isQwen3 = name.contains("qwen3");
+        if (isQwen3) {
+            qwen3Adapter = new Qwen3Adapter();
+            log.info("Qwen3 detected — Hermes tool calling + thinking stream");
+        }
     }
 
     // ── Model management ──────────────────────────────────────
@@ -123,6 +134,8 @@ public class LocalChatBackend implements ChatBackend {
         } else if (javaRunner != null) {
             javaRunner.unload();
         }
+        isQwen3 = false;
+        qwen3Adapter = null;
         loadedModelPath = null;
     }
 
@@ -183,6 +196,10 @@ public class LocalChatBackend implements ChatBackend {
 
     private void chatNative(List<AiChatMessage> history, float temperature, float topP,
                             int maxTokens, AiStreamCallback callback) {
+        if (isQwen3) {
+            chatQwen3Native(history, temperature, topP, maxTokens, callback);
+            return;
+        }
         Thread.ofVirtual().start(() -> {
             try {
                 String systemPrompt = buildSystemPrompt();
@@ -229,6 +246,87 @@ public class LocalChatBackend implements ChatBackend {
                 } else {
                     String clean = hadToolCall.get() ? ToolCallParser.stripToolCalls(fullText) : fullText;
                     Platform.runLater(() -> callback.onComplete(clean, tokenCount, tokPerSec));
+                }
+            }
+
+            @Override
+            public void onError(String message) {
+                batcher.close();
+                Platform.runLater(() -> callback.onError(new RuntimeException(message)));
+            }
+        });
+    }
+
+    // ── Qwen3 native chat (Hermes tool calling + thinking stream) ─────────
+
+    private void chatQwen3Native(List<AiChatMessage> history, float temperature,
+                                 float topP, int maxTokens, AiStreamCallback callback) {
+        Thread.ofVirtual().start(() -> {
+            try {
+                String systemPrompt = buildSystemPrompt();
+                String prompt = buildNativePrompt(history, systemPrompt);
+                generateQwen3Loop(prompt, temperature, topP, maxTokens, history, callback, 0);
+            } catch (Exception e) {
+                log.error("Qwen3 generation error", e);
+                Platform.runLater(() -> callback.onError(e));
+            }
+        });
+    }
+
+    private void generateQwen3Loop(String prompt, float temperature, float topP,
+                                   int maxTokens, List<AiChatMessage> history,
+                                   AiStreamCallback callback, int round) {
+        if (round >= MAX_TOOL_ROUNDS || workerClient == null || !workerClient.isAlive()) return;
+
+        GenerateParams genParams = new GenerateParams()
+            .temperature(temperature).topP(topP).maxTokens(maxTokens);
+
+        ThinkingStreamSegmenter segmenter = new ThinkingStreamSegmenter();
+        TokenBatcher batcher = TokenBatcher.forCallback(callback);
+
+        workerClient.generate(prompt, genParams, new GenerateCallback() {
+            @Override
+            public boolean onToken(String tokenText) {
+                for (ThinkingStreamSegmenter.Segment seg : segmenter.feed(tokenText)) {
+                    if (seg.type() == ThinkingStreamSegmenter.Type.THINK) {
+                        final String t = seg.text();
+                        Platform.runLater(() -> callback.onThinking(t));
+                    } else {
+                        batcher.add(seg.text());
+                    }
+                }
+                return true;
+            }
+
+            @Override
+            public void onDone(String fullText, int tokenCount, double tokPerSec) {
+                // Drain any tail the segmenter held back, then close the batcher.
+                for (ThinkingStreamSegmenter.Segment seg : segmenter.flush()) {
+                    if (seg.type() == ThinkingStreamSegmenter.Type.THINK) {
+                        final String t = seg.text();
+                        Platform.runLater(() -> callback.onThinking(t));
+                    } else {
+                        batcher.add(seg.text());
+                    }
+                }
+                batcher.close();
+
+                List<AiToolCall> toolCalls = ToolCallParser.parse(fullText);
+                if (!toolCalls.isEmpty() && AiServiceProvider.hasTools()) {
+                    // Clean prose (no think, no tool-call markers) + tool calls into history;
+                    // thinking is intentionally dropped — it never enters the next prompt.
+                    String assistantText = ToolCallParser.stripToolCalls(
+                        ThinkingStreamSegmenter.stripThink(fullText));
+                    history.add(AiChatMessage.assistantWithTools(assistantText, toolCalls));
+                    ToolExecutor.executeAndFeed(toolCalls, history, callback);
+                    String newPrompt = buildNativePrompt(history, buildSystemPrompt());
+                    generateQwen3Loop(newPrompt, temperature, topP, maxTokens,
+                                      history, callback, round + 1);
+                } else {
+                    String clean = ToolCallParser.stripToolCalls(
+                        ThinkingStreamSegmenter.stripThink(fullText));
+                    final String answer = clean;
+                    Platform.runLater(() -> callback.onComplete(answer, tokenCount, tokPerSec));
                 }
             }
 
@@ -311,8 +409,11 @@ public class LocalChatBackend implements ChatBackend {
     private String buildSystemPrompt() {
         String base = SwissKitJSettingUi.getAiSystemPrompt();
         String toolDefs = ToolSchemaBuilder.buildPromptDefinitions(AiServiceProvider.getTools());
-        if (toolDefs.isEmpty()) return base;
-        return base + "\n\n" + toolDefs;
+        String composed = toolDefs.isEmpty() ? base : base + "\n\n" + toolDefs;
+        if (isQwen3 && qwen3Adapter != null) {
+            return qwen3Adapter.augmentSystemPrompt(composed);
+        }
+        return composed;
     }
 
     private String buildNativePrompt(List<AiChatMessage> history, String systemPrompt) {
