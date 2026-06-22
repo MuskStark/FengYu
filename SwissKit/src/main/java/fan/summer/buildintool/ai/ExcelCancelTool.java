@@ -39,6 +39,6 @@ public class ExcelCancelTool implements AiTool {
     @Override public AiToolResult execute(java.util.Map<String, Object> args) {
         ExcelSplitterPlugin.cancel();
         log.info("excel_cancel: split operation cancelled");
-        return AiToolResult.success("{\"cancelled\":true,\"summary\":\"Split operation has been cancelled\"}");
+        return AiToolResult.success("{\"success\":true,\"summary\":\"Split operation has been cancelled\"}");
     }
 }

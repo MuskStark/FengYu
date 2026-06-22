@@ -49,6 +49,8 @@ public class ExcelQueryTool implements AiTool {
         SplitConfig config = plugin.getSharedSplitConfig();
 
         Map<String, Object> result = new LinkedHashMap<>();
+        result.put("success", true);
+        result.put("summary", "Current state: mode=" + (config.mode != null ? config.mode.name() : "unset"));
         result.put("sourceFile", config.sourceFile != null ? config.sourceFile.toString() : null);
         result.put("mode", config.mode != null ? config.mode.name() : null);
         result.put("selectedSheets", config.selectedSheets);

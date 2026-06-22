@@ -80,12 +80,12 @@ public class ExcelConfigureTool implements AiTool {
         SplitConfig config = plugin.getSharedSplitConfig();
 
         if (config.analysisResult == null) {
-            return AiToolResult.error("No analysis result. Call excel_analyze first.");
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "No analysis result. Call excel_analyze first.")));
         }
 
         String modeStr = (String) args.get("mode");
         if (modeStr == null || modeStr.isBlank()) {
-            return AiToolResult.error("mode is required (BY_SHEET, BY_COLUMN, or COMPLEX)");
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "mode is required (BY_SHEET, BY_COLUMN, or COMPLEX)")));
         }
 
         try {
@@ -111,11 +111,11 @@ public class ExcelConfigureTool implements AiTool {
                     String splitSheet = (String) args.get("splitSheet");
                     String splitColumn = (String) args.get("splitColumn");
                     if (splitSheet == null || splitColumn == null) {
-                        return AiToolResult.error("BY_COLUMN mode requires splitSheet and splitColumn");
+                        return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "BY_COLUMN mode requires splitSheet and splitColumn")));
                     }
                     Map<Integer, String> headers = config.analysisResult.get(splitSheet);
                     if (headers == null) {
-                        return AiToolResult.error("Sheet not found: " + splitSheet);
+                        return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Sheet not found: " + splitSheet)));
                     }
                     Integer colIdx = null;
                     String foundCol = null;
@@ -128,7 +128,7 @@ public class ExcelConfigureTool implements AiTool {
                         }
                     }
                     if (colIdx == null) {
-                        return AiToolResult.error("Column not found: " + splitColumn + ". Available columns: " + headers.values());
+                        return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Column not found: " + splitColumn + ". Available columns: " + headers.values())));
                     }
                     config.splitSheet = splitSheet;
                     config.splitColumn = foundCol;
@@ -141,7 +141,7 @@ public class ExcelConfigureTool implements AiTool {
                 case COMPLEX -> {
                     String taskId = (String) args.get("taskId");
                     if (taskId == null || taskId.isBlank()) {
-                        return AiToolResult.error("COMPLEX mode requires taskId (UUID string)");
+                        return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "COMPLEX mode requires taskId (UUID string)")));
                     }
                     config.complexTaskId = taskId;
                     result.put("taskId", taskId);
@@ -151,7 +151,7 @@ public class ExcelConfigureTool implements AiTool {
 
             return AiToolResult.success(JsonHelper.toJson(result));
         } catch (IllegalArgumentException e) {
-            return AiToolResult.error("Invalid mode: " + modeStr + ". Use BY_SHEET, BY_COLUMN, or COMPLEX.");
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Invalid mode: " + modeStr + ". Use BY_SHEET, BY_COLUMN, or COMPLEX.")));
         }
     }
 }

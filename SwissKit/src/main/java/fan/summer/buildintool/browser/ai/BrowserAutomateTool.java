@@ -4,6 +4,7 @@ import fan.summer.api.ai.*;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
 import fan.summer.buildintool.browser.*;
+import fan.summer.ai.util.JsonHelper;
 
 import java.util.*;
 
@@ -56,12 +57,12 @@ public class BrowserAutomateTool implements AiTool {
     public AiToolResult execute(Map<String, Object> arguments) {
         String instruction = (String) arguments.get("instruction");
         if (instruction == null || instruction.isBlank()) {
-            return AiToolResult.error("instruction is required");
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "instruction is required")));
         }
 
         // Verify AI service is available before launching browser
         if (AiServiceProvider.getService().isEmpty() || !AiServiceProvider.getService().get().isReady()) {
-            return AiToolResult.error("AI service is not configured or not ready. Please configure an AI provider before using browser automation.");
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "AI service is not configured or not ready. Please configure an AI provider before using browser automation.")));
         }
 
         log.info("Starting browser automation: {}", instruction);
@@ -69,19 +70,23 @@ public class BrowserAutomateTool implements AiTool {
         try (BrowserSession session = new BrowserSession()) {
             String result = runThinkActLoop(session, instruction);
             log.info("Browser automation completed: {}", result);
-            return AiToolResult.success(result);
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("success", true);
+            out.put("summary", result.length() > 100 ? result.substring(0, 100) + "..." : result);
+            out.put("result", result);
+            return AiToolResult.success(JsonHelper.toJson(out));
         } catch (RuntimeException e) {
             log.error("Browser automation failed: {}", e.getMessage());
             String msg = e.getMessage();
             if (msg != null && msg.contains("No supported browser found")) {
-                return AiToolResult.error(
+                return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error",
                     "No supported browser found on this system. " +
-                    "Please install Google Chrome, Microsoft Edge, or Chromium.");
+                    "Please install Google Chrome, Microsoft Edge, or Chromium.")));
             }
-            return AiToolResult.error("Browser automation failed: " + msg);
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Browser automation failed: " + msg)));
         } catch (Exception e) {
             log.error("Browser automation failed: {}", e.getMessage());
-            return AiToolResult.error("Browser automation failed: " + e.getMessage());
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Browser automation failed: " + e.getMessage())));
         }
     }
 

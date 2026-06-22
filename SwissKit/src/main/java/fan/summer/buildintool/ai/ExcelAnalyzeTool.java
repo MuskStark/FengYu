@@ -61,11 +61,11 @@ public class ExcelAnalyzeTool implements AiTool {
     @Override public AiToolResult execute(Map<String, Object> args) {
         String filePathStr = (String) args.get("filePath");
         if (filePathStr == null || filePathStr.isBlank()) {
-            return AiToolResult.error("filePath is required");
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "filePath is required")));
         }
         Path filePath = Paths.get(filePathStr.trim());
         if (!Files.exists(filePath) || !Files.isReadable(filePath)) {
-            return AiToolResult.error("File not found or not readable: " + filePathStr);
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "File not found or not readable: " + filePathStr)));
         }
 
         SplitConfig config = plugin.getSharedSplitConfig();
@@ -94,6 +94,7 @@ public class ExcelAnalyzeTool implements AiTool {
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("success", true);
+            result.put("summary", "Analyzed " + analysisResult.size() + " sheet(s)");
             result.put("sheets", sheets);
             result.put("totalSheets", analysisResult.size());
             result.put("sourceFile", filePath.getFileName().toString());
@@ -102,7 +103,7 @@ public class ExcelAnalyzeTool implements AiTool {
             return AiToolResult.success(JsonHelper.toJson(result));
         } catch (Exception e) {
             log.error("excel_analyze failed: {}", e.getMessage());
-            return AiToolResult.error("Analysis failed: " + e.getMessage());
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Analysis failed: " + e.getMessage())));
         }
     }
 }

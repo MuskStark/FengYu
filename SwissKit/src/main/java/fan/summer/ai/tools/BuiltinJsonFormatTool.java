@@ -45,13 +45,15 @@ public class BuiltinJsonFormatTool implements AiTool {
 
     @Override public AiToolResult execute(Map<String, Object> args) {
         String json = (String) args.get("json");
-        if (json == null || json.isBlank()) return AiToolResult.error("json is required");
+        if (json == null || json.isBlank())
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "json is required")));
 
         boolean minify = Boolean.TRUE.equals(args.get("minify"));
 
         try {
             Object parsed = JsonHelper.parse(json);
-            if (parsed == null) return AiToolResult.error("Invalid JSON: null result");
+            if (parsed == null)
+                return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Invalid JSON: null result")));
 
             String output;
             if (minify) {
@@ -62,6 +64,7 @@ public class BuiltinJsonFormatTool implements AiTool {
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("success", true);
+            result.put("summary", (minify ? "Minified" : "Pretty-printed") + " JSON");
             result.put("output", output);
             result.put("mode", minify ? "minify" : "pretty-print");
 
@@ -69,7 +72,7 @@ public class BuiltinJsonFormatTool implements AiTool {
             return AiToolResult.success(JsonHelper.toJson(result));
         } catch (Exception e) {
             log.error("json_format error: {}", e.getMessage());
-            return AiToolResult.error("Invalid JSON: " + e.getMessage());
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Invalid JSON: " + e.getMessage())));
         }
     }
 }
