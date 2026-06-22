@@ -4,10 +4,13 @@ import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
+import fan.summer.api.ai.AiTool;
 import fan.summer.api.component.StepWizard;
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
+import fan.summer.buildintool.ai.EmailArchiveFetchTool;
+import fan.summer.buildintool.ai.EmailArchiveQueryTool;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.setting.email.SwissKitSettingEmailEntity;
 import fan.summer.database.mapper.setting.email.SwissKitSettingEmailMapper;
@@ -385,5 +388,13 @@ public class EmailArchivePlugin implements SwissKitJPlugin {
                "-fx-border-color: rgba(255,255,255,0.12); -fx-border-width: 1;" +
                "-fx-border-radius: 8; -fx-background-radius: 8;" +
                "-fx-text-fill: rgba(255,255,255,0.88);";
+    }
+
+    @Override
+    public List<AiTool> aiTools() {
+        return List.of(
+            new EmailArchiveFetchTool(this),
+            new EmailArchiveQueryTool()
+        );
     }
 }
