@@ -156,12 +156,22 @@ public final class AiServiceProvider {
     }
 
     /**
-     * Returns an immutable list of currently registered tools.
-     * If a constrained tool is set via {@link #setConstrainedTool(String)},
-     * only that single tool is returned — this allows guided slash-command
-     * execution to present a small model with exactly one tool.
+     * Returns the list of tools visible under the current backend mode.
      *
-     * @return a list of registered {@link AiTool} instances
+     * <p>Two filters apply, in order:</p>
+     * <ol>
+     *   <li><b>Mode filter</b> — in {@code "local"} mode only tools where
+     *       {@link AiTool#supportsLocal()} is {@code true} are returned;
+     *       in any cloud mode ({@code "openai"} / {@code "anthropic"}) only
+     *       tools where {@link AiTool#supportsCloud()} is {@code true}.</li>
+     *   <li><b>Constrained-tool filter</b> — if {@link #setConstrainedTool(String)}
+     *       has been set, the result is further narrowed to that single tool.
+     *       The mode filter still applies, so a constrained tool that is not
+     *       available in the current mode yields an empty list (slash-command
+     *       guidance cannot bypass mode visibility).</li>
+     * </ol>
+     *
+     * @return a list of tools visible under the current mode (possibly empty)
      */
     public static List<AiTool> getTools() {
         boolean isLocal = "local".equals(currentMode);
