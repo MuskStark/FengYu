@@ -2,6 +2,10 @@ package fan.summer.ui.about;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.Properties;
 
 /**
@@ -17,6 +21,8 @@ public final class BuildInfo {
     static final String DEV_VERSION = "(dev)";
     static final String DEV_BUILD_TIME = "(dev build)";
     private static final String RESOURCE = "/build-info.properties";
+    private static final DateTimeFormatter BUILD_TIME_FMT =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm z").withZone(ZoneId.systemDefault());
 
     static final BuildInfo INSTANCE = new BuildInfo(load(RESOURCE));
 
@@ -42,7 +48,22 @@ public final class BuildInfo {
     }
 
     public static String getBuildTime() {
-        return INSTANCE.value("build.time", DEV_BUILD_TIME);
+        return INSTANCE.formatBuildTime(INSTANCE.value("build.time", DEV_BUILD_TIME));
+    }
+
+    /**
+     * Reformats an ISO-8601 instant (Maven's {@code ${maven.build.timestamp}}) as
+     * {@code yyyy-MM-dd HH:mm z} in the system zone. Any other value (the test
+     * fixture's human-readable string, the {@code (dev build)} fallback, or
+     * anything unparseable) is returned unchanged.
+     */
+    String formatBuildTime(String raw) {
+        if (raw == null || raw.isBlank() || raw.charAt(0) == '(') return raw;
+        try {
+            return BUILD_TIME_FMT.format(Instant.parse(raw));
+        } catch (DateTimeParseException e) {
+            return raw;
+        }
     }
 
     String value(String key, String fallback) {

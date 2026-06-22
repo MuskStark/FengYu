@@ -39,4 +39,25 @@ class BuildInfoTest {
         assertEquals("9.9.9-test", BuildInfo.getVersion());
         assertEquals("2026-01-01 00:00 UTC", BuildInfo.getBuildTime());
     }
+
+    @Test
+    void formatsIsoBuildTimeAsLocalZoned() {
+        // The packaged JAR emits ISO-8601 because Maven's maven.build.timestamp.format
+        // does not apply to ${maven.build.timestamp} inside filtered resources.
+        // formatBuildTime must convert it to "yyyy-MM-dd HH:mm z".
+        BuildInfo info = new BuildInfo(new Properties());
+        String formatted = info.formatBuildTime("2026-06-22T09:23:11Z");
+        assertNotEquals("2026-06-22T09:23:11Z", formatted);
+        assertTrue(formatted.matches("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2} .+"),
+            "expected 'yyyy-MM-dd HH:mm z', got: " + formatted);
+    }
+
+    @Test
+    void formatBuildTimePassesThroughNonIso() {
+        BuildInfo info = new BuildInfo(new Properties());
+        // human-readable fixture value → unchanged
+        assertEquals("2026-01-01 00:00 UTC", info.formatBuildTime("2026-01-01 00:00 UTC"));
+        // dev fallback → unchanged
+        assertEquals(BuildInfo.DEV_BUILD_TIME, info.formatBuildTime(BuildInfo.DEV_BUILD_TIME));
+    }
 }
