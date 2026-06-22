@@ -39,11 +39,6 @@ public final class StopDetector {
         // Gemma
         "<end_of_turn>",
         "<start_of_turn>",
-        // FunctionGemma
-        "<end_function_call>",
-        "<start_function_call>",
-        "<end_function_response>",
-        "<start_function_response>",
         // Generic role tags some fine-tunes emit
         "<|user|>",
         "<|assistant|>",
