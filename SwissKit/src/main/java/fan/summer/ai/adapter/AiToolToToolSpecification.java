@@ -2,6 +2,7 @@ package fan.summer.ai.adapter;
 
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.model.chat.request.json.*;
+import fan.summer.ai.tools.AiToolDescriptions;
 import fan.summer.api.ai.AiTool;
 import fan.summer.api.ai.AiToolParam;
 
@@ -22,7 +23,7 @@ public final class AiToolToToolSpecification {
         Map<String, JsonSchemaElement> properties = new LinkedHashMap<>();
         List<String> required = new ArrayList<>();
 
-        for (AiToolParam param : tool.getParameters()) {
+        for (AiToolParam param : AiToolDescriptions.pickParameters(tool)) {
             properties.put(param.name(), buildSchema(param));
             if (param.required()) {
                 required.add(param.name());
@@ -36,7 +37,7 @@ public final class AiToolToToolSpecification {
 
         return ToolSpecification.builder()
             .name(tool.getName())
-            .description(tool.getDescription())
+            .description(AiToolDescriptions.pickDescription(tool))
             .parameters(params)
             .build();
     }
