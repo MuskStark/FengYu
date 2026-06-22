@@ -4,13 +4,19 @@ import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
+import fan.summer.api.ai.AiTool;
 import fan.summer.api.i18n.I18n;
+import fan.summer.buildintool.pdftool.ai.PdfMergeAiTool;
+import fan.summer.buildintool.pdftool.ai.PdfSplitAiTool;
+import fan.summer.buildintool.pdftool.ai.PdfToDocxAiTool;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+
+import java.util.List;
 
 public class PdfToolPlugin implements SwissKitJPlugin {
 
@@ -54,5 +60,14 @@ public class PdfToolPlugin implements SwissKitJPlugin {
 
         view = root;
         return view;
+    }
+
+    @Override
+    public List<AiTool> aiTools() {
+        return List.of(
+            new PdfSplitAiTool(),
+            new PdfMergeAiTool(),
+            new PdfToDocxAiTool()
+        );
     }
 }
