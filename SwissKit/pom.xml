@@ -17,6 +17,7 @@
     </licenses>
 
     <properties>
+        <maven.build.timestamp.format>yyyy-MM-dd HH:mm z</maven.build.timestamp.format>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -285,9 +286,18 @@
 
     <build>
         <resources>
+            <!-- Default: all resources unfiltered, so binary assets (images, fonts) aren't corrupted. -->
             <resource>
                 <directory>src/main/resources</directory>
                 <filtering>false</filtering>
+            </resource>
+            <!-- build-info.properties is the only filtered resource: ${project.version} / ${maven.build.timestamp} are replaced at build time. -->
+            <resource>
+                <directory>src/main/resources</directory>
+                <includes>
+                    <include>build-info.properties</include>
+                </includes>
+                <filtering>true</filtering>
             </resource>
         </resources>
         <plugins>
