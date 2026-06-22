@@ -18,7 +18,7 @@ public final class AiToolDescriptions {
     private AiToolDescriptions() {}
 
     /** @return {@code true} when the active backend is the local GGUF engine. */
-    public static boolean isLocalMode() {
+    private static boolean isLocalMode() {
         return "local".equals(AiServiceProvider.getCurrentMode());
     }
 
