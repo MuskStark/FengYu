@@ -58,7 +58,7 @@ public interface AiTool {
      *
      * @return parameters shown to the model in local mode
      */
-    default java.util.List<AiToolParam> getLocalParameters() { return getParameters(); }
+    default List<AiToolParam> getLocalParameters() { return getParameters(); }
 
     /**
      * Whether this tool is visible when the active backend is local.
