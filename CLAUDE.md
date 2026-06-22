@@ -44,13 +44,12 @@ Official plugins live in a separate repository: [MuskStark/SwissKiJ-Plugin](http
 2. Resolve the plugins directory (`<user.dir>/.swisskit/plugin/`)
 3. Create `PluginLoader` + `PluginRegistry`
 4. Create `FavoriteService` (loads bookmarked plugin IDs from DB)
-5. Register built-in tools via `BuiltinToolRegistrar` (bypasses JAR loading, directly adds to registry)
+5. Register built-in tools via `BuiltinToolRegistrar` (bypasses JAR loading, routes through `PluginRegistry.addPlugins`, which auto-registers each plugin's `aiTools()`)
 6. Initialize cloud AI backends if mode is `openai`/`anthropic`; **local mode is lazy** — deferred until the AI tool is first opened
-7. Register built-in AI tools via `BuiltinAiToolRegistrar`
-8. Build `MainWindow` and display it
-9. Start `PluginLoader` (scans the plugins dir and watches for changes)
+7. Build `MainWindow` and display it
+8. Start `PluginLoader` (scans the plugins dir and watches for changes)
 
-> Steps 5→7 are order-coupled: `BuiltinAiToolRegistrar` looks up `ExcelSplitterPlugin`/`EmailArchivePlugin` from the live registry, so those AI tools only register if the built-in tools registered first.
+> Step 5 registers both the plugin UI and any AI tools the plugin declares via `aiTools()` in one pass — there is no separate AI-tool registrar step anymore.
 
 **UI structure** (all in `fan.summer.ui.*`):
 - `MainWindow` — root `StackPane`; owns `TitleBar`, `Sidebar`, `ContentArea`, status bar
@@ -81,7 +80,7 @@ Plugin icon background colors are CSS classes: `ic-blue / ic-purple / ic-teal / 
 
 **AI Markdown**: AI responses render via `WebView` with dark theme `#1e1e2e`; auto-resize height to content.
 
-**AI tools**: Register via `BuiltinAiToolRegistrar`; use `ToolExecutor` + `ToolSchemaBuilder` for execution and schema generation.
+**AI tools**: Plugins self-declare AI tools via `SwissKitJPlugin.aiTools()` (v3.1.0+); the `PluginRegistry` auto-registers/unregisters them with `AiServiceProvider` on plugin add/remove (including hot-reload). Use `ToolExecutor` + `ToolSchemaBuilder` for execution and schema generation. See "### Plugin AI tools (v3.1.0+)" below for the full pattern.
 
 **Local tool-calling model**: Qwen3-4B (Hermes `<tool_call>` format, displayed `<think>` reasoning). Detected by filename containing `qwen3`; routed via `LocalChatBackend.chatQwen3Native` + `ThinkingStreamSegmenter` (splits the token stream into THINK/CONTENT regions, suppresses `<tool_call>`) + `Qwen3Adapter` (Hermes system-prompt directive + `/no_think` toggle). THINK segments stream to `AiStreamCallback.onThinking` and render as collapsed cards (`MarkdownRenderer.renderCollapsible`); thinking is stripped (`ThinkingStreamSegmenter.stripThink`) before history/answer so it never enters the next prompt. Tool-call parsing for Qwen2.5 / Qwen3 / generic all live in `ToolCallParser`. FunctionGemma support was removed in v3.1.0.
 
@@ -160,6 +159,64 @@ public class MyPlugin implements SwissKitJPlugin {
 ```
 
 Use SLF4J-style `{}` placeholders — formatting is deferred until the level is actually enabled. If the host has not installed a binder (e.g. plugin unit tests), `LoggerFactory` returns a silent no-op logger, so it is safe to call from anywhere.
+
+### Plugin AI tools (v3.1.0+)
+
+Plugins can expose AI tools by overriding the default `aiTools()` method:
+
+```java
+public class MyPlugin implements SwissKitJPlugin {
+    @Override
+    public List<AiTool> aiTools() {
+        return List.of(new MyAiTool(this));
+    }
+}
+```
+
+Tools are auto-registered with `AiServiceProvider` when the plugin is added to the registry, and auto-unregistered on plugin removal (including JAR hot-reload). No manual registration needed — the old `BuiltinAiToolRegistrar` is gone.
+
+#### Cloud / local capability declaration
+
+Each `AiTool` can declare its visibility per backend mode:
+
+```java
+public class MyAiTool implements AiTool {
+    // ... getName, getDescription, getParameters, execute ...
+
+    @Override public boolean supportsLocal() { return false; }  // hide from local (Qwen3-4B)
+    @Override public boolean supportsCloud() { return true; }   // visible in cloud (default)
+
+    @Override public String getLocalDescription() {
+        return "Short Qwen3-friendly description with enum: a|b|c.";
+    }
+
+    @Override public List<AiToolParam> getLocalParameters() {
+        // Simplified schema for local mode
+        return List.of(AiToolParam.of("x", "string", "X"));
+    }
+}
+```
+
+Filter rules:
+- Local mode (Qwen3-4B): tools with `supportsLocal()==true` only.
+- Cloud mode (OpenAI/Anthropic): tools with `supportsCloud()==true` only.
+- Switching mode takes effect on the next chat call — no re-registration.
+
+#### Tool return JSON contract
+
+All tools return JSON via `AiToolResult.success(jsonString)`:
+
+```json
+{ "success": true, "summary": "<one-line summary>", ...payload }
+```
+
+On error, use `AiToolResult.error(jsonString)`:
+
+```json
+{ "success": false, "error": "<message>" }
+```
+
+The `summary` field is what the model primarily reads; payload fields are read on demand. This keeps small models like Qwen3-4B from drowning in detail.
 
 ## JavaFX Layout Pitfalls
 

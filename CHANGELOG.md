@@ -4,6 +4,32 @@ All notable changes to SwissKitJ. Format based on [Keep a Changelog](https://kee
 
 ---
 
+## [Unreleased] — Plugin-Owned AI Tools
+
+### Added
+- Plugins can self-declare AI tools via `SwissKitJPlugin.aiTools()` — no more central registrar.
+- `AiTool` interface declares per-mode visibility (`supportsLocal`/`supportsCloud`) and dual descriptions (`getDescription`/`getLocalDescription`).
+- Plugin registry auto-registers/unregisters tools on plugin add/remove (including hot-reload).
+- `AiServiceProvider.getTools()` now filters by the active backend mode (local vs. cloud), so tool lists stay focused per model.
+- `AiToolDescriptions` helper centralises cloud-rich / local-concise description templates.
+
+### Changed
+- All 16 builtin AI tools return standardized JSON `{success, summary, ...payload}`.
+- Tool descriptions follow a cloud-rich / local-concise dual template.
+- `pdf_merge.filePaths` parameter type fixed from `"array"` to `"string[]"`.
+- Enums declared for `base64.mode`, `hash_calculate.algorithm`, `color_convert.from/to`.
+- `BuiltinToolRegistrar.register()` now routes through `PluginRegistry.addPlugins` to auto-register plugin AI tools in one pass.
+
+### Removed
+- `BuiltinAiToolRegistrar` class — superseded by plugin-owned `aiTools()`. The startup call in `SwissKitJApp.start()` is gone too.
+
+### Fixed
+- `pdf_merge` schema no longer renders as `string` (was `array` without `[]` suffix).
+- `ToolExecutor` error output is always JSON `{success:false,error:...}`.
+- `ExcelConfigureTool` success returns `success:true` (was `configured:true`).
+
+---
+
 ## [3.1.0] — LangChain4j + ChatBackend Unification
 
 **v3.1.0** — 2026-06-21
