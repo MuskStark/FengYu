@@ -93,6 +93,7 @@ public class EmailArchiveQueryTool implements AiTool {
 
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("success", true);
+            out.put("summary", "Found " + emails.size() + " email(s)");
             out.put("totalResults", emails.size());
             out.put("emails", emails);
 
@@ -100,7 +101,7 @@ public class EmailArchiveQueryTool implements AiTool {
             return AiToolResult.success(JsonHelper.toJson(out));
         } catch (Exception e) {
             log.error("email_archive_query error: {}", e.getMessage());
-            return AiToolResult.error("Query failed: " + e.getMessage());
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Query failed: " + e.getMessage())));
         }
     }
 }

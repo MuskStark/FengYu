@@ -6,9 +6,11 @@ import fan.summer.api.ai.AiToolResult;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
 import fan.summer.buildintool.pdftool.worker.PdfConvertWorker;
+import fan.summer.ai.util.JsonHelper;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -43,11 +45,14 @@ public class PdfToDocxAiTool implements AiTool {
         String filePath = (String) args.get("filePath");
         String outputDir = (String) args.get("outputDir");
 
-        if (filePath == null || filePath.isBlank()) return AiToolResult.error("filePath is required");
-        if (outputDir == null || outputDir.isBlank()) return AiToolResult.error("outputDir is required");
+        if (filePath == null || filePath.isBlank())
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "filePath is required")));
+        if (outputDir == null || outputDir.isBlank())
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "outputDir is required")));
 
         Path pdf = Path.of(filePath);
-        if (!Files.exists(pdf)) return AiToolResult.error("File not found: " + filePath);
+        if (!Files.exists(pdf))
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "File not found: " + filePath)));
 
         try {
             PdfConvertWorker worker = new PdfConvertWorker(List.of(pdf), Path.of(outputDir));
@@ -59,12 +64,16 @@ public class PdfToDocxAiTool implements AiTool {
                 }
             }).join();
 
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("success", true);
+            out.put("summary", "Converted to " + outputs.get(0).getFileName());
+            out.put("outputPath", outputs.get(0).toString());
             log.info("AI pdf_to_docx success: {} -> {}", filePath, outputs.get(0).getFileName());
-            return AiToolResult.success("Conversion complete: " + outputs.get(0).getFileName());
+            return AiToolResult.success(JsonHelper.toJson(out));
         } catch (CompletionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             log.error("AI pdf_to_docx failed: {}", cause.getMessage());
-            return AiToolResult.error("PDF to DOCX failed: " + cause.getMessage());
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "PDF to DOCX failed: " + cause.getMessage())));
         }
     }
 }

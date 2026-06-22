@@ -40,7 +40,7 @@ public class EmailArchiveFetchTool implements AiTool {
     @Override public AiToolResult execute(Map<String, Object> args) {
         String accountEmail = (String) args.get("accountEmail");
         if (accountEmail == null || accountEmail.isBlank())
-            return AiToolResult.error("accountEmail is required");
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "accountEmail is required")));
 
         EmailArchiveConfig config = plugin.getConfig();
         config.setAccountEmail(accountEmail.trim());
@@ -56,6 +56,7 @@ public class EmailArchiveFetchTool implements AiTool {
 
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("success", result.errorMessage == null);
+            out.put("summary", "Archived " + result.newArchived + " new (" + result.skippedDuplicates + " duplicates skipped)");
             out.put("totalFetched", result.totalFetched);
             out.put("newArchived", result.newArchived);
             out.put("skippedDuplicates", result.skippedDuplicates);
@@ -69,7 +70,7 @@ public class EmailArchiveFetchTool implements AiTool {
             return AiToolResult.success(JsonHelper.toJson(out));
         } catch (Exception e) {
             log.error("email_archive_fetch error: {}", e.getMessage());
-            return AiToolResult.error("Archive failed: " + e.getMessage());
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Archive failed: " + e.getMessage())));
         }
     }
 }
