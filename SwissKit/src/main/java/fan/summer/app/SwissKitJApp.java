@@ -15,7 +15,6 @@ import fan.summer.ui.MainWindow;
 import fan.summer.ui.util.WindowResizeHelper;
 import fan.summer.registrar.BuiltinToolRegistrar;
 import fan.summer.ai.service.CloudChatBackend;
-import fan.summer.ai.tools.BuiltinAiToolRegistrar;
 import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.scene.image.Image;
@@ -102,10 +101,6 @@ public class SwissKitJApp extends Application {
 
         // ── Initialize AI backend based on saved mode ────────
         initializeAiBackend();
-
-        // ── Register built-in AI tools ─────────────────────────────
-        BuiltinAiToolRegistrar.register();
-        log.info("Built-in AI tools registered");
 
         // ── Main window ────────────────────────────────────────
         mainWindow = new MainWindow(stage, loader, registry, favoriteService);
