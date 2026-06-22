@@ -43,8 +43,10 @@ public class BuiltinColorConvertTool implements AiTool {
     @Override public List<AiToolParam> getParameters() {
         return List.of(
             AiToolParam.of("color", "string", "Color value to convert", true),
-            AiToolParam.of("from", "string", "Source format: HEX, RGB, or HSL", true),
-            AiToolParam.of("to", "string", "Target format: HEX, RGB, or HSL", true)
+            AiToolParam.of("from", "string", "Source format", true,
+                List.of("HEX", "RGB", "HSL")),
+            AiToolParam.of("to", "string", "Target format", true,
+                List.of("HEX", "RGB", "HSL"))
         );
     }
 

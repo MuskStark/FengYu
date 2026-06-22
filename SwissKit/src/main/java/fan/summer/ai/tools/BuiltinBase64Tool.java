@@ -36,7 +36,9 @@ public class BuiltinBase64Tool implements AiTool {
     @Override public List<AiToolParam> getParameters() {
         return List.of(
             AiToolParam.of("text", "string", "Input text to encode or decode", true),
-            AiToolParam.of("mode", "string", "Operation: \"encode\" or \"decode\"", true)
+            AiToolParam.of("mode", "string",
+                "Direction of the conversion: encode or decode", true,
+                List.of("encode", "decode"))
         );
     }
 

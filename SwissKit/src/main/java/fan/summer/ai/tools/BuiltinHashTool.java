@@ -38,7 +38,9 @@ public class BuiltinHashTool implements AiTool {
     @Override public List<AiToolParam> getParameters() {
         return List.of(
             AiToolParam.of("text", "string", "Input text to hash", true),
-            AiToolParam.of("algorithm", "string", "Hash algorithm: MD5, SHA-1, SHA-256, SHA-512", true)
+            AiToolParam.of("algorithm", "string",
+                "Hash algorithm", true,
+                List.of("MD5", "SHA-1", "SHA-256", "SHA-512"))
         );
     }
 
