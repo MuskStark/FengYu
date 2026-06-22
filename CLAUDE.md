@@ -83,6 +83,8 @@ Plugin icon background colors are CSS classes: `ic-blue / ic-purple / ic-teal / 
 
 **AI tools**: Register via `BuiltinAiToolRegistrar`; use `ToolExecutor` + `ToolSchemaBuilder` for execution and schema generation.
 
+**Local tool-calling model**: Qwen3-4B (Hermes `<tool_call>` format, displayed `<think>` reasoning). Detected by filename containing `qwen3`; routed via `LocalChatBackend.chatQwen3Native` + `ThinkingStreamSegmenter` (splits the token stream into THINK/CONTENT regions, suppresses `<tool_call>`) + `Qwen3Adapter` (Hermes system-prompt directive + `/no_think` toggle). THINK segments stream to `AiStreamCallback.onThinking` and render as collapsed cards (`MarkdownRenderer.renderCollapsible`); thinking is stripped (`ThinkingStreamSegmenter.stripThink`) before history/answer so it never enters the next prompt. Tool-call parsing for Qwen2.5 / Qwen3 / generic all live in `ToolCallParser`. FunctionGemma support was removed in v3.1.0.
+
 ## Reusable UI Component: StepWizard
 
 `fan.summer.api.component.StepWizard` (in `SwissKitJ-Api`) is a ready-made multi-step wizard container for use inside any plugin's `createView()`.
