@@ -12,17 +12,19 @@ import java.util.regex.Pattern;
 /**
  * Parses raw model output text and extracts structured AI tool-call objects.
  *
- * <p>This class recognises two patterns:</p>
+ * <p>This class recognises three patterns, tried in order:</p>
  * <ul>
- *   <li><b>Qwen pattern</b> — delimited by {@code <|tool_call_begin|>} and
+ *   <li><b>Qwen2.5 pattern</b> — delimited by {@code <|tool_call_begin|>} and
  *       {@code <|tool_call_end|>} tokens with JSON fields {@code name} and
  *       {@code arguments} inside.</li>
+ *   <li><b>Hermes pattern (Qwen3)</b> — a JSON object with {@code name} and
+ *       {@code arguments} fields wrapped in {@code <tool_call>} … {@code </tool_call>}.</li>
  *   <li><b>Generic pattern</b> — a bare JSON object with {@code name} and
  *       {@code arguments} fields, optionally wrapped in a markdown code fence.</li>
  * </ul>
  *
- * <p>The Qwen pattern is checked first; if nothing matches, the generic pattern
- * is tried. Extracted calls are returned as {@link AiToolCall} instances.</p>
+ * <p>The first pattern that yields matches wins. Extracted calls are returned as
+ * {@link AiToolCall} instances.</p>
  *
  * @see AiToolCall
  */
@@ -32,6 +34,11 @@ public class ToolCallParser {
 
     private static final Pattern QWEN_TOOL_CALL = Pattern.compile(
         "<\\|tool_call_begin\\|>.*?\"name\"\\s*:\\s*\"(.*?)\".*?\"arguments\"\\s*:\\s*(\\{.*?}).*?<\\|tool_call_end\\|>",
+        Pattern.DOTALL
+    );
+
+    private static final Pattern HERMES_TOOL_CALL = Pattern.compile(
+        "<tool_call>\\s*\\{\\s*\"name\"\\s*:\\s*\"(.*?)\"\\s*,\\s*\"arguments\"\\s*:\\s*(\\{.*?})\\s*}\\s*</tool_call>",
         Pattern.DOTALL
     );
 
@@ -62,6 +69,15 @@ public class ToolCallParser {
             return calls;
         }
 
+        m = HERMES_TOOL_CALL.matcher(text);
+        while (m.find()) {
+            calls.add(buildCall(m.group(1), m.group(2)));
+        }
+        if (!calls.isEmpty()) {
+            log.debug("Parsed {} tool call(s) via Hermes pattern", calls.size());
+            return calls;
+        }
+
         m = GENERIC_TOOL_CALL.matcher(text);
         while (m.find()) {
             calls.add(buildCall(m.group(1), m.group(2)));
@@ -75,12 +91,13 @@ public class ToolCallParser {
      * pattern without doing full parsing.
      *
      * @param text the text to inspect; may be null
-     * @return true if {@code text} contains the Qwen delimiter or both
+     * @return true if {@code text} contains the Qwen delimiter, a Hermes wrapper, or both
      *         {@code "name"} and {@code "arguments"} substrings
      */
     public static boolean containsToolCallPattern(String text) {
         if (text == null) return false;
         return text.contains("<|tool_call_begin|>")
+            || text.contains("<tool_call>")
             || text.contains("\"name\"") && text.contains("\"arguments\"");
     }
 
@@ -88,7 +105,7 @@ public class ToolCallParser {
      * Removes all tool-call artefacts from the text, leaving only the conversational
      * content intended for the user.
      *
-     * <p>Both the Qwen-delimited form and the generic JSON form are stripped.
+     * <p>Both the Qwen2.5-delimited form and the Hermes-wrapped form are stripped.
      * Surrounding whitespace is trimmed from the result.</p>
      *
      * @param text the original model output; may be null
@@ -98,6 +115,7 @@ public class ToolCallParser {
     public static String stripToolCalls(String text) {
         if (text == null) return "";
         String result = QWEN_TOOL_CALL.matcher(text).replaceAll("");
+        result = HERMES_TOOL_CALL.matcher(result).replaceAll("");
         log.debug("stripToolCalls: originalLength={}, resultLength={}", text.length(), result.length());
         return result.trim();
     }
