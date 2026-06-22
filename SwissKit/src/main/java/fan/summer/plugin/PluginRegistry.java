@@ -2,13 +2,18 @@ package fan.summer.plugin;
 
 import fan.summer.api.PluginContext;
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.ai.AiServiceProvider;
+import fan.summer.api.ai.AiTool;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -48,6 +53,9 @@ public class PluginRegistry {
     private final Set<SwissKitJPlugin> backgroundPlugins =
         java.util.Collections.synchronizedSet(new LinkedHashSet<>());
 
+    /** Tracks the AI tool names each plugin registered, so removal can unregister them. */
+    private final Map<SwissKitJPlugin, List<String>> toolsByPlugin = new HashMap<>();
+
     /**
      * Constructs a PluginRegistry and wires it to the given PluginLoader.
      *
@@ -85,18 +93,19 @@ public class PluginRegistry {
 
     // Called by PluginLoader (already on FX thread via Platform.runLater)
     /**
-     * Adds a collection of plugins to the registry.
+     * Adds a collection of plugins to the registry and registers their AI tools
+     * with {@link AiServiceProvider}.
      *
-     * <p>This method is called by {@link PluginLoader} on the JavaFX Application Thread
-     * (via {@code Platform.runLater}) when a new JAR is loaded. It appends the supplied
-     * plugins to the live list.</p>
+     * <p>Called by {@link PluginLoader} on the JavaFX Application Thread when a
+     * new JAR is loaded, and by {@code BuiltinToolRegistrar} at startup.</p>
      *
      * @param toAdd the plugins to add; may be empty but not {@code null}
      * @since 1.0
      */
-    void addPlugins(List<SwissKitJPlugin> toAdd) {
+    public void addPlugins(List<SwissKitJPlugin> toAdd) {
         log.debug("Adding {} plugin(s) to registry", toAdd.size());
         plugins.addAll(toAdd);
+        for (SwissKitJPlugin p : toAdd) registerPluginTools(p);
     }
 
     // Called by PluginLoader (already on FX thread via Platform.runLater)
@@ -113,6 +122,7 @@ public class PluginRegistry {
      * @since 1.0
      */
     void removePlugin(SwissKitJPlugin plugin) {
+        unregisterPluginTools(plugin);
         log.debug("Removing plugin from registry: id={}", plugin.getId());
         backgroundPlugins.remove(plugin);
         if (activePlugin == plugin) {
@@ -227,5 +237,43 @@ public class PluginRegistry {
      */
     public Optional<SwissKitJPlugin> findPlugin(String id) {
         return plugins.stream().filter(p -> p.getId().equals(id)).findFirst();
+    }
+
+    // ── AI tool lifecycle ───────────────────────────────────
+
+    private void registerPluginTools(SwissKitJPlugin plugin) {
+        List<AiTool> tools;
+        try {
+            tools = PluginContext.callWith(plugin, plugin::aiTools);
+        } catch (Exception e) {
+            log.warn("Plugin {} threw on aiTools(): {}", plugin.getId(), e.getMessage(), e);
+            return;
+        }
+        if (tools == null || tools.isEmpty()) return;
+
+        List<String> names = new ArrayList<>();
+        for (AiTool t : tools) {
+            AiTool existing = AiServiceProvider.getTool(t.getName());
+            if (existing != null) {
+                log.warn("Tool name '{}' from plugin {} overwrites an existing registration",
+                        t.getName(), plugin.getId());
+            }
+            AiServiceProvider.registerTool(t);
+            names.add(t.getName());
+        }
+        toolsByPlugin.put(plugin, names);
+        log.info("Registered {} AI tool(s) from plugin {}", names.size(), plugin.getId());
+    }
+
+    private void unregisterPluginTools(SwissKitJPlugin plugin) {
+        List<String> names = toolsByPlugin.remove(plugin);
+        if (names == null) return;
+        for (String name : names) AiServiceProvider.unregisterTool(name);
+        log.info("Unregistered {} AI tool(s) from plugin {}", names.size(), plugin.getId());
+    }
+
+    /** Test seam — allows tests to inject/clear the singleton without reflection. */
+    static void setInstanceForTest(PluginRegistry instance) {
+        INSTANCE = instance;
     }
 }
