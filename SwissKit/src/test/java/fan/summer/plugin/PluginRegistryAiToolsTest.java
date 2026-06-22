@@ -99,5 +99,43 @@ class PluginRegistryAiToolsTest {
         };
         assertDoesNotThrow(() -> registry.addPlugins(List.of(bad)));
         assertTrue(AiServiceProvider.getTools().isEmpty());
+        assertTrue(registry.getPlugins().contains(bad),
+                "Plugin must still appear in the registry even if its aiTools() throws");
+    }
+
+    @Test
+    void removeThenAddReRegistersTools() {
+        SwissKitJPlugin p = plugin("p1", List.of(tool("t1")));
+        registry.addPlugins(List.of(p));
+        assertNotNull(AiServiceProvider.getTool("t1"));
+
+        registry.removePlugin(p);
+        assertNull(AiServiceProvider.getTool("t1"));
+
+        registry.addPlugins(List.of(p));
+        assertNotNull(AiServiceProvider.getTool("t1"),
+                "Re-adding the same plugin instance must re-register its tools");
+    }
+
+    @Test
+    void midLoopExceptionRollsBackRegisteredTools() {
+        // First tool is valid; second tool's getName() throws to simulate a buggy plugin.
+        AiTool ok = tool("ok_one");
+        AiTool bad = new AiTool() {
+            public String getName() { throw new RuntimeException("bad tool"); }
+            public String getDescription() { return ""; }
+            public List<AiToolParam> getParameters() { return List.of(); }
+            public AiToolResult execute(Map<String, Object> args) { return AiToolResult.success("ok"); }
+        };
+        SwissKitJPlugin p = plugin("p1", List.of(ok, bad));
+
+        assertDoesNotThrow(() -> registry.addPlugins(List.of(p)));
+
+        assertNull(AiServiceProvider.getTool("ok_one"),
+                "First tool must be rolled back when the second one throws");
+        assertNull(AiServiceProvider.getTool("bad"),
+                "Bad tool must never have been registered");
+        assertTrue(registry.getPlugins().contains(p),
+                "Plugin must still be in the UI list despite mid-loop failure");
     }
 }
