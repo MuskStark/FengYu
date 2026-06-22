@@ -45,6 +45,7 @@ public class Sidebar extends VBox {
     private NavItem activeItem;
     private Consumer<String> onCategorySelect;
     private Runnable onSettingsSelect;
+    private Runnable onAboutSelect;
 
     public Sidebar() {
         LOG.info("Sidebar initializing");
@@ -76,6 +77,16 @@ public class Sidebar extends VBox {
     public void setOnSettingsSelect(Runnable handler) {
         LOG.debug("setOnSettingsSelect callback set");
         this.onSettingsSelect = handler;
+    }
+
+    /**
+     * Sets the runnable to execute when the user clicks the About item.
+     *
+     * @param handler the runnable to execute; may be null
+     */
+    public void setOnAboutSelect(Runnable handler) {
+        LOG.debug("setOnAboutSelect callback set");
+        this.onAboutSelect = handler;
     }
 
     /** Dynamically update plugin category badge numbers */
@@ -124,6 +135,7 @@ public class Sidebar extends VBox {
 
         // ── Settings (always at bottom) ──────────────────────────
         addSettingsItem("cog-outline", "sidebar.label.settings");
+        addAboutItem("information-outline", "sidebar.label.about");
 
         // ── Wrap in ScrollPane ────────────────────────────────────
         ScrollPane scrollPane = new ScrollPane(content);
@@ -158,6 +170,16 @@ public class Sidebar extends VBox {
         NavItem item = new NavItem("settings", mdiIcon, label, 0, false);
         item.setOnMouseClicked(e -> {
             if (onSettingsSelect != null) onSettingsSelect.run();
+        });
+        content.getChildren().add(item);
+        I18n.bind(item.textLabelProperty(), i18nKey);
+    }
+
+    private void addAboutItem(String mdiIcon, String i18nKey) {
+        String label = I18n.get(i18nKey);
+        NavItem item = new NavItem("about", mdiIcon, label, 0, false);
+        item.setOnMouseClicked(e -> {
+            if (onAboutSelect != null) onAboutSelect.run();
         });
         content.getChildren().add(item);
         I18n.bind(item.textLabelProperty(), i18nKey);
