@@ -18,13 +18,15 @@ public class EmailArchiveFetchTool implements AiTool {
     @Override public String getName() { return "email_archive_fetch"; }
 
     @Override public String getDescription() {
-        return "Connect to IMAP server and archive emails to local storage. " +
-               "Call this to fetch and save emails. " +
-               "Args: accountEmail (string, required) — the configured email account; " +
-               "days (integer, optional) — fetch from last N days, default 30; " +
-               "folder (string, optional) — IMAP folder, default INBOX; " +
-               "outputDir (string, optional) — local directory for .eml files.";
+        return "Connect to IMAP server and archive emails to local .eml files.\n"
+             + "Args: accountEmail (string, required) — the configured email account;\n"
+             + "      days (integer, optional, default 30) — fetch emails from last N days;\n"
+             + "      folder (string, optional, default INBOX) — IMAP folder;\n"
+             + "      outputDir (string, optional) — local directory for .eml files.\n"
+             + "Example: email_archive_fetch{\"accountEmail\":\"a@b.com\",\"days\":7}.";
     }
+
+    @Override public boolean supportsLocal() { return false; }
 
     @Override public List<AiToolParam> getParameters() {
         return List.of(

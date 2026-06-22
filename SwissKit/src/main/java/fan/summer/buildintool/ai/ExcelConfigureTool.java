@@ -51,12 +51,18 @@ public class ExcelConfigureTool implements AiTool {
     @Override public String getName() { return "excel_configure"; }
 
     @Override public String getDescription() {
-        return "Configure how to split the Excel file. Call AFTER excel_analyze. "
-               + "Modes: BY_SHEET (export each sheet as its own file), "
-               + "BY_COLUMN (split one sheet into multiple files grouped by the unique values of a column), "
-               + "COMPLEX (database-backed multi-config). "
-               + "Examples: excel_configure{mode:\"BY_COLUMN\", splitSheet:\"Sheet1\", splitColumn:\"部门\"}; "
-               + "excel_configure{mode:\"BY_SHEET\"}.";
+        return "Configure how to split the Excel file. Must be called after excel_analyze.\n"
+             + "Args: mode (string, required, enum: BY_SHEET|BY_COLUMN|COMPLEX);\n"
+             + "      sheets (string[], optional, BY_SHEET) — sheet names to export;\n"
+             + "      splitSheet (string, optional, BY_COLUMN) — sheet to split;\n"
+             + "      splitColumn (string, optional, BY_COLUMN) — column header to split by;\n"
+             + "      taskId (string, optional, COMPLEX) — task ID from excel_complex_config.\n"
+             + "Example: excel_configure{\"mode\":\"BY_COLUMN\",\"splitSheet\":\"Sheet1\",\"splitColumn\":\"部门\"}.";
+    }
+
+    @Override public String getLocalDescription() {
+        return "Set split mode. Args: mode (BY_SHEET|BY_COLUMN|COMPLEX), plus mode-specific.\n"
+             + "Example: excel_configure{\"mode\":\"BY_SHEET\"}.";
     }
 
     @Override public List<AiToolParam> getParameters() {

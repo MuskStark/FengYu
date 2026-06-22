@@ -22,8 +22,14 @@ public class ExcelCancelTool implements AiTool {
     @Override public String getName() { return "excel_cancel"; }
 
     @Override public String getDescription() {
-        return "Cancel the Excel split operation currently running. Safe to call even when nothing is running. "
-               + "No arguments. Example: excel_cancel{}.";
+        return "Cancel the Excel split operation currently running. Safe to call even when nothing is running.\n"
+             + "No arguments.\n"
+             + "Example: excel_cancel{}.";
+    }
+
+    @Override public String getLocalDescription() {
+        return "Cancel running split. No args.\n"
+             + "Example: excel_cancel{}.";
     }
 
     @Override public java.util.List<AiToolParam> getParameters() {

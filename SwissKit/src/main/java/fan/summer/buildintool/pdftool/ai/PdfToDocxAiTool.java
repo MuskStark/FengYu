@@ -21,9 +21,15 @@ public class PdfToDocxAiTool implements AiTool {
     @Override public String getName() { return "pdf_to_docx"; }
 
     @Override public String getDescription() {
-        return "Convert a PDF file to DOCX format. " +
-               "Args: filePath (string) — absolute path to PDF; " +
-               "outputDir (string) — output directory for the DOCX file.";
+        return "Convert a PDF file to DOCX format.\n"
+             + "Args: filePath (string, required) — absolute path to PDF;\n"
+             + "      outputDir (string, required) — output directory for the DOCX file.\n"
+             + "Example: pdf_to_docx{\"filePath\":\"/a.pdf\",\"outputDir\":\"/out\"}.";
+    }
+
+    @Override public String getLocalDescription() {
+        return "PDF to DOCX. Args: filePath (string), outputDir (string).\n"
+             + "Example: pdf_to_docx{\"filePath\":\"/a.pdf\",\"outputDir\":\"/out\"}.";
     }
 
     @Override public List<AiToolParam> getParameters() {

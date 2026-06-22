@@ -22,9 +22,15 @@ public class PdfMergeAiTool implements AiTool {
     @Override public String getName() { return "pdf_merge"; }
 
     @Override public String getDescription() {
-        return "Merge multiple PDF files into one. " +
-               "Args: filePaths (array of strings) — ordered list of PDF paths; " +
-               "outputPath (string) — output file path for merged PDF.";
+        return "Merge multiple PDF files into one.\n"
+             + "Args: filePaths (string[], required) — ordered list of PDF file paths;\n"
+             + "      outputPath (string, required) — output file path for merged PDF.\n"
+             + "Example: pdf_merge{\"filePaths\":[\"/a.pdf\",\"/b.pdf\"],\"outputPath\":\"/out.pdf\"}.";
+    }
+
+    @Override public String getLocalDescription() {
+        return "Merge PDFs. Args: filePaths (string[]), outputPath (string).\n"
+             + "Example: pdf_merge{\"filePaths\":[\"/a.pdf\",\"/b.pdf\"],\"outputPath\":\"/o.pdf\"}.";
     }
 
     @Override public List<AiToolParam> getParameters() {

@@ -44,9 +44,14 @@ public class ExcelAnalyzeTool implements AiTool {
     @Override public String getName() { return "excel_analyze"; }
 
     @Override public String getDescription() {
-        return "Analyze (read) an Excel .xlsx/.xls file and return every sheet name, row counts, and column headers. "
-               + "This is the FIRST step before configuring or splitting a file. "
-               + "Example: excel_analyze{filePath:\"/path/file.xlsx\"}.";
+        return "Analyze an Excel .xlsx/.xls file: returns sheet names, row counts, and column headers.\n"
+             + "Args: filePath (string, required) — absolute path to the Excel file.\n"
+             + "Example: excel_analyze{\"filePath\":\"/path/file.xlsx\"}.";
+    }
+
+    @Override public String getLocalDescription() {
+        return "Read Excel structure (sheets, headers). Args: filePath (string).\n"
+             + "Example: excel_analyze{\"filePath\":\"/tmp/a.xlsx\"}.";
     }
 
     @Override public List<AiToolParam> getParameters() {

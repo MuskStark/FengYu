@@ -36,12 +36,18 @@ public class ExcelComplexConfigTool implements AiTool {
     @Override public String getName() { return "excel_complex_config"; }
 
     @Override public String getDescription() {
-        return "Manage database-backed complex split configs used by COMPLEX mode. "
-               + "Actions: 'add' (insert one config row: sheet + header row + split column), "
-               + "'list' (show all rows for a taskId), 'clear' (delete all rows for a taskId). "
-               + "'add' returns a taskId to pass to excel_configure mode=COMPLEX. "
-               + "headerIndex=-1 and columnIndex=-1 together means copy the whole sheet to every output file. "
-               + "Example: excel_complex_config{action:\"add\", sheetName:\"Sheet1\", headerIndex:1, columnIndex:2}.";
+        return "Manage database-backed complex split configs used by COMPLEX mode.\n"
+             + "Args: action (string, required, enum: add|list|clear) — operation;\n"
+             + "      taskId (string, optional) — task ID (auto-generated on 'add' if omitted);\n"
+             + "      sheetName (string, add) — sheet name;\n"
+             + "      headerIndex (integer, add) — 1-based header row; -1 = copy all;\n"
+             + "      columnIndex (integer, add) — 1-based column to split by; -1 = copy to all.\n"
+             + "Example: excel_complex_config{\"action\":\"add\",\"sheetName\":\"Sheet1\",\"headerIndex\":1,\"columnIndex\":2}.";
+    }
+
+    @Override public String getLocalDescription() {
+        return "Manage complex split configs. Args: action (add|list|clear), plus action-specific.\n"
+             + "Example: excel_complex_config{\"action\":\"list\",\"taskId\":\"t1\"}.";
     }
 
     @Override public List<AiToolParam> getParameters() {
