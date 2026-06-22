@@ -467,7 +467,7 @@ catch (Exception e) {
 - `PluginRegistry` 加 `toolsByPlugin` 映射 + `registerPluginTools` / `unregisterPluginTools`
 - `PluginRegistry.addPlugins()` 改 public
 - 新增单测(§8.1 前 6 项)
-- **此 commit 后系统仍能正常启动**:旧 `BuiltinAiToolRegistrar` 还在,但它注册的工具与(暂时还没自带工具的)插件集相同,无冲突。安全中间态。
+- **此 commit 后系统仍能正常启动**:`BuiltinAiToolRegistrar` 仍在按老路径注册全部 16 个工具;新加的 `PluginRegistry.registerPluginTools()` 也会被调用,但所有插件都用默认 `aiTools()` 返回空列表 —— 两条路径不冲突。Commit 1 内**不**让任何插件 override `aiTools()`,工具仍完全由 `BuiltinAiToolRegistrar` 提供。安全中间态。
 
 ### Commit 2: 工具迁移到插件
 - 10 个插件各自 override `aiTools()` 返回对应工具
