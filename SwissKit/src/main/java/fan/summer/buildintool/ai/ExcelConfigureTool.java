@@ -93,7 +93,7 @@ public class ExcelConfigureTool implements AiTool {
             config.mode = mode;
 
             Map<String, Object> result = new LinkedHashMap<>();
-            result.put("configured", true);
+            result.put("success", true);
             result.put("mode", mode.name());
 
             switch (mode) {
