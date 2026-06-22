@@ -51,16 +51,16 @@ In `SwissKitJApp.start()`:
 4. Resolve the plugins directory (`<user.dir>/.swisskit/plugin/`)
 5. Create `PluginLoader` + `PluginRegistry` (the registry wires itself to the loader)
 6. Create `FavoriteService` (loads bookmarked plugin IDs from the database)
-7. Register built-in tools via `BuiltinToolRegistrar`
+7. Register built-in tools via `BuiltinToolRegistrar` — this routes the list through `PluginRegistry.addPlugins`, which also auto-registers each plugin's `aiTools()` with `AiServiceProvider`
 8. Initialize cloud AI backends (OpenAI/Anthropic) if the saved mode is `openai`/`anthropic`; **local mode is deferred** until the AI tool is first opened
-9. Register built-in AI tools via `BuiltinAiToolRegistrar`
-10. Build and display the `MainWindow`
-11. Attach `WindowResizeHelper` for edge/corner drag resize
-12. Start `PluginLoader` (scans the plugins dir and watches for changes)
+9. Build and display the `MainWindow`
+10. Attach `WindowResizeHelper` for edge/corner drag resize
+11. Start `PluginLoader` (scans the plugins dir and watches for changes)
 
-> Steps 7 and 9 are order-coupled: the AI-tool registrar looks up the `ExcelSplitterPlugin`
-> and `EmailArchivePlugin` instances from the live `PluginRegistry`, so the Excel/Email
-> AI tools are only registered if the built-in tools were registered first.
+> As of v3.1.0 there is no separate AI-tool registration step. Plugins self-declare their
+> AI tools via `SwissKitJPlugin.aiTools()`, and the registry handles registration on add
+> and unregistration on remove (including hot-reload). The old `BuiltinAiToolRegistrar`
+> class has been removed.
 
 ## UI Structure
 

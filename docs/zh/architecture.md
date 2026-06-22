@@ -49,16 +49,15 @@ SwissKitJ 是一个基于 JavaFX 21（JDK 21）构建的模块化、插件化桌
 4. 解析插件目录（`<user.dir>/.swisskit/plugin/`）
 5. 创建 `PluginLoader` + `PluginRegistry`（注册表将自己绑定到 loader）
 6. 创建 `FavoriteService`（从数据库加载收藏的插件 ID）
-7. 通过 `BuiltinToolRegistrar` 注册内置工具
+7. 通过 `BuiltinToolRegistrar` 注册内置工具 —— 列表会经 `PluginRegistry.addPlugins` 统一注册，同时把每个插件的 `aiTools()` 自动注册到 `AiServiceProvider`
 8. 若已保存的模式为 `openai`/`anthropic`，则初始化云端 AI 后端；**local 模式延迟到首次打开 AI 工具时再初始化**
-9. 通过 `BuiltinAiToolRegistrar` 注册内置 AI 工具
-10. 构建并显示 `MainWindow`
-11. 挂载 `WindowResizeHelper` 实现边缘/角落拖拽缩放
-12. 启动 `PluginLoader`（扫描插件目录并监听变化）
+9. 构建并显示 `MainWindow`
+10. 挂载 `WindowResizeHelper` 实现边缘/角落拖拽缩放
+11. 启动 `PluginLoader`（扫描插件目录并监听变化）
 
-> 步骤 7 和 9 存在顺序耦合：AI 工具注册器要从活跃的 `PluginRegistry` 中查找
-> `ExcelSplitterPlugin` 和 `EmailArchivePlugin` 实例，因此只有先注册了内置工具，
-> Excel/Email 相关的 AI 工具才会被注册。
+> 自 v3.1.0 起不再有独立的 AI 工具注册步骤。插件通过 `SwissKitJPlugin.aiTools()`
+> 自带其 AI 工具，注册表在插件加入时自动注册、在插件移除（含热重载）时自动注销。
+> 旧的 `BuiltinAiToolRegistrar` 类已被删除。
 
 ## UI 结构
 
