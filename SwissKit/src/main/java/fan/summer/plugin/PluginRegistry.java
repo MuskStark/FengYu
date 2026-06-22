@@ -252,14 +252,22 @@ public class PluginRegistry {
         if (tools == null || tools.isEmpty()) return;
 
         List<String> names = new ArrayList<>();
-        for (AiTool t : tools) {
-            AiTool existing = AiServiceProvider.getTool(t.getName());
-            if (existing != null) {
-                log.warn("Tool name '{}' from plugin {} overwrites an existing registration",
-                        t.getName(), plugin.getId());
+        try {
+            for (AiTool t : tools) {
+                AiTool existing = AiServiceProvider.getTool(t.getName());
+                if (existing != null) {
+                    log.warn("Tool name '{}' from plugin {} overwrites an existing registration",
+                            t.getName(), plugin.getId());
+                }
+                AiServiceProvider.registerTool(t);
+                names.add(t.getName());
             }
-            AiServiceProvider.registerTool(t);
-            names.add(t.getName());
+        } catch (RuntimeException e) {
+            // Roll back any tools we already registered so removePlugin can clean up cleanly.
+            for (String name : names) AiServiceProvider.unregisterTool(name);
+            log.warn("Plugin {} registration failed mid-loop; rolled back {} tool(s): {}",
+                    plugin.getId(), names.size(), e.getMessage(), e);
+            return;
         }
         toolsByPlugin.put(plugin, names);
         log.info("Registered {} AI tool(s) from plugin {}", names.size(), plugin.getId());
