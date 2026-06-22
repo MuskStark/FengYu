@@ -7,8 +7,6 @@ import fan.summer.ai.nativejni.GenerateCallback;
 import fan.summer.ai.nativejni.GenerateParams;
 import fan.summer.ai.nativejni.ModelParams;
 import fan.summer.ai.nativejni.NativeWorkerClient;
-import fan.summer.ai.tools.FunctionGemmaAdapter;
-import fan.summer.ai.tools.OfflineNlNormalizer;
 import fan.summer.ai.tools.ToolCallParser;
 import fan.summer.ai.tools.ToolExecutor;
 import fan.summer.ai.tools.ToolSchemaBuilder;
@@ -51,8 +49,6 @@ public class LocalChatBackend implements ChatBackend {
     private NativeWorkerClient workerClient;
     private ChatTemplate nativeChatTemplate;
     private volatile String loadedModelPath;
-    private FunctionGemmaAdapter functionGemmaAdapter;
-    private boolean isFunctionGemma;
 
     /**
      * Creates a new AI service with the specified backend.
@@ -73,15 +69,8 @@ public class LocalChatBackend implements ChatBackend {
     }
 
     private void detectModelType(String modelPath) {
-        isFunctionGemma = false;
-        functionGemmaAdapter = null;
-        if (backend != Backend.NATIVE && backend != Backend.JAVA) return;
-        String name = Path.of(modelPath).getFileName().toString().toLowerCase();
-        isFunctionGemma = name.contains("functiongemma");
-        if (isFunctionGemma) {
-            functionGemmaAdapter = new FunctionGemmaAdapter();
-            log.info("FunctionGemma detected — using native tool calling protocol");
-        }
+        // Model-specific detection hook. The Qwen3 branch is added in the Qwen3 task.
+        // The generic native/java path handles every other model.
     }
 
     // ── Model management ──────────────────────────────────────
@@ -134,8 +123,6 @@ public class LocalChatBackend implements ChatBackend {
         } else if (javaRunner != null) {
             javaRunner.unload();
         }
-        isFunctionGemma = false;
-        functionGemmaAdapter = null;
         loadedModelPath = null;
     }
 
@@ -158,8 +145,7 @@ public class LocalChatBackend implements ChatBackend {
         return rt.totalMemory() - rt.freeMemory();
     }
 
-    @Override
-    public boolean isNativeAvailable() {
+    @Override public boolean isNativeAvailable() {
         return backend == Backend.NATIVE && workerClient != null && !workerClient.shouldFallback();
     }
 
@@ -197,10 +183,6 @@ public class LocalChatBackend implements ChatBackend {
 
     private void chatNative(List<AiChatMessage> history, float temperature, float topP,
                             int maxTokens, AiStreamCallback callback) {
-        if (isFunctionGemma) {
-            chatFunctionGemmaNative(history, temperature, topP, maxTokens, callback);
-            return;
-        }
         Thread.ofVirtual().start(() -> {
             try {
                 String systemPrompt = buildSystemPrompt();
@@ -253,84 +235,6 @@ public class LocalChatBackend implements ChatBackend {
             @Override
             public void onError(String message) {
                 batcher.close();
-                Platform.runLater(() -> callback.onError(new RuntimeException(message)));
-            }
-        });
-    }
-
-    // ── FunctionGemma single-turn tool calling ────────────────
-
-    private void chatFunctionGemmaNative(List<AiChatMessage> history, float temperature,
-                                          float topP, int maxTokens, AiStreamCallback callback) {
-        Thread.ofVirtual().start(() -> {
-            try {
-                OfflineNlNormalizer.normalizeLatestUser(history);   // offline CN→EN keywords
-                String toolDecls = functionGemmaAdapter.buildToolDeclarations(AiServiceProvider.getTools());
-                String prompt = functionGemmaAdapter.buildPrompt(history, toolDecls);
-                generateFunctionGemmaLoop(prompt, toolDecls, temperature, topP, maxTokens,
-                                          history, callback, 0);
-            } catch (Exception e) {
-                log.error("FunctionGemma generation error", e);
-                Platform.runLater(() -> callback.onError(e));
-            }
-        });
-    }
-
-    /**
-     * FunctionGemma multi-round loop: each round the model emits one-or-more
-     * single-turn calls (its strength); the host executes ALL of them, feeds the
-     * results back, and re-prompts — until a round produces no call (final answer)
-     * or {@link #MAX_TOOL_ROUNDS} is reached. Intermediate tool-call rounds do not
-     * stream raw {@code call:…{…}} tokens; only the final answer is delivered.
-     */
-    private void generateFunctionGemmaLoop(String prompt, String toolDecls, float temperature,
-                                            float topP, int maxTokens, List<AiChatMessage> history,
-                                            AiStreamCallback callback, int round) {
-        if (round >= MAX_TOOL_ROUNDS || workerClient == null || !workerClient.isAlive()) {
-            log.warn("FunctionGemma loop stopped at round {} (max {})", round, MAX_TOOL_ROUNDS);
-            Platform.runLater(() -> callback.onComplete("", 0, 0));
-            return;
-        }
-
-        GenerateParams genParams = new GenerateParams()
-            .temperature(temperature).topP(topP).maxTokens(maxTokens);
-
-        workerClient.generate(prompt, genParams, new GenerateCallback() {
-            @Override
-            public boolean onToken(String tokenText) {
-                // Tool-call rounds are discarded (no raw call:… tokens to the UI);
-                // the final-answer round forwards the cleaned text in onDone.
-                return true;
-            }
-
-            @Override
-            public void onDone(String fullText, int tokenCount, double tokPerSec) {
-                List<AiToolCall> toolCalls = functionGemmaAdapter.parseToolCalls(fullText);
-                if (!toolCalls.isEmpty() && AiServiceProvider.hasTools()) {
-                    // Record the assistant turn (text stripped of call noise), then execute every call.
-                    history.add(AiChatMessage.assistantWithTools(
-                        functionGemmaAdapter.stripToolCalls(fullText), toolCalls));
-                    for (AiToolCall tc : toolCalls) {
-                        Platform.runLater(() -> callback.onToolCall(tc));
-                        AiToolResult result = ToolExecutor.execute(tc.name(), tc.arguments());
-                        Platform.runLater(() -> callback.onToolResult(tc.id(), result));
-                        history.add(AiChatMessage.toolResult(tc.id(), tc.name(), result.output()));
-                    }
-                    String newPrompt = functionGemmaAdapter.buildPrompt(history, toolDecls);
-                    generateFunctionGemmaLoop(newPrompt, toolDecls, temperature, topP, maxTokens,
-                                              history, callback, round + 1);
-                } else {
-                    String clean = functionGemmaAdapter.stripToolCalls(fullText);
-                    final String answer = clean;
-                    Platform.runLater(() -> {
-                        if (!answer.isEmpty()) callback.onToken(answer);
-                        callback.onComplete(answer, tokenCount, tokPerSec);
-                    });
-                }
-            }
-
-            @Override
-            public void onError(String message) {
                 Platform.runLater(() -> callback.onError(new RuntimeException(message)));
             }
         });
@@ -405,7 +309,6 @@ public class LocalChatBackend implements ChatBackend {
     // ── Prompt building ───────────────────────────────────────
 
     private String buildSystemPrompt() {
-        if (isFunctionGemma) return "";
         String base = SwissKitJSettingUi.getAiSystemPrompt();
         String toolDefs = ToolSchemaBuilder.buildPromptDefinitions(AiServiceProvider.getTools());
         if (toolDefs.isEmpty()) return base;
