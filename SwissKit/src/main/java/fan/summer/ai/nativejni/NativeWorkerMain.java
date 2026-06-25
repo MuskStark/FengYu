@@ -28,6 +28,19 @@ public class NativeWorkerMain {
     public static void main(String[] args) {
         log.info("AI worker process starting (pid={})", ProcessHandle.current().pid());
 
+        // Load the native llama.cpp library BEFORE handling any commands.
+        // LlamaContext's constructor requires NativeLoader.isLoaded() to be true.
+        // The parent process only pre-checks loadability — the actual load must
+        // happen here, in this child JVM. Without it every "load" command throws
+        // "Native llama library not loaded" and the host silently falls back to
+        // the pure-Java engine. Stay alive on failure so the existing per-command
+        // error path reports it cleanly instead of triggering a crash-restart loop.
+        NativeLoader.load();
+        if (!NativeLoader.isLoaded()) {
+            log.error("Native llama library unavailable ({}) — load commands will fail; host will fall back to Java engine",
+                    NativeLoader.getFailureReason());
+        }
+
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
         BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(System.out));
 

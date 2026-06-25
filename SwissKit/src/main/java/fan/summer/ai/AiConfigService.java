@@ -111,13 +111,13 @@ public final class AiConfigService {
         return 0.9f;
     }
 
-    /** Returns the maximum number of tokens to generate; defaults to 512. */
+    /** Returns the maximum number of tokens to generate; defaults to 2048. */
     public static int getAiMaxTokens() {
         String val = readSetting(AI_MAX_TOKENS_KEY, null);
         if (val != null) {
             try { return Integer.parseInt(val); } catch (NumberFormatException ignored) {}
         }
-        return 512;
+        return 2048;
     }
 
     /** Returns the system prompt; defaults to "You are a helpful assistant." */
