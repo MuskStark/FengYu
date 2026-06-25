@@ -6,10 +6,12 @@ import fan.summer.api.ai.AiToolResult;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
 import fan.summer.buildintool.pdftool.worker.PdfSplitWorker;
+import fan.summer.ai.util.JsonHelper;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -22,10 +24,16 @@ public class PdfSplitAiTool implements AiTool {
     @Override public String getName() { return "pdf_split"; }
 
     @Override public String getDescription() {
-        return "Split a PDF file into multiple files by page ranges. " +
-               "Args: filePath (string) — absolute path to PDF; " +
-               "ranges (string) — page ranges like '1-3,5,8-10'; " +
-               "outputDir (string) — output directory.";
+        return "Split a PDF file into multiple files by page ranges.\n"
+             + "Args: filePath (string, required) — absolute path to PDF;\n"
+             + "      ranges (string, required) — page ranges like '1-3,5,8-10';\n"
+             + "      outputDir (string, required) — output directory.\n"
+             + "Example: pdf_split{\"filePath\":\"/a.pdf\",\"ranges\":\"1-3,5\",\"outputDir\":\"/out\"}.";
+    }
+
+    @Override public String getLocalDescription() {
+        return "Split PDF by page ranges. Args: filePath (string), ranges (e.g. '1-3,5,8-10'), outputDir (string).\n"
+             + "Example: pdf_split{\"filePath\":\"/a.pdf\",\"ranges\":\"1-3\",\"outputDir\":\"/out\"}.";
     }
 
     @Override public List<AiToolParam> getParameters() {
@@ -41,15 +49,20 @@ public class PdfSplitAiTool implements AiTool {
         String ranges = (String) args.get("ranges");
         String outputDir = (String) args.get("outputDir");
 
-        if (filePath == null || filePath.isBlank()) return AiToolResult.error("filePath is required");
-        if (ranges == null || ranges.isBlank()) return AiToolResult.error("ranges is required");
-        if (outputDir == null || outputDir.isBlank()) return AiToolResult.error("outputDir is required");
+        if (filePath == null || filePath.isBlank())
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "filePath is required")));
+        if (ranges == null || ranges.isBlank())
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "ranges is required")));
+        if (outputDir == null || outputDir.isBlank())
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "outputDir is required")));
 
         Path pdf = Path.of(filePath);
-        if (!Files.exists(pdf)) return AiToolResult.error("File not found: " + filePath);
+        if (!Files.exists(pdf))
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "File not found: " + filePath)));
 
         List<int[]> parsedRanges = parseRanges(ranges);
-        if (parsedRanges == null || parsedRanges.isEmpty()) return AiToolResult.error("Invalid ranges: " + ranges);
+        if (parsedRanges == null || parsedRanges.isEmpty())
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Invalid ranges: " + ranges)));
 
         try {
             PdfSplitWorker worker = new PdfSplitWorker(pdf, parsedRanges, Path.of(outputDir));
@@ -61,14 +74,16 @@ public class PdfSplitAiTool implements AiTool {
                 }
             }).join();
 
-            StringBuilder sb = new StringBuilder("Split complete. Output files:\n");
-            for (Path p : outputs) sb.append("- ").append(p.getFileName()).append("\n");
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("success", true);
+            result.put("summary", "Split into " + outputs.size() + " file(s)");
+            result.put("outputFiles", outputs.stream().map(p -> p.getFileName().toString()).toList());
             log.info("AI pdf_split success: {} -> {} files", filePath, outputs.size());
-            return AiToolResult.success(sb.toString());
+            return AiToolResult.success(JsonHelper.toJson(result));
         } catch (CompletionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             log.error("AI pdf_split failed: {}", cause.getMessage());
-            return AiToolResult.error("PDF split failed: " + cause.getMessage());
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "PDF split failed: " + cause.getMessage())));
         }
     }
 

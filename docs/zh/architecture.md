@@ -21,7 +21,7 @@ SwissKitJ 是一个基于 JavaFX 21（JDK 21）构建的模块化、插件化桌
 ┌──────────────────────────────────────────────────────────────────┐
 │  SwissKit  —  JavaFX 应用壳 + 内置工具                             │
 │  UI 外壳 · 插件层（Loader/Registry/Context/Favorites）             │
-│  AI 子系统（3 个后端 · 工具 · 本地推理）                            │
+│  AI 子系统（2 个后端 · 工具 · 本地推理）                            │
 │  H2 + MyBatis · i18n · Logback · JsonHelper                        │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -30,7 +30,7 @@ SwissKitJ 是一个基于 JavaFX 21（JDK 21）构建的模块化、插件化桌
 
 | 模块 | 用途 |
 |------|------|
-| `SwissKitJ-Api` | 共享插件接口（`SwissKitJPlugin`）、插件上下文与隔离（`PluginContext`）、可复用组件（`StepWizard`、`GlassNotification`、`UiUtils`）、主题、i18n、日志 API，以及 AI 服务契约（`AiService`、`AiTool`、消息 record） |
+| `SwissKitJ-Api` | 共享插件接口（`SwissKitJPlugin`）、插件上下文与隔离（`PluginContext`）、可复用组件（`StepWizard`、`GlassNotification`、`UiUtils`）、主题、i18n、日志 API，以及 AI 服务契约（`ChatBackend`、`AiTool`、消息 record） |
 | `SwissKit` | JavaFX 应用壳 —— UI、插件加载、收藏、AI 子系统，以及全部内置工具 |
 
 官方插件位于[单独的仓库](https://github.com/MuskStark/SwissKiJ-Plugin)。它们独立构建，在运行时作为 JAR 放入 `.swisskit/plugin/` 目录。所有插件将 `SwissKitJ-Api` 声明为 `provided` 依赖；主应用通过胖 JAR 在运行时提供它。
@@ -49,16 +49,15 @@ SwissKitJ 是一个基于 JavaFX 21（JDK 21）构建的模块化、插件化桌
 4. 解析插件目录（`<user.dir>/.swisskit/plugin/`）
 5. 创建 `PluginLoader` + `PluginRegistry`（注册表将自己绑定到 loader）
 6. 创建 `FavoriteService`（从数据库加载收藏的插件 ID）
-7. 通过 `BuiltinToolRegistrar` 注册内置工具
+7. 通过 `BuiltinToolRegistrar` 注册内置工具 —— 列表会经 `PluginRegistry.addPlugins` 统一注册，同时把每个插件的 `aiTools()` 自动注册到 `AiServiceProvider`
 8. 若已保存的模式为 `openai`/`anthropic`，则初始化云端 AI 后端；**local 模式延迟到首次打开 AI 工具时再初始化**
-9. 通过 `BuiltinAiToolRegistrar` 注册内置 AI 工具
-10. 构建并显示 `MainWindow`
-11. 挂载 `WindowResizeHelper` 实现边缘/角落拖拽缩放
-12. 启动 `PluginLoader`（扫描插件目录并监听变化）
+9. 构建并显示 `MainWindow`
+10. 挂载 `WindowResizeHelper` 实现边缘/角落拖拽缩放
+11. 启动 `PluginLoader`（扫描插件目录并监听变化）
 
-> 步骤 7 和 9 存在顺序耦合：AI 工具注册器要从活跃的 `PluginRegistry` 中查找
-> `ExcelSplitterPlugin` 和 `EmailArchivePlugin` 实例，因此只有先注册了内置工具，
-> Excel/Email 相关的 AI 工具才会被注册。
+> 自 v3.1.0 起不再有独立的 AI 工具注册步骤。插件通过 `SwissKitJPlugin.aiTools()`
+> 自带其 AI 工具，注册表在插件加入时自动注册、在插件移除（含热重载）时自动注销。
+> 旧的 `BuiltinAiToolRegistrar` 类已被删除。
 
 ## UI 结构
 
@@ -165,18 +164,18 @@ PluginContext.wrapEvents(plugin, view);                           // 包装 Even
 
 ### 服务抽象
 
-`AiService`（`SwissKitJ-Api`）是推理契约：`loadModel`/`unloadModel`/`isReady`、
-流式 `chat(history, callback)`、生成控制（`cancelGeneration`/`isGenerating`）以及工具注册。
-`AiServiceProvider` 是持有活跃服务实例、当前模式标签、状态变更监听器和全局工具注册表的
-**静态单例**。模式切换通过 `switchMode(mode, service)` 完成：先卸载旧服务，再装入新服务并通知监听器。
+`ChatBackend`（`SwissKitJ-Api`）是推理契约：`loadModel`/`unloadModel`/`isReady`、
+流式 `chat(history, callback)`、生成控制（`cancelGeneration`/`isGenerating`）。
+工具注册改为全局 —— 通过 `AiServiceProvider` 暴露，后端接口本身不再含工具方法。
+`AiServiceProvider` 是持有活跃后端、当前模式标签、状态变更监听器和全局工具注册表的
+**静态单例**。模式切换通过 `switchMode(mode, service)` 完成：先卸载旧后端，再装入新后端并通知监听器。
 
-共有三个后端，均实现 `AiService`：
+共有两个后端，都实现 `ChatBackend` 接口：
 
 | 后端 | 时机 | 说明 |
 |------|------|------|
-| `AiServiceImpl` | local 模式 | GGUF 推理。native 路径在**子 JVM 进程**（`NativeWorkerClient`）中运行，使 native 崩溃不会杀死宿主；崩溃 ≤3 次自动重启，≥3 次降级到纯 Java 引擎。通过 `ai.local.backend` 配置为 `java` 或 `native`。**懒加载**：首次打开 AI 工具时才加载。 |
-| `OpenAiService` | openai 模式 | OpenAI 兼容的 chat-completions API，流式 SSE，原生工具 schema。 |
-| `AnthropicService` | anthropic 模式 | Anthropic Messages API，流式 SSE，原生工具 schema。 |
+| `LocalChatBackend` | local 模式 | GGUF 推理。native 路径在**子 JVM 进程**（`NativeWorkerClient`）中运行，使 native 崩溃不会杀死宿主；崩溃 ≤3 次自动重启，≥3 次降级到纯 Java 引擎。通过 `ai.local.backend` 配置为 `java` 或 `native`。**懒加载**：首次打开 AI 工具时才加载。 |
+| `CloudChatBackend` | openai / anthropic 模式 | 统一的云端后端，覆盖两个 provider。通过 `CloudChatBackend.openAi(...)` 或 `.anthropic(...)` 静态工厂构造。底层基于 LangChain4j 的 `OpenAiStreamingChatModel` / `AnthropicStreamingChatModel`。HTTP/SSE、工具循环、流桥接全部委托给 LangChain4j；宿主只负责 `AiChatMessage`↔LC4j 消息映射和多轮工具循环驱动。 |
 
 AI 设置通过 `AiConfigService`（直接读数据库，无 UI 依赖）读取，因此启动路径与 AI 服务
 永远不依赖设置 UI 类。
@@ -185,11 +184,12 @@ AI 设置通过 `AiConfigService`（直接读数据库，无 UI 依赖）读取�
 
 模型可在生成过程中调用工具。每个 `AiTool` 声明名称、描述、参数列表和一个
 `execute(Map) → AiToolResult`。`ToolExecutor` 分发调用并把结果喂回会话历史；
-多轮循环在每个后端中以上限 `MAX_TOOL_ROUNDS = 5` 约束。`ToolSchemaBuilder` 产出三种形状的
-工具定义：OpenAI `tools`、Anthropic `tools`，以及注入系统提示词的 markdown 段落（用于本地模型）。
-本地模型以文本形式发出工具调用，由 `ToolCallParser` 解析（Qwen 分隔符模式与通用 JSON 模式）。
-回调（`onToken`、`onToolCall`、`onToolResult`、`onComplete`、`onError`）始终在 JavaFX
-Application Thread 上投递。
+多轮循环在每个后端中以上限 `MAX_TOOL_ROUNDS = 5` 约束。Schema 生成分为两路：云端后端
+（OpenAI / Anthropic）用 `AiToolToToolSpecification` 构造 LangChain4j 的
+`ToolSpecification`（结构化地透传给 API），本地模式用 `ToolSchemaBuilder` 把工具定义作为
+markdown 段落注入系统提示词。本地模型以文本形式发出工具调用，由 `ToolCallParser` 解析
+（Qwen 分隔符模式与通用 JSON 模式）。回调（`onToken`、`onToolCall`、`onToolResult`、
+`onComplete`、`onError`）始终在 JavaFX Application Thread 上投递。
 
 ### 斜杠命令
 
@@ -247,7 +247,7 @@ Schema 从 `init.sql` 初始化，通过 MyBatis 访问，XML mapper 位于
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.0.1.jar
+java -jar SwissKit/target/SwissKitJ-3.1.0.jar
 ```
 
 胖 JAR 由 `maven-shade-plugin` 构建（主类 `fan.summer.Launcher`），并捆绑所有平台的

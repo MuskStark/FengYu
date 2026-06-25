@@ -4,9 +4,11 @@ import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
+import fan.summer.api.ai.AiTool;
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
+import fan.summer.ai.tools.BuiltinHashTool;
 import javafx.animation.PauseTransition;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -23,6 +25,7 @@ import javafx.util.Duration;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.List;
 
 /**
  * Built-in plugin for calculating cryptographic hashes (MD5, SHA-1, SHA-256, SHA-512)
@@ -49,6 +52,11 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
     @Override public String getMdiIcon()    { return "key-variant"; }
     @Override public IconStyle getIconStyle()   { return IconStyle.AMBER; }
     @Override public ToolType getType()        { return ToolType.BUILTIN; }
+
+    @Override
+    public List<AiTool> aiTools() {
+        return List.of(new BuiltinHashTool());
+    }
 
     /**
      * Creates and returns the plugin view containing a text input area,

@@ -77,6 +77,21 @@ public final class MarkdownRenderer {
         h1 { font-size: 18px; margin: 8px 0 4px; }
         h2 { font-size: 16px; margin: 8px 0 4px; }
         h3 { font-size: 14.5px; margin: 6px 0 3px; }
+        details.sk-collapse {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 10px;
+            padding: 6px 12px;
+            margin: 4px 0;
+        }
+        details.sk-collapse > summary {
+            cursor: pointer;
+            color: rgba(255,255,255,0.50);
+            font-size: 12px;
+            font-weight: 600;
+            list-style: none;
+        }
+        details.sk-collapse[open] > summary { margin-bottom: 6px; }
         """;
 
     private MarkdownRenderer() {}
@@ -112,6 +127,29 @@ public final class MarkdownRenderer {
             .replace(">", "&gt;")
             .replace("\n", "<br>");
         return wrapHtml(escaped);
+    }
+
+    /**
+     * Renders markdown inside a collapsed {@code <details>} block with the given
+     * summary label. Used for reasoning/thinking display — the card starts collapsed
+     * and the user expands it to read the model's reasoning.
+     *
+     * @param summary  the visible summary text (HTML-escaped); shown when collapsed
+     * @param markdown the markdown body; {@code null}/blank yields an empty document
+     * @return a full HTML document with a collapsed {@code <details>} block
+     */
+    public static String renderCollapsible(String summary, String markdown) {
+        if (markdown == null || markdown.isBlank()) return wrapHtml("");
+        Node document = PARSER.parse(markdown);
+        String inner = RENDERER.render(document);
+        return wrapHtml(
+            "<details class=\"sk-collapse\"><summary>" + escapeHtml(summary)
+            + "</summary>" + inner + "</details>");
+    }
+
+    private static String escapeHtml(String s) {
+        if (s == null) return "";
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     private static String wrapHtml(String bodyContent) {

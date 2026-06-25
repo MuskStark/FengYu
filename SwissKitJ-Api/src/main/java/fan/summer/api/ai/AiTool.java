@@ -6,7 +6,7 @@ import java.util.Map;
 /**
  * A tool that the AI model can invoke during generation.
  * <p>
- * Plugins register tools via {@link AiService#registerTool(AiTool)}.
+ * Plugins register tools via {@link AiServiceProvider#registerTool(AiTool)}.
  * When the model decides to call a tool, the inference engine invokes
  * {@link #execute(Map)} and feeds the result back to the model.
  *
@@ -43,4 +43,37 @@ public interface AiTool {
      * @return execution result
      */
     AiToolResult execute(Map<String, Object> arguments);
+
+    /**
+     * Local-mode description (short, keyword-dense, tuned for small local models
+     * like Qwen3-4B). Default falls back to {@link #getDescription()}.
+     *
+     * @return description shown to the model in local mode
+     */
+    default String getLocalDescription() { return getDescription(); }
+
+    /**
+     * Local-mode parameter list (may be a simplified subset of
+     * {@link #getParameters()}). Default falls back to {@link #getParameters()}.
+     *
+     * @return parameters shown to the model in local mode
+     */
+    default List<AiToolParam> getLocalParameters() { return getParameters(); }
+
+    /**
+     * Whether this tool is visible when the active backend is local.
+     * Default {@code true} — override to {@code false} for tools that require
+     * strong-model reasoning (e.g. tools that drive their own think-act loop).
+     *
+     * @return {@code true} if the tool should be visible in local mode
+     */
+    default boolean supportsLocal() { return true; }
+
+    /**
+     * Whether this tool is visible when the active backend is cloud
+     * (OpenAI / Anthropic). Default {@code true}.
+     *
+     * @return {@code true} if the tool should be visible in cloud mode
+     */
+    default boolean supportsCloud() { return true; }
 }

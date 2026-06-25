@@ -1,6 +1,9 @@
 package fan.summer.api;
 
+import fan.summer.api.ai.AiTool;
 import javafx.scene.Node;
+
+import java.util.List;
 
 /**
  * Main entry point contract for all SwissKitJ tools and plugins.
@@ -202,4 +205,22 @@ public interface SwissKitJPlugin {
      * <p>The default implementation is a no-op.</p>
      */
     default void onForeground() {}
+
+    // ── AI tools ─────────────────────────────────────────
+
+    /**
+     * AI tools this plugin exposes to the AI layer.
+     *
+     * <p>Default is empty — plugins that don't integrate with AI don't need to do anything.
+     * Tools are registered when the plugin is added to {@code PluginRegistry} and
+     * unregistered when the plugin is removed.</p>
+     *
+     * <p>Threading: called on the JavaFX Application Thread (same thread as
+     * {@code addPlugins}). Implementations must return a deterministic, idempotent
+     * list — subsequent calls must return tools with the same names so unregister
+     * can match them.</p>
+     *
+     * @return the AI tools this plugin exposes; empty list if none
+     */
+    default List<AiTool> aiTools() { return List.of(); }
 }

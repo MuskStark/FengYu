@@ -31,7 +31,7 @@ mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -DskipTests
 
 # Run the application
-java -jar SwissKit/target/SwissKitJ-3.0.1.jar
+java -jar SwissKit/target/SwissKitJ-3.1.0.jar
 ```
 
 ### Platform-Specific Builds
@@ -40,9 +40,9 @@ The GitHub Actions workflow builds three platform packages:
 
 | Platform | File | How to run |
 |---|---|---|
-| Windows 10/11 (64-bit) | `SwissKit-3.0.1-windows.zip` | Extract then double-click `SwissKit.exe` |
-| Linux x64 | `SwissKit-3.0.1-linux.zip` | Extract then run `./run.sh` |
-| macOS Apple Silicon (M1/M2/M3) | `SwissKit-3.0.1-macos-apple-silicon.zip` | Extract then double-click `SwissKit.app` |
+| Windows 10/11 (64-bit) | `SwissKit-3.1.0-windows.zip` | Extract then double-click `SwissKit.exe` |
+| Linux x64 | `SwissKit-3.1.0-linux.zip` | Extract then run `./run.sh` |
+| macOS Apple Silicon (M1/M2/M3) | `SwissKit-3.1.0-macos-apple-silicon.zip` | Extract then double-click `SwissKit.app` |
 
 All platforms require Java 11+ installed on the target machine.
 
@@ -184,7 +184,7 @@ mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -DskipTests
 
 # Run
-java -jar SwissKit/target/SwissKitJ-3.0.1.jar
+java -jar SwissKit/target/SwissKitJ-3.1.0.jar
 ```
 
 ### Running with Local Plugin Store
@@ -192,7 +192,7 @@ java -jar SwissKit/target/SwissKitJ-3.0.1.jar
 Override the store URL for local testing:
 
 ```bash
-java -Dstore.url=http://localhost:8888/plugins/store.json -jar SwissKit/target/SwissKitJ-3.0.1.jar
+java -Dstore.url=http://localhost:8888/plugins/store.json -jar SwissKit/target/SwissKitJ-3.1.0.jar
 ```
 
 ---

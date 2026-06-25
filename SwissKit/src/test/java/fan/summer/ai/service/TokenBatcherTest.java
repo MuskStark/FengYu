@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit tests for {@link AiServiceImpl.TokenBatcher} (v3.0.1 stability work).
+ * Unit tests for {@link LocalChatBackend.TokenBatcher} (v3.0.1 stability work).
  *
  * <p>The batcher must coalesce high-frequency token callbacks into fewer emits
  * and must drive its periodic flush with a plain JVM scheduler (not a JavaFX
@@ -25,7 +25,7 @@ class TokenBatcherTest {
     @Test
     void flush_drainsConcatenatedBuffer() {
         List<String> received = new ArrayList<>();
-        AiServiceImpl.TokenBatcher b = new AiServiceImpl.TokenBatcher(emitter(received));
+        LocalChatBackend.TokenBatcher b = new LocalChatBackend.TokenBatcher(emitter(received));
         b.add("Hel");
         b.add("lo");
         b.flush();
@@ -40,7 +40,7 @@ class TokenBatcherTest {
     @Test
     void flush_onEmptyBuffer_isNoOp() {
         List<String> received = new ArrayList<>();
-        AiServiceImpl.TokenBatcher b = new AiServiceImpl.TokenBatcher(emitter(received));
+        LocalChatBackend.TokenBatcher b = new LocalChatBackend.TokenBatcher(emitter(received));
         b.flush();
         assertTrue(received.isEmpty());
         b.close();
@@ -49,7 +49,7 @@ class TokenBatcherTest {
     @Test
     void close_flushesRemainderAndIgnoresFurtherAdds() {
         List<String> received = new ArrayList<>();
-        AiServiceImpl.TokenBatcher b = new AiServiceImpl.TokenBatcher(emitter(received));
+        LocalChatBackend.TokenBatcher b = new LocalChatBackend.TokenBatcher(emitter(received));
         b.add("partial");
         b.close();
         assertEquals(List.of("partial"), received);
@@ -62,7 +62,7 @@ class TokenBatcherTest {
     void scheduledFlush_firesAutomaticallyWithoutManualFlush() throws Exception {
         List<String> received = new ArrayList<>();
         CountDownLatch latch = new CountDownLatch(1);
-        AiServiceImpl.TokenBatcher b = new AiServiceImpl.TokenBatcher(text -> {
+        LocalChatBackend.TokenBatcher b = new LocalChatBackend.TokenBatcher(text -> {
             received.add(text);
             latch.countDown();
         });
@@ -77,7 +77,7 @@ class TokenBatcherTest {
     void rapidAdds_coalesceIntoSingleFlush() throws Exception {
         List<String> received = new ArrayList<>();
         CountDownLatch latch = new CountDownLatch(1);
-        AiServiceImpl.TokenBatcher b = new AiServiceImpl.TokenBatcher(text -> {
+        LocalChatBackend.TokenBatcher b = new LocalChatBackend.TokenBatcher(text -> {
             received.add(text);
             latch.countDown();
         });

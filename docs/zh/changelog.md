@@ -4,6 +4,64 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 
 ---
 
+## [3.1.0] — LangChain4j + ChatBackend 统一
+
+**v3.1.0** — 2026-06-21
+
+本版本在 LangChain4j 上重建 AI 子系统，并把两个云端 provider（OpenAI + Anthropic）合并为单个 `CloudChatBackend` 类，对外暴露新的 `ChatBackend` 接口。本地模式（进程内 GGUF）改名为 `LocalChatBackend`，行为不变。
+
+### ⚠️ 破坏性变更
+
+- **`AiService` 接口删除** —— 替换为 `ChatBackend` 接口。外部插件调用 `AiServiceProvider.getService()` 需把返回类型从 `AiService` 改成 `ChatBackend`。详见 [迁移指南](migration-3.1.md)。
+- **`OpenAiService` 和 `AnthropicService` 具体类删除** —— 替换为单个 `CloudChatBackend` 类，通过 `openAi(...)` / `anthropic(...)` 静态工厂构造。
+- **`CloudAiConfigProvider` 和独立的 `StreamingResponseHandlerBridge` 删除** —— 逻辑整合进 `CloudChatBackend`。
+- **`AiServiceImpl` 改名为 `LocalChatBackend`** —— 纯改名，行为不变。
+
+### ♻️ 变更
+
+- **统一的 `ChatBackend` 接口** 位于 `SwissKitJ-Api` —— 非密封（Java 禁止跨模块密封许可）；两个已知实现（`CloudChatBackend`、`LocalChatBackend`）。UI 使用 `instanceof` 区分后端。
+- **`CloudChatBackend` 合并 OpenAI + Anthropic** 到一个类（约 450 行）。HTTP/SSE、工具循环逻辑、流式桥接全部委托给 LangChain4j 的 `OpenAiStreamingChatModel` / `AnthropicStreamingChatModel`。Provider 差异隔离在内部的 `buildStreamingModel(...)` switch 上（基于 `Provider` 枚举）。
+- `SynchronousChatHelper`（浏览器规划器）重写，直接通过 `CloudChatBackend` 配置访问器使用 LC4j 同步 `OpenAiChatModel`。
+- `AiServiceProvider` 全面暴露 `ChatBackend`，不再暴露 `AiService`。方法名不变。
+- 采样参数（temperature / topP / maxTokens）按调用生效，不再缓存到模型实例里。
+
+### ✨ 新增
+
+- 新的 `ChatBackend` 接口
+- 新的 `CloudChatBackend` 类，带 `openAi(...)` / `anthropic(...)` 工厂
+- `LocalChatBackend`（从 `AiServiceImpl` 改名）
+- `AiToolCall.of(id, name, arguments)` 重载，用于在 LangChain4j 桥接时保留服务端签发的工具调用 ID
+- `CloudChatBackendTest`（11 个测试）+ `ChatMessageMapper` / `AiToolToToolSpecification` 的适配器测试
+- 迁移指南 [migration-3.1.md](migration-3.1.md)（中英文）
+
+### 🐛 修复
+
+- **macOS 上 `testConnection()` 空消息 bug**：在 macOS JDK 上，无法连接的端点抛出的 `ConnectException` 携带 `null` 消息，导致 `testConnection()` 返回 `null`（被设置 UI 误判为成功）。现在回退到 `e.getClass().getSimpleName() + ": " + e`。
+- **Anthropic 多轮工具调用**：服务端签发的 `tool_use_id` 现在在 `AiToolCall → LangChain4j → AiToolCall` 往返中保留 —— 之前用本地伪造 ID 导致第 2 轮工具调用 HTTP 400。
+- **多轮对话上下文连续性**：assistant 的最终回复现在在 service 返回前追加到 `history`。
+- **OpenAI 工具轮消息顺序**：`ToolExecutor.executeAndFeed` 之前先追加 assistant-with-tools 消息，满足 API 约束（`tool` 消息必须跟在带 `tool_calls` 的 `assistant` 后面）。
+- `testConnection()` 的 `HttpClient` 改为 try-with-resources（Java 21 `AutoCloseable`）。
+- 加固云端流处理器的线程安全（`StringBuffer` 累加器、`volatile` 字段）。
+
+### ⬆️ 依赖
+
+- `dev.langchain4j:langchain4j-open-ai:1.2.0`
+- `dev.langchain4j:langchain4j-anthropic:1.2.0`
+- （最初锁了 1.0.1，但 `langchain4j-anthropic` 从未在该版本发布；升到两个模块同时存在的最低 GA 版本）
+
+### ⚠️ 已知行为变化
+
+- 云端后端的 `cancelGeneration()` 现在是尽力而为（LangChain4j 1.x 不暴露流式模型的中途取消）；进行中标志仍会清除。本地模式不受影响。
+- 中途 SSE 错误现在通过 JavaFX Application Thread 上的 `callback.onError` 上报，与本地模式行为一致。
+
+### 📉 净代码变化
+
+- 删除：约 1000 行（5 个废弃类 + 1 个废弃测试）
+- 新增：约 1100 行（新统一类型 + 测试 + 迁移指南）
+- 净：行数基本持平，但云端代码从两个并行实现合并成一个统一类。
+
+---
+
 ## [3.0.1] — FunctionGemma 离线适配
 
 **v3.0.1** — 2026-06-21

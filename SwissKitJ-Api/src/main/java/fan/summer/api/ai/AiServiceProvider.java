@@ -10,26 +10,26 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * Central registry for the active {@link AiService} instance and its registered tools.
+ * Central registry for the active {@link ChatBackend} instance and its registered tools.
  * Acts as a static singleton providing unified access to AI service operations across
  * the application, decoupling service consumers from the specific implementation in use.
  *
- * <p>Mode switching is coordinated through {@link #switchMode(String, AiService)}, which
+ * <p>Mode switching is coordinated through {@link #switchMode(String, ChatBackend)}, which
  * safely unloads the previous service before installing the new one and fires state-change
  * notifications to all registered listeners.
  *
  * <p>Tool registration is global: tools registered via this provider are visible to all
- * {@link AiService} implementations that delegate to it (e.g., {@code AnthropicService},
- * {@code OpenAiService}, {@code AiServiceImpl}).
+ * {@link ChatBackend} implementations that delegate to it (e.g., {@code CloudChatBackend},
+ * {@code LocalChatBackend}).
  *
- * @see AiService
+ * @see ChatBackend
  * @see AiTool
  */
 public final class AiServiceProvider {
 
     private static final PluginLogger log = LoggerFactory.getLogger(AiServiceProvider.class);
 
-    private static volatile AiService instance;
+    private static volatile ChatBackend instance;
     private static volatile String currentMode = "local";
     private static final List<Runnable> stateChangeListeners = new CopyOnWriteArrayList<>();
     private static final Map<String, AiTool> tools = new ConcurrentHashMap<>();
@@ -37,7 +37,7 @@ public final class AiServiceProvider {
     /** Tool filter used by guided slash-command execution to constrain
      *  the model to a single tool. When set, {@link #getTools()} returns only that tool.
      *  Uses a volatile field (not ThreadLocal) because inference runs on a virtual thread
-     *  spawned by AiService, which does not inherit thread-local state. */
+     *  spawned by ChatBackend, which does not inherit thread-local state. */
     private static volatile String constrainedTool;
 
     private AiServiceProvider() {}
@@ -48,9 +48,9 @@ public final class AiServiceProvider {
      * Sets the global AI service instance directly, replacing any previously set instance.
      * This does not trigger a state-change notification.
      *
-     * @param service the new {@link AiService} instance, or {@code null} to clear
+     * @param service the new {@link ChatBackend} instance, or {@code null} to clear
      */
-    public static void setService(AiService service) {
+    public static void setService(ChatBackend service) {
         instance = service;
     }
 
@@ -59,7 +59,7 @@ public final class AiServiceProvider {
      *
      * @return an {@link Optional} containing the active service, or empty if none is set
      */
-    public static Optional<AiService> getService() {
+    public static Optional<ChatBackend> getService() {
         return Optional.ofNullable(instance);
     }
 
@@ -69,9 +69,9 @@ public final class AiServiceProvider {
      * are notified after the switch.
      *
      * @param mode      the mode label (e.g., {@code "local"}, {@code "openai"}, {@code "anthropic"})
-     * @param newService the new {@link AiService} to install
+     * @param newService the new {@link ChatBackend} to install
      */
-    public static synchronized void switchMode(String mode, AiService newService) {
+    public static synchronized void switchMode(String mode, ChatBackend newService) {
         if (instance != null) {
             try {
                 instance.unloadModel();
@@ -156,20 +156,31 @@ public final class AiServiceProvider {
     }
 
     /**
-     * Returns an immutable list of currently registered tools.
-     * If a constrained tool is set via {@link #setConstrainedTool(String)},
-     * only that single tool is returned — this allows guided slash-command
-     * execution to present a small model with exactly one tool.
+     * Returns the list of tools visible under the current backend mode.
      *
-     * @return a list of registered {@link AiTool} instances
+     * <p>Two filters apply, in order:</p>
+     * <ol>
+     *   <li><b>Mode filter</b> — in {@code "local"} mode only tools where
+     *       {@link AiTool#supportsLocal()} is {@code true} are returned;
+     *       in any cloud mode ({@code "openai"} / {@code "anthropic"}) only
+     *       tools where {@link AiTool#supportsCloud()} is {@code true}.</li>
+     *   <li><b>Constrained-tool filter</b> — if {@link #setConstrainedTool(String)}
+     *       has been set, the result is further narrowed to that single tool.
+     *       The mode filter still applies, so a constrained tool that is not
+     *       available in the current mode yields an empty list (slash-command
+     *       guidance cannot bypass mode visibility).</li>
+     * </ol>
+     *
+     * @return a list of tools visible under the current mode (possibly empty)
      */
     public static List<AiTool> getTools() {
+        boolean isLocal = "local".equals(currentMode);
         String filter = constrainedTool;
-        if (filter != null) {
-            AiTool t = tools.get(filter);
-            if (t != null) return List.of(t);
-        }
-        return List.copyOf(tools.values());
+
+        return tools.values().stream()
+            .filter(t -> isLocal ? t.supportsLocal() : t.supportsCloud())
+            .filter(t -> filter == null || filter.equals(t.getName()))
+            .toList();
     }
 
     /**
@@ -236,7 +247,7 @@ public final class AiServiceProvider {
      * cloud backends, or when no service is configured.
      */
     public static boolean isNativeAvailable() {
-        AiService svc = instance;
+        ChatBackend svc = instance;
         return svc != null && svc.isNativeAvailable();
     }
 }
