@@ -44,9 +44,14 @@ public class ExcelAnalyzeTool implements AiTool {
     @Override public String getName() { return "excel_analyze"; }
 
     @Override public String getDescription() {
-        return "Analyze (read) an Excel .xlsx/.xls file and return every sheet name, row counts, and column headers. "
-               + "This is the FIRST step before configuring or splitting a file. "
-               + "Example: excel_analyze{filePath:\"/path/file.xlsx\"}.";
+        return "Analyze an Excel .xlsx/.xls file: returns sheet names, row counts, and column headers.\n"
+             + "Args: filePath (string, required) — absolute path to the Excel file.\n"
+             + "Example: excel_analyze{\"filePath\":\"/path/file.xlsx\"}.";
+    }
+
+    @Override public String getLocalDescription() {
+        return "Read Excel structure (sheets, headers). Args: filePath (string).\n"
+             + "Example: excel_analyze{\"filePath\":\"/tmp/a.xlsx\"}.";
     }
 
     @Override public List<AiToolParam> getParameters() {
@@ -56,11 +61,11 @@ public class ExcelAnalyzeTool implements AiTool {
     @Override public AiToolResult execute(Map<String, Object> args) {
         String filePathStr = (String) args.get("filePath");
         if (filePathStr == null || filePathStr.isBlank()) {
-            return AiToolResult.error("filePath is required");
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "filePath is required")));
         }
         Path filePath = Paths.get(filePathStr.trim());
         if (!Files.exists(filePath) || !Files.isReadable(filePath)) {
-            return AiToolResult.error("File not found or not readable: " + filePathStr);
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "File not found or not readable: " + filePathStr)));
         }
 
         SplitConfig config = plugin.getSharedSplitConfig();
@@ -89,6 +94,7 @@ public class ExcelAnalyzeTool implements AiTool {
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("success", true);
+            result.put("summary", "Analyzed " + analysisResult.size() + " sheet(s)");
             result.put("sheets", sheets);
             result.put("totalSheets", analysisResult.size());
             result.put("sourceFile", filePath.getFileName().toString());
@@ -97,7 +103,7 @@ public class ExcelAnalyzeTool implements AiTool {
             return AiToolResult.success(JsonHelper.toJson(result));
         } catch (Exception e) {
             log.error("excel_analyze failed: {}", e.getMessage());
-            return AiToolResult.error("Analysis failed: " + e.getMessage());
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Analysis failed: " + e.getMessage())));
         }
     }
 }

@@ -36,12 +36,18 @@ public class ExcelComplexConfigTool implements AiTool {
     @Override public String getName() { return "excel_complex_config"; }
 
     @Override public String getDescription() {
-        return "Manage database-backed complex split configs used by COMPLEX mode. "
-               + "Actions: 'add' (insert one config row: sheet + header row + split column), "
-               + "'list' (show all rows for a taskId), 'clear' (delete all rows for a taskId). "
-               + "'add' returns a taskId to pass to excel_configure mode=COMPLEX. "
-               + "headerIndex=-1 and columnIndex=-1 together means copy the whole sheet to every output file. "
-               + "Example: excel_complex_config{action:\"add\", sheetName:\"Sheet1\", headerIndex:1, columnIndex:2}.";
+        return "Manage database-backed complex split configs used by COMPLEX mode.\n"
+             + "Args: action (string, required, enum: add|list|clear) — operation;\n"
+             + "      taskId (string, optional) — task ID (auto-generated on 'add' if omitted);\n"
+             + "      sheetName (string, add) — sheet name;\n"
+             + "      headerIndex (integer, add) — 1-based header row; -1 = copy all;\n"
+             + "      columnIndex (integer, add) — 1-based column to split by; -1 = copy to all.\n"
+             + "Example: excel_complex_config{\"action\":\"add\",\"sheetName\":\"Sheet1\",\"headerIndex\":1,\"columnIndex\":2}.";
+    }
+
+    @Override public String getLocalDescription() {
+        return "Manage complex split configs. Args: action (add|list|clear), plus action-specific.\n"
+             + "Example: excel_complex_config{\"action\":\"list\",\"taskId\":\"t1\"}.";
     }
 
     @Override public List<AiToolParam> getParameters() {
@@ -58,7 +64,7 @@ public class ExcelComplexConfigTool implements AiTool {
     @Override public AiToolResult execute(Map<String, Object> args) {
         String action = (String) args.get("action");
         if (action == null || action.isBlank()) {
-            return AiToolResult.error("action is required (add, list, or clear)");
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "action is required (add, list, or clear)")));
         }
 
         try {
@@ -66,24 +72,24 @@ public class ExcelComplexConfigTool implements AiTool {
                 case "add"  -> doAdd(args);
                 case "list" -> doList(args);
                 case "clear"-> doClear(args);
-                default -> AiToolResult.error("Unknown action: " + action + ". Use add, list, or clear.");
+                default -> AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Unknown action: " + action + ". Use add, list, or clear.")));
             };
         } catch (Exception e) {
             log.error("excel_complex_config {} failed: {}", action, e.getMessage());
-            return AiToolResult.error(action + " failed: " + e.getMessage());
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", action + " failed: " + e.getMessage())));
         }
     }
 
     private AiToolResult doAdd(Map<String, Object> args) {
         String sheetName = (String) args.get("sheetName");
         if (sheetName == null || sheetName.isBlank()) {
-            return AiToolResult.error("sheetName is required for add action");
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "sheetName is required for add action")));
         }
 
         Object headerObj = args.get("headerIndex");
         Object colObj    = args.get("columnIndex");
         if (headerObj == null || colObj == null) {
-            return AiToolResult.error("headerIndex and columnIndex are required for add action");
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "headerIndex and columnIndex are required for add action")));
         }
         int headerIndex = ((Number) headerObj).intValue();
         int columnIndex = ((Number) colObj).intValue();
@@ -128,7 +134,7 @@ public class ExcelComplexConfigTool implements AiTool {
     private AiToolResult doList(Map<String, Object> args) {
         String taskId = (String) args.get("taskId");
         if (taskId == null || taskId.isBlank()) {
-            return AiToolResult.error("taskId is required for list action");
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "taskId is required for list action")));
         }
 
         List<ComplexSplitConfigEntity> rows;
@@ -151,6 +157,8 @@ public class ExcelComplexConfigTool implements AiTool {
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
+        result.put("success", true);
+        result.put("summary", "Found " + configs.size() + " config(s) for taskId " + taskId);
         result.put("taskId", taskId);
         result.put("configs", configs);
         result.put("total", configs.size());
@@ -161,7 +169,7 @@ public class ExcelComplexConfigTool implements AiTool {
     private AiToolResult doClear(Map<String, Object> args) {
         String taskId = (String) args.get("taskId");
         if (taskId == null || taskId.isBlank()) {
-            return AiToolResult.error("taskId is required for clear action");
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "taskId is required for clear action")));
         }
 
         try (SqlSession session = DatabaseInit.getSqlSession()) {

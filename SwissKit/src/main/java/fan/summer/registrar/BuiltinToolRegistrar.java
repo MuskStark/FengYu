@@ -2,6 +2,7 @@ package fan.summer.registrar;
 
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.buildintool.ai.AiChatPlugin;
+import fan.summer.buildintool.browser.BrowserAutomatePlugin;
 import fan.summer.buildintool.dev.Base64Plugin;
 import fan.summer.buildintool.dev.HashCalculatorPlugin;
 import fan.summer.buildintool.dev.JsonFormatterPlugin;
@@ -71,9 +72,10 @@ public class BuiltinToolRegistrar {
             new MarkdownEditorPlugin(),
             new EmailPlugin(),
             new EmailArchivePlugin(),
-            new PdfToolPlugin()
+            new PdfToolPlugin(),
+            new BrowserAutomatePlugin()
         );
-        registry.getPlugins().addAll(builtins);
+        registry.addPlugins(builtins);
         for (SwissKitJPlugin p : builtins) {
             log.debug("Registered built-in tool: id={}, name={}, version={}",
                     p.getId(), p.getName(), p.getVersion());

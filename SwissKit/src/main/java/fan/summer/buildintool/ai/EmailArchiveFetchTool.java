@@ -18,13 +18,15 @@ public class EmailArchiveFetchTool implements AiTool {
     @Override public String getName() { return "email_archive_fetch"; }
 
     @Override public String getDescription() {
-        return "Connect to IMAP server and archive emails to local storage. " +
-               "Call this to fetch and save emails. " +
-               "Args: accountEmail (string, required) — the configured email account; " +
-               "days (integer, optional) — fetch from last N days, default 30; " +
-               "folder (string, optional) — IMAP folder, default INBOX; " +
-               "outputDir (string, optional) — local directory for .eml files.";
+        return "Connect to IMAP server and archive emails to local .eml files.\n"
+             + "Args: accountEmail (string, required) — the configured email account;\n"
+             + "      days (integer, optional, default 30) — fetch emails from last N days;\n"
+             + "      folder (string, optional, default INBOX) — IMAP folder;\n"
+             + "      outputDir (string, optional) — local directory for .eml files.\n"
+             + "Example: email_archive_fetch{\"accountEmail\":\"a@b.com\",\"days\":7}.";
     }
+
+    @Override public boolean supportsLocal() { return false; }
 
     @Override public List<AiToolParam> getParameters() {
         return List.of(
@@ -38,7 +40,7 @@ public class EmailArchiveFetchTool implements AiTool {
     @Override public AiToolResult execute(Map<String, Object> args) {
         String accountEmail = (String) args.get("accountEmail");
         if (accountEmail == null || accountEmail.isBlank())
-            return AiToolResult.error("accountEmail is required");
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "accountEmail is required")));
 
         EmailArchiveConfig config = plugin.getConfig();
         config.setAccountEmail(accountEmail.trim());
@@ -54,6 +56,7 @@ public class EmailArchiveFetchTool implements AiTool {
 
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("success", result.errorMessage == null);
+            out.put("summary", "Archived " + result.newArchived + " new (" + result.skippedDuplicates + " duplicates skipped)");
             out.put("totalFetched", result.totalFetched);
             out.put("newArchived", result.newArchived);
             out.put("skippedDuplicates", result.skippedDuplicates);
@@ -67,7 +70,7 @@ public class EmailArchiveFetchTool implements AiTool {
             return AiToolResult.success(JsonHelper.toJson(out));
         } catch (Exception e) {
             log.error("email_archive_fetch error: {}", e.getMessage());
-            return AiToolResult.error("Archive failed: " + e.getMessage());
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Archive failed: " + e.getMessage())));
         }
     }
 }

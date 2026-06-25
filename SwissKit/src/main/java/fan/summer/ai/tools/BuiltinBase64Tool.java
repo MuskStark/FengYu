@@ -28,15 +28,23 @@ public class BuiltinBase64Tool implements AiTool {
     @Override public String getName() { return "base64"; }
 
     @Override public String getDescription() {
-        return "Encode text to Base64 or decode Base64 back to text. " +
-               "Args: text (string, required) — the input text; " +
-               "mode (string, required) — \"encode\" or \"decode\".";
+        return "Encode text to Base64 or decode Base64 back to text.\n"
+             + "Args: text (string, required) — input text to transform;\n"
+             + "      mode (string, required, enum: encode|decode) — direction of the conversion.\n"
+             + "Example: base64{\"text\":\"hello\",\"mode\":\"encode\"}.";
+    }
+
+    @Override public String getLocalDescription() {
+        return "Base64 encode or decode. Args: text (string), mode (encode|decode).\n"
+             + "Example: base64{\"text\":\"hello\",\"mode\":\"encode\"}.";
     }
 
     @Override public List<AiToolParam> getParameters() {
         return List.of(
             AiToolParam.of("text", "string", "Input text to encode or decode", true),
-            AiToolParam.of("mode", "string", "Operation: \"encode\" or \"decode\"", true)
+            AiToolParam.of("mode", "string",
+                "Direction of the conversion: encode or decode", true,
+                List.of("encode", "decode"))
         );
     }
 
@@ -44,8 +52,10 @@ public class BuiltinBase64Tool implements AiTool {
         String text = (String) args.get("text");
         String mode = (String) args.get("mode");
 
-        if (text == null || text.isBlank()) return AiToolResult.error("text is required");
-        if (mode == null || mode.isBlank()) return AiToolResult.error("mode is required (encode or decode)");
+        if (text == null || text.isBlank())
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "text is required")));
+        if (mode == null || mode.isBlank())
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "mode is required (encode or decode)")));
 
         Map<String, Object> result = new LinkedHashMap<>();
         try {
@@ -57,15 +67,16 @@ public class BuiltinBase64Tool implements AiTool {
                 output = new String(Base64.getDecoder().decode(text.trim()), StandardCharsets.UTF_8);
                 result.put("mode", "decode");
             } else {
-                return AiToolResult.error("Invalid mode: " + mode + ". Use \"encode\" or \"decode\".");
+                return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Invalid mode: " + mode + ". Use \"encode\" or \"decode\".")));
             }
             result.put("success", true);
+            result.put("summary", (mode.equalsIgnoreCase("encode") ? "encode" : "decode") + " ok (input length " + text.length() + ")");
             result.put("output", output);
             log.debug("base64 {} success, inputLength={}", mode, text.length());
             return AiToolResult.success(JsonHelper.toJson(result));
         } catch (Exception e) {
             log.error("base64 error: {}", e.getMessage());
-            return AiToolResult.error("Base64 error: " + e.getMessage());
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Base64 error: " + e.getMessage())));
         }
     }
 }

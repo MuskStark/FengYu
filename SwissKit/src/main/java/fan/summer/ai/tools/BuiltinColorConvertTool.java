@@ -27,10 +27,16 @@ public class BuiltinColorConvertTool implements AiTool {
     @Override public String getName() { return "color_convert"; }
 
     @Override public String getDescription() {
-        return "Convert a color between HEX, RGB, and HSL formats. " +
-               "Args: color (string, required) — color value (e.g. \"#5b8cf7\" or \"91,140,247\"); " +
-               "from (string, required) — source format: HEX, RGB, or HSL; " +
-               "to (string, required) — target format: HEX, RGB, or HSL.";
+        return "Convert a color between HEX, RGB, and HSL formats.\n"
+             + "Args: color (string, required) — the color value (e.g. \"#5b8cf7\" or \"91,140,247\");\n"
+             + "      from (string, required, enum: HEX|RGB|HSL) — source format;\n"
+             + "      to   (string, required, enum: HEX|RGB|HSL) — target format.\n"
+             + "Example: color_convert{\"color\":\"#5b8cf7\",\"from\":\"HEX\",\"to\":\"RGB\"}.";
+    }
+
+    @Override public String getLocalDescription() {
+        return "Convert color. Args: color (string), from (HEX|RGB|HSL), to (HEX|RGB|HSL).\n"
+             + "Example: color_convert{\"color\":\"#fff\",\"from\":\"HEX\",\"to\":\"RGB\"}.";
     }
 
     /**
@@ -43,8 +49,10 @@ public class BuiltinColorConvertTool implements AiTool {
     @Override public List<AiToolParam> getParameters() {
         return List.of(
             AiToolParam.of("color", "string", "Color value to convert", true),
-            AiToolParam.of("from", "string", "Source format: HEX, RGB, or HSL", true),
-            AiToolParam.of("to", "string", "Target format: HEX, RGB, or HSL", true)
+            AiToolParam.of("from", "string", "Source format", true,
+                List.of("HEX", "RGB", "HSL")),
+            AiToolParam.of("to", "string", "Target format", true,
+                List.of("HEX", "RGB", "HSL"))
         );
     }
 
@@ -64,8 +72,10 @@ public class BuiltinColorConvertTool implements AiTool {
         String from = (String) args.get("from");
         String to = (String) args.get("to");
 
-        if (color == null || color.isBlank()) return AiToolResult.error("color is required");
-        if (from == null || to == null) return AiToolResult.error("from and to formats are required");
+        if (color == null || color.isBlank())
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "color is required")));
+        if (from == null || to == null)
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "from and to formats are required")));
 
         try {
             int r, g, b;
@@ -80,13 +90,14 @@ public class BuiltinColorConvertTool implements AiTool {
                 }
                 case "RGB" -> {
                     String[] parts = color.split("[,\\s]+");
-                    if (parts.length < 3) return AiToolResult.error("RGB format: \"R, G, B\" (e.g. \"91, 140, 247\")");
+                    if (parts.length < 3)
+                        return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "RGB format: \"R, G, B\" (e.g. \"91, 140, 247\")")));
                     r = Integer.parseInt(parts[0].trim());
                     g = Integer.parseInt(parts[1].trim());
                     b = Integer.parseInt(parts[2].trim());
                 }
                 default -> {
-                    return AiToolResult.error("Unsupported source format: " + from + ". Use HEX, RGB, or HSL.");
+                    return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Unsupported source format: " + from + ". Use HEX, RGB, or HSL.")));
                 }
             }
 
@@ -111,15 +122,16 @@ public class BuiltinColorConvertTool implements AiTool {
                     result.put("targetFormat", "HSL");
                 }
                 default -> {
-                    return AiToolResult.error("Unsupported target format: " + to + ". Use HEX, RGB, or HSL.");
+                    return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Unsupported target format: " + to + ". Use HEX, RGB, or HSL.")));
                 }
             }
+            result.put("summary", from + " → " + to + " conversion ok");
 
             log.debug("color_convert success: {} -> {}", from, to);
             return AiToolResult.success(JsonHelper.toJson(result));
         } catch (Exception e) {
             log.error("color_convert error: {}", e.getMessage());
-            return AiToolResult.error("Color conversion error: " + e.getMessage());
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Color conversion error: " + e.getMessage())));
         }
     }
 }

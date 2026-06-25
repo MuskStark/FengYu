@@ -4,10 +4,17 @@ import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
+import fan.summer.api.ai.AiTool;
 import fan.summer.api.component.StepWizard;
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
+import fan.summer.buildintool.ai.ExcelAnalyzeTool;
+import fan.summer.buildintool.ai.ExcelCancelTool;
+import fan.summer.buildintool.ai.ExcelComplexConfigTool;
+import fan.summer.buildintool.ai.ExcelConfigureTool;
+import fan.summer.buildintool.ai.ExcelExecuteTool;
+import fan.summer.buildintool.ai.ExcelQueryTool;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.excel.ComplexSplitConfigEntity;
 import fan.summer.database.mapper.excel.ComplexSplitConfigMapper;
@@ -939,5 +946,17 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
                "-fx-border-color: rgba(255,255,255,0.12); -fx-border-width: 1;" +
                "-fx-border-radius: 8; -fx-background-radius: 8;" +
                "-fx-text-fill: rgba(255,255,255,0.88);";
+    }
+
+    @Override
+    public List<AiTool> aiTools() {
+        return List.of(
+            new ExcelAnalyzeTool(this),
+            new ExcelConfigureTool(this),
+            new ExcelComplexConfigTool(this),
+            new ExcelExecuteTool(this),
+            new ExcelQueryTool(this),
+            new ExcelCancelTool()
+        );
     }
 }

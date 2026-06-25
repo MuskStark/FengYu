@@ -22,7 +22,7 @@ tool — whether built-in or shipped as an external JAR — implements the same
 ┌──────────────────────────────────────────────────────────────────┐
 │  SwissKit  —  JavaFX application shell + built-in tools           │
 │  UI Shell · Plugin Layer (Loader/Registry/Context/Favorites)      │
-│  AI Subsystem (3 backends · tools · local inference)              │
+│  AI Subsystem (2 backends · tools · local inference)              │
 │  H2 + MyBatis · i18n · Logback · JsonHelper                       │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -31,7 +31,7 @@ tool — whether built-in or shipped as an external JAR — implements the same
 
 | Module | Purpose |
 |--------|---------|
-| `SwissKitJ-Api` | Shared plugin interface (`SwissKitJPlugin`), plugin context & isolation (`PluginContext`), reusable components (`StepWizard`, `GlassNotification`, `UiUtils`), theming, i18n, logging API, and the AI service contract (`AiService`, `AiTool`, message records) |
+| `SwissKitJ-Api` | Shared plugin interface (`SwissKitJPlugin`), plugin context & isolation (`PluginContext`), reusable components (`StepWizard`, `GlassNotification`, `UiUtils`), theming, i18n, logging API, and the AI service contract (`ChatBackend`, `AiTool`, message records) |
 | `SwissKit` | JavaFX application shell — UI, plugin loading, favorites, the AI subsystem, and all built-in tools |
 
 Official plugins live in a [separate repository](https://github.com/MuskStark/SwissKiJ-Plugin). They are built independently and dropped into `.swisskit/plugin/` as JARs at runtime. All plugins declare `SwissKitJ-Api` as `provided` scope; the main app provides it at runtime via the fat JAR.
@@ -51,16 +51,16 @@ In `SwissKitJApp.start()`:
 4. Resolve the plugins directory (`<user.dir>/.swisskit/plugin/`)
 5. Create `PluginLoader` + `PluginRegistry` (the registry wires itself to the loader)
 6. Create `FavoriteService` (loads bookmarked plugin IDs from the database)
-7. Register built-in tools via `BuiltinToolRegistrar`
+7. Register built-in tools via `BuiltinToolRegistrar` — this routes the list through `PluginRegistry.addPlugins`, which also auto-registers each plugin's `aiTools()` with `AiServiceProvider`
 8. Initialize cloud AI backends (OpenAI/Anthropic) if the saved mode is `openai`/`anthropic`; **local mode is deferred** until the AI tool is first opened
-9. Register built-in AI tools via `BuiltinAiToolRegistrar`
-10. Build and display the `MainWindow`
-11. Attach `WindowResizeHelper` for edge/corner drag resize
-12. Start `PluginLoader` (scans the plugins dir and watches for changes)
+9. Build and display the `MainWindow`
+10. Attach `WindowResizeHelper` for edge/corner drag resize
+11. Start `PluginLoader` (scans the plugins dir and watches for changes)
 
-> Steps 7 and 9 are order-coupled: the AI-tool registrar looks up the `ExcelSplitterPlugin`
-> and `EmailArchivePlugin` instances from the live `PluginRegistry`, so the Excel/Email
-> AI tools are only registered if the built-in tools were registered first.
+> As of v3.1.0 there is no separate AI-tool registration step. Plugins self-declare their
+> AI tools via `SwissKitJPlugin.aiTools()`, and the registry handles registration on add
+> and unregistration on remove (including hot-reload). The old `BuiltinAiToolRegistrar`
+> class has been removed.
 
 ## UI Structure
 
@@ -176,20 +176,20 @@ retention) and returns a silent no-op logger in tests. Use SLF4J-style `{}` plac
 
 ### Service abstraction
 
-`AiService` (`SwissKitJ-Api`) is the inference contract: `loadModel`/`unloadModel`/`isReady`,
-streaming `chat(history, callback)`, generation control (`cancelGeneration`/`isGenerating`),
-and tool registration. `AiServiceProvider` is the **static singleton** that holds the active
-service instance, the current mode label, state-change listeners, and the global tool
-registry. Mode switches go through `switchMode(mode, service)`, which unloads the previous
-service before installing the new one and notifies listeners.
+`ChatBackend` (`SwissKitJ-Api`) is the inference contract: `loadModel`/`unloadModel`/`isReady`,
+streaming `chat(history, callback)`, generation control (`cancelGeneration`/`isGenerating`).
+Tool registration is global via `AiServiceProvider` (no longer on the backend interface itself).
+`AiServiceProvider` is the **static singleton** that holds the active backend, the current
+mode label, state-change listeners, and the global tool registry. Mode switches go through
+`switchMode(mode, service)`, which unloads the previous backend before installing the new
+one and notifies listeners.
 
-There are three backends, all implementing `AiService`:
+There are two backends, both implementing the `ChatBackend` interface:
 
 | Backend | When | Notes |
 |---------|------|-------|
-| `AiServiceImpl` | local mode | GGUF inference. Native path runs in a **child JVM process** (`NativeWorkerClient`) so a native crash cannot kill the host; crashes ≤3 trigger an auto-restart, ≥3 trigger a fallback to the pure-Java engine. Configured as `java` or `native` via `ai.local.backend`. **Lazy-loaded** the first time the AI tool opens. |
-| `OpenAiService` | openai mode | OpenAI-compatible chat-completions API, streaming SSE, native tool schema. |
-| `AnthropicService` | anthropic mode | Anthropic Messages API, streaming SSE, native tool schema. |
+| `LocalChatBackend` | local mode | GGUF inference. Native path runs in a **child JVM process** (`NativeWorkerClient`) so a native crash cannot kill the host; crashes ≤3 trigger an auto-restart, ≥3 trigger a fallback to the pure-Java engine. Configured as `java` or `native` via `ai.local.backend`. **Lazy-loaded** the first time the AI tool opens. |
+| `CloudChatBackend` | openai / anthropic mode | Unified cloud backend for both providers. Constructed via `CloudChatBackend.openAi(...)` or `.anthropic(...)` static factories. Backed by LangChain4j's `OpenAiStreamingChatModel` / `AnthropicStreamingChatModel`. HTTP/SSE, tool-loop plumbing, and stream bridging are entirely delegated to LangChain4j; the host only provides `AiChatMessage`↔LC4j mapping and the multi-round tool loop driver. |
 
 AI settings are read through `AiConfigService` (DB-direct, no UI dependency) so the startup
 path and AI services never depend on the settings UI class.
@@ -199,12 +199,13 @@ path and AI services never depend on the settings UI class.
 The model can invoke tools during generation. Each `AiTool` declares a name, description,
 parameter list, and an `execute(Map) → AiToolResult`. `ToolExecutor` dispatches calls and
 feeds results back into the conversation history; the multi-round loop is bounded at
-`MAX_TOOL_ROUNDS = 5` in every backend. `ToolSchemaBuilder` produces tool definitions in
-three shapes: OpenAI `tools`, Anthropic `tools`, and a markdown section injected into the
-system prompt (for local models). Local models emit tool calls as text, parsed by
-`ToolCallParser` (Qwen delimiter and generic-JSON patterns). Callbacks (`onToken`,
-`onToolCall`, `onToolResult`, `onComplete`, `onError`) are always delivered on the JavaFX
-Application Thread.
+`MAX_TOOL_ROUNDS = 5` in every backend. Schema generation is split: cloud backends
+(OpenAI / Anthropic) use `AiToolToToolSpecification` to build LangChain4j
+`ToolSpecification` objects (structurally forwarded to the API); local mode uses
+`ToolSchemaBuilder` to inject a markdown section into the system prompt. Local models emit
+tool calls as text, parsed by `ToolCallParser` (Qwen delimiter and generic-JSON patterns).
+Callbacks (`onToken`, `onToolCall`, `onToolResult`, `onComplete`, `onError`) are always
+delivered on the JavaFX Application Thread.
 
 ### Slash commands
 
@@ -264,7 +265,7 @@ placeholder at startup.
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.0.1.jar
+java -jar SwissKit/target/SwissKitJ-3.1.0.jar
 ```
 
 The fat JAR is built by `maven-shade-plugin` (main class `fan.summer.Launcher`) and bundles

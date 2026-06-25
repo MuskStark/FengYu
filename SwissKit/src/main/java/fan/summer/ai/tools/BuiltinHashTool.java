@@ -30,15 +30,23 @@ public class BuiltinHashTool implements AiTool {
     @Override public String getName() { return "hash_calculate"; }
 
     @Override public String getDescription() {
-        return "Calculate hash digest of text. " +
-               "Args: text (string, required) — input text; " +
-               "algorithm (string, required) — hash algorithm: MD5, SHA-1, SHA-256, or SHA-512.";
+        return "Calculate cryptographic hash digest of input text.\n"
+             + "Args: text (string, required) — input text;\n"
+             + "      algorithm (string, required, enum: MD5|SHA-1|SHA-256|SHA-512).\n"
+             + "Example: hash_calculate{\"text\":\"abc\",\"algorithm\":\"SHA-256\"}.";
+    }
+
+    @Override public String getLocalDescription() {
+        return "Hash digest. Args: text (string), algorithm (MD5|SHA-1|SHA-256|SHA-512).\n"
+             + "Example: hash_calculate{\"text\":\"abc\",\"algorithm\":\"MD5\"}.";
     }
 
     @Override public List<AiToolParam> getParameters() {
         return List.of(
             AiToolParam.of("text", "string", "Input text to hash", true),
-            AiToolParam.of("algorithm", "string", "Hash algorithm: MD5, SHA-1, SHA-256, SHA-512", true)
+            AiToolParam.of("algorithm", "string",
+                "Hash algorithm", true,
+                List.of("MD5", "SHA-1", "SHA-256", "SHA-512"))
         );
     }
 
@@ -46,13 +54,15 @@ public class BuiltinHashTool implements AiTool {
         String text = (String) args.get("text");
         String algorithm = (String) args.get("algorithm");
 
-        if (text == null) return AiToolResult.error("text is required");
-        if (algorithm == null || algorithm.isBlank()) return AiToolResult.error("algorithm is required");
+        if (text == null)
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "text is required")));
+        if (algorithm == null || algorithm.isBlank())
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "algorithm is required")));
 
         Set<String> allowed = Set.of("MD5", "SHA-1", "SHA-256", "SHA-512");
         String algoUpper = algorithm.toUpperCase().trim();
         if (!allowed.contains(algoUpper)) {
-            return AiToolResult.error("Unsupported algorithm: " + algorithm + ". Allowed: MD5, SHA-1, SHA-256, SHA-512");
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Unsupported algorithm: " + algorithm + ". Allowed: MD5, SHA-1, SHA-256, SHA-512")));
         }
 
         try {
@@ -63,13 +73,14 @@ public class BuiltinHashTool implements AiTool {
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("success", true);
+            result.put("summary", algoUpper + " digest computed");
             result.put("algorithm", algoUpper);
             result.put("hash", hex.toString());
             log.debug("hash_calculate success: algo={}", algoUpper);
             return AiToolResult.success(JsonHelper.toJson(result));
         } catch (Exception e) {
             log.error("hash_calculate error: {}", e.getMessage());
-            return AiToolResult.error("Hash error: " + e.getMessage());
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Hash error: " + e.getMessage())));
         }
     }
 }

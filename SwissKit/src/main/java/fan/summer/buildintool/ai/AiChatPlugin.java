@@ -41,7 +41,7 @@ import java.util.stream.Collectors;
  * Built-in AI chat plugin for SwissKitJ.
  *
  * <p>Provides a conversational interface backed by a language model via
- * {@link AiService}. Supports file attachments, streaming token delivery,
+ * {@link ChatBackend}. Supports file attachments, streaming token delivery,
  * tool-call orchestration through {@link AiToolCall}, and Markdown rendering
  * in assistant responses.</p>
  *
@@ -52,7 +52,7 @@ import java.util.stream.Collectors;
  * message, the result is injected back into the conversation via
  * {@link AiStreamCallback#onToolResult(String, AiToolResult)}.</p>
  *
- * @see AiService
+ * @see ChatBackend
  * @see AiStreamCallback
  * @see AiToolCall
  */
@@ -105,9 +105,10 @@ public class AiChatPlugin implements SwissKitJPlugin {
         private final Label modelLabel = new Label(I18n.get("builtin.ai.noModelLoaded"));
         private final Label nativeUnavailableBanner = new Label();
 
-        private AiService aiService;
+        private ChatBackend aiService;
         private boolean generating = false;
         private WebView currentResponseView;
+        private VBox currentAssistantWrapper;
         private StringBuilder currentResponseText;
 
         AiChatView() {
@@ -188,7 +189,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
 
         private void refreshServiceState() {
             Platform.runLater(() -> {
-                Optional<AiService> opt = AiServiceProvider.getService();
+                Optional<ChatBackend> opt = AiServiceProvider.getService();
                 boolean ready = false;
                 boolean isLocal = "local".equals(AiServiceProvider.getCurrentMode());
                 if (opt.isPresent()) {
@@ -353,6 +354,11 @@ public class AiChatPlugin implements SwissKitJPlugin {
                     }
 
                     @Override
+                    public void onThinking(String fragment) {
+                        addThinkingCard(fragment);
+                    }
+
+                    @Override
                     public void onToolCall(AiToolCall toolCall) {
                         Platform.runLater(() -> {
                             if (currentResponseText.isEmpty()) {
@@ -485,6 +491,11 @@ public class AiChatPlugin implements SwissKitJPlugin {
                         String display = stripSpecialTokens(currentResponseText.toString());
                         updateResponseBubble(display, false);
                         scrollToBottom();
+                    }
+
+                    @Override
+                    public void onThinking(String fragment) {
+                        addThinkingCard(fragment);
                     }
 
                     @Override
@@ -696,8 +707,44 @@ public class AiChatPlugin implements SwissKitJPlugin {
             wrapper.setPadding(new Insets(2, 0, 2, 0));
 
             messageList.getChildren().add(wrapper);
+            currentAssistantWrapper = wrapper;
             scrollToBottom();
             return webView;
+        }
+
+        /**
+         * Inserts a collapsed "thinking" card (model reasoning) just above the
+         * current assistant bubble. Called once per completed {@code <think>} block.
+         */
+        private void addThinkingCard(String thinkingMarkdown) {
+            Platform.runLater(() -> {
+                Label label = new Label("💭 " + I18n.get("builtin.ai.thinking"));
+                label.setStyle("-fx-text-fill: rgba(255,255,255,0.45); -fx-font-size: 11px; -fx-font-weight: bold;");
+
+                WebView wv = new WebView();
+                wv.setMaxWidth(560);
+                wv.setPrefWidth(560);
+                wv.setMinHeight(24);
+                wv.setPrefHeight(24);
+                wv.setStyle(
+                    "-fx-background-color: #1e1e2e;" +
+                    "-fx-border-color: rgba(255,255,255,0.06);" +
+                    "-fx-border-width: 1px; -fx-border-radius: 12px; -fx-background-radius: 12px;"
+                );
+                wv.getEngine().loadContent(
+                    MarkdownRenderer.renderCollapsible(I18n.get("builtin.ai.thinkingSummary"), thinkingMarkdown));
+                autoResizeWebView(wv);
+
+                VBox wrapper = new VBox(3, label, wv);
+                wrapper.setAlignment(Pos.CENTER_LEFT);
+                wrapper.setPadding(new Insets(2, 0, 2, 0));
+
+                int idx = (currentAssistantWrapper == null)
+                    ? messageList.getChildren().size()
+                    : messageList.getChildren().indexOf(currentAssistantWrapper);
+                messageList.getChildren().add(Math.max(0, idx), wrapper);
+                scrollToBottom();
+            });
         }
 
         private void autoResizeWebView(WebView webView) {

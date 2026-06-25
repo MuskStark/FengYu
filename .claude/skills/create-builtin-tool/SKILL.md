@@ -31,12 +31,11 @@ Both halves share state via a config/field object held by the Plugin instance. A
 ### Checklist
 
 ```
-CREATE  buildintool/<toolname>/<Name>Plugin.java    ← SwissKitJPlugin impl (UI)
+CREATE  buildintool/<toolname>/<Name>Plugin.java    ← SwissKitJPlugin impl (UI + aiTools() override)
 CREATE  buildintool/<toolname>/<Name>Config.java    ← shared state POJO (if needed)
 CREATE  buildintool/<toolname>/<Name>Worker.java    ← core logic (if needed)
 CREATE  buildintool/ai/<Name>AiTool.java            ← AiTool impl (at least one)
 MODIFY  Registrar/BuiltinToolRegistrar.java         ← add to List.of(...)
-MODIFY  ai/tools/BuiltinAiToolRegistrar.java        ← register AI tool(s)
 MODIFY  resources/i18n/messages.properties          ← i18n keys
 MODIFY  resources/i18n/messages_en.properties       ← i18n keys (if exists)
 OPT     resources/init.sql                          ← DB table (if tool uses H2)
@@ -170,7 +169,7 @@ public class <Name>AiTool implements AiTool {
 
 ## 3. Registration
 
-### BuiltinToolRegistrar.java (UI)
+### BuiltinToolRegistrar.java (UI + AI)
 
 Add the new plugin to the `List.of(...)` in `register()`:
 
@@ -182,30 +181,48 @@ List<SwissKitJPlugin> builtins = List.of(
 );
 ```
 
-### BuiltinAiToolRegistrar.java (AI)
+`BuiltinToolRegistrar` routes the list through `PluginRegistry.addPlugins(...)`, which — as of v3.1.0 — also auto-registers each plugin's `aiTools()` with `AiServiceProvider`. There is no separate AI-tool registration step. The old `BuiltinAiToolRegistrar` class is gone.
 
-**For standalone tools** (no plugin reference):
+### Exposing AI tools via the plugin (v3.1.0+)
+
+Each plugin self-declares its AI tools by overriding `aiTools()`:
+
 ```java
-AiServiceProvider.registerTool(new <Name>AiTool());
-```
+public class <Name>Plugin implements SwissKitJPlugin {
+    private final <Name>Config config = new <Name>Config();
 
-**For plugin-bound tools** (needs plugin instance):
-```java
-private static void register<Name>Tools() {
-    PluginRegistry registry = PluginRegistry.getInstance();
-    if (registry == null) return;
+    @Override
+    public List<AiTool> aiTools() {
+        return List.of(
+            new <Name>AiTool(this)        // plugin-bound tool
+            // ...add more tools here...
+        );
+    }
 
-    Optional<<Name>Plugin> opt = registry.findPlugin("fan.summer.buildin.<toolname>")
-        .map(p -> (<Name>Plugin) p);
-    if (opt.isEmpty()) return;
-
-    <Name>Plugin plugin = opt.get();
-    AiServiceProvider.registerTool(new <Name>AiTool(plugin));
-    // Register more tools as needed...
+    public <Name>Config getConfig() { return config; }
 }
 ```
 
-Call `register<Name>Tools()` from `register()`. Update the log message.
+The registry handles registration on add and unregistration on remove (including hot-reload). For standalone UI-less tools (no visual plugin), host them on a minimal `SwissKitJPlugin` whose `createView()` returns an empty pane — see `BrowserAutomatePlugin` as a template.
+
+#### Cloud / local capability declaration
+
+Each `AiTool` can declare per-mode visibility (defaults: both true) and provide a simplified local-mode description/parameter set:
+
+```java
+@Override public boolean supportsLocal() { return false; }  // hide from local (Qwen3-4B)
+@Override public boolean supportsCloud() { return true; }   // visible in cloud
+
+@Override public String getLocalDescription() {
+    return "Short Qwen3-friendly description with enum: a|b|c.";
+}
+
+@Override public List<AiToolParam> getLocalParameters() {
+    return List.of(AiToolParam.of("x", "string", "X"));
+}
+```
+
+See `CLAUDE.md` → "### Plugin AI tools (v3.1.0+)" for the full filter rules and the tool-return JSON contract (`{success, summary, ...payload}`).
 
 ## 4. i18n
 
@@ -269,7 +286,7 @@ Before completing any built-in tool UI, verify:
 | Using SLF4J directly | Use `fan.summer.api.log.LoggerFactory.getLogger()` |
 | Hardcoding user-visible strings | Use `I18n.get("key")` for everything |
 | Not making the tool AI-callable | Every built-in tool MUST have at least one `AiTool` implementation |
-| AI tool not registered | Add registration in both `BuiltinToolRegistrar` AND `BuiltinAiToolRegistrar` |
+| AI tool not registered | Override `aiTools()` on the plugin class — the registry auto-registers them when the plugin is added (v3.1.0+). No separate registrar exists. |
 | `prefWidth = MAX_VALUE` | Use `setMaxWidth(Double.MAX_VALUE)` + grow priority instead |
 | Forgetting `JsonHelper.toJson()` for AI results | Always wrap structured results in JSON via `JsonHelper.toJson()` |
 

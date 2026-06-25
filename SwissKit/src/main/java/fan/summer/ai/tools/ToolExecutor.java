@@ -1,6 +1,7 @@
 package fan.summer.ai.tools;
 
 import fan.summer.api.ai.*;
+import fan.summer.ai.util.JsonHelper;
 import javafx.application.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,15 +50,19 @@ public class ToolExecutor {
         AiTool tool = AiServiceProvider.getTool(toolName);
         if (tool == null) {
             log.warn("Tool not found: {}", toolName);
-            return AiToolResult.error("Tool not found: " + toolName);
+            return AiToolResult.error(jsonError("Tool not found: " + toolName));
         }
         try {
             log.debug("Executing tool: name={}, arguments={}", toolName, arguments);
             return tool.execute(arguments);
         } catch (Exception e) {
             log.error("Tool execution error: tool={}, error={}", toolName, e.getMessage());
-            return AiToolResult.error("Tool execution error: " + e.getMessage());
+            return AiToolResult.error(jsonError("Tool execution error: " + e.getMessage()));
         }
+    }
+
+    private static String jsonError(String message) {
+        return JsonHelper.toJson(Map.of("success", false, "error", message));
     }
 
     /**

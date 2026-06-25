@@ -4,9 +4,11 @@ import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.ToolType;
+import fan.summer.api.ai.AiTool;
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
+import fan.summer.ai.tools.BuiltinBase64Tool;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -18,6 +20,7 @@ import javafx.scene.layout.VBox;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.List;
 
 /**
  * Built-in plugin for encoding and decoding Base64 strings.
@@ -38,6 +41,11 @@ public class Base64Plugin implements SwissKitJPlugin {
     @Override public String getMdiIcon()    { return "base64"; }
     @Override public IconStyle getIconStyle()   { return IconStyle.TEAL; }
     @Override public ToolType getType()        { return ToolType.BUILTIN; }
+
+    @Override
+    public List<AiTool> aiTools() {
+        return List.of(new BuiltinBase64Tool());
+    }
 
     /**
      * Creates and returns the plugin view containing input/output text areas

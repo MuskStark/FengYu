@@ -39,9 +39,15 @@ public class ExcelExecuteTool implements AiTool {
     @Override public String getName() { return "excel_execute"; }
 
     @Override public String getDescription() {
-        return "Execute (run) the configured Excel split and write the output files. "
-               + "Call AFTER excel_analyze and excel_configure. "
-               + "Example: excel_execute{outputDir:\"/out\", filePrefix:\"result_\"}.";
+        return "Execute the configured Excel split and write output files. Must be called after excel_analyze and excel_configure.\n"
+             + "Args: outputDir (string, required) — absolute path to output directory;\n"
+             + "      filePrefix (string, optional) — prefix for output filenames.\n"
+             + "Example: excel_execute{\"outputDir\":\"/out\",\"filePrefix\":\"result_\"}.";
+    }
+
+    @Override public String getLocalDescription() {
+        return "Run configured split. Args: outputDir (string), filePrefix (string, optional).\n"
+             + "Example: excel_execute{\"outputDir\":\"/tmp/out\"}.";
     }
 
     @Override public List<AiToolParam> getParameters() {
@@ -55,19 +61,19 @@ public class ExcelExecuteTool implements AiTool {
         SplitConfig config = plugin.getSharedSplitConfig();
 
         if (config.analysisResult == null) {
-            return AiToolResult.error("No analysis result. Call excel_analyze first.");
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "No analysis result. Call excel_analyze first.")));
         }
         if (config.mode == null) {
-            return AiToolResult.error("Split mode not configured. Call excel_configure first.");
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Split mode not configured. Call excel_configure first.")));
         }
 
         String outputDirStr = (String) args.get("outputDir");
         if (outputDirStr == null || outputDirStr.isBlank()) {
-            return AiToolResult.error("outputDir is required");
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "outputDir is required")));
         }
         Path outputDir = Paths.get(outputDirStr.trim());
         if (!Files.exists(outputDir) || !Files.isDirectory(outputDir)) {
-            return AiToolResult.error("Output directory does not exist: " + outputDirStr);
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Output directory does not exist: " + outputDirStr)));
         }
         config.outputDir = outputDir;
 
@@ -103,10 +109,10 @@ public class ExcelExecuteTool implements AiTool {
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             log.error("excel_execute failed: {}", cause.getMessage());
-            return AiToolResult.error("Split failed: " + cause.getMessage());
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Split failed: " + cause.getMessage())));
         } catch (Exception e) {
             log.error("excel_execute error: {}", e.getMessage());
-            return AiToolResult.error("Unexpected error: " + e.getMessage());
+            return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "Unexpected error: " + e.getMessage())));
         }
     }
 }

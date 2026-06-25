@@ -14,7 +14,7 @@ import fan.summer.plugin.PluginRegistry;
 import fan.summer.ui.MainWindow;
 import fan.summer.ui.util.WindowResizeHelper;
 import fan.summer.registrar.BuiltinToolRegistrar;
-import fan.summer.ai.tools.BuiltinAiToolRegistrar;
+import fan.summer.ai.service.CloudChatBackend;
 import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.scene.image.Image;
@@ -102,10 +102,6 @@ public class SwissKitJApp extends Application {
         // ── Initialize AI backend based on saved mode ────────
         initializeAiBackend();
 
-        // ── Register built-in AI tools ─────────────────────────────
-        BuiltinAiToolRegistrar.register();
-        log.info("Built-in AI tools registered");
-
         // ── Main window ────────────────────────────────────────
         mainWindow = new MainWindow(stage, loader, registry, favoriteService);
 
@@ -173,8 +169,7 @@ public class SwissKitJApp extends Application {
 
         switch (mode) {
             case "openai" -> {
-                fan.summer.ai.service.OpenAiService svc = new fan.summer.ai.service.OpenAiService();
-                svc.configure(
+                CloudChatBackend svc = CloudChatBackend.openAi(
                     fan.summer.ai.AiConfigService.getAiOpenAiEndpoint(),
                     fan.summer.ai.AiConfigService.getAiOpenAiApiKey(),
                     fan.summer.ai.AiConfigService.getAiOpenAiModel()
@@ -183,8 +178,7 @@ public class SwissKitJApp extends Application {
                 log.info("OpenAI backend initialized: model={}", fan.summer.ai.AiConfigService.getAiOpenAiModel());
             }
             case "anthropic" -> {
-                fan.summer.ai.service.AnthropicService svc = new fan.summer.ai.service.AnthropicService();
-                svc.configure(
+                CloudChatBackend svc = CloudChatBackend.anthropic(
                     fan.summer.ai.AiConfigService.getAiAnthropicEndpoint(),
                     fan.summer.ai.AiConfigService.getAiAnthropicApiKey(),
                     fan.summer.ai.AiConfigService.getAiAnthropicModel()

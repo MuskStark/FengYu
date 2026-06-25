@@ -6,7 +6,7 @@
 
     <groupId>fan.summer</groupId>
     <artifactId>SwissKit</artifactId>
-    <version>3.0.1</version>
+    <version>3.1.0</version>
 
     <licenses>
         <license>
@@ -22,7 +22,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <javafx.version>21.0.2</javafx.version>
         <lombok.version>1.18.42</lombok.version>
-        <swisskit.api.version>3.0.1</swisskit.api.version>
+        <swisskit.api.version>3.1.0</swisskit.api.version>
         <fesod.version>2.0.1-incubating</fesod.version>
         <h2.version>2.4.240</h2.version>
         <mybatis.version>3.5.19</mybatis.version>
@@ -36,6 +36,7 @@
         <documents4j.version>1.1.0</documents4j.version>
         <poi.version>5.4.1</poi.version>
         <playwright.version>1.49.0</playwright.version>
+        <langchain4j.version>1.2.0</langchain4j.version>
     </properties>
 
     <dependencies>
@@ -207,6 +208,18 @@
             <version>${playwright.version}</version>
         </dependency>
 
+        <!-- LangChain4j: OpenAI + Anthropic cloud backends (replaces hand-rolled HTTP/SSE code) -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-open-ai</artifactId>
+            <version>${langchain4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-anthropic</artifactId>
+            <version>${langchain4j.version}</version>
+        </dependency>
+
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
@@ -272,9 +285,18 @@
 
     <build>
         <resources>
+            <!-- Default: all resources unfiltered, so binary assets (images, fonts) aren't corrupted. -->
             <resource>
                 <directory>src/main/resources</directory>
                 <filtering>false</filtering>
+            </resource>
+            <!-- build-info.properties is the only filtered resource: ${project.version} / ${maven.build.timestamp} are replaced at build time. -->
+            <resource>
+                <directory>src/main/resources</directory>
+                <includes>
+                    <include>build-info.properties</include>
+                </includes>
+                <filtering>true</filtering>
             </resource>
         </resources>
         <plugins>

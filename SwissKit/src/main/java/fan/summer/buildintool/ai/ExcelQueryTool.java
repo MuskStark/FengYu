@@ -31,8 +31,14 @@ public class ExcelQueryTool implements AiTool {
     @Override public String getName() { return "excel_query"; }
 
     @Override public String getDescription() {
-        return "Query (read) the current Excel split configuration state: source file, mode, selected sheets/columns, output directory. "
-               + "Call to inspect progress. No arguments. Example: excel_query{}.";
+        return "Query the current Excel split configuration state: source file, mode, selected sheets/columns, output directory.\n"
+             + "Call to inspect progress before or between operations. No arguments.\n"
+             + "Example: excel_query{}.";
+    }
+
+    @Override public String getLocalDescription() {
+        return "Query current Excel split state. No args.\n"
+             + "Example: excel_query{}.";
     }
 
     @Override public List<AiToolParam> getParameters() {
@@ -43,6 +49,8 @@ public class ExcelQueryTool implements AiTool {
         SplitConfig config = plugin.getSharedSplitConfig();
 
         Map<String, Object> result = new LinkedHashMap<>();
+        result.put("success", true);
+        result.put("summary", "Current state: mode=" + (config.mode != null ? config.mode.name() : "unset"));
         result.put("sourceFile", config.sourceFile != null ? config.sourceFile.toString() : null);
         result.put("mode", config.mode != null ? config.mode.name() : null);
         result.put("selectedSheets", config.selectedSheets);
