@@ -5,6 +5,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,6 +33,7 @@ public class NativeWorkerClient implements AutoCloseable {
     private Process childProcess;
     private BufferedWriter writer;
     private Thread readerThread;
+    private Thread errorReaderThread;
     private volatile boolean running;
 
     private final AtomicInteger genIdCounter = new AtomicInteger(0);
@@ -55,11 +58,24 @@ public class NativeWorkerClient implements AutoCloseable {
 
         String cleanCp = cleanClasspath(classpath, separator);
 
-        ProcessBuilder pb = new ProcessBuilder(
+        // Build the worker command. The worker's stdout is the JSON IPC channel back
+        // to this host, so the default logback.xml (ConsoleAppender → System.out) can't
+        // be used — every worker log.info(...) would corrupt the protocol. Pin a
+        // worker-only config with no console appender (see logback-worker.xml). Also
+        // forward the host's absolute swisskit.log.dir so the worker's file appender
+        // writes to the *same* log as the host, independent of the child's CWD.
+        List<String> cmd = new ArrayList<>(List.of(
             javaHome + "/bin/java", "-cp", cleanCp,
             "-Dfile.encoding=UTF-8",
-            "fan.summer.ai.nativejni.NativeWorkerMain"
-        );
+            "-Dlogback.configurationFile=logback-worker.xml"
+        ));
+        String logDir = System.getProperty("swisskit.log.dir");
+        if (logDir != null && !logDir.isBlank()) {
+            cmd.add("-Dswisskit.log.dir=" + logDir);
+        }
+        cmd.add("fan.summer.ai.nativejni.NativeWorkerMain");
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(false);
         childProcess = pb.start();
 
@@ -69,6 +85,13 @@ public class NativeWorkerClient implements AutoCloseable {
         readerThread = new Thread(this::readLoop, "ai-worker-reader");
         readerThread.setDaemon(true);
         readerThread.start();
+
+        // Drain stderr on its own thread: an undrained pipe (~16 KB on macOS) can
+        // fill and stall the worker, and llama.cpp writes its crash/diagnostic
+        // output here — capturing it turns an opaque worker death into a logged one.
+        errorReaderThread = new Thread(this::readErrorLoop, "ai-worker-stderr-reader");
+        errorReaderThread.setDaemon(true);
+        errorReaderThread.start();
 
         log.info("AI worker process spawned, pid={}", childProcess.pid());
     }
@@ -161,6 +184,9 @@ public class NativeWorkerClient implements AutoCloseable {
         if (readerThread != null) {
             readerThread.interrupt();
         }
+        if (errorReaderThread != null) {
+            errorReaderThread.interrupt();
+        }
     }
 
     // ── Reader thread ─────────────────────────────────────────
@@ -182,6 +208,26 @@ public class NativeWorkerClient implements AutoCloseable {
             if (running) log.error("AI worker reader error: {}", e.getMessage());
         } finally {
             handleChildExit();
+        }
+    }
+
+    /**
+     * Drains the child's stderr line by line into the host log at DEBUG (so it
+     * lands in {@code .swisskit/logs/swisskit.log} without flooding the console).
+     * EOF ends the thread naturally when the worker exits; only the stdout reader
+     * is authoritative for crash detection — this thread never calls
+     * {@code handleChildExit()}.
+     */
+    private void readErrorLoop() {
+        try (BufferedReader errReader = new BufferedReader(
+                new InputStreamReader(childProcess.getErrorStream()))) {
+            String line;
+            while ((line = errReader.readLine()) != null) {
+                if (line.isBlank()) continue;
+                log.debug("[worker-stderr] {}", line);
+            }
+        } catch (IOException e) {
+            if (running) log.debug("AI worker stderr reader closed: {}", e.getMessage());
         }
     }
 
@@ -242,8 +288,28 @@ public class NativeWorkerClient implements AutoCloseable {
     private void handleChildExit() {
         if (!running) return;
 
-        log.warn("AI worker process exited (exit={})",
-            childProcess != null ? childProcess.exitValue() : "unknown");
+        // The reader hit EOF on the child's stdout, but the OS may not have reaped
+        // the process yet. Calling exitValue() now throws IllegalThreadStateException
+        // ("process hasn't exited"), which used to escape this finally block, kill the
+        // reader thread, and skip every recovery step below (pending callbacks were
+        // left hanging and auto-restart never ran). Wait briefly for a real exit code;
+        // force-kill only if it lingers so spawn() below doesn't leak the old process.
+        int exitCode = -1;
+        if (childProcess != null) {
+            try {
+                if (!childProcess.waitFor(2, TimeUnit.SECONDS)) {
+                    childProcess.destroyForcibly();
+                    childProcess.waitFor(1, TimeUnit.SECONDS);
+                }
+                exitCode = childProcess.exitValue();
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            } catch (IllegalThreadStateException ignored) {
+                // still alive even after the force-kill window — proceed as abnormal exit
+            }
+        }
+
+        log.warn("AI worker process exited (exit={})", exitCode);
 
         for (Map.Entry<String, PendingGenerate> entry : pendingGenerates.entrySet()) {
             entry.getValue().callback.onError("AI worker process crashed");

@@ -110,4 +110,16 @@ class ThinkingStreamSegmenterTest {
         assertEquals("Hello", ThinkingStreamSegmenter.stripThink("Hello<think>partial"));
         assertEquals("", ThinkingStreamSegmenter.stripThink(null));
     }
+
+    @Test
+    void stripThinkTruncatedThinkBlockYieldsEmptyAnswer() {
+        // Regression guard for the empty-answer bug: when maxTokens cuts the model off
+        // mid-think, fullText is exactly "<think>" + reasoning with no closing tag.
+        // stripThink's THINK_OPEN_ONLY = <think>.* (DOTALL) then eats everything, so the
+        // answer passed to onComplete is "". This test pins that behaviour so the
+        // silent-empty failure mode stays visible/diagnosable (see LocalChatBackend
+        // Qwen3 onDone guard + effectiveMaxTokens floor).
+        assertEquals("", ThinkingStreamSegmenter.stripThink("<think>reasoning that never ends, no close tag"));
+        assertEquals("", ThinkingStreamSegmenter.stripThink("<think>"));
+    }
 }

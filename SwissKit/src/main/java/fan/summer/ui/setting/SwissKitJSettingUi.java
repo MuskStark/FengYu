@@ -452,7 +452,7 @@ public class SwissKitJSettingUi {
         topPRow.setAlignment(Pos.CENTER_LEFT);
 
         Spinner<Integer> maxTokensSpinner = new Spinner<>();
-        maxTokensSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(64, 4096, 512, 64));
+        maxTokensSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(64, 4096, LocalChatBackend.QWEN3_MIN_MAX_TOKENS, 64));
         maxTokensSpinner.getStyleClass().add("glass-field");
         maxTokensSpinner.setPrefWidth(120);
         maxTokensSpinner.valueProperty().addListener((obs, oldVal, newVal) ->
@@ -512,7 +512,7 @@ public class SwissKitJSettingUi {
                     getAiAnthropicEndpoint(), getAiAnthropicApiKey(), getAiAnthropicModel());
                 AiServiceProvider.switchMode(mode, svc);
             }
-            default -> createLocalBackend(false);
+            default -> createLocalBackend(true);
         }
     }
 
@@ -567,19 +567,30 @@ public class SwissKitJSettingUi {
     private static void autoLoadModel(LocalChatBackend aiService) {
         String modelPath = fan.summer.ai.AiConfigService.getAiModelPath();
 
-        if (modelPath != null && java.nio.file.Files.exists(java.nio.file.Path.of(modelPath))) {
-            log.info("Auto-loading local AI model: {}", modelPath);
-            final String finalPath = modelPath;
-            Thread.ofVirtual().start(() -> {
-                try {
-                    aiService.loadModel(java.nio.file.Path.of(finalPath));
-                    AiServiceProvider.notifyStateChanged();
-                    log.info("Local AI model auto-loaded successfully");
-                } catch (Exception e) {
-                    log.warn("Auto-load failed: {}", e.getMessage());
-                }
-            });
+        if (modelPath == null || modelPath.isBlank()) {
+            log.info("No local AI model path configured — skipping auto-load");
+            return;
         }
+        // Log loudly when the saved path no longer points at a real file. Otherwise
+        // auto-load silently no-ops, the native worker never spawns, and the chat UI
+        // shows the "native unavailable — using pure Java" banner even though native
+        // itself is fine — a stale/mis-typed path (e.g. a stray space) is invisible.
+        if (!java.nio.file.Files.exists(java.nio.file.Path.of(modelPath))) {
+            log.warn("Configured local AI model not found, skipping auto-load: {}", modelPath);
+            return;
+        }
+
+        log.info("Auto-loading local AI model: {}", modelPath);
+        final String finalPath = modelPath;
+        Thread.ofVirtual().start(() -> {
+            try {
+                aiService.loadModel(java.nio.file.Path.of(finalPath));
+                AiServiceProvider.notifyStateChanged();
+                log.info("Local AI model auto-loaded successfully");
+            } catch (Exception e) {
+                log.warn("Auto-load failed: {}", e.getMessage());
+            }
+        });
     }
 
     private static VBox buildLocalModelPanel() {
@@ -976,7 +987,9 @@ public class SwissKitJSettingUi {
     }
 
     /**
-     * Returns the saved AI max tokens value, or 512 if not set or invalid.
+     * Returns the saved AI max tokens value, or {@link LocalChatBackend#QWEN3_MIN_MAX_TOKENS}
+     * if not set or invalid — the default tracks the Qwen3 thinking-model floor so a
+     * fresh install never truncates a thinking model mid-{@code <think>}.
      *
      * @return the max tokens value between 64 and 4096
      */
@@ -985,7 +998,7 @@ public class SwissKitJSettingUi {
         if (val != null) {
             try { return Integer.parseInt(val); } catch (NumberFormatException ignored) {}
         }
-        return 512;
+        return LocalChatBackend.QWEN3_MIN_MAX_TOKENS;
     }
 
     /**
