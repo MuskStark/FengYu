@@ -1,15 +1,1 @@
-- 🌐 [English](/) | [中文](/zh/)
-- [← Back to Main Docs](/)
-- **Plugin Development**
-  - [Overview](/plugins/index.md)
-  - [Getting Started](/plugins/getting-started.md)
-  - [Project Scaffold](/plugins/scaffold.md)
-  - [SPI Registration](/plugins/spi.md)
-  - [Entry Point](/plugins/entry-point.md)
-  - [UI Development](/plugins/ui.md)
-  - [Internationalization](/plugins/i18n.md)
-  - [Database Layer](/plugins/database.md)
-  - [Excel I/O](/plugins/excel.md)
-  - [Background Tasks](/plugins/background-tasks.md)
-  - [Build & Deploy](/plugins/build-deploy.md)
-  - [Common Pitfalls](/plugins/pitfalls.md)
+@docs/plugins/_sidebar.md
