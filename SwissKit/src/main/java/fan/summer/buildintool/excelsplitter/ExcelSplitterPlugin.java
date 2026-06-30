@@ -170,8 +170,9 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             Label title = sectionTitle(I18n.get("builtin.excel.selectExcelFile"));
 
             fileLabel = new Label(I18n.get("builtin.excel.noFileSelected"));
+            fileLabel.getStyleClass().add("sk-t3");
             fileLabel.setStyle(
-                "-fx-text-fill: rgba(255,255,255,0.40); -fx-font-size: 13px;" +
+                "-fx-font-size: 13px;" +
                 "-fx-font-family: 'SF Mono','Consolas',monospace;"
             );
             fileLabel.setWrapText(true);
@@ -183,6 +184,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             dropZone.setAlignment(Pos.CENTER);
             dropZone.setPrefHeight(150);
             dropZone.setPadding(new Insets(20));
+            dropZone.getStyleClass().addAll("sk-surface", "sk-outlined");
             dropZone.setStyle(dropNormalStyle());
 
             dropZone.setOnDragOver(e -> {
@@ -202,14 +204,16 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             });
 
             statusLabel = new Label();
-            statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+            statusLabel.getStyleClass().add("sk-t2");
+            statusLabel.setStyle("-fx-font-size: 12px;");
             statusLabel.setWrapText(true);
 
             ProgressIndicator spinner = new ProgressIndicator(-1);
             spinner.setPrefSize(32, 32);
             spinner.setStyle("-fx-accent: #3574F0;");
             Label analyzingLabel = new Label(I18n.get("builtin.excel.analyzing"));
-            analyzingLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.75); -fx-font-size: 13px;");
+            analyzingLabel.getStyleClass().add("sk-t2");
+            analyzingLabel.setStyle("-fx-font-size: 13px;");
             loadingOverlay = new VBox(8, spinner, analyzingLabel);
             loadingOverlay.setAlignment(Pos.CENTER);
             loadingOverlay.setStyle(
@@ -300,20 +304,20 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             analysisTriggered = true;
             analysisRunning.set(true);
             fileLabel.setText(path.getFileName().toString());
+            fileLabel.getStyleClass().remove("sk-t3");
+            fileLabel.getStyleClass().add("sk-t1");
             fileLabel.setStyle(
-                "-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 13px;" +
+                "-fx-font-size: 13px;" +
                 "-fx-font-family: 'SF Mono','Consolas',monospace;"
             );
             statusLabel.setText(I18n.get("builtin.excel.analyzing"));
-            statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+            statusLabel.setStyle("-fx-font-size: 12px;");
             showLoading(true);
             startAnalysis();
         }
 
         private static String dropNormalStyle() {
-            return "-fx-background-color: rgba(255,255,255,0.03);" +
-                   "-fx-border-color: rgba(255,255,255,0.12);" +
-                   "-fx-border-width: 1; -fx-border-style: dashed;" +
+            return "-fx-border-width: 1; -fx-border-style: dashed;" +
                    "-fx-border-radius: 12; -fx-background-radius: 12;";
         }
 
@@ -414,14 +418,15 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             config.selectedSheets = new ArrayList<>(sheets);
 
             Label lbl = new Label(I18n.get("builtin.excel.bySheetSummary", sheets.size()));
-            lbl.setStyle("-fx-text-fill: rgba(255,255,255,0.60); -fx-font-size: 13px;");
+            lbl.getStyleClass().add("sk-t2");
+            lbl.setStyle("-fx-font-size: 13px;");
             lbl.setWrapText(true);
 
             VBox infoBox = new VBox(6, lbl);
             infoBox.setPadding(new Insets(12, 16, 12, 16));
+            infoBox.getStyleClass().addAll("sk-surface", "sk-outlined");
             infoBox.setStyle(
-                "-fx-background-color: rgba(255,255,255,0.04);" +
-                "-fx-border-color: rgba(255,255,255,0.10); -fx-border-radius: 8;" +
+                "-fx-border-radius: 8;" +
                 "-fx-background-radius: 8;"
             );
 
@@ -434,12 +439,14 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             sheetCombo.getItems().addAll(sheets);
             sheetCombo.setMaxWidth(Double.MAX_VALUE);
             sheetCombo.setPromptText(I18n.get("builtin.excel.selectSheetPrompt"));
+            sheetCombo.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
             sheetCombo.setStyle(comboStyle());
 
             Label colLbl = subLabel(I18n.get("builtin.excel.selectColumn"));
             columnCombo = new ComboBox<>();
             columnCombo.setMaxWidth(Double.MAX_VALUE);
             columnCombo.setPromptText(I18n.get("builtin.excel.selectColumnPrompt"));
+            columnCombo.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
             columnCombo.setStyle(comboStyle());
             columnCombo.setDisable(true);
 
@@ -487,23 +494,27 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             complexSheetCombo.getItems().addAll(sheets);
             complexSheetCombo.setMaxWidth(Double.MAX_VALUE);
             complexSheetCombo.setPromptText(I18n.get("builtin.excel.sheetNamePrompt"));
+            complexSheetCombo.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
             complexSheetCombo.setStyle(comboStyle());
 
             Label headerLbl   = subLabel(I18n.get("builtin.excel.headerRow"));
             headerIndexField  = new TextField();
             headerIndexField.setPromptText(I18n.get("builtin.excel.headerRowPrompt"));
+            headerIndexField.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
             headerIndexField.setStyle(fieldStyle());
 
             Label colIdxLbl    = subLabel(I18n.get("builtin.excel.splitColumn"));
             columnIndexField   = new TextField();
             columnIndexField.setPromptText(I18n.get("builtin.excel.splitColumnPrompt"));
+            columnIndexField.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
             columnIndexField.setStyle(fieldStyle());
 
             Button addBtn = glassBtn(I18n.get("builtin.excel.addConfig"), true);
 
             complexCountLabel = new Label();
             refreshComplexCount();
-            complexCountLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.60); -fx-font-size: 12px;");
+            complexCountLabel.getStyleClass().add("sk-t2");
+            complexCountLabel.setStyle("-fx-font-size: 12px;");
 
             Button clearBtn = glassBtn(I18n.get("builtin.excel.clearAll"), false);
             clearBtn.setOnAction(e -> {
@@ -583,14 +594,17 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             rb.setStyle("-fx-text-fill: transparent;");
 
             Label iconLabel = new Label(icon);
+            iconLabel.getStyleClass().add("sk-t2");
             iconLabel.setStyle(
-                "-fx-text-fill: rgba(255,255,255,0.70); -fx-font-size: 16px;" +
+                "-fx-font-size: 16px;" +
                 "-fx-min-width: 24; -fx-alignment: center;"
             );
             Label titleLabel = new Label(title);
-            titleLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 13px; -fx-font-weight: 500;");
+            titleLabel.getStyleClass().add("sk-t1");
+            titleLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: 500;");
             Label descLabel = new Label(desc);
-            descLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.40); -fx-font-size: 11px;");
+            descLabel.getStyleClass().add("sk-t3");
+            descLabel.setStyle("-fx-font-size: 11px;");
 
             VBox textBox = new VBox(2, titleLabel, descLabel);
             HBox.setHgrow(textBox, Priority.ALWAYS);
@@ -598,19 +612,25 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             HBox card = new HBox(12, rb, iconLabel, textBox);
             card.setAlignment(Pos.CENTER_LEFT);
             card.setPadding(new Insets(12, 16, 12, 16));
+            card.getStyleClass().addAll("sk-surface", "sk-outlined");
             card.setStyle(cardNormalStyle());
             card.setOnMouseClicked(e -> rb.setSelected(true));
 
-            rb.selectedProperty().addListener((o, ov, nv) ->
-                card.setStyle(nv ? cardSelectedStyle() : cardNormalStyle())
-            );
+            rb.selectedProperty().addListener((o, ov, nv) -> {
+                if (nv) {
+                    card.getStyleClass().removeAll("sk-surface", "sk-outlined");
+                    card.setStyle(cardSelectedStyle());
+                } else {
+                    card.getStyleClass().addAll("sk-surface", "sk-outlined");
+                    card.setStyle(cardNormalStyle());
+                }
+            });
 
             return card;
         }
 
         private static String cardNormalStyle() {
-            return "-fx-background-color: rgba(255,255,255,0.04);" +
-                   "-fx-border-color: rgba(255,255,255,0.10); -fx-border-width: 1;" +
+            return "-fx-border-width: 1;" +
                    "-fx-border-radius: 10; -fx-background-radius: 10; -fx-cursor: hand;";
         }
 
@@ -642,9 +662,9 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
             VBox summaryCard = new VBox(summaryContent);
             summaryCard.setPadding(new Insets(14, 16, 14, 16));
+            summaryCard.getStyleClass().addAll("sk-surface", "sk-outlined");
             summaryCard.setStyle(
-                "-fx-background-color: rgba(255,255,255,0.04);" +
-                "-fx-border-color: rgba(255,255,255,0.10); -fx-border-width: 1;" +
+                "-fx-border-width: 1;" +
                 "-fx-border-radius: 10; -fx-background-radius: 10;"
             );
 
@@ -654,8 +674,9 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             Label outputTitle = sectionTitle(I18n.get("builtin.excel.outputDir"));
 
             dirLabel = new Label(I18n.get("builtin.excel.notSelected"));
+            dirLabel.getStyleClass().add("sk-t3");
             dirLabel.setStyle(
-                "-fx-text-fill: rgba(255,255,255,0.40); -fx-font-size: 12px;" +
+                "-fx-font-size: 12px;" +
                 "-fx-font-family: 'SF Mono','Consolas',monospace;"
             );
             dirLabel.setWrapText(true);
@@ -670,8 +691,10 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
                 if (dir != null) {
                     config.outputDir = dir.toPath();
                     dirLabel.setText(dir.getAbsolutePath());
+                    dirLabel.getStyleClass().remove("sk-t3");
+                    dirLabel.getStyleClass().add("sk-t1");
                     dirLabel.setStyle(
-                        "-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 12px;" +
+                        "-fx-font-size: 12px;" +
                         "-fx-font-family: 'SF Mono','Consolas',monospace;"
                     );
                 }
@@ -731,9 +754,11 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
         private void addRow(String key, String value) {
             Label keyL = new Label(key + "：");
-            keyL.setStyle("-fx-text-fill: rgba(255,255,255,0.45); -fx-font-size: 12px; -fx-min-width: 130;");
+            keyL.getStyleClass().add("sk-t2");
+            keyL.setStyle("-fx-font-size: 12px; -fx-min-width: 130;");
             Label valL = new Label(value);
-            valL.setStyle("-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 12px;");
+            valL.getStyleClass().add("sk-t1");
+            valL.setStyle("-fx-font-size: 12px;");
             valL.setWrapText(true);
             HBox row = new HBox(4, keyL, valL);
             row.setAlignment(Pos.TOP_LEFT);
@@ -742,10 +767,12 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
         private void addDetailRow(String key, String value) {
             Label keyL = new Label(key);
-            keyL.setStyle("-fx-text-fill: rgba(255,255,255,0.60); -fx-font-size: 12px; -fx-min-width: 130;" +
+            keyL.getStyleClass().add("sk-t2");
+            keyL.setStyle("-fx-font-size: 12px; -fx-min-width: 130;" +
                           "-fx-font-family: 'SF Mono','Consolas',monospace;");
             Label valL = new Label(value);
-            valL.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 11px;");
+            valL.getStyleClass().add("sk-t2");
+            valL.setStyle("-fx-font-size: 11px;");
             valL.setWrapText(true);
             HBox row = new HBox(8, keyL, valL);
             row.setAlignment(Pos.TOP_LEFT);
@@ -780,7 +807,8 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             progressBar.setMaxWidth(Double.MAX_VALUE);
 
             progressLabel = new Label(I18n.get("builtin.excel.preparing"));
-            progressLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+            progressLabel.getStyleClass().add("sk-t2");
+            progressLabel.setStyle("-fx-font-size: 12px;");
 
             resultBox = new VBox(8);
             resultBox.setStyle("-fx-background-color: transparent;");
@@ -847,8 +875,9 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
                 Label icon = new Label("📄");
                 Label name = new Label(p.getFileName().toString());
+                name.getStyleClass().add("sk-t1");
                 name.setStyle(
-                    "-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 12px;" +
+                    "-fx-font-size: 12px;" +
                     "-fx-font-family: 'SF Mono','Consolas',monospace;"
                 );
                 HBox.setHgrow(name, Priority.ALWAYS);
@@ -900,14 +929,16 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
     static Label sectionTitle(String text) {
         Label l = new Label(text);
-        l.setStyle("-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 15px; -fx-font-weight: 500;");
+        l.getStyleClass().add("sk-t1");
+        l.setStyle("-fx-font-size: 15px; -fx-font-weight: 500;");
         return l;
     }
 
     static Label subLabel(String text) {
         Label l = new Label(text.toUpperCase());
+        l.getStyleClass().add("sk-t3");
         l.setStyle(
-            "-fx-text-fill: rgba(255,255,255,0.30); -fx-font-size: 10px;" +
+            "-fx-font-size: 10px;" +
             "-fx-font-weight: bold;"
         );
         return l;
@@ -922,10 +953,10 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
                 "-fx-padding: 10 20 10 20; -fx-cursor: hand;"
             );
         } else {
+            btn.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t2");
             btn.setStyle(
-                "-fx-background-color: rgba(255,255,255,0.07);" +
-                "-fx-border-color: rgba(255,255,255,0.12); -fx-border-width: 1;" +
-                "-fx-text-fill: rgba(255,255,255,0.75); -fx-font-size: 13px;" +
+                "-fx-border-width: 1;" +
+                "-fx-font-size: 13px;" +
                 "-fx-background-radius: 8; -fx-border-radius: 8;" +
                 "-fx-padding: 10 20 10 20; -fx-cursor: hand;"
             );
@@ -934,18 +965,15 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
     }
 
     private static String fieldStyle() {
-        return "-fx-background-color: rgba(255,255,255,0.05);" +
-               "-fx-border-color: rgba(255,255,255,0.12); -fx-border-width: 1;" +
+        return "-fx-border-width: 1;" +
                "-fx-border-radius: 8; -fx-background-radius: 8;" +
-               "-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 13px;" +
+               "-fx-font-size: 13px;" +
                "-fx-padding: 9 12 9 12;";
     }
 
     private static String comboStyle() {
-        return "-fx-background-color: rgba(255,255,255,0.05);" +
-               "-fx-border-color: rgba(255,255,255,0.12); -fx-border-width: 1;" +
-               "-fx-border-radius: 8; -fx-background-radius: 8;" +
-               "-fx-text-fill: rgba(255,255,255,0.88);";
+        return "-fx-border-width: 1;" +
+               "-fx-border-radius: 8; -fx-background-radius: 8;";
     }
 
     @Override

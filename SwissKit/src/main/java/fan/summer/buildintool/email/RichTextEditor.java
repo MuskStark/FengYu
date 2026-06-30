@@ -39,9 +39,9 @@ public class RichTextEditor extends VBox {
         setStyle("-fx-background-color: transparent;");
 
         webView = new WebView();
+        webView.getStyleClass().addAll("sk-surface", "sk-outlined");
         webView.setStyle(
-                "-fx-background-color: rgba(255,255,255,0.04);" +
-                "-fx-border-color: rgba(255,255,255,0.10); -fx-border-width: 1;" +
+                "-fx-border-width: 1;" +
                 "-fx-border-radius: 10; -fx-background-radius: 10;"
         );
         webView.setMinHeight(200);
@@ -67,6 +67,7 @@ public class RichTextEditor extends VBox {
                 "SansSerif", "Serif", "Monospace", "Arial", "Helvetica", "Georgia", "Courier New"
         ));
         fontCombo.setValue("SansSerif");
+        fontCombo.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
         fontCombo.setStyle(comboStyle());
         fontCombo.setTooltip(new Tooltip("字体"));
         fontCombo.setOnAction(e -> exec("fontName", fontCombo.getValue()));
@@ -75,6 +76,7 @@ public class RichTextEditor extends VBox {
                 "1", "2", "3", "4", "5", "6", "7"
         ));
         sizeCombo.setValue("3");
+        sizeCombo.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
         sizeCombo.setStyle(comboStyle());
         sizeCombo.setTooltip(new Tooltip("字号 (1=小, 7=大)"));
         sizeCombo.setOnAction(e -> exec("fontSize", sizeCombo.getValue()));
@@ -89,8 +91,8 @@ public class RichTextEditor extends VBox {
         underline.setOnAction(e -> exec("underline", null));
 
         ColorPicker colorPicker = new ColorPicker(Color.WHITE);
+        colorPicker.getStyleClass().add("sk-surface");
         colorPicker.setStyle(
-                "-fx-background-color: rgba(255,255,255,0.07);" +
                 "-fx-color-label-visible: false;"
         );
         colorPicker.setTooltip(new Tooltip("字体颜色"));
@@ -127,9 +129,9 @@ public class RichTextEditor extends VBox {
         );
         toolbar.setAlignment(Pos.CENTER_LEFT);
         toolbar.setPadding(new Insets(6, 8, 6, 8));
+        toolbar.getStyleClass().addAll("sk-surface", "sk-outlined");
         toolbar.setStyle(
-                "-fx-background-color: rgba(255,255,255,0.04);" +
-                "-fx-border-color: rgba(255,255,255,0.10); -fx-border-width: 1;" +
+                "-fx-border-width: 1;" +
                 "-fx-border-radius: 8; -fx-background-radius: 8;"
         );
         return toolbar;
@@ -137,10 +139,9 @@ public class RichTextEditor extends VBox {
 
     private Button toolbarButton(String label, String tooltip, boolean bold, boolean italic, boolean underline) {
         Button b = new Button(label);
+        b.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
         StringBuilder style = new StringBuilder(
-                "-fx-background-color: rgba(255,255,255,0.06);" +
-                "-fx-border-color: rgba(255,255,255,0.10); -fx-border-width: 1;" +
-                "-fx-text-fill: rgba(255,255,255,0.85);" +
+                "-fx-border-width: 1;" +
                 "-fx-background-radius: 6; -fx-border-radius: 6;" +
                 "-fx-padding: 4 10 4 10; -fx-cursor: hand;" +
                 "-fx-font-size: 13px;"
@@ -158,15 +159,14 @@ public class RichTextEditor extends VBox {
         Region r = new Region();
         r.setPrefWidth(1);
         r.setPrefHeight(20);
-        r.setStyle("-fx-background-color: rgba(255,255,255,0.12);");
+        r.getStyleClass().add("sk-surface");
         return r;
     }
 
     private String comboStyle() {
-        return "-fx-background-color: rgba(255,255,255,0.06);" +
-                "-fx-border-color: rgba(255,255,255,0.10); -fx-border-width: 1;" +
+        return "-fx-border-width: 1;" +
                 "-fx-border-radius: 6; -fx-background-radius: 6;" +
-                "-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 12px;";
+                "-fx-font-size: 12px;";
     }
 
     private void exec(String command, String value) {

@@ -61,8 +61,8 @@ public class Base64Plugin implements SwissKitJPlugin {
         output.setEditable(false);
 
         Button encodeBtn = actionButton(I18n.get("builtin.base64.encode"),  "#3574F0");
-        Button decodeBtn = actionButton(I18n.get("builtin.base64.decode"),  "rgba(255,255,255,0.12)");
-        Button swapBtn   = actionButton("↕ Swap",    "rgba(255,255,255,0.08)");
+        Button decodeBtn = actionButton(I18n.get("builtin.base64.decode"),  null);
+        Button swapBtn   = actionButton("↕ Swap",    null);
 
         encodeBtn.setOnAction(e -> {
             try {
@@ -119,11 +119,10 @@ public class Base64Plugin implements SwissKitJPlugin {
     private static TextArea styledTextArea(String prompt) {
         TextArea ta = new TextArea();
         ta.setPromptText(prompt);
+        ta.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
         ta.setStyle(
-            "-fx-background-color: rgba(255,255,255,0.04);" +
-            "-fx-border-color: rgba(255,255,255,0.10); -fx-border-width: 1;" +
+            "-fx-border-width: 1;" +
             "-fx-border-radius: 10; -fx-background-radius: 10;" +
-            "-fx-text-fill: rgba(255,255,255,0.88);" +
             "-fx-font-size: 13px; -fx-font-family: 'SF Mono','Consolas',monospace;" +
             "-fx-control-inner-background: transparent; -fx-highlight-fill: #3574F0;" +
             "-fx-padding: 12;"
@@ -142,12 +141,17 @@ public class Base64Plugin implements SwissKitJPlugin {
      */
     private static Button actionButton(String text, String bg) {
         Button btn = new Button(text);
-        btn.setStyle(
-            "-fx-background-color: " + bg + ";" +
-            "-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 13px;" +
-            "-fx-background-radius: 8; -fx-border-width: 0;" +
-            "-fx-padding: 8 18 8 18; -fx-cursor: hand;"
-        );
+        btn.getStyleClass().add("sk-t1");
+        StringBuilder style = new StringBuilder();
+        if (bg != null && bg.startsWith("#")) {
+            style.append("-fx-background-color: ").append(bg).append(";");
+        } else {
+            btn.getStyleClass().add("sk-surface");
+        }
+        style.append("-fx-font-size: 13px;");
+        style.append("-fx-background-radius: 8; -fx-border-width: 0;");
+        style.append("-fx-padding: 8 18 8 18; -fx-cursor: hand;");
+        btn.setStyle(style.toString());
         return btn;
     }
 
@@ -159,8 +163,9 @@ public class Base64Plugin implements SwissKitJPlugin {
      */
     private static Label sectionLabel(String text) {
         Label l = new Label(text.toUpperCase());
+        l.getStyleClass().add("sk-t3");
         l.setStyle(
-            "-fx-text-fill: rgba(255,255,255,0.28); -fx-font-size: 10px;" +
+            "-fx-font-size: 10px;" +
             "-fx-font-weight: bold; -fx-letter-spacing: 0.08em;"
         );
         return l;

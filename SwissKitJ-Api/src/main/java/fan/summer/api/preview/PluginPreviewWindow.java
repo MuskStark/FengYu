@@ -173,8 +173,11 @@ public final class PluginPreviewWindow {
 
         Scene scene = new Scene(shell, width, height);
         scene.setFill(Color.TRANSPARENT);
-        scene.getStylesheets().addAll(
-            Themes.commonStylesheetUrl(),
+        // Register with the theme service: loads common.css (idempotent) AND stamps the
+        // active theme class on this scene's root so the -sk-* tokens used in
+        // swisskit-preview.css resolve (otherwise they'd be undefined in this window).
+        Themes.applyTo(scene);
+        scene.getStylesheets().add(
             PluginPreviewWindow.class.getResource("/css/swisskit-preview.css").toExternalForm()
         );
 

@@ -55,18 +55,21 @@ public class AddressBookPane extends VBox {
         log.debug("Initializing AddressBookPane");
         setSpacing(8);
         setPadding(new Insets(12));
-        setStyle("-fx-background-color: rgba(255,255,255,0.025); -fx-background-radius: 10;");
+        getStyleClass().add("sk-surface");
+        setStyle("-fx-background-radius: 10;");
         setPrefWidth(240);
         setMinWidth(200);
 
         HBox header = new HBox(8);
         header.setAlignment(Pos.CENTER_LEFT);
         Label title = new Label(I18n.get("builtin.email.addressBook"));
-        title.setStyle("-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 13px; -fx-font-weight: 600;");
+        title.getStyleClass().add("sk-t1");
+        title.setStyle("-fx-font-size: 13px; -fx-font-weight: 600;");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
         Button refreshBtn = new Button("↻");
-        refreshBtn.setStyle("-fx-background-color: transparent; -fx-text-fill: rgba(255,255,255,0.5); -fx-font-size: 14px; -fx-cursor: hand; -fx-padding: 2 6 2 6;");
+        refreshBtn.getStyleClass().add("sk-t2");
+        refreshBtn.setStyle("-fx-background-color: transparent; -fx-font-size: 14px; -fx-cursor: hand; -fx-padding: 2 6 2 6;");
         refreshBtn.setOnAction(e -> loadContacts());
         header.getChildren().addAll(title, spacer, refreshBtn);
 
@@ -151,7 +154,8 @@ public class AddressBookPane extends VBox {
 
             for (String contact : entry.getValue()) {
                 Label contactLabel = new Label("  " + contact);
-                contactLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.65); -fx-font-size: 11px;");
+                contactLabel.getStyleClass().add("sk-t2");
+                contactLabel.setStyle("-fx-font-size: 11px;");
                 contactLabel.setWrapText(true);
                 contactLabel.setMaxWidth(Double.MAX_VALUE);
                 content.getChildren().add(contactLabel);
@@ -160,11 +164,13 @@ public class AddressBookPane extends VBox {
 
         if (!untagged.isEmpty()) {
             Label untaggedLabel = new Label(I18n.get("builtin.email.untagged"));
-            untaggedLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.45); -fx-font-size: 11px; -fx-font-weight: bold;");
+            untaggedLabel.getStyleClass().add("sk-t2");
+            untaggedLabel.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
             content.getChildren().add(untaggedLabel);
             for (String contact : untagged) {
                 Label contactLabel = new Label("  " + contact);
-                contactLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.45); -fx-font-size: 11px;");
+                contactLabel.getStyleClass().add("sk-t2");
+                contactLabel.setStyle("-fx-font-size: 11px;");
                 contactLabel.setWrapText(true);
                 contactLabel.setMaxWidth(Double.MAX_VALUE);
                 content.getChildren().add(contactLabel);
@@ -173,7 +179,8 @@ public class AddressBookPane extends VBox {
 
         if (byTag.isEmpty() && untagged.isEmpty()) {
             Label empty = new Label(I18n.get("builtin.email.noContacts"));
-            empty.setStyle("-fx-text-fill: rgba(255,255,255,0.35); -fx-font-size: 11px;");
+            empty.getStyleClass().add("sk-t3");
+            empty.setStyle("-fx-font-size: 11px;");
             content.getChildren().add(empty);
         }
 

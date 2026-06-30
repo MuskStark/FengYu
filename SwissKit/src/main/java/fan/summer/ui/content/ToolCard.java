@@ -193,10 +193,12 @@ public class ToolCard extends StackPane {
     private void updateStarStyle(Label starBtn, boolean isFavorite) {
         if (isFavorite) {
             starBtn.setText("★");
+            starBtn.getStyleClass().remove("sk-t3");
             starBtn.setStyle("-fx-font-size: 13px; -fx-cursor: hand; -fx-text-fill: #f5c842;");
         } else {
             starBtn.setText("☆");
-            starBtn.setStyle("-fx-font-size: 13px; -fx-cursor: hand; -fx-text-fill: rgba(255,255,255,0.22);");
+            if (!starBtn.getStyleClass().contains("sk-t3")) starBtn.getStyleClass().add("sk-t3");
+            starBtn.setStyle("-fx-font-size: 13px; -fx-cursor: hand;");
         }
     }
 }

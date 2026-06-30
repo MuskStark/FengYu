@@ -134,8 +134,8 @@ public final class MarkdownRenderer {
             border: 1px solid #DADCE0;
             padding: 5px 10px; text-align: left;
         }
-        th { background: rgba(255,255,255,0.06); }
-        hr { border: none; border-top: 1px solid rgba(255,255,255,0.10); margin: 10px 0; }
+        th { background: #F7F8FA; }
+        hr { border: none; border-top: 1px solid #DADCE0; margin: 10px 0; }
         img { max-width: 100%; border-radius: 8px; }
         ul, ol { padding-left: 20px; }
         li { margin: 2px 0; }
@@ -143,15 +143,15 @@ public final class MarkdownRenderer {
         h2 { font-size: 16px; margin: 8px 0 4px; }
         h3 { font-size: 14.5px; margin: 6px 0 3px; }
         details.sk-collapse {
-            background: rgba(255,255,255,0.03);
-            border: 1px solid rgba(255,255,255,0.06);
+            background: #F7F8FA;
+            border: 1px solid #DADCE0;
             border-radius: 10px;
             padding: 6px 12px;
             margin: 4px 0;
         }
         details.sk-collapse > summary {
             cursor: pointer;
-            color: rgba(255,255,255,0.50);
+            color: #5A5D60;
             font-size: 12px;
             font-weight: 600;
             list-style: none;

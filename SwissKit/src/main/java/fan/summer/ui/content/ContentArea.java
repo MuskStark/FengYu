@@ -362,7 +362,8 @@ public class ContentArea extends BorderPane {
         // Empty state message
         if (filtered.isEmpty()) {
             Label empty = new Label(I18n.get("content.emptyState"));
-            empty.setStyle("-fx-text-fill: rgba(255,255,255,0.28); -fx-font-size: 13px;");
+            empty.getStyleClass().add("sk-t3");
+            empty.setStyle("-fx-font-size: 13px;");
             empty.setPadding(new Insets(40, 0, 0, 0));
             toolGrid.getChildren().add(empty);
         }

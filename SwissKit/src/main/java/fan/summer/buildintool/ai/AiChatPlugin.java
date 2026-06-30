@@ -158,11 +158,11 @@ public class AiChatPlugin implements SwissKitJPlugin {
             modelLabel.getStyleClass().add("ai-model-hint");
 
             nativeUnavailableBanner.setText(I18n.get("builtin.ai.nativeUnavailable"));
+            nativeUnavailableBanner.getStyleClass().add("sk-t2");
             nativeUnavailableBanner.setStyle(
                 "-fx-background-color: rgba(245,159,0,0.12);" +
                 "-fx-border-color: rgba(245,159,0,0.25);" +
                 "-fx-border-width: 0 0 1px 0;" +
-                "-fx-text-fill: rgba(255,255,255,0.75);" +
                 "-fx-font-size: 12px; -fx-padding: 6 20 6 20;" +
                 "-fx-alignment: center;"
             );
@@ -317,7 +317,8 @@ public class AiChatPlugin implements SwissKitJPlugin {
             Label icon = new Label("📄");
             icon.setStyle("-fx-font-size: 11px;");
             Label name = new Label(att.name() + "  " + humanSize(att.sizeBytes()));
-            name.setStyle("-fx-text-fill: rgba(255,255,255,0.80); -fx-font-size: 11px;");
+            name.getStyleClass().add("sk-t1");
+            name.setStyle("-fx-font-size: 11px;");
             Button remove = new Button("×");
             remove.getStyleClass().add("ai-chip-remove");
             remove.setOnAction(e -> {
@@ -609,8 +610,9 @@ public class AiChatPlugin implements SwissKitJPlugin {
             Label content = new Label(text);
             content.setWrapText(true);
             content.setMaxWidth(540);
+            content.getStyleClass().add("sk-t1");
             content.setStyle(
-                "-fx-text-fill: rgba(255,255,255,0.80); -fx-font-size: 12.5px; " +
+                "-fx-font-size: 12.5px; " +
                 "-fx-font-family: 'Menlo', 'Consolas', monospace;");
 
             VBox body = new VBox(4, label, content);
@@ -664,8 +666,9 @@ public class AiChatPlugin implements SwissKitJPlugin {
             VBox bubble = new VBox(new Label(text));
             bubble.getStyleClass().addAll("ai-msg-bubble");
             bubble.setAlignment(Pos.CENTER);
+            ((Label) bubble.getChildren().get(0)).getStyleClass().add("sk-t3");
             ((Label) bubble.getChildren().get(0)).setStyle(
-                "-fx-text-fill: rgba(255,255,255,0.35); -fx-font-size: 12px; -fx-alignment: center;");
+                "-fx-font-size: 12px; -fx-alignment: center;");
 
             VBox wrapper = new VBox(bubble);
             wrapper.getStyleClass().add("ai-msg-system");
@@ -693,11 +696,12 @@ public class AiChatPlugin implements SwissKitJPlugin {
                 chips.setMaxWidth(560);
                 for (Attachment att : attachments) {
                     Label chip = new Label("📄 " + att.name() + "  " + humanSize(att.sizeBytes()));
+                    chip.getStyleClass().add("sk-t1");
                     chip.setStyle(
                         "-fx-background-color: rgba(53,116,240,0.15);" +
                         "-fx-border-color: rgba(53,116,240,0.25);" +
                         "-fx-border-width: 1px; -fx-border-radius: 10px; -fx-background-radius: 10px;" +
-                        "-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 11px; -fx-padding: 3 8 3 8;"
+                        "-fx-font-size: 11px; -fx-padding: 3 8 3 8;"
                     );
                     chips.getChildren().add(chip);
                 }
@@ -707,13 +711,14 @@ public class AiChatPlugin implements SwissKitJPlugin {
             if (!text.isEmpty()) {
                 Label bubble = new Label(text);
                 bubble.getStyleClass().add("ai-msg-bubble");
+                bubble.getStyleClass().add("sk-t1");
                 bubble.setWrapText(true);
                 bubble.setMaxWidth(560);
                 bubble.setStyle(
                     "-fx-background-color: rgba(53,116,240,0.22);" +
                     "-fx-border-color: rgba(53,116,240,0.18);" +
                     "-fx-border-width: 1px; -fx-border-radius: 14px; -fx-background-radius: 14px;" +
-                    "-fx-text-fill: rgba(255,255,255,0.95); -fx-font-size: 13.5px; -fx-padding: 10 16 10 16;"
+                    "-fx-font-size: 13.5px; -fx-padding: 10 16 10 16;"
                 );
                 wrapper.getChildren().add(bubble);
             }
@@ -765,7 +770,8 @@ public class AiChatPlugin implements SwissKitJPlugin {
         private void addThinkingCard(String thinkingMarkdown) {
             Platform.runLater(() -> {
                 Label label = new Label("💭 " + I18n.get("builtin.ai.thinking"));
-                label.setStyle("-fx-text-fill: rgba(255,255,255,0.45); -fx-font-size: 11px; -fx-font-weight: bold;");
+                label.getStyleClass().add("sk-t2");
+                label.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
 
                 WebView wv = new WebView();
                 wv.setMaxWidth(560);
@@ -800,20 +806,30 @@ public class AiChatPlugin implements SwissKitJPlugin {
             return (ThemeService.current() == ThemeService.Theme.LIGHT) ? "#ffffff" : "#1e1e2e";
         }
 
-        /** Applies the assistant-bubble container style with theme-driven bg. */
+        /**
+         * Computes the WebView container border color for the current theme, matching
+         * the {@code -sk-border} token (dark {@code #3C3F41}, light {@code #DADCE0}) so
+         * bubble outlines stay visible in light theme (the old rgba(255,255,255,…)
+         * was invisible on the white background).
+         */
+        private static String webviewBorder() {
+            return (ThemeService.current() == ThemeService.Theme.LIGHT) ? "#DADCE0" : "#3C3F41";
+        }
+
+        /** Applies the assistant-bubble container style with theme-driven bg + border. */
         private static void applyAssistantBubbleStyle(WebView webView) {
             webView.setStyle(
                 "-fx-background-color: " + webviewBg() + ";" +
-                "-fx-border-color: rgba(255,255,255,0.10);" +
+                "-fx-border-color: " + webviewBorder() + ";" +
                 "-fx-border-width: 1px; -fx-border-radius: 14px; -fx-background-radius: 14px;"
             );
         }
 
-        /** Applies the thinking-card container style with theme-driven bg. */
+        /** Applies the thinking-card container style with theme-driven bg + border. */
         private static void applyThinkingCardStyle(WebView webView) {
             webView.setStyle(
                 "-fx-background-color: " + webviewBg() + ";" +
-                "-fx-border-color: rgba(255,255,255,0.06);" +
+                "-fx-border-color: " + webviewBorder() + ";" +
                 "-fx-border-width: 1px; -fx-border-radius: 12px; -fx-background-radius: 12px;"
             );
         }
@@ -890,7 +906,8 @@ public class AiChatPlugin implements SwissKitJPlugin {
             icon.setStyle("-fx-text-fill: #f59f00; -fx-font-size: 13px;");
 
             Label name = new Label(I18n.get("builtin.ai.calling", toolCall.name()));
-            name.setStyle("-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 12px; -fx-font-weight: bold;");
+            name.getStyleClass().add("sk-t1");
+            name.setStyle("-fx-font-size: 12px; -fx-font-weight: bold;");
 
             String argsStr = toolCall.arguments().entrySet().stream()
                 .map(e -> e.getKey() + ": " + e.getValue())
@@ -899,7 +916,8 @@ public class AiChatPlugin implements SwissKitJPlugin {
             Label args = new Label(argsStr);
             args.setWrapText(true);
             args.setMaxWidth(480);
-            args.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 11px;");
+            args.getStyleClass().add("sk-t2");
+            args.setStyle("-fx-font-size: 11px;");
 
             VBox content = new VBox(4, new HBox(6, icon, name), args);
 
@@ -925,12 +943,14 @@ public class AiChatPlugin implements SwissKitJPlugin {
             icon.setStyle("-fx-text-fill: " + (result.success() ? "#51cf66" : "#ff6b6b") + "; -fx-font-size: 13px;");
 
             Label label = new Label(result.success() ? I18n.get("builtin.ai.toolResult") : I18n.get("builtin.ai.toolError"));
-            label.setStyle("-fx-text-fill: rgba(255,255,255,0.70); -fx-font-size: 11px; -fx-font-weight: bold;");
+            label.getStyleClass().add("sk-t2");
+            label.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
 
             Label output = new Label(result.output());
             output.setWrapText(true);
             output.setMaxWidth(480);
-            output.setStyle("-fx-text-fill: rgba(255,255,255,0.65); -fx-font-size: 11px;");
+            output.getStyleClass().add("sk-t2");
+            output.setStyle("-fx-font-size: 11px;");
 
             VBox content = new VBox(4, new HBox(6, icon, label), output);
 

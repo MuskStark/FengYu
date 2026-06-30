@@ -188,17 +188,26 @@ public class DetailPanel extends VBox {
 
         VBox buttonBox = new VBox(8, launchBtn, uninstallBtn, favoriteBtn);
 
+        closeBtn.getStyleClass().add("sk-t3");
         closeBtn.setStyle(
             "-fx-background-color: transparent; -fx-border-width: 0;" +
-            "-fx-text-fill: rgba(255,255,255,0.35); -fx-cursor: hand; -fx-font-size: 14px;"
+            "-fx-cursor: hand; -fx-font-size: 14px;"
         );
         closeBtn.setOnAction(e -> hide());
         final String closeBtnNormal = "-fx-background-color: transparent; -fx-border-width: 0;" +
-            "-fx-text-fill: rgba(255,255,255,0.35); -fx-cursor: hand; -fx-font-size: 14px;";
+            "-fx-cursor: hand; -fx-font-size: 14px;";
         final String closeBtnHover = "-fx-background-color: transparent; -fx-border-width: 0;" +
-            "-fx-text-fill: rgba(255,255,255,0.85); -fx-cursor: hand; -fx-font-size: 14px;";
-        closeBtn.setOnMouseEntered(e -> closeBtn.setStyle(closeBtnHover));
-        closeBtn.setOnMouseExited(e -> closeBtn.setStyle(closeBtnNormal));
+            "-fx-cursor: hand; -fx-font-size: 14px;";
+        closeBtn.setOnMouseEntered(e -> {
+            closeBtn.getStyleClass().remove("sk-t3");
+            if (!closeBtn.getStyleClass().contains("sk-t1")) closeBtn.getStyleClass().add("sk-t1");
+            closeBtn.setStyle(closeBtnHover);
+        });
+        closeBtn.setOnMouseExited(e -> {
+            closeBtn.getStyleClass().remove("sk-t1");
+            if (!closeBtn.getStyleClass().contains("sk-t3")) closeBtn.getStyleClass().add("sk-t3");
+            closeBtn.setStyle(closeBtnNormal);
+        });
 
         HBox topRow = new HBox(closeBtn);
         topRow.setAlignment(Pos.CENTER_RIGHT);
@@ -245,8 +254,10 @@ public class DetailPanel extends VBox {
 
     private HBox propRow(String key, Label valLabel) {
         Label keyLabel = new Label(key);
-        keyLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.30); -fx-font-size: 12px;");
-        valLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px; " +
+        keyLabel.getStyleClass().add("sk-t3");
+        keyLabel.setStyle("-fx-font-size: 12px;");
+        valLabel.getStyleClass().add("sk-t2");
+        valLabel.setStyle("-fx-font-size: 12px; " +
                           "-fx-font-family: 'SF Mono','Consolas',monospace;");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);

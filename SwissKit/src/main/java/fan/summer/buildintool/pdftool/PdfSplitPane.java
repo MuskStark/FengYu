@@ -62,7 +62,8 @@ class PdfSplitPane extends VBox {
         dropIcon.setStyle("-fx-font-size: 28px;");
 
         Label dropHint = new Label(I18n.get("builtin.pdf.drop.hint"));
-        dropHint.setStyle("-fx-text-fill: rgba(255,255,255,0.5); -fx-font-size: 13px;");
+        dropHint.getStyleClass().add("sk-t2");
+        dropHint.setStyle("-fx-font-size: 13px;");
 
         Button selectBtn = new Button(I18n.get("builtin.pdf.select.file"));
         selectBtn.setStyle(
@@ -76,6 +77,7 @@ class PdfSplitPane extends VBox {
         dropZone = new VBox(10, dropIcon, dropHint, selectBtn);
         dropZone.setAlignment(Pos.CENTER);
         dropZone.setPrefHeight(140);
+        dropZone.getStyleClass().addAll("sk-surface-soft", "sk-outlined");
         dropZone.setStyle(dropNormalStyle());
 
         dropZone.setOnDragOver(e -> {
@@ -98,7 +100,8 @@ class PdfSplitPane extends VBox {
 
         // ── File info ───────────────────────────────────────
         fileInfoLabel = new Label();
-        fileInfoLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.6); -fx-font-size: 12px;");
+        fileInfoLabel.getStyleClass().add("sk-t2");
+        fileInfoLabel.setStyle("-fx-font-size: 12px;");
         fileInfoLabel.setWrapText(true);
         fileInfoLabel.setMaxWidth(Double.MAX_VALUE);
         fileInfoLabel.setVisible(false);
@@ -106,26 +109,30 @@ class PdfSplitPane extends VBox {
 
         // ── Range input ─────────────────────────────────────
         Label rangeLabel = new Label(I18n.get("builtin.pdf.split.ranges"));
-        rangeLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.5); -fx-font-size: 13px;");
+        rangeLabel.getStyleClass().add("sk-t2");
+        rangeLabel.setStyle("-fx-font-size: 13px;");
 
         rangeField = new TextField();
         rangeField.setPromptText(I18n.get("builtin.pdf.split.ranges.hint"));
+        rangeField.getStyleClass().add("sk-outlined");
         rangeField.setStyle(textFieldStyle());
         rangeField.setMaxWidth(Double.MAX_VALUE);
 
         // ── Output directory ────────────────────────────────
         Label dirLabel = new Label(I18n.get("builtin.pdf.split.output.dir"));
-        dirLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.5); -fx-font-size: 13px;");
+        dirLabel.getStyleClass().add("sk-t2");
+        dirLabel.setStyle("-fx-font-size: 13px;");
 
         outputDirField = new TextField();
+        outputDirField.getStyleClass().add("sk-outlined");
         outputDirField.setStyle(textFieldStyle());
         outputDirField.setPromptText(I18n.get("builtin.pdf.split.output.dir"));
         HBox.setHgrow(outputDirField, Priority.ALWAYS);
 
         Button browseBtn = new Button("...");
+        browseBtn.getStyleClass().addAll("sk-surface-soft", "sk-t2");
         browseBtn.setStyle(
-            "-fx-background-color: rgba(255,255,255,0.08);" +
-            "-fx-text-fill: rgba(255,255,255,0.6); -fx-font-size: 13px;" +
+            "-fx-font-size: 13px;" +
             "-fx-background-radius: 6; -fx-border-width: 0;" +
             "-fx-padding: 8 14 8 14; -fx-cursor: hand;"
         );
@@ -201,7 +208,9 @@ class PdfSplitPane extends VBox {
 
         fileInfoLabel.setText(I18n.get("builtin.pdf.file.info", totalPages, formatSize(sizeBytes))
                 + " — " + path.getFileName().toString());
-        fileInfoLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.6); -fx-font-size: 12px;");
+        fileInfoLabel.getStyleClass().clear();
+        fileInfoLabel.getStyleClass().add("sk-t2");
+        fileInfoLabel.setStyle("-fx-font-size: 12px;");
         fileInfoLabel.setVisible(true);
         fileInfoLabel.setManaged(true);
 
@@ -355,9 +364,7 @@ class PdfSplitPane extends VBox {
     }
 
     private static String dropNormalStyle() {
-        return "-fx-background-color: rgba(255,255,255,0.02);" +
-               "-fx-border-color: rgba(255,255,255,0.15);" +
-               "-fx-border-width: 1; -fx-border-style: dashed;" +
+        return "-fx-border-width: 1; -fx-border-style: dashed;" +
                "-fx-border-radius: 10; -fx-background-radius: 10;";
     }
 
@@ -370,7 +377,6 @@ class PdfSplitPane extends VBox {
 
     private static String textFieldStyle() {
         return "-fx-background-color: rgba(0,0,0,0.3);" +
-               "-fx-border-color: rgba(255,255,255,0.28);" +
                "-fx-border-width: 1; -fx-border-radius: 6; -fx-background-radius: 6;" +
                "-fx-text-fill: white; -fx-font-size: 13px;" +
                "-fx-padding: 9 12 9 12;";

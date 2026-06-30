@@ -1,38 +1,40 @@
 /* ================================================================
    swisskit-preview.css — Plugin Preview Window shell styles
    Adapted subset of shell.css for the SwissKitJ-Api preview tool.
-   swisskit-common.css provides the .sk-* utilities and variables.
+   swisskit-common.css provides the .sk-* utilities and variables;
+   PluginPreviewWindow registers its scene with ThemeService so the
+   active theme class is stamped on the root and these tokens resolve.
    ================================================================ */
 
 /* ── Root ──────────────────────────────────────────────────── */
 .preview-root {
-    -fx-background-color: rgba(13,14,17,0.72);
+    -fx-background-color: -sk-bg-elevated;
     -fx-background-radius: 20;
     -fx-border-radius: 20;
-    -fx-border-color: rgba(255,255,255,0.10);
+    -fx-border-color: -sk-border;
     -fx-border-width: 1;
     -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.6), 60, 0, 0, 20);
 }
 
 /* ── Title bar ─────────────────────────────────────────────── */
 .preview-titlebar {
-    -fx-background-color: rgba(255,255,255,0.025);
-    -fx-border-color: rgba(255,255,255,0.10);
+    -fx-background-color: -sk-bg-hover;
+    -fx-border-color: -sk-border;
     -fx-border-width: 0 0 1 0;
     -fx-pref-height: 44px;
     -fx-min-height: 44px;
     -fx-padding: 0 16 0 16;
 }
 .preview-titlebar-title {
-    -fx-text-fill: rgba(255,255,255,0.50);
+    -fx-text-fill: -sk-text-secondary;
     -fx-font-size: 13px;
     -fx-font-weight: 500;
 }
 .preview-titlebar-close {
-    -fx-background-color: rgba(255,255,255,0.06);
+    -fx-background-color: -sk-bg-hover;
     -fx-background-radius: 8px;
     -fx-border-width: 0;
-    -fx-text-fill: rgba(255,255,255,0.50);
+    -fx-text-fill: -sk-text-secondary;
     -fx-font-size: 14px;
     -fx-cursor: hand;
     -fx-alignment: center;
@@ -44,8 +46,8 @@
 
 /* ── Search bar ────────────────────────────────────────────── */
 .preview-search-bar {
-    -fx-background-color: rgba(255,255,255,0.055);
-    -fx-border-color: rgba(255,255,255,0.10);
+    -fx-background-color: -sk-bg-elevated;
+    -fx-border-color: -sk-border;
     -fx-border-width: 1px;
     -fx-border-radius: 10px;
     -fx-background-radius: 10px;
@@ -54,23 +56,23 @@
     -fx-spacing: 10px;
 }
 .preview-search-bar:focused-within {
-    -fx-background-color: rgba(255,255,255,0.085);
-    -fx-border-color: rgba(255,255,255,0.22);
+    -fx-background-color: -sk-bg-hover;
+    -fx-border-color: -sk-accent;
     -fx-effect: dropshadow(gaussian, rgba(53,116,240,0.35), 10, 0, 0, 0);
 }
 .preview-search-field {
     -fx-background-color: transparent;
     -fx-border-width: 0;
-    -fx-text-fill: rgba(255,255,255,0.92);
-    -fx-prompt-text-fill: rgba(255,255,255,0.28);
+    -fx-text-fill: -sk-text;
+    -fx-prompt-text-fill: -sk-text-disabled;
     -fx-font-size: 13.5px;
 }
 .preview-search-field:focused { -fx-background-color: transparent; }
 
 /* ── Sidebar ───────────────────────────────────────────────── */
 .preview-sidebar {
-    -fx-background-color: rgba(255,255,255,0.022);
-    -fx-border-color: rgba(255,255,255,0.10);
+    -fx-background-color: -sk-bg-elevated;
+    -fx-border-color: -sk-border;
     -fx-border-width: 0 1 0 0;
     -fx-pref-width: 190px;
     -fx-min-width: 180px;
@@ -92,28 +94,28 @@
 }
 .preview-nav-item-text {
     -fx-font-size: 13px;
-    -fx-text-fill: rgba(255,255,255,0.55);
+    -fx-text-fill: -sk-text-secondary;
 }
 .preview-nav-item:hover {
-    -fx-background-color: rgba(255,255,255,0.055);
-    -fx-border-color: rgba(255,255,255,0.10);
+    -fx-background-color: -sk-bg-hover;
+    -fx-border-color: -sk-border;
 }
 .preview-nav-item:hover .preview-nav-item-text {
-    -fx-text-fill: rgba(255,255,255,1);
+    -fx-text-fill: -sk-text;
 }
 .preview-nav-item.active {
-    -fx-background-color: rgba(53,116,240,0.18);
+    -fx-background-color: -sk-accent-soft;
     -fx-border-color: rgba(53,116,240,0.25);
 }
 .preview-nav-item.active .preview-nav-item-text {
-    -fx-text-fill: #3574F0;
+    -fx-text-fill: -sk-accent;
     -fx-font-weight: 500;
 }
 
 /* ── Tool card ─────────────────────────────────────────────── */
 .preview-tool-card {
-    -fx-background-color: rgba(255,255,255,0.055);
-    -fx-border-color: rgba(255,255,255,0.10);
+    -fx-background-color: -sk-bg-elevated;
+    -fx-border-color: -sk-border;
     -fx-border-width: 1px;
     -fx-border-radius: 12px;
     -fx-background-radius: 12px;
@@ -124,25 +126,25 @@
     -fx-spacing: 3px;
 }
 .preview-tool-card:hover {
-    -fx-background-color: rgba(255,255,255,0.085);
-    -fx-border-color: rgba(255,255,255,0.22);
+    -fx-background-color: -sk-bg-hover;
+    -fx-border-color: -sk-border-strong;
     -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.35), 18, 0, 0, 6);
     -fx-translate-y: -2px;
 }
 .preview-tool-name {
-    -fx-text-fill: rgba(255,255,255,0.92);
+    -fx-text-fill: -sk-text;
     -fx-font-size: 13px;
     -fx-font-weight: 500;
 }
 .preview-tool-desc {
-    -fx-text-fill: rgba(255,255,255,0.38);
+    -fx-text-fill: -sk-text-disabled;
     -fx-font-size: 11px;
     -fx-wrap-text: true;
 }
 .preview-tool-tag {
-    -fx-background-color: rgba(255,255,255,0.06);
-    -fx-text-fill: rgba(255,255,255,0.38);
-    -fx-border-color: rgba(255,255,255,0.10);
+    -fx-background-color: -sk-bg-hover;
+    -fx-text-fill: -sk-text-secondary;
+    -fx-border-color: -sk-border;
     -fx-border-width: 1px;
     -fx-background-radius: 4px;
     -fx-border-radius: 4px;
@@ -152,7 +154,7 @@
 
 /* ── Detail panel ──────────────────────────────────────────── */
 .preview-detail-panel {
-    -fx-background-color: rgba(20,22,28,1);
+    -fx-background-color: -sk-bg-elevated;
     -fx-border-color: transparent;
     -fx-border-width: 0;
     -fx-background-radius: 12 0 0 12;
@@ -162,7 +164,7 @@
     -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.35), 18, 0, -4, 0);
 }
 .preview-launch-btn {
-    -fx-background-color: #3574F0;
+    -fx-background-color: -sk-accent;
     -fx-text-fill: white;
     -fx-font-weight: 500;
     -fx-background-radius: 8px;
@@ -172,7 +174,7 @@
     -fx-cursor: hand;
 }
 .preview-launch-btn:hover {
-    -fx-background-color: #2E66D8;
+    -fx-background-color: derive(-sk-accent, -8%);
     -fx-effect: dropshadow(gaussian, rgba(53,116,240,0.4), 12, 0, 0, 3);
     -fx-translate-y: -1px;
 }
@@ -183,8 +185,8 @@
 
 /* ── Status bar ────────────────────────────────────────────── */
 .preview-statusbar {
-    -fx-background-color: rgba(255,255,255,0.015);
-    -fx-border-color: rgba(255,255,255,0.10);
+    -fx-background-color: -sk-bg-elevated;
+    -fx-border-color: -sk-border;
     -fx-border-width: 1 0 0 0;
     -fx-pref-height: 32px;
     -fx-min-height: 32px;
@@ -194,22 +196,22 @@
 
 /* ── Back bar ──────────────────────────────────────────────── */
 .preview-back-btn {
-    -fx-text-fill: rgba(255,255,255,0.70);
+    -fx-text-fill: -sk-text-secondary;
     -fx-font-size: 13px;
     -fx-cursor: hand;
     -fx-padding: 4 10 4 0;
 }
 .preview-back-btn:hover {
-    -fx-text-fill: rgba(255,255,255,1);
+    -fx-text-fill: -sk-text;
 }
 .preview-back-title {
-    -fx-text-fill: rgba(255,255,255,0.90);
+    -fx-text-fill: -sk-text;
     -fx-font-size: 13px;
     -fx-font-weight: bold;
 }
 
 /* ── Empty state ───────────────────────────────────────────── */
 .preview-empty-text {
-    -fx-text-fill: rgba(255,255,255,0.28);
+    -fx-text-fill: -sk-text-disabled;
     -fx-font-size: 13px;
 }

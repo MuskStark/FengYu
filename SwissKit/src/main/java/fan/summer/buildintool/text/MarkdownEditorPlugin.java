@@ -121,11 +121,10 @@ public class MarkdownEditorPlugin implements SwissKitJPlugin {
      */
     private static TextArea styledTextArea(String initial) {
         TextArea ta = new TextArea(initial);
+        ta.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
         ta.setStyle(
-            "-fx-background-color: rgba(255,255,255,0.04);" +
-            "-fx-border-color: rgba(255,255,255,0.10); -fx-border-width: 1;" +
+            "-fx-border-width: 1;" +
             "-fx-border-radius: 10; -fx-background-radius: 10;" +
-            "-fx-text-fill: rgba(255,255,255,0.88);" +
             "-fx-font-size: 13px; -fx-font-family: 'SF Mono','Consolas',monospace;" +
             "-fx-control-inner-background: transparent; -fx-highlight-fill: #3574F0;" +
             "-fx-padding: 12;"
@@ -143,8 +142,9 @@ public class MarkdownEditorPlugin implements SwissKitJPlugin {
      */
     private static Label sectionLabel(String text) {
         Label l = new Label(text.toUpperCase());
+        l.getStyleClass().add("sk-t3");
         l.setStyle(
-            "-fx-text-fill: rgba(255,255,255,0.28); -fx-font-size: 10px;" +
+            "-fx-font-size: 10px;" +
             "-fx-font-weight: bold; -fx-letter-spacing: 0.08em;"
         );
         return l;
