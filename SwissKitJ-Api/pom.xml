@@ -7,7 +7,7 @@
 
   <groupId>fan.summer.api</groupId>
   <artifactId>SwissKitJ-Api</artifactId>
-  <version>3.1.0</version>
+  <version>3.2.0</version>
   <name>SwissKitJ Api</name>
   <description>Plugin API for SwissKitJ. Third-party plugin developers depend on this artifact with provided scope.</description>
 
