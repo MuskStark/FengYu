@@ -344,7 +344,7 @@ public class EmailPlugin implements SwissKitJPlugin {
         for (EmailTagEntity tag : tags) {
             CheckBox cb = new CheckBox(tag.getTag());
             cb.setUserData(tag.getId());
-            cb.getStyleClass().add("glass-checkbox");
+            cb.getStyleClass().add("sk-checkbox");
             toCheckBoxes.getChildren().add(cb);
         }
         if (tags.isEmpty()) toCheckBoxes.getChildren().add(new Label(I18n.get("builtin.email.noTagsHint")));
@@ -355,7 +355,7 @@ public class EmailPlugin implements SwissKitJPlugin {
         for (EmailTagEntity tag : tags) {
             CheckBox cb = new CheckBox(tag.getTag());
             cb.setUserData(tag.getId());
-            cb.getStyleClass().add("glass-checkbox");
+            cb.getStyleClass().add("sk-checkbox");
             ccCheckBoxes.getChildren().add(cb);
         }
         if (tags.isEmpty()) ccCheckBoxes.getChildren().add(new Label(I18n.get("builtin.email.noTagsHint")));

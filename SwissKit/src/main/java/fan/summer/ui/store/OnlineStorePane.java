@@ -127,7 +127,7 @@ public class OnlineStorePane extends VBox {
             }
             @Override public ToolCategory fromString(String s) { return null; }
         });
-        categoryBox.getStyleClass().add("glass-combo");
+        categoryBox.getStyleClass().add("sk-combo");
         categoryBox.valueProperty().addListener((obs, o, n) -> applyFilters());
 
         Button refreshBtn = glassBtn(I18n.get("store.online.refresh"));
