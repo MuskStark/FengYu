@@ -843,7 +843,7 @@ public class SwissKitJSettingUi {
         }
     }
 
-    private static void saveSettingAsync(String key, String value, Runnable onSuccess) {
+    public static void saveSettingAsync(String key, String value, Runnable onSuccess) {
         // Update cache immediately so subsequent getters see the new value
         settingsCache.put(key, value);
         Thread.ofVirtual().name("settings-save").start(() -> {
@@ -936,6 +936,21 @@ public class SwissKitJSettingUi {
             }
         } catch (Exception ignored) {}
         return defaultValue;
+    }
+
+    /**
+     * Returns the cached setting value for the key, or {@code null} if absent
+     * or the cache has not yet been loaded. Triggers a lazy cache load on first
+     * call (synchronous, blocking until the cache is populated). Use this for
+     * startup-time reads where a null/missing value is acceptable and the caller
+     * supplies its own default.
+     *
+     * @param key the setting key
+     * @return the cached value, or {@code null} if not present
+     */
+    public static String getSetting(String key) {
+        ensureCacheLoaded();
+        return settingsCache.get(key);
     }
 
     /** Eagerly loads all app_settings rows into the in-memory cache. */
