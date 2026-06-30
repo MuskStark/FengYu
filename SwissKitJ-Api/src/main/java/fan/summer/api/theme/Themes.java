@@ -6,7 +6,7 @@ import javafx.scene.Scene;
  * SwissKitJ theme stylesheet loading utility.
  *
  * <p>Provides the common CSS stylesheet URL that defines the shared glassmorphism
- * utility classes (such as {@code .glass-dialog}, {@code .glass-field},
+ * utility classes (such as {@code .sk-dialog}, {@code .sk-field},
  * {@code .btn-primary}, {@code .btn-secondary}, and scrollbar styling). These
  * styles are declared once in the API module and are automatically available
  * to all plugins embedded in the main Scene.</p>
