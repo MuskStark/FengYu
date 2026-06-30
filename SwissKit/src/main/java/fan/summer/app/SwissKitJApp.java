@@ -3,6 +3,7 @@ package fan.summer.app;
 import fan.summer.api.ai.AiServiceProvider;
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.log.LoggerBinder;
+import fan.summer.api.theme.ThemeService;
 import fan.summer.api.theme.Themes;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.AppSettingEntity;
@@ -84,6 +85,11 @@ public class SwissKitJApp extends Application {
             I18n.setLocale(Locale.CHINESE);
         }
 
+        // ── Theme (dark default, persisted) ────────────────────────
+        String savedTheme = readThemeFromDb();
+        ThemeService.set("light".equalsIgnoreCase(savedTheme)
+            ? ThemeService.Theme.LIGHT : ThemeService.Theme.DARK);
+
         // ── Plugin directory (.swisskit/plugin/ under working directory) ──
         Path pluginsDir = PluginLoader.resolvePluginsDir();
         log.info("Plugin directory resolved to: {}", pluginsDir.toAbsolutePath());
@@ -124,6 +130,7 @@ public class SwissKitJApp extends Application {
         stage.initStyle(StageStyle.TRANSPARENT);
         stage.setTitle("SwissKitJ");
         stage.setScene(scene);
+        ThemeService.registerScene(scene);
         stage.setMinWidth(800);
         stage.setMinHeight(520);
         stage.show();
@@ -209,5 +216,21 @@ public class SwissKitJApp extends Application {
             log.debug("Could not read language setting", e);
         }
         return "en";
+    }
+
+    /**
+     * Reads the saved theme preference from the database.
+     *
+     * @return "light" if the light theme is saved, otherwise "dark" (the default)
+     */
+    private String readThemeFromDb() {
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            AppSettingEntity entity = mapper.selectByKey("theme");
+            if (entity != null) return entity.getSettingValue();
+        } catch (Exception e) {
+            log.debug("Could not read theme setting", e);
+        }
+        return "dark";
     }
 }
