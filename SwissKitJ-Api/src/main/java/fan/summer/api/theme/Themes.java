@@ -53,6 +53,7 @@ public final class Themes {
 
     /**
      * Applies the common theme stylesheet to the given scene if not already present.
+     * Loads the common stylesheet and stamps the active theme class on the scene root.
      *
      * <p>This is intended for plugins that open their own {@code Stage} or build
      * a separate {@code Scene} and need access to the shared CSS utility classes.
@@ -61,10 +62,6 @@ public final class Themes {
      * @param scene the {@link Scene} to apply the theme to; ignored if {@code null}
      */
     public static void applyTo(Scene scene) {
-        if (scene == null) return;
-        String url = commonStylesheetUrl();
-        if (!scene.getStylesheets().contains(url)) {
-            scene.getStylesheets().add(url);
-        }
+        ThemeService.registerScene(scene);
     }
 }
