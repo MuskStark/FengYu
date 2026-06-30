@@ -2,6 +2,7 @@ package fan.summer.ui.sidebar;
 
 import fan.summer.api.MdiIconUtil;
 import fan.summer.api.i18n.I18n;
+import fan.summer.api.theme.ThemeService;
 import fan.summer.ui.setting.SwissKitJSettingUi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +45,7 @@ public class Sidebar extends VBox {
     private final VBox content = new VBox();
     private final List<NavItem> navItems = new ArrayList<>();
     private NavItem activeItem;
+    private NavItem themeItem;
     private Consumer<String> onCategorySelect;
     private Runnable onSettingsSelect;
     private Runnable onAboutSelect;
@@ -64,6 +66,15 @@ public class Sidebar extends VBox {
         if (collapsed) {
             getStyleClass().add("collapsed");
         }
+        // Keep the theme toggle icon/label in sync regardless of where the change
+        // originated (sidebar click OR settings-page combo).
+        ThemeService.onChange(t -> javafx.application.Platform.runLater(() -> {
+            if (themeItem != null) {
+                boolean dark = t == ThemeService.Theme.DARK;
+                themeItem.setIcon(dark ? "weather-night" : "weather-sunny");
+                themeItem.setText(I18n.get(dark ? "sidebar.label.theme.dark" : "sidebar.label.theme.light"));
+            }
+        }));
         LOG.info("Sidebar initialized with {} nav items", navItems.size());
     }
 
@@ -153,6 +164,7 @@ public class Sidebar extends VBox {
         // ── Settings (always at bottom) ──────────────────────────
         addSettingsItem("cog-outline", "sidebar.label.settings");
         addAboutItem("information-outline", "sidebar.label.about");
+        addThemeToggleItem();
 
         // ── Wrap in ScrollPane ────────────────────────────────────
         ScrollPane scrollPane = new ScrollPane(content);
@@ -200,6 +212,41 @@ public class Sidebar extends VBox {
         });
         content.getChildren().add(item);
         I18n.bind(item.textLabelProperty(), i18nKey);
+    }
+
+    /**
+     * Builds the dark/light theme toggle item shown in the sidebar footer.
+     * The item does NOT become the active category (mirrors settings/about
+     * behavior). Its icon (weather-night/weather-sunny) and label are kept
+     * in sync by the {@link ThemeService#onChange} listener registered in the
+     * constructor, so changes from the settings page also update this item.
+     */
+    private void addThemeToggleItem() {
+        boolean dark = ThemeService.current() == ThemeService.Theme.DARK;
+        themeItem = new NavItem("theme",
+                dark ? "weather-night" : "weather-sunny",
+                I18n.get(dark ? "sidebar.label.theme.dark" : "sidebar.label.theme.light"),
+                0, false);
+        themeItem.setOnMouseClicked(e -> {
+            ThemeService.Theme next = (ThemeService.current() == ThemeService.Theme.DARK)
+                ? ThemeService.Theme.LIGHT : ThemeService.Theme.DARK;
+            applyTheme(next);
+        });
+        content.getChildren().add(themeItem);
+        // NOTE: i18n-binding the label is skipped intentionally — the label text
+        // depends on the theme (dark vs. light wording), not just the locale.
+        // The onChange listener updates it on both locale/theme switches.
+    }
+
+    /**
+     * Applies the given theme: updates the global {@link ThemeService} (which
+     * re-stamps the theme class on the scene root and fires listeners — the
+     * listener in the constructor handles the icon/label refresh) and persists
+     * the choice via {@link SwissKitJSettingUi#saveThemeSetting}.
+     */
+    private void applyTheme(ThemeService.Theme theme) {
+        ThemeService.set(theme);
+        SwissKitJSettingUi.saveThemeSetting(theme == ThemeService.Theme.DARK ? "dark" : "light");
     }
 
     private void activate(NavItem item, boolean fireEvent) {
@@ -271,7 +318,7 @@ public class Sidebar extends VBox {
         private final String categoryId;
         private final Label  textLabel;
         private final Label  badgeLabel;
-        private final Text   iconNode;
+        private Text   iconNode;
         private boolean active = false;
 
         /**
@@ -365,5 +412,29 @@ public class Sidebar extends VBox {
         }
 
         public boolean isActive() { return active; }
+
+        /**
+         * Swaps the icon glyph, preserving the active/inactive fill color.
+         * Used by the theme toggle to flip between weather-night/weather-sunny.
+         *
+         * @param mdiIcon the Material Design Icons name, e.g. {@code "weather-sunny"}
+         */
+        public void setIcon(String mdiIcon) {
+            Text t = MdiIconUtil.createIcon(mdiIcon, 16,
+                active ? "-fx-fill: #3574F0;" : "-fx-fill: #9AA0A6;");
+            t.getStyleClass().add("nav-item-icon");
+            getChildren().set(getChildren().indexOf(iconNode), t);
+            iconNode = t;
+        }
+
+        /**
+         * Updates the label text. Used by the theme toggle to reflect the new
+         * theme's wording (Dark Theme / Light Theme).
+         *
+         * @param text the new label text
+         */
+        public void setText(String text) {
+            textLabel.setText(text);
+        }
     }
 }

@@ -3,6 +3,7 @@ package fan.summer.ui.setting;
 import fan.summer.api.ai.AiServiceProvider;
 import fan.summer.api.ai.ChatBackend;
 import fan.summer.api.i18n.I18n;
+import fan.summer.api.theme.ThemeService;
 import fan.summer.api.theme.Themes;
 import fan.summer.ai.service.CloudChatBackend;
 import fan.summer.ai.service.LocalChatBackend;
@@ -229,7 +230,25 @@ public class SwissKitJSettingUi {
         HBox langRow = new HBox(12, langLabel, langCombo);
         langRow.setAlignment(Pos.CENTER_LEFT);
 
-        VBox root = new VBox(16, title, langRow);
+        // ── Appearance section: theme combo ──────────────────────────────
+        Label appearanceTitle = sectionTitle(I18n.get("settings.section.appearance"));
+        Label themeLabel = subLabel(I18n.get("settings.label.theme"));
+        boolean dark = ThemeService.current() == ThemeService.Theme.DARK;
+        ComboBox<String> themeCombo = new ComboBox<>(FXCollections.observableArrayList(
+            I18n.get("sidebar.label.theme.dark"), I18n.get("sidebar.label.theme.light")));
+        themeCombo.setValue(dark ? I18n.get("sidebar.label.theme.dark") : I18n.get("sidebar.label.theme.light"));
+        themeCombo.getStyleClass().add("sk-combo");
+        themeCombo.setMaxWidth(200);
+        themeCombo.setOnAction(e -> {
+            String selected = themeCombo.getValue();
+            boolean isDark = I18n.get("sidebar.label.theme.dark").equals(selected);
+            ThemeService.set(isDark ? ThemeService.Theme.DARK : ThemeService.Theme.LIGHT);
+            saveThemeSetting(isDark ? "dark" : "light");
+        });
+        HBox themeRow = new HBox(12, themeLabel, themeCombo);
+        themeRow.setAlignment(Pos.CENTER_LEFT);
+
+        VBox root = new VBox(16, title, langRow, appearanceTitle, themeRow);
         root.setPadding(new Insets(20));
         root.setStyle("-fx-background-color: transparent;");
         return root;
@@ -257,6 +276,17 @@ public class SwissKitJSettingUi {
             GlassNotification.toast((Window) null, GlassNotification.Type.INFO,
                 I18n.get("setting.general.languageChanged"));
         }));
+    }
+
+    /**
+     * Persists the theme choice ({@code "dark"} / {@code "light"}) asynchronously.
+     * The live theme switch itself is performed by the caller via
+     * {@link ThemeService#set(Theme)} before this is called — this method only
+     * writes the DB row so {@code SwissKitJApp.readThemeFromDb()} can restore
+     * the choice on next launch.
+     */
+    public static void saveThemeSetting(String code) {
+        saveSettingAsync("theme", code, null);
     }
 
     // ═══════════════════════════════════════════════════════════════════
