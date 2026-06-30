@@ -7,36 +7,46 @@
    那部分见主程序的 shell.css。
    ================================================================ */
 
-/* ── 根变量（JavaFX 不支持 var()，改用 looked-up color） ───────
-   在 Scene 根节点定义，子节点通过名称引用                        */
+/* ── 主题 token(looked-up color)────────────────────────────────
+   在 Scene 根节点上以 .theme-dark / .theme-light 形式声明;
+   切主题 = ThemeService 换根上的 class,子节点自动重算。      */
 .root {
-    -fx-font-family: "SF Pro Display", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    -fx-font-family: "SF Pro Text", "Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
     -fx-font-size: 13px;
-
-    /* 基础色板 */
-    -glass-bg:          rgba(255,255,255,0.055);
-    -glass-bg-hover:    rgba(255,255,255,0.09);
-    -glass-border:      rgba(255,255,255,0.10);
-    -glass-border-hi:   rgba(255,255,255,0.22);
-
-    -accent:            #5b8cf7;
-    -accent-soft:       rgba(91,140,247,0.18);
-    -accent-glow:       rgba(91,140,247,0.35);
-
-    -text-primary:      rgba(255,255,255,0.92);
-    -text-secondary:    rgba(255,255,255,0.50);
-    -text-tertiary:     rgba(255,255,255,0.28);
-
-    -success:           #4cd97b;
-    -warning:           #f5a623;
-    -danger:            #f25c5c;
-
-    /* 组件尺寸 */
-    -sidebar-width:     220px;
-    -titlebar-height:   48px;
-    -card-radius:       12px;
-    -nav-radius:        8px;
 }
+.theme-dark {
+    -sk-bg:            #1E1E1E;
+    -sk-bg-elevated:   #2B2B2B;
+    -sk-bg-hover:      #363636;
+    -sk-bg-selected:   #393B40;
+    -sk-border:        #3C3F41;
+    -sk-border-strong: #555555;
+    -sk-text:          #D0D0D0;
+    -sk-text-secondary:#9AA0A6;
+    -sk-text-disabled: #6B6F73;
+    -sk-accent:        #3574F0;
+    -sk-accent-soft:   rgba(53,116,240,0.18);
+    -sk-success:       #5BB065;
+    -sk-warning:       #F0A732;
+    -sk-danger:        #F75464;
+}
+.theme-light {
+    -sk-bg:            #FFFFFF;
+    -sk-bg-elevated:   #F7F8FA;
+    -sk-bg-hover:      #EBECEF;
+    -sk-bg-selected:   #DFE1E5;
+    -sk-border:        #DADCE0;
+    -sk-border-strong: #C9CDD3;
+    -sk-text:          #1E1E1E;
+    -sk-text-secondary:#5A5D60;
+    -sk-text-disabled: #A0A4A8;
+    -sk-accent:        #3574F0;
+    -sk-accent-soft:   rgba(53,116,240,0.14);
+    -sk-success:       #3C914A;
+    -sk-warning:       #C2751C;
+    -sk-danger:        #E53935;
+}
+
 
 /* ── 内容区滚动面板（首页 / 工具页主滚动条，纤细 4px） ─────────── */
 .content-scroll .scroll-bar:vertical { -fx-pref-width: 4px; }
