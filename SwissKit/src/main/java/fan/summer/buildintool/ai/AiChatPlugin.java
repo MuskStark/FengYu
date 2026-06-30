@@ -8,6 +8,7 @@ import fan.summer.api.ai.*;
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
+import fan.summer.api.theme.ThemeService;
 import fan.summer.ai.tools.SlashCommandHandler;
 import fan.summer.ai.tools.ToolExecutor;
 import fan.summer.ai.util.MarkdownRenderer;
@@ -96,6 +97,13 @@ public class AiChatPlugin implements SwissKitJPlugin {
         private final List<AiChatMessage> history = new ArrayList<>();
         private final List<Attachment> pendingAttachments = new ArrayList<>();
         private final VBox messageList = new VBox();
+        /**
+         * Tracks every WebView whose content comes from {@link MarkdownRenderer}
+         * so the conversation can be re-rendered losslessly when the theme
+         * changes. Each entry stores the RAW markdown plus the render kind, so
+         * {@link #rerenderConversation()} can rebuild the HTML in the new theme.
+         */
+        private final List<ReRenderable> reRenderables = new ArrayList<>();
         private final ScrollPane scrollPane;
         private final TextArea inputArea = new TextArea();
         private final Button sendBtn = new Button("➤");
@@ -110,6 +118,29 @@ public class AiChatPlugin implements SwissKitJPlugin {
         private WebView currentResponseView;
         private VBox currentAssistantWrapper;
         private StringBuilder currentResponseText;
+
+        /** How a tracked WebView should be re-rendered on theme change. */
+        private enum RenderKind { FULL, PLAIN, COLLAPSIBLE }
+
+        /**
+         * Mutable holder for one re-renderable WebView: the raw markdown (so
+         * re-render is lossless) plus the render kind and (for collapsible)
+         * the title. The markdown and kind are updated in place as the
+         * assistant response streams / finalizes.
+         */
+        private static final class ReRenderable {
+            final WebView webView;
+            String rawMarkdown;
+            RenderKind kind;
+            final String collapsibleTitle;
+
+            ReRenderable(WebView webView, String rawMarkdown, RenderKind kind, String collapsibleTitle) {
+                this.webView = webView;
+                this.rawMarkdown = rawMarkdown;
+                this.kind = kind;
+                this.collapsibleTitle = collapsibleTitle;
+            }
+        }
 
         AiChatView() {
             getStyleClass().add("ai-chat-root");
@@ -185,6 +216,11 @@ public class AiChatPlugin implements SwissKitJPlugin {
 
             refreshServiceState();
             AiServiceProvider.addOnStateChangeListener(this::refreshServiceState);
+
+            // Live re-render on theme change: MarkdownRenderer is theme-aware,
+            // so re-running it produces HTML for the new palette. Also re-applies
+            // the WebView container bg so the area around each bubble matches.
+            ThemeService.onChange(t -> Platform.runLater(this::rerenderConversation));
         }
 
         private void refreshServiceState() {
@@ -365,6 +401,11 @@ public class AiChatPlugin implements SwissKitJPlugin {
                                 messageList.getChildren().removeIf(n ->
                                     n instanceof VBox vb && vb.getChildren().stream()
                                         .anyMatch(c -> c instanceof WebView));
+                                // Drop the now-detached placeholder WebViews
+                                // from the re-render registry so theme-change
+                                // doesn't waste a loadContent on them.
+                                reRenderables.removeIf(rr ->
+                                    rr.webView.getParent() == null);
                             }
                             addToolCallCard(toolCall);
                             currentResponseText = new StringBuilder();
@@ -505,6 +546,11 @@ public class AiChatPlugin implements SwissKitJPlugin {
                                 messageList.getChildren().removeIf(n ->
                                     n instanceof VBox vb && vb.getChildren().stream()
                                         .anyMatch(c -> c instanceof WebView));
+                                // Drop the now-detached placeholder WebViews
+                                // from the re-render registry so theme-change
+                                // doesn't waste a loadContent on them.
+                                reRenderables.removeIf(rr ->
+                                    rr.webView.getParent() == null);
                             }
                             addToolCallCard(toolCall);
                             currentResponseText = new StringBuilder();
@@ -685,13 +731,13 @@ public class AiChatPlugin implements SwissKitJPlugin {
             webView.setPrefWidth(560);
             webView.setMinHeight(24);
             webView.setPrefHeight(24);
-            webView.setStyle(
-                "-fx-background-color: #1e1e2e;" +
-                "-fx-border-color: rgba(255,255,255,0.10);" +
-                "-fx-border-width: 1px; -fx-border-radius: 14px; -fx-background-radius: 14px;"
-            );
+            applyAssistantBubbleStyle(webView);
             webView.getEngine().loadContent(MarkdownRenderer.renderPlain("●●●"));
             autoResizeWebView(webView);
+            // Track for theme-change re-render. The placeholder markdown + kind
+            // are updated in updateResponseBubble() once the real response streams in.
+            ReRenderable rr = new ReRenderable(webView, "●●●", RenderKind.PLAIN, null);
+            reRenderables.add(rr);
 
             FadeTransition blink = new FadeTransition(Duration.millis(800), webView);
             blink.setFromValue(1.0);
@@ -726,14 +772,12 @@ public class AiChatPlugin implements SwissKitJPlugin {
                 wv.setPrefWidth(560);
                 wv.setMinHeight(24);
                 wv.setPrefHeight(24);
-                wv.setStyle(
-                    "-fx-background-color: #1e1e2e;" +
-                    "-fx-border-color: rgba(255,255,255,0.06);" +
-                    "-fx-border-width: 1px; -fx-border-radius: 12px; -fx-background-radius: 12px;"
-                );
+                applyThinkingCardStyle(wv);
+                String thinkingTitle = I18n.get("builtin.ai.thinkingSummary");
                 wv.getEngine().loadContent(
-                    MarkdownRenderer.renderCollapsible(I18n.get("builtin.ai.thinkingSummary"), thinkingMarkdown));
+                    MarkdownRenderer.renderCollapsible(thinkingTitle, thinkingMarkdown));
                 autoResizeWebView(wv);
+                reRenderables.add(new ReRenderable(wv, thinkingMarkdown, RenderKind.COLLAPSIBLE, thinkingTitle));
 
                 VBox wrapper = new VBox(3, label, wv);
                 wrapper.setAlignment(Pos.CENTER_LEFT);
@@ -745,6 +789,56 @@ public class AiChatPlugin implements SwissKitJPlugin {
                 messageList.getChildren().add(Math.max(0, idx), wrapper);
                 scrollToBottom();
             });
+        }
+
+        /**
+         * Computes the WebView container background color for the current theme.
+         * Dark uses the original {@code #1e1e2e}; light uses {@code #ffffff} so
+         * the area around each rendered markdown bubble matches the page.
+         */
+        private static String webviewBg() {
+            return (ThemeService.current() == ThemeService.Theme.LIGHT) ? "#ffffff" : "#1e1e2e";
+        }
+
+        /** Applies the assistant-bubble container style with theme-driven bg. */
+        private static void applyAssistantBubbleStyle(WebView webView) {
+            webView.setStyle(
+                "-fx-background-color: " + webviewBg() + ";" +
+                "-fx-border-color: rgba(255,255,255,0.10);" +
+                "-fx-border-width: 1px; -fx-border-radius: 14px; -fx-background-radius: 14px;"
+            );
+        }
+
+        /** Applies the thinking-card container style with theme-driven bg. */
+        private static void applyThinkingCardStyle(WebView webView) {
+            webView.setStyle(
+                "-fx-background-color: " + webviewBg() + ";" +
+                "-fx-border-color: rgba(255,255,255,0.06);" +
+                "-fx-border-width: 1px; -fx-border-radius: 12px; -fx-background-radius: 12px;"
+            );
+        }
+
+        /**
+         * Re-renders the whole conversation in the current theme. Called on
+         * {@link ThemeService} change. Iterates every tracked WebView, re-applies
+         * the theme-driven container style, and reloads content via
+         * {@link MarkdownRenderer} (which itself reads the current theme).
+         */
+        private void rerenderConversation() {
+            for (ReRenderable rr : reRenderables) {
+                // Re-apply container bg so the area around the WebView flips too.
+                if (rr.kind == RenderKind.COLLAPSIBLE) {
+                    applyThinkingCardStyle(rr.webView);
+                } else {
+                    applyAssistantBubbleStyle(rr.webView);
+                }
+                String html = switch (rr.kind) {
+                    case FULL         -> MarkdownRenderer.render(rr.rawMarkdown);
+                    case PLAIN        -> MarkdownRenderer.renderPlain(rr.rawMarkdown);
+                    case COLLAPSIBLE  -> MarkdownRenderer.renderCollapsible(rr.collapsibleTitle, rr.rawMarkdown);
+                };
+                rr.webView.getEngine().loadContent(html);
+            }
         }
 
         private void autoResizeWebView(WebView webView) {
@@ -776,6 +870,18 @@ public class AiChatPlugin implements SwissKitJPlugin {
                     ? MarkdownRenderer.render(displayText)
                     : MarkdownRenderer.renderPlain(displayText);
                 currentResponseView.getEngine().loadContent(html);
+
+                // Keep the re-render registry in sync: streaming calls use
+                // renderPlain, the final call switches to full Markdown render.
+                // On theme change rerenderConversation() reads these so the new
+                // theme shows the same content at the same fidelity.
+                for (ReRenderable rr : reRenderables) {
+                    if (rr.webView == currentResponseView) {
+                        rr.rawMarkdown = displayText;
+                        rr.kind = isFinal ? RenderKind.FULL : RenderKind.PLAIN;
+                        break;
+                    }
+                }
             });
         }
 
