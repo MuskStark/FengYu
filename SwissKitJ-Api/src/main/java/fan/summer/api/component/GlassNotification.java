@@ -47,13 +47,13 @@ public final class GlassNotification {
     /** Notification visual style. */
     public enum Type {
         /** Informational notification with blue accent. */
-        INFO("ℹ", "glass-notif-info"),
+        INFO("ℹ", "sk-notif-info"),
         /** Success notification with green accent. */
-        SUCCESS("✓", "glass-notif-success"),
+        SUCCESS("✓", "sk-notif-success"),
         /** Warning notification with amber accent. */
-        WARNING("⚠", "glass-notif-warning"),
+        WARNING("⚠", "sk-notif-warning"),
         /** Error notification with red accent. */
-        ERROR("✕", "glass-notif-error");
+        ERROR("✕", "sk-notif-error");
 
         final String icon;
         final String styleClass;
@@ -204,10 +204,10 @@ public final class GlassNotification {
     private static boolean showOverlay(Window owner, Type type, String message,
                                        boolean modal, ButtonType cancelType) {
         Label iconLabel = new Label(type.icon);
-        iconLabel.getStyleClass().addAll("glass-notif-icon", type.styleClass);
+        iconLabel.getStyleClass().addAll("sk-notif-icon", type.styleClass);
 
         Text msgText = new Text(message);
-        msgText.getStyleClass().add("glass-notif-message");
+        msgText.getStyleClass().add("sk-notif-message");
         msgText.setWrappingWidth(360);
 
         VBox content = new VBox(8, iconLabel, msgText);
@@ -216,15 +216,15 @@ public final class GlassNotification {
 
         HBox buttonBar = new HBox(8);
         buttonBar.setAlignment(Pos.CENTER_RIGHT);
-        buttonBar.getStyleClass().add("glass-notif-btn-bar");
+        buttonBar.getStyleClass().add("sk-notif-btn-bar");
 
         Button okBtn = new Button("OK");
-        okBtn.getStyleClass().add("glass-notif-ok");
+        okBtn.getStyleClass().add("sk-notif-ok");
         okBtn.setDefaultButton(true);
 
         if (cancelType != null) {
             Button cancelBtn = new Button("Cancel");
-            cancelBtn.getStyleClass().add("glass-notif-cancel");
+            cancelBtn.getStyleClass().add("sk-notif-cancel");
             cancelBtn.setCancelButton(true);
             buttonBar.getChildren().addAll(cancelBtn, okBtn);
         } else if (modal) {
@@ -232,7 +232,7 @@ public final class GlassNotification {
         }
 
         VBox root = new VBox(16, content, buttonBar);
-        root.getStyleClass().add("glass-notif-root");
+        root.getStyleClass().add("sk-notif-root");
         root.setPadding(new Insets(20, 24, 16, 24));
 
         if (!modal && cancelType == null) {
