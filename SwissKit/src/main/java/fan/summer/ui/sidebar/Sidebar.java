@@ -44,6 +44,10 @@ public class Sidebar extends VBox {
 
     private final VBox content = new VBox();
     private final List<NavItem> navItems = new ArrayList<>();
+    /** Every NavItem shown in the sidebar (categories + settings/about/theme), so collapse can reach them all. */
+    private final List<NavItem> allItems = new ArrayList<>();
+    /** Section heading labels, hidden (un-managed) when collapsed for a clean icon strip. */
+    private final List<Label> sectionLabels = new ArrayList<>();
     private NavItem activeItem;
     private NavItem themeItem;
     private Consumer<String> onCategorySelect;
@@ -62,10 +66,8 @@ public class Sidebar extends VBox {
         setSpacing(0);
         build();
         // Apply persisted collapse state so it renders correctly on first paint.
-        // CSS .sidebar / .sidebar.collapsed govern the width (200px / 48px).
-        if (collapsed) {
-            getStyleClass().add("collapsed");
-        }
+        // This toggles the CSS class AND drops labels/badges out of layout.
+        applyCollapsed(collapsed);
         // Keep the theme toggle icon/label in sync regardless of where the change
         // originated (sidebar click OR settings-page combo).
         ThemeService.onChange(t -> javafx.application.Platform.runLater(() -> {
@@ -190,7 +192,7 @@ public class Sidebar extends VBox {
         NavItem item = new NavItem(id, mdiIcon, label, count, isNew);
         item.setOnMouseClicked(e -> activate(item, true));
         navItems.add(item);
-        content.getChildren().add(item);
+        registerItem(item);
         I18n.bind(item.textLabelProperty(), i18nKey);
     }
 
@@ -200,7 +202,7 @@ public class Sidebar extends VBox {
         item.setOnMouseClicked(e -> {
             if (onSettingsSelect != null) onSettingsSelect.run();
         });
-        content.getChildren().add(item);
+        registerItem(item);
         I18n.bind(item.textLabelProperty(), i18nKey);
     }
 
@@ -210,8 +212,18 @@ public class Sidebar extends VBox {
         item.setOnMouseClicked(e -> {
             if (onAboutSelect != null) onAboutSelect.run();
         });
-        content.getChildren().add(item);
+        registerItem(item);
         I18n.bind(item.textLabelProperty(), i18nKey);
+    }
+
+    /**
+     * Adds a NavItem to the sidebar content AND the {@link #allItems} tracking list
+     * (so {@link #applyCollapsed(boolean)} can reach every item, including the
+     * settings/about/theme footer items that are not in the {@link #navItems} category list).
+     */
+    private void registerItem(NavItem item) {
+        content.getChildren().add(item);
+        allItems.add(item);
     }
 
     /**
@@ -232,7 +244,7 @@ public class Sidebar extends VBox {
                 ? ThemeService.Theme.LIGHT : ThemeService.Theme.DARK;
             applyTheme(next);
         });
-        content.getChildren().add(themeItem);
+        registerItem(themeItem);
         // NOTE: i18n-binding the label is skipped intentionally — the label text
         // depends on the theme (dark vs. light wording), not just the locale.
         // The onChange listener updates it on both locale/theme switches.
@@ -264,23 +276,42 @@ public class Sidebar extends VBox {
     private Label sectionLabel(String i18nKey) {
         Label l = new Label(I18n.get(i18nKey).toUpperCase());
         l.getStyleClass().add("sidebar-section-label");
+        sectionLabels.add(l);
         I18n.bind(l.textProperty(), i18nKey);
         return l;
     }
 
     /**
      * Toggles the sidebar between the expanded (labeled list) and collapsed
-     * (48px icon-only strip) states by adding/removing the {@code collapsed}
-     * CSS class on this sidebar. Persists the new state via the settings store.
+     * (48px icon-only strip) states, persists the new state, and re-applies it.
      */
     private void toggleCollapse() {
         collapsed = !collapsed;
-        getStyleClass().removeAll("collapsed");
-        if (collapsed) {
-            getStyleClass().add("collapsed");
-        }
+        applyCollapsed(collapsed);
         collapseBtn.setText(collapsed ? "»" : "«");
         SwissKitJSettingUi.saveSettingAsync("sidebar.collapsed", collapsed ? "true" : "false", null);
+    }
+
+    /**
+     * Applies the collapsed/expanded state: toggles the {@code collapsed} CSS class
+     * (which sets the 48px width and centers nav icons), drops the text label and
+     * badge of every nav item out of layout (so the icon truly centers — CSS
+     * {@code -fx-opacity:0} alone leaves them occupying space), and hides section
+     * headings for a clean icon strip.
+     */
+    private void applyCollapsed(boolean c) {
+        if (c) {
+            if (!getStyleClass().contains("collapsed")) getStyleClass().add("collapsed");
+        } else {
+            getStyleClass().removeAll("collapsed");
+        }
+        for (NavItem item : allItems) {
+            item.setCollapsed(c);
+        }
+        for (Label sl : sectionLabels) {
+            sl.setManaged(!c);
+            sl.setVisible(!c);
+        }
     }
 
     /**
@@ -412,6 +443,23 @@ public class Sidebar extends VBox {
         }
 
         public boolean isActive() { return active; }
+
+        /**
+         * Switches this item into/out of icon-only mode. When collapsed, the text
+         * label and badge are removed from layout ({@code managed=false}) so the
+         * icon can center inside the 48px strip — {@code -fx-opacity:0} via CSS
+         * is not enough, because an unmanaged-but-opaque label still consumes
+         * horizontal space (it has {@code Hgrow.ALWAYS}) and pins the icon left.
+         *
+         * @param collapsed {@code true} to show only the icon, {@code false} to restore the full row
+         */
+        public void setCollapsed(boolean collapsed) {
+            textLabel.setManaged(!collapsed);
+            textLabel.setVisible(!collapsed);
+            badgeLabel.setManaged(!collapsed);
+            // Badge is only relevant when expanded AND it has a count.
+            badgeLabel.setVisible(!collapsed && !badgeLabel.getText().isEmpty());
+        }
 
         /**
          * Swaps the icon glyph, preserving the active/inactive fill color.

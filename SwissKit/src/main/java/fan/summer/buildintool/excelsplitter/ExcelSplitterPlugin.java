@@ -649,7 +649,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             );
 
             Separator sep = new Separator();
-            sep.setStyle("-fx-border-color: rgba(255,255,255,0.08);");
+            // Themed via the global .separator .line rule in swisskit-common.css.
 
             Label outputTitle = sectionTitle(I18n.get("builtin.excel.outputDir"));
 

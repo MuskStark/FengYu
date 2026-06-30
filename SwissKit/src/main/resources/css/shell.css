@@ -25,6 +25,8 @@
 .sidebar.collapsed .nav-item-text,
 .sidebar.collapsed .nav-badge { -fx-opacity: 0; }
 .sidebar.collapsed .nav-item { -fx-alignment: center; -fx-padding: 8 0 8 0; }
+/* Collapse toggle stays visible + centered in the icon strip so the user can still expand. */
+.sidebar.collapsed .sidebar-collapse-btn { -fx-alignment: center; }
 
 .sidebar-scroll { -fx-background-color: transparent; -fx-background: transparent; -fx-padding: 10 8 10 8; }
 .sidebar-scroll > .viewport { -fx-background-color: transparent; }
@@ -81,7 +83,11 @@
 }
 .nav-badge-new { -fx-background-color: rgba(76,217,123,0.18); -fx-text-fill: -sk-success; }
 
-.sidebar-divider { -fx-border-color: -sk-border; -fx-border-width: 1 0 0 0; -fx-pref-height: 1px; -fx-padding: 4 4 4 4; }
+.sidebar-divider {
+    -fx-background-color: -sk-border;
+    -fx-pref-height: 1px; -fx-min-height: 1px; -fx-max-height: 1px;
+    -fx-padding: 0;
+}
 
 /* ── 搜索栏(IDEA Search Everywhere 胶囊) ───────────────────── */
 .search-bar {
@@ -189,6 +195,33 @@
     -fx-text-fill: -sk-text-secondary;
     -fx-font-size: 12px;
     -fx-font-family: "SF Mono", "Consolas", "Microsoft YaHei", monospace;
+}
+/* 分隔点(状态栏 "·")— 用 token,深/浅都可读 */
+.status-sep { -fx-text-fill: -sk-text-disabled; -fx-font-size: 12px; }
+
+/* ── 返回栏(进入工具后顶部) ─────────────────────────────────── */
+.back-btn {
+    -fx-text-fill: -sk-text-secondary;
+    -fx-font-size: 13px;
+    -fx-cursor: hand;
+    -fx-padding: 4 10 4 0;
+}
+.back-btn:hover { -fx-text-fill: -sk-text; }
+.back-sep { -fx-text-fill: -sk-text-disabled; -fx-font-size: 13px; -fx-padding: 4 6 4 0; }
+.back-title { -fx-text-fill: -sk-text; -fx-font-size: 13px; -fx-font-weight: bold; }
+
+/* ── 搜索栏内图标/快捷键提示 ───────────────────────────────── */
+.search-icon { -fx-font-size: 13px; -fx-text-fill: -sk-text-disabled; }
+.search-kbd {
+    -fx-font-size: 10px;
+    -fx-text-fill: -sk-text-disabled;
+    -fx-background-color: -sk-bg-hover;
+    -fx-border-color: -sk-border;
+    -fx-border-width: 1;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+    -fx-padding: 1 5 1 5;
+    -fx-font-family: "SF Mono", "Consolas", monospace;
 }
 
 /* ── 插件商店 ─────────────────────────────────────────────── */
