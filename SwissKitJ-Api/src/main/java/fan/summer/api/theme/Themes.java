@@ -42,6 +42,15 @@ public final class Themes {
         return Themes.class.getResource(COMMON_CSS).toExternalForm();
     }
 
+    /** Loads the common stylesheet onto the scene if not already present (no theme stamping). */
+    static void loadCommonStylesheet(Scene scene) {
+        if (scene == null) return;
+        String url = commonStylesheetUrl();
+        if (!scene.getStylesheets().contains(url)) {
+            scene.getStylesheets().add(url);
+        }
+    }
+
     /**
      * Applies the common theme stylesheet to the given scene if not already present.
      *
