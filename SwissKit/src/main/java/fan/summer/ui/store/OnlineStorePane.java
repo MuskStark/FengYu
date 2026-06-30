@@ -157,7 +157,7 @@ public class OnlineStorePane extends VBox {
         loadingText.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
         fetchProgress = new ProgressBar();
         fetchProgress.setPrefWidth(200);
-        fetchProgress.setStyle("-fx-accent: #5b8cf7;");
+        fetchProgress.setStyle("-fx-accent: #3574F0;");
         loadingRow = new HBox(10, spinner, loadingText, fetchProgress);
         loadingRow.setAlignment(Pos.CENTER_LEFT);
         loadingRow.setVisible(false);

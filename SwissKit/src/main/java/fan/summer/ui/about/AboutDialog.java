@@ -113,7 +113,7 @@ public final class AboutDialog {
     /** A label:hyperlink row that opens the system browser. */
     private HBox linkRow(String key, String url) {
         Hyperlink link = new Hyperlink(url);
-        link.setStyle("-fx-text-fill: #5b8cf7; -fx-font-size: 13px; -fx-border-color: transparent; -fx-padding: 0;");
+        link.setStyle("-fx-text-fill: #3574F0; -fx-font-size: 13px; -fx-border-color: transparent; -fx-padding: 0;");
         link.setOnAction(e -> browse(url));
         link.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(link, Priority.ALWAYS);

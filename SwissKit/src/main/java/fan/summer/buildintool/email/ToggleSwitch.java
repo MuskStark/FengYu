@@ -24,7 +24,7 @@ public class ToggleSwitch extends StackPane {
     private static final double OFFSET = WIDTH / 2 - THUMB_RADIUS - 3;
 
     private static final Color OFF_COLOR = Color.rgb(255, 255, 255, 0.18);
-    private static final Color ON_COLOR = Color.web("#5b8cf7");
+    private static final Color ON_COLOR = Color.web("#3574F0");
 
     private final BooleanProperty selected = new SimpleBooleanProperty(false);
     private final Rectangle track;

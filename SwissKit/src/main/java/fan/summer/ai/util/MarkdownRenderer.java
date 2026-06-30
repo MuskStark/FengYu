@@ -58,7 +58,7 @@ public final class MarkdownRenderer {
             background: rgba(255,255,255,0.08);
             padding: 1px 5px; border-radius: 4px;
         }
-        a { color: #5b8cf7; }
+        a { color: #3574F0; }
         blockquote {
             border-left: 3px solid rgba(255,255,255,0.20);
             margin: 6px 0; padding: 2px 12px;

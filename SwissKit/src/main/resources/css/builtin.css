@@ -25,8 +25,8 @@
 }
 
 .ai-msg-user .ai-msg-bubble {
-    -fx-background-color: rgba(91,140,247,0.22);
-    -fx-border-color: rgba(91,140,247,0.18);
+    -fx-background-color: rgba(53,116,240,0.22);
+    -fx-border-color: rgba(53,116,240,0.18);
     -fx-border-width: 1px;
     -fx-border-radius: 14px;
 }
@@ -75,8 +75,8 @@
 
 .ai-chat-input-bar:focused-within {
     -fx-background-color: rgba(255,255,255,0.085);
-    -fx-border-color: rgba(91,140,247,0.45);
-    -fx-effect: dropshadow(gaussian, rgba(91,140,247,0.25), 8, 0, 0, 0);
+    -fx-border-color: rgba(53,116,240,0.45);
+    -fx-effect: dropshadow(gaussian, rgba(53,116,240,0.25), 8, 0, 0, 0);
 }
 
 .ai-chat-textarea {
@@ -94,7 +94,7 @@
 }
 
 .ai-send-btn {
-    -fx-background-color: #5b8cf7;
+    -fx-background-color: #3574F0;
     -fx-text-fill: white;
     -fx-font-size: 16px;
     -fx-background-radius: 10px;
@@ -109,8 +109,8 @@
 }
 
 .ai-send-btn:hover {
-    -fx-background-color: #4a7bf5;
-    -fx-effect: dropshadow(gaussian, rgba(91,140,247,0.4), 10, 0, 0, 3);
+    -fx-background-color: #2E66D8;
+    -fx-effect: dropshadow(gaussian, rgba(53,116,240,0.4), 10, 0, 0, 3);
 }
 
 .ai-send-btn:disabled {
@@ -149,8 +149,8 @@
 }
 
 .ai-attachment-chip {
-    -fx-background-color: rgba(91,140,247,0.12);
-    -fx-border-color: rgba(91,140,247,0.22);
+    -fx-background-color: rgba(53,116,240,0.12);
+    -fx-border-color: rgba(53,116,240,0.22);
     -fx-border-width: 1px;
     -fx-border-radius: 10px;
     -fx-background-radius: 10px;

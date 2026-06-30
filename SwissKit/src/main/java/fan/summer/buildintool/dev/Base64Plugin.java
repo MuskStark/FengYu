@@ -60,7 +60,7 @@ public class Base64Plugin implements SwissKitJPlugin {
         TextArea output = styledTextArea("");
         output.setEditable(false);
 
-        Button encodeBtn = actionButton(I18n.get("builtin.base64.encode"),  "#5b8cf7");
+        Button encodeBtn = actionButton(I18n.get("builtin.base64.encode"),  "#3574F0");
         Button decodeBtn = actionButton(I18n.get("builtin.base64.decode"),  "rgba(255,255,255,0.12)");
         Button swapBtn   = actionButton("↕ Swap",    "rgba(255,255,255,0.08)");
 
@@ -125,7 +125,7 @@ public class Base64Plugin implements SwissKitJPlugin {
             "-fx-border-radius: 10; -fx-background-radius: 10;" +
             "-fx-text-fill: rgba(255,255,255,0.88);" +
             "-fx-font-size: 13px; -fx-font-family: 'SF Mono','Consolas',monospace;" +
-            "-fx-control-inner-background: transparent; -fx-highlight-fill: #5b8cf7;" +
+            "-fx-control-inner-background: transparent; -fx-highlight-fill: #3574F0;" +
             "-fx-padding: 12;"
         );
         ta.setWrapText(true);

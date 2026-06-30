@@ -207,7 +207,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
 
             ProgressIndicator spinner = new ProgressIndicator(-1);
             spinner.setPrefSize(32, 32);
-            spinner.setStyle("-fx-accent: #5b8cf7;");
+            spinner.setStyle("-fx-accent: #3574F0;");
             Label analyzingLabel = new Label(I18n.get("builtin.excel.analyzing"));
             analyzingLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.75); -fx-font-size: 13px;");
             loadingOverlay = new VBox(8, spinner, analyzingLabel);
@@ -318,8 +318,8 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
         }
 
         private static String dropHighlightStyle() {
-            return "-fx-background-color: rgba(91,140,247,0.10);" +
-                   "-fx-border-color: rgba(91,140,247,0.40);" +
+            return "-fx-background-color: rgba(53,116,240,0.10);" +
+                   "-fx-border-color: rgba(53,116,240,0.40);" +
                    "-fx-border-width: 1; -fx-border-style: dashed;" +
                    "-fx-border-radius: 12; -fx-background-radius: 12;";
         }
@@ -615,8 +615,8 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
         }
 
         private static String cardSelectedStyle() {
-            return "-fx-background-color: rgba(91,140,247,0.10);" +
-                   "-fx-border-color: rgba(91,140,247,0.35); -fx-border-width: 1;" +
+            return "-fx-background-color: rgba(53,116,240,0.10);" +
+                   "-fx-border-color: rgba(53,116,240,0.35); -fx-border-width: 1;" +
                    "-fx-border-radius: 10; -fx-background-radius: 10; -fx-cursor: hand;";
         }
     }
@@ -917,7 +917,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
         Button btn = new Button(text);
         if (primary) {
             btn.setStyle(
-                "-fx-background-color: #5b8cf7; -fx-text-fill: white; -fx-font-size: 13px;" +
+                "-fx-background-color: #3574F0; -fx-text-fill: white; -fx-font-size: 13px;" +
                 "-fx-font-weight: 500; -fx-background-radius: 8; -fx-border-width: 0;" +
                 "-fx-padding: 10 20 10 20; -fx-cursor: hand;"
             );

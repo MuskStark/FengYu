@@ -94,7 +94,7 @@ public class LocalInstallPane extends VBox {
         progress = new ProgressIndicator(-1);
         progress.setPrefSize(24, 24);
         progress.setVisible(false);
-        progress.setStyle("-fx-accent: #5b8cf7;");
+        progress.setStyle("-fx-accent: #3574F0;");
 
         // Status
         statusLabel = new Label("");
@@ -241,8 +241,8 @@ public class LocalInstallPane extends VBox {
 
     private static String dropZoneStyle(boolean highlight) {
         if (highlight) {
-            return "-fx-background-color: rgba(91,140,247,0.10);" +
-                   "-fx-border-color: rgba(91,140,247,0.40);" +
+            return "-fx-background-color: rgba(53,116,240,0.10);" +
+                   "-fx-border-color: rgba(53,116,240,0.40);" +
                    "-fx-border-width: 1; -fx-border-style: dashed;" +
                    "-fx-border-radius: 12; -fx-background-radius: 12;";
         }
@@ -256,7 +256,7 @@ public class LocalInstallPane extends VBox {
         Button btn = new Button(text);
         if (primary) {
             btn.setStyle(
-                "-fx-background-color: #5b8cf7; -fx-text-fill: white; -fx-font-size: 13px;" +
+                "-fx-background-color: #3574F0; -fx-text-fill: white; -fx-font-size: 13px;" +
                 "-fx-font-weight: 500; -fx-background-radius: 8; -fx-border-width: 0;" +
                 "-fx-padding: 10 20 10 20; -fx-cursor: hand;"
             );
