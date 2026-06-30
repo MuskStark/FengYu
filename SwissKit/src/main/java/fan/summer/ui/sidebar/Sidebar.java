@@ -2,6 +2,7 @@ package fan.summer.ui.sidebar;
 
 import fan.summer.api.MdiIconUtil;
 import fan.summer.api.i18n.I18n;
+import fan.summer.ui.setting.SwissKitJSettingUi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import javafx.animation.Interpolator;
@@ -47,14 +48,22 @@ public class Sidebar extends VBox {
     private Runnable onSettingsSelect;
     private Runnable onAboutSelect;
 
+    /** Whether the sidebar is currently in icon-only (collapsed) mode. Persisted via settings. */
+    private boolean collapsed = "true".equalsIgnoreCase(readCollapsedPref());
+
+    /** Collapse toggle button. Field so {@link #toggleCollapse()} can update its text. */
+    private Label collapseBtn;
+
     public Sidebar() {
         LOG.info("Sidebar initializing");
         getStyleClass().add("sidebar");
-        setPrefWidth(220);
-        setMinWidth(200);
-        setMaxWidth(260);
         setSpacing(0);
         build();
+        // Apply persisted collapse state so it renders correctly on first paint.
+        // CSS .sidebar / .sidebar.collapsed govern the width (200px / 48px).
+        if (collapsed) {
+            getStyleClass().add("collapsed");
+        }
         LOG.info("Sidebar initialized with {} nav items", navItems.size());
     }
 
@@ -102,6 +111,14 @@ public class Sidebar extends VBox {
 
     private void build() {
         content.setSpacing(0);
+
+        // ── Collapse toggle (very top of sidebar) ─────────────────────
+        collapseBtn = new Label(collapsed ? "»" : "«");
+        collapseBtn.getStyleClass().add("sidebar-collapse-btn");
+        collapseBtn.setMaxWidth(Double.MAX_VALUE);
+        collapseBtn.setAlignment(Pos.CENTER_RIGHT);
+        collapseBtn.setOnMouseClicked(e -> toggleCollapse());
+        content.getChildren().add(collapseBtn);
 
         // ── AI section (first position) ────────────────────────────────
         content.getChildren().add(sectionLabel("sidebar.section.aiAssistant"));
@@ -202,6 +219,34 @@ public class Sidebar extends VBox {
         l.getStyleClass().add("sidebar-section-label");
         I18n.bind(l.textProperty(), i18nKey);
         return l;
+    }
+
+    /**
+     * Toggles the sidebar between the expanded (labeled list) and collapsed
+     * (48px icon-only strip) states by adding/removing the {@code collapsed}
+     * CSS class on this sidebar. Persists the new state via the settings store.
+     */
+    private void toggleCollapse() {
+        collapsed = !collapsed;
+        getStyleClass().removeAll("collapsed");
+        if (collapsed) {
+            getStyleClass().add("collapsed");
+        }
+        collapseBtn.setText(collapsed ? "»" : "«");
+        SwissKitJSettingUi.saveSettingAsync("sidebar.collapsed", collapsed ? "true" : "false", null);
+    }
+
+    /**
+     * Reads the persisted collapse preference from the settings cache.
+     * Returns {@code "false"} on any failure (degrades to expanded safely).
+     */
+    private static String readCollapsedPref() {
+        try {
+            String v = SwissKitJSettingUi.getSetting("sidebar.collapsed");
+            return v == null ? "false" : v;
+        } catch (Exception e) {
+            return "false";
+        }
     }
 
     private Region divider() {
