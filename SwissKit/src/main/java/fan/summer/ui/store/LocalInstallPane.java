@@ -58,16 +58,12 @@ public class LocalInstallPane extends VBox {
         setPadding(new Insets(24));
 
         Label title = new Label(I18n.get("store.local.title"));
-        title.setStyle(
-            "-fx-text-fill: rgba(255,255,255,0.90);" +
-            "-fx-font-size: 18px; -fx-font-weight: 500;"
-        );
+        title.getStyleClass().add("sk-t1");
+        title.setStyle("-fx-font-size: 18px; -fx-font-weight: 500;");
 
         Label desc = new Label(I18n.get("store.local.desc"));
-        desc.setStyle(
-            "-fx-text-fill: rgba(255,255,255,0.45);" +
-            "-fx-font-size: 12px;"
-        );
+        desc.getStyleClass().add("sk-t2");
+        desc.setStyle("-fx-font-size: 12px;");
         desc.setWrapText(true);
         desc.setMaxWidth(Double.MAX_VALUE);
 
@@ -76,10 +72,8 @@ public class LocalInstallPane extends VBox {
 
         // File info display
         fileNameLabel = new Label("");
-        fileNameLabel.setStyle(
-            "-fx-text-fill: rgba(255,255,255,0.55);" +
-            "-fx-font-size: 12px; -fx-font-family: 'SF Mono','Consolas',monospace;"
-        );
+        fileNameLabel.getStyleClass().add("sk-t2");
+        fileNameLabel.setStyle("-fx-font-size: 12px; -fx-font-family: 'SF Mono','Consolas',monospace;");
 
         // Install button
         installBtn = glassBtn(I18n.get("store.local.installPlugin"), true);
@@ -98,17 +92,13 @@ public class LocalInstallPane extends VBox {
 
         // Status
         statusLabel = new Label("");
-        statusLabel.setStyle(
-            "-fx-text-fill: rgba(255,255,255,0.50);" +
-            "-fx-font-size: 12px;"
-        );
+        statusLabel.getStyleClass().add("sk-t2");
+        statusLabel.setStyle("-fx-font-size: 12px;");
         statusLabel.setWrapText(true);
 
         Label hint = new Label(I18n.get("store.local.hint"));
-        hint.setStyle(
-            "-fx-text-fill: rgba(255,255,255,0.28);" +
-            "-fx-font-size: 11px;"
-        );
+        hint.getStyleClass().add("sk-t3");
+        hint.setStyle("-fx-font-size: 11px;");
         hint.setWrapText(true);
         hint.setMaxWidth(Double.MAX_VALUE);
 
@@ -127,16 +117,15 @@ public class LocalInstallPane extends VBox {
         zone.setAlignment(Pos.CENTER);
         zone.setPrefHeight(140);
         zone.setSpacing(14);
+        zone.getStyleClass().addAll("sk-surface-soft", "sk-outlined");
         zone.setStyle(dropZoneStyle(false));
 
         Label iconLabel = new Label("📦");
         iconLabel.setStyle("-fx-font-size: 32px;");
 
         Label dropText = new Label(I18n.get("store.local.dropHint"));
-        dropText.setStyle(
-            "-fx-text-fill: rgba(255,255,255,0.55);" +
-            "-fx-font-size: 13px;"
-        );
+        dropText.getStyleClass().add("sk-t2");
+        dropText.setStyle("-fx-font-size: 13px;");
         dropText.setWrapText(true);
 
         Button browseBtn = glassBtn(I18n.get("store.local.browseFiles"), false);
@@ -181,10 +170,9 @@ public class LocalInstallPane extends VBox {
         }
         selectedFile.set(file);
         fileNameLabel.setText("📄 " + file.getName());
-        fileNameLabel.setStyle(
-            "-fx-text-fill: rgba(255,255,255,0.80);" +
-            "-fx-font-size: 12px; -fx-font-family: 'SF Mono','Consolas',monospace;"
-        );
+        fileNameLabel.getStyleClass().removeAll("sk-t2", "sk-t3");
+        fileNameLabel.getStyleClass().add("sk-t1");
+        fileNameLabel.setStyle("-fx-font-size: 12px; -fx-font-family: 'SF Mono','Consolas',monospace;");
         statusLabel.setText("");
         statusLabel.setVisible(false);
         installBtn.setDisable(false);
@@ -198,7 +186,9 @@ public class LocalInstallPane extends VBox {
         progress.setVisible(true);
         statusLabel.setVisible(true);
         statusLabel.setText(I18n.get("store.local.installing"));
-        statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+        statusLabel.getStyleClass().removeAll("sk-t1", "sk-t3");
+        statusLabel.getStyleClass().add("sk-t2");
+        statusLabel.setStyle("-fx-font-size: 12px;");
 
         Thread installThread = new Thread(() -> {
             try {
@@ -246,9 +236,9 @@ public class LocalInstallPane extends VBox {
                    "-fx-border-width: 1; -fx-border-style: dashed;" +
                    "-fx-border-radius: 12; -fx-background-radius: 12;";
         }
-        return "-fx-background-color: rgba(255,255,255,0.03);" +
-               "-fx-border-color: rgba(255,255,255,0.12);" +
-               "-fx-border-width: 1; -fx-border-style: dashed;" +
+        // Background + border colors come from .sk-surface-soft / .sk-outlined
+        // applied on the drop zone node; only layout props here.
+        return "-fx-border-width: 1; -fx-border-style: dashed;" +
                "-fx-border-radius: 12; -fx-background-radius: 12;";
     }
 
@@ -261,10 +251,9 @@ public class LocalInstallPane extends VBox {
                 "-fx-padding: 10 20 10 20; -fx-cursor: hand;"
             );
         } else {
+            btn.getStyleClass().addAll("sk-surface-soft", "sk-outlined", "sk-t1");
             btn.setStyle(
-                "-fx-background-color: rgba(255,255,255,0.07);" +
-                "-fx-border-color: rgba(255,255,255,0.12); -fx-border-width: 1;" +
-                "-fx-text-fill: rgba(255,255,255,0.75); -fx-font-size: 13px;" +
+                "-fx-border-width: 1; -fx-font-size: 13px;" +
                 "-fx-background-radius: 8; -fx-border-radius: 8;" +
                 "-fx-padding: 10 20 10 20; -fx-cursor: hand;"
             );

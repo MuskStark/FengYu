@@ -68,7 +68,8 @@ class PdfConvertPane extends VBox {
         dropIcon.setStyle("-fx-font-size: 28px;");
 
         Label dropHint = new Label(I18n.get("builtin.pdf.drop.hint"));
-        dropHint.setStyle("-fx-text-fill: rgba(255,255,255,0.5); -fx-font-size: 13px;");
+        dropHint.getStyleClass().add("sk-t2");
+        dropHint.setStyle("-fx-font-size: 13px;");
 
         Button selectBtn = new Button(I18n.get("builtin.pdf.select.files"));
         selectBtn.setStyle(
@@ -82,6 +83,7 @@ class PdfConvertPane extends VBox {
         VBox dropZone = new VBox(10, dropIcon, dropHint, selectBtn);
         dropZone.setAlignment(Pos.CENTER);
         dropZone.setPrefHeight(140);
+        dropZone.getStyleClass().addAll("sk-surface-soft", "sk-outlined");
         dropZone.setStyle(dropNormalStyle());
 
         dropZone.setOnDragOver(e -> {
@@ -111,17 +113,19 @@ class PdfConvertPane extends VBox {
 
         // ── Output directory ────────────────────────────────
         Label dirLabel = new Label(I18n.get("builtin.pdf.split.output.dir"));
-        dirLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.5); -fx-font-size: 13px;");
+        dirLabel.getStyleClass().add("sk-t2");
+        dirLabel.setStyle("-fx-font-size: 13px;");
 
         outputDirField = new TextField();
+        outputDirField.getStyleClass().add("sk-outlined");
         outputDirField.setStyle(textFieldStyle());
         outputDirField.setPromptText(I18n.get("builtin.pdf.split.output.dir"));
         HBox.setHgrow(outputDirField, Priority.ALWAYS);
 
         Button browseBtn = new Button("...");
+        browseBtn.getStyleClass().addAll("sk-surface-soft", "sk-t2");
         browseBtn.setStyle(
-            "-fx-background-color: rgba(255,255,255,0.08);" +
-            "-fx-text-fill: rgba(255,255,255,0.6); -fx-font-size: 13px;" +
+            "-fx-font-size: 13px;" +
             "-fx-background-radius: 6; -fx-border-width: 0;" +
             "-fx-padding: 8 14 8 14; -fx-cursor: hand;"
         );
@@ -194,14 +198,16 @@ class PdfConvertPane extends VBox {
 
         // Create file row
         Label fileName = new Label(path.getFileName().toString());
-        fileName.setStyle("-fx-text-fill: rgba(255,255,255,0.7); -fx-font-size: 12px;");
+        fileName.getStyleClass().add("sk-t2");
+        fileName.setStyle("-fx-font-size: 12px;");
         fileName.setWrapText(true);
         HBox.setHgrow(fileName, Priority.ALWAYS);
 
         Button removeBtn = new Button("✕");
+        removeBtn.getStyleClass().add("sk-t3");
         removeBtn.setStyle(
             "-fx-background-color: transparent;" +
-            "-fx-text-fill: rgba(255,255,255,0.4); -fx-font-size: 12px;" +
+            "-fx-font-size: 12px;" +
             "-fx-padding: 2 6 2 6; -fx-cursor: hand;"
         );
         removeBtn.setOnAction(e -> {
@@ -211,10 +217,8 @@ class PdfConvertPane extends VBox {
 
         HBox row = new HBox(8, fileName, removeBtn);
         row.setAlignment(Pos.CENTER_LEFT);
-        row.setStyle(
-            "-fx-background-color: rgba(255,255,255,0.03);" +
-            "-fx-background-radius: 6; -fx-padding: 6 10;"
-        );
+        row.getStyleClass().add("sk-surface");
+        row.setStyle("-fx-background-radius: 6; -fx-padding: 6 10;");
 
         fileListBox.getChildren().add(row);
         fileListBox.setVisible(true);
@@ -231,14 +235,16 @@ class PdfConvertPane extends VBox {
         for (Path p : selectedFiles) {
             // Recreate rows for remaining files
             Label fileName = new Label(p.getFileName().toString());
-            fileName.setStyle("-fx-text-fill: rgba(255,255,255,0.7); -fx-font-size: 12px;");
+            fileName.getStyleClass().add("sk-t2");
+            fileName.setStyle("-fx-font-size: 12px;");
             fileName.setWrapText(true);
             HBox.setHgrow(fileName, Priority.ALWAYS);
 
             Button removeBtn = new Button("✕");
+            removeBtn.getStyleClass().add("sk-t3");
             removeBtn.setStyle(
                 "-fx-background-color: transparent;" +
-                "-fx-text-fill: rgba(255,255,255,0.4); -fx-font-size: 12px;" +
+                "-fx-font-size: 12px;" +
                 "-fx-padding: 2 6 2 6; -fx-cursor: hand;"
             );
             removeBtn.setOnAction(e -> {
@@ -248,10 +254,8 @@ class PdfConvertPane extends VBox {
 
             HBox row = new HBox(8, fileName, removeBtn);
             row.setAlignment(Pos.CENTER_LEFT);
-            row.setStyle(
-                "-fx-background-color: rgba(255,255,255,0.03);" +
-                "-fx-background-radius: 6; -fx-padding: 6 10;"
-            );
+            row.getStyleClass().add("sk-surface");
+            row.setStyle("-fx-background-radius: 6; -fx-padding: 6 10;");
 
             fileListBox.getChildren().add(row);
         }
@@ -344,9 +348,7 @@ class PdfConvertPane extends VBox {
     }
 
     private static String dropNormalStyle() {
-        return "-fx-background-color: rgba(255,255,255,0.02);" +
-               "-fx-border-color: rgba(255,255,255,0.15);" +
-               "-fx-border-width: 1; -fx-border-style: dashed;" +
+        return "-fx-border-width: 1; -fx-border-style: dashed;" +
                "-fx-border-radius: 10; -fx-background-radius: 10;";
     }
 
@@ -359,7 +361,6 @@ class PdfConvertPane extends VBox {
 
     private static String textFieldStyle() {
         return "-fx-background-color: rgba(0,0,0,0.3);" +
-               "-fx-border-color: rgba(255,255,255,0.28);" +
                "-fx-border-width: 1; -fx-border-radius: 6; -fx-background-radius: 6;" +
                "-fx-text-fill: white; -fx-font-size: 13px;" +
                "-fx-padding: 9 12 9 12;";

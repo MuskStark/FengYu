@@ -134,13 +134,9 @@ public class SwissKitJSettingUi {
 
         // ── Sidebar ──────────────────────────────────────────
         VBox sidebar = new VBox();
-        sidebar.setStyle(
-            "-fx-background-color: rgba(255,255,255,0.022);" +
-            "-fx-border-color: rgba(255,255,255,0.10);" +
-            "-fx-border-width: 0 1 0 0;" +
-            "-fx-min-width: 160px; -fx-pref-width: 180px; -fx-max-width: 200px;" +
-            "-fx-padding: 12 8;"
-        );
+        // Style (incl. the right-edge vertical divider) lives in .settings-sidebar
+        // so it follows the theme via -sk-* tokens; inline setStyle can't reference them.
+        sidebar.getStyleClass().add("settings-sidebar");
 
         sidebar.getChildren().add(sidebarSectionLabel(I18n.get("setting.section")));
         NavItem generalNav = sidebarNavItem("⚙", I18n.get("setting.nav.general"));
@@ -331,7 +327,8 @@ public class SwissKitJSettingUi {
         Label title = sectionTitle(I18n.get("setting.store.title"));
         Label descLabel = subLabel(I18n.get("setting.store.label"));
         Label desc = new Label(I18n.get("setting.store.desc"));
-        desc.setStyle("-fx-text-fill: rgba(255,255,255,0.35); -fx-font-size: 12px;");
+        desc.getStyleClass().add("sk-t3");
+        desc.setStyle("-fx-font-size: 12px;");
         desc.setWrapText(true);
 
         TextField urlField = textField( DEFAULT_STORE_URL);
@@ -444,7 +441,8 @@ public class SwissKitJSettingUi {
         Label paramTitle = sectionTitle(I18n.get("setting.ai.genParams"));
 
         Label tempValue = new Label("0.7");
-        tempValue.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+        tempValue.getStyleClass().add("sk-t2");
+        tempValue.setStyle("-fx-font-size: 12px;");
         Slider tempSlider = new Slider(0, 2, 0.7);
         tempSlider.setShowTickLabels(true);
         tempSlider.setShowTickMarks(true);
@@ -463,7 +461,8 @@ public class SwissKitJSettingUi {
         tempRow.setAlignment(Pos.CENTER_LEFT);
 
         Label topPValue = new Label("0.9");
-        topPValue.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+        topPValue.getStyleClass().add("sk-t2");
+        topPValue.setStyle("-fx-font-size: 12px;");
         Slider topPSlider = new Slider(0, 1, 0.9);
         topPSlider.setShowTickLabels(true);
         topPSlider.setShowTickMarks(true);
@@ -627,11 +626,13 @@ public class SwissKitJSettingUi {
         VBox panel = new VBox(12);
 
         Label modelStatusLabel = new Label(I18n.get("setting.ai.noModelLoaded"));
-        modelStatusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 13px;");
+        modelStatusLabel.getStyleClass().add("sk-t2");
+        modelStatusLabel.setStyle("-fx-font-size: 13px;");
 
         Label modelPathLabel = new Label("—");
         modelPathLabel.setWrapText(true);
-        modelPathLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.35); -fx-font-size: 12px;");
+        modelPathLabel.getStyleClass().add("sk-t3");
+        modelPathLabel.setStyle("-fx-font-size: 12px;");
 
         TextField modelPathField = textField( I18n.get("setting.ai.selectModel"));
         loadAiSetting(AI_MODEL_PATH_KEY, modelPathField::setText);
@@ -706,7 +707,8 @@ public class SwissKitJSettingUi {
         ProgressBar memBar = new ProgressBar(0);
         memBar.setPrefWidth(300);
         Label memText = new Label("—");
-        memText.setStyle("-fx-text-fill: rgba(255,255,255,0.35); -fx-font-size: 11px;");
+        memText.getStyleClass().add("sk-t3");
+        memText.setStyle("-fx-font-size: 11px;");
         HBox memRow = new HBox(10, memBar, memText);
         memRow.setAlignment(Pos.CENTER_LEFT);
 
@@ -781,8 +783,9 @@ public class SwissKitJSettingUi {
         modelField.textProperty().addListener((obs, o, n) -> saveAiSetting(AI_OPENAI_MODEL_KEY, n));
 
         Label statusLabel = new Label("");
+        statusLabel.getStyleClass().add("sk-t2");
         statusLabel.setWrapText(true);
-        statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+        statusLabel.setStyle("-fx-font-size: 12px;");
 
         Button testBtn = glassBtn(I18n.get("setting.ai.testConnection"), false);
         testBtn.setOnAction(e -> {
@@ -831,8 +834,9 @@ public class SwissKitJSettingUi {
         modelField.textProperty().addListener((obs, o, n) -> saveAiSetting(AI_ANTHROPIC_MODEL_KEY, n));
 
         Label statusLabel = new Label("");
+        statusLabel.getStyleClass().add("sk-t2");
         statusLabel.setWrapText(true);
-        statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+        statusLabel.setStyle("-fx-font-size: 12px;");
 
         Button testBtn = glassBtn(I18n.get("setting.ai.testConnection"), false);
         testBtn.setOnAction(e -> {
@@ -1138,7 +1142,8 @@ public class SwissKitJSettingUi {
         imapSslRow.setAlignment(Pos.CENTER_LEFT);
         VBox imapSslBox = new VBox(4);
         Label imapSslLabel = new Label("");
-        imapSslLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.50); -fx-font-size: 11px; -fx-font-weight: bold;");
+        imapSslLabel.getStyleClass().add("sk-t2");
+        imapSslLabel.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
         imapSslBox.getChildren().addAll(imapSslLabel, imapSslRow);
         imapSslBox.setUserData("imapSslBox");
 
@@ -1234,7 +1239,8 @@ public class SwissKitJSettingUi {
 
         VBox box = new VBox(4);
         Label lbl = new Label("");
-        lbl.setStyle("-fx-text-fill: rgba(255,255,255,0.50); -fx-font-size: 11px; -fx-font-weight: bold;");
+        lbl.getStyleClass().add("sk-t2");
+        lbl.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
         box.getChildren().add(lbl);
         box.getChildren().add(checkRow);
         return box;
@@ -1510,7 +1516,8 @@ public class SwissKitJSettingUi {
         // Build checkboxes for each tag
         VBox tagCheckBoxes = new VBox(6);
         tagCheckBoxes.setPadding(new Insets(8));
-        tagCheckBoxes.setStyle("-fx-background-color: rgba(255,255,255,0.03); -fx-background-radius: 8;");
+        tagCheckBoxes.getStyleClass().add("sk-surface-soft");
+        tagCheckBoxes.setStyle("-fx-background-radius: 8;");
         for (EmailTagEntity tag : allTags) {
             CheckBox cb = new CheckBox(tag.getTag());
             cb.setUserData(tag.getId());
@@ -1763,7 +1770,8 @@ public class SwissKitJSettingUi {
         Label desc = new Label(I18n.get("setting.email.importDesc"));
         desc.setWrapText(true);
         desc.setMaxWidth(Double.MAX_VALUE);
-        desc.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+        desc.getStyleClass().add("sk-t2");
+        desc.setStyle("-fx-font-size: 12px;");
 
         // Template download button
         Button templateBtn = glassBtn(I18n.get("setting.email.downloadTemplate"), false);
@@ -1809,9 +1817,10 @@ public class SwissKitJSettingUi {
         importBtn.setDisable(true);
 
         Label statusLabel = new Label("");
+        statusLabel.getStyleClass().add("sk-t2");
         statusLabel.setWrapText(true);
         statusLabel.setMaxWidth(Double.MAX_VALUE);
-        statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+        statusLabel.setStyle("-fx-font-size: 12px;");
 
         ProgressBar progressBar = new ProgressBar(0);
         progressBar.setMaxWidth(Double.MAX_VALUE);
@@ -1829,7 +1838,7 @@ public class SwissKitJSettingUi {
             progressBar.setManaged(true);
             progressBar.setProgress(-1);
             statusLabel.setText(I18n.get("setting.email.importing"));
-            statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+            statusLabel.setStyle("-fx-font-size: 12px;");
 
             runAsync(() -> {
                 try {

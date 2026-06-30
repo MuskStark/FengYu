@@ -107,15 +107,18 @@ public class EmailPlugin implements SwissKitJPlugin {
         // Subject
         TextField subjectField = new TextField();
         subjectField.setPromptText(I18n.get("builtin.email.subjectPrompt"));
+        subjectField.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
         subjectField.setStyle(fieldStyle());
 
         // Recipients (single mode)
         TextField toField = new TextField();
         toField.setPromptText(I18n.get("builtin.email.toPrompt"));
+        toField.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
         toField.setStyle(fieldStyle());
 
         TextField ccField = new TextField();
         ccField.setPromptText(I18n.get("builtin.email.ccPrompt"));
+        ccField.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
         ccField.setStyle(fieldStyle());
 
         // Body — rich text HTML editor (WebView + contenteditable + formatting toolbar)
@@ -124,7 +127,8 @@ public class EmailPlugin implements SwissKitJPlugin {
 
         // Mass send controls
         CheckBox massCheckBox = new CheckBox(I18n.get("builtin.email.massMode"));
-        massCheckBox.setStyle("-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 13px;");
+        massCheckBox.getStyleClass().add("sk-t1");
+        massCheckBox.setStyle("-fx-font-size: 13px;");
 
         Button configBtn = glassBtn(I18n.get("builtin.email.massConfig"), false);
         configBtn.setDisable(true);
@@ -164,7 +168,8 @@ public class EmailPlugin implements SwissKitJPlugin {
         progressBar.setMaxWidth(Double.MAX_VALUE);
 
         Label progressLabel = new Label("");
-        progressLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+        progressLabel.getStyleClass().add("sk-t2");
+        progressLabel.setStyle("-fx-font-size: 12px;");
 
         Button sendBtn = glassBtn(I18n.get("builtin.email.send"), true);
         Button viewLogBtn = glassBtn(I18n.get("builtin.email.viewSentLog"), false);
@@ -242,7 +247,7 @@ public class EmailPlugin implements SwissKitJPlugin {
         progressBar.setProgress(0);
         progressBar.getStyleClass().removeAll("success", "danger");
         progressLabel.setText(I18n.get("builtin.email.preparingSend"));
-        progressLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+        progressLabel.setStyle("-fx-font-size: 12px;");
 
         Task<EmailSendService.Result> task = new Task<>() {
             @Override
@@ -335,12 +340,14 @@ public class EmailPlugin implements SwissKitJPlugin {
 
         // ── Filename-only mode toggle ───────────────────────────────
         CheckBox filenameModeCheckBox = new CheckBox(I18n.get("builtin.email.filenameMode"));
-        filenameModeCheckBox.setStyle("-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 13px;");
+        filenameModeCheckBox.getStyleClass().add("sk-t1");
+        filenameModeCheckBox.setStyle("-fx-font-size: 13px;");
 
         // ── Multi-tag checkboxes for to/cc ───────────────────────────
         VBox toCheckBoxes = new VBox(4);
         toCheckBoxes.setPadding(new Insets(6));
-        toCheckBoxes.setStyle("-fx-background-color: rgba(255,255,255,0.03); -fx-background-radius: 8;");
+        toCheckBoxes.getStyleClass().add("sk-surface");
+        toCheckBoxes.setStyle("-fx-background-radius: 8;");
         for (EmailTagEntity tag : tags) {
             CheckBox cb = new CheckBox(tag.getTag());
             cb.setUserData(tag.getId());
@@ -351,7 +358,8 @@ public class EmailPlugin implements SwissKitJPlugin {
 
         VBox ccCheckBoxes = new VBox(4);
         ccCheckBoxes.setPadding(new Insets(6));
-        ccCheckBoxes.setStyle("-fx-background-color: rgba(255,255,255,0.03); -fx-background-radius: 8;");
+        ccCheckBoxes.getStyleClass().add("sk-surface");
+        ccCheckBoxes.setStyle("-fx-background-radius: 8;");
         for (EmailTagEntity tag : tags) {
             CheckBox cb = new CheckBox(tag.getTag());
             cb.setUserData(tag.getId());
@@ -362,11 +370,13 @@ public class EmailPlugin implements SwissKitJPlugin {
 
         // ── Attachment folder ────────────────────────────────────────
         CheckBox attCheckBox = new CheckBox(I18n.get("builtin.email.attachByTag"));
-        attCheckBox.setStyle("-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 13px;");
+        attCheckBox.getStyleClass().add("sk-t1");
+        attCheckBox.setStyle("-fx-font-size: 13px;");
 
         TextField attFolderField = new TextField();
         attFolderField.setPromptText(I18n.get("builtin.email.attachmentFolderPrompt"));
         attFolderField.setEditable(false);
+        attFolderField.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
         attFolderField.setStyle(fieldStyle());
         HBox.setHgrow(attFolderField, Priority.ALWAYS);
 
@@ -388,9 +398,11 @@ public class EmailPlugin implements SwissKitJPlugin {
 
         // ── Filename mode toggles visibility of to/cc selectors ──────
         Label toLabel = new Label(I18n.get("builtin.email.toTag"));
-        toLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.50); -fx-font-size: 11px; -fx-font-weight: bold;");
+        toLabel.getStyleClass().add("sk-t2");
+        toLabel.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
         Label ccLabel = new Label(I18n.get("builtin.email.ccTag"));
-        ccLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.50); -fx-font-size: 11px; -fx-font-weight: bold;");
+        ccLabel.getStyleClass().add("sk-t2");
+        ccLabel.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
 
         VBox toSection = new VBox(4, toLabel, toCheckBoxes);
         VBox ccSection = new VBox(4, ccLabel, ccCheckBoxes);
@@ -639,13 +651,15 @@ public class EmailPlugin implements SwissKitJPlugin {
 
     private static Label sectionTitle(String text) {
         Label l = new Label(text);
-        l.setStyle("-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 15px; -fx-font-weight: 500;");
+        l.getStyleClass().add("sk-t1");
+        l.setStyle("-fx-font-size: 15px; -fx-font-weight: 500;");
         return l;
     }
 
     private static Label subLabel(String text) {
         Label l = new Label(text);
-        l.setStyle("-fx-text-fill: rgba(255,255,255,0.50); -fx-font-size: 11px; -fx-font-weight: bold;");
+        l.getStyleClass().add("sk-t2");
+        l.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
         return l;
     }
 
@@ -658,10 +672,10 @@ public class EmailPlugin implements SwissKitJPlugin {
                     "-fx-padding: 9 18 9 18; -fx-cursor: hand;"
             );
         } else {
+            btn.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
             btn.setStyle(
-                    "-fx-background-color: rgba(255,255,255,0.07);" +
-                    "-fx-border-color: rgba(255,255,255,0.12); -fx-border-width: 1;" +
-                    "-fx-text-fill: rgba(255,255,255,0.75); -fx-font-size: 13px;" +
+                    "-fx-border-width: 1;" +
+                    "-fx-font-size: 13px;" +
                     "-fx-background-radius: 8; -fx-border-radius: 8;" +
                     "-fx-padding: 9 18 9 18; -fx-cursor: hand;"
             );
@@ -670,10 +684,9 @@ public class EmailPlugin implements SwissKitJPlugin {
     }
 
     private static String fieldStyle() {
-        return "-fx-background-color: rgba(255,255,255,0.05);" +
-                "-fx-border-color: rgba(255,255,255,0.12); -fx-border-width: 1;" +
+        return "-fx-border-width: 1;" +
                 "-fx-border-radius: 8; -fx-background-radius: 8;" +
-                "-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 13px;" +
+                "-fx-font-size: 13px;" +
                 "-fx-padding: 8 12 8 12;";
     }
 

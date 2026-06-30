@@ -62,39 +62,32 @@ class PdfMergePane extends VBox {
 
         // 2. File list container
         fileListContainer.setSpacing(0);
-        fileListContainer.setStyle(
-                "-fx-background-color: rgba(255,255,255,0.03);" +
-                "-fx-background-radius: 8;"
-        );
+        fileListContainer.getStyleClass().add("sk-surface");
+        fileListContainer.setStyle("-fx-background-radius: 8;");
         fileListContainer.setPadding(new Insets(0));
 
         // 3. Total summary
         updateTotal();
-        totalLabel.setStyle(
-                "-fx-text-fill: rgba(255,255,255,0.50);" +
-                "-fx-font-size: 12px;"
-        );
+        totalLabel.getStyleClass().add("sk-t2");
+        totalLabel.setStyle("-fx-font-size: 12px;");
 
         // 4. Output filename
         Label outputNameLabel = new Label(I18n.get("builtin.pdf.merge.output.name"));
-        outputNameLabel.setStyle(
-                "-fx-text-fill: rgba(255,255,255,0.60);" +
-                "-fx-font-size: 12px;"
-        );
+        outputNameLabel.getStyleClass().add("sk-t2");
+        outputNameLabel.setStyle("-fx-font-size: 12px;");
         outputNameField.setStyle(textFieldStyle());
         outputNameField.setMaxWidth(Double.MAX_VALUE);
 
         // 5. Output directory
         Label outputDirLabel = new Label(I18n.get("builtin.pdf.split.output.dir"));
-        outputDirLabel.setStyle(
-                "-fx-text-fill: rgba(255,255,255,0.60);" +
-                "-fx-font-size: 12px;"
-        );
+        outputDirLabel.getStyleClass().add("sk-t2");
+        outputDirLabel.setStyle("-fx-font-size: 12px;");
         outputDirField.setStyle(textFieldStyle());
         outputDirField.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(outputDirField, Priority.ALWAYS);
 
         Button browseDirBtn = new Button(I18n.get("button.browse"));
+        browseDirBtn.getStyleClass().addAll("sk-surface-soft", "sk-outlined", "sk-t1");
         browseDirBtn.setStyle(secondaryBtnStyle());
         browseDirBtn.setOnAction(e -> browseOutputDir());
 
@@ -106,17 +99,15 @@ class PdfMergePane extends VBox {
         progressBar.setVisible(false);
         progressBar.setMaxWidth(Double.MAX_VALUE);
         progressBar.setPrefHeight(6);
+        progressBar.getStyleClass().add("sk-surface-soft");
         progressBar.setStyle(
                 "-fx-accent: #4a9eff;" +
-                "-fx-background-color: rgba(255,255,255,0.08);" +
                 "-fx-background-radius: 3;"
         );
 
         // 7. Result label
-        resultLabel.setStyle(
-                "-fx-text-fill: rgba(255,255,255,0.50);" +
-                "-fx-font-size: 12px;"
-        );
+        resultLabel.getStyleClass().add("sk-t2");
+        resultLabel.setStyle("-fx-font-size: 12px;");
         resultLabel.setWrapText(true);
         resultLabel.setMaxWidth(Double.MAX_VALUE);
 
@@ -145,19 +136,19 @@ class PdfMergePane extends VBox {
         zone.setAlignment(Pos.CENTER);
         zone.setPrefHeight(120);
         zone.setSpacing(10);
+        zone.getStyleClass().addAll("sk-surface-soft", "sk-outlined");
         zone.setStyle(dropZoneStyle(false));
 
         Label icon = new Label("📂"); // 📂
         icon.setStyle("-fx-font-size: 28px;");
 
         Label hint = new Label(I18n.get("builtin.pdf.drop.hint"));
-        hint.setStyle(
-                "-fx-text-fill: rgba(255,255,255,0.45);" +
-                "-fx-font-size: 13px;"
-        );
+        hint.getStyleClass().add("sk-t2");
+        hint.setStyle("-fx-font-size: 13px;");
         hint.setWrapText(true);
 
         Button addBtn = new Button(I18n.get("builtin.pdf.merge.add"));
+        addBtn.getStyleClass().addAll("sk-surface-soft", "sk-outlined", "sk-t1");
         addBtn.setStyle(secondaryBtnStyle());
         addBtn.setOnAction(e -> browseFiles());
 
@@ -244,27 +235,20 @@ class PdfMergePane extends VBox {
         HBox row = new HBox();
         row.setAlignment(Pos.CENTER_LEFT);
         row.setPadding(new Insets(8, 10, 8, 10));
-        row.setStyle(
-                "-fx-border-color: transparent transparent rgba(255,255,255,0.06) transparent;" +
-                "-fx-border-width: 0 0 1 0;"
-        );
+        row.setStyle("-fx-border-width: 0 0 1 0;");
 
         // File name
         Label nameLabel = new Label(path.getFileName().toString());
-        nameLabel.setStyle(
-                "-fx-text-fill: rgba(255,255,255,0.80);" +
-                "-fx-font-size: 14px;"
-        );
+        nameLabel.getStyleClass().add("sk-t1");
+        nameLabel.setStyle("-fx-font-size: 14px;");
         nameLabel.setWrapText(false);
         nameLabel.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(nameLabel, Priority.ALWAYS);
 
         // Pages label
         Label pageLabel = new Label(pages + " pages");
-        pageLabel.setStyle(
-                "-fx-text-fill: rgba(255,255,255,0.40);" +
-                "-fx-font-size: 12px;"
-        );
+        pageLabel.getStyleClass().add("sk-t3");
+        pageLabel.setStyle("-fx-font-size: 12px;");
         pageLabel.setMinWidth(60);
         pageLabel.setAlignment(Pos.CENTER_RIGHT);
 
@@ -353,7 +337,7 @@ class PdfMergePane extends VBox {
         progressBar.progressProperty().bind(worker.progressProperty());
         startButton.setDisable(true);
         resultLabel.setText("");
-        resultLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.50); -fx-font-size: 12px;");
+        resultLabel.setStyle("-fx-font-size: 12px;");
 
         worker.setOnSucceeded(e -> Platform.runLater(() -> {
             progressBar.setVisible(false);
@@ -398,9 +382,7 @@ class PdfMergePane extends VBox {
                    "-fx-border-width: 1; -fx-border-style: dashed;" +
                    "-fx-border-radius: 10; -fx-background-radius: 10;";
         }
-        return "-fx-background-color: rgba(255,255,255,0.02);" +
-               "-fx-border-color: rgba(255,255,255,0.15);" +
-               "-fx-border-width: 1; -fx-border-style: dashed;" +
+        return "-fx-border-width: 1; -fx-border-style: dashed;" +
                "-fx-border-radius: 10; -fx-background-radius: 10;";
     }
 
@@ -410,14 +392,12 @@ class PdfMergePane extends VBox {
                "-fx-text-fill: white;" +
                "-fx-font-size: 13px;" +
                "-fx-padding: 8 12 8 12;" +
-               "-fx-border-color: rgba(255,255,255,0.10);" +
                "-fx-border-width: 1; -fx-border-radius: 6;";
     }
 
     private static String secondaryBtnStyle() {
-        return "-fx-background-color: rgba(255,255,255,0.07);" +
-               "-fx-border-color: rgba(255,255,255,0.12); -fx-border-width: 1;" +
-               "-fx-text-fill: rgba(255,255,255,0.75); -fx-font-size: 13px;" +
+        return "-fx-border-width: 1;" +
+               "-fx-font-size: 13px;" +
                "-fx-background-radius: 6; -fx-border-radius: 6;" +
                "-fx-padding: 8 16 8 16; -fx-cursor: hand;";
     }

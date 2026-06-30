@@ -87,12 +87,14 @@ public final class AboutDialog {
 
     private HBox buildHeader() {
         Label title = new Label(I18n.get("about.title"));
-        title.setStyle("-fx-text-fill: rgba(255,255,255,0.98); -fx-font-size: 17px; -fx-font-weight: bold;");
+        title.getStyleClass().add("sk-t1");
+        title.setStyle("-fx-font-size: 17px; -fx-font-weight: bold;");
         title.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(title, Priority.ALWAYS);
 
         Button close = new Button("×");
-        close.setStyle("-fx-background-color: transparent; -fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 16px; -fx-cursor: hand;");
+        close.getStyleClass().add("sk-t2");
+        close.setStyle("-fx-background-color: transparent; -fx-font-size: 16px; -fx-cursor: hand;");
         close.setOnAction(e -> dialog.close());
 
         HBox header = new HBox(0, title, close);
@@ -103,7 +105,8 @@ public final class AboutDialog {
     /** A label:value row where the value is plain text. */
     private HBox row(String key, String value) {
         Label v = new Label(value);
-        v.setStyle("-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 13px;");
+        v.getStyleClass().add("sk-t1");
+        v.setStyle("-fx-font-size: 13px;");
         v.setWrapText(true);
         v.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(v, Priority.ALWAYS);
@@ -122,7 +125,8 @@ public final class AboutDialog {
 
     private Label fieldKeyLabel(String key) {
         Label l = new Label(key);
-        l.setStyle("-fx-text-fill: rgba(255,255,255,0.50); -fx-font-size: 12px; -fx-font-weight: bold;");
+        l.getStyleClass().add("sk-t2");
+        l.setStyle("-fx-font-size: 12px; -fx-font-weight: bold;");
         l.setMinWidth(90);
         return l;
     }

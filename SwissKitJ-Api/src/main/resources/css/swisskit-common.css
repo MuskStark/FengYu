@@ -108,6 +108,21 @@
 /* ── Separator 控件(水平/竖直分割线)─────────────────────────── */
 .separator .line { -fx-background-color: -sk-border; -fx-border-color: transparent; }
 
+/* ── 通用主题感知工具类 ─────────────────────────────────────────
+   供那些用内联 setStyle、无法引用 -sk-* token 的代码使用:
+   把"颜色"挪到这里的 class,其余属性(字号/padding…)留在内联即可。
+   节点可同时带 class + 内联 setStyle:内联只覆盖它写了的属性,
+   class 负责颜色 → 切主题时 token 自动重算。                     */
+.sk-t1 { -fx-text-fill: -sk-text; }            /* 主文本(原 rgba 0.85~0.98) */
+.sk-t2 { -fx-text-fill: -sk-text-secondary; }  /* 次要文本/标签(原 rgba 0.50~0.70) */
+.sk-t3 { -fx-text-fill: -sk-text-disabled; }   /* 提示/弱化文本(原 rgba 0.25~0.40) */
+.sk-fill-2 { -fx-fill: -sk-text-secondary; }   /* Text/Shape 填充(次要) */
+.sk-fill-3 { -fx-fill: -sk-text-disabled; }    /* Text/Shape 填充(弱化) */
+.sk-surface { -fx-background-color: -sk-bg-elevated; }
+.sk-surface-soft { -fx-background-color: -sk-bg-hover; }
+.sk-outlined { -fx-border-color: -sk-border; }            /* 配合内联 -fx-border-width/radius 使用 */
+.sk-outlined-strong { -fx-border-color: -sk-border-strong; }
+
 /* ── 对话框(独立 Stage) ──────────────────────────────────────── */
 .sk-dialog {
     -fx-background-color: -sk-bg-elevated;
