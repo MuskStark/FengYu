@@ -9,7 +9,6 @@ import fan.summer.ui.about.AboutDialog;
 import fan.summer.ui.content.ContentArea;
 import fan.summer.ui.setting.SwissKitJSettingUi;
 import fan.summer.ui.sidebar.Sidebar;
-import fan.summer.ui.titlebar.TitleBar;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.buildintool.ai.AiChatPlugin;
 import javafx.animation.*;
@@ -20,7 +19,6 @@ import javafx.scene.Node;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
-import javafx.scene.shape.Rectangle;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 import org.slf4j.Logger;
@@ -33,18 +31,16 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Root node of the main window that assembles the complete SwissKitJ UI.
- * Composes TitleBar, Sidebar, ContentArea, and StatusBar into a single
- * glassmorphism-styled container, and owns the lifecycle for PluginLoader
+ * Composes Sidebar, ContentArea, and StatusBar into a single
+ * themed IDEA-New-UI container, and owns the lifecycle for PluginLoader
  * and PluginRegistry.
  * <p>
- * The window displays animated background orbs for visual depth, and
- * wires up navigation events from the Sidebar to the ContentArea, including
- * tool launching and the AI chat panel. A live clock is displayed in the
- * status bar at the bottom.
+ * The window wires up navigation events from the Sidebar to the ContentArea,
+ * including tool launching and the AI chat panel. A live clock is displayed
+ * in the status bar at the bottom.
  *
  * @see ContentArea
  * @see Sidebar
- * @see TitleBar
  * @since 1.0
  */
 public class MainWindow extends StackPane {
@@ -57,7 +53,6 @@ public class MainWindow extends StackPane {
     private final FavoriteService favoriteService;
     private BorderPane windowPane;
 
-    private final TitleBar    titleBar;
     private final Sidebar     sidebar;
     private final ContentArea contentArea;
     private SwissKitJPlugin  aiChatPlugin;
@@ -88,7 +83,6 @@ public class MainWindow extends StackPane {
         this.registry = registry;
         this.favoriteService = favoriteService;
 
-        titleBar    = new TitleBar(stage, this::openSettings);
         sidebar     = new Sidebar();
         contentArea = new ContentArea();
         contentArea.setRegistry(registry);
@@ -129,26 +123,10 @@ public class MainWindow extends StackPane {
     // ── Build scene graph ────────────────────────────────
 
     private void buildScene() {
-        // Background orb layer (bottom layer)
-        Pane orbLayer = buildOrbLayer();
-
-        // Main window glass panel
         windowPane = new BorderPane();
         windowPane.setMaxWidth(Double.MAX_VALUE);
         windowPane.setMaxHeight(Double.MAX_VALUE);
         windowPane.getStyleClass().add("app-root");
-        windowPane.setStyle(
-            "-fx-background-color: rgba(13,14,17,0.72);" +
-            "-fx-background-radius: 20;" +
-            "-fx-border-radius: 20;" +
-            "-fx-border-color: rgba(255,255,255,0.10);" +
-            "-fx-border-width: 1;" +
-            "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.6), 60, 0, 0, 20);"
-        );
-
-        // Title bar
-        BorderPane.setAlignment(titleBar, Pos.TOP_LEFT);
-        windowPane.setTop(titleBar);
 
         // Body: sidebar + content area
         HBox body = new HBox(sidebar, contentArea);
@@ -161,76 +139,7 @@ public class MainWindow extends StackPane {
         BorderPane.setAlignment(statusBar, Pos.BOTTOM_LEFT);
         windowPane.setBottom(statusBar);
 
-        // Top highlight border (glass thickness simulation)
-        Rectangle topHighlight = new Rectangle();
-        topHighlight.setMouseTransparent(true);
-        topHighlight.setArcWidth(40);
-        topHighlight.setArcHeight(40);
-        topHighlight.setStyle(
-            "-fx-fill: transparent;" +
-            "-fx-stroke: rgba(255,255,255,0.12);" +
-            "-fx-stroke-width: 1;"
-        );
-        topHighlight.widthProperty().bind(widthProperty());
-        topHighlight.heightProperty().bind(heightProperty());
-
-        getChildren().addAll(orbLayer, windowPane, topHighlight);
-        setAlignment(topHighlight, Pos.CENTER);
-
-        // Clip whole window to rounded rectangle so the dark orbLayer behind
-        // never bleeds outside the rounded corners on any platform.
-        Rectangle windowClip = new Rectangle();
-        windowClip.setArcWidth(40);
-        windowClip.setArcHeight(40);
-        windowClip.widthProperty().bind(widthProperty());
-        windowClip.heightProperty().bind(heightProperty());
-        setClip(windowClip);
-    }
-
-    // ── Background orbs ───────────────────────────────────
-
-    private Pane buildOrbLayer() {
-        Pane layer = new Pane();
-        layer.setMouseTransparent(true);
-        layer.setStyle("-fx-background-color: #0d0e11;");
-
-        // Three colored Gaussian blur orbs
-        layer.getChildren().addAll(
-            orb(480, "#3b5bdb", -80, -120, 0),
-            orb(360, "#7048e8",  -60, 200,  -6000),
-            orb(300, "#1c7ed6",  300, 400, -12000)
-        );
-        return layer;
-    }
-
-    private StackPane orb(double size, String color, double x, double y, double animDelay) {
-        Circle c = new Circle(size / 2,
-            Color.web(color, 0.28));
-        c.setEffect(new javafx.scene.effect.GaussianBlur(60));
-
-        StackPane wrap = new StackPane(c);
-        wrap.setTranslateX(x);
-        wrap.setTranslateY(y);
-        wrap.setMouseTransparent(true);
-
-        // Floating animation
-        TranslateTransition drift = new TranslateTransition(Duration.millis(18000), wrap);
-        drift.setByX(30); drift.setByY(20);
-        drift.setAutoReverse(true);
-        drift.setCycleCount(Animation.INDEFINITE);
-        drift.setDelay(Duration.millis(Math.abs(animDelay)));
-        drift.setInterpolator(Interpolator.EASE_BOTH);
-        drift.play();
-
-        ScaleTransition breathe = new ScaleTransition(Duration.millis(12000), wrap);
-        breathe.setFromX(1.0); breathe.setFromY(1.0);
-        breathe.setToX(1.08);  breathe.setToY(1.08);
-        breathe.setAutoReverse(true);
-        breathe.setCycleCount(Animation.INDEFINITE);
-        breathe.setInterpolator(Interpolator.EASE_BOTH);
-        breathe.play();
-
-        return wrap;
+        getChildren().setAll(windowPane);
     }
 
     // ── Status bar ───────────────────────────────────────
@@ -401,30 +310,10 @@ public class MainWindow extends StackPane {
 
     private void playEntryAnimation() {
         windowPane.setOpacity(0);
-        windowPane.setScaleX(0.94);
-        windowPane.setScaleY(0.94);
-        windowPane.setTranslateY(16);
-
-        FadeTransition ft = new FadeTransition(Duration.millis(500), windowPane);
+        FadeTransition ft = new FadeTransition(Duration.millis(250), windowPane);
         ft.setToValue(1);
-
-        ScaleTransition st = new ScaleTransition(Duration.millis(500), windowPane);
-        st.setToX(1); st.setToY(1);
-        st.setInterpolator(Interpolator.SPLINE(0.34, 0.9, 0.64, 1.0));
-
-        TranslateTransition tt = new TranslateTransition(Duration.millis(500), windowPane);
-        tt.setToY(0);
-        tt.setInterpolator(Interpolator.SPLINE(0.34, 0.9, 0.64, 1.0));
-
-        ParallelTransition entry = new ParallelTransition(ft, st, tt);
-        entry.setOnFinished(e -> {
-            // Ensure full visibility after animation
-            windowPane.setOpacity(1);
-            windowPane.setScaleX(1);
-            windowPane.setScaleY(1);
-            windowPane.setTranslateY(0);
-        });
-        entry.play();
+        ft.setOnFinished(e -> windowPane.setOpacity(1));
+        ft.play();
     }
 
     // ── Clock ────────────────────────────────────────────
