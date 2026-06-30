@@ -456,7 +456,7 @@ public class ContentArea extends BorderPane {
         HBox row = new HBox(titleLabel, spacer);
         if (!action.isEmpty()) {
             Label actionLabel = new Label(action);
-            actionLabel.setStyle("-fx-text-fill: #5b8cf7; -fx-font-size: 12px; -fx-cursor: hand;");
+            actionLabel.setStyle("-fx-text-fill: #3574F0; -fx-font-size: 12px; -fx-cursor: hand;");
             row.getChildren().add(actionLabel);
         }
         row.setAlignment(Pos.CENTER_LEFT);

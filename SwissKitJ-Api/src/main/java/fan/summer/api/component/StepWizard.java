@@ -81,7 +81,7 @@ public class StepWizard extends BorderPane {
     private Label  stepHint;
 
     // ── Colour constants ──────────────────────────────────
-    private static final String ACCENT     = "#5b8cf7";
+    private static final String ACCENT     = "#3574F0";
     private static final String DONE_COLOR = "#4cd97b";
     private static final String IDLE_COLOR = "rgba(255,255,255,0.15)";
 
@@ -273,15 +273,15 @@ public class StepWizard extends BorderPane {
         Button btn = new Button(text);
         if (primary) {
             btn.setStyle(
-                "-fx-background-color: #5b8cf7; -fx-text-fill: white;" +
+                "-fx-background-color: #3574F0; -fx-text-fill: white;" +
                 "-fx-font-size: 13px; -fx-font-weight: 500;" +
                 "-fx-background-radius: 8; -fx-border-width: 0;" +
                 "-fx-padding: 9 20 9 20; -fx-cursor: hand;"
             );
             btn.setOnMouseEntered(e -> btn.setStyle(btn.getStyle()
-                .replace("#5b8cf7", "#4a7bf5")));
+                .replace("#3574F0", "#2E66D8")));
             btn.setOnMouseExited(e -> btn.setStyle(btn.getStyle()
-                .replace("#4a7bf5", "#5b8cf7")));
+                .replace("#2E66D8", "#3574F0")));
         } else {
             btn.setStyle(
                 "-fx-background-color: rgba(255,255,255,0.07);" +

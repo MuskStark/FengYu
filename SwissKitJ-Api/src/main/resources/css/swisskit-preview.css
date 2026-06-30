@@ -56,7 +56,7 @@
 .preview-search-bar:focused-within {
     -fx-background-color: rgba(255,255,255,0.085);
     -fx-border-color: rgba(255,255,255,0.22);
-    -fx-effect: dropshadow(gaussian, rgba(91,140,247,0.35), 10, 0, 0, 0);
+    -fx-effect: dropshadow(gaussian, rgba(53,116,240,0.35), 10, 0, 0, 0);
 }
 .preview-search-field {
     -fx-background-color: transparent;
@@ -102,11 +102,11 @@
     -fx-text-fill: rgba(255,255,255,1);
 }
 .preview-nav-item.active {
-    -fx-background-color: rgba(91,140,247,0.18);
-    -fx-border-color: rgba(91,140,247,0.25);
+    -fx-background-color: rgba(53,116,240,0.18);
+    -fx-border-color: rgba(53,116,240,0.25);
 }
 .preview-nav-item.active .preview-nav-item-text {
-    -fx-text-fill: #5b8cf7;
+    -fx-text-fill: #3574F0;
     -fx-font-weight: 500;
 }
 
@@ -162,7 +162,7 @@
     -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.35), 18, 0, -4, 0);
 }
 .preview-launch-btn {
-    -fx-background-color: #5b8cf7;
+    -fx-background-color: #3574F0;
     -fx-text-fill: white;
     -fx-font-weight: 500;
     -fx-background-radius: 8px;
@@ -172,8 +172,8 @@
     -fx-cursor: hand;
 }
 .preview-launch-btn:hover {
-    -fx-background-color: #4a7bf5;
-    -fx-effect: dropshadow(gaussian, rgba(91,140,247,0.4), 12, 0, 0, 3);
+    -fx-background-color: #2E66D8;
+    -fx-effect: dropshadow(gaussian, rgba(53,116,240,0.4), 12, 0, 0, 3);
     -fx-translate-y: -1px;
 }
 .preview-launch-btn:pressed {

@@ -22,13 +22,13 @@ public final class UiUtils {
     // ── Glass button styles ─────────────────────────────────────
 
     private static final String PRIMARY_BTN_STYLE =
-        "-fx-background-color: #5b8cf7; -fx-text-fill: white;" +
+        "-fx-background-color: #3574F0; -fx-text-fill: white;" +
         "-fx-font-size: 13px; -fx-font-weight: 500;" +
         "-fx-background-radius: 8; -fx-border-width: 0;" +
         "-fx-padding: 9 18 9 18; -fx-cursor: hand;";
 
     private static final String PRIMARY_BTN_HOVER =
-        "-fx-background-color: #4a7bf5; -fx-text-fill: white;" +
+        "-fx-background-color: #2E66D8; -fx-text-fill: white;" +
         "-fx-font-size: 13px; -fx-font-weight: 500;" +
         "-fx-background-radius: 8; -fx-border-width: 0;" +
         "-fx-padding: 9 18 9 18; -fx-cursor: hand;";

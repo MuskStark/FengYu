@@ -273,16 +273,16 @@ public class RichTextEditor extends VBox {
                 "  line-height: 1.6;" +
                 "  background: transparent;" +
                 "  color: rgba(255,255,255,0.90);" +
-                "  caret-color: #5b8cf7;" +
+                "  caret-color: #3574F0;" +
                 "  white-space: pre-wrap;" +
                 "}" +
                 "#editor:empty:before {" +
                 "  content: attr(data-placeholder);" +
                 "  color: rgba(255,255,255,0.30);" +
                 "}" +
-                "#editor a { color: #5b8cf7; }" +
-                "#editor blockquote { border-left: 3px solid #5b8cf7; margin: 8px 0; padding-left: 12px; color: rgba(255,255,255,0.65); }" +
-                "::selection { background: rgba(91,140,247,0.45); }" +
+                "#editor a { color: #3574F0; }" +
+                "#editor blockquote { border-left: 3px solid #3574F0; margin: 8px 0; padding-left: 12px; color: rgba(255,255,255,0.65); }" +
+                "::selection { background: rgba(53,116,240,0.45); }" +
                 "</style></head><body>" +
                 "<div id='editor' contenteditable='true' data-placeholder='在此输入邮件正文，可使用上方工具栏设置格式...'></div>" +
                 "<script>" +

@@ -246,7 +246,9 @@ public class Sidebar extends VBox {
             setSpacing(10);
             setPrefHeight(34);
 
-            iconNode = MdiIconUtil.createIcon(mdiIcon, 16, "-fx-fill: rgba(255,255,255,0.75);");
+            // NOTE(theme): inline-styled icon fills can't reference -sk-* tokens, so these use the dark-palette
+            // hexes. Icons won't follow the light theme in v3.2.0 (dark default). TODO(theme): move fill to CSS.
+            iconNode = MdiIconUtil.createIcon(mdiIcon, 16, "-fx-fill: #9AA0A6;");
             iconNode.getStyleClass().add("nav-item-icon");
 
             textLabel = new Label(label);
@@ -263,10 +265,10 @@ public class Sidebar extends VBox {
 
             // Hover: brighten icon (inline style overrides CSS, so we handle via Java)
             setOnMouseEntered(e -> {
-                if (!active) iconNode.setStyle("-fx-fill: rgba(255,255,255,1);");
+                if (!active) iconNode.setStyle("-fx-fill: #D0D0D0;");
             });
             setOnMouseExited(e -> {
-                if (!active) iconNode.setStyle("-fx-fill: rgba(255,255,255,0.75);");
+                if (!active) iconNode.setStyle("-fx-fill: #9AA0A6;");
             });
         }
 
@@ -294,7 +296,7 @@ public class Sidebar extends VBox {
             this.active = active;
             if (active) {
                 getStyleClass().add("active");
-                iconNode.setStyle("-fx-fill: #5b8cf7;");
+                iconNode.setStyle("-fx-fill: #3574F0;");
                 ScaleTransition st = new ScaleTransition(Duration.millis(160), this);
                 st.setFromX(0.97); st.setFromY(0.97);
                 st.setToX(1.0); st.setToY(1.0);
@@ -302,7 +304,7 @@ public class Sidebar extends VBox {
                 st.play();
             } else {
                 getStyleClass().remove("active");
-                iconNode.setStyle("-fx-fill: rgba(255,255,255,0.75);");
+                iconNode.setStyle("-fx-fill: #9AA0A6;");
             }
         }
 

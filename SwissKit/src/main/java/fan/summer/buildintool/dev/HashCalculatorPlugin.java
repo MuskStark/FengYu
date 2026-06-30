@@ -70,7 +70,7 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
         TextArea input = styledTextArea("Input text...");
         VBox results   = new VBox(8);
 
-        Button calcBtn = actionButton(I18n.get("builtin.hash.calculate"), "#5b8cf7");
+        Button calcBtn = actionButton(I18n.get("builtin.hash.calculate"), "#3574F0");
         calcBtn.setOnAction(e -> {
             log.info("Calculate hash button clicked");
             results.getChildren().clear();
@@ -159,7 +159,7 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
             "-fx-border-radius: 10; -fx-background-radius: 10;" +
             "-fx-text-fill: rgba(255,255,255,0.88);" +
             "-fx-font-size: 13px; -fx-font-family: 'SF Mono','Consolas',monospace;" +
-            "-fx-control-inner-background: transparent; -fx-highlight-fill: #5b8cf7;" +
+            "-fx-control-inner-background: transparent; -fx-highlight-fill: #3574F0;" +
             "-fx-padding: 12;"
         );
         ta.setWrapText(true);

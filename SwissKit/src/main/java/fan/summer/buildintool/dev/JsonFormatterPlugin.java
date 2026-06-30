@@ -60,7 +60,7 @@ public class JsonFormatterPlugin implements SwissKitJPlugin {
         TextArea output = styledTextArea("");
         output.setEditable(false);
 
-        Button formatBtn  = actionButton(I18n.get("builtin.json.format"),  "#5b8cf7");
+        Button formatBtn  = actionButton(I18n.get("builtin.json.format"),  "#3574F0");
         Button compactBtn = actionButton(I18n.get("builtin.json.compress"), "rgba(255,255,255,0.12)");
         Button clearBtn   = actionButton("Clear",   "rgba(255,255,255,0.08)");
 
@@ -158,7 +158,7 @@ public class JsonFormatterPlugin implements SwissKitJPlugin {
             "-fx-border-radius: 10; -fx-background-radius: 10;" +
             "-fx-text-fill: rgba(255,255,255,0.88);" +
             "-fx-font-size: 13px; -fx-font-family: 'SF Mono','Consolas',monospace;" +
-            "-fx-control-inner-background: transparent; -fx-highlight-fill: #5b8cf7;" +
+            "-fx-control-inner-background: transparent; -fx-highlight-fill: #3574F0;" +
             "-fx-padding: 12;"
         );
         ta.setWrapText(true);

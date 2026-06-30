@@ -648,8 +648,8 @@ public class AiChatPlugin implements SwissKitJPlugin {
                 for (Attachment att : attachments) {
                     Label chip = new Label("📄 " + att.name() + "  " + humanSize(att.sizeBytes()));
                     chip.setStyle(
-                        "-fx-background-color: rgba(91,140,247,0.15);" +
-                        "-fx-border-color: rgba(91,140,247,0.25);" +
+                        "-fx-background-color: rgba(53,116,240,0.15);" +
+                        "-fx-border-color: rgba(53,116,240,0.25);" +
                         "-fx-border-width: 1px; -fx-border-radius: 10px; -fx-background-radius: 10px;" +
                         "-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 11px; -fx-padding: 3 8 3 8;"
                     );
@@ -664,8 +664,8 @@ public class AiChatPlugin implements SwissKitJPlugin {
                 bubble.setWrapText(true);
                 bubble.setMaxWidth(560);
                 bubble.setStyle(
-                    "-fx-background-color: rgba(91,140,247,0.22);" +
-                    "-fx-border-color: rgba(91,140,247,0.18);" +
+                    "-fx-background-color: rgba(53,116,240,0.22);" +
+                    "-fx-border-color: rgba(53,116,240,0.18);" +
                     "-fx-border-width: 1px; -fx-border-radius: 14px; -fx-background-radius: 14px;" +
                     "-fx-text-fill: rgba(255,255,255,0.95); -fx-font-size: 13.5px; -fx-padding: 10 16 10 16;"
                 );

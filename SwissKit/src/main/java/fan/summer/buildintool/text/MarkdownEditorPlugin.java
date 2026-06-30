@@ -68,7 +68,7 @@ public class MarkdownEditorPlugin implements SwissKitJPlugin {
                 "background:transparent;padding:16px;font-size:14px;line-height:1.7;}" +
                 "code{background:rgba(255,255,255,0.1);border-radius:4px;padding:2px 6px;" +
                 "font-family:monospace;}" +
-                "blockquote{border-left:3px solid #5b8cf7;margin:0;padding-left:16px;" +
+                "blockquote{border-left:3px solid #3574F0;margin:0;padding-left:16px;" +
                 "color:rgba(255,255,255,0.5);}" +
                 "h1,h2,h3{color:rgba(255,255,255,0.95);}" +
                 "</style></head><body>" + html + "</body></html>";
@@ -127,7 +127,7 @@ public class MarkdownEditorPlugin implements SwissKitJPlugin {
             "-fx-border-radius: 10; -fx-background-radius: 10;" +
             "-fx-text-fill: rgba(255,255,255,0.88);" +
             "-fx-font-size: 13px; -fx-font-family: 'SF Mono','Consolas',monospace;" +
-            "-fx-control-inner-background: transparent; -fx-highlight-fill: #5b8cf7;" +
+            "-fx-control-inner-background: transparent; -fx-highlight-fill: #3574F0;" +
             "-fx-padding: 12;"
         );
         ta.setWrapText(true);

@@ -653,7 +653,7 @@ public class EmailPlugin implements SwissKitJPlugin {
         Button btn = new Button(text);
         if (primary) {
             btn.setStyle(
-                    "-fx-background-color: #5b8cf7; -fx-text-fill: white; -fx-font-size: 13px;" +
+                    "-fx-background-color: #3574F0; -fx-text-fill: white; -fx-font-size: 13px;" +
                     "-fx-font-weight: 500; -fx-background-radius: 8; -fx-border-width: 0;" +
                     "-fx-padding: 9 18 9 18; -fx-cursor: hand;"
             );

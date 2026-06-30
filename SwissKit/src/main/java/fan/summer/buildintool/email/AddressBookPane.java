@@ -146,7 +146,7 @@ public class AddressBookPane extends VBox {
 
         for (Map.Entry<String, List<String>> entry : byTag.entrySet()) {
             Label tagLabel = new Label(entry.getKey());
-            tagLabel.setStyle("-fx-text-fill: #5b8cf7; -fx-font-size: 11px; -fx-font-weight: bold;");
+            tagLabel.setStyle("-fx-text-fill: #3574F0; -fx-font-size: 11px; -fx-font-weight: bold;");
             content.getChildren().add(tagLabel);
 
             for (String contact : entry.getValue()) {

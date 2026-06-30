@@ -72,8 +72,8 @@ class PdfConvertPane extends VBox {
 
         Button selectBtn = new Button(I18n.get("builtin.pdf.select.files"));
         selectBtn.setStyle(
-            "-fx-background-color: rgba(91,140,247,0.15);" +
-            "-fx-text-fill: #5b8cf7; -fx-font-size: 13px;" +
+            "-fx-background-color: rgba(53,116,240,0.15);" +
+            "-fx-text-fill: #3574F0; -fx-font-size: 13px;" +
             "-fx-background-radius: 6; -fx-border-width: 0;" +
             "-fx-padding: 8 18 8 18; -fx-cursor: hand;"
         );
@@ -351,8 +351,8 @@ class PdfConvertPane extends VBox {
     }
 
     private static String dropHighlightStyle() {
-        return "-fx-background-color: rgba(91,140,247,0.08);" +
-               "-fx-border-color: rgba(91,140,247,0.40);" +
+        return "-fx-background-color: rgba(53,116,240,0.08);" +
+               "-fx-border-color: rgba(53,116,240,0.40);" +
                "-fx-border-width: 1; -fx-border-style: dashed;" +
                "-fx-border-radius: 10; -fx-background-radius: 10;";
     }

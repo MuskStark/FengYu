@@ -393,8 +393,8 @@ class PdfMergePane extends VBox {
 
     private static String dropZoneStyle(boolean highlight) {
         if (highlight) {
-            return "-fx-background-color: rgba(91,140,247,0.08);" +
-                   "-fx-border-color: rgba(91,140,247,0.35);" +
+            return "-fx-background-color: rgba(53,116,240,0.08);" +
+                   "-fx-border-color: rgba(53,116,240,0.35);" +
                    "-fx-border-width: 1; -fx-border-style: dashed;" +
                    "-fx-border-radius: 10; -fx-background-radius: 10;";
         }
