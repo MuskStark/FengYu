@@ -154,7 +154,7 @@ public class MainWindow extends StackPane {
         pulse.play();
 
         Label sep = statusText("·");
-        sep.setStyle("-fx-text-fill: rgba(255,255,255,0.15); -fx-font-size: 11px;");
+        sep.getStyleClass().add("status-sep");
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);

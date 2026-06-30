@@ -219,29 +219,18 @@ public class ContentArea extends BorderPane {
 
     private HBox buildBackBar() {
         Label backBtn = new Label("← " + I18n.get("content.back"));
-        backBtn.setStyle(
-            "-fx-text-fill: rgba(255,255,255,0.70); -fx-font-size: 13px;" +
-            "-fx-cursor: hand; -fx-padding: 4 10 4 0;"
-        );
-        backBtn.setOnMouseEntered(e ->
-            backBtn.setStyle("-fx-text-fill: rgba(255,255,255,1); -fx-font-size: 13px;" +
-                             "-fx-cursor: hand; -fx-padding: 4 10 4 0;")
-        );
-        backBtn.setOnMouseExited(e ->
-            backBtn.setStyle("-fx-text-fill: rgba(255,255,255,0.70); -fx-font-size: 13px;" +
-                             "-fx-cursor: hand; -fx-padding: 4 10 4 0;")
-        );
+        backBtn.getStyleClass().add("back-btn");
+        // Hover highlight is handled in CSS (.back-btn:hover) so it follows the theme.
         backBtn.setOnMouseClicked(e -> {
             if (onBack != null) onBack.run();
             showToolGrid();
         });
 
         Label sep = new Label("/");
-        sep.setStyle("-fx-text-fill: rgba(255,255,255,0.25); -fx-font-size: 13px; -fx-padding: 4 6 4 0;");
+        sep.getStyleClass().add("back-sep");
 
         Label titleLabel = new Label();
         titleLabel.getStyleClass().add("back-title");
-        titleLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.90); -fx-font-size: 13px; -fx-font-weight: bold;");
 
         HBox bar = new HBox(6, backBtn, sep, titleLabel);
         bar.setAlignment(Pos.CENTER_LEFT);
@@ -251,7 +240,7 @@ public class ContentArea extends BorderPane {
 
     private HBox buildSearchBar() {
         Label searchIcon = new Label("🔍");
-        searchIcon.setStyle("-fx-font-size: 13px; -fx-text-fill: rgba(255,255,255,0.28);");
+        searchIcon.getStyleClass().add("search-icon");
 
         searchField.getStyleClass().add("search-field");
         searchField.setPromptText(I18n.get("content.search.prompt"));
@@ -265,13 +254,7 @@ public class ContentArea extends BorderPane {
         });
 
         Label kbdHint = new Label("⌘K");
-        kbdHint.setStyle(
-            "-fx-font-size: 10px; -fx-text-fill: rgba(255,255,255,0.28);" +
-            "-fx-background-color: rgba(255,255,255,0.06);" +
-            "-fx-border-color: rgba(255,255,255,0.10); -fx-border-width: 1;" +
-            "-fx-border-radius: 4; -fx-background-radius: 4;" +
-            "-fx-padding: 1 5 1 5; -fx-font-family: 'SF Mono','Consolas',monospace;"
-        );
+        kbdHint.getStyleClass().add("search-kbd");
 
         HBox bar = new HBox(10, searchIcon, searchField, kbdHint);
         bar.getStyleClass().add("search-bar");

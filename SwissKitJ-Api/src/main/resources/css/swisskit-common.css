@@ -105,6 +105,9 @@
 .section-title  { -fx-text-fill: -sk-text-secondary; -fx-font-size: 11px; -fx-font-weight: bold; }
 .section-header { -fx-text-fill: -sk-text; -fx-font-size: 15px; -fx-font-weight: 500; }
 
+/* ── Separator 控件(水平/竖直分割线)─────────────────────────── */
+.separator .line { -fx-background-color: -sk-border; -fx-border-color: transparent; }
+
 /* ── 对话框(独立 Stage) ──────────────────────────────────────── */
 .sk-dialog {
     -fx-background-color: -sk-bg-elevated;
