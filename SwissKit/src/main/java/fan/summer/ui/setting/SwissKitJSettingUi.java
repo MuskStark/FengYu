@@ -219,7 +219,7 @@ public class SwissKitJSettingUi {
 
         ComboBox<String> langCombo = new ComboBox<>(FXCollections.observableArrayList("中文", "English"));
         langCombo.setValue(getCurrentLanguageLabel());
-        langCombo.getStyleClass().add("glass-combo");
+        langCombo.getStyleClass().add("sk-combo");
         langCombo.setMaxWidth(200);
         langCombo.setOnAction(e -> {
             String selected = langCombo.getValue();
@@ -369,7 +369,7 @@ public class SwissKitJSettingUi {
                 I18n.get("setting.ai.mode.anthropic")
             )
         );
-        modeCombo.getStyleClass().add("glass-combo");
+        modeCombo.getStyleClass().add("sk-combo");
         modeCombo.setMaxWidth(250);
         loadAiSetting(AI_MODE_KEY, val -> {
             String label = switch (val) {
@@ -453,7 +453,7 @@ public class SwissKitJSettingUi {
 
         Spinner<Integer> maxTokensSpinner = new Spinner<>();
         maxTokensSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(64, 4096, LocalChatBackend.QWEN3_MIN_MAX_TOKENS, 64));
-        maxTokensSpinner.getStyleClass().add("glass-field");
+        maxTokensSpinner.getStyleClass().add("sk-field");
         maxTokensSpinner.setPrefWidth(120);
         maxTokensSpinner.valueProperty().addListener((obs, oldVal, newVal) ->
             saveAiSetting(AI_MAX_TOKENS_KEY, String.valueOf(newVal)));
@@ -705,8 +705,8 @@ public class SwissKitJSettingUi {
         Runnable updateStyle = () -> {
             String current = getAiLocalBackend();
             boolean isJava = "java".equals(current);
-            javaBtn.getStyleClass().setAll(isJava ? "glass-btn-primary" : "glass-btn-secondary");
-            nativeBtn.getStyleClass().setAll(isJava ? "glass-btn-secondary" : "glass-btn-primary");
+            javaBtn.getStyleClass().setAll(isJava ? "sk-btn-primary" : "sk-btn-secondary");
+            nativeBtn.getStyleClass().setAll(isJava ? "sk-btn-secondary" : "sk-btn-primary");
             // Re-apply shape styles after class change (stylesheet may override)
             javaBtn.setStyle(baseStyle + "-fx-background-radius: 4 0 0 4; -fx-border-radius: 4 0 0 4;");
             nativeBtn.setStyle(baseStyle + "-fx-background-radius: 0 4 4 0; -fx-border-radius: 0 4 4 0;");
@@ -1087,7 +1087,7 @@ public class SwissKitJSettingUi {
 
         CheckBox imapSslCheck = new CheckBox("SSL");
         imapSslCheck.setUserData("IMAP_SSL");
-        imapSslCheck.getStyleClass().add("glass-checkbox");
+        imapSslCheck.getStyleClass().add("sk-checkbox");
         imapSslCheck.setSelected(true);
         HBox imapSslRow = new HBox(16, imapSslCheck);
         imapSslRow.setAlignment(Pos.CENTER_LEFT);
@@ -1178,11 +1178,11 @@ public class SwissKitJSettingUi {
     private static VBox tlsSslRow() {
         CheckBox tlsCheck = new CheckBox("TLS");
         tlsCheck.setUserData("TLS");
-        tlsCheck.getStyleClass().add("glass-checkbox");
+        tlsCheck.getStyleClass().add("sk-checkbox");
 
         CheckBox sslCheck = new CheckBox("SSL");
         sslCheck.setUserData("SSL");
-        sslCheck.getStyleClass().add("glass-checkbox");
+        sslCheck.getStyleClass().add("sk-checkbox");
 
         HBox checkRow = new HBox(16, tlsCheck, sslCheck);
         checkRow.setAlignment(Pos.CENTER_LEFT);
@@ -1331,7 +1331,7 @@ public class SwissKitJSettingUi {
         for (EmailTagEntity t : allTags) tagNameMap.put(t.getId(), t.getTag());
 
         TableView<EmailAddressBookEntity> table = new TableView<>(FXCollections.observableArrayList(entities));
-        table.getStyleClass().add("glass-table");
+        table.getStyleClass().add("sk-table");
         table.setPlaceholder(new Label(I18n.get("setting.email.noAddresses")));
 
         TableColumn<EmailAddressBookEntity, Integer> idCol = new TableColumn<>(I18n.get("setting.email.colId"));
@@ -1369,7 +1369,7 @@ public class SwissKitJSettingUi {
         actionCol.setPrefWidth(70);
         actionCol.setCellFactory(col -> new javafx.scene.control.TableCell<>() {
             private final Button delBtn = new Button(I18n.get("button.delete"));
-            { delBtn.getStyleClass().add("glass-btn-secondary"); delBtn.setStyle("-fx-padding: 4 10 4 10; -fx-font-size: 11px;"); }
+            { delBtn.getStyleClass().add("sk-btn-secondary"); delBtn.setStyle("-fx-padding: 4 10 4 10; -fx-font-size: 11px;"); }
             @Override
             protected void updateItem(Void item, boolean empty) {
                 super.updateItem(item, empty);
@@ -1422,7 +1422,7 @@ public class SwissKitJSettingUi {
 
         VBox root = new VBox(12, table, btnRow);
         root.setPadding(new Insets(24));
-        root.getStyleClass().add("glass-dialog");
+        root.getStyleClass().add("sk-dialog");
         root.setPrefSize(750, 480);
 
         javafx.scene.Scene scene = new javafx.scene.Scene(root);
@@ -1469,7 +1469,7 @@ public class SwissKitJSettingUi {
         for (EmailTagEntity tag : allTags) {
             CheckBox cb = new CheckBox(tag.getTag());
             cb.setUserData(tag.getId());
-            cb.getStyleClass().add("glass-checkbox");
+            cb.getStyleClass().add("sk-checkbox");
             cb.setSelected(preSelectedTagIds.contains(tag.getId()));
             tagCheckBoxes.getChildren().add(cb);
         }
@@ -1529,7 +1529,7 @@ public class SwissKitJSettingUi {
             btnRow
         );
         root.setPadding(new Insets(24));
-        root.getStyleClass().add("glass-dialog");
+        root.getStyleClass().add("sk-dialog");
         root.setPrefWidth(480);
 
         javafx.scene.Scene scene = new javafx.scene.Scene(root);
@@ -1572,7 +1572,7 @@ public class SwissKitJSettingUi {
         }
 
         TableView<EmailTagEntity> table = new TableView<>(FXCollections.observableArrayList(tags));
-        table.getStyleClass().add("glass-table");
+        table.getStyleClass().add("sk-table");
 
         TableColumn<EmailTagEntity, Long> idCol = new TableColumn<>(I18n.get("setting.email.colId"));
         idCol.setCellValueFactory(new PropertyValueFactory<>("id"));
@@ -1594,7 +1594,7 @@ public class SwissKitJSettingUi {
         actionCol.setCellFactory(col -> new javafx.scene.control.TableCell<>() {
             private final Button delBtn = new Button(I18n.get("button.delete"));
             {
-                delBtn.getStyleClass().add("glass-btn-secondary");
+                delBtn.getStyleClass().add("sk-btn-secondary");
                 delBtn.setStyle("-fx-padding: 4 10 4 10; -fx-font-size: 11px;");
             }
             @Override
@@ -1696,7 +1696,7 @@ public class SwissKitJSettingUi {
 
         VBox root = new VBox(14, table, inputRow, btnRow);
         root.setPadding(new Insets(24));
-        root.getStyleClass().add("glass-dialog");
+        root.getStyleClass().add("sk-dialog");
         root.setPrefSize(480, 420);
 
         javafx.scene.Scene scene = new javafx.scene.Scene(root);
@@ -1838,7 +1838,7 @@ public class SwissKitJSettingUi {
             btnRow
         );
         root.setPadding(new Insets(24));
-        root.getStyleClass().add("glass-dialog");
+        root.getStyleClass().add("sk-dialog");
         root.setPrefWidth(520);
 
         javafx.scene.Scene scene = new javafx.scene.Scene(root);
@@ -2025,7 +2025,7 @@ public class SwissKitJSettingUi {
         VBox box = new VBox(4);
         if (labelText != null && !labelText.isEmpty()) {
             Label lbl = new Label(labelText);
-            lbl.getStyleClass().add("glass-field-label");
+            lbl.getStyleClass().add("sk-field-label");
             box.getChildren().add(lbl);
         }
         box.getChildren().add(field);
@@ -2040,7 +2040,7 @@ public class SwissKitJSettingUi {
 
     private static Label subLabel(String text) {
         Label l = new Label(text);
-        l.getStyleClass().add("glass-field-label");
+        l.getStyleClass().add("sk-field-label");
         return l;
     }
 
@@ -2057,14 +2057,14 @@ public class SwissKitJSettingUi {
         return pf;
     }
 
-    private static final String FIELD_STYLE_CLASS = "glass-field";
+    private static final String FIELD_STYLE_CLASS = "sk-field";
 
     private static Button glassBtn(String text, boolean primary) {
         Button btn = new Button(text);
         if (primary) {
-            btn.getStyleClass().add("glass-btn-primary");
+            btn.getStyleClass().add("sk-btn-primary");
         } else {
-            btn.getStyleClass().add("glass-btn-secondary");
+            btn.getStyleClass().add("sk-btn-secondary");
         }
         return btn;
     }

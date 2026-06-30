@@ -24,7 +24,7 @@ import java.net.URI;
 /**
  * Modal "About SwissKitJ" dialog. A separate {@link Stage} sized to its owner
  * with a dimmed transparent backdrop (click to dismiss) and a centered
- * {@code .glass-dialog} card showing version, build time, author, repository,
+ * {@code .sk-dialog} card showing version, build time, author, repository,
  * documentation, and license. Repository / Documentation rows open the system
  * browser via {@link Desktop#browse}.
  */
@@ -65,7 +65,7 @@ public final class AboutDialog {
 
     private VBox buildCard() {
         VBox card = new VBox(12);
-        card.getStyleClass().add("glass-dialog");
+        card.getStyleClass().add("sk-dialog");
         card.setPadding(new Insets(20, 24, 20, 24));
         card.setMaxWidth(420);
         card.setMinWidth(380);

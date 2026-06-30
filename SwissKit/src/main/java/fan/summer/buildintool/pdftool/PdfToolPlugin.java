@@ -36,7 +36,7 @@ public class PdfToolPlugin implements SwissKitJPlugin {
         if (view != null) return view;
 
         TabPane tabPane = new TabPane();
-        tabPane.getStyleClass().add("glass-tab-pane");
+        tabPane.getStyleClass().add("sk-tab-pane");
         tabPane.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
 
         Tab splitTab = new Tab(I18n.get("builtin.pdf.tab.split"));
