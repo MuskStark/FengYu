@@ -40,7 +40,7 @@ Official plugins live in a separate repository: [MuskStark/SwissKiJ-Plugin](http
 **Entry point**: `fan.summer.Launcher` (fat-JAR manifest) → `fan.summer.app.SwissKitJApp` (JavaFX `Application`).
 
 **Startup sequence** (in `SwissKitJApp.start()`):
-1. Install the plugin logger binder; init H2/MyBatis; apply the saved i18n language
+1. Install the plugin logger binder; init H2/MyBatis; apply the saved i18n language and theme (dark default, via `ThemeService.set(...)`; the main scene is later registered with `ThemeService.registerScene(scene)`)
 2. Resolve the plugins directory (`<user.dir>/.swisskit/plugin/`)
 3. Create `PluginLoader` + `PluginRegistry`
 4. Create `FavoriteService` (loads bookmarked plugin IDs from DB)
@@ -52,25 +52,28 @@ Official plugins live in a separate repository: [MuskStark/SwissKiJ-Plugin](http
 > Step 5 registers both the plugin UI and any AI tools the plugin declares via `aiTools()` in one pass — there is no separate AI-tool registrar step anymore.
 
 **UI structure** (all in `fan.summer.ui.*`):
-- `MainWindow` — root `StackPane`; owns `TitleBar`, `Sidebar`, `ContentArea`, status bar
-- `Sidebar` — category-based navigation; categories are `all / text / image / dev / net / other / favorites`
+- `MainWindow` — root `StackPane` wrapping a `BorderPane` body; owns `Sidebar`, `ContentArea`, status bar. **Native OS window chrome** (`StageStyle.DECORATED`) — no custom title bar, no orbs/clipping.
+- `Sidebar` — category-based navigation; categories are `all / text / image / dev / net / other / favorites`. **Collapsible** (`«`/`»` toggle: label view ⇄ 48px icon-strip; state persisted via the `sidebar.collapsed` setting). Footer holds Settings / About / theme-toggle items.
 - `ContentArea` — shows `ToolCard` grid or active tool view; manages `DetailPanel` and the back-bar for returning from a tool
 - `DetailPanel` — slide-in panel showing plugin metadata; has a Launch button that fires `onLaunch`
-- `TitleBar` — custom window chrome (window is `StageStyle.TRANSPARENT`)
 
 **Navigation flow**: `ToolCard` click → `DetailPanel.show()` → Launch button → `MainWindow.wireEvents` callback → `registry.activate(plugin)` + `contentArea.showPage(plugin.createView(), title)`. The back bar (shown by `ContentArea`) calls `registry.deactivate()` on return.
 
-**Theming**: Three-layer CSS structure (glassmorphism dark theme).
+**Theming**: IDEA 2025 New UI look — flat, token-based, with switchable **dark / light** themes (dark default; persisted in the `theme` setting). `fan.summer.api.theme.ThemeService` (API module, no DB dependency) holds the active `Theme.DARK`/`Theme.LIGHT`, stamps a `theme-dark`/`theme-light` class on every registered scene root, and fires `onChange` listeners. Looked-up color tokens (`-sk-bg`, `-sk-bg-elevated`, `-sk-text`, `-sk-accent`, `-sk-border`, …) are declared per theme in `swisskit-common.css`; swapping the root class re-resolves every token with **no stylesheet reload**. The host loads/persists the choice; `Themes.applyTo(scene)` delegates to `ThemeService.registerScene(scene)`.
+
+Three-layer CSS structure:
 
 | File | Module | Scope |
 |---|---|---|
-| `css/swisskit-common.css` | `SwissKitJ-Api` | Shared variables, scrollbars, progress bar, `.glass-*` utility classes (dialog/field/tab-pane/combo/table/checkbox/btn-primary/btn-secondary), `.section-title`/`.section-header`. Loaded into the main Scene + available to any third-party plugin. |
-| `css/shell.css` | `SwissKit` | App-shell only — `.titlebar`, `.sidebar`, `.search-bar`, `.tool-card`, `.detail-panel`, `.statusbar`. Loaded into the main Scene by `SwissKitJApp`. |
+| `css/swisskit-common.css` | `SwissKitJ-Api` | `-sk-*` token definitions (under `.theme-dark` / `.theme-light`), scrollbars, progress bar, `.sk-*` utility classes (dialog/field/tab-pane/combo/table/checkbox/btn-primary/btn-secondary/notif-*), `.section-title`/`.section-header`. Loaded into the main Scene + available to any third-party plugin. |
+| `css/shell.css` | `SwissKit` | App-shell only — `.app-root`, `.sidebar` (+ `.collapsed`), `.search-bar`, `.tool-card`, `.detail-panel`, `.statusbar`, `.store-*`. Fully token-based. Loaded into the main Scene by `SwissKitJApp`. |
 | `css/builtin.css` | `SwissKit` | Reserved for built-in tool styling. Currently empty placeholder. |
 
-Plugins embedded in the main Scene (the normal `createView()` flow) automatically inherit all three stylesheets via scene graph propagation — no action needed. Plugins that open their own `Stage`/`Scene` should call `fan.summer.api.theme.Themes.applyTo(scene)` to get the common utility classes.
+Plugins embedded in the main Scene (the normal `createView()` flow) automatically inherit all three stylesheets via scene graph propagation — no action needed. Plugins that open their own `Stage`/`Scene` should call `fan.summer.api.theme.Themes.applyTo(scene)` to load the common stylesheet and stamp the active theme class on the root.
 
 Plugin icon background colors are CSS classes: `ic-blue / ic-purple / ic-teal / ic-amber / ic-red / ic-pink / ic-gray` (declared in `shell.css`; actual color injection happens in Java via `DropShadow` per `IconStyle`).
+
+> **v3.2.0 rename (BREAKING for plugin authors):** the old `.glass-*` utility classes were renamed to `.sk-*`. See the rename table in `CHANGELOG.md` `[3.2.0]`. External plugins still referencing `.glass-*` must update.
 
 **Database**: H2 file at `.swisskit/swisskit.db` relative to the runtime working directory. Schema initialized from `init.sql`. Accessed via MyBatis; mapper XMLs are in `src/main/resources/mapper/`.
 
@@ -78,7 +81,7 @@ Plugin icon background colors are CSS classes: `ic-blue / ic-purple / ic-teal / 
 
 **JSON**: Use `fan.summer.api.json.JsonHelper` (Gson-based). Old `JsonBuilder`/`JsonParser` are deleted.
 
-**AI Markdown**: AI responses render via `WebView` with dark theme `#1e1e2e`; auto-resize height to content.
+**AI Markdown**: AI responses render via `WebView` through `MarkdownRenderer.render(md, Theme)` — theme-aware (dark `#1e1e2e` / light `#ffffff` CSS palettes). `AiChatPlugin` derives the WebView background from the active theme and re-renders the whole conversation live when the theme flips. Auto-resize height to content.
 
 **AI tools**: Plugins self-declare AI tools via `SwissKitJPlugin.aiTools()` (v3.1.0+); the `PluginRegistry` auto-registers/unregisters them with `AiServiceProvider` on plugin add/remove (including hot-reload). Use `ToolExecutor` + `ToolSchemaBuilder` for execution and schema generation. See "### Plugin AI tools (v3.1.0+)" below for the full pattern.
 
@@ -220,7 +223,7 @@ The `summary` field is what the model primarily reads; payload fields are read o
 
 ## JavaFX Layout Pitfalls
 
-The glassmorphism shell relies on deeply nested `StackPane` / `HBox` / `VBox` / `ScrollPane` containers. The following layout traps have all caused real bugs in this codebase — review them before changing any plugin/page layout.
+The app shell relies on deeply nested `StackPane` / `HBox` / `VBox` / `ScrollPane` / `BorderPane` containers. The following layout traps have all caused real bugs in this codebase — review them before changing any plugin/page layout.
 
 ### 1. `Control.maxWidth` defaults to `USE_COMPUTED_SIZE`, not `MAX_VALUE`
 
@@ -284,6 +287,8 @@ for (int j = 0; j < pages.length; j++) {
 
 ### 6. `stage.isMaximized()` is unreliable on macOS `StageStyle.TRANSPARENT`
 
+> **v3.2.0:** The main window is now `StageStyle.DECORATED` (native OS chrome) and `WindowResizeHelper` has been deleted, so this pitfall **no longer affects the app shell**. The caution below still applies to any plugin that opens its own transparent/undecorated `Stage`.
+
 JavaFX on macOS reports `stage.isMaximized() == true` from app start for transparent/undecorated stages, even though the window is visibly not maximized (and `stage.getWidth()/getHeight()` confirm normal size). Any code that gates behavior on `isMaximized()` will silently fail.
 
 This bit `WindowResizeHelper`: an early-bail `if (stage.isMaximized()) return;` killed cursor changes AND drag-resize, making it look like mouse events weren't reaching the scene at all. The fix is to not consult `isMaximized()` at all in resize logic — an edge drag on a truly-maximized window naturally un-maximizes via `stage.setX/setWidth`, which is the correct UX. The maximize button (`stage.setMaximized(!stage.isMaximized())`) still works because the toggle ends up correct after a click.
@@ -297,7 +302,7 @@ If you genuinely need to know whether the stage is maximized, track it yourself 
 - [ ] No binding of `maxWidthProperty` to the node's own `widthProperty` (or any property of an ancestor that itself depends on the node's size).
 - [ ] If you re-use a shell CSS class (`.sidebar`, `.tool-card`, etc.) on a different component, verify the CSS doesn't impose size constraints you didn't intend; otherwise use a fresh class or inline style.
 - [ ] When swapping `StackPane` children, toggle both `setVisible` and `setManaged`.
-- [ ] Never branch on `stage.isMaximized()` for `StageStyle.TRANSPARENT` windows on macOS — it lies. Track maximization state from the maximize toggle instead.
+- [ ] Never branch on `stage.isMaximized()` for `StageStyle.TRANSPARENT` windows on macOS — it lies (moot for the v3.2.0 `DECORATED` shell; still relevant for plugin-opened transparent stages). Track maximization state from the maximize toggle instead.
 
 ## Branch Status — v3.0.0-JavaFX
 
