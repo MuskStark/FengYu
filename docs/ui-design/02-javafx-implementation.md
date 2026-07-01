@@ -347,7 +347,7 @@ three layout pitfalls — all the recurring building blocks.
 ```java
 package {{base-package}}.ui;
 
-import fan.summer.api.AiTool;
+import fan.summer.api.ai.AiTool;
 import fan.summer.api.IconStyle;
 import fan.summer.api.MdiIconUtil;
 import fan.summer.api.SwissKitJPlugin;
@@ -754,7 +754,8 @@ See [Pitfall 2](#pitfall-2--filling-an-hboxvboxs-remaining-space).
 ### AP4 — Loading common CSS manually
 
 ```java
-// ❌ WRONG — duplicates the host's job; can double-register; version-fragile
+// ⚠️ Prefer applyTo() — commonStylesheetUrl() only loads the stylesheet;
+//    it does NOT stamp the .theme-dark / .theme-light class on the root, so tokens won't resolve
 scene.getStylesheets().add(Themes.commonStylesheetUrl());
 // or
 Themes.loadCommonStylesheet(scene);   // package-private in spirit; not the plugin API

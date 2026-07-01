@@ -340,7 +340,7 @@ SwissKitJ 用标准 JavaFX pane 拼装布局。选择与你所需空间关系匹
 ```java
 package {{base-package}}.ui;
 
-import fan.summer.api.AiTool;
+import fan.summer.api.ai.AiTool;
 import fan.summer.api.IconStyle;
 import fan.summer.api.MdiIconUtil;
 import fan.summer.api.SwissKitJPlugin;
@@ -737,7 +737,8 @@ HBox.setHgrow(node, Priority.ALWAYS);
 ### AP4 —— 手动加载公共 CSS
 
 ```java
-// ❌ 错误 —— 重复宿主的工作;可能重复注册;版本脆弱
+// ⚠️ 建议用 applyTo() —— commonStylesheetUrl() 只加载样式表;
+//    它不会给根节点盖 .theme-dark / .theme-light 类,因此 token 无法解析
 scene.getStylesheets().add(Themes.commonStylesheetUrl());
 // 或
 Themes.loadCommonStylesheet(scene);   // 实质上是包私有的;不是插件 API
