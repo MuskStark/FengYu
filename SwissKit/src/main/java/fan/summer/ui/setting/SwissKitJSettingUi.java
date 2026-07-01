@@ -796,10 +796,14 @@ public class SwissKitJSettingUi {
                 String err = svc.testConnection();
                 Platform.runLater(() -> {
                     if (err == null) {
-                        statusLabel.setStyle("-fx-text-fill: #4cd97b; -fx-font-size: 12px;");
+                        statusLabel.getStyleClass().removeAll("sk-danger-text", "sk-warning-text");
+                        statusLabel.getStyleClass().add("sk-success-text");
+                        statusLabel.setStyle("-fx-font-size: 12px;");
                         statusLabel.setText(I18n.get("setting.ai.testSuccess"));
                     } else {
-                        statusLabel.setStyle("-fx-text-fill: #f25c5c; -fx-font-size: 12px;");
+                        statusLabel.getStyleClass().removeAll("sk-success-text", "sk-warning-text");
+                        statusLabel.getStyleClass().add("sk-danger-text");
+                        statusLabel.setStyle("-fx-font-size: 12px;");
                         statusLabel.setText(I18n.get("setting.ai.testFailed", err));
                     }
                     testBtn.setDisable(false);
@@ -847,10 +851,14 @@ public class SwissKitJSettingUi {
                 String err = svc.testConnection();
                 Platform.runLater(() -> {
                     if (err == null) {
-                        statusLabel.setStyle("-fx-text-fill: #4cd97b; -fx-font-size: 12px;");
+                        statusLabel.getStyleClass().removeAll("sk-danger-text", "sk-warning-text");
+                        statusLabel.getStyleClass().add("sk-success-text");
+                        statusLabel.setStyle("-fx-font-size: 12px;");
                         statusLabel.setText(I18n.get("setting.ai.testSuccess"));
                     } else {
-                        statusLabel.setStyle("-fx-text-fill: #f25c5c; -fx-font-size: 12px;");
+                        statusLabel.getStyleClass().removeAll("sk-success-text", "sk-warning-text");
+                        statusLabel.getStyleClass().add("sk-danger-text");
+                        statusLabel.setStyle("-fx-font-size: 12px;");
                         statusLabel.setText(I18n.get("setting.ai.testFailed", err));
                     }
                     testBtn.setDisable(false);
@@ -1477,7 +1485,7 @@ public class SwissKitJSettingUi {
         root.setPrefSize(750, 480);
 
         javafx.scene.Scene scene = new javafx.scene.Scene(root);
-        scene.setFill(javafx.scene.paint.Color.web("#0d0e11"));
+        scene.setFill(javafx.scene.paint.Color.TRANSPARENT);
         Themes.applyTo(scene);
         dialog.setScene(scene);
         dialog.show();
@@ -1585,7 +1593,7 @@ public class SwissKitJSettingUi {
         root.setPrefWidth(480);
 
         javafx.scene.Scene scene = new javafx.scene.Scene(root);
-        scene.setFill(javafx.scene.paint.Color.web("#0d0e11"));
+        scene.setFill(javafx.scene.paint.Color.TRANSPARENT);
         Themes.applyTo(scene);
         dialog.setScene(scene);
         dialog.show();
@@ -1752,7 +1760,7 @@ public class SwissKitJSettingUi {
         root.setPrefSize(480, 420);
 
         javafx.scene.Scene scene = new javafx.scene.Scene(root);
-        scene.setFill(javafx.scene.paint.Color.web("#0d0e11"));
+        scene.setFill(javafx.scene.paint.Color.TRANSPARENT);
         Themes.applyTo(scene);
         dialog.setScene(scene);
         dialog.show();
@@ -1849,9 +1857,9 @@ public class SwissKitJSettingUi {
                         String msg = I18n.get("setting.email.importResultDetail",
                             result.imported, result.failed, result.skipped, result.tagsCreated);
                         statusLabel.setText(msg);
-                        statusLabel.setStyle(allOk
-                            ? "-fx-text-fill: #4cd97b; -fx-font-size: 13px; -fx-font-weight: 500;"
-                            : "-fx-text-fill: #f5a623; -fx-font-size: 13px; -fx-font-weight: 500;");
+                        statusLabel.getStyleClass().removeAll("sk-success-text", "sk-danger-text", "sk-warning-text");
+                        statusLabel.getStyleClass().add(allOk ? "sk-success-text" : "sk-warning-text");
+                        statusLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: 500;");
                         progressBar.getStyleClass().removeAll("success", "danger");
                         progressBar.getStyleClass().add(allOk ? "success" : "danger");
                         importBtn.setDisable(false);
@@ -1864,7 +1872,9 @@ public class SwissKitJSettingUi {
                         progressBar.setVisible(false);
                         progressBar.setManaged(false);
                         statusLabel.setText(I18n.get("setting.email.importFailed", ex.getMessage()));
-                        statusLabel.setStyle("-fx-text-fill: #f25c5c; -fx-font-size: 13px;");
+                        statusLabel.getStyleClass().removeAll("sk-success-text", "sk-warning-text");
+                        statusLabel.getStyleClass().add("sk-danger-text");
+                        statusLabel.setStyle("-fx-font-size: 13px;");
                         importBtn.setDisable(false);
                         browseBtn.setDisable(false);
                     });
@@ -1896,7 +1906,7 @@ public class SwissKitJSettingUi {
         root.setPrefWidth(520);
 
         javafx.scene.Scene scene = new javafx.scene.Scene(root);
-        scene.setFill(javafx.scene.paint.Color.web("#0d0e11"));
+        scene.setFill(javafx.scene.paint.Color.TRANSPARENT);
         Themes.applyTo(scene);
         dialog.setScene(scene);
         dialog.show();
