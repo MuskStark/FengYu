@@ -5,7 +5,6 @@ import javafx.geometry.*;
 import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
-import javafx.scene.paint.Color;
 import javafx.scene.shape.*;
 import javafx.util.Duration;
 
@@ -252,7 +251,8 @@ public class StepWizard extends BorderPane {
         prevBtn  = footerBtn("← ← Back", false);
         nextBtn  = footerBtn("Next →", true);
         stepHint = new Label();
-        stepHint.setStyle("-fx-text-fill: rgba(255,255,255,0.28); -fx-font-size: 11px;");
+        stepHint.getStyleClass().add("sk-t3");
+        stepHint.setStyle("-fx-font-size: 11px;");
 
         prevBtn.setOnAction(e -> goTo(current - 1));
         nextBtn.setOnAction(e -> {
@@ -275,21 +275,16 @@ public class StepWizard extends BorderPane {
     private Button footerBtn(String text, boolean primary) {
         Button btn = new Button(text);
         if (primary) {
+            btn.getStyleClass().add("sk-btn-primary");
             btn.setStyle(
-                "-fx-background-color: #3574F0; -fx-text-fill: white;" +
                 "-fx-font-size: 13px; -fx-font-weight: 500;" +
                 "-fx-background-radius: 8; -fx-border-width: 0;" +
                 "-fx-padding: 9 20 9 20; -fx-cursor: hand;"
             );
-            btn.setOnMouseEntered(e -> btn.setStyle(btn.getStyle()
-                .replace("#3574F0", "#2E66D8")));
-            btn.setOnMouseExited(e -> btn.setStyle(btn.getStyle()
-                .replace("#2E66D8", "#3574F0")));
         } else {
+            btn.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
             btn.setStyle(
-                "-fx-background-color: rgba(255,255,255,0.07);" +
-                "-fx-border-color: rgba(255,255,255,0.12); -fx-border-width: 1;" +
-                "-fx-text-fill: rgba(255,255,255,0.7); -fx-font-size: 13px;" +
+                "-fx-border-width: 1; -fx-font-size: 13px;" +
                 "-fx-background-radius: 8; -fx-border-radius: 8;" +
                 "-fx-padding: 9 20 9 20; -fx-cursor: hand;"
             );
