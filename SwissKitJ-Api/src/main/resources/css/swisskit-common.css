@@ -145,7 +145,7 @@
     -fx-border-width: 1px;
     -fx-border-radius: 10px;
     -fx-background-radius: 10px;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.45), 30, 0, 0, 12);
+    -fx-effect: dropshadow(gaussian, -sk-shadow, 30, 0, 0, 12);
 }
 
 /* ── 输入字段 ────────────────────────────────────────────────── */
@@ -313,7 +313,7 @@
     -fx-border-width: 1px;
     -fx-background-radius: 10px;
     -fx-border-radius: 10px;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.50), 28, 0, 0, 10);
+    -fx-effect: dropshadow(gaussian, -sk-shadow, 28, 0, 0, 10);
     -fx-pref-width: 420px;
     -fx-max-width: 480px;
 }
@@ -324,9 +324,9 @@
     -fx-background-radius: 16px; -fx-border-radius: 16px;
 }
 .sk-notif-info    { -fx-text-fill: -sk-accent;  -fx-background-color: -sk-accent-soft; }
-.sk-notif-success { -fx-text-fill: -sk-success; -fx-background-color: rgba(76,217,123,0.15); }
-.sk-notif-warning { -fx-text-fill: -sk-warning; -fx-background-color: rgba(245,166,35,0.15); }
-.sk-notif-error   { -fx-text-fill: -sk-danger;  -fx-background-color: rgba(242,92,92,0.15); }
+.sk-notif-success { -fx-text-fill: -sk-success; -fx-background-color: -sk-success-soft; }
+.sk-notif-warning { -fx-text-fill: -sk-warning; -fx-background-color: -sk-warning-soft; }
+.sk-notif-error   { -fx-text-fill: -sk-danger;  -fx-background-color: -sk-danger-soft; }
 .sk-notif-message { -fx-fill: -sk-text; -fx-font-size: 13.5px; -fx-line-spacing: 2px; }
 .sk-notif-btn-bar { -fx-padding: 0; }
 .sk-notif-ok {
