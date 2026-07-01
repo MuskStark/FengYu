@@ -32,7 +32,7 @@
 ## 1. 概览
 
 SwissKitJ 内置一套源自 JetBrains IntelliJ IDEA 2025 **New UI** 的**深浅双主题**
-（dark / light）配色系统。整套调色板用 **14 个语义化颜色令牌**（前缀 `-sk-`）表达，
+（dark / light）配色系统。整套调色板用 **19 个语义化颜色令牌**（前缀 `-sk-`）表达，
 外加一个**两种主题共享的强调色**（`#3574F0`）。
 
 本文档是令牌具体取值（`-sk-bg = #1E1E1E`、`-sk-text = #D0D0D0`……）**唯一**被列表化的
@@ -208,10 +208,29 @@ IDEA New UI 的选中模式非常鲜明，必须忠实复现：
 | `-sk-warning` | `#F0A732` | `#C2751C` | 注意 / 需要关注 | 警告通知图标 |
 | `-sk-danger` | `#F75464` | `#E53935` | 错误 / 破坏性 | 错误通知图标、危险进度条 |
 
-**令牌总数：14**（`-sk-bg`、`-sk-bg-elevated`、`-sk-bg-hover`、`-sk-bg-selected`、
+#### 柔和色调令牌（低透明度状态填充）
+
+这些令牌镜像了 `-sk-accent-soft` 模式，为三种状态色各提供一个低透明度填充——适用于着色
+背景（通知体、状态徽章）。
+
+| 令牌 | Dark 值 | Light 值 | 用途 | 用在 |
+|---|---|---|---|---|
+| `-sk-success-soft` | `rgba(91,176,101,0.18)` | `rgba(60,145,74,0.14)` | 柔和成功填充 | 成功通知背景、成功徽章 |
+| `-sk-warning-soft` | `rgba(240,167,50,0.18)` | `rgba(194,117,28,0.14)` | 柔和警告填充 | 警告通知背景、注意徽章 |
+| `-sk-danger-soft` | `rgba(247,84,100,0.18)` | `rgba(229,57,53,0.14)` | 柔和危险填充 | 错误通知背景、破坏性徽章 |
+
+#### 抬升与覆盖令牌
+
+| 令牌 | Dark 值 | Light 值 | 用途 | 用在 |
+|---|---|---|---|---|
+| `-sk-shadow` | `rgba(0,0,0,0.45)` | `rgba(15,23,42,0.18)` | 抬升用投影色（对话框、通知）——light 主题下更柔和/更浅 | `.sk-dialog` 阴影、弹层 / 通知阴影 |
+| `-sk-scrim` | `rgba(0,0,0,0.50)` | `rgba(15,23,42,0.32)` | 模态遮罩 / 背景覆盖（透明 Stage 对话框） | `.sk-scrim` 模态背景 |
+
+**令牌总数：19**（`-sk-bg`、`-sk-bg-elevated`、`-sk-bg-hover`、`-sk-bg-selected`、
 `-sk-border`、`-sk-border-strong`、`-sk-text`、`-sk-text-secondary`、`-sk-text-disabled`、
-`-sk-accent`、`-sk-accent-soft`、`-sk-success`、`-sk-warning`、`-sk-danger`）。不要发明
-第 15 个令牌名——通过[§3.2 工具类](#token--css-utility-class)扩展系统，或先在 CSS 中提案
+`-sk-accent`、`-sk-accent-soft`、`-sk-success`、`-sk-warning`、`-sk-danger`、
+`-sk-success-soft`、`-sk-warning-soft`、`-sk-danger-soft`、`-sk-shadow`、`-sk-scrim`）。
+不要发明第 20 个令牌名——通过[§3.2 工具类](#token--css-utility-class)扩展系统，或先在 CSS 中提案
 新令牌。
 
 #### 原始 CSS 摘录
@@ -236,6 +255,11 @@ IDEA New UI 的选中模式非常鲜明，必须忠实复现：
     -sk-success:       #5BB065;
     -sk-warning:       #F0A732;
     -sk-danger:        #F75464;
+    -sk-success-soft:  rgba(91,176,101,0.18);
+    -sk-warning-soft:  rgba(240,167,50,0.18);
+    -sk-danger-soft:   rgba(247,84,100,0.18);
+    -sk-shadow:        rgba(0,0,0,0.45);
+    -sk-scrim:         rgba(0,0,0,0.50);
 }
 .theme-light {
     -sk-bg:            #FFFFFF;
@@ -252,6 +276,11 @@ IDEA New UI 的选中模式非常鲜明，必须忠实复现：
     -sk-success:       #3C914A;
     -sk-warning:       #C2751C;
     -sk-danger:        #E53935;
+    -sk-success-soft:  rgba(60,145,74,0.14);
+    -sk-warning-soft:  rgba(194,117,28,0.14);
+    -sk-danger-soft:   rgba(229,57,53,0.14);
+    -sk-shadow:        rgba(15,23,42,0.18);
+    -sk-scrim:         rgba(15,23,42,0.32);
 }
 ```
 
@@ -274,6 +303,11 @@ IDEA New UI 的选中模式非常鲜明，必须忠实复现：
 | `-sk-bg-hover` | `.sk-surface-soft` | `-fx-background-color` | 柔和（悬停色调）表面 |
 | `-sk-border` | `.sk-outlined` | `-fx-border-color` | 配合内联 `-fx-border-width`/`-fx-border-radius` |
 | `-sk-border-strong` | `.sk-outlined-strong` | `-fx-border-color` | 强调描边 |
+| `-sk-accent` | `.sk-accent-text` | `-fx-text-fill` | 链接 / 强调文本——内联安全 |
+| `-sk-success` | `.sk-success-text` | `-fx-text-fill` | 成功状态文本 |
+| `-sk-warning` | `.sk-warning-text` | `-fx-text-fill` | 警告状态文本 |
+| `-sk-danger` | `.sk-danger-text` | `-fx-text-fill` | 错误状态文本 |
+| `-sk-scrim` | `.sk-scrim` | `-fx-background-color` | 模态背景覆盖 |
 
 > **为什么用类而不是内联颜色？** 因为内联 `setStyle("-fx-text-fill: -sk-text;")`
 > **不会**解析 looked-up color。类位于样式表内，变量处于作用域内，因此能解析并在切换主题时
@@ -618,7 +652,7 @@ ThemeService.set(ThemeService.Theme.LIGHT);
       作装饰。
 - [ ] **核对对比度。** 正文必须对其背景达到 ≥4.5:1（用[对比度矩阵](#contrast-matrix-wcag-aa)）；
       禁用文本可以按设计降低对比，但仅限不可操作内容。
-- [ ] **不要发明新令牌名。** 只用[令牌参考表](#token-reference-table)中的 14 个令牌。如果你
+- [ ] **不要发明新令牌名。** 只用[令牌参考表](#token-reference-table)中的 19 个令牌。如果你
       确实需要新的语义色，先把它加到 `swisskit-common.css`，再在此文档登记。
 
 ---
@@ -696,7 +730,7 @@ row.getStyleClass().addAll("sk-table");             // 选中行 → -sk-bg-sele
 .my-card { -fx-background-color: -sk-bg-elevated; }
 ```
 
-14 个令牌就是契约。扩展是可以的，但 CSS 必须在 `.theme-dark` **和** `.theme-light` 下都定义
+19 个令牌就是契约。扩展是可以的，但 CSS 必须在 `.theme-dark` **和** `.theme-light` 下都定义
 新令牌，且本文档必须更新。
 
 ### AP5 — 独立窗口忘记 `Themes.applyTo`
