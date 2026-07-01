@@ -49,3 +49,4 @@ build/
 
 # Superpowers brainstorm artifacts
 .superpowers/
+/.zcode/
