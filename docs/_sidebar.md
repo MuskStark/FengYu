@@ -19,3 +19,13 @@
   - [Background Tasks](/plugins/background-tasks.md)
   - [Build & Deploy](/plugins/build-deploy.md)
   - [Common Pitfalls](/plugins/pitfalls.md)
+- **UI Design**
+  - [Overview](/ui-design/README.md)
+  - [01 Design System](/ui-design/01-design-system.md)
+  - [02 JavaFX Implementation](/ui-design/02-javafx-implementation.md)
+  - [03 Component Library](/ui-design/03-component-library.md)
+  - [04 Interaction Guidelines](/ui-design/04-interaction-guidelines.md)
+  - [05 Theme & Color System](/ui-design/05-theme-color-system.md)
+  - [06 Icon System](/ui-design/06-icon-system.md)
+  - [07 Animation Guidelines](/ui-design/07-animation-guidelines.md)
+  - [08 Accessibility Guide](/ui-design/08-accessibility-guide.md)
