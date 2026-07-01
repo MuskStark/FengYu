@@ -29,6 +29,11 @@
     -sk-success:       #5BB065;
     -sk-warning:       #F0A732;
     -sk-danger:        #F75464;
+    -sk-shadow:       rgba(0,0,0,0.45);
+    -sk-scrim:        rgba(0,0,0,0.50);
+    -sk-success-soft: rgba(91,176,101,0.18);
+    -sk-warning-soft: rgba(240,167,50,0.18);
+    -sk-danger-soft:  rgba(247,84,100,0.18);
 }
 .theme-light {
     -sk-bg:            #FFFFFF;
@@ -45,6 +50,11 @@
     -sk-success:       #3C914A;
     -sk-warning:       #C2751C;
     -sk-danger:        #E53935;
+    -sk-shadow:       rgba(15,23,42,0.18);
+    -sk-scrim:        rgba(15,23,42,0.32);
+    -sk-success-soft: rgba(60,145,74,0.14);
+    -sk-warning-soft: rgba(194,117,28,0.14);
+    -sk-danger-soft:  rgba(229,57,53,0.14);
 }
 
 
@@ -122,6 +132,11 @@
 .sk-surface-soft { -fx-background-color: -sk-bg-hover; }
 .sk-outlined { -fx-border-color: -sk-border; }            /* 配合内联 -fx-border-width/radius 使用 */
 .sk-outlined-strong { -fx-border-color: -sk-border-strong; }
+.sk-accent-text  { -fx-text-fill: -sk-accent; }      /* 链接/强调文本(内联安全) */
+.sk-success-text { -fx-text-fill: -sk-success; }      /* 成功状态文本 */
+.sk-warning-text { -fx-text-fill: -sk-warning; }      /* 警告状态文本 */
+.sk-danger-text  { -fx-text-fill: -sk-danger; }       /* 错误状态文本 */
+.sk-scrim        { -fx-background-color: -sk-scrim; } /* 模态遮罩(透明 Stage 用) */
 
 /* ── 对话框(独立 Stage) ──────────────────────────────────────── */
 .sk-dialog {
