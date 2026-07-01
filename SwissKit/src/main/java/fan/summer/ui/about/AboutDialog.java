@@ -45,7 +45,7 @@ public final class AboutDialog {
 
         StackPane root = new StackPane();
         // Dimmed backdrop; a click landing on the backdrop (not the card) closes.
-        root.setStyle("-fx-background-color: rgba(0,0,0,0.35);");
+        root.getStyleClass().add("sk-scrim");
         root.setOnMousePressed(e -> { if (e.getTarget() == root) dialog.close(); });
 
         Scene scene = new Scene(root, owner.getWidth(), owner.getHeight());
@@ -116,7 +116,8 @@ public final class AboutDialog {
     /** A label:hyperlink row that opens the system browser. */
     private HBox linkRow(String key, String url) {
         Hyperlink link = new Hyperlink(url);
-        link.setStyle("-fx-text-fill: #3574F0; -fx-font-size: 13px; -fx-border-color: transparent; -fx-padding: 0;");
+        link.getStyleClass().add("sk-accent-text");
+        link.setStyle("-fx-font-size: 13px; -fx-border-color: transparent; -fx-padding: 0;");
         link.setOnAction(e -> browse(url));
         link.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(link, Priority.ALWAYS);
