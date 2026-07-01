@@ -289,11 +289,15 @@ public class EmailPlugin implements SwissKitJPlugin {
             if (r.errorMessage != null) {
                 progressBar.getStyleClass().add("danger");
                 progressLabel.setText(I18n.get("builtin.email.sendFailed", r.errorMessage));
-                progressLabel.setStyle("-fx-text-fill: #f25c5c; -fx-font-size: 12px;");
+                progressLabel.getStyleClass().removeAll("sk-success-text", "sk-warning-text");
+                progressLabel.getStyleClass().add("sk-danger-text");
+                progressLabel.setStyle("-fx-font-size: 12px;");
             } else {
                 progressBar.getStyleClass().add("success");
                 progressLabel.setText(I18n.get("builtin.email.sendComplete", r.successCount, r.failCount));
-                progressLabel.setStyle("-fx-text-fill: #4cd97b; -fx-font-size: 12px;");
+                progressLabel.getStyleClass().removeAll("sk-danger-text", "sk-warning-text");
+                progressLabel.getStyleClass().add("sk-success-text");
+                progressLabel.setStyle("-fx-font-size: 12px;");
             }
         });
         task.setOnFailed(e -> {
@@ -303,7 +307,9 @@ public class EmailPlugin implements SwissKitJPlugin {
             progressBar.getStyleClass().add("danger");
             Throwable ex = task.getException();
             progressLabel.setText(I18n.get("builtin.email.sendTaskFailed", ex != null ? ex.getMessage() : "unknown"));
-            progressLabel.setStyle("-fx-text-fill: #f25c5c; -fx-font-size: 12px;");
+            progressLabel.getStyleClass().removeAll("sk-success-text", "sk-warning-text");
+            progressLabel.getStyleClass().add("sk-danger-text");
+            progressLabel.setStyle("-fx-font-size: 12px;");
             log.error("Send task failed", ex);
         });
 
@@ -501,7 +507,7 @@ public class EmailPlugin implements SwissKitJPlugin {
                 buttons
         );
         root.setPadding(new Insets(24));
-        root.setStyle("-fx-background-color: #1f2937;");
+        root.getStyleClass().add("sk-surface");
         root.setPrefWidth(520);
 
         Scene scene = new Scene(root);
@@ -623,7 +629,7 @@ public class EmailPlugin implements SwissKitJPlugin {
         VBox root = new VBox(12, sectionTitle(I18n.get("builtin.email.sentLog")), table, footer);
         VBox.setVgrow(table, Priority.ALWAYS);
         root.setPadding(new Insets(24));
-        root.setStyle("-fx-background-color: #1f2937;");
+        root.getStyleClass().add("sk-surface");
         root.setPrefSize(960, 520);
 
         Scene scene = new Scene(root);
@@ -666,10 +672,10 @@ public class EmailPlugin implements SwissKitJPlugin {
     private static Button glassBtn(String text, boolean primary) {
         Button btn = new Button(text);
         if (primary) {
+            btn.getStyleClass().add("sk-btn-primary");
             btn.setStyle(
-                    "-fx-background-color: #3574F0; -fx-text-fill: white; -fx-font-size: 13px;" +
-                    "-fx-font-weight: 500; -fx-background-radius: 8; -fx-border-width: 0;" +
-                    "-fx-padding: 9 18 9 18; -fx-cursor: hand;"
+                    "-fx-font-size: 13px; -fx-font-weight: 500; -fx-background-radius: 8;" +
+                    "-fx-border-width: 0; -fx-padding: 9 18 9 18; -fx-cursor: hand;"
             );
         } else {
             btn.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
