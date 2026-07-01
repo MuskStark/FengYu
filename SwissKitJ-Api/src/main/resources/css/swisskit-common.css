@@ -360,3 +360,7 @@
 .sk-step-idle    { -fx-fill: -sk-bg-selected;   -fx-stroke: -sk-border;  }  /* 未到达圆点(两个主题都可见) */
 .sk-step-line-done { -fx-background-color: -sk-success; }
 .sk-step-line-idle { -fx-background-color: -sk-border; }
+
+/* ── ToggleSwitch ───────────────────────────────────────────── */
+.sk-toggle-on  { -fx-fill: -sk-accent; }
+.sk-toggle-off { -fx-fill: -sk-bg-selected; }
