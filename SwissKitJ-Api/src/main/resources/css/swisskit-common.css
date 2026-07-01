@@ -353,3 +353,10 @@
     -fx-cursor: hand;
 }
 .sk-notif-cancel:hover { -fx-background-color: -sk-bg-selected; -fx-text-fill: -sk-text; }
+
+/* ── StepWizard 指示器 ───────────────────────────────────────── */
+.sk-step-done    { -fx-fill: -sk-success;       -fx-stroke: -sk-success; }  /* 已完成圆点 */
+.sk-step-current { -fx-fill: -sk-accent;        -fx-stroke: -sk-accent;  }  /* 当前圆点 */
+.sk-step-idle    { -fx-fill: -sk-bg-selected;   -fx-stroke: -sk-border;  }  /* 未到达圆点(两个主题都可见) */
+.sk-step-line-done { -fx-background-color: -sk-success; }
+.sk-step-line-idle { -fx-background-color: -sk-border; }

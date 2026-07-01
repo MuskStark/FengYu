@@ -80,10 +80,10 @@ public class StepWizard extends BorderPane {
     private Button nextBtn;
     private Label  stepHint;
 
-    // ── Colour constants ──────────────────────────────────
-    private static final String ACCENT     = "#3574F0";
-    private static final String DONE_COLOR = "#4cd97b";
-    private static final String IDLE_COLOR = "rgba(255,255,255,0.15)";
+    // ── Step state style classes (colors resolve via -sk-* tokens) ──
+    private static final String CLS_DONE    = "sk-step-done";
+    private static final String CLS_CURRENT = "sk-step-current";
+    private static final String CLS_IDLE    = "sk-step-idle";
 
     public StepWizard() {
         setStyle("-fx-background-color: transparent;");
@@ -175,7 +175,8 @@ public class StepWizard extends BorderPane {
                 line.setMaxHeight(2);
                 line.setMinWidth(40);
                 HBox.setHgrow(line, Priority.ALWAYS);
-                line.setStyle("-fx-background-color: " + IDLE_COLOR + "; -fx-background-radius: 1;");
+                line.getStyleClass().add("sk-step-line-idle");
+                line.setStyle("-fx-background-radius: 1;");
                 line.setUserData("line_" + i);
                 row.getChildren().add(line);
             }
@@ -211,33 +212,35 @@ public class StepWizard extends BorderPane {
             Label     num    = (Label)     dot.getChildren().get(1);
             childIdx++;
 
+            // Reset dot state classes, then apply the one for this step.
+            circle.getStyleClass().removeAll(CLS_DONE, CLS_CURRENT, CLS_IDLE);
+            num.getStyleClass().removeAll("sk-t1", "sk-t3");
+
             if (i < current) {
-                circle.setFill(Color.web(DONE_COLOR, 0.9));
-                circle.setStroke(Color.web(DONE_COLOR));
+                circle.getStyleClass().add(CLS_DONE);
                 num.setText("✓");
-                num.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #0d0e11;");
+                num.getStyleClass().add("sk-t1");   // checkmark in primary text color
             } else if (i == current) {
-                circle.setFill(Color.web(ACCENT, 0.9));
-                circle.setStroke(Color.web(ACCENT));
+                circle.getStyleClass().add(CLS_CURRENT);
                 num.setText(String.valueOf(i + 1));
-                num.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: white;");
+                num.getStyleClass().add("sk-t1");   // use -sk-text; white-on-accent is wrong here (accent dot, not a button)
                 ScaleTransition pulse = new ScaleTransition(Duration.millis(600), dot);
                 pulse.setFromX(1.0); pulse.setFromY(1.0);
                 pulse.setToX(1.12); pulse.setToY(1.12);
                 pulse.setAutoReverse(true); pulse.setCycleCount(2);
                 pulse.play();
             } else {
-                circle.setFill(Color.web("rgba(255,255,255,0.06)"));
-                circle.setStroke(Color.web(IDLE_COLOR));
+                circle.getStyleClass().add(CLS_IDLE);
                 num.setText(String.valueOf(i + 1));
-                num.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: rgba(255,255,255,0.35);");
+                num.getStyleClass().add("sk-t3");   // idle number in disabled text color
             }
+            num.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
 
             if (i < steps.size() - 1 && childIdx < stepIndicator.getChildren().size()) {
                 Region line = (Region) stepIndicator.getChildren().get(childIdx);
-                line.setStyle("-fx-background-color: "
-                    + (i < current ? DONE_COLOR : IDLE_COLOR)
-                    + "; -fx-background-radius: 1;");
+                boolean lineDone = i < current;
+                line.getStyleClass().removeAll("sk-step-line-done", "sk-step-line-idle");
+                line.getStyleClass().add(lineDone ? "sk-step-line-done" : "sk-step-line-idle");
                 childIdx++;
             }
         }
