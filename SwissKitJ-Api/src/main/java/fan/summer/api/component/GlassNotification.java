@@ -1,5 +1,6 @@
 package fan.summer.api.component;
 
+import fan.summer.api.theme.Themes;
 import javafx.animation.FadeTransition;
 import javafx.animation.PauseTransition;
 import javafx.animation.SequentialTransition;
@@ -258,7 +259,10 @@ public final class GlassNotification {
 
         Scene scene = new Scene(root);
         scene.setFill(null);
-        scene.getStylesheets().add(GlassNotification.class.getResource("/css/swisskit-common.css").toExternalForm());
+        // Stamp .theme-dark/.theme-light on the root so every -sk-* looked-up color
+        // resolves. Loading the stylesheet alone is NOT enough (the original bug);
+        // Themes.applyTo both loads it and stamps the active theme class.
+        Themes.applyTo(scene);
         stage.setScene(scene);
 
         boolean[] confirmed = {false};
