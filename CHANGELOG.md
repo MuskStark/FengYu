@@ -27,6 +27,12 @@ This release re-skins the app from glassmorphism-dark to the JetBrains **IDEA 20
 
   > The external plugin repo ([`MuskStark/SwissKiJ-Plugin`](https://github.com/MuskStark/SwissKiJ-Plugin)) is updated separately; flag this rename when migrating third-party plugins.
 
+### 🎨 Theme (strict tokenization)
+
+- **Token set expanded 14 → 19** — added `-sk-shadow`, `-sk-scrim`, `-sk-success-soft`, `-sk-warning-soft`, `-sk-danger-soft` (each under both `.theme-dark` and `.theme-light`). Custom themes/stylesheets that hardcoded the old 14 must add these 5 or popups/dialogs/cards will have undefined shadows and status soft-fills.
+- **Fixed popups rendering as un-themed white** — `GlassNotification` (toast/notify/confirm) loaded the stylesheet but never stamped the theme class on its scene, so every `-sk-*` token was undefined and all popups fell back to JavaFX default white in both themes. Root-cause fix via `Themes.applyTo(scene)`.
+- **Removed all hardcoded colors** from popups, dialogs, `StepWizard`, `ToggleSwitch`, status labels, and CSS drop-shadows. Everything now resolves through `-sk-*` tokens and adapts correctly to dark and 纯白 (light) themes. Notably `StepWizard` idle dots and `ToggleSwitch` off-track were invisible on the light theme.
+
 ### ✨ New
 
 - **Dark / light theme system** — `fan.summer.api.theme.ThemeService` (API module, no DB dependency) holds the active `Theme.DARK`/`Theme.LIGHT`, stamps a `theme-dark`/`theme-light` class on every registered scene root, and fires `onChange` listeners. Switchable from the sidebar footer (☀/☾) and the Settings page; persisted in the `theme` setting (`dark` default).
