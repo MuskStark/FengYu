@@ -32,7 +32,7 @@
 ## 1. Overview
 
 SwissKitJ ships a **dual-theme** (dark / light) color system derived from the JetBrains
-IntelliJ IDEA 2025 **New UI**. The entire palette is expressed as **14 semantic color
+IntelliJ IDEA 2025 **New UI**. The entire palette is expressed as **19 semantic color
 tokens** prefixed `-sk-`, and one **accent** color (`#3574F0`) shared by both themes.
 
 This document is the **only** place where concrete token values (`-sk-bg = #1E1E1E`,
@@ -216,10 +216,29 @@ fixed.
 | `-sk-warning` | `#F0A732` | `#C2751C` | Caution / needs attention | Warning notification icon |
 | `-sk-danger` | `#F75464` | `#E53935` | Error / destructive | Error notification icon, danger progress bar |
 
-**Token count: 14** (`-sk-bg`, `-sk-bg-elevated`, `-sk-bg-hover`, `-sk-bg-selected`,
+#### Soft tint tokens (low-opacity status fills)
+
+These mirror the `-sk-accent-soft` pattern for the three status colors — a low-opacity fill
+useful for tinted backgrounds (notification bodies, status badges).
+
+| Token | Dark value | Light value | Purpose | Use on |
+|---|---|---|---|---|
+| `-sk-success-soft` | `rgba(91,176,101,0.18)` | `rgba(60,145,74,0.14)` | Soft success fill | Success notification background, success badge |
+| `-sk-warning-soft` | `rgba(240,167,50,0.18)` | `rgba(194,117,28,0.14)` | Soft warning fill | Warning notification background, caution badge |
+| `-sk-danger-soft` | `rgba(247,84,100,0.18)` | `rgba(229,57,53,0.14)` | Soft danger fill | Error notification background, destructive badge |
+
+#### Elevation & overlay tokens
+
+| Token | Dark value | Light value | Purpose | Use on |
+|---|---|---|---|---|
+| `-sk-shadow` | `rgba(0,0,0,0.45)` | `rgba(15,23,42,0.18)` | Drop-shadow color for elevation (dialogs, notifications) — softer/lighter in light theme | `.sk-dialog` shadow, popup / notification shadows |
+| `-sk-scrim` | `rgba(0,0,0,0.50)` | `rgba(15,23,42,0.32)` | Modal dim / backdrop overlay (transparent-Stage dialogs) | `.sk-scrim` modal backdrop |
+
+**Token count: 19** (`-sk-bg`, `-sk-bg-elevated`, `-sk-bg-hover`, `-sk-bg-selected`,
 `-sk-border`, `-sk-border-strong`, `-sk-text`, `-sk-text-secondary`, `-sk-text-disabled`,
-`-sk-accent`, `-sk-accent-soft`, `-sk-success`, `-sk-warning`, `-sk-danger`). Do not invent
-15th token names — extend the system via [§3.2 utility classes](#token--css-utility-class)
+`-sk-accent`, `-sk-accent-soft`, `-sk-success`, `-sk-warning`, `-sk-danger`,
+`-sk-success-soft`, `-sk-warning-soft`, `-sk-danger-soft`, `-sk-shadow`, `-sk-scrim`). Do
+not invent 20th token names — extend the system via [§3.2 utility classes](#token--css-utility-class)
 or propose a new token in the CSS first.
 
 #### Raw CSS excerpt
@@ -243,6 +262,11 @@ For copy-paste / verification, here are the two theme blocks verbatim from
     -sk-success:       #5BB065;
     -sk-warning:       #F0A732;
     -sk-danger:        #F75464;
+    -sk-success-soft:  rgba(91,176,101,0.18);
+    -sk-warning-soft:  rgba(240,167,50,0.18);
+    -sk-danger-soft:   rgba(247,84,100,0.18);
+    -sk-shadow:        rgba(0,0,0,0.45);
+    -sk-scrim:         rgba(0,0,0,0.50);
 }
 .theme-light {
     -sk-bg:            #FFFFFF;
@@ -259,6 +283,11 @@ For copy-paste / verification, here are the two theme blocks verbatim from
     -sk-success:       #3C914A;
     -sk-warning:       #C2751C;
     -sk-danger:        #E53935;
+    -sk-success-soft:  rgba(60,145,74,0.14);
+    -sk-warning-soft:  rgba(194,117,28,0.14);
+    -sk-danger-soft:   rgba(229,57,53,0.14);
+    -sk-shadow:        rgba(15,23,42,0.18);
+    -sk-scrim:         rgba(15,23,42,0.32);
 }
 ```
 
@@ -282,6 +311,11 @@ tempted to reach for inline `setStyle()` — see [P5](#p5--colors-live-in-css-ne
 | `-sk-bg-hover` | `.sk-surface-soft` | `-fx-background-color` | Soft (hover-tone) surface |
 | `-sk-border` | `.sk-outlined` | `-fx-border-color` | Pair with inline `-fx-border-width`/`-fx-border-radius` |
 | `-sk-border-strong` | `.sk-outlined-strong` | `-fx-border-color` | Emphasized outline |
+| `-sk-accent` | `.sk-accent-text` | `-fx-text-fill` | Link / accent text — inline-safe |
+| `-sk-success` | `.sk-success-text` | `-fx-text-fill` | Success status text |
+| `-sk-warning` | `.sk-warning-text` | `-fx-text-fill` | Warning status text |
+| `-sk-danger` | `.sk-danger-text` | `-fx-text-fill` | Error status text |
+| `-sk-scrim` | `.sk-scrim` | `-fx-background-color` | Modal backdrop overlay |
 
 > **Why classes instead of inline color?** Because an inline `setStyle("-fx-text-fill: -sk-text;")`
 > does **not** resolve the looked-up color. The class lives in the stylesheet where the
@@ -649,7 +683,7 @@ each item as a hard gate.
 - [ ] **Verify contrast.** Body text must hit ≥4.5:1 against its background (use the
       [contrast matrix](#contrast-matrix-wcag-aa)); disabled text may be lower-contrast by
       design but only for non-actionable content.
-- [ ] **Do not invent new token names.** Use only the 14 tokens in the
+- [ ] **Do not invent new token names.** Use only the 19 tokens in the
       [Token Reference Table](#token-reference-table). If you genuinely need a new semantic
       color, add it to `swisskit-common.css` first, then document it here.
 
@@ -728,7 +762,7 @@ See [P3](#p3--selection--neutral-fill--3-px-left-accent-strip-not-blue-flood).
 .my-card { -fx-background-color: -sk-bg-elevated; }
 ```
 
-The 14 tokens are the contract. Extending it is fine, but the CSS must define the new token
+The 19 tokens are the contract. Extending it is fine, but the CSS must define the new token
 under **both** `.theme-dark` and `.theme-light`, and this doc must be updated.
 
 ### AP5 — Forgetting `Themes.applyTo` on a standalone window
