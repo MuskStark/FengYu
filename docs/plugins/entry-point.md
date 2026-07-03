@@ -7,7 +7,9 @@
 ```java
 package {{base-package}};
 
+import fan.summer.api.IconStyle;
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.ToolCategory;
 import fan.summer.api.i18n.I18n;
 import javafx.scene.Node;
 import {{base-package}}.ui.{{Name}}PluginUi;
@@ -30,8 +32,8 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
     }
 
     @Override
-    public String getCategory() {
-        return "OTHER";
+    public ToolCategory getCategory() {
+        return ToolCategory.OTHER;
     }
 
     @Override
@@ -58,6 +60,33 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
 }
 ```
 
+## init(PluginHost)（v3.2.0+）
+
+宿主在插件实例化后、进入注册表可见列表前，会在 JavaFX Application Thread 上
+恰好调用一次 `init(PluginHost)`，注入宿主门面。保存引用即可在整个插件生命周期
+内访问 `settings()` / `tasks()` / `i18n()` / `theme()` / `notifications()`：
+
+```java
+import fan.summer.api.host.PluginHost;
+
+private PluginHost host;
+
+@Override
+public void init(PluginHost host) {
+    this.host = host;
+}
+
+@Override
+public Node createView() {
+    // 推荐：用 host.i18n().registerBundle(...)，无需再传 ClassLoader
+    host.i18n().registerBundle("i18n.messages");
+    return new {{Name}}PluginUi().getView();
+}
+```
+
+`init()` 是可选的 `default` 方法，不实现也完全兼容；旧插件继续使用
+`I18n.registerPluginBundle(...)` 静态入口即可。详见 [PluginHost](./plugin-host.md)。
+
 ## 接口方法说明
 
 | 方法 | 必须 | 说明 |
@@ -65,11 +94,12 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
 | `getId()` | 是 | 反向域名唯一标识，如 `plugin.swisskit.star` |
 | `getName()` | 是 | 显示名称 |
 | `getDescription()` | 是 | 短描述 |
-| `getCategory()` | 是 | 分类：`text / image / net / dev / other` |
+| `getCategory()` | 是 | 返回 `ToolCategory` 枚举：`DEV / TEXT / IMAGE / NET / OTHER` |
 | `getVersion()` | 是 | 版本字符串 |
 | `getMdiIcon()` | 是 | Material Design Icons 图标名，如 `file-excel` |
 | `getIconStyle()` | 否 | `IconStyle` 枚举，默认 `IconStyle.BLUE` |
-| `getType()` | 否 | 返回 `"builtin"` 表示内置工具 |
+| `getType()` | 否 | 返回 `ToolType` 枚举：`PLUGIN`（默认，第三方插件）或 `BUILTIN`（内置工具） |
+| `init(PluginHost)` | 否 | v3.2.0+；宿主注入 `PluginHost` 门面，见下节 |
 | `createView()` | 是 | 返回 JavaFX `Node`，仅调用一次，结果会被缓存复用 |
 | `onActivate()` | 否 | 插件被激活时调用 |
 | `onDeactivate()` | 否 | 插件被停用时调用 |
