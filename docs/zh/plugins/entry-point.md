@@ -45,8 +45,8 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
     }
 
     @Override
-    public String getIconStyle() {
-        return "BLUE";
+    public IconStyle getIconStyle() {
+        return IconStyle.BLUE;
     }
 
     @Override
@@ -67,8 +67,8 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
 | `getDescription()` | 是 | 短描述 |
 | `getCategory()` | 是 | 分类：`text / image / net / dev / other` |
 | `getVersion()` | 是 | 版本字符串 |
-| `getMdiIcon()` | 是 | 图标文字（单字符或 emoji） |
-| `getIconStyle()` | 否 | CSS 类名，默认 `BLUE` |
+| `getMdiIcon()` | 是 | Material Design Icons 图标名，如 `file-excel` |
+| `getIconStyle()` | 否 | `IconStyle` 枚举，默认 `IconStyle.BLUE` |
 | `getType()` | 否 | 返回 `"builtin"` 表示内置工具 |
 | `createView()` | 是 | 返回 JavaFX `Node`，仅调用一次，结果会被缓存复用 |
 | `onActivate()` | 否 | 插件被激活时调用 |
@@ -77,7 +77,7 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
 
 ## IconStyle 可选值
 
-`ic-blue / ic-purple / ic-teal / ic-amber / ic-red / ic-pink / ic-gray`
+`BLUE / PURPLE / TEAL / AMBER / RED / PINK / GRAY`（分别对应 CSS 类 `ic-blue` … `ic-gray`）
 
 ---
 
