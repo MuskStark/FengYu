@@ -49,9 +49,22 @@ SkNotification.toast(view, SkNotification.Type.SUCCESS, "Saved");
 > **稳定性说明：** 预览 API 是开发期工具。它的窗口布局有意模仿（但不共享）
 > 真实应用 shell；发布前务必在真实应用中做一次最终检查。
 
+## 新增：PluginHost / PluginSettings / TaskRunner
+
+插件现在可以重写 `init(PluginHost host)` 来接收一个每插件宿主门面：命名空间
+隔离的持久化设置（`host.settings()`）、自动 TCCL 且自动后台保活的后台任务
+（`host.tasks()`）、无需传 ClassLoader 的 i18n bundle 注册
+（`host.i18n().registerBundle(...)`），以及主题和通知访问。现有插件无需修改
+——静态入口继续可用。完整指南见 `plugins/plugin-host.md`。
+
+预览窗口（`PluginPreviewWindow`）现在以与真实宿主完全相同的语义加载插件：
+child-first 资源 ClassLoader、TCCL 注册、`init(PluginHost)` 注入（设置持久化
+到 `~/.swisskit/preview-settings/`）。
+
 ## 检查清单
 
 - [ ] 把每个 `.glass-*` 样式类替换为 `.sk-*`
 - [ ] （可选）把 `GlassNotification` 调用切换为 `SkNotification`
 - [ ] 重新编译以依赖 `SwissKitJ-Api` 3.2.0（仍是 `provided` 作用域）
 - [ ] 在**深色和浅色**两个主题下验证你的 UI
+- [ ] （可选）改用 `init(PluginHost)` 获取 settings/tasks/i18n，替代静态入口

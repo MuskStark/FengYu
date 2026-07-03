@@ -124,6 +124,7 @@ public interface SwissKitJPlugin {
     String getMdiIcon();                  // Material Design Icons name, e.g. "file-excel"
     default IconStyle getIconStyle() { return IconStyle.BLUE; }   // maps to ic-* CSS class
     default ToolType getType()     { return ToolType.PLUGIN; }    // PLUGIN / BUILTIN
+    default void init(PluginHost host) {}  // v3.2.0+: host facade (settings/tasks/i18n/theme/notifications)
 
     Node createView();                    // called once; result cached and reused
     default void onActivate()   {}
@@ -136,6 +137,14 @@ public interface SwissKitJPlugin {
     default void onForeground() {}      // restored from background
 }
 ```
+
+**PluginHost (v3.2.0+)**: injected via `init(PluginHost)` exactly once (FX thread, before the
+plugin is visible in the registry and before `aiTools()` registration). Provides `settings()`
+(namespaced KV, H2-backed; preview mode uses `~/.swisskit/preview-settings/`), `tasks()`
+(TCCL-safe background tasks — running tasks automatically keep the plugin backgrounded, merged
+with `hasRunningTasks()` via `PluginRegistry.isBusy`), `i18n()` (`registerBundle` without a
+ClassLoader parameter), `theme()`, `notifications()`, `logger()`. Old static entry points remain
+valid. See `docs/plugins/plugin-host.md`.
 
 **External plugins** (JAR-based):
 1. Implement `SwissKitJPlugin`

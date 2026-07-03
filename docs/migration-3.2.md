@@ -52,9 +52,25 @@ install needed during development.
 > layout intentionally mirrors (but is not shared with) the real app shell;
 > always do a final check inside the real application before release.
 
+## New: PluginHost / PluginSettings / TaskRunner
+
+Plugins can now override `init(PluginHost host)` to receive a per-plugin host
+facade: namespaced persistent settings (`host.settings()`), TCCL-safe
+background tasks with automatic background keepalive (`host.tasks()`),
+ClassLoader-free i18n bundle registration (`host.i18n().registerBundle(...)`),
+plus theme and notification access. Existing plugins need no change — the
+static entry points keep working. See `plugins/plugin-host.md` for the full
+guide.
+
+The preview window (`PluginPreviewWindow`) now loads plugins with the exact
+same semantics as the real host: child-first resource ClassLoader, TCCL
+registration, and `init(PluginHost)` injection (settings persist under
+`~/.swisskit/preview-settings/`).
+
 ## Checklist
 
 - [ ] Replace every `.glass-*` style class with `.sk-*`
 - [ ] (Optional) switch `GlassNotification` calls to `SkNotification`
 - [ ] Rebuild against `SwissKitJ-Api` 3.2.0 (`provided` scope, as before)
 - [ ] Verify your UI in **both** dark and light themes
+- [ ] (Optional) adopt `init(PluginHost)` for settings/tasks/i18n instead of static entry points
