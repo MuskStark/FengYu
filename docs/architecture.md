@@ -15,7 +15,7 @@ tool — whether built-in or shipped as an external JAR — implements the same
 │  SwissKitJ-Api  —  public contract layer (no business logic)      │
 │  SwissKitJPlugin · ToolCategory/Type/IconStyle · PluginContext     │
 │  AiService/AiTool/AiChatMessage · I18n · Themes · LoggerFactory    │
-│  StepWizard · GlassNotification · UiUtils · preview components     │
+│  StepWizard · SkNotification · UiUtils · preview components     │
 └───────────────────────────────▲──────────────────────────────────┘
                                 │ bundled in the fat JAR (provided → runtime)
                                 ▼
@@ -31,7 +31,7 @@ tool — whether built-in or shipped as an external JAR — implements the same
 
 | Module | Purpose |
 |--------|---------|
-| `SwissKitJ-Api` | Shared plugin interface (`SwissKitJPlugin`), plugin context & isolation (`PluginContext`), reusable components (`StepWizard`, `GlassNotification`, `UiUtils`), theming, i18n, logging API, and the AI service contract (`ChatBackend`, `AiTool`, message records) |
+| `SwissKitJ-Api` | Shared plugin interface (`SwissKitJPlugin`), plugin context & isolation (`PluginContext`), reusable components (`StepWizard`, `SkNotification`, `UiUtils`), theming, i18n, logging API, and the AI service contract (`ChatBackend`, `AiTool`, message records) |
 | `SwissKit` | JavaFX application shell — UI, plugin loading, favorites, the AI subsystem, and all built-in tools |
 
 Official plugins live in a [separate repository](https://github.com/MuskStark/SwissKiJ-Plugin). They are built independently and dropped into `.swisskit/plugin/` as JARs at runtime. All plugins declare `SwissKitJ-Api` as `provided` scope; the main app provides it at runtime via the fat JAR.

@@ -10,7 +10,7 @@
 | **文档类型** | 交互流程 + 事件接线模式 |
 | **读者** | 插件作者、AI 代码生成器、任何在接线用户操作的人 |
 | **源码文件** | [`ui/MainWindow.java`](../../SwissKit/src/main/java/fan/summer/ui/MainWindow.java) · [`ui/sidebar/Sidebar.java`](../../SwissKit/src/main/java/fan/summer/ui/sidebar/Sidebar.java) · [`ui/content/ContentArea.java`](../../SwissKit/src/main/java/fan/summer/ui/content/ContentArea.java) · [`ui/content/ToolCard.java`](../../SwissKit/src/main/java/fan/summer/ui/content/ToolCard.java) · [`ui/content/DetailPanel.java`](../../SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java) · [`ui/store/PluginStoreUi.java`](../../SwissKit/src/main/java/fan/summer/ui/store/PluginStoreUi.java) |
-| **通知 API** | [`GlassNotification`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/GlassNotification.java)（`.sk-notif-*`） |
+| **通知 API** | [`SkNotification`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java)（`.sk-notif-*`） |
 | **相关文档** | [03 组件库](03-component-library.md) · [06 图标系统](06-icon-system.md) · [07 动效](07-animation-guidelines.md) · [08 无障碍](08-accessibility-guide.md) |
 
 ---
@@ -65,7 +65,7 @@ SwissKitJ 是一个**工具箱**：用户打开它，找一个工具，用它，
 
 ### P3 — 可宽容
 
-破坏性操作需要二次、明确的确认（见 [`GlassNotification.confirm`](#破坏性操作)）。从运行中
+破坏性操作需要二次、明确的确认（见 [`SkNotification.confirm`](#破坏性操作)）。从运行中
 工具离开，要么（若 `hasRunningTasks()`）把它留作后台，要么完全可逆。用户绝不该因误点击丢
 失工作。
 
@@ -160,7 +160,7 @@ AI 聊天、插件商店、收藏和设置。主题开关在底部。
 | 步骤 | 效果 |
 |---|---|
 | 浏览 | 在线商店列出可用插件（远程拉取）。 |
-| 安装 | 通过 `.progress-bar` 显示进度；成功/失败通过 `GlassNotification` toast 反馈。 |
+| 安装 | 通过 `.progress-bar` 显示进度；成功/失败通过 `SkNotification` toast 反馈。 |
 | 切到本地已安装页 | 商店 UI 在在线与本地已安装视图间切换。 |
 | 安装后 | 插件在下次刷新时出现在侧边栏/网格的对应分类里。 |
 
@@ -174,7 +174,7 @@ SwissKitJ 表单（由 `.sk-field` / `.sk-combo` / `.sk-checkbox` 构建）遵�
 |---|---|
 | **何时校验** | 在 **失焦** 或 **提交** 时，而非每次按键。桌面工具里逐键校验很烦人。 |
 | **错误信息位置** | 紧贴在出错字段**下方**，用 `-sk-danger` 文本（字段下的标签，不要弹窗）。 |
-| **提交反馈** | 异步工作期间禁用提交按钮；结果出来用 `GlassNotification` toast（成功/信息/警告/错误）。 |
+| **提交反馈** | 异步工作期间禁用提交按钮；结果出来用 `SkNotification` toast（成功/信息/警告/错误）。 |
 | **必填字段** | 用 `-sk-danger` 星号或清晰标签标记；绝不仅靠颜色（见 [08](08-accessibility-guide.md)）。 |
 
 <span id="键盘"></span>
@@ -201,8 +201,8 @@ SwissKitJ 表单（由 `.sk-field` / `.sk-combo` / `.sk-checkbox` 构建）遵�
 |---|---|---|
 | **加载** | 数据正在拉取 / 工作正在跑 | `.progress-bar`（6 px，`-sk-accent` 填充）和/或 ToolCard 运行脉动 |
 | **空** | 查询无结果 / 无内容可显示 | `.sk-table` 占位文本（`-sk-text-disabled`）或居中标签的空态文案 |
-| **错误** | 加载/工作失败 | `GlassNotification.notify(WARNING/ERROR, ...)` + 出错处附近的内联 `-sk-danger` 信息 |
-| **成功** | 工作完成 | `GlassNotification.toast(SUCCESS, ...)` |
+| **错误** | 加载/工作失败 | `SkNotification.notify(WARNING/ERROR, ...)` + 出错处附近的内联 `-sk-danger` 信息 |
+| **成功** | 工作完成 | `SkNotification.toast(SUCCESS, ...)` |
 
 > **反模式：** 加载时显示空白面板。哪怕一个禁用的 `.progress-bar` 或一行
 > `-sk-text-disabled` 的"加载中…"都好过什么都没有——它告诉用户应用没卡死。
@@ -215,7 +215,7 @@ SwissKitJ 表单（由 `.sk-field` / `.sk-combo` / `.sk-checkbox` 构建）遵�
 
 ```java
 // 规范确认 — DetailPanel.showUninstallConfirm (DetailPanel.java:303)
-boolean confirmed = GlassNotification.confirm(this, title, message);
+boolean confirmed = SkNotification.confirm(this, title, message);
 if (confirmed) {
     doUninstall();
 }
@@ -223,7 +223,7 @@ if (confirmed) {
 
 | 规则 | 细节 |
 |---|---|
-| **必须确认** | `GlassNotification.confirm(context, title, message)` 阻塞等是/否；绝不未经确认就删除/卸载。 |
+| **必须确认** | `SkNotification.confirm(context, title, message)` 阻塞等是/否；绝不未经确认就删除/卸载。 |
 | **清晰、不可逆的文案** | 信息必须说明*会发生什么*以及不可逆（如卸载信息会点名插件）。破坏性动词在合适处用 `-sk-danger`。 |
 | **默认取消** | 安全选项是默认；用户必须明确选择才继续。 |
 | **可逆 ≠ 破坏性** | 隐藏面板、切设置、导航离开——这些都无需确认。把对话框留给数据丢失。 |
@@ -292,16 +292,16 @@ ThemeService.onChange(theme -> Platform.runLater(() -> {
 
 ```java
 // 破坏性确认
-if (GlassNotification.confirm(view, I18n.get("detail.uninstall.confirmTitle"), msg)) {
+if (SkNotification.confirm(view, I18n.get("detail.uninstall.confirmTitle"), msg)) {
     doUninstall();
 }
 
 // 成功 / 信息 / 警告反馈
-GlassNotification.toast(view, GlassNotification.Type.SUCCESS, I18n.get("msg.saved"));
-GlassNotification.notify(view, GlassNotification.Type.WARNING, I18n.get("setting.urlEmpty"));
+SkNotification.toast(view, SkNotification.Type.SUCCESS, I18n.get("msg.saved"));
+SkNotification.notify(view, SkNotification.Type.WARNING, I18n.get("setting.urlEmpty"));
 ```
 
-> **通知 API**（[`GlassNotification`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/GlassNotification.java)）：
+> **通知 API**（[`SkNotification`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java)）：
 > `toast(owner, type, message)`、`notify(owner, type, [title,] message)`、
 > `confirm(owner, title, message) → boolean`。`Type` ∈ `INFO/SUCCESS/WARNING/ERROR` 映射到
 > `.sk-notif-info/-success/-warning/-error`。
@@ -314,7 +314,7 @@ GlassNotification.notify(view, GlassNotification.Type.WARNING, I18n.get("setting
 
 - [ ] **缓存视图**——`createView()` 只跑一次；复用该 `Node`。绝不在每次激活时重建。
 - [ ] **页面切换用交叉淡入**——用 `showPage`（220/180 ms），不要硬替换节点。
-- [ ] **破坏性操作要确认**——卸载/删除前先 `GlassNotification.confirm(...)`。
+- [ ] **破坏性操作要确认**——卸载/删除前先 `SkNotification.confirm(...)`。
 - [ ] **显示四态之一**——加载/空/错误/成功，绝不空白。
 - [ ] **接好 Esc**——对话框/面板在 Esc 时关闭；插件视图退回网格。
 - [ ] **持久化侧边栏折叠**用设置键 `sidebar.collapsed`，主题用 `"theme"`。
@@ -331,7 +331,7 @@ GlassNotification.notify(view, GlassNotification.Type.WARNING, I18n.get("setting
 |---|---|---|
 | **每次激活都重建视图** | 浪费工作、丢失用户状态、破坏缓存。 | 缓存 `createView()`；复用 `Node`。 |
 | **没有空/错误态** | 空白面板看起来像卡死。 | 通过四态组件显示加载/空/错误文案。 |
-| **破坏性操作不确认** | 一次误点击丢数据。 | 先 `GlassNotification.confirm(...)`；默认取消。 |
+| **破坏性操作不确认** | 一次误点击丢数据。 | 先 `SkNotification.confirm(...)`；默认取消。 |
 | **异步操作阻塞 FX 线程** | 冻结整个 UI。 | 异步工作移出 FX 线程；通过 `Platform.runLater` 更新 UI。 |
 | **硬替换页面** | 突兀；丢失位置感。 | `showPage` 交叉淡入（220/180 ms）。 |
 | **`hasRunningTasks()` 撒谎** | 返回会驱逐运行中工具的视图 → 丢工作。 | 工作进行中就返回 `true`。 |
@@ -348,7 +348,7 @@ GlassNotification.notify(view, GlassNotification.Type.WARNING, I18n.get("setting
 - [`ui/content/ToolCard.java`](../../SwissKit/src/main/java/fan/summer/ui/content/ToolCard.java) — `onSelect` 回调、运行脉动
 - [`ui/content/DetailPanel.java`](../../SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java) — 滑入、`showUninstallConfirm`
 - [`ui/store/PluginStoreUi.java`](../../SwissKit/src/main/java/fan/summer/ui/store/PluginStoreUi.java) · [`ui/setting/SwissKitJSettingUi.java`](../../SwissKit/src/main/java/fan/summer/ui/setting/SwissKitJSettingUi.java)
-- [`GlassNotification.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/GlassNotification.java) — toast/notify/confirm API
+- [`SkNotification.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java) — toast/notify/confirm API
 
 **兄弟文档：**
 - [03 组件库](03-component-library.md) — 这些流程所用组件

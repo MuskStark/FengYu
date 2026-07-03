@@ -126,7 +126,7 @@ with the notification system:
 | Warning | amber (`.sk-notif-warning` tint, `-sk-warning`) | ⚠ | message text |
 | Error | red (`.sk-notif-error` tint, `-sk-danger`) | ✗ / ⚠ | message text |
 
-Each `GlassNotification.Type` carries **all three** channels: a tinted background color, a
+Each `SkNotification.Type` carries **all three** channels: a tinted background color, a
 glyph (`INFO ℹ` / `SUCCESS ✓` / `WARNING ⚠` / `ERROR ✗`), and a textual message. This is
 the pattern to follow for any custom status indicator: never signal "error" with a red
 border alone — add an icon and an explicit word.
@@ -242,7 +242,7 @@ When building UI for SwissKitJ (host or plugin), you **MUST**:
 - [ ] **Contrast ≥ 4.5:1 for text** — use the [safe pairs](#safe-color-pairs); compute any
       other combination before using it.
 - [ ] **Never convey status by color alone** — pair color with an icon and text (the
-      `GlassNotification.Type` pattern).
+      `SkNotification.Type` pattern).
 - [ ] **Make every action keyboard-reachable** — never `setFocusTraversable(false)` on an
       interactive control to "fix" tab order.
 - [ ] **Keep the focus ring visible** — rely on the `-sk-accent` focused border; don't
@@ -263,7 +263,7 @@ When building UI for SwissKitJ (host or plugin), you **MUST**:
 
 | Anti-pattern | Why it's wrong | Do instead |
 |---|---|---|
-| **Relying on color for error state** | Colorblind users miss it. | Color + icon + text (the `.sk-notif-*` / `GlassNotification` pattern). |
+| **Relying on color for error state** | Colorblind users miss it. | Color + icon + text (the `.sk-notif-*` / `SkNotification` pattern). |
 | **Low-contrast disabled text as the only affordance** | Below AA; user can't read what they must. | `-sk-text-secondary`/`-sk-text` for anything the user needs to read; reserve `-sk-text-disabled` for truly disabled content. |
 | **Trapping focus** (a dialog/overlay Tab-cycles inside with no Esc out) | Keyboard users can't escape. | Esc closes; tab order is contained but escapable. |
 | **No Esc handler** | Keyboard users can't dismiss. | Wire `setOnKeyPressed` → close on `KeyCode.ESCAPE`. |
@@ -278,7 +278,7 @@ When building UI for SwissKitJ (host or plugin), you **MUST**:
 
 - [`swisskit-common.css`](../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css) — token definitions, `.sk-field:focused`
 - [`shell.css`](../../SwissKit/src/main/resources/css/shell.css) — `.search-bar:focused-within`, focus indicators
-- [`GlassNotification.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/GlassNotification.java) — the color+icon+text status pattern
+- [`SkNotification.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java) — the color+icon+text status pattern
 - **Sibling docs:**
   - [05 Theme & Color System](05-theme-color-system.md) — the verified
     [contrast matrix](05-theme-color-system.md#contrast-matrix-wcag-aa) these rules derive from

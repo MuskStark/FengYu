@@ -3,7 +3,7 @@ package fan.summer.ui.content;
 import fan.summer.api.MdiIconUtil;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
-import fan.summer.api.component.GlassNotification;
+import fan.summer.api.component.SkNotification;
 import fan.summer.api.i18n.I18n;
 import fan.summer.plugin.FavoriteService;
 import org.slf4j.Logger;
@@ -264,7 +264,7 @@ public class DetailPanel extends VBox {
         String title = I18n.get("detail.uninstall.confirmTitle");
         String msg = MessageFormat.format(I18n.get("detail.uninstall.confirmMsg"), currentPlugin.getName());
 
-        boolean confirmed = GlassNotification.confirm(this, title, msg);
+        boolean confirmed = SkNotification.confirm(this, title, msg);
         if (confirmed) {
             doUninstall();
         }

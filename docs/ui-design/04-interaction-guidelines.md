@@ -12,7 +12,7 @@
 | **Doc type** | Interaction flows + event-wiring patterns |
 | **Audience** | Plugin authors, AI code generators, anyone wiring up user actions |
 | **Source files** | [`ui/MainWindow.java`](../../SwissKit/src/main/java/fan/summer/ui/MainWindow.java) · [`ui/sidebar/Sidebar.java`](../../SwissKit/src/main/java/fan/summer/ui/sidebar/Sidebar.java) · [`ui/content/ContentArea.java`](../../SwissKit/src/main/java/fan/summer/ui/content/ContentArea.java) · [`ui/content/ToolCard.java`](../../SwissKit/src/main/java/fan/summer/ui/content/ToolCard.java) · [`ui/content/DetailPanel.java`](../../SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java) · [`ui/store/PluginStoreUi.java`](../../SwissKit/src/main/java/fan/summer/ui/store/PluginStoreUi.java) |
-| **Notification API** | [`GlassNotification`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/GlassNotification.java) (`.sk-notif-*`) |
+| **Notification API** | [`SkNotification`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java) (`.sk-notif-*`) |
 | **Related** | [03 Component Library](03-component-library.md) · [06 Icon System](06-icon-system.md) · [07 Animation](07-animation-guidelines.md) · [08 Accessibility](08-accessibility-guide.md) |
 
 ---
@@ -72,7 +72,7 @@ UI until the user has asked for it.
 ### P3 — Forgiving
 
 Destructive operations require a second, explicit confirmation (see
-[`GlassNotification.confirm`](#destructive-operations)). Navigation away from a running tool
+[`SkNotification.confirm`](#destructive-operations)). Navigation away from a running tool
 either keeps it in the background (if `hasRunningTasks()`) or is freely reversible. The user
 should never lose work to a stray click.
 
@@ -171,7 +171,7 @@ Installing a plugin is a foreground async task with visible progress, handled by
 | Step | Effect |
 |---|---|
 | Browse | Online store lists available plugins (fetched remotely). |
-| Install | Progress shown via `.progress-bar`; success/failure reported via `GlassNotification` toast. |
+| Install | Progress shown via `.progress-bar`; success/failure reported via `SkNotification` toast. |
 | Switch to local-installed tab | The store UI toggles between online and local-installed views. |
 | After install | Plugin appears in its category in the sidebar/grid on next refresh. |
 
@@ -186,7 +186,7 @@ validation timing:
 |---|---|
 | **When to validate** | On **blur** or **submit**, not on every keystroke. Live per-keystroke validation feels naggy in a desktop tool. |
 | **Error message placement** | Immediately **below** the offending field, in `-sk-danger` text (use a label under the field, not a popup). |
-| **Submit feedback** | Disable the submit button during async work; on result show a `GlassNotification` toast (success/info/warning/error). |
+| **Submit feedback** | Disable the submit button during async work; on result show a `SkNotification` toast (success/info/warning/error). |
 | **Required fields** | Mark with a `-sk-danger` asterisk or a clear label; never rely on color alone (see [08](08-accessibility-guide.md)). |
 
 <span id="keyboard"></span>
@@ -214,8 +214,8 @@ shared components:
 |---|---|---|
 | **Loading** | While data is being fetched / a job is running | `.progress-bar` (6 px, `-sk-accent` fill) and/or the ToolCard running pulse |
 | **Empty** | A query returned nothing / nothing to show | Empty-state copy in `.sk-table` placeholder text (`-sk-text-disabled`) or a centered label |
-| **Error** | A load/job failed | `GlassNotification.notify(WARNING/ERROR, ...)` + inline `-sk-danger` message near the source |
-| **Success** | A job completed | `GlassNotification.toast(SUCCESS, ...)` |
+| **Error** | A load/job failed | `SkNotification.notify(WARNING/ERROR, ...)` + inline `-sk-danger` message near the source |
+| **Success** | A job completed | `SkNotification.toast(SUCCESS, ...)` |
 
 > **Anti-pattern:** a blank panel while loading. Even a disabled `.progress-bar` or a
 > `-sk-text-disabled` "Loading…" label is better than nothing — it tells the user the app
@@ -230,7 +230,7 @@ via the shared modal:
 
 ```java
 // The canonical confirmation — DetailPanel.showUninstallConfirm (DetailPanel.java:303)
-boolean confirmed = GlassNotification.confirm(this, title, message);
+boolean confirmed = SkNotification.confirm(this, title, message);
 if (confirmed) {
     doUninstall();
 }
@@ -238,7 +238,7 @@ if (confirmed) {
 
 | Rule | Detail |
 |---|---|
-| **Always confirm** | `GlassNotification.confirm(context, title, message)` blocks for a yes/no; never delete/uninstall without it. |
+| **Always confirm** | `SkNotification.confirm(context, title, message)` blocks for a yes/no; never delete/uninstall without it. |
 | **Clear, irreversible copy** | The message must state *what* happens and that it's irreversible (e.g. the uninstall message names the plugin). Use `-sk-danger` for the destructive verb where appropriate. |
 | **Default to cancel** | The safe choice is the default; the user must affirmatively choose to proceed. |
 | **Reversible ≠ destructive** | Hiding a panel, toggling a setting, navigating away — these need no confirm. Reserve the dialog for data loss. |
@@ -307,16 +307,16 @@ ThemeService.onChange(theme -> Platform.runLater(() -> {
 
 ```java
 // Destructive confirm
-if (GlassNotification.confirm(view, I18n.get("detail.uninstall.confirmTitle"), msg)) {
+if (SkNotification.confirm(view, I18n.get("detail.uninstall.confirmTitle"), msg)) {
     doUninstall();
 }
 
 // Success / info / warning feedback
-GlassNotification.toast(view, GlassNotification.Type.SUCCESS, I18n.get("msg.saved"));
-GlassNotification.notify(view, GlassNotification.Type.WARNING, I18n.get("setting.urlEmpty"));
+SkNotification.toast(view, SkNotification.Type.SUCCESS, I18n.get("msg.saved"));
+SkNotification.notify(view, SkNotification.Type.WARNING, I18n.get("setting.urlEmpty"));
 ```
 
-> **Notification API** ([`GlassNotification`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/GlassNotification.java)):
+> **Notification API** ([`SkNotification`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java)):
 > `toast(owner, type, message)`, `notify(owner, type, [title,] message)`,
 > `confirm(owner, title, message) → boolean`. `Type` ∈ `INFO/SUCCESS/WARNING/ERROR` maps to
 > `.sk-notif-info/-success/-warning/-error`.
@@ -330,7 +330,7 @@ When wiring interactions in SwissKitJ (host or plugin), you **MUST**:
 - [ ] **Cache the view** — `createView()` once; reuse the `Node`. Never rebuild on every
       activation.
 - [ ] **Cross-fade on page switch** — use `showPage` (220/180 ms), don't hard-swap nodes.
-- [ ] **Confirm destructive ops** — `GlassNotification.confirm(...)` before uninstall/delete.
+- [ ] **Confirm destructive ops** — `SkNotification.confirm(...)` before uninstall/delete.
 - [ ] **Show one of the four states** — loading/empty/error/success, never blank.
 - [ ] **Wire Esc** — dialogs/panels close on Esc; plugin view backs out to the grid.
 - [ ] **Persist sidebar collapse** via setting key `sidebar.collapsed`, theme via `"theme"`.
@@ -347,7 +347,7 @@ When wiring interactions in SwissKitJ (host or plugin), you **MUST**:
 |---|---|---|
 | **Rebuilding the view on every activation** | Wastes work, loses user state, breaks caching. | Cache `createView()`; reuse the `Node`. |
 | **No empty/error state** | A blank panel looks like a freeze. | Show loading/empty/error copy via the four-state components. |
-| **Destructive action without confirm** | One stray click loses data. | `GlassNotification.confirm(...)` first; default to cancel. |
+| **Destructive action without confirm** | One stray click loses data. | `SkNotification.confirm(...)` first; default to cancel. |
 | **Blocking the FX thread** for async ops | Freezes the whole UI. | Run async work off the FX thread; update UI via `Platform.runLater`. |
 | **Hard-swapping pages** | Jarring; loses place. | `showPage` cross-fade (220/180 ms). |
 | **Lying `hasRunningTasks()`** | Back evicts a running tool's view → lost work. | Return `true` while work is in flight. |
@@ -364,7 +364,7 @@ When wiring interactions in SwissKitJ (host or plugin), you **MUST**:
 - [`ui/content/ToolCard.java`](../../SwissKit/src/main/java/fan/summer/ui/content/ToolCard.java) — `onSelect` callback, running pulse
 - [`ui/content/DetailPanel.java`](../../SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java) — slide-in, `showUninstallConfirm`
 - [`ui/store/PluginStoreUi.java`](../../SwissKit/src/main/java/fan/summer/ui/store/PluginStoreUi.java) · [`ui/setting/SwissKitJSettingUi.java`](../../SwissKit/src/main/java/fan/summer/ui/setting/SwissKitJSettingUi.java)
-- [`GlassNotification.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/GlassNotification.java) — toast/notify/confirm API
+- [`SkNotification.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java) — toast/notify/confirm API
 
 **Sibling docs:**
 - [03 Component Library](03-component-library.md) — the components these flows use

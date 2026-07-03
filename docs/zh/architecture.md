@@ -14,7 +14,7 @@ SwissKitJ 是一个基于 JavaFX 21（JDK 21）构建的模块化、插件化桌
 │  SwissKitJ-Api  —  公共契约层（无业务逻辑）                        │
 │  SwissKitJPlugin · ToolCategory/Type/IconStyle · PluginContext     │
 │  AiService/AiTool/AiChatMessage · I18n · Themes · LoggerFactory    │
-│  StepWizard · GlassNotification · UiUtils · preview 组件           │
+│  StepWizard · SkNotification · UiUtils · preview 组件           │
 └───────────────────────────────▲──────────────────────────────────┘
                                 │ 打包进胖 JAR（provided → runtime）
                                 ▼
@@ -30,7 +30,7 @@ SwissKitJ 是一个基于 JavaFX 21（JDK 21）构建的模块化、插件化桌
 
 | 模块 | 用途 |
 |------|------|
-| `SwissKitJ-Api` | 共享插件接口（`SwissKitJPlugin`）、插件上下文与隔离（`PluginContext`）、可复用组件（`StepWizard`、`GlassNotification`、`UiUtils`）、主题、i18n、日志 API，以及 AI 服务契约（`ChatBackend`、`AiTool`、消息 record） |
+| `SwissKitJ-Api` | 共享插件接口（`SwissKitJPlugin`）、插件上下文与隔离（`PluginContext`）、可复用组件（`StepWizard`、`SkNotification`、`UiUtils`）、主题、i18n、日志 API，以及 AI 服务契约（`ChatBackend`、`AiTool`、消息 record） |
 | `SwissKit` | JavaFX 应用壳 —— UI、插件加载、收藏、AI 子系统，以及全部内置工具 |
 
 官方插件位于[单独的仓库](https://github.com/MuskStark/SwissKiJ-Plugin)。它们独立构建，在运行时作为 JAR 放入 `.swisskit/plugin/` 目录。所有插件将 `SwissKitJ-Api` 声明为 `provided` 依赖；主应用通过胖 JAR 在运行时提供它。
