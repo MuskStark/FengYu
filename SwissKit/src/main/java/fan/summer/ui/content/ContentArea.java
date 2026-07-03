@@ -175,6 +175,35 @@ public class ContentArea extends BorderPane {
         crossFadeTo(scrollPane);
     }
 
+    /**
+     * Focuses the search field if it is currently visible (tool-grid mode).
+     * Invoked by the global Cmd/Ctrl+K accelerator.
+     */
+    public void focusSearch() {
+        if (searchField.getParent() != null && searchField.getParent().isVisible()) {
+            searchField.requestFocus();
+            searchField.selectAll();
+        }
+    }
+
+    /**
+     * Handles a global Escape press: closes the detail panel first,
+     * then clears an active search query.
+     *
+     * @return {@code true} if the event was consumed
+     */
+    public boolean handleEscape() {
+        if (detailPanel.isPanelOpen()) {
+            detailPanel.hide();
+            return true;
+        }
+        if (!currentQuery.isEmpty()) {
+            searchField.clear();
+            return true;
+        }
+        return false;
+    }
+
     private void setTopMode(boolean pageMode, String title) {
         if (pageMode) {
             Label titleLabel = (Label) backBar.lookup(".back-title");
@@ -253,7 +282,8 @@ public class ContentArea extends BorderPane {
             isSearchRefresh = false;
         });
 
-        Label kbdHint = new Label("⌘K");
+        boolean mac = System.getProperty("os.name", "").toLowerCase().contains("mac");
+        Label kbdHint = new Label(mac ? "⌘K" : "Ctrl+K");
         kbdHint.getStyleClass().add("search-kbd");
 
         HBox bar = new HBox(10, searchIcon, searchField, kbdHint);

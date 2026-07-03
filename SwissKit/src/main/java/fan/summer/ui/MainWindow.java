@@ -19,6 +19,10 @@ import javafx.scene.Node;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
+import javafx.scene.input.KeyEvent;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 import org.slf4j.Logger;
@@ -113,6 +117,7 @@ public class MainWindow extends StackPane {
 
         buildScene();
         wireEvents();
+        wireShortcuts();
         startClock();
         playEntryAnimation();
 
@@ -268,6 +273,25 @@ public class MainWindow extends StackPane {
             } catch (Exception ex) {
                 log.error("Failed to uninstall plugin {}: {}", plugin.getId(), ex.getMessage(), ex);
             }
+        });
+    }
+
+    /**
+     * Registers scene-level keyboard shortcuts once the scene is attached:
+     * Cmd/Ctrl+K focuses the search bar, Escape closes the detail panel
+     * or clears the search query.
+     */
+    private void wireShortcuts() {
+        sceneProperty().addListener((obs, oldScene, scene) -> {
+            if (scene == null) return;
+            scene.getAccelerators().put(
+                new KeyCodeCombination(KeyCode.K, KeyCombination.SHORTCUT_DOWN),
+                contentArea::focusSearch);
+            scene.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
+                if (e.getCode() == KeyCode.ESCAPE && contentArea.handleEscape()) {
+                    e.consume();
+                }
+            });
         });
     }
 
