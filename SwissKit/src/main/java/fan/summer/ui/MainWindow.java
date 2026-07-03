@@ -6,7 +6,7 @@ import fan.summer.api.i18n.I18n;
 import fan.summer.plugin.FavoriteService;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.plugin.PluginRegistry;
-import fan.summer.ui.about.AboutDialog;
+import fan.summer.ui.about.AboutPage;
 import fan.summer.ui.content.ContentArea;
 import fan.summer.ui.setting.SwissKitJSettingUi;
 import fan.summer.ui.sidebar.Sidebar;
@@ -311,7 +311,7 @@ public class MainWindow extends StackPane {
     }
 
     private void openAbout() {
-        new AboutDialog(stage).show();
+        contentArea.showPage(AboutPage.build(), I18n.get("sidebar.label.about"));
     }
 
     // ── AI Chat page ────────────────────────────────────
