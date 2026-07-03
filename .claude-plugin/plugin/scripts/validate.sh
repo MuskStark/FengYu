@@ -39,7 +39,18 @@ grep -rqs 'glass-' "$SRC" "$RES" 2>/dev/null && fail M4 "'.glass-*' found; use .
 grep -rqs 'setPrefWidth(Double.MAX_VALUE)' "$SRC" 2>/dev/null && fail M5 "setPrefWidth(MAX_VALUE) banned"
 
 # M6: no maxWidthProperty().bind(widthProperty()) self/circular binding
-grep -rqsE 'maxWidthProperty\(\)\.bind\(\s*widthProperty\(\)' "$SRC" 2>/dev/null && fail M6 "self width bind banned"
+# Checked two ways: (a) line-oriented grep for the single-line form, and
+# (b) per-file whitespace-collapse for the multi-line/wrapped form (CLAUDE.md §3),
+# e.g. `desc.maxWidthProperty()\n    .bind(\n        widthProperty().subtract(48));`
+m6_hit=0
+grep -rqsE 'maxWidthProperty\(\)\.bind\(\s*widthProperty\(\)' "$SRC" 2>/dev/null && m6_hit=1
+if [ "$m6_hit" -eq 0 ] && [ -d "$SRC" ]; then
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    tr -s ' \t\n\r' ' ' < "$f" | grep -qE 'maxWidthProperty\(\) *\. *bind\( *widthProperty\(\)' && { m6_hit=1; break; }
+  done < <(find "$SRC" -name '*.java' 2>/dev/null)
+fi
+[ "$m6_hit" -eq 1 ] && fail M6 "self width bind banned"
 
 # M7: plugin getId() is reverse-domain (at least two dot-separated segments)
 # getId() and its return statement are usually on separate lines, so grab the
@@ -63,8 +74,8 @@ grep -rqsE 'registerPluginBundle|i18n\(\)\.registerBundle' "$SRC" 2>/dev/null ||
 dl="$(grep -rl 'class DevLauncher' "$SRC" 2>/dev/null | head -1)"
 [ -n "$dl" ] && grep -qs 'import javafx' "$dl" && fail M11 "DevLauncher must have zero javafx imports"
 
-# M12: pom has swisskit.api.version property
-grep -qs 'swisskit.api.version' "$POM" || fail M12 "swisskit.api.version property missing"
+# M12: pom has swisskit.api.version property DECLARATION (not just a ${...} usage reference)
+grep -qsE '<swisskit\.api\.version>' "$POM" || fail M12 "swisskit.api.version property missing"
 
 [ "$rc" -eq 0 ] && echo "VALIDATE OK: $P"
 exit $rc
