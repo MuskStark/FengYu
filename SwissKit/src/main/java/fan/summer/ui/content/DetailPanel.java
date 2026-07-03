@@ -159,24 +159,12 @@ public class DetailPanel extends VBox {
         });
 
         uninstallBtn.setMaxWidth(Double.MAX_VALUE);
-        uninstallBtn.setStyle(
-            "-fx-background-color: rgba(242,92,92,0.12);" +
-            "-fx-border-color: rgba(242,92,92,0.30); -fx-border-width: 1;" +
-            "-fx-text-fill: #f25c5c; -fx-font-size: 13px;" +
-            "-fx-background-radius: 8; -fx-border-radius: 8;" +
-            "-fx-padding: 8 20 8 20; -fx-cursor: hand;"
-        );
+        uninstallBtn.getStyleClass().add("detail-uninstall-btn");
         uninstallBtn.setOnAction(e -> showUninstallConfirm());
 
         // Favorite toggle button
         favoriteBtn.setMaxWidth(Double.MAX_VALUE);
-        favoriteBtn.setStyle(
-            "-fx-background-color: rgba(245,200,66,0.10);" +
-            "-fx-border-color: rgba(245,200,66,0.30); -fx-border-width: 1;" +
-            "-fx-text-fill: #f5c842; -fx-font-size: 13px;" +
-            "-fx-background-radius: 8; -fx-border-radius: 8;" +
-            "-fx-padding: 8 20 8 20; -fx-cursor: hand;"
-        );
+        favoriteBtn.getStyleClass().add("detail-fav-btn");
         favoriteBtn.setOnAction(e -> {
             if (currentPlugin == null) return;
             FavoriteService svc = FavoriteService.getInstance();
@@ -188,34 +176,16 @@ public class DetailPanel extends VBox {
 
         VBox buttonBox = new VBox(8, launchBtn, uninstallBtn, favoriteBtn);
 
-        closeBtn.getStyleClass().add("sk-t3");
-        closeBtn.setStyle(
-            "-fx-background-color: transparent; -fx-border-width: 0;" +
-            "-fx-cursor: hand; -fx-font-size: 14px;"
-        );
+        closeBtn.getStyleClass().add("detail-close-btn");
         closeBtn.setOnAction(e -> hide());
-        final String closeBtnNormal = "-fx-background-color: transparent; -fx-border-width: 0;" +
-            "-fx-cursor: hand; -fx-font-size: 14px;";
-        final String closeBtnHover = "-fx-background-color: transparent; -fx-border-width: 0;" +
-            "-fx-cursor: hand; -fx-font-size: 14px;";
-        closeBtn.setOnMouseEntered(e -> {
-            closeBtn.getStyleClass().remove("sk-t3");
-            if (!closeBtn.getStyleClass().contains("sk-t1")) closeBtn.getStyleClass().add("sk-t1");
-            closeBtn.setStyle(closeBtnHover);
-        });
-        closeBtn.setOnMouseExited(e -> {
-            closeBtn.getStyleClass().remove("sk-t1");
-            if (!closeBtn.getStyleClass().contains("sk-t3")) closeBtn.getStyleClass().add("sk-t3");
-            closeBtn.setStyle(closeBtnNormal);
-        });
 
         HBox topRow = new HBox(closeBtn);
         topRow.setAlignment(Pos.CENTER_RIGHT);
 
         VBox propsBox = new VBox(6,
-            propRow(I18n.get("detail.prop.version"),   versionVal),
-            propRow(I18n.get("detail.prop.type"),      typeVal),
-            propRow(I18n.get("detail.prop.category"),  categoryVal)
+            propRow("detail.prop.version",  versionVal),
+            propRow("detail.prop.type",     typeVal),
+            propRow("detail.prop.category", categoryVal)
         );
         VBox.setMargin(propsBox, new Insets(12, 0, 0, 0));
 
@@ -231,29 +201,17 @@ public class DetailPanel extends VBox {
         if (currentPlugin == null) return;
         FavoriteService svc = FavoriteService.getInstance();
         boolean isFav = svc != null && svc.isFavorite(currentPlugin.getId());
+        favoriteBtn.setText(I18n.get(isFav ? "detail.btn.removeFavorite" : "detail.btn.addFavorite"));
         if (isFav) {
-            favoriteBtn.setText(I18n.get("detail.btn.removeFavorite"));
-            favoriteBtn.setStyle(
-                "-fx-background-color: rgba(245,200,66,0.18);" +
-                "-fx-border-color: rgba(245,200,66,0.40); -fx-border-width: 1;" +
-                "-fx-text-fill: #f5c842; -fx-font-size: 13px;" +
-                "-fx-background-radius: 8; -fx-border-radius: 8;" +
-                "-fx-padding: 8 20 8 20; -fx-cursor: hand;"
-            );
+            if (!favoriteBtn.getStyleClass().contains("favorited")) favoriteBtn.getStyleClass().add("favorited");
         } else {
-            favoriteBtn.setText(I18n.get("detail.btn.addFavorite"));
-            favoriteBtn.setStyle(
-                "-fx-background-color: rgba(245,200,66,0.10);" +
-                "-fx-border-color: rgba(245,200,66,0.30); -fx-border-width: 1;" +
-                "-fx-text-fill: #f5c842; -fx-font-size: 13px;" +
-                "-fx-background-radius: 8; -fx-border-radius: 8;" +
-                "-fx-padding: 8 20 8 20; -fx-cursor: hand;"
-            );
+            favoriteBtn.getStyleClass().remove("favorited");
         }
     }
 
-    private HBox propRow(String key, Label valLabel) {
-        Label keyLabel = new Label(key);
+    private HBox propRow(String i18nKey, Label valLabel) {
+        Label keyLabel = new Label(I18n.get(i18nKey));
+        I18n.bind(keyLabel.textProperty(), i18nKey);
         keyLabel.getStyleClass().add("sk-t3");
         keyLabel.setStyle("-fx-font-size: 12px;");
         valLabel.getStyleClass().add("sk-t2");

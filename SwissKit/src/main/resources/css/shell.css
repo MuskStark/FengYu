@@ -182,6 +182,35 @@
 }
 .detail-launch-btn:hover { -fx-background-color: derive(-sk-accent, -8%); }
 .detail-launch-btn:pressed { -fx-background-color: derive(-sk-accent, -16%); }
+.detail-uninstall-btn {
+    -fx-background-color: -sk-danger-soft;
+    -fx-border-color: -sk-danger-soft;
+    -fx-border-width: 1;
+    -fx-text-fill: -sk-danger;
+    -fx-font-size: 13px;
+    -fx-background-radius: 8; -fx-border-radius: 8;
+    -fx-padding: 8 20 8 20;
+    -fx-cursor: hand;
+}
+.detail-fav-btn {
+    -fx-background-color: transparent;
+    -fx-border-color: -sk-warning-soft;
+    -fx-border-width: 1;
+    -fx-text-fill: -sk-warning;
+    -fx-font-size: 13px;
+    -fx-background-radius: 8; -fx-border-radius: 8;
+    -fx-padding: 8 20 8 20;
+    -fx-cursor: hand;
+}
+.detail-fav-btn.favorited { -fx-background-color: -sk-warning-soft; }
+.detail-close-btn {
+    -fx-background-color: transparent;
+    -fx-border-width: 0;
+    -fx-text-fill: -sk-text-disabled;
+    -fx-font-size: 14px;
+    -fx-cursor: hand;
+}
+.detail-close-btn:hover { -fx-text-fill: -sk-text; }
 
 /* ── 状态栏 ──────────────────────────────────────────────────── */
 .statusbar {
