@@ -1,0 +1,63 @@
+# CLAUDE.md
+
+{{description}}
+
+This is a [SwissKitJ](https://github.com/MuskStark/SwissKitJ) plugin — `{{plugin-id}}`
+(`{{Name}}`, base package `{{base-package}}`). It builds independently as a standalone Maven
+project and is dropped into the host's `.swisskit/plugin/` directory as a fat JAR at runtime.
+
+## Build & Run
+
+```bash
+# Preview inside a SwissKitJ-like shell (fast iteration loop)
+mvn -Pdev javafx:run
+
+# Production fat JAR (SPI + dependencies merged via maven-shade-plugin)
+mvn package
+# Output: target/{{plugin-name}}-1.0.0.jar
+# Deploy: copy the JAR into the host's <user.dir>/.swisskit/plugin/ directory (hot-reload supported)
+```
+
+`swisskit.api.version` in `pom.xml` currently pins `SwissKitJ-Api` to `{{swisskit-api-version}}`
+— bump it only when targeting a newer host release, and re-run `bash validate.sh .` after.
+
+## Hard constraints
+
+These are enforced mechanically by `validate.sh` (see below) or reviewed semantically by the
+`swisskitj-plugin-reviewer` agent. Do not regress them:
+
+- **SPI registration**: entry class FQN, one line, at
+  `src/main/resources/META-INF/services/fan.summer.api.SwissKitJPlugin`; must match an
+  actual `.java` file on this exact path.
+- **`SwissKitJ-Api` dependency scope is `provided`** — the host supplies it at runtime; do
+  not shade it into the fat JAR.
+- **Shade plugin must configure `ServicesResourceTransformer`** — without it, SPI files
+  from dependencies get silently overwritten in the fat JAR and the plugin fails to load.
+- **Use `.sk-*` style classes / `-sk-*` CSS tokens, never `.glass-*`** — the old
+  glassmorphism utility classes were renamed away in host v3.2.0.
+- **Layout pitfalls (JavaFX)** — one line each, see `standards/pitfalls.md` /
+  `standards/ui.md` in the plugin-kit for the full detail:
+  - Never `setPrefWidth(Double.MAX_VALUE)` — use `setMaxWidth(Double.MAX_VALUE)` +
+    `HBox/VBox.setHgrow/Vgrow(node, Priority.ALWAYS)` instead.
+  - Never bind `maxWidthProperty()` to the node's own `widthProperty()` — it's circular and
+    collapses layout to the min size.
+  - When toggling pages inside a `StackPane`, toggle both `setVisible` and `setManaged`.
+- **i18n bundle registration**: `createView()` (or `init(PluginHost)`) must register the
+  bundle before any UI is built — `I18n.registerPluginBundle("i18n.messages",
+  getClass().getClassLoader())` or `host.i18n().registerBundle("i18n.messages")`. Both
+  `i18n/messages.properties` and `i18n/messages_zh.properties` must exist with identical
+  key sets, prefixed `plugin.{{slug}}.`.
+- **`getId()` is reverse-domain** (at least two dot-separated segments), returned verbatim,
+  e.g. `{{plugin-id}}`.
+- **`DevLauncher.java` has zero JavaFX imports** (the sole exception is
+  `javafx.application.Platform`, used only to call `Platform.startup`) — any other JavaFX
+  import here breaks `mvn javafx:run -Pdev` with a module-system error.
+
+## Standing instruction
+
+**After ANY change, run `bash validate.sh .`** from this repo's root and fix every `FAIL`
+line before moving on. **Before packaging** (`mvn package`) or opening a PR, review the
+project with the `swisskitj-plugin-reviewer` agent and resolve every reported violation —
+it checks the semantic rules (`AiTool` JSON contract, background work via `host.tasks()`,
+`Themes.applyTo(scene)` on self-built windows, H2 path conventions, `createView()` caching
+discipline, `-sk-*` token usage) that `validate.sh` cannot check mechanically.
