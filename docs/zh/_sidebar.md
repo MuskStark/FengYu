@@ -6,6 +6,7 @@
 - [开发指南](/zh/development.md)
 - [API 参考](/zh/api.md)
 - [更新日志](/zh/changelog.md)
+- [迁移到 3.2](/zh/migration-3.2.md)
 - **插件开发**
   - [概览](/zh/plugins/index.md)
   - [快速开始](/zh/plugins/getting-started.md)
