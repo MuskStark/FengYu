@@ -20,7 +20,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
-import fan.summer.api.component.GlassNotification;
+import fan.summer.api.component.SkNotification;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
@@ -235,11 +235,11 @@ public class EmailPlugin implements SwissKitJPlugin {
         String body = bodyEditor.getHtml();
         String plain = bodyEditor.getPlainText();
         if (subject == null || subject.isBlank()) {
-            GlassNotification.notify(view, GlassNotification.Type.WARNING, I18n.get("builtin.email.subjectRequired"));
+            SkNotification.notify(view, SkNotification.Type.WARNING, I18n.get("builtin.email.subjectRequired"));
             return;
         }
         if (plain == null || plain.isBlank()) {
-            GlassNotification.notify(view, GlassNotification.Type.WARNING, I18n.get("builtin.email.bodyRequired"));
+            SkNotification.notify(view, SkNotification.Type.WARNING, I18n.get("builtin.email.bodyRequired"));
             return;
         }
 
@@ -340,7 +340,7 @@ public class EmailPlugin implements SwissKitJPlugin {
             tags = session.getMapper(EmailTagMapper.class).selectAll();
             if (tags == null) tags = new ArrayList<>();
         } catch (Exception e) {
-            GlassNotification.notify(view, GlassNotification.Type.ERROR, I18n.get("builtin.email.loadTagsFailed", e.getMessage()));
+            SkNotification.notify(view, SkNotification.Type.ERROR, I18n.get("builtin.email.loadTagsFailed", e.getMessage()));
             return;
         }
 
@@ -449,19 +449,19 @@ public class EmailPlugin implements SwissKitJPlugin {
             if (!filenameMode) {
                 List<Long> toIds = collectCheckedIds(toCheckBoxes);
                 if (toIds.isEmpty()) {
-                    GlassNotification.notify(view, GlassNotification.Type.WARNING, I18n.get("builtin.email.selectToTagWarning"));
+                    SkNotification.notify(view, SkNotification.Type.WARNING, I18n.get("builtin.email.selectToTagWarning"));
                     return;
                 }
             }
 
             // Filename mode requires attachment folder
             if (filenameMode && (attFolderField.getText() == null || attFolderField.getText().isBlank())) {
-                GlassNotification.notify(view, GlassNotification.Type.WARNING, I18n.get("builtin.email.selectFolderWarning"));
+                SkNotification.notify(view, SkNotification.Type.WARNING, I18n.get("builtin.email.selectFolderWarning"));
                 return;
             }
 
             if (attCheckBox.isSelected() && (attFolderField.getText() == null || attFolderField.getText().isBlank())) {
-                GlassNotification.notify(view, GlassNotification.Type.WARNING, I18n.get("builtin.email.selectFolderWarning"));
+                SkNotification.notify(view, SkNotification.Type.WARNING, I18n.get("builtin.email.selectFolderWarning"));
                 return;
             }
 
@@ -486,10 +486,10 @@ public class EmailPlugin implements SwissKitJPlugin {
                 session.getMapper(EmailMassSentConfigMapper.class).upsert(cfg);
                 session.commit();
                 dialog.close();
-                GlassNotification.toast(view, GlassNotification.Type.SUCCESS, I18n.get("builtin.email.configSaved"));
+                SkNotification.toast(view, SkNotification.Type.SUCCESS, I18n.get("builtin.email.configSaved"));
             } catch (Exception ex) {
                 log.error("Save config failed", ex);
-                GlassNotification.notify(view, GlassNotification.Type.ERROR, I18n.get("builtin.email.saveFailed", ex.getMessage()));
+                SkNotification.notify(view, SkNotification.Type.ERROR, I18n.get("builtin.email.saveFailed", ex.getMessage()));
             }
         });
         cancelBtn.setOnAction(e -> dialog.close());
@@ -546,7 +546,7 @@ public class EmailPlugin implements SwissKitJPlugin {
             EmailMassSentConfigEntity cfg =
                     session.getMapper(EmailMassSentConfigMapper.class).selectByTaskId(taskId);
             if (cfg == null) {
-                GlassNotification.notify(view, GlassNotification.Type.INFO, I18n.get("builtin.email.noConfig"));
+                SkNotification.notify(view, SkNotification.Type.INFO, I18n.get("builtin.email.noConfig"));
                 return;
             }
             List<EmailTagEntity> tags = session.getMapper(EmailTagMapper.class).selectAll();
@@ -561,9 +561,9 @@ public class EmailPlugin implements SwissKitJPlugin {
             }
             text.append(I18n.get("builtin.email.attachByTag")).append("：").append(cfg.isSentAtt() ? "✓" : "✗").append("\n");
             text.append(I18n.get("builtin.email.chooseAttachmentFolder")).append("：").append(cfg.getAttFolderPath() != null ? cfg.getAttFolderPath() : "—");
-            GlassNotification.notify(view, GlassNotification.Type.INFO, I18n.get("builtin.email.massConfigTitle"), text.toString());
+            SkNotification.notify(view, SkNotification.Type.INFO, I18n.get("builtin.email.massConfigTitle"), text.toString());
         } catch (Exception e) {
-            GlassNotification.notify(view, GlassNotification.Type.ERROR, I18n.get("builtin.email.loadConfigFailed", e.getMessage()));
+            SkNotification.notify(view, SkNotification.Type.ERROR, I18n.get("builtin.email.loadConfigFailed", e.getMessage()));
         }
     }
 
@@ -593,11 +593,11 @@ public class EmailPlugin implements SwissKitJPlugin {
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             logs = session.getMapper(EmailSentLogMapper.class).selectAll();
         } catch (Exception e) {
-            GlassNotification.notify(view, GlassNotification.Type.ERROR, I18n.get("builtin.email.loadLogFailed", e.getMessage()));
+            SkNotification.notify(view, SkNotification.Type.ERROR, I18n.get("builtin.email.loadLogFailed", e.getMessage()));
             return;
         }
         if (logs == null || logs.isEmpty()) {
-            GlassNotification.notify(view, GlassNotification.Type.INFO, I18n.get("builtin.email.noSentLog"));
+            SkNotification.notify(view, SkNotification.Type.INFO, I18n.get("builtin.email.noSentLog"));
             return;
         }
 

@@ -1,6 +1,6 @@
 package fan.summer.buildintool.email;
 
-import fan.summer.api.component.GlassNotification;
+import fan.summer.api.component.SkNotification;
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;

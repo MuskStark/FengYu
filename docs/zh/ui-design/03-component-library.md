@@ -879,7 +879,7 @@ dialog.setPadding(new Insets(20, 24, 16, 24));
 ### 1. 概览与解剖
 
 毛玻璃通知系统，通过
-[`GlassNotification`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/component/GlassNotification.java)
+[`SkNotification`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java)
 （`toast` / `notify` / `confirm`）暴露给插件。它是一个自包含的抬高卡片，带有严重程度着色的圆形
 图标、自动换行的消息，以及可选的按钮栏。**不存在 `.sk-badge`，也不存在 `.sk-notification`**——该
 家族是 `.sk-notif-*`。
@@ -947,7 +947,7 @@ dialog.setPadding(new Insets(20, 24, 16, 24));
 | `.sk-notif-cancel` | 背景 `-sk-bg-hover`，边框 `-sk-border`，次要文字（行 344） | 背景 `-sk-bg-selected`，文字 → `-sk-text`（行 355） |
 
 四个严重程度类作为**第二个**类与 `.sk-notif-icon` 一起加到 `.sk-notif-icon` 节点上——正如
-`GlassNotification` 所做（`getStyleClass().addAll("sk-notif-icon", type.styleClass)`）。
+`SkNotification` 所做（`getStyleClass().addAll("sk-notif-icon", type.styleClass)`）。
 
 ### 5. 布局与尺寸
 
@@ -964,25 +964,25 @@ dialog.setPadding(new Insets(20, 24, 16, 24));
 
 ```java
 // 自动消失的 toast（约 2.5s）
-GlassNotification.toast(view, GlassNotification.Type.SUCCESS, "Saved");
+SkNotification.toast(view, SkNotification.Type.SUCCESS, "Saved");
 
 // 带 OK 的模态
-GlassNotification.notify(view, GlassNotification.Type.WARNING, "Check your input");
+SkNotification.notify(view, SkNotification.Type.WARNING, "Check your input");
 
 // 模态确认（阻塞；超时/关闭返回 false）
-if (GlassNotification.confirm(view, "Delete?", "This cannot be undone.")) {
+if (SkNotification.confirm(view, "Delete?", "This cannot be undone.")) {
     // ...执行破坏性动作
 }
 ```
 
-若必须手动构造（罕见），请镜像 `GlassNotification.showOverlay`：一个 `.sk-notif-root`
+若必须手动构造（罕见），请镜像 `SkNotification.showOverlay`：一个 `.sk-notif-root`
 `VBox`，内含一个 `HBox`（`.sk-notif-icon` + 严重程度 `Label` 与 `.sk-notif-message` `Text`），
 再加一个 `.sk-notif-btn-bar`（`.sk-notif-cancel` + `.sk-notif-ok` `Button`）。
 
 ### 7. 参考
 
 - CSS：`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`（通知小节，行 309–355）
-- Java：`SwissKitJ-Api/src/main/java/fan/summer/api/component/GlassNotification.java`
+- Java：`SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java`
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -1569,7 +1569,7 @@ bar.getChildren().addAll(tools, sep, plugins, spacer, clock);
   - [`SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java`](../../../SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java)
   - [`SwissKit/src/main/java/fan/summer/ui/MainWindow.java`](../../../SwissKit/src/main/java/fan/summer/ui/MainWindow.java)（status bar）
 - 基础层 Java：
-  - [`SwissKitJ-Api/src/main/java/fan/summer/api/component/GlassNotification.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/component/GlassNotification.java)
+  - [`SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java)
   - [`SwissKitJ-Api/src/main/java/fan/summer/api/component/StepWizard.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/component/StepWizard.java)
   - [`SwissKitJ-Api/src/main/java/fan/summer/api/IconStyle.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/IconStyle.java)
 

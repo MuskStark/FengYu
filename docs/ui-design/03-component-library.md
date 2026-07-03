@@ -890,7 +890,7 @@ dialog.setPadding(new Insets(20, 24, 16, 24));
 ### 1. Overview & anatomy
 
 The glassmorphism notification system, exposed to plugins via
-[`GlassNotification`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/GlassNotification.java)
+[`SkNotification`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java)
 (`toast` / `notify` / `confirm`). It is a self-contained elevated card with a severity-colored
 circular icon, a wrapped message, and an optional button bar. **There is no `.sk-badge` and no
 `.sk-notification`** — the family is `.sk-notif-*`.
@@ -959,7 +959,7 @@ the icon-circle background:
 | `.sk-notif-cancel` | bg `-sk-bg-hover`, border `-sk-border`, secondary text (line 344) | bg `-sk-bg-selected`, text → `-sk-text` (line 355) |
 
 The four severity classes are applied as a **second** class on the `.sk-notif-icon` node alongside
-`.sk-notif-icon` — exactly as `GlassNotification` does (`getStyleClass().addAll("sk-notif-icon", type.styleClass)`).
+`.sk-notif-icon` — exactly as `SkNotification` does (`getStyleClass().addAll("sk-notif-icon", type.styleClass)`).
 
 ### 5. Layout & sizing
 
@@ -976,25 +976,25 @@ Plugins should call the helper rather than build the markup by hand:
 
 ```java
 // Auto-dismiss toast (~2.5s)
-GlassNotification.toast(view, GlassNotification.Type.SUCCESS, "Saved");
+SkNotification.toast(view, SkNotification.Type.SUCCESS, "Saved");
 
 // Modal with OK
-GlassNotification.notify(view, GlassNotification.Type.WARNING, "Check your input");
+SkNotification.notify(view, SkNotification.Type.WARNING, "Check your input");
 
 // Modal confirm (blocks; false on timeout/close)
-if (GlassNotification.confirm(view, "Delete?", "This cannot be undone.")) {
+if (SkNotification.confirm(view, "Delete?", "This cannot be undone.")) {
     // ...do the destructive action
 }
 ```
 
-If you must construct one manually (rare), mirror `GlassNotification.showOverlay`: a `.sk-notif-root`
+If you must construct one manually (rare), mirror `SkNotification.showOverlay`: a `.sk-notif-root`
 `VBox` containing an `HBox` of a `.sk-notif-icon`+severity `Label` and a `.sk-notif-message` `Text`,
 then a `.sk-notif-btn-bar` of `.sk-notif-cancel` + `.sk-notif-ok` `Button`s.
 
 ### 7. References
 
 - CSS: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css` (notification section, lines 309–355)
-- Java: `SwissKitJ-Api/src/main/java/fan/summer/api/component/GlassNotification.java`
+- Java: `SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java`
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -1592,7 +1592,7 @@ A reverse index: given a class, find its component.
   - [`SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java`](../../SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java)
   - [`SwissKit/src/main/java/fan/summer/ui/MainWindow.java`](../../SwissKit/src/main/java/fan/summer/ui/MainWindow.java) (status bar)
 - Foundation Java:
-  - [`SwissKitJ-Api/src/main/java/fan/summer/api/component/GlassNotification.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/GlassNotification.java)
+  - [`SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java)
   - [`SwissKitJ-Api/src/main/java/fan/summer/api/component/StepWizard.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/StepWizard.java)
   - [`SwissKitJ-Api/src/main/java/fan/summer/api/IconStyle.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/IconStyle.java)
 

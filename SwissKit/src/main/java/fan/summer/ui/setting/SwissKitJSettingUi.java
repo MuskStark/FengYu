@@ -22,7 +22,7 @@ import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import fan.summer.api.component.GlassNotification;
+import fan.summer.api.component.SkNotification;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
@@ -269,7 +269,7 @@ public class SwissKitJSettingUi {
         Locale locale = isZh ? Locale.CHINESE : Locale.ENGLISH;
         saveSettingAsync("language", code, () -> Platform.runLater(() -> {
             I18n.setLocale(locale);
-            GlassNotification.toast((Window) null, GlassNotification.Type.INFO,
+            SkNotification.toast((Window) null, SkNotification.Type.INFO,
                 I18n.get("setting.general.languageChanged"));
         }));
     }
@@ -338,7 +338,7 @@ public class SwissKitJSettingUi {
         saveBtn.setOnAction(e -> {
             String url = urlField.getText();
             if (url == null || url.isBlank()) {
-                GlassNotification.notify((Window) null, GlassNotification.Type.WARNING, I18n.get("setting.store.urlEmpty"));
+                SkNotification.notify((Window) null, SkNotification.Type.WARNING, I18n.get("setting.store.urlEmpty"));
                 return;
             }
             saveStoreUrl(url.trim());
@@ -358,7 +358,7 @@ public class SwissKitJSettingUi {
 
     private static void saveStoreUrl(String url) {
         saveSettingAsync(STORE_URL_KEY, url, () -> Platform.runLater(() ->
-            GlassNotification.toast((Window) null, GlassNotification.Type.SUCCESS,
+            SkNotification.toast((Window) null, SkNotification.Type.SUCCESS,
                 I18n.get("setting.store.saved"))));
     }
 
@@ -656,7 +656,7 @@ public class SwissKitJSettingUi {
         loadBtn.setOnAction(e -> {
             String path = modelPathField.getText();
             if (path == null || path.isBlank()) {
-                GlassNotification.notify((Window) null, GlassNotification.Type.WARNING, I18n.get("setting.ai.selectModelFile"));
+                SkNotification.notify((Window) null, SkNotification.Type.WARNING, I18n.get("setting.ai.selectModelFile"));
                 return;
             }
             loadBtn.setDisable(true);
@@ -1303,13 +1303,13 @@ public class SwissKitJSettingUi {
         if (pass == null || pass.isBlank()) missing.add(I18n.get("setting.email.password"));
         if (from == null || from.isBlank()) missing.add(I18n.get("setting.email.fromAddress"));
         if (!missing.isEmpty()) {
-            GlassNotification.notify((Window) null, GlassNotification.Type.WARNING,
+            SkNotification.notify((Window) null, SkNotification.Type.WARNING,
                 I18n.get("setting.email.missingFields", String.join(", ", missing)));
             return;
         }
 
         if (tls && ssl) {
-            GlassNotification.notify((Window) null, GlassNotification.Type.WARNING,
+            SkNotification.notify((Window) null, SkNotification.Type.WARNING,
                 I18n.get("setting.email.tlsSslConflict"));
             return;
         }
@@ -1351,11 +1351,11 @@ public class SwissKitJSettingUi {
                 session.commit();
                 log.info("Email settings saved: smtp={}:{}", fSmtp, fPort);
                 Platform.runLater(() ->
-                    GlassNotification.toast((Window) null, GlassNotification.Type.SUCCESS,
+                    SkNotification.toast((Window) null, SkNotification.Type.SUCCESS,
                         I18n.get("setting.email.saved")));
             } catch (Exception ex) {
                 log.error("Failed to save email settings", ex);
-                Platform.runLater(() -> GlassNotification.notify((Window) null, GlassNotification.Type.ERROR,
+                Platform.runLater(() -> SkNotification.notify((Window) null, SkNotification.Type.ERROR,
                     I18n.get("setting.email.failedToSave", ex.getMessage())));
             }
         });
@@ -1380,7 +1380,7 @@ public class SwissKitJSettingUi {
             allTags = session.getMapper(EmailTagMapper.class).selectAll();
             if (allTags == null) allTags = new ArrayList<>();
         } catch (Exception e) {
-            GlassNotification.notify((Window) null, GlassNotification.Type.ERROR,
+            SkNotification.notify((Window) null, SkNotification.Type.ERROR,
                 I18n.get("setting.email.failedToSave", e.getMessage()));
             return;
         }
@@ -1541,7 +1541,7 @@ public class SwissKitJSettingUi {
         okBtn.setOnAction(e -> {
             String address = addressField.getText();
             if (address == null || address.isBlank() || !address.matches(".+@.+\\..+")) {
-                GlassNotification.notify((Window) null, GlassNotification.Type.WARNING,
+                SkNotification.notify((Window) null, SkNotification.Type.WARNING,
                     I18n.get("setting.email.validEmailRequired"));
                 return;
             }
@@ -1571,7 +1571,7 @@ public class SwissKitJSettingUi {
                 openAddressBookDialog();
             } catch (Exception ex) {
                 log.error("Failed to save address", ex);
-                GlassNotification.notify((Window) null, GlassNotification.Type.ERROR,
+                SkNotification.notify((Window) null, SkNotification.Type.ERROR,
                     I18n.get("setting.email.failedToSave", ex.getMessage()));
             }
         });
@@ -1612,7 +1612,7 @@ public class SwissKitJSettingUi {
             allAddresses = session.getMapper(EmailAddressBookMapper.class).selectEmailAddressBook();
             if (allAddresses == null) allAddresses = new ArrayList<>();
         } catch (Exception e) {
-            GlassNotification.notify((Window) null, GlassNotification.Type.ERROR,
+            SkNotification.notify((Window) null, SkNotification.Type.ERROR,
                 I18n.get("setting.email.failedToSave", e.getMessage()));
             return;
         }
@@ -1665,7 +1665,7 @@ public class SwissKitJSettingUi {
                 delBtn.setOnAction(e -> {
                     long count = tagContactCount.getOrDefault(tag.getId(), 0L);
                     if (count > 0) {
-                        GlassNotification.notify(dialog, GlassNotification.Type.WARNING,
+                        SkNotification.notify(dialog, SkNotification.Type.WARNING,
                             I18n.get("setting.email.tagInUse", tag.getTag(), count));
                         return;
                     }
@@ -1676,7 +1676,7 @@ public class SwissKitJSettingUi {
                             Platform.runLater(() -> { dialog.close(); openTagsDialog(); });
                         } catch (Exception ex) {
                             log.error("Failed to delete tag", ex);
-                            Platform.runLater(() -> GlassNotification.notify(dialog, GlassNotification.Type.ERROR,
+                            Platform.runLater(() -> SkNotification.notify(dialog, SkNotification.Type.ERROR,
                                 I18n.get("setting.email.failedToSave", ex.getMessage())));
                         }
                     });
@@ -1938,11 +1938,11 @@ public class SwissKitJSettingUi {
             try (java.io.FileOutputStream fos = new java.io.FileOutputStream(target)) {
                 wb.write(fos);
             }
-            GlassNotification.toast((Window) null, GlassNotification.Type.SUCCESS,
+            SkNotification.toast((Window) null, SkNotification.Type.SUCCESS,
                 I18n.get("setting.email.templateSaved", target.getName()));
         } catch (Exception e) {
             log.error("Failed to save template", e);
-            GlassNotification.notify((Window) null, GlassNotification.Type.ERROR,
+            SkNotification.notify((Window) null, SkNotification.Type.ERROR,
                 I18n.get("setting.email.templateSaveFailed", e.getMessage()));
         }
     }

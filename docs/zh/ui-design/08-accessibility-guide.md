@@ -115,7 +115,7 @@ WCAG 2.1 阈值，由精确 token 十六进制值计算：
 | 警告 | 琥珀色（`.sk-notif-warning` 色调，`-sk-warning`） | ⚠ | 消息文本 |
 | 错误 | 红色（`.sk-notif-error` 色调，`-sk-danger`） | ✗ / ⚠ | 消息文本 |
 
-每个 `GlassNotification.Type` 都携带**三个**通道：带色调的背景颜色、字形
+每个 `SkNotification.Type` 都携带**三个**通道：带色调的背景颜色、字形
 （`INFO ℹ` / `SUCCESS ✓` / `WARNING ⚠` / `ERROR ✗`）和文字消息。这是任何自定义状态指示器
 都应遵循的模式：绝不仅用红边表达"错误"——加图标和明确的词。
 
@@ -221,7 +221,7 @@ private void playEntry(Node node) {
 为 SwissKitJ（宿主或插件）构建 UI 时，你**必须**：
 
 - [ ] **文字对比度 ≥ 4.5:1**——用[安全颜色对](#安全颜色对)；用任何其它组合前先算比值。
-- [ ] **状态绝不仅靠颜色**——颜色配图标和文本（`GlassNotification.Type` 模式）。
+- [ ] **状态绝不仅靠颜色**——颜色配图标和文本（`SkNotification.Type` 模式）。
 - [ ] **每个操作键盘可达**——绝不为"修"Tab 顺序给可交互控件设 `setFocusTraversable(false)`。
 - [ ] **保持焦点环可见**——依赖 `-sk-accent` 的聚焦边框；不要覆盖成透明。
 - [ ] **对话框/页面切换时管理焦点**——打开时聚焦首个控件，关闭时还原，切换时移入新内容。
@@ -236,7 +236,7 @@ private void playEntry(Node node) {
 
 | 反模式 | 为什么错 | 应改为 |
 |---|---|---|
-| **错误状态仅靠颜色** | 色盲用户会错过。 | 颜色 + 图标 + 文本（`.sk-notif-*` / `GlassNotification` 模式）。 |
+| **错误状态仅靠颜色** | 色盲用户会错过。 | 颜色 + 图标 + 文本（`.sk-notif-*` / `SkNotification` 模式）。 |
 | **低对比度禁用文本作为唯一线索** | 低于 AA；用户读不到必须读的。 | 用户须读的内容用 `-sk-text-secondary`/`-sk-text`；`-sk-text-disabled` 只留给真正禁用的内容。 |
 | **焦点陷阱**（对话框/覆盖层 Tab 在内部循环、且无 Esc 出口） | 键盘用户逃不出。 | Esc 关闭；Tab 顺序受控但可逃。 |
 | **没有 Esc 处理器** | 键盘用户无法关闭。 | 接 `setOnKeyPressed` → `KeyCode.ESCAPE` 关闭。 |
@@ -251,7 +251,7 @@ private void playEntry(Node node) {
 
 - [`swisskit-common.css`](../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css) — token 定义、`.sk-field:focused`
 - [`shell.css`](../../SwissKit/src/main/resources/css/shell.css) — `.search-bar:focused-within`、焦点指示器
-- [`GlassNotification.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/GlassNotification.java) — 颜色+图标+文本的状态模式
+- [`SkNotification.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java) — 颜色+图标+文本的状态模式
 - **兄弟文档：**
   - [05 主题与色彩系统](05-theme-color-system.md) — 本规则所依据的已核实
     [对比度矩阵](05-theme-color-system.md#contrast-matrix-wcag-aa)

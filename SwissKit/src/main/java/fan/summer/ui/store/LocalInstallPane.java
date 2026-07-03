@@ -1,6 +1,6 @@
 package fan.summer.ui.store;
 
-import fan.summer.api.component.GlassNotification;
+import fan.summer.api.component.SkNotification;
 import fan.summer.api.i18n.I18n;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -205,7 +205,7 @@ public class LocalInstallPane extends VBox {
                     statusLabel.setText(I18n.get("store.local.installed", source.getName()));
                     statusLabel.setStyle("-fx-text-fill: #4cd97b; -fx-font-size: 12px;");
                     installBtn.setDisable(false);
-                    GlassNotification.toast(LocalInstallPane.this, GlassNotification.Type.SUCCESS,
+                    SkNotification.toast(LocalInstallPane.this, SkNotification.Type.SUCCESS,
                             I18n.get("store.local.installed", source.getName()));
                     if (onInstallComplete != null) onInstallComplete.run();
                 });
