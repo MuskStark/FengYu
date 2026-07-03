@@ -369,9 +369,8 @@ public class Sidebar extends VBox {
             setSpacing(10);
             setPrefHeight(34);
 
-            // NOTE(theme): inline-styled icon fills can't reference -sk-* tokens, so these use the dark-palette
-            // hexes. Icons won't follow the light theme in v3.2.0 (dark default). TODO(theme): move fill to CSS.
-            iconNode = MdiIconUtil.createIcon(mdiIcon, 16, "-fx-fill: #9AA0A6;");
+            iconNode = MdiIconUtil.createIcon(mdiIcon, 16);
+            iconNode.setStyle("");   // clear createIcon's inline fill so .nav-item-icon CSS applies
             iconNode.getStyleClass().add("nav-item-icon");
 
             textLabel = new Label(label);
@@ -385,14 +384,6 @@ public class Sidebar extends VBox {
 
             getChildren().addAll(iconNode, textLabel, badgeLabel);
             setCursor(javafx.scene.Cursor.HAND);
-
-            // Hover: brighten icon (inline style overrides CSS, so we handle via Java)
-            setOnMouseEntered(e -> {
-                if (!active) iconNode.setStyle("-fx-fill: #D0D0D0;");
-            });
-            setOnMouseExited(e -> {
-                if (!active) iconNode.setStyle("-fx-fill: #9AA0A6;");
-            });
         }
 
         /**
@@ -419,7 +410,6 @@ public class Sidebar extends VBox {
             this.active = active;
             if (active) {
                 getStyleClass().add("active");
-                iconNode.setStyle("-fx-fill: #3574F0;");
                 ScaleTransition st = new ScaleTransition(Duration.millis(160), this);
                 st.setFromX(0.97); st.setFromY(0.97);
                 st.setToX(1.0); st.setToY(1.0);
@@ -427,7 +417,6 @@ public class Sidebar extends VBox {
                 st.play();
             } else {
                 getStyleClass().remove("active");
-                iconNode.setStyle("-fx-fill: #9AA0A6;");
             }
         }
 
@@ -468,8 +457,8 @@ public class Sidebar extends VBox {
          * @param mdiIcon the Material Design Icons name, e.g. {@code "weather-sunny"}
          */
         public void setIcon(String mdiIcon) {
-            Text t = MdiIconUtil.createIcon(mdiIcon, 16,
-                active ? "-fx-fill: #3574F0;" : "-fx-fill: #9AA0A6;");
+            Text t = MdiIconUtil.createIcon(mdiIcon, 16);
+            t.setStyle("");   // color comes from .nav-item-icon CSS (incl. hover/active variants)
             t.getStyleClass().add("nav-item-icon");
             getChildren().set(getChildren().indexOf(iconNode), t);
             iconNode = t;

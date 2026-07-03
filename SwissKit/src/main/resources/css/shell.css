@@ -66,12 +66,14 @@
 .nav-item-text { -fx-font-size: 13px; -fx-text-fill: -sk-text-secondary; }
 .nav-item:hover { -fx-background-color: -sk-bg-hover; }
 .nav-item:hover .nav-item-text { -fx-text-fill: -sk-text; }
+.nav-item:hover .nav-item-icon { -fx-fill: -sk-text; }
 .nav-item.active {
     -fx-background-color: -sk-bg-selected;
     -fx-border-color: transparent transparent transparent -sk-accent;
     -fx-border-width: 0 0 0 3px;
 }
 .nav-item.active .nav-item-text { -fx-text-fill: -sk-text; -fx-font-weight: 500; }
+.nav-item.active .nav-item-icon { -fx-fill: -sk-accent; }
 
 .nav-badge {
     -fx-background-color: -sk-bg-selected;
