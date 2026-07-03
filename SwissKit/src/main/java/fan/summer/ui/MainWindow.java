@@ -252,7 +252,7 @@ public class MainWindow extends StackPane {
         contentArea.setOnBack(() -> {
             log.debug("Returning to home from active plugin");
             SwissKitJPlugin current = registry.getActivePlugin();
-            if (current != null && !current.hasRunningTasks()) {
+            if (current != null && !registry.isBusy(current)) {
                 cachedViews.remove(current);
             }
             registry.deactivate();
