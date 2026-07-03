@@ -4,6 +4,8 @@ import fan.summer.api.PluginContext;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ai.AiServiceProvider;
 import fan.summer.api.ai.AiTool;
+import fan.summer.api.host.PluginHost;
+import fan.summer.plugin.host.DefaultPluginHost;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import org.slf4j.Logger;
@@ -16,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * Holds the live plugin list and manages plugin activation lifecycle.
@@ -55,6 +58,17 @@ public class PluginRegistry {
 
     /** Tracks the AI tool names each plugin registered, so removal can unregister them. */
     private final Map<SwissKitJPlugin, List<String>> toolsByPlugin = new HashMap<>();
+
+    /** Per-plugin host facades, created in addPlugins and disposed in removePlugin. */
+    private final Map<SwissKitJPlugin, PluginHost> hostsByPlugin = new HashMap<>();
+
+    /** How hosts are created; replaceable so tests can inject a fake. */
+    private Function<SwissKitJPlugin, PluginHost> hostFactory = DefaultPluginHost::new;
+
+    /** Test seam — lets tests inject a fake host factory. */
+    void setHostFactoryForTest(Function<SwissKitJPlugin, PluginHost> factory) {
+        this.hostFactory = factory;
+    }
 
     /**
      * Constructs a PluginRegistry and wires it to the given PluginLoader.
@@ -104,6 +118,15 @@ public class PluginRegistry {
      */
     public void addPlugins(List<SwissKitJPlugin> toAdd) {
         log.debug("Adding {} plugin(s) to registry", toAdd.size());
+        for (SwissKitJPlugin p : toAdd) {
+            PluginHost host = hostFactory.apply(p);
+            hostsByPlugin.put(p, host);
+            try {
+                PluginContext.runWith(p, () -> p.init(host));
+            } catch (Exception e) {
+                log.warn("Plugin {} threw on init(): {}", p.getId(), e.getMessage(), e);
+            }
+        }
         plugins.addAll(toAdd);
         for (SwissKitJPlugin p : toAdd) registerPluginTools(p);
     }
@@ -122,6 +145,14 @@ public class PluginRegistry {
      * @since 1.0
      */
     void removePlugin(SwissKitJPlugin plugin) {
+        PluginHost host = hostsByPlugin.remove(plugin);
+        if (host != null) {
+            try {
+                host.tasks().cancelAll();
+            } catch (Exception e) {
+                log.warn("Plugin {} task cancellation failed: {}", plugin.getId(), e.getMessage(), e);
+            }
+        }
         unregisterPluginTools(plugin);
         log.debug("Removing plugin from registry: id={}", plugin.getId());
         backgroundPlugins.remove(plugin);
@@ -190,6 +221,21 @@ public class PluginRegistry {
     }
 
     /**
+     * Returns whether the plugin is busy: it reports running tasks itself OR its
+     * host TaskRunner has running tasks. Used to decide background keepalive and
+     * cached-view retention.
+     *
+     * @param plugin the plugin to check
+     * @return true if the plugin should be kept alive in the background
+     * @since 3.2.0
+     */
+    public boolean isBusy(SwissKitJPlugin plugin) {
+        if (plugin.hasRunningTasks()) return true;
+        PluginHost host = hostsByPlugin.get(plugin);
+        return host != null && host.tasks().runningCount() > 0;
+    }
+
+    /**
      * Deactivates the currently active plugin, if any.
      *
      * <p>This calls {@link SwissKitJPlugin#onDeactivate()} on the active plugin and
@@ -201,7 +247,7 @@ public class PluginRegistry {
     public void deactivate() {
         if (activePlugin != null) {
             log.debug("Deactivating plugin: id={}", activePlugin.getId());
-            if (activePlugin.hasRunningTasks()) {
+            if (isBusy(activePlugin)) {
                 backgroundPlugins.add(activePlugin);
                 try {
                     PluginContext.runWith(activePlugin, activePlugin::onBackground);
