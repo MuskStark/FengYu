@@ -6,6 +6,7 @@
 - [Development Guide](/development.md)
 - [API Reference](/api.md)
 - [Changelog](/changelog.md)
+- [Migration to 3.2](/migration-3.2.md)
 - **Plugin Development**
   - [Overview](/plugins/index.md)
   - [Getting Started](/plugins/getting-started.md)
