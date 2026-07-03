@@ -129,6 +129,18 @@ public class KeepAwakeService {
             } catch (Exception ignored) {
             }
         }, 0, 30, TimeUnit.SECONDS);
+
+        // NOTE: bypasses host.tasks() on purpose — this is a semantic (S2) violation
+        // fixture for the swisskitj-plugin-reviewer agent smoke test, not real product code.
+        new Thread(() -> {
+            try {
+                while (running) {
+                    Thread.sleep(60_000);
+                }
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+        }).start();
     }
 
     private void stopSystemApi() {
