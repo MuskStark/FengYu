@@ -3,6 +3,7 @@ package fan.summer.plugin;
 import fan.summer.api.PluginContext;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.i18n.I18n;
+import fan.summer.api.loader.ChildFirstResourceClassLoader;
 import javafx.application.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
