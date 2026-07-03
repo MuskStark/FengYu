@@ -42,11 +42,32 @@ public final class I18n {
 
     private static final AtomicReference<ResourceBundle> hostBundle = new AtomicReference<>();
     private static final ConcurrentHashMap<ClassLoader, ResourceBundle> pluginBundles = new ConcurrentHashMap<>();
+    /**
+     * Pre-loaded fallback bundles consulted after the host and plugin bundles.
+     * Unlike {@link #pluginBundles}, these are registered as already-built
+     * {@link ResourceBundle} instances (loaded directly from a known URL), so
+     * lookup never depends on resolving a {@link ClassLoader} — important when
+     * a module (e.g. SwissKitJ-Api) ships its own messages but is loaded under
+     * a classloader where {@code ResourceBundle.getBundle} can't find them.
+     */
+    private static final CopyOnWriteArrayList<FallbackBundle> fallbackBundles = new CopyOnWriteArrayList<>();
     private static final CopyOnWriteArrayList<BoundEntry> bindings = new CopyOnWriteArrayList<>();
     private static final CopyOnWriteArrayList<Runnable> listeners = new CopyOnWriteArrayList<>();
     private static volatile Locale currentLocale = Locale.ENGLISH;
     private static String hostBaseName;
     private static ClassLoader hostLoader;
+
+    /** A fallback bundle paired with the base name + URL it was loaded from, so it can be reloaded on locale change. */
+    private static final class FallbackBundle {
+        final String baseName;
+        final java.net.URL bundleUrl;
+        volatile ResourceBundle bundle;
+        FallbackBundle(String baseName, java.net.URL bundleUrl, ResourceBundle bundle) {
+            this.baseName = baseName;
+            this.bundleUrl = bundleUrl;
+            this.bundle = bundle;
+        }
+    }
 
     /**
      * A {@link ResourceBundle.Control} that never falls back to the JVM default locale.
@@ -87,6 +108,10 @@ public final class I18n {
         if (hb != null && hb.containsKey(key)) return hb.getString(key);
         for (ResourceBundle pb : pluginBundles.values()) {
             if (pb.containsKey(key)) return pb.getString(key);
+        }
+        for (FallbackBundle fb : fallbackBundles) {
+            ResourceBundle b = fb.bundle;
+            if (b != null && b.containsKey(key)) return b.getString(key);
         }
         log.trace("i18n key not found: {}", key);
         return key;
@@ -168,6 +193,7 @@ public final class I18n {
         currentLocale = locale;
         rebuildHostBundle();
         rebuildPluginBundles();
+        rebuildFallbackBundles();
         if (Platform.isFxApplicationThread()) {
             updateAll();
         } else {
@@ -261,6 +287,65 @@ public final class I18n {
         pluginBundles.remove(loader);
     }
 
+    /**
+     * Registers a pre-located fallback bundle, loaded directly from {@code bundleUrl}.
+     *
+     * <p>Unlike {@link #registerPluginBundle(String, ClassLoader)}, this never relies
+     * on resolving a {@link ClassLoader} via {@link ResourceBundle#getBundle} — it
+     * reads the properties straight from the URL. This is the robust path for a
+     * module (such as {@code SwissKitJ-Api}) that ships its own small message
+     * bundle and must resolve it even when loaded under a classloader where the
+     * standard {@code getBundle} lookup chain cannot see the resource.</p>
+     *
+     * <p>The bundle is loaded for the current locale. Locale-specific variants are
+     * resolved by candidate filename ({@code baseName_ll.properties} →
+     * {@code baseName.properties}) and reloaded automatically on
+     * {@link #setLocale(Locale)}. Idempotent: a second registration with the same
+     * URL replaces the prior one.</p>
+     *
+     * @param baseName  the resource base name, e.g. {@code "i18n.messages"} — used to
+     *                  derive locale-variant filenames for reload
+     * @param bundleUrl the URL of the default ({@code baseName.properties}) properties file
+     * @return {@code true} if the bundle loaded successfully and was registered
+     */
+    public static boolean registerFallbackBundle(String baseName, java.net.URL bundleUrl) {
+        if (baseName == null || bundleUrl == null) return false;
+        ResourceBundle b = loadFallbackBundle(baseName, bundleUrl, currentLocale);
+        if (b == null) {
+            log.warn("Failed to load fallback i18n bundle: baseName={}, url={}", baseName, bundleUrl);
+            return false;
+        }
+        // Replace any existing entry for the same base name/URL (idempotent).
+        fallbackBundles.removeIf(fb -> bundleUrl.equals(fb.bundleUrl));
+        fallbackBundles.add(new FallbackBundle(baseName, bundleUrl, b));
+        log.info("Registered fallback i18n bundle: baseName={}, locale={}, keys={}",
+                baseName, currentLocale, b.keySet().size());
+        return true;
+    }
+
+    /**
+     * Loads a locale-appropriate fallback bundle from the directory of
+     * {@code defaultUrl}, trying {@code baseName_ll.properties} then
+     * {@code baseName.properties}.
+     */
+    private static ResourceBundle loadFallbackBundle(String baseName, java.net.URL defaultUrl, Locale locale) {
+        String external = defaultUrl.toExternalForm();
+        String baseFile = external.substring(0, external.length() - ".properties".length());
+        String ll = (locale != null && !locale.getLanguage().isEmpty())
+                ? baseFile + "_" + locale.getLanguage() + ".properties" : null;
+        String rootFile = baseFile + ".properties";
+        String[] candidates = (ll != null) ? new String[]{ll, rootFile} : new String[]{rootFile};
+        for (String candidate : candidates) {
+            try {
+                java.net.URL url = java.net.URI.create(candidate).toURL();
+                try (java.io.InputStream is = url.openStream()) {
+                    return new java.util.PropertyResourceBundle(is);
+                }
+            } catch (Exception ignored) { /* try next candidate */ }
+        }
+        return null;
+    }
+
     // ── Internal ─────────────────────────────────────────────
 
     private static void rebuildHostBundle() {
@@ -288,6 +373,18 @@ public final class I18n {
                     pluginBundles.put(cl, newBundle);
                 }
             } catch (MissingResourceException ignored) {}
+        }
+    }
+
+    /** Reloads every fallback bundle for the current locale (in place). */
+    private static void rebuildFallbackBundles() {
+        for (FallbackBundle fb : fallbackBundles) {
+            ResourceBundle nb = loadFallbackBundle(fb.baseName, fb.bundleUrl, currentLocale);
+            if (nb != null) {
+                // Replace the record in the list (CopyOnWrite — rebuild the entry).
+                fallbackBundles.remove(fb);
+                fallbackBundles.add(new FallbackBundle(fb.baseName, fb.bundleUrl, nb));
+            }
         }
     }
 
