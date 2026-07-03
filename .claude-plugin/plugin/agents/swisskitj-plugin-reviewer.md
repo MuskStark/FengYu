@@ -82,17 +82,26 @@ from `user.dir` (e.g. `System.getProperty("user.dir")`) and use forward slashes 
 backslashes or hardcoded absolute/drive-letter paths. Look for JDBC URLs (`jdbc:h2:...`),
 `File`/`Path` construction for `.swisskit/...` data files, and string concatenation with `\\`.
 
-**S5 — `createView()` called once, cached.** The plugin's `createView()` should build its UI
-node graph once and cache the result (e.g. store in a field, return the cached field on
-subsequent calls), not `new` up the view tree on every invocation. A violation looks like
-`createView()` unconditionally constructing new UI objects with no field-cache/guard, especially
-if `createView()` is expected to be invoked more than once (re-activation, hot-reload) per the
-plugin contract ("called once; result cached and reused" per the interface contract) — if the
-implementation ignores that contract (e.g. no caching field, or re-instantiates the whole tree
-each call) it's a violation. If the method is trivially a single `return new Xxx().getView();`
-with no possibility of being called twice by design docs, still flag it if there is no caching
-field at all, since the interface contract in `CLAUDE.md`/`plugin-host.md` requires it be built
-once.
+**S5 — `createView()` called once, cached.** The *host* — not the plugin — owns the "called once,
+cached" guarantee: the host invokes `createView()` exactly one time per plugin instance and
+caches the returned `Node` itself (see `CLAUDE.md`'s interface contract: "called once; result
+cached and reused"; `standards/entry-point.md`'s scaffold: "仅调用一次，结果会被缓存复用"). A
+plugin implementation that simply builds and returns a fresh node graph inline, e.g.
+`return new XxxUi().getView();`, with **no** self-cache field, is fully COMPLIANT and MUST NOT
+be flagged — this is exactly the canonical scaffold pattern (see `KeepAwakePlugin.createView()`
+in the reference fixtures). Absence of a cache field is not, by itself, evidence of anything.
+
+A genuine S5 violation is code that incorrectly assumes `createView()` runs more than once and
+therefore does expensive or side-effecting work elsewhere in the lifecycle to "re-build" or
+compensate for that — for example: (a) `onActivate()`/`onForeground()`/`onDeactivate()` that
+repeatedly performs expensive, redundant UI construction or side-effecting setup (registering
+listeners, opening resources, re-registering i18n bundles) every time as though it were a
+substitute createView path, causing duplicate side effects across the plugin's lifecycle; or (b)
+a plugin that maintains a cache field but then bypasses it and rebuilds anyway on a code path
+that fires more than once, discarding the earlier node's live state/listeners with observable
+side effects (leaked listeners, duplicate resource acquisition, lost user input). Cite the exact
+`file:line` performing the redundant/side-effecting rebuild and explain the observable effect —
+do not report the rule merely because `createView()` lacks a field-cache.
 
 **S6 — `-sk-*` tokens, no hardcoded colors.** UI code should reference `-sk-*` CSS custom
 properties / `.sk-*` style classes rather than hardcoding colors that bypass theming (e.g.
