@@ -19,6 +19,6 @@ S1 AiTool 返回 JSON 符合 {success, summary, ...}(error 用 {success:false,er
 S2 后台任务经 host.tasks() 提交,而非裸 new Thread
 S3 自建 Alert/Stage 调用 Themes.applyTo(scene) 上主题
 S4 H2 路径基于 user.dir 且用正斜杠
-S5 createView() 只构建一次(结果缓存,勿每次 new)
+S5 createView() 由宿主调用一次并缓存返回的 Node,插件无需自行缓存;违规指的是生命周期中(如 onActivate/onForeground)重复做本应一次性的构建/副作用,而非"没有缓存字段"本身
 S6 使用 -sk-* / .sk-* token,不硬编码颜色规避主题
 ```
