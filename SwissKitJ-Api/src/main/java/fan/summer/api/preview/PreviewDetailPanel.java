@@ -3,6 +3,7 @@ package fan.summer.api.preview;
 import fan.summer.api.MdiIconUtil;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.ToolCategory;
+import fan.summer.api.i18n.I18n;
 import javafx.animation.Interpolator;
 import javafx.animation.KeyFrame;
 import javafx.animation.KeyValue;
@@ -34,8 +35,12 @@ class PreviewDetailPanel extends VBox {
     private final Label     versionVal = new Label();
     private final Label     typeVal    = new Label();
     private final Label     categoryVal = new Label();
-    private final Button    launchBtn  = new Button("Launch Tool");
+    private final Button    launchBtn  = new Button();
     private final Button    closeBtn   = new Button("✕");
+    // Prop-row key labels — kept so refreshLocale() can re-apply their i18n text.
+    private final Label     versionKey = new Label();
+    private final Label     typeKey    = new Label();
+    private final Label     categoryKey = new Label();
 
     private Consumer<SwissKitJPlugin> onLaunch;
     private SwissKitJPlugin currentPlugin;
@@ -72,12 +77,15 @@ class PreviewDetailPanel extends VBox {
         iconWrap.setPrefSize(56, 56);
         iconWrap.setMinSize(56, 56);
 
-        nameLabel.setStyle("-fx-font-size: 16px; -fx-text-fill: rgba(255,255,255,0.92);");
+        nameLabel.getStyleClass().add("sk-t1");
+        nameLabel.setStyle("-fx-font-size: 16px;");
 
-        metaLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: rgba(255,255,255,0.28);");
+        metaLabel.getStyleClass().add("sk-t3");
+        metaLabel.setStyle("-fx-font-size: 11px;");
 
         descLabel.setWrapText(true);
-        descLabel.setStyle("-fx-font-size: 12.5px; -fx-text-fill: rgba(255,255,255,0.45);");
+        descLabel.getStyleClass().add("sk-t2");
+        descLabel.setStyle("-fx-font-size: 12.5px;");
 
         launchBtn.getStyleClass().add("preview-launch-btn");
         launchBtn.setMaxWidth(Double.MAX_VALUE);
@@ -86,39 +94,63 @@ class PreviewDetailPanel extends VBox {
                 onLaunch.accept(currentPlugin);
         });
 
-        closeBtn.setStyle(
+        // Color comes from the .sk-t3 / .sk-t1 utility classes (token-based, theme-safe);
+        // only non-color properties live inline.
+        final String closeBtnStyle =
             "-fx-background-color: transparent; -fx-border-width: 0;" +
-            "-fx-text-fill: rgba(255,255,255,0.35); -fx-cursor: hand; -fx-font-size: 14px;"
-        );
+            "-fx-cursor: hand; -fx-font-size: 14px;";
+        closeBtn.getStyleClass().add("sk-t3");
+        closeBtn.setStyle(closeBtnStyle);
         closeBtn.setOnAction(e -> hide());
-        closeBtn.setOnMouseEntered(e ->
-            closeBtn.setStyle(closeBtn.getStyle() + "-fx-text-fill: rgba(255,255,255,0.85);"));
-        closeBtn.setOnMouseExited(e ->
-            closeBtn.setStyle(closeBtn.getStyle().replace("-fx-text-fill: rgba(255,255,255,0.85);", "")));
+        closeBtn.setOnMouseEntered(e -> {
+            closeBtn.getStyleClass().remove("sk-t3");
+            if (!closeBtn.getStyleClass().contains("sk-t1")) closeBtn.getStyleClass().add("sk-t1");
+            closeBtn.setStyle(closeBtnStyle);
+        });
+        closeBtn.setOnMouseExited(e -> {
+            closeBtn.getStyleClass().remove("sk-t1");
+            if (!closeBtn.getStyleClass().contains("sk-t3")) closeBtn.getStyleClass().add("sk-t3");
+            closeBtn.setStyle(closeBtnStyle);
+        });
 
         HBox topRow = new HBox(closeBtn);
         topRow.setAlignment(Pos.CENTER_RIGHT);
 
         VBox propsBox = new VBox(6,
-            propRow("Version", versionVal),
-            propRow("Type", typeVal),
-            propRow("Category", categoryVal)
+            propRow(versionKey, versionVal),
+            propRow(typeKey, typeVal),
+            propRow(categoryKey, categoryVal)
         );
         VBox.setMargin(propsBox, new Insets(12, 0, 0, 0));
 
         setSpacing(10);
         setPadding(new Insets(16));
         getChildren().addAll(topRow, iconWrap, nameLabel, metaLabel, descLabel, launchBtn, propsBox);
+
+        refreshLocale();
     }
 
-    private HBox propRow(String key, Label valLabel) {
-        Label keyLabel = new Label(key);
-        keyLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.30); -fx-font-size: 12px;");
-        valLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px; " +
+    private HBox propRow(Label keyLabel, Label valLabel) {
+        keyLabel.getStyleClass().add("sk-t3");
+        keyLabel.setStyle("-fx-font-size: 12px;");
+        valLabel.getStyleClass().add("sk-t2");
+        valLabel.setStyle("-fx-font-size: 12px; " +
                           "-fx-font-family: 'SF Mono','Consolas',monospace;");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
         return new HBox(keyLabel, spacer, valLabel);
+    }
+
+    /** Re-apply all locale-dependent text. Called on locale change. */
+    void refreshLocale() {
+        launchBtn.setText(I18n.get("detail.btn.launch"));
+        versionKey.setText(I18n.get("detail.prop.version"));
+        typeKey.setText(I18n.get("detail.prop.type"));
+        categoryKey.setText(I18n.get("detail.prop.category"));
+        // If a plugin is currently shown, re-fill its localized category name.
+        if (currentPlugin != null) {
+            categoryVal.setText(categoryName(currentPlugin.getCategory()));
+        }
     }
 
     private void fillData(SwissKitJPlugin p) {
@@ -149,11 +181,11 @@ class PreviewDetailPanel extends VBox {
 
     private static String categoryName(ToolCategory cat) {
         return switch (cat) {
-            case DEV   -> "Developer Tools";
-            case TEXT  -> "Text Processing";
-            case IMAGE -> "Image Processing";
-            case NET   -> "Network Tools";
-            default    -> "Other Tools";
+            case DEV   -> I18n.get("detail.category.dev");
+            case TEXT  -> I18n.get("detail.category.text");
+            case IMAGE -> I18n.get("detail.category.image");
+            case NET   -> I18n.get("detail.category.net");
+            default    -> I18n.get("detail.category.other");
         };
     }
 

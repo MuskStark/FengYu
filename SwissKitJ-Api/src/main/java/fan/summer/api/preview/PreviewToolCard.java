@@ -2,6 +2,7 @@ package fan.summer.api.preview;
 
 import fan.summer.api.MdiIconUtil;
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.i18n.I18n;
 import javafx.animation.Animation;
 import javafx.animation.FadeTransition;
 import javafx.animation.ScaleTransition;
@@ -65,16 +66,19 @@ class PreviewToolCard extends StackPane {
         VBox.setVgrow(descLabel, Priority.ALWAYS);
 
         // Tag
-        Label tag = new Label(plugin.getType().isPlugin() ? "Plugin" : "Built-in");
+        boolean isPlugin = plugin.getType().isPlugin();
+        Label tag = new Label(isPlugin ? I18n.get("detail.tag.plugin") : I18n.get("detail.tag.builtin"));
         tag.getStyleClass().add("preview-tool-tag");
+        if (isPlugin) tag.getStyleClass().add("preview-tool-tag-plugin");
 
         card.getChildren().addAll(iconWrap, nameLabel, descLabel, tag);
 
         getChildren().add(card);
 
-        // Background running indicator
+        // Background running indicator (theme-safe success via .preview-running-dot)
         if (isBackground) {
-            Circle dot = new Circle(4, Color.web("#4cd97b"));
+            Circle dot = new Circle(4);
+            dot.getStyleClass().add("preview-running-dot");
             dot.setEffect(new Glow(0.8));
             dot.setMouseTransparent(true);
             StackPane.setAlignment(dot, Pos.TOP_RIGHT);
