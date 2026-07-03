@@ -81,7 +81,7 @@
     -fx-font-size: 10px;
     -fx-font-weight: bold;
 }
-.nav-badge-new { -fx-background-color: rgba(76,217,123,0.18); -fx-text-fill: -sk-success; }
+.nav-badge-new { -fx-background-color: -sk-success-soft; -fx-text-fill: -sk-success; }
 
 .sidebar-divider {
     -fx-background-color: -sk-border;
@@ -155,7 +155,7 @@
     -fx-padding: 1 6 1 6;
     -fx-font-size: 10px;
 }
-.tool-tag-plugin { -fx-background-color: rgba(76,217,123,0.12); -fx-text-fill: -sk-success; -fx-border-color: rgba(76,217,123,0.20); }
+.tool-tag-plugin { -fx-background-color: -sk-success-soft; -fx-text-fill: -sk-success; -fx-border-color: -sk-success-soft; }
 
 /* ── 详情面板 ─────────────────────────────────────────────────── */
 .detail-panel {
@@ -259,17 +259,17 @@
     -fx-cursor: hand;
 }
 .store-install-btn.installed {
-    -fx-background-color: rgba(76,217,123,0.15);
+    -fx-background-color: -sk-success-soft;
     -fx-text-fill: -sk-success;
-    -fx-border-color: rgba(76,217,123,0.30);
+    -fx-border-color: -sk-success-soft;
     -fx-border-width: 1;
     -fx-border-radius: 6;
     -fx-cursor: default;
 }
 .store-install-btn.update {
-    -fx-background-color: rgba(240,169,58,0.15);
+    -fx-background-color: -sk-warning-soft;
     -fx-text-fill: -sk-warning;
-    -fx-border-color: rgba(240,169,58,0.30);
+    -fx-border-color: -sk-warning-soft;
     -fx-border-width: 1;
     -fx-border-radius: 6;
 }
