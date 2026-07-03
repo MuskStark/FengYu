@@ -19,6 +19,11 @@ This skill executes a multi-agent release process:
 - Update main `pom.xml` version to specified version
 - Update `OfficalPlugin/SwissKitJ-Plugin-HappyLearning/pom.xml` version to specified version
 - Update `OfficalPlugin/SwissKitJ-Plugin-Qcc/pom.xml` version to specified version (if not gitignored)
+- Run `bash scripts/sync-plugin-standards.sh` to snapshot `docs/plugins/` into
+  `.claude-plugin/plugin/standards/` and stamp `.claude-plugin/plugin/plugin.json`'s version
+  from `SwissKitJ-Api/pom.xml`; include `.claude-plugin/plugin/standards/` and
+  `.claude-plugin/plugin/plugin.json` in the release commit so the shipped
+  `swisskitj-plugin-kit` never drifts from the released API
 - Create/update `CHANGELOG.md` at project root with:
   - Software introduction
   - Feature summary
