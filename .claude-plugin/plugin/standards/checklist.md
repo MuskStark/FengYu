@@ -10,7 +10,7 @@ M7 插件 getId() 为 reverse-domain(至少两段,点分)
 M8 pom 配了 ServicesResourceTransformer
 M9 i18n/messages.properties 存在
 M10 createView 或 init 中注册了 i18n bundle(registerPluginBundle 或 host.i18n().registerBundle)
-M11 DevLauncher.java 零 javafx import
+M11 DevLauncher 零 javafx 引用(import 或 FQN),所有 JavaFX 均放在独立的 DevApp 类中(pitfall #4)
 M12 pom 中 swisskit.api.version 属性存在(值由使用者维护)
 ```
 **语义规则(reviewer agent 判定)**:

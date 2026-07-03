@@ -49,9 +49,11 @@ These are enforced mechanically by `validate.sh` (see below) or reviewed semanti
   key sets, prefixed `plugin.{{slug}}.`.
 - **`getId()` is reverse-domain** (at least two dot-separated segments), returned verbatim,
   e.g. `{{plugin-id}}`.
-- **`DevLauncher.java` has zero JavaFX imports** (the sole exception is
-  `javafx.application.Platform`, used only to call `Platform.startup`) — any other JavaFX
-  import here breaks `mvn javafx:run -Pdev` with a module-system error.
+- **`DevLauncher.java` has zero JavaFX references** — no `import javafx...` and no
+  fully-qualified `javafx.*` usage anywhere in the file. All JavaFX (including
+  `Platform.startup`) lives in a separate `DevApp.java` in the same package; `DevLauncher`
+  only calls `DevApp.main(args)`. Any `javafx` reference in `DevLauncher.java` breaks `mvn
+  javafx:run -Pdev` with a module-system error and fails `validate.sh` M11.
 
 ## Standing instruction
 

@@ -66,7 +66,8 @@ same class responsibilities, same file set:
 ├── pom.xml
 ├── src/main/java/<base-package-path>/
 │   ├── <Name>Plugin.java          # SPI entry point (implements SwissKitJPlugin)
-│   ├── DevLauncher.java           # zero JavaFX imports (see below)
+│   ├── DevLauncher.java           # zero JavaFX (no import, no FQN) — delegates to DevApp
+│   ├── DevApp.java                # holds ALL JavaFX: Platform.startup + PluginPreviewWindow
 │   └── ui/
 │       └── <Name>PluginUi.java    # JavaFX UI, returns a Node via getView()
 └── src/main/resources/
@@ -108,29 +109,43 @@ same class responsibilities, same file set:
 - Do not fabricate lifecycle methods (`onActivate`/`onBackground`/etc.) unless the plugin
   actually needs them; empty default methods are fine to omit entirely.
 
-**`DevLauncher.java`** — **zero `import javafx...` lines** (checked literally by `validate.sh`
-M11). Call `Platform.startup` through its fully-qualified name (`javafx.application.Platform.startup(...)`)
-instead of importing it — this keeps the runtime behavior identical to the KeepAwake reference
-(which itself imports `javafx.application.Platform`) while satisfying the mechanical grep-based
-check. All other JavaFX code lives inside `<Name>Plugin`/`<Name>PluginUi`. Body is exactly:
+**`DevLauncher.java`** — **zero JavaFX of any kind** — no `import javafx...` line AND no
+fully-qualified `javafx.*` reference anywhere in the file (checked literally by `validate.sh`
+M11, which fails on any `javafx` occurrence in this file, not just imports). All JavaFX
+lives in a separate `DevApp.java` in the same package; `DevLauncher` only delegates to it.
+This is the canonical two-class split proven in the KeepAwake reference plugin. Bodies are
+exactly:
+
+```java
+package {{base-package}};
+
+public class DevLauncher {
+    public static void main(String[] args) {
+        DevApp.main(args);
+    }
+}
+```
 
 ```java
 package {{base-package}};
 
 import fan.summer.api.preview.PluginPreviewWindow;
+import javafx.application.Platform;
 
-public class DevLauncher {
+public class DevApp {
     public static void main(String[] args) {
-        javafx.application.Platform.startup(() -> {
+        Platform.startup(() -> {
             PluginPreviewWindow.configure().withPlugin(new {{Name}}Plugin()).launch();
         });
     }
 }
 ```
 
-This is a hard mechanical rule (M11) — any `import javafx...` line here breaks `mvn
-javafx:run -Pdev` with a module-system error (per `validate.sh`'s check); using the
-fully-qualified name for `Platform.startup` avoids the import entirely.
+This is a hard mechanical rule (M11) — any `javafx` reference (import or FQN) in
+`DevLauncher.java` now fails validation. Routing `Platform.startup` through a
+fully-qualified name inside `DevLauncher` to dodge the import check is **not** an
+acceptable workaround — it still breaks `mvn javafx:run -Pdev` with a module-system error,
+which is the actual defect M11 exists to catch. All JavaFX must live in `DevApp`.
 
 **`<Name>PluginUi.java`** — plain JavaFX `Node` builder, cached and returned once via
 `getView()`. Follow `../../standards/ui.md` for the base structure, i18n binding pattern

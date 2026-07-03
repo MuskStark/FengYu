@@ -70,9 +70,9 @@ grep -qs 'ServicesResourceTransformer' "$POM" || fail M8 "shade ServicesResource
 # M10: i18n bundle registered in createView/init
 grep -rqsE 'registerPluginBundle|i18n\(\)\.registerBundle' "$SRC" 2>/dev/null || fail M10 "i18n bundle not registered"
 
-# M11: DevLauncher.java has zero javafx imports
+# M11: DevLauncher.java has zero javafx references (import or FQN)
 dl="$(grep -rl 'class DevLauncher' "$SRC" 2>/dev/null | head -1)"
-[ -n "$dl" ] && grep -qs 'import javafx' "$dl" && fail M11 "DevLauncher must have zero javafx imports"
+[ -n "$dl" ] && grep -qs 'javafx' "$dl" && fail M11 "DevLauncher must contain zero JavaFX references (move JavaFX into DevApp)"
 
 # M12: pom has swisskit.api.version property DECLARATION (not just a ${...} usage reference)
 grep -qsE '<swisskit\.api\.version>' "$POM" || fail M12 "swisskit.api.version property missing"
