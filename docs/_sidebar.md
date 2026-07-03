@@ -15,6 +15,7 @@
   - [Entry Point](/plugins/entry-point.md)
   - [UI Development](/plugins/ui.md)
   - [Internationalization](/plugins/i18n.md)
+  - [PluginHost 宿主门面](/plugins/plugin-host.md)
   - [Database Layer](/plugins/database.md)
   - [Excel I/O](/plugins/excel.md)
   - [Background Tasks](/plugins/background-tasks.md)

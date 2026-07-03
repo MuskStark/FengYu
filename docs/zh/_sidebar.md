@@ -15,6 +15,7 @@
   - [入口点](/zh/plugins/entry-point.md)
   - [UI 开发](/zh/plugins/ui.md)
   - [国际化](/zh/plugins/i18n.md)
+  - [PluginHost 宿主门面](/zh/plugins/plugin-host.md)
   - [数据库层](/zh/plugins/database.md)
   - [Excel 读写](/zh/plugins/excel.md)
   - [后台任务](/zh/plugins/background-tasks.md)
