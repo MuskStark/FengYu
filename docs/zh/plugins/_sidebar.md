@@ -13,3 +13,4 @@
   - [后台任务](/zh/plugins/background-tasks.md)
   - [构建与部署](/zh/plugins/build-deploy.md)
   - [常见陷阱](/zh/plugins/pitfalls.md)
+  - [第三方插件工具包](/zh/plugins/third-party-kit.md)
