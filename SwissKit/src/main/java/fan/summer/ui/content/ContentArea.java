@@ -389,9 +389,12 @@ public class ContentArea extends BorderPane {
             toolGrid.getChildren().add(card);
         }
 
-        // Empty state message
+        // Empty state message — differentiated: search miss vs. empty category
         if (filtered.isEmpty()) {
-            Label empty = new Label(I18n.get("content.emptyState"));
+            String msg = currentQuery.isEmpty()
+                ? I18n.get("content.emptyState.category")
+                : I18n.get("content.emptyState.search", currentQuery);
+            Label empty = new Label(msg);
             empty.getStyleClass().add("sk-t3");
             empty.setStyle("-fx-font-size: 13px;");
             empty.setPadding(new Insets(40, 0, 0, 0));
