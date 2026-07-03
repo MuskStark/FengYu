@@ -1,7 +1,7 @@
-package fan.summer.plugin;
+package fan.summer.api.loader;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import fan.summer.api.log.LoggerFactory;
+import fan.summer.api.log.PluginLogger;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -31,11 +31,11 @@ import java.util.List;
  * {@code instanceof} would break. The reported bug is purely a resource-name conflict,
  * so only resource resolution is made child-first.</p>
  *
- * @see PluginLoader
+ * @since 3.2.0 (moved from the host module so the preview window shares identical loading semantics)
  */
 public class ChildFirstResourceClassLoader extends URLClassLoader {
 
-    private static final Logger log = LoggerFactory.getLogger(ChildFirstResourceClassLoader.class);
+    private static final PluginLogger log = LoggerFactory.getLogger(ChildFirstResourceClassLoader.class);
 
     /**
      * Creates a child-first-resource loader over the given URLs.
