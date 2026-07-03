@@ -2,6 +2,8 @@ package fan.summer.api.preview;
 
 import fan.summer.api.PluginContext;
 import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.i18n.I18n;
+import javafx.application.Platform;
 import javafx.animation.FadeTransition;
 import javafx.animation.ParallelTransition;
 import javafx.geometry.Insets;
@@ -14,6 +16,7 @@ import javafx.scene.control.TextField;
 import javafx.scene.layout.*;
 import javafx.util.Duration;
 
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -39,7 +42,7 @@ class PreviewShell extends BorderPane {
     private final TextField           searchField = new TextField();
     private final Label               statusLabel = new Label();
     private final PreviewTitleBar     titleBar;
-    private final Node                sidebarNode;
+    private final PreviewSidebar      sidebar;
     private final Node                searchBarNode;
     private final Node                statusBarNode;
 
@@ -61,25 +64,48 @@ class PreviewShell extends BorderPane {
         this.onClose = onClose;
 
         getStyleClass().add("preview-root");
-        setStyle(
-            "-fx-background-color: rgba(13,14,17,0.72);" +
-            "-fx-background-radius: 20;" +
-            "-fx-border-radius: 20;" +
-            "-fx-border-color: rgba(255,255,255,0.10);" +
-            "-fx-border-width: 1;"
-        );
+        // Surface colors/border/radius are defined entirely in .preview-root
+        // (swisskit-preview.css) via -sk-* tokens so the window re-resolves
+        // correctly on theme switch. No inline color overrides here.
 
         titleBar = new PreviewTitleBar(title);
         backBar = buildBackBar();
         backBar.setVisible(false);
         backBar.setManaged(false);
 
-        sidebarNode = new PreviewSidebar();
+        sidebar = new PreviewSidebar();
         searchBarNode = buildSearchBar();
         statusBarNode = buildStatusBar();
 
         buildLayout();
         wireEvents();
+        applyI18n();
+        // Re-apply all locale-dependent text whenever the language changes
+        // (the title bar's language toggle fires I18n.setLocale → this listener).
+        I18n.addListener(this::onLocaleChanged);
+    }
+
+    private void onLocaleChanged() {
+        if (Platform.isFxApplicationThread()) {
+            applyI18n();
+        } else {
+            Platform.runLater(this::applyI18n);
+        }
+    }
+
+    /** Re-apply every locale-dependent string in the shell. */
+    private void applyI18n() {
+        searchField.setPromptText(I18n.get("content.search.prompt"));
+        // Back button is the first child of backBar.
+        if (!backBar.getChildren().isEmpty() && backBar.getChildren().get(0) instanceof Label backBtn) {
+            backBtn.setText("← " + I18n.get("content.back"));
+        }
+        updateStatus();
+        sidebar.refresh();
+        titleBar.applyLocale();
+        detailPanel.refreshLocale();
+        // Cards carry the i18n "Plugin/Built-in" tag — rebuild so they update.
+        refreshToolGrid();
     }
 
     boolean isBackground(SwissKitJPlugin plugin) {
@@ -107,7 +133,7 @@ class PreviewShell extends BorderPane {
         // Body
         HBox body = new HBox();
         if (showSidebar) {
-            body.getChildren().add(sidebarNode);
+            body.getChildren().add(sidebar);
         }
 
         // Center: back bar + search bar + content
@@ -167,30 +193,33 @@ class PreviewShell extends BorderPane {
 
     private Node buildSearchBar() {
         Label searchIcon = new Label("🔍");
-        searchIcon.setStyle("-fx-font-size: 13px; -fx-text-fill: rgba(255,255,255,0.28);");
+        searchIcon.getStyleClass().add("preview-search-icon");
 
         searchField.getStyleClass().add("preview-search-field");
-        searchField.setPromptText("Search tools...");
+        searchField.setPromptText(I18n.get("content.search.prompt"));
         searchField.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(searchField, Priority.ALWAYS);
         searchField.textProperty().addListener((obs, oldVal, newVal) -> refreshToolGrid());
 
-        HBox bar = new HBox(10, searchIcon, searchField);
+        Label kbdHint = new Label("⌘K");
+        kbdHint.getStyleClass().add("preview-search-kbd");
+
+        HBox bar = new HBox(10, searchIcon, searchField, kbdHint);
         bar.getStyleClass().add("preview-search-bar");
         bar.setAlignment(Pos.CENTER_LEFT);
-        bar.setPrefHeight(38);
+        bar.setPrefHeight(34);
         return bar;
     }
 
     // ── Back bar ────────────────────────────────────────────────
 
     private HBox buildBackBar() {
-        Label backBtn = new Label("← Back");
+        Label backBtn = new Label("← " + I18n.get("content.back"));
         backBtn.getStyleClass().add("preview-back-btn");
         backBtn.setOnMouseClicked(e -> showToolGrid());
 
         Label sep = new Label("/");
-        sep.setStyle("-fx-text-fill: rgba(255,255,255,0.25); -fx-font-size: 13px; -fx-padding: 4 6 4 0;");
+        sep.getStyleClass().add("preview-back-sep");
 
         Label titleLabel = new Label();
         titleLabel.getStyleClass().add("preview-back-title");
@@ -208,14 +237,14 @@ class PreviewShell extends BorderPane {
         bar.getStyleClass().add("preview-statusbar");
         bar.setAlignment(Pos.CENTER_LEFT);
 
-        statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.28); -fx-font-size: 12px;");
+        statusLabel.getStyleClass().add("preview-status-text");
         bar.getChildren().add(statusLabel);
         updateStatus();
         return bar;
     }
 
     private void updateStatus() {
-        statusLabel.setText(plugins.size() + " plugin(s) loaded");
+        statusLabel.setText(MessageFormat.format(I18n.get("status.tools"), plugins.size()));
     }
 
     // ── Event wiring ────────────────────────────────────────────
@@ -248,7 +277,7 @@ class PreviewShell extends BorderPane {
         }
 
         if (filtered.isEmpty()) {
-            Label empty = new Label("No matching plugins found");
+            Label empty = new Label(I18n.get("content.emptyState"));
             empty.getStyleClass().add("preview-empty-text");
             empty.setPadding(new Insets(40, 0, 0, 0));
             toolGrid.getChildren().add(empty);
@@ -287,10 +316,12 @@ class PreviewShell extends BorderPane {
         if (view == null) {
             try {
                 view = PluginContext.callWith(plugin, plugin::createView);
+                if (view != null) PluginContext.wrapEvents(plugin, view);
                 cachedViews.put(plugin, view);
             } catch (Exception e) {
                 Label errorLabel = new Label("Error creating view:\n" + e.getMessage());
-                errorLabel.setStyle("-fx-text-fill: #ff6b6b; -fx-font-size: 13px; -fx-padding: 20;");
+                errorLabel.getStyleClass().add("sk-danger-text");
+                errorLabel.setStyle("-fx-font-size: 13px; -fx-padding: 20;");
                 errorLabel.setWrapText(true);
                 view = errorLabel;
             }
