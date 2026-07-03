@@ -1,6 +1,7 @@
 package fan.summer.ui;
 
 import fan.summer.api.PluginContext;
+import fan.summer.api.component.GlassNotification;
 import fan.summer.api.i18n.I18n;
 import fan.summer.plugin.FavoriteService;
 import fan.summer.plugin.PluginLoader;
@@ -270,8 +271,12 @@ public class MainWindow extends StackPane {
             }
             try {
                 loader.uninstallPlugin(plugin);
+                GlassNotification.toast(this, GlassNotification.Type.SUCCESS,
+                    I18n.get("detail.uninstall.success", plugin.getName()));
             } catch (Exception ex) {
                 log.error("Failed to uninstall plugin {}: {}", plugin.getId(), ex.getMessage(), ex);
+                GlassNotification.notify(this, GlassNotification.Type.ERROR,
+                    I18n.get("detail.uninstall.failed", plugin.getName()));
             }
         });
     }
