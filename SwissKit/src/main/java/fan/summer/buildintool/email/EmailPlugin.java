@@ -25,6 +25,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
@@ -35,6 +36,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Modality;
+import javafx.stage.Screen;
 import javafx.stage.Stage;
 import org.apache.ibatis.session.SqlSession;
 import org.slf4j.Logger;
@@ -350,10 +352,11 @@ public class EmailPlugin implements SwissKitJPlugin {
         filenameModeCheckBox.setStyle("-fx-font-size: 13px;");
 
         // ── Multi-tag checkboxes for to/cc ───────────────────────────
+        // Each tag list is wrapped in a bounded ScrollPane so that, when many tags
+        // exist, the list scrolls internally instead of stretching the dialog past
+        // the screen and hiding the attachment row / save-cancel buttons.
         VBox toCheckBoxes = new VBox(4);
         toCheckBoxes.setPadding(new Insets(6));
-        toCheckBoxes.getStyleClass().add("sk-surface");
-        toCheckBoxes.setStyle("-fx-background-radius: 8;");
         for (EmailTagEntity tag : tags) {
             CheckBox cb = new CheckBox(tag.getTag());
             cb.setUserData(tag.getId());
@@ -361,11 +364,10 @@ public class EmailPlugin implements SwissKitJPlugin {
             toCheckBoxes.getChildren().add(cb);
         }
         if (tags.isEmpty()) toCheckBoxes.getChildren().add(new Label(I18n.get("builtin.email.noTagsHint")));
+        ScrollPane toTagScroll = tagListScroll(toCheckBoxes);
 
         VBox ccCheckBoxes = new VBox(4);
         ccCheckBoxes.setPadding(new Insets(6));
-        ccCheckBoxes.getStyleClass().add("sk-surface");
-        ccCheckBoxes.setStyle("-fx-background-radius: 8;");
         for (EmailTagEntity tag : tags) {
             CheckBox cb = new CheckBox(tag.getTag());
             cb.setUserData(tag.getId());
@@ -373,6 +375,7 @@ public class EmailPlugin implements SwissKitJPlugin {
             ccCheckBoxes.getChildren().add(cb);
         }
         if (tags.isEmpty()) ccCheckBoxes.getChildren().add(new Label(I18n.get("builtin.email.noTagsHint")));
+        ScrollPane ccTagScroll = tagListScroll(ccCheckBoxes);
 
         // ── Attachment folder ────────────────────────────────────────
         CheckBox attCheckBox = new CheckBox(I18n.get("builtin.email.attachByTag"));
@@ -410,8 +413,8 @@ public class EmailPlugin implements SwissKitJPlugin {
         ccLabel.getStyleClass().add("sk-t2");
         ccLabel.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
 
-        VBox toSection = new VBox(4, toLabel, toCheckBoxes);
-        VBox ccSection = new VBox(4, ccLabel, ccCheckBoxes);
+        VBox toSection = new VBox(4, toLabel, toTagScroll);
+        VBox ccSection = new VBox(4, ccLabel, ccTagScroll);
 
         Runnable updateVisibility = () -> {
             boolean filenameMode = filenameModeCheckBox.isSelected();
@@ -510,9 +513,13 @@ public class EmailPlugin implements SwissKitJPlugin {
         root.getStyleClass().add("sk-surface");
         root.setPrefWidth(520);
 
+        // Belt-and-suspenders: ensure the whole dialog never grows taller than the
+        // screen, so the attachment row and Save/Cancel buttons always stay reachable.
         Scene scene = new Scene(root);
-        Themes.applyTo(scene);
+        double maxScreenHeight = Screen.getPrimary().getVisualBounds().getHeight() - 40;
         dialog.setScene(scene);
+        dialog.setMaxHeight(maxScreenHeight);
+        Themes.applyTo(scene);
         dialog.showAndWait();
     }
 
@@ -660,6 +667,24 @@ public class EmailPlugin implements SwissKitJPlugin {
         l.getStyleClass().add("sk-t1");
         l.setStyle("-fx-font-size: 15px; -fx-font-weight: 500;");
         return l;
+    }
+
+    /**
+     * Wrap a tag-checkbox VBox in a bounded, rounded ScrollPane so long tag lists
+     * scroll internally instead of growing the dialog taller than the screen.
+     */
+    private static ScrollPane tagListScroll(VBox tagBox) {
+        ScrollPane sp = new ScrollPane(tagBox);
+        sp.setFitToWidth(true);
+        sp.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        sp.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        // Cap the visible height; lists longer than this scroll inside the pane.
+        sp.setPrefHeight(160);
+        sp.setMaxHeight(220);
+        sp.setMinHeight(0);
+        sp.getStyleClass().add("sk-surface");
+        sp.setStyle("-fx-background-color: transparent; -fx-background-radius: 8; -fx-padding: 0;");
+        return sp;
     }
 
     private static Label subLabel(String text) {
