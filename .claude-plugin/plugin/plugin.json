@@ -1,0 +1,6 @@
+{
+  "name": "swisskitj-plugin-kit",
+  "version": "3.2.0",
+  "description": "Scaffold and validate SwissKitJ plugins that strictly follow the host's design standards.",
+  "author": { "name": "SwissKitJ" }
+}
