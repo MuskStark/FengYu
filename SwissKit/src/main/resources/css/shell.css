@@ -63,6 +63,8 @@
     -fx-pref-height: 32px;
 }
 .nav-item-icon { -fx-fill: -sk-text-secondary; -fx-min-width: 18px; -fx-alignment: center; }
+.nav-item:hover .nav-item-icon { -fx-fill: -sk-text; }
+.nav-item.active .nav-item-icon { -fx-fill: -sk-accent; }
 .nav-item-text { -fx-font-size: 13px; -fx-text-fill: -sk-text-secondary; }
 .nav-item:hover { -fx-background-color: -sk-bg-hover; }
 .nav-item:hover .nav-item-text { -fx-text-fill: -sk-text; }
