@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SwissKitJ plugin scaffold — substitute placeholders:
+    {{base-package}}      e.g. com.example.csvsorter
+    {{plugin-name}}       e.g. csv-sorter-plugin  (Maven artifactId)
+    {{Name}}              e.g. CsvSorter          (PascalCase, used in class names)
+    {{slug}}              e.g. csv-sorter         (kebab-case, used in i18n keys)
+
+  Scope rules: SwissKitJ-Api + JavaFX are PROVIDED (host supplies them).
+  Your own deps (H2, MyBatis, FesodSheet) go at default scope so they're shaded in.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>{{base-package}}</groupId>
+  <artifactId>{{plugin-name}}</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+
+  <properties>
+    <maven.compiler.source>21</maven.compiler.source>
+    <maven.compiler.target>21</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <javafx.version>21.0.2</javafx.version>
+    <swisskit.api.version>3.2.0</swisskit.api.version>
+  </properties>
+
+  <dependencies>
+    <!-- SwissKitJ API — provided by the host at runtime -->
+    <dependency>
+      <groupId>fan.summer.api</groupId>
+      <artifactId>SwissKitJ-Api</artifactId>
+      <version>${swisskit.api.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <!-- JavaFX — provided by the host at runtime -->
+    <dependency>
+      <groupId>org.openjfx</groupId>
+      <artifactId>javafx-controls</artifactId>
+      <version>${javafx.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.openjfx</groupId>
+      <artifactId>javafx-graphics</artifactId>
+      <version>${javafx.version}</version>
+      <scope>provided</scope>
+    </dependency>
+
+    <!-- Plugin-owned deps (default scope = shaded into the fat JAR). Add only what you use:
+    <dependency>
+      <groupId>com.h2database</groupId> <artifactId>h2</artifactId> <version>2.4.240</version>
+    </dependency>
+    <dependency>
+      <groupId>org.mybatis</groupId> <artifactId>mybatis</artifactId> <version>3.5.19</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.fesod</groupId> <artifactId>fesod-sheet</artifactId> <version>2.0.1-incubating</version>
+    </dependency>
+    -->
+  </dependencies>
+
+  <build>
+    <finalName>{{plugin-name}}</finalName>
+    <plugins>
+      <!--
+        Fat JAR. ServicesResourceTransformer is MANDATORY — without it, the
+        META-INF/services/fan.summer.api.SwissKitJPlugin file from this project gets
+        overwritten during shading and the host can't discover your plugin.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.5.3</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals><goal>shade</goal></goals>
+            <configuration>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <transformers>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+              </transformers>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+  <!--
+    DEV profile: re-adds JavaFX at compile/runtime so `mvn javafx:run -Pdev` launches
+    the plugin standalone via DevLauncher for offline testing.
+  -->
+  <profiles>
+    <profile>
+      <id>dev</id>
+      <dependencies>
+        <dependency>
+          <groupId>org.openjfx</groupId>
+          <artifactId>javafx-controls</artifactId>
+          <version>${javafx.version}</version>
+        </dependency>
+        <dependency>
+          <groupId>org.openjfx</groupId>
+          <artifactId>javafx-graphics</artifactId>
+          <version>${javafx.version}</version>
+        </dependency>
+      </dependencies>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-maven-plugin</artifactId>
+            <version>0.0.8</version>
+            <configuration>
+              <mainClass>{{base-package}}.DevLauncher</mainClass>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+</project>
