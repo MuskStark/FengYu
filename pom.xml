@@ -61,11 +61,10 @@
         <launch4j.maven.plugin.version>2.7.0</launch4j.maven.plugin.version>
     </properties>
 
-    <!-- Module directories are renamed in Task 4 (SwissKitJ-Api → ZhiFlow-Api, SwissKit → ZhiFlow).
-         Until then the aggregator points at the old physical directories. -->
+    <!-- Reactor modules. Built in declaration order: API first (the app depends on it). -->
     <modules>
-        <module>SwissKitJ-Api</module>
-        <module>SwissKit</module>
+        <module>ZhiFlow-Api</module>
+        <module>ZhiFlow</module>
     </modules>
 
     <dependencyManagement>
