@@ -534,7 +534,7 @@ catch (Exception e) {
   □ openai → local:下次发消息工具集自动缩到 13
 
 热重载:
-  □ 把一个外部插件 JAR 丢进 .swisskit/plugin/ → 工具自动注册
+  □ 把一个外部插件 JAR 丢进 .zhiflow/plugin/ → 工具自动注册
   □ 删除 JAR → 工具自动注销
 
 工具执行失败路径:

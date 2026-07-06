@@ -1,17 +1,17 @@
-# 第三方插件开发套件(swisskitj-plugin-kit)实现计划
+# 第三方插件开发套件(zhiflowj-plugin-kit)实现计划
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 让独立仓库的第三方开发者通过一个可分发的 Claude Code 插件(skill + 标准快照 + 校验脚本 + 审查 agent)开发出严格符合 SwissKitJ 设计标准的插件。
 
-**Architecture:** 在主仓库 `SwissKitJ/.claude-plugin/plugin/` 内构建一个 Claude Code 插件;设计标准以主项目 `docs/plugins/` 为单一真相源,经 `/sync-plugin-standards` 命令快照进插件 `standards/` 目录并盖 API 版本戳;合规靠 `validate.sh`(确定性机械规则)+ `swisskitj-plugin-reviewer` agent(语义规则)双层保证;脚手架 skill 生成项目时读标准、落地 CLAUDE.md、拷入 validate.sh 并触发校验。
+**Architecture:** 在主仓库 `SwissKitJ/.claude-plugin/plugin/` 内构建一个 Claude Code 插件;设计标准以主项目 `docs/plugins/` 为单一真相源,经 `/sync-plugin-standards` 命令快照进插件 `standards/` 目录并盖 API 版本戳;合规靠 `validate.sh`(确定性机械规则)+ `zhiflowj-plugin-reviewer` agent(语义规则)双层保证;脚手架 skill 生成项目时读标准、落地 CLAUDE.md、拷入 validate.sh 并触发校验。
 
 **Tech Stack:** Markdown(skill/agent/docs)、POSIX Bash(validate.sh + sync 脚本)、JSON(plugin.json / marketplace.json)、参照 Java/Maven 插件规范(不在本计划内写 Java 代码,只写模板文本)。
 
 ## Global Constraints
 
 - 单一真相源 = `docs/plugins/*.md`;`standards/` 为生成物,**禁止手改**。
-- 生成的插件 `pom.xml` 中 `swisskit.api.version` 必须从 `standards/VERSION` 取值,**不得写死**。
+- 生成的插件 `pom.xml` 中 `zhiflow.api.version` 必须从 `standards/VERSION` 取值,**不得写死**。
 - 真实 API 事实(以 `SwissKitJ-Api` 源码为准):`getCategory()` 返回枚举 `ToolCategory`(值:`DEV/TEXT/IMAGE/NET/OTHER`);`getType()` 返回 `ToolType`;`getIconStyle()` 返回 `IconStyle`(`BLUE/PURPLE/TEAL/AMBER/RED/PINK/GRAY`)。当前 API 版本 = `3.2.0`。
 - CSS token 前缀为 `-sk-*`;工具类为 `.sk-*`(旧 `.glass-*` 在 v3.2.0 已废弃)。
 - `validate.sh` 必须是可移植 POSIX bash,只用 `grep`/`unzip`/`find` 等通用工具,退出码非 0 表示不合规;不得依赖主仓库存在。
@@ -26,8 +26,8 @@
 
 - Modify: `docs/plugins/entry-point.md` — 修正 `getCategory()` 等漂移
 - Create: `.claude-plugin/plugin/plugin.json` — 插件清单
-- Create: `.claude-plugin/plugin/skills/swisskitj-plugin-dev/SKILL.md` — 脚手架 skill
-- Create: `.claude-plugin/plugin/agents/swisskitj-plugin-reviewer.md` — 语义审查 agent
+- Create: `.claude-plugin/plugin/skills/zhiflowj-plugin-dev/SKILL.md` — 脚手架 skill
+- Create: `.claude-plugin/plugin/agents/zhiflowj-plugin-reviewer.md` — 语义审查 agent
 - Create: `.claude-plugin/plugin/scripts/validate.sh` — 机械校验脚本(权威副本)
 - Create: `.claude-plugin/plugin/standards/` — 生成物(VERSION + 快照 md + checklist.md)
 - Create: `.claude-plugin/plugin/templates/CLAUDE.md.tmpl` — 落到开发者仓库的 CLAUDE.md 模板
@@ -122,14 +122,14 @@ git commit -m "📝 docs(plugins): align entry-point with real API (ToolCategory
 - Create(占位空目录用 `.gitkeep`):`.claude-plugin/plugin/{skills,agents,scripts,standards,templates}/`
 
 **Interfaces:**
-- Produces:`plugin.json`(字段 `name: "swisskitj-plugin-kit"`),供 marketplace 引用与后续组件挂载。
+- Produces:`plugin.json`(字段 `name: "zhiflowj-plugin-kit"`),供 marketplace 引用与后续组件挂载。
 
 - [ ] **Step 1: 写 plugin.json**
 
 Create `.claude-plugin/plugin/plugin.json`:
 ```json
 {
-  "name": "swisskitj-plugin-kit",
+  "name": "zhiflowj-plugin-kit",
   "version": "3.2.0",
   "description": "Scaffold and validate SwissKitJ plugins that strictly follow the host's design standards.",
   "author": { "name": "SwissKitJ" }
@@ -141,7 +141,7 @@ Create `.claude-plugin/plugin/plugin.json`:
 
 ```bash
 cd /Users/phoebej/Develop/Java/SwissKitJ/.claude-plugin/plugin
-for d in skills/swisskitj-plugin-dev agents scripts standards templates; do mkdir -p "$d"; done
+for d in skills/zhiflowj-plugin-dev agents scripts standards templates; do mkdir -p "$d"; done
 find . -type d -empty -exec touch {}/.gitkeep \;
 ```
 
@@ -154,7 +154,7 @@ Expected: 至少含 `plugin.json` 和各 `.gitkeep`。
 
 ```bash
 git add .claude-plugin/plugin
-git commit -m "✨ feat(plugin-kit): scaffold swisskitj-plugin-kit skeleton + manifest"
+git commit -m "✨ feat(plugin-kit): scaffold zhiflowj-plugin-kit skeleton + manifest"
 ```
 
 ---
@@ -216,7 +216,7 @@ M8 pom 配了 ServicesResourceTransformer
 M9 i18n/messages.properties 存在
 M10 createView 或 init 中注册了 i18n bundle(registerPluginBundle 或 host.i18n().registerBundle)
 M11 DevLauncher.java 零 javafx import
-M12 pom 中 swisskit.api.version 属性存在(值由使用者维护)
+M12 pom 中 zhiflow.api.version 属性存在(值由使用者维护)
 ```
 **语义规则(reviewer agent 判定)**:
 ```
@@ -330,7 +330,7 @@ grep -qs 'ServicesResourceTransformer' "$POM" || fail M8 "shade ServicesResource
 grep -rqsE 'registerPluginBundle|i18n\(\)\.registerBundle' "$SRC" 2>/dev/null || fail M10 "i18n bundle not registered"
 dl="$(grep -rl 'class DevLauncher' "$SRC" 2>/dev/null | head -1)"
 [ -n "$dl" ] && grep -qs 'import javafx' "$dl" && fail M11 "DevLauncher must have zero javafx imports"
-grep -qs 'swisskit.api.version' "$POM" || fail M12 "swisskit.api.version property missing"
+grep -qs 'zhiflow.api.version' "$POM" || fail M12 "zhiflow.api.version property missing"
 
 [ "$rc" -eq 0 ] && echo "VALIDATE OK: $P"
 exit $rc
@@ -353,7 +353,7 @@ git commit -m "✨ feat(plugin-kit): validate.sh mechanical checks + good/bad fi
 ## Task 5: reviewer agent(语义校验)
 
 **Files:**
-- Create: `.claude-plugin/plugin/agents/swisskitj-plugin-reviewer.md`
+- Create: `.claude-plugin/plugin/agents/zhiflowj-plugin-reviewer.md`
 
 **Interfaces:**
 - Consumes:`standards/checklist.md` 的 S1–S6 + 快照 md。
@@ -364,7 +364,7 @@ git commit -m "✨ feat(plugin-kit): validate.sh mechanical checks + good/bad fi
 Create 文件,frontmatter:
 ```markdown
 ---
-name: swisskitj-plugin-reviewer
+name: zhiflowj-plugin-reviewer
 description: Reviews a SwissKitJ plugin project against the host's semantic design standards (S1–S6). Use after scaffolding or before packaging a plugin.
 tools: Read, Grep, Glob
 ---
@@ -379,7 +379,7 @@ Expected: 报告含 S2 违规且指向正确文件行。
 - [ ] **Step 3: Commit**
 
 ```bash
-git add .claude-plugin/plugin/agents/swisskitj-plugin-reviewer.md test/plugin-kit
+git add .claude-plugin/plugin/agents/zhiflowj-plugin-reviewer.md test/plugin-kit
 git commit -m "✨ feat(plugin-kit): semantic reviewer agent (S1–S6)"
 ```
 
@@ -390,19 +390,19 @@ git commit -m "✨ feat(plugin-kit): semantic reviewer agent (S1–S6)"
 把 1004 行的 `.claude/commands/plugin-dev.md` 提炼为精简 skill,标准判断外置到 `standards/`。
 
 **Files:**
-- Create: `.claude-plugin/plugin/skills/swisskitj-plugin-dev/SKILL.md`
+- Create: `.claude-plugin/plugin/skills/zhiflowj-plugin-dev/SKILL.md`
 - Create: `.claude-plugin/plugin/templates/CLAUDE.md.tmpl`
 - Reference(模板素材,只读):`.claude/commands/plugin-dev.md`、`SwissKit-Plugin/SwissKitJ-Plugin-KeepAwake/**`
 
 **Interfaces:**
-- Consumes:`standards/VERSION`、`standards/checklist.md`、`scripts/validate.sh`、`swisskitj-plugin-reviewer` agent。
+- Consumes:`standards/VERSION`、`standards/checklist.md`、`scripts/validate.sh`、`zhiflowj-plugin-reviewer` agent。
 - Produces:一次脚手架会话,在开发者空仓库产出可构建插件 + `CLAUDE.md` + `validate.sh` 副本。
 
 - [ ] **Step 1: 写 SKILL.md frontmatter**
 
 ```markdown
 ---
-name: swisskitj-plugin-dev
+name: zhiflowj-plugin-dev
 description: Use when a developer wants to create a new SwissKitJ plugin. Scaffolds a standards-compliant plugin project in an independent repo and runs compliance checks.
 ---
 ```
@@ -412,15 +412,15 @@ description: Use when a developer wants to create a new SwissKitJ plugin. Scaffo
 正文按 spec §5 固定五步:
 1. 询问需求(名称/插件 ID/基础包名/描述/分类/图标 + 是否需要 DB/Excel/AI/后台任务),分类取值限定 `DEV/TEXT/IMAGE/NET/OTHER`。
 2. **先读** 本插件内 `standards/VERSION` 与 `standards/checklist.md`。
-3. 按需拼装项目;基础骨架文件与内容**照搬** KeepAwake 的真实形态(entry class、DevLauncher、SPI、pom shade+dev profile、i18n 两个 properties),pom 的 `swisskit.api.version` 用 `standards/VERSION` 的值。
+3. 按需拼装项目;基础骨架文件与内容**照搬** KeepAwake 的真实形态(entry class、DevLauncher、SPI、pom shade+dev profile、i18n 两个 properties),pom 的 `zhiflow.api.version` 用 `standards/VERSION` 的值。
 4. 落地 `CLAUDE.md`(用 templates/CLAUDE.md.tmpl 填充)并把 `scripts/validate.sh` 拷入开发者仓库根。
-5. 运行 `bash validate.sh .` 并调用 `swisskitj-plugin-reviewer` agent,把违规修到零再交付。
+5. 运行 `bash validate.sh .` 并调用 `zhiflowj-plugin-reviewer` agent,把违规修到零再交付。
 
 正文中**不重复**标准细节(布局陷阱、AiTool 契约等),而是写“遵循 `standards/` 内对应文档”。可选模块(DB/Excel/AI)只给最小骨架并指向对应快照 md。
 
 - [ ] **Step 3: 写 CLAUDE.md 模板**
 
-Create `.claude-plugin/plugin/templates/CLAUDE.md.tmpl`,含:项目一句话说明({{description}})、构建命令(`mvn -Pdev javafx:run` 预览 / `mvn package` 出 fat JAR)、**硬性约束摘要**(SPI 路径、API provided、`.sk-*` 不用 `.glass-*`、布局三陷阱、i18n 注册)、以及**明确指令**:“任何改动后必须运行 `bash validate.sh .`;打包前用 swisskitj-plugin-reviewer 审查。”
+Create `.claude-plugin/plugin/templates/CLAUDE.md.tmpl`,含:项目一句话说明({{description}})、构建命令(`mvn -Pdev javafx:run` 预览 / `mvn package` 出 fat JAR)、**硬性约束摘要**(SPI 路径、API provided、`.sk-*` 不用 `.glass-*`、布局三陷阱、i18n 注册)、以及**明确指令**:“任何改动后必须运行 `bash validate.sh .`;打包前用 zhiflowj-plugin-reviewer 审查。”
 
 - [ ] **Step 4: 干跑验证(临时空目录)**
 
@@ -456,10 +456,10 @@ git commit -m "✨ feat(plugin-kit): lean scaffolder skill + CLAUDE.md template"
 
 ```json
 {
-  "name": "swisskitj",
+  "name": "zhiflowj",
   "owner": { "name": "SwissKitJ" },
   "plugins": [
-    { "name": "swisskitj-plugin-kit", "source": "./.claude-plugin/plugin", "description": "Scaffold + validate SwissKitJ plugins." }
+    { "name": "zhiflowj-plugin-kit", "source": "./.claude-plugin/plugin", "description": "Scaffold + validate SwissKitJ plugins." }
   ]
 }
 ```
@@ -471,7 +471,7 @@ Run: `ls .claude/commands/ && grep -rn "release" .claude/commands/ 2>/dev/null |
 
 - [ ] **Step 3: 写第三方使用文档**
 
-Create `docs/plugins/third-party-kit.md`:安装(`/plugin marketplace add <repo-url>` → `/plugin install swisskitj-plugin-kit`)、用法(`/swisskitj-plugin-dev` 触发脚手架)、校验(`bash validate.sh .` + reviewer agent)、CI 集成示例(GitHub Actions 跑 validate.sh)。并在两个 `_sidebar.md` 加链接。
+Create `docs/plugins/third-party-kit.md`:安装(`/plugin marketplace add <repo-url>` → `/plugin install zhiflowj-plugin-kit`)、用法(`/zhiflowj-plugin-dev` 触发脚手架)、校验(`bash validate.sh .` + reviewer agent)、CI 集成示例(GitHub Actions 跑 validate.sh)。并在两个 `_sidebar.md` 加链接。
 
 - [ ] **Step 4: 验证 JSON 合法**
 
@@ -504,11 +504,11 @@ git add .claude/commands/ && git commit -m "♻️ chore(release): hook sync-plu
 cp .claude-plugin/plugin/scripts/validate.sh <newplugin>/validate.sh
 bash <newplugin>/validate.sh <newplugin>   # 期望 VALIDATE OK
 ```
-再用 `swisskitj-plugin-reviewer` 审查该目录 → 期望 `SEMANTIC OK`。
+再用 `zhiflowj-plugin-reviewer` 审查该目录 → 期望 `SEMANTIC OK`。
 
 - [ ] **Step 2: 用宿主验证可加载(可选但推荐)**
 
-按 CLAUDE.md 的构建方式 `mvn clean package -f <newplugin>/pom.xml -DskipTests`(经 IDEA Maven),把产出 fat JAR 丢进 `.swisskit/plugin/` 启动宿主确认工具卡片出现。若环境不便,记录为待人工验证。
+按 CLAUDE.md 的构建方式 `mvn clean package -f <newplugin>/pom.xml -DskipTests`(经 IDEA Maven),把产出 fat JAR 丢进 `.zhiflow/plugin/` 启动宿主确认工具卡片出现。若环境不便,记录为待人工验证。
 
 - [ ] **Step 3: 退役旧 monolith 命令**
 
@@ -529,4 +529,4 @@ Expected: `ALL PASS`。
 
 - **Spec coverage:** §3 结构→T2/T3;§5 skill→T6;§6a validate→T4;§6b agent→T5;§7 落地物→T6(CLAUDE.md/validate 副本)+T7(CI 文档);§8 sync→T3+T7;§8 前置修复→T1;§9 分期全覆盖;§10 非目标未越界。✅
 - **Placeholder scan:** 无 TBD/TODO;validate.sh、sync 脚本、checklist、JSON 均给出实际内容。`/release` 路径未定为唯一已知不确定项,已给定位步骤 + 回退方案。✅
-- **Type consistency:** `getCategory()`→`ToolCategory`、`getIconStyle()`→`IconStyle`、SPI FQN、`swisskit.api.version`、规则号 M1–M12/S1–S6 在各 Task 间一致引用。✅
+- **Type consistency:** `getCategory()`→`ToolCategory`、`getIconStyle()`→`IconStyle`、SPI FQN、`zhiflow.api.version`、规则号 M1–M12/S1–S6 在各 Task 间一致引用。✅

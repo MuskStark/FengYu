@@ -1,6 +1,6 @@
 # Code Reviewer Subagent
 
-Specialized agent for reviewing code changes in this JavaFX/SwissKitJ codebase.
+Specialized agent for reviewing code changes in this JavaFX/ZhiFlow codebase.
 
 ## Usage
 Spawn via `Agent` tool with `subagent_type: code-reviewer`
@@ -22,7 +22,7 @@ Recent commits refactored AI services to use shared `Gson`/`JsonHelper`, `ToolEx
 - Tool execution goes through `ToolExecutor`
 
 ### Maven Multi-Module
-- `SwissKitJ-Api` must be built/installed before `SwissKit` (dependency order)
+- `ZhiFlow-Api` must be built/installed before `ZhiFlow` (dependency order)
 - Each module has standalone POM — no parent dependency
 
 ### Glassmorphism Theming

@@ -2,7 +2,7 @@ package fan.summer.zhiflow.ui.content;
 
 import fan.summer.zhiflow.api.IconStyle;
 import fan.summer.zhiflow.api.MdiIconUtil;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.i18n.I18n;
 import fan.summer.zhiflow.api.log.LoggerFactory;
 import fan.summer.zhiflow.api.log.PluginLogger;
@@ -35,7 +35,7 @@ public class ToolCard extends StackPane {
 
     private static final PluginLogger LOG = LoggerFactory.getLogger(ToolCard.class);
 
-    private final SwissKitJPlugin plugin;
+    private final ZhiFlowPlugin plugin;
 
     /**
      * Constructs a ToolCard for the given plugin with a selection callback.
@@ -45,7 +45,7 @@ public class ToolCard extends StackPane {
      * @param registry       the plugin registry for background state queries; may be null
      * @param favoriteService the favorite service for star toggle; may be null
      */
-    public ToolCard(SwissKitJPlugin plugin, Consumer<SwissKitJPlugin> onSelect,
+    public ToolCard(ZhiFlowPlugin plugin, Consumer<ZhiFlowPlugin> onSelect,
                     PluginRegistry registry, FavoriteService favoriteService) {
         LOG.info("Creating ToolCard for plugin: name={}, id={}", plugin.getName(), plugin.getId());
         this.plugin = plugin;
@@ -188,7 +188,7 @@ public class ToolCard extends StackPane {
      *
      * @return the plugin instance passed at construction time
      */
-    public SwissKitJPlugin getPlugin() { return plugin; }
+    public ZhiFlowPlugin getPlugin() { return plugin; }
 
     private void updateStarStyle(Label starBtn, boolean isFavorite) {
         if (isFavorite) {

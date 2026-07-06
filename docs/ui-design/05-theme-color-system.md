@@ -1,6 +1,6 @@
 # 05 · Theme & Color System
 
-> **Role:** This is the **single source of truth** for every `-sk-*` color token in SwissKitJ.
+> **Role:** This is the **single source of truth** for every `-sk-*` color token in ZhiFlow.
 > If you need an exact hex value, a token name, or a contrast-safe color pair, it lives here.
 > Every other UI design doc (01, 02, 03, 04, 06, 07, 08) links back to this page instead of
 > restating values. Bookmark the anchor [`#token-reference-table`](#token-reference-table).
@@ -9,7 +9,7 @@
 |---|---|
 | **Doc type** | Token reference + theme lifecycle |
 | **Audience** | Plugin authors, AI code generators, anyone who colors a node |
-| **Source of truth** | [`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) |
+| **Source of truth** | [`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css) |
 | **Related** | [01 Design System](01-design-system.md) · [02 JavaFX Implementation](02-javafx-implementation.md) · [08 Accessibility](08-accessibility-guide.md) |
 
 ---
@@ -31,7 +31,7 @@
 
 ## 1. Overview
 
-SwissKitJ ships a **dual-theme** (dark / light) color system derived from the JetBrains
+ZhiFlow ships a **dual-theme** (dark / light) color system derived from the JetBrains
 IntelliJ IDEA 2025 **New UI**. The entire palette is expressed as **19 semantic color
 tokens** prefixed `-sk-`, and one **accent** color (`#3574F0`) shared by both themes.
 
@@ -43,7 +43,7 @@ theme switching work with zero flicker.
 ### How a token resolves (the looked-up color mechanism)
 
 A token is a **JavaFX looked-up color** declared in
-[`zhiflow-common.css`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css)
+[`zhiflow-common.css`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css)
 under one of two classes placed on the **scene root**:
 
 ```
@@ -64,7 +64,7 @@ under one of two classes placed on the **scene root**:
 Switching the theme = swapping that one class on the root. JavaFX re-resolves every
 looked-up color downward through the scene graph. **No stylesheet is reloaded, no node is
 rebuilt, there is no flicker.** This is performed by
-[`ThemeService.set(Theme)`](../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java).
+[`ThemeService.set(Theme)`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java).
 
 > **Key consequence:** a token's value is *contextual*. `-sk-text` is `#D0D0D0` under
 > `.theme-dark` and `#1E1E1E` under `.theme-light`. Code that hardcodes `#D0D0D0` will be
@@ -244,7 +244,7 @@ or propose a new token in the CSS first.
 #### Raw CSS excerpt
 
 For copy-paste / verification, here are the two theme blocks verbatim from
-[`zhiflow-common.css`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css):
+[`zhiflow-common.css`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css):
 
 ```css
 .theme-dark {
@@ -422,9 +422,9 @@ Three collaborators, all in `fan.summer.zhiflow.api.theme`:
 
 | Class | Role |
 |---|---|
-| [`ThemeService`](../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java) | The low-level engine. Holds current theme, owns registered scenes + listeners, stamps the class. **FX-thread-only.** |
-| [`Themes`](../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java) | Plugin-facing convenience helper. `Themes.applyTo(scene)` is the one entry point plugins should call; `Themes.COMMON_CSS` is the stylesheet resource path. |
-| [`MarkdownRenderer`](../../SwissKit/src/main/java/fan/summer/ai/util/MarkdownRenderer.java) | Reference implementation of WebView theme sync (HTML can't reuse JavaFX tokens). |
+| [`ThemeService`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java) | The low-level engine. Holds current theme, owns registered scenes + listeners, stamps the class. **FX-thread-only.** |
+| [`Themes`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/Themes.java) | Plugin-facing convenience helper. `Themes.applyTo(scene)` is the one entry point plugins should call; `Themes.COMMON_CSS` is the stylesheet resource path. |
+| [`MarkdownRenderer`](../../ZhiFlow/src/main/java/fan/summer/ai/util/MarkdownRenderer.java) | Reference implementation of WebView theme sync (HTML can't reuse JavaFX tokens). |
 
 ### 4.2 The API surface (signatures verbatim)
 
@@ -655,7 +655,7 @@ ThemeService.set(ThemeService.Theme.LIGHT);
 
 ## 5. AI Development Checklist
 
-When generating themed UI for SwissKitJ, you **MUST** satisfy all of the following. Treat
+When generating themed UI for ZhiFlow, you **MUST** satisfy all of the following. Treat
 each item as a hard gate.
 
 - [ ] **Use tokens or utility classes for every color.** Reference `-sk-*` tokens in CSS, or
@@ -833,10 +833,10 @@ Platform.runLater(() -> ThemeService.set(Theme.LIGHT));
 
 | What | Path |
 |---|---|
-| Token + utility-class definitions | [`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) |
-| Theme engine (DARK/LIGHT, `current/set/registerScene/onChange/removeListener`) | [`SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java) |
-| Plugin-facing helper (`applyTo`, `COMMON_CSS`) | [`SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java) |
-| WebView theme-sync reference (`DARK_CSS`/`LIGHT_CSS`) | [`SwissKit/src/main/java/fan/summer/ai/util/MarkdownRenderer.java`](../../SwissKit/src/main/java/fan/summer/ai/util/MarkdownRenderer.java) |
+| Token + utility-class definitions | [`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css) |
+| Theme engine (DARK/LIGHT, `current/set/registerScene/onChange/removeListener`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java) |
+| Plugin-facing helper (`applyTo`, `COMMON_CSS`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/theme/Themes.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/Themes.java) |
+| WebView theme-sync reference (`DARK_CSS`/`LIGHT_CSS`) | [`ZhiFlow/src/main/java/fan/summer/ai/util/MarkdownRenderer.java`](../../ZhiFlow/src/main/java/fan/summer/ai/util/MarkdownRenderer.java) |
 
 ### Design baseline
 

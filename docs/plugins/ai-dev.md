@@ -1,7 +1,7 @@
 # AI-Assisted Plugin Development
 
-SwissKitJ ships an **Agent Skills** package that turns an AI coding agent into an expert
-SwissKitJ plugin author. It knows the real `SwissKitJPlugin` contract (3.2.0, 16 methods),
+ZhiFlow ships an **Agent Skills** package that turns an AI coding agent into an expert
+ZhiFlow plugin author. It knows the real `SwissKitJPlugin` contract (3.2.0, 16 methods),
 the SPI loading mechanism, the theme/component system, and the recurring pitfalls — so the
 plugins it produces **load cleanly and render theme-correctly** the first time, and follow the
 [UI Design System](/ui-design/README.md) instead of inventing their own look.
@@ -45,10 +45,10 @@ Commit the skill so every contributor gets it. For **Claude Code**:
 ```bash
 # from the root of your plugin project
 mkdir -p .claude/skills
-svn export https://github.com/MuskStark/SwissKitJ/trunk/.agents/skills/swisskit-plugin-dev \
-  .claude/skills/swisskit-plugin-dev
-git add .claude/skills/swisskit-plugin-dev
-git commit -m "chore: add swisskit-plugin-dev skill"
+svn export https://github.com/MuskStark/ZhiFlow/trunk/.agents/skills/zhiflow-plugin-dev \
+  .claude/skills/zhiflow-plugin-dev
+git add .claude/skills/zhiflow-plugin-dev
+git commit -m "chore: add zhiflow-plugin-dev skill"
 ```
 
 For **ZCode**, do the same under `.agents/skills/`. A plugin repo used by contributors on both
@@ -61,34 +61,34 @@ Install once into your home directory:
 ```bash
 # Claude Code
 mkdir -p ~/.claude/skills
-svn export https://github.com/MuskStark/SwissKitJ/trunk/.agents/skills/swisskit-plugin-dev \
-  ~/.claude/skills/swisskit-plugin-dev
+svn export https://github.com/MuskStark/ZhiFlow/trunk/.agents/skills/zhiflow-plugin-dev \
+  ~/.claude/skills/zhiflow-plugin-dev
 
 # ZCode
 mkdir -p ~/.agents/skills
-svn export https://github.com/MuskStark/SwissKitJ/trunk/.agents/skills/swisskit-plugin-dev \
-  ~/.agents/skills/swisskit-plugin-dev
+svn export https://github.com/MuskStark/ZhiFlow/trunk/.agents/skills/zhiflow-plugin-dev \
+  ~/.agents/skills/zhiflow-plugin-dev
 ```
 
 Full install details (both agents, discovery priority, sync/update) are in the skill's
-[`INSTALL.md`](https://github.com/MuskStark/SwissKitJ/blob/main/.agents/skills/swisskit-plugin-dev/INSTALL.md).
+[`INSTALL.md`](https://github.com/MuskStark/ZhiFlow/blob/main/.agents/skills/zhiflow-plugin-dev/INSTALL.md).
 
 ## Use it
 
 Once installed, just describe what you want in your AI tool — the skill triggers on intent.
 Examples:
 
-- "帮我写一个 SwissKitJ 插件，把文本转成二维码"
+- "帮我写一个 ZhiFlow 插件，把文本转成二维码"
 - "Add an AI tool to my plugin that formats JSON"
 - "My plugin loads but the UI shows raw i18n keys"
 - "Scaffold a CSV sorter plugin"
 
-You can also force-load it with `/swisskit-plugin-dev <your request>`.
+You can also force-load it with `/zhiflow-plugin-dev <your request>`.
 
 ## Where it lives
 
 - **Source / canonical copy:**
-  [`MuskStark/SwissKitJ/.agents/skills/swisskit-plugin-dev/`](https://github.com/MuskStark/SwissKitJ/tree/main/.agents/skills/swisskit-plugin-dev)
+  [`MuskStark/ZhiFlow/.agents/skills/zhiflow-plugin-dev/`](https://github.com/MuskStark/ZhiFlow/tree/main/.agents/skills/zhiflow-plugin-dev)
 - Targets **API 3.2.0** and the current `docs/ui-design/` spec. Re-sync from the main repo
   when the API or spec ships breaking changes.
 

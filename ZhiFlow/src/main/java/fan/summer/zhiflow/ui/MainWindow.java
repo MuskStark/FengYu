@@ -8,9 +8,9 @@ import fan.summer.zhiflow.plugin.PluginLoader;
 import fan.summer.zhiflow.plugin.PluginRegistry;
 import fan.summer.zhiflow.ui.about.AboutPage;
 import fan.summer.zhiflow.ui.content.ContentArea;
-import fan.summer.zhiflow.ui.setting.SwissKitJSettingUi;
+import fan.summer.zhiflow.ui.setting.ZhiFlowSettingUi;
 import fan.summer.zhiflow.ui.sidebar.Sidebar;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.buildintool.ai.AiChatPlugin;
 import javafx.animation.*;
 import javafx.geometry.Insets;
@@ -35,7 +35,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Root node of the main window that assembles the complete SwissKitJ UI.
+ * Root node of the main window that assembles the complete ZhiFlow UI.
  * Composes Sidebar, ContentArea, and StatusBar into a single
  * themed IDEA-New-UI container, and owns the lifecycle for PluginLoader
  * and PluginRegistry.
@@ -60,9 +60,9 @@ public class MainWindow extends StackPane {
 
     private final Sidebar     sidebar;
     private final ContentArea contentArea;
-    private SwissKitJPlugin  aiChatPlugin;
+    private ZhiFlowPlugin  aiChatPlugin;
     private Node aiChatView;
-    private final Map<SwissKitJPlugin, Node> cachedViews = new ConcurrentHashMap<>();
+    private final Map<ZhiFlowPlugin, Node> cachedViews = new ConcurrentHashMap<>();
 
     // Status bar labels
     private Label statusToolCount    = statusText("0 tools");
@@ -105,7 +105,7 @@ public class MainWindow extends StackPane {
 
         int builtinCount = 0;
         int pluginCount = 0;
-        for (SwissKitJPlugin plugin : registry.getPlugins()) {
+        for (ZhiFlowPlugin plugin : registry.getPlugins()) {
             if (plugin.getType().isPlugin()) {
                 pluginCount++;
             } else {
@@ -210,7 +210,7 @@ public class MainWindow extends StackPane {
 
         // Plugin list change → update status bar
         registry.getPlugins().addListener(
-            (javafx.collections.ListChangeListener<SwissKitJPlugin>) c -> {
+            (javafx.collections.ListChangeListener<ZhiFlowPlugin>) c -> {
                 int total   = registry.getPlugins().size();
                 int plugins = (int) registry.getPlugins().stream()
                     .filter(p -> p.getType().isPlugin()).count();
@@ -251,7 +251,7 @@ public class MainWindow extends StackPane {
         // Back / exit plugin view callback
         contentArea.setOnBack(() -> {
             log.debug("Returning to home from active plugin");
-            SwissKitJPlugin current = registry.getActivePlugin();
+            ZhiFlowPlugin current = registry.getActivePlugin();
             if (current != null && !registry.isBusy(current)) {
                 cachedViews.remove(current);
             }
@@ -264,7 +264,7 @@ public class MainWindow extends StackPane {
             // Always clear cached view so the plugin's classes can be GC'd
             cachedViews.remove(plugin);
             // If the plugin is currently active, deactivate and navigate back to grid
-            SwissKitJPlugin active = registry.getActivePlugin();
+            ZhiFlowPlugin active = registry.getActivePlugin();
             if (active == plugin) {
                 registry.deactivate();
                 contentArea.showToolGrid();
@@ -306,7 +306,7 @@ public class MainWindow extends StackPane {
      * Opens the Settings page in the content area.
      */
     private void openSettings() {
-        Node settingsPage = SwissKitJSettingUi.build();
+        Node settingsPage = ZhiFlowSettingUi.build();
         contentArea.showPage(settingsPage, I18n.get("sidebar.label.settings"));
     }
 
@@ -322,7 +322,7 @@ public class MainWindow extends StackPane {
      */
     private void openAiChat() {
         // Ensure local backend is available (lazy init for local mode)
-        SwissKitJSettingUi.ensureLocalBackend();
+        ZhiFlowSettingUi.ensureLocalBackend();
 
         if (aiChatView == null) {
             try {

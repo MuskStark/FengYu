@@ -1,6 +1,6 @@
 # 05 · 主题与配色系统
 
-> **定位：** 本文档是 SwissKitJ 中**所有** `-sk-*` 颜色令牌的**唯一事实来源**。
+> **定位：** 本文档是 ZhiFlow 中**所有** `-sk-*` 颜色令牌的**唯一事实来源**。
 > 你需要的精确十六进制值、令牌名、或对比度安全的配色组合，都在这里。
 > 其他所有 UI 设计文档（01、02、03、04、06、07、08）都链接回本页，而不重复列举数值。
 > 请收藏锚点 [`#token-reference-table`](#token-reference-table)。
@@ -9,7 +9,7 @@
 |---|---|
 | **文档类型** | 令牌参考 + 主题生命周期 |
 | **目标读者** | 插件作者、AI 代码生成器、任何需要给节点上色的开发者 |
-| **事实来源** | [`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`](../../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) |
+| **事实来源** | [`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`](../../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css) |
 | **关联文档** | [01 设计系统](01-design-system.md) · [02 JavaFX 实现](02-javafx-implementation.md) · [08 可访问性](08-accessibility-guide.md) |
 
 ---
@@ -31,7 +31,7 @@
 
 ## 1. 概览
 
-SwissKitJ 内置一套源自 JetBrains IntelliJ IDEA 2025 **New UI** 的**深浅双主题**
+ZhiFlow 内置一套源自 JetBrains IntelliJ IDEA 2025 **New UI** 的**深浅双主题**
 （dark / light）配色系统。整套调色板用 **19 个语义化颜色令牌**（前缀 `-sk-`）表达，
 外加一个**两种主题共享的强调色**（`#3574F0`）。
 
@@ -42,7 +42,7 @@ SwissKitJ 内置一套源自 JetBrains IntelliJ IDEA 2025 **New UI** 的**深浅
 ### 令牌如何解析（looked-up color 机制）
 
 一个令牌是**JavaFX looked-up color**，声明在
-[`zhiflow-common.css`](../../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css)
+[`zhiflow-common.css`](../../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css)
 中，归属于放置在**场景根节点**上的两个类之一：
 
 ```
@@ -62,7 +62,7 @@ SwissKitJ 内置一套源自 JetBrains IntelliJ IDEA 2025 **New UI** 的**深浅
 
 切换主题 = 在根上换这一个类。JavaFX 会向下对整棵场景图重新解析每个 looked-up color。
 **不重载样式表、不重建节点、没有闪烁。** 这一动作由
-[`ThemeService.set(Theme)`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java)
+[`ThemeService.set(Theme)`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java)
 完成。
 
 > **关键推论：** 令牌的取值是*上下文相关*的。`-sk-text` 在 `.theme-dark` 下是
@@ -236,7 +236,7 @@ IDEA New UI 的选中模式非常鲜明，必须忠实复现：
 #### 原始 CSS 摘录
 
 供复制粘贴 / 校验，以下是
-[`zhiflow-common.css`](../../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css)
+[`zhiflow-common.css`](../../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css)
 中两个主题块的逐字内容：
 
 ```css
@@ -406,9 +406,9 @@ WCAG 2.1 阈值：**普通文本 ≥ 4.5:1**，**大文本（≥18px / 14px 加�
 
 | 类 | 角色 |
 |---|---|
-| [`ThemeService`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java) | 底层引擎。持有当前主题、管理已注册场景与监听器、盖章。**仅 FX 线程。** |
-| [`Themes`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java) | 面向插件的便捷助手。`Themes.applyTo(scene)` 是插件应调用的唯一入口；`Themes.COMMON_CSS` 是样式表资源路径。 |
-| [`MarkdownRenderer`](../../../SwissKit/src/main/java/fan/summer/ai/util/MarkdownRenderer.java) | WebView 主题同步的参考实现（HTML 无法复用 JavaFX 令牌）。 |
+| [`ThemeService`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java) | 底层引擎。持有当前主题、管理已注册场景与监听器、盖章。**仅 FX 线程。** |
+| [`Themes`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/Themes.java) | 面向插件的便捷助手。`Themes.applyTo(scene)` 是插件应调用的唯一入口；`Themes.COMMON_CSS` 是样式表资源路径。 |
+| [`MarkdownRenderer`](../../../ZhiFlow/src/main/java/fan/summer/ai/util/MarkdownRenderer.java) | WebView 主题同步的参考实现（HTML 无法复用 JavaFX 令牌）。 |
 
 ### 4.2 API 表面（签名逐字）
 
@@ -631,7 +631,7 @@ ThemeService.set(ThemeService.Theme.LIGHT);
 
 ## 5. AI 开发清单
 
-为 SwissKitJ 生成主题化 UI 时，你**必须**满足以下全部条件。把每一条都当作硬性关卡。
+为 ZhiFlow 生成主题化 UI 时，你**必须**满足以下全部条件。把每一条都当作硬性关卡。
 
 - [ ] **每种颜色都用令牌或工具类。** 在 CSS 中引用 `-sk-*` 令牌，或通过 `getStyleClass()`
       应用 `.sk-t1`/`.sk-t2`/`.sk-t3`/`.sk-surface`/`.sk-surface-soft`/`.sk-outlined`/
@@ -801,10 +801,10 @@ Platform.runLater(() -> ThemeService.set(Theme.LIGHT));
 
 | 内容 | 路径 |
 |---|---|
-| 令牌 + 工具类定义 | [`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`](../../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) |
-| 主题引擎（DARK/LIGHT、`current/set/registerScene/onChange/removeListener`） | [`SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java) |
-| 面向插件的助手（`applyTo`、`COMMON_CSS`） | [`SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java) |
-| WebView 主题同步参考（`DARK_CSS`/`LIGHT_CSS`） | [`SwissKit/src/main/java/fan/summer/ai/util/MarkdownRenderer.java`](../../../SwissKit/src/main/java/fan/summer/ai/util/MarkdownRenderer.java) |
+| 令牌 + 工具类定义 | [`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`](../../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css) |
+| 主题引擎（DARK/LIGHT、`current/set/registerScene/onChange/removeListener`） | [`ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java) |
+| 面向插件的助手（`applyTo`、`COMMON_CSS`） | [`ZhiFlow-Api/src/main/java/fan/summer/api/theme/Themes.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/Themes.java) |
+| WebView 主题同步参考（`DARK_CSS`/`LIGHT_CSS`） | [`ZhiFlow/src/main/java/fan/summer/ai/util/MarkdownRenderer.java`](../../../ZhiFlow/src/main/java/fan/summer/ai/util/MarkdownRenderer.java) |
 
 ### 设计基准
 

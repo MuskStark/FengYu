@@ -1,6 +1,6 @@
 # 更新日志
 
-SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)。
+ZhiFlow 的所有重要变更。格式基于 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)。
 
 ---
 
@@ -19,7 +19,7 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 
 ### ♻️ 变更
 
-- **统一的 `ChatBackend` 接口** 位于 `SwissKitJ-Api` —— 非密封（Java 禁止跨模块密封许可）；两个已知实现（`CloudChatBackend`、`LocalChatBackend`）。UI 使用 `instanceof` 区分后端。
+- **统一的 `ChatBackend` 接口** 位于 `ZhiFlow-Api` —— 非密封（Java 禁止跨模块密封许可）；两个已知实现（`CloudChatBackend`、`LocalChatBackend`）。UI 使用 `instanceof` 区分后端。
 - **`CloudChatBackend` 合并 OpenAI + Anthropic** 到一个类（约 450 行）。HTTP/SSE、工具循环逻辑、流式桥接全部委托给 LangChain4j 的 `OpenAiStreamingChatModel` / `AnthropicStreamingChatModel`。Provider 差异隔离在内部的 `buildStreamingModel(...)` switch 上（基于 `Provider` 枚举）。
 - `SynchronousChatHelper`（浏览器规划器）重写，直接通过 `CloudChatBackend` 配置访问器使用 LC4j 同步 `OpenAiChatModel`。
 - `AiServiceProvider` 全面暴露 `ChatBackend`，不再暴露 `AiService`。方法名不变。
@@ -113,7 +113,7 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 ### ♻️ 变更
 - 从 `OnlineStorePane` 提取 `StorePlugin` 和 `StorePluginLogic`，并添加单元测试
 - 新增 GPLv3 许可证文件
-- 为 `SwissKit` 模块添加 JUnit 5 测试依赖
+- 为 `ZhiFlow` 模块添加 JUnit 5 测试依赖
 
 ---
 
@@ -175,10 +175,10 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 - **玻璃通知组件**：玻璃拟态风格的通知组件，替换所有 `Alert` 弹窗
 - **应用图标**：为 macOS（.icns）、Windows（.ico）和 Linux（.png）提供原生分辨率的应用图标
 - **内置工具**：Base64 编解码器、哈希计算器、JSON 格式化器、颜色转换器和 Markdown 编辑器插件，全部注册为内置工具
-- **国际化框架**：SwissKitJ-Api 中的核心 `I18n` 类，支持数据库持久化语言设置、插件资源包注册/注销，以及所有 UI 组件（TitleBar、MainWindow、Sidebar、ContentArea、ToolCard、DetailPanel、Settings）的实时语言切换
+- **国际化框架**：ZhiFlow-Api 中的核心 `I18n` 类，支持数据库持久化语言设置、插件资源包注册/注销，以及所有 UI 组件（TitleBar、MainWindow、Sidebar、ContentArea、ToolCard、DetailPanel、Settings）的实时语言切换
 - **设置界面**：重新设计的设置页面，包含 AI、邮件和地址簿标签页
 - **三层 CSS 架构**：`zhiflow-common.css`（共享变量和 glass-* 工具类）、`shell.css`（应用外壳）和 `builtin.css`（内置工具），支持场景图继承
-- **类型安全枚举**：SwissKitJ-Api 中 `ToolCategory`、`ToolType` 和 `IconStyle` 枚举替代基于字符串的元数据
+- **类型安全枚举**：ZhiFlow-Api 中 `ToolCategory`、`ToolType` 和 `IconStyle` 枚举替代基于字符串的元数据
 - **GGUFZ 支持**：模型文件选择器支持 `*.ggufz` 压缩模型文件
 - **Gson/JsonHelper**：`JsonHelper` 工具类（基于 Gson）替代 `JsonBuilder`/`JsonParser`；`ToolCallParser` 和所有服务均使用 Gson
 - **双语文档**：中英文文档，配合 docsify-flexible-i18n；所有公共 API 提供完整的英文 Javadoc
@@ -196,7 +196,7 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 - 修复邮件标签页字段行中 VBox→HBox 类型不匹配
 - 修复邮件编辑器 —— 扩展 WebView 高度并允许从 Word 粘贴富文本
 - 修复设置界面语言切换后不更新 —— 语言切换时重建界面
-- 修复插件存储路径 —— 移至 `.swisskit/plugin/` 并修复先安装后加载失败的问题
+- 修复插件存储路径 —— 移至 `.zhiflow/plugin/` 并修复先安装后加载失败的问题
 - 修复 CI 中 Windows JAR 发现和发布产物路径问题
 - 修复跨平台 JavaFX 原生库在 Fat JAR 中的打包
 
@@ -219,7 +219,7 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 
 ### ✨ 新功能
 
-- **国际化框架**：SwissKitJ-Api 中的核心 `I18n` 类，支持数据库持久化语言设置、插件资源包注册/注销和实时语言切换
+- **国际化框架**：ZhiFlow-Api 中的核心 `I18n` 类，支持数据库持久化语言设置、插件资源包注册/注销和实时语言切换
 
 ### ♻️ 变更
 
@@ -241,7 +241,7 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 
 - **AI 聊天**：用于与本地 GGUF 模型对话的内置工具；支持 Q3_K/Q5_0/Q4_0/Q8_0/IQ4_NL 反量化、流式推理、工具调用和聊天会话管理
 - **JNI 原生推理**：C++ `llama_jni` 原生层，含 `GenerateCallback`、`LlamaContext`、`ModelParams`、`GenerateParams` 绑定；捆绑 macOS 的 `libllama_jni-aarch64.dylib`
-- **工具调用 API**：`SwissKitJ-Api` 模块中的 `AiTool`、`AiToolCall`、`AiToolParam`、`AiToolResult`；主机中的 `ToolCallParser` 和 `ToolRegistry`
+- **工具调用 API**：`ZhiFlow-Api` 模块中的 `AiTool`、`AiToolCall`、`AiToolParam`、`AiToolResult`；主机中的 `ToolCallParser` 和 `ToolRegistry`
 - **聊天会话**：`ChatSession` 类管理消息历史和上下文
 
 ---
@@ -357,7 +357,7 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 
 ### v1.0.0-Alpha.5 — 2026-03-26
 
-- SwissKitJ-Api 模块、邮件发送日志查看
+- ZhiFlow-Api 模块、邮件发送日志查看
 
 ### v1.0.0-Alpha.4 — 2026-03-26
 

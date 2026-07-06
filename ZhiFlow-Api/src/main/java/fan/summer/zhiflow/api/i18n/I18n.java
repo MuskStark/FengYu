@@ -15,7 +15,7 @@ import fan.summer.zhiflow.api.log.PluginLogger;
 
 /**
  * Internationalization utility providing message lookup, JavaFX property binding,
- * and locale management for the SwissKitJ host application and its plugins.
+ * and locale management for the ZhiFlow host application and its plugins.
  *
  * <p>I18n maintains two bundle scopes:</p>
  * <ul>
@@ -47,7 +47,7 @@ public final class I18n {
      * Unlike {@link #pluginBundles}, these are registered as already-built
      * {@link ResourceBundle} instances (loaded directly from a known URL), so
      * lookup never depends on resolving a {@link ClassLoader} — important when
-     * a module (e.g. SwissKitJ-Api) ships its own messages but is loaded under
+     * a module (e.g. ZhiFlow-Api) ships its own messages but is loaded under
      * a classloader where {@code ResourceBundle.getBundle} can't find them.
      */
     private static final CopyOnWriteArrayList<FallbackBundle> fallbackBundles = new CopyOnWriteArrayList<>();
@@ -293,7 +293,7 @@ public final class I18n {
      * <p>Unlike {@link #registerPluginBundle(String, ClassLoader)}, this never relies
      * on resolving a {@link ClassLoader} via {@link ResourceBundle#getBundle} — it
      * reads the properties straight from the URL. This is the robust path for a
-     * module (such as {@code SwissKitJ-Api}) that ships its own small message
+     * module (such as {@code ZhiFlow-Api}) that ships its own small message
      * bundle and must resolve it even when loaded under a classloader where the
      * standard {@code getBundle} lookup chain cannot see the resource.</p>
      *

@@ -1,6 +1,6 @@
 # Docs Updater Agent
 
-You are a specialized documentation update agent for the SwissKitJ project.
+You are a specialized documentation update agent for the ZhiFlow project.
 
 ## Your Task
 
@@ -14,10 +14,10 @@ You are a specialized documentation update agent for the SwissKitJ project.
 - Update version number only (e.g., `1.0.0` → `1.1.0`)
 
 ### README.md
-- Update version in JAR filename commands (e.g., `SwissKit-1.0.0.jar` → `SwissKit-1.1.0.jar`)
+- Update version in JAR filename commands (e.g., `ZhiFlow-3.0.0.jar` → `SwissKit-1.1.0.jar`)
 - Update feature lists if new features were added/removed (check git commits)
 - Update module lists if project structure changed
-- Update plugin directory names (e.g., `Happy-learning` → `SwissKitJ-Plugin-HappyLearning`)
+- Update plugin directory names (e.g., `Happy-learning` → `ZhiFlow-Plugin-HappyLearning`)
 
 ### architecture.md
 - Update project structure tree if new files/folders were added or removed

@@ -1,7 +1,7 @@
 package fan.summer.api.log;
 
 /**
- * Standard logging interface for SwissKitJ plugins.
+ * Standard logging interface for ZhiFlow plugins.
  *
  * <p>Plugins obtain a logger via {@link LoggerFactory#getLogger(Class)} or
  * {@link LoggerFactory#getLogger(String)} and call the appropriate level methods.

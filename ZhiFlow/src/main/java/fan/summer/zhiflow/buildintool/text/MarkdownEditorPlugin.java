@@ -1,7 +1,7 @@
 package fan.summer.zhiflow.buildintool.text;
 
 import fan.summer.zhiflow.api.IconStyle;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.ToolCategory;
 import fan.summer.zhiflow.api.ToolType;
 import fan.summer.zhiflow.api.i18n.I18n;
@@ -25,9 +25,9 @@ import javafx.scene.web.WebView;
  * inline code, blockquotes, and list items) which is rendered in real time
  * into a WebView using a dark-themed inline stylesheet.
  *
- * @see SwissKitJPlugin
+ * @see ZhiFlowPlugin
  */
-public class MarkdownEditorPlugin implements SwissKitJPlugin {
+public class MarkdownEditorPlugin implements ZhiFlowPlugin {
 
     private static final PluginLogger log = LoggerFactory.getLogger(MarkdownEditorPlugin.class);
 
@@ -50,7 +50,7 @@ public class MarkdownEditorPlugin implements SwissKitJPlugin {
     public Node createView() {
         log.debug("Creating Markdown Editor view");
         TextArea editor = styledTextArea(
-            "# Hello SwissKitJ\n\n" +
+            "# Hello ZhiFlow\n\n" +
             "This is a **Markdown** editor.\n\n" +
             "- Supports *italic* and **bold**\n" +
             "- Supports lists\n" +

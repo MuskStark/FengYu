@@ -10,18 +10,18 @@
 ## Setup
 
 ```bash
-git clone https://github.com/MuskStark/SwissKitJ.git
-cd SwissKitJ
+git clone https://github.com/MuskStark/ZhiFlow.git
+cd ZhiFlow
 
-mvn install -f SwissKitJ-Api/pom.xml -DskipTests
-mvn clean package -f SwissKit/pom.xml -DskipTests
+mvn install -f ZhiFlow-Api/pom.xml -DskipTests
+mvn clean package -f ZhiFlow/pom.xml -DskipTests
 ```
 
 ## Project Structure
 
 ```
-SwissKitJ/
-├── SwissKitJ-Api/                        # Shared API module
+ZhiFlow/
+├── ZhiFlow-Api/                        # Shared API module
 │   └── src/main/java/fan/summer/api/
 │       ├── SwissKitJPlugin.java          # Plugin interface
 │       ├── PluginContext.java            # TCCL switching for plugin isolation
@@ -35,10 +35,10 @@ SwissKitJ/
 │       │   └── PluginLogger.java
 │       └── theme/
 │           └── Themes.java
-├── SwissKit/                             # Main JavaFX application
+├── ZhiFlow/                             # Main JavaFX application
 │   └── src/main/java/fan/summer/
 │       ├── Launcher.java                 # Entry point
-│       ├── app/SwissKitJApp.java         # JavaFX Application
+│       ├── app/ZhiFlowApp.java         # JavaFX Application
 │       ├── buildintool/                  # Built-in tools
 │       ├── plugin/                       # Plugin loading
 │       └── ui/                           # App shell UI
@@ -51,9 +51,9 @@ SwissKitJ/
 
 | Module | Depends on | Scope |
 |--------|-----------|-------|
-| `SwissKitJ-Api` | JavaFX | compile |
-| `SwissKit` | `SwissKitJ-Api` | compile |
-| External plugins | `SwissKitJ-Api` | provided |
+| `ZhiFlow-Api` | JavaFX | compile |
+| `ZhiFlow` | `ZhiFlow-Api` | compile |
+| External plugins | `ZhiFlow-Api` | provided |
 
 ## Plugin Development
 
@@ -65,7 +65,7 @@ SwissKitJ/
 <dependencies>
     <dependency>
         <groupId>fan.summer.zhiflow.api</groupId>
-        <artifactId>SwissKitJ-Api</artifactId>
+        <artifactId>ZhiFlow-Api</artifactId>
         <version>3.0.0</version>
         <scope>provided</scope>
     </dependency>
@@ -202,7 +202,7 @@ log.info("Processing file: {}", file);
 log.error("Failed: {}", file, exception);
 ```
 
-Backend: SLF4J + Logback. Console at INFO+, rolling file at DEBUG+ under `.swisskit/logs/`. Safe no-op logger in tests.
+Backend: SLF4J + Logback. Console at INFO+, rolling file at DEBUG+ under `.zhiflow/logs/`. Safe no-op logger in tests.
 
 ## Background Processing
 
@@ -247,10 +247,10 @@ Use conventional commits with emojis:
 ### Pull Requests
 
 1. Fork and create a feature branch
-2. Build: `mvn clean package -f SwissKit/pom.xml -DskipTests`
+2. Build: `mvn clean package -f ZhiFlow/pom.xml -DskipTests`
 3. Commit with conventional commit format
 4. Push and open a PR against `main`
 
 ### Reporting Issues
 
-Include: OS, Java version, SwissKitJ version, steps to reproduce, expected vs actual behavior.
+Include: OS, Java version, ZhiFlow version, steps to reproduce, expected vs actual behavior.

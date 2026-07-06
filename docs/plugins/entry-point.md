@@ -91,7 +91,7 @@ public Node createView() {
 
 | 方法 | 必须 | 说明 |
 |------|------|------|
-| `getId()` | 是 | 反向域名唯一标识，如 `plugin.swisskit.star` |
+| `getId()` | 是 | 反向域名唯一标识，如 `plugin.zhiflow.star` |
 | `getName()` | 是 | 显示名称 |
 | `getDescription()` | 是 | 短描述 |
 | `getCategory()` | 是 | 返回 `ToolCategory` 枚举：`DEV / TEXT / IMAGE / NET / OTHER` |

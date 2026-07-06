@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  SwissKitJ logging configuration.
+  ZhiFlow logging configuration.
 
-  The host application sets the system property `swisskit.log.dir` to the absolute
-  path of the runtime log directory (typically `.swisskit/logs/` next to the JAR
+  The host application sets the system property `zhiflow.log.dir` to the absolute
+  path of the runtime log directory (typically `.zhiflow/logs/` next to the JAR
   or the working directory) before SLF4J initialises. A fallback default keeps the
   config valid when logback is loaded outside the host (tests, IDE).
 -->
 <configuration scan="true" scanPeriod="30 seconds">
 
-    <!-- Fallback: if the host hasn't set swisskit.log.dir yet, write next to CWD. -->
-    <property name="LOG_DIR" value="${swisskit.log.dir:-.swisskit/logs}"/>
+    <!-- Fallback: if the host hasn't set zhiflow.log.dir yet, write next to CWD. -->
+    <property name="LOG_DIR" value="${zhiflow.log.dir:-.zhiflow/logs}"/>
 
     <!-- ── Console: human-friendly, INFO and above ──────────────────────── -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
@@ -25,9 +25,9 @@
 
     <!-- ── Rolling file: full DEBUG history, daily rotation, 7-day retention ─ -->
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOG_DIR}/swisskit.log</file>
+        <file>${LOG_DIR}/zhiflow.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_DIR}/swisskit.%d{yyyy-MM-dd}.log.gz</fileNamePattern>
+            <fileNamePattern>${LOG_DIR}/zhiflow.%d{yyyy-MM-dd}.log.gz</fileNamePattern>
             <maxHistory>7</maxHistory>
             <totalSizeCap>200MB</totalSizeCap>
         </rollingPolicy>

@@ -13,8 +13,8 @@
         <setting name="cacheEnabled" value="false"/>
     </settings>
 
-    <environments default="swisskit">
-        <environment id="swisskit">
+    <environments default="zhiflow">
+        <environment id="zhiflow">
             <transactionManager type="JDBC"/>
             <dataSource type="POOLED">
                 <property name="driver" value="org.h2.Driver"/>
@@ -26,7 +26,7 @@
     </environments>
 
     <mappers>
-        <mapper resource="mapper/setting/email/SwissKitSettingEmailMapper.xml"/>
+        <mapper resource="mapper/setting/email/ZhiFlowSettingEmailMapper.xml"/>
         <mapper resource="mapper/excel/ComplexSplitConfigMapper.xml"/>
         <mapper resource="mapper/setting/email/EmailAddressBookMapper.xml"/>
         <mapper resource="mapper/setting/email/EmailTagMapper.xml"/>

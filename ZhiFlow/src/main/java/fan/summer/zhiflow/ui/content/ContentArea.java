@@ -1,7 +1,7 @@
 package fan.summer.zhiflow.ui.content;
 
 import fan.summer.zhiflow.api.i18n.I18n;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.plugin.FavoriteService;
 import fan.summer.zhiflow.plugin.PluginRegistry;
 import org.slf4j.Logger;
@@ -51,11 +51,11 @@ public class ContentArea extends BorderPane {
     private final HBox        backBar      = buildBackBar();
 
     // ── State ──────────────────────────────────────────────
-    private ObservableList<SwissKitJPlugin> plugins;
+    private ObservableList<ZhiFlowPlugin> plugins;
     private String   currentCategory = "all";
     private String   currentQuery    = "";
-    private Consumer<SwissKitJPlugin> onLaunch;
-    private Consumer<SwissKitJPlugin> onUninstall;
+    private Consumer<ZhiFlowPlugin> onLaunch;
+    private Consumer<ZhiFlowPlugin> onUninstall;
     private Runnable onBack;
     private PluginRegistry registry;
     private FavoriteService favoriteService;
@@ -79,7 +79,7 @@ public class ContentArea extends BorderPane {
      *
      * @param handler the consumer that receives the selected plugin; must not be null
      */
-    public void setOnLaunch(Consumer<SwissKitJPlugin> handler) {
+    public void setOnLaunch(Consumer<ZhiFlowPlugin> handler) {
         LOG.debug("setOnLaunch callback set");
         this.onLaunch = handler;
     }
@@ -89,7 +89,7 @@ public class ContentArea extends BorderPane {
      *
      * @param handler the consumer that receives the plugin to uninstall; must not be null
      */
-    public void setOnUninstall(Consumer<SwissKitJPlugin> handler) {
+    public void setOnUninstall(Consumer<ZhiFlowPlugin> handler) {
         this.onUninstall = handler;
     }
 
@@ -127,10 +127,10 @@ public class ContentArea extends BorderPane {
      *
      * @param list the observable list of plugins to display; must not be null
      */
-    public void setPlugins(ObservableList<SwissKitJPlugin> list) {
+    public void setPlugins(ObservableList<ZhiFlowPlugin> list) {
         LOG.info("Binding plugin list with {} plugins", list.size());
         this.plugins = list;
-        list.addListener((ListChangeListener<SwissKitJPlugin>) c -> refresh());
+        list.addListener((ListChangeListener<ZhiFlowPlugin>) c -> refresh());
         refresh();
     }
 
@@ -348,7 +348,7 @@ public class ContentArea extends BorderPane {
     private void refresh() {
         if (plugins == null) return;
 
-        List<SwissKitJPlugin> filtered = plugins.stream()
+        List<ZhiFlowPlugin> filtered = plugins.stream()
             .filter(this::matchesCategory)
             .filter(this::matchesQuery)
             .toList();
@@ -363,7 +363,7 @@ public class ContentArea extends BorderPane {
         int staggerLimit = animate ? Math.min(filtered.size(), 30) : 0;
 
         for (int i = 0; i < filtered.size(); i++) {
-            SwissKitJPlugin p = filtered.get(i);
+            ZhiFlowPlugin p = filtered.get(i);
             ToolCard card = new ToolCard(p, this::onCardSelect, registry, favoriteService);
             card.setPrefWidth(152);
             card.setPrefHeight(130);
@@ -404,7 +404,7 @@ public class ContentArea extends BorderPane {
 
     // ── Filter logic ──────────────────────────────────────────
 
-    private boolean matchesCategory(SwissKitJPlugin p) {
+    private boolean matchesCategory(ZhiFlowPlugin p) {
         return switch (currentCategory) {
             case "all"     -> true;
             case "plugins" -> p.getType().isPlugin();
@@ -414,7 +414,7 @@ public class ContentArea extends BorderPane {
         };
     }
 
-    private boolean matchesQuery(SwissKitJPlugin p) {
+    private boolean matchesQuery(ZhiFlowPlugin p) {
         if (currentQuery.isEmpty()) return true;
         return p.getName().toLowerCase().contains(currentQuery)
             || p.getDescription().toLowerCase().contains(currentQuery);
@@ -422,7 +422,7 @@ public class ContentArea extends BorderPane {
 
     // ── Card selection ──────────────────────────────────────────
 
-    private void onCardSelect(SwissKitJPlugin plugin) {
+    private void onCardSelect(ZhiFlowPlugin plugin) {
         LOG.info("Card selected: plugin={}", plugin.getName());
         detailPanel.show(plugin);
     }

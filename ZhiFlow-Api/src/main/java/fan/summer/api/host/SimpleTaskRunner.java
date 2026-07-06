@@ -1,7 +1,7 @@
 package fan.summer.api.host;
 
 import fan.summer.api.PluginContext;
-import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.ZhiFlowPlugin;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
 import javafx.application.Platform;
@@ -27,7 +27,7 @@ public class SimpleTaskRunner implements TaskRunner {
 
     private static final PluginLogger log = LoggerFactory.getLogger(SimpleTaskRunner.class);
 
-    private final SwissKitJPlugin plugin;
+    private final ZhiFlowPlugin plugin;
     private final Executor callbackExecutor;
     private final AtomicInteger running = new AtomicInteger();
     private final Set<Handle> live = ConcurrentHashMap.newKeySet();
@@ -35,7 +35,7 @@ public class SimpleTaskRunner implements TaskRunner {
     /**
      * @param plugin the owning plugin (used for TCCL and thread naming)
      */
-    public SimpleTaskRunner(SwissKitJPlugin plugin) {
+    public SimpleTaskRunner(ZhiFlowPlugin plugin) {
         this(plugin, Platform::runLater);
     }
 
@@ -45,7 +45,7 @@ public class SimpleTaskRunner implements TaskRunner {
      * @param plugin           the owning plugin
      * @param callbackExecutor executor for onSuccess/onError dispatch
      */
-    public SimpleTaskRunner(SwissKitJPlugin plugin, Executor callbackExecutor) {
+    public SimpleTaskRunner(ZhiFlowPlugin plugin, Executor callbackExecutor) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.callbackExecutor = Objects.requireNonNull(callbackExecutor, "callbackExecutor");
     }

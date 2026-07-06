@@ -1,6 +1,6 @@
 package fan.summer.api.host;
 
-import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.ZhiFlowPlugin;
 import fan.summer.api.ToolCategory;
 import javafx.scene.Node;
 import org.junit.jupiter.api.Test;
@@ -16,8 +16,8 @@ class SimpleTaskRunnerTest {
     /** 同步 executor:回调直接在提交线程执行,测试无需 FX Toolkit。 */
     private static final java.util.concurrent.Executor DIRECT = Runnable::run;
 
-    private static SwissKitJPlugin stubPlugin() {
-        return new SwissKitJPlugin() {
+    private static ZhiFlowPlugin stubPlugin() {
+        return new ZhiFlowPlugin() {
             public String getId() { return "test.plugin"; }
             public String getName() { return "Test"; }
             public String getDescription() { return ""; }

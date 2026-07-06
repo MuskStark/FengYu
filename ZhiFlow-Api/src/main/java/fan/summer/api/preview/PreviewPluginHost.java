@@ -1,6 +1,6 @@
 package fan.summer.api.preview;
 
-import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.ZhiFlowPlugin;
 import fan.summer.api.host.BasePluginHost;
 import fan.summer.api.host.PluginSettings;
 
@@ -15,7 +15,7 @@ class PreviewPluginHost extends BasePluginHost {
 
     private final PluginSettings settings;
 
-    PreviewPluginHost(SwissKitJPlugin plugin) {
+    PreviewPluginHost(ZhiFlowPlugin plugin) {
         super(plugin);
         this.settings = new PropertiesPluginSettings(plugin.getId());
     }

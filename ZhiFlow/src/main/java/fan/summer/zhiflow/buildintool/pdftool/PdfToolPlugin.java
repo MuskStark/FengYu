@@ -1,7 +1,7 @@
 package fan.summer.zhiflow.buildintool.pdftool;
 
 import fan.summer.zhiflow.api.IconStyle;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.ToolCategory;
 import fan.summer.zhiflow.api.ToolType;
 import fan.summer.zhiflow.api.ai.AiTool;
@@ -18,7 +18,7 @@ import javafx.scene.layout.VBox;
 
 import java.util.List;
 
-public class PdfToolPlugin implements SwissKitJPlugin {
+public class PdfToolPlugin implements ZhiFlowPlugin {
 
     private Node view;
 

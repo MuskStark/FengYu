@@ -1,6 +1,6 @@
 /* ================================================================
    zhiflow-preview.css — Plugin Preview Window shell styles
-   Adapted subset of shell.css for the SwissKitJ-Api preview tool.
+   Adapted subset of shell.css for the ZhiFlow-Api preview tool.
    zhiflow-common.css provides the .sk-* utilities and variables;
    PluginPreviewWindow registers its scene with ThemeService so the
    active theme class is stamped on the root and these tokens resolve.

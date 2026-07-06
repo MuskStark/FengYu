@@ -1,7 +1,7 @@
 package fan.summer.api.preview;
 
 import fan.summer.api.MdiIconUtil;
-import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.ZhiFlowPlugin;
 import fan.summer.api.i18n.I18n;
 import javafx.animation.Animation;
 import javafx.animation.FadeTransition;
@@ -27,7 +27,7 @@ import java.util.function.Consumer;
  */
 class PreviewToolCard extends StackPane {
 
-    PreviewToolCard(SwissKitJPlugin plugin, Consumer<SwissKitJPlugin> onSelect, boolean isBackground) {
+    PreviewToolCard(ZhiFlowPlugin plugin, Consumer<ZhiFlowPlugin> onSelect, boolean isBackground) {
         VBox card = new VBox();
         card.getStyleClass().add("preview-tool-card");
         card.setSpacing(3);

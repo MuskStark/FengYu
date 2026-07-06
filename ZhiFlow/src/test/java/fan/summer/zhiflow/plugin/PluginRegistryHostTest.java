@@ -1,6 +1,6 @@
 package fan.summer.zhiflow.plugin;
 
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.ToolCategory;
 import fan.summer.zhiflow.api.ToolType;
 import fan.summer.zhiflow.api.host.*;
@@ -46,8 +46,8 @@ class PluginRegistryHostTest {
         public NotificationFacade notifications() { throw new UnsupportedOperationException(); }
     }
 
-    static SwissKitJPlugin plugin(String id, Consumer<PluginHost> onInit) {
-        return new SwissKitJPlugin() {
+    static ZhiFlowPlugin plugin(String id, Consumer<PluginHost> onInit) {
+        return new ZhiFlowPlugin() {
             public String getId() { return id; }
             public String getName() { return id; }
             public String getDescription() { return ""; }
@@ -75,7 +75,7 @@ class PluginRegistryHostTest {
     void initCalledExactlyOnceWithBoundHost() {
         AtomicInteger calls = new AtomicInteger();
         var seenHost = new java.util.concurrent.atomic.AtomicReference<PluginHost>();
-        SwissKitJPlugin p = plugin("p1", h -> { calls.incrementAndGet(); seenHost.set(h); });
+        ZhiFlowPlugin p = plugin("p1", h -> { calls.incrementAndGet(); seenHost.set(h); });
         registry.setHostFactoryForTest(pl -> new FakeHost(pl.getId()));
 
         registry.addPlugins(List.of(p));
@@ -86,7 +86,7 @@ class PluginRegistryHostTest {
 
     @Test
     void initThrowingDoesNotBlockLoading() {
-        SwissKitJPlugin bad = plugin("bad", h -> { throw new IllegalStateException("boom"); });
+        ZhiFlowPlugin bad = plugin("bad", h -> { throw new IllegalStateException("boom"); });
         registry.setHostFactoryForTest(pl -> new FakeHost(pl.getId()));
 
         registry.addPlugins(List.of(bad));
@@ -96,7 +96,7 @@ class PluginRegistryHostTest {
 
     @Test
     void isBusyMergesTaskRunnerCount() {
-        SwissKitJPlugin p = plugin("p1", null);
+        ZhiFlowPlugin p = plugin("p1", null);
         FakeHost host = new FakeHost("p1");
         registry.setHostFactoryForTest(pl -> host);
         registry.addPlugins(List.of(p));
@@ -110,7 +110,7 @@ class PluginRegistryHostTest {
 
     @Test
     void removePluginCancelsRemainingTasks() {
-        SwissKitJPlugin p = plugin("p1", null);
+        ZhiFlowPlugin p = plugin("p1", null);
         FakeHost host = new FakeHost("p1");
         registry.setHostFactoryForTest(pl -> host);
         registry.addPlugins(List.of(p));

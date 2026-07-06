@@ -3,7 +3,7 @@ package fan.summer.zhiflow.api.theme;
 import javafx.scene.Scene;
 
 /**
- * SwissKitJ theme stylesheet loading utility.
+ * ZhiFlow theme stylesheet loading utility.
  *
  * <p>Provides the common CSS stylesheet URL that defines the shared glassmorphism
  * utility classes (such as {@code .sk-dialog}, {@code .sk-field},

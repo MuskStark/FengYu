@@ -10,10 +10,10 @@ import org.slf4j.LoggerFactory;
  * Reads AI configuration from the database without any UI dependency.
  *
  * <p>This class centralizes all AI-related setting lookups so that
- * the startup code ({@code SwissKitJApp}) does not depend on the
- * settings UI class ({@code SwissKitJSettingUi}).</p>
+ * the startup code ({@code ZhiFlowApp}) does not depend on the
+ * settings UI class ({@code ZhiFlowSettingUi}).</p>
  *
- * <p>The settings cache from {@code SwissKitJSettingUi} is NOT used
+ * <p>The settings cache from {@code ZhiFlowSettingUi} is NOT used
  * here — this service reads directly from the database on each call.
  * The settings UI's cache is updated when the user changes values,
  * but the startup path should not need to go through the UI layer.</p>
@@ -26,7 +26,7 @@ public final class AiConfigService {
 
     private static final Logger log = LoggerFactory.getLogger(AiConfigService.class);
 
-    // ── Setting keys (same as in SwissKitJSettingUi) ──────────
+    // ── Setting keys (same as in ZhiFlowSettingUi) ──────────
     private static final String AI_MODE_KEY = "ai.mode";
     private static final String AI_OPENAI_ENDPOINT_KEY = "ai.openai.endpoint";
     private static final String AI_OPENAI_API_KEY_KEY = "ai.openai.api_key";

@@ -1,7 +1,7 @@
 package fan.summer.zhiflow.buildintool.excelsplitter;
 
 import fan.summer.zhiflow.api.IconStyle;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.ToolCategory;
 import fan.summer.zhiflow.api.ToolType;
 import fan.summer.zhiflow.api.ai.AiTool;
@@ -51,11 +51,11 @@ import java.util.stream.Collectors;
  * followed by the list of output files with an "open folder" button.
  *
  * @since 3.0.0
- * @see SwissKitJPlugin
+ * @see ZhiFlowPlugin
  * @see SplitConfig
  * @see ExcelSplitter
  */
-public class ExcelSplitterPlugin implements SwissKitJPlugin {
+public class ExcelSplitterPlugin implements ZhiFlowPlugin {
 
     private static final PluginLogger log = LoggerFactory.getLogger(ExcelSplitterPlugin.class);
 

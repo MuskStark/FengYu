@@ -12,7 +12,7 @@ import javafx.scene.paint.Color;
  * <p>The CSS class names ({@code ic-blue}, {@code ic-purple}, etc.) are defined in
  * {@code shell.css} and control background colour, border, and opacity of the icon tile.</p>
  *
- * @see SwissKitJPlugin#getIconStyle()
+ * @see ZhiFlowPlugin#getIconStyle()
  */
 public enum IconStyle {
     /** Blue — RGB (99, 130, 255), CSS class {@code ic-blue}. */

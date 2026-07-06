@@ -1,18 +1,18 @@
-# SwissKitJ UI 设计系统
+# ZhiFlow UI 设计系统
 
-SwissKitJ 的用户界面是对 **JetBrains IntelliJ IDEA 2025 "New UI"** 视觉语言的忠实实现——中性
+ZhiFlow 的用户界面是对 **JetBrains IntelliJ IDEA 2025 "New UI"** 视觉语言的忠实实现——中性
 灰的表面、克制的单一强调色、扁平的形状，以及服务于反馈而非炫技的动效。本套文档是该系统的
 完整、与代码精确对应的参考，写作目的就是让 AI（或从未见过代码库的人）也能生成与 v3.2.0 外壳
 一致的 UI。
 
 它是**双语的**（本中文树与 [`/ui-design/`](/ui-design/) 结构完全对应），且**以代码为锚**——
-文中引用的每一个类名、token 值、JavaFX 签名，都能在真实的 SwissKitJ 源码中核实。
+文中引用的每一个类名、token 值、JavaFX 签名，都能在真实的 ZhiFlow 源码中核实。
 
 ## 8 篇文档
 
 | # | 文档 | 用途 | 适合谁读 |
 |---|---|---|---|
-| **01** | [UI 设计系统](01-design-system.md) | 哲学、布局原语、字号/间距/圆角刻度，以及 SwissKit 如何扩展 IDEA New UI。 | 想了解"为什么"——从这里开始。 |
+| **01** | [UI 设计系统](01-design-system.md) | 哲学、布局原语、字号/间距/圆角刻度，以及 ZhiFlow 如何扩展 IDEA New UI。 | 想了解"为什么"——从这里开始。 |
 | **02** | [JavaFX 实现](02-javafx-implementation.md) | 开发手册：`SwissKitJPlugin` 契约、CSS 命名约定、插件骨架。 | 准备写插件 UI。 |
 | **03** | [组件库](03-component-library.md) | 每个 `.sk-*` 基础类、每个外壳组件（nav-item、tool-card…）的逐组件规格。 | 需要某个具体控件。 |
 | **04** | [交互指南](04-interaction-guidelines.md) | 导航、发现/启动、插件生命周期、四态反馈、破坏性确认流程。 | 在接线用户操作。 |

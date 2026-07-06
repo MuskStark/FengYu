@@ -1,7 +1,7 @@
 package fan.summer.zhiflow.buildintool.emailarchive;
 
 import fan.summer.zhiflow.api.IconStyle;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.ToolCategory;
 import fan.summer.zhiflow.api.ToolType;
 import fan.summer.zhiflow.api.ai.AiTool;
@@ -12,8 +12,8 @@ import fan.summer.zhiflow.api.log.PluginLogger;
 import fan.summer.zhiflow.buildintool.ai.EmailArchiveFetchTool;
 import fan.summer.zhiflow.buildintool.ai.EmailArchiveQueryTool;
 import fan.summer.zhiflow.database.DatabaseInit;
-import fan.summer.zhiflow.database.entity.setting.email.SwissKitSettingEmailEntity;
-import fan.summer.zhiflow.database.mapper.setting.email.SwissKitSettingEmailMapper;
+import fan.summer.zhiflow.database.entity.setting.email.ZhiFlowSettingEmailEntity;
+import fan.summer.zhiflow.database.mapper.setting.email.ZhiFlowSettingEmailMapper;
 import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.geometry.*;
@@ -28,7 +28,7 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class EmailArchivePlugin implements SwissKitJPlugin {
+public class EmailArchivePlugin implements ZhiFlowPlugin {
 
     private static final PluginLogger log = LoggerFactory.getLogger(EmailArchivePlugin.class);
 
@@ -121,9 +121,9 @@ public class EmailArchivePlugin implements SwissKitJPlugin {
 
         private void loadAccounts() {
             try (SqlSession session = DatabaseInit.getSqlSession()) {
-                SwissKitSettingEmailMapper mapper =
-                        session.getMapper(SwissKitSettingEmailMapper.class);
-                SwissKitSettingEmailEntity entity = mapper.selectLatest();
+                ZhiFlowSettingEmailMapper mapper =
+                        session.getMapper(ZhiFlowSettingEmailMapper.class);
+                ZhiFlowSettingEmailEntity entity = mapper.selectLatest();
                 if (entity != null && entity.getEmail() != null) {
                     accountCombo.getItems().add(entity.getEmail());
                     accountCombo.setValue(entity.getEmail());
@@ -141,8 +141,8 @@ public class EmailArchivePlugin implements SwissKitJPlugin {
                 return;
             }
             try (SqlSession session = DatabaseInit.getSqlSession()) {
-                SwissKitSettingEmailEntity entity =
-                        session.getMapper(SwissKitSettingEmailMapper.class).selectLatest();
+                ZhiFlowSettingEmailEntity entity =
+                        session.getMapper(ZhiFlowSettingEmailMapper.class).selectLatest();
                 if (entity == null || !email.equals(entity.getEmail())) {
                     warningLabel.setText(I18n.get("builtin.email-archive.noAccounts"));
                 } else if (entity.getImapAddress() == null || entity.getImapAddress().isBlank()) {
@@ -319,7 +319,7 @@ public class EmailArchivePlugin implements SwissKitJPlugin {
             }
 
             Path outputDir = config.getOutputDir() != null
-                    ? config.getOutputDir() : Paths.get(".swisskit", "email-archive");
+                    ? config.getOutputDir() : Paths.get(".zhiflow", "email-archive");
 
             Button openBtn = glassBtn(I18n.get("builtin.email-archive.openFolder"), false);
             openBtn.setOnAction(e -> {

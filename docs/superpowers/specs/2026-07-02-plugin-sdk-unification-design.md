@@ -46,7 +46,7 @@ SwissKit(宿主实现)
 
 SwissKitJ-Api preview 包(预览实现,均包私有)
 ├─ PreviewPluginHost        extends BasePluginHost,settings→properties 文件
-└─ PropertiesPluginSettings ~/.swisskit/preview-settings/<sanitized-plugin-id>.properties
+└─ PropertiesPluginSettings ~/.zhiflow/preview-settings/<sanitized-plugin-id>.properties
 ```
 
 依赖方向不变:API 模块零 DB 依赖,`PluginHost` 是 API 定义接口、宿主/预览各自实现并注入。
@@ -288,7 +288,7 @@ CREATE TABLE IF NOT EXISTS plugin_setting
 
 `PropertiesPluginSettings`(preview 包,包私有):
 
-- 文件:`System.getProperty("user.home")/.swisskit/preview-settings/<sanitized-plugin-id>.properties`;插件 ID 消毒规则 `[^a-zA-Z0-9._-] → _`。
+- 文件:`System.getProperty("user.home")/.zhiflow/preview-settings/<sanitized-plugin-id>.properties`;插件 ID 消毒规则 `[^a-zA-Z0-9._-] → _`。
 - 读:构造时加载文件进内存 `Properties`(文件不存在则空)。
 - 写:write-through——更新内存后同步 `store()` 回文件(预览场景低频写,无需异步);IO 失败记 warn 日志,内存值保留。
 - 目录不存在时自动 `mkdirs`。

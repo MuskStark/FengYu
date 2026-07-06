@@ -1,4 +1,4 @@
-// SwissKitJ icon generator: master SVG -> PNG sizes + .ico + .icns
+// ZhiFlow icon generator: master SVG -> PNG sizes + .ico + .icns
 const sharp = require('sharp');
 const pngToIco = require('png-to-ico').default;
 const fs = require('fs');
@@ -55,11 +55,11 @@ const ICNS_ICONSET = [
     icoPngs.push(buf);
   }
   const icoBuf = await pngToIco(icoPngs);
-  fs.writeFileSync(path.join(OUT, 'SwissKit.ico'), icoBuf);
-  console.log(`  SwissKit.ico: ${icoBuf.length} bytes (${ICO_SIZES.length} sizes)`);
+  fs.writeFileSync(path.join(OUT, 'ZhiFlow.ico'), icoBuf);
+  console.log(`  ZhiFlow.ico: ${icoBuf.length} bytes (${ICO_SIZES.length} sizes)`);
 
   // 3. Generate macOS .icns via iconutil
-  const iconsetDir = path.join(OUT, 'SwissKit.iconset');
+  const iconsetDir = path.join(OUT, 'ZhiFlow.iconset');
   fs.rmSync(iconsetDir, { recursive: true, force: true });
   fs.mkdirSync(iconsetDir, { recursive: true });
   for (const e of ICNS_ICONSET) {
@@ -73,13 +73,13 @@ const ICNS_ICONSET = [
 
   // iconutil -c icns <iconset> -o <out.icns>
   const { execSync } = require('child_process');
-  const icnsOut = path.join(OUT, 'SwissKit.icns');
+  const icnsOut = path.join(OUT, 'ZhiFlow.icns');
   execSync(`iconutil -c icns "${iconsetDir}" -o "${icnsOut}"`);
-  console.log(`  SwissKit.icns: ${fs.statSync(icnsOut).size} bytes`);
+  console.log(`  ZhiFlow.icns: ${fs.statSync(icnsOut).size} bytes`);
 
   // 4. Copy final deliverables with exact target names
   //   icon.png (256, runtime window/dock), icon-256.png (linux jpackage)
   fs.copyFileSync(path.join(OUT, 'icon-256.png'), path.join(OUT, 'icon.png'));
   console.log('\nDone. Deliverables in', OUT);
-  console.log('Files:', fs.readdirSync(OUT).filter(f => !f.startsWith('SwissKit.iconset')));
+  console.log('Files:', fs.readdirSync(OUT).filter(f => !f.startsWith('ZhiFlow.iconset')));
 })().catch(e => { console.error(e); process.exit(1); });

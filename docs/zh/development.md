@@ -10,18 +10,18 @@
 ## 设置
 
 ```bash
-git clone https://github.com/MuskStark/SwissKitJ.git
-cd SwissKitJ
+git clone https://github.com/MuskStark/ZhiFlow.git
+cd ZhiFlow
 
-mvn install -f SwissKitJ-Api/pom.xml -DskipTests
-mvn clean package -f SwissKit/pom.xml -DskipTests
+mvn install -f ZhiFlow-Api/pom.xml -DskipTests
+mvn clean package -f ZhiFlow/pom.xml -DskipTests
 ```
 
 ## 项目结构
 
 ```
-SwissKitJ/
-├── SwissKitJ-Api/                        # 共享 API 模块
+ZhiFlow/
+├── ZhiFlow-Api/                        # 共享 API 模块
 │   └── src/main/java/fan/summer/api/
 │       ├── SwissKitJPlugin.java          # 插件接口
 │       ├── PluginContext.java            # 插件隔离的 TCCL 切换
@@ -35,10 +35,10 @@ SwissKitJ/
 │       │   └── PluginLogger.java
 │       └── theme/
 │           └── Themes.java
-├── SwissKit/                             # 主 JavaFX 应用
+├── ZhiFlow/                             # 主 JavaFX 应用
 │   └── src/main/java/fan/summer/
 │       ├── Launcher.java                 # 入口点
-│       ├── app/SwissKitJApp.java         # JavaFX Application
+│       ├── app/ZhiFlowApp.java         # JavaFX Application
 │       ├── buildintool/                  # 内置工具
 │       ├── plugin/                       # 插件加载
 │       └── ui/                           # 应用壳 UI
@@ -51,9 +51,9 @@ SwissKitJ/
 
 | 模块 | 依赖 | 作用域 |
 |------|------|--------|
-| `SwissKitJ-Api` | JavaFX | compile |
-| `SwissKit` | `SwissKitJ-Api` | compile |
-| 外部插件 | `SwissKitJ-Api` | provided |
+| `ZhiFlow-Api` | JavaFX | compile |
+| `ZhiFlow` | `ZhiFlow-Api` | compile |
+| 外部插件 | `ZhiFlow-Api` | provided |
 
 ## 插件开发
 
@@ -65,7 +65,7 @@ SwissKitJ/
 <dependencies>
     <dependency>
         <groupId>fan.summer.zhiflow.api</groupId>
-        <artifactId>SwissKitJ-Api</artifactId>
+        <artifactId>ZhiFlow-Api</artifactId>
         <version>3.0.0</version>
         <scope>provided</scope>
     </dependency>
@@ -202,7 +202,7 @@ log.info("Processing file: {}", file);
 log.error("Failed: {}", file, exception);
 ```
 
-后端：SLF4J + Logback。控制台 INFO+ 级，滚动文件 DEBUG+ 级，位于 `.swisskit/logs/`。测试中安全使用空操作日志器。
+后端：SLF4J + Logback。控制台 INFO+ 级，滚动文件 DEBUG+ 级，位于 `.zhiflow/logs/`。测试中安全使用空操作日志器。
 
 ## 后台处理
 
@@ -247,10 +247,10 @@ new Thread(task).start();
 ### Pull Request
 
 1. Fork 并创建功能分支
-2. 构建：`mvn clean package -f SwissKit/pom.xml -DskipTests`
+2. 构建：`mvn clean package -f ZhiFlow/pom.xml -DskipTests`
 3. 用约定式提交格式提交
 4. 推送到 PR 并针对 `main` 打开
 
 ### 报告问题
 
-请包含：操作系统、Java 版本、SwissKitJ 版本、重现步骤、预期与实际行为。
+请包含：操作系统、Java 版本、ZhiFlow 版本、重现步骤、预期与实际行为。

@@ -1,6 +1,6 @@
 package fan.summer.api.host;
 
-import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.ZhiFlowPlugin;
 import fan.summer.api.ToolCategory;
 import javafx.scene.Node;
 import org.junit.jupiter.api.Test;
@@ -13,8 +13,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BasePluginHostTest {
 
-    private static SwissKitJPlugin stubPlugin() {
-        return new SwissKitJPlugin() {
+    private static ZhiFlowPlugin stubPlugin() {
+        return new ZhiFlowPlugin() {
             public String getId() { return "test.host.plugin"; }
             public String getName() { return "Test"; }
             public String getDescription() { return ""; }
@@ -26,7 +26,7 @@ class BasePluginHostTest {
     }
 
     /** 具体化:settings 用内存 Map。 */
-    private static BasePluginHost host(SwissKitJPlugin p) {
+    private static BasePluginHost host(ZhiFlowPlugin p) {
         return new BasePluginHost(p) {
             private final Map<String, String> map = new HashMap<>();
             private final PluginSettings settings = new PluginSettings() {

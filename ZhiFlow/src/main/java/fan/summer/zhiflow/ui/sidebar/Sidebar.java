@@ -3,7 +3,7 @@ package fan.summer.zhiflow.ui.sidebar;
 import fan.summer.zhiflow.api.MdiIconUtil;
 import fan.summer.zhiflow.api.i18n.I18n;
 import fan.summer.zhiflow.api.theme.ThemeService;
-import fan.summer.zhiflow.ui.setting.SwissKitJSettingUi;
+import fan.summer.zhiflow.ui.setting.ZhiFlowSettingUi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import javafx.animation.Interpolator;
@@ -254,11 +254,11 @@ public class Sidebar extends VBox {
      * Applies the given theme: updates the global {@link ThemeService} (which
      * re-stamps the theme class on the scene root and fires listeners — the
      * listener in the constructor handles the icon/label refresh) and persists
-     * the choice via {@link SwissKitJSettingUi#saveThemeSetting}.
+     * the choice via {@link ZhiFlowSettingUi#saveThemeSetting}.
      */
     private void applyTheme(ThemeService.Theme theme) {
         ThemeService.set(theme);
-        SwissKitJSettingUi.saveThemeSetting(theme == ThemeService.Theme.DARK ? "dark" : "light");
+        ZhiFlowSettingUi.saveThemeSetting(theme == ThemeService.Theme.DARK ? "dark" : "light");
     }
 
     private void activate(NavItem item, boolean fireEvent) {
@@ -289,7 +289,7 @@ public class Sidebar extends VBox {
         collapsed = !collapsed;
         applyCollapsed(collapsed);
         collapseBtn.setText(collapsed ? "»" : "«");
-        SwissKitJSettingUi.saveSettingAsync("sidebar.collapsed", collapsed ? "true" : "false", null);
+        ZhiFlowSettingUi.saveSettingAsync("sidebar.collapsed", collapsed ? "true" : "false", null);
     }
 
     /**
@@ -320,7 +320,7 @@ public class Sidebar extends VBox {
      */
     private static String readCollapsedPref() {
         try {
-            String v = SwissKitJSettingUi.getSetting("sidebar.collapsed");
+            String v = ZhiFlowSettingUi.getSetting("sidebar.collapsed");
             return v == null ? "false" : v;
         } catch (Exception e) {
             return "false";

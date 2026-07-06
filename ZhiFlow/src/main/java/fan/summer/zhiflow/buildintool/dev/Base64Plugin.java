@@ -1,7 +1,7 @@
 package fan.summer.zhiflow.buildintool.dev;
 
 import fan.summer.zhiflow.api.IconStyle;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.ToolCategory;
 import fan.summer.zhiflow.api.ToolType;
 import fan.summer.zhiflow.api.ai.AiTool;
@@ -27,9 +27,9 @@ import java.util.List;
  * Provides a two-pane interface with input/output text areas and
  * Encode, Decode, and Swap action buttons.
  *
- * @see SwissKitJPlugin
+ * @see ZhiFlowPlugin
  */
-public class Base64Plugin implements SwissKitJPlugin {
+public class Base64Plugin implements ZhiFlowPlugin {
 
     private static final PluginLogger log = LoggerFactory.getLogger(Base64Plugin.class);
 

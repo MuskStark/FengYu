@@ -1,6 +1,6 @@
 # 07 · 动效指南
 
-> **定位：** 本文档是 SwissKitJ 动效的**唯一事实源**。应用中实际出厂的每一个动画都在
+> **定位：** 本文档是 ZhiFlow 动效的**唯一事实源**。应用中实际出厂的每一个动画都在
 > 此编目——含精确时长、缓动、源码 `file:line`，以及可复制的 JavaFX 模板——外加一小组
 > 尚未进入代码库的*提议性*标准动效。组件文档（[03](03-component-library.md)）和交互文档
 > （[04](04-interaction-guidelines.md)）从这里引用时长/缓动，而非复述。
@@ -31,7 +31,7 @@
 
 ## 1. 概览
 
-SwissKitJ 的动效只服务于**一个**目的：**反馈**。每个动画都在回答*"刚刚发生了什么？"*
+ZhiFlow 的动效只服务于**一个**目的：**反馈**。每个动画都在回答*"刚刚发生了什么？"*
 ——一张卡片进入了网格、一个面板滑入、一个工具开始运行。这是 JetBrains IDEA **New UI**
 纪律在动效上的延伸：克制、快速、永不阻塞输入。
 
@@ -40,7 +40,7 @@ CSS keyframes（JavaFX CSS 不支持动画），没有 Lottie。每一份动效�
 transition 或 timeline。这让动效可审计——在源码里都能 grep 到。
 
 > **主题切换不动画。** 切换主题是一次即时的类替换
-> （[`ThemeService.set`](../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java)）；
+> （[`ThemeService.set`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java)）；
 > 场景在一帧内重新解析 looked-up color。不要给主题切换加交叉淡入——那会*感觉*比即时替换
 > 更慢。
 
@@ -111,7 +111,7 @@ color 的重新解析。淡入会让它感觉更慢，并让旧主题的颜色"�
 
 ### 3.3 真实动画清单
 
-SwissKitJ 出厂的全部动画。每一行都经源码 grep 核对。
+ZhiFlow 出厂的全部动画。每一行都经源码 grep 核对。
 
 | # | 动画 | 类型 | 时长 | 缓动 | 源码 |
 |---|---|---|---|---|---|
@@ -407,7 +407,7 @@ enter.play();
 
 ## 6. AI 清单 + 反模式
 
-为 SwissKitJ UI 添加动效时，你**必须**：
+为 ZhiFlow UI 添加动效时，你**必须**：
 
 - [ ] **反馈 ≤ 300 ms**；把 300 ms+ 留给刻意的面板运动。
 - [ ] **使用 [§3](#3-规格表--动效-token) 的 token 时长/缓动**——不要发明
@@ -436,13 +436,13 @@ enter.play();
 ## 7. 参考
 
 **源码文件（已核对的动画位置）：**
-- [`ui/MainWindow.java`](../../SwissKit/src/main/java/fan/summer/ui/MainWindow.java) — 入场淡入 :313，状态脉动 :151，时钟 :323
-- [`ui/content/ContentArea.java`](../../SwissKit/src/main/java/fan/summer/ui/content/ContentArea.java) — 错峰入场 :345，交叉淡入 :399，网格滑入 :424
-- [`ui/content/ToolCard.java`](../../SwissKit/src/main/java/fan/summer/ui/content/ToolCard.java) — 运行脉动 :106，星标弹出 :128，悬停 :138，点击 :156，入场 :168
-- [`ui/content/DetailPanel.java`](../../SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java) — 滑入 :346，滑出 :364
-- [`ui/sidebar/Sidebar.java`](../../SwissKit/src/main/java/fan/summer/ui/sidebar/Sidebar.java) — 活动弹出 :418
-- [`buildintool/ai/AiChatPlugin.java`](../../SwissKit/src/main/java/fan/summer/buildintool/ai/AiChatPlugin.java) — webview 闪烁 :747
-- [`buildintool/email/ToggleSwitch.java`](../../SwissKit/src/main/java/fan/summer/buildintool/email/ToggleSwitch.java) — 滑块滑动 :53
+- [`ui/MainWindow.java`](../../ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java) — 入场淡入 :313，状态脉动 :151，时钟 :323
+- [`ui/content/ContentArea.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ContentArea.java) — 错峰入场 :345，交叉淡入 :399，网格滑入 :424
+- [`ui/content/ToolCard.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java) — 运行脉动 :106，星标弹出 :128，悬停 :138，点击 :156，入场 :168
+- [`ui/content/DetailPanel.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java) — 滑入 :346，滑出 :364
+- [`ui/sidebar/Sidebar.java`](../../ZhiFlow/src/main/java/fan/summer/ui/sidebar/Sidebar.java) — 活动弹出 :418
+- [`buildintool/ai/AiChatPlugin.java`](../../ZhiFlow/src/main/java/fan/summer/buildintool/ai/AiChatPlugin.java) — webview 闪烁 :747
+- [`buildintool/email/ToggleSwitch.java`](../../ZhiFlow/src/main/java/fan/summer/buildintool/email/ToggleSwitch.java) — 滑块滑动 :53
 
 **兄弟文档：**
 - [03 组件库](03-component-library.md) — 使用这些动画的组件

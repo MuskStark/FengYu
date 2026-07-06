@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * H2-backed {@link PluginSettings}: cache-first reads (read-your-writes),
  * asynchronous persistence on a virtual thread — the same pattern as the host's
- * own settings cache in SwissKitJSettingUi.
+ * own settings cache in ZhiFlowSettingUi.
  *
  * @since 3.2.0
  */

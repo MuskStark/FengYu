@@ -1,7 +1,7 @@
 package fan.summer.zhiflow.plugin;
 
 import fan.summer.zhiflow.api.PluginContext;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.i18n.I18n;
 import fan.summer.zhiflow.api.loader.ChildFirstResourceClassLoader;
 import fan.summer.zhiflow.plugin.host.H2PluginSettings;
@@ -18,15 +18,15 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Scans a plugins/ directory for JAR files, loads {@link SwissKitJPlugin} implementations
+ * Scans a plugins/ directory for JAR files, loads {@link ZhiFlowPlugin} implementations
  * via {@link ServiceLoader}, and watches for hot-reload on file changes.
  *
  * <p>This class is responsible for discovering external plugins packaged as JAR files
  * in the configured plugins directory. Each JAR is loaded via a dedicated
  * {@link URLClassLoader} to allow proper unloading on JAR removal. Plugin discovery
  * uses the Java ServiceLoader mechanism, expecting implementations of
- * {@code fan.summer.zhiflow.api.SwissKitJPlugin} to be declared in
- * {@code META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin} within the JAR.</p>
+ * {@code fan.summer.zhiflow.api.ZhiFlowPlugin} to be declared in
+ * {@code META-INF/services/fan.summer.zhiflow.api.ZhiFlowPlugin} within the JAR.</p>
  *
  * <p>After startup, a {@link WatchService} is registered on the plugins directory to
  * detect {@code ENTRY_CREATE}, {@code ENTRY_DELETE}, and {@code ENTRY_MODIFY} events.
@@ -40,7 +40,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * to override the default location.</p>
  *
  * @see PluginRegistry
- * @see SwissKitJPlugin
+ * @see ZhiFlowPlugin
  * @since 1.0
  */
 public class PluginLoader {
@@ -50,14 +50,14 @@ public class PluginLoader {
     /**
      * Returns the canonical plugin directory path resolved from the current working directory.
      *
-     * <p>The path is {@code <user.dir>/.swisskit/plugin/}, created automatically on first scan
+     * <p>The path is {@code <user.dir>/.zhiflow/plugin/}, created automatically on first scan
      * if it does not yet exist.</p>
      *
      * @return the absolute path to the plugins directory
      * @since 1.0
      */
     public static Path resolvePluginsDir() {
-        return Path.of(System.getProperty("user.dir"), ".swisskit", "plugin");
+        return Path.of(System.getProperty("user.dir"), ".zhiflow", "plugin");
     }
 
     private final Path        pluginsDir;
@@ -70,7 +70,7 @@ public class PluginLoader {
     private final Map<Path, URLClassLoader> openLoaders = new ConcurrentHashMap<>();
 
     /** Maps JAR path → plugins loaded from that JAR */
-    private final Map<Path, List<SwissKitJPlugin>> jarPlugins = new ConcurrentHashMap<>();
+    private final Map<Path, List<ZhiFlowPlugin>> jarPlugins = new ConcurrentHashMap<>();
 
     /** Maps original JAR path → temp copy used by the ClassLoader (avoids locking the original on Windows). */
     private final Map<Path, Path> tempCopies = new ConcurrentHashMap<>();
@@ -189,8 +189,8 @@ public class PluginLoader {
      * @return the JAR path, or {@code null} if not found
      * @since 3.0
      */
-    public Path findJarPath(SwissKitJPlugin plugin) {
-        for (Map.Entry<Path, List<SwissKitJPlugin>> entry : jarPlugins.entrySet()) {
+    public Path findJarPath(ZhiFlowPlugin plugin) {
+        for (Map.Entry<Path, List<ZhiFlowPlugin>> entry : jarPlugins.entrySet()) {
             if (entry.getValue().contains(plugin)) {
                 return entry.getKey();
             }
@@ -216,7 +216,7 @@ public class PluginLoader {
      * @throws IllegalArgumentException if the plugin's JAR cannot be found
      * @since 3.0
      */
-    public void uninstallPlugin(SwissKitJPlugin plugin) {
+    public void uninstallPlugin(ZhiFlowPlugin plugin) {
         Path jar = findJarPath(plugin);
         if (jar == null) {
             throw new IllegalArgumentException("No JAR found for plugin: " + plugin.getId());
@@ -302,10 +302,10 @@ public class PluginLoader {
                 new java.net.URL[]{tempJar.toUri().toURL()},
                 getClass().getClassLoader()
             );
-            ServiceLoader<SwissKitJPlugin> sl = ServiceLoader.load(SwissKitJPlugin.class, cl);
+            ServiceLoader<ZhiFlowPlugin> sl = ServiceLoader.load(ZhiFlowPlugin.class, cl);
 
-            List<SwissKitJPlugin> loaded = new ArrayList<>();
-            for (SwissKitJPlugin plugin : sl) {
+            List<ZhiFlowPlugin> loaded = new ArrayList<>();
+            for (ZhiFlowPlugin plugin : sl) {
                 loaded.add(plugin);
                 PluginContext.register(plugin, cl);
                 log.info("Loaded plugin: id={}, name={}, version={}, jar={}",
@@ -313,7 +313,7 @@ public class PluginLoader {
             }
 
             if (loaded.isEmpty()) {
-                log.warn("No SwissKitJPlugin services declared in {}", jar.getFileName());
+                log.warn("No ZhiFlowPlugin services declared in {}", jar.getFileName());
                 cl.close();
                 Files.deleteIfExists(tempJar);
                 return;
@@ -342,7 +342,7 @@ public class PluginLoader {
     }
 
     private void unloadJar(Path jar) {
-        List<SwissKitJPlugin> plugins = jarPlugins.remove(jar);
+        List<ZhiFlowPlugin> plugins = jarPlugins.remove(jar);
         if (plugins != null) {
             log.info("Unloading plugin JAR: {} (contained {} plugin(s))", jar.getFileName(), plugins.size());
             // Fire onUnload lifecycle callback with TCCL set to the plugin's ClassLoader

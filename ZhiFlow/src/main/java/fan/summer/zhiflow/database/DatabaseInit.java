@@ -16,11 +16,11 @@ import java.sql.Statement;
 import java.util.Properties;
 
 /**
- * Database initialization and MyBatis configuration for the SwissKit application.
+ * Database initialization and MyBatis configuration for the ZhiFlow application.
  * <p>
  * This class manages the H2 database connection lifecycle, including:
  * <ul>
- *   <li>Creating the database file and schema directory under {@code .swisskit/}</li>
+ *   <li>Creating the database file and schema directory under {@code .zhiflow/}</li>
  *   <li>Executing {@code init.sql} to create/verify all tables</li>
  *   <li>Initializing MyBatis SqlSessionFactory with dynamic database URL injection</li>
  * </ul>
@@ -38,8 +38,8 @@ public class DatabaseInit {
 
     static {
         String dbPath = Path.of(System.getProperty("user.dir"))
-                .resolve(".swisskit")
-                .resolve("swisskit")
+                .resolve(".zhiflow")
+                .resolve("zhiflow")
                 .toAbsolutePath()
                 .toString()
                 .replace("\\", "/");
@@ -57,7 +57,7 @@ public class DatabaseInit {
     public static void init() {
         try {
             // Ensure database directory exists
-            Path dbDir = Path.of(System.getProperty("user.dir")).resolve(".swisskit");
+            Path dbDir = Path.of(System.getProperty("user.dir")).resolve(".zhiflow");
             if (!Files.exists(dbDir)) {
                 Files.createDirectories(dbDir);
                 logger.info("Created database directory: {}", dbDir.toAbsolutePath());

@@ -7,7 +7,7 @@ import fan.summer.api.log.PluginLogger;
  * single injected object — logging, namespaced settings, TCCL-safe background
  * tasks, i18n, theming, and notifications.
  *
- * <p>Injected via {@link fan.summer.api.SwissKitJPlugin#init(PluginHost)} exactly
+ * <p>Injected via {@link fan.summer.api.ZhiFlowPlugin#init(PluginHost)} exactly
  * once, on the JavaFX Application Thread, before the plugin becomes visible in the
  * registry. Store the reference; it stays valid for the plugin's whole lifetime.</p>
  *
@@ -15,7 +15,7 @@ import fan.summer.api.log.PluginLogger;
  */
 public interface PluginHost {
 
-    /** @return the owning plugin's ID (same value as {@code SwissKitJPlugin.getId()}) */
+    /** @return the owning plugin's ID (same value as {@code ZhiFlowPlugin.getId()}) */
     String pluginId();
 
     /**

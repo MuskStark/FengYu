@@ -1,6 +1,6 @@
 # 02 · JavaFX Implementation Guide
 
-> **Role:** This is the **developer / AI playbook** for turning SwissKit UI design into running JavaFX code.
+> **Role:** This is the **developer / AI playbook** for turning ZhiFlow UI design into running JavaFX code.
 > It defines the plugin contract you must implement, the CSS class-naming convention every node obeys,
 > and a copy-paste plugin skeleton. Later docs — especially [03 Component Library](03-component-library.md) —
 > link back here for the [`#css-naming`](#css-naming) convention and the [`#plugin-skeleton`](#plugin-skeleton) template.
@@ -8,8 +8,8 @@
 | | |
 |---|---|
 | **Doc type** | Plugin contract + implementation patterns |
-| **Audience** | Plugin authors, AI code generators, anyone who builds a SwissKitJ tool |
-| **Source of truth** | [`SwissKitJ-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) |
+| **Audience** | Plugin authors, AI code generators, anyone who builds a ZhiFlow tool |
+| **Source of truth** | [`ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) |
 | **Companion plugin guide** | [`docs/plugins/ui.md`](../plugins/ui.md) (bilingual, layout pitfalls + StepWizard) |
 | **Related** | [01 Design System](01-design-system.md) · [05 Theme & Color System](05-theme-color-system.md) · [06 Icon System](06-icon-system.md) |
 
@@ -20,7 +20,7 @@
 1. [Overview](#1-overview)
 2. [Design Principles](#2-design-principles)
 3. [Spec Tables](#3-spec-tables)
-   - [3.1 `SwissKitJPlugin` Method Contract](#swisskitjplugin-method-contract)
+   - [3.1 `SwissKitJPlugin` Method Contract](#zhiflowjplugin-method-contract)
    - [3.2 CSS Class Naming Convention](#css-naming)
    - [3.3 Layout-Container Selection Guide](#layout-container-selection-guide)
 4. [JavaFX Implementation Template](#4-javafx-implementation-template)
@@ -37,16 +37,16 @@
 
 ## 1. Overview
 
-SwissKitJ is a **JavaFX 21** desktop toolbox. Two architectural decisions shape everything in this document:
+ZhiFlow is a **JavaFX 21** desktop toolbox. Two architectural decisions shape everything in this document:
 
 1. **The UI is built entirely in Java code — there is NO FXML.** Every screen is assembled from
    `javafx.scene.*` nodes in `createView()`. There is no `.fxml` file, no `FXMLLoader`, no controller
    wiring. This keeps plugins self-contained, refactor-friendly, and dependency-light (an external
-   plugin JAR needs only `SwissKitJ-Api` on its classpath).
+   plugin JAR needs only `ZhiFlow-Api` on its classpath).
 
 2. **Theming happens entirely through CSS looked-up colors.** No node sets a color inline. The dual-theme
    (dark/light) palette is a set of 14 `-sk-*` tokens declared once in
-   [`zhiflow-common.css`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css), switched by a
+   [`zhiflow-common.css`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css), switched by a
    single class on the scene root. The token values, contrast matrix, and the full theme lifecycle live
    in [05 Theme & Color System](05-theme-color-system.md) — **this doc does not duplicate color values.**
 
@@ -60,7 +60,7 @@ SwissKitJ is a **JavaFX 21** desktop toolbox. Two architectural decisions shape 
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                       HOST APPLICATION (SwissKit)                        │
+│                       HOST APPLICATION (ZhiFlow)                        │
 │                                                                          │
 │   ┌─────────────┐   discovers   ┌──────────────────────────────────────┐ │
 │   │  ServiceLoader│ ───────────► │  plugins/*.jar                       │ │
@@ -80,7 +80,7 @@ SwissKitJ is a **JavaFX 21** desktop toolbox. Two architectural decisions shape 
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **The contract** — `SwissKitJPlugin` (16 methods; [§3.1](#swisskitjplugin-method-contract)).
+- **The contract** — `SwissKitJPlugin` (16 methods; [§3.1](#zhiflowjplugin-method-contract)).
 - **The host** — calls metadata methods to build the sidebar/search, calls `createView()` once and caches
   the `Node`, embeds it in the content `StackPane`.
 - **The stylesheet** — `zhiflow-common.css`, loaded by the host onto the main scene. Your embedded view
@@ -146,11 +146,11 @@ are in [§3.2](#css-naming).
 ## 3. Spec Tables
 
 ### 3.1 `SwissKitJPlugin` Method Contract
-<span id="swisskitjplugin-method-contract"></span>
+<span id="zhiflowjplugin-method-contract"></span>
 
 The interface declares **16 methods**: **7 required** (no default), **9 with sensible defaults**. Every
 signature below is reproduced **verbatim** from
-[`SwissKitJPlugin.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) — copy them
+[`SwissKitJPlugin.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) — copy them
 as-is; do not paraphrase return types or add parameters.
 
 #### Required methods (must implement — no default)
@@ -192,9 +192,9 @@ IconStyle     = BLUE | PURPLE | TEAL | AMBER | RED | PINK | GRAY
                 each maps to a CSS class (ic-blue … ic-gray) + accent Color
 ```
 
-- `ToolCategory` — [`ToolCategory.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/ToolCategory.java)
-- `ToolType` — [`ToolType.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/ToolType.java)
-- `IconStyle` — [`IconStyle.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/IconStyle.java) (icon-tile
+- `ToolCategory` — [`ToolCategory.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/ToolCategory.java)
+- `ToolType` — [`ToolType.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/ToolType.java)
+- `IconStyle` — [`IconStyle.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java) (icon-tile
   styling lives in `shell.css`; see [06 Icon System](06-icon-system.md)).
 
 ---
@@ -202,7 +202,7 @@ IconStyle     = BLUE | PURPLE | TEAL | AMBER | RED | PINK | GRAY
 ### CSS Class Naming Convention
 <span id="css-naming"></span>
 
-Every node in the SwissKit scene graph carries zero or more style classes drawn from three namespaces.
+Every node in the ZhiFlow scene graph carries zero or more style classes drawn from three namespaces.
 Knowing which namespace a class belongs to tells you who owns it and whether it's safe for plugins to use.
 
 #### The three namespaces
@@ -214,7 +214,7 @@ Knowing which namespace a class belongs to tells you who owns it and whether it'
 | **Status modifiers** | `is-*` / state | Component classes via `:hover`/`:focused` or explicit toggle | `.sk-notif-success`, `.sk-notif-warning`, `.sk-notif-danger` | ✅ Yes, for semantic status |
 
 > **BEM-lite.** The `.sk-` namespace follows a flat, hyphen-separated "BEM-lite" scheme:
-> `sk-` + `block` + optional `__element` or `-modifier`. In practice SwissKit keeps it flat
+> `sk-` + `block` + optional `__element` or `-modifier`. In practice ZhiFlow keeps it flat
 > (`.sk-btn-primary`, `.sk-field-label`) rather than the full `block__elem--mod` notation. The rule of thumb:
 > **one concept, one class, `sk-` prefix, hyphenated words.**
 
@@ -289,7 +289,7 @@ reconstruct the mapping from memory; if unsure, consult that section directly.
 ### Layout-Container Selection Guide
 <span id="layout-container-selection-guide"></span>
 
-SwissKitJ builds layouts from the standard JavaFX panes. Pick the container that matches the spatial
+ZhiFlow builds layouts from the standard JavaFX panes. Pick the container that matches the spatial
 relationship you need; the wrong container is the #1 cause of broken resizing (see
 [§4.5 The three layout pitfalls](#45-the-three-layout-pitfalls)).
 
@@ -370,7 +370,7 @@ import javafx.scene.layout.VBox;
 import java.util.List;
 
 /**
- * {{Name}} — a SwissKitJ plugin.
+ * {{Name}} — a ZhiFlow plugin.
  *
  * <p>Implements {@link SwissKitJPlugin} directly: one class holds both the metadata
  * (id/name/category/icon) and the view ({@link #createView()}). The host calls
@@ -512,7 +512,7 @@ Text icon = MdiIconUtil.createIcon("file-excel", 24.0);
 Full icon/tile system (category colors, `IconStyle`→`ic-*` mapping, sizing) is in
 [06 Icon System](06-icon-system.md).
 
-Source: [`MdiIconUtil.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/MdiIconUtil.java).
+Source: [`MdiIconUtil.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java).
 
 ---
 
@@ -570,14 +570,14 @@ The full theme lifecycle (token resolution, `ThemeService.set`/`onChange`, WebVi
 | Rely on automatic inheritance for `createView()` nodes | Manually add `zhiflow-common.css` to `getStylesheets()` |
 | Trust `Themes.applyTo` to be idempotent (no-op if already applied) | Re-add the stylesheet URL yourself |
 
-Source: [`Themes.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java) ·
-[`ThemeService.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java).
+Source: [`Themes.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/Themes.java) ·
+[`ThemeService.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java).
 
 ---
 
 ### 4.4 I18n patterns
 
-Every user-visible string flows through [`fan.summer.zhiflow.api.i18n.I18n`](../../SwissKitJ-Api/src/main/java/fan/summer/api/i18n/I18n.java).
+Every user-visible string flows through [`fan.summer.zhiflow.api.i18n.I18n`](../../ZhiFlow-Api/src/main/java/fan/summer/api/i18n/I18n.java).
 There are three patterns — pick by *when* the text is produced. (Mirrors
 [`docs/plugins/ui.md`](../plugins/ui.md).)
 
@@ -622,7 +622,7 @@ sp.setMaxWidth(Double.MAX_VALUE);    // ← required, or it won't fill
 sp.setMaxHeight(Double.MAX_VALUE);
 ```
 
-Add the `.content-scroll` style class for the thin SwissKit scrollbar styling.
+Add the `.content-scroll` style class for the thin ZhiFlow scrollbar styling.
 
 #### Pitfall 2 — Filling an HBox/VBox's remaining space
 
@@ -655,7 +655,7 @@ for (int j = 0; j < pages.length; j++) {
 
 ## 5. AI Development Checklist
 
-When generating a SwissKitJ plugin you **MUST** satisfy all of the following. Each is a hard gate.
+When generating a ZhiFlow plugin you **MUST** satisfy all of the following. Each is a hard gate.
 
 - [ ] **Implement `SwissKitJPlugin` directly — not a wrapper.** One class holds metadata + view. Do not create
       a separate `*PluginUi` class (all 11 built-ins implement the interface directly).
@@ -707,7 +707,7 @@ public class {{Name}}PluginUi { Node getView() { … } }
 All 11 built-in tools implement `SwissKitJPlugin` **directly** in one class — metadata + view together. A
 wrapper adds indirection, doubles the number of files, and breaks the "grep the class, see everything"
 expectation. (The standalone `*PluginUi` example in `docs/plugins/ui.md` illustrates a view-builder pattern;
-in SwissKitJ's own codebase the view is built directly in `createView()`.)
+in ZhiFlow's own codebase the view is built directly in `createView()`.)
 
 ```java
 // ✅ CORRECT — one class implements the interface and builds the view
@@ -840,15 +840,15 @@ The host caches the `Node` from `createView()`; treat it as the single source of
 
 | What | Path |
 |---|---|
-| Plugin contract (16 methods) | [`SwissKitJ-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) |
-| Icon styles (`BLUE`…`GRAY`, CSS class, color) | [`SwissKitJ-Api/src/main/java/fan/summer/api/IconStyle.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/IconStyle.java) |
-| Tool categories (`DEV`…`OTHER`) | [`SwissKitJ-Api/src/main/java/fan/summer/api/ToolCategory.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/ToolCategory.java) |
-| Tool types (`BUILTIN`/`PLUGIN`) | [`SwissKitJ-Api/src/main/java/fan/summer/api/ToolType.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/ToolType.java) |
-| MDI icon renderer (`createIcon`, `putIcon`) | [`SwissKitJ-Api/src/main/java/fan/summer/api/MdiIconUtil.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/MdiIconUtil.java) |
-| Plugin-facing theme helper (`applyTo`, `COMMON_CSS`) | [`SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java) |
-| Theme engine (`registerScene`, `set`, `onChange`) | [`SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java) |
-| Shared component + token CSS | [`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) |
-| Reference built-in (single-class pattern) | [`SwissKit/src/main/java/fan/summer/buildintool/dev/JsonFormatterPlugin.java`](../../SwissKit/src/main/java/fan/summer/buildintool/dev/JsonFormatterPlugin.java) |
+| Plugin contract (16 methods) | [`ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) |
+| Icon styles (`BLUE`…`GRAY`, CSS class, color) | [`ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java) |
+| Tool categories (`DEV`…`OTHER`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/ToolCategory.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/ToolCategory.java) |
+| Tool types (`BUILTIN`/`PLUGIN`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/ToolType.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/ToolType.java) |
+| MDI icon renderer (`createIcon`, `putIcon`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java) |
+| Plugin-facing theme helper (`applyTo`, `COMMON_CSS`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/theme/Themes.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/Themes.java) |
+| Theme engine (`registerScene`, `set`, `onChange`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java) |
+| Shared component + token CSS | [`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css) |
+| Reference built-in (single-class pattern) | [`ZhiFlow/src/main/java/fan/summer/buildintool/dev/JsonFormatterPlugin.java`](../../ZhiFlow/src/main/java/fan/summer/buildintool/dev/JsonFormatterPlugin.java) |
 
 ### Design baseline
 

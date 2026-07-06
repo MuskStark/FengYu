@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- SwissKitJ Application Icon
+<!-- ZhiFlow Application Icon
      White squircle container (rx proportional to 150-box rx=38, ~25.3% radius)
      + 4-color pinwheel blades (faithful to Google Apps Script structure)
      Canvas: 1024, blades scaled to sit with ~6% padding inside the squircle.

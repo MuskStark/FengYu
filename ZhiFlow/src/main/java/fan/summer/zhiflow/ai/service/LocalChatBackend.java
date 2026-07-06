@@ -19,7 +19,7 @@ import fan.summer.zhiflow.api.ai.AiToolCall;
 import fan.summer.zhiflow.api.ai.AiToolResult;
 import fan.summer.zhiflow.api.ai.AiServiceProvider;
 import fan.summer.zhiflow.api.ai.ChatBackend;
-import fan.summer.zhiflow.ui.setting.SwissKitJSettingUi;
+import fan.summer.zhiflow.ui.setting.ZhiFlowSettingUi;
 import javafx.application.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -208,8 +208,8 @@ public class LocalChatBackend implements ChatBackend {
 
     @Override
     public void chat(List<AiChatMessage> history, AiStreamCallback callback) throws AiServiceException {
-        chat(history, SwissKitJSettingUi.getAiTemperature(), SwissKitJSettingUi.getAiTopP(),
-             SwissKitJSettingUi.getAiMaxTokens(), callback);
+        chat(history, ZhiFlowSettingUi.getAiTemperature(), ZhiFlowSettingUi.getAiTopP(),
+             ZhiFlowSettingUi.getAiMaxTokens(), callback);
     }
 
     @Override
@@ -514,7 +514,7 @@ public class LocalChatBackend implements ChatBackend {
     // ── Prompt building ───────────────────────────────────────
 
     private String buildSystemPrompt() {
-        String base = SwissKitJSettingUi.getAiSystemPrompt();
+        String base = ZhiFlowSettingUi.getAiSystemPrompt();
         String toolDefs = ToolSchemaBuilder.buildPromptDefinitions(AiServiceProvider.getTools());
         String composed = toolDefs.isEmpty() ? base : base + "\n\n" + toolDefs;
         if (isQwen3 && qwen3Adapter != null) {

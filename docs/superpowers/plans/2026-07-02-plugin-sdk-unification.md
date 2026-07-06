@@ -1607,7 +1607,7 @@ import java.util.Properties;
 
 /**
  * Preview-mode {@link PluginSettings} backed by a per-plugin properties file
- * under {@code ~/.swisskit/preview-settings/}. Write-through: every mutation
+ * under {@code ~/.zhiflow/preview-settings/}. Write-through: every mutation
  * stores the file immediately (preview writes are low-frequency).
  *
  * @since 3.2.0
@@ -1620,7 +1620,7 @@ class PropertiesPluginSettings implements PluginSettings {
     private final Properties props = new Properties();
 
     PropertiesPluginSettings(String pluginId) {
-        this(Path.of(System.getProperty("user.home"), ".swisskit", "preview-settings"), pluginId);
+        this(Path.of(System.getProperty("user.home"), ".zhiflow", "preview-settings"), pluginId);
     }
 
     /** Test seam: explicit base directory. */
@@ -1955,7 +1955,7 @@ guide.
 The preview window (`PluginPreviewWindow`) now loads plugins with the exact
 same semantics as the real host: child-first resource ClassLoader, TCCL
 registration, and `init(PluginHost)` injection (settings persist under
-`~/.swisskit/preview-settings/`).
+`~/.zhiflow/preview-settings/`).
 ```
 `docs/zh/migration-3.2.md` 在对应位置插入其中文翻译(标题「新增:PluginHost / PluginSettings / TaskRunner」,内容一一对应)。同时在两个文件的 Checklist 列表末尾各追加一行:
 ```markdown
@@ -1989,7 +1989,7 @@ registration, and `init(PluginHost)` injection (settings persist under
 ```markdown
 **PluginHost (v3.2.0+)**: injected via `init(PluginHost)` exactly once (FX thread, before the
 plugin is visible in the registry and before `aiTools()` registration). Provides `settings()`
-(namespaced KV, H2-backed; preview mode uses `~/.swisskit/preview-settings/`), `tasks()`
+(namespaced KV, H2-backed; preview mode uses `~/.zhiflow/preview-settings/`), `tasks()`
 (TCCL-safe background tasks — running tasks automatically keep the plugin backgrounded, merged
 with `hasRunningTasks()` via `PluginRegistry.isBusy`), `i18n()` (`registerBundle` without a
 ClassLoader parameter), `theme()`, `notifications()`, `logger()`. Old static entry points remain
@@ -2025,9 +2025,9 @@ Expected: 全部 PASS。
 java -jar SwissKit/target/SwissKitJ-3.2.0.jar
 ```
 逐项检查:
-1. 应用正常启动,日志无 `plugin_setting` 建表错误、无 MyBatis mapper 解析错误(看 `.swisskit/logs/swisskit.log`)。
+1. 应用正常启动,日志无 `plugin_setting` 建表错误、无 MyBatis mapper 解析错误(看 `.zhiflow/logs/zhiflow.log`)。
 2. 所有内置工具正常打开(init 注入对存量插件是无操作,不得引入回归)。
-3. 若有测试插件 JAR:放入 `.swisskit/plugin/` 热加载正常;卸载后重装,确认其设置已被清空(H2 文件 `.swisskit/swisskit.db` 中 `plugin_setting` 无该插件行——可经 IDEA Database 工具查看,**查看前先关闭应用避免 H2 文件锁**,参见 memory `h2-lock-no-window-startup-hang`)。
+3. 若有测试插件 JAR:放入 `.zhiflow/plugin/` 热加载正常;卸载后重装,确认其设置已被清空(H2 文件 `.zhiflow/zhiflow.db` 中 `plugin_setting` 无该插件行——可经 IDEA Database 工具查看,**查看前先关闭应用避免 H2 文件锁**,参见 memory `h2-lock-no-window-startup-hang`)。
 4. 工具进入后台的行为不回归:打开一个有后台任务的工具(如邮件群发)、返回主页,工具卡片状态点仍亮。
 
 - [ ] **Step 4: 若有失败项**

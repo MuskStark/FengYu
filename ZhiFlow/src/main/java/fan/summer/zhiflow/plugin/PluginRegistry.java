@@ -1,7 +1,7 @@
 package fan.summer.zhiflow.plugin;
 
 import fan.summer.zhiflow.api.PluginContext;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.ai.AiServiceProvider;
 import fan.summer.zhiflow.api.ai.AiTool;
 import fan.summer.zhiflow.api.host.PluginHost;
@@ -24,14 +24,14 @@ import java.util.function.Function;
  * Holds the live plugin list and manages plugin activation lifecycle.
  *
  * <p>{@code PluginRegistry} is the central repository for all active plugins in the
- * application. It maintains an {@link ObservableList} of {@link SwissKitJPlugin}
+ * application. It maintains an {@link ObservableList} of {@link ZhiFlowPlugin}
  * instances which is the source of truth for the plugin UI sidebar. Built-in tools
  * are added directly via {@link #getPlugins()#addAll}; external JAR-based plugins are
  * added and removed by {@link PluginLoader}.</p>
  *
  * <p>The registry tracks a single <em>active</em> plugin at any time. When a new plugin
- * is activated via {@link #activate(SwissKitJPlugin)}, any previously active plugin is
- * automatically deactivated first by calling its {@link SwissKitJPlugin#onDeactivate()}
+ * is activated via {@link #activate(ZhiFlowPlugin)}, any previously active plugin is
+ * automatically deactivated first by calling its {@link ZhiFlowPlugin#onDeactivate()}
  * callback. This ensures that only one plugin's UI is interactive at a time.</p>
  *
  * <p>All lifecycle callbacks ({@code onActivate}, {@code onDeactivate}, {@code onUnload})
@@ -39,7 +39,7 @@ import java.util.function.Function;
  * application. Exceptions are logged but otherwise ignored.</p>
  *
  * @see PluginLoader
- * @see SwissKitJPlugin
+ * @see ZhiFlowPlugin
  * @since 1.0
  */
 public class PluginRegistry {
@@ -48,25 +48,25 @@ public class PluginRegistry {
 
     private static volatile PluginRegistry INSTANCE;
 
-    private final ObservableList<SwissKitJPlugin> plugins =
+    private final ObservableList<ZhiFlowPlugin> plugins =
         FXCollections.observableArrayList();
 
-    private volatile SwissKitJPlugin activePlugin;
+    private volatile ZhiFlowPlugin activePlugin;
 
-    private final Set<SwissKitJPlugin> backgroundPlugins =
+    private final Set<ZhiFlowPlugin> backgroundPlugins =
         java.util.Collections.synchronizedSet(new LinkedHashSet<>());
 
     /** Tracks the AI tool names each plugin registered, so removal can unregister them. */
-    private final Map<SwissKitJPlugin, List<String>> toolsByPlugin = new HashMap<>();
+    private final Map<ZhiFlowPlugin, List<String>> toolsByPlugin = new HashMap<>();
 
     /** Per-plugin host facades, created in addPlugins and disposed in removePlugin. */
-    private final Map<SwissKitJPlugin, PluginHost> hostsByPlugin = new HashMap<>();
+    private final Map<ZhiFlowPlugin, PluginHost> hostsByPlugin = new HashMap<>();
 
     /** How hosts are created; replaceable so tests can inject a fake. */
-    private Function<SwissKitJPlugin, PluginHost> hostFactory = DefaultPluginHost::new;
+    private Function<ZhiFlowPlugin, PluginHost> hostFactory = DefaultPluginHost::new;
 
     /** Test seam — lets tests inject a fake host factory. */
-    void setHostFactoryForTest(Function<SwissKitJPlugin, PluginHost> factory) {
+    void setHostFactoryForTest(Function<ZhiFlowPlugin, PluginHost> factory) {
         this.hostFactory = factory;
     }
 
@@ -101,7 +101,7 @@ public class PluginRegistry {
      * @return the observable plugin list; never {@code null}
      * @since 1.0
      */
-    public ObservableList<SwissKitJPlugin> getPlugins() {
+    public ObservableList<ZhiFlowPlugin> getPlugins() {
         return plugins;
     }
 
@@ -116,9 +116,9 @@ public class PluginRegistry {
      * @param toAdd the plugins to add; may be empty but not {@code null}
      * @since 1.0
      */
-    public void addPlugins(List<SwissKitJPlugin> toAdd) {
+    public void addPlugins(List<ZhiFlowPlugin> toAdd) {
         log.debug("Adding {} plugin(s) to registry", toAdd.size());
-        for (SwissKitJPlugin p : toAdd) {
+        for (ZhiFlowPlugin p : toAdd) {
             PluginHost host = hostFactory.apply(p);
             hostsByPlugin.put(p, host);
             try {
@@ -128,13 +128,13 @@ public class PluginRegistry {
             }
         }
         plugins.addAll(toAdd);
-        for (SwissKitJPlugin p : toAdd) registerPluginTools(p);
+        for (ZhiFlowPlugin p : toAdd) registerPluginTools(p);
     }
 
     // Called by PluginLoader (already on FX thread via Platform.runLater)
     /**
      * Removes a plugin from the registry, invoking its
-     * {@link SwissKitJPlugin#onDeactivate()} callback if it is currently active.
+     * {@link ZhiFlowPlugin#onDeactivate()} callback if it is currently active.
      *
      * <p>If the plugin being removed is the currently active one, it is deactivated
      * before removal. The {@code onUnload} callback is <em>not</em> called here —
@@ -144,7 +144,7 @@ public class PluginRegistry {
      * @param plugin the plugin to remove; must be present in the registry
      * @since 1.0
      */
-    void removePlugin(SwissKitJPlugin plugin) {
+    void removePlugin(ZhiFlowPlugin plugin) {
         PluginHost host = hostsByPlugin.remove(plugin);
         if (host != null) {
             try {
@@ -174,16 +174,16 @@ public class PluginRegistry {
     /**
      * Activates the given plugin, deactivating any previously active plugin first.
      *
-     * <p>If another plugin is currently active, its {@link SwissKitJPlugin#onDeactivate()}
+     * <p>If another plugin is currently active, its {@link ZhiFlowPlugin#onDeactivate()}
      * callback is invoked before the new plugin is activated. The newly activated plugin's
-     * {@link SwissKitJPlugin#onActivate()} callback is then called. Both callbacks are
+     * {@link ZhiFlowPlugin#onActivate()} callback is then called. Both callbacks are
      * wrapped in try-catch: a misbehaving plugin will not prevent activation of the
      * replacement.</p>
      *
      * @param plugin the plugin to activate; must not be {@code null}
      * @since 1.0
      */
-    public void activate(SwissKitJPlugin plugin) {
+    public void activate(ZhiFlowPlugin plugin) {
         boolean fromBackground = backgroundPlugins.remove(plugin);
         if (!fromBackground && activePlugin != null && activePlugin != plugin) {
             log.debug("Deactivating previous plugin: id={}", activePlugin.getId());
@@ -216,7 +216,7 @@ public class PluginRegistry {
      * @return the active plugin, or {@code null}
      * @since 1.0
      */
-    public SwissKitJPlugin getActivePlugin() {
+    public ZhiFlowPlugin getActivePlugin() {
         return activePlugin;
     }
 
@@ -229,7 +229,7 @@ public class PluginRegistry {
      * @return true if the plugin should be kept alive in the background
      * @since 3.2.0
      */
-    public boolean isBusy(SwissKitJPlugin plugin) {
+    public boolean isBusy(ZhiFlowPlugin plugin) {
         if (plugin.hasRunningTasks()) return true;
         PluginHost host = hostsByPlugin.get(plugin);
         return host != null && host.tasks().runningCount() > 0;
@@ -238,7 +238,7 @@ public class PluginRegistry {
     /**
      * Deactivates the currently active plugin, if any.
      *
-     * <p>This calls {@link SwissKitJPlugin#onDeactivate()} on the active plugin and
+     * <p>This calls {@link ZhiFlowPlugin#onDeactivate()} on the active plugin and
      * clears the active plugin reference. It is a no-op if no plugin is currently active.
      * Exceptions thrown by the plugin callback are logged but otherwise ignored.</p>
      *
@@ -271,7 +271,7 @@ public class PluginRegistry {
      * @param plugin the plugin to check
      * @return {@code true} if the plugin was backgrounded and has not been reactivated
      */
-    public boolean isBackground(SwissKitJPlugin plugin) {
+    public boolean isBackground(ZhiFlowPlugin plugin) {
         return backgroundPlugins.contains(plugin);
     }
 
@@ -281,13 +281,13 @@ public class PluginRegistry {
      * @param id the plugin reverse-domain ID
      * @return an Optional containing the plugin if found
      */
-    public Optional<SwissKitJPlugin> findPlugin(String id) {
+    public Optional<ZhiFlowPlugin> findPlugin(String id) {
         return plugins.stream().filter(p -> p.getId().equals(id)).findFirst();
     }
 
     // ── AI tool lifecycle ───────────────────────────────────
 
-    private void registerPluginTools(SwissKitJPlugin plugin) {
+    private void registerPluginTools(ZhiFlowPlugin plugin) {
         List<AiTool> tools;
         try {
             tools = PluginContext.callWith(plugin, plugin::aiTools);
@@ -319,7 +319,7 @@ public class PluginRegistry {
         log.info("Registered {} AI tool(s) from plugin {}", names.size(), plugin.getId());
     }
 
-    private void unregisterPluginTools(SwissKitJPlugin plugin) {
+    private void unregisterPluginTools(ZhiFlowPlugin plugin) {
         List<String> names = toolsByPlugin.remove(plugin);
         if (names == null) return;
         for (String name : names) AiServiceProvider.unregisterTool(name);

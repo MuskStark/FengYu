@@ -62,7 +62,7 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
 
 | 方法 | 必须 | 说明 |
 |------|------|------|
-| `getId()` | 是 | 反向域名唯一标识，如 `plugin.swisskit.star` |
+| `getId()` | 是 | 反向域名唯一标识，如 `plugin.zhiflow.star` |
 | `getName()` | 是 | 显示名称 |
 | `getDescription()` | 是 | 短描述 |
 | `getCategory()` | 是 | 分类：`text / image / net / dev / other` |

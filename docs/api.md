@@ -1,10 +1,10 @@
 # API Reference
 
-Detailed reference for SwissKitJ's core interfaces, enums, components, and internal APIs.
+Detailed reference for ZhiFlow's core interfaces, enums, components, and internal APIs.
 
 ## SwissKitJPlugin Interface
 
-**Location**: `SwissKitJ-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`
+**Location**: `ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`
 
 | Method | Return Type | Description |
 |--------|-------------|-------------|
@@ -25,7 +25,7 @@ Detailed reference for SwissKitJ's core interfaces, enums, components, and inter
 
 ### ToolCategory
 
-**Location**: `SwissKitJ-Api/.../ToolCategory.java`
+**Location**: `ZhiFlow-Api/.../ToolCategory.java`
 
 | Constant | `getId()` | Description |
 |----------|-----------|-------------|
@@ -37,7 +37,7 @@ Detailed reference for SwissKitJ's core interfaces, enums, components, and inter
 
 ### ToolType
 
-**Location**: `SwissKitJ-Api/.../ToolType.java`
+**Location**: `ZhiFlow-Api/.../ToolType.java`
 
 | Constant | `getId()` | `isBuiltin()` |
 |----------|-----------|---------------|
@@ -46,7 +46,7 @@ Detailed reference for SwissKitJ's core interfaces, enums, components, and inter
 
 ### IconStyle
 
-**Location**: `SwissKitJ-Api/.../IconStyle.java`
+**Location**: `ZhiFlow-Api/.../IconStyle.java`
 
 | Constant | CSS Class | Color (RGB) |
 |----------|-----------|-------------|
@@ -60,7 +60,7 @@ Detailed reference for SwissKitJ's core interfaces, enums, components, and inter
 
 ## StepWizard
 
-**Location**: `SwissKitJ-Api/.../component/StepWizard.java`
+**Location**: `ZhiFlow-Api/.../component/StepWizard.java`
 
 | Method | Return Type | Description |
 |--------|-------------|-------------|
@@ -81,7 +81,7 @@ void onStepChanged(int from, int to, int total);
 
 ### LoggerFactory
 
-**Location**: `SwissKitJ-Api/.../log/LoggerFactory.java`
+**Location**: `ZhiFlow-Api/.../log/LoggerFactory.java`
 
 ```java
 PluginLogger getLogger(Class<?> clazz)
@@ -90,7 +90,7 @@ PluginLogger getLogger(String name)
 
 ### PluginLogger
 
-**Location**: `SwissKitJ-Api/.../log/PluginLogger.java`
+**Location**: `ZhiFlow-Api/.../log/PluginLogger.java`
 
 SLF4J-style `{}` placeholder API with levels: `trace`, `debug`, `info`, `warn`, `error`.
 
@@ -98,7 +98,7 @@ Each level has overloads: `(String)`, `(String, Object)`, `(String, Object, Obje
 
 ## Themes
 
-**Location**: `SwissKitJ-Api/.../theme/Themes.java`
+**Location**: `ZhiFlow-Api/.../theme/Themes.java`
 
 ```java
 static final String COMMON_CSS = "/css/zhiflow-common.css"
@@ -108,7 +108,7 @@ static void applyTo(Scene scene)
 
 ## PluginContext
 
-**Location**: `SwissKitJ-Api/.../PluginContext.java`
+**Location**: `ZhiFlow-Api/.../PluginContext.java`
 
 Associates external plugins with their dedicated `ClassLoader` and provides thread-context-classloader (TCCL) switching for safe plugin method invocation. The host wraps every call to a plugin method (`createView()`, `onActivate()`, etc.) with `runWith`/`callWith`, and wraps the plugin node's `EventDispatcher` via `wrapEvents` so that background threads spawned from event handlers inherit the correct TCCL.
 
@@ -127,9 +127,9 @@ Plugin keys are held via `WeakReference` so stale entries are eligible for GC ev
 
 ### DatabaseInit
 
-**Location**: `SwissKit/.../database/DatabaseInit.java`
+**Location**: `ZhiFlow/.../database/DatabaseInit.java`
 
-H2 at `.swisskit/swisskit.db`, schema from `init.sql`, MyBatis XML mappers in `resources/mapper/`.
+H2 at `.zhiflow/zhiflow.db`, schema from `init.sql`, MyBatis XML mappers in `resources/mapper/`.
 
 ```java
 static void init()

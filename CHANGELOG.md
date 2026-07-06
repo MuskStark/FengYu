@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to SwissKitJ. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+All notable changes to ZhiFlow. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
@@ -12,7 +12,7 @@ This release re-skins the app from glassmorphism-dark to the JetBrains **IDEA 20
 
 ### ⚠️ Breaking Changes
 
-- **`.glass-*` CSS utility classes renamed to `.sk-*`** (in `swisskit-common.css`). External plugins that call `getStyleClass().add("glass-...")` or reference `.glass-*` selectors must update. The full mapping:
+- **`.glass-*` CSS utility classes renamed to `.sk-*`** (in `zhiflow-common.css`). External plugins that call `getStyleClass().add("glass-...")` or reference `.glass-*` selectors must update. The full mapping:
 
   | old | new |
   |---|---|
@@ -25,7 +25,7 @@ This release re-skins the app from glassmorphism-dark to the JetBrains **IDEA 20
   | `glass-btn-primary` / `glass-btn-secondary` | `sk-btn-primary` / `sk-btn-secondary` |
   | `glass-notif-*` | `sk-notif-*` |
 
-  > The external plugin repo ([`MuskStark/SwissKiJ-Plugin`](https://github.com/MuskStark/SwissKiJ-Plugin)) is updated separately; flag this rename when migrating third-party plugins.
+  > The external plugin repo ([`MuskStark/ZhiFlow-Plugin`](https://github.com/MuskStark/ZhiFlow-Plugin)) is updated separately; flag this rename when migrating third-party plugins.
 
 ### 🎨 Theme (strict tokenization)
 
@@ -36,17 +36,17 @@ This release re-skins the app from glassmorphism-dark to the JetBrains **IDEA 20
 ### ✨ New
 
 - **Dark / light theme system** — `fan.summer.api.theme.ThemeService` (API module, no DB dependency) holds the active `Theme.DARK`/`Theme.LIGHT`, stamps a `theme-dark`/`theme-light` class on every registered scene root, and fires `onChange` listeners. Switchable from the sidebar footer (☀/☾) and the Settings page; persisted in the `theme` setting (`dark` default).
-- **Looked-up color tokens** (`-sk-bg`, `-sk-bg-elevated`, `-sk-text`, `-sk-accent`, `-sk-border`, …) declared per theme in `swisskit-common.css`; swapping the root class re-resolves every token with no stylesheet reload.
+- **Looked-up color tokens** (`-sk-bg`, `-sk-bg-elevated`, `-sk-text`, `-sk-accent`, `-sk-border`, …) declared per theme in `zhiflow-common.css`; swapping the root class re-resolves every token with no stylesheet reload.
 - **Collapsible sidebar** — `«`/`»` toggle between the label view and a 48px icon-strip; collapse state persisted via the `sidebar.collapsed` setting.
 - **Native window chrome** — `StageStyle.DECORATED` gives the real OS title bar + close/min/max (macOS traffic lights), replacing the custom transparent window.
 - `MarkdownRenderer.render(md, Theme)` / `renderPlain(md, Theme)` overloads (theme-aware dark/light CSS palettes); no-arg forms delegate via `ThemeService.current()`.
 
 ### ♻️ Changed
 
-- `swisskit-common.css` rewritten: token definitions under `.theme-dark`/`.theme-light`, every component flattened to IDEA New UI style (neutral-gray selection with a left accent bar, slim 4–8px scrollbars, flat fields/buttons/tables/tabs/dialogs/notifications), all `.glass-*` → `.sk-*`.
+- `zhiflow-common.css` rewritten: token definitions under `.theme-dark`/`.theme-light`, every component flattened to IDEA New UI style (neutral-gray selection with a left accent bar, slim 4–8px scrollbars, flat fields/buttons/tables/tabs/dialogs/notifications), all `.glass-*` → `.sk-*`.
 - `shell.css` rewritten token-based for the New UI shell (`.app-root`, `.sidebar` + `.collapsed`, capsule `.search-bar`, flat `.tool-card`, `.detail-panel`, `.statusbar`, `.store-*`).
 - `Themes.applyTo(scene)` now delegates to `ThemeService.registerScene(scene)` (loads the common stylesheet + stamps the theme class); the shared stylesheet load is factored into `Themes.loadCommonStylesheet(scene)` to keep the delegation non-recursive.
-- `SwissKitJApp` reads the persisted theme on startup and registers the main scene with `ThemeService`.
+- `ZhiFlowApp` reads the persisted theme on startup and registers the main scene with `ThemeService`.
 - `AiChatPlugin` derives its WebView background from the active theme and re-renders the conversation live on theme change.
 - Inline `#5b8cf7` accent literals replaced with `#3574F0` / the dark palette across the sidebar and Markdown link CSS.
 
@@ -69,11 +69,11 @@ This release rebuilds the AI subsystem on LangChain4j and unifies the two cloud 
 - **`OpenAiService` and `AnthropicService` concrete classes removed** — replaced by a single `CloudChatBackend` class with `openAi(...)` / `anthropic(...)` static factories. One unified class serves both providers.
 - **`CloudAiConfigProvider` and standalone `StreamingResponseHandlerBridge` removed** — their logic moved into `CloudChatBackend` (config accessors are public methods on the class; the stream bridge is a private inner class).
 - **`AiServiceImpl` renamed to `LocalChatBackend`** — pure rename, no behavior change.
-- **`BuiltinAiToolRegistrar` removed** — plugins now self-register AI tools via `SwissKitJPlugin.aiTools()`; the central registrar and its startup call are gone.
+- **`BuiltinAiToolRegistrar` removed** — plugins now self-register AI tools via `ZhiFlowPlugin.aiTools()`; the central registrar and its startup call are gone.
 
 ### ✨ New
 
-- **Plugins self-declare AI tools** via `SwissKitJPlugin.aiTools()` — the registry auto-registers/unregisters them on add/remove (including JAR hot-reload). No central registrar.
+- **Plugins self-declare AI tools** via `ZhiFlowPlugin.aiTools()` — the registry auto-registers/unregisters them on add/remove (including JAR hot-reload). No central registrar.
 - `AiTool` interface declares per-mode visibility (`supportsLocal` / `supportsCloud`) and dual descriptions (`getDescription` / `getLocalDescription`); `AiServiceProvider.getTools()` filters by the active backend mode.
 - `AiToolDescriptions` helper centralises cloud-rich / local-concise description templates.
 - **Qwen3-4B local tool-calling** — Hermes `<tool_call>` parsing (`ToolCallParser`), `ThinkingStreamSegmenter` (THINK / CONTENT / tool-call stream splitting), `Qwen3Adapter` (Hermes system prompt + `/no_think` toggle), and a collapsible thinking card in the chat UI.
@@ -88,7 +88,7 @@ This release rebuilds the AI subsystem on LangChain4j and unifies the two cloud 
 
 - All 16 builtin AI tools return standardized JSON `{success, summary, ...payload}`; tool descriptions follow a cloud-rich / local-concise dual template.
 - `BuiltinToolRegistrar.register()` routes through `PluginRegistry.addPlugins` to auto-register plugin AI tools in one pass.
-- **Unified `ChatBackend` interface** in `SwissKitJ-Api` — non-sealed (Java forbids cross-module sealed permits). Two known implementors: `CloudChatBackend`, `LocalChatBackend`. UI consumers use `instanceof` checks; the interface itself is treated as opaque.
+- **Unified `ChatBackend` interface** in `ZhiFlow-Api` — non-sealed (Java forbids cross-module sealed permits). Two known implementors: `CloudChatBackend`, `LocalChatBackend`. UI consumers use `instanceof` checks; the interface itself is treated as opaque.
 - **`CloudChatBackend` unifies OpenAI + Anthropic** in one class (~450 LOC). HTTP/SSE, tool-loop plumbing, and stream bridging are delegated to LangChain4j's streaming models; provider differences isolated to a `buildStreamingModel(...)` switch on an internal `Provider` enum.
 - `SynchronousChatHelper` (browser planner) rewritten to use LC4j's synchronous `OpenAiChatModel` directly via `CloudChatBackend` config accessors.
 - `AiServiceProvider` exposes `ChatBackend` everywhere (method names unchanged).
@@ -183,7 +183,7 @@ This release rebuilds the AI subsystem on LangChain4j and unifies the two cloud 
 - Harden Excel Splitter progress callback with null guard
 - Extract `StorePlugin` and `StorePluginLogic` from `OnlineStorePane` with unit tests
 - Add GPLv3 license file to the repository
-- Add JUnit 5 test dependency to `SwissKit` module
+- Add JUnit 5 test dependency to `ZhiFlow` module
 
 ---
 

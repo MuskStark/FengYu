@@ -1,7 +1,7 @@
 package fan.summer.zhiflow.ui.content;
 
 import fan.summer.zhiflow.api.MdiIconUtil;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.ToolCategory;
 import fan.summer.zhiflow.api.component.SkNotification;
 import fan.summer.zhiflow.api.i18n.I18n;
@@ -57,10 +57,10 @@ public class DetailPanel extends VBox {
     private final Button  favoriteBtn = new Button();
     private final Button  closeBtn   = new Button("✕");
 
-    private Consumer<SwissKitJPlugin> onLaunch;
-    private Consumer<SwissKitJPlugin> onUninstall;
-    private Consumer<SwissKitJPlugin> onFavoriteToggle;
-    private SwissKitJPlugin currentPlugin;
+    private Consumer<ZhiFlowPlugin> onLaunch;
+    private Consumer<ZhiFlowPlugin> onUninstall;
+    private Consumer<ZhiFlowPlugin> onFavoriteToggle;
+    private ZhiFlowPlugin currentPlugin;
     private boolean    panelOpen = false;
 
     public DetailPanel() {
@@ -90,7 +90,7 @@ public class DetailPanel extends VBox {
      *
      * @param handler the consumer that receives the currently displayed plugin
      */
-    public void setOnLaunch(Consumer<SwissKitJPlugin> handler) {
+    public void setOnLaunch(Consumer<ZhiFlowPlugin> handler) {
         LOG.debug("setOnLaunch callback set");
         this.onLaunch = handler;
     }
@@ -100,7 +100,7 @@ public class DetailPanel extends VBox {
      *
      * @param handler the consumer that receives the plugin to uninstall
      */
-    public void setOnUninstall(Consumer<SwissKitJPlugin> handler) {
+    public void setOnUninstall(Consumer<ZhiFlowPlugin> handler) {
         this.onUninstall = handler;
     }
 
@@ -109,7 +109,7 @@ public class DetailPanel extends VBox {
      *
      * @param handler the consumer that receives the affected plugin
      */
-    public void setOnFavoriteToggle(Consumer<SwissKitJPlugin> handler) {
+    public void setOnFavoriteToggle(Consumer<ZhiFlowPlugin> handler) {
         this.onFavoriteToggle = handler;
     }
 
@@ -119,7 +119,7 @@ public class DetailPanel extends VBox {
      *
      * @param plugin the plugin to display; must not be null
      */
-    public void show(SwissKitJPlugin plugin) {
+    public void show(ZhiFlowPlugin plugin) {
         LOG.info("Showing detail panel for plugin: name={}, id={}", plugin.getName(), plugin.getId());
         this.currentPlugin = plugin;
         fillData(plugin);
@@ -222,7 +222,7 @@ public class DetailPanel extends VBox {
         return new HBox(keyLabel, spacer, valLabel);
     }
 
-    private void fillData(SwissKitJPlugin p) {
+    private void fillData(ZhiFlowPlugin p) {
         // Rebuild icon the same way as ToolCard
         Color color = p.getIconStyle().getColor();
         String fillStyle = String.format("-fx-fill: rgba(%d,%d,%d,1.0);",
@@ -272,7 +272,7 @@ public class DetailPanel extends VBox {
 
     private void doUninstall() {
         if (currentPlugin == null) return;
-        SwissKitJPlugin plugin = currentPlugin;
+        ZhiFlowPlugin plugin = currentPlugin;
         String pluginName = plugin.getName();
 
         try {

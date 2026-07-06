@@ -1,6 +1,6 @@
 # 03 · Component Library
 
-> **Role:** The complete, authoritative spec for every reusable visual component in SwissKitJ.
+> **Role:** The complete, authoritative spec for every reusable visual component in ZhiFlow.
 > Each component is specified with enough detail that an AI (or a human who has never seen the
 > codebase) can generate a pixel-and-behavior-faithful implementation from scratch. When a value
 > is a theme token, this doc names the token and links out — it does **not** restate hex values.
@@ -10,8 +10,8 @@
 |---|---|
 | **Doc type** | Per-component reference spec (Foundation + Shell) |
 | **Audience** | UI designers, plugin authors, AI code generators |
-| **CSS source (foundation)** | [`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) — shared by host + every plugin |
-| **CSS source (shell)** | [`SwissKit/src/main/resources/css/shell.css`](../../SwissKit/src/main/resources/css/shell.css) — host app shell only |
+| **CSS source (foundation)** | [`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css) — shared by host + every plugin |
+| **CSS source (shell)** | [`ZhiFlow/src/main/resources/css/shell.css`](../../ZhiFlow/src/main/resources/css/shell.css) — host app shell only |
 | **Related** | [02 JavaFX Implementation](02-javafx-implementation.md) · [05 Theme & Color System](05-theme-color-system.md) · [06 Icon System](06-icon-system.md) |
 
 ---
@@ -20,7 +20,7 @@
 
 ### Two component families
 
-SwissKitJ has **two layers of components**, each with its own stylesheet. Knowing which layer a
+ZhiFlow has **two layers of components**, each with its own stylesheet. Knowing which layer a
 class lives in is the single most important fact about it:
 
 | Family | Stylesheet | Who can use it? | Class prefix | Count |
@@ -85,7 +85,7 @@ Every component below follows this identical structure so a code generator can p
 
 # Part A — Foundation Components
 
-> Source: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`. Available everywhere
+> Source: `ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`. Available everywhere
 > `Themes.applyTo(scene)` has been called.
 
 ---
@@ -160,7 +160,7 @@ empty.setStyle("-fx-font-size: 13px;");
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (utility-classes section)
+- CSS: `ZhiFlow-Api/src/main/resources/css/zhiflow-common.css` (utility-classes section)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 - Naming convention: [02 JavaFX Implementation — `#css-naming`](02-javafx-implementation.md#css-naming)
 
@@ -223,7 +223,7 @@ panel.setStyle("-fx-border-width: 1; -fx-border-radius: 8; -fx-background-radius
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (utility-classes section)
+- CSS: `ZhiFlow-Api/src/main/resources/css/zhiflow-common.css` (utility-classes section)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 - Naming convention: [02 JavaFX Implementation — `#css-naming`](02-javafx-implementation.md#css-naming)
 
@@ -287,7 +287,7 @@ err.setStyle("-fx-font-size: 12px;");
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (utility-classes section)
+- CSS: `ZhiFlow-Api/src/main/resources/css/zhiflow-common.css` (utility-classes section)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -338,7 +338,7 @@ glyph.getStyleClass().add("sk-fill-3");   // de-emphasized search glyph
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (utility-classes section)
+- CSS: `ZhiFlow-Api/src/main/resources/css/zhiflow-common.css` (utility-classes section)
 - Icons: [06 Icon System](06-icon-system.md)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
@@ -396,7 +396,7 @@ root.getStyleClass().add("sk-scrim");      // dim behind the dialog
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (utility-classes section)
+- CSS: `ZhiFlow-Api/src/main/resources/css/zhiflow-common.css` (utility-classes section)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -464,7 +464,7 @@ input.setPromptText("/path/to/file");
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (input-field section, lines 151–166)
+- CSS: `ZhiFlow-Api/src/main/resources/css/zhiflow-common.css` (input-field section, lines 151–166)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -539,7 +539,7 @@ cancel.setCancelButton(true);
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (primary/secondary button sections, lines 281–307)
+- CSS: `ZhiFlow-Api/src/main/resources/css/zhiflow-common.css` (primary/secondary button sections, lines 281–307)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -606,7 +606,7 @@ box.getSelectionModel().select(0);
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (combo-box section, lines 195–233)
+- CSS: `ZhiFlow-Api/src/main/resources/css/zhiflow-common.css` (combo-box section, lines 195–233)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -663,7 +663,7 @@ cb.setSelected(true);
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (checkbox section, lines 269–279)
+- CSS: `ZhiFlow-Api/src/main/resources/css/zhiflow-common.css` (checkbox section, lines 269–279)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -739,7 +739,7 @@ table.getStyleClass().add("sk-table");
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (table section, lines 250–267)
+- CSS: `ZhiFlow-Api/src/main/resources/css/zhiflow-common.css` (table section, lines 250–267)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -819,7 +819,7 @@ tabs.getTabs().addAll(
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (TabPane section, lines 168–193)
+- CSS: `ZhiFlow-Api/src/main/resources/css/zhiflow-common.css` (TabPane section, lines 168–193)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -879,7 +879,7 @@ dialog.setPadding(new Insets(20, 24, 16, 24));
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (dialog section, lines 141–149)
+- CSS: `ZhiFlow-Api/src/main/resources/css/zhiflow-common.css` (dialog section, lines 141–149)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 - Theming a standalone Stage: [02 JavaFX Implementation — `#plugin-skeleton`](02-javafx-implementation.md#plugin-skeleton)
 
@@ -890,7 +890,7 @@ dialog.setPadding(new Insets(20, 24, 16, 24));
 ### 1. Overview & anatomy
 
 The glassmorphism notification system, exposed to plugins via
-[`SkNotification`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java)
+[`SkNotification`](../../ZhiFlow-Api/src/main/java/fan/summer/api/component/SkNotification.java)
 (`toast` / `notify` / `confirm`). It is a self-contained elevated card with a severity-colored
 circular icon, a wrapped message, and an optional button bar. **There is no `.sk-badge` and no
 `.sk-notification`** — the family is `.sk-notif-*`.
@@ -993,8 +993,8 @@ then a `.sk-notif-btn-bar` of `.sk-notif-cancel` + `.sk-notif-ok` `Button`s.
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (notification section, lines 309–355)
-- Java: `SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java`
+- CSS: `ZhiFlow-Api/src/main/resources/css/zhiflow-common.css` (notification section, lines 309–355)
+- Java: `ZhiFlow-Api/src/main/java/fan/summer/api/component/SkNotification.java`
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -1058,15 +1058,15 @@ wizard.build();
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (StepWizard indicator section, lines 357–362)
-- Java: `SwissKitJ-Api/src/main/java/fan/summer/api/component/StepWizard.java`
+- CSS: `ZhiFlow-Api/src/main/resources/css/zhiflow-common.css` (StepWizard indicator section, lines 357–362)
+- Java: `ZhiFlow-Api/src/main/java/fan/summer/api/component/StepWizard.java`
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
 ---
 
 # Part B — Shell Components
 
-> Source: `SwissKit/src/main/resources/css/shell.css`. **Host application only.** These classes are
+> Source: `ZhiFlow/src/main/resources/css/shell.css`. **Host application only.** These classes are
 > app-shell chrome — they are not loaded onto plugin scenes and a plugin must not depend on them.
 > They are documented here so the shell itself can be regenerated faithfully.
 
@@ -1167,8 +1167,8 @@ item.getChildren().addAll(icon, text, badge);
 
 ### 7. References
 
-- CSS: `SwissKit/src/main/resources/css/shell.css` (sidebar section, lines 53–84)
-- Java: `SwissKit/src/main/java/fan/summer/ui/sidebar/Sidebar.java` (`NavItem` inner class)
+- CSS: `ZhiFlow/src/main/resources/css/shell.css` (sidebar section, lines 53–84)
+- Java: `ZhiFlow/src/main/java/fan/summer/ui/sidebar/Sidebar.java` (`NavItem` inner class)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 - Icons: [06 Icon System](06-icon-system.md)
 
@@ -1252,8 +1252,8 @@ bar.setPrefHeight(34);
 
 ### 7. References
 
-- CSS: `SwissKit/src/main/resources/css/shell.css` (search-bar section, lines 92–114; kbd lines 213–225)
-- Java: `SwissKit/src/main/java/fan/summer/ui/content/ContentArea.java` (`buildSearchBar()`)
+- CSS: `ZhiFlow/src/main/resources/css/shell.css` (search-bar section, lines 92–114; kbd lines 213–225)
+- Java: `ZhiFlow/src/main/java/fan/summer/ui/content/ContentArea.java` (`buildSearchBar()`)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -1353,8 +1353,8 @@ card.getChildren().addAll(wrap, name, desc, tag);
 
 ### 7. References
 
-- CSS: `SwissKit/src/main/resources/css/shell.css` (tool-card section, lines 116–158)
-- Java: `SwissKit/src/main/java/fan/summer/ui/content/ToolCard.java`
+- CSS: `ZhiFlow/src/main/resources/css/shell.css` (tool-card section, lines 116–158)
+- Java: `ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java`
 - Icons: [06 Icon System](06-icon-system.md) (and `IconStyle` enum)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
@@ -1446,8 +1446,8 @@ launch.setMaxWidth(Double.MAX_VALUE);
 
 ### 7. References
 
-- CSS: `SwissKit/src/main/resources/css/shell.css` (detail-panel section, lines 160–182)
-- Java: `SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java`
+- CSS: `ZhiFlow/src/main/resources/css/shell.css` (detail-panel section, lines 160–182)
+- Java: `ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java`
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 - Icons: [06 Icon System](06-icon-system.md)
 
@@ -1527,8 +1527,8 @@ bar.getChildren().addAll(tools, sep, plugins, spacer, clock);
 
 ### 7. References
 
-- CSS: `SwissKit/src/main/resources/css/shell.css` (statusbar section, lines 184–200)
-- Java: `SwissKit/src/main/java/fan/summer/ui/MainWindow.java` (`buildStatusBar()`)
+- CSS: `ZhiFlow/src/main/resources/css/shell.css` (statusbar section, lines 184–200)
+- Java: `ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java` (`buildStatusBar()`)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -1583,18 +1583,18 @@ A reverse index: given a class, find its component.
 
 ### Source files (canonical)
 
-- Foundation CSS: [`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css)
-- Shell CSS: [`SwissKit/src/main/resources/css/shell.css`](../../SwissKit/src/main/resources/css/shell.css)
+- Foundation CSS: [`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css)
+- Shell CSS: [`ZhiFlow/src/main/resources/css/shell.css`](../../ZhiFlow/src/main/resources/css/shell.css)
 - Shell Java:
-  - [`SwissKit/src/main/java/fan/summer/ui/sidebar/Sidebar.java`](../../SwissKit/src/main/java/fan/summer/ui/sidebar/Sidebar.java) (`NavItem`)
-  - [`SwissKit/src/main/java/fan/summer/ui/content/ContentArea.java`](../../SwissKit/src/main/java/fan/summer/ui/content/ContentArea.java) (search/grid)
-  - [`SwissKit/src/main/java/fan/summer/ui/content/ToolCard.java`](../../SwissKit/src/main/java/fan/summer/ui/content/ToolCard.java)
-  - [`SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java`](../../SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java)
-  - [`SwissKit/src/main/java/fan/summer/ui/MainWindow.java`](../../SwissKit/src/main/java/fan/summer/ui/MainWindow.java) (status bar)
+  - [`ZhiFlow/src/main/java/fan/summer/ui/sidebar/Sidebar.java`](../../ZhiFlow/src/main/java/fan/summer/ui/sidebar/Sidebar.java) (`NavItem`)
+  - [`ZhiFlow/src/main/java/fan/summer/ui/content/ContentArea.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ContentArea.java) (search/grid)
+  - [`ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java)
+  - [`ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java)
+  - [`ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java`](../../ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java) (status bar)
 - Foundation Java:
-  - [`SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java)
-  - [`SwissKitJ-Api/src/main/java/fan/summer/api/component/StepWizard.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/StepWizard.java)
-  - [`SwissKitJ-Api/src/main/java/fan/summer/api/IconStyle.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/IconStyle.java)
+  - [`ZhiFlow-Api/src/main/java/fan/summer/api/component/SkNotification.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/component/SkNotification.java)
+  - [`ZhiFlow-Api/src/main/java/fan/summer/api/component/StepWizard.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/component/StepWizard.java)
+  - [`ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java)
 
 ### Sibling UI design docs
 

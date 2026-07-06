@@ -38,7 +38,7 @@ import java.util.function.BooleanSupplier;
  * the user moves between steps, including programmatic navigation.</p>
  *
  * @since 1.0
- * @author SwissKitJ
+ * @author ZhiFlow
  */
 public class StepWizard extends BorderPane {
 

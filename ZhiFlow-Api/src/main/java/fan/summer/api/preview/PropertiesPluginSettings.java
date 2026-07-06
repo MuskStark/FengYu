@@ -15,7 +15,7 @@ import java.util.Properties;
 
 /**
  * Preview-mode {@link PluginSettings} backed by a per-plugin properties file
- * under {@code ~/.swisskit/preview-settings/}. Write-through: every mutation
+ * under {@code ~/.zhiflow/preview-settings/}. Write-through: every mutation
  * stores the file immediately (preview writes are low-frequency).
  *
  * @since 3.2.0
@@ -28,7 +28,7 @@ class PropertiesPluginSettings implements PluginSettings {
     private final Properties props = new Properties();
 
     PropertiesPluginSettings(String pluginId) {
-        this(Path.of(System.getProperty("user.home"), ".swisskit", "preview-settings"), pluginId);
+        this(Path.of(System.getProperty("user.home"), ".zhiflow", "preview-settings"), pluginId);
     }
 
     /** Test seam: explicit base directory. */
@@ -56,7 +56,7 @@ class PropertiesPluginSettings implements PluginSettings {
         try {
             Files.createDirectories(file.getParent());
             try (OutputStream out = Files.newOutputStream(file)) {
-                props.store(out, "SwissKitJ preview settings");
+                props.store(out, "ZhiFlow preview settings");
             }
         } catch (IOException e) {
             log.warn("Failed to store preview settings {}: {}", file, e.getMessage());

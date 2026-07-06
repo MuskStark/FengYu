@@ -1194,7 +1194,7 @@ Cloud services cannot be unit-tested without real API keys and network calls. Th
 1. Open AI tool
 2. Send: "Say hello in 5 words"
 3. Expected: streamed response appears token-by-token, completes within 5s
-4. ✅ If failed: check logs at `.swisskit/logs/swisskit.log` for LangChain4j errors
+4. ✅ If failed: check logs at `.zhiflow/logs/zhiflow.log` for LangChain4j errors
 
 - [ ] **Step 3: Verify tool calling (single round)**
 
@@ -1253,7 +1253,7 @@ git commit -m "📝 docs: record LangChain4j migration regression test results"
 - Modify: `CHANGELOG.md` (root)
 - Modify: `docs/changelog.md`
 - Modify: `docs/zh/changelog.md`
-- Modify: `SwissKit/pom.xml` + `SwissKitJ-Api/pom.xml` + `<swisskit.api.version>` (3.0.1 → 3.1.0)
+- Modify: `SwissKit/pom.xml` + `SwissKitJ-Api/pom.xml` + `<zhiflow.api.version>` (3.0.1 → 3.1.0)
 - Modify: jar-path references in `README.md`, `docs/`, `docs/zh/` (use `/docs-updater` skill)
 
 - [ ] **Step 1: Invoke docs-updater skill for version bump**

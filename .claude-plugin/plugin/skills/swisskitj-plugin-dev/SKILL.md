@@ -1,11 +1,11 @@
 ---
-name: swisskitj-plugin-dev
-description: Use when a developer wants to create a new SwissKitJ plugin. Scaffolds a standards-compliant plugin project in an independent repo and runs compliance checks.
+name: zhiflowj-plugin-dev
+description: Use when a developer wants to create a new ZhiFlow plugin. Scaffolds a standards-compliant plugin project in an independent repo and runs compliance checks.
 ---
 
-# SwissKitJ Plugin Scaffolder
+# ZhiFlow Plugin Scaffolder
 
-Scaffolds a new SwissKitJ plugin into the developer's **own, independent repo** (not this
+Scaffolds a new ZhiFlow plugin into the developer's **own, independent repo** (not this
 host repo) and verifies it against the host's design standards before declaring it done.
 
 This skill owns *how to assemble* a plugin project. It does not restate *why* the rules
@@ -24,8 +24,8 @@ Follow these five steps in order. Do not skip step 2 or step 5.
 Ask the developer for (do not guess silently if any are missing):
 
 1. **Plugin name** (e.g. `StarReport`) — used as the Java "Name" token (`{{Name}}`), artifact ID, and project folder name.
-2. **Plugin ID** (reverse-domain, e.g. `plugin.swisskit.star`) — at least two dot-separated segments; this becomes `getId()`.
-3. **Base package** (e.g. `plugin.swisskit.star`) — Java package root. Often identical to the plugin ID.
+2. **Plugin ID** (reverse-domain, e.g. `plugin.zhiflow.star`) — at least two dot-separated segments; this becomes `getId()`.
+3. **Base package** (e.g. `plugin.zhiflow.star`) — Java package root. Often identical to the plugin ID.
 4. **Short description** — shown in the host UI.
 5. **Category** — MUST be exactly one of `DEV`, `TEXT`, `IMAGE`, `NET`, `OTHER` (maps to `ToolCategory`). Reject any other value and ask again.
 6. **MDI icon name** — Material Design Icons name without the `mdi-` prefix (e.g. `file-excel`). See https://pictogrammers.com/library/mdi/.
@@ -39,8 +39,8 @@ DB path suffixes (`pl_<slug>`).
 
 Before generating a single file, read from **this same plugin bundle**:
 
-- `../../standards/VERSION` — the current SwissKitJ API version. Use this exact string as
-  the `swisskit.api.version` property value in the generated `pom.xml`. **Never hardcode a
+- `../../standards/VERSION` — the current ZhiFlow API version. Use this exact string as
+  the `zhiflow.api.version` property value in the generated `pom.xml`. **Never hardcode a
   version number in this skill file** — always read it fresh, since it changes across host
   releases.
 - `../../standards/checklist.md` — the full M1–M12 (mechanical) and S1–S6 (semantic) rule
@@ -65,21 +65,21 @@ same class responsibilities, same file set:
 <plugin-name>/
 ├── pom.xml
 ├── src/main/java/<base-package-path>/
-│   ├── <Name>Plugin.java          # SPI entry point (implements SwissKitJPlugin)
+│   ├── <Name>Plugin.java          # SPI entry point (implements ZhiFlowPlugin)
 │   ├── DevLauncher.java           # zero JavaFX (no import, no FQN) — delegates to DevApp
 │   ├── DevApp.java                # holds ALL JavaFX: Platform.startup + PluginPreviewWindow
 │   └── ui/
 │       └── <Name>PluginUi.java    # JavaFX UI, returns a Node via getView()
 └── src/main/resources/
-    ├── META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin
+    ├── META-INF/services/fan.summer.zhiflow.api.ZhiFlowPlugin
     └── i18n/
         ├── messages.properties       # English (default)
         └── messages_zh.properties    # Chinese
 ```
 
 **pom.xml** — standalone (no parent), Java 21, `<finalName>${project.artifactId}-${project.version}</finalName>`:
-- `SwissKitJ-Api` dependency, `scope=provided`, `<version>${swisskit.api.version}</version>`
-  where `swisskit.api.version` is a `<properties>` entry set to the value read in Step 2.
+- `ZhiFlow-Api` dependency, `scope=provided`, `<version>${zhiflow.api.version}</version>`
+  where `zhiflow.api.version` is a `<properties>` entry set to the value read in Step 2.
 - `javafx-graphics` + `javafx-controls`, `scope=provided` (host supplies at runtime).
 - `maven-shade-plugin` bound to the `package` phase with
   `<transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>`
@@ -91,7 +91,7 @@ same class responsibilities, same file set:
 - Reuse the exact KeepAwake `pom.xml` structure (compiler plugin, surefire, lombok if
   desired) as your literal template — do not redesign it.
 
-**`<Name>Plugin.java`** — implements `fan.summer.zhiflow.api.SwissKitJPlugin`. Follow
+**`<Name>Plugin.java`** — implements `fan.summer.zhiflow.api.ZhiFlowPlugin`. Follow
 `../../standards/entry-point.md` for the exact method bodies. Key facts to get right:
 - `getCategory()` returns a `ToolCategory` enum constant (not a string) — one of
   `DEV/TEXT/IMAGE/NET/OTHER` per the developer's answer in Step 1.
@@ -155,7 +155,7 @@ which is the actual defect M11 exists to catch. All JavaFX must live in `DevApp`
 renamed away in host v3.2.0 and is now banned). If the UI opens its own `Alert`/`Stage`,
 apply the theme per `../../standards/ui.md`'s `Themes.applyTo(scene)` pattern.
 
-**SPI file** — `src/main/resources/META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin`,
+**SPI file** — `src/main/resources/META-INF/services/fan.summer.zhiflow.api.ZhiFlowPlugin`,
 single line, the entry class FQN only:
 
 ```
@@ -196,7 +196,7 @@ beyond the skeleton; do not inline the full pattern here.
 ## Step 4 — Drop CLAUDE.md and validate.sh into the new repo
 
 1. Read `../../templates/CLAUDE.md.tmpl`, fill its `{{...}}` placeholders with the values
-   collected in Step 1 (and the `swisskit.api.version` read in Step 2), and write the result
+   collected in Step 1 (and the `zhiflow.api.version` read in Step 2), and write the result
    to `CLAUDE.md` at the new repo's root.
 2. Copy `../../scripts/validate.sh` verbatim into the new repo's root as `validate.sh`. This
    is the developer's own local copy going forward — the standing instruction in their new
@@ -214,10 +214,10 @@ bash validate.sh .
 This checks mechanical rules M1–M12. If it prints any `FAIL` line, fix the scaffolded files
 (not `validate.sh`) and re-run until it prints `VALIDATE OK: .` with zero `FAIL` lines.
 
-Then invoke the `swisskitj-plugin-reviewer` agent against the new project directory to check
+Then invoke the `zhiflowj-plugin-reviewer` agent against the new project directory to check
 the semantic rules S1–S6 (AiTool JSON contract, `host.tasks()` usage, `Themes.applyTo`,
 H2 path conventions, `createView()` caching discipline, `-sk-*` token usage). Fix every
 reported violation and re-invoke the reviewer until it reports `SEMANTIC OK`.
 
 Only declare the scaffold complete once both `bash validate.sh .` is clean and the
-`swisskitj-plugin-reviewer` agent reports `SEMANTIC OK`.
+`zhiflowj-plugin-reviewer` agent reports `SEMANTIC OK`.
