@@ -1,6 +1,6 @@
 package fan.summer.ai.model;
 
-import fan.summer.api.ai.AiChatMessage;
+import fan.summer.zhiflow.api.ai.AiChatMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

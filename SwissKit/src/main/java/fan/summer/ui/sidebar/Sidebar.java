@@ -1,8 +1,8 @@
 package fan.summer.ui.sidebar;
 
-import fan.summer.api.MdiIconUtil;
-import fan.summer.api.i18n.I18n;
-import fan.summer.api.theme.ThemeService;
+import fan.summer.zhiflow.api.MdiIconUtil;
+import fan.summer.zhiflow.api.i18n.I18n;
+import fan.summer.zhiflow.api.theme.ThemeService;
 import fan.summer.ui.setting.SwissKitJSettingUi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

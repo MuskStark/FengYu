@@ -1,13 +1,13 @@
 package fan.summer.buildintool.ai;
 
-import fan.summer.api.ai.*;
+import fan.summer.zhiflow.api.ai.*;
 import fan.summer.ai.util.JsonHelper;
 import fan.summer.buildintool.excelsplitter.*;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.excel.ComplexSplitConfigEntity;
 import fan.summer.database.mapper.excel.ComplexSplitConfigMapper;
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
 import org.apache.ibatis.session.SqlSession;
 
 import java.util.*;

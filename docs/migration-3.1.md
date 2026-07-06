@@ -21,13 +21,13 @@ directly.
 
 ```java
 // Before (3.0.x and earlier):
-import fan.summer.api.ai.AiService;
+import fan.summer.zhiflow.api.ai.AiService;
 Optional<AiService> opt = AiServiceProvider.getService();
 AiService svc = opt.get();
 svc.chat(history, callback);
 
 // After (3.1):
-import fan.summer.api.ai.ChatBackend;
+import fan.summer.zhiflow.api.ai.ChatBackend;
 Optional<ChatBackend> opt = AiServiceProvider.getService();
 ChatBackend svc = opt.get();
 svc.chat(history, callback);

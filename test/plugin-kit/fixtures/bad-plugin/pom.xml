@@ -19,7 +19,7 @@
     <dependencies>
         <!-- SwissKitJ API — VIOLATION: scope should be provided, not compile -->
         <dependency>
-            <groupId>fan.summer.api</groupId>
+            <groupId>fan.summer.zhiflow.api</groupId>
             <artifactId>SwissKitJ-Api</artifactId>
             <version>${swisskit.api.version}</version>
             <scope>compile</scope>

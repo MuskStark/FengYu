@@ -76,7 +76,7 @@
 ### 4.1 `SwissKitJPlugin.aiTools()` 默认方法
 
 ```java
-// SwissKitJ-Api: fan.summer.api.SwissKitJPlugin
+// SwissKitJ-Api: fan.summer.zhiflow.api.SwissKitJPlugin
 public interface SwissKitJPlugin {
     // ... 所有现有方法不变 ...
 

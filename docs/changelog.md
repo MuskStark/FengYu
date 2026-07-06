@@ -172,13 +172,13 @@ This release rebuilds the AI subsystem on LangChain4j and unifies the two cloud 
 - **PDF Tools**: Split, merge, and convert-to-Word (via WPS or documents4j) with `OfficeDetector` auto-detection; 3-tab UI registered as a built-in tool; AI tools for all three PDF operations
 - **Email Archive**: Built-in email archive tool with IMAP support (`EmailArchivePlugin`, `EmailArchiveService`), address book pane, and expanded mass-send service
 - **Plugin Background Execution**: Plugins can run tasks in the background with view caching and a ToolCard indicator showing running status
-- **Plugin Preview Window**: Self-contained preview shell for third-party plugin developers with `PreviewTitleBar`, `PreviewSidebar`, `PreviewToolCard`, `PreviewDetailPanel`, and `swisskit-preview.css`
+- **Plugin Preview Window**: Self-contained preview shell for third-party plugin developers with `PreviewTitleBar`, `PreviewSidebar`, `PreviewToolCard`, `PreviewDetailPanel`, and `zhiflow-preview.css`
 - **GlassNotification**: Glassmorphism-styled notification component replacing all `Alert` dialogs
 - **Application Icons**: Native-resolution application icons for macOS (.icns), Windows (.ico), and Linux (.png)
 - **Built-in Tools**: Base64 encoder/decoder, Hash Calculator, JSON Formatter, Color Converter, and Markdown Editor plugins registered as built-in tools
 - **I18n Framework**: Core `I18n` classes in SwissKitJ-Api with DB-persisted locale, plugin bundle registration/unregistration, and live language switching across all UI components (TitleBar, MainWindow, Sidebar, ContentArea, ToolCard, DetailPanel, Settings)
 - **Settings UI**: Redesigned settings with AI, Email, and Address Book tabs
-- **Three-Layer CSS**: `swisskit-common.css` (shared variables and glass-* utilities), `shell.css` (app shell), and `builtin.css` (built-in tools) with scene-graph inheritance
+- **Three-Layer CSS**: `zhiflow-common.css` (shared variables and glass-* utilities), `shell.css` (app shell), and `builtin.css` (built-in tools) with scene-graph inheritance
 - **Type-Safe Enums**: `ToolCategory`, `ToolType`, and `IconStyle` enums in SwissKitJ-Api replacing String-based metadata
 - **GGUFZ Support**: Accept `*.ggufz` compressed model files in the model file chooser
 - **Gson/JsonHelper**: `JsonHelper` utility (Gson-based) replaces `JsonBuilder`/`JsonParser`; `ToolCallParser` and all services use Gson
@@ -260,7 +260,7 @@ Complete migration from Swing/FlatLaf to **JavaFX 21** with a glassmorphism dark
 - **Plugin Logger**: `LoggerFactory` with SLF4J/Logback backbone; safe no-op in tests
 - **StepWizard**: Reusable multi-step wizard with dot navigation, slide transitions, validation
 - **Plugin Store**: Online catalog + local JAR install with hot-reload
-- **Three-Layer CSS**: `swisskit-common.css`, `shell.css`, `builtin.css` with scene-graph inheritance
+- **Three-Layer CSS**: `zhiflow-common.css`, `shell.css`, `builtin.css` with scene-graph inheritance
 - **Type-Safe Enums**: `ToolCategory`, `ToolType`, `IconStyle` replace String-based metadata
 - **Excel Splitter Wizard**: Redesigned with 4-step `StepWizard` flow
 

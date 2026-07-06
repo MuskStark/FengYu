@@ -1,6 +1,6 @@
 package fan.summer.plugin.host;
 
-import fan.summer.api.host.PluginSettings;
+import fan.summer.zhiflow.api.host.PluginSettings;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.PluginSettingEntity;
 import fan.summer.database.mapper.PluginSettingMapper;

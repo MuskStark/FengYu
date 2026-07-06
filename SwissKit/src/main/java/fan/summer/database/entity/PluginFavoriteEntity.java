@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
  * Entity representing a favorited (bookmarked) plugin stored in the database.
  *
  * <p>Each favorite is identified by the plugin's unique ID
- * ({@link fan.summer.api.SwissKitJPlugin#getId()}). Favorites are persisted
+ * ({@link fan.summer.zhiflow.api.SwissKitJPlugin#getId()}). Favorites are persisted
  * across application restarts and can be toggled from the tool card or detail panel.</p>
  *
  * @since 3.0.0

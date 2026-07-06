@@ -22,7 +22,7 @@ why behind each file.
     │   ├── {{Name}}DevApp.java        ← standalone JavaFX Application for `mvn javafx:run -Pdev`
     │   └── DevLauncher.java           ← zero-JavaFX-imports main class (module workaround)
     └── resources/
-        ├── META-INF/services/fan.summer.api.SwissKitJPlugin   ← one line: {{base-package}}.{{Name}}Plugin
+        ├── META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin   ← one line: {{base-package}}.{{Name}}Plugin
         └── i18n/
             ├── messages.properties        ← default/English, keys prefixed plugin.{{slug}}.
             └── messages_zh.properties     ← Chinese, same keys
@@ -52,7 +52,7 @@ Optional packages (only if needed): `database/` (H2+MyBatis), `excel/` (FesodShe
   <dependencies>
     <!-- SwissKitJ API + JavaFX are PROVIDED by the host at runtime -->
     <dependency>
-      <groupId>fan.summer.api</groupId>
+      <groupId>fan.summer.zhiflow.api</groupId>
       <artifactId>SwissKitJ-Api</artifactId>
       <version>${swisskit.api.version}</version>
       <scope>provided</scope>
@@ -88,7 +88,7 @@ Optional packages (only if needed): `database/` (H2+MyBatis), `excel/` (FesodShe
     <finalName>{{plugin-name}}</finalName>
     <plugins>
       <!-- Fat JAR. ServicesResourceTransformer is MANDATORY: it merges SPI files
-           from dependency JARs so META-INF/services/fan.summer.api.SwissKitJPlugin
+           from dependency JARs so META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin
            isn't overwritten during shading. Without it your plugin is invisible. -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -150,7 +150,7 @@ own deps (H2, FesodSheet, MyBatis) = default `compile` (shaded into your JAR).
 
 ## The SPI file (mandatory)
 
-Path: `src/main/resources/META-INF/services/fan.summer.api.SwissKitJPlugin`
+Path: `src/main/resources/META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin`
 (note: `META-INF/services/`, not `services/` at the root).
 
 Content: one line, the FQCN of your plugin class:
@@ -160,7 +160,7 @@ Content: one line, the FQCN of your plugin class:
 
 Verify after build:
 ```bash
-unzip -p target/{{plugin-name}}.jar META-INF/services/fan.summer.api.SwissKitJPlugin
+unzip -p target/{{plugin-name}}.jar META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin
 ```
 This must print your FQCN. If it's empty or wrong, the plugin won't load — check the shade
 plugin's `ServicesResourceTransformer`.
@@ -187,7 +187,7 @@ status bar, detail panel) so you can test your plugin UI without deploying. Use 
 `DevApp.start()`:
 
 ```java
-import fan.summer.api.preview.PluginPreviewWindow;
+import fan.summer.zhiflow.api.preview.PluginPreviewWindow;
 
 @Override
 public void start(Stage stage) throws Exception {
@@ -208,7 +208,7 @@ Builder methods: `configure()` (entry), `withJar(Path)` / `withPlugin(SwissKitJP
 `title(String)`, `windowSize(double, double)` (default 960×620), `showSidebar(boolean)` /
 `showSearchBar` / `showStatusBar` / `showDetailPanel` (default true), `launch()`.
 
-This loads `swisskit-common.css` and stamps the theme class via `Themes.applyTo(scene)`, so
+This loads `zhiflow-common.css` and stamps the theme class via `Themes.applyTo(scene)`, so
 what you see in the preview matches what the host renders.
 
 ## Build & deploy

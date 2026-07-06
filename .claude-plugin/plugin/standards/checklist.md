@@ -1,6 +1,6 @@
 **机械规则(validate.sh 判定)**:
 ```
-M1 SPI 文件存在:src/main/resources/META-INF/services/fan.summer.api.SwissKitJPlugin
+M1 SPI 文件存在:src/main/resources/META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin
 M2 SPI 内容 = 入口类 FQN,且该 .java 存在
 M3 SwissKitJ-Api 依赖 scope 为 provided
 M4 无 .glass- CSS 引用(源码+资源)

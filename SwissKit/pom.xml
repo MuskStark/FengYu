@@ -43,7 +43,7 @@
 
         <!-- SwissKitJ-Api: bundled in fat-JAR at runtime so plugins can load against it -->
         <dependency>
-            <groupId>fan.summer.api</groupId>
+            <groupId>fan.summer.zhiflow.api</groupId>
             <artifactId>SwissKitJ-Api</artifactId>
             <version>${swisskit.api.version}</version>
         </dependency>

@@ -2,15 +2,15 @@
 
 ## SwissKitJPlugin 接口
 
-所有插件必须实现 `fan.summer.api.SwissKitJPlugin`：
+所有插件必须实现 `fan.summer.zhiflow.api.SwissKitJPlugin`：
 
 ```java
 package {{base-package}};
 
-import fan.summer.api.IconStyle;
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.ToolCategory;
-import fan.summer.api.i18n.I18n;
+import fan.summer.zhiflow.api.IconStyle;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ToolCategory;
+import fan.summer.zhiflow.api.i18n.I18n;
 import javafx.scene.Node;
 import {{base-package}}.ui.{{Name}}PluginUi;
 
@@ -67,7 +67,7 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
 内访问 `settings()` / `tasks()` / `i18n()` / `theme()` / `notifications()`：
 
 ```java
-import fan.summer.api.host.PluginHost;
+import fan.summer.zhiflow.api.host.PluginHost;
 
 private PluginHost host;
 

@@ -101,7 +101,7 @@ SLF4J 风格的 `{}` 占位符 API，带级别：`trace`、`debug`、`info`、`w
 **位置**：`SwissKitJ-Api/.../theme/Themes.java`
 
 ```java
-static final String COMMON_CSS = "/css/swisskit-common.css"
+static final String COMMON_CSS = "/css/zhiflow-common.css"
 static String commonStylesheetUrl()
 static void applyTo(Scene scene)
 ```

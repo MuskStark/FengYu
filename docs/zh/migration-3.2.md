@@ -5,7 +5,7 @@
 
 ## 破坏性变更：`.glass-*` CSS 类改名为 `.sk-*`
 
-`swisskit-common.css` 中所有公共工具 CSS 类都从 `glass-*` 前缀改名为
+`zhiflow-common.css` 中所有公共工具 CSS 类都从 `glass-*` 前缀改名为
 `sk-*`（例如 `.glass-dialog` → `.sk-dialog`、`.glass-field` → `.sk-field`、
 `.glass-btn-primary` → `.sk-btn-primary`）。
 完整改名表见 `CHANGELOG.md` 的 `[3.2.0]` 段。
@@ -15,7 +15,7 @@
 
 ## 已废弃：`GlassNotification` → `SkNotification`
 
-`fan.summer.api.component.GlassNotification` 已废弃，现在是新类
+`fan.summer.zhiflow.api.component.GlassNotification` 已废弃，现在是新类
 `SkNotification` 的薄别名（同样的 `Type` 枚举、同样的 `toast` / `notify` /
 `confirm` 方法）。现有代码仍可编译，可在方便时迁移：
 
@@ -32,7 +32,7 @@ SkNotification.toast(view, SkNotification.Type.SUCCESS, "Saved");
 
 主窗口切换为 `StageStyle.DECORATED`。如果你的插件打开自己的透明/无边框
 `Stage`，对你没有影响——但记得调用
-`fan.summer.api.theme.Themes.applyTo(scene)` 以便 `-sk-*` token 能解析。
+`fan.summer.zhiflow.api.theme.Themes.applyTo(scene)` 以便 `-sk-*` token 能解析。
 
 ## 新增：`I18n.registerFallbackBundle(...)`
 
@@ -43,7 +43,7 @@ SkNotification.toast(view, SkNotification.Type.SUCCESS, "Saved");
 
 ## 新增：`PluginPreviewWindow`（开发工具）
 
-`fan.summer.api.preview.PluginPreviewWindow` 在一个独立的类 shell 窗口中
+`fan.summer.zhiflow.api.preview.PluginPreviewWindow` 在一个独立的类 shell 窗口中
 启动你的插件，带主题和语言切换——开发期间无需完整安装 SwissKitJ。
 
 > **稳定性说明：** 预览 API 是开发期工具。它的窗口布局有意模仿（但不共享）

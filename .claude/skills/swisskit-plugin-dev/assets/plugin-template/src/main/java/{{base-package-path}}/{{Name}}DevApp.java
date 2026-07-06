@@ -1,13 +1,9 @@
 package {{base-package}};
 
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.preview.PluginPreviewWindow;
-import fan.summer.api.theme.Themes;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.preview.PluginPreviewWindow;
 
 import javafx.application.Application;
-import javafx.application.Platform;
-import javafx.scene.Scene;
-import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
 
 /**
@@ -15,8 +11,13 @@ import javafx.stage.Stage;
  *
  * <p>Launched via {@link DevLauncher} ({@code mvn javafx:run -Pdev}). Uses
  * {@link PluginPreviewWindow} — a host-like shell (sidebar/search/status/detail panel) that
- * loads {@code swisskit-common.css} and stamps the theme class, so what you see matches the
- * real host. Alternatively, hand-roll a {@link Scene} and call {@link Themes#applyTo(Scene)}.
+ * loads {@code zhiflow-common.css}, stamps the theme class, AND injects a {@code PluginHost}
+ * into the plugin (calls {@code init(host)}) exactly like the real host. That injection is why
+ * a hand-rolled {@code Scene} is NOT a valid dev harness in 3.2.0: without it the plugin's
+ * {@code host} field stays null and every {@code host.i18n()/logger()/...} call throws.
+ *
+ * <p>Do not read plugin metadata (e.g. {@code plugin.getName()}) before {@code launch()} runs —
+ * the host isn't injected until then. Use a literal window title here.
  *
  * <p>This class is NOT packaged into the production plugin JAR's runtime path — it's only used
  * for the dev profile.
@@ -27,25 +28,16 @@ public class {{Name}}DevApp extends Application {
 
     @Override
     public void start(Stage stage) {
-        // Option A (recommended): the host-like preview shell.
+        // The host-like preview shell — injects a PluginHost via init(host) before showing the view.
         PluginPreviewWindow.configure()
                 .withPlugin(plugin)
-                .title(plugin.getName() + " — dev preview")
+                .title("{{Name}} — dev preview")   // literal: host not injected until launch()
                 .windowSize(960, 620)
                 .showSidebar(true)
                 .showSearchBar(true)
                 .showStatusBar(true)
                 .showDetailPanel(true)
                 .launch();   // must run on the JavaFX Application thread
-
-        // Option B (minimal, hand-rolled) — swap in if you don't want the full preview shell:
-        //   BorderPane pane = new BorderPane();
-        //   pane.setCenter(plugin.createView());
-        //   Scene scene = new Scene(pane, 720, 480);
-        //   Themes.applyTo(scene);          // load swisskit-common.css + stamp theme class
-        //   stage.setScene(scene);
-        //   stage.setTitle(plugin.getName() + " — dev");
-        //   stage.show();
     }
 
     public static void main(String[] args) {

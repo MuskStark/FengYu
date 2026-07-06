@@ -117,7 +117,7 @@ once per plugin; the host caches the returned `Node`.
   JSON/Base64/Hash dev tools, Excel Splitter, Color Converter, Markdown Editor, Email,
   Email Archive, PDF). No SPI involved.
 - **External plugins**: implement `SwissKitJPlugin`, declare it in
-  `META-INF/services/fan.summer.api.SwissKitJPlugin`, and drop the JAR into
+  `META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin`, and drop the JAR into
   `.swisskit/plugin/`. Hot-reload is supported via a directory watcher.
 
 ### Plugin Loading & Class Isolation
@@ -144,7 +144,7 @@ unloads the JAR and deletes the original file.
 
 ### Plugin Context (thread-context ClassLoader)
 
-Each loaded plugin is registered with `fan.summer.api.PluginContext`, which associates
+Each loaded plugin is registered with `fan.summer.zhiflow.api.PluginContext`, which associates
 the plugin instance with its `ClassLoader` (held via `WeakReference` so a missed
 `unregister()` still allows GC). The host wraps every call into a plugin so the correct
 ClassLoader is on the thread-context ClassLoader (TCCL):
@@ -168,7 +168,7 @@ UI components observe the set reactively. It is a singleton (`FavoriteService.ge
 
 ### Plugin Logging
 
-Plugins use `fan.summer.api.log.LoggerFactory`, which routes to SLF4J/Logback when the
+Plugins use `fan.summer.zhiflow.api.log.LoggerFactory`, which routes to SLF4J/Logback when the
 host is running (rolling file under `.swisskit/logs/swisskit.log`, daily rotation, 7-day
 retention) and returns a silent no-op logger in tests. Use SLF4J-style `{}` placeholders.
 
@@ -229,7 +229,7 @@ Three-layer glassmorphism dark theme:
 
 | File | Module | Scope |
 |------|--------|-------|
-| `css/swisskit-common.css` | `SwissKitJ-Api` | Shared variables, scrollbars, progress bar, `.glass-*` utility classes, `.section-title`/`.section-header` |
+| `css/zhiflow-common.css` | `SwissKitJ-Api` | Shared variables, scrollbars, progress bar, `.glass-*` utility classes, `.section-title`/`.section-header` |
 | `css/shell.css` | `SwissKit` | App chrome — titlebar, sidebar, search bar, tool cards, detail panel, status bar, `.ic-*` icon classes |
 | `css/builtin.css` | `SwissKit` | Built-in tool styling |
 

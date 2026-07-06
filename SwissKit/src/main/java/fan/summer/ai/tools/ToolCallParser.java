@@ -1,7 +1,7 @@
 package fan.summer.ai.tools;
 
 import fan.summer.ai.util.JsonHelper;
-import fan.summer.api.ai.AiToolCall;
+import fan.summer.zhiflow.api.ai.AiToolCall;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -64,7 +64,7 @@ SwissKitJ/
 ```xml
 <dependencies>
     <dependency>
-        <groupId>fan.summer.api</groupId>
+        <groupId>fan.summer.zhiflow.api</groupId>
         <artifactId>SwissKitJ-Api</artifactId>
         <version>3.0.0</version>
         <scope>provided</scope>
@@ -77,7 +77,7 @@ SwissKitJ/
 ```java
 package plugin.example.mytool;
 
-import fan.summer.api.*;
+import fan.summer.zhiflow.api.*;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.layout.VBox;
@@ -103,7 +103,7 @@ public class MyToolPlugin implements SwissKitJPlugin {
 
 **3. Register via SPI**
 
-Create `META-INF/services/fan.summer.api.SwissKitJPlugin`:
+Create `META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin`:
 
 ```
 plugin.example.mytool.MyToolPlugin
@@ -178,7 +178,7 @@ Three-layer CSS:
 
 | File | Scope |
 |------|-------|
-| `swisskit-common.css` | Shared variables, `.glass-*` utilities, `.section-title` |
+| `zhiflow-common.css` | Shared variables, `.glass-*` utilities, `.section-title` |
 | `shell.css` | App chrome — titlebar, sidebar, cards, panels |
 | `builtin.css` | Built-in tool styling |
 
@@ -193,8 +193,8 @@ Available classes: `.glass-dialog`, `.glass-field`, `.glass-combo`, `.glass-tabl
 ## Logging
 
 ```java
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
 
 private static final PluginLogger log = LoggerFactory.getLogger(MyPlugin.class);
 

@@ -18,20 +18,20 @@ root cause is narrower than the symptom, but the user elected a **full-project s
 ### Root cause — why popups look un-themed
 
 `GlassNotification` (the single toast/notify/confirm component used app-wide) loads
-`swisskit-common.css` directly but **never stamps the theme class on its scene root**:
+`zhiflow-common.css` directly but **never stamps the theme class on its scene root**:
 
 ```java
 // GlassNotification.java:259-262  (BUG)
 Scene scene = new Scene(root);
 scene.setFill(null);
-scene.getStylesheets().add(..."/css/swisskit-common.css"...);  // stylesheet loaded...
+scene.getStylesheets().add(..."/css/zhiflow-common.css"...);  // stylesheet loaded...
 stage.setScene(scene);
 // ...but Themes.applyTo(scene) is NEVER called → no .theme-dark/.theme-light class
 // → every -sk-* looked-up color is UNDEFINED → falls back to JavaFX Modena (white)
 ```
 
 Because JavaFX looked-up colors (`-sk-*`) only resolve under a `.theme-dark` / `.theme-light`
-class on the scene root (see `swisskit-common.css:17-48`), all notification colors collapse to
+class on the scene root (see `zhiflow-common.css:17-48`), all notification colors collapse to
 JavaFX defaults in **both** themes. Compare `PluginPreviewWindow.java:179`, which correctly calls
 `Themes.applyTo(scene)` with an explanatory comment.
 
@@ -70,7 +70,7 @@ These are documented contracts in `docs/ui-design/05-theme-color-system.md` that
 
 ## 3. New Theme-Aware Tokens & Utility Classes
 
-### 3.1 New looked-up colors (in `swisskit-common.css`, under both theme blocks)
+### 3.1 New looked-up colors (in `zhiflow-common.css`, under both theme blocks)
 
 | Token | Dark | Light | Purpose |
 |---|---|---|---|
@@ -97,7 +97,7 @@ Design notes:
 | `.sk-danger-text` | `-fx-text-fill: -sk-danger;` | Error status labels |
 | `.sk-scrim` | `-fx-background-color: -sk-scrim;` | Modal backdrop fills |
 
-These join the existing `.sk-t1/.sk-t2/.sk-surface/.sk-outlined` family (`swisskit-common.css:116-124`).
+These join the existing `.sk-t1/.sk-t2/.sk-surface/.sk-outlined` family (`zhiflow-common.css:116-124`).
 
 ### 3.3 Token count
 
@@ -119,11 +119,11 @@ status-soft) and the rule that future additions follow the same propose-in-CSS-f
 
 | File:Line | Current | After |
 |---|---|---|
-| `swisskit-common.css:133` (`.sk-dialog` shadow) | `rgba(0,0,0,0.45)` | `-sk-shadow` |
-| `swisskit-common.css:301` (`.sk-notif-root` shadow) | `rgba(0,0,0,0.50)` | `-sk-shadow` |
-| `swisskit-common.css:312` (`.sk-notif-success` bg) | `rgba(76,217,123,0.15)` | `-sk-success-soft` |
-| `swisskit-common.css:313` (`.sk-notif-warning` bg) | `rgba(245,166,35,0.15)` | `-sk-warning-soft` |
-| `swisskit-common.css:314` (`.sk-notif-error` bg) | `rgba(242,92,92,0.15)` | `-sk-danger-soft` |
+| `zhiflow-common.css:133` (`.sk-dialog` shadow) | `rgba(0,0,0,0.45)` | `-sk-shadow` |
+| `zhiflow-common.css:301` (`.sk-notif-root` shadow) | `rgba(0,0,0,0.50)` | `-sk-shadow` |
+| `zhiflow-common.css:312` (`.sk-notif-success` bg) | `rgba(76,217,123,0.15)` | `-sk-success-soft` |
+| `zhiflow-common.css:313` (`.sk-notif-warning` bg) | `rgba(245,166,35,0.15)` | `-sk-warning-soft` |
+| `zhiflow-common.css:314` (`.sk-notif-error` bg) | `rgba(242,92,92,0.15)` | `-sk-danger-soft` |
 
 ### Tier 3 — Java popup `setStyle` hardcoded colors
 
@@ -142,12 +142,12 @@ status-soft) and the rule that future additions follow the same propose-in-CSS-f
 | **Primary button** | `EmailPlugin.java:670` + shared `glassBtn` helper (`#3574F0`+`white`) | Use existing `.sk-btn-primary` class |
 | **StepWizard indicator** | `StepWizard.java:84-86,178,215-216,218,220-221,223,230-231,233,238-239` | Rewrite indicator: tokenize `ACCENT`→`-sk-accent`, `DONE_COLOR`→`-sk-success`, idle dots/strokes/connectors from white-tints to `-sk-bg-selected`/`-sk-border` so they are visible on white; checkmark/idle number text via `.sk-t1`/`.sk-t3` |
 | **ToggleSwitch** | `ToggleSwitch.java:26-27,40` (`Color.rgb(255,255,255,0.18)`, `#3574F0`, `Color.WHITE`) | Tokenize the track/knob fills: the `#3574F0` accent-on knob uses `-sk-accent`; the `Color.WHITE` knob text stays white (on-accent contrast, same precedent as `.sk-btn-primary`); the white-tint track idle fill becomes `-sk-bg-selected` so it shows on both themes. Implementer to confirm each line's role during the pass. |
-| **CSS shadows (other files)** | `swisskit-preview.css:16,131,164`; `shell.css:169`; `builtin.css:91,125` | Black-based dropshadows → `-sk-shadow` |
+| **CSS shadows (other files)** | `zhiflow-preview.css:16,131,164`; `shell.css:169`; `builtin.css:91,125` | Black-based dropshadows → `-sk-shadow` |
 
 ### Out of scope (explicitly excluded)
 
 - `RichTextEditor.java:136` `ColorPicker(Color.WHITE)` — user-selectable control default, not styling.
-- `.sk-notif-ok` `white` text (`swisskit-common.css:319`) — contrast-on-accent text, correct in both themes (precedent: `.sk-btn-primary`, checkbox mark).
+- `.sk-notif-ok` `white` text (`zhiflow-common.css:319`) — contrast-on-accent text, correct in both themes (precedent: `.sk-btn-primary`, checkbox mark).
 - `backup/` directory — pre-refactor, not on active classpath.
 
 ---
@@ -198,6 +198,6 @@ status-soft) and the rule that future additions follow the same propose-in-CSS-f
   verify it first within Tier 4, before declaring Tier 4 done.
 - **Tier 1 is the headline fix** and is independent of all other tiers — it can ship alone if any
   later tier runs into trouble.
-- **API vs app module:** `GlassNotification`, `StepWizard`, `Themes`, and `swisskit-common.css`
+- **API vs app module:** `GlassNotification`, `StepWizard`, `Themes`, and `zhiflow-common.css`
   live in `SwissKitJ-Api` (consumed by plugins); `AboutDialog`/`SettingUi`/`EmailPlugin` live in
   the `SwissKit` app module. The new tokens/classes land in the API CSS so both modules see them.

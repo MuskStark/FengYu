@@ -75,7 +75,7 @@ Unicode 码位。
 ### 你要用到的唯一 API
 
 ```java
-import fan.summer.api.MdiIconUtil;
+import fan.summer.zhiflow.api.MdiIconUtil;
 import javafx.scene.text.Text;
 
 // 1. 名称不带 "mdi-" 前缀；尺寸单位为逻辑像素
@@ -157,7 +157,7 @@ MdiIconUtil.putIcon("my-plugin-mark", "\uDB81\uDC93"); // 来自你字体子集�
 
 ### MdiIconUtil API
 
-所有方法都是 `fan.summer.api.MdiIconUtil` 上的 `static`。该类惰性加载码位表和字体，并在进程
+所有方法都是 `fan.summer.zhiflow.api.MdiIconUtil` 上的 `static`。该类惰性加载码位表和字体，并在进程
 生命周期内缓存。
 
 | 签名 | 返回 | 行为 |
@@ -207,7 +207,7 @@ MdiIconUtil.putIcon("my-plugin-mark", "\uDB81\uDC93"); // 来自你字体子集�
 
 ### IconStyle 强调色调色板
 
-`fan.summer.api.IconStyle`——七种强调样式。每个携带一个**CSS 类名**和一个
+`fan.summer.zhiflow.api.IconStyle`——七种强调样式。每个携带一个**CSS 类名**和一个
 **`javafx.scene.paint.Color`**。CSS 类施加于图标*容器*；颜色从 Java 施加于 `Text` *字形*。
 （见[那个陷阱](#关键的-ic--陷阱)。）
 
@@ -297,17 +297,17 @@ Java 通过 `IconStyle.getColor()` 填充。
 ### 4.1 创建通用的、跟随主题的图标（导航 / 工具栏 / 状态）
 
 对于应当随主题重染的图标（非工具 UI 的常见情形），使用
-[`swisskit-common.css`](../../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css) 中的
+[`zhiflow-common.css`](../../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) 中的
 `.sk-fill-2` / `.sk-fill-3` **工具样式类**：
 
 ```css
-/* swisskit-common.css */
+/* zhiflow-common.css */
 .sk-fill-2 { -fx-fill: -sk-text-secondary; }   /* Text/Shape 填充（次要） */
 .sk-fill-3 { -fx-fill: -sk-text-disabled; }    /* Text/Shape 填充（弱化） */
 ```
 
 ```java
-import fan.summer.api.MdiIconUtil;
+import fan.summer.zhiflow.api.MdiIconUtil;
 import javafx.scene.text.Text;
 
 // 次要色调、自动跟随深色/浅色主题的图标
@@ -340,9 +340,9 @@ Text warn2 = MdiIconUtil.createIcon("alert", 16.0, "-fx-fill: #FFB320;");
 插件提供*名称*（`getMdiIcon()`）和*样式*（`getIconStyle()`）；宿主完成填充 + 辉光：
 
 ```java
-import fan.summer.api.IconStyle;
-import fan.summer.api.MdiIconUtil;
-import fan.summer.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.IconStyle;
+import fan.summer.zhiflow.api.MdiIconUtil;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
 import javafx.scene.effect.DropShadow;
 import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
@@ -509,7 +509,7 @@ t.setStyle("-fx-fill: -sk-text-secondary;");   // ❌ 无法解析
 | 码位表（7 448 条，键为裸名称） | [`SwissKitJ-Api/src/main/resources/fonts/mdi-codemap.properties`](../../../SwissKitJ-Api/src/main/resources/fonts/mdi-codemap.properties) |
 | 字体二进制 | `/fonts/materialdesignicons-webfont.ttf`（classpath，API 模块） |
 | 空的 `.ic-*` 规则 + `.tool-icon-wrap`（48px）+ `.nav-item-icon`（18px） | [`SwissKit/src/main/resources/css/shell.css`](../../../SwissKit/src/main/resources/css/shell.css) |
-| `.sk-fill-2` / `.sk-fill-3` 工具类 | [`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`](../../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css) |
+| `.sk-fill-2` / `.sk-fill-3` 工具类 | [`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`](../../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) |
 | 规范的工具图标渲染器（45px 字形 + 辉光） | [`SwissKit/src/main/java/fan/summer/ui/content/ToolCard.java`](../../../SwissKit/src/main/java/fan/summer/ui/content/ToolCard.java) |
 | 详情面板主视觉渲染器（50px 字形 + 辉光） | [`SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java`](../../../SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java) |
 | 11 个内置工具图标映射 | [`SwissKit/src/main/java/fan/summer/registrar/BuiltinToolRegistrar.java`](../../../SwissKit/src/main/java/fan/summer/registrar/BuiltinToolRegistrar.java) |

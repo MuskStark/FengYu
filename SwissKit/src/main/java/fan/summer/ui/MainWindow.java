@@ -1,8 +1,8 @@
 package fan.summer.ui;
 
-import fan.summer.api.PluginContext;
-import fan.summer.api.component.SkNotification;
-import fan.summer.api.i18n.I18n;
+import fan.summer.zhiflow.api.PluginContext;
+import fan.summer.zhiflow.api.component.SkNotification;
+import fan.summer.zhiflow.api.i18n.I18n;
 import fan.summer.plugin.FavoriteService;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.plugin.PluginRegistry;
@@ -10,7 +10,7 @@ import fan.summer.ui.about.AboutPage;
 import fan.summer.ui.content.ContentArea;
 import fan.summer.ui.setting.SwissKitJSettingUi;
 import fan.summer.ui.sidebar.Sidebar;
-import fan.summer.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
 import fan.summer.buildintool.ai.AiChatPlugin;
 import javafx.animation.*;
 import javafx.geometry.Insets;

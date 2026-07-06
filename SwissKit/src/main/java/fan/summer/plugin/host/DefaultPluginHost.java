@@ -1,11 +1,11 @@
 package fan.summer.plugin.host;
 
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.host.BasePluginHost;
-import fan.summer.api.host.PluginSettings;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.host.BasePluginHost;
+import fan.summer.zhiflow.api.host.PluginSettings;
 
 /**
- * Host-side {@link fan.summer.api.host.PluginHost}: {@link BasePluginHost}
+ * Host-side {@link fan.summer.zhiflow.api.host.PluginHost}: {@link BasePluginHost}
  * plus H2-backed settings.
  *
  * @since 3.2.0

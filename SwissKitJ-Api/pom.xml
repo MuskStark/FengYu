@@ -5,38 +5,32 @@
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>fan.summer.api</groupId>
-  <artifactId>SwissKitJ-Api</artifactId>
-  <version>3.2.0</version>
-  <name>SwissKitJ Api</name>
-  <description>Plugin API for SwissKitJ. Third-party plugin developers depend on this artifact with provided scope.</description>
+  <parent>
+    <groupId>fan.summer.zhiflow</groupId>
+    <artifactId>ZhiFlow-parent</artifactId>
+    <version>4.0.0-SNAPSHOT</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
 
-  <licenses>
-    <license>
-      <name>GNU General Public License v3.0</name>
-      <url>https://www.gnu.org/licenses/gpl-3.0.txt</url>
-      <distribution>repo</distribution>
-    </license>
-  </licenses>
+  <groupId>fan.summer.zhiflow.api</groupId>
+  <artifactId>ZhiFlow-Api</artifactId>
+
+  <name>ZhiFlow Api</name>
+  <description>Plugin API for ZhiFlow. Third-party plugin developers depend on this artifact with provided scope.</description>
 
   <properties>
-    <maven.compiler.source>21</maven.compiler.source>
-    <maven.compiler.target>21</maven.compiler.target>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <javafx.version>21.0.2</javafx.version>
+    <!-- All compiler/encoding/javafx version pins are inherited from the parent. -->
   </properties>
 
   <dependencies>
     <dependency>
       <groupId>org.openjfx</groupId>
       <artifactId>javafx-graphics</artifactId>
-      <version>${javafx.version}</version>
       <scope>provided</scope>
     </dependency>
     <dependency>
       <groupId>org.openjfx</groupId>
       <artifactId>javafx-controls</artifactId>
-      <version>${javafx.version}</version>
       <scope>provided</scope>
     </dependency>
 
@@ -44,18 +38,15 @@
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
-      <version>5.10.2</version>
-      <scope>test</scope>
     </dependency>
   </dependencies>
 
   <build>
     <plugins>
-      <!-- Surefire: run JUnit 5 tests -->
+      <!-- Surefire: run JUnit 5 tests (version inherited from parent pluginManagement) -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
-        <version>3.2.5</version>
       </plugin>
     </plugins>
   </build>

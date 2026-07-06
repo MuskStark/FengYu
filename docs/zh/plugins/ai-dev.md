@@ -15,7 +15,7 @@ SwissKitJ 提供了一个 **Agent Skills** 包，把 AI 编程助手变成一位
 
 - 用**单一类**直接实现 `SwissKitJPlugin`（11 个内置工具都用的单类模式），而非 `*PluginUi` 包装类。
 - 用正确的签名和返回值，接好 7 个必需 + 9 个默认方法。
-- 配置 `META-INF/services/fan.summer.api.SwissKitJPlugin` 和 `maven-shade-plugin` 的
+- 配置 `META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin` 和 `maven-shade-plugin` 的
   `ServicesResourceTransformer`，确保插件真的能被加载。
 - 用 `-sk-*` token / `.sk-*` 类来上色（绝不内联十六进制），与
   [设计规范](/zh/ui-design/01-design-system.md) 一致——字号、间距、圆角、动效、无障碍。

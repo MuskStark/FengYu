@@ -71,7 +71,7 @@ same class responsibilities, same file set:
 │   └── ui/
 │       └── <Name>PluginUi.java    # JavaFX UI, returns a Node via getView()
 └── src/main/resources/
-    ├── META-INF/services/fan.summer.api.SwissKitJPlugin
+    ├── META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin
     └── i18n/
         ├── messages.properties       # English (default)
         └── messages_zh.properties    # Chinese
@@ -91,7 +91,7 @@ same class responsibilities, same file set:
 - Reuse the exact KeepAwake `pom.xml` structure (compiler plugin, surefire, lombok if
   desired) as your literal template — do not redesign it.
 
-**`<Name>Plugin.java`** — implements `fan.summer.api.SwissKitJPlugin`. Follow
+**`<Name>Plugin.java`** — implements `fan.summer.zhiflow.api.SwissKitJPlugin`. Follow
 `../../standards/entry-point.md` for the exact method bodies. Key facts to get right:
 - `getCategory()` returns a `ToolCategory` enum constant (not a string) — one of
   `DEV/TEXT/IMAGE/NET/OTHER` per the developer's answer in Step 1.
@@ -129,7 +129,7 @@ public class DevLauncher {
 ```java
 package {{base-package}};
 
-import fan.summer.api.preview.PluginPreviewWindow;
+import fan.summer.zhiflow.api.preview.PluginPreviewWindow;
 import javafx.application.Platform;
 
 public class DevApp {
@@ -155,7 +155,7 @@ which is the actual defect M11 exists to catch. All JavaFX must live in `DevApp`
 renamed away in host v3.2.0 and is now banned). If the UI opens its own `Alert`/`Stage`,
 apply the theme per `../../standards/ui.md`'s `Themes.applyTo(scene)` pattern.
 
-**SPI file** — `src/main/resources/META-INF/services/fan.summer.api.SwissKitJPlugin`,
+**SPI file** — `src/main/resources/META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin`,
 single line, the entry class FQN only:
 
 ```

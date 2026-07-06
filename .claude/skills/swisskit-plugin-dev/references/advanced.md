@@ -54,68 +54,60 @@ Tool `execute` runs through `PluginContext` (correct TCCL).
 Reference builtin example:
 [`BuiltinJsonFormatTool.java`](https://github.com/MuskStark/SwissKitJ/blob/main/SwissKit/src/main/java/fan/summer/ai/tools/BuiltinJsonFormatTool.java).
 
-## Background tasks (`javafx.concurrent.Task`)
+## Background tasks (`host.tasks()`)
 
-Never block the JavaFX Application thread. For long work (file I/O, network, computation),
-subclass `Task<Void>` and run it on a worker thread; update the UI via the task's thread-safe
-hooks (`updateProgress`, `updateMessage`, `updateValue`) or `Platform.runLater`.
+Never block the JavaFX Application thread. In 3.2.0, submit long work (file I/O, network,
+computation) through the injected facade — **not** a raw `javafx.concurrent.Task` or a
+hand-managed `Thread`. `host.tasks()` runs the work on a background thread with the plugin's
+ClassLoader already on the TCCL (so bundled H2/MyBatis/`ServiceLoader` resolve), invokes
+`onSuccess`/`onError` on the FX thread, logs uncaught throwables, and — crucially — keeps the
+plugin alive in the background while the job runs. That last point means you do **not** override
+`hasRunningTasks()` for facade-submitted work: the host ORs `tasks().runningCount()` with
+`hasRunningTasks()`, so a running task already blocks the back-click eviction.
 
 ```java
-import javafx.concurrent.Task;
-import javafx.application.Platform;
+// Fire-and-forget:
+host.tasks().submit("{{slug}}-cleanup", () -> deleteTempFiles());
 
-private Task<Void> runningTask;   // keep a reference so hasRunningTasks can report truthfully
-
+// With result callbacks (both land on the FX thread — safe to touch the scene graph):
 private void startJob(ProgressBar bar, TextArea output) {
-    runningTask = new Task<>() {
-        @Override protected Void call() throws Exception {
-            for (int i = 0; i < total; i++) {
-                if (isCancelled()) break;
-                // ... do chunk of work ...
-                updateProgress(i, total);          // thread-safe → bar.progressProperty
-                updateMessage("Processed " + i);    // thread-safe → bar.accessibleText / label
-            }
-            return null;
-        }
-    };
-    bar.progressProperty().bind(runningTask.progressProperty());
-
-    runningTask.setOnSucceeded(e -> {
-        // onSucceeded runs on the FX thread — safe to touch UI directly
-        output.setText("Done");
-    });
-    runningTask.setOnFailed(e ->
-        output.setText("Failed: " + runningTask.getException().getMessage()));
-
-    Thread t = new Thread(runningTask, "{{slug}}-worker");
-    t.setDaemon(true);
-    t.start();
+    bar.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
+    host.tasks().submit("{{slug}}-export",
+        () -> doHeavyExport(inputArea.getText()),          // background; TCCL set
+        result -> { bar.setProgress(1); output.setText(result); },   // FX thread
+        error  -> { bar.setProgress(0);                              // FX thread
+                    output.setText("Failed: " + error.getMessage()); });
 }
 ```
 
-**The `hasRunningTasks()` contract** — override it so the host knows not to evict your view
-when the user navigates away:
+`submit(...)` returns a `TaskHandle` for cancellation/status queries. On plugin unload the host
+calls `cancelAll()` for you (interrupting running tasks), so a long loop should check
+`Thread.currentThread().isInterrupted()` and bail. You no longer need a manual `onUnload`
+`cancel()` for facade tasks.
+
+> Only reach for a raw `Task`/`updateProgress` binding when you need JavaFX's built-in
+> progress-property plumbing *and* you have no host — which, in 3.2.0, you always do. Prefer
+> `host.tasks()`. Never call scene-graph APIs from the background `work` lambda; do UI updates
+> in the `onSuccess`/`onError` callbacks (already on the FX thread) or via `Platform.runLater`.
+
+## Small settings/preferences → `host.settings()` (not a bundled DB)
+
+For a plugin's own preferences (last-used directory, remembered options), use the host's
+namespaced KV store — don't stand up an H2 database just for a handful of strings:
+
 ```java
-@Override
-public boolean hasRunningTasks() {
-    return runningTask != null && runningTask.isRunning();
-}
-```
-While this returns `true`, the host fires `onBackground` (not `onDeactivate`) and keeps your
-view cached, so work continues. Cancel on `onUnload`:
-```java
-@Override public void onUnload() {
-    if (runningTask != null) runningTask.cancel();
-}
+String lastDir = host.settings().get("last.dir", System.getProperty("user.home"));
+host.settings().put("last.dir", chosenDir);   // async persist; put(k, null) == remove
 ```
 
-> Don't call JavaFX scene-graph APIs (`setText`, `setDisable`, ...) directly from `call()` —
-> use the `updateXxx` hooks or wrap in `Platform.runLater(() -> ...)`.
+Data is isolated per `pluginId()` and survives hot-reload; the host clears it on explicit
+uninstall. Reserve a bundled database (below) for genuine plugin *datasets*.
 
 ## Persistence (H2 + MyBatis) — optional, plugin-bundled
 
-The host does **not** expose its database layer to plugins. If your plugin needs persistence,
-bundle your own H2 + MyBatis (default scope, shaded into your JAR). The
+The host does **not** expose its database layer to plugins. If your plugin needs persistence
+of real datasets (not just preferences — use `host.settings()` for those), bundle your own
+H2 + MyBatis (default scope, shaded into your JAR). The
 `ChildFirstResourceClassLoader` ensures your `mybatis-config.xml` and mapper XMLs resolve from
 **your JAR** first.
 
@@ -143,16 +135,18 @@ The recurring failures, each with its cause and fix:
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| **Plugin doesn't appear in the host** | SPI file missing, at wrong path, or overwritten by shade | File must be `META-INF/services/fan.summer.api.SwissKitJPlugin` (not `services/` at root); shade plugin needs `ServicesResourceTransformer`. Verify: `unzip -p target/*.jar META-INF/services/fan.summer.api.SwissKitJPlugin` |
-| **Plugin visible but UI shows raw keys** (`plugin.csv-sorter.name`) | i18n bundle not registered | Call `I18n.registerPluginBundle("i18n.messages", getClass().getClassLoader())` at the start of `createView()` |
+| **Plugin doesn't appear in the host** | SPI file missing, at wrong path, or overwritten by shade | File must be `META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin` (not `services/` at root); shade plugin needs `ServicesResourceTransformer`. Verify: `unzip -p target/*.jar META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin` |
+| **Plugin visible but UI shows raw keys** (`plugin.csv-sorter.name`) | i18n bundle not registered | Call `host.i18n().registerBundle("i18n.messages")` at the start of `createView()` (the 3.2.0 facade form — no ClassLoader arg) |
+| **`NullPointerException` reading `host` in `createView()`/`getName()`** | Forgot `init(PluginHost)`, or ran standalone without a host | Implement `init()` and store the reference; in dev, launch via `PluginPreviewWindow` (it injects the host) — see [migration.md §Dev-mode note](migration.md) |
 | **Plugin throws `NoClassDefFoundError: javafx/application/Application` in dev** | `DevLauncher` imports JavaFX | `DevLauncher` must have ZERO JavaFX imports — it only calls `{{Name}}DevApp.main(args)` |
 | **Colors are frozen / wrong on theme switch** | Inline hex in `setStyle` | Replace hex with `-sk-*` tokens or `.sk-*` classes (a `-sk-*` token string resolves; a hex literal doesn't) |
-| **Standalone popup window renders unthemed** | Didn't apply theme to the popup scene | Call `Themes.applyTo(scene)` on the popup's `Scene` (embedded views don't need this) |
+| **Standalone popup window renders unthemed** | Didn't apply theme to the popup scene | Call `host.theme().applyTo(scene)` on the popup's `Scene` (embedded views don't need this; `Themes.applyTo` is the forbidden legacy static) |
+| **`.glass-*` styled node renders unstyled** | Using pre-3.2.0 CSS class names | Rename to the `.sk-*` equivalent (`.glass-dialog` → `.sk-dialog`, etc.) |
 | **ScrollPane shows a tiny box** | Max size clamped in a Pane | `setMaxWidth(Double.MAX_VALUE)` + `setMaxHeight(Double.MAX_VALUE)` |
 | **HBox/VBox layout collapses** | Used `setPrefWidth(MAX_VALUE)` | Use `setMaxWidth(MAX_VALUE)` + `HBox.setHgrow(node, Priority.ALWAYS)` instead |
 | **StackPane shows hidden pages occupying space** | Toggled only `visible` | Toggle BOTH `setVisible` and `setManaged` |
 | **`BindingException` from MyBatis** | Mapper XML namespace ≠ interface FQCN | Make `<mapper namespace>` exactly equal the Java interface FQCN |
-| **Back-click kills a running background job** | `hasRunningTasks()` lies (default `false`) | Override to return `true` while the task runs; cancel on `onUnload` |
+| **Back-click kills a running background job** | Ran the job on a raw `Task`/`Thread` the host can't see | Submit via `host.tasks().submit(...)` — running tasks auto-keep the plugin alive (no `hasRunningTasks()` override needed) |
 | **Plugin's classes/`ServiceLoader`/MyBatis can't find resources** | (Unusual) TCCL not set | The host sets the TCCL via `PluginContext` for you — make sure you're not spawning threads that shed it; spawn from event handlers (which are wrapped) |
 | **`*PluginUi` wrapper compiles but the host won't load it** | Wrapper isn't the SPI entry | Implement `SwissKitJPlugin` in ONE class; the SPI file points at it |
 

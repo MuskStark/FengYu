@@ -143,7 +143,7 @@ The recurring failures, each with its cause and fix:
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| **Plugin doesn't appear in the host** | SPI file missing, at wrong path, or overwritten by shade | File must be `META-INF/services/fan.summer.api.SwissKitJPlugin` (not `services/` at root); shade plugin needs `ServicesResourceTransformer`. Verify: `unzip -p target/*.jar META-INF/services/fan.summer.api.SwissKitJPlugin` |
+| **Plugin doesn't appear in the host** | SPI file missing, at wrong path, or overwritten by shade | File must be `META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin` (not `services/` at root); shade plugin needs `ServicesResourceTransformer`. Verify: `unzip -p target/*.jar META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin` |
 | **Plugin visible but UI shows raw keys** (`plugin.csv-sorter.name`) | i18n bundle not registered | Call `I18n.registerPluginBundle("i18n.messages", getClass().getClassLoader())` at the start of `createView()` |
 | **Plugin throws `NoClassDefFoundError: javafx/application/Application` in dev** | `DevLauncher` imports JavaFX | `DevLauncher` must have ZERO JavaFX imports — it only calls `{{Name}}DevApp.main(args)` |
 | **Colors are frozen / wrong on theme switch** | Inline hex in `setStyle` | Replace hex with `-sk-*` tokens or `.sk-*` classes (a `-sk-*` token string resolves; a hex literal doesn't) |

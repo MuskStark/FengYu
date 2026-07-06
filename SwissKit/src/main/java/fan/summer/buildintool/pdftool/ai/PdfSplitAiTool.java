@@ -1,10 +1,10 @@
 package fan.summer.buildintool.pdftool.ai;
 
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.ai.AiToolParam;
-import fan.summer.api.ai.AiToolResult;
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiToolParam;
+import fan.summer.zhiflow.api.ai.AiToolResult;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
 import fan.summer.buildintool.pdftool.worker.PdfSplitWorker;
 import fan.summer.ai.util.JsonHelper;
 

@@ -1,10 +1,10 @@
 package fan.summer.plugin;
 
-import fan.summer.api.PluginContext;
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.ai.AiServiceProvider;
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.host.PluginHost;
+import fan.summer.zhiflow.api.PluginContext;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ai.AiServiceProvider;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.host.PluginHost;
 import fan.summer.plugin.host.DefaultPluginHost;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;

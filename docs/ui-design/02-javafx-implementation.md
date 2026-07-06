@@ -46,7 +46,7 @@ SwissKitJ is a **JavaFX 21** desktop toolbox. Two architectural decisions shape 
 
 2. **Theming happens entirely through CSS looked-up colors.** No node sets a color inline. The dual-theme
    (dark/light) palette is a set of 14 `-sk-*` tokens declared once in
-   [`swisskit-common.css`](../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css), switched by a
+   [`zhiflow-common.css`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css), switched by a
    single class on the scene root. The token values, contrast matrix, and the full theme lifecycle live
    in [05 Theme & Color System](05-theme-color-system.md) — **this doc does not duplicate color values.**
 
@@ -64,7 +64,7 @@ SwissKitJ is a **JavaFX 21** desktop toolbox. Two architectural decisions shape 
 │                                                                          │
 │   ┌─────────────┐   discovers   ┌──────────────────────────────────────┐ │
 │   │  ServiceLoader│ ───────────► │  plugins/*.jar                       │ │
-│   │  META-INF/   │              │  └─ fan.summer.api.SwissKitJPlugin    │ │
+│   │  META-INF/   │              │  └─ fan.summer.zhiflow.api.SwissKitJPlugin    │ │
 │   │  services/   │              │     (one class implements interface)  │ │
 │   └─────────────┘              └──────────────────────────────────────┘ │
 │           │                              │                               │
@@ -83,7 +83,7 @@ SwissKitJ is a **JavaFX 21** desktop toolbox. Two architectural decisions shape 
 - **The contract** — `SwissKitJPlugin` (16 methods; [§3.1](#swisskitjplugin-method-contract)).
 - **The host** — calls metadata methods to build the sidebar/search, calls `createView()` once and caches
   the `Node`, embeds it in the content `StackPane`.
-- **The stylesheet** — `swisskit-common.css`, loaded by the host onto the main scene. Your embedded view
+- **The stylesheet** — `zhiflow-common.css`, loaded by the host onto the main scene. Your embedded view
   inherits it automatically; a standalone window must opt in via [`Themes.applyTo`](#43-theming-a-standalone-stage--themesapplyto).
 - **The class taxonomy** — `.sk-*` for shared/component classes (from common.css), unprefixed shell
   classes (`nav-item`, `tool-card`, …), status modifiers ([§3.2](#css-naming)).
@@ -131,12 +131,12 @@ every subsequent activation. Implications:
 - **Do not** rebuild the view from scratch on every `onActivate()`. Build once in `createView()`, hold field
   references to the controls you need to mutate, and refresh *content* (not structure) in lifecycle hooks.
 - It is fine (and common) to lazily build the view graph inside `createView()` itself on first call.
-- If you need a multi-step workflow, use `fan.summer.api.component.StepWizard` (see
+- If you need a multi-step workflow, use `fan.summer.zhiflow.api.component.StepWizard` (see
   [`docs/plugins/ui.md`](../plugins/ui.md)) instead of swapping whole trees.
 
 ### P5 — CSS class naming follows the `sk-` prefix convention
 
-Shared component/utility classes from `swisskit-common.css` are prefixed **`.sk-`** (e.g. `.sk-field`,
+Shared component/utility classes from `zhiflow-common.css` are prefixed **`.sk-`** (e.g. `.sk-field`,
 `.sk-btn-primary`). Shell-chrome classes (sidebar, tool cards, status bar) are **unprefixed** (`nav-item`,
 `tool-card`). The full taxonomy, the v3.2.0 `.glass-*`→`.sk-*` migration, and the status-modifier convention
 are in [§3.2](#css-naming).
@@ -209,7 +209,7 @@ Knowing which namespace a class belongs to tells you who owns it and whether it'
 
 | Namespace | Prefix | Owner | Examples | Safe for plugins? |
 |---|---|---|---|---|
-| **Shared / component classes** | `.sk-` | `swisskit-common.css` (ships in the API JAR) | `.sk-field`, `.sk-surface`, `.sk-btn-primary`, `.sk-table`, `.sk-dialog`, `.sk-t1` | ✅ Yes — this is the plugin-facing vocabulary |
+| **Shared / component classes** | `.sk-` | `zhiflow-common.css` (ships in the API JAR) | `.sk-field`, `.sk-surface`, `.sk-btn-primary`, `.sk-table`, `.sk-dialog`, `.sk-t1` | ✅ Yes — this is the plugin-facing vocabulary |
 | **Shell-chrome classes** | *(unprefixed)* | `shell.css` (host application only) | `nav-item`, `tool-card`, `search-bar`, `statusbar`, `ic-blue` | ⚠️ Host-owned; plugins should not rely on these (they are for the sidebar/cards/status bar, not tool content) |
 | **Status modifiers** | `is-*` / state | Component classes via `:hover`/`:focused` or explicit toggle | `.sk-notif-success`, `.sk-notif-warning`, `.sk-notif-danger` | ✅ Yes, for semantic status |
 
@@ -233,7 +233,7 @@ These bind a `-sk-*` token to a CSS property so it resolves and re-resolves on t
 
 #### Composite component classes (prefer these over hand-rolled CSS)
 
-For richer controls, `swisskit-common.css` ships ready-made classes bundling several tokens + geometry.
+For richer controls, `zhiflow-common.css` ships ready-made classes bundling several tokens + geometry.
 **Use these instead of assembling your own** — full specs are in [03 Component Library](03-component-library.md):
 
 | Class | What it gives you |
@@ -347,14 +347,14 @@ three layout pitfalls — all the recurring building blocks.
 ```java
 package {{base-package}}.ui;
 
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.IconStyle;
-import fan.summer.api.MdiIconUtil;
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.ToolCategory;
-import fan.summer.api.ToolType;
-import fan.summer.api.i18n.I18n;
-import fan.summer.api.theme.Themes;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.IconStyle;
+import fan.summer.zhiflow.api.MdiIconUtil;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ToolCategory;
+import fan.summer.zhiflow.api.ToolType;
+import fan.summer.zhiflow.api.i18n.I18n;
+import fan.summer.zhiflow.api.theme.Themes;
 
 import javafx.geometry.HPos;
 import javafx.geometry.Insets;
@@ -480,11 +480,11 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
 - **`getType()` for built-ins.** The interface default is `ToolType.PLUGIN`; a built-in tool **must**
   override to `ToolType.BUILTIN`. External plugins leave the default.
 - **Register the implementation.** Create
-  `src/main/resources/META-INF/services/fan.summer.api.SwissKitJPlugin` containing the fully-qualified class
+  `src/main/resources/META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin` containing the fully-qualified class
   name (one line), then package a fat-JAR into the host's `plugins/` directory. Hot-reload is supported.
 
 ```
-META-INF/services/fan.summer.api.SwissKitJPlugin
+META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin
 └─ {{base-package}}.ui.{{Name}}Plugin
 ```
 
@@ -495,7 +495,7 @@ META-INF/services/fan.summer.api.SwissKitJPlugin
 Icons are Material Design Icons rendered through a bundled webfont. The one entry point:
 
 ```java
-import fan.summer.api.MdiIconUtil;
+import fan.summer.zhiflow.api.MdiIconUtil;
 import javafx.scene.text.Text;
 
 // name WITHOUT the "mdi-" prefix; size in logical pixels
@@ -519,14 +519,14 @@ Source: [`MdiIconUtil.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/Md
 ### 4.3 Theming a standalone Stage · `Themes.applyTo`
 
 Nodes returned from `createView()` are **embedded in the host's main scene**, which already has
-`swisskit-common.css` loaded and the theme class stamped. **Embedded views need do nothing.**
+`zhiflow-common.css` loaded and the theme class stamped. **Embedded views need do nothing.**
 
 But a plugin that opens its **own** `Stage`/`Scene` (a modal `Alert`, a standalone tool window) gets a fresh
 scene with **no stylesheet and no theme class** — every `-sk-*` token would fail to resolve. Fix it with one
 call:
 
 ```java
-import fan.summer.api.theme.Themes;
+import fan.summer.zhiflow.api.theme.Themes;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 
@@ -567,7 +567,7 @@ The full theme lifecycle (token resolution, `ThemeService.set`/`onChange`, WebVi
 | Do | Don't |
 |---|---|
 | `Themes.applyTo(scene)` for any `Scene` you create | Call `ThemeService.registerScene` directly from plugin code |
-| Rely on automatic inheritance for `createView()` nodes | Manually add `swisskit-common.css` to `getStylesheets()` |
+| Rely on automatic inheritance for `createView()` nodes | Manually add `zhiflow-common.css` to `getStylesheets()` |
 | Trust `Themes.applyTo` to be idempotent (no-op if already applied) | Re-add the stylesheet URL yourself |
 
 Source: [`Themes.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java) ·
@@ -577,7 +577,7 @@ Source: [`Themes.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/T
 
 ### 4.4 I18n patterns
 
-Every user-visible string flows through [`fan.summer.api.i18n.I18n`](../../SwissKitJ-Api/src/main/java/fan/summer/api/i18n/I18n.java).
+Every user-visible string flows through [`fan.summer.zhiflow.api.i18n.I18n`](../../SwissKitJ-Api/src/main/java/fan/summer/api/i18n/I18n.java).
 There are three patterns — pick by *when* the text is produced. (Mirrors
 [`docs/plugins/ui.md`](../plugins/ui.md).)
 
@@ -668,7 +668,7 @@ When generating a SwissKitJ plugin you **MUST** satisfy all of the following. Ea
       `"mdi-code-json"`. Same for `MdiIconUtil.createIcon`.
 - [ ] **Override `getType()` for built-ins.** Return `ToolType.BUILTIN`. The interface default is
       `ToolType.PLUGIN` — external plugins leave it.
-- [ ] **Never load `swisskit-common.css` yourself.** Embedded views inherit it from the host scene;
+- [ ] **Never load `zhiflow-common.css` yourself.** Embedded views inherit it from the host scene;
       standalone windows get it via `Themes.applyTo(scene)`. Do not call `getStylesheets().add(...)`.
 - [ ] **Never call `ThemeService` internals from plugin code.** Use `Themes.applyTo(scene)` (the supported
       surface). `ThemeService.registerScene`/`set` are host-level.
@@ -683,7 +683,7 @@ When generating a SwissKitJ plugin you **MUST** satisfy all of the following. Ea
 - [ ] **Fill space correctly.** `setHgrow`/`setVgrow(Priority.ALWAYS)` + `setMaxWidth/Height(MAX_VALUE)`;
       never `setPrefWidth(MAX_VALUE)`. Toggle both `visible` and `managed` on StackPane page switches. Set
       `setMaxWidth/Height(MAX_VALUE)` on a ScrollPane inside a StackPane.
-- [ ] **Register the service file.** `META-INF/services/fan.summer.api.SwissKitJPlugin` with the FQCN;
+- [ ] **Register the service file.** `META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin` with the FQCN;
       package a fat-JAR into `plugins/`.
 
 ---
@@ -847,7 +847,7 @@ The host caches the `Node` from `createView()`; treat it as the single source of
 | MDI icon renderer (`createIcon`, `putIcon`) | [`SwissKitJ-Api/src/main/java/fan/summer/api/MdiIconUtil.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/MdiIconUtil.java) |
 | Plugin-facing theme helper (`applyTo`, `COMMON_CSS`) | [`SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java) |
 | Theme engine (`registerScene`, `set`, `onChange`) | [`SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java) |
-| Shared component + token CSS | [`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`](../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css) |
+| Shared component + token CSS | [`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) |
 | Reference built-in (single-class pattern) | [`SwissKit/src/main/java/fan/summer/buildintool/dev/JsonFormatterPlugin.java`](../../SwissKit/src/main/java/fan/summer/buildintool/dev/JsonFormatterPlugin.java) |
 
 ### Design baseline

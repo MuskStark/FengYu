@@ -1,7 +1,7 @@
 package fan.summer.buildintool.pdftool.worker;
 
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
 import fan.summer.buildintool.pdftool.converter.DocumentConverter;
 import fan.summer.buildintool.pdftool.converter.PdfBoxToDocxConverter;
 import javafx.concurrent.Task;

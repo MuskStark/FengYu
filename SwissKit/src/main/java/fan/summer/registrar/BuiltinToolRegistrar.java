@@ -1,6 +1,6 @@
 package fan.summer.registrar;
 
-import fan.summer.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
 import fan.summer.buildintool.ai.AiChatPlugin;
 import fan.summer.buildintool.browser.BrowserAutomatePlugin;
 import fan.summer.buildintool.dev.Base64Plugin;

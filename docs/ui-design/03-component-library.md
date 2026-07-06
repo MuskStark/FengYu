@@ -10,7 +10,7 @@
 |---|---|
 | **Doc type** | Per-component reference spec (Foundation + Shell) |
 | **Audience** | UI designers, plugin authors, AI code generators |
-| **CSS source (foundation)** | [`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`](../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css) — shared by host + every plugin |
+| **CSS source (foundation)** | [`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) — shared by host + every plugin |
 | **CSS source (shell)** | [`SwissKit/src/main/resources/css/shell.css`](../../SwissKit/src/main/resources/css/shell.css) — host app shell only |
 | **Related** | [02 JavaFX Implementation](02-javafx-implementation.md) · [05 Theme & Color System](05-theme-color-system.md) · [06 Icon System](06-icon-system.md) |
 
@@ -25,7 +25,7 @@ class lives in is the single most important fact about it:
 
 | Family | Stylesheet | Who can use it? | Class prefix | Count |
 |---|---|---|---|---|
-| **Foundation** | `swisskit-common.css` (API module) | Host **and** every third-party plugin | `.sk-*` | 12 components |
+| **Foundation** | `zhiflow-common.css` (API module) | Host **and** every third-party plugin | `.sk-*` | 12 components |
 | **Shell** | `shell.css` (host only) | Host application only | unprefixed (`nav-item`, `tool-card`, …) | 5 components |
 
 Foundation components are loaded onto any scene by `Themes.applyTo(scene)`, so they work inside
@@ -58,7 +58,7 @@ Every component below follows this identical structure so a code generator can p
 
 ### Quick-jump index
 
-**Foundation components** (`swisskit-common.css`)
+**Foundation components** (`zhiflow-common.css`)
 - [F1 · Text utilities](#f1--text-utilities) — `.sk-t1` `.sk-t2` `.sk-t3`
 - [F2 · Surface utilities](#f2--surface-utilities) — `.sk-surface` `.sk-surface-soft` `.sk-outlined` `.sk-outlined-strong`
 - [F3 · Status-text utilities](#f3--status-text-utilities) — `.sk-accent-text` `.sk-success-text` `.sk-warning-text` `.sk-danger-text`
@@ -85,7 +85,7 @@ Every component below follows this identical structure so a code generator can p
 
 # Part A — Foundation Components
 
-> Source: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css`. Available everywhere
+> Source: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`. Available everywhere
 > `Themes.applyTo(scene)` has been called.
 
 ---
@@ -114,9 +114,9 @@ Use them **instead of** hard-coded rgba in `setStyle`. If you find yourself writ
 
 | Class | Source line | Purpose |
 |---|---|---|
-| `.sk-t1` | `swisskit-common.css:126` | Primary text fill |
-| `.sk-t2` | `swisskit-common.css:127` | Secondary text/label fill |
-| `.sk-t3` | `swisskit-common.css:128` | Disabled/hint/weak text fill |
+| `.sk-t1` | `zhiflow-common.css:126` | Primary text fill |
+| `.sk-t2` | `zhiflow-common.css:127` | Secondary text/label fill |
+| `.sk-t3` | `zhiflow-common.css:128` | Disabled/hint/weak text fill |
 
 ### 3. Tokens used
 
@@ -160,7 +160,7 @@ empty.setStyle("-fx-font-size: 13px;");
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css` (utility-classes section)
+- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (utility-classes section)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 - Naming convention: [02 JavaFX Implementation — `#css-naming`](02-javafx-implementation.md#css-naming)
 
@@ -187,10 +187,10 @@ Two elevation levels + two border weights
 
 | Class | Source line | Purpose |
 |---|---|---|
-| `.sk-surface` | `swisskit-common.css:131` | Elevated background fill |
-| `.sk-surface-soft` | `swisskit-common.css:132` | Soft (hover-tier) background fill |
-| `.sk-outlined` | `swisskit-common.css:133` | Default border color (pair with inline width/radius) |
-| `.sk-outlined-strong` | `swisskit-common.css:134` | Strong border color |
+| `.sk-surface` | `zhiflow-common.css:131` | Elevated background fill |
+| `.sk-surface-soft` | `zhiflow-common.css:132` | Soft (hover-tier) background fill |
+| `.sk-outlined` | `zhiflow-common.css:133` | Default border color (pair with inline width/radius) |
+| `.sk-outlined-strong` | `zhiflow-common.css:134` | Strong border color |
 
 ### 3. Tokens used
 
@@ -223,7 +223,7 @@ panel.setStyle("-fx-border-width: 1; -fx-border-radius: 8; -fx-background-radius
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css` (utility-classes section)
+- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (utility-classes section)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 - Naming convention: [02 JavaFX Implementation — `#css-naming`](02-javafx-implementation.md#css-naming)
 
@@ -248,10 +248,10 @@ maps 1:1 to a status token. **Never** use these decoratively — a green label m
 
 | Class | Source line | Purpose |
 |---|---|---|
-| `.sk-accent-text` | `swisskit-common.css:135` | Accent text fill — links, inline emphasis |
-| `.sk-success-text` | `swisskit-common.css:136` | Success status text |
-| `.sk-warning-text` | `swisskit-common.css:137` | Warning status text |
-| `.sk-danger-text` | `swisskit-common.css:138` | Error/danger status text |
+| `.sk-accent-text` | `zhiflow-common.css:135` | Accent text fill — links, inline emphasis |
+| `.sk-success-text` | `zhiflow-common.css:136` | Success status text |
+| `.sk-warning-text` | `zhiflow-common.css:137` | Warning status text |
+| `.sk-danger-text` | `zhiflow-common.css:138` | Error/danger status text |
 
 ### 3. Tokens used
 
@@ -287,7 +287,7 @@ err.setStyle("-fx-font-size: 12px;");
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css` (utility-classes section)
+- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (utility-classes section)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -309,8 +309,8 @@ shape fill, so these are needed for any icon drawn as a `Shape`.
 
 | Class | Source line | Purpose |
 |---|---|---|
-| `.sk-fill-2` | `swisskit-common.css:129` | Secondary `-fx-fill` (Text/Shape) |
-| `.sk-fill-3` | `swisskit-common.css:130` | Disabled/weak `-fx-fill` (Text/Shape) |
+| `.sk-fill-2` | `zhiflow-common.css:129` | Secondary `-fx-fill` (Text/Shape) |
+| `.sk-fill-3` | `zhiflow-common.css:130` | Disabled/weak `-fx-fill` (Text/Shape) |
 
 ### 3. Tokens used
 
@@ -338,7 +338,7 @@ glyph.getStyleClass().add("sk-fill-3");   // de-emphasized search glyph
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css` (utility-classes section)
+- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (utility-classes section)
 - Icons: [06 Icon System](06-icon-system.md)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
@@ -366,7 +366,7 @@ theme-aware (lighter in light theme so it doesn't muddy a white surface).
 
 | Class | Source line | Purpose |
 |---|---|---|
-| `.sk-scrim` | `swisskit-common.css:139` | Modal backdrop fill |
+| `.sk-scrim` | `zhiflow-common.css:139` | Modal backdrop fill |
 
 ### 3. Tokens used
 
@@ -396,7 +396,7 @@ root.getStyleClass().add("sk-scrim");      // dim behind the dialog
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css` (utility-classes section)
+- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (utility-classes section)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -422,8 +422,8 @@ caption above the field.
 
 | Class | Source line | Purpose |
 |---|---|---|
-| `.sk-field` | `swisskit-common.css:152` | Text input (TextField/TextArea) |
-| `.sk-field-label` | `swisskit-common.css:166` | Caption label above a field |
+| `.sk-field` | `zhiflow-common.css:152` | Text input (TextField/TextArea) |
+| `.sk-field-label` | `zhiflow-common.css:166` | Caption label above a field |
 
 ### 3. Tokens used
 
@@ -464,7 +464,7 @@ input.setPromptText("/path/to/file");
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css` (input-field section, lines 151–166)
+- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (input-field section, lines 151–166)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -492,8 +492,8 @@ Everything else is secondary.
 
 | Class | Source line | Purpose |
 |---|---|---|
-| `.sk-btn-primary` | `swisskit-common.css:282` | Accent-filled action button |
-| `.sk-btn-secondary` | `swisskit-common.css:296` | Bordered ghost button |
+| `.sk-btn-primary` | `zhiflow-common.css:282` | Accent-filled action button |
+| `.sk-btn-secondary` | `zhiflow-common.css:296` | Bordered ghost button |
 
 There is no `.sk-btn` base class — do not invent one.
 
@@ -539,7 +539,7 @@ cancel.setCancelButton(true);
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css` (primary/secondary button sections, lines 281–307)
+- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (primary/secondary button sections, lines 281–307)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -563,14 +563,14 @@ dropdown popup is restyled as an elevated rounded menu with hover and selected r
 
 | Class | Source line | Purpose |
 |---|---|---|
-| `.sk-combo` | `swisskit-common.css:196` | Closed combo box |
-| `.sk-combo .list-cell` | `swisskit-common.css:205` | Selected cell text |
-| `.sk-combo .arrow-button` | `swisskit-common.css:206` | Dropdown arrow button (transparent) |
-| `.sk-combo .arrow` | `swisskit-common.css:207` | Dropdown arrow glyph |
-| `.combo-box-popup .list-view` | `swisskit-common.css:209` | Popup list (elevated, rounded, shadowed) |
-| `.combo-box-popup .list-view .list-cell` | `swisskit-common.css:218` | Popup row |
-| `.combo-box-popup .list-view .list-cell:filled:hover` | `swisskit-common.css:224` | Hovered row |
-| `.combo-box-popup .list-view .list-cell:filled:selected` | `swisskit-common.css:229` | Selected row |
+| `.sk-combo` | `zhiflow-common.css:196` | Closed combo box |
+| `.sk-combo .list-cell` | `zhiflow-common.css:205` | Selected cell text |
+| `.sk-combo .arrow-button` | `zhiflow-common.css:206` | Dropdown arrow button (transparent) |
+| `.sk-combo .arrow` | `zhiflow-common.css:207` | Dropdown arrow glyph |
+| `.combo-box-popup .list-view` | `zhiflow-common.css:209` | Popup list (elevated, rounded, shadowed) |
+| `.combo-box-popup .list-view .list-cell` | `zhiflow-common.css:218` | Popup row |
+| `.combo-box-popup .list-view .list-cell:filled:hover` | `zhiflow-common.css:224` | Hovered row |
+| `.combo-box-popup .list-view .list-cell:filled:selected` | `zhiflow-common.css:229` | Selected row |
 
 ### 3. Tokens used
 
@@ -606,7 +606,7 @@ box.getSelectionModel().select(0);
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css` (combo-box section, lines 195–233)
+- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (combo-box section, lines 195–233)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -627,10 +627,10 @@ fills with the accent color and the checkmark turns white.
 
 | Class | Source line | Purpose |
 |---|---|---|
-| `.sk-checkbox` | `swisskit-common.css:270` | Checkbox label + text |
-| `.sk-checkbox .box` | `swisskit-common.css:271` | Unchecked box |
-| `.sk-checkbox:selected .box` | `swisskit-common.css:278` | Selected box fill |
-| `.sk-checkbox:selected .mark` | `swisskit-common.css:279` | Checkmark mark |
+| `.sk-checkbox` | `zhiflow-common.css:270` | Checkbox label + text |
+| `.sk-checkbox .box` | `zhiflow-common.css:271` | Unchecked box |
+| `.sk-checkbox:selected .box` | `zhiflow-common.css:278` | Selected box fill |
+| `.sk-checkbox:selected .mark` | `zhiflow-common.css:279` | Checkmark mark |
 
 ### 3. Tokens used
 
@@ -663,7 +663,7 @@ cb.setSelected(true);
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css` (checkbox section, lines 269–279)
+- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (checkbox section, lines 269–279)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -689,16 +689,16 @@ and a hover + selected state on rows. The selected row's text turns accent-color
 
 | Class | Source line | Purpose |
 |---|---|---|
-| `.sk-table` | `swisskit-common.css:251` | Table surface |
-| `.sk-table .column-header-background` | `swisskit-common.css:259` | Header strip bg |
-| `.sk-table .column-header` | `swisskit-common.css:260` | Header cell |
-| `.sk-table .column-header .label` | `swisskit-common.css:261` | Header text |
-| `.sk-table .table-cell` | `swisskit-common.css:262` | Body cell |
-| `.sk-table .table-row-cell` | `swisskit-common.css:263` | Body row |
-| `.sk-table .table-row-cell:selected` | `swisskit-common.css:264` | Selected row |
-| `.sk-table .table-row-cell:selected .table-cell` | `swisskit-common.css:265` | Selected cell text |
-| `.sk-table .table-row-cell:hover` | `swisskit-common.css:266` | Hovered row |
-| `.sk-table .placeholder .label` | `swisskit-common.css:267` | Empty-state text |
+| `.sk-table` | `zhiflow-common.css:251` | Table surface |
+| `.sk-table .column-header-background` | `zhiflow-common.css:259` | Header strip bg |
+| `.sk-table .column-header` | `zhiflow-common.css:260` | Header cell |
+| `.sk-table .column-header .label` | `zhiflow-common.css:261` | Header text |
+| `.sk-table .table-cell` | `zhiflow-common.css:262` | Body cell |
+| `.sk-table .table-row-cell` | `zhiflow-common.css:263` | Body row |
+| `.sk-table .table-row-cell:selected` | `zhiflow-common.css:264` | Selected row |
+| `.sk-table .table-row-cell:selected .table-cell` | `zhiflow-common.css:265` | Selected cell text |
+| `.sk-table .table-row-cell:hover` | `zhiflow-common.css:266` | Hovered row |
+| `.sk-table .placeholder .label` | `zhiflow-common.css:267` | Empty-state text |
 
 ### 3. Tokens used
 
@@ -739,7 +739,7 @@ table.getStyleClass().add("sk-table");
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css` (table section, lines 250–267)
+- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (table section, lines 250–267)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -764,15 +764,15 @@ header. **The selectors are nested** — there is no standalone `.sk-tab` class.
 
 | Class | Source line | Purpose |
 |---|---|---|
-| `.sk-tab-pane` | `swisskit-common.css:169` | TabPane root (transparent, min tab width 100px) |
-| `.sk-tab-pane .tab-header-area` | `swisskit-common.css:170` | Header padding |
-| `.sk-tab-pane .tab-header-area .tab-header-background` | `swisskit-common.css:171` | Header bg + bottom border |
-| `.sk-tab-pane .tab` | `swisskit-common.css:176` | A single tab |
-| `.sk-tab-pane .tab .tab-label` | `swisskit-common.css:185` | Tab label text |
-| `.sk-tab-pane .tab:hover` | `swisskit-common.css:186` | Hovered tab |
-| `.sk-tab-pane .tab:selected` | `swisskit-common.css:187` | Selected tab (underline) |
-| `.sk-tab-pane .tab:selected .tab-label` | `swisskit-common.css:192` | Selected tab text |
-| `.sk-tab-pane .tab:selected .focus-indicator` | `swisskit-common.css:193` | Suppress focus ring |
+| `.sk-tab-pane` | `zhiflow-common.css:169` | TabPane root (transparent, min tab width 100px) |
+| `.sk-tab-pane .tab-header-area` | `zhiflow-common.css:170` | Header padding |
+| `.sk-tab-pane .tab-header-area .tab-header-background` | `zhiflow-common.css:171` | Header bg + bottom border |
+| `.sk-tab-pane .tab` | `zhiflow-common.css:176` | A single tab |
+| `.sk-tab-pane .tab .tab-label` | `zhiflow-common.css:185` | Tab label text |
+| `.sk-tab-pane .tab:hover` | `zhiflow-common.css:186` | Hovered tab |
+| `.sk-tab-pane .tab:selected` | `zhiflow-common.css:187` | Selected tab (underline) |
+| `.sk-tab-pane .tab:selected .tab-label` | `zhiflow-common.css:192` | Selected tab text |
+| `.sk-tab-pane .tab:selected .focus-indicator` | `zhiflow-common.css:193` | Suppress focus ring |
 
 > **No standalone `.sk-tab`.** The rule is always `.sk-tab-pane .tab` (descendant). A bare
 > `.sk-tab` does not exist in source and will not match anything.
@@ -819,7 +819,7 @@ tabs.getTabs().addAll(
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css` (TabPane section, lines 168–193)
+- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (TabPane section, lines 168–193)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -845,7 +845,7 @@ with a 1px border and a soft drop shadow that uses the `-sk-shadow` token. Pair 
 
 | Class | Source line | Purpose |
 |---|---|---|
-| `.sk-dialog` | `swisskit-common.css:142` | Dialog surface |
+| `.sk-dialog` | `zhiflow-common.css:142` | Dialog surface |
 
 ### 3. Tokens used
 
@@ -879,7 +879,7 @@ dialog.setPadding(new Insets(20, 24, 16, 24));
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css` (dialog section, lines 141–149)
+- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (dialog section, lines 141–149)
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 - Theming a standalone Stage: [02 JavaFX Implementation — `#plugin-skeleton`](02-javafx-implementation.md#plugin-skeleton)
 
@@ -921,16 +921,16 @@ the icon-circle background:
 
 | Class | Source line | Purpose |
 |---|---|---|
-| `.sk-notif-root` | `swisskit-common.css:310` | Card surface (elevated, bordered, shadowed, 420px wide) |
-| `.sk-notif-icon` | `swisskit-common.css:320` | 32px circular icon container |
-| `.sk-notif-info` | `swisskit-common.css:326` | Info severity (icon glyph + soft bg) |
-| `.sk-notif-success` | `swisskit-common.css:327` | Success severity |
-| `.sk-notif-warning` | `swisskit-common.css:328` | Warning severity |
-| `.sk-notif-error` | `swisskit-common.css:329` | Error severity |
-| `.sk-notif-message` | `swisskit-common.css:330` | Body text (wraps at 360px) |
-| `.sk-notif-btn-bar` | `swisskit-common.css:331` | Button container |
-| `.sk-notif-ok` | `swisskit-common.css:332` | Primary OK button |
-| `.sk-notif-cancel` | `swisskit-common.css:344` | Secondary Cancel button |
+| `.sk-notif-root` | `zhiflow-common.css:310` | Card surface (elevated, bordered, shadowed, 420px wide) |
+| `.sk-notif-icon` | `zhiflow-common.css:320` | 32px circular icon container |
+| `.sk-notif-info` | `zhiflow-common.css:326` | Info severity (icon glyph + soft bg) |
+| `.sk-notif-success` | `zhiflow-common.css:327` | Success severity |
+| `.sk-notif-warning` | `zhiflow-common.css:328` | Warning severity |
+| `.sk-notif-error` | `zhiflow-common.css:329` | Error severity |
+| `.sk-notif-message` | `zhiflow-common.css:330` | Body text (wraps at 360px) |
+| `.sk-notif-btn-bar` | `zhiflow-common.css:331` | Button container |
+| `.sk-notif-ok` | `zhiflow-common.css:332` | Primary OK button |
+| `.sk-notif-cancel` | `zhiflow-common.css:344` | Secondary Cancel button |
 
 ### 3. Tokens used
 
@@ -993,7 +993,7 @@ then a `.sk-notif-btn-bar` of `.sk-notif-cancel` + `.sk-notif-ok` `Button`s.
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css` (notification section, lines 309–355)
+- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (notification section, lines 309–355)
 - Java: `SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java`
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
@@ -1017,11 +1017,11 @@ steps are idle. The connector line between two completed steps turns green.
 
 | Class | Source line | Purpose |
 |---|---|---|
-| `.sk-step-done` | `swisskit-common.css:358` | Completed dot (fill + stroke `-sk-success`) |
-| `.sk-step-current` | `swisskit-common.css:359` | Current dot (fill + stroke `-sk-accent`) |
-| `.sk-step-idle` | `swisskit-common.css:360` | Future dot (fill `-sk-bg-selected`, stroke `-sk-border`) |
-| `.sk-step-line-done` | `swisskit-common.css:361` | Completed connector line (`-sk-success`) |
-| `.sk-step-line-idle` | `swisskit-common.css:362` | Future connector line (`-sk-border`) |
+| `.sk-step-done` | `zhiflow-common.css:358` | Completed dot (fill + stroke `-sk-success`) |
+| `.sk-step-current` | `zhiflow-common.css:359` | Current dot (fill + stroke `-sk-accent`) |
+| `.sk-step-idle` | `zhiflow-common.css:360` | Future dot (fill `-sk-bg-selected`, stroke `-sk-border`) |
+| `.sk-step-line-done` | `zhiflow-common.css:361` | Completed connector line (`-sk-success`) |
+| `.sk-step-line-idle` | `zhiflow-common.css:362` | Future connector line (`-sk-border`) |
 
 ### 3. Tokens used
 
@@ -1058,7 +1058,7 @@ wizard.build();
 
 ### 7. References
 
-- CSS: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css` (StepWizard indicator section, lines 357–362)
+- CSS: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (StepWizard indicator section, lines 357–362)
 - Java: `SwissKitJ-Api/src/main/java/fan/summer/api/component/StepWizard.java`
 - Tokens: [05 Theme & Color System — Token Reference Table](05-theme-color-system.md#token-reference-table)
 
@@ -1537,7 +1537,7 @@ bar.getChildren().addAll(tools, sep, plugins, spacer, clock);
 
 A reverse index: given a class, find its component.
 
-### Foundation classes (`swisskit-common.css`)
+### Foundation classes (`zhiflow-common.css`)
 
 | Class | Component |
 |---|---|
@@ -1583,7 +1583,7 @@ A reverse index: given a class, find its component.
 
 ### Source files (canonical)
 
-- Foundation CSS: [`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`](../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css)
+- Foundation CSS: [`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css)
 - Shell CSS: [`SwissKit/src/main/resources/css/shell.css`](../../SwissKit/src/main/resources/css/shell.css)
 - Shell Java:
   - [`SwissKit/src/main/java/fan/summer/ui/sidebar/Sidebar.java`](../../SwissKit/src/main/java/fan/summer/ui/sidebar/Sidebar.java) (`NavItem`)

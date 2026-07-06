@@ -1,6 +1,6 @@
 package fan.summer.ai.service;
 
-import fan.summer.api.ai.AiServiceException;
+import fan.summer.zhiflow.api.ai.AiServiceException;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Paths;

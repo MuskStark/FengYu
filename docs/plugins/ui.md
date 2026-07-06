@@ -5,8 +5,8 @@
 ```java
 package {{base-package}}.ui;
 
-import fan.summer.api.i18n.I18n;
-import fan.summer.api.theme.Themes;
+import fan.summer.zhiflow.api.i18n.I18n;
+import fan.summer.zhiflow.api.theme.Themes;
 import javafx.geometry.HPos;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
@@ -70,7 +70,7 @@ public class {{Name}}PluginUi {
 
 ### 嵌入宿主 Scene 的节点
 
-自动继承 `swisskit-common.css` 中的样式，无需额外操作。
+自动继承 `zhiflow-common.css` 中的样式，无需额外操作。
 
 ### 独立窗口（Alert、自定义 Stage）
 
@@ -145,4 +145,4 @@ wizard.goTo(2);
 boolean last = wizard.isLastStep();
 ```
 
-详细用法 → `fan.summer.api.component.StepWizard`
+详细用法 → `fan.summer.zhiflow.api.component.StepWizard`

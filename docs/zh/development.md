@@ -64,7 +64,7 @@ SwissKitJ/
 ```xml
 <dependencies>
     <dependency>
-        <groupId>fan.summer.api</groupId>
+        <groupId>fan.summer.zhiflow.api</groupId>
         <artifactId>SwissKitJ-Api</artifactId>
         <version>3.0.0</version>
         <scope>provided</scope>
@@ -77,7 +77,7 @@ SwissKitJ/
 ```java
 package plugin.example.mytool;
 
-import fan.summer.api.*;
+import fan.summer.zhiflow.api.*;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.layout.VBox;
@@ -103,7 +103,7 @@ public class MyToolPlugin implements SwissKitJPlugin {
 
 **3. 通过 SPI 注册**
 
-创建 `META-INF/services/fan.summer.api.SwissKitJPlugin`：
+创建 `META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin`：
 
 ```
 plugin.example.mytool.MyToolPlugin
@@ -178,7 +178,7 @@ wizard.setOnStepChanged((from, to, total) -> {
 
 | 文件 | 作用域 |
 |------|--------|
-| `swisskit-common.css` | 共享变量、`.glass-*` 工具类、`.section-title` |
+| `zhiflow-common.css` | 共享变量、`.glass-*` 工具类、`.section-title` |
 | `shell.css` | 应用外壳 — 标题栏、侧边栏、卡片、面板 |
 | `builtin.css` | 内置工具样式 |
 
@@ -193,8 +193,8 @@ Themes.applyTo(scene);
 ## 日志
 
 ```java
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
 
 private static final PluginLogger log = LoggerFactory.getLogger(MyPlugin.class);
 

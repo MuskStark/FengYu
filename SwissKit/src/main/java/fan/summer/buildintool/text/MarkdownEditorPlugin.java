@@ -1,13 +1,13 @@
 package fan.summer.buildintool.text;
 
-import fan.summer.api.IconStyle;
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.ToolCategory;
-import fan.summer.api.ToolType;
-import fan.summer.api.i18n.I18n;
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
-import fan.summer.api.theme.ThemeService;
+import fan.summer.zhiflow.api.IconStyle;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ToolCategory;
+import fan.summer.zhiflow.api.ToolType;
+import fan.summer.zhiflow.api.i18n.I18n;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
+import fan.summer.zhiflow.api.theme.ThemeService;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
@@ -111,7 +111,7 @@ public class MarkdownEditorPlugin implements SwissKitJPlugin {
      */
     private static String buildPreviewPage(String markdown) {
         boolean light = ThemeService.current() == ThemeService.Theme.LIGHT;
-        // These mirror the -sk-* tokens in swisskit-common.css so the rendered
+        // These mirror the -sk-* tokens in zhiflow-common.css so the rendered
         // page matches the surrounding panel instead of guessing.
         String bodyBg     = light ? "#F7F8FA" : "#2B2B2B";
         String bodyColor  = light ? "#1E1E1E" : "#D0D0D0";

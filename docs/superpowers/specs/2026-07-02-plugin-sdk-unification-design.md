@@ -23,16 +23,16 @@
 
 ```
 SwissKitJ-Api(接口 + 可复用实现;依赖仍仅 JavaFX/SLF4J-free,零 DB)
-├─ fan.summer.api.host.PluginHost            门面接口
-├─ fan.summer.api.host.PluginSettings        KV 接口
-├─ fan.summer.api.host.TaskRunner            任务接口
-├─ fan.summer.api.host.TaskHandle            任务句柄接口
-├─ fan.summer.api.host.I18nFacade            i18n 子门面接口
-├─ fan.summer.api.host.ThemeFacade           主题子门面接口
-├─ fan.summer.api.host.NotificationFacade    通知子门面接口
-├─ fan.summer.api.host.SimpleTaskRunner      TaskRunner 通用实现(宿主/预览共用)
-├─ fan.summer.api.host.BasePluginHost        抽象基类:除 settings() 外全部实现
-└─ fan.summer.api.loader.ChildFirstResourceClassLoader   从宿主原样下沉
+├─ fan.summer.zhiflow.api.host.PluginHost            门面接口
+├─ fan.summer.zhiflow.api.host.PluginSettings        KV 接口
+├─ fan.summer.zhiflow.api.host.TaskRunner            任务接口
+├─ fan.summer.zhiflow.api.host.TaskHandle            任务句柄接口
+├─ fan.summer.zhiflow.api.host.I18nFacade            i18n 子门面接口
+├─ fan.summer.zhiflow.api.host.ThemeFacade           主题子门面接口
+├─ fan.summer.zhiflow.api.host.NotificationFacade    通知子门面接口
+├─ fan.summer.zhiflow.api.host.SimpleTaskRunner      TaskRunner 通用实现(宿主/预览共用)
+├─ fan.summer.zhiflow.api.host.BasePluginHost        抽象基类:除 settings() 外全部实现
+└─ fan.summer.zhiflow.api.loader.ChildFirstResourceClassLoader   从宿主原样下沉
 
 SwissKit(宿主实现)
 ├─ fan.summer.plugin.host.DefaultPluginHost      extends BasePluginHost,settings→H2
@@ -72,7 +72,7 @@ default void init(PluginHost host) {}
 ### 3.2 PluginHost
 
 ```java
-package fan.summer.api.host;
+package fan.summer.zhiflow.api.host;
 
 public interface PluginHost {
     /** The owning plugin's ID (same as SwissKitJPlugin.getId()). */
@@ -272,7 +272,7 @@ CREATE TABLE IF NOT EXISTS plugin_setting
 
 ### 5.1 classloader 统一
 
-- `ChildFirstResourceClassLoader` 从 `fan.summer.plugin`(SwissKit)**原样移动**到 `fan.summer.api.loader`(SwissKitJ-Api)。宿主内部类、无第三方引用,不留兼容别名;`PluginLoader` 改 import。API 模块日志改用 `fan.summer.api.log.LoggerFactory`(该类现用 SLF4J,移动时同步替换,保持 API 模块无 SLF4J 硬依赖)。
+- `ChildFirstResourceClassLoader` 从 `fan.summer.plugin`(SwissKit)**原样移动**到 `fan.summer.zhiflow.api.loader`(SwissKitJ-Api)。宿主内部类、无第三方引用,不留兼容别名;`PluginLoader` 改 import。API 模块日志改用 `fan.summer.zhiflow.api.log.LoggerFactory`(该类现用 SLF4J,移动时同步替换,保持 API 模块无 SLF4J 硬依赖)。
 - `PluginPreviewWindow.launch()` 的 `new URLClassLoader(...)` 换成 `new ChildFirstResourceClassLoader(...)`。
 
 ### 5.2 与真实宿主对齐的加载语义

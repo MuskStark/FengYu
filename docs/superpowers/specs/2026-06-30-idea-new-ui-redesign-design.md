@@ -52,7 +52,7 @@
 
 ### 3.2 `ThemeService`(API 模块)
 
-扩展现有 `fan.summer.api.theme.Themes`。API 模块**不直接依赖数据库**;持久化由宿主
+扩展现有 `fan.summer.zhiflow.api.theme.Themes`。API 模块**不直接依赖数据库**;持久化由宿主
 负责,`ThemeService` 只持有内存态 + 监听器:
 
 ```java
@@ -204,7 +204,7 @@ public final class ThemeService {
 
 1. **主题基建**:`ThemeService` + token 定义(`.theme-dark` / `.theme-light` on `.root`)。
    先让深色与现状视觉一致,证明切换机制不破坏现有外观。
-2. **`swisskit-common.css` 全量换 token + 重命名 `.glass-*` → `.sk-*`**(含扁平化重制)。
+2. **`zhiflow-common.css` 全量换 token + 重命名 `.glass-*` → `.sk-*`**(含扁平化重制)。
    同步改 API 模块 Java 引用。
 3. **`shell.css` 换 token + New UI 组件外观**:侧栏折叠、卡片、搜索框、状态栏、detail-panel、store。
    同步改 `SwissKit` 模块 Java 引用 + 内联 `#5b8cf7` 清理。

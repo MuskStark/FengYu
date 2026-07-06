@@ -2,9 +2,9 @@ package fan.summer.ai.adapter;
 
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.model.chat.request.json.*;
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.ai.AiToolParam;
-import fan.summer.api.ai.AiToolResult;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiToolParam;
+import fan.summer.zhiflow.api.ai.AiToolResult;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

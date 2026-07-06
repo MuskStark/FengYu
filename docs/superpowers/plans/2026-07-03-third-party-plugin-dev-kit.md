@@ -64,7 +64,7 @@ Expected: 命中 —— 证明存在 `String getCategory()` 漂移(应为 `ToolC
 - [ ] **Step 2: 全量核对 API 事实**
 
 对照真实接口逐条核查 `entry-point.md` 的方法签名表与代码块,列出所有与源码不符处。至少包含:
-- `getCategory()` 返回 `String "OTHER"` → 应为 `ToolCategory getCategory()` 返回 `ToolCategory.OTHER`(需 `import fan.summer.api.ToolCategory;`)。
+- `getCategory()` 返回 `String "OTHER"` → 应为 `ToolCategory getCategory()` 返回 `ToolCategory.OTHER`(需 `import fan.summer.zhiflow.api.ToolCategory;`)。
 - 方法说明表里 `getCategory()` 的“分类:text/image/...”应改为枚举值 `DEV/TEXT/IMAGE/NET/OTHER`。
 - `getType()` 说明“返回 `"builtin"`”应改为返回 `ToolType`(值 `PLUGIN/BUILTIN`,默认 `PLUGIN`)。
 - 补充 `init(PluginHost)`(v3.2.0+)与推荐用 `host.i18n().registerBundle(...)` 的说明(与 `plugin-host.md` 一致)。
@@ -73,10 +73,10 @@ Expected: 命中 —— 证明存在 `String getCategory()` 漂移(应为 `ToolC
 
 把代码块改成与 `KeepAwakePlugin.java` 一致的真实写法:
 ```java
-import fan.summer.api.IconStyle;
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.ToolCategory;
-import fan.summer.api.i18n.I18n;
+import fan.summer.zhiflow.api.IconStyle;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ToolCategory;
+import fan.summer.zhiflow.api.i18n.I18n;
 import javafx.scene.Node;
 
 public class {{Name}}Plugin implements SwissKitJPlugin {
@@ -205,7 +205,7 @@ echo "Synced standards @ API $VER"
 
 Create `.claude-plugin/plugin/standards/checklist.md`,分两节。**机械规则(validate.sh 判定)**:
 ```
-M1 SPI 文件存在:src/main/resources/META-INF/services/fan.summer.api.SwissKitJPlugin
+M1 SPI 文件存在:src/main/resources/META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin
 M2 SPI 内容 = 入口类 FQN,且该 .java 存在
 M3 SwissKitJ-Api 依赖 scope 为 provided
 M4 无 .glass- CSS 引用(源码+资源)
@@ -309,7 +309,7 @@ rc=0
 fail(){ echo "FAIL $1: $2"; rc=1; }
 ok(){ :; }
 
-SPI="$RES/META-INF/services/fan.summer.api.SwissKitJPlugin"
+SPI="$RES/META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin"
 [ -f "$SPI" ] || fail M1 "missing SPI file"
 if [ -f "$SPI" ]; then
   fqn="$(grep -m1 -v '^\s*$' "$SPI" | tr -d '\r')"

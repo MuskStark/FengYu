@@ -242,7 +242,7 @@ Create `SwissKit/src/test/java/fan/summer/ai/tools/ToolCallParserHermesTest.java
 ```java
 package fan.summer.ai.tools;
 
-import fan.summer.api.ai.AiToolCall;
+import fan.summer.zhiflow.api.ai.AiToolCall;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

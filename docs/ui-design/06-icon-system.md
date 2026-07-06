@@ -73,7 +73,7 @@ the `MaterialDesignIcons` font family.
 ### The one API you use
 
 ```java
-import fan.summer.api.MdiIconUtil;
+import fan.summer.zhiflow.api.MdiIconUtil;
 import javafx.scene.text.Text;
 
 // 1. name WITHOUT the "mdi-" prefix; size in logical pixels
@@ -162,7 +162,7 @@ contract (P1) intact.
 
 ### MdiIconUtil API
 
-All methods are `static` on `fan.summer.api.MdiIconUtil`. The class loads the codemap and webfont
+All methods are `static` on `fan.summer.zhiflow.api.MdiIconUtil`. The class loads the codemap and webfont
 lazily and caches them for the process lifetime.
 
 | Signature | Returns | Behavior |
@@ -214,7 +214,7 @@ before shipping.
 
 ### IconStyle Accent Palette
 
-`fan.summer.api.IconStyle` — seven accent styles. Each carries a **CSS class name** and a
+`fan.summer.zhiflow.api.IconStyle` — seven accent styles. Each carries a **CSS class name** and a
 **`javafx.scene.paint.Color`**. The CSS class is applied to the icon *wrapper*; the color is
 applied to the `Text` *glyph* from Java. (See [the trap](#the-critical-ic--trap).)
 
@@ -307,16 +307,16 @@ Java via `IconStyle.getColor()` for tool icons.
 
 For icons that should recolor with the theme (the common case for non-tool UI), use the
 `.sk-fill-2` / `.sk-fill-3` **utility styleclasses** from
-[`swisskit-common.css`](../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css):
+[`zhiflow-common.css`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css):
 
 ```css
-/* swisskit-common.css */
+/* zhiflow-common.css */
 .sk-fill-2 { -fx-fill: -sk-text-secondary; }   /* Text/Shape fill (secondary) */
 .sk-fill-3 { -fx-fill: -sk-text-disabled; }    /* Text/Shape fill (disabled)  */
 ```
 
 ```java
-import fan.summer.api.MdiIconUtil;
+import fan.summer.zhiflow.api.MdiIconUtil;
 import javafx.scene.text.Text;
 
 // secondary-tone icon that follows dark/light theme automatically
@@ -351,9 +351,9 @@ does. The plugin supplies the *name* (`getMdiIcon()`) and the *style* (`getIconS
 does the fill + glow:
 
 ```java
-import fan.summer.api.IconStyle;
-import fan.summer.api.MdiIconUtil;
-import fan.summer.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.IconStyle;
+import fan.summer.zhiflow.api.MdiIconUtil;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
 import javafx.scene.effect.DropShadow;
 import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
@@ -525,7 +525,7 @@ detail hero is **50 px**, nav icons are **16–18 px**.
 | Codepoint map (7 448 entries, bare-name keys) | [`SwissKitJ-Api/src/main/resources/fonts/mdi-codemap.properties`](../../SwissKitJ-Api/src/main/resources/fonts/mdi-codemap.properties) |
 | Webfont binary | `/fonts/materialdesignicons-webfont.ttf` (classpath, API module) |
 | Empty `.ic-*` rules + `.tool-icon-wrap` (48px) + `.nav-item-icon` (18px) | [`SwissKit/src/main/resources/css/shell.css`](../../SwissKit/src/main/resources/css/shell.css) |
-| `.sk-fill-2` / `.sk-fill-3` utility classes | [`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`](../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css) |
+| `.sk-fill-2` / `.sk-fill-3` utility classes | [`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) |
 | Canonical tool-icon renderer (45px glyph + glow) | [`SwissKit/src/main/java/fan/summer/ui/content/ToolCard.java`](../../SwissKit/src/main/java/fan/summer/ui/content/ToolCard.java) |
 | Detail-panel hero renderer (50px glyph + glow) | [`SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java`](../../SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java) |
 | 11 builtin tool icon mappings | [`SwissKit/src/main/java/fan/summer/registrar/BuiltinToolRegistrar.java`](../../SwissKit/src/main/java/fan/summer/registrar/BuiltinToolRegistrar.java) |

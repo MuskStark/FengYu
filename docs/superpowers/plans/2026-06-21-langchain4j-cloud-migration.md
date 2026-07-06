@@ -131,8 +131,8 @@ package fan.summer.ai.adapter;
 
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.*;
-import fan.summer.api.ai.AiChatMessage;
-import fan.summer.api.ai.AiToolCall;
+import fan.summer.zhiflow.api.ai.AiChatMessage;
+import fan.summer.zhiflow.api.ai.AiToolCall;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -216,8 +216,8 @@ package fan.summer.ai.adapter;
 
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.*;
-import fan.summer.api.ai.AiChatMessage;
-import fan.summer.api.ai.AiToolCall;
+import fan.summer.zhiflow.api.ai.AiChatMessage;
+import fan.summer.zhiflow.api.ai.AiToolCall;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -321,9 +321,9 @@ package fan.summer.ai.adapter;
 
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.model.chat.request.json.*;
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.ai.AiToolParam;
-import fan.summer.api.ai.AiToolResult;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiToolParam;
+import fan.summer.zhiflow.api.ai.AiToolResult;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -404,8 +404,8 @@ package fan.summer.ai.adapter;
 
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.model.chat.request.json.*;
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.ai.AiToolParam;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiToolParam;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -493,7 +493,7 @@ Create `SwissKit/src/main/java/fan/summer/ai/adapter/CloudAiConfigProvider.java`
 package fan.summer.ai.adapter;
 
 /**
- * Marker interface for {@link fan.summer.api.ai.AiService} implementations that
+ * Marker interface for {@link fan.summer.zhiflow.api.ai.AiService} implementations that
  * expose raw cloud-API config (endpoint, API key, model name) for consumers that
  * must bypass the standard {@code chat()} flow.
  *
@@ -539,8 +539,8 @@ package fan.summer.ai.adapter;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.chat.response.ChatResponse;
-import fan.summer.api.ai.AiStreamCallback;
-import fan.summer.api.ai.AiToolCall;
+import fan.summer.zhiflow.api.ai.AiStreamCallback;
+import fan.summer.zhiflow.api.ai.AiToolCall;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -644,8 +644,8 @@ import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
-import fan.summer.api.ai.AiStreamCallback;
-import fan.summer.api.ai.AiToolCall;
+import fan.summer.zhiflow.api.ai.AiStreamCallback;
+import fan.summer.zhiflow.api.ai.AiToolCall;
 import javafx.application.Platform;
 
 import java.util.ArrayList;
@@ -768,7 +768,7 @@ import fan.summer.ai.adapter.CloudAiConfigProvider;
 import fan.summer.ai.adapter.StreamingResponseHandlerBridge;
 import fan.summer.ai.tools.ToolExecutor;
 import fan.summer.ai.util.JsonHelper;
-import fan.summer.api.ai.*;
+import fan.summer.zhiflow.api.ai.*;
 import fan.summer.ui.setting.SwissKitJSettingUi;
 import javafx.application.Platform;
 import org.slf4j.Logger;
@@ -973,7 +973,7 @@ import fan.summer.ai.adapter.ChatMessageMapper;
 import fan.summer.ai.adapter.CloudAiConfigProvider;
 import fan.summer.ai.adapter.StreamingResponseHandlerBridge;
 import fan.summer.ai.tools.ToolExecutor;
-import fan.summer.api.ai.*;
+import fan.summer.zhiflow.api.ai.*;
 import fan.summer.ui.setting.SwissKitJSettingUi;
 import javafx.application.Platform;
 import org.slf4j.Logger;

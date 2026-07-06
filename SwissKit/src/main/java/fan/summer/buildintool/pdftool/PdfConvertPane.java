@@ -1,8 +1,8 @@
 package fan.summer.buildintool.pdftool;
 
-import fan.summer.api.i18n.I18n;
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.i18n.I18n;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
 import fan.summer.buildintool.pdftool.worker.PdfConvertWorker;
 import javafx.application.Platform;
 import javafx.geometry.Insets;

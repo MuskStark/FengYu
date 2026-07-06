@@ -19,13 +19,13 @@ SwissKitJ 3.1 用统一的 `ChatBackend` 契约替换了 `AiService` 接口。�
 
 ```java
 // 3.0.x 及之前：
-import fan.summer.api.ai.AiService;
+import fan.summer.zhiflow.api.ai.AiService;
 Optional<AiService> opt = AiServiceProvider.getService();
 AiService svc = opt.get();
 svc.chat(history, callback);
 
 // 3.1 之后：
-import fan.summer.api.ai.ChatBackend;
+import fan.summer.zhiflow.api.ai.ChatBackend;
 Optional<ChatBackend> opt = AiServiceProvider.getService();
 ChatBackend svc = opt.get();
 svc.chat(history, callback);

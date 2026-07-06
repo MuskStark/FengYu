@@ -9,7 +9,7 @@
 |---|---|
 | **文档类型** | 逐组件参考规格（Foundation + Shell） |
 | **目标读者** | UI 设计师、插件作者、AI 代码生成器 |
-| **CSS 来源（基础层）** | [`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`](../../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css) — 宿主与所有插件共享 |
+| **CSS 来源（基础层）** | [`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`](../../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) — 宿主与所有插件共享 |
 | **CSS 来源（壳层）** | [`SwissKit/src/main/resources/css/shell.css`](../../../SwissKit/src/main/resources/css/shell.css) — 仅宿主壳层 |
 | **关联文档** | [02 JavaFX 实现](02-javafx-implementation.md) · [05 主题与配色系统](05-theme-color-system.md) · [06 图标系统](06-icon-system.md) |
 
@@ -23,7 +23,7 @@ SwissKitJ 有**两层组件**，各自有独立的样式表。判断一个类属
 
 | 家族 | 样式表 | 谁可以使用？ | 类前缀 | 数量 |
 |---|---|---|---|---|
-| **Foundation（基础层）** | `swisskit-common.css`（API 模块） | 宿主**和**所有第三方插件 | `.sk-*` | 12 个组件 |
+| **Foundation（基础层）** | `zhiflow-common.css`（API 模块） | 宿主**和**所有第三方插件 | `.sk-*` | 12 个组件 |
 | **Shell（壳层）** | `shell.css`（仅宿主） | 仅宿主应用 | 无前缀（`nav-item`、`tool-card`、…） | 5 个组件 |
 
 基础层组件会通过 `Themes.applyTo(scene)` 加载到任意 Scene 上，因此在你的插件嵌入式视图**以及**
@@ -55,7 +55,7 @@ SwissKitJ 有**两层组件**，各自有独立的样式表。判断一个类属
 
 ### 快速跳转索引
 
-**基础层组件**（`swisskit-common.css`）
+**基础层组件**（`zhiflow-common.css`）
 - [F1 · 文本工具类](#f1--文本工具类) —— `.sk-t1` `.sk-t2` `.sk-t3`
 - [F2 · 表面工具类](#f2--表面工具类) —— `.sk-surface` `.sk-surface-soft` `.sk-outlined` `.sk-outlined-strong`
 - [F3 · 状态文本工具类](#f3--状态文本工具类) —— `.sk-accent-text` `.sk-success-text` `.sk-warning-text` `.sk-danger-text`
@@ -82,7 +82,7 @@ SwissKitJ 有**两层组件**，各自有独立的样式表。判断一个类属
 
 # 第一部分 —— 基础层组件
 
-> 来源：`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`。凡调用了
+> 来源：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`。凡调用了
 > `Themes.applyTo(scene)` 的地方均可用。
 
 ---
@@ -111,9 +111,9 @@ SwissKitJ 有**两层组件**，各自有独立的样式表。判断一个类属
 
 | 类 | 源码行 | 用途 |
 |---|---|---|
-| `.sk-t1` | `swisskit-common.css:126` | 主要文本填充 |
-| `.sk-t2` | `swisskit-common.css:127` | 次要文本/标签填充 |
-| `.sk-t3` | `swisskit-common.css:128` | 禁用/提示/弱化文本填充 |
+| `.sk-t1` | `zhiflow-common.css:126` | 主要文本填充 |
+| `.sk-t2` | `zhiflow-common.css:127` | 次要文本/标签填充 |
+| `.sk-t3` | `zhiflow-common.css:128` | 禁用/提示/弱化文本填充 |
 
 ### 3. 使用的令牌
 
@@ -156,7 +156,7 @@ empty.setStyle("-fx-font-size: 13px;");
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`（通用主题工具类小节）
+- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（通用主题工具类小节）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 - 命名约定：[02 JavaFX 实现 —— `#css-naming`](02-javafx-implementation.md#css-naming)
 
@@ -182,10 +182,10 @@ empty.setStyle("-fx-font-size: 13px;");
 
 | 类 | 源码行 | 用途 |
 |---|---|---|
-| `.sk-surface` | `swisskit-common.css:131` | 抬高背景填充 |
-| `.sk-surface-soft` | `swisskit-common.css:132` | 柔和（悬浮档）背景填充 |
-| `.sk-outlined` | `swisskit-common.css:133` | 默认边框颜色（配合内联 width/radius） |
-| `.sk-outlined-strong` | `swisskit-common.css:134` | 强调边框颜色 |
+| `.sk-surface` | `zhiflow-common.css:131` | 抬高背景填充 |
+| `.sk-surface-soft` | `zhiflow-common.css:132` | 柔和（悬浮档）背景填充 |
+| `.sk-outlined` | `zhiflow-common.css:133` | 默认边框颜色（配合内联 width/radius） |
+| `.sk-outlined-strong` | `zhiflow-common.css:134` | 强调边框颜色 |
 
 ### 3. 使用的令牌
 
@@ -218,7 +218,7 @@ panel.setStyle("-fx-border-width: 1; -fx-border-radius: 8; -fx-background-radius
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`（通用主题工具类小节）
+- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（通用主题工具类小节）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 - 命名约定：[02 JavaFX 实现 —— `#css-naming`](02-javafx-implementation.md#css-naming)
 
@@ -242,10 +242,10 @@ panel.setStyle("-fx-border-width: 1; -fx-border-radius: 8; -fx-background-radius
 
 | 类 | 源码行 | 用途 |
 |---|---|---|
-| `.sk-accent-text` | `swisskit-common.css:135` | 强调文本填充 —— 链接、内联强调 |
-| `.sk-success-text` | `swisskit-common.css:136` | 成功状态文本 |
-| `.sk-warning-text` | `swisskit-common.css:137` | 警告状态文本 |
-| `.sk-danger-text` | `swisskit-common.css:138` | 错误/危险状态文本 |
+| `.sk-accent-text` | `zhiflow-common.css:135` | 强调文本填充 —— 链接、内联强调 |
+| `.sk-success-text` | `zhiflow-common.css:136` | 成功状态文本 |
+| `.sk-warning-text` | `zhiflow-common.css:137` | 警告状态文本 |
+| `.sk-danger-text` | `zhiflow-common.css:138` | 错误/危险状态文本 |
 
 ### 3. 使用的令牌
 
@@ -280,7 +280,7 @@ err.setStyle("-fx-font-size: 12px;");
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`（通用主题工具类小节）
+- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（通用主题工具类小节）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -302,8 +302,8 @@ err.setStyle("-fx-font-size: 12px;");
 
 | 类 | 源码行 | 用途 |
 |---|---|---|
-| `.sk-fill-2` | `swisskit-common.css:129` | 次要 `-fx-fill`（Text/Shape） |
-| `.sk-fill-3` | `swisskit-common.css:130` | 禁用/弱化 `-fx-fill`（Text/Shape） |
+| `.sk-fill-2` | `zhiflow-common.css:129` | 次要 `-fx-fill`（Text/Shape） |
+| `.sk-fill-3` | `zhiflow-common.css:130` | 禁用/弱化 `-fx-fill`（Text/Shape） |
 
 ### 3. 使用的令牌
 
@@ -331,7 +331,7 @@ glyph.getStyleClass().add("sk-fill-3");   // 弱化的搜索字形
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`（通用主题工具类小节）
+- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（通用主题工具类小节）
 - 图标：[06 图标系统](06-icon-system.md)
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
@@ -358,7 +358,7 @@ glyph.getStyleClass().add("sk-fill-3");   // 弱化的搜索字形
 
 | 类 | 源码行 | 用途 |
 |---|---|---|
-| `.sk-scrim` | `swisskit-common.css:139` | 模态背景填充 |
+| `.sk-scrim` | `zhiflow-common.css:139` | 模态背景填充 |
 
 ### 3. 使用的令牌
 
@@ -388,7 +388,7 @@ root.getStyleClass().add("sk-scrim");      // 在对话框后压暗
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`（通用主题工具类小节）
+- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（通用主题工具类小节）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -413,8 +413,8 @@ root.getStyleClass().add("sk-scrim");      // 在对话框后压暗
 
 | 类 | 源码行 | 用途 |
 |---|---|---|
-| `.sk-field` | `swisskit-common.css:152` | 文本输入（TextField/TextArea） |
-| `.sk-field-label` | `swisskit-common.css:166` | 字段上方的标题标签 |
+| `.sk-field` | `zhiflow-common.css:152` | 文本输入（TextField/TextArea） |
+| `.sk-field-label` | `zhiflow-common.css:166` | 字段上方的标题标签 |
 
 ### 3. 使用的令牌
 
@@ -455,7 +455,7 @@ input.setPromptText("/path/to/file");
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`（输入字段小节，行 151–166）
+- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（输入字段小节，行 151–166）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -482,8 +482,8 @@ input.setPromptText("/path/to/file");
 
 | 类 | 源码行 | 用途 |
 |---|---|---|
-| `.sk-btn-primary` | `swisskit-common.css:282` | 强调色填充的动作按钮 |
-| `.sk-btn-secondary` | `swisskit-common.css:296` | 带边框的幽灵按钮 |
+| `.sk-btn-primary` | `zhiflow-common.css:282` | 强调色填充的动作按钮 |
+| `.sk-btn-secondary` | `zhiflow-common.css:296` | 带边框的幽灵按钮 |
 
 没有 `.sk-btn` 基类——不要臆造。
 
@@ -529,7 +529,7 @@ cancel.setCancelButton(true);
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`（主/次按钮小节，行 281–307）
+- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（主/次按钮小节，行 281–307）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -553,14 +553,14 @@ cancel.setCancelButton(true);
 
 | 类 | 源码行 | 用途 |
 |---|---|---|
-| `.sk-combo` | `swisskit-common.css:196` | 闭合下拉框 |
-| `.sk-combo .list-cell` | `swisskit-common.css:205` | 选中单元格文字 |
-| `.sk-combo .arrow-button` | `swisskit-common.css:206` | 下拉箭头按钮（透明） |
-| `.sk-combo .arrow` | `swisskit-common.css:207` | 下拉箭头字形 |
-| `.combo-box-popup .list-view` | `swisskit-common.css:209` | 弹层列表（抬高、圆角、带阴影） |
-| `.combo-box-popup .list-view .list-cell` | `swisskit-common.css:218` | 弹层行 |
-| `.combo-box-popup .list-view .list-cell:filled:hover` | `swisskit-common.css:224` | 悬浮行 |
-| `.combo-box-popup .list-view .list-cell:filled:selected` | `swisskit-common.css:229` | 选中行 |
+| `.sk-combo` | `zhiflow-common.css:196` | 闭合下拉框 |
+| `.sk-combo .list-cell` | `zhiflow-common.css:205` | 选中单元格文字 |
+| `.sk-combo .arrow-button` | `zhiflow-common.css:206` | 下拉箭头按钮（透明） |
+| `.sk-combo .arrow` | `zhiflow-common.css:207` | 下拉箭头字形 |
+| `.combo-box-popup .list-view` | `zhiflow-common.css:209` | 弹层列表（抬高、圆角、带阴影） |
+| `.combo-box-popup .list-view .list-cell` | `zhiflow-common.css:218` | 弹层行 |
+| `.combo-box-popup .list-view .list-cell:filled:hover` | `zhiflow-common.css:224` | 悬浮行 |
+| `.combo-box-popup .list-view .list-cell:filled:selected` | `zhiflow-common.css:229` | 选中行 |
 
 ### 3. 使用的令牌
 
@@ -596,7 +596,7 @@ box.getSelectionModel().select(0);
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`（下拉框小节，行 195–233）
+- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（下拉框小节，行 195–233）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -617,10 +617,10 @@ box.getSelectionModel().select(0);
 
 | 类 | 源码行 | 用途 |
 |---|---|---|
-| `.sk-checkbox` | `swisskit-common.css:270` | 复选框标签 + 文字 |
-| `.sk-checkbox .box` | `swisskit-common.css:271` | 未选中方框 |
-| `.sk-checkbox:selected .box` | `swisskit-common.css:278` | 选中方框填充 |
-| `.sk-checkbox:selected .mark` | `swisskit-common.css:279` | 勾选标记 |
+| `.sk-checkbox` | `zhiflow-common.css:270` | 复选框标签 + 文字 |
+| `.sk-checkbox .box` | `zhiflow-common.css:271` | 未选中方框 |
+| `.sk-checkbox:selected .box` | `zhiflow-common.css:278` | 选中方框填充 |
+| `.sk-checkbox:selected .mark` | `zhiflow-common.css:279` | 勾选标记 |
 
 ### 3. 使用的令牌
 
@@ -653,7 +653,7 @@ cb.setSelected(true);
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`（复选框小节，行 269–279）
+- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（复选框小节，行 269–279）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -679,16 +679,16 @@ cb.setSelected(true);
 
 | 类 | 源码行 | 用途 |
 |---|---|---|
-| `.sk-table` | `swisskit-common.css:251` | 表格表面 |
-| `.sk-table .column-header-background` | `swisskit-common.css:259` | 表头条背景 |
-| `.sk-table .column-header` | `swisskit-common.css:260` | 表头单元格 |
-| `.sk-table .column-header .label` | `swisskit-common.css:261` | 表头文字 |
-| `.sk-table .table-cell` | `swisskit-common.css:262` | 正文单元格 |
-| `.sk-table .table-row-cell` | `swisskit-common.css:263` | 正文行 |
-| `.sk-table .table-row-cell:selected` | `swisskit-common.css:264` | 选中行 |
-| `.sk-table .table-row-cell:selected .table-cell` | `swisskit-common.css:265` | 选中单元格文字 |
-| `.sk-table .table-row-cell:hover` | `swisskit-common.css:266` | 悬浮行 |
-| `.sk-table .placeholder .label` | `swisskit-common.css:267` | 空状态文字 |
+| `.sk-table` | `zhiflow-common.css:251` | 表格表面 |
+| `.sk-table .column-header-background` | `zhiflow-common.css:259` | 表头条背景 |
+| `.sk-table .column-header` | `zhiflow-common.css:260` | 表头单元格 |
+| `.sk-table .column-header .label` | `zhiflow-common.css:261` | 表头文字 |
+| `.sk-table .table-cell` | `zhiflow-common.css:262` | 正文单元格 |
+| `.sk-table .table-row-cell` | `zhiflow-common.css:263` | 正文行 |
+| `.sk-table .table-row-cell:selected` | `zhiflow-common.css:264` | 选中行 |
+| `.sk-table .table-row-cell:selected .table-cell` | `zhiflow-common.css:265` | 选中单元格文字 |
+| `.sk-table .table-row-cell:hover` | `zhiflow-common.css:266` | 悬浮行 |
+| `.sk-table .placeholder .label` | `zhiflow-common.css:267` | 空状态文字 |
 
 ### 3. 使用的令牌
 
@@ -729,7 +729,7 @@ table.getStyleClass().add("sk-table");
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`（表格小节，行 250–267）
+- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（表格小节，行 250–267）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -754,15 +754,15 @@ table.getStyleClass().add("sk-table");
 
 | 类 | 源码行 | 用途 |
 |---|---|---|
-| `.sk-tab-pane` | `swisskit-common.css:169` | TabPane 根（透明，最小标签宽 100px） |
-| `.sk-tab-pane .tab-header-area` | `swisskit-common.css:170` | 表头 padding |
-| `.sk-tab-pane .tab-header-area .tab-header-background` | `swisskit-common.css:171` | 表头背景 + 底边框 |
-| `.sk-tab-pane .tab` | `swisskit-common.css:176` | 单个标签页 |
-| `.sk-tab-pane .tab .tab-label` | `swisskit-common.css:185` | 标签文字 |
-| `.sk-tab-pane .tab:hover` | `swisskit-common.css:186` | 悬浮标签页 |
-| `.sk-tab-pane .tab:selected` | `swisskit-common.css:187` | 选中标签页（下划线） |
-| `.sk-tab-pane .tab:selected .tab-label` | `swisskit-common.css:192` | 选中标签文字 |
-| `.sk-tab-pane .tab:selected .focus-indicator` | `swisskit-common.css:193` | 抑制聚焦环 |
+| `.sk-tab-pane` | `zhiflow-common.css:169` | TabPane 根（透明，最小标签宽 100px） |
+| `.sk-tab-pane .tab-header-area` | `zhiflow-common.css:170` | 表头 padding |
+| `.sk-tab-pane .tab-header-area .tab-header-background` | `zhiflow-common.css:171` | 表头背景 + 底边框 |
+| `.sk-tab-pane .tab` | `zhiflow-common.css:176` | 单个标签页 |
+| `.sk-tab-pane .tab .tab-label` | `zhiflow-common.css:185` | 标签文字 |
+| `.sk-tab-pane .tab:hover` | `zhiflow-common.css:186` | 悬浮标签页 |
+| `.sk-tab-pane .tab:selected` | `zhiflow-common.css:187` | 选中标签页（下划线） |
+| `.sk-tab-pane .tab:selected .tab-label` | `zhiflow-common.css:192` | 选中标签文字 |
+| `.sk-tab-pane .tab:selected .focus-indicator` | `zhiflow-common.css:193` | 抑制聚焦环 |
 
 > **不存在独立的 `.sk-tab`。** 规则始终是 `.sk-tab-pane .tab`（后代选择器）。源码中没有裸
 > `.sk-tab`，写了也不会匹配任何东西。
@@ -809,7 +809,7 @@ tabs.getTabs().addAll(
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`（TabPane 小节，行 168–193）
+- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（TabPane 小节，行 168–193）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -834,7 +834,7 @@ drop shadow 使用 `-sk-shadow` 令牌。配合 `.sk-scrim`（[F5](#f5--遮罩sc
 
 | 类 | 源码行 | 用途 |
 |---|---|---|
-| `.sk-dialog` | `swisskit-common.css:142` | 对话框表面 |
+| `.sk-dialog` | `zhiflow-common.css:142` | 对话框表面 |
 
 ### 3. 使用的令牌
 
@@ -868,7 +868,7 @@ dialog.setPadding(new Insets(20, 24, 16, 24));
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`（对话框小节，行 141–149）
+- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（对话框小节，行 141–149）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 - 为独立 Stage 应用主题：[02 JavaFX 实现 —— `#plugin-skeleton`](02-javafx-implementation.md#plugin-skeleton)
 
@@ -909,16 +909,16 @@ dialog.setPadding(new Insets(20, 24, 16, 24));
 
 | 类 | 源码行 | 用途 |
 |---|---|---|
-| `.sk-notif-root` | `swisskit-common.css:310` | 卡片表面（抬高、带边框、带阴影，宽 420px） |
-| `.sk-notif-icon` | `swisskit-common.css:320` | 32px 圆形图标容器 |
-| `.sk-notif-info` | `swisskit-common.css:326` | 信息严重程度（图标字形 + 柔和背景） |
-| `.sk-notif-success` | `swisskit-common.css:327` | 成功严重程度 |
-| `.sk-notif-warning` | `swisskit-common.css:328` | 警告严重程度 |
-| `.sk-notif-error` | `swisskit-common.css:329` | 错误严重程度 |
-| `.sk-notif-message` | `swisskit-common.css:330` | 正文文字（在 360px 处换行） |
-| `.sk-notif-btn-bar` | `swisskit-common.css:331` | 按钮容器 |
-| `.sk-notif-ok` | `swisskit-common.css:332` | Primary OK 按钮 |
-| `.sk-notif-cancel` | `swisskit-common.css:344` | Secondary Cancel 按钮 |
+| `.sk-notif-root` | `zhiflow-common.css:310` | 卡片表面（抬高、带边框、带阴影，宽 420px） |
+| `.sk-notif-icon` | `zhiflow-common.css:320` | 32px 圆形图标容器 |
+| `.sk-notif-info` | `zhiflow-common.css:326` | 信息严重程度（图标字形 + 柔和背景） |
+| `.sk-notif-success` | `zhiflow-common.css:327` | 成功严重程度 |
+| `.sk-notif-warning` | `zhiflow-common.css:328` | 警告严重程度 |
+| `.sk-notif-error` | `zhiflow-common.css:329` | 错误严重程度 |
+| `.sk-notif-message` | `zhiflow-common.css:330` | 正文文字（在 360px 处换行） |
+| `.sk-notif-btn-bar` | `zhiflow-common.css:331` | 按钮容器 |
+| `.sk-notif-ok` | `zhiflow-common.css:332` | Primary OK 按钮 |
+| `.sk-notif-cancel` | `zhiflow-common.css:344` | Secondary Cancel 按钮 |
 
 ### 3. 使用的令牌
 
@@ -981,7 +981,7 @@ if (SkNotification.confirm(view, "Delete?", "This cannot be undone.")) {
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`（通知小节，行 309–355）
+- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（通知小节，行 309–355）
 - Java：`SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java`
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
@@ -1004,11 +1004,11 @@ if (SkNotification.confirm(view, "Delete?", "This cannot be undone.")) {
 
 | 类 | 源码行 | 用途 |
 |---|---|---|
-| `.sk-step-done` | `swisskit-common.css:358` | 已完成圆点（填充 + 描边 `-sk-success`） |
-| `.sk-step-current` | `swisskit-common.css:359` | 当前圆点（填充 + 描边 `-sk-accent`） |
-| `.sk-step-idle` | `swisskit-common.css:360` | 未来圆点（填充 `-sk-bg-selected`，描边 `-sk-border`） |
-| `.sk-step-line-done` | `swisskit-common.css:361` | 已完成连接线（`-sk-success`） |
-| `.sk-step-line-idle` | `swisskit-common.css:362` | 未来连接线（`-sk-border`） |
+| `.sk-step-done` | `zhiflow-common.css:358` | 已完成圆点（填充 + 描边 `-sk-success`） |
+| `.sk-step-current` | `zhiflow-common.css:359` | 当前圆点（填充 + 描边 `-sk-accent`） |
+| `.sk-step-idle` | `zhiflow-common.css:360` | 未来圆点（填充 `-sk-bg-selected`，描边 `-sk-border`） |
+| `.sk-step-line-done` | `zhiflow-common.css:361` | 已完成连接线（`-sk-success`） |
+| `.sk-step-line-idle` | `zhiflow-common.css:362` | 未来连接线（`-sk-border`） |
 
 ### 3. 使用的令牌
 
@@ -1045,7 +1045,7 @@ wizard.build();
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`（StepWizard 指示器小节，行 357–362）
+- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（StepWizard 指示器小节，行 357–362）
 - Java：`SwissKitJ-Api/src/main/java/fan/summer/api/component/StepWizard.java`
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
@@ -1514,7 +1514,7 @@ bar.getChildren().addAll(tools, sep, plugins, spacer, clock);
 
 反向索引：给定一个类，找到它的组件。
 
-### 基础层类（`swisskit-common.css`）
+### 基础层类（`zhiflow-common.css`）
 
 | 类 | 组件 |
 |---|---|
@@ -1560,7 +1560,7 @@ bar.getChildren().addAll(tools, sep, plugins, spacer, clock);
 
 ### 源文件（权威）
 
-- 基础层 CSS：[`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`](../../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css)
+- 基础层 CSS：[`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`](../../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css)
 - 壳层 CSS：[`SwissKit/src/main/resources/css/shell.css`](../../../SwissKit/src/main/resources/css/shell.css)
 - 壳层 Java：
   - [`SwissKit/src/main/java/fan/summer/ui/sidebar/Sidebar.java`](../../../SwissKit/src/main/java/fan/summer/ui/sidebar/Sidebar.java)（`NavItem`）
