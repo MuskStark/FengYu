@@ -101,7 +101,7 @@ git commit -m "✨ feat: add JUnit 5 test dependency to SwissKit"
 
 写入 `SwissKit/src/main/java/fan/summer/ui/store/StorePlugin.java`:
 ```java
-package fan.summer.ui.store;
+package fan.summer.zhiflow.ui.store;
 
 import fan.summer.zhiflow.api.IconStyle;
 import fan.summer.zhiflow.api.ToolCategory;
@@ -173,7 +173,7 @@ git commit -m "♻️ refactor: extract StorePlugin to top-level class"
 
 写入 `SwissKit/src/test/java/fan/summer/ui/store/StorePluginLogicTest.java`:
 ```java
-package fan.summer.ui.store;
+package fan.summer.zhiflow.ui.store;
 
 import fan.summer.zhiflow.api.IconStyle;
 import fan.summer.zhiflow.api.ToolCategory;
@@ -181,7 +181,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
-import static fan.summer.ui.store.StorePluginLogic.InstallState.*;
+import static fan.summer.zhiflow.ui.store.StorePluginLogic.InstallState.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class StorePluginLogicTest {
@@ -311,7 +311,7 @@ Expected: 编译失败 —— `StorePluginLogic` 不存在(cannot find symbol)�
 
 写入 `SwissKit/src/main/java/fan/summer/ui/store/StorePluginLogic.java`:
 ```java
-package fan.summer.ui.store;
+package fan.summer.zhiflow.ui.store;
 
 import fan.summer.zhiflow.api.ToolCategory;
 
@@ -580,14 +580,14 @@ git commit -m "💄 style: add .store-* CSS classes for redesigned plugin store"
 
 用以下完整内容替换 `SwissKit/src/main/java/fan/summer/ui/store/OnlineStorePane.java`:
 ```java
-package fan.summer.ui.store;
+package fan.summer.zhiflow.ui.store;
 
 import fan.summer.zhiflow.api.IconStyle;
 import fan.summer.zhiflow.api.ToolCategory;
 import fan.summer.zhiflow.api.component.GlassNotification;
 import fan.summer.zhiflow.api.i18n.I18n;
-import fan.summer.plugin.PluginLoader;
-import fan.summer.ui.store.StorePluginLogic.InstallState;
+import fan.summer.zhiflow.plugin.PluginLoader;
+import fan.summer.zhiflow.ui.store.StorePluginLogic.InstallState;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -607,7 +607,7 @@ import javafx.util.StringConverter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import fan.summer.ai.util.JsonHelper;
+import fan.summer.zhiflow.ai.util.JsonHelper;
 
 import java.io.BufferedReader;
 import java.io.FileOutputStream;
@@ -760,7 +760,7 @@ public class OnlineStorePane extends VBox {
     // ── Fetch ────────────────────────────────────────────────────
 
     private void fetchPluginList() {
-        String urlStr = fan.summer.ui.setting.SwissKitJSettingUi.getStoreUrl();
+        String urlStr = fan.summer.zhiflow.ui.setting.SwissKitJSettingUi.getStoreUrl();
         showLoading(true);
         statusLabel.setText("");
 
@@ -1125,11 +1125,11 @@ import java.util.Map;
 
 在 `MainWindow.java` 第 283 行,把:
 ```java
-                contentArea.showPage(fan.summer.ui.store.PluginStoreUi.build(), I18n.get("store.online.title"));
+                contentArea.showPage(fan.summer.zhiflow.ui.store.PluginStoreUi.build(), I18n.get("store.online.title"));
 ```
 改为:
 ```java
-                contentArea.showPage(fan.summer.ui.store.PluginStoreUi.build(registry.getPlugins()), I18n.get("store.online.title"));
+                contentArea.showPage(fan.summer.zhiflow.ui.store.PluginStoreUi.build(registry.getPlugins()), I18n.get("store.online.title"));
 ```
 
 > 确认 `MainWindow` 中存在字段 `registry`(`wireEvents()` 内已用 `registry.getPlugins()`,见第 276 行),无需新增。

@@ -38,8 +38,8 @@ Official plugins live in a [separate repository](https://github.com/MuskStark/Sw
 
 ## Startup Sequence
 
-`fan.summer.Launcher` (fat-JAR manifest entry point) primes the log directory, then
-delegates to `fan.summer.app.SwissKitJApp` (JavaFX `Application`). The launcher is a
+`fan.summer.zhiflow.Launcher` (fat-JAR manifest entry point) primes the log directory, then
+delegates to `fan.summer.zhiflow.app.SwissKitJApp` (JavaFX `Application`). The launcher is a
 separate non-`Application` class so the app runs in classpath mode (compatible with
 the fat-JAR layout and the JavaFX module system).
 
@@ -268,7 +268,7 @@ mvn clean package -f SwissKit/pom.xml -DskipTests
 java -jar SwissKit/target/SwissKitJ-3.1.0.jar
 ```
 
-The fat JAR is built by `maven-shade-plugin` (main class `fan.summer.Launcher`) and bundles
+The fat JAR is built by `maven-shade-plugin` (main class `fan.summer.zhiflow.Launcher`) and bundles
 JavaFX native libraries for all platforms (`.dll`/`.so`/`.dylib`). On Windows the `windows-exe`
 profile is auto-activated and also produces `SwissKit.exe` via Launch4j. The three POMs are
 **standalone** (no parent); GitHub Actions handles cross-platform release builds.

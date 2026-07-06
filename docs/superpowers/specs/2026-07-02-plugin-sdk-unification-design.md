@@ -35,14 +35,14 @@ SwissKitJ-Api(接口 + 可复用实现;依赖仍仅 JavaFX/SLF4J-free,零 DB)
 └─ fan.summer.zhiflow.api.loader.ChildFirstResourceClassLoader   从宿主原样下沉
 
 SwissKit(宿主实现)
-├─ fan.summer.plugin.host.DefaultPluginHost      extends BasePluginHost,settings→H2
-├─ fan.summer.plugin.host.H2PluginSettings       缓存 + 虚拟线程异步写,模式镜像 SwissKitJSettingUi
-├─ fan.summer.database.entity.PluginSettingEntity
-├─ fan.summer.database.mapper.PluginSettingMapper(+ mapper XML)
+├─ fan.summer.zhiflow.plugin.host.DefaultPluginHost      extends BasePluginHost,settings→H2
+├─ fan.summer.zhiflow.plugin.host.H2PluginSettings       缓存 + 虚拟线程异步写,模式镜像 SwissKitJSettingUi
+├─ fan.summer.zhiflow.database.entity.PluginSettingEntity
+├─ fan.summer.zhiflow.database.mapper.PluginSettingMapper(+ mapper XML)
 ├─ init.sql                                       新表 plugin_setting
-├─ fan.summer.plugin.PluginRegistry               注入点 + 任务合并 + isBusy()
-├─ fan.summer.plugin.PluginLoader                 改 import(classloader 下沉);卸载时清设置
-└─ fan.summer.ui.MainWindow                       后退回收视图的判定改用 registry.isBusy()
+├─ fan.summer.zhiflow.plugin.PluginRegistry               注入点 + 任务合并 + isBusy()
+├─ fan.summer.zhiflow.plugin.PluginLoader                 改 import(classloader 下沉);卸载时清设置
+└─ fan.summer.zhiflow.ui.MainWindow                       后退回收视图的判定改用 registry.isBusy()
 
 SwissKitJ-Api preview 包(预览实现,均包私有)
 ├─ PreviewPluginHost        extends BasePluginHost,settings→properties 文件
@@ -272,7 +272,7 @@ CREATE TABLE IF NOT EXISTS plugin_setting
 
 ### 5.1 classloader 统一
 
-- `ChildFirstResourceClassLoader` 从 `fan.summer.plugin`(SwissKit)**原样移动**到 `fan.summer.zhiflow.api.loader`(SwissKitJ-Api)。宿主内部类、无第三方引用,不留兼容别名;`PluginLoader` 改 import。API 模块日志改用 `fan.summer.zhiflow.api.log.LoggerFactory`(该类现用 SLF4J,移动时同步替换,保持 API 模块无 SLF4J 硬依赖)。
+- `ChildFirstResourceClassLoader` 从 `fan.summer.zhiflow.plugin`(SwissKit)**原样移动**到 `fan.summer.zhiflow.api.loader`(SwissKitJ-Api)。宿主内部类、无第三方引用,不留兼容别名;`PluginLoader` 改 import。API 模块日志改用 `fan.summer.zhiflow.api.log.LoggerFactory`(该类现用 SLF4J,移动时同步替换,保持 API 模块无 SLF4J 硬依赖)。
 - `PluginPreviewWindow.launch()` 的 `new URLClassLoader(...)` 换成 `new ChildFirstResourceClassLoader(...)`。
 
 ### 5.2 与真实宿主对齐的加载语义

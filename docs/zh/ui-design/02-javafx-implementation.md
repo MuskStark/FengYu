@@ -463,7 +463,7 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
   完整性而列;删掉你不需要的。
 - **`getId()` 取值。** 内置工具用 `"builtin.<slug>"`(如 `"builtin.json-formatter"`)。
   **⚠️ 注意不一致:** 当前 11 个内置中有 3 个(`EmailArchivePlugin`、`ExcelSplitterPlugin`、
-  `BrowserAutomatePlugin`)改用遗留形式 `"fan.summer.buildin.<slug>"`。当前代码库中没有单一规范形式;
+  `BrowserAutomatePlugin`)改用遗留形式 `"fan.summer.zhiflow.buildin.<slug>"`。当前代码库中没有单一规范形式;
   **新内置应优先用 `"builtin.<slug>"`**,外部插件应使用反向域名 ID(`"com.example.<slug>"`)。
   grep 时不要假设只有一种形式。
 - **`getMdiIcon()` 无 `mdi-` 前缀。** 返回 `"mdi-code-json"` 会解析失败并回退到 `star` 字形

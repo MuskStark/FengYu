@@ -97,7 +97,7 @@ build.time=${maven.build.timestamp}
 
 Create `SwissKit/src/test/java/fan/summer/ui/about/BuildInfoTest.java`:
 ```java
-package fan.summer.ui.about;
+package fan.summer.zhiflow.ui.about;
 
 import org.junit.jupiter.api.Test;
 
@@ -154,7 +154,7 @@ Expected: COMPILATION FAILURE — `cannot find symbol: class BuildInfo`.
 
 Create `SwissKit/src/main/java/fan/summer/ui/about/BuildInfo.java`:
 ```java
-package fan.summer.ui.about;
+package fan.summer.zhiflow.ui.about;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -295,7 +295,7 @@ git commit -m "📝 i18n(ui): add About sidebar label + dialog field keys"
 
 Create `SwissKit/src/main/java/fan/summer/ui/about/AboutDialog.java`:
 ```java
-package fan.summer.ui.about;
+package fan.summer.zhiflow.ui.about;
 
 import fan.summer.zhiflow.api.i18n.I18n;
 import fan.summer.zhiflow.api.theme.Themes;
@@ -507,7 +507,7 @@ Next to `addSettingsItem` (around line 156), add the parallel helper:
 
 In `MainWindow.java`, add the import:
 ```java
-import fan.summer.ui.about.AboutDialog;
+import fan.summer.zhiflow.ui.about.AboutDialog;
 ```
 
 Next to the existing `sidebar.setOnSettingsSelect(this::openSettings);` line (around line 292), add:
@@ -546,7 +546,7 @@ git commit -m "✨ feat(ui): wire About sidebar item to the AboutDialog"
 
 - [ ] **Step 1: IDEA direct run (dev fallback)**
 
-Run `fan.summer.app.SwissKitJApp` from IDEA. Click **About** in the sidebar.
+Run `fan.summer.zhiflow.app.SwissKitJApp` from IDEA. Click **About** in the sidebar.
 Expected:
 - A dimmed modal overlay appears with a centered glass card.
 - Version shows `(dev)`, Build Time shows `(dev build)`.

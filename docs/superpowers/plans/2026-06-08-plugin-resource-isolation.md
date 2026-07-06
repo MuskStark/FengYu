@@ -33,7 +33,7 @@
 创建 `/tmp/cfrcl-verify/CfrclVerify.java`（**不提交**，仅用于在本环境取得真实证据）：
 
 ```java
-import fan.summer.plugin.ChildFirstResourceClassLoader;
+import fan.summer.zhiflow.plugin.ChildFirstResourceClassLoader;
 
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -112,14 +112,14 @@ public class CfrclVerify {
 ```bash
 cd /tmp/cfrcl-verify && javac -d out CfrclVerify.java
 ```
-Expected: 编译失败，`package fan.summer.plugin does not exist` / `cannot find symbol ChildFirstResourceClassLoader`。（这是 TDD 的红灯。）
+Expected: 编译失败，`package fan.summer.zhiflow.plugin does not exist` / `cannot find symbol ChildFirstResourceClassLoader`。（这是 TDD 的红灯。）
 
 - [ ] **Step 3: 写最小实现**
 
 创建 `SwissKit/src/main/java/fan/summer/plugin/ChildFirstResourceClassLoader.java`：
 
 ```java
-package fan.summer.plugin;
+package fan.summer.zhiflow.plugin;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -275,7 +275,7 @@ git commit -m "✨ feat: add ChildFirstResourceClassLoader for plugin resource i
 > 注：局部变量类型保持 `URLClassLoader`（`ChildFirstResourceClassLoader` 是其子类），
 > 因此 `openLoaders`（`Map<Path, URLClassLoader>`）、`ServiceLoader.load`、`cl.close()`、
 > `cl.getResource(...)`、`I18n.registerPluginBundle(...)`、`PluginContext.register(...)`
-> 全部无需改动。两类同包（`fan.summer.plugin`），无需 import。
+> 全部无需改动。两类同包（`fan.summer.zhiflow.plugin`），无需 import。
 
 - [ ] **Step 2: 用 IDEA 构建宿主，确认编译通过**
 

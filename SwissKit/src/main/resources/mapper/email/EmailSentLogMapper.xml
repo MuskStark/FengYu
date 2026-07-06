@@ -2,10 +2,10 @@
 <!DOCTYPE mapper
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="fan.summer.database.mapper.email.EmailSentLogMapper">
+<mapper namespace="fan.summer.zhiflow.database.mapper.email.EmailSentLogMapper">
 
     <!-- Insert a new email sent log -->
-    <insert id="insert" parameterType="fan.summer.database.entity.email.EmailSentLogEntity"
+    <insert id="insert" parameterType="fan.summer.zhiflow.database.entity.email.EmailSentLogEntity"
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO email_sent_log ("to", cc, bcc, subject, content, attachment, send_time, is_success)
         VALUES (#{to}, #{cc}, #{bcc}, #{subject}, #{content}, #{attachment}, #{sendTime}, #{isSuccess})
@@ -17,7 +17,7 @@
     </delete>
 
     <!-- Update email sent log -->
-    <update id="update" parameterType="fan.summer.database.entity.email.EmailSentLogEntity">
+    <update id="update" parameterType="fan.summer.zhiflow.database.entity.email.EmailSentLogEntity">
         UPDATE email_sent_log
         SET "to" = #{to},
             cc = #{cc},
@@ -32,14 +32,14 @@
 
     <!-- Select email sent log by ID -->
     <select id="selectById" parameterType="long"
-            resultType="fan.summer.database.entity.email.EmailSentLogEntity">
+            resultType="fan.summer.zhiflow.database.entity.email.EmailSentLogEntity">
         SELECT id, "to", cc, bcc, subject, content, attachment, send_time AS sendTime, is_success AS isSuccess
         FROM email_sent_log
         WHERE id = #{id}
     </select>
 
     <!-- Select all email sent logs -->
-    <select id="selectAll" resultType="fan.summer.database.entity.email.EmailSentLogEntity">
+    <select id="selectAll" resultType="fan.summer.zhiflow.database.entity.email.EmailSentLogEntity">
         SELECT id, "to", cc, bcc, subject, content, attachment, send_time AS sendTime, is_success AS isSuccess
         FROM email_sent_log
         ORDER BY send_time DESC
@@ -47,7 +47,7 @@
 
     <!-- Select email sent logs by success status -->
     <select id="selectBySuccess" parameterType="boolean"
-            resultType="fan.summer.database.entity.email.EmailSentLogEntity">
+            resultType="fan.summer.zhiflow.database.entity.email.EmailSentLogEntity">
         SELECT id, "to", cc, bcc, subject, content, attachment, send_time AS sendTime, is_success AS isSuccess
         FROM email_sent_log
         WHERE is_success = #{isSuccess}
@@ -55,7 +55,7 @@
     </select>
 
     <!-- Select email sent logs within date range -->
-    <select id="selectByDateRange" resultType="fan.summer.database.entity.email.EmailSentLogEntity">
+    <select id="selectByDateRange" resultType="fan.summer.zhiflow.database.entity.email.EmailSentLogEntity">
         SELECT id, "to", cc, bcc, subject, content, attachment, send_time AS sendTime, is_success AS isSuccess
         FROM email_sent_log
         WHERE send_time BETWEEN #{startDate} AND #{endDate}

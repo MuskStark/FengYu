@@ -1050,7 +1050,7 @@ git commit -m "🎨 refactor(ui): replace inline #5b8cf7 with #3574F0 / dark pal
 
 In `SwissKitJApp.java`:
 - Remove import `import javafx.scene.paint.Color;` (if now unused) — keep if still referenced.
-- Remove import `import fan.summer.ui.util.WindowResizeHelper;`
+- Remove import `import fan.summer.zhiflow.ui.util.WindowResizeHelper;`
 - Line 110: delete `scene.setFill(Color.TRANSPARENT);`
 - Line 124: replace `stage.initStyle(StageStyle.TRANSPARENT);` with `stage.initStyle(StageStyle.DECORATED);`
 - Line 133: delete `WindowResizeHelper.attach(stage);` and its preceding comment line.
@@ -1086,7 +1086,7 @@ Run `mcp__idea__search_in_files_by_text` searchText=`WindowResizeHelper` directo
 
 - [ ] **Step 1: Remove TitleBar usage**
 
-- Remove import `import fan.summer.ui.titlebar.TitleBar;`
+- Remove import `import fan.summer.zhiflow.ui.titlebar.TitleBar;`
 - Remove field `private final TitleBar titleBar;`
 - In constructor, remove `titleBar = new TitleBar(stage, this::openSettings);` (keep `stage` field — needed by `AboutDialog`).
 - Remove `openSettings` reference from TitleBar; settings/about/theme are wired via Sidebar in Task 5.1/6.1. Keep `openSettings()` / `openAbout()` methods.
@@ -1332,7 +1332,7 @@ git commit -m "✨ feat(theme): dark/light toggle in sidebar + settings, persist
 
 `SwissKit/src/test/java/fan/summer/ai/util/MarkdownRendererTest.java`:
 ```java
-package fan.summer.ai.util;
+package fan.summer.zhiflow.ai.util;
 
 import fan.summer.zhiflow.api.theme.ThemeService;
 import org.junit.jupiter.api.Test;

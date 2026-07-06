@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   Logging configuration for the AI worker child process
-  (fan.summer.ai.nativejni.NativeWorkerMain).
+  (fan.summer.zhiflow.ai.nativejni.NativeWorkerMain).
 
   CRITICAL: the worker's stdout is the line-delimited JSON IPC channel back to
   the host (NativeWorkerClient). Any non-JSON line there corrupts the protocol

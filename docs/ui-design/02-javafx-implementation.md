@@ -472,7 +472,7 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
 - **`getId()` value.** Built-ins use `"builtin.<slug>"` (e.g. `"builtin.json-formatter"`).
   **⚠️ Note the inconsistency:** 3 of the 11 current built-ins (`EmailArchivePlugin`,
   `ExcelSplitterPlugin`, `BrowserAutomatePlugin`) instead use the legacy form
-  `"fan.summer.buildin.<slug>"`. There is no single canonical form in the codebase today; **new built-ins
+  `"fan.summer.zhiflow.buildin.<slug>"`. There is no single canonical form in the codebase today; **new built-ins
   should prefer `"builtin.<slug>"`**, and external plugins should use a reverse-domain ID
   (`"com.example.<slug>"`). Do not assume there is only one form when grepping.
 - **`getMdiIcon()` has no `mdi-` prefix.** Returning `"mdi-code-json"` will fail to resolve and fall back to

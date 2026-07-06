@@ -127,7 +127,7 @@ git commit -m "⬆️ deps: add LangChain4j 1.0.1 (openai + anthropic) for cloud
 Create `SwissKit/src/test/java/fan/summer/ai/adapter/ChatMessageMapperTest.java`:
 
 ```java
-package fan.summer.ai.adapter;
+package fan.summer.zhiflow.ai.adapter;
 
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.*;
@@ -212,7 +212,7 @@ Expected: compile error — `ChatMessageMapper` class does not exist.
 Create `SwissKit/src/main/java/fan/summer/ai/adapter/ChatMessageMapper.java`:
 
 ```java
-package fan.summer.ai.adapter;
+package fan.summer.zhiflow.ai.adapter;
 
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.*;
@@ -317,7 +317,7 @@ git commit -m "✨ feat(ai): add ChatMessageMapper between AiChatMessage and Lan
 Create `SwissKit/src/test/java/fan/summer/ai/adapter/AiToolToToolSpecificationTest.java`:
 
 ```java
-package fan.summer.ai.adapter;
+package fan.summer.zhiflow.ai.adapter;
 
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.model.chat.request.json.*;
@@ -400,7 +400,7 @@ Expected: compile error — `AiToolToToolSpecification` does not exist.
 Create `SwissKit/src/main/java/fan/summer/ai/adapter/AiToolToToolSpecification.java`:
 
 ```java
-package fan.summer.ai.adapter;
+package fan.summer.zhiflow.ai.adapter;
 
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.model.chat.request.json.*;
@@ -490,7 +490,7 @@ git commit -m "✨ feat(ai): add AiToolToToolSpecification converter (handles en
 Create `SwissKit/src/main/java/fan/summer/ai/adapter/CloudAiConfigProvider.java`:
 
 ```java
-package fan.summer.ai.adapter;
+package fan.summer.zhiflow.ai.adapter;
 
 /**
  * Marker interface for {@link fan.summer.zhiflow.api.ai.AiService} implementations that
@@ -534,7 +534,7 @@ git commit -m "✨ feat(ai): add CloudAiConfigProvider interface for direct-call
 Create `SwissKit/src/test/java/fan/summer/ai/adapter/StreamingResponseHandlerBridgeTest.java`:
 
 ```java
-package fan.summer.ai.adapter;
+package fan.summer.zhiflow.ai.adapter;
 
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
@@ -638,7 +638,7 @@ Expected: compile error — `StreamingResponseHandlerBridge` does not exist.
 Create `SwissKit/src/main/java/fan/summer/ai/adapter/StreamingResponseHandlerBridge.java`:
 
 ```java
-package fan.summer.ai.adapter;
+package fan.summer.zhiflow.ai.adapter;
 
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
@@ -663,7 +663,7 @@ import java.util.List;
  *   <li>{@code onCompleteResponse} with no tool requests → {@code callback.onComplete}</li>
  *   <li>{@code onCompleteResponse} with tool requests → populate {@link #pendingToolCalls()};
  *       the host loop reads them, fires {@code callback.onToolCall/onToolResult} via
- *       {@link fan.summer.ai.tools.ToolExecutor}, then re-invokes the model</li>
+ *       {@link fan.summer.zhiflow.ai.tools.ToolExecutor}, then re-invokes the model</li>
  *   <li>{@code onError} → {@code callback.onError}</li>
  * </ul>
  */
@@ -759,17 +759,17 @@ This task replaces the entire HTTP/SSE/tool-loop body. The new implementation mu
 Replace `SwissKit/src/main/java/fan/summer/ai/service/OpenAiService.java` with:
 
 ```java
-package fan.summer.ai.service;
+package fan.summer.zhiflow.ai.service;
 
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
-import fan.summer.ai.adapter.AiToolToToolSpecification;
-import fan.summer.ai.adapter.ChatMessageMapper;
-import fan.summer.ai.adapter.CloudAiConfigProvider;
-import fan.summer.ai.adapter.StreamingResponseHandlerBridge;
-import fan.summer.ai.tools.ToolExecutor;
-import fan.summer.ai.util.JsonHelper;
+import fan.summer.zhiflow.ai.adapter.AiToolToToolSpecification;
+import fan.summer.zhiflow.ai.adapter.ChatMessageMapper;
+import fan.summer.zhiflow.ai.adapter.CloudAiConfigProvider;
+import fan.summer.zhiflow.ai.adapter.StreamingResponseHandlerBridge;
+import fan.summer.zhiflow.ai.tools.ToolExecutor;
+import fan.summer.zhiflow.ai.util.JsonHelper;
 import fan.summer.zhiflow.api.ai.*;
-import fan.summer.ui.setting.SwissKitJSettingUi;
+import fan.summer.zhiflow.ui.setting.SwissKitJSettingUi;
 import javafx.application.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -965,16 +965,16 @@ git commit -m "♻️ refactor(ai): re-implement OpenAiService on LangChain4j (~
 Replace `SwissKit/src/main/java/fan/summer/ai/service/AnthropicService.java` with:
 
 ```java
-package fan.summer.ai.service;
+package fan.summer.zhiflow.ai.service;
 
 import dev.langchain4j.model.anthropic.AnthropicStreamingChatModel;
-import fan.summer.ai.adapter.AiToolToToolSpecification;
-import fan.summer.ai.adapter.ChatMessageMapper;
-import fan.summer.ai.adapter.CloudAiConfigProvider;
-import fan.summer.ai.adapter.StreamingResponseHandlerBridge;
-import fan.summer.ai.tools.ToolExecutor;
+import fan.summer.zhiflow.ai.adapter.AiToolToToolSpecification;
+import fan.summer.zhiflow.ai.adapter.ChatMessageMapper;
+import fan.summer.zhiflow.ai.adapter.CloudAiConfigProvider;
+import fan.summer.zhiflow.ai.adapter.StreamingResponseHandlerBridge;
+import fan.summer.zhiflow.ai.tools.ToolExecutor;
 import fan.summer.zhiflow.api.ai.*;
-import fan.summer.ui.setting.SwissKitJSettingUi;
+import fan.summer.zhiflow.ui.setting.SwissKitJSettingUi;
 import javafx.application.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -1144,7 +1144,7 @@ git commit -m "♻️ refactor(ai): re-implement AnthropicService on LangChain4j
 
 In `SwissKit/src/main/java/fan/summer/buildintool/browser/SynchronousChatHelper.java`, change:
 
-- Line 3: replace `import fan.summer.ai.service.OpenAiService;` with `import fan.summer.ai.adapter.CloudAiConfigProvider;`
+- Line 3: replace `import fan.summer.zhiflow.ai.service.OpenAiService;` with `import fan.summer.zhiflow.ai.adapter.CloudAiConfigProvider;`
 - Lines 53-58: replace the `instanceof OpenAiService openAiService` block with `instanceof CloudAiConfigProvider config`:
 
 ```java
@@ -1272,12 +1272,12 @@ Insert at top of `CHANGELOG.md`, `docs/changelog.md`, `docs/zh/changelog.md`:
 ### ♻️ Refactor
 
 - **Cloud AI Backends Migrated to LangChain4j**: `OpenAiService` and `AnthropicService` now wrap `OpenAiStreamingChatModel` and `AnthropicStreamingChatModel`; eliminates ~700 lines of hand-rolled HTTP/SSE/tool-loop code
-- Tool schema generation, message mapping, and stream bridging extracted into reusable adapters under `fan.summer.ai.adapter`
+- Tool schema generation, message mapping, and stream bridging extracted into reusable adapters under `fan.summer.zhiflow.ai.adapter`
 - `SynchronousChatHelper` (browser planner) decoupled from concrete `OpenAiService` via new `CloudAiConfigProvider` interface — Anthropic now also usable as browser planner backend
 
 ### ✨ New
 
-- New adapter package: `fan.summer.ai.adapter` (`ChatMessageMapper`, `AiToolToToolSpecification`, `StreamingResponseHandlerBridge`, `CloudAiConfigProvider`)
+- New adapter package: `fan.summer.zhiflow.ai.adapter` (`ChatMessageMapper`, `AiToolToToolSpecification`, `StreamingResponseHandlerBridge`, `CloudAiConfigProvider`)
 - New unit tests for all adapters (3 test files, ~13 test cases)
 
 ### ⬆️ Dependencies

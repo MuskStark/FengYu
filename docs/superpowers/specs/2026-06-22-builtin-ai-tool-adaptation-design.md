@@ -105,7 +105,7 @@ public interface SwissKitJPlugin {
 ### 4.2 `PluginRegistry` 接管工具生命周期
 
 ```java
-// SwissKit: fan.summer.plugin.PluginRegistry
+// SwissKit: fan.summer.zhiflow.plugin.PluginRegistry
 
 private final Map<SwissKitJPlugin, List<String>> toolsByPlugin = new HashMap<>();
 
@@ -147,7 +147,7 @@ private void unregisterPluginTools(SwissKitJPlugin plugin) {
 ```
 
 **关键决策:**
-- **`addPlugins` 改 public**(原本 package-private)。`BuiltinToolRegistrar`(在 `fan.summer.registrar`)需要跨包调用。
+- **`addPlugins` 改 public**(原本 package-private)。`BuiltinToolRegistrar`(在 `fan.summer.zhiflow.registrar`)需要跨包调用。
 - **工具名冲突策略**:`AiServiceProvider.registerTool` 已是 `Map.put` 语义,保持现状。但 `registerPluginTools` 在冲突时记一条 `WARN`。
 - **热重载友好**:JAR 卸载 → `removePlugin` → `unregisterPluginTools`;JAR 重载 → `addPlugins` → `registerPluginTools`。`PluginLoader` 不动。
 
@@ -181,7 +181,7 @@ public static void register(PluginLoader loader, PluginRegistry registry) {
 
 | 宿主插件 | 接管的 AI 工具 | 备注 |
 |---|---|---|
-| `Base64Plugin` | `BuiltinBase64Tool` | 工具类物理位置不变(`fan.summer.ai.tools`) |
+| `Base64Plugin` | `BuiltinBase64Tool` | 工具类物理位置不变(`fan.summer.zhiflow.ai.tools`) |
 | `HashCalculatorPlugin` | `BuiltinHashTool` | 同上 |
 | `JsonFormatterPlugin` | `BuiltinJsonFormatTool` | 同上 |
 | `ColorConverterPlugin` | `BuiltinColorConvertTool` | 同上 |
@@ -195,7 +195,7 @@ public static void register(PluginLoader loader, PluginRegistry registry) {
 
 `BrowserAutomateTool` 之前是"孤儿" —— 无对应 UI 插件。给它一个宿主:
 
-- 位置:`fan.summer.buildintool.browser.BrowserAutomatePlugin`
+- 位置:`fan.summer.zhiflow.buildintool.browser.BrowserAutomatePlugin`
 - `getCategory()` = `ToolCategory.DEV`
 - `getMdiIcon()` = `"web"`
 - `createView()` 返回一个说明页(标签 + 简短文字):"此插件为 AI 提供浏览器自动化能力,无独立界面。在 AI 聊天里说'打开 github.com 搜索 X'即可触发。"
@@ -272,7 +272,7 @@ public static List<AiTool> getTools() {
 ### 5.3 描述选择 — `AiToolDescriptions` 工具类
 
 ```java
-// SwissKit: fan.summer.ai.tools.AiToolDescriptions
+// SwissKit: fan.summer.zhiflow.ai.tools.AiToolDescriptions
 public final class AiToolDescriptions {
     private AiToolDescriptions() {}
 

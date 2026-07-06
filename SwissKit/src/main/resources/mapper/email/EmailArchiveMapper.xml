@@ -2,9 +2,9 @@
 <!DOCTYPE mapper
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="fan.summer.database.mapper.email.EmailArchiveMapper">
+<mapper namespace="fan.summer.zhiflow.database.mapper.email.EmailArchiveMapper">
 
-    <insert id="insert" parameterType="fan.summer.database.entity.email.EmailArchiveEntity"
+    <insert id="insert" parameterType="fan.summer.zhiflow.database.entity.email.EmailArchiveEntity"
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO email_archive (account_email, folder, message_uid, subject,
                 from_address, to_address, cc_address, send_date, has_attachment,
@@ -14,7 +14,7 @@
                 #{emlPath}, #{bodyPreview}, #{archivedAt})
     </insert>
 
-    <select id="selectByUid" resultType="fan.summer.database.entity.email.EmailArchiveEntity">
+    <select id="selectByUid" resultType="fan.summer.zhiflow.database.entity.email.EmailArchiveEntity">
         SELECT id, account_email AS accountEmail, folder, message_uid AS messageUid,
                subject, from_address AS fromAddress, to_address AS toAddress,
                cc_address AS ccAddress, send_date AS sendDate,
@@ -24,7 +24,7 @@
         WHERE account_email = #{accountEmail} AND folder = #{folder} AND message_uid = #{messageUid}
     </select>
 
-    <select id="selectByQuery" resultType="fan.summer.database.entity.email.EmailArchiveEntity">
+    <select id="selectByQuery" resultType="fan.summer.zhiflow.database.entity.email.EmailArchiveEntity">
         SELECT id, account_email AS accountEmail, folder, message_uid AS messageUid,
                subject, from_address AS fromAddress, to_address AS toAddress,
                cc_address AS ccAddress, send_date AS sendDate,
