@@ -1,12 +1,12 @@
 package fan.summer.plugin;
 
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.ToolCategory;
-import fan.summer.api.ToolType;
-import fan.summer.api.ai.AiServiceProvider;
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.ai.AiToolParam;
-import fan.summer.api.ai.AiToolResult;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ToolCategory;
+import fan.summer.zhiflow.api.ToolType;
+import fan.summer.zhiflow.api.ai.AiServiceProvider;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiToolParam;
+import fan.summer.zhiflow.api.ai.AiToolResult;
 import javafx.scene.Node;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

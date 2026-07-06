@@ -1,7 +1,7 @@
 # UI, Theme & Component Patterns
 
 Plugins build their UI in JavaFX code (no FXML) and theme it via CSS looked-up colors. A
-plugin embedded via `createView()` inherits the host's `swisskit-common.css` automatically —
+plugin embedded via `createView()` inherits the host's `zhiflow-common.css` automatically —
 you don't load it yourself. For a **standalone Stage** (rare — e.g. a popup window) call
 `Themes.applyTo(scene)`.
 
@@ -34,7 +34,7 @@ used sparingly); dark/light theme parity; plugins blend in as native. Selection 
 
 | Namespace | Source | Plugin-safe? | Examples |
 |---|---|---|---|
-| **`.sk-*`** foundation | `swisskit-common.css` (ships in the API JAR) | ✅ Yes — use freely | `.sk-field`, `.sk-btn-primary`, `.sk-table`, `.sk-dialog`, `.sk-t1`, `.sk-surface` |
+| **`.sk-*`** foundation | `zhiflow-common.css` (ships in the API JAR) | ✅ Yes — use freely | `.sk-field`, `.sk-btn-primary`, `.sk-table`, `.sk-dialog`, `.sk-t1`, `.sk-surface` |
 | **unprefixed** shell chrome | `shell.css` (host-only) | ❌ No — not on a plugin's scene | `.nav-item`, `.tool-card`, `.search-bar`, `.statusbar`, `.ic-blue` |
 
 A plugin that reaches for `.nav-item` will compile but render unstyled (the class isn't loaded
@@ -109,8 +109,8 @@ input.getStyleClass().add("sk-field");
 ## Icons — `MdiIconUtil` + `IconStyle`
 
 ```java
-import fan.summer.api.MdiIconUtil;
-import fan.summer.api.IconStyle;
+import fan.summer.zhiflow.api.MdiIconUtil;
+import fan.summer.zhiflow.api.IconStyle;
 
 // A standard 24px icon (returns a javafx.scene.text.Text using the MDI webfont)
 Text icon = MdiIconUtil.createIcon("file-excel", 24);
@@ -155,7 +155,7 @@ The themed replacement for JavaFX `Alert`. All overloads take `Window` **or** `N
 via its scene's window); `null` is safe.
 
 ```java
-import fan.summer.api.component.GlassNotification;
+import fan.summer.zhiflow.api.component.GlassNotification;
 
 // Non-modal toast, auto-dismisses (~2.5s)
 GlassNotification.toast(view, GlassNotification.Type.SUCCESS, "Saved");
@@ -175,7 +175,7 @@ status by color alone).
 ### `StepWizard` — multi-step flow
 
 ```java
-import fan.summer.api.component.StepWizard;
+import fan.summer.zhiflow.api.component.StepWizard;
 
 StepWizard wizard = new StepWizard();
 wizard.addStep("Input",  inputPane,  () -> !inputField.getText().isBlank());
@@ -189,7 +189,7 @@ wizard.setOnStepChanged((from, to, total) -> { ... });
 ### `UiUtils` — shared control factory
 
 ```java
-import fan.summer.api.component.UiUtils;
+import fan.summer.zhiflow.api.component.UiUtils;
 
 Button primary = UiUtils.glassBtn("Run", true);   // accent blue
 Button ghost   = UiUtils.glassBtn("Cancel", false);// bordered
@@ -202,11 +202,11 @@ Label sub      = UiUtils.subLabel("Output");      // small muted field label
 If your plugin opens its **own** window (not the embedded `createView()`), apply the theme
 manually:
 ```java
-import fan.summer.api.theme.Themes;
+import fan.summer.zhiflow.api.theme.Themes;
 
 Stage popup = new Stage();
 Scene scene = new Scene(content);
-Themes.applyTo(scene);     // loads swisskit-common.css + stamps theme-dark/theme-light
+Themes.applyTo(scene);     // loads zhiflow-common.css + stamps theme-dark/theme-light
 popup.setScene(scene);
 popup.show();
 ```

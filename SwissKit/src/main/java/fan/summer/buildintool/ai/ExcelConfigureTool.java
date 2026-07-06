@@ -1,6 +1,6 @@
 package fan.summer.buildintool.ai;
 
-import fan.summer.api.ai.*;
+import fan.summer.zhiflow.api.ai.*;
 import fan.summer.ai.util.JsonHelper;
 import fan.summer.buildintool.excelsplitter.*;
 import java.util.*;

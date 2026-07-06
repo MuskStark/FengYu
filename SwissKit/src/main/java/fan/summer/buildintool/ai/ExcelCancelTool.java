@@ -1,9 +1,9 @@
 package fan.summer.buildintool.ai;
 
-import fan.summer.api.ai.*;
+import fan.summer.zhiflow.api.ai.*;
 import fan.summer.buildintool.excelsplitter.*;
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
 
 /**
  * AI tool that cancels a currently running Excel split operation.

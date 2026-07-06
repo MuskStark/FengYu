@@ -1,4 +1,4 @@
-package fan.summer.api.ai;
+package fan.summer.zhiflow.api.ai;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

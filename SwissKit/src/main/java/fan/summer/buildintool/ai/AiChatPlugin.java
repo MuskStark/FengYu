@@ -1,14 +1,14 @@
 package fan.summer.buildintool.ai;
 
-import fan.summer.api.IconStyle;
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.ToolCategory;
-import fan.summer.api.ToolType;
-import fan.summer.api.ai.*;
-import fan.summer.api.i18n.I18n;
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
-import fan.summer.api.theme.ThemeService;
+import fan.summer.zhiflow.api.IconStyle;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ToolCategory;
+import fan.summer.zhiflow.api.ToolType;
+import fan.summer.zhiflow.api.ai.*;
+import fan.summer.zhiflow.api.i18n.I18n;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
+import fan.summer.zhiflow.api.theme.ThemeService;
 import fan.summer.ai.tools.SlashCommandHandler;
 import fan.summer.ai.tools.ToolExecutor;
 import fan.summer.ai.util.MarkdownRenderer;

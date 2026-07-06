@@ -2,8 +2,8 @@ package fan.summer.buildintool.browser;
 
 import com.microsoft.playwright.*;
 import com.microsoft.playwright.options.LoadState;
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
 
 import java.nio.file.Files;
 import java.nio.file.Path;

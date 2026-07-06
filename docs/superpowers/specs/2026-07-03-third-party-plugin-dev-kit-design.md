@@ -89,7 +89,7 @@ skill 负责"怎么拼",标准正确性交给单一真相源。
 
 | 检查 | 规则 |
 |---|---|
-| SPI 文件 | `META-INF/services/fan.summer.api.SwissKitJPlugin` 存在且内容 = 入口类 FQN |
+| SPI 文件 | `META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin` 存在且内容 = 入口类 FQN |
 | API scope | `SwissKitJ-Api` 依赖必须 `provided` |
 | CSS 迁移 | 源码/资源中无 `.glass-*`(v3.2.0 已改名 `sk-*`) |
 | 布局陷阱 | 无 `setPrefWidth(Double.MAX_VALUE)`;无 `maxWidthProperty().bind(widthProperty()…)` |

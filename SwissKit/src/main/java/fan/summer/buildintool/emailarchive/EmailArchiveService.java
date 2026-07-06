@@ -1,7 +1,7 @@
 package fan.summer.buildintool.emailarchive;
 
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.email.EmailArchiveEntity;
 import fan.summer.database.entity.setting.email.SwissKitSettingEmailEntity;

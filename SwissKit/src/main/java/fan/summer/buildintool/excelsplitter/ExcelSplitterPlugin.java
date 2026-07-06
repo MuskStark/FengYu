@@ -1,14 +1,14 @@
 package fan.summer.buildintool.excelsplitter;
 
-import fan.summer.api.IconStyle;
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.ToolCategory;
-import fan.summer.api.ToolType;
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.component.StepWizard;
-import fan.summer.api.i18n.I18n;
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.IconStyle;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ToolCategory;
+import fan.summer.zhiflow.api.ToolType;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.component.StepWizard;
+import fan.summer.zhiflow.api.i18n.I18n;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
 import fan.summer.buildintool.ai.ExcelAnalyzeTool;
 import fan.summer.buildintool.ai.ExcelCancelTool;
 import fan.summer.buildintool.ai.ExcelComplexConfigTool;
@@ -669,7 +669,7 @@ public class ExcelSplitterPlugin implements SwissKitJPlugin {
             );
 
             Separator sep = new Separator();
-            // Themed via the global .separator .line rule in swisskit-common.css.
+            // Themed via the global .separator .line rule in zhiflow-common.css.
 
             Label outputTitle = sectionTitle(I18n.get("builtin.excel.outputDir"));
 

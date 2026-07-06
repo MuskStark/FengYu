@@ -5,7 +5,7 @@ when upgrading a plugin from SwissKitJ 3.1.x to 3.2.0.
 
 ## Breaking: `.glass-*` CSS classes renamed to `.sk-*`
 
-All shared utility CSS classes in `swisskit-common.css` were renamed from the
+All shared utility CSS classes in `zhiflow-common.css` were renamed from the
 `glass-*` prefix to `sk-*` (e.g. `.glass-dialog` → `.sk-dialog`,
 `.glass-field` → `.sk-field`, `.glass-btn-primary` → `.sk-btn-primary`).
 See the full rename table in the `[3.2.0]` section of `CHANGELOG.md`.
@@ -16,7 +16,7 @@ render unstyled.
 
 ## Deprecated: `GlassNotification` → `SkNotification`
 
-`fan.summer.api.component.GlassNotification` is deprecated and now a thin alias
+`fan.summer.zhiflow.api.component.GlassNotification` is deprecated and now a thin alias
 of the new `SkNotification` (same `Type` enum, same `toast` / `notify` /
 `confirm` methods). Existing code keeps compiling; migrate at your convenience:
 
@@ -33,7 +33,7 @@ The alias will be removed in 4.0.
 
 The main window switched to `StageStyle.DECORATED`. If your plugin opens its own
 transparent/undecorated `Stage`, nothing changes for you — but remember to call
-`fan.summer.api.theme.Themes.applyTo(scene)` so `-sk-*` tokens resolve.
+`fan.summer.zhiflow.api.theme.Themes.applyTo(scene)` so `-sk-*` tokens resolve.
 
 ## New: `I18n.registerFallbackBundle(...)`
 
@@ -44,7 +44,7 @@ inside `createView()`; `registerFallbackBundle` is for library-level defaults.
 
 ## New: `PluginPreviewWindow` (developer tool)
 
-`fan.summer.api.preview.PluginPreviewWindow` launches your plugin inside a
+`fan.summer.zhiflow.api.preview.PluginPreviewWindow` launches your plugin inside a
 standalone shell-like window with theme and language toggles — no full SwissKitJ
 install needed during development.
 

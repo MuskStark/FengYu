@@ -1,7 +1,7 @@
 package fan.summer.log;
 
-import fan.summer.api.log.LoggerBinder;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.log.LoggerBinder;
+import fan.summer.zhiflow.api.log.PluginLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,7 +12,7 @@ import java.util.concurrent.ConcurrentMap;
  * Host-side {@link LoggerBinder} that delegates every {@link PluginLogger} call to the
  * application's SLF4J + Logback backbone.
  *
- * <p>Plugins call {@code LoggerFactory.getLogger(...)} from the public API ({@code fan.summer.api.log})
+ * <p>Plugins call {@code LoggerFactory.getLogger(...)} from the public API ({@code fan.summer.zhiflow.api.log})
  * and their log entries flow into the same console and rolling file appenders used by the host
  * itself. This class is installed by the host at startup as the single {@link LoggerBinder}
  * implementation returned by {@code LoggerFactory.getBinder()}.</p>

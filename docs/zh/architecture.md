@@ -111,7 +111,7 @@ public interface SwissKitJPlugin {
 - **内置工具**：通过 `BuiltinToolRegistrar` 直接注册（共 10 个：AI 聊天、
   JSON/Base64/Hash 开发者工具、Excel 拆分、颜色转换、Markdown 编辑器、邮件、
   邮件归档、PDF）。不涉及 SPI。
-- **外部插件**：实现 `SwissKitJPlugin`，在 `META-INF/services/fan.summer.api.SwissKitJPlugin`
+- **外部插件**：实现 `SwissKitJPlugin`，在 `META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin`
   中声明，并将 JAR 放入 `.swisskit/plugin/`。通过目录监听器支持热重载。
 
 ### 插件加载与类隔离
@@ -134,7 +134,7 @@ public interface SwissKitJPlugin {
 
 ### 插件上下文（线程上下文 ClassLoader）
 
-每个已加载的插件会注册到 `fan.summer.api.PluginContext`，它将插件实例与其
+每个已加载的插件会注册到 `fan.summer.zhiflow.api.PluginContext`，它将插件实例与其
 `ClassLoader` 关联（通过 `WeakReference` 持有，因此即便漏掉 `unregister()` 也能被 GC）。
 宿主对插件的每一次调用都会做包装，确保正确的 ClassLoader 位于线程上下文 ClassLoader（TCCL）上：
 
@@ -156,7 +156,7 @@ PluginContext.wrapEvents(plugin, view);                           // 包装 Even
 
 ### 插件日志
 
-插件使用 `fan.summer.api.log.LoggerFactory`：宿主运行时路由到 SLF4J/Logback
+插件使用 `fan.summer.zhiflow.api.log.LoggerFactory`：宿主运行时路由到 SLF4J/Logback
 （滚动文件位于 `.swisskit/logs/swisskit.log`，按天轮转，保留 7 天），测试中返回静默空操作日志器。
 使用 SLF4J 风格的 `{}` 占位符。
 
@@ -212,7 +212,7 @@ markdown 段落注入系统提示词。本地模型以文本形式发出工具�
 
 | 文件 | 模块 | 作用域 |
 |------|------|--------|
-| `css/swisskit-common.css` | `SwissKitJ-Api` | 共享变量、滚动条、进度条、`.glass-*` 工具类、`.section-title`/`.section-header` |
+| `css/zhiflow-common.css` | `SwissKitJ-Api` | 共享变量、滚动条、进度条、`.glass-*` 工具类、`.section-title`/`.section-header` |
 | `css/shell.css` | `SwissKit` | 应用外壳 —— 标题栏、侧边栏、搜索栏、工具卡片、详情面板、状态栏、`.ic-*` 图标类 |
 | `css/builtin.css` | `SwissKit` | 内置工具样式 |
 

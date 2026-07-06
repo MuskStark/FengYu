@@ -1,9 +1,9 @@
 package fan.summer.ui.store;
 
-import fan.summer.api.IconStyle;
-import fan.summer.api.ToolCategory;
-import fan.summer.api.component.SkNotification;
-import fan.summer.api.i18n.I18n;
+import fan.summer.zhiflow.api.IconStyle;
+import fan.summer.zhiflow.api.ToolCategory;
+import fan.summer.zhiflow.api.component.SkNotification;
+import fan.summer.zhiflow.api.i18n.I18n;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.ui.store.StorePluginLogic.InstallState;
 import javafx.application.Platform;

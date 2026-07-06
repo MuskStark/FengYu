@@ -1,11 +1,11 @@
 package fan.summer.buildintool.browser;
 
-import fan.summer.api.IconStyle;
-import fan.summer.api.ToolCategory;
-import fan.summer.api.ToolType;
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.i18n.I18n;
+import fan.summer.zhiflow.api.IconStyle;
+import fan.summer.zhiflow.api.ToolCategory;
+import fan.summer.zhiflow.api.ToolType;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.i18n.I18n;
 import fan.summer.buildintool.browser.ai.BrowserAutomateTool;
 import javafx.scene.Node;
 import javafx.scene.control.Label;

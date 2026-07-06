@@ -1,11 +1,11 @@
 package fan.summer.buildintool.email;
 
-import fan.summer.api.component.SkNotification;
-import fan.summer.api.i18n.I18n;
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.component.SkNotification;
+import fan.summer.zhiflow.api.i18n.I18n;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
 
-import fan.summer.api.theme.Themes;
+import fan.summer.zhiflow.api.theme.Themes;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.setting.email.EmailAddressBookEntity;
 import fan.summer.database.entity.setting.email.EmailTagEntity;

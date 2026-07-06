@@ -1,7 +1,7 @@
 package fan.summer.ui.store;
 
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.i18n.I18n;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.i18n.I18n;
 import fan.summer.ui.sidebar.Sidebar.NavItem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -8,11 +8,11 @@ import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import fan.summer.ai.adapter.ChatMessageMapper;
 import fan.summer.ai.service.CloudChatBackend;
-import fan.summer.api.ai.AiChatMessage;
-import fan.summer.api.ai.AiServiceProvider;
-import fan.summer.api.ai.ChatBackend;
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.ai.AiChatMessage;
+import fan.summer.zhiflow.api.ai.AiServiceProvider;
+import fan.summer.zhiflow.api.ai.ChatBackend;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
 
 import java.time.Duration;
 import java.util.ArrayList;

@@ -1,9 +1,9 @@
 package fan.summer.plugin;
 
-import fan.summer.api.PluginContext;
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.i18n.I18n;
-import fan.summer.api.loader.ChildFirstResourceClassLoader;
+import fan.summer.zhiflow.api.PluginContext;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.i18n.I18n;
+import fan.summer.zhiflow.api.loader.ChildFirstResourceClassLoader;
 import fan.summer.plugin.host.H2PluginSettings;
 import javafx.application.Platform;
 import org.slf4j.Logger;
@@ -25,8 +25,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * in the configured plugins directory. Each JAR is loaded via a dedicated
  * {@link URLClassLoader} to allow proper unloading on JAR removal. Plugin discovery
  * uses the Java ServiceLoader mechanism, expecting implementations of
- * {@code fan.summer.api.SwissKitJPlugin} to be declared in
- * {@code META-INF/services/fan.summer.api.SwissKitJPlugin} within the JAR.</p>
+ * {@code fan.summer.zhiflow.api.SwissKitJPlugin} to be declared in
+ * {@code META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin} within the JAR.</p>
  *
  * <p>After startup, a {@link WatchService} is registered on the plugins directory to
  * detect {@code ENTRY_CREATE}, {@code ENTRY_DELETE}, and {@code ENTRY_MODIFY} events.

@@ -20,7 +20,7 @@ These apply to EVERY document and every task:
    - Notifications are `.sk-notif-*` (`.sk-notif-root`, `.sk-notif-info`, `.sk-notif-success`, `.sk-notif-warning`, `.sk-notif-error`). There is NO `.sk-badge` and NO `.sk-notification`.
    - Tabs are nested selectors `.sk-tab-pane .tab` (no standalone `.sk-tab`).
    - IconStyle accent classes `.ic-blue/.ic-purple/.ic-teal/.ic-amber/.ic-red/.ic-pink/.ic-gray` are EMPTY CSS rules — color/glow come from Java (`IconStyle.getColor()` + `DropShadow`), not CSS.
-4. **Exact token values** (from `swisskit-common.css` `.theme-dark`/`.theme-light`):
+4. **Exact token values** (from `zhiflow-common.css` `.theme-dark`/`.theme-light`):
 
    | Token | Dark | Light |
    |-------|------|-------|
@@ -42,7 +42,7 @@ These apply to EVERY document and every task:
 5. **Exact JavaFX signatures** (do not paraphrase):
    - Plugin contract `SwissKitJPlugin` (16 methods, 8 required / 8 default): `getId()`, `getName()`, `getDescription()`, `getCategory()`, `getVersion()`, `getMdiIcon()`, `createView()`, plus defaults `getIconStyle()`→`IconStyle.BLUE`, `getType()`→`ToolType.PLUGIN`, `onActivate/onDeactivate/onUnload/onBackground/onForeground`, `hasRunningTasks()`→false, `aiTools()`→`List.of()`.
    - `ThemeService`: `enum Theme { DARK, LIGHT }` (nested); `static Theme current()`, `static void set(Theme)`, `static void registerScene(Scene)`, `static void onChange(Consumer<Theme>)`, `static void removeListener(Consumer<Theme>)`. All FX-thread-only.
-   - Plugin-facing theme helper: `Themes.applyTo(scene)` (NOT `ThemeService` for plugin code) and `Themes.COMMON_CSS = "/css/swisskit-common.css"`.
+   - Plugin-facing theme helper: `Themes.applyTo(scene)` (NOT `ThemeService` for plugin code) and `Themes.COMMON_CSS = "/css/zhiflow-common.css"`.
    - Icons: `MdiIconUtil.createIcon(String name, double size)` and `createIcon(String name, double size, String extraStyle)` → returns `javafx.scene.text.Text`.
    - `IconStyle` enum: `BLUE/PURPLE/TEAL/AMBER/RED/PINK/GRAY` each with `getCssClass()` (e.g. `ic-blue`) and `getColor()` (`javafx.scene.paint.Color`). `fromCssClass(String)` case-insensitive, default BLUE.
    - `ToolCategory` enum: `DEV("dev")/TEXT("text")/IMAGE("image")/NET("net")/OTHER("other")`, each with `getId()`/`getI18nKey()`/`fromId(String)`.
@@ -50,7 +50,7 @@ These apply to EVERY document and every task:
 6. **Builtin tools (11)** for citation as reference implementations: AiChat (`builtin.ai-chat`, OTHER, `robot-outline`, PURPLE), JsonFormatter (`builtin.json-formatter`, DEV, `code-json`, BLUE), Base64 (`builtin.base64`, DEV, `base64`, TEAL), HashCalculator (`builtin.hash`, DEV, `key-variant`, AMBER), ExcelSplitter (`fan.summer.buildin.excelsplitter`, OTHER, `file-excel`, TEAL), ColorConverter (`builtin.color`, IMAGE, `palette`, PINK), MarkdownEditor (`builtin.markdown`, TEXT, `language-markdown`, BLUE), Email (`builtin.email`, NET, `email`, BLUE), EmailArchive (`fan.summer.buildin.email-archive`, NET, `email-check`, TEAL), PdfTool (`builtin.pdf-tool`, OTHER, `file-pdf-box`, RED), BrowserAutomate (`fan.summer.buildin.browser-automate`, DEV, `web`, TEAL).
 7. **Real animations** to cite (file:line in `SwissKit/src/main/java/fan/summer/`): MainWindow entry fade 250ms (`ui/MainWindow.java:311`); StatusBar pulse dot 2500ms infinite (`ui/MainWindow.java:147`); clock Timeline 1s tick (`ui/MainWindow.java:321`); ContentArea staggered card entry 240ms +35ms stagger (`ui/content/ContentArea.java:335`); showPage cross-fade 220ms in/180ms out (`ui/content/ContentArea.java:399`); grid slide-in 280ms (`ui/content/ContentArea.java:422`); ToolCard entry 280ms custom interpolator (`ui/content/ToolCard.java:163`); ToolCard bg-running pulse 2500ms (`ui/content/ToolCard.java:106`); ToolCard favorite-star pop 150ms EASE_OUT (`ui/content/ToolCard.java:128`); ToolCard hover scale 150ms / click scale 100ms (`ui/content/ToolCard.java:138`,`:156`); DetailPanel slide-in 300ms / slide-out 250ms Timeline SPLINE(0.4,0,0.2,1) (`ui/content/DetailPanel.java:341`,`:361`); Sidebar active-item scale pop 160ms SPLINE(0.34,0.9,0.64,1) (`ui/sidebar/Sidebar.java:418`); AiChat webview blink 800ms (`buildintool/ai/AiChatPlugin.java:747`); Email ToggleSwitch thumb slide 150ms (`buildintool/email/ToggleSwitch.java:54`).
 8. **Source-of-truth files** every doc must cross-link:
-   - Tokens: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css`
+   - Tokens: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`
    - Shell CSS: `SwissKit/src/main/resources/css/shell.css`
    - Builtin CSS: `SwissKit/src/main/resources/css/builtin.css`
    - Theme code: `SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java`, `Themes.java`
@@ -95,7 +95,7 @@ Modified files:
 **Files:**
 - Create: `docs/ui-design/05-theme-color-system.md`
 - Create: `docs/zh/ui-design/05-theme-color-system.md`
-- Reference (do not modify): `SwissKitJ-Api/src/main/resources/css/swisskit-common.css`, `SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java`, `SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java`, `SwissKit/src/main/java/fan/summer/ai/util/MarkdownRenderer.java`
+- Reference (do not modify): `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`, `SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java`, `SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java`, `SwissKit/src/main/java/fan/summer/ai/util/MarkdownRenderer.java`
 
 **Interfaces:**
 - Consumes: spec `docs/superpowers/specs/2026-07-01-ui-design-docs-design.md` §5.05; token values from Global Constraint #4.
@@ -107,10 +107,10 @@ Modified files:
   - **① Overview**: this doc is the single source of truth for `-sk-*` color tokens; dual-theme (dark/light); token = JavaFX looked-up color resolved via `.theme-dark`/`.theme-light` on scene root.
   - **② Design Principles**: neutral-gray dominant (IDEA New UI core); accent `#3574F0` used sparingly (key actions + selected-state indicator only); selected state = `-sk-bg-selected` neutral fill + 3px left accent strip (NOT blue flood); status colors strictly semantic; colors never hardcoded in `setStyle()` (won't re-resolve on theme switch).
   - **③ Spec tables** — the **Token Reference Table** (`id="token-reference-table"`): all 14 tokens with dark/light hex, purpose, "use on" guidance. Add a second table: "Token → CSS utility class" mapping (e.g. `-sk-text`→`.sk-t1`, `-sk-text-secondary`→`.sk-t2`/`.sk-fill-2`, `-sk-bg-elevated`→`.sk-surface`, `-sk-bg-hover`→`.sk-surface-soft`, `-sk-border`→`.sk-outlined`, `-sk-border-strong`→`.sk-outlined-strong`). Add a contrast matrix table: which text token on which bg token passes WCAG AA (4.5:1) in each theme — cite 08 for full a11y.
-  - **④ JavaFX template**: show the theme-switching lifecycle — how `ThemeService.registerScene(scene)` loads `swisskit-common.css` and stamps the class; how `ThemeService.set(Theme.LIGHT)` swaps the class (no reload, no flicker); the `onChange(Consumer<Theme>)` listener pattern; the WebView sync pattern from `MarkdownRenderer` (separate embedded dark/light CSS, re-render on change). Show the plugin-facing helper `Themes.applyTo(scene)` for standalone windows. Include copyable code blocks.
+  - **④ JavaFX template**: show the theme-switching lifecycle — how `ThemeService.registerScene(scene)` loads `zhiflow-common.css` and stamps the class; how `ThemeService.set(Theme.LIGHT)` swaps the class (no reload, no flicker); the `onChange(Consumer<Theme>)` listener pattern; the WebView sync pattern from `MarkdownRenderer` (separate embedded dark/light CSS, re-render on change). Show the plugin-facing helper `Themes.applyTo(scene)` for standalone windows. Include copyable code blocks.
   - **⑤ AI checklist**: "When generating themed UI you MUST: use `-sk-*` tokens or `.sk-t*`/`.sk-surface*` utility classes, never hex in setStyle(); for standalone Stage call `Themes.applyTo(scene)`; register `ThemeService.onChange` for custom rendering (e.g. WebView/canvas); persist choice via key `"theme"` = `"dark"`/`"light"`."
   - **⑥ Anti-patterns**: `setStyle("-fx-background-color: #2B2B2B")` (breaks on theme switch — use `-sk-bg-elevated`); using `-sk-accent` as a large background fill (too loud — neutral bg + accent only for action/selection); inventing new token names not in the table.
-  - **⑦ References**: link to `swisskit-common.css`, `ThemeService.java`, `Themes.java`, `MarkdownRenderer.java`, the New UI spec, and sibling docs 01/02/08.
+  - **⑦ References**: link to `zhiflow-common.css`, `ThemeService.java`, `Themes.java`, `MarkdownRenderer.java`, the New UI spec, and sibling docs 01/02/08.
 
 - [ ] **Step 2: Write the Chinese mirror `docs/zh/ui-design/05-theme-color-system.md`**
 
@@ -120,7 +120,7 @@ Modified files:
 
   Run:
   ```bash
-  grep -nE '\-sk-(bg|bg-elevated|bg-hover|bg-selected|border|border-strong|text|text-secondary|text-disabled|accent|accent-soft|success|warning|danger):' SwissKitJ-Api/src/main/resources/css/swisskit-common.css
+  grep -nE '\-sk-(bg|bg-elevated|bg-hover|bg-selected|border|border-strong|text|text-secondary|text-disabled|accent|accent-soft|success|warning|danger):' SwissKitJ-Api/src/main/resources/css/zhiflow-common.css
   ```
   Expected: each of the 14 tokens appears under both `.theme-dark` and `.theme-light` with the exact hex values in Global Constraint #4. If any value in the doc differs from this grep output, fix the doc.
 
@@ -162,7 +162,7 @@ Modified files:
     - **CSS Class Naming Convention** (`id="css-naming"`): `.sk-` prefix for shared components (from common.css); shell classes unprefixed (`nav-item`, `tool-card`, `search-bar`, `statusbar`); the `.glass-*`→`.sk-*` v3.2.0 breaking migration (cite the New UI spec §7); status-color modifier convention.
     - Layout-container selection table: GridPane (forms), VBox/HBox (linear stacks), BorderPane (top/center/bottom regions), FlowPane (wrapping card grids), StackPane (overlay/page switching), ScrollPane (scrollable content with `.content-scroll` for thin scrollbar).
   - **④ JavaFX template** — **Plugin Skeleton** (`id="plugin-skeleton"`): a complete, compilable `SwissKitJPlugin` implementation skeleton using `{{base-package}}`/`{{Name}}`/`{{slug}}` placeholders (consistent with `docs/plugins/ui.md`). Show: package + imports, all 8 required methods returning realistic values (`getId`→`"builtin.<slug>"`, `getName`→`I18n.get("builtin.<slug>.name")`, `getCategory`→`ToolCategory.X`, `getMdiIcon`→`"<mdi-name>"` without `mdi` prefix, `getIconStyle`→`IconStyle.X`, `getType`→`ToolType.BUILTIN`), `createView()` building a GridPane, lifecycle hooks, `aiTools()`. Also show: how to render an icon (`MdiIconUtil.createIcon(name, size)`), how to theme a standalone Stage (`Themes.applyTo(scene)`), the I18n patterns from `ui.md` (`I18n.bind`, `I18n.get`, `I18n.addListener`), and the three layout pitfalls from `ui.md` (ScrollPane sizing, HBox fill with `setHgrow`+`setMaxWidth(MAX_VALUE)`, StackPane page-switch toggling `visible`+`managed`).
-  - **⑤ AI checklist**: "When generating a plugin you MUST: implement `SwissKitJPlugin` directly (not a wrapper); cache the `createView()` result; return MDI name without `mdi-` prefix; override `getType()` for builtins; never load `swisskit-common.css` yourself (`Themes.applyTo`/`ThemeService.registerScene` does it); never set inline hex colors."
+  - **⑤ AI checklist**: "When generating a plugin you MUST: implement `SwissKitJPlugin` directly (not a wrapper); cache the `createView()` result; return MDI name without `mdi-` prefix; override `getType()` for builtins; never load `zhiflow-common.css` yourself (`Themes.applyTo`/`ThemeService.registerScene` does it); never set inline hex colors."
   - **⑥ Anti-patterns**: separate `*PluginUi` wrapper class (all 11 builtins implement directly in one class); `setPrefWidth(Double.MAX_VALUE)` on HBox children (use `setHgrow`+`setMaxWidth`); loading common CSS manually; calling `ThemeService` internals from plugin code (use `Themes.applyTo`).
   - **⑦ References**: link to `SwissKitJPlugin.java`, `IconStyle.java`, `ToolCategory.java`, `ToolType.java`, `MdiIconUtil.java`, `Themes.java`, `docs/plugins/ui.md`, sibling 05/06.
 
@@ -251,7 +251,7 @@ Modified files:
 **Files:**
 - Create: `docs/ui-design/03-component-library.md`
 - Create: `docs/zh/ui-design/03-component-library.md`
-- Reference: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css`, `SwissKit/src/main/resources/css/shell.css`, `SwissKit/src/main/resources/css/builtin.css`; UI classes in `ui/sidebar/Sidebar.java`, `ui/content/ContentArea.java`, `ui/content/ToolCard.java`, `ui/content/DetailPanel.java`, `ui/MainWindow.java`
+- Reference: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`, `SwissKit/src/main/resources/css/shell.css`, `SwissKit/src/main/resources/css/builtin.css`; UI classes in `ui/sidebar/Sidebar.java`, `ui/content/ContentArea.java`, `ui/content/ToolCard.java`, `ui/content/DetailPanel.java`, `ui/MainWindow.java`
 
 **Interfaces:**
 - Consumes: tokens from Task 1; naming from Task 2; icons from Task 3; animations from Task 7 (link forward — animations cited by name, full spec in 07).
@@ -261,7 +261,7 @@ Modified files:
 
   7-section structure applied PER component. Two groups:
 
-  **Group A — Foundation components** (from `swisskit-common.css`), each with 7 sub-sections:
+  **Group A — Foundation components** (from `zhiflow-common.css`), each with 7 sub-sections:
   1. Primary Button `.sk-btn-primary` (accent fill, derive -8%/-16% on hover/press) and Secondary Button `.sk-btn-secondary` (bg-hover fill, border). NOTE: there is no `.sk-btn`.
   2. Input Field `.sk-field` (bg `-sk-bg`, border `-sk-border`, focus → border `-sk-accent` + bg `-sk-bg-elevated`), Label `.sk-field-label`.
   3. ComboBox `.sk-combo` + popup `.combo-box-popup .list-view` (selected → text `-sk-accent`).
@@ -297,7 +297,7 @@ Modified files:
 
   Run for common.css classes:
   ```bash
-  grep -nE '\.sk-(btn-primary|btn-secondary|field|field-label|combo|checkbox|table|tab-pane|dialog|notif-root|notif-info|notif-success|notif-warning|notif-error|notif-message|notif-ok|notif-cancel|t1|t2|t3|fill-2|fill-3|surface|surface-soft|outlined|outlined-strong)\b' SwissKitJ-Api/src/main/resources/css/swisskit-common.css
+  grep -nE '\.sk-(btn-primary|btn-secondary|field|field-label|combo|checkbox|table|tab-pane|dialog|notif-root|notif-info|notif-success|notif-warning|notif-error|notif-message|notif-ok|notif-cancel|t1|t2|t3|fill-2|fill-3|surface|surface-soft|outlined|outlined-strong)\b' SwissKitJ-Api/src/main/resources/css/zhiflow-common.css
   ```
   Run for shell.css classes:
   ```bash
@@ -458,7 +458,7 @@ Modified files:
 **Files:**
 - Create: `docs/ui-design/08-accessibility-guide.md`
 - Create: `docs/zh/ui-design/08-accessibility-guide.md`
-- Reference: `swisskit-common.css` (tokens), `docs/ui-design/05-theme-color-system.md` (contrast matrix)
+- Reference: `zhiflow-common.css` (tokens), `docs/ui-design/05-theme-color-system.md` (contrast matrix)
 
 **Interfaces:**
 - Consumes: token contrast matrix from Task 1; keyboard flows from Task 7.
@@ -475,7 +475,7 @@ Modified files:
   - **④ JavaFX template**: keyboard operability (all actions reachable via keyboard, visible focus ring), focus management (dialog open → focus first control, close → restore focus, page switch → move focus), `AccessibleRole`/`accessibleText` usage for screen readers, reduced-motion degradation strategy (JavaFX has no media query — provide a static `boolean reduceMotion` flag pattern that disables/shortens animations).
   - **⑤ AI checklist**: "MUST: contrast ≥4.5:1 for text; never color-alone status; all actions keyboard-reachable; visible focus; set AccessibleRole + accessibleText on custom controls; provide reduced-motion path; Esc closes dialogs."
   - **⑥ Anti-patterns**: relying on color for error state; low-contrast disabled text as the only affordance; trapping focus; no Esc handler; long un-animatable layout shifts.
-  - **⑦ References**: `swisskit-common.css`, sibling 05 (contrast), 07 (reduced motion), 04 (keyboard flows).
+  - **⑦ References**: `zhiflow-common.css`, sibling 05 (contrast), 07 (reduced motion), 04 (keyboard flows).
 
 - [ ] **Step 2: Write Chinese mirror.**
 

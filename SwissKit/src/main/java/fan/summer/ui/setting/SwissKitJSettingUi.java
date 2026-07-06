@@ -1,10 +1,10 @@
 package fan.summer.ui.setting;
 
-import fan.summer.api.ai.AiServiceProvider;
-import fan.summer.api.ai.ChatBackend;
-import fan.summer.api.i18n.I18n;
-import fan.summer.api.theme.ThemeService;
-import fan.summer.api.theme.Themes;
+import fan.summer.zhiflow.api.ai.AiServiceProvider;
+import fan.summer.zhiflow.api.ai.ChatBackend;
+import fan.summer.zhiflow.api.i18n.I18n;
+import fan.summer.zhiflow.api.theme.ThemeService;
+import fan.summer.zhiflow.api.theme.Themes;
 import fan.summer.ai.service.CloudChatBackend;
 import fan.summer.ai.service.LocalChatBackend;
 import fan.summer.database.DatabaseInit;
@@ -22,7 +22,7 @@ import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import fan.summer.api.component.SkNotification;
+import fan.summer.zhiflow.api.component.SkNotification;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;

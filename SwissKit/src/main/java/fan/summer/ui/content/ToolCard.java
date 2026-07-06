@@ -1,11 +1,11 @@
 package fan.summer.ui.content;
 
-import fan.summer.api.IconStyle;
-import fan.summer.api.MdiIconUtil;
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.i18n.I18n;
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.IconStyle;
+import fan.summer.zhiflow.api.MdiIconUtil;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.i18n.I18n;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
 import fan.summer.plugin.FavoriteService;
 import fan.summer.plugin.PluginRegistry;
 import javafx.animation.*;

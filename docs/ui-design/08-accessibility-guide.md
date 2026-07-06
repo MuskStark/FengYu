@@ -10,7 +10,7 @@
 |---|---|
 | **Doc type** | Accessibility requirements + checklist |
 | **Audience** | Plugin authors, AI code generators — anyone who must verify a UI is usable by all |
-| **Tokens** | [`swisskit-common.css`](../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css) |
+| **Tokens** | [`zhiflow-common.css`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) |
 | **Related** | [05 Theme & Color System](05-theme-color-system.md) (contrast matrix) · [07 Animation](07-animation-guidelines.md) (reduced motion) · [04 Interaction](04-interaction-guidelines.md) (keyboard flows) |
 
 ---
@@ -143,7 +143,7 @@ border alone — add an icon and an explicit word.
 
 Every interactive node must be reachable and operable by keyboard, with a visible focus ring.
 SwissKitJ's focus indicator is a `-sk-accent` border (e.g.
-[`.sk-field:focused`](../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css),
+[`.sk-field:focused`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css),
 [`.search-bar:focused-within`](../../SwissKit/src/main/resources/css/shell.css)).
 
 ```java
@@ -276,7 +276,7 @@ When building UI for SwissKitJ (host or plugin), you **MUST**:
 
 ## 7. References
 
-- [`swisskit-common.css`](../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css) — token definitions, `.sk-field:focused`
+- [`zhiflow-common.css`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) — token definitions, `.sk-field:focused`
 - [`shell.css`](../../SwissKit/src/main/resources/css/shell.css) — `.search-bar:focused-within`, focus indicators
 - [`SkNotification.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java) — the color+icon+text status pattern
 - **Sibling docs:**

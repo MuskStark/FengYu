@@ -9,7 +9,7 @@
 |---|---|
 | **文档类型** | 无障碍要求 + 清单 |
 | **读者** | 插件作者、AI 代码生成器——任何必须验证 UI 对所有人都可用的人 |
-| **Token** | [`swisskit-common.css`](../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css) |
+| **Token** | [`zhiflow-common.css`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) |
 | **相关文档** | [05 主题与色彩系统](05-theme-color-system.md)（对比度矩阵） · [07 动效](07-animation-guidelines.md)（减弱动效） · [04 交互](04-interaction-guidelines.md)（键盘流程） |
 
 ---
@@ -130,7 +130,7 @@ WCAG 2.1 阈值，由精确 token 十六进制值计算：
 
 每个可交互节点都必须键盘可达且可操作，并带可见焦点环。SwissKitJ 的焦点指示器是
 `-sk-accent` 边框（如
-[`.sk-field:focused`](../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css)、
+[`.sk-field:focused`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css)、
 [`.search-bar:focused-within`](../../SwissKit/src/main/resources/css/shell.css)）。
 
 ```java
@@ -249,7 +249,7 @@ private void playEntry(Node node) {
 
 ## 7. 参考
 
-- [`swisskit-common.css`](../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css) — token 定义、`.sk-field:focused`
+- [`zhiflow-common.css`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) — token 定义、`.sk-field:focused`
 - [`shell.css`](../../SwissKit/src/main/resources/css/shell.css) — `.search-bar:focused-within`、焦点指示器
 - [`SkNotification.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java) — 颜色+图标+文本的状态模式
 - **兄弟文档：**

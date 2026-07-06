@@ -1,7 +1,7 @@
 # The `SwissKitJPlugin` Contract
 
 The single interface every plugin implements:
-`fan.summer.api.SwissKitJPlugin`
+`fan.summer.zhiflow.api.SwissKitJPlugin`
 ([source](https://github.com/MuskStark/SwissKitJ/blob/main/SwissKitJ-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java)).
 
 The host depends only on this interface. You declare `SwissKitJ-Api` as `provided` scope,

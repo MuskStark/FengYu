@@ -1,6 +1,6 @@
 package plugin.swisskit.keepawake.ui;
 
-import fan.summer.api.i18n.I18n;
+import fan.summer.zhiflow.api.i18n.I18n;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.animation.TranslateTransition;

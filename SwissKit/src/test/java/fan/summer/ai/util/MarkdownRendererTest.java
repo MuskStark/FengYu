@@ -1,6 +1,6 @@
 package fan.summer.ai.util;
 
-import fan.summer.api.theme.ThemeService;
+import fan.summer.zhiflow.api.theme.ThemeService;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 

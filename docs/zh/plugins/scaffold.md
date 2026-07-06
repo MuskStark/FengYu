@@ -22,7 +22,7 @@
 │   ├── util/                      # 工具类
 │   └── worker/                    # 后台任务
 ├── src/main/resources/
-│   ├── META-INF/services/fan.summer.api.SwissKitJPlugin
+│   ├── META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin
 │   ├── i18n/
 │   │   ├── messages.properties        # 默认语言（英文）
 │   │   └── messages_zh.properties     # 中文翻译
@@ -57,7 +57,7 @@
     <dependencies>
         <!-- SwissKitJ API — 运行时由宿主提供 -->
         <dependency>
-            <groupId>fan.summer.api</groupId>
+            <groupId>fan.summer.zhiflow.api</groupId>
             <artifactId>SwissKitJ-Api</artifactId>
             <version>${swisskit.api.version}</version>
             <scope>provided</scope>
@@ -174,7 +174,7 @@
 
 ## 2. SPI 注册文件
 
-路径：`src/main/resources/META-INF/services/fan.summer.api.SwissKitJPlugin`
+路径：`src/main/resources/META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin`
 
 内容（仅一行）：
 ```

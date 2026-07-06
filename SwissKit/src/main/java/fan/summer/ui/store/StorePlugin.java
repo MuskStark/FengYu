@@ -1,7 +1,7 @@
 package fan.summer.ui.store;
 
-import fan.summer.api.IconStyle;
-import fan.summer.api.ToolCategory;
+import fan.summer.zhiflow.api.IconStyle;
+import fan.summer.zhiflow.api.ToolCategory;
 
 /**
  * Lightweight data class representing a plugin available in the online store.

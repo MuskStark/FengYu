@@ -47,10 +47,10 @@ OPT     resources/mapper/<name>/                    ← MyBatis mapper (if tool 
 ```java
 package fan.summer.buildintool.<toolname>;
 
-import fan.summer.api.*;
-import fan.summer.api.i18n.I18n;
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.*;
+import fan.summer.zhiflow.api.i18n.I18n;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
 import javafx.scene.Node;
 import javafx.scene.layout.VBox;
 import javafx.geometry.Insets;
@@ -107,10 +107,10 @@ public class <Name>Plugin implements SwissKitJPlugin {
 ```java
 package fan.summer.buildintool.ai;
 
-import fan.summer.api.ai.*;
+import fan.summer.zhiflow.api.ai.*;
 import fan.summer.ai.util.JsonHelper;
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
 
 import java.util.*;
 
@@ -283,7 +283,7 @@ Before completing any built-in tool UI, verify:
 | Mistake | Fix |
 |---------|-----|
 | Forgetting `ToolType.BUILTIN` | Always return `ToolType.BUILTIN` from `getType()` |
-| Using SLF4J directly | Use `fan.summer.api.log.LoggerFactory.getLogger()` |
+| Using SLF4J directly | Use `fan.summer.zhiflow.api.log.LoggerFactory.getLogger()` |
 | Hardcoding user-visible strings | Use `I18n.get("key")` for everything |
 | Not making the tool AI-callable | Every built-in tool MUST have at least one `AiTool` implementation |
 | AI tool not registered | Override `aiTools()` on the plugin class — the registry auto-registers them when the plugin is added (v3.1.0+). No separate registrar exists. |

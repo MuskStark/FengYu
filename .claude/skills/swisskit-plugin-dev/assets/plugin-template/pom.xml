@@ -30,7 +30,7 @@
   <dependencies>
     <!-- SwissKitJ API — provided by the host at runtime -->
     <dependency>
-      <groupId>fan.summer.api</groupId>
+      <groupId>fan.summer.zhiflow.api</groupId>
       <artifactId>SwissKitJ-Api</artifactId>
       <version>${swisskit.api.version}</version>
       <scope>provided</scope>
@@ -67,7 +67,7 @@
     <plugins>
       <!--
         Fat JAR. ServicesResourceTransformer is MANDATORY — without it, the
-        META-INF/services/fan.summer.api.SwissKitJPlugin file from this project gets
+        META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin file from this project gets
         overwritten during shading and the host can't discover your plugin.
       -->
       <plugin>

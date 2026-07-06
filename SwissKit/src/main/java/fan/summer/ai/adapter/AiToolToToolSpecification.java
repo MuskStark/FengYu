@@ -3,8 +3,8 @@ package fan.summer.ai.adapter;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.model.chat.request.json.*;
 import fan.summer.ai.tools.AiToolDescriptions;
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.ai.AiToolParam;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiToolParam;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

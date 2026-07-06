@@ -17,7 +17,7 @@ When you ask the agent to build/scaffold/debug a plugin, the skill activates and
 - Implement `SwissKitJPlugin` **directly in one class** (the single-class pattern all 11
   builtins use), not a `*PluginUi` wrapper.
 - Wire the 7 required + 9 default methods with the correct signatures and returns.
-- Set up `META-INF/services/fan.summer.api.SwissKitJPlugin` and the `maven-shade-plugin`
+- Set up `META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin` and the `maven-shade-plugin`
   `ServicesResourceTransformer` so the plugin actually loads.
 - Theme the UI with `-sk-*` tokens / `.sk-*` classes (never inline hex), matching the
   [design spec](/ui-design/01-design-system.md) — typography, spacing, radius, motion,

@@ -171,13 +171,13 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 - **PDF 工具**：支持拆分、合并和转 Word（通过 WPS 或 documents4j），配备 `OfficeDetector` 自动检测；3 标签页 UI 注册为内置工具；所有三项 PDF 操作均有 AI 工具支持
 - **邮件归档**：内置邮件归档工具，支持 IMAP（`EmailArchivePlugin`、`EmailArchiveService`），新增地址簿面板并扩展群发服务
 - **插件后台执行**：插件可在后台运行任务，支持视图缓存和 ToolCard 运行状态指示器
-- **插件预览窗口**：为第三方插件开发者提供的独立预览套件，包含 `PreviewTitleBar`、`PreviewSidebar`、`PreviewToolCard`、`PreviewDetailPanel` 和 `swisskit-preview.css`
+- **插件预览窗口**：为第三方插件开发者提供的独立预览套件，包含 `PreviewTitleBar`、`PreviewSidebar`、`PreviewToolCard`、`PreviewDetailPanel` 和 `zhiflow-preview.css`
 - **玻璃通知组件**：玻璃拟态风格的通知组件，替换所有 `Alert` 弹窗
 - **应用图标**：为 macOS（.icns）、Windows（.ico）和 Linux（.png）提供原生分辨率的应用图标
 - **内置工具**：Base64 编解码器、哈希计算器、JSON 格式化器、颜色转换器和 Markdown 编辑器插件，全部注册为内置工具
 - **国际化框架**：SwissKitJ-Api 中的核心 `I18n` 类，支持数据库持久化语言设置、插件资源包注册/注销，以及所有 UI 组件（TitleBar、MainWindow、Sidebar、ContentArea、ToolCard、DetailPanel、Settings）的实时语言切换
 - **设置界面**：重新设计的设置页面，包含 AI、邮件和地址簿标签页
-- **三层 CSS 架构**：`swisskit-common.css`（共享变量和 glass-* 工具类）、`shell.css`（应用外壳）和 `builtin.css`（内置工具），支持场景图继承
+- **三层 CSS 架构**：`zhiflow-common.css`（共享变量和 glass-* 工具类）、`shell.css`（应用外壳）和 `builtin.css`（内置工具），支持场景图继承
 - **类型安全枚举**：SwissKitJ-Api 中 `ToolCategory`、`ToolType` 和 `IconStyle` 枚举替代基于字符串的元数据
 - **GGUFZ 支持**：模型文件选择器支持 `*.ggufz` 压缩模型文件
 - **Gson/JsonHelper**：`JsonHelper` 工具类（基于 Gson）替代 `JsonBuilder`/`JsonParser`；`ToolCallParser` 和所有服务均使用 Gson
@@ -259,7 +259,7 @@ SwissKitJ 的所有重要变更。格式基于 [Keep a Changelog](https://keepac
 - **插件日志器**：`LoggerFactory` 搭配 SLF4J/Logback 后端；测试中安全使用空操作日志器
 - **StepWizard**：可复用的多步骤向导，带点导航、滑入过渡、验证
 - **插件商店**：在线目录 + 本地 JAR 安装，支持热重载
-- **三层 CSS**：`swisskit-common.css`、`shell.css`、`builtin.css`，通过场景图继承
+- **三层 CSS**：`zhiflow-common.css`、`shell.css`、`builtin.css`，通过场景图继承
 - **类型安全枚举**：`ToolCategory`、`ToolType`、`IconStyle` 替代基于字符串的元数据
 - **Excel 拆分器向导**：使用 4 步 `StepWizard` 流程重新设计
 

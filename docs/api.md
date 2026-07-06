@@ -101,7 +101,7 @@ Each level has overloads: `(String)`, `(String, Object)`, `(String, Object, Obje
 **Location**: `SwissKitJ-Api/.../theme/Themes.java`
 
 ```java
-static final String COMMON_CSS = "/css/swisskit-common.css"
+static final String COMMON_CSS = "/css/zhiflow-common.css"
 static String commonStylesheetUrl()
 static void applyTo(Scene scene)
 ```

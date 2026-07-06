@@ -71,7 +71,7 @@
 Create `SwissKit/src/test/java/fan/summer/api/ai/AiToolCloudLocalDefaultsTest.java`:
 
 ```java
-package fan.summer.api.ai;
+package fan.summer.zhiflow.api.ai;
 
 import org.junit.jupiter.api.Test;
 
@@ -212,7 +212,7 @@ EOF
 Create `SwissKit/src/test/java/fan/summer/api/ai/AiServiceProviderModeFilterTest.java`:
 
 ```java
-package fan.summer.api.ai;
+package fan.summer.zhiflow.api.ai;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -346,10 +346,10 @@ Create `SwissKit/src/test/java/fan/summer/ai/tools/AiToolDescriptionsTest.java`:
 ```java
 package fan.summer.ai.tools;
 
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.ai.AiToolParam;
-import fan.summer.api.ai.AiToolResult;
-import fan.summer.api.ai.AiServiceProvider;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiToolParam;
+import fan.summer.zhiflow.api.ai.AiToolResult;
+import fan.summer.zhiflow.api.ai.AiServiceProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -423,9 +423,9 @@ Create `SwissKit/src/main/java/fan/summer/ai/tools/AiToolDescriptions.java`:
 ```java
 package fan.summer.ai.tools;
 
-import fan.summer.api.ai.AiServiceProvider;
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.ai.AiToolParam;
+import fan.summer.zhiflow.api.ai.AiServiceProvider;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiToolParam;
 
 import java.util.List;
 
@@ -490,10 +490,10 @@ Create `SwissKit/src/test/java/fan/summer/ai/tools/ToolSchemaBuilderLocalTest.ja
 ```java
 package fan.summer.ai.tools;
 
-import fan.summer.api.ai.AiServiceProvider;
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.ai.AiToolParam;
-import fan.summer.api.ai.AiToolResult;
+import fan.summer.zhiflow.api.ai.AiServiceProvider;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiToolParam;
+import fan.summer.zhiflow.api.ai.AiToolResult;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -594,8 +594,8 @@ Also update `buildOpenAiTools` and `buildAnthropicTools` (lines 41-73) to use `A
 Add the import at the top:
 
 ```java
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.ai.AiToolParam;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiToolParam;
 // (already present)
 ```
 
@@ -630,10 +630,10 @@ package fan.summer.ai.adapter;
 
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.model.chat.request.json.JsonObjectSchema;
-import fan.summer.api.ai.AiServiceProvider;
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.ai.AiToolParam;
-import fan.summer.api.ai.AiToolResult;
+import fan.summer.zhiflow.api.ai.AiServiceProvider;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiToolParam;
+import fan.summer.zhiflow.api.ai.AiToolResult;
 import fan.summer.ai.tools.AiToolDescriptions;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -753,10 +753,10 @@ Create `SwissKit/src/test/java/fan/summer/ai/tools/ToolExecutorErrorJsonTest.jav
 ```java
 package fan.summer.ai.tools;
 
-import fan.summer.api.ai.AiServiceProvider;
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.ai.AiToolParam;
-import fan.summer.api.ai.AiToolResult;
+import fan.summer.zhiflow.api.ai.AiServiceProvider;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiToolParam;
+import fan.summer.zhiflow.api.ai.AiToolResult;
 import fan.summer.ai.util.JsonHelper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -846,7 +846,7 @@ Add the import (JsonHelper is in the same package `fan.summer.ai.util`, so add):
 import fan.summer.ai.util.JsonHelper;
 ```
 
-(`fan.summer.api.ai.*` is already imported via `import fan.summer.api.ai.*;` if present, otherwise add individually.)
+(`fan.summer.zhiflow.api.ai.*` is already imported via `import fan.summer.zhiflow.api.ai.*;` if present, otherwise add individually.)
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -873,7 +873,7 @@ git commit -m "🐛 fix(ai): ToolExecutor error output is always JSON {success:f
 Create `SwissKit/src/test/java/fan/summer/api/SwissKitJPluginAiToolsDefaultTest.java`:
 
 ```java
-package fan.summer.api;
+package fan.summer.zhiflow.api;
 
 import javafx.scene.Node;
 import org.junit.jupiter.api.Test;
@@ -922,7 +922,7 @@ Build test file. Expected: compile error — `aiTools()` method missing on `Swis
 In `SwissKitJ-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`, add import at top:
 
 ```java
-import fan.summer.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiTool;
 import java.util.List;
 ```
 
@@ -976,13 +976,13 @@ Create `SwissKit/src/test/java/fan/summer/plugin/PluginRegistryAiToolsTest.java`
 ```java
 package fan.summer.plugin;
 
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.ToolCategory;
-import fan.summer.api.ToolType;
-import fan.summer.api.ai.AiServiceProvider;
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.ai.AiToolParam;
-import fan.summer.api.ai.AiToolResult;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ToolCategory;
+import fan.summer.zhiflow.api.ToolType;
+import fan.summer.zhiflow.api.ai.AiServiceProvider;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiToolParam;
+import fan.summer.zhiflow.api.ai.AiToolResult;
 import javafx.scene.Node;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -1094,8 +1094,8 @@ In `SwissKit/src/main/java/fan/summer/plugin/PluginRegistry.java`:
 Add imports:
 
 ```java
-import fan.summer.api.ai.AiServiceProvider;
-import fan.summer.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiServiceProvider;
+import fan.summer.zhiflow.api.ai.AiTool;
 import java.util.HashMap;
 ```
 
@@ -1230,11 +1230,11 @@ Create `SwissKit/src/main/java/fan/summer/buildintool/browser/BrowserAutomatePlu
 ```java
 package fan.summer.buildintool.browser;
 
-import fan.summer.api.IconStyle;
-import fan.summer.api.ToolCategory;
-import fan.summer.api.ToolType;
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.ai.AiTool;
+import fan.summer.zhiflow.api.IconStyle;
+import fan.summer.zhiflow.api.ToolCategory;
+import fan.summer.zhiflow.api.ToolType;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ai.AiTool;
 import fan.summer.buildintool.browser.ai.BrowserAutomateTool;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
@@ -1331,7 +1331,7 @@ For each of these 4 plugins, add an `aiTools()` override. The pattern is identic
 Open `SwissKit/src/main/java/fan/summer/buildintool/dev/Base64Plugin.java`. Add imports:
 
 ```java
-import fan.summer.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiTool;
 import fan.summer.ai.tools.BuiltinBase64Tool;
 import java.util.List;
 ```
@@ -1350,7 +1350,7 @@ Append inside the class:
 Open `SwissKit/src/main/java/fan/summer/buildintool/dev/HashCalculatorPlugin.java`. Add imports:
 
 ```java
-import fan.summer.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiTool;
 import fan.summer.ai.tools.BuiltinHashTool;
 import java.util.List;
 ```
@@ -1369,7 +1369,7 @@ Append inside the class:
 Open `SwissKit/src/main/java/fan/summer/buildintool/dev/JsonFormatterPlugin.java`. Add imports:
 
 ```java
-import fan.summer.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiTool;
 import fan.summer.ai.tools.BuiltinJsonFormatTool;
 import java.util.List;
 ```
@@ -1388,7 +1388,7 @@ Append inside the class:
 Open `SwissKit/src/main/java/fan/summer/buildintool/image/ColorConverterPlugin.java`. Add imports:
 
 ```java
-import fan.summer.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiTool;
 import fan.summer.ai.tools.BuiltinColorConvertTool;
 import java.util.List;
 ```
@@ -1428,7 +1428,7 @@ git commit -m "♻️ refactor(dev/image): simple plugins self-declare their AI 
 Open `SwissKit/src/main/java/fan/summer/buildintool/excelsplitter/ExcelSplitterPlugin.java`. Add imports:
 
 ```java
-import fan.summer.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiTool;
 import fan.summer.buildintool.ai.ExcelAnalyzeTool;
 import fan.summer.buildintool.ai.ExcelCancelTool;
 import fan.summer.buildintool.ai.ExcelComplexConfigTool;
@@ -1477,7 +1477,7 @@ git commit -m "♻️ refactor(excel): ExcelSplitterPlugin self-declares its 6 A
 Open `SwissKit/src/main/java/fan/summer/buildintool/emailarchive/EmailArchivePlugin.java`. Add imports:
 
 ```java
-import fan.summer.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiTool;
 import fan.summer.buildintool.ai.EmailArchiveFetchTool;
 import fan.summer.buildintool.ai.EmailArchiveQueryTool;
 import java.util.List;
@@ -1518,7 +1518,7 @@ git commit -m "♻️ refactor(email-archive): EmailArchivePlugin self-declares 
 Open `SwissKit/src/main/java/fan/summer/buildintool/pdftool/PdfToolPlugin.java`. Add imports:
 
 ```java
-import fan.summer.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiTool;
 import fan.summer.buildintool.pdftool.ai.PdfMergeAiTool;
 import fan.summer.buildintool.pdftool.ai.PdfSplitAiTool;
 import fan.summer.buildintool.pdftool.ai.PdfToDocxAiTool;

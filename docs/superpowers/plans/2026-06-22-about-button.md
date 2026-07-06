@@ -297,8 +297,8 @@ Create `SwissKit/src/main/java/fan/summer/ui/about/AboutDialog.java`:
 ```java
 package fan.summer.ui.about;
 
-import fan.summer.api.i18n.I18n;
-import fan.summer.api.theme.Themes;
+import fan.summer.zhiflow.api.i18n.I18n;
+import fan.summer.zhiflow.api.theme.Themes;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;

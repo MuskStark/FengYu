@@ -1,8 +1,8 @@
 package fan.summer.ai.tools;
 
-import fan.summer.api.ai.AiServiceProvider;
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.ai.AiToolParam;
+import fan.summer.zhiflow.api.ai.AiServiceProvider;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiToolParam;
 
 import java.util.*;
 import java.util.regex.Matcher;

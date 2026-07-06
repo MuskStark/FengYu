@@ -144,7 +144,7 @@ import java.util.List;
  *
  * <p><strong>Class loading is intentionally left parent-first</strong> (no override of
  * {@code loadClass}/{@code findClass}). Shared API types such as
- * {@code fan.summer.api.SwissKitJPlugin} must resolve to the same {@code Class} objects
+ * {@code fan.summer.zhiflow.api.SwissKitJPlugin} must resolve to the same {@code Class} objects
  * the host loaded, otherwise {@link java.util.ServiceLoader}, casts, and
  * {@code instanceof} would break. The reported bug is purely a resource-name conflict,
  * so only resource resolution is made child-first.</p>

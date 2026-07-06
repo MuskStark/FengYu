@@ -1,13 +1,12 @@
 package {{base-package}};
 
-import fan.summer.api.IconStyle;
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.ToolCategory;
-import fan.summer.api.ToolType;
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.i18n.I18n;
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.IconStyle;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ToolCategory;
+import fan.summer.zhiflow.api.ToolType;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.host.PluginHost;
+import fan.summer.zhiflow.api.log.PluginLogger;
 
 import javafx.geometry.Insets;
 import javafx.scene.Node;
@@ -27,25 +26,41 @@ import java.util.List;
  * The host caches the node returned by {@link #createView()} and reuses it, so build the UI
  * once and store control references in fields.
  *
+ * <p>3.2.0: every host capability (logging, i18n, settings, tasks, theme, notifications) is
+ * reached through the {@link PluginHost} injected by {@link #init(PluginHost)}. The pre-3.2.0
+ * statics ({@code I18n.*}, {@code LoggerFactory.getLogger}, {@code Themes.applyTo}, raw
+ * {@code javafx.concurrent.Task}, {@code GlassNotification}) are forbidden.
+ *
  * @see SwissKitJPlugin
+ * @see PluginHost
  */
 public class {{Name}}Plugin implements SwissKitJPlugin {
 
-    private static final PluginLogger log = LoggerFactory.getLogger({{Name}}Plugin.class);
-
     /** i18n key prefix — keys live in i18n/messages[_zh].properties under this prefix. */
     private static final String P = "plugin.{{slug}}.";
+
+    // Injected once by init(), before createView()/aiTools(); valid for the whole lifetime.
+    private PluginHost host;
+    private PluginLogger log;
 
     // Cached UI controls (createView runs once; later activations reuse them).
     private TextArea inputArea;
     private TextArea outputArea;
     private VBox root;
 
+    // ── Host facade injection (3.2.0) ──────────────────────────────────────
+
+    @Override
+    public void init(PluginHost host) {
+        this.host = host;
+        this.log  = host.logger(getClass());   // routed into the host logging backbone
+    }
+
     // ── Metadata ──────────────────────────────────────────────────────────
 
     @Override public String getId()          { return "{{base-package}}"; }
-    @Override public String getName()        { return I18n.get(P + "name"); }
-    @Override public String getDescription() { return I18n.get(P + "desc"); }
+    @Override public String getName()        { return host.i18n().get(P + "name"); }
+    @Override public String getDescription() { return host.i18n().get(P + "desc"); }
     @Override public ToolCategory getCategory() { return ToolCategory.OTHER; }  // DEV/TEXT/IMAGE/NET/OTHER
     @Override public String getVersion()     { return "1.0.0"; }
     @Override public String getMdiIcon()     { return "star-outline"; }   // bare MDI name, NO mdi- prefix
@@ -57,20 +72,20 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
     @Override
     public Node createView() {
         log.debug("Building {{Name}} view");
-        // Register the i18n bundle with THIS plugin's ClassLoader before any I18n.get/bind.
-        // (Required for the dev profile to resolve keys standalone.)
-        I18n.registerPluginBundle("i18n.messages", getClass().getClassLoader());
+        // Register the i18n bundle via the facade before any host.i18n().get/bind.
+        // No ClassLoader argument — the facade resolves this plugin's own ClassLoader.
+        host.i18n().registerBundle("i18n.messages");
 
         inputArea = new TextArea();
-        inputArea.setPromptText(I18n.get(P + "input.prompt"));
+        inputArea.setPromptText(host.i18n().get(P + "input.prompt"));
         inputArea.getStyleClass().add("sk-field");
 
         outputArea = new TextArea();
         outputArea.setEditable(false);
-        outputArea.setPromptText(I18n.get(P + "output.prompt"));
+        outputArea.setPromptText(host.i18n().get(P + "output.prompt"));
         outputArea.getStyleClass().add("sk-field");
 
-        Button runBtn = new Button(I18n.get(P + "action.run"));
+        Button runBtn = new Button(host.i18n().get(P + "action.run"));
         runBtn.getStyleClass().add("sk-btn-primary");
         runBtn.setOnAction(e -> {
             try {
@@ -81,14 +96,14 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
             }
         });
 
-        Button clearBtn = new Button(I18n.get(P + "action.clear"));
+        Button clearBtn = new Button(host.i18n().get(P + "action.clear"));
         clearBtn.getStyleClass().add("sk-btn-secondary");
         clearBtn.setOnAction(e -> { inputArea.clear(); outputArea.clear(); });
 
         HBox buttonRow = new HBox(8, runBtn, clearBtn);
 
-        Label inLabel  = sectionLabel(I18n.get(P + "input"));
-        Label outLabel = sectionLabel(I18n.get(P + "output"));
+        Label inLabel  = sectionLabel(host.i18n().get(P + "input"));
+        Label outLabel = sectionLabel(host.i18n().get(P + "output"));
         VBox left  = new VBox(6, inLabel,  inputArea);
         VBox right = new VBox(6, outLabel, outputArea);
 
@@ -127,8 +142,9 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
     @Override public void onDeactivate() { log.debug("{{Name}} deactivated"); }
     @Override public void onUnload()     { log.debug("{{Name}} unloaded — release resources here"); }
 
-    // If you do background work, override hasRunningTasks() to return true while it runs,
-    // so the host keeps this view cached instead of deactivating on back-navigation.
+    // Background work: submit via host.tasks().submit(name, work, onSuccess, onError).
+    // Callbacks run on the FX thread and the host keeps this view cached while the task runs —
+    // no hasRunningTasks() override needed. See references/advanced.md §Background tasks.
 
     // ── AI tools (optional) ────────────────────────────────────────────────
 

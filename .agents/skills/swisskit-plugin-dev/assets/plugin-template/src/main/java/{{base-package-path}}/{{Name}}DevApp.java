@@ -1,8 +1,8 @@
 package {{base-package}};
 
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.preview.PluginPreviewWindow;
-import fan.summer.api.theme.Themes;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.preview.PluginPreviewWindow;
+import fan.summer.zhiflow.api.theme.Themes;
 
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -15,7 +15,7 @@ import javafx.stage.Stage;
  *
  * <p>Launched via {@link DevLauncher} ({@code mvn javafx:run -Pdev}). Uses
  * {@link PluginPreviewWindow} — a host-like shell (sidebar/search/status/detail panel) that
- * loads {@code swisskit-common.css} and stamps the theme class, so what you see matches the
+ * loads {@code zhiflow-common.css} and stamps the theme class, so what you see matches the
  * real host. Alternatively, hand-roll a {@link Scene} and call {@link Themes#applyTo(Scene)}.
  *
  * <p>This class is NOT packaged into the production plugin JAR's runtime path — it's only used
@@ -42,7 +42,7 @@ public class {{Name}}DevApp extends Application {
         //   BorderPane pane = new BorderPane();
         //   pane.setCenter(plugin.createView());
         //   Scene scene = new Scene(pane, 720, 480);
-        //   Themes.applyTo(scene);          // load swisskit-common.css + stamp theme class
+        //   Themes.applyTo(scene);          // load zhiflow-common.css + stamp theme class
         //   stage.setScene(scene);
         //   stage.setTitle(plugin.getName() + " — dev");
         //   stage.show();

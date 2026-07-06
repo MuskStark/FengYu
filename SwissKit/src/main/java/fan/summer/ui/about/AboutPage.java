@@ -1,6 +1,6 @@
 package fan.summer.ui.about;
 
-import fan.summer.api.i18n.I18n;
+import fan.summer.zhiflow.api.i18n.I18n;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Hyperlink;

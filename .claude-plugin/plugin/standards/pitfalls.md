@@ -6,7 +6,7 @@
 
 **原因**：文件放在 `services/` 而非 `META-INF/services/`
 
-**解决**：确认路径是 `src/main/resources/META-INF/services/fan.summer.api.SwissKitJPlugin`
+**解决**：确认路径是 `src/main/resources/META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin`
 
 ---
 

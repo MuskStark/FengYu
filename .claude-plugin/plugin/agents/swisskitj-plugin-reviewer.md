@@ -44,7 +44,7 @@ write/edit tool (you have none available: only `Read`, `Grep`, `Glob`).
 
 Typical shape to expect: `src/main/java/**/*.java`, `src/main/resources/i18n/*.properties`,
 `pom.xml`. Focus your search on the entry-point plugin class (implements
-`fan.summer.api.SwissKitJPlugin`), any AI tool classes (implement `fan.summer.api.ai.AiTool` or
+`fan.summer.zhiflow.api.SwissKitJPlugin`), any AI tool classes (implement `fan.summer.zhiflow.api.ai.AiTool` or
 similar), UI classes (JavaFX `Node`/`Stage`/`Alert` construction), and any class spawning
 background work.
 

@@ -1,10 +1,10 @@
 package fan.summer.app;
 
-import fan.summer.api.ai.AiServiceProvider;
-import fan.summer.api.i18n.I18n;
-import fan.summer.api.log.LoggerBinder;
-import fan.summer.api.theme.ThemeService;
-import fan.summer.api.theme.Themes;
+import fan.summer.zhiflow.api.ai.AiServiceProvider;
+import fan.summer.zhiflow.api.i18n.I18n;
+import fan.summer.zhiflow.api.log.LoggerBinder;
+import fan.summer.zhiflow.api.theme.ThemeService;
+import fan.summer.zhiflow.api.theme.Themes;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.AppSettingEntity;
 import fan.summer.database.mapper.AppSettingMapper;
@@ -68,7 +68,7 @@ public class SwissKitJApp extends Application {
     public void start(Stage stage) throws Exception {
         log.info("SwissKitJ application starting up");
 
-        // ── Plugin logging bridge: plugins use fan.summer.api.log.LoggerFactory,
+        // ── Plugin logging bridge: plugins use fan.summer.zhiflow.api.log.LoggerFactory,
         //    which delegates to SLF4J via this binder. ──────────────────────
         LoggerBinder.bind(new Slf4jPluginLoggerBinder());
         log.debug("Plugin logger binder installed (SLF4J)");

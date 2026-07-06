@@ -6,7 +6,7 @@ description: Build, scaffold, debug, and theme SwissKitJ plugins — external JA
 # SwissKitJ Plugin Development
 
 You are an expert author of **SwissKitJ plugins** — external JAR tools that implement
-`fan.summer.api.SwissKitJPlugin`, register via Java `ServiceLoader` SPI, and hot-load into the
+`fan.summer.zhiflow.api.SwissKitJPlugin`, register via Java `ServiceLoader` SPI, and hot-load into the
 SwissKitJ JavaFX host (dropped into `.swisskit/plugin/`). This skill makes you produce plugins
 that **load cleanly and render theme-correctly** the first time, avoiding the recurring
 pitfalls (wrong SPI path, missing shade transformer, inline hex colors, unregistered i18n
@@ -16,7 +16,15 @@ The SwissKitJ host is a JavaFX 21 app implementing the JetBrains IDEA 2025 "New 
 blend in as native tools: they share the host's theme tokens (`-sk-*`), foundation components
 (`.sk-*`), fonts, and icons. There is no "plugin look."
 
-**Current API version: 3.2.0.**
+**Current API version: 3.2.0 — mandatory.** Every plugin you write or edit must target the
+3.2.0 contract: implement `init(PluginHost)` and route all host capabilities (logging,
+settings, background tasks, i18n, theme, notifications) through the injected `PluginHost`
+facade. The pre-3.2.0 static entry points (`I18n.*`, `LoggerFactory.getLogger`,
+`Themes.applyTo`, raw `javafx.concurrent.Task`) and the `@Deprecated(forRemoval=true)`
+`GlassNotification` / `.glass-*` classes are **retained only for backward-compatibility and are
+forbidden in 3.2.0 code**. Migrating an older plugin? Follow
+[references/migration.md](references/migration.md) — it has the full old→new mapping and a
+step-by-step procedure.
 
 > **This skill is portable and cross-agent.** It follows the open Agent Skills standard
 > (a `SKILL.md` with `name` + `description` frontmatter + Markdown body), so the **same files**
@@ -75,53 +83,67 @@ above. The non-negotiables below are always in force.
 These are the rules that, when broken, account for almost every broken plugin. Follow them
 even if a copied example does otherwise.
 
-1. **One class, implements `SwissKitJPlugin` directly.** No separate `*PluginUi` /
+1. **Target the 3.2.0 host facade — implement `init(PluginHost)` and route everything through
+   it.** Store the injected host in a field and use `host.logger(...)`, `host.settings()`,
+   `host.tasks()`, `host.i18n()`, `host.theme()`, `host.notifications()`. `init()` fires once,
+   on the FX thread, *before* `createView()` and `aiTools()`, so the field is always set before
+   you need it. The pre-3.2.0 static paths — `I18n.*`, `LoggerFactory.getLogger`,
+   `Themes.applyTo`, raw `javafx.concurrent.Task`+`Thread`, and the `@Deprecated(forRemoval)`
+   `GlassNotification` — are **migration-only and forbidden in new code**; don't reintroduce
+   them even if a copied example uses them. Old→new mapping + procedure:
+   [references/migration.md](references/migration.md).
+
+2. **One class, implements `SwissKitJPlugin` directly.** No separate `*PluginUi` /
    `*ViewController` wrapper. All 11 builtins implement the interface in a single class. Put
    the UI-building logic in `createView()` (and private helpers) within that class.
 
-2. **Implement the 7 required methods** (the other 9 have sane defaults). Full signatures in
+3. **Implement the 8 methods that carry real behavior** (`init` + the 7 metadata/UI methods;
+   the other 9 have sane defaults). Full signatures in
    [references/contract.md](references/contract.md); the essential returns:
+   - `init(PluginHost)` → save the host reference (rule 1)
    - `getId()` → globally unique, reverse-domain (e.g. `"com.example.csv-sorter"`)
-   - `getName()` / `getDescription()` → `I18n.get(...)` (not hardcoded strings)
+   - `getName()` / `getDescription()` → `host.i18n().get(...)` (not hardcoded strings)
    - `getCategory()` → a `ToolCategory` (`DEV`/`TEXT`/`IMAGE`/`NET`/`OTHER`)
    - `getVersion()` → `"major.minor.patch"`
    - `getMdiIcon()` → **bare MDI name, no `mdi-` prefix** (e.g. `"code-json"`, not `"mdi-code-json"`)
-   - `createView()` → a `javafx.scene.Node` (see rule 3)
+   - `createView()` → a `javafx.scene.Node` (see rule 4)
 
-3. **`createView()` runs exactly once.** The host caches the returned `Node` and reuses it on
+4. **`createView()` runs exactly once.** The host caches the returned `Node` and reuses it on
    every activation — it is **not** called again. So: build the UI once, store references to
    controls you need later in **fields**, and return the cached root. Register the i18n
-   bundle here (rule 4), before building the UI.
+   bundle here (rule 5), before building the UI.
 
-4. **Register the i18n bundle in `createView()` with the plugin's own ClassLoader:**
+5. **Register the i18n bundle in `createView()` via the facade — no ClassLoader argument:**
    ```java
-   I18n.registerPluginBundle("i18n.messages", getClass().getClassLoader());
+   host.i18n().registerBundle("i18n.messages");   // plugin ClassLoader resolved for you
    ```
-   Skip this and every `I18n.get(key)` / `I18n.bind(...)` returns the raw key. (The host also
-   auto-registers it on load, but registering in `createView()` is required for the `dev`
-   profile to work standalone.)
+   Then read text with `host.i18n().get(key, args...)` and bind live labels with
+   `host.i18n().bind(prop, key)`. Skip the register call and every lookup returns the raw key.
+   (Never use `I18n.registerPluginBundle(name, getClass().getClassLoader())` — that's the
+   forbidden static; the facade exists precisely so you can't pass the wrong ClassLoader.)
 
-5. **Color only via `-sk-*` tokens or `.sk-*` classes — never inline hex.**
+6. **Color only via `-sk-*` tokens or `.sk-*` classes — never inline hex.**
    - **Wrong:** `setStyle("-fx-background-color: #2B2B2B;")` — frozen, breaks on theme switch.
    - **Right:** `getStyleClass().add("sk-surface")` or `setStyle("-fx-background-color: -sk-bg-elevated;")`
      (a `-sk-*` token string *does* resolve as a looked-up color; a hex literal does not).
-   - Sizes, padding, radius may be inline; colors must be tokens/classes. See
+   - Sizes, padding, radius may be inline; colors must be tokens/classes. The `.glass-*` classes
+     were renamed to `.sk-*` in 3.2.0 — using a `.glass-*` name renders unstyled. See
      [references/ui-and-tokens.md](references/ui-and-tokens.md).
 
-6. **SPI registration file is mandatory and path-sensitive.**
-   - Path: `src/main/resources/META-INF/services/fan.summer.api.SwissKitJPlugin`
+7. **SPI registration file is mandatory and path-sensitive.**
+   - Path: `src/main/resources/META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin`
    - Content: one line — the fully-qualified class name of your plugin class.
    - The `maven-shade-plugin` MUST include `ServicesResourceTransformer` or the file gets
      overwritten during shading and the plugin is invisible. Verify post-build:
-     `unzip -p target/*.jar META-INF/services/fan.summer.api.SwissKitJPlugin`
+     `unzip -p target/*.jar META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin`
 
-7. **Async work → off the FX thread, with `Platform.runLater` for UI updates.** Use
-   `javafx.concurrent.Task<Void>` for background jobs; bind a `.progress-bar` to its
-   `progressProperty`. If work continues after the user navigates away, override
-   **`hasRunningTasks()`** to return `true` so the host keeps the plugin's view cached instead
-   of deactivating it. Full pattern in [references/advanced.md](references/advanced.md).
+8. **Background work → `host.tasks().submit(...)`, never a raw `Task`/`Thread`.** The facade
+   runs work on a background thread with the plugin's TCCL already set (so bundled H2/MyBatis
+   resolve), marshals `onSuccess`/`onError` back to the FX thread, and keeps the plugin alive
+   in the background while the job runs — so you do **not** override `hasRunningTasks()` for
+   facade-submitted work. Full pattern in [references/advanced.md](references/advanced.md).
 
-8. **UI MUST follow the main project's UI design spec.** The plugin is a guest in the
+9. **UI MUST follow the main project's UI design spec.** The plugin is a guest in the
    SwissKitJ shell — it must blend in as native, never invent its own look. The authoritative
    design system is the **`docs/ui-design/`** doc set (rendered:
    `https://muskstark.github.io/SwissKitJ/#/ui-design/`; source:
@@ -160,22 +182,28 @@ A correct plugin's heart looks like this (full version in the template + contrac
 ```java
 package com.example.csvsorter;
 
-import fan.summer.api.*;
-import fan.summer.api.i18n.I18n;
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.*;
+import fan.summer.zhiflow.api.host.PluginHost;
+import fan.summer.zhiflow.api.log.PluginLogger;
 import javafx.scene.Node;
 import javafx.scene.layout.VBox;
-import java.util.List;
 
 public class CsvSorterPlugin implements SwissKitJPlugin {
 
-    private static final PluginLogger log = LoggerFactory.getLogger(CsvSorterPlugin.class);
     private static final String P = "plugin.csv-sorter.";   // i18n key prefix
 
+    private PluginHost host;        // injected once by init(); valid for the whole lifetime
+    private PluginLogger log;
+
+    @Override
+    public void init(PluginHost host) {   // 3.2.0: the single entry to every host capability
+        this.host = host;
+        this.log  = host.logger(getClass());
+    }
+
     @Override public String getId()          { return "com.example.csv-sorter"; }
-    @Override public String getName()        { return I18n.get(P + "name"); }
-    @Override public String getDescription() { return I18n.get(P + "desc"); }
+    @Override public String getName()        { return host.i18n().get(P + "name"); }
+    @Override public String getDescription() { return host.i18n().get(P + "desc"); }
     @Override public ToolCategory getCategory() { return ToolCategory.DEV; }
     @Override public String getVersion()     { return "1.0.0"; }
     @Override public String getMdiIcon()     { return "sort-alphabetical-variant"; }
@@ -183,9 +211,10 @@ public class CsvSorterPlugin implements SwissKitJPlugin {
 
     @Override
     public Node createView() {
-        I18n.registerPluginBundle("i18n.messages", getClass().getClassLoader());
+        host.i18n().registerBundle("i18n.messages");   // no ClassLoader arg — resolved for you
         VBox root = new VBox(8);
         // build UI with .sk-* classes / -sk-* tokens ...
+        // background work → host.tasks().submit(...); notify via host.notifications()
         return root;
     }
 }
@@ -198,6 +227,7 @@ For the complete, copyable scaffold (pom.xml, dev launcher, SPI file, i18n bundl
 
 | File | Read when |
 |---|---|
+| [references/migration.md](references/migration.md) | Migrating a pre-3.2.0 plugin, or you need the exact old→new (`I18n.*`/`LoggerFactory`/`Themes`/`Task`/`GlassNotification` → `PluginHost` facade) mapping and forbidden-symbol checklist |
 | [references/contract.md](references/contract.md) | You need exact method signatures, default values, or lifecycle firing rules (when does `onBackground` vs `onDeactivate` fire?) |
 | [references/scaffold.md](references/scaffold.md) | Scaffolding a new project, configuring the pom/shade plugin, setting up the dev launcher, or using `PluginPreviewWindow` to test without deploying |
 | [references/ui-and-tokens.md](references/ui-and-tokens.md) | Building or theming the UI — the `.sk-*` class list, `-sk-*` tokens, layout pitfalls, `GlassNotification`/`StepWizard`/`UiUtils` APIs, icon + i18n patterns |

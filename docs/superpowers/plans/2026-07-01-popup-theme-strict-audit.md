@@ -4,14 +4,14 @@
 
 **Goal:** Eliminate all hardcoded colors from popups, dialogs, and the broader UI so every surface resolves through `-sk-*` theme tokens — fixing popup theme adaptation (dark + 纯白/light) across the whole project.
 
-**Architecture:** Extend the existing JavaFX looked-up-color token system (defined in `swisskit-common.css`, stamped on scene roots via `Themes.applyTo(scene)`) with 5 new theme-aware tokens (`-sk-shadow`, `-sk-scrim`, `-sk-success-soft`, `-sk-warning-soft`, `-sk-danger-soft`) and 5 utility classes. Then mechanically replace every hardcoded color with a token/class, and fix the root-cause popup bug (`GlassNotification` never stamped its scene). Color always via `.sk-*` class; geometry may stay inline (project rule P5).
+**Architecture:** Extend the existing JavaFX looked-up-color token system (defined in `zhiflow-common.css`, stamped on scene roots via `Themes.applyTo(scene)`) with 5 new theme-aware tokens (`-sk-shadow`, `-sk-scrim`, `-sk-success-soft`, `-sk-warning-soft`, `-sk-danger-soft`) and 5 utility classes. Then mechanically replace every hardcoded color with a token/class, and fix the root-cause popup bug (`GlassNotification` never stamped its scene). Color always via `.sk-*` class; geometry may stay inline (project rule P5).
 
 **Tech Stack:** Java 21+, JavaFX, CSS (JavaFX `-fx-*`), Maven multi-module (`SwissKitJ-Api` + `SwissKit`).
 
 ## Global Constraints
 
 - **Project rule P5 (critical):** JavaFX inline `setStyle("-fx-text-fill: -sk-text;")` does NOT resolve looked-up colors. Color MUST go via a `.sk-*` utility class (added through `getStyleClass().add(...)`); only geometry (padding/radius/font-size/font-weight/border-width) may stay inline. A node may carry both a color class and inline geometry.
-- **Tokens live only in `SwissKitJ-Api/src/main/resources/css/swisskit-common.css`** under `.theme-dark` (lines 17-32) and `.theme-light` (lines 33-48). Never define token values elsewhere.
+- **Tokens live only in `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`** under `.theme-dark` (lines 17-32) and `.theme-light` (lines 33-48). Never define token values elsewhere.
 - **Two themes only:** DARK (`.theme-dark`) and LIGHT/纯白 (`.theme-light`). Light `-sk-bg` is `#FFFFFF` (pure white).
 - **`Themes.applyTo(scene)`** is the supported entry point that both loads the common stylesheet AND stamps the active theme class on the scene root. Calling `scene.getStylesheets().add(...)` alone is INSUFFICIENT (the original popup bug).
 - **`Color`-animation constraint:** `FillTransition` interpolates between concrete `javafx.scene.paint.Color` objects; looked-up colors cannot be used there. Where animation is involved (ToggleSwitch), read the resolved color at theme-switch time instead of hardcoding.
@@ -26,11 +26,11 @@
 
 | File | Module | Responsibility |
 |---|---|---|
-| `SwissKitJ-Api/src/main/resources/css/swisskit-common.css` | API | Source of truth: add 5 tokens + 5 utility classes; tokenize `.sk-notif-*`/`.sk-dialog` |
+| `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` | API | Source of truth: add 5 tokens + 5 utility classes; tokenize `.sk-notif-*`/`.sk-dialog` |
 | `SwissKitJ-Api/src/main/java/fan/summer/api/component/GlassNotification.java` | API | Root-cause popup fix: stamp theme class |
 | `SwissKitJ-Api/src/main/java/fan/summer/api/component/StepWizard.java` | API | Rewrite indicator to tokens (no white-tint idle) |
 | `SwissKitJ-Api/src/main/java/fan/summer/buildintool/email/ToggleSwitch.java` | API | Tokenize track/thumb (animation-aware) |
-| `SwissKitJ-Api/src/main/resources/css/swisskit-preview.css` | API | Tokenize black dropshadows |
+| `SwissKitJ-Api/src/main/resources/css/zhiflow-preview.css` | API | Tokenize black dropshadows |
 | `SwissKit/src/main/java/fan/summer/ui/about/AboutDialog.java` | app | Scrim + link tokenization |
 | `SwissKit/src/main/java/fan/summer/ui/setting/SwissKitJSettingUi.java` | app | 4 modal backdrops + status colors |
 | `SwissKit/src/main/java/fan/summer/buildintool/email/EmailPlugin.java` | app | 2 dialog roots + status colors + glassBtn |
@@ -45,7 +45,7 @@
 ## Task 1: Add new theme tokens and utility classes to common CSS
 
 **Files:**
-- Modify: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css:17-48` (token blocks), `:116-124` (utility classes)
+- Modify: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css:17-48` (token blocks), `:116-124` (utility classes)
 
 **Interfaces:**
 - Consumes: existing `.theme-dark`/`.theme-light` block structure.
@@ -53,7 +53,7 @@
 
 - [ ] **Step 1: Add 5 new tokens to the `.theme-dark` block**
 
-In `swisskit-common.css`, the `.theme-dark` block currently ends at line 32 with `-sk-danger: #F75464; }`. Insert these 5 lines BEFORE the closing `}` of `.theme-dark` (i.e. after the `-sk-danger` line):
+In `zhiflow-common.css`, the `.theme-dark` block currently ends at line 32 with `-sk-danger: #F75464; }`. Insert these 5 lines BEFORE the closing `}` of `.theme-dark` (i.e. after the `-sk-danger` line):
 
 ```css
     -sk-shadow:       rgba(0,0,0,0.45);
@@ -109,16 +109,16 @@ Expected: BUILD SUCCESS (CSS isn't compiled by Maven, but this confirms no accid
 
 Run:
 ```bash
-grep -c "\-sk-shadow:" SwissKitJ-Api/src/main/resources/css/swisskit-common.css
-grep -c "\-sk-scrim:" SwissKitJ-Api/src/main/resources/css/swisskit-common.css
-grep -c "\-sk-success-soft:" SwissKitJ-Api/src/main/resources/css/swisskit-common.css
+grep -c "\-sk-shadow:" SwissKitJ-Api/src/main/resources/css/zhiflow-common.css
+grep -c "\-sk-scrim:" SwissKitJ-Api/src/main/resources/css/zhiflow-common.css
+grep -c "\-sk-success-soft:" SwissKitJ-Api/src/main/resources/css/zhiflow-common.css
 ```
 Expected: each prints `2` (one in `.theme-dark`, one in `.theme-light`). If any prints other than 2, the token is missing from a theme block.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add SwissKitJ-Api/src/main/resources/css/swisskit-common.css
+git add SwissKitJ-Api/src/main/resources/css/zhiflow-common.css
 git commit -m "🎨 feat(ui): add 5 theme tokens (-sk-shadow/-scrim/*-soft) + 5 utility classes
 
 Extends the looked-up-color system: shadow & scrim for elevation/modal-dim,
@@ -143,7 +143,7 @@ Current code at `GlassNotification.java:259-262`:
 ```java
         Scene scene = new Scene(root);
         scene.setFill(null);
-        scene.getStylesheets().add(GlassNotification.class.getResource("/css/swisskit-common.css").toExternalForm());
+        scene.getStylesheets().add(GlassNotification.class.getResource("/css/zhiflow-common.css").toExternalForm());
         stage.setScene(scene);
 ```
 
@@ -160,7 +160,7 @@ Replace with:
 
 - [ ] **Step 2: Add the Themes import if not present**
 
-Check the import block at the top of `GlassNotification.java`. If `import fan.summer.api.theme.Themes;` is missing, add it (alphabetical order, with the other `fan.summer.api.*` imports). The class is in the same module (`SwissKitJ-Api`) so no cross-module dependency is introduced.
+Check the import block at the top of `GlassNotification.java`. If `import fan.summer.zhiflow.api.theme.Themes;` is missing, add it (alphabetical order, with the other `fan.summer.zhiflow.api.*` imports). The class is in the same module (`SwissKitJ-Api`) so no cross-module dependency is introduced.
 
 - [ ] **Step 3: Build**
 
@@ -186,7 +186,7 @@ Launch the app. Trigger a toast notification (e.g. any `GlassNotification.toast(
 git add SwissKitJ-Api/src/main/java/fan/summer/api/component/GlassNotification.java
 git commit -m "🐛 fix(ui): stamp theme class on GlassNotification scene (root cause)
 
-The toast/notify/confirm popup loaded swisskit-common.css but never called
+The toast/notify/confirm popup loaded zhiflow-common.css but never called
 Themes.applyTo(scene), so .theme-dark/.theme-light was never stamped and all
 -sk-* looked-up colors were UNDEFINED → fell back to JavaFX default white in
 both themes. One-line root-cause fix; restores themed popups app-wide."
@@ -197,7 +197,7 @@ both themes. One-line root-cause fix; restores themed popups app-wide."
 ## Task 3: Tokenize hardcoded colors in common CSS (.sk-notif-*, .sk-dialog)
 
 **Files:**
-- Modify: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css:133,301,312,313,314`
+- Modify: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css:133,301,312,313,314`
 
 **Interfaces:**
 - Consumes: the 5 tokens added in Task 1.
@@ -244,7 +244,7 @@ Replace with:
 
 Run:
 ```bash
-grep -n "rgba(76,217,123\|rgba(245,166,35\|rgba(242,92,92\|rgba(0,0,0,0.45)\|rgba(0,0,0,0.50)" SwissKitJ-Api/src/main/resources/css/swisskit-common.css
+grep -n "rgba(76,217,123\|rgba(245,166,35\|rgba(242,92,92\|rgba(0,0,0,0.45)\|rgba(0,0,0,0.50)" SwissKitJ-Api/src/main/resources/css/zhiflow-common.css
 ```
 Expected: no output. (Other `rgba(0,0,0,...)` shadow values may still exist elsewhere in this file — that's fine; this gate targets only the 5 values just replaced.)
 
@@ -255,7 +255,7 @@ Trigger success/warning/error notifications in both themes. The icon-circle soft
 - [ ] **Step 6: Commit**
 
 ```bash
-git add SwissKitJ-Api/src/main/resources/css/swisskit-common.css
+git add SwissKitJ-Api/src/main/resources/css/zhiflow-common.css
 git commit -m "🎨 fix(ui): tokenize .sk-dialog/.sk-notif-* shadows + status soft-fills
 
 Black dropshadows → -sk-shadow (softer in light); hardcoded success/warning/
@@ -334,11 +334,11 @@ class so it tracks the accent token instead of a coincidental hex match."
 **Interfaces:**
 - Consumes: theme tokens via CSS utility classes. NOTE: `Circle.setFill()` and the connector `Region.setStyle` need resolved colors. Because inline `setStyle` cannot resolve looked-up colors (P5), the connector lines must switch to carrying a CSS class too; the circle fills must use `Color` objects read from the theme.
 
-**Design decision for this task:** The indicator dots/numbers/labels are `javafx.scene.shape.Circle` and `javafx.scene.control.Label`. The cleanest theme-correct approach is to drive ALL their colors via `.sk-*` utility classes (which DO resolve looked-up colors), not via Java `Color` constants. The `Circle` fill needs a class that sets `-fx-fill`. We will add three small helper classes inline in this task's step by reusing existing tokens. Since `StepWizard` is in the API module, classes go in `swisskit-common.css`.
+**Design decision for this task:** The indicator dots/numbers/labels are `javafx.scene.shape.Circle` and `javafx.scene.control.Label`. The cleanest theme-correct approach is to drive ALL their colors via `.sk-*` utility classes (which DO resolve looked-up colors), not via Java `Color` constants. The `Circle` fill needs a class that sets `-fx-fill`. We will add three small helper classes inline in this task's step by reusing existing tokens. Since `StepWizard` is in the API module, classes go in `zhiflow-common.css`.
 
 - [ ] **Step 1: Add StepWizard indicator helper classes to common CSS**
 
-In `swisskit-common.css`, append (after the `.sk-notif-*` block, ~line 340) a new section. Each `.sk-step-*` class sets BOTH `-fx-fill` and `-fx-stroke`, because the `Circle` stroke (width set to 1.5 in `makeDot`) needs a theme color too:
+In `zhiflow-common.css`, append (after the `.sk-notif-*` block, ~line 340) a new section. Each `.sk-step-*` class sets BOTH `-fx-fill` and `-fx-stroke`, because the `Circle` stroke (width set to 1.5 in `makeDot`) needs a theme color too:
 
 ```css
 /* ── StepWizard 指示器 ───────────────────────────────────────── */
@@ -459,7 +459,7 @@ If idle dots are invisible or low-contrast in light theme, adjust the `.sk-step-
 - [ ] **Step 8: Commit**
 
 ```bash
-git add SwissKitJ-Api/src/main/java/fan/summer/api/component/StepWizard.java SwissKitJ-Api/src/main/resources/css/swisskit-common.css
+git add SwissKitJ-Api/src/main/java/fan/summer/api/component/StepWizard.java SwissKitJ-Api/src/main/resources/css/zhiflow-common.css
 git commit -m "🎨 fix(ui): rewrite StepWizard indicator with theme tokens
 
 Idle dots/strokes were rgba(255,255,255,...) — invisible on the light theme.
@@ -494,7 +494,7 @@ Replace with class-name constants:
 
 - [ ] **Step 2: Add ToggleSwitch CSS classes to common CSS**
 
-In `swisskit-common.css`, append after the StepWizard section:
+In `zhiflow-common.css`, append after the StepWizard section:
 ```css
 /* ── ToggleSwitch ───────────────────────────────────────────── */
 .sk-toggle-on  { -fx-fill: -sk-accent; }
@@ -569,7 +569,7 @@ Find the ToggleSwitch in the UI (email tool). Toggle it in BOTH themes. ON → a
 - [ ] **Step 9: Commit**
 
 ```bash
-git add SwissKitJ-Api/src/main/java/fan/summer/buildintool/email/ToggleSwitch.java SwissKitJ-Api/src/main/resources/css/swisskit-common.css
+git add SwissKitJ-Api/src/main/java/fan/summer/buildintool/email/ToggleSwitch.java SwissKitJ-Api/src/main/resources/css/zhiflow-common.css
 git commit -m "🎨 fix(ui): tokenize ToggleSwitch track (was invisible off-state in light)
 
 Off track was rgba(255,255,255,0.18) — invisible on white. Now .sk-toggle-off
@@ -796,11 +796,11 @@ Removes the parallel hardcoded #4cd97b/#f25c5c/#f5a623 palette."
 ## Task 9: Tokenize remaining CSS dropshadows (preview, shell)
 
 **Files:**
-- Modify: `SwissKitJ-Api/src/main/resources/css/swisskit-preview.css:16,131,164`
+- Modify: `SwissKitJ-Api/src/main/resources/css/zhiflow-preview.css:16,131,164`
 - Modify: `SwissKit/src/main/resources/css/shell.css:169`
 
 **Interfaces:**
-- Consumes: `-sk-shadow` token (Task 1). NOTE: `swisskit-preview.css` is loaded onto preview-window scenes that have `.theme-dark`/`.theme-light` stamped (via `Themes.applyTo`), so `-sk-shadow` resolves there. `shell.css` loads on the main scene, also stamped. `builtin.css:91,125` use `rgba(53,116,240,...)` — these are ACCENT-colored glows (not black shadows) and are correct in both themes (accent is shared `#3574F0`); **leave them unchanged.**
+- Consumes: `-sk-shadow` token (Task 1). NOTE: `zhiflow-preview.css` is loaded onto preview-window scenes that have `.theme-dark`/`.theme-light` stamped (via `Themes.applyTo`), so `-sk-shadow` resolves there. `shell.css` loads on the main scene, also stamped. `builtin.css:91,125` use `rgba(53,116,240,...)` — these are ACCENT-colored glows (not black shadows) and are correct in both themes (accent is shared `#3574F0`); **leave them unchanged.**
 
 - [ ] **Step 1: Tokenize preview.css shadows**
 
@@ -846,7 +846,7 @@ Replace with:
 
 Run:
 ```bash
-grep -n "dropshadow(gaussian, rgba(0,0,0" SwissKitJ-Api/src/main/resources/css/swisskit-preview.css SwissKit/src/main/resources/css/shell.css SwissKit/src/main/resources/css/builtin.css
+grep -n "dropshadow(gaussian, rgba(0,0,0" SwissKitJ-Api/src/main/resources/css/zhiflow-preview.css SwissKit/src/main/resources/css/shell.css SwissKit/src/main/resources/css/builtin.css
 ```
 Expected: no output. (builtin.css accent glows are `rgba(53,116,240,...)` and won't match `rgba(0,0,0`.)
 
@@ -857,7 +857,7 @@ In both themes, check tool cards / preview cards / detail panel — shadows shou
 - [ ] **Step 5: Commit**
 
 ```bash
-git add SwissKitJ-Api/src/main/resources/css/swisskit-preview.css SwissKit/src/main/resources/css/shell.css
+git add SwissKitJ-Api/src/main/resources/css/zhiflow-preview.css SwissKit/src/main/resources/css/shell.css
 git commit -m "🎨 fix(ui): tokenize black dropshadows → -sk-shadow (preview, shell)
 
 Soft, theme-aware elevation in light theme. builtin.css accent glows left
@@ -911,7 +911,7 @@ Replace the count and rule with:
 `-sk-border`, `-sk-border-strong`, `-sk-text`, `-sk-text-secondary`, `-sk-text-disabled`,
 `-sk-accent`, `-sk-accent-soft`, `-sk-success`, `-sk-warning`, `-sk-danger`,
 `-sk-shadow`, `-sk-scrim`, `-sk-success-soft`, `-sk-warning-soft`, `-sk-danger-soft`).
-Adding a 20th token requires proposing it in `swisskit-common.css` first (under BOTH
+Adding a 20th token requires proposing it in `zhiflow-common.css` first (under BOTH
 `.theme-dark` and `.theme-light`) and documenting it here — do not invent token names
 inline. For one-off needs, prefer a [§3.2 utility class](#token--css-utility-class).
 ```

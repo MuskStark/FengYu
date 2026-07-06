@@ -17,7 +17,7 @@ This codebase has 5 documented JavaFX layout pitfalls (see CLAUDE.md section "Ja
 
 ### AI Tool Calling Refactors
 Recent commits refactored AI services to use shared `Gson`/`JsonHelper`, `ToolExecutor`, and `ToolSchemaBuilder`. Ensure:
-- JSON parsing uses `fan.summer.api.json.JsonHelper`, not old `JsonBuilder`/`JsonParser`
+- JSON parsing uses `fan.summer.zhiflow.api.json.JsonHelper`, not old `JsonBuilder`/`JsonParser`
 - Tool schemas are generated via `ToolSchemaBuilder`
 - Tool execution goes through `ToolExecutor`
 
@@ -26,5 +26,5 @@ Recent commits refactored AI services to use shared `Gson`/`JsonHelper`, `ToolEx
 - Each module has standalone POM — no parent dependency
 
 ### Glassmorphism Theming
-- Three CSS layers: `swisskit-common.css` (shared), `shell.css` (app-shell), `builtin.css` (built-in tools)
+- Three CSS layers: `zhiflow-common.css` (shared), `shell.css` (app-shell), `builtin.css` (built-in tools)
 - Plugin `createView()` results inherit all three stylesheets automatically

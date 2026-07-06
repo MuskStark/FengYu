@@ -1,6 +1,6 @@
 package plugin.swisskit.keepawake;
 
-import fan.summer.api.preview.PluginPreviewWindow;
+import fan.summer.zhiflow.api.preview.PluginPreviewWindow;
 import javafx.application.Platform;
 
 public class DevApp {

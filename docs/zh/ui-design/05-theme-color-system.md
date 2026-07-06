@@ -9,7 +9,7 @@
 |---|---|
 | **文档类型** | 令牌参考 + 主题生命周期 |
 | **目标读者** | 插件作者、AI 代码生成器、任何需要给节点上色的开发者 |
-| **事实来源** | [`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`](../../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css) |
+| **事实来源** | [`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`](../../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) |
 | **关联文档** | [01 设计系统](01-design-system.md) · [02 JavaFX 实现](02-javafx-implementation.md) · [08 可访问性](08-accessibility-guide.md) |
 
 ---
@@ -42,7 +42,7 @@ SwissKitJ 内置一套源自 JetBrains IntelliJ IDEA 2025 **New UI** 的**深浅
 ### 令牌如何解析（looked-up color 机制）
 
 一个令牌是**JavaFX looked-up color**，声明在
-[`swisskit-common.css`](../../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css)
+[`zhiflow-common.css`](../../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css)
 中，归属于放置在**场景根节点**上的两个类之一：
 
 ```
@@ -145,7 +145,7 @@ IDEA New UI 的选中模式非常鲜明，必须忠实复现：
 > 进行求值。** 你不能写 `node.setStyle("-fx-text-fill: -sk-text;")` 然后期望它解析为主题色。
 > 内联样式并不参与由主题类驱动的 looked-up color 解析。
 >
-> 这**正是** `.sk-*` 工具类存在的原因。它们位于 `swisskit-common.css` 内部，在那里
+> 这**正是** `.sk-*` 工具类存在的原因。它们位于 `zhiflow-common.css` 内部，在那里
 > looked-up color **处于作用域内**，因此它们*能够*解析，并在切换主题时*重新*解析。
 
 **规则：**
@@ -165,7 +165,7 @@ IDEA New UI 的选中模式非常鲜明，必须忠实复现：
 ### 3.1 令牌参考表
 <span id="token-reference-table"></span>
 
-权威表格。**每个令牌都在 `swisskit-common.css` 的 `.theme-dark` 与 `.theme-light` 下各
+权威表格。**每个令牌都在 `zhiflow-common.css` 的 `.theme-dark` 与 `.theme-light` 下各
 出现一次**，取下表精确值。以下内容逐字摘自源 CSS——若发现任何出入，**以 CSS 文件为准**，
 本文档必须随之修正。
 
@@ -236,7 +236,7 @@ IDEA New UI 的选中模式非常鲜明，必须忠实复现：
 #### 原始 CSS 摘录
 
 供复制粘贴 / 校验，以下是
-[`swisskit-common.css`](../../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css)
+[`zhiflow-common.css`](../../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css)
 中两个主题块的逐字内容：
 
 ```css
@@ -289,7 +289,7 @@ IDEA New UI 的选中模式非常鲜明，必须忠实复现：
 ### 令牌 → CSS 工具类
 <span id="token--css-utility-class"></span>
 
-令牌是 CSS 变量；你通常**间接**地通过工具类（同样定义在 `swisskit-common.css`）来应用它们。
+令牌是 CSS 变量；你通常**间接**地通过工具类（同样定义在 `zhiflow-common.css`）来应用它们。
 每当你想伸手用内联 `setStyle()` 时，就必须改用工具类——见 [P5](#p5--颜色放在-css-里绝不放进-setstyle)。
 
 | 令牌 | 工具类 | CSS 属性 | 说明 |
@@ -315,7 +315,7 @@ IDEA New UI 的选中模式非常鲜明，必须忠实复现：
 
 #### 工具类之外：复合组件类
 
-对于更丰富的组件，`swisskit-common.css` 提供了现成的类，捆绑多个令牌 + 几何尺寸。优先使用
+对于更丰富的组件，`zhiflow-common.css` 提供了现成的类，捆绑多个令牌 + 几何尺寸。优先使用
 这些，而不是自己拼装（完整规格见 [03 组件库](03-component-library.md)）：
 
 | 类 | 捆绑 |
@@ -387,7 +387,7 @@ WCAG 2.1 阈值：**普通文本 ≥ 4.5:1**，**大文本（≥18px / 14px 加�
   应用启动
         │
         ▼
-  ThemeService.registerScene(mainScene)   ──►  加载 swisskit-common.css
+  ThemeService.registerScene(mainScene)   ──►  加载 zhiflow-common.css
         │                                      在场景根上盖章 .theme-dark / .theme-light
         ▼
   （用户在设置里点击“Light”）
@@ -402,7 +402,7 @@ WCAG 2.1 阈值：**普通文本 ≥ 4.5:1**，**大文本（≥18px / 14px 加�
   宿主持久化  DB key "theme" = "light"
 ```
 
-三个协作者，都在 `fan.summer.api.theme`：
+三个协作者，都在 `fan.summer.zhiflow.api.theme`：
 
 | 类 | 角色 |
 |---|---|
@@ -429,17 +429,17 @@ public static void removeListener(Consumer<Theme> listener);         // 不存�
 
 ### 4.3 注册场景（宿主应用）
 
-宿主在启动时注册主场景。`registerScene` 是幂等的——加载一次 `swisskit-common.css`，把场景
+宿主在启动时注册主场景。`registerScene` 是幂等的——加载一次 `zhiflow-common.css`，把场景
 加入跟踪列表，并在根上盖当前主题类。
 
 ```java
-import fan.summer.api.theme.ThemeService;
+import fan.summer.zhiflow.api.theme.ThemeService;
 import javafx.scene.Scene;
 
 // ... 构建你的根容器 ...
 Scene scene = new Scene(root, 1200, 800);
 
-// 加载 swisskit-common.css + 在根上盖当前主题类
+// 加载 zhiflow-common.css + 在根上盖当前主题类
 ThemeService.registerScene(scene);
 ```
 
@@ -448,7 +448,7 @@ ThemeService.registerScene(scene);
 ```java
 public static void registerScene(Scene scene) {
     if (scene == null) return;
-    Themes.loadCommonStylesheet(scene);                 // 仅添加一次 /css/swisskit-common.css
+    Themes.loadCommonStylesheet(scene);                 // 仅添加一次 /css/zhiflow-common.css
     if (!SCENES.contains(scene)) SCENES.add(scene);     // 为将来 set() 换类而跟踪
     if (scene.getRoot() != null) {
         applyClass(scene.getRoot(),                     // 盖 .theme-dark 或 .theme-light
@@ -463,7 +463,7 @@ public static void registerScene(Scene scene) {
 不重载样式表、不重建节点 → 无闪烁。
 
 ```java
-import fan.summer.api.theme.ThemeService;
+import fan.summer.zhiflow.api.theme.ThemeService;
 
 ThemeService.set(ThemeService.Theme.LIGHT);   // 必须在 FX 线程上运行
 ```
@@ -498,7 +498,7 @@ private static void applyClass(Parent root, String themeClass) {
 注册 `onChange` 监听器并重新渲染。
 
 ```java
-import fan.summer.api.theme.ThemeService;
+import fan.summer.zhiflow.api.theme.ThemeService;
 import javafx.scene.web.WebView;
 
 WebView web = new WebView();
@@ -576,7 +576,7 @@ public static String render(String markdown, ThemeService.Theme theme) {
 调用 **`Themes.applyTo(scene)`** 一次即可同时解决两者：
 
 ```java
-import fan.summer.api.theme.Themes;
+import fan.summer.zhiflow.api.theme.Themes;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 
@@ -597,7 +597,7 @@ dialog.show();
 样式表资源路径（内部使用；插件很少直接需要）：
 
 ```java
-Themes.COMMON_CSS = "/css/swisskit-common.css";   // API JAR 内的资源
+Themes.COMMON_CSS = "/css/zhiflow-common.css";   // API JAR 内的资源
 Themes.commonStylesheetUrl();                      // → 用于 getStylesheets() 的 external-form URL
 ```
 
@@ -640,7 +640,7 @@ ThemeService.set(ThemeService.Theme.LIGHT);
 - [ ] **内联 `setStyle` 仅用于尺寸/内边距/圆角。** 几何属性可以内联：
       `setStyle("-fx-padding: 8 12; -fx-background-radius: 6;")`。颜色不行。
 - [ ] **独立的 `Stage`/`Scene`？调用 `Themes.applyTo(scene)`。** 插件代码不要直接调用
-      `ThemeService.registerScene`；不要手动把 `swisskit-common.css` 加进 `getStylesheets()`。
+      `ThemeService.registerScene`；不要手动把 `zhiflow-common.css` 加进 `getStylesheets()`。
 - [ ] **自定义渲染表面（WebView/Canvas）？注册 `ThemeService.onChange`。** 在回调内为新主题
       重建表面内容（见 `MarkdownRenderer` 模式）。表面销毁时移除监听器。
 - [ ] **通过 DB key `"theme"` = `"dark"`/`"light"` 持久化选择。** 启动时读取并调用
@@ -653,7 +653,7 @@ ThemeService.set(ThemeService.Theme.LIGHT);
 - [ ] **核对对比度。** 正文必须对其背景达到 ≥4.5:1（用[对比度矩阵](#contrast-matrix-wcag-aa)）；
       禁用文本可以按设计降低对比，但仅限不可操作内容。
 - [ ] **不要发明新令牌名。** 只用[令牌参考表](#token-reference-table)中的 19 个令牌。如果你
-      确实需要新的语义色，先把它加到 `swisskit-common.css`，再在此文档登记。
+      确实需要新的语义色，先把它加到 `zhiflow-common.css`，再在此文档登记。
 
 ---
 
@@ -726,7 +726,7 @@ row.getStyleClass().addAll("sk-table");             // 选中行 → -sk-bg-sele
 ```
 
 ```css
-/* ✅ 正确——用既有令牌，或先把令牌加进 swisskit-common.css */
+/* ✅ 正确——用既有令牌，或先把令牌加进 zhiflow-common.css */
 .my-card { -fx-background-color: -sk-bg-elevated; }
 ```
 
@@ -801,7 +801,7 @@ Platform.runLater(() -> ThemeService.set(Theme.LIGHT));
 
 | 内容 | 路径 |
 |---|---|
-| 令牌 + 工具类定义 | [`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`](../../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css) |
+| 令牌 + 工具类定义 | [`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`](../../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) |
 | 主题引擎（DARK/LIGHT、`current/set/registerScene/onChange/removeListener`） | [`SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java) |
 | 面向插件的助手（`applyTo`、`COMMON_CSS`） | [`SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java) |
 | WebView 主题同步参考（`DARK_CSS`/`LIGHT_CSS`） | [`SwissKit/src/main/java/fan/summer/ai/util/MarkdownRenderer.java`](../../../SwissKit/src/main/java/fan/summer/ai/util/MarkdownRenderer.java) |
@@ -823,5 +823,5 @@ Platform.runLater(() -> ThemeService.set(Theme.LIGHT));
 
 ---
 
-*本文档中的令牌取值逐字摘自 `swisskit-common.css` 并经 `grep` 校验。如果 CSS 发生变更，本文档
+*本文档中的令牌取值逐字摘自 `zhiflow-common.css` 并经 `grep` 校验。如果 CSS 发生变更，本文档
 必须重新生成以保持一致——CSS 才是事实来源，而非本页。*

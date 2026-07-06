@@ -1,7 +1,7 @@
 package fan.summer.ui.content;
 
-import fan.summer.api.i18n.I18n;
-import fan.summer.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.i18n.I18n;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
 import fan.summer.plugin.FavoriteService;
 import fan.summer.plugin.PluginRegistry;
 import org.slf4j.Logger;

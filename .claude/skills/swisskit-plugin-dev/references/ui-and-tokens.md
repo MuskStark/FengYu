@@ -1,9 +1,10 @@
 # UI, Theme & Component Patterns
 
 Plugins build their UI in JavaFX code (no FXML) and theme it via CSS looked-up colors. A
-plugin embedded via `createView()` inherits the host's `swisskit-common.css` automatically —
+plugin embedded via `createView()` inherits the host's `zhiflow-common.css` automatically —
 you don't load it yourself. For a **standalone Stage** (rare — e.g. a popup window) call
-`Themes.applyTo(scene)`.
+`host.theme().applyTo(scene)` (the 3.2.0 facade; `Themes.applyTo` is the forbidden legacy
+static).
 
 This file is the working reference for coloring, laying out, and using the shared components.
 It **inlines the must-know facts** so it's usable offline; for full design rationale see the
@@ -34,7 +35,7 @@ used sparingly); dark/light theme parity; plugins blend in as native. Selection 
 
 | Namespace | Source | Plugin-safe? | Examples |
 |---|---|---|---|
-| **`.sk-*`** foundation | `swisskit-common.css` (ships in the API JAR) | ✅ Yes — use freely | `.sk-field`, `.sk-btn-primary`, `.sk-table`, `.sk-dialog`, `.sk-t1`, `.sk-surface` |
+| **`.sk-*`** foundation | `zhiflow-common.css` (ships in the API JAR) | ✅ Yes — use freely | `.sk-field`, `.sk-btn-primary`, `.sk-table`, `.sk-dialog`, `.sk-t1`, `.sk-surface` |
 | **unprefixed** shell chrome | `shell.css` (host-only) | ❌ No — not on a plugin's scene | `.nav-item`, `.tool-card`, `.search-bar`, `.statusbar`, `.ic-blue` |
 
 A plugin that reaches for `.nav-item` will compile but render unstyled (the class isn't loaded
@@ -96,7 +97,7 @@ Inline CSS can set sizes/padding/radius freely, but for **colors** prefer these 
 
 Example:
 ```java
-Label title = new Label(I18n.get(P + "name"));
+Label title = new Label(host.i18n().get(P + "name"));
 title.getStyleClass().add("sk-t1");           // → -sk-text
 
 Button go = new Button("Go");
@@ -109,8 +110,8 @@ input.getStyleClass().add("sk-field");
 ## Icons — `MdiIconUtil` + `IconStyle`
 
 ```java
-import fan.summer.api.MdiIconUtil;
-import fan.summer.api.IconStyle;
+import fan.summer.zhiflow.api.MdiIconUtil;
+import fan.summer.zhiflow.api.IconStyle;
 
 // A standard 24px icon (returns a javafx.scene.text.Text using the MDI webfont)
 Text icon = MdiIconUtil.createIcon("file-excel", 24);
@@ -126,56 +127,68 @@ icon.setFill(IconStyle.TEAL.getColor());   // or apply a DropShadow glow
   [`mdi-codemap.properties`](https://github.com/MuskStark/SwissKitJ/blob/main/SwissKitJ-Api/src/main/resources/fonts/mdi-codemap.properties) before using it.
 - Icon size scale: 16 (inline/status), 18 (nav), 20 (small), 24 (standard/card), 32 (large).
 
-## i18n — `I18n`
+## i18n — `host.i18n()`
 
-Always register the bundle in `createView()` first, then use:
+Use the **facade** (`host.i18n()`), never the legacy static `I18n.*`. The facade resolves the
+plugin's own ClassLoader automatically, so `registerBundle` takes no ClassLoader argument.
+Register the bundle in `createView()` first, then use:
 ```java
-I18n.registerPluginBundle("i18n.messages", getClass().getClassLoader());
+host.i18n().registerBundle("i18n.messages");   // no ClassLoader arg — resolved for you
 
 // Static label — auto-refreshes on locale change:
 Label name = new Label();
-I18n.bind(name.textProperty(), P + "name");
+host.i18n().bind(name.textProperty(), P + "name");
 
 // Dynamic / one-shot text:
-String prompt = I18n.get(P + "prompt");
-String formatted = I18n.get(P + "items", count);   // MessageFormat
+String prompt = host.i18n().get(P + "prompt");
+String formatted = host.i18n().get(P + "items", count);   // MessageFormat
 ```
 
 - Keys must be prefixed `plugin.<slug>.` (e.g. `plugin.csv-sorter.name`).
 - `messages.properties` (default/English) and `messages_zh.properties` must share identical
   keys.
-- `I18n.bind(property, key)` for static JavaFX properties (auto-refresh, weakly held).
-- `I18n.get(key)` / `I18n.get(key, args...)` for dynamic text.
+- `host.i18n().bind(property, key)` for static JavaFX properties (auto-refresh, weakly held).
+- `host.i18n().get(key)` / `host.i18n().get(key, args...)` for dynamic text.
+- `host.i18n().addListener(runnable)` to react to a locale switch for custom rendering.
+
+> **Forbidden:** `I18n.registerPluginBundle("i18n.messages", getClass().getClassLoader())`,
+> `I18n.get(...)`, `I18n.bind(...)`. These are the pre-3.2.0 statics kept only for old-JAR
+> compatibility — see [migration.md](migration.md).
 
 ## Reusable components
 
-### `GlassNotification` — toast/notify/confirm
+### Notifications — `host.notifications()` (toast/notify/confirm)
 
-The themed replacement for JavaFX `Alert`. All overloads take `Window` **or** `Node` (resolved
-via its scene's window); `null` is safe.
+The themed replacement for JavaFX `Alert`. Use the **facade**; the standalone `SkNotification`
+type supplies the `Type` enum. **`GlassNotification` is `@Deprecated(since=3.2.0,
+forRemoval=true)` and forbidden** — it's only a thin subclass kept so old JARs still link.
 
 ```java
-import fan.summer.api.component.GlassNotification;
+import fan.summer.zhiflow.api.component.SkNotification;   // for the Type enum
 
-// Non-modal toast, auto-dismisses (~2.5s)
-GlassNotification.toast(view, GlassNotification.Type.SUCCESS, "Saved");
+// Non-modal toast, auto-dismisses (~2.5s). Pass the plugin view as context; null is safe.
+host.notifications().toast(view, SkNotification.Type.SUCCESS, "Saved");
 
 // Modal OK notification
-GlassNotification.notify(view, GlassNotification.Type.WARNING, "Check your input");
+host.notifications().notify(view, SkNotification.Type.WARNING, "Check your input");
 
 // Modal OK/Cancel confirmation — blocks, returns true on OK
-if (GlassNotification.confirm(view, "Delete?", "This cannot be undone.")) {
+if (host.notifications().confirm(view, "Delete?", "This cannot be undone.")) {
     delete();
 }
 ```
-`Type` ∈ `INFO` / `SUCCESS` / `WARNING` / `ERROR` — each maps to `.sk-notif-info` /
-`.sk-notif-success` / `.sk-notif-warning` / `.sk-notif-error` (icon + color + message — never
+`SkNotification.Type` ∈ `INFO` / `SUCCESS` / `WARNING` / `ERROR` — each maps to `.sk-notif-info`
+/ `.sk-notif-success` / `.sk-notif-warning` / `.sk-notif-error` (icon + color + message — never
 status by color alone).
+
+> If you have no host reference in the calling scope (rare — you almost always do), the static
+> `SkNotification.toast/notify/confirm(...)` is an acceptable fallback. `GlassNotification.*` is
+> not, in any scope.
 
 ### `StepWizard` — multi-step flow
 
 ```java
-import fan.summer.api.component.StepWizard;
+import fan.summer.zhiflow.api.component.StepWizard;
 
 StepWizard wizard = new StepWizard();
 wizard.addStep("Input",  inputPane,  () -> !inputField.getText().isBlank());
@@ -189,7 +202,7 @@ wizard.setOnStepChanged((from, to, total) -> { ... });
 ### `UiUtils` — shared control factory
 
 ```java
-import fan.summer.api.component.UiUtils;
+import fan.summer.zhiflow.api.component.UiUtils;
 
 Button primary = UiUtils.glassBtn("Run", true);   // accent blue
 Button ghost   = UiUtils.glassBtn("Cancel", false);// bordered
@@ -200,18 +213,20 @@ Label sub      = UiUtils.subLabel("Output");      // small muted field label
 ## Standalone Stage theming (rare)
 
 If your plugin opens its **own** window (not the embedded `createView()`), apply the theme
-manually:
+through the facade:
 ```java
-import fan.summer.api.theme.Themes;
-
 Stage popup = new Stage();
 Scene scene = new Scene(content);
-Themes.applyTo(scene);     // loads swisskit-common.css + stamps theme-dark/theme-light
+host.theme().applyTo(scene);   // loads zhiflow-common.css + stamps theme-dark/theme-light
 popup.setScene(scene);
 popup.show();
 ```
 For a node already in the host scene, you don't need this. To react to theme changes for
-custom rendering (WebView/canvas), register `ThemeService.onChange(theme -> ...)`.
+custom rendering (WebView/canvas), register `host.theme().onChange(theme -> ...)`.
+
+> **Forbidden:** the pre-3.2.0 statics `Themes.applyTo(scene)` and
+> `ThemeService.onChange(...)`. Route theming through `host.theme()` — see
+> [migration.md](migration.md).
 
 ## The three layout pitfalls
 

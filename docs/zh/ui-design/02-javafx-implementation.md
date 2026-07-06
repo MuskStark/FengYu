@@ -49,7 +49,7 @@ SwissKitJ 是一个 **JavaFX 21** 桌面工具箱。两个架构决策决定了�
 
 2. **主题完全通过 CSS looked-up color 实现。** 没有任何节点内联设置颜色。双主题(深色/浅色)调色板
    是一组 14 个 `-sk-*` token,一次性声明在
-   [`swisskit-common.css`](../../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css) 中,
+   [`zhiflow-common.css`](../../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) 中,
    通过切换 scene root 上的一个 class 来切换主题。Token 取值、对比度矩阵以及完整的主题生命周期见
    [05 主题与色彩系统](05-theme-color-system.md)——**本文不重复任何颜色取值。**
 
@@ -66,7 +66,7 @@ SwissKitJ 是一个 **JavaFX 21** 桌面工具箱。两个架构决策决定了�
 │                                                                          │
 │   ┌─────────────┐   发现        ┌──────────────────────────────────────┐ │
 │   │  ServiceLoader│ ───────────► │  plugins/*.jar                       │ │
-│   │  META-INF/   │              │  └─ fan.summer.api.SwissKitJPlugin    │ │
+│   │  META-INF/   │              │  └─ fan.summer.zhiflow.api.SwissKitJPlugin    │ │
 │   │  services/   │              │     (一个类直接实现接口)              │ │
 │   └─────────────┘              └──────────────────────────────────────┘ │
 │           │                              │                               │
@@ -85,7 +85,7 @@ SwissKitJ 是一个 **JavaFX 21** 桌面工具箱。两个架构决策决定了�
 - **契约** —— `SwissKitJPlugin`(16 个方法;[§3.1](#swisskitjplugin-方法契约))。
 - **宿主** —— 调用元数据方法构建侧边栏/搜索;调用一次 `createView()` 并缓存返回的 `Node`,
   把它嵌入内容 `StackPane`。
-- **样式表** —— `swisskit-common.css`,由宿主加载到主 scene。你嵌入的视图自动继承;独立窗口必须
+- **样式表** —— `zhiflow-common.css`,由宿主加载到主 scene。你嵌入的视图自动继承;独立窗口必须
   通过 [`Themes.applyTo`](#43-为独立-stage-应用主题--themesapplyto) 显式加入。
 - **类分类法** —— `.sk-*` 用于共享/组件类(来自 common.css),无前缀的 shell 类
   (`nav-item`、`tool-card` …),状态修饰符([§3.2](#css-naming))。
@@ -130,12 +130,12 @@ padding、间距、圆角、min/max 尺寸、insets——这些都是几何而�
 - **不要**在每次 `onActivate()` 时从头重建视图。在 `createView()` 中构建一次,持有需要修改的控件
   字段引用,在生命周期钩子里只刷新*内容*而非*结构*。
 - 在 `createView()` 内部(首次调用时)惰性构建视图图是完全可取的常见做法。
-- 如果需要多步骤工作流,使用 `fan.summer.api.component.StepWizard`(见
+- 如果需要多步骤工作流,使用 `fan.summer.zhiflow.api.component.StepWizard`(见
   [`docs/plugins/ui.md`](../plugins/ui.md)),而不是整棵树地替换。
 
 ### P5 —— CSS 类名遵循 `sk-` 前缀规范
 
-来自 `swisskit-common.css` 的共享组件/工具类带 **`.sk-`** 前缀(如 `.sk-field`、`.sk-btn-primary`)。
+来自 `zhiflow-common.css` 的共享组件/工具类带 **`.sk-`** 前缀(如 `.sk-field`、`.sk-btn-primary`)。
 外壳 chrome 类(侧边栏、工具卡片、状态栏)**不带前缀**(`nav-item`、`tool-card`)。完整的分类法、
 v3.2.0 的 `.glass-*`→`.sk-*` 迁移以及状态修饰符规范见 [§3.2](#css-naming)。
 
@@ -206,7 +206,7 @@ SwissKit 场景图中的每个节点都带有零个或多个样式类,这些类�
 
 | 命名空间 | 前缀 | 所有者 | 示例 | 插件可用? |
 |---|---|---|---|---|
-| **共享 / 组件类** | `.sk-` | `swisskit-common.css`(随 API JAR 发布) | `.sk-field`、`.sk-surface`、`.sk-btn-primary`、`.sk-table`、`.sk-dialog`、`.sk-t1` | ✅ 可以——这是面向插件的词汇表 |
+| **共享 / 组件类** | `.sk-` | `zhiflow-common.css`(随 API JAR 发布) | `.sk-field`、`.sk-surface`、`.sk-btn-primary`、`.sk-table`、`.sk-dialog`、`.sk-t1` | ✅ 可以——这是面向插件的词汇表 |
 | **外壳 chrome 类** | *(无前缀)* | `shell.css`(仅宿主应用) | `nav-item`、`tool-card`、`search-bar`、`statusbar`、`ic-blue` | ⚠️ 宿主拥有;插件不应依赖(它们用于侧边栏/卡片/状态栏,不是工具内容) |
 | **状态修饰符** | `is-*` / 状态 | 组件类经 `:hover`/`:focused` 或显式切换 | `.sk-notif-success`、`.sk-notif-warning`、`.sk-notif-danger` | ✅ 可以,用于语义状态 |
 
@@ -230,7 +230,7 @@ SwissKit 场景图中的每个节点都带有零个或多个样式类,这些类�
 
 #### 复合组件类(优先于手写 CSS)
 
-对更复杂的控件,`swisskit-common.css` 提供了打包多个 token + 几何尺寸的现成类。**用这些,而不是
+对更复杂的控件,`zhiflow-common.css` 提供了打包多个 token + 几何尺寸的现成类。**用这些,而不是
 自己拼装**——完整规格见 [03 组件库](03-component-library.md):
 
 | 类 | 给你什么 |
@@ -340,14 +340,14 @@ SwissKitJ 用标准 JavaFX pane 拼装布局。选择与你所需空间关系匹
 ```java
 package {{base-package}}.ui;
 
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.IconStyle;
-import fan.summer.api.MdiIconUtil;
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.ToolCategory;
-import fan.summer.api.ToolType;
-import fan.summer.api.i18n.I18n;
-import fan.summer.api.theme.Themes;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.IconStyle;
+import fan.summer.zhiflow.api.MdiIconUtil;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ToolCategory;
+import fan.summer.zhiflow.api.ToolType;
+import fan.summer.zhiflow.api.i18n.I18n;
+import fan.summer.zhiflow.api.theme.Themes;
 
 import javafx.geometry.HPos;
 import javafx.geometry.Insets;
@@ -470,11 +470,11 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
   (见 [§4.2](#42-图标--mdiiconutil))。
 - **内置的 `getType()`。** 接口默认是 `ToolType.PLUGIN`;内置工具**必须**覆盖为
   `ToolType.BUILTIN`。外部插件保留默认。
-- **注册实现。** 创建 `src/main/resources/META-INF/services/fan.summer.api.SwissKitJPlugin`,内含
+- **注册实现。** 创建 `src/main/resources/META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin`,内含
   完全限定类名(一行),然后把 fat-JAR 打进宿主的 `plugins/` 目录。支持热重载。
 
 ```
-META-INF/services/fan.summer.api.SwissKitJPlugin
+META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin
 └─ {{base-package}}.ui.{{Name}}Plugin
 ```
 
@@ -485,7 +485,7 @@ META-INF/services/fan.summer.api.SwissKitJPlugin
 图标是通过内置 webfont 渲染的 Material Design Icons。唯一入口:
 
 ```java
-import fan.summer.api.MdiIconUtil;
+import fan.summer.zhiflow.api.MdiIconUtil;
 import javafx.scene.text.Text;
 
 // 名称不带 "mdi-" 前缀;尺寸单位为逻辑像素
@@ -507,14 +507,14 @@ Text icon = MdiIconUtil.createIcon("file-excel", 24.0);
 
 ### 4.3 为独立 Stage 应用主题 · `Themes.applyTo`
 
-从 `createView()` 返回的节点被**嵌入宿主主 scene**,该 scene 已加载 `swisskit-common.css` 并盖好
+从 `createView()` 返回的节点被**嵌入宿主主 scene**,该 scene 已加载 `zhiflow-common.css` 并盖好
 主题类。**嵌入视图无需做任何事。**
 
 但插件若打开**自己的** `Stage`/`Scene`(模态 `Alert`、独立工具窗口),会得到一个**没有样式表、
 没有主题类**的新 scene——每个 `-sk-*` token 都会解析失败。用一次调用修复:
 
 ```java
-import fan.summer.api.theme.Themes;
+import fan.summer.zhiflow.api.theme.Themes;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 
@@ -555,7 +555,7 @@ private void showAlert(Alert.AlertType type, String message) {
 | 该做 | 不该做 |
 |---|---|
 | 为你创建的任何 `Scene` 调用 `Themes.applyTo(scene)` | 在插件代码中直接调 `ThemeService.registerScene` |
-| 信任 `createView()` 节点的自动继承 | 手动把 `swisskit-common.css` 加到 `getStylesheets()` |
+| 信任 `createView()` 节点的自动继承 | 手动把 `zhiflow-common.css` 加到 `getStylesheets()` |
 | 信任 `Themes.applyTo` 幂等(已应用则空操作) | 自己重新添加样式表 URL |
 
 源码:[`Themes.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java) ·
@@ -565,7 +565,7 @@ private void showAlert(Alert.AlertType type, String message) {
 
 ### 4.4 国际化(i18n)模式
 
-每条用户可见字符串都流经 [`fan.summer.api.i18n.I18n`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/i18n/I18n.java)。
+每条用户可见字符串都流经 [`fan.summer.zhiflow.api.i18n.I18n`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/i18n/I18n.java)。
 有三种模式——按文本*何时*产生来选择。(镜像 [`docs/plugins/ui.md`](../plugins/ui.md)。)
 
 | 模式 | 何时用 | 示例 |
@@ -651,7 +651,7 @@ for (int j = 0; j < pages.length; j++) {
 - [ ] **返回不带 `mdi-` 前缀的 MDI 名称。** `getMdiIcon()` → `"code-json"`,绝不要 `"mdi-code-json"`。
       `MdiIconUtil.createIcon` 同理。
 - [ ] **内置覆盖 `getType()`。** 返回 `ToolType.BUILTIN`。接口默认是 `ToolType.PLUGIN`——外部插件保留。
-- [ ] **绝不自己加载 `swisskit-common.css`。** 嵌入视图从宿主 scene 继承;独立窗口通过
+- [ ] **绝不自己加载 `zhiflow-common.css`。** 嵌入视图从宿主 scene 继承;独立窗口通过
       `Themes.applyTo(scene)` 获得。不要调 `getStylesheets().add(...)`。
 - [ ] **绝不在插件代码中调 `ThemeService` 内部方法。** 用 `Themes.applyTo(scene)`(受支持的表面)。
       `ThemeService.registerScene`/`set` 是宿主级。
@@ -666,7 +666,7 @@ for (int j = 0; j < pages.length; j++) {
 - [ ] **正确填满空间。** `setHgrow`/`setVgrow(Priority.ALWAYS)` + `setMaxWidth/Height(MAX_VALUE)`;
       绝不 `setPrefWidth(MAX_VALUE)`。StackPane 页面切换时同时切 `visible` 与 `managed`。StackPane
       内的 ScrollPane 设 `setMaxWidth/Height(MAX_VALUE)`。
-- [ ] **注册 service 文件。** `META-INF/services/fan.summer.api.SwissKitJPlugin` 写 FQCN;把 fat-JAR
+- [ ] **注册 service 文件。** `META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin` 写 FQCN;把 fat-JAR
       打进 `plugins/`。
 
 ---
@@ -830,7 +830,7 @@ btn.getStyleClass().add("sk-btn-primary");
 | MDI 图标渲染器(`createIcon`、`putIcon`) | [`SwissKitJ-Api/src/main/java/fan/summer/api/MdiIconUtil.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/MdiIconUtil.java) |
 | 面向插件的主题助手(`applyTo`、`COMMON_CSS`) | [`SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java) |
 | 主题引擎(`registerScene`、`set`、`onChange`) | [`SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java) |
-| 共享组件 + token CSS | [`SwissKitJ-Api/src/main/resources/css/swisskit-common.css`](../../../SwissKitJ-Api/src/main/resources/css/swisskit-common.css) |
+| 共享组件 + token CSS | [`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`](../../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) |
 | 参考内置(单类模式) | [`SwissKit/src/main/java/fan/summer/buildintool/dev/JsonFormatterPlugin.java`](../../../SwissKit/src/main/java/fan/summer/buildintool/dev/JsonFormatterPlugin.java) |
 
 ### 设计基线

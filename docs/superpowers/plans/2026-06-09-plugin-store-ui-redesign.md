@@ -103,8 +103,8 @@ git commit -m "✨ feat: add JUnit 5 test dependency to SwissKit"
 ```java
 package fan.summer.ui.store;
 
-import fan.summer.api.IconStyle;
-import fan.summer.api.ToolCategory;
+import fan.summer.zhiflow.api.IconStyle;
+import fan.summer.zhiflow.api.ToolCategory;
 
 /**
  * Lightweight data class representing a plugin available in the online store.
@@ -175,8 +175,8 @@ git commit -m "♻️ refactor: extract StorePlugin to top-level class"
 ```java
 package fan.summer.ui.store;
 
-import fan.summer.api.IconStyle;
-import fan.summer.api.ToolCategory;
+import fan.summer.zhiflow.api.IconStyle;
+import fan.summer.zhiflow.api.ToolCategory;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -313,7 +313,7 @@ Expected: 编译失败 —— `StorePluginLogic` 不存在(cannot find symbol)�
 ```java
 package fan.summer.ui.store;
 
-import fan.summer.api.ToolCategory;
+import fan.summer.zhiflow.api.ToolCategory;
 
 import java.util.Map;
 
@@ -582,10 +582,10 @@ git commit -m "💄 style: add .store-* CSS classes for redesigned plugin store"
 ```java
 package fan.summer.ui.store;
 
-import fan.summer.api.IconStyle;
-import fan.summer.api.ToolCategory;
-import fan.summer.api.component.GlassNotification;
-import fan.summer.api.i18n.I18n;
+import fan.summer.zhiflow.api.IconStyle;
+import fan.summer.zhiflow.api.ToolCategory;
+import fan.summer.zhiflow.api.component.GlassNotification;
+import fan.summer.zhiflow.api.i18n.I18n;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.ui.store.StorePluginLogic.InstallState;
 import javafx.application.Platform;
@@ -1092,7 +1092,7 @@ git commit -m "✨ feat: redesign online store as searchable, filterable card gr
 
 在 `PluginStoreUi.java` 顶部 import 区加入(若尚无):
 ```java
-import fan.summer.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
 import javafx.collections.ObservableList;
 import java.util.HashMap;
 import java.util.Map;
@@ -1197,4 +1197,4 @@ Expected: BUILD SUCCESS,生成 `SwissKit/target/SwissKitJ-3.0.0-rc.3.jar`。
   - §9 非目标:计划未引入作者/下载量/截图/缓存/排序。
 - **Placeholder 扫描:** 无 TBD/TODO;每个代码步骤含完整代码。
 - **类型一致性:** `StorePluginLogic.InstallState`(NOT_INSTALLED/INSTALLED/UPDATABLE)、`compareVersion`、`installState`、`matches` 在 Task 3 定义,Task 6 按相同签名调用;`OnlineStorePane(Runnable, Map<String,String>)` 在 Task 6 定义,Task 7 按此调用;`PluginStoreUi.build(ObservableList<SwissKitJPlugin>)` 在 Task 7 定义并被 `MainWindow` 调用。
-- **已知非阻塞项:** `categoryBox` 复用 `glass-combo` 样式类(在 `swisskit-common.css` 中存在);若不存在仅影响外观,不影响编译/功能。
+- **已知非阻塞项:** `categoryBox` 复用 `glass-combo` 样式类(在 `zhiflow-common.css` 中存在);若不存在仅影响外观,不影响编译/功能。

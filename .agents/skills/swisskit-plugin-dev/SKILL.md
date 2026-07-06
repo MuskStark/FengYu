@@ -6,7 +6,7 @@ description: Build, scaffold, debug, and theme SwissKitJ plugins — external JA
 # SwissKitJ Plugin Development
 
 You are an expert author of **SwissKitJ plugins** — external JAR tools that implement
-`fan.summer.api.SwissKitJPlugin`, register via Java `ServiceLoader` SPI, and hot-load into the
+`fan.summer.zhiflow.api.SwissKitJPlugin`, register via Java `ServiceLoader` SPI, and hot-load into the
 SwissKitJ JavaFX host (dropped into `.swisskit/plugin/`). This skill makes you produce plugins
 that **load cleanly and render theme-correctly** the first time, avoiding the recurring
 pitfalls (wrong SPI path, missing shade transformer, inline hex colors, unregistered i18n
@@ -109,11 +109,11 @@ even if a copied example does otherwise.
      [references/ui-and-tokens.md](references/ui-and-tokens.md).
 
 6. **SPI registration file is mandatory and path-sensitive.**
-   - Path: `src/main/resources/META-INF/services/fan.summer.api.SwissKitJPlugin`
+   - Path: `src/main/resources/META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin`
    - Content: one line — the fully-qualified class name of your plugin class.
    - The `maven-shade-plugin` MUST include `ServicesResourceTransformer` or the file gets
      overwritten during shading and the plugin is invisible. Verify post-build:
-     `unzip -p target/*.jar META-INF/services/fan.summer.api.SwissKitJPlugin`
+     `unzip -p target/*.jar META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin`
 
 7. **Async work → off the FX thread, with `Platform.runLater` for UI updates.** Use
    `javafx.concurrent.Task<Void>` for background jobs; bind a `.progress-bar` to its
@@ -160,10 +160,10 @@ A correct plugin's heart looks like this (full version in the template + contrac
 ```java
 package com.example.csvsorter;
 
-import fan.summer.api.*;
-import fan.summer.api.i18n.I18n;
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.*;
+import fan.summer.zhiflow.api.i18n.I18n;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
 import javafx.scene.Node;
 import javafx.scene.layout.VBox;
 import java.util.List;

@@ -21,7 +21,7 @@
 
 **Modify:**
 - `SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java` — `applyTo` delegates to `ThemeService.registerScene`
-- `SwissKitJ-Api/src/main/resources/css/swisskit-common.css` — token defs + rename `.glass-*`→`.sk-*` + flat IDEA restyle
+- `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` — token defs + rename `.glass-*`→`.sk-*` + flat IDEA restyle
 - `SwissKit/src/main/resources/css/shell.css` — full New UI restyle, token-based
 - `SwissKit/src/main/java/fan/summer/app/SwissKitJApp.java` — `DECORATED`, drop transparent fill + `WindowResizeHelper`, read+apply theme at startup
 - `SwissKit/src/main/java/fan/summer/ui/MainWindow.java` — drop orb layer / clip / top-highlight / `TitleBar`; slim entry animation
@@ -49,7 +49,7 @@
 
 `SwissKitJ-Api/src/test/java/fan/summer/api/theme/ThemeServiceTest.java`:
 ```java
-package fan.summer.api.theme;
+package fan.summer.zhiflow.api.theme;
 
 import org.junit.jupiter.api.Test;
 import java.util.concurrent.atomic.AtomicReference;
@@ -92,7 +92,7 @@ Expected: compile error — `ThemeService` does not exist.
 
 `SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java`:
 ```java
-package fan.summer.api.theme;
+package fan.summer.zhiflow.api.theme;
 
 import javafx.scene.Parent;
 import javafx.scene.Scene;
@@ -108,7 +108,7 @@ import java.util.function.Consumer;
  * <p>This class lives in the API module and has no database dependency. The
  * host application is responsible for loading/persisting the user's choice
  * and calling {@link #set(Theme)}. Looked-up color tokens ({@code -sk-*}) are
- * defined per theme in {@code swisskit-common.css} under {@code .theme-dark}
+ * defined per theme in {@code zhiflow-common.css} under {@code .theme-dark}
  * and {@code .theme-light}; swapping the root class re-resolves every token.
  *
  * @since 3.2.0
@@ -194,10 +194,10 @@ git commit -m "✨ feat(theme): add ThemeService (dark/light switch, scene regis
 
 ---
 
-### Task 1.2: Add token definitions to `swisskit-common.css`
+### Task 1.2: Add token definitions to `zhiflow-common.css`
 
 **Files:**
-- Modify: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css` (replace the `.root { ... }` block at lines 12–39)
+- Modify: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (replace the `.root { ... }` block at lines 12–39)
 
 - [ ] **Step 1: Replace the existing `.root` token block**
 
@@ -250,7 +250,7 @@ The dark token values intentionally differ slightly from the old rgba palette, b
 
 - [ ] **Step 3: Commit**
 ```bash
-git add SwissKitJ-Api/src/main/resources/css/swisskit-common.css
+git add SwissKitJ-Api/src/main/resources/css/zhiflow-common.css
 git commit -m "🎨 feat(theme): define -sk-* token set (dark/light) in common.css"
 ```
 
@@ -284,7 +284,7 @@ Keep the existing `commonStylesheetUrl()` / `COMMON_CSS` — `ThemeService.regis
 
 Final `Themes.java` body (replace whole class):
 ```java
-package fan.summer.api.theme;
+package fan.summer.zhiflow.api.theme;
 
 import javafx.scene.Scene;
 
@@ -297,7 +297,7 @@ import javafx.scene.Scene;
 public final class Themes {
 
     /** Resource path of the shared common stylesheet within the API JAR. */
-    public static final String COMMON_CSS = "/css/swisskit-common.css";
+    public static final String COMMON_CSS = "/css/zhiflow-common.css";
 
     private Themes() {}
 
@@ -333,7 +333,7 @@ Then fix `ThemeService.registerScene` to call `Themes.loadCommonStylesheet(scene
 
 In `SwissKitJApp.java`, add imports:
 ```java
-import fan.summer.api.theme.ThemeService;
+import fan.summer.zhiflow.api.theme.ThemeService;
 ```
 After the `if ("zh".equals(savedLang)) { ... }` i18n block (around line 85), add theme loading:
 ```java
@@ -377,10 +377,10 @@ git commit -m "✨ feat(theme): apply persisted theme on startup, register main 
 
 ## Phase 2 — Token-ize + restyle common components; rename `.glass-*` → `.sk-*`
 
-### Task 2.1: Rewrite `swisskit-common.css` (tokens + `.sk-*` flat components)
+### Task 2.1: Rewrite `zhiflow-common.css` (tokens + `.sk-*` flat components)
 
 **Files:**
-- Modify: `SwissKitJ-Api/src/main/resources/css/swisskit-common.css` (everything below the token block)
+- Modify: `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css` (everything below the token block)
 
 - [ ] **Step 1: Replace the entire component section** (from the `/* ── 内容区滚动面板 */` comment onward, i.e. everything after the `.theme-light { ... }` block) with the following. This renames every `.glass-*` → `.sk-*` and rewrites values to tokens / flat IDEA style:
 
@@ -663,7 +663,7 @@ git commit -m "✨ feat(theme): apply persisted theme on startup, register main 
 
 - [ ] **Step 3: Commit**
 ```bash
-git add SwissKitJ-Api/src/main/resources/css/swisskit-common.css
+git add SwissKitJ-Api/src/main/resources/css/zhiflow-common.css
 git commit -m "♻️ refactor(ui): token-ize + flatten common components, rename glass-*→sk-*"
 ```
 
@@ -751,7 +751,7 @@ git commit -m "♻️ refactor(ui): rename glass-*→sk-* usages in SwissKit mod
 ```css
 /* ================================================================
    shell.css — SwissKitJ 主程序壳层样式(IDEA 2025 New UI)
-   共性 token 与组件见 API 模块的 swisskit-common.css。
+   共性 token 与组件见 API 模块的 zhiflow-common.css。
    ================================================================ */
 
 /* ── 窗口根 ──────────────────────────────────────────────────── */
@@ -1272,7 +1272,7 @@ New method:
         SwissKitJSettingUi.saveThemeSetting(dark ? "dark" : "light");
     }
 ```
-(`NavItem` needs an `setIcon(String mdiIcon)` method — add it; see Step 2.) Add imports: `import fan.summer.api.theme.ThemeService;`
+(`NavItem` needs an `setIcon(String mdiIcon)` method — add it; see Step 2.) Add imports: `import fan.summer.zhiflow.api.theme.ThemeService;`
 
 - [ ] **Step 2: Add `NavItem.setIcon`**
 
@@ -1334,7 +1334,7 @@ git commit -m "✨ feat(theme): dark/light toggle in sidebar + settings, persist
 ```java
 package fan.summer.ai.util;
 
-import fan.summer.api.theme.ThemeService;
+import fan.summer.zhiflow.api.theme.ThemeService;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -1396,7 +1396,7 @@ At lines 689 and 730 the WebView container uses `-fx-background-color: #1e1e2e;`
 ```java
 String webviewBg = (ThemeService.current() == ThemeService.Theme.LIGHT) ? "#ffffff" : "#1e1e2e";
 ```
-and use `"-fx-background-color: " + webviewBg + ";" + ...` in those two `setStyle` calls. Add import `import fan.summer.api.theme.ThemeService;`.
+and use `"-fx-background-color: " + webviewBg + ";" + ...` in those two `setStyle` calls. Add import `import fan.summer.zhiflow.api.theme.ThemeService;`.
 
 - [ ] **Step 2: Re-render existing messages on theme change**
 
@@ -1465,7 +1465,7 @@ git commit -m "✅ chore: New UI redesign verification complete (v3.2.0)"
 
 - [ ] **Step 1: Update CHANGELOG.md** — add `## [3.2.0]` section at top listing: New UI redesign, dark/light theme, collapsible sidebar, native window chrome. **Prominently mark `.glass-*` → `.sk-*` as a BREAKING CHANGE for plugin authors** with the rename table (spec §7).
 
-- [ ] **Step 2: Update CLAUDE.md** — replace the "Three-layer CSS structure" table notes that reference glassmorphism: `swisskit-common.css` now defines `-sk-*` tokens + `.sk-*` components (not `.glass-*`); mention `ThemeService` + theme classes. Update the "Theming" paragraph. Add `.sk-*` to the component naming. Note `StageStyle.DECORATED` + no `WindowResizeHelper`.
+- [ ] **Step 2: Update CLAUDE.md** — replace the "Three-layer CSS structure" table notes that reference glassmorphism: `zhiflow-common.css` now defines `-sk-*` tokens + `.sk-*` components (not `.glass-*`); mention `ThemeService` + theme classes. Update the "Theming" paragraph. Add `.sk-*` to the component naming. Note `StageStyle.DECORATED` + no `WindowResizeHelper`.
 
 - [ ] **Step 3: Commit**
 ```bash

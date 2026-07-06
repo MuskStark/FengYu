@@ -1,10 +1,10 @@
 package fan.summer.plugin;
 
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.ToolCategory;
-import fan.summer.api.ToolType;
-import fan.summer.api.host.*;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ToolCategory;
+import fan.summer.zhiflow.api.ToolType;
+import fan.summer.zhiflow.api.host.*;
+import fan.summer.zhiflow.api.log.PluginLogger;
 import javafx.scene.Node;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

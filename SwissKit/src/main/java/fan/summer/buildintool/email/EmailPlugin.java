@@ -1,11 +1,11 @@
 package fan.summer.buildintool.email;
 
-import fan.summer.api.IconStyle;
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.ToolCategory;
-import fan.summer.api.ToolType;
-import fan.summer.api.i18n.I18n;
-import fan.summer.api.theme.Themes;
+import fan.summer.zhiflow.api.IconStyle;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ToolCategory;
+import fan.summer.zhiflow.api.ToolType;
+import fan.summer.zhiflow.api.i18n.I18n;
+import fan.summer.zhiflow.api.theme.Themes;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.email.EmailMassSentConfigEntity;
 import fan.summer.database.entity.email.EmailSentLogEntity;
@@ -20,7 +20,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
-import fan.summer.api.component.SkNotification;
+import fan.summer.zhiflow.api.component.SkNotification;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;

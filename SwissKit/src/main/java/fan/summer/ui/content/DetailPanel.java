@@ -1,10 +1,10 @@
 package fan.summer.ui.content;
 
-import fan.summer.api.MdiIconUtil;
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.ToolCategory;
-import fan.summer.api.component.SkNotification;
-import fan.summer.api.i18n.I18n;
+import fan.summer.zhiflow.api.MdiIconUtil;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ToolCategory;
+import fan.summer.zhiflow.api.component.SkNotification;
+import fan.summer.zhiflow.api.i18n.I18n;
 import fan.summer.plugin.FavoriteService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

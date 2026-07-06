@@ -4,7 +4,7 @@
 
 **Goal:** 实现规格 `docs/superpowers/specs/2026-07-02-plugin-sdk-unification-design.md`:PluginHost 全量门面 + PluginSettings + TaskRunner + preview 包 classloader 统一,全部落在 v3.2.0。
 
-**Architecture:** API 模块新增 `fan.summer.api.host` 纯接口包与两个可复用实现(`SimpleTaskRunner`/`BasePluginHost`);宿主与预览各补一个 settings 实现并在插件加载单一漏斗(`PluginRegistry.addPlugins` / `PluginPreviewWindow.launch`)注入 `init(PluginHost)`;`ChildFirstResourceClassLoader` 原样下沉到 API 模块供两侧共用。
+**Architecture:** API 模块新增 `fan.summer.zhiflow.api.host` 纯接口包与两个可复用实现(`SimpleTaskRunner`/`BasePluginHost`);宿主与预览各补一个 settings 实现并在插件加载单一漏斗(`PluginRegistry.addPlugins` / `PluginPreviewWindow.launch`)注入 `init(PluginHost)`;`ChildFirstResourceClassLoader` 原样下沉到 API 模块供两侧共用。
 
 **Tech Stack:** Java 21(虚拟线程)/ JavaFX / MyBatis + H2 / JUnit 5。
 
@@ -15,7 +15,7 @@
 - 运行测试:在 IDEA 中运行测试类(`mcp__idea__execute_run_configuration` 或手动;另见 memory `maven-test-recipe`)。无法运行时至少保证编译通过并在 Task 11 冒烟覆盖。
 - 每个任务只 `git add` 本任务「Files」列出的文件,**严禁 `git add -A`**(工作区可能有其他在途改动)。
 - 提交信息:emoji + conventional commits。
-- 所有新公共类型/方法标 `@since 3.2.0`。API 模块内**不得**引入 SLF4J/DB 依赖,日志一律用 `fan.summer.api.log.LoggerFactory`。
+- 所有新公共类型/方法标 `@since 3.2.0`。API 模块内**不得**引入 SLF4J/DB 依赖,日志一律用 `fan.summer.zhiflow.api.log.LoggerFactory`。
 - 时序契约(规格 §3.1 为准):`init(PluginHost)` 每插件恰好一次、FX 线程、TCCL 已设、在插件加入可见列表和 `aiTools()` 注册**之前**。
 
 ---
@@ -40,16 +40,16 @@
 
 `PluginHost.java`:
 ```java
-package fan.summer.api.host;
+package fan.summer.zhiflow.api.host;
 
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.log.PluginLogger;
 
 /**
  * Per-plugin facade giving a plugin access to every host capability through a
  * single injected object — logging, namespaced settings, TCCL-safe background
  * tasks, i18n, theming, and notifications.
  *
- * <p>Injected via {@link fan.summer.api.SwissKitJPlugin#init(PluginHost)} exactly
+ * <p>Injected via {@link fan.summer.zhiflow.api.SwissKitJPlugin#init(PluginHost)} exactly
  * once, on the JavaFX Application Thread, before the plugin becomes visible in the
  * registry. Store the reference; it stays valid for the plugin's whole lifetime.</p>
  *
@@ -93,7 +93,7 @@ public interface PluginHost {
 
 `PluginSettings.java`:
 ```java
-package fan.summer.api.host;
+package fan.summer.zhiflow.api.host;
 
 import java.util.Optional;
 
@@ -138,7 +138,7 @@ public interface PluginSettings {
 
 `TaskRunner.java`:
 ```java
-package fan.summer.api.host;
+package fan.summer.zhiflow.api.host;
 
 import java.util.concurrent.Callable;
 import java.util.function.Consumer;
@@ -191,7 +191,7 @@ public interface TaskRunner {
 
 `TaskHandle.java`:
 ```java
-package fan.summer.api.host;
+package fan.summer.zhiflow.api.host;
 
 /**
  * Handle to a background task submitted via {@link TaskRunner}.
@@ -213,7 +213,7 @@ public interface TaskHandle {
 
 `I18nFacade.java`:
 ```java
-package fan.summer.api.host;
+package fan.summer.zhiflow.api.host;
 
 import javafx.beans.property.StringProperty;
 
@@ -259,9 +259,9 @@ public interface I18nFacade {
 
 `ThemeFacade.java`:
 ```java
-package fan.summer.api.host;
+package fan.summer.zhiflow.api.host;
 
-import fan.summer.api.theme.ThemeService;
+import fan.summer.zhiflow.api.theme.ThemeService;
 import javafx.scene.Scene;
 
 import java.util.function.Consumer;
@@ -292,9 +292,9 @@ public interface ThemeFacade {
 
 `NotificationFacade.java`:
 ```java
-package fan.summer.api.host;
+package fan.summer.zhiflow.api.host;
 
-import fan.summer.api.component.SkNotification;
+import fan.summer.zhiflow.api.component.SkNotification;
 import javafx.scene.Node;
 
 /**
@@ -352,7 +352,7 @@ public interface NotificationFacade {
      * @param host the host facade bound to this plugin instance
      * @since 3.2.0
      */
-    default void init(fan.summer.api.host.PluginHost host) {}
+    default void init(fan.summer.zhiflow.api.host.PluginHost host) {}
 ```
 
 - [ ] **Step 3: 编译验证**
@@ -383,10 +383,10 @@ git commit -m "✨ feat(api): PluginHost facade interfaces + SwissKitJPlugin.ini
 
 `SimpleTaskRunnerTest.java`:
 ```java
-package fan.summer.api.host;
+package fan.summer.zhiflow.api.host;
 
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.ToolCategory;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ToolCategory;
 import javafx.scene.Node;
 import org.junit.jupiter.api.Test;
 
@@ -496,12 +496,12 @@ Expected: 编译失败 "SimpleTaskRunner 不存在"(即测试先行成立)。
 
 `SimpleTaskRunner.java`:
 ```java
-package fan.summer.api.host;
+package fan.summer.zhiflow.api.host;
 
-import fan.summer.api.PluginContext;
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.PluginContext;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
 import javafx.application.Platform;
 
 import java.util.Objects;
@@ -650,10 +650,10 @@ git commit -m "✨ feat(api): SimpleTaskRunner — TCCL-safe virtual-thread task
 
 `BasePluginHostTest.java`:
 ```java
-package fan.summer.api.host;
+package fan.summer.zhiflow.api.host;
 
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.ToolCategory;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ToolCategory;
 import javafx.scene.Node;
 import org.junit.jupiter.api.Test;
 
@@ -728,16 +728,16 @@ Expected: 编译失败 "BasePluginHost 不存在"。
 
 `BasePluginHost.java`:
 ```java
-package fan.summer.api.host;
+package fan.summer.zhiflow.api.host;
 
-import fan.summer.api.PluginContext;
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.component.SkNotification;
-import fan.summer.api.i18n.I18n;
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
-import fan.summer.api.theme.ThemeService;
-import fan.summer.api.theme.Themes;
+import fan.summer.zhiflow.api.PluginContext;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.component.SkNotification;
+import fan.summer.zhiflow.api.i18n.I18n;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
+import fan.summer.zhiflow.api.theme.ThemeService;
+import fan.summer.zhiflow.api.theme.Themes;
 import javafx.beans.property.StringProperty;
 import javafx.scene.Node;
 import javafx.scene.Scene;
@@ -828,7 +828,7 @@ git commit -m "✨ feat(api): BasePluginHost — shared facade implementation, s
 - Modify: `SwissKit/src/main/java/fan/summer/plugin/PluginLoader.java`(加 import)
 
 **Interfaces:**
-- Produces: `fan.summer.api.loader.ChildFirstResourceClassLoader extends URLClassLoader`,构造器 `(URL[] urls, ClassLoader parent)`,行为与原类完全一致。Task 9(preview)与宿主 `PluginLoader` 共用。
+- Produces: `fan.summer.zhiflow.api.loader.ChildFirstResourceClassLoader extends URLClassLoader`,构造器 `(URL[] urls, ClassLoader parent)`,行为与原类完全一致。Task 9(preview)与宿主 `PluginLoader` 共用。
 
 - [ ] **Step 1: git mv 移动文件**
 
@@ -850,10 +850,10 @@ import org.slf4j.LoggerFactory;
 ```
 →
 ```java
-package fan.summer.api.loader;
+package fan.summer.zhiflow.api.loader;
 
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
 ```
 
 替换 2:
@@ -880,7 +880,7 @@ import fan.summer.api.log.PluginLogger;
 
 `PluginLoader.java` import 区加入(原同包无需 import,移动后需要):
 ```java
-import fan.summer.api.loader.ChildFirstResourceClassLoader;
+import fan.summer.zhiflow.api.loader.ChildFirstResourceClassLoader;
 ```
 
 - [ ] **Step 4: 双模块编译验证**
@@ -1050,7 +1050,7 @@ public interface PluginSettingMapper {
 ```java
 package fan.summer.plugin.host;
 
-import fan.summer.api.host.PluginSettings;
+import fan.summer.zhiflow.api.host.PluginSettings;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.PluginSettingEntity;
 import fan.summer.database.mapper.PluginSettingMapper;
@@ -1175,12 +1175,12 @@ public class H2PluginSettings implements PluginSettings {
 ```java
 package fan.summer.plugin.host;
 
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.host.BasePluginHost;
-import fan.summer.api.host.PluginSettings;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.host.BasePluginHost;
+import fan.summer.zhiflow.api.host.PluginSettings;
 
 /**
- * Host-side {@link fan.summer.api.host.PluginHost}: {@link BasePluginHost}
+ * Host-side {@link fan.summer.zhiflow.api.host.PluginHost}: {@link BasePluginHost}
  * plus H2-backed settings.
  *
  * @since 3.2.0
@@ -1232,11 +1232,11 @@ git commit -m "✨ feat(host): H2-backed PluginSettings + DefaultPluginHost"
 ```java
 package fan.summer.plugin;
 
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.ToolCategory;
-import fan.summer.api.ToolType;
-import fan.summer.api.host.*;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ToolCategory;
+import fan.summer.zhiflow.api.ToolType;
+import fan.summer.zhiflow.api.host.*;
+import fan.summer.zhiflow.api.log.PluginLogger;
 import javafx.scene.Node;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -1363,7 +1363,7 @@ Expected: 编译失败(`setHostFactoryForTest`/`isBusy` 不存在)。
 
 import 区加入:
 ```java
-import fan.summer.api.host.PluginHost;
+import fan.summer.zhiflow.api.host.PluginHost;
 import fan.summer.plugin.host.DefaultPluginHost;
 import java.util.function.Function;
 ```
@@ -1524,7 +1524,7 @@ git commit -m "✨ feat(host): back-navigation uses isBusy(); uninstall purges p
 
 `PropertiesPluginSettingsTest.java`:
 ```java
-package fan.summer.api.preview;
+package fan.summer.zhiflow.api.preview;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -1590,11 +1590,11 @@ Expected: 编译失败 "PropertiesPluginSettings 不存在"。
 
 `PropertiesPluginSettings.java`:
 ```java
-package fan.summer.api.preview;
+package fan.summer.zhiflow.api.preview;
 
-import fan.summer.api.host.PluginSettings;
-import fan.summer.api.log.LoggerFactory;
-import fan.summer.api.log.PluginLogger;
+import fan.summer.zhiflow.api.host.PluginSettings;
+import fan.summer.zhiflow.api.log.LoggerFactory;
+import fan.summer.zhiflow.api.log.PluginLogger;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -1688,14 +1688,14 @@ class PropertiesPluginSettings implements PluginSettings {
 
 `PreviewPluginHost.java`:
 ```java
-package fan.summer.api.preview;
+package fan.summer.zhiflow.api.preview;
 
-import fan.summer.api.SwissKitJPlugin;
-import fan.summer.api.host.BasePluginHost;
-import fan.summer.api.host.PluginSettings;
+import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.host.BasePluginHost;
+import fan.summer.zhiflow.api.host.PluginSettings;
 
 /**
- * Preview-side {@link fan.summer.api.host.PluginHost}: {@link BasePluginHost}
+ * Preview-side {@link fan.summer.zhiflow.api.host.PluginHost}: {@link BasePluginHost}
  * plus properties-file settings, so plugins behave the same in the preview
  * window as inside the real host.
  *
@@ -1739,14 +1739,14 @@ git commit -m "✨ feat(preview): PreviewPluginHost with properties-file setting
 - Modify: `SwissKitJ-Api/src/main/java/fan/summer/api/preview/PreviewShell.java`
 
 **Interfaces:**
-- Consumes: Task 4 `fan.summer.api.loader.ChildFirstResourceClassLoader(URL[], ClassLoader)`;Task 8 `PreviewPluginHost(SwissKitJPlugin)`;`PluginContext.register/runWith/callWith/wrapEvents`(已有)。
+- Consumes: Task 4 `fan.summer.zhiflow.api.loader.ChildFirstResourceClassLoader(URL[], ClassLoader)`;Task 8 `PreviewPluginHost(SwissKitJPlugin)`;`PluginContext.register/runWith/callWith/wrapEvents`(已有)。
 
 - [ ] **Step 1: 换 classloader 并注册 TCCL**
 
 `PluginPreviewWindow.java` import 区加入:
 ```java
-import fan.summer.api.PluginContext;
-import fan.summer.api.loader.ChildFirstResourceClassLoader;
+import fan.summer.zhiflow.api.PluginContext;
+import fan.summer.zhiflow.api.loader.ChildFirstResourceClassLoader;
 ```
 `launch()` 中替换:
 ```java

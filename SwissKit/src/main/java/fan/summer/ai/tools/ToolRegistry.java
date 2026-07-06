@@ -1,8 +1,8 @@
 package fan.summer.ai.tools;
 
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.ai.AiToolParam;
-import fan.summer.api.ai.AiToolResult;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiToolParam;
+import fan.summer.zhiflow.api.ai.AiToolResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

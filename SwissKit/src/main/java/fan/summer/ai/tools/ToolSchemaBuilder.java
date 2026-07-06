@@ -1,7 +1,7 @@
 package fan.summer.ai.tools;
 
-import fan.summer.api.ai.AiTool;
-import fan.summer.api.ai.AiToolParam;
+import fan.summer.zhiflow.api.ai.AiTool;
+import fan.summer.zhiflow.api.ai.AiToolParam;
 
 import java.util.*;
 
