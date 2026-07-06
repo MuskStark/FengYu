@@ -5,16 +5,16 @@
 - **JDK 21 or higher**
 - **Maven 3.8 or higher** (for building from source)
 
-SwissKitJ bundles JavaFX for all platforms inside the fat JAR — no separate JavaFX SDK needed.
+ZhiFlow bundles JavaFX for all platforms inside the fat JAR — no separate JavaFX SDK needed.
 
 ## Installation
 
 ### Option 1: Download Pre-built JAR
 
-Download from the [GitHub Releases](https://github.com/MuskStark/SwissKitJ/releases) page.
+Download from the [GitHub Releases](https://github.com/MuskStark/ZhiFlow/releases) page.
 
 ```bash
-java -jar SwissKitJ-3.1.0.jar
+java -jar ZhiFlow-3.1.0.jar
 ```
 
 The fat JAR includes JavaFX native libraries for macOS, Windows, and Linux — no additional setup required.
@@ -22,33 +22,33 @@ The fat JAR includes JavaFX native libraries for macOS, Windows, and Linux — n
 ### Option 2: Build from Source
 
 ```bash
-git clone https://github.com/MuskStark/SwissKitJ.git
-cd SwissKitJ
+git clone https://github.com/MuskStark/ZhiFlow.git
+cd ZhiFlow
 
 # Install API module first (required)
-mvn install -f SwissKitJ-Api/pom.xml -DskipTests
+mvn install -f ZhiFlow-Api/pom.xml -DskipTests
 
 # Build the main app
-mvn clean package -f SwissKit/pom.xml -DskipTests
+mvn clean package -f ZhiFlow/pom.xml -DskipTests
 
 # Run
-java -jar SwissKit/target/SwissKitJ-3.1.0.jar
+java -jar ZhiFlow/target/ZhiFlow-3.1.0.jar
 ```
 
-**Build order matters**: `SwissKitJ-Api` provides the shared plugin interface and reusable UI components. It must be installed into the local Maven repository before the main app can compile.
+**Build order matters**: `ZhiFlow-Api` provides the shared plugin interface and reusable UI components. It must be installed into the local Maven repository before the main app can compile.
 
 ## Running
 
 ### Fat JAR
 
 ```bash
-java -jar SwissKit/target/SwissKitJ-3.1.0.jar
+java -jar ZhiFlow/target/ZhiFlow-3.1.0.jar
 ```
 
 ### IDE (IntelliJ IDEA)
 
 1. Open the project
-2. Locate `Launcher.java` in `SwissKit/src/main/java/fan/summer/`
+2. Locate `Launcher.java` in `ZhiFlow/src/main/java/fan/summer/`
 3. Right-click → "Run 'Launcher.main()'"
 
 The `Launcher` class is the fat-JAR manifest entry point.
@@ -70,13 +70,13 @@ The `Launcher` class is the fat-JAR manifest entry point.
 
 ### UI Not Rendering
 
-- Rebuild from clean: `mvn clean package -f SwissKit/pom.xml -DskipTests`
+- Rebuild from clean: `mvn clean package -f ZhiFlow/pom.xml -DskipTests`
 - Ensure you're running the fat JAR which bundles JavaFX
 
 ### API Module Not Found
 
 ```bash
-mvn install -f SwissKitJ-Api/pom.xml -DskipTests
+mvn install -f ZhiFlow-Api/pom.xml -DskipTests
 ```
 
 ## Next Steps

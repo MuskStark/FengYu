@@ -80,7 +80,7 @@ newText:
 
 - [ ] **Step 2: Set the build-timestamp format in `pom.xml`**
 
-Add this line as the **first child** inside the existing `<properties>` block (the one defining `<swisskit.api.version>`, `<javafx.version>`, etc.):
+Add this line as the **first child** inside the existing `<properties>` block (the one defining `<zhiflow.api.version>`, `<javafx.version>`, etc.):
 ```xml
         <maven.build.timestamp.format>yyyy-MM-dd HH:mm z</maven.build.timestamp.format>
 ```

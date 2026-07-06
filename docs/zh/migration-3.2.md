@@ -1,6 +1,6 @@
 # 迁移到 3.2
 
-本指南涵盖插件作者将插件从 SwissKitJ 3.1.x 升级到 3.2.0 时需要修改
+本指南涵盖插件作者将插件从 ZhiFlow 3.1.x 升级到 3.2.0 时需要修改
 （或可以新使用）的全部内容。
 
 ## 破坏性变更：`.glass-*` CSS 类改名为 `.sk-*`
@@ -44,7 +44,7 @@ SkNotification.toast(view, SkNotification.Type.SUCCESS, "Saved");
 ## 新增：`PluginPreviewWindow`（开发工具）
 
 `fan.summer.zhiflow.api.preview.PluginPreviewWindow` 在一个独立的类 shell 窗口中
-启动你的插件，带主题和语言切换——开发期间无需完整安装 SwissKitJ。
+启动你的插件，带主题和语言切换——开发期间无需完整安装 ZhiFlow。
 
 > **稳定性说明：** 预览 API 是开发期工具。它的窗口布局有意模仿（但不共享）
 > 真实应用 shell；发布前务必在真实应用中做一次最终检查。
@@ -59,12 +59,12 @@ SkNotification.toast(view, SkNotification.Type.SUCCESS, "Saved");
 
 预览窗口（`PluginPreviewWindow`）现在以与真实宿主完全相同的语义加载插件：
 child-first 资源 ClassLoader、TCCL 注册、`init(PluginHost)` 注入（设置持久化
-到 `~/.swisskit/preview-settings/`）。
+到 `~/.zhiflow/preview-settings/`）。
 
 ## 检查清单
 
 - [ ] 把每个 `.glass-*` 样式类替换为 `.sk-*`
 - [ ] （可选）把 `GlassNotification` 调用切换为 `SkNotification`
-- [ ] 重新编译以依赖 `SwissKitJ-Api` 3.2.0（仍是 `provided` 作用域）
+- [ ] 重新编译以依赖 `ZhiFlow-Api` 3.2.0（仍是 `provided` 作用域）
 - [ ] 在**深色和浅色**两个主题下验证你的 UI
 - [ ] （可选）改用 `init(PluginHost)` 获取 settings/tasks/i18n，替代静态入口

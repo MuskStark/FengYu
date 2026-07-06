@@ -1,4 +1,4 @@
--- SwissKit Database Initialization Script
+-- ZhiFlow Database Initialization Script
 
 -- Email Settings Table
 CREATE TABLE IF NOT EXISTS swiss_kit_setting_email

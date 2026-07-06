@@ -10,38 +10,38 @@ All modules have **standalone POMs** with no parent dependency — each can be b
 
 ```bash
 # Build and install the API module (required first — other modules depend on it)
-mvn install -f SwissKitJ-Api/pom.xml -DskipTests
+mvn install -f ZhiFlow-Api/pom.xml -DskipTests
 
 # Build the main app
-mvn clean package -f SwissKit/pom.xml -DskipTests
+mvn clean package -f ZhiFlow/pom.xml -DskipTests
 
 # Run the application
-java -jar SwissKit/target/SwissKitJ-3.0.0.jar
+java -jar ZhiFlow/target/ZhiFlow-3.0.0.jar
 ```
 
 To build all modules from the repo root (root POM is a simple aggregator):
 ```bash
-mvn install -f SwissKitJ-Api/pom.xml -DskipTests && mvn clean package -f SwissKit/pom.xml -DskipTests
+mvn install -f ZhiFlow-Api/pom.xml -DskipTests && mvn clean package -f ZhiFlow/pom.xml -DskipTests
 ```
 
-On Windows, the `windows-exe` Maven profile is auto-activated and produces `SwissKit.exe` via Launch4j. GitHub Actions handles multi-platform builds — local Maven is not required for releases.
+On Windows, the `windows-exe` Maven profile is auto-activated and produces `ZhiFlow.exe` via Launch4j. GitHub Actions handles multi-platform builds — local Maven is not required for releases.
 
 ## Module Structure
 
 | Module | Purpose |
 |--------|---------|
-| `SwissKitJ-Api` | Shared plugin interface + plugin context isolation + AI service contract + reusable UI components (`SwissKitJPlugin`, `PluginContext`, `AiService`/`AiTool`, `StepWizard`) |
-| `SwissKit` | Main JavaFX application — UI shell, plugin loading, built-in tools |
+| `ZhiFlow-Api` | Shared plugin interface + plugin context isolation + AI service contract + reusable UI components (`ZhiFlowPlugin`, `PluginContext`, `AiService`/`AiTool`, `StepWizard`) |
+| `ZhiFlow` | Main JavaFX application — UI shell, plugin loading, built-in tools |
 
-Official plugins live in a separate repository: [MuskStark/SwissKiJ-Plugin](https://github.com/MuskStark/SwissKiJ-Plugin). They are built independently and dropped into `.swisskit/plugin/` as JARs at runtime. All plugins declare `SwissKitJ-Api` as `provided` scope. The main app provides it at runtime via the fat JAR.
+Official plugins live in a separate repository: [MuskStark/ZhiFlow-Plugin](https://github.com/MuskStark/ZhiFlow-Plugin). They are built independently and dropped into `.zhiflow/plugin/` as JARs at runtime. All plugins declare `ZhiFlow-Api` as `provided` scope. The main app provides it at runtime via the fat JAR.
 
 ## Architecture
 
-**Entry point**: `fan.summer.Launcher` (fat-JAR manifest) → `fan.summer.app.SwissKitJApp` (JavaFX `Application`).
+**Entry point**: `fan.summer.Launcher` (fat-JAR manifest) → `fan.summer.app.ZhiFlowApp` (JavaFX `Application`).
 
-**Startup sequence** (in `SwissKitJApp.start()`):
+**Startup sequence** (in `ZhiFlowApp.start()`):
 1. Install the plugin logger binder; init H2/MyBatis; apply the saved i18n language and theme (dark default, via `ThemeService.set(...)`; the main scene is later registered with `ThemeService.registerScene(scene)`)
-2. Resolve the plugins directory (`<user.dir>/.swisskit/plugin/`)
+2. Resolve the plugins directory (`<user.dir>/.zhiflow/plugin/`)
 3. Create `PluginLoader` + `PluginRegistry`
 4. Create `FavoriteService` (loads bookmarked plugin IDs from DB)
 5. Register built-in tools via `BuiltinToolRegistrar` (bypasses JAR loading, routes through `PluginRegistry.addPlugins`, which auto-registers each plugin's `aiTools()`)
@@ -59,15 +59,15 @@ Official plugins live in a separate repository: [MuskStark/SwissKiJ-Plugin](http
 
 **Navigation flow**: `ToolCard` click → `DetailPanel.show()` → Launch button → `MainWindow.wireEvents` callback → `registry.activate(plugin)` + `contentArea.showPage(plugin.createView(), title)`. The back bar (shown by `ContentArea`) calls `registry.deactivate()` on return.
 
-**Theming**: IDEA 2025 New UI look — flat, token-based, with switchable **dark / light** themes (dark default; persisted in the `theme` setting). `fan.summer.api.theme.ThemeService` (API module, no DB dependency) holds the active `Theme.DARK`/`Theme.LIGHT`, stamps a `theme-dark`/`theme-light` class on every registered scene root, and fires `onChange` listeners. Looked-up color tokens (`-sk-bg`, `-sk-bg-elevated`, `-sk-text`, `-sk-accent`, `-sk-border`, …) are declared per theme in `swisskit-common.css`; swapping the root class re-resolves every token with **no stylesheet reload**. The host loads/persists the choice; `Themes.applyTo(scene)` delegates to `ThemeService.registerScene(scene)`.
+**Theming**: IDEA 2025 New UI look — flat, token-based, with switchable **dark / light** themes (dark default; persisted in the `theme` setting). `fan.summer.api.theme.ThemeService` (API module, no DB dependency) holds the active `Theme.DARK`/`Theme.LIGHT`, stamps a `theme-dark`/`theme-light` class on every registered scene root, and fires `onChange` listeners. Looked-up color tokens (`-sk-bg`, `-sk-bg-elevated`, `-sk-text`, `-sk-accent`, `-sk-border`, …) are declared per theme in `zhiflow-common.css`; swapping the root class re-resolves every token with **no stylesheet reload**. The host loads/persists the choice; `Themes.applyTo(scene)` delegates to `ThemeService.registerScene(scene)`.
 
 Three-layer CSS structure:
 
 | File | Module | Scope |
 |---|---|---|
-| `css/swisskit-common.css` | `SwissKitJ-Api` | `-sk-*` token definitions (under `.theme-dark` / `.theme-light`), scrollbars, progress bar, `.sk-*` utility classes (dialog/field/tab-pane/combo/table/checkbox/btn-primary/btn-secondary/notif-*), `.section-title`/`.section-header`. Loaded into the main Scene + available to any third-party plugin. |
-| `css/shell.css` | `SwissKit` | App-shell only — `.app-root`, `.sidebar` (+ `.collapsed`), `.search-bar`, `.tool-card`, `.detail-panel`, `.statusbar`, `.store-*`. Fully token-based. Loaded into the main Scene by `SwissKitJApp`. |
-| `css/builtin.css` | `SwissKit` | Reserved for built-in tool styling. Currently empty placeholder. |
+| `css/zhiflow-common.css` | `ZhiFlow-Api` | `-sk-*` token definitions (under `.theme-dark` / `.theme-light`), scrollbars, progress bar, `.sk-*` utility classes (dialog/field/tab-pane/combo/table/checkbox/btn-primary/btn-secondary/notif-*), `.section-title`/`.section-header`. Loaded into the main Scene + available to any third-party plugin. |
+| `css/shell.css` | `ZhiFlow` | App-shell only — `.app-root`, `.sidebar` (+ `.collapsed`), `.search-bar`, `.tool-card`, `.detail-panel`, `.statusbar`, `.store-*`. Fully token-based. Loaded into the main Scene by `ZhiFlowApp`. |
+| `css/builtin.css` | `ZhiFlow` | Reserved for built-in tool styling. Currently empty placeholder. |
 
 Plugins embedded in the main Scene (the normal `createView()` flow) automatically inherit all three stylesheets via scene graph propagation — no action needed. Plugins that open their own `Stage`/`Scene` should call `fan.summer.api.theme.Themes.applyTo(scene)` to load the common stylesheet and stamp the active theme class on the root.
 
@@ -75,7 +75,7 @@ Plugin icon background colors are CSS classes: `ic-blue / ic-purple / ic-teal / 
 
 > **v3.2.0 rename (BREAKING for plugin authors):** the old `.glass-*` utility classes were renamed to `.sk-*`. See the rename table in `CHANGELOG.md` `[3.2.0]`. External plugins still referencing `.glass-*` must update.
 
-**Database**: H2 file at `.swisskit/swisskit.db` relative to the runtime working directory. Schema initialized from `init.sql`. Accessed via MyBatis; mapper XMLs are in `src/main/resources/mapper/`.
+**Database**: H2 file at `.zhiflow/zhiflow.db` relative to the runtime working directory. Schema initialized from `init.sql`. Accessed via MyBatis; mapper XMLs are in `src/main/resources/mapper/`.
 
 **i18n**: `src/main/resources/i18n/messages.properties` (English default), `messages_zh.properties` (Chinese).
 
@@ -83,13 +83,13 @@ Plugin icon background colors are CSS classes: `ic-blue / ic-purple / ic-teal / 
 
 **AI Markdown**: AI responses render via `WebView` through `MarkdownRenderer.render(md, Theme)` — theme-aware (dark `#1e1e2e` / light `#ffffff` CSS palettes). `AiChatPlugin` derives the WebView background from the active theme and re-renders the whole conversation live when the theme flips. Auto-resize height to content.
 
-**AI tools**: Plugins self-declare AI tools via `SwissKitJPlugin.aiTools()` (v3.1.0+); the `PluginRegistry` auto-registers/unregisters them with `AiServiceProvider` on plugin add/remove (including hot-reload). Use `ToolExecutor` + `ToolSchemaBuilder` for execution and schema generation. See "### Plugin AI tools (v3.1.0+)" below for the full pattern.
+**AI tools**: Plugins self-declare AI tools via `ZhiFlowPlugin.aiTools()` (v3.1.0+); the `PluginRegistry` auto-registers/unregisters them with `AiServiceProvider` on plugin add/remove (including hot-reload). Use `ToolExecutor` + `ToolSchemaBuilder` for execution and schema generation. See "### Plugin AI tools (v3.1.0+)" below for the full pattern.
 
 **Local tool-calling model**: Qwen3-4B (Hermes `<tool_call>` format, displayed `<think>` reasoning). Detected by filename containing `qwen3`; routed via `LocalChatBackend.chatQwen3Native` + `ThinkingStreamSegmenter` (splits the token stream into THINK/CONTENT regions, suppresses `<tool_call>`) + `Qwen3Adapter` (Hermes system-prompt directive + `/no_think` toggle). THINK segments stream to `AiStreamCallback.onThinking` and render as collapsed cards (`MarkdownRenderer.renderCollapsible`); thinking is stripped (`ThinkingStreamSegmenter.stripThink`) before history/answer so it never enters the next prompt. Tool-call parsing for Qwen2.5 / Qwen3 / generic all live in `ToolCallParser`. FunctionGemma support was removed in v3.1.0.
 
 ## Reusable UI Component: StepWizard
 
-`fan.summer.api.component.StepWizard` (in `SwissKitJ-Api`) is a ready-made multi-step wizard container for use inside any plugin's `createView()`.
+`fan.summer.api.component.StepWizard` (in `ZhiFlow-Api`) is a ready-made multi-step wizard container for use inside any plugin's `createView()`.
 
 ```java
 StepWizard wizard = new StepWizard();
@@ -112,10 +112,10 @@ The wizard renders step dots with done/active/idle states, animated slide transi
 
 ## Plugin Development
 
-**Interface**: `fan.summer.api.SwissKitJPlugin` (in `SwissKitJ-Api`)
+**Interface**: `fan.summer.api.ZhiFlowPlugin` (in `ZhiFlow-Api`)
 
 ```java
-public interface SwissKitJPlugin {
+public interface ZhiFlowPlugin {
     String getId();                       // reverse-domain ID, e.g. "com.example.my-tool"
     String getName();
     String getDescription();
@@ -140,28 +140,28 @@ public interface SwissKitJPlugin {
 
 **PluginHost (v3.2.0+)**: injected via `init(PluginHost)` exactly once (FX thread, before the
 plugin is visible in the registry and before `aiTools()` registration). Provides `settings()`
-(namespaced KV, H2-backed; preview mode uses `~/.swisskit/preview-settings/`), `tasks()`
+(namespaced KV, H2-backed; preview mode uses `~/.zhiflow/preview-settings/`), `tasks()`
 (TCCL-safe background tasks — running tasks automatically keep the plugin backgrounded, merged
 with `hasRunningTasks()` via `PluginRegistry.isBusy`), `i18n()` (`registerBundle` without a
 ClassLoader parameter), `theme()`, `notifications()`, `logger()`. Old static entry points remain
 valid. See `docs/plugins/plugin-host.md`.
 
 **External plugins** (JAR-based):
-1. Implement `SwissKitJPlugin`
-2. Declare in `META-INF/services/fan.summer.api.SwissKitJPlugin`
-3. Drop JAR into `.swisskit/plugin/` directory; hot-reload is supported
+1. Implement `ZhiFlowPlugin`
+2. Declare in `META-INF/services/fan.summer.api.ZhiFlowPlugin`
+3. Drop JAR into `.zhiflow/plugin/` directory; hot-reload is supported
 
 **Built-in tools** skip SPI entirely — `BuiltinToolRegistrar.register()` adds them directly to `PluginRegistry`. See existing tools there as templates.
 
 ### Plugin logging
 
-Plugins should use `fan.summer.api.log.LoggerFactory` (in `SwissKitJ-Api`) rather than depending on SLF4J directly. The host installs a binder at startup that routes plugin log calls into the same SLF4J + Logback backbone used by the host (console at INFO+, rolling file at DEBUG+ under `.swisskit/logs/swisskit.log`, daily rotation, 7-day retention).
+Plugins should use `fan.summer.api.log.LoggerFactory` (in `ZhiFlow-Api`) rather than depending on SLF4J directly. The host installs a binder at startup that routes plugin log calls into the same SLF4J + Logback backbone used by the host (console at INFO+, rolling file at DEBUG+ under `.zhiflow/logs/zhiflow.log`, daily rotation, 7-day retention).
 
 ```java
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
 
-public class MyPlugin implements SwissKitJPlugin {
+public class MyPlugin implements ZhiFlowPlugin {
     private static final PluginLogger log = LoggerFactory.getLogger(MyPlugin.class);
 
     @Override public void onActivate() {
@@ -177,7 +177,7 @@ Use SLF4J-style `{}` placeholders — formatting is deferred until the level is 
 Plugins can expose AI tools by overriding the default `aiTools()` method:
 
 ```java
-public class MyPlugin implements SwissKitJPlugin {
+public class MyPlugin implements ZhiFlowPlugin {
     @Override
     public List<AiTool> aiTools() {
         return List.of(new MyAiTool(this));
@@ -315,13 +315,13 @@ If you genuinely need to know whether the stage is maximized, track it yourself 
 
 ## Branch Status — v3.0.0-JavaFX
 
-This is the JavaFX codebase (the Swing/FlatLaf port shipped in 3.0.0). Legacy Swing classes remain in `backup/SwissKit/` and `backup/SwissKitJ-Api/` under the project root as a porting reference, and are **excluded from Maven compilation** via `<excludes>` in `SwissKit/pom.xml`. Do not move files out of `backup/` — treat them as read-only reference for any tool whose JavaFX port still needs work.
+This is the JavaFX codebase (the Swing/FlatLaf port shipped in 3.0.0). Legacy Swing classes remain in `backup/ZhiFlow/` and `backup/ZhiFlow-Api/` under the project root as a porting reference, and are **excluded from Maven compilation** via `<excludes>` in `ZhiFlow/pom.xml`. Do not move files out of `backup/` — treat them as read-only reference for any tool whose JavaFX port still needs work.
 
-The plugin interface was also renamed: the old `fan.summer.api.KitPage` (Swing `JPanel`-based) is replaced by `fan.summer.api.SwissKitJPlugin` (JavaFX `Node`-based).
+The plugin interface was also renamed: the old `fan.summer.api.KitPage` (Swing `JPanel`-based) is replaced by `fan.summer.api.ZhiFlowPlugin` (JavaFX `Node`-based).
 
 ## Excel Splitter — Porting Reference
 
-The backup Swing implementation at `backup/SwissKit/java/fan/summer/kitpage/excel/` is the authoritative reference for the Excel split logic. Key classes:
+The backup Swing implementation at `backup/ZhiFlow/java/fan/summer/kitpage/excel/` is the authoritative reference for the Excel split logic. Key classes:
 
 | Backup class | Role |
 |---|---|

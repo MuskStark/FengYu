@@ -35,7 +35,7 @@ public class WelcomePage implements LocaleChangeListener {
 
     /**
      * Creates a new WelcomePage and initializes the documentation link listener.
-     * Clicking the documentation label will open the SwissKitJ user manual in the browser.
+     * Clicking the documentation label will open the ZhiFlow user manual in the browser.
      *\/
     public WelcomePage() {
         initComponents();

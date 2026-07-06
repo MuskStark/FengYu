@@ -23,7 +23,7 @@ mvn clean package
 将生成的 JAR 复制到宿主应用的 `plugins/` 目录：
 
 ```bash
-cp target/my-plugin-1.0-SNAPSHOT.jar /path/to/SwissKitJ/plugins/
+cp target/my-plugin-1.0-SNAPSHOT.jar /path/to/ZhiFlow/plugins/
 ```
 
 宿主启动时会自动扫描并加载插件。支持热加载——插件目录有变化时会自动重载。
@@ -53,5 +53,5 @@ unzip -l target/my-plugin-1.0-SNAPSHOT.jar | grep -E "META-INF/services|Services
 
 | Scope | 含义 |
 |-------|------|
-| `provided` | SwissKitJ-Api 和 JavaFX 由宿主在运行时提供，插件不打包 |
+| `provided` | ZhiFlow-Api 和 JavaFX 由宿主在运行时提供，插件不打包 |
 | 无（默认） | 插件自己的依赖（如 H2、FesodSheet、MyBatis）会打包进 fat JAR |

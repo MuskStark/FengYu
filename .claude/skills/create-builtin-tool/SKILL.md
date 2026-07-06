@@ -1,6 +1,6 @@
 ---
 name: create-builtin-tool
-description: Use when creating a new built-in tool for SwissKitJ. All built-in tools must implement both the visual UI (SwissKitJPlugin) and AI-callable interface (AiTool).
+description: Use when creating a new built-in tool for ZhiFlow. All built-in tools must implement both the visual UI (ZhiFlowPlugin) and AI-callable interface (AiTool).
 disable-model-invocation: true
 ---
 
@@ -21,8 +21,8 @@ Every built-in tool has **two halves**:
 
 | Half | Interface | Location | Purpose |
 |------|-----------|----------|---------|
-| **UI Plugin** | `SwissKitJPlugin` | `buildintool/<toolname>/<Name>Plugin.java` | Visual JavaFX interface shown in the app |
-| **AI Tool(s)** | `AiTool` | `buildintool/ai/<Name>AiTool.java` | Callable by the AI chat (SwissKitJClaw) |
+| **UI Plugin** | `ZhiFlowPlugin` | `buildintool/<toolname>/<Name>Plugin.java` | Visual JavaFX interface shown in the app |
+| **AI Tool(s)** | `AiTool` | `buildintool/ai/<Name>AiTool.java` | Callable by the AI chat (ZhiFlowClaw) |
 
 Both halves share state via a config/field object held by the Plugin instance. AI tools receive the plugin reference in their constructor.
 
@@ -31,7 +31,7 @@ Both halves share state via a config/field object held by the Plugin instance. A
 ### Checklist
 
 ```
-CREATE  buildintool/<toolname>/<Name>Plugin.java    ← SwissKitJPlugin impl (UI + aiTools() override)
+CREATE  buildintool/<toolname>/<Name>Plugin.java    ← ZhiFlowPlugin impl (UI + aiTools() override)
 CREATE  buildintool/<toolname>/<Name>Config.java    ← shared state POJO (if needed)
 CREATE  buildintool/<toolname>/<Name>Worker.java    ← core logic (if needed)
 CREATE  buildintool/ai/<Name>AiTool.java            ← AiTool impl (at least one)
@@ -42,7 +42,7 @@ OPT     resources/init.sql                          ← DB table (if tool uses H
 OPT     resources/mapper/<name>/                    ← MyBatis mapper (if tool uses H2)
 ```
 
-## 1. UI Plugin — SwissKitJPlugin Implementation
+## 1. UI Plugin — ZhiFlowPlugin Implementation
 
 ```java
 package fan.summer.zhiflow.buildintool.<toolname>;
@@ -55,7 +55,7 @@ import javafx.scene.Node;
 import javafx.scene.layout.VBox;
 import javafx.geometry.Insets;
 
-public class <Name>Plugin implements SwissKitJPlugin {
+public class <Name>Plugin implements ZhiFlowPlugin {
 
     private static final PluginLogger log = LoggerFactory.getLogger(<Name>Plugin.class);
     private Node view;
@@ -175,7 +175,7 @@ Add the new plugin to the `List.of(...)` in `register()`:
 
 ```java
 // In BuiltinToolRegistrar.register():
-List<SwissKitJPlugin> builtins = List.of(
+List<ZhiFlowPlugin> builtins = List.of(
     // ... existing tools ...
     new <Name>Plugin()    // ← add here
 );
@@ -188,7 +188,7 @@ List<SwissKitJPlugin> builtins = List.of(
 Each plugin self-declares its AI tools by overriding `aiTools()`:
 
 ```java
-public class <Name>Plugin implements SwissKitJPlugin {
+public class <Name>Plugin implements ZhiFlowPlugin {
     private final <Name>Config config = new <Name>Config();
 
     @Override
@@ -203,7 +203,7 @@ public class <Name>Plugin implements SwissKitJPlugin {
 }
 ```
 
-The registry handles registration on add and unregistration on remove (including hot-reload). For standalone UI-less tools (no visual plugin), host them on a minimal `SwissKitJPlugin` whose `createView()` returns an empty pane — see `BrowserAutomatePlugin` as a template.
+The registry handles registration on add and unregistration on remove (including hot-reload). For standalone UI-less tools (no visual plugin), host them on a minimal `ZhiFlowPlugin` whose `createView()` returns an empty pane — see `BrowserAutomatePlugin` as a template.
 
 #### Cloud / local capability declaration
 
@@ -239,7 +239,7 @@ All user-visible strings must use `I18n.get("key")`. Never hardcode text in Java
 
 ## 5. Multi-step Wizard UI (Optional)
 
-For tools with a multi-step workflow, use `StepWizard` from `SwissKitJ-Api`:
+For tools with a multi-step workflow, use `StepWizard` from `ZhiFlow-Api`:
 
 ```java
 StepWizard wizard = new StepWizard();

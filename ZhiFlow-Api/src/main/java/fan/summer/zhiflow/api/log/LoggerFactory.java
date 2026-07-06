@@ -9,7 +9,7 @@ package fan.summer.zhiflow.api.log;
  *
  * <p>Typical usage from a plugin class:</p>
  * <pre>{@code
- * public class MyPlugin implements SwissKitJPlugin {
+ * public class MyPlugin implements ZhiFlowPlugin {
  *     private static final PluginLogger log = LoggerFactory.getLogger(MyPlugin.class);
  *
  *     @Override

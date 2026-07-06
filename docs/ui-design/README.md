@@ -1,6 +1,6 @@
-# SwissKitJ UI Design System
+# ZhiFlow UI Design System
 
-The SwissKitJ user interface is a faithful implementation of the **JetBrains IntelliJ IDEA
+The ZhiFlow user interface is a faithful implementation of the **JetBrains IntelliJ IDEA
 2025 "New UI"** visual language — neutral-gray surfaces, a single restrained accent, flat
 shapes, and motion that serves feedback rather than spectacle. This doc set is the complete,
 code-accurate reference for that system, written so that an AI (or a human who has never
@@ -8,13 +8,13 @@ seen the codebase) can generate UI that matches the v3.2.0 shell.
 
 It is **bilingual** (this English tree mirrors
 [`/zh/ui-design/`](/zh/ui-design/) exactly) and **code-anchored** — every class name, token
-value, and JavaFX signature cited is verifiable against the real SwissKitJ source.
+value, and JavaFX signature cited is verifiable against the real ZhiFlow source.
 
 ## The 8 documents
 
 | # | Document | What it's for | Read it if you… |
 |---|---|---|---|
-| **01** | [UI Design System](01-design-system.md) | Philosophy, layout primitives, typography/spacing/radius scales, how SwissKit extends IDEA New UI. | want the "why" — start here. |
+| **01** | [UI Design System](01-design-system.md) | Philosophy, layout primitives, typography/spacing/radius scales, how ZhiFlow extends IDEA New UI. | want the "why" — start here. |
 | **02** | [JavaFX Implementation](02-javafx-implementation.md) | The dev playbook: `SwissKitJPlugin` contract, CSS naming convention, plugin skeleton. | are about to code a plugin UI. |
 | **03** | [Component Library](03-component-library.md) | Per-component spec for every `.sk-*` foundation class and every shell component (nav-item, tool-card, …). | need a specific widget. |
 | **04** | [Interaction Guidelines](04-interaction-guidelines.md) | Navigation, discovery/launch, plugin lifecycle, four-state feedback, destructive-confirm flows. | are wiring user actions. |

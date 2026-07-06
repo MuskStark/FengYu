@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to SwissKitJ. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+All notable changes to ZhiFlow. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
@@ -19,7 +19,7 @@ This release rebuilds the AI subsystem on LangChain4j and unifies the two cloud 
 
 ### ♻️ Changed
 
-- **Unified `ChatBackend` interface** in `SwissKitJ-Api` — non-sealed (Java forbids cross-module sealed permits). Two known implementors: `CloudChatBackend`, `LocalChatBackend`. UI consumers use `instanceof` for backend-specific behavior.
+- **Unified `ChatBackend` interface** in `ZhiFlow-Api` — non-sealed (Java forbids cross-module sealed permits). Two known implementors: `CloudChatBackend`, `LocalChatBackend`. UI consumers use `instanceof` for backend-specific behavior.
 - **`CloudChatBackend` unifies OpenAI + Anthropic** in one class (~450 LOC). HTTP/SSE, tool-loop plumbing, and stream bridging entirely delegated to LangChain4j's `OpenAiStreamingChatModel` / `AnthropicStreamingChatModel`. Provider differences isolated to a `buildStreamingModel(...)` switch on an internal `Provider` enum.
 - `SynchronousChatHelper` (browser planner) rewritten to use LC4j's synchronous `OpenAiChatModel` directly via `CloudChatBackend` config accessors.
 - `AiServiceProvider` exposes `ChatBackend` everywhere. Method names unchanged.
@@ -113,7 +113,7 @@ This release rebuilds the AI subsystem on LangChain4j and unifies the two cloud 
 ### ♻️ Changes
 - Extract `StorePlugin` and `StorePluginLogic` from `OnlineStorePane` with unit tests
 - Add GPLv3 license file to the repository
-- Add JUnit 5 test dependency to `SwissKit` module
+- Add JUnit 5 test dependency to `ZhiFlow` module
 
 ---
 
@@ -176,10 +176,10 @@ This release rebuilds the AI subsystem on LangChain4j and unifies the two cloud 
 - **GlassNotification**: Glassmorphism-styled notification component replacing all `Alert` dialogs
 - **Application Icons**: Native-resolution application icons for macOS (.icns), Windows (.ico), and Linux (.png)
 - **Built-in Tools**: Base64 encoder/decoder, Hash Calculator, JSON Formatter, Color Converter, and Markdown Editor plugins registered as built-in tools
-- **I18n Framework**: Core `I18n` classes in SwissKitJ-Api with DB-persisted locale, plugin bundle registration/unregistration, and live language switching across all UI components (TitleBar, MainWindow, Sidebar, ContentArea, ToolCard, DetailPanel, Settings)
+- **I18n Framework**: Core `I18n` classes in ZhiFlow-Api with DB-persisted locale, plugin bundle registration/unregistration, and live language switching across all UI components (TitleBar, MainWindow, Sidebar, ContentArea, ToolCard, DetailPanel, Settings)
 - **Settings UI**: Redesigned settings with AI, Email, and Address Book tabs
 - **Three-Layer CSS**: `zhiflow-common.css` (shared variables and glass-* utilities), `shell.css` (app shell), and `builtin.css` (built-in tools) with scene-graph inheritance
-- **Type-Safe Enums**: `ToolCategory`, `ToolType`, and `IconStyle` enums in SwissKitJ-Api replacing String-based metadata
+- **Type-Safe Enums**: `ToolCategory`, `ToolType`, and `IconStyle` enums in ZhiFlow-Api replacing String-based metadata
 - **GGUFZ Support**: Accept `*.ggufz` compressed model files in the model file chooser
 - **Gson/JsonHelper**: `JsonHelper` utility (Gson-based) replaces `JsonBuilder`/`JsonParser`; `ToolCallParser` and all services use Gson
 - **Bilingual Docs**: English/Chinese documentation with docsify-flexible-i18n; complete English Javadoc on all public APIs
@@ -197,7 +197,7 @@ This release rebuilds the AI subsystem on LangChain4j and unifies the two cloud 
 - Fix VBox→HBox type mismatch in email tab field rows
 - Fix email editor — expand WebView height and allow rich-text paste from Word
 - Fix Settings UI not reflecting language change — rebuild on locale switch
-- Fix plugin storage path — moved to `.swisskit/plugin/` and fixed install-then-load failure
+- Fix plugin storage path — moved to `.zhiflow/plugin/` and fixed install-then-load failure
 - Fix Windows JAR discovery and release artifact path in CI
 - Fix cross-platform JavaFX native library bundling in fat JAR
 
@@ -220,7 +220,7 @@ This release rebuilds the AI subsystem on LangChain4j and unifies the two cloud 
 
 ### ✨ New Features
 
-- **I18n Framework**: Core `I18n` classes in SwissKitJ-Api with DB-persisted locale, plugin bundle registration/unregistration, and live language switching
+- **I18n Framework**: Core `I18n` classes in ZhiFlow-Api with DB-persisted locale, plugin bundle registration/unregistration, and live language switching
 
 ### ♻️ Changes
 
@@ -358,7 +358,7 @@ Initial stable release.
 
 ### v1.0.0-Alpha.5 — 2026-03-26
 
-- SwissKitJ-Api module, email sent log viewing
+- ZhiFlow-Api module, email sent log viewing
 
 ### v1.0.0-Alpha.4 — 2026-03-26
 

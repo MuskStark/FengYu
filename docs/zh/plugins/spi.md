@@ -2,7 +2,7 @@
 
 ## Java ServiceLoader 机制
 
-SwissKitJ 插件通过 Java SPI（Service Provider Interface）被发现和加载。宿主在启动时扫描所有 JAR 中的 `META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin` 文件，用 `ServiceLoader` 加载其中列出的插件类。
+ZhiFlow 插件通过 Java SPI（Service Provider Interface）被发现和加载。宿主在启动时扫描所有 JAR 中的 `META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin` 文件，用 `ServiceLoader` 加载其中列出的插件类。
 
 ## SPI 文件格式
 
@@ -11,7 +11,7 @@ SwissKitJ 插件通过 Java SPI（Service Provider Interface）被发现和加�
 文件内容：插件入口类的**完全限定名**（每行一个）
 
 ```
-fan.swisskitj.plugin.star.StarPlugin
+fan.zhiflowj.plugin.star.StarPlugin
 ```
 
 ## Shade 插件的 ServicesResourceTransformer

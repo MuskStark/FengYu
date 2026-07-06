@@ -14,7 +14,7 @@ import java.util.function.Consumer;
  * <p>This class lives in the API module and has no database dependency. The
  * host application is responsible for loading/persisting the user's choice
  * and calling {@link #set(Theme)}. Looked-up color tokens ({@code -sk-*}) are
- * defined per theme in {@code swisskit-common.css} under {@code .theme-dark}
+ * defined per theme in {@code zhiflow-common.css} under {@code .theme-dark}
  * and {@code .theme-light}; swapping the root class re-resolves every token.
  *
  * @since 3.2.0

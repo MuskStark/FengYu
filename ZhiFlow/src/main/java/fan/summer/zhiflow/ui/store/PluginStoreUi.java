@@ -1,6 +1,6 @@
 package fan.summer.zhiflow.ui.store;
 
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.i18n.I18n;
 import fan.summer.zhiflow.ui.sidebar.Sidebar.NavItem;
 import org.slf4j.Logger;
@@ -37,12 +37,12 @@ public class PluginStoreUi {
      *
      * @return the root Node of the plugin store UI
      */
-    public static Node build(ObservableList<SwissKitJPlugin> installed) {
+    public static Node build(ObservableList<ZhiFlowPlugin> installed) {
 
         // ── Content pages ──────────────────────────────────
         Map<String, String> installedVersions = new HashMap<>();
         if (installed != null) {
-            for (SwissKitJPlugin p : installed) {
+            for (ZhiFlowPlugin p : installed) {
                 installedVersions.put(p.getId(), p.getVersion());
             }
         }

@@ -4,9 +4,9 @@ import fan.summer.zhiflow.api.log.LoggerFactory;
 import fan.summer.zhiflow.api.log.PluginLogger;
 import fan.summer.zhiflow.database.DatabaseInit;
 import fan.summer.zhiflow.database.entity.email.EmailArchiveEntity;
-import fan.summer.zhiflow.database.entity.setting.email.SwissKitSettingEmailEntity;
+import fan.summer.zhiflow.database.entity.setting.email.ZhiFlowSettingEmailEntity;
 import fan.summer.zhiflow.database.mapper.email.EmailArchiveMapper;
-import fan.summer.zhiflow.database.mapper.setting.email.SwissKitSettingEmailMapper;
+import fan.summer.zhiflow.database.mapper.setting.email.ZhiFlowSettingEmailMapper;
 import jakarta.mail.*;
 import jakarta.mail.search.ComparisonTerm;
 import jakarta.mail.search.ReceivedDateTerm;
@@ -35,7 +35,7 @@ public class EmailArchiveService {
     public ArchiveResult archive(EmailArchiveConfig config, ProgressCallback cb) {
         ArchiveResult result = new ArchiveResult();
 
-        SwissKitSettingEmailEntity account = loadAccount(config.getAccountEmail());
+        ZhiFlowSettingEmailEntity account = loadAccount(config.getAccountEmail());
         if (account == null) {
             result.errorMessage = "No email account found: " + config.getAccountEmail();
             return result;
@@ -47,7 +47,7 @@ public class EmailArchiveService {
 
         Path outputDir = config.getOutputDir();
         if (outputDir == null) {
-            outputDir = Paths.get(".swisskit", "email-archive");
+            outputDir = Paths.get(".zhiflow", "email-archive");
         }
         try {
             Files.createDirectories(outputDir);
@@ -172,11 +172,11 @@ public class EmailArchiveService {
         }
     }
 
-    public SwissKitSettingEmailEntity loadAccount(String email) {
+    public ZhiFlowSettingEmailEntity loadAccount(String email) {
         try (SqlSession session = DatabaseInit.getSqlSession()) {
-            SwissKitSettingEmailMapper mapper =
-                    session.getMapper(SwissKitSettingEmailMapper.class);
-            SwissKitSettingEmailEntity config = mapper.selectLatest();
+            ZhiFlowSettingEmailMapper mapper =
+                    session.getMapper(ZhiFlowSettingEmailMapper.class);
+            ZhiFlowSettingEmailEntity config = mapper.selectLatest();
             if (config == null) return null;
             if (email != null && !email.equals(config.getEmail())) return null;
             return config;
@@ -186,7 +186,7 @@ public class EmailArchiveService {
         }
     }
 
-    private Session createImapSession(SwissKitSettingEmailEntity account) {
+    private Session createImapSession(ZhiFlowSettingEmailEntity account) {
         Properties props = new Properties();
         String host = account.getImapAddress();
         int port = account.getImapPort() != null ? account.getImapPort() : 993;

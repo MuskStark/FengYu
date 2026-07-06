@@ -3,7 +3,7 @@ package fan.summer.api.theme;
 import javafx.scene.Scene;
 
 /**
- * SwissKitJ theme stylesheet loading utility.
+ * ZhiFlow theme stylesheet loading utility.
  *
  * <p>Provides the common CSS stylesheet URL that defines the shared glassmorphism
  * utility classes (such as {@code .sk-dialog}, {@code .sk-field},
@@ -26,7 +26,7 @@ import javafx.scene.Scene;
 public final class Themes {
 
     /** Resource path of the shared common stylesheet within the API JAR. */
-    public static final String COMMON_CSS = "/css/swisskit-common.css";
+    public static final String COMMON_CSS = "/css/zhiflow-common.css";
 
     private Themes() {}
 

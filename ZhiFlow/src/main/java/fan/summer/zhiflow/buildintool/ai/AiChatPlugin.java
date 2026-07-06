@@ -1,7 +1,7 @@
 package fan.summer.zhiflow.buildintool.ai;
 
 import fan.summer.zhiflow.api.IconStyle;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.ToolCategory;
 import fan.summer.zhiflow.api.ToolType;
 import fan.summer.zhiflow.api.ai.*;
@@ -12,7 +12,7 @@ import fan.summer.zhiflow.api.theme.ThemeService;
 import fan.summer.zhiflow.ai.tools.SlashCommandHandler;
 import fan.summer.zhiflow.ai.tools.ToolExecutor;
 import fan.summer.zhiflow.ai.util.MarkdownRenderer;
-import fan.summer.zhiflow.ui.setting.SwissKitJSettingUi;
+import fan.summer.zhiflow.ui.setting.ZhiFlowSettingUi;
 import javafx.animation.Animation;
 import javafx.animation.FadeTransition;
 import javafx.application.Platform;
@@ -39,7 +39,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * Built-in AI chat plugin for SwissKitJ.
+ * Built-in AI chat plugin for ZhiFlow.
  *
  * <p>Provides a conversational interface backed by a language model via
  * {@link ChatBackend}. Supports file attachments, streaming token delivery,
@@ -58,7 +58,7 @@ import java.util.stream.Collectors;
  * @see AiToolCall
  */
 
-public class AiChatPlugin implements SwissKitJPlugin {
+public class AiChatPlugin implements ZhiFlowPlugin {
 
     private static final PluginLogger log = LoggerFactory.getLogger(AiChatPlugin.class);
 
@@ -80,7 +80,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
     @Override
     public void onActivate() {
         log.info("AI Chat plugin activated");
-        fan.summer.zhiflow.ui.setting.SwissKitJSettingUi.ensureLocalBackend();
+        fan.summer.zhiflow.ui.setting.ZhiFlowSettingUi.ensureLocalBackend();
     }
 
     @Override
@@ -376,9 +376,9 @@ public class AiChatPlugin implements SwissKitJPlugin {
             attachBtn.setDisable(true);
             statusLabel.setText(I18n.get("builtin.ai.generating"));
 
-            float temperature = SwissKitJSettingUi.getAiTemperature();
-            float topP = SwissKitJSettingUi.getAiTopP();
-            int maxTokens = SwissKitJSettingUi.getAiMaxTokens();
+            float temperature = ZhiFlowSettingUi.getAiTemperature();
+            float topP = ZhiFlowSettingUi.getAiTopP();
+            int maxTokens = ZhiFlowSettingUi.getAiMaxTokens();
 
             try {
                 aiService.chat(history, temperature, topP, maxTokens, new AiStreamCallback() {
@@ -517,9 +517,9 @@ public class AiChatPlugin implements SwissKitJPlugin {
             attachBtn.setDisable(true);
             statusLabel.setText(I18n.get("builtin.ai.generating"));
 
-            float temperature = SwissKitJSettingUi.getAiTemperature();
-            float topP = SwissKitJSettingUi.getAiTopP();
-            int maxTokens = SwissKitJSettingUi.getAiMaxTokens();
+            float temperature = ZhiFlowSettingUi.getAiTemperature();
+            float topP = ZhiFlowSettingUi.getAiTopP();
+            int maxTokens = ZhiFlowSettingUi.getAiMaxTokens();
 
             // Constrain the model to only see this one tool.
             // The constraint must stay active until the async generation completes,
@@ -728,7 +728,7 @@ public class AiChatPlugin implements SwissKitJPlugin {
         }
 
         private WebView addAssistantBubble() {
-            Label label = new Label("SwissKitJClaw");
+            Label label = new Label("ZhiFlowClaw");
             label.getStyleClass().add("ai-msg-label");
 
             WebView webView = new WebView();

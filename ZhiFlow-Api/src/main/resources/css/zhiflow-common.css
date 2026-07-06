@@ -1,6 +1,6 @@
 /* ================================================================
-   zhiflow-common.css — SwissKitJ 共性主题（API 模块）
-   主程序与第三方插件均可加载本文件以获得统一的玻璃风组件样式。
+   zhiflow-common.css — ZhiFlow 共性主题（API 模块）
+   主程序与第三方插件均可加载本文件以获得统一的组件样式。
    通过 fan.summer.api.theme.Themes.applyTo(scene) 一键应用。
 
    不包含 app-shell 专属样式（titlebar/sidebar/tool-card/detail-panel/statusbar），

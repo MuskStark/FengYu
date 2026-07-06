@@ -1,6 +1,6 @@
 package fan.summer.zhiflow.plugin;
 
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.ToolCategory;
 import fan.summer.zhiflow.api.ToolType;
 import fan.summer.zhiflow.api.ai.AiServiceProvider;
@@ -31,8 +31,8 @@ class PluginRegistryAiToolsTest {
         };
     }
 
-    private static SwissKitJPlugin plugin(String id, List<AiTool> tools) {
-        return new SwissKitJPlugin() {
+    private static ZhiFlowPlugin plugin(String id, List<AiTool> tools) {
+        return new ZhiFlowPlugin() {
             public String getId() { return id; }
             public String getName() { return id; }
             public String getDescription() { return ""; }
@@ -61,7 +61,7 @@ class PluginRegistryAiToolsTest {
 
     @Test
     void addPluginsRegistersAiTools() {
-        SwissKitJPlugin p = plugin("p1", List.of(tool("t1"), tool("t2")));
+        ZhiFlowPlugin p = plugin("p1", List.of(tool("t1"), tool("t2")));
         registry.addPlugins(List.of(p));
 
         assertNotNull(AiServiceProvider.getTool("t1"));
@@ -70,7 +70,7 @@ class PluginRegistryAiToolsTest {
 
     @Test
     void removePluginUnregistersAiTools() {
-        SwissKitJPlugin p = plugin("p1", List.of(tool("t1")));
+        ZhiFlowPlugin p = plugin("p1", List.of(tool("t1")));
         registry.addPlugins(List.of(p));
         assertNotNull(AiServiceProvider.getTool("t1"));
 
@@ -80,14 +80,14 @@ class PluginRegistryAiToolsTest {
 
     @Test
     void pluginWithEmptyAiToolsIsSafe() {
-        SwissKitJPlugin p = plugin("p1", List.of());
+        ZhiFlowPlugin p = plugin("p1", List.of());
         registry.addPlugins(List.of(p));
         assertTrue(AiServiceProvider.getTools().isEmpty());
     }
 
     @Test
     void pluginThrowingInAiToolsDoesNotCrash() {
-        SwissKitJPlugin bad = new SwissKitJPlugin() {
+        ZhiFlowPlugin bad = new ZhiFlowPlugin() {
             public String getId() { return "bad"; }
             public String getName() { return "bad"; }
             public String getDescription() { return ""; }
@@ -105,7 +105,7 @@ class PluginRegistryAiToolsTest {
 
     @Test
     void removeThenAddReRegistersTools() {
-        SwissKitJPlugin p = plugin("p1", List.of(tool("t1")));
+        ZhiFlowPlugin p = plugin("p1", List.of(tool("t1")));
         registry.addPlugins(List.of(p));
         assertNotNull(AiServiceProvider.getTool("t1"));
 
@@ -127,7 +127,7 @@ class PluginRegistryAiToolsTest {
             public List<AiToolParam> getParameters() { return List.of(); }
             public AiToolResult execute(Map<String, Object> args) { return AiToolResult.success("ok"); }
         };
-        SwissKitJPlugin p = plugin("p1", List.of(ok, bad));
+        ZhiFlowPlugin p = plugin("p1", List.of(ok, bad));
 
         assertDoesNotThrow(() -> registry.addPlugins(List.of(p)));
 

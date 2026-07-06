@@ -1,7 +1,7 @@
 {
-  "name": "swisskitj",
-  "owner": { "name": "SwissKitJ" },
+  "name": "zhiflowj",
+  "owner": { "name": "ZhiFlow" },
   "plugins": [
-    { "name": "swisskitj-plugin-kit", "source": "./.claude-plugin/plugin", "description": "Scaffold + validate SwissKitJ plugins." }
+    { "name": "zhiflowj-plugin-kit", "source": "./.claude-plugin/plugin", "description": "Scaffold + validate ZhiFlow plugins." }
   ]
 }

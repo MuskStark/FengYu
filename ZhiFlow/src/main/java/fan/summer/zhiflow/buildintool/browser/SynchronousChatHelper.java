@@ -89,7 +89,7 @@ public final class SynchronousChatHelper {
                 .timeout(TIMEOUT)
                 .build();
 
-            // Convert SwissKitJ history → LC4j ChatMessage list (no tool definitions
+            // Convert ZhiFlow history → LC4j ChatMessage list (no tool definitions
             // are attached to the ChatRequest, so the model returns plain text/JSON).
             List<ChatMessage> messages = new ArrayList<>(history.size());
             for (AiChatMessage msg : history) {

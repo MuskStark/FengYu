@@ -7,7 +7,7 @@
 ## 获取方式
 
 ```java
-public class MyPlugin implements SwissKitJPlugin {
+public class MyPlugin implements ZhiFlowPlugin {
 
     private PluginHost host;
 

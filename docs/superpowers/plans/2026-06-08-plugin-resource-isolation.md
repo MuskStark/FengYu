@@ -297,7 +297,7 @@ git commit -m "♻️ refactor: load plugins via ChildFirstResourceClassLoader"
 
 - [ ] **Step 1: 用自带根级 `mybatis-config.xml` 的插件验证**
 
-将一个自带根级 `mybatis-config.xml` 的插件 JAR 放入 `.swisskit/plugin/`，经 IDEA 运行配置启动
+将一个自带根级 `mybatis-config.xml` 的插件 JAR 放入 `.zhiflow/plugin/`，经 IDEA 运行配置启动
 `SwissKitJApp`（`mcp__idea__execute_run_configuration`）。
 Expected（日志）：插件 mapper 正常注册、插件自有表创建成功，不再出现 `Mapper NOT registered`。
 若手头没有这样的插件，可跳过——Task 1 的 JDK-only 验证已覆盖 loader 核心行为，Task 2 已确认接入点编译通过。

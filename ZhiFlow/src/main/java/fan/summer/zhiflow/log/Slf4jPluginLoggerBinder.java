@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentMap;
  * reference to the underlying SLF4J {@link Logger} for the corresponding name.</p>
  *
  * @since 1.0
- * @author SwissKitJ
+ * @author ZhiFlow
  * @see LoggerBinder
  * @see PluginLogger
  */

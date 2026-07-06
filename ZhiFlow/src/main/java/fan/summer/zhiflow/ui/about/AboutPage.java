@@ -13,20 +13,20 @@ import java.awt.Desktop;
 import java.net.URI;
 
 /**
- * Standard content-area "About SwissKitJ" page. Renders version, build time,
+ * Standard content-area "About ZhiFlow" page. Renders version, build time,
  * author, repository, documentation, and license as an inline section, so it
  * integrates with the regular content navigation (back bar) instead of opening
  * a separate modal {@code Stage}.
  *
  * <p>Built as a {@link Node} returned by {@link #build()} and displayed via
- * {@code ContentArea.showPage(...)}, mirroring {@code SwissKitJSettingUi.build()}.</p>
+ * {@code ContentArea.showPage(...)}, mirroring {@code ZhiFlowSettingUi.build()}.</p>
  *
  * @since 3.2.0
  */
 public final class AboutPage {
 
-    private static final String REPOSITORY = "https://github.com/MuskStark/SwissKitJ";
-    private static final String DOCUMENTATION = "https://muskstark.github.io/SwissKitJ/";
+    private static final String REPOSITORY = "https://github.com/MuskStark/ZhiFlow";
+    private static final String DOCUMENTATION = "https://muskstark.github.io/ZhiFlow/";
     private static final String AUTHOR = "MuskStark";
     private static final String LICENSE = "GNU GPL v3";
 

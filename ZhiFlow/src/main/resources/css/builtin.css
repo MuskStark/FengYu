@@ -1,5 +1,5 @@
 /* ================================================================
-   builtin.css — SwissKitJ 主程序内置工具专属样式
+   builtin.css — ZhiFlow 主程序内置工具专属样式
    仅在主 Scene 加载，供 buildintool/ 与 ui/setting/ 中的内置工具页面使用。
    插件代码请勿依赖这里的样式 class。
    全部颜色走 -sk-* token，深/浅主题自动适配。

@@ -1,7 +1,7 @@
 package fan.summer.zhiflow.buildintool.email;
 
 import fan.summer.zhiflow.api.IconStyle;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.ToolCategory;
 import fan.summer.zhiflow.api.ToolType;
 import fan.summer.zhiflow.api.i18n.I18n;
@@ -70,11 +70,11 @@ import java.util.UUID;
  * and mass configurations are persisted via {@link EmailMassSentConfigMapper}.
  *
  * @since 1.0.0
- * @see SwissKitJPlugin
+ * @see ZhiFlowPlugin
  * @see RichTextEditor
  * @see EmailSendService
  */
-public class EmailPlugin implements SwissKitJPlugin {
+public class EmailPlugin implements ZhiFlowPlugin {
 
     private static final Logger log = LoggerFactory.getLogger(EmailPlugin.class);
 

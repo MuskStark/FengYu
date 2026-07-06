@@ -6,7 +6,7 @@ package fan.summer.zhiflow.api;
  * <p>Each value carries a lowercase {@code id} (used for serialisation and legacy
  * compatibility) and an i18n key for localised display names shown in the UI.</p>
  *
- * @see SwissKitJPlugin#getCategory()
+ * @see ZhiFlowPlugin#getCategory()
  */
 public enum ToolCategory {
     /** Development tools such as code formatters, build helpers, and CLI utilities. */

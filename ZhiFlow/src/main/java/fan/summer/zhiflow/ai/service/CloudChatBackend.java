@@ -22,7 +22,7 @@ import fan.summer.zhiflow.api.ai.ChatBackend;
 import fan.summer.zhiflow.api.ai.AiStreamCallback;
 import fan.summer.zhiflow.api.ai.AiTool;
 import fan.summer.zhiflow.api.ai.AiToolCall;
-import fan.summer.zhiflow.ui.setting.SwissKitJSettingUi;
+import fan.summer.zhiflow.ui.setting.ZhiFlowSettingUi;
 import javafx.application.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -142,8 +142,8 @@ public final class CloudChatBackend implements ChatBackend {
 
     @Override
     public void chat(List<AiChatMessage> history, AiStreamCallback callback) throws AiServiceException {
-        chat(history, SwissKitJSettingUi.getAiTemperature(), SwissKitJSettingUi.getAiTopP(),
-             SwissKitJSettingUi.getAiMaxTokens(), callback);
+        chat(history, ZhiFlowSettingUi.getAiTemperature(), ZhiFlowSettingUi.getAiTopP(),
+             ZhiFlowSettingUi.getAiMaxTokens(), callback);
     }
 
     @Override
@@ -188,7 +188,7 @@ public final class CloudChatBackend implements ChatBackend {
      * appends a plain assistant message so subsequent multi-turn user messages retain
      * the prior assistant reply in context.</p>
      *
-     * <p>The system prompt from {@code SwissKitJSettingUi.getAiSystemPrompt()} is
+     * <p>The system prompt from {@code ZhiFlowSettingUi.getAiSystemPrompt()} is
      * injected as a leading {@link SystemMessage} on every round — LangChain4j's
      * Anthropic mapper routes this to the API's {@code system} field.</p>
      */
@@ -290,7 +290,7 @@ public final class CloudChatBackend implements ChatBackend {
 
     private static String currentSystemPrompt() {
         try {
-            return SwissKitJSettingUi.getAiSystemPrompt();
+            return ZhiFlowSettingUi.getAiSystemPrompt();
         } catch (Throwable t) {
             log.debug("Could not read system prompt from settings: {}", t.getMessage());
             return null;

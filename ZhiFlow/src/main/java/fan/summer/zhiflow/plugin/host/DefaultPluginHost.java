@@ -1,6 +1,6 @@
 package fan.summer.zhiflow.plugin.host;
 
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.host.BasePluginHost;
 import fan.summer.zhiflow.api.host.PluginSettings;
 
@@ -17,7 +17,7 @@ public class DefaultPluginHost extends BasePluginHost {
     /**
      * @param plugin the plugin this host serves
      */
-    public DefaultPluginHost(SwissKitJPlugin plugin) {
+    public DefaultPluginHost(ZhiFlowPlugin plugin) {
         super(plugin);
         this.settings = new H2PluginSettings(plugin.getId());
     }

@@ -1,7 +1,7 @@
 package fan.summer.api.preview;
 
 import fan.summer.api.MdiIconUtil;
-import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.ZhiFlowPlugin;
 import fan.summer.api.ToolCategory;
 import fan.summer.api.i18n.I18n;
 import javafx.animation.Interpolator;
@@ -42,8 +42,8 @@ class PreviewDetailPanel extends VBox {
     private final Label     typeKey    = new Label();
     private final Label     categoryKey = new Label();
 
-    private Consumer<SwissKitJPlugin> onLaunch;
-    private SwissKitJPlugin currentPlugin;
+    private Consumer<ZhiFlowPlugin> onLaunch;
+    private ZhiFlowPlugin currentPlugin;
     private boolean panelOpen;
 
     PreviewDetailPanel() {
@@ -57,11 +57,11 @@ class PreviewDetailPanel extends VBox {
         setVisible(false);
     }
 
-    void setOnLaunch(Consumer<SwissKitJPlugin> handler) {
+    void setOnLaunch(Consumer<ZhiFlowPlugin> handler) {
         this.onLaunch = handler;
     }
 
-    void show(SwissKitJPlugin plugin) {
+    void show(ZhiFlowPlugin plugin) {
         this.currentPlugin = plugin;
         fillData(plugin);
         if (!panelOpen) slideIn();
@@ -153,7 +153,7 @@ class PreviewDetailPanel extends VBox {
         }
     }
 
-    private void fillData(SwissKitJPlugin p) {
+    private void fillData(ZhiFlowPlugin p) {
         Color color = p.getIconStyle().getColor();
         String fillStyle = String.format("-fx-fill: rgba(%d,%d,%d,1.0);",
                 (int) (color.getRed() * 255),

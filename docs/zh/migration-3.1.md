@@ -1,6 +1,6 @@
-# 迁移到 SwissKitJ 3.1（ChatBackend）
+# 迁移到 ZhiFlow 3.1（ChatBackend）
 
-SwissKitJ 3.1 用统一的 `ChatBackend` 契约替换了 `AiService` 接口。这对直接调用
+ZhiFlow 3.1 用统一的 `ChatBackend` 契约替换了 `AiService` 接口。这对直接调用
 `AiServiceProvider.getService()` 或引用具体服务类的外部插件是**破坏性变更**。
 
 ## 受影响范围
@@ -70,8 +70,8 @@ CloudChatBackend svc = CloudChatBackend.openAi(endpoint, apiKey, model);
 
 ### 4. 更新 pom.xml
 
-**无需改动。** `SwissKitJ-Api` 3.1 仍然不依赖 LC4j —— 插件作者**不需要**
-往 pom 加 LC4j。`ChatBackend` 接口及其实现通过现有的 `SwissKitJ-Api`
+**无需改动。** `ZhiFlow-Api` 3.1 仍然不依赖 LC4j —— 插件作者**不需要**
+往 pom 加 LC4j。`ChatBackend` 接口及其实现通过现有的 `ZhiFlow-Api`
 依赖即可访问（接口在 API 模块，实现在宿主模块，运行时由 fat JAR 提供）。
 
 ### 5. 自定义后端
@@ -113,4 +113,4 @@ AiServiceProvider.switchMode("my-mode", myCustomBackend);
 ## 获取帮助
 
 如果遇到本指南未覆盖的问题，请到
-[github.com/MuskStark/SwissKitJ/discussions](https://github.com/MuskStark/SwissKitJ/discussions) 提交讨论。
+[github.com/MuskStark/ZhiFlow/discussions](https://github.com/MuskStark/ZhiFlow/discussions) 提交讨论。

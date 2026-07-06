@@ -62,7 +62,7 @@ public class EmailArchiveFetchTool implements AiTool {
             out.put("skippedDuplicates", result.skippedDuplicates);
             out.put("errors", result.errors);
             out.put("outputDir", config.getOutputDir() != null
-                    ? config.getOutputDir().toString() : ".swisskit/email-archive/");
+                    ? config.getOutputDir().toString() : ".zhiflow/email-archive/");
             if (result.errorMessage != null) out.put("error", result.errorMessage);
 
             log.info("email_archive_fetch: {} archived, {} skipped",

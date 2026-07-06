@@ -1,8 +1,8 @@
-# SwissKit
+# ZhiFlow
 
-![SwissKit](https://img.shields.io/badge/SwissKit-Desktop%20Toolbox-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue) ![Maven](https://img.shields.io/badge/Maven-3.6+-red) ![Version](https://img.shields.io/badge/version-3.2.0-blue)
+![ZhiFlow](https://img.shields.io/badge/ZhiFlow-Desktop%20Toolbox-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue) ![Maven](https://img.shields.io/badge/Maven-3.6+-red) ![Version](https://img.shields.io/badge/version-3.2.0-blue)
 
-**SwissKit** is a *modular desktop toolbox* built with JavaFX. It bundles a growing collection of
+**ZhiFlow** is a *modular desktop toolbox* built with JavaFX. It bundles a growing collection of
 utility tools — Excel splitting, PDF processing, email, an AI chat assistant, developer helpers,
 and more — into a single application with a modern glassmorphism UI and a plugin-based architecture.
 
@@ -24,17 +24,17 @@ The project uses standalone POMs (no parent inheritance), so the API module must
 
 ```bash
 # Clone the repository
-git clone https://github.com/MuskStark/SwissKitJ.git
-cd SwissKitJ
+git clone https://github.com/MuskStark/ZhiFlow.git
+cd ZhiFlow
 
 # 1. Install the API module into the local repo (required)
-mvn install -f SwissKitJ-Api/pom.xml -DskipTests
+mvn install -f ZhiFlow-Api/pom.xml -DskipTests
 
 # 2. Build the application
-mvn clean package -f SwissKit/pom.xml -DskipTests
+mvn clean package -f ZhiFlow/pom.xml -DskipTests
 
 # 3. Run
-java -jar SwissKit/target/SwissKitJ-3.2.0.jar
+java -jar ZhiFlow/target/ZhiFlow-3.2.0.jar
 ```
 
 ### Download a Prebuilt Release
@@ -48,11 +48,11 @@ Prebuilt packages are published with each release. Every platform ships **two** 
 
 | Platform | Files |
 |---|---|
-| Windows 10/11 (64-bit) | `SwissKitJ-3.2.0-windows-x64.zip`, `SwissKitJ-3.2.0-windows-x64-jre.zip` |
-| Linux x64 | `SwissKitJ-3.2.0-linux-x64.zip`, `SwissKitJ-3.2.0-linux-x64-jre.zip` |
-| macOS Apple Silicon (M-series) | `SwissKitJ-3.2.0-macos-arm64.zip`, `SwissKitJ-3.2.0-macos-arm64-jre.zip` |
+| Windows 10/11 (64-bit) | `ZhiFlow-3.2.0-windows-x64.zip`, `ZhiFlow-3.2.0-windows-x64-jre.zip` |
+| Linux x64 | `ZhiFlow-3.2.0-linux-x64.zip`, `ZhiFlow-3.2.0-linux-x64-jre.zip` |
+| macOS Apple Silicon (M-series) | `ZhiFlow-3.2.0-macos-arm64.zip`, `ZhiFlow-3.2.0-macos-arm64-jre.zip` |
 
-See the [Releases page](https://github.com/MuskStark/SwissKitJ/releases) for the latest builds.
+See the [Releases page](https://github.com/MuskStark/ZhiFlow/releases) for the latest builds.
 
 ---
 
@@ -71,7 +71,7 @@ See the [Releases page](https://github.com/MuskStark/SwissKitJ/releases) for the
 - **🔌 Plugin Store** — Browse and install plugins from an online store with one click, or install local JARs
 - **💾 Database Support** — H2 + MyBatis for persistent storage of settings, contacts, and history
 - **🌍 Internationalization** — i18n-backed UI labels and sidebar navigation
-- **🛠️ Easy Extension** — Add new tools by implementing the `SwissKitJPlugin` interface
+- **🛠️ Easy Extension** — Add new tools by implementing the `ZhiFlowPlugin` interface
 
 ### Built-in Tools
 
@@ -132,12 +132,12 @@ See the [Releases page](https://github.com/MuskStark/SwissKitJ/releases) for the
 
 ### Project Modules
 
-SwissKit uses a multi-module Maven structure with **standalone POMs** (no parent inheritance):
+ZhiFlow uses a multi-module Maven structure with **standalone POMs** (no parent inheritance):
 
 | Module | Purpose |
 |--------|---------|
-| `SwissKitJ-Api` | Shared plugin contract + reusable UI components (`SwissKitJPlugin`, `AiTool`, `StepWizard`, `ToolCategory`) |
-| `SwissKit` | Main JavaFX application — UI shell, plugin loading, built-in tools, AI layer, database |
+| `ZhiFlow-Api` | Shared plugin contract + reusable UI components (`ZhiFlowPlugin`, `AiTool`, `StepWizard`, `ToolCategory`) |
+| `ZhiFlow` | Main JavaFX application — UI shell, plugin loading, built-in tools, AI layer, database |
 
 ### UI Structure
 
@@ -154,10 +154,10 @@ The AI Chat assistant and installed-plugins list are pinned as dedicated sidebar
 
 ### Plugin System
 
-Plugins implement `fan.summer.api.SwissKitJPlugin` (from `SwissKitJ-Api`):
+Plugins implement `fan.summer.api.ZhiFlowPlugin` (from `ZhiFlow-Api`):
 
 ```java
-public interface SwissKitJPlugin {
+public interface ZhiFlowPlugin {
     // Metadata
     String getId();                  // reverse-domain ID, e.g. "com.example.my-tool"
     String getName();
@@ -182,7 +182,7 @@ public interface SwissKitJPlugin {
 }
 ```
 
-Register external plugins via `META-INF/services/fan.summer.api.SwissKitJPlugin`, package as a fat
+Register external plugins via `META-INF/services/fan.summer.api.ZhiFlowPlugin`, package as a fat
 JAR, then drop it into the host's `plugins/` directory (hot-reload supported) or install via the
 Plugin Store.
 
@@ -223,28 +223,28 @@ Color Converter, Markdown Editor, Email, Email Archive, PDF Tools, and Browser A
 
 ### Adding a Built-in Tool
 
-1. Create a class implementing `SwissKitJPlugin` under `SwissKit/src/main/java/fan/summer/buildintool/<your-tool>/`
+1. Create a class implementing `ZhiFlowPlugin` under `ZhiFlow/src/main/java/fan/summer/buildintool/<your-tool>/`
 2. Instantiate and add it inside `BuiltinToolRegistrar.register(...)`
 3. The tool appears in the sidebar under its `ToolCategory`
 
 ### Creating an External Plugin
 
-1. Create a Maven project with `SwissKitJ-Api` as a `provided` dependency
-2. Implement `SwissKitJPlugin` (optionally expose `AiTool`s)
-3. Register in `META-INF/services/fan.summer.api.SwissKitJPlugin`
+1. Create a Maven project with `ZhiFlow-Api` as a `provided` dependency
+2. Implement `ZhiFlowPlugin` (optionally expose `AiTool`s)
+3. Register in `META-INF/services/fan.summer.api.ZhiFlowPlugin`
 4. Package as a fat JAR and install via the Plugin Store or the Local Install tab
 
 ### Building
 
 ```bash
 # API module must be installed first
-mvn install -f SwissKitJ-Api/pom.xml -DskipTests
+mvn install -f ZhiFlow-Api/pom.xml -DskipTests
 
 # Build the app
-mvn clean package -f SwissKit/pom.xml -DskipTests
+mvn clean package -f ZhiFlow/pom.xml -DskipTests
 
 # Run
-java -jar SwissKit/target/SwissKitJ-3.2.0.jar
+java -jar ZhiFlow/target/ZhiFlow-3.2.0.jar
 ```
 
 ### Running with a Local Plugin Store
@@ -252,18 +252,18 @@ java -jar SwissKit/target/SwissKitJ-3.2.0.jar
 Override the store URL via system property:
 
 ```bash
-java -Dstore.url=http://localhost:8888/plugins/store.json -jar SwissKit/target/SwissKitJ-3.2.0.jar
+java -Dstore.url=http://localhost:8888/plugins/store.json -jar ZhiFlow/target/ZhiFlow-3.2.0.jar
 ```
 
 ---
 
 ## Database
 
-SwissKit uses an embedded H2 file-based database — no external server required.
+ZhiFlow uses an embedded H2 file-based database — no external server required.
 
 ### Location
 
-`.swisskit/swisskit.db` relative to the application runtime directory.
+`.zhiflow/zhiflow.db` relative to the application runtime directory.
 
 ### Key Entities
 
@@ -272,7 +272,7 @@ SwissKit uses an embedded H2 file-based database — no external server required
 | General | `AppSettingEntity` | General app settings (store URL, AI config, etc.) |
 | General | `MenuOrderEntity` | Sidebar / tool menu ordering |
 | General | `PluginFavoriteEntity` | Favorited plugins |
-| Email | `swiss_kit_setting_email` | SMTP configuration |
+| Email | `zhiflow_setting_email` | SMTP configuration |
 | Email | `email_address_book` | Contacts with nicknames and tags |
 | Email | `email_tag` | Tags for categorizing contacts |
 | Email | `email_mass_sent_config` | Mass email configuration |
@@ -327,7 +327,7 @@ GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
 - [CHANGELOG](CHANGELOG.md) — Release history
 - [AGENTS.md](AGENTS.md) — Technical documentation for AI assistants
-- Online docs: https://muskstark.github.io/SwissKitJ/
+- Online docs: https://muskstark.github.io/ZhiFlow/
 
 ---
 

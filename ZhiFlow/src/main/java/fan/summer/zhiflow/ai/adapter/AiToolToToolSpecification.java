@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Converts a SwissKitJ {@link AiTool} into a LangChain4j {@link ToolSpecification}
+ * Converts a ZhiFlow {@link AiTool} into a LangChain4j {@link ToolSpecification}
  * for use with cloud chat models.
  */
 public final class AiToolToToolSpecification {

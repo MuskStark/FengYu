@@ -1,7 +1,7 @@
 package fan.summer.zhiflow.buildintool.dev;
 
 import fan.summer.zhiflow.api.IconStyle;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.ToolCategory;
 import fan.summer.zhiflow.api.ToolType;
 import fan.summer.zhiflow.api.ai.AiTool;
@@ -27,9 +27,9 @@ import java.util.List;
  * <p>The pretty-print implementation performs its own minimal formatting
  * without external dependencies, handling braces, brackets, colons, and commas.
  *
- * @see SwissKitJPlugin
+ * @see ZhiFlowPlugin
  */
-public class JsonFormatterPlugin implements SwissKitJPlugin {
+public class JsonFormatterPlugin implements ZhiFlowPlugin {
 
     private static final PluginLogger log = LoggerFactory.getLogger(JsonFormatterPlugin.class);
 

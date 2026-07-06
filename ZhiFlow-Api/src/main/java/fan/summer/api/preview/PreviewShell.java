@@ -1,7 +1,7 @@
 package fan.summer.api.preview;
 
 import fan.summer.api.PluginContext;
-import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.ZhiFlowPlugin;
 import fan.summer.api.i18n.I18n;
 import javafx.application.Platform;
 import javafx.animation.FadeTransition;
@@ -30,10 +30,10 @@ import java.util.Set;
  */
 class PreviewShell extends BorderPane {
 
-    private final List<SwissKitJPlugin> plugins = new ArrayList<>();
-    private SwissKitJPlugin activePlugin;
-    private final Set<SwissKitJPlugin> backgroundPlugins = new LinkedHashSet<>();
-    private final Map<SwissKitJPlugin, Node> cachedViews = new LinkedHashMap<>();
+    private final List<ZhiFlowPlugin> plugins = new ArrayList<>();
+    private ZhiFlowPlugin activePlugin;
+    private final Set<ZhiFlowPlugin> backgroundPlugins = new LinkedHashSet<>();
+    private final Map<ZhiFlowPlugin, Node> cachedViews = new LinkedHashMap<>();
 
     private final PreviewDetailPanel detailPanel = new PreviewDetailPanel();
     private final FlowPane            toolGrid    = new FlowPane();
@@ -52,7 +52,7 @@ class PreviewShell extends BorderPane {
     private final boolean showDetailPanel;
     private final Runnable onClose;
 
-    PreviewShell(List<SwissKitJPlugin> plugins, String title,
+    PreviewShell(List<ZhiFlowPlugin> plugins, String title,
                  boolean showSidebar, boolean showSearchBar,
                  boolean showStatusBar, boolean showDetailPanel,
                  Runnable onClose) {
@@ -65,7 +65,7 @@ class PreviewShell extends BorderPane {
 
         getStyleClass().add("preview-root");
         // Surface colors/border/radius are defined entirely in .preview-root
-        // (swisskit-preview.css) via -sk-* tokens so the window re-resolves
+        // (zhiflow-preview.css) via -sk-* tokens so the window re-resolves
         // correctly on theme switch. No inline color overrides here.
 
         titleBar = new PreviewTitleBar(title);
@@ -108,12 +108,12 @@ class PreviewShell extends BorderPane {
         refreshToolGrid();
     }
 
-    boolean isBackground(SwissKitJPlugin plugin) {
+    boolean isBackground(ZhiFlowPlugin plugin) {
         return backgroundPlugins.contains(plugin);
     }
 
     void close() {
-        for (SwissKitJPlugin p : plugins) {
+        for (ZhiFlowPlugin p : plugins) {
             try {
                 if (p == activePlugin) PluginContext.runWith(p, p::onDeactivate);
                 PluginContext.runWith(p, p::onUnload);
@@ -263,13 +263,13 @@ class PreviewShell extends BorderPane {
         toolGrid.getChildren().clear();
         String query = searchField.getText().trim().toLowerCase();
 
-        List<SwissKitJPlugin> filtered = plugins.stream()
+        List<ZhiFlowPlugin> filtered = plugins.stream()
             .filter(p -> query.isEmpty()
                 || p.getName().toLowerCase().contains(query)
                 || p.getDescription().toLowerCase().contains(query))
             .toList();
 
-        for (SwissKitJPlugin p : filtered) {
+        for (ZhiFlowPlugin p : filtered) {
             PreviewToolCard card = new PreviewToolCard(p, this::onCardSelect, backgroundPlugins.contains(p));
             card.setPrefWidth(152);
             card.setPrefHeight(130);
@@ -284,7 +284,7 @@ class PreviewShell extends BorderPane {
         }
     }
 
-    private void onCardSelect(SwissKitJPlugin plugin) {
+    private void onCardSelect(ZhiFlowPlugin plugin) {
         if (showDetailPanel) {
             detailPanel.show(plugin);
         } else {
@@ -297,7 +297,7 @@ class PreviewShell extends BorderPane {
 
     // ── Page transitions ────────────────────────────────────────
 
-    private void showPluginView(SwissKitJPlugin plugin) {
+    private void showPluginView(ZhiFlowPlugin plugin) {
         detailPanel.hide();
 
         if (showSearchBar) {

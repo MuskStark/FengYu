@@ -8,7 +8,7 @@ import java.util.function.Consumer;
  * plugin's ClassLoader as the thread-context ClassLoader — plugin authors need
  * no ClassLoader awareness. Tasks submitted here automatically keep the plugin
  * alive in the background (the host merges {@link #runningCount()} with
- * {@code SwissKitJPlugin.hasRunningTasks()}).
+ * {@code ZhiFlowPlugin.hasRunningTasks()}).
  *
  * @since 3.2.0
  */

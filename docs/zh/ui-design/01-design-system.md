@@ -1,17 +1,17 @@
 # 01 · UI 设计系统
 
-> **定位：** 本文档是 SwissKitJ 用户界面的**根本大法**——每一屏、每个组件、每个插件
+> **定位：** 本文档是 ZhiFlow 用户界面的**根本大法**——每一屏、每个组件、每个插件
 > 都必须遵循的设计哲学与贯穿性原则。它**不复述**具体的颜色取值（那些在
 > [05 主题与色彩系统](05-theme-color-system.md)）或组件级 CSS（那些在
 > [03 组件库](03-component-library.md)）。它定义的是 UI *为什么* 是这个样子：布局原语、
-> 字号/间距/圆角刻度，以及 SwissKitJ 如何在其模仿的 JetBrains IDEA 2025 **New UI** 语言
+> 字号/间距/圆角刻度，以及 ZhiFlow 如何在其模仿的 JetBrains IDEA 2025 **New UI** 语言
 > 之上做扩展。
 
 | | |
 |---|---|
 | **文档类型** | 哲学 + 全局布局 + 刻度（顶层入口） |
 | **读者** | 任何接触 UI 的人——设计师、插件作者、AI 代码生成器 |
-| **窗口源码** | [`SwissKit/src/main/java/fan/summer/app/SwissKitJApp.java`](../../SwissKit/src/main/java/fan/summer/app/SwissKitJApp.java) · [`ui/MainWindow.java`](../../SwissKit/src/main/java/fan/summer/ui/MainWindow.java) |
+| **窗口源码** | [`ZhiFlow/src/main/java/fan/summer/app/ZhiFlowApp.java`](../../ZhiFlow/src/main/java/fan/summer/app/ZhiFlowApp.java) · [`ui/MainWindow.java`](../../ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java) |
 | **参考规范** | [`docs/superpowers/specs/2026-06-30-idea-new-ui-redesign-design.md`](../superpowers/specs/2026-06-30-idea-new-ui-redesign-design.md) |
 | **相关文档** | [02 JavaFX 实现](02-javafx-implementation.md) · [03 组件库](03-component-library.md) · [05 主题与色彩系统](05-theme-color-system.md) · [06 图标系统](06-icon-system.md) · [07 动效](07-animation-guidelines.md) |
 
@@ -37,7 +37,7 @@
 
 ## 1. 概览
 
-SwissKitJ 是一个基于 JavaFX 21 构建的**插件化桌面工具箱**。它的界面是对 **JetBrains
+ZhiFlow 是一个基于 JavaFX 21 构建的**插件化桌面工具箱**。它的界面是对 **JetBrains
 IntelliJ IDEA 2025 "New UI"** 视觉语言的刻意且忠实的实现：中性灰的表面、克制的单一强调
 色、扁平的形状，以及服务于反馈而非炫技的动效。
 
@@ -67,11 +67,11 @@ UI 文档集在设计上就避免重复。每一类事实只住在一个地方�
 
 ## 2. 设计原则
 
-四条不可妥协的原则。SwissKitJ 的每一个布局决策都源自其中之一。
+四条不可妥协的原则。ZhiFlow 的每一个布局决策都源自其中之一。
 
 ### P1 — 功能优先
 
-SwissKitJ 是一个**工具箱**，不是展示橱窗。UI 存在的目的是让用户到达某个工具并让它干活。
+ZhiFlow 是一个**工具箱**，不是展示橱窗。UI 存在的目的是让用户到达某个工具并让它干活。
 无助于理解或反馈的装饰没有位置。
 
 - **应该**以内容（工具网格）为先，保持外框极简，让最常见的动作（启动工具）一次点击即可。
@@ -94,7 +94,7 @@ New UI 的决定性特征是**克制**：到处是中性灰、扁平表面、以
 每一屏都必须在**两种**主题下都看起来是刻意的、并通过无障碍检验。没有"主"主题——深色和
 浅色都是一等公民。这在结构上被强制执行：颜色绝不被硬编码，只作为 `-sk-*` token 引用，
 因此
-[`ThemeService.set(Theme)`](../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java)
+[`ThemeService.set(Theme)`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java)
 能零闪烁切换主题。
 
 - **应该**用 `-sk-*` token 或 `.sk-t*`/`.sk-surface*` 工具类给每个节点上色，并在两种主题下
@@ -104,7 +104,7 @@ New UI 的决定性特征是**克制**：到处是中性灰、扁平表面、以
 
 ### P4 — 插件原生融合
 
-丢进 `.swisskit/plugin/` 的第三方插件，必须在视觉上与内置工具无法区分。同样的 `.sk-*`
+丢进 `.zhiflow/plugin/` 的第三方插件，必须在视觉上与内置工具无法区分。同样的 `.sk-*`
 基础组件、同样的 token、同样的字体和图标，都通过
 [`Themes.applyTo(scene)`](02-javafx-implementation.md) 提供给每个插件。不存在"插件长相"。
 
@@ -146,24 +146,24 @@ New UI 的决定性特征是**克制**：到处是中性灰、扁平表面、以
 ```
 
 **窗口事实**（已核对
-[`SwissKitJApp.java`](../../SwissKit/src/main/java/fan/summer/app/SwissKitJApp.java)）：
+[`ZhiFlowApp.java`](../../ZhiFlow/src/main/java/fan/summer/app/ZhiFlowApp.java)）：
 
 | 属性 | 值 | 出处 |
 |---|---|---|
-| 初始场景尺寸 | **960 × 620** | `SwissKitJApp.java:113` |
-| 最小窗口尺寸 | **800 × 520** | `SwissKitJApp.java:137–138` |
-| 窗口 chrome | **原生**（`StageStyle.DECORATED`） | `SwissKitJApp.java:133` |
-| 标题 | `SwissKitJ` | `SwissKitJApp.java:134` |
+| 初始场景尺寸 | **960 × 620** | `ZhiFlowApp.java:113` |
+| 最小窗口尺寸 | **800 × 520** | `ZhiFlowApp.java:137–138` |
+| 窗口 chrome | **原生**（`StageStyle.DECORATED`） | `ZhiFlowApp.java:133` |
+| 标题 | `ZhiFlow` | `ZhiFlowApp.java:134` |
 | 布局根 | `BorderPane`（top = 无，left = Sidebar，center = ContentArea，bottom = StatusBar） | `MainWindow.java` |
 
 **区域职责：**
 
 | 区域 | 组件 | 用途 | 源码 |
 |---|---|---|---|
-| 左 | [`Sidebar`](../../SwissKit/src/main/java/fan/summer/ui/sidebar/Sidebar.java) | 导航：分类 (DEV/TEXT/IMAGE/NET/OTHER)、AI、Plugins、Favorites、Settings；主题开关在底部。可收起（以 `sidebar.collapsed` 持久化）。 | `ui/sidebar/Sidebar.java` |
-| 中 | [`ContentArea`](../../SwissKit/src/main/java/fan/summer/ui/content/ContentArea.java) | 搜索栏 + 工具网格（`ToolCard` 的 FlowPane）+ 缓存的插件页。`showPage(node, title)` 用 220/180 ms 交叉淡入切换内容。 | `ui/content/ContentArea.java` |
-| 右（覆盖层） | [`DetailPanel`](../../SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java) | 为悬停/选中的工具滑入（300 ms）的启动面板——图标、名称、描述、启动按钮。 | `ui/content/DetailPanel.java` |
-| 底 | StatusBar（位于 [`MainWindow`](../../SwissKit/src/main/java/fan/summer/ui/MainWindow.java)） | 等宽时钟、脉动状态点（2500 ms）、状态文本。高 28 px。 | `ui/MainWindow.java` |
+| 左 | [`Sidebar`](../../ZhiFlow/src/main/java/fan/summer/ui/sidebar/Sidebar.java) | 导航：分类 (DEV/TEXT/IMAGE/NET/OTHER)、AI、Plugins、Favorites、Settings；主题开关在底部。可收起（以 `sidebar.collapsed` 持久化）。 | `ui/sidebar/Sidebar.java` |
+| 中 | [`ContentArea`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ContentArea.java) | 搜索栏 + 工具网格（`ToolCard` 的 FlowPane）+ 缓存的插件页。`showPage(node, title)` 用 220/180 ms 交叉淡入切换内容。 | `ui/content/ContentArea.java` |
+| 右（覆盖层） | [`DetailPanel`](../../ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java) | 为悬停/选中的工具滑入（300 ms）的启动面板——图标、名称、描述、启动按钮。 | `ui/content/DetailPanel.java` |
+| 底 | StatusBar（位于 [`MainWindow`](../../ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java)） | 等宽时钟、脉动状态点（2500 ms）、状态文本。高 28 px。 | `ui/MainWindow.java` |
 
 <span id="字体排印"></span>
 
@@ -179,7 +179,7 @@ New UI 的决定性特征是**克制**：到处是中性灰、扁平表面、以
 并优雅降级。**永远不要**设置不同的 `-fx-font-family`——正是这个字体栈让 UI 在每个 OS 上都
 有原生质感。
 
-**字号刻度。** SwissKitJ 采用一套围绕 **13 px 基准**的、适合 IDE 的紧凑刻度。应用里的每
+**字号刻度。** ZhiFlow 采用一套围绕 **13 px 基准**的、适合 IDE 的紧凑刻度。应用里的每
 个字号都映射到其中之一：
 
 | 字号 | 代号 | 用于 | 出处示例 |
@@ -220,7 +220,7 @@ New UI 的决定性特征是**克制**：到处是中性灰、扁平表面、以
 
 ### 3.4 圆角刻度
 
-SwissKitJ 使用一套小而一致的圆角集合（CSS `-fx-background-radius`）：
+ZhiFlow 使用一套小而一致的圆角集合（CSS `-fx-background-radius`）：
 
 | 圆角 | 用于 | 示例类 |
 |---|---|---|
@@ -236,7 +236,7 @@ SwissKitJ 使用一套小而一致的圆角集合（CSS `-fx-background-radius`�
 
 ### 3.5 投影与高度
 
-SwissKitJ **默认扁平**。投影是一种稀缺资源，专门留给真正*浮*在内容平面之上的表面——绝不
+ZhiFlow **默认扁平**。投影是一种稀缺资源，专门留给真正*浮*在内容平面之上的表面——绝不
 用来装饰扁平面板。
 
 | 表面 | 是否高架？ | 投影 |
@@ -274,7 +274,7 @@ SwissKitJ **默认扁平**。投影是一种稀缺资源，专门留给真正*�
 
 ## 4. 与 IDEA New UI 的差异
 
-SwissKitJ 采纳了 IDEA New UI 的*精神*（中性灰、克制强调色、扁平表面、手术刀式的选中指示
+ZhiFlow 采纳了 IDEA New UI 的*精神*（中性灰、克制强调色、扁平表面、手术刀式的选中指示
 器），但**不是**一个 IDE 的克隆——它是一个*工具箱*。下面的差异是刻意的，定义了产品的身份。
 
 ### 刻意保持一致
@@ -287,29 +287,29 @@ SwissKitJ 采纳了 IDEA New UI 的*精神*（中性灰、克制强调色、扁�
 | 扁平美学 | 无渐变、无毛玻璃、投影仅用于模态/toast |
 | 字体排印 | 小号、IDE 尺寸的无衬线字体，以颜色主导层级 |
 
-### SwissKit 特有的增项
+### ZhiFlow 特有的增项
 
 | 增项 | 存在原因 | 位置 |
 |---|---|---|
 | **工具卡片网格** | `ToolCard` 的 FlowPane（152 × 130 px）就是主屏——工具以卡片被视觉化发现，而非菜单树。IDEA 没有对应物；它的"卡片"是设置磁贴。 | `ContentArea`，见 [03 · Tool Card](03-component-library.md) |
-| **侧边栏分类区** | 按 `ToolCategory`（DEV / TEXT / IMAGE / NET / OTHER）+ AI、Plugins、Favorites、Settings 分组导航。反映 SwissKit 的插件分类法。 | `Sidebar.java` |
+| **侧边栏分类区** | 按 `ToolCategory`（DEV / TEXT / IMAGE / NET / OTHER）+ AI、Plugins、Favorites、Settings 分组导航。反映 ZhiFlow 的插件分类法。 | `Sidebar.java` |
 | **详情面板** | 一个右侧滑入（300 ms）的面板，预览悬停/选中的工具并提供启动按钮——是 IDEA "Search Everywhere"预览与详情抽屉的混合体。 | `DetailPanel.java` |
 | **工具卡片"运行中"脉动** | 当插有任务在跑时卡片脉动（2500 ms），让后台工作可见，无需单独的作业视图。 | `ToolCard.java:106`，见 [07](07-animation-guidelines.md) |
-| **通知系统** | `.sk-notif-*` toast（info/success/warning/error）用于工具反馈——IDEA 用它自己的通知 API；SwissKit 向插件暴露了一个带主题的对等物。 | 见 [03 · Notification](03-component-library.md) |
+| **通知系统** | `.sk-notif-*` toast（info/success/warning/error）用于工具反馈——IDEA 用它自己的通知 API；ZhiFlow 向插件暴露了一个带主题的对等物。 | 见 [03 · Notification](03-component-library.md) |
 
 ### 刻意从 IDEA 中去掉
 
 | 去掉项 | 原因 |
 |---|---|
-| 多分裂编辑器标签 | SwissKit 一次只显示一个工具（`showPage` 交叉淡入）。工具不是文档。 |
+| 多分裂编辑器标签 | ZhiFlow 一次只显示一个工具（`showPage` 交叉淡入）。工具不是文档。 |
 | 工具栏 / 工具窗口按钮 | 侧边栏 + 网格就够了；IDE 式工具栏只增外框不增值。 |
-| 重型模态工程结构 | SwissKit 是扁平的：启动工具，用它，离开。没有工程树。 |
+| 重型模态工程结构 | ZhiFlow 是扁平的：启动工具，用它，离开。没有工程树。 |
 
 ---
 
 ## 5. AI 开发清单
 
-为 SwissKitJ（宿主或插件）生成 UI 时，你**必须**：
+为 ZhiFlow（宿主或插件）生成 UI 时，你**必须**：
 
 - [ ] **遵循四条原则**——功能优先、克制强调色、主题对等、插件原生融合。如果某个拟议效果
       不服务于其中任何一条，砍掉它。
@@ -343,9 +343,9 @@ SwissKitJ 采纳了 IDEA New UI 的*精神*（中性灰、克制强调色、扁�
 ## 7. 参考
 
 **源码文件：**
-- [`SwissKit/src/main/java/fan/summer/app/SwissKitJApp.java`](../../SwissKit/src/main/java/fan/summer/app/SwissKitJApp.java) —— 窗口尺寸、`StageStyle.DECORATED`、标题
-- [`SwissKit/src/main/java/fan/summer/ui/MainWindow.java`](../../SwissKit/src/main/java/fan/summer/ui/MainWindow.java) —— 布局根、StatusBar
-- [`ui/sidebar/Sidebar.java`](../../SwissKit/src/main/java/fan/summer/ui/sidebar/Sidebar.java) · [`ui/content/ContentArea.java`](../../SwissKit/src/main/java/fan/summer/ui/content/ContentArea.java) · [`ui/content/DetailPanel.java`](../../SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java) · [`ui/content/ToolCard.java`](../../SwissKit/src/main/java/fan/summer/ui/content/ToolCard.java)
+- [`ZhiFlow/src/main/java/fan/summer/app/ZhiFlowApp.java`](../../ZhiFlow/src/main/java/fan/summer/app/ZhiFlowApp.java) —— 窗口尺寸、`StageStyle.DECORATED`、标题
+- [`ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java`](../../ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java) —— 布局根、StatusBar
+- [`ui/sidebar/Sidebar.java`](../../ZhiFlow/src/main/java/fan/summer/ui/sidebar/Sidebar.java) · [`ui/content/ContentArea.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ContentArea.java) · [`ui/content/DetailPanel.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java) · [`ui/content/ToolCard.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java)
 
 **规范与兄弟文档：**
 - [New UI 重设计规范](../superpowers/specs/2026-06-30-idea-new-ui-redesign-design.md) —— 权威设计源

@@ -7,7 +7,7 @@ package fan.summer.zhiflow.api;
  * and ship with the host application. External plugins are discovered at runtime
  * from JAR files dropped into the {@code plugins/} directory.</p>
  *
- * @see SwissKitJPlugin#getType()
+ * @see ZhiFlowPlugin#getType()
  */
 public enum ToolType {
     /** Tool that ships with the host application and is registered directly in the registry. */

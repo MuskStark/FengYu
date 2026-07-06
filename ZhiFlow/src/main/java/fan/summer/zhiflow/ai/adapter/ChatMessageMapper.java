@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Bidirectional mapper between SwissKitJ's {@link AiChatMessage} and LangChain4j's
+ * Bidirectional mapper between ZhiFlow's {@link AiChatMessage} and LangChain4j's
  * {@link ChatMessage} hierarchy.
  *
  * <p>Role mapping:
@@ -24,7 +24,7 @@ import java.util.Objects;
  * </ul>
  *
  * <p>Note on tool-call arguments: {@link AiToolCall#arguments()} is a
- * {@code Map<String,Object>} (SwissKitJ's internal representation), whereas
+ * {@code Map<String,Object>} (ZhiFlow's internal representation), whereas
  * LangChain4j's {@link ToolExecutionRequest#arguments()} is a JSON string. This
  * mapper serializes/deserializes via {@link JsonHelper} (Gson) on the boundary.
  */
@@ -32,7 +32,7 @@ public final class ChatMessageMapper {
 
     private ChatMessageMapper() {}
 
-    /** Converts a SwissKitJ message to its LangChain4j equivalent. */
+    /** Converts a ZhiFlow message to its LangChain4j equivalent. */
     public static ChatMessage toLc4j(AiChatMessage src) {
         String text = src.content() == null ? "" : src.content();
         return switch (src.role()) {
@@ -59,7 +59,7 @@ public final class ChatMessageMapper {
         };
     }
 
-    /** Converts a LangChain4j message back to a SwissKitJ message. */
+    /** Converts a LangChain4j message back to a ZhiFlow message. */
     public static AiChatMessage fromLc4j(ChatMessage src) {
         if (src instanceof SystemMessage sm) {
             return AiChatMessage.system(sm.text());

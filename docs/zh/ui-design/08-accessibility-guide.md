@@ -1,6 +1,6 @@
 # 08 · 无障碍指南
 
-> **定位：** 本文档是每个 SwissKitJ 组件和插件都必须通过的无障碍清单。它定义了对比度阈值、
+> **定位：** 本文档是每个 ZhiFlow 组件和插件都必须通过的无障碍清单。它定义了对比度阈值、
 > "不仅靠颜色"规则、键盘可操作性、焦点管理以及减弱动效策略。具体的对比度比值在
 > [05 的对比度矩阵](05-theme-color-system.md#contrast-matrix-wcag-aa)；本文档告诉你哪些颜色对
 > 安全可用，以及如何避免动效成为障碍。
@@ -9,7 +9,7 @@
 |---|---|
 | **文档类型** | 无障碍要求 + 清单 |
 | **读者** | 插件作者、AI 代码生成器——任何必须验证 UI 对所有人都可用的人 |
-| **Token** | [`zhiflow-common.css`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) |
+| **Token** | [`zhiflow-common.css`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css) |
 | **相关文档** | [05 主题与色彩系统](05-theme-color-system.md)（对比度矩阵） · [07 动效](07-animation-guidelines.md)（减弱动效） · [04 交互](04-interaction-guidelines.md)（键盘流程） |
 
 ---
@@ -32,7 +32,7 @@
 ## 1. 概览
 
 无障碍（"a11y"）确保 UI 对所有人可用——包括低视力、色盲、运动障碍或对动效敏感的人。在
-SwissKitJ，这不是可选的点缀：每个组件、每个插件都必须达到本页的要求。好消息是其中大部分
+ZhiFlow，这不是可选的点缀：每个组件、每个插件都必须达到本页的要求。好消息是其中大部分
 已经由遵循设计系统自然得到——基于 token 的颜色系统、可见的焦点环、键盘优先的交互模型已经
 干了大部分活。本文档命名剩余的不可妥协项。
 
@@ -45,7 +45,7 @@ SwissKitJ，这不是可选的点缀：每个组件、每个插件都必须达�
 
 无障碍建立在四大支柱上（WCAG 的 **POUR** 原则）。下面的每条规则都映射到其中之一。
 
-| 原则 | 含义 | 在 SwissKitJ |
+| 原则 | 含义 | 在 ZhiFlow |
 |---|---|---|
 | **可感知** (Perceivable) | 信息和 UI 组件必须以用户能感知的方式呈现。 | 足够对比度；状态不仅靠颜色；真实文本（非文字图片）。 |
 | **可操作** (Operable) | UI 组件和导航必须可操作。 | 每个操作键盘可达；焦点可见；Esc 可关闭；无陷阱。 |
@@ -106,7 +106,7 @@ WCAG 2.1 阈值，由精确 token 十六进制值计算：
 ### 3.3 "不仅靠颜色"规则
 
 状态、错误、状态必须由**多于颜色**的方式传达——色盲用户（或显示器差的用户）也必须能理解
-状态。SwissKitJ 用通知系统在结构上强制了这一点：
+状态。ZhiFlow 用通知系统在结构上强制了这一点：
 
 | 状态 | 颜色（必要但不充分） | + 图标 | + 文本/标签 |
 |---|---|---|---|
@@ -128,10 +128,10 @@ WCAG 2.1 阈值，由精确 token 十六进制值计算：
 
 ### 4.1 键盘可操作性 + 可见焦点
 
-每个可交互节点都必须键盘可达且可操作，并带可见焦点环。SwissKitJ 的焦点指示器是
+每个可交互节点都必须键盘可达且可操作，并带可见焦点环。ZhiFlow 的焦点指示器是
 `-sk-accent` 边框（如
-[`.sk-field:focused`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css)、
-[`.search-bar:focused-within`](../../SwissKit/src/main/resources/css/shell.css)）。
+[`.sk-field:focused`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css)、
+[`.search-bar:focused-within`](../../ZhiFlow/src/main/resources/css/shell.css)）。
 
 ```java
 // 让自定义控件可聚焦 + 可键盘激活
@@ -218,7 +218,7 @@ private void playEntry(Node node) {
 
 ## 5. AI 清单
 
-为 SwissKitJ（宿主或插件）构建 UI 时，你**必须**：
+为 ZhiFlow（宿主或插件）构建 UI 时，你**必须**：
 
 - [ ] **文字对比度 ≥ 4.5:1**——用[安全颜色对](#安全颜色对)；用任何其它组合前先算比值。
 - [ ] **状态绝不仅靠颜色**——颜色配图标和文本（`SkNotification.Type` 模式）。
@@ -249,9 +249,9 @@ private void playEntry(Node node) {
 
 ## 7. 参考
 
-- [`zhiflow-common.css`](../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) — token 定义、`.sk-field:focused`
-- [`shell.css`](../../SwissKit/src/main/resources/css/shell.css) — `.search-bar:focused-within`、焦点指示器
-- [`SkNotification.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java) — 颜色+图标+文本的状态模式
+- [`zhiflow-common.css`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css) — token 定义、`.sk-field:focused`
+- [`shell.css`](../../ZhiFlow/src/main/resources/css/shell.css) — `.search-bar:focused-within`、焦点指示器
+- [`SkNotification.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/component/SkNotification.java) — 颜色+图标+文本的状态模式
 - **兄弟文档：**
   - [05 主题与色彩系统](05-theme-color-system.md) — 本规则所依据的已核实
     [对比度矩阵](05-theme-color-system.md#contrast-matrix-wcag-aa)

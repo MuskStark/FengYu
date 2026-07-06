@@ -1,6 +1,6 @@
 # 02 · JavaFX 实现指南
 
-> **定位:** 本文是把 SwissKit UI 设计**转化为可运行 JavaFX 代码**的开发者 / AI 操作手册。
+> **定位:** 本文是把 ZhiFlow UI 设计**转化为可运行 JavaFX 代码**的开发者 / AI 操作手册。
 > 它定义了必须实现的插件契约、所有节点都遵守的 CSS 类名命名规范,以及可复制粘贴的插件骨架。
 > 后续文档(尤其是 [03 组件库](../ui-design/03-component-library.md))会回链本文的
 > [`#css-naming`](#css-naming) 命名规范与 [`#plugin-skeleton`](#plugin-skeleton) 模板。
@@ -8,8 +8,8 @@
 | | |
 |---|---|
 | **文档类型** | 插件契约 + 实现模式 |
-| **目标读者** | 插件作者、AI 代码生成器、任何构建 SwissKitJ 工具的人 |
-| **事实来源** | [`SwissKitJ-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) |
+| **目标读者** | 插件作者、AI 代码生成器、任何构建 ZhiFlow 工具的人 |
+| **事实来源** | [`ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) |
 | **配套插件指南** | [`docs/plugins/ui.md`](../plugins/ui.md)(双语,布局陷阱 + StepWizard) |
 | **相关** | [01 设计系统](01-design-system.md) · [05 主题与色彩系统](05-theme-color-system.md) · [06 图标系统](06-icon-system.md) |
 
@@ -24,7 +24,7 @@
 1. [概述](#1-概述)
 2. [设计原则](#2-设计原则)
 3. [规格表](#3-规格表)
-   - [3.1 `SwissKitJPlugin` 方法契约](#swisskitjplugin-方法契约)
+   - [3.1 `SwissKitJPlugin` 方法契约](#zhiflowjplugin-方法契约)
    - [3.2 CSS 类命名规范](#css-naming)
    - [3.3 布局容器选型指南](#布局容器选型指南)
 4. [JavaFX 实现模板](#4-javafx-实现模板)
@@ -41,15 +41,15 @@
 
 ## 1. 概述
 
-SwissKitJ 是一个 **JavaFX 21** 桌面工具箱。两个架构决策决定了本文的一切:
+ZhiFlow 是一个 **JavaFX 21** 桌面工具箱。两个架构决策决定了本文的一切:
 
 1. **UI 完全用 Java 代码构建——没有 FXML。** 每个界面都在 `createView()` 中由
    `javafx.scene.*` 节点拼装而成。没有 `.fxml` 文件、没有 `FXMLLoader`、没有控制器装配。
-   这让插件保持自包含、易于重构、依赖极轻(一个外部插件 JAR 的 classpath 只需 `SwissKitJ-Api`)。
+   这让插件保持自包含、易于重构、依赖极轻(一个外部插件 JAR 的 classpath 只需 `ZhiFlow-Api`)。
 
 2. **主题完全通过 CSS looked-up color 实现。** 没有任何节点内联设置颜色。双主题(深色/浅色)调色板
    是一组 14 个 `-sk-*` token,一次性声明在
-   [`zhiflow-common.css`](../../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) 中,
+   [`zhiflow-common.css`](../../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css) 中,
    通过切换 scene root 上的一个 class 来切换主题。Token 取值、对比度矩阵以及完整的主题生命周期见
    [05 主题与色彩系统](05-theme-color-system.md)——**本文不重复任何颜色取值。**
 
@@ -62,7 +62,7 @@ SwissKitJ 是一个 **JavaFX 21** 桌面工具箱。两个架构决策决定了�
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                       宿主应用 (SwissKit)                                │
+│                       宿主应用 (ZhiFlow)                                │
 │                                                                          │
 │   ┌─────────────┐   发现        ┌──────────────────────────────────────┐ │
 │   │  ServiceLoader│ ───────────► │  plugins/*.jar                       │ │
@@ -82,7 +82,7 @@ SwissKitJ 是一个 **JavaFX 21** 桌面工具箱。两个架构决策决定了�
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **契约** —— `SwissKitJPlugin`(16 个方法;[§3.1](#swisskitjplugin-方法契约))。
+- **契约** —— `SwissKitJPlugin`(16 个方法;[§3.1](#zhiflowjplugin-方法契约))。
 - **宿主** —— 调用元数据方法构建侧边栏/搜索;调用一次 `createView()` 并缓存返回的 `Node`,
   把它嵌入内容 `StackPane`。
 - **样式表** —— `zhiflow-common.css`,由宿主加载到主 scene。你嵌入的视图自动继承;独立窗口必须
@@ -144,10 +144,10 @@ v3.2.0 的 `.glass-*`→`.sk-*` 迁移以及状态修饰符规范见 [§3.2](#cs
 ## 3. 规格表
 
 ### 3.1 `SwissKitJPlugin` 方法契约
-<span id="swisskitjplugin-方法契约"></span>
+<span id="zhiflowjplugin-方法契约"></span>
 
 该接口声明 **16 个方法**:**7 个必需**(无默认),**9 个有合理默认值**。下表的每个签名都从
-[`SwissKitJPlugin.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java)
+[`SwissKitJPlugin.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java)
 **逐字**复制——按原样复制;不要改写返回类型或增删参数。
 
 #### 必需方法(必须实现——无默认值)
@@ -189,9 +189,9 @@ IconStyle     = BLUE | PURPLE | TEAL | AMBER | RED | PINK | GRAY
                 每个映射到一个 CSS 类(ic-blue … ic-gray)+ 强调色 Color
 ```
 
-- `ToolCategory` —— [`ToolCategory.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/ToolCategory.java)
-- `ToolType` —— [`ToolType.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/ToolType.java)
-- `IconStyle` —— [`IconStyle.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/IconStyle.java)
+- `ToolCategory` —— [`ToolCategory.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/ToolCategory.java)
+- `ToolType` —— [`ToolType.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/ToolType.java)
+- `IconStyle` —— [`IconStyle.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java)
   (图标底色样式定义在 `shell.css`;见 [06 图标系统](06-icon-system.md))。
 
 ---
@@ -199,7 +199,7 @@ IconStyle     = BLUE | PURPLE | TEAL | AMBER | RED | PINK | GRAY
 ### CSS 类命名规范
 <span id="css-naming"></span>
 
-SwissKit 场景图中的每个节点都带有零个或多个样式类,这些类来自三个命名空间。知道一个类属于哪个
+ZhiFlow 场景图中的每个节点都带有零个或多个样式类,这些类来自三个命名空间。知道一个类属于哪个
 命名空间,就知道它的所有者是谁、插件能否安全使用。
 
 #### 三个命名空间
@@ -211,7 +211,7 @@ SwissKit 场景图中的每个节点都带有零个或多个样式类,这些类�
 | **状态修饰符** | `is-*` / 状态 | 组件类经 `:hover`/`:focused` 或显式切换 | `.sk-notif-success`、`.sk-notif-warning`、`.sk-notif-danger` | ✅ 可以,用于语义状态 |
 
 > **BEM-lite。** `.sk-` 命名空间遵循扁平、连词符分隔的 "BEM-lite" 方案:
-> `sk-` + `block` + 可选的 `__element` 或 `-modifier`。实际中 SwissKit 保持扁平
+> `sk-` + `block` + 可选的 `__element` 或 `-modifier`。实际中 ZhiFlow 保持扁平
 > (`.sk-btn-primary`、`.sk-field-label`),而非完整的 `block__elem--mod` 记法。经验法则:
 > **一个概念、一个类、`sk-` 前缀、连词符分词。**
 
@@ -284,7 +284,7 @@ notif.getStyleClass().addAll("sk-notif", "sk-notif-danger");    // 红
 ### 布局容器选型指南
 <span id="布局容器选型指南"></span>
 
-SwissKitJ 用标准 JavaFX pane 拼装布局。选择与你所需空间关系匹配的容器;选错容器是缩放崩坏的
+ZhiFlow 用标准 JavaFX pane 拼装布局。选择与你所需空间关系匹配的容器;选错容器是缩放崩坏的
 头号原因(见 [§4.5 三大布局陷阱](#45-三大布局陷阱))。
 
 | 容器 | 用于 | 关键 API | 坑 |
@@ -363,7 +363,7 @@ import javafx.scene.layout.VBox;
 import java.util.List;
 
 /**
- * {{Name}} — a SwissKitJ plugin.
+ * {{Name}} — a ZhiFlow plugin.
  *
  * <p>Implements {@link SwissKitJPlugin} directly: one class holds both the metadata
  * (id/name/category/icon) and the view ({@link #createView()}). The host calls
@@ -501,7 +501,7 @@ Text icon = MdiIconUtil.createIcon("file-excel", 24.0);
 
 完整的图标/底色系统(分类色、`IconStyle`→`ic-*` 映射、尺寸)见 [06 图标系统](06-icon-system.md)。
 
-源码:[`MdiIconUtil.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/MdiIconUtil.java)。
+源码:[`MdiIconUtil.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java)。
 
 ---
 
@@ -558,14 +558,14 @@ private void showAlert(Alert.AlertType type, String message) {
 | 信任 `createView()` 节点的自动继承 | 手动把 `zhiflow-common.css` 加到 `getStylesheets()` |
 | 信任 `Themes.applyTo` 幂等(已应用则空操作) | 自己重新添加样式表 URL |
 
-源码:[`Themes.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java) ·
-[`ThemeService.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java)。
+源码:[`Themes.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/Themes.java) ·
+[`ThemeService.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java)。
 
 ---
 
 ### 4.4 国际化(i18n)模式
 
-每条用户可见字符串都流经 [`fan.summer.zhiflow.api.i18n.I18n`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/i18n/I18n.java)。
+每条用户可见字符串都流经 [`fan.summer.zhiflow.api.i18n.I18n`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/i18n/I18n.java)。
 有三种模式——按文本*何时*产生来选择。(镜像 [`docs/plugins/ui.md`](../plugins/ui.md)。)
 
 | 模式 | 何时用 | 示例 |
@@ -607,7 +607,7 @@ sp.setMaxWidth(Double.MAX_VALUE);    // ← 必需,否则不填满
 sp.setMaxHeight(Double.MAX_VALUE);
 ```
 
-加 `.content-scroll` 类以获得 SwissKit 的细滚动条样式。
+加 `.content-scroll` 类以获得 ZhiFlow 的细滚动条样式。
 
 #### 陷阱 2 —— 填满 HBox/VBox 的剩余空间
 
@@ -640,7 +640,7 @@ for (int j = 0; j < pages.length; j++) {
 
 ## 5. AI 开发检查清单
 
-生成 SwissKitJ 插件时你**必须**满足以下全部项。每项都是硬门槛。
+生成 ZhiFlow 插件时你**必须**满足以下全部项。每项都是硬门槛。
 
 - [ ] **直接实现 `SwissKitJPlugin`——不是包装。** 一个类同时持有元数据 + 视图。不要创建单独的
       `*PluginUi` 类(全部 11 个内置都直接实现接口)。
@@ -689,7 +689,7 @@ public class {{Name}}PluginUi { Node getView() { … } }
 
 全部 11 个内置工具都**直接**在一个类里实现 `SwissKitJPlugin`——元数据 + 视图在一起。包装层增加了
 间接、文件数翻倍,破坏了 "grep 一个类看全部" 的预期。(`docs/plugins/ui.md` 中那个独立的
-`*PluginUi` 示例演示的是一种视图构建器模式;在 SwissKitJ 自身代码库里,视图直接在 `createView()`
+`*PluginUi` 示例演示的是一种视图构建器模式;在 ZhiFlow 自身代码库里,视图直接在 `createView()`
 中构建。)
 
 ```java
@@ -823,15 +823,15 @@ btn.getStyleClass().add("sk-btn-primary");
 
 | 内容 | 路径 |
 |---|---|
-| 插件契约(16 个方法) | [`SwissKitJ-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) |
-| 图标样式(`BLUE`…`GRAY`、CSS 类、颜色) | [`SwissKitJ-Api/src/main/java/fan/summer/api/IconStyle.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/IconStyle.java) |
-| 工具分类(`DEV`…`OTHER`) | [`SwissKitJ-Api/src/main/java/fan/summer/api/ToolCategory.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/ToolCategory.java) |
-| 工具类型(`BUILTIN`/`PLUGIN`) | [`SwissKitJ-Api/src/main/java/fan/summer/api/ToolType.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/ToolType.java) |
-| MDI 图标渲染器(`createIcon`、`putIcon`) | [`SwissKitJ-Api/src/main/java/fan/summer/api/MdiIconUtil.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/MdiIconUtil.java) |
-| 面向插件的主题助手(`applyTo`、`COMMON_CSS`) | [`SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/Themes.java) |
-| 主题引擎(`registerScene`、`set`、`onChange`) | [`SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/theme/ThemeService.java) |
-| 共享组件 + token CSS | [`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`](../../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) |
-| 参考内置(单类模式) | [`SwissKit/src/main/java/fan/summer/buildintool/dev/JsonFormatterPlugin.java`](../../../SwissKit/src/main/java/fan/summer/buildintool/dev/JsonFormatterPlugin.java) |
+| 插件契约(16 个方法) | [`ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) |
+| 图标样式(`BLUE`…`GRAY`、CSS 类、颜色) | [`ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java) |
+| 工具分类(`DEV`…`OTHER`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/ToolCategory.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/ToolCategory.java) |
+| 工具类型(`BUILTIN`/`PLUGIN`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/ToolType.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/ToolType.java) |
+| MDI 图标渲染器(`createIcon`、`putIcon`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java) |
+| 面向插件的主题助手(`applyTo`、`COMMON_CSS`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/theme/Themes.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/Themes.java) |
+| 主题引擎(`registerScene`、`set`、`onChange`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java) |
+| 共享组件 + token CSS | [`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`](../../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css) |
+| 参考内置(单类模式) | [`ZhiFlow/src/main/java/fan/summer/buildintool/dev/JsonFormatterPlugin.java`](../../../ZhiFlow/src/main/java/fan/summer/buildintool/dev/JsonFormatterPlugin.java) |
 
 ### 设计基线
 

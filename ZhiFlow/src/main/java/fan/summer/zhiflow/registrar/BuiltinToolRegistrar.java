@@ -1,6 +1,6 @@
 package fan.summer.zhiflow.registrar;
 
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.buildintool.ai.AiChatPlugin;
 import fan.summer.zhiflow.buildintool.browser.BrowserAutomatePlugin;
 import fan.summer.zhiflow.buildintool.dev.Base64Plugin;
@@ -30,13 +30,13 @@ import java.util.List;
  * {@link PluginLoader#start()} is called.</p>
  *
  * <p>Built-in tools do not use the Java ServiceLoader mechanism; they implement
- * {@link SwissKitJPlugin} and are registered programmatically via
+ * {@link ZhiFlowPlugin} and are registered programmatically via
  * {@link #register(PluginLoader, PluginRegistry)}. This allows them to be activated
  * and deactivated through the same {@link PluginRegistry} API as external plugins.</p>
  *
  * @see PluginRegistry
  * @see PluginLoader
- * @see SwissKitJPlugin
+ * @see ZhiFlowPlugin
  * @since 1.0
  */
 public class BuiltinToolRegistrar {
@@ -62,7 +62,7 @@ public class BuiltinToolRegistrar {
      * @since 1.0
      */
     public static void register(PluginLoader loader, PluginRegistry registry) {
-        List<SwissKitJPlugin> builtins = List.of(
+        List<ZhiFlowPlugin> builtins = List.of(
             new AiChatPlugin(),
             new JsonFormatterPlugin(),
             new Base64Plugin(),
@@ -76,7 +76,7 @@ public class BuiltinToolRegistrar {
             new BrowserAutomatePlugin()
         );
         registry.addPlugins(builtins);
-        for (SwissKitJPlugin p : builtins) {
+        for (ZhiFlowPlugin p : builtins) {
             log.debug("Registered built-in tool: id={}, name={}, version={}",
                     p.getId(), p.getName(), p.getVersion());
         }

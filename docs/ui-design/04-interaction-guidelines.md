@@ -1,6 +1,6 @@
 # 04 · Interaction Guidelines
 
-> **Role:** This is the spec for **how users navigate, discover, and act** in SwissKitJ — the
+> **Role:** This is the spec for **how users navigate, discover, and act** in ZhiFlow — the
 > interaction flows, not the components. It tells you what happens when a user clicks a nav
 > item, hovers a card, launches a tool, uninstalls a plugin, or hits a destructive action.
 > Components live in [03](03-component-library.md); the animations these flows trigger live in
@@ -11,8 +11,8 @@
 |---|---|
 | **Doc type** | Interaction flows + event-wiring patterns |
 | **Audience** | Plugin authors, AI code generators, anyone wiring up user actions |
-| **Source files** | [`ui/MainWindow.java`](../../SwissKit/src/main/java/fan/summer/ui/MainWindow.java) · [`ui/sidebar/Sidebar.java`](../../SwissKit/src/main/java/fan/summer/ui/sidebar/Sidebar.java) · [`ui/content/ContentArea.java`](../../SwissKit/src/main/java/fan/summer/ui/content/ContentArea.java) · [`ui/content/ToolCard.java`](../../SwissKit/src/main/java/fan/summer/ui/content/ToolCard.java) · [`ui/content/DetailPanel.java`](../../SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java) · [`ui/store/PluginStoreUi.java`](../../SwissKit/src/main/java/fan/summer/ui/store/PluginStoreUi.java) |
-| **Notification API** | [`SkNotification`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java) (`.sk-notif-*`) |
+| **Source files** | [`ui/MainWindow.java`](../../ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java) · [`ui/sidebar/Sidebar.java`](../../ZhiFlow/src/main/java/fan/summer/ui/sidebar/Sidebar.java) · [`ui/content/ContentArea.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ContentArea.java) · [`ui/content/ToolCard.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java) · [`ui/content/DetailPanel.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java) · [`ui/store/PluginStoreUi.java`](../../ZhiFlow/src/main/java/fan/summer/ui/store/PluginStoreUi.java) |
+| **Notification API** | [`SkNotification`](../../ZhiFlow-Api/src/main/java/fan/summer/api/component/SkNotification.java) (`.sk-notif-*`) |
 | **Related** | [03 Component Library](03-component-library.md) · [06 Icon System](06-icon-system.md) · [07 Animation](07-animation-guidelines.md) · [08 Accessibility](08-accessibility-guide.md) |
 
 ---
@@ -39,12 +39,12 @@
 
 ## 1. Overview
 
-SwissKitJ is a **toolbox**: the user opens it, finds a tool, uses it, and leaves. Every
+ZhiFlow is a **toolbox**: the user opens it, finds a tool, uses it, and leaves. Every
 interaction in the shell exists to make that loop fast and forgiving. This document catalogs
 the real flows implemented in the host (verified against source) and the event-wiring
 patterns a plugin author reuses to fit in natively.
 
-Three things make the SwissKitJ interaction model what it is:
+Three things make the ZhiFlow interaction model what it is:
 
 1. **Discoverability by default** — the home screen *is* a searchable grid of tool cards.
    The user never needs to know a tool's name to find it.
@@ -145,7 +145,7 @@ called again. The cache is evicted on back **only if** the plugin reports
 ### 3.3 Plugin Lifecycle
 
 Plugins move through `activate → (foreground/background) → deactivate`, plus `uninstall`. The
-host wires this in [`MainWindow`](../../SwissKit/src/main/java/fan/summer/ui/MainWindow.java):
+host wires this in [`MainWindow`](../../ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java):
 
 | Transition | Trigger | Effect | Source |
 |---|---|---|---|
@@ -165,7 +165,7 @@ host wires this in [`MainWindow`](../../SwissKit/src/main/java/fan/summer/ui/Mai
 ### 3.4 Plugin Store
 
 Installing a plugin is a foreground async task with visible progress, handled by
-[`PluginStoreUi`](../../SwissKit/src/main/java/fan/summer/ui/store/PluginStoreUi.java)
+[`PluginStoreUi`](../../ZhiFlow/src/main/java/fan/summer/ui/store/PluginStoreUi.java)
 (online pane) and `LocalInstallPane` (local JAR install):
 
 | Step | Effect |
@@ -179,7 +179,7 @@ Installing a plugin is a foreground async task with visible progress, handled by
 
 ### 3.5 Forms & Validation
 
-SwissKitJ forms (built from `.sk-field` / `.sk-combo` / `.sk-checkbox`) follow conservative
+ZhiFlow forms (built from `.sk-field` / `.sk-combo` / `.sk-checkbox`) follow conservative
 validation timing:
 
 | Aspect | Rule |
@@ -316,7 +316,7 @@ SkNotification.toast(view, SkNotification.Type.SUCCESS, I18n.get("msg.saved"));
 SkNotification.notify(view, SkNotification.Type.WARNING, I18n.get("setting.urlEmpty"));
 ```
 
-> **Notification API** ([`SkNotification`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java)):
+> **Notification API** ([`SkNotification`](../../ZhiFlow-Api/src/main/java/fan/summer/api/component/SkNotification.java)):
 > `toast(owner, type, message)`, `notify(owner, type, [title,] message)`,
 > `confirm(owner, title, message) → boolean`. `Type` ∈ `INFO/SUCCESS/WARNING/ERROR` maps to
 > `.sk-notif-info/-success/-warning/-error`.
@@ -325,7 +325,7 @@ SkNotification.notify(view, SkNotification.Type.WARNING, I18n.get("setting.urlEm
 
 ## 5. AI Checklist
 
-When wiring interactions in SwissKitJ (host or plugin), you **MUST**:
+When wiring interactions in ZhiFlow (host or plugin), you **MUST**:
 
 - [ ] **Cache the view** — `createView()` once; reuse the `Node`. Never rebuild on every
       activation.
@@ -358,13 +358,13 @@ When wiring interactions in SwissKitJ (host or plugin), you **MUST**:
 ## 7. References
 
 **Source files:**
-- [`ui/MainWindow.java`](../../SwissKit/src/main/java/fan/summer/ui/MainWindow.java) — launch/back/uninstall wiring, view cache
-- [`ui/sidebar/Sidebar.java`](../../SwissKit/src/main/java/fan/summer/ui/sidebar/Sidebar.java) — category select, `sidebar.collapsed` persistence
-- [`ui/content/ContentArea.java`](../../SwissKit/src/main/java/fan/summer/ui/content/ContentArea.java) — search, `showPage`/`crossFadeTo`, grid filter
-- [`ui/content/ToolCard.java`](../../SwissKit/src/main/java/fan/summer/ui/content/ToolCard.java) — `onSelect` callback, running pulse
-- [`ui/content/DetailPanel.java`](../../SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java) — slide-in, `showUninstallConfirm`
-- [`ui/store/PluginStoreUi.java`](../../SwissKit/src/main/java/fan/summer/ui/store/PluginStoreUi.java) · [`ui/setting/SwissKitJSettingUi.java`](../../SwissKit/src/main/java/fan/summer/ui/setting/SwissKitJSettingUi.java)
-- [`SkNotification.java`](../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java) — toast/notify/confirm API
+- [`ui/MainWindow.java`](../../ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java) — launch/back/uninstall wiring, view cache
+- [`ui/sidebar/Sidebar.java`](../../ZhiFlow/src/main/java/fan/summer/ui/sidebar/Sidebar.java) — category select, `sidebar.collapsed` persistence
+- [`ui/content/ContentArea.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ContentArea.java) — search, `showPage`/`crossFadeTo`, grid filter
+- [`ui/content/ToolCard.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java) — `onSelect` callback, running pulse
+- [`ui/content/DetailPanel.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java) — slide-in, `showUninstallConfirm`
+- [`ui/store/PluginStoreUi.java`](../../ZhiFlow/src/main/java/fan/summer/ui/store/PluginStoreUi.java) · [`ui/setting/ZhiFlowSettingUi.java`](../../ZhiFlow/src/main/java/fan/summer/ui/setting/ZhiFlowSettingUi.java)
+- [`SkNotification.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/component/SkNotification.java) — toast/notify/confirm API
 
 **Sibling docs:**
 - [03 Component Library](03-component-library.md) — the components these flows use

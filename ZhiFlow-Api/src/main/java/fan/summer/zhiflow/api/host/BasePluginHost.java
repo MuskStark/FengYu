@@ -1,7 +1,7 @@
 package fan.summer.zhiflow.api.host;
 
 import fan.summer.zhiflow.api.PluginContext;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.component.SkNotification;
 import fan.summer.zhiflow.api.i18n.I18n;
 import fan.summer.zhiflow.api.log.LoggerFactory;
@@ -24,7 +24,7 @@ import java.util.function.Consumer;
  */
 public abstract class BasePluginHost implements PluginHost {
 
-    protected final SwissKitJPlugin plugin;
+    protected final ZhiFlowPlugin plugin;
     private final TaskRunner tasks;
 
     private final I18nFacade i18n = new I18nFacade() {
@@ -63,7 +63,7 @@ public abstract class BasePluginHost implements PluginHost {
     /**
      * @param plugin the plugin this host is bound to; must not be null
      */
-    protected BasePluginHost(SwissKitJPlugin plugin) {
+    protected BasePluginHost(ZhiFlowPlugin plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.tasks = new SimpleTaskRunner(plugin);
     }

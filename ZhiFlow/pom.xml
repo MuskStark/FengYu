@@ -218,7 +218,7 @@
                                     <icon>src/main/resources/icons/ZhiFlow.ico</icon>
                                     <errTitle>ZhiFlow Error</errTitle>
                                     <downloadUrl>https://adoptium.net/</downloadUrl>
-                                    <supportUrl>https://github.com/MuskStark/SwissKitJ</supportUrl>
+                                    <supportUrl>https://github.com/MuskStark/ZhiFlow</supportUrl>
                                     <jre>
                                         <minVersion>17</minVersion>
                                         <jdkPreference>preferJre</jdkPreference>

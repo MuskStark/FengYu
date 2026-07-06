@@ -6,7 +6,7 @@ import java.nio.file.Path;
 /**
  * Fat JAR / classpath launch entry point.
  *
- * <p>This class must be separate from {@link fan.summer.zhiflow.app.SwissKitJApp} because it does not
+ * <p>This class must be separate from {@link fan.summer.zhiflow.app.ZhiFlowApp} because it does not
  * extend {@link javafx.application.Application}. The JavaFX module system requires that when
  * a class extending {@code Application} is used as the main class, {@code javafx.graphics} must
  * be on the module-path rather than the classpath. Using this intermediate non-Application class
@@ -14,43 +14,43 @@ import java.nio.file.Path;
  * which simplifies distribution and is compatible with the fat JAR layout produced by Maven.
  *
  * <p>This class also primes the log directory system property before any logger is initialized.
- * The {@code swisskit.log.dir} property must be set before the first SLF4J logger is accessed,
+ * The {@code zhiflow.log.dir} property must be set before the first SLF4J logger is accessed,
  * as logback.xml references it during configuration.
  *
  * @since 1.0
- * @author SwissKitJ
- * @see fan.summer.zhiflow.app.SwissKitJApp
+ * @author ZhiFlow
+ * @see fan.summer.zhiflow.app.ZhiFlowApp
  */
 public class Launcher {
 
     /**
      * Application entry point. Initializes the log directory and delegates to
-     * {@link fan.summer.zhiflow.app.SwissKitJApp#main(String[])}.
+     * {@link fan.summer.zhiflow.app.ZhiFlowApp#main(String[])}.
      *
      * @param args command-line arguments passed to the Java virtual machine
      */
     public static void main(String[] args) {
         primeLogDirectory();
-        fan.summer.zhiflow.app.SwissKitJApp.main(args);
+        fan.summer.zhiflow.app.ZhiFlowApp.main(args);
     }
 
     /**
      * Resolves and creates the log directory, then exports its absolute path as the
-     * {@code swisskit.log.dir} system property so that logback.xml can reference it.
+     * {@code zhiflow.log.dir} system property so that logback.xml can reference it.
      * If the user has already set this property externally, this method does nothing.
      *
      * @since 1.0
      */
     private static void primeLogDirectory() {
-        if (System.getProperty("swisskit.log.dir") != null) {
+        if (System.getProperty("zhiflow.log.dir") != null) {
             return;
         }
-        Path logDir = Path.of(System.getProperty("user.dir"), ".swisskit", "logs");
+        Path logDir = Path.of(System.getProperty("user.dir"), ".zhiflow", "logs");
         try {
             Files.createDirectories(logDir);
         } catch (Exception ignored) {
             // Logback will fall back to a relative path; not fatal.
         }
-        System.setProperty("swisskit.log.dir", logDir.toAbsolutePath().toString());
+        System.setProperty("zhiflow.log.dir", logDir.toAbsolutePath().toString());
     }
 }

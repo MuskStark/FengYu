@@ -1,7 +1,7 @@
 package fan.summer.api.preview;
 
 import fan.summer.api.PluginContext;
-import fan.summer.api.SwissKitJPlugin;
+import fan.summer.api.ZhiFlowPlugin;
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.loader.ChildFirstResourceClassLoader;
 import fan.summer.api.theme.Themes;
@@ -19,7 +19,7 @@ import java.util.ServiceLoader;
 /**
  * Preview window for third-party plugin developers.
  *
- * <p>Displays a SwissKitJ-like shell with the plugin's UI embedded,
+ * <p>Displays a ZhiFlow-like shell with the plugin's UI embedded,
  * so developers can verify appearance and behavior before deploying.</p>
  *
  * <h3>Usage</h3>
@@ -50,7 +50,7 @@ import java.util.ServiceLoader;
 public final class PluginPreviewWindow {
 
     private Path jarPath;
-    private SwissKitJPlugin pluginInstance;
+    private ZhiFlowPlugin pluginInstance;
     private String title = "Plugin Preview";
     private double width = 960;
     private double height = 620;
@@ -73,7 +73,7 @@ public final class PluginPreviewWindow {
     }
 
     /** Use an already-instantiated plugin. Takes precedence over {@link #withJar(Path)}. */
-    public PluginPreviewWindow withPlugin(SwissKitJPlugin plugin) {
+    public PluginPreviewWindow withPlugin(ZhiFlowPlugin plugin) {
         this.pluginInstance = plugin;
         return this;
     }
@@ -122,7 +122,7 @@ public final class PluginPreviewWindow {
     public void launch() {
         // Register this API module's own i18n bundle as a FALLBACK so the preview
         // window shows real text when run standalone (third-party plugin authors
-        // depend only on SwissKitJ-Api, not the host app). The bundle is loaded
+        // depend only on ZhiFlow-Api, not the host app). The bundle is loaded
         // directly from the known resource URL (not via ResourceBundle.getBundle),
         // which is robust under any classloader layout — including fat-jars and
         // module layers where the getBundle lookup chain can't see the resource.
@@ -133,7 +133,7 @@ public final class PluginPreviewWindow {
             I18n.registerFallbackBundle("i18n.messages", msgUrl);
         }
 
-        List<SwissKitJPlugin> loadedPlugins = new ArrayList<>();
+        List<ZhiFlowPlugin> loadedPlugins = new ArrayList<>();
         URLClassLoader classLoader = null;
 
         // Resolve plugins
@@ -145,8 +145,8 @@ public final class PluginPreviewWindow {
                     new java.net.URL[]{jarPath.toUri().toURL()},
                     getClass().getClassLoader()
                 );
-                ServiceLoader<SwissKitJPlugin> sl = ServiceLoader.load(SwissKitJPlugin.class, classLoader);
-                for (SwissKitJPlugin p : sl) {
+                ServiceLoader<ZhiFlowPlugin> sl = ServiceLoader.load(ZhiFlowPlugin.class, classLoader);
+                for (ZhiFlowPlugin p : sl) {
                     loadedPlugins.add(p);
                     PluginContext.register(p, classLoader);
                 }
@@ -161,18 +161,18 @@ public final class PluginPreviewWindow {
             if (classLoader != null) {
                 try { classLoader.close(); } catch (Exception ignored) {}
             }
-            throw new IllegalStateException("No SwissKitJPlugin implementation found" +
+            throw new IllegalStateException("No ZhiFlowPlugin implementation found" +
                 (jarPath != null ? " in JAR: " + jarPath : ""));
         }
 
         // Build the window
         final URLClassLoader finalCl = classLoader;
-        final List<SwissKitJPlugin> finalPlugins = List.copyOf(loadedPlugins);
+        final List<ZhiFlowPlugin> finalPlugins = List.copyOf(loadedPlugins);
 
         // Inject PluginHost exactly like the real host does (before the plugin
         // becomes visible in the shell; init failures must not block the preview).
         final List<PreviewPluginHost> hosts = new ArrayList<>();
-        for (SwissKitJPlugin p : finalPlugins) {
+        for (ZhiFlowPlugin p : finalPlugins) {
             PreviewPluginHost host = new PreviewPluginHost(p);
             hosts.add(host);
             try {
@@ -207,10 +207,10 @@ public final class PluginPreviewWindow {
         scene.setFill(Color.TRANSPARENT);
         // Register with the theme service: loads common.css (idempotent) AND stamps the
         // active theme class on this scene's root so the -sk-* tokens used in
-        // swisskit-preview.css resolve (otherwise they'd be undefined in this window).
+        // zhiflow-preview.css resolve (otherwise they'd be undefined in this window).
         Themes.applyTo(scene);
         scene.getStylesheets().add(
-            PluginPreviewWindow.class.getResource("/css/swisskit-preview.css").toExternalForm()
+            PluginPreviewWindow.class.getResource("/css/zhiflow-preview.css").toExternalForm()
         );
 
         stage.setScene(scene);

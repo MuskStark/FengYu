@@ -182,7 +182,7 @@ public class OnlineStorePane extends VBox {
     // ── Fetch ────────────────────────────────────────────────────
 
     private void fetchPluginList() {
-        String urlStr = fan.summer.zhiflow.ui.setting.SwissKitJSettingUi.getStoreUrl();
+        String urlStr = fan.summer.zhiflow.ui.setting.ZhiFlowSettingUi.getStoreUrl();
         showLoading(true);
         statusLabel.setText("");
 

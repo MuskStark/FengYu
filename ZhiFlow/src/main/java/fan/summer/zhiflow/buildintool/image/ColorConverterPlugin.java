@@ -1,7 +1,7 @@
 package fan.summer.zhiflow.buildintool.image;
 
 import fan.summer.zhiflow.api.IconStyle;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.ToolCategory;
 import fan.summer.zhiflow.api.ToolType;
 import fan.summer.zhiflow.api.ai.AiTool;
@@ -29,9 +29,9 @@ import java.util.List;
  * <p>All three formats (HEX, RGB, HSL) are kept in sync automatically —
  * editing one field updates the other two via a shared listener.
  *
- * @see SwissKitJPlugin
+ * @see ZhiFlowPlugin
  */
-public class ColorConverterPlugin implements SwissKitJPlugin {
+public class ColorConverterPlugin implements ZhiFlowPlugin {
 
     private static final PluginLogger log = LoggerFactory.getLogger(ColorConverterPlugin.class);
 

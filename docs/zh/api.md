@@ -1,10 +1,10 @@
 # API 参考
 
-SwissKitJ 核心接口、枚举、组件和内部 API 的详细参考。
+ZhiFlow 核心接口、枚举、组件和内部 API 的详细参考。
 
 ## SwissKitJPlugin 接口
 
-**位置**：`SwissKitJ-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`
+**位置**：`ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`
 
 | 方法 | 返回类型 | 描述 |
 |------|----------|------|
@@ -25,7 +25,7 @@ SwissKitJ 核心接口、枚举、组件和内部 API 的详细参考。
 
 ### ToolCategory
 
-**位置**：`SwissKitJ-Api/.../ToolCategory.java`
+**位置**：`ZhiFlow-Api/.../ToolCategory.java`
 
 | 常量 | `getId()` | 描述 |
 |------|-----------|------|
@@ -37,7 +37,7 @@ SwissKitJ 核心接口、枚举、组件和内部 API 的详细参考。
 
 ### ToolType
 
-**位置**：`SwissKitJ-Api/.../ToolType.java`
+**位置**：`ZhiFlow-Api/.../ToolType.java`
 
 | 常量 | `getId()` | `isBuiltin()` |
 |------|-----------|---------------|
@@ -46,7 +46,7 @@ SwissKitJ 核心接口、枚举、组件和内部 API 的详细参考。
 
 ### IconStyle
 
-**位置**：`SwissKitJ-Api/.../IconStyle.java`
+**位置**：`ZhiFlow-Api/.../IconStyle.java`
 
 | 常量 | CSS 类 | 颜色 (RGB) |
 |------|--------|-------------|
@@ -60,7 +60,7 @@ SwissKitJ 核心接口、枚举、组件和内部 API 的详细参考。
 
 ## StepWizard
 
-**位置**：`SwissKitJ-Api/.../component/StepWizard.java`
+**位置**：`ZhiFlow-Api/.../component/StepWizard.java`
 
 | 方法 | 返回类型 | 描述 |
 |------|----------|------|
@@ -81,7 +81,7 @@ void onStepChanged(int from, int to, int total);
 
 ### LoggerFactory
 
-**位置**：`SwissKitJ-Api/.../log/LoggerFactory.java`
+**位置**：`ZhiFlow-Api/.../log/LoggerFactory.java`
 
 ```java
 PluginLogger getLogger(Class<?> clazz)
@@ -90,7 +90,7 @@ PluginLogger getLogger(String name)
 
 ### PluginLogger
 
-**位置**：`SwissKitJ-Api/.../log/PluginLogger.java`
+**位置**：`ZhiFlow-Api/.../log/PluginLogger.java`
 
 SLF4J 风格的 `{}` 占位符 API，带级别：`trace`、`debug`、`info`、`warn`、`error`。
 
@@ -98,7 +98,7 @@ SLF4J 风格的 `{}` 占位符 API，带级别：`trace`、`debug`、`info`、`w
 
 ## 主题
 
-**位置**：`SwissKitJ-Api/.../theme/Themes.java`
+**位置**：`ZhiFlow-Api/.../theme/Themes.java`
 
 ```java
 static final String COMMON_CSS = "/css/zhiflow-common.css"
@@ -108,7 +108,7 @@ static void applyTo(Scene scene)
 
 ## PluginContext
 
-**位置**：`SwissKitJ-Api/.../PluginContext.java`
+**位置**：`ZhiFlow-Api/.../PluginContext.java`
 
 将外部插件与其专属 `ClassLoader` 关联，并提供线程上下文 ClassLoader（TCCL）切换以安全调用插件方法。主机通过 `runWith`/`callWith` 包装每次插件方法调用（`createView()`、`onActivate()` 等），并通过 `wrapEvents` 包装插件节点的 `EventDispatcher`，使从事件处理器生成的后台线程继承正确的 TCCL。
 
@@ -127,9 +127,9 @@ static void wrapEvents(SwissKitJPlugin plugin, Node node)
 
 ### DatabaseInit
 
-**位置**：`SwissKit/.../database/DatabaseInit.java`
+**位置**：`ZhiFlow/.../database/DatabaseInit.java`
 
-H2 数据库位于 `.swisskit/swisskit.db`，Schema 来自 `init.sql`，MyBatis XML mapper 在 `resources/mapper/`。
+H2 数据库位于 `.zhiflow/zhiflow.db`，Schema 来自 `init.sql`，MyBatis XML mapper 在 `resources/mapper/`。
 
 ```java
 static void init()

@@ -1,7 +1,7 @@
 # Migrating to 3.2
 
 This guide covers everything a plugin author needs to change (or can newly use)
-when upgrading a plugin from SwissKitJ 3.1.x to 3.2.0.
+when upgrading a plugin from ZhiFlow 3.1.x to 3.2.0.
 
 ## Breaking: `.glass-*` CSS classes renamed to `.sk-*`
 
@@ -45,7 +45,7 @@ inside `createView()`; `registerFallbackBundle` is for library-level defaults.
 ## New: `PluginPreviewWindow` (developer tool)
 
 `fan.summer.zhiflow.api.preview.PluginPreviewWindow` launches your plugin inside a
-standalone shell-like window with theme and language toggles — no full SwissKitJ
+standalone shell-like window with theme and language toggles — no full ZhiFlow
 install needed during development.
 
 > **Stability note:** the preview API is a development-time tool. Its window
@@ -65,12 +65,12 @@ guide.
 The preview window (`PluginPreviewWindow`) now loads plugins with the exact
 same semantics as the real host: child-first resource ClassLoader, TCCL
 registration, and `init(PluginHost)` injection (settings persist under
-`~/.swisskit/preview-settings/`).
+`~/.zhiflow/preview-settings/`).
 
 ## Checklist
 
 - [ ] Replace every `.glass-*` style class with `.sk-*`
 - [ ] (Optional) switch `GlassNotification` calls to `SkNotification`
-- [ ] Rebuild against `SwissKitJ-Api` 3.2.0 (`provided` scope, as before)
+- [ ] Rebuild against `ZhiFlow-Api` 3.2.0 (`provided` scope, as before)
 - [ ] Verify your UI in **both** dark and light themes
 - [ ] (Optional) adopt `init(PluginHost)` for settings/tasks/i18n instead of static entry points

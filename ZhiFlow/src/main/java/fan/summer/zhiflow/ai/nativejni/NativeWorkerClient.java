@@ -62,16 +62,16 @@ public class NativeWorkerClient implements AutoCloseable {
         // to this host, so the default logback.xml (ConsoleAppender → System.out) can't
         // be used — every worker log.info(...) would corrupt the protocol. Pin a
         // worker-only config with no console appender (see logback-worker.xml). Also
-        // forward the host's absolute swisskit.log.dir so the worker's file appender
+        // forward the host's absolute zhiflow.log.dir so the worker's file appender
         // writes to the *same* log as the host, independent of the child's CWD.
         List<String> cmd = new ArrayList<>(List.of(
             javaHome + "/bin/java", "-cp", cleanCp,
             "-Dfile.encoding=UTF-8",
             "-Dlogback.configurationFile=logback-worker.xml"
         ));
-        String logDir = System.getProperty("swisskit.log.dir");
+        String logDir = System.getProperty("zhiflow.log.dir");
         if (logDir != null && !logDir.isBlank()) {
-            cmd.add("-Dswisskit.log.dir=" + logDir);
+            cmd.add("-Dzhiflow.log.dir=" + logDir);
         }
         cmd.add("fan.summer.zhiflow.ai.nativejni.NativeWorkerMain");
 
@@ -213,7 +213,7 @@ public class NativeWorkerClient implements AutoCloseable {
 
     /**
      * Drains the child's stderr line by line into the host log at DEBUG (so it
-     * lands in {@code .swisskit/logs/swisskit.log} without flooding the console).
+     * lands in {@code .zhiflow/logs/zhiflow.log} without flooding the console).
      * EOF ends the thread naturally when the worker exits; only the stdout reader
      * is authoritative for crash detection — this thread never calls
      * {@code handleChildExit()}.

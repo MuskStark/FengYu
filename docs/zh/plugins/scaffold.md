@@ -51,15 +51,15 @@
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <javafx.version>21.0.2</javafx.version>
-        <swisskit.api.version>3.0.0</swisskit.api.version>
+        <zhiflow.api.version>3.0.0</zhiflow.api.version>
     </properties>
 
     <dependencies>
-        <!-- SwissKitJ API — 运行时由宿主提供 -->
+        <!-- ZhiFlow API — 运行时由宿主提供 -->
         <dependency>
             <groupId>fan.summer.zhiflow.api</groupId>
-            <artifactId>SwissKitJ-Api</artifactId>
-            <version>${swisskit.api.version}</version>
+            <artifactId>ZhiFlow-Api</artifactId>
+            <version>${zhiflow.api.version}</version>
             <scope>provided</scope>
         </dependency>
 

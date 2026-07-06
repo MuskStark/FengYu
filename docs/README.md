@@ -1,8 +1,8 @@
-# SwissKitJ Documentation
+# ZhiFlow Documentation
 
-![SwissKit](https://img.shields.io/badge/SwissKitJ-Desktop%20Toolbox-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-MIT-green)
+![ZhiFlow](https://img.shields.io/badge/ZhiFlow-Desktop%20Toolbox-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-MIT-green)
 
-**SwissKitJ** is a modular desktop toolbox built with JavaFX 21, providing a clean, extensible platform for productivity tools.
+**ZhiFlow** is a modular desktop toolbox built with JavaFX 21, providing a clean, extensible platform for productivity tools.
 
 ## Quick Links
 
@@ -12,7 +12,7 @@
 - [Development Guide](development.md) — Build plugins and contribute
 - [Changelog](changelog.md) — Version history
 
-## What is SwissKitJ?
+## What is ZhiFlow?
 
 A modular desktop toolbox that allows you to:
 
@@ -42,15 +42,15 @@ A modular desktop toolbox that allows you to:
 
 ```bash
 # Download from GitHub Releases, then:
-java -jar SwissKitJ-3.1.0.jar
+java -jar ZhiFlow-3.1.0.jar
 ```
 
 Or build from source:
 
 ```bash
-mvn install -f SwissKitJ-Api/pom.xml -DskipTests
-mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.1.0.jar
+mvn install -f ZhiFlow-Api/pom.xml -DskipTests
+mvn clean package -f ZhiFlow/pom.xml -DskipTests
+java -jar ZhiFlow/target/ZhiFlow-3.1.0.jar
 ```
 
 ## License

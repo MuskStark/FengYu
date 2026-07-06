@@ -26,12 +26,12 @@ import java.util.concurrent.ConcurrentMap;
  * <h2>Usage — host side</h2>
  * <ol>
  *   <li>When loading a plugin from a JAR, call
- *       {@link #register(SwissKitJPlugin, ClassLoader)} to associate it with
+ *       {@link #register(ZhiFlowPlugin, ClassLoader)} to associate it with
  *       the plugin's ClassLoader.</li>
- *   <li>When unloading, call {@link #unregister(SwissKitJPlugin)}.</li>
+ *   <li>When unloading, call {@link #unregister(ZhiFlowPlugin)}.</li>
  *   <li>Wrap every call to a plugin method ({@code createView()},
- *       {@code onActivate()}, etc.) with {@link #runWith(SwissKitJPlugin, Runnable)}
- *       or {@link #callWith(SwissKitJPlugin, Callable)}.</li>
+ *       {@code onActivate()}, etc.) with {@link #runWith(ZhiFlowPlugin, Runnable)}
+ *       or {@link #callWith(ZhiFlowPlugin, Callable)}.</li>
  * </ol>
  *
  * <p>If no ClassLoader has been registered for a given plugin (e.g. a
@@ -43,9 +43,9 @@ import java.util.concurrent.ConcurrentMap;
  * fails to call {@link #unregister} (e.g. due to an exception during unload),
  * the entry is still eligible for garbage collection once no other reference
  * to the plugin exists. A {@link ReferenceQueue} is consulted on every
- * {@link #getClassLoader(SwissKitJPlugin)} call to evict stale entries.</p>
+ * {@link #getClassLoader(ZhiFlowPlugin)} call to evict stale entries.</p>
  *
- * @see SwissKitJPlugin
+ * @see ZhiFlowPlugin
  * @since 3.0
  */
 public final class PluginContext {
@@ -55,14 +55,14 @@ public final class PluginContext {
     private PluginContext() { /* utility class */ }
 
     /**
-     * Weak key wrapper for {@link SwissKitJPlugin}. Uses identity-based
+     * Weak key wrapper for {@link ZhiFlowPlugin}. Uses identity-based
      * equality so that the map lookup matches the exact plugin instance
      * even if the plugin doesn't override {@code equals/hashCode}.
      */
-    private static final class PluginRef extends WeakReference<SwissKitJPlugin> {
+    private static final class PluginRef extends WeakReference<ZhiFlowPlugin> {
         private final int hash;
 
-        PluginRef(SwissKitJPlugin plugin, ReferenceQueue<SwissKitJPlugin> queue) {
+        PluginRef(ZhiFlowPlugin plugin, ReferenceQueue<ZhiFlowPlugin> queue) {
             super(plugin, queue);
             this.hash = System.identityHashCode(plugin);
         }
@@ -73,13 +73,13 @@ public final class PluginContext {
             if (this == obj) return true;
             if (!(obj instanceof PluginRef other)) return false;
             // Both must still refer to the same live plugin instance
-            SwissKitJPlugin a = this.get();
-            SwissKitJPlugin b = other.get();
+            ZhiFlowPlugin a = this.get();
+            ZhiFlowPlugin b = other.get();
             return a != null && a == b;
         }
     }
 
-    private static final ReferenceQueue<SwissKitJPlugin> refQueue = new ReferenceQueue<>();
+    private static final ReferenceQueue<ZhiFlowPlugin> refQueue = new ReferenceQueue<>();
 
     /**
      * Maps each plugin instance (via weak key) to the ClassLoader that loaded it.
@@ -90,14 +90,14 @@ public final class PluginContext {
 
     /** Drain GC'd plugin references from the map. */
     private static void drainQueue() {
-        Reference<? extends SwissKitJPlugin> ref;
+        Reference<? extends ZhiFlowPlugin> ref;
         while ((ref = refQueue.poll()) != null) {
             CLASS_LOADERS.remove(ref);
         }
     }
 
     /** Find the existing PluginRef for a live plugin, or null. */
-    private static PluginRef findRef(SwissKitJPlugin plugin) {
+    private static PluginRef findRef(ZhiFlowPlugin plugin) {
         PluginRef probe = new PluginRef(plugin, null);
         for (PluginRef key : CLASS_LOADERS.keySet()) {
             if (probe.equals(key)) return key;
@@ -116,7 +116,7 @@ public final class PluginContext {
      * @param plugin the plugin instance; must not be {@code null}
      * @param loader the ClassLoader that loaded the plugin's JAR; must not be {@code null}
      */
-    public static void register(SwissKitJPlugin plugin, ClassLoader loader) {
+    public static void register(ZhiFlowPlugin plugin, ClassLoader loader) {
         drainQueue();
         PluginRef old = findRef(plugin);
         if (old != null) CLASS_LOADERS.remove(old);
@@ -131,7 +131,7 @@ public final class PluginContext {
      *
      * @param plugin the plugin to unregister; must not be {@code null}
      */
-    public static void unregister(SwissKitJPlugin plugin) {
+    public static void unregister(ZhiFlowPlugin plugin) {
         drainQueue();
         PluginRef ref = findRef(plugin);
         if (ref != null) {
@@ -151,7 +151,7 @@ public final class PluginContext {
      * @param plugin the plugin; must not be {@code null}
      * @return the ClassLoader for the plugin, never {@code null}
      */
-    public static ClassLoader getClassLoader(SwissKitJPlugin plugin) {
+    public static ClassLoader getClassLoader(ZhiFlowPlugin plugin) {
         drainQueue();
         PluginRef ref = findRef(plugin);
         ClassLoader cl = (ref != null) ? CLASS_LOADERS.get(ref) : null;
@@ -170,7 +170,7 @@ public final class PluginContext {
      * @param plugin the plugin whose ClassLoader should be on the TCCL
      * @param action the action to execute; must not be {@code null}
      */
-    public static void runWith(SwissKitJPlugin plugin, Runnable action) {
+    public static void runWith(ZhiFlowPlugin plugin, Runnable action) {
         Thread thread = Thread.currentThread();
         ClassLoader prev = thread.getContextClassLoader();
         ClassLoader target = getClassLoader(plugin);
@@ -196,7 +196,7 @@ public final class PluginContext {
      * @return the result of the callable
      * @throws Exception if the callable throws a checked exception
      */
-    public static <T> T callWith(SwissKitJPlugin plugin, Callable<T> action) throws Exception {
+    public static <T> T callWith(ZhiFlowPlugin plugin, Callable<T> action) throws Exception {
         Thread thread = Thread.currentThread();
         ClassLoader prev = thread.getContextClassLoader();
         ClassLoader target = getClassLoader(plugin);
@@ -221,7 +221,7 @@ public final class PluginContext {
      * like MyBatis, {@link java.util.ServiceLoader}, and resource-bundle lookups
      * work without the plugin author needing any ClassLoader awareness.</p>
      *
-     * <p>Call this once after {@link SwissKitJPlugin#createView()} returns:</p>
+     * <p>Call this once after {@link ZhiFlowPlugin#createView()} returns:</p>
      * <pre>{@code
      * Node view = PluginContext.callWith(plugin, plugin::createView);
      * if (view != null) {
@@ -232,7 +232,7 @@ public final class PluginContext {
      * @param plugin the plugin that owns the node
      * @param node   the root node returned by the plugin's {@code createView()}
      */
-    public static void wrapEvents(SwissKitJPlugin plugin, javafx.scene.Node node) {
+    public static void wrapEvents(ZhiFlowPlugin plugin, javafx.scene.Node node) {
         ClassLoader pluginCl = getClassLoader(plugin);
         String pluginId = plugin.getId();
         javafx.event.EventDispatcher original = node.getEventDispatcher();

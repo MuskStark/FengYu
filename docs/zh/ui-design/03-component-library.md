@@ -1,6 +1,6 @@
 # 03 · 组件库
 
-> **定位：** SwissKitJ 中每一个可复用视觉组件的完整、权威规格。每个组件都给出了足够的细节，
+> **定位：** ZhiFlow 中每一个可复用视觉组件的完整、权威规格。每个组件都给出了足够的细节，
 > 使得 AI（或从未见过本代码库的人类）都能从零生成像素级、行为一致的实现。当某个取值是主题
 > 令牌时，本文档只给出令牌名并外链，**不**重复罗列十六进制值。各令牌解析后的具体取值见
 > [05 主题与配色系统](05-theme-color-system.md)。
@@ -9,8 +9,8 @@
 |---|---|
 | **文档类型** | 逐组件参考规格（Foundation + Shell） |
 | **目标读者** | UI 设计师、插件作者、AI 代码生成器 |
-| **CSS 来源（基础层）** | [`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`](../../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css) — 宿主与所有插件共享 |
-| **CSS 来源（壳层）** | [`SwissKit/src/main/resources/css/shell.css`](../../../SwissKit/src/main/resources/css/shell.css) — 仅宿主壳层 |
+| **CSS 来源（基础层）** | [`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`](../../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css) — 宿主与所有插件共享 |
+| **CSS 来源（壳层）** | [`ZhiFlow/src/main/resources/css/shell.css`](../../../ZhiFlow/src/main/resources/css/shell.css) — 仅宿主壳层 |
 | **关联文档** | [02 JavaFX 实现](02-javafx-implementation.md) · [05 主题与配色系统](05-theme-color-system.md) · [06 图标系统](06-icon-system.md) |
 
 ---
@@ -19,7 +19,7 @@
 
 ### 两大组件家族
 
-SwissKitJ 有**两层组件**，各自有独立的样式表。判断一个类属于哪一层，是关于它最重要的事实：
+ZhiFlow 有**两层组件**，各自有独立的样式表。判断一个类属于哪一层，是关于它最重要的事实：
 
 | 家族 | 样式表 | 谁可以使用？ | 类前缀 | 数量 |
 |---|---|---|---|---|
@@ -82,7 +82,7 @@ SwissKitJ 有**两层组件**，各自有独立的样式表。判断一个类属
 
 # 第一部分 —— 基础层组件
 
-> 来源：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`。凡调用了
+> 来源：`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`。凡调用了
 > `Themes.applyTo(scene)` 的地方均可用。
 
 ---
@@ -156,7 +156,7 @@ empty.setStyle("-fx-font-size: 13px;");
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（通用主题工具类小节）
+- CSS：`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`（通用主题工具类小节）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 - 命名约定：[02 JavaFX 实现 —— `#css-naming`](02-javafx-implementation.md#css-naming)
 
@@ -218,7 +218,7 @@ panel.setStyle("-fx-border-width: 1; -fx-border-radius: 8; -fx-background-radius
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（通用主题工具类小节）
+- CSS：`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`（通用主题工具类小节）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 - 命名约定：[02 JavaFX 实现 —— `#css-naming`](02-javafx-implementation.md#css-naming)
 
@@ -280,7 +280,7 @@ err.setStyle("-fx-font-size: 12px;");
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（通用主题工具类小节）
+- CSS：`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`（通用主题工具类小节）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -331,7 +331,7 @@ glyph.getStyleClass().add("sk-fill-3");   // 弱化的搜索字形
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（通用主题工具类小节）
+- CSS：`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`（通用主题工具类小节）
 - 图标：[06 图标系统](06-icon-system.md)
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
@@ -388,7 +388,7 @@ root.getStyleClass().add("sk-scrim");      // 在对话框后压暗
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（通用主题工具类小节）
+- CSS：`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`（通用主题工具类小节）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -455,7 +455,7 @@ input.setPromptText("/path/to/file");
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（输入字段小节，行 151–166）
+- CSS：`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`（输入字段小节，行 151–166）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -529,7 +529,7 @@ cancel.setCancelButton(true);
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（主/次按钮小节，行 281–307）
+- CSS：`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`（主/次按钮小节，行 281–307）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -596,7 +596,7 @@ box.getSelectionModel().select(0);
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（下拉框小节，行 195–233）
+- CSS：`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`（下拉框小节，行 195–233）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -653,7 +653,7 @@ cb.setSelected(true);
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（复选框小节，行 269–279）
+- CSS：`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`（复选框小节，行 269–279）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -729,7 +729,7 @@ table.getStyleClass().add("sk-table");
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（表格小节，行 250–267）
+- CSS：`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`（表格小节，行 250–267）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -809,7 +809,7 @@ tabs.getTabs().addAll(
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（TabPane 小节，行 168–193）
+- CSS：`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`（TabPane 小节，行 168–193）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -868,7 +868,7 @@ dialog.setPadding(new Insets(20, 24, 16, 24));
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（对话框小节，行 141–149）
+- CSS：`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`（对话框小节，行 141–149）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 - 为独立 Stage 应用主题：[02 JavaFX 实现 —— `#plugin-skeleton`](02-javafx-implementation.md#plugin-skeleton)
 
@@ -879,7 +879,7 @@ dialog.setPadding(new Insets(20, 24, 16, 24));
 ### 1. 概览与解剖
 
 毛玻璃通知系统，通过
-[`SkNotification`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java)
+[`SkNotification`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/component/SkNotification.java)
 （`toast` / `notify` / `confirm`）暴露给插件。它是一个自包含的抬高卡片，带有严重程度着色的圆形
 图标、自动换行的消息，以及可选的按钮栏。**不存在 `.sk-badge`，也不存在 `.sk-notification`**——该
 家族是 `.sk-notif-*`。
@@ -981,8 +981,8 @@ if (SkNotification.confirm(view, "Delete?", "This cannot be undone.")) {
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（通知小节，行 309–355）
-- Java：`SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java`
+- CSS：`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`（通知小节，行 309–355）
+- Java：`ZhiFlow-Api/src/main/java/fan/summer/api/component/SkNotification.java`
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -1045,15 +1045,15 @@ wizard.build();
 
 ### 7. 参考
 
-- CSS：`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（StepWizard 指示器小节，行 357–362）
-- Java：`SwissKitJ-Api/src/main/java/fan/summer/api/component/StepWizard.java`
+- CSS：`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`（StepWizard 指示器小节，行 357–362）
+- Java：`ZhiFlow-Api/src/main/java/fan/summer/api/component/StepWizard.java`
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
 ---
 
 # 第二部分 —— 壳层组件
 
-> 来源：`SwissKit/src/main/resources/css/shell.css`。**仅宿主应用。** 这些类是应用壳的装饰件——
+> 来源：`ZhiFlow/src/main/resources/css/shell.css`。**仅宿主应用。** 这些类是应用壳的装饰件——
 > 它们不会被加载到插件 Scene 上，插件不得依赖它们。此处记录它们，是为了使壳层本身能被忠实地重新
 > 生成。
 
@@ -1153,8 +1153,8 @@ item.getChildren().addAll(icon, text, badge);
 
 ### 7. 参考
 
-- CSS：`SwissKit/src/main/resources/css/shell.css`（侧栏小节，行 53–84）
-- Java：`SwissKit/src/main/java/fan/summer/ui/sidebar/Sidebar.java`（`NavItem` 内部类）
+- CSS：`ZhiFlow/src/main/resources/css/shell.css`（侧栏小节，行 53–84）
+- Java：`ZhiFlow/src/main/java/fan/summer/ui/sidebar/Sidebar.java`（`NavItem` 内部类）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 - 图标：[06 图标系统](06-icon-system.md)
 
@@ -1236,8 +1236,8 @@ bar.setPrefHeight(34);
 
 ### 7. 参考
 
-- CSS：`SwissKit/src/main/resources/css/shell.css`（search-bar 小节，行 92–114；kbd 行 213–225）
-- Java：`SwissKit/src/main/java/fan/summer/ui/content/ContentArea.java`（`buildSearchBar()`）
+- CSS：`ZhiFlow/src/main/resources/css/shell.css`（search-bar 小节，行 92–114；kbd 行 213–225）
+- Java：`ZhiFlow/src/main/java/fan/summer/ui/content/ContentArea.java`（`buildSearchBar()`）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -1335,8 +1335,8 @@ card.getChildren().addAll(wrap, name, desc, tag);
 
 ### 7. 参考
 
-- CSS：`SwissKit/src/main/resources/css/shell.css`（tool-card 小节，行 116–158）
-- Java：`SwissKit/src/main/java/fan/summer/ui/content/ToolCard.java`
+- CSS：`ZhiFlow/src/main/resources/css/shell.css`（tool-card 小节，行 116–158）
+- Java：`ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java`
 - 图标：[06 图标系统](06-icon-system.md)（以及 `IconStyle` 枚举）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
@@ -1424,8 +1424,8 @@ launch.setMaxWidth(Double.MAX_VALUE);
 
 ### 7. 参考
 
-- CSS：`SwissKit/src/main/resources/css/shell.css`（detail-panel 小节，行 160–182）
-- Java：`SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java`
+- CSS：`ZhiFlow/src/main/resources/css/shell.css`（detail-panel 小节，行 160–182）
+- Java：`ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java`
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 - 图标：[06 图标系统](06-icon-system.md)
 
@@ -1504,8 +1504,8 @@ bar.getChildren().addAll(tools, sep, plugins, spacer, clock);
 
 ### 7. 参考
 
-- CSS：`SwissKit/src/main/resources/css/shell.css`（statusbar 小节，行 184–200）
-- Java：`SwissKit/src/main/java/fan/summer/ui/MainWindow.java`（`buildStatusBar()`）
+- CSS：`ZhiFlow/src/main/resources/css/shell.css`（statusbar 小节，行 184–200）
+- Java：`ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java`（`buildStatusBar()`）
 - 令牌：[05 主题与配色系统 —— 令牌参考表](05-theme-color-system.md#token-reference-table)
 
 ---
@@ -1560,18 +1560,18 @@ bar.getChildren().addAll(tools, sep, plugins, spacer, clock);
 
 ### 源文件（权威）
 
-- 基础层 CSS：[`SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`](../../../SwissKitJ-Api/src/main/resources/css/zhiflow-common.css)
-- 壳层 CSS：[`SwissKit/src/main/resources/css/shell.css`](../../../SwissKit/src/main/resources/css/shell.css)
+- 基础层 CSS：[`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`](../../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css)
+- 壳层 CSS：[`ZhiFlow/src/main/resources/css/shell.css`](../../../ZhiFlow/src/main/resources/css/shell.css)
 - 壳层 Java：
-  - [`SwissKit/src/main/java/fan/summer/ui/sidebar/Sidebar.java`](../../../SwissKit/src/main/java/fan/summer/ui/sidebar/Sidebar.java)（`NavItem`）
-  - [`SwissKit/src/main/java/fan/summer/ui/content/ContentArea.java`](../../../SwissKit/src/main/java/fan/summer/ui/content/ContentArea.java)（search/grid）
-  - [`SwissKit/src/main/java/fan/summer/ui/content/ToolCard.java`](../../../SwissKit/src/main/java/fan/summer/ui/content/ToolCard.java)
-  - [`SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java`](../../../SwissKit/src/main/java/fan/summer/ui/content/DetailPanel.java)
-  - [`SwissKit/src/main/java/fan/summer/ui/MainWindow.java`](../../../SwissKit/src/main/java/fan/summer/ui/MainWindow.java)（status bar）
+  - [`ZhiFlow/src/main/java/fan/summer/ui/sidebar/Sidebar.java`](../../../ZhiFlow/src/main/java/fan/summer/ui/sidebar/Sidebar.java)（`NavItem`）
+  - [`ZhiFlow/src/main/java/fan/summer/ui/content/ContentArea.java`](../../../ZhiFlow/src/main/java/fan/summer/ui/content/ContentArea.java)（search/grid）
+  - [`ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java`](../../../ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java)
+  - [`ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java`](../../../ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java)
+  - [`ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java`](../../../ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java)（status bar）
 - 基础层 Java：
-  - [`SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/component/SkNotification.java)
-  - [`SwissKitJ-Api/src/main/java/fan/summer/api/component/StepWizard.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/component/StepWizard.java)
-  - [`SwissKitJ-Api/src/main/java/fan/summer/api/IconStyle.java`](../../../SwissKitJ-Api/src/main/java/fan/summer/api/IconStyle.java)
+  - [`ZhiFlow-Api/src/main/java/fan/summer/api/component/SkNotification.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/component/SkNotification.java)
+  - [`ZhiFlow-Api/src/main/java/fan/summer/api/component/StepWizard.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/component/StepWizard.java)
+  - [`ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java)
 
 ### 关联 UI 设计文档
 

@@ -21,8 +21,8 @@ import java.util.Optional;
  *
  * <p>Note: this interface is intentionally non-sealed (not {@code sealed}).
  * Java forbids cross-module sealed permits, and the implementations live in
- * the host module ({@code SwissKit}), while this contract lives in
- * {@code SwissKitJ-Api}. The two known implementors are documented above.
+ * the host module ({@code ZhiFlow}), while this contract lives in
+ * {@code ZhiFlow-Api}. The two known implementors are documented above.
  */
 public interface ChatBackend {
 

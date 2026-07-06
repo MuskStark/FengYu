@@ -1,14 +1,14 @@
 package plugin.swisskit.keepawake;
 
 import fan.summer.zhiflow.api.IconStyle;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.ToolCategory;
 import fan.summer.zhiflow.api.i18n.I18n;
 import javafx.scene.Node;
 import plugin.swisskit.keepawake.service.KeepAwakeService;
 import plugin.swisskit.keepawake.ui.KeepAwakeUi;
 
-public class KeepAwakePlugin implements SwissKitJPlugin {
+public class KeepAwakePlugin implements ZhiFlowPlugin {
 
     private KeepAwakeUi ui;
 

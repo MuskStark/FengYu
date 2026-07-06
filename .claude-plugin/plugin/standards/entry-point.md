@@ -1,20 +1,20 @@
 # Plugin Entry Point
 
-## SwissKitJPlugin 接口
+## ZhiFlowPlugin 接口
 
-所有插件必须实现 `fan.summer.zhiflow.api.SwissKitJPlugin`：
+所有插件必须实现 `fan.summer.zhiflow.api.ZhiFlowPlugin`：
 
 ```java
 package {{base-package}};
 
 import fan.summer.zhiflow.api.IconStyle;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.ToolCategory;
 import fan.summer.zhiflow.api.i18n.I18n;
 import javafx.scene.Node;
 import {{base-package}}.ui.{{Name}}PluginUi;
 
-public class {{Name}}Plugin implements SwissKitJPlugin {
+public class {{Name}}Plugin implements ZhiFlowPlugin {
 
     @Override
     public String getId() {
@@ -91,7 +91,7 @@ public Node createView() {
 
 | 方法 | 必须 | 说明 |
 |------|------|------|
-| `getId()` | 是 | 反向域名唯一标识，如 `plugin.swisskit.star` |
+| `getId()` | 是 | 反向域名唯一标识，如 `plugin.zhiflow.star` |
 | `getName()` | 是 | 显示名称 |
 | `getDescription()` | 是 | 短描述 |
 | `getCategory()` | 是 | 返回 `ToolCategory` 枚举：`DEV / TEXT / IMAGE / NET / OTHER` |

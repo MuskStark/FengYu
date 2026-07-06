@@ -1,8 +1,8 @@
 package fan.summer.zhiflow.utils;
 
 import fan.summer.zhiflow.database.DatabaseInit;
-import fan.summer.zhiflow.database.entity.setting.email.SwissKitSettingEmailEntity;
-import fan.summer.zhiflow.database.mapper.setting.email.SwissKitSettingEmailMapper;
+import fan.summer.zhiflow.database.entity.setting.email.ZhiFlowSettingEmailEntity;
+import fan.summer.zhiflow.database.mapper.setting.email.ZhiFlowSettingEmailMapper;
 import jakarta.activation.FileDataSource;
 import org.apache.ibatis.session.SqlSession;
 import org.simplejavamail.api.email.Email;
@@ -33,7 +33,7 @@ import java.util.List;
  * each obtaining its own {@link SqlSession} from the shared {@link DatabaseInit}.</p>
  *
  * @since 1.0
- * @author SwissKitJ
+ * @author ZhiFlow
  * @see EmailMessage
  * @see EmailException
  */
@@ -91,7 +91,7 @@ public class EmailUtil {
      */
     public static void sendEmail(EmailMessage message) throws EmailException {
         validateMessage(message);
-        SwissKitSettingEmailEntity config = loadConfig();
+        ZhiFlowSettingEmailEntity config = loadConfig();
         try {
             Email email = buildEmail(config, message);
             Mailer mailer = buildMailer(config);
@@ -115,7 +115,7 @@ public class EmailUtil {
      * @since 1.0
      */
     public static void testConnection() throws EmailException {
-        SwissKitSettingEmailEntity config = loadConfig();
+        ZhiFlowSettingEmailEntity config = loadConfig();
         log.debug("Testing SMTP connection | host={}:{}", config.getSmtpAddress(), config.getSmtpPort());
         try {
             Mailer mailer = buildMailer(config);
@@ -127,7 +127,7 @@ public class EmailUtil {
         }
     }
 
-    private static Email buildEmail(SwissKitSettingEmailEntity config, EmailMessage message) {
+    private static Email buildEmail(ZhiFlowSettingEmailEntity config, EmailMessage message) {
         String from = (config.getFromAddress() != null && !config.getFromAddress().isBlank())
                 ? config.getFromAddress()
                 : config.getEmail();
@@ -171,7 +171,7 @@ public class EmailUtil {
         return builder.buildEmail();
     }
 
-    private static Mailer buildMailer(SwissKitSettingEmailEntity config) {
+    private static Mailer buildMailer(ZhiFlowSettingEmailEntity config) {
         TransportStrategy strategy = resolveTransportStrategy(config);
         log.debug("SMTP strategy: {}", strategy);
         return MailerBuilder
@@ -186,7 +186,7 @@ public class EmailUtil {
                 .buildMailer();
     }
 
-    private static TransportStrategy resolveTransportStrategy(SwissKitSettingEmailEntity config) {
+    private static TransportStrategy resolveTransportStrategy(ZhiFlowSettingEmailEntity config) {
         if (Boolean.TRUE.equals(config.getNeedSSL())) {
             return TransportStrategy.SMTPS;
         }
@@ -196,11 +196,11 @@ public class EmailUtil {
         return TransportStrategy.SMTP;
     }
 
-    private static SwissKitSettingEmailEntity loadConfig() throws EmailException {
+    private static ZhiFlowSettingEmailEntity loadConfig() throws EmailException {
         log.debug("Loading SMTP config from database");
         try (SqlSession session = DatabaseInit.getSqlSession()) {
-            SwissKitSettingEmailMapper mapper = session.getMapper(SwissKitSettingEmailMapper.class);
-            SwissKitSettingEmailEntity config = mapper.selectLatest();
+            ZhiFlowSettingEmailMapper mapper = session.getMapper(ZhiFlowSettingEmailMapper.class);
+            ZhiFlowSettingEmailEntity config = mapper.selectLatest();
             if (config == null) {
                 throw new EmailException(
                         "No email configuration found. Please configure SMTP settings first.", null);

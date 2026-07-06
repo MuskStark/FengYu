@@ -1,7 +1,7 @@
 package fan.summer.zhiflow.buildintool.dev;
 
 import fan.summer.zhiflow.api.IconStyle;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.ToolCategory;
 import fan.summer.zhiflow.api.ToolType;
 import fan.summer.zhiflow.api.ai.AiTool;
@@ -34,9 +34,9 @@ import java.util.List;
  * <p>Displays results in a scrollable list with per-hash copy-to-clipboard buttons.
  * Each hash algorithm is computed concurrently on the UI thread on button click.
  *
- * @see SwissKitJPlugin
+ * @see ZhiFlowPlugin
  */
-public class HashCalculatorPlugin implements SwissKitJPlugin {
+public class HashCalculatorPlugin implements ZhiFlowPlugin {
 
     private static final PluginLogger log = LoggerFactory.getLogger(HashCalculatorPlugin.class);
 

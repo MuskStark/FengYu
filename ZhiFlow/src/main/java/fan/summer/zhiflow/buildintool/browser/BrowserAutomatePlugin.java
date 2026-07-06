@@ -3,7 +3,7 @@ package fan.summer.zhiflow.buildintool.browser;
 import fan.summer.zhiflow.api.IconStyle;
 import fan.summer.zhiflow.api.ToolCategory;
 import fan.summer.zhiflow.api.ToolType;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.ai.AiTool;
 import fan.summer.zhiflow.api.i18n.I18n;
 import fan.summer.zhiflow.buildintool.browser.ai.BrowserAutomateTool;
@@ -21,7 +21,7 @@ import java.util.List;
  * plugin registry, and so the sidebar shows users that the capability exists.
  * The {@link #createView()} returns a short explanation page.</p>
  */
-public class BrowserAutomatePlugin implements SwissKitJPlugin {
+public class BrowserAutomatePlugin implements ZhiFlowPlugin {
 
     @Override
     public String getId() { return "fan.summer.zhiflow.buildin.browser-automate"; }
