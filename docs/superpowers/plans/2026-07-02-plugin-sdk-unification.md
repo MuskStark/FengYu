@@ -843,7 +843,7 @@ git mv SwissKit/src/main/java/fan/summer/plugin/ChildFirstResourceClassLoader.ja
 
 替换 1:
 ```java
-package fan.summer.plugin;
+package fan.summer.zhiflow.plugin;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -932,7 +932,7 @@ CREATE TABLE IF NOT EXISTS plugin_setting
 
 `PluginSettingEntity.java`:
 ```java
-package fan.summer.database.entity;
+package fan.summer.zhiflow.database.entity;
 
 import lombok.Data;
 
@@ -961,9 +961,9 @@ public class PluginSettingEntity {
 
 `PluginSettingMapper.java`:
 ```java
-package fan.summer.database.mapper;
+package fan.summer.zhiflow.database.mapper;
 
-import fan.summer.database.entity.PluginSettingEntity;
+import fan.summer.zhiflow.database.entity.PluginSettingEntity;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
@@ -1010,15 +1010,15 @@ public interface PluginSettingMapper {
 <!DOCTYPE mapper
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="fan.summer.database.mapper.PluginSettingMapper">
+<mapper namespace="fan.summer.zhiflow.database.mapper.PluginSettingMapper">
 
-    <select id="selectByPluginId" resultType="fan.summer.database.entity.PluginSettingEntity">
+    <select id="selectByPluginId" resultType="fan.summer.zhiflow.database.entity.PluginSettingEntity">
         SELECT id, plugin_id AS pluginId, setting_key AS settingKey, setting_value AS settingValue
         FROM plugin_setting
         WHERE plugin_id = #{pluginId}
     </select>
 
-    <insert id="upsert" parameterType="fan.summer.database.entity.PluginSettingEntity">
+    <insert id="upsert" parameterType="fan.summer.zhiflow.database.entity.PluginSettingEntity">
         MERGE INTO plugin_setting (plugin_id, setting_key, setting_value)
         KEY (plugin_id, setting_key)
         VALUES (#{pluginId}, #{settingKey}, #{settingValue})
@@ -1048,12 +1048,12 @@ public interface PluginSettingMapper {
 
 `H2PluginSettings.java`:
 ```java
-package fan.summer.plugin.host;
+package fan.summer.zhiflow.plugin.host;
 
 import fan.summer.zhiflow.api.host.PluginSettings;
-import fan.summer.database.DatabaseInit;
-import fan.summer.database.entity.PluginSettingEntity;
-import fan.summer.database.mapper.PluginSettingMapper;
+import fan.summer.zhiflow.database.DatabaseInit;
+import fan.summer.zhiflow.database.entity.PluginSettingEntity;
+import fan.summer.zhiflow.database.mapper.PluginSettingMapper;
 import org.apache.ibatis.session.SqlSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -1173,7 +1173,7 @@ public class H2PluginSettings implements PluginSettings {
 
 `DefaultPluginHost.java`:
 ```java
-package fan.summer.plugin.host;
+package fan.summer.zhiflow.plugin.host;
 
 import fan.summer.zhiflow.api.SwissKitJPlugin;
 import fan.summer.zhiflow.api.host.BasePluginHost;
@@ -1230,7 +1230,7 @@ git commit -m "✨ feat(host): H2-backed PluginSettings + DefaultPluginHost"
 
 `PluginRegistryHostTest.java`(构造模式照抄同包 `PluginRegistryAiToolsTest`):
 ```java
-package fan.summer.plugin;
+package fan.summer.zhiflow.plugin;
 
 import fan.summer.zhiflow.api.SwissKitJPlugin;
 import fan.summer.zhiflow.api.ToolCategory;
@@ -1364,7 +1364,7 @@ Expected: 编译失败(`setHostFactoryForTest`/`isBusy` 不存在)。
 import 区加入:
 ```java
 import fan.summer.zhiflow.api.host.PluginHost;
-import fan.summer.plugin.host.DefaultPluginHost;
+import fan.summer.zhiflow.plugin.host.DefaultPluginHost;
 import java.util.function.Function;
 ```
 
@@ -1482,7 +1482,7 @@ git commit -m "✨ feat(host): inject PluginHost via init() in addPlugins, merge
 
 `PluginLoader.java` import 区加入:
 ```java
-import fan.summer.plugin.host.H2PluginSettings;
+import fan.summer.zhiflow.plugin.host.H2PluginSettings;
 ```
 `uninstallPlugin` 中替换:
 ```java

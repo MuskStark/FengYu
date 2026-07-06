@@ -90,7 +90,7 @@
 - `MainWindow.wireEvents()` 中已持有 `registry`。改为:
   ```java
   contentArea.showPage(
-      fan.summer.ui.store.PluginStoreUi.build(registry.getPlugins()),
+      fan.summer.zhiflow.ui.store.PluginStoreUi.build(registry.getPlugins()),
       I18n.get("store.online.title"));
   ```
 - `PluginStoreUi.build(ObservableList<SwissKitJPlugin> installed)`:把已安装插件归约为 `Map<String,String>`(id → version),传给 `new OnlineStorePane(null, installedVersions)`。

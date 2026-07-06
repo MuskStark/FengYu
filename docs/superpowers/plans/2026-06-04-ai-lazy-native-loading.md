@@ -209,12 +209,12 @@ Replace the existing `initializeAiService` method (lines 479–501):
     static void initializeAiService(String mode) {
         switch (mode) {
             case "openai" -> {
-                fan.summer.ai.service.OpenAiService svc = new fan.summer.ai.service.OpenAiService();
+                fan.summer.zhiflow.ai.service.OpenAiService svc = new fan.summer.zhiflow.ai.service.OpenAiService();
                 svc.configure(getAiOpenAiEndpoint(), getAiOpenAiApiKey(), getAiOpenAiModel());
                 AiServiceProvider.switchMode(mode, svc);
             }
             case "anthropic" -> {
-                fan.summer.ai.service.AnthropicService svc = new fan.summer.ai.service.AnthropicService();
+                fan.summer.zhiflow.ai.service.AnthropicService svc = new fan.summer.zhiflow.ai.service.AnthropicService();
                 svc.configure(getAiAnthropicEndpoint(), getAiAnthropicApiKey(), getAiAnthropicModel());
                 AiServiceProvider.switchMode(mode, svc);
             }
@@ -236,15 +236,15 @@ Add the `createLocalBackend` method right after `initializeAiService`:
         boolean useNative = "native".equals(backendSetting);
 
         if (useNative) {
-            fan.summer.ai.nativejni.NativeLoader.load();
-            if (!fan.summer.ai.nativejni.NativeLoader.isLoaded()) {
+            fan.summer.zhiflow.ai.nativejni.NativeLoader.load();
+            if (!fan.summer.zhiflow.ai.nativejni.NativeLoader.isLoaded()) {
                 log.warn("Native library not available, falling back to Java engine");
                 useNative = false;
             }
         }
 
-        fan.summer.ai.service.AiServiceImpl aiService =
-            new fan.summer.ai.service.AiServiceImpl(useNative);
+        fan.summer.zhiflow.ai.service.AiServiceImpl aiService =
+            new fan.summer.zhiflow.ai.service.AiServiceImpl(useNative);
         AiServiceProvider.switchMode("local", aiService);
 
         if (autoLoadModel) {
@@ -265,14 +265,14 @@ Add these two methods right after `createLocalBackend`:
      */
     public static synchronized void ensureLocalBackend() {
         var svc = AiServiceProvider.getService();
-        if (svc.isPresent() && svc.get() instanceof fan.summer.ai.service.AiServiceImpl) {
+        if (svc.isPresent() && svc.get() instanceof fan.summer.zhiflow.ai.service.AiServiceImpl) {
             return; // already initialized
         }
         log.info("Initializing local AI backend (lazy)");
         createLocalBackend(true);
     }
 
-    private static void autoLoadModel(fan.summer.ai.service.AiServiceImpl aiService) {
+    private static void autoLoadModel(fan.summer.zhiflow.ai.service.AiServiceImpl aiService) {
         String modelPath = null;
         try (SqlSession session = DatabaseInit.getSqlSession()) {
             AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
@@ -321,7 +321,7 @@ Replace the `default` branch in `initializeAiBackend()` (lines 191–227) — th
 ```java
             default -> {
                 try {
-                    fan.summer.ai.service.AiServiceImpl aiService = new fan.summer.ai.service.AiServiceImpl();
+                    fan.summer.zhiflow.ai.service.AiServiceImpl aiService = new fan.summer.zhiflow.ai.service.AiServiceImpl();
                     AiServiceProvider.switchMode(mode, aiService);
 
                     String modelPath = null;
@@ -485,7 +485,7 @@ With:
     @Override
     public void onActivate() {
         log.info("AI Chat plugin activated");
-        fan.summer.ui.setting.SwissKitJSettingUi.ensureLocalBackend();
+        fan.summer.zhiflow.ui.setting.SwissKitJSettingUi.ensureLocalBackend();
     }
 ```
 

@@ -37,8 +37,8 @@ SwissKitJ 是一个基于 JavaFX 21（JDK 21）构建的模块化、插件化桌
 
 ## 启动序列
 
-`fan.summer.Launcher`（胖 JAR 清单入口点）先准备好日志目录，再委托给
-`fan.summer.app.SwissKitJApp`（JavaFX `Application`）。Launcher 是一个独立的、非 `Application` 的类，
+`fan.summer.zhiflow.Launcher`（胖 JAR 清单入口点）先准备好日志目录，再委托给
+`fan.summer.zhiflow.app.SwissKitJApp`（JavaFX `Application`）。Launcher 是一个独立的、非 `Application` 的类，
 这样应用能以 classpath 模式运行（兼容胖 JAR 布局与 JavaFX 模块系统）。
 
 在 `SwissKitJApp.start()` 中：
@@ -250,7 +250,7 @@ mvn clean package -f SwissKit/pom.xml -DskipTests
 java -jar SwissKit/target/SwissKitJ-3.1.0.jar
 ```
 
-胖 JAR 由 `maven-shade-plugin` 构建（主类 `fan.summer.Launcher`），并捆绑所有平台的
+胖 JAR 由 `maven-shade-plugin` 构建（主类 `fan.summer.zhiflow.Launcher`），并捆绑所有平台的
 JavaFX 原生库（`.dll`/`.so`/`.dylib`）。在 Windows 上 `windows-exe` profile 会自动激活，
 并通过 Launch4j 额外产出 `SwissKit.exe`。三个 POM 都是**独立**的（无 parent）；
 跨平台发布构建由 GitHub Actions 处理。

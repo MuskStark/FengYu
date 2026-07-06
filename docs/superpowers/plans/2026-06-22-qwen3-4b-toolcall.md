@@ -94,13 +94,13 @@ Remove the import and the two fields:
 
 `mcp__idea__replace_text_in_file` — oldText:
 ```java
-import fan.summer.ai.tools.FunctionGemmaAdapter;
-import fan.summer.ai.tools.OfflineNlNormalizer;
-import fan.summer.ai.tools.ToolCallParser;
+import fan.summer.zhiflow.ai.tools.FunctionGemmaAdapter;
+import fan.summer.zhiflow.ai.tools.OfflineNlNormalizer;
+import fan.summer.zhiflow.ai.tools.ToolCallParser;
 ```
 newText:
 ```java
-import fan.summer.ai.tools.ToolCallParser;
+import fan.summer.zhiflow.ai.tools.ToolCallParser;
 ```
 
 oldText:
@@ -240,7 +240,7 @@ is Chinese-native, so it is removed as dead code."
 
 Create `SwissKit/src/test/java/fan/summer/ai/tools/ToolCallParserHermesTest.java`:
 ```java
-package fan.summer.ai.tools;
+package fan.summer.zhiflow.ai.tools;
 
 import fan.summer.zhiflow.api.ai.AiToolCall;
 import org.junit.jupiter.api.Test;
@@ -397,7 +397,7 @@ This is the hardest unit — full TDD.
 
 Create `SwissKit/src/test/java/fan/summer/ai/tools/ThinkingStreamSegmenterTest.java`:
 ```java
-package fan.summer.ai.tools;
+package fan.summer.zhiflow.ai.tools;
 
 import org.junit.jupiter.api.Test;
 
@@ -530,7 +530,7 @@ Run `ThinkingStreamSegmenterTest`. Expected: compile FAIL — class does not exi
 
 Create `SwissKit/src/main/java/fan/summer/ai/tools/ThinkingStreamSegmenter.java`:
 ```java
-package fan.summer.ai.tools;
+package fan.summer.zhiflow.ai.tools;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -548,7 +548,7 @@ import java.util.List;
  * <p>Markers may be split across token boundaries (the model emits {@code "<thi"} then
  * {@code "nk>"}). When no full marker is present, the segmenter holds back the tail of
  * the buffer if it could be the prefix of a marker, so a half marker is never emitted
- * as content. This mirrors {@link fan.summer.ai.inference.StopDetector#endsWithPartialStop}.
+ * as content. This mirrors {@link fan.summer.zhiflow.ai.inference.StopDetector#endsWithPartialStop}.
  *
  * <p>The segmenter is single-use per generation round. Call {@link #flush()} at EOS to
  * drain any trailing content / unclosed think block.
@@ -708,7 +708,7 @@ git commit -m "✨ feat(ai): ThinkingStreamSegmenter for Qwen3 thinking/tool-cal
 
 Create `SwissKit/src/test/java/fan/summer/ai/tools/Qwen3AdapterTest.java`:
 ```java
-package fan.summer.ai.tools;
+package fan.summer.zhiflow.ai.tools;
 
 import org.junit.jupiter.api.Test;
 
@@ -751,7 +751,7 @@ Run `Qwen3AdapterTest`. Expected: compile FAIL — class missing.
 
 Create `SwissKit/src/main/java/fan/summer/ai/tools/Qwen3Adapter.java`:
 ```java
-package fan.summer.ai.tools;
+package fan.summer.zhiflow.ai.tools;
 
 /**
  * Qwen3-specific tool-calling adapter.
@@ -819,8 +819,8 @@ git commit -m "✨ feat(ai): Qwen3Adapter for Hermes system prompt + thinking to
 
 Add imports:
 ```java
-import fan.summer.ai.tools.Qwen3Adapter;
-import fan.summer.ai.tools.ThinkingStreamSegmenter;
+import fan.summer.zhiflow.ai.tools.Qwen3Adapter;
+import fan.summer.zhiflow.ai.tools.ThinkingStreamSegmenter;
 ```
 
 Add fields next to `loadedModelPath`:

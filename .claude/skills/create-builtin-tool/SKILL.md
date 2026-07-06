@@ -45,7 +45,7 @@ OPT     resources/mapper/<name>/                    ← MyBatis mapper (if tool 
 ## 1. UI Plugin — SwissKitJPlugin Implementation
 
 ```java
-package fan.summer.buildintool.<toolname>;
+package fan.summer.zhiflow.buildintool.<toolname>;
 
 import fan.summer.zhiflow.api.*;
 import fan.summer.zhiflow.api.i18n.I18n;
@@ -63,7 +63,7 @@ public class <Name>Plugin implements SwissKitJPlugin {
 
     // ── Metadata ──────────────────────────────────────
 
-    @Override public String getId()          { return "fan.summer.buildin.<toolname>"; }
+    @Override public String getId()          { return "fan.summer.zhiflow.buildin.<toolname>"; }
     @Override public String getName()        { return I18n.get("builtin.<toolname>.name"); }
     @Override public String getDescription() { return I18n.get("builtin.<toolname>.desc"); }
     @Override public ToolCategory getCategory()    { return ToolCategory.<CATEGORY>; }
@@ -94,7 +94,7 @@ public class <Name>Plugin implements SwissKitJPlugin {
 ```
 
 **Metadata rules:**
-- `getId()`: must follow `fan.summer.buildin.<toolname>` pattern
+- `getId()`: must follow `fan.summer.zhiflow.buildin.<toolname>` pattern
 - `getMdiIcon()`: pick from [pictogrammers.com/library/mdi](https://pictogrammers.com/library/mdi/) — no `mdi-` prefix
 - `getIconStyle()`: pick from `BLUE, PURPLE, TEAL, AMBER, RED, PINK, GRAY`
 - `getType()`: always `ToolType.BUILTIN`
@@ -105,10 +105,10 @@ public class <Name>Plugin implements SwissKitJPlugin {
 ### Simple tool (no plugin state needed)
 
 ```java
-package fan.summer.buildintool.ai;
+package fan.summer.zhiflow.buildintool.ai;
 
 import fan.summer.zhiflow.api.ai.*;
-import fan.summer.ai.util.JsonHelper;
+import fan.summer.zhiflow.ai.util.JsonHelper;
 import fan.summer.zhiflow.api.log.LoggerFactory;
 import fan.summer.zhiflow.api.log.PluginLogger;
 

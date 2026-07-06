@@ -3,10 +3,10 @@
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="fan.summer.database.mapper.setting.email.EmailAddressBookMapper">
+<mapper namespace="fan.summer.zhiflow.database.mapper.setting.email.EmailAddressBookMapper">
 
     <insert id="insert"
-            parameterType="fan.summer.database.entity.setting.email.EmailAddressBookEntity"
+            parameterType="fan.summer.zhiflow.database.entity.setting.email.EmailAddressBookEntity"
             useGeneratedKeys="true"
             keyProperty="id">
         INSERT INTO email_address_book (email_address, nickname, tags)
@@ -14,14 +14,14 @@
     </insert>
 
     <update id="update"
-            parameterType="fan.summer.database.entity.setting.email.EmailAddressBookEntity">
+            parameterType="fan.summer.zhiflow.database.entity.setting.email.EmailAddressBookEntity">
         UPDATE email_address_book
         SET email_address = #{emailAddress}, nickname = #{nickname}, tags = #{tags}
         WHERE id = #{id}
     </update>
 
     <select id="selectEmailAddressBook"
-            resultType="fan.summer.database.entity.setting.email.EmailAddressBookEntity">
+            resultType="fan.summer.zhiflow.database.entity.setting.email.EmailAddressBookEntity">
         select *
         from email_address_book
     </select>

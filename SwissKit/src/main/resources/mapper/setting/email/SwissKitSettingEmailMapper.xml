@@ -3,11 +3,11 @@
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="fan.summer.database.mapper.setting.email.SwissKitSettingEmailMapper">
+<mapper namespace="fan.summer.zhiflow.database.mapper.setting.email.SwissKitSettingEmailMapper">
 
     <!-- Insert new email settings -->
     <insert id="insert"
-            parameterType="fan.summer.database.entity.setting.email.SwissKitSettingEmailEntity"
+            parameterType="fan.summer.zhiflow.database.entity.setting.email.SwissKitSettingEmailEntity"
             useGeneratedKeys="true"
             keyProperty="id">
         INSERT INTO swiss_kit_setting_email (
@@ -17,7 +17,7 @@
     </insert>
 
     <!-- Select the latest email settings record -->
-    <select id="selectLatest" resultType="fan.summer.database.entity.setting.email.SwissKitSettingEmailEntity">
+    <select id="selectLatest" resultType="fan.summer.zhiflow.database.entity.setting.email.SwissKitSettingEmailEntity">
         SELECT id, email, password, smtp_address AS smtpAddress, smtp_port AS smtpPort,
                need_tls AS needTLS, need_ssl AS needSSL, from_address AS fromAddress,
                imap_address AS imapAddress, imap_port AS imapPort, imap_ssl AS imapSSL

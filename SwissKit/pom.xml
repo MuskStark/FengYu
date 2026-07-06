@@ -4,65 +4,42 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>fan.summer</groupId>
-    <artifactId>SwissKit</artifactId>
-    <version>3.2.0</version>
+    <parent>
+        <groupId>fan.summer.zhiflow</groupId>
+        <artifactId>ZhiFlow-parent</artifactId>
+        <version>4.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
 
-    <licenses>
-        <license>
-            <name>GNU General Public License v3.0</name>
-            <url>https://www.gnu.org/licenses/gpl-3.0.txt</url>
-            <distribution>repo</distribution>
-        </license>
-    </licenses>
+    <artifactId>ZhiFlow</artifactId>
+
+    <name>ZhiFlow</name>
+    <description>ZhiFlow — a modular desktop toolbox.</description>
 
     <properties>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <javafx.version>21.0.2</javafx.version>
-        <lombok.version>1.18.42</lombok.version>
-        <swisskit.api.version>3.2.0</swisskit.api.version>
-        <fesod.version>2.0.1-incubating</fesod.version>
-        <h2.version>2.4.240</h2.version>
-        <mybatis.version>3.5.19</mybatis.version>
-        <simplejavamail.version>8.12.6</simplejavamail.version>
-        <angusmail.version>2.0.4</angusmail.version>
-        <slf4j.version>2.0.13</slf4j.version>
-        <logback.version>1.5.6</logback.version>
-        <gson.version>2.13.1</gson.version>
-        <commonmark.version>0.24.0</commonmark.version>
-        <pdfbox.version>3.0.4</pdfbox.version>
-        <documents4j.version>1.1.0</documents4j.version>
-        <poi.version>5.4.1</poi.version>
-        <playwright.version>1.49.0</playwright.version>
-        <langchain4j.version>1.2.0</langchain4j.version>
+        <!-- All version pins are inherited from the parent dependencyManagement / properties. -->
     </properties>
 
     <dependencies>
 
-        <!-- SwissKitJ-Api: bundled in fat-JAR at runtime so plugins can load against it -->
+        <!-- ZhiFlow-Api: bundled in fat-JAR at runtime so plugins can load against it -->
         <dependency>
             <groupId>fan.summer.zhiflow.api</groupId>
-            <artifactId>SwissKitJ-Api</artifactId>
-            <version>${swisskit.api.version}</version>
+            <artifactId>ZhiFlow-Api</artifactId>
         </dependency>
 
         <!-- JavaFX: the main app is the runtime provider, so compile scope to bundle in fat-JAR -->
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-graphics</artifactId>
-            <version>${javafx.version}</version>
         </dependency>
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-controls</artifactId>
-            <version>${javafx.version}</version>
         </dependency>
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-web</artifactId>
-            <version>${javafx.version}</version>
         </dependency>
 
         <!-- JavaFX platform-specific native libraries: bundle all three platforms so the
@@ -70,55 +47,46 @@
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-graphics</artifactId>
-            <version>${javafx.version}</version>
             <classifier>win</classifier>
         </dependency>
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-graphics</artifactId>
-            <version>${javafx.version}</version>
             <classifier>mac</classifier>
         </dependency>
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-graphics</artifactId>
-            <version>${javafx.version}</version>
             <classifier>linux</classifier>
         </dependency>
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-controls</artifactId>
-            <version>${javafx.version}</version>
             <classifier>win</classifier>
         </dependency>
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-controls</artifactId>
-            <version>${javafx.version}</version>
             <classifier>mac</classifier>
         </dependency>
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-controls</artifactId>
-            <version>${javafx.version}</version>
             <classifier>linux</classifier>
         </dependency>
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-web</artifactId>
-            <version>${javafx.version}</version>
             <classifier>win</classifier>
         </dependency>
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-web</artifactId>
-            <version>${javafx.version}</version>
             <classifier>mac</classifier>
         </dependency>
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-web</artifactId>
-            <version>${javafx.version}</version>
             <classifier>linux</classifier>
         </dependency>
 
@@ -126,116 +94,99 @@
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
-            <version>${lombok.version}</version>
         </dependency>
 
         <!-- Excel -->
         <dependency>
             <groupId>org.apache.fesod</groupId>
             <artifactId>fesod-sheet</artifactId>
-            <version>${fesod.version}</version>
         </dependency>
 
         <!-- H2 Database -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
-            <version>${h2.version}</version>
         </dependency>
 
         <!-- Mybatis -->
         <dependency>
             <groupId>org.mybatis</groupId>
             <artifactId>mybatis</artifactId>
-            <version>${mybatis.version}</version>
         </dependency>
 
         <!-- Email -->
         <dependency>
             <groupId>org.simplejavamail</groupId>
             <artifactId>simple-java-mail</artifactId>
-            <version>${simplejavamail.version}</version>
         </dependency>
 
         <!-- MigLayout (for legacy Swing components pending JavaFX migration) -->
         <dependency>
             <groupId>com.miglayout</groupId>
             <artifactId>miglayout-swing</artifactId>
-            <version>11.3</version>
         </dependency>
 
         <!-- Force override vulnerable version transitively brought in by simple-java-mail -->
         <dependency>
             <groupId>org.eclipse.angus</groupId>
             <artifactId>angus-mail</artifactId>
-            <version>${angusmail.version}</version>
         </dependency>
-
-        <!-- Logging: slf4j API + logback binding -->
 
         <!-- Gson -->
         <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
-            <version>${gson.version}</version>
         </dependency>
 
         <!-- Commonmark (Markdown rendering) -->
         <dependency>
             <groupId>org.commonmark</groupId>
             <artifactId>commonmark</artifactId>
-            <version>${commonmark.version}</version>
         </dependency>
 
         <!-- PDF -->
         <dependency>
             <groupId>org.apache.pdfbox</groupId>
             <artifactId>pdfbox</artifactId>
-            <version>${pdfbox.version}</version>
         </dependency>
 
         <!-- Document conversion: PDF to DOCX (pure Java via PDFBox + Apache POI) -->
         <dependency>
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
-            <version>${poi.version}</version>
         </dependency>
 
         <!-- Playwright (Browser Automation) -->
         <dependency>
             <groupId>com.microsoft.playwright</groupId>
             <artifactId>playwright</artifactId>
-            <version>${playwright.version}</version>
         </dependency>
 
-        <!-- LangChain4j: OpenAI + Anthropic cloud backends (replaces hand-rolled HTTP/SSE code) -->
+        <!-- LangChain4j: OpenAI + Anthropic cloud backends.
+             TEMPORARY — Phase 1 (AI strangler) replaces these with Spring AI 2.0. -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-open-ai</artifactId>
-            <version>${langchain4j.version}</version>
         </dependency>
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-anthropic</artifactId>
-            <version>${langchain4j.version}</version>
         </dependency>
 
+        <!-- Logging: slf4j API + logback binding -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
-            <version>${slf4j.version}</version>
         </dependency>
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
-            <version>${logback.version}</version>
         </dependency>
 
         <!-- JUnit 5 (test scope) — pure-logic unit tests only -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <version>5.10.2</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -253,7 +204,6 @@
                     <plugin>
                         <groupId>com.akathist.maven.plugins.launch4j</groupId>
                         <artifactId>launch4j-maven-plugin</artifactId>
-                        <version>2.7.0</version>
                         <executions>
                             <execution>
                                 <id>l4j-clui</id>
@@ -263,10 +213,10 @@
                                 </goals>
                                 <configuration>
                                     <headerType>gui</headerType>
-                                    <outfile>target/SwissKit.exe</outfile>
-                                    <jar>target/SwissKitJ-${project.version}.jar</jar>
-                                    <icon>src/main/resources/icons/SwissKit.ico</icon>
-                                    <errTitle>SwissKit Error</errTitle>
+                                    <outfile>target/ZhiFlow.exe</outfile>
+                                    <jar>target/ZhiFlow-${project.version}.jar</jar>
+                                    <icon>src/main/resources/icons/ZhiFlow.ico</icon>
+                                    <errTitle>ZhiFlow Error</errTitle>
                                     <downloadUrl>https://adoptium.net/</downloadUrl>
                                     <supportUrl>https://github.com/MuskStark/SwissKitJ</supportUrl>
                                     <jre>
@@ -300,11 +250,10 @@
             </resource>
         </resources>
         <plugins>
-            <!-- Maven Shade Plugin -->
+            <!-- Maven Shade Plugin (version inherited from parent pluginManagement) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
-                <version>3.5.3</version>
                 <executions>
                     <execution>
                         <phase>package</phase>
@@ -331,7 +280,7 @@
                             <transformers>
                                 <transformer
                                         implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>fan.summer.Launcher</mainClass>
+                                    <mainClass>fan.summer.zhiflow.Launcher</mainClass>
                                     <manifestEntries>
                                         <Implementation-Version>${project.version}</Implementation-Version>
                                     </manifestEntries>
@@ -339,37 +288,23 @@
                                 <transformer
                                         implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                             </transformers>
-                            <finalName>SwissKitJ-${project.version}</finalName>
+                            <finalName>ZhiFlow-${project.version}</finalName>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                         </configuration>
                     </execution>
                 </executions>
             </plugin>
 
-            <!-- Maven Compiler Plugin -->
+            <!-- Maven Compiler Plugin (version + config inherited from parent pluginManagement) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.13.0</version>
-                <configuration>
-                    <source>21</source>
-                    <target>21</target>
-                    <encoding>UTF-8</encoding>
-                    <annotationProcessorPaths>
-                        <path>
-                            <groupId>org.projectlombok</groupId>
-                            <artifactId>lombok</artifactId>
-                            <version>${lombok.version}</version>
-                        </path>
-                    </annotationProcessorPaths>
-                </configuration>
             </plugin>
 
-            <!-- Surefire: run JUnit 5 tests -->
+            <!-- Surefire: run JUnit 5 tests (version inherited) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.2.5</version>
             </plugin>
         </plugins>
     </build>
