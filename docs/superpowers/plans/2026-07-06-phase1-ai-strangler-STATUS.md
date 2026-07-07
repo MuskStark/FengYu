@@ -3,7 +3,7 @@
 **Last updated:** 2026-07-07
 **Branch:** `4.0.0-ZhiFlow`
 **Plan:** [`2026-07-06-phase1-ai-strangler-spring-ai.md`](./2026-07-06-phase1-ai-strangler-spring-ai.md)
-**State:** PAUSED before cutover (Task 12), awaiting cloud-backend follow-up. Ollama-local path fully built.
+**State:** CUTOVER COMPLETE. Cloud backend reimplemented, app/settings rewired, legacy stack deleted. Full reactor build + 67 tests green. Only Task 14 (docs/CHANGELOG) + live smoke-test with a running Ollama/cloud key remain.
 
 ---
 
@@ -53,7 +53,24 @@ Maven compiles all of `src/main/java` before any test, so the per-task `mvn test
 
 ---
 
-## Remaining work (resume here)
+## Cutover completed (2026-07-07)
+
+| Section / Task | Commit subject | Notes |
+|---|---|---|
+| A. Cloud follow-up | `feat(ai): add cloud ChatModel beans + SpringAiCloudBackend (Spring AI 2.0 GA)` | See "How the cloud client is built" below |
+| Task 11 | `refactor(ai): relocate ToolExecutor/SlashCommandHandler/AiToolDescriptions out of tools/` | ToolExecutor+SlashCommandHandler → `ai/`, AiToolDescriptions → `ai/adapter/`. SynchronousChatHelper rewritten onto the `openAiChatModel` bean. |
+| Task 12 | `feat(ai): rewire app + settings UI to Spring AI cloud / Ollama local backends` | AiSpringContext bootstrapped after DB init / closed on stop; cloud + local call sites swapped |
+| Task 13 | `refactor(ai): delete legacy LC4j cloud + GGUF/JNI/worker local stack` | old backends, LC4j adapters, tools parsers (kept Builtin\*Tool), inference/model/tensor/nativejni, cpp, native lib, stale tests. **logback pinned to 1.5.34** (BOM alignment — split classic/core → NoClassDefFound JaninoEventEvaluatorBase). |
+
+**How the cloud client is built (no vendor okhttp artifact needed):** Spring AI 2.0.0 GA ships `OpenAiSetup.setupSyncClient(...)` and `AnthropicSetup.setupSyncClient(...)`, which build the vendor `OpenAIClient`/`AnthropicClient` over Spring AI's own `SpringAi*HttpClient` (okhttp3 is already a compile-scope transitive dep of `spring-ai-openai`). So the plan's Section A step 1 (add `com.openai:openai-java-client-okhttp` / `com.anthropic:anthropic-java-client-okhttp`) turned out **unnecessary** — `ChatModelConfig` uses the setup helpers instead. All builder signatures verified via `javap` against the resolved 2.0.0 jars + the official 2.0.0 docs.
+
+**Verifications done at the green point:** full reactor build SUCCESS via IDEA JPS; `mvn test -f ZhiFlow` = 67 tests, 0 failures (incl. the 5 new AI suites + the 2 relocated-helper suites). Zero `dev.langchain4j` / deleted-package references remain in source (only javadoc `{@code}` mentions).
+
+## Still owed
+- **Task 14** — CHANGELOG + README (Ollama runtime) + migration doc. Also fix CLAUDE.md "standalone POMs" → reactor.
+- **Live smoke test** — needs a running app + (local) `ollama serve` + `ollama pull qwen3:4b`, or a real cloud API key. Streaming/tool-loop paths are unit-tested with stub ChatModels but not exercised end-to-end.
+
+## (historical) Original resume plan
 
 ### A. Cloud follow-up (unblocks everything else)
 1. Add vendor client deps to `ZhiFlow/pom.xml`: `com.openai:openai-java-client-okhttp` and `com.anthropic:anthropic-java-client-okhttp` (versions via the spring-ai BOM if managed, else pin to the `-core` versions already resolved: openai `4.39.1`, anthropic `2.40.1`).
