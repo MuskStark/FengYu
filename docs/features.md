@@ -79,9 +79,9 @@ Split Excel files using a multi-step wizard:
 
 ## System Features
 
-### Resizable Window
+### Native Window Chrome
 
-The undecorated glassmorphism window supports edge and corner drag resize via `WindowResizeHelper`. Resize detection uses screen coordinates for compatibility across platforms, including macOS where `stage.isMaximized()` is unreliable with `StageStyle.TRANSPARENT`.
+The main window uses `StageStyle.DECORATED` with native OS window chrome (macOS traffic lights, Windows/Linux standard title bar). The window is freely resizable via native OS controls — no custom resize logic needed.
 
 ### Plugin Store
 

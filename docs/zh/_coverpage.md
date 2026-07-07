@@ -1,4 +1,4 @@
-# SwissKitJ <small>3.1.0</small>
+# SwissKitJ <small>3.2.0</small>
 
 > 一款生产力工具的瑞士军刀
 

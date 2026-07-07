@@ -52,8 +52,7 @@ SwissKitJ 是一个基于 JavaFX 21（JDK 21）构建的模块化、插件化桌
 7. 通过 `BuiltinToolRegistrar` 注册内置工具 —— 列表会经 `PluginRegistry.addPlugins` 统一注册，同时把每个插件的 `aiTools()` 自动注册到 `AiServiceProvider`
 8. 若已保存的模式为 `openai`/`anthropic`，则初始化云端 AI 后端；**local 模式延迟到首次打开 AI 工具时再初始化**
 9. 构建并显示 `MainWindow`
-10. 挂载 `WindowResizeHelper` 实现边缘/角落拖拽缩放
-11. 启动 `PluginLoader`（扫描插件目录并监听变化）
+10. 启动 `PluginLoader`（扫描插件目录并监听变化）
 
 > 自 v3.1.0 起不再有独立的 AI 工具注册步骤。插件通过 `SwissKitJPlugin.aiTools()`
 > 自带其 AI 工具，注册表在插件加入时自动注册、在插件移除（含热重载）时自动注销。
@@ -63,11 +62,10 @@ SwissKitJ 是一个基于 JavaFX 21（JDK 21）构建的模块化、插件化桌
 
 | 组件 | 职责 |
 |------|------|
-| `MainWindow` | 根 `StackPane`；拥有 `TitleBar`、`Sidebar`、`ContentArea`、状态栏；组合动画背景光球 |
-| `Sidebar` | 带搜索栏的分类导航；分类：全部 / 文本 / 图片 / 开发者 / 网络 / 其他 / 收藏 |
+| `MainWindow` | 根 `StackPane` 包裹 `BorderPane` 主体；拥有 `Sidebar`、`ContentArea`、状态栏 |
+| `Sidebar` | 可折叠的分类导航，带搜索栏；分类：全部 / 文本 / 图片 / 开发者 / 网络 / 其他 / 收藏 |
 | `ContentArea` | 显示 `ToolCard` 网格或活动工具视图；管理 `DetailPanel` 覆盖层与返回栏 |
 | `DetailPanel` | 滑入面板，显示插件元数据，带启动、收藏切换、卸载（仅外部插件）按钮 |
-| `TitleBar` | 自定义窗口装饰（窗口为 `StageStyle.TRANSPARENT`） |
 
 ### 导航流程
 
@@ -247,7 +245,7 @@ Schema 从 `init.sql` 初始化，通过 MyBatis 访问，XML mapper 位于
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.1.0.jar
+java -jar SwissKit/target/SwissKitJ-3.2.0.jar
 ```
 
 胖 JAR 由 `maven-shade-plugin` 构建（主类 `fan.summer.Launcher`），并捆绑所有平台的
