@@ -1235,6 +1235,8 @@ git commit -m "feat(ai): add AiToolCallback (AiTool -> Spring AI ToolCallback)"
 
 ### Task 8 (SPIKE): Ollama thinking-mode probe
 
+> **SPIKE OUTCOME (2026-07-07): fallback taken.** Ollama is not installed/running on the execution host (`curl http://localhost:11434/api/tags` → no connection; no `ollama` binary). Per the documented fallback, `OllamaLocalBackend` (Task 9) ships **without** thinking surfacing in Phase 1: `AiStreamCallback.onThinking` is never invoked by the local backend. Thinking still happens inside the model; it is simply not streamed to the UI. Parity for cloud (which never surfaced thinking), accepted regression for local, logged as a TODO for a follow-up once a host with Ollama can confirm the streaming thinking-metadata key. No spike file created/committed.
+
 **Why this is a spike:** Spring AI's `OllamaChatOptions` exposes a `think` field (auto-on for reasoning models), but the **exact metadata key** carrying thinking content per-streaming-chunk **could not be locked from source** in the research pass. Writing the `OllamaLocalBackend` (Task 9) without knowing this produces a non-functional thinking-surfacing path or, worse, one that silently swallows thinking.
 
 **Files:**
