@@ -162,15 +162,26 @@
             <artifactId>playwright</artifactId>
         </dependency>
 
-        <!-- LangChain4j: OpenAI + Anthropic cloud backends.
-             TEMPORARY — Phase 1 (AI strangler) replaces these with Spring AI 2.0. -->
+        <!-- Spring Boot (embedded, non-web): DI + auto-config backbone for the AI context.
+             NO spring-boot-starter-web — the context is WebApplicationType.NONE. -->
         <dependency>
-            <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-open-ai</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- Spring AI 2.0 — manual @Bean configuration (no starter-model auto-config).
+             Non-starter artifacts so WebApplicationType.NONE has no auto-config surprises. -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-openai</artifactId>
         </dependency>
         <dependency>
-            <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-anthropic</artifactId>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-anthropic</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-ollama</artifactId>
         </dependency>
 
         <!-- Logging: slf4j API + logback binding -->
