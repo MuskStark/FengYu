@@ -17,8 +17,35 @@
     <description>ZhiFlow — a modular desktop toolbox.</description>
 
     <properties>
-        <!-- All version pins are inherited from the parent dependencyManagement / properties. -->
+        <!-- Most version pins are inherited from the parent. The two Spring BOM pins
+             are declared here because they are consumed by this module's own
+             dependencyManagement import below (a property defined in the same POM
+             always resolves for that POM's import-scoped BOM version). -->
+        <spring-boot.version>4.1.0</spring-boot.version>
+        <spring-ai.version>2.0.0</spring-ai.version>
     </properties>
+
+    <!-- Import-scoped BOMs live here (not in the parent): import BOMs in a parent POM
+         do not reliably propagate managed versions to child modules. Version pins come
+         from parent <properties> (spring-boot.version / spring-ai.version). -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
 
