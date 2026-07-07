@@ -1,4 +1,4 @@
-package fan.summer.zhiflow.ai.tools;
+package fan.summer.zhiflow.ai.adapter;
 
 import fan.summer.zhiflow.api.ai.AiServiceProvider;
 import fan.summer.zhiflow.api.ai.AiTool;
@@ -9,9 +9,9 @@ import java.util.List;
 /**
  * Picks the description and parameter list appropriate to the current backend mode.
  *
- * <p>Used by {@link ToolSchemaBuilder} (local path) and
- * {@code AiToolToToolSpecification} (cloud path) so each consumer renders the
- * version the active backend should see.</p>
+ * <p>Used by {@link AiToolCallback} when building the Spring AI
+ * {@code ToolDefinition}, so the schema/description reflect the version the
+ * active backend should see.</p>
  */
 public final class AiToolDescriptions {
 

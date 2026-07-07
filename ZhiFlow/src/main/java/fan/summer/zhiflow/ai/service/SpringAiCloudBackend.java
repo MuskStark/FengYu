@@ -2,7 +2,7 @@ package fan.summer.zhiflow.ai.service;
 
 import fan.summer.zhiflow.ai.adapter.MessageMapper;
 import fan.summer.zhiflow.ai.spring.AiSpringContext;
-import fan.summer.zhiflow.ai.tools.ToolExecutor;
+import fan.summer.zhiflow.ai.ToolExecutor;
 import fan.summer.zhiflow.ai.util.JsonHelper;
 import fan.summer.zhiflow.api.ai.AiChatMessage;
 import fan.summer.zhiflow.api.ai.AiServiceException;

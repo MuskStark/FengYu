@@ -1,20 +1,18 @@
 package fan.summer.zhiflow.buildintool.browser;
 
-import dev.langchain4j.data.message.AiMessage;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.model.chat.ChatModel;
-import dev.langchain4j.model.chat.request.ChatRequest;
-import dev.langchain4j.model.chat.response.ChatResponse;
-import dev.langchain4j.model.openai.OpenAiChatModel;
-import fan.summer.zhiflow.ai.adapter.ChatMessageMapper;
-import fan.summer.zhiflow.ai.service.CloudChatBackend;
+import fan.summer.zhiflow.ai.adapter.MessageMapper;
+import fan.summer.zhiflow.ai.service.SpringAiCloudBackend;
+import fan.summer.zhiflow.ai.spring.AiSpringContext;
 import fan.summer.zhiflow.api.ai.AiChatMessage;
 import fan.summer.zhiflow.api.ai.AiServiceProvider;
 import fan.summer.zhiflow.api.ai.ChatBackend;
 import fan.summer.zhiflow.api.log.LoggerFactory;
 import fan.summer.zhiflow.api.log.PluginLogger;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.Prompt;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -25,27 +23,20 @@ import java.util.List;
  * through the normal chat loop would inject the planner's own {@code browser_automate}
  * tool into the request — causing infinite recursion of browser sessions.
  *
- * <p>Currently supports only OpenAI-compatible endpoints (direct
- * {@link OpenAiChatModel} call). Anthropic's Messages API uses a different body
- * shape; a parallel {@code AnthropicChatModel} branch would be needed to support
- * Anthropic-only setups — not implemented here.
+ * <p>Uses the Spring AI {@code openAiChatModel} bean directly ({@link ChatModel#call(Prompt)}),
+ * with no {@code ToolCallback}s attached, so the model returns plain text/JSON. Only
+ * OpenAI-compatible endpoints are supported; Anthropic uses a different body shape
+ * and is not wired for the planner's direct call.
  */
 public final class SynchronousChatHelper {
 
     private static final PluginLogger log = LoggerFactory.getLogger(SynchronousChatHelper.class);
-    private static final Duration TIMEOUT = Duration.ofSeconds(60);
 
     private SynchronousChatHelper() {}
 
     /**
      * Sends the planner's conversation history to the active cloud backend without
      * any tool definitions and returns the assistant's text reply.
-     *
-     * <p>The history typically contains a system prompt (browser automation planner
-     * prompt), prior user snapshots, and prior assistant actions — maintained by
-     * {@code BrowserAutomateTool.runThinkActLoop}. Only SYSTEM/USER/ASSISTANT
-     * roles survive the mapper (any TOOL messages map to
-     * {@code ToolExecutionResultMessage} which the planner never produces here).
      *
      * @param history the planner conversation history (system + user + assistant messages)
      * @return the assistant's text reply, or {@code null} if no cloud backend is
@@ -57,52 +48,34 @@ public final class SynchronousChatHelper {
             log.warn("No AI service active; browser planner cannot proceed");
             return null;
         }
-        if (!(service instanceof CloudChatBackend cloud)) {
+        if (!(service instanceof SpringAiCloudBackend cloud)) {
             log.warn("Browser planner requires a cloud backend, got: {}", service.getClass().getSimpleName());
             return null;
         }
 
-        // Only OpenAI-compatible HTTP format is supported for the planner's direct call.
-        // Anthropic's /v1/messages uses a different body shape; not implemented here.
-        if (cloud.provider() != CloudChatBackend.Provider.OPENAI) {
+        // Only OpenAI-compatible endpoints are supported for the planner's direct call.
+        if (cloud.provider() != SpringAiCloudBackend.Provider.OPENAI) {
             log.warn("Browser planner only supports OpenAI-compatible endpoints for direct call, got: {}",
                      cloud.provider());
             return null;
         }
 
-        String endpoint = cloud.getEndpoint();
-        String apiKey = cloud.getApiKey();
-        String model = cloud.getModelNameInternal();
-        if (endpoint == null || endpoint.isBlank() || apiKey == null || apiKey.isBlank()
-            || model == null || model.isBlank()) {
-            log.warn("Browser planner: cloud backend not fully configured");
-            return null;
-        }
-
         try {
-            ChatModel chatModel = OpenAiChatModel.builder()
-                .baseUrl(endpoint)
-                .apiKey(apiKey)
-                .modelName(model)
-                .temperature(0.3)   // Low temperature for consistent planner output
-                .maxTokens(512)     // Planner only needs short JSON responses
-                .timeout(TIMEOUT)
-                .build();
+            // Reuse the pre-configured openAiChatModel bean (base URL / API key / model
+            // are baked into the client at context start). No ToolCallbacks are attached,
+            // so the model returns plain text — no tool loop, no recursion.
+            ChatModel chatModel = AiSpringContext.getBean("openAiChatModel", ChatModel.class);
 
-            // Convert ZhiFlow history → LC4j ChatMessage list (no tool definitions
-            // are attached to the ChatRequest, so the model returns plain text/JSON).
-            List<ChatMessage> messages = new ArrayList<>(history.size());
+            List<Message> messages = new ArrayList<>(history.size());
             for (AiChatMessage msg : history) {
-                messages.add(ChatMessageMapper.toLc4j(msg));
+                messages.add(MessageMapper.toSpringAi(msg));
             }
 
-            ChatRequest request = ChatRequest.builder()
-                .messages(messages)
-                .build();
-
-            ChatResponse response = chatModel.chat(request);
-            AiMessage ai = response.aiMessage();
-            String text = ai.text();
+            ChatResponse response = chatModel.call(new Prompt(messages));
+            String text = response != null && response.getResult() != null
+                    && response.getResult().getOutput() != null
+                    ? response.getResult().getOutput().getText()
+                    : null;
             if (text == null || text.isBlank()) {
                 log.warn("Planner returned empty content");
                 return null;
