@@ -40,6 +40,8 @@ public final class AiConfigService {
     private static final String AI_SYSTEM_PROMPT_KEY = "ai.system_prompt";
     private static final String AI_LOCAL_BACKEND_KEY = "ai.local.backend";
     private static final String AI_MODEL_PATH_KEY = "ai.model.path";
+    private static final String AI_OLLAMA_BASE_URL_KEY = "ai.ollama.base_url";
+    private static final String AI_OLLAMA_MODEL_KEY = "ai.ollama.model";
 
     // ── Core read ─────────────────────────────────────────────
 
@@ -134,5 +136,17 @@ public final class AiConfigService {
     /** Returns the local GGUF model file path, or null if not set. */
     public static String getAiModelPath() {
         return readSetting(AI_MODEL_PATH_KEY, null);
+    }
+
+    // ── Ollama settings (Phase 1: local runtime is now Ollama) ────────────
+
+    /** Ollama server base URL; defaults to the standard local daemon. */
+    public static String getAiOllamaBaseUrl() {
+        return readSetting(AI_OLLAMA_BASE_URL_KEY, "http://localhost:11434");
+    }
+
+    /** Ollama model tag (e.g. {@code "qwen3:4b"}); defaults to Qwen3 4B. */
+    public static String getAiOllamaModel() {
+        return readSetting(AI_OLLAMA_MODEL_KEY, "qwen3:4b");
     }
 }
