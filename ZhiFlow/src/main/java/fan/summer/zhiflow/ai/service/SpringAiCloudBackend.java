@@ -60,20 +60,46 @@ public final class SpringAiCloudBackend implements ChatBackend {
     // ── Production constructors (look up the ChatModel bean) ──────────
 
     public static SpringAiCloudBackend openAi(String endpoint, String apiKey, String modelName) {
-        ChatModel model = AiSpringContext.getBean("openAiChatModel", ChatModel.class);
+        ChatModel model = resolveModel("openAiChatModel", Provider.OPENAI, endpoint, apiKey, modelName);
         return new SpringAiCloudBackend(Provider.OPENAI, endpoint, apiKey, modelName, model);
     }
 
     public static SpringAiCloudBackend anthropic(String endpoint, String apiKey, String modelName) {
-        ChatModel model = AiSpringContext.getBean("anthropicChatModel", ChatModel.class);
+        ChatModel model = resolveModel("anthropicChatModel", Provider.ANTHROPIC, endpoint, apiKey, modelName);
         return new SpringAiCloudBackend(Provider.ANTHROPIC, endpoint, apiKey, modelName, model);
     }
 
     /** DeepSeek uses an OpenAI-compatible API; the bean reuses the OpenAI model path. */
     public static SpringAiCloudBackend deepSeek(String endpoint, String apiKey, String modelName) {
-        ChatModel model = AiSpringContext.getBean("deepSeekChatModel", ChatModel.class);
+        ChatModel model = resolveModel("deepSeekChatModel", Provider.DEEPSEEK, endpoint, apiKey, modelName);
         return new SpringAiCloudBackend(Provider.DEEPSEEK, endpoint, apiKey, modelName, model);
     }
+
+    /**
+     * Resolves the (lazy) {@code ChatModel} bean only when the provider is fully
+     * configured. The vendor SDK client throws immediately if the API key is blank,
+     * and forcing the lazy bean at mode-switch time would surface that as an uncaught
+     * exception on the FX thread. When not configured we return {@code null}: the
+     * backend still registers, {@link #isReady()} returns false, and {@code chat()}
+     * throws a clean "not configured" message instead of crashing. The bean is
+     * resolved on the next mode switch once the user fills in the key.
+     */
+    private static ChatModel resolveModel(String beanName, Provider provider,
+                                          String endpoint, String apiKey, String modelName) {
+        if (isBlank(endpoint) || isBlank(apiKey) || isBlank(modelName)) {
+            log.info("{} backend not fully configured (missing endpoint/apiKey/model); "
+                     + "deferring ChatModel resolution until configured", provider);
+            return null;
+        }
+        try {
+            return AiSpringContext.getBean(beanName, ChatModel.class);
+        } catch (Exception e) {
+            log.warn("Failed to build {} ChatModel bean '{}': {}", provider, beanName, e.getMessage());
+            return null;
+        }
+    }
+
+    private static boolean isBlank(String s) { return s == null || s.isBlank(); }
 
     // ── Test constructor (inject ChatModel directly, bypass Spring) ───
 
@@ -105,7 +131,8 @@ public final class SpringAiCloudBackend implements ChatBackend {
     @Override public void unloadModel() { /* model bean is reused; nothing to release */ }
 
     @Override public boolean isReady() {
-        return endpoint != null && !endpoint.isBlank()
+        return chatModel != null
+            && endpoint != null && !endpoint.isBlank()
             && apiKey != null && !apiKey.isBlank()
             && modelName != null && !modelName.isBlank();
     }
