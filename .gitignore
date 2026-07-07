@@ -39,6 +39,8 @@ build/
 /AGENTS.md
 /.swisskit/
 **/.swisskit/
+/.zhiflow/
+**/.zhiflow/
 
 ### MCP ###
 .mcp.json

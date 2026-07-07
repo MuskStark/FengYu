@@ -1,4 +1,4 @@
-package fan.summer.zhiflow.ai.tools;
+package fan.summer.zhiflow.ai.adapter;
 
 import fan.summer.zhiflow.api.ai.AiTool;
 import fan.summer.zhiflow.api.ai.AiToolParam;
