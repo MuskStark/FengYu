@@ -2,6 +2,8 @@ package fan.summer.ui.sidebar;
 
 import fan.summer.api.MdiIconUtil;
 import fan.summer.api.i18n.I18n;
+import fan.summer.api.theme.ThemeService;
+import fan.summer.ui.setting.SwissKitJSettingUi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import javafx.animation.Interpolator;
@@ -42,19 +44,39 @@ public class Sidebar extends VBox {
 
     private final VBox content = new VBox();
     private final List<NavItem> navItems = new ArrayList<>();
+    /** Every NavItem shown in the sidebar (categories + settings/about/theme), so collapse can reach them all. */
+    private final List<NavItem> allItems = new ArrayList<>();
+    /** Section heading labels, hidden (un-managed) when collapsed for a clean icon strip. */
+    private final List<Label> sectionLabels = new ArrayList<>();
     private NavItem activeItem;
+    private NavItem themeItem;
     private Consumer<String> onCategorySelect;
     private Runnable onSettingsSelect;
     private Runnable onAboutSelect;
 
+    /** Whether the sidebar is currently in icon-only (collapsed) mode. Persisted via settings. */
+    private boolean collapsed = "true".equalsIgnoreCase(readCollapsedPref());
+
+    /** Collapse toggle button. Field so {@link #toggleCollapse()} can update its text. */
+    private Label collapseBtn;
+
     public Sidebar() {
         LOG.info("Sidebar initializing");
         getStyleClass().add("sidebar");
-        setPrefWidth(220);
-        setMinWidth(200);
-        setMaxWidth(260);
         setSpacing(0);
         build();
+        // Apply persisted collapse state so it renders correctly on first paint.
+        // This toggles the CSS class AND drops labels/badges out of layout.
+        applyCollapsed(collapsed);
+        // Keep the theme toggle icon/label in sync regardless of where the change
+        // originated (sidebar click OR settings-page combo).
+        ThemeService.onChange(t -> javafx.application.Platform.runLater(() -> {
+            if (themeItem != null) {
+                boolean dark = t == ThemeService.Theme.DARK;
+                themeItem.setIcon(dark ? "weather-night" : "weather-sunny");
+                themeItem.setText(I18n.get(dark ? "sidebar.label.theme.dark" : "sidebar.label.theme.light"));
+            }
+        }));
         LOG.info("Sidebar initialized with {} nav items", navItems.size());
     }
 
@@ -103,6 +125,14 @@ public class Sidebar extends VBox {
     private void build() {
         content.setSpacing(0);
 
+        // ── Collapse toggle (very top of sidebar) ─────────────────────
+        collapseBtn = new Label(collapsed ? "»" : "«");
+        collapseBtn.getStyleClass().add("sidebar-collapse-btn");
+        collapseBtn.setMaxWidth(Double.MAX_VALUE);
+        collapseBtn.setAlignment(Pos.CENTER_RIGHT);
+        collapseBtn.setOnMouseClicked(e -> toggleCollapse());
+        content.getChildren().add(collapseBtn);
+
         // ── AI section (first position) ────────────────────────────────
         content.getChildren().add(sectionLabel("sidebar.section.aiAssistant"));
         addNavItem("ai", "robot-outline", "sidebar.label.aiChat", 0, true);
@@ -136,6 +166,7 @@ public class Sidebar extends VBox {
         // ── Settings (always at bottom) ──────────────────────────
         addSettingsItem("cog-outline", "sidebar.label.settings");
         addAboutItem("information-outline", "sidebar.label.about");
+        addThemeToggleItem();
 
         // ── Wrap in ScrollPane ────────────────────────────────────
         ScrollPane scrollPane = new ScrollPane(content);
@@ -161,7 +192,7 @@ public class Sidebar extends VBox {
         NavItem item = new NavItem(id, mdiIcon, label, count, isNew);
         item.setOnMouseClicked(e -> activate(item, true));
         navItems.add(item);
-        content.getChildren().add(item);
+        registerItem(item);
         I18n.bind(item.textLabelProperty(), i18nKey);
     }
 
@@ -171,7 +202,7 @@ public class Sidebar extends VBox {
         item.setOnMouseClicked(e -> {
             if (onSettingsSelect != null) onSettingsSelect.run();
         });
-        content.getChildren().add(item);
+        registerItem(item);
         I18n.bind(item.textLabelProperty(), i18nKey);
     }
 
@@ -181,8 +212,53 @@ public class Sidebar extends VBox {
         item.setOnMouseClicked(e -> {
             if (onAboutSelect != null) onAboutSelect.run();
         });
-        content.getChildren().add(item);
+        registerItem(item);
         I18n.bind(item.textLabelProperty(), i18nKey);
+    }
+
+    /**
+     * Adds a NavItem to the sidebar content AND the {@link #allItems} tracking list
+     * (so {@link #applyCollapsed(boolean)} can reach every item, including the
+     * settings/about/theme footer items that are not in the {@link #navItems} category list).
+     */
+    private void registerItem(NavItem item) {
+        content.getChildren().add(item);
+        allItems.add(item);
+    }
+
+    /**
+     * Builds the dark/light theme toggle item shown in the sidebar footer.
+     * The item does NOT become the active category (mirrors settings/about
+     * behavior). Its icon (weather-night/weather-sunny) and label are kept
+     * in sync by the {@link ThemeService#onChange} listener registered in the
+     * constructor, so changes from the settings page also update this item.
+     */
+    private void addThemeToggleItem() {
+        boolean dark = ThemeService.current() == ThemeService.Theme.DARK;
+        themeItem = new NavItem("theme",
+                dark ? "weather-night" : "weather-sunny",
+                I18n.get(dark ? "sidebar.label.theme.dark" : "sidebar.label.theme.light"),
+                0, false);
+        themeItem.setOnMouseClicked(e -> {
+            ThemeService.Theme next = (ThemeService.current() == ThemeService.Theme.DARK)
+                ? ThemeService.Theme.LIGHT : ThemeService.Theme.DARK;
+            applyTheme(next);
+        });
+        registerItem(themeItem);
+        // NOTE: i18n-binding the label is skipped intentionally — the label text
+        // depends on the theme (dark vs. light wording), not just the locale.
+        // The onChange listener updates it on both locale/theme switches.
+    }
+
+    /**
+     * Applies the given theme: updates the global {@link ThemeService} (which
+     * re-stamps the theme class on the scene root and fires listeners — the
+     * listener in the constructor handles the icon/label refresh) and persists
+     * the choice via {@link SwissKitJSettingUi#saveThemeSetting}.
+     */
+    private void applyTheme(ThemeService.Theme theme) {
+        ThemeService.set(theme);
+        SwissKitJSettingUi.saveThemeSetting(theme == ThemeService.Theme.DARK ? "dark" : "light");
     }
 
     private void activate(NavItem item, boolean fireEvent) {
@@ -200,8 +276,55 @@ public class Sidebar extends VBox {
     private Label sectionLabel(String i18nKey) {
         Label l = new Label(I18n.get(i18nKey).toUpperCase());
         l.getStyleClass().add("sidebar-section-label");
+        sectionLabels.add(l);
         I18n.bind(l.textProperty(), i18nKey);
         return l;
+    }
+
+    /**
+     * Toggles the sidebar between the expanded (labeled list) and collapsed
+     * (48px icon-only strip) states, persists the new state, and re-applies it.
+     */
+    private void toggleCollapse() {
+        collapsed = !collapsed;
+        applyCollapsed(collapsed);
+        collapseBtn.setText(collapsed ? "»" : "«");
+        SwissKitJSettingUi.saveSettingAsync("sidebar.collapsed", collapsed ? "true" : "false", null);
+    }
+
+    /**
+     * Applies the collapsed/expanded state: toggles the {@code collapsed} CSS class
+     * (which sets the 48px width and centers nav icons), drops the text label and
+     * badge of every nav item out of layout (so the icon truly centers — CSS
+     * {@code -fx-opacity:0} alone leaves them occupying space), and hides section
+     * headings for a clean icon strip.
+     */
+    private void applyCollapsed(boolean c) {
+        if (c) {
+            if (!getStyleClass().contains("collapsed")) getStyleClass().add("collapsed");
+        } else {
+            getStyleClass().removeAll("collapsed");
+        }
+        for (NavItem item : allItems) {
+            item.setCollapsed(c);
+        }
+        for (Label sl : sectionLabels) {
+            sl.setManaged(!c);
+            sl.setVisible(!c);
+        }
+    }
+
+    /**
+     * Reads the persisted collapse preference from the settings cache.
+     * Returns {@code "false"} on any failure (degrades to expanded safely).
+     */
+    private static String readCollapsedPref() {
+        try {
+            String v = SwissKitJSettingUi.getSetting("sidebar.collapsed");
+            return v == null ? "false" : v;
+        } catch (Exception e) {
+            return "false";
+        }
     }
 
     private Region divider() {
@@ -226,7 +349,7 @@ public class Sidebar extends VBox {
         private final String categoryId;
         private final Label  textLabel;
         private final Label  badgeLabel;
-        private final Text   iconNode;
+        private Text   iconNode;
         private boolean active = false;
 
         /**
@@ -246,7 +369,8 @@ public class Sidebar extends VBox {
             setSpacing(10);
             setPrefHeight(34);
 
-            iconNode = MdiIconUtil.createIcon(mdiIcon, 16, "-fx-fill: rgba(255,255,255,0.75);");
+            iconNode = MdiIconUtil.createIcon(mdiIcon, 16);
+            iconNode.setStyle("");   // clear createIcon's inline fill so .nav-item-icon CSS applies
             iconNode.getStyleClass().add("nav-item-icon");
 
             textLabel = new Label(label);
@@ -260,14 +384,6 @@ public class Sidebar extends VBox {
 
             getChildren().addAll(iconNode, textLabel, badgeLabel);
             setCursor(javafx.scene.Cursor.HAND);
-
-            // Hover: brighten icon (inline style overrides CSS, so we handle via Java)
-            setOnMouseEntered(e -> {
-                if (!active) iconNode.setStyle("-fx-fill: rgba(255,255,255,1);");
-            });
-            setOnMouseExited(e -> {
-                if (!active) iconNode.setStyle("-fx-fill: rgba(255,255,255,0.75);");
-            });
         }
 
         /**
@@ -294,7 +410,6 @@ public class Sidebar extends VBox {
             this.active = active;
             if (active) {
                 getStyleClass().add("active");
-                iconNode.setStyle("-fx-fill: #5b8cf7;");
                 ScaleTransition st = new ScaleTransition(Duration.millis(160), this);
                 st.setFromX(0.97); st.setFromY(0.97);
                 st.setToX(1.0); st.setToY(1.0);
@@ -302,7 +417,6 @@ public class Sidebar extends VBox {
                 st.play();
             } else {
                 getStyleClass().remove("active");
-                iconNode.setStyle("-fx-fill: rgba(255,255,255,0.75);");
             }
         }
 
@@ -318,5 +432,46 @@ public class Sidebar extends VBox {
         }
 
         public boolean isActive() { return active; }
+
+        /**
+         * Switches this item into/out of icon-only mode. When collapsed, the text
+         * label and badge are removed from layout ({@code managed=false}) so the
+         * icon can center inside the 48px strip — {@code -fx-opacity:0} via CSS
+         * is not enough, because an unmanaged-but-opaque label still consumes
+         * horizontal space (it has {@code Hgrow.ALWAYS}) and pins the icon left.
+         *
+         * @param collapsed {@code true} to show only the icon, {@code false} to restore the full row
+         */
+        public void setCollapsed(boolean collapsed) {
+            textLabel.setManaged(!collapsed);
+            textLabel.setVisible(!collapsed);
+            badgeLabel.setManaged(!collapsed);
+            // Badge is only relevant when expanded AND it has a count.
+            badgeLabel.setVisible(!collapsed && !badgeLabel.getText().isEmpty());
+        }
+
+        /**
+         * Swaps the icon glyph, preserving the active/inactive fill color.
+         * Used by the theme toggle to flip between weather-night/weather-sunny.
+         *
+         * @param mdiIcon the Material Design Icons name, e.g. {@code "weather-sunny"}
+         */
+        public void setIcon(String mdiIcon) {
+            Text t = MdiIconUtil.createIcon(mdiIcon, 16);
+            t.setStyle("");   // color comes from .nav-item-icon CSS (incl. hover/active variants)
+            t.getStyleClass().add("nav-item-icon");
+            getChildren().set(getChildren().indexOf(iconNode), t);
+            iconNode = t;
+        }
+
+        /**
+         * Updates the label text. Used by the theme toggle to reflect the new
+         * theme's wording (Dark Theme / Light Theme).
+         *
+         * @param text the new label text
+         */
+        public void setText(String text) {
+            textLabel.setText(text);
+        }
     }
 }

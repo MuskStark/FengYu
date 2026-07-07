@@ -59,11 +59,8 @@ public class PluginStoreUi {
         sidebar.setPrefWidth(180);
         sidebar.setMinWidth(160);
         sidebar.setMaxWidth(200);
-        sidebar.setStyle(
-            "-fx-background-color: rgba(255,255,255,0.022);" +
-            "-fx-border-color: rgba(255,255,255,0.10);" +
-            "-fx-border-width: 0 1 0 0;"
-        );
+        sidebar.getStyleClass().addAll("sk-surface-soft", "sk-outlined");
+        sidebar.setStyle("-fx-border-width: 0 1 0 0;");
 
         sidebar.getChildren().add(sidebarSectionLabel(I18n.get("store.section")));
 

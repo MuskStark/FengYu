@@ -8,6 +8,7 @@ import fan.summer.api.ai.*;
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
+import fan.summer.api.theme.ThemeService;
 import fan.summer.ai.tools.SlashCommandHandler;
 import fan.summer.ai.tools.ToolExecutor;
 import fan.summer.ai.util.MarkdownRenderer;
@@ -96,6 +97,13 @@ public class AiChatPlugin implements SwissKitJPlugin {
         private final List<AiChatMessage> history = new ArrayList<>();
         private final List<Attachment> pendingAttachments = new ArrayList<>();
         private final VBox messageList = new VBox();
+        /**
+         * Tracks every WebView whose content comes from {@link MarkdownRenderer}
+         * so the conversation can be re-rendered losslessly when the theme
+         * changes. Each entry stores the RAW markdown plus the render kind, so
+         * {@link #rerenderConversation()} can rebuild the HTML in the new theme.
+         */
+        private final List<ReRenderable> reRenderables = new ArrayList<>();
         private final ScrollPane scrollPane;
         private final TextArea inputArea = new TextArea();
         private final Button sendBtn = new Button("➤");
@@ -110,6 +118,29 @@ public class AiChatPlugin implements SwissKitJPlugin {
         private WebView currentResponseView;
         private VBox currentAssistantWrapper;
         private StringBuilder currentResponseText;
+
+        /** How a tracked WebView should be re-rendered on theme change. */
+        private enum RenderKind { FULL, PLAIN, COLLAPSIBLE }
+
+        /**
+         * Mutable holder for one re-renderable WebView: the raw markdown (so
+         * re-render is lossless) plus the render kind and (for collapsible)
+         * the title. The markdown and kind are updated in place as the
+         * assistant response streams / finalizes.
+         */
+        private static final class ReRenderable {
+            final WebView webView;
+            String rawMarkdown;
+            RenderKind kind;
+            final String collapsibleTitle;
+
+            ReRenderable(WebView webView, String rawMarkdown, RenderKind kind, String collapsibleTitle) {
+                this.webView = webView;
+                this.rawMarkdown = rawMarkdown;
+                this.kind = kind;
+                this.collapsibleTitle = collapsibleTitle;
+            }
+        }
 
         AiChatView() {
             getStyleClass().add("ai-chat-root");
@@ -127,11 +158,11 @@ public class AiChatPlugin implements SwissKitJPlugin {
             modelLabel.getStyleClass().add("ai-model-hint");
 
             nativeUnavailableBanner.setText(I18n.get("builtin.ai.nativeUnavailable"));
+            nativeUnavailableBanner.getStyleClass().add("sk-t2");
             nativeUnavailableBanner.setStyle(
                 "-fx-background-color: rgba(245,159,0,0.12);" +
                 "-fx-border-color: rgba(245,159,0,0.25);" +
                 "-fx-border-width: 0 0 1px 0;" +
-                "-fx-text-fill: rgba(255,255,255,0.75);" +
                 "-fx-font-size: 12px; -fx-padding: 6 20 6 20;" +
                 "-fx-alignment: center;"
             );
@@ -185,6 +216,11 @@ public class AiChatPlugin implements SwissKitJPlugin {
 
             refreshServiceState();
             AiServiceProvider.addOnStateChangeListener(this::refreshServiceState);
+
+            // Live re-render on theme change: MarkdownRenderer is theme-aware,
+            // so re-running it produces HTML for the new palette. Also re-applies
+            // the WebView container bg so the area around each bubble matches.
+            ThemeService.onChange(t -> Platform.runLater(this::rerenderConversation));
         }
 
         private void refreshServiceState() {
@@ -281,7 +317,8 @@ public class AiChatPlugin implements SwissKitJPlugin {
             Label icon = new Label("📄");
             icon.setStyle("-fx-font-size: 11px;");
             Label name = new Label(att.name() + "  " + humanSize(att.sizeBytes()));
-            name.setStyle("-fx-text-fill: rgba(255,255,255,0.80); -fx-font-size: 11px;");
+            name.getStyleClass().add("sk-t1");
+            name.setStyle("-fx-font-size: 11px;");
             Button remove = new Button("×");
             remove.getStyleClass().add("ai-chip-remove");
             remove.setOnAction(e -> {
@@ -365,6 +402,11 @@ public class AiChatPlugin implements SwissKitJPlugin {
                                 messageList.getChildren().removeIf(n ->
                                     n instanceof VBox vb && vb.getChildren().stream()
                                         .anyMatch(c -> c instanceof WebView));
+                                // Drop the now-detached placeholder WebViews
+                                // from the re-render registry so theme-change
+                                // doesn't waste a loadContent on them.
+                                reRenderables.removeIf(rr ->
+                                    rr.webView.getParent() == null);
                             }
                             addToolCallCard(toolCall);
                             currentResponseText = new StringBuilder();
@@ -505,6 +547,11 @@ public class AiChatPlugin implements SwissKitJPlugin {
                                 messageList.getChildren().removeIf(n ->
                                     n instanceof VBox vb && vb.getChildren().stream()
                                         .anyMatch(c -> c instanceof WebView));
+                                // Drop the now-detached placeholder WebViews
+                                // from the re-render registry so theme-change
+                                // doesn't waste a loadContent on them.
+                                reRenderables.removeIf(rr ->
+                                    rr.webView.getParent() == null);
                             }
                             addToolCallCard(toolCall);
                             currentResponseText = new StringBuilder();
@@ -563,8 +610,9 @@ public class AiChatPlugin implements SwissKitJPlugin {
             Label content = new Label(text);
             content.setWrapText(true);
             content.setMaxWidth(540);
+            content.getStyleClass().add("sk-t1");
             content.setStyle(
-                "-fx-text-fill: rgba(255,255,255,0.80); -fx-font-size: 12.5px; " +
+                "-fx-font-size: 12.5px; " +
                 "-fx-font-family: 'Menlo', 'Consolas', monospace;");
 
             VBox body = new VBox(4, label, content);
@@ -618,8 +666,9 @@ public class AiChatPlugin implements SwissKitJPlugin {
             VBox bubble = new VBox(new Label(text));
             bubble.getStyleClass().addAll("ai-msg-bubble");
             bubble.setAlignment(Pos.CENTER);
+            ((Label) bubble.getChildren().get(0)).getStyleClass().add("sk-t3");
             ((Label) bubble.getChildren().get(0)).setStyle(
-                "-fx-text-fill: rgba(255,255,255,0.35); -fx-font-size: 12px; -fx-alignment: center;");
+                "-fx-font-size: 12px; -fx-alignment: center;");
 
             VBox wrapper = new VBox(bubble);
             wrapper.getStyleClass().add("ai-msg-system");
@@ -647,11 +696,12 @@ public class AiChatPlugin implements SwissKitJPlugin {
                 chips.setMaxWidth(560);
                 for (Attachment att : attachments) {
                     Label chip = new Label("📄 " + att.name() + "  " + humanSize(att.sizeBytes()));
+                    chip.getStyleClass().add("sk-t1");
                     chip.setStyle(
-                        "-fx-background-color: rgba(91,140,247,0.15);" +
-                        "-fx-border-color: rgba(91,140,247,0.25);" +
+                        "-fx-background-color: rgba(53,116,240,0.15);" +
+                        "-fx-border-color: rgba(53,116,240,0.25);" +
                         "-fx-border-width: 1px; -fx-border-radius: 10px; -fx-background-radius: 10px;" +
-                        "-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 11px; -fx-padding: 3 8 3 8;"
+                        "-fx-font-size: 11px; -fx-padding: 3 8 3 8;"
                     );
                     chips.getChildren().add(chip);
                 }
@@ -661,13 +711,14 @@ public class AiChatPlugin implements SwissKitJPlugin {
             if (!text.isEmpty()) {
                 Label bubble = new Label(text);
                 bubble.getStyleClass().add("ai-msg-bubble");
+                bubble.getStyleClass().add("sk-t1");
                 bubble.setWrapText(true);
                 bubble.setMaxWidth(560);
                 bubble.setStyle(
-                    "-fx-background-color: rgba(91,140,247,0.22);" +
-                    "-fx-border-color: rgba(91,140,247,0.18);" +
+                    "-fx-background-color: rgba(53,116,240,0.22);" +
+                    "-fx-border-color: rgba(53,116,240,0.18);" +
                     "-fx-border-width: 1px; -fx-border-radius: 14px; -fx-background-radius: 14px;" +
-                    "-fx-text-fill: rgba(255,255,255,0.95); -fx-font-size: 13.5px; -fx-padding: 10 16 10 16;"
+                    "-fx-font-size: 13.5px; -fx-padding: 10 16 10 16;"
                 );
                 wrapper.getChildren().add(bubble);
             }
@@ -685,13 +736,13 @@ public class AiChatPlugin implements SwissKitJPlugin {
             webView.setPrefWidth(560);
             webView.setMinHeight(24);
             webView.setPrefHeight(24);
-            webView.setStyle(
-                "-fx-background-color: #1e1e2e;" +
-                "-fx-border-color: rgba(255,255,255,0.10);" +
-                "-fx-border-width: 1px; -fx-border-radius: 14px; -fx-background-radius: 14px;"
-            );
+            applyAssistantBubbleStyle(webView);
             webView.getEngine().loadContent(MarkdownRenderer.renderPlain("●●●"));
             autoResizeWebView(webView);
+            // Track for theme-change re-render. The placeholder markdown + kind
+            // are updated in updateResponseBubble() once the real response streams in.
+            ReRenderable rr = new ReRenderable(webView, "●●●", RenderKind.PLAIN, null);
+            reRenderables.add(rr);
 
             FadeTransition blink = new FadeTransition(Duration.millis(800), webView);
             blink.setFromValue(1.0);
@@ -719,21 +770,20 @@ public class AiChatPlugin implements SwissKitJPlugin {
         private void addThinkingCard(String thinkingMarkdown) {
             Platform.runLater(() -> {
                 Label label = new Label("💭 " + I18n.get("builtin.ai.thinking"));
-                label.setStyle("-fx-text-fill: rgba(255,255,255,0.45); -fx-font-size: 11px; -fx-font-weight: bold;");
+                label.getStyleClass().add("sk-t2");
+                label.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
 
                 WebView wv = new WebView();
                 wv.setMaxWidth(560);
                 wv.setPrefWidth(560);
                 wv.setMinHeight(24);
                 wv.setPrefHeight(24);
-                wv.setStyle(
-                    "-fx-background-color: #1e1e2e;" +
-                    "-fx-border-color: rgba(255,255,255,0.06);" +
-                    "-fx-border-width: 1px; -fx-border-radius: 12px; -fx-background-radius: 12px;"
-                );
+                applyThinkingCardStyle(wv);
+                String thinkingTitle = I18n.get("builtin.ai.thinkingSummary");
                 wv.getEngine().loadContent(
-                    MarkdownRenderer.renderCollapsible(I18n.get("builtin.ai.thinkingSummary"), thinkingMarkdown));
+                    MarkdownRenderer.renderCollapsible(thinkingTitle, thinkingMarkdown));
                 autoResizeWebView(wv);
+                reRenderables.add(new ReRenderable(wv, thinkingMarkdown, RenderKind.COLLAPSIBLE, thinkingTitle));
 
                 VBox wrapper = new VBox(3, label, wv);
                 wrapper.setAlignment(Pos.CENTER_LEFT);
@@ -745,6 +795,66 @@ public class AiChatPlugin implements SwissKitJPlugin {
                 messageList.getChildren().add(Math.max(0, idx), wrapper);
                 scrollToBottom();
             });
+        }
+
+        /**
+         * Computes the WebView container background color for the current theme.
+         * Dark uses the original {@code #1e1e2e}; light uses {@code #ffffff} so
+         * the area around each rendered markdown bubble matches the page.
+         */
+        private static String webviewBg() {
+            return (ThemeService.current() == ThemeService.Theme.LIGHT) ? "#ffffff" : "#1e1e2e";
+        }
+
+        /**
+         * Computes the WebView container border color for the current theme, matching
+         * the {@code -sk-border} token (dark {@code #3C3F41}, light {@code #DADCE0}) so
+         * bubble outlines stay visible in light theme (the old rgba(255,255,255,…)
+         * was invisible on the white background).
+         */
+        private static String webviewBorder() {
+            return (ThemeService.current() == ThemeService.Theme.LIGHT) ? "#DADCE0" : "#3C3F41";
+        }
+
+        /** Applies the assistant-bubble container style with theme-driven bg + border. */
+        private static void applyAssistantBubbleStyle(WebView webView) {
+            webView.setStyle(
+                "-fx-background-color: " + webviewBg() + ";" +
+                "-fx-border-color: " + webviewBorder() + ";" +
+                "-fx-border-width: 1px; -fx-border-radius: 14px; -fx-background-radius: 14px;"
+            );
+        }
+
+        /** Applies the thinking-card container style with theme-driven bg + border. */
+        private static void applyThinkingCardStyle(WebView webView) {
+            webView.setStyle(
+                "-fx-background-color: " + webviewBg() + ";" +
+                "-fx-border-color: " + webviewBorder() + ";" +
+                "-fx-border-width: 1px; -fx-border-radius: 12px; -fx-background-radius: 12px;"
+            );
+        }
+
+        /**
+         * Re-renders the whole conversation in the current theme. Called on
+         * {@link ThemeService} change. Iterates every tracked WebView, re-applies
+         * the theme-driven container style, and reloads content via
+         * {@link MarkdownRenderer} (which itself reads the current theme).
+         */
+        private void rerenderConversation() {
+            for (ReRenderable rr : reRenderables) {
+                // Re-apply container bg so the area around the WebView flips too.
+                if (rr.kind == RenderKind.COLLAPSIBLE) {
+                    applyThinkingCardStyle(rr.webView);
+                } else {
+                    applyAssistantBubbleStyle(rr.webView);
+                }
+                String html = switch (rr.kind) {
+                    case FULL         -> MarkdownRenderer.render(rr.rawMarkdown);
+                    case PLAIN        -> MarkdownRenderer.renderPlain(rr.rawMarkdown);
+                    case COLLAPSIBLE  -> MarkdownRenderer.renderCollapsible(rr.collapsibleTitle, rr.rawMarkdown);
+                };
+                rr.webView.getEngine().loadContent(html);
+            }
         }
 
         private void autoResizeWebView(WebView webView) {
@@ -776,6 +886,18 @@ public class AiChatPlugin implements SwissKitJPlugin {
                     ? MarkdownRenderer.render(displayText)
                     : MarkdownRenderer.renderPlain(displayText);
                 currentResponseView.getEngine().loadContent(html);
+
+                // Keep the re-render registry in sync: streaming calls use
+                // renderPlain, the final call switches to full Markdown render.
+                // On theme change rerenderConversation() reads these so the new
+                // theme shows the same content at the same fidelity.
+                for (ReRenderable rr : reRenderables) {
+                    if (rr.webView == currentResponseView) {
+                        rr.rawMarkdown = displayText;
+                        rr.kind = isFinal ? RenderKind.FULL : RenderKind.PLAIN;
+                        break;
+                    }
+                }
             });
         }
 
@@ -784,7 +906,8 @@ public class AiChatPlugin implements SwissKitJPlugin {
             icon.setStyle("-fx-text-fill: #f59f00; -fx-font-size: 13px;");
 
             Label name = new Label(I18n.get("builtin.ai.calling", toolCall.name()));
-            name.setStyle("-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 12px; -fx-font-weight: bold;");
+            name.getStyleClass().add("sk-t1");
+            name.setStyle("-fx-font-size: 12px; -fx-font-weight: bold;");
 
             String argsStr = toolCall.arguments().entrySet().stream()
                 .map(e -> e.getKey() + ": " + e.getValue())
@@ -793,7 +916,8 @@ public class AiChatPlugin implements SwissKitJPlugin {
             Label args = new Label(argsStr);
             args.setWrapText(true);
             args.setMaxWidth(480);
-            args.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 11px;");
+            args.getStyleClass().add("sk-t2");
+            args.setStyle("-fx-font-size: 11px;");
 
             VBox content = new VBox(4, new HBox(6, icon, name), args);
 
@@ -819,12 +943,14 @@ public class AiChatPlugin implements SwissKitJPlugin {
             icon.setStyle("-fx-text-fill: " + (result.success() ? "#51cf66" : "#ff6b6b") + "; -fx-font-size: 13px;");
 
             Label label = new Label(result.success() ? I18n.get("builtin.ai.toolResult") : I18n.get("builtin.ai.toolError"));
-            label.setStyle("-fx-text-fill: rgba(255,255,255,0.70); -fx-font-size: 11px; -fx-font-weight: bold;");
+            label.getStyleClass().add("sk-t2");
+            label.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
 
             Label output = new Label(result.output());
             output.setWrapText(true);
             output.setMaxWidth(480);
-            output.setStyle("-fx-text-fill: rgba(255,255,255,0.65); -fx-font-size: 11px;");
+            output.getStyleClass().add("sk-t2");
+            output.setStyle("-fx-font-size: 11px;");
 
             VBox content = new VBox(4, new HBox(6, icon, label), output);
 

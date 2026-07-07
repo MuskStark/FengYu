@@ -3,6 +3,7 @@ package fan.summer.ui.setting;
 import fan.summer.api.ai.AiServiceProvider;
 import fan.summer.api.ai.ChatBackend;
 import fan.summer.api.i18n.I18n;
+import fan.summer.api.theme.ThemeService;
 import fan.summer.api.theme.Themes;
 import fan.summer.ai.service.CloudChatBackend;
 import fan.summer.ai.service.LocalChatBackend;
@@ -21,7 +22,7 @@ import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import fan.summer.api.component.GlassNotification;
+import fan.summer.api.component.SkNotification;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
@@ -133,13 +134,9 @@ public class SwissKitJSettingUi {
 
         // ── Sidebar ──────────────────────────────────────────
         VBox sidebar = new VBox();
-        sidebar.setStyle(
-            "-fx-background-color: rgba(255,255,255,0.022);" +
-            "-fx-border-color: rgba(255,255,255,0.10);" +
-            "-fx-border-width: 0 1 0 0;" +
-            "-fx-min-width: 160px; -fx-pref-width: 180px; -fx-max-width: 200px;" +
-            "-fx-padding: 12 8;"
-        );
+        // Style (incl. the right-edge vertical divider) lives in .settings-sidebar
+        // so it follows the theme via -sk-* tokens; inline setStyle can't reference them.
+        sidebar.getStyleClass().add("settings-sidebar");
 
         sidebar.getChildren().add(sidebarSectionLabel(I18n.get("setting.section")));
         NavItem generalNav = sidebarNavItem("⚙", I18n.get("setting.nav.general"));
@@ -219,7 +216,7 @@ public class SwissKitJSettingUi {
 
         ComboBox<String> langCombo = new ComboBox<>(FXCollections.observableArrayList("中文", "English"));
         langCombo.setValue(getCurrentLanguageLabel());
-        langCombo.getStyleClass().add("glass-combo");
+        langCombo.getStyleClass().add("sk-combo");
         langCombo.setMaxWidth(200);
         langCombo.setOnAction(e -> {
             String selected = langCombo.getValue();
@@ -229,7 +226,25 @@ public class SwissKitJSettingUi {
         HBox langRow = new HBox(12, langLabel, langCombo);
         langRow.setAlignment(Pos.CENTER_LEFT);
 
-        VBox root = new VBox(16, title, langRow);
+        // ── Appearance section: theme combo ──────────────────────────────
+        Label appearanceTitle = sectionTitle(I18n.get("settings.section.appearance"));
+        Label themeLabel = subLabel(I18n.get("settings.label.theme"));
+        boolean dark = ThemeService.current() == ThemeService.Theme.DARK;
+        ComboBox<String> themeCombo = new ComboBox<>(FXCollections.observableArrayList(
+            I18n.get("sidebar.label.theme.dark"), I18n.get("sidebar.label.theme.light")));
+        themeCombo.setValue(dark ? I18n.get("sidebar.label.theme.dark") : I18n.get("sidebar.label.theme.light"));
+        themeCombo.getStyleClass().add("sk-combo");
+        themeCombo.setMaxWidth(200);
+        themeCombo.setOnAction(e -> {
+            String selected = themeCombo.getValue();
+            boolean isDark = I18n.get("sidebar.label.theme.dark").equals(selected);
+            ThemeService.set(isDark ? ThemeService.Theme.DARK : ThemeService.Theme.LIGHT);
+            saveThemeSetting(isDark ? "dark" : "light");
+        });
+        HBox themeRow = new HBox(12, themeLabel, themeCombo);
+        themeRow.setAlignment(Pos.CENTER_LEFT);
+
+        VBox root = new VBox(16, title, langRow, appearanceTitle, themeRow);
         root.setPadding(new Insets(20));
         root.setStyle("-fx-background-color: transparent;");
         return root;
@@ -254,9 +269,20 @@ public class SwissKitJSettingUi {
         Locale locale = isZh ? Locale.CHINESE : Locale.ENGLISH;
         saveSettingAsync("language", code, () -> Platform.runLater(() -> {
             I18n.setLocale(locale);
-            GlassNotification.toast((Window) null, GlassNotification.Type.INFO,
+            SkNotification.toast((Window) null, SkNotification.Type.INFO,
                 I18n.get("setting.general.languageChanged"));
         }));
+    }
+
+    /**
+     * Persists the theme choice ({@code "dark"} / {@code "light"}) asynchronously.
+     * The live theme switch itself is performed by the caller via
+     * {@link ThemeService#set(Theme)} before this is called — this method only
+     * writes the DB row so {@code SwissKitJApp.readThemeFromDb()} can restore
+     * the choice on next launch.
+     */
+    public static void saveThemeSetting(String code) {
+        saveSettingAsync("theme", code, null);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -301,7 +327,8 @@ public class SwissKitJSettingUi {
         Label title = sectionTitle(I18n.get("setting.store.title"));
         Label descLabel = subLabel(I18n.get("setting.store.label"));
         Label desc = new Label(I18n.get("setting.store.desc"));
-        desc.setStyle("-fx-text-fill: rgba(255,255,255,0.35); -fx-font-size: 12px;");
+        desc.getStyleClass().add("sk-t3");
+        desc.setStyle("-fx-font-size: 12px;");
         desc.setWrapText(true);
 
         TextField urlField = textField( DEFAULT_STORE_URL);
@@ -311,7 +338,7 @@ public class SwissKitJSettingUi {
         saveBtn.setOnAction(e -> {
             String url = urlField.getText();
             if (url == null || url.isBlank()) {
-                GlassNotification.notify((Window) null, GlassNotification.Type.WARNING, I18n.get("setting.store.urlEmpty"));
+                SkNotification.notify((Window) null, SkNotification.Type.WARNING, I18n.get("setting.store.urlEmpty"));
                 return;
             }
             saveStoreUrl(url.trim());
@@ -331,7 +358,7 @@ public class SwissKitJSettingUi {
 
     private static void saveStoreUrl(String url) {
         saveSettingAsync(STORE_URL_KEY, url, () -> Platform.runLater(() ->
-            GlassNotification.toast((Window) null, GlassNotification.Type.SUCCESS,
+            SkNotification.toast((Window) null, SkNotification.Type.SUCCESS,
                 I18n.get("setting.store.saved"))));
     }
 
@@ -369,7 +396,7 @@ public class SwissKitJSettingUi {
                 I18n.get("setting.ai.mode.anthropic")
             )
         );
-        modeCombo.getStyleClass().add("glass-combo");
+        modeCombo.getStyleClass().add("sk-combo");
         modeCombo.setMaxWidth(250);
         loadAiSetting(AI_MODE_KEY, val -> {
             String label = switch (val) {
@@ -414,7 +441,8 @@ public class SwissKitJSettingUi {
         Label paramTitle = sectionTitle(I18n.get("setting.ai.genParams"));
 
         Label tempValue = new Label("0.7");
-        tempValue.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+        tempValue.getStyleClass().add("sk-t2");
+        tempValue.setStyle("-fx-font-size: 12px;");
         Slider tempSlider = new Slider(0, 2, 0.7);
         tempSlider.setShowTickLabels(true);
         tempSlider.setShowTickMarks(true);
@@ -433,7 +461,8 @@ public class SwissKitJSettingUi {
         tempRow.setAlignment(Pos.CENTER_LEFT);
 
         Label topPValue = new Label("0.9");
-        topPValue.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+        topPValue.getStyleClass().add("sk-t2");
+        topPValue.setStyle("-fx-font-size: 12px;");
         Slider topPSlider = new Slider(0, 1, 0.9);
         topPSlider.setShowTickLabels(true);
         topPSlider.setShowTickMarks(true);
@@ -453,7 +482,7 @@ public class SwissKitJSettingUi {
 
         Spinner<Integer> maxTokensSpinner = new Spinner<>();
         maxTokensSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(64, 4096, LocalChatBackend.QWEN3_MIN_MAX_TOKENS, 64));
-        maxTokensSpinner.getStyleClass().add("glass-field");
+        maxTokensSpinner.getStyleClass().add("sk-field");
         maxTokensSpinner.setPrefWidth(120);
         maxTokensSpinner.valueProperty().addListener((obs, oldVal, newVal) ->
             saveAiSetting(AI_MAX_TOKENS_KEY, String.valueOf(newVal)));
@@ -597,11 +626,13 @@ public class SwissKitJSettingUi {
         VBox panel = new VBox(12);
 
         Label modelStatusLabel = new Label(I18n.get("setting.ai.noModelLoaded"));
-        modelStatusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 13px;");
+        modelStatusLabel.getStyleClass().add("sk-t2");
+        modelStatusLabel.setStyle("-fx-font-size: 13px;");
 
         Label modelPathLabel = new Label("—");
         modelPathLabel.setWrapText(true);
-        modelPathLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.35); -fx-font-size: 12px;");
+        modelPathLabel.getStyleClass().add("sk-t3");
+        modelPathLabel.setStyle("-fx-font-size: 12px;");
 
         TextField modelPathField = textField( I18n.get("setting.ai.selectModel"));
         loadAiSetting(AI_MODEL_PATH_KEY, modelPathField::setText);
@@ -625,7 +656,7 @@ public class SwissKitJSettingUi {
         loadBtn.setOnAction(e -> {
             String path = modelPathField.getText();
             if (path == null || path.isBlank()) {
-                GlassNotification.notify((Window) null, GlassNotification.Type.WARNING, I18n.get("setting.ai.selectModelFile"));
+                SkNotification.notify((Window) null, SkNotification.Type.WARNING, I18n.get("setting.ai.selectModelFile"));
                 return;
             }
             loadBtn.setDisable(true);
@@ -676,7 +707,8 @@ public class SwissKitJSettingUi {
         ProgressBar memBar = new ProgressBar(0);
         memBar.setPrefWidth(300);
         Label memText = new Label("—");
-        memText.setStyle("-fx-text-fill: rgba(255,255,255,0.35); -fx-font-size: 11px;");
+        memText.getStyleClass().add("sk-t3");
+        memText.setStyle("-fx-font-size: 11px;");
         HBox memRow = new HBox(10, memBar, memText);
         memRow.setAlignment(Pos.CENTER_LEFT);
 
@@ -705,8 +737,8 @@ public class SwissKitJSettingUi {
         Runnable updateStyle = () -> {
             String current = getAiLocalBackend();
             boolean isJava = "java".equals(current);
-            javaBtn.getStyleClass().setAll(isJava ? "glass-btn-primary" : "glass-btn-secondary");
-            nativeBtn.getStyleClass().setAll(isJava ? "glass-btn-secondary" : "glass-btn-primary");
+            javaBtn.getStyleClass().setAll(isJava ? "sk-btn-primary" : "sk-btn-secondary");
+            nativeBtn.getStyleClass().setAll(isJava ? "sk-btn-secondary" : "sk-btn-primary");
             // Re-apply shape styles after class change (stylesheet may override)
             javaBtn.setStyle(baseStyle + "-fx-background-radius: 4 0 0 4; -fx-border-radius: 4 0 0 4;");
             nativeBtn.setStyle(baseStyle + "-fx-background-radius: 0 4 4 0; -fx-border-radius: 0 4 4 0;");
@@ -751,8 +783,9 @@ public class SwissKitJSettingUi {
         modelField.textProperty().addListener((obs, o, n) -> saveAiSetting(AI_OPENAI_MODEL_KEY, n));
 
         Label statusLabel = new Label("");
+        statusLabel.getStyleClass().add("sk-t2");
         statusLabel.setWrapText(true);
-        statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+        statusLabel.setStyle("-fx-font-size: 12px;");
 
         Button testBtn = glassBtn(I18n.get("setting.ai.testConnection"), false);
         testBtn.setOnAction(e -> {
@@ -763,10 +796,14 @@ public class SwissKitJSettingUi {
                 String err = svc.testConnection();
                 Platform.runLater(() -> {
                     if (err == null) {
-                        statusLabel.setStyle("-fx-text-fill: #4cd97b; -fx-font-size: 12px;");
+                        statusLabel.getStyleClass().removeAll("sk-danger-text", "sk-warning-text");
+                        statusLabel.getStyleClass().add("sk-success-text");
+                        statusLabel.setStyle("-fx-font-size: 12px;");
                         statusLabel.setText(I18n.get("setting.ai.testSuccess"));
                     } else {
-                        statusLabel.setStyle("-fx-text-fill: #f25c5c; -fx-font-size: 12px;");
+                        statusLabel.getStyleClass().removeAll("sk-success-text", "sk-warning-text");
+                        statusLabel.getStyleClass().add("sk-danger-text");
+                        statusLabel.setStyle("-fx-font-size: 12px;");
                         statusLabel.setText(I18n.get("setting.ai.testFailed", err));
                     }
                     testBtn.setDisable(false);
@@ -801,8 +838,9 @@ public class SwissKitJSettingUi {
         modelField.textProperty().addListener((obs, o, n) -> saveAiSetting(AI_ANTHROPIC_MODEL_KEY, n));
 
         Label statusLabel = new Label("");
+        statusLabel.getStyleClass().add("sk-t2");
         statusLabel.setWrapText(true);
-        statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+        statusLabel.setStyle("-fx-font-size: 12px;");
 
         Button testBtn = glassBtn(I18n.get("setting.ai.testConnection"), false);
         testBtn.setOnAction(e -> {
@@ -813,10 +851,14 @@ public class SwissKitJSettingUi {
                 String err = svc.testConnection();
                 Platform.runLater(() -> {
                     if (err == null) {
-                        statusLabel.setStyle("-fx-text-fill: #4cd97b; -fx-font-size: 12px;");
+                        statusLabel.getStyleClass().removeAll("sk-danger-text", "sk-warning-text");
+                        statusLabel.getStyleClass().add("sk-success-text");
+                        statusLabel.setStyle("-fx-font-size: 12px;");
                         statusLabel.setText(I18n.get("setting.ai.testSuccess"));
                     } else {
-                        statusLabel.setStyle("-fx-text-fill: #f25c5c; -fx-font-size: 12px;");
+                        statusLabel.getStyleClass().removeAll("sk-success-text", "sk-warning-text");
+                        statusLabel.getStyleClass().add("sk-danger-text");
+                        statusLabel.setStyle("-fx-font-size: 12px;");
                         statusLabel.setText(I18n.get("setting.ai.testFailed", err));
                     }
                     testBtn.setDisable(false);
@@ -843,7 +885,7 @@ public class SwissKitJSettingUi {
         }
     }
 
-    private static void saveSettingAsync(String key, String value, Runnable onSuccess) {
+    public static void saveSettingAsync(String key, String value, Runnable onSuccess) {
         // Update cache immediately so subsequent getters see the new value
         settingsCache.put(key, value);
         Thread.ofVirtual().name("settings-save").start(() -> {
@@ -936,6 +978,21 @@ public class SwissKitJSettingUi {
             }
         } catch (Exception ignored) {}
         return defaultValue;
+    }
+
+    /**
+     * Returns the cached setting value for the key, or {@code null} if absent
+     * or the cache has not yet been loaded. Triggers a lazy cache load on first
+     * call (synchronous, blocking until the cache is populated). Use this for
+     * startup-time reads where a null/missing value is acceptable and the caller
+     * supplies its own default.
+     *
+     * @param key the setting key
+     * @return the cached value, or {@code null} if not present
+     */
+    public static String getSetting(String key) {
+        ensureCacheLoaded();
+        return settingsCache.get(key);
     }
 
     /** Eagerly loads all app_settings rows into the in-memory cache. */
@@ -1087,13 +1144,14 @@ public class SwissKitJSettingUi {
 
         CheckBox imapSslCheck = new CheckBox("SSL");
         imapSslCheck.setUserData("IMAP_SSL");
-        imapSslCheck.getStyleClass().add("glass-checkbox");
+        imapSslCheck.getStyleClass().add("sk-checkbox");
         imapSslCheck.setSelected(true);
         HBox imapSslRow = new HBox(16, imapSslCheck);
         imapSslRow.setAlignment(Pos.CENTER_LEFT);
         VBox imapSslBox = new VBox(4);
         Label imapSslLabel = new Label("");
-        imapSslLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.50); -fx-font-size: 11px; -fx-font-weight: bold;");
+        imapSslLabel.getStyleClass().add("sk-t2");
+        imapSslLabel.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
         imapSslBox.getChildren().addAll(imapSslLabel, imapSslRow);
         imapSslBox.setUserData("imapSslBox");
 
@@ -1178,18 +1236,19 @@ public class SwissKitJSettingUi {
     private static VBox tlsSslRow() {
         CheckBox tlsCheck = new CheckBox("TLS");
         tlsCheck.setUserData("TLS");
-        tlsCheck.getStyleClass().add("glass-checkbox");
+        tlsCheck.getStyleClass().add("sk-checkbox");
 
         CheckBox sslCheck = new CheckBox("SSL");
         sslCheck.setUserData("SSL");
-        sslCheck.getStyleClass().add("glass-checkbox");
+        sslCheck.getStyleClass().add("sk-checkbox");
 
         HBox checkRow = new HBox(16, tlsCheck, sslCheck);
         checkRow.setAlignment(Pos.CENTER_LEFT);
 
         VBox box = new VBox(4);
         Label lbl = new Label("");
-        lbl.setStyle("-fx-text-fill: rgba(255,255,255,0.50); -fx-font-size: 11px; -fx-font-weight: bold;");
+        lbl.getStyleClass().add("sk-t2");
+        lbl.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
         box.getChildren().add(lbl);
         box.getChildren().add(checkRow);
         return box;
@@ -1244,13 +1303,13 @@ public class SwissKitJSettingUi {
         if (pass == null || pass.isBlank()) missing.add(I18n.get("setting.email.password"));
         if (from == null || from.isBlank()) missing.add(I18n.get("setting.email.fromAddress"));
         if (!missing.isEmpty()) {
-            GlassNotification.notify((Window) null, GlassNotification.Type.WARNING,
+            SkNotification.notify((Window) null, SkNotification.Type.WARNING,
                 I18n.get("setting.email.missingFields", String.join(", ", missing)));
             return;
         }
 
         if (tls && ssl) {
-            GlassNotification.notify((Window) null, GlassNotification.Type.WARNING,
+            SkNotification.notify((Window) null, SkNotification.Type.WARNING,
                 I18n.get("setting.email.tlsSslConflict"));
             return;
         }
@@ -1292,11 +1351,11 @@ public class SwissKitJSettingUi {
                 session.commit();
                 log.info("Email settings saved: smtp={}:{}", fSmtp, fPort);
                 Platform.runLater(() ->
-                    GlassNotification.toast((Window) null, GlassNotification.Type.SUCCESS,
+                    SkNotification.toast((Window) null, SkNotification.Type.SUCCESS,
                         I18n.get("setting.email.saved")));
             } catch (Exception ex) {
                 log.error("Failed to save email settings", ex);
-                Platform.runLater(() -> GlassNotification.notify((Window) null, GlassNotification.Type.ERROR,
+                Platform.runLater(() -> SkNotification.notify((Window) null, SkNotification.Type.ERROR,
                     I18n.get("setting.email.failedToSave", ex.getMessage())));
             }
         });
@@ -1321,7 +1380,7 @@ public class SwissKitJSettingUi {
             allTags = session.getMapper(EmailTagMapper.class).selectAll();
             if (allTags == null) allTags = new ArrayList<>();
         } catch (Exception e) {
-            GlassNotification.notify((Window) null, GlassNotification.Type.ERROR,
+            SkNotification.notify((Window) null, SkNotification.Type.ERROR,
                 I18n.get("setting.email.failedToSave", e.getMessage()));
             return;
         }
@@ -1331,7 +1390,7 @@ public class SwissKitJSettingUi {
         for (EmailTagEntity t : allTags) tagNameMap.put(t.getId(), t.getTag());
 
         TableView<EmailAddressBookEntity> table = new TableView<>(FXCollections.observableArrayList(entities));
-        table.getStyleClass().add("glass-table");
+        table.getStyleClass().add("sk-table");
         table.setPlaceholder(new Label(I18n.get("setting.email.noAddresses")));
 
         TableColumn<EmailAddressBookEntity, Integer> idCol = new TableColumn<>(I18n.get("setting.email.colId"));
@@ -1369,7 +1428,7 @@ public class SwissKitJSettingUi {
         actionCol.setPrefWidth(70);
         actionCol.setCellFactory(col -> new javafx.scene.control.TableCell<>() {
             private final Button delBtn = new Button(I18n.get("button.delete"));
-            { delBtn.getStyleClass().add("glass-btn-secondary"); delBtn.setStyle("-fx-padding: 4 10 4 10; -fx-font-size: 11px;"); }
+            { delBtn.getStyleClass().add("sk-btn-secondary"); delBtn.setStyle("-fx-padding: 4 10 4 10; -fx-font-size: 11px;"); }
             @Override
             protected void updateItem(Void item, boolean empty) {
                 super.updateItem(item, empty);
@@ -1422,11 +1481,11 @@ public class SwissKitJSettingUi {
 
         VBox root = new VBox(12, table, btnRow);
         root.setPadding(new Insets(24));
-        root.getStyleClass().add("glass-dialog");
+        root.getStyleClass().add("sk-dialog");
         root.setPrefSize(750, 480);
 
         javafx.scene.Scene scene = new javafx.scene.Scene(root);
-        scene.setFill(javafx.scene.paint.Color.web("#0d0e11"));
+        scene.setFill(javafx.scene.paint.Color.TRANSPARENT);
         Themes.applyTo(scene);
         dialog.setScene(scene);
         dialog.show();
@@ -1465,11 +1524,12 @@ public class SwissKitJSettingUi {
         // Build checkboxes for each tag
         VBox tagCheckBoxes = new VBox(6);
         tagCheckBoxes.setPadding(new Insets(8));
-        tagCheckBoxes.setStyle("-fx-background-color: rgba(255,255,255,0.03); -fx-background-radius: 8;");
+        tagCheckBoxes.getStyleClass().add("sk-surface-soft");
+        tagCheckBoxes.setStyle("-fx-background-radius: 8;");
         for (EmailTagEntity tag : allTags) {
             CheckBox cb = new CheckBox(tag.getTag());
             cb.setUserData(tag.getId());
-            cb.getStyleClass().add("glass-checkbox");
+            cb.getStyleClass().add("sk-checkbox");
             cb.setSelected(preSelectedTagIds.contains(tag.getId()));
             tagCheckBoxes.getChildren().add(cb);
         }
@@ -1481,7 +1541,7 @@ public class SwissKitJSettingUi {
         okBtn.setOnAction(e -> {
             String address = addressField.getText();
             if (address == null || address.isBlank() || !address.matches(".+@.+\\..+")) {
-                GlassNotification.notify((Window) null, GlassNotification.Type.WARNING,
+                SkNotification.notify((Window) null, SkNotification.Type.WARNING,
                     I18n.get("setting.email.validEmailRequired"));
                 return;
             }
@@ -1511,7 +1571,7 @@ public class SwissKitJSettingUi {
                 openAddressBookDialog();
             } catch (Exception ex) {
                 log.error("Failed to save address", ex);
-                GlassNotification.notify((Window) null, GlassNotification.Type.ERROR,
+                SkNotification.notify((Window) null, SkNotification.Type.ERROR,
                     I18n.get("setting.email.failedToSave", ex.getMessage()));
             }
         });
@@ -1529,11 +1589,11 @@ public class SwissKitJSettingUi {
             btnRow
         );
         root.setPadding(new Insets(24));
-        root.getStyleClass().add("glass-dialog");
+        root.getStyleClass().add("sk-dialog");
         root.setPrefWidth(480);
 
         javafx.scene.Scene scene = new javafx.scene.Scene(root);
-        scene.setFill(javafx.scene.paint.Color.web("#0d0e11"));
+        scene.setFill(javafx.scene.paint.Color.TRANSPARENT);
         Themes.applyTo(scene);
         dialog.setScene(scene);
         dialog.show();
@@ -1552,7 +1612,7 @@ public class SwissKitJSettingUi {
             allAddresses = session.getMapper(EmailAddressBookMapper.class).selectEmailAddressBook();
             if (allAddresses == null) allAddresses = new ArrayList<>();
         } catch (Exception e) {
-            GlassNotification.notify((Window) null, GlassNotification.Type.ERROR,
+            SkNotification.notify((Window) null, SkNotification.Type.ERROR,
                 I18n.get("setting.email.failedToSave", e.getMessage()));
             return;
         }
@@ -1572,7 +1632,7 @@ public class SwissKitJSettingUi {
         }
 
         TableView<EmailTagEntity> table = new TableView<>(FXCollections.observableArrayList(tags));
-        table.getStyleClass().add("glass-table");
+        table.getStyleClass().add("sk-table");
 
         TableColumn<EmailTagEntity, Long> idCol = new TableColumn<>(I18n.get("setting.email.colId"));
         idCol.setCellValueFactory(new PropertyValueFactory<>("id"));
@@ -1594,7 +1654,7 @@ public class SwissKitJSettingUi {
         actionCol.setCellFactory(col -> new javafx.scene.control.TableCell<>() {
             private final Button delBtn = new Button(I18n.get("button.delete"));
             {
-                delBtn.getStyleClass().add("glass-btn-secondary");
+                delBtn.getStyleClass().add("sk-btn-secondary");
                 delBtn.setStyle("-fx-padding: 4 10 4 10; -fx-font-size: 11px;");
             }
             @Override
@@ -1605,7 +1665,7 @@ public class SwissKitJSettingUi {
                 delBtn.setOnAction(e -> {
                     long count = tagContactCount.getOrDefault(tag.getId(), 0L);
                     if (count > 0) {
-                        GlassNotification.notify(dialog, GlassNotification.Type.WARNING,
+                        SkNotification.notify(dialog, SkNotification.Type.WARNING,
                             I18n.get("setting.email.tagInUse", tag.getTag(), count));
                         return;
                     }
@@ -1616,7 +1676,7 @@ public class SwissKitJSettingUi {
                             Platform.runLater(() -> { dialog.close(); openTagsDialog(); });
                         } catch (Exception ex) {
                             log.error("Failed to delete tag", ex);
-                            Platform.runLater(() -> GlassNotification.notify(dialog, GlassNotification.Type.ERROR,
+                            Platform.runLater(() -> SkNotification.notify(dialog, SkNotification.Type.ERROR,
                                 I18n.get("setting.email.failedToSave", ex.getMessage())));
                         }
                     });
@@ -1696,11 +1756,11 @@ public class SwissKitJSettingUi {
 
         VBox root = new VBox(14, table, inputRow, btnRow);
         root.setPadding(new Insets(24));
-        root.getStyleClass().add("glass-dialog");
+        root.getStyleClass().add("sk-dialog");
         root.setPrefSize(480, 420);
 
         javafx.scene.Scene scene = new javafx.scene.Scene(root);
-        scene.setFill(javafx.scene.paint.Color.web("#0d0e11"));
+        scene.setFill(javafx.scene.paint.Color.TRANSPARENT);
         Themes.applyTo(scene);
         dialog.setScene(scene);
         dialog.show();
@@ -1718,7 +1778,8 @@ public class SwissKitJSettingUi {
         Label desc = new Label(I18n.get("setting.email.importDesc"));
         desc.setWrapText(true);
         desc.setMaxWidth(Double.MAX_VALUE);
-        desc.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+        desc.getStyleClass().add("sk-t2");
+        desc.setStyle("-fx-font-size: 12px;");
 
         // Template download button
         Button templateBtn = glassBtn(I18n.get("setting.email.downloadTemplate"), false);
@@ -1764,9 +1825,10 @@ public class SwissKitJSettingUi {
         importBtn.setDisable(true);
 
         Label statusLabel = new Label("");
+        statusLabel.getStyleClass().add("sk-t2");
         statusLabel.setWrapText(true);
         statusLabel.setMaxWidth(Double.MAX_VALUE);
-        statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+        statusLabel.setStyle("-fx-font-size: 12px;");
 
         ProgressBar progressBar = new ProgressBar(0);
         progressBar.setMaxWidth(Double.MAX_VALUE);
@@ -1784,7 +1846,7 @@ public class SwissKitJSettingUi {
             progressBar.setManaged(true);
             progressBar.setProgress(-1);
             statusLabel.setText(I18n.get("setting.email.importing"));
-            statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+            statusLabel.setStyle("-fx-font-size: 12px;");
 
             runAsync(() -> {
                 try {
@@ -1795,9 +1857,9 @@ public class SwissKitJSettingUi {
                         String msg = I18n.get("setting.email.importResultDetail",
                             result.imported, result.failed, result.skipped, result.tagsCreated);
                         statusLabel.setText(msg);
-                        statusLabel.setStyle(allOk
-                            ? "-fx-text-fill: #4cd97b; -fx-font-size: 13px; -fx-font-weight: 500;"
-                            : "-fx-text-fill: #f5a623; -fx-font-size: 13px; -fx-font-weight: 500;");
+                        statusLabel.getStyleClass().removeAll("sk-success-text", "sk-danger-text", "sk-warning-text");
+                        statusLabel.getStyleClass().add(allOk ? "sk-success-text" : "sk-warning-text");
+                        statusLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: 500;");
                         progressBar.getStyleClass().removeAll("success", "danger");
                         progressBar.getStyleClass().add(allOk ? "success" : "danger");
                         importBtn.setDisable(false);
@@ -1810,7 +1872,9 @@ public class SwissKitJSettingUi {
                         progressBar.setVisible(false);
                         progressBar.setManaged(false);
                         statusLabel.setText(I18n.get("setting.email.importFailed", ex.getMessage()));
-                        statusLabel.setStyle("-fx-text-fill: #f25c5c; -fx-font-size: 13px;");
+                        statusLabel.getStyleClass().removeAll("sk-success-text", "sk-warning-text");
+                        statusLabel.getStyleClass().add("sk-danger-text");
+                        statusLabel.setStyle("-fx-font-size: 13px;");
                         importBtn.setDisable(false);
                         browseBtn.setDisable(false);
                     });
@@ -1838,11 +1902,11 @@ public class SwissKitJSettingUi {
             btnRow
         );
         root.setPadding(new Insets(24));
-        root.getStyleClass().add("glass-dialog");
+        root.getStyleClass().add("sk-dialog");
         root.setPrefWidth(520);
 
         javafx.scene.Scene scene = new javafx.scene.Scene(root);
-        scene.setFill(javafx.scene.paint.Color.web("#0d0e11"));
+        scene.setFill(javafx.scene.paint.Color.TRANSPARENT);
         Themes.applyTo(scene);
         dialog.setScene(scene);
         dialog.show();
@@ -1874,11 +1938,11 @@ public class SwissKitJSettingUi {
             try (java.io.FileOutputStream fos = new java.io.FileOutputStream(target)) {
                 wb.write(fos);
             }
-            GlassNotification.toast((Window) null, GlassNotification.Type.SUCCESS,
+            SkNotification.toast((Window) null, SkNotification.Type.SUCCESS,
                 I18n.get("setting.email.templateSaved", target.getName()));
         } catch (Exception e) {
             log.error("Failed to save template", e);
-            GlassNotification.notify((Window) null, GlassNotification.Type.ERROR,
+            SkNotification.notify((Window) null, SkNotification.Type.ERROR,
                 I18n.get("setting.email.templateSaveFailed", e.getMessage()));
         }
     }
@@ -2025,7 +2089,7 @@ public class SwissKitJSettingUi {
         VBox box = new VBox(4);
         if (labelText != null && !labelText.isEmpty()) {
             Label lbl = new Label(labelText);
-            lbl.getStyleClass().add("glass-field-label");
+            lbl.getStyleClass().add("sk-field-label");
             box.getChildren().add(lbl);
         }
         box.getChildren().add(field);
@@ -2040,7 +2104,7 @@ public class SwissKitJSettingUi {
 
     private static Label subLabel(String text) {
         Label l = new Label(text);
-        l.getStyleClass().add("glass-field-label");
+        l.getStyleClass().add("sk-field-label");
         return l;
     }
 
@@ -2057,14 +2121,14 @@ public class SwissKitJSettingUi {
         return pf;
     }
 
-    private static final String FIELD_STYLE_CLASS = "glass-field";
+    private static final String FIELD_STYLE_CLASS = "sk-field";
 
     private static Button glassBtn(String text, boolean primary) {
         Button btn = new Button(text);
         if (primary) {
-            btn.getStyleClass().add("glass-btn-primary");
+            btn.getStyleClass().add("sk-btn-primary");
         } else {
-            btn.getStyleClass().add("glass-btn-secondary");
+            btn.getStyleClass().add("sk-btn-secondary");
         }
         return btn;
     }

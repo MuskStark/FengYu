@@ -6,7 +6,7 @@ import javafx.scene.Scene;
  * SwissKitJ theme stylesheet loading utility.
  *
  * <p>Provides the common CSS stylesheet URL that defines the shared glassmorphism
- * utility classes (such as {@code .glass-dialog}, {@code .glass-field},
+ * utility classes (such as {@code .sk-dialog}, {@code .sk-field},
  * {@code .btn-primary}, {@code .btn-secondary}, and scrollbar styling). These
  * styles are declared once in the API module and are automatically available
  * to all plugins embedded in the main Scene.</p>
@@ -42,8 +42,18 @@ public final class Themes {
         return Themes.class.getResource(COMMON_CSS).toExternalForm();
     }
 
+    /** Loads the common stylesheet onto the scene if not already present (no theme stamping). */
+    static void loadCommonStylesheet(Scene scene) {
+        if (scene == null) return;
+        String url = commonStylesheetUrl();
+        if (!scene.getStylesheets().contains(url)) {
+            scene.getStylesheets().add(url);
+        }
+    }
+
     /**
      * Applies the common theme stylesheet to the given scene if not already present.
+     * Loads the common stylesheet and stamps the active theme class on the scene root.
      *
      * <p>This is intended for plugins that open their own {@code Stage} or build
      * a separate {@code Scene} and need access to the shared CSS utility classes.
@@ -52,10 +62,6 @@ public final class Themes {
      * @param scene the {@link Scene} to apply the theme to; ignored if {@code null}
      */
     public static void applyTo(Scene scene) {
-        if (scene == null) return;
-        String url = commonStylesheetUrl();
-        if (!scene.getStylesheets().contains(url)) {
-            scene.getStylesheets().add(url);
-        }
+        ThemeService.registerScene(scene);
     }
 }

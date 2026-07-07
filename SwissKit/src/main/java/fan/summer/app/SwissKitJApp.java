@@ -3,6 +3,7 @@ package fan.summer.app;
 import fan.summer.api.ai.AiServiceProvider;
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.log.LoggerBinder;
+import fan.summer.api.theme.ThemeService;
 import fan.summer.api.theme.Themes;
 import fan.summer.database.DatabaseInit;
 import fan.summer.database.entity.AppSettingEntity;
@@ -12,7 +13,6 @@ import fan.summer.plugin.FavoriteService;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.plugin.PluginRegistry;
 import fan.summer.ui.MainWindow;
-import fan.summer.ui.util.WindowResizeHelper;
 import fan.summer.registrar.BuiltinToolRegistrar;
 import fan.summer.ai.service.CloudChatBackend;
 import javafx.application.Application;
@@ -84,6 +84,11 @@ public class SwissKitJApp extends Application {
             I18n.setLocale(Locale.CHINESE);
         }
 
+        // ── Theme (dark default, persisted) ────────────────────────
+        String savedTheme = readThemeFromDb();
+        ThemeService.set("light".equalsIgnoreCase(savedTheme)
+            ? ThemeService.Theme.LIGHT : ThemeService.Theme.DARK);
+
         // ── Plugin directory (.swisskit/plugin/ under working directory) ──
         Path pluginsDir = PluginLoader.resolvePluginsDir();
         log.info("Plugin directory resolved to: {}", pluginsDir.toAbsolutePath());
@@ -105,9 +110,13 @@ public class SwissKitJApp extends Application {
         // ── Main window ────────────────────────────────────────
         mainWindow = new MainWindow(stage, loader, registry, favoriteService);
 
-        // Transparent scene (for rounded window to display correctly)
         Scene scene = new Scene(mainWindow, 960, 620);
-        scene.setFill(Color.TRANSPARENT);
+        // Best-effort static fill to avoid a flash-of-white before CSS resolves
+        // (the root StackPane has no background of its own; only its .app-root
+        // child does). CSS governs the visible background once painted.
+        scene.setFill(ThemeService.current() == ThemeService.Theme.LIGHT
+            ? Color.WHITE
+            : Color.web("#1E1E1E"));
         scene.getStylesheets().addAll(
             Themes.commonStylesheetUrl(),
             getClass().getResource("/css/shell.css").toExternalForm(),
@@ -120,17 +129,15 @@ public class SwissKitJApp extends Application {
             stage.getIcons().add(new Image(iconUrl.toExternalForm()));
         }
 
-        // Undecorated window (custom titlebar via TitleBar)
-        stage.initStyle(StageStyle.TRANSPARENT);
+        // Native OS window decorations (titlebar + resize handled by the platform)
+        stage.initStyle(StageStyle.DECORATED);
         stage.setTitle("SwissKitJ");
         stage.setScene(scene);
+        ThemeService.registerScene(scene);
         stage.setMinWidth(800);
         stage.setMinHeight(520);
         stage.show();
         log.info("Main window displayed");
-
-        // ── Window resize (edge/corner drag) ────────────────
-        WindowResizeHelper.attach(stage);
 
         // ── Start plugin loading (after UI is displayed) ────────
         loader.start();
@@ -209,5 +216,21 @@ public class SwissKitJApp extends Application {
             log.debug("Could not read language setting", e);
         }
         return "en";
+    }
+
+    /**
+     * Reads the saved theme preference from the database.
+     *
+     * @return "light" if the light theme is saved, otherwise "dark" (the default)
+     */
+    private String readThemeFromDb() {
+        try (SqlSession session = DatabaseInit.getSqlSession()) {
+            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
+            AppSettingEntity entity = mapper.selectByKey("theme");
+            if (entity != null) return entity.getSettingValue();
+        } catch (Exception e) {
+            log.debug("Could not read theme setting", e);
+        }
+        return "dark";
     }
 }

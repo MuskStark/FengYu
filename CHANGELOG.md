@@ -4,6 +4,59 @@ All notable changes to SwissKitJ. Format based on [Keep a Changelog](https://kee
 
 ---
 
+## [3.2.0] — IDEA 2025 New UI Redesign
+
+**v3.2.0** — 2026-07-07
+
+This release re-skins the app from glassmorphism-dark to the JetBrains **IDEA 2025 New UI** look: a flat, token-based theme with switchable **dark / light** themes, a collapsible sidebar, and native OS window chrome. Theming is driven by JavaFX looked-up color tokens (`-sk-*`) declared per theme on the scene root, so a theme switch is just a root class swap — no stylesheet reload.
+
+### ⚠️ Breaking Changes
+
+- **`.glass-*` CSS utility classes renamed to `.sk-*`** (in `swisskit-common.css`). External plugins that call `getStyleClass().add("glass-...")` or reference `.glass-*` selectors must update. The full mapping:
+
+  | old | new |
+  |---|---|
+  | `glass-dialog` | `sk-dialog` |
+  | `glass-field` / `glass-field-label` | `sk-field` / `sk-field-label` |
+  | `glass-tab-pane` | `sk-tab-pane` |
+  | `glass-combo` | `sk-combo` |
+  | `glass-table` | `sk-table` |
+  | `glass-checkbox` | `sk-checkbox` |
+  | `glass-btn-primary` / `glass-btn-secondary` | `sk-btn-primary` / `sk-btn-secondary` |
+  | `glass-notif-*` | `sk-notif-*` |
+
+  > The external plugin repo ([`MuskStark/SwissKiJ-Plugin`](https://github.com/MuskStark/SwissKiJ-Plugin)) is updated separately; flag this rename when migrating third-party plugins.
+
+### 🎨 Theme (strict tokenization)
+
+- **Token set expanded 14 → 19** — added `-sk-shadow`, `-sk-scrim`, `-sk-success-soft`, `-sk-warning-soft`, `-sk-danger-soft` (each under both `.theme-dark` and `.theme-light`). Custom themes/stylesheets that hardcoded the old 14 must add these 5 or popups/dialogs/cards will have undefined shadows and status soft-fills.
+- **Fixed popups rendering as un-themed white** — `GlassNotification` (toast/notify/confirm) loaded the stylesheet but never stamped the theme class on its scene, so every `-sk-*` token was undefined and all popups fell back to JavaFX default white in both themes. Root-cause fix via `Themes.applyTo(scene)`.
+- **Removed all hardcoded colors** from popups, dialogs, `StepWizard`, `ToggleSwitch`, status labels, and CSS drop-shadows. Everything now resolves through `-sk-*` tokens and adapts correctly to dark and 纯白 (light) themes. Notably `StepWizard` idle dots and `ToggleSwitch` off-track were invisible on the light theme.
+
+### ✨ New
+
+- **Dark / light theme system** — `fan.summer.api.theme.ThemeService` (API module, no DB dependency) holds the active `Theme.DARK`/`Theme.LIGHT`, stamps a `theme-dark`/`theme-light` class on every registered scene root, and fires `onChange` listeners. Switchable from the sidebar footer (☀/☾) and the Settings page; persisted in the `theme` setting (`dark` default).
+- **Looked-up color tokens** (`-sk-bg`, `-sk-bg-elevated`, `-sk-text`, `-sk-accent`, `-sk-border`, …) declared per theme in `swisskit-common.css`; swapping the root class re-resolves every token with no stylesheet reload.
+- **Collapsible sidebar** — `«`/`»` toggle between the label view and a 48px icon-strip; collapse state persisted via the `sidebar.collapsed` setting.
+- **Native window chrome** — `StageStyle.DECORATED` gives the real OS title bar + close/min/max (macOS traffic lights), replacing the custom transparent window.
+- `MarkdownRenderer.render(md, Theme)` / `renderPlain(md, Theme)` overloads (theme-aware dark/light CSS palettes); no-arg forms delegate via `ThemeService.current()`.
+
+### ♻️ Changed
+
+- `swisskit-common.css` rewritten: token definitions under `.theme-dark`/`.theme-light`, every component flattened to IDEA New UI style (neutral-gray selection with a left accent bar, slim 4–8px scrollbars, flat fields/buttons/tables/tabs/dialogs/notifications), all `.glass-*` → `.sk-*`.
+- `shell.css` rewritten token-based for the New UI shell (`.app-root`, `.sidebar` + `.collapsed`, capsule `.search-bar`, flat `.tool-card`, `.detail-panel`, `.statusbar`, `.store-*`).
+- `Themes.applyTo(scene)` now delegates to `ThemeService.registerScene(scene)` (loads the common stylesheet + stamps the theme class); the shared stylesheet load is factored into `Themes.loadCommonStylesheet(scene)` to keep the delegation non-recursive.
+- `SwissKitJApp` reads the persisted theme on startup and registers the main scene with `ThemeService`.
+- `AiChatPlugin` derives its WebView background from the active theme and re-renders the conversation live on theme change.
+- Inline `#5b8cf7` accent literals replaced with `#3574F0` / the dark palette across the sidebar and Markdown link CSS.
+
+### 🔥 Removed
+
+- `fan.summer.ui.titlebar.TitleBar` — replaced by native OS window chrome.
+- `fan.summer.ui.util.WindowResizeHelper` — native `DECORATED` resize/drag/maximize replaces it; the macOS `isMaximized()`-on-`TRANSPARENT` bug is gone with it.
+
+---
+
 ## [3.1.0] — LangChain4j ChatBackend + Plugin-Owned AI Tools
 
 **v3.1.0** — 2026-06-25

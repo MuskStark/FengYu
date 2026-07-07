@@ -15,7 +15,7 @@ tool — whether built-in or shipped as an external JAR — implements the same
 │  SwissKitJ-Api  —  public contract layer (no business logic)      │
 │  SwissKitJPlugin · ToolCategory/Type/IconStyle · PluginContext     │
 │  AiService/AiTool/AiChatMessage · I18n · Themes · LoggerFactory    │
-│  StepWizard · GlassNotification · UiUtils · preview components     │
+│  StepWizard · SkNotification · UiUtils · preview components     │
 └───────────────────────────────▲──────────────────────────────────┘
                                 │ bundled in the fat JAR (provided → runtime)
                                 ▼
@@ -31,7 +31,7 @@ tool — whether built-in or shipped as an external JAR — implements the same
 
 | Module | Purpose |
 |--------|---------|
-| `SwissKitJ-Api` | Shared plugin interface (`SwissKitJPlugin`), plugin context & isolation (`PluginContext`), reusable components (`StepWizard`, `GlassNotification`, `UiUtils`), theming, i18n, logging API, and the AI service contract (`ChatBackend`, `AiTool`, message records) |
+| `SwissKitJ-Api` | Shared plugin interface (`SwissKitJPlugin`), plugin context & isolation (`PluginContext`), reusable components (`StepWizard`, `SkNotification`, `UiUtils`), theming, i18n, logging API, and the AI service contract (`ChatBackend`, `AiTool`, message records) |
 | `SwissKit` | JavaFX application shell — UI, plugin loading, favorites, the AI subsystem, and all built-in tools |
 
 Official plugins live in a [separate repository](https://github.com/MuskStark/SwissKiJ-Plugin). They are built independently and dropped into `.swisskit/plugin/` as JARs at runtime. All plugins declare `SwissKitJ-Api` as `provided` scope; the main app provides it at runtime via the fat JAR.
@@ -54,8 +54,7 @@ In `SwissKitJApp.start()`:
 7. Register built-in tools via `BuiltinToolRegistrar` — this routes the list through `PluginRegistry.addPlugins`, which also auto-registers each plugin's `aiTools()` with `AiServiceProvider`
 8. Initialize cloud AI backends (OpenAI/Anthropic) if the saved mode is `openai`/`anthropic`; **local mode is deferred** until the AI tool is first opened
 9. Build and display the `MainWindow`
-10. Attach `WindowResizeHelper` for edge/corner drag resize
-11. Start `PluginLoader` (scans the plugins dir and watches for changes)
+10. Start `PluginLoader` (scans the plugins dir and watches for changes)
 
 > As of v3.1.0 there is no separate AI-tool registration step. Plugins self-declare their
 > AI tools via `SwissKitJPlugin.aiTools()`, and the registry handles registration on add
@@ -66,11 +65,10 @@ In `SwissKitJApp.start()`:
 
 | Component | Role |
 |-----------|------|
-| `MainWindow` | Root `StackPane`; owns `TitleBar`, `Sidebar`, `ContentArea`, status bar; composes animated background orbs |
-| `Sidebar` | Category-based navigation with search; categories: all / text / image / dev / net / other / favorites |
+| `MainWindow` | Root `StackPane` wrapping a `BorderPane` body; owns `Sidebar`, `ContentArea`, status bar |
+| `Sidebar` | Collapsible category navigation with search; categories: all / text / image / dev / net / other / favorites |
 | `ContentArea` | Shows the `ToolCard` grid or an active tool view; manages the `DetailPanel` overlay and the back-bar |
 | `DetailPanel` | Slide-in panel showing plugin metadata, with Launch, Favorite toggle, and Uninstall (external plugins only) buttons |
-| `TitleBar` | Custom window chrome (window is `StageStyle.TRANSPARENT`) |
 
 ### Navigation Flow
 
@@ -225,12 +223,13 @@ of this direct-call approach, the planner currently supports **OpenAI-compatible
 
 ## CSS Theming
 
-Three-layer glassmorphism dark theme:
+Three-layer token-based theme (dark / light):
 
 | File | Module | Scope |
 |------|--------|-------|
-| `css/swisskit-common.css` | `SwissKitJ-Api` | Shared variables, scrollbars, progress bar, `.glass-*` utility classes, `.section-title`/`.section-header` |
-| `css/shell.css` | `SwissKit` | App chrome — titlebar, sidebar, search bar, tool cards, detail panel, status bar, `.ic-*` icon classes |
+| `css/swisskit-common.css` | `SwissKitJ-Api` | Token definitions (`.theme-dark`/`.theme-light`), scrollbars, progress bar, `.sk-*` utility classes, `.section-title`/`.section-header` |
+| `css/shell.css` | `SwissKit` | App shell — sidebar, search bar, tool cards, detail panel, status bar, `.ic-*` icon classes |
+| `css/builtin.css` | `SwissKit` | Built-in tool styling |
 | `css/builtin.css` | `SwissKit` | Built-in tool styling |
 
 Plugins embedded in the main Scene inherit all three stylesheets automatically via scene-graph

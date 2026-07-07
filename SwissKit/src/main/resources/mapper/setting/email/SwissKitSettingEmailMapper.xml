@@ -10,14 +10,17 @@
             parameterType="fan.summer.database.entity.setting.email.SwissKitSettingEmailEntity"
             useGeneratedKeys="true"
             keyProperty="id">
-        INSERT INTO swiss_kit_setting_email (email, password, smtp_address, smtp_port, need_tls, need_ssl, from_address)
-        VALUES (#{email}, #{password}, #{smtpAddress}, #{smtpPort}, #{needTLS}, #{needSSL}, #{fromAddress})
+        INSERT INTO swiss_kit_setting_email (
+            email, password, smtp_address, smtp_port, need_tls, need_ssl, from_address, imap_address, imap_port, imap_ssl
+        )
+        VALUES (#{email}, #{password}, #{smtpAddress}, #{smtpPort}, #{needTLS}, #{needSSL}, #{fromAddress}, #{imapAddress},#{imapPort},#{imapSSL})
     </insert>
 
     <!-- Select the latest email settings record -->
     <select id="selectLatest" resultType="fan.summer.database.entity.setting.email.SwissKitSettingEmailEntity">
         SELECT id, email, password, smtp_address AS smtpAddress, smtp_port AS smtpPort,
-               need_tls AS needTLS, need_ssl AS needSSL, from_address AS fromAddress
+               need_tls AS needTLS, need_ssl AS needSSL, from_address AS fromAddress,
+               imap_address AS imapAddress, imap_port AS imapPort, imap_ssl AS imapSSL
         FROM swiss_kit_setting_email
         ORDER BY id DESC
         LIMIT 1

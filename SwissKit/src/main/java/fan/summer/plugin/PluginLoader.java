@@ -3,6 +3,8 @@ package fan.summer.plugin;
 import fan.summer.api.PluginContext;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.i18n.I18n;
+import fan.summer.api.loader.ChildFirstResourceClassLoader;
+import fan.summer.plugin.host.H2PluginSettings;
 import javafx.application.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -221,6 +223,9 @@ public class PluginLoader {
         }
         log.info("Uninstalling plugin: id={}, jar={}", plugin.getId(), jar.getFileName());
         unloadJar(jar);
+
+        // Explicit uninstall wipes the plugin's persisted settings; hot-reload keeps them.
+        H2PluginSettings.purge(plugin.getId());
 
         // Original JAR was never locked (ClassLoader used temp copy), so deletion
         // should succeed immediately without any retry/GC hacks.

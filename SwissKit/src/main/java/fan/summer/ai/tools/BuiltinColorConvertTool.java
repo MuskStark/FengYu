@@ -13,8 +13,8 @@ import java.util.*;
  * <p>This tool wraps {@link java.awt.Color} to parse and re-format color values.
  * Supported transformations:</p>
  * <ul>
- *   <li>HEX (e.g. {@code #5b8cf7}) to RGB or HSL</li>
- *   <li>RGB (e.g. {@code 91, 140, 247}) to HEX or HSL</li>
+ *   <li>HEX (e.g. {@code #3574F0}) to RGB or HSL</li>
+ *   <li>RGB (e.g. {@code 53, 116, 240}) to HEX or HSL</li>
  * </ul>
  *
  * <p>Tool name: {@code color_convert}</p>
@@ -28,10 +28,10 @@ public class BuiltinColorConvertTool implements AiTool {
 
     @Override public String getDescription() {
         return "Convert a color between HEX, RGB, and HSL formats.\n"
-             + "Args: color (string, required) — the color value (e.g. \"#5b8cf7\" or \"91,140,247\");\n"
+             + "Args: color (string, required) — the color value (e.g. \"#3574F0\" or \"53,116,240\");\n"
              + "      from (string, required, enum: HEX|RGB|HSL) — source format;\n"
              + "      to   (string, required, enum: HEX|RGB|HSL) — target format.\n"
-             + "Example: color_convert{\"color\":\"#5b8cf7\",\"from\":\"HEX\",\"to\":\"RGB\"}.";
+             + "Example: color_convert{\"color\":\"#3574F0\",\"from\":\"HEX\",\"to\":\"RGB\"}.";
     }
 
     @Override public String getLocalDescription() {
@@ -91,7 +91,7 @@ public class BuiltinColorConvertTool implements AiTool {
                 case "RGB" -> {
                     String[] parts = color.split("[,\\s]+");
                     if (parts.length < 3)
-                        return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "RGB format: \"R, G, B\" (e.g. \"91, 140, 247\")")));
+                        return AiToolResult.error(JsonHelper.toJson(Map.of("success", false, "error", "RGB format: \"R, G, B\" (e.g. \"53, 116, 240\")")));
                     r = Integer.parseInt(parts[0].trim());
                     g = Integer.parseInt(parts[1].trim());
                     b = Integer.parseInt(parts[2].trim());

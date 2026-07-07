@@ -1,6 +1,5 @@
 package fan.summer.buildintool.email;
 
-import javafx.animation.FillTransition;
 import javafx.animation.TranslateTransition;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
@@ -23,8 +22,8 @@ public class ToggleSwitch extends StackPane {
     /** Horizontal travel of the thumb from centre, in either direction. */
     private static final double OFFSET = WIDTH / 2 - THUMB_RADIUS - 3;
 
-    private static final Color OFF_COLOR = Color.rgb(255, 255, 255, 0.18);
-    private static final Color ON_COLOR = Color.web("#5b8cf7");
+    private static final String ON_CLASS = "sk-toggle-on";
+    private static final String OFF_CLASS = "sk-toggle-off";
 
     private final BooleanProperty selected = new SimpleBooleanProperty(false);
     private final Rectangle track;
@@ -34,7 +33,7 @@ public class ToggleSwitch extends StackPane {
         track = new Rectangle(WIDTH, HEIGHT);
         track.setArcWidth(HEIGHT);
         track.setArcHeight(HEIGHT);
-        track.setFill(OFF_COLOR);
+        track.getStyleClass().add(OFF_CLASS);
 
         thumb = new Circle(THUMB_RADIUS);
         thumb.setFill(Color.WHITE);
@@ -54,11 +53,12 @@ public class ToggleSwitch extends StackPane {
         TranslateTransition slide = new TranslateTransition(Duration.millis(150), thumb);
         slide.setToX(on ? OFFSET : -OFFSET);
 
-        FillTransition fade = new FillTransition(Duration.millis(150), track,
-                (Color) track.getFill(), on ? ON_COLOR : OFF_COLOR);
+        // Track color is driven by CSS class (theme-aware). FillTransition cannot
+        // interpolate looked-up colors, so we swap the class; the slide carries the motion.
+        track.getStyleClass().removeAll(ON_CLASS, OFF_CLASS);
+        track.getStyleClass().add(on ? ON_CLASS : OFF_CLASS);
 
         slide.play();
-        fade.play();
     }
 
     public boolean isSelected() {

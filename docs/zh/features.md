@@ -79,9 +79,9 @@ SwissKitJ 提供 9 个内置工具，按分类组织，并支持外部插件。
 
 ## 系统功能
 
-### 窗口自由调整大小
+### 原生窗口装饰
 
-无装饰的玻璃态窗口通过 `WindowResizeHelper` 支持边缘和角落拖拽缩放。缩放检测使用屏幕坐标，确保跨平台兼容性，包括 macOS 上 `stage.isMaximized()` 不可靠的 `StageStyle.TRANSPARENT` 场景。
+主窗口使用 `StageStyle.DECORATED` 的原生操作系统窗口装饰（macOS 红绿灯按钮、Windows/Linux 标准标题栏）。窗口可通过原生操作系统控件自由缩放——无需自定义缩放逻辑。
 
 ### 插件商店
 

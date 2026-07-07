@@ -14,7 +14,7 @@ SwissKitJ bundles JavaFX for all platforms inside the fat JAR — no separate Ja
 Download from the [GitHub Releases](https://github.com/MuskStark/SwissKitJ/releases) page.
 
 ```bash
-java -jar SwissKitJ-3.1.0.jar
+java -jar SwissKitJ-3.2.0.jar
 ```
 
 The fat JAR includes JavaFX native libraries for macOS, Windows, and Linux — no additional setup required.
@@ -32,7 +32,7 @@ mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
 
 # Run
-java -jar SwissKit/target/SwissKitJ-3.1.0.jar
+java -jar SwissKit/target/SwissKitJ-3.2.0.jar
 ```
 
 **Build order matters**: `SwissKitJ-Api` provides the shared plugin interface and reusable UI components. It must be installed into the local Maven repository before the main app can compile.
@@ -42,7 +42,7 @@ java -jar SwissKit/target/SwissKitJ-3.1.0.jar
 ### Fat JAR
 
 ```bash
-java -jar SwissKit/target/SwissKitJ-3.1.0.jar
+java -jar SwissKit/target/SwissKitJ-3.2.0.jar
 ```
 
 ### IDE (IntelliJ IDEA)
@@ -55,7 +55,7 @@ The `Launcher` class is the fat-JAR manifest entry point.
 
 ## First Steps
 
-1. **Main Window** — The app opens with a transparent window frame and custom title bar
+1. **Main Window** — The app opens with native OS window chrome (StageStyle.DECORATED)
 2. **Sidebar** — Tool categories: All, Text, Image, Dev, Net, Other
 3. **Tool Card** — Click a tool card to see its detail panel, then click **Launch**
 4. **Plugin Store** — Browse and install plugins from the online catalog, or load local JARs

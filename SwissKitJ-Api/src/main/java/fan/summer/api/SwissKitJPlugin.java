@@ -206,6 +206,22 @@ public interface SwissKitJPlugin {
      */
     default void onForeground() {}
 
+    // ── Host facade injection ─────────────────────────────
+
+    /**
+     * Called exactly once by the host, on the JavaFX Application Thread, after
+     * the plugin is instantiated and before it becomes visible in the registry
+     * (and before {@link #aiTools()} registration). The plugin's ClassLoader is
+     * already on the thread-context ClassLoader. Store the reference — it stays
+     * valid for the plugin's whole lifetime.
+     *
+     * <p>The default implementation is a no-op; existing plugins need no change.</p>
+     *
+     * @param host the host facade bound to this plugin instance
+     * @since 3.2.0
+     */
+    default void init(fan.summer.api.host.PluginHost host) {}
+
     // ── AI tools ─────────────────────────────────────────
 
     /**

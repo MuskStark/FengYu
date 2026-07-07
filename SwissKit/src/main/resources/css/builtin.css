@@ -2,7 +2,19 @@
    builtin.css — SwissKitJ 主程序内置工具专属样式
    仅在主 Scene 加载，供 buildintool/ 与 ui/setting/ 中的内置工具页面使用。
    插件代码请勿依赖这里的样式 class。
+   全部颜色走 -sk-* token，深/浅主题自动适配。
    ================================================================ */
+
+/* ── 设置页侧栏(含右侧竖向分割线)────────────────────────────── */
+.settings-sidebar {
+    -fx-background-color: -sk-bg-elevated;
+    -fx-border-color: -sk-border;
+    -fx-border-width: 0 1 0 0;
+    -fx-min-width: 160px;
+    -fx-pref-width: 180px;
+    -fx-max-width: 200px;
+    -fx-padding: 12 8;
+}
 
 /* ── AI Chat ────────────────────────────────────────────────── */
 
@@ -25,15 +37,15 @@
 }
 
 .ai-msg-user .ai-msg-bubble {
-    -fx-background-color: rgba(91,140,247,0.22);
-    -fx-border-color: rgba(91,140,247,0.18);
+    -fx-background-color: -sk-accent-soft;
+    -fx-border-color: rgba(53,116,240,0.30);
     -fx-border-width: 1px;
     -fx-border-radius: 14px;
 }
 
 .ai-msg-assistant .ai-msg-bubble {
-    -fx-background-color: rgba(255,255,255,0.055);
-    -fx-border-color: rgba(255,255,255,0.10);
+    -fx-background-color: -sk-bg-elevated;
+    -fx-border-color: -sk-border;
     -fx-border-width: 1px;
     -fx-border-radius: 14px;
 }
@@ -47,24 +59,24 @@
 .ai-msg-text {
     -fx-font-size: 13.5px;
     -fx-line-spacing: 4px;
-    -fx-fill: rgba(255,255,255,0.90);
+    -fx-fill: -sk-text;
     -fx-wrap-text: true;
 }
 
 .ai-msg-user .ai-msg-text {
-    -fx-fill: rgba(255,255,255,0.95);
+    -fx-fill: -sk-text;
 }
 
 .ai-msg-label {
     -fx-font-size: 11px;
-    -fx-text-fill: rgba(255,255,255,0.35);
+    -fx-text-fill: -sk-text-disabled;
     -fx-font-weight: bold;
     -fx-padding: 0 0 3 0;
 }
 
 .ai-chat-input-bar {
-    -fx-background-color: rgba(255,255,255,0.055);
-    -fx-border-color: rgba(255,255,255,0.12);
+    -fx-background-color: -sk-bg-elevated;
+    -fx-border-color: -sk-border;
     -fx-border-width: 1px;
     -fx-border-radius: 14px;
     -fx-background-radius: 14px;
@@ -74,16 +86,16 @@
 }
 
 .ai-chat-input-bar:focused-within {
-    -fx-background-color: rgba(255,255,255,0.085);
-    -fx-border-color: rgba(91,140,247,0.45);
-    -fx-effect: dropshadow(gaussian, rgba(91,140,247,0.25), 8, 0, 0, 0);
+    -fx-background-color: -sk-bg-hover;
+    -fx-border-color: -sk-accent;
+    -fx-effect: dropshadow(gaussian, rgba(53,116,240,0.25), 8, 0, 0, 0);
 }
 
 .ai-chat-textarea {
     -fx-background-color: transparent;
     -fx-border-width: 0;
-    -fx-text-fill: rgba(255,255,255,0.92);
-    -fx-prompt-text-fill: rgba(255,255,255,0.28);
+    -fx-text-fill: -sk-text;
+    -fx-prompt-text-fill: -sk-text-disabled;
     -fx-font-size: 13.5px;
     -fx-control-inner-background: transparent;
     -fx-padding: 4 0 4 0;
@@ -94,7 +106,7 @@
 }
 
 .ai-send-btn {
-    -fx-background-color: #5b8cf7;
+    -fx-background-color: -sk-accent;
     -fx-text-fill: white;
     -fx-font-size: 16px;
     -fx-background-radius: 10px;
@@ -109,19 +121,19 @@
 }
 
 .ai-send-btn:hover {
-    -fx-background-color: #4a7bf5;
-    -fx-effect: dropshadow(gaussian, rgba(91,140,247,0.4), 10, 0, 0, 3);
+    -fx-background-color: derive(-sk-accent, -8%);
+    -fx-effect: dropshadow(gaussian, rgba(53,116,240,0.4), 10, 0, 0, 3);
 }
 
 .ai-send-btn:disabled {
-    -fx-background-color: rgba(255,255,255,0.08);
-    -fx-text-fill: rgba(255,255,255,0.25);
+    -fx-background-color: -sk-bg-hover;
+    -fx-text-fill: -sk-text-disabled;
     -fx-cursor: default;
 }
 
 .ai-attach-btn {
     -fx-background-color: transparent;
-    -fx-text-fill: rgba(255,255,255,0.55);
+    -fx-text-fill: -sk-text-secondary;
     -fx-font-size: 16px;
     -fx-background-radius: 10px;
     -fx-border-radius: 10px;
@@ -135,12 +147,12 @@
 }
 
 .ai-attach-btn:hover {
-    -fx-background-color: rgba(255,255,255,0.08);
-    -fx-text-fill: rgba(255,255,255,0.90);
+    -fx-background-color: -sk-bg-hover;
+    -fx-text-fill: -sk-text;
 }
 
 .ai-attach-btn:disabled {
-    -fx-text-fill: rgba(255,255,255,0.20);
+    -fx-text-fill: -sk-text-disabled;
     -fx-cursor: default;
 }
 
@@ -149,8 +161,8 @@
 }
 
 .ai-attachment-chip {
-    -fx-background-color: rgba(91,140,247,0.12);
-    -fx-border-color: rgba(91,140,247,0.22);
+    -fx-background-color: -sk-accent-soft;
+    -fx-border-color: rgba(53,116,240,0.30);
     -fx-border-width: 1px;
     -fx-border-radius: 10px;
     -fx-background-radius: 10px;
@@ -159,7 +171,7 @@
 
 .ai-chip-remove {
     -fx-background-color: transparent;
-    -fx-text-fill: rgba(255,255,255,0.55);
+    -fx-text-fill: -sk-text-secondary;
     -fx-font-size: 13px;
     -fx-min-width: 18px;
     -fx-min-height: 18px;
@@ -172,7 +184,7 @@
 
 .ai-chip-remove:hover {
     -fx-background-color: rgba(255,107,107,0.30);
-    -fx-text-fill: rgba(255,255,255,0.95);
+    -fx-text-fill: -sk-text;
 }
 
 .ai-chat-toolbar {
@@ -182,37 +194,37 @@
 }
 
 .ai-toolbar-btn {
-    -fx-background-color: rgba(255,255,255,0.06);
-    -fx-border-color: rgba(255,255,255,0.10);
+    -fx-background-color: -sk-bg-hover;
+    -fx-border-color: -sk-border;
     -fx-border-width: 1px;
     -fx-background-radius: 8px;
     -fx-border-radius: 8px;
-    -fx-text-fill: rgba(255,255,255,0.60);
+    -fx-text-fill: -sk-text-secondary;
     -fx-font-size: 12px;
     -fx-padding: 4 10 4 10;
     -fx-cursor: hand;
 }
 
 .ai-toolbar-btn:hover {
-    -fx-background-color: rgba(255,255,255,0.10);
-    -fx-text-fill: rgba(255,255,255,0.85);
+    -fx-background-color: -sk-bg-selected;
+    -fx-text-fill: -sk-text;
 }
 
 .ai-status-label {
     -fx-font-size: 11px;
-    -fx-text-fill: rgba(255,255,255,0.30);
+    -fx-text-fill: -sk-text-disabled;
     -fx-font-family: "SF Mono", "Consolas", "Microsoft YaHei", monospace;
 }
 
 .ai-typing-indicator {
     -fx-font-size: 12px;
-    -fx-text-fill: rgba(255,255,255,0.40);
+    -fx-text-fill: -sk-text-disabled;
 }
 
 /* ── AI Model selector (in sidebar or toolbar) ─────────────── */
 
 .ai-model-hint {
     -fx-font-size: 11px;
-    -fx-text-fill: rgba(255,255,255,0.28);
+    -fx-text-fill: -sk-text-disabled;
     -fx-padding: 0 20 8 20;
 }

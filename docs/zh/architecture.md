@@ -14,7 +14,7 @@ SwissKitJ 是一个基于 JavaFX 21（JDK 21）构建的模块化、插件化桌
 │  SwissKitJ-Api  —  公共契约层（无业务逻辑）                        │
 │  SwissKitJPlugin · ToolCategory/Type/IconStyle · PluginContext     │
 │  AiService/AiTool/AiChatMessage · I18n · Themes · LoggerFactory    │
-│  StepWizard · GlassNotification · UiUtils · preview 组件           │
+│  StepWizard · SkNotification · UiUtils · preview 组件           │
 └───────────────────────────────▲──────────────────────────────────┘
                                 │ 打包进胖 JAR（provided → runtime）
                                 ▼
@@ -30,7 +30,7 @@ SwissKitJ 是一个基于 JavaFX 21（JDK 21）构建的模块化、插件化桌
 
 | 模块 | 用途 |
 |------|------|
-| `SwissKitJ-Api` | 共享插件接口（`SwissKitJPlugin`）、插件上下文与隔离（`PluginContext`）、可复用组件（`StepWizard`、`GlassNotification`、`UiUtils`）、主题、i18n、日志 API，以及 AI 服务契约（`ChatBackend`、`AiTool`、消息 record） |
+| `SwissKitJ-Api` | 共享插件接口（`SwissKitJPlugin`）、插件上下文与隔离（`PluginContext`）、可复用组件（`StepWizard`、`SkNotification`、`UiUtils`）、主题、i18n、日志 API，以及 AI 服务契约（`ChatBackend`、`AiTool`、消息 record） |
 | `SwissKit` | JavaFX 应用壳 —— UI、插件加载、收藏、AI 子系统，以及全部内置工具 |
 
 官方插件位于[单独的仓库](https://github.com/MuskStark/SwissKiJ-Plugin)。它们独立构建，在运行时作为 JAR 放入 `.swisskit/plugin/` 目录。所有插件将 `SwissKitJ-Api` 声明为 `provided` 依赖；主应用通过胖 JAR 在运行时提供它。
@@ -52,8 +52,7 @@ SwissKitJ 是一个基于 JavaFX 21（JDK 21）构建的模块化、插件化桌
 7. 通过 `BuiltinToolRegistrar` 注册内置工具 —— 列表会经 `PluginRegistry.addPlugins` 统一注册，同时把每个插件的 `aiTools()` 自动注册到 `AiServiceProvider`
 8. 若已保存的模式为 `openai`/`anthropic`，则初始化云端 AI 后端；**local 模式延迟到首次打开 AI 工具时再初始化**
 9. 构建并显示 `MainWindow`
-10. 挂载 `WindowResizeHelper` 实现边缘/角落拖拽缩放
-11. 启动 `PluginLoader`（扫描插件目录并监听变化）
+10. 启动 `PluginLoader`（扫描插件目录并监听变化）
 
 > 自 v3.1.0 起不再有独立的 AI 工具注册步骤。插件通过 `SwissKitJPlugin.aiTools()`
 > 自带其 AI 工具，注册表在插件加入时自动注册、在插件移除（含热重载）时自动注销。
@@ -63,11 +62,10 @@ SwissKitJ 是一个基于 JavaFX 21（JDK 21）构建的模块化、插件化桌
 
 | 组件 | 职责 |
 |------|------|
-| `MainWindow` | 根 `StackPane`；拥有 `TitleBar`、`Sidebar`、`ContentArea`、状态栏；组合动画背景光球 |
-| `Sidebar` | 带搜索栏的分类导航；分类：全部 / 文本 / 图片 / 开发者 / 网络 / 其他 / 收藏 |
+| `MainWindow` | 根 `StackPane` 包裹 `BorderPane` 主体；拥有 `Sidebar`、`ContentArea`、状态栏 |
+| `Sidebar` | 可折叠的分类导航，带搜索栏；分类：全部 / 文本 / 图片 / 开发者 / 网络 / 其他 / 收藏 |
 | `ContentArea` | 显示 `ToolCard` 网格或活动工具视图；管理 `DetailPanel` 覆盖层与返回栏 |
 | `DetailPanel` | 滑入面板，显示插件元数据，带启动、收藏切换、卸载（仅外部插件）按钮 |
-| `TitleBar` | 自定义窗口装饰（窗口为 `StageStyle.TRANSPARENT`） |
 
 ### 导航流程
 
@@ -247,7 +245,7 @@ Schema 从 `init.sql` 初始化，通过 MyBatis 访问，XML mapper 位于
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.1.0.jar
+java -jar SwissKit/target/SwissKitJ-3.2.0.jar
 ```
 
 胖 JAR 由 `maven-shade-plugin` 构建（主类 `fan.summer.Launcher`），并捆绑所有平台的

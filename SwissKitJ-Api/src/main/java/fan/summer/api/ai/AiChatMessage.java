@@ -1,6 +1,7 @@
 package fan.summer.api.ai;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * An immutable record representing a single message in an AI chat conversation.
@@ -46,8 +47,16 @@ public record AiChatMessage(
         SYSTEM, USER, ASSISTANT, TOOL
     }
 
-    /** Compact constructor — normalises {@code toolCalls} to an empty list if null. */
+    /**
+     * Compact constructor — validates and normalises components:
+     * {@code role} must be non-null; a null {@code content} becomes {@code ""};
+     * a null {@code toolCalls} becomes an empty list.
+     * <p>Note: {@code toolCallId} is intentionally NOT enforced for {@link Role#TOOL}
+     * messages — local Hermes-format backends (Qwen3) may emit tool calls without IDs.
+     */
     public AiChatMessage {
+        Objects.requireNonNull(role, "role must not be null");
+        if (content == null) content = "";
         if (toolCalls == null) toolCalls = List.of();
     }
 

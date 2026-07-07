@@ -1,7 +1,9 @@
 package fan.summer.api.preview;
 
+import fan.summer.api.PluginContext;
 import fan.summer.api.SwissKitJPlugin;
 import fan.summer.api.i18n.I18n;
+import fan.summer.api.loader.ChildFirstResourceClassLoader;
 import fan.summer.api.theme.Themes;
 import javafx.scene.Scene;
 import javafx.scene.paint.Color;
@@ -118,6 +120,19 @@ public final class PluginPreviewWindow {
      * Must be called from the JavaFX Application thread.
      */
     public void launch() {
+        // Register this API module's own i18n bundle as a FALLBACK so the preview
+        // window shows real text when run standalone (third-party plugin authors
+        // depend only on SwissKitJ-Api, not the host app). The bundle is loaded
+        // directly from the known resource URL (not via ResourceBundle.getBundle),
+        // which is robust under any classloader layout — including fat-jars and
+        // module layers where the getBundle lookup chain can't see the resource.
+        // Low priority: when the preview runs inside the host app, the host's
+        // i18n.messages bundle is consulted first and wins for shared keys.
+        java.net.URL msgUrl = PluginPreviewWindow.class.getResource("/i18n/messages.properties");
+        if (msgUrl != null) {
+            I18n.registerFallbackBundle("i18n.messages", msgUrl);
+        }
+
         List<SwissKitJPlugin> loadedPlugins = new ArrayList<>();
         URLClassLoader classLoader = null;
 
@@ -126,13 +141,14 @@ public final class PluginPreviewWindow {
             loadedPlugins.add(pluginInstance);
         } else if (jarPath != null) {
             try {
-                classLoader = new URLClassLoader(
+                classLoader = new ChildFirstResourceClassLoader(
                     new java.net.URL[]{jarPath.toUri().toURL()},
                     getClass().getClassLoader()
                 );
                 ServiceLoader<SwissKitJPlugin> sl = ServiceLoader.load(SwissKitJPlugin.class, classLoader);
                 for (SwissKitJPlugin p : sl) {
                     loadedPlugins.add(p);
+                    PluginContext.register(p, classLoader);
                 }
             } catch (Exception e) {
                 throw new RuntimeException("Failed to load plugin from JAR: " + jarPath, e);
@@ -153,6 +169,19 @@ public final class PluginPreviewWindow {
         final URLClassLoader finalCl = classLoader;
         final List<SwissKitJPlugin> finalPlugins = List.copyOf(loadedPlugins);
 
+        // Inject PluginHost exactly like the real host does (before the plugin
+        // becomes visible in the shell; init failures must not block the preview).
+        final List<PreviewPluginHost> hosts = new ArrayList<>();
+        for (SwissKitJPlugin p : finalPlugins) {
+            PreviewPluginHost host = new PreviewPluginHost(p);
+            hosts.add(host);
+            try {
+                PluginContext.runWith(p, () -> p.init(host));
+            } catch (Exception e) {
+                System.err.println("[preview] plugin " + p.getId() + " threw on init(): " + e.getMessage());
+            }
+        }
+
         I18n.setLocale(java.util.Locale.getDefault());
 
         Stage stage = new Stage();
@@ -165,6 +194,9 @@ public final class PluginPreviewWindow {
             finalPlugins, title,
             showSidebar, showSearchBar, showStatusBar, showDetailPanel,
             () -> {
+                for (PreviewPluginHost h : hosts) {
+                    try { h.tasks().cancelAll(); } catch (Exception ignored) {}
+                }
                 if (finalCl != null) {
                     try { finalCl.close(); } catch (Exception ignored) {}
                 }
@@ -173,8 +205,11 @@ public final class PluginPreviewWindow {
 
         Scene scene = new Scene(shell, width, height);
         scene.setFill(Color.TRANSPARENT);
-        scene.getStylesheets().addAll(
-            Themes.commonStylesheetUrl(),
+        // Register with the theme service: loads common.css (idempotent) AND stamps the
+        // active theme class on this scene's root so the -sk-* tokens used in
+        // swisskit-preview.css resolve (otherwise they'd be undefined in this window).
+        Themes.applyTo(scene);
+        scene.getStylesheets().add(
             PluginPreviewWindow.class.getResource("/css/swisskit-preview.css").toExternalForm()
         );
 

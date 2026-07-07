@@ -58,14 +58,14 @@ public class ColorConverterPlugin implements SwissKitJPlugin {
     @Override
     public Node createView() {
         log.debug("Creating Color Converter view");
-        TextField hexField = styledField("#5b8cf7");
-        TextField rgbField = styledField("91, 140, 247");
+        TextField hexField = styledField("#3574F0");
+        TextField rgbField = styledField("53, 116, 240");
         TextField hslField = styledField("220°, 90%, 66%");
 
         Region preview = new Region();
         preview.setPrefSize(80, 80);
         preview.setMinSize(80, 80);
-        preview.setStyle("-fx-background-radius: 16; -fx-background-color: #5b8cf7;");
+        preview.setStyle("-fx-background-radius: 16; -fx-background-color: #3574F0;");
 
         Runnable updatePreview = () -> {
             try {
@@ -109,7 +109,8 @@ public class ColorConverterPlugin implements SwissKitJPlugin {
      */
     private HBox fieldRow(String label, TextField field) {
         Label l = new Label(label);
-        l.setStyle("-fx-text-fill: rgba(255,255,255,0.40); -fx-min-width: 40px; -fx-font-size: 12px;");
+        l.getStyleClass().add("sk-t2");
+        l.setStyle("-fx-min-width: 40px; -fx-font-size: 12px;");
         HBox.setHgrow(field, Priority.ALWAYS);
         HBox row = new HBox(12, l, field);
         row.setAlignment(Pos.CENTER_LEFT);
@@ -124,11 +125,11 @@ public class ColorConverterPlugin implements SwissKitJPlugin {
      */
     private static TextField styledField(String text) {
         TextField tf = new TextField(text);
+        tf.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
         tf.setStyle(
-            "-fx-background-color: rgba(255,255,255,0.06);" +
-            "-fx-border-color: rgba(255,255,255,0.12); -fx-border-width: 1;" +
+            "-fx-border-width: 1;" +
             "-fx-border-radius: 8; -fx-background-radius: 8;" +
-            "-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 13px;" +
+            "-fx-font-size: 13px;" +
             "-fx-padding: 8 12 8 12; -fx-font-family: 'SF Mono','Consolas',monospace;"
         );
         return tf;
@@ -142,8 +143,9 @@ public class ColorConverterPlugin implements SwissKitJPlugin {
      */
     private static Label sectionLabel(String text) {
         Label l = new Label(text.toUpperCase());
+        l.getStyleClass().add("sk-t3");
         l.setStyle(
-            "-fx-text-fill: rgba(255,255,255,0.28); -fx-font-size: 10px;" +
+            "-fx-font-size: 10px;" +
             "-fx-font-weight: bold; -fx-letter-spacing: 0.08em;"
         );
         return l;

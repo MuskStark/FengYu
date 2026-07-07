@@ -1,6 +1,6 @@
 # SwissKitJ Documentation
 
-![SwissKit](https://img.shields.io/badge/SwissKitJ-Desktop%20Toolbox-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-MIT-green)
+![SwissKit](https://img.shields.io/badge/SwissKitJ-Desktop%20Toolbox-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue)
 
 **SwissKitJ** is a modular desktop toolbox built with JavaFX 21, providing a clean, extensible platform for productivity tools.
 
@@ -27,7 +27,7 @@ A modular desktop toolbox that allows you to:
 
 ### Key Features
 
-- **JavaFX 21 UI** — Glassmorphism dark theme with custom window chrome
+- **JavaFX 21 UI** — IDEA 2025 New UI aesthetic with token-based dark/light themes and native OS window chrome
 - **Plugin Architecture** — Auto-discovers plugins via Java SPI with hot-reload
 - **AI Chat** — Local LLM inference with GGUF model support
 - **Cross-Platform** — Fat JAR bundles native libraries for Windows, macOS, and Linux
@@ -42,7 +42,7 @@ A modular desktop toolbox that allows you to:
 
 ```bash
 # Download from GitHub Releases, then:
-java -jar SwissKitJ-3.1.0.jar
+java -jar SwissKitJ-3.2.0.jar
 ```
 
 Or build from source:
@@ -50,9 +50,9 @@ Or build from source:
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.1.0.jar
+java -jar SwissKit/target/SwissKitJ-3.2.0.jar
 ```
 
 ## License
 
-MIT License
+GNU General Public License v3.0 — see [LICENSE](https://github.com/MuskStark/SwissKitJ/blob/main/LICENSE).

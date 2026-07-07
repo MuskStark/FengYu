@@ -7,6 +7,8 @@ import fan.summer.api.ToolType;
 import fan.summer.api.i18n.I18n;
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
+import fan.summer.api.theme.ThemeService;
+import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
@@ -57,25 +59,24 @@ public class MarkdownEditorPlugin implements SwissKitJPlugin {
         );
 
         WebView preview = new WebView();
-        preview.setStyle("-fx-background-color: transparent;");
+        applyPreviewChrome(preview);
 
+        // Render the editor markdown into the preview WebView using the CSS for
+        // the CURRENT theme. Re-run on every text change AND on every theme
+        // switch so the preview never gets stuck on one palette (the old code
+        // baked in a dark-only stylesheet and was unreadable in light theme).
         Runnable render = () -> {
             log.debug("Rendering markdown preview");
-            String html = mdToHtml(editor.getText());
-            String page =
-                "<html><head><style>" +
-                "body{font-family:-apple-system,sans-serif;color:rgba(255,255,255,0.88);" +
-                "background:transparent;padding:16px;font-size:14px;line-height:1.7;}" +
-                "code{background:rgba(255,255,255,0.1);border-radius:4px;padding:2px 6px;" +
-                "font-family:monospace;}" +
-                "blockquote{border-left:3px solid #5b8cf7;margin:0;padding-left:16px;" +
-                "color:rgba(255,255,255,0.5);}" +
-                "h1,h2,h3{color:rgba(255,255,255,0.95);}" +
-                "</style></head><body>" + html + "</body></html>";
-            preview.getEngine().loadContent(page);
+            preview.getEngine().loadContent(buildPreviewPage(editor.getText()));
         };
 
         editor.textProperty().addListener((o, oldV, newV) -> render.run());
+        // Re-stamp the WebView chrome on theme switch too (container bg + border
+        // are read from the active theme), then re-render the body in the new palette.
+        ThemeService.onChange(t -> Platform.runLater(() -> {
+            applyPreviewChrome(preview);
+            render.run();
+        }));
 
         VBox left  = new VBox(6, sectionLabel(I18n.get("builtin.markdown.editor")),  editor);
         VBox right = new VBox(6, sectionLabel(I18n.get("builtin.markdown.preview")), preview);
@@ -94,13 +95,70 @@ public class MarkdownEditorPlugin implements SwissKitJPlugin {
     }
 
     /**
+     * Builds a complete {@code <html>} preview document for the given Markdown
+     * using the CSS palette of the currently active theme.
+     *
+     * <p>The body uses an <b>opaque</b> background that matches the app's
+     * {@code -sk-bg-elevated} token (dark {@code #2B2B2B} / light {@code #F7F8FA}),
+     * with a foreground color chosen for contrast. JavaFX's WebView paints an
+     * opaque white rendering surface by default; using {@code transparent} there
+     * exposes that white and — combined with a white foreground in light theme —
+     * made text invisible. An explicit opaque bg also guarantees the text never
+     * blends into the background in either theme.
+     *
+     * @param markdown the raw Markdown text to render
+     * @return a full HTML document string
+     */
+    private static String buildPreviewPage(String markdown) {
+        boolean light = ThemeService.current() == ThemeService.Theme.LIGHT;
+        // These mirror the -sk-* tokens in swisskit-common.css so the rendered
+        // page matches the surrounding panel instead of guessing.
+        String bodyBg     = light ? "#F7F8FA" : "#2B2B2B";
+        String bodyColor  = light ? "#1E1E1E" : "#D0D0D0";
+        String headingColor = light ? "#000000" : "#FFFFFF";
+        String codeBg     = light ? "#EBECEF" : "#363636";
+        String codeColor  = light ? "#1E1E1E" : "#D0D0D0";
+        String quoteColor = light ? "#5A5D60" : "#9AA0A6";
+        String quoteBorder= light ? "#C9CDD3" : "#3C3F41";
+        String page =
+            "<html><head><meta charset='UTF-8'><style>" +
+            "body{font-family:-apple-system,sans-serif;color:" + bodyColor + ";" +
+            "background:" + bodyBg + ";margin:0;padding:16px;font-size:14px;line-height:1.7;}" +
+            "code{background:" + codeBg + ";color:" + codeColor + ";" +
+            "border-radius:4px;padding:2px 6px;font-family:monospace;}" +
+            "blockquote{border-left:3px solid " + quoteBorder + ";margin:0;" +
+            "padding-left:16px;color:" + quoteColor + ";}" +
+            "h1,h2,h3{color:" + headingColor + ";}" +
+            "</style></head><body>" + mdToHtml(markdown) + "</body></html>";
+        return page;
+    }
+
+    /**
+     * Stamps the WebView's JavaFX container with the theme-aware background and
+     * border so the area around/behind the rendered HTML matches the panel
+     * (dark {@code #2B2B2B} / light {@code #F7F8FA} bg, {@code -sk-border} edge).
+     * Called once at creation and again on every theme switch.
+     */
+    private static void applyPreviewChrome(WebView preview) {
+        boolean light = ThemeService.current() == ThemeService.Theme.LIGHT;
+        String bg     = light ? "#F7F8FA" : "#2B2B2B";
+        String border = light ? "#DADCE0" : "#3C3F41";
+        preview.setStyle(
+            "-fx-background-color: " + bg + ";" +
+            "-fx-border-color: " + border + ";" +
+            "-fx-border-width: 1px;" +
+            "-fx-border-radius: 10px; -fx-background-radius: 10px;"
+        );
+    }
+
+    /**
      * Converts a Markdown string to basic HTML by applying regex replacements
      * for headings, bold, italic, inline code, blockquotes, and list items.
      *
      * @param md the raw Markdown text
      * @return the converted HTML string (no document wrapper)
      */
-    private String mdToHtml(String md) {
+    private static String mdToHtml(String md) {
         return md
             .replaceAll("(?m)^### (.+)$", "<h3>$1</h3>")
             .replaceAll("(?m)^## (.+)$",  "<h2>$1</h2>")
@@ -121,13 +179,12 @@ public class MarkdownEditorPlugin implements SwissKitJPlugin {
      */
     private static TextArea styledTextArea(String initial) {
         TextArea ta = new TextArea(initial);
+        ta.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
         ta.setStyle(
-            "-fx-background-color: rgba(255,255,255,0.04);" +
-            "-fx-border-color: rgba(255,255,255,0.10); -fx-border-width: 1;" +
+            "-fx-border-width: 1;" +
             "-fx-border-radius: 10; -fx-background-radius: 10;" +
-            "-fx-text-fill: rgba(255,255,255,0.88);" +
             "-fx-font-size: 13px; -fx-font-family: 'SF Mono','Consolas',monospace;" +
-            "-fx-control-inner-background: transparent; -fx-highlight-fill: #5b8cf7;" +
+            "-fx-control-inner-background: transparent; -fx-highlight-fill: #3574F0;" +
             "-fx-padding: 12;"
         );
         ta.setWrapText(true);
@@ -143,8 +200,9 @@ public class MarkdownEditorPlugin implements SwissKitJPlugin {
      */
     private static Label sectionLabel(String text) {
         Label l = new Label(text.toUpperCase());
+        l.getStyleClass().add("sk-t3");
         l.setStyle(
-            "-fx-text-fill: rgba(255,255,255,0.28); -fx-font-size: 10px;" +
+            "-fx-font-size: 10px;" +
             "-fx-font-weight: bold; -fx-letter-spacing: 0.08em;"
         );
         return l;
