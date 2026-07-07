@@ -15,6 +15,7 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.setup.OpenAiSetup;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 
 import java.time.Duration;
 import java.util.List;
@@ -36,8 +37,11 @@ import java.util.List;
  * </ul>
  * This lets a custom base URL + API key be honoured with no extra dependency.
  *
- * <p>All three beans always exist; the active one is chosen at mode-switch time
- * by name (the {@code ChatBackend} impl asks for {@code "openAiChatModel"} etc.).
+ * <p>All three beans are {@code @Lazy}: they are instantiated only when first
+ * looked up by name (the {@code ChatBackend} impl asks for {@code "openAiChatModel"}
+ * etc. at mode-switch time), never eagerly at context start. This is essential —
+ * a cloud bean built eagerly would throw at startup when no API key is configured
+ * (e.g. in local mode), blocking the whole app.
  * Verified builder shapes (Spring AI 2.0.0 GA):
  * <ul>
  *   <li>{@code OpenAiChatModel.builder().openAiClient(client).options(OpenAiChatOptions...)}</li>
@@ -51,6 +55,7 @@ public class ChatModelConfig {
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(120);
     private static final int MAX_RETRIES = 2;
 
+    @Lazy
     @Bean(name = "openAiChatModel")
     public ChatModel openAiChatModel(AiConfigProperties cfg) {
         OpenAIClient client = OpenAiSetup.setupSyncClient(
@@ -83,6 +88,7 @@ public class ChatModelConfig {
                 .build();
     }
 
+    @Lazy
     @Bean(name = "anthropicChatModel")
     public ChatModel anthropicChatModel(AiConfigProperties cfg) {
         AnthropicClient client = AnthropicSetup.setupSyncClient(
@@ -105,6 +111,7 @@ public class ChatModelConfig {
                 .build();
     }
 
+    @Lazy
     @Bean(name = "ollamaChatModel")
     public ChatModel ollamaChatModel(AiConfigProperties cfg) {
         OllamaApi api = OllamaApi.builder()
