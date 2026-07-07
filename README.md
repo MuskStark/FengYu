@@ -4,7 +4,7 @@
 
 **SwissKit** is a *modular desktop toolbox* built with JavaFX. It bundles a growing collection of
 utility tools — Excel splitting, PDF processing, email, an AI chat assistant, developer helpers,
-and more — into a single application with a modern glassmorphism UI and a plugin-based architecture.
+and more — into a single application with a modern JavaFX New UI and a plugin-based architecture.
 
 A lightweight, fast, and customizable desktop utility suite with automatic service discovery, making
 it easy to add new functionality either as built-in tools or as drop-in plugins.
@@ -58,8 +58,8 @@ See the [Releases page](https://github.com/MuskStark/SwissKitJ/releases) for the
 
 ## Features
 
-- **🎨 Glassmorphism UI** — Modern JavaFX UI with frosted glass effects, animated collapsible sidebar,
-  MDI icon glyphs, and glowing accent styles
+- **🎨 Modern New UI** — JetBrains IDEA 2025 New UI aesthetic with token-based dark/light themes,
+  native OS window chrome, MDI icon glyphs, and a collapsible sidebar
 - **📦 Modular Architecture** — Plugin-based design with Java ServiceLoader auto-discovery for external
   JARs plus a built-in tool registrar for packaged tools
 - **🤖 AI Chat Assistant** — Multi-backend chat with local GGUF models (inference engine included),
@@ -142,9 +142,8 @@ SwissKit uses a multi-module Maven structure with **standalone POMs** (no parent
 ### UI Structure
 
 ```
-MainWindow (StageStyle.TRANSPARENT)
-├── TitleBar           — Custom window chrome (drag, minimize, maximize, close)
-├── Sidebar            — Category navigation (all / text / image / dev / net / other + AI chat, plugins)
+MainWindow (StageStyle.DECORATED)
+├── Sidebar            — Collapsible category navigation (all / text / image / dev / net / other + AI chat, plugins)
 ├── ContentArea        — ToolCard grid or active tool view
 └── DetailPanel        — Slide-in panel with plugin metadata + Launch button
 ```
@@ -207,7 +206,7 @@ Color Converter, Markdown Editor, Email, Email Archive, PDF Tools, and Browser A
 | **Language** | Java | 21 |
 | **Build Tool** | Maven | 3.6+ |
 | **UI Framework** | JavaFX | 21.0.2 |
-| **Theming** | Custom CSS (glassmorphism) + MDI icon glyphs | — |
+| **Theming** | Custom CSS (token-based New UI) + MDI icon glyphs | — |
 | **Excel Processing** | Apache FESOD / Apache POI | 2.0.1-incubating / 5.4.1 |
 | **PDF Processing** | Apache PDFBox | 3.0.4 |
 | **AI — Cloud** | LangChain4j (OpenAI + Anthropic) | 1.2.0 |
@@ -287,14 +286,14 @@ SwissKit uses an embedded H2 file-based database — no external server required
 - [x] Email address book, tag management, and SMTP sending
 - [x] Mass email with tag-based recipients + sent log
 - [x] Plugin Store with online + local installation
-- [x] JavaFX UI redesign (glassmorphism)
+- [x] JavaFX UI redesign (New UI, token-based theming)
 - [x] Multi-backend AI chat (local GGUF + OpenAI-compatible + Anthropic)
 - [x] AI tool calling across plugins
 - [x] PDF processing (split / merge / convert)
 - [x] Browser automation tool
 - [x] Internationalization (i18n)
 - [ ] Image processing toolset (expansion)
-- [ ] Theme switching (light/dark)
+- [x] Theme switching (dark/light, persisted)
 - [ ] Add unit tests
 
 ---

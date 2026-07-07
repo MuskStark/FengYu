@@ -1,6 +1,6 @@
 # SwissKitJ 文档
 
-![SwissKit](https://img.shields.io/badge/SwissKitJ-Desktop%20Toolbox-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-MIT-green)
+![SwissKit](https://img.shields.io/badge/SwissKitJ-Desktop%20Toolbox-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue)
 
 **SwissKitJ** 是一款基于 JavaFX 21 构建的模块化桌面工具箱，为生产力工具提供了一个简洁、可扩展的平台。
 
@@ -27,7 +27,7 @@
 
 ### 核心特性
 
-- **JavaFX 21 界面** — 玻璃态深色主题与自定义窗口装饰
+- **JavaFX 21 界面** — IDEA 2025 New UI 风格，基于 token 的深色/浅色主题与原生操作系统窗口装饰
 - **插件架构** — 通过 Java SPI 自动发现插件，支持热重载
 - **AI 聊天** — 本地 LLM 推理，支持 GGUF 模型
 - **跨平台** — Fat JAR 内置 Windows、macOS 与 Linux 的原生库
@@ -42,7 +42,7 @@
 
 ```bash
 # 从 GitHub Releases 下载后：
-java -jar SwissKitJ-3.1.0.jar
+java -jar SwissKitJ-3.2.0.jar
 ```
 
 或从源码构建：
@@ -50,9 +50,9 @@ java -jar SwissKitJ-3.1.0.jar
 ```bash
 mvn install -f SwissKitJ-Api/pom.xml -DskipTests
 mvn clean package -f SwissKit/pom.xml -DskipTests
-java -jar SwissKit/target/SwissKitJ-3.1.0.jar
+java -jar SwissKit/target/SwissKitJ-3.2.0.jar
 ```
 
 ## 许可证
 
-MIT License
+GNU General Public License v3.0 — 参见 [LICENSE](https://github.com/MuskStark/SwissKitJ/blob/main/LICENSE)。
