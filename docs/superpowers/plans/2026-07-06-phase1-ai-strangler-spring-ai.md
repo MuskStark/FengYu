@@ -34,6 +34,13 @@ These apply to every task. Copy verbatim; do not deviate without an explicit spe
 
 ## Verified API Cheat-Sheet (Spring AI 2.0.0, tag `v2.0.0`)
 
+> **⚠️ GA API corrections (verified 2026-07-07 against the resolved `2.0.0` jars in `~/.m2`).** The cheat-sheet below (read from the `v2.0.0` git tag pre-release) diverges from the shipped GA in several places. Corrections, confirmed by `javap` + decompiled sources:
+> - **OpenAI / Anthropic switched to the official vendor Java SDKs.** There is NO `OpenAiApi` / `AnthropicApi` class in the GA jars. `OpenAiChatModel.Builder` takes `.openAiClient(com.openai.client.OpenAIClient)`; `AnthropicChatModel.Builder` takes `.anthropicClient(com.anthropic.client.AnthropicClient)`. Only `-core` vendor jars resolve transitively — setting a custom base URL / API key needs the vendor `openai-java-client-okhttp` / `anthropic-java-client-okhttp` artifact added explicitly. **→ Task 4 (cloud beans) deferred; Ollama-local implemented first.**
+> - **Options setter is `.options(...)`, not `.defaultOptions(...)`** on all three model builders. `OllamaChatModel.Builder` = `.ollamaApi(api).options(OllamaChatOptions...)`. `OpenAiChatOptions` / `AnthropicChatOptions` / `OllamaChatOptions` live in `...openai` / `...anthropic` / `...ollama.api` respectively.
+> - **`AssistantMessage` has no public 3-arg ctor.** The multi-arg ctor is `protected` and has a 4th `List<Media>` param. Public path: `AssistantMessage.builder().content(text).properties(map).toolCalls(list).build()`.
+> - **`ToolResponseMessage.ToolResponse` accessor is `responseData()`, not `responseMessage()`.** Record is `ToolResponse(String id, String name, String responseData)`. The 1-arg `ToolResponseMessage(List<ToolResponse>)` ctor is correct.
+> - Confirmed correct as written: `AssistantMessage.ToolCall(id,type,name,arguments)` record + `getToolCalls()`/`hasToolCalls()`; `ToolCallback` (`getToolDefinition()` + `call(String)` + default `call(String,ToolContext)`); `DefaultToolDefinition.builder().name().description().inputSchema().build()`; `ToolContext` at `org.springframework.ai.chat.model.ToolContext`; message + tool SPI all in `spring-ai-model-2.0.0.jar`.
+
 These signatures were read from `raw.githubusercontent.com/spring-projects/spring-ai/v2.0.0/...`. Code in this plan uses ONLY these. Anything not in this list is marked **SPIKE** in its task.
 
 ```java
