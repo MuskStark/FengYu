@@ -52,7 +52,9 @@
         <poi.version>5.4.1</poi.version>
         <playwright.version>1.49.0</playwright.version>
         <!-- Spring Boot 4 (embedded, non-web) + Spring AI 2.0 — Phase 1 AI strangler.
-             Versions aligned via the two imported BOMs in dependencyManagement below. -->
+             The BOM imports live in the ZhiFlow module POM (import-scoped BOMs in a
+             parent do not reliably propagate managed versions to children), but the
+             version pins stay here as the single source of truth. -->
         <spring-boot.version>4.1.0</spring-boot.version>
         <spring-ai.version>2.0.0</spring-ai.version>
 
@@ -71,23 +73,6 @@
 
     <dependencyManagement>
         <dependencies>
-            <!-- Spring Boot 4 BOM: aligns spring-boot-starter + Spring Framework 7 versions. -->
-            <dependency>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-dependencies</artifactId>
-                <version>${spring-boot.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-            <!-- Spring AI 2.0 BOM: aligns spring-ai-openai/anthropic/ollama versions. -->
-            <dependency>
-                <groupId>org.springframework.ai</groupId>
-                <artifactId>spring-ai-bom</artifactId>
-                <version>${spring-ai.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-
             <!-- Internal modules -->
             <dependency>
                 <groupId>fan.summer.zhiflow.api</groupId>
