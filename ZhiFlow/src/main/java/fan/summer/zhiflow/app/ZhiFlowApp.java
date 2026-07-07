@@ -201,6 +201,15 @@ public class ZhiFlowApp extends Application {
                 AiServiceProvider.switchMode(mode, svc);
                 log.info("Anthropic backend initialized: model={}", fan.summer.zhiflow.ai.AiConfigService.getAiAnthropicModel());
             }
+            case "deepseek" -> {
+                SpringAiCloudBackend svc = SpringAiCloudBackend.deepSeek(
+                    fan.summer.zhiflow.ai.AiConfigService.getAiDeepSeekEndpoint(),
+                    fan.summer.zhiflow.ai.AiConfigService.getAiDeepSeekApiKey(),
+                    fan.summer.zhiflow.ai.AiConfigService.getAiDeepSeekModel()
+                );
+                AiServiceProvider.switchMode(mode, svc);
+                log.info("DeepSeek backend initialized: model={}", fan.summer.zhiflow.ai.AiConfigService.getAiDeepSeekModel());
+            }
             default -> {
                 // Local mode: defer initialization until AI tool is opened.
                 // See ZhiFlowSettingUi.ensureLocalBackend() for the lazy init logic.

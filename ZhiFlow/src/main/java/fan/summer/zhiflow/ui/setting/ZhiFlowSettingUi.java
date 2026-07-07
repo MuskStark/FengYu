@@ -378,6 +378,9 @@ public class ZhiFlowSettingUi {
     private static final String AI_ANTHROPIC_ENDPOINT_KEY = "ai.anthropic.endpoint";
     private static final String AI_ANTHROPIC_API_KEY_KEY = "ai.anthropic.api_key";
     private static final String AI_ANTHROPIC_MODEL_KEY = "ai.anthropic.model";
+    private static final String AI_DEEPSEEK_ENDPOINT_KEY = "ai.deepseek.endpoint";
+    private static final String AI_DEEPSEEK_API_KEY_KEY = "ai.deepseek.api_key";
+    private static final String AI_DEEPSEEK_MODEL_KEY = "ai.deepseek.model";
     private static final String AI_LOCAL_BACKEND_KEY = "ai.local.backend";
 
     /**
@@ -400,7 +403,8 @@ public class ZhiFlowSettingUi {
             FXCollections.observableArrayList(
                 I18n.get("setting.ai.mode.local"),
                 I18n.get("setting.ai.mode.openai"),
-                I18n.get("setting.ai.mode.anthropic")
+                I18n.get("setting.ai.mode.anthropic"),
+                I18n.get("setting.ai.mode.deepseek")
             )
         );
         modeCombo.getStyleClass().add("sk-combo");
@@ -409,6 +413,7 @@ public class ZhiFlowSettingUi {
             String label = switch (val) {
                 case "openai" -> I18n.get("setting.ai.mode.openai");
                 case "anthropic" -> I18n.get("setting.ai.mode.anthropic");
+                case "deepseek" -> I18n.get("setting.ai.mode.deepseek");
                 default -> I18n.get("setting.ai.mode.local");
             };
             modeCombo.setValue(label);
@@ -422,8 +427,9 @@ public class ZhiFlowSettingUi {
         VBox localPanel = buildLocalModelPanel();
         VBox openaiPanel = buildOpenAiPanel();
         VBox anthropicPanel = buildAnthropicPanel();
+        VBox deepseekPanel = buildDeepSeekPanel();
 
-        StackPane modeStack = new StackPane(localPanel, openaiPanel, anthropicPanel);
+        StackPane modeStack = new StackPane(localPanel, openaiPanel, anthropicPanel, deepseekPanel);
         modeStack.setStyle("-fx-background-color: transparent;");
         showModePanel(modeStack, modeCombo.getValue());
 
@@ -519,6 +525,7 @@ public class ZhiFlowSettingUi {
         if (label == null) return "local";
         if (label.equals(I18n.get("setting.ai.mode.openai"))) return "openai";
         if (label.equals(I18n.get("setting.ai.mode.anthropic"))) return "anthropic";
+        if (label.equals(I18n.get("setting.ai.mode.deepseek"))) return "deepseek";
         return "local";
     }
 
@@ -528,6 +535,7 @@ public class ZhiFlowSettingUi {
         int idx = switch (key) {
             case "openai" -> 1;
             case "anthropic" -> 2;
+            case "deepseek" -> 3;
             default -> 0;
         };
         for (int i = 0; i < panels.size(); i++) {
@@ -546,6 +554,11 @@ public class ZhiFlowSettingUi {
             case "anthropic" -> {
                 SpringAiCloudBackend svc = SpringAiCloudBackend.anthropic(
                     getAiAnthropicEndpoint(), getAiAnthropicApiKey(), getAiAnthropicModel());
+                AiServiceProvider.switchMode(mode, svc);
+            }
+            case "deepseek" -> {
+                SpringAiCloudBackend svc = SpringAiCloudBackend.deepSeek(
+                    getAiDeepSeekEndpoint(), getAiDeepSeekApiKey(), getAiDeepSeekModel());
                 AiServiceProvider.switchMode(mode, svc);
             }
             default -> createLocalBackend(true);
@@ -778,6 +791,61 @@ public class ZhiFlowSettingUi {
             testBtn.setDisable(true);
             Thread.ofVirtual().start(() -> {
                 SpringAiCloudBackend svc = SpringAiCloudBackend.openAi(
+                    endpointField.getText(), apiKeyField.getText(), modelField.getText());
+                String err = svc.testConnection();
+                Platform.runLater(() -> {
+                    if (err == null) {
+                        statusLabel.getStyleClass().removeAll("sk-danger-text", "sk-warning-text");
+                        statusLabel.getStyleClass().add("sk-success-text");
+                        statusLabel.setStyle("-fx-font-size: 12px;");
+                        statusLabel.setText(I18n.get("setting.ai.testSuccess"));
+                    } else {
+                        statusLabel.getStyleClass().removeAll("sk-success-text", "sk-warning-text");
+                        statusLabel.getStyleClass().add("sk-danger-text");
+                        statusLabel.setStyle("-fx-font-size: 12px;");
+                        statusLabel.setText(I18n.get("setting.ai.testFailed", err));
+                    }
+                    testBtn.setDisable(false);
+                });
+            });
+        });
+
+        panel.getChildren().addAll(
+            labeled(I18n.get("setting.ai.endpoint"), endpointField),
+            labeled(I18n.get("setting.ai.apiKey"), apiKeyField),
+            labeled(I18n.get("setting.ai.modelName"), modelField),
+            testBtn, statusLabel
+        );
+        return panel;
+    }
+
+    private static VBox buildDeepSeekPanel() {
+        VBox panel = new VBox(12);
+
+        TextField endpointField = textField( "https://api.deepseek.com");
+        loadAiSetting(AI_DEEPSEEK_ENDPOINT_KEY, endpointField::setText);
+
+        PasswordField apiKeyField = new PasswordField();
+        apiKeyField.getStyleClass().add(FIELD_STYLE_CLASS);
+        loadAiSetting(AI_DEEPSEEK_API_KEY_KEY, apiKeyField::setText);
+
+        TextField modelField = textField( "deepseek-chat");
+        loadAiSetting(AI_DEEPSEEK_MODEL_KEY, modelField::setText);
+
+        endpointField.textProperty().addListener((obs, o, n) -> saveAiSetting(AI_DEEPSEEK_ENDPOINT_KEY, n));
+        apiKeyField.textProperty().addListener((obs, o, n) -> saveAiSetting(AI_DEEPSEEK_API_KEY_KEY, n));
+        modelField.textProperty().addListener((obs, o, n) -> saveAiSetting(AI_DEEPSEEK_MODEL_KEY, n));
+
+        Label statusLabel = new Label("");
+        statusLabel.getStyleClass().add("sk-t2");
+        statusLabel.setWrapText(true);
+        statusLabel.setStyle("-fx-font-size: 12px;");
+
+        Button testBtn = glassBtn(I18n.get("setting.ai.testConnection"), false);
+        testBtn.setOnAction(e -> {
+            testBtn.setDisable(true);
+            Thread.ofVirtual().start(() -> {
+                SpringAiCloudBackend svc = SpringAiCloudBackend.deepSeek(
                     endpointField.getText(), apiKeyField.getText(), modelField.getText());
                 String err = svc.testConnection();
                 Platform.runLater(() -> {
@@ -1080,6 +1148,20 @@ public class ZhiFlowSettingUi {
     public static String getAiAnthropicModel() {
         String val = getCachedSetting(AI_ANTHROPIC_MODEL_KEY, null);
         return (val != null && !val.isBlank()) ? val : "claude-sonnet-4-20250514";
+    }
+
+    public static String getAiDeepSeekEndpoint() {
+        String val = getCachedSetting(AI_DEEPSEEK_ENDPOINT_KEY, null);
+        return (val != null && !val.isBlank()) ? val : "https://api.deepseek.com";
+    }
+
+    public static String getAiDeepSeekApiKey() {
+        return getCachedSetting(AI_DEEPSEEK_API_KEY_KEY, "");
+    }
+
+    public static String getAiDeepSeekModel() {
+        String val = getCachedSetting(AI_DEEPSEEK_MODEL_KEY, null);
+        return (val != null && !val.isBlank()) ? val : "deepseek-chat";
     }
 
     /**
