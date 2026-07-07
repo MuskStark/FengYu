@@ -4,7 +4,7 @@
 
 **Goal:** Replace the entire `fan.summer.zhiflow.ai` inference stack (LangChain4j cloud + custom GGUF/JNI/worker local) with Spring AI 2.0 (OpenAI/Anthropic cloud) + Ollama (local), embedded in the existing JavaFX process via Spring Boot 4 — without touching the plugin-facing `ChatBackend` / `AiStreamCallback` / `AiTool` contract or any JavaFX UI code.
 
-**Architecture:** Strangler-fig, "keep the shell, swap the core". The `ChatBackend` interface (`SwissKitJ-Api`) stays as the shell that JavaFX consumers (`AiChatPlugin`) call. New `SpringAiCloudBackend` and `OllamaLocalBackend` implement `ChatBackend` but delegate inference to Spring AI `ChatModel` beans. A minimal embedded Spring Boot context (`WebApplicationType.NONE`, `headless(false)`) provides DI + the `ChatModel` beans; the context is bootstrapped from `SwissKitJApp` and beans are looked up imperatively via `ctx.getBean(...)`. Plugin tools (`AiTool`) are adapted to Spring AI's `ToolCallback` SPI so the existing `AiTool.execute(Map) → AiToolResult` contract is unchanged. After the new backends are green, the entire local inference/GGUF/JNI/worker/parsers subtree and the LangChain4j adapters are deleted wholesale.
+**Architecture:** Strangler-fig, "keep the shell, swap the core". The `ChatBackend` interface (`ZhiFlow-Api`) stays as the shell that JavaFX consumers (`AiChatPlugin`) call. New `SpringAiCloudBackend` and `OllamaLocalBackend` implement `ChatBackend` but delegate inference to Spring AI `ChatModel` beans. A minimal embedded Spring Boot context (`WebApplicationType.NONE`, `headless(false)`) provides DI + the `ChatModel` beans; the context is bootstrapped from `ZhiFlowApp` and beans are looked up imperatively via `ctx.getBean(...)`. Plugin tools (`AiTool`) are adapted to Spring AI's `ToolCallback` SPI so the existing `AiTool.execute(Map) → AiToolResult` contract is unchanged. After the new backends are green, the entire local inference/GGUF/JNI/worker/parsers subtree and the LangChain4j adapters are deleted wholesale.
 
 **Tech Stack:** Java 21 (compile) / 17+ (runtime), JavaFX 21.0.2, Spring Boot 4.1.0, Spring Framework 7, Spring AI 2.0.0 GA (BOM), `spring-ai-openai` + `spring-ai-anthropic` + `spring-ai-ollama` (non-starter, manual `@Bean`), Ollama (external local runtime), JUnit 5.10.2, Gson (existing).
 
@@ -14,12 +14,18 @@
 
 These apply to every task. Copy verbatim; do not deviate without an explicit spec change.
 
+> **⚠️ Codebase drift note (added 2026-07-07 at execution time).** This plan was authored 2026-07-06, before the `SwissKit → ZhiFlow` module + `fan.summer → fan.summer.zhiflow` package rename landed. All paths/names below have been mechanically updated to the current tree:
+> - Module dir: `ZhiFlow/` (main app), `ZhiFlow-Api/` (contract). Stray untracked `SwissKit/` + `SwissKitJ-Api/` dirs are pre-rename leftovers — **ignore them; edit only the git-tracked `ZhiFlow*` modules.**
+> - App class: `fan.summer.zhiflow.app.ZhiFlowApp`; settings: `fan.summer.zhiflow.ui.setting.ZhiFlowSettingUi`; launcher: `fan.summer.zhiflow.Launcher`. Contract package: `fan.summer.zhiflow.api.ai.*` (the older `fan.summer.api.ai.*` tree in `ZhiFlow-Api` is a dead leftover with 0 app references — leave it).
+> - **Maven:** there is NO system Maven and modules use standalone POMs (root `pom.xml` is an aggregator). Do **not** run `mvn -pl ... -o` in a shell — it will fail. Run every build/compile/test via **IntelliJ IDEA's Maven** (Maven tool window) or the IDEA MCP tools (`mcp__idea__build_project`, `mcp__idea__get_file_problems`, `mcp__idea__execute_terminal_command` with the bundled-maven path). The `mvn -pl ZhiFlow ...` command lines in each task are the *intent* (which module, compile vs test, which test) — translate them to the IDEA equivalent.
+> - **Plan gap:** Tasks 9 & 10 call `AiSpringContext.getBean("ollamaChatModel", ChatModel.class)` (two-arg by-name lookup), but Task 2's `AiSpringContext` only defines `getBean(Class)`. Task 2 must also add a `public static <T> T getBean(String name, Class<T> type)` overload delegating to `getContext().getBean(name, type)`.
+
 - **Spring Boot**: `4.1.0` (GA). Spring Framework 7. Java baseline 17 min / 21 recommended — current project compiles on 21, runs on 17+. **Compatible.**
 - **Spring AI**: `2.0.0` GA (released 2026-06-12). Targets Spring Boot 4.0/4.1 + Spring Framework 7. Use the `spring-ai-bom` for version alignment. **Do NOT use Spring AI 1.x** — it targets Spring Boot 3.5 and will not align.
 - **Embedded context**: `WebApplicationType.NONE` + `headless(false)` + base `spring-boot-starter` (NO `spring-boot-starter-web`). JavaFX needs `headless=false` (AWT/Java2D). The context lives in the same process as JavaFX.
 - **Non-starter Spring AI artifacts**: use `spring-ai-openai`, `spring-ai-anthropic`, `spring-ai-ollama` (manual `@Bean` configuration), NOT the `*-starter-model-*` artifacts. Rationale: starter auto-configuration under `WebApplicationType.NONE` has historical uncertainty (spring-ai#1066, M1-era); manual beans are fully doc-verified and read config from H2 at runtime, not `application.properties`.
-- **Ollama is an external runtime**: the user must install/run `ollama serve` and `ollama pull qwen3:4b`. SwissKitJ no longer ships a model runtime. A bundled `libllama_jni-*.dylib`, the C++ JNI bridge, and the worker process are **deleted**.
-- **Untouched (do NOT modify)**: `SwissKitJ-Api/**` (the entire plugin contract — `ChatBackend`, `AiStreamCallback`, `AiTool`, `AiToolParam`, `AiToolResult`, `AiToolCall`, `AiChatMessage`, `AiServiceProvider`, `AiServiceException`), and all JavaFX UI (`fan.summer.zhiflow.ui.*`, `fan.summer.zhiflow.buildintool.*` view code). The `AiChatPlugin` consumer must compile and behave identically before/after.
+- **Ollama is an external runtime**: the user must install/run `ollama serve` and `ollama pull qwen3:4b`. ZhiFlow no longer ships a model runtime. A bundled `libllama_jni-*.dylib`, the C++ JNI bridge, and the worker process are **deleted**.
+- **Untouched (do NOT modify)**: `ZhiFlow-Api/**` (the entire plugin contract — `ChatBackend`, `AiStreamCallback`, `AiTool`, `AiToolParam`, `AiToolResult`, `AiToolCall`, `AiChatMessage`, `AiServiceProvider`, `AiServiceException`), and all JavaFX UI (`fan.summer.zhiflow.ui.*`, `fan.summer.zhiflow.buildintool.*` view code). The `AiChatPlugin` consumer must compile and behave identically before/after.
 - **API signatures verified against `v2.0.0` git tag** (see "Verified API Cheat-Sheet" below). Where an exact signature could not be locked from source, the task is marked **SPIKE** and gives a fallback path that does not depend on the uncertain API.
 - **Commit cadence**: one commit per step where code changes. Conventional-commit prefixes (`feat`, `refactor`, `chore`, `test`, `docs`).
 - **Branch**: this plan is executed on `v3.2.0` (current) or a dedicated migration branch off it. Do NOT work on `main`.
@@ -113,21 +119,21 @@ final class DefaultToolDefinition {
 - Adapters: `AiToolCallback` (`AiTool` → `ToolCallback`), `MessageMapper` (`AiChatMessage` ↔ Spring AI `Message`).
 - Cloud config bean (`OpenAiChatModel` / `AnthropicChatModel`).
 - Ollama config bean (`OllamaChatModel`) + connection test.
-- Rewire `SwissKitJApp.initializeAiBackend()` + `SwissKitJSettingUi` mode-switch to build the new backends.
+- Rewire `ZhiFlowApp.initializeAiBackend()` + `ZhiFlowSettingUi` mode-switch to build the new backends.
 - Delete: `fan.summer.zhiflow.ai.{service.CloudChatBackend,service.LocalChatBackend,adapter.*,tools.*,inference.*,model.*,tensor.*,nativejni.*,util.JsonHelper(if unused elsewhere)}`, `src/main/cpp/`, `src/main/resources/native/`, the `langchain4j-*` deps.
 - Delete tests that exercised deleted code; add tests for the new adapters/backends.
 
 **Out of scope (deferred to later phases):**
 - Vue / Electron / REST boundary (Phase 2–4).
-- Plugin SPI changes (Phase 4). `SwissKitJPlugin.createView()` stays JavaFX.
-- `SwissKitJSettingUi` UI layout changes. Only its AI-backend instantiation callsites change; the controls themselves stay.
+- Plugin SPI changes (Phase 4). `ZhiFlowPlugin.createView()` stays JavaFX.
+- `ZhiFlowSettingUi` UI layout changes. Only its AI-backend instantiation callsites change; the controls themselves stay.
 - Migration of the `ai.local.backend` setting semantics (java/native) — the setting key is repurposed to an Ollama URL but the UI control is left for a later polish pass.
 
 ---
 
 ## File Structure
 
-**New files (in `SwissKit/src/main/java/fan/summer/ai/`):**
+**New files (in `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/`):**
 
 | File | Responsibility | ~LOC |
 |---|---|---|
@@ -154,20 +160,20 @@ final class DefaultToolDefinition {
 
 | File | Change |
 |---|---|
-| `SwissKit/pom.xml` | Add SB4 + Spring AI BOM + 3 artifacts + `spring-boot-starter`; remove `langchain4j-open-ai`, `langchain4j-anthropic`. |
-| `SwissKit/.../app/SwissKitJApp.java` | `start()`: bootstrap `AiSpringContext` after DB init; `stop()`: `AiSpringContext.close()`. `initializeAiBackend()`: build new backends. |
-| `SwissKit/.../ui/setting/SwissKitJSettingUi.java` | Mode-switch call sites: replace `CloudChatBackend.openAi(...)`/`anthropic(...)`/`new LocalChatBackend(...)` with `SpringAiCloudBackend`/`OllamaLocalBackend` construction. **No UI layout change.** |
-| `SwissKitJ-Api` | **NO SOURCE CHANGES.** (Only doc-comment mention of impl class names may be updated; behaviorally identical.) |
+| `ZhiFlow/pom.xml` | Add SB4 + Spring AI BOM + 3 artifacts + `spring-boot-starter`; remove `langchain4j-open-ai`, `langchain4j-anthropic`. |
+| `ZhiFlow/.../app/ZhiFlowApp.java` | `start()`: bootstrap `AiSpringContext` after DB init; `stop()`: `AiSpringContext.close()`. `initializeAiBackend()`: build new backends. |
+| `ZhiFlow/.../ui/setting/ZhiFlowSettingUi.java` | Mode-switch call sites: replace `CloudChatBackend.openAi(...)`/`anthropic(...)`/`new LocalChatBackend(...)` with `SpringAiCloudBackend`/`OllamaLocalBackend` construction. **No UI layout change.** |
+| `ZhiFlow-Api` | **NO SOURCE CHANGES.** (Only doc-comment mention of impl class names may be updated; behaviorally identical.) |
 
 **Deleted files (entire subtrees):**
-- `SwissKit/src/main/java/fan/summer/ai/service/CloudChatBackend.java` (old LC4j impl)
-- `SwissKit/src/main/java/fan/summer/ai/service/LocalChatBackend.java`
-- `SwissKit/src/main/java/fan/summer/ai/adapter/` (entire dir: `AiToolToToolSpecification`, `ChatMessageMapper` — replaced)
-- `SwissKit/src/main/java/fan/summer/ai/tools/` (entire dir: `ThinkingStreamSegmenter`, `ToolCallParser`, `Qwen3Adapter`, `ToolSchemaBuilder`, `ToolExecutor`, `AiToolDescriptions`, `ToolRegistry`, `SlashCommandHandler`, `Builtin*Tool` — see Task 11 for `ToolExecutor`/`SlashCommandHandler` relocation decision)
-- `SwissKit/src/main/java/fan/summer/ai/inference/`, `model/`, `tensor/`, `nativejni/` (entire dirs — the GGUF/JNI/worker engine)
-- `SwissKit/src/main/cpp/` (the JNI C++ bridge)
-- `SwissKit/src/main/resources/native/` (the bundled `.dylib` + `.gitkeep`)
-- Corresponding test files under `SwissKit/src/test/java/fan/summer/ai/{adapter,tools,inference,model,tensor,nativejni,service.*Local*,service.CloudChatBackend*,service.TokenBatcher*}`
+- `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/service/CloudChatBackend.java` (old LC4j impl)
+- `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/service/LocalChatBackend.java`
+- `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/adapter/` (entire dir: `AiToolToToolSpecification`, `ChatMessageMapper` — replaced)
+- `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/tools/` (entire dir: `ThinkingStreamSegmenter`, `ToolCallParser`, `Qwen3Adapter`, `ToolSchemaBuilder`, `ToolExecutor`, `AiToolDescriptions`, `ToolRegistry`, `SlashCommandHandler`, `Builtin*Tool` — see Task 11 for `ToolExecutor`/`SlashCommandHandler` relocation decision)
+- `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/inference/`, `model/`, `tensor/`, `nativejni/` (entire dirs — the GGUF/JNI/worker engine)
+- `ZhiFlow/src/main/cpp/` (the JNI C++ bridge)
+- `ZhiFlow/src/main/resources/native/` (the bundled `.dylib` + `.gitkeep`)
+- Corresponding test files under `ZhiFlow/src/test/java/fan/summer/zhiflow/ai/{adapter,tools,inference,model,tensor,nativejni,service.*Local*,service.CloudChatBackend*,service.TokenBatcher*}`
 
 **Kept (unchanged) in `fan.summer.zhiflow.ai`:**
 - `AiConfigService.java` (H2 setting reader — reused by `AiConfigProperties`).
@@ -186,7 +192,7 @@ Tasks are ordered so that each one leaves the build green and the app runnable. 
 ### Task 1: Add Spring Boot 4 + Spring AI 2.0 dependencies, remove LangChain4j
 
 **Files:**
-- Modify: `SwissKit/pom.xml`
+- Modify: `ZhiFlow/pom.xml`
 
 **Interfaces:**
 - Consumes: nothing.
@@ -194,7 +200,7 @@ Tasks are ordered so that each one leaves the build green and the app runnable. 
 
 - [ ] **Step 1: Add version properties**
 
-In `SwissKit/pom.xml`, inside `<properties>`, after the `<langchain4j.version>1.2.0</langchain4j.version>` line, add:
+In `ZhiFlow/pom.xml`, inside `<properties>`, after the `<langchain4j.version>1.2.0</langchain4j.version>` line, add:
 
 ```xml
         <spring-boot.version>4.1.0</spring-boot.version>
@@ -228,7 +234,7 @@ SpringKit's POM currently has no `<dependencyManagement>`. Add it as a top-level
 
 - [ ] **Step 3: Add Spring Boot starter + the three Spring AI non-starter artifacts**
 
-Inside `<dependencies>`, after the existing `SwissKitJ-Api` dependency block, add:
+Inside `<dependencies>`, after the existing `ZhiFlow-Api` dependency block, add:
 
 ```xml
         <!-- Spring Boot (embedded, non-web): DI + auto-config backbone for the AI context -->
@@ -274,14 +280,14 @@ Also delete the now-unused `<langchain4j.version>1.2.0</langchain4j.version>` pr
 
 - [ ] **Step 5: Verify the build compiles (it will FAIL — that's expected and informative)**
 
-Run: `cd /Users/phoebej/Develop/Java/SwissKitJ && mvn -pl SwissKit compile -o 2>&1 | tail -40`
+Run: `cd /Users/phoebej/Develop/Java/SwissKitJ && mvn -pl ZhiFlow compile -o 2>&1 | tail -40`
 
 Expected: compilation errors in `CloudChatBackend.java`, `LocalChatBackend.java`, `adapter/AiToolToToolSpecification.java`, `adapter/ChatMessageMapper.java`, and the `buildintool/.../*Tool.java` files that import `dev.langchain4j.*`. **This is correct** — these are the files Tasks 2–9 replace or delete. Note the exact list of failing files; it confirms the blast radius.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add SwissKit/pom.xml
+git add ZhiFlow/pom.xml
 git commit -m "chore(ai): swap LangChain4j deps for Spring Boot 4.1 + Spring AI 2.0 BOMs"
 ```
 
@@ -292,8 +298,8 @@ git commit -m "chore(ai): swap LangChain4j deps for Spring Boot 4.1 + Spring AI 
 ### Task 2: Embedded Spring Boot context bootstrap
 
 **Files:**
-- Create: `SwissKit/src/main/java/fan/summer/ai/spring/AiSpringContext.java`
-- Create: `SwissKit/src/main/java/fan/summer/ai/spring/AiApplication.java`
+- Create: `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/spring/AiSpringContext.java`
+- Create: `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/spring/AiApplication.java`
 
 **Interfaces:**
 - Consumes: Spring Boot 4.1 API (`SpringApplicationBuilder`, `WebApplicationType`).
@@ -301,7 +307,7 @@ git commit -m "chore(ai): swap LangChain4j deps for Spring Boot 4.1 + Spring AI 
 
 - [ ] **Step 1: Write `AiApplication` — the minimal `@SpringBootApplication`**
 
-Create `SwissKit/src/main/java/fan/summer/ai/spring/AiApplication.java`:
+Create `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/spring/AiApplication.java`:
 
 ```java
 package fan.summer.zhiflow.ai.spring;
@@ -316,7 +322,7 @@ import org.springframework.context.annotation.ComponentScan;
  * small: just the {@code ChatModel} {@code @Bean}s and their config. It does
  * <strong>not</strong> scan the legacy {@code fan.summer.zhiflow.ai.service} / {@code tools}
  * code (those classes are not Spring-managed; they are constructed imperatively
- * by {@code SwissKitJApp} and the settings UI, exactly as before).
+ * by {@code ZhiFlowApp} and the settings UI, exactly as before).
  *
  * <p>{@code WebApplicationType.NONE} is forced by {@link AiSpringContext} — this
  * class never starts an HTTP server.
@@ -329,7 +335,7 @@ public class AiApplication {
 
 - [ ] **Step 2: Write `AiSpringContext` — the static holder/bootstrapper**
 
-Create `SwissKit/src/main/java/fan/summer/ai/spring/AiSpringContext.java`:
+Create `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/spring/AiSpringContext.java`:
 
 ```java
 package fan.summer.zhiflow.ai.spring;
@@ -344,9 +350,9 @@ import org.slf4j.LoggerFactory;
 /**
  * Bootstraps and holds the embedded Spring Boot context used for AI inference.
  *
- * <p>Lifecycle: {@link #start()} is called from {@code SwissKitJApp.start()} after
+ * <p>Lifecycle: {@link #start()} is called from {@code ZhiFlowApp.start()} after
  * the H2 database is initialised (so {@code AiConfigService} can read settings);
- * {@link #close()} is called from {@code SwissKitJApp.stop()}.
+ * {@link #close()} is called from {@code ZhiFlowApp.stop()}.
  *
  * <p>Configuration:
  * <ul>
@@ -381,7 +387,7 @@ public final class AiSpringContext {
         context = new SpringApplicationBuilder(AiApplication.class)
             .web(WebApplicationType.NONE)
             .headless(false)
-            .registerShutdownHook(false)   // we close() manually in SwissKitJApp.stop()
+            .registerShutdownHook(false)   // we close() manually in ZhiFlowApp.stop()
             .logStartupInfo(false)         // keep the FX launch console clean
             .run();
         log.info("AI Spring context ready");
@@ -401,7 +407,7 @@ public final class AiSpringContext {
         return getContext().getBean(type);
     }
 
-    /** Close the context, releasing beans. Safe to call from {@code SwissKitJApp.stop()}. */
+    /** Close the context, releasing beans. Safe to call from {@code ZhiFlowApp.stop()}. */
     public static synchronized void close() {
         if (context != null) {
             try {
@@ -418,14 +424,14 @@ public final class AiSpringContext {
 
 - [ ] **Step 3: Compile the two new files in isolation**
 
-Run: `cd /Users/phoebej/Develop/Java/SwissKitJ && mvn -pl SwissKit compile -o 2>&1 | grep -E "(AiSpringContext|AiApplication|BUILD)" | head`
+Run: `cd /Users/phoebej/Develop/Java/SwissKitJ && mvn -pl ZhiFlow compile -o 2>&1 | grep -E "(AiSpringContext|AiApplication|BUILD)" | head`
 
 Expected: the two new files compile (they only touch Spring API). Other files still fail from Task 1 — that's fine; we only need THESE two clean.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add SwissKit/src/main/java/fan/summer/ai/spring/AiSpringContext.java SwissKit/src/main/java/fan/summer/ai/spring/AiApplication.java
+git add ZhiFlow/src/main/java/fan/summer/zhiflow/ai/spring/AiSpringContext.java ZhiFlow/src/main/java/fan/summer/zhiflow/ai/spring/AiApplication.java
 git commit -m "feat(ai): add embedded Spring Boot context bootstrap (WebApplicationType.NONE)"
 ```
 
@@ -434,7 +440,7 @@ git commit -m "feat(ai): add embedded Spring Boot context bootstrap (WebApplicat
 ### Task 3: H2-backed config properties record
 
 **Files:**
-- Create: `SwissKit/src/main/java/fan/summer/ai/spring/AiConfigProperties.java`
+- Create: `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/spring/AiConfigProperties.java`
 
 **Interfaces:**
 - Consumes: `fan.summer.zhiflow.ai.AiConfigService` (existing H2 reader, unchanged).
@@ -508,7 +514,7 @@ public record AiConfigProperties(
 
 - [ ] **Step 2: Add the two new H2 getters to `AiConfigService`**
 
-In `SwissKit/src/main/java/fan/summer/ai/AiConfigService.java`, after the existing `getAiModelPath()` method, add:
+In `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/AiConfigService.java`, after the existing `getAiModelPath()` method, add:
 
 ```java
     // ── Ollama settings (Phase 1: local runtime is now Ollama) ────────────
@@ -533,14 +539,14 @@ Also add the two key constants near the top of the class with the other `private
 
 - [ ] **Step 3: Compile**
 
-Run: `mvn -pl SwissKit compile -o 2>&1 | grep -E "(AiConfigProperties|AiConfigService|BUILD)" | head`
+Run: `mvn -pl ZhiFlow compile -o 2>&1 | grep -E "(AiConfigProperties|AiConfigService|BUILD)" | head`
 
 Expected: both files clean.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add SwissKit/src/main/java/fan/summer/ai/spring/AiConfigProperties.java SwissKit/src/main/java/fan/summer/ai/AiConfigService.java
+git add ZhiFlow/src/main/java/fan/summer/zhiflow/ai/spring/AiConfigProperties.java ZhiFlow/src/main/java/fan/summer/zhiflow/ai/AiConfigService.java
 git commit -m "feat(ai): add H2-backed AiConfigProperties snapshot + Ollama settings"
 ```
 
@@ -549,7 +555,7 @@ git commit -m "feat(ai): add H2-backed AiConfigProperties snapshot + Ollama sett
 ### Task 4: `ChatModel` `@Bean` configuration (OpenAI / Anthropic / Ollama)
 
 **Files:**
-- Create: `SwissKit/src/main/java/fan/summer/ai/spring/ChatModelConfig.java`
+- Create: `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/spring/ChatModelConfig.java`
 
 **Interfaces:**
 - Consumes: `AiConfigProperties` (Task 3); Spring AI 2.0 `OpenAiApi`/`OpenAiChatModel`/`AnthropicApi`/`AnthropicChatModel`/`OllamaApi`/`OllamaChatModel`.
@@ -654,14 +660,14 @@ public class ChatModelConfig {
 
 - [ ] **Step 2: Compile (accepting that downstream backends still fail)**
 
-Run: `mvn -pl SwissKit compile -o 2>&1 | grep -E "(ChatModelConfig|BUILD)" | head`
+Run: `mvn -pl ZhiFlow compile -o 2>&1 | grep -E "(ChatModelConfig|BUILD)" | head`
 
 Expected: `ChatModelConfig` compiles clean. If a SPIKE marker trips, fix the exact method name per the compiler error and update this plan.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add SwissKit/src/main/java/fan/summer/ai/spring/ChatModelConfig.java
+git add ZhiFlow/src/main/java/fan/summer/zhiflow/ai/spring/ChatModelConfig.java
 git commit -m "feat(ai): add ChatModel @Bean config for OpenAI/Anthropic/Ollama"
 ```
 
@@ -670,8 +676,8 @@ git commit -m "feat(ai): add ChatModel @Bean config for OpenAI/Anthropic/Ollama"
 ### Task 5: `MessageMapper` — `AiChatMessage` ↔ Spring AI `Message`
 
 **Files:**
-- Create: `SwissKit/src/main/java/fan/summer/ai/adapter/MessageMapper.java`
-- Create: `SwissKit/src/test/java/fan/summer/ai/adapter/MessageMapperTest.java`
+- Create: `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/adapter/MessageMapper.java`
+- Create: `ZhiFlow/src/test/java/fan/summer/zhiflow/ai/adapter/MessageMapperTest.java`
 
 **Interfaces:**
 - Consumes: `AiChatMessage`, `AiToolCall` (contract, unchanged).
@@ -739,7 +745,7 @@ class MessageMapperTest {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `mvn -pl SwissKit test -o -Dtest=MessageMapperTest 2>&1 | tail -20`
+Run: `mvn -pl ZhiFlow test -o -Dtest=MessageMapperTest 2>&1 | tail -20`
 
 Expected: compilation failure — `MessageMapper` does not exist yet.
 
@@ -762,7 +768,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Bidirectional mapper between SwissKitJ's {@link AiChatMessage} and Spring AI's
+ * Bidirectional mapper between ZhiFlow's {@link AiChatMessage} and Spring AI's
  * {@link Message} hierarchy. Replaces the LangChain4j {@code ChatMessageMapper}.
  *
  * <p>Role mapping:
@@ -780,7 +786,7 @@ public final class MessageMapper {
 
     private MessageMapper() {}
 
-    /** SwissKitJ message → Spring AI message. */
+    /** ZhiFlow message → Spring AI message. */
     public static Message toSpringAi(AiChatMessage src) {
         String text = src.content() == null ? "" : src.content();
         return switch (src.role()) {
@@ -810,7 +816,7 @@ public final class MessageMapper {
 
     /**
      * Extract tool-call requests from a Spring AI {@link AssistantMessage} into
-     * SwissKitJ {@link AiToolCall}s. Used by the manual tool loop after a streamed
+     * ZhiFlow {@link AiToolCall}s. Used by the manual tool loop after a streamed
      * response completes with pending tool calls.
      */
     public static List<AiToolCall> extractToolCalls(AssistantMessage am) {
@@ -839,14 +845,14 @@ public final class MessageMapper {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `mvn -pl SwissKit test -o -Dtest=MessageMapperTest 2>&1 | tail -20`
+Run: `mvn -pl ZhiFlow test -o -Dtest=MessageMapperTest 2>&1 | tail -20`
 
 Expected: `Tests run: 4, Failures: 0`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add SwissKit/src/main/java/fan/summer/ai/adapter/MessageMapper.java SwissKit/src/test/java/fan/summer/ai/adapter/MessageMapperTest.java
+git add ZhiFlow/src/main/java/fan/summer/zhiflow/ai/adapter/MessageMapper.java ZhiFlow/src/test/java/fan/summer/zhiflow/ai/adapter/MessageMapperTest.java
 git commit -m "feat(ai): add MessageMapper (AiChatMessage <-> Spring AI Message)"
 ```
 
@@ -855,8 +861,8 @@ git commit -m "feat(ai): add MessageMapper (AiChatMessage <-> Spring AI Message)
 ### Task 6: `ToolSchemaJson` — build JSON-schema string from `AiToolParam`
 
 **Files:**
-- Create: `SwissKit/src/main/java/fan/summer/ai/adapter/ToolSchemaJson.java`
-- Create: `SwissKit/src/test/java/fan/summer/ai/adapter/ToolSchemaJsonTest.java`
+- Create: `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/adapter/ToolSchemaJson.java`
+- Create: `ZhiFlow/src/test/java/fan/summer/zhiflow/ai/adapter/ToolSchemaJsonTest.java`
 
 **Interfaces:**
 - Consumes: `List<AiToolParam>` (contract).
@@ -914,7 +920,7 @@ class ToolSchemaJsonTest {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `mvn -pl SwissKit test -o -Dtest=ToolSchemaJsonTest 2>&1 | tail -10`
+Run: `mvn -pl ZhiFlow test -o -Dtest=ToolSchemaJsonTest 2>&1 | tail -10`
 
 Expected: compile failure (class missing).
 
@@ -1019,14 +1025,14 @@ public final class ToolSchemaJson {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `mvn -pl SwissKit test -o -Dtest=ToolSchemaJsonTest 2>&1 | tail -10`
+Run: `mvn -pl ZhiFlow test -o -Dtest=ToolSchemaJsonTest 2>&1 | tail -10`
 
 Expected: `Tests run: 4, Failures: 0`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add SwissKit/src/main/java/fan/summer/ai/adapter/ToolSchemaJson.java SwissKit/src/test/java/fan/summer/ai/adapter/ToolSchemaJsonTest.java
+git add ZhiFlow/src/main/java/fan/summer/zhiflow/ai/adapter/ToolSchemaJson.java ZhiFlow/src/test/java/fan/summer/zhiflow/ai/adapter/ToolSchemaJsonTest.java
 git commit -m "feat(ai): add ToolSchemaJson (AiToolParam -> JSON-schema string)"
 ```
 
@@ -1035,8 +1041,8 @@ git commit -m "feat(ai): add ToolSchemaJson (AiToolParam -> JSON-schema string)"
 ### Task 7: `AiToolCallback` — adapt plugin `AiTool` to Spring AI `ToolCallback`
 
 **Files:**
-- Create: `SwissKit/src/main/java/fan/summer/ai/adapter/AiToolCallback.java`
-- Create: `SwissKit/src/test/java/fan/summer/ai/adapter/AiToolCallbackTest.java`
+- Create: `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/adapter/AiToolCallback.java`
+- Create: `ZhiFlow/src/test/java/fan/summer/zhiflow/ai/adapter/AiToolCallbackTest.java`
 
 **Interfaces:**
 - Consumes: `AiTool`, `AiToolParam`, `AiToolResult` (contract); Spring AI `ToolCallback`, `ToolDefinition`, `DefaultToolDefinition`, `ToolContext`.
@@ -1112,7 +1118,7 @@ class AiToolCallbackTest {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `mvn -pl SwissKit test -o -Dtest=AiToolCallbackTest 2>&1 | tail -10`
+Run: `mvn -pl ZhiFlow test -o -Dtest=AiToolCallbackTest 2>&1 | tail -10`
 
 Expected: compile failure.
 
@@ -1135,7 +1141,7 @@ import org.slf4j.LoggerFactory;
 import java.util.Map;
 
 /**
- * Adapts a SwissKitJ plugin {@link AiTool} into a Spring AI {@link ToolCallback}.
+ * Adapts a ZhiFlow plugin {@link AiTool} into a Spring AI {@link ToolCallback}.
  *
  * <p>This is the stable seam of the migration: plugins keep implementing
  * {@code AiTool.execute(Map) -> AiToolResult} unchanged; Spring AI invokes them
@@ -1207,14 +1213,14 @@ public final class AiToolCallback implements ToolCallback {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `mvn -pl SwissKit test -o -Dtest=AiToolCallbackTest 2>&1 | tail -10`
+Run: `mvn -pl ZhiFlow test -o -Dtest=AiToolCallbackTest 2>&1 | tail -10`
 
 Expected: `Tests run: 3, Failures: 0`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add SwissKit/src/main/java/fan/summer/ai/adapter/AiToolCallback.java SwissKit/src/test/java/fan/summer/ai/adapter/AiToolCallbackTest.java
+git add ZhiFlow/src/main/java/fan/summer/zhiflow/ai/adapter/AiToolCallback.java ZhiFlow/src/test/java/fan/summer/zhiflow/ai/adapter/AiToolCallbackTest.java
 git commit -m "feat(ai): add AiToolCallback (AiTool -> Spring AI ToolCallback)"
 ```
 
@@ -1225,7 +1231,7 @@ git commit -m "feat(ai): add AiToolCallback (AiTool -> Spring AI ToolCallback)"
 **Why this is a spike:** Spring AI's `OllamaChatOptions` exposes a `think` field (auto-on for reasoning models), but the **exact metadata key** carrying thinking content per-streaming-chunk **could not be locked from source** in the research pass. Writing the `OllamaLocalBackend` (Task 9) without knowing this produces a non-functional thinking-surfacing path or, worse, one that silently swallows thinking.
 
 **Files:**
-- Create (throwaway, not committed): `SwissKit/src/test/java/fan/summer/ai/spike/OllamaThinkingSpike.java`
+- Create (throwaway, not committed): `ZhiFlow/src/test/java/fan/summer/zhiflow/ai/spike/OllamaThinkingSpike.java`
 
 **Prerequisite:** `ollama serve` running locally; `ollama pull qwen3:4b` done.
 
@@ -1251,7 +1257,7 @@ import java.util.Map;
  *  2. Whether thinking appears per-chunk or only in the final chunk.
  *  3. The OllamaChatOptions builder method name for enabling think.
  *
- * Run: mvn -pl SwissKit test-compile exec:java -Dexec.mainClass=fan.summer.zhiflow.ai.spike.OllamaThinkingSpike
+ * Run: mvn -pl ZhiFlow test-compile exec:java -Dexec.mainClass=fan.summer.zhiflow.ai.spike.OllamaThinkingSpike
  */
 public class OllamaThinkingSpike {
     public static void main(String[] args) {
@@ -1302,8 +1308,8 @@ Edit Task 9's `routeThinking(...)` step (below) with the discovered key. Delete 
 ### Task 9: `OllamaLocalBackend` — local `ChatBackend` over Ollama
 
 **Files:**
-- Create: `SwissKit/src/main/java/fan/summer/ai/service/OllamaLocalBackend.java`
-- Create: `SwissKit/src/test/java/fan/summer/ai/service/OllamaLocalBackendConnectionTest.java`
+- Create: `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/service/OllamaLocalBackend.java`
+- Create: `ZhiFlow/src/test/java/fan/summer/zhiflow/ai/service/OllamaLocalBackendConnectionTest.java`
 
 **Interfaces:**
 - Consumes: `ChatBackend` (contract), `AiSpringContext`, `MessageMapper`, `AiToolCallback`, `ToolExecutor` (relocated — see Task 11; for now keep the `tools.ToolExecutor` import).
@@ -1362,7 +1368,7 @@ class OllamaLocalBackendConnectionTest {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `mvn -pl SwissKit test -o -Dtest=OllamaLocalBackendConnectionTest 2>&1 | tail -10`
+Run: `mvn -pl ZhiFlow test -o -Dtest=OllamaLocalBackendConnectionTest 2>&1 | tail -10`
 
 Expected: compile failure.
 
@@ -1382,7 +1388,7 @@ import fan.summer.zhiflow.api.ai.AiStreamCallback;
 import fan.summer.zhiflow.api.ai.AiTool;
 import fan.summer.zhiflow.api.ai.AiToolCall;
 import fan.summer.zhiflow.api.ai.ChatBackend;
-import fan.summer.zhiflow.ui.setting.SwissKitJSettingUi;
+import fan.summer.zhiflow.ui.setting.ZhiFlowSettingUi;
 import javafx.application.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -1490,8 +1496,8 @@ public final class OllamaLocalBackend implements ChatBackend {
 
     @Override
     public void chat(List<AiChatMessage> history, AiStreamCallback callback) throws AiServiceException {
-        chat(history, SwissKitJSettingUi.getAiTemperature(), SwissKitJSettingUi.getAiTopP(),
-             SwissKitJSettingUi.getAiMaxTokens(), callback);
+        chat(history, ZhiFlowSettingUi.getAiTemperature(), ZhiFlowSettingUi.getAiTopP(),
+             ZhiFlowSettingUi.getAiMaxTokens(), callback);
     }
 
     @Override
@@ -1587,7 +1593,7 @@ public final class OllamaLocalBackend implements ChatBackend {
     }
 
     private static String currentSystemPrompt() {
-        try { return SwissKitJSettingUi.getAiSystemPrompt(); }
+        try { return ZhiFlowSettingUi.getAiSystemPrompt(); }
         catch (Throwable t) { return null; }
     }
 
@@ -1623,14 +1629,14 @@ public final class OllamaLocalBackend implements ChatBackend {
 
 - [ ] **Step 4: Run the connection test**
 
-Run: `mvn -pl SwissKit test -o -Dtest=OllamaLocalBackendConnectionTest 2>&1 | tail -10`
+Run: `mvn -pl ZhiFlow test -o -Dtest=OllamaLocalBackendConnectionTest 2>&1 | tail -10`
 
 Expected: `Tests run: 2, Failures: 0`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add SwissKit/src/main/java/fan/summer/ai/service/OllamaLocalBackend.java SwissKit/src/test/java/fan/summer/ai/service/OllamaLocalBackendConnectionTest.java
+git add ZhiFlow/src/main/java/fan/summer/zhiflow/ai/service/OllamaLocalBackend.java ZhiFlow/src/test/java/fan/summer/zhiflow/ai/service/OllamaLocalBackendConnectionTest.java
 git commit -m "feat(ai): add OllamaLocalBackend (local ChatBackend over Ollama)"
 ```
 
@@ -1639,8 +1645,8 @@ git commit -m "feat(ai): add OllamaLocalBackend (local ChatBackend over Ollama)"
 ### Task 10: `SpringAiCloudBackend` — cloud `ChatBackend` over Spring AI
 
 **Files:**
-- Create: `SwissKit/src/main/java/fan/summer/ai/service/SpringAiCloudBackend.java`
-- Create: `SwissKit/src/test/java/fan/summer/ai/service/SpringAiCloudBackendToolLoopTest.java`
+- Create: `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/service/SpringAiCloudBackend.java`
+- Create: `ZhiFlow/src/test/java/fan/summer/zhiflow/ai/service/SpringAiCloudBackendToolLoopTest.java`
 
 **Interfaces:**
 - Consumes: `ChatBackend`, `AiSpringContext`, `MessageMapper`, `AiToolCallback`, `ToolExecutor`.
@@ -1748,7 +1754,7 @@ class SpringAiCloudBackendToolLoopTest {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `mvn -pl SwissKit test -o -Dtest=SpringAiCloudBackendToolLoopTest 2>&1 | tail -15`
+Run: `mvn -pl ZhiFlow test -o -Dtest=SpringAiCloudBackendToolLoopTest 2>&1 | tail -15`
 
 Expected: compile failure (`SpringAiCloudBackend` missing).
 
@@ -1769,7 +1775,7 @@ import fan.summer.zhiflow.api.ai.AiStreamCallback;
 import fan.summer.zhiflow.api.ai.AiTool;
 import fan.summer.zhiflow.api.ai.AiToolCall;
 import fan.summer.zhiflow.api.ai.ChatBackend;
-import fan.summer.zhiflow.ui.setting.SwissKitJSettingUi;
+import fan.summer.zhiflow.ui.setting.ZhiFlowSettingUi;
 import javafx.application.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -1872,8 +1878,8 @@ public final class SpringAiCloudBackend implements ChatBackend {
 
     @Override
     public void chat(List<AiChatMessage> history, AiStreamCallback callback) throws AiServiceException {
-        chat(history, SwissKitJSettingUi.getAiTemperature(), SwissKitJSettingUi.getAiTopP(),
-             SwissKitJSettingUi.getAiMaxTokens(), callback);
+        chat(history, ZhiFlowSettingUi.getAiTemperature(), ZhiFlowSettingUi.getAiTopP(),
+             ZhiFlowSettingUi.getAiMaxTokens(), callback);
     }
 
     @Override
@@ -1950,7 +1956,7 @@ public final class SpringAiCloudBackend implements ChatBackend {
     }
 
     private static String currentSystemPrompt() {
-        try { return SwissKitJSettingUi.getAiSystemPrompt(); }
+        try { return ZhiFlowSettingUi.getAiSystemPrompt(); }
         catch (Throwable t) { return null; }
     }
 
@@ -2025,14 +2031,14 @@ public final class SpringAiCloudBackend implements ChatBackend {
 
 - [ ] **Step 4: Run the tool-loop test**
 
-Run: `mvn -pl SwissKit test -o -Dtest=SpringAiCloudBackendToolLoopTest 2>&1 | tail -15`
+Run: `mvn -pl ZhiFlow test -o -Dtest=SpringAiCloudBackendToolLoopTest 2>&1 | tail -15`
 
 Expected: `Tests run: 1, Failures: 0`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add SwissKit/src/main/java/fan/summer/ai/service/SpringAiCloudBackend.java SwissKit/src/test/java/fan/summer/ai/service/SpringAiCloudBackendToolLoopTest.java
+git add ZhiFlow/src/main/java/fan/summer/zhiflow/ai/service/SpringAiCloudBackend.java ZhiFlow/src/test/java/fan/summer/zhiflow/ai/service/SpringAiCloudBackendToolLoopTest.java
 git commit -m "feat(ai): add SpringAiCloudBackend (cloud ChatBackend over Spring AI)"
 ```
 
@@ -2043,11 +2049,11 @@ git commit -m "feat(ai): add SpringAiCloudBackend (cloud ChatBackend over Spring
 **Why:** The wholesale deletion in Task 12 removes `fan.summer.zhiflow.ai.tools.*`. But two of those classes are still referenced by the new backends and by `AiChatPlugin`: `ToolExecutor` (the `executeAndFeed` loop that fires FX-thread UI events) and `AiToolDescriptions` (local/cloud description picker used by `AiToolCallback`), plus `SlashCommandHandler` (used by `AiChatPlugin`). These must be moved OUT of the doomed package before Task 12 deletes it.
 
 **Files:**
-- Create: `SwissKit/src/main/java/fan/summer/ai/ToolExecutor.java` (relocated from `tools/`)
-- Create: `SwissKit/src/main/java/fan/summer/ai/adapter/AiToolDescriptions.java` (relocated from `tools/`)
-- Create: `SwissKit/src/main/java/fan/summer/ai/SlashCommandHandler.java` (relocated from `tools/`)
-- Modify: `SwissKit/.../buildintool/ai/AiChatPlugin.java` (import change only — `fan.summer.zhiflow.ai.tools.SlashCommandHandler` → `fan.summer.zhiflow.ai.SlashCommandHandler`)
-- Modify: `SwissKit/.../buildintool/browser/SynchronousChatHelper.java` (if it imports `tools.ToolExecutor`)
+- Create: `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/ToolExecutor.java` (relocated from `tools/`)
+- Create: `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/adapter/AiToolDescriptions.java` (relocated from `tools/`)
+- Create: `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/SlashCommandHandler.java` (relocated from `tools/`)
+- Modify: `ZhiFlow/.../buildintool/ai/AiChatPlugin.java` (import change only — `fan.summer.zhiflow.ai.tools.SlashCommandHandler` → `fan.summer.zhiflow.ai.SlashCommandHandler`)
+- Modify: `ZhiFlow/.../buildintool/browser/SynchronousChatHelper.java` (if it imports `tools.ToolExecutor`)
 
 **Interfaces:**
 - Consumes: the source classes as-is.
@@ -2057,7 +2063,7 @@ git commit -m "feat(ai): add SpringAiCloudBackend (cloud ChatBackend over Spring
 
 Run:
 ```bash
-cd /Users/phoebej/Develop/Java/SwissKitJ && grep -rn "fan.summer.zhiflow.ai.tools\." SwissKit/src/main/java --include=*.java | grep -v "/ai/tools/"
+cd /Users/phoebej/Develop/Java/SwissKitJ && grep -rn "fan.summer.zhiflow.ai.tools\." ZhiFlow/src/main/java --include=*.java | grep -v "/ai/tools/"
 ```
 
 Record the full set of importer→imported pairs. Expect at least: `AiChatPlugin` → `SlashCommandHandler`, `ToolExecutor`; `SynchronousChatHelper` → something. **Anything imported from `tools/` by code outside `ai/tools/` and outside the deletion list must be relocated** — or, if unused, deleted with its consumer updated.
@@ -2074,42 +2080,42 @@ For each class to keep (`ToolExecutor`, `AiToolDescriptions`, `SlashCommandHandl
 
 - [ ] **Step 3: Compile**
 
-Run: `mvn -pl SwissKit compile -o 2>&1 | tail -30`
+Run: `mvn -pl ZhiFlow compile -o 2>&1 | tail -30`
 
 Expected: clean compile (the new backends + relocated helpers + consumers all resolve).
 
 - [ ] **Step 4: Run all existing tests that don't depend on deleted code**
 
-Run: `mvn -pl SwissKit test -o 2>&1 | tail -30`
+Run: `mvn -pl ZhiFlow test -o 2>&1 | tail -30`
 
 Expected: the `MessageMapper`, `ToolSchemaJson`, `AiToolCallback`, `SpringAiCloudBackendToolLoop`, `OllamaLocalBackendConnection` tests pass; tests for `LocalChatBackend`, `CloudChatBackend` (old), `TokenBatcher`, `ThinkingStreamSegmenter`, `ToolCallParser`, `Qwen3Adapter`, `ToolSchemaBuilder`, `AiToolToToolSpecification` still fail (they reference soon-to-be-deleted code) — leave those for Task 13.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add SwissKit/src/main/java/fan/summer/ai/ToolExecutor.java SwissKit/src/main/java/fan/summer/ai/adapter/AiToolDescriptions.java SwissKit/src/main/java/fan/summer/ai/SlashCommandHandler.java
-git add SwissKit/src/main/java/fan/summer/buildintool/ai/AiChatPlugin.java
+git add ZhiFlow/src/main/java/fan/summer/zhiflow/ai/ToolExecutor.java ZhiFlow/src/main/java/fan/summer/zhiflow/ai/adapter/AiToolDescriptions.java ZhiFlow/src/main/java/fan/summer/zhiflow/ai/SlashCommandHandler.java
+git add ZhiFlow/src/main/java/fan/summer/zhiflow/buildintool/ai/AiChatPlugin.java
 # plus any other importer files updated in Step 1
 git commit -m "refactor(ai): relocate ToolExecutor/AiToolDescriptions/SlashCommandHandler out of tools/"
 ```
 
 ---
 
-### Task 12: Rewire `SwissKitJApp` + `SwissKitJSettingUi` to use the new backends
+### Task 12: Rewire `ZhiFlowApp` + `ZhiFlowSettingUi` to use the new backends
 
 **This is the cutover.** After this task, the old `CloudChatBackend` / `LocalChatBackend` are no longer referenced by production code; they're dead weight pending deletion in Task 13.
 
 **Files:**
-- Modify: `SwissKit/.../app/SwissKitJApp.java`
-- Modify: `SwissKit/.../ui/setting/SwissKitJSettingUi.java`
+- Modify: `ZhiFlow/.../app/ZhiFlowApp.java`
+- Modify: `ZhiFlow/.../ui/setting/ZhiFlowSettingUi.java`
 
 **Interfaces:**
 - Consumes: `AiSpringContext`, `SpringAiCloudBackend`, `OllamaLocalBackend`.
 - Produces: a running app that uses Spring AI for cloud and Ollama for local.
 
-- [ ] **Step 1: Bootstrap/close the Spring context in `SwissKitJApp`**
+- [ ] **Step 1: Bootstrap/close the Spring context in `ZhiFlowApp`**
 
-In `SwissKitJApp.start()`, immediately AFTER `DatabaseInit.init();` (line ~78) and BEFORE `initializeAiBackend()` (line ~108), add:
+In `ZhiFlowApp.start()`, immediately AFTER `DatabaseInit.init();` (line ~78) and BEFORE `initializeAiBackend()` (line ~108), add:
 
 ```java
         // ── Embedded Spring context (DI + Spring AI ChatModel beans) ────
@@ -2118,7 +2124,7 @@ In `SwissKitJApp.start()`, immediately AFTER `DatabaseInit.init();` (line ~78) a
         fan.summer.zhiflow.ai.spring.AiSpringContext.start();
 ```
 
-In `SwissKitJApp.stop()`, BEFORE the existing `mainWindow.shutdown()` call (or after it — pick "after" so UI teardown isn't blocked by bean destruction), add:
+In `ZhiFlowApp.stop()`, BEFORE the existing `mainWindow.shutdown()` call (or after it — pick "after" so UI teardown isn't blocked by bean destruction), add:
 
 ```java
         try { fan.summer.zhiflow.ai.spring.AiSpringContext.close(); }
@@ -2127,7 +2133,7 @@ In `SwissKitJApp.stop()`, BEFORE the existing `mainWindow.shutdown()` call (or a
 
 - [ ] **Step 2: Rewire `initializeAiBackend()` to construct the new backends**
 
-Replace the body of `SwissKitJApp.initializeAiBackend()` with:
+Replace the body of `ZhiFlowApp.initializeAiBackend()` with:
 
 ```java
     private void initializeAiBackend() {
@@ -2168,11 +2174,11 @@ Update the `import` for `CloudChatBackend` to `SpringAiCloudBackend`:
 import fan.summer.zhiflow.ai.service.SpringAiCloudBackend;
 ```
 
-- [ ] **Step 3: Find and rewire every `SwissKitJSettingUi` call site that constructs a backend**
+- [ ] **Step 3: Find and rewire every `ZhiFlowSettingUi` call site that constructs a backend**
 
 Run:
 ```bash
-cd /Users/phoebej/Develop/Java/SwissKitJ && grep -n "CloudChatBackend\|LocalChatBackend" SwissKit/src/main/java/fan/summer/ui/setting/SwissKitJSettingUi.java
+cd /Users/phoebej/Develop/Java/SwissKitJ && grep -n "CloudChatBackend\|LocalChatBackend" ZhiFlow/src/main/java/fan/summer/zhiflow/ui/setting/ZhiFlowSettingUi.java
 ```
 
 For each hit:
@@ -2184,13 +2190,13 @@ Update imports accordingly. The `ensureLocalBackend()` lazy-init path should con
 
 - [ ] **Step 4: Full compile**
 
-Run: `mvn -pl SwissKit compile -o 2>&1 | tail -30`
+Run: `mvn -pl ZhiFlow compile -o 2>&1 | tail -30`
 
 Expected: clean. (The old `CloudChatBackend`/`LocalChatBackend` still exist but are now unreferenced; that's fine — Task 13 deletes them.)
 
 - [ ] **Step 5: Smoke-test the app manually (cloud)**
 
-Run the app (via the IDE run config or `mvn -pl SwissKit exec:java -Dexec.mainClass=fan.summer.zhiflow.Launcher`), open Settings → AI, switch to OpenAI/Anthropic, send a chat message. Confirm:
+Run the app (via the IDE run config or `mvn -pl ZhiFlow exec:java -Dexec.mainClass=fan.summer.zhiflow.Launcher`), open Settings → AI, switch to OpenAI/Anthropic, send a chat message. Confirm:
 - A streamed response appears token-by-token.
 - Tool calls (e.g. Excel analyze) still trigger `onToolCall`/`onToolResult` UI events.
 - The conversation history retains the assistant reply across turns.
@@ -2202,7 +2208,7 @@ Prerequisite: `ollama serve` + `ollama pull qwen3:4b`. Switch AI mode to local, 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add SwissKit/src/main/java/fan/summer/app/SwissKitJApp.java SwissKit/src/main/java/fan/summer/ui/setting/SwissKitJSettingUi.java
+git add ZhiFlow/src/main/java/fan/summer/zhiflow/app/ZhiFlowApp.java ZhiFlow/src/main/java/fan/summer/zhiflow/ui/setting/ZhiFlowSettingUi.java
 git commit -m "feat(ai): rewire app + settings UI to Spring AI cloud / Ollama local backends"
 ```
 
@@ -2219,79 +2225,79 @@ git commit -m "feat(ai): rewire app + settings UI to Spring AI cloud / Ollama lo
 
 ```bash
 cd /Users/phoebej/Develop/Java/SwissKitJ
-rm SwissKit/src/main/java/fan/summer/ai/service/CloudChatBackend.java
-rm SwissKit/src/main/java/fan/summer/ai/service/LocalChatBackend.java
+rm ZhiFlow/src/main/java/fan/summer/zhiflow/ai/service/CloudChatBackend.java
+rm ZhiFlow/src/main/java/fan/summer/zhiflow/ai/service/LocalChatBackend.java
 ```
 
 - [ ] **Step 2: Delete the LangChain4j adapters (replaced by `MessageMapper`/`AiToolCallback`)**
 
 ```bash
-rm -r SwissKit/src/main/java/fan/summer/ai/adapter/AiToolToToolSpecification.java
-rm SwissKit/src/main/java/fan/summer/ai/adapter/ChatMessageMapper.java
+rm -r ZhiFlow/src/main/java/fan/summer/zhiflow/ai/adapter/AiToolToToolSpecification.java
+rm ZhiFlow/src/main/java/fan/summer/zhiflow/ai/adapter/ChatMessageMapper.java
 # (MessageMapper.java, AiToolCallback.java, ToolSchemaJson.java, AiToolDescriptions.java STAY)
 ```
 
 - [ ] **Step 3: Delete the local tool-calling helpers (replaced by Spring AI tool-calling)**
 
 ```bash
-rm SwissKit/src/main/java/fan/summer/ai/tools/ThinkingStreamSegmenter.java
-rm SwissKit/src/main/java/fan/summer/ai/tools/ToolCallParser.java
-rm SwissKit/src/main/java/fan/summer/ai/tools/Qwen3Adapter.java
-rm SwissKit/src/main/java/fan/summer/ai/tools/ToolSchemaBuilder.java
-rm SwissKit/src/main/java/fan/summer/ai/tools/BuiltinBase64Tool.java
-rm SwissKit/src/main/java/fan/summer/ai/tools/BuiltinColorConvertTool.java
-rm SwissKit/src/main/java/fan/summer/ai/tools/BuiltinHashTool.java
-rm SwissKit/src/main/java/fan/summer/ai/tools/BuiltinJsonFormatTool.java
-rm SwissKit/src/main/java/fan/summer/ai/tools/ToolRegistry.java
+rm ZhiFlow/src/main/java/fan/summer/zhiflow/ai/tools/ThinkingStreamSegmenter.java
+rm ZhiFlow/src/main/java/fan/summer/zhiflow/ai/tools/ToolCallParser.java
+rm ZhiFlow/src/main/java/fan/summer/zhiflow/ai/tools/Qwen3Adapter.java
+rm ZhiFlow/src/main/java/fan/summer/zhiflow/ai/tools/ToolSchemaBuilder.java
+rm ZhiFlow/src/main/java/fan/summer/zhiflow/ai/tools/BuiltinBase64Tool.java
+rm ZhiFlow/src/main/java/fan/summer/zhiflow/ai/tools/BuiltinColorConvertTool.java
+rm ZhiFlow/src/main/java/fan/summer/zhiflow/ai/tools/BuiltinHashTool.java
+rm ZhiFlow/src/main/java/fan/summer/zhiflow/ai/tools/BuiltinJsonFormatTool.java
+rm ZhiFlow/src/main/java/fan/summer/zhiflow/ai/tools/ToolRegistry.java
 # (ToolExecutor.java, AiToolDescriptions.java, SlashCommandHandler.java were relocated in Task 11 — not here)
 ```
 
 If the `tools/` directory is now empty, delete it:
 
 ```bash
-rmdir SwissKit/src/main/java/fan/summer/ai/tools 2>/dev/null || true
+rmdir ZhiFlow/src/main/java/fan/summer/zhiflow/ai/tools 2>/dev/null || true
 ```
 
 - [ ] **Step 4: Delete the local inference engine (GGUF/JNI/worker)**
 
 ```bash
-rm -r SwissKit/src/main/java/fan/summer/ai/inference
-rm -r SwissKit/src/main/java/fan/summer/ai/model
-rm -r SwissKit/src/main/java/fan/summer/ai/tensor
-rm -r SwissKit/src/main/java/fan/summer/ai/nativejni
+rm -r ZhiFlow/src/main/java/fan/summer/zhiflow/ai/inference
+rm -r ZhiFlow/src/main/java/fan/summer/zhiflow/ai/model
+rm -r ZhiFlow/src/main/java/fan/summer/zhiflow/ai/tensor
+rm -r ZhiFlow/src/main/java/fan/summer/zhiflow/ai/nativejni
 ```
 
 - [ ] **Step 5: Delete the C++ JNI bridge + bundled native library**
 
 ```bash
-rm -r SwissKit/src/main/cpp
-rm -r SwissKit/src/main/resources/native
+rm -r ZhiFlow/src/main/cpp
+rm -r ZhiFlow/src/main/resources/native
 ```
 
 - [ ] **Step 6: Delete the tests that exercised deleted code**
 
 ```bash
-rm SwissKit/src/test/java/fan/summer/ai/adapter/AiToolToToolSpecificationTest.java
-rm SwissKit/src/test/java/fan/summer/ai/adapter/AiToolToToolSpecificationLocalTest.java
-rm SwissKit/src/test/java/fan/summer/ai/adapter/ChatMessageMapperTest.java
-rm SwissKit/src/test/java/fan/summer/ai/tools/ThinkingStreamSegmenterTest.java
-rm SwissKit/src/test/java/fan/summer/ai/tools/ToolCallParserHermesTest.java
-rm SwissKit/src/test/java/fan/summer/ai/tools/Qwen3AdapterTest.java
-rm SwissKit/src/test/java/fan/summer/ai/tools/ToolSchemaBuilderLocalTest.java
-rm SwissKit/src/test/java/fan/summer/ai/tools/AiToolDescriptionsTest.java
-rm SwissKit/src/test/java/fan/summer/ai/tools/ToolExecutorErrorJsonTest.java
-rm SwissKit/src/test/java/fan/summer/ai/model/GGUFReaderTest.java
-rm SwissKit/src/test/java/fan/summer/ai/model/GGUFModelTest.java
-rm SwissKit/src/test/java/fan/summer/ai/service/CloudChatBackendTest.java
-rm SwissKit/src/test/java/fan/summer/ai/service/LocalChatBackendMaxTokensTest.java
-rm SwissKit/src/test/java/fan/summer/ai/service/TokenBatcherTest.java
+rm ZhiFlow/src/test/java/fan/summer/zhiflow/ai/adapter/AiToolToToolSpecificationTest.java
+rm ZhiFlow/src/test/java/fan/summer/zhiflow/ai/adapter/AiToolToToolSpecificationLocalTest.java
+rm ZhiFlow/src/test/java/fan/summer/zhiflow/ai/adapter/ChatMessageMapperTest.java
+rm ZhiFlow/src/test/java/fan/summer/zhiflow/ai/tools/ThinkingStreamSegmenterTest.java
+rm ZhiFlow/src/test/java/fan/summer/zhiflow/ai/tools/ToolCallParserHermesTest.java
+rm ZhiFlow/src/test/java/fan/summer/zhiflow/ai/tools/Qwen3AdapterTest.java
+rm ZhiFlow/src/test/java/fan/summer/zhiflow/ai/tools/ToolSchemaBuilderLocalTest.java
+rm ZhiFlow/src/test/java/fan/summer/zhiflow/ai/tools/AiToolDescriptionsTest.java
+rm ZhiFlow/src/test/java/fan/summer/zhiflow/ai/tools/ToolExecutorErrorJsonTest.java
+rm ZhiFlow/src/test/java/fan/summer/zhiflow/ai/model/GGUFReaderTest.java
+rm ZhiFlow/src/test/java/fan/summer/zhiflow/ai/model/GGUFModelTest.java
+rm ZhiFlow/src/test/java/fan/summer/zhiflow/ai/service/CloudChatBackendTest.java
+rm ZhiFlow/src/test/java/fan/summer/zhiflow/ai/service/LocalChatBackendMaxTokensTest.java
+rm ZhiFlow/src/test/java/fan/summer/zhiflow/ai/service/TokenBatcherTest.java
 ```
 
 > Verify each path exists before `rm`; some may already be gone. Keep `ToolExecutorErrorJsonTest` if `ToolExecutor`'s behaviour is unchanged by relocation — but it likely imports the old package, so update or delete. Prefer delete (coverage of the unchanged `ToolExecutor` is low-value vs the risk of a stale-import compile failure).
 
 - [ ] **Step 7: Full build + test**
 
-Run: `mvn -pl SwissKit test -o 2>&1 | tail -30`
+Run: `mvn -pl ZhiFlow test -o 2>&1 | tail -30`
 
 Expected: BUILD SUCCESS, all remaining tests pass. If any test fails to compile due to a stale import of a deleted class, fix the import (point at the relocated class from Task 11) or delete that test too if it's exclusively covering deleted code.
 
@@ -2299,7 +2305,7 @@ Expected: BUILD SUCCESS, all remaining tests pass. If any test fails to compile 
 
 Run:
 ```bash
-cd /Users/phoebej/Develop/Java/SwissKitJ && grep -rn "fan.summer.zhiflow.ai.tools\.\|fan.summer.zhiflow.ai.inference\.\|fan.summer.zhiflow.ai.model\.\|fan.summer.zhiflow.ai.tensor\.\|fan.summer.zhiflow.ai.nativejni\.\|dev.langchain4j" SwissKit/src 2>/dev/null
+cd /Users/phoebej/Develop/Java/SwissKitJ && grep -rn "fan.summer.zhiflow.ai.tools\.\|fan.summer.zhiflow.ai.inference\.\|fan.summer.zhiflow.ai.model\.\|fan.summer.zhiflow.ai.tensor\.\|fan.summer.zhiflow.ai.nativejni\.\|dev.langchain4j" ZhiFlow/src 2>/dev/null
 ```
 
 Expected: empty output (or only matches in `backup/`, `docs/`, or comments). Any real source hit must be fixed before commit.
@@ -2307,7 +2313,7 @@ Expected: empty output (or only matches in `backup/`, `docs/`, or comments). Any
 - [ ] **Step 9: Commit**
 
 ```bash
-git add -A SwissKit
+git add -A ZhiFlow
 git commit -m "refactor(ai): delete legacy LC4j cloud + GGUF/JNI/worker local stack (Phase 1 strangler)"
 ```
 
@@ -2357,8 +2363,8 @@ git commit -m "docs(ai): document Phase 1 Spring AI + Ollama migration"
 - ✅ Spring AI 2.0 takes over cloud (Tasks 4, 10) and local (Tasks 4, 9) — matches "Spring AI 接管 AI 模块".
 - ✅ Ollama replaces the local runtime (Tasks 3, 4, 9) — matches "转 Ollama".
 - ✅ LangChain4j removed (Task 1) and legacy stack deleted (Task 13) — matches "绞杀式".
-- ✅ Plugin contract (`SwissKitJ-Api`) untouched — verified in every task's "Out of scope".
-- ✅ JavaFX UI untouched — only `SwissKitJApp`/`SwissKitJSettingUi` wiring changes.
+- ✅ Plugin contract (`ZhiFlow-Api`) untouched — verified in every task's "Out of scope".
+- ✅ JavaFX UI untouched — only `ZhiFlowApp`/`ZhiFlowSettingUi` wiring changes.
 
 **Placeholder scan:** No "TBD"/"implement later" steps. SPIKE markers (Tasks 4, 8) carry explicit fallbacks that don't depend on the uncertain API.
 
