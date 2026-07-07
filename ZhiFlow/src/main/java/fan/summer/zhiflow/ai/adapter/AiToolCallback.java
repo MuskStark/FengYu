@@ -1,6 +1,5 @@
 package fan.summer.zhiflow.ai.adapter;
 
-import fan.summer.zhiflow.ai.tools.AiToolDescriptions;   // relocated to adapter/ in Task 11
 import fan.summer.zhiflow.api.ai.AiTool;
 import fan.summer.zhiflow.api.ai.AiToolResult;
 import fan.summer.zhiflow.ai.util.JsonHelper;

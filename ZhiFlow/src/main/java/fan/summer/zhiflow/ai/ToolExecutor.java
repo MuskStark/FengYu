@@ -1,4 +1,4 @@
-package fan.summer.zhiflow.ai.tools;
+package fan.summer.zhiflow.ai;
 
 import fan.summer.zhiflow.api.ai.*;
 import fan.summer.zhiflow.ai.util.JsonHelper;
