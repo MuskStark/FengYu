@@ -5,8 +5,8 @@ import fan.summer.zhiflow.api.ai.ChatBackend;
 import fan.summer.zhiflow.api.i18n.I18n;
 import fan.summer.zhiflow.api.theme.ThemeService;
 import fan.summer.zhiflow.api.theme.Themes;
-import fan.summer.zhiflow.ai.service.CloudChatBackend;
-import fan.summer.zhiflow.ai.service.LocalChatBackend;
+import fan.summer.zhiflow.ai.service.OllamaLocalBackend;
+import fan.summer.zhiflow.ai.service.SpringAiCloudBackend;
 import fan.summer.zhiflow.database.DatabaseInit;
 import fan.summer.zhiflow.ui.sidebar.Sidebar.NavItem;
 import fan.summer.zhiflow.database.entity.setting.email.EmailAddressBookEntity;
@@ -380,6 +380,13 @@ public class ZhiFlowSettingUi {
     private static final String AI_ANTHROPIC_MODEL_KEY = "ai.anthropic.model";
     private static final String AI_LOCAL_BACKEND_KEY = "ai.local.backend";
 
+    /**
+     * Minimum max-tokens floor for local reasoning models (Qwen3 emits a
+     * {@code <think>} block before its answer, so a low cap truncates the answer).
+     * Formerly {@code LocalChatBackend.QWEN3_MIN_MAX_TOKENS}.
+     */
+    private static final int LOCAL_MIN_MAX_TOKENS = 2048;
+
     private static VBox buildAiModelTab() {
         VBox root = new VBox(16);
         root.setPadding(new Insets(20));
@@ -481,7 +488,7 @@ public class ZhiFlowSettingUi {
         topPRow.setAlignment(Pos.CENTER_LEFT);
 
         Spinner<Integer> maxTokensSpinner = new Spinner<>();
-        maxTokensSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(64, 4096, LocalChatBackend.QWEN3_MIN_MAX_TOKENS, 64));
+        maxTokensSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(64, 4096, LOCAL_MIN_MAX_TOKENS, 64));
         maxTokensSpinner.getStyleClass().add("sk-field");
         maxTokensSpinner.setPrefWidth(120);
         maxTokensSpinner.valueProperty().addListener((obs, oldVal, newVal) ->
@@ -532,12 +539,12 @@ public class ZhiFlowSettingUi {
     static void initializeAiService(String mode) {
         switch (mode) {
             case "openai" -> {
-                CloudChatBackend svc = CloudChatBackend.openAi(
+                SpringAiCloudBackend svc = SpringAiCloudBackend.openAi(
                     getAiOpenAiEndpoint(), getAiOpenAiApiKey(), getAiOpenAiModel());
                 AiServiceProvider.switchMode(mode, svc);
             }
             case "anthropic" -> {
-                CloudChatBackend svc = CloudChatBackend.anthropic(
+                SpringAiCloudBackend svc = SpringAiCloudBackend.anthropic(
                     getAiAnthropicEndpoint(), getAiAnthropicApiKey(), getAiAnthropicModel());
                 AiServiceProvider.switchMode(mode, svc);
             }
@@ -546,23 +553,16 @@ public class ZhiFlowSettingUi {
     }
 
     /**
-     * Creates and registers a local AI backend (LocalChatBackend).
+     * Creates and registers a local AI backend ({@link OllamaLocalBackend}).
      *
-     * @param autoLoadModel if true, auto-load the last saved model path from DB
+     * <p>Local inference now runs on an external Ollama server; "loading a model"
+     * means selecting an Ollama tag (read from H2 by {@code loadModel}), not loading
+     * an in-process GGUF file. There is no native/Java engine choice anymore.
+     *
+     * @param autoLoadModel if true, resolve the Ollama model tag + ChatModel bean now
      */
     private static void createLocalBackend(boolean autoLoadModel) {
-        String backendSetting = getAiLocalBackend();
-        boolean useNative = "native".equals(backendSetting);
-
-        if (useNative) {
-            fan.summer.zhiflow.ai.nativejni.NativeLoader.load();
-            if (!fan.summer.zhiflow.ai.nativejni.NativeLoader.isLoaded()) {
-                log.warn("Native library not available, falling back to Java engine");
-                useNative = false;
-            }
-        }
-
-        LocalChatBackend aiService = new LocalChatBackend(useNative);
+        OllamaLocalBackend aiService = new OllamaLocalBackend();
         AiServiceProvider.switchMode("local", aiService);
 
         if (autoLoadModel) {
@@ -572,8 +572,8 @@ public class ZhiFlowSettingUi {
 
     /**
      * Ensures the local AI backend is initialized. Called lazily when the AI tool is opened.
-     * No-op if already initialized. On first call, attempts native loading and auto-loads
-     * the last saved model.
+     * No-op if already initialized. On first call, resolves the Ollama ChatModel bean
+     * and the configured model tag.
      */
     public static synchronized void ensureLocalBackend() {
         // Only initialize the local backend if the current mode is "local".
@@ -586,38 +586,24 @@ public class ZhiFlowSettingUi {
         }
 
         Optional<ChatBackend> svc = AiServiceProvider.getService();
-        if (svc.isPresent() && svc.get() instanceof LocalChatBackend) {
+        if (svc.isPresent() && svc.get() instanceof OllamaLocalBackend) {
             return; // already initialized
         }
-        log.info("Initializing local AI backend (lazy)");
+        log.info("Initializing local AI backend (lazy, Ollama)");
         createLocalBackend(true);
     }
 
-    private static void autoLoadModel(LocalChatBackend aiService) {
-        String modelPath = fan.summer.zhiflow.ai.AiConfigService.getAiModelPath();
-
-        if (modelPath == null || modelPath.isBlank()) {
-            log.info("No local AI model path configured — skipping auto-load");
-            return;
-        }
-        // Log loudly when the saved path no longer points at a real file. Otherwise
-        // auto-load silently no-ops, the native worker never spawns, and the chat UI
-        // shows the "native unavailable — using pure Java" banner even though native
-        // itself is fine — a stale/mis-typed path (e.g. a stray space) is invisible.
-        if (!java.nio.file.Files.exists(java.nio.file.Path.of(modelPath))) {
-            log.warn("Configured local AI model not found, skipping auto-load: {}", modelPath);
-            return;
-        }
-
-        log.info("Auto-loading local AI model: {}", modelPath);
-        final String finalPath = modelPath;
+    private static void autoLoadModel(OllamaLocalBackend aiService) {
+        // For Ollama, loadModel(null) reads the configured tag from H2 and resolves
+        // the ChatModel bean; the actual weights live in the external Ollama server.
+        log.info("Resolving Ollama local backend (model tag from settings)");
         Thread.ofVirtual().start(() -> {
             try {
-                aiService.loadModel(java.nio.file.Path.of(finalPath));
+                aiService.loadModel(null);
                 AiServiceProvider.notifyStateChanged();
-                log.info("Local AI model auto-loaded successfully");
+                log.info("Ollama local backend ready");
             } catch (Exception e) {
-                log.warn("Auto-load failed: {}", e.getMessage());
+                log.warn("Ollama local backend init failed: {}", e.getMessage());
             }
         });
     }
@@ -791,7 +777,7 @@ public class ZhiFlowSettingUi {
         testBtn.setOnAction(e -> {
             testBtn.setDisable(true);
             Thread.ofVirtual().start(() -> {
-                CloudChatBackend svc = CloudChatBackend.openAi(
+                SpringAiCloudBackend svc = SpringAiCloudBackend.openAi(
                     endpointField.getText(), apiKeyField.getText(), modelField.getText());
                 String err = svc.testConnection();
                 Platform.runLater(() -> {
@@ -846,7 +832,7 @@ public class ZhiFlowSettingUi {
         testBtn.setOnAction(e -> {
             testBtn.setDisable(true);
             Thread.ofVirtual().start(() -> {
-                CloudChatBackend svc = CloudChatBackend.anthropic(
+                SpringAiCloudBackend svc = SpringAiCloudBackend.anthropic(
                     endpointField.getText(), apiKeyField.getText(), modelField.getText());
                 String err = svc.testConnection();
                 Platform.runLater(() -> {
@@ -1044,7 +1030,7 @@ public class ZhiFlowSettingUi {
     }
 
     /**
-     * Returns the saved AI max tokens value, or {@link LocalChatBackend#QWEN3_MIN_MAX_TOKENS}
+     * Returns the saved AI max tokens value, or {@link #LOCAL_MIN_MAX_TOKENS}
      * if not set or invalid — the default tracks the Qwen3 thinking-model floor so a
      * fresh install never truncates a thinking model mid-{@code <think>}.
      *
@@ -1055,7 +1041,7 @@ public class ZhiFlowSettingUi {
         if (val != null) {
             try { return Integer.parseInt(val); } catch (NumberFormatException ignored) {}
         }
-        return LocalChatBackend.QWEN3_MIN_MAX_TOKENS;
+        return LOCAL_MIN_MAX_TOKENS;
     }
 
     /**

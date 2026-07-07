@@ -14,7 +14,8 @@ import fan.summer.zhiflow.plugin.PluginLoader;
 import fan.summer.zhiflow.plugin.PluginRegistry;
 import fan.summer.zhiflow.ui.MainWindow;
 import fan.summer.zhiflow.registrar.BuiltinToolRegistrar;
-import fan.summer.zhiflow.ai.service.CloudChatBackend;
+import fan.summer.zhiflow.ai.service.SpringAiCloudBackend;
+import fan.summer.zhiflow.ai.spring.AiSpringContext;
 import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.scene.image.Image;
@@ -76,6 +77,11 @@ public class ZhiFlowApp extends Application {
         // ── Database (H2 + MyBatis) ─────────────────────────────────
         log.info("Initialising database");
         DatabaseInit.init();
+
+        // ── Embedded Spring context (DI + Spring AI ChatModel beans) ────
+        // Must start after DB init (AiConfigService reads H2 for the bean config)
+        // and before initializeAiBackend() (which looks up ChatModel beans).
+        AiSpringContext.start();
 
         // ── I18n ───────────────────────────────────────────────
         I18n.registerBundle("i18n.messages", getClass().getClassLoader());
@@ -155,6 +161,8 @@ public class ZhiFlowApp extends Application {
     public void stop() {
         log.info("ZhiFlow application shutting down");
         if (mainWindow != null) mainWindow.shutdown();
+        try { AiSpringContext.close(); }
+        catch (Exception e) { log.warn("AI Spring context close failed: {}", e.getMessage()); }
         log.info("Shutdown complete");
     }
 
@@ -176,7 +184,7 @@ public class ZhiFlowApp extends Application {
 
         switch (mode) {
             case "openai" -> {
-                CloudChatBackend svc = CloudChatBackend.openAi(
+                SpringAiCloudBackend svc = SpringAiCloudBackend.openAi(
                     fan.summer.zhiflow.ai.AiConfigService.getAiOpenAiEndpoint(),
                     fan.summer.zhiflow.ai.AiConfigService.getAiOpenAiApiKey(),
                     fan.summer.zhiflow.ai.AiConfigService.getAiOpenAiModel()
@@ -185,7 +193,7 @@ public class ZhiFlowApp extends Application {
                 log.info("OpenAI backend initialized: model={}", fan.summer.zhiflow.ai.AiConfigService.getAiOpenAiModel());
             }
             case "anthropic" -> {
-                CloudChatBackend svc = CloudChatBackend.anthropic(
+                SpringAiCloudBackend svc = SpringAiCloudBackend.anthropic(
                     fan.summer.zhiflow.ai.AiConfigService.getAiAnthropicEndpoint(),
                     fan.summer.zhiflow.ai.AiConfigService.getAiAnthropicApiKey(),
                     fan.summer.zhiflow.ai.AiConfigService.getAiAnthropicModel()
