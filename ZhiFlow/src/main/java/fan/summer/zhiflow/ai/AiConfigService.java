@@ -34,6 +34,9 @@ public final class AiConfigService {
     private static final String AI_ANTHROPIC_ENDPOINT_KEY = "ai.anthropic.endpoint";
     private static final String AI_ANTHROPIC_API_KEY_KEY = "ai.anthropic.api_key";
     private static final String AI_ANTHROPIC_MODEL_KEY = "ai.anthropic.model";
+    private static final String AI_DEEPSEEK_ENDPOINT_KEY = "ai.deepseek.endpoint";
+    private static final String AI_DEEPSEEK_API_KEY_KEY = "ai.deepseek.api_key";
+    private static final String AI_DEEPSEEK_MODEL_KEY = "ai.deepseek.model";
     private static final String AI_TEMPERATURE_KEY = "ai.temperature";
     private static final String AI_TOP_P_KEY = "ai.top_p";
     private static final String AI_MAX_TOKENS_KEY = "ai.max_tokens";
@@ -60,7 +63,7 @@ public final class AiConfigService {
 
     // ── Public getters ────────────────────────────────────────
 
-    /** Returns the AI mode: {@code "local"}, {@code "openai"}, or {@code "anthropic"}. */
+    /** Returns the AI mode: {@code "local"}, {@code "openai"}, {@code "anthropic"}, or {@code "deepseek"}. */
     public static String getAiMode() {
         return readSetting(AI_MODE_KEY, "local");
     }
@@ -93,6 +96,23 @@ public final class AiConfigService {
     /** Returns the Anthropic model identifier. */
     public static String getAiAnthropicModel() {
         return readSetting(AI_ANTHROPIC_MODEL_KEY, "claude-sonnet-4-20250514");
+    }
+
+    // ── DeepSeek settings (OpenAI-compatible API) ─────────────────────────
+
+    /** Returns the DeepSeek API endpoint URL (OpenAI-compatible). */
+    public static String getAiDeepSeekEndpoint() {
+        return readSetting(AI_DEEPSEEK_ENDPOINT_KEY, "https://api.deepseek.com");
+    }
+
+    /** Returns the DeepSeek API key. */
+    public static String getAiDeepSeekApiKey() {
+        return readSetting(AI_DEEPSEEK_API_KEY_KEY, "");
+    }
+
+    /** Returns the DeepSeek model identifier; defaults to {@code deepseek-chat}. */
+    public static String getAiDeepSeekModel() {
+        return readSetting(AI_DEEPSEEK_MODEL_KEY, "deepseek-chat");
     }
 
     /** Returns the sampling temperature (0–2); defaults to 0.7. */

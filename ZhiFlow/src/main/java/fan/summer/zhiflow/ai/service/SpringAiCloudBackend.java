@@ -48,7 +48,7 @@ public final class SpringAiCloudBackend implements ChatBackend {
     private static final Logger log = LoggerFactory.getLogger(SpringAiCloudBackend.class);
     private static final int MAX_TOOL_ROUNDS = 5;
 
-    public enum Provider { OPENAI, ANTHROPIC }
+    public enum Provider { OPENAI, ANTHROPIC, DEEPSEEK }
 
     private final Provider provider;
     private final String endpoint;
@@ -67,6 +67,12 @@ public final class SpringAiCloudBackend implements ChatBackend {
     public static SpringAiCloudBackend anthropic(String endpoint, String apiKey, String modelName) {
         ChatModel model = AiSpringContext.getBean("anthropicChatModel", ChatModel.class);
         return new SpringAiCloudBackend(Provider.ANTHROPIC, endpoint, apiKey, modelName, model);
+    }
+
+    /** DeepSeek uses an OpenAI-compatible API; the bean reuses the OpenAI model path. */
+    public static SpringAiCloudBackend deepSeek(String endpoint, String apiKey, String modelName) {
+        ChatModel model = AiSpringContext.getBean("deepSeekChatModel", ChatModel.class);
+        return new SpringAiCloudBackend(Provider.DEEPSEEK, endpoint, apiKey, modelName, model);
     }
 
     // ── Test constructor (inject ChatModel directly, bypass Spring) ───
@@ -197,7 +203,7 @@ public final class SpringAiCloudBackend implements ChatBackend {
 
     public String testConnection() {
         return switch (provider) {
-            case OPENAI -> testOpenAi();
+            case OPENAI, DEEPSEEK -> testOpenAi();   // DeepSeek is OpenAI-compatible
             case ANTHROPIC -> testAnthropic();
         };
     }

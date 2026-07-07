@@ -88,6 +88,34 @@ public class ChatModelConfig {
                 .build();
     }
 
+    /**
+     * DeepSeek exposes an OpenAI-compatible Chat Completions API, so it reuses the
+     * OpenAI client + model path with DeepSeek's own base URL / key / model tag.
+     */
+    @Lazy
+    @Bean(name = "deepSeekChatModel")
+    public ChatModel deepSeekChatModel(AiConfigProperties cfg) {
+        OpenAIClient client = OpenAiSetup.setupSyncClient(
+                cfg.deepSeekEndpoint(),   // baseUrl (https://api.deepseek.com)
+                cfg.deepSeekApiKey(),     // apiKey
+                null, null, null, null,
+                false, false,
+                cfg.deepSeekModel(),      // modelName
+                HTTP_TIMEOUT, MAX_RETRIES,
+                null, null,
+                ObservationRegistry.NOOP, null, List.of());
+        OpenAiChatOptions options = OpenAiChatOptions.builder()
+                .model(cfg.deepSeekModel())
+                .temperature((double) cfg.temperature())
+                .topP((double) cfg.topP())
+                .maxTokens(cfg.maxTokens())
+                .build();
+        return OpenAiChatModel.builder()
+                .openAiClient(client)
+                .options(options)
+                .build();
+    }
+
     @Lazy
     @Bean(name = "anthropicChatModel")
     public ChatModel anthropicChatModel(AiConfigProperties cfg) {
