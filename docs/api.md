@@ -13,7 +13,7 @@ Detailed reference for SwissKitJ's core interfaces, enums, components, and inter
 | `getDescription()` | `String` | One-line description |
 | `getCategory()` | `ToolCategory` | Sidebar category |
 | `getVersion()` | `String` | Version string |
-| `getIconText()` | `String` | Emoji or single char |
+| `getMdiIcon()` | `String` | Material Design Icons name, e.g. `file-excel` |
 | `getIconStyle()` | `IconStyle` | CSS class + color (default: BLUE) |
 | `getType()` | `ToolType` | BUILTIN or PLUGIN (default) |
 | `createView()` | `Node` | Main JavaFX UI node (called once, cached) |

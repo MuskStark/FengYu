@@ -2,6 +2,8 @@ package fan.summer.buildintool.email;
 
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
+import fan.summer.api.theme.ThemeService;
+import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -39,11 +41,7 @@ public class RichTextEditor extends VBox {
         setStyle("-fx-background-color: transparent;");
 
         webView = new WebView();
-        webView.setStyle(
-                "-fx-background-color: rgba(255,255,255,0.04);" +
-                "-fx-border-color: rgba(255,255,255,0.10); -fx-border-width: 1;" +
-                "-fx-border-radius: 10; -fx-background-radius: 10;"
-        );
+        applyEditorChrome();
         webView.setMinHeight(200);
         webView.setPrefHeight(400);
         webView.setMaxHeight(Double.MAX_VALUE);
@@ -60,6 +58,51 @@ public class RichTextEditor extends VBox {
             }
         });
         webView.getEngine().loadContent(buildEditorHtml());
+
+        // Re-theme the editor body when the app theme flips, WITHOUT losing the
+        // user's content: snapshot the current HTML, rebuild the page in the new
+        // palette, then restore. Also re-stamp the WebView container chrome
+        // (background + border) so the frame stays visible in both themes —
+        // the old dark-only CSS left white text on a light background in the
+        // light theme (unreadable) and a missing border on a white panel.
+        ThemeService.onChange(t -> Platform.runLater(() -> {
+            applyEditorChrome();
+            String snapshot = getHtml();
+            webView.getEngine().loadContent(buildEditorHtml());
+            // The new page's load completes asynchronously; re-apply the
+            // snapshot once, then detach so the listener doesn't accumulate
+            // one per theme switch.
+            javafx.beans.value.ChangeListener<javafx.concurrent.Worker.State> restoreOnce = new javafx.beans.value.ChangeListener<>() {
+                @Override
+                public void changed(javafx.beans.value.ObservableValue<? extends javafx.concurrent.Worker.State> obs,
+                                    javafx.concurrent.Worker.State o, javafx.concurrent.Worker.State n) {
+                    if (n == javafx.concurrent.Worker.State.SUCCEEDED) {
+                        webView.getEngine().getLoadWorker().stateProperty().removeListener(this);
+                        setHtml(snapshot);
+                    }
+                }
+            };
+            webView.getEngine().getLoadWorker().stateProperty().addListener(restoreOnce);
+        }));
+    }
+
+    /**
+     * Stamps the WebView's JavaFX container with an opaque, theme-aware
+     * background and border via inline style (which reliably overrides the
+     * WebPage rendering surface — style-class borders on WebView can be flaky).
+     * Colors mirror the {@code -sk-bg-elevated} / {@code -sk-border} tokens.
+     * Called once at construction and again on every theme switch.
+     */
+    private void applyEditorChrome() {
+        boolean light = ThemeService.current() == ThemeService.Theme.LIGHT;
+        String bg     = light ? "#F7F8FA" : "#2B2B2B";
+        String border = light ? "#DADCE0" : "#3C3F41";
+        webView.setStyle(
+                "-fx-background-color: " + bg + ";" +
+                "-fx-border-color: " + border + ";" +
+                "-fx-border-width: 1;" +
+                "-fx-border-radius: 10; -fx-background-radius: 10;"
+        );
     }
 
     private HBox buildToolbar() {
@@ -67,6 +110,7 @@ public class RichTextEditor extends VBox {
                 "SansSerif", "Serif", "Monospace", "Arial", "Helvetica", "Georgia", "Courier New"
         ));
         fontCombo.setValue("SansSerif");
+        fontCombo.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
         fontCombo.setStyle(comboStyle());
         fontCombo.setTooltip(new Tooltip("字体"));
         fontCombo.setOnAction(e -> exec("fontName", fontCombo.getValue()));
@@ -75,6 +119,7 @@ public class RichTextEditor extends VBox {
                 "1", "2", "3", "4", "5", "6", "7"
         ));
         sizeCombo.setValue("3");
+        sizeCombo.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
         sizeCombo.setStyle(comboStyle());
         sizeCombo.setTooltip(new Tooltip("字号 (1=小, 7=大)"));
         sizeCombo.setOnAction(e -> exec("fontSize", sizeCombo.getValue()));
@@ -89,8 +134,8 @@ public class RichTextEditor extends VBox {
         underline.setOnAction(e -> exec("underline", null));
 
         ColorPicker colorPicker = new ColorPicker(Color.WHITE);
+        colorPicker.getStyleClass().add("sk-surface");
         colorPicker.setStyle(
-                "-fx-background-color: rgba(255,255,255,0.07);" +
                 "-fx-color-label-visible: false;"
         );
         colorPicker.setTooltip(new Tooltip("字体颜色"));
@@ -127,9 +172,9 @@ public class RichTextEditor extends VBox {
         );
         toolbar.setAlignment(Pos.CENTER_LEFT);
         toolbar.setPadding(new Insets(6, 8, 6, 8));
+        toolbar.getStyleClass().addAll("sk-surface", "sk-outlined");
         toolbar.setStyle(
-                "-fx-background-color: rgba(255,255,255,0.04);" +
-                "-fx-border-color: rgba(255,255,255,0.10); -fx-border-width: 1;" +
+                "-fx-border-width: 1;" +
                 "-fx-border-radius: 8; -fx-background-radius: 8;"
         );
         return toolbar;
@@ -137,10 +182,9 @@ public class RichTextEditor extends VBox {
 
     private Button toolbarButton(String label, String tooltip, boolean bold, boolean italic, boolean underline) {
         Button b = new Button(label);
+        b.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
         StringBuilder style = new StringBuilder(
-                "-fx-background-color: rgba(255,255,255,0.06);" +
-                "-fx-border-color: rgba(255,255,255,0.10); -fx-border-width: 1;" +
-                "-fx-text-fill: rgba(255,255,255,0.85);" +
+                "-fx-border-width: 1;" +
                 "-fx-background-radius: 6; -fx-border-radius: 6;" +
                 "-fx-padding: 4 10 4 10; -fx-cursor: hand;" +
                 "-fx-font-size: 13px;"
@@ -158,15 +202,14 @@ public class RichTextEditor extends VBox {
         Region r = new Region();
         r.setPrefWidth(1);
         r.setPrefHeight(20);
-        r.setStyle("-fx-background-color: rgba(255,255,255,0.12);");
+        r.getStyleClass().add("sk-surface");
         return r;
     }
 
     private String comboStyle() {
-        return "-fx-background-color: rgba(255,255,255,0.06);" +
-                "-fx-border-color: rgba(255,255,255,0.10); -fx-border-width: 1;" +
+        return "-fx-border-width: 1;" +
                 "-fx-border-radius: 6; -fx-background-radius: 6;" +
-                "-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 12px;";
+                "-fx-font-size: 12px;";
     }
 
     private void exec(String command, String value) {
@@ -261,9 +304,17 @@ public class RichTextEditor extends VBox {
     }
 
     private String buildEditorHtml() {
+        boolean light = ThemeService.current() == ThemeService.Theme.LIGHT;
+        // Opaque bg matching -sk-bg-elevated, so the editing surface never shows
+        // JavaFX WebView's default white (which made white text invisible in the
+        // dark theme, and blended with the page in the light theme).
+        String bg = light ? "#F7F8FA" : "#2B2B2B";
+        String textColor = light ? "#1E1E1E" : "#D0D0D0";
+        String placeholderColor = light ? "#A0A4A8" : "#6B6F73";
+        String quoteColor = light ? "#5A5D60" : "#9AA0A6";
         return "<!DOCTYPE html><html><head><meta charset='UTF-8'><style>" +
-                "html,body { margin:0; padding:0; height:100%; background: transparent; }" +
-                "body { font-family: -apple-system, 'Segoe UI', sans-serif; color: #e6e6e6; }" +
+                "html,body { margin:0; padding:0; height:100%; background: " + bg + "; }" +
+                "body { font-family: -apple-system, 'Segoe UI', sans-serif; color: " + textColor + "; }" +
                 "#editor {" +
                 "  box-sizing: border-box;" +
                 "  min-height: 100%;" +
@@ -271,18 +322,18 @@ public class RichTextEditor extends VBox {
                 "  outline: none;" +
                 "  font-size: 14px;" +
                 "  line-height: 1.6;" +
-                "  background: transparent;" +
-                "  color: rgba(255,255,255,0.90);" +
-                "  caret-color: #5b8cf7;" +
+                "  background: " + bg + ";" +
+                "  color: " + textColor + ";" +
+                "  caret-color: #3574F0;" +
                 "  white-space: pre-wrap;" +
                 "}" +
                 "#editor:empty:before {" +
                 "  content: attr(data-placeholder);" +
-                "  color: rgba(255,255,255,0.30);" +
+                "  color: " + placeholderColor + ";" +
                 "}" +
-                "#editor a { color: #5b8cf7; }" +
-                "#editor blockquote { border-left: 3px solid #5b8cf7; margin: 8px 0; padding-left: 12px; color: rgba(255,255,255,0.65); }" +
-                "::selection { background: rgba(91,140,247,0.45); }" +
+                "#editor a { color: #3574F0; }" +
+                "#editor blockquote { border-left: 3px solid #3574F0; margin: 8px 0; padding-left: 12px; color: " + quoteColor + "; }" +
+                "::selection { background: rgba(53,116,240,0.45); }" +
                 "</style></head><body>" +
                 "<div id='editor' contenteditable='true' data-placeholder='在此输入邮件正文，可使用上方工具栏设置格式...'></div>" +
                 "<script>" +

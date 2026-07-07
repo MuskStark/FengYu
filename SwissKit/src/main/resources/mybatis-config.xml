@@ -37,6 +37,7 @@
         <mapper resource="mapper/AppSettingMapper.xml"/>
         <mapper resource="mapper/email/EmailArchiveMapper.xml"/>
         <mapper resource="mapper/PluginFavoriteMapper.xml"/>
+        <mapper resource="mapper/PluginSettingMapper.xml"/>
 
     </mappers>
 

@@ -2,7 +2,7 @@ package fan.summer.ui.store;
 
 import fan.summer.api.IconStyle;
 import fan.summer.api.ToolCategory;
-import fan.summer.api.component.GlassNotification;
+import fan.summer.api.component.SkNotification;
 import fan.summer.api.i18n.I18n;
 import fan.summer.plugin.PluginLoader;
 import fan.summer.ui.store.StorePluginLogic.InstallState;
@@ -102,9 +102,11 @@ public class OnlineStorePane extends VBox {
 
         // ── Title + description ──────────────────────────────
         Label title = new Label(I18n.get("store.online.title"));
-        title.setStyle("-fx-text-fill: rgba(255,255,255,0.90); -fx-font-size: 18px; -fx-font-weight: 500;");
+        title.getStyleClass().add("sk-t1");
+        title.setStyle("-fx-font-size: 18px; -fx-font-weight: 500;");
         Label desc = new Label(I18n.get("store.online.desc"));
-        desc.setStyle("-fx-text-fill: rgba(255,255,255,0.45); -fx-font-size: 12px;");
+        desc.getStyleClass().add("sk-t2");
+        desc.setStyle("-fx-font-size: 12px;");
         desc.setWrapText(true);
         desc.setMaxWidth(Double.MAX_VALUE);
 
@@ -127,7 +129,7 @@ public class OnlineStorePane extends VBox {
             }
             @Override public ToolCategory fromString(String s) { return null; }
         });
-        categoryBox.getStyleClass().add("glass-combo");
+        categoryBox.getStyleClass().add("sk-combo");
         categoryBox.valueProperty().addListener((obs, o, n) -> applyFilters());
 
         Button refreshBtn = glassBtn(I18n.get("store.online.refresh"));
@@ -154,10 +156,11 @@ public class OnlineStorePane extends VBox {
         Label spinner = new Label("⏳");
         spinner.setStyle("-fx-font-size: 16px;");
         Label loadingText = new Label(I18n.get("store.online.fetching"));
-        loadingText.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+        loadingText.getStyleClass().add("sk-t2");
+        loadingText.setStyle("-fx-font-size: 12px;");
         fetchProgress = new ProgressBar();
         fetchProgress.setPrefWidth(200);
-        fetchProgress.setStyle("-fx-accent: #5b8cf7;");
+        fetchProgress.setStyle("-fx-accent: #3574F0;");
         loadingRow = new HBox(10, spinner, loadingText, fetchProgress);
         loadingRow.setAlignment(Pos.CENTER_LEFT);
         loadingRow.setVisible(false);
@@ -166,7 +169,8 @@ public class OnlineStorePane extends VBox {
 
         // ── Status label ─────────────────────────────────────
         statusLabel = new Label();
-        statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.50); -fx-font-size: 12px;");
+        statusLabel.getStyleClass().add("sk-t2");
+        statusLabel.setStyle("-fx-font-size: 12px;");
         statusLabel.setWrapText(true);
         statusLabel.setMaxWidth(Double.MAX_VALUE);
 
@@ -272,12 +276,16 @@ public class OnlineStorePane extends VBox {
 
         if (allPlugins.isEmpty()) {
             statusLabel.setText(I18n.get("store.online.noPlugins"));
-            statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.40); -fx-font-size: 12px;");
+            statusLabel.getStyleClass().removeAll("sk-t1", "sk-t2");
+            statusLabel.getStyleClass().add("sk-t3");
+            statusLabel.setStyle("-fx-font-size: 12px;");
             return;
         }
         if (visible.isEmpty()) {
             statusLabel.setText(I18n.get("store.online.noMatch"));
-            statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.40); -fx-font-size: 12px;");
+            statusLabel.getStyleClass().removeAll("sk-t1", "sk-t2");
+            statusLabel.getStyleClass().add("sk-t3");
+            statusLabel.setStyle("-fx-font-size: 12px;");
             return;
         }
 
@@ -288,7 +296,9 @@ public class OnlineStorePane extends VBox {
             if (installedVersions.containsKey(p.id)) installedCount++;
         }
         statusLabel.setText(I18n.get("store.online.countWithInstalled", allPlugins.size(), installedCount));
-        statusLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.45); -fx-font-size: 12px;");
+        statusLabel.getStyleClass().removeAll("sk-t1", "sk-t3");
+        statusLabel.getStyleClass().add("sk-t2");
+        statusLabel.setStyle("-fx-font-size: 12px;");
     }
 
     private VBox buildPluginCard(StorePlugin plugin) {
@@ -441,7 +451,7 @@ public class OnlineStorePane extends VBox {
                         applyInstallState(installBtn, plugin);
                         statusLabel.setText(I18n.get("store.online.installed", plugin.name, jarFileName));
                         statusLabel.setStyle("-fx-text-fill: #4cd97b; -fx-font-size: 12px;");
-                        GlassNotification.toast(OnlineStorePane.this, GlassNotification.Type.SUCCESS,
+                        SkNotification.toast(OnlineStorePane.this, SkNotification.Type.SUCCESS,
                                 I18n.get("store.online.installed", plugin.name, jarFileName));
                         if (onInstallComplete != null) onInstallComplete.run();
                     });
@@ -480,10 +490,9 @@ public class OnlineStorePane extends VBox {
 
     private static Button glassBtn(String text) {
         Button btn = new Button(text);
+        btn.getStyleClass().addAll("sk-surface-soft", "sk-outlined", "sk-t1");
         btn.setStyle(
-            "-fx-background-color: rgba(255,255,255,0.07);" +
-            "-fx-border-color: rgba(255,255,255,0.12); -fx-border-width: 1;" +
-            "-fx-text-fill: rgba(255,255,255,0.75); -fx-font-size: 13px;" +
+            "-fx-border-width: 1; -fx-font-size: 13px;" +
             "-fx-background-radius: 8; -fx-border-radius: 8;" +
             "-fx-padding: 8 14 8 14; -fx-cursor: hand;"
         );

@@ -139,3 +139,12 @@ CREATE TABLE IF NOT EXISTS plugin_favorites
     created_at TIMESTAMP   DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS plugin_setting
+(
+    id            INTEGER PRIMARY KEY AUTO_INCREMENT,
+    plugin_id     VARCHAR(255) NOT NULL,
+    setting_key   VARCHAR(255) NOT NULL,
+    setting_value TEXT,
+    UNIQUE (plugin_id, setting_key)
+);
+

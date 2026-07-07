@@ -13,3 +13,5 @@
   - [Background Tasks](/plugins/background-tasks.md)
   - [Build & Deploy](/plugins/build-deploy.md)
   - [Common Pitfalls](/plugins/pitfalls.md)
+  - [AI-Assisted Dev](/plugins/ai-dev.md)
+  - [Third-Party Plugin Kit](/plugins/third-party-kit.md)

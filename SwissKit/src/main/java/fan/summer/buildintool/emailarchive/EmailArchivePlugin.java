@@ -102,6 +102,7 @@ public class EmailArchivePlugin implements SwissKitJPlugin {
             accountCombo = new ComboBox<>();
             accountCombo.setMaxWidth(Double.MAX_VALUE);
             accountCombo.setPromptText(I18n.get("builtin.email-archive.selectAccountPrompt"));
+            accountCombo.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
             accountCombo.setStyle(comboStyle());
 
             loadAccounts();
@@ -183,6 +184,7 @@ public class EmailArchivePlugin implements SwissKitJPlugin {
             Label daysLabel = subLabel(I18n.get("builtin.email-archive.days"));
             daysSpinner = new Spinner<>(1, 3650, 30);
             daysSpinner.setMaxWidth(Double.MAX_VALUE);
+            daysSpinner.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
             daysSpinner.setStyle(comboStyle());
             daysSpinner.valueProperty().addListener((o, ov, nv) -> {
                 if (nv != null) config.setDays(nv);
@@ -193,6 +195,7 @@ public class EmailArchivePlugin implements SwissKitJPlugin {
             folderCombo.getItems().addAll("INBOX", "Sent", "Drafts", "Trash", "[Gmail]/All Mail");
             folderCombo.setMaxWidth(Double.MAX_VALUE);
             folderCombo.setValue("INBOX");
+            folderCombo.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
             folderCombo.setStyle(comboStyle());
             folderCombo.setEditable(true);
             folderCombo.valueProperty().addListener((o, ov, nv) -> {
@@ -201,8 +204,9 @@ public class EmailArchivePlugin implements SwissKitJPlugin {
 
             Label outputLabel = subLabel(I18n.get("builtin.email-archive.outputDir"));
             dirLabel = new Label(I18n.get("builtin.email-archive.defaultOutputHint"));
+            dirLabel.getStyleClass().add("sk-t3");
             dirLabel.setStyle(
-                "-fx-text-fill: rgba(255,255,255,0.40); -fx-font-size: 12px;" +
+                "-fx-font-size: 12px;" +
                 "-fx-font-family: 'SF Mono','Consolas',monospace;"
             );
             dirLabel.setWrapText(true);
@@ -215,8 +219,10 @@ public class EmailArchivePlugin implements SwissKitJPlugin {
                 if (dir != null) {
                     config.setOutputDir(dir.toPath());
                     dirLabel.setText(dir.getAbsolutePath());
+                    dirLabel.getStyleClass().removeAll("sk-t3", "sk-t2");
+                    dirLabel.getStyleClass().add("sk-t1");
                     dirLabel.setStyle(
-                        "-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 12px;" +
+                        "-fx-font-size: 12px;" +
                         "-fx-font-family: 'SF Mono','Consolas',monospace;"
                     );
                 }
@@ -252,7 +258,8 @@ public class EmailArchivePlugin implements SwissKitJPlugin {
             progressBar.setMaxWidth(Double.MAX_VALUE);
 
             progressLabel = new Label(I18n.get("builtin.email-archive.archiving"));
-            progressLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+            progressLabel.getStyleClass().add("sk-t2");
+            progressLabel.setStyle("-fx-font-size: 12px;");
 
             resultBox = new VBox(8);
             resultBox.setStyle("-fx-background-color: transparent;");
@@ -306,7 +313,8 @@ public class EmailArchivePlugin implements SwissKitJPlugin {
             if (result.errors > 0) {
                 Label errInfo = new Label(I18n.get("builtin.email-archive.failed",
                         result.errors + " messages had errors"));
-                errInfo.setStyle("-fx-text-fill: rgba(255,255,255,0.55); -fx-font-size: 12px;");
+                errInfo.getStyleClass().add("sk-t2");
+                errInfo.setStyle("-fx-font-size: 12px;");
                 resultBox.getChildren().add(errInfo);
             }
 
@@ -350,14 +358,16 @@ public class EmailArchivePlugin implements SwissKitJPlugin {
 
     static Label sectionTitle(String text) {
         Label l = new Label(text);
-        l.setStyle("-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 15px; -fx-font-weight: 500;");
+        l.getStyleClass().add("sk-t1");
+        l.setStyle("-fx-font-size: 15px; -fx-font-weight: 500;");
         return l;
     }
 
     static Label subLabel(String text) {
         Label l = new Label(text.toUpperCase());
+        l.getStyleClass().add("sk-t3");
         l.setStyle(
-            "-fx-text-fill: rgba(255,255,255,0.30); -fx-font-size: 10px;" +
+            "-fx-font-size: 10px;" +
             "-fx-font-weight: bold;"
         );
         return l;
@@ -367,15 +377,15 @@ public class EmailArchivePlugin implements SwissKitJPlugin {
         Button btn = new Button(text);
         if (primary) {
             btn.setStyle(
-                "-fx-background-color: #5b8cf7; -fx-text-fill: white; -fx-font-size: 13px;" +
+                "-fx-background-color: #3574F0; -fx-text-fill: white; -fx-font-size: 13px;" +
                 "-fx-font-weight: 500; -fx-background-radius: 8; -fx-border-width: 0;" +
                 "-fx-padding: 10 20 10 20; -fx-cursor: hand;"
             );
         } else {
+            btn.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
             btn.setStyle(
-                "-fx-background-color: rgba(255,255,255,0.07);" +
-                "-fx-border-color: rgba(255,255,255,0.12); -fx-border-width: 1;" +
-                "-fx-text-fill: rgba(255,255,255,0.75); -fx-font-size: 13px;" +
+                "-fx-border-width: 1;" +
+                "-fx-font-size: 13px;" +
                 "-fx-background-radius: 8; -fx-border-radius: 8;" +
                 "-fx-padding: 10 20 10 20; -fx-cursor: hand;"
             );
@@ -384,10 +394,8 @@ public class EmailArchivePlugin implements SwissKitJPlugin {
     }
 
     private static String comboStyle() {
-        return "-fx-background-color: rgba(255,255,255,0.05);" +
-               "-fx-border-color: rgba(255,255,255,0.12); -fx-border-width: 1;" +
-               "-fx-border-radius: 8; -fx-background-radius: 8;" +
-               "-fx-text-fill: rgba(255,255,255,0.88);";
+        return "-fx-border-width: 1;" +
+               "-fx-border-radius: 8; -fx-background-radius: 8;";
     }
 
     @Override

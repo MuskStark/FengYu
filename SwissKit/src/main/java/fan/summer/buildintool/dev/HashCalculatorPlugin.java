@@ -70,7 +70,7 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
         TextArea input = styledTextArea("Input text...");
         VBox results   = new VBox(8);
 
-        Button calcBtn = actionButton(I18n.get("builtin.hash.calculate"), "#5b8cf7");
+        Button calcBtn = actionButton(I18n.get("builtin.hash.calculate"), "#3574F0");
         calcBtn.setOnAction(e -> {
             log.info("Calculate hash button clicked");
             results.getChildren().clear();
@@ -106,22 +106,25 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
      */
     private HBox hashRow(String algo, String value) {
         Label algoLabel = new Label(algo);
+        algoLabel.getStyleClass().add("sk-t2");
         algoLabel.setStyle(
-            "-fx-text-fill: rgba(255,255,255,0.45); -fx-font-size: 11px;" +
+            "-fx-font-size: 11px;" +
             "-fx-min-width: 60px; -fx-font-family: 'SF Mono','Consolas',monospace;"
         );
         Label valueLabel = new Label(value);
+        valueLabel.getStyleClass().add("sk-t1");
         valueLabel.setStyle(
-            "-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 11px;" +
+            "-fx-font-size: 11px;" +
             "-fx-font-family: 'SF Mono','Consolas',monospace;"
         );
         valueLabel.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(valueLabel, Priority.ALWAYS);
 
         Button copy = new Button(I18n.get("builtin.hash.copy"));
+        copy.getStyleClass().addAll("sk-surface", "sk-t2");
         copy.setStyle(
-            "-fx-background-color: rgba(255,255,255,0.08); -fx-border-width: 0;" +
-            "-fx-text-fill: rgba(255,255,255,0.5); -fx-font-size: 10px;" +
+            "-fx-border-width: 0;" +
+            "-fx-font-size: 10px;" +
             "-fx-background-radius: 4; -fx-cursor: hand; -fx-padding: 2 8 2 8;"
         );
         copy.setOnAction(e -> {
@@ -137,8 +140,8 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
 
         HBox row = new HBox(10, algoLabel, valueLabel, copy);
         row.setAlignment(Pos.CENTER_LEFT);
+        row.getStyleClass().add("sk-surface");
         row.setStyle(
-            "-fx-background-color: rgba(255,255,255,0.04);" +
             "-fx-background-radius: 8; -fx-padding: 10 12 10 12;"
         );
         return row;
@@ -153,13 +156,12 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
     private static TextArea styledTextArea(String prompt) {
         TextArea ta = new TextArea();
         ta.setPromptText(prompt);
+        ta.getStyleClass().addAll("sk-surface", "sk-outlined", "sk-t1");
         ta.setStyle(
-            "-fx-background-color: rgba(255,255,255,0.04);" +
-            "-fx-border-color: rgba(255,255,255,0.10); -fx-border-width: 1;" +
+            "-fx-border-width: 1;" +
             "-fx-border-radius: 10; -fx-background-radius: 10;" +
-            "-fx-text-fill: rgba(255,255,255,0.88);" +
             "-fx-font-size: 13px; -fx-font-family: 'SF Mono','Consolas',monospace;" +
-            "-fx-control-inner-background: transparent; -fx-highlight-fill: #5b8cf7;" +
+            "-fx-control-inner-background: transparent; -fx-highlight-fill: #3574F0;" +
             "-fx-padding: 12;"
         );
         ta.setWrapText(true);
@@ -176,12 +178,17 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
      */
     private static Button actionButton(String text, String bg) {
         Button btn = new Button(text);
-        btn.setStyle(
-            "-fx-background-color: " + bg + ";" +
-            "-fx-text-fill: rgba(255,255,255,0.88); -fx-font-size: 13px;" +
-            "-fx-background-radius: 8; -fx-border-width: 0;" +
-            "-fx-padding: 8 18 8 18; -fx-cursor: hand;"
-        );
+        btn.getStyleClass().add("sk-t1");
+        StringBuilder style = new StringBuilder();
+        if (bg != null && bg.startsWith("#")) {
+            style.append("-fx-background-color: ").append(bg).append(";");
+        } else {
+            btn.getStyleClass().add("sk-surface");
+        }
+        style.append("-fx-font-size: 13px;");
+        style.append("-fx-background-radius: 8; -fx-border-width: 0;");
+        style.append("-fx-padding: 8 18 8 18; -fx-cursor: hand;");
+        btn.setStyle(style.toString());
         return btn;
     }
 
@@ -193,8 +200,9 @@ public class HashCalculatorPlugin implements SwissKitJPlugin {
      */
     private static Label sectionLabel(String text) {
         Label l = new Label(text.toUpperCase());
+        l.getStyleClass().add("sk-t3");
         l.setStyle(
-            "-fx-text-fill: rgba(255,255,255,0.28); -fx-font-size: 10px;" +
+            "-fx-font-size: 10px;" +
             "-fx-font-weight: bold; -fx-letter-spacing: 0.08em;"
         );
         return l;

@@ -89,7 +89,7 @@ public class MyToolPlugin implements SwissKitJPlugin {
     @Override public String getDescription() { return "Does something useful"; }
     @Override public ToolCategory getCategory() { return ToolCategory.DEV; }
     @Override public String getVersion()     { return "1.0.0"; }
-    @Override public String getIconText()    { return "🔧"; }
+    @Override public String getMdiIcon()     { return "wrench"; }
     @Override public IconStyle getIconStyle(){ return IconStyle.TEAL; }
 
     @Override

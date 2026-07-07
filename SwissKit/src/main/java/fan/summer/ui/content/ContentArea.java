@@ -175,6 +175,35 @@ public class ContentArea extends BorderPane {
         crossFadeTo(scrollPane);
     }
 
+    /**
+     * Focuses the search field if it is currently visible (tool-grid mode).
+     * Invoked by the global Cmd/Ctrl+K accelerator.
+     */
+    public void focusSearch() {
+        if (searchField.getParent() != null && searchField.getParent().isVisible()) {
+            searchField.requestFocus();
+            searchField.selectAll();
+        }
+    }
+
+    /**
+     * Handles a global Escape press: closes the detail panel first,
+     * then clears an active search query.
+     *
+     * @return {@code true} if the event was consumed
+     */
+    public boolean handleEscape() {
+        if (detailPanel.isPanelOpen()) {
+            detailPanel.hide();
+            return true;
+        }
+        if (!currentQuery.isEmpty()) {
+            searchField.clear();
+            return true;
+        }
+        return false;
+    }
+
     private void setTopMode(boolean pageMode, String title) {
         if (pageMode) {
             Label titleLabel = (Label) backBar.lookup(".back-title");
@@ -219,29 +248,18 @@ public class ContentArea extends BorderPane {
 
     private HBox buildBackBar() {
         Label backBtn = new Label("← " + I18n.get("content.back"));
-        backBtn.setStyle(
-            "-fx-text-fill: rgba(255,255,255,0.70); -fx-font-size: 13px;" +
-            "-fx-cursor: hand; -fx-padding: 4 10 4 0;"
-        );
-        backBtn.setOnMouseEntered(e ->
-            backBtn.setStyle("-fx-text-fill: rgba(255,255,255,1); -fx-font-size: 13px;" +
-                             "-fx-cursor: hand; -fx-padding: 4 10 4 0;")
-        );
-        backBtn.setOnMouseExited(e ->
-            backBtn.setStyle("-fx-text-fill: rgba(255,255,255,0.70); -fx-font-size: 13px;" +
-                             "-fx-cursor: hand; -fx-padding: 4 10 4 0;")
-        );
+        backBtn.getStyleClass().add("back-btn");
+        // Hover highlight is handled in CSS (.back-btn:hover) so it follows the theme.
         backBtn.setOnMouseClicked(e -> {
             if (onBack != null) onBack.run();
             showToolGrid();
         });
 
         Label sep = new Label("/");
-        sep.setStyle("-fx-text-fill: rgba(255,255,255,0.25); -fx-font-size: 13px; -fx-padding: 4 6 4 0;");
+        sep.getStyleClass().add("back-sep");
 
         Label titleLabel = new Label();
         titleLabel.getStyleClass().add("back-title");
-        titleLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.90); -fx-font-size: 13px; -fx-font-weight: bold;");
 
         HBox bar = new HBox(6, backBtn, sep, titleLabel);
         bar.setAlignment(Pos.CENTER_LEFT);
@@ -251,7 +269,7 @@ public class ContentArea extends BorderPane {
 
     private HBox buildSearchBar() {
         Label searchIcon = new Label("🔍");
-        searchIcon.setStyle("-fx-font-size: 13px; -fx-text-fill: rgba(255,255,255,0.28);");
+        searchIcon.getStyleClass().add("search-icon");
 
         searchField.getStyleClass().add("search-field");
         searchField.setPromptText(I18n.get("content.search.prompt"));
@@ -264,14 +282,9 @@ public class ContentArea extends BorderPane {
             isSearchRefresh = false;
         });
 
-        Label kbdHint = new Label("⌘K");
-        kbdHint.setStyle(
-            "-fx-font-size: 10px; -fx-text-fill: rgba(255,255,255,0.28);" +
-            "-fx-background-color: rgba(255,255,255,0.06);" +
-            "-fx-border-color: rgba(255,255,255,0.10); -fx-border-width: 1;" +
-            "-fx-border-radius: 4; -fx-background-radius: 4;" +
-            "-fx-padding: 1 5 1 5; -fx-font-family: 'SF Mono','Consolas',monospace;"
-        );
+        boolean mac = System.getProperty("os.name", "").toLowerCase().contains("mac");
+        Label kbdHint = new Label(mac ? "⌘K" : "Ctrl+K");
+        kbdHint.getStyleClass().add("search-kbd");
 
         HBox bar = new HBox(10, searchIcon, searchField, kbdHint);
         bar.getStyleClass().add("search-bar");
@@ -376,10 +389,14 @@ public class ContentArea extends BorderPane {
             toolGrid.getChildren().add(card);
         }
 
-        // Empty state message
+        // Empty state message — differentiated: search miss vs. empty category
         if (filtered.isEmpty()) {
-            Label empty = new Label(I18n.get("content.emptyState"));
-            empty.setStyle("-fx-text-fill: rgba(255,255,255,0.28); -fx-font-size: 13px;");
+            String msg = currentQuery.isEmpty()
+                ? I18n.get("content.emptyState.category")
+                : I18n.get("content.emptyState.search", currentQuery);
+            Label empty = new Label(msg);
+            empty.getStyleClass().add("sk-t3");
+            empty.setStyle("-fx-font-size: 13px;");
             empty.setPadding(new Insets(40, 0, 0, 0));
             toolGrid.getChildren().add(empty);
         }
@@ -456,7 +473,7 @@ public class ContentArea extends BorderPane {
         HBox row = new HBox(titleLabel, spacer);
         if (!action.isEmpty()) {
             Label actionLabel = new Label(action);
-            actionLabel.setStyle("-fx-text-fill: #5b8cf7; -fx-font-size: 12px; -fx-cursor: hand;");
+            actionLabel.setStyle("-fx-text-fill: #3574F0; -fx-font-size: 12px; -fx-cursor: hand;");
             row.getChildren().add(actionLabel);
         }
         row.setAlignment(Pos.CENTER_LEFT);

@@ -13,7 +13,7 @@ SwissKitJ 核心接口、枚举、组件和内部 API 的详细参考。
 | `getDescription()` | `String` | 一行描述 |
 | `getCategory()` | `ToolCategory` | 侧边栏分类 |
 | `getVersion()` | `String` | 版本字符串 |
-| `getIconText()` | `String` | 表情符号或单个字符 |
+| `getMdiIcon()` | `String` | Material Design Icons 图标名，如 `file-excel` |
 | `getIconStyle()` | `IconStyle` | CSS 类 + 颜色（默认：BLUE） |
 | `getType()` | `ToolType` | BUILTIN 或 PLUGIN（默认） |
 | `createView()` | `Node` | 主 JavaFX UI 节点（调用一次，被缓存） |

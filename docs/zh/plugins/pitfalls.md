@@ -97,6 +97,9 @@ public Node createView() {
 }
 ```
 
+> **v3.2.0+:** 推荐改用 `host.i18n().registerBundle("i18n.messages")`(`PluginHost`
+> 经 `init()` 注入)——它自动使用插件自己的 ClassLoader,从根上避免本坑。
+
 ---
 
 ## 10. Alert 对话框样式不匹配
