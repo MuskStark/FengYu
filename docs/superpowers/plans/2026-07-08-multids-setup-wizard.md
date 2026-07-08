@@ -2,6 +2,44 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+---
+
+## 📊 执行进度 (更新于 2026-07-09)
+
+执行方式:subagent-driven-development。进度明细见 `.superpowers/sdd/progress.md`。
+
+| Task | 状态 | 提交 |
+|---|---|---|
+| 1. 更新 Maven 依赖 | ✅ 完成并审查通过 | `7d5d815` |
+| 2. application.yml | ✅ 完成并审查通过 | `62e656e` |
+| 3. DbType 枚举 + records | ✅ 完成并审查通过 | `4fb70e4` |
+| 4. 12 实体 JPA 注解 + user_id | ✅ 完成并审查通过 | `5f1aa48` |
+| 5. sys_user/sys_session + SecurityConstants | ✅ 完成并审查通过 | `ba3cbc4` |
+| 6. 14 JPA Repository | ⚠️ 已实现并提交,**审查未完成**(执行暂停) | `c76bb67` |
+| 7. 安全抽象层 | ⬜ 未开始 | — |
+| 8. 迁移调用点 + 删 DatabaseInit | ⬜ 未开始 | — |
+| 9. VirtualUserInitializer | ⬜ 未开始 | — |
+| 10. APP 模式 DataSource + JPA 配置 | ⬜ 未开始 | — |
+| 11. CryptoUtil | ⬜ 未开始 | — |
+| 12. DataSourceConfigService | ⬜ 未开始 | — |
+| 13. SetupController + SetupApplication | ⬜ 未开始 | — |
+| 14. HeadlessLauncher SETUP/APP 分流 | ⬜ 未开始 | — |
+| 15. 前端 setup store + API client | ⬜ 未开始 | — |
+| 16. SetupWizard.vue | ⬜ 未开始 | — |
+| 17. 路由分流 + App.vue | ⬜ 未开始 | — |
+| 18. Tauri sidecar 重启 | ⬜ 未开始 | — |
+| 19. 端到端验证 + 文档 | ⬜ 未开始 | — |
+
+### 恢复执行时的注意事项
+
+1. **Task 6 需先补审查**:执行恢复后第一步是审查 `c76bb67`(base `ba3cbc4`),解决任何 finding,再进入 Task 7。
+2. **Spring Boot 4.1 `@DataJpaTest` 迁移**(Task 6 执行中发现):SB4.1 把 `@DataJpaTest` 移到了新包 `org.springframework.boot.data.jpa.test.autoconfigure` 和新 artifact `spring-boot-data-jpa-test`。Task 6 已在 `ZhiFlow/pom.xml` 加了该 artifact 并用新 import。**后续任何用 `@DataJpaTest` 或 `@SpringBootTest` web slice 的任务都要用 SB4.1 路径**——本计划文本里若干处仍写 SB3 路径,实现时按 SB4.1 适配。
+3. **Task 13 已知计划缺陷**:`SetupController.runDdl` 用 `Persistence.createEntityManagerFactory("zhiflow-setup", props)` 需要一个 `META-INF/persistence.xml`,或改为 Hibernate 原生 bootstrap(`MetadataSources` + `SchemaManagementTool`)/ 编程式 EMF。实现 Task 13 时必须解决。
+4. **SB4.1 自动配置类名**:`SetupApplication` 的 `@SpringBootApplication(exclude={DataSourceAutoConfiguration.class, HibernateJpaAutoConfiguration.class})` 需对照 SB4.1 实际类名验证。
+5. **工作树遗留**:会话开始前就存在的未提交改动(CHANGELOG/CLAUDE/README/PortAnnouncer/desktop/frontend)与本迁移任务无关,不要混入任务提交。
+
+---
+
 **Goal:** 将 ZhiFlow 的数据库层从 MyBatis 迁移到 JPA,实现首次启动的多数据源初始化向导(H2/SQLite/MySQL/PostgreSQL),并预留用户体系的行级数据隔离架构(本次不实现登录)。
 
 **Architecture:** 启动时读 `~/.zhiflow/config/datasource.properties`——存在则进 APP 模式(全量 Spring 上下文 + JPA + 全部 bean),不存在则进 SETUP 模式(最小上下文,仅 SetupController + 静态前端,提供向导 API)。向导完成后写配置、建表、插入虚拟用户(id=1, `ZFlow-Summer`),进程退出触发 Tauri sidecar 重启。业务表全部加 `user_id` 行级隔离字段,通过 `SecurityContext.currentUserId()` 统一访问(本地离线恒返回 1)。
@@ -104,7 +142,7 @@
 
 ## 阶段一:依赖与配置基础
 
-### Task 1: 更新 Maven 依赖(JPA + 驱动 + actuator,移除 mybatis)
+### Task 1: 更新 Maven 依赖(JPA + 驱动 + actuator,移除 mybatis) — ✅ 完成并审查通过 (commit 7d5d815)
 
 **Files:**
 - Modify: `pom.xml`(父)— 新增驱动版本属性,移除 mybatis 属性
@@ -230,7 +268,7 @@ git commit -m "♻️ build(deps): swap mybatis for spring-data-jpa + multi-db d
 
 ---
 
-### Task 2: 新建 application.yml(静态配置)
+### Task 2: 新建 application.yml(静态配置) — ✅ 完成并审查通过 (commit 62e656e)
 
 **Files:**
 - Create: `ZhiFlow/src/main/resources/application.yml`
@@ -293,7 +331,7 @@ git commit -m "✨ feat(config): add application.yml for static JPA/actuator/ser
 
 ---
 
-### Task 3: 新建 DbType 枚举与配置 record
+### Task 3: 新建 DbType 枚举与配置 record — ✅ 完成并审查通过 (commit 4fb70e4)
 
 **Files:**
 - Create: `ZhiFlow/src/main/java/fan/summer/zhiflow/setup/DbType.java`
@@ -522,7 +560,7 @@ git commit -m "✨ feat(setup): add DbType enum and datasource config records"
 
 ## 阶段二:JPA 迁移
 
-### Task 4: 实体加 JPA 注解(用户私有表加 user_id)
+### Task 4: 实体加 JPA 注解(用户私有表加 user_id) — ✅ 完成并审查通过 (commit 5f1aa48)
 
 **Files:**
 - Modify: `ZhiFlow/src/main/java/fan/summer/zhiflow/database/entity/*.java`(12 个实体)
@@ -1080,7 +1118,7 @@ git commit -m "♻️ refactor(db): add JPA annotations + user_id isolation to 1
 
 ---
 
-### Task 5: 新建 sys_user / sys_session 实体
+### Task 5: 新建 sys_user / sys_session 实体 — ✅ 完成并审查通过 (commit ba3cbc4)
 
 **Files:**
 - Create: `ZhiFlow/src/main/java/fan/summer/zhiflow/database/entity/SysUserEntity.java`
@@ -1237,7 +1275,7 @@ git commit -m "✨ feat(db): add sys_user/sys_session entities + SecurityConstan
 
 ---
 
-### Task 6: 新建 12 个 Spring Data JPA Repository
+### Task 6: 新建 12 个 Spring Data JPA Repository — ⚠️ 已实现并提交,审查未完成 (commit c76bb67; 恢复时先补审查)
 
 **Files:**
 - Create: `ZhiFlow/src/main/java/fan/summer/zhiflow/database/repository/*.java`(12 个 + 2 个 sys)
@@ -1569,7 +1607,7 @@ git commit -m "✨ feat(db): add 14 Spring Data JPA repositories (replace mybati
 
 ---
 
-### Task 7: 安全抽象层(AuthProvider / SecurityContext + Noop 实现)
+### Task 7: 安全抽象层(AuthProvider / SecurityContext + Noop 实现) — ⬜ 未开始
 
 **Files:**
 - Create: `ZhiFlow/src/main/java/fan/summer/zhiflow/security/AuthProvider.java`
@@ -1780,7 +1818,7 @@ git commit -m "✨ feat(security): add pluggable AuthProvider/SecurityContext + 
 
 ---
 
-### Task 8: 迁移 DB 调用点 + 删除 DatabaseInit/mapper/mybatis 资源
+### Task 8: 迁移 DB 调用点 + 删除 DatabaseInit/mapper/mybatis 资源 — ⬜ 未开始
 
 **Files:**
 - Modify: `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/AiConfigService.java`(静态→@Component)
@@ -2185,7 +2223,7 @@ git commit -m "♻️ refactor(db): migrate DB call sites to JPA repositories, r
 
 ---
 
-### Task 9: 虚拟用户初始化器(APP 模式启动确保 id=1 存在)
+### Task 9: 虚拟用户初始化器(APP 模式启动确保 id=1 存在) — ⬜ 未开始
 
 **Files:**
 - Create: `ZhiFlow/src/main/java/fan/summer/zhiflow/database/VirtualUserInitializer.java`
@@ -2334,7 +2372,7 @@ git commit -m "✨ feat(db): add VirtualUserInitializer to ensure virtual user i
 
 ---
 
-### Task 10: APP 模式 DataSource + JPA 配置 bean
+### Task 10: APP 模式 DataSource + JPA 配置 bean — ⬜ 未开始
 
 **Files:**
 - Create: `ZhiFlow/src/main/java/fan/summer/zhiflow/config/DataSourceAutoConfig.java`
@@ -2478,7 +2516,7 @@ git commit -m "✨ feat(config): add APP-mode DataSource + JPA dialect config be
 
 ## 阶段三:初始化向导(SETUP 模式)
 
-### Task 11: CryptoUtil(AES-GCM 加解密)
+### Task 11: CryptoUtil(AES-GCM 加解密) — ⬜ 未开始
 
 **Files:**
 - Create: `ZhiFlow/src/main/java/fan/summer/zhiflow/setup/CryptoUtil.java`
@@ -2653,7 +2691,7 @@ git commit -m "✨ feat(setup): add AES-GCM CryptoUtil for datasource password e
 
 ---
 
-### Task 12: DataSourceConfigService(读写 datasource.properties)
+### Task 12: DataSourceConfigService(读写 datasource.properties) — ⬜ 未开始
 
 **Files:**
 - Create: `ZhiFlow/src/main/java/fan/summer/zhiflow/setup/DataSourceConfigService.java`
@@ -2943,7 +2981,7 @@ git commit -m "✨ feat(setup): add DataSourceConfigService for reading/writing 
 
 ---
 
-### Task 13: SetupController + SetupApplication(SETUP 模式)
+### Task 13: SetupController + SetupApplication(SETUP 模式) — ⬜ 未开始 ⚠️ 计划缺陷待修(见顶部恢复注意事项 #3:runDdl 的 Persistence.createEntityManagerFactory 需改 Hibernate 原生 bootstrap)
 
 **Files:**
 - Create: `ZhiFlow/src/main/java/fan/summer/zhiflow/setup/SetupController.java`
@@ -3239,7 +3277,7 @@ git commit -m "✨ feat(setup): add SetupController + SetupApplication (minimal 
 
 ---
 
-### Task 14: HeadlessLauncher 改为 SETUP/APP 分流
+### Task 14: HeadlessLauncher 改为 SETUP/APP 分流 — ⬜ 未开始
 
 **Files:**
 - Modify: `ZhiFlow/src/main/java/fan/summer/zhiflow/HeadlessLauncher.java`
@@ -3391,7 +3429,7 @@ git commit -m "♻️ refactor(launcher): split SETUP/APP mode boot by datasourc
 
 ---
 
-### Task 15: 前端 setup store + API client 扩展
+### Task 15: 前端 setup store + API client 扩展 — ⬜ 未开始
 
 **Files:**
 - Modify: `frontend/src/api/types.ts` — 新增 setup 类型
@@ -3653,7 +3691,7 @@ git commit -m "✨ feat(web): add setup API client methods + setup store"
 
 ---
 
-### Task 16: 前端 SetupWizard.vue 向导页
+### Task 16: 前端 SetupWizard.vue 向导页 — ⬜ 未开始
 
 **Files:**
 - Create: `frontend/src/views/SetupWizard.vue`
@@ -3966,7 +4004,7 @@ git commit -m "✨ feat(web): add SetupWizard.vue three-step setup wizard"
 
 ---
 
-### Task 17: 前端路由分流 + App.vue 向导渲染
+### Task 17: 前端路由分流 + App.vue 向导渲染 — ⬜ 未开始
 
 **Files:**
 - Modify: `frontend/src/router/index.ts` — 加全局守卫 + /setup 路由
@@ -4075,7 +4113,7 @@ git commit -m "✨ feat(web): add setup-status router guard + bare render for wi
 
 ---
 
-### Task 18: Tauri sidecar 重启逻辑
+### Task 18: Tauri sidecar 重启逻辑 — ⬜ 未开始
 
 **Files:**
 - Modify: `desktop/src-tauri/src/main.rs`
@@ -4206,7 +4244,7 @@ git commit -m "✨ feat(desktop): restart sidecar after SETUP_DONE to enter APP 
 
 ---
 
-### Task 19: 端到端验证 + 文档更新
+### Task 19: 端到端验证 + 文档更新 — ⬜ 未开始
 
 **Files:**
 - Modify: `CHANGELOG.md` — 记录 Phase 4 向导 + JPA 迁移
