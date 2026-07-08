@@ -71,6 +71,7 @@
     <!-- Reactor modules. Built in declaration order: API first (the app depends on it). -->
     <modules>
         <module>ZhiFlow-Api</module>
+        <module>plugin-markdown</module>
         <module>ZhiFlow</module>
     </modules>
 

@@ -55,6 +55,14 @@
             <artifactId>ZhiFlow-Api</artifactId>
         </dependency>
 
+        <!-- Official Markdown plugin (v2): compile-time bundled. Its @Component is picked up by
+             the broadened component scan and its ui/ resources are served at /plugin-ui/markdown/. -->
+        <dependency>
+            <groupId>fan.summer.zhiflow.plugin</groupId>
+            <artifactId>plugin-markdown</artifactId>
+            <version>${revision}</version>
+        </dependency>
+
         <!-- JavaFX: the main app is the runtime provider, so compile scope to bundle in fat-JAR -->
         <dependency>
             <groupId>org.openjfx</groupId>

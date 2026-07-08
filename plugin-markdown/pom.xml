@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>fan.summer.zhiflow</groupId>
+    <artifactId>ZhiFlow-parent</artifactId>
+    <version>4.0.0-SNAPSHOT</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+
+  <groupId>fan.summer.zhiflow.plugin</groupId>
+  <artifactId>plugin-markdown</artifactId>
+
+  <name>ZhiFlow Plugin — Markdown</name>
+  <description>Official Markdown editor plugin (v2, headless): server-side commonmark render +
+    micro-frontend split-pane editor. Phase 1 walking-skeleton carrier.</description>
+
+  <dependencies>
+    <!-- v2 plugin contract. Provided at runtime by the ZhiFlow app (which bundles the API). -->
+    <dependency>
+      <groupId>fan.summer.zhiflow.api</groupId>
+      <artifactId>ZhiFlow-Api</artifactId>
+      <version>${revision}</version>
+      <scope>provided</scope>
+    </dependency>
+
+    <!-- Spring stereotype annotations (@Component). Provided by the app's Spring context.
+         Spring Framework 7 ships with Spring Boot 4.1. -->
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-context</artifactId>
+      <version>7.0.8</version>
+      <scope>provided</scope>
+    </dependency>
+
+    <!-- Server-side Markdown → HTML rendering. -->
+    <dependency>
+      <groupId>org.commonmark</groupId>
+      <artifactId>commonmark</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>
