@@ -7,9 +7,7 @@ import fan.summer.zhiflow.api.ai.AiTool;
 import fan.summer.zhiflow.api.ai.AiToolCall;
 import fan.summer.zhiflow.api.ai.AiToolParam;
 import fan.summer.zhiflow.api.ai.AiToolResult;
-import javafx.application.Platform;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -57,16 +55,7 @@ class SpringAiCloudBackendToolLoopTest {
         @Override public ChatResponse call(Prompt prompt) { throw new UnsupportedOperationException(); }
     }
 
-    @BeforeAll
-    static void initFxToolkit() {
-        // ToolExecutor + the backend deliver callbacks via Platform.runLater, which
-        // needs the FX toolkit running. startup() is a no-op if already initialised.
-        try {
-            Platform.startup(() -> {});
-        } catch (IllegalStateException alreadyStarted) {
-            // toolkit already initialised by another test — fine
-        }
-    }
+    // Callbacks now run directly on the calling (virtual) thread — no FX toolkit needed.
 
     private AiTool echoTool;
 
