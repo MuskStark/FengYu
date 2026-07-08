@@ -1,0 +1,21 @@
+[package]
+name = "zhiflow-desktop"
+version = "4.0.0"
+description = "ZhiFlow desktop shell — Tauri 2.0 window that sidecar-launches the Java backend"
+authors = ["ZhiFlow"]
+edition = "2021"
+rust-version = "1.77"
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Blocking HTTP for the /api/health readiness poll.
+ureq = "2"
+
+[features]
+# By default Tauri runs in production mode. `cargo tauri dev` toggles dev behaviour.
+custom-protocol = ["tauri/custom-protocol"]

@@ -1,0 +1,6 @@
+# Rust / Tauri build output
+src-tauri/target/
+# The backend jar is copied in at build time, never tracked.
+src-tauri/binaries/*.jar
+# Generated Tauri gen dir
+src-tauri/gen/
