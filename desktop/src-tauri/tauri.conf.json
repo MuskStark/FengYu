@@ -4,23 +4,13 @@
   "version": "4.0.0",
   "identifier": "fan.summer.zhiflow",
   "build": {
-    "beforeDevCommand": "cd ../../frontend && npm run dev",
+    "beforeDevCommand": "cd ../frontend && npm run dev",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "cd ../../frontend && npm run build",
-    "frontendDist": "../../frontend/dist"
+    "beforeBuildCommand": "cd ../frontend && npm run build",
+    "frontendDist": "../frontend/dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "ZhiFlow",
-        "width": 1280,
-        "height": 820,
-        "minWidth": 960,
-        "minHeight": 640,
-        "resizable": true,
-        "decorations": true
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }
