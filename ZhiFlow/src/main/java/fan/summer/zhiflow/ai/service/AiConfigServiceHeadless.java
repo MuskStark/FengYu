@@ -22,8 +22,30 @@ public final class AiConfigServiceHeadless {
     private static final String AI_SYSTEM_PROMPT_KEY = "ai.system_prompt";
     private static final String THEME_KEY    = "theme";
     private static final String LANGUAGE_KEY = "language";
+    private static final String SIDEBAR_COLLAPSED_KEY = "sidebar.collapsed";
 
     private AiConfigServiceHeadless() {}
+
+    // ── Generic UI-shell settings (theme / language / sidebar) ─────────────────────────
+
+    /** Reads any setting by key, returning {@code defaultValue} when absent/blank. */
+    public static String getSetting(String key, String defaultValue) {
+        return DatabaseInit.withMapper(AppSettingMapper.class, mapper -> {
+            AppSettingEntity e = mapper.selectByKey(key);
+            return (e != null && e.getSettingValue() != null && !e.getSettingValue().isBlank())
+                ? e.getSettingValue() : defaultValue;
+        });
+    }
+
+    public static String getTheme()    { return getSetting(THEME_KEY, "dark"); }
+    public static String getLanguage() { return getSetting(LANGUAGE_KEY, "en"); }
+    public static boolean getSidebarCollapsed() {
+        return Boolean.parseBoolean(getSetting(SIDEBAR_COLLAPSED_KEY, "false"));
+    }
+
+    public static void setSidebarCollapsed(boolean collapsed) {
+        writeSetting(SIDEBAR_COLLAPSED_KEY, String.valueOf(collapsed));
+    }
 
     // ── Reads (delegate to existing AiConfigService) ───────────────────────────────────
 
