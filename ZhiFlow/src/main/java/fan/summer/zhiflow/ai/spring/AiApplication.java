@@ -16,6 +16,6 @@ import org.springframework.context.annotation.ComponentScan;
  * class never starts an HTTP server.
  */
 @SpringBootApplication
-@ComponentScan(basePackages = "fan.summer.zhiflow.ai.spring")
+@ComponentScan(basePackages = "fan.summer.zhiflow")
 public class AiApplication {
 }

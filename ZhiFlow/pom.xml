@@ -189,11 +189,16 @@
             <artifactId>playwright</artifactId>
         </dependency>
 
-        <!-- Spring Boot (embedded, non-web): DI + auto-config backbone for the AI context.
-             NO spring-boot-starter-web — the context is WebApplicationType.NONE. -->
+        <!-- Spring Boot (embedded): DI + auto-config backbone for the AI context. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- Spring Boot web (embedded Tomcat) for Phase 1 headless server -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
         <!-- Spring AI 2.0 — manual @Bean configuration (no starter-model auto-config).
@@ -333,10 +338,30 @@
                 </executions>
             </plugin>
 
-            <!-- Maven Compiler Plugin (version + config inherited from parent pluginManagement) -->
+            <!-- Maven Compiler Plugin (version inherited from parent pluginManagement).
+                 Adds jdk.jsobject to the module path: javafx-web's module-info requires it
+                 (for netscape.javascript.JSObject used by RichTextEditor), but it is not
+                 resolved by default. Phase 1 headless cut-over (Task 16) deletes JavaFX,
+                 at which point this add-modules becomes a harmless no-op. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>${maven.compiler.source}</source>
+                    <target>${maven.compiler.target}</target>
+                    <encoding>UTF-8</encoding>
+                    <compilerArgs>
+                        <arg>--add-modules</arg>
+                        <arg>jdk.jsobject</arg>
+                    </compilerArgs>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
             </plugin>
 
             <!-- Surefire: run JUnit 5 tests (version inherited) -->

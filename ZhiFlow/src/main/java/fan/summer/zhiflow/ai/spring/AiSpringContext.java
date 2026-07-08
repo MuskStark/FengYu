@@ -52,6 +52,44 @@ public final class AiSpringContext {
         log.info("AI Spring context ready");
     }
 
+    /**
+     * Starts the Spring context in SERVLET mode (embedded Tomcat) bound to loopback on the
+     * given port. Used by the Phase 1 headless entry point ({@code HeadlessLauncher}).
+     * Idempotent — a second call while already active is a no-op.
+     *
+     * @param port the port to bind (0 = pick a free port and print {@code ZHIFLOW_PORT=<n>}
+     *             to stdout for the Tauri sidecar to read)
+     */
+    public static synchronized void startWeb(int port) {
+        if (context != null && context.isActive()) {
+            log.debug("AI Spring context already started");
+            return;
+        }
+        log.info("Starting headless AI Spring context (SERVLET, loopback, port={})", port);
+        System.setProperty("server.port", String.valueOf(port));
+        System.setProperty("server.address", "127.0.0.1"); // loopback only — never 0.0.0.0
+        context = new SpringApplicationBuilder(AiApplication.class)
+            .web(WebApplicationType.SERVLET)
+            .headless(true)
+            .registerShutdownHook(false)   // we close() manually
+            .logStartupInfo(true)
+            .run();
+        // If port was 0, Tomcat picked a free port — read it back and print for the sidecar.
+        if (port == 0) {
+            try {
+                org.springframework.boot.web.server.WebServer ws =
+                    context.getBean(org.springframework.boot.web.server.servlet.context.ServletWebServerApplicationContext.class)
+                        .getWebServer();
+                int actualPort = ws.getPort();
+                System.out.println("ZHIFLOW_PORT=" + actualPort);
+                System.out.flush();
+            } catch (Exception e) {
+                log.warn("Could not resolve actual server port: {}", e.getMessage());
+            }
+        }
+        log.info("Headless AI Spring context ready");
+    }
+
     /** @return the live context, or throws if {@link #start()} was not called. */
     public static ConfigurableApplicationContext getContext() {
         ConfigurableApplicationContext ctx = context;
