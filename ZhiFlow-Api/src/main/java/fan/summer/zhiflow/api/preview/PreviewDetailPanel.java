@@ -1,5 +1,6 @@
 package fan.summer.zhiflow.api.preview;
 
+import fan.summer.zhiflow.api.IconStyle;
 import fan.summer.zhiflow.api.MdiIconUtil;
 import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.ToolCategory;
@@ -154,11 +155,10 @@ class PreviewDetailPanel extends VBox {
     }
 
     private void fillData(ZhiFlowPlugin p) {
-        Color color = p.getIconStyle().getColor();
+        IconStyle style = p.getIconStyle();
+        Color color = Color.rgb(style.getRed(), style.getGreen(), style.getBlue());
         String fillStyle = String.format("-fx-fill: rgba(%d,%d,%d,1.0);",
-                (int) (color.getRed() * 255),
-                (int) (color.getGreen() * 255),
-                (int) (color.getBlue() * 255));
+                style.getRed(), style.getGreen(), style.getBlue());
 
         Text newIcon = MdiIconUtil.createIcon(p.getMdiIcon(), 50);
         newIcon.setStyle(fillStyle);

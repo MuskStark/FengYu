@@ -1,5 +1,6 @@
 package fan.summer.zhiflow.api.preview;
 
+import fan.summer.zhiflow.api.IconStyle;
 import fan.summer.zhiflow.api.MdiIconUtil;
 import fan.summer.zhiflow.api.ZhiFlowPlugin;
 import fan.summer.zhiflow.api.i18n.I18n;
@@ -34,11 +35,10 @@ class PreviewToolCard extends StackPane {
         card.setPadding(new Insets(16, 14, 14, 14));
 
         // Icon
-        Color iconColor = plugin.getIconStyle().getColor();
+        IconStyle iconStyle = plugin.getIconStyle();
+        Color iconColor = Color.rgb(iconStyle.getRed(), iconStyle.getGreen(), iconStyle.getBlue());
         String fillStyle = String.format("-fx-fill: rgba(%d,%d,%d,1.0);",
-                (int) (iconColor.getRed() * 255),
-                (int) (iconColor.getGreen() * 255),
-                (int) (iconColor.getBlue() * 255));
+                iconStyle.getRed(), iconStyle.getGreen(), iconStyle.getBlue());
 
         Text iconText = MdiIconUtil.createIcon(plugin.getMdiIcon(), 45);
         iconText.setStyle(fillStyle);

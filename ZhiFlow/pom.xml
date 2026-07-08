@@ -78,67 +78,8 @@
             <version>${revision}</version>
         </dependency>
 
-        <!-- JavaFX: the main app is the runtime provider, so compile scope to bundle in fat-JAR -->
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-graphics</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-controls</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-web</artifactId>
-        </dependency>
-
-        <!-- JavaFX platform-specific native libraries: bundle all three platforms so the
-             fat JAR can run on macOS, Windows, and Linux regardless of build host -->
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-graphics</artifactId>
-            <classifier>win</classifier>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-graphics</artifactId>
-            <classifier>mac</classifier>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-graphics</artifactId>
-            <classifier>linux</classifier>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-controls</artifactId>
-            <classifier>win</classifier>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-controls</artifactId>
-            <classifier>mac</classifier>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-controls</artifactId>
-            <classifier>linux</classifier>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-web</artifactId>
-            <classifier>win</classifier>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-web</artifactId>
-            <classifier>mac</classifier>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-web</artifactId>
-            <classifier>linux</classifier>
-        </dependency>
+        <!-- JavaFX removed in 4.0.0 Phase 1 headless cutover: the UI is now Vue + Tauri and the
+             backend is a headless Spring Boot web server. No javafx.* code remains. -->
 
         <!-- Lombok -->
         <dependency>
@@ -354,7 +295,7 @@
                             <transformers>
                                 <transformer
                                         implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>fan.summer.zhiflow.Launcher</mainClass>
+                                    <mainClass>fan.summer.zhiflow.HeadlessLauncher</mainClass>
                                     <manifestEntries>
                                         <Implementation-Version>${project.version}</Implementation-Version>
                                     </manifestEntries>
@@ -382,11 +323,7 @@
                 </executions>
             </plugin>
 
-            <!-- Maven Compiler Plugin (version inherited from parent pluginManagement).
-                 Adds jdk.jsobject to the module path: javafx-web's module-info requires it
-                 (for netscape.javascript.JSObject used by RichTextEditor), but it is not
-                 resolved by default. Phase 1 headless cut-over (Task 16) deletes JavaFX,
-                 at which point this add-modules becomes a harmless no-op. -->
+            <!-- Maven Compiler Plugin (version inherited from parent pluginManagement). -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -398,10 +335,6 @@
                          @PathVariable / @RequestParam by name via reflection (this config block
                          overrides the Spring Boot parent default that would otherwise add it). -->
                     <parameters>true</parameters>
-                    <compilerArgs>
-                        <arg>--add-modules</arg>
-                        <arg>jdk.jsobject</arg>
-                    </compilerArgs>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>org.projectlombok</groupId>
