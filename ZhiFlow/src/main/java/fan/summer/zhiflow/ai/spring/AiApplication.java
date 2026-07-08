@@ -4,16 +4,12 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.ComponentScan;
 
 /**
- * Minimal Spring Boot application for the embedded (non-web) AI context.
+ * Spring Boot application for the headless ZhiFlow backend.
  *
- * <p>Scans only the {@code fan.summer.zhiflow.ai.spring} package so the context stays
- * small: just the {@code ChatModel} {@code @Bean}s and their config. It does
- * <strong>not</strong> scan the legacy {@code fan.summer.zhiflow.ai.service} / {@code tools}
- * code (those classes are not Spring-managed; they are constructed imperatively
- * by {@code ZhiFlowApp} and the settings UI, exactly as before).
- *
- * <p>{@code WebApplicationType.NONE} is forced by {@link AiSpringContext} — this
- * class never starts an HTTP server.
+ * <p>Scans {@code fan.summer.zhiflow}, so it picks up the web controllers, the plugin registry
+ * service, and the AI {@code ChatModel} {@code @Bean}s. With {@code spring-boot-starter-web} on the
+ * classpath it boots an embedded servlet web server (Tomcat); {@link fan.summer.zhiflow.HeadlessLauncher}
+ * binds it to loopback via {@code --server.address}/{@code --server.port} args.
  */
 @SpringBootApplication
 @ComponentScan(basePackages = "fan.summer.zhiflow")
