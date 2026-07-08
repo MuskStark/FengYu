@@ -9,8 +9,6 @@ import fan.summer.zhiflow.api.ai.AiServiceException;
 import fan.summer.zhiflow.api.ai.AiStreamCallback;
 import fan.summer.zhiflow.api.ai.AiToolCall;
 import fan.summer.zhiflow.api.ai.ChatBackend;
-import fan.summer.zhiflow.ui.setting.ZhiFlowSettingUi;
-import javafx.application.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -143,8 +141,8 @@ public final class SpringAiCloudBackend implements ChatBackend {
 
     @Override
     public void chat(List<AiChatMessage> history, AiStreamCallback callback) throws AiServiceException {
-        chat(history, ZhiFlowSettingUi.getAiTemperature(), ZhiFlowSettingUi.getAiTopP(),
-             ZhiFlowSettingUi.getAiMaxTokens(), callback);
+        chat(history, AiConfigServiceHeadless.getAiTemperature(), AiConfigServiceHeadless.getAiTopP(),
+             AiConfigServiceHeadless.getAiMaxTokens(), callback);
     }
 
     @Override
@@ -158,7 +156,7 @@ public final class SpringAiCloudBackend implements ChatBackend {
                 runToolLoop(history, callback);
             } catch (Exception e) {
                 log.error("{} chat failed", provider, e);
-                Platform.runLater(() -> callback.onError(e));
+                callback.onError(e);
             } finally {
                 generating.set(false);
             }
@@ -193,8 +191,7 @@ public final class SpringAiCloudBackend implements ChatBackend {
                 String delta = am.getText();
                 if (delta != null && !delta.isEmpty()) {
                     accumulated.append(delta);
-                    final String token = delta;
-                    Platform.runLater(() -> callback.onToken(token));
+                    callback.onToken(delta);
                 }
             }).blockLast();
 
@@ -205,13 +202,13 @@ public final class SpringAiCloudBackend implements ChatBackend {
                 String finalText = accumulated.toString();
                 if (!finalText.isBlank()) history.add(AiChatMessage.assistant(finalText));
                 int tokens = Math.max(1, finalText.length() / 4);
-                Platform.runLater(() -> callback.onComplete(finalText, tokens, 0));
+                callback.onComplete(finalText, tokens, 0);
                 return;
             }
             if (round == MAX_TOOL_ROUNDS) {
                 String warn = "Reached MAX_TOOL_ROUNDS (" + MAX_TOOL_ROUNDS + ")";
                 log.warn(warn);
-                Platform.runLater(() -> callback.onComplete(warn, 0, 0));
+                callback.onComplete(warn, 0, 0);
                 return;
             }
             history.add(AiChatMessage.assistantWithTools(accumulated.toString(), calls));
@@ -220,7 +217,7 @@ public final class SpringAiCloudBackend implements ChatBackend {
     }
 
     private static String currentSystemPrompt() {
-        try { return ZhiFlowSettingUi.getAiSystemPrompt(); }
+        try { return AiConfigServiceHeadless.getAiSystemPrompt(); }
         catch (Throwable t) { return null; }
     }
 

@@ -2,7 +2,6 @@ package fan.summer.zhiflow.ai;
 
 import fan.summer.zhiflow.api.ai.*;
 import fan.summer.zhiflow.ai.util.JsonHelper;
-import javafx.application.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -75,18 +74,18 @@ public class ToolExecutor {
      * @param toolCalls list of tool calls to execute in order
      * @param history   the chat message list to which tool-result messages will be appended
      * @param callback  the callback to notify of tool-call start and result events;
-     *                  callbacks are invoked on the JavaFX Application Thread
+     *                  callbacks are invoked directly on the calling (virtual) thread
      * @see AiStreamCallback
      */
     public static void executeAndFeed(List<AiToolCall> toolCalls,
                                       List<AiChatMessage> history,
                                       AiStreamCallback callback) {
         for (AiToolCall tc : toolCalls) {
-            Platform.runLater(() -> callback.onToolCall(tc));
+            callback.onToolCall(tc);
             log.info("Executing tool: name={}, args={}", tc.name(), tc.arguments());
             AiToolResult result = execute(tc.name(), tc.arguments());
             log.info("Tool result: success={}", result.success());
-            Platform.runLater(() -> callback.onToolResult(tc.id(), result));
+            callback.onToolResult(tc.id(), result);
             history.add(AiChatMessage.toolResult(tc.id(), tc.name(), result.output()));
         }
     }
