@@ -1,0 +1,60 @@
+import { defineConfig, type Plugin } from 'vite'
+import vue from '@vitejs/plugin-vue'
+import { fileURLToPath, URL } from 'node:url'
+import { copyFileSync, mkdirSync, existsSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+const BACKEND = 'http://localhost:8080'
+
+/**
+ * Vue-sharing strategy (micro-frontend host — Task 11)
+ * --------------------------------------------------------------------
+ * Plugin UIs are separately-built ESM bundles that mark `vue` as
+ * external and resolve the bare `vue` specifier at runtime via the
+ * import map declared in index.html. To guarantee the shell and every
+ * plugin share ONE Vue instance (so reactivity/instanceof work across
+ * the boundary), the shell ALSO marks `vue` external and resolves it
+ * through the same import map. The map points at a vendored ESM build
+ * of Vue served from /vendor/vue.esm-browser.prod.js.
+ *
+ * This plugin copies that ESM build out of node_modules into public/
+ * so it is served in dev and copied into dist/ on build.
+ */
+function vendorVue(): Plugin {
+  return {
+    name: 'zhiflow-vendor-vue',
+    buildStart() {
+      const src = resolve(__dirname, 'node_modules/vue/dist/vue.esm-browser.prod.js')
+      const outDir = resolve(__dirname, 'public/vendor')
+      const dest = resolve(outDir, 'vue.esm-browser.prod.js')
+      if (existsSync(src)) {
+        mkdirSync(outDir, { recursive: true })
+        copyFileSync(src, dest)
+      }
+    },
+  }
+}
+
+export default defineConfig({
+  plugins: [vendorVue(), vue()],
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
+  server: {
+    port: 5173,
+    proxy: {
+      '/api': { target: BACKEND, changeOrigin: true },
+      '/plugin-ui': { target: BACKEND, changeOrigin: true },
+    },
+  },
+  build: {
+    outDir: 'dist',
+    target: 'es2022',
+    rollupOptions: {
+      // vue is provided by the runtime import map (shared with plugins)
+      external: ['vue'],
+    },
+  },
+})
