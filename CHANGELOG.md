@@ -4,6 +4,52 @@ All notable changes to ZhiFlow. Format based on [Keep a Changelog](https://keepa
 
 ---
 
+## [4.0.0-SNAPSHOT] — Phase 1: Vue + Tauri Walking Skeleton (in progress)
+
+**4.0.0** turns ZhiFlow from a JavaFX desktop app into a **web + desktop application**: a headless
+Spring Boot backend, a Vue 3.5 + TypeScript frontend (identical for browser and desktop), and a
+Tauri 2.0 desktop shell that sidecar-launches the Java backend. Phase 1 is a thin end-to-end slice
+through every layer, proving the pipe before porting tools wide.
+
+### ⚠️ Breaking Changes
+
+- **JavaFX is gone.** All JavaFX code and dependencies are deleted — `ZhiFlowApp`, the `ui/`
+  shell, all built-in tool UI classes, the v1 `PluginRegistry`/`PluginLoader`, and every
+  `org.openjfx:*` dependency. The running backend is headless (no window).
+- **New entry point:** `fan.summer.zhiflow.HeadlessLauncher` (was `fan.summer.Launcher`). It boots
+  a loopback Spring Boot web server: `java -jar ZhiFlow-4.0.0-SNAPSHOT.jar --port=<n> --token=<t>`.
+- **Plugin contract v2** (`ZhiFlowPluginV2`): `descriptor()` + `invoke(action, args)` (JSON-in /
+  JSON-out) + `aiTools()`. The old `createView()` → JavaFX `Node` contract is removed; UI is now a
+  separately-served micro-frontend ESM bundle (`PluginDescriptor.uiEntry`).
+- **`IconStyle` decoupled from JavaFX** — colours are RGB ints + `getColorHex()` (no
+  `javafx.scene.paint.Color`).
+
+### ✨ Added
+
+- **Headless backend** (`fan.summer.zhiflow.web.*`): `GET /api/health`, `GET /api/plugins`,
+  `POST /api/plugins/{id}/invoke`, `GET /plugin-ui/{id}/**` (serves MF bundles), `GET/PUT
+  /api/settings`, `POST /api/ai/chat` + `GET /api/ai/stream` (SSE: token / thinking / tool / done /
+  error). Loopback-only bind + per-launch `X-ZhiFlow-Token` auth (`?token=` for the SSE stream).
+- **`plugin-markdown`** — first official v2 plugin (reactor module): server-side commonmark render
+  via `invoke("render", {markdown})`, plus a Vue micro-frontend (split editor + live preview).
+- **`frontend/`** — Vue 3.5.39 + TS shell: sidebar (collapsible, categories), theme (dark/light via
+  `--sk-*` tokens ported from `zhiflow-common.css`), settings, AI chat (SSE + markdown + collapsible
+  thinking), ToolGrid, and a micro-frontend host that dynamically imports each plugin's `uiEntry`.
+  Vue is shared across shell + plugins via an import map.
+- **`desktop/`** — Tauri 2.0 shell: spawns the Java sidecar (`--port=0`), reads `ZHIFLOW_PORT` from
+  stdout, polls `/api/health`, injects the backend URL + token into the webview, kills the sidecar
+  on close. (Dev-mode; production packaging is Phase F-prod.)
+
+### 🐛 Fixed (headless fat-jar boot)
+
+- Aligned `logback-classic`/`logback-core` versions (a split pair crashed on
+  `JaninoEventEvaluatorBase` at first logger init).
+- Added shade `AppendingTransformer` for `AutoConfiguration.imports` — Spring Boot 4 splits
+  web/Tomcat autoconfig across module jars; without merging, embedded Tomcat silently never started.
+- Emit `-parameters` so Spring MVC resolves `@PathVariable`/`@RequestParam` names.
+
+---
+
 ## [3.2.0] — IDEA 2025 New UI Redesign
 
 **v3.2.0** — 2026-06-30

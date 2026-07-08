@@ -2,12 +2,20 @@
 
 ![ZhiFlow](https://img.shields.io/badge/ZhiFlow-Desktop%20Toolbox-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue) ![Maven](https://img.shields.io/badge/Maven-3.6+-red) ![Version](https://img.shields.io/badge/version-3.2.0-blue)
 
-**ZhiFlow** is a *modular desktop toolbox* built with JavaFX. It bundles a growing collection of
-utility tools — Excel splitting, PDF processing, email, an AI chat assistant, developer helpers,
-and more — into a single application with a modern glassmorphism UI and a plugin-based architecture.
+**ZhiFlow** is a *modular toolbox* — a growing collection of utility tools (Excel splitting, PDF
+processing, email, an AI chat assistant, developer helpers, and more) with a plugin-based
+architecture and automatic service discovery.
 
-A lightweight, fast, and customizable desktop utility suite with automatic service discovery, making
-it easy to add new functionality either as built-in tools or as drop-in plugins.
+> ### 🚧 4.0.0 Preview — web + desktop
+> This branch (`4.0.0-ZhiFlow`) re-architects ZhiFlow from a JavaFX desktop app into a **web +
+> desktop application**: a **headless Spring Boot backend** (loopback web server, no window), a
+> **Vue 3.5 + TypeScript** frontend (identical for browser and desktop), and a **Tauri 2.0**
+> desktop shell that sidecar-launches the Java backend. Built-in tools become official plugins that
+> expose a JSON `invoke` backend plus a micro-frontend UI bundle. JavaFX has been removed.
+> See [`CHANGELOG.md`](CHANGELOG.md) and [`CLAUDE.md`](CLAUDE.md) for the current state.
+>
+> Run the backend: `java -jar ZhiFlow/target/ZhiFlow-4.0.0-SNAPSHOT.jar --port=0 --token=<t>`
+> · frontend: `cd frontend && npm run dev` · smoke test: `scripts/e2e-smoke.sh`.
 
 ---
 

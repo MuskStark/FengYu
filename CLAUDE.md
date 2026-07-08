@@ -2,36 +2,72 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **4.0.0 (this branch) is a headless web + desktop app — JavaFX has been deleted.** The Java
+> process is a loopback Spring Boot web server (`HeadlessLauncher`); the UI is a Vue 3.5 + TS
+> SPA (`frontend/`), served in the browser or wrapped by a Tauri 2.0 desktop shell (`desktop/`).
+> Much of the JavaFX-era detail below (theming CSS, layout pitfalls, `StepWizard`, `createView()`)
+> is **historical** — retained for the still-JavaFX `ZhiFlow-Api` preview classes but no longer
+> describes the running app. See **4.0.0 Headless Architecture** near the top.
+
+## 4.0.0 Headless Architecture (Phase 1)
+
+The reactor is a **parent POM** (`pom.xml`) with modules `ZhiFlow-Api`, `plugin-markdown`,
+`ZhiFlow` (each has `<parent>`; version via `${revision}`). Plus non-Maven top-level dirs:
+`frontend/` (Vue) and `desktop/` (Tauri).
+
+- **Backend** — `fan.summer.zhiflow.HeadlessLauncher` boots `AiSpringContext.startWeb(port)`
+  (embedded Tomcat, `127.0.0.1` only). CLI: `--port=<n>` (0 = free port, prints `ZHIFLOW_PORT=<n>`
+  to stdout for the sidecar), `--token=<t>` (per-launch auth, sent as `X-ZhiFlow-Token`; the SSE
+  stream accepts `?token=`). Controllers in `fan.summer.zhiflow.web.*`; `PluginRegistryService`
+  collects `ZhiFlowPluginV2` beans and registers their `aiTools()`.
+- **Endpoints** — `/api/health`, `/api/plugins`, `/api/plugins/{id}/invoke`, `/plugin-ui/{id}/**`,
+  `/api/settings` (GET/PUT), `/api/ai/chat` (POST → `{streamId}`), `/api/ai/stream` (SSE: events
+  `token`/`thinking`/`tool`/`done`/`error`). AI chat is a permanent core built-in, never a plugin.
+- **Plugin v2** — `ZhiFlowPluginV2` (in `ZhiFlow-Api`): `descriptor()` + `invoke(action, args)` +
+  `aiTools()`. UI ships as an ESM micro-frontend at `PluginDescriptor.uiEntry`, served from the
+  plugin module's `src/main/resources/ui/{id}/`.
+- **Frontend** — `frontend/` Vue 3.5.39 + TS + Pinia + vue-router. `--sk-*` tokens ported from
+  `zhiflow-common.css`; Vue shared with plugin bundles via an import map. MF host dynamically
+  `import()`s `uiEntry` and calls the bundle's `default.mount(el, ctx)`.
+- **Desktop** — `desktop/` Tauri 2.0; `src-tauri/src/main.rs` spawns the jar sidecar, waits on
+  health, injects `window.__ZHIFLOW_TOKEN__`/`__ZHIFLOW_BACKEND__`. Needs Rust + `tauri-cli`.
+
 ## Build & Run
 
-All modules have **standalone POMs** with no parent dependency — each can be built independently.
-
-**No system Maven installed.** All Maven operations (compile, package, install, clean) must go through **IntelliJ IDEA's built-in Maven** — either the Maven tool window (right sidebar) or the IDEA MCP tools (`mcp__idea__build_project`, `mcp__idea__execute_terminal_command`). Never run `mvn` in a regular shell — it will fail.
+**No system Maven required in-editor.** In-IDE, use IntelliJ's Maven (tool window or MCP
+`mcp__idea__build_project`). From a shell you may use IDEA's bundled Maven binary directly.
 
 ```bash
-# Build and install the API module (required first — other modules depend on it)
-mvn install -f ZhiFlow-Api/pom.xml -DskipTests
+# Reactor order: API → plugin-markdown → app (API must be installed first)
+mvn -f ZhiFlow-Api/pom.xml install -DskipTests
+mvn -f plugin-markdown/pom.xml install -DskipTests
+mvn -f ZhiFlow/pom.xml clean package -DskipTests
 
-# Build the main app
-mvn clean package -f ZhiFlow/pom.xml -DskipTests
+# Rebuild a plugin's micro-frontend bundle (emits into resources/ui/markdown/)
+cd plugin-markdown/ui-src && npm install && npm run build
 
-# Run the application
-java -jar ZhiFlow/target/ZhiFlow-3.0.0.jar
+# Run the headless backend (loopback web server, no window)
+java -jar ZhiFlow/target/ZhiFlow-4.0.0-SNAPSHOT.jar --port=0 --token=<t>
+
+# Run the Vue frontend (dev; proxies /api and /plugin-ui to localhost:8080)
+cd frontend && npm install && npm run dev
+
+# End-to-end smoke test (boots the jar, probes every endpoint)
+scripts/e2e-smoke.sh
 ```
 
-To build all modules from the repo root (root POM is a simple aggregator):
-```bash
-mvn install -f ZhiFlow-Api/pom.xml -DskipTests && mvn clean package -f ZhiFlow/pom.xml -DskipTests
-```
-
-On Windows, the `windows-exe` Maven profile is auto-activated and produces `ZhiFlow.exe` via Launch4j. GitHub Actions handles multi-platform builds — local Maven is not required for releases.
+GitHub Actions handles multi-platform builds. Tauri desktop packaging (signed installers, bundled
+JRE) is a later phase (Phase F-prod).
 
 ## Module Structure
 
-| Module | Purpose |
+| Module / dir | Purpose |
 |--------|---------|
-| `ZhiFlow-Api` | Shared plugin interface + plugin context isolation + AI service contract + reusable UI components (`ZhiFlowPlugin`, `PluginContext`, `AiService`/`AiTool`, `StepWizard`) |
-| `ZhiFlow` | Main JavaFX application — UI shell, plugin loading, built-in tools |
+| `ZhiFlow-Api` | Plugin v2 contract (`ZhiFlowPluginV2`, `PluginDescriptor`), AI contract (`AiService`/`AiTool`), `IconStyle`/`ToolCategory`. (Still contains JavaFX-era v1 `ZhiFlowPlugin` + preview/theme/component classes, unused by the headless runtime.) |
+| `plugin-markdown` | First official v2 plugin: backend `@Component` (commonmark render) + Vue micro-frontend (`ui-src/` → `resources/ui/markdown/index.js`) |
+| `ZhiFlow` | Headless Spring Boot backend — REST/SSE controllers, `HeadlessLauncher`, `PluginRegistryService`, AI backends, H2/MyBatis |
+| `frontend/` | Vue 3.5 + TS SPA (browser + Tauri) |
+| `desktop/` | Tauri 2.0 desktop shell (Java sidecar) |
 
 Official plugins live in a separate repository: [MuskStark/ZhiFlow-Plugin](https://github.com/MuskStark/ZhiFlow-Plugin). They are built independently and dropped into `.zhiflow/plugin/` as JARs at runtime. All plugins declare `ZhiFlow-Api` as `provided` scope. The main app provides it at runtime via the fat JAR.
 
