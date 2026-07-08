@@ -14,7 +14,7 @@ architecture and automatic service discovery.
 > expose a JSON `invoke` backend plus a micro-frontend UI bundle. JavaFX has been removed.
 > See [`CHANGELOG.md`](CHANGELOG.md) and [`CLAUDE.md`](CLAUDE.md) for the current state.
 >
-> Run the backend: `java -jar ZhiFlow/target/ZhiFlow-4.0.0-SNAPSHOT.jar --port=0 --token=<t>`
+> Run the backend: `java -jar ZhiFlow/target/ZhiFlow-4.0.0-SNAPSHOT.jar --token=<t>` (binds port 24056 by default)
 > · frontend: `cd frontend && npm run dev` · smoke test: `scripts/e2e-smoke.sh`.
 
 ---

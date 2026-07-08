@@ -4,7 +4,10 @@ import { fileURLToPath, URL } from 'node:url'
 import { copyFileSync, mkdirSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-const BACKEND = 'http://localhost:8080'
+// The backend binds a fixed loopback port by default (HeadlessLauncher.DEFAULT_PORT = 24056),
+// with a fallback to an OS-assigned port only if 24056 is taken — so the dev proxy targets the
+// fixed port. If the backend fell back to a random port, restart it to free 24056.
+const BACKEND = 'http://localhost:24056'
 
 /**
  * Vue-sharing strategy (micro-frontend host — Task 11)

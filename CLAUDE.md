@@ -16,10 +16,11 @@ The reactor is a **parent POM** (`pom.xml`) with modules `ZhiFlow-Api`, `plugin-
 `frontend/` (Vue) and `desktop/` (Tauri).
 
 - **Backend** — `fan.summer.zhiflow.HeadlessLauncher` boots `AiSpringContext.startWeb(port)`
-  (embedded Tomcat, `127.0.0.1` only). CLI: `--port=<n>` (0 = free port, prints `ZHIFLOW_PORT=<n>`
-  to stdout for the sidecar), `--token=<t>` (per-launch auth, sent as `X-ZhiFlow-Token`; the SSE
-  stream accepts `?token=`). Controllers in `fan.summer.zhiflow.web.*`; `PluginRegistryService`
-  collects `ZhiFlowPluginV2` beans and registers their `aiTools()`.
+  (embedded Tomcat, `127.0.0.1` only). CLI: `--port=<n>` (defaults to `24056`; `0` = free port,
+  prints `ZHIFLOW_PORT=<n>` to stdout for the sidecar; falls back to a free port if the fixed one
+  is taken), `--token=<t>` (per-launch auth, sent as `X-ZhiFlow-Token`; the SSE stream accepts
+  `?token=`). Controllers in `fan.summer.zhiflow.web.*`; `PluginRegistryService` collects
+  `ZhiFlowPluginV2` beans and registers their `aiTools()`.
 - **Endpoints** — `/api/health`, `/api/plugins`, `/api/plugins/{id}/invoke`, `/plugin-ui/{id}/**`,
   `/api/settings` (GET/PUT), `/api/ai/chat` (POST → `{streamId}`), `/api/ai/stream` (SSE: events
   `token`/`thinking`/`tool`/`done`/`error`). AI chat is a permanent core built-in, never a plugin.
@@ -30,7 +31,7 @@ The reactor is a **parent POM** (`pom.xml`) with modules `ZhiFlow-Api`, `plugin-
   `zhiflow-common.css`; Vue shared with plugin bundles via an import map. MF host dynamically
   `import()`s `uiEntry` and calls the bundle's `default.mount(el, ctx)`.
 - **Desktop** — `desktop/` Tauri 2.0; `src-tauri/src/main.rs` spawns the jar sidecar, waits on
-  health, injects `window.__ZHIFLOW_TOKEN__`/`__ZHIFLOW_BACKEND__`. Needs Rust + `tauri-cli`.
+  health, injects `window.__ZHIFLOW_TOKEN__`/`__ZHIFLOW_API_BASE__`. Needs Rust + `tauri-cli`.
 
 ## Build & Run
 
@@ -46,10 +47,10 @@ mvn -f ZhiFlow/pom.xml clean package -DskipTests
 # Rebuild a plugin's micro-frontend bundle (emits into resources/ui/markdown/)
 cd plugin-markdown/ui-src && npm install && npm run build
 
-# Run the headless backend (loopback web server, no window)
-java -jar ZhiFlow/target/ZhiFlow-4.0.0-SNAPSHOT.jar --port=0 --token=<t>
+# Run the headless backend (loopback web server, no window; binds 24056 by default)
+java -jar ZhiFlow/target/ZhiFlow-4.0.0-SNAPSHOT.jar --token=<t>
 
-# Run the Vue frontend (dev; proxies /api and /plugin-ui to localhost:8080)
+# Run the Vue frontend (dev; proxies /api and /plugin-ui to localhost:24056)
 cd frontend && npm install && npm run dev
 
 # End-to-end smoke test (boots the jar, probes every endpoint)

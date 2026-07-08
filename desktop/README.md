@@ -1,9 +1,9 @@
 # ZhiFlow Desktop (Tauri 2.0) — Phase 1 dev
 
 The desktop shell wraps the identical Vue frontend in a native window and sidecar-launches the
-Java backend (`fan.summer.zhiflow.HeadlessLauncher`), reading the chosen loopback port from the
+Java backend (`fan.summer.zhiflow.HeadlessLauncher`), reading the bound loopback port from the
 backend's stdout (`ZHIFLOW_PORT=<n>`), polling `/api/health`, then injecting the backend URL +
-per-launch token into the webview via `window.__ZHIFLOW_TOKEN__` / `window.__ZHIFLOW_BACKEND__`.
+per-launch token into the webview via `window.__ZHIFLOW_TOKEN__` / `window.__ZHIFLOW_API_BASE__`.
 
 ## Prerequisites (not installed in this repo's CI/dev image yet)
 
@@ -25,8 +25,10 @@ per-launch token into the webview via `window.__ZHIFLOW_TOKEN__` / `window.__ZHI
 
 ## Lifecycle
 
-- On launch: spawn `java ... --port=0 --token=<generated>` → parse `ZHIFLOW_PORT` → poll
-  `/api/health` (30s timeout, fatal on failure) → inject token/URL → load webview.
+- On launch: spawn `java ... --port=24056 --token=<generated>` → parse `ZHIFLOW_PORT` → poll
+  `/api/health` (30s timeout, fatal on failure) → inject token/URL → load webview. The backend
+  tries the fixed port `24056` first and falls back to an OS-assigned port if it is taken; the
+  actual port is always read back from `ZHIFLOW_PORT`.
 - On window close: the sidecar Java process is killed.
 
 ## Out of scope (Phase F-prod)

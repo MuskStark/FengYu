@@ -6,8 +6,9 @@ import org.springframework.stereotype.Component;
 
 /**
  * Prints {@code ZHIFLOW_PORT=<actual>} to stdout once the embedded web server is up, so the Tauri
- * sidecar can read the chosen port (needed when launched with {@code --server.port=0}). Printed
- * unconditionally — a fixed port is echoed too, which the sidecar reads the same way.
+ * sidecar can read the bound port. Printed unconditionally — the backend defaults to a fixed port
+ * ({@code HeadlessLauncher.DEFAULT_PORT}) but falls back to {@code --server.port=0} if it is taken,
+ * so the desktop shell always needs to read the actual port from this line.
  */
 @Component
 public class PortAnnouncer implements ApplicationListener<WebServerInitializedEvent> {
