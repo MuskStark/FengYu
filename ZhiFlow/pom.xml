@@ -233,6 +233,14 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- @DataJpaTest (Spring Boot 4.x): the slice moved into its own module
+             org.springframework.boot.data.jpa.test.autoconfigure. Version managed by BOM. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-data-jpa-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <profiles>
