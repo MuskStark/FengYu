@@ -123,17 +123,31 @@ fn main() {
         std::process::exit(1);
     }
 
+    // Injected before any page script runs. The frontend reads these globals
+    // (see frontend/src/api/config.ts): __ZHIFLOW_API_BASE__ (absolute backend URL, since the
+    // sidecar port is random and the Vite dev proxy can't target it) and __ZHIFLOW_TOKEN__.
     let init_script = format!(
-        "window.__ZHIFLOW_TOKEN__ = '{token}'; window.__ZHIFLOW_PORT__ = {port}; window.__ZHIFLOW_BACKEND__ = 'http://127.0.0.1:{port}';"
+        "window.__ZHIFLOW_TOKEN__ = '{token}'; window.__ZHIFLOW_PORT__ = {port}; \
+         window.__ZHIFLOW_API_BASE__ = 'http://127.0.0.1:{port}';"
     );
 
     tauri::Builder::default()
         .manage(Sidecar(Mutex::new(Some(child))))
         .setup(move |app| {
-            // Inject the backend URL + token into every window before the frontend loads.
-            for (_, window) in app.webview_windows() {
-                let _ = window.eval(&init_script);
-            }
+            // Build the window programmatically so the init script runs BEFORE page load
+            // (a declarative window + window.eval() in setup runs too late — the SPA has
+            // already fired its first API calls).
+            tauri::WebviewWindowBuilder::new(
+                app,
+                "main",
+                tauri::WebviewUrl::default(),
+            )
+            .title("ZhiFlow")
+            .inner_size(1280.0, 820.0)
+            .min_inner_size(960.0, 640.0)
+            .resizable(true)
+            .initialization_script(&init_script)
+            .build()?;
             Ok(())
         })
         .on_window_event(|window, event| {
