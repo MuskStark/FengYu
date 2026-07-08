@@ -36,14 +36,14 @@ This spec covers **only Phase 1: a walking skeleton** — a thin end-to-end slic
 |---|---|---|
 | A | Backend → Spring Boot web server | minimal HTTP + one SSE stream |
 | B | Plugin system v2 (Spring Boot 4 compatible) | loader skeleton, compile-time bundling only |
-| C | Built-in tools → official plugins | exactly **one** dev tool extracted (Base64) |
+| C | Built-in tools → official plugins | exactly **one** tool extracted (Markdown editor) |
 | D | Vue 3.5 + TS main shell | sidebar / theme / settings / AI chat |
 | E | Micro-frontend host (dynamic ESM) | load + mount that one plugin's UI |
 | F | Tauri 2.0 desktop shell | dev-mode window + Java sidecar |
 
 Named future phases (out of scope here, recorded so they are not lost):
 
-- **Phase C-rest** — port Excel, PDF, email, email-archive, browser-automation, and remaining dev tools (hash/json/markdown/color) into official plugins.
+- **Phase C-rest** — port Excel, PDF, email, email-archive, browser-automation, and remaining dev/text tools (base64/hash/json/color) into official plugins.
 - **Phase B-hotload** — runtime marketplace override: download a newer plugin version into the user data dir and load it over the bundled version (dynamic classloading into the running Spring context).
 - **Phase G** — first-run deployment wizard: choose datasource (MySQL and other JDBC servers, or embedded H2/SQLite), write config, run schema init.
 - **Phase F-prod** — signed installers + per-platform bundled JRE via GitHub Actions.
@@ -145,14 +145,18 @@ Official plugins are Maven **modules in the main reactor**, compiled and bundled
 
 ### Scope
 
-Exactly **one** tool: **Base64** (`dev/Base64Plugin`). Chosen because its logic is pure and dependency-free — the focus of Phase 1 is proving the *pipe* (Java bean → REST → Vue MF host), not porting tool complexity.
+Exactly **one** tool: the **Markdown editor** (today `buildintool/text/MarkdownEditorPlugin`, a split-pane editor with live HTML preview). Chosen as the skeleton carrier because it exercises **both** Phase-1 paths meaningfully: a non-trivial MF UI (split editor + live preview) *and* the backend `invoke` path (server-side markdown→HTML render). Its dependencies are light, so the focus stays on proving the pipe (Java bean → REST → Vue MF host), not on tool complexity.
+
+### Today's implementation (porting reference)
+
+The current JavaFX plugin (`MarkdownEditorPlugin`, ~210 lines) renders markdown with Java-side regex (`mdToHtml`: headings, bold, italic, inline code, blockquote, list items) into a `WebView`, and re-themes the preview on every `ThemeService.onChange`. The v2 port replaces the WebView + per-theme stylesheet hack with a Vue preview that inherits `--sk-*` tokens, and moves rendering to the backend.
 
 ### Shape
 
-A new Maven module (e.g. `plugin-base64/`) in the reactor:
+A new Maven module (e.g. `plugin-markdown/`) in the reactor:
 
-- **Backend:** a `@Component` implementing v2 `ZhiFlowPlugin`. `invoke("encode", {text})` → `{"success":true,"summary":"...","result":"<base64>"}`; `invoke("decode", {text})` likewise. Follows the existing tool-return JSON contract (`success` / `summary` / payload).
-- **Frontend:** a tiny Vue micro-frontend bundle (its own Vite config, Vue marked `external`) — an input textarea, encode/decode toggle, output area. Built to `resources` and served by the backend at `/plugin-ui/base64/*`.
+- **Backend:** a `@Component` implementing v2 `ZhiFlowPlugin`. `invoke("render", {markdown})` → `{"success":true,"summary":"rendered N chars","html":"<...>"}`, following the existing tool-return JSON contract (`success` / `summary` / payload). Rendering moves server-side, upgrading the old regex `mdToHtml` to a real JVM markdown library (flexmark) for correctness; the frontend debounces `render` calls on each edit.
+- **Frontend:** a Vue micro-frontend bundle (its own Vite config, Vue marked `external`) — a split-pane: a `<textarea>`/code editor on the left, a live preview pane on the right that shows the backend-rendered HTML. Theme parity is automatic via inherited `--sk-*` tokens (no per-theme stylesheet). Built to `resources` and served by the backend at `/plugin-ui/markdown/*`.
 
 **AI chat is explicitly NOT extracted** — it remains a permanent main-project built-in (Component A′ `/api/ai/*`).
 
@@ -214,7 +218,7 @@ Vue is shared via an **import map**: the shell exposes its Vue instance; plugin 
 
 ### Phase 1 proof
 
-The one extracted Base64 plugin ships a tiny Vue MF bundle built by its own Vite config (Vue external), served by the backend from the plugin module's resources; the shell loads and mounts it. This validates the entire MF path end-to-end without any tool complexity.
+The one extracted Markdown plugin ships a Vue MF bundle built by its own Vite config (Vue external), served by the backend from the plugin module's resources; the shell loads and mounts it, and edits round-trip through `invoke("render", ...)`. This validates the entire MF path plus the backend `invoke` path end-to-end.
 
 ---
 
@@ -272,8 +276,8 @@ A working dev-mode Tauri window that sidecar-launches the jar and shows the Vue 
 ## 10. Definition of done (Phase 1)
 
 1. `java -jar ZhiFlow.jar --port=0` boots a headless Spring Boot server on loopback, no JavaFX window, prints its port.
-2. `/api/health`, `/api/plugins`, `/api/settings`, `/api/ai/*`, `/api/plugins/base64/invoke`, `/plugin-ui/base64/*` all respond correctly.
-3. The Base64 official plugin exists as a reactor Maven module, registers as a Spring bean, and appears in `/api/plugins`.
+2. `/api/health`, `/api/plugins`, `/api/settings`, `/api/ai/*`, `/api/plugins/markdown/invoke`, `/plugin-ui/markdown/*` all respond correctly.
+3. The Markdown official plugin exists as a reactor Maven module, registers as a Spring bean, and appears in `/api/plugins`.
 4. The Vue shell renders the sidebar / theme (dark + light) / settings / AI chat, adopting the `docs/ui-design/` tokens.
 5. AI chat streams tokens + collapsible thinking over SSE.
 6. Opening Base64 in the shell dynamically imports and mounts its micro-frontend, and encode/decode works against the backend.
