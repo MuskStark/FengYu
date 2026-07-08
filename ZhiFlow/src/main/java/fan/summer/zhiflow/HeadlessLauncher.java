@@ -16,9 +16,10 @@ import java.util.List;
  *
  * <p>Usage: {@code java -jar ZhiFlow.jar --port=<n> --token=<t>}
  * <ul>
- *   <li>{@code --port=<n>} — bind port; {@code 0} (default) picks a free port. The chosen port is
- *       printed as {@code ZHIFLOW_PORT=<n>} to stdout (by {@code PortAnnouncer}) for the Tauri
- *       sidecar to read.</li>
+ *   <li>{@code --port=<n>} — bind port; defaults to {@link #DEFAULT_PORT} ({@value DEFAULT_PORT}).
+ *       {@code 0} asks the OS for a free port. The chosen port is printed as
+ *       {@code ZHIFLOW_PORT=<n>} to stdout (by {@code PortAnnouncer}) for the Tauri sidecar to
+ *       read, so the desktop shell works whether the fixed port binds or falls back.</li>
  *   <li>{@code --token=<t>} — per-launch auth token; when set, every request must carry it as the
  *       {@code X-ZhiFlow-Token} header (or {@code ?token=} for the SSE stream). When blank, auth is
  *       disabled (browser-dev convenience).</li>
@@ -36,12 +37,15 @@ public final class HeadlessLauncher {
     /** System property the {@code TokenAuthFilter} reads. */
     public static final String TOKEN_PROPERTY = "zhiflow.auth.token";
 
+    /** Fixed loopback port the backend binds by default. Overridable via {@code --port=<n>}. */
+    public static final String DEFAULT_PORT = "24056";
+
     private HeadlessLauncher() {}
 
     public static void main(String[] args) {
         primeLogDirectory();
 
-        String port = "0";
+        String port = DEFAULT_PORT;
         String token = "";
         for (String a : args) {
             if (a.startsWith("--port=")) {
@@ -58,13 +62,37 @@ public final class HeadlessLauncher {
         LoggerBinder.bind(new Slf4jPluginLoggerBinder());
         DatabaseInit.init();
 
-        // Standard Spring Boot bootstrap — loopback SERVLET web server on the requested port.
-        List<String> springArgs = new ArrayList<>();
-        springArgs.add("--server.address=127.0.0.1");   // loopback only — never 0.0.0.0
+        // Standard Spring Boot bootstrap — loopback SERVLET web server. If the requested fixed port
+        // is taken, fall back to an OS-chosen free port (port=0) once; the desktop shell reads the
+        // actual port from stdout either way.
+        startWithFallback(port);
+        // main() returns; the embedded Tomcat's non-daemon threads keep the JVM alive.
+    }
+
+    /**
+     * Boots Spring Boot on the given port, retrying on {@code --server.port=0} if the requested port
+     * cannot be bound (e.g. already in use). {@code port=0} is never retried — the OS always picks a
+     * free port, so a failure there is a genuine error.
+     */
+    private static void startWithFallback(String port) {
+        List<String> baseArgs = new ArrayList<>();
+        try {
+            runSpring(baseArgs, port);
+        } catch (RuntimeException e) {
+            if ("0".equals(port)) {
+                throw e;   // OS-assigned port failed — nothing to fall back to.
+            }
+            System.err.println("WARN: could not bind port " + port + " (" + e.getMessage()
+                + "); retrying on an OS-assigned free port (--server.port=0).");
+            runSpring(baseArgs, "0");
+        }
+    }
+
+    private static void runSpring(List<String> baseArgs, String port) {
+        List<String> springArgs = new ArrayList<>(baseArgs);
         springArgs.add("--server.port=" + port);
         new SpringApplicationBuilder(AiApplication.class)
             .run(springArgs.toArray(new String[0]));
-        // main() returns; the embedded Tomcat's non-daemon threads keep the JVM alive.
     }
 
     private static void primeLogDirectory() {
