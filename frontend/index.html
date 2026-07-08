@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en" class="theme-dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ZhiFlow</title>
+
+    <!--
+      Vue sharing for micro-frontend plugins (Task 11).
+      Both the shell and every plugin bundle mark `vue` as external and
+      resolve the bare `vue` specifier through THIS import map, so there is
+      exactly one Vue instance across the whole app. The vendored ESM build
+      is copied into /vendor/ by the `vendorVue` Vite plugin (vite.config.ts).
+    -->
+    <script type="importmap">
+      {
+        "imports": {
+          "vue": "/vendor/vue.esm-browser.prod.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

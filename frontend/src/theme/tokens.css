@@ -1,0 +1,163 @@
+/* ================================================================
+   tokens.css — ZhiFlow 4.0.0 web shell theme tokens.
+   Ported 1:1 from ZhiFlow-Api/src/main/resources/css/zhiflow-common.css
+   (JavaFX -sk-* looked-up colors). Values are NOT redesigned.
+   The active theme is selected by toggling .theme-dark / .theme-light
+   on the <html> root (see stores/theme.ts + App.vue).
+   ================================================================ */
+
+.theme-dark {
+  --sk-bg: #1e1e1e;
+  --sk-bg-elevated: #2b2b2b;
+  --sk-bg-hover: #363636;
+  --sk-bg-selected: #393b40;
+  --sk-border: #3c3f41;
+  --sk-border-strong: #555555;
+  --sk-text: #d0d0d0;
+  --sk-text-secondary: #9aa0a6;
+  --sk-text-disabled: #6b6f73;
+  --sk-accent: #3574f0;
+  --sk-accent-soft: rgba(53, 116, 240, 0.18);
+  --sk-success: #5bb065;
+  --sk-warning: #f0a732;
+  --sk-danger: #f75464;
+  --sk-shadow: rgba(0, 0, 0, 0.45);
+  --sk-scrim: rgba(0, 0, 0, 0.5);
+  --sk-success-soft: rgba(91, 176, 101, 0.18);
+  --sk-warning-soft: rgba(240, 167, 50, 0.18);
+  --sk-danger-soft: rgba(247, 84, 100, 0.18);
+}
+
+.theme-light {
+  --sk-bg: #ffffff;
+  --sk-bg-elevated: #f7f8fa;
+  --sk-bg-hover: #ebecef;
+  --sk-bg-selected: #dfe1e5;
+  --sk-border: #dadce0;
+  --sk-border-strong: #c9cdd3;
+  --sk-text: #1e1e1e;
+  --sk-text-secondary: #5a5d60;
+  --sk-text-disabled: #a0a4a8;
+  --sk-accent: #3574f0;
+  --sk-accent-soft: rgba(53, 116, 240, 0.14);
+  --sk-success: #3c914a;
+  --sk-warning: #c2751c;
+  --sk-danger: #e53935;
+  --sk-shadow: rgba(15, 23, 42, 0.18);
+  --sk-scrim: rgba(15, 23, 42, 0.32);
+  --sk-success-soft: rgba(60, 145, 74, 0.14);
+  --sk-warning-soft: rgba(194, 117, 28, 0.14);
+  --sk-danger-soft: rgba(229, 57, 53, 0.14);
+}
+
+/* ── base ─────────────────────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'SF Pro Text', 'Inter', 'Segoe UI', 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
+  font-size: 13px;
+  background: var(--sk-bg);
+  color: var(--sk-text);
+}
+
+/* ── scrollbars (ported look) ─────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--sk-text-disabled);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--sk-text-secondary);
+}
+
+/* ── section titles ───────────────────────────────────────────── */
+.section-title {
+  color: var(--sk-text-secondary);
+  font-size: 11px;
+  font-weight: bold;
+}
+.section-header {
+  color: var(--sk-text);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+/* ── field ────────────────────────────────────────────────────── */
+.sk-field {
+  background: var(--sk-bg);
+  border: 1px solid var(--sk-border);
+  border-radius: 6px;
+  color: var(--sk-text);
+  font-size: 13px;
+  padding: 8px 12px;
+  outline: none;
+}
+.sk-field:focus {
+  border-color: var(--sk-accent);
+  background: var(--sk-bg-elevated);
+}
+
+/* ── buttons ──────────────────────────────────────────────────── */
+.sk-btn-primary {
+  background: var(--sk-accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 0;
+  padding: 8px 18px;
+  cursor: pointer;
+}
+.sk-btn-primary:hover {
+  filter: brightness(0.92);
+}
+.sk-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.sk-btn-secondary {
+  background: var(--sk-bg-hover);
+  border: 1px solid var(--sk-border);
+  color: var(--sk-text);
+  font-size: 13px;
+  border-radius: 6px;
+  padding: 8px 18px;
+  cursor: pointer;
+}
+.sk-btn-secondary:hover {
+  background: var(--sk-bg-selected);
+  border-color: var(--sk-border-strong);
+}
+
+/* ── surface / combo ──────────────────────────────────────────── */
+.sk-surface {
+  background: var(--sk-bg-elevated);
+}
+.sk-combo {
+  background: var(--sk-bg);
+  border: 1px solid var(--sk-border);
+  border-radius: 6px;
+  color: var(--sk-text);
+  font-size: 13px;
+  padding: 6px 10px;
+  outline: none;
+}
+.sk-combo:focus {
+  border-color: var(--sk-accent);
+}

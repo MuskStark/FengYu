@@ -1,0 +1,6 @@
+node_modules
+dist
+public/vendor
+.env
+*.local
+.DS_Store
