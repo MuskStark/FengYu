@@ -36,9 +36,9 @@ through every layer, proving the pipe before porting tools wide.
   `--sk-*` tokens ported from `zhiflow-common.css`), settings, AI chat (SSE + markdown + collapsible
   thinking), ToolGrid, and a micro-frontend host that dynamically imports each plugin's `uiEntry`.
   Vue is shared across shell + plugins via an import map.
-- **`desktop/`** — Tauri 2.0 shell: spawns the Java sidecar (`--port=0`), reads `ZHIFLOW_PORT` from
-  stdout, polls `/api/health`, injects the backend URL + token into the webview, kills the sidecar
-  on close. (Dev-mode; production packaging is Phase F-prod.)
+- **`desktop/`** — Tauri 2.0 shell: spawns the Java sidecar (`--port=24056`), reads `ZHIFLOW_PORT`
+  from stdout, polls `/api/health`, injects the backend URL + token into the webview, kills the
+  sidecar on close. (Dev-mode; production packaging is Phase F-prod.)
 
 ### 🐛 Fixed (headless fat-jar boot)
 

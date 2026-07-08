@@ -39,8 +39,9 @@ fn jar_path() -> std::path::PathBuf {
     std::path::PathBuf::from("binaries/ZhiFlow.jar")
 }
 
-/// Spawns the Java backend with `--port=0 --token=<t>`, reads the chosen port from its stdout
-/// (`ZHIFLOW_PORT=<n>`), and returns (child, port).
+/// Spawns the Java backend with `--port=24056 --token=<t>`, reads the bound port from its stdout
+/// (`ZHIFLOW_PORT=<n>`), and returns (child, port). The backend tries the fixed port first and
+/// falls back to an OS-assigned port if it is taken, so the actual port is always read back here.
 fn spawn_backend(token: &str) -> Result<(Child, u16), String> {
     let jar = jar_path();
     if !jar.exists() {
@@ -54,7 +55,7 @@ fn spawn_backend(token: &str) -> Result<(Child, u16), String> {
         .arg("-cp")
         .arg(jar.as_os_str())
         .arg("fan.summer.zhiflow.HeadlessLauncher")
-        .arg("--port=0")
+        .arg("--port=24056")
         .arg(format!("--token={}", token))
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -124,8 +125,9 @@ fn main() {
     }
 
     // Injected before any page script runs. The frontend reads these globals
-    // (see frontend/src/api/config.ts): __ZHIFLOW_API_BASE__ (absolute backend URL, since the
-    // sidecar port is random and the Vite dev proxy can't target it) and __ZHIFLOW_TOKEN__.
+    // (see frontend/src/api/config.ts): __ZHIFLOW_API_BASE__ (absolute backend URL — the backend
+    // defaults to a fixed port but may fall back to an OS-assigned one, so the actual port read
+    // back from stdout is used) and __ZHIFLOW_TOKEN__.
     let init_script = format!(
         "window.__ZHIFLOW_TOKEN__ = '{token}'; window.__ZHIFLOW_PORT__ = {port}; \
          window.__ZHIFLOW_API_BASE__ = 'http://127.0.0.1:{port}';"
