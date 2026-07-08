@@ -22,9 +22,10 @@ This spec covers **only Phase 1: a walking skeleton** — a thin end-to-end slic
 - Porting the other built-in tools (Excel/PDF/email/browser/other dev tools) — later phases.
 - Runtime marketplace download / plugin override / hot-reload — later phase.
 - Multi-datasource first-run wizard (MySQL/SQLite/H2 selection) — later phase (**Phase G**).
-- Deleting JavaFX — JavaFX stays in the tree, untouched and unbuilt, during Phase 1. Removed in a later phase once the skeleton is validated.
 - Production desktop packaging (signed installers, per-platform bundled JRE via CI) — later phase; Phase 1 targets a working dev-mode Tauri window.
 - Auth beyond a loopback bind + per-launch token.
+
+**Important:** Phase 1 **deletes all JavaFX code and dependencies** — no parallel JavaFX/Vue coexistence. After Phase 1, ZhiFlow is purely headless backend + Vue frontend.
 
 ---
 
@@ -43,11 +44,11 @@ This spec covers **only Phase 1: a walking skeleton** — a thin end-to-end slic
 
 Named future phases (out of scope here, recorded so they are not lost):
 
-- **Phase C-rest** — port Excel, PDF, email, email-archive, browser-automation, and remaining dev/text tools (base64/hash/json/color) into official plugins.
-- **Phase B-hotload** — runtime marketplace override: download a newer plugin version into the user data dir and load it over the bundled version (dynamic classloading into the running Spring context).
-- **Phase G** — first-run deployment wizard: choose datasource (MySQL and other JDBC servers, or embedded H2/SQLite), write config, run schema init.
-- **Phase F-prod** — signed installers + per-platform bundled JRE via GitHub Actions.
-- **Phase X-delete** — remove JavaFX from the tree.
+- **Phase 2** — port remaining built-in tools (Excel, PDF, email, email-archive, browser-automation, dev tools: base64/hash/json/color) into official plugins following the Markdown pattern.
+- **Phase 3** — runtime marketplace override: download a newer plugin version into the user data dir and load it over the bundled version (dynamic classloading into the running Spring context).
+- **Phase 4** — first-run deployment wizard: choose datasource (MySQL and other JDBC servers, or embedded H2/SQLite), write config, run schema init.
+- **Phase 5** — signed installers + per-platform bundled JRE via GitHub Actions (production desktop packaging).
+- **Phase 6** — third-party plugin SDK + documentation + marketplace backend (optional; plugin ecosystem expansion).
 
 ### Target end-state (all phases)
 
@@ -155,7 +156,7 @@ The current JavaFX plugin (`MarkdownEditorPlugin`, ~210 lines) renders markdown 
 
 A new Maven module (e.g. `plugin-markdown/`) in the reactor:
 
-- **Backend:** a `@Component` implementing v2 `ZhiFlowPlugin`. `invoke("render", {markdown})` → `{"success":true,"summary":"rendered N chars","html":"<...>"}`, following the existing tool-return JSON contract (`success` / `summary` / payload). Rendering moves server-side, upgrading the old regex `mdToHtml` to a real JVM markdown library (flexmark) for correctness; the frontend debounces `render` calls on each edit.
+- **Backend:** a `@Component` implementing v2 `ZhiFlowPlugin`. `invoke("render", {markdown})` → `{"success":true,"summary":"rendered N chars","html":"<...>"}`, following the existing tool-return JSON contract (`success` / `summary` / payload). Rendering moves server-side, upgrading the old regex `mdToHtml` to the **commonmark** library (already a `ZhiFlow` dependency) for correctness; the frontend debounces `render` calls on each edit.
 - **Frontend:** a Vue micro-frontend bundle (its own Vite config, Vue marked `external`) — a split-pane: a `<textarea>`/code editor on the left, a live preview pane on the right that shows the backend-rendered HTML. Theme parity is automatic via inherited `--sk-*` tokens (no per-theme stylesheet). Built to `resources` and served by the backend at `/plugin-ui/markdown/*`.
 
 **AI chat is explicitly NOT extracted** — it remains a permanent main-project built-in (Component A′ `/api/ai/*`).
@@ -280,7 +281,7 @@ A working dev-mode Tauri window that sidecar-launches the jar and shows the Vue 
 3. The Markdown official plugin exists as a reactor Maven module, registers as a Spring bean, and appears in `/api/plugins`.
 4. The Vue shell renders the sidebar / theme (dark + light) / settings / AI chat, adopting the `docs/ui-design/` tokens.
 5. AI chat streams tokens + collapsible thinking over SSE.
-6. Opening Base64 in the shell dynamically imports and mounts its micro-frontend, and encode/decode works against the backend.
+6. Opening Markdown in the shell dynamically imports and mounts its micro-frontend, and the editor round-trips through `invoke("render")`.
 7. A Tauri dev window sidecar-launches the jar, waits on health, and shows the whole thing.
 8. Backend unit/integration tests green; frontend Vitest green; the end-to-end smoke passes.
-9. JavaFX remains in the tree, excluded from the Phase-1 build, untouched.
+9. **All JavaFX code deleted** — `ZhiFlowApp`, `MainWindow`, `Sidebar`, built-in tool UI classes, and all JavaFX dependencies removed from `pom.xml`. Zero `javafx.*` imports remain.
