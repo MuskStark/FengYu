@@ -44,6 +44,21 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
+            <!-- Pin BOTH logback artifacts to the same version. The Spring Boot BOM manages
+                 logback-classic to an older version (1.5.6) than the logback-core resolved via
+                 the parent (1.5.34); that split pair throws ClassNotFoundException on internal
+                 classes (e.g. JaninoEventEvaluatorBase) at first logger init. These direct
+                 entries win over the imported BOM and keep classic + core aligned. -->
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-classic</artifactId>
+                <version>${logback.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-core</artifactId>
+                <version>${logback.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -338,6 +353,19 @@
                                 </transformer>
                                 <transformer
                                         implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                                <!-- Spring Boot 4 splits autoconfigurations across many module jars,
+                                     each shipping its OWN AutoConfiguration.imports at the same resource
+                                     path. Without appending, shade keeps only one file and web/Tomcat
+                                     autoconfig never loads (embedded Tomcat silently doesn't start).
+                                     Append-merge all of them, plus the legacy spring.factories. -->
+                                <transformer
+                                        implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+                                    <resource>META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports</resource>
+                                </transformer>
+                                <transformer
+                                        implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+                                    <resource>META-INF/spring.factories</resource>
+                                </transformer>
                             </transformers>
                             <finalName>ZhiFlow-${project.version}</finalName>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
@@ -358,6 +386,10 @@
                     <source>${maven.compiler.source}</source>
                     <target>${maven.compiler.target}</target>
                     <encoding>UTF-8</encoding>
+                    <!-- -parameters: retain method parameter names so Spring MVC can resolve
+                         @PathVariable / @RequestParam by name via reflection (this config block
+                         overrides the Spring Boot parent default that would otherwise add it). -->
+                    <parameters>true</parameters>
                     <compilerArgs>
                         <arg>--add-modules</arg>
                         <arg>jdk.jsobject</arg>
