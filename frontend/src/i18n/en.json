@@ -21,6 +21,12 @@
   "status":   { "connecting": "Connecting…", "connected": "Connected",
                 "reconnecting": "Reconnecting…" },
   "agent":    { "title": "AI Agent", "goalPlaceholder": "What should I do?",
-                "run": "Plan", "approve": "Approve", "cancel": "Cancel" },
+                "run": "Plan", "approve": "Approve", "cancel": "Cancel",
+                "tools": "Available tools", "planning": "Planning…",
+                "planReady": "Plan ready", "waitingPlanApproval": "Waiting for plan approval",
+                "waitingStepApproval": "Waiting for step approval", "running": "Running",
+                "completed": "Completed", "failed": "Failed", "cancelled": "Cancelled",
+                "empty": "Describe a goal and press Plan to start an agent run.",
+                "step": "Step {n}" },
   "common":   { "back": "Back", "retry": "Retry", "loading": "Loading…" }
 }

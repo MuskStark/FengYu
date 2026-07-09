@@ -1,6 +1,10 @@
 import axios, { type AxiosInstance } from 'axios'
 import { getApiBase, getToken } from './config'
 import type {
+  AgentPlan,
+  AgentRunRequest,
+  AgentRunResponse,
+  AgentTool,
   AppSettings,
   CategoryDescriptor,
   ChatMessage,
@@ -104,6 +108,27 @@ export const api = {
     )
     return data
   },
+
+  // ── AI Agent (Plan-and-Execute, Task 16/20) ───────────────────────
+  /** Start an agent run; returns {runId}. Open GET /api/agent/stream to observe. */
+  agentRun: (req: AgentRunRequest) =>
+    http.post<AgentRunResponse>('/api/agent/run', req).then((r) => r.data),
+
+  /** Release the run's approval gate (plan or step); an edited plan body replaces it. */
+  agentApprove: (runId: string, plan?: AgentPlan) =>
+    http
+      .post(`/api/agent/${encodeURIComponent(runId)}/approve`, { plan })
+      .then((r) => r.data),
+
+  /** Flip the run's cancellation flag (honored cooperatively by the runner). */
+  agentCancel: (runId: string) =>
+    http
+      .post(`/api/agent/${encodeURIComponent(runId)}/cancel`)
+      .then((r) => r.data),
+
+  /** The orchestrable tool list (name/description/inputSchema). */
+  agentTools: () =>
+    http.get<AgentTool[]>('/api/agent/tools').then((r) => r.data),
 }
 
 export type ZhiFlowApi = typeof api

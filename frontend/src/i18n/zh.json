@@ -21,6 +21,12 @@
   "status":   { "connecting": "连接中…", "connected": "已连接",
                 "reconnecting": "重新连接中…" },
   "agent":    { "title": "AI 助手", "goalPlaceholder": "需要我做什么?",
-                "run": "规划", "approve": "批准", "cancel": "取消" },
+                "run": "规划", "approve": "批准", "cancel": "取消",
+                "tools": "可用工具", "planning": "规划中…",
+                "planReady": "计划已就绪", "waitingPlanApproval": "等待计划批准",
+                "waitingStepApproval": "等待步骤批准", "running": "执行中",
+                "completed": "已完成", "failed": "失败", "cancelled": "已取消",
+                "empty": "描述一个目标并点击「规划」以启动一次 Agent 运行。",
+                "step": "步骤 {n}" },
   "common":   { "back": "返回", "retry": "重试", "loading": "加载中…" }
 }
