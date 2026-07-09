@@ -35,11 +35,13 @@ ZhiFlow 已经在 Phase 1 迁移到 Spring AI 2.0(用 `ChatModel.stream()` 驱�
 
 ### 1.4 决策(用户拍板)
 
-本次 **4.0.0 为破坏性更新**,为去除技术债,**不兼容 3.x 及以前**。三条硬约束:
+本次 **4.0.0 为破坏性更新**,为去除技术债,**不兼容 3.x 及以前**。五条硬约束:
 
 1. **破坏性更新** —— 不为旧代码/旧插件保留兼容层。手搓工具层(`AiTool` 全家桶)全部删除。
 2. **插件声明 AI 支持** —— 插件接口声明是否支持 AI 调用;支持则**按 Spring AI 2.0 标准实现**(直接实现 `ToolCallback`,不经适配层)。
 3. **所有插件均独立运行 + 自带界面** —— UI 由主程序在指定位置渲染(沿用现有 ESM 微前端机制,但成为强制要求)。
+4. **插件支持分类** —— 分类用于在主项目分组到指定目录下;固定枚举 + 后端驱动前端侧边栏(前端不再硬编码)。
+5. **插件声明来源** —— 官方或第三方(`PluginSource` 枚举);分类名与来源标签**均需 i18n**(前端引入 vue-i18n)。
 
 ### 1.5 目标(本次 Phase 1)
 
@@ -48,6 +50,8 @@ ZhiFlow 已经在 Phase 1 迁移到 Spring AI 2.0(用 `ChatModel.stream()` 驱�
 3. **Plan-and-Execute Agent 运行时** —— LLM 先规划后执行,支持审批与失败重规划。
 4. **去弃用化** —— `SpringAiCloudBackend.runToolLoop` 改 `ChatClient` + `ToolCallingAdvisor`。
 5. **删除死代码** —— `fan.summer.api.*`(v1)+ `AiTool` 全家桶(手搓层)。
+6. **分类与来源** —— `ToolCategory` 增 `AI` 分类 + 后端驱动侧边栏;新增 `PluginSource`(官方/第三方)。
+7. **前端 i18n** —— 引入 vue-i18n,本地化分类名/来源标签/所有现有硬编码字符串;`language` 设置终于生效。
 
 ### 1.6 非目标(留给 Phase 2)
 
@@ -156,7 +160,7 @@ public interface ZhiFlowPlugin {
 
 **与 v2 差异:** 删除 `aiTools()`(手搓层,迁移到独立 Spring AI bean)。`descriptor()` + `invoke()` 保留(已是 v2 形态,稳定)。
 
-#### 3.1.2 `PluginDescriptor` 增强(声明 AI 支持)
+#### 3.1.2 `PluginDescriptor` 增强(声明 AI 支持 + 来源)
 
 文件:`ZhiFlow-Api/src/main/java/fan/summer/zhiflow/api/plugin/PluginDescriptor.java`
 
@@ -170,20 +174,20 @@ public record PluginDescriptor(
     IconStyle iconStyle,
     String version,
     String uiEntry,       // ESM bundle 入口路径,强制非空(所有插件必须有 UI)
-    boolean supportsAi    // 新增:是否支持 AI 调用(声明性,实际工具由 ToolCallback bean 提供)
+    boolean supportsAi,   // 新增:是否支持 AI 调用(声明性,实际工具由 ToolCallback bean 提供)
+    PluginSource source   // 新增:来源 OFFICIAL / THIRD_PARTY(见 3.1.5)
 ) {
-    // 兼容旧构造:默认 supportsAi = false(仅过渡期减少改动,非兼容承诺)
-    public PluginDescriptor(String id, String name, String description, ToolCategory category,
-                            String icon, IconStyle iconStyle, String version, String uiEntry) {
-        this(id, name, description, category, icon, iconStyle, version, uiEntry, false);
-    }
+    // 注:4.0.0 破坏性更新,不提供旧签名兼容构造。
+    //    本仓内所有 descriptor() 调用点按新签名一次性改完。
 }
 ```
 
 **设计要点:**
 - `uiEntry` **强制**:所有插件必须自带 UI(满足约束 3)。`PluginRegistryService` 在注册时校验 `uiEntry` 非空。
 - `supportsAi` **纯声明**:告诉前端"这个插件有 AI 工具",前端据此在卡片上显示 AI 标识。实际 AI 能力由同模块的 `ToolCallback` bean 提供(见 3.2)。声明与实现的一致性由启动校验保证(见 3.1.3)。
-- 保留 8 参构造仅为过渡期减少本仓内改动;**对外无兼容承诺**(3.x 插件本就要重写)。
+- `source` **声明性**:插件作者在 descriptor 里标明自己是官方还是第三方。前端据此区分显示(徽标/分组/筛选)。`PluginRegistryService` 可对官方源做校验(如 id 前缀 `fan.summer.*`),但默认信任声明(见 3.1.5)。
+- **i18n 由前端 vue-i18n 处理**(见 3.7):后端只发 `ToolCategory` 枚举名 + `PluginSource` 枚举名 + i18n key,前端用 `t(key)` 翻译。后端是"有哪些分类/来源"的真相源,前端是"怎么显示"的翻译者。
+- **不提供旧构造**:4.0.0 破坏性更新,本仓所有 `descriptor()` 一次性迁移。
 
 #### 3.1.3 注册与一致性校验
 
@@ -192,6 +196,59 @@ public record PluginDescriptor(
 - **新增校验**(启动时):`descriptor.uiEntry()` 为空 → 拒绝注册并记错(约束 3:所有插件必须有 UI)。
 - **新增 AI 一致性校验**:对每个 `supportsAi()==true` 的插件,检查是否存在归属同一模块/同 id 前缀的 `ToolCallback` bean;不一致则告警(不阻断,因为 bean 归属判定较松)。实现细节在计划阶段定。
 - 删除 `@PostConstruct registerAiTools()`(手搓层,不再需要 —— Spring AI 自己发现 `ToolCallback` bean)。
+
+#### 3.1.4 分类(`ToolCategory`)—— 后端驱动侧边栏
+
+**现状问题:** 前端侧边栏的分类列表是**硬编码字面量**(`frontend/src/shell/Sidebar.vue:20-28`),与后端枚举手动同步,且不存在 `AI` 分类。`ToolCategory.getI18nKey()` 是死代码(从不调用)。
+
+**改动:**
+
+1. **`ToolCategory` 枚举新增 `AI` 分类**(文件 `ZhiFlow-Api/.../api/ToolCategory.java`):
+```java
+DEV("dev", "category.dev"),       // i18n key 改为统一前缀(见下)
+TEXT("text", "category.text"),
+IMAGE("image", "category.image"),
+NET("net", "category.net"),
+AI("ai", "category.ai"),          // 新增:AI 类插件(Agent 工具、提示工具等)
+OTHER("other", "category.other");
+```
+   - **统一 i18n key 前缀**为 `category.*`(替代三套不一致的旧 key:`sidebar.label.*`/`detail.category.*`/`store.online.category.*`)。旧 key 是 JavaFX 时代遗留,本仓已无消费者(headless 后端不用、前端无 i18n),破坏性删除。
+   - 删除死代码 `getI18nKey()` 的旧值,改用新 key —— 但实际调用还是在前端 vue-i18n。
+
+2. **后端成为分类列表的真相源** —— 新增端点 `GET /api/plugin-categories`:
+```json
+[
+  {"id": "dev",  "labelKey": "category.dev",  "icon": "⚙"},
+  {"id": "text", "labelKey": "category.text", "icon": "¶"},
+  ...
+]
+```
+   - 返回**稳定 id + i18n key + 图标**,不含翻译文本(翻译在前端)。
+   - 由一个 `PluginCategoryController`(或并入 `PluginController`)从 `ToolCategory` 枚举静态生成。`all`/`favorites` 是前端侧边栏特有项,**前端自加**(不从后端来)。
+
+3. **前端侧边栏改为动态**:删除 `Sidebar.vue:20-28` 的硬编码 `categories`,改为启动时 `GET /api/plugin-categories` 拉取 + 追加 `all`/`favorites`,渲染时 `t(labelKey)` 翻译。这样新增分类只改后端枚举,前端自动跟上。
+
+**"分入指定目录下"的含义:** 分类驱动侧边栏导航目录 —— 每个分类是侧边栏一个目录项,选中后 `ToolGrid` 过滤该分类插件。不是文件系统目录。
+
+#### 3.1.5 来源(`PluginSource`)—— 官方/第三方
+
+**新增枚举:** 文件 `ZhiFlow-Api/src/main/java/fan/summer/zhiflow/api/plugin/PluginSource.java`
+```java
+public enum PluginSource {
+    OFFICIAL("official", "source.official"),       // 官方插件(本仓 + 官方插件仓)
+    THIRD_PARTY("third_party", "source.third_party"); // 第三方插件
+
+    private final String id;
+    private final String labelKey;  // vue-i18n key
+    // getId() / getLabelKey()
+}
+```
+
+**设计要点:**
+- **声明性**:插件作者在 `PluginDescriptor.source` 标明。官方插件标 `OFFICIAL`,第三方标 `THIRD_PARTY`。
+- **可选校验**:`PluginRegistryService` 可对 `OFFICIAL` 做宽松校验(如 id 以 `fan.summer.` 开头),不符则降级为 `THIRD_PARTY` 并告警。严格签名校验留给 Phase 6(marketplace),本期不做。
+- **前端用途**:插件卡片显示来源徽标(`官方`/`第三方`),侧边栏或筛选器可按来源过滤。`GET /api/plugins` 已含 `source` 字段。
+- **i18n**:前端 vue-i18n 翻译 `source.official`/`source.third_party`。对齐遗留字符串 `detail.tag.builtin`/`detail.tag.plugin`(破坏性重命名,旧 key 无消费者)。
 
 ---
 
@@ -377,22 +434,65 @@ public class AiModeService {
 | POST | `/api/agent/{runId}/approve` | body: `{plan?}`;plan & step 审批 |
 | POST | `/api/agent/{runId}/cancel` | 取消 |
 | GET | `/api/agent/tools` | 列出可编排工具(name/desc/schema),供前端 + Phase 2 画布 |
+| GET | `/api/plugin-categories` | 新增:分类列表(id + labelKey + icon),驱动前端侧边栏(见 3.1.4) |
 
 SSE 事件:`plan_token` / `plan_ready` / `plan_approval_requested` / `step_start` / `step_complete` / `step_approval_requested` / `complete` / `error`。
 
-现有 `/api/plugins`(改:descriptor 带 `supportsAi`)、`/api/plugins/{id}/invoke`(不变)、`/plugin-ui/{id}/**`(不变)。
+现有 `/api/plugins`(改:descriptor 带 `supportsAi` + `source` + `category`)、`/api/plugins/{id}/invoke`(不变)、`/plugin-ui/{id}/**`(不变)。
 
 #### 3.6.2 前端
 
 - `AiAgent.vue`(新,最小):目标输入 + 配置 + Plan 展示(可编辑)+ 执行进度 + 审批按钮。
 - 现有 `PluginView.vue` 渲染插件 ESM 微前端(不变,已是强制 UI 机制)。
+- **侧边栏改造**(`Sidebar.vue`):删除硬编码分类列表,改从 `GET /api/plugin-categories` 动态拉取 + 追加 `all`/`favorites`(见 3.1.4)。
 - 复用现有 `aiSession` store 的 SSE 消费模式。
 
 > 前端做最小可用版,Phase 2 画布才是大头。
 
 ---
 
-### 3.7 删除清单(破坏性更新)
+### 3.7 前端 i18n(vue-i18n)
+
+**现状问题:** 前端**无任何 i18n**(无 `vue-i18n` 依赖、无 locale 文件、所有字符串硬编码英文,如 `Sidebar.vue:21-27` 的 `'All Tools'`/`'Text'`/`'Dev'`)。持久化的 `language` 设置存到 DB 但**无任何代码读取**。
+
+**改动:引入 vue-i18n,后端驱动语言切换。**
+
+1. **依赖与配置**:`frontend/package.json` 加 `vue-i18n`;新增 `frontend/src/i18n/` 目录:
+```
+frontend/src/i18n/
+├── index.ts        # createI18n,默认 locale 从后端 language 设置取
+├── en.json         # 英文(默认 fallback)
+└── zh.json         # 中文
+```
+
+2. **翻译 key 结构**(对齐后端枚举的 key):
+```json
+{
+  "category": { "dev": "Developer", "text": "Text", "image": "Image",
+                "net": "Network", "ai": "AI", "other": "Other" },
+  "source":   { "official": "Official", "third_party": "Third-party" },
+  "sidebar":  { "all": "All Tools", "favorites": "Favorites" },
+  "agent":    { "title": "AI Agent", "run": "Run", "approve": "Approve", ... }
+}
+```
+   - `category.*` / `source.*` 与后端 `ToolCategory.labelKey` / `PluginSource.labelKey` 一一对应。
+   - 现有硬编码英文字符串(`Sidebar.vue`/`ToolGrid.vue`/`Settings.vue`)迁移到 locale 文件。
+
+3. **语言切换闭环**:
+   - 后端 `language` 设置(DB)→ 启动时前端 `GET /api/settings` 读 language → 设为 vue-i18n 的 locale。
+   - 用户在 `Settings.vue` 切语言 → `POST /api/settings` 存 DB + 前端即时切 locale。
+   - 这样 `language` 设置**终于生效**(目前是死设置)。
+
+4. **插件微前端 i18n**:`PluginView.vue:54` 现在的 `i18n: (key) => key`(identity 空操作)改为传入真实的 vue-i18n `t` 函数,让插件微前端也能用 `ctx.i18n('category.dev')` 得到翻译。插件自身 UI 字符串的 i18n 由插件自带 locale 资源处理(与主程序 i18n 解耦,Phase 6 SDK 再规范)。
+
+**设计要点:**
+- 后端是"有哪些分类/来源"的真相源(枚举 + 端点);前端是"怎么翻译显示"的执行者(vue-i18n locale 文件)。两边用 **i18n key** 对齐契约。
+- 后端不返回翻译文本,只返回 key —— 避免后端维护 UI 字符串翻译表(后端 `I18n` 类与 JavaFX 耦合,headless 无法用)。
+- 旧 `messages*.properties` 的 JavaFX UI 文本(`sidebar.label.*`/`detail.*`/`store.*`)**破坏性废弃**(本仓 headless 已无消费者);仅保留后端非 UI 用途的 key(若有)。
+
+---
+
+### 3.8 删除清单(破坏性更新)
 
 **全部删除,无兼容保留:**
 
@@ -405,10 +505,13 @@ SSE 事件:`plan_token` / `plan_ready` / `plan_approval_requested` / `step_start
 | 手搓适配器 | `ZhiFlow/.../ai/adapter/AiToolCallback` | 不再需要(插件直接实现 ToolCallback) |
 | 手搓注册表 | `AiServiceProvider` 的工具部分 | 由 Spring AI bean 发现取代 |
 | 旧插件契约 | `fan.summer.zhiflow.api.ZhiFlowPlugin`(JavaFX createView) | 由新 `plugin.ZhiFlowPlugin` 取代 |
+| 旧 `ToolType` 枚举 | `BUILTIN`/`PLUGIN`(V1 概念,V2 本就无) | 由新 `PluginSource`(OFFICIAL/THIRD_PARTY)取代 |
+| 旧不一致 i18n key | `sidebar.label.*`/`detail.category.*`/`store.online.category.*`/`detail.tag.*` | 统一为 `category.*`/`source.*`,前端 vue-i18n 接管 |
 | 4 个内置 AI tool | `BuiltinJsonFormatTool` 等(本就未注册) | 改写为新 `@Tool` 形态或删 |
 
 **保留改造:**
-- `PluginDescriptor`(加 `supportsAi`)、`PluginRegistryService`(去 `registerAiTools`)、`ZhiFlowPluginV2` → 重命名 `ZhiFlowPlugin`。
+- `PluginDescriptor`(加 `supportsAi` + `source`)、`ToolCategory`(加 `AI`、改 labelKey 前缀)、`PluginRegistryService`(去 `registerAiTools` + `uiEntry`/`source` 校验)、`ZhiFlowPluginV2` → 重命名 `ZhiFlowPlugin`。
+- 新增 `PluginSource` 枚举。
 - `AiChatMessage` / `ChatBackend` / `AiStreamCallback` / `AiServiceException`(聊天契约,仍需要)。
 
 ---
@@ -454,13 +557,18 @@ SSE 事件:`plan_token` / `plan_ready` / `plan_approval_requested` / `step_start
   - `@Tool` 方法被 Spring AI 正确发现并生成 schema(spike 验证 + 测试)。
   - `AgentRunner` 状态机(PLANNING→APPROVAL→EXECUTING→COMPLETE),mock `ToolCallingManager` + mock `ChatClient`。
   - Re-planning 容错(失败 3 次 → FAILED)。
-  - `PluginRegistryService` 的 `uiEntry` 强制校验。
+  - `PluginRegistryService` 的 `uiEntry` 强制校验、`source` 降级校验(OFFICIAL 但 id 不符 → 降 THIRD_PARTY)。
+  - `GET /api/plugin-categories` 返回的分类 id/labelKey 与 `ToolCategory` 枚举一致(含新增 `AI`)。
 - **集成测试:**
   - 端到端:mock echo tool + `goal="echo hello"` → 验证 plan + execution + SSE 事件序列。
   - 审批 gate:block 在 AWAITING_PLAN_APPROVAL,模拟 approve → 继续。
+- **前端测试:**
+  - vue-i18n locale 文件含 `category.*`/`source.*` 全部 key。
+  - 切换 `language` → vue-i18n locale 即时变化。
+  - 侧边栏从 `/api/plugin-categories` 动态渲染(无硬编码)。
 - **回归:**
   - 删除手搓层后全模块 `mvn test` 通过。
-  - `MarkdownPlugin` 按新契约改造后仍工作(UI render + 可选 @Tool)。
+  - `MarkdownPlugin` 按新契约改造后仍工作(UI render + 可选 @Tool + source=OFFICIAL + category=TEXT)。
 
 ---
 
@@ -474,24 +582,27 @@ SSE 事件:`plan_token` / `plan_ready` / `plan_approval_requested` / `step_start
 | mode 过滤(supportsLocal/Cloud)迁移后本地模型工具过多 | 本期默认不过滤;若需,用 ChatClient 构造时选择性传 tools |
 | Plan-and-Execute 对弱模型(本地 Ollama)规划质量差 | Agent 模式默认仅云端 |
 | re-planning 死循环 | 硬上限 3 次 + 每步取消检查 |
+| 前端 i18n 迁移面广(所有硬编码字符串) | 先迁移分类/来源/侧边栏(Agent UI 顺带);其余现有视图字符串按文件逐步迁,不阻塞主功能 |
 
 **未决项(留给实现计划):**
 1. `constrainedTool`(slash-command 引导)是否保留及落点。
 2. Agent run 是否本期持久化(倾向否,Phase 2 随画布)。
 3. mode 过滤是否本期实现。
+4. `OFFICIAL` 降级校验的 id 前缀规则(倾向 `fan.summer.*`,计划阶段定)。
 
 ---
 
 ## 8. 分阶段交付建议(供实现计划参考)
 
-1. **删除死代码** — `fan.summer.api.*`(v1)+ 旧 `ZhiFlowPlugin` JavaFX 契约。验证编译。
+1. **删除死代码** — `fan.summer.api.*`(v1)+ 旧 `ZhiFlowPlugin` JavaFX 契约 + `ToolType`。验证编译。
 2. **删除手搓工具层** — `AiTool`/`AiToolParam`/`AiToolResult`/`ToolExecutor`/`ToolSchemaJson`/`AiToolCallback`。拆 `AiServiceProvider` → `AiModeService`。适配所有调用点。
-3. **新插件契约** — `ZhiFlowPlugin`(重命名)+ `PluginDescriptor.supportsAi` + `uiEntry` 强制校验。改造 `MarkdownPlugin`、4 内置 tool 为新形态。
+3. **新插件契约** — `ZhiFlowPlugin`(重命名)+ `PluginDescriptor`(加 `supportsAi` + `source`)+ `ToolCategory`(加 `AI`、改 labelKey)+ `PluginSource`(新)+ `uiEntry`/`source` 校验。改造 `MarkdownPlugin`、4 内置 tool 为新形态。
 4. **Spring AI 工具接入** — `@Tool`/`ToolCallback` bean 发现 + `ToolCallbackResolver`。spike 验证 schema 生成。
 5. **去弃用化聊天循环** — `SpringAiCloudBackend` → `ChatClient` + `ToolCallingAdvisor`。spike 流式 + 工具事件。
 6. **Agent 运行时** — `AgentRunner` + 数据模型 + `AgentController` + SSE。
-7. **前端 `AiAgent.vue`** — 最小可用。
-8. **测试 + 回归**。
+7. **分类端点 + 前端 i18n** — `GET /api/plugin-categories` + vue-i18n 引入 + locale 文件 + 侧边栏动态渲染 + language 设置闭环。
+8. **前端 `AiAgent.vue`** — 最小可用。
+9. **测试 + 回归**。
 
 每步可独立提交、独立验证。
 
