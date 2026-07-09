@@ -101,7 +101,9 @@ public class SetupController {
         // 1. Re-verify connection
         ConnectionTestResult test = configService.testConnection(cfg);
         if (!test.success()) {
-            return Map.of("success", false, "error", test.error(), "step", "connection");
+            return Map.of("success", false,
+                    "error", test.error() != null ? test.error() : "connection failed",
+                    "step", "connection");
         }
 
         // 2. Persist config (password encrypted on save)
