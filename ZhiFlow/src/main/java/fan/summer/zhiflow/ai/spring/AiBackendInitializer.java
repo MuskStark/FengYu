@@ -1,8 +1,8 @@
 package fan.summer.zhiflow.ai.spring;
 
 import fan.summer.zhiflow.ai.AiConfigService;
+import fan.summer.zhiflow.ai.service.AiModeService;
 import fan.summer.zhiflow.ai.service.SpringAiCloudBackend;
-import fan.summer.zhiflow.api.ai.AiServiceProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -27,9 +27,11 @@ public class AiBackendInitializer implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(AiBackendInitializer.class);
 
     private final AiConfigService aiConfigService;
+    private final AiModeService aiMode;
 
-    public AiBackendInitializer(AiConfigService aiConfigService) {
+    public AiBackendInitializer(AiConfigService aiConfigService, AiModeService aiMode) {
         this.aiConfigService = aiConfigService;
+        this.aiMode = aiMode;
     }
 
     @Override
@@ -37,15 +39,15 @@ public class AiBackendInitializer implements ApplicationRunner {
         String mode = aiConfigService.getAiMode();
         log.info("AI backend mode: {}", mode);
         switch (mode) {
-            case "openai" -> AiServiceProvider.switchMode(mode, SpringAiCloudBackend.openAi(
+            case "openai" -> aiMode.switchMode(mode, SpringAiCloudBackend.openAi(
                 aiConfigService.getAiOpenAiEndpoint(),
                 aiConfigService.getAiOpenAiApiKey(),
                 aiConfigService.getAiOpenAiModel()));
-            case "anthropic" -> AiServiceProvider.switchMode(mode, SpringAiCloudBackend.anthropic(
+            case "anthropic" -> aiMode.switchMode(mode, SpringAiCloudBackend.anthropic(
                 aiConfigService.getAiAnthropicEndpoint(),
                 aiConfigService.getAiAnthropicApiKey(),
                 aiConfigService.getAiAnthropicModel()));
-            case "deepseek" -> AiServiceProvider.switchMode(mode, SpringAiCloudBackend.deepSeek(
+            case "deepseek" -> aiMode.switchMode(mode, SpringAiCloudBackend.deepSeek(
                 aiConfigService.getAiDeepSeekEndpoint(),
                 aiConfigService.getAiDeepSeekApiKey(),
                 aiConfigService.getAiDeepSeekModel()));
