@@ -9,7 +9,7 @@ import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * Backend mode management (the non-tool half of the former AiServiceProvider).
+ * Backend mode management (the non-tool half of the former global AI service provider).
  * Holds the active {@link ChatBackend} + mode label and notifies listeners on switch.
  * Tool registry responsibilities are gone — Spring AI discovers tools itself.
  */
