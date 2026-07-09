@@ -16,29 +16,39 @@ import org.springframework.stereotype.Component;
  * lazy — deferred until the AI tool is first used. Runs as an {@link ApplicationRunner}, so it
  * executes after context refresh (and after {@link AiContextBridge} has published the context for
  * the backends' imperative {@code ChatModel} lookups).
+ *
+ * <p>Injects {@link AiConfigService} (now a bean) so the dependency is explicit in the wiring graph.
+ * The reads go through the bean's facade; by the time this runner executes (after context refresh),
+ * the bean's {@code @PostConstruct} has populated its singleton, so reads are safe.
  */
 @Component
 public class AiBackendInitializer implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(AiBackendInitializer.class);
 
+    private final AiConfigService aiConfigService;
+
+    public AiBackendInitializer(AiConfigService aiConfigService) {
+        this.aiConfigService = aiConfigService;
+    }
+
     @Override
     public void run(ApplicationArguments args) {
-        String mode = AiConfigService.getAiMode();
+        String mode = aiConfigService.getAiMode();
         log.info("AI backend mode: {}", mode);
         switch (mode) {
             case "openai" -> AiServiceProvider.switchMode(mode, SpringAiCloudBackend.openAi(
-                AiConfigService.getAiOpenAiEndpoint(),
-                AiConfigService.getAiOpenAiApiKey(),
-                AiConfigService.getAiOpenAiModel()));
+                aiConfigService.getAiOpenAiEndpoint(),
+                aiConfigService.getAiOpenAiApiKey(),
+                aiConfigService.getAiOpenAiModel()));
             case "anthropic" -> AiServiceProvider.switchMode(mode, SpringAiCloudBackend.anthropic(
-                AiConfigService.getAiAnthropicEndpoint(),
-                AiConfigService.getAiAnthropicApiKey(),
-                AiConfigService.getAiAnthropicModel()));
+                aiConfigService.getAiAnthropicEndpoint(),
+                aiConfigService.getAiAnthropicApiKey(),
+                aiConfigService.getAiAnthropicModel()));
             case "deepseek" -> AiServiceProvider.switchMode(mode, SpringAiCloudBackend.deepSeek(
-                AiConfigService.getAiDeepSeekEndpoint(),
-                AiConfigService.getAiDeepSeekApiKey(),
-                AiConfigService.getAiDeepSeekModel()));
+                aiConfigService.getAiDeepSeekEndpoint(),
+                aiConfigService.getAiDeepSeekApiKey(),
+                aiConfigService.getAiDeepSeekModel()));
             default -> log.info("AI backend: local (deferred, initializes on first use)");
         }
     }

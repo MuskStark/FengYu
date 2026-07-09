@@ -11,36 +11,44 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * UI-shell settings — theme, language, sidebar-collapsed. H2-backed via
- * {@link AiConfigServiceHeadless}. {@code GET} returns the current values; {@code PUT} accepts a
- * partial JSON object and persists only the keys present.
+ * UI-shell settings — theme, language, sidebar-collapsed. Backed by
+ * {@link AiConfigServiceHeadless} (a bean, JPA-persisted, user-scoped). {@code GET} returns the
+ * current values; {@code PUT} accepts a partial JSON object and persists only the keys present.
+ *
+ * <p>Injects the bean to make the wiring explicit; reads/writes go through the bean's facade.
  */
 @RestController
 @RequestMapping("/api/settings")
 public class SettingsController {
 
+    private final AiConfigServiceHeadless config;
+
+    public SettingsController(AiConfigServiceHeadless config) {
+        this.config = config;
+    }
+
     @GetMapping
     public Map<String, Object> get() {
         Map<String, Object> out = new HashMap<>();
-        out.put("theme", AiConfigServiceHeadless.getTheme());
-        out.put("language", AiConfigServiceHeadless.getLanguage());
-        out.put("sidebarCollapsed", AiConfigServiceHeadless.getSidebarCollapsed());
+        out.put("theme", config.getTheme());
+        out.put("language", config.getLanguage());
+        out.put("sidebarCollapsed", config.getSidebarCollapsed());
         return out;
     }
 
     @PutMapping
     public Map<String, Object> put(@RequestBody Map<String, Object> body) {
         if (body.get("theme") instanceof String t) {
-            AiConfigServiceHeadless.setTheme(t);
+            config.setTheme(t);
         }
         if (body.get("language") instanceof String l) {
-            AiConfigServiceHeadless.setLanguage(l);
+            config.setLanguage(l);
         }
         Object collapsed = body.get("sidebarCollapsed");
         if (collapsed instanceof Boolean b) {
-            AiConfigServiceHeadless.setSidebarCollapsed(b);
+            config.setSidebarCollapsed(b);
         } else if (collapsed instanceof String s) {
-            AiConfigServiceHeadless.setSidebarCollapsed(Boolean.parseBoolean(s));
+            config.setSidebarCollapsed(Boolean.parseBoolean(s));
         }
         return get();
     }

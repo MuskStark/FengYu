@@ -1,10 +1,9 @@
 package fan.summer.zhiflow.utils;
 
-import fan.summer.zhiflow.database.DatabaseInit;
 import fan.summer.zhiflow.database.entity.setting.email.ZhiFlowSettingEmailEntity;
-import fan.summer.zhiflow.database.mapper.setting.email.ZhiFlowSettingEmailMapper;
+import fan.summer.zhiflow.database.repository.setting.email.ZhiFlowSettingEmailRepository;
+import fan.summer.zhiflow.security.SecurityContext;
 import jakarta.activation.FileDataSource;
-import org.apache.ibatis.session.SqlSession;
 import org.simplejavamail.api.email.Email;
 import org.simplejavamail.api.mailer.Mailer;
 import org.simplejavamail.api.mailer.config.TransportStrategy;
@@ -12,36 +11,45 @@ import org.simplejavamail.email.EmailBuilder;
 import org.simplejavamail.mailer.MailerBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.util.List;
 
 /**
- * Utility class for sending emails via SMTP using Simple Java Mail.
+ * Utility bean for sending emails via SMTP using Simple Java Mail.
  *
  * <p>SMTP configuration is loaded automatically from the database
- * ({@code swiss_kit_setting_email} table) on each send operation. The utility
- * supports plain-text emails, HTML emails, CC/BCC recipients, and file attachments.
- * Connection testing is also provided via {@link #testConnection()}.</p>
+ * ({@code swiss_kit_setting_email} table, user-scoped) on each send operation. The bean supports
+ * plain-text emails, HTML emails, CC/BCC recipients, and file attachments. Connection testing is
+ * also provided via {@link #testConnection()}.
  *
- * <p>This class is a pure-static utility: the constructor is private and all
- * methods throw {@link EmailException} on failure. Instances of
- * {@link EmailMessage} are built using the {@link EmailMessage.Builder} pattern.</p>
+ * <p>Converted from a pure-static MyBatis utility to a Spring {@code @Component} so it can inject
+ * {@link ZhiFlowSettingEmailRepository} and {@link SecurityContext} (user-scoped reads). Callers
+ * inject this bean and call its instance methods. All methods throw {@link EmailException} on
+ * failure. Instances of {@link EmailMessage} are built using the {@link EmailMessage.Builder}
+ * pattern.
  *
- * <p><strong>Thread safety:</strong> This class is thread-safe; multiple threads
- * may call {@code sendText}, {@code sendHtml}, and {@code sendEmail} concurrently,
- * each obtaining its own {@link SqlSession} from the shared {@link DatabaseInit}.</p>
+ * <p><strong>Thread safety:</strong> This class is thread-safe; multiple threads may call
+ * {@code sendText}, {@code sendHtml}, and {@code sendEmail} concurrently, each reading a fresh
+ * config from the repository.
  *
  * @since 1.0
  * @author ZhiFlow
  * @see EmailMessage
  * @see EmailException
  */
+@Component
 public class EmailUtil {
 
     private static final Logger log = LoggerFactory.getLogger(EmailUtil.class);
 
-    private EmailUtil() {
+    private final ZhiFlowSettingEmailRepository emailRepo;
+    private final SecurityContext securityContext;
+
+    public EmailUtil(ZhiFlowSettingEmailRepository emailRepo, SecurityContext securityContext) {
+        this.emailRepo = emailRepo;
+        this.securityContext = securityContext;
     }
 
     /**
@@ -53,7 +61,7 @@ public class EmailUtil {
      * @throws EmailException if sending fails or SMTP is not configured
      * @since 1.0
      */
-    public static void sendText(String to, String subject, String text) throws EmailException {
+    public void sendText(String to, String subject, String text) throws EmailException {
         sendEmail(EmailMessage.builder()
                 .to(to)
                 .subject(subject)
@@ -70,7 +78,7 @@ public class EmailUtil {
      * @throws EmailException if sending fails or SMTP is not configured
      * @since 1.0
      */
-    public static void sendHtml(String to, String subject, String html) throws EmailException {
+    public void sendHtml(String to, String subject, String html) throws EmailException {
         sendEmail(EmailMessage.builder()
                 .to(to)
                 .subject(subject)
@@ -89,7 +97,7 @@ public class EmailUtil {
      * @throws EmailException if validation fails, SMTP is not configured, or sending fails
      * @since 1.0
      */
-    public static void sendEmail(EmailMessage message) throws EmailException {
+    public void sendEmail(EmailMessage message) throws EmailException {
         validateMessage(message);
         ZhiFlowSettingEmailEntity config = loadConfig();
         try {
@@ -114,7 +122,7 @@ public class EmailUtil {
      * @throws EmailException if the connection test fails or SMTP is not configured
      * @since 1.0
      */
-    public static void testConnection() throws EmailException {
+    public void testConnection() throws EmailException {
         ZhiFlowSettingEmailEntity config = loadConfig();
         log.debug("Testing SMTP connection | host={}:{}", config.getSmtpAddress(), config.getSmtpPort());
         try {
@@ -127,7 +135,7 @@ public class EmailUtil {
         }
     }
 
-    private static Email buildEmail(ZhiFlowSettingEmailEntity config, EmailMessage message) {
+    private Email buildEmail(ZhiFlowSettingEmailEntity config, EmailMessage message) {
         String from = (config.getFromAddress() != null && !config.getFromAddress().isBlank())
                 ? config.getFromAddress()
                 : config.getEmail();
@@ -171,7 +179,7 @@ public class EmailUtil {
         return builder.buildEmail();
     }
 
-    private static Mailer buildMailer(ZhiFlowSettingEmailEntity config) {
+    private Mailer buildMailer(ZhiFlowSettingEmailEntity config) {
         TransportStrategy strategy = resolveTransportStrategy(config);
         log.debug("SMTP strategy: {}", strategy);
         return MailerBuilder
@@ -186,7 +194,7 @@ public class EmailUtil {
                 .buildMailer();
     }
 
-    private static TransportStrategy resolveTransportStrategy(ZhiFlowSettingEmailEntity config) {
+    private TransportStrategy resolveTransportStrategy(ZhiFlowSettingEmailEntity config) {
         if (Boolean.TRUE.equals(config.getNeedSSL())) {
             return TransportStrategy.SMTPS;
         }
@@ -196,23 +204,22 @@ public class EmailUtil {
         return TransportStrategy.SMTP;
     }
 
-    private static ZhiFlowSettingEmailEntity loadConfig() throws EmailException {
+    private ZhiFlowSettingEmailEntity loadConfig() throws EmailException {
         log.debug("Loading SMTP config from database");
-        try (SqlSession session = DatabaseInit.getSqlSession()) {
-            ZhiFlowSettingEmailMapper mapper = session.getMapper(ZhiFlowSettingEmailMapper.class);
-            ZhiFlowSettingEmailEntity config = mapper.selectLatest();
-            if (config == null) {
-                throw new EmailException(
-                        "No email configuration found. Please configure SMTP settings first.", null);
-            }
-            log.debug("Loaded SMTP config | host={}:{} tls={} ssl={}",
-                    config.getSmtpAddress(), config.getSmtpPort(),
-                    config.getNeedTLS(), config.getNeedSSL());
-            return config;
+        Long uid = securityContext.currentUserId();
+        ZhiFlowSettingEmailEntity config = emailRepo.findFirstByUserIdOrderByIdDesc(uid)
+                .orElse(null);
+        if (config == null) {
+            throw new EmailException(
+                    "No email configuration found. Please configure SMTP settings first.", null);
         }
+        log.debug("Loaded SMTP config | host={}:{} tls={} ssl={}",
+                config.getSmtpAddress(), config.getSmtpPort(),
+                config.getNeedTLS(), config.getNeedSSL());
+        return config;
     }
 
-    private static void validateMessage(EmailMessage message) {
+    private void validateMessage(EmailMessage message) {
         if (message == null)
             throw new IllegalArgumentException("EmailMessage must not be null");
         if (message.to == null || message.to.isEmpty())

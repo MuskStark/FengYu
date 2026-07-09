@@ -2,7 +2,6 @@ package fan.summer.zhiflow;
 
 import fan.summer.zhiflow.ai.spring.AiApplication;
 import fan.summer.zhiflow.api.log.LoggerBinder;
-import fan.summer.zhiflow.database.DatabaseInit;
 import fan.summer.zhiflow.log.Slf4jPluginLoggerBinder;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 
@@ -58,9 +57,9 @@ public final class HeadlessLauncher {
             System.setProperty(TOKEN_PROPERTY, token);
         }
 
-        // Pre-context infra: plugin logging bridge + H2 (AiConfigService reads it during bean build).
+        // Pre-context infra: plugin logging bridge. H2/JPA schema is now created by Hibernate
+        // ddl-auto at context start (Task 6); the former manual DatabaseInit.init() is removed.
         LoggerBinder.bind(new Slf4jPluginLoggerBinder());
-        DatabaseInit.init();
 
         // Standard Spring Boot bootstrap — loopback SERVLET web server. If the requested fixed port
         // is taken, fall back to an OS-chosen free port (port=0) once; the desktop shell reads the

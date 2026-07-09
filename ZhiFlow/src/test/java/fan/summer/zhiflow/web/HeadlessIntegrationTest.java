@@ -1,8 +1,6 @@
 package fan.summer.zhiflow.web;
 
 import fan.summer.zhiflow.ai.spring.AiApplication;
-import fan.summer.zhiflow.database.DatabaseInit;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -19,16 +17,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Walking-skeleton acceptance test — boots the headless Spring Boot web context on a random port
  * and exercises the Phase 1 endpoints: health, plugin listing (the Markdown plugin must register
  * as a bean), and the plugin {@code invoke} render path (backend commonmark render).
+ *
+ * <p>The H2/JPA schema is now created automatically by Hibernate {@code ddl-auto} (Task 6); the
+ * former manual {@code DatabaseInit.init()} is gone with the MyBatis removal.
  */
 @SpringBootTest(classes = AiApplication.class,
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class HeadlessIntegrationTest {
-
-    @BeforeAll
-    static void initDb() {
-        // AiConfigService + SettingsController read H2; ensure the schema exists before requests.
-        DatabaseInit.init();
-    }
 
     @LocalServerPort
     int port;
