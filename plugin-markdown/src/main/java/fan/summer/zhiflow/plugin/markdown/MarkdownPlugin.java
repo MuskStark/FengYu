@@ -3,7 +3,7 @@ package fan.summer.zhiflow.plugin.markdown;
 import fan.summer.zhiflow.api.IconStyle;
 import fan.summer.zhiflow.api.ToolCategory;
 import fan.summer.zhiflow.api.plugin.PluginDescriptor;
-import fan.summer.zhiflow.api.plugin.ZhiFlowPluginV2;
+import fan.summer.zhiflow.api.plugin.ZhiFlowPlugin;
 import org.commonmark.node.Node;
 import org.commonmark.parser.Parser;
 import org.commonmark.renderer.html.HtmlRenderer;
@@ -22,7 +22,7 @@ import java.util.Map;
  * {@code render} calls on each edit.
  */
 @Component
-public class MarkdownPlugin implements ZhiFlowPluginV2 {
+public class MarkdownPlugin implements ZhiFlowPlugin {
 
     private static final String ID = "fan.summer.markdown";
 
