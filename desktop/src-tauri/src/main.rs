@@ -108,21 +108,56 @@ fn wait_for_health(port: u16, token: &str) -> Result<(), String> {
 fn main() {
     let token = gen_token();
 
-    // Spawn + wait for readiness before the window loads.
-    let (child, port) = match spawn_backend(&token) {
-        Ok(v) => v,
-        Err(e) => {
+    // The backend may start in SETUP mode (first launch, no datasource.properties).
+    // When the setup wizard completes, it exits with code SETUP_DONE (0) to signal
+    // us to restart it into APP mode. We loop: spawn → wait for health → if it exits
+    // with 0 and we haven't entered APP mode yet, respawn.
+    let mut entered_app_mode = false;
+    let (child, port) = loop {
+        let (c, p) = match spawn_backend(&token) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("FATAL: {e}");
+                std::process::exit(1);
+            }
+        };
+        if let Err(e) = wait_for_health(p, &token) {
             eprintln!("FATAL: {e}");
+            let mut cc = c;
+            let _ = cc.kill();
             std::process::exit(1);
         }
+        // If we already entered APP mode on a previous iteration and the backend exited,
+        // that's an unexpected crash — don't loop forever.
+        if entered_app_mode {
+            eprintln!("FATAL: backend exited unexpectedly after entering APP mode");
+            std::process::exit(1);
+        }
+        // Check whether the backend is in setup mode by probing /api/setup/status.
+        match check_setup_mode(p, &token) {
+            Ok(true) => {
+                // SETUP mode: wait for the sidecar to exit (it will exit 0 when done),
+                // then loop to respawn into APP mode.
+                println!("[desktop] backend in SETUP mode; waiting for wizard to complete…");
+                let mut waiter = c;
+                let status = waiter.wait().expect("failed to wait for setup sidecar");
+                if status.code() == Some(0) {
+                    println!("[desktop] setup complete; restarting backend into APP mode");
+                    entered_app_mode = true;
+                    continue; // respawn
+                } else {
+                    eprintln!("FATAL: setup sidecar exited with code {:?}", status.code());
+                    std::process::exit(1);
+                }
+            }
+            Ok(false) => break (c, p), // APP mode — proceed to window
+            Err(e) => {
+                // Probe failed — assume APP mode and proceed (best effort).
+                eprintln!("[desktop] could not determine setup mode ({}); assuming APP", e);
+                break (c, p);
+            }
+        }
     };
-    if let Err(e) = wait_for_health(port, &token) {
-        eprintln!("FATAL: {e}");
-        // Best-effort kill before exiting.
-        let mut c = child;
-        let _ = c.kill();
-        std::process::exit(1);
-    }
 
     // Injected before any page script runs. The frontend reads these globals
     // (see frontend/src/api/config.ts): __ZHIFLOW_API_BASE__ (absolute backend URL — the backend
@@ -170,4 +205,17 @@ fn kill_sidecar(state: &State<Sidecar>) {
             let _ = child.kill();
         }
     }
+}
+
+/// Probes GET /api/setup/status. Returns Ok(true) if in SETUP mode (not initialized).
+fn check_setup_mode(port: u16, token: &str) -> Result<bool, String> {
+    let url = format!("http://127.0.0.1:{port}/api/setup/status");
+    let resp = ureq::get(&url)
+        .set("X-ZhiFlow-Token", token)
+        .timeout(Duration::from_secs(2))
+        .call()
+        .map_err(|e| format!("setup status request failed: {e}"))?;
+    let body = resp.into_string().map_err(|e| format!("read body: {e}"))?;
+    // Crude parse: SETUP mode if "initialized":false appears.
+    Ok(body.contains("\"initialized\":false") || body.contains("\"initialized\": false"))
 }
