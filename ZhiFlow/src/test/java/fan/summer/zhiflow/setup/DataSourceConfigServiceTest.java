@@ -3,6 +3,7 @@ package fan.summer.zhiflow.setup;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
 
@@ -26,7 +27,7 @@ class DataSourceConfigServiceTest {
     void save_thenLoad_roundtripsH2Config() {
         DataSourceConfigService svc = newService();
         WizardParams params = new WizardParams(
-                tempDir.resolve("data/zhiflow").toString(), null, null, null, null, null);
+                tempDir.resolve("database/zhiflow").toString(), null, null, null, null, null);
         DataSourceConfig cfg = svc.buildFromWizard(DbType.H2, params);
         svc.save(cfg);
 
@@ -74,5 +75,37 @@ class DataSourceConfigServiceTest {
         DataSourceConfig cfg = svc.buildFromWizard(DbType.H2, params);
         // Relative path resolved against user.dir (test tempDir here)
         assertTrue(cfg.url().contains(tempDir.toString().replace("\\", "/")));
+    }
+
+    @Test
+    void buildFromWizard_embedded_defaultPathLandsInDatabaseFolder() {
+        DataSourceConfigService svc = newService();
+        // No filePath supplied → default <baseDir>/database/zhiflow
+        WizardParams params = new WizardParams(null, null, null, null, null, null);
+        DataSourceConfig cfg = svc.buildFromWizard(DbType.H2, params);
+
+        Path expectedDir = tempDir.resolve("database");
+        Path expectedFile = expectedDir.resolve("zhiflow");
+        // The directory must have been auto-created.
+        assertTrue(Files.isDirectory(expectedDir),
+                "database folder should be auto-created for embedded DBs");
+        // And the resolved path inside the config must point at it.
+        assertTrue(cfg.url().contains(expectedFile.toString().replace("\\", "/")));
+        assertTrue(cfg.filePath().contains("/database/zhiflow"));
+    }
+
+    @Test
+    void buildFromWizard_embedded_createsParentDirectoryForCustomPath() {
+        DataSourceConfigService svc = newService();
+        // A deeply nested custom path whose parent does not yet exist.
+        Path custom = tempDir.resolve("some/deeply/nested/db/zhiflow");
+        WizardParams params = new WizardParams(custom.toString(), null, null, null, null, null);
+
+        DataSourceConfig cfg = svc.buildFromWizard(DbType.SQLITE, params);
+
+        // Parent directory auto-created so the JDBC driver can write the file.
+        assertTrue(Files.isDirectory(custom.getParent()),
+                "parent directory of a custom embedded path should be auto-created");
+        assertTrue(cfg.url().startsWith("jdbc:sqlite:"));
     }
 }
