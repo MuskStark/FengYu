@@ -1,15 +1,15 @@
-# Test profile: provides an in-memory H2 datasource + JPA so APP-context tests
+# Test profile: provides an in-memory H2 datasource + JPA (ddl-auto) so APP-context tests
 # (HeadlessIntegrationTest, VirtualUserInitializerTest, AppSettingRepositoryTest) can boot the
 # full AiApplication context WITHOUT a real datasource.properties.
 #
 # NOTE: zhiflow.mode is intentionally NOT set to "app" here. Setting it would activate the
-# conditional DataSourceAutoConfig (which builds a DataSource from datasource.properties that does
-# not exist in tests -> throws) AND JpaConfig. Instead we let Spring Boot's own
+# conditional APP-mode DataSourceAutoConfig (which builds a DataSource from a
+# datasource.properties that does not exist in tests -> throws). Instead we let Spring Boot's own
 # DataSourceAutoConfiguration build the H2 pool from spring.datasource.* below, and
-# HibernateJpaAutoConfiguration build the EntityManagerFactory. The repository beans still get
-# created via @EnableJpaRepositories on AiApplication, and AiConfigService / SecurityContext are
-# unconditional beans, so the full APP context loads minus the production-only DataSource/Jpa
-# conditionals.
+# HibernateJpaAutoConfiguration build the EntityManagerFactory (with ddl-auto below). Hibernate
+# auto-detects the H2 dialect from the JDBC metadata. The repository beans still get created via
+# @EnableJpaRepositories on AiApplication, and AiConfigService / SecurityContext are unconditional
+# beans, so the full APP context loads minus the production-only DataSource conditional.
 
 spring:
   datasource:

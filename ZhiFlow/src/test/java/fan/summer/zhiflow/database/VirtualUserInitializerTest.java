@@ -14,10 +14,13 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Verifies the virtual user (id=1, ZFlow-Summer) is created on APP-mode context start.
  *
- * <p>Boots the full {@link AiApplication} context with the {@code test} profile (in-memory H2 +
- * {@code zhiflow.mode=app}). The explicit {@code classes} is required because this test lives in a
- * subpackage of {@code database/} where the upward {@code @SpringBootConfiguration} search cannot
- * find {@code AiApplication} (which is in {@code ai.spring}).
+ * <p>Boots the full {@link AiApplication} context with the {@code test} profile, which provides an
+ * in-memory H2 datasource via Spring's standard {@code DataSourceAutoConfiguration} (the profile does
+ * NOT set {@code zhiflow.mode=app}, so the conditional APP-mode beans like {@code DataSourceAutoConfig}
+ * stay inactive and the context loads without a real {@code datasource.properties}). The explicit
+ * {@code classes} is required because this test lives in a subpackage of {@code database/} where the
+ * upward {@code @SpringBootConfiguration} search cannot find {@code AiApplication} (which is in
+ * {@code ai.spring}).
  */
 @SpringBootTest(classes = AiApplication.class)
 @ActiveProfiles("test")

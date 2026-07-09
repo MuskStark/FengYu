@@ -19,8 +19,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * and exercises the Phase 1 endpoints: health, plugin listing (the Markdown plugin must register
  * as a bean), and the plugin {@code invoke} render path (backend commonmark render).
  *
- * <p>Uses the {@code test} profile (in-memory H2 + {@code zhiflow.mode=app}) so the APP-mode context
- * boots without a real datasource.properties; the JPA schema is created automatically by Hibernate
+ * <p>Uses the {@code test} profile, which provides an in-memory H2 datasource via Spring's standard
+ * {@code DataSourceAutoConfiguration} (the profile does NOT set {@code zhiflow.mode=app}, so the
+ * conditional APP-mode beans stay inactive and the context boots without a real
+ * {@code datasource.properties}); the JPA schema is created automatically by Hibernate
  * {@code ddl-auto}.
  */
 @SpringBootTest(classes = AiApplication.class,

@@ -95,7 +95,7 @@ public final class HeadlessLauncher {
         Class<?> appClass = configured ? AiApplication.class : SetupApplication.class;
         SpringApplicationBuilder builder = new SpringApplicationBuilder(appClass);
         if (configured) {
-            // APP mode marker — DataSourceAutoConfig / JpaConfig are conditional on it.
+            // APP mode marker — DataSourceAutoConfig is conditional on it.
             System.setProperty("zhiflow.mode", "app");
         }
         builder.run(springArgs.toArray(new String[0]));
