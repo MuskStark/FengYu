@@ -35,13 +35,14 @@ ZhiFlow 已经在 Phase 1 迁移到 Spring AI 2.0(用 `ChatModel.stream()` 驱�
 
 ### 1.4 决策(用户拍板)
 
-本次 **4.0.0 为破坏性更新**,为去除技术债,**不兼容 3.x 及以前**。五条硬约束:
+本次 **4.0.0 为破坏性更新**,为去除技术债,**不兼容 3.x 及以前**。六条硬约束:
 
 1. **破坏性更新** —— 不为旧代码/旧插件保留兼容层。手搓工具层(`AiTool` 全家桶)全部删除。
 2. **插件声明 AI 支持** —— 插件接口声明是否支持 AI 调用;支持则**按 Spring AI 2.0 标准实现**(直接实现 `ToolCallback`,不经适配层)。
 3. **所有插件均独立运行 + 自带界面** —— UI 由主程序在指定位置渲染(沿用现有 ESM 微前端机制,但成为强制要求)。
 4. **插件支持分类** —— 分类用于在主项目分组到指定目录下;固定枚举 + 后端驱动前端侧边栏(前端不再硬编码)。
 5. **插件声明来源** —— 官方或第三方(`PluginSource` 枚举);分类名与来源标签**均需 i18n**(前端引入 vue-i18n)。
+6. **主程序全面 i18n + 插件跟随主程序语言** —— 主程序自身所有 UI 文本国际化;语言切换唯一入口是主程序设置,插件不提供独立语言切换,locale 由主程序注入并随主程序即时切换。
 
 ### 1.5 目标(本次 Phase 1)
 
@@ -51,7 +52,7 @@ ZhiFlow 已经在 Phase 1 迁移到 Spring AI 2.0(用 `ChatModel.stream()` 驱�
 4. **去弃用化** —— `SpringAiCloudBackend.runToolLoop` 改 `ChatClient` + `ToolCallingAdvisor`。
 5. **删除死代码** —— `fan.summer.api.*`(v1)+ `AiTool` 全家桶(手搓层)。
 6. **分类与来源** —— `ToolCategory` 增 `AI` 分类 + 后端驱动侧边栏;新增 `PluginSource`(官方/第三方)。
-7. **前端 i18n** —— 引入 vue-i18n,本地化分类名/来源标签/所有现有硬编码字符串;`language` 设置终于生效。
+7. **主程序全面 i18n + 插件跟随** —— 引入 vue-i18n,本地化主程序所有 UI 文本(分类名/来源标签/侧边栏/设置/Agent 等);语言切换主程序为唯一入口,插件 locale 由主程序注入并跟随切换;`language` 设置终于生效。
 
 ### 1.6 非目标(留给 Phase 2)
 
@@ -451,42 +452,72 @@ SSE 事件:`plan_token` / `plan_ready` / `plan_approval_requested` / `step_start
 
 ---
 
-### 3.7 前端 i18n(vue-i18n)
+### 3.7 i18n:主程序全面国际化 + 插件跟随主程序语言
 
-**现状问题:** 前端**无任何 i18n**(无 `vue-i18n` 依赖、无 locale 文件、所有字符串硬编码英文,如 `Sidebar.vue:21-27` 的 `'All Tools'`/`'Text'`/`'Dev'`)。持久化的 `language` 设置存到 DB 但**无任何代码读取**。
+**现状问题:** 前端**无任何 i18n**(无 `vue-i18n` 依赖、无 locale 文件、所有字符串硬编码英文,如 `Sidebar.vue:21-27` 的 `'All Tools'`/`'Text'`/`'Dev'`)。持久化的 `language` 设置存到 DB 但**无任何代码读取**(死设置)。
 
-**改动:引入 vue-i18n,后端驱动语言切换。**
+**两条原则:**
+- **主程序(shell)全面 i18n** —— 不只是分类名/来源标签,主程序自身的所有 UI 字符串(侧边栏、设置、Agent 视图、工具网格、错误提示等)全部国际化。
+- **插件语言跟随主程序** —— 语言切换的唯一入口是主程序设置;插件**不提供独立语言切换**,插件微前端的 locale 由主程序注入并随主程序变化而即时切换。
 
-1. **依赖与配置**:`frontend/package.json` 加 `vue-i18n`;新增 `frontend/src/i18n/` 目录:
+#### 3.7.1 主程序 i18n 基础设施
+
+`frontend/package.json` 加 `vue-i18n`;新增 `frontend/src/i18n/`:
 ```
 frontend/src/i18n/
-├── index.ts        # createI18n,默认 locale 从后端 language 设置取
+├── index.ts        # createI18n,locale 由全局 store 驱动(主程序语言)
 ├── en.json         # 英文(默认 fallback)
 └── zh.json         # 中文
 ```
 
-2. **翻译 key 结构**(对齐后端枚举的 key):
+翻译 key 结构(覆盖主程序所有 UI 文本 + 对齐后端枚举):
 ```json
 {
   "category": { "dev": "Developer", "text": "Text", "image": "Image",
                 "net": "Network", "ai": "AI", "other": "Other" },
   "source":   { "official": "Official", "third_party": "Third-party" },
-  "sidebar":  { "all": "All Tools", "favorites": "Favorites" },
-  "agent":    { "title": "AI Agent", "run": "Run", "approve": "Approve", ... }
+  "sidebar":  { "all": "All Tools", "favorites": "Favorites", "tools": "TOOLS" },
+  "grid":     { "title": "Tools" },
+  "settings": { "theme": "Theme", "language": "Language" },
+  "agent":    { "title": "AI Agent", "run": "Run", "approve": "Approve", "cancel": "Cancel", ... }
 }
 ```
-   - `category.*` / `source.*` 与后端 `ToolCategory.labelKey` / `PluginSource.labelKey` 一一对应。
-   - 现有硬编码英文字符串(`Sidebar.vue`/`ToolGrid.vue`/`Settings.vue`)迁移到 locale 文件。
+- `category.*` / `source.*` 与后端 `ToolCategory.labelKey` / `PluginSource.labelKey` 一一对应。
+- **现有所有硬编码英文字符串**(`Sidebar.vue`/`ToolGrid.vue`/`Settings.vue` 等)迁移到 locale 文件,改用 `$t()`/`t()`。
 
-3. **语言切换闭环**:
-   - 后端 `language` 设置(DB)→ 启动时前端 `GET /api/settings` 读 language → 设为 vue-i18n 的 locale。
-   - 用户在 `Settings.vue` 切语言 → `POST /api/settings` 存 DB + 前端即时切 locale。
-   - 这样 `language` 设置**终于生效**(目前是死设置)。
+#### 3.7.2 语言切换:主程序为唯一入口
 
-4. **插件微前端 i18n**:`PluginView.vue:54` 现在的 `i18n: (key) => key`(identity 空操作)改为传入真实的 vue-i18n `t` 函数,让插件微前端也能用 `ctx.i18n('category.dev')` 得到翻译。插件自身 UI 字符串的 i18n 由插件自带 locale 资源处理(与主程序 i18n 解耦,Phase 6 SDK 再规范)。
+- **主程序设置页**(`Settings.vue`)是切换语言的**唯一入口**;插件 UI 内不得有独立语言切换控件。
+- 切换流程(闭环):
+  1. 用户在 `Settings.vue` 选语言 → `POST /api/settings {language}` 存 DB。
+  2. 前端更新全局 vue-i18n locale → 主程序 UI 即时切换。
+  3. **同步通知所有已加载的插件微前端**(见 3.7.3)切换 locale。
+- 启动时:`GET /api/settings` 读 language → 设为 vue-i18n locale(目前死设置终于生效)。
+
+#### 3.7.3 插件跟随主程序语言
+
+`PluginView.vue` 给插件微前端注入的 context(现 `PluginView.vue:54` 的 `i18n: (key) => key` 空操作)增强为:
+
+```ts
+interface PluginContext {
+  // 当前 locale(跟随主程序,如 'zh'/'en')
+  locale: string
+  // 用主程序 vue-i18n 翻译(主程序壳的 key,如 'category.dev')
+  t: (key: string) => string
+  // 语言切换监听:主程序切语言时回调,插件据此重渲染自身 UI
+  onLocaleChange: (cb: (locale: string) => void) => () => void
+}
+```
+
+**插件 UI 文案的两种来源:**
+- **复用主程序词条**:插件可用 `ctx.t('category.dev')` 复用主程序已翻译的通用词条(分类名、来源标签等)。
+- **插件自带词条**:插件 UI 专属字符串(如 Markdown 编辑器的 "Preview"/"Edit")由插件自带 locale 资源(打包进 ESM bundle 的 `{en,zh}.json`)翻译;**locale 选择跟随 `ctx.locale`**(主程序当前语言),插件按 `ctx.locale` 取对应词条。
+- 无论哪种,**locale 由主程序决定**,主程序切语言 → `ctx.onLocaleChange` 触发 → 插件重渲染。
+
+> 这是"插件跟随主程序"的落地:**单一语言源(主程序设置)+ 单向传播(主程序 → 插件)**。插件不持有语言状态,不提供切换入口。
 
 **设计要点:**
-- 后端是"有哪些分类/来源"的真相源(枚举 + 端点);前端是"怎么翻译显示"的执行者(vue-i18n locale 文件)。两边用 **i18n key** 对齐契约。
+- 后端是"有哪些分类/来源"的真相源(枚举 + 端点);前端主程序是"怎么翻译显示 + 当前什么语言"的执行者。两边用 **i18n key** 对齐契约。
 - 后端不返回翻译文本,只返回 key —— 避免后端维护 UI 字符串翻译表(后端 `I18n` 类与 JavaFX 耦合,headless 无法用)。
 - 旧 `messages*.properties` 的 JavaFX UI 文本(`sidebar.label.*`/`detail.*`/`store.*`)**破坏性废弃**(本仓 headless 已无消费者);仅保留后端非 UI 用途的 key(若有)。
 
@@ -563,9 +594,10 @@ frontend/src/i18n/
   - 端到端:mock echo tool + `goal="echo hello"` → 验证 plan + execution + SSE 事件序列。
   - 审批 gate:block 在 AWAITING_PLAN_APPROVAL,模拟 approve → 继续。
 - **前端测试:**
-  - vue-i18n locale 文件含 `category.*`/`source.*` 全部 key。
-  - 切换 `language` → vue-i18n locale 即时变化。
+  - vue-i18n locale 文件含 `category.*`/`source.*` 全部 key + 主程序 UI 文本 key。
+  - 切换 `language` → 主程序 vue-i18n locale 即时变化 + 已加载插件微前端收到 `onLocaleChange`。
   - 侧边栏从 `/api/plugin-categories` 动态渲染(无硬编码)。
+  - 插件微前端 context 含 `locale`/`t`/`onLocaleChange`,且无独立语言切换入口。
 - **回归:**
   - 删除手搓层后全模块 `mvn test` 通过。
   - `MarkdownPlugin` 按新契约改造后仍工作(UI render + 可选 @Tool + source=OFFICIAL + category=TEXT)。
@@ -600,7 +632,7 @@ frontend/src/i18n/
 4. **Spring AI 工具接入** — `@Tool`/`ToolCallback` bean 发现 + `ToolCallbackResolver`。spike 验证 schema 生成。
 5. **去弃用化聊天循环** — `SpringAiCloudBackend` → `ChatClient` + `ToolCallingAdvisor`。spike 流式 + 工具事件。
 6. **Agent 运行时** — `AgentRunner` + 数据模型 + `AgentController` + SSE。
-7. **分类端点 + 前端 i18n** — `GET /api/plugin-categories` + vue-i18n 引入 + locale 文件 + 侧边栏动态渲染 + language 设置闭环。
+7. **分类端点 + 主程序全面 i18n + 插件跟随** — `GET /api/plugin-categories` + vue-i18n 引入 + locale 文件(覆盖主程序所有 UI 文本)+ 侧边栏动态渲染 + language 设置闭环(主程序唯一入口)+ 插件 context 注入 `locale`/`t`/`onLocaleChange`(插件跟随主程序)。
 8. **前端 `AiAgent.vue`** — 最小可用。
 9. **测试 + 回归**。
 
