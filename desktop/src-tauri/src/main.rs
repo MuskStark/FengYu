@@ -1,18 +1,88 @@
 // Prevents an extra console window on Windows in release.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::io::{BufRead, BufReader};
-use std::process::{Child, Command, Stdio};
+// `Child` is shared by both build paths (the Sidecar holder + run_desktop signature).
+use std::process::Child;
 use std::sync::Mutex;
-use std::thread;
-use std::time::{Duration, Instant};
 
 use tauri::{Manager, State};
 
-/// Holds the spawned Java sidecar so we can kill it on exit.
+// The sidecar machinery below is PROD-only. In dev (`cargo tauri dev`) the backend is started
+// externally (IDE / `mvn spring-boot:run` on :24056) and the webview reaches it via the Vite
+// proxy — so none of the spawn/health/token code is compiled into the dev binary.
+#[cfg(not(dev))]
+use std::io::{BufRead, BufReader};
+#[cfg(not(dev))]
+use std::process::{Command, Stdio};
+#[cfg(not(dev))]
+use std::thread;
+#[cfg(not(dev))]
+use std::time::{Duration, Instant};
+
+/// Holds the spawned Java sidecar so we can kill it on exit. `None` in dev (no sidecar).
 struct Sidecar(Mutex<Option<Child>>);
 
+/// Builds the window and runs the Tauri event loop. Shared by dev and prod `main()`.
+///
+/// - `child`: the spawned backend process to kill on window close. `None` in dev (backend is
+///   external; nothing to kill).
+/// - `init_script`: the `window.__ZHIFLOW_TOKEN__` / `__ZHIFLOW_API_BASE__` injection, run before
+///   any page script. `None` in dev (the webview talks to the backend same-origin via Vite proxy,
+///   reading the token from Vite env; no injection needed).
+fn run_desktop(child: Option<Child>, init_script: Option<String>) {
+    tauri::Builder::default()
+        .manage(Sidecar(Mutex::new(child)))
+        .setup(move |app| {
+            // Build the window programmatically so the init script (if any) runs BEFORE page load
+            // (a declarative window + window.eval() in setup runs too late — the SPA has already
+            // fired its first API calls).
+            let mut builder = tauri::WebviewWindowBuilder::new(
+                app,
+                "main",
+                tauri::WebviewUrl::default(),
+            )
+            .title("ZhiFlow")
+            .inner_size(1280.0, 820.0)
+            .min_inner_size(960.0, 640.0)
+            .resizable(true);
+            if let Some(script) = init_script.as_deref() {
+                builder = builder.initialization_script(script);
+            }
+            builder.build()?;
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                // Kill the sidecar cleanly when the window closes. No-op in dev (holder is None).
+                if let Some(state) = window.try_state::<Sidecar>() {
+                    kill_sidecar(&state);
+                }
+            }
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running ZhiFlow desktop");
+}
+
+// ── PROD-only sidecar machinery ─────────────────────────────────────────────
+// All of the spawn/health/token code below is compiled out in dev. `cargo tauri build` (prod)
+// leaves the `dev` cfg off, so these are present; `cargo tauri dev` sets `cfg(dev)`, so they are
+// absent and the dev binary never references the jar / spawns java / generates a token.
+//
+// NOTE: `kill_sidecar` is intentionally UNCONDITIONAL (no cfg) — it is referenced from the shared
+// `run_desktop` on_window_event closure compiled in BOTH paths. It is a safe no-op in dev because
+// `Sidecar` holds `None` there (its `take()` returns None and it skips).
+
+/// Kills the spawned sidecar (if any). No-op when `Sidecar` holds `None` (dev mode).
+fn kill_sidecar(state: &State<Sidecar>) {
+    if let Ok(mut guard) = state.0.lock() {
+        if let Some(mut child) = guard.take() {
+            let _ = child.kill();
+        }
+    }
+}
+
 /// Generates a simple per-launch token (UUID-like) without pulling a uuid crate.
+#[cfg(not(dev))]
 fn gen_token() -> String {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -21,11 +91,10 @@ fn gen_token() -> String {
     format!("zf-{:x}-{:x}", nanos, std::process::id())
 }
 
-/// Resolves the ZhiFlow jar path. Phase 1 dev: the jar is copied to `binaries/ZhiFlow.jar`
-/// next to the executable (see desktop/README.md). Later phases bundle it as a Tauri sidecar.
+/// Resolves the ZhiFlow jar path. The jar is copied to `binaries/ZhiFlow.jar` next to the
+/// executable for the prod bundle (see desktop/README.md).
+#[cfg(not(dev))]
 fn jar_path() -> std::path::PathBuf {
-    // During `cargo tauri dev` the CWD is src-tauri/. Look for binaries/ZhiFlow.jar there,
-    // falling back to the repo target dir for convenience.
     let candidates = [
         "binaries/ZhiFlow.jar",
         "../../ZhiFlow/target/ZhiFlow-4.0.0-SNAPSHOT.jar",
@@ -42,6 +111,7 @@ fn jar_path() -> std::path::PathBuf {
 /// Spawns the Java backend with `--port=24056 --token=<t>`, reads the bound port from its stdout
 /// (`ZHIFLOW_PORT=<n>`), and returns (child, port). The backend tries the fixed port first and
 /// falls back to an OS-assigned port if it is taken, so the actual port is always read back here.
+#[cfg(not(dev))]
 fn spawn_backend(token: &str) -> Result<(Child, u16), String> {
     let jar = jar_path();
     if !jar.exists() {
@@ -87,6 +157,7 @@ fn spawn_backend(token: &str) -> Result<(Child, u16), String> {
 }
 
 /// Polls GET /api/health until 200 or timeout.
+#[cfg(not(dev))]
 fn wait_for_health(port: u16, token: &str) -> Result<(), String> {
     let url = format!("http://127.0.0.1:{port}/api/health");
     let deadline = Instant::now() + Duration::from_secs(30);
@@ -105,13 +176,44 @@ fn wait_for_health(port: u16, token: &str) -> Result<(), String> {
     Err("backend health check timed out".into())
 }
 
+/// Probes GET /api/setup/status. Returns Ok(true) if in SETUP mode (not initialized).
+#[cfg(not(dev))]
+fn check_setup_mode(port: u16, token: &str) -> Result<bool, String> {
+    let url = format!("http://127.0.0.1:{port}/api/setup/status");
+    let resp = ureq::get(&url)
+        .set("X-ZhiFlow-Token", token)
+        .timeout(Duration::from_secs(2))
+        .call()
+        .map_err(|e| format!("setup status request failed: {e}"))?;
+    let body = resp.into_string().map_err(|e| format!("read body: {e}"))?;
+    // Crude parse: SETUP mode if "initialized":false appears.
+    Ok(body.contains("\"initialized\":false") || body.contains("\"initialized\": false"))
+}
+
+// ── main(): dev vs prod ──────────────────────────────────────────────────────
+
+/// DEV entry (`cargo tauri dev`). The backend is started externally (IDE / `mvn spring-boot:run`
+/// on :24056); the webview reaches it same-origin via the Vite proxy. Tauri only opens the window.
+#[cfg(dev)]
+fn main() {
+    println!(
+        "[desktop] dev mode: backend must be running externally on :24056 \
+         (IDE / `mvn -pl ZhiFlow spring-boot:run`). Tauri only opens the window; \
+         API calls go through the Vite proxy."
+    );
+    run_desktop(None, None);
+}
+
+/// PROD entry (`cargo tauri build`). Spawns the bundled jar as a sidecar, waits for health,
+/// handles the SETUP→APP restart loop, then injects the token/api-base into the webview.
+#[cfg(not(dev))]
 fn main() {
     let token = gen_token();
 
     // The backend may start in SETUP mode (first launch, no datasource.properties).
-    // When the setup wizard completes, it exits with code SETUP_DONE (0) to signal
-    // us to restart it into APP mode. We loop: spawn → wait for health → if it exits
-    // with 0 and we haven't entered APP mode yet, respawn.
+    // When the setup wizard completes, it exits with code SETUP_DONE (0) to signal us to restart
+    // it into APP mode. We loop: spawn → wait for health → if it exits with 0 and we haven't
+    // entered APP mode yet, respawn.
     let mut entered_app_mode = false;
     let (child, port) = loop {
         let (c, p) = match spawn_backend(&token) {
@@ -127,8 +229,8 @@ fn main() {
             let _ = cc.kill();
             std::process::exit(1);
         }
-        // If we already entered APP mode on a previous iteration and the backend exited,
-        // that's an unexpected crash — don't loop forever.
+        // If we already entered APP mode on a previous iteration and the backend exited, that's an
+        // unexpected crash — don't loop forever.
         if entered_app_mode {
             eprintln!("FATAL: backend exited unexpectedly after entering APP mode");
             std::process::exit(1);
@@ -136,8 +238,6 @@ fn main() {
         // Check whether the backend is in setup mode by probing /api/setup/status.
         match check_setup_mode(p, &token) {
             Ok(true) => {
-                // SETUP mode: wait for the sidecar to exit (it will exit 0 when done),
-                // then loop to respawn into APP mode.
                 println!("[desktop] backend in SETUP mode; waiting for wizard to complete…");
                 let mut waiter = c;
                 let status = waiter.wait().expect("failed to wait for setup sidecar");
@@ -152,7 +252,6 @@ fn main() {
             }
             Ok(false) => break (c, p), // APP mode — proceed to window
             Err(e) => {
-                // Probe failed — assume APP mode and proceed (best effort).
                 eprintln!("[desktop] could not determine setup mode ({}); assuming APP", e);
                 break (c, p);
             }
@@ -168,54 +267,5 @@ fn main() {
          window.__ZHIFLOW_API_BASE__ = 'http://127.0.0.1:{port}';"
     );
 
-    tauri::Builder::default()
-        .manage(Sidecar(Mutex::new(Some(child))))
-        .setup(move |app| {
-            // Build the window programmatically so the init script runs BEFORE page load
-            // (a declarative window + window.eval() in setup runs too late — the SPA has
-            // already fired its first API calls).
-            tauri::WebviewWindowBuilder::new(
-                app,
-                "main",
-                tauri::WebviewUrl::default(),
-            )
-            .title("ZhiFlow")
-            .inner_size(1280.0, 820.0)
-            .min_inner_size(960.0, 640.0)
-            .resizable(true)
-            .initialization_script(&init_script)
-            .build()?;
-            Ok(())
-        })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                // Kill the sidecar cleanly when the window closes.
-                if let Some(state) = window.try_state::<Sidecar>() {
-                    kill_sidecar(&state);
-                }
-            }
-        })
-        .run(tauri::generate_context!())
-        .expect("error while running ZhiFlow desktop");
-}
-
-fn kill_sidecar(state: &State<Sidecar>) {
-    if let Ok(mut guard) = state.0.lock() {
-        if let Some(mut child) = guard.take() {
-            let _ = child.kill();
-        }
-    }
-}
-
-/// Probes GET /api/setup/status. Returns Ok(true) if in SETUP mode (not initialized).
-fn check_setup_mode(port: u16, token: &str) -> Result<bool, String> {
-    let url = format!("http://127.0.0.1:{port}/api/setup/status");
-    let resp = ureq::get(&url)
-        .set("X-ZhiFlow-Token", token)
-        .timeout(Duration::from_secs(2))
-        .call()
-        .map_err(|e| format!("setup status request failed: {e}"))?;
-    let body = resp.into_string().map_err(|e| format!("read body: {e}"))?;
-    // Crude parse: SETUP mode if "initialized":false appears.
-    Ok(body.contains("\"initialized\":false") || body.contains("\"initialized\": false"))
+    run_desktop(Some(child), Some(init_script));
 }
