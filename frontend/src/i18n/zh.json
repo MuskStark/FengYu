@@ -1,0 +1,15 @@
+{
+  "category": { "dev": "开发者", "text": "文本", "image": "图像",
+                "net": "网络", "ai": "AI", "other": "其他" },
+  "source":   { "official": "官方", "third_party": "第三方" },
+  "sidebar":  { "all": "全部工具", "favorites": "收藏", "categories": "分类",
+                "aiChat": "AI 对话", "settings": "设置", "agent": "AI 助手",
+                "expand": "展开", "collapse": "收起" },
+  "grid":     { "title": "工具", "loading": "正在加载插件…",
+                "empty": "此分类下暂无工具。" },
+  "settings": { "title": "设置", "theme": "主题", "language": "语言",
+                "dark": "深色", "light": "浅色" },
+  "agent":    { "title": "AI 助手", "goalPlaceholder": "需要我做什么？",
+                "run": "规划", "approve": "批准", "cancel": "取消" },
+  "common":   { "back": "返回", "retry": "重试", "loading": "加载中…" }
+}
