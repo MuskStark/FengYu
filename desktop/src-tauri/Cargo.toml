@@ -17,5 +17,7 @@ serde_json = "1"
 ureq = "2"
 
 [features]
-# By default Tauri runs in production mode. `cargo tauri dev` toggles dev behaviour.
+# Dev vs prod is decided at compile time by `debug_assertions` (see src/main.rs):
+# `cargo tauri dev` is a debug build (backend external, no sidecar); `cargo tauri build` is a
+# release build (spawns the bundled jar sidecar). No custom cfg is involved.
 custom-protocol = ["tauri/custom-protocol"]
