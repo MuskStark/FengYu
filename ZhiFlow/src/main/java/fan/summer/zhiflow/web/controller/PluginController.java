@@ -1,5 +1,6 @@
 package fan.summer.zhiflow.web.controller;
 
+import fan.summer.zhiflow.api.ToolCategory;
 import fan.summer.zhiflow.api.plugin.PluginDescriptor;
 import fan.summer.zhiflow.plugin.PluginRegistryService;
 import org.springframework.core.io.ClassPathResource;
@@ -16,6 +17,8 @@ import org.springframework.web.servlet.HandlerMapping;
 
 import jakarta.servlet.http.HttpServletRequest;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -40,6 +43,32 @@ public class PluginController {
     @GetMapping("/api/plugins")
     public List<PluginDescriptor> list() {
         return registry.descriptors();
+    }
+
+    @GetMapping("/api/plugin-categories")
+    public List<Map<String, String>> categories() {
+        // Backend is the source of truth for which categories exist.
+        // The frontend fetches this and renders the sidebar dynamically.
+        List<Map<String, String>> out = new ArrayList<>();
+        for (ToolCategory c : ToolCategory.values()) {
+            Map<String, String> entry = new LinkedHashMap<>();
+            entry.put("id", c.getId());
+            entry.put("labelKey", c.getLabelKey());
+            entry.put("icon", iconFor(c.getId()));
+            out.add(entry);
+        }
+        return out;
+    }
+
+    private static String iconFor(String id) {
+        return switch (id) {
+            case "dev"  -> "⚙";
+            case "text" -> "¶";
+            case "image" -> "▩";
+            case "net"  -> "☍";
+            case "ai"   -> "✦";
+            default     -> "◇";
+        };
     }
 
     @PostMapping("/api/plugins/{id}/invoke")
