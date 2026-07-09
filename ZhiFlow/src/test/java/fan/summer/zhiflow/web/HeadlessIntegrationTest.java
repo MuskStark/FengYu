@@ -4,6 +4,7 @@ import fan.summer.zhiflow.ai.spring.AiApplication;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -18,11 +19,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * and exercises the Phase 1 endpoints: health, plugin listing (the Markdown plugin must register
  * as a bean), and the plugin {@code invoke} render path (backend commonmark render).
  *
- * <p>The H2/JPA schema is now created automatically by Hibernate {@code ddl-auto} (Task 6); the
- * former manual {@code DatabaseInit.init()} is gone with the MyBatis removal.
+ * <p>Uses the {@code test} profile (in-memory H2 + {@code zhiflow.mode=app}) so the APP-mode context
+ * boots without a real datasource.properties; the JPA schema is created automatically by Hibernate
+ * {@code ddl-auto}.
  */
 @SpringBootTest(classes = AiApplication.class,
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@ActiveProfiles("test")
 class HeadlessIntegrationTest {
 
     @LocalServerPort
