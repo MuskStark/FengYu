@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { watchEffect } from 'vue'
+import { useRoute } from 'vue-router'
 import { useThemeStore } from './stores/theme'
 import AppShell from './shell/AppShell.vue'
 
-// Keep the <html> theme class in sync with the store. The store's setTheme
-// already stamps the class; this guards against any external reset.
 const theme = useThemeStore()
+const route = useRoute()
+
+// Keep the <html> theme class in sync with the store.
 watchEffect(() => {
   const root = document.documentElement
   root.classList.remove('theme-dark', 'theme-light')
@@ -14,5 +16,7 @@ watchEffect(() => {
 </script>
 
 <template>
-  <AppShell />
+  <!-- Setup wizard renders full-screen without the app shell -->
+  <router-view v-if="route.name === 'setup'" />
+  <AppShell v-else />
 </template>
