@@ -6,18 +6,24 @@ import java.util.Optional;
 
 /**
  * Unified AI inference backend contract. Two host-supplied implementations exist:
- * {@code fan.summer.ai.service.CloudChatBackend} (LangChain4j-backed cloud providers)
- * and {@code fan.summer.ai.service.LocalChatBackend} (in-process GGUF).
+ * {@code fan.summer.zhiflow.ai.service.SpringAiCloudBackend} (Spring AI-backed cloud providers:
+ * OpenAI / Anthropic / DeepSeek) and {@code fan.summer.zhiflow.ai.service.OllamaLocalBackend}
+ * (Ollama-served local models).
  *
  * <p>UI consumers should treat this as opaque — call
  * {@link #chat(List, AiStreamCallback)} and react to events via the callback.
- * Use {@code instanceof CloudChatBackend} / {@code instanceof LocalChatBackend}
+ * Use {@code instanceof SpringAiCloudBackend} / {@code instanceof OllamaLocalBackend}
  * for backend-specific behavior (e.g. showing the local-mode degraded banner
  * when {@link #isNativeAvailable()} returns false).
  *
- * <p>Tool registration is global via {@link AiServiceProvider}; backends read
- * from there at chat time. Plugins that want to register tools should call
- * {@link AiServiceProvider#registerTool(AiTool)}.
+ * <p>Tool discovery is Spring AI-native: tool beans (classes with {@code @Tool}-annotated
+ * methods that implement the host's {@code ZhiFlowTool} marker) are aggregated by
+ * {@code fan.summer.zhiflow.ai.tools.AiToolDiscoveryConfig} into a single
+ * {@code ToolCallback[]} bean, which the host wiring injects into each backend via
+ * {@code setToolCallbacks(...)}. Backends then attach those callbacks to every prompt so the
+ * model can request tools in chat. Plugins that want to expose tools should declare a
+ * Spring {@code @Component} that {@code implements ZhiFlowTool} with {@code @Tool} methods —
+ * it is picked up automatically with no config edit.
  *
  * <p>Note: this interface is intentionally non-sealed (not {@code sealed}).
  * Java forbids cross-module sealed permits, and the implementations live in

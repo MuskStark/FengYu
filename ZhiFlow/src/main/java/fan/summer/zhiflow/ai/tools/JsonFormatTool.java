@@ -15,11 +15,12 @@ import org.springframework.stereotype.Component;
  * register as {@code jsonFormat}).
  *
  * <p>This is the template for all future AI tools: declare a {@code @Component} with one or more
- * {@code @Tool} methods; the host (and, later, plugins) aggregate them via
- * {@code ToolCallbacks.from(...)}.
+ * {@code @Tool} methods and {@code implements ZhiFlowTool}; {@link AiToolDiscoveryConfig} then
+ * aggregates every {@code ZhiFlowTool} bean via {@code ToolCallbacks.from(...)} with no further
+ * config edit.
  */
 @Component
-public class JsonFormatTool {
+public class JsonFormatTool implements ZhiFlowTool {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
