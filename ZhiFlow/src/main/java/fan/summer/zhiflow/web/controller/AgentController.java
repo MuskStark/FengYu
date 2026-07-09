@@ -198,6 +198,22 @@ public class AgentController {
         /** True once the buffered events have been drained (so we only drain once). */
         private volatile boolean drained = false;
 
+        /**
+         * True once the run reached a terminal state (onComplete / onError). Read by
+         * {@link #attach(SseEmitter)} after draining: if the terminal event was buffered
+         * (because the emitter wasn't attached yet), the late-connecting client has now
+         * received it as data, but {@link #complete()} early-returned at termination time —
+         * so attach must finish the emitter here or the no-timeout connection leaks.
+         */
+        private volatile boolean terminated = false;
+
+        /**
+         * Non-null when the run terminated via {@link #onError(String)} — if set,
+         * {@link #attach(SseEmitter)} completes the emitter <em>with that error</em> rather
+         * than normally, matching the live-delivery semantics of {@link #onError(String)}.
+         */
+        private volatile Throwable terminalError = null;
+
         AgentStreamSink(String runId) {
             this.runId = runId;
         }
@@ -212,6 +228,16 @@ public class AgentController {
             });
             emitter.onError(ex -> log.debug("agent {}: SSE stream error: {}", runId, ex.getMessage()));
             drain();
+            // If the run terminated before the client connected, complete() early-returned
+            // at termination time (emitter was null). The buffer just delivered the buffered
+            // terminal event as data — now finish the emitter so the connection closes.
+            if (terminated) {
+                if (terminalError != null) {
+                    completeWithError();
+                } else {
+                    complete();
+                }
+            }
         }
 
         /** Drains the buffer to the emitter under the lock so new events can't interleave. */
@@ -253,11 +279,14 @@ public class AgentController {
 
         @Override public void onComplete(String summary) {
             emit("complete", Map.of("summary", summary == null ? "" : summary));
+            terminated = true;
             complete();
         }
 
         @Override public void onError(String message) {
             emit("error", Map.of("message", message == null ? "" : message));
+            terminated = true;
+            terminalError = new IllegalStateException(message == null ? "" : message);
             complete();
         }
 
@@ -291,14 +320,32 @@ public class AgentController {
             }
         }
 
-        /** Completes the emitter (terminal event). */
-        private void complete() {
+        /**
+         * Completes the emitter (terminal event). If the run already terminated but no emitter
+         * was attached yet, this is a no-op — {@link #attach(SseEmitter)} will finish the
+         * emitter after replaying the buffered terminal event.
+         */
+        private synchronized void complete() {
             SseEmitter em = emitter;
             if (em == null) return;
             try {
                 em.complete();
             } catch (Exception e) {
                 log.debug("agent {}: SSE complete failed: {}", runId, e.getMessage());
+            }
+        }
+
+        /**
+         * Completes the emitter <em>with an error</em>, mirroring the live-delivery semantics
+         * of {@link #onError(String)} for the late-connect case (terminal event was buffered).
+         */
+        private synchronized void completeWithError() {
+            SseEmitter em = emitter;
+            if (em == null) return;
+            try {
+                em.completeWithError(terminalError);
+            } catch (Exception e) {
+                log.debug("agent {}: SSE completeWithError failed: {}", runId, e.getMessage());
             }
         }
 
