@@ -4,10 +4,15 @@ import type {
   AppSettings,
   ChatMessage,
   ChatStartResponse,
+  ConnectionTestRequest,
+  ConnectionTestResult,
+  DbTypeMeta,
   HealthResponse,
+  InitializeResult,
   PartialSettings,
   PluginDescriptor,
   PluginInvokeResult,
+  SetupStatus,
 } from './types'
 
 const http: AxiosInstance = axios.create({
@@ -15,10 +20,11 @@ const http: AxiosInstance = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Attach the ZhiFlow token to every request except /api/health.
+// Attach the ZhiFlow token to every request except /api/health and /api/setup/.
+// Setup calls run before a token exists (backend TokenAuthFilter bypasses /api/setup/).
 http.interceptors.request.use((config) => {
   const url = config.url ?? ''
-  if (!url.includes('/api/health')) {
+  if (!url.includes('/api/health') && !url.includes('/api/setup/')) {
     const token = getToken()
     if (token) {
       config.headers.set('X-ZhiFlow-Token', token)
@@ -64,6 +70,32 @@ export const api = {
     const { data } = await http.post<ChatStartResponse>('/api/ai/chat', {
       messages,
     })
+    return data
+  },
+
+  async getSetupStatus(): Promise<SetupStatus> {
+    const { data } = await http.get<SetupStatus>('/api/setup/status')
+    return data
+  },
+
+  async getSetupTypes(): Promise<DbTypeMeta[]> {
+    const { data } = await http.get<DbTypeMeta[]>('/api/setup/types')
+    return data
+  },
+
+  async testConnection(req: ConnectionTestRequest): Promise<ConnectionTestResult> {
+    const { data } = await http.post<ConnectionTestResult>(
+      '/api/setup/test-connection',
+      req,
+    )
+    return data
+  },
+
+  async initializeSetup(req: ConnectionTestRequest): Promise<InitializeResult> {
+    const { data } = await http.post<InitializeResult>(
+      '/api/setup/initialize',
+      req,
+    )
     return data
   },
 }
