@@ -1,34 +1,42 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
 import { useThemeStore } from '@/stores/theme'
-import { useNavStore, type NavCategory } from '@/stores/nav'
+import { useNavStore } from '@/stores/nav'
+import { useCategoriesStore } from '@/stores/categories'
 
 const settings = useSettingsStore()
 const theme = useThemeStore()
 const nav = useNavStore()
+const cats = useCategoriesStore()
 const router = useRouter()
 
 const collapsed = computed(() => settings.sidebarCollapsed)
 
-interface CatItem {
-  key: NavCategory
-  label: string
+/**
+ * Reactive nav built from the backend category descriptors, bookended by the
+ * "all" and "favorites" pseudo-categories. Keys are the lowercase category ids
+ * (matching /api/plugin-categories); ToolGrid normalises plugin.category to
+ * lowercase at the filter boundary.
+ */
+interface NavItem {
+  key: string
+  labelKey: string
   icon: string
 }
-const categories: CatItem[] = [
-  { key: 'all', label: 'All Tools', icon: '▦' },
-  { key: 'text', label: 'Text', icon: '¶' },
-  { key: 'image', label: 'Image', icon: '▩' },
-  { key: 'dev', label: 'Dev', icon: '⚙' },
-  { key: 'net', label: 'Net', icon: '☍' },
-  { key: 'other', label: 'Other', icon: '◇' },
-  { key: 'favorites', label: 'Favorites', icon: '★' },
-]
+const navItems = computed<NavItem[]>(() => [
+  { key: 'all', labelKey: 'sidebar.all', icon: '▦' },
+  ...cats.categories.map((c) => ({ key: c.id, labelKey: c.labelKey, icon: c.icon })),
+  { key: 'favorites', labelKey: 'sidebar.favorites', icon: '★' },
+])
 
-function pickCategory(c: NavCategory) {
-  nav.setCategory(c)
+onMounted(() => {
+  if (!cats.loaded) void cats.load()
+})
+
+function pickCategory(key: string) {
+  nav.setCategory(key)
   router.push('/')
 }
 
@@ -42,40 +50,48 @@ function toggleCollapsed() {
     <div class="brand">
       <span class="logo">ZF</span>
       <span v-if="!collapsed" class="brand-name">ZhiFlow</span>
-      <button class="collapse-btn" :title="collapsed ? 'Expand' : 'Collapse'" @click="toggleCollapsed">
+      <button
+        class="collapse-btn"
+        :title="collapsed ? $t('sidebar.expand') : $t('sidebar.collapse')"
+        @click="toggleCollapsed"
+      >
         {{ collapsed ? '»' : '«' }}
       </button>
     </div>
 
     <nav class="section">
-      <div v-if="!collapsed" class="section-title">CATEGORIES</div>
+      <div v-if="!collapsed" class="section-title">{{ $t('sidebar.categories') }}</div>
       <button
-        v-for="c in categories"
-        :key="c.key"
+        v-for="item in navItems"
+        :key="item.key"
         class="nav-item"
-        :class="{ active: nav.category === c.key }"
-        :title="c.label"
-        @click="pickCategory(c.key)"
+        :class="{ active: nav.category === item.key }"
+        :title="$t(item.labelKey)"
+        @click="pickCategory(item.key)"
       >
-        <span class="nav-icon">{{ c.icon }}</span>
-        <span v-if="!collapsed" class="nav-label">{{ c.label }}</span>
+        <span class="nav-icon">{{ item.icon }}</span>
+        <span v-if="!collapsed" class="nav-label">{{ $t(item.labelKey) }}</span>
       </button>
     </nav>
 
     <div class="spacer" />
 
     <nav class="section footer">
-      <button class="nav-item" title="AI Chat" @click="router.push('/ai')">
+      <button class="nav-item" :title="$t('sidebar.aiChat')" @click="router.push('/ai')">
         <span class="nav-icon">✦</span>
-        <span v-if="!collapsed" class="nav-label">AI Chat</span>
+        <span v-if="!collapsed" class="nav-label">{{ $t('sidebar.aiChat') }}</span>
       </button>
-      <button class="nav-item" title="Settings" @click="router.push('/settings')">
+      <button class="nav-item" :title="$t('sidebar.agent')" @click="router.push('/agent')">
+        <span class="nav-icon">✪</span>
+        <span v-if="!collapsed" class="nav-label">{{ $t('sidebar.agent') }}</span>
+      </button>
+      <button class="nav-item" :title="$t('sidebar.settings')" @click="router.push('/settings')">
         <span class="nav-icon">⚙</span>
-        <span v-if="!collapsed" class="nav-label">Settings</span>
+        <span v-if="!collapsed" class="nav-label">{{ $t('sidebar.settings') }}</span>
       </button>
-      <button class="nav-item" :title="`Theme: ${theme.theme}`" @click="theme.toggle()">
+      <button class="nav-item" @click="theme.toggle()">
         <span class="nav-icon">{{ theme.theme === 'dark' ? '☾' : '☀' }}</span>
-        <span v-if="!collapsed" class="nav-label">Theme</span>
+        <span v-if="!collapsed" class="nav-label">{{ $t('sidebar.theme') }}</span>
       </button>
     </nav>
   </aside>

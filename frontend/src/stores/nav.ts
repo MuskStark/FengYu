@@ -1,14 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-export type NavCategory =
-  | 'all'
-  | 'text'
-  | 'image'
-  | 'dev'
-  | 'net'
-  | 'other'
-  | 'favorites'
+/**
+ * Selected sidebar nav key. Relaxed to `string` so backend-driven category ids
+ * (lowercase, e.g. "dev"/"text"/"ai" from /api/plugin-categories) plus the
+ * pseudo-categories "all" and "favorites" all fit without an enum to maintain.
+ */
+export type NavCategory = string
 
 export const useNavStore = defineStore('nav', () => {
   const category = ref<NavCategory>('all')

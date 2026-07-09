@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { marked } from 'marked'
+import { useI18n } from 'vue-i18n'
 import { useAiSessionStore } from '@/stores/aiSession'
 
+const { t } = useI18n()
 const ai = useAiSessionStore()
 const draft = ref('')
 const scroller = ref<HTMLElement | null>(null)
@@ -30,7 +32,7 @@ function onKeydown(e: KeyboardEvent) {
 const hasError = computed(() => ai.error !== null)
 
 watch(
-  () => ai.turns.map((t) => t.content + t.thinking).join('|'),
+  () => ai.turns.map((turn) => turn.content + turn.thinking).join('|'),
   async () => {
     await nextTick()
     const el = scroller.value
@@ -42,30 +44,32 @@ watch(
 <template>
   <div class="chat-page">
     <header class="chat-head">
-      <h1 class="section-header">AI Chat</h1>
-      <button class="sk-btn-secondary" @click="ai.clear()">Clear</button>
+      <h1 class="section-header">{{ $t('aichat.title') }}</h1>
+      <button class="sk-btn-secondary" @click="ai.clear()">{{ $t('aichat.clear') }}</button>
     </header>
 
     <div v-if="hasError" class="banner">
       {{ ai.error }}
-      <button class="sk-btn-secondary retry" @click="ai.error = null">Dismiss</button>
+      <button class="sk-btn-secondary retry" @click="ai.error = null">
+        {{ $t('aichat.dismiss') }}
+      </button>
     </div>
 
     <div ref="scroller" class="messages">
-      <div v-if="ai.turns.length === 0" class="empty">Ask anything to get started.</div>
+      <div v-if="ai.turns.length === 0" class="empty">{{ $t('aichat.empty') }}</div>
 
-      <div v-for="t in ai.turns" :key="t.id" class="turn" :class="t.role">
-        <div class="role">{{ t.role === 'user' ? 'You' : 'Assistant' }}</div>
+      <div v-for="turn in ai.turns" :key="turn.id" class="turn" :class="turn.role">
+        <div class="role">{{ turn.role === 'user' ? t('aichat.you') : t('aichat.assistant') }}</div>
 
-        <details v-if="t.thinking" class="thinking">
-          <summary>Thinking</summary>
-          <div class="thinking-body" v-html="md(t.thinking)" />
+        <details v-if="turn.thinking" class="thinking">
+          <summary>{{ $t('aichat.thinking') }}</summary>
+          <div class="thinking-body" v-html="md(turn.thinking)" />
         </details>
 
-        <div v-if="t.role === 'assistant'" class="bubble" v-html="md(t.content)" />
-        <div v-else class="bubble plain">{{ t.content }}</div>
+        <div v-if="turn.role === 'assistant'" class="bubble" v-html="md(turn.content)" />
+        <div v-else class="bubble plain">{{ turn.content }}</div>
 
-        <div v-if="t.streaming && !t.content" class="typing">…</div>
+        <div v-if="turn.streaming && !turn.content" class="typing">…</div>
       </div>
     </div>
 
@@ -74,11 +78,15 @@ watch(
         v-model="draft"
         class="sk-field input"
         rows="2"
-        placeholder="Type a message (Enter to send, Shift+Enter for newline)"
+        :placeholder="$t('aichat.placeholder')"
         @keydown="onKeydown"
       />
-      <button v-if="ai.busy" class="sk-btn-secondary" @click="ai.stop()">Stop</button>
-      <button v-else class="sk-btn-primary" :disabled="!draft.trim()" @click="submit">Send</button>
+      <button v-if="ai.busy" class="sk-btn-secondary" @click="ai.stop()">
+        {{ $t('aichat.stop') }}
+      </button>
+      <button v-else class="sk-btn-primary" :disabled="!draft.trim()" @click="submit">
+        {{ $t('aichat.send') }}
+      </button>
     </div>
   </div>
 </template>

@@ -1,6 +1,9 @@
-export type ToolCategory = 'TEXT' | 'IMAGE' | 'DEV' | 'NET' | 'OTHER'
+export type ToolCategory = 'TEXT' | 'IMAGE' | 'DEV' | 'NET' | 'AI' | 'OTHER'
 export type ThemeName = 'dark' | 'light'
 export type LanguageName = 'en' | 'zh'
+
+/** Declared origin of a plugin, drives the Official/Third-party card badge. */
+export type PluginSource = 'OFFICIAL' | 'THIRD_PARTY'
 
 export interface PluginDescriptor {
   id: string
@@ -11,6 +14,19 @@ export interface PluginDescriptor {
   iconStyle: string
   version: string
   uiEntry: string
+  supportsAi: boolean // NEW — drives the AI badge on the card
+  source: PluginSource // NEW — drives the Official/Third-party badge
+}
+
+/**
+ * Backend-driven sidebar category descriptor (from GET /api/plugin-categories).
+ * `id` is the lowercase category id (e.g. "dev"); `labelKey` is a vue-i18n key
+ * (e.g. "category.dev"); `icon` is the sidebar glyph.
+ */
+export interface CategoryDescriptor {
+  id: string
+  labelKey: string
+  icon: string
 }
 
 export interface AppSettings {

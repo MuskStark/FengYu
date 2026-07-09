@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { usePluginsStore } from '@/stores/plugins'
 import { useThemeStore } from '@/stores/theme'
 import { api } from '@/api/client'
@@ -8,6 +9,7 @@ import { loadPlugin, type PluginContext } from '@/mf/loader'
 
 const props = defineProps<{ id: string }>()
 
+const { t } = useI18n()
 const plugins = usePluginsStore()
 const theme = useThemeStore()
 const router = useRouter()
@@ -35,7 +37,7 @@ async function mountPlugin() {
 
   const descriptor = plugins.byId(props.id)
   if (!descriptor) {
-    error.value = `Unknown plugin: ${props.id}`
+    error.value = t('plugin.unknown', { id: props.id })
     return
   }
   const el = host.value
@@ -79,18 +81,18 @@ onBeforeUnmount(teardown)
 <template>
   <div class="plugin-page">
     <div class="bar">
-      <button class="sk-btn-secondary" @click="router.push('/')">← Back</button>
+      <button class="sk-btn-secondary" @click="router.push('/')">← {{ $t('common.back') }}</button>
       <span class="title">{{ plugins.byId(props.id)?.name ?? props.id }}</span>
     </div>
 
     <div v-if="error" class="error-card">
-      <div class="error-title">Failed to load plugin</div>
+      <div class="error-title">{{ $t('plugin.failedTitle') }}</div>
       <div class="error-msg">{{ error }}</div>
-      <button class="sk-btn-primary" @click="mountPlugin()">Retry</button>
+      <button class="sk-btn-primary" @click="mountPlugin()">{{ $t('common.retry') }}</button>
     </div>
 
     <div v-show="!error" ref="host" class="mount" />
-    <div v-if="loading" class="loading">Loading plugin…</div>
+    <div v-if="loading" class="loading">{{ $t('plugin.loading') }}</div>
   </div>
 </template>
 
