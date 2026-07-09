@@ -36,7 +36,9 @@ public class TokenAuthFilter extends OncePerRequestFilter {
         }
 
         String path = request.getRequestURI();
-        if ("OPTIONS".equalsIgnoreCase(request.getMethod()) || "/api/health".equals(path)) {
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())
+                || "/api/health".equals(path)
+                || path.startsWith("/api/setup/")) {
             chain.doFilter(request, response);
             return;
         }
