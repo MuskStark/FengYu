@@ -103,3 +103,46 @@ export interface InitializeResult {
   error?: string
   step?: string
 }
+
+// ── AI Agent (Plan-and-Execute) ─────────────────────────────
+
+/** Approval/recovery knobs for an agent run; sent on POST /api/agent/run. */
+export interface AgentRunConfig {
+  requirePlanApproval: boolean
+  requireStepApproval: boolean
+  replanOnFailure: boolean
+  maxReplans: number
+}
+
+/** POST /api/agent/run body: the user goal + optional config. */
+export interface AgentRunRequest {
+  goal: string
+  config: AgentRunConfig
+}
+
+/** POST /api/agent/run response: the id used to open the SSE stream. */
+export interface AgentRunResponse {
+  runId: string
+}
+
+/** One step in an agent plan. `status` mirrors the backend's free-form string. */
+export interface AgentStep {
+  index: number
+  toolName: string
+  description: string
+  status: string
+}
+
+/** A Plan-and-Execute plan: the goal, the ordered steps, and the planner's reasoning. */
+export interface AgentPlan {
+  goal: string
+  steps: AgentStep[]
+  reasoning: string
+}
+
+/** A Spring AI-discovered orchestrable tool (GET /api/agent/tools). */
+export interface AgentTool {
+  name: string
+  description: string
+  inputSchema: string
+}
