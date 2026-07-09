@@ -12,7 +12,10 @@ export interface PluginContext {
   }
   theme: 'dark' | 'light'
   onThemeChange: (cb: (t: 'dark' | 'light') => void) => () => void
-  i18n: (key: string) => string
+  // NEW — locale follows the host; plugins must NOT ship a language switcher
+  locale: string
+  t: (key: string) => string
+  onLocaleChange: (cb: (locale: string) => void) => () => void
   notify: (msg: string) => void
 }
 
