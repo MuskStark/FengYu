@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Ensures the local virtual user (id=1, "ZFlow-Summer") exists after the Spring context
@@ -31,13 +32,20 @@ public class VirtualUserInitializer implements ApplicationRunner {
     }
 
     @Override
+    @Transactional
     public void run(ApplicationArguments args) {
         ensureVirtualUser();
     }
 
     /**
      * Public for testing. Idempotent — safe to call multiple times.
+     *
+     * <p>Transaction-required: the native {@code executeUpdate()} needs an active JPA transaction
+     * (the app runs with {@code spring.jpa.open-in-view=false} and no other tx boundary wraps an
+     * {@link ApplicationRunner}). {@code @Transactional} here ensures the INSERT commits whether
+     * called from {@link #run} on context start or directly from tests.
      */
+    @Transactional
     public void ensureVirtualUser() {
         if (sysUserRepo.existsById(SecurityConstants.LOCAL_VIRTUAL_USER_ID)) {
             return;

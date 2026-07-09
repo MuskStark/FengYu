@@ -1,15 +1,26 @@
 package fan.summer.zhiflow.database;
 
+import fan.summer.zhiflow.ai.spring.AiApplication;
 import fan.summer.zhiflow.database.entity.SysUserEntity;
 import fan.summer.zhiflow.database.repository.SysUserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SpringBootTest
+/**
+ * Verifies the virtual user (id=1, ZFlow-Summer) is created on APP-mode context start.
+ *
+ * <p>Boots the full {@link AiApplication} context with the {@code test} profile (in-memory H2 +
+ * {@code zhiflow.mode=app}). The explicit {@code classes} is required because this test lives in a
+ * subpackage of {@code database/} where the upward {@code @SpringBootConfiguration} search cannot
+ * find {@code AiApplication} (which is in {@code ai.spring}).
+ */
+@SpringBootTest(classes = AiApplication.class)
+@ActiveProfiles("test")
 @Transactional
 class VirtualUserInitializerTest {
 

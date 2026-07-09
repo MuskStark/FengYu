@@ -1,10 +1,13 @@
 package fan.summer.zhiflow.database.repository;
 
+import fan.summer.zhiflow.ai.spring.AiApplication;
 import fan.summer.zhiflow.database.SecurityConstants;
 import fan.summer.zhiflow.database.entity.AppSettingEntity;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.ContextConfiguration;
 
 import java.util.Optional;
 
@@ -13,8 +16,16 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Verifies AppSettingRepository persists and isolates settings per user_id.
  * Uses @DataJpaTest (in-memory H2, auto-create schema from entities).
+ *
+ * <p>Uses the {@code test} profile (see {@code application-test.yml}) for the H2 datasource + JPA
+ * properties. Because this test lives in a subpackage where the upward
+ * {@code @SpringBootConfiguration} search fails, the configuration is declared explicitly via
+ * {@link ContextConfiguration} pointing at {@link AiApplication} (which carries
+ * {@code @EntityScan} + {@code @EnableJpaRepositories} for the {@code database} subpackages).
  */
 @DataJpaTest
+@ActiveProfiles("test")
+@ContextConfiguration(classes = AiApplication.class)
 class AppSettingRepositoryTest {
 
     @Autowired
