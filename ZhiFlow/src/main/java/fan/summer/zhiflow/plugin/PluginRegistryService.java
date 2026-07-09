@@ -1,6 +1,7 @@
 package fan.summer.zhiflow.plugin;
 
 import fan.summer.zhiflow.api.plugin.PluginDescriptor;
+import fan.summer.zhiflow.api.plugin.PluginSource;
 import fan.summer.zhiflow.api.plugin.ZhiFlowPlugin;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,7 +34,22 @@ public class PluginRegistryService {
                 log.warn("Skipping plugin with null/blank descriptor id: {}", p.getClass().getName());
                 continue;
             }
-            ZhiFlowPlugin prev = byId.put(d.id(), p);
+            // Every plugin MUST have a UI: a blank uiEntry means nothing to render.
+            if (d.uiEntry() == null || d.uiEntry().isBlank()) {
+                log.warn("Skipping plugin '{}': uiEntry is blank", d.id());
+                continue;
+            }
+            // OFFICIAL is a trust claim reserved for plugins shipped under the
+            // fan.summer.* reverse-domain. A plugin declaring OFFICIAL without that
+            // id prefix is downgraded to THIRD_PARTY (warn-only; never blocks load).
+            if (d.source() == PluginSource.OFFICIAL && !d.id().startsWith("fan.summer.")) {
+                log.warn("Plugin '{}' declared OFFICIAL but id lacks 'fan.summer.' prefix; downgrading to THIRD_PARTY",
+                    d.id());
+                d = new PluginDescriptor(d.id(), d.name(), d.description(), d.category(),
+                    d.icon(), d.iconStyle(), d.version(), d.uiEntry(), d.supportsAi(),
+                    PluginSource.THIRD_PARTY);
+            }
+            ZhiFlowPlugin prev = byId.put(d.id(), new DescriptorOverridingPlugin(p, d));
             if (prev != null) {
                 log.warn("Duplicate plugin id '{}' — {} overrides {}",
                     d.id(), p.getClass().getName(), prev.getClass().getName());
@@ -62,5 +78,20 @@ public class PluginRegistryService {
             throw new IllegalArgumentException("Unknown plugin id: " + id);
         }
         return plugin.invoke(action, args);
+    }
+
+    /**
+     * Wrapper that returns the (possibly normalized) registry-side descriptor while
+     * delegating {@link #invoke} to the underlying plugin. This is what makes the
+     * OFFICIAL→THIRD_PARTY downgrade observable to {@code descriptor()} callers
+     * without mutating the original plugin's own descriptor.
+     */
+    private record DescriptorOverridingPlugin(ZhiFlowPlugin delegate, PluginDescriptor descriptor)
+        implements ZhiFlowPlugin {
+
+        @Override
+        public Object invoke(String action, Map<String, Object> args) {
+            return delegate.invoke(action, args);
+        }
     }
 }
