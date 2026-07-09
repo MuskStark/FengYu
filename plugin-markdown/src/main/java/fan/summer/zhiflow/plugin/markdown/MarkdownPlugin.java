@@ -3,6 +3,7 @@ package fan.summer.zhiflow.plugin.markdown;
 import fan.summer.zhiflow.api.IconStyle;
 import fan.summer.zhiflow.api.ToolCategory;
 import fan.summer.zhiflow.api.plugin.PluginDescriptor;
+import fan.summer.zhiflow.api.plugin.PluginSource;
 import fan.summer.zhiflow.api.plugin.ZhiFlowPlugin;
 import org.commonmark.node.Node;
 import org.commonmark.parser.Parser;
@@ -32,14 +33,12 @@ public class MarkdownPlugin implements ZhiFlowPlugin {
     @Override
     public PluginDescriptor descriptor() {
         return new PluginDescriptor(
-            ID,
-            "Markdown Editor",
+            ID, "Markdown Editor",
             "Split-pane Markdown editor with live server-rendered HTML preview",
-            ToolCategory.TEXT,
-            "language-markdown",
-            IconStyle.BLUE,
-            "4.0.0",
-            "/plugin-ui/markdown/index.js"
+            ToolCategory.TEXT, "language-markdown", IconStyle.BLUE, "4.0.0",
+            "/plugin-ui/markdown/index.js",
+            false,                 // supportsAi
+            PluginSource.OFFICIAL  // source
         );
     }
 
