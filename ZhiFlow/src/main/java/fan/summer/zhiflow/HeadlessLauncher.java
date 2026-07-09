@@ -3,6 +3,8 @@ package fan.summer.zhiflow;
 import fan.summer.zhiflow.ai.spring.AiApplication;
 import fan.summer.zhiflow.api.log.LoggerBinder;
 import fan.summer.zhiflow.log.Slf4jPluginLoggerBinder;
+import fan.summer.zhiflow.setup.DataSourceConfigService;
+import fan.summer.zhiflow.setup.SetupApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 
 import java.nio.file.Files;
@@ -11,25 +13,21 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Phase 1 headless entry point — boots ZhiFlow as a loopback Spring Boot web server, no JavaFX.
+ * Phase 4 headless entry point. Boots ZhiFlow as a loopback Spring Boot web server in one of
+ * two modes, determined by the presence of {@code ~/.zhiflow/config/datasource.properties}:
  *
- * <p>Usage: {@code java -jar ZhiFlow.jar --port=<n> --token=<t>}
  * <ul>
- *   <li>{@code --port=<n>} — bind port; defaults to {@link #DEFAULT_PORT} ({@value DEFAULT_PORT}).
- *       {@code 0} asks the OS for a free port. The chosen port is printed as
- *       {@code ZHIFLOW_PORT=<n>} to stdout (by {@code PortAnnouncer}) for the Tauri sidecar to
- *       read, so the desktop shell works whether the fixed port binds or falls back.</li>
- *   <li>{@code --token=<t>} — per-launch auth token; when set, every request must carry it as the
- *       {@code X-ZhiFlow-Token} header (or {@code ?token=} for the SSE stream). When blank, auth is
- *       disabled (browser-dev convenience).</li>
+ *   <li><b>SETUP mode</b> (config missing): boots {@link SetupApplication} — a minimal context
+ *       with only the setup wizard endpoints. No DataSource/JPA. After the wizard completes,
+ *       the process exits with {@link ExitCodes#SETUP_DONE} so the Tauri supervisor restarts
+ *       into APP mode.</li>
+ *   <li><b>APP mode</b> (config present): boots {@link AiApplication} with
+ *       {@code zhiflow.mode=app} — the full context with JPA, AI, plugins.</li>
  * </ul>
  *
- * <p>This class only performs the work that must happen <em>before</em> the Spring context: prime
- * the log directory, install the plugin logger binder, and initialize H2 (so {@code AiConfigService}
- * can read settings while beans are built). Everything else is standard Spring Boot — the CLI args
- * are translated to Spring properties ({@code server.port} / {@code server.address}) and handed to
- * {@link SpringApplicationBuilder}. Port output and AI-backend init are handled by beans
- * ({@code PortAnnouncer}, {@code AiBackendInitializer}); the Boot shutdown hook closes the context.
+ * <p>Both modes bind loopback ({@code server.address=127.0.0.1} from application.yml) and accept
+ * the same {@code --port} / {@code --token} CLI args. {@link fan.summer.zhiflow.web.PortAnnouncer}
+ * prints {@code ZHIFLOW_PORT=<n>} in both modes, so the Tauri sidecar reads the port identically.
  */
 public final class HeadlessLauncher {
 
@@ -57,41 +55,50 @@ public final class HeadlessLauncher {
             System.setProperty(TOKEN_PROPERTY, token);
         }
 
-        // Pre-context infra: plugin logging bridge. H2/JPA schema is now created by Hibernate
-        // ddl-auto at context start (Task 6); the former manual DatabaseInit.init() is removed.
         LoggerBinder.bind(new Slf4jPluginLoggerBinder());
 
-        // Standard Spring Boot bootstrap — loopback SERVLET web server. If the requested fixed port
-        // is taken, fall back to an OS-chosen free port (port=0) once; the desktop shell reads the
-        // actual port from stdout either way.
-        startWithFallback(port);
+        boolean configured = isDatasourceConfigured();
+        startWithFallback(port, configured);
         // main() returns; the embedded Tomcat's non-daemon threads keep the JVM alive.
     }
 
-    /**
-     * Boots Spring Boot on the given port, retrying on {@code --server.port=0} if the requested port
-     * cannot be bound (e.g. already in use). {@code port=0} is never retried — the OS always picks a
-     * free port, so a failure there is a genuine error.
-     */
-    private static void startWithFallback(String port) {
-        List<String> baseArgs = new ArrayList<>();
+    /** True if {@code datasource.properties} exists and is loadable. */
+    private static boolean isDatasourceConfigured() {
         try {
-            runSpring(baseArgs, port);
-        } catch (RuntimeException e) {
-            if ("0".equals(port)) {
-                throw e;   // OS-assigned port failed — nothing to fall back to.
-            }
-            System.err.println("WARN: could not bind port " + port + " (" + e.getMessage()
-                + "); retrying on an OS-assigned free port (--server.port=0).");
-            runSpring(baseArgs, "0");
+            return new DataSourceConfigService().load() != null;
+        } catch (Exception e) {
+            return false;
         }
     }
 
-    private static void runSpring(List<String> baseArgs, String port) {
+    /**
+     * Boots Spring Boot on the given port, retrying on {@code --server.port=0} if the requested
+     * port cannot be bound. Selects SETUP vs APP context based on {@code configured}.
+     */
+    private static void startWithFallback(String port, boolean configured) {
+        List<String> baseArgs = new ArrayList<>();
+        try {
+            runSpring(baseArgs, port, configured);
+        } catch (RuntimeException e) {
+            if ("0".equals(port)) {
+                throw e;
+            }
+            System.err.println("WARN: could not bind port " + port + " (" + e.getMessage()
+                    + "); retrying on an OS-assigned free port (--server.port=0).");
+            runSpring(baseArgs, "0", configured);
+        }
+    }
+
+    private static void runSpring(List<String> baseArgs, String port, boolean configured) {
         List<String> springArgs = new ArrayList<>(baseArgs);
         springArgs.add("--server.port=" + port);
-        new SpringApplicationBuilder(AiApplication.class)
-            .run(springArgs.toArray(new String[0]));
+        Class<?> appClass = configured ? AiApplication.class : SetupApplication.class;
+        SpringApplicationBuilder builder = new SpringApplicationBuilder(appClass);
+        if (configured) {
+            // APP mode marker — DataSourceAutoConfig / JpaConfig are conditional on it.
+            System.setProperty("zhiflow.mode", "app");
+        }
+        builder.run(springArgs.toArray(new String[0]));
     }
 
     private static void primeLogDirectory() {
@@ -100,7 +107,6 @@ public final class HeadlessLauncher {
         try {
             Files.createDirectories(logDir);
         } catch (Exception ignored) {
-            // Logback falls back to a relative path; not fatal.
         }
         System.setProperty("zhiflow.log.dir", logDir.toAbsolutePath().toString());
     }
