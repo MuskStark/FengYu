@@ -77,7 +77,7 @@ See the [Releases page](https://github.com/MuskStark/ZhiFlow/releases) for the l
 - **⚡ High Performance** — Streaming Excel processing via Apache FESOD, low memory footprint
 - **🌐 Browser Automation** — Headless-style browser session tool drivable by the AI assistant
 - **🔌 Plugin Store** — Browse and install plugins from an online store with one click, or install local JARs
-- **💾 Database Support** — H2 + MyBatis for persistent storage of settings, contacts, and history
+- **💾 Database Support** — Multi-datasource (H2 / SQLite / MySQL / PostgreSQL) via a first-launch setup wizard, persisted with Spring Data JPA
 - **🌍 Internationalization** — i18n-backed UI labels and sidebar navigation
 - **🛠️ Easy Extension** — Add new tools by implementing the `ZhiFlowPlugin` interface
 
@@ -220,7 +220,7 @@ Color Converter, Markdown Editor, Email, Email Archive, PDF Tools, and Browser A
 | **PDF Processing** | Apache PDFBox | 3.0.4 |
 | **AI — Cloud** | LangChain4j (OpenAI + Anthropic) | 1.2.0 |
 | **AI — Local** | Built-in GGUF inference engine | — |
-| **Database** | H2 + MyBatis | 2.4.240 / 3.5.19 |
+| **Database** | Spring Data JPA + Hibernate (H2/SQLite/MySQL/PostgreSQL) | 4.1.0 / 7.4.1 |
 | **Logging** | SLF4J + Logback | 2.0.13 / 1.5.6 |
 | **Email** | Simple Java Mail | 8.12.6 |
 | **Serialization** | Gson | 2.13.1 |
@@ -267,25 +267,50 @@ java -Dstore.url=http://localhost:8888/plugins/store.json -jar ZhiFlow/target/Zh
 
 ## Database
 
-ZhiFlow uses an embedded H2 file-based database — no external server required.
+ZhiFlow uses **Spring Data JPA + Hibernate** and supports **four database backends**, chosen at
+first launch via a setup wizard. No database knowledge is required for the default local
+experience.
 
-### Location
+### First-launch setup wizard
 
-`.zhiflow/zhiflow.db` relative to the application runtime directory.
+On first launch (no `datasource.properties`), the backend boots in **SETUP mode** and the frontend
+shows a wizard that lets you pick a database:
+
+- **H2** (default, local embedded) — zero configuration, data stored under `.zhiflow/data/`.
+- **SQLite** (local embedded) — single-file database.
+- **MySQL** (remote) — for multi-user or server deployment.
+- **PostgreSQL** (remote) — for multi-user or server deployment.
+
+The wizard tests the connection, persists the configuration to
+`~/.zhiflow/config/datasource.properties` (passwords AES-GCM encrypted, machine-bound), then exits.
+The Tauri/desktop supervisor restarts the backend into **APP mode**, where Hibernate
+`ddl-auto=update` creates the schema from the JPA entities automatically. To reconfigure, delete
+`datasource.properties` and restart — the wizard reappears.
+
+### Persistence
+
+- **Layer:** Spring Data JPA repositories (replaced the former MyBatis mappers).
+- **Schema:** Hibernate `ddl-auto=update` — entity changes auto-create tables / add columns.
+- **User isolation:** every user-scoped table carries a `user_id` column; local offline mode
+  attributes all data to a single virtual user (id=1, "ZFlow-Summer"). The groundwork for real
+  multi-user login is in place (`AuthProvider` / `SecurityContext` interfaces) but login UI is
+  deferred to a later phase.
 
 ### Key Entities
 
-| Area | Entity / Mapper | Purpose |
+| Area | Entity | Purpose |
 |---|---|---|
 | General | `AppSettingEntity` | General app settings (store URL, AI config, etc.) |
 | General | `MenuOrderEntity` | Sidebar / tool menu ordering |
 | General | `PluginFavoriteEntity` | Favorited plugins |
-| Email | `zhiflow_setting_email` | SMTP configuration |
-| Email | `email_address_book` | Contacts with nicknames and tags |
-| Email | `email_tag` | Tags for categorizing contacts |
-| Email | `email_mass_sent_config` | Mass email configuration |
-| Email | `email_sent_log` | Email sending history |
-| Excel | `complex_split_config` | Excel complex split configurations |
+| Email | `ZhiFlowSettingEmailEntity` | SMTP configuration |
+| Email | `EmailAddressBookEntity` | Contacts with nicknames and tags |
+| Email | `EmailTagEntity` | Tags for categorizing contacts |
+| Email | `EmailMassSentConfigEntity` | Mass email configuration |
+| Email | `EmailSentLogEntity` | Email sending history |
+| Email | `EmailArchiveEntity` | Archived IMAP messages |
+| Excel | `ComplexSplitConfigEntity` | Excel complex split configurations |
+| System | `SysUserEntity` / `SysSessionEntity` | User / session (login groundwork) |
 
 ---
 

@@ -4,6 +4,48 @@ All notable changes to ZhiFlow. Format based on [Keep a Changelog](https://keepa
 
 ---
 
+## [4.0.0-SNAPSHOT] — Phase 4: Multi-datasource setup wizard + JPA migration + user-system groundwork
+
+### ✨ Added
+- **Multi-datasource setup wizard**: first launch now guides users through database selection
+  (H2 / SQLite / MySQL / PostgreSQL) with connection testing and automatic schema initialization.
+  The backend boots in **SETUP mode** (minimal Spring context, no JPA) when
+  `~/.zhiflow/config/datasource.properties` is absent, and **APP mode** (full context) once it
+  exists. The Tauri/desktop supervisor restarts the sidecar after the wizard completes.
+- **JPA migration**: the database layer migrated from MyBatis to **Spring Data JPA + Hibernate 7**
+  (`ddl-auto=update`). All 14 entities ported with `@Entity` annotations; 14 Spring Data
+  repositories replace the MyBatis mappers.
+- **User-system groundwork**: `sys_user` / `sys_session` tables, `user_id` row-level isolation on
+  all user-scoped tables, and pluggable `AuthProvider` / `SecurityContext` interfaces with a Noop
+  implementation (login UI deferred to a later phase). Local offline mode attributes all data to a
+  single virtual user (id=1, "ZFlow-Summer"), created on APP-mode startup.
+- `application.yml` for static Spring configuration (JPA, actuator restart endpoint,
+  `server.address=127.0.0.1`).
+- **AES-GCM encryption** (`CryptoUtil`) for the datasource password field in
+  `datasource.properties` — keys are machine-bound via a per-machine UUID.
+- Frontend: `SetupWizard.vue` (three-step wizard), Pinia `setup` store, setup API client, and a
+  router guard that redirects to `/setup` when the backend reports uninitialized.
+
+### ♻️ Changed
+- `HeadlessLauncher` now selects `SetupApplication` (SETUP) vs `AiApplication` (APP, with
+  `zhiflow.mode=app`) based on `datasource.properties` presence.
+- `AiConfigService` / `AiConfigServiceHeadless` / `EmailUtil` converted from static utilities to
+  Spring beans that read/write via JPA repositories scoped by `SecurityContext.currentUserId()`.
+- Setup-wizard endpoints (`/api/setup/*`) bypass token auth (`TokenAuthFilter`).
+- Tauri desktop host restarts the Java sidecar on `SETUP_DONE` (exit 0) to enter APP mode.
+- `AiApplication` widens entity/repository discovery (`@EntityScan` + `@EnableJpaRepositories`)
+  since the database package is a sibling of the application class.
+
+### 🗑️ Removed
+- `DatabaseInit`, all MyBatis mapper interfaces (12), `mybatis-config.xml`, and all mapper XML (12).
+- The MyBatis dependency.
+
+### 🐛 Fixed
+- `VirtualUserInitializer` native INSERT now runs inside `@Transactional` (was throwing
+  `TransactionRequiredException`).
+
+---
+
 ## [4.0.0-SNAPSHOT] — Phase 1: Vue + Tauri Walking Skeleton (in progress)
 
 **4.0.0** turns ZhiFlow from a JavaFX desktop app into a **web + desktop application**: a headless
