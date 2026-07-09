@@ -32,6 +32,7 @@ import java.net.http.HttpResponse;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -102,6 +103,20 @@ public final class OllamaLocalBackend implements ChatBackend {
             this.chatClient = ChatClient.builder(this.chatModel).build();
         } catch (Exception e) {
             throw new AiServiceException("Ollama ChatModel bean unavailable; is the AI Spring context started? " + e.getMessage(), e);
+        }
+        // Wire the discovered tool callbacks (I1 fix). OllamaLocalBackend is not Spring-constructed
+        // (built lazily via `new`), so it resolves the same aiToolCallbacks bean the cloud path gets
+        // injected — mirroring the ChatModel lookup above. A missing/empty bean leaves toolCallbacks
+        // empty (no tools offered), which is the safe pre-fix behaviour; we only log a warning then.
+        try {
+            ToolCallback[] discovered = AiSpringContext.getBean("aiToolCallbacks", ToolCallback[].class);
+            if (discovered != null && discovered.length > 0) {
+                this.toolCallbacks = Arrays.asList(discovered);
+                log.info("Wired {} tool callback(s) into Ollama backend", discovered.length);
+            }
+        } catch (Exception e) {
+            log.warn("Could not resolve aiToolCallbacks bean for Ollama backend; chat will run without tools: {}",
+                     e.getMessage());
         }
         if (!probeReachable(AiConfigService.getAiOllamaBaseUrl())) {
             log.warn("Ollama server not reachable at {} — chat will fail at call time. "
