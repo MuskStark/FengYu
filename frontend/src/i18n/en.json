@@ -1,0 +1,15 @@
+{
+  "category": { "dev": "Developer", "text": "Text", "image": "Image",
+                "net": "Network", "ai": "AI", "other": "Other" },
+  "source":   { "official": "Official", "third_party": "Third-party" },
+  "sidebar":  { "all": "All Tools", "favorites": "Favorites", "categories": "CATEGORIES",
+                "aiChat": "AI Chat", "settings": "Settings", "agent": "AI Agent",
+                "expand": "Expand", "collapse": "Collapse" },
+  "grid":     { "title": "Tools", "loading": "Loading plugins…",
+                "empty": "No tools in this category." },
+  "settings": { "title": "Settings", "theme": "Theme", "language": "Language",
+                "dark": "Dark", "light": "Light" },
+  "agent":    { "title": "AI Agent", "goalPlaceholder": "What should I do?",
+                "run": "Plan", "approve": "Approve", "cancel": "Cancel" },
+  "common":   { "back": "Back", "retry": "Retry", "loading": "Loading…" }
+}

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '@/api/client'
 import type { AppSettings, LanguageName, ThemeName } from '@/api/types'
+import { i18n } from '@/i18n'
 import { useThemeStore } from './theme'
 
 export const useSettingsStore = defineStore('settings', () => {
@@ -15,6 +16,12 @@ export const useSettingsStore = defineStore('settings', () => {
     theme.value = s.theme
     language.value = s.language
     useThemeStore().setTheme(s.theme)
+    // Drive vue-i18n from the host language setting. apply() is the single
+    // funnel for both the initial settings load() and every update(), so this
+    // covers the initial-load case (reactively, after the fire-and-forget load
+    // resolves) as well as each setLanguage() switch — no need to await load()
+    // before mount, preserving the anti-flash theme logic in main.ts.
+    i18n.global.locale.value = s.language
   }
 
   async function load() {
