@@ -21,21 +21,21 @@ function onLanguage(e: Event) {
 
 <template>
   <div class="settings-page">
-    <h1 class="section-header page-title">Settings</h1>
+    <h1 class="section-header page-title">{{ $t('settings.title') }}</h1>
 
     <div class="row">
-      <label class="lbl">Theme</label>
+      <label class="lbl">{{ $t('settings.theme') }}</label>
       <select class="sk-combo" :value="settings.theme" @change="onTheme">
-        <option value="dark">Dark</option>
-        <option value="light">Light</option>
+        <option value="dark">{{ $t('settings.dark') }}</option>
+        <option value="light">{{ $t('settings.light') }}</option>
       </select>
     </div>
 
     <div class="row">
-      <label class="lbl">Language</label>
+      <label class="lbl">{{ $t('settings.language') }}</label>
       <select class="sk-combo" :value="settings.language" @change="onLanguage">
-        <option value="en">English</option>
-        <option value="zh">中文</option>
+        <option value="en">{{ $t('settings.english') }}</option>
+        <option value="zh">{{ $t('settings.chinese') }}</option>
       </select>
     </div>
   </div>

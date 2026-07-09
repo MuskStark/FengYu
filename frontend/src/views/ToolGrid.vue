@@ -3,7 +3,7 @@ import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePluginsStore } from '@/stores/plugins'
 import { useNavStore } from '@/stores/nav'
-import type { PluginDescriptor } from '@/api/types'
+import type { PluginDescriptor, PluginSource } from '@/api/types'
 
 const store = usePluginsStore()
 const nav = useNavStore()
@@ -13,6 +13,9 @@ onMounted(() => {
   if (store.plugins.length === 0) void store.load()
 })
 
+// Nav keys are lowercase category ids (from /api/plugin-categories), but
+// plugin.category serialises as the enum NAME (uppercase, e.g. "DEV"). Normalise
+// at this filter boundary so both worlds match without touching either source.
 const filtered = computed<PluginDescriptor[]>(() => {
   const cat = nav.category
   if (cat === 'all') return store.plugins
@@ -27,27 +30,39 @@ function open(p: PluginDescriptor) {
 function initials(name: string): string {
   return name.trim().charAt(0).toUpperCase() || '?'
 }
+
+function sourceLabelKey(source: PluginSource): string {
+  return source === 'OFFICIAL' ? 'source.official' : 'source.third_party'
+}
 </script>
 
 <template>
   <div class="grid-page">
-    <h1 class="section-header page-title">Tools</h1>
+    <h1 class="section-header page-title">{{ $t('grid.title') }}</h1>
 
-    <div v-if="store.loading" class="hint">Loading plugins…</div>
+    <div v-if="store.loading" class="hint">{{ $t('grid.loading') }}</div>
     <div v-else-if="store.error" class="hint error">{{ store.error }}</div>
-    <div v-else-if="filtered.length === 0" class="hint">No tools in this category.</div>
+    <div v-else-if="filtered.length === 0" class="hint">{{ $t('grid.empty') }}</div>
 
     <div class="grid">
       <button v-for="p in filtered" :key="p.id" class="tool-card" @click="open(p)">
         <span class="chip" :data-style="p.iconStyle">{{ initials(p.name) }}</span>
         <span class="card-body">
-          <span class="card-name">{{ p.name }}</span>
+          <span class="card-name">
+            {{ p.name }}
+            <span
+              class="card-badge"
+              :class="p.source === 'OFFICIAL' ? 'badge-official' : 'badge-third'"
+              >{{ $t(sourceLabelKey(p.source)) }}</span
+            >
+            <span v-if="p.supportsAi" class="card-badge badge-ai">{{ $t('badge.ai') }}</span>
+          </span>
           <span class="card-desc">{{ p.description }}</span>
         </span>
         <span
           class="fav"
           :class="{ on: store.favorites.has(p.id) }"
-          title="Toggle favorite"
+          :title="$t('grid.toggleFavorite')"
           @click.stop="store.toggleFavorite(p.id)"
           >★</span
         >
@@ -110,6 +125,10 @@ function initials(name: string): string {
   min-width: 0;
 }
 .card-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
   font-weight: 600;
   color: var(--sk-text);
 }
@@ -131,5 +150,36 @@ function initials(name: string): string {
 }
 .fav.on {
   color: var(--sk-warning);
+}
+/* ── Card badges (source + AI capability) ── */
+.card-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+/* Official = accent chip (trusted first-party). */
+.badge-official {
+  background: var(--sk-accent-soft);
+  color: var(--sk-accent);
+  border-color: var(--sk-accent);
+}
+/* Third-party = neutral chip. */
+.badge-third {
+  background: var(--sk-bg-hover);
+  color: var(--sk-text-secondary);
+  border-color: var(--sk-border);
+}
+/* AI capability badge — distinct accent for AI-ready plugins. */
+.badge-ai {
+  background: var(--sk-success-soft, var(--sk-accent-soft));
+  color: var(--sk-success, var(--sk-accent));
+  border-color: var(--sk-success, var(--sk-accent));
 }
 </style>

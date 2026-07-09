@@ -2,6 +2,7 @@ import axios, { type AxiosInstance } from 'axios'
 import { getApiBase, getToken } from './config'
 import type {
   AppSettings,
+  CategoryDescriptor,
   ChatMessage,
   ChatStartResponse,
   ConnectionTestRequest,
@@ -41,6 +42,11 @@ export const api = {
 
   async getPlugins(): Promise<PluginDescriptor[]> {
     const { data } = await http.get<PluginDescriptor[]>('/api/plugins')
+    return data
+  },
+
+  async getPluginCategories(): Promise<CategoryDescriptor[]> {
+    const { data } = await http.get<CategoryDescriptor[]>('/api/plugin-categories')
     return data
   },
 

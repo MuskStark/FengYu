@@ -24,17 +24,17 @@ onUnmounted(() => {
   if (timer) window.clearInterval(timer)
 })
 
-const label: Record<ConnState, string> = {
-  connecting: 'Connecting…',
-  connected: 'Connected',
-  reconnecting: 'Reconnecting…',
+const statusKey: Record<ConnState, string> = {
+  connecting: 'status.connecting',
+  connected: 'status.connected',
+  reconnecting: 'status.reconnecting',
 }
 </script>
 
 <template>
   <footer class="statusbar">
     <span class="dot" :class="state" />
-    <span class="txt">{{ label[state] }}</span>
+    <span class="txt">{{ $t(statusKey[state]) }}</span>
     <span class="grow" />
     <span class="txt muted">ZhiFlow 4.0.0</span>
   </footer>
