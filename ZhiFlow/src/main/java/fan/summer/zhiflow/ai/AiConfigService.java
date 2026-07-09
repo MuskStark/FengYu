@@ -1,32 +1,57 @@
 package fan.summer.zhiflow.ai;
 
-import fan.summer.zhiflow.database.DatabaseInit;
 import fan.summer.zhiflow.database.entity.AppSettingEntity;
-import fan.summer.zhiflow.database.mapper.AppSettingMapper;
+import fan.summer.zhiflow.database.repository.AppSettingRepository;
+import fan.summer.zhiflow.security.SecurityContext;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
+import java.util.Optional;
 
 /**
- * Reads AI configuration from the database without any UI dependency.
+ * Reads AI configuration from the database via JPA.
  *
- * <p>This class centralizes all AI-related setting lookups so that
- * the startup code ({@code ZhiFlowApp}) does not depend on the
- * settings UI class ({@code ZhiFlowSettingUi}).</p>
+ * <p>Converted from a pure-static MyBatis utility to a Spring {@code @Component} so it can inject
+ * {@link AppSettingRepository} and {@link SecurityContext} (user-scoped reads). The data path now
+ * goes through JPA + SecurityContext; the public static call surface is <strong>retained</strong>
+ * as thin delegates to the Spring-managed singleton so that non-bean callers (the AI backends built
+ * by static factories, and {@code AiConfigProperties.snapshot()}) keep compiling without DI plumbing.
  *
- * <p>The settings cache from {@code ZhiFlowSettingUi} is NOT used
- * here — this service reads directly from the database on each call.
- * The settings UI's cache is updated when the user changes values,
- * but the startup path should not need to go through the UI layer.</p>
+ * <p><b>Why static delegates and not public instance getters:</b> Java forbids a static method and
+ * an instance method with the same name and signature in one class. Since many callers depend on the
+ * exact static signatures ({@code AiConfigService.getAiMode()}), the public methods stay static and
+ * forward to {@link #INSTANCE}, whose private {@link #readSetting} uses the injected repository.
+ * This is the plan's documented "static facade holder" fallback, adapted to Java's constraint.
  *
  * @since 3.0.0
  */
-public final class AiConfigService {
-
-    private AiConfigService() {}
+@Component
+public class AiConfigService {
 
     private static final Logger log = LoggerFactory.getLogger(AiConfigService.class);
 
-    // ── Setting keys (same as in ZhiFlowSettingUi) ──────────
+    /**
+     * Spring-managed singleton, populated in {@link #init()} after the bean is constructed.
+     * Volatile: read by static delegates from arbitrary threads (virtual-thread chat loops).
+     */
+    private static volatile AiConfigService INSTANCE;
+
+    private final AppSettingRepository appSettingRepo;
+    private final SecurityContext securityContext;
+
+    public AiConfigService(AppSettingRepository appSettingRepo, SecurityContext securityContext) {
+        this.appSettingRepo = appSettingRepo;
+        this.securityContext = securityContext;
+    }
+
+    @PostConstruct
+    void init() {
+        INSTANCE = this;
+    }
+
+    // ── Setting keys ─────────────────────────────────────────────
     private static final String AI_MODE_KEY = "ai.mode";
     private static final String AI_OPENAI_ENDPOINT_KEY = "ai.openai.endpoint";
     private static final String AI_OPENAI_API_KEY_KEY = "ai.openai.api_key";
@@ -46,14 +71,14 @@ public final class AiConfigService {
     private static final String AI_OLLAMA_BASE_URL_KEY = "ai.ollama.base_url";
     private static final String AI_OLLAMA_MODEL_KEY = "ai.ollama.model";
 
-    // ── Core read ─────────────────────────────────────────────
-
-    private static String readSetting(String key, String defaultValue) {
-        try (var session = DatabaseInit.getSqlSession()) {
-            AppSettingMapper mapper = session.getMapper(AppSettingMapper.class);
-            AppSettingEntity entity = mapper.selectByKey(key);
-            if (entity != null && entity.getSettingValue() != null && !entity.getSettingValue().isBlank()) {
-                return entity.getSettingValue();
+    // ── Core read (instance; uses injected repo + security context) ──────────
+    private String readSetting(String key, String defaultValue) {
+        try {
+            Long uid = securityContext.currentUserId();
+            Optional<AppSettingEntity> entity = appSettingRepo.findByUserIdAndSettingKey(uid, key);
+            if (entity.isPresent()) {
+                String v = entity.get().getSettingValue();
+                if (v != null && !v.isBlank()) return v;
             }
         } catch (Exception e) {
             log.debug("Could not read AI setting: {}", key, e);
@@ -61,112 +86,76 @@ public final class AiConfigService {
         return defaultValue;
     }
 
-    // ── Public getters ────────────────────────────────────────
+    // ── Public static getters (signatures unchanged; forward to the bean) ────
+    // Retained so non-bean callers (AI backends built via static factories, and
+    // AiConfigProperties.snapshot()) keep compiling without DI plumbing.
 
     /** Returns the AI mode: {@code "local"}, {@code "openai"}, {@code "anthropic"}, or {@code "deepseek"}. */
-    public static String getAiMode() {
-        return readSetting(AI_MODE_KEY, "local");
-    }
+    public static String getAiMode() { return INSTANCE.readSetting(AI_MODE_KEY, "local"); }
 
     /** Returns the OpenAI-compatible API endpoint URL. */
-    public static String getAiOpenAiEndpoint() {
-        return readSetting(AI_OPENAI_ENDPOINT_KEY, "https://api.openai.com");
-    }
+    public static String getAiOpenAiEndpoint() { return INSTANCE.readSetting(AI_OPENAI_ENDPOINT_KEY, "https://api.openai.com"); }
 
     /** Returns the OpenAI API key. */
-    public static String getAiOpenAiApiKey() {
-        return readSetting(AI_OPENAI_API_KEY_KEY, "");
-    }
+    public static String getAiOpenAiApiKey() { return INSTANCE.readSetting(AI_OPENAI_API_KEY_KEY, ""); }
 
     /** Returns the OpenAI model identifier. */
-    public static String getAiOpenAiModel() {
-        return readSetting(AI_OPENAI_MODEL_KEY, "gpt-4o");
-    }
+    public static String getAiOpenAiModel() { return INSTANCE.readSetting(AI_OPENAI_MODEL_KEY, "gpt-4o"); }
 
     /** Returns the Anthropic API endpoint URL. */
-    public static String getAiAnthropicEndpoint() {
-        return readSetting(AI_ANTHROPIC_ENDPOINT_KEY, "https://api.anthropic.com");
-    }
+    public static String getAiAnthropicEndpoint() { return INSTANCE.readSetting(AI_ANTHROPIC_ENDPOINT_KEY, "https://api.anthropic.com"); }
 
     /** Returns the Anthropic API key. */
-    public static String getAiAnthropicApiKey() {
-        return readSetting(AI_ANTHROPIC_API_KEY_KEY, "");
-    }
+    public static String getAiAnthropicApiKey() { return INSTANCE.readSetting(AI_ANTHROPIC_API_KEY_KEY, ""); }
 
     /** Returns the Anthropic model identifier. */
-    public static String getAiAnthropicModel() {
-        return readSetting(AI_ANTHROPIC_MODEL_KEY, "claude-sonnet-4-20250514");
-    }
-
-    // ── DeepSeek settings (OpenAI-compatible API) ─────────────────────────
+    public static String getAiAnthropicModel() { return INSTANCE.readSetting(AI_ANTHROPIC_MODEL_KEY, "claude-sonnet-4-20250514"); }
 
     /** Returns the DeepSeek API endpoint URL (OpenAI-compatible). */
-    public static String getAiDeepSeekEndpoint() {
-        return readSetting(AI_DEEPSEEK_ENDPOINT_KEY, "https://api.deepseek.com");
-    }
+    public static String getAiDeepSeekEndpoint() { return INSTANCE.readSetting(AI_DEEPSEEK_ENDPOINT_KEY, "https://api.deepseek.com"); }
 
     /** Returns the DeepSeek API key. */
-    public static String getAiDeepSeekApiKey() {
-        return readSetting(AI_DEEPSEEK_API_KEY_KEY, "");
-    }
+    public static String getAiDeepSeekApiKey() { return INSTANCE.readSetting(AI_DEEPSEEK_API_KEY_KEY, ""); }
 
     /** Returns the DeepSeek model identifier; defaults to {@code deepseek-chat}. */
-    public static String getAiDeepSeekModel() {
-        return readSetting(AI_DEEPSEEK_MODEL_KEY, "deepseek-chat");
-    }
+    public static String getAiDeepSeekModel() { return INSTANCE.readSetting(AI_DEEPSEEK_MODEL_KEY, "deepseek-chat"); }
 
     /** Returns the sampling temperature (0–2); defaults to 0.7. */
     public static float getAiTemperature() {
-        String val = readSetting(AI_TEMPERATURE_KEY, null);
-        if (val != null) {
-            try { return Float.parseFloat(val); } catch (NumberFormatException ignored) {}
-        }
+        String val = INSTANCE.readSetting(AI_TEMPERATURE_KEY, null);
+        if (val != null) { try { return Float.parseFloat(val); } catch (NumberFormatException ignored) {} }
         return 0.7f;
     }
 
     /** Returns the nucleus sampling threshold (0–1); defaults to 0.9. */
     public static float getAiTopP() {
-        String val = readSetting(AI_TOP_P_KEY, null);
-        if (val != null) {
-            try { return Float.parseFloat(val); } catch (NumberFormatException ignored) {}
-        }
+        String val = INSTANCE.readSetting(AI_TOP_P_KEY, null);
+        if (val != null) { try { return Float.parseFloat(val); } catch (NumberFormatException ignored) {} }
         return 0.9f;
     }
 
     /** Returns the maximum number of tokens to generate; defaults to 2048. */
     public static int getAiMaxTokens() {
-        String val = readSetting(AI_MAX_TOKENS_KEY, null);
-        if (val != null) {
-            try { return Integer.parseInt(val); } catch (NumberFormatException ignored) {}
-        }
+        String val = INSTANCE.readSetting(AI_MAX_TOKENS_KEY, null);
+        if (val != null) { try { return Integer.parseInt(val); } catch (NumberFormatException ignored) {} }
         return 2048;
     }
 
     /** Returns the system prompt; defaults to "You are a helpful assistant." */
     public static String getAiSystemPrompt() {
-        String val = readSetting(AI_SYSTEM_PROMPT_KEY, null);
+        String val = INSTANCE.readSetting(AI_SYSTEM_PROMPT_KEY, null);
         return (val != null && !val.isBlank()) ? val : "You are a helpful assistant.";
     }
 
     /** Returns the local backend type: {@code "java"} or {@code "native"}. */
-    public static String getAiLocalBackend() {
-        return readSetting(AI_LOCAL_BACKEND_KEY, "java");
-    }
+    public static String getAiLocalBackend() { return INSTANCE.readSetting(AI_LOCAL_BACKEND_KEY, "java"); }
 
     /** Returns the local GGUF model file path, or null if not set. */
-    public static String getAiModelPath() {
-        return readSetting(AI_MODEL_PATH_KEY, null);
-    }
-
-    // ── Ollama settings (Phase 1: local runtime is now Ollama) ────────────
+    public static String getAiModelPath() { return INSTANCE.readSetting(AI_MODEL_PATH_KEY, null); }
 
     /** Ollama server base URL; defaults to the standard local daemon. */
-    public static String getAiOllamaBaseUrl() {
-        return readSetting(AI_OLLAMA_BASE_URL_KEY, "http://localhost:11434");
-    }
+    public static String getAiOllamaBaseUrl() { return INSTANCE.readSetting(AI_OLLAMA_BASE_URL_KEY, "http://localhost:11434"); }
 
     /** Ollama model tag (e.g. {@code "qwen3:4b"}); defaults to Qwen3 4B. */
-    public static String getAiOllamaModel() {
-        return readSetting(AI_OLLAMA_MODEL_KEY, "qwen3:4b");
-    }
+    public static String getAiOllamaModel() { return INSTANCE.readSetting(AI_OLLAMA_MODEL_KEY, "qwen3:4b"); }
 }
