@@ -1,12 +1,12 @@
 package fan.summer.zhiflow.web.controller;
 
 import fan.summer.zhiflow.api.ai.AiChatMessage;
-import fan.summer.zhiflow.api.ai.AiServiceProvider;
 import fan.summer.zhiflow.api.ai.AiStreamCallback;
 import fan.summer.zhiflow.api.ai.AiToolCall;
 import fan.summer.zhiflow.api.ai.AiToolResult;
 import fan.summer.zhiflow.api.ai.ChatBackend;
 import fan.summer.zhiflow.ai.service.AiConfigServiceHeadless;
+import fan.summer.zhiflow.ai.service.AiModeService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -42,6 +42,10 @@ public class AiController {
 
     private static final Logger log = LoggerFactory.getLogger(AiController.class);
 
+    private final AiModeService aiMode;
+
+    public AiController(AiModeService aiMode) { this.aiMode = aiMode; }
+
     /** Pending turns keyed by streamId; consumed once when the SSE opens. */
     private final Map<String, List<AiChatMessage>> pending = new ConcurrentHashMap<>();
 
@@ -68,7 +72,7 @@ public class AiController {
             return emitter;
         }
 
-        Optional<ChatBackend> svc = AiServiceProvider.getService();
+        Optional<ChatBackend> svc = aiMode.getService();
         if (svc.isEmpty() || !svc.get().isReady()) {
             completeWithError(emitter, "AI backend not configured or not ready");
             return emitter;
