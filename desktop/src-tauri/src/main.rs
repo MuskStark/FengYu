@@ -7,16 +7,17 @@ use std::sync::Mutex;
 
 use tauri::{Manager, State};
 
-// The sidecar machinery below is PROD-only. In dev (`cargo tauri dev`) the backend is started
-// externally (IDE / `mvn spring-boot:run` on :24056) and the webview reaches it via the Vite
-// proxy — so none of the spawn/health/token code is compiled into the dev binary.
-#[cfg(not(dev))]
+// The sidecar machinery below is PROD-only, gated on `not(debug_assertions)` (a release build).
+// In dev (`cargo tauri dev`, a debug build) the backend is started externally (IDE /
+// `mvn spring-boot:run` on :24056) and the webview reaches it via the Vite proxy — so none of the
+// spawn/health/token code is compiled into the dev binary.
+#[cfg(not(debug_assertions))]
 use std::io::{BufRead, BufReader};
-#[cfg(not(dev))]
+#[cfg(not(debug_assertions))]
 use std::process::{Command, Stdio};
-#[cfg(not(dev))]
+#[cfg(not(debug_assertions))]
 use std::thread;
-#[cfg(not(dev))]
+#[cfg(not(debug_assertions))]
 use std::time::{Duration, Instant};
 
 /// Holds the spawned Java sidecar so we can kill it on exit. `None` in dev (no sidecar).
@@ -64,9 +65,10 @@ fn run_desktop(child: Option<Child>, init_script: Option<String>) {
 }
 
 // ── PROD-only sidecar machinery ─────────────────────────────────────────────
-// All of the spawn/health/token code below is compiled out in dev. `cargo tauri build` (prod)
-// leaves the `dev` cfg off, so these are present; `cargo tauri dev` sets `cfg(dev)`, so they are
-// absent and the dev binary never references the jar / spawns java / generates a token.
+// All of the spawn/health/token code below is compiled out in dev. `cargo tauri build` (prod) is a
+// release build, so `debug_assertions` is OFF and these are present; `cargo tauri dev` is a debug
+// build, so `debug_assertions` is ON and they are absent — the dev binary never references the jar,
+// spawns java, or generates a token.
 //
 // NOTE: `kill_sidecar` is intentionally UNCONDITIONAL (no cfg) — it is referenced from the shared
 // `run_desktop` on_window_event closure compiled in BOTH paths. It is a safe no-op in dev because
@@ -82,7 +84,7 @@ fn kill_sidecar(state: &State<Sidecar>) {
 }
 
 /// Generates a simple per-launch token (UUID-like) without pulling a uuid crate.
-#[cfg(not(dev))]
+#[cfg(not(debug_assertions))]
 fn gen_token() -> String {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -93,7 +95,7 @@ fn gen_token() -> String {
 
 /// Resolves the ZhiFlow jar path. The jar is copied to `binaries/ZhiFlow.jar` next to the
 /// executable for the prod bundle (see desktop/README.md).
-#[cfg(not(dev))]
+#[cfg(not(debug_assertions))]
 fn jar_path() -> std::path::PathBuf {
     let candidates = [
         "binaries/ZhiFlow.jar",
@@ -111,7 +113,7 @@ fn jar_path() -> std::path::PathBuf {
 /// Spawns the Java backend with `--port=24056 --token=<t>`, reads the bound port from its stdout
 /// (`ZHIFLOW_PORT=<n>`), and returns (child, port). The backend tries the fixed port first and
 /// falls back to an OS-assigned port if it is taken, so the actual port is always read back here.
-#[cfg(not(dev))]
+#[cfg(not(debug_assertions))]
 fn spawn_backend(token: &str) -> Result<(Child, u16), String> {
     let jar = jar_path();
     if !jar.exists() {
@@ -157,7 +159,7 @@ fn spawn_backend(token: &str) -> Result<(Child, u16), String> {
 }
 
 /// Polls GET /api/health until 200 or timeout.
-#[cfg(not(dev))]
+#[cfg(not(debug_assertions))]
 fn wait_for_health(port: u16, token: &str) -> Result<(), String> {
     let url = format!("http://127.0.0.1:{port}/api/health");
     let deadline = Instant::now() + Duration::from_secs(30);
@@ -177,7 +179,7 @@ fn wait_for_health(port: u16, token: &str) -> Result<(), String> {
 }
 
 /// Probes GET /api/setup/status. Returns Ok(true) if in SETUP mode (not initialized).
-#[cfg(not(dev))]
+#[cfg(not(debug_assertions))]
 fn check_setup_mode(port: u16, token: &str) -> Result<bool, String> {
     let url = format!("http://127.0.0.1:{port}/api/setup/status");
     let resp = ureq::get(&url)
@@ -190,42 +192,28 @@ fn check_setup_mode(port: u16, token: &str) -> Result<bool, String> {
     Ok(body.contains("\"initialized\":false") || body.contains("\"initialized\": false"))
 }
 
-// ── main(): dev vs prod ──────────────────────────────────────────────────────
-
-/// DEV entry (`cargo tauri dev`). The backend is started externally (IDE / `mvn spring-boot:run`
-/// on :24056); the webview reaches it same-origin via the Vite proxy. Tauri only opens the window.
-#[cfg(dev)]
-fn main() {
-    println!(
-        "[desktop] dev mode: backend must be running externally on :24056 \
-         (IDE / `mvn -pl ZhiFlow spring-boot:run`). Tauri only opens the window; \
-         API calls go through the Vite proxy."
-    );
-    run_desktop(None, None);
-}
-
-/// PROD entry (`cargo tauri build`). Spawns the bundled jar as a sidecar, waits for health,
-/// handles the SETUP→APP restart loop, then injects the token/api-base into the webview.
-#[cfg(not(dev))]
-fn main() {
-    let token = gen_token();
-
-    // The backend may start in SETUP mode (first launch, no datasource.properties).
-    // When the setup wizard completes, it exits with code SETUP_DONE (0) to signal us to restart
-    // it into APP mode. We loop: spawn → wait for health → if it exits with 0 and we haven't
-    // entered APP mode yet, respawn.
+/// Brings the backend up in APP mode, handling the first-launch SETUP detour, and returns the
+/// live `(child, port)` ready for the window.
+///
+/// The backend may start in SETUP mode (first launch, no datasource.properties). When the setup
+/// wizard completes, it exits with code 0 to signal a restart into APP mode. This loops:
+/// spawn → wait for health → probe `/api/setup/status` → if SETUP, wait for exit(0) and respawn;
+/// if APP, return. Any failure is fatal (`process::exit(1)`), so the caller always gets a ready
+/// backend. Guards against an infinite loop if an already-APP backend exits unexpectedly.
+#[cfg(not(debug_assertions))]
+fn run_backend_until_app_mode(token: &str) -> (Child, u16) {
     let mut entered_app_mode = false;
-    let (child, port) = loop {
-        let (c, p) = match spawn_backend(&token) {
+    loop {
+        let (child, port) = match spawn_backend(token) {
             Ok(v) => v,
             Err(e) => {
                 eprintln!("FATAL: {e}");
                 std::process::exit(1);
             }
         };
-        if let Err(e) = wait_for_health(p, &token) {
+        if let Err(e) = wait_for_health(port, token) {
             eprintln!("FATAL: {e}");
-            let mut cc = c;
+            let mut cc = child;
             let _ = cc.kill();
             std::process::exit(1);
         }
@@ -235,28 +223,49 @@ fn main() {
             eprintln!("FATAL: backend exited unexpectedly after entering APP mode");
             std::process::exit(1);
         }
-        // Check whether the backend is in setup mode by probing /api/setup/status.
-        match check_setup_mode(p, &token) {
+        match check_setup_mode(port, token) {
             Ok(true) => {
                 println!("[desktop] backend in SETUP mode; waiting for wizard to complete…");
-                let mut waiter = c;
+                let mut waiter = child;
                 let status = waiter.wait().expect("failed to wait for setup sidecar");
                 if status.code() == Some(0) {
                     println!("[desktop] setup complete; restarting backend into APP mode");
                     entered_app_mode = true;
-                    continue; // respawn
-                } else {
-                    eprintln!("FATAL: setup sidecar exited with code {:?}", status.code());
-                    std::process::exit(1);
+                    continue; // respawn into APP mode
                 }
+                eprintln!("FATAL: setup sidecar exited with code {:?}", status.code());
+                std::process::exit(1);
             }
-            Ok(false) => break (c, p), // APP mode — proceed to window
+            Ok(false) => return (child, port), // APP mode — proceed to window
             Err(e) => {
-                eprintln!("[desktop] could not determine setup mode ({}); assuming APP", e);
-                break (c, p);
+                eprintln!("[desktop] could not determine setup mode ({e}); assuming APP");
+                return (child, port);
             }
         }
-    };
+    }
+}
+
+// ── main(): dev vs prod ──────────────────────────────────────────────────────
+
+/// DEV entry (`cargo tauri dev`, a debug build). The backend is started externally (IDE /
+/// `mvn spring-boot:run` on :24056); the webview reaches it same-origin via the Vite proxy.
+/// Tauri only opens the window.
+#[cfg(debug_assertions)]
+fn main() {
+    println!(
+        "[desktop] dev mode: backend must be running externally on :24056 \
+         (IDE / `mvn -pl ZhiFlow spring-boot:run`). Tauri only opens the window; \
+         API calls go through the Vite proxy."
+    );
+    run_desktop(None, None);
+}
+
+/// PROD entry (`cargo tauri build`, a release build). Spawns the bundled jar as a sidecar, waits
+/// for health, handles the SETUP→APP restart loop, then injects the token/api-base into the webview.
+#[cfg(not(debug_assertions))]
+fn main() {
+    let token = gen_token();
+    let (child, port) = run_backend_until_app_mode(&token);
 
     // Injected before any page script runs. The frontend reads these globals
     // (see frontend/src/api/config.ts): __ZHIFLOW_API_BASE__ (absolute backend URL — the backend
