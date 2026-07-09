@@ -91,20 +91,34 @@ public class DataSourceConfigService {
     }
 
     /**
-     * Assembles a {@link DataSourceConfig} from wizard params, resolving paths/URL.
-     * Does NOT persist — call {@link #save} after testing.
+     * Assembles a {@link DataSourceConfig} from wizard params, resolving paths/URL. For embedded
+     * databases (H2/SQLite) the parent directory of the data file is created here so the JDBC
+     * driver can initialize the database file on first connection — without this the connection
+     * test fails because the target directory does not exist. Does NOT persist the config —
+     * call {@link #save} after testing.
      */
     public DataSourceConfig buildFromWizard(DbType type, WizardParams params) {
         String url;
         String filePath = null;
         if (type.embedded) {
-            // Resolve relative path against base dir, make absolute.
+            // Default data file lives under <baseDir>/database/zhiflow (e.g. .zhiflow/database/zhiflow).
             String rawPath = (params.filePath() == null || params.filePath().isBlank())
-                    ? Path.of(baseDir, "data", "zhiflow").toString()
+                    ? Path.of(baseDir, "database", "zhiflow").toString()
                     : params.filePath();
             Path resolved = Path.of(rawPath);
             if (!resolved.isAbsolute()) {
                 resolved = Path.of(baseDir).resolve(rawPath).toAbsolutePath();
+            }
+            // Ensure the parent directory exists — the JDBC driver creates the file itself, but
+            // only if its directory is already present (H2/SQLite both fail otherwise).
+            Path parent = resolved.getParent();
+            if (parent != null) {
+                try {
+                    Files.createDirectories(parent);
+                } catch (IOException e) {
+                    throw new IllegalStateException(
+                            "Failed to create database directory " + parent + ": " + e.getMessage(), e);
+                }
             }
             filePath = resolved.toString().replace("\\", "/");
             url = type.urlTemplate.replace("{path}", filePath);
