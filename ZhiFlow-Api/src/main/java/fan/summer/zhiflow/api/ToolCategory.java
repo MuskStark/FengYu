@@ -10,26 +10,29 @@ package fan.summer.zhiflow.api;
  */
 public enum ToolCategory {
     /** Development tools such as code formatters, build helpers, and CLI utilities. */
-    DEV("dev", "developer.tools"),
+    DEV("dev", "category.dev"),
 
     /** Text processing tools such as encoders, formatters, and generators. */
-    TEXT("text", "text.processing"),
+    TEXT("text", "category.text"),
 
     /** Image manipulation and conversion tools. */
-    IMAGE("image", "image.processing"),
+    IMAGE("image", "category.image"),
 
     /** Network-related tools such as API testers, fetch utilities, and connection checkers. */
-    NET("net", "network.tools"),
+    NET("net", "category.net"),
+
+    /** AI / agent / prompt tools such as prompt builders and LLM helpers. */
+    AI("ai", "category.ai"),
 
     /** Catch-all category for tools that do not fit any of the above groups. */
-    OTHER("other", "other.tools");
+    OTHER("other", "category.other");
 
     private final String id;
-    private final String i18nKey;
+    private final String labelKey;
 
-    ToolCategory(String id, String i18nKey) {
+    ToolCategory(String id, String labelKey) {
         this.id = id;
-        this.i18nKey = i18nKey;
+        this.labelKey = labelKey;
     }
 
     /**
@@ -44,9 +47,9 @@ public enum ToolCategory {
      * Returns the resource-bundle key used to look up the localised display name
      * shown in the sidebar and filter labels.
      *
-     * @return the i18n key, e.g. {@code "developer.tools"}
+     * @return the label key, e.g. {@code "category.dev"}
      */
-    public String getI18nKey() { return i18nKey; }
+    public String getLabelKey() { return labelKey; }
 
     /**
      * Converts a legacy string identifier to a {@link ToolCategory}.
