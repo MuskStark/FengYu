@@ -11,24 +11,26 @@
 | Task | 状态 | 提交 |
 |---|---|---|
 | 1. 更新 Maven 依赖 | ✅ 完成并审查通过 | `7d5d815` |
-| 2. application.yml | ✅ 完成并审查通过 | `62e656e` |
+| 2. application.yml | ✅ 完成并审查通过 | `62e765e` |
 | 3. DbType 枚举 + records | ✅ 完成并审查通过 | `4fb70e4` |
 | 4. 12 实体 JPA 注解 + user_id | ✅ 完成并审查通过 | `5f1aa48` |
 | 5. sys_user/sys_session + SecurityConstants | ✅ 完成并审查通过 | `ba3cbc4` |
-| 6. 14 JPA Repository | ⚠️ 已实现并提交,**审查未完成**(执行暂停) | `c76bb67` |
-| 7. 安全抽象层 | ⬜ 未开始 | — |
-| 8. 迁移调用点 + 删 DatabaseInit | ⬜ 未开始 | — |
-| 9. VirtualUserInitializer | ⬜ 未开始 | — |
-| 10. APP 模式 DataSource + JPA 配置 | ⬜ 未开始 | — |
-| 11. CryptoUtil | ⬜ 未开始 | — |
-| 12. DataSourceConfigService | ⬜ 未开始 | — |
-| 13. SetupController + SetupApplication | ⬜ 未开始 | — |
-| 14. HeadlessLauncher SETUP/APP 分流 | ⬜ 未开始 | — |
-| 15. 前端 setup store + API client | ⬜ 未开始 | — |
-| 16. SetupWizard.vue | ⬜ 未开始 | — |
-| 17. 路由分流 + App.vue | ⬜ 未开始 | — |
-| 18. Tauri sidecar 重启 | ⬜ 未开始 | — |
-| 19. 端到端验证 + 文档 | ⬜ 未开始 | — |
+| 6. 14 JPA Repository | ✅ 完成并审查通过 | `c76bb67` |
+| 7. 安全抽象层 | ✅ 完成并审查通过 | `a32d34c` |
+| 8. 迁移调用点 + 删 DatabaseInit | ✅ 完成并审查通过(Approach B 静态外观) | `4f8b6b0` |
+| 9. VirtualUserInitializer | ✅ 完成并审查通过(执行延后到 Task 19) | `281a472` |
+| 11. CryptoUtil | ✅ 完成并审查通过(4/4 测试) | `4aa2cf5` |
+| 12. DataSourceConfigService | ✅ 完成并审查通过(5/5 测试) | `cbe516a` |
+| 10. APP 模式 DataSource + JPA 配置 | ✅ 完成并审查通过 | `e81ade2` |
+| 13. SetupController + SetupApplication | ✅ 完成并审查通过(DDL 延后到 APP 启动 + SB4.1 import 修正 + NPE 修复) | `96154bf`/`192a641` |
+| 14. HeadlessLauncher SETUP/APP 分流 | ✅ 完成并审查通过 | `41ecea7` |
+| 15. 前端 setup store + API client | ✅ 完成并审查通过 | `fedce03` |
+| 16. SetupWizard.vue | ✅ 完成并审查通过 | `042e82c` |
+| 17. 路由分流 + App.vue | ✅ 完成并审查通过 | `a3bf80c` |
+| 18. Tauri sidecar 重启 | ✅ 完成并审查通过 | `610a721` |
+| 19. 端到端验证 + 文档 | ✅ 完成(57/57 测试 + 修复 APP 模式真实 bug + 文档) | `419a0d9`/`d13106d` |
+
+> 执行顺序调整:为满足依赖,Task 11→12→10 先于文档序;Task 9 测试执行延后到 Task 19。
 
 ### 恢复执行时的注意事项
 
