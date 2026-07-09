@@ -1,4 +1,4 @@
-package fan.summer.zhiflow.ai.adapter;
+package fan.summer.zhiflow.ai.service;
 
 import fan.summer.zhiflow.ai.util.JsonHelper;
 import fan.summer.zhiflow.api.ai.AiChatMessage;
@@ -14,30 +14,31 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Bidirectional mapper between ZhiFlow's {@link AiChatMessage} and Spring AI's
- * {@link Message} hierarchy. Replaces the LangChain4j {@code ChatMessageMapper}.
+ * One-way mapper from ZhiFlow {@link AiChatMessage} to Spring AI {@link Message}, used by
+ * the chat backends to seed each {@code Prompt} from the conversation history.
+ *
+ * <p>This is the slim successor to the deleted bidirectional mapper: it only does the
+ * ZhiFlow→Spring AI direction the tool loop needs (tool-call extraction now happens
+ * directly off the streamed {@link AssistantMessage} via Spring AI's own API, so the
+ * reverse direction is gone).
  *
  * <p>Role mapping:
  * <ul>
- *   <li>{@code SYSTEM}    ↔ {@link SystemMessage}</li>
- *   <li>{@code USER}      ↔ {@link UserMessage}</li>
- *   <li>{@code ASSISTANT} ↔ {@link AssistantMessage} (with optional {@code ToolCall}s)</li>
- *   <li>{@code TOOL}      ↔ {@link ToolResponseMessage}</li>
+ *   <li>{@code SYSTEM}    → {@link SystemMessage}</li>
+ *   <li>{@code USER}      → {@link UserMessage}</li>
+ *   <li>{@code ASSISTANT} → {@link AssistantMessage} (with optional {@code ToolCall}s)</li>
+ *   <li>{@code TOOL}      → {@link ToolResponseMessage}</li>
  * </ul>
  *
  * <p>Tool-call arguments cross the boundary as JSON strings (Spring AI's
  * {@code ToolCall.arguments()} is a JSON string), serialised via {@link JsonHelper}.
- *
- * <p>Spring AI 2.0 GA notes: {@code AssistantMessage} is built via its
- * {@code builder()} (no public 3-arg ctor), and {@code ToolResponseMessage.ToolResponse}
- * exposes {@code responseData()} (not {@code responseMessage()}).
  */
-public final class MessageMapper {
+final class AiMessageBridge {
 
-    private MessageMapper() {}
+    private AiMessageBridge() {}
 
     /** ZhiFlow message → Spring AI message. */
-    public static Message toSpringAi(AiChatMessage src) {
+    static Message toSpringAi(AiChatMessage src) {
         String text = src.content() == null ? "" : src.content();
         return switch (src.role()) {
             case SYSTEM -> new SystemMessage(text);
@@ -56,7 +57,6 @@ public final class MessageMapper {
                 }
                 yield AssistantMessage.builder()
                         .content(text)
-                        .properties(Map.of())
                         .toolCalls(tcs)
                         .build();
             }
@@ -67,32 +67,5 @@ public final class MessageMapper {
                             text)))
                     .build();
         };
-    }
-
-    /**
-     * Extract tool-call requests from a Spring AI {@link AssistantMessage} into
-     * ZhiFlow {@link AiToolCall}s. Used by the manual tool loop after a streamed
-     * response completes with pending tool calls.
-     */
-    public static List<AiToolCall> extractToolCalls(AssistantMessage am) {
-        if (!am.hasToolCalls()) return List.of();
-        List<AiToolCall> out = new ArrayList<>();
-        for (AssistantMessage.ToolCall tc : am.getToolCalls()) {
-            String id = tc.id() != null && !tc.id().isEmpty()
-                    ? tc.id()
-                    : "tc_" + System.currentTimeMillis();
-            Map<String, Object> args = parseArgs(tc.arguments());
-            out.add(AiToolCall.of(id, tc.name(), args));
-        }
-        return out;
-    }
-
-    private static Map<String, Object> parseArgs(String json) {
-        if (json == null || json.isBlank()) return Map.of();
-        try {
-            return JsonHelper.parseObject(json);
-        } catch (Exception e) {
-            return Map.of();
-        }
     }
 }

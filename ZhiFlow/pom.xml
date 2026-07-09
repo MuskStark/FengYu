@@ -208,6 +208,13 @@
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-ollama</artifactId>
         </dependency>
+        <dependency>
+            <!-- ChatClient + ToolCallingManager + ChatClientMessageAggregator (user-controlled
+                 tool execution path). Brings the non-deprecated Spring AI 2.0 chat-client API
+                 onto the classpath; version managed by the spring-ai-bom import above. -->
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-client-chat</artifactId>
+        </dependency>
 
         <!-- Logging: slf4j API + logback binding -->
         <dependency>
