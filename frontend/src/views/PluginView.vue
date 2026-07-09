@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { usePluginsStore } from '@/stores/plugins'
 import { useThemeStore } from '@/stores/theme'
 import { api } from '@/api/client'
+import { i18n } from '@/i18n'
 import { loadPlugin, type PluginContext } from '@/mf/loader'
 
 const props = defineProps<{ id: string }>()
@@ -52,7 +53,12 @@ async function mountPlugin() {
       },
       theme: theme.theme,
       onThemeChange: (cb) => theme.onChange(cb),
-      i18n: (key) => key,
+      locale: i18n.global.locale.value,
+      t: (key: string) => i18n.global.t(key),
+      onLocaleChange: (cb: (locale: string) => void) => {
+        const unwatch = watch(() => i18n.global.locale.value, (l) => cb(l as string))
+        return unwatch
+      },
       notify: (msg) => console.info(`[${descriptor.name}]`, msg),
     }
     unmount = mod.mount(el, ctx)
