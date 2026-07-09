@@ -106,11 +106,24 @@ class AgentRunnerTest {
         assertTrue(sink.awaitDone(), "onComplete should fire within timeout");
 
         // Ordered event stream: plan ready → step start → step complete → complete.
+        // Assert both PRESENCE and the SEQUENCE (the contract the runner must honor).
         assertTrue(sink.events.contains("onPlanReady:echo hi"), "onPlanReady should fire: " + sink.events);
         assertTrue(sink.events.contains("onStepStart:0"), "onStepStart(0) should fire: " + sink.events);
         assertTrue(sink.events.contains("onStepComplete:0"), "onStepComplete(0) should fire: " + sink.events);
         assertTrue(sink.events.contains("onComplete"), "onComplete should fire: " + sink.events);
         assertFalse(sink.events.contains("onError:null"), "no onError in happy path");
+
+        // Lock in the ORDER: onPlanReady → onStepStart(0) → onStepComplete(0) → onComplete.
+        int idxPlanReady = sink.events.indexOf("onPlanReady:echo hi");
+        int idxStepStart = sink.events.indexOf("onStepStart:0");
+        int idxStepComplete = sink.events.indexOf("onStepComplete:0");
+        int idxComplete = sink.events.indexOf("onComplete");
+        assertTrue(idxPlanReady < idxStepStart,
+                "onPlanReady must precede onStepStart(0): " + sink.events);
+        assertTrue(idxStepStart < idxStepComplete,
+                "onStepStart(0) must precede onStepComplete(0): " + sink.events);
+        assertTrue(idxStepComplete < idxComplete,
+                "onStepComplete(0) must precede onComplete: " + sink.events);
 
         // The step actually ran the tool (the executor resolved "echo" and called it).
         List<StepExecution> execs = run.getExecutions();
@@ -171,7 +184,11 @@ class AgentRunnerTest {
         // Plan that always asks for the failing tool.
         AgentPlan failing = new AgentPlan(
                 "goal", List.of(step(0, "alwaysFail", Map.of())), "will fail");
-        AgentRunner.PlanGenerator planner = (goal, tks, tokenSink) -> failing;
+        AtomicInteger plannerCalls = new AtomicInteger();
+        AgentRunner.PlanGenerator planner = (goal, tks, tokenSink) -> {
+            plannerCalls.incrementAndGet();
+            return failing;
+        };
 
         AgentRunner.StepExecutor executor = (step1, tks) -> {
             throw new RuntimeException("tool exploded");
@@ -184,6 +201,8 @@ class AgentRunnerTest {
         assertTrue(sink.awaitDone(), "terminal event should fire within timeout");
 
         // Initial plan + 1 replan = 2 planner calls; then it gives up.
+        assertEquals(2, plannerCalls.get(),
+                "planner should be called twice (initial + 1 replan) then give up: " + plannerCalls.get());
         assertEquals(AgentRunStatus.FAILED, run.getStatus());
         assertTrue(sink.events.stream().anyMatch(e -> e.startsWith("onError")),
                 "onError should fire when replans exhausted: " + sink.events);
