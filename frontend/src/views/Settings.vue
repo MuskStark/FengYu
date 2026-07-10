@@ -1,16 +1,26 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
 import type { LanguageName, ThemeName } from '@/api/types'
 
+const { t } = useI18n()
 const settings = useSettingsStore()
 
 onMounted(() => {
   if (!settings.loaded) void settings.load().catch(() => {})
 })
 
-const themes: ThemeName[] = ['dark', 'light']
-const languages: LanguageName[] = ['en', 'zh']
+// Vuetify v-select renders `title`; the `value` (the enum) is what flows back
+// into the store. Localized labels reuse the existing settings.* i18n keys.
+const themeItems: { title: string; value: ThemeName }[] = [
+  { title: t('settings.dark'), value: 'dark' },
+  { title: t('settings.light'), value: 'light' },
+]
+const languageItems: { title: string; value: LanguageName }[] = [
+  { title: t('settings.english'), value: 'en' },
+  { title: t('settings.chinese'), value: 'zh' },
+]
 </script>
 
 <template>
@@ -24,7 +34,9 @@ const languages: LanguageName[] = ['en', 'zh']
         <template #append>
           <v-select
             :model-value="settings.theme"
-            :items="themes"
+            :items="themeItems"
+            item-title="title"
+            item-value="value"
             density="compact"
             variant="outlined"
             hide-details
@@ -40,7 +52,9 @@ const languages: LanguageName[] = ['en', 'zh']
         <template #append>
           <v-select
             :model-value="settings.language"
-            :items="languages"
+            :items="languageItems"
+            item-title="title"
+            item-value="value"
             density="compact"
             variant="outlined"
             hide-details
