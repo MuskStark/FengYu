@@ -7,6 +7,7 @@ import { useThemeStore } from '@/stores/theme'
 import { api } from '@/api/client'
 import { i18n } from '@/i18n'
 import { loadPlugin, type PluginContext } from '@/mf/loader'
+import { vuetify } from '@/plugins/vuetify'
 
 const props = defineProps<{ id: string }>()
 
@@ -60,6 +61,7 @@ async function mountPlugin() {
         return unwatch
       },
       notify: (msg) => console.info(`[${descriptor.name}]`, msg),
+      vuetify, // shared MD3 instance — plugins call app.use(ctx.vuetify)
     }
     unmount = mod.mount(el, ctx)
   } catch (e) {
@@ -85,66 +87,32 @@ onBeforeUnmount(teardown)
 </script>
 
 <template>
-  <div class="plugin-page">
-    <div class="bar">
-      <button class="sk-btn-secondary" @click="router.push('/')">← {{ $t('common.back') }}</button>
-      <span class="title">{{ plugins.byId(props.id)?.name ?? props.id }}</span>
+  <div class="d-flex flex-column h-100">
+    <div class="d-flex align-center ga-3 px-4 py-2 border-b">
+      <v-btn variant="text" prepend-icon="mdi-arrow-left" @click="router.push('/')">
+        {{ $t('common.back') }}
+      </v-btn>
+      <span class="font-weight-medium">
+        {{ plugins.byId(props.id)?.name ?? props.id }}
+      </span>
     </div>
 
-    <div v-if="error" class="error-card">
-      <div class="error-title">{{ $t('plugin.failedTitle') }}</div>
-      <div class="error-msg">{{ error }}</div>
-      <button class="sk-btn-primary" @click="mountPlugin()">{{ $t('common.retry') }}</button>
-    </div>
+    <v-alert
+      v-if="error"
+      type="error"
+      variant="tonal"
+      class="ma-4"
+      :title="$t('plugin.failedTitle')"
+    >
+      <div class="text-body-2" style="font-family: monospace; overflow-wrap: anywhere">{{ error }}</div>
+      <template #append>
+        <v-btn color="error" variant="outlined" @click="mountPlugin()">{{ $t('common.retry') }}</v-btn>
+      </template>
+    </v-alert>
 
-    <div v-show="!error" ref="host" class="mount" />
-    <div v-if="loading" class="loading">{{ $t('plugin.loading') }}</div>
+    <div v-show="!error" ref="host" class="flex-grow-1 overflow-auto" />
+    <div v-if="loading" class="d-flex justify-center pa-6">
+      <v-progress-circular indeterminate color="primary" />
+    </div>
   </div>
 </template>
-
-<style scoped>
-.plugin-page {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-.bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--sk-border);
-}
-.title {
-  font-weight: 600;
-  color: var(--sk-text);
-}
-.mount {
-  flex: 1;
-  overflow: auto;
-  min-height: 0;
-}
-.loading {
-  padding: 20px;
-  color: var(--sk-text-secondary);
-}
-.error-card {
-  margin: 24px;
-  padding: 20px;
-  background: var(--sk-danger-soft);
-  border: 1px solid var(--sk-danger);
-  border-radius: 10px;
-  color: var(--sk-text);
-}
-.error-title {
-  font-weight: 600;
-  color: var(--sk-danger);
-  margin-bottom: 8px;
-}
-.error-msg {
-  font-family: monospace;
-  font-size: 12px;
-  margin-bottom: 12px;
-  overflow-wrap: anywhere;
-}
-</style>

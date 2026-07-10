@@ -1,3 +1,4 @@
+import type { Plugin } from 'vue'
 import { backendUrl } from '@/api/config'
 
 /** The lifecycle object a plugin ESM module default-exports. */
@@ -17,6 +18,12 @@ export interface PluginContext {
   t: (key: string) => string
   onLocaleChange: (cb: (locale: string) => void) => () => void
   notify: (msg: string) => void
+  /**
+   * The host's Vuetify (MD3) app-plugin instance. Plugins MUST call
+   * `app.use(ctx.vuetify)` in mount() so they share the same MD3 theme +
+   * components as the shell, without bundling Vuetify themselves.
+   */
+  vuetify: Plugin
 }
 
 /**
