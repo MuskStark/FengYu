@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import vuetify from 'vite-plugin-vuetify'
 import { fileURLToPath, URL } from 'node:url'
 import { copyFileSync, mkdirSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -39,7 +40,12 @@ function vendorVue(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [vendorVue(), vue()],
+  plugins: [
+    vendorVue(),
+    vue(),
+    // MD3 Vuetify: auto tree-shake components, wire Sass overrides.
+    vuetify({ styles: { configFile: 'src/plugins/vuetify-settings.scss' } }),
+  ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

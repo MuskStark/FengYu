@@ -1,0 +1,12 @@
+// Global Vuetify Sass overrides for the MD3 look.
+// Loaded via vite-plugin-vuetify `styles.configFile`.
+// Values are intentionally minimal — MD3 roundness/density is achieved
+// through Vuetify defaults + component props, not heavy Sass overrides.
+@use 'vuetify/settings' with (
+  // MD3 specifies medium (12px) and large (16px) corner radii.
+  $rounded: (
+    's': 8px,
+    'm': 12px,
+    'l': 16px,
+  ),
+);
