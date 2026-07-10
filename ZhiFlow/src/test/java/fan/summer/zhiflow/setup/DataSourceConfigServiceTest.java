@@ -108,4 +108,53 @@ class DataSourceConfigServiceTest {
                 "parent directory of a custom embedded path should be auto-created");
         assertTrue(cfg.url().startsWith("jdbc:sqlite:"));
     }
+
+    @Test
+    void backupAndClear_movesConfigToBak() {
+        DataSourceConfigService svc = newService();
+        // Seed a real config file.
+        WizardParams params = new WizardParams(
+                tempDir.resolve("database/zhiflow").toString(), null, null, null, null, null);
+        svc.save(svc.buildFromWizard(DbType.H2, params));
+
+        java.nio.file.Path bak = svc.backupAndClear();
+
+        assertNotNull(bak, "should return the backup path");
+        assertFalse(Files.exists(svc.configFileForTest()),
+                "original config should be gone");
+        assertTrue(Files.exists(bak), "backup file should exist");
+        assertTrue(bak.getFileName().toString().endsWith(".bak"),
+                "backup name should end with .bak, got: " + bak);
+    }
+
+    @Test
+    void backupAndClear_whenBakExists_appendsTimestamp() throws Exception {
+        DataSourceConfigService svc = newService();
+        WizardParams params = new WizardParams(
+                tempDir.resolve("database/zhiflow").toString(), null, null, null, null, null);
+
+        // First backup.
+        svc.save(svc.buildFromWizard(DbType.H2, params));
+        java.nio.file.Path firstBak = svc.backupAndClear();
+        assertNotNull(firstBak);
+
+        // Second backup of a re-saved config.
+        svc.save(svc.buildFromWizard(DbType.SQLITE, params));
+        java.nio.file.Path secondBak = svc.backupAndClear();
+        assertNotNull(secondBak);
+
+        assertNotEquals(firstBak, secondBak,
+                "second backup must not overwrite the first");
+        assertTrue(Files.exists(firstBak), "first backup must still exist");
+        assertTrue(Files.exists(secondBak), "second backup must exist");
+        assertTrue(secondBak.getFileName().toString().matches(".*\\.bak\\.\\d+"),
+                "second backup name should be .bak.<timestamp>, got: " + secondBak);
+    }
+
+    @Test
+    void backupAndClear_whenFileMissing_returnsNullNoThrow() {
+        DataSourceConfigService svc = newService();
+        java.nio.file.Path bak = svc.backupAndClear();
+        assertNull(bak, "no file to back up → null");
+    }
 }
