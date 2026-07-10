@@ -91,6 +91,37 @@ public class DataSourceConfigService {
     }
 
     /**
+     * Backs up and clears {@code datasource.properties}: moves it to
+     * {@code datasource.properties.bak} (or {@code .bak.<millis>} if a {@code .bak} already
+     * exists, to avoid clobbering a prior backup). If the move fails, falls back to a direct
+     * delete. Returns the backup path, or {@code null} if there was no file or backup/delete
+     * failed entirely. Never throws — callers (startup probe, reset endpoints) rely on this to
+     * degrade gracefully so the app can still boot into SETUP mode.
+     */
+    public Path backupAndClear() {
+        Path file = configFile();
+        if (!Files.exists(file)) return null;
+        Path bak = file.resolveSibling(file.getFileName() + ".bak");
+        if (Files.exists(bak)) {
+            bak = file.resolveSibling(file.getFileName() + ".bak." + System.currentTimeMillis());
+        }
+        try {
+            Files.move(file, bak);
+            log.warn("Backed up stale datasource.properties to {}", bak);
+            return bak;
+        } catch (IOException moveErr) {
+            log.warn("Move to .bak failed ({}); attempting direct delete", moveErr.getMessage());
+            try {
+                Files.deleteIfExists(file);
+                log.warn("Deleted datasource.properties directly (backup unavailable)");
+            } catch (IOException delErr) {
+                log.error("Could not backup or delete datasource.properties: {}", delErr.getMessage());
+            }
+            return null;
+        }
+    }
+
+    /**
      * Assembles a {@link DataSourceConfig} from wizard params, resolving paths/URL. For embedded
      * databases (H2/SQLite) the parent directory of the data file is created here so the JDBC
      * driver can initialize the database file on first connection — without this the connection
@@ -180,5 +211,10 @@ public class DataSourceConfigService {
             props.load(in);
         }
         return props;
+    }
+
+    /** Test-only: the config file path (for existence assertions). */
+    Path configFileForTest() {
+        return configFile();
     }
 }
