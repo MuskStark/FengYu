@@ -315,7 +315,7 @@ const statusLabel = computed(() => {
     <!-- Live planner token stream (before plan_ready) -->
     <v-card v-if="planTokens && !plan" variant="outlined" rounded="lg" class="mb-2">
       <v-card-text>
-        <pre class="text-body-2" style="white-space: pre-wrap; overflow-wrap: anywhere; margin: 0;">{{ planTokens }}</pre>
+        <pre class="text-body-2" style="white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; max-height: 240px; overflow-y: auto;">{{ planTokens }}</pre>
       </v-card-text>
     </v-card>
 
