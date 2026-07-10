@@ -1,73 +1,97 @@
-(function(){"use strict";try{if(typeof document<"u"){var e=document.createElement("style");e.appendChild(document.createTextNode(".mde-root[data-v-ce0ea65b]{display:flex;flex-direction:row;width:100%;height:100%;min-height:320px;box-sizing:border-box;gap:1px;background:var(--sk-border, #3a3a44);color:var(--sk-text, #e6e6ea);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif}.mde-pane[data-v-ce0ea65b]{flex:1 1 50%;min-width:0;display:flex;flex-direction:column;background:var(--sk-bg-elevated, #2b2b33);overflow:hidden}.mde-pane-title[data-v-ce0ea65b]{flex:0 0 auto;padding:8px 14px;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--sk-text, #e6e6ea);opacity:.7;border-bottom:1px solid var(--sk-border, #3a3a44)}.mde-textarea[data-v-ce0ea65b]{flex:1 1 auto;width:100%;min-height:0;resize:none;border:none;outline:none;box-sizing:border-box;padding:14px;background:var(--sk-bg, #1e1e26);color:var(--sk-text, #e6e6ea);font-family:SF Mono,JetBrains Mono,Menlo,Consolas,monospace;font-size:13px;line-height:1.6;caret-color:var(--sk-accent, #6c8cff)}.mde-textarea[data-v-ce0ea65b]::selection{background:var(--sk-accent, #6c8cff);color:#fff}.mde-preview-body[data-v-ce0ea65b]{flex:1 1 auto;min-height:0;overflow:auto;padding:14px 18px;line-height:1.65;font-size:14px;color:var(--sk-text, #e6e6ea)}.mde-preview-body.mde-error[data-v-ce0ea65b]{color:var(--sk-danger, #e5484d);font-family:SF Mono,Menlo,Consolas,monospace;white-space:pre-wrap}.mde-preview-body[data-v-ce0ea65b] h1,.mde-preview-body[data-v-ce0ea65b] h2,.mde-preview-body[data-v-ce0ea65b] h3{line-height:1.3;margin:.6em 0 .4em}.mde-preview-body[data-v-ce0ea65b] h1{font-size:1.7em}.mde-preview-body[data-v-ce0ea65b] h2{font-size:1.4em}.mde-preview-body[data-v-ce0ea65b] h3{font-size:1.2em}.mde-preview-body[data-v-ce0ea65b] p{margin:.5em 0}.mde-preview-body[data-v-ce0ea65b] a{color:var(--sk-accent, #6c8cff)}.mde-preview-body[data-v-ce0ea65b] ul,.mde-preview-body[data-v-ce0ea65b] ol{padding-left:1.4em;margin:.5em 0}.mde-preview-body[data-v-ce0ea65b] code{font-family:SF Mono,Menlo,Consolas,monospace;font-size:.9em;padding:.12em .36em;border-radius:4px;background:color-mix(in srgb,var(--sk-text, #e6e6ea) 12%,transparent)}.mde-preview-body[data-v-ce0ea65b] pre{background:var(--sk-bg, #1e1e26);border:1px solid var(--sk-border, #3a3a44);border-radius:6px;padding:10px 12px;overflow:auto}.mde-preview-body[data-v-ce0ea65b] pre code{background:none;padding:0}.mde-preview-body[data-v-ce0ea65b] blockquote{margin:.6em 0;padding:.2em 0 .2em 1em;border-left:3px solid var(--sk-accent, #6c8cff);opacity:.85}.mde-preview-body[data-v-ce0ea65b] table{border-collapse:collapse}.mde-preview-body[data-v-ce0ea65b] th,.mde-preview-body[data-v-ce0ea65b] td{border:1px solid var(--sk-border, #3a3a44);padding:4px 8px}.mde-preview-body[data-v-ce0ea65b] img{max-width:100%}.mde-preview-body[data-v-ce0ea65b] hr{border:none;border-top:1px solid var(--sk-border, #3a3a44);margin:1em 0}")),document.head.appendChild(e)}}catch(a){console.error("vite-plugin-css-injected-by-js",a)}})();
-import { defineComponent as g, inject as k, ref as d, onMounted as _, onBeforeUnmount as w, openBlock as T, createElementBlock as y, normalizeClass as p, createElementVNode as i, withDirectives as M, vModelText as E, createApp as C } from "vue";
-const b = { class: "mde-pane mde-editor" }, H = { class: "mde-pane mde-preview" }, B = ["innerHTML"], L = `# Hello ZhiFlow
+(function(){"use strict";try{if(typeof document<"u"){var e=document.createElement("style");e.appendChild(document.createTextNode(".mde-card[data-v-7859c802]{width:100%;height:100%;min-height:320px;display:flex;flex-direction:column}.mde-split[data-v-7859c802]{flex:1 1 auto;display:flex;flex-direction:row;gap:1px;min-height:0;padding:0;background:rgba(var(--v-theme-on-surface),.12)}.mde-pane[data-v-7859c802]{flex:1 1 50%;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:rgb(var(--v-theme-surface))}.mde-pane-title[data-v-7859c802]{flex:0 0 auto;padding:8px 14px;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:rgb(var(--v-theme-on-surface));opacity:.7;border-bottom:1px solid rgba(var(--v-theme-on-surface),.12)}.mde-textarea[data-v-7859c802]{flex:1 1 auto;width:100%;min-height:0;resize:none;border:none;outline:none;box-sizing:border-box;padding:14px;background:rgb(var(--v-theme-surface));color:rgb(var(--v-theme-on-surface));font-family:SF Mono,JetBrains Mono,Menlo,Consolas,monospace;font-size:13px;line-height:1.6;caret-color:rgb(var(--v-theme-primary))}.mde-textarea[data-v-7859c802]::selection{background:rgb(var(--v-theme-primary));color:rgb(var(--v-theme-on-primary))}.mde-preview-body[data-v-7859c802]{flex:1 1 auto;min-height:0;overflow:auto;padding:14px 18px;line-height:1.65;font-size:14px;color:rgb(var(--v-theme-on-surface))}.mde-preview-body.mde-error[data-v-7859c802]{color:rgb(var(--v-theme-error));font-family:SF Mono,Menlo,Consolas,monospace;white-space:pre-wrap}.mde-preview-body[data-v-7859c802] h1,.mde-preview-body[data-v-7859c802] h2,.mde-preview-body[data-v-7859c802] h3{line-height:1.3;margin:.6em 0 .4em}.mde-preview-body[data-v-7859c802] h1{font-size:1.7em}.mde-preview-body[data-v-7859c802] h2{font-size:1.4em}.mde-preview-body[data-v-7859c802] h3{font-size:1.2em}.mde-preview-body[data-v-7859c802] p{margin:.5em 0}.mde-preview-body[data-v-7859c802] a{color:rgb(var(--v-theme-primary))}.mde-preview-body[data-v-7859c802] ul,.mde-preview-body[data-v-7859c802] ol{padding-left:1.4em;margin:.5em 0}.mde-preview-body[data-v-7859c802] code{font-family:SF Mono,Menlo,Consolas,monospace;font-size:.9em;padding:.12em .36em;border-radius:4px;background:rgba(var(--v-theme-on-surface),.12)}.mde-preview-body[data-v-7859c802] pre{background:rgba(var(--v-theme-on-surface),.08);border:1px solid rgba(var(--v-theme-on-surface),.12);border-radius:6px;padding:10px 12px;overflow:auto}.mde-preview-body[data-v-7859c802] pre code{background:none;padding:0}.mde-preview-body[data-v-7859c802] blockquote{margin:.6em 0;padding:.2em 0 .2em 1em;border-left:3px solid rgb(var(--v-theme-primary));opacity:.85}.mde-preview-body[data-v-7859c802] table{border-collapse:collapse}.mde-preview-body[data-v-7859c802] th,.mde-preview-body[data-v-7859c802] td{border:1px solid rgba(var(--v-theme-on-surface),.12);padding:4px 8px}.mde-preview-body[data-v-7859c802] img{max-width:100%}.mde-preview-body[data-v-7859c802] hr{border:none;border-top:1px solid rgba(var(--v-theme-on-surface),.12);margin:1em 0}")),document.head.appendChild(e)}}catch(a){console.error("vite-plugin-css-injected-by-js",a)}})();
+import { defineComponent as y, inject as C, ref as u, onMounted as x, onBeforeUnmount as E, resolveComponent as c, openBlock as b, createBlock as H, withCtx as m, createVNode as p, createTextVNode as V, createElementVNode as s, withDirectives as B, vModelText as L, normalizeClass as N, createApp as A } from "vue";
+const I = { class: "mde-pane mde-editor" }, P = { class: "mde-pane mde-preview" }, R = ["innerHTML"], S = `# Hello ZhiFlow
 
-Type **markdown** here.`, A = /* @__PURE__ */ g({
+Type **markdown** here.`, U = /* @__PURE__ */ y({
   __name: "MarkdownEditor",
-  setup(s) {
-    const e = k("pluginCtx", void 0), n = d(L), l = d(""), o = d(!1), c = d((e == null ? void 0 : e.theme) === "light" ? "light" : "dark");
-    let r = null, u = null;
-    function m(a) {
+  setup(i) {
+    const t = C("pluginCtx", void 0), n = u(S), o = u(""), l = u(!1), _ = u((t == null ? void 0 : t.theme) === "light" ? "light" : "dark");
+    let r = null, d = null;
+    function v(a) {
       return a.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
-    async function v() {
+    async function f() {
       var a;
-      if (!((a = e == null ? void 0 : e.api) != null && a.invoke)) {
-        o.value = !1, l.value = "<pre>" + m(n.value) + "</pre>";
+      if (!((a = t == null ? void 0 : t.api) != null && a.invoke)) {
+        l.value = !1, o.value = "<pre>" + v(n.value) + "</pre>";
         return;
       }
       try {
-        const t = await e.api.invoke("render", { markdown: n.value });
-        t && t.success ? (o.value = !1, l.value = typeof t.html == "string" ? t.html : "") : (o.value = !0, l.value = m(t && t.error || "Render failed"));
-      } catch (t) {
-        o.value = !0, l.value = m(t instanceof Error ? t.message : String(t));
+        const e = await t.api.invoke("render", { markdown: n.value });
+        e && e.success ? (l.value = !1, o.value = typeof e.html == "string" ? e.html : "") : (l.value = !0, o.value = v(e && e.error || "Render failed"));
+      } catch (e) {
+        l.value = !0, o.value = v(e instanceof Error ? e.message : String(e));
       }
     }
-    function f() {
+    function g() {
       r !== null && clearTimeout(r), r = setTimeout(() => {
-        r = null, v();
+        r = null, f();
       }, 250);
     }
-    return _(() => {
-      v(), e != null && e.onThemeChange && (u = e.onThemeChange((a) => {
-        c.value = a === "light" ? "light" : "dark";
+    return x(() => {
+      f(), t != null && t.onThemeChange && (d = t.onThemeChange((a) => {
+        _.value = a === "light" ? "light" : "dark";
       }));
-    }), w(() => {
-      r !== null && (clearTimeout(r), r = null), u && (u(), u = null);
-    }), (a, t) => (T(), y("div", {
-      class: p(["mde-root", c.value === "light" ? "theme-light" : "theme-dark"])
-    }, [
-      i("div", b, [
-        t[1] || (t[1] = i("div", { class: "mde-pane-title" }, "Markdown", -1)),
-        M(i("textarea", {
-          class: "mde-textarea",
-          "onUpdate:modelValue": t[0] || (t[0] = (h) => n.value = h),
-          spellcheck: "false",
-          onInput: f
-        }, null, 544), [
-          [E, n.value]
-        ])
-      ]),
-      i("div", H, [
-        t[2] || (t[2] = i("div", { class: "mde-pane-title" }, "Preview", -1)),
-        i("div", {
-          class: p(["mde-preview-body", { "mde-error": o.value }]),
-          innerHTML: l.value
-        }, null, 10, B)
-      ])
-    ], 2));
+    }), E(() => {
+      r !== null && (clearTimeout(r), r = null), d && (d(), d = null);
+    }), (a, e) => {
+      const h = c("v-card-title"), k = c("v-card-item"), w = c("v-card-text"), T = c("v-card");
+      return b(), H(T, {
+        variant: "outlined",
+        rounded: "lg",
+        class: "mde-card"
+      }, {
+        default: m(() => [
+          p(k, null, {
+            default: m(() => [
+              p(h, { class: "text-subtitle-1" }, {
+                default: m(() => [...e[1] || (e[1] = [
+                  V("Markdown", -1)
+                ])]),
+                _: 1
+              })
+            ]),
+            _: 1
+          }),
+          p(w, { class: "mde-split" }, {
+            default: m(() => [
+              s("div", I, [
+                e[2] || (e[2] = s("div", { class: "mde-pane-title" }, "Markdown", -1)),
+                B(s("textarea", {
+                  class: "mde-textarea",
+                  "onUpdate:modelValue": e[0] || (e[0] = (M) => n.value = M),
+                  spellcheck: "false",
+                  onInput: g
+                }, null, 544), [
+                  [L, n.value]
+                ])
+              ]),
+              s("div", P, [
+                e[3] || (e[3] = s("div", { class: "mde-pane-title" }, "Preview", -1)),
+                s("div", {
+                  class: N(["mde-preview-body", { "mde-error": l.value }]),
+                  innerHTML: o.value
+                }, null, 10, R)
+              ])
+            ]),
+            _: 1
+          })
+        ]),
+        _: 1
+      });
+    };
   }
-}), I = (s, e) => {
-  const n = s.__vccOpts || s;
-  for (const [l, o] of e)
-    n[l] = o;
+}), j = (i, t) => {
+  const n = i.__vccOpts || i;
+  for (const [o, l] of t)
+    n[o] = l;
   return n;
-}, P = /* @__PURE__ */ I(A, [["__scopeId", "data-v-ce0ea65b"]]), S = {
-  mount(s, e) {
-    const n = C(P);
-    return n.provide("pluginCtx", e), e.vuetify && n.use(e.vuetify), n.mount(s), () => n.unmount();
+}, z = /* @__PURE__ */ j(U, [["__scopeId", "data-v-7859c802"]]), F = {
+  mount(i, t) {
+    const n = A(z);
+    return n.provide("pluginCtx", t), t.vuetify && n.use(t.vuetify), n.mount(i), () => n.unmount();
   }
 };
 export {
-  S as default
+  F as default
 };
