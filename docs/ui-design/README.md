@@ -10,6 +10,11 @@ It is **bilingual** (this English tree mirrors
 [`/zh/ui-design/`](/zh/ui-design/) exactly) and **code-anchored** — every class name, token
 value, and JavaFX signature cited is verifiable against the real ZhiFlow source.
 
+> **Web frontend note:** As of 4.0.0 the web shell (`frontend/`) implements
+> Material Design 3 via Vuetify 3, not the IntelliJ token system below.
+> The `--sk-*` token spec in these docs remains authoritative for the
+> **JavaFX host** only.
+
 ## The 8 documents
 
 | # | Document | What it's for | Read it if you… |

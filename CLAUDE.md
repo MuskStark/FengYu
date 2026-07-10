@@ -27,9 +27,12 @@ The reactor is a **parent POM** (`pom.xml`) with modules `ZhiFlow-Api`, `plugin-
 - **Plugin v2** — `ZhiFlowPluginV2` (in `ZhiFlow-Api`): `descriptor()` + `invoke(action, args)` +
   `aiTools()`. UI ships as an ESM micro-frontend at `PluginDescriptor.uiEntry`, served from the
   plugin module's `src/main/resources/ui/{id}/`.
-- **Frontend** — `frontend/` Vue 3.5.39 + TS + Pinia + vue-router. `--sk-*` tokens ported from
-  `zhiflow-common.css`; Vue shared with plugin bundles via an import map. MF host dynamically
-  `import()`s `uiEntry` and calls the bundle's `default.mount(el, ctx)`.
+- **Frontend** — `frontend/` Vue 3.5.39 + TypeScript + Pinia + vue-router 4 + vue-i18n 10, UI via
+  Vuetify 3 (Material Design 3 blueprint; Google default M3 baseline palette). Theme is driven by
+  Vuetify's global theme singleton from the Pinia `useThemeStore`. Micro-frontend plugins share the
+  host's Vuetify instance via `PluginContext.vuetify` (`app.use(ctx.vuetify)` in `mount()`). Vue is
+  shared with plugin bundles via an import map. MF host dynamically `import()`s `uiEntry` and calls
+  the bundle's `default.mount(el, ctx)`.
 - **Desktop** — `desktop/` Tauri 2.0; `src-tauri/src/main.rs` spawns the jar sidecar, waits on
   health, injects `window.__ZHIFLOW_TOKEN__`/`__ZHIFLOW_API_BASE__`. Needs Rust + `tauri-cli`.
 

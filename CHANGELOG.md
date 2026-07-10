@@ -4,6 +4,21 @@ All notable changes to ZhiFlow. Format based on [Keep a Changelog](https://keepa
 
 ---
 
+## [4.0.0-ZhiFlow] — Vuetify MD3 Adoption
+
+Full visual-language switch for the web shell and plugin micro-frontends, from the legacy
+`--sk-*` IntelliJ-token system to **Material Design 3**.
+
+### UI
+- feat(frontend): adopt Vuetify 3 (Material Design 3 blueprint) as the UI
+  component library for the host SPA and plugin micro-frontend. Full
+  visual-language switch from the `--sk-*` IntelliJ-token system to MD3
+  (Google default baseline palette). Theme driven by Vuetify's global
+  singleton from `useThemeStore`; plugins share the host's Vuetify instance
+  via `PluginContext.vuetify`.
+
+---
+
 ## [4.0.0-SNAPSHOT] — Phase 4: Multi-datasource setup wizard + JPA migration + user-system groundwork
 
 ### ✨ Added
