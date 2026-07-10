@@ -3,12 +3,15 @@ package fan.summer.zhiflow.setup;
 import fan.summer.zhiflow.ExitCodes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -33,9 +36,30 @@ public class SetupController {
     private static final Logger log = LoggerFactory.getLogger(SetupController.class);
 
     private final DataSourceConfigService configService;
+    private final Runnable exitAction;
 
+    /** Production constructor — Spring auto-wires this. Exit action delays 1s then exits. */
+    @Autowired
     public SetupController(DataSourceConfigService configService) {
+        this(configService, defaultExitAction());
+    }
+
+    /** Test constructor — injects a no-op/recording exit action. */
+    SetupController(DataSourceConfigService configService, Runnable exitAction) {
         this.configService = configService;
+        this.exitAction = exitAction;
+    }
+
+    /** Default exit: daemon thread sleeps 1s (let HTTP response flush) then exits SETUP_DONE. */
+    private static Runnable defaultExitAction() {
+        return () -> {
+            Thread exitHook = new Thread(() -> {
+                try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
+                System.exit(ExitCodes.SETUP_DONE);
+            }, "setup-exit");
+            exitHook.setDaemon(true);
+            exitHook.start();
+        };
     }
 
     /** Frontend's first call on startup — determines whether to show the wizard or main shell. */
@@ -119,13 +143,21 @@ public class SetupController {
         //    inserts the virtual user id=1 — no DDL needed here.
         //    Delay 1s so the HTTP response is flushed to the frontend first.
         log.info("Setup complete; exiting in 1s for restart into APP mode (type={})", type);
-        Thread exitHook = new Thread(() -> {
-            try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
-            System.exit(ExitCodes.SETUP_DONE);
-        }, "setup-exit");
-        exitHook.setDaemon(true);
-        exitHook.start();
+        exitAction.run();
 
+        return Map.of("success", true, "action", "restart");
+    }
+
+    /**
+     * Backs up and clears {@code datasource.properties}, then signals a restart. Idempotent — if
+     * no config file exists, no backup is created but {@code action:"restart"} is still returned.
+     * On restart the process enters SETUP mode (config is gone), so the wizard reappears.
+     */
+    @DeleteMapping("/config")
+    public Map<String, Object> clearConfig() {
+        Path bak = configService.backupAndClear();
+        log.info("Setup config cleared via DELETE /api/setup/config (bak={})", bak);
+        exitAction.run();
         return Map.of("success", true, "action", "restart");
     }
 
