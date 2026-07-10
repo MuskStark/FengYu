@@ -3,8 +3,8 @@ import type { ThemeDefinition } from 'vuetify'
 /**
  * Google default Material Design 3 baseline palette (purple-toned).
  * Source: M3 baseline (the set Material Theme Builder emits for a purple
- * seed). These replace the hand-written --sk-* tokens as the source of
- * truth for color in the web frontend.
+ * seed). These are the single source of truth for color in the web
+ * frontend (the legacy hand-written token system has been retired).
  */
 
 export const md3Light: ThemeDefinition = {
