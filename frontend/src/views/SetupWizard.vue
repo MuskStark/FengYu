@@ -18,7 +18,6 @@ const canInitialize = computed(() => setup.testResult?.success === true)
 
 onMounted(async () => {
   await setup.loadTypes()
-  // Default-select H2 (first embedded / recommended)
   const h2 = setup.types.find((t) => t.type === 'h2')
   if (h2) setup.selectType('h2')
 })
@@ -39,7 +38,6 @@ async function onTest() {
 async function onInitialize() {
   const ok = await setup.initialize()
   if (!ok) return
-  // Show restart overlay, poll health until backend is back.
   step.value = 3
   restartMessage.value = 'Configuration complete. Restarting backend…'
   await waitForRestart()
@@ -52,7 +50,6 @@ async function waitForRestart() {
     await new Promise((r) => setTimeout(r, 500))
     try {
       await api.health()
-      // Health passed — confirm setup status is now initialized.
       const status = await api.getSetupStatus()
       if (status.initialized) {
         back = true
@@ -72,217 +69,81 @@ async function waitForRestart() {
 </script>
 
 <template>
-  <div class="setup-root">
-    <div class="setup-card">
-      <h1 class="setup-title">ZhiFlow Setup</h1>
-      <p class="setup-subtitle">Choose how to store your data.</p>
+  <div class="d-flex align-center justify-center h-100 pa-6">
+    <v-card max-width="560" width="100%" rounded="lg" class="pa-6">
+      <v-card-title class="text-h5">ZhiFlow Setup</v-card-title>
+      <v-card-subtitle class="mb-4">Choose how to store your data.</v-card-subtitle>
 
       <!-- Step 1: choose type -->
-      <div v-if="step === 1" class="step">
-        <div class="type-grid">
-          <button
-            v-for="t in setup.types"
-            :key="t.type"
-            class="type-card"
-            :class="{ active: setup.selectedType === t.type }"
-            @click="chooseType(t.type)"
-          >
-            <span class="type-label">{{ t.label }}</span>
-            <span class="type-tag">{{ t.embedded ? 'local' : 'remote' }}</span>
-          </button>
-        </div>
+      <div v-if="step === 1">
+        <v-row>
+          <v-col v-for="t in setup.types" :key="t.type" cols="12" sm="6">
+            <v-card
+              variant="outlined"
+              rounded="lg"
+              class="pa-4 h-100"
+              :color="setup.selectedType === t.type ? 'primary' : undefined"
+              :class="{ 'border-primary': setup.selectedType === t.type }"
+              @click="chooseType(t.type)"
+            >
+              <div class="text-body-1 font-weight-bold">{{ t.label }}</div>
+              <div class="text-caption text-uppercase text-medium-emphasis">
+                {{ t.embedded ? 'local' : 'remote' }}
+              </div>
+            </v-card>
+          </v-col>
+        </v-row>
       </div>
 
       <!-- Step 2: configure + test -->
-      <div v-else-if="step === 2" class="step">
-        <button class="link-btn" @click="backToSelect">← Back</button>
-        <h2 class="step-title">{{ selectedMeta?.label }} configuration</h2>
+      <div v-else-if="step === 2">
+        <v-btn variant="text" prepend-icon="mdi-arrow-left" size="small" @click="backToSelect">
+          Back
+        </v-btn>
+        <h2 class="text-h6 mt-2 mb-4">{{ selectedMeta?.label }} configuration</h2>
 
-        <div v-for="f in selectedMeta?.fields ?? []" :key="f.name" class="form-row">
-          <label class="form-label">{{ f.label ?? f.name }}</label>
-          <input
-            v-if="!f.secret"
-            class="sk-input"
-            v-model="(setup.params as Record<string, unknown>)[f.name] as string"
+        <div v-for="f in selectedMeta?.fields ?? []" :key="f.name" class="mb-3">
+          <v-text-field
+            :label="f.label ?? f.name"
+            :type="f.secret ? 'password' : 'text'"
             :placeholder="f.name"
-          />
-          <input
-            v-else
-            type="password"
-            class="sk-input"
-            v-model="(setup.params as Record<string, unknown>)[f.name] as string"
-            :placeholder="f.name"
+            variant="outlined"
+            density="compact"
+            hide-details
+            :model-value="(setup.params as Record<string, unknown>)[f.name] as string"
+            @update:model-value="(v: string) => ((setup.params as Record<string, unknown>)[f.name] = v)"
           />
         </div>
 
-        <div class="test-row">
-          <button class="sk-btn" :disabled="setup.testing" @click="onTest">
-            {{ setup.testing ? 'Testing…' : 'Test connection' }}
-          </button>
+        <div class="d-flex align-center ga-3 my-4">
+          <v-btn variant="tonal" :loading="setup.testing" @click="onTest">
+            Test connection
+          </v-btn>
           <span
             v-if="setup.testResult"
-            class="test-result"
-            :class="setup.testResult.success ? 'ok' : 'fail'"
+            :class="setup.testResult.success ? 'text-success' : 'text-error'"
+            class="text-body-2"
           >
+            <v-icon size="small" :icon="setup.testResult.success ? 'mdi-check' : 'mdi-close'" />
             {{ setup.testResult.success
-              ? `✓ Connected (${setup.testResult.serverVersion})`
-              : `✗ ${setup.testResult.error}` }}
+              ? `Connected (${setup.testResult.serverVersion})`
+              : setup.testResult.error }}
           </span>
         </div>
 
-        <button class="sk-btn primary" :disabled="!canInitialize" @click="onInitialize">
+        <v-btn color="primary" :disabled="!canInitialize" @click="onInitialize">
           Initialize
-        </button>
+        </v-btn>
       </div>
 
       <!-- Step 3: restart overlay -->
-      <div v-else class="step restart-step">
-        <div class="spinner" />
-        <p>{{ restartMessage }}</p>
+      <div v-else class="text-center pa-8">
+        <v-progress-circular indeterminate color="primary" size="40" class="mb-4" />
+        <p class="text-body-1">{{ restartMessage }}</p>
+        <v-alert v-if="restartFailed" type="warning" variant="tonal" class="mt-3">
+          {{ restartMessage }}
+        </v-alert>
       </div>
-    </div>
+    </v-card>
   </div>
 </template>
-
-<style scoped>
-.setup-root {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  width: 100%;
-  background: var(--sk-bg);
-  padding: 24px;
-}
-.setup-card {
-  max-width: 560px;
-  width: 100%;
-  background: var(--sk-surface, var(--sk-bg));
-  border: 1px solid var(--sk-border);
-  border-radius: 12px;
-  padding: 32px;
-}
-.setup-title {
-  margin: 0 0 4px;
-  font-size: 24px;
-}
-.setup-subtitle {
-  margin: 0 0 24px;
-  color: var(--sk-text-dim, #888);
-  font-size: 14px;
-}
-.type-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-.type-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 18px;
-  border: 1px solid var(--sk-border);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--sk-text);
-  cursor: pointer;
-  transition: border-color 0.15s;
-}
-.type-card:hover {
-  border-color: var(--sk-accent, #4a9);
-}
-.type-card.active {
-  border-color: var(--sk-accent, #4a9);
-  background: var(--sk-surface-alt, rgba(68, 170, 153, 0.08));
-}
-.type-label {
-  font-size: 15px;
-  font-weight: 600;
-}
-.type-tag {
-  font-size: 11px;
-  text-transform: uppercase;
-  color: var(--sk-text-dim, #888);
-}
-.step-title {
-  margin: 12px 0 16px;
-  font-size: 17px;
-}
-.form-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 14px;
-}
-.form-label {
-  font-size: 13px;
-  color: var(--sk-text-dim, #aaa);
-}
-.sk-input {
-  padding: 8px 10px;
-  border: 1px solid var(--sk-border);
-  border-radius: 6px;
-  background: var(--sk-bg);
-  color: var(--sk-text);
-  font-size: 14px;
-}
-.test-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 12px 0 20px;
-}
-.test-result.ok {
-  color: #4a9;
-  font-size: 13px;
-}
-.test-result.fail {
-  color: #e55;
-  font-size: 13px;
-}
-.sk-btn {
-  padding: 8px 16px;
-  border: 1px solid var(--sk-border);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--sk-text);
-  cursor: pointer;
-  font-size: 14px;
-}
-.sk-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.sk-btn.primary {
-  background: var(--sk-accent, #4a9);
-  color: #fff;
-  border-color: var(--sk-accent, #4a9);
-}
-.link-btn {
-  background: none;
-  border: none;
-  color: var(--sk-text-dim, #888);
-  cursor: pointer;
-  font-size: 13px;
-  padding: 0;
-  margin-bottom: 8px;
-}
-.restart-step {
-  text-align: center;
-  padding: 40px 0;
-}
-.spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid var(--sk-border);
-  border-top-color: var(--sk-accent, #4a9);
-  border-radius: 50%;
-  margin: 0 auto 16px;
-  animation: spin 0.8s linear infinite;
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-</style>
