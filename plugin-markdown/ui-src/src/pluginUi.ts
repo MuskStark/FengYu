@@ -1,3 +1,5 @@
+import type { Plugin } from 'vue';
+
 /**
  * Micro-frontend contract shared with the ZhiFlow host shell.
  *
@@ -27,6 +29,8 @@ export interface PluginUiContext {
   onThemeChange?: (cb: (theme: PluginTheme) => void) => (() => void);
   i18n?: (key: string) => string;
   notify?: (msg: string) => void;
+  /** Host's shared Vuetify (MD3) instance; plugins call app.use(ctx.vuetify) in mount(). */
+  vuetify?: Plugin;
 }
 
 /** Shape of the module default export the host mounts. */

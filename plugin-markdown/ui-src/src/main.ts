@@ -11,6 +11,10 @@ const module: PluginUiModule = {
     const app = createApp(MarkdownEditor);
     // Hand the host context to the component tree.
     app.provide('pluginCtx', ctx);
+    // Register the host's shared MD3 Vuetify instance (no bundling).
+    // Defensive: PluginUiContext.vuetify is optional, but the host always
+    // provides it, so this branch runs in practice.
+    if (ctx.vuetify) app.use(ctx.vuetify);
     app.mount(el);
     return () => app.unmount();
   }
