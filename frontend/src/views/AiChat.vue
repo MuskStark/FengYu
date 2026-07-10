@@ -7,6 +7,9 @@ import { useAiSessionStore } from '@/stores/aiSession'
 const { t } = useI18n()
 const ai = useAiSessionStore()
 const draft = ref('')
+// Plain div ref (NOT a Vuetify component ref) so scroll logic stays simple
+// — component-instance $el indirection is unreliable. Same pattern as the
+// original hand-written version.
 const scroller = ref<HTMLElement | null>(null)
 
 marked.setOptions({ breaks: true, gfm: true })
@@ -42,155 +45,88 @@ watch(
 </script>
 
 <template>
-  <div class="chat-page">
-    <header class="chat-head">
-      <h1 class="section-header">{{ $t('aichat.title') }}</h1>
-      <button class="sk-btn-secondary" @click="ai.clear()">{{ $t('aichat.clear') }}</button>
-    </header>
-
-    <div v-if="hasError" class="banner">
-      {{ ai.error }}
-      <button class="sk-btn-secondary retry" @click="ai.error = null">
-        {{ $t('aichat.dismiss') }}
-      </button>
+  <div class="d-flex flex-column h-100 pa-4">
+    <div class="d-flex align-center justify-space-between mb-2">
+      <h1 class="text-h5">{{ $t('aichat.title') }}</h1>
+      <v-btn variant="outlined" prepend-icon="mdi-broom" @click="ai.clear()">
+        {{ $t('aichat.clear') }}
+      </v-btn>
     </div>
 
-    <div ref="scroller" class="messages">
-      <div v-if="ai.turns.length === 0" class="empty">{{ $t('aichat.empty') }}</div>
+    <v-alert
+      v-if="hasError"
+      type="error"
+      variant="tonal"
+      class="mb-2"
+      closable
+      @click:close="ai.error = null"
+    >{{ ai.error }}</v-alert>
 
-      <div v-for="turn in ai.turns" :key="turn.id" class="turn" :class="turn.role">
-        <div class="role">{{ turn.role === 'user' ? t('aichat.you') : t('aichat.assistant') }}</div>
+    <div ref="scroller" class="flex-grow-1 overflow-y-auto d-flex flex-column ga-4 pa-2">
+      <div v-if="ai.turns.length === 0" class="text-medium-emphasis text-center mt-10">
+        {{ $t('aichat.empty') }}
+      </div>
 
-        <details v-if="turn.thinking" class="thinking">
-          <summary>{{ $t('aichat.thinking') }}</summary>
-          <div class="thinking-body" v-html="md(turn.thinking)" />
-        </details>
+      <div
+        v-for="turn in ai.turns"
+        :key="turn.id"
+        class="d-flex flex-column ga-1"
+        :class="turn.role === 'user' ? 'align-self-end align-end' : 'align-self-start align-start'"
+        style="max-width: 80%"
+      >
+        <div class="text-caption text-medium-emphasis">
+          {{ turn.role === 'user' ? t('aichat.you') : t('aichat.assistant') }}
+        </div>
 
-        <div v-if="turn.role === 'assistant'" class="bubble" v-html="md(turn.content)" />
-        <div v-else class="bubble plain">{{ turn.content }}</div>
+        <v-expansion-panels v-if="turn.thinking" variant="accordion">
+          <v-expansion-panel>
+            <v-expansion-panel-title class="text-caption">{{ $t('aichat.thinking') }}</v-expansion-panel-title>
+            <v-expansion-panel-text>
+              <div v-html="md(turn.thinking)" />
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+        </v-expansion-panels>
 
-        <div v-if="turn.streaming && !turn.content" class="typing">…</div>
+        <v-card
+          v-if="turn.role === 'assistant'"
+          variant="tonal"
+          rounded="lg"
+          class="pa-3"
+        >
+          <div v-html="md(turn.content)" />
+        </v-card>
+        <v-card v-else color="primary" variant="tonal" rounded="lg" class="pa-3">
+          <div class="text-body-2" style="white-space: pre-wrap">{{ turn.content }}</div>
+        </v-card>
+
+        <div v-if="turn.streaming && !turn.content" class="text-medium-emphasis">…</div>
       </div>
     </div>
 
-    <div class="composer">
-      <textarea
+    <div class="d-flex ga-2 align-end mt-2">
+      <v-textarea
         v-model="draft"
-        class="sk-field input"
-        rows="2"
         :placeholder="$t('aichat.placeholder')"
+        auto-grow
+        rows="2"
+        variant="outlined"
+        hide-details
+        class="flex-grow-1"
         @keydown="onKeydown"
       />
-      <button v-if="ai.busy" class="sk-btn-secondary" @click="ai.stop()">
-        {{ $t('aichat.stop') }}
-      </button>
-      <button v-else class="sk-btn-primary" :disabled="!draft.trim()" @click="submit">
-        {{ $t('aichat.send') }}
-      </button>
+      <v-btn
+        v-if="ai.busy"
+        variant="outlined"
+        prepend-icon="mdi-stop"
+        @click="ai.stop()"
+      >{{ $t('aichat.stop') }}</v-btn>
+      <v-btn
+        v-else
+        color="primary"
+        prepend-icon="mdi-send"
+        :disabled="!draft.trim()"
+        @click="submit"
+      >{{ $t('aichat.send') }}</v-btn>
     </div>
   </div>
 </template>
-
-<style scoped>
-.chat-page {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  padding: 16px 20px;
-}
-.chat-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-.chat-head h1 {
-  margin: 0;
-}
-.banner {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: var(--sk-danger-soft);
-  color: var(--sk-danger);
-  border: 1px solid var(--sk-danger);
-  border-radius: 8px;
-  padding: 8px 12px;
-  margin-bottom: 8px;
-}
-.retry {
-  margin-left: auto;
-}
-.messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.empty {
-  color: var(--sk-text-secondary);
-  text-align: center;
-  margin-top: 40px;
-}
-.turn {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-width: 80%;
-}
-.turn.user {
-  align-self: flex-end;
-  align-items: flex-end;
-}
-.role {
-  font-size: 11px;
-  color: var(--sk-text-secondary);
-}
-.bubble {
-  padding: 10px 14px;
-  border-radius: 10px;
-  background: var(--sk-bg-elevated);
-  border: 1px solid var(--sk-border);
-  color: var(--sk-text);
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-.turn.user .bubble {
-  background: var(--sk-accent-soft);
-  border-color: var(--sk-accent);
-}
-.bubble.plain {
-  white-space: pre-wrap;
-}
-.thinking {
-  background: var(--sk-bg-hover);
-  border: 1px solid var(--sk-border);
-  border-radius: 8px;
-  padding: 6px 10px;
-  font-size: 12px;
-  color: var(--sk-text-secondary);
-}
-.thinking summary {
-  cursor: pointer;
-}
-.thinking-body {
-  margin-top: 6px;
-}
-.typing {
-  color: var(--sk-text-secondary);
-}
-.composer {
-  display: flex;
-  gap: 8px;
-  align-items: flex-end;
-  padding-top: 10px;
-  border-top: 1px solid var(--sk-border);
-}
-.input {
-  flex: 1;
-  resize: none;
-  font-family: inherit;
-}
-</style>
