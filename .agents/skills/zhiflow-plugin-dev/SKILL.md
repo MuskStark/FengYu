@@ -41,6 +41,45 @@ blend in as native tools: they share the host's theme tokens (`-sk-*`), foundati
 > [plugins docs](https://muskstark.github.io/ZhiFlow/#/plugins/) as supporting context, not
 > authoritative.
 
+## Web UI: Vuetify MD3 (4.0.0+)
+
+As of 4.0.0 the host is a **headless web app** and plugin UI is a **Vue 3 micro-frontend**
+(ESM bundle served at `PluginDescriptor.uiEntry`), not a JavaFX `Node`. The web visual language is
+**Material Design 3**, delivered via **Vuetify 3** (MD3 blueprint, Google default M3 baseline
+palette). The JavaFX `ZhiFlowPlugin` + `createView()` contract described in the rest of this skill
+is the historical v3.x API, retained for the still-JavaFX `ZhiFlow-Api` preview classes.
+
+For a **4.0.0 plugin web UI**:
+
+- **Use Vuetify MD3 components only — no separate UI library.** The host SPA and every plugin MF
+  render through the same Vuetify instance, so a plugin that pulls in another component library
+  (Element Plus, Naive UI, Quasar, …) will visually clash and double-bundle Vue/Vuetify.
+- **The host injects its Vuetify instance via `ctx.vuetify`** (`PluginContext.vuetify`). Plugins
+  **MUST** call `app.use(ctx.vuetify)` inside `mount()` **before** `app.mount(el)` so they share the
+  host's theme singleton, MD3 config, and directive/plugin registrations. Skipping `app.use(ctx.vuetify)`
+  yields an unstyled/thrown plugin because Vuetify components resolve against a missing install.
+- **Theming** is driven by Vuetify's global theme singleton (toggled from the Pinia `useThemeStore`);
+  because the plugin reuses the host instance, the host's dark/light flip propagates into the plugin
+  MF automatically — no per-plugin theme wiring.
+- **Colors** come from Vuetify's MD3 theme (e.g. `bg-surface`, `text-primary`, the M3 baseline
+  palette), **not** the legacy `-sk-*` CSS tokens. The `-sk-*`/`.sk-*` system below is the
+  JavaFX-era token set and applies to the JavaFX host only.
+
+Minimal `mount()` shape:
+
+```ts
+// Plugin MF default export — host calls default.mount(el, ctx)
+export default {
+  mount(el: HTMLElement, ctx: PluginContext) {
+    const app = createApp(RootComponent);
+    app.use(ctx.vuetify);   // ← REQUIRED, before app.mount
+    // app.use(pinia) / app.use(i18n) as needed
+    app.mount(el);
+  },
+  unmount(el: HTMLElement) { /* app.unmount() */ },
+};
+```
+
 ## When to use this skill
 
 **Use** for anything about **external JAR plugins** (`ToolType.PLUGIN`): scaffolding a new

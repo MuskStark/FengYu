@@ -26,6 +26,15 @@ Every built-in tool has **two halves**:
 
 Both halves share state via a config/field object held by the Plugin instance. AI tools receive the plugin reference in their constructor.
 
+> **4.0.0 web/UI note:** The JavaFX `ZhiFlowPlugin` + `createView()` pattern below is the
+> historical v3.x builtin-tool shape, retained for the still-JavaFX `ZhiFlow-Api` preview classes.
+> As of 4.0.0 the host is a **headless web app** and a builtin tool's web/UI side is a **Vue 3
+> micro-frontend** that renders **Vuetify MD3** components — no separate UI library. The host
+> injects its Vuetify instance via `PluginContext.vuetify`; the MF **must** call
+> `app.use(ctx.vuetify)` in `mount()` before `app.mount(el)` so it shares the host's MD3 theme
+> singleton. The `AiTool` half (AI-callable interface, registration via `aiTools()`, JSON result
+> contract) is unchanged.
+
 ## Files to Create / Modify
 
 ### Checklist

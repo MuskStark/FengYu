@@ -8,6 +8,10 @@ ZhiFlow 的用户界面是对 **JetBrains IntelliJ IDEA 2025 "New UI"** 视觉�
 它是**双语的**（本中文树与 [`/ui-design/`](/ui-design/) 结构完全对应），且**以代码为锚**——
 文中引用的每一个类名、token 值、JavaFX 签名，都能在真实的 ZhiFlow 源码中核实。
 
+> **Web 前端说明:** 自 4.0.0 起 Web 前端 (`frontend/`) 通过 Vuetify 3 实现
+> Material Design 3,不再使用下文的 IntelliJ token 体系。下文 `--sk-*`
+> token 规范仅对 **JavaFX 宿主** 继续有效。
+
 ## 8 篇文档
 
 | # | 文档 | 用途 | 适合谁读 |
