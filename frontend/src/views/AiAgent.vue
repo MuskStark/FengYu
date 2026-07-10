@@ -231,268 +231,136 @@ const statusLabel = computed(() => {
 </script>
 
 <template>
-  <div class="agent-page">
-    <header class="agent-head">
-      <h1 class="section-header">{{ t('agent.title') }}</h1>
-    </header>
+  <v-container fluid class="d-flex flex-column h-100">
+    <!-- Header -->
+    <div class="d-flex align-center justify-space-between mb-2">
+      <h1 class="text-h5">{{ t('agent.title') }}</h1>
+    </div>
 
-    <div v-if="errorMsg" class="banner error">
-      {{ errorMsg }}
-    </div>
-    <div v-else-if="summary && status === 'complete'" class="banner success">
-      {{ summary }}
-    </div>
+    <!-- Banners -->
+    <v-alert
+      v-if="errorMsg"
+      type="error"
+      variant="tonal"
+      closable
+      class="mb-2"
+    >{{ errorMsg }}</v-alert>
+    <v-alert
+      v-else-if="summary && status === 'complete'"
+      type="success"
+      variant="tonal"
+      closable
+      class="mb-2"
+    >{{ summary }}</v-alert>
 
     <!-- Goal composer -->
-    <div class="composer">
-      <textarea
+    <div class="d-flex ga-2 align-end mb-2">
+      <v-textarea
         v-model="goal"
-        class="sk-field input"
+        class="flex-grow-1"
         rows="3"
+        auto-grow
+        variant="outlined"
+        hide-details
         :placeholder="t('agent.goalPlaceholder')"
         :disabled="busy"
       />
-      <button
+      <v-btn
         v-if="busy"
-        class="sk-btn-secondary"
+        variant="outlined"
+        prepend-icon="mdi-stop"
         @click="cancel"
-      >
-        {{ t('agent.cancel') }}
-      </button>
-      <button
+      >{{ t('agent.cancel') }}</v-btn>
+      <v-btn
         v-else
-        class="sk-btn-primary"
+        color="primary"
+        prepend-icon="mdi-play"
         :disabled="!goal.trim()"
         @click="run"
-      >
-        {{ t('agent.run') }}
-      </button>
+      >{{ t('agent.run') }}</v-btn>
     </div>
 
     <!-- Status line -->
-    <div v-if="statusLabel" class="status-line">
-      <span class="status-dot" :class="status" />
-      {{ statusLabel }}
+    <div v-if="statusLabel" class="d-flex align-center ga-2 mb-2">
+      <v-progress-circular
+        v-if="busy"
+        indeterminate
+        size="16"
+        width="2"
+        color="primary"
+      />
+      <v-chip
+        size="x-small"
+        :color="{ planning: 'primary', running: 'primary', 'awaiting-plan': 'warning', 'awaiting-step': 'warning', complete: 'success', error: 'error', cancelled: 'default', idle: 'default' }[status]"
+      >{{ statusLabel }}</v-chip>
     </div>
 
     <!-- Available tools hint -->
-    <details v-if="tools.length" class="tools">
-      <summary>{{ t('agent.tools') }} ({{ tools.length }})</summary>
-      <ul class="tool-list">
-        <li v-for="tool in tools" :key="tool.name">
-          <code>{{ tool.name }}</code>
-          <span v-if="tool.description" class="tool-desc">{{ tool.description }}</span>
-        </li>
-      </ul>
-    </details>
+    <v-expansion-panels v-if="tools.length" variant="accordion" class="mb-2">
+      <v-expansion-panel>
+        <v-expansion-panel-title>
+          {{ t('agent.tools') }} ({{ tools.length }})
+        </v-expansion-panel-title>
+        <v-expansion-panel-text>
+          <v-list density="compact" class="bg-transparent">
+            <v-list-item v-for="tool in tools" :key="tool.name">
+              <v-list-item-title><code>{{ tool.name }}</code></v-list-item-title>
+              <v-list-item-subtitle v-if="tool.description">{{ tool.description }}</v-list-item-subtitle>
+            </v-list-item>
+          </v-list>
+        </v-expansion-panel-text>
+      </v-expansion-panel>
+    </v-expansion-panels>
 
     <!-- Live planner token stream (before plan_ready) -->
-    <pre v-if="planTokens && !plan" class="plan-preview">{{ planTokens }}</pre>
+    <v-card v-if="planTokens && !plan" variant="outlined" rounded="lg" class="mb-2">
+      <v-card-text>
+        <pre class="text-body-2" style="white-space: pre-wrap; overflow-wrap: anywhere; margin: 0;">{{ planTokens }}</pre>
+      </v-card-text>
+    </v-card>
 
     <!-- Plan display -->
-    <section v-if="plan" class="plan">
-      <div class="plan-reasoning" v-if="plan.reasoning">{{ plan.reasoning }}</div>
-      <ol class="step-list">
-        <li
-          v-for="s in stepList.length ? stepList : plan.steps"
-          :key="s.index"
-          class="step"
-          :class="s.status"
-        >
-          <span class="step-index">{{ t('agent.step', { n: s.index + 1 }) }}</span>
-          <span class="step-tool" v-if="s.toolName">{{ s.toolName }}</span>
-          <span class="step-desc">{{ s.description }}</span>
-          <span class="step-status">{{ s.status }}</span>
-        </li>
-      </ol>
-    </section>
+    <v-card v-if="plan" variant="tonal" rounded="lg" class="mb-2">
+      <v-card-text>
+        <div
+          v-if="plan.reasoning"
+          class="text-body-2 text-medium-emphasis mb-3"
+          style="overflow-wrap: anywhere;"
+        >{{ plan.reasoning }}</div>
+        <v-list density="compact" class="bg-transparent">
+          <v-list-item
+            v-for="s in stepList.length ? stepList : plan.steps"
+            :key="s.index"
+          >
+            <template #prepend>
+              <span class="text-caption text-medium-emphasis" style="min-width: 56px;">
+                {{ t('agent.step', { n: s.index + 1 }) }}
+              </span>
+            </template>
+            <v-list-item-title>
+              <span v-if="s.toolName" class="font-weight-medium mr-2">{{ s.toolName }}</span>
+              <span>{{ s.description }}</span>
+            </v-list-item-title>
+            <template #append>
+              <v-chip
+                size="x-small"
+                :color="{ pending: 'default', running: 'primary', complete: 'success' }[s.status] ?? 'default'"
+              >{{ s.status }}</v-chip>
+            </template>
+          </v-list-item>
+        </v-list>
+      </v-card-text>
+    </v-card>
 
     <!-- Approval controls -->
-    <div v-if="status === 'awaiting-plan' || status === 'awaiting-step'" class="approval">
-      <button class="sk-btn-primary" @click="approve">{{ t('agent.approve') }}</button>
-      <button class="sk-btn-secondary" @click="cancel">{{ t('agent.cancel') }}</button>
+    <div v-if="status === 'awaiting-plan' || status === 'awaiting-step'" class="d-flex ga-2 mb-2">
+      <v-btn color="primary" @click="approve">{{ t('agent.approve') }}</v-btn>
+      <v-btn variant="outlined" @click="cancel">{{ t('agent.cancel') }}</v-btn>
     </div>
 
     <!-- Empty hint -->
-    <div v-if="status === 'idle' && !plan" class="empty">{{ t('agent.empty') }}</div>
-  </div>
+    <div v-if="status === 'idle' && !plan" class="text-medium-emphasis text-center mt-6">
+      {{ t('agent.empty') }}
+    </div>
+  </v-container>
 </template>
-
-<style scoped>
-.agent-page {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  height: 100%;
-  padding: 16px 20px;
-}
-.agent-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.agent-head h1 {
-  margin: 0;
-}
-.banner {
-  border-radius: 8px;
-  padding: 8px 12px;
-  border: 1px solid;
-  overflow-wrap: anywhere;
-}
-.banner.error {
-  background: var(--sk-danger-soft);
-  color: var(--sk-danger);
-  border-color: var(--sk-danger);
-}
-.banner.success {
-  background: var(--sk-success-soft, var(--sk-accent-soft));
-  color: var(--sk-success, var(--sk-accent));
-  border-color: var(--sk-success, var(--sk-accent));
-}
-.composer {
-  display: flex;
-  gap: 8px;
-  align-items: flex-end;
-}
-.input {
-  flex: 1;
-  resize: none;
-  font-family: inherit;
-}
-.status-line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--sk-text-secondary);
-}
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--sk-text-secondary);
-  display: inline-block;
-}
-.status-dot.planning,
-.status-dot.running {
-  background: var(--sk-accent);
-}
-.status-dot.awaiting-plan,
-.status-dot.awaiting-step {
-  background: var(--sk-warning, #f0ad4e);
-}
-.status-dot.complete {
-  background: var(--sk-success, var(--sk-accent));
-}
-.status-dot.error {
-  background: var(--sk-danger);
-}
-.status-dot.cancelled {
-  background: var(--sk-text-secondary);
-}
-.tools {
-  border: 1px solid var(--sk-border);
-  border-radius: 8px;
-  padding: 6px 10px;
-  font-size: 12px;
-  color: var(--sk-text-secondary);
-}
-.tools summary {
-  cursor: pointer;
-}
-.tool-list {
-  margin: 6px 0 0;
-  padding-left: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.tool-list code {
-  color: var(--sk-text);
-}
-.tool-desc {
-  margin-left: 6px;
-  opacity: 0.8;
-}
-.plan-preview {
-  margin: 0;
-  padding: 10px 12px;
-  background: var(--sk-bg-elevated);
-  border: 1px solid var(--sk-border);
-  border-radius: 8px;
-  font-size: 12px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  max-height: 240px;
-  overflow-y: auto;
-}
-.plan {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.plan-reasoning {
-  font-size: 13px;
-  color: var(--sk-text-secondary);
-  background: var(--sk-bg-hover);
-  border: 1px solid var(--sk-border);
-  border-radius: 8px;
-  padding: 8px 10px;
-  overflow-wrap: anywhere;
-}
-.step-list {
-  margin: 0;
-  padding-left: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.step {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 6px 10px;
-  border: 1px solid var(--sk-border);
-  border-radius: 8px;
-  background: var(--sk-bg-elevated);
-}
-.step.running {
-  border-left: 3px solid var(--sk-accent);
-}
-.step.complete {
-  border-left: 3px solid var(--sk-success, var(--sk-accent));
-}
-.step.pending {
-  border-left: 3px solid var(--sk-border);
-}
-.step-index {
-  font-size: 11px;
-  color: var(--sk-text-secondary);
-  min-width: 56px;
-}
-.step-tool {
-  font-family: ui-monospace, monospace;
-  font-size: 12px;
-  color: var(--sk-accent);
-}
-.step-desc {
-  flex: 1;
-  overflow-wrap: anywhere;
-}
-.step-status {
-  font-size: 11px;
-  text-transform: uppercase;
-  color: var(--sk-text-secondary);
-}
-.approval {
-  display: flex;
-  gap: 8px;
-}
-.empty {
-  color: var(--sk-text-secondary);
-  text-align: center;
-  margin-top: 24px;
-}
-</style>
