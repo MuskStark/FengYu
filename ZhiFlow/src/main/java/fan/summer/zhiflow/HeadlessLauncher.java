@@ -3,12 +3,16 @@ package fan.summer.zhiflow;
 import fan.summer.zhiflow.ai.spring.AiApplication;
 import fan.summer.zhiflow.api.log.LoggerBinder;
 import fan.summer.zhiflow.log.Slf4jPluginLoggerBinder;
+import fan.summer.zhiflow.setup.DataSourceConfig;
 import fan.summer.zhiflow.setup.DataSourceConfigService;
 import fan.summer.zhiflow.setup.SetupApplication;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.DriverManager;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -57,18 +61,46 @@ public final class HeadlessLauncher {
 
         LoggerBinder.bind(new Slf4jPluginLoggerBinder());
 
-        boolean configured = isDatasourceConfigured();
+        boolean configured = probeAndDecide(new DataSourceConfigService());
         startWithFallback(port, configured);
         // main() returns; the embedded Tomcat's non-daemon threads keep the JVM alive.
     }
 
-    /** True if {@code datasource.properties} exists and is loadable. */
-    private static boolean isDatasourceConfigured() {
-        try {
-            return new DataSourceConfigService().load() != null;
-        } catch (Exception e) {
+    private static final Logger log = LoggerFactory.getLogger(HeadlessLauncher.class);
+
+    /**
+     * Startup decision: load the datasource config and probe the DB. Returns {@code true} (APP
+     * mode) only when a config is loaded AND a JDBC {@code SELECT 1} succeeds. Returns
+     * {@code false} (SETUP mode) when there is no config, or when the config exists but the DB is
+     * unreachable — in the latter case the stale config is backed up to {@code .bak} so the wizard
+     * can reappear. Non-connection exceptions (e.g. driver classpath issues) are logged and treated
+     * conservatively as {@code true} to avoid deleting a possibly-good config.
+     */
+    static boolean probeAndDecide(DataSourceConfigService configService) {
+        DataSourceConfig cfg = configService.load();
+        if (cfg == null) {
             return false;
         }
+        // Short JDBC login timeout so a down remote host fails fast (doesn't block startup).
+        int prevTimeout = DriverManager.getLoginTimeout();
+        DriverManager.setLoginTimeout(5);
+        boolean reachable;
+        try {
+            reachable = configService.testConnection(cfg).success();
+        } catch (RuntimeException e) {
+            // Non-connection failure (driver missing, config corruption) — don't delete config.
+            log.warn("DB probe threw (non-connection); booting APP mode conservatively: {}", e.getMessage());
+            DriverManager.setLoginTimeout(prevTimeout);
+            return true;
+        } finally {
+            DriverManager.setLoginTimeout(prevTimeout);
+        }
+        if (reachable) {
+            return true;
+        }
+        log.warn("Configured DB is unreachable at startup; backing up config and falling back to SETUP mode.");
+        configService.backupAndClear();
+        return false;
     }
 
     /**
