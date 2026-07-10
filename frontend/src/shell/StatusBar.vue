@@ -20,6 +20,7 @@ onMounted(() => {
   void poll()
   timer = window.setInterval(poll, 5000)
 })
+
 onUnmounted(() => {
   if (timer) window.clearInterval(timer)
 })
@@ -29,49 +30,20 @@ const statusKey: Record<ConnState, string> = {
   connected: 'status.connected',
   reconnecting: 'status.reconnecting',
 }
+
+const chipColor: Record<ConnState, string> = {
+  connecting: 'default',
+  connected: 'success',
+  reconnecting: 'warning',
+}
 </script>
 
 <template>
-  <footer class="statusbar">
-    <span class="dot" :class="state" />
-    <span class="txt">{{ $t(statusKey[state]) }}</span>
-    <span class="grow" />
-    <span class="txt muted">ZhiFlow 4.0.0</span>
-  </footer>
+  <v-system-bar>
+    <v-chip :color="chipColor[state]" size="x-small" variant="flat">
+      {{ $t(statusKey[state]) }}
+    </v-chip>
+    <v-spacer />
+    <span class="text-medium-emphasis text-caption">ZhiFlow 4.0.0</span>
+  </v-system-bar>
 </template>
-
-<style scoped>
-.statusbar {
-  grid-area: statusbar;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 26px;
-  padding: 0 12px;
-  background: var(--sk-bg-elevated);
-  border-top: 1px solid var(--sk-border);
-  font-size: 11px;
-  color: var(--sk-text-secondary);
-}
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--sk-text-disabled);
-}
-.dot.connected {
-  background: var(--sk-success);
-}
-.dot.reconnecting {
-  background: var(--sk-warning);
-}
-.dot.connecting {
-  background: var(--sk-text-disabled);
-}
-.grow {
-  flex: 1;
-}
-.muted {
-  color: var(--sk-text-disabled);
-}
-</style>
