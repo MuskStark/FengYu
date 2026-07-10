@@ -11,8 +11,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit-tests {@link SetupController} reset + initialize paths using a no-op, recording
- * {@code exitAction} so {@code System.exit} never fires during tests.
+ * Unit-tests {@link SetupController}'s reset path ({@code DELETE /api/setup/config}) using a
+ * no-op, recording {@code exitAction} so {@code System.exit} never fires during tests. The
+ * {@code initialize} exit path shares the same seam but is not exercised here.
  */
 class SetupControllerTest {
 

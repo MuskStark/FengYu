@@ -18,14 +18,16 @@ import java.util.List;
 
 /**
  * Phase 4 headless entry point. Boots ZhiFlow as a loopback Spring Boot web server in one of
- * two modes, determined by the presence of {@code ~/.zhiflow/config/datasource.properties}:
+ * two modes, determined by the presence AND reachability of
+ * {@code ~/.zhiflow/config/datasource.properties}:
  *
  * <ul>
- *   <li><b>SETUP mode</b> (config missing): boots {@link SetupApplication} — a minimal context
- *       with only the setup wizard endpoints. No DataSource/JPA. After the wizard completes,
- *       the process exits with {@link ExitCodes#SETUP_DONE} so the Tauri supervisor restarts
- *       into APP mode.</li>
- *   <li><b>APP mode</b> (config present): boots {@link AiApplication} with
+ *   <li><b>SETUP mode</b> (config missing, or config present but the DB is unreachable): boots
+ *       {@link SetupApplication} — a minimal context with only the setup wizard endpoints. No
+ *       DataSource/JPA. When the DB was unreachable, the stale config is backed up to
+ *       {@code .bak} first so the wizard can reappear. After the wizard completes, the process
+ *       exits with {@link ExitCodes#SETUP_DONE} so the Tauri supervisor restarts into APP mode.</li>
+ *   <li><b>APP mode</b> (config present and DB reachable): boots {@link AiApplication} with
  *       {@code zhiflow.mode=app} — the full context with JPA, AI, plugins.</li>
  * </ul>
  *
@@ -90,7 +92,6 @@ public final class HeadlessLauncher {
         } catch (RuntimeException e) {
             // Non-connection failure (driver missing, config corruption) — don't delete config.
             log.warn("DB probe threw (non-connection); booting APP mode conservatively: {}", e.getMessage());
-            DriverManager.setLoginTimeout(prevTimeout);
             return true;
         } finally {
             DriverManager.setLoginTimeout(prevTimeout);
