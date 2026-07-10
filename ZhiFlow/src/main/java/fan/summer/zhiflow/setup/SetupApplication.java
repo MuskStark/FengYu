@@ -1,5 +1,6 @@
 package fan.summer.zhiflow.setup;
 
+import fan.summer.zhiflow.web.controller.AgentController;
 import fan.summer.zhiflow.web.controller.AiController;
 import fan.summer.zhiflow.web.controller.PluginController;
 import fan.summer.zhiflow.web.controller.SettingsController;
@@ -25,10 +26,11 @@ import org.springframework.context.annotation.FilterType;
  * supplies the infrastructure SETUP mode still needs — {@code PortAnnouncer} (so Tauri reads the
  * bound port), {@code TokenAuthFilter}, {@code HealthController} (readiness probe),
  * {@code WebConfig} (CORS for the Vite dev server), and {@code GlobalExceptionHandler} (clean 400s
- * for the wizard). It is NOT scanned wholesale, though: the three APP-only controllers are
+ * for the wizard). It is NOT scanned wholesale, though: the APP-only controllers are
  * excluded via {@code excludeFilters} because they depend on beans that do not exist in this
  * minimal context — {@link PluginController} needs {@code PluginRegistryService},
- * {@link SettingsController} needs {@code AiConfigServiceHeadless}, and {@link AiController} is
+ * {@link SettingsController} needs {@code AiConfigServiceHeadless}, {@link AgentController}
+ * needs {@code AgentRunner}/{@code ToolCallback}, and {@link AiController} is
  * meaningless before setup completes. This mirrors the {@code excludeFilters} idiom already used
  * by {@code AiApplication} on the opposite side (it excludes this class).
  */
@@ -40,6 +42,7 @@ import org.springframework.context.annotation.FilterType;
         basePackages = {"fan.summer.zhiflow.setup", "fan.summer.zhiflow.web"},
         excludeFilters = @ComponentScan.Filter(
                 type = FilterType.ASSIGNABLE_TYPE,
-                classes = {PluginController.class, SettingsController.class, AiController.class}))
+                classes = {PluginController.class, SettingsController.class, AiController.class,
+                        AgentController.class}))
 public class SetupApplication {
 }
