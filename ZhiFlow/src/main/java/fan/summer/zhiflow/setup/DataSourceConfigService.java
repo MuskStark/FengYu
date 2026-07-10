@@ -213,8 +213,10 @@ public class DataSourceConfigService {
         return props;
     }
 
-    /** Test-only: the config file path (for existence assertions). */
-    Path configFileForTest() {
+    /** Test-only: the config file path (for existence assertions). Public so tests in
+     *  other packages (e.g. {@code fan.summer.zhiflow.HeadlessLauncherProbeTest}) can assert
+     *  on the config file without duplicating path logic. */
+    public Path configFileForTest() {
         return configFile();
     }
 }
