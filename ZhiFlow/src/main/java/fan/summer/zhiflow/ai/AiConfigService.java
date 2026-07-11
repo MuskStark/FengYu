@@ -47,7 +47,7 @@ public class AiConfigService {
     }
 
     @PostConstruct
-    void init() {
+    public void init() {
         INSTANCE = this;
     }
 
