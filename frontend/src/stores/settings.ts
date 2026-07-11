@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '@/api/client'
 import type { AppSettings, LanguageName, ThemeName } from '@/api/types'
+import type { AiConfigTestRequest, AiConfigTestResult, AiSettings, PartialAiSettings } from '@/api/types'
 import { i18n } from '@/i18n'
 import { useThemeStore } from './theme'
 
@@ -51,6 +52,23 @@ export const useSettingsStore = defineStore('settings', () => {
     await update({ sidebarCollapsed: collapsed })
   }
 
+  // ── AI Config ───────────────────────────────────────────────
+  const aiSettings = ref<AiSettings | null>(null)
+  const aiLoaded = ref(false)
+
+  async function loadAi() {
+    aiSettings.value = await api.getAiSettings()
+    aiLoaded.value = true
+  }
+
+  async function updateAi(partial: PartialAiSettings) {
+    aiSettings.value = await api.putAiSettings(partial)
+  }
+
+  async function testAi(req: AiConfigTestRequest): Promise<AiConfigTestResult> {
+    return await api.testAiConnection(req)
+  }
+
   return {
     sidebarCollapsed,
     theme,
@@ -61,5 +79,10 @@ export const useSettingsStore = defineStore('settings', () => {
     setTheme,
     setLanguage,
     setSidebarCollapsed,
+    aiSettings,
+    aiLoaded,
+    loadAi,
+    updateAi,
+    testAi,
   }
 })
