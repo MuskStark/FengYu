@@ -1,5 +1,6 @@
 package fan.summer.zhiflow.ai.service;
 
+import fan.summer.zhiflow.ai.spring.ChatModelConfig;
 import fan.summer.zhiflow.ai.util.JsonHelper;
 import fan.summer.zhiflow.api.ai.AiChatMessage;
 import fan.summer.zhiflow.api.ai.AiServiceException;
@@ -63,6 +64,16 @@ public final class SpringAiCloudBackend implements ChatBackend {
     private final String apiKey;
     private final String modelName;
     private final ChatModel chatModel;          // resolved at construction
+    /**
+     * The provider-specific {@link ToolCallingChatOptions} (e.g. {@code OpenAiChatOptions})
+     * the model was built with. Retained so the tool loop can attach {@code ToolCallback}s
+     * via {@link ToolCallingChatOptions#mutate()} while keeping the concrete options type
+     * the model expects — provider models cast {@code prompt.getOptions()} to their own
+     * type at request-build time, so a generic {@code DefaultToolCallingChatOptions}
+     * throws {@code ClassCastException}. Null only when the backend is not yet
+     * configured.
+     */
+    private final ToolCallingChatOptions baseOptions;
     private final AtomicBoolean generating = new AtomicBoolean(false);
 
     /** Cached ChatClient built from {@link #chatModel} (built lazily; null when model is null). */
@@ -82,19 +93,19 @@ public final class SpringAiCloudBackend implements ChatBackend {
     // ── Production constructors (look up the ChatModel bean) ──────────
 
     public static SpringAiCloudBackend openAi(String endpoint, String apiKey, String modelName) {
-        ChatModel model = resolveModel(Provider.OPENAI, endpoint, apiKey, modelName);
-        return new SpringAiCloudBackend(Provider.OPENAI, endpoint, apiKey, modelName, model);
+        ChatModelConfig.ResolvedModel resolved = resolveModel(Provider.OPENAI, endpoint, apiKey, modelName);
+        return new SpringAiCloudBackend(Provider.OPENAI, endpoint, apiKey, modelName, resolved);
     }
 
     public static SpringAiCloudBackend anthropic(String endpoint, String apiKey, String modelName) {
-        ChatModel model = resolveModel(Provider.ANTHROPIC, endpoint, apiKey, modelName);
-        return new SpringAiCloudBackend(Provider.ANTHROPIC, endpoint, apiKey, modelName, model);
+        ChatModelConfig.ResolvedModel resolved = resolveModel(Provider.ANTHROPIC, endpoint, apiKey, modelName);
+        return new SpringAiCloudBackend(Provider.ANTHROPIC, endpoint, apiKey, modelName, resolved);
     }
 
     /** DeepSeek uses an OpenAI-compatible API; the bean reuses the OpenAI model path. */
     public static SpringAiCloudBackend deepSeek(String endpoint, String apiKey, String modelName) {
-        ChatModel model = resolveModel(Provider.DEEPSEEK, endpoint, apiKey, modelName);
-        return new SpringAiCloudBackend(Provider.DEEPSEEK, endpoint, apiKey, modelName, model);
+        ChatModelConfig.ResolvedModel resolved = resolveModel(Provider.DEEPSEEK, endpoint, apiKey, modelName);
+        return new SpringAiCloudBackend(Provider.DEEPSEEK, endpoint, apiKey, modelName, resolved);
     }
 
     /**
@@ -119,8 +130,8 @@ public final class SpringAiCloudBackend implements ChatBackend {
      * / {@link fan.summer.zhiflow.ai.spring.ChatModelConfig#buildAnthropic} also read
      * the live sampling params (temperature/topP/maxTokens) so those hot-swap too.
      */
-    private static ChatModel resolveModel(Provider provider,
-                                          String endpoint, String apiKey, String modelName) {
+    private static ChatModelConfig.ResolvedModel resolveModel(Provider provider,
+                                                              String endpoint, String apiKey, String modelName) {
         if (isBlank(endpoint) || isBlank(apiKey) || isBlank(modelName)) {
             log.info("{} backend not fully configured (missing endpoint/apiKey/model); "
                      + "deferring ChatModel resolution until configured", provider);
@@ -129,12 +140,12 @@ public final class SpringAiCloudBackend implements ChatBackend {
         try {
             return switch (provider) {
                 case OPENAI, DEEPSEEK ->
-                    fan.summer.zhiflow.ai.spring.ChatModelConfig.buildOpenAiCompatible(endpoint, apiKey, modelName);
+                    ChatModelConfig.buildOpenAiCompatible(endpoint, apiKey, modelName);
                 case ANTHROPIC ->
-                    fan.summer.zhiflow.ai.spring.ChatModelConfig.buildAnthropic(endpoint, apiKey, modelName);
+                    ChatModelConfig.buildAnthropic(endpoint, apiKey, modelName);
             };
         } catch (Exception e) {
-            log.warn("Failed to build {} ChatModel: {}", provider, e.getMessage());
+            log.warn("Failed to build {} ChatModel", provider, e);
             return null;
         }
     }
@@ -144,15 +155,18 @@ public final class SpringAiCloudBackend implements ChatBackend {
     // ── Test constructor (inject ChatModel directly, bypass Spring) ───
 
     SpringAiCloudBackend(ChatModel chatModel) {
-        this(Provider.OPENAI, "test", "test-key", "test-model", chatModel);
+        this(Provider.OPENAI, "test", "test-key", "test-model",
+                new ChatModelConfig.ResolvedModel(chatModel, null));
     }
 
-    private SpringAiCloudBackend(Provider provider, String endpoint, String apiKey, String modelName, ChatModel chatModel) {
+    private SpringAiCloudBackend(Provider provider, String endpoint, String apiKey, String modelName,
+                                 ChatModelConfig.ResolvedModel resolved) {
         this.provider = provider;
         this.endpoint = endpoint == null ? "" : (endpoint.endsWith("/") ? endpoint.substring(0, endpoint.length() - 1) : endpoint);
         this.apiKey = apiKey;
         this.modelName = modelName;
-        this.chatModel = chatModel;
+        this.chatModel = resolved != null ? resolved.chatModel() : null;
+        this.baseOptions = resolved != null ? resolved.options() : null;
         if (chatModel != null) {
             this.chatClient = ChatClient.builder(chatModel).build();
         }
@@ -226,12 +240,20 @@ public final class SpringAiCloudBackend implements ChatBackend {
     private void runToolLoop(List<AiChatMessage> history, AiStreamCallback callback) {
         String systemPrompt = currentSystemPrompt();
 
-        // Tool-callback options are attached to every Prompt so the model CAN request
-        // tools (this is the bug fix: previously tools were never passed to the Prompt).
+        // Attach the configured tool callbacks to the PROMPT. We MUST derive the options
+        // from baseOptions (the provider-specific OpenAiChatOptions / AnthropicChatOptions
+        // the model was built with) via mutate(), NOT a generic
+        // ToolCallingChatOptions.builder(): provider models cast prompt.getOptions() to
+        // their own concrete type at request-build time (e.g. OpenAiChatModel.createRequest
+        // does `(OpenAiChatOptions) prompt.getOptions()`), and a DefaultToolCallingChatOptions
+        // throws ClassCastException. mutate() preserves the concrete type. When no tools are
+        // registered we still send baseOptions (carries model + sampling params) so the
+        // request is built from the right options type.
+        ToolCallingChatOptions options = baseOptions;
         ToolCallback[] callbacks = this.toolCallbacks.toArray(new ToolCallback[0]);
-        ToolCallingChatOptions options = callbacks.length == 0
-                ? null
-                : ToolCallingChatOptions.builder().toolCallbacks(callbacks).build();
+        if (callbacks.length > 0 && baseOptions != null) {
+            options = baseOptions.mutate().toolCallbacks(callbacks).build();
+        }
 
         // The Spring AI conversation is the source of truth sent to the model. It starts
         // from ZhiFlow history; once tool calls happen, ToolCallingManager extends it
