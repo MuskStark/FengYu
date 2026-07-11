@@ -1,6 +1,5 @@
 package fan.summer.zhiflow.ai.service;
 
-import fan.summer.zhiflow.ai.spring.AiSpringContext;
 import fan.summer.zhiflow.ai.util.JsonHelper;
 import fan.summer.zhiflow.api.ai.AiChatMessage;
 import fan.summer.zhiflow.api.ai.AiServiceException;
@@ -36,10 +35,11 @@ import java.util.concurrent.atomic.AtomicReference;
  * Cloud-mode {@link ChatBackend} backed by Spring AI's {@code OpenAiChatModel} /
  * {@code AnthropicChatModel}. Replaces the LangChain4j {@code CloudChatBackend}.
  *
- * <p>The bean is looked up from {@link AiSpringContext} by name
- * ({@code openAiChatModel} / {@code anthropicChatModel}); the provider is fixed at
- * construction time. A {@link ChatClient} is built lazily from the resolved
- * {@link ChatModel}.
+ * <p>The {@link ChatModel} is built directly from the passed-in endpoint/apiKey/model
+ * via {@link fan.summer.zhiflow.ai.spring.ChatModelConfig#buildOpenAiCompatible} /
+ * {@link fan.summer.zhiflow.ai.spring.ChatModelConfig#buildAnthropic} (NOT from a stale
+ * boot-time bean — see {@link #resolveModel}); the provider is fixed at construction
+ * time. A {@link ChatClient} is built lazily from the resolved {@link ChatModel}.
  *
  * <p><b>Tool execution (4.0.0 refactor):</b> tool calling now runs on Spring AI's
  * non-deprecated {@link ToolCallingManager} (user-controlled execution). Each
@@ -82,31 +82,44 @@ public final class SpringAiCloudBackend implements ChatBackend {
     // ── Production constructors (look up the ChatModel bean) ──────────
 
     public static SpringAiCloudBackend openAi(String endpoint, String apiKey, String modelName) {
-        ChatModel model = resolveModel("openAiChatModel", Provider.OPENAI, endpoint, apiKey, modelName);
+        ChatModel model = resolveModel(Provider.OPENAI, endpoint, apiKey, modelName);
         return new SpringAiCloudBackend(Provider.OPENAI, endpoint, apiKey, modelName, model);
     }
 
     public static SpringAiCloudBackend anthropic(String endpoint, String apiKey, String modelName) {
-        ChatModel model = resolveModel("anthropicChatModel", Provider.ANTHROPIC, endpoint, apiKey, modelName);
+        ChatModel model = resolveModel(Provider.ANTHROPIC, endpoint, apiKey, modelName);
         return new SpringAiCloudBackend(Provider.ANTHROPIC, endpoint, apiKey, modelName, model);
     }
 
     /** DeepSeek uses an OpenAI-compatible API; the bean reuses the OpenAI model path. */
     public static SpringAiCloudBackend deepSeek(String endpoint, String apiKey, String modelName) {
-        ChatModel model = resolveModel("deepSeekChatModel", Provider.DEEPSEEK, endpoint, apiKey, modelName);
+        ChatModel model = resolveModel(Provider.DEEPSEEK, endpoint, apiKey, modelName);
         return new SpringAiCloudBackend(Provider.DEEPSEEK, endpoint, apiKey, modelName, model);
     }
 
     /**
-     * Resolves the (lazy) {@code ChatModel} bean only when the provider is fully
-     * configured. The vendor SDK client throws immediately if the API key is blank,
-     * and forcing the lazy bean at mode-switch time would surface that as an uncaught
-     * exception on the FX thread. When not configured we return {@code null}: the
-     * backend still registers, {@link #isReady()} returns false, and {@code chat()}
-     * throws a clean "not configured" message instead of crashing. The bean is
-     * resolved on the next mode switch once the user fills in the key.
+     * Builds the {@link ChatModel} directly from the passed-in values when the provider
+     * is fully configured. The vendor SDK client throws immediately if the API key is
+     * blank. When not configured we return {@code null}: the backend still registers,
+     * {@link #isReady()} returns false, and {@code chat()} throws a clean "not
+     * configured" message instead of crashing. The model is built on the next
+     * {@link fan.summer.zhiflow.ai.spring.BackendReactivator#reactivate()} once the
+     * user fills in the key.
+     *
+     * <p><b>Why direct construction, not a bean lookup:</b> the cloud {@code ChatModel}
+     * beans in {@link fan.summer.zhiflow.ai.spring.ChatModelConfig} read an
+     * {@link fan.summer.zhiflow.ai.spring.AiConfigProperties} snapshot taken ONCE at
+     * context start. A key saved later via the AI config UI (PUT /api/ai/config →
+     * {@code AiConfigService} → DB) would never reach a bean built from that stale
+     * snapshot, so hot-swap was broken (the bean was always built with the boot-time
+     * blank key → "At least one credential source must be specified"). Building inline
+     * from the values {@code BackendReactivator} just read from {@code AiConfigService}
+     * makes hot-swap actually work — the freshly-saved key flows straight into the
+     * client. {@link fan.summer.zhiflow.ai.spring.ChatModelConfig#buildOpenAiCompatible}
+     * / {@link fan.summer.zhiflow.ai.spring.ChatModelConfig#buildAnthropic} also read
+     * the live sampling params (temperature/topP/maxTokens) so those hot-swap too.
      */
-    private static ChatModel resolveModel(String beanName, Provider provider,
+    private static ChatModel resolveModel(Provider provider,
                                           String endpoint, String apiKey, String modelName) {
         if (isBlank(endpoint) || isBlank(apiKey) || isBlank(modelName)) {
             log.info("{} backend not fully configured (missing endpoint/apiKey/model); "
@@ -114,9 +127,14 @@ public final class SpringAiCloudBackend implements ChatBackend {
             return null;
         }
         try {
-            return AiSpringContext.getBean(beanName, ChatModel.class);
+            return switch (provider) {
+                case OPENAI, DEEPSEEK ->
+                    fan.summer.zhiflow.ai.spring.ChatModelConfig.buildOpenAiCompatible(endpoint, apiKey, modelName);
+                case ANTHROPIC ->
+                    fan.summer.zhiflow.ai.spring.ChatModelConfig.buildAnthropic(endpoint, apiKey, modelName);
+            };
         } catch (Exception e) {
-            log.warn("Failed to build {} ChatModel bean '{}': {}", provider, beanName, e.getMessage());
+            log.warn("Failed to build {} ChatModel: {}", provider, e.getMessage());
             return null;
         }
     }

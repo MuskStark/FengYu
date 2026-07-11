@@ -2,6 +2,7 @@ package fan.summer.zhiflow.ai.spring;
 
 import com.anthropic.client.AnthropicClient;
 import com.openai.client.OpenAIClient;
+import fan.summer.zhiflow.ai.AiConfigService;
 import io.micrometer.observation.ObservationRegistry;
 import org.springframework.ai.anthropic.AnthropicChatModel;
 import org.springframework.ai.anthropic.AnthropicChatOptions;
@@ -55,37 +56,81 @@ public class ChatModelConfig {
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(120);
     private static final int MAX_RETRIES = 2;
 
-    @Lazy
-    @Bean(name = "openAiChatModel")
-    public ChatModel openAiChatModel(AiConfigProperties cfg) {
+    // ── Reusable construction (single source of truth) ────────────────────
+    // These static builders take the provider values EXPLICITLY so the hot-swap path
+    // (SpringAiCloudBackend.openAi/anthropic/deepSeek factories, invoked by
+    // BackendReactivator on every PUT /api/ai/config) can build a ChatModel from the
+    // FRESH DB config instead of a stale boot-time AiConfigProperties snapshot. The
+    // @Lazy @Bean methods below delegate here for backward compatibility (and any
+    // future caller that resolves by bean name), but the live chat path must NOT
+    // resolve those beans — it must call these statics with current values.
+
+    /**
+     * Builds an OpenAI-compatible {@link ChatModel} (used by both OpenAI and DeepSeek,
+     * which exposes an OpenAI-compatible Chat Completions API) from explicit values.
+     * Reads the live sampling params (temperature/topP/maxTokens) from
+     * {@link fan.summer.zhiflow.ai.AiConfigService} so they pick up hot-swapped config.
+     */
+    public static ChatModel buildOpenAiCompatible(String baseUrl, String apiKey, String modelName) {
         OpenAIClient client = OpenAiSetup.setupSyncClient(
-                cfg.openAiEndpoint(),   // baseUrl
-                cfg.openAiApiKey(),     // apiKey
-                null,                   // credential
-                null,                   // azureDeploymentName
-                null,                   // azureOpenAiServiceVersion
-                null,                   // organizationId
-                false,                  // isAzure
-                false,                  // isGitHubModels
-                cfg.openAiModel(),      // modelName
-                HTTP_TIMEOUT,           // timeout
-                MAX_RETRIES,            // maxRetries
-                null,                   // proxy
-                null,                   // customHeaders
+                baseUrl,                 // baseUrl
+                apiKey,                  // apiKey
+                null,                    // credential
+                null,                    // azureDeploymentName
+                null,                    // azureOpenAiServiceVersion
+                null,                    // organizationId
+                false,                   // isAzure
+                false,                   // isGitHubModels
+                modelName,               // modelName
+                HTTP_TIMEOUT,            // timeout
+                MAX_RETRIES,             // maxRetries
+                null,                    // proxy
+                null,                    // customHeaders
                 ObservationRegistry.NOOP,
-                null,                   // meterRegistry
-                List.of()               // httpClientCustomizers
+                null,                    // meterRegistry
+                List.of()                // httpClientCustomizers
         );
         OpenAiChatOptions options = OpenAiChatOptions.builder()
-                .model(cfg.openAiModel())
-                .temperature((double) cfg.temperature())
-                .topP((double) cfg.topP())
-                .maxTokens(cfg.maxTokens())
+                .model(modelName)
+                .temperature((double) AiConfigService.getAiTemperature())
+                .topP((double) AiConfigService.getAiTopP())
+                .maxTokens(AiConfigService.getAiMaxTokens())
                 .build();
         return OpenAiChatModel.builder()
                 .openAiClient(client)
                 .options(options)
                 .build();
+    }
+
+    /**
+     * Builds an Anthropic {@link ChatModel} from explicit values. Reads the live
+     * sampling params from {@link fan.summer.zhiflow.ai.AiConfigService}.
+     */
+    public static ChatModel buildAnthropic(String baseUrl, String apiKey, String modelName) {
+        AnthropicClient client = AnthropicSetup.setupSyncClient(
+                baseUrl,                 // baseUrl
+                apiKey,                  // apiKey
+                HTTP_TIMEOUT,            // timeout
+                MAX_RETRIES,             // maxRetries
+                null,                    // proxy
+                null                     // customHeaders
+        );
+        AnthropicChatOptions options = AnthropicChatOptions.builder()
+                .model(modelName)
+                .temperature((double) AiConfigService.getAiTemperature())
+                .topP((double) AiConfigService.getAiTopP())
+                .maxTokens(AiConfigService.getAiMaxTokens())
+                .build();
+        return AnthropicChatModel.builder()
+                .anthropicClient(client)
+                .options(options)
+                .build();
+    }
+
+    @Lazy
+    @Bean(name = "openAiChatModel")
+    public ChatModel openAiChatModel(AiConfigProperties cfg) {
+        return buildOpenAiCompatible(cfg.openAiEndpoint(), cfg.openAiApiKey(), cfg.openAiModel());
     }
 
     /**
@@ -95,48 +140,13 @@ public class ChatModelConfig {
     @Lazy
     @Bean(name = "deepSeekChatModel")
     public ChatModel deepSeekChatModel(AiConfigProperties cfg) {
-        OpenAIClient client = OpenAiSetup.setupSyncClient(
-                cfg.deepSeekEndpoint(),   // baseUrl (https://api.deepseek.com)
-                cfg.deepSeekApiKey(),     // apiKey
-                null, null, null, null,
-                false, false,
-                cfg.deepSeekModel(),      // modelName
-                HTTP_TIMEOUT, MAX_RETRIES,
-                null, null,
-                ObservationRegistry.NOOP, null, List.of());
-        OpenAiChatOptions options = OpenAiChatOptions.builder()
-                .model(cfg.deepSeekModel())
-                .temperature((double) cfg.temperature())
-                .topP((double) cfg.topP())
-                .maxTokens(cfg.maxTokens())
-                .build();
-        return OpenAiChatModel.builder()
-                .openAiClient(client)
-                .options(options)
-                .build();
+        return buildOpenAiCompatible(cfg.deepSeekEndpoint(), cfg.deepSeekApiKey(), cfg.deepSeekModel());
     }
 
     @Lazy
     @Bean(name = "anthropicChatModel")
     public ChatModel anthropicChatModel(AiConfigProperties cfg) {
-        AnthropicClient client = AnthropicSetup.setupSyncClient(
-                cfg.anthropicEndpoint(),  // baseUrl
-                cfg.anthropicApiKey(),    // apiKey
-                HTTP_TIMEOUT,             // timeout
-                MAX_RETRIES,              // maxRetries
-                null,                     // proxy
-                null                      // customHeaders
-        );
-        AnthropicChatOptions options = AnthropicChatOptions.builder()
-                .model(cfg.anthropicModel())
-                .temperature((double) cfg.temperature())
-                .topP((double) cfg.topP())
-                .maxTokens(cfg.maxTokens())
-                .build();
-        return AnthropicChatModel.builder()
-                .anthropicClient(client)
-                .options(options)
-                .build();
+        return buildAnthropic(cfg.anthropicEndpoint(), cfg.anthropicApiKey(), cfg.anthropicModel());
     }
 
     @Lazy
