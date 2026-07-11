@@ -1,13 +1,16 @@
 package fan.summer.zhiflow.ai.spring;
 
 import com.anthropic.client.AnthropicClient;
+import com.anthropic.client.AnthropicClientAsync;
 import com.openai.client.OpenAIClient;
+import com.openai.client.OpenAIClientAsync;
 import fan.summer.zhiflow.ai.AiConfigService;
 import io.micrometer.observation.ObservationRegistry;
 import org.springframework.ai.anthropic.AnthropicChatModel;
 import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.anthropic.AnthropicSetup;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
@@ -56,6 +59,19 @@ public class ChatModelConfig {
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(120);
     private static final int MAX_RETRIES = 2;
 
+    /**
+     * A resolved cloud model together with the provider-specific
+     * {@link ToolCallingChatOptions} it was built from. The options are returned to the
+     * caller because {@code SpringAiCloudBackend}'s tool loop must attach
+     * {@code ToolCallback}s to the SAME options type the model expects (e.g. an
+     * {@code OpenAiChatModel} casts {@code prompt.getOptions()} to
+     * {@code OpenAiChatOptions} at request-build time — a generic
+     * {@code DefaultToolCallingChatOptions} throws {@code ClassCastException}). The
+     * backend derives a tool-carrying copy via {@link ToolCallingChatOptions#mutate()},
+     * which preserves the provider-specific concrete type.
+     */
+    public record ResolvedModel(ChatModel chatModel, ToolCallingChatOptions options) {}
+
     // ── Reusable construction (single source of truth) ────────────────────
     // These static builders take the provider values EXPLICITLY so the hot-swap path
     // (SpringAiCloudBackend.openAi/anthropic/deepSeek factories, invoked by
@@ -70,9 +86,39 @@ public class ChatModelConfig {
      * which exposes an OpenAI-compatible Chat Completions API) from explicit values.
      * Reads the live sampling params (temperature/topP/maxTokens) from
      * {@link fan.summer.zhiflow.ai.AiConfigService} so they pick up hot-swapped config.
+     *
+     * @return a {@link ResolvedModel} carrying the model and the provider-specific
+     *         {@link OpenAiChatOptions} (which the tool loop must reuse — see
+     *         {@link ResolvedModel}).
      */
-    public static ChatModel buildOpenAiCompatible(String baseUrl, String apiKey, String modelName) {
+    public static ResolvedModel buildOpenAiCompatible(String baseUrl, String apiKey, String modelName) {
+        // Spring AI 2.0.0's OpenAiChatModel.Builder.build() builds BOTH a sync and an
+        // async client when the corresponding field is null (see OpenAiChatModel.java
+        // ~L1373/L1382), pulling baseUrl/apiKey/credential from OpenAiChatOptions — which
+        // we leave unset here (we only put model + sampling params). So if we supply only
+        // the sync client, build() silently rebuilds an async client with no credentials
+        // and throws "At least one credential source must be specified: credential (apiKey),
+        // workloadIdentity, or adminApiKey". Fix: build BOTH clients ourselves and hand
+        // them to the builder so build() never falls back to the options-derived path.
         OpenAIClient client = OpenAiSetup.setupSyncClient(
+                baseUrl,                 // baseUrl
+                apiKey,                  // apiKey
+                null,                    // credential
+                null,                    // azureDeploymentName
+                null,                    // azureOpenAiServiceVersion
+                null,                    // organizationId
+                false,                   // isAzure
+                false,                   // isGitHubModels
+                modelName,               // modelName
+                HTTP_TIMEOUT,            // timeout
+                MAX_RETRIES,             // maxRetries
+                null,                    // proxy
+                null,                    // customHeaders
+                ObservationRegistry.NOOP,
+                null,                    // meterRegistry
+                List.of()                // httpClientCustomizers
+        );
+        OpenAIClientAsync asyncClient = OpenAiSetup.setupAsyncClient(
                 baseUrl,                 // baseUrl
                 apiKey,                  // apiKey
                 null,                    // credential
@@ -96,18 +142,35 @@ public class ChatModelConfig {
                 .topP((double) AiConfigService.getAiTopP())
                 .maxTokens(AiConfigService.getAiMaxTokens())
                 .build();
-        return OpenAiChatModel.builder()
+        ChatModel chatModel = OpenAiChatModel.builder()
                 .openAiClient(client)
+                .openAiClientAsync(asyncClient)
                 .options(options)
                 .build();
+        return new ResolvedModel(chatModel, options);
     }
 
     /**
      * Builds an Anthropic {@link ChatModel} from explicit values. Reads the live
      * sampling params from {@link fan.summer.zhiflow.ai.AiConfigService}.
+     *
+     * @return a {@link ResolvedModel} carrying the model and the provider-specific
+     *         {@link AnthropicChatOptions} (which the tool loop must reuse — see
+     *         {@link ResolvedModel}).
      */
-    public static ChatModel buildAnthropic(String baseUrl, String apiKey, String modelName) {
+    public static ResolvedModel buildAnthropic(String baseUrl, String apiKey, String modelName) {
+        // Same trap as OpenAI (see buildOpenAiCompatible): AnthropicChatModel's constructor
+        // rebuilds whichever client (sync/async) is null from AnthropicChatOptions, which
+        // carries no credentials here. Build BOTH and hand them in.
         AnthropicClient client = AnthropicSetup.setupSyncClient(
+                baseUrl,                 // baseUrl
+                apiKey,                  // apiKey
+                HTTP_TIMEOUT,            // timeout
+                MAX_RETRIES,             // maxRetries
+                null,                    // proxy
+                null                     // customHeaders
+        );
+        AnthropicClientAsync asyncClient = AnthropicSetup.setupAsyncClient(
                 baseUrl,                 // baseUrl
                 apiKey,                  // apiKey
                 HTTP_TIMEOUT,            // timeout
@@ -121,16 +184,18 @@ public class ChatModelConfig {
                 .topP((double) AiConfigService.getAiTopP())
                 .maxTokens(AiConfigService.getAiMaxTokens())
                 .build();
-        return AnthropicChatModel.builder()
+        ChatModel chatModel = AnthropicChatModel.builder()
                 .anthropicClient(client)
+                .anthropicClientAsync(asyncClient)
                 .options(options)
                 .build();
+        return new ResolvedModel(chatModel, options);
     }
 
     @Lazy
     @Bean(name = "openAiChatModel")
     public ChatModel openAiChatModel(AiConfigProperties cfg) {
-        return buildOpenAiCompatible(cfg.openAiEndpoint(), cfg.openAiApiKey(), cfg.openAiModel());
+        return buildOpenAiCompatible(cfg.openAiEndpoint(), cfg.openAiApiKey(), cfg.openAiModel()).chatModel();
     }
 
     /**
@@ -140,13 +205,13 @@ public class ChatModelConfig {
     @Lazy
     @Bean(name = "deepSeekChatModel")
     public ChatModel deepSeekChatModel(AiConfigProperties cfg) {
-        return buildOpenAiCompatible(cfg.deepSeekEndpoint(), cfg.deepSeekApiKey(), cfg.deepSeekModel());
+        return buildOpenAiCompatible(cfg.deepSeekEndpoint(), cfg.deepSeekApiKey(), cfg.deepSeekModel()).chatModel();
     }
 
     @Lazy
     @Bean(name = "anthropicChatModel")
     public ChatModel anthropicChatModel(AiConfigProperties cfg) {
-        return buildAnthropic(cfg.anthropicEndpoint(), cfg.anthropicApiKey(), cfg.anthropicModel());
+        return buildAnthropic(cfg.anthropicEndpoint(), cfg.anthropicApiKey(), cfg.anthropicModel()).chatModel();
     }
 
     @Lazy
