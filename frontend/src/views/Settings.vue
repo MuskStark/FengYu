@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
 import type {
@@ -52,9 +52,9 @@ function syncFormFromStore() {
   const s = settings.aiSettings
   if (!s) return
   aiForm.value.mode = s.mode
-  aiForm.value.openai = { endpoint: s.openai.endpoint, apiKey: '', model: s.openai.model }
-  aiForm.value.anthropic = { endpoint: s.anthropic.endpoint, apiKey: '', model: s.anthropic.model }
-  aiForm.value.deepseek = { endpoint: s.deepseek.endpoint, apiKey: '', model: s.deepseek.model }
+  aiForm.value.openai = { endpoint: s.openai.endpoint, apiKey: s.openai.apiKey, model: s.openai.model }
+  aiForm.value.anthropic = { endpoint: s.anthropic.endpoint, apiKey: s.anthropic.apiKey, model: s.anthropic.model }
+  aiForm.value.deepseek = { endpoint: s.deepseek.endpoint, apiKey: s.deepseek.apiKey, model: s.deepseek.model }
   aiForm.value.ollama = { baseUrl: s.ollama.baseUrl, model: s.ollama.model }
   aiForm.value.temperature = s.temperature
   aiForm.value.topP = s.topP
@@ -62,11 +62,11 @@ function syncFormFromStore() {
   aiForm.value.systemPrompt = s.systemPrompt
 }
 
-// Sync once AI settings load (load is fire-and-forget in onMounted; re-check
-// after a tick so the form populates as soon as the store resolves).
-onMounted(() => {
-  setTimeout(() => syncFormFromStore(), 500)
-})
+// Sync deterministically once AI settings arrive. loadAi() is fire-and-forget;
+// a watch on settings.aiSettings fires as soon as the store resolves, replacing
+// a fragile setTimeout that could fire before the load completed on slow networks.
+watch(() => settings.aiSettings, (s) => { if (s) syncFormFromStore() })
+if (settings.aiSettings) syncFormFromStore()
 
 const activeProvider = computed(() => {
   const m = aiForm.value.mode

@@ -82,6 +82,13 @@ class AiConfigControllerTest {
     }
 
     @Test
+    void put_emptyApiKey_preservesExistingKey() {
+        AiConfigServiceHeadless.setAiOpenAiApiKey("sk-realkey123456");
+        controller.put(Map.of("openai", Map.of("apiKey", "")));
+        assertEquals("sk-realkey123456", AiConfigService.getAiOpenAiApiKey());
+    }
+
+    @Test
     void put_writesNewApiKey() {
         controller.put(Map.of("openai", Map.of("apiKey", "sk-brandnewkey99")));
         assertEquals("sk-brandnewkey99", AiConfigService.getAiOpenAiApiKey());
