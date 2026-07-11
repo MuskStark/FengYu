@@ -81,7 +81,7 @@ public class AiConfigService {
                 if (v != null && !v.isBlank()) return v;
             }
         } catch (Exception e) {
-            log.debug("Could not read AI setting: {}", key, e);
+            log.warn("Could not read AI setting '{}': {}", key, e.toString());
         }
         return defaultValue;
     }
