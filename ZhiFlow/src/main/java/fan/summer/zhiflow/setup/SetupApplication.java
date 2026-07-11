@@ -1,6 +1,7 @@
 package fan.summer.zhiflow.setup;
 
 import fan.summer.zhiflow.web.controller.AgentController;
+import fan.summer.zhiflow.web.controller.AiConfigController;
 import fan.summer.zhiflow.web.controller.AiController;
 import fan.summer.zhiflow.web.controller.PluginController;
 import fan.summer.zhiflow.web.controller.SettingsController;
@@ -30,9 +31,11 @@ import org.springframework.context.annotation.FilterType;
  * excluded via {@code excludeFilters} because they depend on beans that do not exist in this
  * minimal context — {@link PluginController} needs {@code PluginRegistryService},
  * {@link SettingsController} needs {@code AiConfigServiceHeadless}, {@link AgentController}
- * needs {@code AgentRunner}/{@code ToolCallback}, and {@link AiController} is
- * meaningless before setup completes. This mirrors the {@code excludeFilters} idiom already used
- * by {@code AiApplication} on the opposite side (it excludes this class).
+ * needs {@code AgentRunner}/{@code ToolCallback}, {@link AiController} is
+ * meaningless before setup completes, and {@link AiConfigController} needs
+ * {@code AiModeService}/{@code BackendReactivator} (which live in the {@code ai} package, not
+ * scanned here). This mirrors the {@code excludeFilters} idiom already used
+ * by {@link AiApplication} on the opposite side (it excludes this class).
  */
 @SpringBootApplication(exclude = {
         DataSourceAutoConfiguration.class,
@@ -43,6 +46,6 @@ import org.springframework.context.annotation.FilterType;
         excludeFilters = @ComponentScan.Filter(
                 type = FilterType.ASSIGNABLE_TYPE,
                 classes = {PluginController.class, SettingsController.class, AiController.class,
-                        AgentController.class}))
+                        AiConfigController.class, AgentController.class}))
 public class SetupApplication {
 }
