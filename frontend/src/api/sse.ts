@@ -33,6 +33,15 @@ export function openAiStream(streamId: string, cb: SseCallbacks): SseHandle {
 
   const es = new EventSource(url)
   let closed = false
+
+  // Diagnostic: WKWebView (Tauri desktop) silently drops SSE connections that never
+  // receive data; log open/error/readyState so we can confirm the heartbeat fix works.
+  es.onopen = () => {
+    console.debug('[sse] connected', { readyState: es.readyState, url })
+  }
+  es.onerror = () => {
+    console.debug('[sse] native error', { readyState: es.readyState, url })
+  }
   const close = () => {
     if (!closed) {
       closed = true
