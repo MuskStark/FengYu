@@ -7,6 +7,7 @@ import fan.summer.zhiflow.api.ai.AiToolResult;
 import fan.summer.zhiflow.api.ai.ChatBackend;
 import fan.summer.zhiflow.ai.service.AiConfigServiceHeadless;
 import fan.summer.zhiflow.ai.service.AiModeService;
+import fan.summer.zhiflow.ai.service.OllamaLocalBackend;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -73,8 +74,25 @@ public class AiController {
         }
 
         Optional<ChatBackend> svc = aiMode.getService();
-        if (svc.isEmpty() || !svc.get().isReady()) {
-            completeWithError(emitter, "AI backend not configured or not ready");
+        if (svc.isEmpty()) {
+            completeWithError(emitter, "AI backend not configured");
+            return emitter;
+        }
+        ChatBackend backend = svc.get();
+        // Local (Ollama) backends resolve their ChatModel lazily in loadModel; trigger it on
+        // first chat so isReady() can flip to true. After Task 3's BackendReactivator the backend
+        // is registered at startup but never loadModel'd — without this, local mode always errored
+        // as "not configured or not ready".
+        if (!backend.isReady() && backend instanceof OllamaLocalBackend ob) {
+            try {
+                ob.loadModel(null);
+            } catch (Exception e) {
+                completeWithError(emitter, "Ollama backend not ready: " + e.getMessage());
+                return emitter;
+            }
+        }
+        if (!backend.isReady()) {
+            completeWithError(emitter, "AI backend not ready (check provider config and connection)");
             return emitter;
         }
 

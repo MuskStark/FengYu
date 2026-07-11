@@ -85,4 +85,35 @@ class HeadlessIntegrationTest {
             "{\"action\":\"x\",\"args\":{}}");
         assertEquals(404, resp.statusCode());
     }
+
+    /**
+     * Local-mode AI chat after Task 3's {@code BackendReactivator}: an {@code OllamaLocalBackend}
+     * is registered at startup, but {@code isReady()==false} until {@code loadModel} runs. With no
+     * real Ollama server in CI, {@code AiController.stream} must trigger {@code loadModel} (which
+     * resolves the {@code ChatModel} bean) so the backend is treated as "registered" rather than
+     * "not configured". The downstream chat then fails at network time, emitting an SSE error event.
+     *
+     * <p>The load-bearing assertion is that we do NOT see "not configured" (the pre-fix message),
+     * proving the backend is registered and the {@code loadModel} path was taken.
+     */
+    @Test
+    void aiChat_localMode_registeredButNotReady_emitsErrorEvent() throws Exception {
+        // POST /api/ai/chat -> stash the turn under a streamId.
+        HttpResponse<String> chat = postJson("/api/ai/chat",
+            "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}");
+        assertEquals(200, chat.statusCode());
+        String streamId = chat.body().replaceAll(".*\"streamId\":\"([^\"]+)\".*", "$1");
+
+        // GET /api/ai/stream — opens the SSE; with no Ollama running the chat fails at call time.
+        HttpResponse<String> stream = get("/api/ai/stream?streamId=" + streamId);
+        assertEquals(200, stream.statusCode());
+        String body = stream.body();
+
+        // An error event must be emitted (Ollama unreachable in CI), and crucially the message
+        // must NOT be "not configured" — that would mean the backend was null (pre-Task-3 path).
+        assertTrue(body.contains("error"),
+            "expected an error event for unready/unreachable local backend, got: " + body);
+        assertTrue(!body.contains("not configured"),
+            "backend should be registered (not 'not configured') after BackendReactivator; got: " + body);
+    }
 }
