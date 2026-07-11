@@ -96,6 +96,18 @@ public class AiController {
             return emitter;
         }
 
+        // Send an immediate heartbeat so the response stream is "opened" before the model
+        // produces its first token. WKWebView (Tauri desktop on macOS) will silently drop an
+        // SSE connection that has been accepted but has not yet received any data by the time
+        // its internal idle timer fires — Chrome is more lenient. Flushing one byte right away
+        // guarantees the connection is live for every client, and costs nothing (a comment line
+        // is a valid SSE frame the browser ignores).
+        try {
+            emitter.send(SseEmitter.event().comment("connected"));
+        } catch (IOException e) {
+            log.debug("SSE initial heartbeat failed: {}", e.getMessage());
+        }
+
         try {
             svc.get().chat(history,
                 AiConfigServiceHeadless.getAiTemperature(),

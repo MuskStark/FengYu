@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { reactive, ref } from 'vue'
 import { api } from '@/api/client'
 import { openAiStream, type SseHandle } from '@/api/sse'
 import type { ChatMessage } from '@/api/types'
@@ -29,13 +29,18 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     error.value = null
 
     turns.value.push({ id: ++seq, role: 'user', content: prompt, thinking: '', streaming: false })
-    const assistant: ChatTurn = {
+    // Must be reactive() so the closures below mutate the PROXY, not the raw object.
+    // turns.value.push(obj) stores the raw object; keeping `assistant` as that raw ref
+    // means assistant.content += t silently bypasses Vue's reactivity, and the UI only
+    // repaints once at onDone (where a separate ref flips) — i.e. the whole text appears
+    // at once instead of streaming token-by-token.
+    const assistant = reactive<ChatTurn>({
       id: ++seq,
       role: 'assistant',
       content: '',
       thinking: '',
       streaming: true,
-    }
+    })
     turns.value.push(assistant)
     busy.value = true
 
