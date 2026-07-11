@@ -24,12 +24,7 @@ import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.tool.ToolCallback;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -374,64 +369,12 @@ public final class SpringAiCloudBackend implements ChatBackend {
     // as actionable strings rather than wrapped exceptions. Returns null on success.
 
     public String testConnection() {
-        return switch (provider) {
-            case OPENAI, DEEPSEEK -> testOpenAi();   // DeepSeek is OpenAI-compatible
-            case ANTHROPIC -> testAnthropic();
+        String mode = switch (provider) {
+            case OPENAI -> "openai";
+            case DEEPSEEK -> "deepseek";
+            case ANTHROPIC -> "anthropic";
         };
-    }
-
-    private String testOpenAi() {
-        try (HttpClient client = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
-                .connectTimeout(Duration.ofSeconds(15))
-                .build()) {
-            String url = endpoint + "/v1/chat/completions";
-            String body = JsonHelper.toJson(Map.of(
-                "model", modelName,
-                "messages", List.of(Map.of("role", "user", "content", "Hi")),
-                "max_tokens", 5
-            ));
-            HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + apiKey)
-                .POST(HttpRequest.BodyPublishers.ofString(body))
-                .timeout(Duration.ofSeconds(15))
-                .build();
-            HttpResponse<String> resp = client.send(request, HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() == 200) return null;
-            return "HTTP " + resp.statusCode() + ": " + resp.body();
-        } catch (Exception e) {
-            String msg = e.getMessage();
-            return msg != null ? msg : e.getClass().getSimpleName() + ": " + e;
-        }
-    }
-
-    private String testAnthropic() {
-        try (HttpClient client = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
-                .connectTimeout(Duration.ofSeconds(15))
-                .build()) {
-            String url = endpoint + "/v1/messages";
-            String body = JsonHelper.toJson(Map.of(
-                "model", modelName,
-                "max_tokens", 5,
-                "messages", List.of(Map.of("role", "user", "content", "Hi"))
-            ));
-            HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Content-Type", "application/json")
-                .header("x-api-key", apiKey)
-                .header("anthropic-version", "2023-06-01")
-                .POST(HttpRequest.BodyPublishers.ofString(body))
-                .timeout(Duration.ofSeconds(15))
-                .build();
-            HttpResponse<String> resp = client.send(request, HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() == 200) return null;
-            return "HTTP " + resp.statusCode() + ": " + resp.body();
-        } catch (Exception e) {
-            String msg = e.getMessage();
-            return msg != null ? msg : e.getClass().getSimpleName() + ": " + e;
-        }
+        ConnectionTester.TestResult r = ConnectionTester.testCloud(mode, endpoint, apiKey, modelName);
+        return r.success() ? null : r.error();
     }
 }
