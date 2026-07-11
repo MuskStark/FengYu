@@ -37,6 +37,20 @@ public class AiConfigServiceHeadless {
     private static final String LANGUAGE_KEY = "language";
     private static final String SIDEBAR_COLLAPSED_KEY = "sidebar.collapsed";
 
+    // ── AI provider keys (duplicate AiConfigService read keys so writes round-trip) ──
+    private static final String AI_MODE_KEY = "ai.mode";
+    private static final String AI_OPENAI_ENDPOINT_KEY = "ai.openai.endpoint";
+    private static final String AI_OPENAI_API_KEY_KEY  = "ai.openai.api_key";
+    private static final String AI_OPENAI_MODEL_KEY    = "ai.openai.model";
+    private static final String AI_ANTHROPIC_ENDPOINT_KEY = "ai.anthropic.endpoint";
+    private static final String AI_ANTHROPIC_API_KEY_KEY  = "ai.anthropic.api_key";
+    private static final String AI_ANTHROPIC_MODEL_KEY    = "ai.anthropic.model";
+    private static final String AI_DEEPSEEK_ENDPOINT_KEY = "ai.deepseek.endpoint";
+    private static final String AI_DEEPSEEK_API_KEY_KEY  = "ai.deepseek.api_key";
+    private static final String AI_DEEPSEEK_MODEL_KEY    = "ai.deepseek.model";
+    private static final String AI_OLLAMA_BASE_URL_KEY = "ai.ollama.base_url";
+    private static final String AI_OLLAMA_MODEL_KEY   = "ai.ollama.model";
+
     private final AppSettingRepository appSettingRepo;
     private final SecurityContext securityContext;
     private final AiConfigService aiConfigService;
@@ -86,6 +100,21 @@ public class AiConfigServiceHeadless {
     public static void setAiSystemPrompt(String value) { INSTANCE.writeSetting(AI_SYSTEM_PROMPT_KEY, value); }
     public static void setTheme(String theme)        { INSTANCE.writeSetting(THEME_KEY, theme); }
     public static void setLanguage(String language)  { INSTANCE.writeSetting(LANGUAGE_KEY, language); }
+
+    // ── AI provider writes (persist via JPA) ───────────────────────────────────
+
+    public static void setAiMode(String mode)              { INSTANCE.writeSetting(AI_MODE_KEY, mode); }
+    public static void setAiOpenAiEndpoint(String v)       { INSTANCE.writeSetting(AI_OPENAI_ENDPOINT_KEY, v); }
+    public static void setAiOpenAiApiKey(String v)         { INSTANCE.writeSetting(AI_OPENAI_API_KEY_KEY, v); }
+    public static void setAiOpenAiModel(String v)          { INSTANCE.writeSetting(AI_OPENAI_MODEL_KEY, v); }
+    public static void setAiAnthropicEndpoint(String v)    { INSTANCE.writeSetting(AI_ANTHROPIC_ENDPOINT_KEY, v); }
+    public static void setAiAnthropicApiKey(String v)      { INSTANCE.writeSetting(AI_ANTHROPIC_API_KEY_KEY, v); }
+    public static void setAiAnthropicModel(String v)       { INSTANCE.writeSetting(AI_ANTHROPIC_MODEL_KEY, v); }
+    public static void setAiDeepSeekEndpoint(String v)     { INSTANCE.writeSetting(AI_DEEPSEEK_ENDPOINT_KEY, v); }
+    public static void setAiDeepSeekApiKey(String v)       { INSTANCE.writeSetting(AI_DEEPSEEK_API_KEY_KEY, v); }
+    public static void setAiDeepSeekModel(String v)        { INSTANCE.writeSetting(AI_DEEPSEEK_MODEL_KEY, v); }
+    public static void setAiOllamaBaseUrl(String v)        { INSTANCE.writeSetting(AI_OLLAMA_BASE_URL_KEY, v); }
+    public static void setAiOllamaModel(String v)          { INSTANCE.writeSetting(AI_OLLAMA_MODEL_KEY, v); }
 
     // ── Instance implementation (uses injected repo + security context) ───────
 
