@@ -37,6 +37,47 @@ export interface AppSettings {
 
 export type PartialSettings = Partial<AppSettings>
 
+// ── AI Config ──────────────────────────────────────────────
+
+export type AiMode = 'local' | 'openai' | 'anthropic' | 'deepseek'
+
+export interface AiProviderConfig {
+  endpoint: string
+  apiKey: string // masked (前4***后4) or empty
+  apiKeySet: boolean
+  model: string
+}
+
+export interface AiSettings {
+  mode: AiMode
+  openai: AiProviderConfig
+  anthropic: AiProviderConfig
+  deepseek: AiProviderConfig
+  ollama: { baseUrl: string; model: string }
+  temperature: number
+  topP: number
+  maxTokens: number
+  systemPrompt: string
+  activeMode: AiMode
+  ready: boolean
+}
+
+export type PartialAiSettings = Partial<Omit<AiSettings, 'activeMode' | 'ready'>>
+
+export interface AiConfigTestRequest {
+  mode: AiMode
+  endpoint?: string
+  apiKey?: string
+  model?: string
+  baseUrl?: string
+}
+
+export interface AiConfigTestResult {
+  success: boolean
+  error?: string
+  warning?: string
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string

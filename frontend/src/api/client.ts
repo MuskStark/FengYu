@@ -5,6 +5,9 @@ import type {
   AgentRunRequest,
   AgentRunResponse,
   AgentTool,
+  AiConfigTestRequest,
+  AiConfigTestResult,
+  AiSettings,
   AppSettings,
   CategoryDescriptor,
   ChatMessage,
@@ -14,6 +17,7 @@ import type {
   DbTypeMeta,
   HealthResponse,
   InitializeResult,
+  PartialAiSettings,
   PartialSettings,
   PluginDescriptor,
   PluginInvokeResult,
@@ -61,6 +65,22 @@ export const api = {
 
   async putSettings(partial: PartialSettings): Promise<AppSettings> {
     const { data } = await http.put<AppSettings>('/api/settings', partial)
+    return data
+  },
+
+  // ── AI Config ───────────────────────────────────────────────
+  async getAiSettings(): Promise<AiSettings> {
+    const { data } = await http.get<AiSettings>('/api/ai/config')
+    return data
+  },
+
+  async putAiSettings(partial: PartialAiSettings): Promise<AiSettings> {
+    const { data } = await http.put<AiSettings>('/api/ai/config', partial)
+    return data
+  },
+
+  async testAiConnection(req: AiConfigTestRequest): Promise<AiConfigTestResult> {
+    const { data } = await http.post<AiConfigTestResult>('/api/ai/config/test', req)
     return data
   },
 
