@@ -1,0 +1,219 @@
+package fan.summer.zhiflow.web.controller;
+
+import fan.summer.zhiflow.ai.AiConfigService;
+import fan.summer.zhiflow.ai.service.AiConfigServiceHeadless;
+import fan.summer.zhiflow.ai.service.AiModeService;
+import fan.summer.zhiflow.ai.service.ConnectionTester;
+import fan.summer.zhiflow.ai.spring.BackendReactivator;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Consumer;
+
+/**
+ * AI provider configuration: mode, per-provider endpoint/apiKey/model, Ollama
+ * settings, sampling params, system prompt. Backed by {@link AiConfigServiceHeadless}
+ * (JPA-persisted, user-scoped) — mirrors {@link SettingsController}'s pattern.
+ *
+ * <ul>
+ *   <li>{@code GET} returns a masked snapshot (API keys show {@code 前4***后4});
+ *       also includes {@code activeMode} + {@code ready} from {@link AiModeService}.</li>
+ *   <li>{@code PUT} accepts a partial JSON object, persists only present keys, then
+ *       hot-swaps the backend via {@link BackendReactivator#reactivate()}.
+ *       API-key values containing {@code ***} are treated as "unchanged" (skipped)
+ *       so the masked placeholder round-trips safely.</li>
+ *   <li>{@code POST /test} probes a provider with request-supplied (or DB-fallback)
+ *       values via {@link ConnectionTester}.</li>
+ * </ul>
+ */
+@RestController
+@RequestMapping("/api/ai/config")
+public class AiConfigController {
+
+    private final AiModeService aiMode;
+    private final BackendReactivator reactivator;
+
+    public AiConfigController(AiModeService aiMode, BackendReactivator reactivator) {
+        this.aiMode = aiMode;
+        this.reactivator = reactivator;
+    }
+
+    // ── GET: masked snapshot ──────────────────────────────────────────
+
+    @GetMapping
+    public Map<String, Object> get() {
+        Map<String, Object> out = new HashMap<>();
+        out.put("mode", AiConfigService.getAiMode());
+        out.put("openai", providerMap(
+                AiConfigService.getAiOpenAiEndpoint(),
+                AiConfigService.getAiOpenAiApiKey(),
+                AiConfigService.getAiOpenAiModel()));
+        out.put("anthropic", providerMap(
+                AiConfigService.getAiAnthropicEndpoint(),
+                AiConfigService.getAiAnthropicApiKey(),
+                AiConfigService.getAiAnthropicModel()));
+        out.put("deepseek", providerMap(
+                AiConfigService.getAiDeepSeekEndpoint(),
+                AiConfigService.getAiDeepSeekApiKey(),
+                AiConfigService.getAiDeepSeekModel()));
+        out.put("ollama", Map.of(
+                "baseUrl", AiConfigService.getAiOllamaBaseUrl(),
+                "model", AiConfigService.getAiOllamaModel()));
+        out.put("temperature", AiConfigService.getAiTemperature());
+        out.put("topP", AiConfigService.getAiTopP());
+        out.put("maxTokens", AiConfigService.getAiMaxTokens());
+        out.put("systemPrompt", AiConfigService.getAiSystemPrompt());
+        out.put("activeMode", aiMode.getCurrentMode());
+        out.put("ready", aiMode.getService().map(b -> b.isReady()).orElse(false));
+        return out;
+    }
+
+    private Map<String, Object> providerMap(String endpoint, String apiKey, String model) {
+        Map<String, Object> m = new HashMap<>();
+        m.put("endpoint", endpoint);
+        m.put("apiKey", maskKey(apiKey));
+        m.put("apiKeySet", apiKey != null && !apiKey.isBlank());
+        m.put("model", model);
+        return m;
+    }
+
+    /** Masks a key as {@code 前4***后4}; empty/short keys return "". */
+    static String maskKey(String key) {
+        if (key == null || key.isBlank()) return "";
+        if (key.length() <= 8) return key.substring(0, Math.min(4, key.length())) + "***";
+        return key.substring(0, 4) + "***" + key.substring(key.length() - 4);
+    }
+
+    // ── PUT: partial write + hot-swap ─────────────────────────────────
+
+    @PutMapping
+    public Map<String, Object> put(@RequestBody Map<String, Object> body) {
+        if (body.get("mode") instanceof String m) {
+            AiConfigServiceHeadless.setAiMode(m);
+        }
+        applyProvider(body, "openai",
+                AiConfigServiceHeadless::setAiOpenAiEndpoint,
+                AiConfigServiceHeadless::setAiOpenAiApiKey,
+                AiConfigServiceHeadless::setAiOpenAiModel);
+        applyProvider(body, "anthropic",
+                AiConfigServiceHeadless::setAiAnthropicEndpoint,
+                AiConfigServiceHeadless::setAiAnthropicApiKey,
+                AiConfigServiceHeadless::setAiAnthropicModel);
+        applyProvider(body, "deepseek",
+                AiConfigServiceHeadless::setAiDeepSeekEndpoint,
+                AiConfigServiceHeadless::setAiDeepSeekApiKey,
+                AiConfigServiceHeadless::setAiDeepSeekModel);
+        // Ollama
+        Object ollama = body.get("ollama");
+        if (ollama instanceof Map<?, ?> om) {
+            if (om.get("baseUrl") instanceof String b) AiConfigServiceHeadless.setAiOllamaBaseUrl(b);
+            if (om.get("model") instanceof String mo) AiConfigServiceHeadless.setAiOllamaModel(mo);
+        }
+        // Sampling params
+        if (body.get("temperature") instanceof Number n) {
+            AiConfigServiceHeadless.setAiTemperature(n.floatValue());
+        } else if (body.get("temperature") instanceof String s) {
+            AiConfigServiceHeadless.setAiTemperature(Float.parseFloat(s));
+        }
+        if (body.get("topP") instanceof Number n) {
+            AiConfigServiceHeadless.setAiTopP(n.floatValue());
+        } else if (body.get("topP") instanceof String s) {
+            AiConfigServiceHeadless.setAiTopP(Float.parseFloat(s));
+        }
+        if (body.get("maxTokens") instanceof Number n) {
+            AiConfigServiceHeadless.setAiMaxTokens(n.intValue());
+        } else if (body.get("maxTokens") instanceof String s) {
+            AiConfigServiceHeadless.setAiMaxTokens(Integer.parseInt(s));
+        }
+        if (body.get("systemPrompt") instanceof String sp) {
+            AiConfigServiceHeadless.setAiSystemPrompt(sp);
+        }
+
+        // Hot-swap: rebuild backend from the just-persisted config.
+        reactivator.reactivate();
+
+        return get();
+    }
+
+    /**
+     * Applies a provider sub-map ({@code {endpoint, apiKey, model}}). The
+     * {@code apiKey} is skipped when it contains {@code ***} (masked placeholder
+     * = "unchanged"); only a freshly-typed key is persisted.
+     */
+    private void applyProvider(Map<String, Object> body, String name,
+                               Consumer<String> setEndpoint,
+                               Consumer<String> setApiKey,
+                               Consumer<String> setModel) {
+        Object p = body.get(name);
+        if (!(p instanceof Map<?, ?> pm)) return;
+        if (pm.get("endpoint") instanceof String e) setEndpoint.accept(e);
+        Object key = pm.get("apiKey");
+        if (key instanceof String k && !k.contains("***")) {
+            setApiKey.accept(k);
+        }
+        if (pm.get("model") instanceof String mo) setModel.accept(mo);
+    }
+
+    // ── POST /test: connection probe ──────────────────────────────────
+
+    public record TestRequest(String mode, String endpoint, String apiKey,
+                              String model, String baseUrl) {}
+
+    @PostMapping("/test")
+    public Map<String, Object> test(@RequestBody TestRequest req) {
+        String mode = req.mode() != null ? req.mode() : AiConfigService.getAiMode();
+        ConnectionTester.TestResult result;
+        if ("local".equals(mode)) {
+            String baseUrl = orDefault(req.baseUrl(), AiConfigService.getAiOllamaBaseUrl());
+            String model = orDefault(req.model(), AiConfigService.getAiOllamaModel());
+            result = ConnectionTester.testOllama(baseUrl, model);
+        } else {
+            String endpoint = orDefault(req.endpoint(), endpointFor(mode));
+            String apiKey = orDefault(req.apiKey(), apiKeyFor(mode));
+            String model = orDefault(req.model(), modelFor(mode));
+            result = ConnectionTester.testCloud(mode, endpoint, apiKey, model);
+        }
+        Map<String, Object> out = new HashMap<>();
+        out.put("success", result.success());
+        if (result.error() != null) out.put("error", result.error());
+        if (result.warning() != null) out.put("warning", result.warning());
+        return out;
+    }
+
+    private static String orDefault(String v, String def) {
+        return (v != null && !v.isBlank()) ? v : def;
+    }
+
+    private static String endpointFor(String mode) {
+        return switch (mode) {
+            case "openai" -> AiConfigService.getAiOpenAiEndpoint();
+            case "anthropic" -> AiConfigService.getAiAnthropicEndpoint();
+            case "deepseek" -> AiConfigService.getAiDeepSeekEndpoint();
+            default -> "";
+        };
+    }
+
+    private static String apiKeyFor(String mode) {
+        return switch (mode) {
+            case "openai" -> AiConfigService.getAiOpenAiApiKey();
+            case "anthropic" -> AiConfigService.getAiAnthropicApiKey();
+            case "deepseek" -> AiConfigService.getAiDeepSeekApiKey();
+            default -> "";
+        };
+    }
+
+    private static String modelFor(String mode) {
+        return switch (mode) {
+            case "openai" -> AiConfigService.getAiOpenAiModel();
+            case "anthropic" -> AiConfigService.getAiAnthropicModel();
+            case "deepseek" -> AiConfigService.getAiDeepSeekModel();
+            default -> "";
+        };
+    }
+}
