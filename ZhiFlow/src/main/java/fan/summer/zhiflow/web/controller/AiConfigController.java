@@ -115,22 +115,14 @@ public class AiConfigController {
             if (om.get("baseUrl") instanceof String b) AiConfigServiceHeadless.setAiOllamaBaseUrl(b);
             if (om.get("model") instanceof String mo) AiConfigServiceHeadless.setAiOllamaModel(mo);
         }
-        // Sampling params
-        if (body.get("temperature") instanceof Number n) {
-            AiConfigServiceHeadless.setAiTemperature(n.floatValue());
-        } else if (body.get("temperature") instanceof String s) {
-            AiConfigServiceHeadless.setAiTemperature(Float.parseFloat(s));
-        }
-        if (body.get("topP") instanceof Number n) {
-            AiConfigServiceHeadless.setAiTopP(n.floatValue());
-        } else if (body.get("topP") instanceof String s) {
-            AiConfigServiceHeadless.setAiTopP(Float.parseFloat(s));
-        }
-        if (body.get("maxTokens") instanceof Number n) {
-            AiConfigServiceHeadless.setAiMaxTokens(n.intValue());
-        } else if (body.get("maxTokens") instanceof String s) {
-            AiConfigServiceHeadless.setAiMaxTokens(Integer.parseInt(s));
-        }
+        // Sampling params (parse quietly: a malformed string is ignored rather
+        // than throwing NumberFormatException → 500; PUT always returns 200).
+        Float temperature = parseFloatQuietly(body.get("temperature"));
+        if (temperature != null) AiConfigServiceHeadless.setAiTemperature(temperature);
+        Float topP = parseFloatQuietly(body.get("topP"));
+        if (topP != null) AiConfigServiceHeadless.setAiTopP(topP);
+        Integer maxTokens = parseIntQuietly(body.get("maxTokens"));
+        if (maxTokens != null) AiConfigServiceHeadless.setAiMaxTokens(maxTokens);
         if (body.get("systemPrompt") instanceof String sp) {
             AiConfigServiceHeadless.setAiSystemPrompt(sp);
         }
@@ -154,10 +146,42 @@ public class AiConfigController {
         if (!(p instanceof Map<?, ?> pm)) return;
         if (pm.get("endpoint") instanceof String e) setEndpoint.accept(e);
         Object key = pm.get("apiKey");
-        if (key instanceof String k && !k.contains("***")) {
+        if (key instanceof String k && !k.isBlank() && !k.contains("***")) {
             setApiKey.accept(k);
         }
         if (pm.get("model") instanceof String mo) setModel.accept(mo);
+    }
+
+    /**
+     * Parses a Number-or-String value as a Float, returning {@code null} if the
+     * input is missing, null, or a non-numeric string. Never throws — a malformed
+     * value is silently ignored so PUT can still return 200.
+     */
+    private static Float parseFloatQuietly(Object v) {
+        if (v instanceof Number n) return n.floatValue();
+        if (v instanceof String s) {
+            try {
+                return Float.parseFloat(s);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Parses a Number-or-String value as an Integer, returning {@code null} if the
+     * input is missing, null, or a non-numeric string. Never throws — see
+     * {@link #parseFloatQuietly(Object)}.
+     */
+    private static Integer parseIntQuietly(Object v) {
+        if (v instanceof Number n) return n.intValue();
+        if (v instanceof String s) {
+            try {
+                return Integer.parseInt(s);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return null;
     }
 
     // ── POST /test: connection probe ──────────────────────────────────
