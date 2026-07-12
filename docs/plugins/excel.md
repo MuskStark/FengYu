@@ -1,5 +1,9 @@
 # Excel I/O
 
+> Excel splitting is now shipped as the official v2 plugin `OfficialPlugins/plugin-excel`
+> (backend engine + Vue wizard micro-frontend + AI tools). The techniques below remain a
+> reference for the underlying Fesod read/write patterns.
+
 ## 技术栈
 
 使用 `org.apache.fesod:fesod-sheet` 库进行高性能 Excel 读写。
