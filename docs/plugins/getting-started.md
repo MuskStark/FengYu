@@ -17,8 +17,8 @@
 | 信息 | 示例 | 说明 |
 |------|------|------|
 | Plugin name | `StarReport` | Maven artifactId 和项目名 |
-| Plugin ID | `plugin.zhiflow.star` | 宿主的唯一标识符 |
-| Base package | `fan.zhiflowj.plugin.star` | Java 包根路径 |
+| Plugin ID | `plugin.fengyu.star` | 宿主的唯一标识符 |
+| Base package | `fan.fengyuj.plugin.star` | Java 包根路径 |
 | Short description | `Star Report Generator` | 宿主 UI 中显示 |
 | Icon | `&#9733;` | 单字符或 emoji |
 | Category | `OTHER` | `text / image / net / dev / other` |

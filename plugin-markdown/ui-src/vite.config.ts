@@ -3,7 +3,7 @@ import vue from '@vitejs/plugin-vue';
 import cssInjectedByJs from 'vite-plugin-css-injected-by-js';
 import { fileURLToPath } from 'node:url';
 
-// Library/ESM build for the ZhiFlow micro-frontend contract.
+// Library/ESM build for the FengYu micro-frontend contract.
 // - `vue` is external: the host shell provides it via an import map.
 // - Single ESM entry (src/main.ts) → single `index.js` (no hash).
 // - CSS is inlined into the JS (cssCodeSplit:false) + styles are injected from

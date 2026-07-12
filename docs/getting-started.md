@@ -5,16 +5,16 @@
 - **JDK 21 or higher**
 - **Maven 3.8 or higher** (for building from source)
 
-ZhiFlow bundles JavaFX for all platforms inside the fat JAR — no separate JavaFX SDK needed.
+FengYu bundles JavaFX for all platforms inside the fat JAR — no separate JavaFX SDK needed.
 
 ## Installation
 
 ### Option 1: Download Pre-built JAR
 
-Download from the [GitHub Releases](https://github.com/MuskStark/ZhiFlow/releases) page.
+Download from the [GitHub Releases](https://github.com/MuskStark/FengYu/releases) page.
 
 ```bash
-java -jar ZhiFlow-3.1.0.jar
+java -jar FengYu-3.1.0.jar
 ```
 
 The fat JAR includes JavaFX native libraries for macOS, Windows, and Linux — no additional setup required.
@@ -22,33 +22,33 @@ The fat JAR includes JavaFX native libraries for macOS, Windows, and Linux — n
 ### Option 2: Build from Source
 
 ```bash
-git clone https://github.com/MuskStark/ZhiFlow.git
-cd ZhiFlow
+git clone https://github.com/MuskStark/FengYu.git
+cd FengYu
 
 # Install API module first (required)
-mvn install -f ZhiFlow-Api/pom.xml -DskipTests
+mvn install -f FengYu-Api/pom.xml -DskipTests
 
 # Build the main app
-mvn clean package -f ZhiFlow/pom.xml -DskipTests
+mvn clean package -f FengYu/pom.xml -DskipTests
 
 # Run
-java -jar ZhiFlow/target/ZhiFlow-3.1.0.jar
+java -jar FengYu/target/FengYu-3.1.0.jar
 ```
 
-**Build order matters**: `ZhiFlow-Api` provides the shared plugin interface and reusable UI components. It must be installed into the local Maven repository before the main app can compile.
+**Build order matters**: `FengYu-Api` provides the shared plugin interface and reusable UI components. It must be installed into the local Maven repository before the main app can compile.
 
 ## Running
 
 ### Fat JAR
 
 ```bash
-java -jar ZhiFlow/target/ZhiFlow-3.1.0.jar
+java -jar FengYu/target/FengYu-3.1.0.jar
 ```
 
 ### IDE (IntelliJ IDEA)
 
 1. Open the project
-2. Locate `Launcher.java` in `ZhiFlow/src/main/java/fan/summer/`
+2. Locate `Launcher.java` in `FengYu/src/main/java/fan/summer/`
 3. Right-click → "Run 'Launcher.main()'"
 
 The `Launcher` class is the fat-JAR manifest entry point.
@@ -70,13 +70,13 @@ The `Launcher` class is the fat-JAR manifest entry point.
 
 ### UI Not Rendering
 
-- Rebuild from clean: `mvn clean package -f ZhiFlow/pom.xml -DskipTests`
+- Rebuild from clean: `mvn clean package -f FengYu/pom.xml -DskipTests`
 - Ensure you're running the fat JAR which bundles JavaFX
 
 ### API Module Not Found
 
 ```bash
-mvn install -f ZhiFlow-Api/pom.xml -DskipTests
+mvn install -f FengYu-Api/pom.xml -DskipTests
 ```
 
 ## Next Steps

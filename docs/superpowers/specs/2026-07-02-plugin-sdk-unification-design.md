@@ -23,30 +23,30 @@
 
 ```
 SwissKitJ-Api(接口 + 可复用实现;依赖仍仅 JavaFX/SLF4J-free,零 DB)
-├─ fan.summer.zhiflow.api.host.PluginHost            门面接口
-├─ fan.summer.zhiflow.api.host.PluginSettings        KV 接口
-├─ fan.summer.zhiflow.api.host.TaskRunner            任务接口
-├─ fan.summer.zhiflow.api.host.TaskHandle            任务句柄接口
-├─ fan.summer.zhiflow.api.host.I18nFacade            i18n 子门面接口
-├─ fan.summer.zhiflow.api.host.ThemeFacade           主题子门面接口
-├─ fan.summer.zhiflow.api.host.NotificationFacade    通知子门面接口
-├─ fan.summer.zhiflow.api.host.SimpleTaskRunner      TaskRunner 通用实现(宿主/预览共用)
-├─ fan.summer.zhiflow.api.host.BasePluginHost        抽象基类:除 settings() 外全部实现
-└─ fan.summer.zhiflow.api.loader.ChildFirstResourceClassLoader   从宿主原样下沉
+├─ fan.summer.fengyu.api.host.PluginHost            门面接口
+├─ fan.summer.fengyu.api.host.PluginSettings        KV 接口
+├─ fan.summer.fengyu.api.host.TaskRunner            任务接口
+├─ fan.summer.fengyu.api.host.TaskHandle            任务句柄接口
+├─ fan.summer.fengyu.api.host.I18nFacade            i18n 子门面接口
+├─ fan.summer.fengyu.api.host.ThemeFacade           主题子门面接口
+├─ fan.summer.fengyu.api.host.NotificationFacade    通知子门面接口
+├─ fan.summer.fengyu.api.host.SimpleTaskRunner      TaskRunner 通用实现(宿主/预览共用)
+├─ fan.summer.fengyu.api.host.BasePluginHost        抽象基类:除 settings() 外全部实现
+└─ fan.summer.fengyu.api.loader.ChildFirstResourceClassLoader   从宿主原样下沉
 
 SwissKit(宿主实现)
-├─ fan.summer.zhiflow.plugin.host.DefaultPluginHost      extends BasePluginHost,settings→H2
-├─ fan.summer.zhiflow.plugin.host.H2PluginSettings       缓存 + 虚拟线程异步写,模式镜像 SwissKitJSettingUi
-├─ fan.summer.zhiflow.database.entity.PluginSettingEntity
-├─ fan.summer.zhiflow.database.mapper.PluginSettingMapper(+ mapper XML)
+├─ fan.summer.fengyu.plugin.host.DefaultPluginHost      extends BasePluginHost,settings→H2
+├─ fan.summer.fengyu.plugin.host.H2PluginSettings       缓存 + 虚拟线程异步写,模式镜像 SwissKitJSettingUi
+├─ fan.summer.fengyu.database.entity.PluginSettingEntity
+├─ fan.summer.fengyu.database.mapper.PluginSettingMapper(+ mapper XML)
 ├─ init.sql                                       新表 plugin_setting
-├─ fan.summer.zhiflow.plugin.PluginRegistry               注入点 + 任务合并 + isBusy()
-├─ fan.summer.zhiflow.plugin.PluginLoader                 改 import(classloader 下沉);卸载时清设置
-└─ fan.summer.zhiflow.ui.MainWindow                       后退回收视图的判定改用 registry.isBusy()
+├─ fan.summer.fengyu.plugin.PluginRegistry               注入点 + 任务合并 + isBusy()
+├─ fan.summer.fengyu.plugin.PluginLoader                 改 import(classloader 下沉);卸载时清设置
+└─ fan.summer.fengyu.ui.MainWindow                       后退回收视图的判定改用 registry.isBusy()
 
 SwissKitJ-Api preview 包(预览实现,均包私有)
 ├─ PreviewPluginHost        extends BasePluginHost,settings→properties 文件
-└─ PropertiesPluginSettings ~/.zhiflow/preview-settings/<sanitized-plugin-id>.properties
+└─ PropertiesPluginSettings ~/.fengyu/preview-settings/<sanitized-plugin-id>.properties
 ```
 
 依赖方向不变:API 模块零 DB 依赖,`PluginHost` 是 API 定义接口、宿主/预览各自实现并注入。
@@ -72,7 +72,7 @@ default void init(PluginHost host) {}
 ### 3.2 PluginHost
 
 ```java
-package fan.summer.zhiflow.api.host;
+package fan.summer.fengyu.api.host;
 
 public interface PluginHost {
     /** The owning plugin's ID (same as SwissKitJPlugin.getId()). */
@@ -272,7 +272,7 @@ CREATE TABLE IF NOT EXISTS plugin_setting
 
 ### 5.1 classloader 统一
 
-- `ChildFirstResourceClassLoader` 从 `fan.summer.zhiflow.plugin`(SwissKit)**原样移动**到 `fan.summer.zhiflow.api.loader`(SwissKitJ-Api)。宿主内部类、无第三方引用,不留兼容别名;`PluginLoader` 改 import。API 模块日志改用 `fan.summer.zhiflow.api.log.LoggerFactory`(该类现用 SLF4J,移动时同步替换,保持 API 模块无 SLF4J 硬依赖)。
+- `ChildFirstResourceClassLoader` 从 `fan.summer.fengyu.plugin`(SwissKit)**原样移动**到 `fan.summer.fengyu.api.loader`(SwissKitJ-Api)。宿主内部类、无第三方引用,不留兼容别名;`PluginLoader` 改 import。API 模块日志改用 `fan.summer.fengyu.api.log.LoggerFactory`(该类现用 SLF4J,移动时同步替换,保持 API 模块无 SLF4J 硬依赖)。
 - `PluginPreviewWindow.launch()` 的 `new URLClassLoader(...)` 换成 `new ChildFirstResourceClassLoader(...)`。
 
 ### 5.2 与真实宿主对齐的加载语义
@@ -288,7 +288,7 @@ CREATE TABLE IF NOT EXISTS plugin_setting
 
 `PropertiesPluginSettings`(preview 包,包私有):
 
-- 文件:`System.getProperty("user.home")/.zhiflow/preview-settings/<sanitized-plugin-id>.properties`;插件 ID 消毒规则 `[^a-zA-Z0-9._-] → _`。
+- 文件:`System.getProperty("user.home")/.fengyu/preview-settings/<sanitized-plugin-id>.properties`;插件 ID 消毒规则 `[^a-zA-Z0-9._-] → _`。
 - 读:构造时加载文件进内存 `Properties`(文件不存在则空)。
 - 写:write-through——更新内存后同步 `store()` 回文件(预览场景低频写,无需异步);IO 失败记 warn 日志,内存值保留。
 - 目录不存在时自动 `mkdirs`。

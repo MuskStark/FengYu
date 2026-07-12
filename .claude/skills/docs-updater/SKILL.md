@@ -9,12 +9,12 @@ Updates documentation after a version bump — both version number sync and cont
 
 ## Project Context
 
-ZhiFlow has two modules with **standalone POMs** (no parent inheritance):
+FengYu has two modules with **standalone POMs** (no parent inheritance):
 
 | POM | Version | Purpose |
 |-----|---------|---------|
 | `SwissKit/pom.xml` | App version (e.g. `3.0.0-beta.1`) | Main JavaFX app — what users see |
-| `ZhiFlow-Api/pom.xml` | API version (e.g. `3.0.0`) | Shared plugin interface |
+| `FengYu-Api/pom.xml` | API version (e.g. `3.0.0`) | Shared plugin interface |
 | `pom.xml` (root) | Same as API version | Aggregator POM only |
 
 The **app version** from `SwissKit/pom.xml` is what docs and README should reflect. Never use the root `pom.xml` version for docs — that's the API module version, not the app version.
@@ -23,7 +23,7 @@ The **app version** from `SwissKit/pom.xml` is what docs and README should refle
 
 ### 1a. Get the current app version
 
-Read `SwissKit/pom.xml` and extract the first `<version>` value. Also note the API version from `ZhiFlow-Api/pom.xml` — only change API version references if the API module itself was bumped.
+Read `SwissKit/pom.xml` and extract the first `<version>` value. Also note the API version from `FengYu-Api/pom.xml` — only change API version references if the API module itself was bumped.
 
 ### 1b. Find the previous version
 
@@ -58,7 +58,7 @@ git diff <previous-tag>..HEAD --stat
 Then drill into relevant paths:
 
 ```bash
-git diff <previous-tag>..HEAD -- ZhiFlow-Api/src/main/java/ SwissKit/src/main/java/
+git diff <previous-tag>..HEAD -- FengYu-Api/src/main/java/ SwissKit/src/main/java/
 ```
 
 ### 2c. Map each changed file to the doc section it affects
@@ -68,10 +68,10 @@ Only create doc updates when a specific changed file maps to a specific doc sect
 | Changed file(s) | Doc to update | What to add/change |
 |----------------|---------------|--------------------|
 | New class in `buildintool/` registered in `BuiltinToolRegistrar.java` | `docs/features.md` | Add the new tool under its category section, following the existing `### Tool Name (\`CATEGORY\`)` format |
-| `ZhiFlowPlugin.java` interface changes (new methods, changed signatures) | `docs/api.md` | Add/update the method in the interface table |
-| `ZhiFlowApp.java` startup sequence changes | `docs/architecture.md` | Update the numbered startup steps |
-| New files in `ZhiFlow-Api/.../component/` | `docs/development.md` | Add usage example in UI Components section |
-| `ZhiFlow-Api/.../theme/` changes | `docs/development.md` | Update theming section |
+| `FengYuPlugin.java` interface changes (new methods, changed signatures) | `docs/api.md` | Add/update the method in the interface table |
+| `FengYuApp.java` startup sequence changes | `docs/architecture.md` | Update the numbered startup steps |
+| New files in `FengYu-Api/.../component/` | `docs/development.md` | Add usage example in UI Components section |
+| `FengYu-Api/.../theme/` changes | `docs/development.md` | Update theming section |
 
 If a changed file doesn't map to any doc section, don't create a doc update for it. If no changed files map to a given doc file, don't touch that doc file at all (beyond version number replacement in Phase 5).
 
@@ -113,10 +113,10 @@ Use exact string replacement (never regex) to swap old version → new version. 
 
 - Badge URLs: `version-<old>-blue` → `version-<new>-blue`
 - Download links: `/releases/tag/v<old>` → `/releases/tag/v<new>`
-- JAR filenames: `ZhiFlow-<old>.jar` → `ZhiFlow-<new>.jar`
+- JAR filenames: `FengYu-<old>.jar` → `FengYu-<new>.jar`
 - Inline version: `**<old>**` → `**<new>**`
 
-Be careful not to change the API version (`3.0.0`) which appears in Maven dependency examples in `docs/development.md` — those reference `ZhiFlow-Api` and should stay unchanged.
+Be careful not to change the API version (`3.0.0`) which appears in Maven dependency examples in `docs/development.md` — those reference `FengYu-Api` and should stay unchanged.
 
 ## Phase 6: Validate
 

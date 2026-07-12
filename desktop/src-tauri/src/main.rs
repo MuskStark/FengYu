@@ -27,7 +27,7 @@ struct Sidecar(Mutex<Option<Child>>);
 ///
 /// - `child`: the spawned backend process to kill on window close. `None` in dev (backend is
 ///   external; nothing to kill).
-/// - `init_script`: the `window.__ZHIFLOW_TOKEN__` / `__ZHIFLOW_API_BASE__` injection, run before
+/// - `init_script`: the `window.__FENGYU_TOKEN__` / `__FENGYU_API_BASE__` injection, run before
 ///   any page script. `None` in dev (the webview talks to the backend same-origin via Vite proxy,
 ///   reading the token from Vite env; no injection needed).
 fn run_desktop(child: Option<Child>, init_script: Option<String>) {
@@ -42,7 +42,7 @@ fn run_desktop(child: Option<Child>, init_script: Option<String>) {
                 "main",
                 tauri::WebviewUrl::default(),
             )
-            .title("ZhiFlow")
+            .title("FengYu")
             .inner_size(1280.0, 820.0)
             .min_inner_size(960.0, 640.0)
             .resizable(true);
@@ -61,7 +61,7 @@ fn run_desktop(child: Option<Child>, init_script: Option<String>) {
             }
         })
         .run(tauri::generate_context!())
-        .expect("error while running ZhiFlow desktop");
+        .expect("error while running FengYu desktop");
 }
 
 // ── PROD-only sidecar machinery ─────────────────────────────────────────────
@@ -93,13 +93,13 @@ fn gen_token() -> String {
     format!("zf-{:x}-{:x}", nanos, std::process::id())
 }
 
-/// Resolves the ZhiFlow jar path. The jar is copied to `binaries/ZhiFlow.jar` next to the
+/// Resolves the FengYu jar path. The jar is copied to `binaries/FengYu.jar` next to the
 /// executable for the prod bundle (see desktop/README.md).
 #[cfg(not(debug_assertions))]
 fn jar_path() -> std::path::PathBuf {
     let candidates = [
-        "binaries/ZhiFlow.jar",
-        "../../ZhiFlow/target/ZhiFlow-4.0.0-SNAPSHOT.jar",
+        "binaries/FengYu.jar",
+        "../../FengYu/target/FengYu-4.0.0-SNAPSHOT.jar",
     ];
     for c in candidates {
         let p = std::path::PathBuf::from(c);
@@ -107,18 +107,18 @@ fn jar_path() -> std::path::PathBuf {
             return p;
         }
     }
-    std::path::PathBuf::from("binaries/ZhiFlow.jar")
+    std::path::PathBuf::from("binaries/FengYu.jar")
 }
 
 /// Spawns the Java backend with `--port=24056 --token=<t>`, reads the bound port from its stdout
-/// (`ZHIFLOW_PORT=<n>`), and returns (child, port). The backend tries the fixed port first and
+/// (`FENGYU_PORT=<n>`), and returns (child, port). The backend tries the fixed port first and
 /// falls back to an OS-assigned port if it is taken, so the actual port is always read back here.
 #[cfg(not(debug_assertions))]
 fn spawn_backend(token: &str) -> Result<(Child, u16), String> {
     let jar = jar_path();
     if !jar.exists() {
         return Err(format!(
-            "ZhiFlow jar not found at {}. Build it and copy it to src-tauri/binaries/ZhiFlow.jar (see desktop/README.md).",
+            "FengYu jar not found at {}. Build it and copy it to src-tauri/binaries/FengYu.jar (see desktop/README.md).",
             jar.display()
         ));
     }
@@ -126,7 +126,7 @@ fn spawn_backend(token: &str) -> Result<(Child, u16), String> {
     let mut child = Command::new("java")
         .arg("-cp")
         .arg(jar.as_os_str())
-        .arg("fan.summer.zhiflow.HeadlessLauncher")
+        .arg("fan.summer.fengyu.HeadlessLauncher")
         .arg("--port=24056")
         .arg(format!("--token={}", token))
         .stdout(Stdio::piped())
@@ -137,11 +137,11 @@ fn spawn_backend(token: &str) -> Result<(Child, u16), String> {
     let stdout = child.stdout.take().ok_or("no stdout on sidecar")?;
     let (tx, rx) = std::sync::mpsc::channel::<u16>();
 
-    // Reader thread: scan stdout for ZHIFLOW_PORT=, forward the rest for visibility.
+    // Reader thread: scan stdout for FENGYU_PORT=, forward the rest for visibility.
     thread::spawn(move || {
         let reader = BufReader::new(stdout);
         for line in reader.lines().map_while(Result::ok) {
-            if let Some(rest) = line.strip_prefix("ZHIFLOW_PORT=") {
+            if let Some(rest) = line.strip_prefix("FENGYU_PORT=") {
                 if let Ok(p) = rest.trim().parse::<u16>() {
                     let _ = tx.send(p);
                 }
@@ -153,7 +153,7 @@ fn spawn_backend(token: &str) -> Result<(Child, u16), String> {
     // Wait up to 30s for the port line.
     let port = rx
         .recv_timeout(Duration::from_secs(30))
-        .map_err(|_| "backend did not report ZHIFLOW_PORT within 30s".to_string())?;
+        .map_err(|_| "backend did not report FENGYU_PORT within 30s".to_string())?;
 
     Ok((child, port))
 }
@@ -165,7 +165,7 @@ fn wait_for_health(port: u16, token: &str) -> Result<(), String> {
     let deadline = Instant::now() + Duration::from_secs(30);
     while Instant::now() < deadline {
         let resp = ureq::get(&url)
-            .set("X-ZhiFlow-Token", token)
+            .set("X-FengYu-Token", token)
             .timeout(Duration::from_secs(2))
             .call();
         if let Ok(r) = resp {
@@ -183,7 +183,7 @@ fn wait_for_health(port: u16, token: &str) -> Result<(), String> {
 fn check_setup_mode(port: u16, token: &str) -> Result<bool, String> {
     let url = format!("http://127.0.0.1:{port}/api/setup/status");
     let resp = ureq::get(&url)
-        .set("X-ZhiFlow-Token", token)
+        .set("X-FengYu-Token", token)
         .timeout(Duration::from_secs(2))
         .call()
         .map_err(|e| format!("setup status request failed: {e}"))?;
@@ -254,7 +254,7 @@ fn run_backend_until_app_mode(token: &str) -> (Child, u16) {
 fn main() {
     println!(
         "[desktop] dev mode: backend must be running externally on :24056 \
-         (IDE / `mvn -pl ZhiFlow spring-boot:run`). Tauri only opens the window; \
+         (IDE / `mvn -pl FengYu spring-boot:run`). Tauri only opens the window; \
          API calls go through the Vite proxy."
     );
     run_desktop(None, None);
@@ -268,12 +268,12 @@ fn main() {
     let (child, port) = run_backend_until_app_mode(&token);
 
     // Injected before any page script runs. The frontend reads these globals
-    // (see frontend/src/api/config.ts): __ZHIFLOW_API_BASE__ (absolute backend URL — the backend
+    // (see frontend/src/api/config.ts): __FENGYU_API_BASE__ (absolute backend URL — the backend
     // defaults to a fixed port but may fall back to an OS-assigned one, so the actual port read
-    // back from stdout is used) and __ZHIFLOW_TOKEN__.
+    // back from stdout is used) and __FENGYU_TOKEN__.
     let init_script = format!(
-        "window.__ZHIFLOW_TOKEN__ = '{token}'; window.__ZHIFLOW_PORT__ = {port}; \
-         window.__ZHIFLOW_API_BASE__ = 'http://127.0.0.1:{port}';"
+        "window.__FENGYU_TOKEN__ = '{token}'; window.__FENGYU_PORT__ = {port}; \
+         window.__FENGYU_API_BASE__ = 'http://127.0.0.1:{port}';"
     );
 
     run_desktop(Some(child), Some(init_script));

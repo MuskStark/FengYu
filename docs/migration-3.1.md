@@ -1,6 +1,6 @@
-# Migrating to ZhiFlow 3.1 (ChatBackend)
+# Migrating to FengYu 3.1 (ChatBackend)
 
-ZhiFlow 3.1 replaces the `AiService` interface with a unified `ChatBackend`
+FengYu 3.1 replaces the `AiService` interface with a unified `ChatBackend`
 contract. This is a **breaking change** for external plugins that call
 `AiServiceProvider.getService()` or reference the concrete service classes
 directly.
@@ -21,13 +21,13 @@ directly.
 
 ```java
 // Before (3.0.x and earlier):
-import fan.summer.zhiflow.api.ai.AiService;
+import fan.summer.fengyu.api.ai.AiService;
 Optional<AiService> opt = AiServiceProvider.getService();
 AiService svc = opt.get();
 svc.chat(history, callback);
 
 // After (3.1):
-import fan.summer.zhiflow.api.ai.ChatBackend;
+import fan.summer.fengyu.api.ai.ChatBackend;
 Optional<ChatBackend> opt = AiServiceProvider.getService();
 ChatBackend svc = opt.get();
 svc.chat(history, callback);
@@ -73,9 +73,9 @@ CloudChatBackend svc = CloudChatBackend.openAi(endpoint, apiKey, model);
 
 ### 4. Update pom.xml
 
-**No change required.** `ZhiFlow-Api` 3.1 still has no LC4j dependency —
+**No change required.** `FengYu-Api` 3.1 still has no LC4j dependency —
 plugin authors do NOT need to add LC4j to their pom. The `ChatBackend` interface
-and its implementations are accessible through the existing `ZhiFlow-Api`
+and its implementations are accessible through the existing `FengYu-Api`
 dependency (interface in API module, implementations in host module, supplied
 at runtime via the fat JAR).
 
@@ -124,4 +124,4 @@ Local mode (in-process GGUF) was renamed from `AiServiceImpl` to
 ## Getting help
 
 If you hit an issue not covered here, open a discussion at
-[github.com/MuskStark/ZhiFlow/discussions](https://github.com/MuskStark/ZhiFlow/discussions).
+[github.com/MuskStark/FengYu/discussions](https://github.com/MuskStark/FengYu/discussions).

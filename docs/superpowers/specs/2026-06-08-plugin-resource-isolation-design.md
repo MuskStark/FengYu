@@ -44,7 +44,7 @@ JAR 内的文件。于是插件用宿主 config 构建 `SqlSessionFactory`（注
 
 ## 4. 组件
 
-### 4.1 新增类 `fan.summer.zhiflow.plugin.ChildFirstResourceClassLoader`
+### 4.1 新增类 `fan.summer.fengyu.plugin.ChildFirstResourceClassLoader`
 
 位于 `SwissKit` 模块，与 `PluginLoader` 同包。`extends URLClassLoader`，只重写资源方法：
 

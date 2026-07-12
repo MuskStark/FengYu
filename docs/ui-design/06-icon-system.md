@@ -1,6 +1,6 @@
 # 06 · Icon System
 
-> **Role:** This is the **single source of truth** for icons in ZhiFlow — the icon library,
+> **Role:** This is the **single source of truth** for icons in FengYu — the icon library,
 > the `MdiIconUtil` API, the size scale, the `IconStyle` accent palette, and the one **non-obvious
 > trap** that catches every first-time author: the `.ic-*` CSS classes are **empty**, so icon color
 > + glow are applied from **Java**, never from CSS. Component Library (doc 03) links here for icon
@@ -10,7 +10,7 @@
 |---|---|
 | **Doc type** | Icon spec + rendering API |
 | **Audience** | Plugin authors, AI code generators, anyone who puts a glyph on screen |
-| **Source of truth** | [`ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java) · [`IconStyle.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java) |
+| **Source of truth** | [`FengYu-Api/src/main/java/fan/summer/api/MdiIconUtil.java`](../../FengYu-Api/src/main/java/fan/summer/api/MdiIconUtil.java) · [`IconStyle.java`](../../FengYu-Api/src/main/java/fan/summer/api/IconStyle.java) |
 | **Related** | [02 JavaFX Implementation](02-javafx-implementation.md) · [03 Component Library](03-component-library.md) · [05 Theme & Color System](05-theme-color-system.md) |
 
 ---
@@ -33,7 +33,7 @@
 
 ## 1. Overview
 
-ZhiFlow renders **all** icons from a single bundled webfont: **Material Design Icons** (MDI) by
+FengYu renders **all** icons from a single bundled webfont: **Material Design Icons** (MDI) by
 Pictogrammers. There are no PNGs, no SVGs, no emoji — every glyph is a Unicode codepoint drawn from
 the `MaterialDesignIcons` font family.
 
@@ -66,14 +66,14 @@ the `MaterialDesignIcons` font family.
 
 | What | Where | Notes |
 |---|---|---|
-| **Codepoint map** | [`ZhiFlow-Api/src/main/resources/fonts/mdi-codemap.properties`](../../ZhiFlow-Api/src/main/resources/fonts/mdi-codemap.properties) | **7 448** name → codepoint entries. Keys are bare MDI names (`file-excel`, **not** `mdi-file-excel`). Loaded lazily on first `MdiIconUtil` use. |
+| **Codepoint map** | [`FengYu-Api/src/main/resources/fonts/mdi-codemap.properties`](../../FengYu-Api/src/main/resources/fonts/mdi-codemap.properties) | **7 448** name → codepoint entries. Keys are bare MDI names (`file-excel`, **not** `mdi-file-excel`). Loaded lazily on first `MdiIconUtil` use. |
 | **Webfont binary** | `/fonts/materialdesignicons-webfont.ttf` (classpath, bundled in the API module) | Font family registered as `MaterialDesignIcons`. Bundled alongside the code map. |
-| **Rendering API** | [`MdiIconUtil.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java) | The **only** entry point plugin code should use. |
+| **Rendering API** | [`MdiIconUtil.java`](../../FengYu-Api/src/main/java/fan/summer/api/MdiIconUtil.java) | The **only** entry point plugin code should use. |
 
 ### The one API you use
 
 ```java
-import fan.summer.zhiflow.api.MdiIconUtil;
+import fan.summer.fengyu.api.MdiIconUtil;
 import javafx.scene.text.Text;
 
 // 1. name WITHOUT the "mdi-" prefix; size in logical pixels
@@ -162,7 +162,7 @@ contract (P1) intact.
 
 ### MdiIconUtil API
 
-All methods are `static` on `fan.summer.zhiflow.api.MdiIconUtil`. The class loads the codemap and webfont
+All methods are `static` on `fan.summer.fengyu.api.MdiIconUtil`. The class loads the codemap and webfont
 lazily and caches them for the process lifetime.
 
 | Signature | Returns | Behavior |
@@ -185,7 +185,7 @@ lazily and caches them for the process lifetime.
 **Fallback behavior** — both `createIcon` and `getCodepoint` use
 `CODEMAP.getOrDefault(name, CODEMAP.get("star"))`. A typo therefore renders *something* (a star)
 silently. Always confirm the name exists in
-[`mdi-codemap.properties`](../../ZhiFlow-Api/src/main/resources/fonts/mdi-codemap.properties)
+[`mdi-codemap.properties`](../../FengYu-Api/src/main/resources/fonts/mdi-codemap.properties)
 before shipping.
 
 ### Size Scale
@@ -193,13 +193,13 @@ before shipping.
 | Size | Token intent | Where it's used | Source |
 |---|---|---|---|
 | **16 px** | inline / status glyph | Sidebar nav icons (`Sidebar` uses `createIcon(mdi, 16, …)`) | code |
-| **18 px** | nav-item icon | `.nav-item-icon { -fx-min-width: 18px; }` | [`shell.css`](../../ZhiFlow/src/main/resources/css/shell.css) |
+| **18 px** | nav-item icon | `.nav-item-icon { -fx-min-width: 18px; }` | [`shell.css`](../../FengYu/src/main/resources/css/shell.css) |
 | **20 px** | small UI control | compact toolbar / chip glyphs | convention |
 | **24 px** | standard / card icon | the default for a standalone icon you render in a plugin view | convention |
 | **32 px** | large inline | empty-state hero glyph | convention |
-| **45 px** | tool-card glyph | `MdiIconUtil.createIcon(plugin.getMdiIcon(), 45)` inside the 48 px wrap | [`ToolCard.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java) |
-| **48 px** | tool-icon-wrap *container* | `.tool-icon-wrap { -fx-pref-width: 48px; -fx-pref-height: 48px; }` | [`shell.css`](../../ZhiFlow/src/main/resources/css/shell.css) |
-| **50 px** | detail-panel hero | `MdiIconUtil.createIcon(p.getMdiIcon(), 50)` | [`DetailPanel.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java) |
+| **45 px** | tool-card glyph | `MdiIconUtil.createIcon(plugin.getMdiIcon(), 45)` inside the 48 px wrap | [`ToolCard.java`](../../FengYu/src/main/java/fan/summer/ui/content/ToolCard.java) |
+| **48 px** | tool-icon-wrap *container* | `.tool-icon-wrap { -fx-pref-width: 48px; -fx-pref-height: 48px; }` | [`shell.css`](../../FengYu/src/main/resources/css/shell.css) |
+| **50 px** | detail-panel hero | `MdiIconUtil.createIcon(p.getMdiIcon(), 50)` | [`DetailPanel.java`](../../FengYu/src/main/java/fan/summer/ui/content/DetailPanel.java) |
 
 ```
 16 ─── inline / status        24 ─── standard card icon
@@ -214,7 +214,7 @@ before shipping.
 
 ### IconStyle Accent Palette
 
-`fan.summer.zhiflow.api.IconStyle` — seven accent styles. Each carries a **CSS class name** and a
+`fan.summer.fengyu.api.IconStyle` — seven accent styles. Each carries a **CSS class name** and a
 **`javafx.scene.paint.Color`**. The CSS class is applied to the icon *wrapper*; the color is
 applied to the `Text` *glyph* from Java. (See [the trap](#the-critical-ic--trap).)
 
@@ -243,7 +243,7 @@ applied to the `Text` *glyph* from Java. (See [the trap](#the-critical-ic--trap)
 ### Built-in Tool Icon Mappings
 
 The 11 builtin tools (registered in
-[`BuiltinToolRegistrar`](../../ZhiFlow/src/main/java/fan/summer/registrar/BuiltinToolRegistrar.java))
+[`BuiltinToolRegistrar`](../../FengYu/src/main/java/fan/summer/registrar/BuiltinToolRegistrar.java))
 map onto `IconStyle` accents as follows. `getMdiIcon()` values are bare names.
 
 | Tool (plugin class) | `getMdiIcon()` | `getIconStyle()` | RGB |
@@ -273,7 +273,7 @@ screen so the grid stays visually balanced — don't pile four more tools onto `
 ### The critical `.ic-*` trap — read this first
 
 The `.ic-blue`, `.ic-purple`, … `.ic-gray` rules in
-[`shell.css`](../../ZhiFlow/src/main/resources/css/shell.css) are **empty**:
+[`shell.css`](../../FengYu/src/main/resources/css/shell.css) are **empty**:
 
 ```css
 /* 图标配色 — 颜色注入到 Text 节点上, glow 由 Java 代码通过 DropShadow 设置 */
@@ -307,16 +307,16 @@ Java via `IconStyle.getColor()` for tool icons.
 
 For icons that should recolor with the theme (the common case for non-tool UI), use the
 `.sk-fill-2` / `.sk-fill-3` **utility styleclasses** from
-[`zhiflow-common.css`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css):
+[`fengyu-common.css`](../../FengYu-Api/src/main/resources/css/fengyu-common.css):
 
 ```css
-/* zhiflow-common.css */
+/* fengyu-common.css */
 .sk-fill-2 { -fx-fill: -sk-text-secondary; }   /* Text/Shape fill (secondary) */
 .sk-fill-3 { -fx-fill: -sk-text-disabled; }    /* Text/Shape fill (disabled)  */
 ```
 
 ```java
-import fan.summer.zhiflow.api.MdiIconUtil;
+import fan.summer.fengyu.api.MdiIconUtil;
 import javafx.scene.text.Text;
 
 // secondary-tone icon that follows dark/light theme automatically
@@ -346,14 +346,14 @@ Prefer `IconStyle.AMBER.getColor()` over a literal when the meaning is "amber ac
 
 ### 4.3 Render a tool-card icon (the canonical pattern)
 
-This is exactly what [`ToolCard.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java)
+This is exactly what [`ToolCard.java`](../../FengYu/src/main/java/fan/summer/ui/content/ToolCard.java)
 does. The plugin supplies the *name* (`getMdiIcon()`) and the *style* (`getIconStyle()`); the host
 does the fill + glow:
 
 ```java
-import fan.summer.zhiflow.api.IconStyle;
-import fan.summer.zhiflow.api.MdiIconUtil;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.fengyu.api.IconStyle;
+import fan.summer.fengyu.api.MdiIconUtil;
+import fan.summer.fengyu.api.SwissKitJPlugin;
 import javafx.scene.effect.DropShadow;
 import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
@@ -413,7 +413,7 @@ String cp = MdiIconUtil.getCodepoint("file-excel");  // "\uDB80\uDE1B"
 
 ```bash
 # confirm a name is in the bundled codemap (7448 entries)
-grep -nE '^file-excel=' ZhiFlow-Api/src/main/resources/fonts/mdi-codemap.properties
+grep -nE '^file-excel=' FengYu-Api/src/main/resources/fonts/mdi-codemap.properties
 # → file-excel=\uDB80\uDE1B
 ```
 
@@ -429,7 +429,7 @@ When generating icon-related code, verify **every** item:
 - [ ] **Name format** — `getMdiIcon()` / `createIcon(name, …)` returns/uses the bare MDI name with
       **no** `mdi-` prefix (`"file-excel"`, not `"mdi-file-excel"`).
 - [ ] **Name exists** — the name is present in
-      [`mdi-codemap.properties`](../../ZhiFlow-Api/src/main/resources/fonts/mdi-codemap.properties);
+      [`mdi-codemap.properties`](../../FengYu-Api/src/main/resources/fonts/mdi-codemap.properties);
       unknown names silently fall back to `star`.
 - [ ] **Size on scale** — the size is one of `16 / 18 / 20 / 24 / 32 / 45 / 50` (see
       [Size Scale](#size-scale)); tool-card glyph = 45, container = 48.
@@ -519,16 +519,16 @@ detail hero is **50 px**, nav icons are **16–18 px**.
 
 | What | Path |
 |---|---|
-| MDI renderer (`createIcon`, `getCodepoint`, `getFont`, `putIcon`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java) |
-| Icon accent styles (`BLUE`…`GRAY`, CSS class, color, `fromCssClass`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java) |
-| Plugin icon contract (`getMdiIcon`, `getIconStyle`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) |
-| Codepoint map (7 448 entries, bare-name keys) | [`ZhiFlow-Api/src/main/resources/fonts/mdi-codemap.properties`](../../ZhiFlow-Api/src/main/resources/fonts/mdi-codemap.properties) |
+| MDI renderer (`createIcon`, `getCodepoint`, `getFont`, `putIcon`) | [`FengYu-Api/src/main/java/fan/summer/api/MdiIconUtil.java`](../../FengYu-Api/src/main/java/fan/summer/api/MdiIconUtil.java) |
+| Icon accent styles (`BLUE`…`GRAY`, CSS class, color, `fromCssClass`) | [`FengYu-Api/src/main/java/fan/summer/api/IconStyle.java`](../../FengYu-Api/src/main/java/fan/summer/api/IconStyle.java) |
+| Plugin icon contract (`getMdiIcon`, `getIconStyle`) | [`FengYu-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`](../../FengYu-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) |
+| Codepoint map (7 448 entries, bare-name keys) | [`FengYu-Api/src/main/resources/fonts/mdi-codemap.properties`](../../FengYu-Api/src/main/resources/fonts/mdi-codemap.properties) |
 | Webfont binary | `/fonts/materialdesignicons-webfont.ttf` (classpath, API module) |
-| Empty `.ic-*` rules + `.tool-icon-wrap` (48px) + `.nav-item-icon` (18px) | [`ZhiFlow/src/main/resources/css/shell.css`](../../ZhiFlow/src/main/resources/css/shell.css) |
-| `.sk-fill-2` / `.sk-fill-3` utility classes | [`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css) |
-| Canonical tool-icon renderer (45px glyph + glow) | [`ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java) |
-| Detail-panel hero renderer (50px glyph + glow) | [`ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java) |
-| 11 builtin tool icon mappings | [`ZhiFlow/src/main/java/fan/summer/registrar/BuiltinToolRegistrar.java`](../../ZhiFlow/src/main/java/fan/summer/registrar/BuiltinToolRegistrar.java) |
+| Empty `.ic-*` rules + `.tool-icon-wrap` (48px) + `.nav-item-icon` (18px) | [`FengYu/src/main/resources/css/shell.css`](../../FengYu/src/main/resources/css/shell.css) |
+| `.sk-fill-2` / `.sk-fill-3` utility classes | [`FengYu-Api/src/main/resources/css/fengyu-common.css`](../../FengYu-Api/src/main/resources/css/fengyu-common.css) |
+| Canonical tool-icon renderer (45px glyph + glow) | [`FengYu/src/main/java/fan/summer/ui/content/ToolCard.java`](../../FengYu/src/main/java/fan/summer/ui/content/ToolCard.java) |
+| Detail-panel hero renderer (50px glyph + glow) | [`FengYu/src/main/java/fan/summer/ui/content/DetailPanel.java`](../../FengYu/src/main/java/fan/summer/ui/content/DetailPanel.java) |
+| 11 builtin tool icon mappings | [`FengYu/src/main/java/fan/summer/registrar/BuiltinToolRegistrar.java`](../../FengYu/src/main/java/fan/summer/registrar/BuiltinToolRegistrar.java) |
 
 ### Design baseline
 

@@ -3,8 +3,8 @@ import { api } from '@/api/client'
 
 const routes: RouteRecordRaw[] = [
   { path: '/setup', name: 'setup', component: () => import('@/views/SetupWizard.vue') },
-  { path: '/', name: 'tools', component: () => import('@/views/ToolGrid.vue') },
-  { path: '/ai', name: 'ai', component: () => import('@/views/AiChat.vue') },
+  { path: '/', name: 'ai', component: () => import('@/views/AiChat.vue') },
+  { path: '/tools', name: 'tools', component: () => import('@/views/ToolGrid.vue') },
   { path: '/agent', name: 'agent', component: () => import('@/views/AiAgent.vue') },
   { path: '/settings', name: 'settings', component: () => import('@/views/Settings.vue') },
   {

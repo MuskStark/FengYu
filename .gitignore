@@ -35,12 +35,12 @@ build/
 
 ### Mac OS ###
 .DS_Store
-/ZhiFlow-main/
+/FengYu-main/
 /AGENTS.md
 /.swisskit/
 **/.swisskit/
-/.zhiflow/
-**/.zhiflow/
+/.fengyu/
+**/.fengyu/
 
 ### MCP ###
 .mcp.json

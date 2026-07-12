@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logging configuration for the AI worker child process
+  (fan.summer.fengyu.ai.nativejni.NativeWorkerMain).
+
+  CRITICAL: the worker's stdout is the line-delimited JSON IPC channel back to
+  the host (NativeWorkerClient). Any non-JSON line there corrupts the protocol
+  ("Expected BEGIN_OBJECT but was STRING"). Therefore this config MUST NOT
+  attach a ConsoleAppender to System.out — the host's default logback.xml does,
+  and inheriting it made every worker log.info(...) land on the pipe.
+
+  Logs still go to the shared rolling file so worker output (model load, native
+  diagnostics echoed via the host's [worker-stderr] drain) stays visible in
+  .fengyu/logs/fengyu.log.
+-->
+<configuration>
+
+    <property name="LOG_DIR" value="${fengyu.log.dir:-.fengyu/logs}"/>
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/fengyu.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/fengyu.%d{yyyy-MM-dd}.log.gz</fileNamePattern>
+            <maxHistory>7</maxHistory>
+            <totalSizeCap>200MB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger - %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <logger name="fan.summer" level="DEBUG"/>
+
+    <root level="INFO">
+        <appender-ref ref="FILE"/>
+    </root>
+</configuration>

@@ -228,139 +228,122 @@ const statusLabel = computed(() => {
       return ''
   }
 })
+
+// Codex chip class per run status / per step status.
+const statusChipClass = computed(() => {
+  switch (status.value) {
+    case 'planning':
+    case 'running':
+      return 'cx-chip--primary'
+    case 'awaiting-plan':
+    case 'awaiting-step':
+      return 'cx-chip--warn'
+    case 'complete':
+      return 'cx-chip--success'
+    case 'error':
+      return 'cx-chip--error'
+    default:
+      return ''
+  }
+})
+function stepChipClass(s: string): string {
+  if (s === 'running') return 'cx-chip--primary'
+  if (s === 'complete') return 'cx-chip--success'
+  return ''
+}
 </script>
 
 <template>
-  <v-container fluid class="d-flex flex-column h-100">
-    <!-- Header -->
-    <div class="d-flex align-center justify-space-between mb-2">
-      <h1 class="text-h5">{{ t('agent.title') }}</h1>
-    </div>
+  <div style="flex: 1 1 auto; min-height: 0; overflow-y: auto">
+    <div class="cx-page">
+      <h1 class="cx-page-title">{{ t('agent.title') }}</h1>
 
-    <!-- Banners -->
-    <v-alert
-      v-if="errorMsg"
-      type="error"
-      variant="tonal"
-      closable
-      class="mb-2"
-    >{{ errorMsg }}</v-alert>
-    <v-alert
-      v-else-if="summary && status === 'complete'"
-      type="success"
-      variant="tonal"
-      closable
-      class="mb-2"
-    >{{ summary }}</v-alert>
+      <!-- Banners -->
+      <div v-if="errorMsg" class="cx-alert cx-alert--error" style="margin-bottom: 12px">
+        <span class="cx-alert__body">{{ errorMsg }}</span>
+        <button class="cx-iconbtn cx-iconbtn--sm" @click="errorMsg = null"><i class="mdi mdi-close" /></button>
+      </div>
+      <div v-else-if="summary && status === 'complete'" class="cx-alert cx-alert--success" style="margin-bottom: 12px">
+        <span class="cx-alert__body">{{ summary }}</span>
+      </div>
 
-    <!-- Goal composer -->
-    <div class="d-flex ga-2 align-center mb-2">
-      <v-textarea
-        v-model="goal"
-        class="flex-grow-1"
-        rows="3"
-        auto-grow
-        variant="outlined"
-        hide-details
-        :placeholder="t('agent.goalPlaceholder')"
-        :disabled="busy"
-      />
-      <v-btn
-        v-if="busy"
-        variant="outlined"
-        prepend-icon="mdi-stop"
-        @click="cancel"
-      >{{ t('agent.cancel') }}</v-btn>
-      <v-btn
-        v-else
-        color="primary"
-        prepend-icon="mdi-play"
-        :disabled="!goal.trim()"
-        @click="run"
-      >{{ t('agent.run') }}</v-btn>
-    </div>
+      <!-- Goal composer -->
+      <div class="cx-composer" style="display: flex; align-items: flex-end; gap: 8px; margin-bottom: 12px">
+        <textarea
+          v-model="goal"
+          rows="2"
+          class="cx-grow"
+          style="padding: 8px 0; min-height: 52px"
+          :placeholder="t('agent.goalPlaceholder')"
+          :disabled="busy"
+        />
+        <button
+          v-if="busy"
+          class="cx-iconbtn cx-iconbtn--primary cx-iconbtn--round"
+          :title="t('agent.cancel')"
+          @click="cancel"
+        ><i class="mdi mdi-stop" /></button>
+        <button
+          v-else
+          class="cx-iconbtn cx-iconbtn--primary cx-iconbtn--round"
+          :disabled="!goal.trim()"
+          :title="t('agent.run')"
+          @click="run"
+        ><i class="mdi mdi-play" /></button>
+      </div>
 
-    <!-- Status line -->
-    <div v-if="statusLabel" class="d-flex align-center ga-2 mb-2">
-      <v-progress-circular
-        v-if="busy"
-        indeterminate
-        size="16"
-        width="2"
-        color="primary"
-      />
-      <v-chip
-        size="x-small"
-        :color="{ planning: 'primary', running: 'primary', 'awaiting-plan': 'warning', 'awaiting-step': 'warning', complete: 'success', error: 'error', cancelled: 'default', idle: 'default' }[status]"
-      >{{ statusLabel }}</v-chip>
-    </div>
+      <!-- Status line -->
+      <div v-if="statusLabel" class="cx-row" style="margin-bottom: 12px">
+        <span v-if="busy" class="cx-spin" />
+        <span class="cx-chip" :class="statusChipClass">{{ statusLabel }}</span>
+      </div>
 
-    <!-- Available tools hint -->
-    <v-expansion-panels v-if="tools.length" variant="accordion" class="mb-2">
-      <v-expansion-panel>
-        <v-expansion-panel-title>
-          {{ t('agent.tools') }} ({{ tools.length }})
-        </v-expansion-panel-title>
-        <v-expansion-panel-text>
-          <v-list density="compact" class="bg-transparent">
-            <v-list-item v-for="tool in tools" :key="tool.name">
-              <v-list-item-title><code>{{ tool.name }}</code></v-list-item-title>
-              <v-list-item-subtitle v-if="tool.description">{{ tool.description }}</v-list-item-subtitle>
-            </v-list-item>
-          </v-list>
-        </v-expansion-panel-text>
-      </v-expansion-panel>
-    </v-expansion-panels>
+      <!-- Available tools -->
+      <details v-if="tools.length" class="cx-details" style="margin-bottom: 12px">
+        <summary>{{ t('agent.tools') }} ({{ tools.length }})</summary>
+        <div class="cx-details__body">
+          <div v-for="tool in tools" :key="tool.name" style="padding: 6px 0">
+            <code>{{ tool.name }}</code>
+            <div v-if="tool.description" class="cx-muted" style="font-size: 12px">{{ tool.description }}</div>
+          </div>
+        </div>
+      </details>
 
-    <!-- Live planner token stream (before plan_ready) -->
-    <v-card v-if="planTokens && !plan" variant="outlined" rounded="lg" class="mb-2">
-      <v-card-text>
-        <pre class="text-body-2" style="white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; max-height: 240px; overflow-y: auto;">{{ planTokens }}</pre>
-      </v-card-text>
-    </v-card>
+      <!-- Live planner token stream -->
+      <div v-if="planTokens && !plan" class="cx-card" style="margin-bottom: 12px">
+        <pre class="mono" style="white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; max-height: 240px; overflow-y: auto; font-size: 12px">{{ planTokens }}</pre>
+      </div>
 
-    <!-- Plan display -->
-    <v-card v-if="plan" variant="tonal" rounded="lg" class="mb-2">
-      <v-card-text>
+      <!-- Plan display -->
+      <div v-if="plan" class="cx-card" style="margin-bottom: 12px">
+        <div v-if="plan.reasoning" class="cx-muted" style="margin-bottom: 14px; font-size: 13px; overflow-wrap: anywhere">
+          {{ plan.reasoning }}
+        </div>
         <div
-          v-if="plan.reasoning"
-          class="text-body-2 text-medium-emphasis mb-3"
-          style="overflow-wrap: anywhere;"
-        >{{ plan.reasoning }}</div>
-        <v-list density="compact" class="bg-transparent">
-          <v-list-item
-            v-for="s in stepList.length ? stepList : plan.steps"
-            :key="s.index"
-          >
-            <template #prepend>
-              <span class="text-caption text-medium-emphasis" style="min-width: 56px;">
-                {{ t('agent.step', { n: s.index + 1 }) }}
-              </span>
-            </template>
-            <v-list-item-title>
-              <span v-if="s.toolName" class="font-weight-medium mr-2">{{ s.toolName }}</span>
-              <span>{{ s.description }}</span>
-            </v-list-item-title>
-            <template #append>
-              <v-chip
-                size="x-small"
-                :color="{ pending: 'default', running: 'primary', complete: 'success' }[s.status] ?? 'default'"
-              >{{ s.status }}</v-chip>
-            </template>
-          </v-list-item>
-        </v-list>
-      </v-card-text>
-    </v-card>
+          v-for="s in stepList.length ? stepList : plan.steps"
+          :key="s.index"
+          class="cx-row"
+          style="align-items: flex-start; padding: 7px 0; border-top: 1px solid rgb(var(--v-theme-outline-variant))"
+        >
+          <span class="cx-muted" style="min-width: 56px; font-size: 12px">{{ t('agent.step', { n: s.index + 1 }) }}</span>
+          <div class="cx-grow">
+            <span v-if="s.toolName" style="font-weight: 600; margin-right: 8px">{{ s.toolName }}</span>
+            <span>{{ s.description }}</span>
+          </div>
+          <span class="cx-chip" :class="stepChipClass(s.status)">{{ s.status }}</span>
+        </div>
+      </div>
 
-    <!-- Approval controls -->
-    <div v-if="status === 'awaiting-plan' || status === 'awaiting-step'" class="d-flex ga-2 mb-2">
-      <v-btn color="primary" @click="approve">{{ t('agent.approve') }}</v-btn>
-      <v-btn variant="outlined" @click="cancel">{{ t('agent.cancel') }}</v-btn>
-    </div>
+      <!-- Approval controls -->
+      <div v-if="status === 'awaiting-plan' || status === 'awaiting-step'" class="cx-row" style="margin-bottom: 12px">
+        <button class="cx-btn cx-btn--primary" @click="approve">{{ t('agent.approve') }}</button>
+        <button class="cx-btn cx-btn--outline" @click="cancel">{{ t('agent.cancel') }}</button>
+      </div>
 
-    <!-- Empty hint -->
-    <div v-if="status === 'idle' && !plan" class="text-medium-emphasis text-center mt-6">
-      {{ t('agent.empty') }}
+      <!-- Empty hint -->
+      <div v-if="status === 'idle' && !plan" class="cx-muted" style="text-align: center; margin-top: 24px">
+        {{ t('agent.empty') }}
+      </div>
     </div>
-  </v-container>
+  </div>
 </template>

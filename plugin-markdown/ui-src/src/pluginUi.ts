@@ -1,7 +1,7 @@
 import type { Plugin } from 'vue';
 
 /**
- * Micro-frontend contract shared with the ZhiFlow host shell.
+ * Micro-frontend contract shared with the FengYu host shell.
  *
  * The built bundle's default export is `{ mount(el, ctx) => unmount }`.
  * `ctx` is supplied by the host — every field except `api` is optional, so

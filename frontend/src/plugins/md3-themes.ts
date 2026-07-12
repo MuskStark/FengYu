@@ -1,41 +1,44 @@
 import type { ThemeDefinition } from 'vuetify'
 
 /**
- * Google default Material Design 3 baseline palette (purple-toned).
- * Source: M3 baseline (the set Material Theme Builder emits for a purple
- * seed). These are the single source of truth for color in the web
- * frontend (the legacy hand-written token system has been retired).
+ * Codex-desktop monochrome palette.
+ * The old Google MD3 purple baseline was retired for a flat, near-neutral
+ * look modeled on the Codex desktop app: near-black canvas, layered dark
+ * greys, off-white text, hairline borders, and a light/high-contrast
+ * "primary" that renders send/confirm buttons as Codex's inverted chips.
+ * These remain the single source of truth for color in the web frontend.
  */
 
 export const md3Light: ThemeDefinition = {
   dark: false,
   colors: {
-    background: '#FEF7FF',
-    surface: '#FEF7FF',
-    'surface-variant': '#E7E0EC',
-    'on-surface': '#1D1B20',
-    'surface-bright': '#FEF7FF',
-    'surface-container': '#F3EDF7',
-    'surface-container-high': '#ECE6F0',
-    'surface-container-highest': '#E6E0E9',
-    primary: '#6750A4',
-    'on-primary': '#FFFFFF',
-    'primary-container': '#EADDFF',
-    'on-primary-container': '#21005D',
-    secondary: '#625B71',
-    'on-secondary': '#FFFFFF',
-    'secondary-container': '#E8DEF8',
-    tertiary: '#7D5260',
-    'on-tertiary': '#FFFFFF',
-    'tertiary-container': '#FFD8E4',
-    error: '#B3261E',
-    'on-error': '#FFFFFF',
-    'error-container': '#F9DEDC',
-    outline: '#79747E',
-    'outline-variant': '#CAC4D0',
+    background: '#ffffff',
+    surface: '#ffffff',
+    'surface-variant': '#f0f0f0',
+    'on-surface': '#0d0d0d',
+    'surface-bright': '#ffffff',
+    'surface-container': '#f7f7f7',
+    'surface-container-high': '#f0f0f0',
+    'surface-container-highest': '#e9e9e9',
+    // Inverted primary — dark button / light text, Codex light-mode style.
+    primary: '#0d0d0d',
+    'on-primary': '#ffffff',
+    'primary-container': '#ececec',
+    'on-primary-container': '#0d0d0d',
+    secondary: '#5a5a5a',
+    'on-secondary': '#ffffff',
+    'secondary-container': '#ececec',
+    tertiary: '#3d6b5a',
+    'on-tertiary': '#ffffff',
+    'tertiary-container': '#d6ece3',
+    error: '#c0392b',
+    'on-error': '#ffffff',
+    'error-container': '#fbe3e0',
+    outline: '#d5d5d5',
+    'outline-variant': '#e7e7e7',
   },
   variables: {
-    'border-color': '#79747E',
+    'border-color': '#e5e5e5',
     'border-opacity': 1,
   },
 }
@@ -43,32 +46,33 @@ export const md3Light: ThemeDefinition = {
 export const md3Dark: ThemeDefinition = {
   dark: true,
   colors: {
-    background: '#141218',
-    surface: '#141218',
-    'surface-variant': '#49454F',
-    'on-surface': '#E6E0E9',
-    'surface-bright': '#3B383E',
-    'surface-container': '#211F26',
-    'surface-container-high': '#2B2930',
-    'surface-container-highest': '#36343B',
-    primary: '#D0BCFF',
-    'on-primary': '#381E72',
-    'primary-container': '#4F378B',
-    'on-primary-container': '#EADDFF',
-    secondary: '#CCC2DC',
-    'on-secondary': '#332D41',
-    'secondary-container': '#4A4458',
-    tertiary: '#EFB8C8',
-    'on-tertiary': '#492532',
-    'tertiary-container': '#633B48',
-    error: '#F2B8B5',
-    'on-error': '#601410',
-    'error-container': '#8C1D18',
-    outline: '#938F99',
-    'outline-variant': '#49454F',
+    background: '#0d0d0d',
+    surface: '#0d0d0d',
+    'surface-variant': '#1f1f1f',
+    'on-surface': '#ededed',
+    'surface-bright': '#2a2a2a',
+    'surface-container': '#161616',
+    'surface-container-high': '#1c1c1c',
+    'surface-container-highest': '#232323',
+    // Light "primary" — near-white button / dark text, Codex dark-mode style.
+    primary: '#ededed',
+    'on-primary': '#0d0d0d',
+    'primary-container': '#2a2a2a',
+    'on-primary-container': '#ededed',
+    secondary: '#a0a0a0',
+    'on-secondary': '#0d0d0d',
+    'secondary-container': '#232323',
+    tertiary: '#8fd6bd',
+    'on-tertiary': '#0d0d0d',
+    'tertiary-container': '#1e332b',
+    error: '#f2827a',
+    'on-error': '#3b0f0b',
+    'error-container': '#3b1512',
+    outline: '#333333',
+    'outline-variant': '#262626',
   },
   variables: {
-    'border-color': '#938F99',
+    'border-color': '#2a2a2a',
     'border-opacity': 1,
   },
 }

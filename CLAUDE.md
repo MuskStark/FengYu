@@ -6,25 +6,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > process is a loopback Spring Boot web server (`HeadlessLauncher`); the UI is a Vue 3.5 + TS
 > SPA (`frontend/`), served in the browser or wrapped by a Tauri 2.0 desktop shell (`desktop/`).
 > Much of the JavaFX-era detail below (theming CSS, layout pitfalls, `StepWizard`, `createView()`)
-> is **historical** — retained for the still-JavaFX `ZhiFlow-Api` preview classes but no longer
+> is **historical** — retained for the still-JavaFX `FengYu-Api` preview classes but no longer
 > describes the running app. See **4.0.0 Headless Architecture** near the top.
 
 ## 4.0.0 Headless Architecture (Phase 1)
 
-The reactor is a **parent POM** (`pom.xml`) with modules `ZhiFlow-Api`, `plugin-markdown`,
-`ZhiFlow` (each has `<parent>`; version via `${revision}`). Plus non-Maven top-level dirs:
+The reactor is a **parent POM** (`pom.xml`) with modules `FengYu-Api`, `plugin-markdown`,
+`FengYu` (each has `<parent>`; version via `${revision}`). Plus non-Maven top-level dirs:
 `frontend/` (Vue) and `desktop/` (Tauri).
 
-- **Backend** — `fan.summer.zhiflow.HeadlessLauncher` boots `AiSpringContext.startWeb(port)`
+- **Backend** — `fan.summer.fengyu.HeadlessLauncher` boots `AiSpringContext.startWeb(port)`
   (embedded Tomcat, `127.0.0.1` only). CLI: `--port=<n>` (defaults to `24056`; `0` = free port,
-  prints `ZHIFLOW_PORT=<n>` to stdout for the sidecar; falls back to a free port if the fixed one
-  is taken), `--token=<t>` (per-launch auth, sent as `X-ZhiFlow-Token`; the SSE stream accepts
-  `?token=`). Controllers in `fan.summer.zhiflow.web.*`; `PluginRegistryService` collects
-  `ZhiFlowPluginV2` beans and registers their `aiTools()`.
+  prints `FENGYU_PORT=<n>` to stdout for the sidecar; falls back to a free port if the fixed one
+  is taken), `--token=<t>` (per-launch auth, sent as `X-FengYu-Token`; the SSE stream accepts
+  `?token=`). Controllers in `fan.summer.fengyu.web.*`; `PluginRegistryService` collects
+  `FengYuPluginV2` beans and registers their `aiTools()`.
 - **Endpoints** — `/api/health`, `/api/plugins`, `/api/plugins/{id}/invoke`, `/plugin-ui/{id}/**`,
   `/api/settings` (GET/PUT), `/api/ai/chat` (POST → `{streamId}`), `/api/ai/stream` (SSE: events
   `token`/`thinking`/`tool`/`done`/`error`). AI chat is a permanent core built-in, never a plugin.
-- **Plugin v2** — `ZhiFlowPluginV2` (in `ZhiFlow-Api`): `descriptor()` + `invoke(action, args)` +
+- **Plugin v2** — `FengYuPluginV2` (in `FengYu-Api`): `descriptor()` + `invoke(action, args)` +
   `aiTools()`. UI ships as an ESM micro-frontend at `PluginDescriptor.uiEntry`, served from the
   plugin module's `src/main/resources/ui/{id}/`.
 - **Frontend** — `frontend/` Vue 3.5.39 + TypeScript + Pinia + vue-router 4 + vue-i18n 10, UI via
@@ -34,7 +34,7 @@ The reactor is a **parent POM** (`pom.xml`) with modules `ZhiFlow-Api`, `plugin-
   shared with plugin bundles via an import map. MF host dynamically `import()`s `uiEntry` and calls
   the bundle's `default.mount(el, ctx)`.
 - **Desktop** — `desktop/` Tauri 2.0; `src-tauri/src/main.rs` spawns the jar sidecar, waits on
-  health, injects `window.__ZHIFLOW_TOKEN__`/`__ZHIFLOW_API_BASE__`. Needs Rust + `tauri-cli`.
+  health, injects `window.__FENGYU_TOKEN__`/`__FENGYU_API_BASE__`. Needs Rust + `tauri-cli`.
 
 ## Build & Run
 
@@ -43,15 +43,15 @@ The reactor is a **parent POM** (`pom.xml`) with modules `ZhiFlow-Api`, `plugin-
 
 ```bash
 # Reactor order: API → plugin-markdown → app (API must be installed first)
-mvn -f ZhiFlow-Api/pom.xml install -DskipTests
+mvn -f FengYu-Api/pom.xml install -DskipTests
 mvn -f plugin-markdown/pom.xml install -DskipTests
-mvn -f ZhiFlow/pom.xml clean package -DskipTests
+mvn -f FengYu/pom.xml clean package -DskipTests
 
 # Rebuild a plugin's micro-frontend bundle (emits into resources/ui/markdown/)
 cd plugin-markdown/ui-src && npm install && npm run build
 
 # Run the headless backend (loopback web server, no window; binds 24056 by default)
-java -jar ZhiFlow/target/ZhiFlow-4.0.0-SNAPSHOT.jar --token=<t>
+java -jar FengYu/target/FengYu-4.0.0-SNAPSHOT.jar --token=<t>
 
 # Run the Vue frontend (dev; proxies /api and /plugin-ui to localhost:24056)
 cd frontend && npm install && npm run dev
@@ -67,21 +67,21 @@ JRE) is a later phase (Phase F-prod).
 
 | Module / dir | Purpose |
 |--------|---------|
-| `ZhiFlow-Api` | Plugin v2 contract (`ZhiFlowPluginV2`, `PluginDescriptor`), AI contract (`AiService`/`AiTool`), `IconStyle`/`ToolCategory`. (Still contains JavaFX-era v1 `ZhiFlowPlugin` + preview/theme/component classes, unused by the headless runtime.) |
+| `FengYu-Api` | Plugin v2 contract (`FengYuPluginV2`, `PluginDescriptor`), AI contract (`AiService`/`AiTool`), `IconStyle`/`ToolCategory`. (Still contains JavaFX-era v1 `FengYuPlugin` + preview/theme/component classes, unused by the headless runtime.) |
 | `plugin-markdown` | First official v2 plugin: backend `@Component` (commonmark render) + Vue micro-frontend (`ui-src/` → `resources/ui/markdown/index.js`) |
-| `ZhiFlow` | Headless Spring Boot backend — REST/SSE controllers, `HeadlessLauncher`, `PluginRegistryService`, AI backends, H2/MyBatis |
+| `FengYu` | Headless Spring Boot backend — REST/SSE controllers, `HeadlessLauncher`, `PluginRegistryService`, AI backends, H2/MyBatis |
 | `frontend/` | Vue 3.5 + TS SPA (browser + Tauri) |
 | `desktop/` | Tauri 2.0 desktop shell (Java sidecar) |
 
-Official plugins live in a separate repository: [MuskStark/ZhiFlow-Plugin](https://github.com/MuskStark/ZhiFlow-Plugin). They are built independently and dropped into `.zhiflow/plugin/` as JARs at runtime. All plugins declare `ZhiFlow-Api` as `provided` scope. The main app provides it at runtime via the fat JAR.
+Official plugins live in a separate repository: [MuskStark/FengYu-Plugin](https://github.com/MuskStark/FengYu-Plugin). They are built independently and dropped into `.fengyu/plugin/` as JARs at runtime. All plugins declare `FengYu-Api` as `provided` scope. The main app provides it at runtime via the fat JAR.
 
 ## Architecture
 
-**Entry point**: `fan.summer.Launcher` (fat-JAR manifest) → `fan.summer.app.ZhiFlowApp` (JavaFX `Application`).
+**Entry point**: `fan.summer.Launcher` (fat-JAR manifest) → `fan.summer.app.FengYuApp` (JavaFX `Application`).
 
-**Startup sequence** (in `ZhiFlowApp.start()`):
+**Startup sequence** (in `FengYuApp.start()`):
 1. Install the plugin logger binder; init H2/MyBatis; apply the saved i18n language and theme (dark default, via `ThemeService.set(...)`; the main scene is later registered with `ThemeService.registerScene(scene)`)
-2. Resolve the plugins directory (`<user.dir>/.zhiflow/plugin/`)
+2. Resolve the plugins directory (`<user.dir>/.fengyu/plugin/`)
 3. Create `PluginLoader` + `PluginRegistry`
 4. Create `FavoriteService` (loads bookmarked plugin IDs from DB)
 5. Register built-in tools via `BuiltinToolRegistrar` (bypasses JAR loading, routes through `PluginRegistry.addPlugins`, which auto-registers each plugin's `aiTools()`)
@@ -99,15 +99,15 @@ Official plugins live in a separate repository: [MuskStark/ZhiFlow-Plugin](https
 
 **Navigation flow**: `ToolCard` click → `DetailPanel.show()` → Launch button → `MainWindow.wireEvents` callback → `registry.activate(plugin)` + `contentArea.showPage(plugin.createView(), title)`. The back bar (shown by `ContentArea`) calls `registry.deactivate()` on return.
 
-**Theming**: IDEA 2025 New UI look — flat, token-based, with switchable **dark / light** themes (dark default; persisted in the `theme` setting). `fan.summer.api.theme.ThemeService` (API module, no DB dependency) holds the active `Theme.DARK`/`Theme.LIGHT`, stamps a `theme-dark`/`theme-light` class on every registered scene root, and fires `onChange` listeners. Looked-up color tokens (`-sk-bg`, `-sk-bg-elevated`, `-sk-text`, `-sk-accent`, `-sk-border`, …) are declared per theme in `zhiflow-common.css`; swapping the root class re-resolves every token with **no stylesheet reload**. The host loads/persists the choice; `Themes.applyTo(scene)` delegates to `ThemeService.registerScene(scene)`.
+**Theming**: IDEA 2025 New UI look — flat, token-based, with switchable **dark / light** themes (dark default; persisted in the `theme` setting). `fan.summer.api.theme.ThemeService` (API module, no DB dependency) holds the active `Theme.DARK`/`Theme.LIGHT`, stamps a `theme-dark`/`theme-light` class on every registered scene root, and fires `onChange` listeners. Looked-up color tokens (`-sk-bg`, `-sk-bg-elevated`, `-sk-text`, `-sk-accent`, `-sk-border`, …) are declared per theme in `fengyu-common.css`; swapping the root class re-resolves every token with **no stylesheet reload**. The host loads/persists the choice; `Themes.applyTo(scene)` delegates to `ThemeService.registerScene(scene)`.
 
 Three-layer CSS structure:
 
 | File | Module | Scope |
 |---|---|---|
-| `css/zhiflow-common.css` | `ZhiFlow-Api` | `-sk-*` token definitions (under `.theme-dark` / `.theme-light`), scrollbars, progress bar, `.sk-*` utility classes (dialog/field/tab-pane/combo/table/checkbox/btn-primary/btn-secondary/notif-*), `.section-title`/`.section-header`. Loaded into the main Scene + available to any third-party plugin. |
-| `css/shell.css` | `ZhiFlow` | App-shell only — `.app-root`, `.sidebar` (+ `.collapsed`), `.search-bar`, `.tool-card`, `.detail-panel`, `.statusbar`, `.store-*`. Fully token-based. Loaded into the main Scene by `ZhiFlowApp`. |
-| `css/builtin.css` | `ZhiFlow` | Reserved for built-in tool styling. Currently empty placeholder. |
+| `css/fengyu-common.css` | `FengYu-Api` | `-sk-*` token definitions (under `.theme-dark` / `.theme-light`), scrollbars, progress bar, `.sk-*` utility classes (dialog/field/tab-pane/combo/table/checkbox/btn-primary/btn-secondary/notif-*), `.section-title`/`.section-header`. Loaded into the main Scene + available to any third-party plugin. |
+| `css/shell.css` | `FengYu` | App-shell only — `.app-root`, `.sidebar` (+ `.collapsed`), `.search-bar`, `.tool-card`, `.detail-panel`, `.statusbar`, `.store-*`. Fully token-based. Loaded into the main Scene by `FengYuApp`. |
+| `css/builtin.css` | `FengYu` | Reserved for built-in tool styling. Currently empty placeholder. |
 
 Plugins embedded in the main Scene (the normal `createView()` flow) automatically inherit all three stylesheets via scene graph propagation — no action needed. Plugins that open their own `Stage`/`Scene` should call `fan.summer.api.theme.Themes.applyTo(scene)` to load the common stylesheet and stamp the active theme class on the root.
 
@@ -115,7 +115,7 @@ Plugin icon background colors are CSS classes: `ic-blue / ic-purple / ic-teal / 
 
 > **v3.2.0 rename (BREAKING for plugin authors):** the old `.glass-*` utility classes were renamed to `.sk-*`. See the rename table in `CHANGELOG.md` `[3.2.0]`. External plugins still referencing `.glass-*` must update.
 
-**Database**: H2 file at `.zhiflow/zhiflow.db` relative to the runtime working directory. Schema initialized from `init.sql`. Accessed via MyBatis; mapper XMLs are in `src/main/resources/mapper/`.
+**Database**: H2 file at `.fengyu/fengyu.db` relative to the runtime working directory. Schema initialized from `init.sql`. Accessed via MyBatis; mapper XMLs are in `src/main/resources/mapper/`.
 
 **i18n**: `src/main/resources/i18n/messages.properties` (English default), `messages_zh.properties` (Chinese).
 
@@ -123,13 +123,13 @@ Plugin icon background colors are CSS classes: `ic-blue / ic-purple / ic-teal / 
 
 **AI Markdown**: AI responses render via `WebView` through `MarkdownRenderer.render(md, Theme)` — theme-aware (dark `#1e1e2e` / light `#ffffff` CSS palettes). `AiChatPlugin` derives the WebView background from the active theme and re-renders the whole conversation live when the theme flips. Auto-resize height to content.
 
-**AI tools**: Plugins self-declare AI tools via `ZhiFlowPlugin.aiTools()` (v3.1.0+); the `PluginRegistry` auto-registers/unregisters them with `AiServiceProvider` on plugin add/remove (including hot-reload). Use `ToolExecutor` + `ToolSchemaBuilder` for execution and schema generation. See "### Plugin AI tools (v3.1.0+)" below for the full pattern.
+**AI tools**: Plugins self-declare AI tools via `FengYuPlugin.aiTools()` (v3.1.0+); the `PluginRegistry` auto-registers/unregisters them with `AiServiceProvider` on plugin add/remove (including hot-reload). Use `ToolExecutor` + `ToolSchemaBuilder` for execution and schema generation. See "### Plugin AI tools (v3.1.0+)" below for the full pattern.
 
 **Local tool-calling model**: Qwen3-4B (Hermes `<tool_call>` format, displayed `<think>` reasoning). Detected by filename containing `qwen3`; routed via `LocalChatBackend.chatQwen3Native` + `ThinkingStreamSegmenter` (splits the token stream into THINK/CONTENT regions, suppresses `<tool_call>`) + `Qwen3Adapter` (Hermes system-prompt directive + `/no_think` toggle). THINK segments stream to `AiStreamCallback.onThinking` and render as collapsed cards (`MarkdownRenderer.renderCollapsible`); thinking is stripped (`ThinkingStreamSegmenter.stripThink`) before history/answer so it never enters the next prompt. Tool-call parsing for Qwen2.5 / Qwen3 / generic all live in `ToolCallParser`. FunctionGemma support was removed in v3.1.0.
 
 ## Reusable UI Component: StepWizard
 
-`fan.summer.api.component.StepWizard` (in `ZhiFlow-Api`) is a ready-made multi-step wizard container for use inside any plugin's `createView()`.
+`fan.summer.api.component.StepWizard` (in `FengYu-Api`) is a ready-made multi-step wizard container for use inside any plugin's `createView()`.
 
 ```java
 StepWizard wizard = new StepWizard();
@@ -152,10 +152,10 @@ The wizard renders step dots with done/active/idle states, animated slide transi
 
 ## Plugin Development
 
-**Interface**: `fan.summer.api.ZhiFlowPlugin` (in `ZhiFlow-Api`)
+**Interface**: `fan.summer.api.FengYuPlugin` (in `FengYu-Api`)
 
 ```java
-public interface ZhiFlowPlugin {
+public interface FengYuPlugin {
     String getId();                       // reverse-domain ID, e.g. "com.example.my-tool"
     String getName();
     String getDescription();
@@ -180,28 +180,28 @@ public interface ZhiFlowPlugin {
 
 **PluginHost (v3.2.0+)**: injected via `init(PluginHost)` exactly once (FX thread, before the
 plugin is visible in the registry and before `aiTools()` registration). Provides `settings()`
-(namespaced KV, H2-backed; preview mode uses `~/.zhiflow/preview-settings/`), `tasks()`
+(namespaced KV, H2-backed; preview mode uses `~/.fengyu/preview-settings/`), `tasks()`
 (TCCL-safe background tasks — running tasks automatically keep the plugin backgrounded, merged
 with `hasRunningTasks()` via `PluginRegistry.isBusy`), `i18n()` (`registerBundle` without a
 ClassLoader parameter), `theme()`, `notifications()`, `logger()`. Old static entry points remain
 valid. See `docs/plugins/plugin-host.md`.
 
 **External plugins** (JAR-based):
-1. Implement `ZhiFlowPlugin`
-2. Declare in `META-INF/services/fan.summer.api.ZhiFlowPlugin`
-3. Drop JAR into `.zhiflow/plugin/` directory; hot-reload is supported
+1. Implement `FengYuPlugin`
+2. Declare in `META-INF/services/fan.summer.api.FengYuPlugin`
+3. Drop JAR into `.fengyu/plugin/` directory; hot-reload is supported
 
 **Built-in tools** skip SPI entirely — `BuiltinToolRegistrar.register()` adds them directly to `PluginRegistry`. See existing tools there as templates.
 
 ### Plugin logging
 
-Plugins should use `fan.summer.api.log.LoggerFactory` (in `ZhiFlow-Api`) rather than depending on SLF4J directly. The host installs a binder at startup that routes plugin log calls into the same SLF4J + Logback backbone used by the host (console at INFO+, rolling file at DEBUG+ under `.zhiflow/logs/zhiflow.log`, daily rotation, 7-day retention).
+Plugins should use `fan.summer.api.log.LoggerFactory` (in `FengYu-Api`) rather than depending on SLF4J directly. The host installs a binder at startup that routes plugin log calls into the same SLF4J + Logback backbone used by the host (console at INFO+, rolling file at DEBUG+ under `.fengyu/logs/fengyu.log`, daily rotation, 7-day retention).
 
 ```java
 import fan.summer.api.log.LoggerFactory;
 import fan.summer.api.log.PluginLogger;
 
-public class MyPlugin implements ZhiFlowPlugin {
+public class MyPlugin implements FengYuPlugin {
     private static final PluginLogger log = LoggerFactory.getLogger(MyPlugin.class);
 
     @Override public void onActivate() {
@@ -217,7 +217,7 @@ Use SLF4J-style `{}` placeholders — formatting is deferred until the level is 
 Plugins can expose AI tools by overriding the default `aiTools()` method:
 
 ```java
-public class MyPlugin implements ZhiFlowPlugin {
+public class MyPlugin implements FengYuPlugin {
     @Override
     public List<AiTool> aiTools() {
         return List.of(new MyAiTool(this));
@@ -355,13 +355,13 @@ If you genuinely need to know whether the stage is maximized, track it yourself 
 
 ## Branch Status — v3.0.0-JavaFX
 
-This is the JavaFX codebase (the Swing/FlatLaf port shipped in 3.0.0). Legacy Swing classes remain in `backup/ZhiFlow/` and `backup/ZhiFlow-Api/` under the project root as a porting reference, and are **excluded from Maven compilation** via `<excludes>` in `ZhiFlow/pom.xml`. Do not move files out of `backup/` — treat them as read-only reference for any tool whose JavaFX port still needs work.
+This is the JavaFX codebase (the Swing/FlatLaf port shipped in 3.0.0). Legacy Swing classes remain in `backup/FengYu/` and `backup/FengYu-Api/` under the project root as a porting reference, and are **excluded from Maven compilation** via `<excludes>` in `FengYu/pom.xml`. Do not move files out of `backup/` — treat them as read-only reference for any tool whose JavaFX port still needs work.
 
-The plugin interface was also renamed: the old `fan.summer.api.KitPage` (Swing `JPanel`-based) is replaced by `fan.summer.api.ZhiFlowPlugin` (JavaFX `Node`-based).
+The plugin interface was also renamed: the old `fan.summer.api.KitPage` (Swing `JPanel`-based) is replaced by `fan.summer.api.FengYuPlugin` (JavaFX `Node`-based).
 
 ## Excel Splitter — Porting Reference
 
-The backup Swing implementation at `backup/ZhiFlow/java/fan/summer/kitpage/excel/` is the authoritative reference for the Excel split logic. Key classes:
+The backup Swing implementation at `backup/FengYu/java/fan/summer/kitpage/excel/` is the authoritative reference for the Excel split logic. Key classes:
 
 | Backup class | Role |
 |---|---|

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to ZhiFlow. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+All notable changes to FengYu. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
@@ -19,7 +19,7 @@ This release rebuilds the AI subsystem on LangChain4j and unifies the two cloud 
 
 ### ♻️ Changed
 
-- **Unified `ChatBackend` interface** in `ZhiFlow-Api` — non-sealed (Java forbids cross-module sealed permits). Two known implementors: `CloudChatBackend`, `LocalChatBackend`. UI consumers use `instanceof` for backend-specific behavior.
+- **Unified `ChatBackend` interface** in `FengYu-Api` — non-sealed (Java forbids cross-module sealed permits). Two known implementors: `CloudChatBackend`, `LocalChatBackend`. UI consumers use `instanceof` for backend-specific behavior.
 - **`CloudChatBackend` unifies OpenAI + Anthropic** in one class (~450 LOC). HTTP/SSE, tool-loop plumbing, and stream bridging entirely delegated to LangChain4j's `OpenAiStreamingChatModel` / `AnthropicStreamingChatModel`. Provider differences isolated to a `buildStreamingModel(...)` switch on an internal `Provider` enum.
 - `SynchronousChatHelper` (browser planner) rewritten to use LC4j's synchronous `OpenAiChatModel` directly via `CloudChatBackend` config accessors.
 - `AiServiceProvider` exposes `ChatBackend` everywhere. Method names unchanged.
@@ -113,7 +113,7 @@ This release rebuilds the AI subsystem on LangChain4j and unifies the two cloud 
 ### ♻️ Changes
 - Extract `StorePlugin` and `StorePluginLogic` from `OnlineStorePane` with unit tests
 - Add GPLv3 license file to the repository
-- Add JUnit 5 test dependency to `ZhiFlow` module
+- Add JUnit 5 test dependency to `FengYu` module
 
 ---
 
@@ -172,14 +172,14 @@ This release rebuilds the AI subsystem on LangChain4j and unifies the two cloud 
 - **PDF Tools**: Split, merge, and convert-to-Word (via WPS or documents4j) with `OfficeDetector` auto-detection; 3-tab UI registered as a built-in tool; AI tools for all three PDF operations
 - **Email Archive**: Built-in email archive tool with IMAP support (`EmailArchivePlugin`, `EmailArchiveService`), address book pane, and expanded mass-send service
 - **Plugin Background Execution**: Plugins can run tasks in the background with view caching and a ToolCard indicator showing running status
-- **Plugin Preview Window**: Self-contained preview shell for third-party plugin developers with `PreviewTitleBar`, `PreviewSidebar`, `PreviewToolCard`, `PreviewDetailPanel`, and `zhiflow-preview.css`
+- **Plugin Preview Window**: Self-contained preview shell for third-party plugin developers with `PreviewTitleBar`, `PreviewSidebar`, `PreviewToolCard`, `PreviewDetailPanel`, and `fengyu-preview.css`
 - **GlassNotification**: Glassmorphism-styled notification component replacing all `Alert` dialogs
 - **Application Icons**: Native-resolution application icons for macOS (.icns), Windows (.ico), and Linux (.png)
 - **Built-in Tools**: Base64 encoder/decoder, Hash Calculator, JSON Formatter, Color Converter, and Markdown Editor plugins registered as built-in tools
-- **I18n Framework**: Core `I18n` classes in ZhiFlow-Api with DB-persisted locale, plugin bundle registration/unregistration, and live language switching across all UI components (TitleBar, MainWindow, Sidebar, ContentArea, ToolCard, DetailPanel, Settings)
+- **I18n Framework**: Core `I18n` classes in FengYu-Api with DB-persisted locale, plugin bundle registration/unregistration, and live language switching across all UI components (TitleBar, MainWindow, Sidebar, ContentArea, ToolCard, DetailPanel, Settings)
 - **Settings UI**: Redesigned settings with AI, Email, and Address Book tabs
-- **Three-Layer CSS**: `zhiflow-common.css` (shared variables and glass-* utilities), `shell.css` (app shell), and `builtin.css` (built-in tools) with scene-graph inheritance
-- **Type-Safe Enums**: `ToolCategory`, `ToolType`, and `IconStyle` enums in ZhiFlow-Api replacing String-based metadata
+- **Three-Layer CSS**: `fengyu-common.css` (shared variables and glass-* utilities), `shell.css` (app shell), and `builtin.css` (built-in tools) with scene-graph inheritance
+- **Type-Safe Enums**: `ToolCategory`, `ToolType`, and `IconStyle` enums in FengYu-Api replacing String-based metadata
 - **GGUFZ Support**: Accept `*.ggufz` compressed model files in the model file chooser
 - **Gson/JsonHelper**: `JsonHelper` utility (Gson-based) replaces `JsonBuilder`/`JsonParser`; `ToolCallParser` and all services use Gson
 - **Bilingual Docs**: English/Chinese documentation with docsify-flexible-i18n; complete English Javadoc on all public APIs
@@ -197,7 +197,7 @@ This release rebuilds the AI subsystem on LangChain4j and unifies the two cloud 
 - Fix VBox→HBox type mismatch in email tab field rows
 - Fix email editor — expand WebView height and allow rich-text paste from Word
 - Fix Settings UI not reflecting language change — rebuild on locale switch
-- Fix plugin storage path — moved to `.zhiflow/plugin/` and fixed install-then-load failure
+- Fix plugin storage path — moved to `.fengyu/plugin/` and fixed install-then-load failure
 - Fix Windows JAR discovery and release artifact path in CI
 - Fix cross-platform JavaFX native library bundling in fat JAR
 
@@ -220,7 +220,7 @@ This release rebuilds the AI subsystem on LangChain4j and unifies the two cloud 
 
 ### ✨ New Features
 
-- **I18n Framework**: Core `I18n` classes in ZhiFlow-Api with DB-persisted locale, plugin bundle registration/unregistration, and live language switching
+- **I18n Framework**: Core `I18n` classes in FengYu-Api with DB-persisted locale, plugin bundle registration/unregistration, and live language switching
 
 ### ♻️ Changes
 
@@ -260,7 +260,7 @@ Complete migration from Swing/FlatLaf to **JavaFX 21** with a glassmorphism dark
 - **Plugin Logger**: `LoggerFactory` with SLF4J/Logback backbone; safe no-op in tests
 - **StepWizard**: Reusable multi-step wizard with dot navigation, slide transitions, validation
 - **Plugin Store**: Online catalog + local JAR install with hot-reload
-- **Three-Layer CSS**: `zhiflow-common.css`, `shell.css`, `builtin.css` with scene-graph inheritance
+- **Three-Layer CSS**: `fengyu-common.css`, `shell.css`, `builtin.css` with scene-graph inheritance
 - **Type-Safe Enums**: `ToolCategory`, `ToolType`, `IconStyle` replace String-based metadata
 - **Excel Splitter Wizard**: Redesigned with 4-step `StepWizard` flow
 
@@ -358,7 +358,7 @@ Initial stable release.
 
 ### v1.0.0-Alpha.5 — 2026-03-26
 
-- ZhiFlow-Api module, email sent log viewing
+- FengYu-Api module, email sent log viewing
 
 ### v1.0.0-Alpha.4 — 2026-03-26
 

@@ -10,18 +10,18 @@
 ## 设置
 
 ```bash
-git clone https://github.com/MuskStark/ZhiFlow.git
-cd ZhiFlow
+git clone https://github.com/MuskStark/FengYu.git
+cd FengYu
 
-mvn install -f ZhiFlow-Api/pom.xml -DskipTests
-mvn clean package -f ZhiFlow/pom.xml -DskipTests
+mvn install -f FengYu-Api/pom.xml -DskipTests
+mvn clean package -f FengYu/pom.xml -DskipTests
 ```
 
 ## 项目结构
 
 ```
-ZhiFlow/
-├── ZhiFlow-Api/                        # 共享 API 模块
+FengYu/
+├── FengYu-Api/                        # 共享 API 模块
 │   └── src/main/java/fan/summer/api/
 │       ├── SwissKitJPlugin.java          # 插件接口
 │       ├── PluginContext.java            # 插件隔离的 TCCL 切换
@@ -35,10 +35,10 @@ ZhiFlow/
 │       │   └── PluginLogger.java
 │       └── theme/
 │           └── Themes.java
-├── ZhiFlow/                             # 主 JavaFX 应用
+├── FengYu/                             # 主 JavaFX 应用
 │   └── src/main/java/fan/summer/
 │       ├── Launcher.java                 # 入口点
-│       ├── app/ZhiFlowApp.java         # JavaFX Application
+│       ├── app/FengYuApp.java         # JavaFX Application
 │       ├── buildintool/                  # 内置工具
 │       ├── plugin/                       # 插件加载
 │       └── ui/                           # 应用壳 UI
@@ -51,9 +51,9 @@ ZhiFlow/
 
 | 模块 | 依赖 | 作用域 |
 |------|------|--------|
-| `ZhiFlow-Api` | JavaFX | compile |
-| `ZhiFlow` | `ZhiFlow-Api` | compile |
-| 外部插件 | `ZhiFlow-Api` | provided |
+| `FengYu-Api` | JavaFX | compile |
+| `FengYu` | `FengYu-Api` | compile |
+| 外部插件 | `FengYu-Api` | provided |
 
 ## 插件开发
 
@@ -64,8 +64,8 @@ ZhiFlow/
 ```xml
 <dependencies>
     <dependency>
-        <groupId>fan.summer.zhiflow.api</groupId>
-        <artifactId>ZhiFlow-Api</artifactId>
+        <groupId>fan.summer.fengyu.api</groupId>
+        <artifactId>FengYu-Api</artifactId>
         <version>3.0.0</version>
         <scope>provided</scope>
     </dependency>
@@ -77,7 +77,7 @@ ZhiFlow/
 ```java
 package plugin.example.mytool;
 
-import fan.summer.zhiflow.api.*;
+import fan.summer.fengyu.api.*;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.layout.VBox;
@@ -103,7 +103,7 @@ public class MyToolPlugin implements SwissKitJPlugin {
 
 **3. 通过 SPI 注册**
 
-创建 `META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin`：
+创建 `META-INF/services/fan.summer.fengyu.api.SwissKitJPlugin`：
 
 ```
 plugin.example.mytool.MyToolPlugin
@@ -178,7 +178,7 @@ wizard.setOnStepChanged((from, to, total) -> {
 
 | 文件 | 作用域 |
 |------|--------|
-| `zhiflow-common.css` | 共享变量、`.glass-*` 工具类、`.section-title` |
+| `fengyu-common.css` | 共享变量、`.glass-*` 工具类、`.section-title` |
 | `shell.css` | 应用外壳 — 标题栏、侧边栏、卡片、面板 |
 | `builtin.css` | 内置工具样式 |
 
@@ -193,8 +193,8 @@ Themes.applyTo(scene);
 ## 日志
 
 ```java
-import fan.summer.zhiflow.api.log.LoggerFactory;
-import fan.summer.zhiflow.api.log.PluginLogger;
+import fan.summer.fengyu.api.log.LoggerFactory;
+import fan.summer.fengyu.api.log.PluginLogger;
 
 private static final PluginLogger log = LoggerFactory.getLogger(MyPlugin.class);
 
@@ -202,7 +202,7 @@ log.info("Processing file: {}", file);
 log.error("Failed: {}", file, exception);
 ```
 
-后端：SLF4J + Logback。控制台 INFO+ 级，滚动文件 DEBUG+ 级，位于 `.zhiflow/logs/`。测试中安全使用空操作日志器。
+后端：SLF4J + Logback。控制台 INFO+ 级，滚动文件 DEBUG+ 级，位于 `.fengyu/logs/`。测试中安全使用空操作日志器。
 
 ## 后台处理
 
@@ -247,10 +247,10 @@ new Thread(task).start();
 ### Pull Request
 
 1. Fork 并创建功能分支
-2. 构建：`mvn clean package -f ZhiFlow/pom.xml -DskipTests`
+2. 构建：`mvn clean package -f FengYu/pom.xml -DskipTests`
 3. 用约定式提交格式提交
 4. 推送到 PR 并针对 `main` 打开
 
 ### 报告问题
 
-请包含：操作系统、Java 版本、ZhiFlow 版本、重现步骤、预期与实际行为。
+请包含：操作系统、Java 版本、FengYu 版本、重现步骤、预期与实际行为。

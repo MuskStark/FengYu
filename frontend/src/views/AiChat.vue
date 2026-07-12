@@ -7,10 +7,8 @@ import { useAiSessionStore } from '@/stores/aiSession'
 const { t } = useI18n()
 const ai = useAiSessionStore()
 const draft = ref('')
-// Plain div ref (NOT a Vuetify component ref) so scroll logic stays simple
-// — component-instance $el indirection is unreliable. Same pattern as the
-// original hand-written version.
 const scroller = ref<HTMLElement | null>(null)
+const textarea = ref<HTMLTextAreaElement | null>(null)
 
 marked.setOptions({ breaks: true, gfm: true })
 
@@ -18,10 +16,18 @@ function md(src: string): string {
   return marked.parse(src) as string
 }
 
+function autosize() {
+  const el = textarea.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = Math.min(el.scrollHeight, 200) + 'px'
+}
+
 function submit() {
   const text = draft.value
   if (!text.trim() || ai.busy) return
   draft.value = ''
+  void nextTick(autosize)
   void ai.send(text)
 }
 
@@ -33,6 +39,7 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 const hasError = computed(() => ai.error !== null)
+const empty = computed(() => ai.turns.length === 0)
 
 watch(
   () => ai.turns.map((turn) => turn.content + turn.thinking).join('|'),
@@ -42,91 +49,102 @@ watch(
     if (el) el.scrollTop = el.scrollHeight
   },
 )
+watch(() => ai.activeId, async () => {
+  await nextTick()
+  const el = scroller.value
+  if (el) el.scrollTop = el.scrollHeight
+})
 </script>
 
 <template>
-  <div class="d-flex flex-column h-100 pa-4">
-    <div class="d-flex align-center justify-space-between mb-2">
-      <h1 class="text-h5">{{ $t('aichat.title') }}</h1>
-      <v-btn variant="outlined" prepend-icon="mdi-broom" @click="ai.clear()">
-        {{ $t('aichat.clear') }}
-      </v-btn>
+  <div class="d-flex flex-column h-100" style="display: flex; flex-direction: column; height: 100%; position: relative">
+    <!-- Top bar -->
+    <div class="cx-topbar" style="justify-content: flex-end; border-bottom: none; min-height: 48px">
+      <button v-if="!empty" class="cx-btn cx-btn--text cx-btn--sm" @click="ai.clear()">
+        <i class="mdi mdi-broom" />{{ $t('aichat.clear') }}
+      </button>
     </div>
 
-    <v-alert
-      v-if="hasError"
-      type="error"
-      variant="tonal"
-      class="mb-2"
-      closable
-      @click:close="ai.error = null"
-    >{{ ai.error }}</v-alert>
-
-    <div ref="scroller" class="flex-grow-1 overflow-y-auto d-flex flex-column ga-4 pa-2">
-      <div v-if="ai.turns.length === 0" class="text-medium-emphasis text-center mt-10">
-        {{ $t('aichat.empty') }}
-      </div>
-
+    <!-- Scroll region -->
+    <div ref="scroller" style="flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 16px">
+      <!-- Empty / hero -->
       <div
-        v-for="turn in ai.turns"
-        :key="turn.id"
-        class="d-flex flex-column ga-1"
-        :class="turn.role === 'user' ? 'align-self-end align-end' : 'align-self-start align-start'"
-        style="max-width: 80%"
+        v-if="empty"
+        class="cx-conversation"
+        style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 55vh"
       >
-        <div class="text-caption text-medium-emphasis">
-          {{ turn.role === 'user' ? t('aichat.you') : t('aichat.assistant') }}
-        </div>
+        <span class="cx-avatar" style="width: 46px; height: 46px; margin-bottom: 16px">
+          <i class="mdi lg mdi-hexagon-multiple-outline" />
+        </span>
+        <div style="font-size: 20px; font-weight: 600; margin-bottom: 4px">{{ $t('aichat.heroTitle') }}</div>
+        <div class="cx-muted">{{ $t('aichat.empty') }}</div>
+      </div>
 
-        <v-expansion-panels v-if="turn.thinking" variant="accordion">
-          <v-expansion-panel>
-            <v-expansion-panel-title class="text-caption">{{ $t('aichat.thinking') }}</v-expansion-panel-title>
-            <v-expansion-panel-text>
-              <div v-html="md(turn.thinking)" />
-            </v-expansion-panel-text>
-          </v-expansion-panel>
-        </v-expansion-panels>
-
-        <v-card
-          v-if="turn.role === 'assistant'"
-          variant="tonal"
-          rounded="lg"
-          class="pa-3"
+      <!-- Conversation -->
+      <div v-else class="cx-conversation" style="padding: 16px 0">
+        <div
+          v-for="turn in ai.turns"
+          :key="turn.id"
+          class="cx-msg"
+          :class="{ 'cx-msg--user': turn.role === 'user' }"
         >
-          <div v-html="md(turn.content)" />
-        </v-card>
-        <v-card v-else color="primary" variant="tonal" rounded="lg" class="pa-3">
-          <div class="text-body-2" style="white-space: pre-wrap">{{ turn.content }}</div>
-        </v-card>
+          <!-- User: right-aligned chip, no role label (Codex style) -->
+          <div v-if="turn.role === 'user'" class="cx-user-body">{{ turn.content }}</div>
 
-        <div v-if="turn.streaming && !turn.content" class="text-medium-emphasis">…</div>
+          <!-- Assistant: flowing text with role label + optional thinking -->
+          <template v-else>
+            <div class="cx-msg-role">{{ t('aichat.assistant') }}</div>
+
+            <details v-if="turn.thinking" class="cx-details" style="margin-bottom: 8px">
+              <summary>{{ $t('aichat.thinking') }}</summary>
+              <div class="cx-details__body cx-md cx-muted" v-html="md(turn.thinking)" />
+            </details>
+
+            <div class="cx-md" v-html="md(turn.content)" />
+
+            <div v-if="turn.streaming && !turn.content" style="margin-top: 4px">
+              <span class="cx-spin" />
+            </div>
+          </template>
+        </div>
       </div>
     </div>
 
-    <div class="d-flex ga-2 align-center mt-2">
-      <v-textarea
-        v-model="draft"
-        :placeholder="$t('aichat.placeholder')"
-        auto-grow
-        rows="2"
-        variant="outlined"
-        hide-details
-        class="flex-grow-1"
-        @keydown="onKeydown"
-      />
-      <v-btn
-        v-if="ai.busy"
-        variant="outlined"
-        prepend-icon="mdi-stop"
-        @click="ai.stop()"
-      >{{ $t('aichat.stop') }}</v-btn>
-      <v-btn
-        v-else
-        color="primary"
-        prepend-icon="mdi-send"
-        :disabled="!draft.trim()"
-        @click="submit"
-      >{{ $t('aichat.send') }}</v-btn>
+    <!-- Composer -->
+    <div style="padding: 8px 16px 16px">
+      <div v-if="hasError" class="cx-alert cx-alert--error cx-conversation" style="margin-bottom: 8px">
+        <span class="cx-alert__body">{{ ai.error }}</span>
+        <button class="cx-iconbtn cx-iconbtn--sm" @click="ai.error = null"><i class="mdi mdi-close" /></button>
+      </div>
+
+      <div class="cx-composer" style="display: flex; align-items: flex-end; gap: 8px">
+        <textarea
+          ref="textarea"
+          v-model="draft"
+          rows="1"
+          class="cx-grow"
+          style="padding: 8px 0"
+          :placeholder="$t('aichat.placeholder')"
+          @input="autosize"
+          @keydown="onKeydown"
+        />
+        <button
+          v-if="ai.busy"
+          class="cx-iconbtn cx-iconbtn--primary cx-iconbtn--round"
+          :title="$t('aichat.stop')"
+          @click="ai.stop()"
+        ><i class="mdi mdi-stop" /></button>
+        <button
+          v-else
+          class="cx-iconbtn cx-iconbtn--primary cx-iconbtn--round"
+          :disabled="!draft.trim()"
+          :title="$t('aichat.send')"
+          @click="submit"
+        ><i class="mdi mdi-arrow-up" /></button>
+      </div>
+      <div class="cx-conversation cx-muted" style="text-align: center; font-size: 12px; margin-top: 8px">
+        {{ $t('aichat.hint') }}
+      </div>
     </div>
   </div>
 </template>

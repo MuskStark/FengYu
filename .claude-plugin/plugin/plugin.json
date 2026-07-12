@@ -1,6 +1,6 @@
 {
-  "name": "zhiflowj-plugin-kit",
+  "name": "fengyuj-plugin-kit",
   "version": "3.2.0",
-  "description": "Scaffold and validate ZhiFlow plugins that strictly follow the host's design standards.",
-  "author": { "name": "ZhiFlow" }
+  "description": "Scaffold and validate FengYu plugins that strictly follow the host's design standards.",
+  "author": { "name": "FengYu" }
 }

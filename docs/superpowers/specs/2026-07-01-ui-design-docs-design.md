@@ -81,7 +81,7 @@ docs/ui-design/                       docs/zh/ui-design/
 - 技术栈前提（JavaFX 21、纯代码构建 UI 无 FXML、CSS 主题化）
 - `SwissKitJPlugin` 接口契约逐方法详解（`createView` 缓存、生命周期钩子、`aiTools`、`getMdiIcon`/`getIconStyle`/`getCategory`）
 - 插件 UI 完整可运行模板（骨架代码，AI 直接套用）
-- CSS 加载机制：`ThemeService.registerScene(scene)` 自动加载 `zhiflow-common.css`，插件不重复加载
+- CSS 加载机制：`ThemeService.registerScene(scene)` 自动加载 `fengyu-common.css`，插件不重复加载
 - CSS class 命名规范（`sk-` 前缀、`.glass-*`→`.sk-*` 废弃迁移映射、BEM-lite）
 - 主题切换 API：`ThemeService.set(Theme)` / `onChange()` / WebView 同步（`MarkdownRenderer` 模式）
 - **关键反模式**：`setStyle()` 内联颜色不响应主题 → 必须用 `.sk-t1/.sk-fill-2` 等 class
@@ -91,7 +91,7 @@ docs/ui-design/                       docs/zh/ui-design/
 - 打包与资源隔离要点
 
 ### 03 Component Library（组件库）
-**基础组件**（来自 `zhiflow-common.css`）：按钮（`.sk-btn-primary`/`.sk-btn`/`.sk-btn-danger`）、输入框（`.sk-text-field`/`.sk-text-area`，focus 用 `-sk-border-strong`）、下拉/选择、复选框/单选/开关、表格（`.sk-table`，表头/斑马纹/hover）、标签页（`.sk-tab`）、对话框（`.sk-dialog`，模态遮罩）、滚动条、通知/Toast（`.sk-notification`）、标签/徽章（`.sk-badge`，success/warning/danger）。
+**基础组件**（来自 `fengyu-common.css`）：按钮（`.sk-btn-primary`/`.sk-btn`/`.sk-btn-danger`）、输入框（`.sk-text-field`/`.sk-text-area`，focus 用 `-sk-border-strong`）、下拉/选择、复选框/单选/开关、表格（`.sk-table`，表头/斑马纹/hover）、标签页（`.sk-tab`）、对话框（`.sk-dialog`，模态遮罩）、滚动条、通知/Toast（`.sk-notification`）、标签/徽章（`.sk-badge`，success/warning/danger）。
 
 **外壳组件**（来自 `shell.css`，**按完整规范详写**）：侧边栏导航项 `NavItem`、搜索栏（capsule，`⌘K`）、工具卡片 `ToolCard`（图标+名称+描述+分类色）、详情面板 `DetailPanel`（右侧滑入）、状态栏 `StatusBar`（脉冲点+计数+时钟）。
 
@@ -157,13 +157,13 @@ docs/ui-design/                       docs/zh/ui-design/
 
 | 锚点 | 文件 |
 |------|------|
-| 令牌定义 | `SwissKitJ-Api/src/main/resources/css/zhiflow-common.css`（第 17-48 行） |
+| 令牌定义 | `SwissKitJ-Api/src/main/resources/css/fengyu-common.css`（第 17-48 行） |
 | 主题 API | `SwissKitJ-Api/.../api/theme/ThemeService.java`、`Themes.java` |
 | 插件契约 | `SwissKitJ-Api/.../api/SwissKitJPlugin.java` |
 | 分类/图标样式 | `SwissKitJ-Api/.../api/ToolCategory.java`、`IconStyle.java`、`ToolType.java` |
 | 外壳 CSS | `SwissKit/src/main/resources/css/shell.css` |
 | 内置工具 CSS | `SwissKit/src/main/resources/css/builtin.css` |
-| 预览窗口 CSS | `SwissKitJ-Api/src/main/resources/css/zhiflow-preview.css` |
+| 预览窗口 CSS | `SwissKitJ-Api/src/main/resources/css/fengyu-preview.css` |
 | 主窗口布局 | `SwissKit/.../app/SwissKitJApp.java`、`ui/MainWindow.java` |
 | 侧边栏/内容 | `SwissKit/.../ui/sidebar/Sidebar.java`、`ui/content/ContentArea.java`、`ToolCard.java`、`DetailPanel.java` |
 | 内置工具注册 | `SwissKit/.../registrar/BuiltinToolRegistrar.java`（11 个内置工具） |

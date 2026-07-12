@@ -5,16 +5,16 @@
 - **JDK 21 或更高版本**
 - **Maven 3.8 或更高版本**（从源码构建时需要）
 
-ZhiFlow 将 JavaFX 捆绑在胖 JAR 中，支持所有平台——无需单独的 JavaFX SDK。
+FengYu 将 JavaFX 捆绑在胖 JAR 中，支持所有平台——无需单独的 JavaFX SDK。
 
 ## 安装
 
 ### 方式一：下载预构建 JAR
 
-从 [GitHub Releases](https://github.com/MuskStark/ZhiFlow/releases) 页面下载。
+从 [GitHub Releases](https://github.com/MuskStark/FengYu/releases) 页面下载。
 
 ```bash
-java -jar ZhiFlow-3.1.0.jar
+java -jar FengYu-3.1.0.jar
 ```
 
 胖 JAR 包含 macOS、Windows 和 Linux 的 JavaFX 原生库——无需额外设置。
@@ -22,33 +22,33 @@ java -jar ZhiFlow-3.1.0.jar
 ### 方式二：从源码构建
 
 ```bash
-git clone https://github.com/MuskStark/ZhiFlow.git
-cd ZhiFlow
+git clone https://github.com/MuskStark/FengYu.git
+cd FengYu
 
 # 先安装 API 模块（必需）
-mvn install -f ZhiFlow-Api/pom.xml -DskipTests
+mvn install -f FengYu-Api/pom.xml -DskipTests
 
 # 构建主应用
-mvn clean package -f ZhiFlow/pom.xml -DskipTests
+mvn clean package -f FengYu/pom.xml -DskipTests
 
 # 运行
-java -jar ZhiFlow/target/ZhiFlow-3.1.0.jar
+java -jar FengYu/target/FengYu-3.1.0.jar
 ```
 
-**构建顺序很重要**：ZhiFlow-Api 提供共享的插件接口和可复用的 UI 组件。它必须先安装到本地 Maven 仓库，主应用才能编译。
+**构建顺序很重要**：FengYu-Api 提供共享的插件接口和可复用的 UI 组件。它必须先安装到本地 Maven 仓库，主应用才能编译。
 
 ## 运行
 
 ### 胖 JAR
 
 ```bash
-java -jar ZhiFlow/target/ZhiFlow-3.1.0.jar
+java -jar FengYu/target/FengYu-3.1.0.jar
 ```
 
 ### IDE（IntelliJ IDEA）
 
 1. 打开项目
-2. 在 `ZhiFlow/src/main/java/fan/summer/` 中找到 `Launcher.java`
+2. 在 `FengYu/src/main/java/fan/summer/` 中找到 `Launcher.java`
 3. 右键点击 → "Run 'Launcher.main()'"
 
 `Launcher` 类是胖 JAR 清单的入口点。
@@ -70,13 +70,13 @@ java -jar ZhiFlow/target/ZhiFlow-3.1.0.jar
 
 ### UI 不渲染
 
-- 从干净状态重新构建：`mvn clean package -f ZhiFlow/pom.xml -DskipTests`
+- 从干净状态重新构建：`mvn clean package -f FengYu/pom.xml -DskipTests`
 - 确保运行的是捆绑了 JavaFX 的胖 JAR
 
 ### 找不到 API 模块
 
 ```bash
-mvn install -f ZhiFlow-Api/pom.xml -DskipTests
+mvn install -f FengYu-Api/pom.xml -DskipTests
 ```
 
 ## 下一步

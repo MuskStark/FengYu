@@ -1,92 +1,119 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
 import { useThemeStore } from '@/stores/theme'
-import { useNavStore } from '@/stores/nav'
-import { useCategoriesStore } from '@/stores/categories'
+import { useAiSessionStore } from '@/stores/aiSession'
 
 const settings = useSettingsStore()
 const theme = useThemeStore()
-const nav = useNavStore()
-const cats = useCategoriesStore()
+const ai = useAiSessionStore()
 const router = useRouter()
+const route = useRoute()
 
 const rail = computed(() => settings.sidebarCollapsed)
 
-interface NavItem {
-  key: string
-  labelKey: string
-  icon: string
-}
-const navItems = computed<NavItem[]>(() => [
-  { key: 'all', labelKey: 'sidebar.all', icon: 'mdi-view-grid' },
-  ...cats.categories.map((c) => ({ key: c.id, labelKey: c.labelKey, icon: c.icon || 'mdi-folder' })),
-  { key: 'favorites', labelKey: 'sidebar.favorites', icon: 'mdi-star' },
-])
-
 onMounted(() => {
-  if (!cats.loaded) void cats.load()
+  void ai.loadHistory()
 })
 
-function pickCategory(key: string) {
-  nav.setCategory(key)
-  router.push('/')
+function startChat() {
+  ai.newConversation()
+  if (route.name !== 'ai') void router.push('/')
 }
+function openConversation(id: number) {
+  void ai.select(id)
+  if (route.name !== 'ai') void router.push('/')
+}
+
+const bottomNav = [
+  { key: 'tools', to: '/tools', labelKey: 'sidebar.all', icon: 'mdi-view-grid-outline' },
+  { key: 'agent', to: '/agent', labelKey: 'sidebar.agent', icon: 'mdi-robot-outline' },
+  { key: 'settings', to: '/settings', labelKey: 'sidebar.settings', icon: 'mdi-cog-outline' },
+]
 </script>
 
 <template>
-  <v-navigation-drawer :rail="rail" permanent width="220" rail-width="64">
-    <div
-      class="d-flex align-center py-3"
-      :class="rail ? 'justify-center' : 'px-3'"
-    >
-      <v-avatar color="primary" size="32" rounded="lg">
-        <v-icon icon="mdi-hexagon-multiple-outline" />
-      </v-avatar>
-      <span v-if="!rail" class="ml-3 font-weight-medium">ZhiFlow</span>
-      <v-spacer v-if="!rail" />
-      <v-btn
+  <aside class="cx-sidebar" :class="{ rail }">
+    <!-- Brand + collapse -->
+    <div class="cx-row" :class="rail ? 'justify-center px-0' : ''" style="padding: 12px; gap: 10px">
+      <span class="cx-avatar" style="width: 30px; height: 30px; font-size: 14px">
+        <i class="mdi mdi-hexagon-multiple-outline" />
+      </span>
+      <span v-if="!rail" class="cx-grow" style="font-weight: 600">Infinia</span>
+      <button
         v-if="!rail"
-        icon="mdi-chevron-left"
-        size="small"
-        variant="text"
+        class="cx-iconbtn cx-iconbtn--sm"
         :title="$t('sidebar.collapse')"
         @click="settings.setSidebarCollapsed(true)"
-      />
+      ><i class="mdi mdi-dock-left" /></button>
     </div>
 
-    <v-list density="compact" nav>
-      <v-list-subheader v-if="!rail">{{ $t('sidebar.categories') }}</v-list-subheader>
-      <v-list-item
-        v-for="item in navItems"
-        :key="item.key"
-        :active="nav.category === item.key"
-        :prepend-icon="item.icon"
-        :title="$t(item.labelKey)"
-        :value="item.key"
-        @click="pickCategory(item.key)"
-      />
-    </v-list>
+    <!-- New chat -->
+    <div style="padding: 0 8px 4px">
+      <button
+        v-if="!rail"
+        class="cx-btn cx-btn--tonal cx-btn--block"
+        style="justify-content: flex-start"
+        @click="startChat"
+      ><i class="mdi mdi-plus" />{{ $t('sidebar.newChat') }}</button>
+      <button
+        v-else
+        class="cx-iconbtn"
+        style="margin: 0 auto; display: flex"
+        :title="$t('sidebar.newChat')"
+        @click="startChat"
+      ><i class="mdi mdi-plus" /></button>
+    </div>
 
-    <template #append>
-      <v-list v-if="rail" density="compact" nav class="pb-2">
-        <v-list-item
-          prepend-icon="mdi-chevron-right"
-          :title="$t('sidebar.expand')"
-          @click="settings.setSidebarCollapsed(false)"
-        />
-      </v-list>
-      <v-list density="compact" nav>
-        <v-list-item prepend-icon="mdi-chat-outline" :title="$t('sidebar.aiChat')" @click="router.push('/ai')" />
-        <v-list-item prepend-icon="mdi-robot-outline" :title="$t('sidebar.agent')" @click="router.push('/agent')" />
-        <v-list-item prepend-icon="mdi-cog-outline" :title="$t('sidebar.settings')" @click="router.push('/settings')" />
-        <v-list-item
-          :prepend-icon="theme.theme === 'dark' ? 'mdi-weather-night' : 'mdi-weather-sunny'"
-          :title="$t('sidebar.theme')"
-          @click="theme.toggle()"
-        />
-      </v-list>
-    </template>
-  </v-navigation-drawer>
+    <!-- Conversation history -->
+    <div v-if="!rail" class="cx-grow" style="overflow-y: auto; padding-bottom: 6px">
+      <div v-if="ai.conversations.length" class="cx-subheader">{{ $t('sidebar.history') }}</div>
+      <div
+        v-for="c in ai.conversations"
+        :key="c.id"
+        class="cx-nav-item"
+        :class="{ active: c.id === ai.activeId }"
+        @click="openConversation(c.id)"
+      >
+        <span class="cx-nav-label">{{ c.title || $t('sidebar.untitled') }}</span>
+        <button
+          class="cx-iconbtn cx-iconbtn--sm"
+          :title="$t('aichat.clear')"
+          @click.stop="ai.removeConversation(c.id)"
+        ><i class="mdi mdi-close" /></button>
+      </div>
+    </div>
+    <div v-else class="cx-grow" />
+
+    <!-- Bottom nav -->
+    <div style="padding: 6px 0; border-top: 1px solid rgb(var(--v-theme-outline-variant))">
+      <div
+        v-if="rail"
+        class="cx-nav-item rail"
+        :title="$t('sidebar.expand')"
+        @click="settings.setSidebarCollapsed(false)"
+      ><i class="mdi mdi-dock-right" /></div>
+      <div
+        v-for="item in bottomNav"
+        :key="item.key"
+        class="cx-nav-item"
+        :class="{ rail, active: route.path === item.to }"
+        :title="rail ? $t(item.labelKey) : undefined"
+        @click="router.push(item.to)"
+      >
+        <i class="mdi" :class="item.icon" />
+        <span v-if="!rail" class="cx-nav-label">{{ $t(item.labelKey) }}</span>
+      </div>
+      <div
+        class="cx-nav-item"
+        :class="{ rail }"
+        :title="$t('sidebar.theme')"
+        @click="theme.toggle()"
+      >
+        <i class="mdi" :class="theme.theme === 'dark' ? 'mdi-weather-night' : 'mdi-weather-sunny'" />
+        <span v-if="!rail" class="cx-nav-label">{{ $t('sidebar.theme') }}</span>
+      </div>
+    </div>
+  </aside>
 </template>

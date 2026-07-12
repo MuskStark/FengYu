@@ -1,7 +1,7 @@
 # Vuetify MD3 UI Component Library Adoption — Design Spec
 
 - **Date:** 2026-07-10
-- **Branch:** `4.0.0-ZhiFlow`
+- **Branch:** `4.0.0-FengYu`
 - **Status:** Approved (brainstorm complete, pending implementation plan)
 - **Owner:** Frontend
 
@@ -230,7 +230,7 @@ Migrated to Vuetify components (e.g. wrapped in `<v-card variant="outlined">`, `
 
 ### Docs updates for plugins
 
-- `zhiflow-plugin-dev` skill: document `ctx.vuetify` — plugins MUST call `app.use(ctx.vuetify)` in `mount()` and MUST use MD3 components.
+- `fengyu-plugin-dev` skill: document `ctx.vuetify` — plugins MUST call `app.use(ctx.vuetify)` in `mount()` and MUST use MD3 components.
 - `CLAUDE.md` frontend section: note Vuetify MD3 as the standard + the MF-sharing convention.
 
 ## Retirement of `--sk-*`
@@ -243,10 +243,10 @@ Migrated to Vuetify components (e.g. wrapped in `<v-card variant="outlined">`, `
 
 ## Docs Updates
 
-- **`CLAUDE.md`** (frontend stack section): replace "Vue 3.5.39 + TS + Pinia + `--sk-*` tokens ported from `zhiflow-common.css`" with **"Vue 3.5.39 + TS + Pinia + Vuetify 3 (MD3 blueprint)"**. Add the MF-sharing convention (`ctx.vuetify`).
+- **`CLAUDE.md`** (frontend stack section): replace "Vue 3.5.39 + TS + Pinia + `--sk-*` tokens ported from `fengyu-common.css`" with **"Vue 3.5.39 + TS + Pinia + Vuetify 3 (MD3 blueprint)"**. Add the MF-sharing convention (`ctx.vuetify`).
 - **`docs/ui-design/`** (EN) + **`docs/zh/ui-design/`** (ZH): the 8 design docs describe the IntelliJ "New UI" token system. Add a pointer note stating the **web frontend now implements MD3 via Vuetify**; the IntelliJ-token spec remains authoritative for the **JavaFX** host only. Full doc rewrite is out of scope (a `docs-updater` run can reconcile later).
-- **`.zcode/skills/create-builtin-tool/SKILL.md`** + **`.agents/skills/zhiflow-plugin-dev/SKILL.md`**: note that built-in-tool web UI and ZhiFlow plugins use Vuetify MD3 + `ctx.vuetify`.
-- **CHANGELOG**: entry under `4.0.0-ZhiFlow` — "feat(frontend): adopt Vuetify 3 MD3 as UI component library".
+- **`.zcode/skills/create-builtin-tool/SKILL.md`** + **`.agents/skills/fengyu-plugin-dev/SKILL.md`**: note that built-in-tool web UI and FengYu plugins use Vuetify MD3 + `ctx.vuetify`.
+- **CHANGELOG**: entry under `4.0.0-FengYu` — "feat(frontend): adopt Vuetify 3 MD3 as UI component library".
 
 ## Acceptance Criteria
 
@@ -261,7 +261,7 @@ Migrated to Vuetify components (e.g. wrapped in `<v-card variant="outlined">`, `
 ## Out of Scope
 
 - Rewriting the 8 `docs/ui-design/` docs to MD3 (pointer note only).
-- Migrating the JavaFX host (`ZhiFlow-Api/.../zhiflow-common.css`) — stays IntelliJ-token-based.
+- Migrating the JavaFX host (`FengYu-Api/.../fengyu-common.css`) — stays IntelliJ-token-based.
 - Auto-generating a tonal palette from a seed (using Google's fixed baseline instead).
 - Icon redesign (reusing existing `mdi-*` symbol names).
 

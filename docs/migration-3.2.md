@@ -1,11 +1,11 @@
 # Migrating to 3.2
 
 This guide covers everything a plugin author needs to change (or can newly use)
-when upgrading a plugin from ZhiFlow 3.1.x to 3.2.0.
+when upgrading a plugin from FengYu 3.1.x to 3.2.0.
 
 ## Breaking: `.glass-*` CSS classes renamed to `.sk-*`
 
-All shared utility CSS classes in `zhiflow-common.css` were renamed from the
+All shared utility CSS classes in `fengyu-common.css` were renamed from the
 `glass-*` prefix to `sk-*` (e.g. `.glass-dialog` → `.sk-dialog`,
 `.glass-field` → `.sk-field`, `.glass-btn-primary` → `.sk-btn-primary`).
 See the full rename table in the `[3.2.0]` section of `CHANGELOG.md`.
@@ -16,7 +16,7 @@ render unstyled.
 
 ## Deprecated: `GlassNotification` → `SkNotification`
 
-`fan.summer.zhiflow.api.component.GlassNotification` is deprecated and now a thin alias
+`fan.summer.fengyu.api.component.GlassNotification` is deprecated and now a thin alias
 of the new `SkNotification` (same `Type` enum, same `toast` / `notify` /
 `confirm` methods). Existing code keeps compiling; migrate at your convenience:
 
@@ -33,7 +33,7 @@ The alias will be removed in 4.0.
 
 The main window switched to `StageStyle.DECORATED`. If your plugin opens its own
 transparent/undecorated `Stage`, nothing changes for you — but remember to call
-`fan.summer.zhiflow.api.theme.Themes.applyTo(scene)` so `-sk-*` tokens resolve.
+`fan.summer.fengyu.api.theme.Themes.applyTo(scene)` so `-sk-*` tokens resolve.
 
 ## New: `I18n.registerFallbackBundle(...)`
 
@@ -44,8 +44,8 @@ inside `createView()`; `registerFallbackBundle` is for library-level defaults.
 
 ## New: `PluginPreviewWindow` (developer tool)
 
-`fan.summer.zhiflow.api.preview.PluginPreviewWindow` launches your plugin inside a
-standalone shell-like window with theme and language toggles — no full ZhiFlow
+`fan.summer.fengyu.api.preview.PluginPreviewWindow` launches your plugin inside a
+standalone shell-like window with theme and language toggles — no full FengYu
 install needed during development.
 
 > **Stability note:** the preview API is a development-time tool. Its window
@@ -65,12 +65,12 @@ guide.
 The preview window (`PluginPreviewWindow`) now loads plugins with the exact
 same semantics as the real host: child-first resource ClassLoader, TCCL
 registration, and `init(PluginHost)` injection (settings persist under
-`~/.zhiflow/preview-settings/`).
+`~/.fengyu/preview-settings/`).
 
 ## Checklist
 
 - [ ] Replace every `.glass-*` style class with `.sk-*`
 - [ ] (Optional) switch `GlassNotification` calls to `SkNotification`
-- [ ] Rebuild against `ZhiFlow-Api` 3.2.0 (`provided` scope, as before)
+- [ ] Rebuild against `FengYu-Api` 3.2.0 (`provided` scope, as before)
 - [ ] Verify your UI in **both** dark and light themes
 - [ ] (Optional) adopt `init(PluginHost)` for settings/tasks/i18n instead of static entry points
