@@ -66,6 +66,7 @@ public class PluginController {
             case "text" -> "¶";
             case "image" -> "▩";
             case "net"  -> "☍";
+            case "file" -> "🗄";
             case "ai"   -> "✦";
             default     -> "◇";
         };
