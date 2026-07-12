@@ -92,6 +92,21 @@ function notifyErr(msg: string): void {
   ctx.notify?.(msg);
 }
 
+// ctx.api.invoke is backed by the host's axios client, which rejects on non-2xx
+// responses with an AxiosError whose top-level .message is a generic string like
+// "Request failed with status code 400". The backend's actual error text lives at
+// err.response.data.error (the controller returns { success:false, error:"..." }).
+// This helper prefers that backend message, falling back to plain Error.message for
+// the fetch-based upload/download paths (which throw ordinary Errors, no .response).
+function errMsg(err: unknown): string {
+  const anyErr = err as any;
+  return (
+    anyErr?.response?.data?.error ??
+    anyErr?.response?.data?.message ??
+    (err instanceof Error ? err.message : String(err))
+  );
+}
+
 async function runAnalyze(): Promise<void> {
   if (!sourceFile.value || !session.value) return;
   analyzing.value = true;
@@ -109,7 +124,7 @@ async function runAnalyze(): Promise<void> {
     }
     sheets.value = res.sheets ?? {};
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errMsg(err);
     analyzeError.value = msg;
     notifyErr(msg);
   } finally {
@@ -128,7 +143,7 @@ async function pickDesktopFile(): Promise<void> {
     session.value = crypto.randomUUID();
     await runAnalyze();
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errMsg(err);
     analyzeError.value = msg;
     notifyErr(msg);
   }
@@ -146,7 +161,7 @@ async function onWebFileChange(event: Event): Promise<void> {
     sourceFile.value = uploaded.path;
     fileName.value = file.name;
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errMsg(err);
     analyzeError.value = msg;
     notifyErr(msg);
     return;
@@ -211,7 +226,7 @@ async function runConfigure(): Promise<void> {
       throw new Error(msg);
     }
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errMsg(err);
     configureError.value = msg;
     notifyErr(msg);
     throw err;
@@ -250,7 +265,7 @@ async function runSplit(): Promise<void> {
       try {
         await downloadArchive(ctx, session.value);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = errMsg(err);
         runError.value = msg;
         notifyErr(msg);
       } finally {
@@ -258,7 +273,7 @@ async function runSplit(): Promise<void> {
       }
     }
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errMsg(err);
     runError.value = msg;
     notifyErr(msg);
   } finally {
