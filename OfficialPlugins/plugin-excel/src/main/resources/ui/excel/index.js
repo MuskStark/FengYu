@@ -1,64 +1,69 @@
-(function(){"use strict";try{if(typeof document<"u"){var e=document.createElement("style");e.appendChild(document.createTextNode(".excel-splitter[data-v-aa0e36eb]{max-width:960px}")),document.head.appendChild(e)}}catch(t){console.error("vite-plugin-css-injected-by-js",t)}})();
-import { defineComponent as Ne, inject as Oe, ref as r, computed as M, resolveComponent as v, openBlock as s, createBlock as h, withCtx as n, createVNode as o, createElementBlock as f, createTextVNode as y, createCommentVNode as g, toDisplayString as w, Fragment as U, unref as Z, renderList as W, createElementVNode as m, createApp as Ie } from "vue";
-const ae = "fan.summer.excel";
-function ne(d) {
+(function(){"use strict";try{if(typeof document<"u"){var e=document.createElement("style");e.appendChild(document.createTextNode(".excel-splitter[data-v-a1b4a4b3]{max-width:960px}")),document.head.appendChild(e)}}catch(t){console.error("vite-plugin-css-injected-by-js",t)}})();
+import { defineComponent as Oe, inject as Ie, ref as r, computed as Y, resolveComponent as v, openBlock as i, createBlock as g, withCtx as n, createVNode as o, createElementBlock as f, createTextVNode as k, createCommentVNode as b, toDisplayString as U, Fragment as S, unref as ee, renderList as q, createElementVNode as m, createApp as Be } from "vue";
+const ne = "fan.summer.excel";
+function oe(d) {
   return d.token ? { "X-FengYu-Token": d.token } : {};
 }
-async function Be(d, t, u) {
+async function Le(d, t, u) {
   const c = new FormData();
   c.append("file", t);
-  const _ = await fetch(`${d.apiBase}/api/plugins/${ae}/files`, {
+  const y = await fetch(`${d.apiBase}/api/plugins/${ne}/files`, {
     method: "POST",
-    headers: ne(d),
+    headers: oe(d),
     body: c
   });
-  if (!_.ok) throw new Error(`Upload failed: ${_.status}`);
-  const p = await _.json();
+  if (!y.ok) throw new Error(`Upload failed: ${y.status}`);
+  const p = await y.json();
   return { session: p.session, path: p.files[0].path };
 }
-async function Le(d, t) {
+async function De(d, t) {
   const u = await fetch(
-    `${d.apiBase}/api/plugins/${ae}/files/archive?session=${encodeURIComponent(t)}&dir=out`,
-    { headers: ne(d) }
+    `${d.apiBase}/api/plugins/${ne}/files/archive?session=${encodeURIComponent(t)}&dir=out`,
+    { headers: oe(d) }
   );
   if (!u.ok) throw new Error(`Download failed: ${u.status}`);
-  const c = await u.blob(), _ = URL.createObjectURL(c), p = document.createElement("a");
-  p.href = _, p.download = "results.zip", document.body.appendChild(p), p.click(), p.remove(), URL.revokeObjectURL(_);
+  const c = await u.blob(), y = URL.createObjectURL(c), p = document.createElement("a");
+  p.href = y, p.download = "results.zip", document.body.appendChild(p), p.click(), p.remove(), URL.revokeObjectURL(y);
 }
-function te(d) {
+function ae(d) {
   const t = d.includes("\\") ? "\\" : "/", u = `${t}in${t}`, c = d.lastIndexOf(u);
   return c < 0 ? d : d.substring(0, c) + t + "out";
 }
-const De = ["disabled"], Fe = {
+const Fe = ["disabled"], Ae = {
   key: 2,
   class: "mt-2 text-body-2"
-}, Ae = {
+}, Me = {
   key: 4,
   class: "mt-4"
 }, $e = {
   key: 0,
   class: "mt-2 text-body-2"
-}, Me = {
+}, ze = {
   key: 0,
   class: "d-flex align-center"
-}, ze = { key: 0 }, Ye = {
+}, Ye = { key: 0 }, Te = {
   key: 0,
   class: "text-body-2 mb-2"
-}, Te = { class: "d-flex justify-space-between mt-4" }, je = /* @__PURE__ */ Ne({
+}, je = { class: "d-flex justify-space-between mt-4" }, Pe = /* @__PURE__ */ Oe({
   __name: "ExcelSplitter",
   setup(d) {
-    const t = Oe("pluginCtx"), u = r(1), c = r(null), _ = r(null), p = r(null), z = r(!1), L = r(!1), V = r(null), N = r(null), k = r("BY_SHEET"), q = r([]), O = r(null), Y = r(null), T = r(""), I = r([]), J = r(!1), D = r(null), C = r(null), j = r(!1), K = r(!1), B = r(null), F = r(null), A = M(() => N.value ? Object.keys(N.value) : []);
-    function ee(l) {
+    const t = Ie("pluginCtx"), u = r(1), c = r(null), y = r(null), p = r(null), T = r(!1), F = r(!1), V = r(null), N = r(null), x = r("BY_SHEET"), J = r([]), I = r(null), j = r(null), P = r(""), B = r([]), K = r(!1), A = r(null), C = r(null), R = r(!1), Q = r(!1), L = r(null), M = r(null), $ = Y(() => N.value ? Object.keys(N.value) : []);
+    function le(l) {
       return !l || !N.value ? [] : Object.values(N.value[l] ?? {});
     }
-    const oe = M(() => ee(O.value)), ue = M(() => !!c.value && !!N.value && !L.value && !z.value), se = M(() => k.value === "BY_SHEET" ? !0 : k.value === "BY_COLUMN" ? !!O.value && !!Y.value : k.value === "COMPLEX" ? I.value.length > 0 && I.value.every((l) => !!l.sheetName) : !1), ie = M(() => u.value === 1 ? ue.value : u.value === 2 ? se.value : u.value === 3 ? !t.desktop || !!C.value : !1);
-    function E(l) {
+    const ue = Y(() => le(I.value)), se = Y(() => !!c.value && !!N.value && !F.value && !T.value), ie = Y(() => x.value === "BY_SHEET" ? !0 : x.value === "BY_COLUMN" ? !!I.value && !!j.value : x.value === "COMPLEX" ? B.value.length > 0 && B.value.every((l) => !!l.sheetName) : !1), re = Y(() => u.value === 1 ? se.value : u.value === 2 ? ie.value : u.value === 3 ? !t.desktop || !!C.value : !1);
+    function w(l) {
       var e;
       (e = t.notify) == null || e.call(t, l);
     }
-    async function le() {
+    function D(l) {
+      var s, _, E, O;
+      const e = l;
+      return ((_ = (s = e == null ? void 0 : e.response) == null ? void 0 : s.data) == null ? void 0 : _.error) ?? ((O = (E = e == null ? void 0 : e.response) == null ? void 0 : E.data) == null ? void 0 : O.message) ?? (l instanceof Error ? l.message : String(l));
+    }
+    async function te() {
       if (!(!c.value || !p.value)) {
-        L.value = !0, V.value = null;
+        F.value = !0, V.value = null;
         try {
           const l = await t.api.invoke("analyze", {
             session: p.value,
@@ -66,144 +71,144 @@ const De = ["disabled"], Fe = {
           });
           if (!l.success) {
             const e = l.error ?? "Analyze failed";
-            V.value = e, E(e);
+            V.value = e, w(e);
             return;
           }
           N.value = l.sheets ?? {};
         } catch (l) {
-          const e = l instanceof Error ? l.message : String(l);
-          V.value = e, E(e);
+          const e = D(l);
+          V.value = e, w(e);
         } finally {
-          L.value = !1;
+          F.value = !1;
         }
       }
     }
-    async function re() {
+    async function de() {
       if (t.desktop) {
         V.value = null;
         try {
           const l = await t.desktop.pickFile([{ name: "Excel", extensions: ["xlsx", "xls"] }]);
           if (!l) return;
-          c.value = l, _.value = l.split(/[/\\]/).pop() ?? l, p.value = crypto.randomUUID(), await le();
+          c.value = l, y.value = l.split(/[/\\]/).pop() ?? l, p.value = crypto.randomUUID(), await te();
         } catch (l) {
-          const e = l instanceof Error ? l.message : String(l);
-          V.value = e, E(e);
+          const e = D(l);
+          V.value = e, w(e);
         }
       }
     }
-    async function de(l) {
-      var x;
-      const i = (x = l.target.files) == null ? void 0 : x[0];
-      if (i) {
-        V.value = null, z.value = !0;
+    async function ce(l) {
+      var _;
+      const s = (_ = l.target.files) == null ? void 0 : _[0];
+      if (s) {
+        V.value = null, T.value = !0;
         try {
-          const S = await Be(t, i);
-          p.value = S.session, c.value = S.path, _.value = i.name;
-        } catch (S) {
-          const P = S instanceof Error ? S.message : String(S);
-          V.value = P, E(P);
+          const E = await Le(t, s);
+          p.value = E.session, c.value = E.path, y.value = s.name;
+        } catch (E) {
+          const O = D(E);
+          V.value = O, w(O);
           return;
         } finally {
-          z.value = !1;
+          T.value = !1;
         }
-        await le();
+        await te();
       }
     }
-    function ce() {
-      I.value.push({
+    function ve() {
+      B.value.push({
         fieldName: "",
-        sheetName: A.value[0] ?? "",
+        sheetName: $.value[0] ?? "",
         headerIndex: 1,
         columnIndex: 1,
         copyAll: !1
       });
     }
-    function ve(l) {
-      I.value.splice(l, 1);
-    }
     function pe(l) {
+      B.value.splice(l, 1);
+    }
+    function me(l) {
       l.copyAll ? (l.headerIndex = -1, l.columnIndex = -1) : (l.headerIndex = 1, l.columnIndex = 1);
     }
-    async function me() {
+    async function fe() {
       if (p.value) {
-        J.value = !0, D.value = null;
+        K.value = !0, A.value = null;
         try {
           const l = {
             session: p.value,
-            mode: k.value
+            mode: x.value
           };
-          T.value && (l.filePrefix = T.value), k.value === "BY_SHEET" ? l.selectedSheets = q.value : k.value === "BY_COLUMN" ? (l.splitSheet = O.value, l.splitColumn = Y.value) : k.value === "COMPLEX" && (l.complexEntries = I.value.map((i) => ({
-            fieldName: i.fieldName,
-            sheetName: i.sheetName,
-            headerIndex: i.headerIndex,
-            columnIndex: i.columnIndex
+          P.value && (l.filePrefix = P.value), x.value === "BY_SHEET" ? l.selectedSheets = J.value : x.value === "BY_COLUMN" ? (l.splitSheet = I.value, l.splitColumn = j.value) : x.value === "COMPLEX" && (l.complexEntries = B.value.map((s) => ({
+            fieldName: s.fieldName,
+            sheetName: s.sheetName,
+            headerIndex: s.headerIndex,
+            columnIndex: s.columnIndex
           })));
           const e = await t.api.invoke("configure", l);
           if (!e.success) {
-            const i = e.error ?? "Configure failed";
-            throw D.value = i, E(i), new Error(i);
+            const s = e.error ?? "Configure failed";
+            throw A.value = s, w(s), new Error(s);
           }
         } catch (l) {
-          const e = l instanceof Error ? l.message : String(l);
-          throw D.value = e, E(e), l;
+          const e = D(l);
+          throw A.value = e, w(e), l;
         } finally {
-          J.value = !1;
+          K.value = !1;
         }
       }
     }
-    async function fe() {
+    async function _e() {
       if (!t.desktop) return;
       const l = await t.desktop.pickDirectory();
       l && (C.value = l);
     }
-    async function _e() {
+    async function ye() {
       if (!(!p.value || !c.value)) {
-        j.value = !0, B.value = null, F.value = null;
+        R.value = !0, L.value = null, M.value = null;
         try {
-          const l = t.desktop ? C.value : te(c.value), e = await t.api.invoke("split", {
+          const l = t.desktop ? C.value : ae(c.value), e = await t.api.invoke("split", {
             session: p.value,
             sourceFile: c.value,
             outputDir: l
           });
           if (!e.success) {
-            const i = e.error ?? "Split failed";
-            B.value = i, E(i);
+            const s = e.error ?? "Split failed";
+            L.value = s, w(s);
             return;
           }
-          if (F.value = { fileCount: e.fileCount ?? 0, files: e.files ?? [] }, !t.desktop) {
-            K.value = !0;
+          if (M.value = { fileCount: e.fileCount ?? 0, files: e.files ?? [] }, !t.desktop) {
+            Q.value = !0;
             try {
-              await Le(t, p.value);
-            } catch (i) {
-              const x = i instanceof Error ? i.message : String(i);
-              B.value = x, E(x);
+              await De(t, p.value);
+            } catch (s) {
+              const _ = D(s);
+              L.value = _, w(_);
             } finally {
-              K.value = !1;
+              Q.value = !1;
             }
           }
         } catch (l) {
-          const e = l instanceof Error ? l.message : String(l);
-          B.value = e, E(e);
+          const e = D(l);
+          L.value = e, w(e);
         } finally {
-          j.value = !1;
+          R.value = !1;
         }
       }
     }
-    async function ye() {
+    async function ke() {
       if (u.value === 2)
         try {
-          await me();
+          await fe();
         } catch {
           return;
         }
-      u.value === 3 && (C.value = t.desktop ? C.value : te(c.value ?? "")), u.value < 4 && (u.value += 1), u.value === 4 && await _e();
+      u.value === 3 && (C.value = t.desktop ? C.value : ae(c.value ?? "")), u.value < 4 && (u.value += 1), u.value === 4 && await ye();
     }
-    function ke() {
+    function xe() {
       u.value > 1 && (u.value -= 1);
     }
     return (l, e) => {
-      const i = v("v-btn"), x = v("v-alert"), S = v("v-chip"), P = v("v-expansion-panel-text"), ge = v("v-expansion-panel"), xe = v("v-expansion-panels"), R = v("v-card-text"), H = v("v-card"), Q = v("v-radio"), be = v("v-radio-group"), X = v("v-select"), G = v("v-text-field"), he = v("v-checkbox"), Ve = v("v-table"), Ce = v("v-progress-circular"), Ee = v("v-list-item"), we = v("v-list"), Se = v("v-stepper"), Ue = v("v-container");
-      return s(), h(Ue, { class: "excel-splitter" }, {
+      const s = v("v-btn"), _ = v("v-alert"), E = v("v-chip"), O = v("v-expansion-panel-text"), be = v("v-expansion-panel"), he = v("v-expansion-panels"), H = v("v-card-text"), X = v("v-card"), Z = v("v-radio"), ge = v("v-radio-group"), G = v("v-select"), W = v("v-text-field"), Ve = v("v-checkbox"), Ce = v("v-table"), we = v("v-progress-circular"), Ee = v("v-list-item"), Ue = v("v-list"), Se = v("v-stepper"), Ne = v("v-container");
+      return i(), g(Ne, { class: "excel-splitter" }, {
         default: n(() => [
           o(Se, {
             modelValue: u.value,
@@ -212,57 +217,57 @@ const De = ["disabled"], Fe = {
             "hide-actions": ""
           }, {
             "item.1": n(() => [
-              o(H, { variant: "flat" }, {
+              o(X, { variant: "flat" }, {
                 default: n(() => [
-                  o(R, null, {
+                  o(H, null, {
                     default: n(() => [
-                      Z(t).desktop ? (s(), h(i, {
+                      ee(t).desktop ? (i(), g(s, {
                         key: 0,
                         color: "primary",
-                        loading: L.value,
-                        onClick: re
+                        loading: F.value,
+                        onClick: de
                       }, {
                         default: n(() => [...e[6] || (e[6] = [
-                          y(" Choose file ", -1)
+                          k(" Choose file ", -1)
                         ])]),
                         _: 1
-                      }, 8, ["loading"])) : (s(), f("input", {
+                      }, 8, ["loading"])) : (i(), f("input", {
                         key: 1,
                         type: "file",
                         accept: ".xlsx,.xls",
-                        disabled: z.value || L.value,
-                        onChange: de
-                      }, null, 40, De)),
-                      _.value ? (s(), f("div", Fe, "Selected: " + w(_.value), 1)) : g("", !0),
-                      V.value ? (s(), h(x, {
+                        disabled: T.value || F.value,
+                        onChange: ce
+                      }, null, 40, Fe)),
+                      y.value ? (i(), f("div", Ae, "Selected: " + U(y.value), 1)) : b("", !0),
+                      V.value ? (i(), g(_, {
                         key: 3,
                         type: "error",
                         class: "mt-3",
                         density: "compact"
                       }, {
                         default: n(() => [
-                          y(w(V.value), 1)
+                          k(U(V.value), 1)
                         ]),
                         _: 1
-                      })) : g("", !0),
-                      N.value ? (s(), f("div", Ae, [
+                      })) : b("", !0),
+                      N.value ? (i(), f("div", Me, [
                         e[7] || (e[7] = m("div", { class: "text-subtitle-2 mb-2" }, "Sheets", -1)),
-                        o(xe, { variant: "accordion" }, {
+                        o(he, { variant: "accordion" }, {
                           default: n(() => [
-                            (s(!0), f(U, null, W(A.value, (a) => (s(), h(ge, {
+                            (i(!0), f(S, null, q($.value, (a) => (i(), g(be, {
                               key: a,
                               title: a
                             }, {
                               default: n(() => [
-                                o(P, null, {
+                                o(O, null, {
                                   default: n(() => [
-                                    (s(!0), f(U, null, W(ee(a), ($) => (s(), h(S, {
-                                      key: $,
+                                    (i(!0), f(S, null, q(le(a), (z) => (i(), g(E, {
+                                      key: z,
                                       size: "small",
                                       class: "mr-1 mb-1"
                                     }, {
                                       default: n(() => [
-                                        y(w($), 1)
+                                        k(U(z), 1)
                                       ]),
                                       _: 2
                                     }, 1024))), 128))
@@ -275,7 +280,7 @@ const De = ["disabled"], Fe = {
                           ]),
                           _: 1
                         })
-                      ])) : g("", !0)
+                      ])) : b("", !0)
                     ]),
                     _: 1
                   })
@@ -284,56 +289,56 @@ const De = ["disabled"], Fe = {
               })
             ]),
             "item.2": n(() => [
-              o(H, { variant: "flat" }, {
+              o(X, { variant: "flat" }, {
                 default: n(() => [
-                  o(R, null, {
+                  o(H, null, {
                     default: n(() => [
-                      o(be, {
-                        modelValue: k.value,
-                        "onUpdate:modelValue": e[0] || (e[0] = (a) => k.value = a),
+                      o(ge, {
+                        modelValue: x.value,
+                        "onUpdate:modelValue": e[0] || (e[0] = (a) => x.value = a),
                         inline: ""
                       }, {
                         default: n(() => [
-                          o(Q, {
+                          o(Z, {
                             label: "By sheet",
                             value: "BY_SHEET"
                           }),
-                          o(Q, {
+                          o(Z, {
                             label: "By column",
                             value: "BY_COLUMN"
                           }),
-                          o(Q, {
+                          o(Z, {
                             label: "Complex",
                             value: "COMPLEX"
                           })
                         ]),
                         _: 1
                       }, 8, ["modelValue"]),
-                      k.value === "BY_SHEET" ? (s(), h(X, {
+                      x.value === "BY_SHEET" ? (i(), g(G, {
                         key: 0,
-                        modelValue: q.value,
-                        "onUpdate:modelValue": e[1] || (e[1] = (a) => q.value = a),
-                        items: A.value,
+                        modelValue: J.value,
+                        "onUpdate:modelValue": e[1] || (e[1] = (a) => J.value = a),
+                        items: $.value,
                         label: "Sheets (leave empty for all)",
                         multiple: "",
                         chips: "",
                         clearable: ""
-                      }, null, 8, ["modelValue", "items"])) : k.value === "BY_COLUMN" ? (s(), f(U, { key: 1 }, [
-                        o(X, {
-                          modelValue: O.value,
-                          "onUpdate:modelValue": e[2] || (e[2] = (a) => O.value = a),
-                          items: A.value,
+                      }, null, 8, ["modelValue", "items"])) : x.value === "BY_COLUMN" ? (i(), f(S, { key: 1 }, [
+                        o(G, {
+                          modelValue: I.value,
+                          "onUpdate:modelValue": e[2] || (e[2] = (a) => I.value = a),
+                          items: $.value,
                           label: "Sheet"
                         }, null, 8, ["modelValue", "items"]),
-                        o(X, {
-                          modelValue: Y.value,
-                          "onUpdate:modelValue": e[3] || (e[3] = (a) => Y.value = a),
-                          items: oe.value,
+                        o(G, {
+                          modelValue: j.value,
+                          "onUpdate:modelValue": e[3] || (e[3] = (a) => j.value = a),
+                          items: ue.value,
                           label: "Column",
-                          disabled: !O.value
+                          disabled: !I.value
                         }, null, 8, ["modelValue", "items", "disabled"])
-                      ], 64)) : k.value === "COMPLEX" ? (s(), f(U, { key: 2 }, [
-                        o(Ve, { density: "compact" }, {
+                      ], 64)) : x.value === "COMPLEX" ? (i(), f(S, { key: 2 }, [
+                        o(Ce, { density: "compact" }, {
                           default: n(() => [
                             e[8] || (e[8] = m("thead", null, [
                               m("tr", null, [
@@ -346,28 +351,28 @@ const De = ["disabled"], Fe = {
                               ])
                             ], -1)),
                             m("tbody", null, [
-                              (s(!0), f(U, null, W(I.value, (a, $) => (s(), f("tr", { key: $ }, [
+                              (i(!0), f(S, null, q(B.value, (a, z) => (i(), f("tr", { key: z }, [
                                 m("td", null, [
-                                  o(G, {
+                                  o(W, {
                                     modelValue: a.fieldName,
-                                    "onUpdate:modelValue": (b) => a.fieldName = b,
+                                    "onUpdate:modelValue": (h) => a.fieldName = h,
                                     density: "compact",
                                     "hide-details": ""
                                   }, null, 8, ["modelValue", "onUpdate:modelValue"])
                                 ]),
                                 m("td", null, [
-                                  o(X, {
+                                  o(G, {
                                     modelValue: a.sheetName,
-                                    "onUpdate:modelValue": (b) => a.sheetName = b,
-                                    items: A.value,
+                                    "onUpdate:modelValue": (h) => a.sheetName = h,
+                                    items: $.value,
                                     density: "compact",
                                     "hide-details": ""
                                   }, null, 8, ["modelValue", "onUpdate:modelValue", "items"])
                                 ]),
                                 m("td", null, [
-                                  o(G, {
+                                  o(W, {
                                     modelValue: a.headerIndex,
-                                    "onUpdate:modelValue": (b) => a.headerIndex = b,
+                                    "onUpdate:modelValue": (h) => a.headerIndex = h,
                                     modelModifiers: { number: !0 },
                                     type: "number",
                                     density: "compact",
@@ -376,9 +381,9 @@ const De = ["disabled"], Fe = {
                                   }, null, 8, ["modelValue", "onUpdate:modelValue", "disabled"])
                                 ]),
                                 m("td", null, [
-                                  o(G, {
+                                  o(W, {
                                     modelValue: a.columnIndex,
-                                    "onUpdate:modelValue": (b) => a.columnIndex = b,
+                                    "onUpdate:modelValue": (h) => a.columnIndex = h,
                                     modelModifiers: { number: !0 },
                                     type: "number",
                                     density: "compact",
@@ -387,19 +392,19 @@ const De = ["disabled"], Fe = {
                                   }, null, 8, ["modelValue", "onUpdate:modelValue", "disabled"])
                                 ]),
                                 m("td", null, [
-                                  o(he, {
+                                  o(Ve, {
                                     modelValue: a.copyAll,
-                                    "onUpdate:modelValue": [(b) => a.copyAll = b, (b) => pe(a)],
+                                    "onUpdate:modelValue": [(h) => a.copyAll = h, (h) => me(a)],
                                     density: "compact",
                                     "hide-details": ""
                                   }, null, 8, ["modelValue", "onUpdate:modelValue"])
                                 ]),
                                 m("td", null, [
-                                  o(i, {
+                                  o(s, {
                                     icon: "mdi-delete",
                                     variant: "text",
                                     size: "small",
-                                    onClick: (b) => ve($)
+                                    onClick: (h) => pe(z)
                                   }, null, 8, ["onClick"])
                                 ])
                               ]))), 128))
@@ -407,35 +412,35 @@ const De = ["disabled"], Fe = {
                           ]),
                           _: 1
                         }),
-                        o(i, {
+                        o(s, {
                           class: "mt-2",
                           "prepend-icon": "mdi-plus",
                           variant: "tonal",
-                          onClick: ce
+                          onClick: ve
                         }, {
                           default: n(() => [...e[9] || (e[9] = [
-                            y(" Add rule ", -1)
+                            k(" Add rule ", -1)
                           ])]),
                           _: 1
                         })
-                      ], 64)) : g("", !0),
-                      o(G, {
-                        modelValue: T.value,
-                        "onUpdate:modelValue": e[4] || (e[4] = (a) => T.value = a),
+                      ], 64)) : b("", !0),
+                      o(W, {
+                        modelValue: P.value,
+                        "onUpdate:modelValue": e[4] || (e[4] = (a) => P.value = a),
                         label: "Output file prefix (optional)",
                         class: "mt-4"
                       }, null, 8, ["modelValue"]),
-                      D.value ? (s(), h(x, {
+                      A.value ? (i(), g(_, {
                         key: 3,
                         type: "error",
                         class: "mt-3",
                         density: "compact"
                       }, {
                         default: n(() => [
-                          y(w(D.value), 1)
+                          k(U(A.value), 1)
                         ]),
                         _: 1
-                      })) : g("", !0)
+                      })) : b("", !0)
                     ]),
                     _: 1
                   })
@@ -444,28 +449,28 @@ const De = ["disabled"], Fe = {
               })
             ]),
             "item.3": n(() => [
-              o(H, { variant: "flat" }, {
+              o(X, { variant: "flat" }, {
                 default: n(() => [
-                  o(R, null, {
+                  o(H, null, {
                     default: n(() => [
-                      Z(t).desktop ? (s(), f(U, { key: 0 }, [
-                        o(i, {
+                      ee(t).desktop ? (i(), f(S, { key: 0 }, [
+                        o(s, {
                           color: "primary",
-                          onClick: fe
+                          onClick: _e
                         }, {
                           default: n(() => [...e[10] || (e[10] = [
-                            y("Choose output folder", -1)
+                            k("Choose output folder", -1)
                           ])]),
                           _: 1
                         }),
-                        C.value ? (s(), f("div", $e, "Output: " + w(C.value), 1)) : g("", !0)
-                      ], 64)) : (s(), h(x, {
+                        C.value ? (i(), f("div", $e, "Output: " + U(C.value), 1)) : b("", !0)
+                      ], 64)) : (i(), g(_, {
                         key: 1,
                         type: "info",
                         density: "compact"
                       }, {
                         default: n(() => [...e[11] || (e[11] = [
-                          y(" Results will be packaged as a downloadable zip once the split finishes. ", -1)
+                          k(" Results will be packaged as a downloadable zip once the split finishes. ", -1)
                         ])]),
                         _: 1
                       }))
@@ -477,53 +482,53 @@ const De = ["disabled"], Fe = {
               })
             ]),
             "item.4": n(() => [
-              o(H, { variant: "flat" }, {
+              o(X, { variant: "flat" }, {
                 default: n(() => [
-                  o(R, null, {
+                  o(H, null, {
                     default: n(() => [
-                      j.value ? (s(), f("div", Me, [
-                        o(Ce, {
+                      R.value ? (i(), f("div", ze, [
+                        o(we, {
                           indeterminate: "",
                           size: "24",
                           class: "mr-2"
                         }),
-                        e[12] || (e[12] = y(" Splitting… ", -1))
-                      ])) : g("", !0),
-                      B.value ? (s(), h(x, {
+                        e[12] || (e[12] = k(" Splitting… ", -1))
+                      ])) : b("", !0),
+                      L.value ? (i(), g(_, {
                         key: 1,
                         type: "error",
                         density: "compact"
                       }, {
                         default: n(() => [
-                          y(w(B.value), 1)
+                          k(U(L.value), 1)
                         ]),
                         _: 1
-                      })) : g("", !0),
-                      F.value ? (s(), f(U, { key: 2 }, [
-                        o(x, {
+                      })) : b("", !0),
+                      M.value ? (i(), f(S, { key: 2 }, [
+                        o(_, {
                           type: "success",
                           density: "compact",
                           class: "mb-3"
                         }, {
                           default: n(() => [
-                            y(w(F.value.fileCount) + " file(s) written ", 1),
-                            K.value ? (s(), f("span", ze, " — preparing download…")) : g("", !0)
+                            k(U(M.value.fileCount) + " file(s) written ", 1),
+                            Q.value ? (i(), f("span", Ye, " — preparing download…")) : b("", !0)
                           ]),
                           _: 1
                         }),
-                        Z(t).desktop && C.value ? (s(), f("div", Ye, " Output folder: " + w(C.value), 1)) : g("", !0),
-                        o(we, { density: "compact" }, {
+                        ee(t).desktop && C.value ? (i(), f("div", Te, " Output folder: " + U(C.value), 1)) : b("", !0),
+                        o(Ue, { density: "compact" }, {
                           default: n(() => [
-                            (s(!0), f(U, null, W(F.value.files, (a) => (s(), h(Ee, { key: a }, {
+                            (i(!0), f(S, null, q(M.value.files, (a) => (i(), g(Ee, { key: a }, {
                               default: n(() => [
-                                y(w(a), 1)
+                                k(U(a), 1)
                               ]),
                               _: 2
                             }, 1024))), 128))
                           ]),
                           _: 1
                         })
-                      ], 64)) : g("", !0)
+                      ], 64)) : b("", !0)
                     ]),
                     _: 1
                   })
@@ -533,46 +538,46 @@ const De = ["disabled"], Fe = {
             ]),
             _: 1
           }, 8, ["modelValue"]),
-          m("div", Te, [
-            o(i, {
+          m("div", je, [
+            o(s, {
               variant: "text",
-              disabled: u.value === 1 || j.value,
-              onClick: ke
+              disabled: u.value === 1 || R.value,
+              onClick: xe
             }, {
               default: n(() => [...e[13] || (e[13] = [
-                y("Back", -1)
+                k("Back", -1)
               ])]),
               _: 1
             }, 8, ["disabled"]),
-            u.value < 4 ? (s(), h(i, {
+            u.value < 4 ? (i(), g(s, {
               key: 0,
               color: "primary",
-              disabled: !ie.value,
-              loading: J.value,
-              onClick: ye
+              disabled: !re.value,
+              loading: K.value,
+              onClick: ke
             }, {
               default: n(() => [...e[14] || (e[14] = [
-                y(" Next ", -1)
+                k(" Next ", -1)
               ])]),
               _: 1
-            }, 8, ["disabled", "loading"])) : g("", !0)
+            }, 8, ["disabled", "loading"])) : b("", !0)
           ])
         ]),
         _: 1
       });
     };
   }
-}), Pe = (d, t) => {
+}), Re = (d, t) => {
   const u = d.__vccOpts || d;
-  for (const [c, _] of t)
-    u[c] = _;
+  for (const [c, y] of t)
+    u[c] = y;
   return u;
-}, Re = /* @__PURE__ */ Pe(je, [["__scopeId", "data-v-aa0e36eb"]]), Xe = {
+}, He = /* @__PURE__ */ Re(Pe, [["__scopeId", "data-v-a1b4a4b3"]]), Ge = {
   mount(d, t) {
-    const u = Ie(Re);
+    const u = Be(He);
     return u.provide("pluginCtx", t), t.vuetify && u.use(t.vuetify), u.mount(d), () => u.unmount();
   }
 };
 export {
-  Xe as default
+  Ge as default
 };
