@@ -49,4 +49,21 @@ class PluginFileControllerTest {
         mvc.perform(multipart("/api/plugins/fan.summer.excel/files").file(f))
            .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void rejectsFileOver100MB() throws Exception {
+        // Reports a size just over the controller's 100MB business cap without allocating
+        // 100MB of heap: MockMvc's standalone setup does not enforce servlet multipart limits,
+        // so this exercises PluginFileController's own `file.getSize() > MAX_BYTES` check.
+        MockMultipartFile f = new MockMultipartFile("file", "in.xlsx",
+            "application/octet-stream", "x".getBytes()) {
+            @Override
+            public long getSize() {
+                return 101L * 1024 * 1024;
+            }
+        };
+        mvc.perform(multipart("/api/plugins/fan.summer.excel/files").file(f))
+           .andExpect(status().isBadRequest())
+           .andExpect(jsonPath("$.success").value(false));
+    }
 }
