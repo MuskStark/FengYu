@@ -19,3 +19,6 @@ interface Window {
   __ZHIFLOW_TOKEN__?: string
   __ZHIFLOW_API_BASE__?: string
 }
+
+/** Build-time app version, injected from package.json by vite.config.ts `define`. */
+declare const __APP_VERSION__: string
