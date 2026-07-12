@@ -1,6 +1,6 @@
 # 05 · Theme & Color System
 
-> **Role:** This is the **single source of truth** for every `-sk-*` color token in ZhiFlow.
+> **Role:** This is the **single source of truth** for every `-sk-*` color token in FengYu.
 > If you need an exact hex value, a token name, or a contrast-safe color pair, it lives here.
 > Every other UI design doc (01, 02, 03, 04, 06, 07, 08) links back to this page instead of
 > restating values. Bookmark the anchor [`#token-reference-table`](#token-reference-table).
@@ -9,7 +9,7 @@
 |---|---|
 | **Doc type** | Token reference + theme lifecycle |
 | **Audience** | Plugin authors, AI code generators, anyone who colors a node |
-| **Source of truth** | [`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css) |
+| **Source of truth** | [`FengYu-Api/src/main/resources/css/fengyu-common.css`](../../FengYu-Api/src/main/resources/css/fengyu-common.css) |
 | **Related** | [01 Design System](01-design-system.md) · [02 JavaFX Implementation](02-javafx-implementation.md) · [08 Accessibility](08-accessibility-guide.md) |
 
 ---
@@ -31,7 +31,7 @@
 
 ## 1. Overview
 
-ZhiFlow ships a **dual-theme** (dark / light) color system derived from the JetBrains
+FengYu ships a **dual-theme** (dark / light) color system derived from the JetBrains
 IntelliJ IDEA 2025 **New UI**. The entire palette is expressed as **19 semantic color
 tokens** prefixed `-sk-`, and one **accent** color (`#3574F0`) shared by both themes.
 
@@ -43,7 +43,7 @@ theme switching work with zero flicker.
 ### How a token resolves (the looked-up color mechanism)
 
 A token is a **JavaFX looked-up color** declared in
-[`zhiflow-common.css`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css)
+[`fengyu-common.css`](../../FengYu-Api/src/main/resources/css/fengyu-common.css)
 under one of two classes placed on the **scene root**:
 
 ```
@@ -64,7 +64,7 @@ under one of two classes placed on the **scene root**:
 Switching the theme = swapping that one class on the root. JavaFX re-resolves every
 looked-up color downward through the scene graph. **No stylesheet is reloaded, no node is
 rebuilt, there is no flicker.** This is performed by
-[`ThemeService.set(Theme)`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java).
+[`ThemeService.set(Theme)`](../../FengYu-Api/src/main/java/fan/summer/api/theme/ThemeService.java).
 
 > **Key consequence:** a token's value is *contextual*. `-sk-text` is `#D0D0D0` under
 > `.theme-dark` and `#1E1E1E` under `.theme-light`. Code that hardcodes `#D0D0D0` will be
@@ -152,7 +152,7 @@ category color (see [06 Icon System](06-icon-system.md)).
 > classes drive.
 >
 > This is **precisely why** the `.sk-*` utility classes exist. They live inside
-> `zhiflow-common.css`, where the looked-up colors **are** in scope, so they *do* resolve
+> `fengyu-common.css`, where the looked-up colors **are** in scope, so they *do* resolve
 > and *do* re-resolve on theme switch.
 
 **The rule:**
@@ -173,7 +173,7 @@ class handles color (and re-resolves on theme switch), inline handles geometry.
 <span id="token-reference-table"></span>
 
 The canonical table. **Every token appears under both `.theme-dark` and `.theme-light` in
-`zhiflow-common.css`** with the exact values below. These are reproduced verbatim from the
+`fengyu-common.css`** with the exact values below. These are reproduced verbatim from the
 source CSS — if you ever find a discrepancy, the **CSS file wins** and this doc must be
 fixed.
 
@@ -244,7 +244,7 @@ or propose a new token in the CSS first.
 #### Raw CSS excerpt
 
 For copy-paste / verification, here are the two theme blocks verbatim from
-[`zhiflow-common.css`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css):
+[`fengyu-common.css`](../../FengYu-Api/src/main/resources/css/fengyu-common.css):
 
 ```css
 .theme-dark {
@@ -297,7 +297,7 @@ For copy-paste / verification, here are the two theme blocks verbatim from
 <span id="token--css-utility-class"></span>
 
 Tokens are CSS variables; you usually apply them **indirectly** through a utility class
-(also defined in `zhiflow-common.css`). This is mandatory whenever you would otherwise be
+(also defined in `fengyu-common.css`). This is mandatory whenever you would otherwise be
 tempted to reach for inline `setStyle()` — see [P5](#p5--colors-live-in-css-never-in-setstyle).
 
 | Token | Utility class(es) | CSS property | Notes |
@@ -324,7 +324,7 @@ tempted to reach for inline `setStyle()` — see [P5](#p5--colors-live-in-css-ne
 
 #### Beyond utilities: composite component classes
 
-For richer components, `zhiflow-common.css` ships ready-made classes that bundle several
+For richer components, `fengyu-common.css` ships ready-made classes that bundle several
 tokens + geometry. Use these instead of hand-rolling (see [03 Component Library](03-component-library.md)
 for full specs):
 
@@ -402,7 +402,7 @@ plugin windows opt in.
   Application startup
         │
         ▼
-  ThemeService.registerScene(mainScene)   ──►  loads zhiflow-common.css
+  ThemeService.registerScene(mainScene)   ──►  loads fengyu-common.css
         │                                      stamps .theme-dark / .theme-light
         │                                      on the scene root
         ▼
@@ -418,13 +418,13 @@ plugin windows opt in.
   host persists  DB key "theme" = "light"
 ```
 
-Three collaborators, all in `fan.summer.zhiflow.api.theme`:
+Three collaborators, all in `fan.summer.fengyu.api.theme`:
 
 | Class | Role |
 |---|---|
-| [`ThemeService`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java) | The low-level engine. Holds current theme, owns registered scenes + listeners, stamps the class. **FX-thread-only.** |
-| [`Themes`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/Themes.java) | Plugin-facing convenience helper. `Themes.applyTo(scene)` is the one entry point plugins should call; `Themes.COMMON_CSS` is the stylesheet resource path. |
-| [`MarkdownRenderer`](../../ZhiFlow/src/main/java/fan/summer/ai/util/MarkdownRenderer.java) | Reference implementation of WebView theme sync (HTML can't reuse JavaFX tokens). |
+| [`ThemeService`](../../FengYu-Api/src/main/java/fan/summer/api/theme/ThemeService.java) | The low-level engine. Holds current theme, owns registered scenes + listeners, stamps the class. **FX-thread-only.** |
+| [`Themes`](../../FengYu-Api/src/main/java/fan/summer/api/theme/Themes.java) | Plugin-facing convenience helper. `Themes.applyTo(scene)` is the one entry point plugins should call; `Themes.COMMON_CSS` is the stylesheet resource path. |
+| [`MarkdownRenderer`](../../FengYu/src/main/java/fan/summer/ai/util/MarkdownRenderer.java) | Reference implementation of WebView theme sync (HTML can't reuse JavaFX tokens). |
 
 ### 4.2 The API surface (signatures verbatim)
 
@@ -448,17 +448,17 @@ listener can never break a theme switch.
 ### 4.3 Registering a scene (host application)
 
 The host registers the primary scene at startup. `registerScene` is idempotent — it loads
-`zhiflow-common.css` once, adds the scene to the tracked list, and stamps the current theme
+`fengyu-common.css` once, adds the scene to the tracked list, and stamps the current theme
 class on the root.
 
 ```java
-import fan.summer.zhiflow.api.theme.ThemeService;
+import fan.summer.fengyu.api.theme.ThemeService;
 import javafx.scene.Scene;
 
 // ... build your root container ...
 Scene scene = new Scene(root, 1200, 800);
 
-// Load zhiflow-common.css + stamp current theme class on root.
+// Load fengyu-common.css + stamp current theme class on root.
 ThemeService.registerScene(scene);
 ```
 
@@ -467,7 +467,7 @@ What `registerScene` does internally:
 ```java
 public static void registerScene(Scene scene) {
     if (scene == null) return;
-    Themes.loadCommonStylesheet(scene);                 // adds /css/zhiflow-common.css once
+    Themes.loadCommonStylesheet(scene);                 // adds /css/fengyu-common.css once
     if (!SCENES.contains(scene)) SCENES.add(scene);     // track for future set() swaps
     if (scene.getRoot() != null) {
         applyClass(scene.getRoot(),                     // stamp .theme-dark or .theme-light
@@ -482,7 +482,7 @@ Switching is a one-liner. `set()` re-stamps the class on **every** registered sc
 and fires all `onChange` listeners. No stylesheet reload, no node rebuild → no flicker.
 
 ```java
-import fan.summer.zhiflow.api.theme.ThemeService;
+import fan.summer.fengyu.api.theme.ThemeService;
 
 ThemeService.set(ThemeService.Theme.LIGHT);   // must run on the FX thread
 ```
@@ -518,7 +518,7 @@ For surfaces that **can't** piggyback on looked-up colors — a `WebView` (HTML/
 `Canvas`, an off-screen image — register an `onChange` listener and re-render.
 
 ```java
-import fan.summer.zhiflow.api.theme.ThemeService;
+import fan.summer.fengyu.api.theme.ThemeService;
 import javafx.scene.web.WebView;
 
 WebView web = new WebView();
@@ -599,7 +599,7 @@ dialog, a standalone tool window) gets a fresh `Scene` with no stylesheet and no
 Call **`Themes.applyTo(scene)`** to fix both:
 
 ```java
-import fan.summer.zhiflow.api.theme.Themes;
+import fan.summer.fengyu.api.theme.Themes;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 
@@ -620,7 +620,7 @@ not `ThemeService` internals** — that is the supported, stable surface.
 The stylesheet resource path (used internally; plugins rarely need it directly):
 
 ```java
-Themes.COMMON_CSS = "/css/zhiflow-common.css";   // resource inside the API JAR
+Themes.COMMON_CSS = "/css/fengyu-common.css";   // resource inside the API JAR
 Themes.commonStylesheetUrl();                      // → external-form URL for getStylesheets()
 ```
 
@@ -655,7 +655,7 @@ ThemeService.set(ThemeService.Theme.LIGHT);
 
 ## 5. AI Development Checklist
 
-When generating themed UI for ZhiFlow, you **MUST** satisfy all of the following. Treat
+When generating themed UI for FengYu, you **MUST** satisfy all of the following. Treat
 each item as a hard gate.
 
 - [ ] **Use tokens or utility classes for every color.** Reference `-sk-*` tokens in CSS, or
@@ -667,7 +667,7 @@ each item as a hard gate.
       `setStyle("-fx-padding: 8 12; -fx-background-radius: 6;")`. Color is not.
 - [ ] **Standalone `Stage`/`Scene`? Call `Themes.applyTo(scene)`.** Do not call
       `ThemeService.registerScene` directly from plugin code; do not manually add
-      `zhiflow-common.css` to `getStylesheets()`.
+      `fengyu-common.css` to `getStylesheets()`.
 - [ ] **Custom rendering surface (WebView/Canvas)? Register `ThemeService.onChange`.** Rebuild
       the surface's content for the new theme inside the callback (see the `MarkdownRenderer`
       pattern). Remove the listener when the surface is torn down.
@@ -685,7 +685,7 @@ each item as a hard gate.
       design but only for non-actionable content.
 - [ ] **Do not invent new token names.** Use only the 19 tokens in the
       [Token Reference Table](#token-reference-table). If you genuinely need a new semantic
-      color, add it to `zhiflow-common.css` first, then document it here.
+      color, add it to `fengyu-common.css` first, then document it here.
 
 ---
 
@@ -758,7 +758,7 @@ See [P3](#p3--selection--neutral-fill--3-px-left-accent-strip-not-blue-flood).
 ```
 
 ```css
-/* ✅ CORRECT — use an existing token, or add the token to zhiflow-common.css first */
+/* ✅ CORRECT — use an existing token, or add the token to fengyu-common.css first */
 .my-card { -fx-background-color: -sk-bg-elevated; }
 ```
 
@@ -833,10 +833,10 @@ Platform.runLater(() -> ThemeService.set(Theme.LIGHT));
 
 | What | Path |
 |---|---|
-| Token + utility-class definitions | [`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css) |
-| Theme engine (DARK/LIGHT, `current/set/registerScene/onChange/removeListener`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java) |
-| Plugin-facing helper (`applyTo`, `COMMON_CSS`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/theme/Themes.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/Themes.java) |
-| WebView theme-sync reference (`DARK_CSS`/`LIGHT_CSS`) | [`ZhiFlow/src/main/java/fan/summer/ai/util/MarkdownRenderer.java`](../../ZhiFlow/src/main/java/fan/summer/ai/util/MarkdownRenderer.java) |
+| Token + utility-class definitions | [`FengYu-Api/src/main/resources/css/fengyu-common.css`](../../FengYu-Api/src/main/resources/css/fengyu-common.css) |
+| Theme engine (DARK/LIGHT, `current/set/registerScene/onChange/removeListener`) | [`FengYu-Api/src/main/java/fan/summer/api/theme/ThemeService.java`](../../FengYu-Api/src/main/java/fan/summer/api/theme/ThemeService.java) |
+| Plugin-facing helper (`applyTo`, `COMMON_CSS`) | [`FengYu-Api/src/main/java/fan/summer/api/theme/Themes.java`](../../FengYu-Api/src/main/java/fan/summer/api/theme/Themes.java) |
+| WebView theme-sync reference (`DARK_CSS`/`LIGHT_CSS`) | [`FengYu/src/main/java/fan/summer/ai/util/MarkdownRenderer.java`](../../FengYu/src/main/java/fan/summer/ai/util/MarkdownRenderer.java) |
 
 ### Design baseline
 
@@ -855,6 +855,6 @@ Platform.runLater(() -> ThemeService.set(Theme.LIGHT));
 
 ---
 
-*Token values in this document are reproduced verbatim from `zhiflow-common.css` and
+*Token values in this document are reproduced verbatim from `fengyu-common.css` and
 verified with `grep`. If the CSS ever changes, this doc must be regenerated to match — the
 CSS is the source of truth, not this page.*

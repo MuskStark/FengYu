@@ -5,17 +5,17 @@
     <modelVersion>4.0.0</modelVersion>
 
     <!--
-        ZhiFlow 4.0.0 — true parent POM (was a bare aggregator before).
+        FengYu 4.0.0 — true parent POM (was a bare aggregator before).
         Centralises version properties, dependencyManagement, and pluginManagement
         so the API and app modules inherit a single source of truth.
     -->
-    <groupId>fan.summer.zhiflow</groupId>
-    <artifactId>ZhiFlow-parent</artifactId>
+    <groupId>fan.summer.fengyu</groupId>
+    <artifactId>FengYu-parent</artifactId>
     <version>${revision}</version>
     <packaging>pom</packaging>
 
-    <name>ZhiFlow Parent</name>
-    <description>ZhiFlow — a modular desktop toolbox. Multi-module parent / reactor.</description>
+    <name>FengYu Parent</name>
+    <description>FengYu — a modular desktop toolbox. Multi-module parent / reactor.</description>
 
     <licenses>
         <license>
@@ -38,7 +38,7 @@
         <!-- Dependency versions (consumed by child modules) -->
         <javafx.version>21.0.2</javafx.version>
         <lombok.version>1.18.42</lombok.version>
-        <zhiflow.api.version>${revision}</zhiflow.api.version>
+        <fengyu.api.version>${revision}</fengyu.api.version>
         <fesod.version>2.0.1-incubating</fesod.version>
         <h2.version>2.4.240</h2.version>
         <simplejavamail.version>8.12.6</simplejavamail.version>
@@ -58,7 +58,7 @@
         <postgresql.version>42.7.5</postgresql.version>
         <sqlite.version>3.49.1.0</sqlite.version>
         <!-- Spring Boot 4 (embedded, non-web) + Spring AI 2.0 — Phase 1 AI strangler.
-             The BOM imports live in the ZhiFlow module POM (import-scoped BOMs in a
+             The BOM imports live in the FengYu module POM (import-scoped BOMs in a
              parent do not reliably propagate managed versions to children), but the
              version pins stay here as the single source of truth. -->
         <spring-boot.version>4.1.0</spring-boot.version>
@@ -73,17 +73,17 @@
 
     <!-- Reactor modules. Built in declaration order: API first (the app depends on it). -->
     <modules>
-        <module>ZhiFlow-Api</module>
+        <module>FengYu-Api</module>
         <module>plugin-markdown</module>
-        <module>ZhiFlow</module>
+        <module>FengYu</module>
     </modules>
 
     <dependencyManagement>
         <dependencies>
             <!-- Internal modules -->
             <dependency>
-                <groupId>fan.summer.zhiflow.api</groupId>
-                <artifactId>ZhiFlow-Api</artifactId>
+                <groupId>fan.summer.fengyu.api</groupId>
+                <artifactId>FengYu-Api</artifactId>
                 <version>${revision}</version>
             </dependency>
 

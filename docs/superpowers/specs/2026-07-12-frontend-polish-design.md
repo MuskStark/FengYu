@@ -1,13 +1,13 @@
 # Frontend Polish — Setup Defaults, Global Status Bar, Button Alignment, Sidebar Logo
 
 - **Date:** 2026-07-12
-- **Branch:** `4.0.0-ZhiFlow`
+- **Branch:** `4.0.0-FengYu`
 - **Status:** Approved (brainstorm complete, pending implementation plan)
 - **Owner:** Frontend
 
 ## Summary
 
-Four targeted frontend polish tasks on the ZhiFlow 4.0 MD3/Vuetify shell:
+Four targeted frontend polish tasks on the FengYu 4.0 MD3/Vuetify shell:
 
 1. **Setup wizard local-DB defaults + button layout** — show the program-default data-file path for embedded (H2/SQLite) databases, and make the Test/Initialize buttons centered and stacked vertically.
 2. **Global bottom status bar** — a single bottom info bar (version + backend status: offline / connected / restarting) shown on **every** screen, including the setup wizard.
@@ -18,15 +18,15 @@ Four targeted frontend polish tasks on the ZhiFlow 4.0 MD3/Vuetify shell:
 
 | Decision | Choice |
 |---|---|
-| Local-DB default path format | **Program absolute path** — backend resolves `<user.dir>/.zhiflow/database/zhiflow` and ships it in `types()` so the real path is visible. |
+| Local-DB default path format | **Program absolute path** — backend resolves `<user.dir>/.fengyu/database/fengyu` and ships it in `types()` so the real path is visible. |
 | Status bar scope | **Global, including the wizard** — `StatusBar` lifts to root `App.vue`; the wizard's restart loop drives a `restarting` state. |
 | Input-bar button alignment | **Vertical center** (`align-center`) — send/plan buttons center on the input box, not bottom-aligned. |
 | Sidebar icon task | **Logo + rail collapse polish** — brand area becomes an MDI logo; rail mode (64px) center-aligns all icons. |
 
 ## Context (current state)
 
-- `SetupController.types()` (`ZhiFlow/.../setup/SetupController.java:91-101`) emits the embedded `filePath` field **without a `default`**; the program-default path is only resolved at save time inside `DataSourceConfigService.buildFromWizard()` (`:135-137`). The frontend store already auto-fills any `f.default` it receives (`frontend/src/stores/setup.ts:36-39`), so a backend-supplied default needs **zero** frontend store change.
-- `StatusBar.vue` already polls `/api/health` every 5s and shows a connection chip + a **hardcoded** `"ZhiFlow 4.0.0"`. It only renders inside `AppShell` (app mode) — `App.vue:11-14` renders the wizard full-screen **without** the bar, yet the wizard is exactly where the restart state matters.
+- `SetupController.types()` (`FengYu/.../setup/SetupController.java:91-101`) emits the embedded `filePath` field **without a `default`**; the program-default path is only resolved at save time inside `DataSourceConfigService.buildFromWizard()` (`:135-137`). The frontend store already auto-fills any `f.default` it receives (`frontend/src/stores/setup.ts:36-39`), so a backend-supplied default needs **zero** frontend store change.
+- `StatusBar.vue` already polls `/api/health` every 5s and shows a connection chip + a **hardcoded** `"FengYu 4.0.0"`. It only renders inside `AppShell` (app mode) — `App.vue:11-14` renders the wizard full-screen **without** the bar, yet the wizard is exactly where the restart state matters.
 - `package.json` carries `"version": "4.0.0"`; it is not currently wired into the app (only a literal string in `StatusBar.vue:47`).
 - Icon audit: the frontend is already 100% MDI — `plugins/vuetify.ts:24-27` installs `mdi` + `@mdi/font`; a regex sweep for SVG / FontAwesome / Lucide / heroicons / tabler across `frontend/src` returns **zero** matches. Task 4 (sidebar logo) will keep that invariant.
 - Known button misalignments (input-box siblings using `align-end`): `AiChat.vue:106`, `AiAgent.vue:257`.
@@ -39,7 +39,7 @@ No new dependencies, no new components beyond reusing the existing `StatusBar.vu
 
 | File | Change |
 |---|---|
-| `ZhiFlow/.../setup/SetupController.java` | `types()` adds `default` = resolved embedded data path for `filePath`. |
+| `FengYu/.../setup/SetupController.java` | `types()` adds `default` = resolved embedded data path for `filePath`. |
 | `frontend/src/views/SetupWizard.vue` | Step-2 action block: center + vertical stack; localized labels. |
 | `frontend/src/App.vue` | Always render `<StatusBar />` (remove wizard-only conditional). |
 | `frontend/src/shell/StatusBar.vue` | Add `offline`/`restarting` states + MDI icons; version from `__APP_VERSION__`; pin to bottom. |
@@ -56,7 +56,7 @@ No new dependencies, no new components beyond reusing the existing `StatusBar.vu
 
 `SetupController.types()` gains access to the same base dir `DataSourceConfigService` uses, so the default it advertises **exactly matches** what `buildFromWizard()` would compute when `filePath` is blank.
 
-- Refactor: expose the resolved default path from `DataSourceConfigService` (e.g. a `defaultEmbeddedPath()` method returning `Path.of(baseDir, "database", "zhiflow")`), and have `buildFromWizard()` call it instead of duplicating the literal. `SetupController` injects `DataSourceConfigService` (it already does) and reads `defaultEmbeddedPath()` to populate the field's `default`.
+- Refactor: expose the resolved default path from `DataSourceConfigService` (e.g. a `defaultEmbeddedPath()` method returning `Path.of(baseDir, "database", "fengyu")`), and have `buildFromWizard()` call it instead of duplicating the literal. `SetupController` injects `DataSourceConfigService` (it already does) and reads `defaultEmbeddedPath()` to populate the field's `default`.
 - The `filePath` field for embedded types becomes:
   ```
   { name: "filePath", label: "Data file location", required: true, secret: false,
@@ -120,7 +120,7 @@ Extend the current 3-state poller to 5:
 
 - `vite.config.ts`: read `package.json` `version` and `define: { __APP_VERSION__: JSON.stringify(version) }`.
 - `env.d.ts`: `declare const __APP_VERSION__: string` (global).
-- `StatusBar.vue`: replace literal `"ZhiFlow 4.0.0"` with `` `ZhiFlow ${__APP_VERSION__}` ``.
+- `StatusBar.vue`: replace literal `"FengYu 4.0.0"` with `` `FengYu ${__APP_VERSION__}` ``.
 
 ## Task 3 — Button alignment audit
 
@@ -145,7 +145,7 @@ No `align-end` button siblings should remain.
 
 ```
 <v-avatar color="primary" size="32" rounded="lg"><span>ZF</span></v-avatar>
-<span v-if="!rail">ZhiFlow</span>
+<span v-if="!rail">FengYu</span>
 <v-spacer />
 <v-btn :icon="rail ? chevron-right : chevron-left" .../>
 ```
@@ -160,7 +160,7 @@ Replace the `ZF` text avatar with an MDI logo glyph:
 
 `mdi-hexagon-multiple-outline` reads as a multi-part hex stack (visual nod to a tool/flow suite). If it proves visually heavy at 32px, the equally-valid fallback is `mdi-flask-outline`; decision deferred to the visual check during implementation, not a runtime toggle.
 
-Keep the textual `ZhiFlow` label next to it in expanded mode (unchanged). The icon is MDI → consistent with Task-4's "use UI framework built-in icons" intent.
+Keep the textual `FengYu` label next to it in expanded mode (unchanged). The icon is MDI → consistent with Task-4's "use UI framework built-in icons" intent.
 
 ### 4b. Rail-mode (64px) centering pass
 

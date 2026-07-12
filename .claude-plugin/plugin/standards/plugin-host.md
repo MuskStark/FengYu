@@ -7,7 +7,7 @@
 ## 获取方式
 
 ```java
-public class MyPlugin implements ZhiFlowPlugin {
+public class MyPlugin implements FengYuPlugin {
 
     private PluginHost host;
 

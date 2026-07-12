@@ -1,6 +1,6 @@
 # 04 · 交互指南
 
-> **定位：** 本文档规定用户在 ZhiFlow 中**如何导航、发现和执行操作**——是交互流程，而非
+> **定位：** 本文档规定用户在 FengYu 中**如何导航、发现和执行操作**——是交互流程，而非
 > 组件本身。它告诉你：当用户点击一个导航项、悬停卡片、启动工具、卸载插件、或触发破坏性
 > 操作时会发生什么。组件见 [03](03-component-library.md)；这些流程触发的动画见
 > [07](07-animation-guidelines.md)；键盘流程在 [08](08-accessibility-guide.md) 中为无障碍做了延伸。
@@ -9,8 +9,8 @@
 |---|---|
 | **文档类型** | 交互流程 + 事件接线模式 |
 | **读者** | 插件作者、AI 代码生成器、任何在接线用户操作的人 |
-| **源码文件** | [`ui/MainWindow.java`](../../ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java) · [`ui/sidebar/Sidebar.java`](../../ZhiFlow/src/main/java/fan/summer/ui/sidebar/Sidebar.java) · [`ui/content/ContentArea.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ContentArea.java) · [`ui/content/ToolCard.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java) · [`ui/content/DetailPanel.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java) · [`ui/store/PluginStoreUi.java`](../../ZhiFlow/src/main/java/fan/summer/ui/store/PluginStoreUi.java) |
-| **通知 API** | [`SkNotification`](../../ZhiFlow-Api/src/main/java/fan/summer/api/component/SkNotification.java)（`.sk-notif-*`） |
+| **源码文件** | [`ui/MainWindow.java`](../../FengYu/src/main/java/fan/summer/ui/MainWindow.java) · [`ui/sidebar/Sidebar.java`](../../FengYu/src/main/java/fan/summer/ui/sidebar/Sidebar.java) · [`ui/content/ContentArea.java`](../../FengYu/src/main/java/fan/summer/ui/content/ContentArea.java) · [`ui/content/ToolCard.java`](../../FengYu/src/main/java/fan/summer/ui/content/ToolCard.java) · [`ui/content/DetailPanel.java`](../../FengYu/src/main/java/fan/summer/ui/content/DetailPanel.java) · [`ui/store/PluginStoreUi.java`](../../FengYu/src/main/java/fan/summer/ui/store/PluginStoreUi.java) |
+| **通知 API** | [`SkNotification`](../../FengYu-Api/src/main/java/fan/summer/api/component/SkNotification.java)（`.sk-notif-*`） |
 | **相关文档** | [03 组件库](03-component-library.md) · [06 图标系统](06-icon-system.md) · [07 动效](07-animation-guidelines.md) · [08 无障碍](08-accessibility-guide.md) |
 
 ---
@@ -37,11 +37,11 @@
 
 ## 1. 概览
 
-ZhiFlow 是一个**工具箱**：用户打开它，找一个工具，用它，然后离开。外壳里的每一个交互
+FengYu 是一个**工具箱**：用户打开它，找一个工具，用它，然后离开。外壳里的每一个交互
 都是为了把这个循环做得又快又宽容。本文档编目了宿主中实际实现的流程（经源码核对），以及
 插件作者为了让自己的工具原生融合而复用的事件接线模式。
 
-三件事定义了 ZhiFlow 的交互模型：
+三件事定义了 FengYu 的交互模型：
 
 1. **默认可发现**——主屏*就是*一个可搜索的工具卡片网格。用户无需先知道工具名就能找到它。
 2. **渐进式披露**——悬停/选中的卡片揭示详情面板；启动则把网格替换为工具视图。详情是按需
@@ -135,7 +135,7 @@ AI 聊天、插件商店、收藏和设置。主题开关在底部。
 ### 3.3 插件生命周期
 
 插件在 `activate → (foreground/background) → deactivate` 间流转，外加 `uninstall`。宿主在
-[`MainWindow`](../../ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java) 中接线：
+[`MainWindow`](../../FengYu/src/main/java/fan/summer/ui/MainWindow.java) 中接线：
 
 | 转换 | 触发 | 效果 | 源码 |
 |---|---|---|---|
@@ -154,7 +154,7 @@ AI 聊天、插件商店、收藏和设置。主题开关在底部。
 ### 3.4 插件商店
 
 安装插件是一个带可见进度的前台异步任务，由
-[`PluginStoreUi`](../../ZhiFlow/src/main/java/fan/summer/ui/store/PluginStoreUi.java)（在线
+[`PluginStoreUi`](../../FengYu/src/main/java/fan/summer/ui/store/PluginStoreUi.java)（在线
 页）和 `LocalInstallPane`（本地 JAR 安装）处理：
 
 | 步骤 | 效果 |
@@ -168,7 +168,7 @@ AI 聊天、插件商店、收藏和设置。主题开关在底部。
 
 ### 3.5 表单与校验
 
-ZhiFlow 表单（由 `.sk-field` / `.sk-combo` / `.sk-checkbox` 构建）遵循保守的校验时机：
+FengYu 表单（由 `.sk-field` / `.sk-combo` / `.sk-checkbox` 构建）遵循保守的校验时机：
 
 | 方面 | 规则 |
 |---|---|
@@ -301,7 +301,7 @@ SkNotification.toast(view, SkNotification.Type.SUCCESS, I18n.get("msg.saved"));
 SkNotification.notify(view, SkNotification.Type.WARNING, I18n.get("setting.urlEmpty"));
 ```
 
-> **通知 API**（[`SkNotification`](../../ZhiFlow-Api/src/main/java/fan/summer/api/component/SkNotification.java)）：
+> **通知 API**（[`SkNotification`](../../FengYu-Api/src/main/java/fan/summer/api/component/SkNotification.java)）：
 > `toast(owner, type, message)`、`notify(owner, type, [title,] message)`、
 > `confirm(owner, title, message) → boolean`。`Type` ∈ `INFO/SUCCESS/WARNING/ERROR` 映射到
 > `.sk-notif-info/-success/-warning/-error`。
@@ -310,7 +310,7 @@ SkNotification.notify(view, SkNotification.Type.WARNING, I18n.get("setting.urlEm
 
 ## 5. AI 清单
 
-在 ZhiFlow（宿主或插件）中接线交互时，你**必须**：
+在 FengYu（宿主或插件）中接线交互时，你**必须**：
 
 - [ ] **缓存视图**——`createView()` 只跑一次；复用该 `Node`。绝不在每次激活时重建。
 - [ ] **页面切换用交叉淡入**——用 `showPage`（220/180 ms），不要硬替换节点。
@@ -342,13 +342,13 @@ SkNotification.notify(view, SkNotification.Type.WARNING, I18n.get("setting.urlEm
 ## 7. 参考
 
 **源码文件：**
-- [`ui/MainWindow.java`](../../ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java) — 启动/返回/卸载接线，视图缓存
-- [`ui/sidebar/Sidebar.java`](../../ZhiFlow/src/main/java/fan/summer/ui/sidebar/Sidebar.java) — 分类选择，`sidebar.collapsed` 持久化
-- [`ui/content/ContentArea.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ContentArea.java) — 搜索、`showPage`/`crossFadeTo`、网格过滤
-- [`ui/content/ToolCard.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java) — `onSelect` 回调、运行脉动
-- [`ui/content/DetailPanel.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java) — 滑入、`showUninstallConfirm`
-- [`ui/store/PluginStoreUi.java`](../../ZhiFlow/src/main/java/fan/summer/ui/store/PluginStoreUi.java) · [`ui/setting/ZhiFlowSettingUi.java`](../../ZhiFlow/src/main/java/fan/summer/ui/setting/ZhiFlowSettingUi.java)
-- [`SkNotification.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/component/SkNotification.java) — toast/notify/confirm API
+- [`ui/MainWindow.java`](../../FengYu/src/main/java/fan/summer/ui/MainWindow.java) — 启动/返回/卸载接线，视图缓存
+- [`ui/sidebar/Sidebar.java`](../../FengYu/src/main/java/fan/summer/ui/sidebar/Sidebar.java) — 分类选择，`sidebar.collapsed` 持久化
+- [`ui/content/ContentArea.java`](../../FengYu/src/main/java/fan/summer/ui/content/ContentArea.java) — 搜索、`showPage`/`crossFadeTo`、网格过滤
+- [`ui/content/ToolCard.java`](../../FengYu/src/main/java/fan/summer/ui/content/ToolCard.java) — `onSelect` 回调、运行脉动
+- [`ui/content/DetailPanel.java`](../../FengYu/src/main/java/fan/summer/ui/content/DetailPanel.java) — 滑入、`showUninstallConfirm`
+- [`ui/store/PluginStoreUi.java`](../../FengYu/src/main/java/fan/summer/ui/store/PluginStoreUi.java) · [`ui/setting/FengYuSettingUi.java`](../../FengYu/src/main/java/fan/summer/ui/setting/FengYuSettingUi.java)
+- [`SkNotification.java`](../../FengYu-Api/src/main/java/fan/summer/api/component/SkNotification.java) — toast/notify/confirm API
 
 **兄弟文档：**
 - [03 组件库](03-component-library.md) — 这些流程所用组件

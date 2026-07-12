@@ -1,20 +1,20 @@
-# ZhiFlow
+# Infinia
 
-![ZhiFlow](https://img.shields.io/badge/ZhiFlow-Desktop%20Toolbox-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue) ![Maven](https://img.shields.io/badge/Maven-3.6+-red) ![Version](https://img.shields.io/badge/version-3.2.0-blue)
+![Infinia](https://img.shields.io/badge/Infinia-Desktop%20Toolbox-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue) ![Maven](https://img.shields.io/badge/Maven-3.6+-red) ![Version](https://img.shields.io/badge/version-3.2.0-blue)
 
-**ZhiFlow** is a *modular toolbox* — a growing collection of utility tools (Excel splitting, PDF
+**Infinia** (蜂语) is a *modular toolbox* — a growing collection of utility tools (Excel splitting, PDF
 processing, email, an AI chat assistant, developer helpers, and more) with a plugin-based
 architecture and automatic service discovery.
 
 > ### 🚧 4.0.0 Preview — web + desktop
-> This branch (`4.0.0-ZhiFlow`) re-architects ZhiFlow from a JavaFX desktop app into a **web +
+> This branch (`4.0.0-FengYu`) re-architects Infinia from a JavaFX desktop app into a **web +
 > desktop application**: a **headless Spring Boot backend** (loopback web server, no window), a
 > **Vue 3.5 + TypeScript** frontend (identical for browser and desktop), and a **Tauri 2.0**
 > desktop shell that sidecar-launches the Java backend. Built-in tools become official plugins that
 > expose a JSON `invoke` backend plus a micro-frontend UI bundle. JavaFX has been removed.
 > See [`CHANGELOG.md`](CHANGELOG.md) and [`CLAUDE.md`](CLAUDE.md) for the current state.
 >
-> Run the backend: `java -jar ZhiFlow/target/ZhiFlow-4.0.0-SNAPSHOT.jar --token=<t>` (binds port 24056 by default)
+> Run the backend: `java -jar FengYu/target/FengYu-4.0.0-SNAPSHOT.jar --token=<t>` (binds port 24056 by default)
 > · frontend: `cd frontend && npm run dev` · smoke test: `scripts/e2e-smoke.sh`.
 
 ---
@@ -32,17 +32,17 @@ The project uses standalone POMs (no parent inheritance), so the API module must
 
 ```bash
 # Clone the repository
-git clone https://github.com/MuskStark/ZhiFlow.git
-cd ZhiFlow
+git clone https://github.com/MuskStark/FengYu.git
+cd FengYu
 
 # 1. Install the API module into the local repo (required)
-mvn install -f ZhiFlow-Api/pom.xml -DskipTests
+mvn install -f FengYu-Api/pom.xml -DskipTests
 
 # 2. Build the application
-mvn clean package -f ZhiFlow/pom.xml -DskipTests
+mvn clean package -f FengYu/pom.xml -DskipTests
 
 # 3. Run
-java -jar ZhiFlow/target/ZhiFlow-3.2.0.jar
+java -jar FengYu/target/FengYu-3.2.0.jar
 ```
 
 ### Download a Prebuilt Release
@@ -56,11 +56,11 @@ Prebuilt packages are published with each release. Every platform ships **two** 
 
 | Platform | Files |
 |---|---|
-| Windows 10/11 (64-bit) | `ZhiFlow-3.2.0-windows-x64.zip`, `ZhiFlow-3.2.0-windows-x64-jre.zip` |
-| Linux x64 | `ZhiFlow-3.2.0-linux-x64.zip`, `ZhiFlow-3.2.0-linux-x64-jre.zip` |
-| macOS Apple Silicon (M-series) | `ZhiFlow-3.2.0-macos-arm64.zip`, `ZhiFlow-3.2.0-macos-arm64-jre.zip` |
+| Windows 10/11 (64-bit) | `FengYu-3.2.0-windows-x64.zip`, `FengYu-3.2.0-windows-x64-jre.zip` |
+| Linux x64 | `FengYu-3.2.0-linux-x64.zip`, `FengYu-3.2.0-linux-x64-jre.zip` |
+| macOS Apple Silicon (M-series) | `FengYu-3.2.0-macos-arm64.zip`, `FengYu-3.2.0-macos-arm64-jre.zip` |
 
-See the [Releases page](https://github.com/MuskStark/ZhiFlow/releases) for the latest builds.
+See the [Releases page](https://github.com/MuskStark/FengYu/releases) for the latest builds.
 
 ---
 
@@ -79,7 +79,7 @@ See the [Releases page](https://github.com/MuskStark/ZhiFlow/releases) for the l
 - **🔌 Plugin Store** — Browse and install plugins from an online store with one click, or install local JARs
 - **💾 Database Support** — Multi-datasource (H2 / SQLite / MySQL / PostgreSQL) via a first-launch setup wizard, persisted with Spring Data JPA
 - **🌍 Internationalization** — i18n-backed UI labels and sidebar navigation
-- **🛠️ Easy Extension** — Add new tools by implementing the `ZhiFlowPlugin` interface
+- **🛠️ Easy Extension** — Add new tools by implementing the `FengYuPlugin` interface
 
 ### Built-in Tools
 
@@ -140,12 +140,12 @@ See the [Releases page](https://github.com/MuskStark/ZhiFlow/releases) for the l
 
 ### Project Modules
 
-ZhiFlow uses a multi-module Maven structure with **standalone POMs** (no parent inheritance):
+Infinia uses a multi-module Maven structure with **standalone POMs** (no parent inheritance):
 
 | Module | Purpose |
 |--------|---------|
-| `ZhiFlow-Api` | Shared plugin contract + reusable UI components (`ZhiFlowPlugin`, `AiTool`, `StepWizard`, `ToolCategory`) |
-| `ZhiFlow` | Main JavaFX application — UI shell, plugin loading, built-in tools, AI layer, database |
+| `FengYu-Api` | Shared plugin contract + reusable UI components (`FengYuPlugin`, `AiTool`, `StepWizard`, `ToolCategory`) |
+| `FengYu` | Main JavaFX application — UI shell, plugin loading, built-in tools, AI layer, database |
 
 ### UI Structure
 
@@ -162,10 +162,10 @@ The AI Chat assistant and installed-plugins list are pinned as dedicated sidebar
 
 ### Plugin System
 
-Plugins implement `fan.summer.api.ZhiFlowPlugin` (from `ZhiFlow-Api`):
+Plugins implement `fan.summer.api.FengYuPlugin` (from `FengYu-Api`):
 
 ```java
-public interface ZhiFlowPlugin {
+public interface FengYuPlugin {
     // Metadata
     String getId();                  // reverse-domain ID, e.g. "com.example.my-tool"
     String getName();
@@ -190,7 +190,7 @@ public interface ZhiFlowPlugin {
 }
 ```
 
-Register external plugins via `META-INF/services/fan.summer.api.ZhiFlowPlugin`, package as a fat
+Register external plugins via `META-INF/services/fan.summer.api.FengYuPlugin`, package as a fat
 JAR, then drop it into the host's `plugins/` directory (hot-reload supported) or install via the
 Plugin Store.
 
@@ -231,28 +231,28 @@ Color Converter, Markdown Editor, Email, Email Archive, PDF Tools, and Browser A
 
 ### Adding a Built-in Tool
 
-1. Create a class implementing `ZhiFlowPlugin` under `ZhiFlow/src/main/java/fan/summer/buildintool/<your-tool>/`
+1. Create a class implementing `FengYuPlugin` under `FengYu/src/main/java/fan/summer/buildintool/<your-tool>/`
 2. Instantiate and add it inside `BuiltinToolRegistrar.register(...)`
 3. The tool appears in the sidebar under its `ToolCategory`
 
 ### Creating an External Plugin
 
-1. Create a Maven project with `ZhiFlow-Api` as a `provided` dependency
-2. Implement `ZhiFlowPlugin` (optionally expose `AiTool`s)
-3. Register in `META-INF/services/fan.summer.api.ZhiFlowPlugin`
+1. Create a Maven project with `FengYu-Api` as a `provided` dependency
+2. Implement `FengYuPlugin` (optionally expose `AiTool`s)
+3. Register in `META-INF/services/fan.summer.api.FengYuPlugin`
 4. Package as a fat JAR and install via the Plugin Store or the Local Install tab
 
 ### Building
 
 ```bash
 # API module must be installed first
-mvn install -f ZhiFlow-Api/pom.xml -DskipTests
+mvn install -f FengYu-Api/pom.xml -DskipTests
 
 # Build the app
-mvn clean package -f ZhiFlow/pom.xml -DskipTests
+mvn clean package -f FengYu/pom.xml -DskipTests
 
 # Run
-java -jar ZhiFlow/target/ZhiFlow-3.2.0.jar
+java -jar FengYu/target/FengYu-3.2.0.jar
 ```
 
 ### Running with a Local Plugin Store
@@ -260,14 +260,14 @@ java -jar ZhiFlow/target/ZhiFlow-3.2.0.jar
 Override the store URL via system property:
 
 ```bash
-java -Dstore.url=http://localhost:8888/plugins/store.json -jar ZhiFlow/target/ZhiFlow-3.2.0.jar
+java -Dstore.url=http://localhost:8888/plugins/store.json -jar FengYu/target/FengYu-3.2.0.jar
 ```
 
 ---
 
 ## Database
 
-ZhiFlow uses **Spring Data JPA + Hibernate** and supports **four database backends**, chosen at
+Infinia uses **Spring Data JPA + Hibernate** and supports **four database backends**, chosen at
 first launch via a setup wizard. No database knowledge is required for the default local
 experience.
 
@@ -276,13 +276,13 @@ experience.
 On first launch (no `datasource.properties`), the backend boots in **SETUP mode** and the frontend
 shows a wizard that lets you pick a database:
 
-- **H2** (default, local embedded) — zero configuration, data stored under `.zhiflow/data/`.
+- **H2** (default, local embedded) — zero configuration, data stored under `.fengyu/data/`.
 - **SQLite** (local embedded) — single-file database.
 - **MySQL** (remote) — for multi-user or server deployment.
 - **PostgreSQL** (remote) — for multi-user or server deployment.
 
 The wizard tests the connection, persists the configuration to
-`~/.zhiflow/config/datasource.properties` (passwords AES-GCM encrypted, machine-bound), then exits.
+`~/.fengyu/config/datasource.properties` (passwords AES-GCM encrypted, machine-bound), then exits.
 The Tauri/desktop supervisor restarts the backend into **APP mode**, where Hibernate
 `ddl-auto=update` creates the schema from the JPA entities automatically. To reconfigure, delete
 `datasource.properties` and restart — the wizard reappears.
@@ -303,7 +303,7 @@ The Tauri/desktop supervisor restarts the backend into **APP mode**, where Hiber
 | General | `AppSettingEntity` | General app settings (store URL, AI config, etc.) |
 | General | `MenuOrderEntity` | Sidebar / tool menu ordering |
 | General | `PluginFavoriteEntity` | Favorited plugins |
-| Email | `ZhiFlowSettingEmailEntity` | SMTP configuration |
+| Email | `FengYuSettingEmailEntity` | SMTP configuration |
 | Email | `EmailAddressBookEntity` | Contacts with nicknames and tags |
 | Email | `EmailTagEntity` | Tags for categorizing contacts |
 | Email | `EmailMassSentConfigEntity` | Mass email configuration |
@@ -360,7 +360,7 @@ GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
 - [CHANGELOG](CHANGELOG.md) — Release history
 - [AGENTS.md](AGENTS.md) — Technical documentation for AI assistants
-- Online docs: https://muskstark.github.io/ZhiFlow/
+- Online docs: https://muskstark.github.io/FengYu/
 
 ---
 

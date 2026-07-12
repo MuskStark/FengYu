@@ -1,7 +1,7 @@
 # 多数据源初始化向导 + JPA 迁移 + 用户体系预留
 
 **Date:** 2026-07-08
-**Branch:** 4.0.0-ZhiFlow
+**Branch:** 4.0.0-FengYu
 **Status:** Design (pending implementation plan)
 **Roadmap alignment:** Phase 4 (多数据源首次部署向导) + 前置的 ORM 现代化 + 用户体系架构预留
 
@@ -14,14 +14,14 @@
 - **数据库层**:MyBatis 手写(XML mapper + 接口),12 个实体/mapper。`DatabaseInit.init()` 在 `main()` 里 Spring 上下文之前同步初始化,只支持 H2,连接 URL 硬编码在静态块。
 - **配置**:无 `application.yml`。端口/地址/token 走命令行参数(`HeadlessLauncher` 解析)。这是 sidecar 部署模式的刻意设计,本 spec 不改变动态项的命令行策略。
 - **生产代码 DB 调用点**:仅 3 处——`AiConfigService`(静态工具类)、`AiConfigServiceHeadless`(静态工具类)、`EmailUtil`。`AiBackendInitializer`(@ApplicationRunner)间接通过 `AiConfigService` 依赖 DB。
-- **部署**:Tauri 桌面壳拉起 Java sidecar(`HeadlessLauncher`)。父进程通过 stdout 的 `ZHIFLOW_PORT=<n>` 读端口,通过 `window.__ZHIFLOW_TOKEN__` 注入 token。
+- **部署**:Tauri 桌面壳拉起 Java sidecar(`HeadlessLauncher`)。父进程通过 stdout 的 `FENGYU_PORT=<n>` 读端口,通过 `window.__FENGYU_TOKEN__` 注入 token。
 - **用户体系**:无。当前是单用户本地应用。
 
 ### 1.2 目标
 
 本次交付三件事:
 
-1. **多数据源初始化向导**:首次启动(`~/.zhiflow/config/datasource.properties` 不存在)时,后端以"最小上下文"启动提供向导 API,前端渲染全屏向导,用户选择数据库类型(H2 / SQLite / MySQL / PostgreSQL)并配置连接,后端建表、持久化配置、触发重启进入正常应用模式。
+1. **多数据源初始化向导**:首次启动(`~/.fengyu/config/datasource.properties` 不存在)时,后端以"最小上下文"启动提供向导 API,前端渲染全屏向导,用户选择数据库类型(H2 / SQLite / MySQL / PostgreSQL)并配置连接,后端建表、持久化配置、触发重启进入正常应用模式。
 2. **全量 MyBatis → JPA 迁移**:12 个实体加 `@Entity`,12 个 mapper 接口改成 Spring Data JPA Repository,12 个 mapper XML 删除,`DatabaseInit` 删除,schema 交由 Hibernate `ddl-auto=update` 管理。动机:多数据源方言适配 + ORM 现代化。
 3. **用户体系架构预留**:本地离线模式与未来 Web 多用户/SSO 统一为单体内 `AuthProvider` 接口(不拆独立服务)。本次只建 `sys_user`/`sys_session` 表、业务表加 `user_id` 行级隔离字段、定义接口与 Noop 实现,**不实现登录 UI 与认证流程**。
 
@@ -41,7 +41,7 @@
 |---|---|---|
 | 启动时序 | 方案 A:最小上下文 + 进程重启 | 未配置时连 DataSource bean 都不存在,JPA 自动配置完全跳过,时序最干净 |
 | Schema 管理 | Hibernate `ddl-auto=update` | 零 DDL 文件维护,方言自适应 H2/SQLite/MySQL/PG |
-| 配置存储 | `~/.zhiflow/config/datasource.properties`,密码 AES 加密 | 本地桌面主场景,轻量,不引 Jasypt |
+| 配置存储 | `~/.fengyu/config/datasource.properties`,密码 AES 加密 | 本地桌面主场景,轻量,不引 Jasypt |
 | Web 重启 | Spring Boot Actuator `/restart` | 不依赖进程退出码 |
 | 用户架构 | 单体内统一,不拆服务 | 本地桌面是主场景,Web 多用户规模有限,避免过度设计 |
 | 数据隔离 | 行级 `user_id` | 核心诉求是多账号数据隔离 |
@@ -60,13 +60,13 @@ HeadlessLauncher.main(args)
   ├─ LoggerBinder.bind(new Slf4jPluginLoggerBinder()) (现有,保留)
   ├─ 解析 --port= / --token=,设置 TOKEN_PROPERTY      (现有,保留)
   │
-  ├─ 读 ~/.zhiflow/config/datasource.properties
+  ├─ 读 ~/.fengyu/config/datasource.properties
   │     │
   │     ├─【不存在/空/解析失败】→ SETUP 模式
   │     │     启动最小 Spring 上下文:
   │     │       • SetupController + DataSourceConfigService
   │     │       • 静态前端资源(Vue build 产物,含向导页)
-  │     │       • PortAnnouncer(同现有,打印 ZHIFLOW_PORT)
+  │     │       • PortAnnouncer(同现有,打印 FENGYU_PORT)
   │     │       • 排除:DataSource/JPA/AI/Plugin 自动配置
   │     │       • TokenAuthFilter 放行 /api/health + /api/setup/*
   │     │     前端检测 GET /api/setup/status → 渲染向导
@@ -99,13 +99,13 @@ SETUP 模式的最小上下文**不加载任何 DB 依赖 bean**。`SetupControl
 
 ### 3.3 端口与 token 在两种模式下的一致性
 
-SETUP 模式启动的也是同一个 `HeadlessLauncher.main()`,`--port=` / `--token=` 命令行参数照样解析生效。`PortAnnouncer` 是监听 `WebServerInitializedEvent` 的 `@Component`,SETUP 模式的嵌入式 Tomcat 照样触发事件,`ZHIFLOW_PORT=<n>` 照样打印。**前端获取端口/token 的方式在两种模式下完全一致**,不需要改 `frontend/src/api/config.ts`。
+SETUP 模式启动的也是同一个 `HeadlessLauncher.main()`,`--port=` / `--token=` 命令行参数照样解析生效。`PortAnnouncer` 是监听 `WebServerInitializedEvent` 的 `@Component`,SETUP 模式的嵌入式 Tomcat 照样触发事件,`FENGYU_PORT=<n>` 照样打印。**前端获取端口/token 的方式在两种模式下完全一致**,不需要改 `frontend/src/api/config.ts`。
 
 ---
 
 ## 4. JPA 迁移
 
-### 4.1 依赖变更(`ZhiFlow/pom.xml`)
+### 4.1 依赖变更(`FengYu/pom.xml`)
 
 | 变更 | 说明 |
 |---|---|
@@ -169,7 +169,7 @@ public interface AppSettingRepository extends JpaRepository<AppSettingEntity, In
 调用点迁移(生产代码仅 3 处):
 - `AiConfigService`(静态工具类 → `@Component`,注入 `AppSettingRepository`)
 - `AiConfigServiceHeadless`(静态工具类 → `@Component`,注入 `AppSettingRepository`)
-- `EmailUtil`(注入 `ZhiFlowSettingEmailRepository`)
+- `EmailUtil`(注入 `FengYuSettingEmailRepository`)
 
 ### 4.5 `AiConfigService` 静态 → bean
 
@@ -207,13 +207,13 @@ management:
         include: restart,health
 ```
 
-`server.port` 与 `zhiflow.auth.token` **仍走命令行**(运行时动态)。
+`server.port` 与 `fengyu.auth.token` **仍走命令行**(运行时动态)。
 
 ---
 
 ## 5. 配置存储与数据源管理
 
-### 5.1 配置文件:`~/.zhiflow/config/datasource.properties`
+### 5.1 配置文件:`~/.fengyu/config/datasource.properties`
 
 ```properties
 # 数据库类型: h2 | sqlite | mysql | postgresql
@@ -221,7 +221,7 @@ db.type=h2
 
 # JDBC 连接(由 DataSourceConfigService 根据 type + 参数拼装)
 # 路径为相对于 user.dir 的相对路径,或绝对路径(DataSourceConfigService 加载时解析)
-db.url=jdbc:h2:file:.zhiflow/data/zhiflow;AUTO_SERVER=TRUE
+db.url=jdbc:h2:file:.fengyu/data/fengyu;AUTO_SERVER=TRUE
 db.driver=org.h2.Driver
 db.dialect=org.hibernate.dialect.H2Dialect
 
@@ -230,7 +230,7 @@ db.username=
 db.password=ENC(<aes加密的base64>)
 
 # 嵌入式数据库的文件位置(H2/SQLite 用),相对 user.dir 或绝对路径
-db.file.path=.zhiflow/data/zhiflow
+db.file.path=.fengyu/data/fengyu
 ```
 
 `db.type` 是顶层判别字段,SETUP 与 APP 启动都先读它。
@@ -254,7 +254,7 @@ public class DataSourceConfigService {
 ### 5.3 密码加密(不引 Jasypt)
 
 轻量内置 AES 工具 `CryptoUtil`:
-- **密钥派生**:固定项目常量 + 机器特征(`~/.zhiflow/config/.machineid`,首次生成随机 UUID)拼接,SHA-256 → AES-256 key。加密文件换机器解不开。
+- **密钥派生**:固定项目常量 + 机器特征(`~/.fengyu/config/.machineid`,首次生成随机 UUID)拼接,SHA-256 → AES-256 key。加密文件换机器解不开。
 - **算法**:`AES/GCM/NoPadding`
 - **向后兼容**:读取时检测 `ENC(...)` 前缀,没有当明文(支持开发期手写)
 
@@ -264,7 +264,7 @@ public class DataSourceConfigService {
 @Configuration
 public class DataSourceAutoConfig {
     @Bean
-    @ConditionalOnProperty(name = "zhiflow.mode", havingValue = "app")
+    @ConditionalOnProperty(name = "fengyu.mode", havingValue = "app")
     public DataSource dataSource(DataSourceConfigService svc) {
         DataSourceConfig cfg = svc.load();
         HikariDataSource ds = new HikariDataSource();
@@ -297,7 +297,7 @@ public class DataSourceAutoConfig {
 ### 6.1 架构定性:不拆服务,单体内统一
 
 ```
-ZhiFlow 单体应用(同一 JAR,两种部署)
+FengYu 单体应用(同一 JAR,两种部署)
   ┌──────────────────────────────────────────┐
   │  AuthProvider 接口(可插拔)              │
   │    ├─ NoopAuthProvider   (本地离线)      │  ← 本次实现
@@ -478,7 +478,7 @@ appSettingRepo.findByUserIdAndSettingKey(uid, key);
 ### 7.1 包结构
 
 ```
-fan/summer/zhiflow/setup/
+fan/summer/fengyu/setup/
   ├── SetupController.java           REST 端点
   ├── DataSourceConfigService.java   读写 datasource.properties + 加解密
   ├── DataSourceConfig.java          连接配置 record
@@ -520,7 +520,7 @@ APP 模式:   { "initialized": true }
 ```json
 [
   { "type":"h2", "label":"H2 (本地嵌入式)", "embedded":true, "fields":[
-      {"name":"filePath","label":"数据文件位置","required":true,"default":".zhiflow/data/zhiflow"} ]},
+      {"name":"filePath","label":"数据文件位置","required":true,"default":".fengyu/data/fengyu"} ]},
   { "type":"mysql", "label":"MySQL (远程)", "embedded":false, "fields":[
       {"name":"host","required":true},{"name":"port","default":3306},
       {"name":"database","required":true},{"name":"username","required":true},
@@ -538,7 +538,7 @@ APP 模式:   { "initialized": true }
 
 **`POST /api/setup/initialize`** —— 正式初始化(原子操作):
 ```json
-请求: { "type":"h2", "params":{"filePath":".zhiflow/data/zhiflow"} }
+请求: { "type":"h2", "params":{"filePath":".fengyu/data/fengyu"} }
 成功: { "success":true, "action":"restart" }
 失败: { "success":false, "error":"...", "step":"ddl" }   // step: connection | ddl | save
 ```

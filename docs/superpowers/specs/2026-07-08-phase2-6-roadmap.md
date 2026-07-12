@@ -26,7 +26,7 @@ Phase 1 建立了基础架构并证明了端到端管道。Phase 2–6 在此基
 
 ### 范围
 
-提取以下工具为独立 Maven 模块，每个实现 `ZhiFlowPluginV2`：
+提取以下工具为独立 Maven 模块，每个实现 `FengYuPluginV2`：
 
 1. **Excel 分割器** (`plugin-excel-splitter/`)
    - 后端：`invoke("analyze", {file})` → 返回表名+列头映射；`invoke("split", {mode, config})` → 执行分割，返回进度/结果
@@ -93,7 +93,7 @@ Phase 1 建立了基础架构并证明了端到端管道。Phase 2–6 在此基
 
 ```
 for each plugin id:
-   if  marketplace-downloaded version exists in  ~/.zhiflow/plugins/<id>/plugin.jar   → load that
+   if  marketplace-downloaded version exists in  ~/.fengyu/plugins/<id>/plugin.jar   → load that
    else                                                                                → load bundled Maven module
 ```
 
@@ -103,7 +103,7 @@ for each plugin id:
 
 **挑战：** Spring Boot 应用上下文在启动时固定，后续动态加载 JAR 并注册为 Spring bean 需要特殊处理。
 
-**方案 A（推荐）：** 使用 `PluginClassLoader` (URLClassLoader) 加载下载的 JAR，但不注册为 Spring bean。插件实例通过反射创建，手动调用 `invoke` / `aiTools()`。`PluginRegistryService` 维护两份映射：`bundledPlugins: Map<String, ZhiFlowPluginV2>` (Spring beans) 和 `overridePlugins: Map<String, ZhiFlowPluginV2>` (手动实例化)。
+**方案 A（推荐）：** 使用 `PluginClassLoader` (URLClassLoader) 加载下载的 JAR，但不注册为 Spring bean。插件实例通过反射创建，手动调用 `invoke` / `aiTools()`。`PluginRegistryService` 维护两份映射：`bundledPlugins: Map<String, FengYuPluginV2>` (Spring beans) 和 `overridePlugins: Map<String, FengYuPluginV2>` (手动实例化)。
 
 **方案 B（复杂）：** 运行时刷新 Spring context 子上下文 — 为每个下载的插件创建独立的 `AnnotationConfigApplicationContext` 作为主上下文的子上下文，加载插件 JAR 的 `@Component`。需要仔细管理父子上下文的 bean 可见性和生命周期。
 
@@ -113,7 +113,7 @@ Phase 3 采用**方案 A**，方案 B 留作后续优化（如果需要插件使
 
 - `PluginDescriptor` 增加 `version` 字段（semver）
 - 市场 API（暂定本地 mock）：`GET /marketplace/plugins` 返回可用插件列表及最新版本；`GET /marketplace/plugins/{id}/download?version=x.y.z` 下载 JAR
-- `PluginUpdateService` 定期检查更新（启动时 + 用户手动触发）：对比内置版本与市场版本，如果市场更新则下载到 `~/.zhiflow/plugins/<id>/`
+- `PluginUpdateService` 定期检查更新（启动时 + 用户手动触发）：对比内置版本与市场版本，如果市场更新则下载到 `~/.fengyu/plugins/<id>/`
 - 下载后，提示用户重启应用（或实现热重载：卸载旧实例、加载新 JAR、重新注册）
 
 #### UI 界面
@@ -125,13 +125,13 @@ Phase 3 采用**方案 A**，方案 B 留作后续优化（如果需要插件使
 
 - 单元测试：`PluginClassLoader` 加载测试 JAR，反射创建插件实例，调用 `invoke`
 - 集成测试：模拟市场 API，下载一个新版本插件（修改返回值），重启后端，验证新版本生效
-- 回退测试：删除 `~/.zhiflow/plugins/<id>/plugin.jar`，重启，验证回退到内置版本
+- 回退测试：删除 `~/.fengyu/plugins/<id>/plugin.jar`，重启，验证回退到内置版本
 
 ### Definition of Done
 
 - `PluginRegistryService` 实现加载优先级逻辑（市场 JAR > 内置模块）
 - 前端 `/settings/plugins` 页面可查看所有插件版本并触发更新
-- 手动模拟：编译一个插件新版本（修改返回值），放到 `~/.zhiflow/plugins/markdown/plugin.jar`，重启，验证新版本被加载
+- 手动模拟：编译一个插件新版本（修改返回值），放到 `~/.fengyu/plugins/markdown/plugin.jar`，重启，验证新版本被加载
 - 文档更新：`docs/plugins/marketplace-override.md` 记录机制和测试步骤
 
 ---
@@ -142,21 +142,21 @@ Phase 3 采用**方案 A**，方案 B 留作后续优化（如果需要插件使
 
 ### 用户流程
 
-1. **首次启动检测**：后端检测 `~/.zhiflow/config/datasource.properties` 不存在 → 进入"首次部署向导"模式，不初始化数据库，只启动 Web 服务器
+1. **首次启动检测**：后端检测 `~/.fengyu/config/datasource.properties` 不存在 → 进入"首次部署向导"模式，不初始化数据库，只启动 Web 服务器
 2. **前端向导**：Vue 前端检测后端返回 `{"initialized": false}` → 显示全屏向导（非主 shell），引导用户完成配置
 3. **选择数据库类型**：
-   - **本地嵌入式** (默认)：H2 或 SQLite，无需额外配置，数据存储在 `~/.zhiflow/data/`
+   - **本地嵌入式** (默认)：H2 或 SQLite，无需额外配置，数据存储在 `~/.fengyu/data/`
    - **远程服务器**：MySQL / PostgreSQL，填写 host、port、database、username、password
 4. **连接测试**：前端调用 `POST /api/setup/test-connection`，后端尝试连接并返回成功/失败
 5. **建表**：连接成功后，前端调用 `POST /api/setup/initialize`，后端运行 DDL（`init.sql` 通用 + 数据库特定调整），创建表
-6. **保存配置**：后端将数据源配置写入 `~/.zhiflow/config/datasource.properties`（加密敏感字段如密码）
+6. **保存配置**：后端将数据源配置写入 `~/.fengyu/config/datasource.properties`（加密敏感字段如密码）
 7. **重启提示**：前端提示"配置完成，正在重启..."，后端优雅关闭并重启（Tauri sidecar 自动重启；Web 部署需要手动重启或用 Spring Boot Actuator `/restart`）
 
 ### 后端实现
 
-- `src/main/java/fan/summer/zhiflow/setup/SetupController.java` — 向导专用控制器，不受 token auth 保护（或用临时 setup token）
-- `src/main/java/fan/summer/zhiflow/setup/DataSourceConfigService.java` — 读写 `datasource.properties`，支持加密
-- `src/main/java/fan/summer/zhiflow/setup/SchemaInitializer.java` — 根据数据库类型加载并执行 DDL
+- `src/main/java/fan/summer/fengyu/setup/SetupController.java` — 向导专用控制器，不受 token auth 保护（或用临时 setup token）
+- `src/main/java/fan/summer/fengyu/setup/DataSourceConfigService.java` — 读写 `datasource.properties`，支持加密
+- `src/main/java/fan/summer/fengyu/setup/SchemaInitializer.java` — 根据数据库类型加载并执行 DDL
 - 修改 `DatabaseInit.init()` — 如果检测到未初始化，跳过建表，只返回 `{"initialized": false}` 给前端
 
 ### DDL 适配
@@ -177,7 +177,7 @@ Phase 3 采用**方案 A**，方案 B 留作后续优化（如果需要插件使
 
 - 首次启动自动进入向导模式（前后端协同）
 - 支持 H2、MySQL、PostgreSQL、SQLite 四种数据源
-- 配置持久化到 `~/.zhiflow/config/datasource.properties`（密码加密）
+- 配置持久化到 `~/.fengyu/config/datasource.properties`（密码加密）
 - 向导完成后重启，主应用正常加载所选数据库
 - 文档更新：`docs/deployment/setup-wizard.md`
 
@@ -198,16 +198,16 @@ Phase 3 采用**方案 A**，方案 B 留作后续优化（如果需要插件使
 使用 **jlink** 或预构建的最小化 JRE (Azul Zulu / Adoptium)：
 
 - 每个平台在 CI 中下载对应架构的 JRE (x64 / arm64)
-- Tauri build 时将 JRE 和 `ZhiFlow.jar` 一起打包到 `binaries/`
-- `main.rs` 启动 sidecar 时用 `./jre/bin/java -jar ZhiFlow.jar` 而不是系统 `java`
+- Tauri build 时将 JRE 和 `FengYu.jar` 一起打包到 `binaries/`
+- `main.rs` 启动 sidecar 时用 `./jre/bin/java -jar FengYu.jar` 而不是系统 `java`
 
 ### 签名
 
 - **macOS**: 需要 Apple Developer 证书 + `codesign` + `xcrun notarytool`
   - GitHub secret 存储证书 (.p12) 和密码
-  - CI workflow: `codesign --sign "Developer ID Application: ..." --options runtime ZhiFlow.app`
-  - 上传到 Apple 公证服务：`xcrun notarytool submit ZhiFlow.dmg --wait`
-  - Staple 公证票据：`xcrun stapler staple ZhiFlow.dmg`
+  - CI workflow: `codesign --sign "Developer ID Application: ..." --options runtime FengYu.app`
+  - 上传到 Apple 公证服务：`xcrun notarytool submit FengYu.dmg --wait`
+  - Staple 公证票据：`xcrun stapler staple FengYu.dmg`
 - **Windows**: 需要 code signing 证书 (EV 或 OV)
   - 使用 `signtool.exe` 或 `osslsigncode` (开源跨平台签名工具)
   - 证书存储在 GitHub secret
@@ -229,7 +229,7 @@ jobs:
         with: { java-version: 21 }
       - run: mvn clean package -DskipTests
       - uses: actions/upload-artifact@v4
-        with: { name: backend-jar, path: ZhiFlow/target/ZhiFlow-*.jar }
+        with: { name: backend-jar, path: FengYu/target/FengYu-*.jar }
 
   build-frontend:
     runs-on: ubuntu-latest
@@ -305,20 +305,20 @@ jobs:
 
 ## Phase 6: 第三方插件 SDK + 市场后端（可选）
 
-**Goal:** 开放插件生态给第三方开发者：提供插件开发 SDK、脚手架、文档、市场后端（插件上传、审核、分发），使 ZhiFlow 成为可扩展平台。
+**Goal:** 开放插件生态给第三方开发者：提供插件开发 SDK、脚手架、文档、市场后端（插件上传、审核、分发），使 FengYu 成为可扩展平台。
 
 **注意：** 此 phase 工作量大，可能拆分为多个子阶段，或根据社区需求决定是否实施。以下为高层次规划。
 
 ### SDK 组件
 
 1. **Plugin Archetype (Maven / Gradle)**
-   - `zhiflow-plugin-archetype` — Maven archetype 快速生成插件骨架
+   - `fengyu-plugin-archetype` — Maven archetype 快速生成插件骨架
    - 生成的项目包含：
-     - `pom.xml` (声明 `ZhiFlow-Api` 为 `provided`)
-     - 示例 `MyPlugin.java` 实现 `ZhiFlowPluginV2`
+     - `pom.xml` (声明 `FengYu-Api` 为 `provided`)
+     - 示例 `MyPlugin.java` 实现 `FengYuPluginV2`
      - 示例 Vue 微前端 `ui-src/`
      - `README.md` 开发指南
-   - 用法：`mvn archetype:generate -DarchetypeGroupId=fan.summer.zhiflow -DarchetypeArtifactId=zhiflow-plugin-archetype`
+   - 用法：`mvn archetype:generate -DarchetypeGroupId=fan.summer.fengyu -DarchetypeArtifactId=fengyu-plugin-archetype`
 
 2. **插件开发文档**
    - `docs/plugin-dev/` 目录：
@@ -336,13 +336,13 @@ jobs:
 
 ### 市场后端
 
-**架构：** 独立的 Spring Boot 应用 (`zhiflow-marketplace-backend`)，与主应用解耦，部署在云端。
+**架构：** 独立的 Spring Boot 应用 (`fengyu-marketplace-backend`)，与主应用解耦，部署在云端。
 
 **功能：**
 
 1. **插件上传**
    - 开发者通过 Web 界面或 CLI 上传插件 JAR
-   - 后端验证 JAR：检查 manifest、`ZhiFlowPluginV2` 实现、版本号格式
+   - 后端验证 JAR：检查 manifest、`FengYuPluginV2` 实现、版本号格式
    - 存储到对象存储 (S3 / OSS) 或文件系统
 
 2. **审核流程**
@@ -371,7 +371,7 @@ jobs:
 ### 社区生态
 
 - 建立 GitHub Discussion / Discord 社区，插件开发者交流
-- 示例插件仓库：`zhiflow-plugin-examples`（天气查询、RSS 阅读器、番茄钟等简单插件作为学习模板）
+- 示例插件仓库：`fengyu-plugin-examples`（天气查询、RSS 阅读器、番茄钟等简单插件作为学习模板）
 - 每月插件开发比赛 / Hackathon（可选）
 
 ### 测试
@@ -382,7 +382,7 @@ jobs:
 
 ### Definition of Done
 
-- `zhiflow-plugin-archetype` 发布到 Maven Central 或 GitHub Packages
+- `fengyu-plugin-archetype` 发布到 Maven Central 或 GitHub Packages
 - 插件开发文档完整，Javadoc API reference 在线可访问
 - 市场后端部署上线，至少 5 个示例插件已发布
 - 主应用集成市场 API，用户可在 `/settings/plugins` 浏览并安装第三方插件

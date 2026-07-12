@@ -3,7 +3,7 @@
   "version": "4.0.0",
   "private": true,
   "type": "module",
-  "description": "ZhiFlow Markdown plugin micro-frontend (Vue 3.5 ESM, vue external via host import map)",
+  "description": "FengYu Markdown plugin micro-frontend (Vue 3.5 ESM, vue external via host import map)",
   "scripts": {
     "build": "vue-tsc --noEmit && vite build",
     "build:novtsc": "vite build",

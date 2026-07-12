@@ -1,17 +1,17 @@
 # 架构说明
 
-ZhiFlow 是一个基于 JavaFX 21（JDK 21）构建的模块化、插件化桌面工具集。
+FengYu 是一个基于 JavaFX 21（JDK 21）构建的模块化、插件化桌面工具集。
 宿主应用只依赖一个很小的插件接口；每一个具体工具——无论是内置的还是作为外部 JAR 发布的——
 都实现同一个 `SwissKitJPlugin` 契约。
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │  外部 JAR 插件（独立仓库，provided 依赖）                          │
-│  实现 SwissKitJPlugin，放入 .zhiflow/plugin/                     │
+│  实现 SwissKitJPlugin，放入 .fengyu/plugin/                     │
 └───────────────────────────────┬──────────────────────────────────┘
                                 ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  ZhiFlow-Api  —  公共契约层（无业务逻辑）                        │
+│  FengYu-Api  —  公共契约层（无业务逻辑）                        │
 │  SwissKitJPlugin · ToolCategory/Type/IconStyle · PluginContext     │
 │  AiService/AiTool/AiChatMessage · I18n · Themes · LoggerFactory    │
 │  StepWizard · SkNotification · UiUtils · preview 组件           │
@@ -19,7 +19,7 @@ ZhiFlow 是一个基于 JavaFX 21（JDK 21）构建的模块化、插件化桌�
                                 │ 打包进胖 JAR（provided → runtime）
                                 ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  ZhiFlow  —  JavaFX 应用壳 + 内置工具                             │
+│  FengYu  —  JavaFX 应用壳 + 内置工具                             │
 │  UI 外壳 · 插件层（Loader/Registry/Context/Favorites）             │
 │  AI 子系统（2 个后端 · 工具 · 本地推理）                            │
 │  H2 + MyBatis · i18n · Logback · JsonHelper                        │
@@ -30,23 +30,23 @@ ZhiFlow 是一个基于 JavaFX 21（JDK 21）构建的模块化、插件化桌�
 
 | 模块 | 用途 |
 |------|------|
-| `ZhiFlow-Api` | 共享插件接口（`SwissKitJPlugin`）、插件上下文与隔离（`PluginContext`）、可复用组件（`StepWizard`、`SkNotification`、`UiUtils`）、主题、i18n、日志 API，以及 AI 服务契约（`ChatBackend`、`AiTool`、消息 record） |
-| `ZhiFlow` | JavaFX 应用壳 —— UI、插件加载、收藏、AI 子系统，以及全部内置工具 |
+| `FengYu-Api` | 共享插件接口（`SwissKitJPlugin`）、插件上下文与隔离（`PluginContext`）、可复用组件（`StepWizard`、`SkNotification`、`UiUtils`）、主题、i18n、日志 API，以及 AI 服务契约（`ChatBackend`、`AiTool`、消息 record） |
+| `FengYu` | JavaFX 应用壳 —— UI、插件加载、收藏、AI 子系统，以及全部内置工具 |
 
-官方插件位于[单独的仓库](https://github.com/MuskStark/SwissKiJ-Plugin)。它们独立构建，在运行时作为 JAR 放入 `.zhiflow/plugin/` 目录。所有插件将 `ZhiFlow-Api` 声明为 `provided` 依赖；主应用通过胖 JAR 在运行时提供它。
+官方插件位于[单独的仓库](https://github.com/MuskStark/SwissKiJ-Plugin)。它们独立构建，在运行时作为 JAR 放入 `.fengyu/plugin/` 目录。所有插件将 `FengYu-Api` 声明为 `provided` 依赖；主应用通过胖 JAR 在运行时提供它。
 
 ## 启动序列
 
-`fan.summer.zhiflow.Launcher`（胖 JAR 清单入口点）先准备好日志目录，再委托给
-`fan.summer.zhiflow.app.ZhiFlowApp`（JavaFX `Application`）。Launcher 是一个独立的、非 `Application` 的类，
+`fan.summer.fengyu.Launcher`（胖 JAR 清单入口点）先准备好日志目录，再委托给
+`fan.summer.fengyu.app.FengYuApp`（JavaFX `Application`）。Launcher 是一个独立的、非 `Application` 的类，
 这样应用能以 classpath 模式运行（兼容胖 JAR 布局与 JavaFX 模块系统）。
 
-在 `ZhiFlowApp.start()` 中：
+在 `FengYuApp.start()` 中：
 
 1. 安装插件日志 binder（`LoggerBinder.bind`），使插件日志路由进共享的 SLF4J/Logback 主干
 2. 通过 MyBatis 初始化 H2 数据库（`DatabaseInit.init`）
 3. 注册 i18n bundle 并应用已保存的语言偏好
-4. 解析插件目录（`<user.dir>/.zhiflow/plugin/`）
+4. 解析插件目录（`<user.dir>/.fengyu/plugin/`）
 5. 创建 `PluginLoader` + `PluginRegistry`（注册表将自己绑定到 loader）
 6. 创建 `FavoriteService`（从数据库加载收藏的插件 ID）
 7. 通过 `BuiltinToolRegistrar` 注册内置工具 —— 列表会经 `PluginRegistry.addPlugins` 统一注册，同时把每个插件的 `aiTools()` 自动注册到 `AiServiceProvider`
@@ -111,8 +111,8 @@ public interface SwissKitJPlugin {
 - **内置工具**：通过 `BuiltinToolRegistrar` 直接注册（共 10 个：AI 聊天、
   JSON/Base64/Hash 开发者工具、Excel 拆分、颜色转换、Markdown 编辑器、邮件、
   邮件归档、PDF）。不涉及 SPI。
-- **外部插件**：实现 `SwissKitJPlugin`，在 `META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin`
-  中声明，并将 JAR 放入 `.zhiflow/plugin/`。通过目录监听器支持热重载。
+- **外部插件**：实现 `SwissKitJPlugin`，在 `META-INF/services/fan.summer.fengyu.api.SwissKitJPlugin`
+  中声明，并将 JAR 放入 `.fengyu/plugin/`。通过目录监听器支持热重载。
 
 ### 插件加载与类隔离
 
@@ -134,7 +134,7 @@ public interface SwissKitJPlugin {
 
 ### 插件上下文（线程上下文 ClassLoader）
 
-每个已加载的插件会注册到 `fan.summer.zhiflow.api.PluginContext`，它将插件实例与其
+每个已加载的插件会注册到 `fan.summer.fengyu.api.PluginContext`，它将插件实例与其
 `ClassLoader` 关联（通过 `WeakReference` 持有，因此即便漏掉 `unregister()` 也能被 GC）。
 宿主对插件的每一次调用都会做包装，确保正确的 ClassLoader 位于线程上下文 ClassLoader（TCCL）上：
 
@@ -156,15 +156,15 @@ PluginContext.wrapEvents(plugin, view);                           // 包装 Even
 
 ### 插件日志
 
-插件使用 `fan.summer.zhiflow.api.log.LoggerFactory`：宿主运行时路由到 SLF4J/Logback
-（滚动文件位于 `.zhiflow/logs/zhiflow.log`，按天轮转，保留 7 天），测试中返回静默空操作日志器。
+插件使用 `fan.summer.fengyu.api.log.LoggerFactory`：宿主运行时路由到 SLF4J/Logback
+（滚动文件位于 `.fengyu/logs/fengyu.log`，按天轮转，保留 7 天），测试中返回静默空操作日志器。
 使用 SLF4J 风格的 `{}` 占位符。
 
 ## AI 子系统
 
 ### 服务抽象
 
-`ChatBackend`（`ZhiFlow-Api`）是推理契约：`loadModel`/`unloadModel`/`isReady`、
+`ChatBackend`（`FengYu-Api`）是推理契约：`loadModel`/`unloadModel`/`isReady`、
 流式 `chat(history, callback)`、生成控制（`cancelGeneration`/`isGenerating`）。
 工具注册改为全局 —— 通过 `AiServiceProvider` 暴露，后端接口本身不再含工具方法。
 `AiServiceProvider` 是持有活跃后端、当前模式标签、状态变更监听器和全局工具注册表的
@@ -212,9 +212,9 @@ markdown 段落注入系统提示词。本地模型以文本形式发出工具�
 
 | 文件 | 模块 | 作用域 |
 |------|------|--------|
-| `css/zhiflow-common.css` | `ZhiFlow-Api` | 共享变量、滚动条、进度条、`.glass-*` 工具类、`.section-title`/`.section-header` |
-| `css/shell.css` | `ZhiFlow` | 应用外壳 —— 标题栏、侧边栏、搜索栏、工具卡片、详情面板、状态栏、`.ic-*` 图标类 |
-| `css/builtin.css` | `ZhiFlow` | 内置工具样式 |
+| `css/fengyu-common.css` | `FengYu-Api` | 共享变量、滚动条、进度条、`.glass-*` 工具类、`.section-title`/`.section-header` |
+| `css/shell.css` | `FengYu` | 应用外壳 —— 标题栏、侧边栏、搜索栏、工具卡片、详情面板、状态栏、`.ic-*` 图标类 |
+| `css/builtin.css` | `FengYu` | 内置工具样式 |
 
 嵌入主 Scene 的插件通过场景图传播自动继承全部三个样式表。打开独立 `Stage`/`Scene`
 的插件应调用 `Themes.applyTo(scene)`。
@@ -224,7 +224,7 @@ markdown 段落注入系统提示词。本地模型以文本形式发出工具�
 
 ## 数据库
 
-H2 文件数据库位于工作目录下的 `.zhiflow/zhiflow.db`（`AUTO_SERVER` 模式）。
+H2 文件数据库位于工作目录下的 `.fengyu/fengyu.db`（`AUTO_SERVER` 模式）。
 Schema 从 `init.sql` 初始化，通过 MyBatis 访问，XML mapper 位于
 `src/main/resources/mapper/`。主要表：
 
@@ -245,14 +245,14 @@ Schema 从 `init.sql` 初始化，通过 MyBatis 访问，XML mapper 位于
 ## 构建
 
 ```bash
-mvn install -f ZhiFlow-Api/pom.xml -DskipTests
-mvn clean package -f ZhiFlow/pom.xml -DskipTests
-java -jar ZhiFlow/target/ZhiFlow-3.1.0.jar
+mvn install -f FengYu-Api/pom.xml -DskipTests
+mvn clean package -f FengYu/pom.xml -DskipTests
+java -jar FengYu/target/FengYu-3.1.0.jar
 ```
 
-胖 JAR 由 `maven-shade-plugin` 构建（主类 `fan.summer.zhiflow.Launcher`），并捆绑所有平台的
+胖 JAR 由 `maven-shade-plugin` 构建（主类 `fan.summer.fengyu.Launcher`），并捆绑所有平台的
 JavaFX 原生库（`.dll`/`.so`/`.dylib`）。在 Windows 上 `windows-exe` profile 会自动激活，
-并通过 Launch4j 额外产出 `ZhiFlow.exe`。三个 POM 都是**独立**的（无 parent）；
+并通过 Launch4j 额外产出 `FengYu.exe`。三个 POM 都是**独立**的（无 parent）；
 跨平台发布构建由 GitHub Actions 处理。
 
 ## 关键不变量
@@ -260,7 +260,7 @@ JavaFX 原生库（`.dll`/`.so`/`.dylib`）。在 Windows 上 `windows-exe` prof
 后续改造不可破坏以下契约：
 
 - **`SwissKitJPlugin` 是与外部插件仓库之间的 ABI 边界** —— 新增方法必须带 `default` 实现。
-- **`ZhiFlow-Api` 保持无业务依赖**（仅 `javafx`，`provided`）；宿主类不得泄露进 API 模块。
+- **`FengYu-Api` 保持无业务依赖**（仅 `javafx`，`provided`）；宿主类不得泄露进 API 模块。
 - **对插件的每一次调用都经过 `PluginContext`**（`callWith`/`runWith`，`createView` 后再加
   `wrapEvents`），使插件库能定位到自己的资源。
 - **类加载保持父优先**，即便资源加载是子优先 —— 若让类也子优先，会复制出两份

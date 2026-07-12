@@ -2,7 +2,7 @@
 
 ## 概述
 
-插件数据库路径：`.zhiflow/plugins/database/pl_<slug>`（相对于运行时工作目录）
+插件数据库路径：`.fengyu/plugins/database/pl_<slug>`（相对于运行时工作目录）
 
 技术栈：H2 嵌入式数据库 + MyBatis ORM
 
@@ -33,7 +33,7 @@ public class DatabaseInit {
 
     static {
         String dbPath = Path.of(System.getProperty("user.dir"))
-                .resolve(".zhiflow")
+                .resolve(".fengyu")
                 .resolve("plugins")
                 .resolve("database")
                 .resolve("pl_{{slug}}")
@@ -50,7 +50,7 @@ public class DatabaseInit {
     public static void init() {
         try {
             Path dbDir = Path.of(System.getProperty("user.dir"))
-                    .resolve(".zhiflow").resolve("plugins").resolve("database");
+                    .resolve(".fengyu").resolve("plugins").resolve("database");
             if (!Files.exists(dbDir)) {
                 Files.createDirectories(dbDir);
             }

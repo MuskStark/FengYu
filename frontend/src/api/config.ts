@@ -9,17 +9,17 @@
  */
 
 export function getApiBase(): string {
-  if (typeof window !== 'undefined' && window.__ZHIFLOW_API_BASE__) {
-    return window.__ZHIFLOW_API_BASE__
+  if (typeof window !== 'undefined' && window.__FENGYU_API_BASE__) {
+    return window.__FENGYU_API_BASE__
   }
-  return import.meta.env.VITE_ZHIFLOW_API_BASE ?? ''
+  return import.meta.env.VITE_FENGYU_API_BASE ?? ''
 }
 
 export function getToken(): string {
-  if (typeof window !== 'undefined' && window.__ZHIFLOW_TOKEN__) {
-    return window.__ZHIFLOW_TOKEN__
+  if (typeof window !== 'undefined' && window.__FENGYU_TOKEN__) {
+    return window.__FENGYU_TOKEN__
   }
-  return import.meta.env.VITE_ZHIFLOW_TOKEN ?? ''
+  return import.meta.env.VITE_FENGYU_TOKEN ?? ''
 }
 
 /** Prefix a backend path (e.g. a plugin uiEntry) with the API base URL. */

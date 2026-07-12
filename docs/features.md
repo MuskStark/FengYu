@@ -1,6 +1,6 @@
 # Features
 
-ZhiFlow provides 9 built-in tools organized by category, plus support for external plugins.
+FengYu provides 9 built-in tools organized by category, plus support for external plugins.
 
 ## Categories
 
@@ -101,7 +101,7 @@ Configure SMTP email server settings, manage the email address book and tags, an
 
 ## Plugin System
 
-ZhiFlow discovers plugins in two ways:
+FengYu discovers plugins in two ways:
 
 - **Built-in tools** — registered directly by `BuiltinToolRegistrar` at startup
 - **External plugins** — implement `SwissKitJPlugin`, declare in `META-INF/services/`, drop JAR into `plugins/` directory with hot-reload

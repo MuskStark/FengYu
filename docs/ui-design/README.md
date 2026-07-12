@@ -1,6 +1,6 @@
-# ZhiFlow UI Design System
+# FengYu UI Design System
 
-The ZhiFlow user interface is a faithful implementation of the **JetBrains IntelliJ IDEA
+The FengYu user interface is a faithful implementation of the **JetBrains IntelliJ IDEA
 2025 "New UI"** visual language — neutral-gray surfaces, a single restrained accent, flat
 shapes, and motion that serves feedback rather than spectacle. This doc set is the complete,
 code-accurate reference for that system, written so that an AI (or a human who has never
@@ -8,7 +8,7 @@ seen the codebase) can generate UI that matches the v3.2.0 shell.
 
 It is **bilingual** (this English tree mirrors
 [`/zh/ui-design/`](/zh/ui-design/) exactly) and **code-anchored** — every class name, token
-value, and JavaFX signature cited is verifiable against the real ZhiFlow source.
+value, and JavaFX signature cited is verifiable against the real FengYu source.
 
 > **Web frontend note:** As of 4.0.0 the web shell (`frontend/`) implements
 > Material Design 3 via Vuetify 3, not the IntelliJ token system below.
@@ -19,7 +19,7 @@ value, and JavaFX signature cited is verifiable against the real ZhiFlow source.
 
 | # | Document | What it's for | Read it if you… |
 |---|---|---|---|
-| **01** | [UI Design System](01-design-system.md) | Philosophy, layout primitives, typography/spacing/radius scales, how ZhiFlow extends IDEA New UI. | want the "why" — start here. |
+| **01** | [UI Design System](01-design-system.md) | Philosophy, layout primitives, typography/spacing/radius scales, how FengYu extends IDEA New UI. | want the "why" — start here. |
 | **02** | [JavaFX Implementation](02-javafx-implementation.md) | The dev playbook: `SwissKitJPlugin` contract, CSS naming convention, plugin skeleton. | are about to code a plugin UI. |
 | **03** | [Component Library](03-component-library.md) | Per-component spec for every `.sk-*` foundation class and every shell component (nav-item, tool-card, …). | need a specific widget. |
 | **04** | [Interaction Guidelines](04-interaction-guidelines.md) | Navigation, discovery/launch, plugin lifecycle, four-state feedback, destructive-confirm flows. | are wiring user actions. |

@@ -1,6 +1,6 @@
 # 08 · Accessibility Guide
 
-> **Role:** This is the **accessibility checklist every ZhiFlow component and plugin must
+> **Role:** This is the **accessibility checklist every FengYu component and plugin must
 > pass.** It defines the contrast thresholds, the "not by color alone" rule, keyboard
 > operability, focus management, and a reduced-motion strategy. Concrete contrast ratios live
 > in the [contrast matrix in 05](05-theme-color-system.md#contrast-matrix-wcag-aa); this doc
@@ -10,7 +10,7 @@
 |---|---|
 | **Doc type** | Accessibility requirements + checklist |
 | **Audience** | Plugin authors, AI code generators — anyone who must verify a UI is usable by all |
-| **Tokens** | [`zhiflow-common.css`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css) |
+| **Tokens** | [`fengyu-common.css`](../../FengYu-Api/src/main/resources/css/fengyu-common.css) |
 | **Related** | [05 Theme & Color System](05-theme-color-system.md) (contrast matrix) · [07 Animation](07-animation-guidelines.md) (reduced motion) · [04 Interaction](04-interaction-guidelines.md) (keyboard flows) |
 
 ---
@@ -33,7 +33,7 @@
 ## 1. Overview
 
 Accessibility ("a11y") ensures the UI is usable by everyone — including people with low
-vision, color blindness, motor impairments, or sensitivity to motion. In ZhiFlow this is
+vision, color blindness, motor impairments, or sensitivity to motion. In FengYu this is
 not optional polish: every component and every plugin must meet the requirements on this
 page. The good news is that most of it falls out of following the design system already —
 the token-based color system, the visible focus ring, and the keyboard-first interaction
@@ -50,7 +50,7 @@ the exact token hex values and live in the
 Accessibility rests on four pillars (the WCAG **POUR** principles). Every rule below maps to
 one of them.
 
-| Principle | Meaning | In ZhiFlow |
+| Principle | Meaning | In FengYu |
 |---|---|---|
 | **P**erceivable | Information and UI components must be presentable to users in ways they can perceive. | Sufficient contrast; never color-alone status; real text (not images of text). |
 | **O**perable | UI components and navigation must be operable. | Every action keyboard-reachable; visible focus; Esc closes; no traps. |
@@ -116,7 +116,7 @@ before relying on it.
 ### 3.3 "Not By Color Alone" Rule
 
 Status, errors, and state must be conveyed by **more than color** — a colorblind user (or a
-user on a bad monitor) must still understand the state. ZhiFlow enforces this structurally
+user on a bad monitor) must still understand the state. FengYu enforces this structurally
 with the notification system:
 
 | State | Color (necessary but not sufficient) | + Icon | + Text/label |
@@ -142,9 +142,9 @@ border alone — add an icon and an explicit word.
 ### 4.1 Keyboard operability + visible focus
 
 Every interactive node must be reachable and operable by keyboard, with a visible focus ring.
-ZhiFlow's focus indicator is a `-sk-accent` border (e.g.
-[`.sk-field:focused`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css),
-[`.search-bar:focused-within`](../../ZhiFlow/src/main/resources/css/shell.css)).
+FengYu's focus indicator is a `-sk-accent` border (e.g.
+[`.sk-field:focused`](../../FengYu-Api/src/main/resources/css/fengyu-common.css),
+[`.search-bar:focused-within`](../../FengYu/src/main/resources/css/shell.css)).
 
 ```java
 // Make a custom control focusable + keyboard-activatable
@@ -237,7 +237,7 @@ When `REDUCE_MOTION` is on:
 
 ## 5. AI Checklist
 
-When building UI for ZhiFlow (host or plugin), you **MUST**:
+When building UI for FengYu (host or plugin), you **MUST**:
 
 - [ ] **Contrast ≥ 4.5:1 for text** — use the [safe pairs](#safe-color-pairs); compute any
       other combination before using it.
@@ -276,9 +276,9 @@ When building UI for ZhiFlow (host or plugin), you **MUST**:
 
 ## 7. References
 
-- [`zhiflow-common.css`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css) — token definitions, `.sk-field:focused`
-- [`shell.css`](../../ZhiFlow/src/main/resources/css/shell.css) — `.search-bar:focused-within`, focus indicators
-- [`SkNotification.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/component/SkNotification.java) — the color+icon+text status pattern
+- [`fengyu-common.css`](../../FengYu-Api/src/main/resources/css/fengyu-common.css) — token definitions, `.sk-field:focused`
+- [`shell.css`](../../FengYu/src/main/resources/css/shell.css) — `.search-bar:focused-within`, focus indicators
+- [`SkNotification.java`](../../FengYu-Api/src/main/java/fan/summer/api/component/SkNotification.java) — the color+icon+text status pattern
 - **Sibling docs:**
   - [05 Theme & Color System](05-theme-color-system.md) — the verified
     [contrast matrix](05-theme-color-system.md#contrast-matrix-wcag-aa) these rules derive from

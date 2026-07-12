@@ -1,6 +1,6 @@
 # Architecture
 
-ZhiFlow is a modular, plugin-based desktop toolkit built on JavaFX 21 (JDK 21).
+FengYu is a modular, plugin-based desktop toolkit built on JavaFX 21 (JDK 21).
 The host application depends only on a small plugin interface; every concrete
 tool — whether built-in or shipped as an external JAR — implements the same
 `SwissKitJPlugin` contract.
@@ -8,11 +8,11 @@ tool — whether built-in or shipped as an external JAR — implements the same
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │  External JAR plugins (separate repo, provided scope)             │
-│  implement SwissKitJPlugin, dropped into .zhiflow/plugin/        │
+│  implement SwissKitJPlugin, dropped into .fengyu/plugin/        │
 └───────────────────────────────┬──────────────────────────────────┘
                                 ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  ZhiFlow-Api  —  public contract layer (no business logic)      │
+│  FengYu-Api  —  public contract layer (no business logic)      │
 │  SwissKitJPlugin · ToolCategory/Type/IconStyle · PluginContext     │
 │  AiService/AiTool/AiChatMessage · I18n · Themes · LoggerFactory    │
 │  StepWizard · SkNotification · UiUtils · preview components     │
@@ -20,7 +20,7 @@ tool — whether built-in or shipped as an external JAR — implements the same
                                 │ bundled in the fat JAR (provided → runtime)
                                 ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  ZhiFlow  —  JavaFX application shell + built-in tools           │
+│  FengYu  —  JavaFX application shell + built-in tools           │
 │  UI Shell · Plugin Layer (Loader/Registry/Context/Favorites)      │
 │  AI Subsystem (2 backends · tools · local inference)              │
 │  H2 + MyBatis · i18n · Logback · JsonHelper                       │
@@ -31,24 +31,24 @@ tool — whether built-in or shipped as an external JAR — implements the same
 
 | Module | Purpose |
 |--------|---------|
-| `ZhiFlow-Api` | Shared plugin interface (`SwissKitJPlugin`), plugin context & isolation (`PluginContext`), reusable components (`StepWizard`, `SkNotification`, `UiUtils`), theming, i18n, logging API, and the AI service contract (`ChatBackend`, `AiTool`, message records) |
-| `ZhiFlow` | JavaFX application shell — UI, plugin loading, favorites, the AI subsystem, and all built-in tools |
+| `FengYu-Api` | Shared plugin interface (`SwissKitJPlugin`), plugin context & isolation (`PluginContext`), reusable components (`StepWizard`, `SkNotification`, `UiUtils`), theming, i18n, logging API, and the AI service contract (`ChatBackend`, `AiTool`, message records) |
+| `FengYu` | JavaFX application shell — UI, plugin loading, favorites, the AI subsystem, and all built-in tools |
 
-Official plugins live in a [separate repository](https://github.com/MuskStark/SwissKiJ-Plugin). They are built independently and dropped into `.zhiflow/plugin/` as JARs at runtime. All plugins declare `ZhiFlow-Api` as `provided` scope; the main app provides it at runtime via the fat JAR.
+Official plugins live in a [separate repository](https://github.com/MuskStark/SwissKiJ-Plugin). They are built independently and dropped into `.fengyu/plugin/` as JARs at runtime. All plugins declare `FengYu-Api` as `provided` scope; the main app provides it at runtime via the fat JAR.
 
 ## Startup Sequence
 
-`fan.summer.zhiflow.Launcher` (fat-JAR manifest entry point) primes the log directory, then
-delegates to `fan.summer.zhiflow.app.ZhiFlowApp` (JavaFX `Application`). The launcher is a
+`fan.summer.fengyu.Launcher` (fat-JAR manifest entry point) primes the log directory, then
+delegates to `fan.summer.fengyu.app.FengYuApp` (JavaFX `Application`). The launcher is a
 separate non-`Application` class so the app runs in classpath mode (compatible with
 the fat-JAR layout and the JavaFX module system).
 
-In `ZhiFlowApp.start()`:
+In `FengYuApp.start()`:
 
 1. Install the plugin logger binder (`LoggerBinder.bind`) so plugin logs route into the shared SLF4J/Logback backbone
 2. Initialize the H2 database via MyBatis (`DatabaseInit.init`)
 3. Register the i18n bundle and apply the saved language preference
-4. Resolve the plugins directory (`<user.dir>/.zhiflow/plugin/`)
+4. Resolve the plugins directory (`<user.dir>/.fengyu/plugin/`)
 5. Create `PluginLoader` + `PluginRegistry` (the registry wires itself to the loader)
 6. Create `FavoriteService` (loads bookmarked plugin IDs from the database)
 7. Register built-in tools via `BuiltinToolRegistrar` — this routes the list through `PluginRegistry.addPlugins`, which also auto-registers each plugin's `aiTools()` with `AiServiceProvider`
@@ -117,8 +117,8 @@ once per plugin; the host caches the returned `Node`.
   JSON/Base64/Hash dev tools, Excel Splitter, Color Converter, Markdown Editor, Email,
   Email Archive, PDF). No SPI involved.
 - **External plugins**: implement `SwissKitJPlugin`, declare it in
-  `META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin`, and drop the JAR into
-  `.zhiflow/plugin/`. Hot-reload is supported via a directory watcher.
+  `META-INF/services/fan.summer.fengyu.api.SwissKitJPlugin`, and drop the JAR into
+  `.fengyu/plugin/`. Hot-reload is supported via a directory watcher.
 
 ### Plugin Loading & Class Isolation
 
@@ -144,7 +144,7 @@ unloads the JAR and deletes the original file.
 
 ### Plugin Context (thread-context ClassLoader)
 
-Each loaded plugin is registered with `fan.summer.zhiflow.api.PluginContext`, which associates
+Each loaded plugin is registered with `fan.summer.fengyu.api.PluginContext`, which associates
 the plugin instance with its `ClassLoader` (held via `WeakReference` so a missed
 `unregister()` still allows GC). The host wraps every call into a plugin so the correct
 ClassLoader is on the thread-context ClassLoader (TCCL):
@@ -168,15 +168,15 @@ UI components observe the set reactively. It is a singleton (`FavoriteService.ge
 
 ### Plugin Logging
 
-Plugins use `fan.summer.zhiflow.api.log.LoggerFactory`, which routes to SLF4J/Logback when the
-host is running (rolling file under `.zhiflow/logs/zhiflow.log`, daily rotation, 7-day
+Plugins use `fan.summer.fengyu.api.log.LoggerFactory`, which routes to SLF4J/Logback when the
+host is running (rolling file under `.fengyu/logs/fengyu.log`, daily rotation, 7-day
 retention) and returns a silent no-op logger in tests. Use SLF4J-style `{}` placeholders.
 
 ## AI Subsystem
 
 ### Service abstraction
 
-`ChatBackend` (`ZhiFlow-Api`) is the inference contract: `loadModel`/`unloadModel`/`isReady`,
+`ChatBackend` (`FengYu-Api`) is the inference contract: `loadModel`/`unloadModel`/`isReady`,
 streaming `chat(history, callback)`, generation control (`cancelGeneration`/`isGenerating`).
 Tool registration is global via `AiServiceProvider` (no longer on the backend interface itself).
 `AiServiceProvider` is the **static singleton** that holds the active backend, the current
@@ -229,9 +229,9 @@ Three-layer glassmorphism dark theme:
 
 | File | Module | Scope |
 |------|--------|-------|
-| `css/zhiflow-common.css` | `ZhiFlow-Api` | Shared variables, scrollbars, progress bar, `.glass-*` utility classes, `.section-title`/`.section-header` |
-| `css/shell.css` | `ZhiFlow` | App chrome — titlebar, sidebar, search bar, tool cards, detail panel, status bar, `.ic-*` icon classes |
-| `css/builtin.css` | `ZhiFlow` | Built-in tool styling |
+| `css/fengyu-common.css` | `FengYu-Api` | Shared variables, scrollbars, progress bar, `.glass-*` utility classes, `.section-title`/`.section-header` |
+| `css/shell.css` | `FengYu` | App chrome — titlebar, sidebar, search bar, tool cards, detail panel, status bar, `.ic-*` icon classes |
+| `css/builtin.css` | `FengYu` | Built-in tool styling |
 
 Plugins embedded in the main Scene inherit all three stylesheets automatically via scene-graph
 propagation. Plugins that open their own `Stage`/`Scene` should call `Themes.applyTo(scene)`.
@@ -241,7 +241,7 @@ Sidebar icons use an embedded Material Design Icons webfont (`mdi-codemap.proper
 
 ## Database
 
-H2 file at `.zhiflow/zhiflow.db` relative to the working directory (`AUTO_SERVER` mode).
+H2 file at `.fengyu/fengyu.db` relative to the working directory (`AUTO_SERVER` mode).
 The schema is initialized from `init.sql` and accessed via MyBatis with XML mappers in
 `src/main/resources/mapper/`. Main tables:
 
@@ -263,14 +263,14 @@ placeholder at startup.
 ## Build
 
 ```bash
-mvn install -f ZhiFlow-Api/pom.xml -DskipTests
-mvn clean package -f ZhiFlow/pom.xml -DskipTests
-java -jar ZhiFlow/target/ZhiFlow-3.1.0.jar
+mvn install -f FengYu-Api/pom.xml -DskipTests
+mvn clean package -f FengYu/pom.xml -DskipTests
+java -jar FengYu/target/FengYu-3.1.0.jar
 ```
 
-The fat JAR is built by `maven-shade-plugin` (main class `fan.summer.zhiflow.Launcher`) and bundles
+The fat JAR is built by `maven-shade-plugin` (main class `fan.summer.fengyu.Launcher`) and bundles
 JavaFX native libraries for all platforms (`.dll`/`.so`/`.dylib`). On Windows the `windows-exe`
-profile is auto-activated and also produces `ZhiFlow.exe` via Launch4j. The three POMs are
+profile is auto-activated and also produces `FengYu.exe` via Launch4j. The three POMs are
 **standalone** (no parent); GitHub Actions handles cross-platform release builds.
 
 ## Key Invariants
@@ -279,7 +279,7 @@ These contracts must not be broken by future changes:
 
 - **`SwissKitJPlugin` is the ABI boundary** with the external plugin repository — any new
   method must have a `default` implementation.
-- **`ZhiFlow-Api` stays free of business dependencies** (only `javafx`, `provided`); host
+- **`FengYu-Api` stays free of business dependencies** (only `javafx`, `provided`); host
   classes must not leak into the API module.
 - **Every call into a plugin goes through `PluginContext`** (`callWith`/`runWith`, plus
   `wrapEvents` after `createView`), so plugin libraries can locate their own resources.

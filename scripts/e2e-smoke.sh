@@ -9,10 +9,10 @@ set -uo pipefail
 PORT="${1:-8899}"
 TOKEN="${2:-e2e-smoke-token}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-JAR="$ROOT/ZhiFlow/target/ZhiFlow-4.0.0-SNAPSHOT.jar"
+JAR="$ROOT/FengYu/target/FengYu-4.0.0-SNAPSHOT.jar"
 
 if [ ! -f "$JAR" ]; then
-  echo "FAIL: jar not found at $JAR — build it first (mvn -f ZhiFlow/pom.xml package -DskipTests)"
+  echo "FAIL: jar not found at $JAR — build it first (mvn -f FengYu/pom.xml package -DskipTests)"
   exit 1
 fi
 
@@ -21,12 +21,12 @@ JAVA="${JAVA_HOME:+$JAVA_HOME/bin/}java"
 
 WORK="$(mktemp -d)"
 cd "$WORK"
-"$JAVA" -cp "$JAR" fan.summer.zhiflow.HeadlessLauncher --port="$PORT" --token="$TOKEN" > server.log 2>&1 &
+"$JAVA" -cp "$JAR" fan.summer.fengyu.HeadlessLauncher --port="$PORT" --token="$TOKEN" > server.log 2>&1 &
 SRV=$!
 trap 'kill $SRV 2>/dev/null; rm -rf "$WORK"' EXIT
 
 H="http://127.0.0.1:$PORT"
-AUTH=(-H "X-ZhiFlow-Token: $TOKEN")
+AUTH=(-H "X-FengYu-Token: $TOKEN")
 
 # Wait for health.
 ready=0

@@ -1,18 +1,18 @@
 # 01 · UI Design System
 
-> **Role:** This is the **constitution** of the ZhiFlow user interface — the design
+> **Role:** This is the **constitution** of the FengYu user interface — the design
 > philosophy and cross-cutting principles that every screen, every component, and every
 > plugin must obey. It does **not** restate exact color values (those live in
 > [05 Theme & Color System](05-theme-color-system.md)) or component-level CSS (those live in
 > [03 Component Library](03-component-library.md)). Instead it defines *why* the UI looks the
-> way it does, the layout primitives, the typography/spacing/radius scales, and how ZhiFlow
+> way it does, the layout primitives, the typography/spacing/radius scales, and how FengYu
 > extends the JetBrains IDEA 2025 **New UI** language it was modeled on.
 
 | | |
 |---|---|
 | **Doc type** | Philosophy + global layout + scales (top-level entry) |
 | **Audience** | Anyone touching the UI — designers, plugin authors, AI code generators |
-| **Window source** | [`ZhiFlow/src/main/java/fan/summer/app/ZhiFlowApp.java`](../../ZhiFlow/src/main/java/fan/summer/app/ZhiFlowApp.java) · [`ui/MainWindow.java`](../../ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java) |
+| **Window source** | [`FengYu/src/main/java/fan/summer/app/FengYuApp.java`](../../FengYu/src/main/java/fan/summer/app/FengYuApp.java) · [`ui/MainWindow.java`](../../FengYu/src/main/java/fan/summer/ui/MainWindow.java) |
 | **Reference spec** | [`docs/superpowers/specs/2026-06-30-idea-new-ui-redesign-design.md`](../superpowers/specs/2026-06-30-idea-new-ui-redesign-design.md) |
 | **Related** | [02 JavaFX Implementation](02-javafx-implementation.md) · [03 Component Library](03-component-library.md) · [05 Theme & Color System](05-theme-color-system.md) · [06 Icon System](06-icon-system.md) · [07 Animation](07-animation-guidelines.md) |
 
@@ -38,7 +38,7 @@
 
 ## 1. Overview
 
-ZhiFlow is a **plugin-based desktop toolkit** built on JavaFX 21. Its user interface is a
+FengYu is a **plugin-based desktop toolkit** built on JavaFX 21. Its user interface is a
 deliberate, faithful implementation of the **JetBrains IntelliJ IDEA 2025 "New UI"** visual
 language: neutral-gray surfaces, a single restrained accent color, flat shapes, and motion
 that serves feedback rather than spectacle.
@@ -72,11 +72,11 @@ instead.
 
 ## 2. Design Principles
 
-Four non-negotiable principles. Every layout decision in ZhiFlow derives from one of these.
+Four non-negotiable principles. Every layout decision in FengYu derives from one of these.
 
 ### P1 — Functional-first
 
-ZhiFlow is a **toolbox**, not a showcase. The UI exists to get the user to a tool and let
+FengYu is a **toolbox**, not a showcase. The UI exists to get the user to a tool and let
 it do its job. Decoration that does not aid comprehension or feedback has no place.
 
 - **Do** lead with content (the tool grid), keep chrome minimal, and make the most common
@@ -102,7 +102,7 @@ and a single accent (`#3574F0`, the `-sk-accent` token) used surgically. See
 Every screen must look intentional and pass accessibility in **both** themes. There is no
 "primary" theme — dark and light are first-class. This is enforced structurally: colors are
 never hardcoded, only referenced as `-sk-*` tokens, so
-[`ThemeService.set(Theme)`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java)
+[`ThemeService.set(Theme)`](../../FengYu-Api/src/main/java/fan/summer/api/theme/ThemeService.java)
 can swap themes with zero flicker.
 
 - **Do** color every node with a `-sk-*` token or `.sk-t*`/`.sk-surface*` utility class, and
@@ -113,7 +113,7 @@ can swap themes with zero flicker.
 
 ### P4 — Plugins blend as native
 
-A third-party plugin dropped into `.zhiflow/plugin/` must be visually indistinguishable from
+A third-party plugin dropped into `.fengyu/plugin/` must be visually indistinguishable from
 a built-in tool. The same `.sk-*` foundation components, the same tokens, the same fonts and
 icons are available to every plugin via [`Themes.applyTo(scene)`](02-javafx-implementation.md).
 There is no "plugin look."
@@ -159,24 +159,24 @@ The main window is a classic IDE shell: a native OS title bar, a left **Sidebar*
 ```
 
 **Window facts** (verified in
-[`ZhiFlowApp.java`](../../ZhiFlow/src/main/java/fan/summer/app/ZhiFlowApp.java)):
+[`FengYuApp.java`](../../FengYu/src/main/java/fan/summer/app/FengYuApp.java)):
 
 | Property | Value | Source |
 |---|---|---|
-| Initial scene size | **960 × 620** | `ZhiFlowApp.java:113` |
-| Minimum window size | **800 × 520** | `ZhiFlowApp.java:137–138` |
-| Window chrome | **Native** (`StageStyle.DECORATED`) | `ZhiFlowApp.java:133` |
-| Title | `ZhiFlow` | `ZhiFlowApp.java:134` |
+| Initial scene size | **960 × 620** | `FengYuApp.java:113` |
+| Minimum window size | **800 × 520** | `FengYuApp.java:137–138` |
+| Window chrome | **Native** (`StageStyle.DECORATED`) | `FengYuApp.java:133` |
+| Title | `FengYu` | `FengYuApp.java:134` |
 | Layout root | `BorderPane` (top = none, left = Sidebar, center = ContentArea, bottom = StatusBar) | `MainWindow.java` |
 
 **Region roles:**
 
 | Region | Component | Purpose | Source |
 |---|---|---|---|
-| Left | [`Sidebar`](../../ZhiFlow/src/main/java/fan/summer/ui/sidebar/Sidebar.java) | Navigation: categories (DEV/TEXT/IMAGE/NET/OTHER), AI, Plugins, Favorites, Settings; theme toggle in footer. Collapsible (persisted as `sidebar.collapsed`). | `ui/sidebar/Sidebar.java` |
-| Center | [`ContentArea`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ContentArea.java) | Search bar + tool grid (FlowPane of `ToolCard`s) + cached plugin pages. `showPage(node, title)` swaps content with a 220/180 ms cross-fade. | `ui/content/ContentArea.java` |
-| Right (overlay) | [`DetailPanel`](../../ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java) | Slide-in (300 ms) launch panel for a hovered/selected tool — icon, name, description, launch button. | `ui/content/DetailPanel.java` |
-| Bottom | StatusBar (in [`MainWindow`](../../ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java)) | Mono clock, pulsing status dot (2500 ms), status text. 28 px tall. | `ui/MainWindow.java` |
+| Left | [`Sidebar`](../../FengYu/src/main/java/fan/summer/ui/sidebar/Sidebar.java) | Navigation: categories (DEV/TEXT/IMAGE/NET/OTHER), AI, Plugins, Favorites, Settings; theme toggle in footer. Collapsible (persisted as `sidebar.collapsed`). | `ui/sidebar/Sidebar.java` |
+| Center | [`ContentArea`](../../FengYu/src/main/java/fan/summer/ui/content/ContentArea.java) | Search bar + tool grid (FlowPane of `ToolCard`s) + cached plugin pages. `showPage(node, title)` swaps content with a 220/180 ms cross-fade. | `ui/content/ContentArea.java` |
+| Right (overlay) | [`DetailPanel`](../../FengYu/src/main/java/fan/summer/ui/content/DetailPanel.java) | Slide-in (300 ms) launch panel for a hovered/selected tool — icon, name, description, launch button. | `ui/content/DetailPanel.java` |
+| Bottom | StatusBar (in [`MainWindow`](../../FengYu/src/main/java/fan/summer/ui/MainWindow.java)) | Mono clock, pulsing status dot (2500 ms), status text. 28 px tall. | `ui/MainWindow.java` |
 
 <span id="typography"></span>
 
@@ -192,7 +192,7 @@ The stack resolves to the platform's best native UI font (SF on macOS, Segoe on 
 PingFang/YaHei for CJK) and degrades gracefully. **Never** set a different `-fx-font-family`
 — the stack is what keeps the UI native-feeling on every OS.
 
-**Size scale.** ZhiFlow uses a tight, IDE-appropriate scale around a **13 px base**. Every
+**Size scale.** FengYu uses a tight, IDE-appropriate scale around a **13 px base**. Every
 size in the app maps to one of these:
 
 | Size | Token-ish name | Used for | Example source |
@@ -235,7 +235,7 @@ A **4 px base unit** governs every margin, padding, and gap. All spacing is a mu
 
 ### 3.4 Radius Scale
 
-ZhiFlow uses a small, consistent set of corner radii (CSS `-fx-background-radius`):
+FengYu uses a small, consistent set of corner radii (CSS `-fx-background-radius`):
 
 | Radius | Where | Example classes |
 |---|---|---|
@@ -252,7 +252,7 @@ ZhiFlow uses a small, consistent set of corner radii (CSS `-fx-background-radius
 
 ### 3.5 Elevation & Shadow
 
-ZhiFlow is **flat by default**. Drop shadows are a scarce resource reserved for surfaces
+FengYu is **flat by default**. Drop shadows are a scarce resource reserved for surfaces
 that genuinely float *above* the content plane — never used to decorate flat panels.
 
 | Surface | Elevated? | Shadow |
@@ -292,7 +292,7 @@ Text prominence is a three-step ladder expressed entirely through the text token
 
 ## 4. Differences from IDEA New UI
 
-ZhiFlow adopts the IDEA New UI's *spirit* (neutral grays, restrained accent, flat surfaces,
+FengYu adopts the IDEA New UI's *spirit* (neutral grays, restrained accent, flat surfaces,
 surgical selection indicator) but is **not** a clone of an IDE — it's a *toolbox*. The
 differences below are deliberate and define the product's identity.
 
@@ -306,29 +306,29 @@ differences below are deliberate and define the product's identity.
 | Flat aesthetic | No gradients, no glassmorphism, shadows only on modals/toasts |
 | Typography | Small, IDE-scale sans-serif, color-led hierarchy |
 
-### ZhiFlow-specific additions
+### FengYu-specific additions
 
 | Addition | Why it's here | Where |
 |---|---|---|
 | **Tool-card grid** | A FlowPane of `ToolCard`s (152 × 130 px) is the home screen — tools are discovered visually as cards, not as a menu tree. IDEA has no equivalent; its "cards" are settings tiles. | `ContentArea`, see [03 · Tool Card](03-component-library.md) |
-| **Sidebar category sections** | Group nav by `ToolCategory` (DEV / TEXT / IMAGE / NET / OTHER) plus AI, Plugins, Favorites, Settings. Reflects ZhiFlow's plugin taxonomy. | `Sidebar.java` |
+| **Sidebar category sections** | Group nav by `ToolCategory` (DEV / TEXT / IMAGE / NET / OTHER) plus AI, Plugins, Favorites, Settings. Reflects FengYu's plugin taxonomy. | `Sidebar.java` |
 | **Detail Panel** | A right-side slide-in (300 ms) that previews a hovered/selected tool and offers a launch button — a hybrid of IDEA's "search everywhere" preview and a detail drawer. | `DetailPanel.java` |
 | **Tool-card "running" pulse** | Cards pulse (2500 ms) while their plugin has running tasks, so background work is visible without a separate jobs view. | `ToolCard.java:106`, see [07](07-animation-guidelines.md) |
-| **Notification system** | `.sk-notif-*` toasts (info/success/warning/error) for tool feedback — IDEA uses its own notification API; ZhiFlow exposes a themed equivalent to plugins. | see [03 · Notification](03-component-library.md) |
+| **Notification system** | `.sk-notif-*` toasts (info/success/warning/error) for tool feedback — IDEA uses its own notification API; FengYu exposes a themed equivalent to plugins. | see [03 · Notification](03-component-library.md) |
 
 ### Intentionally dropped from IDEA
 
 | Dropped | Reason |
 |---|---|
-| Multi-split editor tabs | ZhiFlow shows one tool at a time (`showPage` cross-fade). Tools are not documents. |
+| Multi-split editor tabs | FengYu shows one tool at a time (`showPage` cross-fade). Tools are not documents. |
 | Toolbar / tool window buttons | The sidebar + grid is enough; an IDE-style toolbar would add chrome without value. |
-| Heavy modal project structure | ZhiFlow is flat: launch a tool, use it, leave. No project tree. |
+| Heavy modal project structure | FengYu is flat: launch a tool, use it, leave. No project tree. |
 
 ---
 
 ## 5. AI Development Checklist
 
-When generating UI for ZhiFlow (host or plugin), you **MUST**:
+When generating UI for FengYu (host or plugin), you **MUST**:
 
 - [ ] **Follow the four principles** — functional-first, restrained accent, theme parity,
       plugins-blend-native. If a proposed effect doesn't serve one of these, cut it.
@@ -364,9 +364,9 @@ When generating UI for ZhiFlow (host or plugin), you **MUST**:
 ## 7. References
 
 **Source files:**
-- [`ZhiFlow/src/main/java/fan/summer/app/ZhiFlowApp.java`](../../ZhiFlow/src/main/java/fan/summer/app/ZhiFlowApp.java) — window size, `StageStyle.DECORATED`, title
-- [`ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java`](../../ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java) — layout root, StatusBar
-- [`ui/sidebar/Sidebar.java`](../../ZhiFlow/src/main/java/fan/summer/ui/sidebar/Sidebar.java) · [`ui/content/ContentArea.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ContentArea.java) · [`ui/content/DetailPanel.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java) · [`ui/content/ToolCard.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java)
+- [`FengYu/src/main/java/fan/summer/app/FengYuApp.java`](../../FengYu/src/main/java/fan/summer/app/FengYuApp.java) — window size, `StageStyle.DECORATED`, title
+- [`FengYu/src/main/java/fan/summer/ui/MainWindow.java`](../../FengYu/src/main/java/fan/summer/ui/MainWindow.java) — layout root, StatusBar
+- [`ui/sidebar/Sidebar.java`](../../FengYu/src/main/java/fan/summer/ui/sidebar/Sidebar.java) · [`ui/content/ContentArea.java`](../../FengYu/src/main/java/fan/summer/ui/content/ContentArea.java) · [`ui/content/DetailPanel.java`](../../FengYu/src/main/java/fan/summer/ui/content/DetailPanel.java) · [`ui/content/ToolCard.java`](../../FengYu/src/main/java/fan/summer/ui/content/ToolCard.java)
 
 **Specs & sibling docs:**
 - [New UI redesign spec](../superpowers/specs/2026-06-30-idea-new-ui-redesign-design.md) — the authoritative design source

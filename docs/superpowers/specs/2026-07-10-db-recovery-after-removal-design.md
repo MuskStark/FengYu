@@ -1,7 +1,7 @@
 # 数据库被移除后可重新配置(启动恢复 + 手动重置端点)
 
 **Date:** 2026-07-10
-**Branch:** 4.0.0-ZhiFlow
+**Branch:** 4.0.0-FengYu
 **Status:** Design (pending implementation plan)
 **Related:** `2026-07-08-multids-setup-wizard-design.md`(多数据源初始化向导)
 
@@ -11,7 +11,7 @@
 
 ### 1.1 问题(根因已定位)
 
-用户配置 SQLite(文件路径 `.zhiflow/database/zhiflow`)后,数据库**目录**被移除/删除,但 `config/datasource.properties` 仍在。重启时:
+用户配置 SQLite(文件路径 `.fengyu/database/fengyu`)后,数据库**目录**被移除/删除,但 `config/datasource.properties` 仍在。重启时:
 
 1. `HeadlessLauncher.isDatasourceConfigured()`(`HeadlessLauncher.java:66`)**只检查配置文件是否存在** —— 文件在 → 返回 `true`。
 2. 应用以 **APP 模式**启动 → `DataSourceAutoConfig.dataSource()` 构造 HikariDataSource 指向已不存在的目录 → SQLite 抛 `path to '...': '...database' does not exist` → `entityManagerFactory` 创建失败 → 进程退出码 1。`startWithFallback` 的端口重试也无法救回(同一坏配置重试两次,均失败)。
@@ -25,7 +25,7 @@
 崩溃堆栈关键行(来自用户提供的日志):
 
 ```
-java.sql.SQLException: path to '.../.zhiflow/database/zhiflow': '.../.zhiflow/database' does not exist
+java.sql.SQLException: path to '.../.fengyu/database/fengyu': '.../.fengyu/database' does not exist
   at org.sqlite.SQLiteConnection.open(SQLiteConnection.java:261)
 ...
 Caused by: org.hibernate.HibernateException: Unable to determine Dialect without JDBC metadata
