@@ -2,10 +2,12 @@
 import { onMounted, computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSetupStore } from '@/stores/setup'
+import { useConnectionStore } from '@/stores/connection'
 import { api } from '@/api/client'
 
 const router = useRouter()
 const setup = useSetupStore()
+const conn = useConnectionStore()
 
 const step = ref<1 | 2 | 3>(1)
 const restartMessage = ref('')
@@ -40,6 +42,7 @@ async function onInitialize() {
   if (!ok) return
   step.value = 3
   restartMessage.value = 'Configuration complete. Restarting backend…'
+  conn.setRestarting(true)
   await waitForRestart()
 }
 
@@ -59,6 +62,7 @@ async function waitForRestart() {
       // Backend still down — keep polling.
     }
   }
+  conn.setRestarting(false)
   if (back) {
     router.replace('/')
   } else {
@@ -115,25 +119,29 @@ async function waitForRestart() {
           />
         </div>
 
-        <div class="d-flex align-center ga-3 my-4">
+        <div class="d-flex flex-column align-center my-4">
           <v-btn variant="tonal" :loading="setup.testing" @click="onTest">
             Test connection
           </v-btn>
-          <span
+          <div
             v-if="setup.testResult"
             :class="setup.testResult.success ? 'text-success' : 'text-error'"
-            class="text-body-2"
+            class="text-body-2 text-center mt-2"
           >
-            <v-icon size="small" :icon="setup.testResult.success ? 'mdi-check' : 'mdi-close'" />
+            <v-icon size="small" :icon="setup.testResult.success ? 'mdi-check' : 'mdi-alert-circle-outline'" />
             {{ setup.testResult.success
               ? `Connected (${setup.testResult.serverVersion})`
               : setup.testResult.error }}
-          </span>
+          </div>
+          <v-btn
+            color="primary"
+            class="mt-4"
+            :disabled="!canInitialize"
+            @click="onInitialize"
+          >
+            Initialize
+          </v-btn>
         </div>
-
-        <v-btn color="primary" :disabled="!canInitialize" @click="onInitialize">
-          Initialize
-        </v-btn>
       </div>
 
       <!-- Step 3: restart overlay -->
