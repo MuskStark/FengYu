@@ -7,7 +7,9 @@ import { useThemeStore } from '@/stores/theme'
 import { api } from '@/api/client'
 import { i18n } from '@/i18n'
 import { loadPlugin, type PluginContext } from '@/mf/loader'
+import { makeDesktop } from '@/mf/desktop'
 import { vuetify } from '@/plugins/vuetify'
+import { getApiBase, getToken } from '@/api/config'
 
 const props = defineProps<{ id: string }>()
 
@@ -61,6 +63,9 @@ async function mountPlugin() {
         return unwatch
       },
       notify: (msg) => console.info(`[${descriptor.name}]`, msg),
+      apiBase: getApiBase(),
+      token: getToken(),
+      desktop: makeDesktop(),
       vuetify, // shared MD3 instance — plugins call app.use(ctx.vuetify)
     }
     unmount = mod.mount(el, ctx)
