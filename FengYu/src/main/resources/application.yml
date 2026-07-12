@@ -8,8 +8,8 @@ server:
 spring:
   servlet:
     multipart:
-      max-file-size: 100MB
-      max-request-size: 100MB
+      max-file-size: 128MB
+      max-request-size: 128MB
   jpa:
     hibernate:
       ddl-auto: update          # entity changes auto-create tables / add columns
