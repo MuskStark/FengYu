@@ -40,7 +40,7 @@ const bottomNav = [
       <span class="cx-avatar" style="width: 30px; height: 30px; font-size: 14px">
         <i class="mdi mdi-hexagon-multiple-outline" />
       </span>
-      <span v-if="!rail" class="cx-grow" style="font-weight: 600">Infinia</span>
+      <span v-if="!rail" class="cx-grow" style="font-weight: 600">{{ $t('brand') }}</span>
       <button
         v-if="!rail"
         class="cx-iconbtn cx-iconbtn--sm"
