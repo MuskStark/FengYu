@@ -78,6 +78,13 @@
             <version>${revision}</version>
         </dependency>
 
+        <!-- Official Excel plugin (v2): compile-time bundled; ui served at /plugin-ui/excel/. -->
+        <dependency>
+            <groupId>fan.summer.fengyu.plugin</groupId>
+            <artifactId>plugin-excel</artifactId>
+            <version>${revision}</version>
+        </dependency>
+
         <!-- JavaFX removed in 4.0.0 Phase 1 headless cutover: the UI is now Vue + Tauri and the
              backend is a headless Spring Boot web server. No javafx.* code remains. -->
 
