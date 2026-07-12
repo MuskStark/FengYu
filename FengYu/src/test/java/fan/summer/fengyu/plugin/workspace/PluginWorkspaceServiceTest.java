@@ -51,4 +51,22 @@ class PluginWorkspaceServiceTest {
         assertThrows(IllegalArgumentException.class,
             () -> svc.inDir("fan.summer.excel", "../../etc"));
     }
+
+    @Test
+    void rejectsDotDotSession() {
+        assertThrows(IllegalArgumentException.class,
+            () -> svc.inDir("fan.summer.excel", ".."));
+    }
+
+    @Test
+    void rejectsDotDotPluginId() {
+        String sess = svc.newSession();
+        assertThrows(IllegalArgumentException.class,
+            () -> svc.inDir("..", sess));
+    }
+
+    @Test
+    void allowsLegitimateDottedTokens() {
+        assertDoesNotThrow(() -> svc.inDir("fan.summer.excel", "abc.def"));
+    }
 }
