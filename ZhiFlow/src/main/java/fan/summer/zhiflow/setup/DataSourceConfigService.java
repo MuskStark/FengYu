@@ -42,6 +42,11 @@ public class DataSourceConfigService {
         return Path.of(baseDir, "config", "datasource.properties");
     }
 
+    /** The program-default embedded data-file path: {@code <baseDir>/database/zhiflow}. */
+    public Path defaultEmbeddedPath() {
+        return Path.of(baseDir, "database", "zhiflow");
+    }
+
     /** Loads the datasource config. Returns {@code null} if the file is missing or invalid. */
     public DataSourceConfig load() {
         Path file = configFile();
@@ -134,7 +139,7 @@ public class DataSourceConfigService {
         if (type.embedded) {
             // Default data file lives under <baseDir>/database/zhiflow (e.g. .zhiflow/database/zhiflow).
             String rawPath = (params.filePath() == null || params.filePath().isBlank())
-                    ? Path.of(baseDir, "database", "zhiflow").toString()
+                    ? defaultEmbeddedPath().toString()
                     : params.filePath();
             Path resolved = Path.of(rawPath);
             if (!resolved.isAbsolute()) {
