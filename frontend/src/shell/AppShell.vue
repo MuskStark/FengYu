@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import Sidebar from './Sidebar.vue'
-import StatusBar from './StatusBar.vue'
 </script>
 
 <template>
@@ -10,5 +9,4 @@ import StatusBar from './StatusBar.vue'
       <component :is="Component" />
     </router-view>
   </v-main>
-  <StatusBar />
 </template>
