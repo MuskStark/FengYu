@@ -4,6 +4,7 @@ import fan.summer.fengyu.setup.SetupApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * APP-mode Spring Boot application for the headless FengYu backend.
@@ -30,6 +31,7 @@ import org.springframework.context.annotation.FilterType;
  * {@code DataSourceConfigService}) are still picked up individually.
  */
 @SpringBootApplication
+@EnableScheduling
 @ComponentScan(
         basePackages = "fan.summer.fengyu",
         excludeFilters = @ComponentScan.Filter(
