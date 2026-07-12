@@ -1,7 +1,7 @@
 # 4.0.0 UI Strangler — Phase 1: Vue + Tauri Walking Skeleton
 
 **Date:** 2026-07-08
-**Branch:** `4.0.0-ZhiFlow`
+**Branch:** `4.0.0-FengYu`
 **Status:** Design (spec) — awaiting review before implementation plan
 **Predecessor:** Phase 1 AI Strangler (Spring AI cutover, complete — see `2026-07-06-phase1-ai-strangler-spring-ai.md`)
 
@@ -9,7 +9,7 @@
 
 ## 1. Purpose
 
-Strangle the JavaFX UI. In 4.0.0, ZhiFlow becomes a **web + desktop application**:
+Strangle the JavaFX UI. In 4.0.0, FengYu becomes a **web + desktop application**:
 
 - The Java process is turned into a **headless local backend** (Spring Boot 4 web server) — no JavaFX in the running backend.
 - The UI is rebuilt as a **Vue 3.5.39 + TypeScript** single-page app, byte-identical for browser and desktop.
@@ -25,7 +25,7 @@ This spec covers **only Phase 1: a walking skeleton** — a thin end-to-end slic
 - Production desktop packaging (signed installers, per-platform bundled JRE via CI) — later phase; Phase 1 targets a working dev-mode Tauri window.
 - Auth beyond a loopback bind + per-launch token.
 
-**Important:** Phase 1 **deletes all JavaFX code and dependencies** — no parallel JavaFX/Vue coexistence. After Phase 1, ZhiFlow is purely headless backend + Vue frontend.
+**Important:** Phase 1 **deletes all JavaFX code and dependencies** — no parallel JavaFX/Vue coexistence. After Phase 1, FengYu is purely headless backend + Vue frontend.
 
 ---
 
@@ -80,7 +80,7 @@ Turns the Java process into a headless local API server. No JavaFX in the runnin
 
 ### Key move
 
-The project already embeds a Spring Boot context (`AiSpringContext`, `WebApplicationType.NONE`) from the AI cutover. Phase 1 flips it to `WebApplicationType.SERVLET` on embedded Tomcat, bound to **`127.0.0.1:<port>` (loopback only — never `0.0.0.0`)**. The entry point changes from `ZhiFlowApp extends javafx.application.Application` to a plain `main()` that boots Spring Boot and blocks. JavaFX startup code is bypassed, not deleted.
+The project already embeds a Spring Boot context (`AiSpringContext`, `WebApplicationType.NONE`) from the AI cutover. Phase 1 flips it to `WebApplicationType.SERVLET` on embedded Tomcat, bound to **`127.0.0.1:<port>` (loopback only — never `0.0.0.0`)**. The entry point changes from `FengYuApp extends javafx.application.Application` to a plain `main()` that boots Spring Boot and blocks. JavaFX startup code is bypassed, not deleted.
 
 The backend accepts `--port=<n>` (0 = pick a free port, printed to stdout for the sidecar to read) and `--token=<t>` (per-launch auth token).
 
@@ -106,7 +106,7 @@ H2 / MyBatis, `AiServiceProvider`, `SpringAiCloudBackend` / `OllamaLocalBackend`
 
 ### Security
 
-Loopback-only bind plus a **per-launch random token**: the Tauri sidecar generates/receives it and passes it to the frontend, which sends it as a header (`X-ZhiFlow-Token`) on every request. A random browser tab on the machine cannot hit the backend without the token. Browser-dev mode reads the token from a local config/env the same way (isolated in `src/api/config.ts`).
+Loopback-only bind plus a **per-launch random token**: the Tauri sidecar generates/receives it and passes it to the frontend, which sends it as a header (`X-FengYu-Token`) on every request. A random browser tab on the machine cannot hit the backend without the token. Browser-dev mode reads the token from a local config/env the same way (isolated in `src/api/config.ts`).
 
 ---
 
@@ -114,12 +114,12 @@ Loopback-only bind plus a **per-launch random token**: the Tauri sidecar generat
 
 ### The problem being solved
 
-Today's model (`ZhiFlowPlugin.createView()` → JavaFX `Node`, loaded via `URLClassLoader` + `META-INF/services` SPI, isolated by `PluginContext`) is tied to JavaFX and a non-Spring classloader. A headless Spring backend needs a new contract: **backend logic in Java, UI as a separately-served micro-frontend bundle.**
+Today's model (`FengYuPlugin.createView()` → JavaFX `Node`, loaded via `URLClassLoader` + `META-INF/services` SPI, isolated by `PluginContext`) is tied to JavaFX and a non-Spring classloader. A headless Spring backend needs a new contract: **backend logic in Java, UI as a separately-served micro-frontend bundle.**
 
 ### New plugin contract (v2, minimal)
 
 ```java
-public interface ZhiFlowPlugin {          // v2, headless
+public interface FengYuPlugin {          // v2, headless
     PluginDescriptor descriptor();        // id, name, category, icon, version, uiEntry
     Object invoke(String action, Map<String, Object> args);  // JSON-in / JSON-out backend calls
     List<AiTool> aiTools();               // unchanged — reused as-is
@@ -132,9 +132,9 @@ The old `createView()` / `onActivate` / `onDeactivate` / theme / JavaFX surface 
 
 ### Loading model — Phase 1 (compile-time bundling only)
 
-Official plugins are Maven **modules in the main reactor**, compiled and bundled into the main app automatically (like `ZhiFlow-Api` / `ZhiFlow` today). Each official plugin is a Spring `@Component` discovered in the app context on boot. `PluginRegistryService` collects them and drives `/api/plugins` + `/api/plugins/{id}/invoke`.
+Official plugins are Maven **modules in the main reactor**, compiled and bundled into the main app automatically (like `FengYu-Api` / `FengYu` today). Each official plugin is a Spring `@Component` discovered in the app context on boot. `PluginRegistryService` collects them and drives `/api/plugins` + `/api/plugins/{id}/invoke`.
 
-**Hybrid distribution is the target** (compile-time bundle = floor; runtime marketplace download = override that wins if present and newer). Phase 1 implements only the compile-time floor. The loader **reserves the interface seam** for a runtime-override directory (`~/.zhiflow/plugin/<id>/`) — an internal resolution hook that always resolves to the bundled bean in Phase 1 — so **Phase B-hotload** can slot in without reshaping the registry. No dynamic classloading in Phase 1.
+**Hybrid distribution is the target** (compile-time bundle = floor; runtime marketplace download = override that wins if present and newer). Phase 1 implements only the compile-time floor. The loader **reserves the interface seam** for a runtime-override directory (`~/.fengyu/plugin/<id>/`) — an internal resolution hook that always resolves to the bundled bean in Phase 1 — so **Phase B-hotload** can slot in without reshaping the registry. No dynamic classloading in Phase 1.
 
 ### What is reused
 
@@ -156,7 +156,7 @@ The current JavaFX plugin (`MarkdownEditorPlugin`, ~210 lines) renders markdown 
 
 A new Maven module (e.g. `plugin-markdown/`) in the reactor:
 
-- **Backend:** a `@Component` implementing v2 `ZhiFlowPlugin`. `invoke("render", {markdown})` → `{"success":true,"summary":"rendered N chars","html":"<...>"}`, following the existing tool-return JSON contract (`success` / `summary` / payload). Rendering moves server-side, upgrading the old regex `mdToHtml` to the **commonmark** library (already a `ZhiFlow` dependency) for correctness; the frontend debounces `render` calls on each edit.
+- **Backend:** a `@Component` implementing v2 `FengYuPlugin`. `invoke("render", {markdown})` → `{"success":true,"summary":"rendered N chars","html":"<...>"}`, following the existing tool-return JSON contract (`success` / `summary` / payload). Rendering moves server-side, upgrading the old regex `mdToHtml` to the **commonmark** library (already a `FengYu` dependency) for correctness; the frontend debounces `render` calls on each edit.
 - **Frontend:** a Vue micro-frontend bundle (its own Vite config, Vue marked `external`) — a split-pane: a `<textarea>`/code editor on the left, a live preview pane on the right that shows the backend-rendered HTML. Theme parity is automatic via inherited `--sk-*` tokens (no per-theme stylesheet). Built to `resources` and served by the backend at `/plugin-ui/markdown/*`.
 
 **AI chat is explicitly NOT extracted** — it remains a permanent main-project built-in (Component A′ `/api/ai/*`).
@@ -176,7 +176,7 @@ frontend/
  ├ src/
  │  ├ shell/       AppShell, Sidebar (collapsible), StatusBar, DetailPanel
  │  ├ views/       ToolGrid, AiChat, Settings, About
- │  ├ theme/       token CSS (--sk-* vars, .theme-dark / .theme-light) ported from zhiflow-common.css
+ │  ├ theme/       token CSS (--sk-* vars, .theme-dark / .theme-light) ported from fengyu-common.css
  │  ├ api/         typed HTTP client + SSE client (health, plugins, settings, ai, invoke) + config.ts (backend URL + token)
  │  ├ mf/          micro-frontend host (Component E′)
  │  └ stores/      Pinia: theme, settings, plugins, aiSession
@@ -236,13 +236,13 @@ desktop/                    (Tauri project)
  ├ src-tauri/
  │  ├ tauri.conf.json       window config, sidecar binary, allowlist
  │  ├ src/main.rs           spawn Java sidecar, wait on /api/health, then load frontend
- │  └ binaries/             the ZhiFlow.jar (+ later, a bundled JRE) as sidecar
+ │  └ binaries/             the FengYu.jar (+ later, a bundled JRE) as sidecar
  └ (frontend build output loaded as the webview content)
 ```
 
 ### Lifecycle
 
-1. Tauri starts → `main.rs` spawns the Java sidecar (`java -jar ZhiFlow.jar --port=0 --token=<generated>`), reading the chosen loopback port from the sidecar's stdout.
+1. Tauri starts → `main.rs` spawns the Java sidecar (`java -jar FengYu.jar --port=0 --token=<generated>`), reading the chosen loopback port from the sidecar's stdout.
 2. Rust polls `GET /api/health` until ready (timeout → fatal-error window showing the backend log path).
 3. Webview loads the Vue frontend, pointed at `127.0.0.1:<port>` with the token injected.
 4. On window close → Rust kills the sidecar process cleanly.
@@ -276,7 +276,7 @@ A working dev-mode Tauri window that sidecar-launches the jar and shows the Vue 
 
 ## 10. Definition of done (Phase 1)
 
-1. `java -jar ZhiFlow.jar --port=0` boots a headless Spring Boot server on loopback, no JavaFX window, prints its port.
+1. `java -jar FengYu.jar --port=0` boots a headless Spring Boot server on loopback, no JavaFX window, prints its port.
 2. `/api/health`, `/api/plugins`, `/api/settings`, `/api/ai/*`, `/api/plugins/markdown/invoke`, `/plugin-ui/markdown/*` all respond correctly.
 3. The Markdown official plugin exists as a reactor Maven module, registers as a Spring bean, and appears in `/api/plugins`.
 4. The Vue shell renders the sidebar / theme (dark + light) / settings / AI chat, adopting the `docs/ui-design/` tokens.
@@ -284,4 +284,4 @@ A working dev-mode Tauri window that sidecar-launches the jar and shows the Vue 
 6. Opening Markdown in the shell dynamically imports and mounts its micro-frontend, and the editor round-trips through `invoke("render")`.
 7. A Tauri dev window sidecar-launches the jar, waits on health, and shows the whole thing.
 8. Backend unit/integration tests green; frontend Vitest green; the end-to-end smoke passes.
-9. **All JavaFX code deleted** — `ZhiFlowApp`, `MainWindow`, `Sidebar`, built-in tool UI classes, and all JavaFX dependencies removed from `pom.xml`. Zero `javafx.*` imports remain.
+9. **All JavaFX code deleted** — `FengYuApp`, `MainWindow`, `Sidebar`, built-in tool UI classes, and all JavaFX dependencies removed from `pom.xml`. Zero `javafx.*` imports remain.

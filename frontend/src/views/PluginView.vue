@@ -87,32 +87,27 @@ onBeforeUnmount(teardown)
 </script>
 
 <template>
-  <div class="d-flex flex-column h-100">
-    <div class="d-flex align-center ga-3 px-4 py-2 border-b">
-      <v-btn variant="text" prepend-icon="mdi-arrow-left" @click="router.push('/')">
-        {{ $t('common.back') }}
-      </v-btn>
-      <span class="font-weight-medium">
-        {{ plugins.byId(props.id)?.name ?? props.id }}
-      </span>
+  <div style="display: flex; flex-direction: column; height: 100%">
+    <div class="cx-topbar">
+      <button class="cx-btn cx-btn--text cx-btn--sm" @click="router.push('/tools')">
+        <i class="mdi mdi-arrow-left" />{{ $t('common.back') }}
+      </button>
+      <span style="font-weight: 600">{{ plugins.byId(props.id)?.name ?? props.id }}</span>
     </div>
 
-    <v-alert
-      v-if="error"
-      type="error"
-      variant="tonal"
-      class="ma-4"
-      :title="$t('plugin.failedTitle')"
-    >
-      <div class="text-body-2" style="font-family: monospace; overflow-wrap: anywhere">{{ error }}</div>
-      <template #append>
-        <v-btn color="error" variant="outlined" @click="mountPlugin()">{{ $t('common.retry') }}</v-btn>
-      </template>
-    </v-alert>
+    <div v-if="error" class="cx-alert cx-alert--error" style="margin: 16px">
+      <div class="cx-alert__body">
+        <div style="font-weight: 600; margin-bottom: 4px">{{ $t('plugin.failedTitle') }}</div>
+        <div class="mono" style="font-size: 12px; overflow-wrap: anywhere">{{ error }}</div>
+        <button class="cx-btn cx-btn--outline cx-btn--sm" style="margin-top: 10px" @click="mountPlugin()">
+          {{ $t('common.retry') }}
+        </button>
+      </div>
+    </div>
 
-    <div v-show="!error" ref="host" class="flex-grow-1 overflow-auto" />
-    <div v-if="loading" class="d-flex justify-center pa-6">
-      <v-progress-circular indeterminate color="primary" />
+    <div v-show="!error" ref="host" style="flex: 1 1 auto; min-height: 0; overflow: auto" />
+    <div v-if="loading" style="display: flex; justify-content: center; padding: 32px">
+      <span class="cx-spin lg" />
     </div>
   </div>
 </template>

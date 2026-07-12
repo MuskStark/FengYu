@@ -32,7 +32,8 @@ const BACKEND = 'http://localhost:24056'
  */
 function vendorVue(): Plugin {
   return {
-    name: 'zhiflow-vendor-vue',
+    name: 'fengyu-vendor-vue',
+    apply: 'build', // dev is handled by serveVueInDev() middleware (avoids the publicDir guard)
     buildStart() {
       const src = resolve(__dirname, 'node_modules/vue/dist/vue.esm-browser.prod.js')
       const outDir = resolve(__dirname, 'public/vendor')
@@ -45,12 +46,53 @@ function vendorVue(): Plugin {
   }
 }
 
+/**
+ * Dev-only: share ONE Vue instance between the shell and plugin bundles.
+ *
+ * Micro-frontend plugins are loaded as raw browser ESM (served by the backend)
+ * and resolve the bare `vue` specifier through index.html's import map →
+ * `/vendor/vue.esm-browser.prod.js`. In a production build the shell also marks
+ * `vue` external (see build.rollupOptions.external) so it resolves through that
+ * same map — one Vue instance, so Vuetify (created by the shell, used by the
+ * plugin) sees a valid component instance.
+ *
+ * Vite's dev server never mirrored that: the shell's `vue` was pre-bundled to
+ * `/node_modules/.vite/deps/vue.js`, a SECOND Vue copy. A Vuetify component
+ * mounted inside a plugin then hit `getCurrentInstance() === null` and crashed
+ * with "Cannot read properties of null (reading 'refs')".
+ *
+ * The fix makes dev match prod with ONE served module: resolve every `vue`
+ * import (shell source + its deps) to the vendored URL, and `load` that URL
+ * from node_modules. The shell reaches it via resolveId; the plugin reaches
+ * the SAME url via the browser import map — so Vite serves a single module
+ * instance to both. Not `external` (the crawler would fail to prefetch it) and
+ * not from public/ (whose import guard rejects source imports of assets).
+ */
+function shareVueInDev(): Plugin {
+  const VENDOR_URL = '/vendor/vue.esm-browser.prod.js'
+  const file = resolve(__dirname, 'node_modules/vue/dist/vue.esm-browser.prod.js')
+  return {
+    name: 'fengyu-share-vue-dev',
+    enforce: 'pre',
+    apply: 'serve',
+    resolveId(id) {
+      if (id === 'vue' || id === VENDOR_URL) return VENDOR_URL
+      return null
+    },
+    load(id) {
+      if (id === VENDOR_URL) return readFileSync(file, 'utf8')
+      return null
+    },
+  }
+}
+
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkgVersion),
   },
   plugins: [
     vendorVue(),
+    shareVueInDev(),
     vue(),
     // MD3 Vuetify: auto tree-shake components, wire Sass overrides.
     vuetify({ styles: { configFile: 'src/plugins/vuetify-settings.scss' } }),
@@ -70,7 +112,12 @@ export default defineConfig({
     // overrides are silently skipped. Excluding it serves Vuetify as source modules, so
     // every component's `.css` import is routed through the plugin's `.css`→virtual-Sass
     // transform.
-    exclude: ['vuetify'],
+    // Exclude `vue` too: shareVueInDev() externalizes it to the vendored URL so
+    // the shell and plugins share one instance. If esbuild pre-bundled vue (or
+    // inlined it into pinia/vue-router/vue-i18n), those deps would reference a
+    // SECOND vue copy and break reactivity/instance lookups across the boundary.
+    // Excluding it leaves bare `import 'vue'` for the resolver to rewrite.
+    exclude: ['vuetify', 'vue'],
   },
   server: {
     port: 5173,

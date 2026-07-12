@@ -7,16 +7,16 @@
 
 ## 背景
 
-ZhiFlow 桌面壳(Tauri 2.0,Rust)当前在 **`cargo tauri dev` 和 `cargo tauri build` 两种模式**下都让 Rust
-启动 Java sidecar(`main.rs` 的 `spawn_backend` 读 `binaries/ZhiFlow.jar`)。开发时,每次后端 Java 代码改动都要
-重新 `mvn package` + 复制 jar 到 `desktop/src-tauri/binaries/ZhiFlow.jar`,无法热重载,严重拖慢开发迭代。
+FengYu 桌面壳(Tauri 2.0,Rust)当前在 **`cargo tauri dev` 和 `cargo tauri build` 两种模式**下都让 Rust
+启动 Java sidecar(`main.rs` 的 `spawn_backend` 读 `binaries/FengYu.jar`)。开发时,每次后端 Java 代码改动都要
+重新 `mvn package` + 复制 jar 到 `desktop/src-tauri/binaries/FengYu.jar`,无法热重载,严重拖慢开发迭代。
 
 ## 目标
 
 让 **dev 模式**与 **prod 模式**用不同的后端启动策略:
 
 - **dev**(`cargo tauri dev`):Tauri **完全不启动任何 Java 进程**。开发者用 IDE 的 Spring Boot Run 或
-  `mvn -pl ZhiFlow spring-boot:run` 在固定端口 `24056` 启动后端(支持热重载 / spring-boot-devtools),
+  `mvn -pl FengYu spring-boot:run` 在固定端口 `24056` 启动后端(支持热重载 / spring-boot-devtools),
   Tauri webview 经 Vite dev-server 的 proxy(`/api`、`/plugin-ui` → `localhost:24056`)与后端通信。
   Tauri 只负责开窗口 + 加载 Vite dev server(`devUrl = http://localhost:5173`)。
 - **prod**(`cargo tauri build`):保持现状——Rust 启动打包好的 jar sidecar,注入 token / api-base 到 webview,
@@ -40,16 +40,16 @@ ZhiFlow 桌面壳(Tauri 2.0,Rust)当前在 **`cargo tauri dev` 和 `cargo tauri 
 ### dev 流程(`cargo tauri dev`,当前)
 
 1. `tauri.conf.json` 的 `beforeDevCommand` 启动 Vite(`frontend/`,端口 5173)。
-2. `main.rs` 的 `main()`:`gen_token()` → `spawn_backend(token)`(读 `binaries/ZhiFlow.jar`,执行
-   `java -cp ... fan.summer.zhiflow.HeadlessLauncher --port=24056 --token=...`)→ 读 stdout 的
-   `ZHIFLOW_PORT=<n>` → `wait_for_health` → (Task 18 的 restart-loop:`check_setup_mode` → SETUP 时
-   等退出、APP 时 break)→ 注入 `window.__ZHIFLOW_TOKEN__` / `window.__ZHIFLOW_API_BASE__` → 开窗口。
+2. `main.rs` 的 `main()`:`gen_token()` → `spawn_backend(token)`(读 `binaries/FengYu.jar`,执行
+   `java -cp ... fan.summer.fengyu.HeadlessLauncher --port=24056 --token=...`)→ 读 stdout 的
+   `FENGYU_PORT=<n>` → `wait_for_health` → (Task 18 的 restart-loop:`check_setup_mode` → SETUP 时
+   等退出、APP 时 break)→ 注入 `window.__FENGYU_TOKEN__` / `window.__FENGYU_API_BASE__` → 开窗口。
 3. 前端 `getApiBase()` / `getToken()` 读 `window` 全局 → 直连 Rust 启动的后端。
 4. **痛点:** 后端代码改一行 → `mvn package` + `cp jar` → 重启。无热重载。
 
 ### prod 流程(`cargo tauri build`,当前) — 保持不变
 
-同上的 Rust 逻辑,但编译进 release 二进制,打包时 `binaries/ZhiFlow.jar` 随产物分发。
+同上的 Rust 逻辑,但编译进 release 二进制,打包时 `binaries/FengYu.jar` 随产物分发。
 
 ## 设计(改动后)
 
@@ -58,9 +58,9 @@ ZhiFlow 桌面壳(Tauri 2.0,Rust)当前在 **`cargo tauri dev` 和 `cargo tauri 
 1. `beforeDevCommand` 启动 Vite(不变)。
 2. `main.rs` 的 `#[cfg(dev)]` 版 `main()`:**跳过** sidecar / token / health / restart-loop /
    init_script 注入,直接 `tauri::Builder` + 开窗口。webview 加载 `devUrl`(`localhost:5173`)。
-3. 开发者**外部**在 24056 启动后端(IDE Run 或 `mvn -pl ZhiFlow spring-boot:run`)。
+3. 开发者**外部**在 24056 启动后端(IDE Run 或 `mvn -pl FengYu spring-boot:run`)。
 4. 前端 API 请求 `/api/*` / `/plugin-ui/*` 走 Vite dev-server → Vite proxy → `localhost:24056`。
-5. `getApiBase()` 在 `window` 全局不存在时回退 `''`(同源),`getToken()` 回退 `VITE_ZHIFLOW_TOKEN`(可空)。
+5. `getApiBase()` 在 `window` 全局不存在时回退 `''`(同源),`getToken()` 回退 `VITE_FENGYU_TOKEN`(可空)。
 
 ### prod 流程(`cargo tauri build`,改动后) — 与现状一致
 
@@ -79,8 +79,8 @@ ZhiFlow 桌面壳(Tauri 2.0,Rust)当前在 **`cargo tauri dev` 和 `cargo tauri 
     `kill_sidecar` 在 None 时是 no-op——结构兼容,无需特殊处理。
 - **`#[cfg(dev)] fn main()`**:`run_desktop(None)`(不传后端,不注入 token 脚本——dev 下 webview 直接走 Vite)。
 - **`#[cfg(not(dev))] fn main()`**:现有逻辑(token + spawn + health + restart-loop → 得到 `(child, port)`)→
-  `run_desktop(Some((child, port)))`,并在该分支内构造 `init_script`(注入 `window.__ZHIFLOW_TOKEN__` /
-  `__ZHIFLOW_API_BASE__`)。
+  `run_desktop(Some((child, port)))`,并在该分支内构造 `init_script`(注入 `window.__FENGYU_TOKEN__` /
+  `__FENGYU_API_BASE__`)。
 
 sidecar 相关的辅助函数(`spawn_backend`、`wait_for_health`、`check_setup_mode`、`gen_token`、`jar_path`、
 `kill_sidecar`)在 dev 下不被引用——用 `#[cfg(not(dev))]` 标注,或 `#[allow(dead_code)]`,或保持原样
@@ -108,7 +108,7 @@ sidecar 相关的辅助函数(`spawn_backend`、`wait_for_health`、`check_setup
 
 - **删除** "Build the backend jar" + "Copy the jar" 步骤。
 - **新增** dev 流程:
-  1. 启动后端:`mvn -pl ZhiFlow spring-boot:run`(或 IDE Run `AiApplication`/`HeadlessLauncher`),绑定 24056。
+  1. 启动后端:`mvn -pl FengYu spring-boot:run`(或 IDE Run `AiApplication`/`HeadlessLauncher`),绑定 24056。
      首次启动无 `datasource.properties` → SETUP 模式 → 向导(选 H2,默认路径)→ `System.exit(0)`。
   2. **手动重启后端**(进入 APP 模式)——dev 下 Tauri 不监控后端退出,所以向导完成后需手动重启一次后端。
   3. `cargo tauri dev`(在 `desktop/src-tauri/` 下)——Tauri 开窗口,加载 Vite,API 经 proxy 到 24056。
@@ -124,7 +124,7 @@ sidecar 相关的辅助函数(`spawn_backend`、`wait_for_health`、`check_setup
 - **setup 向导 dev 交互:** 外部后端首次启动 → SETUP 模式 → 向导 → `System.exit(0)`。dev 下 Tauri 不监控后端退出,
   所以向导完成后**前端会因后端掉线而失败**——开发者需手动重启后端进入 APP 模式。这是可接受的 dev 体验(一次性,
   之后 `datasource.properties` 存在,每次直接 APP 模式)。文档明确说明。
-- **token:** dev 下后端若用 IDE/spring-boot:run 启动且不传 `--token`,则 `zhiflow.auth.token` 系统属性为空 →
+- **token:** dev 下后端若用 IDE/spring-boot:run 启动且不传 `--token`,则 `fengyu.auth.token` 系统属性为空 →
   `TokenAuthFilter` 放行所有请求(`expected.isBlank()` 分支)。前端 `getToken()` 回退空 → 完全无 token。一致。
 - **端口冲突:** dev 下后端必须用 24056(Vite proxy 固定指向它)。若 24056 被占,后端会 fallback 到随机端口,
   Vite proxy 就连不上——开发者需确保 24056 可用(或重启后端释放它)。与现状约束一致。
@@ -142,7 +142,7 @@ sidecar 相关的辅助函数(`spawn_backend`、`wait_for_health`、`check_setup
 
 实现后:
 
-1. **dev**:`cargo tauri dev` → 窗口打开、加载 Vite;外部 `mvn -pl ZhiFlow spring-boot:run` → 前端能调 `/api/health`、
+1. **dev**:`cargo tauri dev` → 窗口打开、加载 Vite;外部 `mvn -pl FengYu spring-boot:run` → 前端能调 `/api/health`、
    `/api/setup/status`;改后端代码 → 重启后端进程即生效(无需重新打包 jar)。
 2. **prod**:`cargo tauri build`(先确保 jar 在 `binaries/`)→ 产物行为与现在一致(sidecar 启动、token 注入、
    SETUP→APP 自动重启)。

@@ -1,7 +1,7 @@
 {
-  "name": "zhiflowj",
-  "owner": { "name": "ZhiFlow" },
+  "name": "fengyuj",
+  "owner": { "name": "FengYu" },
   "plugins": [
-    { "name": "zhiflowj-plugin-kit", "source": "./.claude-plugin/plugin", "description": "Scaffold + validate ZhiFlow plugins." }
+    { "name": "fengyuj-plugin-kit", "source": "./.claude-plugin/plugin", "description": "Scaffold + validate FengYu plugins." }
   ]
 }

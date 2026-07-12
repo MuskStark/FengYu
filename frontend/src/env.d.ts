@@ -7,8 +7,8 @@ declare module '*.vue' {
 }
 
 interface ImportMetaEnv {
-  readonly VITE_ZHIFLOW_TOKEN?: string
-  readonly VITE_ZHIFLOW_API_BASE?: string
+  readonly VITE_FENGYU_TOKEN?: string
+  readonly VITE_FENGYU_API_BASE?: string
 }
 
 interface ImportMeta {
@@ -16,8 +16,8 @@ interface ImportMeta {
 }
 
 interface Window {
-  __ZHIFLOW_TOKEN__?: string
-  __ZHIFLOW_API_BASE__?: string
+  __FENGYU_TOKEN__?: string
+  __FENGYU_API_BASE__?: string
 }
 
 /** Build-time app version, injected from package.json by vite.config.ts `define`. */

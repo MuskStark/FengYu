@@ -23,7 +23,7 @@
 
 ## 2. 背景与现状
 
-- **侧边栏**(`fan.summer.zhiflow.ui.sidebar.Sidebar`):底部已有 `Settings` 项,通过 `addSettingsItem(...)` 加入,点击触发 `onSettingsSelect`(`Runnable`)回调。`NavItem` = 图标(MDI)+ 文本(可 i18n 绑定)+ 可选 badge。
+- **侧边栏**(`fan.summer.fengyu.ui.sidebar.Sidebar`):底部已有 `Settings` 项,通过 `addSettingsItem(...)` 加入,点击触发 `onSettingsSelect`(`Runnable`)回调。`NavItem` = 图标(MDI)+ 文本(可 i18n 绑定)+ 可选 badge。
 - **Settings 的展示方式**(`MainWindow:369`):`contentArea.showPage(SwissKitJSettingUi.build(), ...)`——整页模式。About 不沿用此模式,改用模态对话框。
 - **构建产物**:pom 用 `maven-shade-plugin` 打 fat JAR,`finalName=SwissKitJ-${project.version}`;`<resource>` 段存在但 **未开启 filtering**;`manifestEntries` 块为空。当前没有任何机制把版本号/编译时间注入运行时。
 - **仓库元数据**(已核对):

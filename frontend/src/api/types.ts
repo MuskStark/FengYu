@@ -187,3 +187,31 @@ export interface AgentTool {
   description: string
   inputSchema: string
 }
+
+// ── AI conversation history (persisted, GET/POST/PUT/DELETE /api/ai/conversations) ──
+
+/** A persisted chat message as returned by the backend. */
+export interface PersistedMessage {
+  role: 'user' | 'assistant'
+  content: string
+  thinking: string
+}
+
+/** Sidebar list item — conversation without its messages. */
+export interface ConversationSummary {
+  id: number
+  title: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** Full conversation including its ordered message list. */
+export interface ConversationDetail extends ConversationSummary {
+  messages: PersistedMessage[]
+}
+
+/** Request body for create/update — title plus the full message list. */
+export interface ConversationPayload {
+  title: string
+  messages: PersistedMessage[]
+}

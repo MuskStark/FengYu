@@ -22,7 +22,7 @@
 │   ├── util/                      # 工具类
 │   └── worker/                    # 后台任务
 ├── src/main/resources/
-│   ├── META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin
+│   ├── META-INF/services/fan.summer.fengyu.api.SwissKitJPlugin
 │   ├── i18n/
 │   │   ├── messages.properties        # 默认语言（英文）
 │   │   └── messages_zh.properties     # 中文翻译
@@ -51,15 +51,15 @@
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <javafx.version>21.0.2</javafx.version>
-        <zhiflow.api.version>3.0.0</zhiflow.api.version>
+        <fengyu.api.version>3.0.0</fengyu.api.version>
     </properties>
 
     <dependencies>
-        <!-- ZhiFlow API — 运行时由宿主提供 -->
+        <!-- FengYu API — 运行时由宿主提供 -->
         <dependency>
-            <groupId>fan.summer.zhiflow.api</groupId>
-            <artifactId>ZhiFlow-Api</artifactId>
-            <version>${zhiflow.api.version}</version>
+            <groupId>fan.summer.fengyu.api</groupId>
+            <artifactId>FengYu-Api</artifactId>
+            <version>${fengyu.api.version}</version>
             <scope>provided</scope>
         </dependency>
 
@@ -174,7 +174,7 @@
 
 ## 2. SPI 注册文件
 
-路径：`src/main/resources/META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin`
+路径：`src/main/resources/META-INF/services/fan.summer.fengyu.api.SwissKitJPlugin`
 
 内容（仅一行）：
 ```

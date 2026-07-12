@@ -1,6 +1,6 @@
 # 07 · Animation Guidelines
 
-> **Role:** This is the **single source of truth** for motion in ZhiFlow. Every animation
+> **Role:** This is the **single source of truth** for motion in FengYu. Every animation
 > actually shipped in the app is catalogued here with its exact duration, easing, source
 > `file:line`, and a copyable JavaFX template — plus a small set of *proposed* standard
 > animations that aren't in the codebase yet. Component docs ([03](03-component-library.md))
@@ -33,7 +33,7 @@
 
 ## 1. Overview
 
-Motion in ZhiFlow serves **one** purpose: **feedback**. Every animation answers the question
+Motion in FengYu serves **one** purpose: **feedback**. Every animation answers the question
 *"what just happened?"* — a card entered the grid, a panel slid in, a tool started running.
 This is the JetBrains IDEA **New UI** discipline applied to motion: motion is restrained,
 fast, and never blocks input.
@@ -44,7 +44,7 @@ Every motion is a transition or timeline constructed in Java. That keeps motion 
 it's all grep-able in the source.
 
 > **The theme switch is NOT animated.** Switching theme is an instant class swap
-> ([`ThemeService.set`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java));
+> ([`ThemeService.set`](../../FengYu-Api/src/main/java/fan/summer/api/theme/ThemeService.java));
 > the scene re-resolves looked-up colors in one frame. Do not add a cross-fade to theme
 > switching — it would *feel* slower than the instant swap.
 
@@ -120,7 +120,7 @@ Three bands. Pick from the scale, don't invent durations.
 
 ### 3.3 The Real Animation Inventory
 
-Every animation shipped in ZhiFlow. Each row is grep-verified against source.
+Every animation shipped in FengYu. Each row is grep-verified against source.
 
 | # | Animation | Type | Duration | Easing | Source |
 |---|---|---|---|---|---|
@@ -419,7 +419,7 @@ enter.play();
 
 ## 6. AI Checklist + Anti-patterns
 
-When adding motion to ZhiFlow UI, you **MUST**:
+When adding motion to FengYu UI, you **MUST**:
 
 - [ ] **Stay ≤ 300 ms** for interaction feedback; reserve 300 ms+ for deliberate panel motion.
 - [ ] **Use the token durations/easings** from [§3](#3-spec-tables--animation-tokens) — don't
@@ -448,13 +448,13 @@ When adding motion to ZhiFlow UI, you **MUST**:
 ## 7. References
 
 **Source files (verified animation sites):**
-- [`ui/MainWindow.java`](../../ZhiFlow/src/main/java/fan/summer/ui/MainWindow.java) — entry fade :313, status pulse :151, clock :323
-- [`ui/content/ContentArea.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ContentArea.java) — staggered entry :345, cross-fade :399, grid slide :424
-- [`ui/content/ToolCard.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java) — running pulse :106, star pop :128, hover :138, click :156, entry :168
-- [`ui/content/DetailPanel.java`](../../ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java) — slide-in :346, slide-out :364
-- [`ui/sidebar/Sidebar.java`](../../ZhiFlow/src/main/java/fan/summer/ui/sidebar/Sidebar.java) — active pop :418
-- [`buildintool/ai/AiChatPlugin.java`](../../ZhiFlow/src/main/java/fan/summer/buildintool/ai/AiChatPlugin.java) — webview blink :747
-- [`buildintool/email/ToggleSwitch.java`](../../ZhiFlow/src/main/java/fan/summer/buildintool/email/ToggleSwitch.java) — thumb slide :53
+- [`ui/MainWindow.java`](../../FengYu/src/main/java/fan/summer/ui/MainWindow.java) — entry fade :313, status pulse :151, clock :323
+- [`ui/content/ContentArea.java`](../../FengYu/src/main/java/fan/summer/ui/content/ContentArea.java) — staggered entry :345, cross-fade :399, grid slide :424
+- [`ui/content/ToolCard.java`](../../FengYu/src/main/java/fan/summer/ui/content/ToolCard.java) — running pulse :106, star pop :128, hover :138, click :156, entry :168
+- [`ui/content/DetailPanel.java`](../../FengYu/src/main/java/fan/summer/ui/content/DetailPanel.java) — slide-in :346, slide-out :364
+- [`ui/sidebar/Sidebar.java`](../../FengYu/src/main/java/fan/summer/ui/sidebar/Sidebar.java) — active pop :418
+- [`buildintool/ai/AiChatPlugin.java`](../../FengYu/src/main/java/fan/summer/buildintool/ai/AiChatPlugin.java) — webview blink :747
+- [`buildintool/email/ToggleSwitch.java`](../../FengYu/src/main/java/fan/summer/buildintool/email/ToggleSwitch.java) — thumb slide :53
 
 **Sibling docs:**
 - [03 Component Library](03-component-library.md) — components that use these animations

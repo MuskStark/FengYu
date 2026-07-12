@@ -3,7 +3,7 @@ import MarkdownEditor from './MarkdownEditor.vue';
 import type { PluginUiContext, PluginUiModule } from './pluginUi';
 
 /**
- * ZhiFlow micro-frontend entry. Default-exports the `{ mount }` contract.
+ * FengYu micro-frontend entry. Default-exports the `{ mount }` contract.
  * `vue` is external and resolved through the host's import map.
  */
 const module: PluginUiModule = {

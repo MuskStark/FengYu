@@ -10,18 +10,18 @@
 ## Setup
 
 ```bash
-git clone https://github.com/MuskStark/ZhiFlow.git
-cd ZhiFlow
+git clone https://github.com/MuskStark/FengYu.git
+cd FengYu
 
-mvn install -f ZhiFlow-Api/pom.xml -DskipTests
-mvn clean package -f ZhiFlow/pom.xml -DskipTests
+mvn install -f FengYu-Api/pom.xml -DskipTests
+mvn clean package -f FengYu/pom.xml -DskipTests
 ```
 
 ## Project Structure
 
 ```
-ZhiFlow/
-├── ZhiFlow-Api/                        # Shared API module
+FengYu/
+├── FengYu-Api/                        # Shared API module
 │   └── src/main/java/fan/summer/api/
 │       ├── SwissKitJPlugin.java          # Plugin interface
 │       ├── PluginContext.java            # TCCL switching for plugin isolation
@@ -35,10 +35,10 @@ ZhiFlow/
 │       │   └── PluginLogger.java
 │       └── theme/
 │           └── Themes.java
-├── ZhiFlow/                             # Main JavaFX application
+├── FengYu/                             # Main JavaFX application
 │   └── src/main/java/fan/summer/
 │       ├── Launcher.java                 # Entry point
-│       ├── app/ZhiFlowApp.java         # JavaFX Application
+│       ├── app/FengYuApp.java         # JavaFX Application
 │       ├── buildintool/                  # Built-in tools
 │       ├── plugin/                       # Plugin loading
 │       └── ui/                           # App shell UI
@@ -51,9 +51,9 @@ ZhiFlow/
 
 | Module | Depends on | Scope |
 |--------|-----------|-------|
-| `ZhiFlow-Api` | JavaFX | compile |
-| `ZhiFlow` | `ZhiFlow-Api` | compile |
-| External plugins | `ZhiFlow-Api` | provided |
+| `FengYu-Api` | JavaFX | compile |
+| `FengYu` | `FengYu-Api` | compile |
+| External plugins | `FengYu-Api` | provided |
 
 ## Plugin Development
 
@@ -64,8 +64,8 @@ ZhiFlow/
 ```xml
 <dependencies>
     <dependency>
-        <groupId>fan.summer.zhiflow.api</groupId>
-        <artifactId>ZhiFlow-Api</artifactId>
+        <groupId>fan.summer.fengyu.api</groupId>
+        <artifactId>FengYu-Api</artifactId>
         <version>3.0.0</version>
         <scope>provided</scope>
     </dependency>
@@ -77,7 +77,7 @@ ZhiFlow/
 ```java
 package plugin.example.mytool;
 
-import fan.summer.zhiflow.api.*;
+import fan.summer.fengyu.api.*;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.layout.VBox;
@@ -103,7 +103,7 @@ public class MyToolPlugin implements SwissKitJPlugin {
 
 **3. Register via SPI**
 
-Create `META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin`:
+Create `META-INF/services/fan.summer.fengyu.api.SwissKitJPlugin`:
 
 ```
 plugin.example.mytool.MyToolPlugin
@@ -178,7 +178,7 @@ Three-layer CSS:
 
 | File | Scope |
 |------|-------|
-| `zhiflow-common.css` | Shared variables, `.glass-*` utilities, `.section-title` |
+| `fengyu-common.css` | Shared variables, `.glass-*` utilities, `.section-title` |
 | `shell.css` | App chrome — titlebar, sidebar, cards, panels |
 | `builtin.css` | Built-in tool styling |
 
@@ -193,8 +193,8 @@ Available classes: `.glass-dialog`, `.glass-field`, `.glass-combo`, `.glass-tabl
 ## Logging
 
 ```java
-import fan.summer.zhiflow.api.log.LoggerFactory;
-import fan.summer.zhiflow.api.log.PluginLogger;
+import fan.summer.fengyu.api.log.LoggerFactory;
+import fan.summer.fengyu.api.log.PluginLogger;
 
 private static final PluginLogger log = LoggerFactory.getLogger(MyPlugin.class);
 
@@ -202,7 +202,7 @@ log.info("Processing file: {}", file);
 log.error("Failed: {}", file, exception);
 ```
 
-Backend: SLF4J + Logback. Console at INFO+, rolling file at DEBUG+ under `.zhiflow/logs/`. Safe no-op logger in tests.
+Backend: SLF4J + Logback. Console at INFO+, rolling file at DEBUG+ under `.fengyu/logs/`. Safe no-op logger in tests.
 
 ## Background Processing
 
@@ -247,10 +247,10 @@ Use conventional commits with emojis:
 ### Pull Requests
 
 1. Fork and create a feature branch
-2. Build: `mvn clean package -f ZhiFlow/pom.xml -DskipTests`
+2. Build: `mvn clean package -f FengYu/pom.xml -DskipTests`
 3. Commit with conventional commit format
 4. Push and open a PR against `main`
 
 ### Reporting Issues
 
-Include: OS, Java version, ZhiFlow version, steps to reproduce, expected vs actual behavior.
+Include: OS, Java version, FengYu version, steps to reproduce, expected vs actual behavior.

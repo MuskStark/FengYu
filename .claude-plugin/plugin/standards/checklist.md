@@ -1,8 +1,8 @@
 **机械规则(validate.sh 判定)**:
 ```
-M1 SPI 文件存在:src/main/resources/META-INF/services/fan.summer.zhiflow.api.ZhiFlowPlugin
+M1 SPI 文件存在:src/main/resources/META-INF/services/fan.summer.fengyu.api.FengYuPlugin
 M2 SPI 内容 = 入口类 FQN,且该 .java 存在
-M3 ZhiFlow-Api 依赖 scope 为 provided
+M3 FengYu-Api 依赖 scope 为 provided
 M4 无 .glass- CSS 引用(源码+资源)
 M5 无 setPrefWidth(Double.MAX_VALUE)
 M6 无 maxWidthProperty().bind(widthProperty() 循环绑定
@@ -11,7 +11,7 @@ M8 pom 配了 ServicesResourceTransformer
 M9 i18n/messages.properties 存在
 M10 createView 或 init 中注册了 i18n bundle(registerPluginBundle 或 host.i18n().registerBundle)
 M11 DevLauncher 零 javafx 引用(import 或 FQN),所有 JavaFX 均放在独立的 DevApp 类中(pitfall #4)
-M12 pom 中 zhiflow.api.version 属性存在(值由使用者维护)
+M12 pom 中 fengyu.api.version 属性存在(值由使用者维护)
 ```
 **语义规则(reviewer agent 判定)**:
 ```

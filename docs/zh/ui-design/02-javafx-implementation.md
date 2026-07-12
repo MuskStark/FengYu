@@ -1,6 +1,6 @@
 # 02 · JavaFX 实现指南
 
-> **定位:** 本文是把 ZhiFlow UI 设计**转化为可运行 JavaFX 代码**的开发者 / AI 操作手册。
+> **定位:** 本文是把 FengYu UI 设计**转化为可运行 JavaFX 代码**的开发者 / AI 操作手册。
 > 它定义了必须实现的插件契约、所有节点都遵守的 CSS 类名命名规范,以及可复制粘贴的插件骨架。
 > 后续文档(尤其是 [03 组件库](../ui-design/03-component-library.md))会回链本文的
 > [`#css-naming`](#css-naming) 命名规范与 [`#plugin-skeleton`](#plugin-skeleton) 模板。
@@ -8,8 +8,8 @@
 | | |
 |---|---|
 | **文档类型** | 插件契约 + 实现模式 |
-| **目标读者** | 插件作者、AI 代码生成器、任何构建 ZhiFlow 工具的人 |
-| **事实来源** | [`ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) |
+| **目标读者** | 插件作者、AI 代码生成器、任何构建 FengYu 工具的人 |
+| **事实来源** | [`FengYu-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`](../../../FengYu-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) |
 | **配套插件指南** | [`docs/plugins/ui.md`](../plugins/ui.md)(双语,布局陷阱 + StepWizard) |
 | **相关** | [01 设计系统](01-design-system.md) · [05 主题与色彩系统](05-theme-color-system.md) · [06 图标系统](06-icon-system.md) |
 
@@ -24,7 +24,7 @@
 1. [概述](#1-概述)
 2. [设计原则](#2-设计原则)
 3. [规格表](#3-规格表)
-   - [3.1 `SwissKitJPlugin` 方法契约](#zhiflowjplugin-方法契约)
+   - [3.1 `SwissKitJPlugin` 方法契约](#fengyujplugin-方法契约)
    - [3.2 CSS 类命名规范](#css-naming)
    - [3.3 布局容器选型指南](#布局容器选型指南)
 4. [JavaFX 实现模板](#4-javafx-实现模板)
@@ -41,15 +41,15 @@
 
 ## 1. 概述
 
-ZhiFlow 是一个 **JavaFX 21** 桌面工具箱。两个架构决策决定了本文的一切:
+FengYu 是一个 **JavaFX 21** 桌面工具箱。两个架构决策决定了本文的一切:
 
 1. **UI 完全用 Java 代码构建——没有 FXML。** 每个界面都在 `createView()` 中由
    `javafx.scene.*` 节点拼装而成。没有 `.fxml` 文件、没有 `FXMLLoader`、没有控制器装配。
-   这让插件保持自包含、易于重构、依赖极轻(一个外部插件 JAR 的 classpath 只需 `ZhiFlow-Api`)。
+   这让插件保持自包含、易于重构、依赖极轻(一个外部插件 JAR 的 classpath 只需 `FengYu-Api`)。
 
 2. **主题完全通过 CSS looked-up color 实现。** 没有任何节点内联设置颜色。双主题(深色/浅色)调色板
    是一组 14 个 `-sk-*` token,一次性声明在
-   [`zhiflow-common.css`](../../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css) 中,
+   [`fengyu-common.css`](../../../FengYu-Api/src/main/resources/css/fengyu-common.css) 中,
    通过切换 scene root 上的一个 class 来切换主题。Token 取值、对比度矩阵以及完整的主题生命周期见
    [05 主题与色彩系统](05-theme-color-system.md)——**本文不重复任何颜色取值。**
 
@@ -62,11 +62,11 @@ ZhiFlow 是一个 **JavaFX 21** 桌面工具箱。两个架构决策决定了本
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                       宿主应用 (ZhiFlow)                                │
+│                       宿主应用 (FengYu)                                │
 │                                                                          │
 │   ┌─────────────┐   发现        ┌──────────────────────────────────────┐ │
 │   │  ServiceLoader│ ───────────► │  plugins/*.jar                       │ │
-│   │  META-INF/   │              │  └─ fan.summer.zhiflow.api.SwissKitJPlugin    │ │
+│   │  META-INF/   │              │  └─ fan.summer.fengyu.api.SwissKitJPlugin    │ │
 │   │  services/   │              │     (一个类直接实现接口)              │ │
 │   └─────────────┘              └──────────────────────────────────────┘ │
 │           │                              │                               │
@@ -82,10 +82,10 @@ ZhiFlow 是一个 **JavaFX 21** 桌面工具箱。两个架构决策决定了本
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **契约** —— `SwissKitJPlugin`(16 个方法;[§3.1](#zhiflowjplugin-方法契约))。
+- **契约** —— `SwissKitJPlugin`(16 个方法;[§3.1](#fengyujplugin-方法契约))。
 - **宿主** —— 调用元数据方法构建侧边栏/搜索;调用一次 `createView()` 并缓存返回的 `Node`,
   把它嵌入内容 `StackPane`。
-- **样式表** —— `zhiflow-common.css`,由宿主加载到主 scene。你嵌入的视图自动继承;独立窗口必须
+- **样式表** —— `fengyu-common.css`,由宿主加载到主 scene。你嵌入的视图自动继承;独立窗口必须
   通过 [`Themes.applyTo`](#43-为独立-stage-应用主题--themesapplyto) 显式加入。
 - **类分类法** —— `.sk-*` 用于共享/组件类(来自 common.css),无前缀的 shell 类
   (`nav-item`、`tool-card` …),状态修饰符([§3.2](#css-naming))。
@@ -130,12 +130,12 @@ padding、间距、圆角、min/max 尺寸、insets——这些都是几何而�
 - **不要**在每次 `onActivate()` 时从头重建视图。在 `createView()` 中构建一次,持有需要修改的控件
   字段引用,在生命周期钩子里只刷新*内容*而非*结构*。
 - 在 `createView()` 内部(首次调用时)惰性构建视图图是完全可取的常见做法。
-- 如果需要多步骤工作流,使用 `fan.summer.zhiflow.api.component.StepWizard`(见
+- 如果需要多步骤工作流,使用 `fan.summer.fengyu.api.component.StepWizard`(见
   [`docs/plugins/ui.md`](../plugins/ui.md)),而不是整棵树地替换。
 
 ### P5 —— CSS 类名遵循 `sk-` 前缀规范
 
-来自 `zhiflow-common.css` 的共享组件/工具类带 **`.sk-`** 前缀(如 `.sk-field`、`.sk-btn-primary`)。
+来自 `fengyu-common.css` 的共享组件/工具类带 **`.sk-`** 前缀(如 `.sk-field`、`.sk-btn-primary`)。
 外壳 chrome 类(侧边栏、工具卡片、状态栏)**不带前缀**(`nav-item`、`tool-card`)。完整的分类法、
 v3.2.0 的 `.glass-*`→`.sk-*` 迁移以及状态修饰符规范见 [§3.2](#css-naming)。
 
@@ -144,10 +144,10 @@ v3.2.0 的 `.glass-*`→`.sk-*` 迁移以及状态修饰符规范见 [§3.2](#cs
 ## 3. 规格表
 
 ### 3.1 `SwissKitJPlugin` 方法契约
-<span id="zhiflowjplugin-方法契约"></span>
+<span id="fengyujplugin-方法契约"></span>
 
 该接口声明 **16 个方法**:**7 个必需**(无默认),**9 个有合理默认值**。下表的每个签名都从
-[`SwissKitJPlugin.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java)
+[`SwissKitJPlugin.java`](../../../FengYu-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java)
 **逐字**复制——按原样复制;不要改写返回类型或增删参数。
 
 #### 必需方法(必须实现——无默认值)
@@ -189,9 +189,9 @@ IconStyle     = BLUE | PURPLE | TEAL | AMBER | RED | PINK | GRAY
                 每个映射到一个 CSS 类(ic-blue … ic-gray)+ 强调色 Color
 ```
 
-- `ToolCategory` —— [`ToolCategory.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/ToolCategory.java)
-- `ToolType` —— [`ToolType.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/ToolType.java)
-- `IconStyle` —— [`IconStyle.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java)
+- `ToolCategory` —— [`ToolCategory.java`](../../../FengYu-Api/src/main/java/fan/summer/api/ToolCategory.java)
+- `ToolType` —— [`ToolType.java`](../../../FengYu-Api/src/main/java/fan/summer/api/ToolType.java)
+- `IconStyle` —— [`IconStyle.java`](../../../FengYu-Api/src/main/java/fan/summer/api/IconStyle.java)
   (图标底色样式定义在 `shell.css`;见 [06 图标系统](06-icon-system.md))。
 
 ---
@@ -199,19 +199,19 @@ IconStyle     = BLUE | PURPLE | TEAL | AMBER | RED | PINK | GRAY
 ### CSS 类命名规范
 <span id="css-naming"></span>
 
-ZhiFlow 场景图中的每个节点都带有零个或多个样式类,这些类来自三个命名空间。知道一个类属于哪个
+FengYu 场景图中的每个节点都带有零个或多个样式类,这些类来自三个命名空间。知道一个类属于哪个
 命名空间,就知道它的所有者是谁、插件能否安全使用。
 
 #### 三个命名空间
 
 | 命名空间 | 前缀 | 所有者 | 示例 | 插件可用? |
 |---|---|---|---|---|
-| **共享 / 组件类** | `.sk-` | `zhiflow-common.css`(随 API JAR 发布) | `.sk-field`、`.sk-surface`、`.sk-btn-primary`、`.sk-table`、`.sk-dialog`、`.sk-t1` | ✅ 可以——这是面向插件的词汇表 |
+| **共享 / 组件类** | `.sk-` | `fengyu-common.css`(随 API JAR 发布) | `.sk-field`、`.sk-surface`、`.sk-btn-primary`、`.sk-table`、`.sk-dialog`、`.sk-t1` | ✅ 可以——这是面向插件的词汇表 |
 | **外壳 chrome 类** | *(无前缀)* | `shell.css`(仅宿主应用) | `nav-item`、`tool-card`、`search-bar`、`statusbar`、`ic-blue` | ⚠️ 宿主拥有;插件不应依赖(它们用于侧边栏/卡片/状态栏,不是工具内容) |
 | **状态修饰符** | `is-*` / 状态 | 组件类经 `:hover`/`:focused` 或显式切换 | `.sk-notif-success`、`.sk-notif-warning`、`.sk-notif-danger` | ✅ 可以,用于语义状态 |
 
 > **BEM-lite。** `.sk-` 命名空间遵循扁平、连词符分隔的 "BEM-lite" 方案:
-> `sk-` + `block` + 可选的 `__element` 或 `-modifier`。实际中 ZhiFlow 保持扁平
+> `sk-` + `block` + 可选的 `__element` 或 `-modifier`。实际中 FengYu 保持扁平
 > (`.sk-btn-primary`、`.sk-field-label`),而非完整的 `block__elem--mod` 记法。经验法则:
 > **一个概念、一个类、`sk-` 前缀、连词符分词。**
 
@@ -230,7 +230,7 @@ ZhiFlow 场景图中的每个节点都带有零个或多个样式类,这些类�
 
 #### 复合组件类(优先于手写 CSS)
 
-对更复杂的控件,`zhiflow-common.css` 提供了打包多个 token + 几何尺寸的现成类。**用这些,而不是
+对更复杂的控件,`fengyu-common.css` 提供了打包多个 token + 几何尺寸的现成类。**用这些,而不是
 自己拼装**——完整规格见 [03 组件库](03-component-library.md):
 
 | 类 | 给你什么 |
@@ -284,7 +284,7 @@ notif.getStyleClass().addAll("sk-notif", "sk-notif-danger");    // 红
 ### 布局容器选型指南
 <span id="布局容器选型指南"></span>
 
-ZhiFlow 用标准 JavaFX pane 拼装布局。选择与你所需空间关系匹配的容器;选错容器是缩放崩坏的
+FengYu 用标准 JavaFX pane 拼装布局。选择与你所需空间关系匹配的容器;选错容器是缩放崩坏的
 头号原因(见 [§4.5 三大布局陷阱](#45-三大布局陷阱))。
 
 | 容器 | 用于 | 关键 API | 坑 |
@@ -340,14 +340,14 @@ ZhiFlow 用标准 JavaFX pane 拼装布局。选择与你所需空间关系匹�
 ```java
 package {{base-package}}.ui;
 
-import fan.summer.zhiflow.api.ai.AiTool;
-import fan.summer.zhiflow.api.IconStyle;
-import fan.summer.zhiflow.api.MdiIconUtil;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
-import fan.summer.zhiflow.api.ToolCategory;
-import fan.summer.zhiflow.api.ToolType;
-import fan.summer.zhiflow.api.i18n.I18n;
-import fan.summer.zhiflow.api.theme.Themes;
+import fan.summer.fengyu.api.ai.AiTool;
+import fan.summer.fengyu.api.IconStyle;
+import fan.summer.fengyu.api.MdiIconUtil;
+import fan.summer.fengyu.api.SwissKitJPlugin;
+import fan.summer.fengyu.api.ToolCategory;
+import fan.summer.fengyu.api.ToolType;
+import fan.summer.fengyu.api.i18n.I18n;
+import fan.summer.fengyu.api.theme.Themes;
 
 import javafx.geometry.HPos;
 import javafx.geometry.Insets;
@@ -363,7 +363,7 @@ import javafx.scene.layout.VBox;
 import java.util.List;
 
 /**
- * {{Name}} — a ZhiFlow plugin.
+ * {{Name}} — a FengYu plugin.
  *
  * <p>Implements {@link SwissKitJPlugin} directly: one class holds both the metadata
  * (id/name/category/icon) and the view ({@link #createView()}). The host calls
@@ -463,18 +463,18 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
   完整性而列;删掉你不需要的。
 - **`getId()` 取值。** 内置工具用 `"builtin.<slug>"`(如 `"builtin.json-formatter"`)。
   **⚠️ 注意不一致:** 当前 11 个内置中有 3 个(`EmailArchivePlugin`、`ExcelSplitterPlugin`、
-  `BrowserAutomatePlugin`)改用遗留形式 `"fan.summer.zhiflow.buildin.<slug>"`。当前代码库中没有单一规范形式;
+  `BrowserAutomatePlugin`)改用遗留形式 `"fan.summer.fengyu.buildin.<slug>"`。当前代码库中没有单一规范形式;
   **新内置应优先用 `"builtin.<slug>"`**,外部插件应使用反向域名 ID(`"com.example.<slug>"`)。
   grep 时不要假设只有一种形式。
 - **`getMdiIcon()` 无 `mdi-` 前缀。** 返回 `"mdi-code-json"` 会解析失败并回退到 `star` 字形
   (见 [§4.2](#42-图标--mdiiconutil))。
 - **内置的 `getType()`。** 接口默认是 `ToolType.PLUGIN`;内置工具**必须**覆盖为
   `ToolType.BUILTIN`。外部插件保留默认。
-- **注册实现。** 创建 `src/main/resources/META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin`,内含
+- **注册实现。** 创建 `src/main/resources/META-INF/services/fan.summer.fengyu.api.SwissKitJPlugin`,内含
   完全限定类名(一行),然后把 fat-JAR 打进宿主的 `plugins/` 目录。支持热重载。
 
 ```
-META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin
+META-INF/services/fan.summer.fengyu.api.SwissKitJPlugin
 └─ {{base-package}}.ui.{{Name}}Plugin
 ```
 
@@ -485,7 +485,7 @@ META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin
 图标是通过内置 webfont 渲染的 Material Design Icons。唯一入口:
 
 ```java
-import fan.summer.zhiflow.api.MdiIconUtil;
+import fan.summer.fengyu.api.MdiIconUtil;
 import javafx.scene.text.Text;
 
 // 名称不带 "mdi-" 前缀;尺寸单位为逻辑像素
@@ -501,20 +501,20 @@ Text icon = MdiIconUtil.createIcon("file-excel", 24.0);
 
 完整的图标/底色系统(分类色、`IconStyle`→`ic-*` 映射、尺寸)见 [06 图标系统](06-icon-system.md)。
 
-源码:[`MdiIconUtil.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java)。
+源码:[`MdiIconUtil.java`](../../../FengYu-Api/src/main/java/fan/summer/api/MdiIconUtil.java)。
 
 ---
 
 ### 4.3 为独立 Stage 应用主题 · `Themes.applyTo`
 
-从 `createView()` 返回的节点被**嵌入宿主主 scene**,该 scene 已加载 `zhiflow-common.css` 并盖好
+从 `createView()` 返回的节点被**嵌入宿主主 scene**,该 scene 已加载 `fengyu-common.css` 并盖好
 主题类。**嵌入视图无需做任何事。**
 
 但插件若打开**自己的** `Stage`/`Scene`(模态 `Alert`、独立工具窗口),会得到一个**没有样式表、
 没有主题类**的新 scene——每个 `-sk-*` token 都会解析失败。用一次调用修复:
 
 ```java
-import fan.summer.zhiflow.api.theme.Themes;
+import fan.summer.fengyu.api.theme.Themes;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 
@@ -555,17 +555,17 @@ private void showAlert(Alert.AlertType type, String message) {
 | 该做 | 不该做 |
 |---|---|
 | 为你创建的任何 `Scene` 调用 `Themes.applyTo(scene)` | 在插件代码中直接调 `ThemeService.registerScene` |
-| 信任 `createView()` 节点的自动继承 | 手动把 `zhiflow-common.css` 加到 `getStylesheets()` |
+| 信任 `createView()` 节点的自动继承 | 手动把 `fengyu-common.css` 加到 `getStylesheets()` |
 | 信任 `Themes.applyTo` 幂等(已应用则空操作) | 自己重新添加样式表 URL |
 
-源码:[`Themes.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/Themes.java) ·
-[`ThemeService.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java)。
+源码:[`Themes.java`](../../../FengYu-Api/src/main/java/fan/summer/api/theme/Themes.java) ·
+[`ThemeService.java`](../../../FengYu-Api/src/main/java/fan/summer/api/theme/ThemeService.java)。
 
 ---
 
 ### 4.4 国际化(i18n)模式
 
-每条用户可见字符串都流经 [`fan.summer.zhiflow.api.i18n.I18n`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/i18n/I18n.java)。
+每条用户可见字符串都流经 [`fan.summer.fengyu.api.i18n.I18n`](../../../FengYu-Api/src/main/java/fan/summer/api/i18n/I18n.java)。
 有三种模式——按文本*何时*产生来选择。(镜像 [`docs/plugins/ui.md`](../plugins/ui.md)。)
 
 | 模式 | 何时用 | 示例 |
@@ -607,7 +607,7 @@ sp.setMaxWidth(Double.MAX_VALUE);    // ← 必需,否则不填满
 sp.setMaxHeight(Double.MAX_VALUE);
 ```
 
-加 `.content-scroll` 类以获得 ZhiFlow 的细滚动条样式。
+加 `.content-scroll` 类以获得 FengYu 的细滚动条样式。
 
 #### 陷阱 2 —— 填满 HBox/VBox 的剩余空间
 
@@ -640,7 +640,7 @@ for (int j = 0; j < pages.length; j++) {
 
 ## 5. AI 开发检查清单
 
-生成 ZhiFlow 插件时你**必须**满足以下全部项。每项都是硬门槛。
+生成 FengYu 插件时你**必须**满足以下全部项。每项都是硬门槛。
 
 - [ ] **直接实现 `SwissKitJPlugin`——不是包装。** 一个类同时持有元数据 + 视图。不要创建单独的
       `*PluginUi` 类(全部 11 个内置都直接实现接口)。
@@ -651,7 +651,7 @@ for (int j = 0; j < pages.length; j++) {
 - [ ] **返回不带 `mdi-` 前缀的 MDI 名称。** `getMdiIcon()` → `"code-json"`,绝不要 `"mdi-code-json"`。
       `MdiIconUtil.createIcon` 同理。
 - [ ] **内置覆盖 `getType()`。** 返回 `ToolType.BUILTIN`。接口默认是 `ToolType.PLUGIN`——外部插件保留。
-- [ ] **绝不自己加载 `zhiflow-common.css`。** 嵌入视图从宿主 scene 继承;独立窗口通过
+- [ ] **绝不自己加载 `fengyu-common.css`。** 嵌入视图从宿主 scene 继承;独立窗口通过
       `Themes.applyTo(scene)` 获得。不要调 `getStylesheets().add(...)`。
 - [ ] **绝不在插件代码中调 `ThemeService` 内部方法。** 用 `Themes.applyTo(scene)`(受支持的表面)。
       `ThemeService.registerScene`/`set` 是宿主级。
@@ -666,7 +666,7 @@ for (int j = 0; j < pages.length; j++) {
 - [ ] **正确填满空间。** `setHgrow`/`setVgrow(Priority.ALWAYS)` + `setMaxWidth/Height(MAX_VALUE)`;
       绝不 `setPrefWidth(MAX_VALUE)`。StackPane 页面切换时同时切 `visible` 与 `managed`。StackPane
       内的 ScrollPane 设 `setMaxWidth/Height(MAX_VALUE)`。
-- [ ] **注册 service 文件。** `META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin` 写 FQCN;把 fat-JAR
+- [ ] **注册 service 文件。** `META-INF/services/fan.summer.fengyu.api.SwissKitJPlugin` 写 FQCN;把 fat-JAR
       打进 `plugins/`。
 
 ---
@@ -689,7 +689,7 @@ public class {{Name}}PluginUi { Node getView() { … } }
 
 全部 11 个内置工具都**直接**在一个类里实现 `SwissKitJPlugin`——元数据 + 视图在一起。包装层增加了
 间接、文件数翻倍,破坏了 "grep 一个类看全部" 的预期。(`docs/plugins/ui.md` 中那个独立的
-`*PluginUi` 示例演示的是一种视图构建器模式;在 ZhiFlow 自身代码库里,视图直接在 `createView()`
+`*PluginUi` 示例演示的是一种视图构建器模式;在 FengYu 自身代码库里,视图直接在 `createView()`
 中构建。)
 
 ```java
@@ -823,15 +823,15 @@ btn.getStyleClass().add("sk-btn-primary");
 
 | 内容 | 路径 |
 |---|---|
-| 插件契约(16 个方法) | [`ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) |
-| 图标样式(`BLUE`…`GRAY`、CSS 类、颜色) | [`ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java) |
-| 工具分类(`DEV`…`OTHER`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/ToolCategory.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/ToolCategory.java) |
-| 工具类型(`BUILTIN`/`PLUGIN`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/ToolType.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/ToolType.java) |
-| MDI 图标渲染器(`createIcon`、`putIcon`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java) |
-| 面向插件的主题助手(`applyTo`、`COMMON_CSS`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/theme/Themes.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/Themes.java) |
-| 主题引擎(`registerScene`、`set`、`onChange`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java) |
-| 共享组件 + token CSS | [`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`](../../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css) |
-| 参考内置(单类模式) | [`ZhiFlow/src/main/java/fan/summer/buildintool/dev/JsonFormatterPlugin.java`](../../../ZhiFlow/src/main/java/fan/summer/buildintool/dev/JsonFormatterPlugin.java) |
+| 插件契约(16 个方法) | [`FengYu-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`](../../../FengYu-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) |
+| 图标样式(`BLUE`…`GRAY`、CSS 类、颜色) | [`FengYu-Api/src/main/java/fan/summer/api/IconStyle.java`](../../../FengYu-Api/src/main/java/fan/summer/api/IconStyle.java) |
+| 工具分类(`DEV`…`OTHER`) | [`FengYu-Api/src/main/java/fan/summer/api/ToolCategory.java`](../../../FengYu-Api/src/main/java/fan/summer/api/ToolCategory.java) |
+| 工具类型(`BUILTIN`/`PLUGIN`) | [`FengYu-Api/src/main/java/fan/summer/api/ToolType.java`](../../../FengYu-Api/src/main/java/fan/summer/api/ToolType.java) |
+| MDI 图标渲染器(`createIcon`、`putIcon`) | [`FengYu-Api/src/main/java/fan/summer/api/MdiIconUtil.java`](../../../FengYu-Api/src/main/java/fan/summer/api/MdiIconUtil.java) |
+| 面向插件的主题助手(`applyTo`、`COMMON_CSS`) | [`FengYu-Api/src/main/java/fan/summer/api/theme/Themes.java`](../../../FengYu-Api/src/main/java/fan/summer/api/theme/Themes.java) |
+| 主题引擎(`registerScene`、`set`、`onChange`) | [`FengYu-Api/src/main/java/fan/summer/api/theme/ThemeService.java`](../../../FengYu-Api/src/main/java/fan/summer/api/theme/ThemeService.java) |
+| 共享组件 + token CSS | [`FengYu-Api/src/main/resources/css/fengyu-common.css`](../../../FengYu-Api/src/main/resources/css/fengyu-common.css) |
+| 参考内置(单类模式) | [`FengYu/src/main/java/fan/summer/buildintool/dev/JsonFormatterPlugin.java`](../../../FengYu/src/main/java/fan/summer/buildintool/dev/JsonFormatterPlugin.java) |
 
 ### 设计基线
 

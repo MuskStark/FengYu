@@ -1,20 +1,20 @@
 # Plugin Entry Point
 
-## ZhiFlowPlugin 接口
+## FengYuPlugin 接口
 
-所有插件必须实现 `fan.summer.zhiflow.api.ZhiFlowPlugin`：
+所有插件必须实现 `fan.summer.fengyu.api.FengYuPlugin`：
 
 ```java
 package {{base-package}};
 
-import fan.summer.zhiflow.api.IconStyle;
-import fan.summer.zhiflow.api.ZhiFlowPlugin;
-import fan.summer.zhiflow.api.ToolCategory;
-import fan.summer.zhiflow.api.i18n.I18n;
+import fan.summer.fengyu.api.IconStyle;
+import fan.summer.fengyu.api.FengYuPlugin;
+import fan.summer.fengyu.api.ToolCategory;
+import fan.summer.fengyu.api.i18n.I18n;
 import javafx.scene.Node;
 import {{base-package}}.ui.{{Name}}PluginUi;
 
-public class {{Name}}Plugin implements ZhiFlowPlugin {
+public class {{Name}}Plugin implements FengYuPlugin {
 
     @Override
     public String getId() {
@@ -67,7 +67,7 @@ public class {{Name}}Plugin implements ZhiFlowPlugin {
 内访问 `settings()` / `tasks()` / `i18n()` / `theme()` / `notifications()`：
 
 ```java
-import fan.summer.zhiflow.api.host.PluginHost;
+import fan.summer.fengyu.api.host.PluginHost;
 
 private PluginHost host;
 
@@ -91,7 +91,7 @@ public Node createView() {
 
 | 方法 | 必须 | 说明 |
 |------|------|------|
-| `getId()` | 是 | 反向域名唯一标识，如 `plugin.zhiflow.star` |
+| `getId()` | 是 | 反向域名唯一标识，如 `plugin.fengyu.star` |
 | `getName()` | 是 | 显示名称 |
 | `getDescription()` | 是 | 短描述 |
 | `getCategory()` | 是 | 返回 `ToolCategory` 枚举：`DEV / TEXT / IMAGE / NET / OTHER` |
