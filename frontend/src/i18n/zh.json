@@ -47,7 +47,8 @@
   "plugin":   { "failedTitle": "插件加载失败", "loading": "正在加载插件…",
                 "unknown": "未知插件:{id}" },
   "status":   { "connecting": "连接中…", "connected": "已连接",
-                "reconnecting": "重新连接中…" },
+                "reconnecting": "重新连接中…", "offline": "离线",
+                "restarting": "重启中…" },
   "agent":    { "title": "AI 助手", "goalPlaceholder": "需要我做什么?",
                 "run": "规划", "approve": "批准", "cancel": "取消",
                 "tools": "可用工具", "planning": "规划中…",
@@ -56,5 +57,6 @@
                 "completed": "已完成", "failed": "失败", "cancelled": "已取消",
                 "empty": "描述一个目标并点击「规划」以启动一次 Agent 运行。",
                 "step": "步骤 {n}" },
-  "common":   { "back": "返回", "retry": "重试", "loading": "加载中…" }
+  "common":   { "back": "返回", "retry": "重试", "loading": "加载中…" },
+  "setup":    { "dataFileLocation": "数据文件位置" }
 }

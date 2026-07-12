@@ -47,7 +47,8 @@
   "plugin":   { "failedTitle": "Failed to load plugin", "loading": "Loading plugin…",
                 "unknown": "Unknown plugin: {id}" },
   "status":   { "connecting": "Connecting…", "connected": "Connected",
-                "reconnecting": "Reconnecting…" },
+                "reconnecting": "Reconnecting…", "offline": "Offline",
+                "restarting": "Restarting…" },
   "agent":    { "title": "AI Agent", "goalPlaceholder": "What should I do?",
                 "run": "Plan", "approve": "Approve", "cancel": "Cancel",
                 "tools": "Available tools", "planning": "Planning…",
@@ -56,5 +57,6 @@
                 "completed": "Completed", "failed": "Failed", "cancelled": "Cancelled",
                 "empty": "Describe a goal and press Plan to start an agent run.",
                 "step": "Step {n}" },
-  "common":   { "back": "Back", "retry": "Retry", "loading": "Loading…" }
+  "common":   { "back": "Back", "retry": "Retry", "loading": "Loading…" },
+  "setup":    { "dataFileLocation": "Data file location" }
 }
