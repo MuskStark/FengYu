@@ -59,7 +59,7 @@ const icon: Record<ConnState, string> = {
     <i class="mdi sm" :class="icon[conn.state]" />
     <span class="cx-chip" :class="chipClass[conn.state]">{{ $t(statusKey[conn.state]) }}</span>
     <span class="cx-grow" />
-    <span class="cx-muted" style="font-size: 12px">Infinia {{ appVersion }}</span>
+    <span class="cx-muted" style="font-size: 12px">{{ $t('brand') }} {{ appVersion }}</span>
   </footer>
 </template>
 
