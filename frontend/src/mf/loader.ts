@@ -24,6 +24,15 @@ export interface PluginContext {
    * components as the shell, without bundling Vuetify themselves.
    */
   vuetify: Plugin
+  /** Backend base URL (empty string = same-origin). For raw fetch (multipart/download). */
+  apiBase: string
+  /** Auth token to send as X-FengYu-Token on raw fetch calls. */
+  token: string
+  /** Native desktop file dialogs — present ONLY under Tauri; undefined in the browser. */
+  desktop?: {
+    pickFile(filters?: { name: string; extensions: string[] }[]): Promise<string | null>
+    pickDirectory(): Promise<string | null>
+  }
 }
 
 /**
