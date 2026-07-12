@@ -1,6 +1,6 @@
 {
   "category": { "dev": "Developer", "text": "Text", "image": "Image",
-                "net": "Network", "ai": "AI", "other": "Other" },
+                "net": "Network", "file": "File", "ai": "AI", "other": "Other" },
   "source":   { "official": "Official", "third_party": "Third-party" },
   "badge":    { "ai": "AI" },
   "sidebar":  { "all": "Tools", "favorites": "Favorites", "categories": "CATEGORIES",

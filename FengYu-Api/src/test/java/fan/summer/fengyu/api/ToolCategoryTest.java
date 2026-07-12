@@ -23,4 +23,17 @@ class ToolCategoryTest {
     void fromIdResolvesAi() {
         assertEquals(ToolCategory.AI, ToolCategory.fromId("ai"));
     }
+
+    @Test
+    void fileCategoryExistsWithIdAndLabelKey() {
+        ToolCategory file = ToolCategory.FILE;
+        assertEquals("file", file.getId());
+        assertEquals("category.file", file.getLabelKey());
+    }
+
+    @Test
+    void fromIdResolvesFile() {
+        assertEquals(ToolCategory.FILE, ToolCategory.fromId("file"));
+        assertEquals(ToolCategory.FILE, ToolCategory.fromId("FILE"));
+    }
 }
