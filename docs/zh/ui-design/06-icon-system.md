@@ -1,6 +1,6 @@
 # 06 · 图标系统
 
-> **定位：** 本文档是 ZhiFlow 中图标的**唯一事实来源**——图标库、`MdiIconUtil` API、
+> **定位：** 本文档是 FengYu 中图标的**唯一事实来源**——图标库、`MdiIconUtil` API、
 > 尺寸刻度、`IconStyle` 强调色调色板，以及那个让每位新手作者都会踩坑的**反直觉事实**：
 > `.ic-*` CSS 类是**空的**，因此图标颜色 + 辉光是从 **Java** 注入的，绝不能来自 CSS。
 > 组件库（文档 03）在此链接图标用法；请收藏锚点 [`#icon-reference`](#icon-reference)。
@@ -9,7 +9,7 @@
 |---|---|
 | **文档类型** | 图标规范 + 渲染 API |
 | **目标读者** | 插件作者、AI 代码生成器、任何需要把字形画上屏的开发者 |
-| **事实来源** | [`ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java) · [`IconStyle.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java) |
+| **事实来源** | [`FengYu-Api/src/main/java/fan/summer/api/MdiIconUtil.java`](../../../FengYu-Api/src/main/java/fan/summer/api/MdiIconUtil.java) · [`IconStyle.java`](../../../FengYu-Api/src/main/java/fan/summer/api/IconStyle.java) |
 | **关联文档** | [02 JavaFX 实现](02-javafx-implementation.md) · [03 组件库](03-component-library.md) · [05 主题与配色系统](05-theme-color-system.md) |
 
 > **翻译说明：** 本文件是英文版 [`docs/ui-design/06-icon-system.md`](../ui-design/06-icon-system.md)
@@ -35,7 +35,7 @@
 
 ## 1. 概述
 
-ZhiFlow 的**所有**图标都来自同一个打包字体：Pictogrammers 的 **Material Design Icons**（MDI）。
+FengYu 的**所有**图标都来自同一个打包字体：Pictogrammers 的 **Material Design Icons**（MDI）。
 没有 PNG、没有 SVG、没有 emoji——每个字形都是取自 `MaterialDesignIcons` 字体族的一个
 Unicode 码位。
 
@@ -68,14 +68,14 @@ Unicode 码位。
 
 | 内容 | 位置 | 说明 |
 |---|---|---|
-| **码位表** | [`ZhiFlow-Api/src/main/resources/fonts/mdi-codemap.properties`](../../../ZhiFlow-Api/src/main/resources/fonts/mdi-codemap.properties) | **7 448** 条名称 → 码位映射。键是裸 MDI 名称（`file-excel`，**不是** `mdi-file-excel`）。在首次使用 `MdiIconUtil` 时惰性加载。 |
+| **码位表** | [`FengYu-Api/src/main/resources/fonts/mdi-codemap.properties`](../../../FengYu-Api/src/main/resources/fonts/mdi-codemap.properties) | **7 448** 条名称 → 码位映射。键是裸 MDI 名称（`file-excel`，**不是** `mdi-file-excel`）。在首次使用 `MdiIconUtil` 时惰性加载。 |
 | **字体二进制** | `/fonts/materialdesignicons-webfont.ttf`（classpath，打包在 API 模块） | 字体族注册名为 `MaterialDesignIcons`。与码位表一同打包。 |
-| **渲染 API** | [`MdiIconUtil.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java) | 插件代码应使用的**唯一**入口。 |
+| **渲染 API** | [`MdiIconUtil.java`](../../../FengYu-Api/src/main/java/fan/summer/api/MdiIconUtil.java) | 插件代码应使用的**唯一**入口。 |
 
 ### 你要用到的唯一 API
 
 ```java
-import fan.summer.zhiflow.api.MdiIconUtil;
+import fan.summer.fengyu.api.MdiIconUtil;
 import javafx.scene.text.Text;
 
 // 1. 名称不带 "mdi-" 前缀；尺寸单位为逻辑像素
@@ -157,7 +157,7 @@ MdiIconUtil.putIcon("my-plugin-mark", "\uDB81\uDC93"); // 来自你字体子集�
 
 ### MdiIconUtil API
 
-所有方法都是 `fan.summer.zhiflow.api.MdiIconUtil` 上的 `static`。该类惰性加载码位表和字体，并在进程
+所有方法都是 `fan.summer.fengyu.api.MdiIconUtil` 上的 `static`。该类惰性加载码位表和字体，并在进程
 生命周期内缓存。
 
 | 签名 | 返回 | 行为 |
@@ -180,20 +180,20 @@ MdiIconUtil.putIcon("my-plugin-mark", "\uDB81\uDC93"); // 来自你字体子集�
 **回退行为**——`createIcon` 和 `getCodepoint` 都使用
 `CODEMAP.getOrDefault(name, CODEMAP.get("star"))`。因此拼写错误会*静默*渲染出*某个东西*
 （一颗星）。发布前务必确认名称存在于
-[`mdi-codemap.properties`](../../../ZhiFlow-Api/src/main/resources/fonts/mdi-codemap.properties)。
+[`mdi-codemap.properties`](../../../FengYu-Api/src/main/resources/fonts/mdi-codemap.properties)。
 
 ### 尺寸刻度
 
 | 尺寸 | 令牌用途 | 使用位置 | 来源 |
 |---|---|---|---|
 | **16 px** | 内联 / 状态字形 | 侧栏导航图标（`Sidebar` 用 `createIcon(mdi, 16, …)`） | 代码 |
-| **18 px** | nav-item 图标 | `.nav-item-icon { -fx-min-width: 18px; }` | [`shell.css`](../../../ZhiFlow/src/main/resources/css/shell.css) |
+| **18 px** | nav-item 图标 | `.nav-item-icon { -fx-min-width: 18px; }` | [`shell.css`](../../../FengYu/src/main/resources/css/shell.css) |
 | **20 px** | 小型 UI 控件 | 紧凑工具栏 / chip 字形 | 约定 |
 | **24 px** | 标准 / 卡片图标 | 你在插件视图里渲染独立图标时的默认值 | 约定 |
 | **32 px** | 大号内联 | 空状态主视觉字形 | 约定 |
-| **45 px** | 工具卡片字形 | `MdiIconUtil.createIcon(plugin.getMdiIcon(), 45)`，置于 48 px 容器内 | [`ToolCard.java`](../../../ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java) |
-| **48 px** | tool-icon-wrap *容器* | `.tool-icon-wrap { -fx-pref-width: 48px; -fx-pref-height: 48px; }` | [`shell.css`](../../../ZhiFlow/src/main/resources/css/shell.css) |
-| **50 px** | 详情面板主视觉 | `MdiIconUtil.createIcon(p.getMdiIcon(), 50)` | [`DetailPanel.java`](../../../ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java) |
+| **45 px** | 工具卡片字形 | `MdiIconUtil.createIcon(plugin.getMdiIcon(), 45)`，置于 48 px 容器内 | [`ToolCard.java`](../../../FengYu/src/main/java/fan/summer/ui/content/ToolCard.java) |
+| **48 px** | tool-icon-wrap *容器* | `.tool-icon-wrap { -fx-pref-width: 48px; -fx-pref-height: 48px; }` | [`shell.css`](../../../FengYu/src/main/resources/css/shell.css) |
+| **50 px** | 详情面板主视觉 | `MdiIconUtil.createIcon(p.getMdiIcon(), 50)` | [`DetailPanel.java`](../../../FengYu/src/main/java/fan/summer/ui/content/DetailPanel.java) |
 
 ```
 16 ─── 内联 / 状态          24 ─── 标准卡片图标
@@ -207,7 +207,7 @@ MdiIconUtil.putIcon("my-plugin-mark", "\uDB81\uDC93"); // 来自你字体子集�
 
 ### IconStyle 强调色调色板
 
-`fan.summer.zhiflow.api.IconStyle`——七种强调样式。每个携带一个**CSS 类名**和一个
+`fan.summer.fengyu.api.IconStyle`——七种强调样式。每个携带一个**CSS 类名**和一个
 **`javafx.scene.paint.Color`**。CSS 类施加于图标*容器*；颜色从 Java 施加于 `Text` *字形*。
 （见[那个陷阱](#关键的-ic--陷阱)。）
 
@@ -235,7 +235,7 @@ MdiIconUtil.putIcon("my-plugin-mark", "\uDB81\uDC93"); // 来自你字体子集�
 ### 内置工具图标映射
 
 11 个内置工具（在
-[`BuiltinToolRegistrar`](../../../ZhiFlow/src/main/java/fan/summer/registrar/BuiltinToolRegistrar.java)
+[`BuiltinToolRegistrar`](../../../FengYu/src/main/java/fan/summer/registrar/BuiltinToolRegistrar.java)
 中注册）按如下方式映射到 `IconStyle` 强调色。`getMdiIcon()` 的值均为裸名称。
 
 | 工具（插件类） | `getMdiIcon()` | `getIconStyle()` | RGB |
@@ -264,7 +264,7 @@ MdiIconUtil.putIcon("my-plugin-mark", "\uDB81\uDC93"); // 来自你字体子集�
 
 ### 关键的 `.ic-*` 陷阱——先读这一段
 
-[`shell.css`](../../../ZhiFlow/src/main/resources/css/shell.css) 中的 `.ic-blue`、
+[`shell.css`](../../../FengYu/src/main/resources/css/shell.css) 中的 `.ic-blue`、
 `.ic-purple`、… `.ic-gray` 规则是**空的**：
 
 ```css
@@ -297,17 +297,17 @@ Java 通过 `IconStyle.getColor()` 填充。
 ### 4.1 创建通用的、跟随主题的图标（导航 / 工具栏 / 状态）
 
 对于应当随主题重染的图标（非工具 UI 的常见情形），使用
-[`zhiflow-common.css`](../../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css) 中的
+[`fengyu-common.css`](../../../FengYu-Api/src/main/resources/css/fengyu-common.css) 中的
 `.sk-fill-2` / `.sk-fill-3` **工具样式类**：
 
 ```css
-/* zhiflow-common.css */
+/* fengyu-common.css */
 .sk-fill-2 { -fx-fill: -sk-text-secondary; }   /* Text/Shape 填充（次要） */
 .sk-fill-3 { -fx-fill: -sk-text-disabled; }    /* Text/Shape 填充（弱化） */
 ```
 
 ```java
-import fan.summer.zhiflow.api.MdiIconUtil;
+import fan.summer.fengyu.api.MdiIconUtil;
 import javafx.scene.text.Text;
 
 // 次要色调、自动跟随深色/浅色主题的图标
@@ -336,13 +336,13 @@ Text warn2 = MdiIconUtil.createIcon("alert", 16.0, "-fx-fill: #FFB320;");
 
 ### 4.3 渲染工具卡片图标（规范模式）
 
-这正是 [`ToolCard.java`](../../../ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java) 所做的。
+这正是 [`ToolCard.java`](../../../FengYu/src/main/java/fan/summer/ui/content/ToolCard.java) 所做的。
 插件提供*名称*（`getMdiIcon()`）和*样式*（`getIconStyle()`）；宿主完成填充 + 辉光：
 
 ```java
-import fan.summer.zhiflow.api.IconStyle;
-import fan.summer.zhiflow.api.MdiIconUtil;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
+import fan.summer.fengyu.api.IconStyle;
+import fan.summer.fengyu.api.MdiIconUtil;
+import fan.summer.fengyu.api.SwissKitJPlugin;
 import javafx.scene.effect.DropShadow;
 import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
@@ -402,7 +402,7 @@ String cp = MdiIconUtil.getCodepoint("file-excel");  // "\uDB80\uDE1B"
 
 ```bash
 # 确认名称在打包码位表中（7448 条）
-grep -nE '^file-excel=' ZhiFlow-Api/src/main/resources/fonts/mdi-codemap.properties
+grep -nE '^file-excel=' FengYu-Api/src/main/resources/fonts/mdi-codemap.properties
 # → file-excel=\uDB80\uDE1B
 ```
 
@@ -418,7 +418,7 @@ grep -nE '^file-excel=' ZhiFlow-Api/src/main/resources/fonts/mdi-codemap.propert
 - [ ] **名称格式**——`getMdiIcon()` / `createIcon(name, …)` 返回/使用的是裸 MDI 名称，**不带**
       `mdi-` 前缀（`"file-excel"`，不是 `"mdi-file-excel"`）。
 - [ ] **名称存在**——该名称存在于
-      [`mdi-codemap.properties`](../../../ZhiFlow-Api/src/main/resources/fonts/mdi-codemap.properties)；
+      [`mdi-codemap.properties`](../../../FengYu-Api/src/main/resources/fonts/mdi-codemap.properties)；
       未知名称会静默回退到 `star`。
 - [ ] **尺寸在刻度上**——尺寸是 `16 / 18 / 20 / 24 / 32 / 45 / 50` 之一（见
       [尺寸刻度](#尺寸刻度)）；工具卡片字形 = 45，容器 = 48。
@@ -503,16 +503,16 @@ t.setStyle("-fx-fill: -sk-text-secondary;");   // ❌ 无法解析
 
 | 内容 | 路径 |
 |---|---|
-| MDI 渲染器（`createIcon`、`getCodepoint`、`getFont`、`putIcon`） | [`ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java) |
-| 图标强调样式（`BLUE`…`GRAY`、CSS 类、颜色、`fromCssClass`） | [`ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java) |
-| 插件图标契约（`getMdiIcon`、`getIconStyle`） | [`ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`](../../../ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) |
-| 码位表（7 448 条，键为裸名称） | [`ZhiFlow-Api/src/main/resources/fonts/mdi-codemap.properties`](../../../ZhiFlow-Api/src/main/resources/fonts/mdi-codemap.properties) |
+| MDI 渲染器（`createIcon`、`getCodepoint`、`getFont`、`putIcon`） | [`FengYu-Api/src/main/java/fan/summer/api/MdiIconUtil.java`](../../../FengYu-Api/src/main/java/fan/summer/api/MdiIconUtil.java) |
+| 图标强调样式（`BLUE`…`GRAY`、CSS 类、颜色、`fromCssClass`） | [`FengYu-Api/src/main/java/fan/summer/api/IconStyle.java`](../../../FengYu-Api/src/main/java/fan/summer/api/IconStyle.java) |
+| 插件图标契约（`getMdiIcon`、`getIconStyle`） | [`FengYu-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`](../../../FengYu-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) |
+| 码位表（7 448 条，键为裸名称） | [`FengYu-Api/src/main/resources/fonts/mdi-codemap.properties`](../../../FengYu-Api/src/main/resources/fonts/mdi-codemap.properties) |
 | 字体二进制 | `/fonts/materialdesignicons-webfont.ttf`（classpath，API 模块） |
-| 空的 `.ic-*` 规则 + `.tool-icon-wrap`（48px）+ `.nav-item-icon`（18px） | [`ZhiFlow/src/main/resources/css/shell.css`](../../../ZhiFlow/src/main/resources/css/shell.css) |
-| `.sk-fill-2` / `.sk-fill-3` 工具类 | [`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`](../../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css) |
-| 规范的工具图标渲染器（45px 字形 + 辉光） | [`ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java`](../../../ZhiFlow/src/main/java/fan/summer/ui/content/ToolCard.java) |
-| 详情面板主视觉渲染器（50px 字形 + 辉光） | [`ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java`](../../../ZhiFlow/src/main/java/fan/summer/ui/content/DetailPanel.java) |
-| 11 个内置工具图标映射 | [`ZhiFlow/src/main/java/fan/summer/registrar/BuiltinToolRegistrar.java`](../../../ZhiFlow/src/main/java/fan/summer/registrar/BuiltinToolRegistrar.java) |
+| 空的 `.ic-*` 规则 + `.tool-icon-wrap`（48px）+ `.nav-item-icon`（18px） | [`FengYu/src/main/resources/css/shell.css`](../../../FengYu/src/main/resources/css/shell.css) |
+| `.sk-fill-2` / `.sk-fill-3` 工具类 | [`FengYu-Api/src/main/resources/css/fengyu-common.css`](../../../FengYu-Api/src/main/resources/css/fengyu-common.css) |
+| 规范的工具图标渲染器（45px 字形 + 辉光） | [`FengYu/src/main/java/fan/summer/ui/content/ToolCard.java`](../../../FengYu/src/main/java/fan/summer/ui/content/ToolCard.java) |
+| 详情面板主视觉渲染器（50px 字形 + 辉光） | [`FengYu/src/main/java/fan/summer/ui/content/DetailPanel.java`](../../../FengYu/src/main/java/fan/summer/ui/content/DetailPanel.java) |
+| 11 个内置工具图标映射 | [`FengYu/src/main/java/fan/summer/registrar/BuiltinToolRegistrar.java`](../../../FengYu/src/main/java/fan/summer/registrar/BuiltinToolRegistrar.java) |
 
 ### 设计基线
 

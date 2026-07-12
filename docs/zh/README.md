@@ -1,8 +1,8 @@
-# ZhiFlow 文档
+# FengYu 文档
 
-![ZhiFlow](https://img.shields.io/badge/ZhiFlow-Desktop%20Toolbox-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-MIT-green)
+![FengYu](https://img.shields.io/badge/FengYu-Desktop%20Toolbox-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-MIT-green)
 
-**ZhiFlow** 是一款基于 JavaFX 21 构建的模块化桌面工具箱，为生产力工具提供了一个简洁、可扩展的平台。
+**FengYu** 是一款基于 JavaFX 21 构建的模块化桌面工具箱，为生产力工具提供了一个简洁、可扩展的平台。
 
 ## 快速链接
 
@@ -12,7 +12,7 @@
 - [开发指南](/zh/development.md) — 构建插件与贡献代码
 - [更新日志](/zh/changelog.md) — 版本历史
 
-## 什么是 ZhiFlow？
+## 什么是 FengYu？
 
 一款模块化桌面工具箱，可以：
 
@@ -42,15 +42,15 @@
 
 ```bash
 # 从 GitHub Releases 下载后：
-java -jar ZhiFlow-3.1.0.jar
+java -jar FengYu-3.1.0.jar
 ```
 
 或从源码构建：
 
 ```bash
-mvn install -f ZhiFlow-Api/pom.xml -DskipTests
-mvn clean package -f ZhiFlow/pom.xml -DskipTests
-java -jar ZhiFlow/target/ZhiFlow-3.1.0.jar
+mvn install -f FengYu-Api/pom.xml -DskipTests
+mvn clean package -f FengYu/pom.xml -DskipTests
+java -jar FengYu/target/FengYu-3.1.0.jar
 ```
 
 ## 许可证

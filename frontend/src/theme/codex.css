@@ -1,0 +1,326 @@
+/* ================================================================
+   codex.css — native Codex-desktop component kit for the ZhiFlow shell.
+   The shell no longer uses Vuetify components; every button / input /
+   card / chip / nav-row here is plain HTML styled to the Codex look.
+   Colors resolve through Vuetify's theme CSS vars (rgb(var(--v-theme-*)))
+   so light/dark still flip via the theme store. Vuetify remains loaded
+   ONLY to hand its instance to micro-frontend plugins.
+   ================================================================ */
+
+/* ── icons (mdi webfont) ───────────────────────────────────────── */
+.mdi { font-size: 20px; line-height: 1; display: inline-flex; }
+.mdi.sm { font-size: 16px; }
+.mdi.lg { font-size: 24px; }
+
+/* ── buttons ───────────────────────────────────────────────────── */
+.cx-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgb(var(--v-theme-on-surface));
+  font: inherit;
+  font-weight: 550;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  transition: background 0.13s ease, border-color 0.13s ease, opacity 0.13s ease;
+}
+.cx-btn:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
+.cx-btn .mdi { font-size: 18px; }
+
+.cx-btn--primary {
+  background: rgb(var(--v-theme-primary));
+  color: rgb(var(--v-theme-on-primary));
+}
+.cx-btn--primary:hover:not(:disabled) { opacity: 0.88; }
+
+.cx-btn--tonal {
+  background: rgb(var(--v-theme-surface-container-high));
+  color: rgb(var(--v-theme-on-surface));
+}
+.cx-btn--tonal:hover:not(:disabled) { background: rgb(var(--v-theme-surface-bright)); }
+
+.cx-btn--outline {
+  border-color: rgb(var(--v-theme-outline));
+  color: rgb(var(--v-theme-on-surface));
+}
+.cx-btn--outline:hover:not(:disabled) { background: rgb(var(--v-theme-surface-container-high)); }
+
+.cx-btn--text { padding: 0 10px; color: rgb(var(--v-theme-secondary)); }
+.cx-btn--text:hover:not(:disabled) {
+  background: rgb(var(--v-theme-surface-container-high));
+  color: rgb(var(--v-theme-on-surface));
+}
+
+.cx-btn--sm { height: 30px; padding: 0 10px; font-size: 12px; }
+.cx-btn--block { width: 100%; }
+
+/* round icon button */
+.cx-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: rgb(var(--v-theme-secondary));
+  cursor: pointer;
+  transition: background 0.13s ease, color 0.13s ease, opacity 0.13s ease;
+}
+.cx-iconbtn:hover:not(:disabled) {
+  background: rgb(var(--v-theme-surface-container-high));
+  color: rgb(var(--v-theme-on-surface));
+}
+.cx-iconbtn:disabled { opacity: 0.35; cursor: default; }
+.cx-iconbtn--sm { width: 28px; height: 28px; }
+.cx-iconbtn--sm .mdi { font-size: 16px; }
+.cx-iconbtn--round { border-radius: 50%; }
+.cx-iconbtn--primary {
+  background: rgb(var(--v-theme-primary));
+  color: rgb(var(--v-theme-on-primary));
+}
+.cx-iconbtn--primary:hover:not(:disabled) { background: rgb(var(--v-theme-primary)); opacity: 0.88; }
+
+/* ── inputs ────────────────────────────────────────────────────── */
+.cx-field { display: flex; flex-direction: column; gap: 6px; }
+.cx-label { font-size: 12px; font-weight: 550; color: rgb(var(--v-theme-secondary)); }
+.cx-input,
+.cx-textarea,
+.cx-select {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  color: rgb(var(--v-theme-on-surface));
+  background: rgb(var(--v-theme-surface-container));
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border-radius: 10px;
+  padding: 9px 12px;
+  outline: none;
+  transition: border-color 0.13s ease;
+}
+.cx-input:focus,
+.cx-textarea:focus,
+.cx-select:focus { border-color: rgba(128, 128, 128, 0.6); }
+.cx-textarea { resize: vertical; min-height: 72px; line-height: 1.5; }
+.cx-select { appearance: none; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center; padding-right: 32px;
+}
+.cx-input-wrap { position: relative; display: flex; align-items: center; }
+.cx-input-wrap .cx-input { padding-right: 38px; }
+.cx-input-wrap .cx-iconbtn { position: absolute; right: 3px; }
+
+/* ── cards ─────────────────────────────────────────────────────── */
+.cx-card {
+  background: rgb(var(--v-theme-surface-container));
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border-radius: 14px;
+  padding: 16px;
+}
+.cx-card--hover { cursor: pointer; transition: border-color 0.13s ease, background 0.13s ease; }
+.cx-card--hover:hover {
+  border-color: rgb(var(--v-theme-outline));
+  background: rgb(var(--v-theme-surface-container-high));
+}
+
+/* ── chips / badges ────────────────────────────────────────────── */
+.cx-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  color: rgb(var(--v-theme-secondary));
+  background: transparent;
+}
+.cx-chip--success { color: rgb(var(--v-theme-tertiary)); border-color: rgb(var(--v-theme-tertiary)); }
+.cx-chip--error { color: rgb(var(--v-theme-error)); border-color: rgb(var(--v-theme-error)); }
+.cx-chip--warn { color: #d9a441; border-color: #d9a441; }
+.cx-chip--primary { color: rgb(var(--v-theme-on-surface)); border-color: rgb(var(--v-theme-outline)); }
+.cx-chip--solid {
+  background: rgb(var(--v-theme-surface-container-highest));
+  border-color: transparent;
+  color: rgb(var(--v-theme-on-surface));
+}
+.cx-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; display: inline-block; }
+
+/* ── alerts ────────────────────────────────────────────────────── */
+.cx-alert {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border-radius: 12px;
+  padding: 11px 14px;
+  font-size: 13px;
+  border: 1px solid transparent;
+}
+.cx-alert--error { background: rgb(var(--v-theme-error-container)); border-color: rgb(var(--v-theme-error)); color: rgb(var(--v-theme-on-surface)); }
+.cx-alert--success { background: rgb(var(--v-theme-tertiary-container)); border-color: rgb(var(--v-theme-tertiary)); color: rgb(var(--v-theme-on-surface)); }
+.cx-alert__body { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+
+/* ── sidebar / nav ─────────────────────────────────────────────── */
+.cx-sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 256px;
+  flex: 0 0 256px;
+  height: 100%;
+  background: rgb(var(--v-theme-surface-container));
+  border-right: 1px solid rgb(var(--v-theme-outline-variant));
+  transition: width 0.16s ease, flex-basis 0.16s ease;
+}
+.cx-sidebar.rail { width: 60px; flex-basis: 60px; }
+
+.cx-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  height: 36px;
+  padding: 0 10px;
+  margin: 1px 6px;
+  border-radius: 9px;
+  color: rgb(var(--v-theme-secondary));
+  cursor: pointer;
+  font-size: 13px;
+  user-select: none;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.cx-nav-item:hover { background: rgb(var(--v-theme-surface-container-high)); color: rgb(var(--v-theme-on-surface)); }
+.cx-nav-item.active { background: rgb(var(--v-theme-surface-container-highest)); color: rgb(var(--v-theme-on-surface)); }
+.cx-nav-item.rail { justify-content: center; padding: 0; }
+.cx-nav-item .mdi { font-size: 19px; flex: 0 0 auto; }
+.cx-nav-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; }
+.cx-nav-item .cx-iconbtn { opacity: 0; }
+.cx-nav-item:hover .cx-iconbtn { opacity: 1; }
+
+.cx-subheader {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgb(var(--v-theme-secondary));
+  opacity: 0.7;
+  padding: 12px 16px 5px;
+}
+
+/* ── avatar ────────────────────────────────────────────────────── */
+.cx-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(var(--v-theme-primary));
+  color: rgb(var(--v-theme-on-primary));
+  border-radius: 10px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+/* ── spinner ───────────────────────────────────────────────────── */
+.cx-spin {
+  width: 16px; height: 16px;
+  border: 2px solid rgba(128,128,128,0.35);
+  border-top-color: rgb(var(--v-theme-on-surface));
+  border-radius: 50%;
+  animation: cx-spin 0.7s linear infinite;
+  display: inline-block;
+}
+.cx-spin.lg { width: 26px; height: 26px; border-width: 3px; }
+@keyframes cx-spin { to { transform: rotate(360deg); } }
+
+/* ── collapsible (native details) ──────────────────────────────── */
+.cx-details {
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border-radius: 10px;
+  overflow: hidden;
+}
+.cx-details > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 9px 13px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgb(var(--v-theme-secondary));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cx-details > summary::-webkit-details-marker { display: none; }
+.cx-details > summary::before {
+  content: '\F0142'; font-family: 'Material Design Icons'; font-size: 16px;
+  transition: transform 0.15s ease;
+}
+.cx-details[open] > summary::before { transform: rotate(90deg); }
+.cx-details__body { padding: 0 13px 12px; }
+
+/* ── page scaffolding ──────────────────────────────────────────── */
+.cx-page { max-width: 720px; margin: 0 auto; padding: 28px 24px 48px; }
+.cx-page-title { font-size: 22px; font-weight: 650; margin: 0 0 20px; }
+.cx-section-title {
+  font-size: 12px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase;
+  color: rgb(var(--v-theme-secondary)); margin: 28px 0 12px;
+}
+.cx-row { display: flex; align-items: center; gap: 12px; }
+.cx-grow { flex: 1 1 auto; min-width: 0; }
+.cx-muted { color: rgb(var(--v-theme-secondary)); }
+.cx-topbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 16px; min-height: 52px;
+  border-bottom: 1px solid rgb(var(--v-theme-outline-variant));
+}
+
+/* ── segmented control (Codex-style toggle for 2–4 options) ────── */
+.cx-segment {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  background: rgb(var(--v-theme-surface-container-highest));
+  border-radius: 10px;
+}
+.cx-segment button {
+  border: none;
+  background: transparent;
+  color: rgb(var(--v-theme-secondary));
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  padding: 5px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.13s ease, color 0.13s ease;
+}
+.cx-segment button:hover { color: rgb(var(--v-theme-on-surface)); }
+.cx-segment button.active {
+  background: rgb(var(--v-theme-surface));
+  color: rgb(var(--v-theme-on-surface));
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+/* ── settings row (label left, control right) ──────────────────── */
+.cx-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 0;
+}
+.cx-setting-row + .cx-setting-row {
+  border-top: 1px solid rgb(var(--v-theme-outline-variant));
+}
+.cx-setting-row__label { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.cx-setting-row__label .mdi { color: rgb(var(--v-theme-secondary)); flex: 0 0 auto; }
+
+/* number inputs shouldn't stretch full width in a form */
+.cx-input--narrow { max-width: 160px; }

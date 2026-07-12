@@ -1,6 +1,6 @@
 # 功能介绍
 
-ZhiFlow 提供 9 个内置工具，按分类组织，并支持外部插件。
+FengYu 提供 9 个内置工具，按分类组织，并支持外部插件。
 
 ## 分类
 
@@ -101,7 +101,7 @@ ZhiFlow 提供 9 个内置工具，按分类组织，并支持外部插件。
 
 ## 插件系统
 
-ZhiFlow 通过两种方式发现插件：
+FengYu 通过两种方式发现插件：
 
 - **内置工具** — 在启动时由 `BuiltinToolRegistrar` 直接注册
 - **外部插件** — 实现 `SwissKitJPlugin`，在 `META-INF/services/` 中声明，将 JAR 放入 `plugins/` 目录，支持热重载

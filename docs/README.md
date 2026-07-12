@@ -1,8 +1,8 @@
-# ZhiFlow Documentation
+# FengYu Documentation
 
-![ZhiFlow](https://img.shields.io/badge/ZhiFlow-Desktop%20Toolbox-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-MIT-green)
+![FengYu](https://img.shields.io/badge/FengYu-Desktop%20Toolbox-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-MIT-green)
 
-**ZhiFlow** is a modular desktop toolbox built with JavaFX 21, providing a clean, extensible platform for productivity tools.
+**FengYu** is a modular desktop toolbox built with JavaFX 21, providing a clean, extensible platform for productivity tools.
 
 ## Quick Links
 
@@ -12,7 +12,7 @@
 - [Development Guide](development.md) — Build plugins and contribute
 - [Changelog](changelog.md) — Version history
 
-## What is ZhiFlow?
+## What is FengYu?
 
 A modular desktop toolbox that allows you to:
 
@@ -42,15 +42,15 @@ A modular desktop toolbox that allows you to:
 
 ```bash
 # Download from GitHub Releases, then:
-java -jar ZhiFlow-3.1.0.jar
+java -jar FengYu-3.1.0.jar
 ```
 
 Or build from source:
 
 ```bash
-mvn install -f ZhiFlow-Api/pom.xml -DskipTests
-mvn clean package -f ZhiFlow/pom.xml -DskipTests
-java -jar ZhiFlow/target/ZhiFlow-3.1.0.jar
+mvn install -f FengYu-Api/pom.xml -DskipTests
+mvn clean package -f FengYu/pom.xml -DskipTests
+java -jar FengYu/target/FengYu-3.1.0.jar
 ```
 
 ## License

@@ -11,7 +11,7 @@ fail(){ echo "FAIL $1: $2"; rc=1; }
 ok(){ :; }
 
 # M1: SPI file exists
-SPI="$RES/META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin"
+SPI="$RES/META-INF/services/fan.summer.fengyu.api.SwissKitJPlugin"
 [ -f "$SPI" ] || fail M1 "missing SPI file"
 
 # M2: SPI content = entry class FQN, and that .java exists

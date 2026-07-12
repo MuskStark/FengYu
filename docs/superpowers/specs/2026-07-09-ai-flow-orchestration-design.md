@@ -12,18 +12,18 @@
 
 ### 1.1 现状:并行手搓层 + 已弃用的 ChatModel 用法
 
-ZhiFlow 已经在 Phase 1 迁移到 Spring AI 2.0(用 `ChatModel.stream()` 驱动云端对话),但在它之上**又手搓了一整套并行的工具机制**:
+FengYu 已经在 Phase 1 迁移到 Spring AI 2.0(用 `ChatModel.stream()` 驱动云端对话),但在它之上**又手搓了一整套并行的工具机制**:
 
-| ZhiFlow 手搓层 | 文件 | Spring AI 2.0 原生等价物 |
+| FengYu 手搓层 | 文件 | Spring AI 2.0 原生等价物 |
 |---|---|---|
-| `AiTool` 接口(execute→String) | `ZhiFlow-Api/.../api/ai/AiTool.java:28` | `@Tool` / `ToolCallback` |
-| `AiToolParam` + `ToolSchemaJson` | `api/ai/AiToolParam.java:19`, `ZhiFlow/.../adapter/ToolSchemaJson.java:24` | `JsonSchemaGenerator`(自动生成) |
+| `AiTool` 接口(execute→String) | `FengYu-Api/.../api/ai/AiTool.java:28` | `@Tool` / `ToolCallback` |
+| `AiToolParam` + `ToolSchemaJson` | `api/ai/AiToolParam.java:19`, `FengYu/.../adapter/ToolSchemaJson.java:24` | `JsonSchemaGenerator`(自动生成) |
 | `AiServiceProvider`(静态注册表) | `api/ai/AiServiceProvider.java:28` | `ToolCallbackProvider` / `ToolCallbackResolver` |
-| `ToolExecutor`(静态派发器) | `ZhiFlow/.../ai/ToolExecutor.java:32` | `ToolCallingManager`(2.0 新增) |
-| `AiToolCallback`(适配器) | `ZhiFlow/.../adapter/AiToolCallback.java:27` | 不再需要 |
-| `SpringAiCloudBackend.runToolLoop` | `ZhiFlow/.../ai/service/SpringAiCloudBackend.java:172` | `ChatClient` + `ToolCallingAdvisor` |
+| `ToolExecutor`(静态派发器) | `FengYu/.../ai/ToolExecutor.java:32` | `ToolCallingManager`(2.0 新增) |
+| `AiToolCallback`(适配器) | `FengYu/.../adapter/AiToolCallback.java:27` | 不再需要 |
+| `SpringAiCloudBackend.runToolLoop` | `FengYu/.../ai/service/SpringAiCloudBackend.java:172` | `ChatClient` + `ToolCallingAdvisor` |
 
-**致命问题:** Spring AI 官方文档明确警告 —— "*The way `ChatModel` implementations handle tool execution internally is **deprecated since 2.0.0** and will be removed in 3.0.0.*" ZhiFlow 当前的 `chatModel.stream(prompt)` + 手动 `runToolLoop`(最大 5 轮)正是**已弃用的模式**。
+**致命问题:** Spring AI 官方文档明确警告 —— "*The way `ChatModel` implementations handle tool execution internally is **deprecated since 2.0.0** and will be removed in 3.0.0.*" FengYu 当前的 `chatModel.stream(prompt)` + 手动 `runToolLoop`(最大 5 轮)正是**已弃用的模式**。
 
 ### 1.2 编排的根本障碍
 
@@ -31,7 +31,7 @@ ZhiFlow 已经在 Phase 1 迁移到 Spring AI 2.0(用 `ChatModel.stream()` 驱�
 
 ### 1.3 死代码
 
-`ZhiFlow-Api` 下存在**两套并行包**:`fan.summer.api.*`(v1,JavaFX 时代)和 `fan.summer.zhiflow.api.*`(v2,当前)。经审计,v1 的 **44 个类无任何活跃引用**(运行时、plugin-markdown、v2 包都不 import 它),是纯死代码。
+`FengYu-Api` 下存在**两套并行包**:`fan.summer.api.*`(v1,JavaFX 时代)和 `fan.summer.fengyu.api.*`(v2,当前)。经审计,v1 的 **44 个类无任何活跃引用**(运行时、plugin-markdown、v2 包都不 import 它),是纯死代码。
 
 ### 1.4 决策(用户拍板)
 
@@ -46,7 +46,7 @@ ZhiFlow 已经在 Phase 1 迁移到 Spring AI 2.0(用 `ChatModel.stream()` 驱�
 
 ### 1.5 目标(本次 Phase 1)
 
-1. **插件契约重构** —— 新 `ZhiFlowPlugin` 契约:UI 插件(后台+UI)与 AI 工具(可选,Spring AI 标准 bean)分离。
+1. **插件契约重构** —— 新 `FengYuPlugin` 契约:UI 插件(后台+UI)与 AI 工具(可选,Spring AI 标准 bean)分离。
 2. **工具编排化** —— 删除手搓层,AI 工具直接用 Spring AI 原生 `ToolCallback`;声明结构化 output schema。
 3. **Plan-and-Execute Agent 运行时** —— LLM 先规划后执行,支持审批与失败重规划。
 4. **去弃用化** —— `SpringAiCloudBackend.runToolLoop` 改 `ChatClient` + `ToolCallingAdvisor`。
@@ -74,7 +74,7 @@ ZhiFlow 已经在 Phase 1 迁移到 Spring AI 2.0(用 `ChatModel.stream()` 驱�
 └───────────────┬─────────────────────────────────────────────────┘
                 │ SSE + REST
 ┌───────────────▼─────────────────────────────────────────────────┐
-│  ZhiFlow backend (Spring Boot 4.1)                              │
+│  FengYu backend (Spring Boot 4.1)                              │
 │                                                                  │
 │  ┌───────────────────────────────────┐                          │
 │  │ AgentController / AgentRunner (新)│  Plan-and-Execute         │
@@ -96,15 +96,15 @@ ZhiFlow 已经在 Phase 1 迁移到 Spring AI 2.0(用 `ChatModel.stream()` 驱�
 │                                                                  │
 │  ┌─────────────────────────────────────────────────┐             │
 │  │ PluginRegistryService (改)                       │             │
-│  │  - 收集 ZhiFlowPlugin bean (UI 插件)             │             │
+│  │  - 收集 FengYuPlugin bean (UI 插件)             │             │
 │  │  - /api/plugins, /api/plugins/{id}/invoke        │             │
 │  │  - /plugin-ui/{id}/** 服务 ESM bundle            │             │
 │  └─────────────────────────────────────────────────┘             │
 └──────────────────────────────────────────────────────────────────┘
-                │ ZhiFlowPlugin (新契约)  +  ToolCallback (Spring AI)
+                │ FengYuPlugin (新契约)  +  ToolCallback (Spring AI)
 ┌───────────────▼─────────────────────────────────────────────────┐
 │  插件模块 (plugin-markdown 等)                                  │
-│   ├── XxxPlugin implements ZhiFlowPlugin   (UI + 后台 invoke)    │
+│   ├── XxxPlugin implements FengYuPlugin   (UI + 后台 invoke)    │
 │   └── XxxTools (可选, @Component + @Tool)  (AI 工具, 原生标准)   │
 │   └── ui-src/ → resources/ui/<id>/        (ESM 微前端, 强制)     │
 └──────────────────────────────────────────────────────────────────┘
@@ -116,7 +116,7 @@ ZhiFlow 已经在 Phase 1 迁移到 Spring AI 2.0(用 `ChatModel.stream()` 驱�
 **核心原则:**
 - **破坏性更新** —— 不保留任何兼容垫片。旧插件需按新契约重写。
 - **UI 与 AI 分离** —— 插件 = UI 插件(必有) + AI 工具 bean(可选)。两者独立,Spring AI 部分纯粹标准。
-- **Spring AI 原生** —— AI 工具直接实现 `ToolCallback`(或用 `@Tool` 注解),不经任何 ZhiFlow 自定义适配层。
+- **Spring AI 原生** —— AI 工具直接实现 `ToolCallback`(或用 `@Tool` 注解),不经任何 FengYu 自定义适配层。
 
 ---
 
@@ -124,16 +124,16 @@ ZhiFlow 已经在 Phase 1 迁移到 Spring AI 2.0(用 `ChatModel.stream()` 驱�
 
 ### 3.1 插件契约重构
 
-**目标:** 新 `ZhiFlowPlugin` 契约:UI 插件(后台逻辑 + UI 元数据)+ 可选 AI 工具(独立 Spring AI bean)。
+**目标:** 新 `FengYuPlugin` 契约:UI 插件(后台逻辑 + UI 元数据)+ 可选 AI 工具(独立 Spring AI bean)。
 
-#### 3.1.1 新 `ZhiFlowPlugin` 接口(UI 插件,必有)
+#### 3.1.1 新 `FengYuPlugin` 接口(UI 插件,必有)
 
-文件:`ZhiFlow-Api/src/main/java/fan/summer/zhiflow/api/plugin/ZhiFlowPlugin.java`
+文件:`FengYu-Api/src/main/java/fan/summer/fengyu/api/plugin/FengYuPlugin.java`
 
-> 注:重命名 `ZhiFlowPluginV2` → `ZhiFlowPlugin`(破坏性,去掉 V2 后缀,v1 同步删除)。废弃旧的 `ZhiFlowPlugin`(JavaFX createView)。
+> 注:重命名 `FengYuPluginV2` → `FengYuPlugin`(破坏性,去掉 V2 后缀,v1 同步删除)。废弃旧的 `FengYuPlugin`(JavaFX createView)。
 
 ```java
-package fan.summer.zhiflow.api.plugin;
+package fan.summer.fengyu.api.plugin;
 
 /**
  * 4.0.0 插件契约(UI 插件)。每个插件 = 后台逻辑(invoke RPC)+ 自带 UI(ESM 微前端)。
@@ -143,7 +143,7 @@ package fan.summer.zhiflow.api.plugin;
  * Spring AI 标准的 ToolCallback bean(见 3.2),不在此接口声明。
  * {@link PluginDescriptor#supportsAi()} 仅作元数据声明,供前端/Agent 发现。
  */
-public interface ZhiFlowPlugin {
+public interface FengYuPlugin {
 
     /** 插件元数据:id、显示名、分类、UI 入口、是否支持 AI 等。 */
     PluginDescriptor descriptor();
@@ -163,7 +163,7 @@ public interface ZhiFlowPlugin {
 
 #### 3.1.2 `PluginDescriptor` 增强(声明 AI 支持 + 来源)
 
-文件:`ZhiFlow-Api/src/main/java/fan/summer/zhiflow/api/plugin/PluginDescriptor.java`
+文件:`FengYu-Api/src/main/java/fan/summer/fengyu/api/plugin/PluginDescriptor.java`
 
 ```java
 public record PluginDescriptor(
@@ -193,7 +193,7 @@ public record PluginDescriptor(
 #### 3.1.3 注册与一致性校验
 
 `PluginRegistryService`(改):
-- 收集所有 `ZhiFlowPlugin` bean → 按 id 索引(现状不变)。
+- 收集所有 `FengYuPlugin` bean → 按 id 索引(现状不变)。
 - **新增校验**(启动时):`descriptor.uiEntry()` 为空 → 拒绝注册并记错(约束 3:所有插件必须有 UI)。
 - **新增 AI 一致性校验**:对每个 `supportsAi()==true` 的插件,检查是否存在归属同一模块/同 id 前缀的 `ToolCallback` bean;不一致则告警(不阻断,因为 bean 归属判定较松)。实现细节在计划阶段定。
 - 删除 `@PostConstruct registerAiTools()`(手搓层,不再需要 —— Spring AI 自己发现 `ToolCallback` bean)。
@@ -204,7 +204,7 @@ public record PluginDescriptor(
 
 **改动:**
 
-1. **`ToolCategory` 枚举新增 `AI` 分类**(文件 `ZhiFlow-Api/.../api/ToolCategory.java`):
+1. **`ToolCategory` 枚举新增 `AI` 分类**(文件 `FengYu-Api/.../api/ToolCategory.java`):
 ```java
 DEV("dev", "category.dev"),       // i18n key 改为统一前缀(见下)
 TEXT("text", "category.text"),
@@ -233,7 +233,7 @@ OTHER("other", "category.other");
 
 #### 3.1.5 来源(`PluginSource`)—— 官方/第三方
 
-**新增枚举:** 文件 `ZhiFlow-Api/src/main/java/fan/summer/zhiflow/api/plugin/PluginSource.java`
+**新增枚举:** 文件 `FengYu-Api/src/main/java/fan/summer/fengyu/api/plugin/PluginSource.java`
 ```java
 public enum PluginSource {
     OFFICIAL("official", "source.official"),       // 官方插件(本仓 + 官方插件仓)
@@ -255,7 +255,7 @@ public enum PluginSource {
 
 ### 3.2 AI 工具:Spring AI 2.0 原生实现
 
-**目标:** 插件的 AI 能力直接用 Spring AI 标准,不经 ZhiFlow 适配层。这是约束 2 的核心。
+**目标:** 插件的 AI 能力直接用 Spring AI 标准,不经 FengYu 适配层。这是约束 2 的核心。
 
 #### 3.2.1 AI 工具的两种实现形态(插件作者任选)
 
@@ -278,7 +278,7 @@ public class MarkdownAiTools {
 }
 ```
 
-Spring AI 2.0 自动发现 `@Tool` 方法 → 构造 `MethodToolCallback` → 注册。**零 ZhiFlow 框架代码。**
+Spring AI 2.0 自动发现 `@Tool` 方法 → 构造 `MethodToolCallback` → 注册。**零 FengYu 框架代码。**
 
 **形态 B:实现 `ToolCallback`(更细控制)**
 
@@ -308,7 +308,7 @@ public class HashTool implements ToolCallback {
 
 - Spring AI 2.0 自动收集上下文里所有 `ToolCallback` bean + `@Tool` 方法(经 `MethodToolCallback` 包装)。
 - 用 `ToolCallbackResolver` bean 做按名解析(供 `ToolCallingManager` / Agent / 聊天循环用)。
-- ZhiFlow 提供一个 `@Configuration` 把可用工具汇总(若需按 mode/visibility 过滤,在此处加 advisor 或自定义 resolver)。
+- FengYu 提供一个 `@Configuration` 把可用工具汇总(若需按 mode/visibility 过滤,在此处加 advisor 或自定义 resolver)。
 - **删除**:`AiServiceProvider` 的工具注册表部分(`registerTool`/`getTool`/`getTools` 等)。后端模式管理部分拆出独立 bean(见 3.5)。
 
 #### 3.2.4 工具可见性(mode 过滤)的迁移
@@ -344,7 +344,7 @@ public class AgentRun {
 
 #### 3.3.2 `AgentRunner` 核心流程
 
-文件:`ZhiFlow/src/main/java/fan/summer/zhiflow/ai/agent/AgentRunner.java`
+文件:`FengYu/src/main/java/fan/summer/fengyu/ai/agent/AgentRunner.java`
 
 ```
 run(goal, config):
@@ -391,7 +391,7 @@ run(goal, config):
 
 **目标:** `SpringAiCloudBackend.runToolLoop`(已弃用)改 `ChatClient` + `ToolCallingAdvisor`。
 
-文件:`ZhiFlow/.../ai/service/SpringAiCloudBackend.java`
+文件:`FengYu/.../ai/service/SpringAiCloudBackend.java`
 - `ChatClient.builder(chatModel).defaultAdvisors(ToolCallingAdvisor.builder().build()).build()` 替代裸 `chatModel.stream()` + 手动 loop。
 - 工具经 `ChatClient.prompt().tools(toolCallbacks)` 注入(Spring AI 自动收集的 bean)。
 - 保留 `AiStreamCallback` 的 `onToken`/`onToolCall`/`onToolResult` 事件(适配 `ChatClient` 响应式流)。
@@ -404,7 +404,7 @@ run(goal, config):
 `AiServiceProvider` 混了两职责:工具注册表(删)+ 后端模式管理(留)。
 
 **保留部分**拆为独立 Spring bean:
-文件:`ZhiFlow/.../ai/service/AiModeService.java`(新,`@Component`)
+文件:`FengYu/.../ai/service/AiModeService.java`(新,`@Component`)
 
 ```java
 @Component
@@ -426,7 +426,7 @@ public class AiModeService {
 
 #### 3.6.1 REST / SSE 端点
 
-文件:`ZhiFlow/.../web/controller/AgentController.java`(新)
+文件:`FengYu/.../web/controller/AgentController.java`(新)
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -529,19 +529,19 @@ interface PluginContext {
 
 | 范围 | 内容 | 理由 |
 |---|---|---|
-| v1 包 | `ZhiFlow-Api/.../fan/summer/api/`(44 类)+ 对应测试 | 死代码,零活跃引用(已审计) |
-| 手搓工具层 | `fan.summer.zhiflow.api.ai.AiTool` / `AiToolParam` / `AiToolResult` / `AiToolCall` | 由 Spring AI 原生 `ToolCallback` 取代 |
-| 手搓执行层 | `ZhiFlow/.../ai/ToolExecutor` | 由 `ToolCallingManager` 取代 |
-| 手搓 schema | `ZhiFlow/.../ai/adapter/ToolSchemaJson` | 由 `JsonSchemaGenerator` 取代 |
-| 手搓适配器 | `ZhiFlow/.../ai/adapter/AiToolCallback` | 不再需要(插件直接实现 ToolCallback) |
+| v1 包 | `FengYu-Api/.../fan/summer/api/`(44 类)+ 对应测试 | 死代码,零活跃引用(已审计) |
+| 手搓工具层 | `fan.summer.fengyu.api.ai.AiTool` / `AiToolParam` / `AiToolResult` / `AiToolCall` | 由 Spring AI 原生 `ToolCallback` 取代 |
+| 手搓执行层 | `FengYu/.../ai/ToolExecutor` | 由 `ToolCallingManager` 取代 |
+| 手搓 schema | `FengYu/.../ai/adapter/ToolSchemaJson` | 由 `JsonSchemaGenerator` 取代 |
+| 手搓适配器 | `FengYu/.../ai/adapter/AiToolCallback` | 不再需要(插件直接实现 ToolCallback) |
 | 手搓注册表 | `AiServiceProvider` 的工具部分 | 由 Spring AI bean 发现取代 |
-| 旧插件契约 | `fan.summer.zhiflow.api.ZhiFlowPlugin`(JavaFX createView) | 由新 `plugin.ZhiFlowPlugin` 取代 |
+| 旧插件契约 | `fan.summer.fengyu.api.FengYuPlugin`(JavaFX createView) | 由新 `plugin.FengYuPlugin` 取代 |
 | 旧 `ToolType` 枚举 | `BUILTIN`/`PLUGIN`(V1 概念,V2 本就无) | 由新 `PluginSource`(OFFICIAL/THIRD_PARTY)取代 |
 | 旧不一致 i18n key | `sidebar.label.*`/`detail.category.*`/`store.online.category.*`/`detail.tag.*` | 统一为 `category.*`/`source.*`,前端 vue-i18n 接管 |
 | 4 个内置 AI tool | `BuiltinJsonFormatTool` 等(本就未注册) | 改写为新 `@Tool` 形态或删 |
 
 **保留改造:**
-- `PluginDescriptor`(加 `supportsAi` + `source`)、`ToolCategory`(加 `AI`、改 labelKey 前缀)、`PluginRegistryService`(去 `registerAiTools` + `uiEntry`/`source` 校验)、`ZhiFlowPluginV2` → 重命名 `ZhiFlowPlugin`。
+- `PluginDescriptor`(加 `supportsAi` + `source`)、`ToolCategory`(加 `AI`、改 labelKey 前缀)、`PluginRegistryService`(去 `registerAiTools` + `uiEntry`/`source` 校验)、`FengYuPluginV2` → 重命名 `FengYuPlugin`。
 - 新增 `PluginSource` 枚举。
 - `AiChatMessage` / `ChatBackend` / `AiStreamCallback` / `AiServiceException`(聊天契约,仍需要)。
 
@@ -574,7 +574,7 @@ interface PluginContext {
 ## 5. 向后兼容性(无)
 
 本次为破坏性更新,**不保证任何向后兼容**:
-- 旧 3.x 插件(实现旧 `ZhiFlowPlugin` JavaFX 契约)需按新契约重写:后台 `invoke` + ESM 微前端 UI +(可选)`@Tool` AI。
+- 旧 3.x 插件(实现旧 `FengYuPlugin` JavaFX 契约)需按新契约重写:后台 `invoke` + ESM 微前端 UI +(可选)`@Tool` AI。
 - 旧 `AiTool` 实现改写为 `@Tool` 方法或 `ToolCallback` bean。
 - 本仓内 `MarkdownPlugin`、4 个内置 tool 随本次改造。
 - 官方插件仓(Excel/PDF/Email/Browser)需同步迁移(另行计划,不在本次范围)。
@@ -584,7 +584,7 @@ interface PluginContext {
 ## 6. 测试策略
 
 - **单元测试:**
-  - 新 `ZhiFlowPlugin` 契约:`descriptor()`/`invoke()`。
+  - 新 `FengYuPlugin` 契约:`descriptor()`/`invoke()`。
   - `@Tool` 方法被 Spring AI 正确发现并生成 schema(spike 验证 + 测试)。
   - `AgentRunner` 状态机(PLANNING→APPROVAL→EXECUTING→COMPLETE),mock `ToolCallingManager` + mock `ChatClient`。
   - Re-planning 容错(失败 3 次 → FAILED)。
@@ -626,9 +626,9 @@ interface PluginContext {
 
 ## 8. 分阶段交付建议(供实现计划参考)
 
-1. **删除死代码** — `fan.summer.api.*`(v1)+ 旧 `ZhiFlowPlugin` JavaFX 契约 + `ToolType`。验证编译。
+1. **删除死代码** — `fan.summer.api.*`(v1)+ 旧 `FengYuPlugin` JavaFX 契约 + `ToolType`。验证编译。
 2. **删除手搓工具层** — `AiTool`/`AiToolParam`/`AiToolResult`/`ToolExecutor`/`ToolSchemaJson`/`AiToolCallback`。拆 `AiServiceProvider` → `AiModeService`。适配所有调用点。
-3. **新插件契约** — `ZhiFlowPlugin`(重命名)+ `PluginDescriptor`(加 `supportsAi` + `source`)+ `ToolCategory`(加 `AI`、改 labelKey)+ `PluginSource`(新)+ `uiEntry`/`source` 校验。改造 `MarkdownPlugin`、4 内置 tool 为新形态。
+3. **新插件契约** — `FengYuPlugin`(重命名)+ `PluginDescriptor`(加 `supportsAi` + `source`)+ `ToolCategory`(加 `AI`、改 labelKey)+ `PluginSource`(新)+ `uiEntry`/`source` 校验。改造 `MarkdownPlugin`、4 内置 tool 为新形态。
 4. **Spring AI 工具接入** — `@Tool`/`ToolCallback` bean 发现 + `ToolCallbackResolver`。spike 验证 schema 生成。
 5. **去弃用化聊天循环** — `SpringAiCloudBackend` → `ChatClient` + `ToolCallingAdvisor`。spike 流式 + 工具事件。
 6. **Agent 运行时** — `AgentRunner` + 数据模型 + `AgentController` + SSE。
@@ -644,5 +644,5 @@ interface PluginContext {
 
 - [Spring AI Tool Calling Reference](https://docs.spring.io/spring-ai/reference/api/tools.html)
 - [Spring AI Composable Tool Architecture (2.0)](https://spring.io/blog/2026/06/15/spring-ai-composable-tool-calling)
-- 现有代码:`ZhiFlow/.../ai/service/SpringAiCloudBackend.java:172`(弃用的 runToolLoop)、`ZhiFlow/.../ai/ToolExecutor.java`、`ZhiFlow-Api/.../api/ai/AiTool.java:28`、`ZhiFlow-Api/.../api/plugin/ZhiFlowPluginV2.java:15`、`plugin-markdown/.../MarkdownPlugin.java`
+- 现有代码:`FengYu/.../ai/service/SpringAiCloudBackend.java:172`(弃用的 runToolLoop)、`FengYu/.../ai/ToolExecutor.java`、`FengYu-Api/.../api/ai/AiTool.java:28`、`FengYu-Api/.../api/plugin/FengYuPluginV2.java:15`、`plugin-markdown/.../MarkdownPlugin.java`
 - 前序迁移:`docs/superpowers/specs/2026-07-06-phase1-ai-strangler-spring-ai`(LangChain4j→Spring AI)

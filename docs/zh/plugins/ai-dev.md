@@ -1,6 +1,6 @@
 # AI 辅助插件开发
 
-ZhiFlow 提供了一个 **Agent Skills** 包，把 AI 编程助手变成一位 ZhiFlow 插件专家。它熟悉
+FengYu 提供了一个 **Agent Skills** 包，把 AI 编程助手变成一位 FengYu 插件专家。它熟悉
 真实的 `SwissKitJPlugin` 契约（3.2.0，共 16 个方法）、SPI 加载机制、主题/组件体系，以及那些反复
 出现的陷阱——因此它产出的插件**首次就能干净加载、主题渲染正确**，并且遵循
 [UI 设计系统](/zh/ui-design/README.md)，而不是自己另起一套外观。
@@ -15,7 +15,7 @@ ZhiFlow 提供了一个 **Agent Skills** 包，把 AI 编程助手变成一位 Z
 
 - 用**单一类**直接实现 `SwissKitJPlugin`（11 个内置工具都用的单类模式），而非 `*PluginUi` 包装类。
 - 用正确的签名和返回值，接好 7 个必需 + 9 个默认方法。
-- 配置 `META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin` 和 `maven-shade-plugin` 的
+- 配置 `META-INF/services/fan.summer.fengyu.api.SwissKitJPlugin` 和 `maven-shade-plugin` 的
   `ServicesResourceTransformer`，确保插件真的能被加载。
 - 用 `-sk-*` token / `.sk-*` 类来上色（绝不内联十六进制），与
   [设计规范](/zh/ui-design/01-design-system.md) 一致——字号、间距、圆角、动效、无障碍。
@@ -41,10 +41,10 @@ ZhiFlow 提供了一个 **Agent Skills** 包，把 AI 编程助手变成一位 Z
 ```bash
 # 在你的插件项目根目录
 mkdir -p .claude/skills
-svn export https://github.com/MuskStark/ZhiFlow/trunk/.agents/skills/zhiflow-plugin-dev \
-  .claude/skills/zhiflow-plugin-dev
-git add .claude/skills/zhiflow-plugin-dev
-git commit -m "chore: add zhiflow-plugin-dev skill"
+svn export https://github.com/MuskStark/FengYu/trunk/.agents/skills/fengyu-plugin-dev \
+  .claude/skills/fengyu-plugin-dev
+git add .claude/skills/fengyu-plugin-dev
+git commit -m "chore: add fengyu-plugin-dev skill"
 ```
 
 **ZCode** 同样做法，目录换成 `.agents/skills/`。如果插件仓库同时有两边贡献者，可以**两份都放**
@@ -57,33 +57,33 @@ git commit -m "chore: add zhiflow-plugin-dev skill"
 ```bash
 # Claude Code
 mkdir -p ~/.claude/skills
-svn export https://github.com/MuskStark/ZhiFlow/trunk/.agents/skills/zhiflow-plugin-dev \
-  ~/.claude/skills/zhiflow-plugin-dev
+svn export https://github.com/MuskStark/FengYu/trunk/.agents/skills/fengyu-plugin-dev \
+  ~/.claude/skills/fengyu-plugin-dev
 
 # ZCode
 mkdir -p ~/.agents/skills
-svn export https://github.com/MuskStark/ZhiFlow/trunk/.agents/skills/zhiflow-plugin-dev \
-  ~/.agents/skills/zhiflow-plugin-dev
+svn export https://github.com/MuskStark/FengYu/trunk/.agents/skills/fengyu-plugin-dev \
+  ~/.agents/skills/fengyu-plugin-dev
 ```
 
 完整安装细节（两种助手、发现优先级、同步与更新），见技能自带的
-[`INSTALL.md`](https://github.com/MuskStark/ZhiFlow/blob/main/.agents/skills/zhiflow-plugin-dev/INSTALL.md)。
+[`INSTALL.md`](https://github.com/MuskStark/FengYu/blob/main/.agents/skills/fengyu-plugin-dev/INSTALL.md)。
 
 ## 使用
 
 装好后，直接在 AI 工具里描述你要什么——技能会按意图自动触发。例如：
 
-- "帮我写一个 ZhiFlow 插件，把文本转成二维码"
+- "帮我写一个 FengYu 插件，把文本转成二维码"
 - "给我的插件加一个格式化 JSON 的 AI 工具"
 - "我的插件能加载，但 UI 显示的是原始 i18n key"
 - "搭一个 CSV 排序插件的脚手架"
 
-也可以用 `/zhiflow-plugin-dev <你的请求>` 强制加载。
+也可以用 `/fengyu-plugin-dev <你的请求>` 强制加载。
 
 ## 它住在哪里
 
 - **源码 / 权威副本：**
-  [`MuskStark/ZhiFlow/.agents/skills/zhiflow-plugin-dev/`](https://github.com/MuskStark/ZhiFlow/tree/main/.agents/skills/zhiflow-plugin-dev)
+  [`MuskStark/FengYu/.agents/skills/fengyu-plugin-dev/`](https://github.com/MuskStark/FengYu/tree/main/.agents/skills/fengyu-plugin-dev)
 - 目标版本为 **API 3.2.0** 和当前 `docs/ui-design/` 规范。当 API 或规范发布破坏性变更时，从主仓库
   重新同步即可。
 

@@ -1,6 +1,6 @@
 # Code Reviewer Subagent
 
-Specialized agent for reviewing code changes in this JavaFX/ZhiFlow codebase.
+Specialized agent for reviewing code changes in this JavaFX/FengYu codebase.
 
 ## Usage
 Spawn via `Agent` tool with `subagent_type: code-reviewer`
@@ -17,14 +17,14 @@ This codebase has 5 documented JavaFX layout pitfalls (see CLAUDE.md section "Ja
 
 ### AI Tool Calling Refactors
 Recent commits refactored AI services to use shared `Gson`/`JsonHelper`, `ToolExecutor`, and `ToolSchemaBuilder`. Ensure:
-- JSON parsing uses `fan.summer.zhiflow.api.json.JsonHelper`, not old `JsonBuilder`/`JsonParser`
+- JSON parsing uses `fan.summer.fengyu.api.json.JsonHelper`, not old `JsonBuilder`/`JsonParser`
 - Tool schemas are generated via `ToolSchemaBuilder`
 - Tool execution goes through `ToolExecutor`
 
 ### Maven Multi-Module
-- `ZhiFlow-Api` must be built/installed before `ZhiFlow` (dependency order)
+- `FengYu-Api` must be built/installed before `FengYu` (dependency order)
 - Each module has standalone POM — no parent dependency
 
 ### Glassmorphism Theming
-- Three CSS layers: `zhiflow-common.css` (shared), `shell.css` (app-shell), `builtin.css` (built-in tools)
+- Three CSS layers: `fengyu-common.css` (shared), `shell.css` (app-shell), `builtin.css` (built-in tools)
 - Plugin `createView()` results inherit all three stylesheets automatically

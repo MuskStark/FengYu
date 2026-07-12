@@ -1,6 +1,6 @@
 ---
 name: create-builtin-tool
-description: Use when creating a new built-in tool for ZhiFlow. All built-in tools must implement both the visual UI (ZhiFlowPlugin) and AI-callable interface (AiTool).
+description: Use when creating a new built-in tool for FengYu. All built-in tools must implement both the visual UI (FengYuPlugin) and AI-callable interface (AiTool).
 disable-model-invocation: true
 ---
 
@@ -21,13 +21,13 @@ Every built-in tool has **two halves**:
 
 | Half | Interface | Location | Purpose |
 |------|-----------|----------|---------|
-| **UI Plugin** | `ZhiFlowPlugin` | `buildintool/<toolname>/<Name>Plugin.java` | Visual JavaFX interface shown in the app |
-| **AI Tool(s)** | `AiTool` | `buildintool/ai/<Name>AiTool.java` | Callable by the AI chat (ZhiFlowClaw) |
+| **UI Plugin** | `FengYuPlugin` | `buildintool/<toolname>/<Name>Plugin.java` | Visual JavaFX interface shown in the app |
+| **AI Tool(s)** | `AiTool` | `buildintool/ai/<Name>AiTool.java` | Callable by the AI chat (FengYuClaw) |
 
 Both halves share state via a config/field object held by the Plugin instance. AI tools receive the plugin reference in their constructor.
 
-> **4.0.0 web/UI note:** The JavaFX `ZhiFlowPlugin` + `createView()` pattern below is the
-> historical v3.x builtin-tool shape, retained for the still-JavaFX `ZhiFlow-Api` preview classes.
+> **4.0.0 web/UI note:** The JavaFX `FengYuPlugin` + `createView()` pattern below is the
+> historical v3.x builtin-tool shape, retained for the still-JavaFX `FengYu-Api` preview classes.
 > As of 4.0.0 the host is a **headless web app** and a builtin tool's web/UI side is a **Vue 3
 > micro-frontend** that renders **Vuetify MD3** components — no separate UI library. The host
 > injects its Vuetify instance via `PluginContext.vuetify`; the MF **must** call
@@ -40,7 +40,7 @@ Both halves share state via a config/field object held by the Plugin instance. A
 ### Checklist
 
 ```
-CREATE  buildintool/<toolname>/<Name>Plugin.java    ← ZhiFlowPlugin impl (UI + aiTools() override)
+CREATE  buildintool/<toolname>/<Name>Plugin.java    ← FengYuPlugin impl (UI + aiTools() override)
 CREATE  buildintool/<toolname>/<Name>Config.java    ← shared state POJO (if needed)
 CREATE  buildintool/<toolname>/<Name>Worker.java    ← core logic (if needed)
 CREATE  buildintool/ai/<Name>AiTool.java            ← AiTool impl (at least one)
@@ -51,20 +51,20 @@ OPT     resources/init.sql                          ← DB table (if tool uses H
 OPT     resources/mapper/<name>/                    ← MyBatis mapper (if tool uses H2)
 ```
 
-## 1. UI Plugin — ZhiFlowPlugin Implementation
+## 1. UI Plugin — FengYuPlugin Implementation
 
 ```java
-package fan.summer.zhiflow.buildintool.<toolname>;
+package fan.summer.fengyu.buildintool.<toolname>;
 
-import fan.summer.zhiflow.api.*;
-import fan.summer.zhiflow.api.i18n.I18n;
-import fan.summer.zhiflow.api.log.LoggerFactory;
-import fan.summer.zhiflow.api.log.PluginLogger;
+import fan.summer.fengyu.api.*;
+import fan.summer.fengyu.api.i18n.I18n;
+import fan.summer.fengyu.api.log.LoggerFactory;
+import fan.summer.fengyu.api.log.PluginLogger;
 import javafx.scene.Node;
 import javafx.scene.layout.VBox;
 import javafx.geometry.Insets;
 
-public class <Name>Plugin implements ZhiFlowPlugin {
+public class <Name>Plugin implements FengYuPlugin {
 
     private static final PluginLogger log = LoggerFactory.getLogger(<Name>Plugin.class);
     private Node view;
@@ -72,7 +72,7 @@ public class <Name>Plugin implements ZhiFlowPlugin {
 
     // ── Metadata ──────────────────────────────────────
 
-    @Override public String getId()          { return "fan.summer.zhiflow.buildin.<toolname>"; }
+    @Override public String getId()          { return "fan.summer.fengyu.buildin.<toolname>"; }
     @Override public String getName()        { return I18n.get("builtin.<toolname>.name"); }
     @Override public String getDescription() { return I18n.get("builtin.<toolname>.desc"); }
     @Override public ToolCategory getCategory()    { return ToolCategory.<CATEGORY>; }
@@ -103,7 +103,7 @@ public class <Name>Plugin implements ZhiFlowPlugin {
 ```
 
 **Metadata rules:**
-- `getId()`: must follow `fan.summer.zhiflow.buildin.<toolname>` pattern
+- `getId()`: must follow `fan.summer.fengyu.buildin.<toolname>` pattern
 - `getMdiIcon()`: pick from [pictogrammers.com/library/mdi](https://pictogrammers.com/library/mdi/) — no `mdi-` prefix
 - `getIconStyle()`: pick from `BLUE, PURPLE, TEAL, AMBER, RED, PINK, GRAY`
 - `getType()`: always `ToolType.BUILTIN`
@@ -114,12 +114,12 @@ public class <Name>Plugin implements ZhiFlowPlugin {
 ### Simple tool (no plugin state needed)
 
 ```java
-package fan.summer.zhiflow.buildintool.ai;
+package fan.summer.fengyu.buildintool.ai;
 
-import fan.summer.zhiflow.api.ai.*;
-import fan.summer.zhiflow.ai.util.JsonHelper;
-import fan.summer.zhiflow.api.log.LoggerFactory;
-import fan.summer.zhiflow.api.log.PluginLogger;
+import fan.summer.fengyu.api.ai.*;
+import fan.summer.fengyu.ai.util.JsonHelper;
+import fan.summer.fengyu.api.log.LoggerFactory;
+import fan.summer.fengyu.api.log.PluginLogger;
 
 import java.util.*;
 
@@ -184,7 +184,7 @@ Add the new plugin to the `List.of(...)` in `register()`:
 
 ```java
 // In BuiltinToolRegistrar.register():
-List<ZhiFlowPlugin> builtins = List.of(
+List<FengYuPlugin> builtins = List.of(
     // ... existing tools ...
     new <Name>Plugin()    // ← add here
 );
@@ -197,7 +197,7 @@ List<ZhiFlowPlugin> builtins = List.of(
 Each plugin self-declares its AI tools by overriding `aiTools()`:
 
 ```java
-public class <Name>Plugin implements ZhiFlowPlugin {
+public class <Name>Plugin implements FengYuPlugin {
     private final <Name>Config config = new <Name>Config();
 
     @Override
@@ -212,7 +212,7 @@ public class <Name>Plugin implements ZhiFlowPlugin {
 }
 ```
 
-The registry handles registration on add and unregistration on remove (including hot-reload). For standalone UI-less tools (no visual plugin), host them on a minimal `ZhiFlowPlugin` whose `createView()` returns an empty pane — see `BrowserAutomatePlugin` as a template.
+The registry handles registration on add and unregistration on remove (including hot-reload). For standalone UI-less tools (no visual plugin), host them on a minimal `FengYuPlugin` whose `createView()` returns an empty pane — see `BrowserAutomatePlugin` as a template.
 
 #### Cloud / local capability declaration
 
@@ -248,7 +248,7 @@ All user-visible strings must use `I18n.get("key")`. Never hardcode text in Java
 
 ## 5. Multi-step Wizard UI (Optional)
 
-For tools with a multi-step workflow, use `StepWizard` from `ZhiFlow-Api`:
+For tools with a multi-step workflow, use `StepWizard` from `FengYu-Api`:
 
 ```java
 StepWizard wizard = new StepWizard();
@@ -292,7 +292,7 @@ Before completing any built-in tool UI, verify:
 | Mistake | Fix |
 |---------|-----|
 | Forgetting `ToolType.BUILTIN` | Always return `ToolType.BUILTIN` from `getType()` |
-| Using SLF4J directly | Use `fan.summer.zhiflow.api.log.LoggerFactory.getLogger()` |
+| Using SLF4J directly | Use `fan.summer.fengyu.api.log.LoggerFactory.getLogger()` |
 | Hardcoding user-visible strings | Use `I18n.get("key")` for everything |
 | Not making the tool AI-callable | Every built-in tool MUST have at least one `AiTool` implementation |
 | AI tool not registered | Override `aiTools()` on the plugin class — the registry auto-registers them when the plugin is added (v3.1.0+). No separate registrar exists. |

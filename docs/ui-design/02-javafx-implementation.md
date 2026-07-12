@@ -1,6 +1,6 @@
 # 02 · JavaFX Implementation Guide
 
-> **Role:** This is the **developer / AI playbook** for turning ZhiFlow UI design into running JavaFX code.
+> **Role:** This is the **developer / AI playbook** for turning FengYu UI design into running JavaFX code.
 > It defines the plugin contract you must implement, the CSS class-naming convention every node obeys,
 > and a copy-paste plugin skeleton. Later docs — especially [03 Component Library](03-component-library.md) —
 > link back here for the [`#css-naming`](#css-naming) convention and the [`#plugin-skeleton`](#plugin-skeleton) template.
@@ -8,8 +8,8 @@
 | | |
 |---|---|
 | **Doc type** | Plugin contract + implementation patterns |
-| **Audience** | Plugin authors, AI code generators, anyone who builds a ZhiFlow tool |
-| **Source of truth** | [`ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) |
+| **Audience** | Plugin authors, AI code generators, anyone who builds a FengYu tool |
+| **Source of truth** | [`FengYu-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`](../../FengYu-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) |
 | **Companion plugin guide** | [`docs/plugins/ui.md`](../plugins/ui.md) (bilingual, layout pitfalls + StepWizard) |
 | **Related** | [01 Design System](01-design-system.md) · [05 Theme & Color System](05-theme-color-system.md) · [06 Icon System](06-icon-system.md) |
 
@@ -20,7 +20,7 @@
 1. [Overview](#1-overview)
 2. [Design Principles](#2-design-principles)
 3. [Spec Tables](#3-spec-tables)
-   - [3.1 `SwissKitJPlugin` Method Contract](#zhiflowjplugin-method-contract)
+   - [3.1 `SwissKitJPlugin` Method Contract](#fengyujplugin-method-contract)
    - [3.2 CSS Class Naming Convention](#css-naming)
    - [3.3 Layout-Container Selection Guide](#layout-container-selection-guide)
 4. [JavaFX Implementation Template](#4-javafx-implementation-template)
@@ -37,16 +37,16 @@
 
 ## 1. Overview
 
-ZhiFlow is a **JavaFX 21** desktop toolbox. Two architectural decisions shape everything in this document:
+FengYu is a **JavaFX 21** desktop toolbox. Two architectural decisions shape everything in this document:
 
 1. **The UI is built entirely in Java code — there is NO FXML.** Every screen is assembled from
    `javafx.scene.*` nodes in `createView()`. There is no `.fxml` file, no `FXMLLoader`, no controller
    wiring. This keeps plugins self-contained, refactor-friendly, and dependency-light (an external
-   plugin JAR needs only `ZhiFlow-Api` on its classpath).
+   plugin JAR needs only `FengYu-Api` on its classpath).
 
 2. **Theming happens entirely through CSS looked-up colors.** No node sets a color inline. The dual-theme
    (dark/light) palette is a set of 14 `-sk-*` tokens declared once in
-   [`zhiflow-common.css`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css), switched by a
+   [`fengyu-common.css`](../../FengYu-Api/src/main/resources/css/fengyu-common.css), switched by a
    single class on the scene root. The token values, contrast matrix, and the full theme lifecycle live
    in [05 Theme & Color System](05-theme-color-system.md) — **this doc does not duplicate color values.**
 
@@ -60,11 +60,11 @@ ZhiFlow is a **JavaFX 21** desktop toolbox. Two architectural decisions shape ev
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                       HOST APPLICATION (ZhiFlow)                        │
+│                       HOST APPLICATION (FengYu)                        │
 │                                                                          │
 │   ┌─────────────┐   discovers   ┌──────────────────────────────────────┐ │
 │   │  ServiceLoader│ ───────────► │  plugins/*.jar                       │ │
-│   │  META-INF/   │              │  └─ fan.summer.zhiflow.api.SwissKitJPlugin    │ │
+│   │  META-INF/   │              │  └─ fan.summer.fengyu.api.SwissKitJPlugin    │ │
 │   │  services/   │              │     (one class implements interface)  │ │
 │   └─────────────┘              └──────────────────────────────────────┘ │
 │           │                              │                               │
@@ -80,10 +80,10 @@ ZhiFlow is a **JavaFX 21** desktop toolbox. Two architectural decisions shape ev
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **The contract** — `SwissKitJPlugin` (16 methods; [§3.1](#zhiflowjplugin-method-contract)).
+- **The contract** — `SwissKitJPlugin` (16 methods; [§3.1](#fengyujplugin-method-contract)).
 - **The host** — calls metadata methods to build the sidebar/search, calls `createView()` once and caches
   the `Node`, embeds it in the content `StackPane`.
-- **The stylesheet** — `zhiflow-common.css`, loaded by the host onto the main scene. Your embedded view
+- **The stylesheet** — `fengyu-common.css`, loaded by the host onto the main scene. Your embedded view
   inherits it automatically; a standalone window must opt in via [`Themes.applyTo`](#43-theming-a-standalone-stage--themesapplyto).
 - **The class taxonomy** — `.sk-*` for shared/component classes (from common.css), unprefixed shell
   classes (`nav-item`, `tool-card`, …), status modifiers ([§3.2](#css-naming)).
@@ -131,12 +131,12 @@ every subsequent activation. Implications:
 - **Do not** rebuild the view from scratch on every `onActivate()`. Build once in `createView()`, hold field
   references to the controls you need to mutate, and refresh *content* (not structure) in lifecycle hooks.
 - It is fine (and common) to lazily build the view graph inside `createView()` itself on first call.
-- If you need a multi-step workflow, use `fan.summer.zhiflow.api.component.StepWizard` (see
+- If you need a multi-step workflow, use `fan.summer.fengyu.api.component.StepWizard` (see
   [`docs/plugins/ui.md`](../plugins/ui.md)) instead of swapping whole trees.
 
 ### P5 — CSS class naming follows the `sk-` prefix convention
 
-Shared component/utility classes from `zhiflow-common.css` are prefixed **`.sk-`** (e.g. `.sk-field`,
+Shared component/utility classes from `fengyu-common.css` are prefixed **`.sk-`** (e.g. `.sk-field`,
 `.sk-btn-primary`). Shell-chrome classes (sidebar, tool cards, status bar) are **unprefixed** (`nav-item`,
 `tool-card`). The full taxonomy, the v3.2.0 `.glass-*`→`.sk-*` migration, and the status-modifier convention
 are in [§3.2](#css-naming).
@@ -146,11 +146,11 @@ are in [§3.2](#css-naming).
 ## 3. Spec Tables
 
 ### 3.1 `SwissKitJPlugin` Method Contract
-<span id="zhiflowjplugin-method-contract"></span>
+<span id="fengyujplugin-method-contract"></span>
 
 The interface declares **16 methods**: **7 required** (no default), **9 with sensible defaults**. Every
 signature below is reproduced **verbatim** from
-[`SwissKitJPlugin.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) — copy them
+[`SwissKitJPlugin.java`](../../FengYu-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) — copy them
 as-is; do not paraphrase return types or add parameters.
 
 #### Required methods (must implement — no default)
@@ -192,9 +192,9 @@ IconStyle     = BLUE | PURPLE | TEAL | AMBER | RED | PINK | GRAY
                 each maps to a CSS class (ic-blue … ic-gray) + accent Color
 ```
 
-- `ToolCategory` — [`ToolCategory.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/ToolCategory.java)
-- `ToolType` — [`ToolType.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/ToolType.java)
-- `IconStyle` — [`IconStyle.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java) (icon-tile
+- `ToolCategory` — [`ToolCategory.java`](../../FengYu-Api/src/main/java/fan/summer/api/ToolCategory.java)
+- `ToolType` — [`ToolType.java`](../../FengYu-Api/src/main/java/fan/summer/api/ToolType.java)
+- `IconStyle` — [`IconStyle.java`](../../FengYu-Api/src/main/java/fan/summer/api/IconStyle.java) (icon-tile
   styling lives in `shell.css`; see [06 Icon System](06-icon-system.md)).
 
 ---
@@ -202,19 +202,19 @@ IconStyle     = BLUE | PURPLE | TEAL | AMBER | RED | PINK | GRAY
 ### CSS Class Naming Convention
 <span id="css-naming"></span>
 
-Every node in the ZhiFlow scene graph carries zero or more style classes drawn from three namespaces.
+Every node in the FengYu scene graph carries zero or more style classes drawn from three namespaces.
 Knowing which namespace a class belongs to tells you who owns it and whether it's safe for plugins to use.
 
 #### The three namespaces
 
 | Namespace | Prefix | Owner | Examples | Safe for plugins? |
 |---|---|---|---|---|
-| **Shared / component classes** | `.sk-` | `zhiflow-common.css` (ships in the API JAR) | `.sk-field`, `.sk-surface`, `.sk-btn-primary`, `.sk-table`, `.sk-dialog`, `.sk-t1` | ✅ Yes — this is the plugin-facing vocabulary |
+| **Shared / component classes** | `.sk-` | `fengyu-common.css` (ships in the API JAR) | `.sk-field`, `.sk-surface`, `.sk-btn-primary`, `.sk-table`, `.sk-dialog`, `.sk-t1` | ✅ Yes — this is the plugin-facing vocabulary |
 | **Shell-chrome classes** | *(unprefixed)* | `shell.css` (host application only) | `nav-item`, `tool-card`, `search-bar`, `statusbar`, `ic-blue` | ⚠️ Host-owned; plugins should not rely on these (they are for the sidebar/cards/status bar, not tool content) |
 | **Status modifiers** | `is-*` / state | Component classes via `:hover`/`:focused` or explicit toggle | `.sk-notif-success`, `.sk-notif-warning`, `.sk-notif-danger` | ✅ Yes, for semantic status |
 
 > **BEM-lite.** The `.sk-` namespace follows a flat, hyphen-separated "BEM-lite" scheme:
-> `sk-` + `block` + optional `__element` or `-modifier`. In practice ZhiFlow keeps it flat
+> `sk-` + `block` + optional `__element` or `-modifier`. In practice FengYu keeps it flat
 > (`.sk-btn-primary`, `.sk-field-label`) rather than the full `block__elem--mod` notation. The rule of thumb:
 > **one concept, one class, `sk-` prefix, hyphenated words.**
 
@@ -233,7 +233,7 @@ These bind a `-sk-*` token to a CSS property so it resolves and re-resolves on t
 
 #### Composite component classes (prefer these over hand-rolled CSS)
 
-For richer controls, `zhiflow-common.css` ships ready-made classes bundling several tokens + geometry.
+For richer controls, `fengyu-common.css` ships ready-made classes bundling several tokens + geometry.
 **Use these instead of assembling your own** — full specs are in [03 Component Library](03-component-library.md):
 
 | Class | What it gives you |
@@ -289,7 +289,7 @@ reconstruct the mapping from memory; if unsure, consult that section directly.
 ### Layout-Container Selection Guide
 <span id="layout-container-selection-guide"></span>
 
-ZhiFlow builds layouts from the standard JavaFX panes. Pick the container that matches the spatial
+FengYu builds layouts from the standard JavaFX panes. Pick the container that matches the spatial
 relationship you need; the wrong container is the #1 cause of broken resizing (see
 [§4.5 The three layout pitfalls](#45-the-three-layout-pitfalls)).
 
@@ -347,14 +347,14 @@ three layout pitfalls — all the recurring building blocks.
 ```java
 package {{base-package}}.ui;
 
-import fan.summer.zhiflow.api.ai.AiTool;
-import fan.summer.zhiflow.api.IconStyle;
-import fan.summer.zhiflow.api.MdiIconUtil;
-import fan.summer.zhiflow.api.SwissKitJPlugin;
-import fan.summer.zhiflow.api.ToolCategory;
-import fan.summer.zhiflow.api.ToolType;
-import fan.summer.zhiflow.api.i18n.I18n;
-import fan.summer.zhiflow.api.theme.Themes;
+import fan.summer.fengyu.api.ai.AiTool;
+import fan.summer.fengyu.api.IconStyle;
+import fan.summer.fengyu.api.MdiIconUtil;
+import fan.summer.fengyu.api.SwissKitJPlugin;
+import fan.summer.fengyu.api.ToolCategory;
+import fan.summer.fengyu.api.ToolType;
+import fan.summer.fengyu.api.i18n.I18n;
+import fan.summer.fengyu.api.theme.Themes;
 
 import javafx.geometry.HPos;
 import javafx.geometry.Insets;
@@ -370,7 +370,7 @@ import javafx.scene.layout.VBox;
 import java.util.List;
 
 /**
- * {{Name}} — a ZhiFlow plugin.
+ * {{Name}} — a FengYu plugin.
  *
  * <p>Implements {@link SwissKitJPlugin} directly: one class holds both the metadata
  * (id/name/category/icon) and the view ({@link #createView()}). The host calls
@@ -472,7 +472,7 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
 - **`getId()` value.** Built-ins use `"builtin.<slug>"` (e.g. `"builtin.json-formatter"`).
   **⚠️ Note the inconsistency:** 3 of the 11 current built-ins (`EmailArchivePlugin`,
   `ExcelSplitterPlugin`, `BrowserAutomatePlugin`) instead use the legacy form
-  `"fan.summer.zhiflow.buildin.<slug>"`. There is no single canonical form in the codebase today; **new built-ins
+  `"fan.summer.fengyu.buildin.<slug>"`. There is no single canonical form in the codebase today; **new built-ins
   should prefer `"builtin.<slug>"`**, and external plugins should use a reverse-domain ID
   (`"com.example.<slug>"`). Do not assume there is only one form when grepping.
 - **`getMdiIcon()` has no `mdi-` prefix.** Returning `"mdi-code-json"` will fail to resolve and fall back to
@@ -480,11 +480,11 @@ public class {{Name}}Plugin implements SwissKitJPlugin {
 - **`getType()` for built-ins.** The interface default is `ToolType.PLUGIN`; a built-in tool **must**
   override to `ToolType.BUILTIN`. External plugins leave the default.
 - **Register the implementation.** Create
-  `src/main/resources/META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin` containing the fully-qualified class
+  `src/main/resources/META-INF/services/fan.summer.fengyu.api.SwissKitJPlugin` containing the fully-qualified class
   name (one line), then package a fat-JAR into the host's `plugins/` directory. Hot-reload is supported.
 
 ```
-META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin
+META-INF/services/fan.summer.fengyu.api.SwissKitJPlugin
 └─ {{base-package}}.ui.{{Name}}Plugin
 ```
 
@@ -495,7 +495,7 @@ META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin
 Icons are Material Design Icons rendered through a bundled webfont. The one entry point:
 
 ```java
-import fan.summer.zhiflow.api.MdiIconUtil;
+import fan.summer.fengyu.api.MdiIconUtil;
 import javafx.scene.text.Text;
 
 // name WITHOUT the "mdi-" prefix; size in logical pixels
@@ -512,21 +512,21 @@ Text icon = MdiIconUtil.createIcon("file-excel", 24.0);
 Full icon/tile system (category colors, `IconStyle`→`ic-*` mapping, sizing) is in
 [06 Icon System](06-icon-system.md).
 
-Source: [`MdiIconUtil.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java).
+Source: [`MdiIconUtil.java`](../../FengYu-Api/src/main/java/fan/summer/api/MdiIconUtil.java).
 
 ---
 
 ### 4.3 Theming a standalone Stage · `Themes.applyTo`
 
 Nodes returned from `createView()` are **embedded in the host's main scene**, which already has
-`zhiflow-common.css` loaded and the theme class stamped. **Embedded views need do nothing.**
+`fengyu-common.css` loaded and the theme class stamped. **Embedded views need do nothing.**
 
 But a plugin that opens its **own** `Stage`/`Scene` (a modal `Alert`, a standalone tool window) gets a fresh
 scene with **no stylesheet and no theme class** — every `-sk-*` token would fail to resolve. Fix it with one
 call:
 
 ```java
-import fan.summer.zhiflow.api.theme.Themes;
+import fan.summer.fengyu.api.theme.Themes;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 
@@ -567,17 +567,17 @@ The full theme lifecycle (token resolution, `ThemeService.set`/`onChange`, WebVi
 | Do | Don't |
 |---|---|
 | `Themes.applyTo(scene)` for any `Scene` you create | Call `ThemeService.registerScene` directly from plugin code |
-| Rely on automatic inheritance for `createView()` nodes | Manually add `zhiflow-common.css` to `getStylesheets()` |
+| Rely on automatic inheritance for `createView()` nodes | Manually add `fengyu-common.css` to `getStylesheets()` |
 | Trust `Themes.applyTo` to be idempotent (no-op if already applied) | Re-add the stylesheet URL yourself |
 
-Source: [`Themes.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/Themes.java) ·
-[`ThemeService.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java).
+Source: [`Themes.java`](../../FengYu-Api/src/main/java/fan/summer/api/theme/Themes.java) ·
+[`ThemeService.java`](../../FengYu-Api/src/main/java/fan/summer/api/theme/ThemeService.java).
 
 ---
 
 ### 4.4 I18n patterns
 
-Every user-visible string flows through [`fan.summer.zhiflow.api.i18n.I18n`](../../ZhiFlow-Api/src/main/java/fan/summer/api/i18n/I18n.java).
+Every user-visible string flows through [`fan.summer.fengyu.api.i18n.I18n`](../../FengYu-Api/src/main/java/fan/summer/api/i18n/I18n.java).
 There are three patterns — pick by *when* the text is produced. (Mirrors
 [`docs/plugins/ui.md`](../plugins/ui.md).)
 
@@ -622,7 +622,7 @@ sp.setMaxWidth(Double.MAX_VALUE);    // ← required, or it won't fill
 sp.setMaxHeight(Double.MAX_VALUE);
 ```
 
-Add the `.content-scroll` style class for the thin ZhiFlow scrollbar styling.
+Add the `.content-scroll` style class for the thin FengYu scrollbar styling.
 
 #### Pitfall 2 — Filling an HBox/VBox's remaining space
 
@@ -655,7 +655,7 @@ for (int j = 0; j < pages.length; j++) {
 
 ## 5. AI Development Checklist
 
-When generating a ZhiFlow plugin you **MUST** satisfy all of the following. Each is a hard gate.
+When generating a FengYu plugin you **MUST** satisfy all of the following. Each is a hard gate.
 
 - [ ] **Implement `SwissKitJPlugin` directly — not a wrapper.** One class holds metadata + view. Do not create
       a separate `*PluginUi` class (all 11 built-ins implement the interface directly).
@@ -668,7 +668,7 @@ When generating a ZhiFlow plugin you **MUST** satisfy all of the following. Each
       `"mdi-code-json"`. Same for `MdiIconUtil.createIcon`.
 - [ ] **Override `getType()` for built-ins.** Return `ToolType.BUILTIN`. The interface default is
       `ToolType.PLUGIN` — external plugins leave it.
-- [ ] **Never load `zhiflow-common.css` yourself.** Embedded views inherit it from the host scene;
+- [ ] **Never load `fengyu-common.css` yourself.** Embedded views inherit it from the host scene;
       standalone windows get it via `Themes.applyTo(scene)`. Do not call `getStylesheets().add(...)`.
 - [ ] **Never call `ThemeService` internals from plugin code.** Use `Themes.applyTo(scene)` (the supported
       surface). `ThemeService.registerScene`/`set` are host-level.
@@ -683,7 +683,7 @@ When generating a ZhiFlow plugin you **MUST** satisfy all of the following. Each
 - [ ] **Fill space correctly.** `setHgrow`/`setVgrow(Priority.ALWAYS)` + `setMaxWidth/Height(MAX_VALUE)`;
       never `setPrefWidth(MAX_VALUE)`. Toggle both `visible` and `managed` on StackPane page switches. Set
       `setMaxWidth/Height(MAX_VALUE)` on a ScrollPane inside a StackPane.
-- [ ] **Register the service file.** `META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin` with the FQCN;
+- [ ] **Register the service file.** `META-INF/services/fan.summer.fengyu.api.SwissKitJPlugin` with the FQCN;
       package a fat-JAR into `plugins/`.
 
 ---
@@ -707,7 +707,7 @@ public class {{Name}}PluginUi { Node getView() { … } }
 All 11 built-in tools implement `SwissKitJPlugin` **directly** in one class — metadata + view together. A
 wrapper adds indirection, doubles the number of files, and breaks the "grep the class, see everything"
 expectation. (The standalone `*PluginUi` example in `docs/plugins/ui.md` illustrates a view-builder pattern;
-in ZhiFlow's own codebase the view is built directly in `createView()`.)
+in FengYu's own codebase the view is built directly in `createView()`.)
 
 ```java
 // ✅ CORRECT — one class implements the interface and builds the view
@@ -840,15 +840,15 @@ The host caches the `Node` from `createView()`; treat it as the single source of
 
 | What | Path |
 |---|---|
-| Plugin contract (16 methods) | [`ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) |
-| Icon styles (`BLUE`…`GRAY`, CSS class, color) | [`ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/IconStyle.java) |
-| Tool categories (`DEV`…`OTHER`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/ToolCategory.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/ToolCategory.java) |
-| Tool types (`BUILTIN`/`PLUGIN`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/ToolType.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/ToolType.java) |
-| MDI icon renderer (`createIcon`, `putIcon`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/MdiIconUtil.java) |
-| Plugin-facing theme helper (`applyTo`, `COMMON_CSS`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/theme/Themes.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/Themes.java) |
-| Theme engine (`registerScene`, `set`, `onChange`) | [`ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java`](../../ZhiFlow-Api/src/main/java/fan/summer/api/theme/ThemeService.java) |
-| Shared component + token CSS | [`ZhiFlow-Api/src/main/resources/css/zhiflow-common.css`](../../ZhiFlow-Api/src/main/resources/css/zhiflow-common.css) |
-| Reference built-in (single-class pattern) | [`ZhiFlow/src/main/java/fan/summer/buildintool/dev/JsonFormatterPlugin.java`](../../ZhiFlow/src/main/java/fan/summer/buildintool/dev/JsonFormatterPlugin.java) |
+| Plugin contract (16 methods) | [`FengYu-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`](../../FengYu-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java) |
+| Icon styles (`BLUE`…`GRAY`, CSS class, color) | [`FengYu-Api/src/main/java/fan/summer/api/IconStyle.java`](../../FengYu-Api/src/main/java/fan/summer/api/IconStyle.java) |
+| Tool categories (`DEV`…`OTHER`) | [`FengYu-Api/src/main/java/fan/summer/api/ToolCategory.java`](../../FengYu-Api/src/main/java/fan/summer/api/ToolCategory.java) |
+| Tool types (`BUILTIN`/`PLUGIN`) | [`FengYu-Api/src/main/java/fan/summer/api/ToolType.java`](../../FengYu-Api/src/main/java/fan/summer/api/ToolType.java) |
+| MDI icon renderer (`createIcon`, `putIcon`) | [`FengYu-Api/src/main/java/fan/summer/api/MdiIconUtil.java`](../../FengYu-Api/src/main/java/fan/summer/api/MdiIconUtil.java) |
+| Plugin-facing theme helper (`applyTo`, `COMMON_CSS`) | [`FengYu-Api/src/main/java/fan/summer/api/theme/Themes.java`](../../FengYu-Api/src/main/java/fan/summer/api/theme/Themes.java) |
+| Theme engine (`registerScene`, `set`, `onChange`) | [`FengYu-Api/src/main/java/fan/summer/api/theme/ThemeService.java`](../../FengYu-Api/src/main/java/fan/summer/api/theme/ThemeService.java) |
+| Shared component + token CSS | [`FengYu-Api/src/main/resources/css/fengyu-common.css`](../../FengYu-Api/src/main/resources/css/fengyu-common.css) |
+| Reference built-in (single-class pattern) | [`FengYu/src/main/java/fan/summer/buildintool/dev/JsonFormatterPlugin.java`](../../FengYu/src/main/java/fan/summer/buildintool/dev/JsonFormatterPlugin.java) |
 
 ### Design baseline
 

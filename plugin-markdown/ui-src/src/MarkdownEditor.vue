@@ -6,7 +6,7 @@ import type { PluginTheme, PluginUiContext, RenderResult } from './pluginUi';
 // It may be missing in a bare standalone preview, so guard every access.
 const ctx = inject<PluginUiContext | undefined>('pluginCtx', undefined);
 
-const SAMPLE = '# Hello ZhiFlow\n\nType **markdown** here.';
+const SAMPLE = '# Hello FengYu\n\nType **markdown** here.';
 
 const markdown = ref<string>(SAMPLE);
 const html = ref<string>('');

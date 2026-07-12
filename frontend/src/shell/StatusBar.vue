@@ -4,16 +4,11 @@ import { api } from '@/api/client'
 import { useConnectionStore, type ConnState } from '@/stores/connection'
 
 const conn = useConnectionStore()
-// Surface the build-time version into the component scope so the template
-// resolves it (vue-tsc does not always resolve top-level `declare const`
-// globals inside <template> expressions).
 const appVersion = __APP_VERSION__
 let timer: number | undefined
 let everConnected = false
 
 async function poll() {
-  // While the wizard has flagged a restart, ignore transient poll results so
-  // we don't flicker offline/reconnecting mid-restart.
   if (conn.state === 'restarting') return
   try {
     const r = await api.health()
@@ -32,7 +27,6 @@ onMounted(() => {
   void poll()
   timer = window.setInterval(poll, 5000)
 })
-
 onUnmounted(() => {
   if (timer) window.clearInterval(timer)
 })
@@ -44,15 +38,13 @@ const statusKey: Record<ConnState, string> = {
   offline: 'status.offline',
   restarting: 'status.restarting',
 }
-
-const chipColor: Record<ConnState, string> = {
-  connecting: 'default',
-  connected: 'success',
-  reconnecting: 'warning',
-  offline: 'error',
-  restarting: 'info',
+const chipClass: Record<ConnState, string> = {
+  connecting: '',
+  connected: 'cx-chip--success',
+  reconnecting: 'cx-chip--warn',
+  offline: 'cx-chip--error',
+  restarting: 'cx-chip--primary',
 }
-
 const icon: Record<ConnState, string> = {
   connecting: 'mdi-circle-medium',
   connected: 'mdi-check-circle-outline',
@@ -63,12 +55,24 @@ const icon: Record<ConnState, string> = {
 </script>
 
 <template>
-  <v-system-bar>
-    <v-icon size="small" :icon="icon[conn.state]" />
-    <v-chip :color="chipColor[conn.state]" size="x-small" variant="flat" class="ml-1">
-      {{ $t(statusKey[conn.state]) }}
-    </v-chip>
-    <v-spacer />
-    <span class="text-medium-emphasis text-caption">ZhiFlow {{ appVersion }}</span>
-  </v-system-bar>
+  <footer class="cx-statusbar">
+    <i class="mdi sm" :class="icon[conn.state]" />
+    <span class="cx-chip" :class="chipClass[conn.state]">{{ $t(statusKey[conn.state]) }}</span>
+    <span class="cx-grow" />
+    <span class="cx-muted" style="font-size: 12px">Infinia {{ appVersion }}</span>
+  </footer>
 </template>
+
+<style scoped>
+.cx-statusbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 12px;
+  flex: 0 0 auto;
+  background: rgb(var(--v-theme-surface-container));
+  border-top: 1px solid rgb(var(--v-theme-outline-variant));
+  color: rgb(var(--v-theme-secondary));
+}
+</style>

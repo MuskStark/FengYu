@@ -1,7 +1,7 @@
 # AI 配置功能设计
 
 **日期**: 2026-07-10
-**分支**: 4.0.0-ZhiFlow
+**分支**: 4.0.0-FengYu
 **状态**: 已确认，待实现
 
 ## 背景与问题
@@ -497,16 +497,16 @@ PUT 始终返回 200 + 快照；热切换的失败软化为 `ready: false`，不
 ## 涉及文件清单
 
 ### 后端新增
-- `ZhiFlow/src/main/java/fan/summer/zhiflow/web/controller/AiConfigController.java`
-- `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/spring/BackendReactivator.java`
-- `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/service/ConnectionTester.java`
+- `FengYu/src/main/java/fan/summer/fengyu/web/controller/AiConfigController.java`
+- `FengYu/src/main/java/fan/summer/fengyu/ai/spring/BackendReactivator.java`
+- `FengYu/src/main/java/fan/summer/fengyu/ai/service/ConnectionTester.java`
 
 ### 后端修改
-- `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/service/AiConfigServiceHeadless.java`（补 setter）
-- `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/spring/AiBackendInitializer.java`（瘦身为调 reactivate）
-- `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/service/SpringAiCloudBackend.java`（testConnection 改为调 ConnectionTester）
-- `ZhiFlow/src/main/java/fan/summer/zhiflow/web/controller/AiController.java`（local 模式 chat 前触发 loadModel）
-- `ZhiFlow/src/main/java/fan/summer/zhiflow/ai/service/OllamaLocalBackend.java`（probeReachable 提取到 ConnectionTester，保留委托）
+- `FengYu/src/main/java/fan/summer/fengyu/ai/service/AiConfigServiceHeadless.java`（补 setter）
+- `FengYu/src/main/java/fan/summer/fengyu/ai/spring/AiBackendInitializer.java`（瘦身为调 reactivate）
+- `FengYu/src/main/java/fan/summer/fengyu/ai/service/SpringAiCloudBackend.java`（testConnection 改为调 ConnectionTester）
+- `FengYu/src/main/java/fan/summer/fengyu/web/controller/AiController.java`（local 模式 chat 前触发 loadModel）
+- `FengYu/src/main/java/fan/summer/fengyu/ai/service/OllamaLocalBackend.java`（probeReachable 提取到 ConnectionTester，保留委托）
 
 ### 前端修改
 - `frontend/src/api/types.ts`（新增 AI 类型）
@@ -516,7 +516,7 @@ PUT 始终返回 200 + 快照；热切换的失败软化为 `ready: false`，不
 - `frontend/src/i18n/en.json` + `zh.json`（新增 aiSettings 命名空间）
 
 ### 测试新增
-- `ZhiFlow/src/test/java/.../web/controller/AiConfigControllerTest.java`
-- `ZhiFlow/src/test/java/.../ai/spring/BackendReactivatorTest.java`
-- `ZhiFlow/src/test/java/.../ai/service/AiConfigServiceHeadlessTest.java`（新增）
-- `ZhiFlow/src/test/java/.../ai/service/ConnectionTesterTest.java`（新增，mock HTTP 探针）
+- `FengYu/src/test/java/.../web/controller/AiConfigControllerTest.java`
+- `FengYu/src/test/java/.../ai/spring/BackendReactivatorTest.java`
+- `FengYu/src/test/java/.../ai/service/AiConfigServiceHeadlessTest.java`（新增）
+- `FengYu/src/test/java/.../ai/service/ConnectionTesterTest.java`（新增，mock HTTP 探针）

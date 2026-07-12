@@ -1,10 +1,10 @@
 # API Reference
 
-Detailed reference for ZhiFlow's core interfaces, enums, components, and internal APIs.
+Detailed reference for FengYu's core interfaces, enums, components, and internal APIs.
 
 ## SwissKitJPlugin Interface
 
-**Location**: `ZhiFlow-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`
+**Location**: `FengYu-Api/src/main/java/fan/summer/api/SwissKitJPlugin.java`
 
 | Method | Return Type | Description |
 |--------|-------------|-------------|
@@ -25,7 +25,7 @@ Detailed reference for ZhiFlow's core interfaces, enums, components, and interna
 
 ### ToolCategory
 
-**Location**: `ZhiFlow-Api/.../ToolCategory.java`
+**Location**: `FengYu-Api/.../ToolCategory.java`
 
 | Constant | `getId()` | Description |
 |----------|-----------|-------------|
@@ -37,7 +37,7 @@ Detailed reference for ZhiFlow's core interfaces, enums, components, and interna
 
 ### ToolType
 
-**Location**: `ZhiFlow-Api/.../ToolType.java`
+**Location**: `FengYu-Api/.../ToolType.java`
 
 | Constant | `getId()` | `isBuiltin()` |
 |----------|-----------|---------------|
@@ -46,7 +46,7 @@ Detailed reference for ZhiFlow's core interfaces, enums, components, and interna
 
 ### IconStyle
 
-**Location**: `ZhiFlow-Api/.../IconStyle.java`
+**Location**: `FengYu-Api/.../IconStyle.java`
 
 | Constant | CSS Class | Color (RGB) |
 |----------|-----------|-------------|
@@ -60,7 +60,7 @@ Detailed reference for ZhiFlow's core interfaces, enums, components, and interna
 
 ## StepWizard
 
-**Location**: `ZhiFlow-Api/.../component/StepWizard.java`
+**Location**: `FengYu-Api/.../component/StepWizard.java`
 
 | Method | Return Type | Description |
 |--------|-------------|-------------|
@@ -81,7 +81,7 @@ void onStepChanged(int from, int to, int total);
 
 ### LoggerFactory
 
-**Location**: `ZhiFlow-Api/.../log/LoggerFactory.java`
+**Location**: `FengYu-Api/.../log/LoggerFactory.java`
 
 ```java
 PluginLogger getLogger(Class<?> clazz)
@@ -90,7 +90,7 @@ PluginLogger getLogger(String name)
 
 ### PluginLogger
 
-**Location**: `ZhiFlow-Api/.../log/PluginLogger.java`
+**Location**: `FengYu-Api/.../log/PluginLogger.java`
 
 SLF4J-style `{}` placeholder API with levels: `trace`, `debug`, `info`, `warn`, `error`.
 
@@ -98,17 +98,17 @@ Each level has overloads: `(String)`, `(String, Object)`, `(String, Object, Obje
 
 ## Themes
 
-**Location**: `ZhiFlow-Api/.../theme/Themes.java`
+**Location**: `FengYu-Api/.../theme/Themes.java`
 
 ```java
-static final String COMMON_CSS = "/css/zhiflow-common.css"
+static final String COMMON_CSS = "/css/fengyu-common.css"
 static String commonStylesheetUrl()
 static void applyTo(Scene scene)
 ```
 
 ## PluginContext
 
-**Location**: `ZhiFlow-Api/.../PluginContext.java`
+**Location**: `FengYu-Api/.../PluginContext.java`
 
 Associates external plugins with their dedicated `ClassLoader` and provides thread-context-classloader (TCCL) switching for safe plugin method invocation. The host wraps every call to a plugin method (`createView()`, `onActivate()`, etc.) with `runWith`/`callWith`, and wraps the plugin node's `EventDispatcher` via `wrapEvents` so that background threads spawned from event handlers inherit the correct TCCL.
 
@@ -127,9 +127,9 @@ Plugin keys are held via `WeakReference` so stale entries are eligible for GC ev
 
 ### DatabaseInit
 
-**Location**: `ZhiFlow/.../database/DatabaseInit.java`
+**Location**: `FengYu/.../database/DatabaseInit.java`
 
-H2 at `.zhiflow/zhiflow.db`, schema from `init.sql`, MyBatis XML mappers in `resources/mapper/`.
+H2 at `.fengyu/fengyu.db`, schema from `init.sql`, MyBatis XML mappers in `resources/mapper/`.
 
 ```java
 static void init()

@@ -14,6 +14,9 @@ import type {
   ChatStartResponse,
   ConnectionTestRequest,
   ConnectionTestResult,
+  ConversationDetail,
+  ConversationPayload,
+  ConversationSummary,
   DbTypeMeta,
   HealthResponse,
   InitializeResult,
@@ -29,14 +32,14 @@ const http: AxiosInstance = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Attach the ZhiFlow token to every request except /api/health and /api/setup/.
+// Attach the FengYu token to every request except /api/health and /api/setup/.
 // Setup calls run before a token exists (backend TokenAuthFilter bypasses /api/setup/).
 http.interceptors.request.use((config) => {
   const url = config.url ?? ''
   if (!url.includes('/api/health') && !url.includes('/api/setup/')) {
     const token = getToken()
     if (token) {
-      config.headers.set('X-ZhiFlow-Token', token)
+      config.headers.set('X-FengYu-Token', token)
     }
   }
   return config
@@ -103,6 +106,31 @@ export const api = {
     return data
   },
 
+  // ── AI conversation history (persisted) ──────────────────────
+  async listConversations(): Promise<ConversationSummary[]> {
+    const { data } = await http.get<ConversationSummary[]>('/api/ai/conversations')
+    return data
+  },
+
+  async getConversation(id: number): Promise<ConversationDetail> {
+    const { data } = await http.get<ConversationDetail>(`/api/ai/conversations/${id}`)
+    return data
+  },
+
+  async createConversation(payload: ConversationPayload): Promise<ConversationDetail> {
+    const { data } = await http.post<ConversationDetail>('/api/ai/conversations', payload)
+    return data
+  },
+
+  async updateConversation(id: number, payload: ConversationPayload): Promise<ConversationDetail> {
+    const { data } = await http.put<ConversationDetail>(`/api/ai/conversations/${id}`, payload)
+    return data
+  },
+
+  async deleteConversation(id: number): Promise<void> {
+    await http.delete(`/api/ai/conversations/${id}`)
+  },
+
   async getSetupStatus(): Promise<SetupStatus> {
     const { data } = await http.get<SetupStatus>('/api/setup/status')
     return data
@@ -151,4 +179,4 @@ export const api = {
     http.get<AgentTool[]>('/api/agent/tools').then((r) => r.data),
 }
 
-export type ZhiFlowApi = typeof api
+export type FengYuApi = typeof api

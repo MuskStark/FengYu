@@ -1,0 +1,430 @@
+package fan.summer.fengyu.ai.service;
+
+import fan.summer.fengyu.ai.config.ChatModelConfig;
+import fan.summer.fengyu.ai.util.JsonHelper;
+import fan.summer.fengyu.api.ai.AiChatMessage;
+import fan.summer.fengyu.api.ai.AiServiceException;
+import fan.summer.fengyu.api.ai.AiStreamCallback;
+import fan.summer.fengyu.api.ai.AiToolCall;
+import fan.summer.fengyu.api.ai.AiToolResult;
+import fan.summer.fengyu.api.ai.ChatBackend;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.MessageAggregator;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.ai.model.tool.ToolCallingManager;
+import org.springframework.ai.model.tool.ToolExecutionResult;
+import org.springframework.ai.tool.ToolCallback;
+
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+
+/**
+ * Cloud-mode {@link ChatBackend} backed by Spring AI's {@code OpenAiChatModel} /
+ * {@code AnthropicChatModel}. Replaces the LangChain4j {@code CloudChatBackend}.
+ *
+ * <p>The {@link ChatModel} is built directly from the passed-in endpoint/apiKey/model
+ * via {@link fan.summer.fengyu.ai.config.ChatModelConfig#buildOpenAiCompatible} /
+ * {@link fan.summer.fengyu.ai.config.ChatModelConfig#buildAnthropic} (NOT from a stale
+ * boot-time bean — see {@link #resolveModel}); the provider is fixed at construction
+ * time. A {@link ChatClient} is built lazily from the resolved {@link ChatModel}.
+ *
+ * <p><b>Tool execution (4.0.0 refactor):</b> tool calling now runs on Spring AI's
+ * non-deprecated {@link ToolCallingManager} (user-controlled execution). Each
+ * {@code chat()} call streams the model response via {@link ChatModel#stream(Prompt)},
+ * aggregates the streamed chunks with {@link MessageAggregator}, and — when the model
+ * requests tool calls — hands them to {@link ToolCallingManager#executeToolCalls} and
+ * re-streams. This fixes a latent bug where tool callbacks were never passed to the
+ * Prompt (they are now supplied via {@link ToolCallingChatOptions#getToolCallbacks()}).
+ * {@link AiStreamCallback#onToken} / {@code onToolCall} / {@code onToolResult} /
+ * {@code onComplete} all still fire so the UI tool-progress contract is preserved.
+ */
+public final class SpringAiCloudBackend implements ChatBackend {
+
+    private static final Logger log = LoggerFactory.getLogger(SpringAiCloudBackend.class);
+    private static final int MAX_TOOL_ROUNDS = 5;
+
+    public enum Provider { OPENAI, ANTHROPIC, DEEPSEEK }
+
+    private final Provider provider;
+    private final String endpoint;
+    private final String apiKey;
+    private final String modelName;
+    private final ChatModel chatModel;          // resolved at construction
+    /**
+     * The provider-specific {@link ToolCallingChatOptions} (e.g. {@code OpenAiChatOptions})
+     * the model was built with. Retained so the tool loop can attach {@code ToolCallback}s
+     * via {@link ToolCallingChatOptions#mutate()} while keeping the concrete options type
+     * the model expects — provider models cast {@code prompt.getOptions()} to their own
+     * type at request-build time, so a generic {@code DefaultToolCallingChatOptions}
+     * throws {@code ClassCastException}. Null only when the backend is not yet
+     * configured.
+     */
+    private final ToolCallingChatOptions baseOptions;
+    private final AtomicBoolean generating = new AtomicBoolean(false);
+
+    /** Cached ChatClient built from {@link #chatModel} (built lazily; null when model is null). */
+    private volatile ChatClient chatClient;
+
+    /**
+     * The {@link ToolCallback}s made available to the model. Injected by the host wiring
+     * (Task 13 registers the first {@code @Tool} bean) or by tests; until then the list is
+     * empty and the model simply never requests a tool. Tolerates {@code null} (treated as
+     * empty). Replaces the old global tool-registry discovery path.
+     */
+    private volatile List<ToolCallback> toolCallbacks = List.of();
+
+    /** Shared {@link ToolCallingManager} that drives user-controlled tool execution. */
+    private volatile ToolCallingManager toolCallingManager = ToolCallingManager.builder().build();
+
+    // ── Production constructors (look up the ChatModel bean) ──────────
+
+    public static SpringAiCloudBackend openAi(String endpoint, String apiKey, String modelName) {
+        ChatModelConfig.ResolvedModel resolved = resolveModel(Provider.OPENAI, endpoint, apiKey, modelName);
+        return new SpringAiCloudBackend(Provider.OPENAI, endpoint, apiKey, modelName, resolved);
+    }
+
+    public static SpringAiCloudBackend anthropic(String endpoint, String apiKey, String modelName) {
+        ChatModelConfig.ResolvedModel resolved = resolveModel(Provider.ANTHROPIC, endpoint, apiKey, modelName);
+        return new SpringAiCloudBackend(Provider.ANTHROPIC, endpoint, apiKey, modelName, resolved);
+    }
+
+    /** DeepSeek uses an OpenAI-compatible API; the bean reuses the OpenAI model path. */
+    public static SpringAiCloudBackend deepSeek(String endpoint, String apiKey, String modelName) {
+        ChatModelConfig.ResolvedModel resolved = resolveModel(Provider.DEEPSEEK, endpoint, apiKey, modelName);
+        return new SpringAiCloudBackend(Provider.DEEPSEEK, endpoint, apiKey, modelName, resolved);
+    }
+
+    /**
+     * Builds the {@link ChatModel} directly from the passed-in values when the provider
+     * is fully configured. The vendor SDK client throws immediately if the API key is
+     * blank. When not configured we return {@code null}: the backend still registers,
+     * {@link #isReady()} returns false, and {@code chat()} throws a clean "not
+     * configured" message instead of crashing. The model is built on the next
+     * {@link fan.summer.fengyu.ai.service.BackendReactivator#reactivate()} once the
+     * user fills in the key.
+     *
+     * <p><b>Why direct construction, not a bean lookup:</b> the cloud {@code ChatModel}
+     * beans in {@link fan.summer.fengyu.ai.config.ChatModelConfig} read an
+     * {@link fan.summer.fengyu.ai.config.AiConfigProperties} snapshot taken ONCE at
+     * context start. A key saved later via the AI config UI (PUT /api/ai/config →
+     * {@code AiConfigService} → DB) would never reach a bean built from that stale
+     * snapshot, so hot-swap was broken (the bean was always built with the boot-time
+     * blank key → "At least one credential source must be specified"). Building inline
+     * from the values {@code BackendReactivator} just read from {@code AiConfigService}
+     * makes hot-swap actually work — the freshly-saved key flows straight into the
+     * client. {@link fan.summer.fengyu.ai.config.ChatModelConfig#buildOpenAiCompatible}
+     * / {@link fan.summer.fengyu.ai.config.ChatModelConfig#buildAnthropic} also read
+     * the live sampling params (temperature/topP/maxTokens) so those hot-swap too.
+     */
+    private static ChatModelConfig.ResolvedModel resolveModel(Provider provider,
+                                                              String endpoint, String apiKey, String modelName) {
+        if (isBlank(endpoint) || isBlank(apiKey) || isBlank(modelName)) {
+            log.info("{} backend not fully configured (missing endpoint/apiKey/model); "
+                     + "deferring ChatModel resolution until configured", provider);
+            return null;
+        }
+        try {
+            return switch (provider) {
+                case OPENAI, DEEPSEEK ->
+                    ChatModelConfig.buildOpenAiCompatible(endpoint, apiKey, modelName);
+                case ANTHROPIC ->
+                    ChatModelConfig.buildAnthropic(endpoint, apiKey, modelName);
+            };
+        } catch (Exception e) {
+            log.warn("Failed to build {} ChatModel", provider, e);
+            return null;
+        }
+    }
+
+    private static boolean isBlank(String s) { return s == null || s.isBlank(); }
+
+    // ── Test constructor (inject ChatModel directly, bypass Spring) ───
+
+    SpringAiCloudBackend(ChatModel chatModel) {
+        this(Provider.OPENAI, "test", "test-key", "test-model",
+                new ChatModelConfig.ResolvedModel(chatModel, null));
+    }
+
+    private SpringAiCloudBackend(Provider provider, String endpoint, String apiKey, String modelName,
+                                 ChatModelConfig.ResolvedModel resolved) {
+        this.provider = provider;
+        this.endpoint = endpoint == null ? "" : (endpoint.endsWith("/") ? endpoint.substring(0, endpoint.length() - 1) : endpoint);
+        this.apiKey = apiKey;
+        this.modelName = modelName;
+        this.chatModel = resolved != null ? resolved.chatModel() : null;
+        this.baseOptions = resolved != null ? resolved.options() : null;
+        if (chatModel != null) {
+            this.chatClient = ChatClient.builder(chatModel).build();
+        }
+    }
+
+    // ── Public accessors (preserved for SynchronousChatHelper + Settings UI) ──
+
+    public Provider provider()           { return provider; }
+    public String getEndpoint()          { return endpoint; }
+    public String getApiKey()            { return apiKey; }
+    public String getModelNameInternal() { return modelName; }
+
+    /**
+     * Sets the {@link ToolCallback}s available to the model (host wiring + tests). Accepts
+     * {@code null} (treated as "no tools"). Defensive copy is intentionally NOT made — the
+     * caller is expected to pass an effectively-immutable list.
+     */
+    public void setToolCallbacks(List<ToolCallback> toolCallbacks) {
+        this.toolCallbacks = toolCallbacks != null ? toolCallbacks : List.of();
+    }
+
+    // ── ChatBackend ───────────────────────────────────────────────────
+
+    @Override public void loadModel(Path modelPath) throws AiServiceException {
+        throw new AiServiceException("Local model loading not supported for cloud backend");
+    }
+
+    @Override public void unloadModel() { /* model bean is reused; nothing to release */ }
+
+    @Override public boolean isReady() {
+        return chatModel != null
+            && endpoint != null && !endpoint.isBlank()
+            && apiKey != null && !apiKey.isBlank()
+            && modelName != null && !modelName.isBlank();
+    }
+
+    @Override public Optional<String> getModelName() { return Optional.ofNullable(modelName); }
+    @Override public long getMemoryUsage() { return -1; }
+    @Override public boolean isGenerating() { return generating.get(); }
+
+    @Override
+    public void chat(List<AiChatMessage> history, AiStreamCallback callback) throws AiServiceException {
+        chat(history, AiConfigServiceHeadless.getAiTemperature(), AiConfigServiceHeadless.getAiTopP(),
+             AiConfigServiceHeadless.getAiMaxTokens(), callback);
+    }
+
+    @Override
+    public void chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
+                     AiStreamCallback callback) throws AiServiceException {
+        if (!isReady()) throw new AiServiceException(provider + " cloud backend not configured");
+        if (!generating.compareAndSet(false, true)) throw new AiServiceException("Generation already in progress");
+
+        Thread.ofVirtual().start(() -> {
+            try {
+                runToolLoop(history, callback);
+            } catch (Exception e) {
+                log.error("{} chat failed", provider, e);
+                callback.onError(e);
+            } finally {
+                generating.set(false);
+            }
+        });
+    }
+
+    @Override public void cancelGeneration() {
+        log.debug("cancelGeneration() requested; mid-stream abort not wired in Phase 1");
+    }
+
+    // ── Tool loop (Spring AI ToolCallingManager, user-controlled) ──────
+
+    private void runToolLoop(List<AiChatMessage> history, AiStreamCallback callback) {
+        String systemPrompt = currentSystemPrompt();
+
+        // Attach the configured tool callbacks to the PROMPT. We MUST derive the options
+        // from baseOptions (the provider-specific OpenAiChatOptions / AnthropicChatOptions
+        // the model was built with) via mutate(), NOT a generic
+        // ToolCallingChatOptions.builder(): provider models cast prompt.getOptions() to
+        // their own concrete type at request-build time (e.g. OpenAiChatModel.createRequest
+        // does `(OpenAiChatOptions) prompt.getOptions()`), and a DefaultToolCallingChatOptions
+        // throws ClassCastException. mutate() preserves the concrete type. When no tools are
+        // registered we still send baseOptions (carries model + sampling params) so the
+        // request is built from the right options type.
+        ToolCallingChatOptions options = baseOptions;
+        ToolCallback[] callbacks = this.toolCallbacks.toArray(new ToolCallback[0]);
+        if (callbacks.length > 0) {
+            // Attach the callbacks so ToolCallingManager can resolve them. Prefer mutate()
+            // on the provider-specific baseOptions (OpenAiChatOptions / AnthropicChatOptions)
+            // so the concrete type the provider model casts to is preserved. When baseOptions
+            // is null (no provider options, e.g. a plain ChatModel), fall back to a generic
+            // ToolCallingChatOptions so the tools are still offered instead of silently
+            // dropped — mirroring OllamaLocalBackend. In production baseOptions is never null
+            // when chat runs (chatModel and baseOptions are resolved together), so the
+            // fallback only affects models that don't require provider-specific options.
+            options = baseOptions != null
+                    ? baseOptions.mutate().toolCallbacks(callbacks).build()
+                    : ToolCallingChatOptions.builder().toolCallbacks(callbacks).build();
+        }
+
+        // The Spring AI conversation is the source of truth sent to the model. It starts
+        // from FengYu history; once tool calls happen, ToolCallingManager extends it
+        // (assistant tool-call msg + ToolResponseMessage) and we carry that forward.
+        List<Message> conversation = buildSpringAiMessages(history, systemPrompt);
+
+        for (int round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+            Prompt prompt = options != null ? new Prompt(conversation, options) : new Prompt(conversation);
+
+            // Stream this round; fire onToken per token delta; the aggregator hands us the
+            // fully-assembled ChatResponse (including any tool calls) on completion.
+            StringBuilder accumulated = new StringBuilder();
+            AtomicReference<ChatResponse> aggregated = new AtomicReference<>();
+            streamAndCollect(prompt, accumulated, aggregated, callback);
+
+            ChatResponse roundResp = aggregated.get();
+            boolean hasToolCalls = roundResp != null && roundResp.hasToolCalls();
+
+            if (!hasToolCalls) {
+                String finalText = accumulated.toString();
+                if (!finalText.isBlank()) history.add(AiChatMessage.assistant(finalText));
+                int tokens = Math.max(1, finalText.length() / 4);
+                callback.onComplete(finalText, tokens, 0);
+                return;
+            }
+            if (round == MAX_TOOL_ROUNDS) {
+                String warn = "Reached MAX_TOOL_ROUNDS (" + MAX_TOOL_ROUNDS + ")";
+                log.warn(warn);
+                callback.onComplete(warn, 0, 0);
+                return;
+            }
+
+            // User-controlled tool execution: let Spring AI's ToolCallingManager run the
+            // requested tools (it resolves them against the options' toolCallbacks), firing
+            // onToolCall/onToolResult for each so the UI shows tool progress.
+            AssistantMessage assistantMsg = roundResp.getResult().getOutput();
+            history.add(AiChatMessage.assistantWithTools(accumulated.toString(), mapToolCalls(assistantMsg)));
+
+            ToolExecutionResult result = toolCallingManager.executeToolCalls(prompt, roundResp);
+            fireToolEvents(assistantMsg, result, callback);
+
+            // Carry the manager's extended conversation (original msgs + assistant tool-call
+            // msg + ToolResponseMessage) into the next round, and mirror tool results into
+            // FengYu's own history for UI parity.
+            conversation = result.conversationHistory();
+            mirrorToolResultsToHistory(result.conversationHistory(), history, assistantMsg);
+        }
+    }
+
+    /** Stream a prompt, fire onToken per token delta, and capture the aggregated response. */
+    private void streamAndCollect(Prompt prompt, StringBuilder accumulated,
+                                  AtomicReference<ChatResponse> aggregated, AiStreamCallback callback) {
+        new MessageAggregator().aggregate(
+                chatModel.stream(prompt),
+                aggregated::set
+        ).doOnNext(resp -> {
+            if (resp == null || resp.getResult() == null) return;
+            AssistantMessage am = resp.getResult().getOutput();
+            if (am == null) return;
+            String delta = am.getText();
+            if (delta != null && !delta.isEmpty()) {
+                accumulated.append(delta);
+                callback.onToken(delta);
+            }
+        }).blockLast();   // virtual thread, blocking is fine
+    }
+
+    private List<Message> buildSpringAiMessages(List<AiChatMessage> history, String systemPrompt) {
+        List<Message> msgs = new ArrayList<>(history.size() + 1);
+        if (systemPrompt != null && !systemPrompt.isBlank()) {
+            msgs.add(new SystemMessage(systemPrompt));
+        }
+        for (AiChatMessage m : history) msgs.add(AiMessageBridge.toSpringAi(m));
+        return msgs;
+    }
+
+    private static List<AiToolCall> mapToolCalls(AssistantMessage am) {
+        if (am == null || !am.hasToolCalls()) return List.of();
+        List<AiToolCall> out = new ArrayList<>();
+        for (AssistantMessage.ToolCall tc : am.getToolCalls()) {
+            String id = tc.id() != null && !tc.id().isEmpty() ? tc.id() : "tc_" + System.currentTimeMillis();
+            out.add(AiToolCall.of(id, tc.name(), parseArgs(tc.arguments())));
+        }
+        return out;
+    }
+
+    private static Map<String, Object> parseArgs(String json) {
+        if (json == null || json.isBlank()) return Map.of();
+        try { return JsonHelper.parseObject(json); }
+        catch (Exception e) { return Map.of(); }
+    }
+
+    /**
+     * Fire {@code onToolCall}/{@code onToolResult} for each requested tool call, mapping
+     * the Spring AI {@link ToolResponseMessage} results back to FengYu's
+     * {@link AiToolResult}.
+     */
+    private static void fireToolEvents(AssistantMessage assistantMsg, ToolExecutionResult result,
+                                       AiStreamCallback callback) {
+        ToolResponseMessage trm = lastToolResponseMessage(result.conversationHistory());
+        if (trm == null || assistantMsg == null || !assistantMsg.hasToolCalls()) return;
+        // The ToolResponseMessage responses line up by index with the assistant's tool calls.
+        List<AssistantMessage.ToolCall> calls = assistantMsg.getToolCalls();
+        List<ToolResponseMessage.ToolResponse> responses = trm.getResponses();
+        int n = Math.min(calls.size(), responses.size());
+        for (int i = 0; i < n; i++) {
+            AssistantMessage.ToolCall tc = calls.get(i);
+            ToolResponseMessage.ToolResponse tr = responses.get(i);
+            callback.onToolCall(AiToolCall.of(
+                    tc.id() != null && !tc.id().isEmpty() ? tc.id() : tr.id(),
+                    tc.name(), parseArgs(tc.arguments())));
+            callback.onToolResult(tr.id(), AiToolResult.success(tr.responseData()));
+        }
+    }
+
+    private static ToolResponseMessage lastToolResponseMessage(List<Message> messages) {
+        ToolResponseMessage found = null;
+        for (Message m : messages) {
+            if (m instanceof ToolResponseMessage trm) found = trm;
+        }
+        return found;
+    }
+
+    /**
+     * Mirror the tool-result messages Spring AI added (so the model sees them) back into
+     * FengYu's own history list — preserves the [user, assistantWithTools, toolResult,
+     * assistant-final] shape the old loop produced. Best-effort; the Spring AI
+     * conversation history is the source of truth sent to the model.
+     */
+    private static void mirrorToolResultsToHistory(List<Message> springAiHistory, List<AiChatMessage> fengyuHistory,
+                                                   AssistantMessage assistantMsg) {
+        ToolResponseMessage trm = lastToolResponseMessage(springAiHistory);
+        if (trm == null || assistantMsg == null || !assistantMsg.hasToolCalls()) return;
+        List<AssistantMessage.ToolCall> calls = assistantMsg.getToolCalls();
+        List<ToolResponseMessage.ToolResponse> responses = trm.getResponses();
+        int n = Math.min(calls.size(), responses.size());
+        for (int i = 0; i < n; i++) {
+            AssistantMessage.ToolCall tc = calls.get(i);
+            ToolResponseMessage.ToolResponse tr = responses.get(i);
+            fengyuHistory.add(AiChatMessage.toolResult(
+                    tc.id() != null && !tc.id().isEmpty() ? tc.id() : tr.id(),
+                    tc.name(), tr.responseData()));
+        }
+    }
+
+    private static String currentSystemPrompt() {
+        try { return AiConfigServiceHeadless.getAiSystemPrompt(); }
+        catch (Throwable t) { return null; }
+    }
+
+    // ── testConnection (used by Settings UI) ──────────────────────────
+    // Raw HTTP probe, independent of the AI library, so connection issues surface
+    // as actionable strings rather than wrapped exceptions. Returns null on success.
+
+    public String testConnection() {
+        String mode = switch (provider) {
+            case OPENAI -> "openai";
+            case DEEPSEEK -> "deepseek";
+            case ANTHROPIC -> "anthropic";
+        };
+        ConnectionTester.TestResult r = ConnectionTester.testCloud(mode, endpoint, apiKey, modelName);
+        return r.success() ? null : r.error();
+    }
+}

@@ -6,7 +6,7 @@
 
 **原因**：文件放在 `services/` 而非 `META-INF/services/`
 
-**解决**：确认路径是 `src/main/resources/META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin`
+**解决**：确认路径是 `src/main/resources/META-INF/services/fan.summer.fengyu.api.SwissKitJPlugin`
 
 ---
 
@@ -16,7 +16,7 @@
 
 **原因**：XML `<mapper namespace="...">` 与 Java 接口的完全限定名不一致
 
-**解决**：确保两边完全一致，如 `fan.zhiflowj.plugin.star.database.mapper.StarMapper`
+**解决**：确保两边完全一致，如 `fan.fengyuj.plugin.star.database.mapper.StarMapper`
 
 ---
 
@@ -26,7 +26,7 @@
 
 **原因**：SPI 文件内容是旧的类名或部分类名
 
-**解决**：确保内容是插件入口类的完全限定名，如 `fan.zhiflowj.plugin.star.StarPlugin`
+**解决**：确保内容是插件入口类的完全限定名，如 `fan.fengyuj.plugin.star.StarPlugin`
 
 ---
 

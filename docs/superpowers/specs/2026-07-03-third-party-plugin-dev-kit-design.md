@@ -1,4 +1,4 @@
-# 第三方插件开发套件(zhiflowj-plugin-kit)设计
+# 第三方插件开发套件(fengyuj-plugin-kit)设计
 
 - 日期:2026-07-03
 - 状态:已通过设计评审,待写实现计划
@@ -13,7 +13,7 @@
 
 1. **交付缺失** —— 现有 `plugin-dev` 是本机个人 skill,外部开发者拿不到。
 2. **漂移** —— 现有 skill 是 37KB 硬模板巨物(创建于 2025-06-09),内嵌
-   `zhiflow.api.version=3.0.0`,而主项目已到 v3.2.0(PluginHost、`.glass-*`→`.sk-*`
+   `fengyu.api.version=3.0.0`,而主项目已到 v3.2.0(PluginHost、`.glass-*`→`.sk-*`
    改名、ThemeService、AiTool JSON 契约)。文档本身也漂移:`docs/plugins/entry-point.md`
    里 `getCategory()` 返回 `String`,而 `CLAUDE.md` 里是 `ToolCategory` 枚举。
 3. **无强制** —— 插件仓库 `SwissKit-Plugin` 无 `CLAUDE.md`、无 `.claude/`,开发者
@@ -33,17 +33,17 @@
 
 ## 3. 交付物结构
 
-产物 `zhiflowj-plugin-kit` 存放在**主仓库**(与 API 同源演进):
+产物 `fengyuj-plugin-kit` 存放在**主仓库**(与 API 同源演进):
 
 ```
 SwissKitJ/
 └── .claude-plugin/plugin/
     ├── plugin.json                 # 插件清单(name/version/description)
     ├── skills/
-    │   └── zhiflowj-plugin-dev/
+    │   └── fengyuj-plugin-dev/
     │       └── SKILL.md            # 精简引导脚手架(§5)
     ├── agents/
-    │   └── zhiflowj-plugin-reviewer.md   # 语义合规审查 agent(§6b)
+    │   └── fengyuj-plugin-reviewer.md   # 语义合规审查 agent(§6b)
     ├── standards/                  # 从 docs/plugins 快照的标准(单一真相源镜像)
     │   ├── VERSION                 # 快照对应的 API 版本戳
     │   ├── entry-point.md  spi.md  pitfalls.md  plugin-host.md
@@ -55,19 +55,19 @@ SwissKitJ/
 
 **发布方式**:该目录发布到一个 marketplace 仓库(或作为 `SwissKit-Plugin` 仓库的
 `.claude-plugin/marketplace.json` 条目)。第三方:
-`/plugin marketplace add <repo>` + `/plugin install zhiflowj-plugin-kit`。
+`/plugin marketplace add <repo>` + `/plugin install fengyuj-plugin-kit`。
 
 ## 4. 组件边界
 
 | 组件 | 做什么 | 依赖 | 不做什么 |
 |---|---|---|---|
-| `zhiflowj-plugin-dev` skill | 问需求 → 拼装项目 → 落地 CLAUDE.md → 触发校验 | `standards/` | 不裁定标准正确性 |
+| `fengyuj-plugin-dev` skill | 问需求 → 拼装项目 → 落地 CLAUDE.md → 触发校验 | `standards/` | 不裁定标准正确性 |
 | `standards/` | 设计标准的权威镜像 + 版本戳 | 由 sync 脚本从 `docs/plugins/` 生成 | 不手改(生成物) |
 | `validate.sh` | 确定性机械规则校验,退出码非 0 即失败 | `standards/checklist.md` | 不做语义判断,不改码 |
-| `zhiflowj-plugin-reviewer` agent | 语义规则审查,产出违规清单+建议 | `standards/checklist.md` | 不直接改码 |
+| `fengyuj-plugin-reviewer` agent | 语义规则审查,产出违规清单+建议 | `standards/checklist.md` | 不直接改码 |
 | CLAUDE.md 模板 | 落到开发者新仓库,持续约束其 Claude 会话 | —— | —— |
 
-## 5. 脚手架 skill 行为(`zhiflowj-plugin-dev`)
+## 5. 脚手架 skill 行为(`fengyuj-plugin-dev`)
 
 替换现有 37KB 硬模板 skill。流程:
 
@@ -75,7 +75,7 @@ SwissKitJ/
    DB / Excel / AI / 后台任务。
 2. **先读 `standards/VERSION` 与 `standards/checklist.md`** 载入当前标准,再生成。
 3. 按需拼装:基础骨架必出;DB(H2+MyBatis)/ Excel(fesod-sheet)/ AI(AiTool)/
-   后台任务为可选模块。生成的 `pom.xml` 中 `zhiflow.api.version` 从
+   后台任务为可选模块。生成的 `pom.xml` 中 `fengyu.api.version` 从
    `standards/VERSION` 填,**不写死**。
 4. 落地 CLAUDE.md 模板(§7)到新仓库,并拷入 `validate.sh` 副本。
 5. 生成后**自动跑 `validate.sh` 并调用 reviewer agent**,交付前修掉违规项。
@@ -89,7 +89,7 @@ skill 负责"怎么拼",标准正确性交给单一真相源。
 
 | 检查 | 规则 |
 |---|---|
-| SPI 文件 | `META-INF/services/fan.summer.zhiflow.api.SwissKitJPlugin` 存在且内容 = 入口类 FQN |
+| SPI 文件 | `META-INF/services/fan.summer.fengyu.api.SwissKitJPlugin` 存在且内容 = 入口类 FQN |
 | API scope | `SwissKitJ-Api` 依赖必须 `provided` |
 | CSS 迁移 | 源码/资源中无 `.glass-*`(v3.2.0 已改名 `sk-*`) |
 | 布局陷阱 | 无 `setPrefWidth(Double.MAX_VALUE)`;无 `maxWidthProperty().bind(widthProperty()…)` |
@@ -98,7 +98,7 @@ skill 负责"怎么拼",标准正确性交给单一真相源。
 | i18n | `i18n/messages.properties` 存在;`createView`/`init` 中注册了 bundle |
 | DevLauncher | 零 JavaFX import |
 
-### 6b. `zhiflowj-plugin-reviewer` agent —— 语义规则(脚本查不了)
+### 6b. `fengyuj-plugin-reviewer` agent —— 语义规则(脚本查不了)
 
 - AiTool 返回 JSON 符合 `{success, summary, …}` 契约
 - 后台任务走 `host.tasks()`(而非裸线程)
