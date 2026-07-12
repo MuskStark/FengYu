@@ -52,7 +52,8 @@ async function waitForRestart() {
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 500))
     try {
-      await api.health()
+      const h = await api.health()
+      if (h.status !== 'ok') continue
       const status = await api.getSetupStatus()
       if (status.initialized) {
         back = true
