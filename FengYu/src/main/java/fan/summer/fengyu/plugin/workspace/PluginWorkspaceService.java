@@ -24,7 +24,7 @@ public class PluginWorkspaceService {
     public String newSession() { return UUID.randomUUID().toString(); }
 
     private void checkToken(String s, String what) {
-        if (s == null || !SAFE_ID.matcher(s).matches()) {
+        if (s == null || !SAFE_ID.matcher(s).matches() || s.equals(".") || s.equals("..")) {
             throw new IllegalArgumentException("Invalid " + what + ": " + s);
         }
     }
@@ -32,7 +32,12 @@ public class PluginWorkspaceService {
     private Path sessionRoot(String pluginId, String session) {
         checkToken(pluginId, "pluginId");
         checkToken(session, "session");
-        return root.resolve(pluginId).resolve(session);
+        Path normalizedRoot = root.normalize();
+        Path resolved = normalizedRoot.resolve(pluginId).resolve(session).normalize();
+        if (!resolved.startsWith(normalizedRoot)) {
+            throw new IllegalArgumentException("Resolved workspace path escapes root: " + resolved);
+        }
+        return resolved;
     }
 
     public Path inDir(String pluginId, String session) {
