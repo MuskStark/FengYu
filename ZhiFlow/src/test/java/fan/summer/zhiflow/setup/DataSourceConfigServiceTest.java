@@ -157,4 +157,20 @@ class DataSourceConfigServiceTest {
         java.nio.file.Path bak = svc.backupAndClear();
         assertNull(bak, "no file to back up → null");
     }
+
+    @Test
+    void defaultEmbeddedPath_pointsAtDatabaseFolderUnderBaseDir() {
+        DataSourceConfigService svc = newService();
+        Path expected = tempDir.resolve("database/zhiflow");
+        assertEquals(expected, svc.defaultEmbeddedPath());
+    }
+
+    @Test
+    void buildFromWizard_embedded_blankFilePathUsesDefaultEmbeddedPath() {
+        DataSourceConfigService svc = newService();
+        // Blank filePath → must fall back to defaultEmbeddedPath()
+        WizardParams params = new WizardParams("  ", null, null, null, null, null);
+        DataSourceConfig cfg = svc.buildFromWizard(DbType.H2, params);
+        assertEquals(svc.defaultEmbeddedPath().toString().replace("\\", "/"), cfg.filePath());
+    }
 }
