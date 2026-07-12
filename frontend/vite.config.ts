@@ -2,8 +2,14 @@ import { defineConfig, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vuetify from 'vite-plugin-vuetify'
 import { fileURLToPath, URL } from 'node:url'
-import { copyFileSync, mkdirSync, existsSync } from 'node:fs'
+import { copyFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+
+// App version comes from package.json (single source of truth) and is injected
+// as a build-time constant __APP_VERSION__ (see `define` below).
+const pkgVersion = JSON.parse(
+  readFileSync(resolve(__dirname, 'package.json'), 'utf8'),
+).version as string
 
 // The backend binds a fixed loopback port by default (HeadlessLauncher.DEFAULT_PORT = 24056),
 // with a fallback to an OS-assigned port only if 24056 is taken — so the dev proxy targets the
@@ -40,6 +46,9 @@ function vendorVue(): Plugin {
 }
 
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(pkgVersion),
+  },
   plugins: [
     vendorVue(),
     vue(),
