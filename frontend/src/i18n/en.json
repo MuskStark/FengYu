@@ -1,4 +1,5 @@
 {
+  "brand": "Infinia",
   "category": { "dev": "Developer", "text": "Text", "image": "Image",
                 "net": "Network", "file": "File", "ai": "AI", "other": "Other" },
   "source":   { "official": "Official", "third_party": "Third-party" },

@@ -76,7 +76,7 @@ async function waitForRestart() {
 <template>
   <div class="cx-setup-wrap">
     <div class="cx-card" style="max-width: 560px; width: 100%; padding: 28px">
-      <div style="font-size: 22px; font-weight: 650">Infinia Setup</div>
+      <div style="font-size: 22px; font-weight: 650">{{ $t('brand') }} Setup</div>
       <div class="cx-muted" style="margin: 4px 0 20px">Choose how to store your data.</div>
 
       <!-- Step 1: choose type -->
