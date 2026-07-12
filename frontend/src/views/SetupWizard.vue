@@ -108,7 +108,7 @@ async function waitForRestart() {
 
         <div v-for="f in selectedMeta?.fields ?? []" :key="f.name" class="mb-3">
           <v-text-field
-            :label="f.label ?? f.name"
+            :label="f.name === 'filePath' ? $t('setup.dataFileLocation') : (f.label ?? f.name)"
             :type="f.secret ? 'password' : 'text'"
             :placeholder="f.name"
             variant="outlined"
