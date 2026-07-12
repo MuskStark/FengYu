@@ -60,6 +60,18 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  optimizeDeps: {
+    // Keep Vuetify OUT of esbuild's dependency pre-bundle. The whole library is pulled in
+    // via `import * as components from 'vuetify/components'` (needed so micro-frontend
+    // plugins can use any Vuetify component the host doesn't reference at compile time).
+    // esbuild pre-bundling doesn't run vite-plugin-vuetify's Rollup style hooks, so the
+    // per-component chunks embed raw .css with sourcemaps pointing at a non-existent
+    // `.vite/deps/*.sass` (the `VApp.sass` 404), AND the `configFile` ($rounded) Sass
+    // overrides are silently skipped. Excluding it serves Vuetify as source modules, so
+    // every component's `.css` import is routed through the plugin's `.css`→virtual-Sass
+    // transform.
+    exclude: ['vuetify'],
+  },
   server: {
     port: 5173,
     proxy: {
