@@ -103,7 +103,7 @@ watch(
       </div>
     </div>
 
-    <div class="d-flex ga-2 align-end mt-2">
+    <div class="d-flex ga-2 align-center mt-2">
       <v-textarea
         v-model="draft"
         :placeholder="$t('aichat.placeholder')"
