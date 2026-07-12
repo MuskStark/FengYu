@@ -64,4 +64,43 @@ class SetupControllerTest {
         assertEquals("restart", result.get("action"));
         assertTrue(exitFired.get(), "restart still signalled even with no config");
     }
+
+    @Test
+    void types_embedded_filePathCarriesResolvedDefault() {
+        DataSourceConfigService svc = newService();
+        SetupController controller = newController(svc, new java.util.concurrent.atomic.AtomicBoolean(false));
+
+        @SuppressWarnings("unchecked")
+        java.util.List<Map<String, Object>> types = (java.util.List<Map<String, Object>>) controller.types();
+
+        Map<String, Object> h2 = types.stream()
+                .filter(t -> "h2".equals(t.get("type")))
+                .findFirst().orElseThrow();
+        @SuppressWarnings("unchecked")
+        java.util.List<Map<String, Object>> fields = (java.util.List<Map<String, Object>>) h2.get("fields");
+        Map<String, Object> filePath = fields.stream()
+                .filter(f -> "filePath".equals(f.get("name")))
+                .findFirst().orElseThrow();
+
+        assertEquals(svc.defaultEmbeddedPath().toString(),
+                filePath.get("default"),
+                "embedded filePath must advertise the resolved program default");
+    }
+
+    @Test
+    void types_remoteFieldsDoNotCarryFilePathDefault() {
+        DataSourceConfigService svc = newService();
+        SetupController controller = newController(svc, new java.util.concurrent.atomic.AtomicBoolean(false));
+
+        @SuppressWarnings("unchecked")
+        java.util.List<Map<String, Object>> types = (java.util.List<Map<String, Object>>) controller.types();
+
+        Map<String, Object> mysql = types.stream()
+                .filter(t -> "mysql".equals(t.get("type")))
+                .findFirst().orElseThrow();
+        @SuppressWarnings("unchecked")
+        java.util.List<Map<String, Object>> fields = (java.util.List<Map<String, Object>>) mysql.get("fields");
+        boolean anyFilePath = fields.stream().anyMatch(f -> "filePath".equals(f.get("name")));
+        assertFalse(anyFilePath, "remote types must not expose a filePath field");
+    }
 }

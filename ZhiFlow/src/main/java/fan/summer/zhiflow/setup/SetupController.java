@@ -89,8 +89,13 @@ public class SetupController {
             entry.put("embedded", t.embedded);
             List<Map<String, Object>> fields = new ArrayList<>();
             if (t.embedded) {
-                fields.add(Map.of("name", "filePath", "label", "Data file location",
-                        "required", true, "secret", false));
+                Map<String, Object> filePath = new LinkedHashMap<>();
+                filePath.put("name", "filePath");
+                filePath.put("label", "Data file location");
+                filePath.put("required", true);
+                filePath.put("secret", false);
+                filePath.put("default", configService.defaultEmbeddedPath().toString());
+                fields.add(filePath);
             } else {
                 fields.add(Map.of("name", "host", "required", true, "secret", false));
                 fields.add(Map.of("name", "port", "required", false, "secret", false,
