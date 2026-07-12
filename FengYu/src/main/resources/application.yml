@@ -6,6 +6,10 @@ server:
   address: 127.0.0.1            # loopback only — never 0.0.0.0 (security invariant)
 
 spring:
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
   jpa:
     hibernate:
       ddl-auto: update          # entity changes auto-create tables / add columns
