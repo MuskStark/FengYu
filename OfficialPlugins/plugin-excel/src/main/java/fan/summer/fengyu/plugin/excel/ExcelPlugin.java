@@ -72,7 +72,21 @@ public class ExcelPlugin implements FengYuPlugin {
         if (sel instanceof List<?> l) cfg.selectedSheets = l.stream().map(String::valueOf).toList();
         if (args.get("splitSheet") != null) cfg.splitSheet = str(args, "splitSheet");
         if (args.get("splitColumn") != null) cfg.splitColumn = str(args, "splitColumn");
-        if (args.get("splitColumnIndex") != null) cfg.splitColumnIndex = num(args, "splitColumnIndex");
+        if (args.get("splitColumnIndex") != null) {
+            cfg.splitColumnIndex = num(args, "splitColumnIndex");
+        } else if (cfg.splitColumn != null && cfg.analysisResult != null) {
+            // UI sends header TEXT, not an index; resolve it against the analyzed headers
+            // for the target sheet so ExcelSplitter.splitByColumn() groups correctly.
+            Map<Integer, String> headers = cfg.analysisResult.get(cfg.splitSheet);
+            if (headers != null) {
+                for (Map.Entry<Integer, String> e : headers.entrySet()) {
+                    if (cfg.splitColumn.equals(e.getValue())) {
+                        cfg.splitColumnIndex = e.getKey();
+                        break;
+                    }
+                }
+            }
+        }
         if (args.get("filePrefix") != null) cfg.filePrefix = str(args, "filePrefix");
         Object entries = args.get("complexEntries");
         if (entries instanceof List<?> l) {
@@ -103,6 +117,7 @@ public class ExcelPlugin implements FengYuPlugin {
         }
         ExcelSplitter.SplitResult res;
         try {
+            java.nio.file.Files.createDirectories(cfg.outputDir);
             res = new ExcelSplitter(cfg, null).split();
         } catch (Exception e) {
             throw new IllegalArgumentException("Split failed: " + e.getMessage(), e);
