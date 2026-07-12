@@ -38,6 +38,15 @@
       <version>2.0.0</version>
       <scope>provided</scope>
     </dependency>
+    <!-- Jackson ObjectMapper for ToolJson (provided by app at runtime, pulled in transitively there
+         via spring-ai-openai -> openai-java-core; plugin-excel has no such transitive path, so it's
+         declared explicitly here, pinned to the version the app resolves). -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>2.21.4</version>
+      <scope>provided</scope>
+    </dependency>
     <dependency>
       <groupId>org.apache.fesod</groupId>
       <artifactId>fesod-sheet</artifactId>
