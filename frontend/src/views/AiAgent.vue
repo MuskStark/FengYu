@@ -254,7 +254,7 @@ const statusLabel = computed(() => {
     >{{ summary }}</v-alert>
 
     <!-- Goal composer -->
-    <div class="d-flex ga-2 align-end mb-2">
+    <div class="d-flex ga-2 align-center mb-2">
       <v-textarea
         v-model="goal"
         class="flex-grow-1"
