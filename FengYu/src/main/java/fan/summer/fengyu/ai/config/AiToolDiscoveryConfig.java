@@ -1,6 +1,6 @@
 package fan.summer.fengyu.ai.config;
 
-import fan.summer.fengyu.ai.tools.FengYuTool;
+import fan.summer.fengyu.api.ai.FengYuTool;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.context.annotation.Bean;
