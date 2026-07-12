@@ -32,6 +32,7 @@ struct Sidecar(Mutex<Option<Child>>);
 ///   reading the token from Vite env; no injection needed).
 fn run_desktop(child: Option<Child>, init_script: Option<String>) {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(Sidecar(Mutex::new(child)))
         .setup(move |app| {
             // Build the window programmatically so the init script (if any) runs BEFORE page load
