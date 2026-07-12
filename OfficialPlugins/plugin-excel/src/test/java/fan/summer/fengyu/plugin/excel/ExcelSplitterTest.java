@@ -66,4 +66,38 @@ class ExcelSplitterTest {
         var res = new ExcelSplitter(c, null).split();
         assertEquals(2, res.fileCount()); // east, west
     }
+
+    @Test
+    void complexSplitNormalPlusCopyAll() throws Exception {
+        // Reuse the fixture built in setUp(): "Alpha" (region/v, 2 distinct region
+        // values -> east, west) is the normal split entry; "Beta" is copied whole
+        // into every output file produced by the normal entry.
+        SplitConfig c = new SplitConfig();
+        c.sourceFile = src;
+        c.analysisResult = ExcelSplitter.analyze(src);
+        c.mode = SplitConfig.SplitMode.COMPLEX;
+        c.outputDir = Files.createDirectories(tmp.resolve("out3"));
+        c.complexEntries = List.of(
+                // 1-based header row (row 0) and 1-based split column ("region", col 0)
+                new ComplexSplitEntry("in.xlsx", "Alpha", 1, 1),
+                // headerIndex == -1 && columnIndex == -1 => copy the entire "Beta" sheet
+                new ComplexSplitEntry("in.xlsx", "Beta", -1, -1)
+        );
+
+        var res = new ExcelSplitter(c, null).split();
+        assertEquals(2, res.fileCount()); // east, west
+
+        // Engine's real COMPLEX naming: <stem(sourceFile)>_<value>.xlsx (no filePrefix applied)
+        Path eastFile = c.outputDir.resolve("in_east.xlsx");
+        Path westFile = c.outputDir.resolve("in_west.xlsx");
+        assertTrue(Files.exists(eastFile), "expected " + eastFile);
+        assertTrue(Files.exists(westFile), "expected " + westFile);
+
+        for (Path out : List.of(eastFile, westFile)) {
+            try (Workbook wb = WorkbookFactory.create(out.toFile())) {
+                assertNotNull(wb.getSheet("Alpha"), "split sheet missing in " + out.getFileName());
+                assertNotNull(wb.getSheet("Beta"), "copy-all sheet missing in " + out.getFileName());
+            }
+        }
+    }
 }
