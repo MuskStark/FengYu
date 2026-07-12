@@ -21,6 +21,9 @@ public enum ToolCategory {
     /** Network-related tools such as API testers, fetch utilities, and connection checkers. */
     NET("net", "category.net"),
 
+    /** File-processing tools such as document splitters, converters, and archivers. */
+    FILE("file", "category.file"),
+
     /** AI / agent / prompt tools such as prompt builders and LLM helpers. */
     AI("ai", "category.ai"),
 
