@@ -11,9 +11,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 4.0.0 Headless Architecture (Phase 1)
 
-The reactor is a **parent POM** (`pom.xml`) with modules `FengYu-Api`, `plugin-markdown`,
-`FengYu` (each has `<parent>`; version via `${revision}`). Plus non-Maven top-level dirs:
-`frontend/` (Vue) and `desktop/` (Tauri).
+The reactor is a **parent POM** (`pom.xml`) with modules `FengYu-Api`, `OfficialPlugins`
+(itself a reactor for `plugin-markdown` + `plugin-excel`), `FengYu` (each has `<parent>`;
+version via `${revision}`). Plus non-Maven top-level dirs: `frontend/` (Vue) and `desktop/`
+(Tauri).
 
 - **Backend** — `fan.summer.fengyu.HeadlessLauncher` boots `AiSpringContext.startWeb(port)`
   (embedded Tomcat, `127.0.0.1` only). CLI: `--port=<n>` (defaults to `24056`; `0` = free port,
@@ -36,19 +37,36 @@ The reactor is a **parent POM** (`pom.xml`) with modules `FengYu-Api`, `plugin-m
 - **Desktop** — `desktop/` Tauri 2.0; `src-tauri/src/main.rs` spawns the jar sidecar, waits on
   health, injects `window.__FENGYU_TOKEN__`/`__FENGYU_API_BASE__`. Needs Rust + `tauri-cli`.
 
+### Plugin File I/O Standard v1
+
+Plugins that need file uploads/downloads (e.g. Excel) use a generic, plugin-agnostic contract
+instead of rolling their own: `PluginFileController` exposes `POST /api/plugins/{id}/files`
+(multipart upload → `{session, files:[{name, path}]}`), `GET /api/plugins/{id}/files/archive?
+session=&dir=in|out` (zips a session subdir and streams it back), and `DELETE
+/api/plugins/{id}/files?session=` (explicit cleanup). Files land under
+`${java.io.tmpdir}/fengyu/plugin-workspace/{pluginId}/{session}/{in,out}`
+(`PluginWorkspaceService`); `WorkspaceSweepJob` sweeps sessions older than 24h hourly, and a
+`@PreDestroy` shutdown hook wipes the whole workspace root on JVM exit. `invoke(action, args)`
+never receives raw upload bytes — only absolute paths returned by the upload/archive endpoints,
+so plugin actions stay filesystem-shaped regardless of whether the caller is the web UI or the
+desktop shell. On desktop, `PluginContext.desktop` (`frontend/src/mf/desktop.ts`) exposes
+`pickFile`/`pickDirectory` backed by the Tauri dialog plugin, letting a plugin's Vue UI resolve a
+native absolute path directly instead of going through the upload endpoint.
+
 ## Build & Run
 
 **No system Maven required in-editor.** In-IDE, use IntelliJ's Maven (tool window or MCP
 `mcp__idea__build_project`). From a shell you may use IDEA's bundled Maven binary directly.
 
 ```bash
-# Reactor order: API → plugin-markdown → app (API must be installed first)
+# Reactor order: API → OfficialPlugins (markdown, excel) → app (API must be installed first)
 mvn -f FengYu-Api/pom.xml install -DskipTests
-mvn -f plugin-markdown/pom.xml install -DskipTests
+mvn -f OfficialPlugins/pom.xml install -DskipTests
 mvn -f FengYu/pom.xml clean package -DskipTests
 
-# Rebuild a plugin's micro-frontend bundle (emits into resources/ui/markdown/)
-cd plugin-markdown/ui-src && npm install && npm run build
+# Rebuild a plugin's micro-frontend bundle (emits into resources/ui/<id>/)
+cd OfficialPlugins/plugin-markdown/ui-src && npm install && npm run build
+cd OfficialPlugins/plugin-excel/ui-src && npm install && npm run build
 
 # Run the headless backend (loopback web server, no window; binds 24056 by default)
 java -jar FengYu/target/FengYu-4.0.0-SNAPSHOT.jar --token=<t>
@@ -68,7 +86,8 @@ JRE) is a later phase (Phase F-prod).
 | Module / dir | Purpose |
 |--------|---------|
 | `FengYu-Api` | Plugin v2 contract (`FengYuPluginV2`, `PluginDescriptor`), AI contract (`AiService`/`AiTool`), `IconStyle`/`ToolCategory`. (Still contains JavaFX-era v1 `FengYuPlugin` + preview/theme/component classes, unused by the headless runtime.) |
-| `plugin-markdown` | First official v2 plugin: backend `@Component` (commonmark render) + Vue micro-frontend (`ui-src/` → `resources/ui/markdown/index.js`) |
+| `OfficialPlugins/plugin-markdown` | First official v2 plugin: backend `@Component` (commonmark render) + Vue micro-frontend (`ui-src/` → `resources/ui/markdown/index.js`) |
+| `OfficialPlugins/plugin-excel` | Official Excel splitter plugin (v2): backend engine (BY_SHEET/BY_COLUMN/COMPLEX) + Vue wizard micro-frontend + 6 Spring AI `@Tool` beans; web upload+zip / desktop native dialogs |
 | `FengYu` | Headless Spring Boot backend — REST/SSE controllers, `HeadlessLauncher`, `PluginRegistryService`, AI backends, H2/MyBatis |
 | `frontend/` | Vue 3.5 + TS SPA (browser + Tauri) |
 | `desktop/` | Tauri 2.0 desktop shell (Java sidecar) |
