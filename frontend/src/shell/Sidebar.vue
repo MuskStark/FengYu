@@ -37,18 +37,22 @@ function pickCategory(key: string) {
 
 <template>
   <v-navigation-drawer :rail="rail" permanent width="220" rail-width="64">
-    <div class="d-flex align-center px-3 py-3">
+    <div
+      class="d-flex align-center py-3"
+      :class="rail ? 'justify-center' : 'px-3'"
+    >
       <v-avatar color="primary" size="32" rounded="lg">
-        <span class="font-weight-bold text-body-2">ZF</span>
+        <v-icon icon="mdi-hexagon-multiple-outline" />
       </v-avatar>
       <span v-if="!rail" class="ml-3 font-weight-medium">ZhiFlow</span>
-      <v-spacer />
+      <v-spacer v-if="!rail" />
       <v-btn
-        :icon="rail ? 'mdi-chevron-right' : 'mdi-chevron-left'"
+        v-if="!rail"
+        icon="mdi-chevron-left"
         size="small"
         variant="text"
-        :title="rail ? $t('sidebar.expand') : $t('sidebar.collapse')"
-        @click="settings.setSidebarCollapsed(!rail)"
+        :title="$t('sidebar.collapse')"
+        @click="settings.setSidebarCollapsed(true)"
       />
     </div>
 
@@ -66,6 +70,13 @@ function pickCategory(key: string) {
     </v-list>
 
     <template #append>
+      <v-list v-if="rail" density="compact" nav class="pb-2">
+        <v-list-item
+          prepend-icon="mdi-chevron-right"
+          :title="$t('sidebar.expand')"
+          @click="settings.setSidebarCollapsed(false)"
+        />
+      </v-list>
       <v-list density="compact" nav>
         <v-list-item prepend-icon="mdi-chat-outline" :title="$t('sidebar.aiChat')" @click="router.push('/ai')" />
         <v-list-item prepend-icon="mdi-robot-outline" :title="$t('sidebar.agent')" @click="router.push('/agent')" />
