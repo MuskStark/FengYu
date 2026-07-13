@@ -22,6 +22,14 @@ public class GlobalExceptionHandler {
                 .body(Map.of("success", false, "error", e.getMessage() != null ? e.getMessage() : "invalid request"));
     }
 
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<Map<String, Object>> handlePluginFailure(IllegalStateException e) {
+        String message = e.getMessage();
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("success", false, "error",
+                        message != null && !message.isBlank() ? message : "Plugin runtime failed"));
+    }
+
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<Map<String, Object>> handleUploadTooLarge(MaxUploadSizeExceededException e) {
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)

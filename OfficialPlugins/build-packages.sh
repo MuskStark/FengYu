@@ -3,6 +3,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/OfficialPlugins/target/packages"
 npm --prefix "$ROOT/plugin-sdk/typescript" run build
+node --test "$ROOT/OfficialPlugins/packages/excel/ui/wizard-state.test.mjs"
 rm -rf "$OUT"
 mkdir -p "$OUT/markdown/backend" "$OUT/excel/backend"
 cp -R "$ROOT/OfficialPlugins/packages/markdown/." "$OUT/markdown/"
