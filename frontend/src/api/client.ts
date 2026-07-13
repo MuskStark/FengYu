@@ -101,6 +101,19 @@ export const api = {
     return data
   },
 
+  async uploadRuntimeDirectory(id: string, files: File[]): Promise<PluginFileRef> {
+    const body = new FormData()
+    for (const file of files) {
+      body.append('files', file)
+      body.append('paths', file.webkitRelativePath || file.name)
+    }
+    const { data } = await http.post<PluginFileRef>(
+      `/api/plugin-runtime/${encodeURIComponent(id)}/files/upload-directory`, body,
+      { headers: { 'Content-Type': undefined } },
+    )
+    return data
+  },
+
   async grantRuntimeNativePath(id: string, path: string, kind: 'file' | 'directory', access: 'read' | 'write' | 'read-write'): Promise<PluginFileRef> {
     const { data } = await http.post<PluginFileRef>(`/api/plugin-runtime/${encodeURIComponent(id)}/files/native`, { path, kind, access })
     return data

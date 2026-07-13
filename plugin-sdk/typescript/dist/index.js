@@ -35,6 +35,7 @@ export class FengYuClient {
     notify(message) { return this.request('notify', { message }); }
     files = {
         open: (options = {}, request) => this.request('files.open', options, request),
+        inputDirectory: (request) => this.request('files.inputDirectory', {}, request),
         outputDirectory: (request) => this.request('files.outputDirectory', {}, request),
         export: (ref, request) => this.request('files.export', ref, request),
     };
