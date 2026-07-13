@@ -70,6 +70,13 @@
             <artifactId>FengYu-Api</artifactId>
         </dependency>
 
+        <!-- Official isolated-plugin Worker contracts used by the runtime host. -->
+        <dependency>
+            <groupId>fan.summer.fengyu.sdk</groupId>
+            <artifactId>fengyu-plugin-sdk</artifactId>
+            <version>${revision}</version>
+        </dependency>
+
         <!-- JavaFX removed in 4.0.0 Phase 1 headless cutover: the UI is now Vue + Tauri and the
              backend is a headless Spring Boot web server. No javafx.* code remains. -->
 
