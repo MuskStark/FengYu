@@ -41,7 +41,7 @@ When the host grants a worker database access, it provides the following environ
 
 | Variable | Required | Meaning |
 |---|---|---|
-| `FENGYU_DB_TYPE` | Yes | Database type, such as `h2` |
+| `FENGYU_DB_TYPE` | Yes | Database type: `h2`, `sqlite`, `mysql`, or `postgresql` |
 | `FENGYU_DB_DRIVER` | Yes | JDBC driver class name |
 | `FENGYU_DB_URL` | Yes | JDBC connection URL |
 | `FENGYU_DB_USERNAME` | No | JDBC username; defaults to an empty string |
