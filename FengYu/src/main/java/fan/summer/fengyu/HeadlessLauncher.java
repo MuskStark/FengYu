@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.sql.DriverManager;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Phase 4 headless entry point. Boots FengYu as a loopback Spring Boot web server in one of
@@ -126,11 +127,24 @@ public final class HeadlessLauncher {
         springArgs.add("--server.port=" + port);
         Class<?> appClass = configured ? FengYuApplication.class : SetupApplication.class;
         SpringApplicationBuilder builder = new SpringApplicationBuilder(appClass);
+        builder.properties(runtimeDefaults());
         if (configured) {
             // APP mode marker — DataSourceAutoConfig is conditional on it.
             System.setProperty("fengyu.mode", "app");
         }
         builder.run(springArgs.toArray(new String[0]));
+    }
+
+    /**
+     * Safety-critical defaults that must also survive the flattened shaded-jar runtime. The
+     * packaged launcher currently does not discover {@code application.yml}, so relying on that
+     * resource alone restores Spring Boot's 1 MB multipart limit and wildcard bind address.
+     */
+    static Map<String, Object> runtimeDefaults() {
+        return Map.of(
+                "server.address", "127.0.0.1",
+                "spring.servlet.multipart.max-file-size", "128MB",
+                "spring.servlet.multipart.max-request-size", "128MB");
     }
 
     private static void primeLogDirectory() {
