@@ -35,6 +35,24 @@ public static void main(String[] args) throws Exception {
 }
 ```
 
+### Database environment contract
+
+When the host grants a worker database access, it provides the following environment variables:
+
+| Variable | Required | Meaning |
+|---|---|---|
+| `FENGYU_DB_TYPE` | Yes | Database type, such as `h2` |
+| `FENGYU_DB_DRIVER` | Yes | JDBC driver class name |
+| `FENGYU_DB_URL` | Yes | JDBC connection URL |
+| `FENGYU_DB_USERNAME` | No | JDBC username; defaults to an empty string |
+| `FENGYU_DB_PASSWORD` | No | JDBC password; defaults to an empty string |
+| `FENGYU_PLUGIN_DATA_DIR` | Yes | Plugin-specific persistent data directory |
+
+Use `PluginDatabaseConfig.fromEnvironment(System.getenv())` to parse the contract. It returns an
+empty `Optional` when none of these variables are present and rejects partial configurations.
+`PluginDatabaseConfig.toString()` always renders the password as `<redacted>`; validation errors
+name missing variables but never echo environment values or secrets.
+
 ## CLI
 
 ```bash
