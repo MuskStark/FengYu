@@ -15,4 +15,35 @@ class JsonRpcWorkerTest {
         String result = out.toString(StandardCharsets.UTF_8);
         assertTrue(result.contains("hi Ada")); assertTrue(result.contains("-32601"));
     }
+
+    @Test void redirectsHandlerStdoutToStderr() throws Exception {
+        InputStream originalIn = System.in;
+        PrintStream originalOut = System.out;
+        PrintStream originalErr = System.err;
+        ByteArrayOutputStream protocolOut = new ByteArrayOutputStream();
+        ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
+        String request = "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"noisy\",\"params\":{}}\n";
+
+        try {
+            System.setIn(new ByteArrayInputStream(request.getBytes(StandardCharsets.UTF_8)));
+            System.setOut(new PrintStream(protocolOut, true, StandardCharsets.UTF_8));
+            System.setErr(new PrintStream(diagnostics, true, StandardCharsets.UTF_8));
+
+            new JsonRpcWorker()
+                .on("noisy", params -> {
+                    System.out.println("library-noise");
+                    return java.util.Map.of("ok", true);
+                })
+                .run();
+        } finally {
+            System.setIn(originalIn);
+            System.setOut(originalOut);
+            System.setErr(originalErr);
+        }
+
+        String[] protocolLines = protocolOut.toString(StandardCharsets.UTF_8).lines().toArray(String[]::new);
+        assertEquals(1, protocolLines.length);
+        assertTrue(protocolLines[0].contains("\"ok\":true"));
+        assertTrue(diagnostics.toString(StandardCharsets.UTF_8).contains("library-noise"));
+    }
 }
