@@ -65,8 +65,12 @@ public class PluginFileGrantService {
 
     public FileRef grantNative(String pluginId, String rawPath, String kind, String access) throws IOException {
         Path path = Path.of(rawPath).toRealPath();
+        if (!List.of("file", "directory").contains(kind) || !List.of("read", "write").contains(access)) {
+            throw new IllegalArgumentException("Invalid native file grant");
+        }
         if ("directory".equals(kind) != Files.isDirectory(path)) throw new IllegalArgumentException("Selected path kind does not match");
-        return register(pluginId, path, kind, access);
+        Path granted = "read".equals(access) ? snapshot(pluginId, path) : path;
+        return register(pluginId, granted, kind, access);
     }
 
     public FileRef outputDirectory(String pluginId) throws IOException {
@@ -87,12 +91,43 @@ public class PluginFileGrantService {
         return new FileRef(id, path.getFileName().toString(), kind, access, size);
     }
 
-    @PreDestroy void close() throws IOException {
-        grants.clear();
-        if (!Files.exists(root)) return;
-        try (var paths = Files.walk(root)) {
+    private Path snapshot(String pluginId, Path source) throws IOException {
+        Path snapshotRoot = Files.createDirectories(
+            root.resolve(pluginId).resolve(UUID.randomUUID().toString()).resolve("in"));
+        Path target = snapshotRoot.resolve(source.getFileName().toString());
+        try {
+            if (Files.isDirectory(source)) {
+                try (var paths = Files.walk(source)) {
+                    for (Path current : paths.toList()) {
+                        if (Files.isSymbolicLink(current)) {
+                            throw new IllegalArgumentException("Selected input contains a symbolic link");
+                        }
+                        Path copy = target.resolve(source.relativize(current).toString()).normalize();
+                        if (!copy.startsWith(target)) throw new IllegalArgumentException("Invalid selected input path");
+                        if (Files.isDirectory(current)) Files.createDirectories(copy);
+                        else Files.copy(current, copy, StandardCopyOption.REPLACE_EXISTING);
+                    }
+                }
+            } else {
+                Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+            return target;
+        } catch (IOException | RuntimeException e) {
+            deleteTree(snapshotRoot.getParent());
+            throw e;
+        }
+    }
+
+    private static void deleteTree(Path directory) throws IOException {
+        if (!Files.exists(directory)) return;
+        try (var paths = Files.walk(directory)) {
             for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
         }
+    }
+
+    @PreDestroy void close() throws IOException {
+        grants.clear();
+        deleteTree(root);
     }
 
     public record FileRef(String id, String name, String kind, String access, long size) {}
