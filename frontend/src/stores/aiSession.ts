@@ -3,6 +3,7 @@ import { computed, reactive, ref } from 'vue'
 import { api } from '@/api/client'
 import { openAiStream, type SseHandle } from '@/api/sse'
 import type { ChatMessage, ConversationPayload } from '@/api/types'
+import { actOnConfirmation, parseToolConfirmation, type ToolConfirmation } from './aiConfirmation'
 
 export interface ChatTurn {
   id: number
@@ -10,6 +11,7 @@ export interface ChatTurn {
   content: string
   thinking: string
   streaming: boolean
+  confirmations: ToolConfirmation[]
 }
 
 export interface Conversation {
@@ -101,6 +103,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
         content: m.content,
         thinking: m.thinking,
         streaming: false,
+        confirmations: [],
       }))
       conv.title = detail.title
       conv.loaded = true
@@ -159,7 +162,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     const conv = ensureActive()
     if (!conv.title) conv.title = prompt.slice(0, 48)
 
-    conv.turns.push({ id: ++seq, role: 'user', content: prompt, thinking: '', streaming: false })
+    conv.turns.push({ id: ++seq, role: 'user', content: prompt, thinking: '', streaming: false, confirmations: [] })
     // reactive() so streaming closures mutate the proxy (live repaint), not the raw object.
     const assistant = reactive<ChatTurn>({
       id: ++seq,
@@ -167,6 +170,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
       content: '',
       thinking: '',
       streaming: true,
+      confirmations: [],
     })
     conv.turns.push(assistant)
     busy.value = true
@@ -179,6 +183,10 @@ export const useAiSessionStore = defineStore('aiSession', () => {
         },
         onThinking: (t) => {
           assistant.thinking += t
+        },
+        onTool: (payload) => {
+          const confirmation = parseToolConfirmation(payload)
+          if (confirmation) assistant.confirmations.push(confirmation)
         },
         onDone: (payload) => {
           if (payload.text && !assistant.content) assistant.content = payload.text
@@ -210,6 +218,10 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     if (last && last.streaming) last.streaming = false
   }
 
+  async function resolveConfirmation(item: ToolConfirmation, approve: boolean) {
+    await actOnConfirmation(item, approve)
+  }
+
   /** Delete the active conversation (backend + local) and start a fresh one. */
   async function clear() {
     stop()
@@ -233,6 +245,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     removeConversation,
     send,
     stop,
+    resolveConfirmation,
     clear,
   }
 })
