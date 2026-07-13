@@ -38,9 +38,7 @@ const bottomNav = [
   <aside class="cx-sidebar" :class="{ rail }">
     <!-- Brand + collapse -->
     <div class="cx-row" :class="rail ? 'justify-center px-0' : ''" style="padding: 12px; gap: 10px">
-      <span class="cx-avatar" style="width: 30px; height: 30px; font-size: 14px">
-        <i class="mdi mdi-hexagon-multiple-outline" />
-      </span>
+      <img class="brand-logo" src="/infinia-logo.svg" alt="" />
       <span v-if="!rail" class="cx-grow" style="font-weight: 600">{{ $t('brand') }}</span>
       <button
         v-if="!rail"
@@ -118,3 +116,12 @@ const bottomNav = [
     </div>
   </aside>
 </template>
+
+<style scoped>
+.brand-logo {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+</style>
