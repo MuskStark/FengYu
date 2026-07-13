@@ -24,7 +24,12 @@ public final class JsonRpcWorker {
         return this;
     }
 
-    public void run() throws Exception { run(System.in, System.out); }
+    public void run() throws Exception {
+        InputStream protocolInput = System.in;
+        OutputStream protocolOutput = System.out;
+        System.setOut(System.err);
+        run(protocolInput, protocolOutput);
+    }
 
     public void run(InputStream input, OutputStream output) throws Exception {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
