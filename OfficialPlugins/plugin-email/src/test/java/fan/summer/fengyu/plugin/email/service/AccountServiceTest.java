@@ -1,0 +1,87 @@
+package fan.summer.fengyu.plugin.email.service;
+
+import fan.summer.fengyu.plugin.email.crypto.CredentialCipher;
+import fan.summer.fengyu.plugin.email.database.EmailDatabase;
+import fan.summer.fengyu.sdk.PluginDatabaseConfig;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import javax.crypto.KeyGenerator;
+import java.nio.file.Path;
+import java.sql.ResultSet;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class AccountServiceTest {
+    @TempDir Path temp;
+
+    @Test void managesTwoAccountsWithOneDefaultAndWriteOnlyEncryptedPasswords() throws Exception {
+        EmailDatabase database = database("accounts");
+        CredentialCipher cipher = cipher();
+        AccountService service = new AccountService(database, cipher);
+
+        long first = service.save(new AccountService.AccountInput(null, "Primary", "first@example.com",
+            "first-secret", "smtp.example.com", 465, "SSL", "imap.example.com", 993, "SSL", true));
+        long second = service.save(new AccountService.AccountInput(null, "Secondary", "second@example.com",
+            "second-secret", "smtp.example.com", 587, "STARTTLS", null, null, null, true));
+
+        var accounts = service.list();
+        assertEquals(2, accounts.size());
+        assertEquals(1, accounts.stream().filter(AccountService.AccountView::defaultAccount).count());
+        assertTrue(accounts.stream().allMatch(AccountService.AccountView::passwordConfigured));
+        assertTrue(service.find(second).orElseThrow().defaultAccount());
+        assertFalse(service.find(first).orElseThrow().defaultAccount());
+        assertFalse(accounts.toString().contains("first-secret"));
+        assertFalse(accounts.toString().contains("second-secret"));
+
+        String encryptedBefore = encryptedPassword(database, first);
+        assertNotEquals("first-secret", encryptedBefore);
+        assertEquals("first-secret", cipher.decrypt(encryptedBefore));
+
+        service.save(new AccountService.AccountInput(first, "Primary edited", "first@example.com",
+            "  ", "smtp2.example.com", 465, "SSL", "imap.example.com", 993, "SSL", false));
+        assertEquals(encryptedBefore, encryptedPassword(database, first));
+        assertEquals("Primary edited", service.find(first).orElseThrow().displayName());
+        assertEquals(1, service.list().stream().filter(AccountService.AccountView::defaultAccount).count());
+
+        service.save(new AccountService.AccountInput(second, "Secondary", "second@example.com",
+            "", "smtp.example.com", 587, "STARTTLS", null, null, null, false));
+        assertEquals(1, service.list().stream().filter(AccountService.AccountView::defaultAccount).count());
+    }
+
+    @Test void deletesAccountWithoutExposingItsPassword() throws Exception {
+        EmailDatabase database = database("delete-account");
+        AccountService service = new AccountService(database, cipher());
+        long id = service.save(new AccountService.AccountInput(null, "Temporary", "temp@example.com",
+            "secret", "smtp.example.com", 465, "SSL", null, null, null, true));
+
+        assertTrue(service.delete(id));
+        assertTrue(service.find(id).isEmpty());
+    }
+
+    private EmailDatabase database(String name) {
+        return new EmailDatabase(new PluginDatabaseConfig("h2", "org.h2.Driver",
+            "jdbc:h2:mem:" + name + ";DB_CLOSE_DELAY=-1", "sa", "", temp));
+    }
+
+    private static CredentialCipher cipher() throws Exception {
+        KeyGenerator generator = KeyGenerator.getInstance("AES");
+        generator.init(256);
+        return new CredentialCipher(generator.generateKey());
+    }
+
+    private static String encryptedPassword(EmailDatabase database, long id) throws Exception {
+        try (var connection = database.openConnection();
+             var statement = connection.prepareStatement(
+                 "SELECT encrypted_password FROM FengTu_PL_Email_Account WHERE id = ?")) {
+            statement.setLong(1, id);
+            try (ResultSet result = statement.executeQuery()) {
+                assertTrue(result.next());
+                return result.getString(1);
+            }
+        }
+    }
+}
