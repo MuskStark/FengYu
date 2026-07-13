@@ -21,3 +21,9 @@ test('loads same-origin sandbox scripts from an isolated plugin origin', () => {
   assert.match(source, /sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"/)
   assert.match(source, /return entry \? pluginAssetUrl\(entry\) : undefined/)
 })
+
+test('advertises and handles the official input-directory capability', () => {
+  assert.match(source, /capabilities: \[[^\]]*'files\.inputDirectory'/s)
+  assert.match(source, /request\.method === 'files\.inputDirectory'/)
+  assert.match(source, /webkitdirectory/)
+})
