@@ -103,22 +103,24 @@ public class PluginProcessManager {
     private Worker start(String id, PluginManifest manifest) {
         Path root = packages.directory(id);
         List<String> command = parseCommand(manifest.backend().command(), root);
+        Map<String, String> environment = runtimeEnvironment.environmentFor(manifest);
+        SensitiveValueRedactor redactor = SensitiveValueRedactor.fromEnvironment(environment);
         try {
             ProcessBuilder builder = new ProcessBuilder(command).directory(root.toFile());
             builder.environment().put("FENGYU_PLUGIN_ID", id);
             builder.environment().put("FENGYU_PLUGIN_ROOT", root.toString());
-            runtimeEnvironment.environmentFor(manifest).forEach(builder.environment()::put);
+            environment.forEach(builder.environment()::put);
             Process process = builder.start();
             Thread.ofVirtual().name("plugin-" + id + "-stderr").start(() -> {
                 try (BufferedReader errors = process.errorReader(StandardCharsets.UTF_8)) {
                     for (String line; (line = errors.readLine()) != null;) {
-                        log.debug("Plugin {} stderr: {}", id, abbreviate(line));
+                        log.debug("Plugin {} stderr: {}", id, abbreviate(redactor.redact(line)));
                     }
                 } catch (IOException ignored) {}
             });
-            return new Worker(id, process, json);
+            return new Worker(id, process, json, redactor);
         } catch (IOException e) {
-            throw new IllegalStateException("Cannot start plugin backend: " + e.getMessage(), e);
+            throw new IllegalStateException("Cannot start plugin backend: " + redactor.redact(e.getMessage()), e);
         }
     }
 
@@ -162,13 +164,15 @@ public class PluginProcessManager {
         private final String pluginId;
         private final Process process;
         private final ObjectMapper json;
+        private final SensitiveValueRedactor redactor;
         private final BufferedWriter writer;
         private final BufferedReader reader;
 
-        Worker(String pluginId, Process process, ObjectMapper json) {
+        Worker(String pluginId, Process process, ObjectMapper json, SensitiveValueRedactor redactor) {
             this.pluginId = pluginId;
             this.process = process;
             this.json = json;
+            this.redactor = redactor;
             this.writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
             this.reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
         }
@@ -185,22 +189,24 @@ public class PluginProcessManager {
                     try {
                         response = json.readTree(line);
                     } catch (IOException invalidJson) {
-                        log.warn("Plugin {} emitted non-JSON stdout: {}", pluginId, abbreviate(line));
+                        log.warn("Plugin {} emitted non-JSON stdout: {}", pluginId,
+                            abbreviate(redactor.redact(line)));
                         continue;
                     }
                     if (!id.equals(response.path("id").asText())) {
                         log.warn("Plugin {} returned response for unexpected id={}", pluginId,
-                            response.path("id").asText("<missing>"));
+                            redactor.redact(response.path("id").asText("<missing>")));
                         continue;
                     }
                     if (response.hasNonNull("error")) {
-                        throw new IllegalArgumentException(response.path("error").path("message").asText("Plugin call failed"));
+                        throw new IllegalArgumentException(redactor.redact(
+                            response.path("error").path("message").asText("Plugin call failed")));
                     }
                     return json.treeToValue(response.get("result"), Object.class);
                 }
                 throw new IllegalStateException("Plugin backend stopped unexpectedly: " + pluginId);
             } catch (IOException e) {
-                throw new IllegalStateException("Plugin RPC failed: " + e.getMessage(), e);
+                throw new IllegalStateException("Plugin RPC failed: " + redactor.redact(e.getMessage()), e);
             }
         }
 
