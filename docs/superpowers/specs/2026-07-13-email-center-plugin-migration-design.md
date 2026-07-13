@@ -153,9 +153,12 @@ The Worker entry point uses the official Java SDK's `JsonRpcWorker`,
 official SDK database-environment API. No email-owned JSON-RPC loop or duplicate
 file-reference DTO is permitted.
 
-The plugin UI is a Vue 3 micro-frontend using the host Vuetify MD3 instance. It
-calls `app.use(ctx.vuetify)` before mount. TipTap is bundled inside the email
-plugin for rich-text composition and does not become a host dependency.
+The plugin UI is a Vue 3 application running inside the standard sandboxed
+`.fyp` iframe. It bundles its own Vuetify MD3 and TipTap dependencies because an
+iframe cannot share the host's Vue/Vuetify runtime. Theme and locale are obtained
+from `FengYuClient.ready()` and kept synchronized through official SDK
+`environment` events.
+
 All host communication goes through the official `@fengyu/plugin-sdk`
 `FengYuClient`: `ready()`, `invoke()`, and `files` operations. The package build
 vendors the official SDK browser bundle in the same way as the existing official
