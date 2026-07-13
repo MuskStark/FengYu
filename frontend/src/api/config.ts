@@ -28,3 +28,36 @@ export function backendUrl(path: string): string {
   if (!base) return path
   return base.replace(/\/$/, '') + path
 }
+
+/**
+ * Resolve sandboxed plugin assets onto a distinct loopback origin.
+ *
+ * Plugin iframes need `allow-same-origin` so their ESM entrypoints execute, but they must not
+ * share the shell's origin because `allow-scripts + allow-same-origin` would otherwise let a
+ * third-party plugin reach the parent DOM. A different loopback port (dev/Tauri) or hostname
+ * (same-port web serving) preserves that isolation boundary.
+ */
+export function pluginAssetUrl(path: string): string {
+  const base = getApiBase()
+  if (typeof window === 'undefined') return base ? base.replace(/\/$/, '') + path : path
+
+  if (base) {
+    const url = new URL(path, base.replace(/\/$/, '') + '/')
+    if (url.origin !== window.location.origin) return url.toString()
+    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+      url.hostname = url.hostname === 'localhost' ? '127.0.0.1' : 'localhost'
+      return url.toString()
+    }
+    return path
+  }
+
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    const backendPort = import.meta.env.VITE_FENGYU_BACKEND_PORT ?? '24056'
+    const samePort = window.location.port === backendPort
+    const host = samePort
+      ? (window.location.hostname === 'localhost' ? '127.0.0.1' : 'localhost')
+      : window.location.hostname
+    return `${window.location.protocol}//${host}:${backendPort}${path}`
+  }
+  return path
+}

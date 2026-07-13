@@ -1,118 +1,162 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { usePluginsStore } from '@/stores/plugins'
 import { useThemeStore } from '@/stores/theme'
 import { api } from '@/api/client'
-import { i18n } from '@/i18n'
-import { loadPlugin, type PluginContext } from '@/mf/loader'
 import { makeDesktop } from '@/mf/desktop'
-import { vuetify } from '@/plugins/vuetify'
-import { getApiBase, getToken } from '@/api/config'
+import { pluginAssetUrl } from '@/api/config'
 
 const props = defineProps<{ id: string }>()
-
 const { t } = useI18n()
 const plugins = usePluginsStore()
 const theme = useThemeStore()
 const router = useRouter()
-
-const host = ref<HTMLElement | null>(null)
+const frame = ref<HTMLIFrameElement | null>(null)
 const error = ref<string | null>(null)
-const loading = ref(false)
-let unmount: (() => void) | null = null
-
-function teardown() {
-  if (unmount) {
-    try {
-      unmount()
-    } catch {
-      /* ignore plugin teardown errors */
-    }
-    unmount = null
-  }
-  if (host.value) host.value.innerHTML = ''
+const loading = ref(true)
+const bridgeListening = ref(false)
+const bridgeReady = ref(false)
+const frameKey = ref(0)
+let pluginHandshakeTimeout: ReturnType<typeof setTimeout> | undefined
+const desktop = makeDesktop()
+const pluginUrl = () => {
+  const entry = plugins.byId(props.id)?.uiEntry
+  return entry ? pluginAssetUrl(entry) : undefined
 }
 
-async function mountPlugin() {
-  teardown()
-  error.value = null
+type BridgeRequest = { source: 'fengyu-plugin'; type: 'request'; id: string; method: string; params?: Record<string, unknown> }
 
-  const descriptor = plugins.byId(props.id)
-  if (!descriptor) {
-    error.value = t('plugin.unknown', { id: props.id })
-    return
-  }
-  const el = host.value
-  if (!el) return
+function respond(id: string, result?: unknown, message?: string) {
+  frame.value?.contentWindow?.postMessage({ source: 'fengyu-host', type: 'response', id, result, error: message }, '*')
+}
 
-  loading.value = true
+function clearPluginHandshakeTimeout() {
+  if (pluginHandshakeTimeout !== undefined) clearTimeout(pluginHandshakeTimeout)
+  pluginHandshakeTimeout = undefined
+}
+
+async function onMessage(event: MessageEvent) {
+  if (event.source !== frame.value?.contentWindow) return
+  const request = event.data as Partial<BridgeRequest>
+  if (request.source !== 'fengyu-plugin' || request.type !== 'request' || !request.id || !request.method) return
+  const requestId = request.id
   try {
-    const mod = await loadPlugin(descriptor.uiEntry)
-    const ctx: PluginContext = {
-      api: {
-        invoke: (action, args = {}) => api.pluginInvoke(descriptor.id, action, args),
-      },
-      theme: theme.theme,
-      onThemeChange: (cb) => theme.onChange(cb),
-      locale: i18n.global.locale.value,
-      t: (key: string) => i18n.global.t(key),
-      onLocaleChange: (cb: (locale: string) => void) => {
-        const unwatch = watch(() => i18n.global.locale.value, (l) => cb(l as string))
-        return unwatch
-      },
-      notify: (msg) => console.info(`[${descriptor.name}]`, msg),
-      apiBase: getApiBase(),
-      token: getToken(),
-      desktop: makeDesktop(),
-      vuetify, // shared MD3 instance — plugins call app.use(ctx.vuetify)
+    if (request.method === 'rpc.invoke') {
+      const method = String(request.params?.method ?? '')
+      const params = (request.params?.params ?? {}) as Record<string, unknown>
+      respond(request.id, await api.pluginInvoke(props.id, method, params))
+    } else if (request.method === 'host.ready') {
+      respond(request.id, {
+        sdkVersion: '1.0.0', theme: theme.theme, locale: document.documentElement.lang || 'en',
+        platform: desktop ? 'desktop' : 'web',
+        capabilities: ['rpc.invoke', 'notify', 'files.open', 'files.outputDirectory', 'files.export'],
+      })
+      bridgeReady.value = true
+      loading.value = false
+      clearPluginHandshakeTimeout()
+    } else if (request.method === 'notify') {
+      console.info(`[${props.id}]`, request.params?.message)
+      respond(request.id, true)
+    } else if (request.method === 'files.open') {
+      if (desktop) {
+        const path = await desktop.pickFile((request.params?.filters ?? []) as { name: string; extensions: string[] }[])
+        respond(request.id, path ? await api.grantRuntimeNativePath(props.id, path, 'file', 'read') : null)
+      } else {
+        const input = document.createElement('input')
+        input.type = 'file'
+        input.accept = ((request.params?.extensions ?? []) as string[]).map(x => `.${x}`).join(',')
+        input.onchange = async () => {
+          try { respond(requestId, input.files?.[0] ? await api.uploadRuntimeFile(props.id, input.files[0]) : null) }
+          catch (e) { respond(requestId, undefined, e instanceof Error ? e.message : String(e)) }
+        }
+        input.click()
+      }
+    } else if (request.method === 'files.outputDirectory') {
+      if (desktop) {
+        const path = await desktop.pickDirectory()
+        respond(request.id, path ? await api.grantRuntimeNativePath(props.id, path, 'directory', 'write') : null)
+      } else respond(request.id, await api.createRuntimeOutput(props.id))
+    } else if (request.method === 'files.export') {
+      await api.exportRuntimeOutput(props.id, String(request.params?.id ?? ''))
+      respond(request.id, true)
+    } else {
+      throw new Error(`Unsupported host capability: ${request.method}`)
     }
-    unmount = mod.mount(el, ctx)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    loading.value = false
+    respond(request.id, undefined, e instanceof Error ? e.message : String(e))
   }
 }
 
-onMounted(async () => {
-  if (plugins.plugins.length === 0) await plugins.load()
-  await mountPlugin()
+function sendEnvironment() {
+  frame.value?.contentWindow?.postMessage({ source: 'fengyu-host', type: 'event', event: 'environment', data: { theme: theme.theme } }, '*')
+}
+
+function onFrameLoad() {
+  sendEnvironment()
+  clearPluginHandshakeTimeout()
+  if (!bridgeReady.value) {
+    pluginHandshakeTimeout = setTimeout(() => {
+      loading.value = false
+      error.value = t('plugin.handshakeTimeout')
+    }, 8_000)
+  }
+}
+
+function retryPlugin() {
+  clearPluginHandshakeTimeout()
+  error.value = null
+  loading.value = true
+  bridgeReady.value = false
+  frameKey.value += 1
+}
+
+onBeforeMount(() => {
+  window.addEventListener('message', onMessage)
+  bridgeListening.value = true
 })
-
-watch(
-  () => props.id,
-  () => {
-    void mountPlugin()
-  },
-)
-
-onBeforeUnmount(teardown)
+onMounted(async () => {
+  if (!plugins.plugins.length) await plugins.load()
+  if (!plugins.byId(props.id)) error.value = t('plugin.unknown', { id: props.id })
+})
+watch(() => theme.theme, sendEnvironment)
+watch(() => props.id, retryPlugin)
+onBeforeUnmount(() => {
+  clearPluginHandshakeTimeout()
+  window.removeEventListener('message', onMessage)
+})
 </script>
 
 <template>
-  <div style="display: flex; flex-direction: column; height: 100%">
+  <div class="plugin-host">
     <div class="cx-topbar">
-      <button class="cx-btn cx-btn--text cx-btn--sm" @click="router.push('/tools')">
-        <i class="mdi mdi-arrow-left" />{{ $t('common.back') }}
-      </button>
+      <button class="cx-btn cx-btn--text cx-btn--sm" @click="router.push('/tools')"><i class="mdi mdi-arrow-left" />{{ t('common.back') }}</button>
       <span style="font-weight: 600">{{ plugins.byId(props.id)?.name ?? props.id }}</span>
     </div>
-
     <div v-if="error" class="cx-alert cx-alert--error" style="margin: 16px">
-      <div class="cx-alert__body">
-        <div style="font-weight: 600; margin-bottom: 4px">{{ $t('plugin.failedTitle') }}</div>
-        <div class="mono" style="font-size: 12px; overflow-wrap: anywhere">{{ error }}</div>
-        <button class="cx-btn cx-btn--outline cx-btn--sm" style="margin-top: 10px" @click="mountPlugin()">
-          {{ $t('common.retry') }}
-        </button>
-      </div>
+      <div style="font-weight: 650; margin-bottom: 4px">{{ t('plugin.failedTitle') }}</div>
+      <div>{{ error }}</div>
+      <button class="cx-btn cx-btn--outline cx-btn--sm" style="margin-top: 12px" @click="retryPlugin">{{ t('plugin.retry') }}</button>
     </div>
-
-    <div v-show="!error" ref="host" style="flex: 1 1 auto; min-height: 0; overflow: auto" />
-    <div v-if="loading" style="display: flex; justify-content: center; padding: 32px">
-      <span class="cx-spin lg" />
+    <div v-else class="frame-wrap">
+      <iframe
+        v-if="bridgeListening"
+        :key="frameKey"
+        ref="frame"
+        class="plugin-frame"
+        :src="pluginUrl()"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"
+        referrerpolicy="no-referrer"
+        @load="onFrameLoad"
+      />
+      <div v-if="loading" class="frame-loading"><span class="cx-spin lg" /></div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.plugin-host,.frame-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+.plugin-frame { flex: 1; width: 100%; border: 0; background: rgb(var(--v-theme-background)); }
+.frame-loading { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(var(--v-theme-background)); }
+</style>

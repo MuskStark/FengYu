@@ -1,0 +1,7 @@
+import test from 'node:test'; import assert from 'node:assert/strict';
+class FakeWindow extends EventTarget { constructor(){super();this.parent=this;this.sent=[];this.document={documentElement:{dataset:{}}}} postMessage(v){this.sent.push(v)} emit(data){const e=new Event('message');Object.assign(e,{data,source:this,origin:'x'});this.dispatchEvent(e)} }
+const fake=new FakeWindow();globalThis.window=fake;globalThis.document=fake.document;
+const {FengYuClient}=await import('../dist/index.js');
+test('request response',async()=>{const c=new FengYuClient({target:fake,timeoutMs:100});const p=c.invoke('ping',{});fake.emit({source:'fengyu-host',type:'response',id:fake.sent.at(-1).id,result:{ok:true}});assert.deepEqual(await p,{ok:true});c.dispose()});
+test('timeout',async()=>{const c=new FengYuClient({target:fake,timeoutMs:5});await assert.rejects(c.invoke('slow',{}),/timed out/);c.dispose()});
+test('request ids work inside an opaque sandbox without Web Crypto',async()=>{const original=globalThis.crypto;Object.defineProperty(globalThis,'crypto',{value:undefined,configurable:true});const c=new FengYuClient({target:fake,timeoutMs:100});try{const p=c.invoke('sandboxed',{});const sent=fake.sent.at(-1);assert.equal(typeof sent.id,'string');assert.ok(sent.id.length>0);fake.emit({source:'fengyu-host',type:'response',id:sent.id,result:{ok:true}});assert.deepEqual(await p,{ok:true})}finally{c.dispose();Object.defineProperty(globalThis,'crypto',{value:original,configurable:true})}});

@@ -12,9 +12,8 @@ class PluginControllerCategoriesTest {
 
     @Test
     void categoriesEndpointReturnsAllEnums() {
-        PluginController controller = new PluginController(null); // registry unused for categories
-        @SuppressWarnings("unchecked")
-        List<Map<String, String>> result = (List<Map<String, String>>) controller.categories();
+        PluginController controller = new PluginController();
+        List<Map<String, String>> result = controller.categories();
         assertEquals(ToolCategory.values().length, result.size());
         // every entry has the 3 keys
         for (Map<String, String> entry : result) {

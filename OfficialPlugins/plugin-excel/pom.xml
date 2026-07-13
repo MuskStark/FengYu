@@ -19,24 +19,23 @@
     modes + micro-frontend wizard + Spring AI tools.</description>
 
   <dependencies>
+    <dependency><groupId>fan.summer.fengyu.sdk</groupId><artifactId>fengyu-plugin-sdk</artifactId><version>${revision}</version></dependency>
+    <dependency><groupId>com.google.code.gson</groupId><artifactId>gson</artifactId></dependency>
     <dependency>
       <groupId>fan.summer.fengyu.api</groupId>
       <artifactId>FengYu-Api</artifactId>
       <version>${revision}</version>
-      <scope>provided</scope>
     </dependency>
     <dependency>
       <groupId>org.springframework</groupId>
       <artifactId>spring-context</artifactId>
       <version>7.0.8</version>
-      <scope>provided</scope>
     </dependency>
     <!-- Spring AI @Tool annotation (provided by app at runtime; version pinned — root pom does not import spring-ai-bom). -->
     <dependency>
       <groupId>org.springframework.ai</groupId>
       <artifactId>spring-ai-model</artifactId>
       <version>2.0.0</version>
-      <scope>provided</scope>
     </dependency>
     <!-- Jackson ObjectMapper for ToolJson (provided by app at runtime, pulled in transitively there
          via spring-ai-openai -> openai-java-core; plugin-excel has no such transitive path, so it's
@@ -45,7 +44,6 @@
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
       <version>2.21.4</version>
-      <scope>provided</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.fesod</groupId>
@@ -63,6 +61,16 @@
 
   <build>
     <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId><artifactId>maven-shade-plugin</artifactId>
+        <executions><execution><phase>package</phase><goals><goal>shade</goal></goals><configuration>
+          <finalName>excel-worker</finalName><shadedArtifactAttached>false</shadedArtifactAttached>
+          <createDependencyReducedPom>false</createDependencyReducedPom>
+          <transformers><transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+            <mainClass>fan.summer.fengyu.plugin.excel.ExcelWorkerMain</mainClass>
+          </transformer></transformers>
+        </configuration></execution></executions>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>

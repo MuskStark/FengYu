@@ -124,6 +124,7 @@ export default defineConfig({
     proxy: {
       '/api': { target: BACKEND, changeOrigin: true },
       '/plugin-ui': { target: BACKEND, changeOrigin: true },
+      '/plugin-runtime': { target: BACKEND, changeOrigin: true },
     },
   },
   build: {
