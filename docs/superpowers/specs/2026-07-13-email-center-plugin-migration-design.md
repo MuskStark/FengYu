@@ -14,6 +14,10 @@ configuration, manual IMAP collection, archive search, and send history.
 The migrated plugin is a packaged, isolated 4.0.0 plugin. It does not reuse the
 JavaFX UI or the legacy host email tables.
 
+All host integration must use the official FengYu SDK. The plugin must not copy,
+fork, or locally reimplement the browser bridge, file-reference contract,
+JSON-RPC Worker loop, or database-environment parsing.
+
 ## 2. Confirmed Scope
 
 The plugin includes:
@@ -66,6 +70,12 @@ The injected environment contract contains the configured database type, JDBC
 driver, JDBC URL, username, and password. Environment keys are stable SDK
 contract constants rather than email-specific names. Password values must never
 be placed on the command line or written to logs.
+
+The official Java Worker SDK gains an immutable database-configuration type and
+an environment reader for this contract. The email Worker consumes that SDK API;
+it does not read raw environment keys throughout plugin code. The SDK reader
+returns no configuration when the permission-gated values are absent and redacts
+the password from `toString()` and error messages.
 
 ### 4.2 Stable plugin data directory
 
@@ -138,9 +148,19 @@ The new `OfficialPlugins/plugin-email` module is divided into focused components
   and archive search.
 - AI RPC methods that share the same application services as the visual UI.
 
+The Worker entry point uses the official Java SDK's `JsonRpcWorker`,
+`PluginHandler`, and `FileRef` types. Database connection discovery uses the new
+official SDK database-environment API. No email-owned JSON-RPC loop or duplicate
+file-reference DTO is permitted.
+
 The plugin UI is a Vue 3 micro-frontend using the host Vuetify MD3 instance. It
 calls `app.use(ctx.vuetify)` before mount. TipTap is bundled inside the email
 plugin for rich-text composition and does not become a host dependency.
+All host communication goes through the official `@fengyu/plugin-sdk`
+`FengYuClient`: `ready()`, `invoke()`, and `files` operations. The package build
+vendors the official SDK browser bundle in the same way as the existing official
+Markdown and Excel packages; the email UI does not call `postMessage` or
+host-internal HTTP endpoints directly.
 
 ## 8. User Interface
 
@@ -252,6 +272,8 @@ attachment presence, a bounded body preview, archive time, and `.eml` path.
 - A plugin without `database` receives no JDBC environment values.
 - A permitted plugin receives the correct database type, driver, URL, username,
   and password.
+- Official Java SDK tests cover absent and complete database environments,
+  validation, and password redaction.
 - Process commands and logs do not contain the database password.
 - Plugin data directories are stable across package upgrades.
 - The chat UI recognizes `confirmation_required`, and Approve/Reject invoke the
@@ -273,6 +295,9 @@ attachment presence, a bounded body preview, archive time, and `.eml` path.
   concurrent approval do not resend, and rejection or expiry sends nothing.
 - Vue tests cover account switching, tag filtering, batch summaries, confirmation,
   paginated records, and actionable errors.
+- Static contract tests reject direct plugin `postMessage` calls, duplicate
+  JSON-RPC loops, and duplicate `FileRef` declarations so official SDK usage
+  remains enforceable.
 - Worker protocol tests cover every public method and ensure stdout remains valid
   newline-delimited JSON-RPC.
 
@@ -286,7 +311,8 @@ collects from a test IMAP server, and queries the resulting archive record.
 
 Update the plugin database guide with the `database` permission, environment
 contract, stable data directory, naming convention, and credential-handling
-rules. Update README and CHANGELOG to describe the merged Email Center.
+rules. Update the official SDK guide with the Java database-environment API.
+Update README and CHANGELOG to describe the merged Email Center.
 
 The migration is complete when:
 
@@ -296,6 +322,8 @@ The migration is complete when:
 - Manual IMAP collection writes `.eml` files and searchable metadata without
   duplicates.
 - AI single and batch sends cannot bypass confirmation or execute twice.
+- The Worker and micro-frontend use only the official Java and TypeScript SDKs
+  for host integration.
 - All plugin tables use the `FengTu_PL_Email_` prefix and no legacy host email
   table is read or migrated.
 - H2, SQLite, MySQL, and PostgreSQL database contracts pass.
