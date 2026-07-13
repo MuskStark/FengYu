@@ -52,6 +52,9 @@ public class ExcelPlugin {
         if (mode != null) cfg.mode = SplitConfig.SplitMode.valueOf(mode);
         Object sel = args.get("selectedSheets");
         if (sel instanceof List<?> l) cfg.selectedSheets = l.stream().map(String::valueOf).toList();
+        else if (!args.containsKey("selectedSheets") && cfg.analysisResult != null) {
+            cfg.selectedSheets = new ArrayList<>(cfg.analysisResult.keySet());
+        }
         if (args.get("splitSheet") != null) cfg.splitSheet = str(args, "splitSheet");
         if (args.get("splitColumn") != null) cfg.splitColumn = str(args, "splitColumn");
         if (args.get("splitColumnIndex") != null) {
@@ -83,10 +86,53 @@ public class ExcelPlugin {
             }
             cfg.complexEntries = parsed;
         }
+        switch (cfg.mode) {
+            case BY_SHEET -> validateSelectedSheets(cfg);
+            case BY_COLUMN -> validateColumn(cfg);
+            case COMPLEX -> validateComplex(cfg);
+        }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("success", true);
         out.put("summary", "configured mode=" + cfg.mode);
         return out;
+    }
+
+    private static void validateSelectedSheets(SplitConfig cfg) {
+        if (cfg.selectedSheets == null || cfg.selectedSheets.isEmpty()) {
+            throw new IllegalArgumentException("Select at least one sheet");
+        }
+        if (cfg.analysisResult == null
+                || !cfg.analysisResult.keySet().containsAll(cfg.selectedSheets)) {
+            throw new IllegalArgumentException("Selected sheet does not exist");
+        }
+    }
+
+    private static void validateColumn(SplitConfig cfg) {
+        Map<Integer, String> headers = cfg.analysisResult == null
+            ? null : cfg.analysisResult.get(cfg.splitSheet);
+        if (headers == null) {
+            throw new IllegalArgumentException("Select a valid sheet");
+        }
+        if (cfg.splitColumnIndex < 0 || !headers.containsKey(cfg.splitColumnIndex)) {
+            throw new IllegalArgumentException("Select a valid split column");
+        }
+    }
+
+    private static void validateComplex(SplitConfig cfg) {
+        if (cfg.complexEntries == null || cfg.complexEntries.isEmpty()) {
+            throw new IllegalArgumentException("Add at least one complex rule");
+        }
+        for (ComplexSplitEntry entry : cfg.complexEntries) {
+            if (cfg.analysisResult == null || !cfg.analysisResult.containsKey(entry.sheetName())) {
+                throw new IllegalArgumentException(
+                    "Complex rule sheet does not exist: " + entry.sheetName());
+            }
+            boolean copyAll = entry.headerIndex() == -1 && entry.columnIndex() == -1;
+            if (!copyAll && (entry.headerIndex() < 1 || entry.columnIndex() < 1)) {
+                throw new IllegalArgumentException(
+                    "Header row and split column must be positive integers");
+            }
+        }
     }
 
     private Map<String, Object> split(String session, Map<String, Object> args) {
