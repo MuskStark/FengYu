@@ -20,9 +20,11 @@ import type {
   DbTypeMeta,
   HealthResponse,
   InitializeResult,
+  MarketplacePlugin,
   PartialAiSettings,
   PartialSettings,
   PluginDescriptor,
+  PluginFileRef,
   PluginInvokeResult,
   SetupStatus,
 } from './types'
@@ -52,13 +54,73 @@ export const api = {
   },
 
   async getPlugins(): Promise<PluginDescriptor[]> {
-    const { data } = await http.get<PluginDescriptor[]>('/api/plugins')
+    const { data } = await http.get<PluginDescriptor[]>('/api/plugin-runtime')
     return data
   },
 
   async getPluginCategories(): Promise<CategoryDescriptor[]> {
     const { data } = await http.get<CategoryDescriptor[]>('/api/plugin-categories')
     return data
+  },
+
+  async getMarketplacePlugins(): Promise<MarketplacePlugin[]> {
+    const { data } = await http.get<MarketplacePlugin[]>('/api/plugin-market')
+    return data
+  },
+
+  async uploadPlugin(file: File): Promise<void> {
+    const body = new FormData()
+    body.append('file', file)
+    await http.post('/api/plugin-market/upload', body, {
+      headers: { 'Content-Type': undefined },
+    })
+  },
+
+  async uploadNativePlugin(path: string): Promise<void> {
+    await http.post('/api/plugin-market/upload-native', { path })
+  },
+
+  async installPlugin(id: string): Promise<void> {
+    await http.post(`/api/plugin-market/${encodeURIComponent(id)}/install`)
+  },
+
+  async updatePlugin(id: string): Promise<void> {
+    await http.post(`/api/plugin-market/${encodeURIComponent(id)}/update`)
+  },
+
+  async setPluginEnabled(id: string, enabled: boolean): Promise<void> {
+    await http.patch(`/api/plugin-market/${encodeURIComponent(id)}/enabled`, { enabled })
+  },
+
+  async uploadRuntimeFile(id: string, file: File): Promise<PluginFileRef> {
+    const body = new FormData()
+    body.append('file', file)
+    const { data } = await http.post<PluginFileRef>(`/api/plugin-runtime/${encodeURIComponent(id)}/files/upload`, body, {
+      headers: { 'Content-Type': undefined },
+    })
+    return data
+  },
+
+  async grantRuntimeNativePath(id: string, path: string, kind: 'file' | 'directory', access: 'read' | 'write' | 'read-write'): Promise<PluginFileRef> {
+    const { data } = await http.post<PluginFileRef>(`/api/plugin-runtime/${encodeURIComponent(id)}/files/native`, { path, kind, access })
+    return data
+  },
+
+  async createRuntimeOutput(id: string): Promise<PluginFileRef> {
+    const { data } = await http.post<PluginFileRef>(`/api/plugin-runtime/${encodeURIComponent(id)}/files/output`)
+    return data
+  },
+
+  async exportRuntimeOutput(id: string, ref: string): Promise<void> {
+    const { data } = await http.get(`/api/plugin-runtime/${encodeURIComponent(id)}/files/export/${encodeURIComponent(ref)}`, { responseType: 'blob' })
+    const url = URL.createObjectURL(data)
+    const link = document.createElement('a')
+    link.href = url; link.download = 'plugin-output.zip'; link.click()
+    URL.revokeObjectURL(url)
+  },
+
+  async uninstallPlugin(id: string): Promise<void> {
+    await http.delete(`/api/plugin-market/${encodeURIComponent(id)}`)
   },
 
   async getSettings(): Promise<AppSettings> {
@@ -93,8 +155,8 @@ export const api = {
     args: Record<string, unknown> = {},
   ): Promise<PluginInvokeResult> {
     const { data } = await http.post<PluginInvokeResult>(
-      `/api/plugins/${encodeURIComponent(id)}/invoke`,
-      { action, args },
+      `/api/plugin-runtime/${encodeURIComponent(id)}/invoke`,
+      { method: action, params: args },
     )
     return data
   },

@@ -1,33 +1,15 @@
 package fan.summer.fengyu.plugin.excel;
 
-import fan.summer.fengyu.api.IconStyle;
-import fan.summer.fengyu.api.ToolCategory;
-import fan.summer.fengyu.api.plugin.PluginDescriptor;
-import fan.summer.fengyu.api.plugin.PluginSource;
-import fan.summer.fengyu.api.plugin.FengYuPlugin;
-import org.springframework.stereotype.Component;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 
-@Component
-public class ExcelPlugin implements FengYuPlugin {
-
-    private static final String ID = "fan.summer.excel";
+public class ExcelPlugin {
     private final ExcelSessionStore sessions;
 
     public ExcelPlugin(ExcelSessionStore sessions) { this.sessions = sessions; }
 
-    @Override
-    public PluginDescriptor descriptor() {
-        return new PluginDescriptor(ID, "Excel Splitter",
-            "Split Excel workbooks by sheet, by column value, or via multi-rule complex config",
-            ToolCategory.FILE, "file-excel", IconStyle.TEAL, "4.0.0",
-            "/plugin-ui/excel/index.js", true, PluginSource.OFFICIAL);
-    }
-
-    @Override
     public Object invoke(String action, Map<String, Object> args) {
         String session = str(args, "session");
         if (session == null || session.isBlank()) {

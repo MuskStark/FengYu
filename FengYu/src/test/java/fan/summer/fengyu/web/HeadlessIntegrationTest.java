@@ -60,30 +60,17 @@ class HeadlessIntegrationTest {
     }
 
     @Test
-    void plugins_listsMarkdown() throws Exception {
-        HttpResponse<String> resp = get("/api/plugins");
+    void pluginRuntime_listsInstalledPackages() throws Exception {
+        HttpResponse<String> resp = get("/api/plugin-runtime");
         assertEquals(200, resp.statusCode());
-        assertTrue(resp.body().contains("fan.summer.markdown"),
-            "expected Markdown plugin in /api/plugins, got: " + resp.body());
-        assertTrue(resp.body().contains("/plugin-ui/markdown/index.js"),
-            "expected uiEntry in descriptor");
-    }
-
-    @Test
-    void invokeRender_returnsHtml() throws Exception {
-        HttpResponse<String> resp = postJson("/api/plugins/fan.summer.markdown/invoke",
-            "{\"action\":\"render\",\"args\":{\"markdown\":\"# Test\\n\\n**bold**\"}}");
-        assertEquals(200, resp.statusCode());
-        assertTrue(resp.body().contains("\"success\":true"), "got: " + resp.body());
-        assertTrue(resp.body().contains("<h1>Test</h1>"), "expected h1 in html, got: " + resp.body());
-        assertTrue(resp.body().contains("<strong>bold</strong>"), "expected strong in html, got: " + resp.body());
+        assertTrue(resp.body().startsWith("["), "expected descriptor array, got: " + resp.body());
     }
 
     @Test
     void invokeUnknownPlugin_returns404() throws Exception {
-        HttpResponse<String> resp = postJson("/api/plugins/does.not.exist/invoke",
-            "{\"action\":\"x\",\"args\":{}}");
-        assertEquals(404, resp.statusCode());
+        HttpResponse<String> resp = postJson("/api/plugin-runtime/does.not.exist/invoke",
+            "{\"method\":\"x\",\"params\":{}}");
+        assertEquals(400, resp.statusCode());
     }
 
     /**

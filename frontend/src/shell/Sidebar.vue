@@ -28,6 +28,7 @@ function openConversation(id: number) {
 
 const bottomNav = [
   { key: 'tools', to: '/tools', labelKey: 'sidebar.all', icon: 'mdi-view-grid-outline' },
+  { key: 'plugins', to: '/plugins', labelKey: 'sidebar.plugins', icon: 'mdi-puzzle-outline' },
   { key: 'agent', to: '/agent', labelKey: 'sidebar.agent', icon: 'mdi-robot-outline' },
   { key: 'settings', to: '/settings', labelKey: 'sidebar.settings', icon: 'mdi-cog-outline' },
 ]

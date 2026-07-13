@@ -13,8 +13,9 @@ import java.io.IOException;
 
 /**
  * Per-launch token auth. When {@link HeadlessLauncher#TOKEN_PROPERTY} is set, every request must
- * carry that token as the {@code X-FengYu-Token} header — except {@code /api/health} (readiness
- * probe) and {@code /api/ai/stream}, which accepts the token as a {@code ?token=} query param
+ * carry that token as the {@code X-FengYu-Token} header. Read-only plugin UI assets are public
+ * because sandboxed iframe navigations cannot attach custom headers; all plugin API/RPC endpoints
+ * remain protected. {@code /api/ai/stream} accepts the token as a {@code ?token=} query param
  * because {@code EventSource} cannot set custom headers.
  *
  * <p>When the property is unset/blank, auth is disabled (browser-dev convenience). Combined with
@@ -38,7 +39,10 @@ public class TokenAuthFilter extends OncePerRequestFilter {
         String path = request.getRequestURI();
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())
                 || "/api/health".equals(path)
-                || path.startsWith("/api/setup/")) {
+                || path.startsWith("/api/setup/")
+                || (path.startsWith("/plugin-runtime/")
+                    && ("GET".equalsIgnoreCase(request.getMethod())
+                        || "HEAD".equalsIgnoreCase(request.getMethod())))) {
             chain.doFilter(request, response);
             return;
         }

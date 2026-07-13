@@ -2,6 +2,8 @@
 - [← Back to Main Docs](/)
 - **Plugin Development**
   - [Overview](/plugins/index.md)
+  - [Plugin Marketplace](/plugins/marketplace.md)
+  - [Plugin SDK and CLI](/plugins/sdk-cli.md)
   - [Getting Started](/plugins/getting-started.md)
   - [Project Scaffold](/plugins/scaffold.md)
   - [SPI Registration](/plugins/spi.md)

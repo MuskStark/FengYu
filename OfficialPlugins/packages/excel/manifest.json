@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "fan.summer.excel",
+  "name": "Excel Splitter",
+  "description": "Split Excel workbooks by sheet, column value, or complex rules",
+  "version": "4.0.0",
+  "author": "FengYu",
+  "icon": "file-excel",
+  "category": "file",
+  "ui": { "entry": "ui/index.html" },
+  "backend": { "command": "java -jar backend/worker.jar", "protocol": "json-rpc-2.0" },
+  "permissions": ["files.read", "files.write"],
+  "homepage": "https://github.com/MuskStark/FengYu",
+  "official": true,
+  "aiTools": [
+    {"name":"excel_analyze","description":"Analyze an Excel file and return sheets and headers.","method":"excel_analyze","inputSchema":"{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"object\",\"description\":\"A FengYu FileRef\"}},\"required\":[\"filePath\"]}"},
+    {"name":"excel_configure","description":"Configure BY_SHEET, BY_COLUMN, or COMPLEX splitting.","method":"excel_configure","inputSchema":"{\"type\":\"object\",\"properties\":{\"mode\":{\"type\":\"string\",\"enum\":[\"BY_SHEET\",\"BY_COLUMN\",\"COMPLEX\"]},\"sheets\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"splitSheet\":{\"type\":\"string\"},\"splitColumn\":{\"type\":\"string\"}},\"required\":[\"mode\"]}"},
+    {"name":"excel_complex_config","description":"Add, list, or clear complex split rules.","method":"excel_complex_config","inputSchema":"{\"type\":\"object\",\"properties\":{\"action\":{\"type\":\"string\",\"enum\":[\"add\",\"list\",\"clear\"]},\"sheetName\":{\"type\":\"string\"},\"headerIndex\":{\"type\":\"integer\"},\"columnIndex\":{\"type\":\"integer\"}},\"required\":[\"action\"]}"},
+    {"name":"excel_execute","description":"Execute the configured split into an authorized output directory.","method":"excel_execute","inputSchema":"{\"type\":\"object\",\"properties\":{\"outputDir\":{\"type\":\"object\",\"description\":\"A writable FengYu DirectoryRef\"},\"filePrefix\":{\"type\":\"string\"}},\"required\":[\"outputDir\"]}"},
+    {"name":"excel_query","description":"Query the active Excel split session.","method":"excel_query","inputSchema":"{\"type\":\"object\",\"properties\":{}}"},
+    {"name":"excel_cancel","description":"Cancel and clear the active Excel split session.","method":"excel_cancel","inputSchema":"{\"type\":\"object\",\"properties\":{}}"}
+  ]
+}

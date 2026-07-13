@@ -1,7 +1,5 @@
 package fan.summer.fengyu.plugin.excel;
 
-import fan.summer.fengyu.api.ToolCategory;
-import fan.summer.fengyu.api.plugin.PluginDescriptor;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.*;
@@ -28,14 +26,6 @@ class ExcelPluginTest {
             s.createRow(1).createCell(0).setCellValue("east");
             wb.write(fos);
         }
-    }
-
-    @Test
-    void descriptorIsOfficialFileCategory() {
-        PluginDescriptor d = plugin.descriptor();
-        assertEquals("fan.summer.excel", d.id());
-        assertEquals(ToolCategory.FILE, d.category());
-        assertEquals("/plugin-ui/excel/index.js", d.uiEntry());
     }
 
     @Test

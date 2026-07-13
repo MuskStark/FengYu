@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "cd ../frontend && npm run dev",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "cd ../frontend && npm run build",
+    "beforeBuildCommand": "cd .. && mvn -pl OfficialPlugins/plugin-markdown,OfficialPlugins/plugin-excel -am package -DskipTests && OfficialPlugins/build-packages.sh && cd frontend && npm run build",
     "frontendDist": "../frontend/dist"
   },
   "app": {
@@ -21,7 +21,10 @@
     "icon": [
       "icons/icon.png"
     ],
-    "resources": [],
+    "resources": {
+      "../../OfficialPlugins/target/packages/fan.summer.markdown-4.0.0.fyp": "plugins/fan.summer.markdown-4.0.0.fyp",
+      "../../OfficialPlugins/target/packages/fan.summer.excel-4.0.0.fyp": "plugins/fan.summer.excel-4.0.0.fyp"
+    },
     "externalBin": []
   }
 }
