@@ -19,5 +19,6 @@
   <modules>
     <module>plugin-markdown</module>
     <module>plugin-excel</module>
+    <module>plugin-email</module>
   </modules>
 </project>
