@@ -102,6 +102,24 @@ watch(() => ai.activeId, async () => {
 
             <div class="cx-md" v-html="md(turn.content)" />
 
+            <div v-for="item in turn.confirmations" :key="item.confirmationId" class="cx-card" style="margin-top: 12px; padding: 14px">
+              <div style="font-weight: 650; margin-bottom: 8px">{{ $t('aichat.confirmTitle') }}</div>
+              <dl style="margin: 0 0 10px; display: grid; gap: 5px">
+                <div v-for="row in item.summary" :key="row.label" style="display: flex; justify-content: space-between; gap: 16px">
+                  <dt class="cx-muted">{{ row.label }}</dt><dd style="margin: 0; text-align: right">{{ row.value }}</dd>
+                </div>
+              </dl>
+              <div class="cx-muted" style="font-size: 12px; margin-bottom: 10px">{{ $t('aichat.expiresAt', { time: item.expiresAt }) }}</div>
+              <div v-if="item.status === 'pending'" style="display: flex; gap: 8px">
+                <button class="cx-btn cx-btn--primary cx-btn--sm" @click="ai.resolveConfirmation(item, true)">{{ $t('aichat.approveSend') }}</button>
+                <button class="cx-btn cx-btn--outline cx-btn--sm" @click="ai.resolveConfirmation(item, false)">{{ $t('aichat.rejectSend') }}</button>
+              </div>
+              <div v-else-if="item.status === 'submitting'" class="cx-muted"><span class="cx-spin" /> {{ $t('aichat.submittingApproval') }}</div>
+              <div v-else-if="item.status === 'approved'" class="cx-chip cx-chip--success">{{ $t('aichat.approved') }}</div>
+              <div v-else-if="item.status === 'rejected'" class="cx-chip">{{ $t('aichat.rejected') }}</div>
+              <div v-else class="cx-alert cx-alert--error">{{ item.error }}</div>
+            </div>
+
             <div v-if="turn.streaming && !turn.content" style="margin-top: 4px">
               <span class="cx-spin" />
             </div>
