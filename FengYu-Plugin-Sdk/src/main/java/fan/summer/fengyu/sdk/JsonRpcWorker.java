@@ -7,6 +7,7 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -26,9 +27,13 @@ public final class JsonRpcWorker {
 
     public void run() throws Exception {
         InputStream protocolInput = System.in;
-        OutputStream protocolOutput = System.out;
+        PrintStream protocolOutput = System.out;
         System.setOut(System.err);
-        run(protocolInput, protocolOutput);
+        try {
+            run(protocolInput, protocolOutput);
+        } finally {
+            System.setOut(protocolOutput);
+        }
     }
 
     public void run(InputStream input, OutputStream output) throws Exception {
