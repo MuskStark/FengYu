@@ -7,6 +7,8 @@ import fan.summer.fengyu.plugin.market.PluginManifest;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
 import jakarta.annotation.PreDestroy;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -29,6 +31,7 @@ import java.util.concurrent.TimeoutException;
 /** Owns isolated plugin backend processes and their newline-delimited JSON-RPC channel. */
 @Service
 public class PluginProcessManager {
+    private static final Logger log = LoggerFactory.getLogger(PluginProcessManager.class);
     private final PluginPackageService packages;
     private final PluginFileGrantService files;
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
@@ -104,10 +107,12 @@ public class PluginProcessManager {
             Process process = builder.start();
             Thread.ofVirtual().name("plugin-" + id + "-stderr").start(() -> {
                 try (BufferedReader errors = process.errorReader(StandardCharsets.UTF_8)) {
-                    while (errors.readLine() != null) { /* drained; plugin logs remain process-isolated */ }
+                    for (String line; (line = errors.readLine()) != null;) {
+                        log.debug("Plugin {} stderr: {}", id, abbreviate(line));
+                    }
                 } catch (IOException ignored) {}
             });
-            return new Worker(process, json);
+            return new Worker(id, process, json);
         } catch (IOException e) {
             throw new IllegalStateException("Cannot start plugin backend: " + e.getMessage(), e);
         }
@@ -142,15 +147,22 @@ public class PluginProcessManager {
 
     private static boolean isWindows() { return System.getProperty("os.name", "").toLowerCase().contains("win"); }
 
+    private static String abbreviate(String value) {
+        if (value == null || value.length() <= 240) return value;
+        return value.substring(0, 237) + "...";
+    }
+
     @PreDestroy public void close() { workers.values().forEach(Worker::close); workers.clear(); }
 
     private static final class Worker {
+        private final String pluginId;
         private final Process process;
         private final ObjectMapper json;
         private final BufferedWriter writer;
         private final BufferedReader reader;
 
-        Worker(Process process, ObjectMapper json) {
+        Worker(String pluginId, Process process, ObjectMapper json) {
+            this.pluginId = pluginId;
             this.process = process;
             this.json = json;
             this.writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
@@ -164,12 +176,25 @@ public class PluginProcessManager {
             try {
                 writer.write(json.writeValueAsString(Map.of("jsonrpc", "2.0", "id", id, "method", method, "params", params)));
                 writer.newLine(); writer.flush();
-                String line = reader.readLine();
-                if (line == null) throw new IllegalStateException("Plugin backend stopped unexpectedly");
-                JsonNode response = json.readTree(line);
-                if (!id.equals(response.path("id").asText())) throw new IllegalStateException("Plugin returned a mismatched response id");
-                if (response.hasNonNull("error")) throw new IllegalArgumentException(response.path("error").path("message").asText("Plugin call failed"));
-                return json.treeToValue(response.get("result"), Object.class);
+                for (String line; (line = reader.readLine()) != null;) {
+                    JsonNode response;
+                    try {
+                        response = json.readTree(line);
+                    } catch (IOException invalidJson) {
+                        log.warn("Plugin {} emitted non-JSON stdout: {}", pluginId, abbreviate(line));
+                        continue;
+                    }
+                    if (!id.equals(response.path("id").asText())) {
+                        log.warn("Plugin {} returned response for unexpected id={}", pluginId,
+                            response.path("id").asText("<missing>"));
+                        continue;
+                    }
+                    if (response.hasNonNull("error")) {
+                        throw new IllegalArgumentException(response.path("error").path("message").asText("Plugin call failed"));
+                    }
+                    return json.treeToValue(response.get("result"), Object.class);
+                }
+                throw new IllegalStateException("Plugin backend stopped unexpectedly: " + pluginId);
             } catch (IOException e) {
                 throw new IllegalStateException("Plugin RPC failed: " + e.getMessage(), e);
             }

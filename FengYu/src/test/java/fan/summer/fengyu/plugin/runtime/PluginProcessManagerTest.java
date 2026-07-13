@@ -16,12 +16,39 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PluginProcessManagerTest {
     @TempDir Path temp;
 
     @Test
     void invokesIsolatedJsonRpcWorker() throws Exception {
+        PluginProcessManager manager = manager();
+        @SuppressWarnings("unchecked") Map<String, Object> result = (Map<String, Object>) manager.invoke("com.example.worker", "echo", Map.of());
+        assertEquals("ok", result.get("value"));
+        manager.close();
+    }
+
+    @Test
+    void preservesRpcErrorMessage() throws Exception {
+        PluginProcessManager manager = manager();
+        var error = assertThrows(IllegalArgumentException.class,
+            () -> manager.invoke("com.example.worker", "error", Map.of()));
+        assertTrue(error.getMessage().contains("bad workbook"));
+        manager.close();
+    }
+
+    @Test
+    void reportsWorkerEof() throws Exception {
+        PluginProcessManager manager = manager();
+        var error = assertThrows(IllegalStateException.class,
+            () -> manager.invoke("com.example.worker", "eof", Map.of()));
+        assertTrue(error.getMessage().contains("stopped unexpectedly"));
+        manager.close();
+    }
+
+    private PluginProcessManager manager() throws Exception {
         String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
         String classpath = Path.of("target", "test-classes").toAbsolutePath().toString();
         String command = "\"" + java + "\" -cp \"" + classpath + "\" " + EchoWorker.class.getName();
@@ -32,10 +59,7 @@ class PluginProcessManagerTest {
             """.formatted(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(command));
         PluginPackageService packages = new PluginPackageService(temp.resolve("plugins").toString());
         packages.install(new MockMultipartFile("file", "worker.fyp", "application/zip", archive(manifest)));
-        PluginProcessManager manager = new PluginProcessManager(packages, new PluginFileGrantService());
-        @SuppressWarnings("unchecked") Map<String, Object> result = (Map<String, Object>) manager.invoke("com.example.worker", "echo", Map.of());
-        assertEquals("ok", result.get("value"));
-        manager.close();
+        return new PluginProcessManager(packages, new PluginFileGrantService());
     }
 
     private byte[] archive(String manifest) throws Exception {
@@ -55,7 +79,14 @@ class PluginProcessManagerTest {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
                 for (String line; (line = reader.readLine()) != null;) {
                     var matcher = ID.matcher(line); String id = matcher.find() ? matcher.group(1) : "";
-                    System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id + "\",\"result\":{\"value\":\"ok\"}}");
+                    if (line.contains("\"method\":\"eof\"")) return;
+                    System.out.println("third-party diagnostic line");
+                    System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"other\",\"result\":{}}");
+                    if (line.contains("\"method\":\"error\"")) {
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id + "\",\"error\":{\"code\":-32000,\"message\":\"bad workbook\"}}");
+                    } else {
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id + "\",\"result\":{\"value\":\"ok\"}}");
+                    }
                     System.out.flush();
                 }
             }
