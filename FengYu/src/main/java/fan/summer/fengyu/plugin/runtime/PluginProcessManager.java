@@ -34,12 +34,15 @@ public class PluginProcessManager {
     private static final Logger log = LoggerFactory.getLogger(PluginProcessManager.class);
     private final PluginPackageService packages;
     private final PluginFileGrantService files;
+    private final PluginRuntimeEnvironmentService runtimeEnvironment;
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
     private final Map<String, Worker> workers = new ConcurrentHashMap<>();
 
-    public PluginProcessManager(PluginPackageService packages, PluginFileGrantService files) {
+    public PluginProcessManager(PluginPackageService packages, PluginFileGrantService files,
+            PluginRuntimeEnvironmentService runtimeEnvironment) {
         this.packages = packages;
         this.files = files;
+        this.runtimeEnvironment = runtimeEnvironment;
     }
 
     public Object invoke(String pluginId, String method, Map<String, Object> params) {
@@ -104,6 +107,7 @@ public class PluginProcessManager {
             ProcessBuilder builder = new ProcessBuilder(command).directory(root.toFile());
             builder.environment().put("FENGYU_PLUGIN_ID", id);
             builder.environment().put("FENGYU_PLUGIN_ROOT", root.toString());
+            runtimeEnvironment.environmentFor(manifest).forEach(builder.environment()::put);
             Process process = builder.start();
             Thread.ofVirtual().name("plugin-" + id + "-stderr").start(() -> {
                 try (BufferedReader errors = process.errorReader(StandardCharsets.UTF_8)) {
