@@ -5,7 +5,9 @@ import fan.summer.fengyu.web.controller.AiConfigController;
 import fan.summer.fengyu.web.controller.AiController;
 import fan.summer.fengyu.web.controller.ConversationController;
 import fan.summer.fengyu.web.controller.PluginController;
-import fan.summer.fengyu.web.controller.PluginFileController;
+import fan.summer.fengyu.web.controller.PluginMarketplaceController;
+import fan.summer.fengyu.web.controller.PluginRuntimeController;
+import fan.summer.fengyu.web.controller.PluginRuntimeFileController;
 import fan.summer.fengyu.web.controller.SettingsController;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration;
@@ -32,7 +34,6 @@ import org.springframework.context.annotation.FilterType;
  * for the wizard). It is NOT scanned wholesale, though: the APP-only controllers are
  * excluded via {@code excludeFilters} because they depend on beans that do not exist in this
  * minimal context — {@link PluginController} needs {@code PluginRegistryService},
- * {@link PluginFileController} needs {@code PluginRegistryService}/{@code PluginWorkspaceService},
  * {@link SettingsController} needs {@code AiConfigServiceHeadless}, {@link AgentController}
  * needs {@code AgentRunner}/{@code ToolCallback}, {@link AiController} is
  * meaningless before setup completes, and {@link AiConfigController} needs
@@ -49,7 +50,10 @@ import org.springframework.context.annotation.FilterType;
         basePackages = {"fan.summer.fengyu.setup", "fan.summer.fengyu.web"},
         excludeFilters = @ComponentScan.Filter(
                 type = FilterType.ASSIGNABLE_TYPE,
-                classes = {PluginController.class, PluginFileController.class, SettingsController.class,
+                classes = {PluginController.class, PluginMarketplaceController.class,
+                        PluginRuntimeController.class,
+                        PluginRuntimeFileController.class,
+                        SettingsController.class,
                         AiController.class, AiConfigController.class, AgentController.class,
                         ConversationController.class}))
 public class SetupApplication {

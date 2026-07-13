@@ -94,6 +94,32 @@ export interface HealthResponse {
 /** Generic plugin invoke result — always JSON, shape is plugin-specific. */
 export type PluginInvokeResult = Record<string, unknown>
 
+export interface MarketplacePlugin {
+  id: string
+  name: string
+  description: string
+  version: string
+  installedVersion?: string
+  author?: string
+  icon?: string
+  category?: string
+  permissions: string[]
+  homepage?: string
+  downloadUrl?: string
+  official: boolean
+  installed: boolean
+  enabled: boolean
+  updateAvailable: boolean
+}
+
+export interface PluginFileRef {
+  id: string
+  name: string
+  kind: 'file' | 'directory'
+  access: 'read' | 'write' | 'read-write'
+  size: number
+}
+
 // ── Setup wizard (Phase 4) ──────────────────────────────────
 
 export interface SetupStatus {

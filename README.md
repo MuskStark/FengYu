@@ -162,49 +162,17 @@ The AI Chat assistant and installed-plugins list are pinned as dedicated sidebar
 
 ### Plugin System
 
-Plugins implement `fan.summer.api.FengYuPlugin` (from `FengYu-Api`):
+Plugins are isolated `.fyp` packages. Each package contains a `manifest.json`, a standalone web UI,
+and an optional backend command speaking newline-delimited JSON-RPC 2.0. The UI runs in a sandboxed
+iframe and can only access declared host capabilities through the FengYu bridge. Backend code runs
+in a child process, never in the host Spring context.
 
-```java
-public interface FengYuPlugin {
-    // Metadata
-    String getId();                  // reverse-domain ID, e.g. "com.example.my-tool"
-    String getName();
-    String getDescription();
-    ToolCategory getCategory();      // DEV / TEXT / IMAGE / NET / OTHER
-    String getVersion();
-    String getMdiIcon();             // Material Design Icons name, e.g. "file-excel"
-    default IconStyle getIconStyle() { return IconStyle.BLUE; }
-    default ToolType getType()       { return ToolType.PLUGIN; }  // BUILTIN vs PLUGIN
-
-    // UI lifecycle — createView() is called once and cached
-    Node createView();
-    default void onActivate()   {}
-    default void onDeactivate() {}
-    default void onUnload()     {}
-    default boolean hasRunningTasks() { return false; }  // keep alive in background
-    default void onBackground() {}
-    default void onForeground() {}
-
-    // AI integration — tools the assistant can call
-    default List<AiTool> aiTools() { return List.of(); }
-}
-```
-
-Register external plugins via `META-INF/services/fan.summer.api.FengYuPlugin`, package as a fat
-JAR, then drop it into the host's `plugins/` directory (hot-reload supported) or install via the
-Plugin Store.
-
-### Built-in Tool Registration
-
-Built-in tools (packaged with the main app) bypass SPI and are registered programmatically via
-`BuiltinToolRegistrar` during startup:
-
-```java
-BuiltinToolRegistrar.register(loader, registry);
-```
-
-The current registrar registers: AI Chat, JSON Formatter, Base64, Hash Calculator, Excel Splitter,
-Color Converter, Markdown Editor, Email, Email Archive, PDF Tools, and Browser Automation.
+Web file selection uploads into a scoped temporary grant. The desktop shell uses native Tauri
+dialogs and turns the selected path into the same opaque `FileRef`; plugin UI code is identical on
+both targets and never sees an absolute path. Install, update, enable, disable, and uninstall are
+available from the Plugins page. See [Plugin Marketplace](docs/plugins/marketplace.md).
+Third-party authors use `@fengyu/plugin-sdk`, the Java Worker SDK, and the cross-platform
+`fengyu plugin` CLI documented in [Plugin SDK and CLI](docs/plugins/sdk-cli.md).
 
 ---
 
@@ -237,22 +205,23 @@ Color Converter, Markdown Editor, Email, Email Archive, PDF Tools, and Browser A
 
 ### Creating an External Plugin
 
-1. Create a Maven project with `FengYu-Api` as a `provided` dependency
-2. Implement `FengYuPlugin` (optionally expose `AiTool`s)
-3. Register in `META-INF/services/fan.summer.api.FengYuPlugin`
-4. Package as a fat JAR and install via the Plugin Store or the Local Install tab
+1. Create `manifest.json` and a standalone `ui/index.html`
+2. Call host capabilities through the message-based FengYu SDK
+3. Optionally provide a JSON-RPC 2.0 worker executable
+4. ZIP the package root as `<plugin-id>-<version>.fyp`
 
 ### Building
 
 ```bash
-# API module must be installed first
-mvn install -f FengYu-Api/pom.xml -DskipTests
+# Build the backend
+mvn -pl FengYu -am clean package -DskipTests
 
-# Build the app
-mvn clean package -f FengYu/pom.xml -DskipTests
+# Build the two official .fyp packages
+mvn -pl OfficialPlugins/plugin-markdown,OfficialPlugins/plugin-excel -am package -DskipTests
+OfficialPlugins/build-packages.sh
 
 # Run
-java -jar FengYu/target/FengYu-3.2.0.jar
+java -jar FengYu/target/FengYu-4.0.0-SNAPSHOT.jar
 ```
 
 ### Running with a Local Plugin Store
@@ -260,7 +229,8 @@ java -jar FengYu/target/FengYu-3.2.0.jar
 Override the store URL via system property:
 
 ```bash
-java -Dstore.url=http://localhost:8888/plugins/store.json -jar FengYu/target/FengYu-3.2.0.jar
+java -Dfengyu.marketplace.catalog-url=https://example.com/catalog.json \
+  -jar FengYu/target/FengYu-4.0.0-SNAPSHOT.jar
 ```
 
 ---
