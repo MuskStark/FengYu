@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Infinia">
+  <defs>
+    <filter id="shadow" x="-25%" y="-30%" width="150%" height="170%">
+      <feDropShadow dx="0" dy="7" stdDeviation="6" flood-color="#1d1d1f" flood-opacity=".22"/>
+    </filter>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#e8f8ff" stop-opacity=".94"/>
+      <stop offset=".24" stop-color="#64d2ff" stop-opacity=".78"/>
+      <stop offset=".5" stop-color="#0a84ff" stop-opacity=".84"/>
+      <stop offset=".76" stop-color="#5e5ce6" stop-opacity=".84"/>
+      <stop offset="1" stop-color="#af52de" stop-opacity=".76"/>
+    </linearGradient>
+    <linearGradient id="front" x1="0" y1="1" x2="1" y2="0">
+      <stop stop-color="#64d2ff"/>
+      <stop offset=".48" stop-color="#0a84ff"/>
+      <stop offset="1" stop-color="#5e5ce6"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke-linecap="round" filter="url(#shadow)">
+    <path d="M128 128C100 79 43 70 34 119C25 169 84 193 128 128C172 63 231 87 222 137C213 186 156 177 128 128" stroke="#007aff" stroke-opacity=".16" stroke-width="50"/>
+    <path d="M128 128C100 79 43 70 34 119C25 169 84 193 128 128C172 63 231 87 222 137C213 186 156 177 128 128" stroke="url(#glass)" stroke-width="42"/>
+    <path d="M128 120C100 71 43 62 34 111C25 161 84 185 128 120C172 55 231 79 222 129C213 178 156 169 128 120" stroke="#fff" stroke-opacity=".52" stroke-width="5"/>
+    <path d="M89 174C105 163 117 145 128 128C141 108 151 90 169 80" stroke="#1d1d1f" stroke-opacity=".17" stroke-width="53"/>
+    <path d="M89 174C105 163 117 145 128 128C141 108 151 90 169 80" stroke="url(#front)" stroke-opacity=".91" stroke-width="43"/>
+    <path d="M95 164C110 152 119 138 128 125C141 105 151 90 165 83" stroke="#fff" stroke-opacity=".58" stroke-width="5"/>
+  </g>
+</svg>
