@@ -110,7 +110,7 @@ const bottomNav = [
         class="cx-nav-item"
         :class="{ rail }"
         :title="$t('sidebar.theme')"
-        @click="theme.toggle()"
+        @click="settings.setTheme(theme.theme === 'dark' ? 'light' : 'dark')"
       >
         <i class="mdi" :class="theme.theme === 'dark' ? 'mdi-weather-night' : 'mdi-weather-sunny'" />
         <span v-if="!rail" class="cx-nav-label">{{ $t('sidebar.theme') }}</span>
