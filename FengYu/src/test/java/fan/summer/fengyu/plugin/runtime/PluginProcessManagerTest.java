@@ -1,6 +1,9 @@
 package fan.summer.fengyu.plugin.runtime;
 
 import fan.summer.fengyu.plugin.market.PluginPackageService;
+import fan.summer.fengyu.setup.DataSourceConfig;
+import fan.summer.fengyu.setup.DataSourceConfigService;
+import fan.summer.fengyu.setup.DbType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.mock.web.MockMultipartFile;
@@ -11,6 +14,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.List;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -48,18 +52,37 @@ class PluginProcessManagerTest {
         manager.close();
     }
 
+    @Test
+    void injectsDatabaseEnvironmentIntoPermittedWorker() throws Exception {
+        PluginProcessManager manager = manager(List.of("database"));
+        @SuppressWarnings("unchecked") Map<String, Object> result =
+            (Map<String, Object>) manager.invoke("com.example.worker", "environment", Map.of());
+        assertEquals("jdbc:h2:mem:worker-host", result.get("value"));
+        manager.close();
+    }
+
     private PluginProcessManager manager() throws Exception {
+        return manager(List.of());
+    }
+
+    private PluginProcessManager manager(List<String> permissions) throws Exception {
         String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
         String classpath = Path.of("target", "test-classes").toAbsolutePath().toString();
         String command = "\"" + java + "\" -cp \"" + classpath + "\" " + EchoWorker.class.getName();
         String manifest = """
             {"schemaVersion":1,"id":"com.example.worker","name":"Worker","description":"test",
              "version":"1.0.0","ui":{"entry":"ui/index.html"},
-             "backend":{"command":%s,"protocol":"json-rpc-2.0"},"permissions":[]}
-            """.formatted(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(command));
+             "backend":{"command":%s,"protocol":"json-rpc-2.0"},"permissions":%s}
+            """.formatted(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(command),
+                new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(permissions));
         PluginPackageService packages = new PluginPackageService(temp.resolve("plugins").toString());
         packages.install(new MockMultipartFile("file", "worker.fyp", "application/zip", archive(manifest)));
-        return new PluginProcessManager(packages, new PluginFileGrantService());
+        DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host").toString());
+        dataSources.save(new DataSourceConfig(DbType.H2, "jdbc:h2:mem:worker-host", "org.h2.Driver",
+            "org.hibernate.dialect.H2Dialect", "sa", "do-not-log-me", null));
+        PluginRuntimeEnvironmentService runtimeEnvironment = new PluginRuntimeEnvironmentService(
+            dataSources, temp.resolve("plugin-data").toString());
+        return new PluginProcessManager(packages, new PluginFileGrantService(), runtimeEnvironment);
     }
 
     private byte[] archive(String manifest) throws Exception {
@@ -84,6 +107,10 @@ class PluginProcessManagerTest {
                     System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"other\",\"result\":{}}");
                     if (line.contains("\"method\":\"error\"")) {
                         System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id + "\",\"error\":{\"code\":-32000,\"message\":\"bad workbook\"}}");
+                    } else if (line.contains("\"method\":\"environment\"")) {
+                        String url = System.getenv("FENGYU_DB_URL");
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
+                            + "\",\"result\":{\"value\":\"" + url + "\"}}");
                     } else {
                         System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id + "\",\"result\":{\"value\":\"ok\"}}");
                     }
