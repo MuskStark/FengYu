@@ -79,3 +79,14 @@ test('test module does not depend on a DOM', async () => {
   const source = await readFile(new URL('./wizard-state.js', import.meta.url), 'utf8')
   assert.doesNotMatch(source, /\bdocument\b|\bwindow\b/)
 })
+
+test('wizard markup exposes all four steps and controls', async () => {
+  const html = await readFile(new URL('./index.html', import.meta.url), 'utf8')
+  for (const id of [
+    'step-source', 'step-mode', 'step-confirm', 'step-run', 'back', 'next',
+    'sheet-list', 'mode-by-sheet', 'mode-by-column', 'mode-complex', 'complex-list',
+    'copy-whole-sheet', 'confirmation', 'result-files', 'retry', 'export-again',
+  ]) {
+    assert.match(html, new RegExp(`id=["']${id}["']`), `missing #${id}`)
+  }
+})
