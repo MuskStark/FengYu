@@ -1,1 +1,105 @@
-<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="style.css"><title>Excel Splitter</title></head><body><main><header><h1>Excel Splitter</h1><p>Choose a workbook, configure how to split it, then export the results.</p></header><ol class="steps"><li class="active">Source</li><li>Mode</li><li>Output</li><li>Run</li></ol><section><button id="pick">Choose workbook</button><strong id="file">No file selected</strong></section><section><label>Split mode<select id="mode"><option value="BY_SHEET">By sheet</option><option value="BY_COLUMN">By column value</option><option value="COMPLEX">Complex rules</option></select></label><label id="sheetWrap">Sheet<select id="sheet"></select></label><label id="columnWrap">Column<select id="column"></select></label></section><section class="actions"><button id="run" disabled>Split workbook</button><span id="status"></span></section></main><script type="module" src="app.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+  <title>Excel Splitter</title>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Excel Splitter</h1>
+    <p>Split a workbook in four guided steps.</p>
+  </header>
+
+  <ol class="steps" aria-label="Progress">
+    <li data-step="0" class="active"><b>1</b><span>Source</span></li>
+    <li data-step="1"><b>2</b><span>Split settings</span></li>
+    <li data-step="2"><b>3</b><span>Confirm &amp; output</span></li>
+    <li data-step="3"><b>4</b><span>Run</span></li>
+  </ol>
+
+  <div id="message" class="message" role="status" aria-live="polite"></div>
+
+  <section id="step-source" class="step-panel">
+    <div class="section-heading">
+      <div><h2>Choose a workbook</h2><p>Analysis starts automatically after selection.</p></div>
+      <button id="pick" type="button">Choose workbook</button>
+    </div>
+    <div class="file-card">
+      <strong id="file">No file selected</strong>
+      <span id="analysis">Select an .xlsx or .xls file to begin.</span>
+    </div>
+  </section>
+
+  <section id="step-mode" class="step-panel" hidden>
+    <h2>Choose how to split</h2>
+    <div class="mode-grid" role="radiogroup" aria-label="Split mode">
+      <label class="mode-card" for="mode-by-sheet">
+        <input id="mode-by-sheet" type="radio" name="mode" value="BY_SHEET" checked>
+        <span><strong>By sheet</strong><small>One workbook per selected sheet.</small></span>
+      </label>
+      <label class="mode-card" for="mode-by-column">
+        <input id="mode-by-column" type="radio" name="mode" value="BY_COLUMN">
+        <span><strong>By column value</strong><small>Group rows by a column's values.</small></span>
+      </label>
+      <label class="mode-card" for="mode-complex">
+        <input id="mode-complex" type="radio" name="mode" value="COMPLEX">
+        <span><strong>Complex rules</strong><small>Combine split and whole-sheet copy rules.</small></span>
+      </label>
+    </div>
+
+    <div id="by-sheet-options" class="mode-detail">
+      <h3>Select sheets</h3>
+      <div id="sheet-list" class="check-list"></div>
+    </div>
+
+    <div id="by-column-options" class="mode-detail" hidden>
+      <div class="field-grid">
+        <label for="column-sheet">Sheet<select id="column-sheet"></select></label>
+        <label for="column-name">Column<select id="column-name"></select></label>
+      </div>
+    </div>
+
+    <div id="complex-options" class="mode-detail" hidden>
+      <div class="field-grid complex-form">
+        <label for="complex-sheet">Sheet<select id="complex-sheet"></select></label>
+        <label class="checkbox-field" for="copy-whole-sheet">
+          <input id="copy-whole-sheet" type="checkbox"> Copy whole sheet to every result
+        </label>
+        <label for="header-index">Header row<input id="header-index" type="number" min="1" value="1"></label>
+        <label for="column-index">Split column<input id="column-index" type="number" min="1" value="1"></label>
+      </div>
+      <div class="inline-actions">
+        <button id="add-rule" type="button">Add rule</button>
+        <button id="clear-rules" class="secondary" type="button">Clear rules</button>
+      </div>
+      <ul id="complex-list" class="rule-list"></ul>
+    </div>
+  </section>
+
+  <section id="step-confirm" class="step-panel" hidden>
+    <h2>Confirm settings</h2>
+    <p>Review the split plan. Continuing asks for an output folder and starts the split.</p>
+    <dl id="confirmation" class="summary"></dl>
+  </section>
+
+  <section id="step-run" class="step-panel" hidden>
+    <h2>Split results</h2>
+    <div id="run-state" class="run-state"></div>
+    <ul id="result-files" class="result-files"></ul>
+    <div class="inline-actions">
+      <button id="retry" type="button" hidden>Retry</button>
+      <button id="export-again" class="secondary" type="button" hidden>Export again</button>
+    </div>
+  </section>
+
+  <footer>
+    <button id="back" class="secondary" type="button" hidden>Back</button>
+    <button id="next" type="button">Next</button>
+  </footer>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>
