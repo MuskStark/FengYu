@@ -114,4 +114,64 @@ class ExcelPluginTest {
         assertEquals(1, files.size());
         assertTrue(Files.exists(out.resolve(files.get(0))));
     }
+
+    @Test
+    void bySheetRejectsEmptySelection() {
+        plugin.invoke("analyze", Map.of("session", "sheet", "sourceFile", src.toString()));
+
+        assertThrows(IllegalArgumentException.class, () -> plugin.invoke("configure",
+            Map.of("session", "sheet", "mode", "BY_SHEET", "selectedSheets", List.of())));
+    }
+
+    @Test
+    void bySheetRejectsUnknownSelection() {
+        plugin.invoke("analyze", Map.of("session", "sheet-unknown", "sourceFile", src.toString()));
+
+        assertThrows(IllegalArgumentException.class, () -> plugin.invoke("configure",
+            Map.of("session", "sheet-unknown", "mode", "BY_SHEET",
+                "selectedSheets", List.of("Missing"))));
+    }
+
+    @Test
+    void byColumnRequiresKnownSheetAndColumn() {
+        plugin.invoke("analyze", Map.of("session", "column", "sourceFile", src.toString()));
+
+        assertThrows(IllegalArgumentException.class, () -> plugin.invoke("configure",
+            Map.of("session", "column", "mode", "BY_COLUMN", "splitSheet", "Missing",
+                "splitColumn", "region", "splitColumnIndex", 0)));
+        assertThrows(IllegalArgumentException.class, () -> plugin.invoke("configure",
+            Map.of("session", "column", "mode", "BY_COLUMN", "splitSheet", "Alpha",
+                "splitColumn", "missing", "splitColumnIndex", 1)));
+    }
+
+    @Test
+    void complexRequiresAtLeastOneValidEntry() {
+        plugin.invoke("analyze", Map.of("session", "complex-empty", "sourceFile", src.toString()));
+
+        assertThrows(IllegalArgumentException.class, () -> plugin.invoke("configure",
+            Map.of("session", "complex-empty", "mode", "COMPLEX", "complexEntries", List.of())));
+    }
+
+    @Test
+    void complexAcceptsWholeSheetCopySentinel() {
+        plugin.invoke("analyze", Map.of("session", "complex", "sourceFile", src.toString()));
+
+        assertDoesNotThrow(() -> plugin.invoke("configure", Map.of(
+            "session", "complex", "mode", "COMPLEX",
+            "complexEntries", List.of(Map.of(
+                "fieldName", "in.xlsx", "sheetName", "Alpha",
+                "headerIndex", -1, "columnIndex", -1)))));
+    }
+
+    @Test
+    void complexRejectsMixedNegativeIndexes() {
+        plugin.invoke("analyze", Map.of("session", "mixed", "sourceFile", src.toString()));
+
+        for (List<Integer> indexes : List.of(List.of(-1, 2), List.of(2, -1))) {
+            var entry = Map.of("fieldName", "in.xlsx", "sheetName", "Alpha",
+                "headerIndex", indexes.get(0), "columnIndex", indexes.get(1));
+            assertThrows(IllegalArgumentException.class, () -> plugin.invoke("configure",
+                Map.of("session", "mixed", "mode", "COMPLEX", "complexEntries", List.of(entry))));
+        }
+    }
 }
