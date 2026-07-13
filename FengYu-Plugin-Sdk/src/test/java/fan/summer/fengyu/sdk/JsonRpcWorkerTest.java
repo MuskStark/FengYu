@@ -22,11 +22,12 @@ class JsonRpcWorkerTest {
         PrintStream originalErr = System.err;
         ByteArrayOutputStream protocolOut = new ByteArrayOutputStream();
         ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
+        PrintStream protocolStream = new PrintStream(protocolOut, true, StandardCharsets.UTF_8);
         String request = "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"noisy\",\"params\":{}}\n";
 
         try {
             System.setIn(new ByteArrayInputStream(request.getBytes(StandardCharsets.UTF_8)));
-            System.setOut(new PrintStream(protocolOut, true, StandardCharsets.UTF_8));
+            System.setOut(protocolStream);
             System.setErr(new PrintStream(diagnostics, true, StandardCharsets.UTF_8));
 
             new JsonRpcWorker()
@@ -35,6 +36,8 @@ class JsonRpcWorkerTest {
                     return java.util.Map.of("ok", true);
                 })
                 .run();
+
+            assertSame(protocolStream, System.out);
         } finally {
             System.setIn(originalIn);
             System.setOut(originalOut);
@@ -45,5 +48,30 @@ class JsonRpcWorkerTest {
         assertEquals(1, protocolLines.length);
         assertTrue(protocolLines[0].contains("\"ok\":true"));
         assertTrue(diagnostics.toString(StandardCharsets.UTF_8).contains("library-noise"));
+    }
+
+    @Test void restoresStdoutWhenProtocolInputFails() {
+        InputStream originalIn = System.in;
+        PrintStream originalOut = System.out;
+        PrintStream originalErr = System.err;
+        PrintStream protocolStream = new PrintStream(new ByteArrayOutputStream());
+
+        try {
+            System.setIn(new InputStream() {
+                @Override public int read() throws IOException {
+                    throw new IOException("read failed");
+                }
+            });
+            System.setOut(protocolStream);
+
+            IOException failure = assertThrows(IOException.class, () -> new JsonRpcWorker().run());
+
+            assertEquals("read failed", failure.getMessage());
+            assertSame(protocolStream, System.out);
+        } finally {
+            System.setIn(originalIn);
+            System.setOut(originalOut);
+            System.setErr(originalErr);
+        }
     }
 }
