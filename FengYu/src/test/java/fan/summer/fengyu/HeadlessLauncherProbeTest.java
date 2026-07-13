@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -20,6 +21,15 @@ class HeadlessLauncherProbeTest {
 
     @TempDir
     Path tempDir;
+
+    @Test
+    void packagedRuntimeDefaultsKeepPluginUploadsReachable() {
+        Map<String, Object> defaults = HeadlessLauncher.runtimeDefaults();
+
+        assertEquals("127.0.0.1", defaults.get("server.address"));
+        assertEquals("128MB", defaults.get("spring.servlet.multipart.max-file-size"));
+        assertEquals("128MB", defaults.get("spring.servlet.multipart.max-request-size"));
+    }
 
     private DataSourceConfigService newService() {
         return new DataSourceConfigService(tempDir.toString());
