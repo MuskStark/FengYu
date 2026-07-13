@@ -11,9 +11,12 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PluginRuntimeEnvironmentServiceTest {
@@ -46,6 +49,50 @@ class PluginRuntimeEnvironmentServiceTest {
             new PluginRuntimeEnvironmentService(dataSources, temp.resolve("plugin-data").toString());
 
         assertTrue(service.environmentFor(manifest("fan.summer.markdown", List.of())).isEmpty());
+    }
+
+    @Test
+    void sqliteTypeUsesExactContractValueUnderTurkishLocale() {
+        DataSourceConfig config = new DataSourceConfig(DbType.SQLITE, "jdbc:sqlite:mail.db",
+            "org.sqlite.JDBC", "org.hibernate.community.dialect.SQLiteDialect", "", "", null);
+        DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host").toString()) {
+            @Override public DataSourceConfig load() {
+                return config;
+            }
+        };
+        PluginRuntimeEnvironmentService service =
+            new PluginRuntimeEnvironmentService(dataSources, temp.resolve("plugin-data").toString());
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            assertEquals("sqlite", service.environmentFor(
+                manifest("fan.summer.email", List.of("database"))).get(PluginEnvironment.DB_TYPE));
+        } finally {
+            Locale.setDefault(previous);
+        }
+    }
+
+    @Test
+    void rejectsTraversalAndAbsolutePluginIdsWithoutCreatingOutsideDirectories() {
+        DataSourceConfig config = new DataSourceConfig(DbType.H2, "jdbc:h2:mem:host", "org.h2.Driver",
+            "org.hibernate.dialect.H2Dialect", "sa", "secret", null);
+        DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host").toString()) {
+            @Override public DataSourceConfig load() {
+                return config;
+            }
+        };
+        Path dataRoot = temp.resolve("plugin-data");
+        PluginRuntimeEnvironmentService service =
+            new PluginRuntimeEnvironmentService(dataSources, dataRoot.toString());
+        Path traversalTarget = temp.resolve("traversal-outside");
+        Path absoluteTarget = temp.resolve("absolute-outside").toAbsolutePath();
+
+        assertThrows(IllegalArgumentException.class, () -> service.environmentFor(
+            manifest("../" + traversalTarget.getFileName(), List.of("database"))));
+        assertThrows(IllegalArgumentException.class, () -> service.environmentFor(
+            manifest(absoluteTarget.toString(), List.of("database"))));
+        assertFalse(Files.exists(traversalTarget));
+        assertFalse(Files.exists(absoluteTarget));
     }
 
     private static PluginManifest manifest(String id, List<String> permissions) {

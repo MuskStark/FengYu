@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.Map;
 
 /** Builds the permission-gated process environment for an isolated plugin Worker. */
@@ -44,7 +45,7 @@ public class PluginRuntimeEnvironmentService {
         }
 
         return Map.of(
-            PluginEnvironment.DB_TYPE, config.type().name().toLowerCase(),
+            PluginEnvironment.DB_TYPE, config.type().name().toLowerCase(Locale.ROOT),
             PluginEnvironment.DB_DRIVER, config.driver(),
             PluginEnvironment.DB_URL, config.url(),
             PluginEnvironment.DB_USERNAME, nullToEmpty(config.username()),
