@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -16,8 +17,16 @@ import java.util.concurrent.ConcurrentHashMap;
 /** Per-process opaque file grants shared by Web upload and trusted desktop selection adapters. */
 @Service
 public class PluginFileGrantService {
-    private final Path root = Path.of(System.getProperty("java.io.tmpdir"), "fengyu", "runtime-files");
+    private final Path root;
     private final Map<String, Grant> grants = new ConcurrentHashMap<>();
+
+    public PluginFileGrantService() {
+        this(Path.of(System.getProperty("java.io.tmpdir"), "fengyu", "runtime-files"));
+    }
+
+    PluginFileGrantService(Path root) {
+        this.root = root.toAbsolutePath().normalize();
+    }
 
     public FileRef upload(String pluginId, MultipartFile file) throws IOException {
         if (file.isEmpty()) throw new IllegalArgumentException("File is empty");
@@ -26,6 +35,32 @@ public class PluginFileGrantService {
         Path target = dir.resolve(name);
         try (var in = file.getInputStream()) { Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING); }
         return register(pluginId, target, "file", "read");
+    }
+
+    public FileRef uploadDirectory(String pluginId, List<MultipartFile> files,
+            List<String> relativePaths) throws IOException {
+        if (files == null || files.isEmpty()) throw new IllegalArgumentException("Directory is empty");
+        if (relativePaths == null || files.size() != relativePaths.size()) {
+            throw new IllegalArgumentException("Each uploaded file requires one relative path");
+        }
+        Path directory = Files.createDirectories(root.resolve(pluginId).resolve(UUID.randomUUID().toString()));
+        for (int i = 0; i < files.size(); i++) {
+            MultipartFile file = files.get(i);
+            if (file.isEmpty()) throw new IllegalArgumentException("Directory contains an empty file");
+            String raw = relativePaths.get(i);
+            if (raw == null || raw.isBlank() || Path.of(raw).isAbsolute()) {
+                throw new IllegalArgumentException("Invalid directory entry path");
+            }
+            Path target = directory.resolve(raw).normalize();
+            if (!target.startsWith(directory) || target.equals(directory)) {
+                throw new IllegalArgumentException("Directory entry escapes the upload root");
+            }
+            Files.createDirectories(target.getParent());
+            try (var in = file.getInputStream()) {
+                Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+        return register(pluginId, directory, "directory", "read");
     }
 
     public FileRef grantNative(String pluginId, String rawPath, String kind, String access) throws IOException {

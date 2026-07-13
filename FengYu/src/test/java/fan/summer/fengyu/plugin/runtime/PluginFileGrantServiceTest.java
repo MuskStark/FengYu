@@ -1,0 +1,44 @@
+package fan.summer.fengyu.plugin.runtime;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.springframework.mock.web.MockMultipartFile;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class PluginFileGrantServiceTest {
+    @TempDir Path temp;
+
+    @Test
+    void uploadsReadableDirectoryAndPreservesSafeRelativePaths() throws Exception {
+        PluginFileGrantService service = new PluginFileGrantService(temp);
+        var ref = service.uploadDirectory("fan.summer.email", List.of(
+            file("a", "a_Q1.pdf"), file("b", "b_Q2.pdf")),
+            List.of("reports/a_Q1.pdf", "reports/b_Q2.pdf"));
+
+        Path root = service.resolve("fan.summer.email", ref.id());
+        assertEquals("directory", ref.kind());
+        assertEquals("read", ref.access());
+        assertTrue(Files.isRegularFile(root.resolve("reports/a_Q1.pdf")));
+        assertEquals("b", Files.readString(root.resolve("reports/b_Q2.pdf")));
+    }
+
+    @Test
+    void rejectsDirectoryTraversalAndAbsolutePaths() {
+        PluginFileGrantService service = new PluginFileGrantService(temp);
+        assertThrows(IllegalArgumentException.class, () -> service.uploadDirectory(
+            "fan.summer.email", List.of(file("x", "x.txt")), List.of("../outside.txt")));
+        assertThrows(IllegalArgumentException.class, () -> service.uploadDirectory(
+            "fan.summer.email", List.of(file("x", "x.txt")), List.of(temp.resolve("outside.txt").toString())));
+    }
+
+    private static MockMultipartFile file(String body, String name) {
+        return new MockMultipartFile("files", name, "application/octet-stream", body.getBytes());
+    }
+}

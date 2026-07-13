@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -19,6 +20,7 @@ import java.io.IOException;
 import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -37,6 +39,14 @@ public class PluginRuntimeFileController {
             @RequestPart("file") MultipartFile file) throws IOException {
         require(id, "files.read");
         return ResponseEntity.status(HttpStatus.CREATED).body(files.upload(id, file));
+    }
+
+    @PostMapping("/upload-directory")
+    public ResponseEntity<PluginFileGrantService.FileRef> uploadDirectory(@PathVariable String id,
+            @RequestPart("files") List<MultipartFile> uploads,
+            @RequestParam("paths") List<String> paths) throws IOException {
+        require(id, "files.read");
+        return ResponseEntity.status(HttpStatus.CREATED).body(files.uploadDirectory(id, uploads, paths));
     }
 
     @PostMapping("/native")
