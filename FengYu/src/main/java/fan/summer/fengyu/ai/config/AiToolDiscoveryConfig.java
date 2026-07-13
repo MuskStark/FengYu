@@ -1,8 +1,14 @@
 package fan.summer.fengyu.ai.config;
 
 import fan.summer.fengyu.api.ai.FengYuTool;
+import fan.summer.fengyu.plugin.market.OfficialPluginSeeder;
+import fan.summer.fengyu.plugin.market.PluginPackageService;
+import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -49,7 +55,34 @@ public class AiToolDiscoveryConfig {
      *              having it {@code implements FengYuTool}; no edit to this config needed)
      */
     @Bean
-    public ToolCallback[] aiToolCallbacks(List<FengYuTool> tools) {
-        return ToolCallbacks.from(tools.toArray());
+    public ToolCallback[] aiToolCallbacks(List<FengYuTool> tools, OfficialPluginSeeder seeder,
+            PluginPackageService packages, PluginProcessManager processes) {
+        seeder.seed();
+        List<ToolCallback> callbacks = new java.util.ArrayList<>(List.of(ToolCallbacks.from(tools.toArray())));
+        ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
+        for (var manifest : packages.installed()) {
+            if (!packages.isEnabled(manifest.id()) || manifest.aiTools() == null) continue;
+            for (var tool : manifest.aiTools()) {
+                callbacks.add(new ToolCallback() {
+                    private final ToolDefinition definition = ToolDefinition.builder()
+                        .name(tool.name()).description(tool.description()).inputSchema(tool.inputSchema()).build();
+                    @Override public ToolDefinition getToolDefinition() { return definition; }
+                    @Override public String call(String input) {
+                        try {
+                            @SuppressWarnings("unchecked") var params = json.readValue(input, java.util.Map.class);
+                            Object result = processes.invoke(manifest.id(), tool.method(), params);
+                            return result instanceof String text ? text : json.writeValueAsString(result);
+                        } catch (Exception e) {
+                            return "{\"success\":false,\"error\":" + quote(json, String.valueOf(e.getMessage())) + "}";
+                        }
+                    }
+                });
+            }
+        }
+        return callbacks.toArray(ToolCallback[]::new);
+    }
+
+    private static String quote(ObjectMapper json, String value) {
+        try { return json.writeValueAsString(value); } catch (Exception ignored) { return "\"Plugin tool failed\""; }
     }
 }

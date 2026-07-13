@@ -1,0 +1,11 @@
+{
+  "name": "@fengyu/plugin-cli",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": { "fengyu": "bin/fengyu.mjs" },
+  "files": ["bin", "src", "templates", "README.md"],
+  "scripts": { "test": "node --test test/*.test.mjs" },
+  "engines": { "node": ">=20" },
+  "dependencies": { "@fengyu/plugin-sdk": "^1.0.0" },
+  "license": "GPL-3.0"
+}

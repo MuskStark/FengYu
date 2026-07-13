@@ -20,6 +20,7 @@
     micro-frontend split-pane editor. Phase 1 walking-skeleton carrier.</description>
 
   <dependencies>
+    <dependency><groupId>fan.summer.fengyu.sdk</groupId><artifactId>fengyu-plugin-sdk</artifactId><version>${revision}</version></dependency>
     <!-- v2 plugin contract. Provided at runtime by the FengYu app (which bundles the API). -->
     <dependency>
       <groupId>fan.summer.fengyu.api</groupId>
@@ -42,6 +43,7 @@
       <groupId>org.commonmark</groupId>
       <artifactId>commonmark</artifactId>
     </dependency>
+    <dependency><groupId>com.google.code.gson</groupId><artifactId>gson</artifactId></dependency>
 
     <dependency>
       <groupId>org.junit.jupiter</groupId>
@@ -51,6 +53,16 @@
 
   <build>
     <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId><artifactId>maven-shade-plugin</artifactId>
+        <executions><execution><phase>package</phase><goals><goal>shade</goal></goals><configuration>
+          <finalName>markdown-worker</finalName><shadedArtifactAttached>false</shadedArtifactAttached>
+          <createDependencyReducedPom>false</createDependencyReducedPom>
+          <transformers><transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+            <mainClass>fan.summer.fengyu.plugin.markdown.MarkdownWorkerMain</mainClass>
+          </transformer></transformers>
+        </configuration></execution></executions>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>

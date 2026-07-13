@@ -124,7 +124,20 @@ fn spawn_backend(token: &str) -> Result<(Child, u16), String> {
         ));
     }
 
+    let plugin_candidates = [
+        jar.parent().map(|p| p.join("plugins")),
+        jar.parent().and_then(|p| p.parent()).map(|p| p.join("plugins")),
+        std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("plugins"))),
+        std::env::current_exe().ok().and_then(|p| p.parent()?.parent()?.parent().map(|d| d.join("Resources/plugins"))),
+    ];
+    let official_plugins = plugin_candidates.into_iter().flatten().find(|p| p.exists())
+        .unwrap_or_else(|| std::path::PathBuf::from("plugins"));
+
     let mut child = Command::new("java")
+        .arg(format!(
+            "-Dfengyu.plugins.official-directory={}",
+            official_plugins.display()
+        ))
         .arg("-cp")
         .arg(jar.as_os_str())
         .arg("fan.summer.fengyu.HeadlessLauncher")

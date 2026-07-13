@@ -1,14 +1,8 @@
 package fan.summer.fengyu.plugin.markdown;
 
-import fan.summer.fengyu.api.IconStyle;
-import fan.summer.fengyu.api.ToolCategory;
-import fan.summer.fengyu.api.plugin.PluginDescriptor;
-import fan.summer.fengyu.api.plugin.PluginSource;
-import fan.summer.fengyu.api.plugin.FengYuPlugin;
 import org.commonmark.node.Node;
 import org.commonmark.parser.Parser;
 import org.commonmark.renderer.html.HtmlRenderer;
-import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -22,25 +16,10 @@ import java.util.Map;
  * commonmark library for correctness. Rendering moves server-side; the frontend debounces
  * {@code render} calls on each edit.
  */
-@Component
-public class MarkdownPlugin implements FengYuPlugin {
-
-    private static final String ID = "fan.summer.markdown";
+public class MarkdownPlugin {
 
     private final Parser parser = Parser.builder().build();
     private final HtmlRenderer renderer = HtmlRenderer.builder().build();
-
-    @Override
-    public PluginDescriptor descriptor() {
-        return new PluginDescriptor(
-            ID, "Markdown Editor",
-            "Split-pane Markdown editor with live server-rendered HTML preview",
-            ToolCategory.TEXT, "language-markdown", IconStyle.BLUE, "4.0.0",
-            "/plugin-ui/markdown/index.js",
-            false,                 // supportsAi
-            PluginSource.OFFICIAL  // source
-        );
-    }
 
     /**
      * Actions:
@@ -49,7 +28,6 @@ public class MarkdownPlugin implements FengYuPlugin {
      *       {@code {success, summary, html}} (tool-return JSON contract).</li>
      * </ul>
      */
-    @Override
     public Object invoke(String action, Map<String, Object> args) {
         if (!"render".equals(action)) {
             throw new IllegalArgumentException("Unknown action: " + action);
