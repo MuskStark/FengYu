@@ -1,0 +1,15 @@
+<script setup lang="ts">
+import { onMounted, ref } from 'vue'
+import { useAccountsStore } from '../stores/accounts'
+import { useArchiveStore } from '../stores/archive'
+import { actionable, invoke } from '../sdk'
+const accounts=useAccountsStore(), archive=useArchiveStore(), view=ref<'records'|'accounts'>('records'), error=ref(''), detail=ref<Record<string,unknown>>()
+async function loadArchive(){try{const result=await invoke<{messages:Record<string,unknown>[]}>('email_archive_query',{offset:archive.offset,limit:archive.limit});archive.messages=result.messages??[]}catch(value){error.value=actionable(value,'Loading archive')}}
+async function openDetail(id:unknown){const result=await invoke<{message:Record<string,unknown>}>('email_archive_detail',{id});detail.value=result.message}
+async function testAccount(){try{await invoke('email_account_test',{accountId:accounts.draft.id});}catch(value){error.value=actionable(value,'Testing SMTP connection')}}
+onMounted(loadArchive)
+</script>
+<template><v-card class="surface" variant="flat"><v-card-title class="d-flex"><v-btn-toggle v-model="view" mandatory color="primary"><v-btn value="records">Records</v-btn><v-btn value="accounts">Accounts</v-btn></v-btn-toggle></v-card-title><v-card-text><v-alert v-if="error" type="error" class="mb-4">{{error}}</v-alert>
+<template v-if="view==='records'"><v-table><thead><tr><th>Subject</th><th>From</th><th>Folder</th><th>Archived</th></tr></thead><tbody><tr v-for="item in archive.messages" :key="String(item.id)" @click="openDetail(item.id)"><td>{{item.subject}}</td><td>{{item.fromAddress}}</td><td>{{item.folder}}</td><td>{{item.archivedAt}}</td></tr></tbody></v-table><div class="pager"><v-btn :disabled="archive.offset===0" @click="archive.previousPage();loadArchive()">Previous</v-btn><span>Page {{Math.floor(archive.offset/archive.limit)+1}}</span><v-btn @click="archive.nextPage();loadArchive()">Next</v-btn></div><v-sheet v-if="detail" class="detail pa-4 mt-4" rounded><pre>{{detail}}</pre></v-sheet></template>
+<template v-else><div class="account-layout"><v-list><v-list-item v-for="account in accounts.accounts" :key="account.id" :title="account.displayName" :subtitle="account.email" @click="accounts.setDraft(account)"/></v-list><div><v-text-field v-model="accounts.draft.displayName" label="Display name"/><v-text-field v-model="accounts.draft.email" label="Email"/><v-text-field v-model="accounts.draft.password" label="Password (leave blank to keep existing)" type="password" autocomplete="new-password"/><div class="inline-fields"><v-text-field v-model="accounts.draft.smtpHost" label="SMTP host"/><v-text-field v-model.number="accounts.draft.smtpPort" label="Port" type="number"/></div><div class="inline-fields"><v-text-field v-model="accounts.draft.imapHost" label="IMAP host"/><v-text-field v-model.number="accounts.draft.imapPort" label="Port" type="number"/></div><div class="d-flex ga-2 justify-end"><v-btn variant="tonal" @click="testAccount">Test</v-btn><v-btn color="primary" @click="accounts.save">Save account</v-btn></div></div></div></template>
+</v-card-text></v-card></template>
