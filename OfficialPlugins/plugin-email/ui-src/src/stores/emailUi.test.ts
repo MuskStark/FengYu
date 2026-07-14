@@ -24,10 +24,10 @@ describe('Email Center state', () => {
     contacts.selectedTagIds = [4]
     expect(contacts.recipientPreview).toEqual(['one@example.com', 'two@example.com'])
     const compose = useComposeStore()
-    compose.setFilenamePreview(['amy.pdf', 'bob.txt', 'README'])
-    expect(compose.filenameRecipients).toEqual(['amy', 'bob'])
-    compose.setConfirmation({ confirmationId: 'c1', summary: '2 messages', expiresAt: 'tomorrow' })
-    expect(compose.confirmationSummary).toContain('2 messages')
+    compose.setFilenamePreview(['invoice_amy@example.com.pdf', 'notice_bob@example.com.txt', 'README'])
+    expect(compose.filenameRecipients).toEqual(['amy@example.com', 'bob@example.com'])
+    compose.setConfirmation({ confirmationId: 'c1', summary: [{ label: 'Recipients', value: '2' }], expiresAt: 'tomorrow' })
+    expect(compose.confirmationSummary).toContain('Recipients: 2')
   })
 
   it('paginates archive results and tracks progress counters', () => {
