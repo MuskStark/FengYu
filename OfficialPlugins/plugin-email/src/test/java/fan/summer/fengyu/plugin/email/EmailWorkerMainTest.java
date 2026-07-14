@@ -102,6 +102,20 @@ class EmailWorkerMainTest {
         }), responses::toString);
     }
 
+    @Test void missingMutationTargetsReturnFailureEnvelopes() throws Exception {
+        EmailRpcHandlers handlers = new EmailRpcHandlers(database(), cipher());
+        List<Object> results = List.of(
+            handlers.setDefaultAccount(Map.of("id", 999)),
+            handlers.deleteAccount(Map.of("id", 999)),
+            handlers.deleteContact(Map.of("id", 999)),
+            handlers.deleteTag(Map.of("id", 999)),
+            handlers.deleteConfig(Map.of("id", 999)));
+
+        for (Object value : results) {
+            assertEquals(false, castMap(value).get("success"), value::toString);
+        }
+    }
+
     private EmailDatabase database() {
         return new EmailDatabase(new PluginDatabaseConfig("h2", "org.h2.Driver",
             "jdbc:h2:mem:worker-" + System.nanoTime() + ";DB_CLOSE_DELAY=-1", "sa", "", temp));

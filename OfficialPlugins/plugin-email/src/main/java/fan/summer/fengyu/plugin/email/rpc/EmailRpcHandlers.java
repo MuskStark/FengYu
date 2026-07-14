@@ -65,13 +65,13 @@ public final class EmailRpcHandlers {
     }
 
     public Object deleteAccount(Map<String, Object> params) {
-        return result(() -> ok(accounts.delete(requiredLong(params, "id"))
-            ? "Email account deleted" : "Email account not found"));
+        return result(() -> accounts.delete(requiredLong(params, "id"))
+            ? ok("Email account deleted") : failure("Email account not found"));
     }
 
     public Object setDefaultAccount(Map<String, Object> params) {
-        return result(() -> ok(accounts.setDefault(requiredLong(params, "id"))
-            ? "Default email account updated" : "Email account not found"));
+        return result(() -> accounts.setDefault(requiredLong(params, "id"))
+            ? ok("Default email account updated") : failure("Email account not found"));
     }
 
     public Object testAccount(Map<String, Object> params) {
@@ -101,8 +101,8 @@ public final class EmailRpcHandlers {
     }
 
     public Object deleteContact(Map<String, Object> params) {
-        return result(() -> ok(addressBook.deleteContact(requiredLong(params, "id"))
-            ? "Contact deleted" : "Contact not found"));
+        return result(() -> addressBook.deleteContact(requiredLong(params, "id"))
+            ? ok("Contact deleted") : failure("Contact not found"));
     }
 
     public Object listTags(Map<String, Object> params) {
@@ -118,8 +118,8 @@ public final class EmailRpcHandlers {
     }
 
     public Object deleteTag(Map<String, Object> params) {
-        return result(() -> ok(addressBook.deleteTag(requiredLong(params, "id"))
-            ? "Tag deleted" : "Tag not found"));
+        return result(() -> addressBook.deleteTag(requiredLong(params, "id"))
+            ? ok("Tag deleted") : failure("Tag not found"));
     }
 
     public Object assignTags(Map<String, Object> params) {
@@ -160,8 +160,8 @@ public final class EmailRpcHandlers {
     }
 
     public Object deleteConfig(Map<String, Object> params) {
-        return result(() -> ok(configs.delete(requiredLong(params, "id"))
-            ? "Batch configuration deleted" : "Batch configuration not found"));
+        return result(() -> configs.delete(requiredLong(params, "id"))
+            ? ok("Batch configuration deleted") : failure("Batch configuration not found"));
     }
 
     public Object prepareSingle(Map<String, Object> params) {
