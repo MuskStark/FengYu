@@ -1,0 +1,86 @@
+---
+title: 快速开始
+description: 从源码构建并运行 Infinia 4.0.0。
+lang: zh-CN
+---
+
+# 快速开始
+
+几分钟内从源码跑起 Infinia 4.0.0。整个 reactor 由两个 Maven 模块组成——按顺序构建，然后分别启动后端与前端。
+
+## 前置条件
+
+| 工具 | 版本 | 用途 |
+| --- | --- | --- |
+| JDK | 21+（推荐 Eclipse Temurin） | 后端（`Java 21`） |
+| Node.js + npm | 20+ | 前端开发服务器 |
+| Rust + `tauri-cli` | stable | 仅桌面端外壳需要（只用 Web 可跳过） |
+
+## 从源码构建
+
+构建是一个两模块的 reactor。`FengYu-Api` **必须先 install**，因为 `FengYu` 依赖于它。
+
+```bash
+git clone https://github.com/MuskStark/FengYu.git
+cd FengYu
+mvn install -f FengYu-Api/pom.xml -DskipTests
+mvn clean package -f FengYu/pom.xml -DskipTests
+```
+
+打包好的后端 jar 位于 `FengYu/target/FengYu-4.0.0-SNAPSHOT.jar`。
+
+## 运行后端
+
+启动无头（headless）Spring Boot 后端。它默认绑定 `127.0.0.1:24056`，并在启动时打印 `FENGYU_PORT=<n>`。
+
+```bash
+java -jar FengYu/target/FengYu-4.0.0-SNAPSHOT.jar --token=<your-token>
+```
+
+入口类是 `fan.summer.fengyu.HeadlessLauncher`。CLI 参数只有 `--port` 和 `--token` 两个。
+
+## 运行前端（开发模式）
+
+Vue 3 + Vuetify 3 前端通过 Vite 连接后端，Vite 会把 `/api` 和 `/plugin-runtime` 代理到 `localhost:24056`。
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+打开打印出的本地 URL，UI 就会与你刚才启动的后端通信。
+
+## 冒烟测试
+
+一个辅助脚本会启动打包好的 jar，并探测每一个 endpoint。
+
+```bash
+scripts/e2e-smoke.sh
+```
+
+每次构建后想做一次快速的端到端健康检查时都可以运行它。
+
+## 运行桌面端（开发模式）
+
+Tauri 2.0 桌面外壳会以 sidecar 方式拉起 Java jar。在仓库根目录下：
+
+```bash
+cd desktop
+cargo tauri dev
+```
+
+构建可分发包：
+
+```bash
+cargo tauri build
+```
+
+::: tip
+桌面端构建同时需要 Rust **和** 你所用平台的系统 WebView 运行时。如果 `cargo tauri dev` 启动失败，请参考 [Tauri 前置条件](https://tauri.app/start/prerequisites/)。
+:::
+
+## 下一步
+
+- [架构概述](/zh/architecture/overview)——无头后端、Vue UI 与 Tauri 外壳如何拼装在一起。
+- [配置](/zh/guide/configuration)——端口、令牌、数据库选择与 AI 后端。
