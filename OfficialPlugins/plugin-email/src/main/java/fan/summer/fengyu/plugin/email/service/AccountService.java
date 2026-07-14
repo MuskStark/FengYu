@@ -4,6 +4,7 @@ import fan.summer.fengyu.plugin.email.crypto.CredentialCipher;
 import fan.summer.fengyu.plugin.email.database.EmailDatabase;
 import fan.summer.fengyu.plugin.email.model.EmailAccount;
 import fan.summer.fengyu.plugin.email.repository.AccountRepository;
+import fan.summer.fengyu.plugin.email.repository.PendingSendRepository;
 
 import java.security.GeneralSecurityException;
 import java.util.List;
@@ -13,14 +14,20 @@ import java.util.Optional;
 public final class AccountService {
     private final AccountRepository accounts;
     private final CredentialCipher cipher;
+    private final PendingSendRepository pendingSends;
 
     public AccountService(EmailDatabase database, CredentialCipher cipher) {
-        this(new AccountRepository(database), cipher);
+        this(new AccountRepository(database), cipher, new PendingSendRepository(database));
     }
 
-    public AccountService(AccountRepository accounts, CredentialCipher cipher) {
+    AccountService(AccountRepository accounts, CredentialCipher cipher) {
+        this(accounts, cipher, null);
+    }
+
+    private AccountService(AccountRepository accounts, CredentialCipher cipher, PendingSendRepository pendingSends) {
         this.accounts = accounts;
         this.cipher = cipher;
+        this.pendingSends = pendingSends;
     }
 
     public long save(AccountInput input) {
@@ -42,7 +49,12 @@ public final class AccountService {
 
     public Optional<AccountView> find(long id) { return accounts.findAccount(id).map(AccountService::view); }
     public List<AccountView> list() { return accounts.listAccounts().stream().map(AccountService::view).toList(); }
-    public boolean delete(long id) { return accounts.deleteAccount(id); }
+    public boolean delete(long id) {
+        if (pendingSends != null && pendingSends.hasOpenForAccount(id)) {
+            throw new IllegalStateException("Account has an open send operation");
+        }
+        return accounts.deleteAccount(id);
+    }
     public boolean setDefault(long id) { return accounts.setDefault(id); }
 
     /** Internal-only credential access for SMTP/IMAP services. */
