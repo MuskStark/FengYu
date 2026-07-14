@@ -23,6 +23,8 @@ const emit = defineEmits<{
 }>()
 const { t } = useI18n()
 const pasteNotice = ref(false)
+const linkDialog = ref(false)
+const linkHref = ref('')
 
 const editor = useEditor({
   content: sanitizeEmailHtml(props.modelValue),
@@ -58,12 +60,15 @@ watch(() => props.modelValue, value => {
 watch(() => props.disabled, value => editor.value?.setEditable(!value))
 onBeforeUnmount(() => editor.value?.destroy())
 
-function setLink(): void {
-  const previous = editor.value?.getAttributes('link').href as string | undefined
-  const href = window.prompt(t('editor.linkPrompt'), previous ?? 'https://')
-  if (href === null) return
-  if (!href.trim()) editor.value?.chain().focus().unsetLink().run()
-  else editor.value?.chain().focus().extendMarkRange('link').setLink({ href: href.trim() }).run()
+function openLinkDialog(): void {
+  linkHref.value = editor.value?.getAttributes('link').href as string | undefined ?? 'https://'
+  linkDialog.value = true
+}
+function applyLink(): void {
+  const href = linkHref.value.trim()
+  if (!href) editor.value?.chain().focus().unsetLink().run()
+  else editor.value?.chain().focus().extendMarkRange('link').setLink({ href }).run()
+  linkDialog.value = false
 }
 
 function onPaste(): void {
@@ -90,7 +95,7 @@ function onPaste(): void {
       <v-btn size="small" variant="text" :aria-label="t('editor.alignRight')" @click="editor?.chain().focus().setTextAlign('right').run()">↦</v-btn>
       <v-btn size="small" variant="text" @click="editor?.chain().focus().toggleBulletList().run()">{{ t('editor.bullets') }}</v-btn>
       <v-btn size="small" variant="text" @click="editor?.chain().focus().toggleOrderedList().run()">{{ t('editor.numbering') }}</v-btn>
-      <v-btn size="small" variant="text" @click="setLink">{{ t('editor.link') }}</v-btn>
+      <v-btn size="small" variant="text" @click="openLinkDialog">{{ t('editor.link') }}</v-btn>
       <v-btn size="small" variant="text" @click="editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()">{{ t('editor.table') }}</v-btn>
       <v-btn size="small" variant="text" @click="editor?.chain().focus().unsetAllMarks().clearNodes().run()">{{ t('editor.clear') }}</v-btn>
     </div>
@@ -99,4 +104,11 @@ function onPaste(): void {
       {{ t('compose.wordNormalized') }}
     </v-alert>
   </div>
+  <v-dialog v-model="linkDialog" max-width="480">
+    <v-card class="codex-dialog">
+      <v-card-title>{{ t('editor.link') }}</v-card-title>
+      <v-card-text><v-text-field v-model="linkHref" autofocus :label="t('editor.linkPrompt')" @keyup.enter="applyLink" /></v-card-text>
+      <v-card-actions><v-spacer /><v-btn variant="tonal" @click="linkDialog = false">{{ t('common.cancel') }}</v-btn><v-btn color="primary" @click="applyLink">{{ t('common.confirm') }}</v-btn></v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
