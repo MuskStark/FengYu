@@ -237,6 +237,9 @@ class EmailArchiveServiceTest {
         String filename = Path.of(archived.emlPath()).getFileName().toString();
         assertTrue(filename.endsWith("_" + archived.messageUid() + ".eml"));
         assertTrue(filename.getBytes(StandardCharsets.UTF_8).length <= 254);
+        String temporaryName = EmailArchiveService.temporaryArchivePath(Path.of(archived.emlPath()))
+            .getFileName().toString();
+        assertTrue(temporaryName.getBytes(StandardCharsets.UTF_8).length <= 254);
     }
 
     private MailFolder folder(String name) throws Exception {
