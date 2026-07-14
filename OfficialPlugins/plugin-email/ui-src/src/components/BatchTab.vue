@@ -1,18 +1,142 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAccountsStore } from '../stores/accounts'
-import { useComposeStore } from '../stores/compose'
+import { useBatchStore, type BatchPreview } from '../stores/batch'
 import { useContactsStore } from '../stores/contacts'
 import { actionable, files, invoke } from '../sdk'
-const accounts = useAccountsStore(), contacts = useContactsStore(), compose = useComposeStore()
-const mode = ref<'TAGS'|'FILENAME'>('TAGS'), directory = ref<{id:string;name:string}|null>(null), dialog = ref(false), error = ref('')
-async function chooseDirectory() { try { directory.value = await files.inputDirectory() } catch(value){error.value=actionable(value,'Selecting batch directory')} }
-async function prepare() { try { const result = await invoke<{confirmation:{confirmationId:string;summary:{label:string;value:string}[];expiresAt:string}}>('email_send_batch', { mode: mode.value, accountId: accounts.selectedId, tagIds: contacts.selectedTagIds, inputDirectory: directory.value, subject: compose.subject, plainText: compose.plainText, htmlText: compose.htmlText }); compose.setConfirmation(result.confirmation); dialog.value=true } catch(value){ error.value=actionable(value,'Preparing batch') } }
-async function confirm(){ if(!compose.confirmation)return;try{const result=await invoke<{send:{status:string;succeeded:number;failed:number;failedRecipients:string[]}}>('confirm_send',{confirmationId:compose.confirmation.confirmationId});compose.sendResult=result.send;dialog.value=false}catch(value){error.value=actionable(value,'Sending batch')}}
-async function reject(){if(!compose.confirmation)return;try{await invoke('reject_send',{confirmationId:compose.confirmation.confirmationId});dialog.value=false}catch(value){error.value=actionable(value,'Cancelling batch')}}
+import RichTextEditor from './RichTextEditor.vue'
+import ConfirmationDialog from './ConfirmationDialog.vue'
+
+const { t } = useI18n()
+const accounts = useAccountsStore(), batch = useBatchStore(), contacts = useContactsStore()
+const busy = ref(false), previewBusy = ref(false), error = ref(''), dialog = ref(false)
+let previewTimer: number | undefined
+const canPreview = computed(() => Boolean(accounts.selectedId && batch.inputDirectory
+  && batch.recipientGroupTagIds.length && (batch.plainText.trim() || batch.htmlText.trim())))
+const params = () => ({
+  accountId: accounts.selectedId,
+  recipientGroupTagIds: batch.recipientGroupTagIds,
+  ccGroupTagIds: batch.ccGroupTagIds,
+  inputDirectory: batch.inputDirectory,
+  commonAttachments: batch.commonAttachments,
+  subject: batch.subject,
+  plainText: batch.plainText,
+  htmlText: batch.htmlText,
+})
+
+onMounted(() => {
+  if (!contacts.tags.length) contacts.load().catch(value => { error.value = actionable(value, t('batch.loadTags')) })
+})
+watch(() => [accounts.selectedId, batch.inputDirectory, batch.recipientGroupTagIds, batch.ccGroupTagIds,
+  batch.commonAttachments, batch.subject, batch.plainText, batch.htmlText], () => {
+  window.clearTimeout(previewTimer)
+  batch.clearPreview()
+  if (canPreview.value) previewTimer = window.setTimeout(refreshPreview, 450)
+}, { deep: true })
+onBeforeUnmount(() => window.clearTimeout(previewTimer))
+
+async function chooseDirectory(): Promise<void> {
+  try { batch.inputDirectory = await files.inputDirectory() }
+  catch (value) { error.value = actionable(value, t('batch.selectDirectory')) }
+}
+async function addCommonAttachment(): Promise<void> {
+  try { const value = await files.open(); if (value) batch.commonAttachments.push(value) }
+  catch (value) { error.value = actionable(value, t('batch.selectCommon')) }
+}
+function removeCommonAttachment(id: string): void {
+  batch.commonAttachments = batch.commonAttachments.filter(item => item.id !== id)
+}
+async function refreshPreview(): Promise<void> {
+  if (!canPreview.value) return
+  previewBusy.value = true; error.value = ''
+  try {
+    const result = await invoke<{ preview: BatchPreview }>('email_batch_preview', params())
+    batch.applyPreview(result.preview)
+  } catch (value) { error.value = actionable(value, t('batch.previewAction')) }
+  finally { previewBusy.value = false }
+}
+async function prepare(): Promise<void> {
+  busy.value = true; error.value = ''
+  try {
+    const result = await invoke<{ confirmation: NonNullable<typeof batch.confirmation> }>('email_send_batch', params())
+    batch.confirmation = result.confirmation; dialog.value = true
+  } catch (value) { error.value = actionable(value, t('batch.prepareAction')) }
+  finally { busy.value = false }
+}
+async function confirm(): Promise<void> {
+  if (!batch.confirmation) return
+  busy.value = true
+  try {
+    const result = await invoke<{ send: NonNullable<typeof batch.sendResult> }>('confirm_send', {
+      confirmationId: batch.confirmation.confirmationId,
+    })
+    batch.sendResult = result.send; dialog.value = false
+  } catch (value) { error.value = actionable(value, t('batch.sendAction')) }
+  finally { busy.value = false }
+}
+async function reject(): Promise<void> {
+  if (!batch.confirmation) return
+  try { await invoke('reject_send', { confirmationId: batch.confirmation.confirmationId }); dialog.value = false }
+  catch (value) { error.value = actionable(value, t('batch.cancelAction')) }
+}
 </script>
-<template><v-card class="surface" variant="flat"><v-card-title>Batch send</v-card-title><v-card-text><v-alert v-if="error" type="error" class="mb-4">{{error}}</v-alert><v-btn-toggle v-model="mode" mandatory color="primary"><v-btn value="TAGS">Address-book tags</v-btn><v-btn value="FILENAME">Filename suffix</v-btn></v-btn-toggle>
-<template v-if="mode==='TAGS'"><v-select v-model="contacts.selectedTagIds" :items="contacts.tags" item-title="name" item-value="id" label="Recipient tags" multiple chips/><p class="hint">{{contacts.recipientPreview.length}} resolved recipients: {{contacts.recipientPreview.join(', ')||'select tags to preview'}}</p></template>
-<template v-else><v-btn variant="tonal" @click="chooseDirectory">Choose attachment directory</v-btn><p class="hint">{{directory?.name||'Recipients are derived from the suffix after the last underscore; the exact count is shown in the confirmation preview.'}}</p></template>
-<v-text-field v-model="compose.subject" label="Subject template"/><v-textarea v-model="compose.plainText" label="Message template"/></v-card-text><v-card-actions><v-spacer/><v-btn color="primary" @click="prepare">Review batch</v-btn></v-card-actions></v-card>
-<v-alert v-if="compose.sendResult" :type="compose.sendResult.failed?'warning':'success'" class="mt-4">Processed {{compose.sendResult.succeeded+compose.sendResult.failed}} · succeeded {{compose.sendResult.succeeded}} · failed {{compose.sendResult.failed}}</v-alert><v-dialog v-model="dialog" max-width="560" persistent><v-card><v-card-title>Confirm batch</v-card-title><v-card-text><v-list density="compact"><v-list-item v-for="row in compose.confirmation?.summary" :key="row.label" :title="row.label" :subtitle="row.value"/></v-list></v-card-text><v-card-actions><v-spacer/><v-btn @click="reject">Reject</v-btn><v-btn color="primary" @click="confirm">Confirm batch</v-btn></v-card-actions></v-card></v-dialog></template>
+
+<template>
+  <section class="batch-workspace">
+    <v-card class="surface" variant="flat">
+      <v-card-title>{{ t('batch.title') }}</v-card-title>
+      <v-card-text>
+        <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
+        <v-alert v-if="batch.sendResult" :type="batch.sendResult.failed ? 'warning' : 'success'" class="mb-4">
+          {{ t('compose.sendResult', { sent: batch.sendResult.succeeded, failed: batch.sendResult.failed }) }}
+        </v-alert>
+        <div class="form-grid">
+          <v-select v-model="accounts.selectedId" :items="accounts.accounts" item-title="email" item-value="id" :label="t('compose.from')" />
+          <div>
+            <v-btn data-testid="batch-directory" variant="tonal" @click="chooseDirectory">{{ t('batch.directory') }}</v-btn>
+            <p class="hint">{{ batch.inputDirectory?.name ?? t('batch.noDirectory') }}</p>
+          </div>
+          <v-select v-model="batch.recipientGroupTagIds" :items="contacts.tags" item-title="name" item-value="id" multiple chips :label="t('batch.recipientGroups')" />
+          <v-select v-model="batch.ccGroupTagIds" :items="contacts.tags" item-title="name" item-value="id" multiple chips :label="t('batch.ccGroups')" />
+        </div>
+        <v-alert type="info" variant="tonal" class="mb-4">{{ t('batch.formula') }}</v-alert>
+        <v-text-field v-model="batch.subject" :label="t('compose.subject')" />
+        <RichTextEditor v-model="batch.htmlText" @update:plain-text="batch.plainText = $event" />
+        <div class="attachment-row">
+          <v-chip v-for="item in batch.commonAttachments" :key="item.id" closable @click:close="removeCommonAttachment(item.id)">{{ item.name }}</v-chip>
+          <v-btn data-testid="batch-common-attachment" variant="tonal" @click="addCommonAttachment">{{ t('batch.commonAttachments') }}</v-btn>
+        </div>
+      </v-card-text>
+      <v-card-actions>
+        <v-btn data-testid="batch-refresh" variant="text" :loading="previewBusy" :disabled="!canPreview" @click="refreshPreview">{{ t('batch.refresh') }}</v-btn>
+        <v-spacer />
+        <v-btn data-testid="batch-review" color="primary" :loading="busy" :disabled="!batch.messageCount" @click="prepare">{{ t('batch.review', { count: batch.messageCount }) }}</v-btn>
+      </v-card-actions>
+    </v-card>
+
+    <v-card class="surface mt-4" variant="flat">
+      <v-card-title>{{ t('batch.preview') }}</v-card-title>
+      <v-card-text>
+        <v-progress-linear v-if="previewBusy" indeterminate />
+        <div v-if="batch.preview.messages.length" class="batch-preview-list">
+          <article v-for="message in batch.preview.messages" :key="message.attachmentTag" class="batch-preview-item">
+            <h3>{{ message.attachmentTag }}</h3>
+            <p><strong>{{ t('compose.to') }}:</strong> {{ message.to.join(', ') }}</p>
+            <p><strong>{{ t('compose.cc') }}:</strong> {{ message.cc.join(', ') || t('common.none') }}</p>
+            <p><strong>{{ t('batch.tagAttachments') }}:</strong> {{ message.tagAttachments.join(', ') }}</p>
+            <p><strong>{{ t('batch.commonAttachments') }}:</strong> {{ message.commonAttachments.join(', ') || t('common.none') }}</p>
+          </article>
+        </div>
+        <p v-else class="hint">{{ t('batch.previewEmpty') }}</p>
+        <v-alert v-if="batch.preview.ignoredFiles.length" type="info" variant="tonal" class="mt-4">
+          {{ t('batch.ignoredFiles') }}: {{ batch.preview.ignoredFiles.join(', ') }}
+        </v-alert>
+        <v-alert v-if="batch.preview.skippedTags.length" type="warning" variant="tonal" class="mt-4">
+          {{ t('batch.skippedTags') }}: {{ batch.preview.skippedTags.map(item => `${item.attachmentTag} (${item.reason})`).join(', ') }}
+        </v-alert>
+      </v-card-text>
+    </v-card>
+  </section>
+  <ConfirmationDialog v-model="dialog" :confirmation="batch.confirmation" :busy="busy" @approve="confirm" @reject="reject" />
+</template>
