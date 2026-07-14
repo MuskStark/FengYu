@@ -27,3 +27,11 @@ test('advertises and handles the official input-directory capability', () => {
   assert.match(source, /request\.method === 'files\.inputDirectory'/)
   assert.match(source, /webkitdirectory/)
 })
+
+test('propagates the configured host locale through handshake and environment updates', () => {
+  assert.match(source, /import \{ useSettingsStore \} from '@\/stores\/settings'/)
+  assert.match(source, /const settings = useSettingsStore\(\)/)
+  assert.match(source, /request\.method === 'host\.ready'[\s\S]*locale: settings\.language/)
+  assert.match(source, /event: 'environment'[\s\S]*data: \{ theme: theme\.theme, locale: settings\.language \}/)
+  assert.match(source, /watch\(\(\) => settings\.language, sendEnvironment\)/)
+})
