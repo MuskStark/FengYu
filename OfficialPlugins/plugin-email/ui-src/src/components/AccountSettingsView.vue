@@ -3,8 +3,9 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAccountsStore } from '../stores/accounts'
 import { actionable, invoke } from '../sdk'
+import ActionDialog from './ActionDialog.vue'
 
-const { t } = useI18n(), accounts = useAccountsStore(), error = ref(''), notice = ref(''), busy = ref(false)
+const { t } = useI18n(), accounts = useAccountsStore(), error = ref(''), notice = ref(''), busy = ref(false), deleteDialog = ref(false)
 async function guard(action: string, task: () => Promise<void>): Promise<void> {
   busy.value = true; error.value = ''; notice.value = ''
   try { await task() } catch (value) { error.value = actionable(value, action) }
@@ -24,7 +25,11 @@ const makeDefault = () => guard(t('accounts.defaultAction'), async () => {
   await invoke('email_account_set_default', { id: accounts.draft.id }); await accounts.load()
 })
 const removeAccount = () => {
-  if (!accounts.draft.id || !window.confirm(t('accounts.deleteConfirm'))) return
+  if (!accounts.draft.id) return
+  deleteDialog.value = true
+}
+const confirmRemoveAccount = () => {
+  if (!accounts.draft.id) return
   void guard(t('accounts.deleteAction'), async () => {
     await invoke('email_account_delete', { id: accounts.draft.id }); newAccount(); await accounts.load()
   })
@@ -50,4 +55,6 @@ const removeAccount = () => {
       </div>
     </v-card-text>
   </v-card>
+  <ActionDialog v-model="deleteDialog" :title="t('accounts.deleteAction')" :message="t('accounts.deleteConfirm')"
+    :confirm-text="t('common.delete')" destructive @confirm="confirmRemoveAccount" />
 </template>

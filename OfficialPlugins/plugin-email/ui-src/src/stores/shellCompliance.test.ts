@@ -22,6 +22,24 @@ describe('Email Center responsive shell', () => {
     expect(css).toContain('.v-overlay-container .v-card')
   })
 
+  it('keeps forms spacious, buttons visible, and popups inside the Codex component system', () => {
+    const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
+    const components = fs.readdirSync(path.resolve('src/components'))
+      .filter(name => name.endsWith('.vue'))
+      .map(name => fs.readFileSync(path.resolve('src/components', name), 'utf8'))
+      .join('\n')
+
+    expect(css).toContain('.email-layout .v-card-text > :not(:first-child)')
+    expect(css).toContain('.account-layout > :last-child > * + *')
+    expect(css).toContain('.email-layout .v-btn--variant-elevated')
+    expect(css).toContain('.v-card-actions .v-btn.text-primary')
+    expect(css).toContain('.editor-toolbar .v-btn')
+    expect(css).toContain('.codex-dialog')
+    expect(css).toContain('.v-overlay-container .v-field__outline')
+    expect(css).toContain('.v-overlay-container .v-btn--variant-elevated')
+    expect(components).not.toMatch(/window\.(confirm|prompt)\s*\(/)
+  })
+
   it('turns the task rail into a compact horizontally scrollable mobile navigation', () => {
     const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
     const mobile = css.match(/@media\s*\(max-width:\s*720px\)\s*\{([\s\S]*)\}\s*$/)?.[1] ?? ''
