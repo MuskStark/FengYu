@@ -29,9 +29,116 @@ export default defineConfig({
   }
 })
 
-// NOTE: enNav/enSidebar/zhNav/zhSidebar are defined in Task 1 (root redirect) + Task 2.
-// For the shell, define minimal placeholders so the site builds:
-const enNav = [{ text: 'Home', link: '/en/' }]
-const enSidebar = {}
-const zhNav = [{ text: '首页', link: '/zh/' }]
-const zhSidebar = {}
+// Nav + sidebar for both locales (Task 2). Page files land in Tasks 3–7;
+// sidebar links may point at not-yet-created pages — `ignoreDeadLinks`
+// above keeps `docs:build` green during the docs rewrite.
+
+const enNav = [
+  { text: 'Quickstart', link: '/en/quickstart' },
+  { text: 'Architecture', link: '/en/architecture/overview' },
+  { text: 'Plugins', link: '/en/plugins/overview' },
+  { text: 'Guide', link: '/en/guide/ai-chat' },
+  { text: 'Reference', link: '/en/reference/rest-api' }
+]
+
+const enSidebar = {
+  '/en/': [
+    { text: 'Start', items: [
+      { text: 'Home', link: '/en/' },
+      { text: 'Quick Start', link: '/en/quickstart' },
+      { text: 'Features', link: '/en/features' },
+      { text: 'Design System', link: '/en/design-system' }
+    ]},
+    { text: 'Architecture', collapsible: true, items: [
+      { text: 'Overview', link: '/en/architecture/overview' },
+      { text: 'Backend', link: '/en/architecture/backend' },
+      { text: 'Frontend', link: '/en/architecture/frontend' },
+      { text: 'Desktop', link: '/en/architecture/desktop' },
+      { text: 'Plugin System', link: '/en/architecture/plugin-system' }
+    ]},
+    { text: 'Plugins', collapsible: true, items: [
+      { text: 'Overview', link: '/en/plugins/overview' },
+      { text: 'Getting Started', link: '/en/plugins/getting-started' },
+      { text: 'Manifest', link: '/en/plugins/manifest' },
+      { text: 'Worker (JSON-RPC)', link: '/en/plugins/worker' },
+      { text: 'UI Micro-frontend', link: '/en/plugins/ui-microfrontend' },
+      { text: 'File I/O', link: '/en/plugins/file-io' },
+      { text: 'AI Tools', link: '/en/plugins/ai-tools' },
+      { text: 'SDK & CLI', link: '/en/plugins/sdk-cli' },
+      { text: 'Marketplace', link: '/en/plugins/marketplace' },
+      { text: 'i18n', link: '/en/plugins/i18n' },
+      { text: 'Build & Deploy', link: '/en/plugins/build-deploy' },
+      { text: 'Official: Markdown', link: '/en/plugins/official-markdown' },
+      { text: 'Official: Excel', link: '/en/plugins/official-excel' },
+      { text: 'Pitfalls', link: '/en/plugins/pitfalls' }
+    ]},
+    { text: 'Guide', collapsible: true, items: [
+      { text: 'AI Chat', link: '/en/guide/ai-chat' },
+      { text: 'AI Agent', link: '/en/guide/ai-agent' },
+      { text: 'Database', link: '/en/guide/database' },
+      { text: 'Configuration', link: '/en/guide/configuration' }
+    ]},
+    { text: 'Reference', collapsible: true, items: [
+      { text: 'REST API', link: '/en/reference/rest-api' },
+      { text: 'SSE Events', link: '/en/reference/sse-events' },
+      { text: 'Troubleshooting', link: '/en/reference/troubleshooting' },
+      { text: 'Glossary', link: '/en/reference/glossary' },
+      { text: 'Changelog', link: '/en/reference/changelog' }
+    ]}
+  ]
+}
+
+const zhNav = [
+  { text: '快速开始', link: '/zh/quickstart' },
+  { text: '架构', link: '/zh/architecture/overview' },
+  { text: '插件', link: '/zh/plugins/overview' },
+  { text: '指南', link: '/zh/guide/ai-chat' },
+  { text: '参考', link: '/zh/reference/rest-api' }
+]
+
+const zhSidebar = {
+  '/zh/': [
+    { text: '开始', items: [
+      { text: '首页', link: '/zh/' },
+      { text: '快速开始', link: '/zh/quickstart' },
+      { text: '功能特性', link: '/zh/features' },
+      { text: '设计系统', link: '/zh/design-system' }
+    ]},
+    { text: '架构', collapsible: true, items: [
+      { text: '概述', link: '/zh/architecture/overview' },
+      { text: '后端', link: '/zh/architecture/backend' },
+      { text: '前端', link: '/zh/architecture/frontend' },
+      { text: '桌面端', link: '/zh/architecture/desktop' },
+      { text: '插件系统', link: '/zh/architecture/plugin-system' }
+    ]},
+    { text: '插件', collapsible: true, items: [
+      { text: '概述', link: '/zh/plugins/overview' },
+      { text: '入门', link: '/zh/plugins/getting-started' },
+      { text: '清单', link: '/zh/plugins/manifest' },
+      { text: 'Worker（JSON-RPC）', link: '/zh/plugins/worker' },
+      { text: 'UI 微前端', link: '/zh/plugins/ui-microfrontend' },
+      { text: '文件 I/O', link: '/zh/plugins/file-io' },
+      { text: 'AI 工具', link: '/zh/plugins/ai-tools' },
+      { text: 'SDK 与 CLI', link: '/zh/plugins/sdk-cli' },
+      { text: '插件市场', link: '/zh/plugins/marketplace' },
+      { text: '国际化', link: '/zh/plugins/i18n' },
+      { text: '构建与部署', link: '/zh/plugins/build-deploy' },
+      { text: '官方插件：Markdown', link: '/zh/plugins/official-markdown' },
+      { text: '官方插件：Excel', link: '/zh/plugins/official-excel' },
+      { text: '常见陷阱', link: '/zh/plugins/pitfalls' }
+    ]},
+    { text: '指南', collapsible: true, items: [
+      { text: 'AI 对话', link: '/zh/guide/ai-chat' },
+      { text: 'AI 智能体', link: '/zh/guide/ai-agent' },
+      { text: '数据库', link: '/zh/guide/database' },
+      { text: '配置', link: '/zh/guide/configuration' }
+    ]},
+    { text: '参考', collapsible: true, items: [
+      { text: 'REST API', link: '/zh/reference/rest-api' },
+      { text: 'SSE 事件', link: '/zh/reference/sse-events' },
+      { text: '故障排查', link: '/zh/reference/troubleshooting' },
+      { text: '术语表', link: '/zh/reference/glossary' },
+      { text: '更新日志', link: '/zh/reference/changelog' }
+    ]}
+  ]
+}
