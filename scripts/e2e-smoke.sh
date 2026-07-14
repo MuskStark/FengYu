@@ -36,7 +36,8 @@ db.dialect=org.hibernate.dialect.H2Dialect
 db.file.path=${DB_FILE}
 EOF
 
-"$JAVA" -cp "$JAR" fan.summer.fengyu.HeadlessLauncher --port="$PORT" --token="$TOKEN" > server.log 2>&1 &
+"$JAVA" -Dfengyu.plugins.official-directory="$ROOT/OfficialPlugins/target/packages" \
+  -cp "$JAR" fan.summer.fengyu.HeadlessLauncher --port="$PORT" --token="$TOKEN" > server.log 2>&1 &
 SRV=$!
 trap 'kill $SRV 2>/dev/null; rm -rf "$WORK"' EXIT
 
@@ -76,6 +77,13 @@ echo "PASS: health + plugins + Markdown render + token auth all OK (port=$PORT)"
 # /api/plugins lists Excel — closes Task 11's deferred registration check.
 curl -s "${AUTH[@]}" "$H/api/plugins" | grep -q 'fan.summer.excel' || fail "Excel plugin not listed"
 echo "PASS: excel plugin registered"
+
+# Email Center is seeded as an isolated .fyp and its Worker answers through the official SDK protocol.
+curl -s "${AUTH[@]}" "$H/api/plugins" | grep -q 'fan.summer.email' || fail "Email Center plugin not listed"
+EMAIL_ACCOUNTS="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+  "$H/api/plugins/fan.summer.email/invoke" -d '{"action":"email_accounts_list","args":{}}')"
+echo "$EMAIL_ACCOUNTS" | grep -q '"success":true' \
+  && echo "PASS: email worker discovered" || fail "email account RPC: $EMAIL_ACCOUNTS"
 
 XLSX="$WORK/sample.xlsx"
 python3 - "$XLSX" <<'PY'
