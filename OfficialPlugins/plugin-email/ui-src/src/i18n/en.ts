@@ -8,5 +8,6 @@ export default {
   records: { title: 'Send records', status: 'Status', progress: 'Progress', mode: 'Mode', sentAt: 'Sent at', partial: 'Partially failed' },
   accounts: { title: 'Account settings', loading: 'Loading accounts', newAccount: 'Add account', passwordHelp: 'Leave blank to keep the saved password', smtp: 'SMTP server', imap: 'IMAP server', test: 'Test SMTP', defaultAccount: 'Default sending account' },
   confirmation: { title: 'Confirm send', approve: 'Confirm send', reject: 'Reject', expires: 'Expires {time}' },
+  editor: { toolbar: 'Formatting toolbar', bold: 'Bold', italic: 'Italic', underline: 'Underline', heading: 'Heading', fontSize: 'Font size', color: 'Text color', alignLeft: 'Align left', alignCenter: 'Align center', alignRight: 'Align right', bullets: 'Bullets', numbering: 'Numbering', link: 'Link', linkPrompt: 'Enter a safe http, https, or mailto link', table: 'Table', clear: 'Clear formatting' },
   errors: { unknown: 'Email operation failed. Try again.', actionFailed: '{action} failed: {detail}' },
 }
