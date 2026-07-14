@@ -1,0 +1,53 @@
+<script setup lang="ts">
+import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useAccountsStore } from '../stores/accounts'
+import { actionable, invoke } from '../sdk'
+
+const { t } = useI18n(), accounts = useAccountsStore(), error = ref(''), notice = ref(''), busy = ref(false)
+async function guard(action: string, task: () => Promise<void>): Promise<void> {
+  busy.value = true; error.value = ''; notice.value = ''
+  try { await task() } catch (value) { error.value = actionable(value, action) }
+  finally { busy.value = false }
+}
+function newAccount(): void {
+  accounts.setDraft({ displayName: '', email: '', password: '', smtpHost: '', smtpPort: 587,
+    smtpSecurity: 'STARTTLS', imapHost: '', imapPort: 993, imapSecurity: 'SSL', defaultAccount: false })
+}
+const testAccount = () => guard(t('accounts.testAction'), async () => {
+  await invoke('email_account_test', { accountId: accounts.draft.id }); notice.value = t('accounts.testSuccess')
+})
+const saveAccount = () => guard(t('accounts.saveAction'), async () => {
+  await invoke('email_account_save', { ...accounts.draft }); accounts.draft.password = ''; notice.value = t('accounts.saved')
+})
+const makeDefault = () => guard(t('accounts.defaultAction'), async () => {
+  await invoke('email_account_set_default', { id: accounts.draft.id }); await accounts.load()
+})
+const removeAccount = () => {
+  if (!accounts.draft.id || !window.confirm(t('accounts.deleteConfirm'))) return
+  void guard(t('accounts.deleteAction'), async () => {
+    await invoke('email_account_delete', { id: accounts.draft.id }); newAccount(); await accounts.load()
+  })
+}
+</script>
+
+<template>
+  <v-card class="surface" variant="flat">
+    <v-card-title>{{ t('accounts.title') }}</v-card-title>
+    <v-card-text>
+      <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert><v-alert v-if="notice" type="success" class="mb-4">{{ notice }}</v-alert>
+      <div class="account-layout">
+        <v-list><v-list-item v-for="account in accounts.accounts" :key="account.id" :title="account.displayName" :subtitle="account.email" @click="accounts.setDraft(account)" /><v-list-item :title="t('accounts.newAccount')" @click="newAccount" /></v-list>
+        <div>
+          <v-text-field v-model="accounts.draft.displayName" :label="t('accounts.displayName')" />
+          <v-text-field v-model="accounts.draft.email" :label="t('contacts.email')" />
+          <v-text-field v-model="accounts.draft.password" type="password" autocomplete="new-password" :label="t('accounts.password')" :hint="t('accounts.passwordHelp')" persistent-hint />
+          <div class="form-grid"><v-text-field v-model="accounts.draft.smtpHost" :label="t('accounts.smtp')" /><v-text-field v-model.number="accounts.draft.smtpPort" type="number" :label="t('accounts.port')" /><v-select v-model="accounts.draft.smtpSecurity" :items="['SSL','STARTTLS','PLAIN']" :label="t('accounts.security')" />
+          <v-text-field v-model="accounts.draft.imapHost" :label="t('accounts.imap')" /><v-text-field v-model.number="accounts.draft.imapPort" type="number" :label="t('accounts.port')" /><v-select v-model="accounts.draft.imapSecurity" :items="['SSL','STARTTLS','PLAIN']" :label="t('accounts.security')" /></div>
+          <v-checkbox v-model="accounts.draft.defaultAccount" :label="t('accounts.defaultAccount')" />
+          <div class="d-flex ga-2 justify-end"><v-btn v-if="accounts.draft.id" color="error" variant="text" @click="removeAccount">{{ t('common.delete') }}</v-btn><v-btn v-if="accounts.draft.id && !accounts.draft.defaultAccount" variant="tonal" @click="makeDefault">{{ t('accounts.makeDefault') }}</v-btn><v-btn data-testid="smtp-test" variant="tonal" :loading="busy" @click="testAccount">{{ t('accounts.test') }}</v-btn><v-btn data-testid="account-save" color="primary" :loading="busy" @click="saveAccount">{{ t('common.save') }}</v-btn></div>
+        </div>
+      </div>
+    </v-card-text>
+  </v-card>
+</template>
