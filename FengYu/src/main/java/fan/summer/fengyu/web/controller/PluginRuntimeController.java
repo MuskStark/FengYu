@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.HandlerMapping;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -67,13 +68,17 @@ public class PluginRuntimeController {
             "BLUE", m.aiTools() != null && !m.aiTools().isEmpty(), m.official() ? "OFFICIAL" : "THIRD_PARTY");
     }
 
-    private static MediaType contentType(String name) {
-        if (name.endsWith(".html")) return MediaType.TEXT_HTML;
-        if (name.endsWith(".js") || name.endsWith(".mjs")) return MediaType.parseMediaType("text/javascript");
-        if (name.endsWith(".css")) return MediaType.parseMediaType("text/css");
-        if (name.endsWith(".json")) return MediaType.APPLICATION_JSON;
+    static MediaType contentType(String name) {
+        if (name.endsWith(".html")) return utf8("text", "html");
+        if (name.endsWith(".js") || name.endsWith(".mjs")) return utf8("text", "javascript");
+        if (name.endsWith(".css")) return utf8("text", "css");
+        if (name.endsWith(".json")) return utf8("application", "json");
         if (name.endsWith(".svg")) return MediaType.parseMediaType("image/svg+xml");
         return MediaType.APPLICATION_OCTET_STREAM;
+    }
+
+    private static MediaType utf8(String type, String subtype) {
+        return new MediaType(type, subtype, StandardCharsets.UTF_8);
     }
 
     public record InvokeRequest(String method, Map<String, Object> params) {}
