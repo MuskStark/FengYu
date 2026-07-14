@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { usePluginsStore } from '@/stores/plugins'
 import { useThemeStore } from '@/stores/theme'
+import { useSettingsStore } from '@/stores/settings'
 import { api } from '@/api/client'
 import { makeDesktop } from '@/mf/desktop'
 import { pluginAssetUrl } from '@/api/config'
@@ -12,6 +13,7 @@ const props = defineProps<{ id: string }>()
 const { t } = useI18n()
 const plugins = usePluginsStore()
 const theme = useThemeStore()
+const settings = useSettingsStore()
 const router = useRouter()
 const frame = ref<HTMLIFrameElement | null>(null)
 const error = ref<string | null>(null)
@@ -49,7 +51,7 @@ async function onMessage(event: MessageEvent) {
       respond(request.id, await api.pluginInvoke(props.id, method, params))
     } else if (request.method === 'host.ready') {
       respond(request.id, {
-        sdkVersion: '1.0.0', theme: theme.theme, locale: document.documentElement.lang || 'en',
+        sdkVersion: '1.0.0', theme: theme.theme, locale: settings.language,
         platform: desktop ? 'desktop' : 'web',
         capabilities: ['rpc.invoke', 'notify', 'files.open', 'files.inputDirectory', 'files.outputDirectory', 'files.export'],
       })
@@ -109,7 +111,7 @@ async function onMessage(event: MessageEvent) {
 }
 
 function sendEnvironment() {
-  frame.value?.contentWindow?.postMessage({ source: 'fengyu-host', type: 'event', event: 'environment', data: { theme: theme.theme } }, '*')
+  frame.value?.contentWindow?.postMessage({ source: 'fengyu-host', type: 'event', event: 'environment', data: { theme: theme.theme, locale: settings.language } }, '*')
 }
 
 function onFrameLoad() {
@@ -140,6 +142,7 @@ onMounted(async () => {
   if (!plugins.byId(props.id)) error.value = t('plugin.unknown', { id: props.id })
 })
 watch(() => theme.theme, sendEnvironment)
+watch(() => settings.language, sendEnvironment)
 watch(() => props.id, retryPlugin)
 onBeforeUnmount(() => {
   clearPluginHandshakeTimeout()
