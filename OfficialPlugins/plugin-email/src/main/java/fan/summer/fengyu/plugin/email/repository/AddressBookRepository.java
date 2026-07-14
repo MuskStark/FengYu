@@ -58,6 +58,15 @@ public final class AddressBookRepository {
         }
     }
 
+    public Set<String> resolveEmailsForAttachmentTag(String attachmentTag, Set<Long> groupTagIds) {
+        if (attachmentTag == null || attachmentTag.isBlank()
+                || groupTagIds == null || groupTagIds.isEmpty()) return Set.of();
+        try (SqlSession session = database.openSession()) {
+            return Set.copyOf(session.getMapper(Mapper.class)
+                .resolveIntersection(attachmentTag.trim().toLowerCase(), groupTagIds));
+        }
+    }
+
     public long saveContact(ContactInput input) {
         try (SqlSession session = database.openSession()) {
             Mapper mapper = session.getMapper(Mapper.class);
@@ -159,6 +168,16 @@ public final class AddressBookRepository {
             "WHERE ct.tag_id IN <foreach item='id' collection='tagIds' open='(' separator=',' close=')'>#{id}</foreach>",
             "GROUP BY c.id,c.email HAVING COUNT(DISTINCT ct.tag_id)=#{count}", "</script>"})
         Set<String> resolveAll(@Param("tagIds") Set<Long> tagIds, @Param("count") int count);
+        @Select({"<script>",
+            "SELECT DISTINCT c.email FROM FengTu_PL_Email_Contact c",
+            "JOIN FengTu_PL_Email_Contact_Tag attachment_ct ON attachment_ct.contact_id=c.id",
+            "JOIN FengTu_PL_Email_Tag attachment_t ON attachment_t.id=attachment_ct.tag_id",
+            "JOIN FengTu_PL_Email_Contact_Tag group_ct ON group_ct.contact_id=c.id",
+            "WHERE LOWER(attachment_t.name)=#{attachmentTag}",
+            "AND group_ct.tag_id IN <foreach item='id' collection='groupTagIds' open='(' separator=',' close=')'>#{id}</foreach>",
+            "</script>"})
+        Set<String> resolveIntersection(@Param("attachmentTag") String attachmentTag,
+            @Param("groupTagIds") Set<Long> groupTagIds);
 
         @Insert("INSERT INTO FengTu_PL_Email_Contact(email,nickname,created_at) VALUES(#{email},#{nickname},CURRENT_TIMESTAMP)")
         @Options(useGeneratedKeys=true,keyProperty="id") int insertContact(ContactRow row);
