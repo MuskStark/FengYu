@@ -1,39 +1,127 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from 'vue'
-import { EditorContent, useEditor } from '@tiptap/vue-3'
-import StarterKit from '@tiptap/starter-kit'
-import Placeholder from '@tiptap/extension-placeholder'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAccountsStore } from '../stores/accounts'
-import { useComposeStore } from '../stores/compose'
+import { useComposeStore, type ComposeMode } from '../stores/compose'
+import { useContactsStore } from '../stores/contacts'
 import { actionable, files, invoke } from '../sdk'
+import RichTextEditor from './RichTextEditor.vue'
+import ConfirmationDialog from './ConfirmationDialog.vue'
 
-const accounts = useAccountsStore(), compose = useComposeStore()
+const { t } = useI18n()
+const accounts = useAccountsStore()
+const compose = useComposeStore()
+const contacts = useContactsStore()
 const busy = ref(false), error = ref(''), dialog = ref(false)
-const editor = useEditor({ extensions: [StarterKit, Placeholder.configure({ placeholder: 'Write your message…' })], content: '', onUpdate: ({ editor }) => { compose.htmlText = editor.getHTML(); compose.plainText = editor.getText() } })
-onBeforeUnmount(() => editor.value?.destroy())
-const addAttachment = async () => { try { const value = await files.open(); if (value) compose.attachments.push(value) } catch(value) { error.value=actionable(value,'Selecting attachment') } }
-async function prepare() {
-  busy.value = true; error.value = ''
-  try {
-    const result = await invoke<{ confirmation: { confirmationId: string; summary: {label:string;value:string}[]; expiresAt: string; approveMethod:string;rejectMethod:string } }>('email_send_single', {
-      accountId: accounts.selectedId, to: compose.to, cc: compose.cc, bcc: compose.bcc, subject: compose.subject,
-      plainText: compose.plainText, htmlText: compose.htmlText, attachments: compose.attachments,
-    })
-    compose.setConfirmation(result.confirmation); dialog.value = true
-  } catch (value) { error.value = actionable(value, 'Preparing email') } finally { busy.value = false }
+let draftTimer: number | undefined
+compose.restoreDraft()
+
+const canReview = computed(() => Boolean(accounts.selectedId)
+  && (compose.mode === 'DIRECT' ? compose.normalizedTo.length > 0 : compose.recipientTagIds.length > 0)
+  && Boolean(compose.plainText.trim() || compose.htmlText.trim()))
+const recipientHint = computed(() => compose.mode === 'CONTACT_TAGS'
+  ? t('compose.separateMessages', { count: contacts.recipientPreview.length })
+  : t('compose.directHint', { count: compose.normalizedTo.length }))
+
+watch(() => [compose.mode, compose.recipientTagIds, compose.to, compose.cc, compose.subject,
+  compose.htmlText, compose.plainText], () => {
+  window.clearTimeout(draftTimer)
+  draftTimer = window.setTimeout(compose.persistDraft, 400)
+}, { deep: true })
+onBeforeUnmount(() => window.clearTimeout(draftTimer))
+
+async function selectMode(mode: ComposeMode): Promise<void> {
+  compose.mode = mode
+  if (mode === 'CONTACT_TAGS' && !contacts.tags.length) {
+    try { await contacts.load() } catch (value) { error.value = actionable(value, t('compose.loadTags')) }
+  }
 }
-async function confirm() { if (!compose.confirmation) return; try { const result=await invoke<{send:{status:string;succeeded:number;failed:number;failedRecipients:string[]}}>('confirm_send', { confirmationId: compose.confirmation.confirmationId }); compose.sendResult=result.send; dialog.value=false } catch(value){ error.value=actionable(value,'Sending email') } }
-async function reject() { if (!compose.confirmation) return; try { await invoke('reject_send',{confirmationId:compose.confirmation.confirmationId}); dialog.value=false } catch(value){error.value=actionable(value,'Cancelling send')} }
+async function addAttachment(): Promise<void> {
+  try { const value = await files.open(); if (value) compose.attachments.push(value) }
+  catch (value) { error.value = actionable(value, t('compose.selectAttachment')) }
+}
+function removeAttachment(id: string): void {
+  compose.attachments = compose.attachments.filter(item => item.id !== id)
+}
+async function prepare(): Promise<void> {
+  busy.value = true; error.value = ''; compose.clearTransient()
+  try {
+    const recipients = compose.mode === 'DIRECT'
+      ? { to: compose.normalizedTo }
+      : { recipientTagIds: compose.recipientTagIds }
+    const result = await invoke<{ confirmation: NonNullable<typeof compose.confirmation> }>('email_send_single', {
+      accountId: accounts.selectedId,
+      ...recipients,
+      cc: compose.normalizedCc,
+      subject: compose.subject,
+      plainText: compose.plainText,
+      htmlText: compose.htmlText,
+      attachments: compose.attachments,
+    })
+    compose.setConfirmation(result.confirmation)
+    dialog.value = true
+  } catch (value) { error.value = actionable(value, t('compose.prepareAction')) }
+  finally { busy.value = false }
+}
+async function confirm(): Promise<void> {
+  if (!compose.confirmation) return
+  busy.value = true
+  try {
+    const result = await invoke<{ send: NonNullable<typeof compose.sendResult> }>('confirm_send', {
+      confirmationId: compose.confirmation.confirmationId,
+    })
+    compose.sendResult = result.send; dialog.value = false
+  } catch (value) { error.value = actionable(value, t('compose.sendAction')) }
+  finally { busy.value = false }
+}
+async function reject(): Promise<void> {
+  if (!compose.confirmation) return
+  try {
+    await invoke('reject_send', { confirmationId: compose.confirmation.confirmationId })
+    dialog.value = false
+  } catch (value) { error.value = actionable(value, t('compose.cancelAction')) }
+}
 </script>
 
-<template><section class="panel-grid"><v-card class="surface" variant="flat"><v-card-title>New message</v-card-title><v-card-text>
-  <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
-  <v-select v-model="accounts.selectedId" :items="accounts.accounts" item-title="email" item-value="id" label="From account" />
-  <v-combobox v-model="compose.to" chips multiple label="To" /><v-combobox v-model="compose.cc" chips multiple label="CC" /><v-combobox v-model="compose.bcc" chips multiple label="BCC" />
-  <v-text-field v-model="compose.subject" label="Subject" />
-  <div class="editor-toolbar"><v-btn size="small" @click="editor?.chain().focus().toggleBold().run()">B</v-btn><v-btn size="small" @click="editor?.chain().focus().toggleBulletList().run()">• List</v-btn></div>
-  <EditorContent :editor="editor" class="editor" />
-  <div class="attachment-row"><v-chip v-for="item in compose.attachments" :key="item.id">{{ item.name }}</v-chip><v-btn variant="tonal" @click="addAttachment">Attach</v-btn></div>
-</v-card-text><v-card-actions><v-spacer/><v-btn color="primary" :loading="busy" :disabled="!accounts.selectedId || !compose.to.length" @click="prepare">Review & send</v-btn></v-card-actions></v-card>
-<v-card class="surface preview" variant="flat"><v-card-title>Preview</v-card-title><v-card-text><v-alert v-if="compose.sendResult" :type="compose.sendResult.failed?'warning':'success'" class="mb-4">Sent {{compose.sendResult.succeeded}}, failed {{compose.sendResult.failed}}</v-alert><h3>{{ compose.subject || 'No subject' }}</h3><div v-html="compose.htmlText || '<p>Your message preview appears here.</p>'"/></v-card-text></v-card></section>
-<v-dialog v-model="dialog" max-width="560" persistent><v-card><v-card-title>Confirm send</v-card-title><v-card-text><v-list density="compact"><v-list-item v-for="row in compose.confirmation?.summary" :key="row.label" :title="row.label" :subtitle="row.value"/></v-list><p class="hint">Expires {{compose.confirmation?.expiresAt}}</p></v-card-text><v-card-actions><v-spacer/><v-btn @click="reject">Reject</v-btn><v-btn color="primary" @click="confirm">Confirm send</v-btn></v-card-actions></v-card></v-dialog></template>
+<template>
+  <section class="workspace-grid">
+    <v-card class="surface" variant="flat">
+      <v-card-title>{{ t('compose.title') }}</v-card-title>
+      <v-card-text>
+        <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
+        <v-select v-model="accounts.selectedId" :items="accounts.accounts" item-title="email" item-value="id" :label="t('compose.from')" />
+        <div class="mode-switch" role="group" :aria-label="t('compose.recipientMode')">
+          <v-btn data-testid="compose-mode-direct" :variant="compose.mode === 'DIRECT' ? 'tonal' : 'text'" @click="selectMode('DIRECT')">{{ t('compose.direct') }}</v-btn>
+          <v-btn data-testid="compose-mode-tags" :variant="compose.mode === 'CONTACT_TAGS' ? 'tonal' : 'text'" @click="selectMode('CONTACT_TAGS')">{{ t('compose.contactTags') }}</v-btn>
+        </div>
+        <v-combobox v-if="compose.mode === 'DIRECT'" v-model="compose.to" chips multiple :label="t('compose.to')" />
+        <v-select v-else v-model="compose.recipientTagIds" :items="contacts.tags" item-title="name" item-value="id" multiple chips :label="t('compose.contactTags')" />
+        <p class="hint">{{ recipientHint }}</p>
+        <v-combobox v-model="compose.cc" chips multiple :label="t('compose.cc')" />
+        <v-text-field v-model="compose.subject" :label="t('compose.subject')" />
+        <RichTextEditor v-model="compose.htmlText" @update:plain-text="compose.plainText = $event" />
+        <div class="attachment-row">
+          <v-chip v-for="item in compose.attachments" :key="item.id" closable @click:close="removeAttachment(item.id)">{{ item.name }}</v-chip>
+          <v-btn variant="tonal" @click="addAttachment">{{ t('compose.attach') }}</v-btn>
+        </div>
+        <p class="hint">{{ compose.draftSavedAt ? t('compose.draftSaved') : t('compose.draftPending') }}</p>
+      </v-card-text>
+      <v-card-actions>
+        <span class="hint">{{ canReview ? t('compose.ready') : t('compose.validation') }}</span>
+        <v-spacer />
+        <v-btn data-testid="compose-review" color="primary" :loading="busy" :disabled="!canReview" @click="prepare">{{ t('compose.review') }}</v-btn>
+      </v-card-actions>
+    </v-card>
+    <v-card class="surface workspace-summary" variant="flat">
+      <v-card-title>{{ t('compose.previewTitle') }}</v-card-title>
+      <v-card-text>
+        <v-alert v-if="compose.sendResult" :type="compose.sendResult.failed ? 'warning' : 'success'" class="mb-4">
+          {{ t('compose.sendResult', { sent: compose.sendResult.succeeded, failed: compose.sendResult.failed }) }}
+        </v-alert>
+        <h3>{{ compose.subject || t('compose.noSubject') }}</h3>
+        <div class="email-preview" v-html="compose.htmlText || `<p>${t('compose.previewEmpty')}</p>`" />
+      </v-card-text>
+    </v-card>
+  </section>
+  <ConfirmationDialog v-model="dialog" :confirmation="compose.confirmation" :busy="busy" @approve="confirm" @reject="reject" />
+</template>
