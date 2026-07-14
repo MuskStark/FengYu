@@ -41,7 +41,8 @@ public final class PendingSendService {
     }
 
     public ConfirmationEnvelope prepareSingle(EmailMessageRequest request) {
-        return prepare("SINGLE", new BatchPlanner.BatchPlan(List.of(request), List.of()));
+        var message = new BatchPlanner.PlannedMessage(null, request, request.attachments(), List.of());
+        return prepare("SINGLE", new BatchPlanner.BatchPlan(List.of(message), List.of(), List.of()));
     }
 
     public ConfirmationEnvelope prepareBatch(String mode, BatchPlanner.BatchPlan plan) {
@@ -50,7 +51,7 @@ public final class PendingSendService {
     }
 
     public ConfirmationEnvelope prepareBatchByTags(EmailMessageRequest template, Set<Long> tagIds) {
-        return prepareBatch("TAGS", BatchPlanner.byTags(template, addressBook.resolveRecipientEmails(tagIds)));
+        return prepareBatch("TAGS", BatchPlanner.byContactTags(template, addressBook.resolveRecipientEmails(tagIds)));
     }
 
     public ConfirmationEnvelope prepareBatchByFilename(EmailMessageRequest template, Path directory) {
@@ -101,7 +102,8 @@ public final class PendingSendService {
     }
 
     private ConfirmationEnvelope prepare(String mode, BatchPlanner.BatchPlan plan) {
-        Snapshot snapshot = new Snapshot(plan.messages().stream().map(MessageSnapshot::from).toList(),
+        Snapshot snapshot = new Snapshot(plan.messages().stream().map(BatchPlanner.PlannedMessage::request)
+            .map(MessageSnapshot::from).toList(),
             plan.ignoredFiles().stream().map(Path::toString).toList());
         return persist(mode, snapshot);
     }
