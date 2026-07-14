@@ -9,10 +9,12 @@ import org.junit.jupiter.api.io.TempDir;
 import javax.crypto.KeyGenerator;
 import java.nio.file.Path;
 import java.sql.ResultSet;
+import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AccountServiceTest {
@@ -60,6 +62,18 @@ class AccountServiceTest {
 
         assertTrue(service.delete(id));
         assertTrue(service.find(id).isEmpty());
+    }
+
+    @Test void refusesToDeleteAccountWithOpenPendingSend() throws Exception {
+        EmailDatabase database = database("delete-open-send");
+        AccountService service = new AccountService(database, cipher());
+        long id = service.save(new AccountService.AccountInput(null, "Busy", "busy@example.com",
+            "secret", "smtp.example.com", 465, "SSL", null, null, null, true));
+        new fan.summer.fengyu.plugin.email.repository.PendingSendRepository(database).create(
+            "confirm-open", id, "SINGLE", "{}", LocalDateTime.now().plusMinutes(30));
+
+        assertThrows(IllegalStateException.class, () -> service.delete(id));
+        assertTrue(service.find(id).isPresent());
     }
 
     private EmailDatabase database(String name) {
