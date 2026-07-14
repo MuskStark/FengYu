@@ -16,6 +16,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,15 +40,18 @@ class EmailWorkerMainTest {
             null, null, null, true));
         AddressBookService addressBook = new AddressBookService(database);
         long tagId = addressBook.saveTag(null, "customers");
+        long attachmentTagId = addressBook.saveTag(null, "East");
         long contactId = addressBook.saveContact(new AddressBookService.ContactInput(null,
             "recipient@example.com", "Recipient"));
-        addressBook.assignTags(Set.of(contactId), Set.of(tagId));
+        addressBook.assignTags(Set.of(contactId), Set.of(tagId, attachmentTagId));
+        Path batchDirectory = Files.createDirectory(temp.resolve("worker-batch"));
+        Files.writeString(batchDirectory.resolve("report_East.pdf"), "report");
 
         List<Request> requests = new ArrayList<>();
         requests.add(request(1, "email_accounts_list", Map.of()));
         requests.add(request(2, "email_contacts_query", Map.of("query", "recipient", "limit", 20)));
         requests.add(request(3, "email_send_single", message(accountId)));
-        requests.add(request(4, "email_send_batch", batch(accountId, tagId)));
+        requests.add(request(4, "email_send_batch", batch(accountId, tagId, batchDirectory)));
         requests.add(request(5, "email_send_status", Map.of("confirmationId", "missing")));
         requests.add(request(6, "email_archive_fetch", Map.of(
             "accountId", accountId + 100, "folder", "INBOX", "outputDirectory", temp.toString())));
@@ -86,7 +90,7 @@ class EmailWorkerMainTest {
             "email_account_test", "email_contact_save", "email_contact_find", "email_contact_delete",
             "email_tag_save", "email_tags_list", "email_tag_delete", "email_tags_assign",
             "email_config_save", "email_configs_list", "email_config_find", "email_config_delete",
-            "email_send_retry", "email_archive_detail", "confirm_send", "reject_send");
+            "email_batch_preview", "email_send_records_query", "email_archive_detail", "confirm_send", "reject_send");
         String input = methods.stream().map(method -> request(methods.indexOf(method) + 1, method, Map.of()).json())
             .reduce("", (left, right) -> left + right + "\n");
 
@@ -139,11 +143,13 @@ class EmailWorkerMainTest {
         return values;
     }
 
-    private static Map<String, Object> batch(long accountId, long tagId) {
+    private static Map<String, Object> batch(long accountId, long tagId, Path directory) {
         Map<String, Object> values = new LinkedHashMap<>(message(accountId));
         values.remove("to");
-        values.put("mode", "TAGS");
-        values.put("tagIds", List.of(tagId));
+        values.put("recipientGroupTagIds", List.of(tagId));
+        values.put("ccGroupTagIds", List.of());
+        values.put("inputDirectory", directory.toString());
+        values.put("commonAttachments", List.of());
         return values;
     }
 

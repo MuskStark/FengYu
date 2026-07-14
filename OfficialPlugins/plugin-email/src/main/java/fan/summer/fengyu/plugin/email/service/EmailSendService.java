@@ -49,6 +49,10 @@ public final class EmailSendService {
     }
 
     public SendResult sendSingle(EmailMessageRequest request) {
+        return sendSingle(request, null);
+    }
+
+    public SendResult sendSingle(EmailMessageRequest request, String confirmationId) {
         validate(request);
         EmailAccount account = account(request.accountId());
         String password = accountService.decryptPassword(account.id());
@@ -58,11 +62,11 @@ public final class EmailSendService {
             attempted = true;
             mailer.sendMail(email).join();
             SendResult result = SendResult.success(email.getId());
-            insertLog(account, request, "SUCCESS", null);
+            insertLog(account, request, confirmationId, "SUCCESS", null);
             return result;
         } catch (Exception e) {
             String error = safeError(e, password);
-            if (attempted) insertLog(account, request, "FAILED", error);
+            if (attempted) insertLog(account, request, confirmationId, "FAILED", error);
             return SendResult.failure(error);
         }
     }
@@ -89,14 +93,15 @@ public final class EmailSendService {
         return builder.buildEmail();
     }
 
-    private void insertLog(EmailAccount account, EmailMessageRequest request, String status, String error) {
+    private void insertLog(EmailAccount account, EmailMessageRequest request, String confirmationId,
+            String status, String error) {
         Map<String, List<String>> recipients = new LinkedHashMap<>();
         recipients.put("to", request.to());
         recipients.put("cc", request.cc());
         recipients.put("bcc", request.bcc());
         List<String> attachments = request.attachments().stream()
             .map(path -> path.getFileName().toString()).toList();
-        sentLogs.insert(new SentLogRepository.SentLogEntry(null, account.email(), gson.toJson(recipients),
+        sentLogs.insert(new SentLogRepository.SentLogEntry(confirmationId, account.email(), gson.toJson(recipients),
             request.subject(), gson.toJson(attachments), status, error));
     }
 

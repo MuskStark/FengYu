@@ -43,6 +43,12 @@ class EmailManifestTest {
             assertEquals("object", schema.get("type").getAsString());
         }
         assertTrue(tools.get(2).getAsJsonObject().get("description").getAsString().contains("does not send"));
-        assertTrue(tools.get(3).getAsJsonObject().get("description").getAsString().contains("does not send"));
+        assertTrue(tools.get(3).getAsJsonObject().get("description").getAsString().contains("without sending"));
+        JsonObject batchSchema = JSON.fromJson(tools.get(3).getAsJsonObject().get("inputSchema").getAsString(), JsonObject.class);
+        assertEquals(List.of("accountId", "recipientGroupTagIds", "ccGroupTagIds", "inputDirectory"),
+            batchSchema.getAsJsonArray("required").asList().stream().map(value -> value.getAsString()).toList());
+        assertTrue(batchSchema.getAsJsonObject("properties").has("commonAttachments"));
+        assertTrue(!batchSchema.getAsJsonObject("properties").has("mode"));
+        assertTrue(!Files.readString(MANIFEST).contains("email_send_retry"));
     }
 }
