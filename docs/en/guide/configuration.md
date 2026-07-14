@@ -37,7 +37,7 @@ PUT /api/settings
 
 `GET /api/ai/config` returns a **masked** snapshot so you can render the form without exposing raw keys:
 
-- API keys are masked like `前4***后4` (first 4 and last 4 characters visible, the middle replaced).
+- API keys are masked — only the first and last few characters are shown, e.g. `sk-1***wXYZ`.
 - The snapshot also reports `activeMode` (the current backend) and `ready` (whether the active backend is usable).
 
 ```text
