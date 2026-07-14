@@ -1,31 +1,46 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, type Component } from 'vue'
+import { useI18n } from 'vue-i18n'
 import ComposeTab from './components/ComposeTab.vue'
 import BatchTab from './components/BatchTab.vue'
 import AddressBookTab from './components/AddressBookTab.vue'
 import CollectTab from './components/CollectTab.vue'
 import RecordsAccountsTab from './components/RecordsAccountsTab.vue'
+import TaskRail from './components/TaskRail.vue'
 import { useAccountsStore } from './stores/accounts'
+import { useNavigationStore, type WorkspaceId } from './stores/navigation'
 import { actionable } from './sdk'
 
-const tab = ref('compose'), error = ref('')
+const error = ref('')
+const { t } = useI18n()
 const accounts = useAccountsStore()
-onMounted(() => accounts.load().catch(value => error.value = actionable(value, 'Loading accounts')))
+const navigation = useNavigationStore()
+const workspaces: Record<WorkspaceId, Component> = {
+  compose: ComposeTab,
+  batch: BatchTab,
+  contacts: AddressBookTab,
+  archive: CollectTab,
+  records: RecordsAccountsTab,
+  accounts: RecordsAccountsTab,
+}
+const activeWorkspace = computed(() => workspaces[navigation.active])
+const activeWorkspaceProps = computed(() => navigation.active === 'accounts'
+  ? { initialView: 'accounts' }
+  : navigation.active === 'records' ? { initialView: 'records' } : {})
+
+onMounted(() => accounts.load().catch(value => { error.value = actionable(value, t('accounts.loading')) }))
 </script>
 
 <template>
-  <v-app><v-main><div class="email-shell">
-    <header><div><h1>Email Center</h1><p>Compose, automate, collect, and audit mail in one secure workspace.</p></div><v-chip color="primary" variant="tonal">SDK sandbox</v-chip></header>
-    <v-alert v-if="error" type="error" closable @click:close="error=''">{{ error }}</v-alert>
-    <v-tabs v-model="tab" color="primary" show-arrows>
-      <v-tab value="compose">Compose</v-tab><v-tab value="batch">Batch Send</v-tab><v-tab value="contacts">Address Book</v-tab><v-tab value="collect">Collect Mail</v-tab><v-tab value="records">Records & Accounts</v-tab>
-    </v-tabs>
-    <v-window v-model="tab" class="tab-window">
-      <v-window-item value="compose"><ComposeTab /></v-window-item>
-      <v-window-item value="batch"><BatchTab /></v-window-item>
-      <v-window-item value="contacts"><AddressBookTab /></v-window-item>
-      <v-window-item value="collect"><CollectTab /></v-window-item>
-      <v-window-item value="records"><RecordsAccountsTab /></v-window-item>
-    </v-window>
-  </div></v-main></v-app>
+  <v-app>
+    <v-main>
+      <div class="email-layout">
+        <TaskRail />
+        <main class="email-workspace">
+          <v-alert v-if="error" type="error" closable @click:close="error = ''">{{ error }}</v-alert>
+          <component :is="activeWorkspace" :key="navigation.active" v-bind="activeWorkspaceProps" />
+        </main>
+      </div>
+    </v-main>
+  </v-app>
 </template>
