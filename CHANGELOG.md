@@ -15,6 +15,13 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   and seven manifest-declared AI tools.
 - Independent dialect migrations and contract coverage for H2, SQLite, MySQL, and PostgreSQL;
   plugin-owned tables use the `FengTu_PL_Email_` namespace.
+- A bilingual task-oriented Email Center UI with direct/tag Compose, email-safe Word rich text,
+  filename-tag To/CC group intersections, per-tag previews, common attachments, and structured
+  send records.
+
+### ♻️ Changed
+- Batch sending now creates one message per parsed attachment tag; all matching contacts share
+  the message To/CC fields, To takes precedence over CC, and failed-item retry was removed.
 
 ### 🐛 Fixed
 - Hardened archive timestamps on SQLite (including upgrade migration), literal wildcard search,
