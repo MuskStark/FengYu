@@ -1,7 +1,7 @@
 export default {
   nav: { compose: '写邮件', batch: '批量发送', contacts: '联系人', archive: '邮件归档', records: '发送记录', accounts: '账户设置' },
   common: { save: '保存', cancel: '取消', delete: '删除', search: '搜索', add: '添加', close: '关闭', loading: '加载中…', none: '无' },
-  compose: { title: '写一封邮件', direct: '直接输入地址', contactTags: '按联系人标签群发', from: '发件账户', to: '收件人', cc: '抄送', subject: '主题', bodyPlaceholder: '请输入邮件正文…', attach: '添加附件', review: '检查并发送', separateMessages: '共 {count} 封独立邮件', wordNormalized: '已安全清理并保留 Word 格式。' },
+  compose: { title: '写一封邮件', direct: '直接输入地址', contactTags: '按联系人标签群发', recipientMode: '收件方式', from: '发件账户', to: '收件人', cc: '抄送', subject: '主题', bodyPlaceholder: '请输入邮件正文…', attach: '添加附件', review: '检查并发送', separateMessages: '共 {count} 封独立邮件', directHint: '共 {count} 位收件人', wordNormalized: '已安全清理并保留 Word 格式。', draftSaved: '草稿已保存到本机', draftPending: '草稿修改将自动保存', ready: '可以进入确认检查', validation: '请选择账户、收件人并填写正文', previewTitle: '邮件预览', noSubject: '无主题', previewEmpty: '邮件预览将显示在这里。', sendResult: '已发送 {sent}，失败 {failed}', loadTags: '加载联系人标签', selectAttachment: '选择附件', prepareAction: '准备邮件', sendAction: '发送邮件', cancelAction: '取消发送' },
   batch: { title: '按附件标签批量发送', directory: '附件目录', recipientGroups: '发送群组标签', ccGroups: '抄送群组标签', commonAttachments: '公共附件', preview: '邮件预览', ignoredFiles: '忽略文件', skippedTags: '跳过标签', review: '生成并检查 {count} 封邮件' },
   contacts: { title: '联系人', newContact: '新建联系人', manageTags: '管理标签', assignTags: '批量添加标签', name: '姓名', email: '邮箱', notes: '备注' },
   archive: { title: '邮件归档', collect: '开始收取', account: 'IMAP 账户', folder: '文件夹', range: '时间范围', output: '归档目录', processed: '已处理', new: '新增', duplicates: '重复', failed: '失败' },
