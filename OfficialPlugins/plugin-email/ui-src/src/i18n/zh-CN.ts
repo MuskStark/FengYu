@@ -8,5 +8,6 @@ export default {
   records: { title: '发送记录', status: '状态', progress: '进度', mode: '模式', sentAt: '发送时间', partial: '部分失败' },
   accounts: { title: '账户设置', loading: '正在加载账户', newAccount: '添加账户', passwordHelp: '留空则保持已保存密码', smtp: 'SMTP 发件服务器', imap: 'IMAP 收件服务器', test: '测试 SMTP', defaultAccount: '默认发件账户' },
   confirmation: { title: '确认发送', approve: '确认发送', reject: '拒绝', expires: '有效期至 {time}' },
+  editor: { toolbar: '格式工具栏', bold: '加粗', italic: '斜体', underline: '下划线', heading: '标题', fontSize: '字号', color: '文字颜色', alignLeft: '左对齐', alignCenter: '居中', alignRight: '右对齐', bullets: '项目符号', numbering: '编号', link: '链接', linkPrompt: '请输入安全的 http、https 或 mailto 链接', table: '表格', clear: '清除格式' },
   errors: { unknown: '邮件操作失败，请重试。', actionFailed: '{action}失败：{detail}' },
 }
