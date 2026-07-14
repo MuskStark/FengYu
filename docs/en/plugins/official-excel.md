@@ -43,19 +43,19 @@ lang: en
       "name": "excel_configure",
       "description": "Configure BY_SHEET, BY_COLUMN, or COMPLEX splitting.",
       "method": "excel_configure",
-      "inputSchema": "{\"type\":\"object\",\"properties\":{\"mode\":{\"type\":\"string\",\"enum\":[\"BY_SHEET\",\"BY_COLUMN\",\"COMPLEX\"]},\"sheets\":{\"type\":\"array\"},\"splitSheet\":{},\"splitColumn\":{}},\"required\":[\"mode\"]}"
+      "inputSchema": "{\"type\":\"object\",\"properties\":{\"mode\":{\"type\":\"string\",\"enum\":[\"BY_SHEET\",\"BY_COLUMN\",\"COMPLEX\"]},\"sheets\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"splitSheet\":{\"type\":\"string\"},\"splitColumn\":{\"type\":\"string\"}},\"required\":[\"mode\"]}"
     },
     {
       "name": "excel_complex_config",
       "description": "Add, list, or clear complex split rules.",
       "method": "excel_complex_config",
-      "inputSchema": "{\"type\":\"object\",\"properties\":{\"action\":{\"type\":\"string\",\"enum\":[\"add\",\"list\",\"clear\"]},\"sheetName\":{},\"headerIndex\":{\"type\":\"integer\"},\"columnIndex\":{\"type\":\"integer\"}},\"required\":[\"action\"]}"
+      "inputSchema": "{\"type\":\"object\",\"properties\":{\"action\":{\"type\":\"string\",\"enum\":[\"add\",\"list\",\"clear\"]},\"sheetName\":{\"type\":\"string\"},\"headerIndex\":{\"type\":\"integer\"},\"columnIndex\":{\"type\":\"integer\"}},\"required\":[\"action\"]}"
     },
     {
       "name": "excel_execute",
       "description": "Execute the configured split into an authorized output directory.",
       "method": "excel_execute",
-      "inputSchema": "{\"type\":\"object\",\"properties\":{\"outputDir\":{\"type\":\"object\",\"description\":\"A FengYu DirectoryRef\"},\"filePrefix\":{}},\"required\":[\"outputDir\"]}"
+      "inputSchema": "{\"type\":\"object\",\"properties\":{\"outputDir\":{\"type\":\"object\",\"description\":\"A writable FengYu DirectoryRef\"},\"filePrefix\":{\"type\":\"string\"}},\"required\":[\"outputDir\"]}"
     },
     {
       "name": "excel_query",
