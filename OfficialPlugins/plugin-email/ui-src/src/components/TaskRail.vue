@@ -9,6 +9,10 @@ const { t } = useI18n()
 
 <template>
   <nav class="task-rail" aria-label="Email Center">
+    <div class="task-rail__brand">
+      <span class="task-rail__brand-mark" aria-hidden="true"></span>
+      Email Center
+    </div>
     <button
       v-for="item in navigation.items"
       :key="item.id"
