@@ -5,10 +5,9 @@ export default defineConfig({
   description: 'Where bees go, flows follow. — A modular web + desktop toolbox.',
   lastUpdated: true,
   cleanUrls: true,
-  // Forward links to pages created in later tasks (architecture/*, guide/*,
-  // plugins/*) are intentionally present before those tasks land. Treat them
-  // as non-fatal so `docs:build` exits 0 during the docs rewrite.
-  ignoreDeadLinks: true,
+  // Dead-link checking is intentionally left enabled (no `ignoreDeadLinks`):
+  // all EN + ZH pages are complete, so the build must fail loudly on any
+  // broken internal link rather than silently swallowing it.
   sitemap: { hostname: 'https://muskstark.github.io/FengYu/' },
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }],
@@ -29,9 +28,8 @@ export default defineConfig({
   }
 })
 
-// Nav + sidebar for both locales (Task 2). Page files land in Tasks 3–7;
-// sidebar links may point at not-yet-created pages — `ignoreDeadLinks`
-// above keeps `docs:build` green during the docs rewrite.
+// Nav + sidebar for both locales (Task 2). Every link below resolves to a
+// committed page in docs/{en,zh}; if you add a link here, ship the page too.
 
 const enNav = [
   { text: 'Quickstart', link: '/en/quickstart' },

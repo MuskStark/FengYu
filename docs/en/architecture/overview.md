@@ -23,14 +23,14 @@ Infinia 4.0.0 is a **three-layer system**: a headless Spring Boot backend, a Vue
                 ▼                                │
 ┌──────────────────────────────────┐             │
 │  Headless Spring Boot backend    │             │
-│  fan.summer.fengyu.HeadlessLauncher             │
+│  • HeadlessLauncher entry class  │             │
 │  • binds 127.0.0.1:24056         │             │
 │  • token-gated REST + SSE        │             │
 │  • spawns plugin worker processes│             │
 │  • Spring Boot 4.1.0 + Spring AI │             │
 └───────────────┬──────────────────┘             │
-                │ HTTP (loopback only)            │
-                ▼                                 ▼
+                │ HTTP (loopback only)           │
+                ▼                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  Vue 3 SPA  (frontend/, TypeScript)                             │
 │  Pinia + vue-router 4 + vue-i18n 10, Vuetify 3 (MD3)            │

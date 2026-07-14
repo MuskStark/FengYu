@@ -838,3 +838,25 @@ Expected: every DDL table uses `FengTu_PL_Email_`; no forbidden SDK duplication/
 git add docs README.md CHANGELOG.md OfficialPlugins/plugin-email/src/test
 git commit -m "📝 docs(email): document Email Center and database contract"
 ```
+
+## 2026-07-14 execution handoff
+
+Work was performed directly on branch `4.0.0-FengYu` as requested. Tasks 7–13 are implemented in
+commits `568490d` through `5d1592f`; host locale propagation was fixed in `04cc2fe`.
+
+Fresh verification completed during this run:
+
+- `mvn clean verify`: all 8 reactor modules passed.
+- Host frontend: 8 Node tests and 2 Vitest tests passed; TypeScript production build passed.
+- Email UI: 10 test files / 22 tests passed; typecheck and production build passed.
+- `npm run docs:build`: passed.
+- `bash OfficialPlugins/build-packages.sh`: passed and produced the Email Center `.fyp` package.
+- `bash scripts/e2e-smoke.sh`: passed the Email filename-tag batch-preview flow. The optional Excel
+  smoke case was skipped because `openpyxl` was not installed.
+- Browser verification at `http://127.0.0.1:5173/plugin/fan.summer.email` confirmed the redesigned
+  six-workspace shell and Chinese host locale propagation.
+
+Continuation note: after the locale fix, the TipTap rich-text placeholder still initially displays
+the English text `Write your message…` because `Placeholder.configure` captures the translation at
+editor creation time. No production change for this follow-up was started; continue with a failing
+test and make the placeholder resolve the current locale reactively.

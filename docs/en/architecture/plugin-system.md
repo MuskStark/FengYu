@@ -6,7 +6,7 @@ lang: en
 
 # Plugin System
 
-A Infinia plugin is a self-contained **`.fyp` package** that adds both UI and backend capability without touching the host process. The defining design rule is **isolation**: a plugin's code never runs inside the host Spring context, and its UI never shares the host's DOM tree.
+An Infinia plugin is a self-contained **`.fyp` package** that adds both UI and backend capability without touching the host process. The defining design rule is **isolation**: a plugin's code never runs inside the host Spring context, and its UI never shares the host's DOM tree.
 
 ## The `.fyp` package
 
