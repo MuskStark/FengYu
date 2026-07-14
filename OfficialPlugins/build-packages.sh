@@ -28,4 +28,9 @@ cp "$EMAIL_WORKER" "$OUT/email/backend/worker.jar"
 (cd "$OUT/markdown" && zip -qr ../fan.summer.markdown-4.0.0.fyp .)
 (cd "$OUT/excel" && zip -qr ../fan.summer.excel-4.0.0.fyp .)
 (cd "$OUT/email" && zip -qr ../fan.summer.email-4.0.0.fyp .)
+unzip -p "$OUT/fan.summer.email-4.0.0.fyp" ui/index.html | grep -q '<meta charset="UTF-8"'
+if unzip -p "$OUT/fan.summer.email-4.0.0.fyp" 'ui/assets/*.js' | grep -Eq '@font-face|materialdesignicons'; then
+  echo "Email package contains a forbidden icon font" >&2
+  exit 1
+fi
 echo "Packages written to $OUT"

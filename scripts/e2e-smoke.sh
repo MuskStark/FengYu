@@ -88,6 +88,32 @@ EMAIL_ACCOUNTS="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X PO
 echo "$EMAIL_ACCOUNTS" | grep -q '"success":true' \
   && echo "PASS: email worker discovered" || fail "email account RPC: $EMAIL_ACCOUNTS"
 
+# Email batch preview parses the final filename tag and resolves the attachment/group intersection.
+EAST_TAG="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+  "$H/api/plugin-runtime/fan.summer.email/invoke" \
+  -d '{"method":"email_tag_save","params":{"name":"East"}}')"
+GROUP_TAG="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+  "$H/api/plugin-runtime/fan.summer.email/invoke" \
+  -d '{"method":"email_tag_save","params":{"name":"Smoke recipients"}}')"
+CONTACT="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+  "$H/api/plugin-runtime/fan.summer.email/invoke" \
+  -d '{"method":"email_contact_save","params":{"email":"smoke@example.com","nickname":"Smoke"}}')"
+EAST_ID="$(printf '%s' "$EAST_TAG" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag"]["id"])')"
+GROUP_ID="$(printf '%s' "$GROUP_TAG" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag"]["id"])')"
+CONTACT_ID="$(printf '%s' "$CONTACT" | python3 -c 'import json,sys; print(json.load(sys.stdin)["contact"]["id"])')"
+ASSIGN_BODY="$(python3 -c 'import json,sys; print(json.dumps({"method":"email_tags_assign","params":{"contactIds":[int(sys.argv[1])],"tagIds":[int(sys.argv[2]),int(sys.argv[3])]}}))' "$CONTACT_ID" "$EAST_ID" "$GROUP_ID")"
+curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+  "$H/api/plugin-runtime/fan.summer.email/invoke" -d "$ASSIGN_BODY" | grep -q '"success":true' \
+  || fail "email tag assignment"
+printf 'report' > "$WORK/report_East.pdf"
+EMAIL_DIR="$(curl -s "${AUTH[@]}" -F "files=@$WORK/report_East.pdf" -F 'paths=report_East.pdf' \
+  "$H/api/plugin-runtime/fan.summer.email/files/upload-directory")"
+PREVIEW_BODY="$(python3 -c 'import json,sys; print(json.dumps({"method":"email_batch_preview","params":{"accountId":1,"recipientGroupTagIds":[int(sys.argv[1])],"ccGroupTagIds":[],"inputDirectory":json.loads(sys.argv[2]),"commonAttachments":[],"subject":"Smoke","plainText":"Preview"}}))' "$GROUP_ID" "$EMAIL_DIR")"
+EMAIL_PREVIEW="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+  "$H/api/plugin-runtime/fan.summer.email/invoke" -d "$PREVIEW_BODY")"
+echo "$EMAIL_PREVIEW" | grep -q '"attachmentTag":"East"' \
+  && echo "PASS: email filename-tag preview" || fail "email batch preview: $EMAIL_PREVIEW"
+
 XLSX="$WORK/sample.xlsx"
 python3 - "$XLSX" <<'PY'
 import sys
