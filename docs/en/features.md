@@ -15,6 +15,7 @@ Infinia (蜂语 FengYu) is a modular web + desktop toolbox. The features below s
 | **AI Chat** | Multi-backend chat with streaming (SSE). Supports Ollama, OpenAI, Anthropic, and DeepSeek backends. | [AI Chat guide](/en/guide/ai-chat) |
 | **AI Agent** | Plan-and-execute agent that decomposes a goal into steps, with approvals for sensitive actions. | [AI Chat guide](/en/guide/ai-chat) |
 | **Excel Splitter** | Splits workbooks by sheet, by column value, or by complex rules. Ships as a plugin with six AI tools. | [Excel plugin](/en/plugins/official-excel) |
+| **Email Center** | Multi-account confirmed SMTP sending, address books, manual IMAP collection, archives, and seven AI tools. | [Email Center](/en/plugins/email-center) |
 | **Markdown Editor** | Edit and preview Markdown in the built-in editor. | [Features home](/en/) |
 | **Plugin Marketplace** | Browse, install, update, and manage `.fyp` plugin packages — JSON-RPC workers and micro-frontend UIs. | [Marketplace](/en/plugins/marketplace) |
 | **Multi-Database** | First-launch wizard picks H2, SQLite, MySQL, or PostgreSQL. Passwords are AES-GCM encrypted. | [Database guide](/en/guide/database) |

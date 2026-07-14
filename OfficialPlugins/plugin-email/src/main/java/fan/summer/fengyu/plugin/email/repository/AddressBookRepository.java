@@ -160,7 +160,7 @@ public final class AddressBookRepository {
             "GROUP BY c.id,c.email HAVING COUNT(DISTINCT ct.tag_id)=#{count}", "</script>"})
         Set<String> resolveAll(@Param("tagIds") Set<Long> tagIds, @Param("count") int count);
 
-        @Insert("INSERT INTO FengTu_PL_Email_Contact(email,nickname) VALUES(#{email},#{nickname})")
+        @Insert("INSERT INTO FengTu_PL_Email_Contact(email,nickname,created_at) VALUES(#{email},#{nickname},CURRENT_TIMESTAMP)")
         @Options(useGeneratedKeys=true,keyProperty="id") int insertContact(ContactRow row);
         @Update("UPDATE FengTu_PL_Email_Contact SET email=#{email},nickname=#{nickname} WHERE id=#{id}") int updateContact(ContactRow row);
         @Delete("DELETE FROM FengTu_PL_Email_Contact_Tag WHERE contact_id=#{id}") int deleteContactTags(long id);

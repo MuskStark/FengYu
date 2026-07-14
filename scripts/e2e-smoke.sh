@@ -37,6 +37,8 @@ db.file.path=${DB_FILE}
 EOF
 
 "$JAVA" -Dfengyu.plugins.official-directory="$ROOT/OfficialPlugins/target/packages" \
+  -Dfengyu.plugins.directory="$WORK/.fengyu/plugins" \
+  -Dfengyu.plugins.data-directory="$WORK/.fengyu/plugin-data" \
   -cp "$JAR" fan.summer.fengyu.HeadlessLauncher --port="$PORT" --token="$TOKEN" > server.log 2>&1 &
 SRV=$!
 trap 'kill $SRV 2>/dev/null; rm -rf "$WORK"' EXIT
@@ -54,20 +56,21 @@ for _ in $(seq 1 40); do
 done
 [ "$ready" = 1 ] || { echo "FAIL: backend never became healthy"; tail -20 server.log; exit 1; }
 
-fail() { echo "FAIL: $1"; tail -20 server.log; exit 1; }
+fail() { echo "FAIL: $1"; tail -100 server.log; exit 1; }
 
-# /api/plugins lists Markdown.
-curl -s "${AUTH[@]}" "$H/api/plugins" | grep -q 'fan.summer.markdown' || fail "Markdown plugin not listed"
+# Installed package discovery lists all official plugins.
+RUNTIME="$(curl -s "${AUTH[@]}" "$H/api/plugin-runtime")"
+echo "$RUNTIME" | grep -q 'fan.summer.markdown' || fail "Markdown plugin not listed: $RUNTIME"
 
 # invoke render returns correct HTML.
 RENDER="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
-  "$H/api/plugins/fan.summer.markdown/invoke" \
-  -d '{"action":"render","args":{"markdown":"# Hello\n\n**bold**"}}')"
+  "$H/api/plugin-runtime/fan.summer.markdown/invoke" \
+  -d '{"method":"render","params":{"markdown":"# Hello\n\n**bold**"}}')"
 echo "$RENDER" | grep -q '<h1>Hello</h1>' || fail "render missing <h1>: $RENDER"
 echo "$RENDER" | grep -q '<strong>bold</strong>' || fail "render missing <strong>: $RENDER"
 
 # token enforcement: no token → 401.
-CODE="$(curl -s -o /dev/null -w '%{http_code}' "$H/api/plugins")"
+CODE="$(curl -s -o /dev/null -w '%{http_code}' "$H/api/plugin-runtime")"
 [ "$CODE" = 401 ] || fail "expected 401 without token, got $CODE"
 
 echo "PASS: health + plugins + Markdown render + token auth all OK (port=$PORT)"
@@ -75,13 +78,13 @@ echo "PASS: health + plugins + Markdown render + token auth all OK (port=$PORT)"
 # --- Excel plugin (web upload -> analyze -> split -> archive) ---
 
 # /api/plugins lists Excel — closes Task 11's deferred registration check.
-curl -s "${AUTH[@]}" "$H/api/plugins" | grep -q 'fan.summer.excel' || fail "Excel plugin not listed"
+echo "$RUNTIME" | grep -q 'fan.summer.excel' || fail "Excel plugin not listed"
 echo "PASS: excel plugin registered"
 
 # Email Center is seeded as an isolated .fyp and its Worker answers through the official SDK protocol.
-curl -s "${AUTH[@]}" "$H/api/plugins" | grep -q 'fan.summer.email' || fail "Email Center plugin not listed"
+echo "$RUNTIME" | grep -q 'fan.summer.email' || fail "Email Center plugin not listed"
 EMAIL_ACCOUNTS="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
-  "$H/api/plugins/fan.summer.email/invoke" -d '{"action":"email_accounts_list","args":{}}')"
+  "$H/api/plugin-runtime/fan.summer.email/invoke" -d '{"method":"email_accounts_list","params":{}}')"
 echo "$EMAIL_ACCOUNTS" | grep -q '"success":true' \
   && echo "PASS: email worker discovered" || fail "email account RPC: $EMAIL_ACCOUNTS"
 
@@ -98,23 +101,23 @@ except Exception as e:
 PY
 
 if [ -f "$XLSX" ]; then
-  UP="$(curl -s "${AUTH[@]}" -F "file=@$XLSX" "$H/api/plugins/fan.summer.excel/files")"
-  SESS="$(printf '%s' "$UP" | python3 -c 'import sys,json;print(json.load(sys.stdin)["session"])')"
-  SRCP="$(printf '%s' "$UP" | python3 -c 'import sys,json;print(json.load(sys.stdin)["files"][0]["path"])')"
-  [ -n "$SESS" ] && [ -n "$SRCP" ] || fail "excel upload did not return session/path: $UP"
-  OUTP="$(printf '%s' "$SRCP" | sed 's#/in/[^/]*$#/out#')"
+  UP="$(curl -s "${AUTH[@]}" -F "file=@$XLSX" "$H/api/plugin-runtime/fan.summer.excel/files/upload")"
+  OUT="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+    "$H/api/plugin-runtime/fan.summer.excel/files/output" -d '{}')"
+  SESS="e2e-smoke"
+  ANALYZE_BODY="$(python3 -c 'import json,sys; print(json.dumps({"method":"analyze","params":{"session":"e2e-smoke","sourceFile":json.loads(sys.argv[1])}}))' "$UP")"
+  SPLIT_BODY="$(python3 -c 'import json,sys; print(json.dumps({"method":"split","params":{"session":"e2e-smoke","sourceFile":json.loads(sys.argv[1]),"outputDir":json.loads(sys.argv[2])}}))' "$UP" "$OUT")"
+  OUT_REF="$(printf '%s' "$OUT" | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')"
 
   curl -s "${AUTH[@]}" -H 'Content-Type: application/json' \
-    -d "{\"action\":\"analyze\",\"args\":{\"session\":\"$SESS\",\"sourceFile\":\"$SRCP\"}}" \
-    "$H/api/plugins/fan.summer.excel/invoke" | grep -q '"success":true' \
+    -d "$ANALYZE_BODY" "$H/api/plugin-runtime/fan.summer.excel/invoke" | grep -q '"success":true' \
     && echo "PASS: excel analyze" || fail "excel analyze"
 
   curl -s "${AUTH[@]}" -H 'Content-Type: application/json' \
-    -d "{\"action\":\"split\",\"args\":{\"session\":\"$SESS\",\"sourceFile\":\"$SRCP\",\"outputDir\":\"$OUTP\"}}" \
-    "$H/api/plugins/fan.summer.excel/invoke" | grep -q '"success":true' \
+    -d "$SPLIT_BODY" "$H/api/plugin-runtime/fan.summer.excel/invoke" | grep -q '"success":true' \
     && echo "PASS: excel split" || fail "excel split"
 
-  curl -s "${AUTH[@]}" "$H/api/plugins/fan.summer.excel/files/archive?session=$SESS&dir=out" -o "$WORK/r.zip"
+  curl -s "${AUTH[@]}" "$H/api/plugin-runtime/fan.summer.excel/files/export/$OUT_REF" -o "$WORK/r.zip"
   unzip -l "$WORK/r.zip" | grep -q '\.xlsx' && echo "PASS: excel archive" || fail "excel archive"
 else
   echo "SKIP: openpyxl unavailable, skipping Excel file-flow (upload/analyze/split/archive)"

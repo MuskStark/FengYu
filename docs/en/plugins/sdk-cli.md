@@ -77,6 +77,20 @@ public final class MyWorkerMain {
 - Helpers: `JsonRpcWorker.string(params, key)`, `JsonRpcWorker.integer(params, key, fallback)`.
 - Build a shaded fat JAR with `maven-shade-plugin`; set `mainClass` to your `*WorkerMain`. See [Build & Deploy](/en/plugins/build-deploy).
 
+### Database environment
+
+With the manifest `database` permission, the host injects `FENGYU_DB_TYPE`, `FENGYU_DB_DRIVER`,
+`FENGYU_DB_URL`, `FENGYU_DB_USERNAME`, `FENGYU_DB_PASSWORD`, and `FENGYU_PLUGIN_DATA_DIR` into the
+Worker. The last value defaults to the stable private path `~/.fengyu/plugin-data/<pluginId>/`.
+
+```java
+PluginDatabaseConfig database = PluginDatabaseConfig.fromEnvironment(System.getenv())
+    .orElseThrow(() -> new IllegalStateException("database permission is required"));
+```
+
+The environment is Worker-only. Do not forward it to the iframe. Plugins own their migrations,
+table prefix, and credential encryption; see [Plugin Database Standard](/en/plugins/database).
+
 ## `fengyu plugin` CLI
 
 Source: `plugin-cli/src/cli.mjs`. Usage:

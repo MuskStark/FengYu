@@ -16,6 +16,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -47,6 +48,23 @@ class PendingSendServiceTest {
         assertFalse(pending.snapshotJson().contains("smtp-secret"));
     }
 
+    @Test void confirmationSummaryIdentifiesTheExactMessageWithoutIncludingItsBody() {
+        var service = service("summary", request -> SendResult.success("sent"));
+        var request = new EmailMessageRequest(42, List.of("to@example.com"), List.of("cc@example.com"),
+            List.of("bcc@example.com"), "Quarterly report", "private body", "<p>private body</p>",
+            List.of(Path.of("/tmp/report.pdf")));
+
+        var summary = service.prepareSingle(request).confirmation().summary();
+
+        assertTrue(summary.contains(new PendingSendService.SummaryRow("Account", "42")));
+        assertTrue(summary.contains(new PendingSendService.SummaryRow("To", "to@example.com")));
+        assertTrue(summary.contains(new PendingSendService.SummaryRow("CC", "cc@example.com")));
+        assertTrue(summary.contains(new PendingSendService.SummaryRow("BCC", "bcc@example.com")));
+        assertTrue(summary.contains(new PendingSendService.SummaryRow("Subject", "Quarterly report")));
+        assertTrue(summary.contains(new PendingSendService.SummaryRow("Attachments", "report.pdf")));
+        assertFalse(summary.toString().contains("private body"));
+    }
+
     @Test void rejectionAndReplayNeverSend() {
         AtomicInteger sends = new AtomicInteger();
         var service = service("reject", request -> { sends.incrementAndGet(); return SendResult.success("sent"); });
@@ -62,6 +80,20 @@ class PendingSendServiceTest {
         var database = database("expired");
         var service = new PendingSendService(database,
             request -> { sends.incrementAndGet(); return SendResult.success("sent"); }, clock, Duration.ofSeconds(-1));
+        String id = service.prepareSingle(request("alice@example.com")).confirmation().confirmationId();
+
+        assertEquals("EXPIRED", service.confirm(id).status());
+        assertEquals(0, sends.get());
+    }
+
+    @Test void sqliteExpiryUsesUtcEvenWhenTheJvmClockHasAnotherZone() {
+        AtomicInteger sends = new AtomicInteger();
+        Clock shanghaiClock = Clock.fixed(Instant.parse("2026-07-14T04:00:00Z"), ZoneId.of("Asia/Shanghai"));
+        EmailDatabase database = new EmailDatabase(new PluginDatabaseConfig("sqlite", "org.sqlite.JDBC",
+            "jdbc:sqlite:" + temp.resolve("timezone.db"), "", "", temp.resolve("timezone-data")));
+        var service = new PendingSendService(database,
+            request -> { sends.incrementAndGet(); return SendResult.success("sent"); },
+            shanghaiClock, Duration.ofSeconds(-1));
         String id = service.prepareSingle(request("alice@example.com")).confirmation().confirmationId();
 
         assertEquals("EXPIRED", service.confirm(id).status());

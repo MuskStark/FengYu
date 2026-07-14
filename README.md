@@ -1,6 +1,6 @@
 # Infinia
 
-![Infinia](https://img.shields.io/badge/Infinia-Desktop%20Toolbox-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue) ![Maven](https://img.shields.io/badge/Maven-3.6+-red) ![Version](https://img.shields.io/badge/version-3.2.0-blue)
+![Infinia](https://img.shields.io/badge/Infinia-Web%20%2B%20Desktop-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue) ![Maven](https://img.shields.io/badge/Maven-3.6+-red) ![Version](https://img.shields.io/badge/version-4.0.0--preview-blue)
 
 **Infinia** (蜂语) is a *modular toolbox* — a growing collection of utility tools (Excel splitting, PDF
 processing, email, an AI chat assistant, developer helpers, and more) with a plugin-based
@@ -16,6 +16,10 @@ architecture and automatic service discovery.
 >
 > Run the backend: `java -jar FengYu/target/FengYu-4.0.0-SNAPSHOT.jar --token=<t>` (binds port 24056 by default)
 > · frontend: `cd frontend && npm run dev` · smoke test: `scripts/e2e-smoke.sh`.
+>
+> The official **Email Center** plugin now ships as `fan.summer.email`: five sandboxed UI tabs,
+> multi-account SMTP/IMAP, manual-only collection, encrypted credentials, and seven confirmation-first AI tools.
+> See [Email Center](docs/en/plugins/email-center.md) and the [plugin database standard](docs/en/plugins/database.md).
 
 ---
 
@@ -217,7 +221,7 @@ Third-party authors use `@fengyu/plugin-sdk`, the Java Worker SDK, and the cross
 mvn -pl FengYu -am clean package -DskipTests
 
 # Build the two official .fyp packages
-mvn -pl OfficialPlugins/plugin-markdown,OfficialPlugins/plugin-excel -am package -DskipTests
+mvn -pl OfficialPlugins/plugin-markdown,OfficialPlugins/plugin-excel,OfficialPlugins/plugin-email -am package -DskipTests
 OfficialPlugins/build-packages.sh
 
 # Run

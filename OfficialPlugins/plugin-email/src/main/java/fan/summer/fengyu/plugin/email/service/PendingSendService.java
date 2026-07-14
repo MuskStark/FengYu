@@ -12,7 +12,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -58,7 +58,7 @@ public final class PendingSendService {
     }
 
     public Optional<PendingSend> status(String confirmationId) {
-        pending.expirePast(confirmationId);
+        pending.expirePast(confirmationId, now());
         return pending.find(confirmationId);
     }
 
@@ -69,8 +69,8 @@ public final class PendingSendService {
     }
 
     public ConfirmationResult confirm(String confirmationId) {
-        if (!pending.claim(confirmationId)) {
-            pending.expirePast(confirmationId);
+        if (!pending.claim(confirmationId, now())) {
+            pending.expirePast(confirmationId, now());
             PendingSend value = require(confirmationId);
             return new ConfirmationResult(value.status(), 0, 0, List.of());
         }
@@ -108,14 +108,39 @@ public final class PendingSendService {
 
     private ConfirmationEnvelope persist(String mode, Snapshot snapshot) {
         String id = UUID.randomUUID().toString();
-        ZoneId databaseZone = ZoneId.systemDefault();
-        LocalDateTime expires = LocalDateTime.ofInstant(clock.instant().plus(ttl), databaseZone);
+        LocalDateTime expires = LocalDateTime.ofInstant(clock.instant().plus(ttl), ZoneOffset.UTC);
         long accountId = snapshot.messages().getFirst().accountId();
         pending.create(id, accountId, mode, gson.toJson(snapshot), expires);
-        List<SummaryRow> summary = List.of(new SummaryRow("Recipients", Integer.toString(snapshot.messages().size())),
-            new SummaryRow("Ignored files", Integer.toString(snapshot.ignoredFiles().size())));
+        List<SummaryRow> summary = summary(mode, snapshot);
         return new ConfirmationEnvelope(true,
-            new Confirmation(PLUGIN_ID, id, "confirm_send", "reject_send", expires.atZone(databaseZone).toInstant(), summary));
+            new Confirmation(PLUGIN_ID, id, "confirm_send", "reject_send", expires.toInstant(ZoneOffset.UTC), summary));
+    }
+
+    private LocalDateTime now() { return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC); }
+
+    private static List<SummaryRow> summary(String mode, Snapshot snapshot) {
+        List<MessageSnapshot> messages = snapshot.messages();
+        MessageSnapshot first = messages.getFirst();
+        List<SummaryRow> rows = new ArrayList<>();
+        rows.add(new SummaryRow("Account", Long.toString(first.accountId())));
+        rows.add(new SummaryRow("Mode", mode));
+        rows.add(new SummaryRow("Messages", Integer.toString(messages.size())));
+        rows.add(new SummaryRow("To", joinDistinct(messages.stream().flatMap(message -> message.to().stream()).toList())));
+        rows.add(new SummaryRow("CC", joinDistinct(messages.stream().flatMap(message -> message.cc().stream()).toList())));
+        rows.add(new SummaryRow("BCC", joinDistinct(messages.stream().flatMap(message -> message.bcc().stream()).toList())));
+        rows.add(new SummaryRow("Subject", messages.stream().map(MessageSnapshot::subject).distinct().count() == 1
+            ? String.valueOf(first.subject()) : messages.stream().map(MessageSnapshot::subject).distinct().count() + " subjects"));
+        rows.add(new SummaryRow("Attachments", joinDistinct(messages.stream().flatMap(message -> message.attachments().stream())
+            .map(path -> Path.of(path).getFileName().toString()).toList())));
+        rows.add(new SummaryRow("Ignored files", joinDistinct(snapshot.ignoredFiles().stream()
+            .map(path -> Path.of(path).getFileName().toString()).toList())));
+        return List.copyOf(rows);
+    }
+
+    private static String joinDistinct(List<String> values) {
+        String joined = values.stream().filter(value -> value != null && !value.isBlank()).distinct()
+            .collect(java.util.stream.Collectors.joining(", "));
+        return joined.isBlank() ? "None" : joined;
     }
 
     private PendingSend require(String id) {
