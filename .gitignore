@@ -55,3 +55,8 @@ build/
 
 # Git worktrees (superpowers SDD)
 .worktrees/
+
+### Node / VitePress docs ###
+node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
