@@ -5,6 +5,23 @@ import en from '../i18n/en'
 import zhCN from '../i18n/zh-CN'
 
 describe('Email Center responsive shell', () => {
+  it('applies Codex defaults to every interactive Vuetify control family', () => {
+    const main = fs.readFileSync(path.resolve('src/main.ts'), 'utf8')
+    const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
+
+    for (const component of ['VBtn', 'VTextField', 'VTextarea', 'VSelect', 'VCombobox',
+      'VCheckbox', 'VCheckboxBtn', 'VChip', 'VList', 'VTable', 'VDialog']) {
+      expect(main).toMatch(new RegExp(`${component}:\\s*\\{`))
+    }
+    expect(main).toContain('emailLightTheme')
+    expect(main).toContain('emailDarkTheme')
+    expect(css).toContain('.email-layout .v-field__outline')
+    expect(css).toContain('.email-layout .v-btn--variant-tonal')
+    expect(css).toContain('.email-layout .v-selection-control')
+    expect(css).toContain('.v-overlay-container .v-list')
+    expect(css).toContain('.v-overlay-container .v-card')
+  })
+
   it('turns the task rail into a compact horizontally scrollable mobile navigation', () => {
     const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
     const mobile = css.match(/@media\s*\(max-width:\s*720px\)\s*\{([\s\S]*)\}\s*$/)?.[1] ?? ''
