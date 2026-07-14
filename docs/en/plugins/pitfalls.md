@@ -1,0 +1,61 @@
+---
+title: Pitfalls
+description: The five traps plugin authors hit most often — iframe CSP, FileRef resolution timing, MF Vue/Vuetify dedupe, permission gating, and worker stdio framing — each as problem, cause, and fix.
+lang: en
+---
+
+# Pitfalls
+
+These are the five traps plugin authors hit most often. Each is laid out as **problem → cause → fix**.
+
+## 1. Inline scripts don't load in the iframe
+
+**Problem.** Your plugin UI's inline `<script>` (or an inline event handler) silently fails to run; resources blocked.
+
+**Cause.** The host enforces a strict Content-Security-Policy on the plugin iframe. Inline scripts and disallowed resources are refused by the CSP — they never execute.
+
+**Fix.** Put all JavaScript in separate files loaded via `<script src>` (the scaffolder writes `<script type="module" src="app.js">`), and load every asset from the plugin's own `/plugin-runtime/{id}/**` tree. If you truly need an inline script, use the nonces the CSP allows. See [UI Micro-frontend](/en/plugins/ui-microfrontend).
+
+## 2. The worker receives a path string, not the FileRef
+
+**Problem.** You try to resolve a `ref_*` FileRef in the UI, or you hardcode a temp path you saw in the grant — and it breaks.
+
+**Cause.** The host rewrites `ref_*` FileRefs to absolute filesystem paths **before** it dispatches the RPC. By the time the worker sees the params, every FileRef has been replaced with a real path string. The worker never receives the FileRef object. Likewise, the temp path under `${java.io.tmpdir}/fengyu/runtime-files/...` is an implementation detail — grant ids do not survive a host restart, and the layout is not stable.
+
+**Fix.** Pass the FileRef straight through from UI to worker and let the host rewrite it; in the worker, treat the value as an ordinary path string. Never resolve refs or hardcode temp paths in the UI. See [File I/O](/en/plugins/file-io) and [Worker (JSON-RPC)](/en/plugins/worker).
+
+```js
+// UI — pass the ref through; do NOT try to read .id or build a path
+const file = await fengyu.files.open({ extensions: ['xlsx'] })
+await fengyu.invoke('analyze', { filePath: file })   // host rewrites ref → path
+```
+
+## 3. Two Vue instances break reactivity
+
+**Problem.** Your plugin MF bundles its own Vue and/or Vuetify, and reactivity, theming, or components behave strangely (or the app fails to mount).
+
+**Cause.** Plugin MF bundles must reuse the host's Vue and Vuetify instance. If a plugin ships its own copy, two Vue instances coexist in the same app, which corrupts reactivity and breaks the shared component/theme registry.
+
+**Fix.** Do **not** bundle Vue or Vuetify. Resolve them from the host's import map and install the host instance via `app.use(ctx.vuetify)` from the `PluginContext`. See [UI Micro-frontend](/en/plugins/ui-microfrontend).
+
+## 4. A file operation returns 403
+
+**Problem.** Calling an output or export operation (`files.outputDirectory()`, `files.export(ref)`, or the underlying `POST .../files/output`, `GET .../files/export/{ref}`) returns `403`.
+
+**Cause.** Every file endpoint is gated by a permission declared in the manifest. A `files.write` operation attempted without `files.write` in the manifest `permissions` is rejected. The same applies to `files.read` for upload/native-read endpoints.
+
+**Fix.** Declare **every** permission you use. If you read an uploaded file and also write split results + export a zip, you need both: `"permissions": ["files.read", "files.write"]`. See [Manifest](/en/plugins/manifest) and [File I/O](/en/plugins/file-io).
+
+## 5. Logging to stdout corrupts the RPC stream
+
+**Problem.** You add a `System.out.println(...)` (or a logger that writes to stdout) in the worker, and the host starts failing to parse responses — RPC calls hang or error.
+
+**Cause.** The JSON-RPC worker communicates over **newline-delimited JSON on stdio**. `stdout` is the protocol channel: one JSON-RPC message per line. A log line on stdout is not valid JSON-RPC, so it desynchronizes the framing.
+
+**Fix.** Log to **stderr only**. The Worker SDK enforces this for you by redirecting `System.out` to `System.err` for the duration of the run loop — but if you capture or bypass that, keep all diagnostic output on `stderr`. See [Worker (JSON-RPC)](/en/plugins/worker).
+
+## Next steps
+
+- [UI Micro-frontend](/en/plugins/ui-microfrontend) — CSP and the Vue/Vuetify contract.
+- [Worker (JSON-RPC)](/en/plugins/worker) — stdio discipline and FileRef resolution.
+- [File I/O](/en/plugins/file-io) — the permission model.
