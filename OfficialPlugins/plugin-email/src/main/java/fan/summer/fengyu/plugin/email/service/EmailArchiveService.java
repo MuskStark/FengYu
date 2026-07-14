@@ -124,7 +124,7 @@ public final class EmailArchiveService {
         Path archiveDirectory = archiveDirectory(outputDirectory, account.id(), folder);
         Files.createDirectories(archiveDirectory);
         Path target = archiveDirectory.resolve(archiveFilename(subject, uid));
-        Path temporary = target.resolveSibling(target.getFileName() + ".tmp-" + UUID.randomUUID());
+        Path temporary = temporaryArchivePath(target);
         try {
             try (OutputStream output = Files.newOutputStream(temporary)) {
                 message.writeTo(output);
@@ -254,6 +254,10 @@ public final class EmailArchiveService {
 
     private static Path archiveDirectory(Path outputDirectory, long accountId, String folder) {
         return outputDirectory.resolve("account-" + accountId).resolve("folder-" + sha256(folder).substring(0, 24));
+    }
+
+    static Path temporaryArchivePath(Path target) {
+        return target.resolveSibling(".tmp-" + UUID.randomUUID());
     }
 
     private static String sha256(String value) {
