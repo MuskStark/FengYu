@@ -51,6 +51,20 @@ it('keeps bulk contact actions separate from tag management', () => {
   expect(wrapper.find('[data-testid="tag-manager-dialog"]').exists()).toBe(false)
 })
 
+it('saves the contact with tags selected in the contact form', async () => {
+  bridge.invoke.mockResolvedValue({ success: true, contacts: [], tags: [] })
+  const pinia = createPinia(); setActivePinia(pinia)
+  const wrapper = mount(AddressBookTab, { global: { plugins: [pinia, i18n], stubs: {
+    ...stubs,
+    VSelect: { props: ['modelValue'], emits: ['update:modelValue'], template: '<div v-bind="$attrs"><button data-testid="select-values" @click="$emit(\'update:modelValue\', [7])">select</button></div>' },
+  } } })
+  await wrapper.get('[data-testid="contact-tags"] [data-testid="select-values"]').trigger('click')
+  await wrapper.get('[data-testid="contact-email"]').setValue('tagged@example.com')
+  await wrapper.get('[data-testid="contact-save"]').trigger('click')
+  await vi.waitFor(() => expect(bridge.invoke).toHaveBeenCalledWith('email_contact_save',
+    expect.objectContaining({ email: 'tagged@example.com', tagIds: [7] })))
+})
+
 it('shows collection counters and archive pagination together', () => {
   const pinia = createPinia(); setActivePinia(pinia)
   useArchiveStore().updateProgress({ processed: 8, successful: 5, failed: 1, newArchived: 5, duplicates: 2 })
