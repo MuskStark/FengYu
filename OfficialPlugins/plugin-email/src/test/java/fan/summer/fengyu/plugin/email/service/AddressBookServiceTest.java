@@ -56,6 +56,20 @@ class AddressBookServiceTest {
         assertTrue(service.listTags().isEmpty());
     }
 
+    @Test void savesContactAndReplacesItsTags() {
+        AddressBookService service = new AddressBookService(database("address-book-contact-tags"));
+        long customer = service.saveTag(null, "Customer");
+        long vip = service.saveTag(null, "VIP");
+
+        long contact = service.saveContact(new AddressBookService.ContactInput(null,
+            "tagged@example.com", "Tagged"), Set.of(customer));
+        assertEquals(Set.of(customer), service.findContact(contact).orElseThrow().tagIds());
+
+        service.saveContact(new AddressBookService.ContactInput(contact,
+            "tagged@example.com", "Tagged"), Set.of(vip));
+        assertEquals(Set.of(vip), service.findContact(contact).orElseThrow().tagIds());
+    }
+
     @Test void storesReusableMassConfigurationsAndRejectsBlankMetadata() {
         MassConfigRepository configs = new MassConfigRepository(database("mass-config"));
         long id = configs.save(null, "Engineering release", "TAG", "{\"tagIds\":[1]}");
