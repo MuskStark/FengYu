@@ -117,8 +117,8 @@ public final class ArchiveRepository {
             SQL sql = new SQL().SELECT(Mapper.COLUMNS).FROM("FengTu_PL_Email_Archive");
             if (criteria.accountId() != null) sql.WHERE("account_id = #{accountId}");
             if (criteria.folder() != null) sql.WHERE("folder = #{folder}");
-            if (criteria.senderPattern() != null) sql.WHERE("LOWER(from_address) LIKE #{senderPattern}");
-            if (criteria.subjectPattern() != null) sql.WHERE("LOWER(subject) LIKE #{subjectPattern}");
+            if (criteria.senderPattern() != null) sql.WHERE("LOWER(from_address) LIKE #{senderPattern} ESCAPE '!'");
+            if (criteria.subjectPattern() != null) sql.WHERE("LOWER(subject) LIKE #{subjectPattern} ESCAPE '!'");
             if (criteria.start() != null) sql.WHERE("sent_at >= #{start}");
             if (criteria.end() != null) sql.WHERE("sent_at <= #{end}");
             return sql + " ORDER BY COALESCE(sent_at, received_at, archived_at) DESC, id DESC"
