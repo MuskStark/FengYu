@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "fan.summer.email",
+  "name": "Email Center",
+  "description": "Compose, batch-send, collect, and audit email with confirmation-first AI tools",
+  "version": "4.0.0",
+  "author": "FengYu",
+  "icon": "email-multiple",
+  "category": "network",
+  "ui": { "entry": "ui/index.html" },
+  "backend": { "command": "java -jar backend/worker.jar", "protocol": "json-rpc-2.0" },
+  "permissions": ["database", "network.email", "files.read", "files.write"],
+  "homepage": "https://github.com/MuskStark/FengYu",
+  "official": true,
+  "aiTools": [
+    {"name":"email_accounts_list","description":"List configured email accounts without returning credentials.","method":"email_accounts_list","inputSchema":"{\"type\":\"object\",\"properties\":{}}"},
+    {"name":"email_contacts_query","description":"Search contacts and tags for recipient planning.","method":"email_contacts_query","inputSchema":"{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\"},\"tagIds\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}},\"offset\":{\"type\":\"integer\",\"minimum\":0},\"limit\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":100}}}"},
+    {"name":"email_send_single","description":"Prepare one email for explicit confirmation; this first call does not send the message.","method":"email_send_single","inputSchema":"{\"type\":\"object\",\"properties\":{\"accountId\":{\"type\":\"integer\"},\"to\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"cc\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"bcc\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"subject\":{\"type\":\"string\"},\"plainText\":{\"type\":\"string\"},\"htmlText\":{\"type\":\"string\"},\"attachments\":{\"type\":\"array\",\"items\":{\"type\":\"object\"}}},\"required\":[\"accountId\",\"to\"]}"},
+    {"name":"email_send_batch","description":"Prepare a tag or filename batch for explicit confirmation; this first call does not send any message.","method":"email_send_batch","inputSchema":"{\"type\":\"object\",\"properties\":{\"mode\":{\"type\":\"string\",\"enum\":[\"TAGS\",\"FILENAME\"]},\"accountId\":{\"type\":\"integer\"},\"tagIds\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}},\"inputDirectory\":{\"type\":\"object\"},\"subject\":{\"type\":\"string\"},\"plainText\":{\"type\":\"string\"},\"htmlText\":{\"type\":\"string\"}},\"required\":[\"mode\",\"accountId\"]}"},
+    {"name":"email_send_status","description":"Query a prepared or completed send by confirmation ID.","method":"email_send_status","inputSchema":"{\"type\":\"object\",\"properties\":{\"confirmationId\":{\"type\":\"string\"}},\"required\":[\"confirmationId\"]}"},
+    {"name":"email_archive_fetch","description":"Collect messages from an IMAP folder into an authorized output directory.","method":"email_archive_fetch","inputSchema":"{\"type\":\"object\",\"properties\":{\"accountId\":{\"type\":\"integer\"},\"folder\":{\"type\":\"string\"},\"start\":{\"type\":\"string\",\"format\":\"date-time\"},\"end\":{\"type\":\"string\",\"format\":\"date-time\"},\"outputDirectory\":{\"type\":\"object\"}},\"required\":[\"accountId\",\"folder\",\"outputDirectory\"]}"},
+    {"name":"email_archive_query","description":"Search paginated archived email metadata without exposing raw message contents.","method":"email_archive_query","inputSchema":"{\"type\":\"object\",\"properties\":{\"accountId\":{\"type\":\"integer\"},\"folder\":{\"type\":\"string\"},\"sender\":{\"type\":\"string\"},\"subject\":{\"type\":\"string\"},\"start\":{\"type\":\"string\",\"format\":\"date-time\"},\"end\":{\"type\":\"string\",\"format\":\"date-time\"},\"offset\":{\"type\":\"integer\",\"minimum\":0},\"limit\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":100}}}"}
+  ]
+}
