@@ -7,6 +7,7 @@ import fan.summer.fengyu.plugin.email.database.EmailDatabase;
 import fan.summer.fengyu.plugin.email.model.EmailAccount;
 import fan.summer.fengyu.plugin.email.model.EmailMessageRequest;
 import fan.summer.fengyu.plugin.email.model.SendResult;
+import fan.summer.fengyu.plugin.email.repository.SentLogRepository;
 import fan.summer.fengyu.sdk.PluginDatabaseConfig;
 import jakarta.mail.Address;
 import jakarta.mail.BodyPart;
@@ -68,7 +69,7 @@ class EmailSendServiceTest {
         SendResult connection = service.testSmtp(accountId);
         SendResult result = service.sendSingle(new EmailMessageRequest(accountId,
             List.of("to@example.com"), List.of("cc@example.com"), List.of("bcc@example.com"),
-            "Quarterly update", "plain version", "<p>html version</p>", List.of(first, second)));
+            "Quarterly update", "plain version", "<p>html version</p>", List.of(first, second)), "confirmation-1");
 
         assertTrue(connection.success());
         assertTrue(result.success());
@@ -89,6 +90,8 @@ class EmailSendServiceTest {
             .map(EmailSendServiceTest::fileName).sorted().toList());
         assertEquals(1, sentLogCount());
         assertEquals("SUCCESS", sentLogStatus());
+        assertEquals("confirmation-1", new SentLogRepository(database)
+            .search("confirmation-1", null, null, 0, 20).getFirst().confirmationId());
     }
 
     @Test void rejectsCrLfInSubjectAndEveryRecipientClassBeforeSending() {
