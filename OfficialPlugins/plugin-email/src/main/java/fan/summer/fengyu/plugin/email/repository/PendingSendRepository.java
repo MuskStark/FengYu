@@ -36,9 +36,9 @@ public final class PendingSendRepository {
         }
     }
 
-    public boolean claim(String confirmationId) {
+    public boolean claim(String confirmationId, LocalDateTime now) {
         try (SqlSession session = database.openSession()) {
-            boolean claimed = session.getMapper(Mapper.class).claim(confirmationId) == 1;
+            boolean claimed = session.getMapper(Mapper.class).claim(confirmationId, now) == 1;
             session.commit();
             return claimed;
         }
@@ -52,9 +52,9 @@ public final class PendingSendRepository {
         }
     }
 
-    public void expirePast(String confirmationId) {
+    public void expirePast(String confirmationId, LocalDateTime now) {
         try (SqlSession session = database.openSession()) {
-            session.getMapper(Mapper.class).expirePast(confirmationId);
+            session.getMapper(Mapper.class).expirePast(confirmationId, now);
             session.commit();
         }
     }
@@ -66,9 +66,9 @@ public final class PendingSendRepository {
         }
     }
 
-    public boolean hasOpenForAccount(long accountId) {
+    public boolean hasOpenForAccount(long accountId, LocalDateTime now) {
         try (SqlSession session = database.openSession()) {
-            return session.getMapper(Mapper.class).openCount(accountId) > 0;
+            return session.getMapper(Mapper.class).openCount(accountId, now) > 0;
         }
     }
 
@@ -90,18 +90,21 @@ public final class PendingSendRepository {
     }
 
     private interface Mapper {
-        @Insert("INSERT INTO FengTu_PL_Email_Pending_Send(confirmation_id,account_id,mode,snapshot_json,status,expires_at) "
-            + "VALUES(#{confirmationId},#{accountId},#{mode},#{snapshotJson},#{status},#{expiresAt})")
+        @Insert("INSERT INTO FengTu_PL_Email_Pending_Send(confirmation_id,account_id,mode,snapshot_json,status,expires_at,updated_at) "
+            + "VALUES(#{confirmationId},#{accountId},#{mode},#{snapshotJson},#{status},#{expiresAt},CURRENT_TIMESTAMP)")
         @Options(useGeneratedKeys=true,keyProperty="id") int insert(Row row);
         @Select("SELECT id,confirmation_id AS confirmationId,account_id AS accountId,mode,snapshot_json AS snapshotJson,status,expires_at AS expiresAt,updated_at AS updatedAt FROM FengTu_PL_Email_Pending_Send WHERE confirmation_id=#{id}")
         PendingSend find(String id);
         @Update("UPDATE FengTu_PL_Email_Pending_Send SET status='SENDING',updated_at=CURRENT_TIMESTAMP "
-            + "WHERE confirmation_id=#{id} AND status='PENDING' AND expires_at>CURRENT_TIMESTAMP") int claim(String id);
+            + "WHERE confirmation_id=#{id} AND status='PENDING' AND expires_at>#{now}")
+        int claim(@Param("id") String id, @Param("now") LocalDateTime now);
         @Update("UPDATE FengTu_PL_Email_Pending_Send SET status='REJECTED',updated_at=CURRENT_TIMESTAMP WHERE confirmation_id=#{id} AND status='PENDING'") int reject(String id);
-        @Update("UPDATE FengTu_PL_Email_Pending_Send SET status='EXPIRED',updated_at=CURRENT_TIMESTAMP WHERE confirmation_id=#{id} AND status='PENDING' AND expires_at<=CURRENT_TIMESTAMP") int expirePast(String id);
+        @Update("UPDATE FengTu_PL_Email_Pending_Send SET status='EXPIRED',updated_at=CURRENT_TIMESTAMP WHERE confirmation_id=#{id} AND status='PENDING' AND expires_at<=#{now}")
+        int expirePast(@Param("id") String id, @Param("now") LocalDateTime now);
         @Update("UPDATE FengTu_PL_Email_Pending_Send SET status=#{status},updated_at=CURRENT_TIMESTAMP WHERE confirmation_id=#{id} AND status='SENDING'")
         int finish(@Param("id") String id, @Param("status") String status);
         @Select("SELECT COUNT(*) FROM FengTu_PL_Email_Pending_Send WHERE account_id=#{id} "
-            + "AND (status='SENDING' OR (status='PENDING' AND expires_at>CURRENT_TIMESTAMP))") int openCount(long id);
+            + "AND (status='SENDING' OR (status='PENDING' AND expires_at>#{now}))")
+        int openCount(@Param("id") long id, @Param("now") LocalDateTime now);
     }
 }

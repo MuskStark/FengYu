@@ -10,6 +10,8 @@ import java.security.GeneralSecurityException;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
 public final class AccountService {
     private final AccountRepository accounts;
@@ -50,7 +52,7 @@ public final class AccountService {
     public Optional<AccountView> find(long id) { return accounts.findAccount(id).map(AccountService::view); }
     public List<AccountView> list() { return accounts.listAccounts().stream().map(AccountService::view).toList(); }
     public boolean delete(long id) {
-        if (pendingSends != null && pendingSends.hasOpenForAccount(id)) {
+        if (pendingSends != null && pendingSends.hasOpenForAccount(id, LocalDateTime.now(ZoneOffset.UTC))) {
             throw new IllegalStateException("Account has an open send operation");
         }
         return accounts.deleteAccount(id);

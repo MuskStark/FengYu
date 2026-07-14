@@ -24,8 +24,8 @@ public final class SentLogRepository {
             String subject, String attachmentJson, String status, String errorMessage) { }
 
     private interface Mapper {
-        @Insert("INSERT INTO FengTu_PL_Email_Sent_Log(confirmation_id,account_email,recipients_json,subject,attachment_json,status,error_message) "
-            + "VALUES(#{confirmationId},#{accountEmail},#{recipientsJson},#{subject},#{attachmentJson},#{status},#{errorMessage})")
+        @Insert("INSERT INTO FengTu_PL_Email_Sent_Log(confirmation_id,account_email,recipients_json,subject,attachment_json,status,error_message,sent_at) "
+            + "VALUES(#{confirmationId},#{accountEmail},#{recipientsJson},#{subject},#{attachmentJson},#{status},#{errorMessage},CURRENT_TIMESTAMP)")
         int insert(SentLogEntry entry);
     }
 }
