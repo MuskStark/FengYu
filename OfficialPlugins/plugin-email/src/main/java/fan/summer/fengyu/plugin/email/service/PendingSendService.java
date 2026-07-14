@@ -7,6 +7,7 @@ import fan.summer.fengyu.plugin.email.model.PendingSend;
 import fan.summer.fengyu.plugin.email.model.SendResult;
 import fan.summer.fengyu.plugin.email.repository.AddressBookRepository;
 import fan.summer.fengyu.plugin.email.repository.PendingSendRepository;
+import fan.summer.fengyu.plugin.email.repository.SentLogRepository;
 
 import java.nio.file.Path;
 import java.time.Clock;
@@ -23,18 +24,21 @@ public final class PendingSendService {
     private static final String PLUGIN_ID = "fan.summer.email";
     private final PendingSendRepository pending;
     private final AddressBookRepository addressBook;
+    private final SentLogRepository sentLogs;
     private final Sender sender;
     private final Clock clock;
     private final Duration ttl;
     private final Gson gson = new Gson();
 
     public PendingSendService(EmailDatabase database, EmailSendService sender) {
-        this(database, sender::sendSingle, Clock.systemUTC(), Duration.ofMinutes(30));
+        this(database, (confirmationId, request) -> sender.sendSingle(request, confirmationId),
+            Clock.systemUTC(), Duration.ofMinutes(30));
     }
 
     public PendingSendService(EmailDatabase database, Sender sender, Clock clock, Duration ttl) {
         this.pending = new PendingSendRepository(database);
         this.addressBook = new AddressBookRepository(database);
+        this.sentLogs = new SentLogRepository(database);
         this.sender = sender;
         this.clock = clock;
         this.ttl = ttl;
@@ -51,11 +55,42 @@ public final class PendingSendService {
     }
 
     public ConfirmationEnvelope prepareBatchByTags(EmailMessageRequest template, Set<Long> tagIds) {
-        return prepareBatch("TAGS", BatchPlanner.byContactTags(template, addressBook.resolveRecipientEmails(tagIds)));
+        return prepareComposeByTags(template, tagIds);
     }
 
     public ConfirmationEnvelope prepareBatchByFilename(EmailMessageRequest template, Path directory) {
         return prepareBatch("FILENAME", BatchPlanner.byFilename(template, directory));
+    }
+
+    public BatchPlanner.BatchPlan planAttachmentBatch(EmailMessageRequest template, Path directory,
+            List<Path> commonAttachments, Set<Long> recipientGroupTagIds, Set<Long> ccGroupTagIds) {
+        return BatchPlanner.byAttachmentTags(template, directory, commonAttachments, tag ->
+            new BatchPlanner.RecipientGroups(
+                addressBook.resolveEmailsForAttachmentTag(tag, recipientGroupTagIds),
+                addressBook.resolveEmailsForAttachmentTag(tag, ccGroupTagIds)));
+    }
+
+    public BatchPreview previewBatch(EmailMessageRequest template, Path directory,
+            List<Path> commonAttachments, Set<Long> recipientGroupTagIds, Set<Long> ccGroupTagIds) {
+        return BatchPreview.from(planAttachmentBatch(template, directory, commonAttachments,
+            recipientGroupTagIds, ccGroupTagIds));
+    }
+
+    public ConfirmationEnvelope prepareAttachmentBatch(EmailMessageRequest template, Path directory,
+            List<Path> commonAttachments, Set<Long> recipientGroupTagIds, Set<Long> ccGroupTagIds) {
+        return prepareBatch("ATTACHMENT_TAGS", planAttachmentBatch(template, directory, commonAttachments,
+            recipientGroupTagIds, ccGroupTagIds));
+    }
+
+    public ConfirmationEnvelope prepareComposeByTags(EmailMessageRequest template, Set<Long> tagIds) {
+        return prepareBatch("TAG_COMPOSE",
+            BatchPlanner.byContactTags(template, addressBook.resolveRecipientEmails(tagIds)));
+    }
+
+    public SendRecords records(String taskStatus, String confirmationId, String messageStatus,
+            String query, int offset, int limit) {
+        return new SendRecords(pending.search(taskStatus, offset, limit),
+            sentLogs.search(confirmationId, messageStatus, query, offset, limit));
     }
 
     public Optional<PendingSend> status(String confirmationId) {
@@ -80,7 +115,7 @@ public final class PendingSendService {
         List<String> failed = new ArrayList<>();
         for (MessageSnapshot message : snapshot.messages()) {
             SendResult result;
-            try { result = sender.send(message.toRequest()); }
+            try { result = sender.send(confirmationId, message.toRequest()); }
             catch (RuntimeException error) { result = SendResult.failure(error.getMessage()); }
             if (result.success()) succeeded++; else failed.addAll(message.to());
         }
@@ -89,22 +124,10 @@ public final class PendingSendService {
         return new ConfirmationResult(terminal, succeeded, failed.size(), failed);
     }
 
-    public ConfirmationEnvelope retryFailed(String confirmationId, Set<String> failedRecipients) {
-        PendingSend original = require(confirmationId);
-        if ("PENDING".equals(original.status()) || "SENDING".equals(original.status())) {
-            throw new IllegalStateException("Original send is not terminal");
-        }
-        Snapshot snapshot = decode(original.snapshotJson());
-        List<MessageSnapshot> retry = snapshot.messages().stream()
-            .filter(message -> message.to().stream().anyMatch(failedRecipients::contains)).toList();
-        if (retry.isEmpty()) throw new IllegalArgumentException("No failed recipients selected");
-        return persist("RETRY", new Snapshot(retry, List.of()));
-    }
-
     private ConfirmationEnvelope prepare(String mode, BatchPlanner.BatchPlan plan) {
-        Snapshot snapshot = new Snapshot(plan.messages().stream().map(BatchPlanner.PlannedMessage::request)
-            .map(MessageSnapshot::from).toList(),
-            plan.ignoredFiles().stream().map(Path::toString).toList());
+        Snapshot snapshot = new Snapshot(plan.messages().stream().map(MessageSnapshot::from).toList(),
+            plan.ignoredFiles().stream().map(Path::toString).toList(),
+            plan.skippedTags().stream().map(SkippedTagSnapshot::from).toList());
         return persist(mode, snapshot);
     }
 
@@ -127,16 +150,26 @@ public final class PendingSendService {
         rows.add(new SummaryRow("Account", Long.toString(first.accountId())));
         rows.add(new SummaryRow("Mode", mode));
         rows.add(new SummaryRow("Messages", Integer.toString(messages.size())));
-        rows.add(new SummaryRow("To", joinDistinct(messages.stream().flatMap(message -> message.to().stream()).toList())));
-        rows.add(new SummaryRow("CC", joinDistinct(messages.stream().flatMap(message -> message.cc().stream()).toList())));
-        rows.add(new SummaryRow("BCC", joinDistinct(messages.stream().flatMap(message -> message.bcc().stream()).toList())));
-        rows.add(new SummaryRow("Subject", messages.stream().map(MessageSnapshot::subject).distinct().count() == 1
-            ? String.valueOf(first.subject()) : messages.stream().map(MessageSnapshot::subject).distinct().count() + " subjects"));
-        rows.add(new SummaryRow("Attachments", joinDistinct(messages.stream().flatMap(message -> message.attachments().stream())
-            .map(path -> Path.of(path).getFileName().toString()).toList())));
+        for (int index = 0; index < messages.size(); index++) {
+            MessageSnapshot message = messages.get(index);
+            String prefix = "Message " + (index + 1) + " / ";
+            if (message.attachmentTag() != null) rows.add(new SummaryRow(prefix + "Attachment tag", message.attachmentTag()));
+            rows.add(new SummaryRow(prefix + "To", joinDistinct(message.to())));
+            rows.add(new SummaryRow(prefix + "CC", joinDistinct(message.cc())));
+            rows.add(new SummaryRow(prefix + "BCC", joinDistinct(message.bcc())));
+            rows.add(new SummaryRow(prefix + "Subject", String.valueOf(message.subject())));
+            rows.add(new SummaryRow(prefix + "Tag attachments", fileNames(message.tagAttachments())));
+            rows.add(new SummaryRow(prefix + "Common attachments", fileNames(message.commonAttachments())));
+        }
         rows.add(new SummaryRow("Ignored files", joinDistinct(snapshot.ignoredFiles().stream()
             .map(path -> Path.of(path).getFileName().toString()).toList())));
+        rows.add(new SummaryRow("Skipped tags", joinDistinct(snapshot.skippedTags().stream()
+            .map(value -> value.attachmentTag() + ": " + value.reason()).toList())));
         return List.copyOf(rows);
+    }
+
+    private static String fileNames(List<String> paths) {
+        return joinDistinct(paths.stream().map(path -> Path.of(path).getFileName().toString()).toList());
     }
 
     private static String joinDistinct(List<String> values) {
@@ -151,7 +184,7 @@ public final class PendingSendService {
 
     private Snapshot decode(String json) { return gson.fromJson(json, Snapshot.class); }
 
-    @FunctionalInterface public interface Sender { SendResult send(EmailMessageRequest request); }
+    @FunctionalInterface public interface Sender { SendResult send(String confirmationId, EmailMessageRequest request); }
     public record ConfirmationEnvelope(boolean confirmationRequired, Confirmation confirmation) { }
     public record Confirmation(String pluginId, String confirmationId, String approveMethod,
         String rejectMethod, java.time.Instant expiresAt, List<SummaryRow> summary) { }
@@ -159,12 +192,54 @@ public final class PendingSendService {
     public record ConfirmationResult(String status, int succeeded, int failed, List<String> failedRecipients) {
         public ConfirmationResult { failedRecipients = List.copyOf(failedRecipients); }
     }
-    private record Snapshot(List<MessageSnapshot> messages, List<String> ignoredFiles) { }
+    public record SendRecords(List<PendingSendRepository.SendTaskView> tasks,
+            List<SentLogRepository.SentMessageView> messages) { }
+    public record PreviewMessage(String attachmentTag, List<String> to, List<String> cc,
+            List<String> tagAttachments, List<String> commonAttachments) { }
+    public record PreviewSkippedTag(String attachmentTag, String reason, List<String> attachments) { }
+    public record BatchPreview(List<PreviewMessage> messages, List<String> ignoredFiles,
+            List<PreviewSkippedTag> skippedTags, int messageCount) {
+        private static BatchPreview from(BatchPlanner.BatchPlan plan) {
+            List<PreviewMessage> messages = plan.messages().stream().map(value -> new PreviewMessage(
+                value.attachmentTag(), value.request().to(), value.request().cc(), strings(value.tagAttachments()),
+                strings(value.commonAttachments()))).toList();
+            return new BatchPreview(messages, strings(plan.ignoredFiles()), plan.skippedTags().stream()
+                .map(value -> new PreviewSkippedTag(value.attachmentTag(), value.reason(), strings(value.attachments())))
+                .toList(), messages.size());
+        }
+        private static List<String> strings(List<Path> paths) { return paths.stream().map(Path::toString).toList(); }
+    }
+    private record Snapshot(List<MessageSnapshot> messages, List<String> ignoredFiles,
+            List<SkippedTagSnapshot> skippedTags) {
+        private Snapshot {
+            messages = messages == null ? List.of() : List.copyOf(messages);
+            ignoredFiles = ignoredFiles == null ? List.of() : List.copyOf(ignoredFiles);
+            skippedTags = skippedTags == null ? List.of() : List.copyOf(skippedTags);
+        }
+    }
+    private record SkippedTagSnapshot(String attachmentTag, String reason, List<String> attachments) {
+        private static SkippedTagSnapshot from(BatchPlanner.SkippedTag value) {
+            return new SkippedTagSnapshot(value.attachmentTag(), value.reason(),
+                value.attachments().stream().map(Path::toString).toList());
+        }
+    }
     private record MessageSnapshot(long accountId, List<String> to, List<String> cc, List<String> bcc,
-            String subject, String plainText, String htmlText, List<String> attachments) {
-        private static MessageSnapshot from(EmailMessageRequest value) {
+            String subject, String plainText, String htmlText, List<String> attachments,
+            String attachmentTag, List<String> tagAttachments, List<String> commonAttachments) {
+        private MessageSnapshot {
+            to = to == null ? List.of() : List.copyOf(to);
+            cc = cc == null ? List.of() : List.copyOf(cc);
+            bcc = bcc == null ? List.of() : List.copyOf(bcc);
+            attachments = attachments == null ? List.of() : List.copyOf(attachments);
+            tagAttachments = tagAttachments == null ? attachments : List.copyOf(tagAttachments);
+            commonAttachments = commonAttachments == null ? List.of() : List.copyOf(commonAttachments);
+        }
+        private static MessageSnapshot from(BatchPlanner.PlannedMessage planned) {
+            EmailMessageRequest value = planned.request();
             return new MessageSnapshot(value.accountId(), value.to(), value.cc(), value.bcc(), value.subject(),
-                value.plainText(), value.htmlText(), value.attachments().stream().map(Path::toString).toList());
+                value.plainText(), value.htmlText(), value.attachments().stream().map(Path::toString).toList(),
+                planned.attachmentTag(), planned.tagAttachments().stream().map(Path::toString).toList(),
+                planned.commonAttachments().stream().map(Path::toString).toList());
         }
         private EmailMessageRequest toRequest() {
             return new EmailMessageRequest(accountId, to, cc, bcc, subject, plainText, htmlText,

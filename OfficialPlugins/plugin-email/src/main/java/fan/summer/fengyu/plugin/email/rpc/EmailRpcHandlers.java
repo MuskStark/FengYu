@@ -167,22 +167,31 @@ public final class EmailRpcHandlers {
     }
 
     public Object prepareSingle(Map<String, Object> params) {
-        return result(() -> confirmation("Single email is ready for confirmation",
-            pending.prepareSingle(message(params))));
+        return result(() -> {
+            EmailMessageRequest request = message(params);
+            Set<Long> recipientTagIds = longSet(params.get("recipientTagIds"));
+            if (!recipientTagIds.isEmpty()) {
+                return confirmation("Tagged emails are ready for confirmation",
+                    pending.prepareComposeByTags(request, recipientTagIds));
+            }
+            if (request.to().isEmpty()) throw new IllegalArgumentException("to is required for direct sending");
+            return confirmation("Single email is ready for confirmation", pending.prepareSingle(request));
+        });
     }
 
     public Object prepareBatch(Map<String, Object> params) {
-        return result(() -> {
-            String mode = requiredString(params, "mode").toUpperCase();
-            EmailMessageRequest template = message(params);
-            PendingSendService.ConfirmationEnvelope envelope = switch (mode) {
-                case "TAGS" -> pending.prepareBatchByTags(template, longSet(params.get("tagIds")));
-                case "FILENAME" -> pending.prepareBatchByFilename(template,
-                    path(params.get("inputDirectory"), "inputDirectory", "directory"));
-                default -> throw new IllegalArgumentException("Unsupported batch mode: " + mode);
-            };
-            return confirmation("Batch email is ready for confirmation", envelope);
-        });
+        return result(() -> confirmation("Batch email is ready for confirmation",
+            pending.prepareAttachmentBatch(message(params),
+                path(params.get("inputDirectory"), "inputDirectory", "directory"),
+                paths(params.get("commonAttachments")), longSet(params.get("recipientGroupTagIds")),
+                longSet(params.get("ccGroupTagIds")))));
+    }
+
+    public Object previewBatch(Map<String, Object> params) {
+        return result(() -> ok("Batch preview generated", "preview", pending.previewBatch(message(params),
+            path(params.get("inputDirectory"), "inputDirectory", "directory"),
+            paths(params.get("commonAttachments")), longSet(params.get("recipientGroupTagIds")),
+            longSet(params.get("ccGroupTagIds")))));
     }
 
     public Object sendStatus(Map<String, Object> params) {
@@ -191,9 +200,16 @@ public final class EmailRpcHandlers {
             .orElseGet(() -> failure("Send confirmation not found")));
     }
 
-    public Object retrySend(Map<String, Object> params) {
-        return result(() -> confirmation("Retry is ready for confirmation", pending.retryFailed(
-            requiredString(params, "confirmationId"), stringSet(params.get("failedRecipients")))));
+    public Object querySendRecords(Map<String, Object> params) {
+        return result(() -> {
+            var records = pending.records(string(params, "taskStatus"), string(params, "confirmationId"),
+                string(params, "messageStatus"), string(params, "query"), integer(params, "offset", 0),
+                integer(params, "limit", 50));
+            Map<String, Object> value = ok("Found " + records.tasks().size() + " send task(s)");
+            value.put("tasks", jsonValue(records.tasks()));
+            value.put("messages", jsonValue(records.messages()));
+            return value;
+        });
     }
 
     public Object confirmSend(Map<String, Object> params) {

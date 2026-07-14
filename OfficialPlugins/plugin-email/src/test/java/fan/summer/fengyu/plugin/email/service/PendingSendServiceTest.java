@@ -6,12 +6,14 @@ import fan.summer.fengyu.plugin.email.crypto.CredentialCipher;
 import fan.summer.fengyu.plugin.email.database.EmailDatabase;
 import fan.summer.fengyu.plugin.email.model.EmailMessageRequest;
 import fan.summer.fengyu.plugin.email.model.SendResult;
+import fan.summer.fengyu.plugin.email.repository.AddressBookRepository;
 import fan.summer.fengyu.sdk.PluginDatabaseConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import javax.crypto.KeyGenerator;
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -21,6 +23,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -33,7 +36,7 @@ class PendingSendServiceTest {
 
     @Test void preparationSendsNothingAndPersistsExactImmutableRecipientSnapshot() {
         AtomicInteger sends = new AtomicInteger();
-        var service = service("prepare", request -> { sends.incrementAndGet(); return SendResult.success("sent"); });
+        var service = service("prepare", (confirmationId, request) -> { sends.incrementAndGet(); return SendResult.success("sent"); });
 
         var envelope = service.prepareSingle(request("alice@example.com"));
 
@@ -48,8 +51,58 @@ class PendingSendServiceTest {
         assertFalse(pending.snapshotJson().contains("smtp-secret"));
     }
 
+    @Test void confirmationPassesPreparedIdToTheSender() {
+        AtomicReference<String> receivedId = new AtomicReference<>();
+        var service = service("confirmation-id", (confirmationId, request) -> {
+            receivedId.set(confirmationId);
+            return SendResult.success("sent");
+        });
+        String preparedId = service.prepareSingle(request("alice@example.com")).confirmation().confirmationId();
+
+        service.confirm(preparedId);
+
+        assertEquals(preparedId, receivedId.get());
+    }
+
+    @Test void attachmentBatchPreviewDoesNotPersistAndPrepareKeepsExactTagMetadata() throws Exception {
+        EmailDatabase database = database("batch-preview");
+        AddressBookRepository contacts = new AddressBookRepository(database);
+        long east = contacts.saveTag(null, "East");
+        long customers = contacts.saveTag(null, "Customers");
+        long managers = contacts.saveTag(null, "Managers");
+        long alice = contacts.saveContact(new AddressBookRepository.ContactInput(null, "alice@example.com", "Alice"));
+        long manager = contacts.saveContact(new AddressBookRepository.ContactInput(null, "manager@example.com", "Manager"));
+        contacts.assignTags(java.util.Set.of(alice), java.util.Set.of(east, customers));
+        contacts.assignTags(java.util.Set.of(manager), java.util.Set.of(east, managers));
+        Path input = Files.createDirectory(temp.resolve("batch-preview-input"));
+        Path tagged = Files.writeString(input.resolve("report_East.pdf"), "report");
+        Path ignored = Files.writeString(input.resolve("README"), "ignored");
+        Path common = Files.writeString(temp.resolve("terms.pdf"), "terms");
+        var service = new PendingSendService(database,
+            (confirmationId, request) -> SendResult.success("sent"), clock, Duration.ofMinutes(30));
+
+        var preview = service.previewBatch(request("template@example.com"), input, List.of(common),
+            java.util.Set.of(customers), java.util.Set.of(managers));
+
+        assertEquals(1, preview.messageCount());
+        assertEquals("East", preview.messages().getFirst().attachmentTag());
+        assertEquals(List.of("alice@example.com"), preview.messages().getFirst().to());
+        assertEquals(List.of("manager@example.com"), preview.messages().getFirst().cc());
+        assertEquals(List.of(tagged.toString()), preview.messages().getFirst().tagAttachments());
+        assertEquals(List.of(common.toString()), preview.messages().getFirst().commonAttachments());
+        assertEquals(List.of(ignored.toString()), preview.ignoredFiles());
+        assertTrue(service.records(null, null, null, null, 0, 20).tasks().isEmpty());
+
+        var confirmation = service.prepareAttachmentBatch(request("template@example.com"), input,
+            List.of(common), java.util.Set.of(customers), java.util.Set.of(managers));
+        String snapshot = service.status(confirmation.confirmation().confirmationId()).orElseThrow().snapshotJson();
+        assertTrue(snapshot.contains("\"attachmentTag\":\"East\""));
+        assertTrue(snapshot.contains(tagged.toString()));
+        assertTrue(snapshot.contains(common.toString()));
+    }
+
     @Test void confirmationSummaryIdentifiesTheExactMessageWithoutIncludingItsBody() {
-        var service = service("summary", request -> SendResult.success("sent"));
+        var service = service("summary", (confirmationId, request) -> SendResult.success("sent"));
         var request = new EmailMessageRequest(42, List.of("to@example.com"), List.of("cc@example.com"),
             List.of("bcc@example.com"), "Quarterly report", "private body", "<p>private body</p>",
             List.of(Path.of("/tmp/report.pdf")));
@@ -57,17 +110,17 @@ class PendingSendServiceTest {
         var summary = service.prepareSingle(request).confirmation().summary();
 
         assertTrue(summary.contains(new PendingSendService.SummaryRow("Account", "42")));
-        assertTrue(summary.contains(new PendingSendService.SummaryRow("To", "to@example.com")));
-        assertTrue(summary.contains(new PendingSendService.SummaryRow("CC", "cc@example.com")));
-        assertTrue(summary.contains(new PendingSendService.SummaryRow("BCC", "bcc@example.com")));
-        assertTrue(summary.contains(new PendingSendService.SummaryRow("Subject", "Quarterly report")));
-        assertTrue(summary.contains(new PendingSendService.SummaryRow("Attachments", "report.pdf")));
+        assertTrue(summary.contains(new PendingSendService.SummaryRow("Message 1 / To", "to@example.com")));
+        assertTrue(summary.contains(new PendingSendService.SummaryRow("Message 1 / CC", "cc@example.com")));
+        assertTrue(summary.contains(new PendingSendService.SummaryRow("Message 1 / BCC", "bcc@example.com")));
+        assertTrue(summary.contains(new PendingSendService.SummaryRow("Message 1 / Subject", "Quarterly report")));
+        assertTrue(summary.contains(new PendingSendService.SummaryRow("Message 1 / Tag attachments", "report.pdf")));
         assertFalse(summary.toString().contains("private body"));
     }
 
     @Test void rejectionAndReplayNeverSend() {
         AtomicInteger sends = new AtomicInteger();
-        var service = service("reject", request -> { sends.incrementAndGet(); return SendResult.success("sent"); });
+        var service = service("reject", (confirmationId, request) -> { sends.incrementAndGet(); return SendResult.success("sent"); });
         String id = service.prepareSingle(request("alice@example.com")).confirmation().confirmationId();
 
         assertEquals("REJECTED", service.reject(id).status());
@@ -79,7 +132,7 @@ class PendingSendServiceTest {
         AtomicInteger sends = new AtomicInteger();
         var database = database("expired");
         var service = new PendingSendService(database,
-            request -> { sends.incrementAndGet(); return SendResult.success("sent"); }, clock, Duration.ofSeconds(-1));
+            (confirmationId, request) -> { sends.incrementAndGet(); return SendResult.success("sent"); }, clock, Duration.ofSeconds(-1));
         String id = service.prepareSingle(request("alice@example.com")).confirmation().confirmationId();
 
         assertEquals("EXPIRED", service.confirm(id).status());
@@ -92,7 +145,7 @@ class PendingSendServiceTest {
         EmailDatabase database = new EmailDatabase(new PluginDatabaseConfig("sqlite", "org.sqlite.JDBC",
             "jdbc:sqlite:" + temp.resolve("timezone.db"), "", "", temp.resolve("timezone-data")));
         var service = new PendingSendService(database,
-            request -> { sends.incrementAndGet(); return SendResult.success("sent"); },
+            (confirmationId, request) -> { sends.incrementAndGet(); return SendResult.success("sent"); },
             shanghaiClock, Duration.ofSeconds(-1));
         String id = service.prepareSingle(request("alice@example.com")).confirmation().confirmationId();
 
@@ -101,7 +154,7 @@ class PendingSendServiceTest {
     }
 
     @Test void partialFailureIsReportedPerRecipient() {
-        var service = service("partial", request -> request.to().contains("bad@example.com")
+        var service = service("partial", (confirmationId, request) -> request.to().contains("bad@example.com")
             ? SendResult.failure("mailbox unavailable") : SendResult.success(request.to().getFirst()));
         var plan = BatchPlanner.byTags(request("template@example.com"),
             java.util.Set.of("good@example.com", "bad@example.com"));
@@ -114,29 +167,11 @@ class PendingSendServiceTest {
         assertEquals(1, result.failed());
     }
 
-    @Test void retryCreatesANewPendingRecordAndLeavesTerminalRecordClosed() {
-        var service = service("retry", request -> request.to().contains("bad@example.com")
-            ? SendResult.failure("mailbox unavailable") : SendResult.success("sent"));
-        var plan = BatchPlanner.byTags(request("template@example.com"),
-            java.util.Set.of("good@example.com", "bad@example.com"));
-        String originalId = service.prepareBatch("TAGS", plan).confirmation().confirmationId();
-        assertEquals("PARTIAL_FAILED", service.confirm(originalId).status());
-
-        var retry = service.retryFailed(originalId, java.util.Set.of("bad@example.com"));
-
-        assertNotEquals(originalId, retry.confirmation().confirmationId());
-        assertEquals("PARTIAL_FAILED", service.status(originalId).orElseThrow().status());
-        var retryPending = service.status(retry.confirmation().confirmationId()).orElseThrow();
-        assertEquals("PENDING", retryPending.status());
-        assertTrue(retryPending.snapshotJson().contains("bad@example.com"));
-        assertFalse(retryPending.snapshotJson().contains("good@example.com"));
-    }
-
     @Test void twoConcurrentConfirmationsExecuteSmtpOnlyOnce() throws Exception {
         AtomicInteger sends = new AtomicInteger();
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
-        var service = service("concurrent", request -> {
+        var service = service("concurrent", (confirmationId, request) -> {
             sends.incrementAndGet(); entered.countDown();
             try { release.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
             return SendResult.success("sent");

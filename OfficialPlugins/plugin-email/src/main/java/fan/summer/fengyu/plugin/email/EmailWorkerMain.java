@@ -29,7 +29,9 @@ public final class EmailWorkerMain {
             .on("email_contacts_query", handlers.safe(handlers::queryContacts))
             .on("email_send_single", handlers.safe(handlers::prepareSingle))
             .on("email_send_batch", handlers.safe(handlers::prepareBatch))
+            .on("email_batch_preview", handlers.safe(handlers::previewBatch))
             .on("email_send_status", handlers.safe(handlers::sendStatus))
+            .on("email_send_records_query", handlers.safe(handlers::querySendRecords))
             .on("email_archive_fetch", handlers.safe(handlers::collect))
             .on("email_archive_query", handlers.safe(handlers::queryArchive))
             .on("confirm_send", handlers.safe(handlers::confirmSend))
@@ -51,7 +53,6 @@ public final class EmailWorkerMain {
             .on("email_config_find", handlers::findConfig)
             .on("email_config_save", handlers::saveConfig)
             .on("email_config_delete", handlers::deleteConfig)
-            .on("email_send_retry", handlers::retrySend)
             .on("email_archive_detail", handlers::archiveDetail);
     }
 

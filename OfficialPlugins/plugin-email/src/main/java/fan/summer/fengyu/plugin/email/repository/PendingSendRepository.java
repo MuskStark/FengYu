@@ -10,6 +10,7 @@ import org.apache.ibatis.annotations.Update;
 import org.apache.ibatis.session.SqlSession;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 public final class PendingSendRepository {
@@ -72,6 +73,16 @@ public final class PendingSendRepository {
         }
     }
 
+    public List<SendTaskView> search(String status, int offset, int limit) {
+        if (offset < 0 || limit < 1 || limit > 100) throw new IllegalArgumentException("Invalid send task page");
+        try (SqlSession session = database.openSession()) {
+            return List.copyOf(session.getMapper(Mapper.class).search(status, offset, limit));
+        }
+    }
+
+    public record SendTaskView(String confirmationId, long accountId, String mode,
+            String status, LocalDateTime expiresAt, LocalDateTime updatedAt) { }
+
     private static final class Row {
         private Long id;
         private final String confirmationId;
@@ -106,5 +117,13 @@ public final class PendingSendRepository {
         @Select("SELECT COUNT(*) FROM FengTu_PL_Email_Pending_Send WHERE account_id=#{id} "
             + "AND (status='SENDING' OR (status='PENDING' AND expires_at>#{now}))")
         int openCount(@Param("id") long id, @Param("now") LocalDateTime now);
+        @Select({"<script>",
+            "SELECT confirmation_id AS confirmationId,account_id AS accountId,mode,status,expires_at AS expiresAt,updated_at AS updatedAt",
+            "FROM FengTu_PL_Email_Pending_Send",
+            "<where><if test='status != null and !status.isBlank()'>status=#{status}</if></where>",
+            "ORDER BY updated_at DESC,id DESC LIMIT #{limit} OFFSET #{offset}",
+            "</script>"})
+        List<SendTaskView> search(@Param("status") String status, @Param("offset") int offset,
+            @Param("limit") int limit);
     }
 }
