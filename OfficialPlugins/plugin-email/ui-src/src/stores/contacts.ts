@@ -13,7 +13,7 @@ export const useContactsStore = defineStore('email-contacts', () => {
   const recipientPreview = computed(() => [...new Set(contacts.value.filter(contact => selectedTagIds.value.some(id => contact.tagIds?.includes(id))).map(contact => contact.email))])
   async function load() {
     const [contactResult, tagResult] = await Promise.all([
-      invoke<{ contacts: Contact[] }>('email_contacts_query', { query: query.value, limit: 100 }),
+      invoke<{ contacts: Contact[] }>('email_contacts_query', { query: query.value, tagIds: selectedTagIds.value, limit: 100 }),
       invoke<{ tags: Tag[] }>('email_tags_list'),
     ])
     contacts.value = contactResult.contacts ?? []; tags.value = tagResult.tags ?? []
