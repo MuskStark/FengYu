@@ -68,12 +68,21 @@ public final class AddressBookRepository {
     }
 
     public long saveContact(ContactInput input) {
+        return saveContact(input, null);
+    }
+
+    public long saveContact(ContactInput input, Set<Long> tagIds) {
         try (SqlSession session = database.openSession()) {
             Mapper mapper = session.getMapper(Mapper.class);
             ContactRow row = new ContactRow(input.id(), input.email(), input.nickname(), null);
             if (input.id() == null) mapper.insertContact(row); else mapper.updateContact(row);
+            long contactId = input.id() == null ? row.id() : input.id();
+            if (tagIds != null) {
+                mapper.deleteContactTags(contactId);
+                for (long tagId : new LinkedHashSet<>(tagIds)) mapper.insertAssignment(contactId, tagId);
+            }
             session.commit();
-            return input.id() == null ? row.id() : input.id();
+            return contactId;
         }
     }
 

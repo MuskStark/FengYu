@@ -25,8 +25,12 @@ export async function initializeSdk(): Promise<void> {
 
 export function disposeSdk(): void { unsubscribe?.(); client.dispose() }
 
+export function cloneableParams(params: Record<string, unknown>): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(params)) as Record<string, unknown>
+}
+
 export async function invoke<T extends Record<string, unknown>>(method: string, params: Record<string, unknown> = {}) {
-  const result = await client.invoke<RpcEnvelope<T>>(method, params)
+  const result = await client.invoke<RpcEnvelope<T>>(method, cloneableParams(params))
   if (!result.success) throw new Error(result.summary || `Email operation failed: ${method}`)
   return result
 }
