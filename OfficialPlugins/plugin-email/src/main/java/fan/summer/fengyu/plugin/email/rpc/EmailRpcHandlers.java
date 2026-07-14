@@ -10,6 +10,7 @@ import fan.summer.fengyu.plugin.email.repository.MassConfigRepository;
 import fan.summer.fengyu.plugin.email.service.AccountService;
 import fan.summer.fengyu.plugin.email.service.AddressBookService;
 import fan.summer.fengyu.plugin.email.service.EmailArchiveService;
+import fan.summer.fengyu.plugin.email.service.EmailHtmlSanitizer;
 import fan.summer.fengyu.plugin.email.service.EmailSendService;
 import fan.summer.fengyu.plugin.email.service.PendingSendService;
 import fan.summer.fengyu.sdk.FileRef;
@@ -36,6 +37,7 @@ public final class EmailRpcHandlers {
     private final EmailSendService sends;
     private final PendingSendService pending;
     private final EmailArchiveService archive;
+    private final EmailHtmlSanitizer htmlSanitizer = new EmailHtmlSanitizer();
 
     public EmailRpcHandlers(EmailDatabase database, CredentialCipher cipher) {
         accounts = new AccountRpc(new AccountService(database, cipher));
@@ -252,9 +254,12 @@ public final class EmailRpcHandlers {
     }
 
     private EmailMessageRequest message(Map<String, Object> params) {
+        String html = htmlSanitizer.sanitize(string(params, "htmlText"));
+        String plain = string(params, "plainText");
+        if (plain == null || plain.isBlank()) plain = htmlSanitizer.toPlainText(html);
         return new EmailMessageRequest(requiredLong(params, "accountId"), strings(params.get("to")),
             strings(params.get("cc")), strings(params.get("bcc")), string(params, "subject"),
-            string(params, "plainText"), string(params, "htmlText"), paths(params.get("attachments")));
+            plain, html, paths(params.get("attachments")));
     }
 
     private List<Path> paths(Object value) {
