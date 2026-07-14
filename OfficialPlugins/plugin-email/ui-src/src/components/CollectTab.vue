@@ -4,7 +4,7 @@ import { useAccountsStore } from '../stores/accounts'
 import { useArchiveStore } from '../stores/archive'
 import { actionable, files, invoke } from '../sdk'
 const accounts=useAccountsStore(), archive=useArchiveStore(), folder=ref('INBOX'), start=ref(''), end=ref(''), output=ref<{id:string;name:string}|null>(null), busy=ref(false), error=ref(''), summary=ref('')
-async function choose(){output.value=await files.outputDirectory()}
+async function choose(){try{output.value=await files.outputDirectory()}catch(value){error.value=actionable(value,'Selecting output directory')}}
 const instant = (value: string) => value ? new Date(value).toISOString() : undefined
 async function collect(){busy.value=true;try{const result=await invoke<{collection:{newArchived:number;skippedDuplicates:number;failures:number}}>('email_archive_fetch',{accountId:accounts.selectedId,folder:folder.value,start:instant(start.value),end:instant(end.value),outputDirectory:output.value});summary.value=result.summary;archive.updateProgress({processed:result.collection.newArchived+result.collection.skippedDuplicates+result.collection.failures,newArchived:result.collection.newArchived,duplicates:result.collection.skippedDuplicates,failed:result.collection.failures,successful:result.collection.newArchived})}catch(value){error.value=actionable(value,'Collecting mail')}finally{busy.value=false}}
 </script>
