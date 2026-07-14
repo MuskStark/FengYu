@@ -63,6 +63,7 @@ const enSidebar = {
       { text: 'Worker (JSON-RPC)', link: '/en/plugins/worker' },
       { text: 'UI Micro-frontend', link: '/en/plugins/ui-microfrontend' },
       { text: 'File I/O', link: '/en/plugins/file-io' },
+      { text: 'Database Standard', link: '/en/plugins/database' },
       { text: 'AI Tools', link: '/en/plugins/ai-tools' },
       { text: 'SDK & CLI', link: '/en/plugins/sdk-cli' },
       { text: 'Marketplace', link: '/en/plugins/marketplace' },
@@ -70,6 +71,7 @@ const enSidebar = {
       { text: 'Build & Deploy', link: '/en/plugins/build-deploy' },
       { text: 'Official: Markdown', link: '/en/plugins/official-markdown' },
       { text: 'Official: Excel', link: '/en/plugins/official-excel' },
+      { text: 'Official: Email Center', link: '/en/plugins/email-center' },
       { text: 'Pitfalls', link: '/en/plugins/pitfalls' }
     ]},
     { text: 'Guide', collapsible: true, items: [
@@ -118,6 +120,7 @@ const zhSidebar = {
       { text: 'Worker（JSON-RPC）', link: '/zh/plugins/worker' },
       { text: 'UI 微前端', link: '/zh/plugins/ui-microfrontend' },
       { text: '文件 I/O', link: '/zh/plugins/file-io' },
+      { text: '数据库规范', link: '/zh/plugins/database' },
       { text: 'AI 工具', link: '/zh/plugins/ai-tools' },
       { text: 'SDK 与 CLI', link: '/zh/plugins/sdk-cli' },
       { text: '插件市场', link: '/zh/plugins/marketplace' },
@@ -125,6 +128,7 @@ const zhSidebar = {
       { text: '构建与部署', link: '/zh/plugins/build-deploy' },
       { text: '官方插件：Markdown', link: '/zh/plugins/official-markdown' },
       { text: '官方插件：Excel', link: '/zh/plugins/official-excel' },
+      { text: '官方插件：邮件中心', link: '/zh/plugins/email-center' },
       { text: '常见陷阱', link: '/zh/plugins/pitfalls' }
     ]},
     { text: '指南', collapsible: true, items: [

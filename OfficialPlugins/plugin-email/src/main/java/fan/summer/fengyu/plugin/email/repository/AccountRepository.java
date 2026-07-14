@@ -113,8 +113,8 @@ public final class AccountRepository {
         @Update("UPDATE FengTu_PL_Email_Account SET is_default = TRUE WHERE id = #{id}") int setDefault(long id);
         @Update("UPDATE FengTu_PL_Email_Account SET is_default = TRUE WHERE id = (SELECT MIN(id) FROM FengTu_PL_Email_Account)") int makeFirstDefault();
 
-        @Insert("INSERT INTO FengTu_PL_Email_Account(display_name,email,encrypted_password,smtp_host,smtp_port,smtp_security,imap_host,imap_port,imap_security,is_default) "
-            + "VALUES(#{displayName},#{email},#{encryptedPassword},#{smtpHost},#{smtpPort},#{smtpSecurity},#{imapHost},#{imapPort},#{imapSecurity},#{defaultAccount})")
+        @Insert("INSERT INTO FengTu_PL_Email_Account(display_name,email,encrypted_password,smtp_host,smtp_port,smtp_security,imap_host,imap_port,imap_security,is_default,created_at) "
+            + "VALUES(#{displayName},#{email},#{encryptedPassword},#{smtpHost},#{smtpPort},#{smtpSecurity},#{imapHost},#{imapPort},#{imapSecurity},#{defaultAccount},CURRENT_TIMESTAMP)")
         @Options(useGeneratedKeys = true, keyProperty = "id") int insert(AccountRow row);
 
         @Update("UPDATE FengTu_PL_Email_Account SET display_name=#{displayName},email=#{email},encrypted_password=#{encryptedPassword},"
