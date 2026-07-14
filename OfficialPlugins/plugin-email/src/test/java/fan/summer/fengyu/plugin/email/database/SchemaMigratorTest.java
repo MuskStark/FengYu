@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.sql.Connection;
 import java.sql.Statement;
 import java.time.Instant;
@@ -31,19 +32,19 @@ class SchemaMigratorTest {
         var data = new UnpooledDataSource("org.sqlite.JDBC", "jdbc:sqlite:" + temp.resolve("legacy.db"), "", "");
         Instant sentAt = Instant.parse("2026-04-05T06:07:08.123Z");
         try (Connection connection = data.getConnection(); Statement statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE FengTu_PL_Email_Schema_History "
-                + "(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TEXT)");
-            statement.execute("INSERT INTO FengTu_PL_Email_Schema_History(version) VALUES (1)");
-            statement.execute("CREATE TABLE FengTu_PL_Email_Archive (id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                + "account_id BIGINT NOT NULL, account_email VARCHAR(320) NOT NULL, folder VARCHAR(500) NOT NULL, "
-                + "message_uid VARCHAR(255) NOT NULL, subject VARCHAR(998), from_address VARCHAR(1000), "
-                + "recipients_json TEXT, sent_at TEXT, received_at TEXT, has_attachment INTEGER NOT NULL DEFAULT 0, "
-                + "body_preview VARCHAR(500), eml_path VARCHAR(2000) NOT NULL, archived_at TEXT NOT NULL DEFAULT CURRENT_TEXT, "
-                + "UNIQUE(account_id, folder, message_uid))");
+            String legacy = Files.readString(Path.of("src/main/resources/db/sqlite/V1__email_schema.sql"))
+                .replace("CURRENT_TIMESTAMP", "CURRENT_TEXT")
+                .replace("sent_at INTEGER, received_at INTEGER", "sent_at TEXT, received_at TEXT")
+                .replace("archived_at INTEGER NOT NULL DEFAULT (unixepoch('subsec') * 1000)",
+                    "archived_at TEXT NOT NULL DEFAULT CURRENT_TEXT");
+            for (String sql : legacy.split(";")) if (!sql.isBlank()) statement.execute(sql.trim());
             statement.execute("INSERT INTO FengTu_PL_Email_Archive(account_id,account_email,folder,message_uid,"
                 + "sent_at,received_at,eml_path,archived_at) VALUES(7,'owner@example.com','INBOX','42','"
                 + sentAt.toEpochMilli() + "','" + sentAt.toEpochMilli() + "','/tmp/42.eml','"
                 + sentAt.toEpochMilli() + "')");
+            statement.execute("INSERT INTO FengTu_PL_Email_Account(display_name,email,encrypted_password,smtp_host,"
+                + "smtp_port,smtp_security,is_default,created_at) VALUES('Legacy','legacy@example.com','x','smtp',25,"
+                + "'PLAIN',1,'CURRENT_TEXT')");
         }
 
         SchemaMigrator migrator = new SchemaMigrator("sqlite", data);
@@ -60,9 +61,21 @@ class SchemaMigratorTest {
         }
         try (Connection connection = data.getConnection();
              var versions = connection.createStatement().executeQuery(
-                 "SELECT COUNT(*) FROM FengTu_PL_Email_Schema_History WHERE version=2")) {
+                 "SELECT COUNT(*) FROM FengTu_PL_Email_Schema_History WHERE version IN (2,3)")) {
             assertTrue(versions.next());
-            assertEquals(1, versions.getInt(1));
+            assertEquals(2, versions.getInt(1));
+        }
+        try (Connection connection = data.getConnection();
+             var account = connection.createStatement().executeQuery(
+                 "SELECT created_at FROM FengTu_PL_Email_Account WHERE email='legacy@example.com'")) {
+            assertTrue(account.next());
+            assertTrue(!"CURRENT_TEXT".equals(account.getString(1)));
+        }
+        try (Connection connection = data.getConnection();
+             var columns = connection.createStatement().executeQuery("PRAGMA table_info(FengTu_PL_Email_Account)")) {
+            String defaultValue = null;
+            while (columns.next()) if ("created_at".equals(columns.getString("name"))) defaultValue = columns.getString("dflt_value");
+            assertEquals("CURRENT_TIMESTAMP", defaultValue);
         }
     }
 

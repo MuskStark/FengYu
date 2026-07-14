@@ -4,6 +4,24 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ---
 
+## [4.0.0-SNAPSHOT] — Official Email Center plugin
+
+### ✨ Added
+- **Email Center `.fyp`** (`fan.summer.email`) with a sandboxed five-tab Vue/Vuetify/TipTap UI,
+  an isolated official-SDK Java Worker, and package permissions limited to database, email network,
+  and authorized file read/write capabilities.
+- Multi-account SMTP/IMAP configuration, AES-GCM credential storage, address-book/tag CRUD,
+  confirmed single and batch sending, manual IMAP `.eml` collection, archive search/detail,
+  and seven manifest-declared AI tools.
+- Independent dialect migrations and contract coverage for H2, SQLite, MySQL, and PostgreSQL;
+  plugin-owned tables use the `FengTu_PL_Email_` namespace.
+
+### 🐛 Fixed
+- Hardened archive timestamps on SQLite (including upgrade migration), literal wildcard search,
+  account/folder path isolation, UTF-8 filename limits, and temporary-file cleanup.
+
+---
+
 ## [4.0.0-FengYu] — Vuetify MD3 Adoption
 
 Full visual-language switch for the web shell and plugin micro-frontends, from the legacy

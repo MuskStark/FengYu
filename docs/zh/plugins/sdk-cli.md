@@ -77,6 +77,20 @@ public final class MyWorkerMain {
 - 辅助方法：`JsonRpcWorker.string(params, key)`、`JsonRpcWorker.integer(params, key, fallback)`。
 - 用 `maven-shade-plugin` 构建 shaded fat JAR；把 `mainClass` 设为你的 `*WorkerMain`。参见 [构建与部署](/zh/plugins/build-deploy)。
 
+### 数据库环境
+
+清单声明 `database` 权限后，宿主会向 Worker 注入 `FENGYU_DB_TYPE`、`FENGYU_DB_DRIVER`、
+`FENGYU_DB_URL`、`FENGYU_DB_USERNAME`、`FENGYU_DB_PASSWORD` 和 `FENGYU_PLUGIN_DATA_DIR`。
+最后一项默认指向稳定私有目录 `~/.fengyu/plugin-data/<pluginId>/`。
+
+```java
+PluginDatabaseConfig database = PluginDatabaseConfig.fromEnvironment(System.getenv())
+    .orElseThrow(() -> new IllegalStateException("database permission is required"));
+```
+
+这些环境变量只属于 Worker，不得转发给 iframe。插件自行负责迁移、表名前缀和凭据加密；
+详见[插件数据库规范](/zh/plugins/database)。
+
 ## `fengyu plugin` CLI
 
 源码：`plugin-cli/src/cli.mjs`。用法：
