@@ -22,8 +22,11 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -35,6 +38,7 @@ import java.util.UUID;
 public final class EmailArchiveService {
     private static final int MAX_PREVIEW = 500;
     private static final int MAX_PAGE = 100;
+    private static final int MAX_FILENAME_UTF8_BYTES = 254;
     private static final int IMAP_TIMEOUT_MILLIS = 10_000;
 
     private final AccountRepository accounts;
@@ -117,8 +121,9 @@ public final class EmailArchiveService {
         Instant receivedAt = instant(message.getReceivedDate());
         ExtractedContent content = extract(message);
         String preview = boundPreview(content.text());
-        Files.createDirectories(outputDirectory);
-        Path target = outputDirectory.resolve(safeSubject(subject) + "_" + uid + ".eml");
+        Path archiveDirectory = archiveDirectory(outputDirectory, account.id(), folder);
+        Files.createDirectories(archiveDirectory);
+        Path target = archiveDirectory.resolve(archiveFilename(subject, uid));
         Path temporary = target.resolveSibling(target.getFileName() + ".tmp-" + UUID.randomUUID());
         try {
             try (OutputStream output = Files.newOutputStream(temporary)) {
@@ -224,7 +229,40 @@ public final class EmailArchiveService {
         String safe = subject == null ? "message" : subject.trim().replaceAll("[^\\p{L}\\p{N}._-]+", "_")
             .replaceAll("^[._-]+|[._-]+$", "");
         if (safe.isBlank()) safe = "message";
-        return safe.substring(0, Math.min(120, safe.length()));
+        return safe;
+    }
+
+    private static String archiveFilename(String subject, String uid) {
+        String suffix = "_" + uid + ".eml";
+        int available = MAX_FILENAME_UTF8_BYTES - suffix.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        return truncateUtf8(safeSubject(subject), available) + suffix;
+    }
+
+    private static String truncateUtf8(String value, int maxBytes) {
+        StringBuilder truncated = new StringBuilder();
+        int bytes = 0;
+        for (int offset = 0; offset < value.length();) {
+            int codePoint = value.codePointAt(offset);
+            int codePointBytes = codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4;
+            if (bytes + codePointBytes > maxBytes) break;
+            truncated.appendCodePoint(codePoint);
+            bytes += codePointBytes;
+            offset += Character.charCount(codePoint);
+        }
+        return truncated.toString();
+    }
+
+    private static Path archiveDirectory(Path outputDirectory, long accountId, String folder) {
+        return outputDirectory.resolve("account-" + accountId).resolve("folder-" + sha256(folder).substring(0, 24));
+    }
+
+    private static String sha256(String value) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 is unavailable", impossible);
+        }
     }
 
     private static String boundPreview(String text) {
@@ -247,7 +285,10 @@ public final class EmailArchiveService {
     private static String trimToNull(String value) { return blank(value) ? null : value.trim(); }
     private static boolean blank(String value) { return value == null || value.isBlank(); }
     private static String containsPattern(String value) {
-        return blank(value) ? null : "%" + value.trim().toLowerCase(Locale.ROOT) + "%";
+        if (blank(value)) return null;
+        String literal = value.trim().toLowerCase(Locale.ROOT)
+            .replace("!", "!!").replace("%", "!%").replace("_", "!_");
+        return "%" + literal + "%";
     }
     private static String safeMessage(Exception error, String password) {
         Throwable cause = error;

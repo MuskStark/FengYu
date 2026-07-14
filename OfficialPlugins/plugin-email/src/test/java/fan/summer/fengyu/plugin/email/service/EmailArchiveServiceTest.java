@@ -49,6 +49,7 @@ class EmailArchiveServiceTest {
     private GreenMailUser user;
     private EmailDatabase database;
     private EmailArchiveService service;
+    private CredentialCipher credentialCipher;
     private long accountId;
 
     @BeforeEach void startImapAndAccount() throws Exception {
@@ -58,12 +59,12 @@ class EmailArchiveServiceTest {
 
         database = new EmailDatabase(new PluginDatabaseConfig("h2", "org.h2.Driver",
             "jdbc:h2:mem:archive-" + System.nanoTime() + ";DB_CLOSE_DELAY=-1", "sa", "", temp));
-        CredentialCipher cipher = cipher();
-        AccountService accounts = new AccountService(database, cipher);
+        credentialCipher = cipher();
+        AccountService accounts = new AccountService(database, credentialCipher);
         accountId = accounts.save(new AccountService.AccountInput(null, "Collector", "collector@example.com",
             "imap-secret", "127.0.0.1", 25, "PLAIN", "127.0.0.1", greenMail.getImap().getPort(),
             "PLAIN", true));
-        service = new EmailArchiveService(database, cipher);
+        service = new EmailArchiveService(database, credentialCipher);
     }
 
     @AfterEach void stopServer() {
@@ -122,6 +123,34 @@ class EmailArchiveServiceTest {
             "INBOX", null, null, null, null, 0, 10)).getFirst().subject());
     }
 
+    @Test void sameUidInDifferentAccountsAndFoldersUsesDistinctArchivePaths() throws Exception {
+        Instant now = Instant.parse("2026-02-03T04:05:06Z");
+        MailFolder inbox = folder("INBOX");
+        MailFolder receipts = folder("Receipts/2026");
+        append(inbox, message("Shared subject", "sender@example.com", "inbox", false, now), now);
+        append(receipts, message("Shared subject", "sender@example.com", "receipt", false, now), now);
+
+        GreenMailUser otherUser = greenMail.setUser("other@example.com", "other@example.com", "other-secret");
+        AccountService accounts = new AccountService(database, credentialCipher);
+        long otherAccountId = accounts.save(new AccountService.AccountInput(null, "Other", "other@example.com",
+            "other-secret", "127.0.0.1", 25, "PLAIN", "127.0.0.1", greenMail.getImap().getPort(),
+            "PLAIN", false));
+        MailFolder otherInbox = greenMail.getManagers().getImapHostManager().getInbox(otherUser);
+        append(otherInbox, message("Shared subject", "sender@example.com", "other", false, now), now);
+        Path output = temp.resolve("shared-archive");
+
+        service.collect(new ArchiveRequest(accountId, "INBOX", null, null, output), ignored -> { });
+        service.collect(new ArchiveRequest(accountId, "Receipts/2026", null, null, output), ignored -> { });
+        service.collect(new ArchiveRequest(otherAccountId, "INBOX", null, null, output), ignored -> { });
+
+        List<ArchivedMessage> archived = service.search(new EmailArchiveService.SearchFilter(null,
+            null, null, null, null, null, 0, 10));
+        assertEquals(3, archived.size());
+        assertEquals(1, archived.stream().map(ArchivedMessage::messageUid).distinct().count());
+        assertEquals(3, archived.stream().map(ArchivedMessage::emlPath).distinct().count());
+        assertTrue(archived.stream().map(ArchivedMessage::emlPath).map(Path::of).allMatch(Files::isRegularFile));
+    }
+
     @Test void searchAppliesEveryFilterPaginatesAndCapsLimitAtOneHundred() throws Exception {
         MailFolder inbox = folder("INBOX");
         Instant base = Instant.parse("2026-03-01T00:00:00Z");
@@ -151,6 +180,27 @@ class EmailArchiveServiceTest {
             .noneMatch(component -> component.getName().toLowerCase().contains("raweml")));
     }
 
+    @Test void searchTreatsPercentUnderscoreAndEscapeCharacterAsLiteralText() throws Exception {
+        MailFolder inbox = folder("INBOX");
+        Instant now = Instant.parse("2026-03-02T00:00:00Z");
+        append(inbox, message("literal %_! token", "Sender %_! token <literal@example.com>",
+            "literal", false, now), now);
+        append(inbox, message("literal AB! token", "Sender AB! token <decoy@example.com>",
+            "decoy", false, now.plusSeconds(1)), now.plusSeconds(1));
+        service.collect(new ArchiveRequest(accountId, "INBOX", null, null, temp.resolve("literal-search")),
+            ignored -> { });
+
+        List<ArchivedMessage> bySubject = service.search(new EmailArchiveService.SearchFilter(accountId,
+            "INBOX", null, "%_!", null, null, 0, 10));
+        List<ArchivedMessage> bySender = service.search(new EmailArchiveService.SearchFilter(accountId,
+            "INBOX", "%_!", null, null, null, 0, 10));
+
+        assertEquals(List.of("literal %_! token"), bySubject.stream().map(ArchivedMessage::subject).toList());
+        assertEquals(List.of("literal@example.com"), bySender.stream()
+            .map(ArchivedMessage::fromAddress).map(value -> value.substring(value.indexOf('<') + 1, value.indexOf('>')))
+            .toList());
+    }
+
     @Test void deletesFinalEmlWhenMetadataInsertFails() throws Exception {
         MailFolder inbox = folder("INBOX");
         Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
@@ -166,9 +216,27 @@ class EmailArchiveServiceTest {
 
         assertEquals(0, result.newArchived());
         assertEquals(1, result.failures());
-        assertEquals(0, Files.list(output).count());
+        try (var files = Files.walk(output)) {
+            assertEquals(0, files.filter(Files::isRegularFile).count());
+        }
         assertTrue(service.search(new EmailArchiveService.SearchFilter(accountId,
             "INBOX", null, null, null, null, 0, 10)).isEmpty());
+    }
+
+    @Test void cjkArchiveFilenameFitsUtf8ByteLimitAndRetainsUidSuffix() throws Exception {
+        MailFolder inbox = folder("INBOX");
+        Instant now = Instant.parse("2026-03-03T00:00:00Z");
+        append(inbox, message("归档邮件主题".repeat(40), "sender@example.com", "body", false, now), now);
+
+        EmailArchiveService.CollectResult result = service.collect(new ArchiveRequest(accountId, "INBOX",
+            null, null, temp.resolve("cjk-filename")), ignored -> { });
+
+        assertEquals(1, result.newArchived());
+        ArchivedMessage archived = service.search(new EmailArchiveService.SearchFilter(accountId,
+            "INBOX", null, null, null, null, 0, 10)).getFirst();
+        String filename = Path.of(archived.emlPath()).getFileName().toString();
+        assertTrue(filename.endsWith("_" + archived.messageUid() + ".eml"));
+        assertTrue(filename.getBytes(StandardCharsets.UTF_8).length <= 254);
     }
 
     private MailFolder folder(String name) throws Exception {
