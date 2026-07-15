@@ -26,6 +26,14 @@ export { default as FyLoadingState } from './components/FyLoadingState.vue'
 export { default as FyErrorState } from './components/FyErrorState.vue'
 export { default as FyPermissionNotice } from './components/FyPermissionNotice.vue'
 
+// SDK-integrated components.
+export { default as FyFilePicker } from './components/FyFilePicker.vue'
+export { default as FyDirectoryPicker } from './components/FyDirectoryPicker.vue'
+export { default as FyNotificationCenter } from './components/FyNotificationCenter.vue'
+
+// Notification composable + the host-fallback helper it builds on.
+export { useFengYuNotify, sendFengYuNotification } from './composables/useFengYuNotify'
+
 // Re-export the SDK types this library consumes, so plugin authors have a
 // single import surface for the host bindings.
-export type { FengYuClient, Environment, Theme, FileRef } from '@fengyu/plugin-sdk'
+export type { FengYuClient, Environment, Theme, FileRef, FileFilter } from '@fengyu/plugin-sdk'

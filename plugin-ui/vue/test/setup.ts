@@ -22,3 +22,25 @@ class ResizeObserverStub {
 
 // `globalThis` is the same object jsdom's `window` resolves to.
 globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver
+
+// jsdom also lacks `visualViewport`, which Vuetify's overlay location
+// strategy (used by `v-snackbar`, `v-menu`, etc.) reads via `util/box.ts`.
+// Without it, mounting any overlay component throws `ReferenceError:
+// visualViewport is not defined` as an unhandled rejection. This minimal stub
+// mirrors the ResizeObserver shim: it satisfies Vuetify without measuring.
+if (typeof globalThis.visualViewport === 'undefined') {
+  globalThis.visualViewport = {
+    width: 1024,
+    height: 768,
+    offsetLeft: 0,
+    offsetTop: 0,
+    pageLeft: 0,
+    pageTop: 0,
+    scale: 1,
+    onresize: null,
+    onscroll: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  } as unknown as typeof globalThis.visualViewport
+}
