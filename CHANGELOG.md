@@ -7,6 +7,26 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 ## [4.0.0-SNAPSHOT] — Official Email Center plugin
 
 ### ✨ Added
+- **Official plugin UI kit** `@fengyu/plugin-ui` — a Codex-style Vuetify 3 (Material Design 3)
+  component library for generated plugins. Ships `FyPluginShell`, `FyPageHeader`, `FyToolbar`,
+  SDK-backed `FyFilePicker` / `FyDirectoryPicker`, `FyStepWizard`, `FyTaskTable`,
+  `FyNotificationCenter`, the `FyEmptyState` / `FyLoadingState` / `FyErrorState` / `FyPermissionNotice`
+  state panels, and `FyConfirmDialog`, plus `createFengYuVuetify`, `bindFengYuEnvironment`, and
+  `provideFengYuClient` so the scaffolded `main.ts` binds the host theme/locale automatically.
+- **Default CLI template is now Vue/Vuetify** — `fengyu plugin create` scaffolds a Vite project from
+  the `vue-codex` template, runs `npm install` by default (`--no-install` to skip), and its
+  `main.ts` already provides the `FengYuClient` app-wide.
+- **Vite-aware dev and build** — `fengyu plugin dev` detects a Vue/Vite project, spawns Vite (HMR),
+  and serves a loopback simulator at `http://127.0.0.1:4173/__fengyu`; `fengyu plugin build` runs the
+  frontend build first, then validates and atomically writes the `.fyp` (no partial archive on failure).
+- **Theme/locale synchronization** — `bindFengYuEnvironment` calls `ready()` once and subscribes to
+  `environment` events, so host dark/light and en/zh changes propagate into Vuetify live.
+- **Static-plugin compatibility** — legacy `ui/index.html` + `ui/app.js` plugins (no build step)
+  remain fully supported by `dev` and `build`; migration to the Vue/Codex kit is optional.
+- Bilingual `UI Components` documentation page (en + zh) and `plugin-tooling` CI workflow covering
+  the SDK, plugin-ui (typecheck/test/build + Playwright visual suite), and plugin-cli.
+
+### ✨ Added
 - **Email Center `.fyp`** (`fan.summer.email`) with a sandboxed five-tab Vue/Vuetify/TipTap UI,
   an isolated official-SDK Java Worker, and package permissions limited to database, email network,
   and authorized file read/write capabilities.
