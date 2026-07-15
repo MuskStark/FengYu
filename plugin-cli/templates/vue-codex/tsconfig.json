@@ -6,7 +6,6 @@
     "strict": true,
     "skipLibCheck": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["node"],
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
     "noEmit": true

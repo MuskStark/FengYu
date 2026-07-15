@@ -1,0 +1,74 @@
+name: Plugin Tooling
+
+# Type-checks, tests, and builds the plugin SDK, the @fengyu/plugin-ui Vue kit,
+# the @fengyu/plugin-cli, and runs the Playwright visual suite. Triggers only
+# when the plugin tooling changes.
+
+on:
+  push:
+    branches: [4.0.0-FengYu, main]
+    paths:
+      - 'plugin-ui/**'
+      - 'plugin-cli/**'
+      - 'plugin-sdk/**'
+      - '.github/workflows/plugin-tooling.yml'
+  pull_request:
+    paths:
+      - 'plugin-ui/**'
+      - 'plugin-cli/**'
+      - 'plugin-sdk/**'
+      - '.github/workflows/plugin-tooling.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugin-tooling-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          # Cache by every committed lockfile under the three packages.
+          # plugin-sdk/typescript and plugin-cli may not commit a lockfile; the
+          # glob still matches the ones that exist (plugin-ui/vue).
+          cache-dependency-path: |
+            plugin-sdk/typescript/package-lock.json
+            plugin-ui/vue/package-lock.json
+            plugin-cli/package-lock.json
+
+      # --- SDK: typecheck-free, vitest unit tests ---
+      - run: cd plugin-sdk/typescript && npm install && npm test
+
+      # --- @fengyu/plugin-ui: typecheck + unit tests + Vite build ---
+      - run: cd plugin-ui/vue && npm install && npm run typecheck && npm test && npm run build
+
+      # --- @fengyu/plugin-cli: node --test ---
+      - run: cd plugin-cli && npm install && npm test
+
+      # --- Visual regression (Playwright) ---
+      - run: npx playwright install --with-deps chromium
+        working-directory: plugin-ui/vue
+      - run: npm run test:visual
+        working-directory: plugin-ui/vue
+
+      # Upload visual diffs only when the suite fails, so reviewers can see the
+      # changed snapshots without polluting green runs.
+      - name: Upload visual diff report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            plugin-ui/vue/playwright-report
+            plugin-ui/vue/e2e/workbench.spec.ts-snapshots
+          if-no-files-found: ignore
+          retention-days: 14
