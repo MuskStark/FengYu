@@ -3,3 +3,8 @@ dist/
 *.tsbuildinfo
 .vite/
 coverage/
+# Playwright transient run artifacts (baselines under
+# e2e/workbench.spec.ts-snapshots/ ARE committed as reviewed fixtures).
+test-results/
+playwright-report/
+playwright/.cache/

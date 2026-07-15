@@ -12,7 +12,16 @@
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
     "useDefineForClassFields": true,
-    "types": ["vitest/globals", "node"]
+    "types": ["vitest/globals", "node", "@playwright/test", "@axe-core/playwright"]
   },
-  "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.ts", "test/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.vue",
+    "vite.config.ts",
+    "vite.e2e.config.ts",
+    "playwright.config.ts",
+    "test/**/*.ts",
+    "e2e/**/*.ts",
+    "e2e/**/*.vue"
+  ]
 }
