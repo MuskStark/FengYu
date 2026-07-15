@@ -55,7 +55,7 @@ See [AI Tools](/en/plugins/ai-tools) for the end-to-end flow.
 
 ## Valid category values
 
-`category` must be one of:
+`category` is a free-form advisory string the UI uses to group plugins — the host does **not** validate it against a fixed set (it upper-cases whatever you write, defaulting to `OTHER` when blank). Use one of these conventional values for consistency:
 
 | Value | Use for |
 | --- | --- |
@@ -63,6 +63,7 @@ See [AI Tools](/en/plugins/ai-tools) for the end-to-end flow.
 | `text` | Text editing / rendering (e.g. `fan.summer.markdown`) |
 | `image` | Image processing |
 | `net` | Networking |
+| `network` | Networking (e.g. `fan.summer.email`) |
 | `file` | File processing (e.g. `fan.summer.excel`) |
 | `ai` | AI-centric plugins |
 | `other` | Anything not covered above (the scaffolder's default) |
@@ -75,6 +76,8 @@ See [AI Tools](/en/plugins/ai-tools) for the end-to-end flow.
 | --- | --- |
 | `files.read` | `POST /api/plugin-runtime/{id}/files/upload`, `upload-directory`, `native` (read access) |
 | `files.write` | `POST .../files/native` (write access), `POST .../files/output`, `GET .../files/export/{ref}` |
+| `database` | The host injects a datasource connection (`FENGYU_DB_*` + a private data directory) into the worker environment. See [Plugin Database Standard](/en/plugins/database). |
+| `network.email` | The worker may open SMTP/IMAP connections (used by `fan.summer.email`). |
 
 A file operation attempted without the matching permission is rejected with `403`. See [File I/O](/en/plugins/file-io).
 
