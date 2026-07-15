@@ -16,6 +16,16 @@ export { fengyuCodexLight, fengyuCodexDark } from './theme'
 export { fengyuDefaults } from './defaults'
 export { provideFengYuClient, useFengYuClient, FENGYU_CLIENT_KEY } from './client'
 
+// Layout and standard state components.
+export { default as FyPluginShell } from './components/FyPluginShell.vue'
+export type { FyNavItem } from './components/FyPluginShell.vue'
+export { default as FyPageHeader } from './components/FyPageHeader.vue'
+export { default as FyToolbar } from './components/FyToolbar.vue'
+export { default as FyEmptyState } from './components/FyEmptyState.vue'
+export { default as FyLoadingState } from './components/FyLoadingState.vue'
+export { default as FyErrorState } from './components/FyErrorState.vue'
+export { default as FyPermissionNotice } from './components/FyPermissionNotice.vue'
+
 // Re-export the SDK types this library consumes, so plugin authors have a
 // single import surface for the host bindings.
 export type { FengYuClient, Environment, Theme, FileRef } from '@fengyu/plugin-sdk'
