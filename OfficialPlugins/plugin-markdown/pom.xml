@@ -17,7 +17,7 @@
 
   <name>FengYu Plugin — Markdown</name>
   <description>Official Markdown editor plugin (v2, headless): server-side commonmark render +
-    micro-frontend split-pane editor. Phase 1 walking-skeleton carrier.</description>
+    standalone Vue micro-frontend split-pane editor.</description>
 
   <dependencies>
     <dependency><groupId>fan.summer.fengyu.sdk</groupId><artifactId>fengyu-plugin-sdk</artifactId></dependency>

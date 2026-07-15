@@ -43,7 +43,7 @@ class ExcelWorkerMainTest {
                 "selectedSheets", List.of("Alpha")))) + "\n";
         ByteArrayOutputStream output = new ByteArrayOutputStream();
 
-        ExcelWorkerMain.worker().run(
+        ExcelWorkerMain.worker(new ExcelRpcHandlers(new ExcelSessionStore())).run(
             new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)), output);
 
         String responses = output.toString(StandardCharsets.UTF_8);

@@ -4,17 +4,25 @@ import { describe, expect, it } from 'vitest'
 import en from '../i18n/en'
 import zhCN from '../i18n/zh-CN'
 
-describe('Email Center responsive shell', () => {
-  it('applies Codex defaults to every interactive Vuetify control family', () => {
+describe('Email Center shell uses the official plugin-ui foundation', () => {
+  it('bootstraps Vuetify + client via @fengyu/plugin-ui', () => {
     const main = fs.readFileSync(path.resolve('src/main.ts'), 'utf8')
+
+    // The hand-rolled createVuetify + bespoke themes are gone; the kit owns them.
+    expect(main).not.toContain('emailLightTheme')
+    expect(main).not.toContain('emailDarkTheme')
+    expect(main).toContain('createFengYuVuetify')
+    expect(main).toContain('provideFengYuClient')
+    // The app still wires Pinia + vue-i18n and mounts into #app.
+    expect(main).toContain('createPinia')
+    expect(main).toContain('.mount(\'#app\')')
+  })
+
+  it('keeps the email layout styling on top of the shared component system', () => {
     const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
 
-    for (const component of ['VBtn', 'VTextField', 'VTextarea', 'VSelect', 'VCombobox',
-      'VCheckbox', 'VCheckboxBtn', 'VChip', 'VList', 'VTable', 'VDialog']) {
-      expect(main).toMatch(new RegExp(`${component}:\\s*\\{`))
-    }
-    expect(main).toContain('emailLightTheme')
-    expect(main).toContain('emailDarkTheme')
+    // Layout grid + responsive task rail are email-specific CSS layered over the kit.
+    expect(css).toContain('.email-layout')
     expect(css).toContain('.email-layout .v-field__outline')
     expect(css).toContain('.email-layout .v-btn--variant-tonal')
     expect(css).toContain('.email-layout .v-selection-control')
@@ -22,7 +30,7 @@ describe('Email Center responsive shell', () => {
     expect(css).toContain('.v-overlay-container .v-card')
   })
 
-  it('keeps forms spacious, buttons visible, and popups inside the Codex component system', () => {
+  it('keeps forms spacious, buttons visible, and popups inside the component system', () => {
     const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
     const components = fs.readdirSync(path.resolve('src/components'))
       .filter(name => name.endsWith('.vue'))
