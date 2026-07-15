@@ -35,7 +35,9 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
 
-        <!-- Dependency versions (consumed by child modules) -->
+        <!-- Repository-wide build versions consumed by host, SDK/API, and same-repository
+             official plugin modules. dependencyManagement selects build versions only; it
+             does not mean the FengYu host provides these libraries to isolated Workers. -->
         <javafx.version>21.0.2</javafx.version>
         <lombok.version>1.18.42</lombok.version>
         <fengyu.api.version>${revision}</fengyu.api.version>
@@ -49,6 +51,7 @@
              like JaninoEventEvaluatorBase). -->
         <logback.version>1.5.34</logback.version>
         <gson.version>2.13.1</gson.version>
+        <jackson.version>2.21.4</jackson.version>
         <jsoup.version>1.21.2</jsoup.version>
         <commonmark.version>0.24.0</commonmark.version>
         <pdfbox.version>3.0.4</pdfbox.version>
@@ -65,6 +68,7 @@
              parent do not reliably propagate managed versions to children), but the
              version pins stay here as the single source of truth. -->
         <spring-boot.version>4.1.0</spring-boot.version>
+        <spring-framework.version>7.0.8</spring-framework.version>
         <spring-ai.version>2.0.0</spring-ai.version>
 
         <!-- Plugin versions -->
@@ -227,6 +231,11 @@
                 <version>${gson.version}</version>
             </dependency>
             <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
+            <dependency>
                 <groupId>org.jsoup</groupId>
                 <artifactId>jsoup</artifactId>
                 <version>${jsoup.version}</version>
@@ -255,6 +264,16 @@
                 <groupId>com.microsoft.playwright</groupId>
                 <artifactId>playwright</artifactId>
                 <version>${playwright.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-context</artifactId>
+                <version>${spring-framework.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-model</artifactId>
+                <version>${spring-ai.version}</version>
             </dependency>
             <!-- Spring Boot starter + Spring AI artifacts: versions supplied by the imported BOMs above. -->
             <dependency>
