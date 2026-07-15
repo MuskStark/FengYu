@@ -8,6 +8,34 @@ lang: zh-CN
 
 插件的 `ui/` 目录是一个自包含的微前端（MF），宿主把它作为静态资源通过 `/plugin-runtime/{id}/**` 提供，并加载进一个**沙箱化的 iframe**，受严格的内容安全策略（CSP）约束。在 iframe 内部，`@fengyu/plugin-sdk` 包提供了一个 `FengYuClient`，通过 `postMessage` 与宿主桥接。插件永远不会直接与操作系统交互——每一个特权动作都经由 client 进行。
 
+## 默认入口：一个 Vue/Vuetify 应用
+
+自 4.0 起，`fengyu plugin create` 脚手架生成的是一个构建到 `ui/` 的 Vue 3 + Vuetify 应用。生成的 `src/main.ts` 就是全部启动逻辑——它创建 Vuetify 实例、绑定宿主主题/locale、注入 SDK client 并挂载应用：
+
+```ts
+import { createApp } from 'vue'
+import { fengyu } from '@fengyu/plugin-sdk'
+import { bindFengYuEnvironment, createFengYuVuetify, provideFengYuClient } from '@fengyu/plugin-ui'
+import '@fengyu/plugin-ui/style.css'
+import App from './App.vue'
+
+if (!fengyu) throw new Error('FengYu SDK requires a browser environment')
+// 绑定到一个局部变量，使得收窄（非 undefined）的类型能撑过下面
+// 的顶层 `await`——TS 会跨 await 把导入的 `const` 绑定重新放宽。
+const client = fengyu
+const vuetify = createFengYuVuetify()
+const disposeEnvironment = await bindFengYuEnvironment(vuetify, client)
+const app = createApp(App)
+provideFengYuClient(app, client)
+app.use(vuetify)
+app.mount('#app')
+window.addEventListener('pagehide', () => { disposeEnvironment(); client.dispose() }, { once: true })
+```
+
+`bindFengYuEnvironment` 会先调用一次 `fengyu.ready()`，再订阅 `environment` 事件，因此主题与 locale 会自动从宿主传播进 Vuetify。在组件内部，调用 `useFengYuClient()` 获取 `FengYuClient`，而不是直接 import `fengyu` 单例。完整的组件套件见 [UI 组件](/zh/plugins/ui-components) 页面。
+
+旧式静态插件——手写的 `ui/index.html` + `ui/app.js`，`import { fengyu } from './sdk.js'`——依然被接受。本页其余部分描述**两种**入口方式共用的 SDK API。
+
 ## 沙箱化 iframe + CSP
 
 宿主加载入口 HTML 并应用一条内容安全策略，限制 MF 能做什么。你会遇到以下后果：
@@ -127,6 +155,7 @@ document.querySelector('#hello').onclick = async () => {
 
 ## 下一步
 
+- [UI 组件](/zh/plugins/ui-components)——脚手架应用所用的 `@fengyu/plugin-ui` Vuetify 套件。
 - [文件 I/O](/zh/plugins/file-io)——每个 `files.*` 方法所需的授权。
 - [SDK 与 CLI](/zh/plugins/sdk-cli)——完整的 TypeScript + Java SDK 参考。
 - [常见陷阱](/zh/plugins/pitfalls)——CSP、MF Vue 去重与 FileRef 时机。

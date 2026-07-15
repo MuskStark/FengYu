@@ -8,6 +8,34 @@ lang: en
 
 The plugin's `ui/` directory is a self-contained micro-frontend (MF) that the host serves as static assets under `/plugin-runtime/{id}/**` and loads into a **sandboxed iframe** under a strict Content Security Policy. Inside the iframe, the `@fengyu/plugin-sdk` package provides a `FengYuClient` that bridges to the host over `postMessage`. The plugin never talks to the OS directly — every privileged action goes through the client.
 
+## The default entry: a Vue/Vuetify app
+
+Since 4.0, `fengyu plugin create` scaffolds a Vue 3 + Vuetify app that builds into `ui/`. The generated `src/main.ts` is the whole bootstrap — it creates the Vuetify instance, binds the host theme/locale, provides the SDK client, and mounts the app:
+
+```ts
+import { createApp } from 'vue'
+import { fengyu } from '@fengyu/plugin-sdk'
+import { bindFengYuEnvironment, createFengYuVuetify, provideFengYuClient } from '@fengyu/plugin-ui'
+import '@fengyu/plugin-ui/style.css'
+import App from './App.vue'
+
+if (!fengyu) throw new Error('FengYu SDK requires a browser environment')
+// Bind to a local so the narrowed (non-undefined) type survives the
+// top-level `await` below — TS widens imported `const` bindings across await.
+const client = fengyu
+const vuetify = createFengYuVuetify()
+const disposeEnvironment = await bindFengYuEnvironment(vuetify, client)
+const app = createApp(App)
+provideFengYuClient(app, client)
+app.use(vuetify)
+app.mount('#app')
+window.addEventListener('pagehide', () => { disposeEnvironment(); client.dispose() }, { once: true })
+```
+
+`bindFengYuEnvironment` calls `fengyu.ready()` once and then subscribes to `environment` events, so theme and locale propagate from the host into Vuetify automatically. Inside your components, call `useFengYuClient()` to get the `FengYuClient` instead of importing the `fengyu` singleton directly. The full component kit is documented on the [UI Components](/en/plugins/ui-components) page.
+
+Legacy static plugins — a hand-written `ui/index.html` + `ui/app.js` that `import { fengyu } from './sdk.js'` — are still accepted. The rest of this page describes the SDK API that **both** entry styles share.
+
 ## Sandboxed iframe + CSP
 
 The host loads the entry HTML and applies a Content Security Policy that restricts what the MF may do. Consequences you will hit:
@@ -127,6 +155,7 @@ document.querySelector('#hello').onclick = async () => {
 
 ## Next steps
 
+- [UI Components](/en/plugins/ui-components) — the `@fengyu/plugin-ui` Vuetify kit the scaffolded app uses.
 - [File I/O](/en/plugins/file-io) — what each `files.*` method authorizes.
 - [SDK & CLI](/en/plugins/sdk-cli) — full TypeScript + Java SDK reference.
 - [Pitfalls](/en/plugins/pitfalls) — CSP, MF Vue dedupe, and FileRef timing.

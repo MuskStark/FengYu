@@ -1,6 +1,6 @@
 ---
 title: 入门
-description: 用 fengyu plugin create 脚手架生成一个 FengYu 插件，了解生成的目录结构，并用 fengyu plugin dev 在本地运行它。
+description: 用 fengyu plugin create 脚手架生成一个 FengYu 插件，了解生成的 Vue/Vuetify 项目结构，并用 fengyu plugin dev 在本地运行它。
 lang: zh-CN
 ---
 
@@ -16,7 +16,30 @@ lang: zh-CN
 fengyu plugin create ./my-plugin --id com.example.my-plugin
 ```
 
-脚手架会拒绝覆盖已存在的目录，它会写入一份初始的 `manifest.json`、`package.json`、一份最小化的 `ui/index.html` + `ui/app.js`，并把 SDK bundle 复制到 `ui/sdk.js`。人类可读的 `name` 由 `--id` 的最后一段派生（本例中为 `My Plugin`）。
+脚手架**默认会在新项目中执行 `npm install`**，使其立即可运行。传入 `--no-install` 可跳过安装（例如你想使用其他包管理器或本地 `file:` 依赖时）：
+
+```bash
+fengyu plugin create ./my-plugin --id com.example.my-plugin --no-install
+```
+
+脚手架会拒绝覆盖已存在的目录，并基于 `vue-codex` 模板写入一个 Vue 3 + Vuetify（Material Design 3）项目。人类可读的 `name` 由 `--id` 的最后一段派生（本例中为 `My Plugin`）。FengYu UI 组件从 [`@fengyu/plugin-ui`](/zh/plugins/ui-components) 导入；生成的 `src/main.ts` 已经绑定了宿主主题与 locale，你无需自行接线。
+
+## 快速开始
+
+从无到有打包出 `.fyp` 的完整循环只需四条命令：
+
+```bash
+fengyu plugin create ./my-plugin --id com.example.my-plugin
+cd my-plugin
+fengyu plugin dev .
+fengyu plugin build .
+```
+
+- `create` 默认会安装依赖；`--no-install` 可跳过。
+- `src/main.ts` 已经绑定主题/locale，并把 `FengYuClient` 注入整个应用——见 [UI 组件](/zh/plugins/ui-components)。
+- 你用来组合的基础控件（`v-btn`、`v-card`、`v-list`……）就是普通的 Vuetify 控件，已由 `createFengYuVuetify` 全局注册。
+- FengYu 组件（`FyFilePicker`、`FyStepWizard`……）从 `@fengyu/plugin-ui` 导入。
+- 旧式静态插件（没有构建步骤的纯 `ui/index.html` + `ui/app.js`）依然被 `dev` 与 `build` 完整支持；迁移是**可选的**。
 
 ## 目录结构
 
@@ -25,16 +48,22 @@ fengyu plugin create ./my-plugin --id com.example.my-plugin
 ```
 my-plugin/
 ├── manifest.json     # 元数据、权限、aiTools——见 /zh/plugins/manifest
-├── package.json      # npm 清单；依赖 @fengyu/plugin-sdk
-└── ui/
-    ├── index.html    # 入口 HTML，通过 /plugin-runtime/{id}/ui/index.html 提供
-    ├── app.js        # 你的 UI 代码；import './sdk.js'
-    └── sdk.js        # @fengyu/plugin-sdk bundle（由脚手架复制）
+├── package.json      # npm 清单；依赖 @fengyu/plugin-sdk + @fengyu/plugin-ui
+├── index.html        # Vite 入口 HTML
+├── vite.config.ts    # 构建到 ./ui（从而 manifest.ui.entry 能解析）
+├── tsconfig.json
+└── src/
+    ├── main.ts       # 挂载应用、绑定主题/locale、注入 FengYuClient
+    └── App.vue       # 你的 UI：FyPluginShell + FyPageHeader + FyFilePicker + ……
 ```
 
-要组成一个可运行的包，还缺一件东西——worker——由你自己添加：
+::: tip 静态插件
+旧式静态插件保留原有结构——`ui/index.html` + `ui/app.js` + 复制的 `ui/sdk.js`，无 Vite。`dev` 与 `build` 会自动探测项目类型。参见 [UI 微前端](/zh/plugins/ui-microfrontend)。
+:::
 
-- `backend/worker.jar`——你的 JSON-RPC worker 可执行文件，使用 Java Worker SDK 构建（参见 [Worker](/zh/plugins/worker) 与 [构建与部署](/zh/plugins/build-deploy)）。在 `manifest.json` 的 `backend.command` 下声明其启动命令。
+要组成一个连接后端的插件，还缺一件东西——worker，由你自己添加：
+
+- `backend/worker.jar`——你的 JSON-RPC worker 可执行文件，使用 Java Worker SDK 构建（参见 [Worker](/zh/plugins/worker) 与 [构建与部署](/zh/plugins/build-deploy)）。在 `manifest.json` 的 `backend.command` 下声明其启动命令。开发模式下，模拟器会用 mock 回答 `rpc.invoke`，因此你可以在 worker 存在之前先把 UI 做好。
 
 ## 编辑清单
 
@@ -51,33 +80,32 @@ my-plugin/
   "icon": "puzzle-outline",
   "category": "other",
   "ui": { "entry": "ui/index.html" },
-  "backend": { "command": "java -jar backend/worker.jar", "protocol": "json-rpc-2.0" },
   "permissions": [],
   "official": false,
   "aiTools": []
 }
 ```
 
-完整的 schema——包括每一个合法的 `category` 与 `permissions` 取值——见 [清单](/zh/plugins/manifest)。
+注意 `ui.entry` 指向 `ui/index.html`——这是 `vite build` 的**输出**（由 `vite.config.ts` 的 `build.outDir: 'ui'` 配置）。完整的 schema——包括每一个合法的 `category` 与 `permissions` 取值——见 [清单](/zh/plugins/manifest)。
 
 ## 在本地运行
 
-`fengyu plugin dev` 会启动一个微型的回环开发宿主，提供你的 `ui/` 并模拟宿主的 `postMessage` 桥，让你无需后端即可驱动 `FengYuClient`：
+`fengyu plugin dev` 会探测出 Vue/Vite 项目，启动 Vite（带 HMR），并提供一个回环模拟器页面，把你的应用托管在沙箱化 iframe 中，并回答 SDK 的 `postMessage` 调用：
 
 ```bash
-fengyu plugin dev --port 4173
+fengyu plugin dev .
 ```
 
 - 开发宿主仅绑定 `127.0.0.1`。
-- 打开打印出的 URL（`http://127.0.0.1:4173/__fengyu`）会加载一个 RPC 检查器外壳，它把你的 `ui/index.html` 托管在一个沙箱化的 iframe 中。
-- 文件变更会通过 Server-Sent Events 触发热重载。
-- `rpc.invoke` 调用会返回一个开发用的 mock `{success:true, devMock:true, method, params}`——当你需要真实行为时再连接真实的 worker。
-
-默认端口是 `4173`；省略 `--port` 即使用它。
+- 打开打印出的 URL（`http://127.0.0.1:4173/__fengyu`）会加载 RPC 检查器外壳；它的 iframe 指向 Vite 开发服务器，所以编辑会热重载。
+- 模拟器用当前主题/locale 回答 `host.ready`，用开发 mock `{success:true, devMock:true, method, params}` 回答 `rpc.invoke`，用示例文件回答 `files.open`，用成功回答 `notify`。
+- 在检查器的控制按钮上切换**主题**（dark/light）与 **locale**（en/zh），以验证你的 UI 是否对 `bindFengYuEnvironment` 做出反应。
+- 默认端口是 `4173`；传入 `--port` 可更改。
 
 ## 下一步
 
+- [UI 组件](/zh/plugins/ui-components)——`@fengyu/plugin-ui` 套件：外壳、文件选择器、步骤向导等。
 - [清单](/zh/plugins/manifest)——每个字段、类型与默认值。
 - [Worker（JSON-RPC）](/zh/plugins/worker)——编写 `backend/worker.jar`。
-- [UI 微前端](/zh/plugins/ui-microfrontend)——你的 `ui/app.js` 使用的 `FengYuClient` API。
+- [UI 微前端](/zh/plugins/ui-microfrontend)——你的 UI 对话的 `FengYuClient` API。
 - [构建与部署](/zh/plugins/build-deploy)——用 `fengyu plugin build` 生成 `.fyp`。
