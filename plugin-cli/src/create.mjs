@@ -1,2 +1,87 @@
-import fs from 'node:fs/promises';import path from 'node:path';import{fileURLToPath}from'node:url';
-export async function createPlugin(directory,id){const root=path.resolve(directory);try{await fs.access(root);throw new Error(`directory already exists: ${root}`)}catch(e){if(e.message.startsWith('directory already'))throw e}await fs.mkdir(path.join(root,'ui'),{recursive:true});const name=id.split('.').at(-1).replace(/[-_]/g,' ');const manifest={schemaVersion:1,id,name:name.replace(/\b\w/g,c=>c.toUpperCase()),description:'A FengYu plugin',version:'1.0.0',author:'',icon:'puzzle-outline',category:'other',ui:{entry:'ui/index.html'},permissions:[],official:false,aiTools:[]};await fs.writeFile(path.join(root,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');await fs.writeFile(path.join(root,'package.json'),JSON.stringify({name:id,private:true,type:'module',dependencies:{'@fengyu/plugin-sdk':'^1.0.0'}},null,2)+'\n');await fs.writeFile(path.join(root,'ui/index.html'),'<!doctype html><html><body><h1>FengYu Plugin</h1><button id="hello">Call host</button><pre id="out"></pre><script type="module" src="app.js"></script></body></html>\n');await fs.writeFile(path.join(root,'ui/app.js'),"import { fengyu } from './sdk.js';\nawait fengyu.ready();\ndocument.querySelector('#hello').onclick=async()=>document.querySelector('#out').textContent=JSON.stringify(await fengyu.invoke('hello',{}),null,2);\n");let sdk;try{sdk=fileURLToPath(import.meta.resolve('@fengyu/plugin-sdk'))}catch{sdk=fileURLToPath(new URL('../../plugin-sdk/typescript/dist/index.js',import.meta.url))}await fs.copyFile(sdk,path.join(root,'ui/sdk.js'));return root}
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { runCommand } from './commands.mjs'
+
+const TEMPLATES_DIR = fileURLToPath(new URL('../templates', import.meta.url))
+const VUE_CODEX_DIR = path.join(TEMPLATES_DIR, 'vue-codex')
+
+/**
+ * Scaffold a Codex-style Vue/Vuetify plugin project into `directory`.
+ *
+ * Recursively copies the `vue-codex` template, applying `{{pluginId}}` /
+ * `{{pluginName}}` placeholders to the files that contain them, then (unless
+ * `install` is false) runs `npm install`. On install failure the scaffold is
+ * left in place and a descriptive error (with the original as `cause`) is thrown.
+ *
+ * @param {string} directory - target project root (must not already exist)
+ * @param {string} id - reverse-domain plugin id, e.g. `com.example.demo`
+ * @param {{ install?: boolean, run?: (command: string, args: string[], options?: object) => Promise<unknown> }} [options]
+ * @returns {Promise<string>} the resolved project root
+ */
+export async function createPlugin(directory, id, { install = true, run = runCommand } = {}) {
+  const root = path.resolve(directory)
+  await ensureEmpty(root)
+  const pluginName = humanName(id)
+  await renderTemplate(VUE_CODEX_DIR, root, { '{{pluginId}}': id, '{{pluginName}}': pluginName })
+
+  if (install) {
+    try {
+      await run('npm', ['install'], { cwd: root })
+    } catch (error) {
+      throw new Error(
+        `Scaffold created at ${root}, but npm install failed. Run: cd ${root} && npm install`,
+        { cause: error },
+      )
+    }
+  }
+  return root
+}
+
+/** Resolve a human-readable, title-cased plugin name from a reverse-domain id. */
+function humanName(id) {
+  const last = id.split('.').at(-1).replace(/[-_]/g, ' ')
+  return last.replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+/** Reject if `root` already exists; otherwise create it (with parents). */
+async function ensureEmpty(root) {
+  try {
+    await fs.access(root)
+    throw new Error(`directory already exists: ${root}`)
+  } catch (error) {
+    if (error.message.startsWith('directory already')) throw error
+  }
+  await fs.mkdir(root, { recursive: true })
+}
+
+/**
+ * Recursively copy `src` into `dest`. Files ending in `.tpl` are written
+ * without that extension. Every file is read as UTF-8 and has placeholder
+ * tokens substituted; files containing no tokens are left unchanged by the
+ * (no-op) split/join, so only `{{pluginId}}` / `{{pluginName}}` are affected.
+ */
+async function renderTemplate(src, dest, replacements) {
+  const entries = await fs.readdir(src, { withFileTypes: true })
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name)
+    const isTpl = entry.name.endsWith('.tpl')
+    const outName = isTpl ? entry.name.slice(0, -'.tpl'.length) : entry.name
+    const destPath = path.join(dest, outName)
+    if (entry.isDirectory()) {
+      await fs.mkdir(destPath, { recursive: true })
+      await renderTemplate(srcPath, destPath, replacements)
+    } else {
+      const raw = await fs.readFile(srcPath, 'utf8')
+      await fs.writeFile(destPath, applyPlaceholders(raw, replacements))
+    }
+  }
+}
+
+function applyPlaceholders(text, replacements) {
+  let out = text
+  for (const [token, value] of Object.entries(replacements)) {
+    out = out.split(token).join(value)
+  }
+  return out
+}
