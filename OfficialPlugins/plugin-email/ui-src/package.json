@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@fengyu/plugin-sdk": "file:../../../plugin-sdk/typescript",
+    "@fengyu/plugin-ui": "file:../../../plugin-ui/vue",
     "@mdi/js": "^7.4.47",
     "@tiptap/extension-color": "^2.27.2",
     "@tiptap/extension-link": "^2.27.2",

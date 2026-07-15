@@ -1,14 +1,11 @@
 package fan.summer.fengyu.plugin.excel;
 
-import org.springframework.stereotype.Component;
-
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 
 /** In-memory per-session {@link SplitConfig} store; also tracks the most-recently-touched
  *  session so stateless AI tools can operate on the "current" workflow. */
-@Component
 public class ExcelSessionStore {
 
     private final ConcurrentHashMap<String, SplitConfig> byId = new ConcurrentHashMap<>();
