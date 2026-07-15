@@ -6,7 +6,7 @@ lang: en
 
 # Build & Deploy
 
-A `.fyp` is just a zip archive with a fixed layout. There are two build flows: the **single-plugin CLI flow** for third-party plugins, and the **official multi-plugin script** that assembles and signs the two shipped plugins. Both end with a `.fyp` you install through the [marketplace](/en/plugins/marketplace).
+A `.fyp` is just a zip archive with a fixed layout. There are two build flows: the **single-plugin CLI flow** for third-party plugins, and the **official multi-plugin script** that assembles the three shipped official plugins. Both end with a `.fyp` you install through the [marketplace](/en/plugins/marketplace).
 
 ## The `.fyp` layout
 
@@ -50,7 +50,7 @@ Workers are shaded fat JARs produced by `maven-shade-plugin`. Set `finalName` an
 </plugin>
 ```
 
-The official plugins use the same recipe: `markdown-worker` / `excel-worker` as the `finalName`, with main classes `MarkdownWorkerMain` / `ExcelWorkerMain`. See [Worker (JSON-RPC)](/en/plugins/worker) for writing the worker itself.
+The official plugins use the same recipe: `markdown-worker` / `excel-worker` / `email-worker` as the `finalName`, with main classes `MarkdownWorkerMain` / `ExcelWorkerMain` / `EmailWorkerMain`. See [Worker (JSON-RPC)](/en/plugins/worker) for writing the worker itself.
 
 ## Single-plugin build (CLI)
 
@@ -68,15 +68,16 @@ fengyu plugin build --out dist-package/<id>-<version>.fyp
 
 ## Official multi-plugin build
 
-The two shipped plugins are assembled by `OfficialPlugins/build-packages.sh`. It does, in order:
+The three shipped plugins are assembled by `OfficialPlugins/build-packages.sh`. It does, in order:
 
-1. **Builds the TypeScript SDK** (`plugin-sdk/typescript`) and copies the bundle into each plugin's `ui/sdk.js`.
-2. **Runs the Excel UI tests** and **validates the POI services** the worker depends on.
-3. **Assembles** `packages/{markdown,excel}/` for each plugin, laying out:
+1. **Builds the worker JARs** for all three plugin modules (`plugin-markdown`, `plugin-excel`, `plugin-email`).
+2. **Builds the TypeScript SDK** (`plugin-sdk/typescript`) and copies the bundle into the markdown and excel `ui/sdk.js`.
+3. **Builds the Email UI** (`plugin-email/ui-src`) from source and runs the **Excel UI tests** + **validates the POI services** and the Email worker's manifest main class.
+4. **Assembles** `packages/{markdown,excel,email}/` for each plugin, laying out:
    - `manifest.json`
-   - `ui/` (entry HTML + assets, including the `ui/sdk.js` from step 1)
+   - `ui/` (entry HTML + assets, including `ui/sdk.js` for markdown/excel)
    - `backend/worker.jar` (the shaded jar from the matching `-worker` module)
-4. **Zips** each assembled tree to `target/packages/fan.summer.{markdown,excel}-4.0.0.fyp`.
+5. **Zips** each assembled tree to `target/packages/fan.summer.{markdown,excel,email}-4.0.0.fyp`, then runs post-build checks (e.g. the email entry HTML must declare UTF-8 and contain no icon font).
 
 The resulting `.fyp` files are what the `OfficialPluginSeeder` installs into a fresh host. Their manifests carry `"official": true`, so the descriptor `source` is `OFFICIAL`.
 

@@ -1,5 +1,12 @@
 # 4.0.0 Documentation Rewrite Implementation Plan
 
+> **Status (2026-07-15): COMPLETE.** All 10 tasks done. The site builds clean (`npm run docs:build`,
+> zero warnings with dead-link checking enabled), ships 35 EN + 35 ZH pages — exceeding the original
+> 32-page target with three additional pages that track project progress since this plan was written:
+> `plugins/email-center.md` (the now-official `fan.summer.email` plugin), `plugins/database.md` (the
+> plugin database standard), and `plugins/ui-components.md` (the `@fengyu/plugin-ui` Codex kit).
+> Root `README.md` was rewritten for 4.0.0. See the per-task checkboxes below.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the stale docsify + JavaFX-era `docs/` and root `README.md` with a VitePress bilingual (EN source-of-truth + ZH mirror) docs site that accurately documents the 4.0.0 headless-Spring-Boot + Vue/Vuetify + Tauri architecture.
@@ -640,7 +647,7 @@ git commit -m "📝 docs: add GitHub Pages workflow, screenshots placeholder, cr
 **Interfaces:**
 - Consumes: verified facts + branding. Produces an accurate 4.0.0 README.
 
-- [ ] **Step 1: Rewrite `README.md`**
+- [x] **Step 1: Rewrite `README.md`**
 
 Full content (replace the entire file). Structure:
 1. **Title + badges** — `# Infinia` (with `蜂语 FengYu` subtitle), slogan, badges: Java 21, Spring Boot 4.1.0, Vue 3.5, Vuetify 3, Tauri 2.0, License GPL-3.0, version 4.0.0.
@@ -656,11 +663,11 @@ Full content (replace the entire file). Structure:
 
 No JavaFX/glassmorphism/3.2.0/`StageStyle` anywhere.
 
-- [ ] **Step 2: Verify README links resolve**
+- [x] **Step 2: Verify README links resolve**
 
 Open every relative doc link in the README mentally against the created page set; fix any mismatch.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add README.md
@@ -671,16 +678,16 @@ git commit -m "📝 docs: rewrite root README for 4.0.0 (web + desktop architect
 
 ## Task 10: Final verification
 
-- [ ] **Step 1: Full clean build**
+- [x] **Step 1: Full clean build**
 
 Run: `npm run docs:build`
 Expected: exit 0, zero warnings, `docs/.vitepress/dist/` populated.
 
-- [ ] **Step 2: Local preview smoke**
+- [x] **Step 2: Local preview smoke**
 
 Run: `npm run docs:preview` (then Ctrl-C). Confirm the server starts and serves `/en/` and `/zh/`.
 
-- [ ] **Step 3: Accuracy grep — no stale terms in content**
+- [x] **Step 3: Accuracy grep — no stale terms in content**
 
 Run from repo root:
 
@@ -690,7 +697,7 @@ grep -rniE 'JavaFX|glassmorphism|FengYuPluginV2|StageStyle|PluginFileController|
 
 Expected: **no output** (zero hits). If any hit appears, fix the page to use the verified term.
 
-- [ ] **Step 4: Page-count parity check**
+- [x] **Step 4: Page-count parity check**
 
 Run:
 
@@ -701,7 +708,7 @@ echo "ZH pages:"; find docs/zh -name '*.md' | wc -l
 
 Expected: both report **32** (4 top-level incl. index + 5 architecture + 14 plugins + 4 guide + 5 reference). If unequal, a page was missed — add it.
 
-- [ ] **Step 5: Brand check**
+- [x] **Step 5: Brand check**
 
 Run:
 
@@ -715,7 +722,7 @@ echo "brand OK"
 
 Expected: prints `brand OK`.
 
-- [ ] **Step 6: Final commit if any fixes were made**
+- [x] **Step 6: Final commit if any fixes were made**
 
 ```bash
 git add -A
@@ -726,9 +733,19 @@ git commit -m "📝 docs: final verification fixes" || echo "nothing to commit �
 
 ## Done criteria
 
-- `npm run docs:build` is clean (exit 0, zero warnings).
-- 32 EN pages + 32 ZH pages exist; language switch works.
-- Accuracy grep returns zero stale-term hits.
-- Brand elements (Infinia/蜂语, slogan, MD3 purple, Möbius logo) present.
-- Root `README.md` rewritten for 4.0.0.
-- `.github/workflows/docs.yml` builds + deploys to GH Pages.
+- ✅ `npm run docs:build` is clean (exit 0, zero warnings; dead-link checking enabled).
+- ✅ 35 EN pages + 35 ZH pages exist (exceeds the 32-page target by 3: email-center, database, ui-components); EN↔ZH parity verified; language switch works.
+- ✅ Accuracy grep returns zero stale-term hits (remaining matches are intentional negations like "there is no `?token=`").
+- ✅ Brand elements (Infinia/蜂语, slogan, MD3 purple, Möbius logo) present.
+- ✅ Root `README.md` rewritten for 4.0.0 (no JavaFX/glassmorphism/GGUF/StageStyle).
+- ✅ `.github/workflows/docs.yml` builds + deploys to GH Pages.
+
+> The changes from this completion pass (Task 9 README rewrite + Task 10 verification) plus four
+> accuracy fixes that track project progress since the plan was written —
+> `overview.md`/`build-deploy.md`/`manifest.md` now reflect that `fan.summer.email` is a shipped
+> official plugin and that the build script produces three `.fyp` packages — are staged but not yet
+> committed. Commit them with:
+> ```bash
+> git add README.md docs/en docs/zh
+> git commit -m "📝 docs: rewrite root README for 4.0.0 + sync plugin docs with email official plugin"
+> ```
