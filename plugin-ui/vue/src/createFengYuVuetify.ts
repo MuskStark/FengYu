@@ -50,7 +50,11 @@ export async function bindFengYuEnvironment(
   client: FengYuClient,
 ): Promise<() => void> {
   const apply = (environment: Partial<Environment>) => {
-    vuetify.theme.global.name.value = themeName(environment.theme)
+    // theme.change(name) is the non-deprecated Vuetify 3.12 API; assigning
+    // `theme.global.name.value` triggers a `[Vuetify UPGRADE]` console warning
+    // on every call (and this runs on every `environment` event). `locale.current`
+    // has no such deprecation, so its assignment stays.
+    vuetify.theme.change(themeName(environment.theme))
     vuetify.locale.current.value = localeName(environment.locale)
   }
   apply(await client.ready())
