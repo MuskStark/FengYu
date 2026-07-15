@@ -1,0 +1,81 @@
+/*
+ * FengYu Codex global stylesheet.
+ *
+ * Only semantic Vuetify variables, focus-visible outlines, the global font
+ * stack, narrow-screen shell behavior, and reduced-motion handling live here.
+ * Concrete colors come from the theme definitions in src/theme.ts; this file
+ * shapes *how* the theme is applied (radii, shadows, focus, type).
+ */
+
+:root {
+  /* System-first font stacks: native feel on every platform. */
+  --fengyu-font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial,
+    sans-serif;
+  --fengyu-font-mono:
+    'SF Mono', SFMono-Regular, ui-monospace, 'Cascadia Code', 'JetBrains Mono',
+    Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+html,
+body,
+.v-application {
+  font-family: var(--fengyu-font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+code,
+kbd,
+pre,
+samp,
+.v-application code,
+.v-application pre {
+  font-family: var(--fengyu-font-mono);
+}
+
+/* Hairline, theme-agnostic focus ring — visible only via keyboard nav. */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Keep Vuetify's own focus-visible readable on inverted primary chips. */
+.v-btn:focus-visible .v-btn__overlay {
+  opacity: 0.12;
+}
+
+/* Flat, borderless surfaces: Codex leans on hairline borders, not shadows. */
+.v-card {
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+/* Narrow-screen shell: keep the plugin chrome edge-to-edge on small viewports. */
+@media (max-width: 600px) {
+  .v-container {
+    padding-inline: 12px;
+  }
+
+  .v-card {
+    border-radius: 0 !important;
+  }
+}
+
+/* Respect users who prefer reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
