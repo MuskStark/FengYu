@@ -64,13 +64,13 @@
 
     <dependencies>
 
-        <!-- FengYu-Api: bundled in fat-JAR at runtime so plugins can load against it -->
+        <!-- Shared API types used directly by the host AI, logging, and theme code. -->
         <dependency>
             <groupId>fan.summer.fengyu.api</groupId>
             <artifactId>FengYu-Api</artifactId>
         </dependency>
 
-        <!-- Official isolated-plugin Worker contracts used by the runtime host. -->
+        <!-- Worker protocol/environment contracts used by the host runtime manager. -->
         <dependency>
             <groupId>fan.summer.fengyu.sdk</groupId>
             <artifactId>fengyu-plugin-sdk</artifactId>
@@ -84,12 +84,6 @@
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
-        </dependency>
-
-        <!-- Excel -->
-        <dependency>
-            <groupId>org.apache.fesod</groupId>
-            <artifactId>fesod-sheet</artifactId>
         </dependency>
 
         <!-- H2 Database -->
@@ -161,24 +155,6 @@
         <dependency>
             <groupId>org.commonmark</groupId>
             <artifactId>commonmark</artifactId>
-        </dependency>
-
-        <!-- PDF -->
-        <dependency>
-            <groupId>org.apache.pdfbox</groupId>
-            <artifactId>pdfbox</artifactId>
-        </dependency>
-
-        <!-- Document conversion: PDF to DOCX (pure Java via PDFBox + Apache POI) -->
-        <dependency>
-            <groupId>org.apache.poi</groupId>
-            <artifactId>poi-ooxml</artifactId>
-        </dependency>
-
-        <!-- Playwright (Browser Automation) -->
-        <dependency>
-            <groupId>com.microsoft.playwright</groupId>
-            <artifactId>playwright</artifactId>
         </dependency>
 
         <!-- Spring Boot (embedded): DI + auto-config backbone for the AI context. -->

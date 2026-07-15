@@ -5,10 +5,10 @@
   <groupId>fan.summer.fengyu.plugin</groupId><artifactId>plugin-email</artifactId>
   <name>FengYu Plugin — Email Center</name>
   <dependencies>
-    <dependency><groupId>fan.summer.fengyu.sdk</groupId><artifactId>fengyu-plugin-sdk</artifactId><version>${revision}</version></dependency>
+    <dependency><groupId>fan.summer.fengyu.sdk</groupId><artifactId>fengyu-plugin-sdk</artifactId></dependency>
     <dependency><groupId>com.google.code.gson</groupId><artifactId>gson</artifactId></dependency>
     <dependency><groupId>org.jsoup</groupId><artifactId>jsoup</artifactId></dependency>
-    <dependency><groupId>org.mybatis</groupId><artifactId>mybatis</artifactId><version>3.5.19</version></dependency>
+    <dependency><groupId>org.mybatis</groupId><artifactId>mybatis</artifactId></dependency>
     <dependency><groupId>org.simplejavamail</groupId><artifactId>simple-java-mail</artifactId></dependency>
     <dependency><groupId>org.eclipse.angus</groupId><artifactId>angus-mail</artifactId></dependency>
     <dependency><groupId>com.h2database</groupId><artifactId>h2</artifactId></dependency>
@@ -16,7 +16,7 @@
     <dependency><groupId>com.mysql</groupId><artifactId>mysql-connector-j</artifactId></dependency>
     <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId></dependency>
     <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId></dependency>
-    <dependency><groupId>com.icegreen</groupId><artifactId>greenmail-junit5</artifactId><version>2.1.3</version><scope>test</scope></dependency>
+    <dependency><groupId>com.icegreen</groupId><artifactId>greenmail-junit5</artifactId><scope>test</scope></dependency>
   </dependencies>
   <build><plugins>
     <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-shade-plugin</artifactId><executions><execution><phase>package</phase><goals><goal>shade</goal></goals><configuration>

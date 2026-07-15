@@ -20,23 +20,7 @@
     micro-frontend split-pane editor. Phase 1 walking-skeleton carrier.</description>
 
   <dependencies>
-    <dependency><groupId>fan.summer.fengyu.sdk</groupId><artifactId>fengyu-plugin-sdk</artifactId><version>${revision}</version></dependency>
-    <!-- v2 plugin contract. Provided at runtime by the FengYu app (which bundles the API). -->
-    <dependency>
-      <groupId>fan.summer.fengyu.api</groupId>
-      <artifactId>FengYu-Api</artifactId>
-      <version>${revision}</version>
-      <scope>provided</scope>
-    </dependency>
-
-    <!-- Spring stereotype annotations (@Component). Provided by the app's Spring context.
-         Spring Framework 7 ships with Spring Boot 4.1. -->
-    <dependency>
-      <groupId>org.springframework</groupId>
-      <artifactId>spring-context</artifactId>
-      <version>7.0.8</version>
-      <scope>provided</scope>
-    </dependency>
+    <dependency><groupId>fan.summer.fengyu.sdk</groupId><artifactId>fengyu-plugin-sdk</artifactId></dependency>
 
     <!-- Server-side Markdown → HTML rendering. -->
     <dependency>
