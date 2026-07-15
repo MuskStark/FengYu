@@ -6,7 +6,7 @@ failures=0
 
 require_text() {
   local file="$1" text="$2" message="$3"
-  if ! grep -Fq "$text" "$file"; then
+  if ! grep -Fq -- "$text" "$file"; then
     echo "FAIL: $message" >&2
     failures=$((failures + 1))
   fi
@@ -14,11 +14,38 @@ require_text() {
 
 reject_text() {
   local file="$1" text="$2" message="$3"
-  if grep -Fq "$text" "$file"; then
+  if grep -Fq -- "$text" "$file"; then
     echo "FAIL: $message" >&2
     failures=$((failures + 1))
   fi
 }
+
+require_parent_revision() {
+  local file="$1"
+  if ! sed -n '/<parent>/,/<\/parent>/p' "$file" | grep -Fq '<version>${revision}</version>'; then
+    echo "FAIL: $file must resolve the current reactor parent through \${revision}" >&2
+    failures=$((failures + 1))
+  fi
+}
+
+if [[ ! -f "$ROOT/.mvn/maven.config" ]]; then
+  echo "FAIL: .mvn/maven.config must define the default reactor revision" >&2
+  failures=$((failures + 1))
+else
+  require_text "$ROOT/.mvn/maven.config" '-Drevision=4.0.0-SNAPSHOT' \
+    '.mvn/maven.config must define the default reactor revision'
+fi
+
+for pom in \
+  FengYu-Api/pom.xml \
+  FengYu-Plugin-Sdk/pom.xml \
+  OfficialPlugins/pom.xml \
+  OfficialPlugins/plugin-markdown/pom.xml \
+  OfficialPlugins/plugin-excel/pom.xml \
+  OfficialPlugins/plugin-email/pom.xml \
+  FengYu/pom.xml; do
+  require_parent_revision "$ROOT/$pom"
+done
 
 for artifact in fesod-sheet commonmark pdfbox poi-ooxml playwright spring-context spring-ai-model jackson-databind; do
   require_text "$ROOT/pom.xml" "<artifactId>$artifact</artifactId>" \
