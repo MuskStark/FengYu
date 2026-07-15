@@ -15,5 +15,12 @@ from `src/main.ts` and `src/App.vue` on top of `@fengyu/plugin-ui`, then runs `n
 `npm run build`). If installation fails, the generated files are left in place and the CLI prints
 the exact command to retry.
 
-The dev command serves a sandboxed host simulator with hot reload and an RPC inspector. Build uses
-a cross-platform ZIP writer and runs the same manifest checks as `validate` before producing `.fyp`.
+The dev command serves a sandboxed host simulator with hot reload and an RPC inspector.
+
+Build is project-kind aware: for Vue/Vite projects it runs `npm run build` first (so `ui/index.html`
+and its hashed assets exist), then validates the manifest + `ui.entry`, then packages. A frontend-build
+failure rethrows the npm error as-is and never produces a `.fyp`. Legacy static plugins skip npm and go
+straight to validate + package. The archive write is atomic: the zip is written to
+`<output>.tmp-<pid>` and renamed onto the final path only after success, so a failure never leaves a
+partial `.fyp`. The archive contains `manifest.json` and the built `ui/` (Vite output) but excludes
+`src/`, `node_modules/`, `.git/`, `target/`, and prior `dist-package/` output.
