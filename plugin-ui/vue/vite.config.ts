@@ -28,6 +28,11 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // jsdom has no ResizeObserver; Vuetify's layout system (`v-app`, `v-main`,
+    // `v-navigation-drawer`, `useDisplay`) installs one via
+    // `useResizeObserver`, so mounting those components under jsdom needs a
+    // stub. See test/setup.ts.
+    setupFiles: ['test/setup.ts'],
     // Vuetify's prebuilt component CSS is `.css` imported from inside the
     // package; under jsdom Vitest tries to load these as modules and throws
     // "Unknown file extension .css". Stub all CSS to an empty module so the
