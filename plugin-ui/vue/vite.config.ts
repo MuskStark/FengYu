@@ -28,6 +28,16 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // Keep Vitest out of the Playwright directory: `e2e/workbench.spec.ts`
+    // matches Vitest's default `*.spec.ts` glob, but it is a Playwright visual
+    // suite (`test.describe` from @playwright/test) that must NOT run under
+    // Vitest. Same for the Playwright config itself.
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      'e2e/**',
+      'playwright.config.ts',
+    ],
     // jsdom has no ResizeObserver; Vuetify's layout system (`v-app`, `v-main`,
     // `v-navigation-drawer`, `useDisplay`) installs one via
     // `useResizeObserver`, so mounting those components under jsdom needs a
