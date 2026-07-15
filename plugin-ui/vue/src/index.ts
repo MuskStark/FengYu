@@ -31,6 +31,13 @@ export { default as FyFilePicker } from './components/FyFilePicker.vue'
 export { default as FyDirectoryPicker } from './components/FyDirectoryPicker.vue'
 export { default as FyNotificationCenter } from './components/FyNotificationCenter.vue'
 
+// Workflow components.
+export { default as FyStepWizard } from './components/FyStepWizard.vue'
+export type { FyWizardStep } from './components/FyStepWizard.vue'
+export { default as FyConfirmDialog } from './components/FyConfirmDialog.vue'
+export { default as FyTaskTable } from './components/FyTaskTable.vue'
+export type { FyTaskRow, FyTaskStatus } from './components/FyTaskTable.vue'
+
 // Notification composable + the host-fallback helper it builds on.
 export { useFengYuNotify, sendFengYuNotification } from './composables/useFengYuNotify'
 
