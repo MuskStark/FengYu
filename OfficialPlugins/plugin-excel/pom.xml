@@ -19,31 +19,27 @@
     modes + micro-frontend wizard + Spring AI tools.</description>
 
   <dependencies>
-    <dependency><groupId>fan.summer.fengyu.sdk</groupId><artifactId>fengyu-plugin-sdk</artifactId><version>${revision}</version></dependency>
+    <dependency><groupId>fan.summer.fengyu.sdk</groupId><artifactId>fengyu-plugin-sdk</artifactId></dependency>
     <dependency><groupId>com.google.code.gson</groupId><artifactId>gson</artifactId></dependency>
     <dependency>
       <groupId>fan.summer.fengyu.api</groupId>
       <artifactId>FengYu-Api</artifactId>
-      <version>${revision}</version>
     </dependency>
     <dependency>
       <groupId>org.springframework</groupId>
       <artifactId>spring-context</artifactId>
-      <version>7.0.8</version>
     </dependency>
-    <!-- Spring AI @Tool annotation (provided by app at runtime; version pinned — root pom does not import spring-ai-bom). -->
+    <!-- Spring AI @Tool annotations referenced by Worker classes. Kept compile-scoped so
+         the isolated shaded Worker owns its runtime classpath. -->
     <dependency>
       <groupId>org.springframework.ai</groupId>
       <artifactId>spring-ai-model</artifactId>
-      <version>2.0.0</version>
     </dependency>
-    <!-- Jackson ObjectMapper for ToolJson (provided by app at runtime, pulled in transitively there
-         via spring-ai-openai -> openai-java-core; plugin-excel has no such transitive path, so it's
-         declared explicitly here, pinned to the version the app resolves). -->
+    <!-- Jackson ObjectMapper used directly by ToolJson. The isolated Worker packages the
+         pinned runtime version instead of relying on the host's Spring AI transitives. -->
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
-      <version>2.21.4</version>
     </dependency>
     <dependency>
       <groupId>org.apache.fesod</groupId>
