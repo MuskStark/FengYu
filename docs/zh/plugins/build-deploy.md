@@ -6,7 +6,7 @@ lang: zh-CN
 
 # 构建与部署
 
-一个 `.fyp` 只是一个具有固定布局的 zip 归档。有两种构建流程：用于第三方插件的**单插件 CLI 流程**，以及组装并签名两个随产品发布插件的**官方多插件脚本**。两者最终都产出一个你通过[插件市场](/zh/plugins/marketplace)安装的 `.fyp`。
+一个 `.fyp` 只是一个具有固定布局的 zip 归档。有两种构建流程：用于第三方插件的**单插件 CLI 流程**，以及组装三个随产品发布官方插件的**官方多插件脚本**。两者最终都产出一个你通过[插件市场](/zh/plugins/marketplace)安装的 `.fyp`。
 
 ## `.fyp` 布局
 
@@ -50,7 +50,7 @@ worker 是由 `maven-shade-plugin` 产出的 shaded fat JAR。把 `finalName` �
 </plugin>
 ```
 
-官方插件用的是同一套配方：`markdown-worker` / `excel-worker` 作为 `finalName`，主类为 `MarkdownWorkerMain` / `ExcelWorkerMain`。编写 worker 本身见 [Worker（JSON-RPC）](/zh/plugins/worker)。
+官方插件用的是同一套配方：`markdown-worker` / `excel-worker` / `email-worker` 作为 `finalName`，主类为 `MarkdownWorkerMain` / `ExcelWorkerMain` / `EmailWorkerMain`。编写 worker 本身见 [Worker（JSON-RPC）](/zh/plugins/worker)。
 
 ## 单插件构建（CLI）
 
@@ -68,15 +68,16 @@ fengyu plugin build --out dist-package/<id>-<version>.fyp
 
 ## 官方多插件构建
 
-两个随产品发布的插件由 `OfficialPlugins/build-packages.sh` 组装。它依次执行：
+三个随产品发布的插件由 `OfficialPlugins/build-packages.sh` 组装。它依次执行：
 
-1. **构建 TypeScript SDK**（`plugin-sdk/typescript`）并把 bundle 复制进每个插件的 `ui/sdk.js`。
-2. **运行 Excel UI 测试**并**校验 worker 所依赖的 POI 服务**。
-3. 为每个插件**组装** `packages/{markdown,excel}/`，布局为：
+1. 为三个插件模块（`plugin-markdown`、`plugin-excel`、`plugin-email`）**构建 worker JAR**。
+2. **构建 TypeScript SDK**（`plugin-sdk/typescript`）并把 bundle 复制进 markdown 和 excel 的 `ui/sdk.js`。
+3. 从源码**构建 Email UI**（`plugin-email/ui-src`），并**运行 Excel UI 测试**、**校验 POI 服务**以及 Email worker 清单中的主类。
+4. 为每个插件**组装** `packages/{markdown,excel,email}/`，布局为：
    - `manifest.json`
-   - `ui/`（入口 HTML + 资源，包括第 1 步得到的 `ui/sdk.js`）
+   - `ui/`（入口 HTML + 资源，markdown/excel 还包括第 2 步得到的 `ui/sdk.js`）
    - `backend/worker.jar`（来自对应 `-worker` 模块的 shaded jar）
-4. 把每个组装好的目录树**打 zip** 成 `target/packages/fan.summer.{markdown,excel}-4.0.0.fyp`。
+5. 把每个组装好的目录树**打 zip** 成 `target/packages/fan.summer.{markdown,excel,email}-4.0.0.fyp`，随后执行构建后检查（例如 email 入口 HTML 必须声明 UTF-8 且不得包含图标字体）。
 
 产出的 `.fyp` 文件就是 `OfficialPluginSeeder` 安装进全新宿主的内容。它们的清单带有 `"official": true`，因此描述符的 `source` 为 `OFFICIAL`。
 

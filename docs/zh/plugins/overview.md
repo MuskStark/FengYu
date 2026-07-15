@@ -24,12 +24,12 @@ UI 运行在**沙箱化的 iframe** 中，通过 `@fengyu/plugin-sdk` 提供的 
 
 插件有两个来源：
 
-- **官方插件**——由 FengYu 团队构建并签名，清单中声明 `"official": true`，由 `OfficialPluginSeeder` 预置进每一次全新安装。随产品发布的官方插件集合是 `fan.summer.markdown` 和 `fan.summer.excel`。
+- **官方插件**——由 FengYu 团队构建并签名，清单中声明 `"official": true`，由 `OfficialPluginSeeder` 预置进每一次全新安装。随产品发布的官方插件集合是 `fan.summer.markdown`、`fan.summer.excel` 和 `fan.summer.email`。
 - **第三方插件**——任何用户通过插件市场安装的 `.fyp` 归档。其 `source` 为 `THIRD_PARTY`。
 
 描述符将这一点以 `source` 字段——`OFFICIAL` 或 `THIRD_PARTY`——暴露出来，该字段出现在 `GET /api/plugin-runtime` 返回的每一个 `InstalledPluginDescriptor` 上。
 
-> 源码树中的 `plugin-email` 目录**仅作为源码存在**，并不会被打包成 `.fyp`。请勿将其视为一个可用的插件。
+> 每个官方插件都有详细文档：[Markdown](/zh/plugins/official-markdown)、[Excel](/zh/plugins/official-excel)、[邮件中心](/zh/plugins/email-center)。
 
 ## 生命周期
 
