@@ -24,12 +24,12 @@ The UI runs in a **sandboxed iframe** and talks to the host through a `postMessa
 
 Two sources of plugins:
 
-- **Official** — built and signed by the FengYu team, declared with `"official": true` in the manifest, and seeded into every fresh install by the `OfficialPluginSeeder`. The shipped set is `fan.summer.markdown` and `fan.summer.excel`.
+- **Official** — built and signed by the FengYu team, declared with `"official": true` in the manifest, and seeded into every fresh install by the `OfficialPluginSeeder`. The shipped set is `fan.summer.markdown`, `fan.summer.excel`, and `fan.summer.email`.
 - **Third-party** — any `.fyp` archive installed by the user through the marketplace. Their `source` is `THIRD_PARTY`.
 
 The descriptor exposes this as the `source` field — `OFFICIAL` or `THIRD_PARTY` — on every `InstalledPluginDescriptor` returned by `GET /api/plugin-runtime`.
 
-> The `plugin-email` directory in the source tree is **source-only** and is not packaged into a `.fyp`. Do not treat it as a working plugin.
+> Each official plugin is documented in depth: [Markdown](/en/plugins/official-markdown), [Excel](/en/plugins/official-excel), [Email Center](/en/plugins/email-center).
 
 ## Lifecycle
 
