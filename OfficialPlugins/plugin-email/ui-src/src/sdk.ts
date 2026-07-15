@@ -4,7 +4,7 @@ import { i18n } from './i18n'
 
 export type RpcEnvelope<T = Record<string, unknown>> = T & { success: boolean; summary: string }
 
-const client = new FengYuClient()
+export const client = new FengYuClient()
 const environment = reactive({ theme: 'light', locale: 'en' })
 let unsubscribe: (() => void) | undefined
 

@@ -1,31 +1,35 @@
 package fan.summer.fengyu.plugin.excel;
 
-import fan.summer.fengyu.plugin.excel.ai.*;
 import fan.summer.fengyu.sdk.JsonRpcWorker;
-import java.util.List;
 
+/**
+ * Excel Splitter worker. Speaks newline-delimited JSON-RPC 2.0 on stdio. Methods are split into
+ * the session-keyed UI workflow ({@code analyze}/{@code configure}/{@code split}) and the
+ * stateless AI tools ({@code excel_*}) declared in {@code manifest.json}; both share one
+ * {@link ExcelRpcHandlers}. {@link JsonRpcWorker#run()} redirects stdout to stderr so the
+ * protocol stream on stdout stays clean.
+ */
 public final class ExcelWorkerMain {
     private ExcelWorkerMain() {}
+
     public static void main(String[] args) throws Exception {
-        worker().run();
+        ExcelSessionStore sessions = new ExcelSessionStore();
+        ExcelRpcHandlers handlers = new ExcelRpcHandlers(sessions);
+        worker(handlers).run();
     }
 
-    static JsonRpcWorker worker() {
-        ExcelSessionStore sessions = new ExcelSessionStore();
-        ExcelPlugin plugin = new ExcelPlugin(sessions);
-        ExcelAnalyzeTool analyze = new ExcelAnalyzeTool(sessions);
-        ExcelConfigureTool configure = new ExcelConfigureTool(sessions);
-        ExcelComplexConfigTool complex = new ExcelComplexConfigTool(sessions);
-        ExcelExecuteTool execute = new ExcelExecuteTool(sessions);
-        ExcelQueryTool query = new ExcelQueryTool(sessions);
-        ExcelCancelTool cancel = new ExcelCancelTool(sessions);
+    static JsonRpcWorker worker(ExcelRpcHandlers handlers) {
         return new JsonRpcWorker()
-            .on("analyze", p -> plugin.invoke("analyze", p)).on("configure", p -> plugin.invoke("configure", p)).on("split", p -> plugin.invoke("split", p))
-            .on("excel_analyze", p -> analyze.analyze(JsonRpcWorker.string(p, "filePath")))
-            .on("excel_configure", p -> configure.configure(JsonRpcWorker.string(p, "mode"), castList(p.get("sheets")), JsonRpcWorker.string(p, "splitSheet"), JsonRpcWorker.string(p, "splitColumn")))
-            .on("excel_complex_config", p -> complex.complexConfig(JsonRpcWorker.string(p, "action"), JsonRpcWorker.string(p, "sheetName"), JsonRpcWorker.integer(p, "headerIndex", -1), JsonRpcWorker.integer(p, "columnIndex", -1)))
-            .on("excel_execute", p -> execute.execute(JsonRpcWorker.string(p, "outputDir"), JsonRpcWorker.string(p, "filePrefix")))
-            .on("excel_query", p -> query.query()).on("excel_cancel", p -> cancel.cancel());
+            // UI-facing, session-keyed workflow.
+            .on("analyze", handlers.safe(handlers::analyze))
+            .on("configure", handlers.safe(handlers::configure))
+            .on("split", handlers.safe(handlers::split))
+            // AI-facing, stateless tools (declared in manifest.aiTools[]).
+            .on("excel_analyze", handlers.safe(handlers::aiAnalyze))
+            .on("excel_configure", handlers.safe(handlers::aiConfigure))
+            .on("excel_complex_config", handlers.safe(handlers::aiComplexConfig))
+            .on("excel_execute", handlers.safe(handlers::aiExecute))
+            .on("excel_query", handlers.safe(handlers::aiQuery))
+            .on("excel_cancel", handlers.safe(handlers::aiCancel));
     }
-    @SuppressWarnings("unchecked") private static List<String> castList(Object value) { return value instanceof List<?> list ? (List<String>) list : null; }
 }

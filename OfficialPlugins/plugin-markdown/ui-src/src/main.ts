@@ -1,23 +1,17 @@
-import { createApp } from 'vue';
-import MarkdownEditor from './MarkdownEditor.vue';
-import type { PluginUiContext, PluginUiModule } from './pluginUi';
+import { createApp } from 'vue'
+import { fengyu } from '@fengyu/plugin-sdk'
+import { bindFengYuEnvironment, createFengYuVuetify, provideFengYuClient } from '@fengyu/plugin-ui'
+import '@fengyu/plugin-ui/style.css'
+import App from './MarkdownEditor.vue'
 
-/**
- * FengYu micro-frontend entry. Default-exports the `{ mount }` contract.
- * `vue` is external and resolved through the host's import map.
- */
-const module: PluginUiModule = {
-  mount(el: HTMLElement, ctx: PluginUiContext): () => void {
-    const app = createApp(MarkdownEditor);
-    // Hand the host context to the component tree.
-    app.provide('pluginCtx', ctx);
-    // Register the host's shared MD3 Vuetify instance (no bundling).
-    // Defensive: PluginUiContext.vuetify is optional, but the host always
-    // provides it, so this branch runs in practice.
-    if (ctx.vuetify) app.use(ctx.vuetify);
-    app.mount(el);
-    return () => app.unmount();
-  }
-};
-
-export default module;
+if (!fengyu) throw new Error('FengYu SDK requires a browser environment')
+// Bind to a local so the narrowed (non-undefined) type survives the top-level await
+// below — TS widens imported const bindings across await.
+const client = fengyu
+const vuetify = createFengYuVuetify()
+const disposeEnvironment = await bindFengYuEnvironment(vuetify, client)
+const app = createApp(App)
+provideFengYuClient(app, client)
+app.use(vuetify)
+app.mount('#app')
+window.addEventListener('pagehide', () => { disposeEnvironment(); client.dispose() }, { once: true })

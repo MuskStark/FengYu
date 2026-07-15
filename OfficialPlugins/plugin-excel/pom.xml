@@ -16,31 +16,12 @@
   <artifactId>plugin-excel</artifactId>
   <name>FengYu Plugin — Excel Splitter</name>
   <description>Official Excel splitting plugin (v2, headless): BY_SHEET/BY_COLUMN/COMPLEX
-    modes + micro-frontend wizard + Spring AI tools.</description>
+    modes + micro-frontend wizard. AI tools are declared in manifest.json and served as
+    JSON-RPC methods by the worker (no Spring AI dependency).</description>
 
   <dependencies>
     <dependency><groupId>fan.summer.fengyu.sdk</groupId><artifactId>fengyu-plugin-sdk</artifactId></dependency>
     <dependency><groupId>com.google.code.gson</groupId><artifactId>gson</artifactId></dependency>
-    <dependency>
-      <groupId>fan.summer.fengyu.api</groupId>
-      <artifactId>FengYu-Api</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.springframework</groupId>
-      <artifactId>spring-context</artifactId>
-    </dependency>
-    <!-- Spring AI @Tool annotations referenced by Worker classes. Kept compile-scoped so
-         the isolated shaded Worker owns its runtime classpath. -->
-    <dependency>
-      <groupId>org.springframework.ai</groupId>
-      <artifactId>spring-ai-model</artifactId>
-    </dependency>
-    <!-- Jackson ObjectMapper used directly by ToolJson. The isolated Worker packages the
-         pinned runtime version instead of relying on the host's Spring AI transitives. -->
-    <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
-      <artifactId>jackson-databind</artifactId>
-    </dependency>
     <dependency>
       <groupId>org.apache.fesod</groupId>
       <artifactId>fesod-sheet</artifactId>
