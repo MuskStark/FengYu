@@ -24,8 +24,8 @@
     "build": "vite build && vue-tsc -p tsconfig.build.json --declaration --emitDeclarationOnly --outDir dist",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
-    "dev:e2e": "echo \"E2E harness is added in a later task\" && exit 0",
-    "test:visual": "echo \"Visual regression harness is added in a later task\" && exit 0"
+    "dev:e2e": "vite --config vite.e2e.config.ts",
+    "test:visual": "playwright test"
   },
   "peerDependencies": {
     "@fengyu/plugin-sdk": "^1.0.0",
