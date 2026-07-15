@@ -103,23 +103,23 @@ There are exactly **five** subcommands — there is no `init`.
 
 | Subcommand | Options | Description |
 | --- | --- | --- |
-| `create <path> --id <id>` | `--id` (required) | Scaffold a new plugin directory: writes `manifest.json`, `package.json`, `ui/index.html`, `ui/app.js`, and copies `ui/sdk.js`. Refuses to overwrite an existing directory. |
-| `dev [path] [--port <n>]` | `--port` (default `4173`) | Start a loopback dev host that serves `ui/` and simulates the host `postMessage` bridge. Live-reloads on file change. |
-| `build [path] [--out <file>]` | `--out` (default `dist-package/<id>-<version>.fyp`) | Validate, then zip the project into a `.fyp` archive. |
+| `create <path> --id <id>` | `--id` (required), `--no-install` | Scaffold a new plugin directory from the Vue/Vuetify `vue-codex` template: writes `manifest.json`, `package.json`, `index.html`, `vite.config.ts`, and `src/{main.ts,App.vue}`. Runs `npm install` by default; `--no-install` skips it. Refuses to overwrite an existing directory. |
+| `dev [path] [--port <n>]` | `--port` (default `4173`) | Start a loopback dev host. For a Vue/Vite project it spawns Vite (HMR) and serves a simulator whose iframe points at it; for a static project it serves `ui/` + an SSE reload watcher. Simulates the host `postMessage` bridge either way. |
+| `build [path] [--out <file>]` | `--out` (default `dist-package/<id>-<version>.fyp`) | For a Vue/Vite project, run `npm run build` first (emits `ui/`), then validate and zip into a `.fyp`. For a static project, skip the build and go straight to validate + zip. The archive write is atomic — no partial `.fyp` is left on failure. |
 | `validate [path]` | — | Check the package for manifest/structure errors; exits non-zero with a message on failure. |
 | `install <file> [--host <url>] [--token <t>]` | `--host` (default `http://127.0.0.1:24056`), `--token` (default `$FENGYU_TOKEN`) | Upload a `.fyp` to the marketplace's `POST /api/plugin-market/upload`. |
 
 ### Examples
 
 ```bash
-# Scaffold
+# Scaffold (installs deps by default; add --no-install to skip)
 fengyu plugin create ./my-plugin --id com.example.my-plugin
 
-# Develop
-fengyu plugin dev --port 4173
+# Develop (Vue/Vite: spawns Vite + serves a simulator at /__fengyu)
+fengyu plugin dev . --port 4173
 
-# Package
-fengyu plugin build --out dist-package/com.example.my-plugin-1.0.0.fyp
+# Package (runs the frontend build, validates, zips atomically)
+fengyu plugin build . --out dist-package/com.example.my-plugin-1.0.0.fyp
 
 # Sanity-check before publishing
 fengyu plugin validate
@@ -129,8 +129,11 @@ fengyu plugin install ./com.example.my-plugin-1.0.0.fyp \
   --host http://127.0.0.1:24056 --token "$FENGYU_TOKEN"
 ```
 
+The scaffolded project depends on `@fengyu/plugin-sdk` **and** [`@fengyu/plugin-ui`](/en/plugins/ui-components); its `src/main.ts` already calls `bindFengYuEnvironment` to sync theme/locale, and `provideFengYuClient` to inject the SDK client app-wide. Legacy static plugins (plain `ui/` with no build tooling) are still accepted by `dev` and `build`.
+
 ## Next steps
 
 - [Getting Started](/en/plugins/getting-started) — the create + dev loop in narrative form.
+- [UI Components](/en/plugins/ui-components) — the `@fengyu/plugin-ui` Vuetify kit.
 - [Worker (JSON-RPC)](/en/plugins/worker) — the protocol `JsonRpcWorker` implements.
 - [Build & Deploy](/en/plugins/build-deploy) — the shaded-JAR + `.fyp` flow.
