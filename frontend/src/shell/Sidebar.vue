@@ -31,6 +31,7 @@ const bottomNav = [
   { key: 'plugins', to: '/plugins', labelKey: 'sidebar.plugins', icon: 'mdi-puzzle-outline' },
   { key: 'agent', to: '/agent', labelKey: 'sidebar.agent', icon: 'mdi-robot-outline' },
   { key: 'settings', to: '/settings', labelKey: 'sidebar.settings', icon: 'mdi-cog-outline' },
+  { key: 'about', to: '/about', labelKey: 'sidebar.about', icon: 'mdi-information-outline' },
 ]
 </script>
 

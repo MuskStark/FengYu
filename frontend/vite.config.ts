@@ -11,6 +11,10 @@ const pkgVersion = JSON.parse(
   readFileSync(resolve(__dirname, 'package.json'), 'utf8'),
 ).version as string
 
+// Build timestamp: captured at build / dev-server start, surfaced on the About
+// page. Reflects when the UI was built (or when the dev server was launched).
+const buildTime = new Date().toISOString()
+
 // The backend binds a fixed loopback port by default (HeadlessLauncher.DEFAULT_PORT = 24056),
 // with a fallback to an OS-assigned port only if 24056 is taken — so the dev proxy targets the
 // fixed port. If the backend fell back to a random port, restart it to free 24056.
@@ -89,6 +93,7 @@ function shareVueInDev(): Plugin {
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkgVersion),
+    __APP_BUILD_TIME__: JSON.stringify(buildTime),
   },
   plugins: [
     vendorVue(),
