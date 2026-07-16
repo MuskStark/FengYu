@@ -8,7 +8,13 @@ export interface Environment { sdkVersion?: string; theme: Theme; locale: string
 export interface InvokeOptions { signal?: AbortSignal; timeoutMs?: number }
 export interface FengYuClientOptions { target?: Window; timeoutMs?: number; allowedOrigin?: string }
 
-type Pending = { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout>; abort?: () => void }
+type Pending = {
+  resolve(value: unknown): void
+  reject(error: Error): void
+  timer: ReturnType<typeof setTimeout>
+  signal?: AbortSignal
+  abort?: () => void
+}
 type EventHandler = (data: unknown) => void
 let fallbackIdSequence = 0
 
@@ -67,21 +73,34 @@ export class FengYuClient {
     if (options.signal?.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'))
     const id = createId()
     return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`Host request timed out: ${method}`)) }, options.timeoutMs ?? this.timeoutMs)
-      const abort = options.signal ? () => {
-        clearTimeout(timer); this.pending.delete(id); reject(new DOMException('Aborted', 'AbortError'))
+      const settle = (action: () => void) => { this.takePending(id); action() }
+      const timer = setTimeout(() => settle(() => reject(new Error(`Host request timed out: ${method}`))), options.timeoutMs ?? this.timeoutMs)
+      const abort = options.signal ? () => settle(() => {
+        reject(new DOMException('Aborted', 'AbortError'))
         this.target.postMessage({ source: 'fengyu-plugin', type: 'cancel', id }, this.allowedOrigin)
-      } : undefined
+      }) : undefined
       options.signal?.addEventListener('abort', abort!, { once: true })
-      this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timer, abort })
+      this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timer, signal: options.signal, abort })
       this.target.postMessage({ source: 'fengyu-plugin', type: 'request', sdkVersion: SDK_VERSION, id, method, params }, this.allowedOrigin)
     })
   }
 
+  private takePending(id: string): Pending | undefined {
+    const item = this.pending.get(id)
+    if (!item) return undefined
+    this.pending.delete(id)
+    clearTimeout(item.timer)
+    if (item.signal && item.abort) item.signal.removeEventListener('abort', item.abort)
+    return item
+  }
+
   dispose(): void {
     if (this.disposed) return; this.disposed = true; window.removeEventListener('message', this.onMessage)
-    for (const item of this.pending.values()) { clearTimeout(item.timer); item.reject(new Error('FengYu client disposed')) }
-    this.pending.clear(); this.handlers.clear()
+    for (const id of [...this.pending.keys()]) {
+      const item = this.takePending(id)
+      item?.reject(new Error('FengYu client disposed'))
+    }
+    this.handlers.clear()
   }
 
   private onMessage = (event: MessageEvent): void => {
@@ -89,8 +108,7 @@ export class FengYuClient {
     const message = event.data
     if (message?.source !== 'fengyu-host') return
     if (message.type === 'response') {
-      const item = this.pending.get(message.id); if (!item) return
-      this.pending.delete(message.id); clearTimeout(item.timer)
+      const item = this.takePending(message.id); if (!item) return
       message.error ? item.reject(new Error(message.error)) : item.resolve(message.result)
     } else if (message.type === 'event') {
       if (message.event === 'environment') this.applyEnvironment(message.data)
