@@ -51,6 +51,14 @@ jobs:
 
       # --- SDK: typecheck-free, vitest unit tests ---
       - run: cd plugin-sdk/typescript && npm install && npm test
+      - name: Verify TypeScript SDK in isolation
+        run: |
+          SDK_TMP="$(mktemp -d)"
+          cp -R plugin-sdk/typescript/. "$SDK_TMP/"
+          rm -rf "$SDK_TMP/node_modules"
+          cd "$SDK_TMP"
+          npm ci
+          npm test
 
       # --- @fengyu/plugin-ui: typecheck + unit tests + Vite build ---
       - run: cd plugin-ui/vue && npm install && npm run typecheck && npm test && npm run build
