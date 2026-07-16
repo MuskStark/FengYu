@@ -20,5 +20,6 @@
     <module>plugin-markdown</module>
     <module>plugin-excel</module>
     <module>plugin-email</module>
+    <module>plugin-offlinepython</module>
   </modules>
 </project>
