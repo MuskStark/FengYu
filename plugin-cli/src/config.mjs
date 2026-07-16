@@ -24,7 +24,14 @@ import path from 'node:path'
  */
 export async function resolveInside(root, relative, field) {
   const rootAbs = path.resolve(root)
-  const rootReal = await fs.realpath(rootAbs)
+  // The root itself may not exist yet (e.g. ui-src before install); fall back to
+  // the lexical path. realpath is only needed when comparing symlinked targets.
+  let rootReal = rootAbs
+  try {
+    rootReal = await fs.realpath(rootAbs)
+  } catch {
+    /* root does not exist yet — use the lexical path */
+  }
   const target = path.resolve(rootAbs, relative)
   if (target !== rootAbs && !target.startsWith(rootAbs + path.sep)) {
     throw new Error(`${field || 'path'} "${relative}" escapes plugin root`)
@@ -71,7 +78,8 @@ async function normalizeUi(raw, root) {
   if (raw == null) return null
   if (typeof raw !== 'object') throw new Error('ui must be an object')
   const rootResolved = await resolveInside(root, raw.root ?? '.', 'ui.root')
-  const output = await resolveInside(root, raw.output ?? 'dist', 'ui.output')
+  // ui.output is relative to ui.root (where Vite writes its outDir), not the project root.
+  const output = await resolveInside(rootResolved, raw.output ?? 'dist', 'ui.output')
   const prepare = []
   for (let i = 0; i < (raw.prepare ?? []).length; i++) {
     prepare.push(requireCommandArray(raw.prepare[i], `ui.prepare[${i}]`))
