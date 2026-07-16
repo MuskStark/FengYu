@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "cd ../frontend && npm run dev",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "cd .. && mvn -pl OfficialPlugins/plugin-markdown,OfficialPlugins/plugin-excel -am package -DskipTests && OfficialPlugins/build-packages.sh && cd frontend && npm run build",
+    "beforeBuildCommand": "cd .. && node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-markdown && node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-excel && cd frontend && npm run build",
     "frontendDist": "../frontend/dist"
   },
   "app": {
