@@ -29,7 +29,8 @@ export async function buildPlugin(root, options = {}) {
   const dir = path.resolve(root)
   const { out, run = runCommand, hooks = {} } = options
 
-  const kind = await detectProject(dir)
+  const project = await detectProject(dir)
+  const kind = project.kind
 
   if (kind === 'vue-vite') {
     // Run the frontend build FIRST. If it rejects, let the rejection propagate

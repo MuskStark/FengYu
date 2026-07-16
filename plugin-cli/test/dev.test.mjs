@@ -25,8 +25,8 @@ test.after(async () => {
 })
 
 test('detectProject recognizes generated Vite and legacy static projects', async () => {
-  assert.equal(await detectProject(generatedRoot), 'vue-vite')
-  assert.equal(await detectProject(staticFixture), 'static')
+  assert.equal((await detectProject(generatedRoot)).kind, 'vue-vite')
+  assert.equal((await detectProject(staticFixture)).kind, 'static')
 })
 
 test('Vue dev starts the project dev script and points the simulator iframe at it', async () => {
