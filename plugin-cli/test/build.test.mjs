@@ -41,8 +41,13 @@ async function makeDeclaredProject() {
       artifact: 'worker/target/declared-worker.jar',
       mainClass: 'com.example.DeclaredWorkerMain',
     },
-    package: { outputDirectory: 'dist-package' },
+    package: {
+      outputDirectory: 'dist-package',
+      resources: [{ from: 'assets', to: 'runtime-assets' }],
+    },
   }))
+  await fs.mkdir(path.join(dir, 'assets'), { recursive: true })
+  await fs.writeFile(path.join(dir, 'assets/example.txt'), 'example')
   // A stub mvnw so resolveCommand finds the wrapper in the worker root.
   await fs.mkdir(path.join(dir, 'worker'), { recursive: true })
   await fs.writeFile(path.join(dir, 'worker/mvnw'), '#!/bin/sh\nexec mvn "$@"\n', { mode: 0o755 })
@@ -179,6 +184,8 @@ test('assembleStaging copies manifest, ui output, and worker jar only', async ()
     assert.ok(entries.includes('manifest.json'))
     assert.ok(entries.includes('ui/index.html'))
     assert.ok(entries.includes('backend/worker.jar'))
+    assert.ok(entries.includes('runtime-assets/example.txt'))
+    assert.equal(entries.some((entry) => entry.includes(root.replace(/^\//, ''))), false)
     // No source/tooling smuggled in.
     assert.ok(!entries.some((e) => e.startsWith('ui-src/') || e.includes('fengyu.plugin.json') || e.includes('node_modules')))
   } finally {

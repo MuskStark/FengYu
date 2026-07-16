@@ -38,7 +38,7 @@ export async function assembleStaging(project, staging) {
     }
     // 4. Declared extra resources.
     for (const { from, to } of cfg.package.resources) {
-      const dest = path.join(staging, to)
+      const dest = path.join(staging, ...to.split('/'))
       const stat = await fs.lstat(from)
       if (stat.isDirectory()) {
         await copyRuntimeTree(from, dest)
