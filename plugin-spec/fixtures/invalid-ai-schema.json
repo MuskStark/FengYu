@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "com.example.bad-schema",
+  "name": "BadSchema",
+  "description": "Invalid AI tool schema",
+  "version": "1.0.0",
+  "author": "Example",
+  "icon": "puzzle-outline",
+  "category": "other",
+  "ui": { "entry": "ui/index.html" },
+  "permissions": [],
+  "official": false,
+  "aiTools": [{
+    "name": "broken",
+    "description": "Broken tool",
+    "method": "broken",
+    "inputSchema": "{\"type\":\"array\"}"
+  }]
+}
