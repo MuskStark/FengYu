@@ -16,6 +16,23 @@ if [ ! -f "$JAR" ]; then
   exit 1
 fi
 
+# Build the official plugins through the CLI into each plugin's dist-package/,
+# then stage their .fyp outputs into a single official-packages directory the
+# host is pointed at. This replaces the old OfficialPlugins/build-packages.sh.
+OFFICIAL_DIR="$(mktemp -d)"
+for plugin in markdown excel email; do
+  if ! node "$ROOT/plugin-cli/bin/fengyu.mjs" plugin build "$ROOT/OfficialPlugins/plugin-$plugin" >/dev/null; then
+    echo "FAIL: fengyu plugin build OfficialPlugins/plugin-$plugin failed"
+    rm -rf "$OFFICIAL_DIR"
+    exit 1
+  fi
+done
+mkdir -p "$OFFICIAL_DIR"
+for fyp in "$ROOT"/OfficialPlugins/plugin-*/dist-package/*.fyp; do
+  cp "$fyp" "$OFFICIAL_DIR/"
+done
+trap 'kill $SRV 2>/dev/null; rm -rf "$WORK" "$OFFICIAL_DIR"' EXIT
+
 export JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home 2>/dev/null || echo "")}"
 JAVA="${JAVA_HOME:+$JAVA_HOME/bin/}java"
 
@@ -36,12 +53,11 @@ db.dialect=org.hibernate.dialect.H2Dialect
 db.file.path=${DB_FILE}
 EOF
 
-"$JAVA" -Dfengyu.plugins.official-directory="$ROOT/OfficialPlugins/target/packages" \
+"$JAVA" -Dfengyu.plugins.official-directory="$OFFICIAL_DIR" \
   -Dfengyu.plugins.directory="$WORK/.fengyu/plugins" \
   -Dfengyu.plugins.data-directory="$WORK/.fengyu/plugin-data" \
   -cp "$JAR" fan.summer.fengyu.HeadlessLauncher --port="$PORT" --token="$TOKEN" > server.log 2>&1 &
 SRV=$!
-trap 'kill $SRV 2>/dev/null; rm -rf "$WORK"' EXIT
 
 H="http://127.0.0.1:$PORT"
 AUTH=(-H "X-FengYu-Token: $TOKEN")
