@@ -50,6 +50,21 @@ class JsonRpcWorkerTest {
         assertTrue(diagnostics.toString(StandardCharsets.UTF_8).contains("library-noise"));
     }
 
+    @Test void reportsParseAndInvalidRequestErrors() throws Exception {
+        JsonRpcWorker worker = new JsonRpcWorker();
+        String input = "not-json\n" +
+            "{\"jsonrpc\":\"1.0\",\"id\":\"2\",\"method\":\"x\"}\n";
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        worker.run(new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)), out);
+        String[] lines = out.toString(StandardCharsets.UTF_8).lines().toArray(String[]::new);
+        assertTrue(lines[0].contains("\"code\":-32700"));
+        assertTrue(lines[1].contains("\"code\":-32600"));
+    }
+
+    @Test void rejectsNullHandlers() {
+        assertThrows(NullPointerException.class, () -> new JsonRpcWorker().on("x", null));
+    }
+
     @Test void restoresStdoutWhenProtocolInputFails() {
         InputStream originalIn = System.in;
         PrintStream originalOut = System.out;

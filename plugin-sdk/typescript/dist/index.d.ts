@@ -53,6 +53,7 @@ export declare class FengYuClient {
     };
     on(event: string, handler: EventHandler): () => void;
     request<T>(method: string, params?: unknown, options?: InvokeOptions): Promise<T>;
+    private takePending;
     dispose(): void;
     private onMessage;
     private applyEnvironment;
