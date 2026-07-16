@@ -282,6 +282,14 @@
                 </includes>
                 <filtering>true</filtering>
             </resource>
+            <!-- Bundled Vue SPA: the frontend production build is copied into the shaded JAR as
+                 static resources so Spring Boot serves the shell at / (see SpaForwardController).
+                 CI builds the frontend before packaging; this entry is a no-op when dist/ is absent. -->
+            <resource>
+                <directory>${project.basedir}/../frontend/dist</directory>
+                <targetPath>static</targetPath>
+                <filtering>false</filtering>
+            </resource>
         </resources>
         <plugins>
             <!-- Maven Shade Plugin (version inherited from parent pluginManagement) -->
