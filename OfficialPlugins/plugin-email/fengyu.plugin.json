@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "ui": {
+    "root": "ui-src",
+    "output": "dist",
+    "prepare": [
+      ["npm", "--prefix", "../../../plugin-sdk/typescript", "ci"],
+      ["npm", "--prefix", "../../../plugin-sdk/typescript", "run", "build"],
+      ["npm", "--prefix", "../../../plugin-ui/vue", "ci"],
+      ["npm", "--prefix", "../../../plugin-ui/vue", "run", "build"]
+    ],
+    "install": ["npm", "ci"],
+    "test": ["npm", "test"],
+    "build": ["npm", "run", "build"]
+  },
+  "worker": {
+    "root": ".",
+    "test": ["maven", "-f", "../../pom.xml", "-pl", "OfficialPlugins/plugin-email", "-am", "test"],
+    "build": ["maven", "-f", "../../pom.xml", "-pl", "OfficialPlugins/plugin-email", "-am", "package", "-DskipTests"],
+    "artifact": "target/email-worker.jar",
+    "mainClass": "fan.summer.fengyu.plugin.email.EmailWorkerMain"
+  },
+  "package": { "outputDirectory": "dist-package" }
+}

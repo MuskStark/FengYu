@@ -49,7 +49,13 @@ export function validateManifestObject(manifest) {
   return errors
 }
 
-/** Full validation against a project root: object rules plus file existence (ui.entry, backend JAR). */
+/**
+ * Validate a project's source manifest: object rules (schema, permissions, AI
+ * tools, official-id) plus path-escape safety for ui.entry and the backend JAR.
+ * Build outputs (ui.entry, backend/worker.jar) are NOT required to exist at
+ * source — they are produced by the build and validated post-build by
+ * {@link validateRuntimeTree}.
+ */
 export async function validateProjectManifest(root) {
   let manifest
   try {
@@ -63,15 +69,16 @@ export async function validateProjectManifest(root) {
     const entry = path.resolve(rootAbs, manifest.ui.entry)
     if (!entry.startsWith(rootAbs + path.sep) && entry !== rootAbs) {
       errors.push('ui.entry escapes package root')
-    } else {
-      try { await fs.access(entry) } catch { errors.push(`UI entry does not exist: ${manifest.ui.entry}`) }
     }
   }
   if (manifest.backend?.command) {
     const match = manifest.backend.command.match(/(?:^|\s)-jar\s+(?:"([^"]+)"|'([^']+)'|(\S+))/)
     if (match) {
       const jar = match[1] ?? match[2] ?? match[3]
-      try { await fs.access(path.resolve(rootAbs, jar)) } catch { errors.push(`backend JAR does not exist: ${jar}`) }
+      const jarPath = path.resolve(rootAbs, jar)
+      if (!jarPath.startsWith(rootAbs + path.sep) && jarPath !== rootAbs) {
+        errors.push('backend JAR escapes package root')
+      }
     }
   }
   return errors

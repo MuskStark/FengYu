@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EmailManifestTest {
     private static final Gson JSON = new Gson();
-    private static final Path MANIFEST = Path.of("../packages/email/manifest.json");
+    private static final Path MANIFEST = Path.of("manifest.json");
 
     @Test void officialManifestMatchesWorkerAndPackageContract() throws Exception {
         assertTrue(Files.isRegularFile(MANIFEST));
