@@ -56,6 +56,34 @@ test('package resource to escaping the root is rejected', async () => {
   await assert.rejects(() => loadBuildConfig(root), /package.*to.*escapes plugin root/)
 })
 
+test('package resource destinations remain archive-relative', async () => {
+  const root = path.join(base, 'relative-pkg')
+  await writeConfig(root, {
+    ...validConfig,
+    package: { outputDirectory: 'dist-package', resources: [{ from: 'assets', to: 'runtime-assets' }] },
+  })
+  await fs.mkdir(path.join(root, 'assets'), { recursive: true })
+  const cfg = await loadBuildConfig(root)
+  assert.equal(cfg.package.resources[0].to, 'runtime-assets')
+})
+
+for (const [name, unsafe] of [
+  ['absolute', '/absolute'],
+  ['parent', '../escape'],
+  ['nested parent', 'a/../../escape'],
+  ['drive letter', 'C:\\escape'],
+  ['backslash', 'a\\b'],
+]) {
+  test(`rejects unsafe runtime resource destination: ${name}`, async () => {
+    const root = path.join(base, `unsafe-pkg-${name.replace(/\s+/g, '-')}`)
+    await writeConfig(root, {
+      ...validConfig,
+      package: { outputDirectory: 'dist-package', resources: [{ from: 'assets', to: unsafe }] },
+    })
+    await assert.rejects(() => loadBuildConfig(root), /package\.resources\[0\]\.to/)
+  })
+}
+
 test('symlink that escapes the plugin root is rejected', async () => {
   const root = path.join(base, 'symlink')
   await writeConfig(root, validConfig)
