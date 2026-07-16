@@ -34,7 +34,7 @@ Worker 是插件的后端。它通过 stdio 使用 **JSON-RPC 2.0** 通信，并
 
 插件的 `ui/` 微前端由宿主作为静态资产提供，位于严格的 Content Security Policy 之下的 `/plugin-runtime/{id}/**`——这些资产路径是唯一绕过令牌过滤器的插件 URL，因此 UI 能在没有凭据的情况下自举。宿主通过其[微前端宿主](/zh/architecture/frontend)加载该 UI（`import(uiEntry)` → `default.mount(el, ctx)`），并复用宿主的 Vuetify 实例以获得一致的 MD3 主题。
 
-在 iframe 内部，SDK `@fengyu/plugin-sdk` 提供一个 `FengYuClient`，它通过 `postMessage` 与宿主桥接。插件用这个 client 调用自己的 Worker（由宿主以 JSON-RPC 转发）以及请求文件访问——它永远不会直接与操作系统打交道。
+在 iframe 内部，SDK `@infinia/plugin-sdk` 提供一个 `FengYuClient`，它通过 `postMessage` 与宿主桥接。插件用这个 client 调用自己的 Worker（由宿主以 JSON-RPC 转发）以及请求文件访问——它永远不会直接与操作系统打交道。
 
 ## 已安装插件描述符
 
@@ -64,7 +64,7 @@ Worker 是插件的后端。它通过 stdio 使用 **JSON-RPC 2.0** 通信，并
 ┌─────────────────────────┐        postMessage         ┌──────────────────────────┐
 │  Plugin UI micro-frontend│  ◄──────────────────────►  │  Host SPA (loader.ts)    │
 │  (sandboxed iframe,      │       FengYuClient          │  mounts via MF host       │
-│   @fengyu/plugin-sdk)    │                             └──────────┬───────────────┘
+│   @infinia/plugin-sdk)    │                             └──────────┬───────────────┘
 └──────────────────────────┘                                        │ HTTP (token-gated)
                                                                      ▼
                                                     ┌──────────────────────────────┐

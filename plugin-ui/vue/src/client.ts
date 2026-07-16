@@ -1,6 +1,6 @@
 import type { App } from 'vue'
 import { inject, type InjectionKey } from 'vue'
-import type { FengYuClient } from '@fengyu/plugin-sdk'
+import type { FengYuClient } from '@infinia/plugin-sdk'
 
 /**
  * Injection key for the per-app {@link FengYuClient}. Plugins call

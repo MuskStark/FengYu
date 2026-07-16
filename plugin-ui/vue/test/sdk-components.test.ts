@@ -20,7 +20,7 @@ import {
   sendFengYuNotification,
   useFengYuNotify,
 } from '../src'
-import type { FengYuClient } from '@fengyu/plugin-sdk'
+import type { FengYuClient } from '@infinia/plugin-sdk'
 
 /**
  * Overrides accepted by {@link fakeClient}. `files` is merged field-by-field so

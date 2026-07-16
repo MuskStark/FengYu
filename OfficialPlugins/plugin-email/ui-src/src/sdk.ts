@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import { FengYuClient, type Environment, type FileRef } from '@fengyu/plugin-sdk'
+import { FengYuClient, type Environment, type FileRef } from '@infinia/plugin-sdk'
 import { i18n } from './i18n'
 
 export type RpcEnvelope<T = Record<string, unknown>> = T & { success: boolean; summary: string }

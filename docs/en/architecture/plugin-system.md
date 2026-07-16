@@ -34,7 +34,7 @@ Because workers are out-of-process, a worker crash or hang cannot take down the 
 
 The plugin's `ui/` micro-frontend is served by the host as static assets under a strict Content Security Policy at `/plugin-runtime/{id}/**` — these asset paths are the only plugin URLs that bypass the token filter, so the UI can bootstrap without a credential. The host loads the UI through its [micro-frontend host](/en/architecture/frontend) (`import(uiEntry)` → `default.mount(el, ctx)`) and reuses the host's Vuetify instance for consistent MD3 theming.
 
-Inside the iframe, the SDK `@fengyu/plugin-sdk` provides a `FengYuClient` that bridges to the host over `postMessage`. The plugin uses this client to call its own worker (which the host forwards as JSON-RPC) and to request file access — it never talks to the OS directly.
+Inside the iframe, the SDK `@infinia/plugin-sdk` provides a `FengYuClient` that bridges to the host over `postMessage`. The plugin uses this client to call its own worker (which the host forwards as JSON-RPC) and to request file access — it never talks to the OS directly.
 
 ## Installed plugin descriptor
 
@@ -64,7 +64,7 @@ The host exposes installed plugins through `InstalledPluginDescriptor`. Its fiel
 ┌─────────────────────────┐        postMessage         ┌──────────────────────────┐
 │  Plugin UI micro-frontend│  ◄──────────────────────►  │  Host SPA (loader.ts)    │
 │  (sandboxed iframe,      │       FengYuClient          │  mounts via MF host       │
-│   @fengyu/plugin-sdk)    │                             └──────────┬───────────────┘
+│   @infinia/plugin-sdk)    │                             └──────────┬───────────────┘
 └──────────────────────────┘                                        │ HTTP (token-gated)
                                                                      ▼
                                                     ┌──────────────────────────────┐

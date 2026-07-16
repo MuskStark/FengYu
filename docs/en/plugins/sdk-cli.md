@@ -1,6 +1,6 @@
 ---
 title: SDK & CLI
-description: Reference for the @fengyu/plugin-sdk TypeScript client, the independently-versioned Java Worker SDK (1.0.0), and the five fengyu plugin CLI subcommands — create, dev, build, validate, install.
+description: Reference for the @infinia/plugin-sdk TypeScript client, the independently-versioned Java Worker SDK (1.0.0), and the five fengyu plugin CLI subcommands — create, dev, build, validate, install.
 lang: en
 ---
 
@@ -8,12 +8,12 @@ lang: en
 
 Plugin authors use two SDKs (one per side of the runtime) and one CLI. The TypeScript SDK lives in the iframe UI; the Java Worker SDK builds the `worker.jar`; the `fengyu plugin` CLI scaffolds, develops, packages, validates, and installs plugins. The Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.0.0`) is **independently versioned** from the host app and published to GitHub Packages.
 
-## `@fengyu/plugin-sdk` (TypeScript)
+## `@infinia/plugin-sdk` (TypeScript)
 
 Source: `plugin-sdk/typescript/src/index.ts`. The current SDK version is `1.0.0`. Import the singleton client and the helper/types:
 
 ```ts
-import { fengyu, FengYuClient, createId, type FileRef, type Environment } from '@fengyu/plugin-sdk'
+import { fengyu, FengYuClient, createId, type FileRef, type Environment } from '@infinia/plugin-sdk'
 ```
 
 ### `FengYuClient`
@@ -130,11 +130,11 @@ fengyu plugin install ./com.example.my-plugin-1.0.0.fyp \
   --host http://127.0.0.1:24056 --token "$FENGYU_TOKEN"
 ```
 
-The scaffolded project depends on `@fengyu/plugin-sdk` **and** [`@fengyu/plugin-ui`](/en/plugins/ui-components); its `src/main.ts` already calls `bindFengYuEnvironment` to sync theme/locale, and `provideFengYuClient` to inject the SDK client app-wide. Legacy static plugins (plain `ui/` with no build tooling) are still accepted by `dev` and `build`.
+The scaffolded project depends on `@infinia/plugin-sdk` **and** [`@infinia/plugin-ui`](/en/plugins/ui-components); its `src/main.ts` already calls `bindFengYuEnvironment` to sync theme/locale, and `provideFengYuClient` to inject the SDK client app-wide. Legacy static plugins (plain `ui/` with no build tooling) are still accepted by `dev` and `build`.
 
 ## Next steps
 
 - [Getting Started](/en/plugins/getting-started) — the create + dev loop in narrative form.
-- [UI Components](/en/plugins/ui-components) — the `@fengyu/plugin-ui` Vuetify kit.
+- [UI Components](/en/plugins/ui-components) — the `@infinia/plugin-ui` Vuetify kit.
 - [Worker (JSON-RPC)](/en/plugins/worker) — the protocol `JsonRpcWorker` implements.
 - [Build & Deploy](/en/plugins/build-deploy) — the shaded-JAR + `.fyp` flow.

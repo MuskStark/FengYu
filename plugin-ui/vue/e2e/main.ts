@@ -7,7 +7,7 @@
  * matrix can cover both themes without editing the fixture.
  */
 import { createApp } from 'vue'
-import type { FengYuClient, Environment, FileRef } from '@fengyu/plugin-sdk'
+import type { FengYuClient, Environment, FileRef } from '@infinia/plugin-sdk'
 import { createFengYuVuetify, provideFengYuClient } from '../src'
 import Workbench from './Workbench.vue'
 

@@ -13,7 +13,7 @@
  *   the pick.
  * - A `loading` guard blocks concurrent picks.
  */
-import type { FileFilter, FileRef } from '@fengyu/plugin-sdk'
+import type { FileFilter, FileRef } from '@infinia/plugin-sdk'
 import { useFengYuClient } from '../client'
 import { useFengYuPick } from '../composables/useFengYuPick'
 import FyPermissionNotice from './FyPermissionNotice.vue'
