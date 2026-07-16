@@ -111,18 +111,18 @@ the token into the webview. See [Architecture Overview](docs/en/architecture/ove
 | Module / dir | Purpose |
 |--------|---------|
 | `FengYu-Api` | Plugin + AI contract (`manifest.json` schema, worker JSON-RPC protocol, `AiTool`). |
-| `FengYu-Plugin-Sdk` | Java Worker SDK + TypeScript `@fengyu/plugin-sdk` (the iframe `postMessage` bridge). |
+| `FengYu-Plugin-Sdk` | Java Worker SDK + TypeScript `@infinia/plugin-sdk` (the iframe `postMessage` bridge). |
 | `OfficialPlugins` | Official plugins: `plugin-markdown`, `plugin-excel`, `plugin-email` (each ships a `.fyp`). |
 | `FengYu` | Headless Spring Boot backend — REST/SSE controllers, AI backends, JPA/Hibernate, marketplace. |
 | `frontend/` | Vue 3.5 + TS SPA (runs identically in the browser or the Tauri webview). |
 | `desktop/` | Tauri 2.0 desktop shell — sidecar-launches the JAR, native dialogs, window chrome. |
-| `plugin-ui/` | `@fengyu/plugin-ui` — the official Vue/Vuetify component kit for plugin micro-frontends. |
+| `plugin-ui/` | `@infinia/plugin-ui` — the official Vue/Vuetify component kit for plugin micro-frontends. |
 | `plugin-cli/` | `fengyu plugin` CLI — `create`, `dev`, `build`, `validate`, `install`. |
 
 ### Plugin System
 
 Plugins are isolated **`.fyp`** packages (a zip of `manifest.json` + `ui/` + `backend/worker.jar`).
-The UI runs in a **sandboxed iframe** and talks to the host through the `@fengyu/plugin-sdk`
+The UI runs in a **sandboxed iframe** and talks to the host through the `@infinia/plugin-sdk`
 `postMessage` bridge; the backend is an **out-of-process worker** speaking newline-delimited
 JSON-RPC 2.0 over stdio. A worker crash can never take down the host, and workers never touch the
 host Spring context or JPA session.

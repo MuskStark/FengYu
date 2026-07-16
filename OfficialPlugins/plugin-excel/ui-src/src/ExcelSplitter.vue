@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useFengYuClient, FyFilePicker, FyDirectoryPicker, FyStepWizard } from '@fengyu/plugin-ui'
-import type { FyWizardStep } from '@fengyu/plugin-ui'
-import type { FileRef } from '@fengyu/plugin-sdk'
+import { useFengYuClient, FyFilePicker, FyDirectoryPicker, FyStepWizard } from '@infinia/plugin-ui'
+import type { FyWizardStep } from '@infinia/plugin-ui'
+import type { FileRef } from '@infinia/plugin-sdk'
 
 const client = useFengYuClient()
 

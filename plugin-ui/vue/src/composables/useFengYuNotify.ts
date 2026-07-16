@@ -1,5 +1,5 @@
 import { ref, type Ref } from 'vue'
-import type { FengYuClient } from '@fengyu/plugin-sdk'
+import type { FengYuClient } from '@infinia/plugin-sdk'
 
 /**
  * Deliver a notification to the host, falling back to a local queue when the

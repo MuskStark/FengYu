@@ -15,9 +15,9 @@ UI 套件。
 
 目标：
 
-- 发布独立 npm 包 `@fengyu/plugin-ui`。
+- 发布独立 npm 包 `@infinia/plugin-ui`。
 - 基于 Vuetify 组件和无障碍行为实现 Codex 风格主题，不重复实现基础控件。
-- 提供 FengYu 场景专用的复合组件，并直接集成 `@fengyu/plugin-sdk`。
+- 提供 FengYu 场景专用的复合组件，并直接集成 `@infinia/plugin-sdk`。
 - 让 `fengyu plugin create` 默认生成可运行、可构建的 Vue/Vite 插件工作台。
 - 保持现有原生 HTML 插件的开发、校验和构建兼容性。
 
@@ -32,8 +32,8 @@ UI 套件。
 
 采用“标准 Vue 组件库 + Vite 插件模板”：
 
-- `@fengyu/plugin-ui` 以 npm 包独立版本化。
-- Vue、Vuetify 和 `@fengyu/plugin-sdk` 作为 peer dependencies，避免组件库内部出现多份
+- `@infinia/plugin-ui` 以 npm 包独立版本化。
+- Vue、Vuetify 和 `@infinia/plugin-sdk` 作为 peer dependencies，避免组件库内部出现多份
   Vue 运行时；插件的 Vite 生产构建将实际依赖打进 iframe 静态资源。
 - CLI 默认生成 Vue 3、Vite、Vuetify、插件 UI 包和 SDK 的完整工程。
 
@@ -45,7 +45,7 @@ UI 套件。
 
 ## 3. 包结构与公共 API
 
-在仓库中新增 `plugin-ui/vue/`，其 npm 包名为 `@fengyu/plugin-ui`。包分为三层。
+在仓库中新增 `plugin-ui/vue/`，其 npm 包名为 `@infinia/plugin-ui`。包分为三层。
 
 ### 3.1 主题层
 
@@ -65,7 +65,7 @@ UI 套件。
 
 插件作者直接使用 Vuetify 的 `v-btn`、`v-icon`、`v-text-field`、`v-textarea`、
 `v-select`、`v-card`、`v-chip`、`v-alert`、`v-tabs`、`v-dialog`、`v-data-table`、
-`v-pagination` 和其他基础组件。`@fengyu/plugin-ui` 通过 theme 和 defaults 统一其 Codex
+`v-pagination` 和其他基础组件。`@infinia/plugin-ui` 通过 theme 和 defaults 统一其 Codex
 外观，不制作同名透传包装组件。
 
 ### 3.3 FengYu 复合层
@@ -86,7 +86,7 @@ UI 套件。
 
 ## 4. SDK 与环境同步
 
-`@fengyu/plugin-ui` 直接集成 `@fengyu/plugin-sdk`，同时允许应用安装时注入替代 client，
+`@infinia/plugin-ui` 直接集成 `@infinia/plugin-sdk`，同时允许应用安装时注入替代 client，
 以便单元测试和开发模拟器使用。
 
 初始化数据流：
@@ -124,7 +124,7 @@ my-plugin/
 ```
 
 生成项目的 `package.json` 包含 Vue 3、Vuetify 3、Vite、TypeScript、
-`@fengyu/plugin-ui` 和 `@fengyu/plugin-sdk`。`main.ts` 已完成 SDK ready、Vuetify 和 UI
+`@infinia/plugin-ui` 和 `@infinia/plugin-sdk`。`main.ts` 已完成 SDK ready、Vuetify 和 UI
 包注册。`App.vue` 提供可直接改造的插件工作台，包含侧栏、工具栏、表单、文件选择、
 任务表格、通知以及空状态示例。
 
@@ -217,7 +217,7 @@ Codex 视觉、明暗主题同步、完整 Vuetify 基础组件和 FengYu SDK �
 - UI 微前端：iframe 内的 Vuetify、主题同步和 CSP 边界。
 - UI 组件参考：主题初始化、Vuetify defaults、复合组件 API 与示例。
 - 迁移指南：现有原生 HTML 插件无需迁移；希望采用新 UI 的插件可逐步引入 Vite、
-  `@fengyu/plugin-ui` 和 SDK 包。
+  `@infinia/plugin-ui` 和 SDK 包。
 
 ## 11. 实施边界
 

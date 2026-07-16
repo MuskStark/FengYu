@@ -85,7 +85,7 @@ The release workflow will add a version-resolution job or step that:
 - compares the result with all three npm `package.json` files and the Java SDK POM;
 - exposes the normalized version to every downstream job.
 
-Consumer smoke will invoke the CLI through `npx @fengyu/plugin-cli@${VERSION}` for every command, or install it locally and use `npm exec`; it will never rely on a prior `npx` invocation leaving a binary on `PATH`.
+Consumer smoke will invoke the CLI through `npx @infinia/plugin-cli@${VERSION}` for every command, or install it locally and use `npm exec`; it will never rely on a prior `npx` invocation leaving a binary on `PATH`.
 
 The verify job will run package-content checks, official plugin builds, the host build, the end-to-end smoke script, and the documentation build before publication jobs can start.
 

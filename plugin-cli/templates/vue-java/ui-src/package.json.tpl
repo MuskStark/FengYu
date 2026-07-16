@@ -10,8 +10,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@fengyu/plugin-sdk": "^1.0.0",
-    "@fengyu/plugin-ui": "^1.0.0",
+    "@infinia/plugin-sdk": "^1.0.0",
+    "@infinia/plugin-ui": "^1.0.0",
     "vue": "3.5.39",
     "vuetify": "^3.9.3"
   },

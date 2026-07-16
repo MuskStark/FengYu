@@ -35,12 +35,12 @@ The scaffolder refuses to overwrite an existing directory. The human-readable `n
 The full loop, from nothing to a packaged `.fyp`:
 
 ```bash
-npx --yes @fengyu/plugin-cli@1.0.0 plugin create my-plugin --id com.example.my-plugin
+npx --yes @infinia/plugin-cli@1.0.0 plugin create my-plugin --id com.example.my-plugin
 cd my-plugin
 export FENGYU_GITHUB_TOKEN='<GitHub token with read:packages>'
-npx --yes @fengyu/plugin-cli@1.0.0 plugin dev .
-npx --yes @fengyu/plugin-cli@1.0.0 plugin build .
-npx --yes @fengyu/plugin-cli@1.0.0 plugin install dist-package/com.example.my-plugin-1.0.0.fyp --host http://127.0.0.1:24056
+npx --yes @infinia/plugin-cli@1.0.0 plugin dev .
+npx --yes @infinia/plugin-cli@1.0.0 plugin build .
+npx --yes @infinia/plugin-cli@1.0.0 plugin install dist-package/com.example.my-plugin-1.0.0.fyp --host http://127.0.0.1:24056
 ```
 
 - `create` installs UI deps by default; `--no-install` skips it.
@@ -88,7 +88,7 @@ For UI-only and static projects, the simulator keeps the previous mock behavior 
 
 ## Next steps
 
-- [UI Components](/en/plugins/ui-components) — the `@fengyu/plugin-ui` kit: shell, file picker, step wizard, and more.
+- [UI Components](/en/plugins/ui-components) — the `@infinia/plugin-ui` kit: shell, file picker, step wizard, and more.
 - [Manifest](/en/plugins/manifest) — every field, type, and default.
 - [Worker (JSON-RPC)](/en/plugins/worker) — write the `backend/worker.jar`.
 - [Build & Deploy](/en/plugins/build-deploy) — the staged lifecycle, GitHub Packages auth, and `.fyp` packaging.

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { useFengYuClient } from '@fengyu/plugin-ui'
+import { useFengYuClient } from '@infinia/plugin-ui'
 
 // The host provides the client via provideFengYuClient() in main.ts. In a bare
 // standalone preview (no host) the inject throws, so guard with a try/catch.

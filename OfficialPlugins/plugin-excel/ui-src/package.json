@@ -1,5 +1,5 @@
 {
-  "name": "@fengyu/plugin-excel-ui",
+  "name": "@infinia/plugin-excel-ui",
   "version": "4.0.0",
   "private": true,
   "type": "module",
@@ -10,8 +10,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@fengyu/plugin-sdk": "file:../../../plugin-sdk/typescript",
-    "@fengyu/plugin-ui": "file:../../../plugin-ui/vue",
+    "@infinia/plugin-sdk": "file:../../../plugin-sdk/typescript",
+    "@infinia/plugin-ui": "file:../../../plugin-ui/vue",
     "vue": "3.5.39",
     "vuetify": "^3.9.3"
   },

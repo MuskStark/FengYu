@@ -1,12 +1,12 @@
 ---
 title: UI Components
-description: "The @fengyu/plugin-ui kit — a Codex-style Vuetify 3 foundation for FengYu plugins. Shell, file/directory pickers, step wizard, task table, notification center, and the theme/locale bindings the scaffolded main.ts wires up."
+description: "The @infinia/plugin-ui kit — a Codex-style Vuetify 3 foundation for FengYu plugins. Shell, file/directory pickers, step wizard, task table, notification center, and the theme/locale bindings the scaffolded main.ts wires up."
 lang: en
 ---
 
 # UI Components
 
-`@fengyu/plugin-ui` is the official Vuetify 3 (Material Design 3) component library for FengYu plugins. The project scaffolded by `fengyu plugin create` depends on it, and its `src/main.ts` already wires up the Vuetify instance, theme/locale binding, and client injection — so you only compose components. Import the pieces you use from a single entry:
+`@infinia/plugin-ui` is the official Vuetify 3 (Material Design 3) component library for FengYu plugins. The project scaffolded by `fengyu plugin create` depends on it, and its `src/main.ts` already wires up the Vuetify instance, theme/locale binding, and client injection — so you only compose components. Import the pieces you use from a single entry:
 
 ```ts
 import {
@@ -17,7 +17,7 @@ import {
   createFengYuVuetify,
   bindFengYuEnvironment,
   provideFengYuClient,
-} from '@fengyu/plugin-ui'
+} from '@infinia/plugin-ui'
 ```
 
 The base controls you compose with (`v-btn`, `v-card`, `v-list`, `v-data-table`, …) are ordinary Vuetify controls, registered globally by `createFengYuVuetify`. The `Fy*` components are the opinionated FengYu wrappers on top.
@@ -57,8 +57,8 @@ The notification composable `useFengYuNotify(client)` and `sendFengYuNotificatio
 ```vue
 <script setup lang="ts">
 import { ref } from 'vue'
-import { FyFilePicker, FyNotificationCenter, useFengYuClient } from '@fengyu/plugin-ui'
-import type { FileRef } from '@fengyu/plugin-sdk'
+import { FyFilePicker, FyNotificationCenter, useFengYuClient } from '@infinia/plugin-ui'
+import type { FileRef } from '@infinia/plugin-sdk'
 
 const client = useFengYuClient()
 const selectedFile = ref<FileRef | null>(null)
@@ -98,8 +98,8 @@ Emits: `update:modelValue`, `cancel`, `error`. `FyDirectoryPicker` has the same 
 ```vue
 <script setup lang="ts">
 import { ref } from 'vue'
-import { FyStepWizard } from '@fengyu/plugin-ui'
-import type { FyWizardStep } from '@fengyu/plugin-ui'
+import { FyStepWizard } from '@infinia/plugin-ui'
+import type { FyWizardStep } from '@infinia/plugin-ui'
 
 const steps: FyWizardStep[] = [
   { value: 'source', title: 'Source' },

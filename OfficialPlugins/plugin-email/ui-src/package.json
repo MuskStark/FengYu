@@ -1,5 +1,5 @@
 {
-  "name": "@fengyu/plugin-email-ui",
+  "name": "@infinia/plugin-email-ui",
   "version": "4.0.0",
   "private": true,
   "type": "module",
@@ -9,8 +9,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@fengyu/plugin-sdk": "file:../../../plugin-sdk/typescript",
-    "@fengyu/plugin-ui": "file:../../../plugin-ui/vue",
+    "@infinia/plugin-sdk": "file:../../../plugin-sdk/typescript",
+    "@infinia/plugin-ui": "file:../../../plugin-ui/vue",
     "@mdi/js": "^7.4.47",
     "@tiptap/extension-color": "^2.27.2",
     "@tiptap/extension-link": "^2.27.2",

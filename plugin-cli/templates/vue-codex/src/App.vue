@@ -20,9 +20,9 @@ import {
   FyTaskTable,
   FyToolbar,
   useFengYuClient,
-} from '@fengyu/plugin-ui'
-import type { FyTaskRow } from '@fengyu/plugin-ui'
-import type { FileRef } from '@fengyu/plugin-sdk'
+} from '@infinia/plugin-ui'
+import type { FyTaskRow } from '@infinia/plugin-ui'
+import type { FileRef } from '@infinia/plugin-sdk'
 
 const client = useFengYuClient()
 

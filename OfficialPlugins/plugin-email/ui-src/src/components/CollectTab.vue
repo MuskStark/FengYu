@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { FileRef } from '@fengyu/plugin-sdk'
+import type { FileRef } from '@infinia/plugin-sdk'
 import { useAccountsStore } from '../stores/accounts'
 import { useArchiveStore } from '../stores/archive'
 import { actionable, files, invoke } from '../sdk'

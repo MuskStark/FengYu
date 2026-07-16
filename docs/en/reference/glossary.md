@@ -14,7 +14,7 @@ An **opaque handle** the host mints to let a sandboxed plugin refer to a file or
 
 ## MF (micro-frontend)
 
-A self-contained UI bundle (the plugin's `ui/` directory) that the host serves as static assets under `/plugin-runtime/{id}/**` and loads into a **sandboxed iframe** under a strict Content Security Policy. Inside the iframe, `@fengyu/plugin-sdk`'s `FengYuClient` bridges to the host over `postMessage`. The host's MF loader can also mount a plugin's ESM bundle directly via `import(uiEntry)` → `default.mount(el, ctx)`. See [UI Micro-frontend](/en/plugins/ui-microfrontend).
+A self-contained UI bundle (the plugin's `ui/` directory) that the host serves as static assets under `/plugin-runtime/{id}/**` and loads into a **sandboxed iframe** under a strict Content Security Policy. Inside the iframe, `@infinia/plugin-sdk`'s `FengYuClient` bridges to the host over `postMessage`. The host's MF loader can also mount a plugin's ESM bundle directly via `import(uiEntry)` → `default.mount(el, ctx)`. See [UI Micro-frontend](/en/plugins/ui-microfrontend).
 
 ## SETUP mode / APP mode
 

@@ -4,7 +4,7 @@
 
 FengYu 4.0.0 插件由 Vue 微前端、可选的 Java JSON-RPC worker 和根目录
 `manifest.json` 组成，最终以 `.fyp` zip 安装包交付。仓库已经提供 TypeScript 浏览器
-SDK、Vue UI Kit、Java worker SDK 和 `@fengyu/plugin-cli`，但当前工具链尚未形成从初始化
+SDK、Vue UI Kit、Java worker SDK 和 `@infinia/plugin-cli`，但当前工具链尚未形成从初始化
 到安装包的完整闭环：
 
 - `fengyu plugin create` 默认只生成 Vue 项目，没有 Java worker、Maven Wrapper 或真实 RPC 示例。
@@ -99,7 +99,7 @@ mvnw.cmd
 .mvn/maven.config
 ```
 
-UI 使用 Vue 3、TypeScript、Vuetify、`@fengyu/plugin-sdk` 和 `@fengyu/plugin-ui`。worker 使用
+UI 使用 Vue 3、TypeScript、Vuetify、`@infinia/plugin-sdk` 和 `@infinia/plugin-ui`。worker 使用
 JDK 21、`fengyu-plugin-sdk` 和 Maven Shade，生成带正确 `Main-Class` 的 fat JAR。示例 UI
 必须调用一个真实示例 RPC；worker 必须提供对应 handler，并为两端生成最小测试。
 
@@ -212,7 +212,7 @@ CLI 和宿主使用同一套 manifest fixtures 做契约测试，防止两套手
 
 四个开发工具采用同一个插件工具链版本：
 
-- npm：`@fengyu/plugin-cli`、`@fengyu/plugin-sdk`、`@fengyu/plugin-ui`
+- npm：`@infinia/plugin-cli`、`@infinia/plugin-sdk`、`@infinia/plugin-ui`
 - GitHub Packages Maven：`fan.summer.fengyu.sdk:fengyu-plugin-sdk`
 
 工具链版本独立于宿主 4.x 版本，但遵循语义化版本。SDK 主版本用于运行时兼容协商；模板生成时
