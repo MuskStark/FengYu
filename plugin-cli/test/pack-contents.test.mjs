@@ -4,7 +4,7 @@ import { assertPackContents } from '../scripts/assert-pack-contents.mjs'
 
 test('accepts packages with their required published files', () => {
   assert.doesNotThrow(() => assertPackContents([
-    { name: '@fengyu/plugin-cli', files: [
+    { name: '@infinia/plugin-cli', files: [
       { path: 'bin/fengyu.mjs' }, { path: 'src/cli.mjs' },
       { path: 'spec/manifest.schema.json' }, { path: 'templates/vue-java/mvnw' },
       { path: 'templates/vue-java/mvnw.cmd' },
@@ -18,15 +18,15 @@ test('accepts packages with their required published files', () => {
       { path: 'templates/vue-java/worker/src/test/java/example/WorkerTest.java.tpl' },
       { path: 'templates/vue-codex/manifest.json.tpl' },
     ] },
-    { name: '@fengyu/plugin-sdk', files: [{ path: 'dist/index.js' }, { path: 'dist/index.d.ts' }] },
-    { name: '@fengyu/plugin-ui', files: [
+    { name: '@infinia/plugin-sdk', files: [{ path: 'dist/index.js' }, { path: 'dist/index.d.ts' }] },
+    { name: '@infinia/plugin-ui', files: [
       { path: 'dist/index.js' }, { path: 'dist/index.d.ts' }, { path: 'dist/style.css' },
     ] },
   ]))
 })
 
 test('rejects missing or source-only files', () => {
-  assert.throws(() => assertPackContents([{ name: '@fengyu/plugin-sdk', files: [{ path: 'test/sdk.test.mjs' }] }]), /missing|forbidden/)
+  assert.throws(() => assertPackContents([{ name: '@infinia/plugin-sdk', files: [{ path: 'test/sdk.test.mjs' }] }]), /missing|forbidden/)
 })
 
 test('rejects package tests but permits generated-project test templates', () => {
@@ -44,9 +44,9 @@ test('rejects package tests but permits generated-project test templates', () =>
     { path: 'templates/vue-java/worker/src/test/java/example/WorkerTest.java.tpl' },
     { path: 'templates/vue-codex/manifest.json.tpl' },
   ]
-  assert.doesNotThrow(() => assertPackContents([{ name: '@fengyu/plugin-cli', files: cliFiles }]))
+  assert.doesNotThrow(() => assertPackContents([{ name: '@infinia/plugin-cli', files: cliFiles }]))
   assert.throws(
-    () => assertPackContents([{ name: '@fengyu/plugin-cli', files: [...cliFiles, { path: 'test/cli.test.mjs' }] }]),
+    () => assertPackContents([{ name: '@infinia/plugin-cli', files: [...cliFiles, { path: 'test/cli.test.mjs' }] }]),
     /forbidden/,
   )
 })

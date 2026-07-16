@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { FileRef } from '@fengyu/plugin-sdk'
+import type { FileRef } from '@infinia/plugin-sdk'
 import type { Confirmation, SendResult } from './compose'
 
 export interface BatchPreviewMessage {

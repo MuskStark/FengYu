@@ -8,7 +8,7 @@
  * without auto-retry; other errors render {@link FyErrorState} with retry.
  * Concurrent clicks are guarded by `loading`.
  */
-import type { FileRef } from '@fengyu/plugin-sdk'
+import type { FileRef } from '@infinia/plugin-sdk'
 import { useFengYuClient } from '../client'
 import { useFengYuPick } from '../composables/useFengYuPick'
 import FyPermissionNotice from './FyPermissionNotice.vue'

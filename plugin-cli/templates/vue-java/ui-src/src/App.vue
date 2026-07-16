@@ -9,7 +9,7 @@
  * Plugin id: {{pluginId}}
  */
 import { ref } from 'vue'
-import { FyPluginShell, FyPageHeader, useFengYuClient } from '@fengyu/plugin-ui'
+import { FyPluginShell, FyPageHeader, useFengYuClient } from '@infinia/plugin-ui'
 
 const client = useFengYuClient()
 const greeting = ref('')

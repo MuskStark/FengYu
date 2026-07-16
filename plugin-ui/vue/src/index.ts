@@ -1,5 +1,5 @@
 /**
- * @fengyu/plugin-ui — Codex-style Vuetify foundation for FengYu generated plugins.
+ * @infinia/plugin-ui — Codex-style Vuetify foundation for FengYu generated plugins.
  *
  * Public surface:
  * - {@link createFengYuVuetify}: build a pre-configured Vuetify instance.
@@ -43,4 +43,4 @@ export { useFengYuNotify, sendFengYuNotification } from './composables/useFengYu
 
 // Re-export the SDK types this library consumes, so plugin authors have a
 // single import surface for the host bindings.
-export type { FengYuClient, Environment, Theme, FileRef, FileFilter } from '@fengyu/plugin-sdk'
+export type { FengYuClient, Environment, Theme, FileRef, FileFilter } from '@infinia/plugin-sdk'

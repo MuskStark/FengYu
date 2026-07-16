@@ -1,7 +1,7 @@
 name: Plugin Tooling Release
 
 # Publishes the plugin toolchain: the Java Worker SDK to GitHub Packages and the
-# three npm packages (@fengyu/plugin-sdk, @fengyu/plugin-ui, @fengyu/plugin-cli)
+# three npm packages (@infinia/plugin-sdk, @infinia/plugin-ui, @infinia/plugin-cli)
 # to npm. Triggered by a `plugin-tooling-v*` tag or a manual dispatch with a
 # version. The workflow is not marked successful until a clean external consumer
 # can scaffold and build a plugin from the published packages.
@@ -137,10 +137,10 @@ jobs:
           VERSION: ${{ needs.resolve-version.outputs.version }}
         run: |
           for i in 1 2 3 4 5 6; do
-            if npm view @fengyu/plugin-cli@$VERSION >/dev/null 2>&1; then echo "resolved after $i tries"; exit 0; fi
+            if npm view @infinia/plugin-cli@$VERSION >/dev/null 2>&1; then echo "resolved after $i tries"; exit 0; fi
             echo "attempt $i: not visible yet, waiting 20s"; sleep 20
           done
-          echo "FAIL: @fengyu/plugin-cli@$VERSION never became resolvable" >&2; exit 1
+          echo "FAIL: @infinia/plugin-cli@$VERSION never became resolvable" >&2; exit 1
       - name: "Clean-consumer scaffold + build (no file: deps)"
         env:
           VERSION: ${{ needs.resolve-version.outputs.version }}
@@ -148,7 +148,7 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
         run: |
           cd "$(mktemp -d)"
-          npx --yes @fengyu/plugin-cli@$VERSION plugin create demo --id com.example.demo
+          npx --yes @infinia/plugin-cli@$VERSION plugin create demo --id com.example.demo
           cd demo
-          npx --yes @fengyu/plugin-cli@$VERSION plugin build .
+          npx --yes @infinia/plugin-cli@$VERSION plugin build .
           test -f dist-package/com.example.demo-1.0.0.fyp

@@ -137,7 +137,7 @@ UI 是一个**四步向导**微前端，使用宿主的 Vuetify 实例构建：
 - **第 3 步——配置：** 随模式而异的选项（工作表、拆分列或复杂规则）。
 - **第 4 步——输出：** 分配输出目录，执行拆分，并导出 zip。
 
-它加载在 `/plugin-runtime/fan.summer.excel/**` 下的沙箱化 iframe 中，并通过 `@fengyu/plugin-sdk` 与宿主桥接。参见 [UI 微前端](/zh/plugins/ui-microfrontend)。
+它加载在 `/plugin-runtime/fan.summer.excel/**` 下的沙箱化 iframe 中，并通过 `@infinia/plugin-sdk` 与宿主桥接。参见 [UI 微前端](/zh/plugins/ui-microfrontend)。
 
 ## 下一步
 

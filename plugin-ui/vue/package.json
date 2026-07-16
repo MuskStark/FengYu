@@ -1,5 +1,5 @@
 {
-  "name": "@fengyu/plugin-ui",
+  "name": "@infinia/plugin-ui",
   "version": "1.0.0",
   "description": "Codex-style Vuetify 3 component library for FengYu generated plugins.",
   "license": "GPL-3.0",
@@ -31,13 +31,13 @@
   "repository": { "type": "git", "url": "git+https://github.com/MuskStark/FengYu.git", "directory": "plugin-ui/vue" },
   "publishConfig": { "access": "public" },
   "peerDependencies": {
-    "@fengyu/plugin-sdk": "^1.0.0",
+    "@infinia/plugin-sdk": "^1.0.0",
     "vue": "^3.5.0",
     "vuetify": "^3.9.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
-    "@fengyu/plugin-sdk": "file:../../plugin-sdk/typescript",
+    "@infinia/plugin-sdk": "file:../../plugin-sdk/typescript",
     "@mdi/font": "^7.4.47",
     "@mdi/js": "^7.4.47",
     "@playwright/test": "^1.51.0",

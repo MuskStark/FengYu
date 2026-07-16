@@ -4,7 +4,7 @@
 
 **Goal:** Migrate the 3.2.0 email sender and archive tools into one official, SDK-based FengYu 4.0.0 Email Center plugin with multi-account SMTP/IMAP, manual collection, address-book and batch workflows, and confirmed AI sending.
 
-**Architecture:** Extend the official Java Worker SDK with a permission-gated database environment contract, inject the configured host JDBC descriptor into isolated plugin Workers, and keep all email tables, migrations, encryption, and business logic inside `plugin-email`. The sandboxed Vue/Vuetify UI communicates only through `@fengyu/plugin-sdk`; AI sends create immutable pending operations and require a host-rendered confirmation before SMTP dispatch.
+**Architecture:** Extend the official Java Worker SDK with a permission-gated database environment contract, inject the configured host JDBC descriptor into isolated plugin Workers, and keep all email tables, migrations, encryption, and business logic inside `plugin-email`. The sandboxed Vue/Vuetify UI communicates only through `@infinia/plugin-sdk`; AI sends create immutable pending operations and require a host-rendered confirmation before SMTP dispatch.
 
 **Tech Stack:** Java 21, FengYu Java Worker SDK, JSON-RPC 2.0, JDBC, MyBatis 3.5, H2/SQLite/MySQL/PostgreSQL, Simple Java Mail 8.12.6, Angus Mail 2.0.4, GreenMail 2.1.3, Vue 3.5, Vuetify 3, TipTap 2, TypeScript, Vite, Vitest.
 
@@ -46,7 +46,7 @@
 
 ### Email UI and package
 
-- `OfficialPlugins/plugin-email/ui-src/` — Vue/Vuetify/TipTap iframe application using `@fengyu/plugin-sdk`.
+- `OfficialPlugins/plugin-email/ui-src/` — Vue/Vuetify/TipTap iframe application using `@infinia/plugin-sdk`.
 - `OfficialPlugins/packages/email/manifest.json` — permissions, UI/backend entries, and AI tool schemas.
 - `OfficialPlugins/build-packages.sh` — build and package `fan.summer.email-4.0.0.fyp`.
 
@@ -687,7 +687,7 @@ git commit -m "✨ feat(email): expose SDK worker and AI tools"
 - Create: `OfficialPlugins/plugin-email/ui-src/src/styles.css`
 
 **Interfaces:**
-- Consumes: only `FengYuClient.ready()`, `invoke()`, `files.open()`, `files.inputDirectory()`, `files.outputDirectory()`, and `environment` events from `@fengyu/plugin-sdk`.
+- Consumes: only `FengYuClient.ready()`, `invoke()`, `files.open()`, `files.inputDirectory()`, `files.outputDirectory()`, and `environment` events from `@infinia/plugin-sdk`.
 - Produces: five-tab UI and local confirmation for visual single/batch sends.
 
 - [ ] **Step 1: Write failing UI state tests**
@@ -702,7 +702,7 @@ Expected: failure because the UI project and stores do not exist.
 
 - [ ] **Step 3: Scaffold Vue, Vuetify, TipTap, Vitest, and official SDK dependency**
 
-Use `"@fengyu/plugin-sdk": "file:../../../plugin-sdk/typescript"`. `src/sdk.ts` constructs one `FengYuClient`, calls `ready()`, subscribes to `environment`, and disposes it during app unmount. No component calls `window.postMessage` or `/api/*`.
+Use `"@infinia/plugin-sdk": "file:../../../plugin-sdk/typescript"`. `src/sdk.ts` constructs one `FengYuClient`, calls `ready()`, subscribes to `environment`, and disposes it during app unmount. No component calls `window.postMessage` or `/api/*`.
 
 - [ ] **Step 4: Implement the five tabs with focused stores**
 
@@ -713,7 +713,7 @@ All user-visible errors are actionable. Send buttons first call a preparation RP
 ```ts
 expect(allSource).not.toMatch(/postMessage\s*\(/)
 expect(allSource).not.toMatch(/fetch\s*\(\s*['"`]\/api\//)
-expect(allSource).toContain('@fengyu/plugin-sdk')
+expect(allSource).toContain('@infinia/plugin-sdk')
 ```
 
 - [ ] **Step 6: Verify UI**

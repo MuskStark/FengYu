@@ -1102,7 +1102,7 @@ git commit -m "♻️ refactor(plugins): package official plugins with cli"
 - Modify: `CHANGELOG.md`
 
 **Interfaces:**
-- Produces: npm packages `@fengyu/plugin-cli@1.0.0`, `@fengyu/plugin-sdk@1.0.0`, `@fengyu/plugin-ui@1.0.0`.
+- Produces: npm packages `@infinia/plugin-cli@1.0.0`, `@infinia/plugin-sdk@1.0.0`, `@infinia/plugin-ui@1.0.0`.
 - Produces: GitHub package `fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.0.0`.
 - Produces: release trigger `plugin-tooling-v1.0.0` plus manual dispatch input `version`.
 
@@ -1143,7 +1143,7 @@ Jobs:
 1. `verify` — JDK 21/Node 20, all SDK/CLI/UI tests, official CLI matrix builds, host smoke.
 2. `publish-java` — needs verify, runs `./mvnw -f FengYu-Plugin-Sdk/pom.xml deploy -DskipTests` with GitHub actor/token server settings.
 3. `publish-npm` — needs publish-java, builds and publishes SDK, UI, then CLI using npm trusted publishing with GitHub OIDC.
-4. `consumer-smoke` — needs publish-npm, creates a clean temp project with `npx @fengyu/plugin-cli@<version> plugin create`, supplies a read-packages token, and runs `fengyu plugin build` without `file:` dependencies.
+4. `consumer-smoke` — needs publish-npm, creates a clean temp project with `npx @infinia/plugin-cli@<version> plugin create`, supplies a read-packages token, and runs `fengyu plugin build` without `file:` dependencies.
 
 Do not mark the workflow successful until `consumer-smoke` passes. Because registries can be eventually consistent, retry package resolution up to six times with 20-second intervals and fail after the sixth attempt.
 
@@ -1156,7 +1156,7 @@ Ensure CLI redaction covers `NPM_TOKEN`, `NODE_AUTH_TOKEN`, `GITHUB_TOKEN`, `FEN
 Document exact commands:
 
 ```bash
-npx @fengyu/plugin-cli plugin create my-plugin --id com.example.my-plugin
+npx @infinia/plugin-cli plugin create my-plugin --id com.example.my-plugin
 cd my-plugin
 export FENGYU_GITHUB_TOKEN='<GitHub token with read:packages>'
 npx fengyu plugin dev .

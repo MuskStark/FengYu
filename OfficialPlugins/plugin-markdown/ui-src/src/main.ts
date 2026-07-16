@@ -1,7 +1,7 @@
 import { createApp } from 'vue'
-import { fengyu } from '@fengyu/plugin-sdk'
-import { bindFengYuEnvironment, createFengYuVuetify, provideFengYuClient } from '@fengyu/plugin-ui'
-import '@fengyu/plugin-ui/style.css'
+import { fengyu } from '@infinia/plugin-sdk'
+import { bindFengYuEnvironment, createFengYuVuetify, provideFengYuClient } from '@infinia/plugin-ui'
+import '@infinia/plugin-ui/style.css'
 import App from './MarkdownEditor.vue'
 
 if (!fengyu) throw new Error('FengYu SDK requires a browser environment')

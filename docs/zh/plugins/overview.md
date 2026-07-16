@@ -18,7 +18,7 @@ FengYu 插件通过新的 UI 与后端能力扩展宿主，同时保持**严格�
 | `ui/` | 微前端资源（入口 HTML + JS），通过 `/plugin-runtime/{id}/**` 提供 |
 | `backend/worker.jar` | worker 可执行文件，作为独立的操作系统进程被启动 |
 
-UI 运行在**沙箱化的 iframe** 中，通过 `@fengyu/plugin-sdk` 提供的 `postMessage` 桥与宿主通信。后端是一个**进程外的 worker**，通过 stdio 上的 JSON-RPC 2.0 通信。worker 崩溃或挂起都不会拖垮宿主，worker 也无法触及宿主的 bean 或 JPA 会话。
+UI 运行在**沙箱化的 iframe** 中，通过 `@infinia/plugin-sdk` 提供的 `postMessage` 桥与宿主通信。后端是一个**进程外的 worker**，通过 stdio 上的 JSON-RPC 2.0 通信。worker 崩溃或挂起都不会拖垮宿主，worker 也无法触及宿主的 bean 或 JPA 会话。
 
 ## 官方插件与第三方插件
 

@@ -18,7 +18,7 @@ A plugin is a **`.fyp` package** — a zip archive with three parts:
 | `ui/` | The micro-frontend assets (entry HTML + JS), served under `/plugin-runtime/{id}/**` |
 | `backend/worker.jar` | The worker executable, spawned as its own OS process |
 
-The UI runs in a **sandboxed iframe** and talks to the host through a `postMessage` bridge provided by `@fengyu/plugin-sdk`. The backend is an **out-of-process worker** that speaks JSON-RPC 2.0 over stdio. A worker crash or hang cannot take down the host, and a worker cannot reach into host beans or the JPA session.
+The UI runs in a **sandboxed iframe** and talks to the host through a `postMessage` bridge provided by `@infinia/plugin-sdk`. The backend is an **out-of-process worker** that speaks JSON-RPC 2.0 over stdio. A worker crash or hang cannot take down the host, and a worker cannot reach into host beans or the JPA session.
 
 ## Official vs third-party
 

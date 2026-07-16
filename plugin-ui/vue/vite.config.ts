@@ -18,7 +18,7 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       // Peer deps are externalized; consumers bring their own Vue/Vuetify/SDK.
-      external: ['vue', 'vuetify', '@fengyu/plugin-sdk'],
+      external: ['vue', 'vuetify', '@infinia/plugin-sdk'],
       output: {
         // Emit the single bundled stylesheet as dist/style.css so the
         // "./style.css" subpath export resolves correctly.

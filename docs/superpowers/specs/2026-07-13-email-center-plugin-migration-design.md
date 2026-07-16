@@ -159,7 +159,7 @@ iframe cannot share the host's Vue/Vuetify runtime. Theme and locale are obtaine
 from `FengYuClient.ready()` and kept synchronized through official SDK
 `environment` events.
 
-All host communication goes through the official `@fengyu/plugin-sdk`
+All host communication goes through the official `@infinia/plugin-sdk`
 `FengYuClient`: `ready()`, `invoke()`, and `files` operations. The package build
 vendors the official SDK browser bundle in the same way as the existing official
 Markdown and Excel packages; the email UI does not call `postMessage` or

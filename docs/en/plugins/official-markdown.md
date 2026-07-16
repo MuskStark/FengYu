@@ -72,7 +72,7 @@ The UI is a Vuetify split-pane MF:
 - **Right pane** — the live HTML preview, repainted from each `render` result.
 - Built with the host's Vuetify instance (MD3) via the shared-host `PluginContext.vuetify` — it does **not** bundle its own copy. See [Pitfalls](/en/plugins/pitfalls) for the Vue/Vuetify dedupe rule.
 
-It loads in the sandboxed iframe under `/plugin-runtime/fan.summer.markdown/**` and bridges to the host through `@fengyu/plugin-sdk`. See [UI Micro-frontend](/en/plugins/ui-microfrontend).
+It loads in the sandboxed iframe under `/plugin-runtime/fan.summer.markdown/**` and bridges to the host through `@infinia/plugin-sdk`. See [UI Micro-frontend](/en/plugins/ui-microfrontend).
 
 ## Next steps
 

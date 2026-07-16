@@ -1,5 +1,5 @@
 {
-  "name": "@fengyu/plugin-sdk",
+  "name": "@infinia/plugin-sdk",
   "version": "1.0.0",
   "description": "Browser SDK for FengYu plugin micro-frontends.",
   "type": "module",

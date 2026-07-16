@@ -137,7 +137,7 @@ The UI is a **four-step wizard** micro-frontend, built with the host's Vuetify i
 - **Step 3 — Configure:** mode-specific options (sheets, split column, or complex rules).
 - **Step 4 — Output:** allocate the output directory, execute the split, and export the zip.
 
-It loads in the sandboxed iframe under `/plugin-runtime/fan.summer.excel/**` and bridges to the host via `@fengyu/plugin-sdk`. See [UI Micro-frontend](/en/plugins/ui-microfrontend).
+It loads in the sandboxed iframe under `/plugin-runtime/fan.summer.excel/**` and bridges to the host via `@infinia/plugin-sdk`. See [UI Micro-frontend](/en/plugins/ui-microfrontend).
 
 ## Next steps
 

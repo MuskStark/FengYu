@@ -870,9 +870,9 @@ consumer-smoke:
 Replace both consumer commands with explicit package-qualified invocations:
 
 ```yaml
-npx --yes @fengyu/plugin-cli@$VERSION plugin create demo --id com.example.demo
+npx --yes @infinia/plugin-cli@$VERSION plugin create demo --id com.example.demo
 cd demo
-npx --yes @fengyu/plugin-cli@$VERSION plugin build .
+npx --yes @infinia/plugin-cli@$VERSION plugin build .
 ```
 
 Do not use bare `fengyu` unless the workflow first installs the CLI into that temp project.
@@ -1030,18 +1030,18 @@ Put the reusable assertion code in `plugin-cli/scripts/assert-pack-contents.mjs`
 Replace ambiguous sequences such as:
 
 ```bash
-npx @fengyu/plugin-cli plugin create my-plugin --id com.example.my-plugin
+npx @infinia/plugin-cli plugin create my-plugin --id com.example.my-plugin
 npx fengyu plugin build .
 ```
 
 with one consistent form:
 
 ```bash
-npx --yes @fengyu/plugin-cli@1.0.0 plugin create my-plugin --id com.example.my-plugin
+npx --yes @infinia/plugin-cli@1.0.0 plugin create my-plugin --id com.example.my-plugin
 cd my-plugin
-npx --yes @fengyu/plugin-cli@1.0.0 plugin dev .
-npx --yes @fengyu/plugin-cli@1.0.0 plugin build .
-npx --yes @fengyu/plugin-cli@1.0.0 plugin install \
+npx --yes @infinia/plugin-cli@1.0.0 plugin dev .
+npx --yes @infinia/plugin-cli@1.0.0 plugin build .
+npx --yes @infinia/plugin-cli@1.0.0 plugin install \
   dist-package/com.example.my-plugin-1.0.0.fyp \
   --host http://127.0.0.1:24056
 ```

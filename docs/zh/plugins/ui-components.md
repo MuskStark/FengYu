@@ -1,12 +1,12 @@
 ---
 title: UI 组件
-description: "@fengyu/plugin-ui 套件——面向 FengYu 插件的 Codex 风格 Vuetify 3 基础库。外壳、文件/目录选择器、步骤向导、任务表、通知中心，以及脚手架 main.ts 接线的主题/locale 绑定。"
+description: "@infinia/plugin-ui 套件——面向 FengYu 插件的 Codex 风格 Vuetify 3 基础库。外壳、文件/目录选择器、步骤向导、任务表、通知中心，以及脚手架 main.ts 接线的主题/locale 绑定。"
 lang: zh-CN
 ---
 
 # UI 组件
 
-`@fengyu/plugin-ui` 是面向 FengYu 插件的官方 Vuetify 3（Material Design 3）组件库。`fengyu plugin create` 生成的项目依赖它，其 `src/main.ts` 已经接好 Vuetify 实例、主题/locale 绑定与 client 注入——你只需组合组件即可。从单一入口导入你用到的部分：
+`@infinia/plugin-ui` 是面向 FengYu 插件的官方 Vuetify 3（Material Design 3）组件库。`fengyu plugin create` 生成的项目依赖它，其 `src/main.ts` 已经接好 Vuetify 实例、主题/locale 绑定与 client 注入——你只需组合组件即可。从单一入口导入你用到的部分：
 
 ```ts
 import {
@@ -17,7 +17,7 @@ import {
   createFengYuVuetify,
   bindFengYuEnvironment,
   provideFengYuClient,
-} from '@fengyu/plugin-ui'
+} from '@infinia/plugin-ui'
 ```
 
 你用来组合的基础控件（`v-btn`、`v-card`、`v-list`、`v-data-table`……）就是普通的 Vuetify 控件，已由 `createFengYuVuetify` 全局注册。`Fy*` 组件是建立在之上的、带有 FengYu 既有约定的封装。
@@ -57,8 +57,8 @@ import {
 ```vue
 <script setup lang="ts">
 import { ref } from 'vue'
-import { FyFilePicker, FyNotificationCenter, useFengYuClient } from '@fengyu/plugin-ui'
-import type { FileRef } from '@fengyu/plugin-sdk'
+import { FyFilePicker, FyNotificationCenter, useFengYuClient } from '@infinia/plugin-ui'
+import type { FileRef } from '@infinia/plugin-sdk'
 
 const client = useFengYuClient()
 const selectedFile = ref<FileRef | null>(null)
@@ -98,8 +98,8 @@ async function onFile(file: FileRef | null): Promise<void> {
 ```vue
 <script setup lang="ts">
 import { ref } from 'vue'
-import { FyStepWizard } from '@fengyu/plugin-ui'
-import type { FyWizardStep } from '@fengyu/plugin-ui'
+import { FyStepWizard } from '@infinia/plugin-ui'
+import type { FyWizardStep } from '@infinia/plugin-ui'
 
 const steps: FyWizardStep[] = [
   { value: 'source', title: 'Source' },
