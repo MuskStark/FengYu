@@ -74,6 +74,23 @@ function requireCommandArray(value, field) {
   return [...value]
 }
 
+function requireRuntimePath(value, field) {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error(`${field} must be a non-empty relative runtime path`)
+  }
+  if (value.includes('\\') || path.posix.isAbsolute(value) || /^[A-Za-z]:/.test(value)) {
+    throw new Error(`${field} "${value}" must be a POSIX relative runtime path`)
+  }
+  const normalized = path.posix.normalize(value)
+  if (normalized === '.' || normalized === '..' || normalized.startsWith('../')) {
+    throw new Error(`${field} "${value}" escapes plugin root`)
+  }
+  if (normalized === 'manifest.json') {
+    throw new Error(`${field} must not overwrite manifest.json`)
+  }
+  return normalized
+}
+
 async function normalizeUi(raw, root) {
   if (raw == null) return null
   if (typeof raw !== 'object') throw new Error('ui must be an object')
@@ -117,7 +134,7 @@ async function normalizePackage(raw, root) {
     const entry = raw.resources[i]
     if (typeof entry !== 'object') throw new Error(`package.resources[${i}] must be an object`)
     const from = await resolveInside(root, entry.from, `package.resources[${i}].from`)
-    const to = await resolveInside(root, entry.to, `package.resources[${i}].to`)
+    const to = requireRuntimePath(entry.to, `package.resources[${i}].to`)
     resources.push({ from, to })
   }
   return { outputDirectory, resources }
