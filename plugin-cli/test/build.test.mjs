@@ -176,6 +176,24 @@ test('missing worker artifact fails validation with no partial output', async ()
   assert.deepEqual(leftovers, [])
 })
 
+test('backend manifests require a declared worker build configuration', async () => {
+  const configFile = path.join(root, 'fengyu.plugin.json')
+  const config = JSON.parse(await fs.readFile(configFile, 'utf8'))
+  delete config.worker
+  await fs.writeFile(configFile, JSON.stringify(config))
+  await assert.rejects(
+    () => buildPlugin(root, {
+      run: async (command, args, options) => {
+        if (tagFor(command, args, options?.cwd ?? '') === 'ui-build') {
+          await fs.mkdir(path.join(root, 'ui-src/dist'), { recursive: true })
+          await fs.writeFile(path.join(root, 'ui-src/dist/index.html'), '<div></div>')
+        }
+      },
+    }),
+    /backend.*worker|worker.*backend/i,
+  )
+})
+
 test('worker Main-Class must match the declared build configuration', async () => {
   await assert.rejects(
     () => buildPlugin(root, {

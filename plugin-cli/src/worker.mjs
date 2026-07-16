@@ -39,6 +39,11 @@ export async function startWorker({ jar, java = 'java', javaArgs = [], cwd, onSt
   const pending = new Map()
   let nextId = 1
   let exited = false
+  let closePromise = null
+  const terminated = new Promise((resolve) => {
+    child.once('exit', resolve)
+    child.once('error', resolve)
+  })
 
   const stdout = createInterface({ input: child.stdout })
   stdout.on('line', (line) => {
@@ -119,14 +124,21 @@ export async function startWorker({ jar, java = 'java', javaArgs = [], cwd, onSt
       return Promise.reject(new Error('restart not implemented on this client; rebuild via dev'))
     },
     async close() {
-      if (exited) return
-      exited = true
-      rejectAll(new Error('worker closed'))
-      try { child.stdin.end() } catch { /* ignore */ }
-      try { child.kill('SIGTERM') } catch { /* ignore */ }
-      // Force-kill after a short grace so lingering children never keep the
-      // event loop alive (tests rely on a prompt exit).
-      setTimeout(() => { try { child.kill('SIGKILL') } catch { /* ignore */ } }, 500).unref?.()
+      if (closePromise) return closePromise
+      if (exited || child.exitCode !== null || child.signalCode !== null) return
+      closePromise = (async () => {
+        exited = true
+        rejectAll(new Error('worker closed'))
+        try { child.stdin.end() } catch { /* ignore */ }
+        try { child.kill('SIGTERM') } catch { /* ignore */ }
+        const forceKill = setTimeout(() => {
+          try { child.kill('SIGKILL') } catch { /* ignore */ }
+        }, 500)
+        forceKill.unref?.()
+        await terminated
+        clearTimeout(forceKill)
+      })()
+      return closePromise
     },
     child() { return child },
   }

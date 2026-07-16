@@ -85,6 +85,9 @@ function requireRuntimePath(value, field) {
   if (normalized === '.' || normalized === '..' || normalized.startsWith('../')) {
     throw new Error(`${field} "${value}" escapes plugin root`)
   }
+  if (value.split('/').some((segment) => segment === '.' || segment === '..')) {
+    throw new Error(`${field} "${value}" must not contain . or .. path segments`)
+  }
   if (normalized === 'manifest.json') {
     throw new Error(`${field} must not overwrite manifest.json`)
   }

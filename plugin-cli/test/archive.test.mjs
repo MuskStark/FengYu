@@ -73,6 +73,16 @@ test('rejects duplicate entries', async () => {
   await assert.rejects(() => inspectArchive(file), /duplicate archive entry/)
 })
 
+test('rejects non-canonical archive path aliases', async () => {
+  for (const [index, alias] of ['./ui/index.html', 'ui//index.html', 'ui\\index.html'].entries()) {
+    const file = await writeZip(`alias-${index}.zip`, [
+      { name: 'ui/index.html', data: 'canonical' },
+      { name: alias, data: 'alias' },
+    ])
+    await assert.rejects(() => inspectArchive(file), /duplicate|unsafe|canonical|path/)
+  }
+})
+
 test('rejects an archive expanding past 300 MB', async () => {
   // Declare an entry larger than the limit without materialising the bytes.
   const name = Buffer.from('big.bin')
