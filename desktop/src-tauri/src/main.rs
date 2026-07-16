@@ -45,6 +45,10 @@ fn startup_action(setup_mode: bool, port: u16) -> StartupAction {
     }
 }
 
+fn should_restart_setup(shutting_down: bool, exit_code: Option<i32>) -> bool {
+    !shutting_down && exit_code == Some(0)
+}
+
 // The sidecar machinery below is PROD-only, gated on `not(debug_assertions)` (a release build).
 // In dev (`cargo tauri dev`, a debug build) the backend is started externally (IDE /
 // `mvn spring-boot:run` on :24056) and the webview reaches it via the Vite proxy — so none of the
@@ -65,7 +69,11 @@ struct SidecarState {
 }
 
 /// Holds the spawned Java sidecar so it can be replaced after setup and killed on exit.
-struct Sidecar(Mutex<SidecarState>);
+struct Sidecar {
+    state: Mutex<SidecarState>,
+    #[cfg(not(debug_assertions))]
+    supervisor: Mutex<Option<std::thread::JoinHandle<()>>>,
+}
 
 struct PreparedDesktop {
     child: Option<Child>,
@@ -88,12 +96,16 @@ where
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         // Empty until setup resolves the sidecar; setup swaps the live child in.
-        .manage(Sidecar(Mutex::new(SidecarState::default())))
+        .manage(Sidecar {
+            state: Mutex::new(SidecarState::default()),
+            #[cfg(not(debug_assertions))]
+            supervisor: Mutex::new(None),
+        })
         .setup(move |app| {
             let mut prepared = prepare(app)?;
             if let Some(c) = prepared.child.take() {
                 if let Some(state) = app.try_state::<Sidecar>() {
-                    if let Ok(mut guard) = state.0.lock() {
+                    if let Ok(mut guard) = state.state.lock() {
                         guard.child = Some(c);
                     }
                 }
@@ -114,7 +126,12 @@ where
 
             #[cfg(not(debug_assertions))]
             if let Some(supervisor) = prepared.supervisor.take() {
-                supervise_setup_restart(app.handle().clone(), supervisor);
+                let handle = supervise_setup_restart(app.handle().clone(), supervisor);
+                if let Some(state) = app.try_state::<Sidecar>() {
+                    if let Ok(mut guard) = state.supervisor.lock() {
+                        *guard = Some(handle);
+                    }
+                }
             }
             Ok(())
         })
@@ -142,12 +159,24 @@ where
 
 /// Kills the spawned sidecar (if any). No-op when `Sidecar` holds `None` (dev mode).
 fn kill_sidecar(state: &State<Sidecar>) {
-    if let Ok(mut guard) = state.0.lock() {
+    if let Ok(mut guard) = state.state.lock() {
         guard.shutting_down = true;
         if let Some(mut child) = guard.child.take() {
-            let _ = child.kill();
+            terminate_child(&mut child);
         }
     }
+
+    #[cfg(not(debug_assertions))]
+    if let Ok(mut guard) = state.supervisor.lock() {
+        if let Some(handle) = guard.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+fn terminate_child(child: &mut Child) {
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 /// Generates a simple per-launch token (UUID-like) without pulling a uuid crate.
@@ -167,11 +196,15 @@ fn gen_token() -> String {
 /// `layout` points at the bundled jar + plugins under the Tauri resource directory
 /// (see `runtime_layout`).
 #[cfg(not(debug_assertions))]
-fn spawn_backend(
+fn spawn_backend<F>(
     layout: &RuntimeLayout,
     token: &str,
     requested_port: u16,
-) -> Result<(Child, u16), String> {
+    should_cancel: &F,
+) -> Result<(Child, u16), String>
+where
+    F: Fn() -> bool,
+{
     let jar = &layout.jar;
     if !jar.exists() {
         return Err(format!(
@@ -197,7 +230,13 @@ fn spawn_backend(
         .spawn()
         .map_err(|e| format!("failed to spawn java: {e}"))?;
 
-    let stdout = child.stdout.take().ok_or("no stdout on sidecar")?;
+    let stdout = match child.stdout.take() {
+        Some(stdout) => stdout,
+        None => {
+            terminate_child(&mut child);
+            return Err("no stdout on sidecar".into());
+        }
+    };
     let (tx, rx) = std::sync::mpsc::channel::<u16>();
 
     // Reader thread: scan stdout for FENGYU_PORT=, forward the rest for visibility.
@@ -213,20 +252,42 @@ fn spawn_backend(
         }
     });
 
-    // Wait up to 30s for the port line.
-    let port = rx
-        .recv_timeout(Duration::from_secs(30))
-        .map_err(|_| "backend did not report FENGYU_PORT within 30s".to_string())?;
+    // Wait up to 30s for the port line while remaining cancellable during app shutdown.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let port = loop {
+        if should_cancel() {
+            terminate_child(&mut child);
+            return Err("backend startup cancelled".into());
+        }
+        match rx.recv_timeout(Duration::from_millis(200)) {
+            Ok(port) => break port,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) if Instant::now() < deadline => {}
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                terminate_child(&mut child);
+                return Err("backend did not report FENGYU_PORT within 30s".into());
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                terminate_child(&mut child);
+                return Err("backend exited before reporting FENGYU_PORT".into());
+            }
+        }
+    };
 
     Ok((child, port))
 }
 
 /// Polls GET /api/health until 200 or timeout.
 #[cfg(not(debug_assertions))]
-fn wait_for_health(port: u16, token: &str) -> Result<(), String> {
+fn wait_for_health<F>(port: u16, token: &str, should_cancel: &F) -> Result<(), String>
+where
+    F: Fn() -> bool,
+{
     let url = format!("http://127.0.0.1:{port}/api/health");
     let deadline = Instant::now() + Duration::from_secs(30);
     while Instant::now() < deadline {
+        if should_cancel() {
+            return Err("backend health check cancelled".into());
+        }
         let resp = ureq::get(&url)
             .set("X-FengYu-Token", token)
             .timeout(Duration::from_secs(2))
@@ -263,20 +324,28 @@ struct StartedBackend {
 }
 
 #[cfg(not(debug_assertions))]
-fn start_backend(
+fn start_backend<F>(
     layout: &RuntimeLayout,
     token: &str,
     requested_port: u16,
-) -> Result<StartedBackend, String> {
-    let (mut child, port) = spawn_backend(layout, token, requested_port)?;
-    if let Err(error) = wait_for_health(port, token) {
-        let _ = child.kill();
+    should_cancel: &F,
+) -> Result<StartedBackend, String>
+where
+    F: Fn() -> bool,
+{
+    let (mut child, port) = spawn_backend(layout, token, requested_port, should_cancel)?;
+    if let Err(error) = wait_for_health(port, token, should_cancel) {
+        terminate_child(&mut child);
         return Err(error);
     }
     let setup_mode = check_setup_mode(port, token).map_err(|error| {
-        let _ = child.kill();
+        terminate_child(&mut child);
         error
     })?;
+    if should_cancel() {
+        terminate_child(&mut child);
+        return Err("backend startup cancelled".into());
+    }
     Ok(StartedBackend {
         child,
         port,
@@ -292,12 +361,25 @@ struct SetupSupervisor {
 }
 
 #[cfg(not(debug_assertions))]
-fn supervise_setup_restart(app: tauri::AppHandle, config: SetupSupervisor) {
+fn is_shutting_down(app: &tauri::AppHandle) -> bool {
+    let state = app.state::<Sidecar>();
+    state
+        .state
+        .lock()
+        .map(|guard| guard.shutting_down)
+        .unwrap_or(true)
+}
+
+#[cfg(not(debug_assertions))]
+fn supervise_setup_restart(
+    app: tauri::AppHandle,
+    config: SetupSupervisor,
+) -> std::thread::JoinHandle<()> {
     thread::spawn(move || {
         let status = loop {
             let polled = {
                 let state = app.state::<Sidecar>();
-                let mut guard = match state.0.lock() {
+                let mut guard = match state.state.lock() {
                     Ok(guard) => guard,
                     Err(_) => return,
                 };
@@ -327,22 +409,27 @@ fn supervise_setup_restart(app: tauri::AppHandle, config: SetupSupervisor) {
             }
         };
 
-        if status.code() != Some(0) {
+        if !should_restart_setup(is_shutting_down(&app), status.code()) {
+            if is_shutting_down(&app) {
+                return;
+            }
             eprintln!("FATAL: setup sidecar exited with code {:?}", status.code());
             return;
         }
 
         println!("[desktop] setup complete; restarting backend into APP mode");
-        let mut restarted = match start_backend(&config.layout, &config.token, config.port) {
-            Ok(backend) => backend,
-            Err(error) => {
-                eprintln!("FATAL: failed to restart backend after setup: {error}");
-                return;
-            }
-        };
+        let should_cancel = || is_shutting_down(&app);
+        let mut restarted =
+            match start_backend(&config.layout, &config.token, config.port, &should_cancel) {
+                Ok(backend) => backend,
+                Err(error) => {
+                    eprintln!("FATAL: failed to restart backend after setup: {error}");
+                    return;
+                }
+            };
 
         if restarted.port != config.port {
-            let _ = restarted.child.kill();
+            terminate_child(&mut restarted.child);
             eprintln!(
                 "FATAL: restarted backend moved from port {} to {}; the webview endpoint cannot change",
                 config.port, restarted.port
@@ -350,15 +437,15 @@ fn supervise_setup_restart(app: tauri::AppHandle, config: SetupSupervisor) {
             return;
         }
         if restarted.setup_mode {
-            let _ = restarted.child.kill();
+            terminate_child(&mut restarted.child);
             eprintln!("FATAL: backend remained in SETUP mode after successful initialization");
             return;
         }
 
         let state = app.state::<Sidecar>();
-        if let Ok(mut guard) = state.0.lock() {
+        if let Ok(mut guard) = state.state.lock() {
             if guard.shutting_down {
-                let _ = restarted.child.kill();
+                terminate_child(&mut restarted.child);
             } else {
                 guard.child = Some(restarted.child);
                 println!(
@@ -367,7 +454,7 @@ fn supervise_setup_restart(app: tauri::AppHandle, config: SetupSupervisor) {
                 );
             }
         };
-    });
+    })
 }
 
 // ── main(): dev vs prod ──────────────────────────────────────────────────────
@@ -404,7 +491,8 @@ fn main() {
         })?;
         let layout = runtime_layout(&resource_dir);
         let token = gen_token();
-        let started = start_backend(&layout, &token, 24056)
+        let never_cancel = || false;
+        let started = start_backend(&layout, &token, 24056, &never_cancel)
             .map_err(|error| std::io::Error::other(format!("failed to start backend: {error}")))?;
         let action = startup_action(started.setup_mode, started.port);
 
@@ -440,7 +528,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{runtime_layout, startup_action, StartupAction};
+    use super::{runtime_layout, should_restart_setup, startup_action, StartupAction};
     use std::path::Path;
 
     #[test]
@@ -461,5 +549,17 @@ mod tests {
             startup_action(true, 43123),
             StartupAction::ShowWindowAndSupervise { port: 43123 }
         );
+    }
+
+    #[test]
+    fn shutdown_prevents_a_setup_restart() {
+        assert!(!should_restart_setup(true, Some(0)));
+    }
+
+    #[test]
+    fn successful_setup_exit_restarts_only_while_running() {
+        assert!(should_restart_setup(false, Some(0)));
+        assert!(!should_restart_setup(false, Some(1)));
+        assert!(!should_restart_setup(false, None));
     }
 }
