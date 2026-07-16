@@ -74,7 +74,7 @@
         <dependency>
             <groupId>fan.summer.fengyu.sdk</groupId>
             <artifactId>fengyu-plugin-sdk</artifactId>
-            <version>${revision}</version>
+            <version>${fengyu.plugin.sdk.version}</version>
         </dependency>
 
         <!-- JavaFX removed in 4.0.0 Phase 1 headless cutover: the UI is now Vue + Tauri and the
