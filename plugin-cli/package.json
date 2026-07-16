@@ -9,6 +9,7 @@
     "test": "node --test test/*.test.mjs",
     "sync-spec": "node scripts/sync-spec.mjs",
     "check-spec": "node scripts/sync-spec.mjs --check",
+    "verify-version": "node scripts/resolve-tooling-version.mjs --ref plugin-tooling-v1.0.0",
     "prepack": "npm run check-spec && npm test"
   },
   "engines": { "node": ">=20" },
