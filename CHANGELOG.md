@@ -7,6 +7,12 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 ## [Unreleased] — Plugin SDK & CLI lifecycle
 
 ### ✨ Added
+- **Alpha desktop + web release pipeline** — `v4.0.0-alpha.1` publishes unsigned Windows/macOS/Linux
+  Tauri packages and a portable, loopback-only Web distribution. The Vue SPA is baked into the shaded
+  backend JAR (`static/`) and served by a new `SpaForwardController`; a release-tag resolver
+  (`scripts/resolve-release-version.mjs`) drives the version strings, and `scripts/package-web-release.sh`
+  + `test-web-release.sh` assemble and smoke-test the archive. Code-signing, a bundled JRE, and the
+  auto-updater remain deferred to a later release.
 - **Default Vue + Java scaffold** — `fengyu plugin create` now produces a complete plugin by default: a
   Vue/Vuetify UI (`ui-src/`) backed by a Java JSON-RPC worker (`worker/`), with the Maven Wrapper, a
   build declaration, tests, and a GitHub Packages `settings.xml`. `--ui-only` retains the lightweight
