@@ -67,6 +67,16 @@ jobs:
       - run: node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-markdown
       - run: node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-excel
       - run: node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-email
+      - name: Verify npm package contents
+        run: |
+          (cd plugin-cli && npm pack --ignore-scripts --dry-run --json) > cli-pack.json
+          (cd plugin-sdk/typescript && npm pack --ignore-scripts --dry-run --json) > sdk-pack.json
+          (cd plugin-ui/vue && npm pack --ignore-scripts --dry-run --json) > ui-pack.json
+          node plugin-cli/scripts/assert-pack-contents.mjs cli-pack.json sdk-pack.json ui-pack.json
+      - run: scripts/plugin-tooling-local-smoke.sh
+      - run: ./mvnw -pl FengYu -am package -DskipTests
+      - run: scripts/e2e-smoke.sh
+      - run: npm ci && npm run docs:build
 
   publish-java:
     needs: [resolve-version, verify]

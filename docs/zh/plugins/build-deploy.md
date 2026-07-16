@@ -102,7 +102,7 @@ node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-email
 
 ## 安装产物
 
-`fengyu plugin install` 会**离线优先**地校验包——在任何网络访问之前，它会检查归档限制与路径，并校验归档内的清单——然后再上传到市场：
+`fengyu plugin install` 会**离线优先**地校验包——在任何网络访问之前，它会检查归档限制与路径、归档内清单和 UI 入口，并对声明的 `backend/worker.jar` 做结构校验——然后再上传到市场。`fengyu.plugin.json` 中的 `package.resources[].to` 必须是 POSIX 风格的归档内相对路径：
 
 ```bash
 fengyu plugin install ./dist-package/com.example.my-plugin-1.0.0.fyp \
