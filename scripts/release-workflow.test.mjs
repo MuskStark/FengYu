@@ -18,7 +18,7 @@ test('uses the runner-provided GITHUB_OUTPUT file', () => {
 test('runs release contract tests in the shared runtime job', () => {
   assert.match(
     workflow,
-    /node --test scripts\/resolve-release-version\.test\.mjs scripts\/release-workflow\.test\.mjs/,
+    /node --test scripts\/resolve-release-version\.test\.mjs scripts\/release-workflow\.test\.mjs scripts\/node-version\.test\.mjs/,
   )
 })
 

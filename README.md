@@ -28,7 +28,7 @@ architecture and automatic service discovery.
 **Requirements:**
 
 - **JDK 21 or higher** (recommended: [Eclipse Temurin](https://adoptium.net/))
-- **Node 20+ and npm** (for the frontend dev server and plugin UIs)
+- **Node 24.18.0 and npm** (for the frontend dev server and plugin UIs)
 - **Rust + `tauri-cli`** (only for the desktop shell)
 
 ### Build from Source
