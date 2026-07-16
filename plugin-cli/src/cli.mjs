@@ -1,10 +1,10 @@
 import path from 'node:path'
-import fs from 'node:fs/promises'
 import { parseCli } from './args.mjs'
 import { createPlugin } from './create.mjs'
 import { validate } from './manifest.mjs'
 import { buildPlugin } from './build.mjs'
 import { dev } from './dev.mjs'
+import { installPlugin } from './install.mjs'
 
 export async function main(argv) {
   const { group, command, positionals, options } = parseCli(argv)
@@ -26,18 +26,11 @@ export async function main(argv) {
   } else if (command === 'dev') {
     await dev(root, Number(options.port ?? 4173))
   } else if (command === 'install') {
-    const file = root
-    const host = options.host ?? 'http://127.0.0.1:24056'
-    const token = options.token ?? process.env.FENGYU_TOKEN ?? ''
-    const form = new FormData()
-    form.append('file', new Blob([await fs.readFile(file)]), path.basename(file))
-    const res = await fetch(host + '/api/plugin-market/upload', {
-      method: 'POST',
-      headers: token ? { 'X-FengYu-Token': token } : {},
-      body: form,
+    const result = await installPlugin(root, {
+      host: options.host ?? 'http://127.0.0.1:24056',
+      token: options.token ?? process.env.FENGYU_TOKEN ?? '',
     })
-    if (!res.ok) throw new Error(`install failed: ${res.status} ${await res.text()}`)
-    console.log(`Installed ${file}`)
+    console.log(`Installed ${result.id ?? path.basename(root)}`)
   } else {
     usage()
   }
