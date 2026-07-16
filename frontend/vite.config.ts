@@ -4,12 +4,15 @@ import vuetify from 'vite-plugin-vuetify'
 import { fileURLToPath, URL } from 'node:url'
 import { copyFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { resolveFrontendVersion } from './build/release-version.mjs'
 
-// App version comes from package.json (single source of truth) and is injected
-// as a build-time constant __APP_VERSION__ (see `define` below).
-const pkgVersion = JSON.parse(
+// App version comes from package.json by default, but release CI overrides it by
+// exporting FENGYU_RELEASE_VERSION (a validated tag like "4.0.0-alpha.1"). The
+// resolved value is injected as the build-time constant __APP_VERSION__.
+const packageVersion = JSON.parse(
   readFileSync(resolve(__dirname, 'package.json'), 'utf8'),
 ).version as string
+const appVersion = resolveFrontendVersion(packageVersion)
 
 // Build timestamp: captured at build / dev-server start, surfaced on the About
 // page. Reflects when the UI was built (or when the dev server was launched).
@@ -92,7 +95,7 @@ function shareVueInDev(): Plugin {
 
 export default defineConfig({
   define: {
-    __APP_VERSION__: JSON.stringify(pkgVersion),
+    __APP_VERSION__: JSON.stringify(appVersion),
     __APP_BUILD_TIME__: JSON.stringify(buildTime),
   },
   plugins: [
