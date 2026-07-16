@@ -27,8 +27,8 @@ const HOST = '127.0.0.1'
  */
 export async function dev(root, port = 4173, options = {}) {
   const dir = path.resolve(root)
-  const kind = await detectProject(dir)
-  return kind === 'vue-vite'
+  const project = await detectProject(dir)
+  return project.kind === 'vue-vite'
     ? devVue(dir, port, options)
     : devStatic(dir, port, options)
 }
