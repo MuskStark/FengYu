@@ -4,6 +4,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { createPlugin } from '../src/create.mjs'
+import { loadBuildConfig } from '../src/config.mjs'
 
 let base
 let root
@@ -30,6 +31,18 @@ test('create defaults to Vue plus Java worker', async () => {
   assert.match(await fs.readFile(path.join(root, 'manifest.json'), 'utf8'), /backend\/worker\.jar/)
   const workerMain = path.join(root, 'worker/src/main/java/com/example/hello_world/HelloWorldWorkerMain.java')
   assert.match(await fs.readFile(workerMain, 'utf8'), /new JsonRpcWorker/)
+})
+
+test('full scaffold preserves the Maven wrapper mode and resolves the worker artifact', async () => {
+  await createPlugin(root, 'com.example.demo', { install: false, run: async () => {} })
+
+  if (process.platform !== 'win32') {
+    const mode = (await fs.stat(path.join(root, 'mvnw'))).mode & 0o777
+    assert.equal(mode, 0o755)
+  }
+
+  const config = await loadBuildConfig(root)
+  assert.equal(config.worker.artifact, path.join(root, 'worker', 'target', 'Demo-worker.jar'))
 })
 
 test('full template install runs npm inside ui-src', async () => {

@@ -11,7 +11,7 @@
     "root": "worker",
     "test": ["maven", "test"],
     "build": ["maven", "package", "-DskipTests"],
-    "artifact": "target/{{javaClassPrefix}}-worker.jar",
+    "artifact": "worker/target/{{javaClassPrefix}}-worker.jar",
     "mainClass": "{{javaPackage}}.{{javaClassPrefix}}WorkerMain"
   },
   "package": { "outputDirectory": "dist-package" }
