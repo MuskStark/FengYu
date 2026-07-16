@@ -6,7 +6,7 @@ lang: en
 
 # Build & Deploy
 
-A `.fyp` is a zip archive with a fixed runtime layout. There is **one** build flow for every plugin — third-party and official alike — driven by `fengyu plugin build` and the `fengyu.plugin.json` declaration. The legacy `OfficialPlugins/build-packages.sh` script has been removed; the three shipped plugins are now built by the same CLI.
+A `.fyp` is a zip archive with a fixed runtime layout. There is **one** build flow for every plugin — third-party and official alike — driven by `fengyu plugin build` and the `fengyu.plugin.json` declaration. The legacy shell packager has been removed; the three shipped plugins are now built by the same CLI.
 
 ## The `.fyp` layout
 
