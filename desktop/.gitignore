@@ -2,5 +2,7 @@
 src-tauri/target/
 # The backend jar is copied in at build time, never tracked.
 src-tauri/binaries/*.jar
+# Official .fyp plugins are staged into the bundle by CI, never tracked.
+src-tauri/binaries/plugins/
 # Generated Tauri gen dir
 src-tauri/gen/

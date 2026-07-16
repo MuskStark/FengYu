@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "cd ../frontend && npm run dev",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "cd .. && node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-markdown && node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-excel && cd frontend && npm run build",
+    "beforeBuildCommand": "cd ../../frontend && npm run build",
     "frontendDist": "../frontend/dist"
   },
   "app": {
@@ -22,8 +22,8 @@
       "icons/icon.png"
     ],
     "resources": {
-      "../../OfficialPlugins/target/packages/fan.summer.markdown-4.0.0.fyp": "plugins/fan.summer.markdown-4.0.0.fyp",
-      "../../OfficialPlugins/target/packages/fan.summer.excel-4.0.0.fyp": "plugins/fan.summer.excel-4.0.0.fyp"
+      "binaries/FengYu.jar": "binaries/FengYu.jar",
+      "binaries/plugins/": "plugins/"
     },
     "externalBin": []
   }
