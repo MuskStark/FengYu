@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>fan.summer.fengyu</groupId>
+    <artifactId>FengYu-parent</artifactId>
+    <version>${revision}</version>
+    <relativePath>../../pom.xml</relativePath>
+  </parent>
+
+  <groupId>fan.summer.fengyu.plugin</groupId>
+  <artifactId>plugin-offlinepython</artifactId>
+  <name>FengYu Plugin — Offline Python Builder</name>
+  <description>Official Offline Python Builder plugin (v2, headless): builds offline Python
+    wheelhouse repositories via pip download, verifies them, packages a deployable bundle, and
+    installs it onto an air-gapped machine. Requires a system CPython (>=3.10) on PATH. AI tools
+    are declared in manifest.json and served as JSON-RPC methods by the worker (no Spring AI).</description>
+
+  <dependencies>
+    <!-- Plugin Worker SDK: JsonRpcWorker + PluginHandler -->
+    <dependency><groupId>fan.summer.fengyu.sdk</groupId><artifactId>fengyu-plugin-sdk</artifactId></dependency>
+    <!-- BuildConfig / Manifest / WheelEntry use @Data -->
+    <dependency><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId><scope>provided</scope></dependency>
+    <dependency><groupId>com.google.code.gson</groupId><artifactId>gson</artifactId></dependency>
+    <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId></dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId><artifactId>maven-shade-plugin</artifactId>
+        <executions><execution><phase>package</phase><goals><goal>shade</goal></goals><configuration>
+          <finalName>offlinepython-worker</finalName><shadedArtifactAttached>false</shadedArtifactAttached>
+          <createDependencyReducedPom>false</createDependencyReducedPom>
+          <transformers>
+            <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+              <mainClass>fan.summer.fengyu.plugin.offlinepython.OfflinePythonWorkerMain</mainClass>
+            </transformer>
+            <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+          </transformers>
+        </configuration></execution></executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>
