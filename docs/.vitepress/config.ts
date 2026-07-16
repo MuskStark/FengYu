@@ -5,6 +5,7 @@ export default defineConfig({
   description: 'Where bees go, flows follow. — A modular web + desktop toolbox.',
   lastUpdated: true,
   cleanUrls: true,
+  srcExclude: ['superpowers/**'],
   // Dead-link checking is intentionally left enabled (no `ignoreDeadLinks`):
   // all EN + ZH pages are complete, so the build must fail loudly on any
   // broken internal link rather than silently swallowing it.
