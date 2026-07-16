@@ -66,6 +66,19 @@ cd desktop && cargo tauri dev               # release: cargo tauri build
 
 `scripts/e2e-smoke.sh` boots the jar and probes every endpoint.
 
+### Releases (Alpha)
+
+Pushed release tags (`v4.0.0`, `v4.0.0-alpha.1`, `-beta.*`, `-rc.*`) trigger
+[`.github/workflows/fengyu-release.yml`](.github/workflows/fengyu-release.yml), which publishes:
+
+- **Unsigned Tauri packages** for Windows, macOS, and Linux.
+- A **portable Web distribution** (`Infinia-<version>-web.zip` / `.tar.gz`) — unzip and run `./run.sh`
+  (macOS/Linux) or `run.bat` (Windows). Requires **Java 21**; the backend binds **loopback only**
+  (`127.0.0.1`) and is not reachable from other machines.
+
+These are **unsigned Alpha builds**: code-signing, a bundled JRE, and the auto-updater are deferred to
+a later release.
+
 ---
 
 ## Features
