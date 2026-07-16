@@ -1,99 +1,118 @@
 ---
 title: Build & Deploy
-description: Produce a .fyp package — the single-plugin CLI flow (fengyu plugin validate then build), the official multi-plugin build-packages.sh script, the .fyp layout, and installing the result.
+description: Produce a .fyp package — fengyu.plugin.json build orchestration, the staged lifecycle (prepare → install → test → build → validate → package), GitHub Packages auth, offline install validation, and the .fyp layout.
 lang: en
 ---
 
 # Build & Deploy
 
-A `.fyp` is just a zip archive with a fixed layout. There are two build flows: the **single-plugin CLI flow** for third-party plugins, and the **official multi-plugin script** that assembles the three shipped official plugins. Both end with a `.fyp` you install through the [marketplace](/en/plugins/marketplace).
+A `.fyp` is a zip archive with a fixed runtime layout. There is **one** build flow for every plugin — third-party and official alike — driven by `fengyu plugin build` and the `fengyu.plugin.json` declaration. The legacy `OfficialPlugins/build-packages.sh` script has been removed; the three shipped plugins are now built by the same CLI.
 
 ## The `.fyp` layout
 
-Every `.fyp` is a zip containing exactly these entries:
+A produced `.fyp` contains exactly the runtime files — never source, build tooling, `node_modules`, or credentials:
 
 ```
 my-plugin-1.0.0.fyp
-├── manifest.json          # metadata, permissions, aiTools
-├── ui/
-│   ├── index.html         # entry HTML (+ any CSS/JS assets beside it)
-│   └── sdk.js             # @fengyu/plugin-sdk bundle the UI imports
+├── manifest.json          # runtime metadata, permissions, aiTools
+├── ui/                    # the Vite build output (ui-src/dist)
+│   ├── index.html
+│   └── assets/…
 └── backend/
     └── worker.jar         # the shaded JSON-RPC worker executable
 ```
 
-`manifest.json` declares `ui.entry` (typically `ui/index.html`) and `backend.command` (typically `java -jar backend/worker.jar`). The host serves `ui/**` under `/plugin-runtime/{id}/**` and spawns the worker from `backend.command`. See [Manifest](/en/plugins/manifest) and [Plugin Overview](/en/plugins/overview).
+`manifest.json` declares `ui.entry` (`ui/index.html`) and `backend.command` (`java -jar backend/worker.jar`). UI-only plugins may omit `backend` entirely.
 
-## Building the worker jar
+## `fengyu.plugin.json` — the build declaration
 
-Workers are shaded fat JARs produced by `maven-shade-plugin`. Set `finalName` and `mainClass` to your `*WorkerMain`:
+`manifest.json` stays **runtime-only**. Build orchestration (source paths, commands, output directories) lives in a separate `fengyu.plugin.json` at the project root, which the CLI resolves into a normalized project model:
 
-```xml
-<plugin>
-  <groupId>org.apache.maven.plugins</groupId>
-  <artifactId>maven-shade-plugin</artifactId>
-  <configuration>
-    <finalName>my-worker</finalName>     <!-- → my-worker.jar -->
-  </configuration>
-  <executions>
-    <execution>
-      <phase>package</phase><goals><goal>shade</goal></goals>
-      <configuration>
-        <transformers>
-          <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-            <mainClass>com.example.myplugin.MyWorkerMain</mainClass>
-          </transformer>
-        </transformers>
-      </configuration>
-    </execution>
-  </executions>
-</plugin>
+```json
+{
+  "schemaVersion": 1,
+  "ui": {
+    "root": "ui-src",
+    "output": "dist",
+    "prepare": [["npm", "--prefix", "../shared", "run", "build"]],
+    "install": ["npm", "ci"],
+    "test": ["npm", "test"],
+    "build": ["npm", "run", "build"]
+  },
+  "worker": {
+    "root": "worker",
+    "test": ["maven", "test"],
+    "build": ["maven", "package", "-DskipTests"],
+    "artifact": "target/my-worker.jar",
+    "mainClass": "com.example.MyWorkerMain"
+  },
+  "package": { "outputDirectory": "dist-package" }
+}
 ```
 
-The official plugins use the same recipe: `markdown-worker` / `excel-worker` / `email-worker` as the `finalName`, with main classes `MarkdownWorkerMain` / `ExcelWorkerMain` / `EmailWorkerMain`. See [Worker (JSON-RPC)](/en/plugins/worker) for writing the worker itself.
+- `ui.prepare` is an ordered list of command arrays run **before** the plugin's own `npm ci` (e.g. to build shared `file:` dependencies). Omit it when not needed.
+- The logical command `maven` is resolved to the project's **Maven Wrapper** (`mvnw` / `mvnw.cmd`). There is **never** a silent fallback to a system `mvn` — if no wrapper is found, the build fails with a precise message.
+- Every configured path is resolved inside the plugin root; absolute paths, `..` escapes, and symlink escapes are rejected with the JSON field path in the error.
 
-## Single-plugin build (CLI)
+Zero-config projects (no `fengyu.plugin.json`) still build: a `vite.config.*` is detected as a Vue/Vite project (run `npm run build`, then package), and anything else is treated as a static `ui/` project.
 
-For a third-party plugin, use the `fengyu plugin` CLI. First validate, then build:
+## The staged lifecycle
+
+`fengyu plugin build` runs an ordered, atomic pipeline for a declared project:
+
+1. **ui.prepare** — each `ui.prepare` command, in order.
+2. **ui.install** — `npm ci` when a `package-lock.json` exists (or `npm install` to generate one on a fresh scaffold). Skipped when `node_modules` is present and its lockfile fingerprint is unchanged.
+3. **ui.test**, **worker.test** — run unless `--skip-tests` is passed.
+4. **ui.build** — the Vite build (includes `vue-tsc --noEmit` type checking).
+5. **worker.build** — the Maven Wrapper build producing the shaded JAR.
+6. **assemble staging** — copy only `manifest.json`, the UI output, `backend/worker.jar`, and declared resources into an isolated temp directory.
+7. **validate staging** — manifest object rules, `ui.entry` resolves to a real file, the backend command references `backend/worker.jar`, the worker JAR carries the configured `Main-Class` and class entry, and the runtime tree contains no source / `node_modules` / token-bearing files / symlinks.
+8. **package** — write to `<output>.tmp-<pid>-<random>`, inspect the completed archive, then atomically rename to the final `.fyp`.
+
+`--skip-tests` skips tests only — never type checking or packaging. Any failure (UI build, worker build, validation, rename) leaves **no** `.fyp`, no `.tmp-*`, and no staging directory behind.
+
+### GitHub Packages authentication
+
+The Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.0.0`) is published to GitHub Packages. External consumers resolve it through the `.mvn/settings.xml` the scaffold generates, which reads credentials from the environment only:
 
 ```bash
-# 1. Validate the project (manifest + structure)
-fengyu plugin validate
-
-# 2. Build the .fyp
-fengyu plugin build --out dist-package/<id>-<version>.fyp
+export FENGYU_GITHUB_TOKEN='<a GitHub token with read:packages>'
+# GITHUB_TOKEN is also accepted; the CLI maps it to FENGYU_GITHUB_TOKEN for the child process.
 ```
 
-`build` runs `validate` internally and zips the project into the `.fyp` at `--out` (default `dist-package/<id>-<version>.fyp`). See [SDK & CLI](/en/plugins/sdk-cli) for the full command reference.
+Generated files never contain a token. If the wrapper root's `settings.xml` references `maven.pkg.github.com` and neither token is set, the CLI throws:
 
-## Official multi-plugin build
+```
+GitHub Packages authentication is required. Set FENGYU_GITHUB_TOKEN or GITHUB_TOKEN with read:packages.
+```
 
-The three shipped plugins are assembled by `OfficialPlugins/build-packages.sh`. It does, in order:
+Repository-internal builds (the official plugins) resolve the SDK from the local reactor install, so they need **no** token.
 
-1. **Builds the worker JARs** for all three plugin modules (`plugin-markdown`, `plugin-excel`, `plugin-email`).
-2. **Builds the TypeScript SDK** (`plugin-sdk/typescript`) and copies the bundle into the markdown and excel `ui/sdk.js`.
-3. **Builds the Email UI** (`plugin-email/ui-src`) from source and runs the **Excel UI tests** + **validates the POI services** and the Email worker's manifest main class.
-4. **Assembles** `packages/{markdown,excel,email}/` for each plugin, laying out:
-   - `manifest.json`
-   - `ui/` (entry HTML + assets, including `ui/sdk.js` for markdown/excel)
-   - `backend/worker.jar` (the shaded jar from the matching `-worker` module)
-5. **Zips** each assembled tree to `target/packages/fan.summer.{markdown,excel,email}-4.0.0.fyp`, then runs post-build checks (e.g. the email entry HTML must declare UTF-8 and contain no icon font).
+## Build the official plugins
 
-The resulting `.fyp` files are what the `OfficialPluginSeeder` installs into a fresh host. Their manifests carry `"official": true`, so the descriptor `source` is `OFFICIAL`.
+The three shipped plugins are built by the same CLI — there is no separate script:
+
+```bash
+node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-markdown
+node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-excel
+node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-email
+```
+
+Each writes `OfficialPlugins/plugin-<name>/dist-package/fan.summer.<name>-4.0.0.fyp`. CI builds them as a matrix in `.github/workflows/plugin-tooling.yml`.
 
 ## Install the result
 
-Push the built `.fyp` into a running host with the CLI (which wraps `POST /api/plugin-market/upload`):
+`fengyu plugin install` validates the package **offline first** — it inspects archive limits and paths and validates the archived manifest before any network access — then uploads to the marketplace:
 
 ```bash
 fengyu plugin install ./dist-package/com.example.my-plugin-1.0.0.fyp \
   --host http://127.0.0.1:24056 --token "$FENGYU_TOKEN"
 ```
 
-Or upload the file directly through the marketplace UI. Either way, see [Marketplace](/en/plugins/marketplace) for the install, update, enable/disable, and uninstall endpoints.
+An unsafe or invalid package is rejected with zero fetch calls. See [Marketplace](/en/plugins/marketplace) for the install/update/enable/uninstall endpoints.
 
 ## Next steps
 
-- [SDK & CLI](/en/plugins/sdk-cli) — `validate`, `build`, and `install` reference.
+- [SDK & CLI](/en/plugins/sdk-cli) — the full command reference, including `--ui-only`, `--no-install`, and `--skip-tests`.
 - [Worker (JSON-RPC)](/en/plugins/worker) — what goes into `worker.jar`.
 - [Marketplace](/en/plugins/marketplace) — installing the `.fyp` you built.

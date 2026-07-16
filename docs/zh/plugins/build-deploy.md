@@ -1,99 +1,118 @@
 ---
 title: 构建与部署
-description: 产出一个 .fyp 包——单插件 CLI 流程（fengyu plugin validate 然后 build）、官方多插件 build-packages.sh 脚本、.fyp 布局，以及安装产物。
-lang: zh-CN
+description: 产出一个 .fyp 包——fengyu.plugin.json 构建编排、分阶段生命周期（prepare → install → test → build → validate → package）、GitHub Packages 认证、离线优先的安装校验，以及 .fyp 布局。
+lang: zh
 ---
 
 # 构建与部署
 
-一个 `.fyp` 只是一个具有固定布局的 zip 归档。有两种构建流程：用于第三方插件的**单插件 CLI 流程**，以及组装三个随产品发布官方插件的**官方多插件脚本**。两者最终都产出一个你通过[插件市场](/zh/plugins/marketplace)安装的 `.fyp`。
+一个 `.fyp` 是一个具有固定运行时布局的 zip 归档。所有插件——无论第三方还是官方——都有**一条**构建流程，由 `fengyu plugin build` 和 `fengyu.plugin.json` 声明驱动。旧的 `OfficialPlugins/build-packages.sh` 脚本已被移除；三个随产品发布的官方插件现在由同一套 CLI 构建。
 
 ## `.fyp` 布局
 
-每个 `.fyp` 都是一个 zip，恰好包含以下条目：
+产出的 `.fyp` 恰好包含运行时文件——绝不含源码、构建工具、`node_modules` 或凭据：
 
 ```
 my-plugin-1.0.0.fyp
-├── manifest.json          # 元数据、权限、aiTools
-├── ui/
-│   ├── index.html         # 入口 HTML（+ 与之并列的任何 CSS/JS 资源）
-│   └── sdk.js             # UI 所 import 的 @fengyu/plugin-sdk bundle
+├── manifest.json          # 运行时元数据、权限、aiTools
+├── ui/                    # Vite 构建产物（ui-src/dist）
+│   ├── index.html
+│   └── assets/…
 └── backend/
     └── worker.jar         # shaded 的 JSON-RPC worker 可执行文件
 ```
 
-`manifest.json` 声明 `ui.entry`（通常是 `ui/index.html`）和 `backend.command`（通常是 `java -jar backend/worker.jar`）。宿主把 `ui/**` 通过 `/plugin-runtime/{id}/**` 提供，并从 `backend.command` 启动 worker。参见 [清单](/zh/plugins/manifest) 与 [插件概述](/zh/plugins/overview)。
+`manifest.json` 声明 `ui.entry`（`ui/index.html`）和 `backend.command`（`java -jar backend/worker.jar`）。纯 UI 插件可以完全省略 `backend`。
 
-## 构建 worker jar
+## `fengyu.plugin.json`——构建声明
 
-worker 是由 `maven-shade-plugin` 产出的 shaded fat JAR。把 `finalName` 和 `mainClass` 设为你的 `*WorkerMain`：
+`manifest.json` 保持**仅运行时**。构建编排（源码路径、命令、输出目录）存放在项目根目录下另一个独立的 `fengyu.plugin.json` 中，CLI 会把它解析为一个规范化的项目模型：
 
-```xml
-<plugin>
-  <groupId>org.apache.maven.plugins</groupId>
-  <artifactId>maven-shade-plugin</artifactId>
-  <configuration>
-    <finalName>my-worker</finalName>     <!-- → my-worker.jar -->
-  </configuration>
-  <executions>
-    <execution>
-      <phase>package</phase><goals><goal>shade</goal></goals>
-      <configuration>
-        <transformers>
-          <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-            <mainClass>com.example.myplugin.MyWorkerMain</mainClass>
-          </transformer>
-        </transformers>
-      </configuration>
-    </execution>
-  </executions>
-</plugin>
+```json
+{
+  "schemaVersion": 1,
+  "ui": {
+    "root": "ui-src",
+    "output": "dist",
+    "prepare": [["npm", "--prefix", "../shared", "run", "build"]],
+    "install": ["npm", "ci"],
+    "test": ["npm", "test"],
+    "build": ["npm", "run", "build"]
+  },
+  "worker": {
+    "root": "worker",
+    "test": ["maven", "test"],
+    "build": ["maven", "package", "-DskipTests"],
+    "artifact": "target/my-worker.jar",
+    "mainClass": "com.example.MyWorkerMain"
+  },
+  "package": { "outputDirectory": "dist-package" }
+}
 ```
 
-官方插件用的是同一套配方：`markdown-worker` / `excel-worker` / `email-worker` 作为 `finalName`，主类为 `MarkdownWorkerMain` / `ExcelWorkerMain` / `EmailWorkerMain`。编写 worker 本身见 [Worker（JSON-RPC）](/zh/plugins/worker)。
+- `ui.prepare` 是一个有序的命令数组列表，在插件自身的 `npm ci` **之前**运行（例如用来构建共享的 `file:` 依赖）。不需要时省略即可。
+- 逻辑命令 `maven` 会被解析为项目的 **Maven Wrapper**（`mvnw` / `mvnw.cmd`）。**绝不**会静默回退到系统 `mvn`——如果找不到 wrapper，构建会以一条精确的错误信息失败。
+- 每个配置的路径都在插件根目录内解析；绝对路径、`..` 转义和符号链接转义都会被拒绝，错误信息中会包含对应的 JSON 字段路径。
 
-## 单插件构建（CLI）
+零配置项目（没有 `fengyu.plugin.json`）依然可以构建：会探测到 `vite.config.*` 并当作 Vue/Vite 项目处理（运行 `npm run build` 再打包），其他情况则当作静态 `ui/` 项目处理。
 
-对于第三方插件，使用 `fengyu plugin` CLI。先校验，再构建：
+## 分阶段生命周期
+
+`fengyu plugin build` 为一个声明式项目运行一条有序、原子的流水线：
+
+1. **ui.prepare**——按顺序执行每一条 `ui.prepare` 命令。
+2. **ui.install**——存在 `package-lock.json` 时运行 `npm ci`（或在全新脚手架上运行 `npm install` 来生成它）。当 `node_modules` 存在且其 lockfile 指纹未变时跳过。
+3. **ui.test**、**worker.test**——除非传入 `--skip-tests`，否则都会运行。
+4. **ui.build**——Vite 构建（包含 `vue-tsc --noEmit` 类型检查）。
+5. **worker.build**——Maven Wrapper 构建，产出 shaded JAR。
+6. **assemble staging**——仅把 `manifest.json`、UI 产物、`backend/worker.jar` 以及声明的资源复制到一个隔离的临时目录。
+7. **validate staging**——清单对象规则、`ui.entry` 解析到真实文件、后端命令引用 `backend/worker.jar`、worker JAR 带有配置的 `Main-Class` 与类入口，以及运行时目录树中不含源码 / `node_modules` / 带凭据的文件 / 符号链接。
+8. **package**——写入 `<output>.tmp-<pid>-<random>`，检查已完成的归档，再原子地重命名为最终的 `.fyp`。
+
+`--skip-tests` 仅跳过测试——绝不跳过类型检查或打包。任何失败（UI 构建、worker 构建、校验、重命名）都不会留下任何 `.fyp`、任何 `.tmp-*`、任何 staging 目录。
+
+### GitHub Packages 认证
+
+Java Worker SDK（`fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.0.0`）发布到 GitHub Packages。外部消费者通过脚手架生成的 `.mvn/settings.xml` 来解析它，该文件只从环境读取凭据：
 
 ```bash
-# 1. 校验项目（清单 + 结构）
-fengyu plugin validate
-
-# 2. 构建 .fyp
-fengyu plugin build --out dist-package/<id>-<version>.fyp
+export FENGYU_GITHUB_TOKEN='<a GitHub token with read:packages>'
+# 也接受 GITHUB_TOKEN；CLI 会把它映射为 FENGYU_GITHUB_TOKEN 传给子进程。
 ```
 
-`build` 内部会运行 `validate` 并把项目打成 `--out`（默认 `dist-package/<id>-<version>.fyp`）处的 `.fyp`。完整命令参考见 [SDK 与 CLI](/zh/plugins/sdk-cli)。
+生成的文件绝不会包含 token。如果 wrapper 根的 `settings.xml` 引用了 `maven.pkg.github.com`，而两个 token 都未设置，CLI 会抛出：
 
-## 官方多插件构建
+```
+GitHub Packages authentication is required. Set FENGYU_GITHUB_TOKEN or GITHUB_TOKEN with read:packages.
+```
 
-三个随产品发布的插件由 `OfficialPlugins/build-packages.sh` 组装。它依次执行：
+仓库内部的构建（官方插件）从本地 reactor install 解析 SDK，因此**不需要** token。
 
-1. 为三个插件模块（`plugin-markdown`、`plugin-excel`、`plugin-email`）**构建 worker JAR**。
-2. **构建 TypeScript SDK**（`plugin-sdk/typescript`）并把 bundle 复制进 markdown 和 excel 的 `ui/sdk.js`。
-3. 从源码**构建 Email UI**（`plugin-email/ui-src`），并**运行 Excel UI 测试**、**校验 POI 服务**以及 Email worker 清单中的主类。
-4. 为每个插件**组装** `packages/{markdown,excel,email}/`，布局为：
-   - `manifest.json`
-   - `ui/`（入口 HTML + 资源，markdown/excel 还包括第 2 步得到的 `ui/sdk.js`）
-   - `backend/worker.jar`（来自对应 `-worker` 模块的 shaded jar）
-5. 把每个组装好的目录树**打 zip** 成 `target/packages/fan.summer.{markdown,excel,email}-4.0.0.fyp`，随后执行构建后检查（例如 email 入口 HTML 必须声明 UTF-8 且不得包含图标字体）。
+## 构建官方插件
 
-产出的 `.fyp` 文件就是 `OfficialPluginSeeder` 安装进全新宿主的内容。它们的清单带有 `"official": true`，因此描述符的 `source` 为 `OFFICIAL`。
+三个随产品发布的插件由同一套 CLI 构建——没有单独的脚本：
+
+```bash
+node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-markdown
+node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-excel
+node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-email
+```
+
+每条都会写出 `OfficialPlugins/plugin-<name>/dist-package/fan.summer.<name>-4.0.0.fyp`。CI 在 `.github/workflows/plugin-tooling.yml` 中以矩阵方式构建它们。
 
 ## 安装产物
 
-用 CLI（它封装了 `POST /api/plugin-market/upload`）把构建好的 `.fyp` 推进一个运行中的宿主：
+`fengyu plugin install` 会**离线优先**地校验包——在任何网络访问之前，它会检查归档限制与路径，并校验归档内的清单——然后再上传到市场：
 
 ```bash
 fengyu plugin install ./dist-package/com.example.my-plugin-1.0.0.fyp \
   --host http://127.0.0.1:24056 --token "$FENGYU_TOKEN"
 ```
 
-或者直接通过插件市场 UI 上传文件。无论哪种方式，安装、更新、启用/禁用与卸载的 endpoint 都见 [插件市场](/zh/plugins/marketplace)。
+不安全或非法的包会在零次 fetch 调用下被拒绝。安装/更新/启用/卸载的 endpoint 见 [插件市场](/zh/plugins/marketplace)。
 
 ## 下一步
 
-- [SDK 与 CLI](/zh/plugins/sdk-cli)——`validate`、`build` 与 `install` 参考。
+- [SDK 与 CLI](/zh/plugins/sdk-cli)——完整命令参考，包括 `--ui-only`、`--no-install` 与 `--skip-tests`。
 - [Worker（JSON-RPC）](/zh/plugins/worker)——`worker.jar` 里装了什么。
 - [插件市场](/zh/plugins/marketplace)——安装你构建的 `.fyp`。
