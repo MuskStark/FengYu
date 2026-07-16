@@ -14,6 +14,7 @@ use tauri::{Manager, State};
 /// platform resource directory at install time; this struct resolves their absolute paths from a
 /// single `resource_dir()` so the backend is spawned against the right files regardless of where
 /// the OS installed the app.
+#[derive(Clone)]
 struct RuntimeLayout {
     jar: std::path::PathBuf,
     plugins: std::path::PathBuf,
@@ -30,6 +31,20 @@ fn runtime_layout(resource_dir: &std::path::Path) -> RuntimeLayout {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum StartupAction {
+    ShowWindow,
+    ShowWindowAndSupervise { port: u16 },
+}
+
+fn startup_action(setup_mode: bool, port: u16) -> StartupAction {
+    if setup_mode {
+        StartupAction::ShowWindowAndSupervise { port }
+    } else {
+        StartupAction::ShowWindow
+    }
+}
+
 // The sidecar machinery below is PROD-only, gated on `not(debug_assertions)` (a release build).
 // In dev (`cargo tauri dev`, a debug build) the backend is started externally (IDE /
 // `mvn spring-boot:run` on :24056) and the webview reaches it via the Vite proxy — so none of the
@@ -43,32 +58,43 @@ use std::thread;
 #[cfg(not(debug_assertions))]
 use std::time::{Duration, Instant};
 
-/// Holds the spawned Java sidecar so we can kill it on exit. `None` in dev (no sidecar).
-struct Sidecar(Mutex<Option<Child>>);
+#[derive(Default)]
+struct SidecarState {
+    child: Option<Child>,
+    shutting_down: bool,
+}
+
+/// Holds the spawned Java sidecar so it can be replaced after setup and killed on exit.
+struct Sidecar(Mutex<SidecarState>);
+
+struct PreparedDesktop {
+    child: Option<Child>,
+    init_script: Option<String>,
+    #[cfg(not(debug_assertions))]
+    supervisor: Option<SetupSupervisor>,
+}
 
 /// Builds the window and runs the Tauri event loop. Shared by dev and prod `main()`.
 ///
 /// `prepare` runs inside `tauri::Builder::setup` with the live `App` handle so the prod path can
 /// resolve the Tauri resource directory (only available there) and spawn the bundled backend. It
-/// returns the sidecar child (killed on window close) and the token/api-base injection script
-/// (run before any page script). In dev both are `None`: the backend is external and the webview
-/// reaches it same-origin via the Vite proxy.
+/// returns the prepared sidecar and token/api-base injection script. SETUP mode also returns a
+/// supervisor configuration that starts only after the webview exists, so the setup wizard can
+/// drive the backend restart. In dev the backend is external and all fields are empty.
 fn run_desktop<F>(prepare: F)
 where
-    F: FnOnce(&tauri::App) -> Result<(Option<Child>, Option<String>), Box<dyn std::error::Error>>
-        + Send
-        + 'static,
+    F: FnOnce(&tauri::App) -> Result<PreparedDesktop, Box<dyn std::error::Error>> + Send + 'static,
 {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         // Empty until setup resolves the sidecar; setup swaps the live child in.
-        .manage(Sidecar(Mutex::new(None)))
+        .manage(Sidecar(Mutex::new(SidecarState::default())))
         .setup(move |app| {
-            let (child, init_script) = prepare(app)?;
-            if let Some(c) = child {
+            let mut prepared = prepare(app)?;
+            if let Some(c) = prepared.child.take() {
                 if let Some(state) = app.try_state::<Sidecar>() {
                     if let Ok(mut guard) = state.0.lock() {
-                        *guard = Some(c);
+                        guard.child = Some(c);
                     }
                 }
             }
@@ -81,10 +107,15 @@ where
                     .inner_size(1280.0, 820.0)
                     .min_inner_size(960.0, 640.0)
                     .resizable(true);
-            if let Some(script) = init_script.as_deref() {
+            if let Some(script) = prepared.init_script.as_deref() {
                 builder = builder.initialization_script(script);
             }
             builder.build()?;
+
+            #[cfg(not(debug_assertions))]
+            if let Some(supervisor) = prepared.supervisor.take() {
+                supervise_setup_restart(app.handle().clone(), supervisor);
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -112,7 +143,8 @@ where
 /// Kills the spawned sidecar (if any). No-op when `Sidecar` holds `None` (dev mode).
 fn kill_sidecar(state: &State<Sidecar>) {
     if let Ok(mut guard) = state.0.lock() {
-        if let Some(mut child) = guard.take() {
+        guard.shutting_down = true;
+        if let Some(mut child) = guard.child.take() {
             let _ = child.kill();
         }
     }
@@ -135,7 +167,11 @@ fn gen_token() -> String {
 /// `layout` points at the bundled jar + plugins under the Tauri resource directory
 /// (see `runtime_layout`).
 #[cfg(not(debug_assertions))]
-fn spawn_backend(layout: &RuntimeLayout, token: &str) -> Result<(Child, u16), String> {
+fn spawn_backend(
+    layout: &RuntimeLayout,
+    token: &str,
+    requested_port: u16,
+) -> Result<(Child, u16), String> {
     let jar = &layout.jar;
     if !jar.exists() {
         return Err(format!(
@@ -154,7 +190,7 @@ fn spawn_backend(layout: &RuntimeLayout, token: &str) -> Result<(Child, u16), St
         .arg("-cp")
         .arg(jar.as_os_str())
         .arg("fan.summer.fengyu.HeadlessLauncher")
-        .arg("--port=24056")
+        .arg(format!("--port={requested_port}"))
         .arg(format!("--token={}", token))
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -219,57 +255,119 @@ fn check_setup_mode(port: u16, token: &str) -> Result<bool, String> {
     Ok(body.contains("\"initialized\":false") || body.contains("\"initialized\": false"))
 }
 
-/// Brings the backend up in APP mode, handling the first-launch SETUP detour, and returns the
-/// live `(child, port)` ready for the window.
-///
-/// The backend may start in SETUP mode (first launch, no datasource.properties). When the setup
-/// wizard completes, it exits with code 0 to signal a restart into APP mode. This loops:
-/// spawn → wait for health → probe `/api/setup/status` → if SETUP, wait for exit(0) and respawn;
-/// if APP, return. Any failure is fatal (`process::exit(1)`), so the caller always gets a ready
-/// backend. Guards against an infinite loop if an already-APP backend exits unexpectedly.
 #[cfg(not(debug_assertions))]
-fn run_backend_until_app_mode(layout: &RuntimeLayout, token: &str) -> (Child, u16) {
-    let mut entered_app_mode = false;
-    loop {
-        let (child, port) = match spawn_backend(layout, token) {
-            Ok(v) => v,
-            Err(e) => {
-                eprintln!("FATAL: {e}");
-                std::process::exit(1);
+struct StartedBackend {
+    child: Child,
+    port: u16,
+    setup_mode: bool,
+}
+
+#[cfg(not(debug_assertions))]
+fn start_backend(
+    layout: &RuntimeLayout,
+    token: &str,
+    requested_port: u16,
+) -> Result<StartedBackend, String> {
+    let (mut child, port) = spawn_backend(layout, token, requested_port)?;
+    if let Err(error) = wait_for_health(port, token) {
+        let _ = child.kill();
+        return Err(error);
+    }
+    let setup_mode = check_setup_mode(port, token).map_err(|error| {
+        let _ = child.kill();
+        error
+    })?;
+    Ok(StartedBackend {
+        child,
+        port,
+        setup_mode,
+    })
+}
+
+#[cfg(not(debug_assertions))]
+struct SetupSupervisor {
+    layout: RuntimeLayout,
+    token: String,
+    port: u16,
+}
+
+#[cfg(not(debug_assertions))]
+fn supervise_setup_restart(app: tauri::AppHandle, config: SetupSupervisor) {
+    thread::spawn(move || {
+        let status = loop {
+            let polled = {
+                let state = app.state::<Sidecar>();
+                let mut guard = match state.0.lock() {
+                    Ok(guard) => guard,
+                    Err(_) => return,
+                };
+                if guard.shutting_down {
+                    return;
+                }
+                let Some(child) = guard.child.as_mut() else {
+                    return;
+                };
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        guard.child.take();
+                        Some(Ok(status))
+                    }
+                    Ok(None) => None,
+                    Err(error) => Some(Err(error)),
+                }
+            };
+
+            match polled {
+                Some(Ok(status)) => break status,
+                Some(Err(error)) => {
+                    eprintln!("FATAL: failed to poll setup sidecar: {error}");
+                    return;
+                }
+                None => thread::sleep(Duration::from_millis(200)),
             }
         };
-        if let Err(e) = wait_for_health(port, token) {
-            eprintln!("FATAL: {e}");
-            let mut cc = child;
-            let _ = cc.kill();
-            std::process::exit(1);
+
+        if status.code() != Some(0) {
+            eprintln!("FATAL: setup sidecar exited with code {:?}", status.code());
+            return;
         }
-        // If we already entered APP mode on a previous iteration and the backend exited, that's an
-        // unexpected crash — don't loop forever.
-        if entered_app_mode {
-            eprintln!("FATAL: backend exited unexpectedly after entering APP mode");
-            std::process::exit(1);
-        }
-        match check_setup_mode(port, token) {
-            Ok(true) => {
-                println!("[desktop] backend in SETUP mode; waiting for wizard to complete…");
-                let mut waiter = child;
-                let status = waiter.wait().expect("failed to wait for setup sidecar");
-                if status.code() == Some(0) {
-                    println!("[desktop] setup complete; restarting backend into APP mode");
-                    entered_app_mode = true;
-                    continue; // respawn into APP mode
-                }
-                eprintln!("FATAL: setup sidecar exited with code {:?}", status.code());
-                std::process::exit(1);
+
+        println!("[desktop] setup complete; restarting backend into APP mode");
+        let mut restarted = match start_backend(&config.layout, &config.token, config.port) {
+            Ok(backend) => backend,
+            Err(error) => {
+                eprintln!("FATAL: failed to restart backend after setup: {error}");
+                return;
             }
-            Ok(false) => return (child, port), // APP mode — proceed to window
-            Err(e) => {
-                eprintln!("[desktop] could not determine setup mode ({e}); assuming APP");
-                return (child, port);
-            }
+        };
+
+        if restarted.port != config.port {
+            let _ = restarted.child.kill();
+            eprintln!(
+                "FATAL: restarted backend moved from port {} to {}; the webview endpoint cannot change",
+                config.port, restarted.port
+            );
+            return;
         }
-    }
+        if restarted.setup_mode {
+            let _ = restarted.child.kill();
+            eprintln!("FATAL: backend remained in SETUP mode after successful initialization");
+            return;
+        }
+
+        let state = app.state::<Sidecar>();
+        if let Ok(mut guard) = state.0.lock() {
+            if guard.shutting_down {
+                let _ = restarted.child.kill();
+            } else {
+                guard.child = Some(restarted.child);
+                println!(
+                    "[desktop] backend restarted in APP mode on port {}",
+                    config.port
+                );
+            }
+        };
+    });
 }
 
 // ── main(): dev vs prod ──────────────────────────────────────────────────────
@@ -284,7 +382,12 @@ fn main() {
          (IDE / `mvn -pl FengYu spring-boot:run`). Tauri only opens the window; \
          API calls go through the Vite proxy."
     );
-    run_desktop(|_app| Ok((None, None)));
+    run_desktop(|_app| {
+        Ok(PreparedDesktop {
+            child: None,
+            init_script: None,
+        })
+    });
 }
 
 /// PROD entry (`cargo tauri build`, a release build). Spawns the bundled jar as a sidecar, waits
@@ -301,7 +404,9 @@ fn main() {
         })?;
         let layout = runtime_layout(&resource_dir);
         let token = gen_token();
-        let (child, port) = run_backend_until_app_mode(&layout, &token);
+        let started = start_backend(&layout, &token, 24056)
+            .map_err(|error| std::io::Error::other(format!("failed to start backend: {error}")))?;
+        let action = startup_action(started.setup_mode, started.port);
 
         // Injected before any page script runs. The frontend reads these globals
         // (see frontend/src/api/config.ts): __FENGYU_API_BASE__ (absolute backend URL — the backend
@@ -309,16 +414,33 @@ fn main() {
         // back from stdout is used) and __FENGYU_TOKEN__.
         let init_script = format!(
             "window.__FENGYU_TOKEN__ = '{token}'; window.__FENGYU_PORT__ = {port}; \
-             window.__FENGYU_API_BASE__ = 'http://127.0.0.1:{port}';"
+             window.__FENGYU_API_BASE__ = 'http://127.0.0.1:{port}';",
+            port = started.port,
         );
 
-        Ok((Some(child), Some(init_script)))
+        let supervisor = match action {
+            StartupAction::ShowWindow => None,
+            StartupAction::ShowWindowAndSupervise { port } => {
+                println!("[desktop] backend in SETUP mode; opening setup wizard");
+                Some(SetupSupervisor {
+                    layout,
+                    token,
+                    port,
+                })
+            }
+        };
+
+        Ok(PreparedDesktop {
+            child: Some(started.child),
+            init_script: Some(init_script),
+            supervisor,
+        })
     });
 }
 
 #[cfg(test)]
 mod tests {
-    use super::runtime_layout;
+    use super::{runtime_layout, startup_action, StartupAction};
     use std::path::Path;
 
     #[test]
@@ -326,5 +448,18 @@ mod tests {
         let layout = runtime_layout(Path::new("/app/resources"));
         assert_eq!(layout.jar, Path::new("/app/resources/binaries/FengYu.jar"));
         assert_eq!(layout.plugins, Path::new("/app/resources/plugins"));
+    }
+
+    #[test]
+    fn app_mode_shows_the_window_without_supervision() {
+        assert_eq!(startup_action(false, 24056), StartupAction::ShowWindow);
+    }
+
+    #[test]
+    fn setup_mode_shows_the_window_and_supervises_the_same_port() {
+        assert_eq!(
+            startup_action(true, 43123),
+            StartupAction::ShowWindowAndSupervise { port: 43123 }
+        );
     }
 }
