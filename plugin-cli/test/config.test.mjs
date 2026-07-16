@@ -84,6 +84,17 @@ for (const [name, unsafe] of [
   })
 }
 
+for (const nonCanonical of ['a/./b', 'a/../b']) {
+  test(`rejects non-canonical runtime resource destination: ${nonCanonical}`, async () => {
+    const root = path.join(base, `non-canonical-${nonCanonical.replaceAll('/', '-')}`)
+    await writeConfig(root, {
+      ...validConfig,
+      package: { outputDirectory: 'dist-package', resources: [{ from: 'assets', to: nonCanonical }] },
+    })
+    await assert.rejects(() => loadBuildConfig(root), /package\.resources\[0\]\.to/)
+  })
+}
+
 test('symlink that escapes the plugin root is rejected', async () => {
   const root = path.join(base, 'symlink')
   await writeConfig(root, validConfig)

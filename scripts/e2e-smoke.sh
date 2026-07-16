@@ -131,36 +131,24 @@ echo "$EMAIL_PREVIEW" | grep -q '"attachmentTag":"East"' \
   && echo "PASS: email filename-tag preview" || fail "email batch preview: $EMAIL_PREVIEW"
 
 XLSX="$WORK/sample.xlsx"
-python3 - "$XLSX" <<'PY'
-import sys
-try:
-    from openpyxl import Workbook
-    wb = Workbook(); ws = wb.active; ws.title = "Alpha"
-    ws.append(["region"]); ws.append(["east"]); ws.append(["west"])
-    wb.save(sys.argv[1])
-except Exception as e:
-    print("SKIP-EXCEL:", e)
-PY
+EXCEL_WORKER="$ROOT/OfficialPlugins/plugin-excel/target/excel-worker.jar"
+"$JAVA" -cp "$EXCEL_WORKER" "$ROOT/scripts/fixtures/ExcelSmokeFixture.java" "$XLSX" \
+  || fail "generate Excel fixture"
 
-if [ -f "$XLSX" ]; then
-  UP="$(curl -s "${AUTH[@]}" -F "file=@$XLSX" "$H/api/plugin-runtime/fan.summer.excel/files/upload")"
-  OUT="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
-    "$H/api/plugin-runtime/fan.summer.excel/files/output" -d '{}')"
-  SESS="e2e-smoke"
-  ANALYZE_BODY="$(python3 -c 'import json,sys; print(json.dumps({"method":"analyze","params":{"session":"e2e-smoke","sourceFile":json.loads(sys.argv[1])}}))' "$UP")"
-  SPLIT_BODY="$(python3 -c 'import json,sys; print(json.dumps({"method":"split","params":{"session":"e2e-smoke","sourceFile":json.loads(sys.argv[1]),"outputDir":json.loads(sys.argv[2])}}))' "$UP" "$OUT")"
-  OUT_REF="$(printf '%s' "$OUT" | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')"
+UP="$(curl -s "${AUTH[@]}" -F "file=@$XLSX" "$H/api/plugin-runtime/fan.summer.excel/files/upload")"
+OUT="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+  "$H/api/plugin-runtime/fan.summer.excel/files/output" -d '{}')"
+ANALYZE_BODY="$(python3 -c 'import json,sys; print(json.dumps({"method":"analyze","params":{"session":"e2e-smoke","sourceFile":json.loads(sys.argv[1])}}))' "$UP")"
+SPLIT_BODY="$(python3 -c 'import json,sys; print(json.dumps({"method":"split","params":{"session":"e2e-smoke","sourceFile":json.loads(sys.argv[1]),"outputDir":json.loads(sys.argv[2])}}))' "$UP" "$OUT")"
+OUT_REF="$(printf '%s' "$OUT" | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')"
 
-  curl -s "${AUTH[@]}" -H 'Content-Type: application/json' \
-    -d "$ANALYZE_BODY" "$H/api/plugin-runtime/fan.summer.excel/invoke" | grep -q '"success":true' \
-    && echo "PASS: excel analyze" || fail "excel analyze"
+curl -s "${AUTH[@]}" -H 'Content-Type: application/json' \
+  -d "$ANALYZE_BODY" "$H/api/plugin-runtime/fan.summer.excel/invoke" | grep -q '"success":true' \
+  && echo "PASS: excel analyze" || fail "excel analyze"
 
-  curl -s "${AUTH[@]}" -H 'Content-Type: application/json' \
-    -d "$SPLIT_BODY" "$H/api/plugin-runtime/fan.summer.excel/invoke" | grep -q '"success":true' \
-    && echo "PASS: excel split" || fail "excel split"
+curl -s "${AUTH[@]}" -H 'Content-Type: application/json' \
+  -d "$SPLIT_BODY" "$H/api/plugin-runtime/fan.summer.excel/invoke" | grep -q '"success":true' \
+  && echo "PASS: excel split" || fail "excel split"
 
-  curl -s "${AUTH[@]}" "$H/api/plugin-runtime/fan.summer.excel/files/export/$OUT_REF" -o "$WORK/r.zip"
-  unzip -l "$WORK/r.zip" | grep -q '\.xlsx' && echo "PASS: excel archive" || fail "excel archive"
-else
-  echo "SKIP: openpyxl unavailable, skipping Excel file-flow (upload/analyze/split/archive)"
-fi
+curl -s "${AUTH[@]}" "$H/api/plugin-runtime/fan.summer.excel/files/export/$OUT_REF" -o "$WORK/r.zip"
+unzip -l "$WORK/r.zip" | grep -q '\.xlsx' && echo "PASS: excel archive" || fail "excel archive"

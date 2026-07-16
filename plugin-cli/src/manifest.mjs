@@ -65,11 +65,16 @@ async function validateWorkerJar(jar, expectedMainClass) {
   const manifestText = (await readArchiveEntry(jar, 'META-INF/MANIFEST.MF', { maxBytes: 1024 * 1024 })).toString('utf8')
   const actualMainClass = parseJarManifest(manifestText).get('Main-Class')
   const errors = []
-  if (actualMainClass !== expectedMainClass) {
+  if (!actualMainClass) {
+    errors.push('worker JAR manifest is missing Main-Class')
+  } else if (expectedMainClass && actualMainClass !== expectedMainClass) {
     errors.push(`worker JAR Main-Class ${actualMainClass ?? '<missing>'} does not match ${expectedMainClass}`)
   }
-  const classEntry = expectedMainClass.replace(/\./g, '/') + '.class'
-  if (!names.has(classEntry)) errors.push(`worker JAR is missing class entry ${classEntry}`)
+  const mainClass = expectedMainClass ?? actualMainClass
+  if (mainClass) {
+    const classEntry = mainClass.replace(/\./g, '/') + '.class'
+    if (!names.has(classEntry)) errors.push(`worker JAR is missing class entry ${classEntry}`)
+  }
   return errors
 }
 
@@ -91,7 +96,7 @@ export async function validatePluginArchive(file) {
     } else {
       try {
         const worker = await readArchiveEntry(file, 'backend/worker.jar')
-        await inspectArchive(worker)
+        errors.push(...await validateWorkerJar(worker))
       } catch (error) {
         errors.push(`worker JAR inspection failed: ${error.message}`)
       }
@@ -162,6 +167,10 @@ export async function validateRuntimeTree(project, staging) {
     return [`staging manifest.json: ${e.message}`]
   }
   errors.push(...validateManifestObject(manifest))
+
+  if (manifest.backend && !project.config?.worker) {
+    errors.push('runtime backend requires a declared worker build configuration')
+  }
 
   // ui.entry must resolve to a regular file inside staging.
   if (manifest.ui?.entry) {

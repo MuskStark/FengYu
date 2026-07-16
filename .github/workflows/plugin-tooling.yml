@@ -13,6 +13,7 @@ on:
       - 'plugin-sdk/**'
       - 'FengYu-Plugin-Sdk/**'
       - 'OfficialPlugins/**'
+      - 'scripts/plugin-tooling-local-smoke.sh'
       - '.github/workflows/plugin-tooling.yml'
   pull_request:
     paths:
@@ -21,6 +22,7 @@ on:
       - 'plugin-sdk/**'
       - 'FengYu-Plugin-Sdk/**'
       - 'OfficialPlugins/**'
+      - 'scripts/plugin-tooling-local-smoke.sh'
       - '.github/workflows/plugin-tooling.yml'
   workflow_dispatch:
 
@@ -50,7 +52,7 @@ jobs:
             plugin-cli/package-lock.json
 
       # --- SDK: typecheck-free, vitest unit tests ---
-      - run: cd plugin-sdk/typescript && npm install && npm test
+      - run: cd plugin-sdk/typescript && npm ci && npm test
       - name: Verify TypeScript SDK in isolation
         run: |
           SDK_TMP="$(mktemp -d)"
@@ -61,10 +63,10 @@ jobs:
           npm test
 
       # --- @fengyu/plugin-ui: typecheck + unit tests + Vite build ---
-      - run: cd plugin-ui/vue && npm install && npm run typecheck && npm test && npm run build
+      - run: cd plugin-ui/vue && npm ci && npm run typecheck && npm test && npm run build
 
       # --- @fengyu/plugin-cli: node --test ---
-      - run: cd plugin-cli && npm install && npm test
+      - run: cd plugin-cli && npm ci && npm test
 
       # --- Visual regression (Playwright) ---
       - run: npx playwright install --with-deps chromium
@@ -108,7 +110,7 @@ jobs:
       # The Java SDK is independently versioned (1.0.0) but stays in the reactor,
       # so a local install makes it resolvable without a GitHub Packages token.
       - run: ./mvnw -pl FengYu-Plugin-Sdk install -DskipTests
-      - run: npm install
+      - run: npm ci
         working-directory: plugin-cli
       - run: node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-${{ matrix.plugin }}
       - name: Upload .fyp

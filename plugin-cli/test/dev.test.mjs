@@ -215,3 +215,38 @@ test('declared dev queues exactly one follow-up rebuild for changes during a bui
   assert.equal(clients.length, 3)
   assert.equal(clients.every((client) => client.closeCalls === 1), true)
 })
+
+test('declared dev retries a dirty rebuild after the active build fails', async () => {
+  const root = await makeDeclaredWorkerProject()
+  let firstStarted
+  const firstStart = new Promise((resolve) => { firstStarted = resolve })
+  let rejectFirst
+  const firstGate = new Promise((_, reject) => { rejectFirst = reject })
+  let secondStarted
+  const secondStart = new Promise((resolve) => { secondStarted = resolve })
+  let buildCount = 0
+  const server = await dev(root, 4183, {
+    startWorkerImpl: async () => ({ invoke: async () => ({}), close: async () => {} }),
+    run: async () => {
+      buildCount++
+      if (buildCount === 1) { firstStarted(); await firstGate }
+      else secondStarted()
+    },
+    open: false,
+  })
+  try {
+    await fs.writeFile(path.join(root, 'worker/Broken.java'), 'class Broken {}')
+    await firstStart
+    await fs.writeFile(path.join(root, 'worker/Fixed.java'), 'class Fixed {}')
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    rejectFirst(new Error('compile failed'))
+    await Promise.race([
+      secondStart,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('dirty rebuild was lost')), 3000)),
+    ])
+    assert.equal(buildCount, 2)
+  } finally {
+    rejectFirst(new Error('cleanup'))
+    await server.close()
+  }
+})
