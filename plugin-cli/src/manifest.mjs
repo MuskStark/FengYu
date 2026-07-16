@@ -3,6 +3,7 @@ import fsSync from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import Ajv from 'ajv'
+import { inspectArchive } from './archive.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const schemaPath = path.resolve(here, '../spec/manifest.schema.json')
@@ -79,4 +80,94 @@ export async function validateProjectManifest(root) {
 /** Legacy alias used by older build/create code paths. */
 export async function validate(root) {
   return validateProjectManifest(root)
+}
+
+const FORBIDDEN_RUNTIME_ENTRIES = ['.git', 'node_modules', 'target', 'src']
+const TOKEN_BEARING_FILES = ['settings.xml', '.npmrc', '.env']
+
+/**
+ * Validate the assembled runtime tree against the declared project model. This
+ * runs AFTER staging and BEFORE packaging, so it catches problems the source
+ * manifest validation cannot (missing build outputs, smuggled source/token
+ * files, JAR manifest mismatches).
+ *
+ * @param {{ kind: string, root: string, config: import('./config.mjs').BuildConfig | null }} project
+ * @param {string} staging - absolute staging directory
+ * @returns {Promise<string[]>} list of error messages (empty = valid)
+ */
+export async function validateRuntimeTree(project, staging) {
+  const errors = []
+  let manifest
+  try {
+    manifest = JSON.parse(await fs.readFile(path.join(staging, 'manifest.json'), 'utf8'))
+  } catch (e) {
+    return [`staging manifest.json: ${e.message}`]
+  }
+  errors.push(...validateManifestObject(manifest))
+
+  // ui.entry must resolve to a regular file inside staging.
+  if (manifest.ui?.entry) {
+    const entry = path.resolve(staging, manifest.ui.entry)
+    if (!entry.startsWith(staging + path.sep) || !fsSync.existsSync(entry)) {
+      errors.push(`runtime ui.entry does not exist in package: ${manifest.ui.entry}`)
+    }
+  }
+
+  // Declared backend: command must reference exactly backend/worker.jar.
+  if (project.config?.worker && manifest.backend?.command) {
+    if (!/\bbackend\/worker\.jar\b/.test(manifest.backend.command)) {
+      errors.push('declared backend.command must reference backend/worker.jar')
+    }
+    const jar = path.join(staging, 'backend', 'worker.jar')
+    if (!fsSync.existsSync(jar)) {
+      errors.push('runtime backend/worker.jar is missing')
+    } else {
+      // Inspect the JAR (a zip) for Main-Class + the class entry, without running it.
+      try {
+        const { entries } = await inspectArchive(jar)
+        const names = new Set(entries.map((e) => e.name))
+        const mainClass = project.config.worker.mainClass
+        const classEntry = mainClass.replace(/\./g, '/') + '.class'
+        const manifestEntry = entries.find((e) => e.name === 'META-INF/MANIFEST.MF')
+        if (!manifestEntry) {
+          errors.push('worker JAR is missing META-INF/MANIFEST.MF')
+        }
+        if (!names.has(classEntry)) {
+          errors.push(`worker JAR is missing class entry ${classEntry}`)
+        }
+      } catch (e) {
+        errors.push(`worker JAR inspection failed: ${e.message}`)
+      }
+    }
+  }
+
+  // The runtime tree must not smuggle source, node_modules, build output, or
+  // token-bearing settings files.
+  await walkStaging(staging, (rel) => {
+    const top = rel.split(path.sep)[0]
+    if (FORBIDDEN_RUNTIME_ENTRIES.includes(top)) {
+      errors.push(`runtime tree must not include: ${rel}`)
+    }
+    const base = path.basename(rel)
+    if (TOKEN_BEARING_FILES.includes(base)) {
+      errors.push(`runtime tree must not include token-bearing file: ${rel}`)
+    }
+  }).catch((e) => errors.push(`staging walk failed: ${e.message}`))
+
+  return errors
+}
+
+async function walkStaging(dir, visit, base = dir) {
+  for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) {
+      throw new Error(`runtime tree contains a symlink: ${path.relative(base, path.join(dir, entry.name))}`)
+    }
+    const full = path.join(dir, entry.name)
+    const rel = path.relative(base, full)
+    if (entry.isDirectory()) {
+      await walkStaging(full, visit, base)
+    } else {
+      visit(rel)
+    }
+  }
 }
