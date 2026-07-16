@@ -99,6 +99,8 @@ async function renderTemplate(src, dest, replacements) {
     } else {
       const raw = await fs.readFile(srcPath, 'utf8')
       await fs.writeFile(destPath, applyPlaceholders(raw, replacements))
+      const sourceStat = await fs.stat(srcPath)
+      await fs.chmod(destPath, sourceStat.mode & 0o777)
     }
   }
 }
