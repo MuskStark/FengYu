@@ -80,6 +80,20 @@ cargo tauri build
 Desktop builds require Rust **and** the system WebView runtime for your platform. See the [Tauri prerequisites](https://tauri.app/start/prerequisites/) if `cargo tauri dev` fails to start.
 :::
 
+## Releases (Alpha)
+
+Release tags (`v4.0.0-alpha.1`, and later stable/beta/rc) trigger a GitHub Actions pipeline that
+publishes **unsigned** Tauri packages (Windows/macOS/Linux) and a **portable Web distribution**. The
+Web archive runs the same backend + bundled Vue SPA from a folder:
+
+```bash
+# Unzip Infinia-<version>-web.zip, then:
+./run.sh          # macOS/Linux (run.bat on Windows)
+```
+
+Requires **Java 21**. The backend binds **loopback only** (`127.0.0.1`). Code-signing, a bundled JRE,
+and the auto-updater are deferred to a later release.
+
 ## Next steps
 
 - [Architecture overview](/en/architecture/overview) — how the headless backend, Vue UI, and Tauri shell fit together.
