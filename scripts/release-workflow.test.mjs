@@ -46,3 +46,9 @@ test('prepares the frontend in every clean desktop runner', () => {
     /- name: Install frontend deps\s+run: npm ci\s+working-directory: frontend/,
   )
 })
+
+test('flattens nested desktop installers before checksums and release upload', () => {
+  assert.match(workflow, /find artifacts -type f/)
+  assert.match(workflow, /release-files\/\$\(basename "\$file"\)/)
+  assert.match(workflow, /files: \|\s+release-files\/\*/)
+})
