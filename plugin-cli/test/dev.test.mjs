@@ -58,3 +58,56 @@ test('static dev serves the simulator pointing at the manifest UI entry', async 
     await server.close()
   }
 })
+
+/** Build a declared worker project whose artifact already exists (no build). */
+async function makeDeclaredWorkerProject() {
+  const root = path.join(base, `worker-${Date.now()}`)
+  await fs.mkdir(root, { recursive: true })
+  await fs.writeFile(path.join(root, 'manifest.json'), JSON.stringify({
+    schemaVersion: 1, id: 'com.example.worker', name: 'Worker', version: '1.0.0',
+    ui: { entry: 'ui/index.html' },
+    backend: { command: 'java -jar backend/worker.jar', protocol: 'json-rpc-2.0' },
+  }))
+  await fs.writeFile(path.join(root, 'fengyu.plugin.json'), JSON.stringify({
+    schemaVersion: 1,
+    ui: { root: 'ui-src', output: 'dist', install: ['npm', 'ci'], test: ['npm', 'test'], build: ['npm', 'run', 'build'] },
+    worker: { root: 'worker', test: ['maven', 'test'], build: ['maven', 'package', '-DskipTests'], artifact: 'worker/worker.jar', mainClass: 'com.example.WorkerMain' },
+    package: { outputDirectory: 'dist-package' },
+  }))
+  // Artifact exists so dev skips the initial build.
+  await fs.mkdir(path.join(root, 'worker'), { recursive: true })
+  await fs.writeFile(path.join(root, 'worker/worker.jar'), Buffer.from('PK'))
+  return root
+}
+
+test('declared worker dev forwards rpc.invoke to the worker via /__rpc', async () => {
+  const root = await makeDeclaredWorkerProject()
+  const invoked = []
+  const fakeClient = {
+    invoke: async (method, params) => {
+      invoked.push({ method, params })
+      if (method === 'hello') return { message: 'Hello, ' + (params.name ?? '') }
+      throw new Error('unknown method')
+    },
+    close: async () => {},
+  }
+  const server = await dev(root, 4180, {
+    startWorkerImpl: async () => fakeClient,
+    run: async () => { throw new Error('build must not run; artifact exists') },
+    open: false,
+  })
+  try {
+    const html = await fetch('http://127.0.0.1:4180/__fengyu').then((r) => r.text())
+    assert.match(html, /\/__rpc/)
+    const res = await fetch('http://127.0.0.1:4180/__rpc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: '1', method: 'hello', params: { name: 'Ada' } }),
+    })
+    const json = await res.json()
+    assert.deepEqual(json, { id: '1', result: { message: 'Hello, Ada' } })
+    assert.deepEqual(invoked, [{ method: 'hello', params: { name: 'Ada' } }])
+  } finally {
+    await server.close()
+  }
+})
