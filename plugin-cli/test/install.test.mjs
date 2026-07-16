@@ -42,6 +42,12 @@ const goodManifest = JSON.stringify({
   schemaVersion: 1, id: 'com.example.install', name: 'Install', version: '1.0.0',
   ui: { entry: 'ui/index.html' }, permissions: [], official: false, aiTools: [],
 })
+const backendManifest = JSON.stringify({
+  schemaVersion: 1, id: 'com.example.backend', name: 'Backend', version: '1.0.0',
+  ui: { entry: 'ui/index.html' },
+  backend: { command: 'java -jar backend/worker.jar', protocol: 'json-rpc-2.0' },
+  permissions: [], official: false, aiTools: [],
+})
 
 let base
 test.before(async () => { base = await fs.mkdtemp(path.join(os.tmpdir(), 'fy-install-')) })
@@ -72,6 +78,33 @@ test('rejects a package missing manifest.json before any fetch', async () => {
   const fetchImpl = async () => { fetched++; return new Response() }
   const file = await writeFyp('no-manifest', [{ name: 'ui/index.html', data: '<html></html>' }])
   await assert.rejects(() => installPlugin(file, { host: 'http://127.0.0.1:9', fetchImpl }), /manifest/)
+  assert.equal(fetched, 0)
+})
+
+test('rejects a backend package missing worker.jar before fetch', async () => {
+  let fetched = 0
+  const file = await writeFyp('missing-worker', [
+    { name: 'manifest.json', data: backendManifest },
+    { name: 'ui/index.html', data: '<html></html>' },
+  ])
+  await assert.rejects(
+    () => installPlugin(file, { fetchImpl: async () => { fetched++; return new Response() } }),
+    /backend\/worker\.jar/,
+  )
+  assert.equal(fetched, 0)
+})
+
+test('rejects a malformed backend worker before fetch', async () => {
+  let fetched = 0
+  const file = await writeFyp('malformed-worker', [
+    { name: 'manifest.json', data: backendManifest },
+    { name: 'ui/index.html', data: '<html></html>' },
+    { name: 'backend/worker.jar', data: 'not a jar' },
+  ])
+  await assert.rejects(
+    () => installPlugin(file, { fetchImpl: async () => { fetched++; return new Response() } }),
+    /worker JAR inspection failed/,
+  )
   assert.equal(fetched, 0)
 })
 

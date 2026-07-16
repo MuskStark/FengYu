@@ -1,5 +1,6 @@
 import yauzl from 'yauzl'
 import { createRequire } from 'node:module'
+import fs from 'node:fs/promises'
 
 const require = createRequire(import.meta.url)
 
@@ -13,7 +14,13 @@ const MAX_EXPANDED_BYTES = 300 * 1024 * 1024
  * @param {string|Buffer} file - path to the archive, or an in-memory Buffer
  * @returns {Promise<{ entries: Array<{ name: string, compressedSize: number, uncompressedSize: number, isDirectory: boolean }>, totalExpandedBytes: number }>}
  */
-export function inspectArchive(file) {
+export async function inspectArchive(file) {
+  const size = Buffer.isBuffer(file) ? file.length : (await fs.stat(file)).size
+  if (size > MAX_PACKAGE_BYTES) throw new Error('package exceeds 100 MB')
+  return inspectArchiveUnchecked(file)
+}
+
+function inspectArchiveUnchecked(file) {
   return new Promise((resolve, reject) => {
     const entries = []
     const seen = new Set()
@@ -26,7 +33,11 @@ export function inspectArchive(file) {
       zip.on('entry', (entry) => {
         const name = entry.fileName
         // Normalize and reject path traversal.
-        const normalized = name.replace(/\\/g, '/').replace(/^\/+/, '')
+        if (/^[\\/]/.test(name) || /^[A-Za-z]:/.test(name)) {
+          cleanup(reject, new Error(`unsafe archive path: ${name}`), zip)
+          return
+        }
+        const normalized = name.replace(/\\/g, '/')
         if (normalizeForCheck(normalized).startsWith('../') || normalizeForCheck(normalized).includes('/../')) {
           cleanup(reject, new Error(`unsafe archive path: ${name}`), zip)
           return
@@ -68,10 +79,53 @@ export function inspectArchive(file) {
       zip.on('error', (e) => {
         // yauzl rejects traversal entries itself with "invalid relative path";
         // surface those as the same unsafe-path error callers expect.
-        const message = /invalid relative path/i.test(e.message) ? `unsafe archive path: ${e.message}`
+        const message = /invalid relative path|absolute path/i.test(e.message) ? `unsafe archive path: ${e.message}`
           : `archive read error: ${e.message}`
         cleanup(reject, new Error(message), zip)
       })
+      zip.readEntry()
+    })
+  })
+}
+
+export async function readArchiveEntry(file, expectedName, { maxBytes = 64 * 1024 * 1024 } = {}) {
+  await inspectArchive(file)
+  return new Promise((resolve, reject) => {
+    const open = Buffer.isBuffer(file)
+      ? (cb) => yauzl.fromBuffer(file, { lazyEntries: true, autoClose: false }, cb)
+      : (cb) => yauzl.open(file, { lazyEntries: true, autoClose: false }, cb)
+    open((err, zip) => {
+      if (err) return reject(new Error(`archive could not be opened: ${err.message}`))
+      let settled = false
+      const fail = (error) => {
+        if (settled) return
+        settled = true
+        try { zip.close() } catch { /* ignore */ }
+        reject(error)
+      }
+      zip.on('entry', (entry) => {
+        if (entry.fileName !== expectedName) { zip.readEntry(); return }
+        if (entry.uncompressedSize > maxBytes) return fail(new Error(`archive entry exceeds ${maxBytes} bytes: ${expectedName}`))
+        zip.openReadStream(entry, (streamErr, stream) => {
+          if (streamErr) return fail(streamErr)
+          const chunks = []
+          let total = 0
+          stream.on('data', (chunk) => {
+            total += chunk.length
+            if (total > maxBytes) stream.destroy(new Error(`archive entry exceeds ${maxBytes} bytes: ${expectedName}`))
+            else chunks.push(chunk)
+          })
+          stream.on('error', fail)
+          stream.on('end', () => {
+            if (settled) return
+            settled = true
+            try { zip.close() } catch { /* ignore */ }
+            resolve(Buffer.concat(chunks))
+          })
+        })
+      })
+      zip.on('end', () => fail(new Error(`archive entry not found: ${expectedName}`)))
+      zip.on('error', fail)
       zip.readEntry()
     })
   })

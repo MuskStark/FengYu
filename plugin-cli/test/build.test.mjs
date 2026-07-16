@@ -90,9 +90,12 @@ function tagFor(command, args, cwd) {
 
 /** Write a minimal runnable-style JAR (store-mode zip) with a manifest + class entry. */
 async function makeFakeJar(file, mainClass) {
-  const classEntry = mainClass.replace(/\./g, '/') + '.class'
+  const options = typeof mainClass === 'string'
+    ? { classEntry: mainClass, manifestMainClass: mainClass }
+    : mainClass
+  const classEntry = options.classEntry.replace(/\./g, '/') + '.class'
   const entries = [
-    { name: 'META-INF/MANIFEST.MF', data: `Manifest-Version: 1.0\nMain-Class: ${mainClass}\n\n` },
+    { name: 'META-INF/MANIFEST.MF', data: `Manifest-Version: 1.0\nMain-Class: ${options.manifestMainClass}\n\n` },
     { name: classEntry, data: Buffer.from([0xca, 0xfe, 0xba, 0xbe]) },
   ]
   await fs.mkdir(path.dirname(file), { recursive: true })
@@ -171,6 +174,27 @@ test('missing worker artifact fails validation with no partial output', async ()
   const pkgDir = path.join(root, 'dist-package')
   const leftovers = (await fs.readdir(pkgDir).catch(() => [])).filter((x) => x.endsWith('.fyp'))
   assert.deepEqual(leftovers, [])
+})
+
+test('worker Main-Class must match the declared build configuration', async () => {
+  await assert.rejects(
+    () => buildPlugin(root, {
+      run: async (command, args, options) => {
+        const tag = tagFor(command, args, options?.cwd ?? '')
+        if (tag === 'ui-build') {
+          await fs.mkdir(path.join(root, 'ui-src/dist'), { recursive: true })
+          await fs.writeFile(path.join(root, 'ui-src/dist/index.html'), '<div></div>')
+        }
+        if (tag === 'worker-build') {
+          await makeFakeJar(path.join(root, 'worker/target/declared-worker.jar'), {
+            classEntry: 'com.example.DeclaredWorkerMain',
+            manifestMainClass: 'com.example.WrongMain',
+          })
+        }
+      },
+    }),
+    /worker JAR Main-Class .* does not match com\.example\.DeclaredWorkerMain/,
+  )
 })
 
 test('assembleStaging copies manifest, ui output, and worker jar only', async () => {

@@ -3,7 +3,7 @@ import fsSync from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import Ajv from 'ajv'
-import { inspectArchive } from './archive.mjs'
+import { inspectArchive, readArchiveEntry } from './archive.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const schemaPath = path.resolve(here, '../spec/manifest.schema.json')
@@ -47,6 +47,57 @@ export function validateManifestObject(manifest) {
     errors.push('official plugin ids must use fan.summer.*')
   }
   return errors
+}
+
+function parseJarManifest(text) {
+  const unfolded = text.replace(/\r?\n ([^\r\n]*)/g, '$1')
+  const values = new Map()
+  for (const line of unfolded.split(/\r?\n/)) {
+    const index = line.indexOf(':')
+    if (index > 0) values.set(line.slice(0, index), line.slice(index + 1).trim())
+  }
+  return values
+}
+
+async function validateWorkerJar(jar, expectedMainClass) {
+  const { entries } = await inspectArchive(jar)
+  const names = new Set(entries.map((entry) => entry.name))
+  const manifestText = (await readArchiveEntry(jar, 'META-INF/MANIFEST.MF', { maxBytes: 1024 * 1024 })).toString('utf8')
+  const actualMainClass = parseJarManifest(manifestText).get('Main-Class')
+  const errors = []
+  if (actualMainClass !== expectedMainClass) {
+    errors.push(`worker JAR Main-Class ${actualMainClass ?? '<missing>'} does not match ${expectedMainClass}`)
+  }
+  const classEntry = expectedMainClass.replace(/\./g, '/') + '.class'
+  if (!names.has(classEntry)) errors.push(`worker JAR is missing class entry ${classEntry}`)
+  return errors
+}
+
+export async function validatePluginArchive(file) {
+  const { entries } = await inspectArchive(file)
+  const names = new Set(entries.filter((entry) => !entry.isDirectory).map((entry) => entry.name))
+  const manifest = JSON.parse((await readArchiveEntry(file, 'manifest.json', { maxBytes: 1024 * 1024 })).toString('utf8'))
+  const errors = validateManifestObject(manifest)
+  if (manifest.ui?.entry && !names.has(manifest.ui.entry)) {
+    errors.push(`package is missing UI entry: ${manifest.ui.entry}`)
+  }
+  if (manifest.backend) {
+    if (manifest.backend.protocol !== 'json-rpc-2.0') errors.push('unsupported backend protocol')
+    if (manifest.backend.command !== 'java -jar backend/worker.jar') {
+      errors.push('backend.command must be java -jar backend/worker.jar')
+    }
+    if (!names.has('backend/worker.jar')) {
+      errors.push('package is missing backend/worker.jar')
+    } else {
+      try {
+        const worker = await readArchiveEntry(file, 'backend/worker.jar')
+        await inspectArchive(worker)
+      } catch (error) {
+        errors.push(`worker JAR inspection failed: ${error.message}`)
+      }
+    }
+  }
+  return { manifest, errors }
 }
 
 /**
@@ -131,17 +182,8 @@ export async function validateRuntimeTree(project, staging) {
     } else {
       // Inspect the JAR (a zip) for Main-Class + the class entry, without running it.
       try {
-        const { entries } = await inspectArchive(jar)
-        const names = new Set(entries.map((e) => e.name))
         const mainClass = project.config.worker.mainClass
-        const classEntry = mainClass.replace(/\./g, '/') + '.class'
-        const manifestEntry = entries.find((e) => e.name === 'META-INF/MANIFEST.MF')
-        if (!manifestEntry) {
-          errors.push('worker JAR is missing META-INF/MANIFEST.MF')
-        }
-        if (!names.has(classEntry)) {
-          errors.push(`worker JAR is missing class entry ${classEntry}`)
-        }
+        errors.push(...await validateWorkerJar(jar, mainClass))
       } catch (e) {
         errors.push(`worker JAR inspection failed: ${e.message}`)
       }
