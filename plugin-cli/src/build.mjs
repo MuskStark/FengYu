@@ -1,65 +1,134 @@
 import fs from 'node:fs/promises'
+import fsSync from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { detectProject } from './project.mjs'
-import { runCommand } from './commands.mjs'
-import { validate, readManifest } from './manifest.mjs'
+import { runCommand, resolveCommand, spawnSpec } from './commands.mjs'
+import { validate, validateRuntimeTree, readManifest, validateProjectManifest } from './manifest.mjs'
 import { writeZip } from './zip.mjs'
+import { assembleStaging } from './staging.mjs'
+import { inspectArchive } from './archive.mjs'
+import { createHash } from 'node:crypto'
 
 /**
- * Build a plugin package: optionally run the frontend build, validate the
- * manifest, then atomically produce the `.fyp` archive.
+ * Build a plugin package (.fyp).
  *
- * Pipeline (depends on the detected project kind):
- *  - `vue-vite`: run `npm run build` first (it emits `ui/`), THEN validate the
- *    manifest + `ui.entry`, THEN package. A frontend-build failure is rethrown
- *    as-is and NO `.fyp` is produced.
- *  - `static`: skip npm and go straight to validate + package (legacy path).
+ * Lifecycle for a `declared` project (fengyu.plugin.json):
+ *   ui.prepare → ui.install (if needed) → [ui.test, worker.test] → ui.build → worker.build
+ *   → assemble staging → validate staging → atomically package
  *
- * The archive write is atomic: the zip is written to a temporary sibling
- * `<output>.tmp-<pid>` and renamed onto the final path only after `writeZip`
- * succeeds. The temp file is removed in `finally` so a failure (build error,
- * validation error, or rename failure) never leaves a partial `.fyp` or a
- * stale `.tmp-*` behind.
+ * For legacy `vue-vite` / `static` projects, the zero-config behavior is
+ * preserved: run the frontend build (vue-vite) then route through staging so
+ * the produced archive still excludes src/node_modules/.git/target.
+ *
+ * `build` runs UI and worker tests by default; `--skip-tests` skips tests only,
+ * never type checking or packaging. Failures leave NO partial output: no `.fyp`,
+ * no `.tmp-*`, and no staging directory.
  *
  * @param {string} root - project root
- * @param {{ out?: string, run?: (cmd: string, args: string[], opts?: object) => Promise<unknown>, hooks?: { onValidate?: () => void, onPackage?: () => void } }} [options]
+ * @param {{ out?: string, run?: Function, skipTests?: boolean, hooks?: { onValidate?: () => void, onPackage?: () => void } }} [options]
  * @returns {Promise<{ output: string, files: number }>}
  */
 export async function buildPlugin(root, options = {}) {
   const dir = path.resolve(root)
-  const { out, run = runCommand, hooks = {} } = options
+  const { out, run = runCommand, skipTests = false, hooks = {} } = options
 
   const project = await detectProject(dir)
-  const kind = project.kind
 
-  if (kind === 'vue-vite') {
-    // Run the frontend build FIRST. If it rejects, let the rejection propagate
-    // untouched (the message + exit code are preserved) so callers see the real
-    // cause; no `.fyp` is ever written.
+  if (project.kind === 'declared') {
+    await runDeclaredLifecycle(project, run, skipTests)
+  } else if (project.kind === 'vue-vite') {
+    // Legacy zero-config Vue: run the frontend build first (emits ui/).
     await run('npm', ['run', 'build'], { cwd: dir })
   }
 
-  // Validate AFTER the frontend build so ui.entry (produced by `npm run build`)
-  // is present. Throw the joined errors like the `validate` command does.
-  const errors = await validate(dir)
-  if (errors.length) throw new Error(errors.join('\n'))
-  hooks.onValidate?.()
-
-  // Resolve the output path from the manifest's id/version when not supplied.
   const manifest = await readManifest(dir)
-  const output = out ?? path.resolve(dir, 'dist-package', `${manifest.id}-${manifest.version}.fyp`)
+  const output = out ?? path.resolve(dir, project.config?.package?.outputDirectory ?? 'dist-package', `${manifest.id}-${manifest.version}.fyp`)
 
-  // Package atomically: write to a temp sibling, then rename on success.
-  const tmp = `${output}.tmp-${process.pid}`
-  let result
+  return atomicPackage(project, output, hooks)
+}
+
+async function runDeclaredLifecycle(project, run, skipTests) {
+  const cfg = project.config
+  // ui.prepare (e.g. building shared tooling dependencies) runs first.
+  if (cfg.ui) {
+    for (const command of cfg.ui.prepare ?? []) {
+      await runConfigured(command, cfg.ui.root, run)
+    }
+    // Install only when node_modules is absent or the lockfile fingerprint drifted.
+    await ensureUiInstalled(cfg.ui, run)
+    if (!skipTests) {
+      await runConfigured(cfg.ui.test, cfg.ui.root, run)
+      if (cfg.worker) await runConfigured(cfg.worker.test, cfg.worker.root, run)
+    }
+    await runConfigured(cfg.ui.build, cfg.ui.root, run)
+  }
+  if (cfg.worker) {
+    await runConfigured(cfg.worker.build, cfg.worker.root, run)
+  }
+}
+
+async function runConfigured(command, cwd, run) {
+  const resolved = await resolveCommand(command, cwd)
+  const spec = spawnSpec(resolved)
+  await run(spec.command, spec.args, { cwd, env: resolved.env, shell: spec.shell })
+}
+
+async function ensureUiInstalled(ui, run) {
+  const nodeModules = path.join(ui.root, 'node_modules')
+  const lockfile = path.join(ui.root, 'package-lock.json')
+  const hashFile = path.join(nodeModules, '.fengyu-lock-hash')
+  const currentHash = await lockFingerprint(lockfile)
+  const installedHash = await readFileSafe(hashFile)
+  if (currentHash && installedHash === currentHash && fsSync.existsSync(nodeModules)) return
+  // `npm ci` requires a committed lockfile; when none exists yet (e.g. a fresh
+  // scaffold created with --no-install), fall back to `npm install` which also
+  // generates the lockfile the next `ci` will pin to.
+  const installCommand = (!currentHash && ui.install[0] === 'npm' && ui.install[1] === 'ci')
+    ? ['npm', 'install', ...ui.install.slice(2)]
+    : ui.install
+  await runConfigured(installCommand, ui.root, run)
+  const freshHash = await lockFingerprint(lockfile)
+  if (freshHash) {
+    await fs.mkdir(nodeModules, { recursive: true })
+    await fs.writeFile(hashFile, freshHash)
+  }
+}
+
+async function lockFingerprint(lockfile) {
   try {
-    result = await writeZip(dir, tmp)
+    const data = await fs.readFile(lockfile)
+    return createHash('sha256').update(data).digest('hex')
+  } catch {
+    return null
+  }
+}
+
+async function readFileSafe(file) {
+  try { return (await fs.readFile(file, 'utf8')).trim() } catch { return null }
+}
+
+async function atomicPackage(project, output, hooks) {
+  const stagingParent = path.dirname(output)
+  await fs.mkdir(stagingParent, { recursive: true })
+  const staging = await fs.mkdtemp(path.join(stagingParent, '.staging-'))
+  const tmp = `${output}.tmp-${process.pid}-${Math.random().toString(36).slice(2)}`
+  try {
+    await assembleStaging(project, staging)
+
+    // Validate the staged runtime tree (and manifest).
+    const errors = await validateRuntimeTree(project, staging)
+    if (errors.length) throw new Error(errors.join('\n'))
+    hooks.onValidate?.()
+
+    // Write the archive to a temp sibling, validate it, then atomically rename.
+    const result = await writeZip(staging, tmp)
+    await inspectArchive(tmp)
     await fs.rename(tmp, output)
+    hooks.onPackage?.()
+    return { output, files: result.files }
   } finally {
-    // Clean any leftover temp file whether the write/rename succeeded or not.
+    await fs.rm(staging, { recursive: true, force: true }).catch(() => {})
     await fs.rm(tmp, { force: true }).catch(() => {})
   }
-
-  hooks.onPackage?.()
-  return { output, files: result.files }
 }
