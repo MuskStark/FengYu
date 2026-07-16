@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "fan.summer.offlinepython",
+  "name": "Offline Python Builder",
+  "description": "Build offline Python install repositories with all dependencies",
+  "version": "4.0.0",
+  "author": "FengYu",
+  "icon": "language-python",
+  "category": "dev",
+  "ui": { "entry": "ui/index.html" },
+  "backend": { "command": "java -jar backend/worker.jar", "protocol": "json-rpc-2.0" },
+  "permissions": ["files.read", "files.write", "network"],
+  "homepage": "https://github.com/MuskStark/FengYu",
+  "official": true,
+  "aiTools": [
+    {"name":"offlinepython_doctor","description":"Diagnose the host Python/pip environment for offline-build readiness.","method":"offlinepython_doctor","inputSchema":"{\"type\":\"object\",\"properties\":{\"executable\":{\"type\":\"string\",\"description\":\"Optional path to a Python executable; omit to auto-detect\"}}}"},
+    {"name":"offlinepython_search_deps","description":"Search PyPI for a package's available wheels (version/platform/size).","method":"offlinepython_search_deps","inputSchema":"{\"type\":\"object\",\"properties\":{\"pkg\":{\"type\":\"string\"}},\"required\":[\"pkg\"]}"},
+    {"name":"offlinepython_init_project","description":"Initialize an offline-python project skeleton (config.json + requirements.txt + README.md) in a writable directory.","method":"offlinepython_init_project","inputSchema":"{\"type\":\"object\",\"properties\":{\"projectDir\":{\"type\":\"object\",\"description\":\"A writable FengYu DirectoryRef\"}},\"required\":[\"projectDir\"]}"},
+    {"name":"offlinepython_verify","description":"Verify an offline build output directory against its manifest (checksums, integrity, requirements).","method":"offlinepython_verify","inputSchema":"{\"type\":\"object\",\"properties\":{\"projectDir\":{\"type\":\"object\",\"description\":\"A FengYu DirectoryRef\"},\"scope\":{\"type\":\"string\",\"enum\":[\"ALL\",\"INTEGRITY\",\"SHA256\"]}},\"required\":[\"projectDir\"]}"},
+    {"name":"offlinepython_build_start","description":"Start an async offline wheelhouse build (pip download) for a project; returns a jobId to poll with offlinepython_build_status.","method":"offlinepython_build_start","inputSchema":"{\"type\":\"object\",\"properties\":{\"projectDir\":{\"type\":\"object\",\"description\":\"A FengYu DirectoryRef\"},\"executable\":{\"type\":\"string\"}},\"required\":[\"projectDir\"]}"},
+    {"name":"offlinepython_build_status","description":"Poll the status and streamed logs of a build job started by offlinepython_build_start.","method":"offlinepython_build_status","inputSchema":"{\"type\":\"object\",\"properties\":{\"jobId\":{\"type\":\"string\"},\"cursor\":{\"type\":\"integer\"}},\"required\":[\"jobId\"]}"}
+  ]
+}
