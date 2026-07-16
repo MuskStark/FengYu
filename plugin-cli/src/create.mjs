@@ -3,34 +3,58 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runCommand } from './commands.mjs'
 
+/** Toolchain version shared by the CLI, the SDK, and generated templates. */
+export const toolingVersion = '1.0.0'
+
 const TEMPLATES_DIR = fileURLToPath(new URL('../templates', import.meta.url))
+const VUE_JAVA_DIR = path.join(TEMPLATES_DIR, 'vue-java')
 const VUE_CODEX_DIR = path.join(TEMPLATES_DIR, 'vue-codex')
 
 /**
- * Scaffold a Codex-style Vue/Vuetify plugin project into `directory`.
+ * Scaffold a FengYu plugin project into `directory`.
  *
- * Recursively copies the `vue-codex` template, applying `{{pluginId}}` /
- * `{{pluginName}}` placeholders to the files that contain them, then (unless
- * `install` is false) runs `npm install`. On install failure the scaffold is
- * left in place and a descriptive error (with the original as `cause`) is thrown.
+ * By default this produces a complete Vue + Java plugin (`vue-java`): a Vue UI
+ * that calls a Java JSON-RPC worker built with the Maven Wrapper and the FengYu
+ * Plugin Worker SDK. Pass `{ uiOnly: true }` to keep the lightweight UI-only
+ * scaffold (`vue-codex`) instead.
+ *
+ * The renderer substitutes placeholders inside both file *contents* and file /
+ * directory *names* (so the Java package path is derived from the id). After
+ * rendering, `npm install` runs (unless `install` is false); for the full
+ * template it runs inside `ui-src`, for the UI-only template inside `root`.
  *
  * @param {string} directory - target project root (must not already exist)
  * @param {string} id - reverse-domain plugin id, e.g. `com.example.demo`
- * @param {{ install?: boolean, run?: (command: string, args: string[], options?: object) => Promise<unknown> }} [options]
+ * @param {{ install?: boolean, uiOnly?: boolean, run?: (command: string, args: string[], options?: object) => Promise<unknown> }} [options]
  * @returns {Promise<string>} the resolved project root
  */
-export async function createPlugin(directory, id, { install = true, run = runCommand } = {}) {
+export async function createPlugin(directory, id, { install = true, uiOnly = false, run = runCommand } = {}) {
   const root = path.resolve(directory)
   await ensureEmpty(root)
   const pluginName = humanName(id)
-  await renderTemplate(VUE_CODEX_DIR, root, { '{{pluginId}}': id, '{{pluginName}}': pluginName })
+  const javaClassPrefix = humanName(id).replace(/[^A-Za-z0-9]/g, '')
+  if (!javaClassPrefix) throw new Error(`plugin id "${id}" yields an empty Java class prefix`)
+  const javaPackage = id.split('.').map((part) => part.replace(/-/g, '_')).join('.')
+  const javaPackagePath = javaPackage.replace(/\./g, '/')
+  const replacements = {
+    '{{pluginId}}': id,
+    '{{pluginName}}': pluginName,
+    '{{javaPackage}}': javaPackage,
+    '{{javaPackagePath}}': javaPackagePath,
+    '{{javaClassPrefix}}': javaClassPrefix,
+    '{{toolingVersion}}': toolingVersion,
+  }
+
+  const template = uiOnly ? VUE_CODEX_DIR : VUE_JAVA_DIR
+  await renderTemplate(template, root, replacements)
 
   if (install) {
+    const cwd = uiOnly ? root : path.join(root, 'ui-src')
     try {
-      await run('npm', ['install'], { cwd: root })
+      await run('npm', ['install'], { cwd })
     } catch (error) {
       throw new Error(
-        `Scaffold created at ${root}, but npm install failed. Run: cd ${root} && npm install`,
+        `Scaffold created at ${root}, but npm install failed. Run: cd ${cwd} && npm install`,
         { cause: error },
       )
     }
@@ -56,17 +80,18 @@ async function ensureEmpty(root) {
 }
 
 /**
- * Recursively copy `src` into `dest`. Files ending in `.tpl` are written
- * without that extension. Every file is read as UTF-8 and has placeholder
- * tokens substituted; files containing no tokens are left unchanged by the
- * (no-op) split/join, so only `{{pluginId}}` / `{{pluginName}}` are affected.
+ * Recursively copy `src` into `dest`. Placeholders are substituted inside both
+ * file *contents* and file / directory *names* (so a Java package path like
+ * `{{javaPackagePath}}/{{javaClassPrefix}}WorkerMain.java.tpl` resolves to the
+ * real on-disk path). Files ending in `.tpl` are written without that suffix.
  */
 async function renderTemplate(src, dest, replacements) {
   const entries = await fs.readdir(src, { withFileTypes: true })
   for (const entry of entries) {
     const srcPath = path.join(src, entry.name)
-    const isTpl = entry.name.endsWith('.tpl')
-    const outName = isTpl ? entry.name.slice(0, -'.tpl'.length) : entry.name
+    const renderedName = applyPlaceholders(entry.name, replacements)
+    const isTpl = renderedName.endsWith('.tpl')
+    const outName = isTpl ? renderedName.slice(0, -'.tpl'.length) : renderedName
     const destPath = path.join(dest, outName)
     if (entry.isDirectory()) {
       await fs.mkdir(destPath, { recursive: true })
