@@ -52,6 +52,8 @@ async function devDeclaredWorker(project, port, { run = runCommand, startWorkerI
   const artifact = cfg.worker.artifact
   let workerClient
   let rebuilding = null
+  let dirty = false
+  let closing = false
 
   // Build the worker artifact first if it does not exist.
   if (!fsSync.existsSync(artifact)) {
@@ -60,24 +62,44 @@ async function devDeclaredWorker(project, port, { run = runCommand, startWorkerI
   workerClient = await startWorkerImpl({ jar: artifact, cwd: workerRoot, onStderr: (line) => console.error('[worker]', line) })
 
   // Watch Java sources (excluding target) and rebuild + restart on change.
-  let rebuildTimer = null
-  const watcher = watchDebounced(workerRoot, ['target'], 300, async () => {
-    if (rebuilding) return
-    rebuilding = rebuildWorker(cfg.worker, run, startWorkerImpl, workerRoot, artifact, workerClient)
-      .then((next) => { if (next) workerClient = next })
-      .catch((e) => console.error('[worker] rebuild failed:', e.message))
-      .finally(() => { rebuilding = null })
+  const watcher = watchDebounced(workerRoot, ['target'], 300, () => {
+    dirty = true
+    void scheduleRebuild()
   })
 
+  async function scheduleRebuild() {
+    if (rebuilding || closing) return rebuilding
+    rebuilding = (async () => {
+      while (dirty && !closing) {
+        dirty = false
+        const next = await rebuildWorker(cfg.worker, run, startWorkerImpl, workerRoot, artifact)
+        if (closing) {
+          await next.close().catch(() => {})
+          return
+        }
+        const previous = workerClient
+        workerClient = next
+        await previous?.close().catch(() => {})
+      }
+    })().catch((e) => console.error('[worker] rebuild failed:', e.message))
+      .finally(() => { rebuilding = null })
+    return rebuilding
+  }
+
   const manifest = await safeReadManifest(project.root)
-  const server = createRpcSimulatorServer({ port, manifest, invoke: (method, params) => workerClient ? workerClient.invoke(method, params) : Promise.reject(new Error('worker rebuilding')) })
+  const server = createRpcSimulatorServer({ port, manifest, invoke: (method, params) => {
+    if (rebuilding) return Promise.reject(new Error('worker rebuilding'))
+    return workerClient ? workerClient.invoke(method, params) : Promise.reject(new Error('worker unavailable'))
+  } })
   console.log(`FengYu dev host (declared worker): http://${HOST}:${port}/__fengyu`)
   return {
     port,
     kind: 'declared',
     close: async () => {
-      if (rebuildTimer) clearTimeout(rebuildTimer)
+      closing = true
+      dirty = false
       await watcher.close?.().catch(() => {})
+      await rebuilding?.catch(() => {})
       await workerClient?.close().catch(() => {})
       await stopServer(server)
     },
@@ -90,15 +112,13 @@ async function runWorkerBuild(worker, run) {
   await run(spec.command, spec.args, { cwd: worker.root, env: resolved.env, shell: spec.shell })
 }
 
-async function rebuildWorker(worker, run, startWorkerImpl, workerRoot, artifact, oldClient) {
+async function rebuildWorker(worker, run, startWorkerImpl, workerRoot, artifact) {
   // Build with tests skipped for a fast reload.
   const buildCmd = worker.build[0] === 'maven' ? ['maven', ...worker.build.slice(1), '-DskipTests'] : worker.build
   // Avoid duplicate -DskipTests.
   const dedup = buildCmd[0] === 'maven' && buildCmd.includes('-DskipTests') ? buildCmd : buildCmd
   await runWorkerBuild({ ...worker, build: dedup }, run)
-  const next = await startWorkerImpl({ jar: artifact, cwd: workerRoot })
-  await oldClient?.close().catch(() => {})
-  return next
+  return startWorkerImpl({ jar: artifact, cwd: workerRoot })
 }
 
 /**
