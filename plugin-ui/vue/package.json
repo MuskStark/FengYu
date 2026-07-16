@@ -25,8 +25,11 @@
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
     "dev:e2e": "vite --config vite.e2e.config.ts",
-    "test:visual": "playwright test"
+    "test:visual": "playwright test",
+    "prepack": "npm run typecheck && npm test && npm run build"
   },
+  "repository": { "type": "git", "url": "git+https://github.com/MuskStark/FengYu.git", "directory": "plugin-ui/vue" },
+  "publishConfig": { "access": "public" },
   "peerDependencies": {
     "@fengyu/plugin-sdk": "^1.0.0",
     "vue": "^3.5.0",
