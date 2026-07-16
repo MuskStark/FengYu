@@ -7,6 +7,29 @@ use std::sync::Mutex;
 
 use tauri::{Manager, State};
 
+/// Where the bundled runtime assets live under the Tauri resource directory.
+///
+/// The prod bundle stages the shaded jar at `binaries/FengYu.jar` and the official `.fyp` plugins
+/// under `plugins/` (see `tauri.conf.json` `bundle.resources`). Tauri copies both into the
+/// platform resource directory at install time; this struct resolves their absolute paths from a
+/// single `resource_dir()` so the backend is spawned against the right files regardless of where
+/// the OS installed the app.
+struct RuntimeLayout {
+    jar: std::path::PathBuf,
+    plugins: std::path::PathBuf,
+}
+
+/// Resolves the jar and plugin paths under `resource_dir`.
+///
+/// `resource_dir` is `app.path().resource_dir()` in prod (Tauri's platform install location) and
+/// any path in tests. Kept cfg-free so the unit test (compiled under `debug_assertions`) can call it.
+fn runtime_layout(resource_dir: &std::path::Path) -> RuntimeLayout {
+    RuntimeLayout {
+        jar: resource_dir.join("binaries").join("FengYu.jar"),
+        plugins: resource_dir.join("plugins"),
+    }
+}
+
 // The sidecar machinery below is PROD-only, gated on `not(debug_assertions)` (a release build).
 // In dev (`cargo tauri dev`, a debug build) the backend is started externally (IDE /
 // `mvn spring-boot:run` on :24056) and the webview reaches it via the Vite proxy — so none of the
@@ -25,28 +48,39 @@ struct Sidecar(Mutex<Option<Child>>);
 
 /// Builds the window and runs the Tauri event loop. Shared by dev and prod `main()`.
 ///
-/// - `child`: the spawned backend process to kill on window close. `None` in dev (backend is
-///   external; nothing to kill).
-/// - `init_script`: the `window.__FENGYU_TOKEN__` / `__FENGYU_API_BASE__` injection, run before
-///   any page script. `None` in dev (the webview talks to the backend same-origin via Vite proxy,
-///   reading the token from Vite env; no injection needed).
-fn run_desktop(child: Option<Child>, init_script: Option<String>) {
+/// `prepare` runs inside `tauri::Builder::setup` with the live `App` handle so the prod path can
+/// resolve the Tauri resource directory (only available there) and spawn the bundled backend. It
+/// returns the sidecar child (killed on window close) and the token/api-base injection script
+/// (run before any page script). In dev both are `None`: the backend is external and the webview
+/// reaches it same-origin via the Vite proxy.
+fn run_desktop<F>(prepare: F)
+where
+    F: FnOnce(&tauri::App) -> Result<(Option<Child>, Option<String>), Box<dyn std::error::Error>>
+        + Send
+        + 'static,
+{
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(Sidecar(Mutex::new(child)))
+        // Empty until setup resolves the sidecar; setup swaps the live child in.
+        .manage(Sidecar(Mutex::new(None)))
         .setup(move |app| {
+            let (child, init_script) = prepare(app)?;
+            if let Some(c) = child {
+                if let Some(state) = app.try_state::<Sidecar>() {
+                    if let Ok(mut guard) = state.0.lock() {
+                        *guard = Some(c);
+                    }
+                }
+            }
             // Build the window programmatically so the init script (if any) runs BEFORE page load
             // (a declarative window + window.eval() in setup runs too late — the SPA has already
             // fired its first API calls).
-            let mut builder = tauri::WebviewWindowBuilder::new(
-                app,
-                "main",
-                tauri::WebviewUrl::default(),
-            )
-            .title("FengYu")
-            .inner_size(1280.0, 820.0)
-            .min_inner_size(960.0, 640.0)
-            .resizable(true);
+            let mut builder =
+                tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::default())
+                    .title("FengYu")
+                    .inner_size(1280.0, 820.0)
+                    .min_inner_size(960.0, 640.0)
+                    .resizable(true);
             if let Some(script) = init_script.as_deref() {
                 builder = builder.initialization_script(script);
             }
@@ -94,44 +128,23 @@ fn gen_token() -> String {
     format!("zf-{:x}-{:x}", nanos, std::process::id())
 }
 
-/// Resolves the FengYu jar path. The jar is copied to `binaries/FengYu.jar` next to the
-/// executable for the prod bundle (see desktop/README.md).
-#[cfg(not(debug_assertions))]
-fn jar_path() -> std::path::PathBuf {
-    let candidates = [
-        "binaries/FengYu.jar",
-        "../../FengYu/target/FengYu-4.0.0-SNAPSHOT.jar",
-    ];
-    for c in candidates {
-        let p = std::path::PathBuf::from(c);
-        if p.exists() {
-            return p;
-        }
-    }
-    std::path::PathBuf::from("binaries/FengYu.jar")
-}
-
 /// Spawns the Java backend with `--port=24056 --token=<t>`, reads the bound port from its stdout
 /// (`FENGYU_PORT=<n>`), and returns (child, port). The backend tries the fixed port first and
 /// falls back to an OS-assigned port if it is taken, so the actual port is always read back here.
+///
+/// `layout` points at the bundled jar + plugins under the Tauri resource directory
+/// (see `runtime_layout`).
 #[cfg(not(debug_assertions))]
-fn spawn_backend(token: &str) -> Result<(Child, u16), String> {
-    let jar = jar_path();
+fn spawn_backend(layout: &RuntimeLayout, token: &str) -> Result<(Child, u16), String> {
+    let jar = &layout.jar;
     if !jar.exists() {
         return Err(format!(
-            "FengYu jar not found at {}. Build it and copy it to src-tauri/binaries/FengYu.jar (see desktop/README.md).",
+            "FengYu jar not found at {}. Build it and stage it at src-tauri/binaries/FengYu.jar (see desktop/README.md).",
             jar.display()
         ));
     }
 
-    let plugin_candidates = [
-        jar.parent().map(|p| p.join("plugins")),
-        jar.parent().and_then(|p| p.parent()).map(|p| p.join("plugins")),
-        std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("plugins"))),
-        std::env::current_exe().ok().and_then(|p| p.parent()?.parent()?.parent().map(|d| d.join("Resources/plugins"))),
-    ];
-    let official_plugins = plugin_candidates.into_iter().flatten().find(|p| p.exists())
-        .unwrap_or_else(|| std::path::PathBuf::from("plugins"));
+    let official_plugins = &layout.plugins;
 
     let mut child = Command::new("java")
         .arg(format!(
@@ -215,10 +228,10 @@ fn check_setup_mode(port: u16, token: &str) -> Result<bool, String> {
 /// if APP, return. Any failure is fatal (`process::exit(1)`), so the caller always gets a ready
 /// backend. Guards against an infinite loop if an already-APP backend exits unexpectedly.
 #[cfg(not(debug_assertions))]
-fn run_backend_until_app_mode(token: &str) -> (Child, u16) {
+fn run_backend_until_app_mode(layout: &RuntimeLayout, token: &str) -> (Child, u16) {
     let mut entered_app_mode = false;
     loop {
-        let (child, port) = match spawn_backend(token) {
+        let (child, port) = match spawn_backend(layout, token) {
             Ok(v) => v,
             Err(e) => {
                 eprintln!("FATAL: {e}");
@@ -271,24 +284,47 @@ fn main() {
          (IDE / `mvn -pl FengYu spring-boot:run`). Tauri only opens the window; \
          API calls go through the Vite proxy."
     );
-    run_desktop(None, None);
+    run_desktop(|_app| Ok((None, None)));
 }
 
 /// PROD entry (`cargo tauri build`, a release build). Spawns the bundled jar as a sidecar, waits
 /// for health, handles the SETUP→APP restart loop, then injects the token/api-base into the webview.
 #[cfg(not(debug_assertions))]
 fn main() {
-    let token = gen_token();
-    let (child, port) = run_backend_until_app_mode(&token);
+    run_desktop(|app| {
+        // The bundled jar + plugins live under Tauri's platform resource directory, which is only
+        // reachable through the App handle (set in tauri.conf.json `bundle.resources`).
+        let resource_dir = app.path().resource_dir().map_err(|e| {
+            Box::<dyn std::error::Error>::from(format!(
+                "failed to resolve Tauri resource directory: {e}"
+            ))
+        })?;
+        let layout = runtime_layout(&resource_dir);
+        let token = gen_token();
+        let (child, port) = run_backend_until_app_mode(&layout, &token);
 
-    // Injected before any page script runs. The frontend reads these globals
-    // (see frontend/src/api/config.ts): __FENGYU_API_BASE__ (absolute backend URL — the backend
-    // defaults to a fixed port but may fall back to an OS-assigned one, so the actual port read
-    // back from stdout is used) and __FENGYU_TOKEN__.
-    let init_script = format!(
-        "window.__FENGYU_TOKEN__ = '{token}'; window.__FENGYU_PORT__ = {port}; \
-         window.__FENGYU_API_BASE__ = 'http://127.0.0.1:{port}';"
-    );
+        // Injected before any page script runs. The frontend reads these globals
+        // (see frontend/src/api/config.ts): __FENGYU_API_BASE__ (absolute backend URL — the backend
+        // defaults to a fixed port but may fall back to an OS-assigned one, so the actual port read
+        // back from stdout is used) and __FENGYU_TOKEN__.
+        let init_script = format!(
+            "window.__FENGYU_TOKEN__ = '{token}'; window.__FENGYU_PORT__ = {port}; \
+             window.__FENGYU_API_BASE__ = 'http://127.0.0.1:{port}';"
+        );
 
-    run_desktop(Some(child), Some(init_script));
+        Ok((Some(child), Some(init_script)))
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::runtime_layout;
+    use std::path::Path;
+
+    #[test]
+    fn runtime_layout_uses_tauri_resource_directory() {
+        let layout = runtime_layout(Path::new("/app/resources"));
+        assert_eq!(layout.jar, Path::new("/app/resources/binaries/FengYu.jar"));
+        assert_eq!(layout.plugins, Path::new("/app/resources/plugins"));
+    }
 }
