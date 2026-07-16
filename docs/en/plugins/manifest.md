@@ -21,7 +21,7 @@ lang: en
 | `icon` | string | yes | — | Icon identifier (a Vuetify/Material design icon name, e.g. `file-excel`). |
 | `category` | string | yes | — | One of the [valid category values](#valid-category-values). |
 | `ui` | object | yes | — | UI sub-record. See [`ui`](#ui). |
-| `backend` | object | yes | — | Worker sub-record. See [`backend`](#backend). |
+| `backend` | object | no | — | Worker sub-record. See [`backend`](#backend). **Optional** — omit it for supported UI-only plugins. |
 | `permissions` | string[] | no | `[]` | Declared [permissions](#valid-permissions). Drives file-I/O authorization. |
 | `homepage` | string | no | — | URL to the plugin's homepage or source repository. |
 | `official` | boolean | no | `false` | `true` for plugins seeded by `OfficialPluginSeeder`; sets descriptor `source = OFFICIAL`. |
@@ -70,16 +70,20 @@ See [AI Tools](/en/plugins/ai-tools) for the end-to-end flow.
 
 ## Valid permissions
 
-`permissions` is an array containing zero or more of:
+`permissions` is an array containing zero or more of the canonical set enforced by both the CLI and the host:
 
 | Value | Authorizes |
 | --- | --- |
 | `files.read` | `POST /api/plugin-runtime/{id}/files/upload`, `upload-directory`, `native` (read access) |
 | `files.write` | `POST .../files/native` (write access), `POST .../files/output`, `GET .../files/export/{ref}` |
-| `database` | The host injects a datasource connection (`FENGYU_DB_*` + a private data directory) into the worker environment. See [Plugin Database Standard](/en/plugins/database). |
+| `network` | General outbound network access from the worker. |
 | `network.email` | The worker may open SMTP/IMAP connections (used by `fan.summer.email`). |
+| `clipboard.read` | Read from the host clipboard. |
+| `clipboard.write` | Write to the host clipboard. |
+| `notifications` | Show host notifications / toasts. |
+| `database` | The host injects a datasource connection (`FENGYU_DB_*` + a private data directory) into the worker environment. See [Plugin Database Standard](/en/plugins/database). |
 
-A file operation attempted without the matching permission is rejected with `403`. See [File I/O](/en/plugins/file-io).
+Any other value is rejected as an unknown permission at both validate and install time. A file operation attempted without the matching permission is rejected with `403`. See [File I/O](/en/plugins/file-io).
 
 ## Examples
 

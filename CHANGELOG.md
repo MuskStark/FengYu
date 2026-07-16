@@ -4,6 +4,42 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ---
 
+## [Unreleased] — Plugin SDK & CLI lifecycle
+
+### ✨ Added
+- **Default Vue + Java scaffold** — `fengyu plugin create` now produces a complete plugin by default: a
+  Vue/Vuetify UI (`ui-src/`) backed by a Java JSON-RPC worker (`worker/`), with the Maven Wrapper, a
+  build declaration, tests, and a GitHub Packages `settings.xml`. `--ui-only` retains the lightweight
+  UI-only template.
+- **Real-worker dev simulator** — `fengyu plugin dev` builds the worker JAR (if missing), starts the
+  real Java JSON-RPC worker, and forwards the UI's `rpc.invoke` calls to it over `POST /__rpc`. Java
+  source edits trigger a debounced rebuild + worker restart.
+- **Declared build lifecycle** — `fengyu.plugin.json` drives an ordered, atomic pipeline
+  (prepare → install → test → build → validate staging → package) with the Maven Wrapper (no system
+  Maven fallback). `--skip-tests` skips tests only, never type checking or packaging.
+- **Shared manifest contract** — a canonical `plugin-spec/manifest.schema.json` + fixtures shared by
+  the CLI and the host, including `database` and `network.email` permissions and AI-tool `method` /
+  object-schema validation.
+- **Publishable plugin toolchain** — the Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.0.0`,
+  independently versioned, GitHub Packages) and the npm packages `@fengyu/plugin-sdk@1.0.0`,
+  `@fengyu/plugin-ui@1.0.0`, `@fengyu/plugin-cli@1.0.0`, plus a release workflow with a clean-consumer
+  smoke job.
+
+### ♻️ Changed
+- **Official plugins built by the CLI** — Markdown, Excel, and Email are now packaged by
+  `fengyu plugin build` (a CI matrix); `OfficialPlugins/build-packages.sh` and the `packages/` source
+  manifests are removed.
+- **Offline-first install** — `fengyu plugin install` validates the archive (limits, paths, manifest)
+  before any network access; unsafe or invalid packages are rejected with zero fetch calls.
+- **Strict SDK RPC contracts** — the worker surfaces canonical JSON-RPC errors (`-32700` parse,
+  `-32600` invalid request, `-32601` unknown method, `-32000` handler failure); the TypeScript client
+  removes abort listeners on every settled path.
+
+### 🐛 Fixed
+- Atomic `.fyp` packaging: a failure at any stage leaves no `.fyp`, no `.tmp-*`, and no staging dir.
+
+---
+
 ## [4.0.0-SNAPSHOT] — Official Email Center plugin
 
 ### ✨ Added

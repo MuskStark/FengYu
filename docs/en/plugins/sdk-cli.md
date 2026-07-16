@@ -1,12 +1,12 @@
 ---
 title: SDK & CLI
-description: Reference for the @fengyu/plugin-sdk TypeScript client, the FengYu-Plugin-Sdk Java worker runtime, and the five fengyu plugin CLI subcommands — create, dev, build, validate, install.
+description: Reference for the @fengyu/plugin-sdk TypeScript client, the independently-versioned Java Worker SDK (1.0.0), and the five fengyu plugin CLI subcommands — create, dev, build, validate, install.
 lang: en
 ---
 
 # SDK & CLI
 
-Plugin authors use two SDKs (one per side of the runtime) and one CLI. The TypeScript SDK lives in the iframe UI; the Java Worker SDK builds the `worker.jar`; the `fengyu plugin` CLI scaffolds, develops, packages, validates, and installs plugins.
+Plugin authors use two SDKs (one per side of the runtime) and one CLI. The TypeScript SDK lives in the iframe UI; the Java Worker SDK builds the `worker.jar`; the `fengyu plugin` CLI scaffolds, develops, packages, validates, and installs plugins. The Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.0.0`) is **independently versioned** from the host app and published to GitHub Packages.
 
 ## `@fengyu/plugin-sdk` (TypeScript)
 
@@ -52,7 +52,7 @@ interface InvokeOptions { signal?: AbortSignal; timeoutMs?: number }
 
 ## Java Worker SDK
 
-Artifact `FengYu-Plugin-Sdk`, package `fan.summer.fengyu.sdk`. The runtime is `JsonRpcWorker`; handlers implement the `@FunctionalInterface PluginHandler`:
+Artifact `fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.0.0` (independently versioned, published to GitHub Packages). Package `fan.summer.fengyu.sdk`. The runtime is `JsonRpcWorker`; handlers implement the `@FunctionalInterface PluginHandler`:
 
 ```java
 Object handle(Map<String, Object> params) throws Exception
@@ -71,8 +71,9 @@ public final class MyWorkerMain {
 }
 ```
 
-- `on(method, handler)` rejects duplicates and blank method names.
+- `on(method, handler)` rejects duplicates, blank method names, and `null` handlers.
 - `run()` redirects `System.out` to `System.err` for the run loop — protocol output stays clean.
+- Strict request parsing surfaces the canonical JSON-RPC error codes: `-32700` (parse error), `-32600` (invalid request — missing/blank method or wrong `jsonrpc` version), `-32601` (unknown method), and `-32000` (handler failure). The request `id` is echoed back whenever it was parseable.
 - Throw `JsonRpcWorker.RpcException(code, message)` for a structured error; anything else surfaces as `-32000`.
 - Helpers: `JsonRpcWorker.string(params, key)`, `JsonRpcWorker.integer(params, key, fallback)`.
 - Build a shaded fat JAR with `maven-shade-plugin`; set `mainClass` to your `*WorkerMain`. See [Build & Deploy](/en/plugins/build-deploy).
@@ -103,11 +104,11 @@ There are exactly **five** subcommands — there is no `init`.
 
 | Subcommand | Options | Description |
 | --- | --- | --- |
-| `create <path> --id <id>` | `--id` (required), `--no-install` | Scaffold a new plugin directory from the Vue/Vuetify `vue-codex` template: writes `manifest.json`, `package.json`, `index.html`, `vite.config.ts`, and `src/{main.ts,App.vue}`. Runs `npm install` by default; `--no-install` skips it. Refuses to overwrite an existing directory. |
-| `dev [path] [--port <n>]` | `--port` (default `4173`) | Start a loopback dev host. For a Vue/Vite project it spawns Vite (HMR) and serves a simulator whose iframe points at it; for a static project it serves `ui/` + an SSE reload watcher. Simulates the host `postMessage` bridge either way. |
-| `build [path] [--out <file>]` | `--out` (default `dist-package/<id>-<version>.fyp`) | For a Vue/Vite project, run `npm run build` first (emits `ui/`), then validate and zip into a `.fyp`. For a static project, skip the build and go straight to validate + zip. The archive write is atomic — no partial `.fyp` is left on failure. |
-| `validate [path]` | — | Check the package for manifest/structure errors; exits non-zero with a message on failure. |
-| `install <file> [--host <url>] [--token <t>]` | `--host` (default `http://127.0.0.1:24056`), `--token` (default `$FENGYU_TOKEN`) | Upload a `.fyp` to the marketplace's `POST /api/plugin-market/upload`. |
+| `create <path> --id <id>` | `--id` (required), `--no-install`, `--ui-only` | Scaffold a new plugin. By default produces a complete Vue + Java project (`vue-java` template): `manifest.json`, `fengyu.plugin.json`, `ui-src/` (Vue), `worker/` (Java + Maven Wrapper), and `.mvn/settings.xml`. `--ui-only` keeps the lightweight UI-only template. Runs `npm install` by default (`--no-install` skips it). Refuses to overwrite an existing directory. |
+| `dev [path] [--port <n>]` | `--port` (default `4173`) | Start a loopback dev host. For a declared worker project it builds the worker JAR (if missing), starts the **real** Java JSON-RPC worker, and serves a simulator that forwards `rpc.invoke` to it over `POST /__rpc`; Java edits rebuild + restart the worker. For a Vue/Vite project it spawns Vite (HMR); for a static project it serves `ui/` + an SSE reload watcher with a mock. |
+| `build [path] [--out <file>]` | `--out` (default `dist-package/<id>-<version>.fyp`), `--skip-tests` | For a declared project, run the full staged lifecycle (prepare → install → test → build → validate staging → package). `--skip-tests` skips tests only — never type checking or packaging. Zero-config Vue/Vite and static projects keep their existing build detection. The archive write is atomic — no partial `.fyp`, `.tmp-*`, or staging dir is left on failure. |
+| `validate [path]` | — | Check the source manifest for object/escape errors; exits non-zero with a message on failure. (Build outputs are validated post-build by the staging step.) |
+| `install <file> [--host <url>] [--token <t>]` | `--host` (default `http://127.0.0.1:24056`), `--token` (default `$FENGYU_TOKEN`) | Validate the `.fyp` **offline first** (archive limits/paths + manifest), then upload to the marketplace's `POST /api/plugin-market/upload`. An unsafe or invalid package is rejected with zero fetch calls. |
 
 ### Examples
 

@@ -21,7 +21,7 @@ lang: zh-CN
 | `icon` | string | 是 | — | 图标标识符（一个 Vuetify/Material 设计图标名，例如 `file-excel`）。 |
 | `category` | string | 是 | — | [合法 category 取值](#合法-category-取值)之一。 |
 | `ui` | object | 是 | — | UI 子记录。见 [`ui`](#ui)。 |
-| `backend` | object | 是 | — | Worker 子记录。见 [`backend`](#backend)。 |
+| `backend` | object | 否 | — | Worker 子记录。见 [`backend`](#backend)。**可选**——纯 UI 插件可省略它。 |
 | `permissions` | string[] | 否 | `[]` | 声明的[权限](#合法权限)。驱动文件 I/O 授权。 |
 | `homepage` | string | 否 | — | 指向插件主页或源码仓库的 URL。 |
 | `official` | boolean | 否 | `false` | 由 `OfficialPluginSeeder` 预置的插件设为 `true`；将描述符的 `source` 设为 `OFFICIAL`。 |
@@ -70,16 +70,20 @@ lang: zh-CN
 
 ## 合法权限
 
-`permissions` 是一个数组，包含零个或多个以下值：
+`permissions` 是一个数组，包含零个或多个以下规范集合中的值，由 CLI 与宿主共同强制执行：
 
 | 取值 | 授权 |
 | --- | --- |
 | `files.read` | `POST /api/plugin-runtime/{id}/files/upload`、`upload-directory`、`native`（读访问） |
 | `files.write` | `POST .../files/native`（写访问）、`POST .../files/output`、`GET .../files/export/{ref}` |
-| `database` | 宿主向 worker 环境注入一个数据源连接（`FENGYU_DB_*` + 一个私有数据目录）。参见[插件数据库规范](/zh/plugins/database)。 |
+| `network` | 来自 worker 的通用出站网络访问。 |
 | `network.email` | worker 可以建立 SMTP/IMAP 连接（`fan.summer.email` 使用）。 |
+| `clipboard.read` | 读取宿主剪贴板。 |
+| `clipboard.write` | 写入宿主剪贴板。 |
+| `notifications` | 显示宿主通知/toast。 |
+| `database` | 宿主向 worker 环境注入一个数据源连接（`FENGYU_DB_*` + 一个私有数据目录）。参见[插件数据库规范](/zh/plugins/database)。 |
 
-在缺少对应权限的情况下尝试文件操作会被以 `403` 拒绝。参见 [文件 I/O](/zh/plugins/file-io)。
+任何其他取值在 validate 与 install 时都会被当作未知权限拒绝。在缺少对应权限的情况下尝试文件操作会被以 `403` 拒绝。参见 [文件 I/O](/zh/plugins/file-io)。
 
 ## 示例
 
