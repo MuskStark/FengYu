@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { inspectArchive } from '../src/archive.mjs'
+import { inspectArchive, MAX_PACKAGE_BYTES } from '../src/archive.mjs'
 
 const table = (() => {
   const t = []
@@ -82,4 +82,17 @@ test('rejects an archive expanding past 300 MB', async () => {
   const file = path.join(base, 'oversized.zip')
   await fs.writeFile(file, Buffer.concat([local, central, end]))
   await assert.rejects(() => inspectArchive(file), /exceeds 300 MB/)
+})
+
+test('rejects an archive file larger than 100 MB', async () => {
+  const file = path.join(base, 'package-too-large.fyp')
+  const handle = await fs.open(file, 'w')
+  await handle.truncate(MAX_PACKAGE_BYTES + 1)
+  await handle.close()
+  await assert.rejects(() => inspectArchive(file), /package exceeds 100 MB/)
+})
+
+test('rejects absolute archive entry paths', async () => {
+  const file = await writeZip('absolute.zip', [{ name: '/absolute.txt', data: 'x' }])
+  await assert.rejects(() => inspectArchive(file), /unsafe archive path/)
 })
