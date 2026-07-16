@@ -1,11 +1,101 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <parent><groupId>fan.summer.fengyu</groupId><artifactId>FengYu-parent</artifactId><version>${revision}</version><relativePath>../pom.xml</relativePath></parent>
-  <groupId>fan.summer.fengyu.sdk</groupId><artifactId>fengyu-plugin-sdk</artifactId>
+
+  <!--
+      FengYu Plugin Worker SDK — an INDEPENDENTLY versioned, self-contained POM.
+      It does NOT inherit the FengYu parent reactor (which tracks ${revision}).
+      Version 1.0.0 is the publishable contract external plugin developers
+      resolve from GitHub Packages. Repository-internal consumers (OfficialPlugins,
+      FengYu host) still build it through the root reactor <module>, so a local
+      `./mvnw install` produces 1.0.0 in the local .m2 with no token required.
+  -->
+  <groupId>fan.summer.fengyu.sdk</groupId>
+  <artifactId>fengyu-plugin-sdk</artifactId>
+  <version>1.0.0</version>
   <name>FengYu Plugin Worker SDK</name>
+  <description>Dependency-light JSON-RPC 2.0 worker runtime for FengYu plugin child processes.</description>
+
+  <url>https://github.com/MuskStark/FengYu</url>
+  <licenses>
+    <license>
+      <name>GNU General Public License v3.0</name>
+      <url>https://www.gnu.org/licenses/gpl-3.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <gson.version>2.13.1</gson.version>
+    <junit.version>5.10.2</junit.version>
+    <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
+    <maven.surefire.plugin.version>3.2.5</maven.surefire.plugin.version>
+    <maven.source.plugin.version>3.3.1</maven.source.plugin.version>
+    <maven.javadoc.plugin.version>3.11.2</maven.javadoc.plugin.version>
+  </properties>
+
   <dependencies>
-    <dependency><groupId>com.google.code.gson</groupId><artifactId>gson</artifactId></dependency>
-    <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
+    <dependency>
+      <groupId>com.google.code.gson</groupId>
+      <artifactId>gson</artifactId>
+      <version>${gson.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>${maven.compiler.plugin.version}</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${maven.surefire.plugin.version}</version>
+      </plugin>
+      <!-- Publish sources + javadoc alongside the artifact for external consumers. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <version>${maven.source.plugin.version}</version>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <goals><goal>jar-no-fork</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>${maven.javadoc.plugin.version}</version>
+        <executions>
+          <execution>
+            <id>attach-javadocs</id>
+            <goals><goal>jar</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+  <!-- Publish to GitHub Packages. Credentials come from the environment
+       (GITHUB_ACTOR + FENGYU_GITHUB_TOKEN) via the consumer's .mvn/settings.xml;
+       generated files never contain a token. -->
+  <distributionManagement>
+    <repository>
+      <id>github</id>
+      <name>GitHub Packages</name>
+      <url>https://maven.pkg.github.com/MuskStark/FengYu</url>
+    </repository>
+  </distributionManagement>
 </project>

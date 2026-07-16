@@ -41,6 +41,10 @@
         <javafx.version>21.0.2</javafx.version>
         <lombok.version>1.18.42</lombok.version>
         <fengyu.api.version>${revision}</fengyu.api.version>
+        <!-- The Plugin Worker SDK is independently versioned (1.0.0) and published
+             to GitHub Packages for external plugin developers. It stays in the
+             reactor so local builds install it without a token. -->
+        <fengyu.plugin.sdk.version>1.0.0</fengyu.plugin.sdk.version>
         <fesod.version>2.0.1-incubating</fesod.version>
         <h2.version>2.4.240</h2.version>
         <simplejavamail.version>8.12.6</simplejavamail.version>
@@ -243,7 +247,7 @@
             <dependency>
                 <groupId>fan.summer.fengyu.sdk</groupId>
                 <artifactId>fengyu-plugin-sdk</artifactId>
-                <version>${revision}</version>
+                <version>${fengyu.plugin.sdk.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.commonmark</groupId>
