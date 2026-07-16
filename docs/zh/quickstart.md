@@ -80,6 +80,17 @@ cargo tauri build
 桌面端构建同时需要 Rust **和** 你所用平台的系统 WebView 运行时。如果 `cargo tauri dev` 启动失败，请参考 [Tauri 前置条件](https://tauri.app/start/prerequisites/)。
 :::
 
+## 发布（Alpha）
+
+发布标签（`v4.0.0-alpha.1`，以及后续的 stable/beta/rc）会触发一条 GitHub Actions 流水线，发布**未签名**的 Tauri 安装包（Windows/macOS/Linux）和一个**可移植的 Web 分发包**。Web 压缩包直接从文件夹运行同一套后端 + 内嵌的 Vue SPA：
+
+```bash
+# 解压 Infinia-<version>-web.zip 后：
+./run.sh          # macOS/Linux（Windows 用 run.bat）
+```
+
+需要 **Java 21**。后端仅绑定**回环地址**（`127.0.0.1`）。代码签名、内置 JRE 与自动更新器将留待后续版本实现。
+
 ## 下一步
 
 - [架构概述](/zh/architecture/overview)——无头后端、Vue UI 与 Tauri 外壳如何拼装在一起。

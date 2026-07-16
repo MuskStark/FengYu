@@ -4,6 +4,8 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 .kotlin
+# Local packaging output (web/desktop release artifacts staged by scripts/).
+/release/
 
 ### IntelliJ IDEA ###
 .idea/
