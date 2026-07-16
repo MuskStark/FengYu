@@ -35,12 +35,12 @@ fengyu plugin create ./my-plugin --id com.example.my-plugin --ui-only
 从无到有打包出 `.fyp` 的完整循环：
 
 ```bash
-npx @fengyu/plugin-cli plugin create my-plugin --id com.example.my-plugin
+npx --yes @fengyu/plugin-cli@1.0.0 plugin create my-plugin --id com.example.my-plugin
 cd my-plugin
 export FENGYU_GITHUB_TOKEN='<GitHub token with read:packages>'
-npx fengyu plugin dev .
-npx fengyu plugin build .
-npx fengyu plugin install dist-package/com.example.my-plugin-1.0.0.fyp --host http://127.0.0.1:24056
+npx --yes @fengyu/plugin-cli@1.0.0 plugin dev .
+npx --yes @fengyu/plugin-cli@1.0.0 plugin build .
+npx --yes @fengyu/plugin-cli@1.0.0 plugin install dist-package/com.example.my-plugin-1.0.0.fyp --host http://127.0.0.1:24056
 ```
 
 - `create` 默认安装 UI 依赖；`--no-install` 可跳过。

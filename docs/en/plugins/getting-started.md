@@ -35,12 +35,12 @@ The scaffolder refuses to overwrite an existing directory. The human-readable `n
 The full loop, from nothing to a packaged `.fyp`:
 
 ```bash
-npx @fengyu/plugin-cli plugin create my-plugin --id com.example.my-plugin
+npx --yes @fengyu/plugin-cli@1.0.0 plugin create my-plugin --id com.example.my-plugin
 cd my-plugin
 export FENGYU_GITHUB_TOKEN='<GitHub token with read:packages>'
-npx fengyu plugin dev .
-npx fengyu plugin build .
-npx fengyu plugin install dist-package/com.example.my-plugin-1.0.0.fyp --host http://127.0.0.1:24056
+npx --yes @fengyu/plugin-cli@1.0.0 plugin dev .
+npx --yes @fengyu/plugin-cli@1.0.0 plugin build .
+npx --yes @fengyu/plugin-cli@1.0.0 plugin install dist-package/com.example.my-plugin-1.0.0.fyp --host http://127.0.0.1:24056
 ```
 
 - `create` installs UI deps by default; `--no-install` skips it.
