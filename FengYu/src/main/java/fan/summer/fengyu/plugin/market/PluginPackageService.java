@@ -29,6 +29,9 @@ import java.util.zip.ZipInputStream;
 public class PluginPackageService {
     private static final long MAX_PACKAGE_BYTES = 100L * 1024 * 1024;
     private static final long MAX_EXPANDED_BYTES = 300L * 1024 * 1024;
+    private static final java.util.Set<String> ALLOWED_PERMISSIONS = java.util.Set.of(
+        "files.read", "files.write", "network", "network.email",
+        "clipboard.read", "clipboard.write", "notifications", "database");
 
     private final ObjectMapper json;
     private final Path root;
@@ -207,6 +210,33 @@ public class PluginPackageService {
         Path ui = staging.resolve(m.ui().entry()).normalize();
         if (!ui.startsWith(staging) || !Files.isRegularFile(ui)) {
             throw new IllegalArgumentException("Plugin UI entry does not exist");
+        }
+        for (String permission : Optional.ofNullable(m.permissions()).orElse(List.of())) {
+            if (!ALLOWED_PERMISSIONS.contains(permission)) {
+                throw new IllegalArgumentException("Unknown plugin permission: " + permission);
+            }
+        }
+        if (m.backend() != null && m.backend().protocol() != null
+                && !"json-rpc-2.0".equals(m.backend().protocol())) {
+            throw new IllegalArgumentException("Unsupported plugin backend protocol: " + m.backend().protocol());
+        }
+        java.util.Set<String> toolNames = new java.util.HashSet<>();
+        java.util.Set<String> toolMethods = new java.util.HashSet<>();
+        for (PluginManifest.AiTool tool : Optional.ofNullable(m.aiTools()).orElse(List.of())) {
+            if (tool.name() == null || tool.name().isBlank() || !toolNames.add(tool.name())) {
+                throw new IllegalArgumentException("Invalid or duplicate AI tool name: " + tool.name());
+            }
+            if (tool.method() == null || tool.method().isBlank() || !toolMethods.add(tool.method())) {
+                throw new IllegalArgumentException("Invalid or duplicate AI tool method: " + tool.method());
+            }
+            try {
+                com.fasterxml.jackson.databind.JsonNode schemaNode = new com.fasterxml.jackson.databind.ObjectMapper().readTree(tool.inputSchema());
+                if (!(schemaNode.has("type") && "object".equals(schemaNode.get("type").asText()))) {
+                    throw new IllegalArgumentException("AI tool inputSchema must be a JSON object: " + tool.name());
+                }
+            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                throw new IllegalArgumentException("Invalid inputSchema for AI tool " + tool.name(), e);
+            }
         }
     }
 

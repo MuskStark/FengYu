@@ -3,8 +3,16 @@
   "version": "1.0.0",
   "type": "module",
   "bin": { "fengyu": "bin/fengyu.mjs" },
-  "files": ["bin", "src", "templates", "README.md"],
-  "scripts": { "test": "node --test test/*.test.mjs" },
+  "files": ["bin", "src", "spec", "templates", "README.md"],
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "sync-spec": "node scripts/sync-spec.mjs",
+    "check-spec": "node scripts/sync-spec.mjs --check"
+  },
   "engines": { "node": ">=20" },
-  "license": "GPL-3.0"
+  "license": "GPL-3.0",
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "yauzl": "^3.2.0"
+  }
 }
