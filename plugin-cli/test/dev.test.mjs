@@ -16,8 +16,8 @@ let generatedRoot
 test.before(async () => {
   base = await fs.mkdtemp(path.join(os.tmpdir(), 'fy-dev-'))
   generatedRoot = path.join(base, `plugin-${Date.now()}`)
-  // Scaffold a Vue/Vite project with no install; detection only needs the files.
-  await createPlugin(generatedRoot, 'com.example.demo', { install: false, run: async () => {} })
+  // Scaffold a UI-only Vue/Vite project with no install; detection only needs the files.
+  await createPlugin(generatedRoot, 'com.example.demo', { install: false, uiOnly: true, run: async () => {} })
 })
 
 test.after(async () => {

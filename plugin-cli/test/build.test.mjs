@@ -21,9 +21,9 @@ test.before(async () => {
 
 test.beforeEach(async () => {
   root = path.join(base, `plugin-${Date.now()}-${Math.random().toString(36).slice(2)}`)
-  // Scaffold a Vue/Vite project with no install; detectProject() returns 'vue-vite'.
-  // The per-test injected `run` simulates `npm run build` by writing ui/index.html.
-  await createPlugin(root, 'com.example.demo', { install: false, run: async () => {} })
+  // Scaffold a UI-only Vue/Vite project with no install; detectProject() returns
+  // 'vue-vite'. The per-test injected `run` simulates `npm run build` by writing ui/index.html.
+  await createPlugin(root, 'com.example.demo', { install: false, uiOnly: true, run: async () => {} })
 })
 
 test.after(async () => {
