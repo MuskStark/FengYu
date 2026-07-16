@@ -11,10 +11,18 @@ export function resolveToolingVersion({ inputVersion = '', refName = '' }) {
     }
     value = refName.slice('plugin-tooling-v'.length)
   }
-  if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(value)) {
+  if (!isSemanticVersion(value)) {
     throw new Error(`tooling version is not semantic versioning: ${value}`)
   }
   return value
+}
+
+function isSemanticVersion(value) {
+  const match = value.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/)
+  if (!match) return false
+  if (match.slice(1, 4).some((part) => part.length > 1 && part.startsWith('0'))) return false
+  if (match[4]?.split('.').some((part) => /^\d+$/.test(part) && part.length > 1 && part.startsWith('0'))) return false
+  return true
 }
 
 async function verifyRepositoryVersion(root, version) {

@@ -89,6 +89,24 @@ test('close terminates the child exactly once', async () => {
   assert.equal(kills, 1)
 })
 
+test('close waits until a SIGTERM-resistant child has exited', async () => {
+  let ready
+  const readyLine = new Promise((resolve) => { ready = resolve })
+  const client = await startWorker({
+    jar: null,
+    java: process.execPath,
+    javaArgs: ['-e', "process.on('SIGTERM', () => {}); process.stderr.write('ready\\n'); setInterval(() => {}, 1000)"],
+    onStderr: (line) => { if (line === 'ready') ready() },
+  })
+  await readyLine
+  const child = client.child()
+  const started = Date.now()
+  await client.close()
+  assert.ok(Date.now() - started >= 400)
+  assert.notEqual(child.signalCode, null)
+  assert.throws(() => process.kill(child.pid, 0), /ESRCH/)
+})
+
 test('child exit rejects pending requests', async () => {
   const client = await startFixture()
   // Send a request, then kill the child before it can answer. The pending
