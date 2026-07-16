@@ -58,7 +58,6 @@ jobs:
         id: version
         env:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
-          GITHUB_OUTPUT: ${{ github.output }}
         run: node scripts/resolve-release-version.mjs "$RELEASE_TAG"
 
   # ==========================================================================
@@ -95,12 +94,16 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Validate release tag resolver (unit tests)
-        run: node --test scripts/resolve-release-version.test.mjs
+      - name: Validate release workflow (unit tests)
+        run: node --test scripts/resolve-release-version.test.mjs scripts/release-workflow.test.mjs
 
       - name: Install frontend deps
         run: npm ci
         working-directory: frontend
+
+      - name: Install plugin-cli deps
+        run: npm ci
+        working-directory: plugin-cli
 
       - name: Run frontend tests + typecheck
         run: |
@@ -125,7 +128,7 @@ jobs:
           ls -la staging/plugins/
 
       - name: Build + test the backend (reactor, -Drevision)
-        run: ./mvnw -am test package -Drevision="$APP_VERSION"
+        run: ./mvnw -am test package -Drevision="$VERSION"
 
       - name: Verify the SPA is baked into the JAR
         run: |
@@ -220,6 +223,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       APP_VERSION: ${{ needs.setup.outputs.app_version }}
+      FENGYU_RELEASE_VERSION: ${{ needs.setup.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -241,6 +245,10 @@ jobs:
 
       - name: Set up Rust (stable)
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend deps
+        run: npm ci
+        working-directory: frontend
 
       - name: Install Linux system dependencies (Tauri)
         if: runner.os == 'Linux'
