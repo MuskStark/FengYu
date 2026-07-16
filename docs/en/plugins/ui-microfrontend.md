@@ -1,12 +1,12 @@
 ---
 title: UI Micro-frontend
-description: The plugin UI runs in a sandboxed iframe under a strict Content Security Policy and bridges to the host via the @fengyu/plugin-sdk FengYuClient postMessage API — ready, invoke, files, notify, on.
+description: The plugin UI runs in a sandboxed iframe under a strict Content Security Policy and bridges to the host via the @infinia/plugin-sdk FengYuClient postMessage API — ready, invoke, files, notify, on.
 lang: en
 ---
 
 # UI Micro-frontend
 
-The plugin's `ui/` directory is a self-contained micro-frontend (MF) that the host serves as static assets under `/plugin-runtime/{id}/**` and loads into a **sandboxed iframe** under a strict Content Security Policy. Inside the iframe, the `@fengyu/plugin-sdk` package provides a `FengYuClient` that bridges to the host over `postMessage`. The plugin never talks to the OS directly — every privileged action goes through the client.
+The plugin's `ui/` directory is a self-contained micro-frontend (MF) that the host serves as static assets under `/plugin-runtime/{id}/**` and loads into a **sandboxed iframe** under a strict Content Security Policy. Inside the iframe, the `@infinia/plugin-sdk` package provides a `FengYuClient` that bridges to the host over `postMessage`. The plugin never talks to the OS directly — every privileged action goes through the client.
 
 ## The default entry: a Vue/Vuetify app
 
@@ -14,9 +14,9 @@ Since 4.0, `fengyu plugin create` scaffolds a Vue 3 + Vuetify app that builds in
 
 ```ts
 import { createApp } from 'vue'
-import { fengyu } from '@fengyu/plugin-sdk'
-import { bindFengYuEnvironment, createFengYuVuetify, provideFengYuClient } from '@fengyu/plugin-ui'
-import '@fengyu/plugin-ui/style.css'
+import { fengyu } from '@infinia/plugin-sdk'
+import { bindFengYuEnvironment, createFengYuVuetify, provideFengYuClient } from '@infinia/plugin-ui'
+import '@infinia/plugin-ui/style.css'
 import App from './App.vue'
 
 if (!fengyu) throw new Error('FengYu SDK requires a browser environment')
@@ -155,7 +155,7 @@ document.querySelector('#hello').onclick = async () => {
 
 ## Next steps
 
-- [UI Components](/en/plugins/ui-components) — the `@fengyu/plugin-ui` Vuetify kit the scaffolded app uses.
+- [UI Components](/en/plugins/ui-components) — the `@infinia/plugin-ui` Vuetify kit the scaffolded app uses.
 - [File I/O](/en/plugins/file-io) — what each `files.*` method authorizes.
 - [SDK & CLI](/en/plugins/sdk-cli) — full TypeScript + Java SDK reference.
 - [Pitfalls](/en/plugins/pitfalls) — CSP, MF Vue dedupe, and FileRef timing.

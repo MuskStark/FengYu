@@ -2,16 +2,16 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship an official `@fengyu/plugin-ui` Vue/Vuetify package and make it the pre-activated default UI produced by `fengyu plugin create`.
+**Goal:** Ship an official `@infinia/plugin-ui` Vue/Vuetify package and make it the pre-activated default UI produced by `fengyu plugin create`.
 
 **Architecture:** A standalone Vue 3 library owns the Codex theme, Vuetify defaults, environment synchronization, and FengYu-specific compound components. The CLI scaffolds a Vite application that bundles Vue, Vuetify, the UI package, and the SDK into the plugin iframe; CLI dev/build detect this project shape while preserving the legacy static-HTML path.
 
-**Tech Stack:** Node.js 20+, TypeScript 5.9, Vue 3.5.39, Vuetify 3.9.x, Vite 7.1.x, Vitest 3.2.x, Vue Test Utils 2.4.x, Playwright, `@fengyu/plugin-sdk` 1.0.0, Node test runner.
+**Tech Stack:** Node.js 20+, TypeScript 5.9, Vue 3.5.39, Vuetify 3.9.x, Vite 7.1.x, Vitest 3.2.x, Vue Test Utils 2.4.x, Playwright, `@infinia/plugin-sdk` 1.0.0, Node test runner.
 
 ## Global Constraints
 
 - Plugin UI remains self-contained inside the sandboxed iframe; do not inject host CSS or the host Vuetify instance.
-- `vue`, `vuetify`, and `@fengyu/plugin-sdk` are peer dependencies of `@fengyu/plugin-ui`; generated applications install and bundle them.
+- `vue`, `vuetify`, and `@infinia/plugin-sdk` are peer dependencies of `@infinia/plugin-ui`; generated applications install and bundle them.
 - The public setup entry point is `createFengYuVuetify(options?)`; generated projects require no additional theme activation.
 - Base controls remain Vuetify controls; do not add pass-through wrappers such as `FyButton` or `FyTextField`.
 - Compound components must not require Vue Router or Pinia.
@@ -81,12 +81,12 @@
 - Test: `plugin-ui/vue/test/environment.test.ts`
 
 **Interfaces:**
-- Consumes: `FengYuClient`, `Environment`, and `Theme` from `@fengyu/plugin-sdk`.
+- Consumes: `FengYuClient`, `Environment`, and `Theme` from `@infinia/plugin-sdk`.
 - Produces: `createFengYuVuetify(options?: FengYuVuetifyOptions): Vuetify`, `bindFengYuEnvironment(vuetify, client): Promise<() => void>`, `provideFengYuClient(app, client): void`, and `useFengYuClient(): FengYuClient`.
 
 - [ ] **Step 1: Add package metadata and build configuration**
 
-Create `plugin-ui/vue/package.json` with package name `@fengyu/plugin-ui`, version `1.0.0`, ESM/type/style exports from `dist`, peer ranges `vue:^3.5.0`, `vuetify:^3.9.0`, and `@fengyu/plugin-sdk:^1.0.0`. Add scripts `build`, `typecheck`, `test`, `dev:e2e`, and `test:visual`; use the same Vite/Vitest/TypeScript versions as `OfficialPlugins/plugin-email/ui-src/package.json`, plus `@playwright/test` and `@axe-core/playwright` as dev dependencies. Configure Vite library entry as `src/index.ts`, externalize all three peer dependencies, emit declarations with `vue-tsc`, and use `jsdom` for Vitest.
+Create `plugin-ui/vue/package.json` with package name `@infinia/plugin-ui`, version `1.0.0`, ESM/type/style exports from `dist`, peer ranges `vue:^3.5.0`, `vuetify:^3.9.0`, and `@infinia/plugin-sdk:^1.0.0`. Add scripts `build`, `typecheck`, `test`, `dev:e2e`, and `test:visual`; use the same Vite/Vitest/TypeScript versions as `OfficialPlugins/plugin-email/ui-src/package.json`, plus `@playwright/test` and `@axe-core/playwright` as dev dependencies. Configure Vite library entry as `src/index.ts`, externalize all three peer dependencies, emit declarations with `vue-tsc`, and use `jsdom` for Vitest.
 
 - [ ] **Step 2: Write failing theme and environment tests**
 
@@ -477,7 +477,7 @@ test('create renders the activated Vue Codex template', async () => {
   const calls=[]; const run=async(...args)=>calls.push(args)
   await createPlugin(root,'com.example.demo',{run})
   const pkg=JSON.parse(await fs.readFile(path.join(root,'package.json'),'utf8'))
-  assert.equal(pkg.dependencies['@fengyu/plugin-ui'],'^1.0.0')
+  assert.equal(pkg.dependencies['@infinia/plugin-ui'],'^1.0.0')
   assert.equal(pkg.dependencies.vuetify,'^3.9.3')
   assert.match(await fs.readFile(path.join(root,'src/main.ts'),'utf8'),/createFengYuVuetify/)
   assert.deepEqual(calls[0].slice(0,2),['npm',['install']])
@@ -508,9 +508,9 @@ Copy the reviewed `Workbench.vue` into the template and replace fixed text with 
 
 ```ts
 import { createApp } from 'vue'
-import { fengyu } from '@fengyu/plugin-sdk'
-import { bindFengYuEnvironment, createFengYuVuetify, provideFengYuClient } from '@fengyu/plugin-ui'
-import '@fengyu/plugin-ui/style.css'
+import { fengyu } from '@infinia/plugin-sdk'
+import { bindFengYuEnvironment, createFengYuVuetify, provideFengYuClient } from '@infinia/plugin-ui'
+import '@infinia/plugin-ui/style.css'
 import App from './App.vue'
 
 if (!fengyu) throw new Error('FengYu SDK requires a browser environment')
@@ -708,7 +708,7 @@ fengyu plugin dev .
 fengyu plugin build .
 ```
 
-Explain that create installs by default, `--no-install` skips it, `main.ts` already binds theme/locale, base controls are Vuetify controls, and FengYu components are imported from `@fengyu/plugin-ui`. Include one complete file-picker example and one `FyStepWizard` example. State that legacy static plugins remain supported and migration is optional.
+Explain that create installs by default, `--no-install` skips it, `main.ts` already binds theme/locale, base controls are Vuetify controls, and FengYu components are imported from `@infinia/plugin-ui`. Include one complete file-picker example and one `FyStepWizard` example. State that legacy static plugins remain supported and migration is optional.
 
 - [ ] **Step 2: Add CI gates**
 
@@ -745,7 +745,7 @@ Expected: all commands exit `0`; no snapshot changes remain unreviewed.
 
 - [ ] **Step 5: Run generated-plugin smoke test**
 
-Create a temporary plugin with `--no-install`, point `@fengyu/plugin-ui` and `@fengyu/plugin-sdk` to the just-built local directories, install, build, validate, and inspect the archive. Start `fengyu plugin dev`, switch light/dark and English/Chinese in the simulator, pick/cancel a file, trigger a notification, and confirm no browser console errors.
+Create a temporary plugin with `--no-install`, point `@infinia/plugin-ui` and `@infinia/plugin-sdk` to the just-built local directories, install, build, validate, and inspect the archive. Start `fengyu plugin dev`, switch light/dark and English/Chinese in the simulator, pick/cancel a file, trigger a notification, and confirm no browser console errors.
 
 Expected: workbench renders in both themes, locale changes propagate, cancellation is not shown as an error, the notification appears, and the final `.fyp` validates.
 

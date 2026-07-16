@@ -3,7 +3,7 @@ import fs from 'node:fs/promises'
 
 export function assertPackContents(packages) {
   const rules = {
-    '@fengyu/plugin-cli': [
+    '@infinia/plugin-cli': [
       'bin/fengyu.mjs',
       'src/cli.mjs',
       'spec/manifest.schema.json',
@@ -18,8 +18,8 @@ export function assertPackContents(packages) {
       'templates/vue-java/worker/src/main/java/{{javaPackagePath}}/{{javaClassPrefix}}WorkerMain.java.tpl',
       'templates/vue-codex/manifest.json.tpl',
     ],
-    '@fengyu/plugin-sdk': ['dist/index.js', 'dist/index.d.ts'],
-    '@fengyu/plugin-ui': ['dist/index.js', 'dist/index.d.ts', 'dist/style.css'],
+    '@infinia/plugin-sdk': ['dist/index.js', 'dist/index.d.ts'],
+    '@infinia/plugin-ui': ['dist/index.js', 'dist/index.d.ts', 'dist/style.css'],
   }
   for (const pkg of packages) {
     const names = new Set(pkg.files.map((file) => file.path))

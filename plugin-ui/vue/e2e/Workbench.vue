@@ -21,7 +21,7 @@ import {
   useFengYuClient,
 } from '../src'
 import type { FyTaskRow } from '../src'
-import type { FileRef } from '@fengyu/plugin-sdk'
+import type { FileRef } from '@infinia/plugin-sdk'
 
 const client = useFengYuClient()
 

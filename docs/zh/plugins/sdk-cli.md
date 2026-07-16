@@ -1,6 +1,6 @@
 ---
 title: SDK 与 CLI
-description: "@fengyu/plugin-sdk TypeScript 客户端、独立版本化的 Java Worker SDK（1.0.0），以及五个 fengyu plugin CLI 子命令——create、dev、build、validate、install 的参考。"
+description: "@infinia/plugin-sdk TypeScript 客户端、独立版本化的 Java Worker SDK（1.0.0），以及五个 fengyu plugin CLI 子命令——create、dev、build、validate、install 的参考。"
 lang: zh
 ---
 
@@ -8,12 +8,12 @@ lang: zh
 
 插件作者使用两套 SDK（运行时两侧各一套）和一套 CLI。TypeScript SDK 运行在 iframe UI 中；Java Worker SDK 用来构建 `worker.jar`；`fengyu plugin` CLI 负责脚手架、开发、打包、校验和安装插件。Java Worker SDK（`fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.0.0`）相对于宿主应用**独立版本化**，并发布到 GitHub Packages。
 
-## `@fengyu/plugin-sdk`（TypeScript）
+## `@infinia/plugin-sdk`（TypeScript）
 
 源码：`plugin-sdk/typescript/src/index.ts`。当前 SDK 版本为 `1.0.0`。导入单例 client 以及辅助方法/类型：
 
 ```ts
-import { fengyu, FengYuClient, createId, type FileRef, type Environment } from '@fengyu/plugin-sdk'
+import { fengyu, FengYuClient, createId, type FileRef, type Environment } from '@infinia/plugin-sdk'
 ```
 
 ### `FengYuClient`
@@ -130,11 +130,11 @@ fengyu plugin install ./com.example.my-plugin-1.0.0.fyp \
   --host http://127.0.0.1:24056 --token "$FENGYU_TOKEN"
 ```
 
-脚手架生成的项目同时依赖 `@fengyu/plugin-sdk` 与 [`@fengyu/plugin-ui`](/zh/plugins/ui-components)；它的 `src/main.ts` 已经调用 `bindFengYuEnvironment` 同步主题/locale，并调用 `provideFengYuClient` 在全应用注入 SDK client。旧式静态插件（没有构建工具的纯 `ui/`）依然被 `dev` 与 `build` 接受。
+脚手架生成的项目同时依赖 `@infinia/plugin-sdk` 与 [`@infinia/plugin-ui`](/zh/plugins/ui-components)；它的 `src/main.ts` 已经调用 `bindFengYuEnvironment` 同步主题/locale，并调用 `provideFengYuClient` 在全应用注入 SDK client。旧式静态插件（没有构建工具的纯 `ui/`）依然被 `dev` 与 `build` 接受。
 
 ## 下一步
 
 - [入门](/zh/plugins/getting-started)——以叙述形式讲解 create + dev 循环。
-- [UI 组件](/zh/plugins/ui-components)——`@fengyu/plugin-ui` Vuetify 套件。
+- [UI 组件](/zh/plugins/ui-components)——`@infinia/plugin-ui` Vuetify 套件。
 - [Worker（JSON-RPC）](/zh/plugins/worker)——`JsonRpcWorker` 实现的协议。
 - [构建与部署](/zh/plugins/build-deploy)——shaded-JAR + `.fyp` 流程。

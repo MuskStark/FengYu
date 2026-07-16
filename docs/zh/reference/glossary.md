@@ -14,7 +14,7 @@ Infinia 文档中使用的领域术语，每条配有一段定义以及指向其
 
 ## MF（微前端）
 
-一种自包含的 UI 包（插件的 `ui/` 目录），宿主将其作为静态资产提供在 `/plugin-runtime/{id}/**` 下，并加载进一个处于严格内容安全策略（CSP）下的**沙箱化 iframe**。在 iframe 内部，`@fengyu/plugin-sdk` 的 `FengYuClient` 通过 `postMessage` 与宿主桥接。宿主的 MF 加载器也可以通过 `import(uiEntry)` → `default.mount(el, ctx)` 直接挂载插件的 ESM 包。参见 [UI 微前端](/zh/plugins/ui-microfrontend)。
+一种自包含的 UI 包（插件的 `ui/` 目录），宿主将其作为静态资产提供在 `/plugin-runtime/{id}/**` 下，并加载进一个处于严格内容安全策略（CSP）下的**沙箱化 iframe**。在 iframe 内部，`@infinia/plugin-sdk` 的 `FengYuClient` 通过 `postMessage` 与宿主桥接。宿主的 MF 加载器也可以通过 `import(uiEntry)` → `default.mount(el, ctx)` 直接挂载插件的 ESM 包。参见 [UI 微前端](/zh/plugins/ui-microfrontend)。
 
 ## SETUP 模式 / APP 模式
 

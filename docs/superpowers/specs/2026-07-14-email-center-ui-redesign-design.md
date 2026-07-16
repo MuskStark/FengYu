@@ -226,7 +226,7 @@ account deletion requires confirmation and obeys the existing open-send guard.
 
 ## 9. Data Flow and Confirmation
 
-All UI communication uses `@fengyu/plugin-sdk`. Components do not call host HTTP
+All UI communication uses `@infinia/plugin-sdk`. Components do not call host HTTP
 endpoints or `postMessage` directly.
 
 1. The UI receives locale, theme, and capabilities from the official SDK.

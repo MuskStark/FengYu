@@ -16,5 +16,5 @@ it('uses only the official SDK bridge', () => {
   expect(allSource).not.toMatch(new RegExp(`mdi${'-'}[a-z-]+`))
   expect(allSource).not.toContain(`@mdi${'/'}font`)
   expect(allSource).not.toMatch(/[\uF000-\uF8FF]/)
-  expect(fs.readFileSync(path.resolve('package.json'), 'utf8')).toContain('@fengyu/plugin-sdk')
+  expect(fs.readFileSync(path.resolve('package.json'), 'utf8')).toContain('@infinia/plugin-sdk')
 })

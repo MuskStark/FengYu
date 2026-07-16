@@ -35,12 +35,12 @@ fengyu plugin create ./my-plugin --id com.example.my-plugin --ui-only
 从无到有打包出 `.fyp` 的完整循环：
 
 ```bash
-npx --yes @fengyu/plugin-cli@1.0.0 plugin create my-plugin --id com.example.my-plugin
+npx --yes @infinia/plugin-cli@1.0.0 plugin create my-plugin --id com.example.my-plugin
 cd my-plugin
 export FENGYU_GITHUB_TOKEN='<GitHub token with read:packages>'
-npx --yes @fengyu/plugin-cli@1.0.0 plugin dev .
-npx --yes @fengyu/plugin-cli@1.0.0 plugin build .
-npx --yes @fengyu/plugin-cli@1.0.0 plugin install dist-package/com.example.my-plugin-1.0.0.fyp --host http://127.0.0.1:24056
+npx --yes @infinia/plugin-cli@1.0.0 plugin dev .
+npx --yes @infinia/plugin-cli@1.0.0 plugin build .
+npx --yes @infinia/plugin-cli@1.0.0 plugin install dist-package/com.example.my-plugin-1.0.0.fyp --host http://127.0.0.1:24056
 ```
 
 - `create` 默认安装 UI 依赖；`--no-install` 可跳过。
@@ -88,7 +88,7 @@ fengyu plugin dev .
 
 ## 下一步
 
-- [UI 组件](/zh/plugins/ui-components)——`@fengyu/plugin-ui` 套件：外壳、文件选择器、步骤向导等。
+- [UI 组件](/zh/plugins/ui-components)——`@infinia/plugin-ui` 套件：外壳、文件选择器、步骤向导等。
 - [清单](/zh/plugins/manifest)——每个字段、类型与默认值。
 - [Worker（JSON-RPC）](/zh/plugins/worker)——编写 `backend/worker.jar`。
 - [构建与部署](/zh/plugins/build-deploy)——分阶段生命周期、GitHub Packages 认证与 `.fyp` 打包。

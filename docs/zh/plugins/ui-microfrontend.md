@@ -1,12 +1,12 @@
 ---
 title: UI 微前端
-description: 插件 UI 运行在严格内容安全策略下的沙箱化 iframe 中，并通过 @fengyu/plugin-sdk 的 FengYuClient postMessage API 与宿主桥接——ready、invoke、files、notify、on。
+description: 插件 UI 运行在严格内容安全策略下的沙箱化 iframe 中，并通过 @infinia/plugin-sdk 的 FengYuClient postMessage API 与宿主桥接——ready、invoke、files、notify、on。
 lang: zh-CN
 ---
 
 # UI 微前端
 
-插件的 `ui/` 目录是一个自包含的微前端（MF），宿主把它作为静态资源通过 `/plugin-runtime/{id}/**` 提供，并加载进一个**沙箱化的 iframe**，受严格的内容安全策略（CSP）约束。在 iframe 内部，`@fengyu/plugin-sdk` 包提供了一个 `FengYuClient`，通过 `postMessage` 与宿主桥接。插件永远不会直接与操作系统交互——每一个特权动作都经由 client 进行。
+插件的 `ui/` 目录是一个自包含的微前端（MF），宿主把它作为静态资源通过 `/plugin-runtime/{id}/**` 提供，并加载进一个**沙箱化的 iframe**，受严格的内容安全策略（CSP）约束。在 iframe 内部，`@infinia/plugin-sdk` 包提供了一个 `FengYuClient`，通过 `postMessage` 与宿主桥接。插件永远不会直接与操作系统交互——每一个特权动作都经由 client 进行。
 
 ## 默认入口：一个 Vue/Vuetify 应用
 
@@ -14,9 +14,9 @@ lang: zh-CN
 
 ```ts
 import { createApp } from 'vue'
-import { fengyu } from '@fengyu/plugin-sdk'
-import { bindFengYuEnvironment, createFengYuVuetify, provideFengYuClient } from '@fengyu/plugin-ui'
-import '@fengyu/plugin-ui/style.css'
+import { fengyu } from '@infinia/plugin-sdk'
+import { bindFengYuEnvironment, createFengYuVuetify, provideFengYuClient } from '@infinia/plugin-ui'
+import '@infinia/plugin-ui/style.css'
 import App from './App.vue'
 
 if (!fengyu) throw new Error('FengYu SDK requires a browser environment')
@@ -155,7 +155,7 @@ document.querySelector('#hello').onclick = async () => {
 
 ## 下一步
 
-- [UI 组件](/zh/plugins/ui-components)——脚手架应用所用的 `@fengyu/plugin-ui` Vuetify 套件。
+- [UI 组件](/zh/plugins/ui-components)——脚手架应用所用的 `@infinia/plugin-ui` Vuetify 套件。
 - [文件 I/O](/zh/plugins/file-io)——每个 `files.*` 方法所需的授权。
 - [SDK 与 CLI](/zh/plugins/sdk-cli)——完整的 TypeScript + Java SDK 参考。
 - [常见陷阱](/zh/plugins/pitfalls)——CSP、MF Vue 去重与 FileRef 时机。

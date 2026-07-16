@@ -5,7 +5,7 @@ import en from '../i18n/en'
 import zhCN from '../i18n/zh-CN'
 
 describe('Email Center shell uses the official plugin-ui foundation', () => {
-  it('bootstraps Vuetify + client via @fengyu/plugin-ui', () => {
+  it('bootstraps Vuetify + client via @infinia/plugin-ui', () => {
     const main = fs.readFileSync(path.resolve('src/main.ts'), 'utf8')
 
     // The hand-rolled createVuetify + bespoke themes are gone; the kit owns them.

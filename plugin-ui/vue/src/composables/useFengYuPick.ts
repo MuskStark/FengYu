@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import type { FileRef } from '@fengyu/plugin-sdk'
+import type { FileRef } from '@infinia/plugin-sdk'
 
 /**
  * Event emit signature shared by the SDK-backed pickers. Mirrors the

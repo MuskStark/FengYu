@@ -21,8 +21,8 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   the CLI and the host, including `database` and `network.email` permissions and AI-tool `method` /
   object-schema validation.
 - **Publishable plugin toolchain** — the Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.0.0`,
-  independently versioned, GitHub Packages) and the npm packages `@fengyu/plugin-sdk@1.0.0`,
-  `@fengyu/plugin-ui@1.0.0`, `@fengyu/plugin-cli@1.0.0`, plus a release workflow with a clean-consumer
+  independently versioned, GitHub Packages) and the npm packages `@infinia/plugin-sdk@1.0.0`,
+  `@infinia/plugin-ui@1.0.0`, `@infinia/plugin-cli@1.0.0`, plus a release workflow with a clean-consumer
   smoke job.
 
 ### ♻️ Changed
@@ -43,7 +43,7 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 ## [4.0.0-SNAPSHOT] — Official Email Center plugin
 
 ### ✨ Added
-- **Official plugin UI kit** `@fengyu/plugin-ui` — a Codex-style Vuetify 3 (Material Design 3)
+- **Official plugin UI kit** `@infinia/plugin-ui` — a Codex-style Vuetify 3 (Material Design 3)
   component library for generated plugins. Ships `FyPluginShell`, `FyPageHeader`, `FyToolbar`,
   SDK-backed `FyFilePicker` / `FyDirectoryPicker`, `FyStepWizard`, `FyTaskTable`,
   `FyNotificationCenter`, the `FyEmptyState` / `FyLoadingState` / `FyErrorState` / `FyPermissionNotice`

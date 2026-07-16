@@ -221,7 +221,7 @@ docs/                                  ← new VitePress project root
 - **`ai-tools.md`** — declaring `aiTools` in manifest (name, description, JSON-Schema
   `inputSchema`, method), host aggregation via Spring AI `ToolCallingManager`, `supportsAi` flag,
   tool SSE events.
-- **`sdk-cli.md`** — `@fengyu/plugin-sdk` (TS), Java Worker SDK, `fengyu plugin` CLI commands.
+- **`sdk-cli.md`** — `@infinia/plugin-sdk` (TS), Java Worker SDK, `fengyu plugin` CLI commands.
 - **`marketplace.md`** — marketplace catalog format, install flow (upload/upload-native/install
   by id), update/enable/disable/uninstall, `catalog-url` override.
 - **`i18n.md`** — plugin localization, integration with host vue-i18n.

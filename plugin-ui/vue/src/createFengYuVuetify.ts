@@ -4,7 +4,7 @@ import * as directives from 'vuetify/directives'
 import { md3 } from 'vuetify/blueprints'
 import { aliases, mdi } from 'vuetify/iconsets/mdi'
 import { en, zhHans } from 'vuetify/locale'
-import type { FengYuClient, Environment } from '@fengyu/plugin-sdk'
+import type { FengYuClient, Environment } from '@infinia/plugin-sdk'
 import { fengyuCodexDark, fengyuCodexLight } from './theme'
 import { fengyuDefaults } from './defaults'
 

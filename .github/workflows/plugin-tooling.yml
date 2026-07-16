@@ -1,7 +1,7 @@
 name: Plugin Tooling
 
-# Type-checks, tests, and builds the plugin SDK, the @fengyu/plugin-ui Vue kit,
-# the @fengyu/plugin-cli, and runs the Playwright visual suite. Triggers only
+# Type-checks, tests, and builds the plugin SDK, the @infinia/plugin-ui Vue kit,
+# the @infinia/plugin-cli, and runs the Playwright visual suite. Triggers only
 # when the plugin tooling changes.
 
 on:
@@ -62,10 +62,10 @@ jobs:
           npm ci
           npm test
 
-      # --- @fengyu/plugin-ui: typecheck + unit tests + Vite build ---
+      # --- @infinia/plugin-ui: typecheck + unit tests + Vite build ---
       - run: cd plugin-ui/vue && npm ci && npm run typecheck && npm test && npm run build
 
-      # --- @fengyu/plugin-cli: node --test ---
+      # --- @infinia/plugin-cli: node --test ---
       - run: cd plugin-cli && npm ci && npm test
 
       # --- Visual regression (Playwright) ---

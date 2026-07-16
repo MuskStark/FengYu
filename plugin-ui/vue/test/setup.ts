@@ -1,5 +1,5 @@
 /**
- * Vitest setup for the @fengyu/plugin-ui component suite.
+ * Vitest setup for the @infinia/plugin-ui component suite.
  *
  * jsdom does not implement `ResizeObserver`, but Vuetify's layout system
  * (`v-app`, `v-main`, `v-navigation-drawer`, `useDisplay`) installs one via
