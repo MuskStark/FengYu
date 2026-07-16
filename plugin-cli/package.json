@@ -12,7 +12,7 @@
     "verify-version": "node scripts/resolve-tooling-version.mjs --ref plugin-tooling-v1.0.0",
     "prepack": "npm run check-spec && npm test"
   },
-  "engines": { "node": ">=20" },
+  "engines": { "node": ">=24.18.0" },
   "license": "GPL-3.0",
   "repository": { "type": "git", "url": "git+https://github.com/MuskStark/FengYu.git", "directory": "plugin-cli" },
   "publishConfig": { "access": "public" },

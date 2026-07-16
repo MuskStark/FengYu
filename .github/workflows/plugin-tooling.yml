@@ -41,7 +41,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24.18.0
           cache: npm
           # Cache by every committed lockfile under the three packages.
           # plugin-sdk/typescript and plugin-cli may not commit a lockfile; the
@@ -99,7 +99,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24.18.0
           cache: npm
           cache-dependency-path: plugin-cli/package-lock.json
       - uses: actions/setup-java@v5
@@ -126,7 +126,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm }
+        with: { node-version: 24.18.0, cache: npm }
       - uses: actions/setup-java@v5
         with: { java-version: '21', distribution: temurin, cache: maven }
       - run: scripts/plugin-tooling-local-smoke.sh
