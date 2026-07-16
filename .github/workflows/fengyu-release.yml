@@ -49,10 +49,10 @@ jobs:
           ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
 
-      - name: Set up Node 20
+      - name: Set up Node 24.18.0
         uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24.18.0'
 
       - name: Resolve release version
         id: version
@@ -80,10 +80,10 @@ jobs:
           ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
 
-      - name: Set up Node 20
+      - name: Set up Node 24.18.0
         uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24.18.0'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -95,7 +95,7 @@ jobs:
           cache: maven
 
       - name: Validate release workflow (unit tests)
-        run: node --test scripts/resolve-release-version.test.mjs scripts/release-workflow.test.mjs
+        run: node --test scripts/resolve-release-version.test.mjs scripts/release-workflow.test.mjs scripts/node-version.test.mjs
 
       - name: Install frontend deps
         run: npm ci
@@ -230,10 +230,10 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref }}
 
-      - name: Set up Node 20
+      - name: Set up Node 24.18.0
         uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24.18.0'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 

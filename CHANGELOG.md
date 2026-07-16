@@ -32,6 +32,8 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   smoke job.
 
 ### ♻️ Changed
+- **Node.js 24.18.0 baseline** — documentation, `plugin-cli` engine metadata, and every GitHub
+  Actions workflow now use the same exact Node.js version, protected by a repository contract test.
 - **Official plugins built by the CLI** — Markdown, Excel, and Email are now packaged by
   `fengyu plugin build` (a CI matrix); the legacy shell packager and centralized source manifests
   are removed.

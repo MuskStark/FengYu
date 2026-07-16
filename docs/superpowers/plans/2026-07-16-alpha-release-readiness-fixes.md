@@ -8,7 +8,7 @@
 decisions. Keep the existing resource layout, but create the window before supervising a SETUP-mode
 backend and restart that backend on the already-injected port.
 
-**Tech Stack:** Node 20 test runner, GitHub Actions YAML, Rust/Tauri 2, Java 21, Maven, Vue/Vite.
+**Tech Stack:** Node 24.18.0 test runner, GitHub Actions YAML, Rust/Tauri 2, Java 21, Maven, Vue/Vite.
 
 ## Global Constraints
 
