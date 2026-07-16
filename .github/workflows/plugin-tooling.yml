@@ -117,3 +117,14 @@ jobs:
           name: official-${{ matrix.plugin }}-fyp
           path: OfficialPlugins/plugin-${{ matrix.plugin }}/dist-package/*.fyp
           if-no-files-found: error
+
+  local-consumer-smoke:
+    needs: [build, official-plugins]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - uses: actions/setup-java@v5
+        with: { java-version: '21', distribution: temurin, cache: maven }
+      - run: scripts/plugin-tooling-local-smoke.sh

@@ -102,7 +102,7 @@ Each writes `OfficialPlugins/plugin-<name>/dist-package/fan.summer.<name>-4.0.0.
 
 ## Install the result
 
-`fengyu plugin install` validates the package **offline first** — it inspects archive limits and paths and validates the archived manifest before any network access — then uploads to the marketplace:
+`fengyu plugin install` validates the package **offline first** — it inspects archive limits and paths, validates the archived manifest and UI entry, and structurally checks any declared `backend/worker.jar` before network access — then uploads to the marketplace. In `fengyu.plugin.json`, every `package.resources[].to` value is a POSIX archive-relative path:
 
 ```bash
 fengyu plugin install ./dist-package/com.example.my-plugin-1.0.0.fyp \
