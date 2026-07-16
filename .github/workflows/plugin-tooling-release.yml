@@ -1,0 +1,129 @@
+name: Plugin Tooling Release
+
+# Publishes the plugin toolchain: the Java Worker SDK to GitHub Packages and the
+# three npm packages (@fengyu/plugin-sdk, @fengyu/plugin-ui, @fengyu/plugin-cli)
+# to npm. Triggered by a `plugin-tooling-v*` tag or a manual dispatch with a
+# version. The workflow is not marked successful until a clean external consumer
+# can scaffold and build a plugin from the published packages.
+
+on:
+  push:
+    tags: ['plugin-tooling-v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Toolchain version to publish (e.g. 1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+concurrency:
+  group: plugin-tooling-release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            plugin-sdk/typescript/package-lock.json
+            plugin-ui/vue/package-lock.json
+            plugin-cli/package-lock.json
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      # SDK + CLI + UI tests.
+      - run: cd plugin-sdk/typescript && npm ci && npm test
+      - run: cd plugin-ui/vue && npm ci && npm run typecheck && npm test && npm run build
+      - run: cd plugin-cli && npm ci && npm test
+      # Build the Java SDK + every official plugin through the CLI.
+      - run: ./mvnw -pl FengYu-Plugin-Sdk install -DskipTests
+      - run: node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-markdown
+      - run: node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-excel
+      - run: node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-email
+
+  publish-java:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      # Publish the independently-versioned SDK (1.0.0) to GitHub Packages.
+      # Credentials come from the GITHUB_ACTOR / GITHUB_TOKEN server settings;
+      # generated files never contain a token.
+      - name: Publish Java Worker SDK
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          FENGYU_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./mvnw -f FengYu-Plugin-Sdk/pom.xml deploy -DskipTests -s .mvn/release-settings.xml
+
+  publish-npm:
+    needs: publish-java
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+          cache-dependency-path: |
+            plugin-sdk/typescript/package-lock.json
+            plugin-ui/vue/package-lock.json
+            plugin-cli/package-lock.json
+      # Publish order respects the dependency graph: SDK → UI (peers SDK) → CLI (documents both).
+      - run: cd plugin-sdk/typescript && npm ci && npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: cd plugin-ui/vue && npm ci && npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: cd plugin-cli && npm ci && npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  consumer-smoke:
+    needs: publish-npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: actions/setup-java@v5
+        with: { java-version: '21', distribution: temurin, cache: maven }
+      - name: Resolve the just-published CLI (eventually consistent registry)
+        env:
+          VERSION: ${{ inputs.version || github.ref_name }}
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if npm view @fengyu/plugin-cli@$VERSION >/dev/null 2>&1; then echo "resolved after $i tries"; exit 0; fi
+            echo "attempt $i: not visible yet, waiting 20s"; sleep 20
+          done
+          echo "FAIL: @fengyu/plugin-cli@$VERSION never became resolvable" >&2; exit 1
+      - name: Clean-consumer scaffold + build (no file: deps)
+        env:
+          VERSION: ${{ inputs.version || github.ref_name }}
+          FENGYU_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: |
+          cd "$(mktemp -d)"
+          npx @fengyu/plugin-cli@$VERSION plugin create demo --id com.example.demo
+          cd demo
+          fengyu plugin build .
+          test -f dist-package/com.example.demo-1.0.0.fyp
