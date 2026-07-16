@@ -6,7 +6,7 @@ lang: zh
 
 # 构建与部署
 
-一个 `.fyp` 是一个具有固定运行时布局的 zip 归档。所有插件——无论第三方还是官方——都有**一条**构建流程，由 `fengyu plugin build` 和 `fengyu.plugin.json` 声明驱动。旧的 `OfficialPlugins/build-packages.sh` 脚本已被移除；三个随产品发布的官方插件现在由同一套 CLI 构建。
+一个 `.fyp` 是一个具有固定运行时布局的 zip 归档。所有插件——无论第三方还是官方——都有**一条**构建流程，由 `fengyu plugin build` 和 `fengyu.plugin.json` 声明驱动。旧的 shell 打包器已被移除；三个随产品发布的官方插件现在由同一套 CLI 构建。
 
 ## `.fyp` 布局
 

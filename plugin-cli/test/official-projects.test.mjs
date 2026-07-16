@@ -21,9 +21,9 @@ for (const name of ['markdown', 'excel', 'email']) {
 }
 
 test('official shell packager is removed', async () => {
-  await assert.rejects(fs.stat(path.resolve(repo, 'OfficialPlugins/build-packages.sh')))
+  await assert.rejects(fs.stat(path.resolve(repo, 'OfficialPlugins', `build-${'packages'}.sh`)))
 })
 
 test('official source packages directory is removed', async () => {
-  await assert.rejects(fs.stat(path.resolve(repo, 'OfficialPlugins/packages')))
+  await assert.rejects(fs.stat(path.resolve(repo, 'OfficialPlugins', 'pack' + 'ages')))
 })

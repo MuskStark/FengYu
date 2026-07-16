@@ -18,7 +18,7 @@ fi
 
 # Build the official plugins through the CLI into each plugin's dist-package/,
 # then stage their .fyp outputs into a single official-packages directory the
-# host is pointed at. This replaces the old OfficialPlugins/build-packages.sh.
+# host is pointed at. This replaces the old per-plugin shell packager.
 OFFICIAL_DIR="$(mktemp -d)"
 for plugin in markdown excel email; do
   if ! node "$ROOT/plugin-cli/bin/fengyu.mjs" plugin build "$ROOT/OfficialPlugins/plugin-$plugin" >/dev/null; then

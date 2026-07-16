@@ -164,3 +164,54 @@ test('declared dev rejects RPC while rebuilding and closes a replacement created
     if (!closing) await server.close()
   }
 })
+
+test('declared dev queues exactly one follow-up rebuild for changes during a build', async () => {
+  const root = await makeDeclaredWorkerProject()
+  const buildReleases = []
+  const buildStarts = []
+  let buildCount = 0
+  const clients = []
+  const server = await dev(root, 4182, {
+    startWorkerImpl: async () => {
+      const client = {
+        closeCalls: 0,
+        invoke: async () => ({ ok: true }),
+        close: async () => { client.closeCalls++ },
+      }
+      clients.push(client)
+      return client
+    },
+    run: async () => {
+      const index = buildCount++
+      buildStarts[index]?.()
+      await new Promise((resolve) => { buildReleases[index] = resolve })
+    },
+    open: false,
+  })
+  try {
+    const firstStarted = new Promise((resolve) => { buildStarts[0] = resolve })
+    await fs.writeFile(path.join(root, 'worker/First.java'), 'class First {}')
+    await Promise.race([
+      firstStarted,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('first rebuild did not start')), 3000)),
+    ])
+
+    const secondStarted = new Promise((resolve) => { buildStarts[1] = resolve })
+    await fs.writeFile(path.join(root, 'worker/Second.java'), 'class Second {}')
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    buildReleases[0]()
+    await Promise.race([
+      secondStarted,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('follow-up rebuild did not start')), 3000)),
+    ])
+    buildReleases[1]()
+
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    assert.equal(buildCount, 2)
+  } finally {
+    for (const release of buildReleases) release?.()
+    await server.close()
+  }
+  assert.equal(clients.length, 3)
+  assert.equal(clients.every((client) => client.closeCalls === 1), true)
+})

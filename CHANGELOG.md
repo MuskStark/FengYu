@@ -27,8 +27,8 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ### ♻️ Changed
 - **Official plugins built by the CLI** — Markdown, Excel, and Email are now packaged by
-  `fengyu plugin build` (a CI matrix); `OfficialPlugins/build-packages.sh` and the `packages/` source
-  manifests are removed.
+  `fengyu plugin build` (a CI matrix); the legacy shell packager and centralized source manifests
+  are removed.
 - **Offline-first install** — `fengyu plugin install` validates the archive (limits, paths, manifest)
   before any network access; unsafe or invalid packages are rejected with zero fetch calls.
 - **Strict SDK RPC contracts** — the worker surfaces canonical JSON-RPC errors (`-32700` parse,
