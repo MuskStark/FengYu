@@ -52,28 +52,36 @@ export class FengYuClient {
             return Promise.reject(new DOMException('Aborted', 'AbortError'));
         const id = createId();
         return new Promise((resolve, reject) => {
-            const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`Host request timed out: ${method}`)); }, options.timeoutMs ?? this.timeoutMs);
-            const abort = options.signal ? () => {
-                clearTimeout(timer);
-                this.pending.delete(id);
+            const settle = (action) => { this.takePending(id); action(); };
+            const timer = setTimeout(() => settle(() => reject(new Error(`Host request timed out: ${method}`))), options.timeoutMs ?? this.timeoutMs);
+            const abort = options.signal ? () => settle(() => {
                 reject(new DOMException('Aborted', 'AbortError'));
                 this.target.postMessage({ source: 'fengyu-plugin', type: 'cancel', id }, this.allowedOrigin);
-            } : undefined;
+            }) : undefined;
             options.signal?.addEventListener('abort', abort, { once: true });
-            this.pending.set(id, { resolve: resolve, reject, timer, abort });
+            this.pending.set(id, { resolve: resolve, reject, timer, signal: options.signal, abort });
             this.target.postMessage({ source: 'fengyu-plugin', type: 'request', sdkVersion: SDK_VERSION, id, method, params }, this.allowedOrigin);
         });
+    }
+    takePending(id) {
+        const item = this.pending.get(id);
+        if (!item)
+            return undefined;
+        this.pending.delete(id);
+        clearTimeout(item.timer);
+        if (item.signal && item.abort)
+            item.signal.removeEventListener('abort', item.abort);
+        return item;
     }
     dispose() {
         if (this.disposed)
             return;
         this.disposed = true;
         window.removeEventListener('message', this.onMessage);
-        for (const item of this.pending.values()) {
-            clearTimeout(item.timer);
-            item.reject(new Error('FengYu client disposed'));
+        for (const id of [...this.pending.keys()]) {
+            const item = this.takePending(id);
+            item?.reject(new Error('FengYu client disposed'));
         }
-        this.pending.clear();
         this.handlers.clear();
     }
     onMessage = (event) => {
@@ -83,11 +91,9 @@ export class FengYuClient {
         if (message?.source !== 'fengyu-host')
             return;
         if (message.type === 'response') {
-            const item = this.pending.get(message.id);
+            const item = this.takePending(message.id);
             if (!item)
                 return;
-            this.pending.delete(message.id);
-            clearTimeout(item.timer);
             message.error ? item.reject(new Error(message.error)) : item.resolve(message.result);
         }
         else if (message.type === 'event') {
