@@ -321,20 +321,25 @@ jobs:
             echo "warning="  >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Collect release files
+        run: |
+          mkdir -p release-files
+          while IFS= read -r -d '' file; do
+            cp "$file" "release-files/$(basename "$file")"
+          done < <(find artifacts -type f \( \
+            -name 'Infinia.jar' -o \
+            -name '*.zip' -o -name '*.tar.gz' -o \
+            -name '*.dmg' -o -name '*.deb' -o -name '*.AppImage' -o -name '*.rpm' -o \
+            -name '*.msi' -o -name '*.exe' \
+          \) -print0)
+          test -n "$(find release-files -type f -print -quit)"
+          find release-files -maxdepth 1 -type f | sort
+
       - name: Generate SHA-256 checksums
         run: |
-          cd artifacts
-          # Collect every distributable file (web archives, desktop installers, JAR).
-          shopt -s nullglob
-          files=()
-          for ext in zip tar.gz dmg app deb AppImage rpm msi exe; do
-            for f in *.$ext; do files+=("$f"); done
-          done
-          [ -f Infinia.jar ] && files+=(Infinia.jar)
-          if [ ${#files[@]} -gt 0 ]; then
-            sha256sum "${files[@]}" > checksums.txt
-            cat checksums.txt
-          fi
+          cd release-files
+          sha256sum -- * > checksums.txt
+          cat checksums.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -372,8 +377,7 @@ jobs:
             SHA-256 checksums are in `checksums.txt`.
             This release was assembled automatically by GitHub Actions.
           files: |
-            artifacts/*
-            artifacts/checksums.txt
+            release-files/*
           draft: false
           prerelease: ${{ needs.setup.outputs.prerelease == 'true' }}
           generate_release_notes: true
