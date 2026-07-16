@@ -1,6 +1,7 @@
 import yauzl from 'yauzl'
 import { createRequire } from 'node:module'
 import fs from 'node:fs/promises'
+import path from 'node:path'
 
 const require = createRequire(import.meta.url)
 
@@ -37,16 +38,24 @@ function inspectArchiveUnchecked(file) {
           cleanup(reject, new Error(`unsafe archive path: ${name}`), zip)
           return
         }
-        const normalized = name.replace(/\\/g, '/')
+        if (name.includes('\\')) {
+          cleanup(reject, new Error(`unsafe archive path: ${name}`), zip)
+          return
+        }
+        const normalized = path.posix.normalize(name)
+        if (normalized !== name) {
+          cleanup(reject, new Error(`non-canonical archive path: ${name}`), zip)
+          return
+        }
         if (normalizeForCheck(normalized).startsWith('../') || normalizeForCheck(normalized).includes('/../')) {
           cleanup(reject, new Error(`unsafe archive path: ${name}`), zip)
           return
         }
-        if (seen.has(name)) {
+        if (seen.has(normalized)) {
           cleanup(reject, new Error(`duplicate archive entry: ${name}`), zip)
           return
         }
-        seen.add(name)
+        seen.add(normalized)
         totalExpanded += entry.uncompressedSize
         if (entry.uncompressedSize > MAX_EXPANDED_BYTES || totalExpanded > MAX_EXPANDED_BYTES) {
           cleanup(reject, new Error('expanded package exceeds 300 MB'), zip)

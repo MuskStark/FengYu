@@ -62,7 +62,7 @@ async function devDeclaredWorker(project, port, { run = runCommand, startWorkerI
   workerClient = await startWorkerImpl({ jar: artifact, cwd: workerRoot, onStderr: (line) => console.error('[worker]', line) })
 
   // Watch Java sources (excluding target) and rebuild + restart on change.
-  const watcher = watchDebounced(workerRoot, ['target'], 300, () => {
+  const watcher = await watchDebounced(workerRoot, ['target'], 300, () => {
     dirty = true
     void scheduleRebuild()
   })
@@ -72,17 +72,20 @@ async function devDeclaredWorker(project, port, { run = runCommand, startWorkerI
     rebuilding = (async () => {
       while (dirty && !closing) {
         dirty = false
-        const next = await rebuildWorker(cfg.worker, run, startWorkerImpl, workerRoot, artifact)
-        if (closing) {
-          await next.close().catch(() => {})
-          return
+        try {
+          const next = await rebuildWorker(cfg.worker, run, startWorkerImpl, workerRoot, artifact)
+          if (closing) {
+            await next.close().catch(() => {})
+            return
+          }
+          const previous = workerClient
+          workerClient = next
+          await previous?.close().catch(() => {})
+        } catch (error) {
+          console.error('[worker] rebuild failed:', error.message)
         }
-        const previous = workerClient
-        workerClient = next
-        await previous?.close().catch(() => {})
       }
-    })().catch((e) => console.error('[worker] rebuild failed:', e.message))
-      .finally(() => { rebuilding = null })
+    })().finally(() => { rebuilding = null })
     return rebuilding
   }
 
@@ -338,10 +341,14 @@ addEventListener('message',async e=>{
 /* -------------------------------------------------------------------------- */
 
 /** Debounced recursive directory watcher. Returns an object with a close() method. */
-function watchDebounced(root, ignoreDirs, debounceMs, onChange) {
+async function watchDebounced(root, ignoreDirs, debounceMs, onChange) {
   let timer = null
   const watchers = []
+  let stamp = await watcherFingerprint(root, ignoreDirs)
+  let polling = false
+  let closed = false
   const schedule = () => {
+    if (closed) return
     if (timer) clearTimeout(timer)
     timer = setTimeout(() => { timer = null; onChange() }, debounceMs)
   }
@@ -359,12 +366,40 @@ function watchDebounced(root, ignoreDirs, debounceMs, onChange) {
     if (w) watchers.push(w)
   }
   watchDir(root)
+  const poller = setInterval(async () => {
+    if (polling) return
+    polling = true
+    try {
+      const next = await watcherFingerprint(root, ignoreDirs)
+      if (next !== stamp) { stamp = next; schedule() }
+    } catch {
+      // Files can disappear between readdir and stat; the next poll retries.
+    } finally {
+      polling = false
+    }
+  }, 200)
   return {
     close: async () => {
+      closed = true
       if (timer) clearTimeout(timer)
+      clearInterval(poller)
       for (const w of watchers) w.close()
     },
   }
+}
+
+async function watcherFingerprint(dir, ignoreDirs) {
+  let value = ''
+  let entries
+  try { entries = await fs.readdir(dir, { withFileTypes: true }) } catch { return value }
+  for (const entry of entries) {
+    if (ignoreDirs.includes(entry.name)) continue
+    const file = path.join(dir, entry.name)
+    value += entry.name + (entry.isDirectory()
+      ? await watcherFingerprint(file, ignoreDirs)
+      : (await fs.stat(file)).mtimeMs)
+  }
+  return value
 }
 
 function waitForPort(port, timeoutMs) {

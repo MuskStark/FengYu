@@ -108,6 +108,20 @@ test('rejects a malformed backend worker before fetch', async () => {
   assert.equal(fetched, 0)
 })
 
+test('rejects a worker zip without a runnable JAR manifest before fetch', async () => {
+  let fetched = 0
+  const file = await writeFyp('non-runnable-worker', [
+    { name: 'manifest.json', data: backendManifest },
+    { name: 'ui/index.html', data: '<html></html>' },
+    { name: 'backend/worker.jar', data: buildZip([{ name: 'payload.txt', data: 'not runnable' }]) },
+  ])
+  await assert.rejects(
+    () => installPlugin(file, { fetchImpl: async () => { fetched++; return new Response() } }),
+    /MANIFEST\.MF|Main-Class/,
+  )
+  assert.equal(fetched, 0)
+})
+
 test('uploads a valid package and parses the JSON response', async () => {
   let received
   const fetchImpl = async (url, init) => {
