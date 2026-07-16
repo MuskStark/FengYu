@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
+import os from 'node:os'
+import path from 'node:path'
 import { startWorker } from '../src/worker.mjs'
 
 /** A Node fixture child that speaks newline JSON-RPC over stdio. */
@@ -11,7 +13,9 @@ function fixtureScript() {
     rl.on('line', (line) => {
       let req
       try { req = JSON.parse(line) } catch { process.stderr.write('not-json\\n'); return }
-      if (req.method === 'hello') {
+      if (req.method === 'never') {
+        return
+      } else if (req.method === 'hello') {
         process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: req.id, result: { message: 'Hello, ' + (req.params?.name ?? '') } }) + '\\n')
       } else if (req.method === 'fail') {
         process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: req.id, error: { code: -32000, message: 'boom' } }) + '\\n')
@@ -94,4 +98,28 @@ test('child exit rejects pending requests', async () => {
   await assert.rejects(p, /exited|closed|EOF/i)
   // Ensure the client is cleaned up.
   await client.close().catch(() => {})
+})
+
+test('startWorker rejects when the executable cannot spawn', async () => {
+  await assert.rejects(
+    () => startWorker({ jar: 'missing.jar', java: path.join(os.tmpdir(), 'missing-fengyu-java') }),
+    /ENOENT|spawn/,
+  )
+})
+
+test('timeout removes the abort listener', async () => {
+  const client = await startFixture()
+  const controller = new AbortController()
+  let removes = 0
+  const remove = controller.signal.removeEventListener.bind(controller.signal)
+  controller.signal.removeEventListener = (...args) => { removes++; return remove(...args) }
+  try {
+    await assert.rejects(
+      () => client.invoke('never', {}, { signal: controller.signal, timeoutMs: 5 }),
+      /timed out/,
+    )
+    assert.equal(removes, 1)
+  } finally {
+    await client.close()
+  }
 })

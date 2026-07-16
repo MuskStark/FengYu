@@ -19,6 +19,23 @@ export async function startWorker({ jar, java = 'java', javaArgs = [], cwd, onSt
   const args = jar ? ['-jar', jar, ...javaArgs] : javaArgs
   const child = spawn(command, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] })
 
+  await new Promise((resolve, reject) => {
+    const cleanup = () => {
+      child.removeListener('spawn', onSpawn)
+      child.removeListener('error', onError)
+      child.removeListener('exit', onExit)
+    }
+    const onSpawn = () => { cleanup(); resolve() }
+    const onError = (error) => { cleanup(); reject(error) }
+    const onExit = (code, signal) => {
+      cleanup()
+      reject(new Error(`worker exited before spawn readiness (code=${code}, signal=${signal})`))
+    }
+    child.once('spawn', onSpawn)
+    child.once('error', onError)
+    child.once('exit', onExit)
+  })
+
   const pending = new Map()
   let nextId = 1
   let exited = false
@@ -33,11 +50,8 @@ export async function startWorker({ jar, java = 'java', javaArgs = [], cwd, onSt
       return
     }
     const id = String(message.id ?? '')
-    const entry = pending.get(id)
+    const entry = takePending(id)
     if (!entry) return
-    pending.delete(id)
-    clearTimeout(entry.timer)
-    if (entry.signal && entry.abort) entry.signal.removeEventListener('abort', entry.abort)
     if (message.error) {
       entry.reject(new Error(`worker error ${message.error.code}: ${message.error.message}`))
     } else {
@@ -60,14 +74,22 @@ export async function startWorker({ jar, java = 'java', javaArgs = [], cwd, onSt
     exited = true
     rejectAll(new Error(`worker exited (code=${code}, signal=${signal})`))
   })
+  child.on('error', (error) => {
+    exited = true
+    rejectAll(error)
+  })
+
+  function takePending(id) {
+    const entry = pending.get(id)
+    if (!entry) return undefined
+    pending.delete(id)
+    clearTimeout(entry.timer)
+    if (entry.signal && entry.abort) entry.signal.removeEventListener('abort', entry.abort)
+    return entry
+  }
 
   function rejectAll(error) {
-    for (const [, entry] of pending) {
-      clearTimeout(entry.timer)
-      if (entry.signal && entry.abort) entry.signal.removeEventListener('abort', entry.abort)
-      entry.reject(error)
-    }
-    pending.clear()
+    for (const id of [...pending.keys()]) takePending(id)?.reject(error)
   }
 
   return {
@@ -76,13 +98,10 @@ export async function startWorker({ jar, java = 'java', javaArgs = [], cwd, onSt
       const id = String(nextId++)
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
-          pending.delete(id)
-          reject(new Error(`worker request timed out: ${method}`))
+          takePending(id)?.reject(new Error(`worker request timed out: ${method}`))
         }, options.timeoutMs ?? 30_000)
         const abort = options.signal ? () => {
-          pending.delete(id)
-          clearTimeout(timer)
-          reject(new DOMException('Aborted', 'AbortError'))
+          takePending(id)?.reject(new DOMException('Aborted', 'AbortError'))
         } : undefined
         if (options.signal && abort) {
           if (options.signal.aborted) { clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); return }
@@ -92,9 +111,7 @@ export async function startWorker({ jar, java = 'java', javaArgs = [], cwd, onSt
         try {
           child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
         } catch (e) {
-          pending.delete(id)
-          clearTimeout(timer)
-          reject(new Error(`failed to write to worker: ${e.message}`))
+          takePending(id)?.reject(new Error(`failed to write to worker: ${e.message}`))
         }
       })
     },
@@ -104,6 +121,7 @@ export async function startWorker({ jar, java = 'java', javaArgs = [], cwd, onSt
     async close() {
       if (exited) return
       exited = true
+      rejectAll(new Error('worker closed'))
       try { child.stdin.end() } catch { /* ignore */ }
       try { child.kill('SIGTERM') } catch { /* ignore */ }
       // Force-kill after a short grace so lingering children never keep the

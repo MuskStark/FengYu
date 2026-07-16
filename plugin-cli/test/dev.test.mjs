@@ -77,6 +77,7 @@ async function makeDeclaredWorkerProject() {
   // Artifact exists so dev skips the initial build.
   await fs.mkdir(path.join(root, 'worker'), { recursive: true })
   await fs.writeFile(path.join(root, 'worker/worker.jar'), Buffer.from('PK'))
+  await fs.writeFile(path.join(root, 'worker/mvnw'), '#!/bin/sh\n', { mode: 0o755 })
   return root
 }
 
@@ -109,5 +110,57 @@ test('declared worker dev forwards rpc.invoke to the worker via /__rpc', async (
     assert.deepEqual(invoked, [{ method: 'hello', params: { name: 'Ada' } }])
   } finally {
     await server.close()
+  }
+})
+
+test('declared dev rejects RPC while rebuilding and closes a replacement created during shutdown', async () => {
+  const root = await makeDeclaredWorkerProject()
+  let releaseBuild
+  const buildStarted = new Promise((resolve) => {
+    releaseBuild = { started: resolve }
+  })
+  let finishBuild
+  const buildGate = new Promise((resolve) => { finishBuild = resolve })
+  const clients = []
+  const startWorkerImpl = async () => {
+    const client = {
+      closeCalls: 0,
+      invoke: async () => ({ ok: true }),
+      close: async () => { client.closeCalls++ },
+    }
+    clients.push(client)
+    return client
+  }
+  const server = await dev(root, 4181, {
+    startWorkerImpl,
+    run: async () => { releaseBuild.started(); await buildGate },
+    open: false,
+  })
+  let closing
+  try {
+    await fs.writeFile(path.join(root, 'worker/Changed.java'), 'class Changed {}')
+    await Promise.race([
+      buildStarted,
+      new Promise((_, reject) => {
+        const timer = setTimeout(() => reject(new Error('rebuild did not start')), 3000)
+        timer.unref?.()
+      }),
+    ])
+
+    const rpc = await fetch('http://127.0.0.1:4181/__rpc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: '1', method: 'hello', params: {} }),
+    }).then((response) => response.json())
+    assert.match(rpc.error, /worker rebuilding/)
+
+    closing = server.close()
+    finishBuild()
+    await closing
+    assert.equal(clients.length, 2)
+    assert.equal(clients.every((client) => client.closeCalls === 1), true)
+  } finally {
+    finishBuild()
+    if (!closing) await server.close()
   }
 })
