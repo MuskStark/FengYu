@@ -11,12 +11,16 @@ on:
       - 'plugin-ui/**'
       - 'plugin-cli/**'
       - 'plugin-sdk/**'
+      - 'FengYu-Plugin-Sdk/**'
+      - 'OfficialPlugins/**'
       - '.github/workflows/plugin-tooling.yml'
   pull_request:
     paths:
       - 'plugin-ui/**'
       - 'plugin-cli/**'
       - 'plugin-sdk/**'
+      - 'FengYu-Plugin-Sdk/**'
+      - 'OfficialPlugins/**'
       - '.github/workflows/plugin-tooling.yml'
   workflow_dispatch:
 
@@ -72,3 +76,36 @@ jobs:
             plugin-ui/vue/e2e/workbench.spec.ts-snapshots
           if-no-files-found: ignore
           retention-days: 14
+
+  # Build every official plugin through the CLI and upload the .fyp artifacts so
+  # the downstream host smoke job can install real CLI-produced packages.
+  official-plugins:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: [markdown, excel, email]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: plugin-cli/package-lock.json
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      # The Java SDK is independently versioned (1.0.0) but stays in the reactor,
+      # so a local install makes it resolvable without a GitHub Packages token.
+      - run: ./mvnw -pl FengYu-Plugin-Sdk install -DskipTests
+      - run: npm install
+        working-directory: plugin-cli
+      - run: node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-${{ matrix.plugin }}
+      - name: Upload .fyp
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-${{ matrix.plugin }}-fyp
+          path: OfficialPlugins/plugin-${{ matrix.plugin }}/dist-package/*.fyp
+          if-no-files-found: error
