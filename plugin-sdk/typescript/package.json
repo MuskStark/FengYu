@@ -8,11 +8,14 @@
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
   "files": ["dist", "README.md"],
   "scripts": {
-    "build": "../../frontend/node_modules/.bin/tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test test/*.test.mjs",
-    "prepack": "npm run build && npm test"
+    "prepack": "npm test"
   },
   "license": "GPL-3.0",
   "repository": { "type": "git", "url": "git+https://github.com/MuskStark/FengYu.git", "directory": "plugin-sdk/typescript" },
-  "publishConfig": { "access": "public" }
+  "publishConfig": { "access": "public" },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
 }
