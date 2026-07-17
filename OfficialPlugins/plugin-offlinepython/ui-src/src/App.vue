@@ -27,7 +27,7 @@ const active = ref('build')
 </script>
 
 <template>
-  <FyPluginShell :title="t('opb.title')" :items="nav" v-model="active">
+  <FyPluginShell :title="t('opb.title')" :brand="t('opb.title')" :items="nav" v-model="active">
     <template #default>
       <v-container fluid class="pa-4">
         <BuildVerifyPanel
