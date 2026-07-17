@@ -71,6 +71,7 @@ function select(item: FyNavItem): void {
     <v-navigation-drawer
       :rail="!temporary"
       :temporary="temporary"
+      :mobile-breakpoint="railBreakpoint"
       :model-value="temporary ? drawerOpen : true"
       @update:model-value="drawerOpen = $event"
     >
