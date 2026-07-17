@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useDisplay } from 'vuetify'
+import FyIcon from './FyIcon.vue'
 
 /**
  * A single navigation entry rendered by {@link FyPluginShell}.
  *
  * - `value` identifies the active item and is emitted via `update:modelValue`.
- * - `icon` is an MDI icon name (`mdi-*`) rendered with `v-icon`.
+ * - `icon` is either inline SVG path data (preferred — a string from
+ *   `@mdi/js` beginning with `M`, rendered via {@link FyIcon}) or a legacy
+ *   `mdi-*` webfont name (rendered via `v-icon`; note the webfont is not
+ *   reliably bundled and may show tofu squares, so prefer path data).
  * - `disabled` items do not emit on click.
  */
 export interface FyNavItem {
@@ -18,15 +22,11 @@ export interface FyNavItem {
 
 const props = withDefaults(
   defineProps<{
-    /** Shell title shown in the navigation drawer header and the app bar. */
-    title?: string
     /**
-     * Short brand label rendered as a marker at the top of the rail. Falls back
-     * to {@link title} when omitted. In the collapsed rail the label is hidden
-     * and only the brand dot remains (the title is still exposed via the app
-     * bar in temporary mode and the drawer header in expanded mode).
+     * Shell title shown in the mobile (temporary) app bar. The desktop rail is
+     * icon-only and renders neither the title nor any brand label.
      */
-    brand?: string
+    title?: string
     /** Navigation items to render. */
     items?: FyNavItem[]
     /** Active item value (v-model). */
@@ -36,7 +36,6 @@ const props = withDefaults(
   }>(),
   {
     title: '',
-    brand: '',
     items: () => [],
     modelValue: undefined,
     railBreakpoint: 720,
@@ -60,8 +59,15 @@ const temporary = computed(() => width.value < props.railBreakpoint)
 /** Temporary drawer open state, toggled by the app-bar nav icon. */
 const drawerOpen = ref(false)
 
-/** Resolved brand label — explicit `brand` wins, then `title`. */
-const brandLabel = computed(() => props.brand || props.title)
+/**
+ * True when an icon string is SVG path data (from `@mdi/js`) rather than a
+ * legacy `mdi-*` webfont name. MDI path data always begins with an `M`/`m`
+ * move command; webfont names always begin with `mdi-`. Path data renders via
+ * inline {@link FyIcon} (no font, no CSP risk); names fall back to `v-icon`.
+ */
+function isIconPath(icon: string | undefined): boolean {
+  return !!icon && /^m/i.test(icon)
+}
 
 function select(item: FyNavItem): void {
   if (item.disabled) return
@@ -87,10 +93,6 @@ function select(item: FyNavItem): void {
       :model-value="temporary ? drawerOpen : true"
       @update:model-value="drawerOpen = $event"
     >
-      <div v-if="brandLabel" class="fy-shell__brand" :title="brandLabel">
-        <span class="fy-shell__brand-mark" aria-hidden="true"></span>
-        <span v-if="!temporary" class="fy-shell__brand-label">{{ brandLabel }}</span>
-      </div>
       <v-list nav class="fy-shell__list">
         <v-list-item
           v-for="item in items"
@@ -104,7 +106,8 @@ function select(item: FyNavItem): void {
           @click="select(item)"
         >
           <template v-if="item.icon" #prepend>
-            <v-icon :icon="item.icon" />
+            <FyIcon v-if="isIconPath(item.icon)" :path="item.icon" :size="24" />
+            <v-icon v-else :icon="item.icon" />
           </template>
           <v-list-item-title>{{ item.title }}</v-list-item-title>
         </v-list-item>

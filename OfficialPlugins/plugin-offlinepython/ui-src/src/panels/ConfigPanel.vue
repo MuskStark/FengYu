@@ -2,7 +2,9 @@
 import { ref, watch } from 'vue'
 import type { FengYuClient, FileRef } from '@infinia/plugin-sdk'
 import { FyEmptyState } from '@infinia/plugin-ui'
-import { call, field, refPath } from '../rpc'
+import { mdiFolderOpenOutline } from '@mdi/js'
+import { callChecked, field } from '../rpc'
+import { configForm, type WorkerConfig } from '../configState'
 
 type Translate = (key: string, ...args: (string | number)[]) => string
 
@@ -20,44 +22,47 @@ const platformsCsv = ref('win_amd64')
 const onlyBinary = ref(true)
 const recursive = ref(true)
 const loading = ref(false)
-const initialised = ref(false)
+let loadVersion = 0
 
 function errorText(error: unknown): string {
   return error instanceof Error && error.message ? error.message : props.t('opb.common.error')
 }
 
 async function loadConfig() {
-  if (!props.project) return
-  const dir = refPath(props.project)!
+  const version = ++loadVersion
+  const project = props.project
+  const defaults = configForm()
+  requirements.value = ''
+  pythonVersion.value = defaults.pythonVersion
+  platformsCsv.value = defaults.platformsCsv
+  onlyBinary.value = defaults.onlyBinary
+  recursive.value = defaults.recursive
+  if (!project) return
   loading.value = true
   try {
-    const req = await call(props.client, 'requirements.get', { projectDir: dir })
-    requirements.value = req.success ? String(field<string>(req, 'text') ?? '') : ''
-    const cfg = await call(props.client, 'config.get', { projectDir: dir, session: 'ui' })
-    const config = cfg.success ? field<{
-      python?: { version?: string; platforms?: string[] }
-      download?: { onlyBinary?: boolean; recursive?: boolean }
-    }>(cfg, 'config') : undefined
-    if (config) {
-      pythonVersion.value = config.python?.version ?? pythonVersion.value
-      platformsCsv.value = (config.python?.platforms ?? []).join(', ') || platformsCsv.value
-      onlyBinary.value = config.download?.onlyBinary ?? onlyBinary.value
-      recursive.value = config.download?.recursive ?? recursive.value
-    }
-    initialised.value = true
+    const req = await callChecked(props.client, 'requirements.get', { projectDir: project })
+    if (version !== loadVersion) return
+    requirements.value = String(field<string>(req, 'text') ?? '')
+    const cfg = await callChecked(props.client, 'config.get', { projectDir: project, session: 'ui' })
+    if (version !== loadVersion) return
+    const form = configForm(field<WorkerConfig>(cfg, 'config'))
+    pythonVersion.value = form.pythonVersion
+    platformsCsv.value = form.platformsCsv
+    onlyBinary.value = form.onlyBinary
+    recursive.value = form.recursive
   } catch (error) {
-    emit('toast', errorText(error))
+    if (version === loadVersion) emit('toast', errorText(error))
   } finally {
-    loading.value = false
+    if (version === loadVersion) loading.value = false
   }
 }
 
 async function save() {
-  if (!props.project) return
-  const dir = refPath(props.project)!
+  const project = props.project
+  if (!project) return
   loading.value = true
   try {
-    await call(props.client, 'requirements.save', { projectDir: dir, text: requirements.value })
+    await callChecked(props.client, 'requirements.save', { projectDir: project, text: requirements.value })
     const config = {
       python: {
         version: pythonVersion.value,
@@ -65,8 +70,8 @@ async function save() {
       },
       download: { onlyBinary: onlyBinary.value, recursive: recursive.value },
     }
-    const res = await call(props.client, 'config.save', { projectDir: dir, session: 'ui', config })
-    emit('toast', res.success ? props.t('opb.config.saved') : res.summary)
+    await callChecked(props.client, 'config.save', { projectDir: project, session: 'ui', config })
+    emit('toast', props.t('opb.config.saved'))
   } catch (error) {
     emit('toast', errorText(error))
   } finally {
@@ -82,7 +87,7 @@ watch(() => props.project, loadConfig, { immediate: true })
     v-if="!project"
     :title="t('opb.project.empty')"
     :message="t('opb.config.openPrompt')"
-    icon="mdi-folder-open-outline"
+    :icon="mdiFolderOpenOutline"
   />
   <v-card v-else flat border>
     <v-card-text>

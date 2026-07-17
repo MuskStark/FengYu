@@ -14,8 +14,10 @@
  * - A `loading` guard blocks concurrent picks.
  */
 import type { FileFilter, FileRef } from '@infinia/plugin-sdk'
+import { mdiFileDocumentOutline, mdiFileOutline } from '@mdi/js'
 import { useFengYuClient } from '../client'
 import { useFengYuPick } from '../composables/useFengYuPick'
+import FyIcon from './FyIcon.vue'
 import FyPermissionNotice from './FyPermissionNotice.vue'
 import FyErrorState from './FyErrorState.vue'
 
@@ -60,9 +62,11 @@ const { loading, errorMessage, permissionDenied, pick } = useFengYuPick({
       :loading="loading"
       :disabled="loading"
       data-action="pick-file"
-      :prepend-icon="extensions.length ? 'mdi-file-document-outline' : 'mdi-file-outline'"
       @click="pick"
     >
+      <template #prepend>
+        <FyIcon :path="extensions.length ? mdiFileDocumentOutline : mdiFileOutline" :size="20" />
+      </template>
       {{ label }}
     </v-btn>
 
