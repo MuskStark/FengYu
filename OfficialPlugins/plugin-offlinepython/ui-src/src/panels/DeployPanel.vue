@@ -2,7 +2,8 @@
 import { onUnmounted, ref } from 'vue'
 import type { FengYuClient, FileRef } from '@infinia/plugin-sdk'
 import { FyFilePicker } from '@infinia/plugin-ui'
-import { call, field, refPath } from '../rpc'
+import { call, callChecked, field } from '../rpc'
+import { readJobSnapshot, type UiJobStatus } from '../jobState'
 
 type Translate = (key: string, ...args: (string | number)[]) => string
 
@@ -13,7 +14,7 @@ const bundle = ref<FileRef | null>(null)
 const targetKind = ref<'global' | 'venv'>('global')
 const venvPath = ref('')
 const logs = ref<string[]>([])
-const status = ref('idle')
+const status = ref<UiJobStatus>('idle')
 const installing = ref(false)
 const jobId = ref<string | null>(null)
 let poll: ReturnType<typeof setInterval> | null = null
@@ -28,20 +29,19 @@ function stopPolling() {
 }
 
 async function startInstall() {
-  const zipPath = refPath(bundle.value)
-  if (!zipPath) { emit('toast', props.t('opb.deploy.bundleRequired')); return }
+  if (!bundle.value) { emit('toast', props.t('opb.deploy.bundleRequired')); return }
   logs.value = []
   status.value = 'starting'
   installing.value = true
   try {
     const target: Record<string, unknown> = { kind: targetKind.value }
     if (targetKind.value === 'venv') target.venvPath = venvPath.value
-    const res = await call(props.client, 'deploy.start', { zipPath, target })
+    const res = await callChecked(props.client, 'deploy.start', { zipPath: bundle.value, target })
     const id = field<string>(res, 'jobId')
-    if (!res.success || !id) {
+    if (!id) {
       status.value = 'error'
       installing.value = false
-      emit('toast', res.success ? props.t('opb.deploy.failed') : res.summary)
+      emit('toast', props.t('opb.deploy.failed'))
       return
     }
     jobId.value = id
@@ -57,15 +57,23 @@ async function pollStatus() {
   if (!jobId.value) return
   try {
     const s = await call(props.client, 'deploy.status', { jobId: jobId.value, cursor: logs.value.length })
-    if (!s.success) return
-    const sLogs = field<string[]>(s, 'logs') ?? []
-    if (sLogs.length) logs.value.push(...sLogs)
-    status.value = field<string>(s, 'status') ?? status.value
-    if (field<boolean>(s, 'done')) {
+    const snapshot = readJobSnapshot(s)
+    if (snapshot.logs.length) logs.value.push(...snapshot.logs)
+    status.value = snapshot.status
+    if (!snapshot.ok) {
+      stopPolling()
+      installing.value = false
+      jobId.value = null
+      emit('toast', snapshot.summary)
+      return
+    }
+    if (snapshot.done) {
       installing.value = false
       stopPolling()
-      const err = field<string>(s, 'error')
-      emit('toast', err ? props.t('opb.deploy.failed') : props.t('opb.deploy.completed', status.value))
+      jobId.value = null
+      emit('toast', snapshot.error || snapshot.status === 'failed'
+        ? props.t('opb.deploy.failed')
+        : props.t('opb.deploy.completed', props.t(`opb.deploy.status.${snapshot.status}`)))
     }
   } catch (error) {
     stopPolling()
@@ -75,11 +83,17 @@ async function pollStatus() {
   }
 }
 
-function cancel() {
-  if (jobId.value) call(props.client, 'deploy.cancel', { jobId: jobId.value })
-  installing.value = false
-  stopPolling()
-  status.value = 'cancelled'
+async function cancel() {
+  if (!jobId.value) return
+  try {
+    await callChecked(props.client, 'deploy.cancel', { jobId: jobId.value })
+    installing.value = false
+    stopPolling()
+    jobId.value = null
+    status.value = 'cancelled'
+  } catch (error) {
+    emit('toast', errorText(error))
+  }
 }
 
 onUnmounted(stopPolling)

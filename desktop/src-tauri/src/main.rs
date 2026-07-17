@@ -14,6 +14,7 @@ use tauri::{Manager, State};
 /// platform resource directory at install time; this struct resolves their absolute paths from a
 /// single `resource_dir()` so the backend is spawned against the right files regardless of where
 /// the OS installed the app.
+#[cfg(any(not(debug_assertions), test))]
 #[derive(Clone)]
 struct RuntimeLayout {
     jar: std::path::PathBuf,
@@ -24,6 +25,7 @@ struct RuntimeLayout {
 ///
 /// `resource_dir` is `app.path().resource_dir()` in prod (Tauri's platform install location) and
 /// any path in tests. Kept cfg-free so the unit test (compiled under `debug_assertions`) can call it.
+#[cfg(any(not(debug_assertions), test))]
 fn runtime_layout(resource_dir: &std::path::Path) -> RuntimeLayout {
     RuntimeLayout {
         jar: resource_dir.join("binaries").join("FengYu.jar"),
@@ -31,12 +33,14 @@ fn runtime_layout(resource_dir: &std::path::Path) -> RuntimeLayout {
     }
 }
 
+#[cfg(any(not(debug_assertions), test))]
 #[derive(Debug, PartialEq, Eq)]
 enum StartupAction {
     ShowWindow,
     ShowWindowAndSupervise { port: u16 },
 }
 
+#[cfg(any(not(debug_assertions), test))]
 fn startup_action(setup_mode: bool, port: u16) -> StartupAction {
     if setup_mode {
         StartupAction::ShowWindowAndSupervise { port }
@@ -45,6 +49,7 @@ fn startup_action(setup_mode: bool, port: u16) -> StartupAction {
     }
 }
 
+#[cfg(any(not(debug_assertions), test))]
 fn should_restart_setup(shutting_down: bool, exit_code: Option<i32>) -> bool {
     !shutting_down && exit_code == Some(0)
 }

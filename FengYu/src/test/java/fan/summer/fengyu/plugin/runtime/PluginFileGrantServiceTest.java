@@ -31,6 +31,18 @@ class PluginFileGrantServiceTest {
     }
 
     @Test
+    void uploadsWritableWorkspaceDirectory() throws Exception {
+        PluginFileGrantService service = new PluginFileGrantService(temp);
+        var ref = service.uploadDirectory("fan.summer.offlinepython",
+            List.of(file("numpy", "requirements.txt")), List.of("requirements.txt"), "read-write");
+
+        assertEquals("read-write", ref.access());
+        Path root = service.resolve("fan.summer.offlinepython", ref.id());
+        Files.writeString(root.resolve("config.json"), "{}");
+        assertEquals("{}", Files.readString(root.resolve("config.json")));
+    }
+
+    @Test
     void rejectsDirectoryTraversalAndAbsolutePaths() {
         PluginFileGrantService service = new PluginFileGrantService(temp);
         assertThrows(IllegalArgumentException.class, () -> service.uploadDirectory(
@@ -52,6 +64,19 @@ class PluginFileGrantServiceTest {
         assertEquals("original", Files.readString(granted.resolve("message.txt")));
         Files.writeString(granted.resolve("message.txt"), "changed-copy");
         assertEquals("original", Files.readString(source.resolve("message.txt")));
+    }
+
+    @Test
+    void nativeReadWriteDirectoryUsesSelectedProject() throws Exception {
+        Path source = Files.createDirectories(temp.resolve("workspace"));
+        PluginFileGrantService service = new PluginFileGrantService(temp.resolve("grants-write"));
+
+        var ref = service.grantNative("fan.summer.offlinepython", source.toString(),
+            "directory", "read-write");
+        Path granted = service.resolve("fan.summer.offlinepython", ref.id());
+
+        assertEquals("read-write", ref.access());
+        assertEquals(source.toRealPath(), granted);
     }
 
     private static MockMultipartFile file(String body, String name) {
