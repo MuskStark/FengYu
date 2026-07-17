@@ -187,7 +187,7 @@ public final class OfflinePythonRpcHandlers {
             List<Map<String, Object>> checks = doctorService.run(exe).stream()
                     .map(c -> {
                         Map<String, Object> m = new LinkedHashMap<>();
-                        m.put("name", c.name());
+                        m.put("id", c.id());
                         m.put("value", c.value());
                         m.put("ok", c.ok());
                         return m;

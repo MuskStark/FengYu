@@ -90,6 +90,8 @@ function cancel(): void {
     :model-value="modelValue"
     max-width="480"
     persistent
+    :retain-focus="false"
+    :capture-focus="false"
     role="dialog"
     aria-modal="true"
     @update:model-value="($event as boolean) ? close(true) : cancel()"

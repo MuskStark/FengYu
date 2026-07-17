@@ -8,12 +8,26 @@ type Translate = (key: string, ...args: (string | number)[]) => string
 const props = defineProps<{ client: FengYuClient; t: Translate }>()
 const emit = defineEmits<{ (e: 'toast', msg: string): void }>()
 
-interface Check { name: string; value: string; ok: boolean }
+interface Check { id: string; value: string; ok: boolean }
 interface Detection { executable: string | null; pythonVersion: string | null; pipVersion: string | null; ok: boolean }
 
 const detection = ref<Detection | null>(null)
 const checks = ref<Check[]>([])
 const loading = ref(false)
+
+/** Worker returns locale-independent short labels for status-flavored values;
+ *  translate them here. Data values (versions, paths) pass through unchanged. */
+const VALUE_LABELS = new Set(['not_found', 'missing', 'supported', 'unsupported', 'reachable', 'unreachable'])
+
+function checkName(id: string): string {
+  return props.t(`opb.doctor.check.${id}`)
+}
+
+function checkValue(c: Check): string {
+  if (VALUE_LABELS.has(c.value)) return props.t(`opb.doctor.value.${c.value}`)
+  if (c.id === 'disk_space') return props.t('opb.doctor.value.gb_available', c.value)
+  return c.value
+}
 
 function errorText(error: unknown): string {
   return error instanceof Error && error.message ? error.message : props.t('opb.common.error')
@@ -58,9 +72,9 @@ onMounted(refresh)
           </tr>
         </thead>
         <tbody>
-          <tr v-for="c in checks" :key="c.name">
-            <td>{{ c.name }}</td>
-            <td>{{ c.value }}</td>
+          <tr v-for="c in checks" :key="c.id">
+            <td>{{ checkName(c.id) }}</td>
+            <td>{{ checkValue(c) }}</td>
             <td>
               <v-chip :color="c.ok ? 'success' : 'error'" size="small">{{ c.ok ? t('opb.common.ok') : t('opb.common.fail') }}</v-chip>
             </td>

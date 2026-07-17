@@ -12,15 +12,16 @@ class DoctorServiceTest {
     @Test
     void runReturnsExpectedCheckNames() {
         List<DoctorService.Check> checks = new DoctorService().run(null);
-        var names = checks.stream().map(DoctorService.Check::name).toList();
-        assertTrue(names.contains("Python 解释器"));
-        assertTrue(names.contains("Python 版本"));
-        assertTrue(names.contains("pip"));
-        assertTrue(names.contains("pip download 可用"));
-        assertTrue(names.contains("网络 (PyPI)"));
-        assertTrue(names.contains("磁盘空间"));
-        assertTrue(names.contains("缓存目录"));
-        assertTrue(names.size() >= 7);
+        // ids are stable, locale-independent identifiers the UI translates.
+        var ids = checks.stream().map(DoctorService.Check::id).toList();
+        assertTrue(ids.contains("python_interpreter"));
+        assertTrue(ids.contains("python_version"));
+        assertTrue(ids.contains("pip"));
+        assertTrue(ids.contains("pip_download"));
+        assertTrue(ids.contains("network"));
+        assertTrue(ids.contains("disk_space"));
+        assertTrue(ids.contains("cache_dir"));
+        assertTrue(ids.size() >= 7);
     }
 
     @Test
