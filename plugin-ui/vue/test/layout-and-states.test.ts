@@ -66,3 +66,68 @@ describe('FyPluginShell drawer breakpoint', () => {
     expect(wrapper.find('.v-app-bar-nav-icon').exists()).toBe(true)
   })
 })
+
+describe('FyPluginShell refined rail chrome', () => {
+  it('renders a brand marker in the rail when a brand is provided', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1014 })
+    window.dispatchEvent(new Event('resize'))
+    const wrapper = mount(FyPluginShell, {
+      global: { plugins: [createFengYuVuetify()] },
+      props: {
+        title: 'Offline Python',
+        brand: 'Offline Python',
+        modelValue: 'build',
+        items: [{ value: 'build', title: 'Build', icon: 'mdi-hammer-wrench' }],
+      },
+    })
+    await nextTick()
+
+    // The refined rail exposes a stable class for the brand marker so plugin
+    // authors and visual tests can target it; falls back to the title when the
+    // dedicated brand prop is absent.
+    expect(wrapper.find('.fy-shell__brand').exists()).toBe(true)
+    expect(wrapper.find('.fy-shell__brand').text()).toContain('Offline Python')
+  })
+
+  it('marks the active nav item with a refinement hook class', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1014 })
+    window.dispatchEvent(new Event('resize'))
+    const wrapper = mount(FyPluginShell, {
+      global: { plugins: [createFengYuVuetify()] },
+      props: {
+        title: 'Workbench',
+        modelValue: 'build',
+        items: [
+          { value: 'build', title: 'Build', icon: 'mdi-hammer-wrench' },
+          { value: 'doctor', title: 'Doctor', icon: 'mdi-stethoscope' },
+        ],
+      },
+    })
+    await nextTick()
+
+    const items = wrapper.findAll('[data-nav]')
+    expect(items).toHaveLength(2)
+    const active = wrapper.get('[data-nav="build"]')
+    // Each item carries the refinement base class; the active one carries the
+    // active modifier so the rail can paint a soft primary chip on it.
+    expect(active.classes()).toContain('fy-shell__item')
+    expect(active.classes()).toContain('fy-shell__item--active')
+    expect(wrapper.get('[data-nav="doctor"]').classes()).not.toContain('fy-shell__item--active')
+  })
+
+  it('scopes the rail under a fy-shell class for refinement targeting', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1014 })
+    window.dispatchEvent(new Event('resize'))
+    const wrapper = mount(FyPluginShell, {
+      global: { plugins: [createFengYuVuetify()] },
+      props: {
+        title: 'Workbench',
+        modelValue: 'build',
+        items: [{ value: 'build', title: 'Build', icon: 'mdi-hammer-wrench' }],
+      },
+    })
+    await nextTick()
+
+    expect(wrapper.get('.v-navigation-drawer').classes()).toContain('fy-shell__rail')
+  })
+})
