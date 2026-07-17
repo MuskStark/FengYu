@@ -20,7 +20,7 @@ fi
 # then stage their .fyp outputs into a single official-packages directory the
 # host is pointed at. This replaces the old per-plugin shell packager.
 OFFICIAL_DIR="$(mktemp -d)"
-for plugin in markdown excel email; do
+for plugin in markdown excel email offlinepython; do
   if ! node "$ROOT/plugin-cli/bin/fengyu.mjs" plugin build "$ROOT/OfficialPlugins/plugin-$plugin" >/dev/null; then
     echo "FAIL: fengyu plugin build OfficialPlugins/plugin-$plugin failed"
     rm -rf "$OFFICIAL_DIR"
@@ -77,6 +77,7 @@ fail() { echo "FAIL: $1"; tail -100 server.log; exit 1; }
 # Installed package discovery lists all official plugins.
 RUNTIME="$(curl -s "${AUTH[@]}" "$H/api/plugin-runtime")"
 echo "$RUNTIME" | grep -q 'fan.summer.markdown' || fail "Markdown plugin not listed: $RUNTIME"
+echo "$RUNTIME" | grep -q 'fan.summer.offlinepython' || fail "Offline Python plugin not listed: $RUNTIME"
 
 # invoke render returns correct HTML.
 RENDER="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
@@ -90,6 +91,21 @@ CODE="$(curl -s -o /dev/null -w '%{http_code}' "$H/api/plugin-runtime")"
 [ "$CODE" = 401 ] || fail "expected 401 without token, got $CODE"
 
 echo "PASS: health + plugins + Markdown render + token auth all OK (port=$PORT)"
+
+# Offline Python receives a writable project workspace and the host resolves the complete
+# FileRef object before dispatching to the out-of-process worker.
+printf 'numpy==1.26.4\n' > "$WORK/requirements.txt"
+OPB_PROJECT="$(curl -s "${AUTH[@]}" -F "files=@$WORK/requirements.txt" -F 'paths=requirements.txt' \
+  "$H/api/plugin-runtime/fan.summer.offlinepython/files/upload-directory?access=read-write")"
+echo "$OPB_PROJECT" | grep -q '"access":"read-write"' || fail "offlinepython workspace grant: $OPB_PROJECT"
+OPB_GET_BODY="$(python3 -c 'import json,sys; print(json.dumps({"method":"requirements.get","params":{"projectDir":json.loads(sys.argv[1])}}))' "$OPB_PROJECT")"
+OPB_GET="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+  "$H/api/plugin-runtime/fan.summer.offlinepython/invoke" -d "$OPB_GET_BODY")"
+echo "$OPB_GET" | grep -q 'numpy==1.26.4' || fail "offlinepython FileRef resolution: $OPB_GET"
+OPB_SAVE_BODY="$(python3 -c 'import json,sys; print(json.dumps({"method":"requirements.save","params":{"projectDir":json.loads(sys.argv[1]),"text":"requests==2.32.4\\n"}}))' "$OPB_PROJECT")"
+curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+  "$H/api/plugin-runtime/fan.summer.offlinepython/invoke" -d "$OPB_SAVE_BODY" | grep -q '"success":true' \
+  && echo "PASS: offlinepython writable workspace + FileRef bridge" || fail "offlinepython requirements save"
 
 # --- Excel plugin (web upload -> analyze -> split -> archive) ---
 

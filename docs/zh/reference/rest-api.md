@@ -51,7 +51,7 @@ SSE 端点通过 `X-FengYu-Token` 头进行鉴权——**没有** `?token=` 查�
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | `POST` | `/api/plugin-runtime/{id}/files/upload` | token + `files.read` | 上传单个文件（multipart `file`）→ 以快照形式落到临时目录的 `FileRef`。 |
-| `POST` | `/api/plugin-runtime/{id}/files/upload-directory` | token + `files.read` | 上传一棵目录树（multipart `files` + `paths[]`）→ 目录 `FileRef`。 |
+| `POST` | `/api/plugin-runtime/{id}/files/upload-directory` | token + `files.read`（`read-write` 另需 `files.write`） | 上传一棵目录树（multipart `files` + `paths[]`，可选 `access=read-write`）→ 目录 `FileRef`。 |
 | `POST` | `/api/plugin-runtime/{id}/files/native` | token + `files.read` 和/或 `files.write` | 把一条原生操作系统路径（请求体 `{path, kind, access}`）包装为 `FileRef`。仅限桌面端。 |
 | `POST` | `/api/plugin-runtime/{id}/files/output` | token + `files.write` | 分配一个全新的可写输出目录 → `FileRef`。 |
 | `GET` | `/api/plugin-runtime/{id}/files/export/{ref}` | token + `files.write` | 以 zip 形式流式下载被授权目录的内容。 |

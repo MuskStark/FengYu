@@ -101,7 +101,7 @@ export const api = {
     return data
   },
 
-  async uploadRuntimeDirectory(id: string, files: File[]): Promise<PluginFileRef> {
+  async uploadRuntimeDirectory(id: string, files: File[], access: 'read' | 'read-write' = 'read'): Promise<PluginFileRef> {
     const body = new FormData()
     for (const file of files) {
       body.append('files', file)
@@ -109,7 +109,7 @@ export const api = {
     }
     const { data } = await http.post<PluginFileRef>(
       `/api/plugin-runtime/${encodeURIComponent(id)}/files/upload-directory`, body,
-      { headers: { 'Content-Type': undefined } },
+      { headers: { 'Content-Type': undefined }, params: { access } },
     )
     return data
   },

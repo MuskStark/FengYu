@@ -39,6 +39,14 @@ public class PluginFileGrantService {
 
     public FileRef uploadDirectory(String pluginId, List<MultipartFile> files,
             List<String> relativePaths) throws IOException {
+        return uploadDirectory(pluginId, files, relativePaths, "read");
+    }
+
+    public FileRef uploadDirectory(String pluginId, List<MultipartFile> files,
+            List<String> relativePaths, String access) throws IOException {
+        if (!List.of("read", "read-write").contains(access)) {
+            throw new IllegalArgumentException("Uploaded directories require read or read-write access");
+        }
         if (files == null || files.isEmpty()) throw new IllegalArgumentException("Directory is empty");
         if (relativePaths == null || files.size() != relativePaths.size()) {
             throw new IllegalArgumentException("Each uploaded file requires one relative path");
@@ -60,12 +68,13 @@ public class PluginFileGrantService {
                 Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
             }
         }
-        return register(pluginId, directory, "directory", "read");
+        return register(pluginId, directory, "directory", access);
     }
 
     public FileRef grantNative(String pluginId, String rawPath, String kind, String access) throws IOException {
         Path path = Path.of(rawPath).toRealPath();
-        if (!List.of("file", "directory").contains(kind) || !List.of("read", "write").contains(access)) {
+        if (!List.of("file", "directory").contains(kind)
+                || !List.of("read", "write", "read-write").contains(access)) {
             throw new IllegalArgumentException("Invalid native file grant");
         }
         if ("directory".equals(kind) != Files.isDirectory(path)) throw new IllegalArgumentException("Selected path kind does not match");

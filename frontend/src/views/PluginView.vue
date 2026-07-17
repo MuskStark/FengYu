@@ -53,7 +53,7 @@ async function onMessage(event: MessageEvent) {
       respond(request.id, {
         sdkVersion: '1.0.0', theme: theme.theme, locale: settings.language,
         platform: desktop ? 'desktop' : 'web',
-        capabilities: ['rpc.invoke', 'notify', 'files.open', 'files.inputDirectory', 'files.outputDirectory', 'files.export'],
+        capabilities: ['rpc.invoke', 'notify', 'files.open', 'files.inputDirectory', 'files.workspaceDirectory', 'files.outputDirectory', 'files.export'],
       })
       bridgeReady.value = true
       loading.value = false
@@ -88,6 +88,27 @@ async function onMessage(event: MessageEvent) {
           try {
             const selected = Array.from(input.files ?? [])
             respond(requestId, selected.length ? await api.uploadRuntimeDirectory(props.id, selected) : null)
+          } catch (e) {
+            respond(requestId, undefined, e instanceof Error ? e.message : String(e))
+          }
+        }
+        input.click()
+      }
+    } else if (request.method === 'files.workspaceDirectory') {
+      if (desktop) {
+        const path = await desktop.pickDirectory()
+        respond(request.id, path ? await api.grantRuntimeNativePath(props.id, path, 'directory', 'read-write') : null)
+      } else {
+        const input = document.createElement('input')
+        input.type = 'file'
+        input.multiple = true
+        input.setAttribute('webkitdirectory', '')
+        input.onchange = async () => {
+          try {
+            const selected = Array.from(input.files ?? [])
+            respond(requestId, selected.length
+              ? await api.uploadRuntimeDirectory(props.id, selected, 'read-write')
+              : null)
           } catch (e) {
             respond(requestId, undefined, e instanceof Error ? e.message : String(e))
           }

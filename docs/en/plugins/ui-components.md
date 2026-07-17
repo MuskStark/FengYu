@@ -41,7 +41,7 @@ The scaffolded `src/main.ts` calls three helpers from this package. You normally
 | `FyPageHeader` | A page title, optional `description`, and a trailing `#actions` slot for toolbar buttons. |
 | `FyToolbar` | A horizontal button row for `#actions`. |
 | `FyFilePicker` | SDK-backed file button — wraps `client.files.open`. v-model is the `FileRef` or `null`. |
-| `FyDirectoryPicker` | SDK-backed directory button — `mode: 'input' \| 'output'` selects `files.inputDirectory` vs `files.outputDirectory`. |
+| `FyDirectoryPicker` | SDK-backed directory button — `mode: 'input' \| 'workspace' \| 'output'` selects a readable input, writable project workspace, or fresh output directory. |
 | `FyStepWizard` | Linear, value-keyed multi-step controller with a `canContinue` gate. |
 | `FyTaskTable` | Read-only task list (`tasks: FyTaskRow[]`) rendered with `v-data-table`; status shown as icon + label. |
 | `FyNotificationCenter` | Fallback snackbar stack. Call its `notify(msg)` (via template ref) to surface a message; forwards to the host and falls back locally if the host rejects. |
@@ -89,7 +89,7 @@ async function onFile(file: FileRef | null): Promise<void> {
 | `filters` | `FileFilter[]` | Named extension filters forwarded to the host. |
 | `label` | `string` | Button label (default `Choose file`). |
 
-Emits: `update:modelValue`, `cancel`, `error`. `FyDirectoryPicker` has the same shape plus `mode: 'input' | 'output'` (default `input`).
+Emits: `update:modelValue`, `cancel`, `error`. `FyDirectoryPicker` has the same shape plus `mode: 'input' | 'workspace' | 'output'` (default `input`). Workspace mode calls `client.files.workspaceDirectory()` and requires `files.write`.
 
 ## Example: a step wizard
 

@@ -44,14 +44,15 @@ public class PluginRuntimeFileController {
     @PostMapping("/upload-directory")
     public ResponseEntity<PluginFileGrantService.FileRef> uploadDirectory(@PathVariable String id,
             @RequestPart("files") List<MultipartFile> uploads,
-            @RequestParam("paths") List<String> paths) throws IOException {
-        require(id, "files.read");
-        return ResponseEntity.status(HttpStatus.CREATED).body(files.uploadDirectory(id, uploads, paths));
+            @RequestParam("paths") List<String> paths,
+            @RequestParam(value = "access", defaultValue = "read") String access) throws IOException {
+        requireAccess(id, access);
+        return ResponseEntity.status(HttpStatus.CREATED).body(files.uploadDirectory(id, uploads, paths, access));
     }
 
     @PostMapping("/native")
     public PluginFileGrantService.FileRef nativeGrant(@PathVariable String id, @RequestBody NativeGrant request) throws IOException {
-        require(id, request.access().contains("write") ? "files.write" : "files.read");
+        requireAccess(id, request.access());
         return files.grantNative(id, request.path(), request.kind(), request.access());
     }
 
@@ -83,6 +84,18 @@ public class PluginRuntimeFileController {
         var manifest = packages.find(id).orElseThrow(() -> new IllegalArgumentException("Plugin is not installed"));
         if (manifest.permissions() == null || !manifest.permissions().contains(permission)) {
             throw new IllegalArgumentException("Plugin lacks permission: " + permission);
+        }
+    }
+
+    private void requireAccess(String id, String access) {
+        switch (access) {
+            case "read" -> require(id, "files.read");
+            case "write" -> require(id, "files.write");
+            case "read-write" -> {
+                require(id, "files.read");
+                require(id, "files.write");
+            }
+            default -> throw new IllegalArgumentException("Invalid file access: " + access);
         }
     }
 
