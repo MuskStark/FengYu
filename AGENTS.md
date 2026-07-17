@@ -102,9 +102,8 @@ deleted skills, and the still-JavaFX `FengYu-Api` preview classes, but they are 
 - **Java `ServiceLoader` / `META-INF/services/fan.summer.api.FengYuPlugin`** SPI registration.
 - **In-process plugins** sharing the host classpath or host Spring/JPA context.
 - Host-provided worker dependencies — workers are out-of-process and bring their own classpath.
-- The product codenames **SwissKitJ / ZhiFlow / fengyuj** and any `sync-plugin-standards.sh` /
-  `.claude-plugin/` workflow. `scripts/sync-plugin-standards.sh` is an orphaned, broken script;
-  do not reference or revive it.
+- The legacy product codenames **SwissKitJ / ZhiFlow / fengyuj** — they describe earlier versions
+  and must not be regenerated or recommended as current.
 
 ## Skills
 
