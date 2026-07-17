@@ -20,8 +20,9 @@ const css = fs.readFileSync(path.resolve('src', 'styles', 'codex.css'), 'utf8')
 
 describe('codex.css refinement surface', () => {
   it('styles the refined rail chrome hooks', () => {
-    // The DOM hooks added in Task 1 must each have at least one rule.
-    for (const hook of ['.fy-shell__rail', '.fy-shell__brand', '.fy-shell__item', '.fy-shell__item--active']) {
+    // The rail is icon-only; the brand block was removed, so only the rail
+    // scope, nav list, and active item hooks carry rules.
+    for (const hook of ['.fy-shell__rail', '.fy-shell__item', '.fy-shell__item--active']) {
       expect(css, `${hook} rule`).toContain(hook)
     }
   })

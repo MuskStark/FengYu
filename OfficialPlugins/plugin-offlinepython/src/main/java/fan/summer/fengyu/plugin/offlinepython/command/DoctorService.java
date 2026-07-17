@@ -11,25 +11,32 @@ import java.util.List;
 /** Diagnoses the host environment for build readiness. */
 public class DoctorService {
 
-    public record Check(String name, String value, boolean ok) {}
+    /**
+     * One diagnostic row. {@code id} is a stable, locale-independent identifier the
+     * UI translates via {@code t('opb.doctor.check.' + id)}; {@code value} carries
+     * the raw data (version, path) or an English short label; {@code ok} is the
+     * pass/fail flag. The worker never returns localized prose so the UI controls
+     * all user-facing language.
+     */
+    public record Check(String id, String value, boolean ok) {}
 
     public List<Check> run(String configuredExecutable) {
         List<Check> out = new ArrayList<>();
         var d = fan.summer.fengyu.plugin.offlinepython.infra.PythonDetector.detect(configuredExecutable);
-        out.add(new Check("Python 解释器", d.executable() == null ? "未找到" : d.executable(), d.executable() != null));
-        out.add(new Check("Python 版本", d.pythonVersion() == null ? "—" : d.pythonVersion(),
+        out.add(new Check("python_interpreter", d.executable() == null ? "not_found" : d.executable(), d.executable() != null));
+        out.add(new Check("python_version", d.pythonVersion() == null ? "—" : d.pythonVersion(),
                 d.pythonVersion() != null && fan.summer.fengyu.plugin.offlinepython.infra.PythonDetector.isAtLeast(d.pythonVersion(), "3.10")));
-        out.add(new Check("pip", d.pipVersion() == null ? "缺失" : d.pipVersion(), d.pipVersion() != null));
+        out.add(new Check("pip", d.pipVersion() == null ? "missing" : d.pipVersion(), d.pipVersion() != null));
         boolean pipDownloadOk = d.executable() != null && d.pipVersion() != null
                 && parsePipDownloadSupportsPlatform(
                     ProcessRunner.captureQuiet(d.executable(), "-m", "pip", "download", "--help"));
-        out.add(new Check("pip download 可用", pipDownloadOk ? "支持 --platform/--python-version" : "不支持跨平台下载", pipDownloadOk));
+        out.add(new Check("pip_download", pipDownloadOk ? "supported" : "unsupported", pipDownloadOk));
         boolean net = pingPyPI();
-        out.add(new Check("网络 (PyPI)", net ? "可达" : "不可达", net));
+        out.add(new Check("network", net ? "reachable" : "unreachable", net));
         long freeGb = freeSpaceGb(Path.of(System.getProperty("user.home")));
-        out.add(new Check("磁盘空间", freeGb + " GB 可用", freeGb > 1));
+        out.add(new Check("disk_space", freeGb + " GB", freeGb > 1));
         Path cache = Path.of(System.getProperty("user.home"), ".offline-python", "cache");
-        out.add(new Check("缓存目录", cache.toString(), isWritable(cache)));
+        out.add(new Check("cache_dir", cache.toString(), isWritable(cache)));
         return out;
     }
 

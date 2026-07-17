@@ -141,38 +141,8 @@ samp,
   background: rgb(var(--v-theme-surface-container)) !important;
 }
 
-/* Brand marker: a primary dot + label. In collapsed rail mode the label is
- * hidden by the template and only the dot remains. */
-.fy-shell__brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 36px;
-  padding: 14px 12px 10px;
-  border-block-end: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  color: rgb(var(--v-theme-on-surface));
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.fy-shell__brand-mark {
-  flex: 0 0 auto;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: rgb(var(--v-theme-primary));
-  box-shadow: 0 0 0 3px rgba(var(--v-theme-primary), 0.16);
-}
-
-.fy-shell__brand-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Nav items: hairline rounded chips with a soft primary tint when active. */
+/* Nav items: hairline rounded chips with a soft primary tint when active.
+ * The rail is intentionally icon-only — no brand/title block is rendered. */
 .fy-shell__list {
   padding: 8px;
 }

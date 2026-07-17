@@ -2,7 +2,7 @@
  * SDK-integrated component tests: file/directory pickers and notification center.
  *
  * These exercises the host SDK surface (`files.open`, `files.inputDirectory`,
- * `files.outputDirectory`, `notify`) through a fake client. Behavioral rules:
+ * `files.workspaceDirectory`, `files.outputDirectory`, `notify`) through a fake client. Behavioral rules:
  * - Cancellation (SDK resolves `null`) is a normal empty result — no alert.
  * - Permission-denied rejections render `FyPermissionNotice` and do NOT auto-retry.
  * - Other rejections render `FyErrorState` (which exposes a retry button).
@@ -45,6 +45,7 @@ function fakeClient(overrides: FakeClientOverrides = {}): FengYuClient {
     files: {
       open: vi.fn(),
       inputDirectory: vi.fn(),
+      workspaceDirectory: vi.fn(),
       outputDirectory: vi.fn(),
       export: vi.fn(),
       ...fileOverrides,
@@ -182,6 +183,18 @@ describe('FyDirectoryPicker', () => {
     await flushPromises()
     expect(outputDirectory).toHaveBeenCalledOnce()
     expect(wrapper.emitted('cancel')).toHaveLength(1)
+  })
+
+  it('calls workspaceDirectory for mode="workspace"', async () => {
+    const workspaceDirectory = vi.fn().mockResolvedValue({
+      id: 'workspace-1', name: 'project', kind: 'directory', access: 'read-write', size: 0,
+    })
+    const client = fakeClient({ files: { workspaceDirectory } })
+    const wrapper = mountWithClient(FyDirectoryPicker, client, { props: { mode: 'workspace' } })
+    await wrapper.get('[data-action="pick-directory"]').trigger('click')
+    await flushPromises()
+    expect(workspaceDirectory).toHaveBeenCalledOnce()
+    expect(wrapper.emitted('update:modelValue')?.[0]?.[0]).toMatchObject({ access: 'read-write' })
   })
 })
 

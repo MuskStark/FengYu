@@ -78,6 +78,16 @@ describe('FyConfirmDialog', () => {
     document.body.innerHTML = ''
   })
 
+  it('uses its own focus restoration without Vuetify retain-focus', () => {
+    const wrapper = mount(FyConfirmDialog, {
+      global,
+      props: { modelValue: false, title: 'Continue?' },
+    })
+    const dialog = wrapper.findComponent({ name: 'VDialog' })
+    expect(dialog.props('retainFocus')).toBe(false)
+    expect(dialog.props('captureFocus')).toBe(false)
+  })
+
   it('requires an explicit confirm action', async () => {
     const wrapper = mount(FyConfirmDialog, {
       global,

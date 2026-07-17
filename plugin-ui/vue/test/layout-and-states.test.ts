@@ -14,9 +14,27 @@ it('renders navigation and emits the selected item', async () => {
     ] },
     slots: { default: '<main>Content</main>' },
   })
-  expect(wrapper.text()).toContain('Workbench')
+  // The desktop rail is icon-only: the title is not rendered in the drawer
+  // (it only appears in the mobile app bar). Default jsdom width is desktop.
+  expect(wrapper.find('[data-nav="overview"]').exists()).toBe(true)
   await wrapper.find('[data-nav="overview"]').trigger('click')
   expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['overview'])
+})
+
+it('renders a nav icon as inline SVG when given path data', () => {
+  // Path data (from @mdi/js) must render via FyIcon inline SVG, not the mdi
+  // webfont — the font is not reliably bundled and shows tofu squares.
+  const path = 'M13.78 15.3L19.78 21.3L21.89 19.14Z'
+  const wrapper = mount(FyPluginShell, {
+    global,
+    props: { title: 'Workbench', modelValue: 'build', items: [
+      { value: 'build', title: 'Build', icon: path },
+    ] },
+  })
+  const item = wrapper.get('[data-nav="build"]')
+  const svg = item.find('svg.fy-icon')
+  expect(svg.exists()).toBe(true)
+  expect(svg.find('path').attributes('d')).toBe(path)
 })
 
 it('exposes a retry action with readable error text', async () => {
@@ -68,7 +86,7 @@ describe('FyPluginShell drawer breakpoint', () => {
 })
 
 describe('FyPluginShell refined rail chrome', () => {
-  it('renders a brand marker in the rail when a brand is provided', async () => {
+  it('keeps the desktop rail icon-only with no title or brand label', async () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1014 })
     window.dispatchEvent(new Event('resize'))
     const wrapper = mount(FyPluginShell, {
@@ -82,11 +100,11 @@ describe('FyPluginShell refined rail chrome', () => {
     })
     await nextTick()
 
-    // The refined rail exposes a stable class for the brand marker so plugin
-    // authors and visual tests can target it; falls back to the title when the
-    // dedicated brand prop is absent.
-    expect(wrapper.find('.fy-shell__brand').exists()).toBe(true)
-    expect(wrapper.find('.fy-shell__brand').text()).toContain('Offline Python')
+    // The rail is intentionally icon-only: neither a brand marker nor the
+    // title text render inside the drawer on desktop (the mobile app bar still
+    // shows the title in temporary mode).
+    expect(wrapper.find('.fy-shell__brand').exists()).toBe(false)
+    expect(wrapper.get('.v-navigation-drawer').text()).not.toContain('Offline Python')
   })
 
   it('marks the active nav item with a refinement hook class', async () => {
