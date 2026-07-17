@@ -32,6 +32,12 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   smoke job.
 
 ### ♻️ Changed
+- **Refined plugin-ui surface** — `@infinia/plugin-ui` gains a theme-driven polish layer so plugins
+  using `FyPluginShell` share one calm, low-elevation design language (hairline borders, soft primary
+  active chips, a brand marker, de-uppercased buttons, denser fields/tables) instead of each plugin
+  shipping bespoke chrome. Every color resolves through a Vuetify theme variable; the email green
+  palette is explicitly excluded. `FyPluginShell` exposes an optional `brand` prop and stable
+  `fy-shell__*` hook classes.
 - **Node.js 24.18.0 baseline** — documentation, `plugin-cli` engine metadata, and every GitHub
   Actions workflow now use the same exact Node.js version, protected by a repository contract test.
 - **Official plugins built by the CLI** — Markdown, Excel, and Email are now packaged by
@@ -45,6 +51,9 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ### 🐛 Fixed
 - Atomic `.fyp` packaging: a failure at any stage leaves no `.fyp`, no `.tmp-*`, and no staging dir.
+- Offline Python Builder now opens a writable project workspace, passes complete `FileRef` objects
+  through the host bridge, reports translated job states, stops failed polling, and performs real
+  build/deploy cancellation instead of changing UI state only.
 
 ---
 
