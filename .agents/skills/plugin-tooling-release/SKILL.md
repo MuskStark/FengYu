@@ -1,0 +1,112 @@
+---
+name: plugin-tooling-release
+description: Cut an independently versioned FengYu plugin-toolchain release (tag plugin-tooling-vX.Y.Z or workflow_dispatch input). Covers fan.summer.fengyu.sdk:fengyu-plugin-sdk, @infinia/plugin-sdk, @infinia/plugin-ui, and @infinia/plugin-cli. Synchronizes the release version across all four, validates lockfiles and package contents, builds official plugins through the CLI, and exercises the local toolchain smoke path. Use when the user asks to release/publish the plugin SDK, UI kit, or CLI. Does NOT change the main application version — use app-release for that.
+---
+
+# Plugin Tooling Release
+
+Release the **independently versioned plugin toolchain** — four artifacts that move together at one
+version:
+
+| Artifact | Source of truth |
+|---|---|
+| `fan.summer.fengyu.sdk:fengyu-plugin-sdk` | `FengYu-Plugin-Sdk/pom.xml` |
+| `@infinia/plugin-cli` | `plugin-cli/package.json` |
+| `@infinia/plugin-sdk` | `plugin-sdk/typescript/package.json` |
+| `@infinia/plugin-ui` | `plugin-ui/vue/package.json` |
+
+This skill does **not** change the main app version (`${revision}`). Use the `app-release` skill for
+app releases.
+
+The release contract is `.github/workflows/plugin-tooling-release.yml` plus
+`plugin-cli/scripts/resolve-tooling-version.mjs`.
+
+## Step 1 — Resolve and verify the version
+
+The resolver accepts a `plugin-tooling-vX.Y.Z` tag, a `--ref`, or an explicit `--input`, validates
+strict semver (no leading zeros), and cross-checks all four sources via `verifyRepositoryVersion`:
+
+```bash
+node plugin-cli/scripts/resolve-tooling-version.mjs --ref plugin-tooling-vX.Y.Z   # prints the version
+```
+
+If it throws (invalid semver, or any of the four sources disagree), stop and reconcile the versions
+with the user before proceeding.
+
+## Step 2 — Synchronize the version across all four artifacts
+
+Bump the version in exactly these four files to the intended release version and nothing else:
+
+- `FengYu-Plugin-Sdk/pom.xml` (`<version>`)
+- `plugin-cli/package.json`
+- `plugin-sdk/typescript/package.json`
+- `plugin-ui/vue/package.json`
+
+Also update any **dependent range** that is meant to track the release (e.g. a `@infinia/*`
+peer/dependency range that must move with the release). Do **not** touch `pom.xml` `${revision}` or
+any app-side manifest.
+
+## Step 3 — Validate lockfiles and package contents
+
+- Regenerate/confirm lockfiles for the three npm packages are consistent with the bumped versions.
+- Run each package's own checks:
+
+```bash
+# CLI
+cd plugin-cli && npm install && npm test && cd ..
+# TS SDK
+cd plugin-sdk/typescript && npm install && npm test && cd ..
+# UI kit (includes Playwright visual tests)
+cd plugin-ui/vue && npm install && npm test && cd ..
+# Java Worker SDK
+mvn -f FengYu-Plugin-Sdk/pom.xml test
+```
+
+- Enforce packaging boundaries:
+
+```bash
+scripts/check-plugin-dependency-boundaries.sh
+```
+
+## Step 4 — Build official plugins through the CLI
+
+Confirm the toolchain can actually produce a plugin end to end by building an official plugin with
+the CLI (this is the same path the release's `consumer-smoke` job exercises against published
+packages):
+
+```bash
+fengyu plugin validate OfficialPlugins/plugin-markdown
+fengyu plugin build OfficialPlugins/plugin-markdown
+```
+
+Repeat for the other official plugins the toolchain must support (`plugin-excel`, `plugin-email`,
+`plugin-offlinepython`).
+
+## Step 5 — Exercise the local toolchain smoke path
+
+```bash
+scripts/plugin-tooling-local-smoke.sh
+```
+
+This installs the Java SDK to local `.m2`, packs the TS SDK/UI kit, and confirms a consumer can
+resolve and use them locally. It must pass before release mutation. Also confirm docs still build
+(the release workflow's `verify` job runs this):
+
+```bash
+npm run docs:build
+```
+
+## Step 6 — Mutate, with explicit confirmation
+
+**Committing, tagging, pushing, dispatching the workflow, or publishing to a registry each require
+explicit user confirmation.** Do not run these automatically. When the user confirms:
+
+1. Commit the four version bumps (+ any tracked dependent range) with a `⬆️`/`📝` conventional message.
+2. Create the tag `plugin-tooling-vX.Y.Z`.
+3. Push the branch and the tag — the tag push triggers
+   `.github/workflows/plugin-tooling-release.yml`, which verifies, publishes
+   `fengyu-plugin-sdk` to GitHub Packages and the three `@infinia/*` packages to npm (with provenance),
+   then runs a consumer smoke against the just-published packages. (Manual `workflow_dispatch` with a
+   `tooling_version` input is the alternative trigger.)
+
+**Never** bump the main app version (`${revision}`) in order to release the toolchain.
