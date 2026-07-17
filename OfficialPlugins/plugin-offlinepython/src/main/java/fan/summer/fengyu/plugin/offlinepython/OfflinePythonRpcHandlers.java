@@ -287,10 +287,7 @@ public final class OfflinePythonRpcHandlers {
             String jobId = requiredString(params, "jobId");
             Jobs.Job job = jobs.get(jobId);
             if (job == null) return failure("unknown jobId: " + jobId);
-            // The Cancellable registered at start flips the volatile flag + cancels the ProcessRunner.
-            // We can't reach it directly without a lookup, so rely on the runner's own cancel via the
-            // registered onCancel hook kept on the job. For simplicity, mark cancelled here; the
-            // virtual thread sees isCancelled() and stops appending.
+            if (!jobs.cancel(jobId)) return failure("job is no longer running: " + jobId);
             return ok("cancel requested", "jobId", jobId);
         });
     }

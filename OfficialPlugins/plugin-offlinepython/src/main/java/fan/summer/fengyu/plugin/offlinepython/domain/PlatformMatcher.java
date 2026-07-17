@@ -152,10 +152,30 @@ public final class PlatformMatcher {
         int wheelMinor = parseIntSafe(p[2], -1);
         String wheelArch = p[3];
         if (!wheelArch.equals(host.arch())) return false;
-        int[] hostMac = macVersion();
+        // 本机 macOS 版本必须取自 host 自身声明的兼容标签(macosx_<major>_<minor>_<arch>),
+        // 而非 JVM 的 os.version —— 否则单测结果依赖运行机器,且与 host 声明脱节。
+        int[] hostMac = hostMacVersion(host);
+        if (hostMac == null) return false;
         if (hostMac[0] > wheelMajor) return true;
         if (hostMac[0] == wheelMajor && hostMac[1] >= wheelMinor) return true;
         return false;
+    }
+
+    /** 从 host 的 compatibleTags 解析本机 macOS 版本(取 arch 匹配的最高 macosx_X_Y_arch)。 */
+    private static int[] hostMacVersion(HostTags host) {
+        int[] best = null;
+        for (String tag : host.compatibleTags()) {
+            if (!tag.startsWith("macosx_")) continue;
+            String[] parts = tag.split("_");
+            if (parts.length < 4 || !parts[3].equals(host.arch())) continue;
+            int major = parseIntSafe(parts[1], -1);
+            int minor = parseIntSafe(parts[2], -1);
+            if (major < 0) continue;
+            if (best == null || major > best[0] || (major == best[0] && minor > best[1])) {
+                best = new int[]{major, minor};
+            }
+        }
+        return best;
     }
 
     private static int[] verParts(String v) {

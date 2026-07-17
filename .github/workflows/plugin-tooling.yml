@@ -94,7 +94,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        plugin: [markdown, excel, email]
+        plugin: [markdown, excel, email, offlinepython]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

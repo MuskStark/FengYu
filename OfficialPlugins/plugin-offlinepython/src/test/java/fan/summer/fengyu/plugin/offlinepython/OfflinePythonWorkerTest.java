@@ -6,7 +6,11 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -51,6 +55,27 @@ class OfflinePythonWorkerTest {
         assertFalse(source.matches("(?s).*\\b(?:class|record|interface)\\s+(?:JsonRpcWorker|PluginHandler)\\b.*"),
             "offlinepython must not shadow official SDK types");
         assertTrue(source.contains("import fan.summer.fengyu.sdk.JsonRpcWorker;"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void cancelRpcInvokesTheRunningJobCancellationHook() throws Exception {
+        Jobs jobs = new Jobs();
+        CountDownLatch running = new CountDownLatch(1);
+        CountDownLatch cancelled = new CountDownLatch(1);
+        Jobs.Job job = jobs.start(Jobs.Type.BUILD, handle -> {
+            handle.onCancel(cancelled::countDown);
+            running.countDown();
+            while (!handle.isCancelled()) Thread.onSpinWait();
+            throw new Jobs.CancellationException();
+        });
+        assertTrue(running.await(2, TimeUnit.SECONDS));
+        OfflinePythonRpcHandlers handlers = new OfflinePythonRpcHandlers(new OfflinePythonSessionStore(), jobs);
+
+        Map<String, Object> result = (Map<String, Object>) handlers.buildCancel(Map.of("jobId", job.id));
+
+        assertEquals(true, result.get("success"));
+        assertTrue(cancelled.await(2, TimeUnit.SECONDS));
     }
 
     private static String workerMainSource() {

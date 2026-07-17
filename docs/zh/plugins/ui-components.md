@@ -41,7 +41,7 @@ import {
 | `FyPageHeader` | 页面标题、可选 `description` 与尾部的 `#actions` 插槽（放工具栏按钮）。 |
 | `FyToolbar` | 用于 `#actions` 的横向按钮行。 |
 | `FyFilePicker` | SDK 文件按钮——封装 `client.files.open`。v-model 为 `FileRef` 或 `null`。 |
-| `FyDirectoryPicker` | SDK 目录按钮——`mode: 'input' \| 'output'` 选择 `files.inputDirectory` 还是 `files.outputDirectory`。 |
+| `FyDirectoryPicker` | SDK 目录按钮——`mode: 'input' \| 'workspace' \| 'output'` 分别选择只读输入、可写项目工作目录或全新输出目录。 |
 | `FyStepWizard` | 线性、按 value 索引的多步骤控制器，带 `canContinue` 门控。 |
 | `FyTaskTable` | 只读任务列表（`tasks: FyTaskRow[]`），用 `v-data-table` 渲染；状态以图标 + 文字展示。 |
 | `FyNotificationCenter` | 兜底 snackbar 堆栈。调用其 `notify(msg)`（经模板 ref）展示消息；转发给宿主，宿主拒绝时本地兜底。 |
@@ -89,7 +89,7 @@ async function onFile(file: FileRef | null): Promise<void> {
 | `filters` | `FileFilter[]` | 转发给宿主的具名扩展名过滤器。 |
 | `label` | `string` | 按钮文字（默认 `Choose file`）。 |
 
-发出事件：`update:modelValue`、`cancel`、`error`。`FyDirectoryPicker` 形状相同，另加 `mode: 'input' | 'output'`（默认 `input`）。
+发出事件：`update:modelValue`、`cancel`、`error`。`FyDirectoryPicker` 形状相同，另加 `mode: 'input' | 'workspace' | 'output'`（默认 `input`）。工作目录模式调用 `client.files.workspaceDirectory()`，并要求 `files.write` 权限。
 
 ## 示例：步骤向导
 

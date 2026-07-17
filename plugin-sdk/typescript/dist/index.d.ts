@@ -48,6 +48,7 @@ export declare class FengYuClient {
             filters?: FileFilter[];
         }, request?: InvokeOptions) => Promise<FileRef | null>;
         inputDirectory: (request?: InvokeOptions) => Promise<FileRef | null>;
+        workspaceDirectory: (request?: InvokeOptions) => Promise<FileRef | null>;
         outputDirectory: (request?: InvokeOptions) => Promise<FileRef | null>;
         export: (ref: FileRef, request?: InvokeOptions) => Promise<boolean>;
     };

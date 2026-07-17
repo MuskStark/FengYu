@@ -59,6 +59,8 @@ export class FengYuClient {
       this.request<FileRef | null>('files.open', options, request),
     inputDirectory: (request?: InvokeOptions) =>
       this.request<FileRef | null>('files.inputDirectory', {}, request),
+    workspaceDirectory: (request?: InvokeOptions) =>
+      this.request<FileRef | null>('files.workspaceDirectory', {}, request),
     outputDirectory: (request?: InvokeOptions) => this.request<FileRef | null>('files.outputDirectory', {}, request),
     export: (ref: FileRef, request?: InvokeOptions) => this.request<boolean>('files.export', ref, request),
   }
