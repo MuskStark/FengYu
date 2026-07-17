@@ -57,6 +57,151 @@ samp,
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
 }
 
+/*
+ * Codex refinement surface.
+ *
+ * A thin polish layer that gives every plugin built on @infinia/plugin-ui the
+ * same calm, low-elevation density the host shell uses, without any plugin
+ * having to ship its own design tokens. Two invariants:
+ *   - every color resolves through a Vuetify theme variable so light/dark and
+ *     theming both work;
+ *   - no brand palette leaks in (in particular the email green stays out).
+ */
+
+/* Buttons: drop MD3 uppercasing for a calmer, denser toolbar. */
+.v-btn {
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Elevated/tonal buttons read as soft outlined chips, not raised plastic. */
+.v-btn--variant-elevated {
+  background: rgb(var(--v-theme-surface-container-high));
+  color: rgb(var(--v-theme-on-surface));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  box-shadow: none;
+}
+
+.v-btn--variant-tonal {
+  background: rgb(var(--v-theme-surface-container-high));
+  color: rgb(var(--v-theme-on-surface));
+  box-shadow: inset 0 0 0 1px rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.v-btn--variant-tonal .v-btn__overlay,
+.v-btn--variant-tonal .v-btn__underlay {
+  opacity: 0;
+}
+
+/* Outlined fields calm down: focus adopts primary, hover deepens slightly. */
+.v-field {
+  border-radius: 8px;
+}
+
+.v-field__outline {
+  --v-field-border-opacity: 1;
+  color: rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.v-field:hover .v-field__outline {
+  color: rgb(var(--v-theme-on-surface));
+  opacity: 0.6;
+}
+
+.v-field--focused .v-field__outline {
+  color: rgb(var(--v-theme-primary));
+}
+
+/* Chips: compact, softly rounded, low-contrast containers. */
+.v-chip {
+  border-radius: 8px;
+  background: rgb(var(--v-theme-surface-container-high));
+  color: rgb(var(--v-theme-on-surface));
+}
+
+/* Tables: hairline rows, muted headers — calm data density. */
+.v-table th {
+  color: rgb(var(--v-theme-on-surface));
+  opacity: 0.7;
+  background: rgb(var(--v-theme-surface-container));
+  font-weight: 600;
+}
+
+.v-table td {
+  border-color: rgba(var(--v-border-color), var(--v-border-opacity)) !important;
+}
+
+/*
+ * Refined rail chrome for FyPluginShell. The DOM hooks live on the component;
+ * this is where they gain visual polish. Colors flow from the theme so the
+ * rail reads identically in light and dark.
+ */
+.fy-shell__rail {
+  border-inline-end: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  background: rgb(var(--v-theme-surface-container)) !important;
+}
+
+/* Brand marker: a primary dot + label. In collapsed rail mode the label is
+ * hidden by the template and only the dot remains. */
+.fy-shell__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 14px 12px 10px;
+  border-block-end: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  color: rgb(var(--v-theme-on-surface));
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.fy-shell__brand-mark {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-primary));
+  box-shadow: 0 0 0 3px rgba(var(--v-theme-primary), 0.16);
+}
+
+.fy-shell__brand-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Nav items: hairline rounded chips with a soft primary tint when active. */
+.fy-shell__list {
+  padding: 8px;
+}
+
+.fy-shell__item {
+  min-height: 40px;
+  margin-block: 2px;
+  border-radius: 10px;
+  color: rgb(var(--v-theme-on-surface));
+  opacity: 0.8;
+  transition: color 120ms ease, background-color 120ms ease, opacity 120ms ease;
+}
+
+.fy-shell__item:hover {
+  background: rgb(var(--v-theme-surface-container-high));
+  opacity: 1;
+}
+
+.fy-shell__item--active {
+  background: rgba(var(--v-theme-primary), 0.12);
+  color: rgb(var(--v-theme-on-surface));
+  opacity: 1;
+  font-weight: 600;
+}
+
+.fy-shell__item--active.v-list-item--active .v-icon {
+  color: rgb(var(--v-theme-primary));
+}
+
 /* Narrow-screen shell: keep the plugin chrome edge-to-edge on small viewports. */
 @media (max-width: 600px) {
   .v-container {
