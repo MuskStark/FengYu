@@ -2,6 +2,9 @@
 import { computed, inject, ref } from 'vue'
 import { FENGYU_CLIENT_KEY, FyPluginShell, useFengYuNotify } from '@infinia/plugin-ui'
 import type { FengYuClient, FileRef } from '@infinia/plugin-sdk'
+// Inline SVG path data (tree-shakeable, no webfont) — the mdi webfont is not
+// reliably bundled into the iframe and renders tofu squares in modern browsers.
+import { mdiHammerWrench, mdiPackageVariantClosed, mdiStethoscope, mdiTuneVariant } from '@mdi/js'
 import { useFengYuEnvironment } from './env'
 import ConfigPanel from './panels/ConfigPanel.vue'
 import BuildVerifyPanel from './panels/BuildVerifyPanel.vue'
@@ -18,16 +21,16 @@ const toast = (msg: string) => { notify(msg) }
 const project = ref<FileRef | null>(null)
 
 const nav = computed(() => [
-  { value: 'build', title: t('opb.nav.build'), icon: 'mdi-hammer-wrench' },
-  { value: 'config', title: t('opb.nav.config'), icon: 'mdi-tune-variant' },
-  { value: 'deploy', title: t('opb.nav.deploy'), icon: 'mdi-package-variant-closed' },
-  { value: 'doctor', title: t('opb.nav.doctor'), icon: 'mdi-stethoscope' },
+  { value: 'build', title: t('opb.nav.build'), icon: mdiHammerWrench },
+  { value: 'config', title: t('opb.nav.config'), icon: mdiTuneVariant },
+  { value: 'deploy', title: t('opb.nav.deploy'), icon: mdiPackageVariantClosed },
+  { value: 'doctor', title: t('opb.nav.doctor'), icon: mdiStethoscope },
 ])
 const active = ref('build')
 </script>
 
 <template>
-  <FyPluginShell :title="t('opb.title')" :brand="t('opb.title')" :items="nav" v-model="active">
+  <FyPluginShell :title="t('opb.title')" :items="nav" v-model="active">
     <template #default>
       <v-container fluid class="pa-4">
         <BuildVerifyPanel

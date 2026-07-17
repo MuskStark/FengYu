@@ -19,6 +19,7 @@ export { provideFengYuClient, useFengYuClient, FENGYU_CLIENT_KEY } from './clien
 // Layout and standard state components.
 export { default as FyPluginShell } from './components/FyPluginShell.vue'
 export type { FyNavItem } from './components/FyPluginShell.vue'
+export { default as FyIcon } from './components/FyIcon.vue'
 export { default as FyPageHeader } from './components/FyPageHeader.vue'
 export { default as FyToolbar } from './components/FyToolbar.vue'
 export { default as FyEmptyState } from './components/FyEmptyState.vue'

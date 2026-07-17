@@ -2,7 +2,9 @@
 import { onUnmounted, ref } from 'vue'
 import type { FengYuClient, FileRef } from '@infinia/plugin-sdk'
 import { FyDirectoryPicker, FyEmptyState, FyPageHeader } from '@infinia/plugin-ui'
-import { call, field, refPath } from '../rpc'
+import { mdiFolderOpenOutline } from '@mdi/js'
+import { call, callChecked, field } from '../rpc'
+import { readJobSnapshot, type UiJobStatus } from '../jobState'
 
 type Translate = (key: string, ...args: (string | number)[]) => string
 
@@ -17,7 +19,7 @@ const emit = defineEmits<{
 }>()
 
 const logs = ref<string[]>([])
-const status = ref<string>('idle')
+const status = ref<UiJobStatus>('idle')
 const building = ref(false)
 const jobId = ref<string | null>(null)
 let poll: ReturnType<typeof setInterval> | null = null
@@ -47,13 +49,12 @@ async function startBuild() {
   status.value = 'starting'
   building.value = true
   try {
-    const dir = refPath(props.project)!
-    const res = await call(props.client, 'build.start', { projectDir: dir, session: 'ui' })
+    const res = await callChecked(props.client, 'build.start', { projectDir: props.project, session: 'ui' })
     const id = field<string>(res, 'jobId')
-    if (!res.success || !id) {
+    if (!id) {
       status.value = 'error'
       building.value = false
-      emit('toast', res.success ? props.t('opb.build.failed') : res.summary)
+      emit('toast', props.t('opb.build.failed'))
       return
     }
     jobId.value = id
@@ -69,15 +70,23 @@ async function pollStatus() {
   if (!jobId.value) return
   try {
     const s = await call(props.client, 'build.status', { jobId: jobId.value, cursor: logs.value.length })
-    if (!s.success) return
-    const sLogs = field<string[]>(s, 'logs') ?? []
-    if (sLogs.length) logs.value.push(...sLogs)
-    status.value = field<string>(s, 'status') ?? status.value
-    if (field<boolean>(s, 'done')) {
+    const snapshot = readJobSnapshot(s)
+    if (snapshot.logs.length) logs.value.push(...snapshot.logs)
+    status.value = snapshot.status
+    if (!snapshot.ok) {
+      stopPolling()
+      building.value = false
+      jobId.value = null
+      emit('toast', snapshot.summary)
+      return
+    }
+    if (snapshot.done) {
       building.value = false
       stopPolling()
-      const err = field<string>(s, 'error')
-      emit('toast', err ? props.t('opb.build.failed') : props.t('opb.build.completed', status.value))
+      jobId.value = null
+      emit('toast', snapshot.error || snapshot.status === 'failed'
+        ? props.t('opb.build.failed')
+        : props.t('opb.build.completed', props.t(`opb.build.status.${snapshot.status}`)))
     }
   } catch (error) {
     stopPolling()
@@ -87,20 +96,26 @@ async function pollStatus() {
   }
 }
 
-function cancel() {
-  if (jobId.value) call(props.client, 'build.cancel', { jobId: jobId.value })
-  building.value = false
-  stopPolling()
-  status.value = 'cancelled'
+async function cancel() {
+  if (!jobId.value) return
+  try {
+    await callChecked(props.client, 'build.cancel', { jobId: jobId.value })
+    building.value = false
+    stopPolling()
+    jobId.value = null
+    status.value = 'cancelled'
+  } catch (error) {
+    emit('toast', errorText(error))
+  }
 }
 
 async function verify() {
   if (!props.project) return
   building.value = true
   try {
-    const res = await call(props.client, 'verify',
-      { projectDir: refPath(props.project), session: 'ui', scope: 'ALL' })
-    emit('toast', res.success ? props.t('opb.build.verifyOk') : res.summary)
+    await callChecked(props.client, 'verify',
+      { projectDir: props.project, session: 'ui', scope: 'ALL' })
+    emit('toast', props.t('opb.build.verifyOk'))
   } catch (error) {
     emit('toast', errorText(error))
   } finally {
@@ -112,10 +127,10 @@ async function doPackage() {
   if (!props.project) return
   building.value = true
   try {
-    const res = await call(props.client, 'package',
-      { projectDir: refPath(props.project), session: 'ui' })
+    const res = await callChecked(props.client, 'package',
+      { projectDir: props.project, session: 'ui' })
     const zip = field<string>(res, 'zipPath') ?? ''
-    emit('toast', res.success ? props.t('opb.build.packaged', zip) : res.summary)
+    emit('toast', props.t('opb.build.packaged', zip))
   } catch (error) {
     emit('toast', errorText(error))
   } finally {
@@ -131,10 +146,10 @@ onUnmounted(stopPolling)
     v-if="!project"
     :title="t('opb.project.empty')"
     :message="t('opb.build.openPrompt')"
-    icon="mdi-folder-open-outline"
+    :icon="mdiFolderOpenOutline"
   >
     <template #action>
-      <FyDirectoryPicker :label="t('opb.project.open')" @update:model-value="selectProject" />
+      <FyDirectoryPicker mode="workspace" :label="t('opb.project.open')" @update:model-value="selectProject" />
     </template>
   </FyEmptyState>
   <template v-else>
@@ -142,6 +157,7 @@ onUnmounted(stopPolling)
       <template #actions>
         <FyDirectoryPicker
           v-if="!building"
+          mode="workspace"
           :label="t('opb.project.change')"
           :model-value="project"
           @update:model-value="selectProject"
