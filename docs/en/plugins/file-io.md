@@ -27,12 +27,12 @@ All five endpoints live under base `/api/plugin-runtime/{id}/files`. Each is gat
 | Method + path | Body | Permission | Returns |
 | --- | --- | --- | --- |
 | `POST /upload` | multipart `file` | `files.read` | `FileRef` (a single uploaded file, snapshotted into temp) |
-| `POST /upload-directory` | multipart `files` + `paths[]` | `files.read` | `FileRef` (a directory rebuilt in temp from the uploaded tree) |
+| `POST /upload-directory` | multipart `files` + `paths[]`; optional `access=read-write` | `files.read`; both `files.read` + `files.write` for `read-write` | `FileRef` (a directory rebuilt in temp from the uploaded tree) |
 | `POST /native` | JSON `{path, kind, access}` | `files.read` **and/or** `files.write` | `FileRef` (desktop only — Tauri dialog returns a native path the host wraps as a ref) |
 | `POST /output` | (none) | `files.write` | `FileRef` (a freshly allocated writable output directory) |
 | `GET /export/{ref}` | — | `files.write` | A zip of the granted directory, streamed for download |
 
-`/native` is meaningful only under the Tauri desktop shell, where `ctx.desktop.pickFile` / `pickDirectory` yield real OS paths; in the browser, use `/upload` and `/upload-directory` instead. The `access` you pass to `/native` must match a permission the plugin actually holds.
+`/native` is meaningful only under the Tauri desktop shell, where `ctx.desktop.pickFile` / `pickDirectory` yield real OS paths; in the browser, use `/upload` and `/upload-directory` instead. A workspace request uses native `read-write` access on desktop and an uploaded `read-write` working copy on the web. The requested access must match a permission the plugin actually holds.
 
 A request that needs a permission the plugin did not declare returns `403`. See [Pitfalls](/en/plugins/pitfalls).
 
@@ -60,11 +60,12 @@ The `FengYuClient.files.*` helpers wrap these endpoints so the UI never builds m
 ```js
 const file   = await fengyu.files.open({ extensions: ['xlsx'] })      // → POST /upload under the hood
 const inDir  = await fengyu.files.inputDirectory()                    // → POST /upload-directory
+const project = await fengyu.files.workspaceDirectory()               // → writable selected project / working copy
 const outDir = await fengyu.files.outputDirectory()                   // → POST /output  (needs files.write)
 await fengyu.files.export(outDir)                                     // → GET  /export/{ref}
 ```
 
-Then pass the FileRef straight into an RPC — the host rewrites it before the worker sees it:
+`workspaceDirectory()` requires `files.write`; it returns the selected native directory on desktop and a writable uploaded working copy in a browser. Pass every FileRef straight into an RPC — do not extract its `id` — so the host can recognize and rewrite the complete `{id, kind, access}` object before the worker sees it:
 
 ```js
 const analysis = await fengyu.invoke('analyze', { filePath: file })

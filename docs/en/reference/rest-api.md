@@ -51,7 +51,7 @@ File grant endpoints for sandboxed plugins. All live under base `/api/plugin-run
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | `POST` | `/api/plugin-runtime/{id}/files/upload` | token + `files.read` | Upload a single file (multipart `file`) → `FileRef` snapshotted into temp. |
-| `POST` | `/api/plugin-runtime/{id}/files/upload-directory` | token + `files.read` | Upload a tree (multipart `files` + `paths[]`) → directory `FileRef`. |
+| `POST` | `/api/plugin-runtime/{id}/files/upload-directory` | token + `files.read` (+ `files.write` for `read-write`) | Upload a tree (multipart `files` + `paths[]`, optional `access=read-write`) → directory `FileRef`. |
 | `POST` | `/api/plugin-runtime/{id}/files/native` | token + `files.read` and/or `files.write` | Wrap a native OS path (body `{path, kind, access}`) as a `FileRef`. Desktop only. |
 | `POST` | `/api/plugin-runtime/{id}/files/output` | token + `files.write` | Allocate a fresh writable output directory → `FileRef`. |
 | `GET` | `/api/plugin-runtime/{id}/files/export/{ref}` | token + `files.write` | Stream a zip of the granted directory for download. |

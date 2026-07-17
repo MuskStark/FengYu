@@ -21,6 +21,7 @@ public final class Jobs {
     public enum Type { BUILD, DEPLOY }
 
     private final ConcurrentHashMap<String, Job> jobs = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Cancellable> handles = new ConcurrentHashMap<>();
 
     /** A job body that may throw checked exceptions (caught by the virtual-thread wrapper). */
     @FunctionalInterface
@@ -34,14 +35,19 @@ public final class Jobs {
         Job job = new Job(id, type);
         jobs.put(id, job);
         Cancellable handle = new Cancellable(job);
+        handles.put(id, handle);
         Thread.ofVirtual().name("opb-" + type.name().toLowerCase() + "-" + id).start(() -> {
             try {
                 runner.run(handle);
-                job.markDone();
+                if (handle.isCancelled()) job.markCancelled();
+                else job.markDone();
             } catch (CancellationException e) {
                 job.markCancelled();
             } catch (Throwable t) {
-                job.markFailed(safeMessage(t));
+                if (handle.isCancelled()) job.markCancelled();
+                else job.markFailed(safeMessage(t));
+            } finally {
+                handles.remove(id, handle);
             }
         });
         return job;
@@ -49,6 +55,13 @@ public final class Jobs {
 
     public Job get(String id) {
         return jobs.get(id);
+    }
+
+    public boolean cancel(String id) {
+        Cancellable handle = handles.get(id);
+        if (handle == null) return false;
+        handle.cancel();
+        return true;
     }
 
     /** A running job and its streamed log lines. */
@@ -77,13 +90,15 @@ public final class Jobs {
             int from = Math.max(0, Math.min(cursor, all.size()));
             List<String> tail = new ArrayList<>(all.subList(from, all.size()));
             Map<String, Object> out = new LinkedHashMap<>();
+            out.put("success", true);
+            out.put("summary", "job status");
             out.put("jobId", id);
             out.put("type", type.name());
             out.put("status", status);
             out.put("logs", tail);
             out.put("cursor", all.size());     // next poll's starting cursor
             out.put("done", !"RUNNING".equals(status));
-            if (summary != null) out.put("summary", summary);
+            if (summary != null) out.put("result", summary);
             if (error != null) out.put("error", error);
             out.put("elapsedMs", System.currentTimeMillis() - startedAt);
             return out;
