@@ -39,7 +39,6 @@ build/
 ### Mac OS ###
 .DS_Store
 /FengYu-main/
-/AGENTS.md
 /.swisskit/
 **/.swisskit/
 /.fengyu/
