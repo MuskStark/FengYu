@@ -19,6 +19,9 @@ import fan.summer.fengyu.plugin.offlinepython.infra.PythonDetector;
 import fan.summer.fengyu.sdk.JsonRpcWorker;
 import fan.summer.fengyu.sdk.PluginHandler;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -89,10 +92,23 @@ public final class OfflinePythonRpcHandlers {
             Path projectDir = requiredPath(params, "projectDir");
             Object cfgObj = params.get("config");
             if (!(cfgObj instanceof Map<?, ?> raw)) return failure("config object is required");
-            BuildConfig cfg = JsonStore.fromJson(JsonStore.toJson(raw), BuildConfig.class);
+
+            // Merge the incoming config onto the on-disk config (or defaults) so
+            // sections the caller omitted (e.g. repository/pkg/bundle when a UI
+            // or AI tool sends only python+download) retain their existing values
+            // instead of being reset to Java field defaults. Without this, every
+            // partial save silently clobbered repository/pkg/bundle.
+            JsonObject incoming = JsonStore.toJsonTree(raw);
+            Path cfgFile = projectDir.resolve("config.json");
+            JsonObject base = Files.exists(cfgFile)
+                    ? JsonParser.parseString(Files.readString(cfgFile)).getAsJsonObject()
+                    : JsonStore.toJsonTree(BuildConfig.defaults());
+            BuildConfig cfg = JsonStore.fromJson(
+                    JsonStore.mergeInto(base, incoming).toString(), BuildConfig.class);
+
             sessions.put(session != null ? session : OfflinePythonSessionStore.AI_SESSION, cfg);
             sessions.bind(session, projectDir);
-            JsonStore.save(cfg, projectDir.resolve("config.json"));
+            JsonStore.save(cfg, cfgFile);
             return ok("config saved", null, null);
         });
     }

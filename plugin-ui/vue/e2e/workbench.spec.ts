@@ -2,48 +2,62 @@ import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 
 /**
- * Workbench visual-regression + accessibility suite.
- *
- * Screenshots target `[data-workbench]` and are stored under
- * `e2e/workbench.spec.ts-snapshots/`. The first run generates the reviewed
- * baselines; subsequent runs assert against them. axe runs against the same
- * scope and fails only on `serious`/`critical` violations.
+ * Every visual case declares its viewport, theme, and wizard state. The
+ * acceptance surface is the complete plugin shell rather than wizard content
+ * in isolation.
  */
+const cases = [
+  { name: 'desktop-light-normal', width: 1280, height: 900, theme: 'light', state: 'normal' },
+  { name: 'desktop-dark-error', width: 1280, height: 900, theme: 'dark', state: 'error' },
+  { name: 'desktop-light-skipped', width: 1280, height: 900, theme: 'light', state: 'skipped' },
+  { name: 'narrow-light-normal', width: 390, height: 844, theme: 'light', state: 'normal' },
+  { name: 'narrow-dark-validating', width: 390, height: 844, theme: 'dark', state: 'validating' },
+  { name: 'narrow-light-complete', width: 390, height: 844, theme: 'light', state: 'complete' },
+] as const
 
-for (const theme of ['dark', 'light'] as const) {
-  test.describe(`${theme} workbench`, () => {
-    test(`${theme} desktop workbench`, async ({ page }) => {
-      await page.goto(`/?theme=${theme}`)
-      await expect(page.locator('[data-workbench]')).toBeVisible()
-      await expect(page.locator('[data-workbench]')).toHaveScreenshot(`${theme}-desktop.png`)
-    })
-
-    test(`${theme} narrow workbench`, async ({ page }) => {
-      await page.setViewportSize({ width: 390, height: 844 })
-      await page.goto(`/?theme=${theme}`)
-      await expect(page.locator('[data-workbench]')).toBeVisible()
-      await expect(page.locator('[data-workbench]')).toHaveScreenshot(`${theme}-narrow.png`)
+for (const fixture of cases) {
+  test(fixture.name, async ({ page }) => {
+    await page.setViewportSize({ width: fixture.width, height: fixture.height })
+    await page.goto(`/?theme=${fixture.theme}&state=${fixture.state}`)
+    await expect(page.locator('[data-workbench-shell]')).toHaveScreenshot(`${fixture.name}.png`, {
+      animations: 'disabled',
     })
   })
 }
 
 test('narrow workbench has no page overflow', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('/?theme=dark')
+  await page.goto('/?theme=dark&state=validating')
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390)
 })
 
-test('workbench has no serious or critical accessibility violations', async ({ page }) => {
-  await page.goto('/?theme=light')
-  await expect(page.locator('[data-workbench]')).toBeVisible()
-  const results = await new AxeBuilder({ page })
-    .include('[data-workbench]')
-    // Color-contrast of the lowest-emphasis chrome is tuned for the Codex
-    // palette and is non-blocking; only serious/critical issues fail here.
-    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-    .analyze()
-  const blocking = results.violations.filter((v) =>
-    (v.impact === 'serious' || v.impact === 'critical'),
-  )
-  expect(blocking, JSON.stringify(blocking, null, 2)).toEqual([])
+test('narrow controlled validation stays busy and exposes visited-path navigation', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/?theme=dark&state=validating')
+
+  await expect(page.locator('[data-wizard]')).toHaveAttribute('aria-busy', 'true')
+  await expect(page.locator('[data-wizard-next]')).toBeDisabled()
+  await page.locator('[data-wizard-history] summary').click()
+  await expect(page.locator('[data-wizard-history]')).toHaveAttribute('open', '')
+  await expect(page.locator('[data-wizard-history]')).toContainText('Source file')
+  await expect(page.locator('[data-wizard-history]')).toContainText('Import mode')
 })
+
+for (const state of ['normal', 'error'] as const) {
+  test(`${state} wizard has no serious or critical accessibility violations`, async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto(`/?theme=light&state=${state}`)
+    await expect(page.locator('[data-workbench-shell]')).toBeVisible()
+    const results = await new AxeBuilder({ page })
+      .include('[data-wizard]')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze()
+    const blocking = [
+      ...results.violations.filter((violation) =>
+        violation.impact === 'serious' || violation.impact === 'critical',
+      ),
+      ...results.incomplete.filter((violation) => violation.impact === 'critical'),
+    ]
+    expect(blocking, JSON.stringify(blocking, null, 2)).toEqual([])
+  })
+}

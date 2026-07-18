@@ -32,6 +32,10 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   smoke job.
 
 ### ♻️ Changed
+- **Stateful plugin workflows** — `@infinia/plugin-ui` now provides a controlled, persistent-ready
+  step wizard with explicit states, async validation, branching, invalidation, and snapshots; the
+  official Excel plugin adopts it with reload re-analysis and configuration replay, worker-faithful
+  mode validation, safe output reselection, and explicit completion/download.
 - **Refined plugin-ui surface** — `@infinia/plugin-ui` gains a theme-driven polish layer so plugins
   using `FyPluginShell` share one calm, low-elevation design language (hairline borders, soft primary
   active chips, a brand marker, de-uppercased buttons, denser fields/tables) instead of each plugin
