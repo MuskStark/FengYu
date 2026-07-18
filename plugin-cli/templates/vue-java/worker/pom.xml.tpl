@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
 
   <!-- A self-contained worker build. It depends on the independently-versioned
-       FengYu Plugin Worker SDK (1.0.0). In-repo builds resolve it from the local
+       FengYu Plugin Worker SDK (1.0.1). In-repo builds resolve it from the local
        reactor install; external builds resolve it from GitHub Packages via
        .mvn/settings.xml (FENGYU_GITHUB_TOKEN with read:packages). -->
   <groupId>{{javaPackage}}</groupId>
@@ -14,7 +14,7 @@
   <properties>
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <fengyu.plugin.sdk.version>1.0.0</fengyu.plugin.sdk.version>
+    <fengyu.plugin.sdk.version>1.0.1</fengyu.plugin.sdk.version>
     <gson.version>2.13.1</gson.version>
     <junit.version>5.10.2</junit.version>
     <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
