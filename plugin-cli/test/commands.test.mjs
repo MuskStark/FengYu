@@ -49,7 +49,11 @@ test('github token is mapped into the child environment for maven commands', asy
   await withWrapper(root)
   const oldGithub = process.env.GITHUB_TOKEN
   const oldFengyu = process.env.FENGYU_GITHUB_TOKEN
+  const oldActor = process.env.GITHUB_ACTOR
   delete process.env.FENGYU_GITHUB_TOKEN
+  // GitHub Actions injects GITHUB_ACTOR automatically; strip it so the default
+  // branch in resolveCommand is exercised regardless of where the test runs.
+  delete process.env.GITHUB_ACTOR
   process.env.GITHUB_TOKEN = 'ghp_test'
   try {
     const resolved = await resolveCommand(['maven', 'test'], root, { platform: 'linux' })
@@ -58,6 +62,7 @@ test('github token is mapped into the child environment for maven commands', asy
   } finally {
     if (oldGithub === undefined) delete process.env.GITHUB_TOKEN; else process.env.GITHUB_TOKEN = oldGithub
     if (oldFengyu === undefined) delete process.env.FENGYU_GITHUB_TOKEN; else process.env.FENGYU_GITHUB_TOKEN = oldFengyu
+    if (oldActor === undefined) delete process.env.GITHUB_ACTOR; else process.env.GITHUB_ACTOR = oldActor
   }
 })
 
