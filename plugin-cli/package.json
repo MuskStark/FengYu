@@ -1,6 +1,6 @@
 {
   "name": "@infinia/plugin-cli",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "Scaffold, develop, build, validate, and install FengYu plugins.",
   "bin": { "fengyu": "bin/fengyu.mjs" },
