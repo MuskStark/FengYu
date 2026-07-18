@@ -1,6 +1,6 @@
 {
   "name": "@infinia/plugin-sdk",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Browser SDK for FengYu plugin micro-frontends.",
   "type": "module",
   "main": "dist/index.js",
