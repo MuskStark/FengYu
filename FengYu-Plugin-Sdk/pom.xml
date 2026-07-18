@@ -12,7 +12,7 @@
   -->
   <groupId>fan.summer.fengyu.sdk</groupId>
   <artifactId>fengyu-plugin-sdk</artifactId>
-  <version>1.0.0</version>
+  <version>1.0.1</version>
   <name>FengYu Plugin Worker SDK</name>
   <description>Dependency-light JSON-RPC 2.0 worker runtime for FengYu plugin child processes.</description>
 
