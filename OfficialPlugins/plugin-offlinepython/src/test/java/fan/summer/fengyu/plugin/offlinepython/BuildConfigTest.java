@@ -5,8 +5,13 @@ import org.junit.jupiter.api.io.TempDir;
 import fan.summer.fengyu.plugin.offlinepython.domain.BuildConfig;
 import fan.summer.fengyu.plugin.offlinepython.infra.JsonStore;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -80,5 +85,44 @@ class BuildConfigTest {
         BuildConfig loaded = JsonStore.fromJson(legacyJson, BuildConfig.class);
         assertNotNull(loaded.getPython().getDepPlatforms());
         assertTrue(loaded.getPython().getDepPlatforms().isEmpty());
+    }
+
+    @Test
+    void mergeIntoPreservesSectionsTheCallerOmitted(@TempDir Path tmp) throws Exception {
+        // Disk has a full config with a customized repository section.
+        BuildConfig disk = BuildConfig.defaults();
+        disk.getRepository().setOutput("my-output");
+        disk.getRepository().setWheelDir("my-wheels");
+        disk.getPkg().setZip(false);
+        Path cfgFile = tmp.resolve("config.json");
+        JsonStore.save(disk, cfgFile);
+
+        // A caller (UI or AI tool) sends only the python section.
+        Map<String, Object> incomingPython = Map.of(
+                "python", Map.of("version", "3.13.0", "platforms", List.of("manylinux2014_x86_64")));
+        JsonObject base = JsonParser.parseString(Files.readString(cfgFile)).getAsJsonObject();
+        JsonObject incoming = JsonStore.toJsonTree(incomingPython);
+        BuildConfig merged = JsonStore.fromJson(
+                JsonStore.mergeInto(base, incoming).toString(), BuildConfig.class);
+
+        // python takes the incoming values...
+        assertEquals("3.13.0", merged.getPython().getVersion());
+        assertEquals(List.of("manylinux2014_x86_64"), merged.getPython().getPlatforms());
+        // ...but repository/pkg/bundle keep their on-disk values — NOT reset to defaults.
+        assertEquals("my-output", merged.getRepository().getOutput());
+        assertEquals("my-wheels", merged.getRepository().getWheelDir());
+        assertFalse(merged.getPkg().isZip(), "pkg.zip must be preserved from disk, not reset to true");
+    }
+
+    @Test
+    void mergeIntoOverwritesLeafValuesWhenProvided() {
+        JsonObject base = JsonParser.parseString(
+                "{\"download\":{\"mirror\":\"official\",\"recursive\":true}}").getAsJsonObject();
+        JsonObject incoming = JsonParser.parseString(
+                "{\"download\":{\"mirror\":\"tsinghua\"}}").getAsJsonObject();
+        BuildConfig merged = JsonStore.fromJson(
+                JsonStore.mergeInto(base, incoming).toString(), BuildConfig.class);
+        assertEquals("tsinghua", merged.getDownload().getMirror());
+        assertTrue(merged.getDownload().isRecursive(), "unmentioned leaf must be preserved");
     }
 }

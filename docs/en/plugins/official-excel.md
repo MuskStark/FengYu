@@ -123,19 +123,26 @@ A `files.write` operation (output/export) without `files.write` in `permissions`
 
 ## The wizard UI
 
-The UI is a **four-step wizard** micro-frontend, built with the host's Vuetify instance:
+The UI is a controlled, stateful **four-step wizard** micro-frontend built with `FyStepWizard` and the host's Vuetify instance:
 
 ```
-1. Select file  ──►  2. Choose mode  ──►  3. Configure  ──►  4. Output
-   pick .xlsx         BY_SHEET /           mode-specific       output dir +
-   (files.read)       BY_COLUMN /          params              export zip
-                      COMPLEX                                  (files.write)
+1. Source  ──►  2. Mode  ──►  3. Output  ──►  4. Run
+   pick +         choose and       authorize an      execute,
+   analyze        configure        output folder     review, download
 ```
 
-- **Step 1 — Select file:** upload the input workbook (`files.open`).
-- **Step 2 — Choose mode:** pick `BY_SHEET`, `BY_COLUMN`, or `COMPLEX`.
-- **Step 3 — Configure:** mode-specific options (sheets, split column, or complex rules).
-- **Step 4 — Output:** allocate the output directory, execute the split, and export the zip.
+- **Source:** choose an `.xlsx` or `.xls` grant with `files.open`; the step analyzes the workbook and exposes its sheets and columns.
+- **Mode:** select and configure one of the three modes. `BY_SHEET` optionally selects sheets: a non-empty selection is sent as `selectedSheets`, while an empty selection omits that field so the worker expands it to every analyzed sheet. `BY_COLUMN` requires a sheet and header that still exist in the latest analysis. `COMPLEX` requires one or more complete rules: ordinary indices must be integers of 1 or greater, while copy-all rules require and send `headerIndex: -1` and `columnIndex: -1`. The optional output filename prefix also belongs to this step; the UI always sends `filePrefix`, including `""`, so clearing it resets a value stored by a previous configure call.
+- **Output:** choose a fresh writable directory grant with `files.outputDirectory()`.
+- **Run:** invoke `split`. Successful validation explicitly completes the wizard and shows the written-file count/list; **Download results** is a separate user action that calls `files.export`.
+
+Analyze, configure, output-selection, and split failures stay on their current step with one wizard-owned inline error announcement. For worker responses, the UI displays `error`, then `summary`, then its operation-specific fallback, so the real JSON-RPC `{ success: false, summary }` contract remains actionable. The forward action becomes **Retry** and reruns that step's validation; duplicate forward/run actions are single-flight, and obsolete async results cannot advance the workflow. An export error remains visible on the completed result because it occurs after wizard validation.
+
+Upstream edits invalidate dependent progress, stale downstream errors, and the previous split result. Changing Source resets Mode, Output, and Run; changing Mode or any mode-specific option resets Output and Run; changing the output grant resets Run. The real visited path is trimmed back to the changed step, so invalidated future steps are locked until their dependencies validate again. In particular, a new Source or Mode selection also clears the prior output-directory grant.
+
+The Excel plugin—not `FyStepWizard`—persists a versioned JSON wizard snapshot and its domain draft in `sessionStorage`. On reload it validates the record shape—including the COMPLEX index/copy-all invariants—restores the draft, and re-analyzes the stored source/session before resuming. If the saved path had reached Output, it then replays `configure` with the restored mode and options; Output is enabled only after that worker state is rebuilt. A restored `BY_COLUMN` sheet or header that disappeared during re-analysis returns to Mode without calling configure. A failed or thrown configure likewise returns to Mode with an inline, retryable error. For `BY_SHEET`, an empty restored selection still omits `selectedSheets`, preserving the worker's “all sheets” behavior. A corrupt record or unavailable storage starts cleanly at Source; serialization and storage read/write/remove failures are contained, and a save/clear failure warns once without crashing the current workflow. An expired source grant returns to Source with an error. Results are never restored as completed work.
+
+Under the current SDK contract, an output-directory permission grant cannot be safely recovered from `sessionStorage`. Reload therefore always clears Output and Run, resumes no later than Output, and requires the user to select the output directory again before Run. Completion and the subsequent zip download are both explicit actions.
 
 It loads in the sandboxed iframe under `/plugin-runtime/fan.summer.excel/**` and bridges to the host via `@infinia/plugin-sdk`. See [UI Micro-frontend](/en/plugins/ui-microfrontend).
 

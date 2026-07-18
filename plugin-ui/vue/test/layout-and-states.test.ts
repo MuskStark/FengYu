@@ -14,8 +14,8 @@ it('renders navigation and emits the selected item', async () => {
     ] },
     slots: { default: '<main>Content</main>' },
   })
-  // The desktop rail is icon-only: the title is not rendered in the drawer
-  // (it only appears in the mobile app bar). Default jsdom width is desktop.
+  // The desktop drawer is expanded by default: nav item titles render as
+  // readable labels alongside the icon. Default jsdom width is desktop.
   expect(wrapper.find('[data-nav="overview"]').exists()).toBe(true)
   await wrapper.find('[data-nav="overview"]').trigger('click')
   expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['overview'])
@@ -45,7 +45,7 @@ it('exposes a retry action with readable error text', async () => {
 })
 
 describe('FyPluginShell drawer breakpoint', () => {
-  it('keeps the desktop rail permanent at plugin iframe widths', async () => {
+  it('keeps the desktop drawer permanent at plugin iframe widths', async () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1014 })
     window.dispatchEvent(new Event('resize'))
     const wrapper = mount(FyPluginShell, {
@@ -60,8 +60,10 @@ describe('FyPluginShell drawer breakpoint', () => {
     })
     await nextTick()
 
+    // At/above the breakpoint the drawer is permanent (expanded by default —
+    // not in rail mode) and never temporary or mobile.
     const classes = wrapper.get('.v-navigation-drawer').classes()
-    expect(classes).toContain('v-navigation-drawer--rail')
+    expect(classes).not.toContain('v-navigation-drawer--rail')
     expect(classes).not.toContain('v-navigation-drawer--temporary')
     expect(classes).not.toContain('v-navigation-drawer--mobile')
   })
@@ -86,25 +88,47 @@ describe('FyPluginShell drawer breakpoint', () => {
 })
 
 describe('FyPluginShell refined rail chrome', () => {
-  it('keeps the desktop rail icon-only with no title or brand label', async () => {
+  it('expands the desktop drawer with labels by default', async () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1014 })
     window.dispatchEvent(new Event('resize'))
     const wrapper = mount(FyPluginShell, {
       global: { plugins: [createFengYuVuetify()] },
       props: {
         title: 'Offline Python',
-        brand: 'Offline Python',
         modelValue: 'build',
         items: [{ value: 'build', title: 'Build', icon: 'mdi-hammer-wrench' }],
       },
     })
     await nextTick()
 
-    // The rail is intentionally icon-only: neither a brand marker nor the
-    // title text render inside the drawer on desktop (the mobile app bar still
-    // shows the title in temporary mode).
-    expect(wrapper.find('.fy-shell__brand').exists()).toBe(false)
-    expect(wrapper.get('.v-navigation-drawer').text()).not.toContain('Offline Python')
+    // Desktop drawer is expanded by default: the nav item title renders as a
+    // readable label, and the drawer is NOT in rail mode.
+    const drawer = wrapper.get('.v-navigation-drawer')
+    expect(drawer.text()).toContain('Build')
+    expect(drawer.classes()).not.toContain('v-navigation-drawer--rail')
+    // The collapse toggle is rendered on desktop (mobile uses the app-bar hamburger).
+    expect(wrapper.find('[data-action="toggle-rail"]').exists()).toBe(true)
+  })
+
+  it('collapses to an icon-only rail on toggle', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1014 })
+    window.dispatchEvent(new Event('resize'))
+    const wrapper = mount(FyPluginShell, {
+      global: { plugins: [createFengYuVuetify()] },
+      props: {
+        title: 'Offline Python',
+        modelValue: 'build',
+        items: [{ value: 'build', title: 'Build', icon: 'mdi-hammer-wrench' }],
+      },
+    })
+    await nextTick()
+
+    // Expanded by default — no rail class yet.
+    expect(wrapper.get('.v-navigation-drawer').classes()).not.toContain('v-navigation-drawer--rail')
+    await wrapper.get('[data-action="toggle-rail"]').trigger('click')
+    await nextTick()
+    // Collapsed — drawer enters Vuetify rail mode (icon-only).
+    expect(wrapper.get('.v-navigation-drawer').classes()).toContain('v-navigation-drawer--rail')
   })
 
   it('marks the active nav item with a refinement hook class', async () => {

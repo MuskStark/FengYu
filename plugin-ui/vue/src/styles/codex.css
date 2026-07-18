@@ -141,8 +141,21 @@ samp,
   background: rgb(var(--v-theme-surface-container)) !important;
 }
 
-/* Nav items: hairline rounded chips with a soft primary tint when active.
- * The rail is intentionally icon-only — no brand/title block is rendered. */
+/* Rail expand/collapse toggle pinned at the drawer top (desktop only).
+ * Mobile uses the app-bar hamburger, so this block is v-if'd out below the
+ * breakpoint by the component. */
+.fy-shell__rail-toggle {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 8px 2px;
+}
+
+/* When collapsed to the narrow rail, center the toggle under the icon strip. */
+.fy-shell__rail.v-navigation-drawer--rail .fy-shell__rail-toggle {
+  justify-content: center;
+}
+
+/* Nav items: hairline rounded chips with a soft primary tint when active. */
 .fy-shell__list {
   padding: 8px;
 }
