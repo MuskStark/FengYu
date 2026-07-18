@@ -34,7 +34,30 @@ export { default as FyNotificationCenter } from './components/FyNotificationCent
 
 // Workflow components.
 export { default as FyStepWizard } from './components/FyStepWizard.vue'
-export type { FyWizardStep } from './components/FyStepWizard.vue'
+export {
+  FY_WIZARD_SNAPSHOT_VERSION,
+  FY_WIZARD_DEFAULT_LABELS,
+  buildWizardSnapshot,
+  createWizardStates,
+  invalidateWizardStates,
+  normalizeWizardSnapshot,
+} from './wizard'
+export type {
+  FyWizardSnapshot,
+  FyWizardActionsSlotProps,
+  FyWizardErrorSlotProps,
+  FyWizardLabels,
+  FyWizardLabelsInput,
+  FyWizardSnapshotResult,
+  FyWizardSlotActions,
+  FyWizardStep,
+  FyWizardStepLabelSlotProps,
+  FyWizardStepSlotProps,
+  FyWizardStepState,
+  FyWizardStepStatus,
+  FyWizardStatusLabels,
+  FyWizardValidationResult,
+} from './wizard'
 export { default as FyConfirmDialog } from './components/FyConfirmDialog.vue'
 export { default as FyTaskTable } from './components/FyTaskTable.vue'
 export type { FyTaskRow, FyTaskStatus } from './components/FyTaskTable.vue'
