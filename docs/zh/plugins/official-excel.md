@@ -123,19 +123,25 @@ await fengyu.files.export(outDir)                                  // 打 zip + 
 
 ## 向导 UI
 
-UI 是一个**四步向导**微前端，使用宿主的 Vuetify 实例构建：
+UI 是一个受控、有状态的**四步向导**微前端，使用 `FyStepWizard` 与宿主的 Vuetify 实例构建：
 
 ```
-1. 选择文件  ──►  2. 选择模式  ──►  3. 配置  ──►  4. 输出
-   选 .xlsx        BY_SHEET /       随模式而异        输出目录 +
-   (files.read)    BY_COLUMN /      参数             导出 zip
-                   COMPLEX                            (files.write)
+1. Source  ──►  2. Mode  ──►  3. Output  ──►  4. Run
+   选择并分析       选择并配置       授权输出目录       执行、查看、下载
 ```
 
-- **第 1 步——选择文件：** 上传输入工作簿（`files.open`）。
-- **第 2 步——选择模式：** 选 `BY_SHEET`、`BY_COLUMN` 或 `COMPLEX`。
-- **第 3 步——配置：** 随模式而异的选项（工作表、拆分列或复杂规则）。
-- **第 4 步——输出：** 分配输出目录，执行拆分，并导出 zip。
+- **Source：** 通过 `files.open` 选择 `.xlsx` 或 `.xls` 授权；该步骤分析工作簿并显示其中的工作表与列。
+- **Mode：** 选择并配置三种模式之一。`BY_SHEET` 可选工作表：非空选择会作为 `selectedSheets` 发送，留空时则省略该字段，由 worker 展开为所有已分析工作表。`BY_COLUMN` 要求工作表与表头仍存在于最新分析结果中。`COMPLEX` 要求一条或多条完整规则：普通索引必须是大于等于 1 的整数；整表复制规则则要求并发送 `headerIndex: -1` 与 `columnIndex: -1`。可选的输出文件名前缀也属于此步骤；UI 始终发送 `filePrefix`（包括 `""`），因此清空它会重置之前 configure 调用保存的值。
+- **Output：** 通过 `files.outputDirectory()` 选择新的可写目录授权。
+- **Run：** 调用 `split`。校验成功后会显式完成向导并显示已写文件的数量/列表；**Download results** 是另一个用户操作，会调用 `files.export`。
+
+Analyze、configure、输出选择或 split 失败时会停留在当前步骤，并只显示一条由向导拥有的内联错误提示。对于 worker 响应，UI 会依次使用 `error`、`summary` 与对应操作的兜底文字，因此真实 JSON-RPC `{ success: false, summary }` 契约仍能提供可操作信息。前进操作会变成 **Retry**，再次执行该步骤的校验；重复的前进/运行操作只会执行一次，过期的异步结果不能推进工作流。导出发生在向导校验完成后，因此导出错误仍会显示在完成结果中。
+
+上游编辑会使依赖进度、下游旧错误与之前的拆分结果失效。更改 Source 会重置 Mode、Output 与 Run；更改 Mode 或任何模式专属选项会重置 Output 与 Run；更改输出授权会重置 Run。真实访问路径会裁剪回发生变化的步骤，因此失效的未来步骤会保持锁定，直至依赖重新校验。特别是，新的 Source 或 Mode 选择也会清除之前的输出目录授权。
+
+由 Excel 插件而非 `FyStepWizard` 在 `sessionStorage` 中持久化版本化的 JSON 向导快照及其业务草稿。重新加载时，它会校验记录结构（包括 COMPLEX 索引与 copy-all 不变量）、恢复草稿，并在恢复前重新分析已存的源文件/会话。如果保存路径已到达 Output，随后还会用恢复的模式和选项重放 `configure`；只有 worker 状态重建成功才会开放 Output。如果恢复的 `BY_COLUMN` 工作表或表头已在重新分析时消失，向导会直接回到 Mode，且不调用 configure。configure 返回失败或抛错时同样会回到 Mode，显示可重试的内联错误。对于 `BY_SHEET`，恢复的空选择仍会省略 `selectedSheets`，保持 worker 的“全部工作表”语义。损坏的记录或不可用的 storage 会从 Source 干净启动；序列化及 storage 读/写/删除失败都会被隔离，保存/清除失败只警告一次，不会让当前工作流崩溃。过期的源文件授权会带错误返回 Source。结果不会作为已完成工作恢复。
+
+在当前 SDK 契约下，输出目录权限授权无法从 `sessionStorage` 安全恢复。因此重新加载总会清除 Output 与 Run，最晚从 Output 继续，并要求用户在 Run 前重新选择输出目录。完成与之后的 zip 下载都是显式操作。
 
 它加载在 `/plugin-runtime/fan.summer.excel/**` 下的沙箱化 iframe 中，并通过 `@infinia/plugin-sdk` 与宿主桥接。参见 [UI 微前端](/zh/plugins/ui-microfrontend)。
 

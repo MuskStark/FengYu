@@ -1,4 +1,4 @@
-import { defineConfig, devices } from '@playwright/test'
+import { defineConfig } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
 import { resolve, dirname } from 'node:path'
 
@@ -8,7 +8,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
  * Playwright config for the workbench visual-regression + axe suite.
  *
  * `webServer` boots a Vite dev server that serves `e2e/index.html` (see
- * `vite.e2e.config.ts`); the spec pages then load `/?theme=dark|light`.
+ * `vite.e2e.config.ts`). Each visual case owns its exact viewport, theme, and
+ * wizard state; no emulated device contributes implicit dimensions.
  */
 export default defineConfig({
   testDir: resolve(__dirname, 'e2e'),
@@ -24,7 +25,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: { browserName: 'chromium' },
     },
   ],
   webServer: {

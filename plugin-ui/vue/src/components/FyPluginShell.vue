@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useDisplay } from 'vuetify'
+import { mdiBackburger, mdiForwardburger } from '@mdi/js'
 import FyIcon from './FyIcon.vue'
 
 /**
@@ -23,8 +24,9 @@ export interface FyNavItem {
 const props = withDefaults(
   defineProps<{
     /**
-     * Shell title shown in the mobile (temporary) app bar. The desktop rail is
-     * icon-only and renders neither the title nor any brand label.
+     * Shell title shown in the mobile (temporary) app bar. The desktop drawer
+     * shows nav item titles by default (icon + label); the user can collapse it
+     * to an icon-only rail via the toggle at the drawer top.
      */
     title?: string
     /** Navigation items to render. */
@@ -60,6 +62,14 @@ const temporary = computed(() => width.value < props.railBreakpoint)
 const drawerOpen = ref(false)
 
 /**
+ * Desktop rail collapse state. Defaults to `false` (expanded — icon + label),
+ * so the nav item titles are visible on first open; the user can collapse to
+ * an icon-only rail via the toggle pinned at the drawer top. Only meaningful
+ * on the permanent (non-temporary) drawer — mobile mode is unaffected.
+ */
+const collapsed = ref(false)
+
+/**
  * True when an icon string is SVG path data (from `@mdi/js`) rather than a
  * legacy `mdi-*` webfont name. MDI path data always begins with an `M`/`m`
  * move command; webfont names always begin with `mdi-`. Path data renders via
@@ -87,12 +97,26 @@ function select(item: FyNavItem): void {
 
     <v-navigation-drawer
       class="fy-shell__rail"
-      :rail="!temporary"
+      :rail="!temporary && collapsed"
       :temporary="temporary"
       :mobile-breakpoint="railBreakpoint"
       :model-value="temporary ? drawerOpen : true"
       @update:model-value="drawerOpen = $event"
     >
+      <!-- Desktop-only rail collapse toggle. Mobile uses the app-bar hamburger. -->
+      <div v-if="!temporary" class="fy-shell__rail-toggle">
+        <v-btn
+          icon
+          variant="text"
+          size="small"
+          :aria-label="collapsed ? 'Expand navigation' : 'Collapse navigation'"
+          :title="collapsed ? 'Expand navigation' : 'Collapse navigation'"
+          data-action="toggle-rail"
+          @click="collapsed = !collapsed"
+        >
+          <FyIcon :path="collapsed ? mdiForwardburger : mdiBackburger" :size="20" />
+        </v-btn>
+      </div>
       <v-list nav class="fy-shell__list">
         <v-list-item
           v-for="item in items"
