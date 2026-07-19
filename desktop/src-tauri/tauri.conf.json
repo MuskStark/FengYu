@@ -19,7 +19,8 @@
     "active": true,
     "targets": "all",
     "icon": [
-      "icons/icon.png"
+      "icons/icon.png",
+      "icons/icon.ico"
     ],
     "resources": {
       "binaries/FengYu.jar": "binaries/FengYu.jar",
