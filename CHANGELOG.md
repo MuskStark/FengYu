@@ -4,208 +4,145 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ---
 
-## [Unreleased] — Plugin SDK & CLI lifecycle
+## [4.0.0-alpha.1] — 2026-07-19
+
+First public **alpha** of the 4.0 line. Infinia (蜂语 / FengYu) is re-architected from a JavaFX
+desktop app into a **headless web + desktop application**: a loopback-only Spring Boot backend, a
+Vue 3.5 + TypeScript SPA (identical for browser and desktop), and a Tauri 2.0 desktop shell that
+sidecar-launches the backend. Built-in tools become isolated **`.fyp`** plugins — a sandboxed
+iframe UI talking to an out-of-process JSON-RPC 2.0 worker. This alpha publishes unsigned
+Windows/macOS/Linux Tauri packages and a portable, loopback-only Web distribution.
+
+### ⚠️ Breaking Changes
+- **JavaFX is gone.** All JavaFX code and dependencies are deleted — `FengYuApp`, the `ui/` shell,
+  all built-in tool UI classes, the v1 `PluginRegistry`/`PluginLoader`, and every `org.openjfx:*`
+  dependency. The running backend is headless (no window).
+- **New entry point:** `fan.summer.fengyu.HeadlessLauncher` (was `fan.summer.Launcher`). It boots a
+  loopback Spring Boot web server: `java -jar FengYu-4.0.0-alpha.1.jar --port=<n> --token=<t>`.
+- **Plugin contract v2** (`FengYuPluginV2`): `descriptor()` + `invoke(action, args)` (JSON-in /
+  JSON-out) + `aiTools()`. The old `createView()` → JavaFX `Node` contract is removed; UI is now a
+  separately-served micro-frontend ESM bundle (`PluginDescriptor.uiEntry`).
+- **`IconStyle` decoupled from JavaFX** — colours are RGB ints + `getColorHex()` (no
+  `javafx.scene.paint.Color`).
+- **Database layer migrated from MyBatis to Spring Data JPA + Hibernate 7** — see Removed.
 
 ### ✨ Added
+- **Headless backend** (`fan.summer.fengyu.web.*`): `GET /api/health`, `GET /api/plugins`,
+  `POST /api/plugins/{id}/invoke`, `GET /plugin-ui/{id}/**` (serves MF bundles), `GET/PUT
+  /api/settings`, `POST /api/ai/chat` + `GET /api/ai/stream` (SSE: token / thinking / tool / done /
+  error). Loopback-only bind + per-launch `X-FengYu-Token` auth (`?token=` for the SSE stream).
 - **Alpha desktop + web release pipeline** — `v4.0.0-alpha.1` publishes unsigned Windows/macOS/Linux
   Tauri packages and a portable, loopback-only Web distribution. The Vue SPA is baked into the shaded
   backend JAR (`static/`) and served by a new `SpaForwardController`; a release-tag resolver
   (`scripts/resolve-release-version.mjs`) drives the version strings, and `scripts/package-web-release.sh`
   + `test-web-release.sh` assemble and smoke-test the archive. Code-signing, a bundled JRE, and the
   auto-updater remain deferred to a later release.
-- **Default Vue + Java scaffold** — `fengyu plugin create` now produces a complete plugin by default: a
+- **Multi-datasource setup wizard**: first launch guides users through database selection
+  (H2 / SQLite / MySQL / PostgreSQL) with connection testing and automatic schema initialization.
+  The backend boots in **SETUP mode** (minimal Spring context, no JPA) when
+  `~/.fengyu/config/datasource.properties` is absent, and **APP mode** (full context) once it exists.
+  The Tauri/desktop supervisor restarts the sidecar after the wizard completes.
+- **JPA migration**: the database layer migrated from MyBatis to **Spring Data JPA + Hibernate 7**
+  (`ddl-auto=update`). All 14 entities ported with `@Entity` annotations; 14 Spring Data repositories
+  replace the MyBatis mappers.
+- **User-system groundwork**: `sys_user` / `sys_session` tables, `user_id` row-level isolation on all
+  user-scoped tables, and pluggable `AuthProvider` / `SecurityContext` interfaces with a Noop
+  implementation (login UI deferred to a later phase). Local offline mode attributes all data to a
+  single virtual user (id=1, "ZFlow-Summer"), created on APP-mode startup.
+- **AES-GCM encryption** (`CryptoUtil`) for the datasource password field in
+  `datasource.properties` — keys are machine-bound via a per-machine UUID.
+- **Official plugin UI kit** `@infinia/plugin-ui` — a Vuetify 3 (Material Design 3) component library
+  for generated plugins. Ships `FyPluginShell`, `FyPageHeader`, `FyToolbar`, SDK-backed
+  `FyFilePicker` / `FyDirectoryPicker`, `FyStepWizard`, `FyTaskTable`, `FyNotificationCenter`, the
+  `FyEmptyState` / `FyLoadingState` / `FyErrorState` / `FyPermissionNotice` state panels, and
+  `FyConfirmDialog`, plus `createFengYuVuetify`, `bindFengYuEnvironment`, and `provideFengYuClient`
+  so the scaffolded `main.ts` binds the host theme/locale automatically.
+- **Email Center `.fyp`** (`fan.summer.email`) with a sandboxed five-tab Vue/Vuetify/TipTap UI, an
+  isolated official-SDK Java Worker, and package permissions limited to database, email network, and
+  authorized file read/write capabilities. Multi-account SMTP/IMAP configuration, AES-GCM credential
+  storage, address-book/tag CRUD, confirmed single and batch sending, manual IMAP `.eml` collection,
+  archive search/detail, and seven manifest-declared AI tools. Plugin-owned tables use the
+  `FengTu_PL_Email_` namespace across H2, SQLite, MySQL, and PostgreSQL.
+- **Excel Splitter `.fyp`** (`fan.summer.excel`) — BY_SHEET / BY_COLUMN / COMPLEX split modes with a
+  stateful four-step wizard, six manifest-declared AI tools, and authorized file read/write.
+- **Markdown Editor `.fyp`** (`fan.summer.markdown`) — first official v2 plugin: server-side
+  commonmark render via `invoke("render", {markdown})` plus a Vue split-editor + live preview.
+- **`frontend/`** — Vue 3.5.39 + TS shell: sidebar (collapsible, categories), theme (dark/light),
+  settings, AI chat (SSE + markdown + collapsible thinking), ToolGrid, and a micro-frontend host
+  that dynamically imports each plugin's `uiEntry`.
+- **`desktop/`** — Tauri 2.0 shell: spawns the Java sidecar (`--port=24056`), reads `FENGYU_PORT`
+  from stdout, polls `/api/health`, injects the backend URL + token into the webview, kills the
+  sidecar on close.
+- **Publishable plugin toolchain** — the Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk`,
+  independently versioned, GitHub Packages) and the npm packages `@infinia/plugin-sdk`,
+  `@infinia/plugin-ui`, `@infinia/plugin-cli`, plus a release workflow with a clean-consumer smoke job.
+- **Default Vue + Java scaffold** — `fengyu plugin create` produces a complete plugin by default: a
   Vue/Vuetify UI (`ui-src/`) backed by a Java JSON-RPC worker (`worker/`), with the Maven Wrapper, a
   build declaration, tests, and a GitHub Packages `settings.xml`. `--ui-only` retains the lightweight
   UI-only template.
 - **Real-worker dev simulator** — `fengyu plugin dev` builds the worker JAR (if missing), starts the
-  real Java JSON-RPC worker, and forwards the UI's `rpc.invoke` calls to it over `POST /__rpc`. Java
-  source edits trigger a debounced rebuild + worker restart.
+  real Java JSON-RPC worker, and forwards the UI's `rpc.invoke` calls over `POST /__rpc`. Java source
+  edits trigger a debounced rebuild + worker restart.
 - **Declared build lifecycle** — `fengyu.plugin.json` drives an ordered, atomic pipeline
   (prepare → install → test → build → validate staging → package) with the Maven Wrapper (no system
   Maven fallback). `--skip-tests` skips tests only, never type checking or packaging.
 - **Shared manifest contract** — a canonical `plugin-spec/manifest.schema.json` + fixtures shared by
   the CLI and the host, including `database` and `network.email` permissions and AI-tool `method` /
   object-schema validation.
-- **Publishable plugin toolchain** — the Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.0.0`,
-  independently versioned, GitHub Packages) and the npm packages `@infinia/plugin-sdk@1.0.0`,
-  `@infinia/plugin-ui@1.0.0`, `@infinia/plugin-cli@1.0.0`, plus a release workflow with a clean-consumer
-  smoke job.
+- **Offline Python Builder `.fyp`** (`fan.summer.offlinepython`) — doctor, dependency search, project
+  init, async wheelhouse builds with streamed logs, and output verification.
 
 ### ♻️ Changed
-- **Stateful plugin workflows** — `@infinia/plugin-ui` now provides a controlled, persistent-ready
-  step wizard with explicit states, async validation, branching, invalidation, and snapshots; the
-  official Excel plugin adopts it with reload re-analysis and configuration replay, worker-faithful
-  mode validation, safe output reselection, and explicit completion/download.
+- **Vuetify 3 (Material Design 3) adoption** — full visual-language switch for the web shell and
+  plugin micro-frontends, from the legacy `--sk-*` IntelliJ-token system to MD3. Theme driven by
+  Vuetify's global singleton from `useThemeStore`; plugins share the host's Vuetify instance via
+  `PluginContext.vuetify`.
+- **Stateful plugin workflows** — `@infinia/plugin-ui` provides a controlled, persistent-ready step
+  wizard with explicit states, async validation, branching, invalidation, and snapshots; the official
+  Excel plugin adopts it with reload re-analysis and configuration replay, worker-faithful mode
+  validation, safe output reselection, and explicit completion/download.
 - **Refined plugin-ui surface** — `@infinia/plugin-ui` gains a theme-driven polish layer so plugins
   using `FyPluginShell` share one calm, low-elevation design language (hairline borders, soft primary
-  active chips, a brand marker, de-uppercased buttons, denser fields/tables) instead of each plugin
-  shipping bespoke chrome. Every color resolves through a Vuetify theme variable; the email green
-  palette is explicitly excluded. `FyPluginShell` exposes an optional `brand` prop and stable
-  `fy-shell__*` hook classes.
-- **Node.js 24.18.0 baseline** — documentation, `plugin-cli` engine metadata, and every GitHub
-  Actions workflow now use the same exact Node.js version, protected by a repository contract test.
-- **Official plugins built by the CLI** — Markdown, Excel, and Email are now packaged by
-  `fengyu plugin build` (a CI matrix); the legacy shell packager and centralized source manifests
-  are removed.
+  active chips, a brand marker, de-uppercased buttons, denser fields/tables). Every color resolves
+  through a Vuetify theme variable; the email green palette is explicitly excluded.
+- **Node.js 24.18.0 baseline** — documentation, `plugin-cli` engine metadata, and every GitHub Actions
+  workflow now use the same exact Node.js version, protected by a repository contract test.
+- **Official plugins built by the CLI** — Markdown, Excel, and Email are packaged by
+  `fengyu plugin build` (a CI matrix); the legacy shell packager and centralized source manifests are
+  removed.
 - **Offline-first install** — `fengyu plugin install` validates the archive (limits, paths, manifest)
   before any network access; unsafe or invalid packages are rejected with zero fetch calls.
 - **Strict SDK RPC contracts** — the worker surfaces canonical JSON-RPC errors (`-32700` parse,
   `-32600` invalid request, `-32601` unknown method, `-32000` handler failure); the TypeScript client
   removes abort listeners on every settled path.
+- **HeadlessLauncher** now selects `SetupApplication` (SETUP) vs `AiApplication` (APP, with
+  `fengyu.mode=app`) based on `datasource.properties` presence; the desktop host restarts the sidecar
+  on `SETUP_DONE` (exit 0) to enter APP mode.
+- `AiConfigService` / `AiConfigServiceHeadless` / `EmailUtil` converted from static utilities to
+  Spring beans scoped by `SecurityContext.currentUserId()`. Setup-wizard endpoints (`/api/setup/*`)
+  bypass token auth (`TokenAuthFilter`).
+- Email batch sending creates one message per parsed attachment tag; all matching contacts share the
+  To/CC fields, To takes precedence over CC, and failed-item retry was removed.
+
+### 🗑️ Removed
+- `DatabaseInit`, all MyBatis mapper interfaces (12), `mybatis-config.xml`, all mapper XML (12), and
+  the MyBatis dependency.
+- All JavaFX code and dependencies (see Breaking Changes above).
 
 ### 🐛 Fixed
+- **Headless fat-jar boot**: aligned `logback-classic`/`logback-core` versions (a split pair crashed
+  on `JaninoEventEvaluatorBase` at first logger init); added shade `AppendingTransformer` for
+  `AutoConfiguration.imports` (Spring Boot 4 splits web/Tomcat autoconfig across module jars — without
+  merging, embedded Tomcat silently never started); emit `-parameters` so Spring MVC resolves
+  `@PathVariable`/`@RequestParam` names.
+- `VirtualUserInitializer` native INSERT now runs inside `@Transactional` (was throwing
+  `TransactionRequiredException`).
 - Atomic `.fyp` packaging: a failure at any stage leaves no `.fyp`, no `.tmp-*`, and no staging dir.
 - Offline Python Builder now opens a writable project workspace, passes complete `FileRef` objects
   through the host bridge, reports translated job states, stops failed polling, and performs real
   build/deploy cancellation instead of changing UI state only.
-
----
-
-## [4.0.0-SNAPSHOT] — Official Email Center plugin
-
-### ✨ Added
-- **Official plugin UI kit** `@infinia/plugin-ui` — a Codex-style Vuetify 3 (Material Design 3)
-  component library for generated plugins. Ships `FyPluginShell`, `FyPageHeader`, `FyToolbar`,
-  SDK-backed `FyFilePicker` / `FyDirectoryPicker`, `FyStepWizard`, `FyTaskTable`,
-  `FyNotificationCenter`, the `FyEmptyState` / `FyLoadingState` / `FyErrorState` / `FyPermissionNotice`
-  state panels, and `FyConfirmDialog`, plus `createFengYuVuetify`, `bindFengYuEnvironment`, and
-  `provideFengYuClient` so the scaffolded `main.ts` binds the host theme/locale automatically.
-- **Default CLI template is now Vue/Vuetify** — `fengyu plugin create` scaffolds a Vite project from
-  the `vue-codex` template, runs `npm install` by default (`--no-install` to skip), and its
-  `main.ts` already provides the `FengYuClient` app-wide.
-- **Vite-aware dev and build** — `fengyu plugin dev` detects a Vue/Vite project, spawns Vite (HMR),
-  and serves a loopback simulator at `http://127.0.0.1:4173/__fengyu`; `fengyu plugin build` runs the
-  frontend build first, then validates and atomically writes the `.fyp` (no partial archive on failure).
-- **Theme/locale synchronization** — `bindFengYuEnvironment` calls `ready()` once and subscribes to
-  `environment` events, so host dark/light and en/zh changes propagate into Vuetify live.
-- **Static-plugin compatibility** — legacy `ui/index.html` + `ui/app.js` plugins (no build step)
-  remain fully supported by `dev` and `build`; migration to the Vue/Codex kit is optional.
-- Bilingual `UI Components` documentation page (en + zh) and `plugin-tooling` CI workflow covering
-  the SDK, plugin-ui (typecheck/test/build + Playwright visual suite), and plugin-cli.
-
-### ✨ Added
-- **Email Center `.fyp`** (`fan.summer.email`) with a sandboxed five-tab Vue/Vuetify/TipTap UI,
-  an isolated official-SDK Java Worker, and package permissions limited to database, email network,
-  and authorized file read/write capabilities.
-- Multi-account SMTP/IMAP configuration, AES-GCM credential storage, address-book/tag CRUD,
-  confirmed single and batch sending, manual IMAP `.eml` collection, archive search/detail,
-  and seven manifest-declared AI tools.
-- Independent dialect migrations and contract coverage for H2, SQLite, MySQL, and PostgreSQL;
-  plugin-owned tables use the `FengTu_PL_Email_` namespace.
-- A bilingual task-oriented Email Center UI with direct/tag Compose, email-safe Word rich text,
-  filename-tag To/CC group intersections, per-tag previews, common attachments, and structured
-  send records.
-
-### ♻️ Changed
-- Batch sending now creates one message per parsed attachment tag; all matching contacts share
-  the message To/CC fields, To takes precedence over CC, and failed-item retry was removed.
-
-### 🐛 Fixed
-- Hardened archive timestamps on SQLite (including upgrade migration), literal wildcard search,
+- Email archive timestamps on SQLite (including upgrade migration), literal wildcard search,
   account/folder path isolation, UTF-8 filename limits, and temporary-file cleanup.
-
----
-
-## [4.0.0-FengYu] — Vuetify MD3 Adoption
-
-Full visual-language switch for the web shell and plugin micro-frontends, from the legacy
-`--sk-*` IntelliJ-token system to **Material Design 3**.
-
-### UI
-- feat(frontend): adopt Vuetify 3 (Material Design 3 blueprint) as the UI
-  component library for the host SPA and plugin micro-frontend. Full
-  visual-language switch from the `--sk-*` IntelliJ-token system to MD3
-  (Google default baseline palette). Theme driven by Vuetify's global
-  singleton from `useThemeStore`; plugins share the host's Vuetify instance
-  via `PluginContext.vuetify`.
-
----
-
-## [4.0.0-SNAPSHOT] — Phase 4: Multi-datasource setup wizard + JPA migration + user-system groundwork
-
-### ✨ Added
-- **Multi-datasource setup wizard**: first launch now guides users through database selection
-  (H2 / SQLite / MySQL / PostgreSQL) with connection testing and automatic schema initialization.
-  The backend boots in **SETUP mode** (minimal Spring context, no JPA) when
-  `~/.fengyu/config/datasource.properties` is absent, and **APP mode** (full context) once it
-  exists. The Tauri/desktop supervisor restarts the sidecar after the wizard completes.
-- **JPA migration**: the database layer migrated from MyBatis to **Spring Data JPA + Hibernate 7**
-  (`ddl-auto=update`). All 14 entities ported with `@Entity` annotations; 14 Spring Data
-  repositories replace the MyBatis mappers.
-- **User-system groundwork**: `sys_user` / `sys_session` tables, `user_id` row-level isolation on
-  all user-scoped tables, and pluggable `AuthProvider` / `SecurityContext` interfaces with a Noop
-  implementation (login UI deferred to a later phase). Local offline mode attributes all data to a
-  single virtual user (id=1, "ZFlow-Summer"), created on APP-mode startup.
-- `application.yml` for static Spring configuration (JPA, actuator restart endpoint,
-  `server.address=127.0.0.1`).
-- **AES-GCM encryption** (`CryptoUtil`) for the datasource password field in
-  `datasource.properties` — keys are machine-bound via a per-machine UUID.
-- Frontend: `SetupWizard.vue` (three-step wizard), Pinia `setup` store, setup API client, and a
-  router guard that redirects to `/setup` when the backend reports uninitialized.
-
-### ♻️ Changed
-- `HeadlessLauncher` now selects `SetupApplication` (SETUP) vs `AiApplication` (APP, with
-  `fengyu.mode=app`) based on `datasource.properties` presence.
-- `AiConfigService` / `AiConfigServiceHeadless` / `EmailUtil` converted from static utilities to
-  Spring beans that read/write via JPA repositories scoped by `SecurityContext.currentUserId()`.
-- Setup-wizard endpoints (`/api/setup/*`) bypass token auth (`TokenAuthFilter`).
-- Tauri desktop host restarts the Java sidecar on `SETUP_DONE` (exit 0) to enter APP mode.
-- `AiApplication` widens entity/repository discovery (`@EntityScan` + `@EnableJpaRepositories`)
-  since the database package is a sibling of the application class.
-
-### 🗑️ Removed
-- `DatabaseInit`, all MyBatis mapper interfaces (12), `mybatis-config.xml`, and all mapper XML (12).
-- The MyBatis dependency.
-
-### 🐛 Fixed
-- `VirtualUserInitializer` native INSERT now runs inside `@Transactional` (was throwing
-  `TransactionRequiredException`).
-
----
-
-## [4.0.0-SNAPSHOT] — Phase 1: Vue + Tauri Walking Skeleton (in progress)
-
-**4.0.0** turns FengYu from a JavaFX desktop app into a **web + desktop application**: a headless
-Spring Boot backend, a Vue 3.5 + TypeScript frontend (identical for browser and desktop), and a
-Tauri 2.0 desktop shell that sidecar-launches the Java backend. Phase 1 is a thin end-to-end slice
-through every layer, proving the pipe before porting tools wide.
-
-### ⚠️ Breaking Changes
-
-- **JavaFX is gone.** All JavaFX code and dependencies are deleted — `FengYuApp`, the `ui/`
-  shell, all built-in tool UI classes, the v1 `PluginRegistry`/`PluginLoader`, and every
-  `org.openjfx:*` dependency. The running backend is headless (no window).
-- **New entry point:** `fan.summer.fengyu.HeadlessLauncher` (was `fan.summer.Launcher`). It boots
-  a loopback Spring Boot web server: `java -jar FengYu-4.0.0-SNAPSHOT.jar --port=<n> --token=<t>`.
-- **Plugin contract v2** (`FengYuPluginV2`): `descriptor()` + `invoke(action, args)` (JSON-in /
-  JSON-out) + `aiTools()`. The old `createView()` → JavaFX `Node` contract is removed; UI is now a
-  separately-served micro-frontend ESM bundle (`PluginDescriptor.uiEntry`).
-- **`IconStyle` decoupled from JavaFX** — colours are RGB ints + `getColorHex()` (no
-  `javafx.scene.paint.Color`).
-
-### ✨ Added
-
-- **Headless backend** (`fan.summer.fengyu.web.*`): `GET /api/health`, `GET /api/plugins`,
-  `POST /api/plugins/{id}/invoke`, `GET /plugin-ui/{id}/**` (serves MF bundles), `GET/PUT
-  /api/settings`, `POST /api/ai/chat` + `GET /api/ai/stream` (SSE: token / thinking / tool / done /
-  error). Loopback-only bind + per-launch `X-FengYu-Token` auth (`?token=` for the SSE stream).
-- **`plugin-markdown`** — first official v2 plugin (reactor module): server-side commonmark render
-  via `invoke("render", {markdown})`, plus a Vue micro-frontend (split editor + live preview).
-- **`frontend/`** — Vue 3.5.39 + TS shell: sidebar (collapsible, categories), theme (dark/light via
-  `--sk-*` tokens ported from `fengyu-common.css`), settings, AI chat (SSE + markdown + collapsible
-  thinking), ToolGrid, and a micro-frontend host that dynamically imports each plugin's `uiEntry`.
-  Vue is shared across shell + plugins via an import map.
-- **`desktop/`** — Tauri 2.0 shell: spawns the Java sidecar (`--port=24056`), reads `FENGYU_PORT`
-  from stdout, polls `/api/health`, injects the backend URL + token into the webview, kills the
-  sidecar on close. (Dev-mode; production packaging is Phase F-prod.)
-
-### 🐛 Fixed (headless fat-jar boot)
-
-- Aligned `logback-classic`/`logback-core` versions (a split pair crashed on
-  `JaninoEventEvaluatorBase` at first logger init).
-- Added shade `AppendingTransformer` for `AutoConfiguration.imports` — Spring Boot 4 splits
-  web/Tomcat autoconfig across module jars; without merging, embedded Tomcat silently never started.
-- Emit `-parameters` so Spring MVC resolves `@PathVariable`/`@RequestParam` names.
 
 ---
 

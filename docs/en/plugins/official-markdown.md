@@ -1,6 +1,6 @@
 ---
 title: Official Plugin — Markdown
-description: Walkthrough of fan.summer.markdown (v4.0.0) — a text-category plugin with no permissions and no AI tools, exposing a single render method backed by MarkdownWorkerMain, and a Vuetify split-pane editor UI with live preview.
+description: Walkthrough of fan.summer.markdown (v4.0.0-alpha.1) — a text-category plugin with no permissions and no AI tools, exposing a single render method backed by MarkdownWorkerMain, and a Vuetify split-pane editor UI with live preview.
 lang: en
 ---
 
@@ -22,7 +22,7 @@ lang: en
   "id": "fan.summer.markdown",
   "name": "Markdown Editor",
   "description": "Split-pane Markdown editor with isolated server-side rendering",
-  "version": "4.0.0",
+  "version": "4.0.0-alpha.1",
   "author": "FengYu",
   "icon": "language-markdown",
   "category": "text",
