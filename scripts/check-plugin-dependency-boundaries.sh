@@ -32,7 +32,7 @@ if [[ ! -f "$ROOT/.mvn/maven.config" ]]; then
   echo "FAIL: .mvn/maven.config must define the default reactor revision" >&2
   failures=$((failures + 1))
 else
-  require_text "$ROOT/.mvn/maven.config" '-Drevision=4.0.0-SNAPSHOT' \
+  require_text "$ROOT/.mvn/maven.config" '-Drevision=4.0.0-alpha.1' \
     '.mvn/maven.config must define the default reactor revision'
 fi
 

@@ -98,7 +98,7 @@ node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-excel
 node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-email
 ```
 
-每条都会写出 `OfficialPlugins/plugin-<name>/dist-package/fan.summer.<name>-4.0.0.fyp`。CI 在 `.github/workflows/plugin-tooling.yml` 中以矩阵方式构建它们。
+每条都会写出 `OfficialPlugins/plugin-<name>/dist-package/fan.summer.<name>-4.0.0-alpha.1.fyp`。CI 在 `.github/workflows/plugin-tooling.yml` 中以矩阵方式构建它们。
 
 ## 安装产物
 
