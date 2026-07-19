@@ -3,6 +3,9 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: 'Infinia',
   description: 'Where bees go, flows follow. — A modular web + desktop toolbox.',
+  // The docs site is served from a sub-path (muskstark.github.io/FengYu/),
+  // not the domain root, so every internal link/asset must be prefixed with it.
+  base: '/FengYu/',
   lastUpdated: true,
   cleanUrls: true,
   srcExclude: ['superpowers/**'],
@@ -11,7 +14,7 @@ export default defineConfig({
   // broken internal link rather than silently swallowing it.
   sitemap: { hostname: 'https://muskstark.github.io/FengYu/' },
   head: [
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }],
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/FengYu/logo.svg' }],
     ['meta', { name: 'theme-color', content: '#6750A4' }]
   ],
   locales: {
