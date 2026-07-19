@@ -61,7 +61,36 @@
     "install": "Install", "installedLabel": "Installed", "update": "Update", "uninstall": "Uninstall",
     "enable": "Enable", "disable": "Disable", "version": "Version", "author": "Author",
     "permissions": "Permissions", "noPermissions": "No additional permissions", "confirmUninstall": "Uninstall this plugin?",
-    "uploadHint": "Choose a .fyp plugin package", "operationFailed": "Operation failed", "catalogEmpty": "The catalog is empty. You can install a local .fyp package."
+    "uploadHint": "Choose a .fyp plugin package", "operationFailed": "Operation failed", "catalogEmpty": "The catalog is empty. You can install a local .fyp package.",
+    "pluginsSection": "Plugins", "skillsSection": "Skills",
+    "tabPlugins": "Plugins", "tabSkills": "Skills",
+    "installedRow": "Installed", "detail": "Details",
+    "unsupportedPackage": "Unsupported package. Use .fyp for plugins or .fys for skills."
+  },
+  "skills": {
+    "title": "Skills", "subtitle": "Domain guidance the assistant loads on demand",
+    "loading": "Loading skills…", "empty": "No skills installed.",
+    "builtin": "Built-in", "user": "User",
+    "enabled": "Enabled", "disabled": "Disabled",
+    "preview": "Preview", "close": "Close",
+    "howItWorks": "Enabled skills appear as a compact catalog in the system prompt. The assistant calls the built-in `skill` tool to load a skill's full body only when a request matches it.",
+    "userDirHint": "Drop a skill at ~/.fengyu/skills/<id>/SKILL.md to add your own."
+  },
+  "skillsMarket": {
+    "title": "Skills", "subtitle": "Domain guidance the assistant loads on demand",
+    "discover": "Discover", "installed": "Installed",
+    "search": "Search skills", "upload": "Install from local",
+    "all": "All", "official": "Official", "thirdParty": "Community",
+    "empty": "No skills found", "catalogEmpty": "The catalog is empty. You can install a local .fys package.",
+    "select": "Select a skill to view details",
+    "install": "Install", "installedLabel": "Installed", "update": "Update", "uninstall": "Uninstall",
+    "enable": "Enable", "disable": "Disable",
+    "version": "Version", "author": "Author", "builtin": "Built-in",
+    "builtinReadonly": "Built-in skills ship with the app and cannot be uninstalled or disabled. Install an overriding skill of the same id to customize.",
+    "preview": "Preview", "close": "Close",
+    "confirmUninstall": "Uninstall this skill?",
+    "operationFailed": "Operation failed",
+    "howItWorks": "Enabled skills appear as a compact catalog in the system prompt. The assistant calls the built-in `skill` tool to load a skill's full body only when a request matches it."
   },
   "status":   { "connecting": "Connecting…", "connected": "Connected",
                 "reconnecting": "Reconnecting…", "offline": "Offline",

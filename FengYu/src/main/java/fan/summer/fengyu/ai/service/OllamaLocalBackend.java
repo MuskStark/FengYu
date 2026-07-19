@@ -2,6 +2,8 @@ package fan.summer.fengyu.ai.service;
 
 import fan.summer.fengyu.ai.AiConfigService;
 import fan.summer.fengyu.ai.config.ChatModelConfig;
+import fan.summer.fengyu.ai.skill.SkillPromptAppender;
+import fan.summer.fengyu.ai.skill.SkillRegistry;
 import fan.summer.fengyu.ai.util.JsonHelper;
 import fan.summer.fengyu.api.ai.AiChatMessage;
 import fan.summer.fengyu.api.ai.AiServiceException;
@@ -150,6 +152,18 @@ public final class OllamaLocalBackend implements ChatBackend {
         this.toolCallbacks = toolCallbacks != null ? toolCallbacks : List.of();
     }
 
+    /**
+     * The live skill registry, used to append the enabled-skills catalog to the system prompt
+     * (progressive disclosure). Injected by the host wiring alongside tool callbacks; may be
+     * {@code null} (the prompt then carries no skill catalog — zero behaviour change).
+     */
+    private volatile SkillRegistry skillRegistry;
+
+    /** Sets the skill registry used for system-prompt catalog injection (host wiring / tests). */
+    public void setSkillRegistry(SkillRegistry skillRegistry) {
+        this.skillRegistry = skillRegistry;
+    }
+
     // ── Chat ──────────────────────────────────────────────────────────
 
     @Override
@@ -187,7 +201,7 @@ public final class OllamaLocalBackend implements ChatBackend {
     // ── Tool loop (Spring AI ToolCallingManager, user-controlled) ──────
 
     private void runToolLoop(List<AiChatMessage> history, AiStreamCallback callback) {
-        String systemPrompt = currentSystemPrompt();
+        String systemPrompt = effectiveSystemPrompt();
 
         // Tool-callback options attached to every Prompt so the model CAN request tools
         // (bug fix: previously buildToolCallbacks()'s result was discarded at the call site).
@@ -317,6 +331,16 @@ public final class OllamaLocalBackend implements ChatBackend {
     private static String currentSystemPrompt() {
         try { return AiConfigServiceHeadless.getAiSystemPrompt(); }
         catch (Throwable t) { return null; }
+    }
+
+    /**
+     * The effective system prompt: the user-configured base prompt with the enabled-skills
+     * catalog appended (progressive disclosure). When no skills are enabled, or the registry
+     * is unset, the base prompt is returned unchanged. Delegates to
+     * {@link SkillPromptAppender} so this stays in lock-step with {@code SpringAiCloudBackend}.
+     */
+    private String effectiveSystemPrompt() {
+        return SkillPromptAppender.append(currentSystemPrompt(), skillRegistry);
     }
 
     // ── Connection probe (also used by the connection test) ───────────

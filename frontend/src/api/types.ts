@@ -18,6 +18,44 @@ export interface PluginDescriptor {
   source: PluginSource // NEW — drives the Official/Third-party badge
 }
 
+/** Where a runtime skill was discovered (mirrors backend Skill.Source). */
+export type SkillSource = 'BUILTIN' | 'INSTALLED'
+
+/** Summary view from GET /api/skills (no body — fetched on demand). */
+export interface SkillSummary {
+  id: string
+  name: string
+  description: string
+  source: SkillSource
+  enabled: boolean
+}
+
+/** Full detail from GET /api/skills/{id} (includes the markdown body). */
+export interface SkillDetail extends SkillSummary {
+  body: string
+}
+
+/**
+ * Marketplace merged view from GET /api/skills/market — the lifecycle twin of
+ * MarketplacePlugin. Combines remote-catalog metadata with local install state so the
+ * Skills page can show Install / Update / Enable / Uninstall actions per entry.
+ */
+export interface MarketplaceSkill {
+  id: string
+  name: string
+  description: string
+  version: string
+  installedVersion: string | null
+  author: string | null
+  icon: string | null
+  homepage: string | null
+  downloadUrl: string | null
+  official: boolean
+  installed: boolean
+  enabled: boolean
+  updateAvailable: boolean
+}
+
 /**
  * Backend-driven sidebar category descriptor (from GET /api/plugin-categories).
  * `id` is the lowercase category id (e.g. "dev"); `labelKey` is a vue-i18n key
