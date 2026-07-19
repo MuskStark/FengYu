@@ -1,12 +1,12 @@
 # Infinia
 
-![Infinia](https://img.shields.io/badge/Infinia-Web%20%2B%20Desktop-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue) ![Maven](https://img.shields.io/badge/Maven-3.6+-red) ![Version](https://img.shields.io/badge/version-4.0.0--preview-blue)
+![Infinia](https://img.shields.io/badge/Infinia-Web%20%2B%20Desktop-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue) ![Maven](https://img.shields.io/badge/Maven-3.6+-red) ![Version](https://img.shields.io/badge/version-4.0.0--alpha.1-blue)
 
 **Infinia** (蜂语) is a *modular toolbox* — a growing collection of utility tools (Excel splitting, PDF
 processing, email, an AI chat assistant, developer helpers, and more) with a plugin-based
 architecture and automatic service discovery.
 
-> ### 🚧 4.0.0 Preview — web + desktop
+> ### 🚧 4.0.0-alpha.1 — web + desktop
 > This branch (`4.0.0-FengYu`) re-architects Infinia from a JavaFX desktop app into a **web +
 > desktop application**: a **headless Spring Boot backend** (loopback web server, no window), a
 > **Vue 3.5 + TypeScript** frontend (identical for browser and desktop), and a **Tauri 2.0**
@@ -14,7 +14,7 @@ architecture and automatic service discovery.
 > expose a JSON-RPC worker backend plus a micro-frontend UI bundle. JavaFX has been removed.
 > See [`CHANGELOG.md`](CHANGELOG.md) and the [online docs](https://muskstark.github.io/FengYu/) for the current state.
 >
-> Run the backend: `java -jar FengYu/target/FengYu-4.0.0-SNAPSHOT.jar --token=<t>` (binds port 24056 by default)
+> Run the backend: `java -jar FengYu/target/FengYu-4.0.0-alpha.1.jar --token=<t>` (binds port 24056 by default)
 > · frontend: `cd frontend && npm run dev` · smoke test: `scripts/e2e-smoke.sh`.
 >
 > The official **Email Center** plugin now ships as `fan.summer.email`: five sandboxed UI tabs,
@@ -47,7 +47,7 @@ mvn install -f FengYu-Api/pom.xml -DskipTests
 mvn clean package -f FengYu/pom.xml -DskipTests
 
 # 3. Run the headless backend (loopback web server on 127.0.0.1:24056)
-java -jar FengYu/target/FengYu-4.0.0-SNAPSHOT.jar --token=<your-token>
+java -jar FengYu/target/FengYu-4.0.0-alpha.1.jar --token=<your-token>
 ```
 
 ### Run the Frontend (dev)

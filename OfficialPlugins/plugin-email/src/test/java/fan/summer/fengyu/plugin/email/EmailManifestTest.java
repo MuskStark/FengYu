@@ -20,7 +20,7 @@ class EmailManifestTest {
         assertTrue(Files.isRegularFile(MANIFEST));
         JsonObject manifest = JSON.fromJson(Files.readString(MANIFEST), JsonObject.class);
         assertEquals("fan.summer.email", manifest.get("id").getAsString());
-        assertTrue(manifest.get("version").getAsString().matches("\\d+\\.\\d+\\.\\d+"));
+        assertTrue(manifest.get("version").getAsString().matches("\\d+\\.\\d+\\.\\d+(-(alpha|beta|rc)\\.\\d+)?"));
         assertTrue(manifest.get("official").getAsBoolean());
         assertEquals("ui/index.html", manifest.getAsJsonObject("ui").get("entry").getAsString());
         assertEquals("java -jar backend/worker.jar", manifest.getAsJsonObject("backend").get("command").getAsString());

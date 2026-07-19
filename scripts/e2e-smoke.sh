@@ -9,7 +9,7 @@ set -uo pipefail
 PORT="${1:-8899}"
 TOKEN="${2:-e2e-smoke-token}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-JAR="$ROOT/FengYu/target/FengYu-4.0.0-SNAPSHOT.jar"
+JAR="$ROOT/FengYu/target/FengYu-4.0.0-alpha.1.jar"
 
 if [ ! -f "$JAR" ]; then
   echo "FAIL: jar not found at $JAR — build it first (mvn -f FengYu/pom.xml package -DskipTests)"
