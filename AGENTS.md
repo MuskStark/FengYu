@@ -52,6 +52,11 @@ file rather than trusting a summary:
 
 - Plugin runtime contract → `plugin-spec/manifest.schema.json`, a plugin's `manifest.json` and
   `fengyu.plugin.json`, and `FengYu/src/main/java/fan/summer/fengyu/plugin/` (market + runtime).
+- Skill runtime contract → `FengYu/src/main/java/fan/summer/fengyu/ai/skill/` (discovery,
+  registry, progressive-disclosure `skill` tool) and built-in skill bodies under
+  `FengYu/src/main/resources/skills/`. Skills are a **peer extension surface to plugins**, not
+  a plugin feature — they never touch `plugin-spec/` or a plugin manifest. User skills live at
+  `~/.fengyu/skills/<id>/SKILL.md`.
 - REST/SSE surface → controllers under `FengYu/src/main/java/fan/summer/fengyu/web/controller/`.
 - Build/release contracts → `pom.xml`, `package.json` files, `scripts/`, `.github/workflows/`.
 - Module docs → focused pages under `docs/en/` and `docs/zh/` (structurally mirrored).

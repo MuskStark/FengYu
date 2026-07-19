@@ -80,6 +80,7 @@ const enSidebar = {
     { text: 'Guide', collapsible: true, items: [
       { text: 'AI Chat', link: '/en/guide/ai-chat' },
       { text: 'AI Agent', link: '/en/guide/ai-agent' },
+      { text: 'Skills', link: '/en/skills/' },
       { text: 'Database', link: '/en/guide/database' },
       { text: 'Configuration', link: '/en/guide/configuration' }
     ]},
@@ -138,6 +139,7 @@ const zhSidebar = {
     { text: '指南', collapsible: true, items: [
       { text: 'AI 对话', link: '/zh/guide/ai-chat' },
       { text: 'AI 智能体', link: '/zh/guide/ai-agent' },
+      { text: '技能', link: '/zh/skills/' },
       { text: '数据库', link: '/zh/guide/database' },
       { text: '配置', link: '/zh/guide/configuration' }
     ]},
