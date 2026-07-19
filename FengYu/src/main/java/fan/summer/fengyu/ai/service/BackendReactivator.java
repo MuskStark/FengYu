@@ -1,6 +1,7 @@
 package fan.summer.fengyu.ai.service;
 
 import fan.summer.fengyu.ai.AiConfigService;
+import fan.summer.fengyu.ai.skill.SkillRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
@@ -32,13 +33,16 @@ public class BackendReactivator {
 
     private final AiModeService aiMode;
     private final ToolCallback[] toolCallbacks;
+    private final SkillRegistry skillRegistry;
     private final AiConfigService aiConfigService;
 
     public BackendReactivator(AiModeService aiMode,
                               ToolCallback[] toolCallbacks,
+                              SkillRegistry skillRegistry,
                               AiConfigService aiConfigService) {
         this.aiMode = aiMode;
         this.toolCallbacks = toolCallbacks != null ? toolCallbacks : new ToolCallback[0];
+        this.skillRegistry = skillRegistry;
         this.aiConfigService = aiConfigService;
     }
 
@@ -65,6 +69,7 @@ public class BackendReactivator {
 
     private void activate(SpringAiCloudBackend backend, String mode) {
         backend.setToolCallbacks(Arrays.asList(toolCallbacks));
+        backend.setSkillRegistry(skillRegistry);
         log.info("Wired {} tool callback(s) into {} backend", toolCallbacks.length, backend.provider());
         aiMode.switchMode(mode, backend);
     }
@@ -77,6 +82,7 @@ public class BackendReactivator {
     private void activateLocal() {
         OllamaLocalBackend backend = new OllamaLocalBackend();
         backend.setToolCallbacks(Arrays.asList(toolCallbacks));
+        backend.setSkillRegistry(skillRegistry);
         aiMode.switchMode("local", backend);
     }
 }

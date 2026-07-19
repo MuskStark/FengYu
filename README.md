@@ -20,6 +20,12 @@ architecture and automatic service discovery.
 > The official **Email Center** plugin now ships as `fan.summer.email`: five sandboxed UI tabs,
 > multi-account SMTP/IMAP, manual-only collection, encrypted credentials, and seven confirmation-first AI tools.
 > See [Email Center](docs/en/plugins/email-center.md) and the [plugin database standard](docs/en/plugins/database.md).
+>
+> **Skills** — Codex-style progressive disclosure: enabled skills appear as a compact catalog in
+> the system prompt, and the assistant loads a skill's full body on demand via the built-in
+> `skill` tool. Skills are managed as `.fys` packages alongside plugins — both live on the
+> **Plugins** page (`/plugins`), with a single Upload button accepting `.fyp` and `.fys`.
+> See [Skills](docs/en/skills/).
 
 ---
 

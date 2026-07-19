@@ -61,7 +61,36 @@
     "install": "安装", "installedLabel": "已安装", "update": "更新", "uninstall": "卸载",
     "enable": "启用", "disable": "停用", "version": "版本", "author": "作者",
     "permissions": "权限", "noPermissions": "无需额外权限", "confirmUninstall": "确定卸载此插件？",
-    "uploadHint": "选择 .fyp 插件包", "operationFailed": "操作失败", "catalogEmpty": "市场目录为空，可从本地安装 .fyp 插件包。"
+    "uploadHint": "选择 .fyp 插件包", "operationFailed": "操作失败", "catalogEmpty": "市场目录为空，可从本地安装 .fyp 插件包。",
+    "pluginsSection": "插件", "skillsSection": "技能",
+    "tabPlugins": "插件", "tabSkills": "技能",
+    "installedRow": "已安装", "detail": "详情",
+    "unsupportedPackage": "不支持该包类型。插件用 .fyp，技能用 .fys。"
+  },
+  "skills": {
+    "title": "技能", "subtitle": "助手按需加载的领域指南",
+    "loading": "正在加载技能…", "empty": "尚未安装技能。",
+    "builtin": "内置", "user": "用户",
+    "enabled": "已启用", "disabled": "已停用",
+    "preview": "预览", "close": "关闭",
+    "howItWorks": "已启用的技能会以精简目录的形式注入系统提示词。助手仅在与请求匹配时,通过内置的 `skill` 工具加载该技能的完整内容。",
+    "userDirHint": "将技能放在 ~/.fengyu/skills/<id>/SKILL.md 即可添加自定义技能。"
+  },
+  "skillsMarket": {
+    "title": "技能", "subtitle": "助手按需加载的领域指南",
+    "discover": "浏览", "installed": "已安装",
+    "search": "搜索技能", "upload": "从本地安装",
+    "all": "全部", "official": "官方", "thirdParty": "社区",
+    "empty": "没有找到技能", "catalogEmpty": "市场目录为空，可从本地安装 .fys 技能包。",
+    "select": "选择一个技能查看详情",
+    "install": "安装", "installedLabel": "已安装", "update": "更新", "uninstall": "卸载",
+    "enable": "启用", "disable": "停用",
+    "version": "版本", "author": "作者", "builtin": "内置",
+    "builtinReadonly": "内置技能随应用分发，不可卸载或停用。可安装同名技能以覆盖定制。",
+    "preview": "预览", "close": "关闭",
+    "confirmUninstall": "确定卸载此技能？",
+    "operationFailed": "操作失败",
+    "howItWorks": "已启用的技能会以精简目录的形式注入系统提示词。助手仅在与请求匹配时,通过内置的 `skill` 工具加载该技能的完整内容。"
   },
   "status":   { "connecting": "连接中…", "connected": "已连接",
                 "reconnecting": "重新连接中…", "offline": "离线",

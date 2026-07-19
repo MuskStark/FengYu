@@ -4,6 +4,40 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ---
 
+## [Unreleased]
+
+### ✨ Added
+- **Skills** — a third extension surface (peer to plugins and AI tools) using Codex-style
+  progressive disclosure. Enabled skills appear as a compact catalog in the system prompt, and
+  the assistant loads a skill's full body on demand via the built-in `skill` tool — so large
+  guidance documents never bloat the per-request token budget.
+  - **Managed like plugins:** skills are packaged as **`.fys` archives** (zip: `manifest.json` +
+    `SKILL.md`) and installed under `~/.fengyu/skills/<id>/` — a filesystem peer of
+    `~/.fengyu/plugins/<id>/`. The full install/uninstall/enable/disable lifecycle mirrors the
+    plugin system (atomic publish + backup rollback in `SkillPackageService`).
+  - **Marketplace:** `fengyu.skills.catalog-url` points at a remote catalog JSON;
+    `SkillMarketplaceService` merges remote entries with local install state (the lifecycle
+    twin of `PluginMarketplaceService`). Install/update by id from the catalog.
+  - **Enable state** is a `.disabled` filesystem marker (not a DB row), exactly like plugins,
+    so it survives reinstall.
+  - **OfficialSkillSeeder** (`ApplicationRunner`) idempotently seeds bundled `.fys` artifacts
+    on boot, mirroring `OfficialPluginSeeder`.
+  - Two discovery sources: **built-in** (`classpath:/skills/<id>/SKILL.md`, packaged in the
+    JAR, cannot be uninstalled/disabled) and **installed** (`.fys` packages under
+    `~/.fengyu/skills/`). Installed skills override built-ins on id clash.
+  - New REST surface under `/api/skills`: list, detail, market, upload, upload-native, install,
+    update, PATCH enabled, DELETE (409 for built-in skills). All require `X-FengYu-Token`.
+  - Frontend: skill management is **integrated into the Plugins page** (`/plugins`) — a
+    Codex-style `Plugins | Skills` tab pair at the top switches the view, with an installed
+    fast-row and a card grid. A single Upload button accepts both `.fyp` and `.fys` archives
+    and routes each by extension. No separate `/skills` route.
+  - Built-in example skill `fengyu-features` (answers "what can FengYu do"), now with a
+    `manifest.json` alongside its `SKILL.md`.
+  - Skills are decoupled from plugins — they never touch `plugin-spec/` or a plugin manifest.
+  - See [docs/en/skills/](docs/en/skills/) and [docs/zh/skills/](docs/zh/skills/).
+
+---
+
 ## [4.0.0-alpha.1] — 2026-07-19
 
 First public **alpha** of the 4.0 line. Infinia (蜂语 / FengYu) is re-architected from a JavaFX
