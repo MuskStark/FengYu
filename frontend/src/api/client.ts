@@ -27,6 +27,9 @@ import type {
   PluginFileRef,
   PluginInvokeResult,
   SetupStatus,
+  SkillDetail,
+  SkillSummary,
+  MarketplaceSkill,
 } from './types'
 
 const http: AxiosInstance = axios.create({
@@ -252,6 +255,51 @@ export const api = {
   /** The orchestrable tool list (name/description/inputSchema). */
   agentTools: () =>
     http.get<AgentTool[]>('/api/agent/tools').then((r) => r.data),
+
+  // ── Skills (Codex-style progressive disclosure, managed like plugins) ──
+  /** List every discovered skill (no bodies). */
+  listSkills: () =>
+    http.get<SkillSummary[]>('/api/skills').then((r) => r.data),
+
+  /** Full detail for one skill, including its markdown body. */
+  getSkill: (id: string) =>
+    http.get<SkillDetail>(`/api/skills/${encodeURIComponent(id)}`).then((r) => r.data),
+
+  /** Merged marketplace view: remote catalog joined with local install state. */
+  getSkillMarket: () =>
+    http.get<MarketplaceSkill[]>('/api/skills/market').then((r) => r.data),
+
+  /** Install a .fys archive uploaded as multipart form data. */
+  uploadSkill: (file: File) => {
+    const body = new FormData()
+    body.append('file', file)
+    return http.post('/api/skills/upload', body, { headers: { 'Content-Type': undefined } })
+  },
+
+  /** Install a .fys archive by absolute filesystem path (Tauri sidecar path). */
+  uploadNativeSkill: (path: string) =>
+    http.post('/api/skills/upload-native', { path }),
+
+  /** Install a skill by id from the configured catalog. */
+  installSkill: (id: string) =>
+    http.post(`/api/skills/${encodeURIComponent(id)}/install`),
+
+  /** Update an installed skill from the catalog (reuses the install path). */
+  updateSkill: (id: string) =>
+    http.post(`/api/skills/${encodeURIComponent(id)}/update`),
+
+  /** Flip the .disabled marker; returns {id, enabled}. */
+  setSkillEnabled: (id: string, enabled: boolean) =>
+    http
+      .patch<{ id: string; enabled: boolean }>(
+        `/api/skills/${encodeURIComponent(id)}/enabled`,
+        { enabled },
+      )
+      .then((r) => r.data),
+
+  /** Uninstall an installed skill. */
+  uninstallSkill: (id: string) =>
+    http.delete(`/api/skills/${encodeURIComponent(id)}`),
 }
 
 export type FengYuApi = typeof api
