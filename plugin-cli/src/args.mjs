@@ -15,6 +15,9 @@ export function parseCli(argv) {
   // Only create/build options remain — dev/install/validate have been removed:
   // development now happens in the IDE (PluginDevMain + `npm run dev` via @infinia/plugin-dev),
   // validation runs as part of `build`, and installing a .fyp is done through the host UI.
+  //
+  // `--help` / `-h` are recognized anywhere on the command line and surface a `help`
+  // flag the dispatcher checks before validating the (possibly incomplete) command.
   const OPTIONS = new Map([
     ['--id', ['id', 'value']],
     ['--out', ['out', 'value']],
@@ -24,11 +27,13 @@ export function parseCli(argv) {
   ])
 
   const positionals = []
-  const options = { install: true }
+  const options = { install: true, help: false }
   let i = 0
   for (; i < argv.length; i++) {
     const token = argv[i]
-    if (token.startsWith('--')) {
+    if (token === '--help' || token === '-h') {
+      options.help = true
+    } else if (token.startsWith('--')) {
       const spec = OPTIONS.get(token)
       if (!spec) throw new Error(`unknown option ${token}`)
       const [name, kind, literal] = spec
