@@ -30,6 +30,62 @@ worker 是插件的后端。它是一个普通的可执行文件——通常是�
 
 > **日志走 stderr。** `stdout` 专用于协议消息。Worker SDK 通过在运行循环期间把 `System.out` 重定向到 `System.err` 来强制这一点——参见 [常见陷阱](/zh/plugins/pitfalls)。
 
+## 每次调用超时
+
+每次 invoke 都被一个超时约束。宿主（`PluginProcessManager`）会等待那么多秒以获取 worker 的响应；超时后**worker 进程会被杀掉**，下一次调用会懒重启它。这是有意为之：SDK 的 dispatch 循环是单线程的，因此一个卡死的 handler 无法通过其他方式取消——唯一的恢复手段就是把进程拆掉。
+
+| 来源 | 优先级 |
+| --- | --- |
+| `aiTools[].timeoutSeconds`（清单） | 最高——当 AI 工具路径调用该方法时使用 |
+| 调用方提供的超时（宿主内部） | 为特定调用覆盖默认值 |
+| `backend.callTimeoutSeconds`（清单） | 插件级默认值 |
+| 内置默认值 | `60` |
+
+所有声明值都会被钳制到 `[1, 600]` 秒（此上限可防止恶意清单无限期地占用一个 worker）。只有确实需要更长运行时间的方法才声明更长超时；当工作时长无界时，请使用下面的 job 模式。
+
+## 长任务（job 模式）
+
+任何可能超过其声明超时的操作都必须拆分为 **start / status / cancel** 三元组，而不是单个阻塞方法。启动器立即返回 `jobId`；UI 或 AI 用游标轮询 `*_status` 以排空流式日志；`*_cancel` 中止。这是唯一被支持的无界工作模式——`pip download`、大工作簿拆分、批量发送等。
+
+SDK 提供了一个 `Jobs` 注册表（`fan.summer.fengyu.sdk.Jobs`），用三行代码即可实现：
+
+```java
+import fan.summer.fengyu.sdk.Jobs;
+
+public final class MyWorkerMain {
+    public static void main(String[] args) {
+        Jobs jobs = new Jobs();
+        // ... handler 持有 Jobs 引用
+    }
+}
+
+// 启动 handler——先做前置校验，然后把工作交给一个虚拟线程。
+Jobs.Job job = jobs.start("EXPORT", handle -> {
+    handle.onCancel(() -> pool.shutdownNow());            // 协作式取消钩子
+    Result res = doExpensiveWork(handle::log, handle::isCancelled);
+    if (handle.isCancelled()) throw new Jobs.CancellationException();
+    handle.setSummary(Map.of("fileCount", res.files()));  // 由 status 轮询暴露
+});
+return Map.of("success", true, "jobId", job.id);
+
+// 状态 handler——从游标起排空日志；完成后出现 result。
+return jobs.snapshot(jobId, cursor);
+
+// 取消 handler——触发启动时注册的 onCancel 钩子。
+return jobs.cancel(jobId);
+```
+
+`Jobs` 的关键属性：
+
+- **有界保留。** 已完成的 job 保留 30 分钟（可配置）且上限为 200 条；最旧的已完成 job 优先驱逐。这防止了在 fan out 大量 job 的 worker 中出现无界的内存增长。
+- **协作式取消。** `Cancellable.onCancel(Runnable)` 在宿主调用 `*_cancel` 时触发一次；job 体还应在长步骤之间轮询 `Cancellable.isCancelled()`，并抛出 `Jobs.CancellationException` 以表示一次干净的放弃。
+- **流式日志。** `Cancellable.log(String)` 追加到每个 job 的队列；`snapshot(jobId, cursor)` 返回从 `cursor` 起的尾部以及下一个游标，UI 可据此增量轮询。
+
+参考实现：
+
+- **`plugin-offlinepython`**——`build.start` / `build.status` / `build.cancel`（以及 `deploy.*` 三元组）包装了 `pip download`，它通常超过 60 秒。启动器把 `ProcessRunner::cancel` 注册为取消钩子。
+- **`plugin-excel`**——`split_start` / `split_status` / `split_cancel`（UI）以及 `excel_execute_start` / `excel_execute_status`（AI）包装了大工作簿拆分；`ExcelSplitter` 引擎接受一个 `Supplier<Boolean> shouldCancel` 探针，接到 `handle::isCancelled`。
+
 ## 错误对象
 
 一次失败的调用返回一个 `error` 对象而非 `result`：

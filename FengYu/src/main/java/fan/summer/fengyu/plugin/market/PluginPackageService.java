@@ -29,6 +29,8 @@ import java.util.zip.ZipInputStream;
 public class PluginPackageService {
     private static final long MAX_PACKAGE_BYTES = 100L * 1024 * 1024;
     private static final long MAX_EXPANDED_BYTES = 300L * 1024 * 1024;
+    private static final long MIN_TIMEOUT_SECONDS = 1L;
+    private static final long MAX_TIMEOUT_SECONDS = 600L;
     private static final java.util.Set<String> ALLOWED_PERMISSIONS = java.util.Set.of(
         "files.read", "files.write", "network", "network.email",
         "clipboard.read", "clipboard.write", "notifications", "database");
@@ -200,6 +202,12 @@ public class PluginPackageService {
             throw new IllegalArgumentException("Plugin id must be a lowercase reverse-domain identifier");
         }
         if (m.name() == null || m.name().isBlank()) throw new IllegalArgumentException("Plugin name is required");
+        if (m.description() == null || m.description().isBlank()) {
+            throw new IllegalArgumentException("Plugin description is required");
+        }
+        if (m.author() == null || m.author().isBlank()) throw new IllegalArgumentException("Plugin author is required");
+        if (m.icon() == null || m.icon().isBlank()) throw new IllegalArgumentException("Plugin icon is required");
+        if (m.category() == null || m.category().isBlank()) throw new IllegalArgumentException("Plugin category is required");
         if (m.official() && !m.id().startsWith("fan.summer.")) throw new IllegalArgumentException("Official plugin ids must use fan.summer.*");
         if (m.version() == null || !m.version().matches("\\d+\\.\\d+\\.\\d+(?:[-+].+)?")) {
             throw new IllegalArgumentException("Plugin version must be semantic versioning");
@@ -216,9 +224,12 @@ public class PluginPackageService {
                 throw new IllegalArgumentException("Unknown plugin permission: " + permission);
             }
         }
-        if (m.backend() != null && m.backend().protocol() != null
-                && !"json-rpc-2.0".equals(m.backend().protocol())) {
-            throw new IllegalArgumentException("Unsupported plugin backend protocol: " + m.backend().protocol());
+        if (m.backend() != null) {
+            if (m.backend().protocol() != null
+                    && !"json-rpc-2.0".equals(m.backend().protocol())) {
+                throw new IllegalArgumentException("Unsupported plugin backend protocol: " + m.backend().protocol());
+            }
+            validateTimeout(m.backend().callTimeoutSeconds(), "backend.callTimeoutSeconds");
         }
         java.util.Set<String> toolNames = new java.util.HashSet<>();
         java.util.Set<String> toolMethods = new java.util.HashSet<>();
@@ -237,6 +248,15 @@ public class PluginPackageService {
             } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
                 throw new IllegalArgumentException("Invalid inputSchema for AI tool " + tool.name(), e);
             }
+            validateTimeout(tool.timeoutSeconds(), "aiTools[" + tool.name() + "].timeoutSeconds");
+        }
+    }
+
+    private static void validateTimeout(Long seconds, String field) {
+        if (seconds == null) return;
+        if (seconds < MIN_TIMEOUT_SECONDS || seconds > MAX_TIMEOUT_SECONDS) {
+            throw new IllegalArgumentException(field + " must be between "
+                + MIN_TIMEOUT_SECONDS + " and " + MAX_TIMEOUT_SECONDS + " seconds");
         }
     }
 

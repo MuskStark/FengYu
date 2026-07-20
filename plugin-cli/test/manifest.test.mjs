@@ -61,3 +61,20 @@ test('validateProjectManifest resolves fixtures from a real project root', async
     await fs.rm(root, { recursive: true, force: true }).catch(() => {})
   }
 })
+
+test('ai tool timeoutSeconds outside [1, 600] is rejected', async () => {
+  const manifest = await readFixture('invalid-timeout.json')
+  const errors = validateManifestObject(manifest)
+  assert.ok(errors.some((e) => e.includes('timeoutSeconds') && e.includes('600')), errors.join('\n'))
+})
+
+test('backend.callTimeoutSeconds outside [1, 600] is rejected', () => {
+  const manifest = {
+    schemaVersion: 1, id: 'com.example.timeout', name: 'Timeout',
+    description: 'd', version: '1.0.0', author: 'a', icon: 'i', category: 'c',
+    ui: { entry: 'ui/index.html' },
+    backend: { command: 'java -jar backend/worker.jar', protocol: 'json-rpc-2.0', callTimeoutSeconds: 0 },
+  }
+  const errors = validateManifestObject(manifest)
+  assert.ok(errors.some((e) => e.includes('backend.callTimeoutSeconds')), errors.join('\n'))
+})

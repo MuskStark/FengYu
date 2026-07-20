@@ -16,6 +16,7 @@ import fan.summer.fengyu.plugin.offlinepython.infra.JsonRpcParams;
 import fan.summer.fengyu.plugin.offlinepython.infra.JsonStore;
 import fan.summer.fengyu.plugin.offlinepython.infra.ProcessRunner;
 import fan.summer.fengyu.plugin.offlinepython.infra.PythonDetector;
+import fan.summer.fengyu.sdk.Jobs;
 import fan.summer.fengyu.sdk.JsonRpcWorker;
 import fan.summer.fengyu.sdk.PluginHandler;
 
@@ -224,7 +225,7 @@ public final class OfflinePythonRpcHandlers {
             PythonDetector.Detection det = PythonDetector.detect(exe);
             if (!det.ok()) return failure("Python not detected; set executable or install Python >=3.10");
             String pythonExe = det.executable();
-            Jobs.Job job = jobs.start(Jobs.Type.BUILD, handle -> {
+            Jobs.Job job = jobs.start("BUILD", handle -> {
                 ProcessRunner runner = new ProcessRunner();
                 handle.onCancel(runner::cancel);
                 var summary = buildService.build(projectDir, cfg, pythonExe, handle::log, runner);
@@ -251,7 +252,7 @@ public final class OfflinePythonRpcHandlers {
             if (!(targetObj instanceof Map<?, ?> raw)) return failure("target is required");
             @SuppressWarnings("unchecked") Map<String, Object> targetMap = (Map<String, Object>) raw;
             DeployTarget target = decodeTarget(targetMap);
-            Jobs.Job job = jobs.start(Jobs.Type.DEPLOY, handle -> {
+            Jobs.Job job = jobs.start("DEPLOY", handle -> {
                 var res = deployService.install(zip, target, handle::log);
                 if (handle.isCancelled()) throw new Jobs.CancellationException();
                 handle.setSummary(JsonRpcParams.toMap(res));

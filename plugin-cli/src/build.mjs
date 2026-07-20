@@ -125,10 +125,43 @@ async function atomicPackage(project, output, hooks) {
     const result = await writeZip(staging, tmp)
     await inspectArchive(tmp)
     await fs.rename(tmp, output)
+    // Emit a SHA256 sidecar so official-package installs can verify integrity. Format matches
+    // GNU coreutils `sha256sum -c`: `<hex>  <basename>`. Opt-in verification lives in the host's
+    // OfficialPluginSeeder; absence is tolerated for backwards compatibility / dev workflows.
+    await writeSha256Sidecar(output)
     hooks.onPackage?.()
     return { output, files: result.files }
   } finally {
     await fs.rm(staging, { recursive: true, force: true }).catch(() => {})
     await fs.rm(tmp, { force: true }).catch(() => {})
   }
+}
+
+/**
+ * Write `<archive>.sha256` next to a packaged `.fyp`. Format: `<hex>  <basename>`
+ * (binary-mode marker omitted so a missing file is the only failure mode). The sidecar
+ * is written to a temp file first and atomically renamed so a crash never leaves a
+ * partial checksum line that would falsely "verify" a corrupt package.
+ */
+async function writeSha256Sidecar(output) {
+  const sidecar = `${output}.sha256`
+  const tmpSidecar = `${sidecar}.tmp-${process.pid}`
+  try {
+    const hash = await sha256OfFile(output)
+    const line = `${hash}  ${path.basename(output)}\n`
+    await fs.writeFile(tmpSidecar, line, 'utf8')
+    await fs.rename(tmpSidecar, sidecar)
+  } catch (e) {
+    await fs.rm(tmpSidecar, { force: true }).catch(() => {})
+    throw e
+  }
+}
+
+async function sha256OfFile(file) {
+  const { createReadStream } = await import('node:fs')
+  const { pipeline } = await import('node:stream/promises')
+  const stream = createReadStream(file)
+  const hash = createHash('sha256')
+  await pipeline(stream, hash)
+  return hash.digest('hex')
 }

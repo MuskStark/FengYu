@@ -39,6 +39,7 @@ lang: zh-CN
 | --- | --- | --- | --- |
 | `command` | string | 是 | 宿主用于启动 worker 的 shell 命令，例如 `java -jar backend/worker.jar`。 |
 | `protocol` | string | 是 | 线协议（wire protocol）。当前为 `json-rpc-2.0`。 |
+| `callTimeoutSeconds` | integer | 否 | 插件级的默认每次调用超时（秒）。会被钳制到 `[1, 600]`。省略时宿主使用 `60`。`aiTools[].timeoutSeconds` 会针对单个工具覆盖此值。 |
 
 ### `aiTools[]`
 
@@ -50,6 +51,7 @@ lang: zh-CN
 | `description` | string | 是 | 给模型的自然语言描述。 |
 | `method` | string | 是 | 当模型调用此工具时要调用的 worker JSON-RPC 方法。 |
 | `inputSchema` | string | 是 | 描述工具参数的 JSON Schema，序列化为**字符串**。 |
+| `timeoutSeconds` | integer | 否 | 针对此工具的调用超时（秒），钳制到 `[1, 600]`。覆盖 `backend.callTimeoutSeconds`。默认 `60`。**可能超过其声明超时的工具必须拆分为 `*_start` / `*_status` / `*_cancel` 的 job 方法**——参见 [Worker → 长任务（job 模式）](/zh/plugins/worker#长任务-job-模式)。 |
 
 端到端流程见 [AI 工具](/zh/plugins/ai-tools)。
 
@@ -112,7 +114,7 @@ lang: zh-CN
 
 ### Excel 插件（含 aiTools）
 
-`fan.summer.excel` 的清单——一个带读写权限和六个 AI 工具的文件插件。这里只完整展示第一个工具；其余遵循同样的 `{name, description, method, inputSchema}` 结构：
+`fan.summer.excel` 的清单——一个带读写权限和 AI 工具的文件插件。这里完整展示两个工具：`excel_analyze`（短时同步调用），以及 `excel_execute_start`（长时拆分 job 模式对的启动半边）。其余遵循同样的 `{name, description, method, inputSchema, timeoutSeconds?}` 结构：
 
 ```json
 {
@@ -134,7 +136,15 @@ lang: zh-CN
       "name": "excel_analyze",
       "description": "Analyze an Excel file and return sheets and headers.",
       "method": "excel_analyze",
+      "timeoutSeconds": 30,
       "inputSchema": "{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"object\",\"description\":\"A FengYu FileRef\"}},\"required\":[\"filePath\"]}"
+    },
+    {
+      "name": "excel_execute_start",
+      "description": "Launch the configured split as a background job for large workbooks and return a jobId immediately. Poll excel_execute_status with a cursor to drain progress logs.",
+      "method": "excel_execute_start",
+      "timeoutSeconds": 30,
+      "inputSchema": "{\"type\":\"object\",\"properties\":{\"outputDir\":{\"type\":\"object\",\"description\":\"A writable FengYu DirectoryRef\"},\"filePrefix\":{\"type\":\"string\"}},\"required\":[\"outputDir\"]}"
     }
   ]
 }

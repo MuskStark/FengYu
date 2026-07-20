@@ -42,11 +42,32 @@ export function validateManifestObject(manifest) {
     } catch {
       errors.push(`invalid inputSchema for ${tool.name}`)
     }
+    if (tool.timeoutSeconds != null) {
+      validateTimeout(tool.timeoutSeconds, `aiTools[${tool.name ?? '<unknown>'}].timeoutSeconds`, errors)
+    }
+  }
+  if (manifest.backend?.callTimeoutSeconds != null) {
+    validateTimeout(manifest.backend.callTimeoutSeconds, 'backend.callTimeoutSeconds', errors)
   }
   if (manifest.official === true && typeof manifest.id === 'string' && !manifest.id.startsWith('fan.summer.')) {
     errors.push('official plugin ids must use fan.summer.*')
   }
   return errors
+}
+
+/**
+ * Per-call / per-tool timeouts are clamped to [1, 600] seconds on both the host side
+ * (PluginProcessManager) and here in the CLI validator — keeping the two in sync so a
+ * package that passes `fengyu plugin validate` will also pass host-side install validation.
+ */
+function validateTimeout(value, field, errors) {
+  if (typeof value !== 'number' || !Number.isInteger(value)) {
+    errors.push(`${field} must be an integer`)
+    return
+  }
+  if (value < 1 || value > 600) {
+    errors.push(`${field} must be between 1 and 600 seconds`)
+  }
 }
 
 function parseJarManifest(text) {

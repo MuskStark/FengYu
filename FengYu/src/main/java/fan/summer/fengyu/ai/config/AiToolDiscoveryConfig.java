@@ -70,7 +70,11 @@ public class AiToolDiscoveryConfig {
                     @Override public String call(String input) {
                         try {
                             @SuppressWarnings("unchecked") var params = json.readValue(input, java.util.Map.class);
-                            Object result = processes.invoke(manifest.id(), tool.method(), params);
+                            // Honour the manifest-declared per-tool timeout; -1 falls back to the
+                            // plugin-wide default. Tools that may run long (e.g. excel_execute) can
+                            // declare up to 600s; tools that need longer must switch to job mode.
+                            long timeout = tool.timeoutSeconds() == null ? -1 : tool.timeoutSeconds();
+                            Object result = processes.invoke(manifest.id(), tool.method(), params, timeout);
                             return result instanceof String text ? text : json.writeValueAsString(result);
                         } catch (Exception e) {
                             return "{\"success\":false,\"error\":" + quote(json, String.valueOf(e.getMessage())) + "}";

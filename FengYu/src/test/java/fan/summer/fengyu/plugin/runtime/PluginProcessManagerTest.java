@@ -22,6 +22,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -39,6 +41,33 @@ class PluginProcessManagerTest {
         PluginProcessManager manager = manager();
         @SuppressWarnings("unchecked") Map<String, Object> result = (Map<String, Object>) manager.invoke("com.example.worker", "echo", Map.of());
         assertEquals("ok", result.get("value"));
+        manager.close();
+    }
+
+    @Test
+    void timesOutAndRestartsWorker() throws Exception {
+        PluginProcessManager manager = manager();
+        // sleep method blocks for 3s; declare a 1s timeout.
+        var error = assertThrows(IllegalStateException.class,
+            () -> manager.invoke("com.example.worker", "sleep", Map.of(), 1));
+        assertTrue(error.getMessage().contains("timed out"));
+        // The worker must have been killed and lazily restarted — the next call succeeds.
+        @SuppressWarnings("unchecked") Map<String, Object> result = (Map<String, Object>) manager.invoke("com.example.worker", "echo", Map.of());
+        assertEquals("ok", result.get("value"));
+        manager.close();
+    }
+
+    @Test
+    void concurrentInvokesOnSamePluginBothSucceed() throws Exception {
+        PluginProcessManager manager = manager();
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var first = executor.submit(() ->
+                ((Map<String, Object>) manager.invoke("com.example.worker", "echo", Map.of("tag", "a"))).get("value"));
+            var second = executor.submit(() ->
+                ((Map<String, Object>) manager.invoke("com.example.worker", "echo", Map.of("tag", "b"))).get("value"));
+            assertEquals("ok", first.get(10, TimeUnit.SECONDS));
+            assertEquals("ok", second.get(10, TimeUnit.SECONDS));
+        }
         manager.close();
     }
 
@@ -134,7 +163,8 @@ class PluginProcessManagerTest {
         String command = "\"" + java + "\" -cp \"" + classpath + "\" " + EchoWorker.class.getName();
         String manifest = """
             {"schemaVersion":1,"id":"com.example.worker","name":"Worker","description":"test",
-             "version":"1.0.0","ui":{"entry":"ui/index.html"},
+             "version":"1.0.0","author":"test","icon":"test","category":"test",
+             "ui":{"entry":"ui/index.html"},
              "backend":{"command":%s,"protocol":"json-rpc-2.0"},"permissions":%s}
             """.formatted(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(command),
                 new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(permissions));
@@ -168,7 +198,10 @@ class PluginProcessManagerTest {
                     if (line.contains("\"method\":\"eof\"")) return;
                     System.out.println("third-party diagnostic line");
                     System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"other\",\"result\":{}}");
-                    if (line.contains("\"method\":\"error\"")) {
+                    if (line.contains("\"method\":\"sleep\"")) {
+                        try { Thread.sleep(3_000); } catch (InterruptedException ie) { return; }
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id + "\",\"result\":{\"value\":\"slept\"}}");
+                    } else if (line.contains("\"method\":\"error\"")) {
                         System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id + "\",\"error\":{\"code\":-32000,\"message\":\"bad workbook\"}}");
                     } else if (line.contains("\"method\":\"secret-error\"")) {
                         String password = System.getenv("FENGYU_DB_PASSWORD");
