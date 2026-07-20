@@ -55,6 +55,10 @@ public final class HeadlessLauncher {
                 port = a.substring("--port=".length()).trim();
             } else if (a.startsWith("--token=")) {
                 token = a.substring("--token=".length()).trim();
+            } else if (a.startsWith("--")) {
+                // Surface typos like `--ports=` or `--Token=` instead of silently ignoring
+                // them; a misnamed auth token would otherwise leave the API unprotected.
+                System.err.println("WARN: ignoring unknown option: " + a);
             }
         }
         if (!token.isBlank()) {
