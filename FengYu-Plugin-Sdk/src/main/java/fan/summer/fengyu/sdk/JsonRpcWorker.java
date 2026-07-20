@@ -3,13 +3,9 @@ package fan.summer.fengyu.sdk;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
-import java.io.BufferedReader;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintStream;
-import java.io.PrintWriter;
-import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,34 +27,50 @@ public final class JsonRpcWorker {
         PrintStream protocolOutput = System.out;
         System.setOut(System.err);
         try {
-            run(protocolInput, protocolOutput);
+            serve(new StdioTransport(protocolInput, protocolOutput));
         } finally {
             System.setOut(protocolOutput);
         }
     }
 
     public void run(InputStream input, OutputStream output) throws Exception {
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
-             PrintWriter writer = new PrintWriter(output, true, StandardCharsets.UTF_8)) {
-            for (String line; (line = reader.readLine()) != null;) {
-                Map<String, Object> response = new LinkedHashMap<>(); response.put("jsonrpc", "2.0");
-                try {
-                    Map<String, Object> request = parseRequest(line);
-                    response.put("id", request.get("id"));
-                    String method = (String) request.get("method");
-                    PluginHandler handler = handlers.get(method);
-                    if (handler == null) throw new RpcException(-32601, "Unknown method: " + method);
-                    @SuppressWarnings("unchecked") Map<String, Object> params = request.get("params") instanceof Map<?, ?> map
-                        ? (Map<String, Object>) map : Map.of();
-                    response.put("result", handler.handle(params));
-                } catch (RpcException e) {
-                    if (e.requestId() != null) response.put("id", e.requestId());
-                    response.put("error", Map.of("code", e.code(), "message", e.getMessage()));
-                } catch (Exception e) {
-                    response.put("error", Map.of("code", -32000, "message", String.valueOf(e.getMessage())));
-                }
-                writer.println(json.toJson(response));
+        try (StdioTransport transport = new StdioTransport(input, output)) {
+            serve(transport);
+        }
+    }
+
+    /**
+     * Drive the dispatch loop against any {@link RpcTransport}. Reads newline-delimited JSON-RPC
+     * 2.0 requests, dispatches each to the registered handler, and writes one response frame per
+     * request. Returns cleanly when the transport reaches end-of-stream ({@code readFrame() == null}).
+     *
+     * <p>This method performs <strong>no</strong> {@code System.setOut} redirection — that behaviour
+     * is exclusive to the stdio entry point {@link #run()}. Socket / in-memory transports use this
+     * method directly, so handler {@code System.out} writes go wherever the caller has pointed them.
+     *
+     * @param transport the frame-oriented transport (stdin/stdout, loopback socket, in-memory)
+     * @throws Exception if the transport raises a read/write error
+     */
+    public void serve(RpcTransport transport) throws Exception {
+        String line;
+        while (transport.isOpen() && (line = transport.readFrame()) != null) {
+            Map<String, Object> response = new LinkedHashMap<>(); response.put("jsonrpc", "2.0");
+            try {
+                Map<String, Object> request = parseRequest(line);
+                response.put("id", request.get("id"));
+                String method = (String) request.get("method");
+                PluginHandler handler = handlers.get(method);
+                if (handler == null) throw new RpcException(-32601, "Unknown method: " + method);
+                @SuppressWarnings("unchecked") Map<String, Object> params = request.get("params") instanceof Map<?, ?> map
+                    ? (Map<String, Object>) map : Map.of();
+                response.put("result", handler.handle(params));
+            } catch (RpcException e) {
+                if (e.requestId() != null) response.put("id", e.requestId());
+                response.put("error", Map.of("code", e.code(), "message", e.getMessage()));
+            } catch (Exception e) {
+                response.put("error", Map.of("code", -32000, "message", String.valueOf(e.getMessage())));
             }
+            transport.writeFrame(json.toJson(response));
         }
     }
 

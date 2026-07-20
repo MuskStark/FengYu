@@ -29,8 +29,18 @@ test('create defaults to Vue plus Java worker', async () => {
   assert.ok(await fs.stat(path.join(root, 'worker/pom.xml')))
   assert.ok(await fs.stat(path.join(root, 'mvnw')))
   assert.match(await fs.readFile(path.join(root, 'manifest.json'), 'utf8'), /backend\/worker\.jar/)
-  const workerMain = path.join(root, 'worker/src/main/java/com/example/hello_world/HelloWorldWorkerMain.java')
-  assert.match(await fs.readFile(workerMain, 'utf8'), /new JsonRpcWorker/)
+  // Production entry delegates to the shared handler factory (HelloWorldWorker.create()).
+  const javaDir = path.join(root, 'worker/src/main/java/com/example/hello_world')
+  const workerMain = path.join(javaDir, 'HelloWorldWorkerMain.java')
+  assert.match(await fs.readFile(workerMain, 'utf8'), /HelloWorldWorker\.create\(\)\.run\(\)/)
+  // Handler registration lives in its own factory class, shared with the dev entry point.
+  const workerFactory = path.join(javaDir, 'HelloWorldWorker.java')
+  assert.match(await fs.readFile(workerFactory, 'utf8'), /new JsonRpcWorker\(\)/)
+  // IDE-debug entry point is scaffolded under test sources (never in the shaded JAR).
+  const devMain = path.join(root, 'worker/src/test/java/com/example/hello_world/PluginDevMain.java')
+  assert.match(await fs.readFile(devMain, 'utf8'), /PluginDevServer\.builder/)
+  // The devkit is declared test-scope so it stays out of the production JAR.
+  assert.match(await fs.readFile(path.join(root, 'worker/pom.xml'), 'utf8'), /fengyu-plugin-devkit[\s\S]*<scope>test<\/scope>/)
 })
 
 test('full scaffold preserves the Maven wrapper mode and resolves the worker artifact', async () => {

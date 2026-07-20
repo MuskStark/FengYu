@@ -1,15 +1,15 @@
 {
   "name": "@infinia/plugin-cli",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "type": "module",
-  "description": "Scaffold, develop, build, validate, and install FengYu plugins.",
+  "description": "Scaffold and build FengYu plugins. Development happens in your IDE via @infinia/plugin-dev.",
   "bin": { "fengyu": "bin/fengyu.mjs" },
   "files": ["bin", "src", "spec", "scripts", "templates", "README.md"],
   "scripts": {
     "test": "node --test test/*.test.mjs",
     "sync-spec": "node scripts/sync-spec.mjs",
     "check-spec": "node scripts/sync-spec.mjs --check",
-    "verify-version": "node scripts/resolve-tooling-version.mjs --ref plugin-tooling-v1.0.0",
+    "verify-version": "node scripts/resolve-tooling-version.mjs --ref plugin-tooling-v1.1.0",
     "prepack": "npm run check-spec && npm test"
   },
   "engines": { "node": ">=24.18.0" },

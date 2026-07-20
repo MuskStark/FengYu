@@ -16,8 +16,11 @@ export function assertPackContents(packages) {
       'templates/vue-java/ui-src/src/App.test.ts',
       'templates/vue-java/worker/pom.xml.tpl',
       'templates/vue-java/worker/src/main/java/{{javaPackagePath}}/{{javaClassPrefix}}WorkerMain.java.tpl',
+      'templates/vue-java/worker/src/main/java/{{javaPackagePath}}/{{javaClassPrefix}}Worker.java.tpl',
+      'templates/vue-java/worker/src/test/java/{{javaPackagePath}}/PluginDevMain.java.tpl',
       'templates/vue-codex/manifest.json.tpl',
     ],
+    '@infinia/plugin-dev': ['dist/index.js', 'dist/index.d.ts'],
     '@infinia/plugin-sdk': ['dist/index.js', 'dist/index.d.ts'],
     '@infinia/plugin-ui': ['dist/index.js', 'dist/index.d.ts', 'dist/style.css'],
   }

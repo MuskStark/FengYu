@@ -7,6 +7,7 @@ trap 'rm -rf "$WORK"' EXIT
 
 cd "$ROOT"
 ./mvnw -f FengYu-Plugin-Sdk/pom.xml install -DskipTests
+./mvnw -f FengYu-Plugin-DevKit/pom.xml install -DskipTests
 
 cd "$ROOT/plugin-sdk/typescript"
 npm ci
@@ -20,6 +21,11 @@ npm test
 npm run build
 UI_TGZ="$(npm pack --ignore-scripts --silent --pack-destination "$WORK")"
 
+cd "$ROOT/plugin-dev"
+npm ci
+npm test
+DEV_TGZ="$(npm pack --ignore-scripts --silent --pack-destination "$WORK")"
+
 cd "$ROOT/plugin-cli"
 npm ci
 npm test
@@ -28,7 +34,7 @@ CLI_TGZ="$(npm pack --ignore-scripts --silent --pack-destination "$WORK")"
 cd "$WORK"
 npm exec --yes --package="./$CLI_TGZ" -- fengyu plugin create demo --id com.example.demo --no-install
 cd demo/ui-src
-npm install "$WORK/$SDK_TGZ" "$WORK/$UI_TGZ"
+npm install "$WORK/$SDK_TGZ" "$WORK/$UI_TGZ" "$WORK/$DEV_TGZ"
 npm test
 npm run build
 
