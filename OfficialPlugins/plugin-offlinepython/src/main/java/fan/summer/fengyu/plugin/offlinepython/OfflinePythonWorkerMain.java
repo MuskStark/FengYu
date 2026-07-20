@@ -1,5 +1,6 @@
 package fan.summer.fengyu.plugin.offlinepython;
 
+import fan.summer.fengyu.sdk.Jobs;
 import fan.summer.fengyu.sdk.JsonRpcWorker;
 
 /**

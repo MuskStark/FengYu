@@ -15,6 +15,7 @@
     "name": "hello",
     "description": "Say hello",
     "method": "hello",
+    "timeoutSeconds": 30,
     "inputSchema": "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"}},\"required\":[\"name\"]}"
   }]
 }
