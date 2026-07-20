@@ -63,7 +63,7 @@ jobs:
   # ==========================================================================
   # build-runtime — produce the shared inputs used by Web + desktop packaging:
   #   - the shaded Spring Boot JAR (with the Vue bundle baked in as static/)
-  #   - the three official .fyp plugin packages
+  #   - the four official .fyp plugin packages
   #   - the frontend dist (already copied into the JAR, kept for inspection)
   # ==========================================================================
   build-runtime:
@@ -117,7 +117,7 @@ jobs:
 
       - name: Build official plugins (.fyp via plugin-cli)
         run: |
-          for plugin in markdown excel email; do
+          for plugin in markdown excel email offlinepython; do
             node plugin-cli/bin/fengyu.mjs plugin build "OfficialPlugins/plugin-$plugin"
           done
 
