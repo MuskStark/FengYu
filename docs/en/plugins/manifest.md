@@ -39,6 +39,7 @@ lang: en
 | --- | --- | --- | --- |
 | `command` | string | yes | Shell command the host uses to spawn the worker, e.g. `java -jar backend/worker.jar`. |
 | `protocol` | string | yes | Wire protocol. Currently `json-rpc-2.0`. |
+| `callTimeoutSeconds` | integer | no | Plugin-wide default per-call timeout in seconds. Clamped to `[1, 600]`. When omitted, the host uses `60`. A per-tool `aiTools[].timeoutSeconds` overrides this for that tool. |
 
 ### `aiTools[]`
 
@@ -50,6 +51,7 @@ Each entry declares one AI-callable tool that the host aggregates into its Sprin
 | `description` | string | yes | Natural-language description for the model. |
 | `method` | string | yes | Worker JSON-RPC method to invoke when the model calls this tool. |
 | `inputSchema` | string | yes | JSON Schema describing the tool's arguments, serialized as a **string**. |
+| `timeoutSeconds` | integer | no | Per-tool call timeout in seconds, clamped to `[1, 600]`. Overrides `backend.callTimeoutSeconds`. Defaults to `60`. **A tool that may exceed its declared timeout must be split into `*_start` / `*_status` / `*_cancel` job methods** — see [Worker → Long tasks (job mode)](/en/plugins/worker#long-tasks-job-mode). |
 
 See [AI Tools](/en/plugins/ai-tools) for the end-to-end flow.
 
@@ -112,7 +114,7 @@ The `fan.summer.markdown` manifest — a text plugin with no permissions and no 
 
 ### Excel plugin (with aiTools)
 
-The `fan.summer.excel` manifest — a file plugin with read/write permissions and six AI tools. Only the first tool is shown in full; the rest follow the same `{name, description, method, inputSchema}` shape:
+The `fan.summer.excel` manifest — a file plugin with read/write permissions and AI tools. Two tools are shown in full: `excel_analyze` (a short synchronous call), and `excel_execute_start` (the launcher half of a job-mode pair for long-running splits). The rest follow the same `{name, description, method, inputSchema, timeoutSeconds?}` shape:
 
 ```json
 {
@@ -134,7 +136,15 @@ The `fan.summer.excel` manifest — a file plugin with read/write permissions an
       "name": "excel_analyze",
       "description": "Analyze an Excel file and return sheets and headers.",
       "method": "excel_analyze",
+      "timeoutSeconds": 30,
       "inputSchema": "{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"object\",\"description\":\"A FengYu FileRef\"}},\"required\":[\"filePath\"]}"
+    },
+    {
+      "name": "excel_execute_start",
+      "description": "Launch the configured split as a background job for large workbooks and return a jobId immediately. Poll excel_execute_status with a cursor to drain progress logs.",
+      "method": "excel_execute_start",
+      "timeoutSeconds": 30,
+      "inputSchema": "{\"type\":\"object\",\"properties\":{\"outputDir\":{\"type\":\"object\",\"description\":\"A writable FengYu DirectoryRef\"},\"filePrefix\":{\"type\":\"string\"}},\"required\":[\"outputDir\"]}"
     }
   ]
 }

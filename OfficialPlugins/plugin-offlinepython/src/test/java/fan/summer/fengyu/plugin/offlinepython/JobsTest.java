@@ -1,5 +1,6 @@
 package fan.summer.fengyu.plugin.offlinepython;
 
+import fan.summer.fengyu.sdk.Jobs;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -14,7 +15,7 @@ class JobsTest {
     @Test
     void statusUsesTheStandardRpcEnvelope() throws Exception {
         Jobs jobs = new Jobs();
-        Jobs.Job job = jobs.start(Jobs.Type.BUILD, handle -> handle.setSummary(Map.of("files", 3)));
+        Jobs.Job job = jobs.start("BUILD", handle -> handle.setSummary(Map.of("files", 3)));
         awaitDone(job);
 
         Map<String, Object> snapshot = job.snapshot(0);
@@ -30,7 +31,7 @@ class JobsTest {
         Jobs jobs = new Jobs();
         CountDownLatch running = new CountDownLatch(1);
         CountDownLatch cancelled = new CountDownLatch(1);
-        Jobs.Job job = jobs.start(Jobs.Type.DEPLOY, handle -> {
+        Jobs.Job job = jobs.start("DEPLOY", handle -> {
             handle.onCancel(cancelled::countDown);
             running.countDown();
             while (!handle.isCancelled()) Thread.onSpinWait();

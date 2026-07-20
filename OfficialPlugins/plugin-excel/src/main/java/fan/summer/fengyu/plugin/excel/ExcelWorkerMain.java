@@ -24,11 +24,17 @@ public final class ExcelWorkerMain {
             .on("analyze", handlers.safe(handlers::analyze))
             .on("configure", handlers.safe(handlers::configure))
             .on("split", handlers.safe(handlers::split))
+            // UI-facing async split for large workbooks (start → jobId → poll status → cancel).
+            .on("split_start", handlers.safe(handlers::splitStart))
+            .on("split_status", handlers.safe(handlers::splitStatus))
+            .on("split_cancel", handlers.safe(handlers::splitCancel))
             // AI-facing, stateless tools (declared in manifest.aiTools[]).
             .on("excel_analyze", handlers.safe(handlers::aiAnalyze))
             .on("excel_configure", handlers.safe(handlers::aiConfigure))
             .on("excel_complex_config", handlers.safe(handlers::aiComplexConfig))
             .on("excel_execute", handlers.safe(handlers::aiExecute))
+            .on("excel_execute_start", handlers.safe(handlers::aiExecuteStart))
+            .on("excel_execute_status", handlers.safe(handlers::aiExecuteStatus))
             .on("excel_query", handlers.safe(handlers::aiQuery))
             .on("excel_cancel", handlers.safe(handlers::aiCancel));
     }

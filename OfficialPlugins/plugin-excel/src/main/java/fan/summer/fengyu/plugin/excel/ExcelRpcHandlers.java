@@ -1,5 +1,6 @@
 package fan.summer.fengyu.plugin.excel;
 
+import fan.summer.fengyu.sdk.Jobs;
 import fan.summer.fengyu.sdk.JsonRpcWorker;
 import fan.summer.fengyu.sdk.PluginHandler;
 
@@ -24,10 +25,16 @@ public final class ExcelRpcHandlers {
 
     private final ExcelSessionStore sessions;
     private final ExcelPlugin plugin;
+    private final Jobs jobs;
 
     public ExcelRpcHandlers(ExcelSessionStore sessions) {
+        this(sessions, new Jobs());
+    }
+
+    public ExcelRpcHandlers(ExcelSessionStore sessions, Jobs jobs) {
         this.sessions = sessions;
         this.plugin = new ExcelPlugin(sessions);
+        this.jobs = jobs;
     }
 
     // ---- UI-facing, session-keyed workflow ---------------------------------
@@ -137,14 +144,88 @@ public final class ExcelRpcHandlers {
             if (outputDir == null || outputDir.isBlank()) return failure("outputDir is required");
             cfg.outputDir = Paths.get(outputDir.trim());
             cfg.filePrefix = trimmed(string(params, "filePrefix"));
-            try { Files.createDirectories(cfg.outputDir); } catch (Exception ignored) {}
             ExcelSplitter.SplitResult res;
-            try { res = new ExcelSplitter(cfg, null).split(); }
-            catch (Exception e) { return failure("Split failed: " + safeMessage(e)); }
+            try {
+                Files.createDirectories(cfg.outputDir);
+                res = new ExcelSplitter(cfg, null).split();
+            } catch (Exception e) { return failure("Split failed: " + safeMessage(e)); }
             return ok("wrote " + res.fileCount() + " file(s)", "files", Map.of(
                 "fileCount", res.fileCount(),
                 "files", res.outputFiles().stream().map(p -> p.getFileName().toString()).toList()));
         });
+    }
+
+    /**
+     * Launch the split as a background job and return a {@code jobId} immediately. Use this for
+     * large workbooks whose split may exceed the host's per-RPC timeout; poll
+     * {@code excel_execute_status} (or {@code split_status} from the UI) with a cursor to drain
+     * streamed progress logs. Mirrors the offlinepython build/deploy job pattern.
+     */
+    public Object aiExecuteStart(Map<String, Object> params) {
+        return result(() -> {
+            // AI tools share the fixed "ai" session; aiAnalyze has populated it.
+            SplitConfig cfg = sessions.get(AI_SESSION);
+            if (cfg.analysisResult == null) return failure("Call excel_analyze first.");
+            return startSplitJob(cfg, params);
+        });
+    }
+
+    public Object aiExecuteStatus(Map<String, Object> params) {
+        return result(() -> {
+            String jobId = requiredString(params, "jobId");
+            int cursor = JsonRpcWorker.integer(params, "cursor", 0);
+            return jobs.snapshot(jobId, cursor);
+        });
+    }
+
+    // ---- UI-facing async split (session-keyed) ----------------------------
+
+    public Object splitStart(Map<String, Object> params) {
+        return result(() -> {
+            String session = string(params, "session");
+            if (session == null || session.isBlank()) return failure("session is required");
+            SplitConfig cfg = sessions.get(session);
+            if (cfg.analysisResult == null) return failure("Call analyze first.");
+            return startSplitJob(cfg, params);
+        });
+    }
+
+    public Object splitStatus(Map<String, Object> params) {
+        return result(() -> {
+            String jobId = requiredString(params, "jobId");
+            int cursor = JsonRpcWorker.integer(params, "cursor", 0);
+            return jobs.snapshot(jobId, cursor);
+        });
+    }
+
+    public Object splitCancel(Map<String, Object> params) {
+        return result(() -> {
+            String jobId = requiredString(params, "jobId");
+            if (!jobs.cancel(jobId)) return failure("job is no longer running: " + jobId);
+            return ok("cancel requested", "jobId", jobId);
+        });
+    }
+
+    /**
+     * Shared entry for both UI and AI job paths: validate config, then launch the split on a
+     * virtual thread with cooperative cancellation wired into {@link ExcelSplitter}.
+     */
+    private Map<String, Object> startSplitJob(SplitConfig cfg, Map<String, Object> params) {
+        if (cfg.mode == null) return failure("Call configure / excel_configure first.");
+        String outputDir = string(params, "outputDir");
+        if (outputDir == null || outputDir.isBlank()) return failure("outputDir is required");
+        cfg.outputDir = Paths.get(outputDir.trim());
+        cfg.filePrefix = trimmed(string(params, "filePrefix"));
+        try { Files.createDirectories(cfg.outputDir); } catch (Exception ignored) {}
+
+        Jobs.Job job = jobs.start("SPLIT", handle -> {
+            ExcelSplitter splitter = new ExcelSplitter(cfg, (pct, msg) -> handle.log(msg), handle::isCancelled);
+            ExcelSplitter.SplitResult res = splitter.split();
+            handle.setSummary(Map.of(
+                "fileCount", res.fileCount(),
+                "files", res.outputFiles().stream().map(p -> p.getFileName().toString()).toList()));
+        });
+        return ok("split started", "jobId", job.id);
     }
 
     public Object aiQuery(Map<String, Object> params) {

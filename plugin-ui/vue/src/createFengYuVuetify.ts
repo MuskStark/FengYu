@@ -57,6 +57,15 @@ export async function bindFengYuEnvironment(
     vuetify.theme.change(themeName(environment.theme))
     vuetify.locale.current.value = localeName(environment.locale)
   }
-  apply(await client.ready())
+  // Await the host's ready handshake so theme/locale apply before first paint.
+  // When there is no host (e.g. `vite` started standalone, outside any simulator),
+  // ready() never gets a response and would block mount for the full 30s timeout,
+  // leaving a blank page. Fall back to defaults after a short timeout so the UI at
+  // least renders — invoke calls will still surface a clear error per-call.
+  try {
+    apply(await client.ready())
+  } catch {
+    apply({})
+  }
   return client.on('environment', (value) => apply(value as Partial<Environment>))
 }
