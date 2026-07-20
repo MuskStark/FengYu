@@ -33,6 +33,15 @@
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
     </dependency>
+
+    <!-- Loopback TCP JSON-RPC dev server (PluginDevMain). Test-scoped so the devkit never
+         ships inside the shaded worker JAR; only used when debugging handlers in an IDE. -->
+    <dependency>
+      <groupId>fan.summer.fengyu.sdk</groupId>
+      <artifactId>fengyu-plugin-devkit</artifactId>
+      <version>${fengyu.plugin.sdk.version}</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>

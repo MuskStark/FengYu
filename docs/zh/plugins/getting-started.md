@@ -1,12 +1,12 @@
 ---
 title: 入门
-description: 用 fengyu plugin create 脚手架生成一个 FengYu 插件（默认 Vue + Java），了解生成的项目结构，并用真实 worker 开发模拟器在本地运行它。
+description: 用 fengyu plugin create 脚手架生成一个 FengYu 插件（默认 Vue + Java），了解生成的项目结构，并通过 @infinia/plugin-dev Vite 插件 + fengyu-plugin-devkit 的 PluginDevMain 在 IDE 里本地调试它。
 lang: zh
 ---
 
 # 入门
 
-本页将带你从零开始创建一个新插件，讲解脚手架生成的目录结构，以及在本地运行它。`fengyu plugin` CLI 共有五个子命令——`create`、`dev`、`build`、`validate`、`install`——本页覆盖前两个。完整的命令表见 [SDK 与 CLI](/zh/plugins/sdk-cli) 页面。
+本页将带你从零开始创建一个新插件，讲解脚手架生成的目录结构，以及在 IDE 里本地调试它。`fengyu plugin` CLI 共有两个子命令——`create`、`build`；本页覆盖 `create` 和 IDE 开发循环。完整的命令表见 [SDK 与 CLI](/zh/plugins/sdk-cli) 页面。
 
 ## 脚手架生成插件
 
@@ -35,12 +35,14 @@ fengyu plugin create ./my-plugin --id com.example.my-plugin --ui-only
 从无到有打包出 `.fyp` 的完整循环：
 
 ```bash
-npx --yes @infinia/plugin-cli@1.0.0 plugin create my-plugin --id com.example.my-plugin
+npx --yes @infinia/plugin-cli@1.1.0 plugin create my-plugin --id com.example.my-plugin
 cd my-plugin
 export FENGYU_GITHUB_TOKEN='<GitHub token with read:packages>'
-npx --yes @infinia/plugin-cli@1.0.0 plugin dev .
-npx --yes @infinia/plugin-cli@1.0.0 plugin build .
-npx --yes @infinia/plugin-cli@1.0.0 plugin install dist-package/com.example.my-plugin-1.0.0.fyp --host http://127.0.0.1:24056
+# 在 IDE 里开发（见下方“在本地运行”）：
+#   UI:    cd ui-src && npm run dev                 # → http://127.0.0.1:5173/__fengyu
+#   Worker: Debug PluginDevMain（在 worker/src/test/java 下）
+npx --yes @infinia/plugin-cli@1.1.0 plugin build .
+# 构建出的 .fyp 通过宿主的插件市场 UI 安装（POST /api/plugin-market/upload）。
 ```
 
 - `create` 默认安装 UI 依赖；`--no-install` 可跳过。
@@ -61,30 +63,49 @@ my-plugin/
 │   └── wrapper/…
 ├── ui-src/                # Vue/Vuetify 前端
 │   ├── package.json
-│   ├── vite.config.ts     # 构建到 ./dist
+│   ├── vite.config.ts     # 加载 @infinia/plugin-dev；构建到 ./dist
 │   └── src/{main.ts, App.vue}
 └── worker/                # Java JSON-RPC worker
-    ├── pom.xml            # 依赖 fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.0.0
-    └── src/main/java/<pkg>/<Prefix>WorkerMain.java
+    ├── pom.xml            # 依赖 fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.1.0（+ devkit，test scope）
+    └── src/
+        ├── main/java/<pkg>/{<Prefix>Worker, <Prefix>WorkerMain}.java
+        └── test/java/<pkg>/{<Prefix>WorkerTest, PluginDevMain}.java
 ```
 
 `ui-src` 构建到 `ui-src/dist`，构建时会在 `.fyp` 内暂存为 `ui/`。worker 构建到 `worker/target/<prefix>-worker.jar`，暂存为 `backend/worker.jar`。
 
 ## 在本地运行
 
-`fengyu plugin dev` 会探测声明式项目，若 worker JAR 缺失则先构建它，启动**真实的** Java JSON-RPC worker，并提供一个回环模拟器，其 `rpc.invoke` 调用会通过 `POST /__rpc` 转发给 worker：
+开发在 IDE 里完成——CLI 不再运行开发服务器。脚手架生成的 `vite.config.ts` 加载了
+`@infinia/plugin-dev`，把 Vite dev server 变成 FengYu 宿主模拟器；脚手架生成的
+`PluginDevMain`（在 `worker/src/test/java` 下）通过回环 TCP 暴露你的 worker，让 IDE 断点
+直接命中。
+
+**UI 侧**——在 `ui-src/` 下启动 Vite dev server：
 
 ```bash
-fengyu plugin dev .
+cd ui-src && npm run dev
 ```
 
-- 开发宿主仅绑定 `127.0.0.1`。
-- 打开打印出的 URL（`http://127.0.0.1:4173/__fengyu`）会加载 RPC 检查器外壳。
-- 对 `worker/` 下的 Java 源码（不含 `target/`）的编辑会触发一个防抖重建 + worker 重启；重建期间，RPC 调用会返回 `worker rebuilding`。
-- 在检查器的控制按钮上切换**主题**（dark/light）与 **locale**（en/zh），以验证你的 UI 是否对 `bindFengYuEnvironment` 做出反应。
-- 默认端口是 `4173`；传入 `--port` 可更改。
+打开 `http://127.0.0.1:5173/__fengyu` 加载模拟器外壳。插件 UI 在 iframe 里运行，带完整 HMR；
+外壳桥接 `@infinia/plugin-sdk` 的 `postMessage` 调用，并把 `rpc.invoke` 转发给 `vite.config.ts`
+里配置的 worker 端点（默认 `127.0.0.1:24057`）。
 
-对于纯 UI 和静态项目，模拟器保留之前的 mock 行为（没有 worker）。
+**Worker 侧**——在 IDE 里用 **Debug** 运行 `PluginDevMain.main()`（不是
+`<Prefix>WorkerMain`，那是生产 stdio 入口）。它启动 `fengyu-plugin-devkit` 回环 TCP 服务器
+（`127.0.0.1:24057`），通过 `<Prefix>Worker.create()` 提供**与生产 worker 相同的处理器**。在
+处理器里设断点——UI 调 `rpc.invoke` 时它们会直接命中。
+
+- 两个端点都仅绑定 `127.0.0.1`。
+- 在模拟器的控制按钮上切换**主题**（dark/light）与 **locale**（en/zh），验证你的 UI 是否对
+  `bindFengYuEnvironment` 做出反应。
+- 当插件 iframe 请求文件/目录时，模拟器会在侧边栏渲染一个路径输入框（浏览器无法弹出原生
+  选择器）；你输入的路径会被注册为 FileRef，在后续传给 `rpc.invoke` 时重写为真实路径。
+- 用 `-Dfengyu.dev.port=<n>` 更改 worker 端口，并同步更新 `vite.config.ts` 里的 `workerEndpoint`。
+
+对于纯 UI 插件，`vite.config.ts` 设了 `mockWorker: true`——`rpc.invoke` 返回一个确定性的桩
+响应，让你在 worker 还不存在时就能迭代 UI。完整指南见
+[`plugin-dev/README.md`](https://github.com/MuskStark/FengYu/tree/main/plugin-dev)。
 
 ## 下一步
 

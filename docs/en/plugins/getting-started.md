@@ -1,12 +1,12 @@
 ---
 title: Getting Started
-description: Scaffold a FengYu plugin with fengyu plugin create (Vue + Java by default), understand the produced project layout, and run it locally with a real-worker dev simulator.
+description: Scaffold a FengYu plugin with fengyu plugin create (Vue + Java by default), understand the produced project layout, and debug it locally in your IDE via the @infinia/plugin-dev Vite plugin + fengyu-plugin-devkit PluginDevMain.
 lang: en
 ---
 
 # Getting Started
 
-This page walks through creating a new plugin from scratch, the directory layout the scaffolder produces, and running it locally. The `fengyu plugin` CLI has five subcommands — `create`, `dev`, `build`, `validate`, `install` — and this page covers the first two. The full command table is on the [SDK & CLI](/en/plugins/sdk-cli) page.
+This page walks through creating a new plugin from scratch, the directory layout the scaffolder produces, and debugging it locally in your IDE. The `fengyu plugin` CLI has two subcommands — `create` and `build`; this page covers `create` and the IDE dev loop. The full command table is on the [SDK & CLI](/en/plugins/sdk-cli) page.
 
 ## Scaffold a plugin
 
@@ -35,12 +35,14 @@ The scaffolder refuses to overwrite an existing directory. The human-readable `n
 The full loop, from nothing to a packaged `.fyp`:
 
 ```bash
-npx --yes @infinia/plugin-cli@1.0.0 plugin create my-plugin --id com.example.my-plugin
+npx --yes @infinia/plugin-cli@1.1.0 plugin create my-plugin --id com.example.my-plugin
 cd my-plugin
 export FENGYU_GITHUB_TOKEN='<GitHub token with read:packages>'
-npx --yes @infinia/plugin-cli@1.0.0 plugin dev .
-npx --yes @infinia/plugin-cli@1.0.0 plugin build .
-npx --yes @infinia/plugin-cli@1.0.0 plugin install dist-package/com.example.my-plugin-1.0.0.fyp --host http://127.0.0.1:24056
+# Develop in your IDE (see "Run it locally" below):
+#   UI:     cd ui-src && npm run dev                 # → http://127.0.0.1:5173/__fengyu
+#   Worker: Debug PluginDevMain (in worker/src/test/java)
+npx --yes @infinia/plugin-cli@1.1.0 plugin build .
+# Install the built .fyp via the host's plugin marketplace UI (POST /api/plugin-market/upload).
 ```
 
 - `create` installs UI deps by default; `--no-install` skips it.
@@ -61,30 +63,51 @@ my-plugin/
 │   └── wrapper/…
 ├── ui-src/                # the Vue/Vuetify front-end
 │   ├── package.json
-│   ├── vite.config.ts     # builds into ./dist
+│   ├── vite.config.ts     # loads @infinia/plugin-dev; builds into ./dist
 │   └── src/{main.ts, App.vue}
 └── worker/                # the Java JSON-RPC worker
-    ├── pom.xml            # depends on fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.0.0
-    └── src/main/java/<pkg>/<Prefix>WorkerMain.java
+    ├── pom.xml            # depends on fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.1.0 (+ devkit, test scope)
+    └── src/
+        ├── main/java/<pkg>/{<Prefix>Worker, <Prefix>WorkerMain}.java
+        └── test/java/<pkg>/{<Prefix>WorkerTest, PluginDevMain}.java
 ```
 
 `ui-src` builds into `ui-src/dist`, which the build stages as `ui/` inside the `.fyp`. The worker builds into `worker/target/<prefix>-worker.jar`, staged as `backend/worker.jar`.
 
 ## Run it locally
 
-`fengyu plugin dev` detects the declared project, builds the worker JAR if it is missing, starts the **real** Java JSON-RPC worker, and serves a loopback simulator whose `rpc.invoke` calls are forwarded to the worker over `POST /__rpc`:
+Development happens in your IDE — the CLI no longer runs a dev server. The scaffolded `vite.config.ts`
+loads `@infinia/plugin-dev`, which turns the Vite dev server into a FengYu host simulator; the scaffolded
+`PluginDevMain` (under `worker/src/test/java`) exposes your worker over loopback TCP so IDE breakpoints
+fire directly.
+
+**UI side** — start the Vite dev server in `ui-src/`:
 
 ```bash
-fengyu plugin dev .
+cd ui-src && npm run dev
 ```
 
-- The dev host binds `127.0.0.1` only.
-- Open the printed URL (`http://127.0.0.1:4173/__fengyu`) to load the RPC inspector shell.
-- Edits to Java sources under `worker/` (excluding `target/`) trigger a debounced rebuild + worker restart; while rebuilding, RPC calls return `worker rebuilding`.
-- Toggle **theme** (dark/light) and **locale** (en/zh) from the inspector's control buttons to verify your UI reacts to `bindFengYuEnvironment`.
-- The default port is `4173`; pass `--port` to change it.
+Open `http://127.0.0.1:5173/__fengyu` to load the simulator shell. The plugin UI runs in an iframe
+with full HMR; the shell bridges `@infinia/plugin-sdk`'s `postMessage` calls and forwards `rpc.invoke`
+to the worker endpoint configured in `vite.config.ts` (default `127.0.0.1:24057`).
 
-For UI-only and static projects, the simulator keeps the previous mock behavior (no worker).
+**Worker side** — in your IDE, run `PluginDevMain.main()` from the **Debug** action (not
+`<Prefix>WorkerMain`, which is the production stdio entry). It starts the `fengyu-plugin-devkit`
+loopback TCP server at `127.0.0.1:24057`, serving the **same handlers** as the production worker via
+`<Prefix>Worker.create()`. Set breakpoints in your handlers — they fire when the UI calls `rpc.invoke`.
+
+- Both endpoints bind `127.0.0.1` only.
+- Toggle **theme** (dark/light) and **locale** (en/zh) from the simulator's control buttons to verify
+  your UI reacts to `bindFengYuEnvironment`.
+- When the plugin iframe asks for a file/directory, the simulator renders a path input in the side
+  panel (browsers can't pop a native picker); the typed path is registered as a FileRef and rewritten
+  to its real path when later passed to `rpc.invoke`.
+- Change the worker port with `-Dfengyu.dev.port=<n>` and update `workerEndpoint` in `vite.config.ts`
+  to match.
+
+For UI-only plugins, `vite.config.ts` sets `mockWorker: true` — `rpc.invoke` returns a deterministic
+stub, so you can iterate the UI before any worker exists. See
+[`plugin-dev/README.md`](https://github.com/MuskStark/FengYu/tree/main/plugin-dev) for the full guide.
 
 ## Next steps
 
