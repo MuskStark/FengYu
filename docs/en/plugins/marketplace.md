@@ -6,7 +6,7 @@ lang: en
 
 # Marketplace
 
-The marketplace is the host's plugin registry. It exposes `/api/plugin-market` for browsing the catalog and managing the install lifecycle of every plugin — official and third-party alike. All lifecycle operations (install, update, enable, disable, uninstall) go through these endpoints; the [CLI](/en/plugins/sdk-cli) `fengyu plugin install` is just a thin client over `POST /upload`.
+The marketplace is the host's plugin registry. It exposes `/api/plugin-market` for browsing the catalog and managing the install lifecycle of every plugin — official and third-party alike. All lifecycle operations (install, update, enable, disable, uninstall) go through these endpoints; `POST /upload` is the install path for a built `.fyp` (used by the marketplace UI's upload button).
 
 ## Browse the catalog
 
@@ -26,7 +26,8 @@ There are three install paths, all under `/api/plugin-market`:
 - `POST /{id}/install` is the one-click install for a plugin already present in the catalog index but not yet installed locally.
 
 ::: tip
-`fengyu plugin install ./my-plugin-1.0.0.fyp --host <url> --token <t>` POSTs the file to `/upload` for you. See [SDK & CLI](/en/plugins/sdk-cli).
+Upload a built `.fyp` from the marketplace UI, or POST it directly:
+`curl -F file=@./my-plugin-1.0.0.fyp -H "Authorization: Bearer $FENGYU_TOKEN" http://<host>/api/plugin-market/upload`.
 :::
 
 ## Update
@@ -78,4 +79,4 @@ java -Dfengyu.marketplace.catalog-url=https://internal.example/fengyu-catalog.js
 
 - [Plugin Overview](/en/plugins/overview) — the install → enable → invoke → disable → uninstall lifecycle.
 - [Build & Deploy](/en/plugins/build-deploy) — produce a `.fyp` to upload.
-- [SDK & CLI](/en/plugins/sdk-cli) — `fengyu plugin install` wraps `/upload`.
+- [SDK & CLI](/en/plugins/sdk-cli) — the `create` + `build` commands.

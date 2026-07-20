@@ -102,11 +102,16 @@ node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-email
 
 ## 安装产物
 
-`fengyu plugin install` 会**离线优先**地校验包——在任何网络访问之前，它会检查归档限制与路径、归档内清单和 UI 入口，并对声明的 `backend/worker.jar` 做结构校验——然后再上传到市场。`fengyu.plugin.json` 中的 `package.resources[].to` 必须是 POSIX 风格的归档内相对路径：
+安装构建好的 `.fyp` 通过宿主的插件市场完成——用市场 UI 上传，或 `POST /api/plugin-market/upload`。
+宿主会**离线优先**地校验包——在任何网络访问之前，它会检查归档限制与路径、归档内清单和 UI 入口，
+并对声明的 `backend/worker.jar` 做结构校验——然后才注册该插件。`fengyu.plugin.json` 中的
+`package.resources[].to` 必须是 POSIX 风格的归档内相对路径：
 
 ```bash
-fengyu plugin install ./dist-package/com.example.my-plugin-1.0.0.fyp \
-  --host http://127.0.0.1:24056 --token "$FENGYU_TOKEN"
+# 把构建好的 .fyp 上传到一个运行中的宿主（或用市场 UI 的上传按钮）
+curl -F file=@./dist-package/com.example.my-plugin-1.0.0.fyp \
+  -H "Authorization: Bearer $FENGYU_TOKEN" \
+  http://127.0.0.1:24056/api/plugin-market/upload
 ```
 
 不安全或非法的包会在零次 fetch 调用下被拒绝。安装/更新/启用/卸载的 endpoint 见 [插件市场](/zh/plugins/marketplace)。
