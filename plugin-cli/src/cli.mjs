@@ -5,6 +5,10 @@ import { buildPlugin } from './build.mjs'
 
 export async function main(argv) {
   const { group, command, positionals, options } = parseCli(argv)
+  // `--help` / `-h` anywhere on the line short-circuits to usage with a successful exit
+  // code, so `fengyu --help`, `fengyu plugin --help`, and `fengyu plugin create --help`
+  // all behave the way users expect instead of throwing "unknown option --help".
+  if (options.help) return usage()
   if (group !== 'plugin') return usage()
   const root = path.resolve(positionals[0] ?? '.')
 
