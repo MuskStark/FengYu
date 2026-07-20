@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Scaffold and build FengYu plugins. Development happens in your IDE via @infinia/plugin-dev.",
   "bin": { "fengyu": "bin/fengyu.mjs" },
-  "files": ["bin", "src", "spec", "scripts", "templates", "README.md"],
+  "files": ["bin", "src", "spec", "templates", "README.md"],
   "scripts": {
     "test": "node --test test/*.test.mjs",
     "sync-spec": "node scripts/sync-spec.mjs",
