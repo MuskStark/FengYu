@@ -35,6 +35,38 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
     `manifest.json` alongside its `SKILL.md`.
   - Skills are decoupled from plugins — they never touch `plugin-spec/` or a plugin manifest.
   - See [docs/en/skills/](docs/en/skills/) and [docs/zh/skills/](docs/zh/skills/).
+- **IDE plugin debugging (plugin toolchain 1.1.0)** — `fengyu plugin dev` is replaced by an
+  IDE-native flow so third-party authors debug UI and worker with real breakpoints, no JDWP
+  remote attach.
+  - **`@infinia/plugin-dev`** (new npm package, `plugin-dev/`) — a Vite plugin that turns the dev
+    server into a FengYu host simulator: serves the iframe shell at `/__fengyu`, bridges
+    `@infinia/plugin-sdk`'s `postMessage` calls, and forwards `rpc.invoke` to the dev worker over
+    loopback TCP.
+  - **`fengyu-plugin-devkit`** (new Maven artifact, `fan.summer.fengyu.sdk:fengyu-plugin-devkit`,
+    `FengYu-Plugin-DevKit/`) — a loopback-only TCP JSON-RPC server (`PluginDevServer`) that drives
+    the worker's `serve(RpcTransport)` loop. Scaffolded as `PluginDevMain` under
+    `worker/src/test/java`; declared `<scope>test</scope>` so it never ships in the shaded JAR.
+  - **`RpcTransport` abstraction** in the Java Worker SDK — `JsonRpcWorker.serve(RpcTransport)`
+    shares the dispatch loop between production stdio (`StdioTransport`) and the devkit's loopback
+    socket. `run()` / `run(InputStream, OutputStream)` are unchanged in behaviour.
+  - The scaffolder now generates a shared `<Prefix>Worker.create()` handler factory, the production
+    `<Prefix>WorkerMain`, and the IDE-debug `PluginDevMain`. UI-only scaffolds set `mockWorker: true`.
+
+### ♻️ Changed
+- **CLI scope narrowed to `create` + `build`.** `fengyu plugin dev` moved to the IDE
+  (`@infinia/plugin-dev` + `fengyu-plugin-devkit`); `fengyu plugin validate` is now a built-in step
+  of `build` (the staging tree is always validated before packaging); `fengyu plugin install` is
+  done through the host's plugin marketplace UI (`POST /api/plugin-market/upload`). `--port`,
+  `--host`, `--token`, and `--ui-port` CLI flags were removed with their commands.
+- **Plugin toolchain locked at six artifacts**, all released together as `plugin-tooling-vX.Y.Z`:
+  the Worker SDK, the devkit, `@infinia/plugin-sdk`, `@infinia/plugin-ui`, `@infinia/plugin-cli`,
+  and `@infinia/plugin-dev`. `plugin-cli/scripts/resolve-tooling-version.mjs` verifies all six.
+
+### 🗑️ Removed
+- `fengyu plugin dev`, `fengyu plugin validate`, and `fengyu plugin install` CLI subcommands and
+  their source (`plugin-cli/src/dev.mjs`, `worker.mjs`, `install.mjs`). Development now happens in
+  the IDE via `@infinia/plugin-dev`; the `FENGYU_DEBUG` JDWP remote-attach workaround is no longer
+  needed (run `PluginDevMain` and set breakpoints directly).
 
 ---
 

@@ -1,16 +1,16 @@
 ---
 title: SDK 与 CLI
-description: "@infinia/plugin-sdk TypeScript 客户端、独立版本化的 Java Worker SDK（1.0.0），以及五个 fengyu plugin CLI 子命令——create、dev、build、validate、install 的参考。"
+description: "@infinia/plugin-sdk TypeScript 客户端、独立版本化的 Java Worker SDK（1.1.0）、用于 IDE 调试的 @infinia/plugin-dev Vite 插件 + fengyu-plugin-devkit，以及两个 fengyu plugin CLI 子命令——create、build 的参考。"
 lang: zh
 ---
 
 # SDK 与 CLI
 
-插件作者使用两套 SDK（运行时两侧各一套）和一套 CLI。TypeScript SDK 运行在 iframe UI 中；Java Worker SDK 用来构建 `worker.jar`；`fengyu plugin` CLI 负责脚手架、开发、打包、校验和安装插件。Java Worker SDK（`fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.0.0`）相对于宿主应用**独立版本化**，并发布到 GitHub Packages。
+插件作者使用两套 SDK（运行时两侧各一套）、一套用于 IDE 调试的 Vite 开发插件 + devkit，以及一套 CLI。TypeScript SDK 运行在 iframe UI 中；Java Worker SDK 用来构建 `worker.jar`；`@infinia/plugin-dev` + `fengyu-plugin-devkit` 把你的编辑器变成 FengYu 宿主模拟器，让你用断点调试 UI 和 worker；`fengyu plugin` CLI 负责脚手架（`create`）和打包（`build`）——开发在 IDE 里完成。Java Worker SDK（`fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.1.0`）相对于宿主应用**独立版本化**，并发布到 GitHub Packages。
 
 ## `@infinia/plugin-sdk`（TypeScript）
 
-源码：`plugin-sdk/typescript/src/index.ts`。当前 SDK 版本为 `1.0.0`。导入单例 client 以及辅助方法/类型：
+源码：`plugin-sdk/typescript/src/index.ts`。当前 SDK 版本为 `1.1.0`。导入单例 client 以及辅助方法/类型：
 
 ```ts
 import { fengyu, FengYuClient, createId, type FileRef, type Environment } from '@infinia/plugin-sdk'
@@ -52,27 +52,37 @@ interface InvokeOptions { signal?: AbortSignal; timeoutMs?: number }
 
 ## Java Worker SDK
 
-制品 `fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.0.0`（独立版本化，发布到 GitHub Packages）。包 `fan.summer.fengyu.sdk`。运行时是 `JsonRpcWorker`；处理器实现 `@FunctionalInterface PluginHandler`：
+制品 `fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.1.0`（独立版本化，发布到 GitHub Packages）。包 `fan.summer.fengyu.sdk`。运行时是 `JsonRpcWorker`；处理器实现 `@FunctionalInterface PluginHandler`：
 
 ```java
 Object handle(Map<String, Object> params) throws Exception
 ```
 
-构建一个 worker 主类：
+把处理器注册抽到一个共享工厂里，让生产入口和 IDE 调试入口运行完全相同的代码：
+
+```java
+public final class MyWorker {
+    private MyWorker() {}
+    public static JsonRpcWorker create() {
+        return new JsonRpcWorker()
+            .on("hello", MyHandler::handle);         // 每次调用注册一个方法
+    }
+}
+```
+
+生产入口——通过 stdin/stdout 传输 JSON-RPC（宿主驱动 worker 的方式）：
 
 ```java
 public final class MyWorkerMain {
-    private MyWorkerMain() {}
     public static void main(String[] args) throws Exception {
-        new JsonRpcWorker()
-            .on("hello", MyHandler::handle)         // 每次调用注册一个方法
-            .run();                                  // 阻塞，读 stdin / 写 stdout
+        MyWorker.create().run();                      // 阻塞，读 stdin / 写 stdout
     }
 }
 ```
 
 - `on(method, handler)` 会拒绝重复、空白方法名以及 `null` 处理器。
 - `run()` 在运行循环期间把 `System.out` 重定向到 `System.err`——保持协议输出的干净。
+- `serve(RpcTransport)`（1.1.0 新增）在任意传输层上驱动同一个 dispatch 循环。`run()` 和 `run(InputStream, OutputStream)` 行为不变；devkit 的回环 TCP 服务器用 `serve()` 把你的处理器暴露给 IDE。
 - 严格请求解析会暴露规范的 JSON-RPC 错误码：`-32700`（解析错误）、`-32600`（非法请求——方法缺失/空白或 `jsonrpc` 版本错误）、`-32601`（未知方法）和 `-32000`（处理器失败）。只要请求 `id` 可解析，就会被原样回传。
 - 抛出 `JsonRpcWorker.RpcException(code, message)` 以返回结构化错误；其他异常都以 `-32000` 上报。
 - 辅助方法：`JsonRpcWorker.string(params, key)`、`JsonRpcWorker.integer(params, key, fallback)`。
@@ -92,23 +102,52 @@ PluginDatabaseConfig database = PluginDatabaseConfig.fromEnvironment(System.gete
 这些环境变量只属于 Worker，不得转发给 iframe。插件自行负责迁移、表名前缀和凭据加密；
 详见[插件数据库规范](/zh/plugins/database)。
 
+## IDE 开发
+
+开发在编辑器里完成，不通过 CLI。脚手架生成的 `vite.config.ts` 加载了 `@infinia/plugin-dev`，
+它把 Vite dev server 变成 FengYu 宿主模拟器：在 `/__fengyu` 提供一个 iframe 外壳（运行你
+真实的插件 UI 并带 HMR），桥接 `@infinia/plugin-sdk` 的 `postMessage` 调用，并把 `rpc.invoke`
+转发给开发 worker。
+
+对于 worker，在 IDE 里用 **Debug** 运行 `PluginDevMain.main()`（脚手架生成在
+`worker/src/test/java/...`）。它会启动 `fengyu-plugin-devkit` 的回环 TCP 服务器
+（`127.0.0.1:24057`），提供与生产 worker **相同的处理器**——所以你在 `JsonRpcWorker` 处理器
+里设的断点会直接命中，无需 JDWP 远程附加。devkit 是 test scope 依赖，绝不会打进生产 shaded JAR。
+
+```bash
+# UI 侧（在 ui-src/ 下）
+npm run dev                       # → http://127.0.0.1:5173/__fengyu
+
+# Worker 侧（在你的 IDE 里）
+Debug PluginDevMain.main()        # → 监听 127.0.0.1:24057
+```
+
+纯 UI 插件可设 `mockWorker: true`（或省略 `workerEndpoint`）——`rpc.invoke` 会返回一个确定性
+的桩响应，让你在 worker 还不存在时就能迭代 UI。完整指南见
+[`plugin-dev/README.md`](https://github.com/MuskStark/FengYu/tree/main/plugin-dev)。
+
 ## `fengyu plugin` CLI
 
-源码：`plugin-cli/src/cli.mjs`。用法：
+源码：`plugin-cli/src/cli.mjs`。CLI 只负责脚手架和打包——开发和校验都在别处完成（IDE 做开发；
+`build` 自动校验）。用法：
 
 ```
-fengyu plugin <create|dev|build|validate|install> [path] [options]
+fengyu plugin <create|build> [path] [options]
 ```
 
-恰好有**五个**子命令——没有 `init`。
+恰好有**两个**子命令。
 
 | 子命令 | 选项 | 说明 |
 | --- | --- | --- |
-| `create <path> --id <id>` | `--id`（必填）、`--no-install`、`--ui-only` | 脚手架生成一个新插件。默认产出一个完整的 Vue + Java 项目（`vue-java` 模板）：`manifest.json`、`fengyu.plugin.json`、`ui-src/`（Vue）、`worker/`（Java + Maven Wrapper）以及 `.mvn/settings.xml`。`--ui-only` 保留轻量的纯 UI 模板。默认运行 `npm install`（`--no-install` 可跳过）。拒绝覆盖已存在的目录。 |
-| `dev [path] [--port <n>]` | `--port`（默认 `4173`） | 启动一个回环开发宿主。对于声明了 worker 的项目，它会构建 worker JAR（若缺失），启动**真实的** Java JSON-RPC worker，并提供一个通过 `POST /__rpc` 转发 `rpc.invoke` 的模拟器；Java 编辑会重建 + 重启 worker。对于 Vue/Vite 项目它拉起 Vite（HMR）；对于静态项目它提供 `ui/` + 一个带 mock 的 SSE 热重载监听。 |
-| `build [path] [--out <file>]` | `--out`（默认 `dist-package/<id>-<version>.fyp`）、`--skip-tests` | 对于声明式项目，运行完整的分阶段生命周期（prepare → install → test → build → validate staging → package）。`--skip-tests` 仅跳过测试——绝不跳过类型检查或打包。零配置的 Vue/Vite 与静态项目保留其现有的构建探测。归档写入是原子的——失败时不会留下半成品 `.fyp`、`.tmp-*` 或 staging 目录。 |
-| `validate [path]` | — | 检查源码清单的对象/转义错误；失败时以非零退出码加一条消息退出。（构建产物由 staging 步骤在构建后校验。） |
-| `install <file> [--host <url>] [--token <t>]` | `--host`（默认 `http://127.0.0.1:24056`）、`--token`（默认 `$FENGYU_TOKEN`） | **离线优先**地校验 `.fyp`（归档限制/路径 + 清单），然后上传到市场的 `POST /api/plugin-market/upload`。不安全或非法的包会在零次 fetch 调用下被拒绝。 |
+| `create <path> --id <id>` | `--id`（必填）、`--no-install`、`--ui-only` | 脚手架生成一个新插件。默认产出一个完整的 Vue + Java 项目（`vue-java` 模板）：`manifest.json`、`fengyu.plugin.json`、`ui-src/`（Vue，`vite.config.ts` 已接入 `@infinia/plugin-dev`）、`worker/`（Java + Maven Wrapper，`PluginDevMain` 已生成在 `src/test/java` 下）以及 `.mvn/settings.xml`。`--ui-only` 保留轻量的纯 UI 模板。默认运行 `npm install`（`--no-install` 可跳过）。拒绝覆盖已存在的目录。 |
+| `build [path] [--out <file>]` | `--out`（默认 `dist-package/<id>-<version>.fyp`）、`--skip-tests` | 对于声明式项目，运行完整的分阶段生命周期（prepare → install → test → build → **校验 staging** → package）。`--skip-tests` 仅跳过测试——绝不跳过类型检查、校验或打包。零配置的 Vue/Vite 与静态项目保留其现有的构建探测。归档写入是原子的——失败时不会留下半成品 `.fyp`、`.tmp-*` 或 staging 目录。 |
+
+::: tip `dev` / `validate` / `install` 去哪了？
+`fengyu plugin dev` 迁移到了 IDE，通过 `@infinia/plugin-dev` + `fengyu-plugin-devkit` 实现
+（见上方 [IDE 开发](#ide-开发)）——你得到的是真实断点，而不是一个 CLI 管理的进程。`validate`
+现在是 `build` 的内建步骤（staging 树在打包前总会被校验）。`install` 通过宿主的插件市场 UI
+完成（`POST /api/plugin-market/upload`）；详见[插件市场](/zh/plugins/marketplace)。
+:::
 
 ### 示例
 
@@ -116,25 +155,19 @@ fengyu plugin <create|dev|build|validate|install> [path] [options]
 # 脚手架生成（默认安装依赖；加 --no-install 可跳过）
 fengyu plugin create ./my-plugin --id com.example.my-plugin
 
-# 开发（Vue/Vite：拉起 Vite + 在 /__fengyu 提供模拟器）
-fengyu plugin dev . --port 4173
+# 开发：在 IDE 里打开项目，然后
+#   UI:    cd ui-src && npm run dev
+#   Worker: Debug PluginDevMain（见上方“IDE 开发”）
 
-# 打包（先跑前端构建，校验，原子化打 zip）
+# 打包（先跑前端构建，校验 staging，原子化打 zip）
 fengyu plugin build . --out dist-package/com.example.my-plugin-1.0.0.fyp
-
-# 发布前做一次健全性检查
-fengyu plugin validate
-
-# 安装到一个运行中的宿主
-fengyu plugin install ./com.example.my-plugin-1.0.0.fyp \
-  --host http://127.0.0.1:24056 --token "$FENGYU_TOKEN"
 ```
 
-脚手架生成的项目同时依赖 `@infinia/plugin-sdk` 与 [`@infinia/plugin-ui`](/zh/plugins/ui-components)；它的 `src/main.ts` 已经调用 `bindFengYuEnvironment` 同步主题/locale，并调用 `provideFengYuClient` 在全应用注入 SDK client。旧式静态插件（没有构建工具的纯 `ui/`）依然被 `dev` 与 `build` 接受。
+脚手架生成的项目同时依赖 `@infinia/plugin-sdk` 与 [`@infinia/plugin-ui`](/zh/plugins/ui-components)；它的 `src/main.ts` 已经调用 `bindFengYuEnvironment` 同步主题/locale，并调用 `provideFengYuClient` 在全应用注入 SDK client。旧式静态插件（没有构建工具的纯 `ui/`）依然被 `build` 接受。
 
 ## 下一步
 
-- [入门](/zh/plugins/getting-started)——以叙述形式讲解 create + dev 循环。
+- [入门](/zh/plugins/getting-started)——以叙述形式讲解 create + IDE 调试循环。
 - [UI 组件](/zh/plugins/ui-components)——`@infinia/plugin-ui` Vuetify 套件。
 - [Worker（JSON-RPC）](/zh/plugins/worker)——`JsonRpcWorker` 实现的协议。
 - [构建与部署](/zh/plugins/build-deploy)——shaded-JAR + `.fyp` 流程。
