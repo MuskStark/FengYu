@@ -12,13 +12,12 @@
 export function parseCli(argv) {
   // [nameInOptions, 'value' | 'flag', value?]
   // value-options consume the next token as their value; flags set a literal.
+  // Only create/build options remain — dev/install/validate have been removed:
+  // development now happens in the IDE (PluginDevMain + `npm run dev` via @infinia/plugin-dev),
+  // validation runs as part of `build`, and installing a .fyp is done through the host UI.
   const OPTIONS = new Map([
     ['--id', ['id', 'value']],
     ['--out', ['out', 'value']],
-    ['--host', ['host', 'value']],
-    ['--token', ['token', 'value']],
-    ['--port', ['port', 'value']],
-    ['--ui-port', ['uiPort', 'value']],
     ['--no-install', ['install', 'flag', false]],
     ['--ui-only', ['uiOnly', 'flag', true]],
     ['--skip-tests', ['skipTests', 'flag', true]],

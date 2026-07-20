@@ -15,6 +15,7 @@
     "vuetify": "^3.9.3"
   },
   "devDependencies": {
+    "@infinia/plugin-dev": "^1.1.0",
     "@vitejs/plugin-vue": "^6.0.1",
     "typescript": "^5.9.2",
     "vite": "^7.1.3",

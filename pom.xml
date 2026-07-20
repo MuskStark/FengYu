@@ -40,10 +40,13 @@
         <javafx.version>21.0.2</javafx.version>
         <lombok.version>1.18.42</lombok.version>
         <fengyu.api.version>${revision}</fengyu.api.version>
-        <!-- The Plugin Worker SDK is independently versioned (1.0.0) and published
+        <!-- The Plugin Worker SDK is independently versioned (1.1.0) and published
              to GitHub Packages for external plugin developers. It stays in the
-             reactor so local builds install it without a token. -->
-        <fengyu.plugin.sdk.version>1.0.1</fengyu.plugin.sdk.version>
+             reactor so local builds install it without a token. 1.1.0 adds the
+             RpcTransport abstraction (StdioTransport + the socket-transport contract
+             fengyu-plugin-devkit implements), so the same dispatch loop serves
+             production stdio and IDE loopback-TCP debugging. -->
+        <fengyu.plugin.sdk.version>1.1.0</fengyu.plugin.sdk.version>
         <fesod.version>2.0.1-incubating</fesod.version>
         <h2.version>2.4.240</h2.version>
         <simplejavamail.version>8.12.6</simplejavamail.version>
@@ -85,6 +88,7 @@
     <modules>
         <module>FengYu-Api</module>
         <module>FengYu-Plugin-Sdk</module>
+        <module>FengYu-Plugin-DevKit</module>
         <module>OfficialPlugins</module>
         <module>FengYu</module>
     </modules>
