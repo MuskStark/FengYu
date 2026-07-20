@@ -56,17 +56,22 @@ export function validateManifestObject(manifest) {
 }
 
 /**
- * Per-call / per-tool timeouts are clamped to [1, 600] seconds on both the host side
- * (PluginProcessManager) and here in the CLI validator — keeping the two in sync so a
- * package that passes `fengyu plugin validate` will also pass host-side install validation.
+ * Per-call / per-tool timeout bounds. Mirrors the host-side caps in
+ * {@code FengYu/src/main/java/fan/summer/fengyu/plugin/runtime/PluginProcessManager.java}
+ * ({@code MAX_TIMEOUT_SECONDS = 600}) and {@code PluginPackageService.java}. Keeping the
+ * CLI validator and the host installer in sync means a package that passes `fengyu plugin
+ * build`'s built-in staging validation also passes host-side install validation.
  */
+export const TIMEOUT_MIN_SECONDS = 1
+export const TIMEOUT_MAX_SECONDS = 600
+
 function validateTimeout(value, field, errors) {
   if (typeof value !== 'number' || !Number.isInteger(value)) {
     errors.push(`${field} must be an integer`)
     return
   }
-  if (value < 1 || value > 600) {
-    errors.push(`${field} must be between 1 and 600 seconds`)
+  if (value < TIMEOUT_MIN_SECONDS || value > TIMEOUT_MAX_SECONDS) {
+    errors.push(`${field} must be between ${TIMEOUT_MIN_SECONDS} and ${TIMEOUT_MAX_SECONDS} seconds`)
   }
 }
 
