@@ -15,9 +15,11 @@ test('accepts packages with their required published files', () => {
       { path: 'templates/vue-java/ui-src/src/App.test.ts' },
       { path: 'templates/vue-java/worker/pom.xml.tpl' },
       { path: 'templates/vue-java/worker/src/main/java/{{javaPackagePath}}/{{javaClassPrefix}}WorkerMain.java.tpl' },
-      { path: 'templates/vue-java/worker/src/test/java/example/WorkerTest.java.tpl' },
+      { path: 'templates/vue-java/worker/src/main/java/{{javaPackagePath}}/{{javaClassPrefix}}Worker.java.tpl' },
+      { path: 'templates/vue-java/worker/src/test/java/{{javaPackagePath}}/PluginDevMain.java.tpl' },
       { path: 'templates/vue-codex/manifest.json.tpl' },
     ] },
+    { name: '@infinia/plugin-dev', files: [{ path: 'dist/index.js' }, { path: 'dist/index.d.ts' }] },
     { name: '@infinia/plugin-sdk', files: [{ path: 'dist/index.js' }, { path: 'dist/index.d.ts' }] },
     { name: '@infinia/plugin-ui', files: [
       { path: 'dist/index.js' }, { path: 'dist/index.d.ts' }, { path: 'dist/style.css' },
@@ -41,7 +43,8 @@ test('rejects package tests but permits generated-project test templates', () =>
     { path: 'templates/vue-java/ui-src/src/App.test.ts' },
     { path: 'templates/vue-java/worker/pom.xml.tpl' },
     { path: 'templates/vue-java/worker/src/main/java/{{javaPackagePath}}/{{javaClassPrefix}}WorkerMain.java.tpl' },
-    { path: 'templates/vue-java/worker/src/test/java/example/WorkerTest.java.tpl' },
+    { path: 'templates/vue-java/worker/src/main/java/{{javaPackagePath}}/{{javaClassPrefix}}Worker.java.tpl' },
+    { path: 'templates/vue-java/worker/src/test/java/{{javaPackagePath}}/PluginDevMain.java.tpl' },
     { path: 'templates/vue-codex/manifest.json.tpl' },
   ]
   assert.doesNotThrow(() => assertPackContents([{ name: '@infinia/plugin-cli', files: cliFiles }]))

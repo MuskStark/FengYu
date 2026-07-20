@@ -27,9 +27,9 @@ test('--no-install clears the install flag', () => {
 })
 
 test('group and command are split from positionals', () => {
-  const parsed = parseCli(['plugin', 'dev', '.'])
+  const parsed = parseCli(['plugin', 'build', '.'])
   assert.equal(parsed.group, 'plugin')
-  assert.equal(parsed.command, 'dev')
+  assert.equal(parsed.command, 'build')
   assert.deepEqual(parsed.positionals, ['.'])
 })
 

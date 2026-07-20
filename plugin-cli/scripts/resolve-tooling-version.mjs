@@ -28,6 +28,7 @@ function isSemanticVersion(value) {
 async function verifyRepositoryVersion(root, version) {
   const npmPackages = [
     'plugin-cli/package.json',
+    'plugin-dev/package.json',
     'plugin-sdk/typescript/package.json',
     'plugin-ui/vue/package.json',
   ]
@@ -36,10 +37,13 @@ async function verifyRepositoryVersion(root, version) {
     const pkg = JSON.parse(await fs.readFile(path.join(root, relative), 'utf8'))
     if (pkg.version !== version) mismatches.push(`${relative}: ${pkg.version}`)
   }
-  const pomFile = 'FengYu-Plugin-Sdk/pom.xml'
-  const pom = await fs.readFile(path.join(root, pomFile), 'utf8')
-  const pomVersion = pom.match(/<version>([^<]+)<\/version>/)?.[1]
-  if (pomVersion !== version) mismatches.push(`${pomFile}: ${pomVersion ?? '<missing>'}`)
+  // Both Maven tooling artifacts (the Worker SDK and the devkit) are independently versioned
+  // but lockstep with the npm packages — a single plugin-tooling-vX.Y.Z tag releases all six.
+  for (const pomFile of ['FengYu-Plugin-Sdk/pom.xml', 'FengYu-Plugin-DevKit/pom.xml']) {
+    const pom = await fs.readFile(path.join(root, pomFile), 'utf8')
+    const pomVersion = pom.match(/<version>([^<]+)<\/version>/)?.[1]
+    if (pomVersion !== version) mismatches.push(`${pomFile}: ${pomVersion ?? '<missing>'}`)
+  }
   if (mismatches.length) {
     throw new Error(`tooling version ${version} does not match:\n${mismatches.join('\n')}`)
   }

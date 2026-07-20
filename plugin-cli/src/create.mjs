@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { runCommand } from './commands.mjs'
 
 /** Toolchain version shared by the CLI, the SDK, and generated templates. */
-export const toolingVersion = '1.0.0'
+export const toolingVersion = '1.1.0'
 
 const TEMPLATES_DIR = fileURLToPath(new URL('../templates', import.meta.url))
 const VUE_JAVA_DIR = path.join(TEMPLATES_DIR, 'vue-java')
