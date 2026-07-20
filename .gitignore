@@ -63,5 +63,13 @@ node_modules/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
 
+### FengYu plugin build output (plugin-cli / official plugins) ###
+# .fyp packages + transient staging/zip siblings produced by `fengyu plugin build`
+**/dist-package/
+**/.staging-*/
+**/*.tmp-*
+# Per-ui lockfile fingerprint written by ensureUiInstalled()
+**/node_modules/.fengyu-lock-hash
+
 ### Local agent / IDE tool configs ###
 .codex/
