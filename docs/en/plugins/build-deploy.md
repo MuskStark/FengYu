@@ -102,11 +102,17 @@ Each writes `OfficialPlugins/plugin-<name>/dist-package/fan.summer.<name>-4.0.0-
 
 ## Install the result
 
-`fengyu plugin install` validates the package **offline first** — it inspects archive limits and paths, validates the archived manifest and UI entry, and structurally checks any declared `backend/worker.jar` before network access — then uploads to the marketplace. In `fengyu.plugin.json`, every `package.resources[].to` value is a POSIX archive-relative path:
+Installing a built `.fyp` is done through the host's plugin marketplace — upload via the marketplace
+UI or `POST /api/plugin-market/upload`. The host validates the package **offline first** — it inspects
+archive limits and paths, validates the archived manifest and UI entry, and structurally checks any
+declared `backend/worker.jar` before registering the plugin. In `fengyu.plugin.json`, every
+`package.resources[].to` value is a POSIX archive-relative path:
 
 ```bash
-fengyu plugin install ./dist-package/com.example.my-plugin-1.0.0.fyp \
-  --host http://127.0.0.1:24056 --token "$FENGYU_TOKEN"
+# Upload the built .fyp to a running host (or use the marketplace UI's upload button)
+curl -F file=@./dist-package/com.example.my-plugin-1.0.0.fyp \
+  -H "Authorization: Bearer $FENGYU_TOKEN" \
+  http://127.0.0.1:24056/api/plugin-market/upload
 ```
 
 An unsafe or invalid package is rejected with zero fetch calls. See [Marketplace](/en/plugins/marketplace) for the install/update/enable/uninstall endpoints.

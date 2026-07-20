@@ -6,7 +6,7 @@ lang: zh-CN
 
 # 插件市场
 
-插件市场是宿主的插件注册中心。它通过 `/api/plugin-market` 暴露，用于浏览目录以及管理每一个插件（官方与第三方一视同仁）的安装生命周期。所有生命周期操作（安装、更新、启用、禁用、卸载）都经由这些 endpoint 进行；[CLI](/zh/plugins/sdk-cli) 的 `fengyu plugin install` 只是 `POST /upload` 之上的一个薄客户端。
+插件市场是宿主的插件注册中心。它通过 `/api/plugin-market` 暴露，用于浏览目录以及管理每一个插件（官方与第三方一视同仁）的安装生命周期。所有生命周期操作（安装、更新、启用、禁用、卸载）都经由这些 endpoint 进行；`POST /upload` 是构建好的 `.fyp` 的安装路径（市场 UI 的上传按钮走的是这条）。
 
 ## 浏览目录
 
@@ -18,7 +18,7 @@ lang: zh-CN
 
 | 方法 + 路径 | Body | 适用场景 |
 | --- | --- | --- |
-| `POST /upload` | multipart `.fyp` 文件 | 你已有一个构建好的 `.fyp` 归档（常规路径；CLI 走的是这条）。 |
+| `POST /upload` | multipart `.fyp` 文件 | 你已有一个构建好的 `.fyp` 归档（常规路径；市场 UI 的上传按钮走的是这条）。 |
 | `POST /upload-native` | JSON `{path}` | 仅桌面端——从一个已存在于本地文件系统路径上的 `.fyp` 安装。 |
 | `POST /{id}/install` | — | 通过 id 安装一个已在目录中列出的插件。 |
 
@@ -26,7 +26,8 @@ lang: zh-CN
 - `POST /{id}/install` 是一键安装，针对已在目录索引中存在但尚未本地安装的插件。
 
 ::: tip
-`fengyu plugin install ./my-plugin-1.0.0.fyp --host <url> --token <t>` 会替你把文件 POST 到 `/upload`。参见 [SDK 与 CLI](/zh/plugins/sdk-cli)。
+用市场 UI 上传构建好的 `.fyp`，或直接 POST：
+`curl -F file=@./my-plugin-1.0.0.fyp -H "Authorization: Bearer $FENGYU_TOKEN" http://<host>/api/plugin-market/upload`。
 :::
 
 ## 更新
@@ -78,4 +79,4 @@ java -Dfengyu.marketplace.catalog-url=https://internal.example/fengyu-catalog.js
 
 - [插件概述](/zh/plugins/overview)——install → enable → invoke → disable → uninstall 生命周期。
 - [构建与部署](/zh/plugins/build-deploy)——产出一个 `.fyp` 以供上传。
-- [SDK 与 CLI](/zh/plugins/sdk-cli)——`fengyu plugin install` 封装了 `/upload`。
+- [SDK 与 CLI](/zh/plugins/sdk-cli)——`create` 与 `build` 命令。

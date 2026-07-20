@@ -136,7 +136,9 @@ the token into the webview. See [Architecture Overview](docs/en/architecture/ove
 | `frontend/` | Vue 3.5 + TS SPA (runs identically in the browser or the Tauri webview). |
 | `desktop/` | Tauri 2.0 desktop shell — sidecar-launches the JAR, native dialogs, window chrome. |
 | `plugin-ui/` | `@infinia/plugin-ui` — the official Vue/Vuetify component kit for plugin micro-frontends. |
-| `plugin-cli/` | `fengyu plugin` CLI — `create`, `dev`, `build`, `validate`, `install`. |
+| `plugin-cli/` | `fengyu plugin` CLI — `create`, `build` (development moved to the IDE via `plugin-dev/` + `FengYu-Plugin-DevKit/`). |
+| `plugin-dev/` | `@infinia/plugin-dev` — Vite plugin that turns the dev server into a FengYu host simulator for IDE debugging. |
+| `FengYu-Plugin-DevKit/` | `fengyu-plugin-devkit` — loopback-TCP JSON-RPC dev server (`PluginDevMain`) so worker breakpoints fire in the IDE. |
 
 ### Plugin System
 
@@ -151,9 +153,10 @@ path into the same opaque `FileRef`. Plugin UI code is identical on both targets
 absolute path. Plugins that need persistence declare the `database` permission and get an
 injected datasource connection (table-name-prefixed, plugin-owned schema).
 
-Third-party authors scaffold with `fengyu plugin create` and use the component kit, Worker SDK, and
-CLI — there is no `FengYuPluginV2` interface and no in-host JavaFX. See the
-[Plugin Overview](docs/en/plugins/overview).
+Third-party authors scaffold with `fengyu plugin create`, develop in their IDE (the `@infinia/plugin-dev`
+Vite plugin + `fengyu-plugin-devkit`'s `PluginDevMain` give them real breakpoints in UI and worker),
+and package with `fengyu plugin build` — there is no `FengYuPluginV2` interface and no in-host JavaFX.
+See the [Plugin Overview](docs/en/plugins/overview).
 
 ---
 
