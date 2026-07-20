@@ -77,6 +77,14 @@ export async function resolveCommand(command, cwd, options = {}) {
  * Turn a resolved command into the exact spawn arguments. Windows `.cmd` files
  * must be launched through `cmd.exe /d /s /c` explicitly rather than enabling
  * `shell: true` for arbitrary commands.
+ *
+ * `shell` is ALWAYS `false` here — this is an intentional security decision (callers
+ * never get shell expansion, so configured commands cannot inject via `&&`, globs,
+ * or environment-variable expansion). `runCommand` honors this literal value via the
+ * `??` operator in `runCommand`'s `shell: options.shell ?? process.platform === 'win32'`,
+ * so even on Windows the explicit `false` wins. If a future command ever genuinely needs
+ * shell behavior, that is a strong signal it should be re-expressed as an array of
+ * tokens rather than flipping this flag.
  * @returns {{ command: string, args: string[], shell: boolean }}
  */
 export function spawnSpec(resolved) {
