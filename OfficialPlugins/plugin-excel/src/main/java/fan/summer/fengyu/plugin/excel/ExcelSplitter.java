@@ -20,6 +20,7 @@ import java.util.*;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -53,6 +54,7 @@ public class ExcelSplitter {
 
     private final SplitConfig config;
     private final BiConsumer<Double, String> progress;
+    private final Supplier<Boolean> shouldCancel;
 
     /**
      * Creates a new splitter for the given configuration and progress callback.
@@ -63,8 +65,29 @@ public class ExcelSplitter {
      * @throws NullPointerException if config is null
      */
     public ExcelSplitter(SplitConfig config, BiConsumer<Double, String> progress) {
+        this(config, progress, null);
+    }
+
+    /**
+     * Creates a new splitter with an optional cooperative-cancel probe.
+     *
+     * <p>When {@code shouldCancel} returns {@code true} the split aborts by throwing
+     * {@link InterruptedException} at the next checkpoint (between sheets, between column groups,
+     * between complex-split entries). This lets a job-mode caller ({@code split_start} /
+     * {@code excel_execute_start}) wire a {@code Jobs.Cancellable} into the engine without the
+     * engine depending on the SDK. The synchronous RPC path passes {@code null}.
+     *
+     * @param config        split configuration (must not be null)
+     * @param progress      callback invoked repeatedly with (0.0–1.0 progress, status message);
+     *                      may be null
+     * @param shouldCancel  returns {@code true} to request cooperative cancellation; may be null
+     * @throws NullPointerException if config is null
+     * @since 4.0.0
+     */
+    public ExcelSplitter(SplitConfig config, BiConsumer<Double, String> progress, Supplier<Boolean> shouldCancel) {
         this.config = Objects.requireNonNull(config);
         this.progress = progress;
+        this.shouldCancel = shouldCancel;
     }
 
     /**
@@ -121,6 +144,17 @@ public class ExcelSplitter {
         if (progress != null) progress.accept(pct, msg);
     }
 
+    /**
+     * Cooperative cancel checkpoint. Throws {@link InterruptedException} (treated as cancellation
+     * by the job wrapper) if {@code shouldCancel} is wired and reports {@code true}. No-op when
+     * the splitter was constructed without a cancel probe (synchronous RPC path).
+     */
+    private void checkCancelled() throws InterruptedException {
+        if (shouldCancel != null && Boolean.TRUE.equals(shouldCancel.get())) {
+            throw new InterruptedException("split cancelled");
+        }
+    }
+
     private SplitResult splitBySheet() throws Exception {
         List<String> sheets = (config.selectedSheets != null && !config.selectedSheets.isEmpty())
                 ? config.selectedSheets
@@ -134,6 +168,7 @@ public class ExcelSplitter {
         try (ExcelReader reader = FesodSheet.read(config.sourceFile.toFile()).build()) {
             for (int i = 0; i < sheets.size(); i++) {
                 String sheetName = sheets.get(i);
+                checkCancelled();
                 onProgress((double) i / sheets.size(), "Processing sheet: " + sheetName);
 
                 ReadSheet readSheet = FesodSheet.readSheet(sheetName)
@@ -185,6 +220,7 @@ public class ExcelSplitter {
 
         int threads = Math.min(4, Math.max(1, Runtime.getRuntime().availableProcessors() - 1));
         ForkJoinPool pool = new ForkJoinPool(threads);
+        checkCancelled();
         try {
             pool.submit(() ->
                 groups.entrySet().parallelStream().forEach(e -> {
@@ -231,6 +267,7 @@ public class ExcelSplitter {
 
         for (int i = 0; i < normalConfigs.size(); i++) {
             ComplexSplitEntry cfg = normalConfigs.get(i);
+            checkCancelled();
             onProgress(0.05 + 0.3 * i / Math.max(1, normalConfigs.size()),
                     "Reading: " + cfg.sheetName());
 

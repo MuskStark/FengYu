@@ -30,6 +30,62 @@ Messages are **newline-delimited**: one JSON object per line on `stdin`, one per
 
 > **Logs go to stderr.** `stdout` is reserved for protocol messages. The Worker SDK enforces this by redirecting `System.out` to `System.err` for the duration of the run loop — see [Pitfalls](/en/plugins/pitfalls).
 
+## Per-call timeout
+
+Every invoke is bounded by a timeout. The host (`PluginProcessManager`) waits that many seconds for the worker's response; when it elapses, **the worker process is killed** and the next call lazily restarts it. This is deliberate: the SDK dispatch loop is single-threaded, so a stuck handler cannot be cancelled any other way — the only recovery is to tear the process down.
+
+| Source | Priority |
+| --- | --- |
+| `aiTools[].timeoutSeconds` (manifest) | highest — used when the AI tool path invokes the method |
+| Caller-supplied timeout (host-internal) | overrides the default for a specific call |
+| `backend.callTimeoutSeconds` (manifest) | plugin-wide default |
+| Built-in default | `60` |
+
+All declared values are clamped to `[1, 600]` seconds (the cap protects against a malicious manifest pinning a worker indefinitely). Declare a longer timeout only for methods that genuinely need it, and prefer job mode (below) when the work is unbounded.
+
+## Long tasks (job mode)
+
+Any operation that may exceed its declared timeout must be split into a **start / status / cancel** triple rather than a single blocking method. The launcher returns a `jobId` immediately; the UI or AI polls `*_status` with a cursor to drain streamed logs; `*_cancel` aborts. This is the only supported pattern for unbounded work — `pip download`, large-workbook splits, batch sends, etc.
+
+The SDK ships a `Jobs` registry (`fan.summer.fengyu.sdk.Jobs`) that implements this in three lines:
+
+```java
+import fan.summer.fengyu.sdk.Jobs;
+
+public final class MyWorkerMain {
+    public static void main(String[] args) {
+        Jobs jobs = new Jobs();
+        // ... handlers hold the Jobs reference
+    }
+}
+
+// Launch handler — validate up front, then hand off to a virtual thread.
+Jobs.Job job = jobs.start("EXPORT", handle -> {
+    handle.onCancel(() -> pool.shutdownNow());            // cooperative cancel hook
+    Result res = doExpensiveWork(handle::log, handle::isCancelled);
+    if (handle.isCancelled()) throw new Jobs.CancellationException();
+    handle.setSummary(Map.of("fileCount", res.files()));  // surfaced by status polling
+});
+return Map.of("success", true, "jobId", job.id);
+
+// Status handler — drain logs from cursor; result appears when done.
+return jobs.snapshot(jobId, cursor);
+
+// Cancel handler — fires the onCancel hook registered at start.
+return jobs.cancel(jobId);
+```
+
+Key properties of `Jobs`:
+
+- **Bounded retention.** Completed jobs are retained for 30 minutes (configurable) and capped at 200 entries; oldest completed jobs are evicted first. This prevents unbounded memory growth in workers that fan out many jobs.
+- **Cooperative cancellation.** `Cancellable.onCancel(Runnable)` runs once when the host calls `*_cancel`; the body should also poll `Cancellable.isCancelled()` between long steps and throw `Jobs.CancellationException` to signal a clean abort.
+- **Streaming logs.** `Cancellable.log(String)` appends to a per-job queue; `snapshot(jobId, cursor)` returns the tail from `cursor` plus the next cursor, so the UI can poll incrementally.
+
+Reference implementations:
+
+- **`plugin-offlinepython`** — `build.start` / `build.status` / `build.cancel` (and the `deploy.*` triplet) wrap `pip download`, which routinely exceeds 60s. The launcher registers `ProcessRunner::cancel` as the cancel hook.
+- **`plugin-excel`** — `split_start` / `split_status` / `split_cancel` (UI) and `excel_execute_start` / `excel_execute_status` (AI) wrap large-workbook splits; the `ExcelSplitter` engine takes a `Supplier<Boolean> shouldCancel` probe that is wired to `handle::isCancelled`.
+
 ## Error object
 
 A failed call returns an `error` object instead of `result`:

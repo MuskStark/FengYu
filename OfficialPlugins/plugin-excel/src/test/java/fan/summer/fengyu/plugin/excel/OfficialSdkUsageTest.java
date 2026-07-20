@@ -34,8 +34,10 @@ class OfficialSdkUsageTest {
         String source = Files.readString(SOURCE.resolve("ExcelWorkerMain.java"));
         for (String method : new String[]{
             "analyze", "configure", "split",
+            "split_start", "split_status", "split_cancel",
             "excel_analyze", "excel_configure", "excel_complex_config",
-            "excel_execute", "excel_query", "excel_cancel"}) {
+            "excel_execute", "excel_execute_start", "excel_execute_status",
+            "excel_query", "excel_cancel"}) {
             assertTrue(source.contains("\"" + method + "\""), method);
         }
     }

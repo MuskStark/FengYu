@@ -1,5 +1,6 @@
 package fan.summer.fengyu.plugin.offlinepython;
 
+import fan.summer.fengyu.sdk.Jobs;
 import fan.summer.fengyu.sdk.JsonRpcWorker;
 import org.junit.jupiter.api.Test;
 
@@ -63,7 +64,7 @@ class OfflinePythonWorkerTest {
         Jobs jobs = new Jobs();
         CountDownLatch running = new CountDownLatch(1);
         CountDownLatch cancelled = new CountDownLatch(1);
-        Jobs.Job job = jobs.start(Jobs.Type.BUILD, handle -> {
+        Jobs.Job job = jobs.start("BUILD", handle -> {
             handle.onCancel(cancelled::countDown);
             running.countDown();
             while (!handle.isCancelled()) Thread.onSpinWait();

@@ -20,6 +20,14 @@ public record PluginManifest(
     List<AiTool> aiTools
 ) {
     public record Ui(String entry) {}
-    public record Backend(String command, String protocol) {}
-    public record AiTool(String name, String description, String inputSchema, String method) {}
+    public record Backend(String command, String protocol, Long callTimeoutSeconds) {
+        /** Backwards-compatible constructor for callers that omit the timeout. */
+        public Backend(String command, String protocol) { this(command, protocol, null); }
+    }
+    public record AiTool(String name, String description, String inputSchema, String method, Long timeoutSeconds) {
+        /** Backwards-compatible constructor for callers that omit the timeout. */
+        public AiTool(String name, String description, String inputSchema, String method) {
+            this(name, description, inputSchema, method, null);
+        }
+    }
 }
