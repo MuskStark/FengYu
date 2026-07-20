@@ -2,7 +2,7 @@
 # Smoke-test a packaged portable Web distribution archive.
 #
 # Usage: scripts/test-web-release.sh <archive.zip>
-# Extracts the archive, asserts the expected layout (Infinia.jar, executable run.sh, and the three
+# Extracts the archive, asserts the expected layout (Infinia.jar, executable run.sh, and the four
 # official .fyp plugins), boots run.sh on a free loopback port, reads FENGYU_PORT= from stdout,
 # asserts that the Vue shell (/) and /api/health both return 200, then kills the backend.
 set -euo pipefail
@@ -33,7 +33,7 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 [ -x "$PKG_DIR/run.sh" ]           || fail "run.sh missing or not executable"
 [ -f "$PKG_DIR/run.bat" ]          || fail "run.bat missing"
 [ -f "$PKG_DIR/README.md" ]        || fail "README.md missing"
-for id in markdown excel email; do
+for id in markdown excel email offlinepython; do
   ls "$PKG_DIR/plugins"/fan.summer."$id"-*.fyp >/dev/null 2>&1 \
     || fail "official plugin fan.summer.$id missing"
 done
