@@ -4,7 +4,7 @@
 # plugin renders through the invoke path, then kills the backend.
 #
 # Usage: scripts/e2e-smoke.sh [port] [token]
-set -uo pipefail
+set -euo pipefail
 
 PORT="${1:-8899}"
 TOKEN="${2:-e2e-smoke-token}"
@@ -20,6 +20,10 @@ fi
 # then stage their .fyp outputs into a single official-packages directory the
 # host is pointed at. This replaces the old per-plugin shell packager.
 OFFICIAL_DIR="$(mktemp -d)"
+# WORK is assigned below; pre-declare so the EXIT trap can reference it safely even if the
+# script is interrupted between setting the trap and assigning WORK.
+WORK=""
+SRV=""
 for plugin in markdown excel email offlinepython; do
   if ! node "$ROOT/plugin-cli/bin/fengyu.mjs" plugin build "$ROOT/OfficialPlugins/plugin-$plugin" >/dev/null; then
     echo "FAIL: fengyu plugin build OfficialPlugins/plugin-$plugin failed"
@@ -31,7 +35,9 @@ mkdir -p "$OFFICIAL_DIR"
 for fyp in "$ROOT"/OfficialPlugins/plugin-*/dist-package/*.fyp; do
   cp "$fyp" "$OFFICIAL_DIR/"
 done
-trap 'kill $SRV 2>/dev/null; rm -rf "$WORK" "$OFFICIAL_DIR"' EXIT
+# Defensive `${VAR:-}` so a trap firing before WORK/SRV are set never expands to rm -rf ""
+# or kill "" (the latter would be a no-op, but under set -u an unset var is fatal).
+trap 'kill ${SRV:-} 2>/dev/null || true; rm -rf "${WORK:-}" "$OFFICIAL_DIR"' EXIT
 
 export JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home 2>/dev/null || echo "")}"
 JAVA="${JAVA_HOME:+$JAVA_HOME/bin/}java"
@@ -148,7 +154,17 @@ echo "$EMAIL_PREVIEW" | grep -q '"attachmentTag":"East"' \
 
 XLSX="$WORK/sample.xlsx"
 EXCEL_WORKER="$ROOT/OfficialPlugins/plugin-excel/target/excel-worker.jar"
-"$JAVA" -cp "$EXCEL_WORKER" "$ROOT/scripts/fixtures/ExcelSmokeFixture.java" "$XLSX" \
+# Pre-compile the fixture with javac against the shaded worker jar (POI is on its classpath),
+# then run the compiled class. This replaces the previous single-file source-mode invocation
+# (`java Fixture.java`), which silently depended on javac's implicit source-file behavior and
+# would have broken opaquely if the worker's shade config ever relocated POI classes. A failed
+# compile now surfaces immediately instead of at runtime.
+JAVAC="${JAVA_HOME:+$JAVA_HOME/bin/}javac"
+command -v "$JAVAC" >/dev/null 2>&1 || JAVAC="$(command -v javac)"
+[ -n "$JAVAC" ] || fail "javac not found on PATH (needed to compile ExcelSmokeFixture)"
+"$JAVAC" -cp "$EXCEL_WORKER" -d "$WORK" "$ROOT/scripts/fixtures/ExcelSmokeFixture.java" \
+  || fail "compile ExcelSmokeFixture"
+"$JAVA" -cp "$WORK:$EXCEL_WORKER" ExcelSmokeFixture "$XLSX" \
   || fail "generate Excel fixture"
 
 UP="$(curl -s "${AUTH[@]}" -F "file=@$XLSX" "$H/api/plugin-runtime/fan.summer.excel/files/upload")"
