@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onUnmounted, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import type { FengYuClient, FileRef } from '@infinia/plugin-sdk'
-import { FyFilePicker } from '@infinia/plugin-ui'
+import { FyFilePicker, FyPageHeader } from '@infinia/plugin-ui'
 import { call, callChecked, field } from '../rpc'
 import { readJobSnapshot, type UiJobStatus } from '../jobState'
 
@@ -97,41 +97,72 @@ async function cancel() {
 }
 
 onUnmounted(stopPolling)
+
+const statusClass = computed(() => ({
+  'opb-status--running': status.value === 'starting' || status.value === 'running',
+  'opb-status--success': status.value === 'done',
+  'opb-status--error': status.value === 'failed' || status.value === 'error',
+}))
+const canInstall = computed(() => Boolean(bundle.value)
+  && (targetKind.value === 'global' || Boolean(venvPath.value.trim()))
+  && !installing.value)
 </script>
 
 <template>
-  <v-card flat border>
-    <v-card-text>
-      <div class="mb-4">
+  <FyPageHeader :title="t('opb.deploy.title')" :description="t('opb.deploy.description')" />
+
+  <section class="opb-surface">
+    <div class="opb-surface__section">
+      <h2 class="opb-section-heading">{{ t('opb.deploy.bundleTitle') }}</h2>
+      <p class="opb-section-copy">{{ t('opb.deploy.bundleHint') }}</p>
         <FyFilePicker
           v-model="bundle"
           :label="t('opb.deploy.selectZip')"
           :extensions="['zip']"
         />
+    </div>
+
+    <div class="opb-surface__section">
+      <h2 class="opb-section-heading">{{ t('opb.deploy.targetTitle') }}</h2>
+      <p class="opb-section-copy">{{ t('opb.deploy.targetHint') }}</p>
+      <div class="opb-segment" role="group" :aria-label="t('opb.deploy.targetTitle')">
+        <button type="button" :aria-pressed="targetKind === 'global'" @click="targetKind = 'global'">
+          {{ t('opb.deploy.targetGlobal') }}
+        </button>
+        <button type="button" :aria-pressed="targetKind === 'venv'" @click="targetKind = 'venv'">
+          {{ t('opb.deploy.targetVenv') }}
+        </button>
       </div>
+      <v-text-field
+        v-if="targetKind === 'venv'"
+        v-model="venvPath"
+        :label="t('opb.deploy.venvPath')"
+        :hint="t('opb.deploy.venvHint')"
+        persistent-hint
+        class="opb-deploy__venv"
+      />
+    </div>
 
-      <v-radio-group v-model="targetKind" inline>
-        <v-radio :label="t('opb.deploy.targetGlobal')" value="global" />
-        <v-radio :label="t('opb.deploy.targetVenv')" value="venv" />
-      </v-radio-group>
-      <v-text-field v-if="targetKind === 'venv'" v-model="venvPath" :label="t('opb.deploy.venvPath')"
-        :hint="t('opb.deploy.venvHint')" persistent-hint class="mb-4" />
-
-      <div class="d-flex gap-2 mb-4 flex-wrap">
-        <v-btn color="primary" :loading="installing" :disabled="installing" @click="startInstall">{{ t('opb.deploy.start') }}</v-btn>
+    <div class="opb-surface__section">
+      <div class="opb-actions">
+        <v-btn color="primary" :loading="installing" :disabled="!canInstall" @click="startInstall">{{ t('opb.deploy.start') }}</v-btn>
         <v-btn v-if="installing" color="error" variant="text" @click="cancel">{{ t('opb.deploy.cancel') }}</v-btn>
-        <v-chip>{{ t(`opb.deploy.status.${status}`, status) }}</v-chip>
+        <span class="opb-status" :class="statusClass">{{ t(`opb.deploy.status.${status}`, status) }}</span>
       </div>
+    </div>
 
-      <v-sheet class="pa-3 bg-surface-variant" rounded border>
-        <pre class="text-body-2" style="white-space: pre-wrap; max-height: 360px; overflow: auto">{{
+    <div class="opb-surface__section">
+      <h2 class="opb-section-heading">{{ t('opb.deploy.logTitle') }}</h2>
+        <pre class="opb-log">{{
           logs.length ? logs.join('\n') : t('opb.deploy.logEmpty')
         }}</pre>
-      </v-sheet>
-    </v-card-text>
-  </v-card>
+    </div>
+  </section>
 </template>
 
 <style scoped>
-.gap-2 { gap: 8px; }
+.opb-deploy__venv {
+  max-width: 560px;
+  margin-top: 16px;
+}
 </style>

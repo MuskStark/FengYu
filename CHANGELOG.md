@@ -52,6 +52,13 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   - The scaffolder now generates a shared `<Prefix>Worker.create()` handler factory, the production
     `<Prefix>WorkerMain`, and the IDE-debug `PluginDevMain`. UI-only scaffolds set `mockWorker: true`.
 
+### 🐛 Fixed
+- **IDE Worker failures no longer look successful.** When `workerEndpoint` is configured,
+  `@infinia/plugin-dev` returns connection failures as RPC errors instead of silently substituting
+  `devMock` data. All official plugin UIs now expose the documented `npm run dev` entry point.
+- **Plugin-tooling release gates** now ship the canonical manifest schema, exempt the independently
+  versioned Worker SDK from the application-parent check, and resolve the patched `fast-uri` 3.1.4.
+
 ### ♻️ Changed
 - **CLI scope narrowed to `create` + `build`.** `fengyu plugin dev` moved to the IDE
   (`@infinia/plugin-dev` + `fengyu-plugin-devkit`); `fengyu plugin validate` is now a built-in step

@@ -16,8 +16,7 @@ export interface FengYuDevOptions {
     manifest: string | Record<string, unknown>;
     /**
      * Loopback endpoint of the `fengyu-plugin-devkit` dev server (run `PluginDevMain` in your IDE).
-     * Defaults to `127.0.0.1:24057`. When unset or unreachable AND {@link mockWorker} is true,
-     * `rpc.invoke` falls back to a stub response so a UI-only author can iterate without a worker.
+     * When configured, connection failures are returned to the UI and never replaced by mock data.
      */
     workerEndpoint?: {
         host: string;

@@ -55,14 +55,16 @@ public class PluginProcessManager {
     private final PluginPackageService packages;
     private final PluginFileGrantService files;
     private final PluginRuntimeEnvironmentService runtimeEnvironment;
+    private final PluginLogStore logStore;
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
     private final Map<String, Worker> workers = new ConcurrentHashMap<>();
 
     public PluginProcessManager(PluginPackageService packages, PluginFileGrantService files,
-            PluginRuntimeEnvironmentService runtimeEnvironment) {
+            PluginRuntimeEnvironmentService runtimeEnvironment, PluginLogStore logStore) {
         this.packages = packages;
         this.files = files;
         this.runtimeEnvironment = runtimeEnvironment;
+        this.logStore = logStore;
     }
 
     /** Invoke with the plugin-wide default timeout (manifest {@code backend.callTimeoutSeconds} or 60s). */
@@ -87,12 +89,30 @@ public class PluginProcessManager {
         long timeout = resolveTimeout(timeoutSeconds, manifest);
         Worker worker = workers.compute(pluginId, (id, current) -> current != null && current.alive()
             ? current : start(id, manifest));
+        // Log only the param KEYS, never the values. A caller can pass arbitrary credentials or
+        // body text in params (e.g. an SMTP password for email_account_save); logging the value —
+        // even truncated — leaks it to the console, the host log file, and the plugin log surface.
+        // Keys describe the call shape without revealing anything sensitive.
+        String keys = paramKeys(params);
+        log.info("Plugin {} invoke -> {}{}", pluginId, method, keys);
+        logStore.append(pluginId, "INFO", "invoke " + method + keys);
+        long startedNanos = System.nanoTime();
         try {
             @SuppressWarnings("unchecked") Map<String, Object> resolved = (Map<String, Object>) resolveRefs(pluginId, params == null ? Map.of() : params);
+            // Resolved params carry FileRefs turned into absolute paths (and still hold any secret
+            // values), so only their KEYS are safe to log even at DEBUG.
+            log.debug("Plugin {} resolved {} keys={}", pluginId, method, resolved.keySet());
             // Worker.invoke enforces its own timeout via future.get(timeout); on timeout it throws
             // IllegalStateException, which the catch below turns into a worker kill + restart.
-            return worker.invoke(method, resolved, timeout);
+            Object result = worker.invoke(method, resolved, timeout);
+            long elapsedMs = (System.nanoTime() - startedNanos) / 1_000_000;
+            log.info("Plugin {} <- {} ok ({} ms)", pluginId, method, elapsedMs);
+            logStore.append(pluginId, "INFO", method + " ok (" + elapsedMs + " ms)");
+            return result;
         } catch (RuntimeException e) {
+            long elapsedMs = (System.nanoTime() - startedNanos) / 1_000_000;
+            log.warn("Plugin {} <- {} failed after {} ms: {}", pluginId, method, elapsedMs, e.getMessage());
+            logStore.append(pluginId, "WARN", method + " failed: " + e.getMessage());
             // Only unrecoverable worker state (EOF / IO / timeout / interrupted) tears down the
             // worker. Business errors (IllegalArgumentException, e.g. "plugin is disabled") leave
             // the worker intact for the next call. failAll() drains every pending caller so the
@@ -146,17 +166,25 @@ public class PluginProcessManager {
             Thread.ofVirtual().name("plugin-" + id + "-stderr").start(() -> {
                 try (BufferedReader errors = process.errorReader(StandardCharsets.UTF_8)) {
                     for (String line; (line = errors.readLine()) != null;) {
+                        String safe = redactor.redact(line);
                         // INFO so plugin worker logs surface on the console (the host
                         // CONSOLE appender filters at INFO). Plugin workers log to stderr
                         // (their stdout is the JSON-RPC protocol pipe); without this the
                         // logs were only ever visible buried in .fengyu/logs/fengyu.log
                         // under a DEBUG line, making plugin failures impossible to diagnose.
-                        log.info("Plugin {} stderr: {}", id, abbreviate(redactor.redact(line)));
+                        log.info("Plugin {} stderr: {}", id, abbreviate(safe));
+                        // Capture into the per-plugin ring buffer + notify SSE subscribers, so the
+                        // UI / REST endpoints can surface this line instead of it being log-only.
+                        logStore.append(id, PluginLogLineParser.levelOf(safe), abbreviate(safe));
                     }
                 } catch (IOException ignored) {}
             });
-            Worker worker = new Worker(id, process, json, redactor);
+            Worker worker = new Worker(id, process, json, redactor, logStore);
             worker.startReader();
+            // The "plugin opened / worker started" event at INFO so it is visible in the terminal
+            // (CONSOLE appender filters at INFO), not just in the ring buffer / file.
+            log.info("Plugin {} worker started (pid={})", id, process.pid());
+            logStore.append(id, "INFO", "Worker started (pid=" + process.pid() + ")");
             return worker;
         } catch (IOException e) {
             throw new IllegalStateException("Cannot start plugin backend: " + redactor.redact(e.getMessage()), e);
@@ -197,6 +225,17 @@ public class PluginProcessManager {
         return value.substring(0, 237) + "...";
     }
 
+    /**
+     * One-line, leak-safe summary of the raw invoke params for operation logs: lists the param
+     * KEYS only, never the values. A value (a password, mail body, parsed absolute path) can be a
+     * secret, and truncating it is not a safe redaction — so it is never stringified here. Returns
+     * an empty string for {@code null}/empty params so the log line stays clean.
+     */
+    private static String paramKeys(Map<String, Object> params) {
+        if (params == null || params.isEmpty()) return "";
+        return " keys=" + params.keySet();
+    }
+
     @PreDestroy public void close() { workers.values().forEach(Worker::close); workers.clear(); }
 
     /**
@@ -214,16 +253,19 @@ public class PluginProcessManager {
         private final Process process;
         private final ObjectMapper json;
         private final SensitiveValueRedactor redactor;
+        private final PluginLogStore logStore;
         private final BufferedWriter writer;
         private final BufferedReader reader;
         private final ConcurrentHashMap<String, CompletableFuture<JsonNode>> pending = new ConcurrentHashMap<>();
         private volatile boolean closed = false;
 
-        Worker(String pluginId, Process process, ObjectMapper json, SensitiveValueRedactor redactor) {
+        Worker(String pluginId, Process process, ObjectMapper json, SensitiveValueRedactor redactor,
+                PluginLogStore logStore) {
             this.pluginId = pluginId;
             this.process = process;
             this.json = json;
             this.redactor = redactor;
+            this.logStore = logStore;
             this.writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
             this.reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
         }
@@ -237,15 +279,19 @@ public class PluginProcessManager {
                         try {
                             response = json.readTree(line);
                         } catch (IOException invalidJson) {
-                            log.warn("Plugin {} emitted non-JSON stdout: {}", pluginId,
-                                abbreviate(redactor.redact(line)));
+                            String safe = abbreviate(redactor.redact(line));
+                            log.warn("Plugin {} emitted non-JSON stdout: {}", pluginId, safe);
+                            // A non-JSON line on the protocol pipe usually means the worker wrote a
+                            // log/print to stdout instead of stderr — surface it so it's diagnosable.
+                            logStore.append(pluginId, "WARN", "non-JSON stdout: " + safe);
                             continue;
                         }
                         String responseId = response.path("id").asText("");
                         CompletableFuture<JsonNode> slot = responseId.isEmpty() ? null : pending.get(responseId);
                         if (slot == null) {
-                            log.warn("Plugin {} returned response for unexpected id={}", pluginId,
-                                redactor.redact(response.path("id").asText("<missing>")));
+                            String idText = redactor.redact(response.path("id").asText("<missing>"));
+                            log.warn("Plugin {} returned response for unexpected id={}", pluginId, idText);
+                            logStore.append(pluginId, "WARN", "unexpected response id=" + idText);
                             continue;
                         }
                         if (response.hasNonNull("error")) {
@@ -270,6 +316,10 @@ public class PluginProcessManager {
             pending.put(id, future);
             try {
                 String frame = json.writeValueAsString(Map.of("jsonrpc", "2.0", "id", id, "method", method, "params", params));
+                // DEBUG-only wire trace: log the id + method but NOT the frame. The frame carries the
+                // full params JSON (caller-supplied passwords, mail bodies, parsed paths); the env
+                // redactor only knows env-borne secrets, so a param value would leak verbatim here.
+                log.debug("Plugin {} \u2192 {} id={}", pluginId, method, id);
                 // Writer lock: keep concurrent callers from interleaving frames on stdin.
                 synchronized (this) {
                     writer.write(frame);
@@ -277,6 +327,7 @@ public class PluginProcessManager {
                     writer.flush();
                 }
                 JsonNode result = future.get(timeoutSeconds, TimeUnit.SECONDS);
+                log.debug("Plugin {} \u2190 {} id={} ok", pluginId, method, id);
                 return json.treeToValue(result, Object.class);
             } catch (java.util.concurrent.TimeoutException e) {
                 pending.remove(id, future);
@@ -303,6 +354,7 @@ public class PluginProcessManager {
             if (closed) return;
             closed = true;
             String snapshot = redactor.redact(reason);
+            logStore.append(pluginId, "WARN", "Worker stopped: " + snapshot);
             pending.values().forEach(f -> f.completeExceptionally(new IllegalStateException(snapshot)));
             pending.clear();
         }

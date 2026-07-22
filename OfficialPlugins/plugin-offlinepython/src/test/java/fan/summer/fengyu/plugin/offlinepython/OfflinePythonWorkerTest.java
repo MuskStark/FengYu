@@ -27,7 +27,7 @@ class OfflinePythonWorkerTest {
         OfflinePythonRpcHandlers handlers = new OfflinePythonRpcHandlers(sessions, new Jobs());
         String request = "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"doctor\",\"params\":{}}\n";
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        new JsonRpcWorker().on("doctor", handlers.safe(handlers::doctor))
+        new JsonRpcWorker().on("doctor", handlers.handle("doctor", handlers::doctor))
             .run(new ByteArrayInputStream(request.getBytes(StandardCharsets.UTF_8)), out);
         String response = out.toString(StandardCharsets.UTF_8);
         assertTrue(response.contains("\"jsonrpc\":\"2.0\""), response);

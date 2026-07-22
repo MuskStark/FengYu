@@ -14,7 +14,9 @@ export const fengyuDefaults: DefaultsInstance = {
   },
   VBtn: {
     density: 'comfortable',
-    rounded: 'xl',
+    rounded: 'lg',
+    elevation: 0,
+    height: 34,
   },
   VTextField: {
     density: 'comfortable',
@@ -44,19 +46,19 @@ export const fengyuDefaults: DefaultsInstance = {
     elevation: 0,
   },
   VList: {
-    density: 'comfortable',
+    density: 'compact',
   },
   VDialog: {
-    elevation: 24,
+    elevation: 8,
   },
   VMenu: {
-    elevation: 8,
+    elevation: 4,
   },
   VTooltip: {
     elevation: 4,
   },
   VSnackbar: {
-    elevation: 8,
+    elevation: 4,
   },
   VNavigationDrawer: {
     elevation: 0,

@@ -72,7 +72,7 @@ function invokeOnce(args) {
 /**
  * Probe whether a dev server is reachable. Resolves true on a successful TCP connect,
  * false otherwise. Cheap (opens + immediately closes a socket), used to decide whether to
- * fall back to a mock worker on the first request.
+ * report a precise connection error on the first request.
  */
 export function probeWorker(host, port, timeoutMs = 500) {
     return new Promise((resolve) => {

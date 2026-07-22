@@ -102,6 +102,8 @@ cd ui-src && npm run dev
 - 当插件 iframe 请求文件/目录时，模拟器会在侧边栏渲染一个路径输入框（浏览器无法弹出原生
   选择器）；你输入的路径会被注册为 FileRef，在后续传给 `rpc.invoke` 时重写为真实路径。
 - 用 `-Dfengyu.dev.port=<n>` 更改 worker 端口，并同步更新 `vite.config.ts` 里的 `workerEndpoint`。
+- 已配置但不可用的 worker 会产生 RPC 错误，绝不会静默回退到 mock 数据。只有明确需要桩响应时
+  才设置 `mockWorker: true`。
 
 对于纯 UI 插件，`vite.config.ts` 设了 `mockWorker: true`——`rpc.invoke` 返回一个确定性的桩
 响应，让你在 worker 还不存在时就能迭代 UI。完整指南见

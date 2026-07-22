@@ -41,7 +41,9 @@ export function parseCli(argv) {
         options[name] = literal
       } else {
         const next = argv[i + 1]
-        if (next === undefined) throw new Error(`${token} requires a value`)
+        // A value-option's value must not be another option: `--out --skip-tests` would otherwise
+        // swallow `--skip-tests` as the output path and surface later as a confusing manifest error.
+        if (next === undefined || next.startsWith('-')) throw new Error(`${token} requires a value`)
         options[name] = next
         i += 1
       }

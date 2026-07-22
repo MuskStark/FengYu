@@ -124,7 +124,8 @@ Debug PluginDevMain.main()        # → 监听 127.0.0.1:24057
 
 纯 UI 插件可设 `mockWorker: true`（或省略 `workerEndpoint`）——`rpc.invoke` 会返回一个确定性
 的桩响应，让你在 worker 还不存在时就能迭代 UI。完整指南见
-[`plugin-dev/README.md`](https://github.com/MuskStark/FengYu/tree/main/plugin-dev)。
+[`plugin-dev/README.md`](https://github.com/MuskStark/FengYu/tree/main/plugin-dev)。如果配置了
+`workerEndpoint`，连接失败会作为 RPC 错误返回，绝不会被 mock 响应静默替代。
 
 ## `fengyu plugin` CLI
 

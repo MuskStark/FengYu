@@ -16,15 +16,59 @@
   --fengyu-font-mono:
     'SF Mono', SFMono-Regular, ui-monospace, 'Cascadia Code', 'JetBrains Mono',
     Menlo, Consolas, 'Liberation Mono', monospace;
+  --fy-radius-sm: 7px;
+  --fy-radius-md: 10px;
+  --fy-radius-lg: 14px;
+  --fy-control-height: 34px;
 }
 
 html,
 body,
 .v-application {
   font-family: var(--fengyu-font-sans);
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+}
+
+html,
+body {
+  margin: 0;
+  color: rgb(var(--v-theme-on-surface));
+  background: rgb(var(--v-theme-background));
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  color: rgb(var(--v-theme-on-primary));
+  background: rgb(var(--v-theme-primary));
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(var(--v-theme-on-surface), 0.18);
+  background-clip: padding-box;
+  border: 3px solid transparent;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--v-theme-on-surface), 0.3);
+  background-clip: padding-box;
+  border: 3px solid transparent;
 }
 
 code,
@@ -42,9 +86,9 @@ samp,
 }
 
 :focus-visible {
-  outline: 2px solid rgb(var(--v-theme-primary));
+  outline: 2px solid rgba(var(--v-theme-on-surface), 0.72);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: var(--fy-radius-sm);
 }
 
 /* Keep Vuetify's own focus-visible readable on inverted primary chips. */
@@ -55,6 +99,7 @@ samp,
 /* Flat, borderless surfaces: Codex leans on hairline borders, not shadows. */
 .v-card {
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  box-shadow: none !important;
 }
 
 /*
@@ -70,8 +115,15 @@ samp,
 
 /* Buttons: drop MD3 uppercasing for a calmer, denser toolbar. */
 .v-btn {
+  min-width: 0;
+  font-size: 0.8125rem;
+  font-weight: 560;
   letter-spacing: 0;
   text-transform: none;
+}
+
+.v-btn--variant-flat {
+  box-shadow: none;
 }
 
 /* Elevated/tonal buttons read as soft outlined chips, not raised plastic. */
@@ -88,6 +140,20 @@ samp,
   box-shadow: inset 0 0 0 1px rgba(var(--v-border-color), var(--v-border-opacity));
 }
 
+.v-btn--variant-text {
+  color: rgb(var(--v-theme-secondary));
+}
+
+.v-btn--variant-text:hover {
+  color: rgb(var(--v-theme-on-surface));
+  background: rgb(var(--v-theme-surface-container-high));
+}
+
+.v-btn--icon.v-btn--density-comfortable {
+  width: var(--fy-control-height);
+  height: var(--fy-control-height);
+}
+
 .v-btn--variant-tonal .v-btn__overlay,
 .v-btn--variant-tonal .v-btn__underlay {
   opacity: 0;
@@ -95,7 +161,8 @@ samp,
 
 /* Outlined fields calm down: focus adopts primary, hover deepens slightly. */
 .v-field {
-  border-radius: 8px;
+  border-radius: var(--fy-radius-md);
+  background: rgb(var(--v-theme-surface));
 }
 
 .v-field__outline {
@@ -112,11 +179,50 @@ samp,
   color: rgb(var(--v-theme-primary));
 }
 
+.v-field__input,
+.v-select__selection-text {
+  font-size: 0.875rem;
+}
+
+.v-label.v-field-label {
+  font-size: 0.8125rem;
+}
+
 /* Chips: compact, softly rounded, low-contrast containers. */
 .v-chip {
-  border-radius: 8px;
+  min-height: 24px;
+  border-radius: var(--fy-radius-sm);
   background: rgb(var(--v-theme-surface-container-high));
   color: rgb(var(--v-theme-on-surface));
+  font-size: 0.75rem;
+  font-weight: 540;
+}
+
+
+/* Menus, dialogs, alerts, and snackbars share the same quiet floating plane. */
+.v-overlay__content > .v-card,
+.v-menu > .v-overlay__content > .v-list,
+.v-snackbar__wrapper {
+  background: rgb(var(--v-theme-surface-container)) !important;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: var(--fy-radius-lg) !important;
+  box-shadow: 0 12px 30px rgba(var(--v-theme-background), 0.34) !important;
+}
+
+.v-alert {
+  padding: 12px 14px;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: var(--fy-radius-md);
+  font-size: 0.8125rem;
+}
+
+.v-alert--prominent .v-alert__prepend {
+  align-self: flex-start;
+  margin-inline-end: 12px;
+}
+
+.v-alert__content {
+  min-width: 0;
 }
 
 /* Tables: hairline rows, muted headers — calm data density. */
@@ -125,6 +231,21 @@ samp,
   opacity: 0.7;
   background: rgb(var(--v-theme-surface-container));
   font-weight: 600;
+}
+
+.v-table {
+  overflow: hidden;
+  background: rgb(var(--v-theme-surface));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: var(--fy-radius-md);
+}
+
+.v-table tbody tr:hover td {
+  background: rgb(var(--v-theme-surface-container-low));
+}
+
+.v-data-table-footer {
+  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
 }
 
 .v-table td {
@@ -141,13 +262,53 @@ samp,
   background: rgb(var(--v-theme-surface-container)) !important;
 }
 
+.fy-shell__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 12px;
+  overflow: hidden;
+}
+
+.fy-shell__brand-mark {
+  display: grid;
+  grid-template-columns: repeat(2, 5px);
+  gap: 2px;
+  place-content: center;
+  width: 28px;
+  height: 28px;
+  color: rgb(var(--v-theme-on-primary));
+  background: rgb(var(--v-theme-primary));
+  border-radius: 8px;
+  flex: 0 0 auto;
+}
+
+.fy-shell__brand-mark::before,
+.fy-shell__brand-mark::after {
+  width: 5px;
+  height: 12px;
+  content: '';
+  background: currentColor;
+  border-radius: 2px;
+  transform: rotate(45deg);
+}
+
+.fy-shell__brand-title {
+  overflow: hidden;
+  font-size: 0.8125rem;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Rail expand/collapse toggle pinned at the drawer top (desktop only).
  * Mobile uses the app-bar hamburger, so this block is v-if'd out below the
  * breakpoint by the component. */
 .fy-shell__rail-toggle {
   display: flex;
   justify-content: flex-end;
-  padding: 6px 8px 2px;
+  padding: 2px 8px 6px;
 }
 
 /* When collapsed to the narrow rail, center the toggle under the icon strip. */
@@ -157,13 +318,13 @@ samp,
 
 /* Nav items: hairline rounded chips with a soft primary tint when active. */
 .fy-shell__list {
-  padding: 8px;
+  padding: 2px 8px 8px;
 }
 
 .fy-shell__item {
-  min-height: 40px;
+  min-height: 36px;
   margin-block: 2px;
-  border-radius: 10px;
+  border-radius: var(--fy-radius-sm);
   color: rgb(var(--v-theme-on-surface));
   opacity: 0.8;
   transition: color 120ms ease, background-color 120ms ease, opacity 120ms ease;
@@ -175,14 +336,25 @@ samp,
 }
 
 .fy-shell__item--active {
-  background: rgba(var(--v-theme-primary), 0.12);
+  background: rgb(var(--v-theme-surface-container-highest));
   color: rgb(var(--v-theme-on-surface));
   opacity: 1;
   font-weight: 600;
+  box-shadow: inset 2px 0 0 rgba(var(--v-theme-primary), 0.92);
 }
 
-.fy-shell__item--active.v-list-item--active .v-icon {
-  color: rgb(var(--v-theme-primary));
+.fy-shell__item--active.v-list-item--active .v-icon,
+.fy-shell__item--active .fy-icon {
+  color: rgb(var(--v-theme-on-surface));
+}
+
+.fy-shell__rail.v-navigation-drawer--rail .fy-shell__brand {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.fy-shell__rail.v-navigation-drawer--rail .fy-shell__brand-title {
+  display: none;
 }
 
 /* Narrow-screen shell: keep the plugin chrome edge-to-edge on small viewports. */
@@ -191,8 +363,8 @@ samp,
     padding-inline: 12px;
   }
 
-  .v-card {
-    border-radius: 0 !important;
+  .v-dialog > .v-overlay__content {
+    margin: 12px;
   }
 }
 

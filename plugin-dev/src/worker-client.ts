@@ -12,7 +12,7 @@ import net from 'node:net'
  * under the IDE — no JDWP remote attach.
  *
  * The connection is lazy and self-healing: a failed connect (dev server not started yet) is
- * surfaced as a per-call rejection so the caller can fall back to a mock worker. Each call opens
+ * surfaced as a per-call rejection so the simulator can expose the real failure. Each call opens
  * a fresh socket; this keeps the protocol stateless and lets the dev server's per-connection
  * virtual threads clean up naturally.
  */
@@ -106,7 +106,7 @@ function invokeOnce(args: InvokeOnceArgs): Promise<unknown> {
 /**
  * Probe whether a dev server is reachable. Resolves true on a successful TCP connect,
  * false otherwise. Cheap (opens + immediately closes a socket), used to decide whether to
- * fall back to a mock worker on the first request.
+ * report a precise connection error on the first request.
  */
 export function probeWorker(host: string, port: number, timeoutMs = 500): Promise<boolean> {
   return new Promise((resolve) => {

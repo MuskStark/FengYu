@@ -21,7 +21,11 @@ class OfficialSdkUsageTest {
         assertFalse(shadows.matcher(allSource).find(), "email package must not shadow official SDK types");
         assertFalse(allSource.contains("readLine()"), "email package must not implement a JSON-RPC loop");
         assertTrue(allSource.contains("import fan.summer.fengyu.sdk.JsonRpcWorker;"));
-        assertTrue(allSource.contains("import fan.summer.fengyu.sdk.PluginHandler;"));
+        // Handlers use the SDK: either the legacy PluginHandler import or the newer
+        // PluginHandlerSupport base class (which lives in the same package).
+        assertTrue(allSource.contains("import fan.summer.fengyu.sdk.PluginHandler;")
+                || allSource.contains("import fan.summer.fengyu.sdk.PluginHandlerSupport;"),
+                "email package must use an official SDK handler type");
         assertTrue(allSource.contains("import fan.summer.fengyu.sdk.FileRef;"));
         assertTrue(allSource.contains("import fan.summer.fengyu.sdk.PluginDatabaseConfig;"));
     }
