@@ -24,3 +24,34 @@ test('settled requests remove abort listeners',async()=>{
   assert.equal(removes,1)
   c.dispose()
 });
+
+// Regression: a Vue `ref()` / `reactive()` wraps nested objects in a Proxy that the
+// structured-clone algorithm used by postMessage CANNOT clone (DataCloneError). Plugin
+// UIs pass `props.project` (a reactive FileRef) straight into invoke(); request() must
+// strip the Proxy wrapper before posting so the call does not fail silently.
+function reactiveProxy(target){
+  // Mirrors Vue's deep reactivity: every object/array access returns a nested Proxy.
+  const wrap=(v)=> (v && typeof v==='object') ? reactiveProxy(v) : v
+  return new Proxy(target,{
+    get(t,k){ return wrap(Reflect.get(t,k)) },
+    getPrototypeOf(){ return Object.getPrototypeOf(target) }
+  })
+}
+test('invoke strips reactive Proxy params so postMessage can clone them',async()=>{
+  const c=new FengYuClient({target:fake,timeoutMs:100})
+  // A Vue-style reactive FileRef: deeply proxied. structuredClone(raw) throws.
+  const fileRef=reactiveProxy({id:'ref_proxy',name:'proj',kind:'directory',access:'read-write',size:0})
+  // Sanity: the un-sanitized form is indeed non-cloneable.
+  assert.throws(()=>structuredClone(fileRef),/could not be cloned/i)
+  const p=c.invoke('config.save',{session:'ui',projectDir:fileRef,config:{python:{version:'3.11.9'}}})
+  const sent=fake.sent.at(-1)
+  // Resolve the call before dispose so no timeout rejection leaks after the test.
+  fake.emit({source:'fengyu-host',type:'response',id:sent.id,result:{success:true}})
+  await p
+  c.dispose()
+  // The whole postMessage payload must be structured-cloneable (no Proxy survives).
+  assert.doesNotThrow(()=>structuredClone(sent))
+  // The inner call params (sent.params.params — invoke wraps method+params) must be a plain
+  // object deeply equal to a non-proxied equivalent, with the Proxy fully stripped.
+  assert.deepEqual(sent.params.params,{session:'ui',projectDir:{id:'ref_proxy',name:'proj',kind:'directory',access:'read-write',size:0},config:{python:{version:'3.11.9'}}})
+})
