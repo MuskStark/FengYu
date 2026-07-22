@@ -4,6 +4,9 @@ import fan.summer.fengyu.sdk.Jobs;
 import fan.summer.fengyu.sdk.JsonRpcWorker;
 import fan.summer.fengyu.sdk.PluginHandler;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -21,6 +24,7 @@ import java.util.function.Supplier;
  * share a single {@code "ai"} session so a model can drive the whole flow in sequence.
  */
 public final class ExcelRpcHandlers {
+    private static final Logger log = LoggerFactory.getLogger(ExcelRpcHandlers.class);
     static final String AI_SESSION = "ai";
 
     private final ExcelSessionStore sessions;
@@ -255,7 +259,10 @@ public final class ExcelRpcHandlers {
     public PluginHandler safe(PluginHandler handler) {
         return params -> {
             try { return cast(handler.handle(params)); }
-            catch (Exception error) { return failure(safeMessage(error)); }
+            catch (Exception error) {
+                log.warn("Excel plugin handler failed", error);
+                return failure(safeMessage(error));
+            }
         };
     }
 
@@ -263,7 +270,10 @@ public final class ExcelRpcHandlers {
 
     private Map<String, Object> result(Supplier<Map<String, Object>> operation) {
         try { return operation.get(); }
-        catch (Exception error) { return failure(safeMessage(error)); }
+        catch (Exception error) {
+            log.warn("Excel plugin operation failed", error);
+            return failure(safeMessage(error));
+        }
     }
 
     private static Map<String, Object> ok(String summary, String key, Object value) {
