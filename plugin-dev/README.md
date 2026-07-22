@@ -65,6 +65,10 @@ For the Java worker, run `PluginDevMain.main()` (scaffolded into `worker/src/tes
 your IDE's **Debug** action — it starts the loopback TCP server at `127.0.0.1:24057`. Set
 breakpoints in your `JsonRpcWorker` handlers; they fire when the UI calls `rpc.invoke`.
 
+When `workerEndpoint` is configured, an unavailable worker is returned as an RPC error. The
+simulator never silently substitutes mock data, so a stopped Worker cannot produce a false-positive
+frontend test. Use `mockWorker: true` only when stub responses are intentional.
+
 ### UI-only plugins
 
 Drop `workerEndpoint` (or set `mockWorker: true`) — `rpc.invoke` returns a deterministic stub so

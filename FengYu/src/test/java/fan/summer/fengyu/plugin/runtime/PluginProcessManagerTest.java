@@ -136,6 +136,42 @@ class PluginProcessManagerTest {
         }
     }
 
+    /**
+     * Regression (P1-1): the host must never log invoke PARAMETER VALUES — only their keys. A caller
+     * can pass arbitrary credentials/body text in params (e.g. an SMTP password for
+     * {@code email_account_save}); logging the value (even truncated to 60 chars) leaks it to the
+     * console, the host log file, and the plugin log REST/SSE surface. Keys are safe to log.
+     */
+    @Test
+    void invokeLogsParameterKeysButNeverValues() throws Exception {
+        Logger logger = (Logger) LoggerFactory.getLogger(PluginProcessManager.class);
+        Level previousLevel = logger.getLevel();
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        logger.setLevel(Level.DEBUG);
+
+        PluginProcessManager manager = manager();
+        try {
+            manager.invoke("com.example.worker", "echo",
+                Map.of("password", "hunter2", "body", "secret-message"));
+            waitForLog(appender, "echo", Duration.ofSeconds(2));
+            String logs = appender.list.stream().map(ILoggingEvent::getFormattedMessage)
+                .reduce("", (left, right) -> left + "\n" + right);
+            // Keys are expected and safe — they describe the call shape without revealing secrets.
+            assertTrue(logs.contains("password"), "param keys must be logged for diagnostics");
+            assertTrue(logs.contains("body"));
+            // Values must NEVER appear — not at INFO (params preview) nor DEBUG (resolved params).
+            assertFalse(logs.contains("hunter2"), "param value leaked into host log: " + logs);
+            assertFalse(logs.contains("secret-message"), "param value leaked into host log: " + logs);
+        } finally {
+            manager.close();
+            logger.detachAppender(appender);
+            logger.setLevel(previousLevel);
+            appender.stop();
+        }
+    }
+
     @Test
     void emptySensitiveValuesDoNotAlterDiagnosticText() {
         SensitiveValueRedactor redactor = SensitiveValueRedactor.fromEnvironment(
@@ -175,7 +211,7 @@ class PluginProcessManagerTest {
             "org.hibernate.dialect.H2Dialect", "sa", "do-not-log-me", null));
         PluginRuntimeEnvironmentService runtimeEnvironment = new PluginRuntimeEnvironmentService(
             dataSources, temp.resolve("plugin-data").toString());
-        return new PluginProcessManager(packages, new PluginFileGrantService(), runtimeEnvironment);
+        return new PluginProcessManager(packages, new PluginFileGrantService(), runtimeEnvironment, new PluginLogStore());
     }
 
     private byte[] archive(String manifest) throws Exception {

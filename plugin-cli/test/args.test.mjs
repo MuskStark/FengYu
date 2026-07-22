@@ -40,3 +40,9 @@ test('unknown options are rejected', () => {
 test('value options require a following value', () => {
   assert.throws(() => parseCli(['plugin', 'build', '.', '--out']), /--out requires a value/)
 })
+
+test('value options reject a following option as their value', () => {
+  // `--out --skip-tests` must NOT swallow `--skip-tests` as --out's value (it then surfaces as a
+  // confusing manifest error). A leading-dash token is always another option, never a value.
+  assert.throws(() => parseCli(['plugin', 'build', '.', '--out', '--skip-tests']), /--out requires a value/)
+})

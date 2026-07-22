@@ -35,13 +35,21 @@ describe('Offline Python UI composition', () => {
     expect(`${project}\n${deploy}`).not.toContain('refPath(')
   })
 
-  it('merges configure + build + verify into the Project stepper', () => {
+  it('merges configure + build + verify into the compact Project workflow', () => {
     const project = source('panels/ProjectPanel.vue')
-    // Stepper drives the configure → build → verify flow.
-    expect(project).toContain('v-stepper')
+    // The plugin-owned workflow avoids Vuetify's oversized default stepper
+    // while preserving the configure → build → verify flow.
+    expect(project).toContain('class="opb-workflow"')
+    expect(project).not.toContain('v-stepper')
     expect(project).toContain("t('opb.step.config')")
     expect(project).toContain("t('opb.step.build')")
     expect(project).toContain("t('opb.step.verify')")
+  })
+
+  it('loads a selected project once instead of re-entering through a prop watcher', () => {
+    const project = source('panels/ProjectPanel.vue')
+    expect(project).toContain('await loadConfig(next)')
+    expect(project).not.toContain("watch(() => props.project")
   })
 
   it('never silently bails on a null project in the save handler', () => {

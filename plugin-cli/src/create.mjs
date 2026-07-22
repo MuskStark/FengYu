@@ -6,6 +6,14 @@ import { runCommand } from './commands.mjs'
 /** Toolchain version shared by the CLI, the SDK, and generated templates. */
 export const toolingVersion = '1.1.0'
 
+/**
+ * Canonical plugin id pattern — identical to {@code plugin-spec/manifest.schema.json}'s `id` pattern
+ * ({@code ^[a-z0-9]+(?:[.-][a-z0-9]+)+$}). Applied at scaffold time so a bad id (uppercase, single
+ * segment, leading separator) fails fast instead of producing a project whose manifest can't pass
+ * `fengyu plugin build` validation.
+ */
+const PLUGIN_ID_PATTERN = /^[a-z0-9]+(?:[.-][a-z0-9]+)+$/
+
 const TEMPLATES_DIR = fileURLToPath(new URL('../templates', import.meta.url))
 const VUE_JAVA_DIR = path.join(TEMPLATES_DIR, 'vue-java')
 const VUE_CODEX_DIR = path.join(TEMPLATES_DIR, 'vue-codex')
@@ -30,6 +38,14 @@ const VUE_CODEX_DIR = path.join(TEMPLATES_DIR, 'vue-codex')
  */
 export async function createPlugin(directory, id, { install = true, uiOnly = false, run = runCommand } = {}) {
   const root = path.resolve(directory)
+  // Validate the id BEFORE creating any files: a non-canonical id yields an invalid manifest (and
+  // often an illegal Java package name), so scaffolding it would just defer the failure to `build`.
+  if (typeof id !== 'string' || !PLUGIN_ID_PATTERN.test(id)) {
+    throw new Error(
+      `plugin id "${id}" is invalid: it must match ^[a-z0-9]+(?:[.-][a-z0-9]+)+$ ` +
+      `(lowercase, at least two dot/dash-separated segments, e.g. com.example.demo)`,
+    )
+  }
   await ensureEmpty(root)
   const pluginName = humanName(id)
   const javaClassPrefix = humanName(id).replace(/[^A-Za-z0-9]/g, '')

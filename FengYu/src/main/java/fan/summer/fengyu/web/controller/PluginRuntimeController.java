@@ -3,8 +3,12 @@ package fan.summer.fengyu.web.controller;
 import fan.summer.fengyu.plugin.market.PluginManifest;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
 import fan.summer.fengyu.plugin.runtime.InstalledPluginDescriptor;
+import fan.summer.fengyu.plugin.runtime.PluginLogEntry;
+import fan.summer.fengyu.plugin.runtime.PluginLogStore;
 import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
@@ -13,23 +17,32 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.HandlerMapping;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 @RestController
 public class PluginRuntimeController {
+    private static final Logger log = LoggerFactory.getLogger(PluginRuntimeController.class);
+
     private final PluginPackageService packages;
     private final PluginProcessManager processes;
+    private final PluginLogStore logStore;
 
-    public PluginRuntimeController(PluginPackageService packages, PluginProcessManager processes) {
+    public PluginRuntimeController(PluginPackageService packages, PluginProcessManager processes,
+            PluginLogStore logStore) {
         this.packages = packages;
         this.processes = processes;
+        this.logStore = logStore;
     }
 
     @GetMapping("/api/plugin-runtime")
@@ -40,6 +53,73 @@ public class PluginRuntimeController {
     @PostMapping("/api/plugin-runtime/{id}/invoke")
     public Object invoke(@PathVariable String id, @RequestBody InvokeRequest request) {
         return processes.invoke(id, request.method(), request.params());
+    }
+
+    /**
+     * Recent captured log lines for a plugin (REST fallback for non-SSE clients). Returns oldest-first,
+     * up to {@code maxLines} (default 200). Empty list if the plugin has no captured output yet.
+     */
+    @GetMapping("/api/plugin-runtime/{id}/logs")
+    public List<PluginLogEntry> logs(@PathVariable String id,
+            @RequestParam(name = "maxLines", defaultValue = "200") int maxLines) {
+        return logStore.recent(id, maxLines);
+    }
+
+    /**
+     * Live log stream as {@code text/event-stream}: replays the buffered history, then pushes each
+     * newly captured line as a named {@code log} event. The connection is an infinite tail (no
+     * {@code done} event) mirroring a console — the client closes it when done. Modelled on
+     * {@code AgentController}'s sink pattern but simpler: there is no terminal state.
+     *
+     * <p><b>Dead-subscriber cleanup.</b> A send failure (the client closed, a network error) is not
+     * merely logged: the subscriber is unregistered immediately and the emitter completed, so a dead
+     * connection never keeps receiving (and its drain thread is freed). This is idempotent — the
+     * {@code unsubscribe} runnable and {@code emitter.complete()} are both safe to call repeatedly.
+     *
+     * <p><b>Replay ordering.</b> The live subscriber is registered, then the buffered history is
+     * replayed. To avoid delivering the same entry twice on the race window between subscribe and
+     * replay, the live path skips any entry whose {@link PluginLogEntry#sequence()} is at or below
+     * the replay high-water mark.
+     */
+    @GetMapping(value = "/api/plugin-runtime/{id}/logs/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter logStream(@PathVariable String id) {
+        // No timeout: the stream is a long-lived console; the client (or emitter error/timeout)
+        // ends it. Subscribers are unregistered on every terminal callback so dead clients don't leak.
+        SseEmitter emitter = new SseEmitter(0L);
+        // Track the replay high-water mark so the live path can skip entries already replayed.
+        long[] replayHighWater = { -1L };
+        Consumer<PluginLogEntry> subscriber = entry -> {
+            if (entry.sequence() <= replayHighWater[0]) return; // already delivered in the replay snapshot
+            sendLogEntry(emitter, id, entry);
+        };
+        Runnable unsubscribe = logStore.subscribe(id, subscriber);
+        // Replay buffered history first so a late-connecting client sees context. Subscribe happens
+        // BEFORE the replay snapshot, so any entry added after subscribe is also in the snapshot (and
+        // thus at or below the high-water mark) — the live path drops the duplicate by sequence.
+        for (PluginLogEntry entry : logStore.recent(id, PluginLogStore.CAPACITY)) {
+            if (!sendLogEntry(emitter, id, entry)) break;
+            replayHighWater[0] = Math.max(replayHighWater[0], entry.sequence());
+        }
+        emitter.onCompletion(unsubscribe);
+        emitter.onTimeout(unsubscribe);
+        emitter.onError(ignored -> unsubscribe.run());
+        return emitter;
+    }
+
+    /**
+     * Send one log entry over the SSE emitter. On failure the subscriber is considered dead: the
+     * emitter is completed (idempotent) and the caller's terminal callbacks unregister it. Returns
+     * {@code false} when the send failed so the replay loop can stop early.
+     */
+    private boolean sendLogEntry(SseEmitter emitter, String id, PluginLogEntry entry) {
+        try {
+            emitter.send(SseEmitter.event().name("log").data(entry, MediaType.APPLICATION_JSON));
+            return true;
+        } catch (IOException | IllegalStateException e) {
+            log.debug("plugin {}: SSE log send failed: {}", id, e.getMessage());
+            try { emitter.complete(); } catch (Exception ignored) {}
+            return false;
+        }
     }
 
     @GetMapping("/plugin-runtime/{id}/**")

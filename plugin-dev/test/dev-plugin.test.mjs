@@ -190,3 +190,24 @@ test('fengyuPluginDev: no workerEndpoint defaults to mock mode (UI-only)', async
     assert.equal(res.json().result.devMock, true)
   })
 })
+
+test('fengyuPluginDev: explicit unreachable worker surfaces an error and never returns devMock', async () => {
+  const unavailable = net.createServer()
+  await new Promise((resolve) => unavailable.listen(0, '127.0.0.1', resolve))
+  const address = unavailable.address()
+  const port = typeof address === 'object' && address ? address.port : 0
+  await new Promise((resolve, reject) => unavailable.close((err) => err ? reject(err) : resolve()))
+
+  await withDevServer({ manifest: {}, workerEndpoint: { host: '127.0.0.1', port } }, async (server) => {
+    const res = await server.middlewares.handleDirect('/__fengyu/rpc', {
+      method: 'POST',
+      body: { id: 'real-worker', method: 'ping', params: {} },
+    })
+    assert.equal(res.status, 200)
+    const json = res.json()
+    assert.equal(json.id, 'real-worker')
+    assert.equal(json.result, undefined)
+    assert.match(json.error, /dev worker unavailable/)
+    assert.doesNotMatch(res.body, /devMock/)
+  })
+})

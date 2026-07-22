@@ -104,6 +104,8 @@ loopback TCP server at `127.0.0.1:24057`, serving the **same handlers** as the p
   to its real path when later passed to `rpc.invoke`.
 - Change the worker port with `-Dfengyu.dev.port=<n>` and update `workerEndpoint` in `vite.config.ts`
   to match.
+- A configured but unavailable worker produces an RPC error; it never silently falls back to mock
+  data. Set `mockWorker: true` only when stub responses are intentional.
 
 For UI-only plugins, `vite.config.ts` sets `mockWorker: true` — `rpc.invoke` returns a deterministic
 stub, so you can iterate the UI before any worker exists. See

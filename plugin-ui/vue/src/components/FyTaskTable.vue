@@ -15,7 +15,15 @@
  * `v-data-table` and is also imported explicitly below for the render cells.
  */
 import { computed, h } from 'vue'
-import { VDataTable, VIcon } from 'vuetify/components'
+import { VDataTable } from 'vuetify/components'
+import {
+  mdiAlertCircleOutline,
+  mdiCancel,
+  mdiCheckCircleOutline,
+  mdiClockOutline,
+  mdiProgressClock,
+} from '@mdi/js'
+import FyIcon from './FyIcon.vue'
 import FyEmptyState from './FyEmptyState.vue'
 import FyErrorState from './FyErrorState.vue'
 import FyLoadingState from './FyLoadingState.vue'
@@ -52,12 +60,12 @@ const emit = defineEmits<{
   (event: 'update:itemsPerPage', value: number): void
 }>()
 
-const STATUS_META: Record<FyTaskStatus, { icon: string; label: string; color: string }> = {
-  queued: { icon: 'mdi-clock-outline', label: 'Queued', color: 'medium-emphasis' },
-  running: { icon: 'mdi-progress-clock', label: 'Running', color: 'primary' },
-  success: { icon: 'mdi-check-circle-outline', label: 'Success', color: 'success' },
-  error: { icon: 'mdi-alert-circle-outline', label: 'Error', color: 'error' },
-  cancelled: { icon: 'mdi-cancel', label: 'Cancelled', color: 'medium-emphasis' },
+const STATUS_META: Record<FyTaskStatus, { icon: string; label: string }> = {
+  queued: { icon: mdiClockOutline, label: 'Queued' },
+  running: { icon: mdiProgressClock, label: 'Running' },
+  success: { icon: mdiCheckCircleOutline, label: 'Success' },
+  error: { icon: mdiAlertCircleOutline, label: 'Error' },
+  cancelled: { icon: mdiCancel, label: 'Cancelled' },
 }
 
 const resolvedHeaders = computed(
@@ -84,9 +92,9 @@ function onItemsPerPage(value: number): void {
  */
 function StatusBadge({ status }: { status: FyTaskStatus }) {
   const meta = STATUS_META[status] ?? STATUS_META.queued
-  return h('span', { class: ['fy-task-table__status', 'd-inline-flex', 'align-center', 'ga-1'] }, [
-    h(VIcon, { icon: meta.icon, color: meta.color, size: 'small', 'aria-hidden': 'true' }),
-    h('span', { class: ['text-body-2'] }, meta.label),
+  return h('span', { class: ['fy-task-table__status'], 'data-status': status }, [
+    h(FyIcon, { path: meta.icon, size: 16 }),
+    h('span', meta.label),
   ])
 }
 </script>
@@ -122,3 +130,20 @@ function StatusBadge({ status }: { status: FyTaskStatus }) {
     </VDataTable>
   </div>
 </template>
+
+<style scoped>
+.fy-task-table__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 2px 8px;
+  color: rgb(var(--v-theme-secondary));
+  background: rgb(var(--v-theme-surface-container-high));
+  border-radius: 999px;
+  font-size: 0.75rem;
+}
+.fy-task-table__status[data-status='running'] { color: rgb(var(--v-theme-on-surface)); }
+.fy-task-table__status[data-status='success'] { color: rgb(var(--v-theme-tertiary)); }
+.fy-task-table__status[data-status='error'] { color: rgb(var(--v-theme-error)); }
+</style>

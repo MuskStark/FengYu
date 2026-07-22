@@ -103,6 +103,10 @@ function select(item: FyNavItem): void {
       :model-value="temporary ? drawerOpen : true"
       @update:model-value="drawerOpen = $event"
     >
+      <div v-if="!temporary" class="fy-shell__brand">
+        <span class="fy-shell__brand-mark" aria-hidden="true" />
+        <span class="fy-shell__brand-title">{{ title }}</span>
+      </div>
       <!-- Desktop-only rail collapse toggle. Mobile uses the app-bar hamburger. -->
       <div v-if="!temporary" class="fy-shell__rail-toggle">
         <v-btn
