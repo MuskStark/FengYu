@@ -20,6 +20,9 @@ import fan.summer.fengyu.sdk.Jobs;
 import fan.summer.fengyu.sdk.JsonRpcWorker;
 import fan.summer.fengyu.sdk.PluginHandler;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
@@ -47,6 +50,7 @@ import java.util.Map;
  */
 public final class OfflinePythonRpcHandlers {
 
+    private static final Logger log = LoggerFactory.getLogger(OfflinePythonRpcHandlers.class);
     private final OfflinePythonSessionStore sessions;
     private final Jobs jobs;
 
@@ -313,7 +317,10 @@ public final class OfflinePythonRpcHandlers {
     public PluginHandler safe(PluginHandler handler) {
         return params -> {
             try { return cast(handler.handle(params)); }
-            catch (Exception error) { return failure(safeMessage(error)); }
+            catch (Exception error) {
+                log.warn("Offline Python plugin handler failed", error);
+                return failure(safeMessage(error));
+            }
         };
     }
 
@@ -325,7 +332,10 @@ public final class OfflinePythonRpcHandlers {
 
     private Map<String, Object> result(ThrowingSupplier operation) {
         try { return operation.get(); }
-        catch (Exception error) { return failure(safeMessage(error)); }
+        catch (Exception error) {
+            log.warn("Offline Python plugin operation failed", error);
+            return failure(safeMessage(error));
+        }
     }
 
     private static Map<String, Object> ok(String summary, String key, Object value) {

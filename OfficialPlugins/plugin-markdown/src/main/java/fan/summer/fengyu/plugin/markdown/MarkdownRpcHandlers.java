@@ -3,6 +3,9 @@ package fan.summer.fengyu.plugin.markdown;
 import fan.summer.fengyu.sdk.JsonRpcWorker;
 import fan.summer.fengyu.sdk.PluginHandler;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -12,6 +15,7 @@ import java.util.function.Supplier;
  * follows the {success, summary, ...} envelope; failures become {success:false, summary}.
  */
 public final class MarkdownRpcHandlers {
+    private static final Logger log = LoggerFactory.getLogger(MarkdownRpcHandlers.class);
     private final MarkdownPlugin plugin = new MarkdownPlugin();
 
     public Object render(Map<String, Object> params) {
@@ -22,7 +26,10 @@ public final class MarkdownRpcHandlers {
     public PluginHandler safe(PluginHandler handler) {
         return params -> {
             try { return cast(handler.handle(params)); }
-            catch (Exception error) { return failure(safeMessage(error)); }
+            catch (Exception error) {
+                log.warn("Markdown plugin handler failed", error);
+                return failure(safeMessage(error));
+            }
         };
     }
 
@@ -30,7 +37,10 @@ public final class MarkdownRpcHandlers {
         try {
             Object value = operation.get();
             return value instanceof Map<?, ?> map ? cast(map) : ok("ok", null, value);
-        } catch (Exception error) { return failure(safeMessage(error)); }
+        } catch (Exception error) {
+            log.warn("Markdown plugin operation failed", error);
+            return failure(safeMessage(error));
+        }
     }
 
     private static Map<String, Object> ok(String summary, String key, Object value) {

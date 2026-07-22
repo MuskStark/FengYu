@@ -75,6 +75,17 @@
             <groupId>fan.summer.fengyu.sdk</groupId>
             <artifactId>fengyu-plugin-sdk</artifactId>
             <version>${fengyu.plugin.sdk.version}</version>
+            <!-- The SDK declares slf4j-simple as its worker-side logging binding so shaded plugin
+                 worker JARs get a binding (otherwise slf4j is NOP and worker logs vanish). The HOST
+                 must NOT inherit it: it uses logback, and a second binding makes slf4j pick
+                 SimpleLogger at random, which crashes Spring Boot's LogbackLoggingSystem on boot
+                 ("LoggerFactory is not a Logback LoggerContext"). Exclude it here. -->
+            <exclusions>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-simple</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- JavaFX removed in 4.0.0 Phase 1 headless cutover: the UI is now Vue + Tauri and the
