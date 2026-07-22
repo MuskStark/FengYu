@@ -146,7 +146,12 @@ public class PluginProcessManager {
             Thread.ofVirtual().name("plugin-" + id + "-stderr").start(() -> {
                 try (BufferedReader errors = process.errorReader(StandardCharsets.UTF_8)) {
                     for (String line; (line = errors.readLine()) != null;) {
-                        log.debug("Plugin {} stderr: {}", id, abbreviate(redactor.redact(line)));
+                        // INFO so plugin worker logs surface on the console (the host
+                        // CONSOLE appender filters at INFO). Plugin workers log to stderr
+                        // (their stdout is the JSON-RPC protocol pipe); without this the
+                        // logs were only ever visible buried in .fengyu/logs/fengyu.log
+                        // under a DEBUG line, making plugin failures impossible to diagnose.
+                        log.info("Plugin {} stderr: {}", id, abbreviate(redactor.redact(line)));
                     }
                 } catch (IOException ignored) {}
             });
