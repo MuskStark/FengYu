@@ -36,6 +36,10 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <gson.version>2.13.1</gson.version>
     <junit.version>5.10.2</junit.version>
+    <!-- Aligned with the host reactor's slf4j.version (root pom.xml). The SDK is an
+         independently-versioned POM and does not inherit the parent, so this is pinned
+         here explicitly and bumped alongside the root property when upgrading. -->
+    <slf4j.version>2.0.13</slf4j.version>
     <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
     <maven.surefire.plugin.version>3.2.5</maven.surefire.plugin.version>
     <maven.source.plugin.version>3.3.1</maven.source.plugin.version>
@@ -47,6 +51,22 @@
       <groupId>com.google.code.gson</groupId>
       <artifactId>gson</artifactId>
       <version>${gson.version}</version>
+    </dependency>
+    <!-- Logging. Plugin workers route every log through slf4j; without a binding slf4j 2.x
+         silently falls back to NOPLogger and drops ALL log calls, so plugin failures become
+         invisible. slf4j-simple is the dependency-light binding: it defaults its output stream
+         to System.err (the host captures worker stderr and surfaces it on its console + log
+         file), and the JSON-RPC protocol pipe on stdout stays untouched. simplelogger.properties
+         (src/main/resources) locks that behaviour down. -->
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+      <version>${slf4j.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <version>${slf4j.version}</version>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>

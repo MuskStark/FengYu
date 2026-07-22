@@ -3,6 +3,9 @@ package fan.summer.fengyu.sdk;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -12,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /** Small, dependency-light JSON-RPC 2.0 worker runtime for FengYu child processes. */
 public final class JsonRpcWorker {
+    private static final Logger log = LoggerFactory.getLogger(JsonRpcWorker.class);
     private final Gson json = new Gson();
     private final Map<String, PluginHandler> handlers = new ConcurrentHashMap<>();
 
@@ -68,6 +72,10 @@ public final class JsonRpcWorker {
                 if (e.requestId() != null) response.put("id", e.requestId());
                 response.put("error", Map.of("code", e.code(), "message", e.getMessage()));
             } catch (Exception e) {
+                // Surface the failure (with stack trace) before flattening it into the RPC error
+                // message. Otherwise the cause is lost and plugin failures are undiagnosable. This
+                // reaches stderr via the slf4j-simple binding and the host's plugin-stderr drain.
+                log.warn("Plugin worker dispatch failed for method in request: {}", line, e);
                 response.put("error", Map.of("code", -32000, "message", String.valueOf(e.getMessage())));
             }
             transport.writeFrame(json.toJson(response));
