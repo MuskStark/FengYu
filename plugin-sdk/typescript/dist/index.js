@@ -8,6 +8,30 @@ export function createId() {
     fallbackIdSequence += 1;
     return `fy_${Date.now().toString(36)}_${fallbackIdSequence.toString(36)}_${Math.random().toString(36).slice(2)}`;
 }
+/**
+ * Rebuild a value as a plain object/array tree so it is safe for {@link Window.postMessage}'s
+ * structured-clone algorithm. Plugin UIs often pass Vue reactive values (a `ref()`/`reactive()`
+ * FileRef, form state, …) straight into {@link FengYuClient.invoke}; those are Proxies that
+ * structured clone CANNOT transfer and postMessage rejects with `DataCloneError` — every call
+ * then fails silently. This walks the value and reconstructs it without Proxy wrappers (and
+ * drops non-cloneable leaves like functions), so the host always receives plain JSON-like data.
+ */
+function toCloneable(value) {
+    if (Array.isArray(value))
+        return value.map(toCloneable);
+    if (value && typeof value === 'object') {
+        const out = {};
+        for (const key of Object.keys(value)) {
+            const entry = value[key];
+            // Skip non-cloneable leaves (functions, symbols) — postMessage would reject them.
+            if (typeof entry === 'function' || typeof entry === 'symbol')
+                continue;
+            out[key] = toCloneable(entry);
+        }
+        return out;
+    }
+    return value;
+}
 export class FengYuClient {
     target;
     timeoutMs;
@@ -61,7 +85,9 @@ export class FengYuClient {
             }) : undefined;
             options.signal?.addEventListener('abort', abort, { once: true });
             this.pending.set(id, { resolve: resolve, reject, timer, signal: options.signal, abort });
-            this.target.postMessage({ source: 'fengyu-plugin', type: 'request', sdkVersion: SDK_VERSION, id, method, params }, this.allowedOrigin);
+            // Strip Proxy/reactivity wrappers before posting — postMessage's structured clone rejects
+            // Vue reactive values with DataCloneError, silently breaking every invoke() call.
+            this.target.postMessage({ source: 'fengyu-plugin', type: 'request', sdkVersion: SDK_VERSION, id, method, params: toCloneable(params) }, this.allowedOrigin);
         });
     }
     takePending(id) {
