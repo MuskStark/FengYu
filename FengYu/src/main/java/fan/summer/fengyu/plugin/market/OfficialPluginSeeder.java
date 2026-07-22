@@ -33,7 +33,15 @@ public class OfficialPluginSeeder implements ApplicationRunner {
             for (Path archive : entries.filter(p -> p.getFileName().toString().endsWith(".fyp")).toList()) {
                 try {
                     String id = archive.getFileName().toString().replaceFirst("-\\d+\\.\\d+\\.\\d+.*\\.fyp$", "");
-                    if (packages.find(id).isPresent()) continue;
+                    PluginManifest incoming = packages.readArchiveManifest(archive);
+                    PluginManifest installed = packages.find(id).orElse(null);
+                    if (installed != null) {
+                        // Upgrade only when the bundled archive is strictly newer; never downgrade.
+                        // This honours the class Javadoc ("upgrades them when newer") and is what
+                        // lets a rebuilt worker JAR reach a user who already has the plugin installed.
+                        if (PluginMarketplaceService.compareVersions(incoming.version(), installed.version()) <= 0) continue;
+                        log.info("Upgrading official plugin {} {} → {}", id, installed.version(), incoming.version());
+                    }
                     // When a .sha256 sidecar ships alongside the package, verify integrity BEFORE
                     // handing the archive to the installer. This catches bit-rot and transport
                     // corruption without blocking dev workflows that copy packages by hand (no
@@ -44,7 +52,7 @@ public class OfficialPluginSeeder implements ApplicationRunner {
                         continue;
                     }
                     // The package service performs the authoritative validation and atomic install.
-                    PluginManifest incoming = packages.install(archive);
+                    packages.install(archive);
                     log.info("Official plugin ready: {} {}", incoming.id(), incoming.version());
                 } catch (Exception e) {
                     log.warn("Cannot seed official plugin {}: {}", archive, e.getMessage());
