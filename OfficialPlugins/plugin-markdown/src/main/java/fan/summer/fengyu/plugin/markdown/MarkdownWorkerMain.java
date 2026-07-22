@@ -16,6 +16,6 @@ public final class MarkdownWorkerMain {
     }
 
     static JsonRpcWorker worker(MarkdownRpcHandlers handlers) {
-        return new JsonRpcWorker().on("render", handlers.safe(handlers::render));
+        return new JsonRpcWorker().on("render", handlers.handle("render", handlers::render));
     }
 }

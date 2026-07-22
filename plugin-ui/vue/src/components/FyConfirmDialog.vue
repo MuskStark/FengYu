@@ -16,6 +16,8 @@
  *   regardless of Vuetify internals.
  */
 import { computed, nextTick, ref, watch } from 'vue'
+import { mdiAlertOutline, mdiHelpCircleOutline } from '@mdi/js'
+import FyIcon from './FyIcon.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -97,14 +99,22 @@ function cancel(): void {
     @update:model-value="($event as boolean) ? close(true) : cancel()"
     @keydown.esc.prevent="cancel"
   >
-    <v-card :title="title">
-      <v-card-text v-if="message">{{ message }}</v-card-text>
-      <v-card-actions>
+    <v-card class="fy-confirm-dialog">
+      <v-card-text class="fy-confirm-dialog__body">
+        <span class="fy-confirm-dialog__icon" :class="{ 'fy-confirm-dialog__icon--destructive': destructive }" aria-hidden="true">
+          <FyIcon :path="destructive ? mdiAlertOutline : mdiHelpCircleOutline" :size="20" />
+        </span>
+        <div class="fy-confirm-dialog__copy">
+          <h2>{{ title }}</h2>
+          <p v-if="message">{{ message }}</p>
+        </div>
+      </v-card-text>
+      <v-card-actions class="fy-confirm-dialog__actions">
         <v-spacer />
         <v-btn variant="text" data-action="cancel" @click="cancel">{{ cancelText }}</v-btn>
         <v-btn
           :color="destructive ? 'error' : 'primary'"
-          :variant="destructive ? 'flat' : 'tonal'"
+          variant="flat"
           data-action="confirm"
           @click="confirm"
         >
@@ -114,3 +124,27 @@ function cancel(): void {
     </v-card>
   </v-dialog>
 </template>
+
+<style scoped>
+.fy-confirm-dialog { overflow: hidden; }
+.fy-confirm-dialog__body {
+  display: flex;
+  gap: 13px;
+  padding: 22px 22px 10px !important;
+}
+.fy-confirm-dialog__icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  color: rgb(var(--v-theme-secondary));
+  background: rgb(var(--v-theme-surface-container-high));
+  border-radius: 10px;
+}
+.fy-confirm-dialog__icon--destructive { color: rgb(var(--v-theme-error)); background: rgb(var(--v-theme-error-container)); }
+.fy-confirm-dialog__copy { min-width: 0; }
+.fy-confirm-dialog__copy h2 { margin: 0; font-size: 1rem; font-weight: 630; line-height: 1.4; }
+.fy-confirm-dialog__copy p { margin: 5px 0 0; color: rgb(var(--v-theme-secondary)); font-size: 0.8125rem; line-height: 1.5; }
+.fy-confirm-dialog__actions { padding: 10px 14px 14px; }
+</style>

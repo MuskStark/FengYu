@@ -2,10 +2,7 @@ package fan.summer.fengyu.plugin.excel;
 
 import fan.summer.fengyu.sdk.Jobs;
 import fan.summer.fengyu.sdk.JsonRpcWorker;
-import fan.summer.fengyu.sdk.PluginHandler;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import fan.summer.fengyu.sdk.PluginHandlerSupport;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,16 +12,17 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.function.Supplier;
 
 /**
  * Adapts the Excel split engine to official SDK JSON-RPC handlers. Covers both the
  * session-keyed UI workflow ({@code analyze}/{@code configure}/{@code split}) and the
  * stateless AI tools ({@code excel_*}) declared in {@code manifest.json}. The AI tools
  * share a single {@code "ai"} session so a model can drive the whole flow in sequence.
+ *
+ * <p>Entry/exit/failure logging and the {success, summary, ...} envelope are inherited from
+ * {@link PluginHandlerSupport}; register handlers via {@code worker.on("m", handlers.handle("m", handlers::m))}.
  */
-public final class ExcelRpcHandlers {
-    private static final Logger log = LoggerFactory.getLogger(ExcelRpcHandlers.class);
+public final class ExcelRpcHandlers extends PluginHandlerSupport {
     static final String AI_SESSION = "ai";
 
     private final ExcelSessionStore sessions;
@@ -36,6 +34,7 @@ public final class ExcelRpcHandlers {
     }
 
     public ExcelRpcHandlers(ExcelSessionStore sessions, Jobs jobs) {
+        super("excel");
         this.sessions = sessions;
         this.plugin = new ExcelPlugin(sessions);
         this.jobs = jobs;
@@ -66,6 +65,7 @@ public final class ExcelRpcHandlers {
             cfg.sourceFile = file;
             try { cfg.analysisResult = ExcelSplitter.analyze(file); }
             catch (Exception e) { return failure("Analyze failed: " + safeMessage(e)); }
+            log.info("analyzed {} sheet(s) from {}", cfg.analysisResult.size(), file.getFileName());
             return ok("analyzed " + cfg.analysisResult.size() + " sheet(s)", "sheets", cfg.analysisResult.keySet());
         });
     }
@@ -153,6 +153,7 @@ public final class ExcelRpcHandlers {
                 Files.createDirectories(cfg.outputDir);
                 res = new ExcelSplitter(cfg, null).split();
             } catch (Exception e) { return failure("Split failed: " + safeMessage(e)); }
+            log.info("split produced {} file(s) into {}", res.fileCount(), cfg.outputDir);
             return ok("wrote " + res.fileCount() + " file(s)", "files", Map.of(
                 "fileCount", res.fileCount(),
                 "files", res.outputFiles().stream().map(p -> p.getFileName().toString()).toList()));
@@ -255,53 +256,7 @@ public final class ExcelRpcHandlers {
         });
     }
 
-    /** Wraps a handler so every result follows the {success, summary, ...} contract. */
-    public PluginHandler safe(PluginHandler handler) {
-        return params -> {
-            try { return cast(handler.handle(params)); }
-            catch (Exception error) {
-                log.warn("Excel plugin handler failed", error);
-                return failure(safeMessage(error));
-            }
-        };
-    }
-
-    // ---- helpers -----------------------------------------------------------
-
-    private Map<String, Object> result(Supplier<Map<String, Object>> operation) {
-        try { return operation.get(); }
-        catch (Exception error) {
-            log.warn("Excel plugin operation failed", error);
-            return failure(safeMessage(error));
-        }
-    }
-
-    private static Map<String, Object> ok(String summary, String key, Object value) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("success", true);
-        result.put("summary", summary);
-        if (key != null) result.put(key, value);
-        return result;
-    }
-
-    private static Map<String, Object> failure(String summary) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("success", false);
-        result.put("summary", summary == null || summary.isBlank() ? "Excel operation failed" : summary);
-        return result;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> cast(Object value) {
-        if (value instanceof Map<?, ?> map) return (Map<String, Object>) map;
-        throw new IllegalArgumentException("Handler returned an invalid result");
-    }
-
-    private static String safeMessage(Throwable error) {
-        String message = error.getMessage();
-        if (message == null || message.isBlank()) return "Excel operation failed";
-        return message.replace('\r', ' ').replace('\n', ' ');
-    }
+    // ---- param helpers -----------------------------------------------------
 
     private static String string(Map<String, Object> params, String key) {
         return JsonRpcWorker.string(params, key);

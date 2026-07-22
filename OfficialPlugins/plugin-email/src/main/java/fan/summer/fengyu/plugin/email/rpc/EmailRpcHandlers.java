@@ -15,10 +15,7 @@ import fan.summer.fengyu.plugin.email.service.EmailSendService;
 import fan.summer.fengyu.plugin.email.service.PendingSendService;
 import fan.summer.fengyu.sdk.FileRef;
 import fan.summer.fengyu.sdk.JsonRpcWorker;
-import fan.summer.fengyu.sdk.PluginHandler;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import fan.summer.fengyu.sdk.PluginHandlerSupport;
 
 import java.lang.reflect.RecordComponent;
 import java.nio.file.Path;
@@ -29,11 +26,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Supplier;
 
-/** Adapts email services to official SDK handlers without owning any transport logic. */
-public final class EmailRpcHandlers {
-    private static final Logger log = LoggerFactory.getLogger(EmailRpcHandlers.class);
+/** Adapts email services to official SDK handlers without owning any transport logic.
+ *
+ * <p>Entry/exit/failure logging, the {success, summary, ...} envelope and the {@code result()}
+ * / {@code failure()} / {@code cast()} / {@code safeMessage()} helpers are inherited from
+ * {@link PluginHandlerSupport}. Email additionally overrides {@code ok(summary,key,value)} so it
+ * can JSON-encode records/Path/Instant values via {@link #jsonValue(Object)} before they leave the
+ * worker. Register handlers via {@code worker.on("m", handlers.handle("m", handlers::m))}.
+ */
+public final class EmailRpcHandlers extends PluginHandlerSupport {
     private final Gson json = new Gson();
     private final AccountRpc accounts;
     private final AddressBookRpc addressBook;
@@ -44,6 +46,7 @@ public final class EmailRpcHandlers {
     private final EmailHtmlSanitizer htmlSanitizer = new EmailHtmlSanitizer();
 
     public EmailRpcHandlers(EmailDatabase database, CredentialCipher cipher) {
+        super("email");
         accounts = new AccountRpc(new AccountService(database, cipher));
         addressBook = new AddressBookRpc(new AddressBookService(database));
         configs = new MassConfigRepository(database);
@@ -82,7 +85,9 @@ public final class EmailRpcHandlers {
 
     public Object testAccount(Map<String, Object> params) {
         return result(() -> {
-            var value = sends.testSmtp(requiredLong(params, "accountId"));
+            long accountId = requiredLong(params, "accountId");
+            var value = sends.testSmtp(accountId);
+            log.info("SMTP test for account {}: {}", accountId, value.success() ? "succeeded" : "failed");
             return value.success() ? ok("SMTP connection succeeded") : failure(value.errorMessage());
         });
     }
@@ -218,24 +223,32 @@ public final class EmailRpcHandlers {
 
     public Object confirmSend(Map<String, Object> params) {
         return result(() -> {
-            var value = pending.confirm(requiredString(params, "confirmationId"));
+            String confirmationId = requiredString(params, "confirmationId");
+            var value = pending.confirm(confirmationId);
+            log.info("send {} confirmed: {}", confirmationId, value.status());
             return ok("Send confirmation is " + value.status(), "send", value);
         });
     }
 
     public Object rejectSend(Map<String, Object> params) {
         return result(() -> {
-            var value = pending.reject(requiredString(params, "confirmationId"));
+            String confirmationId = requiredString(params, "confirmationId");
+            var value = pending.reject(confirmationId);
+            log.info("send {} rejected: {}", confirmationId, value.status());
             return ok("Send confirmation is " + value.status(), "send", value);
         });
     }
 
     public Object collect(Map<String, Object> params) {
         return result(() -> {
-            ArchiveRequest request = new ArchiveRequest(requiredLong(params, "accountId"),
-                requiredString(params, "folder"), instant(params, "start"), instant(params, "end"),
+            long accountId = requiredLong(params, "accountId");
+            String folder = requiredString(params, "folder");
+            ArchiveRequest request = new ArchiveRequest(accountId, folder,
+                instant(params, "start"), instant(params, "end"),
                 path(params.get("outputDirectory"), "outputDirectory", "directory"));
             var value = archive.collect(request, ignored -> { });
+            log.info("archived {} new, {} duplicate(s), {} failure(s) from account {} folder '{}'",
+                value.newArchived(), value.skippedDuplicates(), value.failures(), accountId, folder);
             return ok("Archived " + value.newArchived() + " new message(s); skipped "
                 + value.skippedDuplicates() + " duplicate(s); " + value.failures() + " failure(s)",
                 "collection", value);
@@ -256,17 +269,6 @@ public final class EmailRpcHandlers {
         return result(() -> archive.detail(requiredLong(params, "id"))
             .map(value -> ok("Archived message found", "message", value))
             .orElseGet(() -> failure("Archived message not found")));
-    }
-
-    /** Uses the official handler type to keep registration transport-owned by the SDK. */
-    public PluginHandler safe(PluginHandler handler) {
-        return params -> {
-            try { return cast(handler.handle(params)); }
-            catch (Exception error) {
-                log.warn("Email plugin handler failed", error);
-                return failure(safeMessage(error));
-            }
-        };
     }
 
     private Map<String, Object> confirmation(String summary, PendingSendService.ConfirmationEnvelope envelope) {
@@ -315,22 +317,9 @@ public final class EmailRpcHandlers {
         return result;
     }
 
-    private Map<String, Object> result(Supplier<Map<String, Object>> operation) {
-        try { return operation.get(); }
-        catch (Exception error) {
-            log.warn("Email plugin operation failed", error);
-            return failure(safeMessage(error));
-        }
-    }
-
-    private static Map<String, Object> ok(String summary) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("success", true);
-        result.put("summary", summary);
-        return result;
-    }
-
-    private Map<String, Object> ok(String summary, String key, Object value) {
+    /** Overrides the base envelope to JSON-encode records/Path/Instant values before they leave. */
+    @Override
+    protected Map<String, Object> ok(String summary, String key, Object value) {
         Map<String, Object> result = ok(summary);
         result.put(key, jsonValue(value));
         return result;
@@ -363,25 +352,6 @@ public final class EmailRpcHandlers {
             }
         }
         return value.toString();
-    }
-
-    private static Map<String, Object> failure(String summary) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("success", false);
-        result.put("summary", summary == null || summary.isBlank() ? "Email operation failed" : summary);
-        return result;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> cast(Object value) {
-        if (value instanceof Map<?, ?> map) return (Map<String, Object>) map;
-        throw new IllegalArgumentException("Handler returned an invalid result");
-    }
-
-    private static String safeMessage(Exception error) {
-        String message = error.getMessage();
-        if (message == null || message.isBlank()) return "Email operation failed";
-        return message.replace('\r', ' ').replace('\n', ' ');
     }
 
     private static String string(Map<String, Object> params, String key) {

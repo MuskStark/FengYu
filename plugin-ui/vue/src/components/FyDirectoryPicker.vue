@@ -10,7 +10,7 @@
  * Concurrent clicks are guarded by `loading`.
  */
 import type { FileRef } from '@infinia/plugin-sdk'
-import { mdiFolderOpenOutline, mdiFolderPlusOutline } from '@mdi/js'
+import { mdiFolderOpenOutline, mdiFolderPlusOutline, mdiSwapHorizontal } from '@mdi/js'
 import { useFengYuClient } from '../client'
 import { useFengYuPick } from '../composables/useFengYuPick'
 import FyIcon from './FyIcon.vue'
@@ -52,7 +52,28 @@ const { loading, errorMessage, permissionDenied, pick } = useFengYuPick({
 
 <template>
   <div class="fy-directory-picker">
+    <div v-if="modelValue" class="fy-picker__selection" aria-live="polite">
+      <span class="fy-picker__icon" aria-hidden="true">
+        <FyIcon :path="mode === 'output' ? mdiFolderPlusOutline : mdiFolderOpenOutline" :size="20" />
+      </span>
+      <span class="fy-picker__copy">
+        <strong>{{ modelValue.name }}</strong>
+        <small>{{ modelValue.access }} · {{ mode }}</small>
+      </span>
+      <v-btn
+        icon
+        variant="text"
+        size="small"
+        :loading="loading"
+        :disabled="loading"
+        :aria-label="label"
+        :title="label"
+        data-action="pick-directory"
+        @click="pick"
+      ><FyIcon :path="mdiSwapHorizontal" :size="18" /></v-btn>
+    </div>
     <v-btn
+      v-else
       color="primary"
       variant="tonal"
       :loading="loading"
@@ -61,7 +82,7 @@ const { loading, errorMessage, permissionDenied, pick } = useFengYuPick({
       @click="pick"
     >
       <template #prepend>
-        <FyIcon :path="mode === 'output' ? mdiFolderPlusOutline : mdiFolderOpenOutline" :size="20" />
+        <FyIcon :path="mode === 'output' ? mdiFolderPlusOutline : mdiFolderOpenOutline" :size="18" />
       </template>
       {{ label }}
     </v-btn>
@@ -78,3 +99,30 @@ const { loading, errorMessage, permissionDenied, pick } = useFengYuPick({
     />
   </div>
 </template>
+
+<style scoped>
+.fy-directory-picker { display: grid; gap: 10px; justify-items: start; }
+.fy-picker__selection {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(100%, 460px);
+  min-height: 52px;
+  padding: 7px 8px 7px 10px;
+  background: rgb(var(--v-theme-surface-container-low));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: var(--fy-radius-md, 10px);
+}
+.fy-picker__icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  color: rgb(var(--v-theme-secondary));
+  background: rgb(var(--v-theme-surface-container-high));
+  border-radius: 8px;
+}
+.fy-picker__copy { display: grid; min-width: 0; flex: 1 1 auto; }
+.fy-picker__copy strong { overflow: hidden; font-size: 0.8125rem; font-weight: 590; text-overflow: ellipsis; white-space: nowrap; }
+.fy-picker__copy small { color: rgb(var(--v-theme-secondary)); font-size: 0.6875rem; text-transform: capitalize; }
+</style>

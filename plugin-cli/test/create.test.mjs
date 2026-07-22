@@ -88,3 +88,18 @@ test('install failure preserves generated files', async () => {
   )
   assert.ok(await fs.stat(path.join(root, 'manifest.json')))
 })
+
+test('rejects a plugin id that fails the canonical manifest pattern', async () => {
+  // The manifest schema requires ^[a-z0-9]+(?:[.-][a-z0-9]+)+$. Validate BEFORE creating any files so
+  // a half-baked project (bad Java package name, manifest that can't pass build) is never produced.
+  await assert.rejects(
+    () => createPlugin(root, 'Bad-ID-UPPER', { install: false }),
+    /plugin id/i,
+  )
+  await assert.rejects(fs.stat(root)) // nothing was scaffolded
+})
+
+test('rejects a single-segment id (must have at least one separator)', async () => {
+  await assert.rejects(() => createPlugin(root, 'demo', { install: false }), /plugin id/i)
+  await assert.rejects(() => createPlugin(root, 'com.example.-leading-sep', { install: false }), /plugin id/i)
+})

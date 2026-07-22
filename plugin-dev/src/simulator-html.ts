@@ -6,7 +6,7 @@
  * plugin UI (served by Vite with HMR); the shell:
  *  - answers `host.ready` with a mock Environment (theme/locale/capabilities)
  *  - forwards `rpc.invoke` to `POST /__fengyu/rpc`, which the Vite middleware proxies to the
- *    loopback dev worker (or returns a devMock when `mockWorker` is set)
+ *    loopback dev worker (or returns a devMock only when `mockWorker` is set)
  *  - renders a path prompt for `files.open` / `files.inputDirectory` / `files.outputDirectory`
  *    (browsers can't pop a native picker), registers the typed path via `POST /__fengyu/ref`,
  *    and replies to the iframe with the resulting FileRef

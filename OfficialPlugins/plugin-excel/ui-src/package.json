@@ -5,6 +5,7 @@
   "type": "module",
   "description": "FengYu Excel Splitter plugin UI (standalone Vue 3 + Vuetify SPA, runs in the host iframe)",
   "scripts": {
+    "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run"

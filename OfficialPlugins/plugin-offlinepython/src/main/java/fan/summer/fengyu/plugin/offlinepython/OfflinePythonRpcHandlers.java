@@ -18,10 +18,7 @@ import fan.summer.fengyu.plugin.offlinepython.infra.ProcessRunner;
 import fan.summer.fengyu.plugin.offlinepython.infra.PythonDetector;
 import fan.summer.fengyu.sdk.Jobs;
 import fan.summer.fengyu.sdk.JsonRpcWorker;
-import fan.summer.fengyu.sdk.PluginHandler;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import fan.summer.fengyu.sdk.PluginHandlerSupport;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -46,11 +43,10 @@ import java.util.Map;
  * </ul>
  *
  * <p>Every result follows the {@code {success, summary, ...}} contract; exceptions become
- * {@code {success:false, summary}} via {@link #safe(PluginHandler)}.
+ * {@code {success:false, summary}} via the inherited {@link PluginHandlerSupport#handle(String, fan.summer.fengyu.sdk.PluginHandler)}.
  */
-public final class OfflinePythonRpcHandlers {
+public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
 
-    private static final Logger log = LoggerFactory.getLogger(OfflinePythonRpcHandlers.class);
     private final OfflinePythonSessionStore sessions;
     private final Jobs jobs;
 
@@ -64,6 +60,7 @@ public final class OfflinePythonRpcHandlers {
     private final DoctorService doctorService = new DoctorService();
 
     public OfflinePythonRpcHandlers(OfflinePythonSessionStore sessions, Jobs jobs) {
+        super("offlinepython");
         this.sessions = sessions;
         this.jobs = jobs;
     }
@@ -236,6 +233,7 @@ public final class OfflinePythonRpcHandlers {
                 if (handle.isCancelled()) throw new Jobs.CancellationException();
                 handle.setSummary(JsonRpcParams.toMap(summary));
             });
+            log.info("build job {} started for {} with python {}", job.id, projectDir, pythonExe);
             return ok("build started", "jobId", job.id);
         });
     }
@@ -261,6 +259,7 @@ public final class OfflinePythonRpcHandlers {
                 if (handle.isCancelled()) throw new Jobs.CancellationException();
                 handle.setSummary(JsonRpcParams.toMap(res));
             });
+            log.info("deploy job {} started for {} -> {}", job.id, zip, target);
             return ok("deploy started", "jobId", job.id);
         });
     }
@@ -311,58 +310,6 @@ public final class OfflinePythonRpcHandlers {
             if (!jobs.cancel(jobId)) return failure("job is no longer running: " + jobId);
             return ok("cancel requested", "jobId", jobId);
         });
-    }
-
-    /** Wraps a handler so every result follows the {success, summary, ...} contract. */
-    public PluginHandler safe(PluginHandler handler) {
-        return params -> {
-            try { return cast(handler.handle(params)); }
-            catch (Exception error) {
-                log.warn("Offline Python plugin handler failed", error);
-                return failure(safeMessage(error));
-            }
-        };
-    }
-
-    /** A supplier that may throw checked exceptions, so handlers can call IO methods directly. */
-    @FunctionalInterface
-    private interface ThrowingSupplier {
-        Map<String, Object> get() throws Exception;
-    }
-
-    private Map<String, Object> result(ThrowingSupplier operation) {
-        try { return operation.get(); }
-        catch (Exception error) {
-            log.warn("Offline Python plugin operation failed", error);
-            return failure(safeMessage(error));
-        }
-    }
-
-    private static Map<String, Object> ok(String summary, String key, Object value) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", true);
-        out.put("summary", summary);
-        if (key != null) out.put(key, value);
-        return out;
-    }
-
-    private static Map<String, Object> failure(String summary) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", false);
-        out.put("summary", summary == null || summary.isBlank() ? "Offline Python operation failed" : summary);
-        return out;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> cast(Object value) {
-        if (value instanceof Map<?, ?> map) return (Map<String, Object>) map;
-        throw new IllegalArgumentException("Handler returned an invalid result");
-    }
-
-    private static String safeMessage(Throwable error) {
-        String message = error.getMessage();
-        if (message == null || message.isBlank()) return "Offline Python operation failed";
-        return message.replace('\r', ' ').replace('\n', ' ');
     }
 
     // ---- param helpers (resolve FileRef→path via host, or accept raw paths) ----

@@ -4,7 +4,7 @@
   "name": "Legacy Static Plugin",
   "description": "A legacy static-HTML plugin fixture",
   "version": "1.0.0",
-  "author": "",
+  "author": "Test Author",
   "icon": "puzzle-outline",
   "category": "other",
   "ui": { "entry": "ui/index.html" },

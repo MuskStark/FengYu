@@ -144,4 +144,35 @@ class JsonRpcWorkerTest {
         assertTrue(stderr.contains("kaboom"),
             "handler exception message did not reach stderr. stderr was:\n" + stderr);
     }
+
+    /**
+     * Regression (P1-2): when a handler throws, the worker must NOT log the raw JSON-RPC request
+     * frame — that frame carries the full {@code params} (a password, mail body, parsed file path),
+     * so logging it leaks caller secrets to stderr, which the host then forwards to its console and
+     * the plugin log surface. Only the method, request id, and exception type are safe to log.
+     */
+    @Test void handlerFailureDoesNotLogRequestFrameOrParamSecrets() throws Exception {
+        PrintStream originalErr = System.err;
+        ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
+        // A secret-bearing param value that is NOT echoed by the handler — it lives only in the frame.
+        String request = "{\"jsonrpc\":\"2.0\",\"id\":\"req-42\",\"method\":\"save\",\"params\":{\"password\":\"super-secret-value\"}}\n";
+        try {
+            System.setErr(new PrintStream(diagnostics, true, StandardCharsets.UTF_8));
+            new JsonRpcWorker()
+                .on("save", params -> { throw new IllegalStateException("save failed"); })
+                .run(new ByteArrayInputStream(request.getBytes(StandardCharsets.UTF_8)),
+                     new ByteArrayOutputStream());
+        } finally {
+            System.setErr(originalErr);
+        }
+        String stderr = diagnostics.toString(StandardCharsets.UTF_8);
+        // Diagnostics that are safe and expected: the method and id identify the failing call.
+        assertTrue(stderr.contains("save"), "method must be logged for diagnostics. stderr was:\n" + stderr);
+        assertTrue(stderr.contains("req-42"), "request id must be logged for diagnostics. stderr was:\n" + stderr);
+        // The secret value lives ONLY in the frame/params — it must never reach stderr.
+        assertFalse(stderr.contains("super-secret-value"),
+            "request frame (with param secrets) leaked to stderr. stderr was:\n" + stderr);
+        assertFalse(stderr.contains("\"params\""),
+            "raw params object leaked to stderr. stderr was:\n" + stderr);
+    }
 }

@@ -21,8 +21,7 @@ export interface FengYuDevOptions {
   manifest: string | Record<string, unknown>
   /**
    * Loopback endpoint of the `fengyu-plugin-devkit` dev server (run `PluginDevMain` in your IDE).
-   * Defaults to `127.0.0.1:24057`. When unset or unreachable AND {@link mockWorker} is true,
-   * `rpc.invoke` falls back to a stub response so a UI-only author can iterate without a worker.
+   * When configured, connection failures are returned to the UI and never replaced by mock data.
    */
   workerEndpoint?: { host: string; port: number }
   /**
@@ -73,7 +72,6 @@ export function fengyuPluginDev(options: FengYuDevOptions): Plugin {
   const mockMode = mockExplicit || noEndpoint
 
   let workerClient: WorkerClient | null = null
-  let workerReachable: boolean | null = null
   const refs = new FileRefRegistry()
 
   const resolveManifest = async (viteRoot: string): Promise<Record<string, unknown> | null> => {
@@ -89,18 +87,12 @@ export function fengyuPluginDev(options: FengYuDevOptions): Plugin {
   const ensureWorkerClient = async (): Promise<WorkerClient | null> => {
     if (mockMode) return null
     if (workerClient) return workerClient
-    if (workerReachable === null) {
-      workerReachable = await probeWorker(endpoint.host, endpoint.port)
-      if (!workerReachable) {
-        console.warn(
-          `[fengyu-dev] no worker at ${endpoint.host}:${endpoint.port} — ` +
-          (noEndpoint
-            ? 'set workerEndpoint to forward rpc.invoke to a real worker, or keep mockWorker:true for UI-only dev.'
-            : 'is PluginDevMain running in your IDE? Falling back to devMock for this session.')
-        )
-      }
+    if (!(await probeWorker(endpoint.host, endpoint.port))) {
+      throw new Error(
+        `dev worker unavailable at ${endpoint.host}:${endpoint.port}. ` +
+        'Start PluginDevMain in your IDE, or set mockWorker:true only when stub responses are intentional.'
+      )
     }
-    if (!workerReachable) return null
     workerClient = createWorkerClient({ ...endpoint, timeoutMs: options.workerTimeoutMs })
     return workerClient
   }
@@ -141,8 +133,7 @@ export function fengyuPluginDev(options: FengYuDevOptions): Plugin {
             if (client) {
               result = await client.invoke(method, params, { timeoutMs: options.workerTimeoutMs })
             } else {
-              // Mock fallback (UI-only or dev server unreachable): echo a devMock envelope so the
-              // UI can render against a deterministic stub.
+              // Mocking is an explicit UI-only mode; configured Worker failures surface as errors.
               result = { success: true, devMock: true, method, params }
             }
             res.writeHead(200, { 'Content-Type': 'application/json' })

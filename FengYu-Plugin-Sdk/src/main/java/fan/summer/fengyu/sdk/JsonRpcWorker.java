@@ -30,9 +30,13 @@ public final class JsonRpcWorker {
         InputStream protocolInput = System.in;
         PrintStream protocolOutput = System.out;
         System.setOut(System.err);
+        // Visible on stderr (so via the host's plugin-<id>-stderr drain) — confirms the worker
+        // actually started. Without it a worker that exits before reading stdin leaves no trace.
+        log.info("Plugin worker started");
         try {
             serve(new StdioTransport(protocolInput, protocolOutput));
         } finally {
+            log.info("Plugin worker shutting down");
             System.setOut(protocolOutput);
         }
     }
@@ -59,10 +63,16 @@ public final class JsonRpcWorker {
         String line;
         while (transport.isOpen() && (line = transport.readFrame()) != null) {
             Map<String, Object> response = new LinkedHashMap<>(); response.put("jsonrpc", "2.0");
+            // Hoisted before the try so the generic catch can log them WITHOUT the raw request frame.
+            // The frame carries the full params (passwords, mail bodies, parsed paths); logging it
+            // leaks caller secrets to stderr, which the host forwards to its console + log surface.
+            String method = "<unknown>";
+            Object requestId = null;
             try {
                 Map<String, Object> request = parseRequest(line);
-                response.put("id", request.get("id"));
-                String method = (String) request.get("method");
+                requestId = request.get("id");
+                response.put("id", requestId);
+                method = (String) request.get("method");
                 PluginHandler handler = handlers.get(method);
                 if (handler == null) throw new RpcException(-32601, "Unknown method: " + method);
                 @SuppressWarnings("unchecked") Map<String, Object> params = request.get("params") instanceof Map<?, ?> map
@@ -72,14 +82,28 @@ public final class JsonRpcWorker {
                 if (e.requestId() != null) response.put("id", e.requestId());
                 response.put("error", Map.of("code", e.code(), "message", e.getMessage()));
             } catch (Exception e) {
-                // Surface the failure (with stack trace) before flattening it into the RPC error
-                // message. Otherwise the cause is lost and plugin failures are undiagnosable. This
-                // reaches stderr via the slf4j-simple binding and the host's plugin-stderr drain.
-                log.warn("Plugin worker dispatch failed for method in request: {}", line, e);
+                // Surface the failure so plugin failures stay diagnosable, but log only the method,
+                // request id, exception type, and the (sanitized) exception message — never the raw
+                // frame, which carries the full params JSON. The exception message is the handler
+                // author's own diagnostic (rarely a raw caller secret); collapsing its whitespace
+                // stops a multi-line value from slipping past a single-line log filter. The stack
+                // trace is attached so the cause is not lost. This reaches stderr via the slf4j-simple
+                // binding and the host's plugin-stderr drain.
+                log.warn("Plugin worker dispatch failed for method={} id={}: {}",
+                    method, requestId, e.getClass().getSimpleName());
+                log.warn("Plugin worker dispatch failure detail for method={} id={}: {}",
+                    method, requestId, sanitizeMessage(e.getMessage()), e);
                 response.put("error", Map.of("code", -32000, "message", String.valueOf(e.getMessage())));
             }
             transport.writeFrame(json.toJson(response));
         }
+    }
+
+    /** Collapse newlines/tabs in an exception message to single spaces so a multi-line secret or
+     *  stack fragment can't slip past a single-line log filter. Returns {@code "<no message>"} for null. */
+    private static String sanitizeMessage(String message) {
+        if (message == null) return "<no message>";
+        return message.replaceAll("\\s+", " ");
     }
 
     public static String string(Map<String, Object> params, String key) {

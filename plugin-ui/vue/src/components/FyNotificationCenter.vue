@@ -10,6 +10,8 @@
  */
 import { useFengYuClient } from '../client'
 import { useFengYuNotify } from '../composables/useFengYuNotify'
+import { mdiClose } from '@mdi/js'
+import FyIcon from './FyIcon.vue'
 
 const client = useFengYuClient()
 const { notify, localMessages } = useFengYuNotify(client)
@@ -37,7 +39,9 @@ defineExpose({ notify, localMessages })
     >
       {{ message }}
       <template #actions>
-        <v-btn data-action="dismiss" icon="mdi-close" variant="text" @click="dismiss(index)" />
+        <v-btn :aria-label="'Dismiss notification'" data-action="dismiss" icon variant="text" @click="dismiss(index)">
+          <FyIcon :path="mdiClose" :size="18" />
+        </v-btn>
       </template>
     </v-snackbar>
   </div>
