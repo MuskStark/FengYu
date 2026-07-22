@@ -17,6 +17,9 @@ import fan.summer.fengyu.sdk.FileRef;
 import fan.summer.fengyu.sdk.JsonRpcWorker;
 import fan.summer.fengyu.sdk.PluginHandler;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.lang.reflect.RecordComponent;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -30,6 +33,7 @@ import java.util.function.Supplier;
 
 /** Adapts email services to official SDK handlers without owning any transport logic. */
 public final class EmailRpcHandlers {
+    private static final Logger log = LoggerFactory.getLogger(EmailRpcHandlers.class);
     private final Gson json = new Gson();
     private final AccountRpc accounts;
     private final AddressBookRpc addressBook;
@@ -258,7 +262,10 @@ public final class EmailRpcHandlers {
     public PluginHandler safe(PluginHandler handler) {
         return params -> {
             try { return cast(handler.handle(params)); }
-            catch (Exception error) { return failure(safeMessage(error)); }
+            catch (Exception error) {
+                log.warn("Email plugin handler failed", error);
+                return failure(safeMessage(error));
+            }
         };
     }
 
@@ -310,7 +317,10 @@ public final class EmailRpcHandlers {
 
     private Map<String, Object> result(Supplier<Map<String, Object>> operation) {
         try { return operation.get(); }
-        catch (Exception error) { return failure(safeMessage(error)); }
+        catch (Exception error) {
+            log.warn("Email plugin operation failed", error);
+            return failure(safeMessage(error));
+        }
     }
 
     private static Map<String, Object> ok(String summary) {
