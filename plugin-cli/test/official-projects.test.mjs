@@ -9,7 +9,10 @@ import { validateProjectManifest } from '../src/manifest.mjs'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repo = path.resolve(__dirname, '../..')
 
-for (const name of ['markdown', 'excel', 'email']) {
+// Every plugin that ships through OfficialPlugins must satisfy the CLI's project + manifest
+// contract. offlinepython is part of the official packaging/release pipeline and was previously
+// omitted here, leaving its manifest/fengyu.plugin.json uncovered against CLI regression.
+for (const name of ['markdown', 'excel', 'email', 'offlinepython']) {
   test(`official ${name} is a CLI project with a valid runtime manifest`, async () => {
     const root = path.resolve(repo, `OfficialPlugins/plugin-${name}`)
     assert.equal((await detectProject(root)).kind, 'declared')

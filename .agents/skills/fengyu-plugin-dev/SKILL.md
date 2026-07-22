@@ -1,6 +1,6 @@
 ---
 name: fengyu-plugin-dev
-description: Build, scaffold, develop, validate, build, package, and install FengYu plugins (official or third-party) against the 4.0.0 .fyp + iframe + JSON-RPC Worker model. Use whenever the user wants to create or work on a plugin, mentions `.fyp`, `manifest.json`, `fengyu.plugin.json`, the plugin CLI (`fengyu plugin ...`), `@infinia/plugin-sdk`, `@infinia/plugin-ui`, `FengYu-Plugin-Sdk`, plugin workers, or the plugin marketplace.
+description: Scaffold, develop, IDE-debug, test, build, package, and locally verify FengYu plugins (official or third-party) against the 4.0.0 .fyp + iframe + JSON-RPC Worker model. Use whenever the user wants to create or work on a plugin, test plugin tooling before release, debug UI and Java Worker code from an IDE, or mentions `.fyp`, `manifest.json`, `fengyu.plugin.json`, `fengyu plugin`, `@infinia/plugin-sdk`, `@infinia/plugin-ui`, `@infinia/plugin-dev`, `FengYu-Plugin-Sdk`, plugin workers, or the plugin marketplace.
 ---
 
 # FengYu Plugin Development
@@ -36,8 +36,11 @@ Every plugin is one of two shapes. The workflow diverges here:
 
 | Shape | Has `backend`? | Worker | Reference |
 |---|---|---|---|
-| **UI-only** | `manifest.json` has no `backend` (or no worker) | none | Markdown-style: UI calls host/SDK only |
+| **UI-only** | `manifest.json` has no `backend` (or no worker) | none | `plugin-cli/templates/vue-codex`: UI calls host/SDK only |
 | **UI + Java Worker** | `manifest.json` `backend.protocol == "json-rpc-2.0"` | a shaded worker JAR | Excel-style: UI ↔ host ↔ out-of-process worker |
+
+All current official plugins have Java Workers; do not infer UI-only status from a plugin's feature
+set. Read its manifest.
 
 Read the target plugin's `manifest.json` and decide. Everything below branches on this.
 
@@ -76,11 +79,23 @@ newline-delimited JSON-RPC 2.0 over stdin/stdout (one request object per line, r
 host-provided dependency beyond the SDK. The host sets env vars `FENGYU_PLUGIN_ID`,
 `FENGYU_PLUGIN_ROOT`, and (for plugins with the `database` permission) an injected datasource.
 
-**Dev loop:** run the headless backend, then use the CLI dev server for hot UI work:
+**IDE dev loop:** do not look for a CLI dev command. The CLI has exactly `create` and `build`.
+Run the two development processes from the tools the developer prefers:
 
 ```bash
-fengyu plugin dev ./my-plugin              # optional --port <n> (default 4173)
+# UI terminal or IDE npm run configuration
+cd ui-src && npm run dev                   # simulator: http://127.0.0.1:5173/__fengyu
+
+# Java IDE Debug configuration
+PluginDevMain.main()                       # Worker endpoint: 127.0.0.1:24057
 ```
+
+For Java plugins, debug `PluginDevMain` under `src/test/java`, not the production stdio
+`WorkerMain`. The Vite config must pass the same endpoint to `fengyuPluginDev`. Set handler
+breakpoints in the IDE and invoke them from the simulator UI. A configured but unavailable Worker
+must surface an RPC error; never accept a `devMock` response as evidence that the backend works.
+Use `mockWorker: true` only for intentional UI-only/stub development. To change ports, use
+`-Dfengyu.dev.port=<n>` and update `vite.config.ts` together.
 
 ## Step 4 — Declare permissions and (optional) AI tools
 
@@ -99,14 +114,17 @@ loader's rules in `FengYu/src/main/java/fan/summer/fengyu/plugin/market/` (`.fyp
 
 ## Step 5 — Validate, build, package, install
 
-All through the CLI — do not hand-zip:
+Use the CLI for build/package only; do not hand-zip. Validation is an unconditional build stage,
+and installation is a host UI/API operation rather than a CLI subcommand:
 
 ```bash
-fengyu plugin validate ./my-plugin         # manifest + layout checks
 fengyu plugin build ./my-plugin            # → .fyp in the configured package.outputDirectory
 fengyu plugin build ./my-plugin --out dist/x.fyp --skip-tests
-fengyu plugin install ./my-plugin          # optional --host http://127.0.0.1:24056 --token <t>
 ```
+
+Install the resulting `.fyp` through the host plugin marketplace UI. For automated local host
+verification, use the authenticated `POST /api/plugin-market/upload` path exercised by
+`scripts/e2e-smoke.sh`; do not invent a `fengyu plugin install` command.
 
 For official plugins, prefer the repo's Maven-driven worker build declared in `fengyu.plugin.json`
 (`worker.build` runs `mvn ... -pl OfficialPlugins/<name> -am package -DskipTests`) so the worker JAR
@@ -114,13 +132,35 @@ is fresh before the CLI packages the `.fyp`.
 
 ## Step 6 — Focused verification
 
-- **UI-only:** `cd ui-src && npm install && npm test` (and `npm run build`) — verify the UI builds
+- **UI-only:** `cd ui-src && npm ci && npm test && npm run build` — verify the UI builds
   and its unit/visual tests pass.
 - **UI + Java Worker:** also build/test the worker (`mvn -f OfficialPlugins/<name>/pom.xml test` or
   the `fengyu.plugin.json` `worker.test` command) and confirm the worker's JSON-RPC methods round-trip.
-- **End to end:** with the backend running, `fengyu plugin install` the built `.fyp`, open it in the
-  UI, and exercise the documented methods. Optionally run `scripts/e2e-smoke.sh` to confirm the host
-  is healthy.
+- **IDE integration:** start `PluginDevMain` with the IDE and `npm run dev` in `ui-src`; call a real
+  Worker method through `/__fengyu/rpc` and verify its non-mock result or expected domain error.
+- **Package:** run `fengyu plugin build <path>` without `--skip-tests` and inspect the resulting
+  `.fyp` when package contents are in question.
+- **End to end:** run `scripts/e2e-smoke.sh` to boot the host, upload built plugins, and exercise the
+  documented API methods.
+
+When the user asks for thorough local verification before publishing the plugin toolchain, also run:
+
+```bash
+cd plugin-cli && npm run prepack
+cd ../plugin-dev && npm run prepack
+cd ../plugin-sdk/typescript && npm run prepack
+cd ../../plugin-ui/vue && npm run prepack && npm run test:visual
+cd ../.. && ./mvnw -pl FengYu-Plugin-DevKit -am test
+scripts/check-plugin-dependency-boundaries.sh
+scripts/plugin-tooling-local-smoke.sh
+npm run docs:build
+```
+
+Build all four official plugins through `node plugin-cli/bin/fengyu.mjs plugin build <plugin>` and
+run `npm audit` for every publishable npm package. Treat any schema drift, dependency-boundary
+failure, high/critical audit finding, missing `npm run dev`, mock response from a configured Worker,
+or dirty generated package content as a release blocker. Never publish, tag, or push unless the user
+explicitly asks after all blockers are resolved.
 
 ## Hard prohibitions (these describe legacy versions, not 4.0.0)
 

@@ -8,8 +8,10 @@ export async function main(argv) {
   // `--help` / `-h` anywhere on the line short-circuits to usage with a successful exit
   // code, so `fengyu --help`, `fengyu plugin --help`, and `fengyu plugin create --help`
   // all behave the way users expect instead of throwing "unknown option --help".
-  if (options.help) return usage()
-  if (group !== 'plugin') return usage()
+  if (options.help) { usage(); return }
+  // Only `plugin` is a valid group. A missing/unknown group must fail (non-zero exit) so CI,
+  // release scripts, and IDE tasks can't mistake a typo for success.
+  if (group !== 'plugin') throw new Error(`unknown command: use 'fengyu plugin <create|build>'`)
   const root = path.resolve(positionals[0] ?? '.')
 
   if (command === 'create') {
@@ -21,7 +23,8 @@ export async function main(argv) {
     const result = await buildPlugin(root, { out: options.out ? path.resolve(options.out) : undefined, skipTests: options.skipTests === true })
     console.log(`Built ${result.output} (${result.files} files)`)
   } else {
-    usage()
+    // Unknown subcommand: fail loudly rather than exit 0 on a typo.
+    throw new Error(`unknown command: 'fengyu plugin ${command ?? ''}'. Use 'fengyu plugin <create|build>'.`)
   }
 }
 

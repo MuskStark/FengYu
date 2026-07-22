@@ -23,7 +23,9 @@ async function makeDeclaredProject() {
   const dir = path.join(base, `declared-${Date.now()}-${Math.random().toString(36).slice(2)}`)
   await fs.mkdir(dir, { recursive: true })
   await fs.writeFile(path.join(dir, 'manifest.json'), JSON.stringify({
-    schemaVersion: 1, id: 'com.example.declared', name: 'Declared', version: '1.0.0',
+    schemaVersion: 1, id: 'com.example.declared', name: 'Declared',
+    description: 'Declared build fixture', version: '1.0.0', author: 'Test Author',
+    icon: 'puzzle-outline', category: 'other',
     ui: { entry: 'ui/index.html' },
     backend: { command: 'java -jar backend/worker.jar', protocol: 'json-rpc-2.0' },
     permissions: [], official: false, aiTools: [],

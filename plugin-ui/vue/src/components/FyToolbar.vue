@@ -6,7 +6,16 @@
 </script>
 
 <template>
-  <div class="d-flex flex-wrap align-center ga-2">
+  <div class="fy-toolbar" role="toolbar">
     <slot />
   </div>
 </template>
+
+<style scoped>
+.fy-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+</style>

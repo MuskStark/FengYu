@@ -38,7 +38,6 @@ fi
 
 for pom in \
   FengYu-Api/pom.xml \
-  FengYu-Plugin-Sdk/pom.xml \
   OfficialPlugins/pom.xml \
   OfficialPlugins/plugin-markdown/pom.xml \
   OfficialPlugins/plugin-excel/pom.xml \
@@ -46,6 +45,10 @@ for pom in \
   FengYu/pom.xml; do
   require_parent_revision "$ROOT/$pom"
 done
+
+reject_text "$ROOT/FengYu-Plugin-Sdk/pom.xml" \
+  '<parent>' \
+  'independently versioned Worker SDK must not inherit the application reactor parent'
 
 for artifact in fesod-sheet commonmark pdfbox poi-ooxml playwright spring-context spring-ai-model jackson-databind; do
   require_text "$ROOT/pom.xml" "<artifactId>$artifact</artifactId>" \

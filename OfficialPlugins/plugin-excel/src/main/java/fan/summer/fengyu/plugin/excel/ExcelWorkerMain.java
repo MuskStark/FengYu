@@ -21,21 +21,21 @@ public final class ExcelWorkerMain {
     static JsonRpcWorker worker(ExcelRpcHandlers handlers) {
         return new JsonRpcWorker()
             // UI-facing, session-keyed workflow.
-            .on("analyze", handlers.safe(handlers::analyze))
-            .on("configure", handlers.safe(handlers::configure))
-            .on("split", handlers.safe(handlers::split))
+            .on("analyze", handlers.handle("analyze", handlers::analyze))
+            .on("configure", handlers.handle("configure", handlers::configure))
+            .on("split", handlers.handle("split", handlers::split))
             // UI-facing async split for large workbooks (start → jobId → poll status → cancel).
-            .on("split_start", handlers.safe(handlers::splitStart))
-            .on("split_status", handlers.safe(handlers::splitStatus))
-            .on("split_cancel", handlers.safe(handlers::splitCancel))
+            .on("split_start", handlers.handle("split_start", handlers::splitStart))
+            .on("split_status", handlers.handle("split_status", handlers::splitStatus))
+            .on("split_cancel", handlers.handle("split_cancel", handlers::splitCancel))
             // AI-facing, stateless tools (declared in manifest.aiTools[]).
-            .on("excel_analyze", handlers.safe(handlers::aiAnalyze))
-            .on("excel_configure", handlers.safe(handlers::aiConfigure))
-            .on("excel_complex_config", handlers.safe(handlers::aiComplexConfig))
-            .on("excel_execute", handlers.safe(handlers::aiExecute))
-            .on("excel_execute_start", handlers.safe(handlers::aiExecuteStart))
-            .on("excel_execute_status", handlers.safe(handlers::aiExecuteStatus))
-            .on("excel_query", handlers.safe(handlers::aiQuery))
-            .on("excel_cancel", handlers.safe(handlers::aiCancel));
+            .on("excel_analyze", handlers.handle("excel_analyze", handlers::aiAnalyze))
+            .on("excel_configure", handlers.handle("excel_configure", handlers::aiConfigure))
+            .on("excel_complex_config", handlers.handle("excel_complex_config", handlers::aiComplexConfig))
+            .on("excel_execute", handlers.handle("excel_execute", handlers::aiExecute))
+            .on("excel_execute_start", handlers.handle("excel_execute_start", handlers::aiExecuteStart))
+            .on("excel_execute_status", handlers.handle("excel_execute_status", handlers::aiExecuteStatus))
+            .on("excel_query", handlers.handle("excel_query", handlers::aiQuery))
+            .on("excel_cancel", handlers.handle("excel_cancel", handlers::aiCancel));
     }
 }

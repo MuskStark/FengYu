@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import type { FengYuClient } from '@infinia/plugin-sdk'
+import { FyEmptyState, FyLoadingState, FyPageHeader } from '@infinia/plugin-ui'
+import { mdiStethoscope } from '@mdi/js'
 import { call, field } from '../rpc'
 
 type Translate = (key: string, ...args: (string | number)[]) => string
@@ -52,18 +54,41 @@ onMounted(refresh)
 </script>
 
 <template>
-  <v-card flat border>
-    <v-card-text>
-      <div class="d-flex align-center mb-4 gap-2">
-        <v-chip v-if="detection?.ok" color="success">
-          {{ t('opb.python.detected', detection.pythonVersion ?? '', detection.pipVersion ?? '') }}
-        </v-chip>
-        <v-chip v-else-if="detection" color="error">{{ t('opb.python.missing') }}</v-chip>
-        <v-spacer />
-        <v-btn variant="outlined" :loading="loading" :disabled="loading" @click="refresh">{{ t('opb.doctor.refresh') }}</v-btn>
-      </div>
+  <FyPageHeader :title="t('opb.doctor.title')" :description="t('opb.doctor.description')">
+    <template #actions>
+      <v-btn variant="outlined" :loading="loading" :disabled="loading" @click="refresh">{{ t('opb.doctor.refresh') }}</v-btn>
+    </template>
+  </FyPageHeader>
 
-      <v-table>
+  <section class="opb-surface">
+    <div class="opb-surface__section opb-doctor__summary">
+      <div>
+        <h2 class="opb-section-heading">{{ t('opb.doctor.runtimeTitle') }}</h2>
+        <p class="opb-section-copy">{{ t('opb.doctor.runtimeHint') }}</p>
+      </div>
+      <div class="opb-actions">
+        <span v-if="detection?.ok" class="opb-status opb-status--success">
+          {{ t('opb.python.detected', detection.pythonVersion ?? '', detection.pipVersion ?? '') }}
+        </span>
+        <span v-else-if="detection" class="opb-status opb-status--error">{{ t('opb.python.missing') }}</span>
+        <span v-else class="opb-status">{{ t('opb.doctor.notChecked') }}</span>
+      </div>
+      <code v-if="detection?.executable" class="opb-doctor__path">{{ detection.executable }}</code>
+    </div>
+
+    <div class="opb-surface__section">
+      <h2 class="opb-section-heading">{{ t('opb.doctor.checksTitle') }}</h2>
+      <p class="opb-section-copy">{{ t('opb.doctor.checksHint') }}</p>
+
+      <FyLoadingState v-if="loading && !checks.length" :label="t('opb.doctor.checking')" />
+      <FyEmptyState
+        v-else-if="!checks.length"
+        :title="t('opb.doctor.noChecks')"
+        :message="t('opb.doctor.emptyHint')"
+        :icon="mdiStethoscope"
+      />
+      <div v-else class="opb-table-scroll">
+        <v-table>
         <thead>
           <tr>
             <th>{{ t('opb.doctor.check') }}</th>
@@ -76,18 +101,37 @@ onMounted(refresh)
             <td>{{ checkName(c.id) }}</td>
             <td>{{ checkValue(c) }}</td>
             <td>
-              <v-chip :color="c.ok ? 'success' : 'error'" size="small">{{ c.ok ? t('opb.common.ok') : t('opb.common.fail') }}</v-chip>
+              <span class="opb-status" :class="c.ok ? 'opb-status--success' : 'opb-status--error'">
+                {{ c.ok ? t('opb.common.ok') : t('opb.common.fail') }}
+              </span>
             </td>
           </tr>
-          <tr v-if="!checks.length">
-            <td colspan="3" class="text-center text-medium-emphasis">{{ t('opb.doctor.noChecks') }}</td>
-          </tr>
         </tbody>
-      </v-table>
-    </v-card-text>
-  </v-card>
+        </v-table>
+      </div>
+    </div>
+  </section>
 </template>
 
 <style scoped>
-.gap-2 { gap: 8px; }
+.opb-doctor__summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 20px;
+  align-items: start;
+}
+
+.opb-doctor__summary .opb-section-copy { margin-bottom: 0; }
+.opb-doctor__path {
+  grid-column: 1 / -1;
+  margin-top: 8px;
+  color: rgb(var(--v-theme-secondary));
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+  .opb-doctor__summary { grid-template-columns: 1fr; }
+  .opb-doctor__path { grid-column: 1; }
+}
 </style>

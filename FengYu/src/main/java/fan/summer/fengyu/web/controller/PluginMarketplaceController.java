@@ -4,6 +4,7 @@ import fan.summer.fengyu.plugin.market.MarketplacePlugin;
 import fan.summer.fengyu.plugin.market.PluginManifest;
 import fan.summer.fengyu.plugin.market.PluginMarketplaceService;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
+import fan.summer.fengyu.plugin.runtime.PluginLogStore;
 import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -30,12 +31,14 @@ public class PluginMarketplaceController {
     private final PluginMarketplaceService marketplace;
     private final PluginPackageService packages;
     private final PluginProcessManager processes;
+    private final PluginLogStore logStore;
 
     public PluginMarketplaceController(PluginMarketplaceService marketplace, PluginPackageService packages,
-            PluginProcessManager processes) {
+            PluginProcessManager processes, PluginLogStore logStore) {
         this.marketplace = marketplace;
         this.packages = packages;
         this.processes = processes;
+        this.logStore = logStore;
     }
 
     @GetMapping
@@ -74,6 +77,10 @@ public class PluginMarketplaceController {
     public ResponseEntity<Void> uninstall(@PathVariable String id) throws IOException {
         processes.stop(id);
         packages.uninstall(id);
+        // Drop the plugin's captured log buffer and any live log subscribers, so an uninstalled
+        // plugin doesn't leave up to CAPACITY stale lines (and a dangling subscriber map entry)
+        // behind — and a reinstalled plugin with the same id doesn't surface the old history.
+        logStore.clear(id);
         return ResponseEntity.noContent().build();
     }
 

@@ -4,7 +4,7 @@
   "name": "{{pluginName}}",
   "description": "A FengYu plugin",
   "version": "1.0.0",
-  "author": "",
+  "author": "Plugin Author",
   "icon": "puzzle-outline",
   "category": "other",
   "ui": { "entry": "ui/index.html" },

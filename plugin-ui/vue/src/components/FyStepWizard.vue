@@ -1,6 +1,17 @@
 <script setup lang="ts" generic="TContext = unknown">
 import { computed, nextTick, onBeforeUnmount, ref, useSlots, watch } from 'vue'
 import {
+  mdiAlertOutline,
+  mdiArrowLeft,
+  mdiArrowRight,
+  mdiCheck,
+  mdiCircleSlice8,
+  mdiLockOutline,
+  mdiProgressClock,
+  mdiSkipNextOutline,
+} from '@mdi/js'
+import FyIcon from './FyIcon.vue'
+import {
   FY_WIZARD_DEFAULT_LABELS,
   buildWizardSnapshot,
   createWizardStates,
@@ -494,12 +505,12 @@ function stepStatus(step: string): FyWizardStepState['status'] {
 
 function statusIcon(status: FyWizardStepState['status']): string {
   return {
-    pending: 'mdi-lock-outline',
-    active: 'mdi-circle-slice-8',
-    validating: 'mdi-progress-clock',
-    complete: 'mdi-check',
-    error: 'mdi-alert-outline',
-    skipped: 'mdi-skip-next-outline',
+    pending: mdiLockOutline,
+    active: mdiCircleSlice8,
+    validating: mdiProgressClock,
+    complete: mdiCheck,
+    error: mdiAlertOutline,
+    skipped: mdiSkipNextOutline,
   }[status]
 }
 
@@ -573,7 +584,7 @@ function visitedStep(value: string): FyWizardStep | undefined {
               :class="`fy-wizard__status-icon--${stepStatus(step.value)}`"
               aria-hidden="true"
             >
-              <v-icon size="16" :icon="statusIcon(stepStatus(step.value))" />
+              <FyIcon :path="statusIcon(stepStatus(step.value))" :size="14" />
             </span>
             <span class="fy-wizard__step-copy">
               <slot
@@ -606,11 +617,10 @@ function visitedStep(value: string): FyWizardStep | undefined {
         </span>
         <span class="fy-wizard__compact-title">{{ activeStep?.title }}</span>
         <span class="fy-wizard__compact-status">
-          <v-icon
+          <FyIcon
             class="fy-wizard__status-icon"
-            size="16"
-            :icon="statusIcon(stepStatus(activeStepId))"
-            aria-hidden="true"
+            :size="14"
+            :path="statusIcon(stepStatus(activeStepId))"
           />
           {{ statusLabel(stepStatus(activeStepId)) }}
         </span>
@@ -626,7 +636,7 @@ function visitedStep(value: string): FyWizardStep | undefined {
           :key="step.value"
           class="fy-wizard__compact-error"
         >
-          <v-icon size="16" icon="mdi-alert-outline" aria-hidden="true" />
+          <FyIcon :path="mdiAlertOutline" :size="16" />
           <span>{{ labels.errorStep(step.title, statusLabel('error')) }}</span>
         </li>
       </ul>
@@ -684,7 +694,7 @@ function visitedStep(value: string): FyWizardStep | undefined {
           :actions="slotActions"
         >
           <p data-wizard-error role="alert" aria-live="polite">
-            <v-icon size="16" icon="mdi-alert-outline" aria-hidden="true" />
+            <FyIcon :path="mdiAlertOutline" :size="16" />
             {{ activeError || statusLabel('error') }}
           </p>
         </slot>
@@ -708,21 +718,21 @@ function visitedStep(value: string): FyWizardStep | undefined {
           :disabled="Boolean(stepDefinitionError) || isFirst || isBusy"
           data-action="back"
           data-wizard-back
-          prepend-icon="mdi-arrow-left"
           @click="back"
         >
+          <template #prepend><FyIcon :path="mdiArrowLeft" :size="16" /></template>
           {{ backText }}
         </v-btn>
         <v-btn
           color="primary"
-          variant="tonal"
+          variant="flat"
           :loading="isBusy"
           :disabled="Boolean(stepDefinitionError) || isBusy || effectiveCompleted"
           data-action="next"
           data-wizard-next
-          append-icon="mdi-arrow-right"
           @click="advance"
         >
+          <template #append><FyIcon :path="mdiArrowRight" :size="16" /></template>
           {{ nextActionLabel }}
         </v-btn>
       </slot>
@@ -732,7 +742,7 @@ function visitedStep(value: string): FyWizardStep | undefined {
 
 <style scoped>
 .fy-step-wizard {
-  --fy-wizard-gap: 12px;
+  --fy-wizard-gap: 14px;
   display: grid;
   gap: var(--fy-wizard-gap);
   color: rgb(var(--v-theme-on-surface));
@@ -753,7 +763,7 @@ function visitedStep(value: string): FyWizardStep | undefined {
 .fy-wizard__desktop-path {
   display: grid;
   grid-template-columns: repeat(var(--fy-wizard-step-count), minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .fy-wizard__desktop-list {
@@ -769,16 +779,17 @@ function visitedStep(value: string): FyWizardStep | undefined {
 
 .fy-wizard__step-button {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 9px;
   width: 100%;
-  min-height: 76px;
-  padding: 12px;
+  min-height: 64px;
+  padding: 10px;
   color: rgb(var(--v-theme-on-surface));
   text-align: start;
-  background: rgb(var(--v-theme-surface-container));
+  background: rgb(var(--v-theme-surface-container-low));
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  border-radius: 10px;
+  border-radius: var(--fy-radius-md, 10px);
+  transition: background-color 120ms ease, border-color 120ms ease, opacity 120ms ease;
 }
 
 .fy-wizard__step-button:not(:disabled) {
@@ -791,7 +802,8 @@ function visitedStep(value: string): FyWizardStep | undefined {
 
 .fy-wizard__step-button--active {
   background: rgb(var(--v-theme-surface-container-high));
-  border-color: rgb(var(--v-theme-on-surface));
+  border-color: rgba(var(--v-theme-on-surface), 0.62);
+  box-shadow: inset 0 -2px 0 rgb(var(--v-theme-primary));
 }
 
 .fy-wizard__step-button:disabled {
@@ -806,10 +818,10 @@ function visitedStep(value: string): FyWizardStep | undefined {
 .fy-wizard__status-icon {
   display: inline-grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   color: rgb(var(--v-theme-on-surface));
-  background: rgb(var(--v-theme-surface-container-highest));
+  background: rgb(var(--v-theme-surface-container-high));
   border-radius: 50%;
   transition: background-color 120ms ease, color 120ms ease;
 }
@@ -824,8 +836,8 @@ function visitedStep(value: string): FyWizardStep | undefined {
 
 .fy-wizard__status-icon--active,
 .fy-wizard__status-icon--validating {
-  color: rgb(var(--v-theme-primary));
-  background: rgb(var(--v-theme-primary-container));
+  color: rgb(var(--v-theme-on-primary));
+  background: rgb(var(--v-theme-primary));
 }
 
 .fy-wizard__step-copy,
@@ -839,7 +851,7 @@ function visitedStep(value: string): FyWizardStep | undefined {
 .fy-wizard__optional,
 .fy-wizard__compact-count,
 .fy-wizard__compact-status {
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   line-height: 1.35;
   opacity: 0.72;
 }
@@ -847,8 +859,8 @@ function visitedStep(value: string): FyWizardStep | undefined {
 .fy-wizard__step-title,
 .fy-wizard__compact-title {
   overflow: hidden;
-  font-size: 0.875rem;
-  font-weight: 600;
+  font-size: 0.8125rem;
+  font-weight: 610;
   line-height: 1.45;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -859,11 +871,11 @@ function visitedStep(value: string): FyWizardStep | undefined {
 }
 
 .fy-wizard__content {
-  min-height: 260px;
-  padding: 20px;
-  background: rgb(var(--v-theme-surface));
+  min-height: 230px;
+  padding: 22px;
+  background: rgb(var(--v-theme-surface-container-low));
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  border-radius: 10px;
+  border-radius: var(--fy-radius-lg, 14px);
 }
 
 .fy-wizard__error,
@@ -880,7 +892,8 @@ function visitedStep(value: string): FyWizardStep | undefined {
   font-size: 0.8125rem;
   color: rgb(var(--v-theme-on-error-container));
   background: rgb(var(--v-theme-error-container));
-  border-radius: 8px;
+  border: 1px solid rgba(var(--v-theme-error), 0.3);
+  border-radius: var(--fy-radius-md, 10px);
 }
 
 .fy-wizard__error p {
@@ -897,8 +910,8 @@ function visitedStep(value: string): FyWizardStep | undefined {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 0;
-  background: rgb(var(--v-theme-background));
+  padding: 2px 0;
+  background: transparent;
 }
 
 @media (max-width: 720px) {
@@ -909,10 +922,10 @@ function visitedStep(value: string): FyWizardStep | undefined {
   .fy-wizard__compact-path {
     display: grid;
     gap: 8px;
-    padding: 12px;
-    background: rgb(var(--v-theme-surface-container));
+    padding: 12px 14px;
+    background: rgb(var(--v-theme-surface-container-low));
     border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-    border-radius: 10px;
+    border-radius: var(--fy-radius-md, 10px);
   }
 
   .fy-wizard__compact-current {
@@ -958,6 +971,8 @@ function visitedStep(value: string): FyWizardStep | undefined {
 
   .fy-wizard__history summary {
     cursor: pointer;
+    color: rgb(var(--v-theme-secondary));
+    font-size: 0.75rem;
   }
 
   .fy-wizard__history ol {
@@ -968,12 +983,15 @@ function visitedStep(value: string): FyWizardStep | undefined {
   }
 
   .fy-wizard__history button {
+    padding: 2px 0;
     color: inherit;
+    background: transparent;
+    border: 0;
     text-align: start;
   }
 
   .fy-wizard__content {
-    min-height: 300px;
+    min-height: 280px;
     padding: 16px;
   }
 
@@ -981,6 +999,7 @@ function visitedStep(value: string): FyWizardStep | undefined {
     position: sticky;
     bottom: 0;
     padding: 10px 0;
+    background: rgb(var(--v-theme-background));
   }
 }
 

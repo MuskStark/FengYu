@@ -40,7 +40,6 @@ export function fengyuPluginDev(options) {
     // Mock when explicitly requested, OR when no endpoint was configured (UI-only default).
     const mockMode = mockExplicit || noEndpoint;
     let workerClient = null;
-    let workerReachable = null;
     const refs = new FileRefRegistry();
     const resolveManifest = async (viteRoot) => {
         if (typeof options.manifest !== 'string')
@@ -58,17 +57,10 @@ export function fengyuPluginDev(options) {
             return null;
         if (workerClient)
             return workerClient;
-        if (workerReachable === null) {
-            workerReachable = await probeWorker(endpoint.host, endpoint.port);
-            if (!workerReachable) {
-                console.warn(`[fengyu-dev] no worker at ${endpoint.host}:${endpoint.port} — ` +
-                    (noEndpoint
-                        ? 'set workerEndpoint to forward rpc.invoke to a real worker, or keep mockWorker:true for UI-only dev.'
-                        : 'is PluginDevMain running in your IDE? Falling back to devMock for this session.'));
-            }
+        if (!(await probeWorker(endpoint.host, endpoint.port))) {
+            throw new Error(`dev worker unavailable at ${endpoint.host}:${endpoint.port}. ` +
+                'Start PluginDevMain in your IDE, or set mockWorker:true only when stub responses are intentional.');
         }
-        if (!workerReachable)
-            return null;
         workerClient = createWorkerClient({ ...endpoint, timeoutMs: options.workerTimeoutMs });
         return workerClient;
     };
@@ -106,8 +98,7 @@ export function fengyuPluginDev(options) {
                             result = await client.invoke(method, params, { timeoutMs: options.workerTimeoutMs });
                         }
                         else {
-                            // Mock fallback (UI-only or dev server unreachable): echo a devMock envelope so the
-                            // UI can render against a deterministic stub.
+                            // Mocking is an explicit UI-only mode; configured Worker failures surface as errors.
                             result = { success: true, devMock: true, method, params };
                         }
                         res.writeHead(200, { 'Content-Type': 'application/json' });
