@@ -109,7 +109,8 @@ public class PluginMarketplaceService {
         return value == null ? List.of() : List.copyOf(value);
     }
 
-    static int compareVersions(String left, String right) {
+    /** Public so other components (e.g. the official-plugin seeder) can order semver versions. */
+    public static int compareVersions(String left, String right) {
         int[] a = numericVersion(left);
         int[] b = numericVersion(right);
         for (int i = 0; i < 3; i++) {

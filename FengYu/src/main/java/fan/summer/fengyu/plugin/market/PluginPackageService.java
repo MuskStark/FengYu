@@ -97,6 +97,24 @@ public class PluginPackageService {
         try (InputStream input = Files.newInputStream(archive)) { return installArchive(input); }
     }
 
+    /**
+     * Read a package's manifest without installing it, so a caller can compare versions and decide
+     * whether an upgrade is worthwhile (e.g. the official-plugin seeder) before paying the cost of
+     * a full extract-and-replace. Only the {@code manifest.json} entry is parsed.
+     */
+    public PluginManifest readArchiveManifest(Path archive) throws IOException {
+        if (!Files.isRegularFile(archive)) throw new IllegalArgumentException("Plugin package not found: " + archive);
+        try (InputStream input = Files.newInputStream(archive);
+                ZipInputStream zip = new ZipInputStream(input)) {
+            for (ZipEntry entry; (entry = zip.getNextEntry()) != null;) {
+                if ("manifest.json".equals(entry.getName())) {
+                    return json.readValue(zip.readAllBytes(), PluginManifest.class);
+                }
+            }
+        }
+        throw new IllegalArgumentException("manifest.json is missing in " + archive);
+    }
+
     public PluginManifest installFromUrl(String url) throws IOException, InterruptedException {
         URI uri = URI.create(url);
         if (!List.of("https", "http").contains(uri.getScheme())) {
