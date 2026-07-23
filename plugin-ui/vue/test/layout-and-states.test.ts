@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { describe, expect, it } from 'vitest'
-import { createFengYuVuetify, FyErrorState, FyPluginShell } from '../src'
+import { createFengYuVuetify, FyEmptyState, FyErrorState, FyPluginShell } from '../src'
 
 const global = { plugins: [createFengYuVuetify()] }
 
@@ -22,8 +22,8 @@ it('renders navigation and emits the selected item', async () => {
 })
 
 it('renders a nav icon as inline SVG when given path data', () => {
-  // Path data (from @mdi/js) must render via FyIcon inline SVG, not the mdi
-  // webfont — the font is not reliably bundled and shows tofu squares.
+  // Path data (from @mdi/js) must render via FyIcon inline SVG; `mdi-*` names
+  // use the separate Vuetify icon path covered below.
   const path = 'M13.78 15.3L19.78 21.3L21.89 19.14Z'
   const wrapper = mount(FyPluginShell, {
     global,
@@ -35,6 +35,33 @@ it('renders a nav icon as inline SVG when given path data', () => {
   const svg = item.find('svg.fy-icon')
   expect(svg.exists()).toBe(true)
   expect(svg.find('path').attributes('d')).toBe(path)
+})
+
+it('renders the CLI mdi icon name through Vuetify instead of as SVG path data', () => {
+  const wrapper = mount(FyPluginShell, {
+    global,
+    props: {
+      title: 'CLI plugin',
+      modelValue: 'home',
+      items: [{ value: 'home', title: 'Home', icon: 'mdi-home-outline' }],
+    },
+  })
+
+  const item = wrapper.get('[data-nav="home"]')
+  expect(item.find('svg.fy-icon').exists()).toBe(false)
+  expect(item.find('.v-icon').exists()).toBe(true)
+  expect(item.find('.v-icon').classes()).toContain('mdi-home-outline')
+})
+
+it('renders an empty-state mdi icon name through Vuetify', () => {
+  const wrapper = mount(FyEmptyState, {
+    global,
+    props: { title: 'Empty', icon: 'mdi-inbox-outline' },
+  })
+
+  expect(wrapper.find('svg.fy-icon').exists()).toBe(false)
+  expect(wrapper.find('.v-icon').exists()).toBe(true)
+  expect(wrapper.find('.v-icon').classes()).toContain('mdi-inbox-outline')
 })
 
 it('exposes a retry action with readable error text', async () => {

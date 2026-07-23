@@ -2,16 +2,16 @@
 import { computed, ref } from 'vue'
 import { useDisplay } from 'vuetify'
 import { mdiBackburger, mdiForwardburger } from '@mdi/js'
+import { isSvgPathIcon } from '../icon'
 import FyIcon from './FyIcon.vue'
 
 /**
  * A single navigation entry rendered by {@link FyPluginShell}.
  *
  * - `value` identifies the active item and is emitted via `update:modelValue`.
- * - `icon` is either inline SVG path data (preferred — a string from
- *   `@mdi/js` beginning with `M`, rendered via {@link FyIcon}) or a legacy
- *   `mdi-*` webfont name (rendered via `v-icon`; note the webfont is not
- *   reliably bundled and may show tofu squares, so prefer path data).
+ * - `icon` is either inline SVG path data (a string from `@mdi/js` beginning
+ *   with `M`, rendered via {@link FyIcon}) or an `mdi-*` name rendered via
+ *   Vuetify's bundled MDI icon set.
  * - `disabled` items do not emit on click.
  */
 export interface FyNavItem {
@@ -69,16 +69,6 @@ const drawerOpen = ref(false)
  */
 const collapsed = ref(false)
 
-/**
- * True when an icon string is SVG path data (from `@mdi/js`) rather than a
- * legacy `mdi-*` webfont name. MDI path data always begins with an `M`/`m`
- * move command; webfont names always begin with `mdi-`. Path data renders via
- * inline {@link FyIcon} (no font, no CSP risk); names fall back to `v-icon`.
- */
-function isIconPath(icon: string | undefined): boolean {
-  return !!icon && /^m/i.test(icon)
-}
-
 function select(item: FyNavItem): void {
   if (item.disabled) return
   emit('update:modelValue', item.value)
@@ -134,7 +124,7 @@ function select(item: FyNavItem): void {
           @click="select(item)"
         >
           <template v-if="item.icon" #prepend>
-            <FyIcon v-if="isIconPath(item.icon)" :path="item.icon" :size="24" />
+            <FyIcon v-if="isSvgPathIcon(item.icon)" :path="item.icon" :size="24" />
             <v-icon v-else :icon="item.icon" />
           </template>
           <v-list-item-title>{{ item.title }}</v-list-item-title>
