@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { mdiInboxOutline } from '@mdi/js'
+import { isSvgPathIcon } from '../icon'
 import FyIcon from './FyIcon.vue'
 
 /**
@@ -11,10 +12,8 @@ withDefaults(
     title?: string
     message?: string
     /**
-     * Icon to display. Inline SVG path data (a string from `@mdi/js`, e.g.
-     * `mdiFolderOpenOutline`) is preferred — the mdi webfont is not reliably
-     * bundled into plugin iframes. A legacy `mdi-*` name falls back to
-     * `v-icon` and may render as tofu squares.
+     * Icon to display. Accepts inline SVG path data from `@mdi/js` or an
+     * `mdi-*` name rendered through Vuetify's bundled MDI icon set.
      */
     icon?: string
   }>(),
@@ -25,16 +24,12 @@ withDefaults(
   },
 )
 
-/** True when an icon string is SVG path data (from `@mdi/js`). */
-function isIconPath(icon: string | undefined): boolean {
-  return !!icon && /^m/i.test(icon)
-}
 </script>
 
 <template>
   <div role="status" class="fy-state fy-state--empty">
     <span class="fy-state__icon" aria-hidden="true">
-      <FyIcon v-if="isIconPath(icon)" :path="icon!" :size="22" />
+      <FyIcon v-if="isSvgPathIcon(icon)" :path="icon!" :size="22" />
       <v-icon v-else :icon="icon" size="22" />
     </span>
     <div class="fy-state__copy">

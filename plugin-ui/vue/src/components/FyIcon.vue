@@ -2,13 +2,9 @@
 /**
  * Inline-Svg icon renderer for FengYu plugin UIs.
  *
- * Plugin UIs run in a sandboxed iframe whose `connect-src` is `none`, and the
- * Material Design Icons webfont cannot be reliably inlined by the production
- * build (the `@mdi/font` stylesheet declares two `src:` blocks; only the legacy
- * `.eot` survives, which modern browsers ignore — so `mdi-*` font glyphs render
- * as tofu squares). The robust, network-free path is to ship icons as inline
- * SVG `<path>` data, sourced from `@mdi/js` (a tree-shakeable bundle of path
- * constants). `FyIcon` renders that data; no font, no fetch, no CSP surface.
+ * `createFengYuVuetify` supports regular `mdi-*` names through Vuetify's MDI
+ * icon set. `FyIcon` is the complementary renderer for inline SVG `<path>`
+ * data sourced from `@mdi/js`; it needs no font lookup or network access.
  *
  * Usage:
  * ```ts
