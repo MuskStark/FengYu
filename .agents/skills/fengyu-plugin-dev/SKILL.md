@@ -73,6 +73,23 @@ out directly). To reach the backend or host capabilities, the UI uses `@infinia/
 sees absolute filesystem paths — file access flows through opaque file-reference objects mediated by
 the host.
 
+### UI ownership contract
+
+The host frontend is the visual source of truth. The project toolchain must provide that UI inside
+the isolated iframe: `@infinia/plugin-ui` owns host-consistent themes, component defaults, and
+FengYu UI components; `@infinia/plugin-sdk` carries live theme/locale state; the CLI wires both into
+every generated Vue plugin.
+
+Treat official CLI templates as executable compatibility contracts, not illustrative snippets. Any
+icon, component prop, or initialization form emitted by a template must render correctly through
+the corresponding SDK/UI versions. Where an icon API accepts a string, both Vuetify `mdi-*` names
+and `@mdi/js` SVG path strings are valid. If a legal template input fails, fix and test the
+toolchain; do not rewrite plugin business UI merely to avoid the defect.
+
+When changing CLI UI templates, theme definitions, icon handling, or public UI components, compare
+against the host implementation and add a contract test for the exact generated input. Keep
+`frontend/src/plugins/md3-themes.ts` and `plugin-ui/vue/src/theme.ts` value-aligned.
+
 **Worker (UI + Java Worker only):** a Java `main()` that links `FengYu-Plugin-Sdk` and speaks
 newline-delimited JSON-RPC 2.0 over stdin/stdout (one request object per line, responses matched by
 `id`). The worker runs in **its own process** with its own classpath; it must not assume any
@@ -134,6 +151,10 @@ is fresh before the CLI packages the `.fyp`.
 
 - **UI-only:** `cd ui-src && npm ci && npm test && npm run build` — verify the UI builds
   and its unit/visual tests pass.
+- **Toolchain UI contract:** for changes to CLI UI templates, theme definitions, icons, or public
+  components, run the exact scaffold/component regression tests plus
+  `cd plugin-ui/vue && npm test && npm run typecheck && npm run build`. Run
+  `npm run test:visual` when rendered presentation changes.
 - **UI + Java Worker:** also build/test the worker (`mvn -f OfficialPlugins/<name>/pom.xml test` or
   the `fengyu.plugin.json` `worker.test` command) and confirm the worker's JSON-RPC methods round-trip.
 - **IDE integration:** start `PluginDevMain` with the IDE and `npm run dev` in `ui-src`; call a real

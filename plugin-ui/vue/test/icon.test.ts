@@ -1,13 +1,9 @@
 /**
  * FyIcon — inline-SVG icon renderer.
  *
- * Plugin UIs run inside a sandboxed iframe whose `connect-src` is `none`, and
- * the Material Design Icons webfont cannot be reliably inlined by the build
- * (the `@mdi/font` CSS uses two `src:` declarations; only the legacy `.eot`
- * survives minification, so modern browsers fall back to tofu squares). The
- * robust path used by bespoke plugin shells (e.g. the email center) is to ship
- * icon glyphs as inline SVG `<path>` data from `@mdi/js` — no font, no network,
- * no CSP risk.
+ * Plugin UIs can use Vuetify `mdi-*` names or ship icon glyphs as inline SVG
+ * `<path>` data from `@mdi/js`. This suite covers the latter path, which needs
+ * no font lookup, network access, or additional CSP surface.
  *
  * `FyIcon` renders that path. Callers pass the `d` data (a string beginning
  * with `M…`) either directly or via the `@mdi/js` named export.
