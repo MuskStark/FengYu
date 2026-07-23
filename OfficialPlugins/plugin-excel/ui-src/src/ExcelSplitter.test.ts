@@ -50,7 +50,7 @@ type FakeClientOverrides = Omit<Partial<FengYuClient>, 'files'> & {
 function fakeClient(overrides: FakeClientOverrides = {}): FengYuClient {
   const { files, ...rest } = overrides
   return {
-    ready: vi.fn().mockResolvedValue({ theme: 'light', locale: 'en' }),
+    ready: vi.fn().mockResolvedValue({ theme: 'light', locale: 'en', platform: 'web' }),
     on: vi.fn().mockReturnValue(() => {}),
     notify: vi.fn().mockResolvedValue(true),
     files: {
@@ -63,6 +63,7 @@ function fakeClient(overrides: FakeClientOverrides = {}): FengYuClient {
     },
     invoke: vi.fn().mockImplementation((method: string, params: Record<string, unknown>) => {
       if (method === 'analyze') return Promise.resolve(analyzeSuccess)
+      if (method === 'estimate') return Promise.resolve({ success: true, fileCount: 2, exact: true })
       if (method === 'configure') {
         if (
           params.mode === 'BY_SHEET'
@@ -127,7 +128,7 @@ async function completeRun(wrapper: VueWrapper): Promise<void> {
 }
 
 async function chooseMode(wrapper: VueWrapper, value: 'BY_COLUMN' | 'COMPLEX'): Promise<void> {
-  await wrapper.get(`input[value="${value}"]`).setValue(true)
+  await wrapper.get(`[data-mode="${value}"]`).trigger('click')
   await flushPromises()
 }
 
@@ -589,7 +590,7 @@ describe('ExcelSplitter stateful wizard', () => {
     expect(wrapper.text()).toContain('2 file(s) written')
 
     await step(wrapper, 'mode').trigger('click')
-    await wrapper.get('input[value="BY_COLUMN"]').setValue(true)
+    await wrapper.get('[data-mode="BY_COLUMN"]').trigger('click')
     await flushPromises()
 
     expect(step(wrapper, 'output').attributes('data-status')).toBe('pending')
@@ -611,7 +612,7 @@ describe('ExcelSplitter stateful wizard', () => {
     expect(invoke.mock.calls.filter(([method]) => method === 'split')).toHaveLength(1)
 
     await step(wrapper, 'mode').trigger('click')
-    await wrapper.get('input[value="COMPLEX"]').setValue(true)
+    await wrapper.get('[data-mode="COMPLEX"]').trigger('click')
     await wrapper.findAll('button').find((button) => button.text().includes('Add rule'))!.trigger('click')
     await wrapper.get('input[type="checkbox"]').setValue(true)
     await flushPromises()
@@ -704,6 +705,49 @@ describe('ExcelSplitter stateful wizard', () => {
     await wrapper.get('[data-action="back"]').trigger('click')
     await flushPromises()
     expect(step(wrapper, 'output').attributes('aria-current')).toBe('step')
+  })
+
+  it('hides the Download button on desktop because files are written in place', async () => {
+    const client = fakeClient({ ready: vi.fn().mockResolvedValue({ theme: 'light', locale: 'en', platform: 'desktop' }) })
+    const wrapper = mountSplitter(client)
+    await flushPromises()
+    await completeRun(wrapper)
+
+    expect(wrapper.text()).toContain('2 file(s) written')
+    expect(wrapper.find('[data-action="export-results"]').exists()).toBe(false)
+  })
+
+  it('requests an estimate after configuring and shows the count on the Output step', async () => {
+    const invoke = vi.fn().mockImplementation((method: string) => {
+      if (method === 'analyze') return Promise.resolve(analyzeSuccess)
+      if (method === 'estimate') return Promise.resolve({ success: true, fileCount: 3, exact: true })
+      if (method === 'configure') return Promise.resolve({ success: true })
+      return Promise.resolve({ success: true })
+    })
+    const client = fakeClient({ invoke: invoke as FengYuClient['invoke'] })
+    const wrapper = mountSplitter(client)
+    await chooseSource(wrapper)
+    await next(wrapper) // configure + estimate fire here
+
+    expect(invoke.mock.calls.filter(([method]) => method === 'estimate'))
+      .toEqual([['estimate', { session: 'new-session' }]])
+    await flushPromises()
+    expect(wrapper.text()).toContain('Expected files')
+    expect(wrapper.text()).toContain('3')
+  })
+
+  it('shows the concrete split rule on the Output summary for BY_COLUMN', async () => {
+    const client = fakeClient()
+    const wrapper = mountSplitter(client)
+    await chooseSource(wrapper)
+    await chooseMode(wrapper, 'BY_COLUMN')
+    await updateVuetifyField(wrapper, 'VSelect', 'Sheet', 'Sales')
+    await updateVuetifyField(wrapper, 'VSelect', 'Column', 'Region')
+    await next(wrapper) // → Output step
+
+    expect(wrapper.text()).toContain('Mode')
+    expect(wrapper.text()).toContain('By column: Region in Sales')
+    expect(wrapper.text()).toContain('Column “Region” in sheet “Sales”')
   })
 
   it('keeps an explicit export failure visible on the completed result', async () => {
@@ -897,7 +941,7 @@ describe('ExcelSplitter stateful wizard', () => {
     expect(step(wrapper, 'output').attributes('aria-current')).toBeUndefined()
     expect(invoke.mock.calls.filter(([method]) => method === 'configure')).toHaveLength(1)
     await step(wrapper, 'source').trigger('click')
-    expect(wrapper.text()).toContain('Replacement')
+    expect(wrapper.text()).toContain('replacement.xlsx')
   })
 
   it.each(['resolve', 'reject'] as const)(
@@ -948,7 +992,7 @@ describe('ExcelSplitter stateful wizard', () => {
       })
 
       await step(wrapper, 'source').trigger('click')
-      expect(wrapper.text()).toContain('Replacement')
+      expect(wrapper.text()).toContain('replacement.xlsx')
       expect(wrapper.text()).not.toContain('Stale')
       expect(wrapper.text()).not.toContain('Old restore failed')
     },
