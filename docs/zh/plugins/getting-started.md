@@ -99,8 +99,10 @@ cd ui-src && npm run dev
 - 两个端点都仅绑定 `127.0.0.1`。
 - 在模拟器的控制按钮上切换**主题**（dark/light）与 **locale**（en/zh），验证你的 UI 是否对
   `bindFengYuEnvironment` 做出反应。
-- 当插件 iframe 请求文件/目录时，模拟器会在侧边栏渲染一个路径输入框（浏览器无法弹出原生
-  选择器）；你输入的路径会被注册为 FileRef，在后续传给 `rpc.invoke` 时重写为真实路径。
+- 当插件 iframe 请求文件/目录时，模拟器会在侧边栏提供系统选择器，将选中的文件或目录快照
+  到临时开发目录并注册为 FileRef；也可输入绝对路径测试桌面端原地读写。工作目录使用可写
+  快照，输出目录可通过 `files.export` 下载为 zip。FileRef 在传给 `rpc.invoke` 时会重写为
+  Worker 可访问的真实路径，Vite 关闭时会清理临时目录。
 - 用 `-Dfengyu.dev.port=<n>` 更改 worker 端口，并同步更新 `vite.config.ts` 里的 `workerEndpoint`。
 - 已配置但不可用的 worker 会产生 RPC 错误，绝不会静默回退到 mock 数据。只有明确需要桩响应时
   才设置 `mockWorker: true`。

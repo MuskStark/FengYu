@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { createWorkerClient, probeWorker, type WorkerClient } from './worker-client.js'
 import { FileRefRegistry } from './file-refs.js'
+import { DevFileStore } from './dev-files.js'
 import { simulatorHtml } from './simulator-html.js'
 
 export { createWorkerClient, probeWorker }
@@ -73,6 +74,7 @@ export function fengyuPluginDev(options: FengYuDevOptions): Plugin {
 
   let workerClient: WorkerClient | null = null
   const refs = new FileRefRegistry()
+  const files = new DevFileStore(refs)
 
   const resolveManifest = async (viteRoot: string): Promise<Record<string, unknown> | null> => {
     if (typeof options.manifest !== 'string') return options.manifest
@@ -105,8 +107,8 @@ export function fengyuPluginDev(options: FengYuDevOptions): Plugin {
       // Match Vite's middleware style: return a function to run BEFORE Vite's own middleware so
       // /__fengyu/* never collides with a route the user's UI might define.
       server.middlewares.use(async (req, res, next) => {
-        const url = req.url ?? '/'
-        const pathname = url.split('?')[0]
+        const url = new URL(req.url ?? '/', 'http://fengyu.dev')
+        const pathname = url.pathname
 
         if (pathname === '/__fengyu') {
           const manifest = await resolveManifest(server.config.root)
@@ -145,6 +147,84 @@ export function fengyuPluginDev(options: FengYuDevOptions): Plugin {
           return
         }
 
+        if (pathname === '/__fengyu/files/upload' && req.method === 'POST') {
+          try {
+            sendJson(res, 200, await files.uploadFile(url.searchParams.get('name') ?? '', req))
+          } catch (err) {
+            sendJson(res, 400, { error: (err as Error).message })
+          }
+          return
+        }
+
+        if (pathname === '/__fengyu/files/directory/start' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          if (body === null) {
+            sendJson(res, 400, { error: 'invalid json body' })
+            return
+          }
+          try {
+            const uploadId = await files.startDirectory(String(body.name ?? ''), body.access)
+            sendJson(res, 200, { uploadId })
+          } catch (err) {
+            sendJson(res, 400, { error: (err as Error).message })
+          }
+          return
+        }
+
+        if (pathname === '/__fengyu/files/directory/file' && req.method === 'POST') {
+          try {
+            await files.uploadDirectoryFile(
+              url.searchParams.get('uploadId') ?? '',
+              url.searchParams.get('path') ?? '',
+              req,
+            )
+            res.writeHead(204)
+            res.end()
+          } catch (err) {
+            sendJson(res, 400, { error: (err as Error).message })
+          }
+          return
+        }
+
+        if (pathname === '/__fengyu/files/directory/finish' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          if (body === null) {
+            sendJson(res, 400, { error: 'invalid json body' })
+            return
+          }
+          try {
+            sendJson(res, 200, files.finishDirectory(String(body.uploadId ?? '')))
+          } catch (err) {
+            sendJson(res, 400, { error: (err as Error).message })
+          }
+          return
+        }
+
+        if (pathname === '/__fengyu/files/output' && req.method === 'POST') {
+          try {
+            sendJson(res, 200, await files.outputDirectory())
+          } catch (err) {
+            sendJson(res, 400, { error: (err as Error).message })
+          }
+          return
+        }
+
+        if (pathname.startsWith('/__fengyu/files/export/') && req.method === 'GET') {
+          try {
+            const refId = decodeURIComponent(pathname.slice('/__fengyu/files/export/'.length))
+            const zip = await files.exportZip(refId)
+            res.writeHead(200, {
+              'Content-Type': 'application/zip',
+              'Content-Disposition': 'attachment; filename=plugin-output.zip',
+              'Content-Length': zip.length,
+            })
+            res.end(zip)
+          } catch (err) {
+            sendJson(res, 400, { error: (err as Error).message })
+          }
+          return
+        }
+
         if (pathname === '/__fengyu/ref' && req.method === 'POST') {
           const body = await readJsonBody(req)
           if (body === null) {
@@ -157,7 +237,7 @@ export function fengyuPluginDev(options: FengYuDevOptions): Plugin {
             const kind: 'file' | 'directory' = body.kind === 'directory' ? 'directory' : 'file'
             const access: 'read' | 'write' | 'read-write' =
               kind === 'directory'
-                ? (body.access === 'read' ? 'read' : 'write')
+                ? (body.access === 'read-write' ? 'read-write' : body.access === 'read' ? 'read' : 'write')
                 : 'read'
             const ref = refs.register(refPath, kind, access)
             res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -179,6 +259,9 @@ export function fengyuPluginDev(options: FengYuDevOptions): Plugin {
         console.log(`[fengyu-dev] simulator at http://127.0.0.1:${port}/__fengyu  →  worker ${target}`)
       })
     },
+    async closeBundle() {
+      await files.cleanup()
+    },
   }
 }
 
@@ -186,9 +269,20 @@ interface JsonBody {
   id?: unknown
   method?: unknown
   params?: unknown
+  name?: unknown
+  uploadId?: unknown
   path?: unknown
   kind?: unknown
   access?: unknown
+}
+
+function sendJson(
+  res: import('node:http').ServerResponse,
+  status: number,
+  value: unknown,
+): void {
+  res.writeHead(status, { 'Content-Type': 'application/json' })
+  res.end(JSON.stringify(value))
 }
 
 async function readJsonBody(req: import('node:http').IncomingMessage): Promise<JsonBody | null> {
