@@ -1,9 +1,14 @@
 package fan.summer.fengyu.plugin.excel;
 
 
+import org.apache.fesod.sheet.ExcelReader;
+import org.apache.fesod.sheet.FesodSheet;
+import org.apache.fesod.sheet.read.metadata.ReadSheet;
+
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class ExcelPlugin {
     private final ExcelSessionStore sessions;
@@ -18,6 +23,7 @@ public class ExcelPlugin {
         return switch (action) {
             case "analyze"   -> analyze(session, args);
             case "configure" -> configure(session, args);
+            case "estimate"  -> estimate(session, args);
             case "split"     -> split(session, args);
             default -> throw new IllegalArgumentException("Unknown action: " + action);
         };
@@ -156,6 +162,94 @@ public class ExcelPlugin {
         out.put("fileCount", res.fileCount());
         out.put("files", res.outputFiles().stream().map(p -> p.getFileName().toString()).toList());
         return out;
+    }
+
+    /**
+     * Estimates the exact number of output files the configured split would produce, without
+     * writing anything. Requires a prior {@code analyze} + {@code configure} on the session.
+     *
+     * <ul>
+     *   <li>BY_SHEET — selected (or all) sheet count; no data rows read.</li>
+     *   <li>BY_COLUMN — distinct values in the split column of the target sheet.</li>
+     *   <li>COMPLEX — cardinality of the Phase-1 output plan (distinct column-value keys across
+     *       all normal entries, merged by output base name); copy-all rules only merge into
+     *       files the normal rules already create, so they never add to the count.</li>
+     * </ul>
+     */
+    private Map<String, Object> estimate(String session, Map<String, Object> args) {
+        SplitConfig cfg = sessions.get(session);
+        if (cfg.analysisResult == null) {
+            throw new IllegalArgumentException("Call analyze first.");
+        }
+        if (cfg.mode == null) {
+            throw new IllegalArgumentException("Call configure first.");
+        }
+        int count;
+        try {
+            count = switch (cfg.mode) {
+                case BY_SHEET -> estimateBySheet(cfg);
+                case BY_COLUMN -> estimateByColumn(cfg);
+                case COMPLEX -> estimateComplex(cfg);
+            };
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Estimate failed: " + e.getMessage(), e);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("success", true);
+        out.put("summary", "estimated " + count + " file(s)");
+        out.put("fileCount", count);
+        out.put("exact", true);
+        return out;
+    }
+
+    private static int estimateBySheet(SplitConfig cfg) {
+        if (cfg.selectedSheets != null && !cfg.selectedSheets.isEmpty()) return cfg.selectedSheets.size();
+        return cfg.analysisResult.size();
+    }
+
+    private static int estimateByColumn(SplitConfig cfg) throws Exception {
+        String sheetName = cfg.splitSheet;
+        int colIdx = cfg.splitColumnIndex;
+        NoModelDataListener listener = new NoModelDataListener();
+        try (ExcelReader reader = FesodSheet.read(cfg.sourceFile.toFile()).build()) {
+            ReadSheet readSheet = FesodSheet.readSheet(sheetName)
+                    .registerReadListener(listener).build();
+            reader.read(readSheet);
+        }
+        int distinct = (int) listener.getCachedDataList().stream()
+                .map(row -> ExcelUtil.normalizeOrInvalid(row.getOrDefault(colIdx, null)))
+                .distinct()
+                .count();
+        listener.clear();
+        return distinct;
+    }
+
+    private static int estimateComplex(SplitConfig cfg) throws Exception {
+        List<ComplexSplitEntry> normalConfigs = cfg.complexEntries.stream()
+                .filter(e -> !(e.headerIndex() == -1 && e.columnIndex() == -1))
+                .toList();
+        if (normalConfigs.isEmpty()) {
+            // Only copy-all rules: they need existing files to merge into, which the current
+            // engine does not create on their own — the split would produce nothing new.
+            return 0;
+        }
+        String sourceBase = FileNameUtil.getFileName(cfg.sourceFile.getFileName().toString());
+        Set<String> outputNames = new LinkedHashSet<>();
+        NoModelDataListener listener = new NoModelDataListener();
+        for (ComplexSplitEntry entry : normalConfigs) {
+            try (ExcelReader reader = FesodSheet.read(cfg.sourceFile.toFile()).build()) {
+                ReadSheet readSheet = FesodSheet.readSheet(entry.sheetName())
+                        .headRowNumber(entry.headerIndex())
+                        .registerReadListener(listener).build();
+                reader.read(readSheet);
+            }
+            int colKey = entry.columnIndex() - 1;
+            listener.getCachedDataList().stream()
+                    .map(row -> ExcelUtil.normalizeOrInvalid(row.getOrDefault(colKey, null)))
+                    .forEach(key -> outputNames.add(sourceBase + "_" + key + ".xlsx"));
+            listener.clear();
+        }
+        return outputNames.size();
     }
 
     private static String str(Map<String, Object> args, String k) {

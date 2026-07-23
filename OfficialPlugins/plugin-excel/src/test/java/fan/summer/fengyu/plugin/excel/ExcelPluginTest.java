@@ -174,4 +174,85 @@ class ExcelPluginTest {
                 Map.of("session", "mixed", "mode", "COMPLEX", "complexEntries", List.of(entry))));
         }
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void estimateBySheetCountsSelectedSheets() {
+        String sess = "est-sheet";
+        plugin.invoke("analyze", Map.of("session", sess, "sourceFile", src.toString()));
+        plugin.invoke("configure", Map.of("session", sess, "mode", "BY_SHEET"));
+
+        Map<String, Object> est = (Map<String, Object>) plugin.invoke("estimate", Map.of("session", sess));
+        assertEquals(Boolean.TRUE, est.get("success"));
+        // No selection → all analyzed sheets (Alpha) = 1.
+        assertEquals(1, ((Number) est.get("fileCount")).intValue());
+        assertEquals(Boolean.TRUE, est.get("exact"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void estimateByColumnCountsDistinctValues() throws Exception {
+        // 2 distinct region values (east, west) → 2 output files.
+        Path byCol = tmp.resolve("estByCol.xlsx");
+        try (Workbook wb = new XSSFWorkbook(); FileOutputStream fos = new FileOutputStream(byCol.toFile())) {
+            Sheet s = wb.createSheet("Data");
+            Row header = s.createRow(0);
+            header.createCell(0).setCellValue("id");
+            header.createCell(1).setCellValue("region");
+            Row r1 = s.createRow(1); r1.createCell(0).setCellValue(1); r1.createCell(1).setCellValue("east");
+            Row r2 = s.createRow(2); r2.createCell(0).setCellValue(2); r2.createCell(1).setCellValue("west");
+            Row r3 = s.createRow(3); r3.createCell(0).setCellValue(3); r3.createCell(1).setCellValue("east");
+            wb.write(fos);
+        }
+
+        String sess = "est-col";
+        plugin.invoke("analyze", Map.of("session", sess, "sourceFile", byCol.toString()));
+        plugin.invoke("configure", Map.of("session", sess, "mode", "BY_COLUMN",
+            "splitSheet", "Data", "splitColumn", "region"));
+
+        Map<String, Object> est = (Map<String, Object>) plugin.invoke("estimate", Map.of("session", sess));
+        assertEquals(Boolean.TRUE, est.get("success"));
+        assertEquals(2, ((Number) est.get("fileCount")).intValue());
+
+        // Estimate matches the real split fileCount.
+        Path out = Files.createDirectories(tmp.resolve("outEstCol"));
+        Map<String, Object> r = (Map<String, Object>) plugin.invoke("split",
+            Map.of("session", sess, "sourceFile", byCol.toString(), "outputDir", out.toString()));
+        assertEquals(((Number) est.get("fileCount")).intValue(), ((Number) r.get("fileCount")).intValue());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void estimateComplexMatchesPlanCardinality() throws Exception {
+        // Sheet "Data" has region values east/west → a normal rule on region yields 2 base
+        // names; a copy-all rule on "Alpha" only merges into those, so it must not add to the count.
+        Path wb = tmp.resolve("estComplex.xlsx");
+        try (Workbook workbook = new XSSFWorkbook(); FileOutputStream fos = new FileOutputStream(wb.toFile())) {
+            Sheet data = workbook.createSheet("Data");
+            Row header = data.createRow(0);
+            header.createCell(0).setCellValue("id");
+            header.createCell(1).setCellValue("region");
+            Row r1 = data.createRow(1); r1.createCell(0).setCellValue(1); r1.createCell(1).setCellValue("east");
+            Row r2 = data.createRow(2); r2.createCell(0).setCellValue(2); r2.createCell(1).setCellValue("west");
+            Sheet alpha = workbook.createSheet("Alpha");
+            alpha.createRow(0).createCell(0).setCellValue("region");
+            alpha.createRow(1).createCell(0).setCellValue("north");
+            workbook.write(fos);
+        }
+
+        String sess = "est-complex";
+        plugin.invoke("analyze", Map.of("session", sess, "sourceFile", wb.toString()));
+        plugin.invoke("configure", Map.of("session", sess, "mode", "COMPLEX", "complexEntries", List.of(
+            Map.of("fieldName", "in.xlsx", "sheetName", "Data", "headerIndex", 1, "columnIndex", 2),
+            Map.of("fieldName", "in.xlsx", "sheetName", "Alpha", "headerIndex", -1, "columnIndex", -1))));
+
+        Map<String, Object> est = (Map<String, Object>) plugin.invoke("estimate", Map.of("session", sess));
+        assertEquals(Boolean.TRUE, est.get("success"));
+        assertEquals(2, ((Number) est.get("fileCount")).intValue());
+
+        Path out = Files.createDirectories(tmp.resolve("outEstComplex"));
+        Map<String, Object> r = (Map<String, Object>) plugin.invoke("split",
+            Map.of("session", sess, "sourceFile", wb.toString(), "outputDir", out.toString()));
+        assertEquals(((Number) est.get("fileCount")).intValue(), ((Number) r.get("fileCount")).intValue());
+    }
 }

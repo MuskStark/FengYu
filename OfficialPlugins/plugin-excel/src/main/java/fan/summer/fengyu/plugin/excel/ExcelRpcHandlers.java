@@ -50,6 +50,10 @@ public final class ExcelRpcHandlers extends PluginHandlerSupport {
         return plugin.invoke("configure", params);
     }
 
+    public Object estimate(Map<String, Object> params) {
+        return plugin.invoke("estimate", params);
+    }
+
     public Object split(Map<String, Object> params) {
         return plugin.invoke("split", params);
     }
