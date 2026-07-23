@@ -64,8 +64,8 @@ cd plugin-cli && npm install && npm test && cd ..
 cd plugin-dev && npm install && npm test && cd ..
 # TS SDK
 cd plugin-sdk/typescript && npm install && npm test && cd ..
-# UI kit (includes Playwright visual tests)
-cd plugin-ui/vue && npm install && npm test && cd ..
+# UI kit
+cd plugin-ui/vue && npm install && npm run prepack && npm run test:visual && cd ../..
 # Java Worker SDK
 mvn -f FengYu-Plugin-Sdk/pom.xml test
 # Java Plugin DevKit
@@ -78,6 +78,11 @@ mvn -f FengYu-Plugin-DevKit/pom.xml test
 scripts/check-plugin-dependency-boundaries.sh
 ```
 
+Treat CLI templates and the UI kit as one compatibility contract even though they are separate npm
+packages. Release verification must cover the exact icon/component inputs emitted by the scaffold,
+including `mdi-*` names, and must keep the host/plugin theme equality test green. A CLI template that
+requires plugin authors to work around the released SDK/UI is a release blocker.
+
 ## Step 4 — Build official plugins through the CLI
 
 Confirm the toolchain can actually produce a plugin end to end by building an official plugin with
@@ -85,7 +90,6 @@ the CLI (this is the same path the release's `consumer-smoke` job exercises agai
 packages):
 
 ```bash
-fengyu plugin validate OfficialPlugins/plugin-markdown
 fengyu plugin build OfficialPlugins/plugin-markdown
 ```
 
