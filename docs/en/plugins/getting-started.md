@@ -99,9 +99,12 @@ loopback TCP server at `127.0.0.1:24057`, serving the **same handlers** as the p
 - Both endpoints bind `127.0.0.1` only.
 - Toggle **theme** (dark/light) and **locale** (en/zh) from the simulator's control buttons to verify
   your UI reacts to `bindFengYuEnvironment`.
-- When the plugin iframe asks for a file/directory, the simulator renders a path input in the side
-  panel (browsers can't pop a native picker); the typed path is registered as a FileRef and rewritten
-  to its real path when later passed to `rpc.invoke`.
+- When the plugin iframe requests a file or directory, the simulator offers a browser picker and
+  snapshots the selection into a temporary dev directory before registering its FileRef. A manual
+  absolute-path field remains available for desktop-style in-place I/O. Workspace snapshots are
+  writable, output directories can be downloaded as zip files through `files.export`, FileRefs are
+  rewritten to Worker-visible paths at `rpc.invoke`, and temporary directories are removed when
+  Vite closes.
 - Change the worker port with `-Dfengyu.dev.port=<n>` and update `workerEndpoint` in `vite.config.ts`
   to match.
 - A configured but unavailable worker produces an RPC error; it never silently falls back to mock
