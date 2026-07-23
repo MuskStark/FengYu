@@ -4,8 +4,8 @@ import fan.summer.fengyu.sdk.JsonRpcWorker;
 
 /**
  * Excel Splitter worker. Speaks newline-delimited JSON-RPC 2.0 on stdio. Methods are split into
- * the session-keyed UI workflow ({@code analyze}/{@code configure}/{@code split}) and the
- * stateless AI tools ({@code excel_*}) declared in {@code manifest.json}; both share one
+ * the session-keyed UI workflow ({@code analyze}/{@code configure}/{@code estimate}/{@code split})
+ * and the stateless AI tools ({@code excel_*}) declared in {@code manifest.json}; both share one
  * {@link ExcelRpcHandlers}. {@link JsonRpcWorker#run()} redirects stdout to stderr so the
  * protocol stream on stdout stays clean.
  */
@@ -23,6 +23,7 @@ public final class ExcelWorkerMain {
             // UI-facing, session-keyed workflow.
             .on("analyze", handlers.handle("analyze", handlers::analyze))
             .on("configure", handlers.handle("configure", handlers::configure))
+            .on("estimate", handlers.handle("estimate", handlers::estimate))
             .on("split", handlers.handle("split", handlers::split))
             // UI-facing async split for large workbooks (start → jobId → poll status → cancel).
             .on("split_start", handlers.handle("split_start", handlers::splitStart))

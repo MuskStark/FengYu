@@ -1,9 +1,20 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import {
+  mdiAlertCircleOutline,
+  mdiCheckCircleOutline,
+  mdiDownloadOutline,
+  mdiFolderCheckOutline,
+  mdiFormatColumns,
+  mdiInformationOutline,
+  mdiSitemapOutline,
+  mdiTableMultiple,
+} from '@mdi/js'
+import {
   createWizardStates,
   FyDirectoryPicker,
   FyFilePicker,
+  FyIcon,
   FyStepWizard,
   invalidateWizardStates,
   useFengYuClient,
@@ -15,6 +26,7 @@ import type {
   FyWizardValidationResult,
 } from '@infinia/plugin-ui'
 import type { FileRef } from '@infinia/plugin-sdk'
+import type { Environment } from '@infinia/plugin-sdk'
 import {
   clearExcelWizardRecord,
   loadExcelWizardRecord,
@@ -26,6 +38,19 @@ const client = useFengYuClient()
 
 type SplitMode = 'BY_SHEET' | 'BY_COLUMN' | 'COMPLEX'
 
+interface ModeOption {
+  value: SplitMode
+  label: string
+  hint: string
+  icon: string
+}
+
+const modeOptions: ModeOption[] = [
+  { value: 'BY_SHEET', label: 'By sheet', hint: 'One file per sheet', icon: mdiTableMultiple },
+  { value: 'BY_COLUMN', label: 'By column', hint: 'One file per value in a column', icon: mdiFormatColumns },
+  { value: 'COMPLEX', label: 'Complex', hint: 'Multiple rules combined', icon: mdiSitemapOutline },
+]
+
 interface AnalyzeResponse {
   success: boolean
   summary?: string
@@ -33,6 +58,7 @@ interface AnalyzeResponse {
   error?: string
 }
 interface ConfigureResponse { success: boolean; summary?: string; error?: string }
+interface EstimateResponse { success: boolean; summary?: string; fileCount?: number; exact?: boolean; error?: string }
 interface SplitResponse {
   success: boolean
   summary?: string
@@ -90,9 +116,12 @@ const filePrefix = ref('')
 const complexEntries = ref<ComplexEntryRow[]>([])
 const configuring = ref(false)
 const configureError = ref<string | null>(null)
+const estimating = ref(false)
+const estimatedFileCount = ref<number | null>(null)
 
 // Step 3 — output
 const outputDirRef = ref<FileRef | null>(null)
+const platform = ref<Environment['platform'] | null>(null)
 
 // Step 4 — run
 const running = ref(false)
@@ -277,6 +306,7 @@ async function onFilePicked(
 
 function invalidateModeConfiguration(): void {
   configureError.value = null
+  estimatedFileCount.value = null
   invalidateDependencies('mode')
 }
 
@@ -323,6 +353,55 @@ function onCopyAllToggle(entry: ComplexEntryRow): void {
   }
   invalidateModeConfiguration()
 }
+
+let estimateGeneration = 0
+
+/** Pulls the expected output-file count from the worker after configure. Non-fatal: any error
+ *  just leaves the count hidden on the Output step. Guarded against stale mode changes. */
+async function refreshEstimate(expectedSession: string, expectedMode: SplitMode): Promise<void> {
+  const generation = ++estimateGeneration
+  estimating.value = true
+  try {
+    const res = await client.invoke<EstimateResponse>('estimate', { session: expectedSession })
+    if (generation !== estimateGeneration) return
+    if (session.value !== expectedSession || mode.value !== expectedMode) return
+    estimatedFileCount.value = res.success && typeof res.fileCount === 'number' ? res.fileCount : null
+  } catch {
+    if (generation === estimateGeneration) estimatedFileCount.value = null
+  } finally {
+    if (generation === estimateGeneration) estimating.value = false
+  }
+}
+
+const modeLabel = computed(() => {
+  switch (mode.value) {
+    case 'BY_SHEET': return selectedSheets.value.length > 0
+      ? `By sheet (${selectedSheets.value.length} selected)`
+      : 'By sheet (all)'
+    case 'BY_COLUMN': return splitSheet.value && splitColumn.value
+      ? `By column: ${splitColumn.value} in ${splitSheet.value}`
+      : 'By column'
+    case 'COMPLEX': return `Complex (${complexEntries.value.length} rule${complexEntries.value.length === 1 ? '' : 's'})`
+  }
+})
+
+/** Concrete split rules for the Output summary, one string per rule. */
+const configDetails = computed<string[]>(() => {
+  switch (mode.value) {
+    case 'BY_SHEET':
+      return selectedSheets.value.length > 0
+        ? selectedSheets.value
+        : sheetNames.value
+    case 'BY_COLUMN':
+      return splitSheet.value && splitColumn.value
+        ? [`Column “${splitColumn.value}” in sheet “${splitSheet.value}”`]
+        : []
+    case 'COMPLEX':
+      return complexEntries.value.map((entry) => entry.copyAll
+        ? `Copy entire sheet “${entry.sheetName}”`
+        : `Split sheet “${entry.sheetName}” by column ${entry.columnIndex} (header row ${entry.headerIndex})`)
+  }
+})
 
 async function validateMode(signal: AbortSignal): Promise<FyWizardValidationResult> {
   if (!session.value) return { valid: false, message: 'Choose an Excel file' }
@@ -391,6 +470,9 @@ async function validateMode(signal: AbortSignal): Promise<FyWizardValidationResu
       configureError.value = msg
       return { valid: false, message: msg }
     }
+    // Configure succeeded — refresh the expected file count shown on Output. Fire-and-forget:
+    // the estimate must not gate step validation; a failure just leaves the count hidden.
+    void refreshEstimate(session.value, mode.value)
     return { valid: true }
   } catch (err) {
     if (signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) throw err
@@ -601,7 +683,10 @@ async function restoreProgress(): Promise<void> {
   }
 }
 
-onMounted(() => { void restoreProgress() })
+onMounted(() => {
+  void client.ready().then((env) => { platform.value = env.platform ?? 'web' }).catch(() => {})
+  void restoreProgress()
+})
 onBeforeUnmount(cancelRestore)
 </script>
 
@@ -630,37 +715,23 @@ onBeforeUnmount(cancelRestore)
           <template #source="{ actions }">
             <v-card variant="flat">
               <v-card-text>
-                <FyFilePicker
-                  :model-value="sourceFileRef"
-                  :extensions="['xlsx', 'xls']"
-                  :filters="[{ name: 'Excel', extensions: ['xlsx', 'xls'] }]"
-                  label="Choose Excel file"
-                  @update:model-value="(ref: FileRef | null) => onFilePicked(ref, actions.next)"
-                />
+                <div class="excel-source">
+                  <FyFilePicker
+                    :model-value="sourceFileRef"
+                    :extensions="['xlsx', 'xls']"
+                    :filters="[{ name: 'Excel', extensions: ['xlsx', 'xls'] }]"
+                    label="Choose Excel file"
+                    @update:model-value="(ref: FileRef | null) => onFilePicked(ref, actions.next)"
+                  />
 
-                <div v-if="sourceFileRef" class="mt-2 text-body-2">
-                  Selected: {{ sourceFileRef.name }}
-                </div>
+                  <div v-if="sourceFileRef" class="mt-2 text-body-2">
+                    Selected: {{ sourceFileRef.name }}
+                  </div>
 
-                <v-alert v-if="analyzing" type="info" class="mt-3" density="compact">
-                  Analyzing…
-                </v-alert>
-                <div v-if="sheets" class="mt-4">
-                  <div class="text-subtitle-2 mb-2">Sheets</div>
-                  <v-expansion-panels variant="accordion">
-                    <v-expansion-panel v-for="name in sheetNames" :key="name" :title="name">
-                      <v-expansion-panel-text>
-                        <v-chip
-                          v-for="col in columnsForSheet(name)"
-                          :key="col"
-                          size="small"
-                          class="mr-1 mb-1"
-                        >
-                          {{ col }}
-                        </v-chip>
-                      </v-expansion-panel-text>
-                    </v-expansion-panel>
-                  </v-expansion-panels>
+                  <v-alert v-if="analyzing" :icon="false" type="info" class="mt-3" density="compact">
+                    <template #prepend><FyIcon :path="mdiInformationOutline" :size="20" class="mr-3" /></template>
+                    Analyzing…
+                  </v-alert>
                 </div>
               </v-card-text>
             </v-card>
@@ -669,15 +740,22 @@ onBeforeUnmount(cancelRestore)
           <template #mode>
             <v-card variant="flat">
               <v-card-text>
-                <v-radio-group
-                  :model-value="mode"
-                  inline
-                  @update:model-value="onModeChanged"
-                >
-                  <v-radio label="By sheet" value="BY_SHEET" />
-                  <v-radio label="By column" value="BY_COLUMN" />
-                  <v-radio label="Complex" value="COMPLEX" />
-                </v-radio-group>
+                <div class="excel-mode-cards" role="radiogroup" aria-label="Split mode">
+                  <button
+                    v-for="option in modeOptions"
+                    :key="option.value"
+                    type="button"
+                    role="radio"
+                    :aria-checked="mode === option.value"
+                    :class="['excel-mode-card', { 'excel-mode-card--active': mode === option.value }]"
+                    :data-mode="option.value"
+                    @click="onModeChanged(option.value)"
+                  >
+                    <FyIcon :path="option.icon" :size="22" class="excel-mode-card__icon" />
+                    <span class="excel-mode-card__label">{{ option.label }}</span>
+                    <span class="excel-mode-card__hint">{{ option.hint }}</span>
+                  </button>
+                </div>
 
                 <v-select
                   v-if="mode === 'BY_SHEET'"
@@ -710,7 +788,6 @@ onBeforeUnmount(cancelRestore)
                   <v-table density="compact">
                     <thead>
                       <tr>
-                        <th>Field name</th>
                         <th>Sheet</th>
                         <th>Header row</th>
                         <th>Column</th>
@@ -720,14 +797,6 @@ onBeforeUnmount(cancelRestore)
                     </thead>
                     <tbody>
                       <tr v-for="(entry, i) in complexEntries" :key="i">
-                        <td>
-                          <v-text-field
-                            v-model="entry.fieldName"
-                            density="compact"
-                            hide-details
-                            @update:model-value="invalidateModeConfiguration"
-                          />
-                        </td>
                         <td>
                           <v-select
                             v-model="entry.sheetName"
@@ -790,6 +859,29 @@ onBeforeUnmount(cancelRestore)
           <template #output>
             <v-card variant="flat">
               <v-card-text>
+                <div class="excel-config-summary mb-4">
+                  <div class="text-subtitle-2 mb-1">Split configuration</div>
+                  <div class="excel-config-summary__row">
+                    <span class="excel-config-summary__label">Mode</span>
+                    <span>{{ modeLabel }}</span>
+                  </div>
+                  <div v-if="configDetails.length" class="excel-config-summary__row">
+                    <span class="excel-config-summary__label">Rules</span>
+                    <ul class="excel-config-summary__list">
+                      <li v-for="(detail, i) in configDetails" :key="i">{{ detail }}</li>
+                    </ul>
+                  </div>
+                  <div class="excel-config-summary__row">
+                    <span class="excel-config-summary__label">Expected files</span>
+                    <span v-if="estimating" class="d-inline-flex align-center">
+                      <v-progress-circular indeterminate size="14" width="2" class="mr-2" />
+                      estimating…
+                    </span>
+                    <strong v-else-if="estimatedFileCount !== null">{{ estimatedFileCount }}</strong>
+                    <span v-else class="text-medium-emphasis">—</span>
+                  </div>
+                </div>
+
                 <FyDirectoryPicker
                   :model-value="outputDirRef"
                   mode="output"
@@ -799,8 +891,19 @@ onBeforeUnmount(cancelRestore)
                 <div v-if="outputDirRef" class="mt-2 text-body-2">
                   Output: {{ outputDirRef.name }}
                 </div>
-                <v-alert type="info" density="compact" class="mt-3">
-                  Results are written to this folder; after the split you can download it as a zip.
+                <v-alert
+                  v-if="platform === 'desktop'"
+                  :icon="false"
+                  type="info"
+                  density="compact"
+                  class="mt-3"
+                >
+                  <template #prepend><FyIcon :path="mdiFolderCheckOutline" :size="20" class="mr-3" /></template>
+                  Files are written directly into this folder — no download step needed.
+                </v-alert>
+                <v-alert v-else :icon="false" type="info" density="compact" class="mt-3">
+                  <template #prepend><FyIcon :path="mdiDownloadOutline" :size="20" class="mr-3" /></template>
+                  Results are staged in a temporary folder; after the split you can download them as a zip.
                 </v-alert>
               </v-card-text>
             </v-card>
@@ -821,10 +924,12 @@ onBeforeUnmount(cancelRestore)
           <template #complete>
             <v-card variant="flat">
               <v-card-text>
-                <v-alert v-if="result" type="success" density="compact" class="mb-3">
-                  {{ result.fileCount }} file(s) written
+                <v-alert v-if="result" :icon="false" type="success" density="compact" class="mb-3">
+                  <template #prepend><FyIcon :path="mdiCheckCircleOutline" :size="20" class="mr-3" /></template>
+                  {{ result.fileCount }} file(s) written to {{ outputDirRef?.name ?? 'the output folder' }}
                 </v-alert>
-                <v-alert v-if="runError" type="error" density="compact" class="mb-3">
+                <v-alert v-if="runError" :icon="false" type="error" density="compact" class="mb-3">
+                  <template #prepend><FyIcon :path="mdiAlertCircleOutline" :size="20" class="mr-3" /></template>
                   {{ runError }}
                 </v-alert>
                 <div v-if="outputDirRef" class="text-body-2 mb-2">
@@ -834,7 +939,7 @@ onBeforeUnmount(cancelRestore)
                   <v-list-item v-for="f in result.files" :key="f">{{ f }}</v-list-item>
                 </v-list>
                 <v-btn
-                  v-if="result && outputDirRef"
+                  v-if="result && outputDirRef && platform === 'web'"
                   color="primary"
                   variant="tonal"
                   :loading="downloading"
@@ -857,4 +962,76 @@ onBeforeUnmount(cancelRestore)
 .excel-splitter {
   max-width: 960px;
 }
+/* Source step: keep the picker and its feedback centered in the card. */
+.excel-source {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+/* Mode step: selectable cards with a clear selected state. */
+.excel-mode-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.excel-mode-card {
+  display: grid;
+  grid-template-areas: "icon label" "icon hint";
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 12px;
+  padding: 14px 16px;
+  text-align: start;
+  cursor: pointer;
+  background: rgb(var(--v-theme-surface-container-low));
+  border: 2px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: var(--fy-radius-md, 10px);
+  color: rgb(var(--v-theme-on-surface));
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.excel-mode-card:hover { border-color: rgba(var(--v-theme-primary), 0.5); }
+.excel-mode-card:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+}
+.excel-mode-card__icon { grid-area: icon; color: rgb(var(--v-theme-secondary)); }
+.excel-mode-card__label { grid-area: label; font-weight: 600; font-size: 0.9375rem; }
+.excel-mode-card__hint {
+  grid-area: hint;
+  color: rgb(var(--v-theme-secondary));
+  font-size: 0.75rem;
+}
+.excel-mode-card--active {
+  border-color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.08);
+}
+.excel-mode-card--active .excel-mode-card__icon { color: rgb(var(--v-theme-primary)); }
+/* Output step: split-configuration summary + expected file count. */
+.excel-config-summary {
+  padding: 12px 14px;
+  background: rgb(var(--v-theme-surface-container-low));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: var(--fy-radius-md, 10px);
+}
+.excel-config-summary__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 0;
+  font-size: 0.875rem;
+}
+.excel-config-summary__label {
+  flex: 0 0 120px;
+  color: rgb(var(--v-theme-secondary));
+}
+.excel-config-summary__list {
+  margin: 0;
+  padding-left: 18px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+.excel-config-summary__list li { padding: 1px 0; }
+.excel-config-summary__list li + li { margin-top: 2px; }
 </style>
