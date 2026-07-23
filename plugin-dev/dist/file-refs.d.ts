@@ -1,13 +1,12 @@
 /**
  * Dev-only FileRef registry: maps an opaque FileRef id the iframe UI receives to a real
- * filesystem path the developer typed into the simulator's path prompt.
+ * filesystem path created by a browser upload or typed into the simulator's path prompt.
  *
- * The browser can't pop a native file picker, so when the plugin iframe calls
- * `files.open` / `files.inputDirectory` / `files.outputDirectory` the simulator renders a path
- * input, registers the typed path here, and hands the iframe a FileRef. When the iframe later
- * passes that FileRef as a parameter to `rpc.invoke`, `/__fengyu/rpc` rewrites the ref back to
- * the path string before forwarding to the worker — mirroring the production host's
- * `PluginProcessManager.resolveRefs`.
+ * Browser picker results are snapshotted into a dev-only temporary tree; manual paths remain
+ * available for desktop-style in-place I/O. In both cases the simulator hands the iframe a
+ * FileRef. When the iframe later passes that FileRef to `rpc.invoke`, `/__fengyu/rpc` rewrites
+ * the ref back to the path string before forwarding to the worker — mirroring the production
+ * host's `PluginProcessManager.resolveRefs`.
  *
  * @infinia/plugin-dev keeps this entirely in memory; it never persists across server restarts.
  */
@@ -20,7 +19,10 @@ export interface DevFileRef {
 }
 export declare class FileRefRegistry {
     private readonly refs;
-    register(path: string, kind: 'file' | 'directory', access: 'read' | 'write' | 'read-write'): DevFileRef;
+    register(path: string, kind: 'file' | 'directory', access: 'read' | 'write' | 'read-write', metadata?: {
+        name?: string;
+        size?: number;
+    }): DevFileRef;
     /** Resolve a single ref id to its path, or undefined if unregistered. */
     pathOf(id: string): string | undefined;
     /**

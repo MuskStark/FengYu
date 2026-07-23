@@ -9,9 +9,14 @@ Vite dev server into a FengYu host **simulator**, so you develop and debug a plu
 
 ## What it does
 
-- **UI (this plugin)** — injects `/__fengyu`, `/__fengyu/rpc`, `/__fengyu/ref` middleware into Vite.
+- **UI (this plugin)** — injects `/__fengyu`, `/__fengyu/rpc`, `/__fengyu/ref`, and
+  `/__fengyu/files/*` middleware into Vite.
   `/__fengyu` serves an iframe shell that runs your real plugin UI (with Vite HMR) and bridges
   `@infinia/plugin-sdk`'s `postMessage` calls.
+- **Files** — `files.open`, `files.inputDirectory`, and `files.workspaceDirectory` use the browser
+  picker and snapshot selections into a temporary dev directory. `files.outputDirectory` allocates
+  a temporary writable directory and `files.export` downloads it as a zip. The simulator also keeps
+  a manual absolute-path field for desktop-style in-place I/O testing.
 - **Worker (separate process, your IDE)** — forward `rpc.invoke` to a `fengyu-plugin-devkit` dev
   server you run via `PluginDevMain.main()`. Breakpoints in your handlers fire directly.
 
@@ -68,6 +73,11 @@ breakpoints in your `JsonRpcWorker` handlers; they fire when the UI calls `rpc.i
 When `workerEndpoint` is configured, an unavailable worker is returned as an RPC error. The
 simulator never silently substitutes mock data, so a stopped Worker cannot produce a false-positive
 frontend test. Use `mockWorker: true` only when stub responses are intentional.
+
+Temporary file snapshots and output directories are removed when the Vite dev server closes. A
+browser-selected workspace is a writable copy, matching FengYu's production Web mode; use the
+manual path field when the Worker must modify the original local directory during desktop-focused
+debugging.
 
 ### UI-only plugins
 
