@@ -1,12 +1,12 @@
 export class FileRefRegistry {
     refs = new Map();
-    register(path, kind, access) {
+    register(path, kind, access, metadata = {}) {
         if (!path.trim())
             throw new Error('path is required');
         const id = 'ref_' + (this.refs.size + 1) + '_' + Date.now().toString(36);
         this.refs.set(id, path);
-        const name = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
-        return { id, name, kind, access, size: 0 };
+        const name = metadata.name ?? path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+        return { id, name, kind, access, size: metadata.size ?? 0 };
     }
     /** Resolve a single ref id to its path, or undefined if unregistered. */
     pathOf(id) {

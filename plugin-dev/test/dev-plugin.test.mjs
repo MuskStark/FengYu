@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import http from 'node:http'
 import net from 'node:net'
+import { promises as fs } from 'node:fs'
 import { FileRefRegistry } from '../dist/file-refs.js'
 import { simulatorHtml } from '../dist/simulator-html.js'
 import { fengyuPluginDev } from '../dist/index.js'
@@ -51,6 +52,9 @@ test('simulatorHtml: contains iframe with sandbox and the postMessage bridge', (
   assert.match(html, /source:'fengyu-host'/)
   assert.match(html, /fetch\('\/__fengyu\/rpc'/)
   assert.match(html, /\/__fengyu\/ref/)
+  assert.match(html, /type=['"]file['"]/)
+  assert.match(html, /files\.workspaceDirectory/)
+  assert.match(html, /files\.export/)
   assert.match(html, /com\.example\.x/)
 })
 
@@ -74,7 +78,9 @@ function handleDirect(server) {
     req.method = init.method ?? 'GET'
     req.headers = { 'content-type': 'application/json', ...(init.headers ?? {}) }
     if (init.body !== undefined && init.body !== null) {
-      const buf = Buffer.from(typeof init.body === 'string' ? init.body : JSON.stringify(init.body))
+      const buf = Buffer.isBuffer(init.body)
+        ? init.body
+        : Buffer.from(typeof init.body === 'string' ? init.body : JSON.stringify(init.body))
       // IncomingMessage needs the body pushed before 'end' fires; emulate a complete request.
       req.push(buf)
       req.push(null)
@@ -170,6 +176,107 @@ test('fengyuPluginDev: /__fengyu/ref rejects empty path', async () => {
     })
     assert.equal(res.status, 400)
     assert.match(res.json().error, /path is required/)
+  })
+})
+
+test('fengyuPluginDev: browser file upload returns a ref that resolves to the uploaded snapshot', async () => {
+  await withDevServer({ manifest: {}, mockWorker: true }, async (server) => {
+    const upload = await server.middlewares.handleDirect('/__fengyu/files/upload?name=data.csv', {
+      method: 'POST',
+      headers: { 'content-type': 'application/octet-stream' },
+      body: Buffer.from('name,value\nAda,42\n'),
+    })
+    assert.equal(upload.status, 200)
+    const ref = upload.json()
+    assert.equal(ref.name, 'data.csv')
+    assert.equal(ref.kind, 'file')
+    assert.equal(ref.access, 'read')
+    assert.equal(ref.size, 18)
+
+    const rpc = await server.middlewares.handleDirect('/__fengyu/rpc', {
+      method: 'POST',
+      body: { id: 'upload-rpc', method: 'read', params: { file: ref } },
+    })
+    const snapshot = rpc.json().result.params.file
+    assert.equal(await fs.readFile(snapshot, 'utf8'), 'name,value\nAda,42\n')
+  })
+})
+
+test('fengyuPluginDev: directory upload preserves relative paths and supports read-write workspaces', async () => {
+  await withDevServer({ manifest: {}, mockWorker: true }, async (server) => {
+    const start = await server.middlewares.handleDirect('/__fengyu/files/directory/start', {
+      method: 'POST',
+      body: { name: 'project', access: 'read-write' },
+    })
+    const { uploadId } = start.json()
+
+    const file = await server.middlewares.handleDirect(
+      `/__fengyu/files/directory/file?uploadId=${encodeURIComponent(uploadId)}&path=src%2Fmain.txt`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/octet-stream' },
+        body: Buffer.from('hello workspace'),
+      },
+    )
+    assert.equal(file.status, 204)
+
+    const finish = await server.middlewares.handleDirect('/__fengyu/files/directory/finish', {
+      method: 'POST',
+      body: { uploadId },
+    })
+    const ref = finish.json()
+    assert.equal(ref.name, 'project')
+    assert.equal(ref.kind, 'directory')
+    assert.equal(ref.access, 'read-write')
+
+    const rpc = await server.middlewares.handleDirect('/__fengyu/rpc', {
+      method: 'POST',
+      body: { id: 'dir-rpc', method: 'open', params: { directory: ref } },
+    })
+    const directory = rpc.json().result.params.directory
+    assert.equal(await fs.readFile(`${directory}/src/main.txt`, 'utf8'), 'hello workspace')
+  })
+})
+
+test('fengyuPluginDev: directory upload rejects path traversal', async () => {
+  await withDevServer({ manifest: {}, mockWorker: true }, async (server) => {
+    const start = await server.middlewares.handleDirect('/__fengyu/files/directory/start', {
+      method: 'POST',
+      body: { name: 'project', access: 'read' },
+    })
+    const { uploadId } = start.json()
+    const file = await server.middlewares.handleDirect(
+      `/__fengyu/files/directory/file?uploadId=${encodeURIComponent(uploadId)}&path=..%2Fsecret.txt`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/octet-stream' },
+        body: Buffer.from('nope'),
+      },
+    )
+    assert.equal(file.status, 400)
+    assert.match(file.json().error, /relative path/)
+  })
+})
+
+test('fengyuPluginDev: output directory can be exported as a zip download', async () => {
+  await withDevServer({ manifest: {}, mockWorker: true }, async (server) => {
+    const output = await server.middlewares.handleDirect('/__fengyu/files/output', { method: 'POST' })
+    const ref = output.json()
+    assert.equal(ref.kind, 'directory')
+    assert.equal(ref.access, 'write')
+
+    const rpc = await server.middlewares.handleDirect('/__fengyu/rpc', {
+      method: 'POST',
+      body: { id: 'output-rpc', method: 'write', params: { directory: ref } },
+    })
+    const directory = rpc.json().result.params.directory
+    await fs.writeFile(`${directory}/result.txt`, 'done')
+
+    const exported = await server.middlewares.handleDirect(`/__fengyu/files/export/${encodeURIComponent(ref.id)}`)
+    assert.equal(exported.status, 200)
+    assert.match(exported.headers['content-type'] ?? '', /application\/zip/)
+    assert.match(exported.headers['content-disposition'] ?? '', /plugin-output\.zip/)
+    assert.equal(Buffer.from(exported.body, 'binary').subarray(0, 2).toString(), 'PK')
   })
 })
 
