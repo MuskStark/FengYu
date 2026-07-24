@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { mdiCloseCircle, mdiPaperclip } from '@mdi/js'
+import { FyIcon } from '@infinia/plugin-ui'
 import { useAccountsStore } from '../stores/accounts'
 import { useBatchStore, type BatchPreview } from '../stores/batch'
 import { useContactsStore } from '../stores/contacts'
@@ -104,7 +106,11 @@ async function reject(): Promise<void> {
         <v-text-field v-model="batch.subject" :label="t('compose.subject')" />
         <RichTextEditor v-model="batch.htmlText" @update:plain-text="batch.plainText = $event" />
         <div class="attachment-row">
-          <v-chip v-for="item in batch.commonAttachments" :key="item.id" closable @click:close="removeCommonAttachment(item.id)">{{ item.name }}</v-chip>
+          <v-chip v-for="item in batch.commonAttachments" :key="item.id" closable @click:close="removeCommonAttachment(item.id)">
+            <template #prepend><FyIcon :path="mdiPaperclip" :size="16" /></template>
+            <template #close><FyIcon :path="mdiCloseCircle" :size="18" /></template>
+            {{ item.name }}
+          </v-chip>
           <v-btn data-testid="batch-common-attachment" variant="tonal" @click="addCommonAttachment">{{ t('batch.commonAttachments') }}</v-btn>
         </div>
       </v-card-text>
