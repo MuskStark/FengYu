@@ -8,11 +8,14 @@ let tray: Tray | null = null
  * The window's close button hides to tray; only "Quit" tears down the backend.
  */
 export function createTray(win: BrowserWindow, onQuit: () => void): Tray {
-  const iconPath = join(__dirname, '../resources/icon-32.png')
+  // DEV path only: tray.js lives in dist/desktop/, so ../../resources/ reaches
+  // the project resources/ dir. The packaged path (process.resourcesPath) is
+  // handled separately in Task 5 (packaging).
+  const iconPath = join(__dirname, '../../resources/icon-32.png')
   const image = nativeImage.createFromPath(iconPath)
   tray = new Tray(
     image.isEmpty()
-      ? nativeImage.createFromPath(join(__dirname, '../resources/icon.png'))
+      ? nativeImage.createFromPath(join(__dirname, '../../resources/icon.png'))
       : image,
   )
   tray.setToolTip('FengYu')
