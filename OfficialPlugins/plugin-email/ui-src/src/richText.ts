@@ -31,3 +31,26 @@ export function sanitizeEmailHtml(input: string): string {
 export function plainTextFromHtml(html: string): string {
   return new DOMParser().parseFromString(sanitizeEmailHtml(html), 'text/html').body.textContent?.trim() ?? ''
 }
+
+/**
+ * Decide whether an external `modelValue` change should be written back into the
+ * editor via `setContent`.
+ *
+ * Tiptap's `setContent` replaces the whole ProseMirror document. During a CJK IME
+ * composition the browser is writing into that very document node, so rewriting it
+ * mid-composition aborts the input — Chinese (and other IME) text becomes impossible
+ * to type. We therefore:
+ *   1. Never apply while a composition is in progress.
+ *   2. Skip the echo of the HTML the editor itself just emitted (avoids an editor →
+ *      parent → editor round-trip on every keystroke), which also keeps the caret
+ *      stable.
+ *
+ * @param incoming  the external value arriving through v-model
+ * @param emitted   the last HTML the editor emitted, or null if none yet
+ * @param composing whether an IME composition is currently in progress
+ */
+export function shouldApplyExternalContent(incoming: string, emitted: string | null, composing: boolean): boolean {
+  if (composing) return false
+  if (emitted !== null && sanitizeEmailHtml(incoming ?? '') === sanitizeEmailHtml(emitted)) return false
+  return true
+}

@@ -27,14 +27,14 @@ mvn install -f FengYu-Api/pom.xml -DskipTests
 mvn clean package -f FengYu/pom.xml -DskipTests
 ```
 
-The packaged backend jar lands at `FengYu/target/FengYu-4.0.0-alpha.1.jar`.
+The packaged backend jar lands at `FengYu/target/FengYu-4.0.0-alpha.2.jar`.
 
 ## Run the backend
 
 Launch the headless Spring Boot backend. It binds `127.0.0.1:24056` by default and prints `FENGYU_PORT=<n>` on startup.
 
 ```bash
-java -jar FengYu/target/FengYu-4.0.0-alpha.1.jar --token=<your-token>
+java -jar FengYu/target/FengYu-4.0.0-alpha.2.jar --token=<your-token>
 ```
 
 The entry point is `fan.summer.fengyu.HeadlessLauncher`. CLI flags are `--port` and `--token` only.
@@ -82,7 +82,7 @@ Desktop builds require Rust **and** the system WebView runtime for your platform
 
 ## Releases (Alpha)
 
-Release tags (`v4.0.0-alpha.1`, and later stable/beta/rc) trigger a GitHub Actions pipeline that
+Release tags (`v4.0.0-alpha.2`, and later stable/beta/rc) trigger a GitHub Actions pipeline that
 publishes **unsigned** Tauri packages (Windows/macOS/Linux) and a **portable Web distribution**. The
 Web archive runs the same backend + bundled Vue SPA from a folder:
 

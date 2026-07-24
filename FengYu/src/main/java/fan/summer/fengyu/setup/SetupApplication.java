@@ -9,6 +9,7 @@ import fan.summer.fengyu.web.controller.PluginMarketplaceController;
 import fan.summer.fengyu.web.controller.PluginRuntimeController;
 import fan.summer.fengyu.web.controller.PluginRuntimeFileController;
 import fan.summer.fengyu.web.controller.SettingsController;
+import fan.summer.fengyu.web.controller.SkillController;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
@@ -39,7 +40,9 @@ import org.springframework.context.annotation.FilterType;
  * meaningless before setup completes, and {@link AiConfigController} needs
  * {@code AiModeService}/{@code BackendReactivator} (which live in the {@code ai} package, not
  * scanned here). {@link ConversationController} needs the AI-history JPA repositories, absent in
- * this DB-less context. This mirrors the {@code excludeFilters} idiom already used
+ * this DB-less context. {@link SkillController} needs {@code SkillRegistry}/
+ * {@code SkillPackageService}/{@code SkillMarketplaceService} from the {@code ai.skill} package,
+ * which this context does not scan. This mirrors the {@code excludeFilters} idiom already used
  * by {@link fan.summer.fengyu.FengYuApplication} on the opposite side (it excludes this class).
  */
 @SpringBootApplication(exclude = {
@@ -55,6 +58,6 @@ import org.springframework.context.annotation.FilterType;
                         PluginRuntimeFileController.class,
                         SettingsController.class,
                         AiController.class, AiConfigController.class, AgentController.class,
-                        ConversationController.class}))
+                        ConversationController.class, SkillController.class}))
 public class SetupApplication {
 }
