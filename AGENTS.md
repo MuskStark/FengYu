@@ -14,8 +14,9 @@ Infinia (蜂语 / FengYu) is a **headless web + desktop application**, not a Jav
   (database wizard) that restarts into **APP mode**.
 - **Frontend** — a Vue 3.5 + TypeScript SPA in `frontend/` (Vuetify 3 / Material Design 3,
   Pinia, vue-router, vue-i18n). It runs identically in a browser or inside the desktop webview.
-- **Desktop** — a Tauri 2.0 shell in `desktop/` that sidecar-launches the backend JAR (release
-  builds only), waits for health, and injects the auth token into the webview.
+- **Desktop** — an Electron 43.x shell in `desktop/electron/` that sidecar-launches the backend JAR
+  (release builds only), waits for health, exposes the auth token + api-base to the renderer via a
+  `contextBridge` preload, and owns the window, system tray, logger, and auto-updater.
 - **Plugins** — isolated **`.fyp`** packages: a `manifest.json` + a sandboxed iframe UI (talking to
   the host over the `@infinia/plugin-sdk` `postMessage` bridge) + an out-of-process worker that
   speaks newline-delimited **JSON-RPC 2.0** over stdio. A worker crash can never take down the host.
@@ -32,13 +33,13 @@ in build order:
 | `OfficialPlugins` | Aggregator for official plugins (`plugin-markdown`, `plugin-excel`, `plugin-email`, `plugin-offlinepython`). |
 | `FengYu` | The headless Spring Boot app; shaded fat JAR, main class `fan.summer.fengyu.HeadlessLauncher`. |
 
-Non-Maven top-level directories: `frontend/` (Vue), `desktop/` (Tauri), plus the plugin toolchain
+Non-Maven top-level directories: `frontend/` (Vue), `desktop/` (Electron), plus the plugin toolchain
 (`FengYu-Plugin-Sdk/`, `plugin-sdk/typescript/`, `plugin-ui/vue/`, `plugin-cli/`, `plugin-spec/`).
 
 ## Two version lines (do not conflate)
 
 - **App version** — the Maven `${revision}` property (mirrored in `frontend/package.json`,
-  `desktop/src-tauri/Cargo.toml` + `tauri.conf.json`, and each official plugin's `manifest.json`).
+  `desktop/electron/package.json`, and each official plugin's `manifest.json`).
 - **Plugin toolchain version** — independent of the app; lives in `FengYu-Plugin-Sdk/pom.xml` and
   the three `@infinia/*` `package.json` files. Releasing the toolchain must never bump the app
   version, and vice-versa.
@@ -76,7 +77,7 @@ java -jar FengYu/target/FengYu-*.jar --token=<t>     # loopback, port 24056 by d
 cd frontend && npm install && npm run dev            # Vite proxies /api + /plugin-runtime → :24056
 
 # Desktop (dev)
-cd desktop && cargo tauri dev
+cd desktop/electron && npm install && npm run dev   # set FENGYU_JAR or run backend on :24056
 
 # End-to-end smoke (boots the JAR, probes every endpoint)
 scripts/e2e-smoke.sh

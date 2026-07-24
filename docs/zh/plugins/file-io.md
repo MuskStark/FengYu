@@ -28,11 +28,11 @@ interface FileRef { id: string; name: string; kind: 'file'|'directory'; access: 
 | --- | --- | --- | --- |
 | `POST /upload` | multipart `file` | `files.read` | `FileRef`（单个被上传文件，快照进 temp） |
 | `POST /upload-directory` | multipart `files` + `paths[]`；可选 `access=read-write` | `files.read`；`read-write` 同时要求 `files.read` + `files.write` | `FileRef`（由上传的目录树在 temp 中重建的目录） |
-| `POST /native` | JSON `{path, kind, access}` | `files.read` **和/或** `files.write` | `FileRef`（仅桌面端——Tauri 对话框返回一个原生路径，宿主将其包装为 ref） |
+| `POST /native` | JSON `{path, kind, access}` | `files.read` **和/或** `files.write` | `FileRef`（仅桌面端——Electron 原生对话框返回一个原生路径，宿主将其包装为 ref） |
 | `POST /output` | （无） | `files.write` | `FileRef`（一个新分配的可写输出目录） |
 | `GET /export/{ref}` | — | `files.write` | 被授权目录的 zip，以流式下载 |
 
-`/native` 仅在 Tauri 桌面外壳下才有意义，在那里 `ctx.desktop.pickFile` / `pickDirectory` 会给出真实的 OS 路径；在浏览器中，请改用 `/upload` 与 `/upload-directory`。工作目录请求在桌面端授予原生目录 `read-write` 权限，在 Web 端创建可写的上传工作副本。请求的 access 必须与插件实际持有的权限一致。
+`/native` 仅在 Electron 桌面外壳下才有意义，在那里 `ctx.desktop.pickFile` / `pickDirectory` 会给出真实的 OS 路径；在浏览器中，请改用 `/upload` 与 `/upload-directory`。工作目录请求在桌面端授予原生目录 `read-write` 权限，在 Web 端创建可写的上传工作副本。请求的 access 必须与插件实际持有的权限一致。
 
 一个需要某项权限但插件未声明该权限的请求会返回 `403`。参见 [常见陷阱](/zh/plugins/pitfalls)。
 

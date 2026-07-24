@@ -6,7 +6,7 @@ lang: zh-CN
 
 # 设计系统
 
-Infinia 4.0.0 的整套 UI——无论是宿主外壳还是插件微前端——都基于 **Vuetify 3** 和 **Material Design 3** 基线渲染。4.0.0 的桌面产品中没有 JavaFX 层；Tauri 所承载的，正是与浏览器中相同的 Vue UI。
+Infinia 4.0.0 的整套 UI——无论是宿主外壳还是插件微前端——都基于 **Vuetify 3** 和 **Material Design 3** 基线渲染。4.0.0 的桌面产品中没有 JavaFX 层；Electron 外壳所承载的，正是与浏览器中相同的 Vue UI。
 
 ## Material Design 3 基线
 

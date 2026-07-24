@@ -75,6 +75,6 @@ The backend process is the host for plugin workers, but it does **not** load plu
 
 ## Next steps
 
-- [Architecture Overview](/en/architecture/overview) — how the backend fits between the SPA and the Tauri shell.
+- [Architecture Overview](/en/architecture/overview) — how the backend fits between the SPA and the Electron shell.
 - [Desktop](/en/architecture/desktop) — how the shell supervises the SETUP → APP transition.
 - [Plugin System](/en/architecture/plugin-system) — the worker process model.

@@ -28,11 +28,11 @@ All five endpoints live under base `/api/plugin-runtime/{id}/files`. Each is gat
 | --- | --- | --- | --- |
 | `POST /upload` | multipart `file` | `files.read` | `FileRef` (a single uploaded file, snapshotted into temp) |
 | `POST /upload-directory` | multipart `files` + `paths[]`; optional `access=read-write` | `files.read`; both `files.read` + `files.write` for `read-write` | `FileRef` (a directory rebuilt in temp from the uploaded tree) |
-| `POST /native` | JSON `{path, kind, access}` | `files.read` **and/or** `files.write` | `FileRef` (desktop only — Tauri dialog returns a native path the host wraps as a ref) |
+| `POST /native` | JSON `{path, kind, access}` | `files.read` **and/or** `files.write` | `FileRef` (desktop only — the Electron native dialog returns a native path the host wraps as a ref) |
 | `POST /output` | (none) | `files.write` | `FileRef` (a freshly allocated writable output directory) |
 | `GET /export/{ref}` | — | `files.write` | A zip of the granted directory, streamed for download |
 
-`/native` is meaningful only under the Tauri desktop shell, where `ctx.desktop.pickFile` / `pickDirectory` yield real OS paths; in the browser, use `/upload` and `/upload-directory` instead. A workspace request uses native `read-write` access on desktop and an uploaded `read-write` working copy on the web. The requested access must match a permission the plugin actually holds.
+`/native` is meaningful only under the Electron desktop shell, where `ctx.desktop.pickFile` / `pickDirectory` yield real OS paths; in the browser, use `/upload` and `/upload-directory` instead. A workspace request uses native `read-write` access on desktop and an uploaded `read-write` working copy on the web. The requested access must match a permission the plugin actually holds.
 
 A request that needs a permission the plugin did not declare returns `403`. See [Pitfalls](/en/plugins/pitfalls).
 

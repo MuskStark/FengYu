@@ -6,8 +6,7 @@ description: Cut a main FengYu/Infinia application release (tag vX.Y.Z or vX.Y.Z
 # App Release
 
 Cut a **main application** release. The app version is the Maven `${revision}` property, mirrored in
-`frontend/package.json`, `desktop/src-tauri/Cargo.toml` + `tauri.conf.json`, and each official
-plugin's `manifest.json`.
+`frontend/package.json`, `desktop/electron/package.json`, and each official plugin's `manifest.json`.
 
 This skill does **not** touch the plugin toolchain version (`FengYu-Plugin-Sdk/pom.xml` /
 `@infinia/*`). Use the `plugin-tooling-release` skill for that.
@@ -38,8 +37,9 @@ agree a valid tag with the user.
 
 Read the current app version from root `pom.xml` (`<revision>`) and confirm the source manifests that
 carry a base app version are consistent with the intended release — notably each official plugin's
-`manifest.json` `version` and the desktop Tauri/Cargo manifests. Decide with the user whether the
-`${revision}` property (and its mirrors) should be bumped to the release version; do not edit yet.
+`manifest.json` `version` and the desktop Electron manifest (`desktop/electron/package.json`). Decide
+with the user whether the `${revision}` property (and its mirrors) should be bumped to the release
+version; do not edit yet.
 
 ## Step 3 — Update documentation
 
@@ -91,7 +91,8 @@ each step.** Do not run these automatically. When the user confirms:
    `📝`/`⬆️` conventional message.
 2. Create the tag `vX.Y.Z[-{alpha|beta|rc}.N]`.
 3. Push the branch and the tag — the tag push triggers `.github/workflows/fengyu-release.yml`, which
-   builds runtime JARs, the portable web archives, the unsigned Tauri packages (Win/macOS/Linux), and
-   publishes the GitHub release named "Infinia <version>".
+   builds runtime JARs, the portable web archives, the unsigned Electron packages (Win/macOS/Linux,
+   two variants per platform: with and without a bundled JRE), and publishes the GitHub release named
+   "Infinia <version>".
 
 **Never** publish the plugin toolchain (`@infinia/*`, `fengyu-plugin-sdk`) as part of an app release.

@@ -30,7 +30,7 @@ features:
     link: /en/skills/
   - icon: 🖥️
     title: Cross-Platform
-    details: The same Vue UI runs in a browser or a Tauri 2.0 desktop window on Windows, macOS, and Linux. The headless backend binds loopback only — your data stays on your machine.
+    details: The same Vue UI runs in a browser or an Electron desktop window on Windows, macOS, and Linux. The headless backend binds loopback only — your data stays on your machine.
     link: /en/architecture/overview
   - icon: 💾
     title: Multi-Database
@@ -48,7 +48,7 @@ features:
 business goal in natural language; a plan-and-execute Agent decomposes it into steps
 and orchestrates three extension surfaces — `.fyp` plugins, `.fys` skills, and
 in-process AI tools — to carry it out. It runs as a headless Spring Boot backend, a
-Vue 3 + Vuetify 3 UI, and an optional Tauri 2.0 desktop shell.
+Vue 3 + Vuetify 3 UI, and an optional Electron desktop shell.
 
 ::: info 4.0.0-alpha
 Infinia 4.0.0 is an **unsigned Alpha**. See the [Quick Start](/en/quickstart) to build

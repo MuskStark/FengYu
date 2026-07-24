@@ -120,7 +120,7 @@ export default {
 | `ctx.api.invoke(action, args?)` | 通往 worker 的便捷 RPC。 |
 | `ctx.notify(msg)` | 显示一个宿主 toast。 |
 | `ctx.apiBase`, `ctx.token` | 后端基址 URL 与用于原始 `fetch` 的 `X-FengYu-Token`。 |
-| `ctx.desktop?` | 原生 Tauri 文件对话框（`pickFile`、`pickDirectory`）——**仅**在 Tauri 下存在，浏览器中为 `undefined`。 |
+| `ctx.desktop?` | 原生 Electron 文件对话框（`pickFile`、`pickDirectory`）——**仅**在 Electron 桌面外壳下存在，浏览器中为 `undefined`。 |
 
 locale 契约见 [国际化](/zh/plugins/i18n)，Vue/Vuetify 去重规则见 [常见陷阱](/zh/plugins/pitfalls)。
 
