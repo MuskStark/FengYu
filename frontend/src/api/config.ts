@@ -2,22 +2,23 @@
  * Backend base URL + token resolution.
  *
  * In dev, Vite proxies /api and /plugin-ui to the backend, so the base URL is
- * empty (same-origin). In a packaged Tauri build the backend runs on a local
- * port and injects both the base URL and the token onto `window`.
+ * empty (same-origin). In the Electron desktop shell the backend runs on a
+ * loopback port and the preload exposes `apiBase()`/`token()` snapshots on
+ * `window.fengyu` (see electron-env.d.ts).
  *
- * Token precedence: window global (Tauri) → Vite env → ''.
+ * Token precedence: window.fengyu (Electron) → Vite env → ''.
  */
 
 export function getApiBase(): string {
-  if (typeof window !== 'undefined' && window.__FENGYU_API_BASE__) {
-    return window.__FENGYU_API_BASE__
+  if (typeof window !== 'undefined' && window.fengyu) {
+    return window.fengyu.apiBase()
   }
   return import.meta.env.VITE_FENGYU_API_BASE ?? ''
 }
 
 export function getToken(): string {
-  if (typeof window !== 'undefined' && window.__FENGYU_TOKEN__) {
-    return window.__FENGYU_TOKEN__
+  if (typeof window !== 'undefined' && window.fengyu) {
+    return window.fengyu.token()
   }
   return import.meta.env.VITE_FENGYU_TOKEN ?? ''
 }
@@ -34,7 +35,7 @@ export function backendUrl(path: string): string {
  *
  * Plugin iframes need `allow-same-origin` so their ESM entrypoints execute, but they must not
  * share the shell's origin because `allow-scripts + allow-same-origin` would otherwise let a
- * third-party plugin reach the parent DOM. A different loopback port (dev/Tauri) or hostname
+ * third-party plugin reach the parent DOM. A different loopback port (dev/Electron) or hostname
  * (same-port web serving) preserves that isolation boundary.
  */
 export function pluginAssetUrl(path: string): string {
