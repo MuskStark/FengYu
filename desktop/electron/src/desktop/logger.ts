@@ -4,18 +4,22 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 
 /**
- * Configure electron-log to write alongside the backend logs (~/.fengyu/logs).
+ * Configure electron-log to write the desktop log alongside the backend logs
+ * (~/.fengyu/logs). Backend stdout is teed to a SEPARATE file
+ * (backend-stdout.log), distinct from desktop.log, matching the original Rust
+ * behavior of keeping backend output separate.
  *
  * NOTE: deviates from the task brief. The brief teed backend lines via
  * `log.transports.file.getFile().write(...)`, but the electron-log typings
  * (LogFile interface) expose no `write()` method on the file handle (and the
  * private runtime class only has `writeLine`). That call would fail `tsc` under
- * strict mode. We instead append backend lines directly with the same file path
- * the file transport resolves to, so backend output lands in the same desktop.log.
+ * strict mode. We instead append backend lines directly via appendFileSync to
+ * the dedicated backend-stdout.log path.
  */
 export function initLogger() {
   const logDir = join(homedir(), '.fengyu', 'logs')
   const desktopLogPath = join(logDir, 'desktop.log')
+  const backendStdoutPath = join(logDir, 'backend-stdout.log')
   log.transports.file.resolvePathFn = () => desktopLogPath
   log.transports.file.maxSize = 5 * 1024 * 1024 // 5 MB rotation
   log.transports.console.level = 'info'
@@ -23,10 +27,10 @@ export function initLogger() {
   log.info('[desktop] logger initialized')
 
   const backendLine = (line: string) => {
-    // Tee backend stdout into the same desktop.log (mirrors the backend's own
-    // "[backend] ..." lines). Append-only is safe and rotation-independent.
+    // Tee backend stdout to a SEPARATE file (distinct from desktop.log),
+    // matching the original Rust behavior of keeping backend output separate.
     try {
-      appendFileSync(desktopLogPath, `[backend] ${line}\n`)
+      appendFileSync(backendStdoutPath, `[backend] ${line}\n`)
     } catch {
       // Logging must never throw into the backend stdout handler.
     }
