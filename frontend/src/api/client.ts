@@ -276,7 +276,7 @@ export const api = {
     return http.post('/api/skills/upload', body, { headers: { 'Content-Type': undefined } })
   },
 
-  /** Install a .fys archive by absolute filesystem path (Tauri sidecar path). */
+  /** Install a .fys archive by absolute filesystem path (desktop shell native path). */
   uploadNativeSkill: (path: string) =>
     http.post('/api/skills/upload-native', { path }),
 
