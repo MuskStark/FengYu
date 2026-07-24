@@ -300,8 +300,9 @@ jobs:
         shell: bash
         run: |
           npx electron-builder --config.directories.output=../dist-electron-jre \
+            --config.productName=Infinia-JRE \
             --config.extraMetadata.name=Infinia-JRE \
-            --config.extraResources="{\"from\":\"resources/jre\",\"to\":\"jre\",\"filter\":[\"**/*\"]}"
+            --config.extraResources="[{\"from\":\"resources/jre\",\"to\":\"jre\",\"filter\":[\"**/*\"]}]"
 
       - name: Upload desktop bundles
         uses: actions/upload-artifact@v4
