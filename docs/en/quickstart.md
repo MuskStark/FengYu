@@ -69,7 +69,7 @@ The Electron desktop shell sidecar-launches the Java backend. From the repo root
 ```bash
 cd desktop/electron
 npm install
-npm run dev       # set FENGYU_JAR to a built shaded jar, or run the backend externally on :24056
+npm run dev       # REQUIRES FENGYU_JAR set to a built shaded jar (build it first: ./mvnw -pl FengYu -am package -DskipTests)
 ```
 
 For a distributable build:

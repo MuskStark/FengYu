@@ -19,11 +19,13 @@ The shell behaves differently depending on whether it is packaged:
 
 | Profile | Backend | Window |
 | --- | --- | --- |
-| **Dev** (`!app.isPackaged`) | External — either a JAR pointed at by `FENGYU_JAR`, or a backend already running on `:24056` (reached via the Vite proxy) | Opens immediately, loads `localhost:5173` |
+| **Dev** (`!app.isPackaged`) | Spawned as a jar sidecar by the shell, using the jar at `FENGYU_JAR` (required) | Opens immediately, loads `localhost:5173` |
 | **Release** (`app.isPackaged`) | Spawned as a jar sidecar by the shell | Opens after the backend is healthy, loads the bundled SPA |
 
-In dev the developer starts the backend and the Vite dev server separately; the shell just hosts the
-window. In release the shell owns the backend process end to end.
+In dev the shell still owns the backend process — it spawns the jar pointed at by `FENGYU_JAR`, which is
+**required** (the shell throws `Dev mode requires FENGYU_JAR...` if it is unset). The Vite dev server
+(port 5173) proxies `/api` to the shell-spawned backend, and is also how the developer runs the frontend
+in a browser separately. In release the shell owns the backend process end to end.
 
 ## Backend spawn (release)
 

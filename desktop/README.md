@@ -52,26 +52,28 @@ npm install
 npm run dev      # = npm run build:ts && electron .
 ```
 
-The shell needs a backend to talk to. Two options:
+The shell **always spawns its own backend** — there is no "connect to an already-running backend" path
+in dev (unlike the old Tauri shell). So you must point `FENGYU_JAR` at a packaged shaded jar:
 
-1. **Point at a built JAR** — set `FENGYU_JAR` to a packaged shaded jar and the shell will spawn it:
+1. **Build the jar** (once, or after any backend change):
+
+   ```bash
+   ./mvnw -pl FengYu -am package -DskipTests
+   ```
+
+2. **Set `FENGYU_JAR`** to the resulting jar, then start the shell:
 
    ```bash
    export FENGYU_JAR=/path/to/FengYu/target/FengYu-4.0.0-alpha.2.jar
    npm run dev
    ```
 
-2. **Run the backend externally** — start the backend yourself on `:24056` (the shell's
-   `runtime-layout` falls back to an externally running backend when no JAR is configured):
+   If `FENGYU_JAR` is unset, the shell throws at startup (`Dev mode requires FENGYU_JAR...`).
 
-   ```bash
-   java -jar FengYu/target/FengYu-4.0.0-alpha.2.jar --port=24056 --token=<t>
-   ```
-
-   Then start the frontend Vite dev server in a second terminal (`cd frontend && npm run dev`) so the
-   Electron window (which loads `localhost:5173`) proxies `/api` + `/plugin-runtime` to the backend.
-
-The frontend SPA is loaded from the Vite dev server in dev, so you need the frontend running too.
+The frontend SPA is loaded from the Vite dev server in dev, so you also need the frontend running in a
+second terminal (`cd frontend && npm run dev`). Its Vite server (port 5173) proxies `/api` +
+`/plugin-runtime` to the backend the shell spawned, and is useful on its own for browser-only frontend
+work — but the Electron shell itself never relies on an externally started backend.
 
 ## Staging the backend for packaging
 

@@ -14,10 +14,10 @@ Infinia 桌面外壳是一个用 TypeScript 编写（主进程）的 **Electron 
 
 | Profile | 后端 | 窗口 |
 | --- | --- | --- |
-| **Dev**（`!app.isPackaged`） | 外部——由 `FENGYU_JAR` 指向某个 jar，或已运行在 `:24056` 的后端（通过 Vite 代理访问） | 立即打开，加载 `localhost:5173` |
+| **Dev**（`!app.isPackaged`） | 由外壳以 jar sidecar 方式拉起，使用 `FENGYU_JAR` 指向的 jar（必填） | 立即打开，加载 `localhost:5173` |
 | **Release**（`app.isPackaged`） | 由外壳以 jar sidecar 方式拉起 | 在后端健康后打开，加载内嵌的 SPA |
 
-在开发模式下，开发者分别启动后端和 Vite 开发服务器；外壳只负责承载窗口。在发布模式下，外壳端到端地掌管后端进程。
+在开发模式下，外壳仍然掌管后端进程——它会拉起 `FENGYU_JAR` 指向的 jar，该变量**必填**（未设置时外壳会抛出 `Dev mode requires FENGYU_JAR...`）。Vite 开发服务器（端口 5173）会把 `/api` 代理到外壳拉起的后端，开发者也可借此单独在浏览器中运行前端。在发布模式下，外壳端到端地掌管后端进程。
 
 ## 后端拉起（发布版）
 
