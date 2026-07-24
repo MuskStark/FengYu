@@ -9,7 +9,7 @@ lang: en
 **Infinia** (蜂语 / FengYu) is an *AI-native orchestration platform*. A plan-and-execute
 Agent turns natural-language goals into multi-step business workflows by orchestrating
 three extension surfaces — `.fyp` plugins, `.fys` skills, and in-process AI tools — on
-top of a headless Spring Boot backend, a Vue 3 + Vuetify 3 UI, and a Tauri 2.0 desktop shell.
+top of a headless Spring Boot backend, a Vue 3 + Vuetify 3 UI, and an Electron desktop shell.
 
 ## How orchestration works
 

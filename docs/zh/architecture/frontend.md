@@ -6,7 +6,7 @@ lang: zh-CN
 
 # 前端
 
-Infinia 前端是一个用 TypeScript 编写的 **Vue 3 单页应用**。它渲染宿主外壳，并在运行时以微前端方式加载插件 UI。同一份产物在浏览器标签页和 Tauri WebView 中原封不动地运行。
+Infinia 前端是一个用 TypeScript 编写的 **Vue 3 单页应用**。它渲染宿主外壳，并在运行时以微前端方式加载插件 UI。同一份产物在浏览器标签页和 Electron BrowserWindow 中原封不动地运行。
 
 ## 技术栈
 
@@ -48,15 +48,15 @@ mod.default.mount(el, ctx)
 
 ## 桌面端集成
 
-当 SPA 在 Tauri 内运行时，`frontend/src/mf/desktop.ts` 作为 Tauri 原生对话框插件的外观（facade），暴露 `pickFile` 和 `pickDirectory`（底层是 `@tauri-apps/plugin-dialog`）。在普通浏览器中，这些会回退到浏览器等价实现。
+当 SPA 在 Electron 外壳内运行时，`frontend/src/mf/desktop.ts` 作为 `window.fengyu` bridge 的外观（facade），暴露 `pickFile` 和 `pickDirectory`（底层通过 IPC 走 Electron 的原生对话框）。在普通浏览器中，这些会回退到浏览器等价实现。
 
-Tauri 外壳在页面加载前注入三个全局变量：
+Electron 外壳在页面加载前通过 preload 的 `contextBridge` 暴露 `window.fengyu`：
 
-- `window.__FENGYU_TOKEN__`——每次启动的 `X-FengYu-Token` 值
-- `window.__FENGYU_PORT__`——后端以 `FENGYU_PORT=<n>` 打印出的端口
-- `window.__FENGYU_API_BASE__`——例如 `http://127.0.0.1:{port}`
+- `window.fengyu.apiBase()`——后端基址 URL，例如 `http://127.0.0.1:{port}`（只读快照）
+- `window.fengyu.token()`——每次启动的 `X-FengYu-Token` 值（只读快照）
+- `window.fengyu.desktop`——`true` 特性标志（取代旧的 `isTauri()` 探测）
 
-`connection` store 读取它们来配置每一次 API 调用。在开发模式（浏览器）下，Vite 代理把同样的 `/api` 和 `/plugin-runtime` 路径转发到 `localhost:24056`。
+`connection` store / `config.ts` 读取它们来配置每一次 API 调用。在普通浏览器中 `window.fengyu` 为 `undefined`，此时 `config.ts` 回退到环境变量；在开发模式（浏览器）下，Vite 代理把同样的 `/api` 和 `/plugin-runtime` 路径转发到 `localhost:24056`。
 
 ## 初始化守卫
 
@@ -65,5 +65,5 @@ Tauri 外壳在页面加载前注入三个全局变量：
 ## 下一步
 
 - [架构概述](/zh/architecture/overview)——SPA 如何夹在后端与外壳之间。
-- [桌面端](/zh/architecture/desktop)——`window.__FENGYU_*` 全局变量从何而来。
+- [桌面端](/zh/architecture/desktop)——`window.fengyu` bridge 从何而来。
 - [设计系统](/zh/design-system)——共享的 MD3 + Vuetify 主题模型。

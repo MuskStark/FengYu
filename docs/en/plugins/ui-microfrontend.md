@@ -120,7 +120,7 @@ The `PluginContext` the host passes gives the MF access to shared infrastructure
 | `ctx.api.invoke(action, args?)` | Convenience RPC to the worker. |
 | `ctx.notify(msg)` | Show a host toast. |
 | `ctx.apiBase`, `ctx.token` | Backend base URL and `X-FengYu-Token` for raw `fetch`. |
-| `ctx.desktop?` | Native Tauri file dialogs (`pickFile`, `pickDirectory`) — present **only** under Tauri, `undefined` in the browser. |
+| `ctx.desktop?` | Native Electron file dialogs (`pickFile`, `pickDirectory`) — present **only** under the Electron desktop shell, `undefined` in the browser. |
 
 See [i18n](/en/plugins/i18n) for the locale contract and [Pitfalls](/en/plugins/pitfalls) for the Vue/Vuetify dedupe rule.
 

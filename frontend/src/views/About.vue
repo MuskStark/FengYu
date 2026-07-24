@@ -51,7 +51,7 @@ const frontendDeps = [
   { name: 'TypeScript', url: 'https://www.typescriptlang.org/', descKey: 'about.dep.typescript' },
   { name: 'Vitest', url: 'https://vitest.dev/', descKey: 'about.dep.vitest' },
   { name: 'Sass', url: 'https://sass-lang.com/', descKey: 'about.dep.sass' },
-  { name: 'Tauri', url: 'https://tauri.app/', descKey: 'about.dep.tauri' },
+  { name: 'Electron', url: 'https://www.electronjs.org/', descKey: 'about.dep.electron' },
 ]
 </script>
 

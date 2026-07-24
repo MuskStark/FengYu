@@ -22,7 +22,7 @@ Out of scope (never touch here):
 ## Two version lines — do not conflate
 
 - **App version** — Maven `${revision}` (root `pom.xml`), mirrored in `frontend/package.json`,
-  `desktop/src-tauri/Cargo.toml` + `tauri.conf.json`, and each official plugin's `manifest.json`.
+  `desktop/electron/package.json`, and each official plugin's `manifest.json`.
 - **Plugin toolchain version** — independent; `FengYu-Plugin-Sdk/pom.xml` and the three
   `@infinia/*` `package.json` files (`plugin-cli/`, `plugin-sdk/typescript/`, `plugin-ui/vue/`).
 

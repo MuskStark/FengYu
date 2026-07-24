@@ -139,7 +139,7 @@
       "typescript": "类型安全语言",
       "vitest": "单元测试",
       "sass": "样式预处理",
-      "tauri": "桌面壳(Rust)"
+      "electron": "桌面壳(Electron)"
     }
   }
 }

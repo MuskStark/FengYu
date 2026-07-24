@@ -15,7 +15,7 @@ The reactor consists of two Maven modules — build them in order, then launch t
 | --- | --- | --- |
 | JDK | 21+ (Eclipse Temurin recommended) | Backend (`Java 21`) |
 | Node.js + npm | 20+ | Frontend dev server |
-| Rust + `tauri-cli` | stable | Desktop shell only (skip if you only need web) |
+| Node.js + npm | 24.17+ | Desktop shell only (skip if you only need web) |
 
 ## Build from source
 
@@ -64,38 +64,42 @@ Run it whenever you want a quick end-to-end sanity check after a build.
 
 ## Run desktop (dev)
 
-The Tauri 2.0 desktop shell sidecar-launches the Java jar. From the repo root:
+The Electron desktop shell sidecar-launches the Java backend. From the repo root:
 
 ```bash
-cd desktop
-cargo tauri dev
+cd desktop/electron
+npm install
+npm run dev       # set FENGYU_JAR to a built shaded jar, or run the backend externally on :24056
 ```
 
 For a distributable build:
 
 ```bash
-cargo tauri build
+npm run build     # = npm run build:ts && electron-builder (host platform)
 ```
 
 ::: tip
-Desktop builds require Rust **and** the system WebView runtime for your platform. See the [Tauri prerequisites](https://tauri.app/start/prerequisites/) if `cargo tauri dev` fails to start.
+The desktop shell ships its own Chromium (no system WebView needed). You only need Java to run the
+backend. See the [desktop README](https://github.com/MuskStark/FengYu/blob/4.0.0-FengYu/desktop/README.md)
+for staging the JAR / plugins and the two with/without-JRE build variants.
 :::
 
 ## Releases (Alpha)
 
 Release tags (`v4.0.0-alpha.2`, and later stable/beta/rc) trigger a GitHub Actions pipeline that
-publishes **unsigned** Tauri packages (Windows/macOS/Linux) and a **portable Web distribution**. The
-Web archive runs the same backend + bundled Vue SPA from a folder:
+publishes **unsigned** Electron packages (Windows/macOS/Linux) and a **portable Web distribution**.
+The Web archive runs the same backend + bundled Vue SPA from a folder:
 
 ```bash
 # Unzip Infinia-<version>-web.zip, then:
 ./run.sh          # macOS/Linux (run.bat on Windows)
 ```
 
-Requires **Java 21**. The backend binds **loopback only** (`127.0.0.1`). Code-signing, a bundled JRE,
-and the auto-updater are deferred to a later release.
+Requires **Java 21** (or use the Electron build that bundles a JRE). The backend binds **loopback
+only** (`127.0.0.1`). Code-signing is deferred to a later release; the Electron auto-updater ships
+with Alpha (GitHub Releases, unsigned).
 
 ## Next steps
 
-- [Architecture overview](/en/architecture/overview) — how the headless backend, Vue UI, and Tauri shell fit together.
+- [Architecture overview](/en/architecture/overview) — how the headless backend, Vue UI, and Electron shell fit together.
 - [Configuration](/en/guide/configuration) — ports, tokens, database selection, and AI backends.

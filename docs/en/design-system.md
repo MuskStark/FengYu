@@ -6,7 +6,7 @@ lang: en
 
 # Design System
 
-Infinia 4.0.0 renders its entire UI — host shell and plugin micro-frontends alike — with **Vuetify 3** on the **Material Design 3** baseline. There is no JavaFX layer in the 4.0.0 desktop product; Tauri hosts the same Vue UI the browser does.
+Infinia 4.0.0 renders its entire UI — host shell and plugin micro-frontends alike — with **Vuetify 3** on the **Material Design 3** baseline. There is no JavaFX layer in the 4.0.0 desktop product; the Electron shell hosts the same Vue UI the browser does.
 
 ## Material Design 3 baseline
 
