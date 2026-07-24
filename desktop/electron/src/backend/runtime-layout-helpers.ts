@@ -1,5 +1,4 @@
 import { existsSync } from 'node:fs'
-import { lookup } from 'node:dns/promises'
 import type { RuntimeLayout } from './runtime-layout'
 
 /**

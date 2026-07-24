@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { type ChildProcess } from 'node:child_process'
 
 /** What the orchestrator does after the backend first boots. */
 export enum StartupAction {
@@ -95,6 +95,3 @@ export function superviseSetupRestart(cfg: SupervisorConfig): () => void {
     stopped = true
   }
 }
-
-// re-export spawn for the orchestrator
-export { spawn }

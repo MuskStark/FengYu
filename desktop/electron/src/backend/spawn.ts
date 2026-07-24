@@ -74,7 +74,13 @@ export async function spawnBackend(opts: SpawnOptions): Promise<SpawnedBackend> 
     throw new Error(`failed to spawn java: ${err.message}`)
   })
 
-  const port = await readPort(proc, { deadlineMs, pollIntervalMs, shouldCancel, onLine: opts.onLine })
+  let port: number
+  try {
+    port = await readPort(proc, { deadlineMs, pollIntervalMs, shouldCancel, onLine: opts.onLine })
+  } catch (err) {
+    child.kill()
+    throw err
+  }
 
   return { child, port }
 }
