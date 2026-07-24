@@ -1,7 +1,7 @@
 name: FengYu-Release
 
 # Publish v4.0.0-alpha.1 (and later stable/alpha/beta/rc tags) as:
-#   - unsigned Windows/macOS/Linux Tauri desktop packages
+#   - unsigned Windows/macOS/Linux Electron desktop packages (with + without bundled JRE)
 #   - a portable, loopback-only Web distribution (zip + tar.gz)
 #
 # Shared inputs (one Vue bundle + one shaded JAR + official .fyp plugins) feed both the
@@ -31,7 +31,7 @@ jobs:
   # Setup — resolve the release tag once via the tested resolver script.
   #   tag:         raw tag (e.g. "v4.0.0-alpha.1")
   #   version:     tag without the leading v  (e.g. "4.0.0-alpha.1") — for JAR/zip names
-  #   app_version: numeric-only version      (e.g. "4.0.0") — for the Tauri bundle version
+  #   app_version: numeric-only version      (e.g. "4.0.0") — for the desktop bundle version
   #   prerelease:  "true"/"false"            — drives the GitHub prerelease flag
   # ==========================================================================
   setup:
@@ -207,9 +207,11 @@ jobs:
           if-no-files-found: error
 
   # ==========================================================================
-  # Desktop — build the Tauri bundle for each platform.
-  # CI stages the tested JAR + .fyp plugins into desktop/src-tauri/binaries/ first,
-  # then runs `cargo tauri build` with the resolved numeric app version.
+  # Desktop — build the Electron bundle for each platform (with + without JRE).
+  # CI stages the tested JAR + .fyp plugins into desktop/electron/resources/binaries/,
+  # builds the Vue SPA into desktop/electron/frontend-dist/ (loaded via loadFile in
+  # packaged mode), generates a jlink JRE for the with-JRE variant, then runs
+  # electron-builder twice. Both variants are uploaded per platform.
   # ==========================================================================
   desktop:
     needs: [setup, build-runtime]
@@ -235,29 +237,37 @@ jobs:
         with:
           node-version: '24.18.0'
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: desktop/electron/package-lock.json
 
-      - name: Set up JDK 21
+      - name: Set up JDK 21 (for jlink)
         uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Set up Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-
       - name: Install frontend deps
         run: npm ci
         working-directory: frontend
 
-      - name: Install Linux system dependencies (Tauri)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Build frontend SPA
+        run: npm run build
+        working-directory: frontend
 
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --version "^2.0" --locked
+      - name: Stage frontend SPA for the Electron bundle
+        shell: bash
+        run: |
+          # create-window.ts loads the packaged SPA from <electron>/frontend-dist/.
+          rm -rf desktop/electron/frontend-dist
+          cp -R frontend/dist desktop/electron/frontend-dist
+          ls desktop/electron/frontend-dist
+
+      - name: Install desktop deps
+        run: npm ci
+        working-directory: desktop/electron
+
+      - name: Run desktop unit tests
+        run: npm test
+        working-directory: desktop/electron
 
       - name: Download shared inputs
         uses: actions/download-artifact@v5
@@ -265,24 +275,41 @@ jobs:
           path: inputs
           merge-multiple: true
 
-      - name: Stage runtime resources for the Tauri bundle
+      - name: Stage runtime resources
         shell: bash
         run: |
-          mkdir -p desktop/src-tauri/binaries/plugins
-          cp inputs/Infinia.jar desktop/src-tauri/binaries/FengYu.jar
-          cp inputs/*.fyp desktop/src-tauri/binaries/plugins/
-          ls -R desktop/src-tauri/binaries
+          mkdir -p desktop/electron/resources/binaries/plugins
+          cp inputs/Infinia.jar desktop/electron/resources/binaries/FengYu.jar
+          cp inputs/*.fyp desktop/electron/resources/binaries/plugins/
+          ls -R desktop/electron/resources/binaries
 
-      - name: Build Tauri bundle
-        working-directory: desktop/src-tauri
+      - name: Build Electron bundle (without JRE)
+        working-directory: desktop/electron
         shell: bash
-        run: cargo tauri build --config "{\"version\":\"$APP_VERSION\"}"
+        run: npx electron-builder --config.directories.output=../dist-electron-lite
 
-      - name: Upload desktop bundle
+      - name: Generate jlink JRE
+        shell: bash
+        run: |
+          desktop/electron/scripts/build-jre.sh \
+            desktop/electron/resources/binaries/FengYu.jar \
+            desktop/electron/resources/jre
+
+      - name: Build Electron bundle (with JRE)
+        working-directory: desktop/electron
+        shell: bash
+        run: |
+          npx electron-builder --config.directories.output=../dist-electron-jre \
+            --config.extraMetadata.name=Infinia-JRE \
+            --config.extraResources="{\"from\":\"resources/jre\",\"to\":\"jre\",\"filter\":[\"**/*\"]}"
+
+      - name: Upload desktop bundles
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: desktop/src-tauri/target/release/bundle/**
+          path: |
+            desktop/dist-electron-lite/**
+            desktop/dist-electron-jre/**
           if-no-files-found: error
 
   # ==========================================================================
@@ -351,10 +378,14 @@ jobs:
 
             ${{ steps.prerelease.outputs.warning }}
 
-            ### Desktop (unsigned Tauri packages)
+            ### Desktop (unsigned Electron packages)
             Native installers for Windows, macOS, and Linux. These are **unsigned** Alpha builds —
-            your OS may warn about an unidentified developer. Code-signing and a bundled JRE are
-            deferred to a later release.
+            your OS may warn about an unidentified developer.
+
+            Two variants are published per platform:
+            - **`Infinia-JRE-*`** — bundles a jlink-minimized Java 21 runtime; self-contained, no
+              external Java needed.
+            - **`Infinia-*`** (no `-JRE` suffix) — smaller download; requires **Java 21+** on `PATH`.
 
             ### Web (portable, loopback-only)
             `Infinia-${{ env.VERSION }}-web.zip` / `.tar.gz` — unzip and run:
