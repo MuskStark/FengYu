@@ -13,7 +13,7 @@ the former Tauri shell; the backend lifecycle it implements is **unchanged**.
 
 | Tool | Version | Used for |
 | --- | --- | --- |
-| Node.js + npm | 24.17+ | Electron main process + build toolchain |
+| Node.js + npm | 24.18.0 | Electron main process + build toolchain |
 | JDK | 21+ (Eclipse Temurin recommended) | Backend JAR (and the bundled JRE build, if any) |
 
 The desktop shell does **not** require Rust or a system WebView runtime — Electron ships its own
