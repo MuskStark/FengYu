@@ -6,7 +6,8 @@ lang: en
 
 # Quick Start
 
-Get Infinia 4.0.0 running from source in a few minutes. The reactor consists of two Maven modules — build them in order, then launch the backend and frontend.
+Get Infinia 4.0.0 — an AI-native orchestration platform — running from source in a few minutes.
+The reactor consists of two Maven modules — build them in order, then launch the backend and frontend.
 
 ## Prerequisites
 

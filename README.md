@@ -2,9 +2,11 @@
 
 ![Infinia](https://img.shields.io/badge/Infinia-Web%20%2B%20Desktop-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue) ![Maven](https://img.shields.io/badge/Maven-3.6+-red) ![Version](https://img.shields.io/badge/version-4.0.0--alpha.1-blue)
 
-**Infinia** (蜂语) is a *modular toolbox* — a growing collection of utility tools (Excel splitting, PDF
-processing, email, an AI chat assistant, developer helpers, and more) with a plugin-based
-architecture and automatic service discovery.
+**Infinia** (蜂语 / FengYu) is an *AI-native orchestration platform*. A plan-and-execute Agent
+turns natural-language goals into multi-step business workflows by orchestrating three extension
+surfaces — `.fyp` plugins, `.fys` skills, and in-process AI tools. It runs as a headless Spring Boot
+backend, a Vue 3.5 + Vuetify 3 UI, and an optional Tauri 2.0 desktop shell; built-in tools (Excel
+splitting, email, markdown, and more) ship as official plugins the Agent can call.
 
 > ### 🚧 4.0.0-alpha.2 — web + desktop
 > This branch (`4.0.0-FengYu`) re-architects Infinia from a JavaFX desktop app into a **web +
@@ -89,14 +91,23 @@ a later release.
 
 ## Features
 
-- **🤖 AI Chat & Agent** — Multi-backend chat (Ollama, OpenAI, Anthropic, DeepSeek) with streaming, thinking cards, and tool calls, plus a plan-and-execute agent with approvals. See [AI Chat](docs/en/guide/ai-chat) / [AI Agent](docs/en/guide/ai-agent).
-- **🧩 Plugin Marketplace** — Browse, install, update, enable/disable, and uninstall `.fyp` plugin packages: JSON-RPC workers + micro-frontend UIs. See [Marketplace](docs/en/plugins/marketplace).
+- **🤖 AI Agent (the spine)** — A plan-and-execute Agent decomposes a goal into steps and orchestrates the surfaces below. Sensitive actions require your approval. Multi-backend (Ollama, OpenAI, Anthropic, DeepSeek) with streaming, thinking cards, and tool calls. See [AI Agent](docs/en/guide/ai-agent) / [AI Chat](docs/en/guide/ai-chat).
+- **🧩 Plugins (`.fyp`)** — Capabilities the Agent calls: isolated packages of a JSON-RPC worker + micro-frontend UI, installed from the marketplace. See [Marketplace](docs/en/plugins/marketplace).
+- **📜 Skills (`.fys`)** — Progressive-disclosure domain knowledge and procedures the Agent loads on demand. See [Skills](docs/en/skills/).
 - **📊 Excel Splitter** — Split workbooks by sheet, column value, or complex rules — an official plugin with six AI tools. See [Excel](docs/en/plugins/official-excel).
 - **📧 Email Center** — Multi-account SMTP/IMAP, contact/tag management, filename-tag batch sending, manual archive collection, and seven confirmation-first AI tools. See [Email Center](docs/en/plugins/email-center.md).
 - **📝 Markdown Editor** — Split-pane editor with isolated server-side rendering. See [Markdown](docs/en/plugins/official-markdown).
 - **💾 Multi-Database** — First-launch wizard picks H2, SQLite, MySQL, or PostgreSQL; passwords AES-GCM encrypted. See [Database](docs/en/guide/database).
 - **🎨 Material Design 3** — Vuetify 3 MD3 UI, shared with plugin micro-frontends, dark and light themes. See [Design System](docs/en/design-system).
 - **🌍 Internationalization** — English-first docs and a localized Vue UI (vue-i18n).
+
+## How it works
+
+You state a business goal in chat; the Agent plans steps and calls the best-fit surface — a `.fyp`
+plugin for a concrete capability, a `.fys` skill for domain procedure, or an in-process AI tool.
+Steps that touch the outside world (sending email, writing files, mutating data) need your explicit
+approval. Results flow back into the conversation, and the Agent re-plans on failure. See the
+[Features](docs/en/features) page for the full capability matrix.
 
 ---
 
