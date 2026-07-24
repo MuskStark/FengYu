@@ -1,8 +1,5 @@
-# Rust / Tauri build output
-src-tauri/target/
-# The backend jar is copied in at build time, never tracked.
-src-tauri/binaries/*.jar
-# Official .fyp plugins are staged into the bundle by CI, never tracked.
-src-tauri/binaries/plugins/
-# Generated Tauri gen dir
-src-tauri/gen/
+electron/node_modules/
+electron/dist/
+electron/out/
+electron/resources/binaries/
+electron/resources/jre/
