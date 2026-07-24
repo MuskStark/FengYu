@@ -6,7 +6,7 @@ lang: zh-CN
 
 # 功能特性
 
-**蜂语 FengYu**（Infinia）是一个 *AI 原生的流程编排平台*。「规划-执行」智能体把自然语言目标拆解为多步业务流程，并统一调度三类扩展面 —— `.fyp` 插件、`.fys` 技能、进程内 AI 工具 —— 之上是无头（headless）Spring Boot 后端、Vue 3 + Vuetify 3 界面与 Tauri 2.0 桌面外壳。
+**蜂语 FengYu**（Infinia）是一个 *AI 原生的流程编排平台*。「规划-执行」智能体把自然语言目标拆解为多步业务流程，并统一调度三类扩展面 —— `.fyp` 插件、`.fys` 技能、进程内 AI 工具 —— 之上是无头（headless）Spring Boot 后端、Vue 3 + Vuetify 3 界面与 Electron 桌面外壳。
 
 ## 编排如何运作
 

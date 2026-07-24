@@ -102,7 +102,7 @@ The skill lifecycle mirrors `/api/plugin-market`, exposed under `/api/skills`:
 | `GET` | `/api/skills/{id}` | Full detail for one skill, including its markdown body. |
 | `GET` | `/api/skills/market` | Marketplace merged view (`MarketplaceSkill[]`). |
 | `POST` | `/api/skills/upload` | Install a `.fys` archive (multipart `file`). → 201 |
-| `POST` | `/api/skills/upload-native` | Install a `.fys` by absolute path (Tauri). → 201 |
+| `POST` | `/api/skills/upload-native` | Install a `.fys` by absolute path (desktop). → 201 |
 | `POST` | `/api/skills/{id}/install` | Install from the configured catalog. → 201 |
 | `POST` | `/api/skills/{id}/update` | Update from the catalog (reuses install). |
 | `PATCH` | `/api/skills/{id}/enabled` | Flip the `.disabled` marker. Body `{"enabled": bool}`. |

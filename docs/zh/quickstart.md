@@ -14,7 +14,7 @@ lang: zh-CN
 | --- | --- | --- |
 | JDK | 21+（推荐 Eclipse Temurin） | 后端（`Java 21`） |
 | Node.js + npm | 20+ | 前端开发服务器 |
-| Rust + `tauri-cli` | stable | 仅桌面端外壳需要（只用 Web 可跳过） |
+| Node.js + npm | 24.17+ | 仅桌面端外壳需要（只用 Web 可跳过） |
 
 ## 从源码构建
 
@@ -63,35 +63,36 @@ scripts/e2e-smoke.sh
 
 ## 运行桌面端（开发模式）
 
-Tauri 2.0 桌面外壳会以 sidecar 方式拉起 Java jar。在仓库根目录下：
+Electron 桌面外壳会以 sidecar 方式拉起 Java 后端。在仓库根目录下：
 
 ```bash
-cd desktop
-cargo tauri dev
+cd desktop/electron
+npm install
+npm run dev       # 将 FENGYU_JAR 指向一个已构建的 shaded jar，或在外部于 :24056 上运行后端
 ```
 
 构建可分发包：
 
 ```bash
-cargo tauri build
+npm run build     # = npm run build:ts && electron-builder（当前平台）
 ```
 
 ::: tip
-桌面端构建同时需要 Rust **和** 你所用平台的系统 WebView 运行时。如果 `cargo tauri dev` 启动失败，请参考 [Tauri 前置条件](https://tauri.app/start/prerequisites/)。
+桌面外壳自带 Chromium（无需系统 WebView）。你只需 Java 来运行后端。暂存 JAR / 插件以及带/不带 JRE 的两种构建变体，请参见 [desktop README](https://github.com/MuskStark/FengYu/blob/4.0.0-FengYu/desktop/README.md)。
 :::
 
 ## 发布（Alpha）
 
-发布标签（`v4.0.0-alpha.2`，以及后续的 stable/beta/rc）会触发一条 GitHub Actions 流水线，发布**未签名**的 Tauri 安装包（Windows/macOS/Linux）和一个**可移植的 Web 分发包**。Web 压缩包直接从文件夹运行同一套后端 + 内嵌的 Vue SPA：
+发布标签（`v4.0.0-alpha.2`，以及后续的 stable/beta/rc）会触发一条 GitHub Actions 流水线，发布**未签名**的 Electron 安装包（Windows/macOS/Linux）和一个**可移植的 Web 分发包**。Web 压缩包直接从文件夹运行同一套后端 + 内嵌的 Vue SPA：
 
 ```bash
 # 解压 Infinia-<version>-web.zip 后：
 ./run.sh          # macOS/Linux（Windows 用 run.bat）
 ```
 
-需要 **Java 21**。后端仅绑定**回环地址**（`127.0.0.1`）。代码签名、内置 JRE 与自动更新器将留待后续版本实现。
+需要 **Java 21**（或使用内嵌 JRE 的 Electron 构建版本）。后端仅绑定**回环地址**（`127.0.0.1`）。代码签名将留待后续版本实现；Electron 自动更新器随 Alpha 一起发布（GitHub Releases，未签名）。
 
 ## 下一步
 
-- [架构概述](/zh/architecture/overview)——无头后端、Vue UI 与 Tauri 外壳如何拼装在一起。
+- [架构概述](/zh/architecture/overview)——无头后端、Vue UI 与 Electron 外壳如何拼装在一起。
 - [配置](/zh/guide/configuration)——端口、令牌、数据库选择与 AI 后端。
