@@ -3,9 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const workflow = readFileSync(new URL('../.github/workflows/fengyu-release.yml', import.meta.url), 'utf8')
-const tauriConfig = JSON.parse(
-  readFileSync(new URL('../desktop/src-tauri/tauri.conf.json', import.meta.url), 'utf8'),
-)
+const builderConfig = readFileSync(new URL('../desktop/electron/electron-builder.yml', import.meta.url), 'utf8')
 const desktopJob = workflow.slice(
   workflow.indexOf('\n  desktop:'),
   workflow.indexOf('\n  release:'),
@@ -34,17 +32,24 @@ test('builds Maven artifacts with the full release version', () => {
   assert.doesNotMatch(workflow, /\.\/mvnw -am test package -Drevision="\$APP_VERSION"/)
 })
 
-test('runs the production frontend build from the Tauri app directory', () => {
-  assert.equal(tauriConfig.build.beforeBuildCommand, 'cd ../frontend && npm run build')
-  assert.equal(tauriConfig.build.frontendDist, '../../frontend/dist')
+test('electron-builder targets NSIS on Windows, DMG on macOS, AppImage on Linux', () => {
+  assert.match(builderConfig, /win:\s*\n\s*target:\s*nsis/)
+  assert.match(builderConfig, /mac:\s*\n\s*target:/)
+  assert.match(builderConfig, /linux:\s*\n\s*target:\s*AppImage/)
 })
 
-test('prepares the frontend in every clean desktop runner', () => {
+test('electron-builder bundles the FengYu jar + plugins as extraResources', () => {
+  assert.match(builderConfig, /from: resources\/binaries\/FengYu\.jar/)
+  assert.match(builderConfig, /from: resources\/binaries\/plugins/)
+})
+
+test('desktop job builds two variants and runs unit tests', () => {
   assert.match(desktopJob, /FENGYU_RELEASE_VERSION: \${{ needs\.setup\.outputs\.version }}/)
-  assert.match(
-    desktopJob,
-    /- name: Install frontend deps\s+run: npm ci\s+working-directory: frontend/,
-  )
+  assert.match(desktopJob, /- name: Install frontend deps\s+run: npm ci\s+working-directory: frontend/)
+  assert.match(desktopJob, /- name: Run desktop unit tests\s+run: npm test\s+working-directory: desktop\/electron/)
+  assert.match(desktopJob, /Build Electron bundle \(without JRE\)/)
+  assert.match(desktopJob, /Build Electron bundle \(with JRE\)/)
+  assert.match(desktopJob, /Generate jlink JRE/)
 })
 
 test('flattens nested desktop installers before checksums and release upload', () => {

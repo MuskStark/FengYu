@@ -8,15 +8,19 @@ let tray: Tray | null = null
  * The window's close button hides to tray; only "Quit" tears down the backend.
  */
 export function createTray(win: BrowserWindow, onQuit: () => void): Tray {
-  // DEV path only: tray.js lives in dist/desktop/, so ../../resources/ reaches
-  // the project resources/ dir. The packaged path (process.resourcesPath) is
-  // handled separately in Task 5 (packaging).
-  const iconPath = join(__dirname, '../../resources/icon-32.png')
+  // Resolve the tray icon in BOTH dev and packaged modes.
+  //
+  // Dev:      tray.js lives in dist/desktop/, so ../../resources/ reaches the
+  //           project resources/ dir (icon-32.png / icon.png).
+  // Packaged: electron-builder's extraResources flattens icon-32.png + icon.png
+  //           to the ROOT of process.resourcesPath (see electron-builder.yml),
+  //           so they resolve at <resourcesPath>/icon-32.png — NOT inside
+  //           app.asar (asar entries are not real files nativeImage can read).
+  const base = app.isPackaged ? process.resourcesPath : join(__dirname, '../../resources')
+  const iconPath = join(base, 'icon-32.png')
   const image = nativeImage.createFromPath(iconPath)
   tray = new Tray(
-    image.isEmpty()
-      ? nativeImage.createFromPath(join(__dirname, '../../resources/icon.png'))
-      : image,
+    image.isEmpty() ? nativeImage.createFromPath(join(base, 'icon.png')) : image,
   )
   tray.setToolTip('FengYu')
 

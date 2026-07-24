@@ -1,0 +1,92 @@
+# electron-builder configuration for the Infinia desktop shell.
+#
+# The release workflow (`.github/workflows/fengyu-release.yml`, `desktop:` job) builds
+# TWO variants from this base config by overriding `directories.output` (and, for the
+# with-JRE variant, `extraResources` + `extraMetadata.name`) via `--config.<key>=...`:
+#
+#   1. "lite"  — no bundled JRE; the user needs Java 21+ on PATH.
+#   2. "jre"   — bundles a jlink-minimized JRE under <resources>/jre/ (self-contained).
+#
+# Runtime layout contract (must agree with src/backend/runtime-layout.ts):
+#   <resources>/binaries/FengYu.jar
+#   <resources>/plugins/         (the official .fyp packages)
+#   <resources>/jre/bin/java     (with-JRE variant only, added by CI)
+#
+# Tray icons are listed BOTH in `files` (so they ride inside app.asar for any in-asar
+# lookup) AND as top-level `extraResources` (so the packaged main process can resolve
+# them at <process.resourcesPath>/icon-32.png — see src/desktop/tray.ts). electron-builder
+# does not dedupe across these lists, which is fine: extraResources is the canonical
+# packaged path; the files entry is harmless redundancy.
+
+appId: fan.summer.fengyu
+productName: Infinia
+copyright: Copyright © 2026 FengYu
+
+directories:
+  output: ../dist-electron
+  buildResources: resources
+
+# app.asar contents. `dist/` is the TypeScript build output (main.js + preload + desktop/...);
+# `frontend-dist/` is the Vue SPA copied in by CI (loaded via loadFile in packaged mode).
+files:
+  - dist/**/*
+  - frontend-dist/**/*
+  - resources/icon.png
+  - resources/icon.ico
+  - resources/icon-32.png
+  - resources/icon-128.png
+  - package.json
+
+# Frontend SPA, built by `cd ../frontend && npm run build` (output copied to frontend-dist/)
+# before packaging. main.js is the Electron entry (matches package.json "main").
+extraMetadata:
+  main: dist/main.js
+
+# Assets placed OUTSIDE app.asar at <process.resourcesPath>/, resolved by the main
+# process via process.resourcesPath (runtime-layout.ts + tray.ts). Tray icons are added
+# here at the resourcesPath ROOT (flattened) so tray.ts can do join(resourcesPath, 'icon-32.png').
+extraResources:
+  # Tray icons — flattened to <resourcesPath>/icon-32.png and <resourcesPath>/icon.png.
+  - from: resources/icon-32.png
+    to: icon-32.png
+    filter: ['**/*']
+  - from: resources/icon.png
+    to: icon.png
+    filter: ['**/*']
+  # Backend JAR + plugins — match the runtime-layout.ts contract.
+  - from: resources/binaries/FengYu.jar
+    to: binaries/FengYu.jar
+    filter: ['**/*']
+  - from: resources/binaries/plugins
+    to: plugins
+    filter: ['**/*']
+
+# The with-JRE variant adds (via CI --config):
+#   extraResources:
+#     - { from: resources/jre, to: jre, filter: ['**/*'] }
+
+win:
+  target: nsis
+  icon: resources/icon.ico
+
+mac:
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  icon: resources/icon.png
+  category: public.app-category.developer-tools
+
+linux:
+  target: AppImage
+  icon: resources/icon.png
+  category: Development
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+
+publish:
+  provider: github
+  owner: MuskStark
+  repo: FengYu
