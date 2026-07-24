@@ -13,7 +13,7 @@ export interface CreateWindowOptions {
  * Create the main BrowserWindow. 1280×820, min 960×640, matches the previous Rust window.
  * contextIsolation + sandbox on; nodeIntegration off — standard secure posture.
  *
- * The preload script (`dist/preload.js`) reads `apiBase`/`token` from `process.env`
+ * The preload script (`dist/window/preload.js`) reads `apiBase`/`token` from `process.env`
  * (set in main.ts before window creation) and exposes them on `window.fengyu` via
  * contextBridge. `apiBase`/`token` in the options are not used directly here but are
  * kept on the signature for clarity (and for future main-process consumers).
