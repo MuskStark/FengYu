@@ -28,7 +28,7 @@ export interface PluginContext {
   apiBase: string
   /** Auth token to send as X-FengYu-Token on raw fetch calls. */
   token: string
-  /** Native desktop file dialogs — present ONLY under Tauri; undefined in the browser. */
+  /** Native desktop file dialogs — present ONLY under the Electron desktop shell; undefined in the browser. */
   desktop?: {
     pickFile(filters?: { name: string; extensions: string[] }[]): Promise<string | null>
     pickDirectory(): Promise<string | null>
