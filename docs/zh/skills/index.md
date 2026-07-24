@@ -90,7 +90,7 @@ manifest——元数据和正文都来自 `SKILL.md` 的 frontmatter。）
 | `GET` | `/api/skills/{id}` | 单个技能完整详情，含 markdown 正文。 |
 | `GET` | `/api/skills/market` | 市场合并视图（`MarketplaceSkill[]`）。 |
 | `POST` | `/api/skills/upload` | 安装 `.fys` 包（multipart `file`）。→ 201 |
-| `POST` | `/api/skills/upload-native` | 按绝对路径安装 `.fys`（Tauri）。→ 201 |
+| `POST` | `/api/skills/upload-native` | 按绝对路径安装 `.fys`（桌面端）。→ 201 |
 | `POST` | `/api/skills/{id}/install` | 从已配置目录安装。→ 201 |
 | `POST` | `/api/skills/{id}/update` | 从目录更新（复用 install）。 |
 | `PATCH` | `/api/skills/{id}/enabled` | 切换 `.disabled` 标记。请求体 `{"enabled": bool}`。 |

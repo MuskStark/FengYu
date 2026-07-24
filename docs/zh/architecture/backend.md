@@ -75,6 +75,6 @@ datasource.properties present? ──► probe DB (JDBC SELECT 1, 5s login timeo
 
 ## 下一步
 
-- [架构概述](/zh/architecture/overview)——后端如何夹在 SPA 与 Tauri 外壳之间。
+- [架构概述](/zh/architecture/overview)——后端如何夹在 SPA 与 Electron 外壳之间。
 - [桌面端](/zh/architecture/desktop)——外壳如何监管 SETUP → APP 的切换。
 - [插件系统](/zh/architecture/plugin-system)——Worker 进程模型。

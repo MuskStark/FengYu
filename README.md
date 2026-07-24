@@ -5,13 +5,13 @@
 **Infinia** (蜂语 / FengYu) is an *AI-native orchestration platform*. A plan-and-execute Agent
 turns natural-language goals into multi-step business workflows by orchestrating three extension
 surfaces — `.fyp` plugins, `.fys` skills, and in-process AI tools. It runs as a headless Spring Boot
-backend, a Vue 3.5 + Vuetify 3 UI, and an optional Tauri 2.0 desktop shell; built-in tools (Excel
+backend, a Vue 3.5 + Vuetify 3 UI, and an optional Electron desktop shell; built-in tools (Excel
 splitting, email, markdown, and more) ship as official plugins the Agent can call.
 
 > ### 🚧 4.0.0-alpha.2 — web + desktop
 > This branch (`4.0.0-FengYu`) re-architects Infinia from a JavaFX desktop app into a **web +
 > desktop application**: a **headless Spring Boot backend** (loopback web server, no window), a
-> **Vue 3.5 + TypeScript** frontend (identical for browser and desktop), and a **Tauri 2.0**
+> **Vue 3.5 + TypeScript** frontend (identical for browser and desktop), and an **Electron 43.x**
 > desktop shell that sidecar-launches the Java backend. Built-in tools become official plugins that
 > expose a JSON-RPC worker backend plus a micro-frontend UI bundle. JavaFX has been removed.
 > See [`CHANGELOG.md`](CHANGELOG.md) and the [online docs](https://muskstark.github.io/FengYu/) for the current state.
@@ -36,8 +36,7 @@ splitting, email, markdown, and more) ship as official plugins the Agent can cal
 **Requirements:**
 
 - **JDK 21 or higher** (recommended: [Eclipse Temurin](https://adoptium.net/))
-- **Node 24.18.0 and npm** (for the frontend dev server and plugin UIs)
-- **Rust + `tauri-cli`** (only for the desktop shell)
+- **Node.js 24.17+ and npm** (for the frontend dev server, plugin UIs, and the Electron desktop shell)
 
 ### Build from Source
 
@@ -67,7 +66,8 @@ cd frontend && npm install && npm run dev   # Vite proxies /api + /plugin-runtim
 ### Run the Desktop Shell (dev)
 
 ```bash
-cd desktop && cargo tauri dev               # release: cargo tauri build
+cd desktop/electron && npm install && npm run dev   # set FENGYU_JAR or run the backend on :24056
+# release: cd desktop/electron && npm run build
 ```
 
 ### Smoke Test
@@ -79,13 +79,14 @@ cd desktop && cargo tauri dev               # release: cargo tauri build
 Pushed release tags (`v4.0.0`, `v4.0.0-alpha.2`, `-beta.*`, `-rc.*`) trigger
 [`.github/workflows/fengyu-release.yml`](.github/workflows/fengyu-release.yml), which publishes:
 
-- **Unsigned Tauri packages** for Windows, macOS, and Linux.
+- **Unsigned Electron packages** for Windows, macOS, and Linux — two variants per platform: a
+  lightweight build (needs Java 21+ on PATH) and a self-contained build that bundles a jlink-minimized
+  JRE. The Electron shell ships with a tray, file logging, and an auto-updater (GitHub Releases).
 - A **portable Web distribution** (`Infinia-<version>-web.zip` / `.tar.gz`) — unzip and run `./run.sh`
   (macOS/Linux) or `run.bat` (Windows). Requires **Java 21**; the backend binds **loopback only**
   (`127.0.0.1`) and is not reachable from other machines.
 
-These are **unsigned Alpha builds**: code-signing, a bundled JRE, and the auto-updater are deferred to
-a later release.
+These are **unsigned Alpha builds**: code-signing is deferred to a later release.
 
 ---
 
@@ -117,7 +118,7 @@ Infinia 4.0.0 is a **three-layer web + desktop application**:
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  Tauri 2.0 desktop shell (optional)   ·   Browser (default)  │
+│  Electron desktop shell (optional)   ·   Browser (default)   │
 │  ──────────────────────────────────────────────────────────  │
 │                  Vue 3.5 + TypeScript SPA                     │
 │            Vuetify 3 (MD3) · Pinia · vue-router · vue-i18n    │
@@ -133,8 +134,8 @@ Infinia 4.0.0 is a **three-layer web + desktop application**:
 
 The backend binds **loopback only** (`127.0.0.1:24056` by default) and every request (except
 `/api/health`, `/api/setup/*`, and plugin UI static assets) is gated by the per-launch
-`X-FengYu-Token` header. The desktop shell sidecar-launches the JAR, waits for health, and injects
-the token into the webview. See [Architecture Overview](docs/en/architecture/overview).
+`X-FengYu-Token` header. The desktop shell sidecar-launches the JAR, waits for health, and exposes
+the token + api-base to the renderer via a `contextBridge` preload. See [Architecture Overview](docs/en/architecture/overview).
 
 ### Project Modules
 
@@ -144,8 +145,8 @@ the token into the webview. See [Architecture Overview](docs/en/architecture/ove
 | `FengYu-Plugin-Sdk` | Java Worker SDK + TypeScript `@infinia/plugin-sdk` (the iframe `postMessage` bridge). |
 | `OfficialPlugins` | Official plugins: `plugin-markdown`, `plugin-excel`, `plugin-email` (each ships a `.fyp`). |
 | `FengYu` | Headless Spring Boot backend — REST/SSE controllers, AI backends, JPA/Hibernate, marketplace. |
-| `frontend/` | Vue 3.5 + TS SPA (runs identically in the browser or the Tauri webview). |
-| `desktop/` | Tauri 2.0 desktop shell — sidecar-launches the JAR, native dialogs, window chrome. |
+| `frontend/` | Vue 3.5 + TS SPA (runs identically in the browser or the Electron BrowserWindow). |
+| `desktop/` | Electron 43.x desktop shell — sidecar-launches the JAR, tray, native dialogs, auto-updater. |
 | `plugin-ui/` | `@infinia/plugin-ui` — the official Vue/Vuetify component kit for plugin micro-frontends. |
 | `plugin-cli/` | `fengyu plugin` CLI — `create`, `build` (development moved to the IDE via `plugin-dev/` + `FengYu-Plugin-DevKit/`). |
 | `plugin-dev/` | `@infinia/plugin-dev` — Vite plugin that turns the dev server into a FengYu host simulator for IDE debugging. |
@@ -159,7 +160,7 @@ The UI runs in a **sandboxed iframe** and talks to the host through the `@infini
 JSON-RPC 2.0 over stdio. A worker crash can never take down the host, and workers never touch the
 host Spring context or JPA session.
 
-File selection uploads into a scoped temporary grant; on desktop the Tauri shell resolves a native
+File selection uploads into a scoped temporary grant; on desktop the Electron shell resolves a native
 path into the same opaque `FileRef`. Plugin UI code is identical on both targets and never sees an
 absolute path. Plugins that need persistence declare the `database` permission and get an
 injected datasource connection (table-name-prefixed, plugin-owned schema).
@@ -180,7 +181,7 @@ See the [Plugin Overview](docs/en/plugins/overview).
 | **AI** | Spring AI | 2.0.0 |
 | **Frontend** | Vue | 3.5.39 |
 | **UI** | Vuetify (Material Design 3) | ^3.12.9 |
-| **Desktop** | Tauri | 2.0 |
+| **Desktop** | Electron | 43.x |
 | **i18n** | vue-i18n | ^10.0.8 |
 | **Database** | JPA + Hibernate (H2 / SQLite / MySQL / PostgreSQL) | ddl-auto=update |
 | **Plugin worker I/O** | newline-delimited JSON-RPC 2.0 | — |
@@ -205,7 +206,7 @@ and the frontend shows a wizard that lets you pick a database:
 
 The wizard tests the connection, persists the configuration to
 `~/.fengyu/config/datasource.properties` (passwords AES-GCM encrypted, machine-bound), then exits
-(`SETUP_DONE=0`). The Tauri/desktop supervisor restarts the backend into **APP mode**, where
+(`SETUP_DONE=0`). The desktop supervisor restarts the backend into **APP mode**, where
 Hibernate `ddl-auto=update` creates the schema from the JPA entities. To reconfigure, delete
 `datasource.properties` and restart — the wizard reappears. See [Database](docs/en/guide/database).
 
@@ -243,4 +244,4 @@ GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
 ---
 
-**Built with ❤️ using Spring Boot, Vue 3, and Tauri.**
+**Built with ❤️ using Spring Boot, Vue 3, and Electron.**

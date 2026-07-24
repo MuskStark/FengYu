@@ -139,7 +139,7 @@
       "typescript": "Type-safe language",
       "vitest": "Unit testing",
       "sass": "Style preprocessing",
-      "tauri": "Desktop shell (Rust)"
+      "electron": "Desktop shell (Electron)"
     }
   }
 }

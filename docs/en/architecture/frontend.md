@@ -6,7 +6,7 @@ lang: en
 
 # Frontend
 
-The Infinia frontend is a **Vue 3 single-page application** written in TypeScript. It renders the host shell and loads plugin UIs as micro-frontends at runtime. The same bundle runs unchanged in a browser tab and inside the Tauri WebView.
+The Infinia frontend is a **Vue 3 single-page application** written in TypeScript. It renders the host shell and loads plugin UIs as micro-frontends at runtime. The same bundle runs unchanged in a browser tab and inside the Electron BrowserWindow.
 
 ## Stack
 
@@ -48,15 +48,19 @@ The micro-frontend reuses the host's Vuetify instance and theme via `ctx`, so MD
 
 ## Desktop integration
 
-When the SPA runs inside Tauri, `frontend/src/mf/desktop.ts` acts as a facade over Tauri's native-dialog plugin, exposing `pickFile` and `pickDirectory` (backed by `@tauri-apps/plugin-dialog`). In a plain browser these fall back to standard browser equivalents.
+When the SPA runs inside the Electron shell, `frontend/src/mf/desktop.ts` acts as a facade over the
+`window.fengyu` bridge, exposing `pickFile` and `pickDirectory` (which go through Electron's native
+dialog via IPC). In a plain browser these fall back to standard browser equivalents.
 
-The Tauri shell injects three globals before the page loads:
+The Electron shell exposes `window.fengyu` via a preload `contextBridge` before the page loads:
 
-- `window.__FENGYU_TOKEN__` — the per-launch `X-FengYu-Token` value
-- `window.__FENGYU_PORT__` — the port the backend printed as `FENGYU_PORT=<n>`
-- `window.__FENGYU_API_BASE__` — e.g. `http://127.0.0.1:{port}`
+- `window.fengyu.apiBase()` — the backend base URL, e.g. `http://127.0.0.1:{port}` (read-only snapshot)
+- `window.fengyu.token()` — the per-launch `X-FengYu-Token` value (read-only snapshot)
+- `window.fengyu.desktop` — `true` feature flag (replaces the old `isTauri()` probe)
 
-The `connection` store reads these to configure every API call. In dev (browser), the Vite proxy serves the same `/api` and `/plugin-runtime` paths to `localhost:24056`.
+The `connection` store / `config.ts` reads these to configure every API call. `window.fengyu` is
+`undefined` in a plain browser, where `config.ts` falls through to env vars; in dev (browser), the
+Vite proxy serves the same `/api` and `/plugin-runtime` paths to `localhost:24056`.
 
 ## Setup guard
 
@@ -65,5 +69,5 @@ A vue-router navigation guard checks `getSetupStatus()` before allowing the user
 ## Next steps
 
 - [Architecture Overview](/en/architecture/overview) — how the SPA sits between the backend and the shell.
-- [Desktop](/en/architecture/desktop) — where the `window.__FENGYU_*` globals come from.
+- [Desktop](/en/architecture/desktop) — where the `window.fengyu` bridge comes from.
 - [Design System](/en/design-system) — the shared MD3 + Vuetify theming model.
