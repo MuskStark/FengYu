@@ -5,3 +5,4 @@ resources/binaries/
 resources/jre/
 *.log
 .playwright/
+test-results/
