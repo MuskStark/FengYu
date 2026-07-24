@@ -6,7 +6,7 @@ lang: zh-CN
 
 # 架构概述
 
-Infinia 4.0.0 是一个**三层系统**：一个无头 Spring Boot 后端、一个 Vue 3 单页应用，以及一个掌控进程生命周期的 Tauri 2.0 桌面外壳。同一套 Vue UI 既可以在浏览器标签页中运行，也可以在 Tauri 窗口里运行——外壳改变的只是后端的启动方式和 UI 的服务方式。
+Infinia 是一个 **AI 原生的流程编排平台**。其核心是「规划-执行」智能体：它把自然语言目标拆解为多步业务流程，并统一调度三类扩展面 —— `.fyp` 插件、`.fys` 技能、进程内 AI 工具。在架构上，4.0.0 是一个**三层系统**：一个无头 Spring Boot 后端、一个 Vue 3 单页应用，以及一个掌控进程生命周期的 Tauri 2.0 桌面外壳。同一套 Vue UI 既可以在浏览器标签页中运行，也可以在 Tauri 窗口里运行——外壳改变的只是后端的启动方式和 UI 的服务方式。
 
 ## 三层结构
 
@@ -70,6 +70,16 @@ Infinia 4.0.0 是一个**三层系统**：一个无头 Spring Boot 后端、一�
 | [前端](/zh/architecture/frontend) | Vue 3 SPA、Pinia store、插件 UI 挂载、初始化向导路由 |
 | [桌面端](/zh/architecture/desktop) | Sidecar 的拉起/健康检查/初始化编排、bridge 注入、窗口生命周期 |
 | [插件系统](/zh/architecture/plugin-system) | `.fyp` 包契约、进程外 Worker、沙箱化 UI |
+
+## 扩展面与智能体
+
+智能体编排三类各自独立的扩展面，每一类出于不同原因而隔离：
+
+- **插件（`.fyp`）** 以**进程外** JSON-RPC Worker 运行 —— Worker 崩溃永远不会拖垮宿主，且 Worker 绝不触碰宿主的 Spring 上下文或 JPA 会话。其 UI 是沙箱化的微前端。参见[插件系统](/zh/architecture/plugin-system)。
+- **技能（`.fys`）** 是渐进式插件包：只有其精简目录存在于系统提示词中，完整内容通过内置的 `skill` 工具按需加载。参见[技能](/zh/skills/)。
+- **AI 工具** 是进程内的 Spring AI `ToolCallback` bean，模型在对话中可直接调用。参见 [AI 工具](/zh/plugins/ai-tools)。
+
+关于智能体端到端可驱动的能力，参见[功能特性](/zh/features)的能力矩阵。
 
 ## 下一步
 
