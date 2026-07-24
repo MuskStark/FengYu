@@ -15,7 +15,7 @@ The reactor consists of two Maven modules — build them in order, then launch t
 | --- | --- | --- |
 | JDK | 21+ (Eclipse Temurin recommended) | Backend (`Java 21`) |
 | Node.js + npm | 20+ | Frontend dev server |
-| Node.js + npm | 24.17+ | Desktop shell only (skip if you only need web) |
+| Node.js + npm | 24.18.0 | Desktop shell only (skip if you only need web) |
 
 ## Build from source
 
