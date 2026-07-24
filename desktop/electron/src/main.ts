@@ -1,17 +1,26 @@
+// Prevents an extra console window on Windows in release builds.
+if (process.platform === 'win32') app.setAppUserModelId('fan.summer.fengyu')
+
 import { app, dialog } from 'electron'
 import { resolveLayout } from './backend/runtime-layout'
 import { genToken } from './util/token'
 import { startBackend } from './backend/orchestrator'
-import { startupAction, StartupAction, superviseSetupRestart } from './backend/supervisor'
-import type { BackendChild } from './backend/supervisor'
+import { startupAction, StartupAction, superviseSetupRestart, type BackendChild } from './backend/supervisor'
 import { registerDialogIpc } from './ipc/dialog'
 import { createMainWindow } from './window/create-window'
+import { initLogger } from './desktop/logger'
+import { acquireSingleInstanceLock } from './desktop/single-instance'
+import { createTray } from './desktop/tray'
+import { checkForUpdates } from './updater/auto-updater'
 
-// Prevents an extra console window on Windows in release builds.
-if (process.platform === 'win32') app.setAppUserModelId('fan.summer.fengyu')
-
+const logger = initLogger()
 let backendChild: BackendChild | null = null
-let shuttingDown = false
+let isQuitting = false
+
+function killBackend() {
+  isQuitting = true
+  backendChild?.kill()
+}
 
 async function bootstrap(): Promise<void> {
   registerDialogIpc()
@@ -23,16 +32,14 @@ async function bootstrap(): Promise<void> {
   process.env.FENGYU_TOKEN = token
   process.env.FENGYU_API_BASE = '' // set after we know the port
 
-  const onBackendLine = (line: string) => console.log(`[backend] ${line}`)
-
   let started
   try {
     started = await startBackend({
       layout,
       token,
       requestedPort: 24056,
-      onBackendLine,
-      shouldCancel: () => shuttingDown,
+      onBackendLine: logger.backendLine,
+      shouldCancel: () => isQuitting,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -56,36 +63,53 @@ async function bootstrap(): Promise<void> {
   const action = startupAction(started.setupMode, started.port)
 
   if (action === StartupAction.ShowWindowAndSupervise) {
-    console.log('[desktop] backend in SETUP mode; opening setup wizard')
+    logger.info('[desktop] backend in SETUP mode; opening setup wizard')
     superviseSetupRestart({
       getChild: () => backendChild,
       setChild: (c) => {
         backendChild = c
       },
       expectedPort: started.port,
-      isShuttingDown: () => shuttingDown,
-      onFatal: (m) => console.error(`FATAL: ${m}`),
+      isShuttingDown: () => isQuitting,
+      onFatal: (m) => logger.error(`FATAL: ${m}`),
       restart: () =>
-        startBackend({ layout, token, requestedPort: started.port, onBackendLine, shouldCancel: () => shuttingDown })
+        startBackend({ layout, token, requestedPort: started.port, onBackendLine: logger.backendLine, shouldCancel: () => isQuitting })
           .then((r) => ({ child: r.child, port: r.port, setupMode: r.setupMode })),
     })
   }
 
-  createMainWindow({
+  const win = createMainWindow({
     apiBase,
     token,
-    onHideToTray: () => {
-      /* Task 4 wires the tray; for now hiding is the no-op stub */
-    },
+    onHideToTray: () => logger.info('[desktop] window hidden to tray'),
     isDev: !isPackaged,
+    isQuitting: () => isQuitting,
   })
+
+  createTray(win, killBackend)
+
+  // Non-blocking update check — only when packaged (dev builds have no update channel).
+  if (isPackaged) void checkForUpdates()
 }
 
 app.whenReady().then(() => {
+  const locked = acquireSingleInstanceLock((existing) => {
+    if (existing) {
+      existing.show()
+      existing.focus()
+    }
+  })
+  if (!locked) return
   void bootstrap()
 })
 
-app.on('before-quit', () => {
-  shuttingDown = true
-  backendChild?.kill()
+app.on('before-quit', killBackend)
+
+// Keep the app (and tray) alive on macOS even after the last window closes.
+// The 'window-all-closed' listener receives no event arg in these Electron
+// typings (signature is `() => void`); on macOS the default already does not
+// quit, so an explicit no-op is sufficient to keep the tray alive. On other
+// platforms we intentionally let the default quit-on-all-closed stand.
+app.on('window-all-closed', () => {
+  // no-op: prevent default quit so the tray remains (macOS default behavior)
 })
