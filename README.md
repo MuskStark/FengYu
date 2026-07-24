@@ -36,7 +36,7 @@ splitting, email, markdown, and more) ship as official plugins the Agent can cal
 **Requirements:**
 
 - **JDK 21 or higher** (recommended: [Eclipse Temurin](https://adoptium.net/))
-- **Node.js 24.17+ and npm** (for the frontend dev server, plugin UIs, and the Electron desktop shell)
+- **Node 24.18.0 and npm** (for the frontend dev server, plugin UIs, and the Electron desktop shell)
 
 ### Build from Source
 

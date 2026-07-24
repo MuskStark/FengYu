@@ -55,7 +55,7 @@ Once the port is known, the shell drives the backend through three stages:
 
 1. **`wait_for_health`** — polls `GET /api/health` with the `X-FengYu-Token` header on a **300 ms
    interval** with a **2-second per-request timeout** and a **30-second overall deadline**. Only HTTP
-   200 counts as ready. Uses Node 24.17's built-in `fetch` + `AbortController`.
+   200 counts as ready. Uses Node 24.18's built-in `fetch` + `AbortController`.
 2. **`check_setup_mode`** — probes `GET /api/setup/status` to determine whether the backend booted
    into SETUP or APP mode (body contains `"initialized":false` → SETUP).
 3. **`run_backend_until_app_mode`** — ties the loop together: spawn → wait for health → check setup

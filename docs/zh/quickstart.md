@@ -14,7 +14,7 @@ lang: zh-CN
 | --- | --- | --- |
 | JDK | 21+（推荐 Eclipse Temurin） | 后端（`Java 21`） |
 | Node.js + npm | 20+ | 前端开发服务器 |
-| Node.js + npm | 24.17+ | 仅桌面端外壳需要（只用 Web 可跳过） |
+| Node.js + npm | 24.18.0 | 仅桌面端外壳需要（只用 Web 可跳过） |
 
 ## 从源码构建
 
