@@ -12,10 +12,17 @@ export function registerDialogIpc(): void {
       opts: { directory: boolean; filters?: { name: string; extensions: string[] }[] },
     ) => {
       const win = BrowserWindow.fromWebContents(event.sender) ?? undefined
-      const result = await dialog.showOpenDialog(win!, {
+      const dialogOpts: Electron.OpenDialogOptions = {
         properties: opts.directory ? ['openDirectory'] : ['openFile'],
         filters: opts.filters?.map((f) => ({ name: f.name, extensions: f.extensions })),
-      })
+      }
+      // Attach to the parent window when available (modal); otherwise open a parentless
+      // dialog. `showOpenDialog`'s window overload requires a non-null BaseWindow, so we
+      // branch instead of using the prior unjustified `win!` assertion.
+      const result =
+        win !== undefined
+          ? await dialog.showOpenDialog(win, dialogOpts)
+          : await dialog.showOpenDialog(dialogOpts)
       if (result.canceled || result.filePaths.length === 0) return null
       return result.filePaths[0]
     },
