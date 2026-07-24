@@ -46,8 +46,7 @@ export function resolveLayout(
   if (!jar) {
     throw new Error(
       'Dev mode requires FENGYU_JAR (path to the shaded jar). ' +
-        'Run `mvn -pl FengYu -am package -DskipTests` and set FENGYU_JAR to the resulting jar, ' +
-        'or start the backend externally on :24056 and omit the jar.',
+        'Build it with `./mvnw -pl FengYu -am package -DskipTests`, then set FENGYU_JAR=<path>.',
     )
   }
   return { jar, plugins, jre: undefined }

@@ -1,6 +1,3 @@
-// Prevents an extra console window on Windows in release builds.
-if (process.platform === 'win32') app.setAppUserModelId('fan.summer.fengyu')
-
 import { app, dialog } from 'electron'
 import { resolveLayout } from './backend/runtime-layout'
 import { genToken } from './util/token'
@@ -16,6 +13,11 @@ import { checkForUpdates } from './updater/auto-updater'
 const logger = initLogger()
 let backendChild: BackendChild | null = null
 let isQuitting = false
+
+// Prevents an extra console window on Windows in release builds. Must run after the
+// `electron` import (CommonJS require() is source-order, unlike ESM import hoisting) but
+// before app.whenReady — placing it here at module top-level satisfies both.
+if (process.platform === 'win32') app.setAppUserModelId('fan.summer.fengyu')
 
 function killBackend() {
   isQuitting = true
