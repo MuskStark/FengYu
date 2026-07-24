@@ -14,7 +14,7 @@ import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
 import { FontSize } from '../extensions/FontSize'
-import { plainTextFromHtml, sanitizeEmailHtml } from '../richText'
+import { plainTextFromHtml, sanitizeEmailHtml, shouldApplyExternalContent } from '../richText'
 
 const props = withDefaults(defineProps<{ modelValue?: string; disabled?: boolean }>(), { modelValue: '', disabled: false })
 const emit = defineEmits<{
@@ -26,10 +26,22 @@ const pasteNotice = ref(false)
 const linkDialog = ref(false)
 const linkHref = ref('')
 
+// IME composition state. While a CJK IME is composing, the parent echoes our
+// emitted HTML back via v-model; writing it back with setContent would tear down
+// the node the IME is writing into and abort the input. See shouldApplyExternalContent.
+let composing = false
+let lastEmittedHtml: string | null = null
+
 const editor = useEditor({
   content: sanitizeEmailHtml(props.modelValue),
   editable: !props.disabled,
-  editorProps: { transformPastedHTML: html => sanitizeEmailHtml(html) },
+  editorProps: {
+    transformPastedHTML: html => sanitizeEmailHtml(html),
+    handleDOMEvents: {
+      compositionstart: () => { composing = true },
+      compositionend: () => { composing = false },
+    },
+  },
   extensions: [
     StarterKit,
     Underline,
@@ -46,14 +58,17 @@ const editor = useEditor({
   ],
   onUpdate: ({ editor: current }) => {
     const html = sanitizeEmailHtml(current.getHTML())
+    lastEmittedHtml = html
     emit('update:modelValue', html)
     emit('update:plainText', plainTextFromHtml(html))
   },
 })
 
 watch(() => props.modelValue, value => {
+  if (!editor.value) return
+  if (!shouldApplyExternalContent(value, lastEmittedHtml, composing)) return
   const clean = sanitizeEmailHtml(value)
-  if (editor.value && sanitizeEmailHtml(editor.value.getHTML()) !== clean) {
+  if (sanitizeEmailHtml(editor.value.getHTML()) !== clean) {
     editor.value.commands.setContent(clean, false)
   }
 })

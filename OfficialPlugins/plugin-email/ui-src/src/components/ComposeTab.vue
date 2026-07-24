@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { mdiCloseCircle, mdiPaperclip } from '@mdi/js'
+import { FyIcon } from '@infinia/plugin-ui'
 import { useAccountsStore } from '../stores/accounts'
 import { useComposeStore, type ComposeMode } from '../stores/compose'
 import { useContactsStore } from '../stores/contacts'
@@ -101,7 +103,11 @@ async function reject(): Promise<void> {
         <v-text-field v-model="compose.subject" :label="t('compose.subject')" />
         <RichTextEditor v-model="compose.htmlText" @update:plain-text="compose.plainText = $event" />
         <div class="attachment-row">
-          <v-chip v-for="item in compose.attachments" :key="item.id" closable @click:close="removeAttachment(item.id)">{{ item.name }}</v-chip>
+          <v-chip v-for="item in compose.attachments" :key="item.id" closable @click:close="removeAttachment(item.id)">
+            <template #prepend><FyIcon :path="mdiPaperclip" :size="16" /></template>
+            <template #close><FyIcon :path="mdiCloseCircle" :size="18" /></template>
+            {{ item.name }}
+          </v-chip>
           <v-btn variant="tonal" @click="addAttachment">{{ t('compose.attach') }}</v-btn>
         </div>
         <p class="hint">{{ compose.draftSavedAt ? t('compose.draftSaved') : t('compose.draftPending') }}</p>

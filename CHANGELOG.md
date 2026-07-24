@@ -58,6 +58,11 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   `devMock` data. All official plugin UIs now expose the documented `npm run dev` entry point.
 - **Plugin-tooling release gates** now ship the canonical manifest schema, exempt the independently
   versioned Worker SDK from the application-parent check, and resolve the patched `fast-uri` 3.1.4.
+- **First-launch (SETUP mode) no longer crashes.** `SkillController` was component-scanned into the
+  DB-less SETUP context but depends on `SkillRegistry`/`SkillPackageService`/`SkillMarketplaceService`
+  (in the `ai.skill` package, which SETUP mode does not scan), causing an
+  `UnsatisfiedDependencyException` that aborted startup before the database wizard could run. It is
+  now excluded from `SetupApplication`'s scan alongside the other APP-only controllers.
 
 ### ♻️ Changed
 - **CLI scope narrowed to `create` + `build`.** `fengyu plugin dev` moved to the IDE

@@ -12,6 +12,7 @@
   "dependencies": {
     "@infinia/plugin-sdk": "file:../../../plugin-sdk/typescript",
     "@infinia/plugin-ui": "file:../../../plugin-ui/vue",
+    "@mdi/font": "^7.4.47",
     "@mdi/js": "^7.4.47",
     "@tiptap/extension-color": "^2.27.2",
     "@tiptap/extension-link": "^2.27.2",
