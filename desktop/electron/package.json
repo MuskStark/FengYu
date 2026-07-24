@@ -1,0 +1,31 @@
+{
+  "name": "fengyu-desktop",
+  "private": true,
+  "version": "4.0.0-alpha.2",
+  "description": "FengYu/Infinia desktop shell (Electron)",
+  "main": "dist/main.js",
+  "scripts": {
+    "build:ts": "tsc -p tsconfig.json",
+    "dev": "npm run build:ts && electron .",
+    "build": "npm run build:ts && electron-builder",
+    "build:win": "npm run build:ts && electron-builder --win",
+    "build:mac": "npm run build:ts && electron-builder --mac",
+    "build:linux": "npm run build:ts && electron-builder --linux",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test -c test/e2e/playwright.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "@types/node": "^24.0.0",
+    "electron": "^43.0.0",
+    "electron-builder": "^26.0.0",
+    "playwright": "^1.50.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "electron-log": "^5.2.0",
+    "electron-updater": "^6.3.9"
+  }
+}
