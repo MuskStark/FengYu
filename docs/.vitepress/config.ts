@@ -75,6 +75,7 @@ const enSidebar = {
       { text: 'Official: Markdown', link: '/en/plugins/official-markdown' },
       { text: 'Official: Excel', link: '/en/plugins/official-excel' },
       { text: 'Official: Email Center', link: '/en/plugins/email-center' },
+      { text: 'Official: Offline Python', link: '/en/plugins/official-offlinepython' },
       { text: 'Pitfalls', link: '/en/plugins/pitfalls' }
     ]},
     { text: 'Guide', collapsible: true, items: [
@@ -134,6 +135,7 @@ const zhSidebar = {
       { text: '官方插件：Markdown', link: '/zh/plugins/official-markdown' },
       { text: '官方插件：Excel', link: '/zh/plugins/official-excel' },
       { text: '官方插件：邮件中心', link: '/zh/plugins/email-center' },
+      { text: '官方插件：Offline Python', link: '/zh/plugins/official-offlinepython' },
       { text: '常见陷阱', link: '/zh/plugins/pitfalls' }
     ]},
     { text: '指南', collapsible: true, items: [

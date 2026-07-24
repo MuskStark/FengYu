@@ -8,6 +8,17 @@ lang: en
 
 The marketplace is the host's plugin registry. It exposes `/api/plugin-market` for browsing the catalog and managing the install lifecycle of every plugin — official and third-party alike. All lifecycle operations (install, update, enable, disable, uninstall) go through these endpoints; `POST /upload` is the install path for a built `.fyp` (used by the marketplace UI's upload button).
 
+## Official plugins
+
+Infinia ships with a set of official plugins — real capabilities the Agent can orchestrate out of the box. Each has its own page:
+
+| Plugin | What it does | Docs |
+| --- | --- | --- |
+| **Excel Splitter** | Split workbooks by sheet, column value, or complex rules — with six AI tools. | [Excel Splitter →](/en/plugins/official-excel) |
+| **Email Center** | Multi-account SMTP/IMAP, contact management, batch sending, archives — seven confirmation-first AI tools. | [Email Center →](/en/plugins/email-center) |
+| **Offline Python Builder** | Build offline Python install repositories (wheelhouses) with all dependencies — six AI tools and async builds. | [Offline Python →](/en/plugins/official-offlinepython) |
+| **Markdown Editor** | Split-pane editor with isolated server-side rendering. | [Markdown Editor →](/en/plugins/official-markdown) |
+
 ## Browse the catalog
 
 `GET /api/plugin-market` returns the full catalog as `MarketplacePlugin[]` — every installed plugin with its manifest, `source` (`OFFICIAL` or `THIRD_PARTY`), `enabled` flag, and `supportsAi` badge. The marketplace UI renders this list.

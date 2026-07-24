@@ -8,6 +8,17 @@ lang: zh-CN
 
 插件市场是宿主的插件注册中心。它通过 `/api/plugin-market` 暴露，用于浏览目录以及管理每一个插件（官方与第三方一视同仁）的安装生命周期。所有生命周期操作（安装、更新、启用、禁用、卸载）都经由这些 endpoint 进行；`POST /upload` 是构建好的 `.fyp` 的安装路径（市场 UI 的上传按钮走的是这条）。
 
+## 官方插件
+
+Infinia 自带一组官方插件 —— 智能体开箱即可编排的真实能力。每一个都有独立页面：
+
+| 插件 | 作用 | 文档 |
+| --- | --- | --- |
+| **Excel 拆分** | 按工作表、列值或复杂规则拆分工作簿 —— 附带六个 AI 工具。 | [Excel 拆分 →](/zh/plugins/official-excel) |
+| **邮件中心** | 多账户 SMTP/IMAP、通讯录管理、批量发送、归档 —— 七个需确认的 AI 工具。 | [邮件中心 →](/zh/plugins/email-center) |
+| **Offline Python Builder** | 构建包含全部依赖的离线 Python 安装仓库（wheelhouse）—— 六个 AI 工具与异步构建。 | [Offline Python →](/zh/plugins/official-offlinepython) |
+| **Markdown 编辑器** | 分栏编辑器，采用隔离的服务端渲染。 | [Markdown 编辑器 →](/zh/plugins/official-markdown) |
+
 ## 浏览目录
 
 `GET /api/plugin-market` 把完整目录以 `MarketplacePlugin[]` 形式返回——每一个已安装插件及其清单、`source`（`OFFICIAL` 或 `THIRD_PARTY`）、`enabled` 标志以及 `supportsAi` 徽标。市场 UI 渲染的就是这个列表。
