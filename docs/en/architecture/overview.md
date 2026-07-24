@@ -6,7 +6,12 @@ lang: en
 
 # Architecture Overview
 
-Infinia 4.0.0 is a **three-layer system**: a headless Spring Boot backend, a Vue 3 single-page app, and a Tauri 2.0 desktop shell that owns the process lifecycle. The same Vue UI runs in a browser tab or inside the Tauri window — the shell just changes how the backend is started and how the UI is served.
+Infinia is an **AI-native orchestration platform**. At its core, a plan-and-execute Agent turns
+natural-language goals into multi-step business workflows by orchestrating three extension surfaces
+— `.fyp` plugins, `.fys` skills, and in-process AI tools. Architecturally, 4.0.0 is a **three-layer
+system**: a headless Spring Boot backend, a Vue 3 single-page app, and a Tauri 2.0 desktop shell that
+owns the process lifecycle. The same Vue UI runs in a browser tab or inside the Tauri window — the
+shell just changes how the backend is started and how the UI is served.
 
 ## Three layers
 
@@ -70,6 +75,20 @@ The combination of loopback binding and per-launch token keeps the API private t
 | [Frontend](/en/architecture/frontend) | Vue 3 SPA, Pinia stores, plugin UI mounting, setup wizard routing |
 | [Desktop](/en/architecture/desktop) | Sidecar spawn/health/setup orchestration, bridge injection, window lifecycle |
 | [Plugin System](/en/architecture/plugin-system) | `.fyp` package contract, out-of-process workers, sandboxed UI |
+
+## Extension surfaces & the Agent
+
+The Agent orchestrates three distinct surfaces, each isolated for a different reason:
+
+- **Plugins (`.fyp`)** run **out-of-process** as JSON-RPC workers — a worker crash can never take down
+  the host, and workers never touch the host Spring context or JPA session. Their UI is a sandboxed
+  micro-frontend. See [Plugin System](/en/architecture/plugin-system).
+- **Skills (`.fys`)** are progressive-disclosure packages: only their compact catalog sits in the
+  system prompt, and the full body is loaded on demand via the built-in `skill` tool. See [Skills](/en/skills/).
+- **AI tools** are in-process Spring AI `ToolCallback` beans the model calls directly during a chat.
+  See [AI tools](/en/plugins/ai-tools).
+
+For what the Agent can drive end-to-end, see the [Features](/en/features) capability matrix.
 
 ## Next steps
 
