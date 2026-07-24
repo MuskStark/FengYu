@@ -30,18 +30,28 @@ test.describe('desktop launch', () => {
       await win.waitForLoadState('domcontentloaded', { timeout: 60_000 })
       lines.push('[step] domcontentloaded ok')
 
-      // The preload injects window.fengyu with apiBase/token.
-      const apiBase = await win.evaluate(() => (window as any).fengyu?.apiBase?.())
-      lines.push(`[step] apiBase=${apiBase}`)
-      expect(apiBase).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+      // The preload injects window.fengyu with apiBase/token. The preload runs
+      // before any page script and is URL-independent, so it's present even when
+      // the dev Vite server isn't running (the window shows a connection-error
+      // page in that case). We read apiBase/token FROM the renderer to prove the
+      // preload bridge works, then verify the backend is reachable via a Node-side
+      // fetch using that token — proving the full chain (shell spawns backend →
+      // preload exposes credentials → backend accepts them) without depending on
+      // the renderer page having loaded the SPA.
+      const bridge = await win.evaluate(() => ({
+        apiBase: (window as any).fengyu?.apiBase?.(),
+        token: (window as any).fengyu?.token?.(),
+      }))
+      lines.push(`[step] apiBase=${bridge.apiBase}`)
+      expect(bridge.apiBase).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+      expect(bridge.token).toMatch(/^zf-[0-9a-f]+-[0-9a-f]+$/)
 
-      // The backend is reachable at that base.
-      const ok = await win.evaluate(async (base: string) => {
-        const r = await fetch(`${base}/api/health`, { headers: { 'X-FengYu-Token': (window as any).fengyu.token() } })
-        return r.status === 200
-      }, apiBase)
-      lines.push(`[step] health ok=${ok}`)
-      expect(ok).toBe(true)
+      // Backend reachable at that base, with the token the shell generated.
+      const r = await fetch(`${bridge.apiBase}/api/health`, {
+        headers: { 'X-FengYu-Token': bridge.token },
+      })
+      lines.push(`[step] health status=${r.status}`)
+      expect(r.status).toBe(200)
     } catch (err) {
       // Surface captured backend/main logs on failure — otherwise Playwright only
       // shows the bare timeout with no clue where the boot stalled.
