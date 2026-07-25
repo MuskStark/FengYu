@@ -16,6 +16,7 @@ import { startDevFrontend, type DevFrontendHandle } from './desktop/dev-frontend
 const logger = initLogger()
 let backendChild: BackendChild | null = null
 let devFrontend: DevFrontendHandle | null = null
+let stopSupervisor: (() => void) | null = null
 let isQuitting = false
 
 // Prevents an extra console window on Windows in release builds. Must run after the
@@ -25,6 +26,8 @@ if (process.platform === 'win32') app.setAppUserModelId('fan.summer.fengyu')
 
 function killBackend() {
   isQuitting = true
+  stopSupervisor?.()
+  stopSupervisor = null
   backendChild?.kill()
   devFrontend?.stop()
 }
@@ -163,7 +166,7 @@ async function bootstrap(): Promise<void> {
 
   if (action === StartupAction.ShowWindowAndSupervise) {
     logger.info('[desktop] backend in SETUP mode; opening setup wizard')
-    superviseSetupRestart({
+    stopSupervisor = superviseSetupRestart({
       getChild: () => backendChild,
       setChild: (c) => {
         backendChild = c
