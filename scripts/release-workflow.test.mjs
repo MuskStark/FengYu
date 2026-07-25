@@ -32,8 +32,10 @@ test('builds Maven artifacts with the full release version', () => {
   assert.doesNotMatch(workflow, /\.\/mvnw -am test package -Drevision="\$APP_VERSION"/)
 })
 
-test('electron-builder targets NSIS on Windows, DMG on macOS, AppImage on Linux', () => {
-  assert.match(builderConfig, /win:\s*\n\s*target:\s*nsis/)
+test('electron-builder targets NSIS + portable on Windows, DMG on macOS, AppImage on Linux', () => {
+  // Windows ships BOTH an installer (nsis) and a no-install portable (.exe) target.
+  assert.match(builderConfig, /win:\s*\n\s*target:\s*\n\s*-\s+target:\s*nsis/)
+  assert.match(builderConfig, /-\s+target:\s*portable/)
   assert.match(builderConfig, /mac:\s*\n\s*target:/)
   assert.match(builderConfig, /linux:\s*\n\s*target:\s*AppImage/)
 })
