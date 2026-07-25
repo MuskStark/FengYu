@@ -80,14 +80,17 @@ win:
 mac:
   target:
     - target: dmg
-      arch: [arm64, x64]
+      arch: [arm64]
   icon: resources/icon.png
   category: public.app-category.developer-tools
 
 linux:
-  target: AppImage
+  target:
+    - target: AppImage
+    - target: deb
   icon: resources/icon.png
   category: Development
+  maintainer: FengYu
 
 nsis:
   oneClick: false
