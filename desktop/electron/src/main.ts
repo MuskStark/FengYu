@@ -37,7 +37,7 @@ function killBackend() {
 async function ensureDevFrontend(): Promise<void> {
   // __dirname in dev is <repo>/desktop/electron/dist → repo root is three levels up.
   const repoRoot = join(__dirname, '..', '..', '..')
-  devFrontend = await startDevFrontend({ repoRoot, log: (m) => logger.info(m) })
+  devFrontend = await startDevFrontend({ repoRoot, log: (m) => logger.info(m), isQuitting: () => isQuitting })
 }
 
 /**
