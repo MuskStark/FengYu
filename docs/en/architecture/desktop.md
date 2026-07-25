@@ -19,13 +19,22 @@ The shell behaves differently depending on whether it is packaged:
 
 | Profile | Backend | Window |
 | --- | --- | --- |
-| **Dev** (`!app.isPackaged`) | Spawned as a jar sidecar by the shell, using the jar at `FENGYU_JAR` (required) | Opens immediately, loads `localhost:5173` |
+| **Dev — external** (`!app.isPackaged`, `FENGyu_DEV_BACKEND` set) | None — connects to a backend you started (IDE / `mvn spring-boot:run`). No spawn, no token, no supervisor. | Opens once `/api/health` on the external backend responds |
+| **Dev — spawned** (`!app.isPackaged`, `FENGyu_JAR` set) | Spawned as a jar sidecar by the shell, using the jar at `FENGyu_JAR` | Opens immediately, loads `localhost:5173` |
 | **Release** (`app.isPackaged`) | Spawned as a jar sidecar by the shell | Opens after the backend is healthy, loads the bundled SPA |
 
-In dev the shell still owns the backend process — it spawns the jar pointed at by `FENGYU_JAR`, which is
-**required** (the shell throws `Dev mode requires FENGYU_JAR...` if it is unset). The Vite dev server
-(port 5173) proxies `/api` to the shell-spawned backend, and is also how the developer runs the frontend
-in a browser separately. In release the shell owns the backend process end to end.
+Dev has **two backend modes**. With `FENGyu_DEV_BACKEND=http://127.0.0.1:24056` (recommended for backend
+work), the shell connects to a backend you started in your IDE **without** `--token=` — `TokenAuthFilter`
+then disables auth, and the shell passes an empty token so the SPA's empty-token fallback lines up. The
+shell does NOT spawn java, generate a token, or run the SETUP→APP supervisor; you own the backend's
+lifetime. If you started the backend with `--token=<t>`, also set `FENGyu_TOKEN=<t>`.
+
+With `FENGyu_JAR=<path>` instead, the shell owns the backend: it spawns the jar, generates a per-launch
+token, runs the health check + supervisor — the full release lifecycle, just loaded from the dev Vite
+server. `FENGyu_JAR` is **required** on this path (the shell throws `Dev mode requires FENGyu_JAR...` if
+neither variable is set). The Vite dev server (port 5173) proxies `/api` to whichever backend is active,
+and is also how the developer runs the frontend in a browser separately. In release the shell owns the
+backend process end to end.
 
 ## Backend spawn (release)
 

@@ -3,6 +3,7 @@ import { resolveLayout } from './backend/runtime-layout'
 import { genToken } from './util/token'
 import { startBackend } from './backend/orchestrator'
 import { startupAction, StartupAction, superviseSetupRestart, type BackendChild } from './backend/supervisor'
+import { pollHealth } from './util/health'
 import { registerDialogIpc } from './ipc/dialog'
 import { createMainWindow } from './window/create-window'
 import { initLogger } from './desktop/logger'
@@ -24,10 +25,71 @@ function killBackend() {
   backendChild?.kill()
 }
 
+/**
+ * Dev mode that connects to a backend you started yourself (IDE / `mvn spring-boot:run`),
+ * instead of the shell spawning one from a jar. Activated by setting FENGYU_DEV_BACKEND to the
+ * backend's base URL (e.g. `http://127.0.0.1:24056`). The shell does NOT spawn java, generate a
+ * token, run the SETUP→APP supervisor, or manage the backend lifetime — you own it. Matches the
+ * backend's auth-disabled-when-no-token rule: when you start the backend WITHOUT `--token=`,
+ * `TokenAuthFilter` disables auth, so the shell passes an empty token and the SPA's empty-token
+ * fallback lines up. If you DID start the backend with `--token=<t>`, also set FENGYU_TOKEN=<t>.
+ *
+ * Only honored when the app is NOT packaged (dev builds). Packaged builds always spawn their own.
+ */
+function devBackendUrl(): string | null {
+  if (app.isPackaged) return null
+  const url = process.env.FENGYU_DEV_BACKEND
+  if (!url) return null
+  try {
+    // Validate it parses as a URL; ignore otherwise.
+    new URL(url)
+    return url.replace(/\/$/, '')
+  } catch {
+    logger.error(`[desktop] ignoring invalid FENGYU_DEV_BACKEND="${url}" (not a URL)`)
+    return null
+  }
+}
+
 async function bootstrap(): Promise<void> {
   registerDialogIpc()
 
   const isPackaged = app.isPackaged
+
+  // ── Dev: connect to an externally-started backend ───────────────────────────
+  const externalBackend = devBackendUrl()
+  if (externalBackend) {
+    logger.info(`[desktop] dev mode: connecting to external backend at ${externalBackend} (no spawn, no supervisor)`)
+    // Wait for it to be ready (same poll as the spawned path). /api/health bypasses auth,
+    // so an empty token works whether or not you started the backend with --token=.
+    const token = process.env.FENGYU_TOKEN ?? ''
+    process.env.FENGYU_API_BASE = externalBackend
+    process.env.FENGYU_TOKEN = token
+    try {
+      await pollHealth({ port: Number(new URL(externalBackend).port), token, shouldCancel: () => isQuitting })
+    } catch (err) {
+      dialog.showErrorBox(
+        'Backend not reachable',
+        `Could not reach the external backend at ${externalBackend}.\n${err instanceof Error ? err.message : String(err)}\n\n` +
+          'Start it in your IDE (or `mvn -pl FengYu spring-boot:run`), then relaunch the desktop shell.',
+      )
+      app.quit()
+      return
+    }
+
+    const win = createMainWindow({
+      apiBase: externalBackend,
+      token,
+      onHideToTray: () => logger.info('[desktop] window hidden to tray'),
+      isDev: true,
+      isQuitting: () => isQuitting,
+    })
+    createTray(win, () => {
+      /* external backend is owned by the IDE; nothing to kill on quit */
+    })
+    return
+  }
+
+  // ── Packaged / jar-dev: spawn the backend ───────────────────────────────────
   const layout = resolveLayout(isPackaged, process.resourcesPath, process.env)
 
   const token = genToken()
