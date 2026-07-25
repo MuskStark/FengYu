@@ -3,6 +3,8 @@
   "private": true,
   "version": "4.0.0-alpha.3",
   "description": "FengYu/Infinia desktop shell (Electron)",
+  "author": "FengYu",
+  "homepage": "https://github.com/MuskStark/FengYu",
   "main": "dist/main.js",
   "scripts": {
     "build:ts": "tsc -p tsconfig.json",
