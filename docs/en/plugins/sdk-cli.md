@@ -125,13 +125,13 @@ Debug PluginDevMain.main()        # → listens on 127.0.0.1:24057
 
 UI-only plugins set `mockWorker: true` (or omit `workerEndpoint`) — `rpc.invoke` returns a
 deterministic stub, so you can iterate the UI before any worker exists. See
-[`plugin-dev/README.md`](https://github.com/MuskStark/FengYu/tree/main/plugin-dev) for the full
+[`toolchain/dev/README.md`](https://github.com/MuskStark/FengYu/tree/main/toolchain/dev) for the full
 guide. If `workerEndpoint` is configured, connection failures are surfaced as RPC errors and never
 silently replaced by mock responses.
 
 ## `fengyu plugin` CLI
 
-Source: `plugin-cli/src/cli.mjs`. The CLI only scaffolds and packages — development and validation
+Source: `toolchain/cli/src/cli.mjs`. The CLI only scaffolds and packages — development and validation
 both happen elsewhere (IDE for dev; `build` validates automatically). Usage:
 
 ```
