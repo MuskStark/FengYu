@@ -68,7 +68,11 @@ Electron 桌面外壳会以 sidecar 方式拉起 Java 后端。在仓库根目�
 ```bash
 cd desktop/electron
 npm install
-npm run dev       # 必须将 FENGYU_JAR 指向一个已构建的 shaded jar（先用 ./mvnw -pl FengYu -am package -DskipTests 构建）
+npm run dev       # 两种开发模式：
+                  #  A) 连接 IDE 启动的后端：设置 FENGYU_DEV_BACKEND=http://127.0.0.1:24056
+                  #     （后端不带 --token 启动以禁用认证；外壳不拉起 java）
+                  #  B) 外壳自行拉起后端：设置 FENGYU_JAR=<已构建的 shaded jar>
+                  #     （先用 ./mvnw -pl FengYu -am package -DskipTests -Drevision=4.0.0-alpha.2 构建）
 ```
 
 构建可分发包：

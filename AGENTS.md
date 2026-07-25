@@ -77,7 +77,10 @@ java -jar FengYu/target/FengYu-*.jar --token=<t>     # loopback, port 24056 by d
 cd frontend && npm install && npm run dev            # Vite proxies /api + /plugin-runtime → :24056
 
 # Desktop (dev)
-cd desktop/electron && npm install && npm run dev   # REQUIRES FENGYU_JAR (built shaded jar); shell spawns its own backend
+cd desktop/electron && npm install && npm run dev   # two dev modes:
+                                                    #  A) FENGYU_DEV_BACKEND=http://127.0.0.1:24056 → connect to an
+                                                    #     IDE-started backend (start it without --token → auth disabled)
+                                                    #  B) FENGYU_JAR=<built shaded jar> → shell spawns its own backend
 
 # End-to-end smoke (boots the JAR, probes every endpoint)
 scripts/e2e-smoke.sh
