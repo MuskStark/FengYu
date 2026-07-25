@@ -1,6 +1,6 @@
 ---
 name: app-release
-description: Cut a main FengYu/Infinia application release (tag vX.Y.Z or vX.Y.Z-{alpha|beta|rc}.N). Validates the tag against scripts/resolve-release-version.mjs, checks version consistency across the app manifests, invokes docs-updater, reviews the app release workflow and its contract tests, and runs frontend/Maven/packaging/smoke verification. Use when the user asks to release, ship, tag, or cut a version of the main app. Does NOT publish the independently versioned plugin toolchain — use plugin-tooling-release for that.
+description: Cut a main FengYu/Infinia application release (tag vX.Y.Z or vX.Y.Z-{alpha|beta|rc}.N). Validates the tag against scripts/resolve-release-version.mjs, checks version consistency across the app manifests, invokes docs-updater, reviews the app release workflow and its contract tests, and runs frontend/Maven/packaging/smoke verification. Use when the user asks to release, ship, tag, or cut a version of the main app. Does NOT publish the independently versioned plugin toolchain — use toolchain-release for that.
 ---
 
 # App Release
@@ -8,8 +8,8 @@ description: Cut a main FengYu/Infinia application release (tag vX.Y.Z or vX.Y.Z
 Cut a **main application** release. The app version is the Maven `${revision}` property, mirrored in
 `frontend/package.json`, `desktop/electron/package.json`, and each official plugin's `manifest.json`.
 
-This skill does **not** touch the plugin toolchain version (`FengYu-Plugin-Sdk/pom.xml` /
-`@infinia/*`). Use the `plugin-tooling-release` skill for that.
+This skill does **not** touch the plugin toolchain version (`toolchain/sdk-java/pom.xml` /
+`@infinia/*`). Use the `toolchain-release` skill for that.
 
 ## Step 1 — Validate the release tag
 

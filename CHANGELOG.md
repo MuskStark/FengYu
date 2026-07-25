@@ -6,6 +6,10 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### ♻️ Toolchain 目录整合
+- 7 个插件工具链目录(2 Maven + 4 npm + schema)整合进 `toolchain/`,扁平化中间层,统一语义短名(`sdk-java`/`devkit-java`/`sdk-ts`/`ui`/`dev`/`cli`/`spec`)。
+- CI/release workflow 与 skill 重命名为 `toolchain-*`(`plugin-tooling.yml`→`toolchain-ci.yml`,`plugin-tooling-release.yml`→`toolchain-release.yml`)。tag 前缀 `plugin-tooling-v*` 不变。
+
 ### ✨ Added
 - **Skills** — a third extension surface (peer to plugins and AI tools) using Codex-style
   progressive disclosure. Enabled skills appear as a compact catalog in the system prompt, and

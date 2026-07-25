@@ -1,7 +1,7 @@
 # FengYu Plugin CLI
 
 The verified end-to-end path for creating and packaging FengYu plugins. Development happens in your
-IDE via [`@infinia/plugin-dev`](../plugin-dev) — see that package's README for the dev guide.
+IDE via [`@infinia/plugin-dev`](../dev) — see that package's README for the dev guide.
 
 ```bash
 # Scaffold a complete Vue + Java plugin (default), or --ui-only for the lightweight template

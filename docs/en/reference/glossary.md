@@ -35,7 +35,7 @@ The local identity Infinia creates on first APP-mode startup: **id** `1`, **name
 
 ## JSON-RPC worker
 
-The protocol and process model for plugin backends. The worker reads newline-delimited JSON-RPC 2.0 requests from `stdin` (`{jsonrpc:"2.0", id, method, params}`), dispatches to registered handlers, and writes one response per line to `stdout` (`result` or `error`). `stderr` is reserved for logs. The `FengYu-Plugin-Sdk` artifact ships `JsonRpcWorker`, a tiny runtime with `.on(method, handler)` registration. See [Worker (JSON-RPC)](/en/plugins/worker).
+The protocol and process model for plugin backends. The worker reads newline-delimited JSON-RPC 2.0 requests from `stdin` (`{jsonrpc:"2.0", id, method, params}`), dispatches to registered handlers, and writes one response per line to `stdout` (`result` or `error`). `stderr` is reserved for logs. The `toolchain/sdk-java` artifact ships `JsonRpcWorker`, a tiny runtime with `.on(method, handler)` registration. See [Worker (JSON-RPC)](/en/plugins/worker).
 
 ## `.fyp`
 
