@@ -27,26 +27,34 @@ function killBackend() {
 
 /**
  * Dev mode that connects to a backend you started yourself (IDE / `mvn spring-boot:run`),
- * instead of the shell spawning one from a jar. Activated by setting FENGYU_DEV_BACKEND to the
- * backend's base URL (e.g. `http://127.0.0.1:24056`). The shell does NOT spawn java, generate a
- * token, run the SETUP→APP supervisor, or manage the backend lifetime — you own it. Matches the
- * backend's auth-disabled-when-no-token rule: when you start the backend WITHOUT `--token=`,
+ * instead of the shell spawning one from a jar. The shell does NOT spawn java, generate a token,
+ * run the SETUP→APP supervisor, or manage the backend lifetime — you own it. Matches the backend's
+ * auth-disabled-when-no-token rule: when you start the backend WITHOUT `--token=`,
  * `TokenAuthFilter` disables auth, so the shell passes an empty token and the SPA's empty-token
  * fallback lines up. If you DID start the backend with `--token=<t>`, also set FENGYU_TOKEN=<t>.
  *
- * Only honored when the app is NOT packaged (dev builds). Packaged builds always spawn their own.
+ * Resolution (dev only — packaged builds always spawn their own):
+ *   - FENGYU_DEV_BACKEND set        → connect to that URL (must be a valid http(s) URL).
+ *   - FENGYU_DEV_BACKEND=disabled   → opt OUT of the default; fall through to the FENGYU_JAR
+ *                                     spawn path (self-contained dev).
+ *   - neither FENGYU_DEV_BACKEND nor FENGYU_JAR set → DEFAULT: connect to the IDE backend at
+ *                                     http://127.0.0.1:24056 (the conventional dev backend port).
+ * Set FENGYU_DEV_BACKEND=disabled (or just set FENGYU_JAR) to use the jar-spawn path instead.
  */
+const DEFAULT_DEV_BACKEND = 'http://127.0.0.1:24056'
+
 function devBackendUrl(): string | null {
   if (app.isPackaged) return null
   const url = process.env.FENGYU_DEV_BACKEND
-  if (!url) return null
+  if (url === 'disabled') return null
+  if (!url) return DEFAULT_DEV_BACKEND // default: connect to the IDE-started backend
   try {
     // Validate it parses as a URL; ignore otherwise.
     new URL(url)
     return url.replace(/\/$/, '')
   } catch {
-    logger.error(`[desktop] ignoring invalid FENGYU_DEV_BACKEND="${url}" (not a URL)`)
-    return null
+    logger.error(`[desktop] ignoring invalid FENGYU_DEV_BACKEND="${url}" (not a URL); falling back to ${DEFAULT_DEV_BACKEND}`)
+    return DEFAULT_DEV_BACKEND
   }
 }
 
