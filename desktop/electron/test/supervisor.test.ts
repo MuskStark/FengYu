@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { shouldRestartSetup, StartupAction, startupAction } from '../src/backend/supervisor'
+import { isAppCrash, shouldRestartSetup, StartupAction, startupAction } from '../src/backend/supervisor'
 
 describe('shouldRestartSetup', () => {
   it('shutdown prevents a setup restart', () => {
@@ -20,5 +20,17 @@ describe('startupAction', () => {
 
   it('SETUP mode shows the window and supervises the same port', () => {
     expect(startupAction(true, 43123)).toEqual(StartupAction.ShowWindowAndSupervise)
+  })
+})
+
+describe('isAppCrash', () => {
+  it('true for non-zero exit while running', () => {
+    expect(isAppCrash(1, false)).toBe(true)
+  })
+  it('false during shutdown', () => {
+    expect(isAppCrash(1, true)).toBe(false)
+  })
+  it('false for clean exit (0)', () => {
+    expect(isAppCrash(0, false)).toBe(false)
   })
 })
