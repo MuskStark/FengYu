@@ -22,6 +22,8 @@ export interface StartDevFrontendOptions {
   deadlineMs?: number
   /** logger.info sink (optional). */
   log?: (msg: string) => void
+  /** Returns true once the app is genuinely quitting — suppresses the unexpected-exit warning. */
+  isQuitting?: () => boolean
 }
 
 export interface DevFrontendHandle {
@@ -58,7 +60,7 @@ export function isPortListening(port: number): Promise<boolean> {
  * or spawn failure.
  */
 export async function startDevFrontend(opts: StartDevFrontendOptions): Promise<DevFrontendHandle> {
-  const { repoRoot, port = 5173, deadlineMs = 60_000, log = console.log } = opts
+  const { repoRoot, port = 5173, deadlineMs = 60_000, log = console.log, isQuitting = () => false } = opts
   const frontendDir = join(repoRoot, 'frontend')
 
   // Already running? Don't double-spawn.
@@ -71,25 +73,40 @@ export async function startDevFrontend(opts: StartDevFrontendOptions): Promise<D
     throw new Error(`frontend not found at ${frontendDir} (expected repo root with a frontend/ dir)`)
   }
 
-  log(`[desktop] dev: starting Vite frontend (npm run dev in ${frontendDir})`)
+  log(`[desktop] dev: starting Vite frontend (vite in ${frontendDir})`)
+  // Spawn the `vite` binary directly rather than `npm run dev`. Going through npm makes vite a
+  // grandchild of the shell, which is fragile: when the npm wrapper exits (it sometimes does after
+  // handing off, or on certain signals), the vite grandchild can be orphaned or killed, leaving the
+  // window's SPA unable to lazy-load route modules ("Failed to fetch dynamically imported module")
+  // while the shell keeps running. Spawning vite directly keeps it a direct child we control.
+  //
   // --strictPort: fail hard if :5173 is taken instead of silently moving to another port (the shell
   // waits specifically for :5173 and create-window loads :5173, so a silent port move would leave
   // the window loading a dead URL).
   // --host 127.0.0.1: force an IPv4 loopback bind. Vite 6 otherwise defaults to IPv6 localhost (::1),
-  // which the shell's readiness probe and the BrowserWindow's `http://localhost:5173` load can miss
-  // depending on how the OS resolves `localhost`. Loopback-only matches the backend's bind model.
+  // which the shell's readiness probe and the BrowserWindow's `http://127.0.0.1:5173` load can miss.
+  // detached: true gives vite its own process group so we can clean it up reliably via SIGTERM to
+  // -pid without taking the shell down, and so it survives a Node signal-delivery race on quit.
+  const viteBin = join(frontendDir, 'node_modules', '.bin', 'vite')
+  const cmd = existsSync(viteBin) ? viteBin : 'vite'
   const child = spawn(
-    'npm',
-    ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(port), '--strictPort'],
+    cmd,
+    ['--host', '127.0.0.1', '--port', String(port), '--strictPort'],
     {
       cwd: frontendDir,
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: process.platform === 'win32',
-      detached: false,
+      detached: true,
     },
   )
   child.stdout?.on('data', (d) => log(`[vite] ${d.toString().trimEnd()}`))
   child.stderr?.on('data', (d) => log(`[vite] ${d.toString().trimEnd()}`))
+  child.once('exit', (code, signal) => {
+    if (!isQuitting()) {
+      log(`[desktop] WARNING: dev frontend (vite) exited unexpectedly (code=${code} signal=${signal}). ` +
+        'Lazy-loaded routes will fail. Restart the shell or run `npm run dev` in frontend/ manually.')
+    }
+  })
 
   // Wait for Vite to bind. Abort fast if the npm process dies first.
   const deadline = Date.now() + deadlineMs
@@ -119,8 +136,8 @@ export async function startDevFrontend(opts: StartDevFrontendOptions): Promise<D
     process: child,
     stop: () => {
       if (!child.killed) {
-        // Kill the npm process group so the Vite child dies with it. On Windows there's no
-        // process group; tree-kill via taskkill covers the Vite descendant.
+        // Kill vite's process group (detached:true gives it its own group). On Windows there's no
+        // process group; taskkill /t covers descendants.
         if (process.platform === 'win32') {
           try {
             spawn('taskkill', ['/pid', String(child.pid), '/f', '/t'])

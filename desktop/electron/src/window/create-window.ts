@@ -60,6 +60,8 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
 
   if (opts.isDev) {
     void win.loadURL('http://127.0.0.1:5173')
+    // Auto-open DevTools in dev so runtime/console errors are visible without a keyboard shortcut.
+    win.webContents.openDevTools({ mode: 'detach' })
   } else {
     void win.loadFile(join(__dirname, '../../frontend-dist/index.html'))
   }
