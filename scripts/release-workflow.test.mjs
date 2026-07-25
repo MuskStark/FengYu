@@ -32,12 +32,15 @@ test('builds Maven artifacts with the full release version', () => {
   assert.doesNotMatch(workflow, /\.\/mvnw -am test package -Drevision="\$APP_VERSION"/)
 })
 
-test('electron-builder targets NSIS + portable on Windows, DMG on macOS, AppImage on Linux', () => {
+test('electron-builder targets NSIS + portable on Windows, DMG arm64 on macOS, AppImage + deb on Linux', () => {
   // Windows ships BOTH an installer (nsis) and a no-install portable (.exe) target.
   assert.match(builderConfig, /win:\s*\n\s*target:\s*\n\s*-\s+target:\s*nsis/)
   assert.match(builderConfig, /-\s+target:\s*portable/)
-  assert.match(builderConfig, /mac:\s*\n\s*target:/)
-  assert.match(builderConfig, /linux:\s*\n\s*target:\s*AppImage/)
+  // macOS: arm64 only (no x64).
+  assert.match(builderConfig, /mac:\s*\n\s*target:\s*\n\s*-\s+target:\s*dmg\s*\n\s*arch:\s*\[arm64\]/)
+  // Linux: AppImage (single-file) + deb (Debian/Ubuntu package).
+  assert.match(builderConfig, /linux:\s*\n\s*target:\s*\n\s*-\s+target:\s*AppImage/)
+  assert.match(builderConfig, /-\s+target:\s*deb/)
 })
 
 test('artifact names include version + platform + arch', () => {
