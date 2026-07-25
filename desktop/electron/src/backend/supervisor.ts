@@ -23,6 +23,11 @@ export function shouldRestartSetup(shuttingDown: boolean, exitCode: number | nul
   return !shuttingDown && exitCode === 0
 }
 
+/** APP-mode backend exited unexpectedly (non-zero, not during shutdown). */
+export function isAppCrash(exitCode: number | null, shuttingDown: boolean): boolean {
+  return !shuttingDown && exitCode !== 0 && exitCode !== null
+}
+
 /** A handle to a spawned backend: the child + how to kill it. */
 export interface BackendChild {
   process: ChildProcess
