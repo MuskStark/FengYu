@@ -74,19 +74,24 @@ export async function startDevFrontend(opts: StartDevFrontendOptions): Promise<D
   }
 
   log(`[desktop] dev: starting Vite frontend (vite in ${frontendDir})`)
-  // Spawn the `vite` binary directly rather than `npm run dev`. Going through npm makes vite a
-  // grandchild of the shell, which is fragile: when the npm wrapper exits (it sometimes does after
-  // handing off, or on certain signals), the vite grandchild can be orphaned or killed, leaving the
-  // window's SPA unable to lazy-load route modules ("Failed to fetch dynamically imported module")
-  // while the shell keeps running. Spawning vite directly keeps it a direct child we control.
+  // Spawn the `vite` binary directly (NOT `npm run dev`). Going through npm makes vite a grandchild
+  // of the shell, which is fragile: when the npm wrapper exits (it sometimes does after handing off,
+  // or on certain signals), the vite grandchild can be orphaned or killed, leaving the window's SPA
+  // unable to lazy-load route modules ("Failed to fetch dynamically imported module") while the shell
+  // keeps running. Spawning vite directly keeps it a direct child we fully control.
+  //
+  // NOT detached: as a plain direct child, vite stays alive for the shell's whole lifetime (fixing
+  // the mid-session death) AND is automatically cleaned up when the shell exits — on macOS/Linux the
+  // child gets SIGHUP when its parent dies; on Windows it dies with the parent process. This means
+  // even a SIGKILL of the shell (which bypasses before-quit/will-quit JS handlers) still takes vite
+  // down, which a detached process group would NOT. The stop() in will-quit is the graceful path
+  // (flush + clean exit); the parent-death path is the backstop for forceful kills.
   //
   // --strictPort: fail hard if :5173 is taken instead of silently moving to another port (the shell
   // waits specifically for :5173 and create-window loads :5173, so a silent port move would leave
   // the window loading a dead URL).
   // --host 127.0.0.1: force an IPv4 loopback bind. Vite 6 otherwise defaults to IPv6 localhost (::1),
   // which the shell's readiness probe and the BrowserWindow's `http://127.0.0.1:5173` load can miss.
-  // detached: true gives vite its own process group so we can clean it up reliably via SIGTERM to
-  // -pid without taking the shell down, and so it survives a Node signal-delivery race on quit.
   const viteBin = join(frontendDir, 'node_modules', '.bin', 'vite')
   const cmd = existsSync(viteBin) ? viteBin : 'vite'
   const child = spawn(
@@ -96,7 +101,6 @@ export async function startDevFrontend(opts: StartDevFrontendOptions): Promise<D
       cwd: frontendDir,
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: process.platform === 'win32',
-      detached: true,
     },
   )
   child.stdout?.on('data', (d) => log(`[vite] ${d.toString().trimEnd()}`))
@@ -135,22 +139,14 @@ export async function startDevFrontend(opts: StartDevFrontendOptions): Promise<D
   return {
     process: child,
     stop: () => {
-      if (!child.killed) {
-        // Kill vite's process group (detached:true gives it its own group). On Windows there's no
-        // process group; taskkill /t covers descendants.
-        if (process.platform === 'win32') {
-          try {
-            spawn('taskkill', ['/pid', String(child.pid), '/f', '/t'])
-          } catch {
-            /* best effort */
-          }
-        } else {
-          try {
-            process.kill(-child.pid!, 'SIGTERM')
-          } catch {
-            child.kill('SIGTERM')
-          }
-        }
+      if (child.killed || !child.pid) return
+      // Graceful SIGTERM so vite can flush. As a non-detached direct child, vite is ALSO reaped
+      // automatically when the shell dies (SIGHUP on POSIX, parent-death on Windows), which covers
+      // the forceful-kill path that bypasses these JS handlers.
+      try {
+        child.kill('SIGTERM')
+      } catch {
+        /* already gone */
       }
     },
   }
