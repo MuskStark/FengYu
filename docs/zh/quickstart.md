@@ -27,14 +27,14 @@ mvn install -f FengYu-Api/pom.xml -DskipTests
 mvn clean package -f FengYu/pom.xml -DskipTests
 ```
 
-打包好的后端 jar 位于 `FengYu/target/FengYu-4.0.0-alpha.2.jar`。
+打包好的后端 jar 位于 `FengYu/target/FengYu-4.0.0-alpha.3.jar`。
 
 ## 运行后端
 
 启动无头（headless）Spring Boot 后端。它默认绑定 `127.0.0.1:24056`，并在启动时打印 `FENGYU_PORT=<n>`。
 
 ```bash
-java -jar FengYu/target/FengYu-4.0.0-alpha.2.jar --token=<your-token>
+java -jar FengYu/target/FengYu-4.0.0-alpha.3.jar --token=<your-token>
 ```
 
 入口类是 `fan.summer.fengyu.HeadlessLauncher`。CLI 参数只有 `--port` 和 `--token` 两个。
@@ -71,7 +71,7 @@ npm install
 npm run dev       # 默认：连接 IDE 启动的后端 http://127.0.0.1:24056
                   #   （后端不带 --token 启动以禁用认证；外壳不拉起 java）
                   # 改为外壳自行拉起后端：设置 FENGYU_JAR=<已构建的 shaded jar>
-                  #   （先用 ./mvnw -pl FengYu -am package -DskipTests -Drevision=4.0.0-alpha.2 构建）
+                  #   （先用 ./mvnw -pl FengYu -am package -DskipTests -Drevision=4.0.0-alpha.3 构建）
                   #   或设置 FENGYU_DEV_BACKEND=disabled
 ```
 
@@ -87,7 +87,7 @@ npm run build     # = npm run build:ts && electron-builder（当前平台）
 
 ## 发布（Alpha）
 
-发布标签（`v4.0.0-alpha.2`，以及后续的 stable/beta/rc）会触发一条 GitHub Actions 流水线，发布**未签名**的 Electron 安装包（Windows/macOS/Linux）和一个**可移植的 Web 分发包**。Web 压缩包直接从文件夹运行同一套后端 + 内嵌的 Vue SPA：
+发布标签（`v4.0.0-alpha.3`，以及后续的 stable/beta/rc）会触发一条 GitHub Actions 流水线，发布**未签名**的 Electron 安装包（Windows/macOS/Linux）和一个**可移植的 Web 分发包**。Web 压缩包直接从文件夹运行同一套后端 + 内嵌的 Vue SPA：
 
 ```bash
 # 解压 Infinia-<version>-web.zip 后：
