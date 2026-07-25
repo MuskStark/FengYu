@@ -14,13 +14,13 @@ Infinia 桌面外壳是一个用 TypeScript 编写（主进程）的 **Electron 
 
 | Profile | 后端 | 窗口 |
 | --- | --- | --- |
-| **Dev — 外部**（`!app.isPackaged`，设置了 `FENGyu_DEV_BACKEND`） | 无——连接你自行启动的后端（IDE / `mvn spring-boot:run`）。不拉起、不生成 token、无监管。 | 外部后端的 `/api/health` 可达后打开 |
-| **Dev — 自拉起**（`!app.isPackaged`，设置了 `FENGyu_JAR`） | 由外壳以 jar sidecar 方式拉起，使用 `FENGyu_JAR` 指向的 jar | 立即打开，加载 `localhost:5173` |
+| **Dev — 外部**（默认；`!app.isPackaged`，无 env 或设置了 `FENGyu_DEV_BACKEND`） | 无——连接你自行启动的后端（IDE / `mvn spring-boot:run`）`http://127.0.0.1:24056`。不拉起、不生成 token、无监管。 | 外部后端的 `/api/health` 可达后打开 |
+| **Dev — 自拉起**（`!app.isPackaged`，设置了 `FENGyu_JAR` 或 `FENGyu_DEV_BACKEND=disabled`） | 由外壳以 jar sidecar 方式拉起，使用 `FENGyu_JAR` 指向的 jar | 立即打开，加载 `localhost:5173` |
 | **Release**（`app.isPackaged`） | 由外壳以 jar sidecar 方式拉起 | 在后端健康后打开，加载内嵌的 SPA |
 
-开发模式有**两种后端模式**。设置 `FENGyu_DEV_BACKEND=http://127.0.0.1:24056`（后端开发推荐）时，外壳连接你在 IDE 中**不带** `--token=` 启动的后端——此时 `TokenAuthFilter` 禁用认证，外壳传入空 token，与 SPA 的空 token 回退一致。外壳不拉起 java、不生成 token、不运行 SETUP→APP 监管；后端的生命周期由你掌控。如果你带 `--token=<t>` 启动了后端，也需设置 `FENGyu_TOKEN=<t>`。
+默认情况下，`npm run dev` 连接你在 IDE 中**不带** `--token=` 启动的后端——此时 `TokenAuthFilter` 禁用认证，外壳传入空 token，与 SPA 的空 token 回退一致。外壳不拉起 java、不生成 token、不运行 SETUP→APP 监管；后端的生命周期由你掌控。如果你带 `--token=<t>` 启动了后端，也需设置 `FENGyu_TOKEN=<t>`。要指向其他端口，设置 `FENGyu_DEV_BACKEND=http://127.0.0.1:<端口>`。
 
-改用 `FENGyu_JAR=<路径>` 时，外壳掌管后端：拉起 jar、生成单次启动 token、运行健康检查 + 监管——完整的发布生命周期，只是从开发版 Vite 服务器加载。该路径下 `FENGyu_JAR` **必填**（两个变量都没设置时外壳会抛出 `Dev mode requires FENGyu_JAR...`）。Vite 开发服务器（端口 5173）会把 `/api` 代理到当前生效的后端，开发者也可借此单独在浏览器中运行前端。在发布模式下，外壳端到端地掌管后端进程。
+要让外壳自行拉起后端（自包含开发），设置 `FENGyu_JAR=<路径>`（或 `FENGyu_DEV_BACKEND=disabled`）：拉起 jar、生成单次启动 token、运行健康检查 + 监管——完整的发布生命周期，只是从开发版 Vite 服务器加载。该路径下 `FENGyu_JAR` **必填**（未设置时外壳会抛出 `Dev mode requires FENGyu_JAR...`）。Vite 开发服务器（端口 5173）会把 `/api` 代理到当前生效的后端，开发者也可借此单独在浏览器中运行前端。在发布模式下，外壳端到端地掌管后端进程。
 
 ## 后端拉起（发布版）
 
