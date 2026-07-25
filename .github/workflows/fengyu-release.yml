@@ -294,7 +294,11 @@ jobs:
       - name: Build Electron bundle (without JRE)
         working-directory: desktop/electron
         shell: bash
-        run: npx electron-builder --config.directories.output=../dist-electron-lite
+        # --publish never: electron-builder.yml declares a github publish provider, which makes
+        # electron-builder auto-publish when running on a git tag. The desktop job only BUILDS;
+        # the release job aggregates all artifacts and creates the GitHub release via gh CLI.
+        # Without --publish never, electron-builder tries to upload with a missing GH_TOKEN.
+        run: npx electron-builder --publish never --config.directories.output=../dist-electron-lite
 
       - name: Generate jlink JRE
         shell: bash
@@ -307,7 +311,7 @@ jobs:
         working-directory: desktop/electron
         shell: bash
         run: |
-          npx electron-builder --config.directories.output=../dist-electron-jre \
+          npx electron-builder --publish never --config.directories.output=../dist-electron-jre \
             --config.productName=Infinia-JRE \
             --config.extraMetadata.name=Infinia-JRE \
             --config.extraResources="[{\"from\":\"resources/jre\",\"to\":\"jre\",\"filter\":[\"**/*\"]}]"
