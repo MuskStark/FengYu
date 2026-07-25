@@ -40,6 +40,14 @@ test('electron-builder targets NSIS + portable on Windows, DMG on macOS, AppImag
   assert.match(builderConfig, /linux:\s*\n\s*target:\s*AppImage/)
 })
 
+test('artifact names include version + platform + arch', () => {
+  // Top-level uniform scheme: <product>-<version>-<platform>-<arch>.<ext>
+  assert.match(builderConfig, /artifactName: \$\{productName\}-\$\{version\}-\$\{platform\}-\$\{arch\}\.\$\{ext\}/)
+  // Windows disambiguates installer vs portable with a form suffix (both keep version+platform+arch).
+  assert.match(builderConfig, /nsis:[\s\S]*?artifactName: \$\{productName\}-\$\{version\}-\$\{platform\}-\$\{arch\}-setup\.\$\{ext\}/)
+  assert.match(builderConfig, /portable:[\s\S]*?artifactName: \$\{productName\}-\$\{version\}-\$\{platform\}-\$\{arch\}-portable\.\$\{ext\}/)
+})
+
 test('electron-builder bundles the FengYu jar + plugins as extraResources', () => {
   assert.match(builderConfig, /from: resources\/binaries\/FengYu\.jar/)
   assert.match(builderConfig, /from: resources\/binaries\/plugins/)

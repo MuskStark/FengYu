@@ -22,6 +22,12 @@ appId: fan.summer.fengyu
 productName: Infinia
 copyright: Copyright © 2026 FengYu
 
+# Uniform artifact naming: <product>-<version>-<os>-<arch>[<form>].<ext>
+# e.g. Infinia-4.0.0-mac-arm64.dmg, Infinia-4.0.0-linux-x64.AppImage.
+# Windows targets (nsis installer vs portable no-install) override this per-target to add a form
+# suffix so the two .exe files don't collide.
+artifactName: ${productName}-${version}-${platform}-${arch}.${ext}
+
 directories:
   output: ../dist-electron
   buildResources: resources
@@ -87,6 +93,12 @@ nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
+  # Installer form of the artifact name: Infinia-<version>-win-<arch>-setup.exe
+  artifactName: ${productName}-${version}-${platform}-${arch}-setup.${ext}
+
+portable:
+  # No-install form: Infinia-<version>-win-<arch>-portable.exe
+  artifactName: ${productName}-${version}-${platform}-${arch}-portable.${ext}
 
 publish:
   provider: github
