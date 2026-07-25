@@ -59,7 +59,7 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
   })
 
   if (opts.isDev) {
-    void win.loadURL('http://localhost:5173')
+    void win.loadURL('http://127.0.0.1:5173')
   } else {
     void win.loadFile(join(__dirname, '../../frontend-dist/index.html'))
   }

@@ -1,4 +1,5 @@
 import { app, dialog } from 'electron'
+import { join } from 'node:path'
 import { resolveLayout } from './backend/runtime-layout'
 import { genToken } from './util/token'
 import { startBackend } from './backend/orchestrator'
@@ -10,9 +11,11 @@ import { initLogger } from './desktop/logger'
 import { acquireSingleInstanceLock } from './desktop/single-instance'
 import { createTray } from './desktop/tray'
 import { checkForUpdates } from './updater/auto-updater'
+import { startDevFrontend, type DevFrontendHandle } from './desktop/dev-frontend'
 
 const logger = initLogger()
 let backendChild: BackendChild | null = null
+let devFrontend: DevFrontendHandle | null = null
 let isQuitting = false
 
 // Prevents an extra console window on Windows in release builds. Must run after the
@@ -23,6 +26,18 @@ if (process.platform === 'win32') app.setAppUserModelId('fan.summer.fengyu')
 function killBackend() {
   isQuitting = true
   backendChild?.kill()
+  devFrontend?.stop()
+}
+
+/**
+ * In dev, auto-start the Vite frontend (the old Tauri shell did this via `beforeDevCommand`).
+ * Resolves once Vite is listening on :5173; throws if it fails to come up. Idempotent: if Vite is
+ * already running, returns without spawning. The spawned process is stopped on app quit.
+ */
+async function ensureDevFrontend(): Promise<void> {
+  // __dirname in dev is <repo>/desktop/electron/dist → repo root is three levels up.
+  const repoRoot = join(__dirname, '..', '..', '..')
+  devFrontend = await startDevFrontend({ repoRoot, log: (m) => logger.info(m) })
 }
 
 /**
@@ -79,6 +94,18 @@ async function bootstrap(): Promise<void> {
         'Backend not reachable',
         `Could not reach the external backend at ${externalBackend}.\n${err instanceof Error ? err.message : String(err)}\n\n` +
           'Start it in your IDE (or `mvn -pl FengYu spring-boot:run`), then relaunch the desktop shell.',
+      )
+      app.quit()
+      return
+    }
+
+    try {
+      await ensureDevFrontend()
+    } catch (err) {
+      dialog.showErrorBox(
+        'Frontend not reachable',
+        `Could not start the Vite frontend dev server.\n${err instanceof Error ? err.message : String(err)}\n\n` +
+          'Run `cd frontend && npm install && npm run dev` manually, then relaunch the desktop shell.',
       )
       app.quit()
       return
@@ -148,6 +175,20 @@ async function bootstrap(): Promise<void> {
         startBackend({ layout, token, requestedPort: started.port, onBackendLine: logger.backendLine, shouldCancel: () => isQuitting })
           .then((r) => ({ child: r.child, port: r.port, setupMode: r.setupMode })),
     })
+  }
+
+  if (!isPackaged) {
+    try {
+      await ensureDevFrontend()
+    } catch (err) {
+      dialog.showErrorBox(
+        'Frontend not reachable',
+        `Could not start the Vite frontend dev server.\n${err instanceof Error ? err.message : String(err)}\n\n` +
+          'Run `cd frontend && npm install && npm run dev` manually, then relaunch the desktop shell.',
+      )
+      app.quit()
+      return
+    }
   }
 
   const win = createMainWindow({
