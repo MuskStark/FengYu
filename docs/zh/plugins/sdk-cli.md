@@ -10,7 +10,7 @@ lang: zh
 
 ## `@infinia/plugin-sdk`（TypeScript）
 
-源码：`plugin-sdk/typescript/src/index.ts`。当前 SDK 版本为 `1.1.0`。导入单例 client 以及辅助方法/类型：
+源码：`toolchain/sdk-ts/src/index.ts`。当前 SDK 版本为 `1.1.0`。导入单例 client 以及辅助方法/类型：
 
 ```ts
 import { fengyu, FengYuClient, createId, type FileRef, type Environment } from '@infinia/plugin-sdk'

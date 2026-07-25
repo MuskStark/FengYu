@@ -142,15 +142,15 @@ the token + api-base to the renderer via a `contextBridge` preload. See [Archite
 | Module / dir | Purpose |
 |--------|---------|
 | `FengYu-Api` | Plugin + AI contract (`manifest.json` schema, worker JSON-RPC protocol, `AiTool`). |
-| `FengYu-Plugin-Sdk` | Java Worker SDK + TypeScript `@infinia/plugin-sdk` (the iframe `postMessage` bridge). |
+| `toolchain/sdk-java` | Java Worker SDK + TypeScript `@infinia/plugin-sdk` (the iframe `postMessage` bridge, in `toolchain/sdk-ts`). |
 | `OfficialPlugins` | Official plugins: `plugin-markdown`, `plugin-excel`, `plugin-email` (each ships a `.fyp`). |
 | `FengYu` | Headless Spring Boot backend — REST/SSE controllers, AI backends, JPA/Hibernate, marketplace. |
 | `frontend/` | Vue 3.5 + TS SPA (runs identically in the browser or the Electron BrowserWindow). |
 | `desktop/` | Electron 43.x desktop shell — sidecar-launches the JAR, tray, native dialogs, auto-updater. |
-| `plugin-ui/` | `@infinia/plugin-ui` — the official Vue/Vuetify component kit for plugin micro-frontends. |
-| `plugin-cli/` | `fengyu plugin` CLI — `create`, `build` (development moved to the IDE via `plugin-dev/` + `FengYu-Plugin-DevKit/`). |
-| `plugin-dev/` | `@infinia/plugin-dev` — Vite plugin that turns the dev server into a FengYu host simulator for IDE debugging. |
-| `FengYu-Plugin-DevKit/` | `fengyu-plugin-devkit` — loopback-TCP JSON-RPC dev server (`PluginDevMain`) so worker breakpoints fire in the IDE. |
+| `toolchain/ui/` | `@infinia/plugin-ui` — the official Vue/Vuetify component kit for plugin micro-frontends. |
+| `toolchain/cli/` | `fengyu plugin` CLI — `create`, `build` (development moved to the IDE via `toolchain/dev/` + `toolchain/devkit-java/`). |
+| `toolchain/dev/` | `@infinia/plugin-dev` — Vite plugin that turns the dev server into a FengYu host simulator for IDE debugging. |
+| `toolchain/devkit-java/` | `fengyu-plugin-devkit` — loopback-TCP JSON-RPC dev server (`PluginDevMain`) so worker breakpoints fire in the IDE. |
 
 ### Plugin System
 

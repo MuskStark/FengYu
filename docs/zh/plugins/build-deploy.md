@@ -93,9 +93,9 @@ GitHub Packages authentication is required. Set FENGYU_GITHUB_TOKEN or GITHUB_TO
 三个随产品发布的插件由同一套 CLI 构建——没有单独的脚本：
 
 ```bash
-node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-markdown
-node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-excel
-node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-email
+node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-markdown
+node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-excel
+node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-email
 ```
 
 每条都会写出 `OfficialPlugins/plugin-<name>/dist-package/fan.summer.<name>-4.0.0-alpha.2.fyp`。CI 在 `.github/workflows/plugin-tooling.yml` 中以矩阵方式构建它们。

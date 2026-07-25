@@ -25,7 +25,7 @@ OFFICIAL_DIR="$(mktemp -d)"
 WORK=""
 SRV=""
 for plugin in markdown excel email offlinepython; do
-  if ! node "$ROOT/plugin-cli/bin/fengyu.mjs" plugin build "$ROOT/OfficialPlugins/plugin-$plugin" >/dev/null; then
+  if ! node "$ROOT/toolchain/cli/bin/fengyu.mjs" plugin build "$ROOT/OfficialPlugins/plugin-$plugin" >/dev/null; then
     echo "FAIL: fengyu plugin build OfficialPlugins/plugin-$plugin failed"
     rm -rf "$OFFICIAL_DIR"
     exit 1

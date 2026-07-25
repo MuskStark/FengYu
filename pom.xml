@@ -87,8 +87,8 @@
     <!-- Reactor modules. Built in declaration order: API first (the app depends on it). -->
     <modules>
         <module>FengYu-Api</module>
-        <module>FengYu-Plugin-Sdk</module>
-        <module>FengYu-Plugin-DevKit</module>
+        <module>toolchain/sdk-java</module>
+        <module>toolchain/devkit-java</module>
         <module>OfficialPlugins</module>
         <module>FengYu</module>
     </modules>

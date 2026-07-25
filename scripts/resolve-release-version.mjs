@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url'
  * `setup` job's `$GITHUB_OUTPUT`.
  *
  * Plugin-toolchain releases use a DIFFERENT tag (`plugin-tooling-vX.Y.Z`) and a DIFFERENT
- * script: `plugin-cli/scripts/resolve-tooling-version.mjs`. This regex will REJECT
+ * script: `toolchain/cli/scripts/resolve-tooling-version.mjs`. This regex will REJECT
  * `plugin-tooling-v*` tags — that is intentional; do not reuse this for tooling releases.
  */
 const TAG = /^v(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc)\.(\d+))?$/
