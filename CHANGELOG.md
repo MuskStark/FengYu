@@ -6,9 +6,43 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+---
+
+## [4.0.0-alpha.3] — 2026-07-25
+
+### ♻️ Changed — Desktop shell: Tauri → Electron
+- **The desktop shell was rewritten from Tauri 2.0 (Rust) to Electron 43 (TypeScript).** The backend
+  lifecycle is **unchanged** — Electron spawns the backend JAR over loopback, waits for `/api/health`,
+  and hands the token + api-base to the renderer via a `contextBridge` preload (`window.fengyu`).
+  This replaces the old Tauri `window.__FENGYU_*` globals.
+- **Two release variants per platform.** Each platform ships a **lite** build (user supplies Java 21+
+  on `PATH`) and a **JRE** build that bundles a `jlink`-minimized JRE under `<resources>/jre/`:
+  - **macOS** (arm64 + x64) — `Infinia-<ver>-mac.dmg` and `Infinia-<ver>-mac-jre.dmg`.
+  - **Windows** (x64) — `Infinia-<ver>-win.exe` (NSIS installer) and a portable exe; plus the
+    `-jre.exe` NSIS variant.
+  - **Linux** (x64) — `Infinia-<ver>.AppImage` / `.deb` and the `-jre.AppImage`.
+- **Auto-updater** (`electron-updater` against GitHub Releases), **system tray** (hide-to-tray on
+  window close, backend stays alive until app quit), **single-instance lock**, and **file logging**
+  (`electron-log` → `~/.fengyu/logs/desktop.log`).
+- **Dev mode** defaults to connecting an IDE-started backend at `http://127.0.0.1:24056` (no spawn,
+  no token, no supervisor); set `FENGYU_JAR=<jar>` (or `FENGYU_DEV_BACKEND=disabled`) to make the
+  shell spawn its own backend with the full release lifecycle.
+- **Security posture:** `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`. Navigation
+  guards — `setWindowOpenHandler` delegates `http(s)` targets to the system browser and denies
+  `window.open('file://...')`; `will-navigate` blocks cross-origin in-page navigation. See
+  [docs/en/architecture/desktop.md](docs/en/architecture/desktop.md).
+
 ### ♻️ Toolchain 目录整合
-- 7 个插件工具链目录(2 Maven + 4 npm + schema)整合进 `toolchain/`,扁平化中间层,统一语义短名(`sdk-java`/`devkit-java`/`sdk-ts`/`ui`/`dev`/`cli`/`spec`)。
+- 7 个插件工具链目录(2 Maven + 4 npm + schema)整合进 `toolchain/`,扁平化中间层,统一语义短名(`sdk-java`/`devkit-java`/`sdk-ts`/`ui`/`dev`/`cli`/`spec`):
+  - `FengYu-Plugin-Sdk`→`toolchain/sdk-java`
+  - `FengYu-Plugin-DevKit`→`toolchain/devkit-java`
+  - `plugin-sdk/typescript`→`toolchain/sdk-ts`
+  - `plugin-ui/vue`→`toolchain/ui`
+  - `plugin-dev`→`toolchain/dev`
+  - `plugin-cli`→`toolchain/cli`
+  - `plugin-spec`→`toolchain/spec`
 - CI/release workflow 与 skill 重命名为 `toolchain-*`(`plugin-tooling.yml`→`toolchain-ci.yml`,`plugin-tooling-release.yml`→`toolchain-release.yml`)。tag 前缀 `plugin-tooling-v*` 不变。
+- **Maven artifactId 与 npm 包名不变**:`fan.summer.fengyu.sdk:fengyu-plugin-sdk`、`fan.summer.fengyu.sdk:fengyu-plugin-devkit` 以及 `@infinia/plugin-sdk` / `@infinia/plugin-ui` / `@infinia/plugin-cli` / `@infinia/plugin-dev` 仍按原名发布。仓库目录变了,坐标不变。
 
 ### ✨ Added
 - **Skills** — a third extension surface (peer to plugins and AI tools) using Codex-style
@@ -67,6 +101,26 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   (in the `ai.skill` package, which SETUP mode does not scan), causing an
   `UnsatisfiedDependencyException` that aborted startup before the database wizard could run. It is
   now excluded from `SetupApplication`'s scan alongside the other APP-only controllers.
+- **B1 — actuator `restart` endpoint removed from the default exposure.** `application.yml` now sets
+  `management.endpoints.web.exposure.include: health` only. The `/actuator/restart` endpoint was
+  reachable, and in the Web bundle's default no-token posture any loopback process could force a
+  context restart (DoS). The SETUP→APP restart already goes through `System.exit(SETUP_DONE)` + the
+  desktop supervisor, so no functionality is lost.
+- **B2 — Web bundle generates a per-launch token by default.** `distribution/web/run.sh` and
+  `run.bat` now generate a random `--token=` when the user passes none (previously auth was disabled
+  by default). Explicit `--token=<t>` still overrides.
+- **D1 — desktop navigation guards.** `setWindowOpenHandler` denies `window.open` and delegates
+  `http(s)` targets to the system browser; `will-navigate` blocks cross-origin in-page navigation.
+  Prevents a compromised page from `window.open('file://...')`.
+- **D2 — auto-updater skips the JRE variant.** JRE-bundled builds detect `resourcesPath/jre` and skip
+  the update check — the updater feed only references the lite variant, so auto-update would silently
+  downgrade JRE users to the Java-dependent lite build. Full per-variant feeds are deferred.
+- **D3 — supervisor `stop()` is now saved and called.** `main.ts` stores the
+  `superviseSetupRestart` return value and calls it in `killBackend()` (defensive; prevents a future
+  leak if a persistent listener is ever added).
+- **D4 — APP-mode backend crash shows a dialog.** A lightweight exit listener in APP mode shows
+  `dialog.showErrorBox` and quits on an unexpected backend crash (previously silent — the user saw
+  only connection errors). The alpha does not auto-restart.
 
 ### ♻️ Changed
 - **CLI scope narrowed to `create` + `build`.** `fengyu plugin dev` moved to the IDE
