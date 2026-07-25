@@ -52,9 +52,13 @@ npm install
 npm run dev      # = npm run build:ts && electron .
 ```
 
-The frontend SPA is loaded from the Vite dev server in dev, so you also need the frontend running in a
-second terminal (`cd frontend && npm run dev`). Its Vite server (port 5173) proxies `/api` +
-`/plugin-runtime` to the backend, and is useful on its own for browser-only frontend work.
+The desktop shell **auto-starts the Vite frontend** in dev (the old Tauri shell did this via
+`beforeDevCommand`). When you run `npm run dev`, the shell spawns `npm run dev` in `frontend/` itself,
+waits for Vite to be ready on `127.0.0.1:5173`, then opens the window pointed at it — you don't need a
+separate terminal for the frontend. (Vite is forced to `--host 127.0.0.1 --port 5173 --strictPort` so
+the bind is deterministic; if 5173 is busy, the shell errors clearly instead of letting Vite silently
+move ports.) If you already have Vite running, the shell detects it and reuses it. You only need a
+separate `cd frontend && npm run dev` terminal if you want browser-only frontend work without the shell.
 
 ### Default dev — connect to an IDE-started backend (no env vars needed)
 
@@ -68,10 +72,7 @@ an empty token that lines up with the SPA's empty-token fallback.
 # Terminal 1: backend (IDE run config, or):
 ./mvnw -pl FengYu spring-boot:run        # binds 127.0.0.1:24056, no token → auth disabled
 
-# Terminal 2: frontend
-cd frontend && npm run dev               # Vite on :5173, proxies /api → :24056
-
-# Terminal 3: desktop shell (no env vars — defaults to the IDE backend)
+# Terminal 2: desktop shell (auto-starts Vite, no env vars needed)
 cd desktop/electron && npm run dev
 ```
 
