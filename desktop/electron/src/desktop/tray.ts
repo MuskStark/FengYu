@@ -18,10 +18,17 @@ export function createTray(win: BrowserWindow, onQuit: () => void): Tray {
   //           app.asar (asar entries are not real files nativeImage can read).
   const base = app.isPackaged ? process.resourcesPath : join(__dirname, '../../resources')
   const iconPath = join(base, 'icon-32.png')
-  const image = nativeImage.createFromPath(iconPath)
-  tray = new Tray(
-    image.isEmpty() ? nativeImage.createFromPath(join(base, 'icon.png')) : image,
-  )
+  const raw = nativeImage.createFromPath(iconPath)
+  const source = raw.isEmpty() ? nativeImage.createFromPath(join(base, 'icon.png')) : raw
+  // Resize to the platform's standard tray size. macOS menu bar is ~22px (logical); Windows/Linux
+  // tray icons are ~16px. nativeImage.resize takes logical pixels and handles @2x scaling. Without
+  // this, a 32px (or 512px fallback) icon renders oversized and misaligned in the menu bar.
+  const size = process.platform === 'darwin' ? 22 : 16
+  const image = source.resize({ width: size, height: size })
+  tray = new Tray(image)
+  // macOS: mark as a template image so it adapts to light/dark menu bar. (No-op if the image isn't
+  // monochrome; harmless otherwise.)
+  if (process.platform === 'darwin') image.setTemplateImage(true)
   tray.setToolTip('FengYu')
 
   const menu = Menu.buildFromTemplate([
