@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { resolveLayout } from './backend/runtime-layout'
 import { genToken } from './util/token'
 import { startBackend } from './backend/orchestrator'
-import { startupAction, StartupAction, superviseSetupRestart, type BackendChild } from './backend/supervisor'
+import { isAppCrash, startupAction, StartupAction, superviseSetupRestart, type BackendChild } from './backend/supervisor'
 import { pollHealth } from './util/health'
 import { registerDialogIpc } from './ipc/dialog'
 import { createMainWindow } from './window/create-window'
@@ -177,6 +177,27 @@ async function bootstrap(): Promise<void> {
       restart: () =>
         startBackend({ layout, token, requestedPort: started.port, onBackendLine: logger.backendLine, shouldCancel: () => isQuitting })
           .then((r) => ({ child: r.child, port: r.port, setupMode: r.setupMode })),
+    })
+  }
+
+  // APP-mode crash guard: if the backend dies unexpectedly (not during shutdown, non-zero),
+  // surface a dialog instead of silently leaving the user with connection errors.
+  // Alpha does NOT auto-restart (avoid restart loops); the user relaunches manually.
+  // Scoped to pure APP mode (ShowWindow) to avoid conflicting with the SETUP supervisor,
+  // which has its own exit handling via superviseSetupRestart.
+  if (action === StartupAction.ShowWindow && backendChild) {
+    const proc = backendChild.process
+    proc.once('exit', (code) => {
+      if (isAppCrash(code, isQuitting)) {
+        logger.error(`[desktop] backend exited unexpectedly (code ${code})`)
+        dialog.showErrorBox(
+          'Backend stopped',
+          'The FengYu backend exited unexpectedly. The app cannot continue. ' +
+            'Please relaunch Infinia. If the problem persists, check the logs at ' +
+            '<user dir>/.fengyu/logs/.',
+        )
+        app.quit()
+      }
     })
   }
 
