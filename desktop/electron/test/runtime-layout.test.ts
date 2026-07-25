@@ -1,12 +1,16 @@
 import { describe, it, expect } from 'vitest'
+import { join } from 'node:path'
 import { resolveLayout } from '../src/backend/runtime-layout'
 
 describe('resolveLayout', () => {
   it('resolves jar + plugins under the packaged resource dir', () => {
     const layout = resolveLayout(true, '/app/resources', {})
-    expect(layout.jar).toBe('/app/resources/binaries/FengYu.jar')
-    expect(layout.plugins).toBe('/app/resources/plugins')
-    expect(layout.jre).toBe('/app/resources/jre/bin/java')
+    // resolveLayout picks posix/win32 path per host platform (runtime-layout.ts:36),
+    // so the expected paths must follow the host separator too — assert via join()
+    // rather than hard-coded forward slashes (which fail on Windows CI).
+    expect(layout.jar).toBe(join('/app/resources', 'binaries', 'FengYu.jar'))
+    expect(layout.plugins).toBe(join('/app/resources', 'plugins'))
+    expect(layout.jre).toBe(join('/app/resources', 'jre', 'bin', 'java'))
   })
 
   it('resolves jar + plugins from FENGYU_JAR env in dev', () => {
@@ -14,6 +18,8 @@ describe('resolveLayout', () => {
       FENGYU_JAR: '/local/FengYu.jar',
       FENGYU_PLUGINS: '/local/plugins',
     })
+    // Env-supplied paths are passed through verbatim (no path.join on them),
+    // so they keep whatever separator the caller used.
     expect(layout.jar).toBe('/local/FengYu.jar')
     expect(layout.plugins).toBe('/local/plugins')
     expect(layout.jre).toBeUndefined()
