@@ -10,8 +10,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@infinia/plugin-sdk": "file:../../../plugin-sdk/typescript",
-    "@infinia/plugin-ui": "file:../../../plugin-ui/vue",
+    "@infinia/plugin-sdk": "file:../../../toolchain/sdk-ts",
+    "@infinia/plugin-ui": "file:../../../toolchain/ui",
     "@mdi/font": "^7.4.47",
     "@mdi/js": "^7.4.47",
     "@tiptap/extension-color": "^2.27.2",
@@ -33,7 +33,7 @@
     "vuetify": "^3.9.3"
   },
   "devDependencies": {
-    "@infinia/plugin-dev": "file:../../../plugin-dev",
+    "@infinia/plugin-dev": "file:../../../toolchain/dev",
     "@types/node": "^24.3.0",
     "@vitejs/plugin-vue": "^6.0.1",
     "@vue/test-utils": "^2.4.6",

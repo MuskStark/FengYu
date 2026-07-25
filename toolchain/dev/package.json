@@ -23,14 +23,14 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/MuskStark/FengYu.git",
-    "directory": "plugin-dev"
+    "directory": "toolchain/dev"
   },
   "publishConfig": { "access": "public" },
   "peerDependencies": {
     "vite": "^5.0.0 || ^6.0.0 || ^7.0.0"
   },
   "devDependencies": {
-    "@infinia/plugin-sdk": "file:../plugin-sdk/typescript",
+    "@infinia/plugin-sdk": "file:../sdk-ts",
     "@types/node": "^22.0.0",
     "typescript": "^5.9.2"
   }

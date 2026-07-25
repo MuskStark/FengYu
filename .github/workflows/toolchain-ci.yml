@@ -8,22 +8,16 @@ on:
   push:
     branches: [4.0.0-FengYu, main]
     paths:
-      - 'plugin-ui/**'
-      - 'plugin-cli/**'
-      - 'plugin-sdk/**'
-      - 'FengYu-Plugin-Sdk/**'
+      - 'toolchain/**'
       - 'OfficialPlugins/**'
       - 'scripts/plugin-tooling-local-smoke.sh'
-      - '.github/workflows/plugin-tooling.yml'
+      - '.github/workflows/toolchain-ci.yml'
   pull_request:
     paths:
-      - 'plugin-ui/**'
-      - 'plugin-cli/**'
-      - 'plugin-sdk/**'
-      - 'FengYu-Plugin-Sdk/**'
+      - 'toolchain/**'
       - 'OfficialPlugins/**'
       - 'scripts/plugin-tooling-local-smoke.sh'
-      - '.github/workflows/plugin-tooling.yml'
+      - '.github/workflows/toolchain-ci.yml'
   workflow_dispatch:
 
 permissions:
@@ -44,35 +38,35 @@ jobs:
           node-version: 24.18.0
           cache: npm
           # Cache by every committed lockfile under the three packages.
-          # plugin-sdk/typescript and plugin-cli may not commit a lockfile; the
-          # glob still matches the ones that exist (plugin-ui/vue).
+          # toolchain/sdk-ts and toolchain/cli may not commit a lockfile; the
+          # glob still matches the ones that exist (toolchain/ui).
           cache-dependency-path: |
-            plugin-sdk/typescript/package-lock.json
-            plugin-ui/vue/package-lock.json
-            plugin-cli/package-lock.json
+            toolchain/sdk-ts/package-lock.json
+            toolchain/ui/package-lock.json
+            toolchain/cli/package-lock.json
 
       # --- SDK: typecheck-free, vitest unit tests ---
-      - run: cd plugin-sdk/typescript && npm ci && npm test
+      - run: cd toolchain/sdk-ts && npm ci && npm test
       - name: Verify TypeScript SDK in isolation
         run: |
           SDK_TMP="$(mktemp -d)"
-          cp -R plugin-sdk/typescript/. "$SDK_TMP/"
+          cp -R toolchain/sdk-ts/. "$SDK_TMP/"
           rm -rf "$SDK_TMP/node_modules"
           cd "$SDK_TMP"
           npm ci
           npm test
 
       # --- @infinia/plugin-ui: typecheck + unit tests + Vite build ---
-      - run: cd plugin-ui/vue && npm ci && npm run typecheck && npm test && npm run build
+      - run: cd toolchain/ui && npm ci && npm run typecheck && npm test && npm run build
 
       # --- @infinia/plugin-cli: node --test ---
-      - run: cd plugin-cli && npm ci && npm test
+      - run: cd toolchain/cli && npm ci && npm test
 
       # --- Visual regression (Playwright) ---
       - run: npx playwright install --with-deps chromium
-        working-directory: plugin-ui/vue
+        working-directory: toolchain/ui
       - run: npm run test:visual
-        working-directory: plugin-ui/vue
+        working-directory: toolchain/ui
 
       # Upload visual diffs only when the suite fails, so reviewers can see the
       # changed snapshots without polluting green runs.
@@ -82,8 +76,8 @@ jobs:
         with:
           name: playwright-report
           path: |
-            plugin-ui/vue/playwright-report
-            plugin-ui/vue/e2e/workbench.spec.ts-snapshots
+            toolchain/ui/playwright-report
+            toolchain/ui/e2e/workbench.spec.ts-snapshots
           if-no-files-found: ignore
           retention-days: 14
 
@@ -101,7 +95,7 @@ jobs:
         with:
           node-version: 24.18.0
           cache: npm
-          cache-dependency-path: plugin-cli/package-lock.json
+          cache-dependency-path: toolchain/cli/package-lock.json
       - uses: actions/setup-java@v5
         with:
           java-version: '21'
@@ -109,10 +103,10 @@ jobs:
           cache: maven
       # The Java SDK is independently versioned (1.0.0) but stays in the reactor,
       # so a local install makes it resolvable without a GitHub Packages token.
-      - run: ./mvnw -pl FengYu-Plugin-Sdk install -DskipTests
+      - run: ./mvnw -pl toolchain/sdk-java install -DskipTests
       - run: npm ci
-        working-directory: plugin-cli
-      - run: node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-${{ matrix.plugin }}
+        working-directory: toolchain/cli
+      - run: node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-${{ matrix.plugin }}
       - name: Upload .fyp
         uses: actions/upload-artifact@v4
         with:

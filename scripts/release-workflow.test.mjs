@@ -20,10 +20,10 @@ test('runs release contract tests in the shared runtime job', () => {
   )
 })
 
-test('installs plugin-cli dependencies before building plugins', () => {
+test('installs toolchain/cli dependencies before building plugins', () => {
   assert.match(
     workflow,
-    /- name: Install plugin-cli deps\s+run: npm ci\s+working-directory: plugin-cli/,
+    /- name: Install toolchain\/cli deps\s+run: npm ci\s+working-directory: toolchain\/cli/,
   )
 })
 

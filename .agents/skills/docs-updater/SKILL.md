@@ -23,8 +23,8 @@ Out of scope (never touch here):
 
 - **App version** — Maven `${revision}` (root `pom.xml`), mirrored in `frontend/package.json`,
   `desktop/electron/package.json`, and each official plugin's `manifest.json`.
-- **Plugin toolchain version** — independent; `FengYu-Plugin-Sdk/pom.xml` and the three
-  `@infinia/*` `package.json` files (`plugin-cli/`, `plugin-sdk/typescript/`, `plugin-ui/vue/`).
+- **Plugin toolchain version** — independent; `toolchain/sdk-java/pom.xml` and the three
+  `@infinia/*` `package.json` files (`toolchain/cli/`, `toolchain/sdk-ts/`, `toolchain/ui/`).
 
 Always read the literal from its source file before replacing it anywhere. An app release does not
 touch the toolchain version, and vice-versa.
@@ -54,10 +54,10 @@ section when a concrete change maps to it. Examples:
 | Changed source | Affected doc |
 |---|---|
 | New official plugin module under `OfficialPlugins/` | `docs/{en,zh}/features.md` (or the plugin overview), `README.md` Features list, and a new `docs/{en,zh}/plugins/official-<name>.md` |
-| `manifest.json` schema change in `plugin-spec/` | `docs/{en,zh}/plugins/manifest.md` |
+| `manifest.json` schema change in `toolchain/spec/` | `docs/{en,zh}/plugins/manifest.md` |
 | New REST/SSE controller method | `docs/{en,zh}/reference/rest-api.md` / `sse-events.md` |
 | Headless boot / setup-wizard change in `FengYu/` | `docs/{en,zh}/architecture/backend.md`, `docs/{en,zh}/guide/database.md` |
-| `fengyu` CLI subcommand change in `plugin-cli/` | `docs/{en,zh}/plugins/sdk-cli.md` |
+| `fengyu` CLI subcommand change in `toolchain/cli/` | `docs/{en,zh}/plugins/sdk-cli.md` |
 
 If a changed file maps to no doc section, make no doc edit for it. Do not invent new patterns — copy
 the formatting of the nearest existing entry.

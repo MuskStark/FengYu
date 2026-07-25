@@ -47,10 +47,10 @@ test(`all GitHub Actions setup-node steps pin Node ${expected}`, () => {
 
 test('plugin-cli package and lockfile require the pinned Node baseline', () => {
   const pkg = JSON.parse(
-    readFileSync(new URL('../plugin-cli/package.json', import.meta.url), 'utf8'),
+    readFileSync(new URL('../toolchain/cli/package.json', import.meta.url), 'utf8'),
   )
   const lock = JSON.parse(
-    readFileSync(new URL('../plugin-cli/package-lock.json', import.meta.url), 'utf8'),
+    readFileSync(new URL('../toolchain/cli/package-lock.json', import.meta.url), 'utf8'),
   )
   assert.equal(pkg.engines.node, `>=${expected}`)
   assert.equal(lock.packages[''].engines.node, `>=${expected}`)

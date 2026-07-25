@@ -14,7 +14,7 @@
   },
   "engines": { "node": ">=24.18.0" },
   "license": "GPL-3.0",
-  "repository": { "type": "git", "url": "git+https://github.com/MuskStark/FengYu.git", "directory": "plugin-cli" },
+  "repository": { "type": "git", "url": "git+https://github.com/MuskStark/FengYu.git", "directory": "toolchain/cli" },
   "publishConfig": { "access": "public" },
   "dependencies": {
     "ajv": "^8.17.1",

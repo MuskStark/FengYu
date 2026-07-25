@@ -101,9 +101,9 @@ jobs:
         run: npm ci
         working-directory: frontend
 
-      - name: Install plugin-cli deps
+      - name: Install toolchain/cli deps
         run: npm ci
-        working-directory: plugin-cli
+        working-directory: toolchain/cli
 
       - name: Run frontend tests + typecheck
         run: |
@@ -115,10 +115,10 @@ jobs:
         run: npm run build
         working-directory: frontend
 
-      - name: Build official plugins (.fyp via plugin-cli)
+      - name: Build official plugins (.fyp via toolchain/cli)
         run: |
           for plugin in markdown excel email offlinepython; do
-            node plugin-cli/bin/fengyu.mjs plugin build "OfficialPlugins/plugin-$plugin"
+            node toolchain/cli/bin/fengyu.mjs plugin build "OfficialPlugins/plugin-$plugin"
           done
 
       - name: Stage official .fyp packages

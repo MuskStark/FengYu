@@ -112,7 +112,7 @@ The worker treats these as ordinary string paths; it does not need to know the F
 
 ## Worker SDK (Java)
 
-The `FengYu-Plugin-Sdk` artifact ships `JsonRpcWorker`, a tiny dependency-light runtime that reads requests from `stdin`, dispatches to registered handlers, and writes responses to `stdout`. Register handlers with `.on(method, handler)` and call `.run()`:
+The `toolchain/sdk-java` artifact ships `JsonRpcWorker`, a tiny dependency-light runtime that reads requests from `stdin`, dispatches to registered handlers, and writes responses to `stdout`. Register handlers with `.on(method, handler)` and call `.run()`:
 
 ```java
 package com.example.myplugin;

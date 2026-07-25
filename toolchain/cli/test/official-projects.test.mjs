@@ -7,7 +7,7 @@ import { detectProject } from '../src/project.mjs'
 import { validateProjectManifest } from '../src/manifest.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const repo = path.resolve(__dirname, '../..')
+const repo = path.resolve(__dirname, '../../..')
 
 // Every plugin that ships through OfficialPlugins must satisfy the CLI's project + manifest
 // contract. offlinepython is part of the official packaging/release pipeline and was previously

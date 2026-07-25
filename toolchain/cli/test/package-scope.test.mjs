@@ -6,10 +6,10 @@ const readJson = async (url) => JSON.parse(await fs.readFile(url, 'utf8'))
 
 test('published tooling and generated consumers use the @infinia scope', async () => {
   const cli = await readJson(new URL('../package.json', import.meta.url))
-  const sdk = await readJson(new URL('../../plugin-sdk/typescript/package.json', import.meta.url))
-  const ui = await readJson(new URL('../../plugin-ui/vue/package.json', import.meta.url))
+  const sdk = await readJson(new URL('../../sdk-ts/package.json', import.meta.url))
+  const ui = await readJson(new URL('../../ui/package.json', import.meta.url))
   const template = await fs.readFile(new URL('../templates/vue-java/ui-src/package.json.tpl', import.meta.url), 'utf8')
-  const workflow = await fs.readFile(new URL('../../.github/workflows/plugin-tooling-release.yml', import.meta.url), 'utf8')
+  const workflow = await fs.readFile(new URL('../../../.github/workflows/toolchain-release.yml', import.meta.url), 'utf8')
 
   assert.equal(cli.name, '@infinia/plugin-cli')
   assert.equal(sdk.name, '@infinia/plugin-sdk')

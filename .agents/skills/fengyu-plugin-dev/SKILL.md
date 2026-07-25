@@ -1,6 +1,6 @@
 ---
 name: fengyu-plugin-dev
-description: Scaffold, develop, IDE-debug, test, build, package, and locally verify FengYu plugins (official or third-party) against the 4.0.0 .fyp + iframe + JSON-RPC Worker model. Use whenever the user wants to create or work on a plugin, test plugin tooling before release, debug UI and Java Worker code from an IDE, or mentions `.fyp`, `manifest.json`, `fengyu.plugin.json`, `fengyu plugin`, `@infinia/plugin-sdk`, `@infinia/plugin-ui`, `@infinia/plugin-dev`, `FengYu-Plugin-Sdk`, plugin workers, or the plugin marketplace.
+description: Scaffold, develop, IDE-debug, test, build, package, and locally verify FengYu plugins (official or third-party) against the 4.0.0 .fyp + iframe + JSON-RPC Worker model. Use whenever the user wants to create or work on a plugin, test plugin tooling before release, debug UI and Java Worker code from an IDE, or mentions `.fyp`, `manifest.json`, `fengyu.plugin.json`, `fengyu plugin`, `@infinia/plugin-sdk`, `@infinia/plugin-ui`, `@infinia/plugin-dev`, `toolchain/sdk-java`, plugin workers, or the plugin marketplace.
 ---
 
 # FengYu Plugin Development
@@ -13,15 +13,15 @@ containing a sandboxed iframe UI and an out-of-process JSON-RPC worker. Covers o
 
 Do not write plugin code from memory. Read the current contract first:
 
-- `plugin-spec/manifest.schema.json` — the canonical manifest JSON schema (required fields,
+- `toolchain/spec/manifest.schema.json` — the canonical manifest JSON schema (required fields,
   permission enum, `aiTools` shape).
 - The target plugin's `manifest.json` (runtime contract) and `fengyu.plugin.json` (toolchain /
   build contract: `ui.{root,output,prepare,install,test,build}`, `worker.{root,test,build,artifact,mainClass}`, `package.outputDirectory`).
-- `FengYu-Plugin-Sdk/` — the Java Worker SDK (`JsonRpcWorker`, `PluginHandler`, `PluginEnvironment`,
+- `toolchain/sdk-java/` — the Java Worker SDK (`JsonRpcWorker`, `PluginHandler`, `PluginEnvironment`,
   `FileRef`).
-- `plugin-sdk/typescript/` — `@infinia/plugin-sdk`, the browser `postMessage` bridge the iframe UI uses.
-- `plugin-ui/vue/` — `@infinia/plugin-ui`, the Vue/Vuetify component kit for plugin UIs.
-- `plugin-cli/` — the `fengyu` CLI source (`src/cli.mjs`, `src/args.mjs`) — the real subcommand set.
+- `toolchain/sdk-ts/` — `@infinia/plugin-sdk`, the browser `postMessage` bridge the iframe UI uses.
+- `toolchain/ui/` — `@infinia/plugin-ui`, the Vue/Vuetify component kit for plugin UIs.
+- `toolchain/cli/` — the `fengyu` CLI source (`src/cli.mjs`, `src/args.mjs`) — the real subcommand set.
 - A reference official plugin, e.g. `OfficialPlugins/plugin-markdown/` (UI-only-style) or
   `OfficialPlugins/plugin-excel/` (Vue UI + Java worker).
 - Current plugin docs: `docs/en/plugins/` and `docs/zh/plugins/` (especially `overview.md`,
@@ -36,7 +36,7 @@ Every plugin is one of two shapes. The workflow diverges here:
 
 | Shape | Has `backend`? | Worker | Reference |
 |---|---|---|---|
-| **UI-only** | `manifest.json` has no `backend` (or no worker) | none | `plugin-cli/templates/vue-codex`: UI calls host/SDK only |
+| **UI-only** | `manifest.json` has no `backend` (or no worker) | none | `toolchain/cli/templates/vue-codex`: UI calls host/SDK only |
 | **UI + Java Worker** | `manifest.json` `backend.protocol == "json-rpc-2.0"` | a shaded worker JAR | Excel-style: UI ↔ host ↔ out-of-process worker |
 
 All current official plugins have Java Workers; do not infer UI-only status from a plugin's feature
@@ -88,9 +88,9 @@ toolchain; do not rewrite plugin business UI merely to avoid the defect.
 
 When changing CLI UI templates, theme definitions, icon handling, or public UI components, compare
 against the host implementation and add a contract test for the exact generated input. Keep
-`frontend/src/plugins/md3-themes.ts` and `plugin-ui/vue/src/theme.ts` value-aligned.
+`frontend/src/plugins/md3-themes.ts` and `toolchain/ui/src/theme.ts` value-aligned.
 
-**Worker (UI + Java Worker only):** a Java `main()` that links `FengYu-Plugin-Sdk` and speaks
+**Worker (UI + Java Worker only):** a Java `main()` that links `toolchain/sdk-java` and speaks
 newline-delimited JSON-RPC 2.0 over stdin/stdout (one request object per line, responses matched by
 `id`). The worker runs in **its own process** with its own classpath; it must not assume any
 host-provided dependency beyond the SDK. The host sets env vars `FENGYU_PLUGIN_ID`,
@@ -125,7 +125,7 @@ Edit `manifest.json`:
   the worker implements), and `inputSchema`. Keep `description` short and model-readable; it is
   what the AI primarily reads.
 
-Confirm the manifest validates against `plugin-spec/manifest.schema.json` and matches the runtime
+Confirm the manifest validates against `toolchain/spec/manifest.schema.json` and matches the runtime
 loader's rules in `FengYu/src/main/java/fan/summer/fengyu/plugin/market/` (`.fyp` only,
 `schemaVersion == 1`, semver `version`, official ids start `fan.summer.`).
 
@@ -153,7 +153,7 @@ is fresh before the CLI packages the `.fyp`.
   and its unit/visual tests pass.
 - **Toolchain UI contract:** for changes to CLI UI templates, theme definitions, icons, or public
   components, run the exact scaffold/component regression tests plus
-  `cd plugin-ui/vue && npm test && npm run typecheck && npm run build`. Run
+  `cd toolchain/ui && npm test && npm run typecheck && npm run build`. Run
   `npm run test:visual` when rendered presentation changes.
 - **UI + Java Worker:** also build/test the worker (`mvn -f OfficialPlugins/<name>/pom.xml test` or
   the `fengyu.plugin.json` `worker.test` command) and confirm the worker's JSON-RPC methods round-trip.
@@ -167,17 +167,17 @@ is fresh before the CLI packages the `.fyp`.
 When the user asks for thorough local verification before publishing the plugin toolchain, also run:
 
 ```bash
-cd plugin-cli && npm run prepack
-cd ../plugin-dev && npm run prepack
-cd ../plugin-sdk/typescript && npm run prepack
-cd ../../plugin-ui/vue && npm run prepack && npm run test:visual
-cd ../.. && ./mvnw -pl FengYu-Plugin-DevKit -am test
+cd toolchain/cli && npm run prepack
+cd ../dev && npm run prepack
+cd ../sdk-ts && npm run prepack
+cd ../ui && npm run prepack && npm run test:visual
+cd ../.. && ./mvnw -pl toolchain/devkit-java -am test
 scripts/check-plugin-dependency-boundaries.sh
 scripts/plugin-tooling-local-smoke.sh
 npm run docs:build
 ```
 
-Build all four official plugins through `node plugin-cli/bin/fengyu.mjs plugin build <plugin>` and
+Build all four official plugins through `node toolchain/cli/bin/fengyu.mjs plugin build <plugin>` and
 run `npm audit` for every publishable npm package. Treat any schema drift, dependency-boundary
 failure, high/critical audit finding, missing `npm run dev`, mock response from a configured Worker,
 or dirty generated package content as a release blocker. Never publish, tag, or push unless the user

@@ -112,7 +112,7 @@ worker 把这些当作普通的字符串路径处理；它无需知道 FileRef �
 
 ## Worker SDK（Java）
 
-`FengYu-Plugin-Sdk` 制品提供了 `JsonRpcWorker`，一个轻量、依赖极少的运行时，它从 `stdin` 读取请求、派发给已注册的处理器，并把响应写入 `stdout`。用 `.on(method, handler)` 注册处理器，再调用 `.run()`：
+`toolchain/sdk-java` 制品提供了 `JsonRpcWorker`，一个轻量、依赖极少的运行时，它从 `stdin` 读取请求、派发给已注册的处理器，并把响应写入 `stdout`。用 `.on(method, handler)` 注册处理器，再调用 `.run()`：
 
 ```java
 package com.example.myplugin;
