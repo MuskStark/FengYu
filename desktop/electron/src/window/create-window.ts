@@ -1,4 +1,4 @@
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, session } from 'electron'
 import { join } from 'node:path'
 
 export interface CreateWindowOptions {
@@ -31,6 +31,34 @@ export interface CreateWindowOptions {
 export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
   void opts.apiBase
   void opts.token
+
+  // In dev the SPA is served by Vite over http(s) and lazy-loads modules/fonts/styles on demand.
+  // Without an explicit CSP, Electron applies its default `default-src 'self'`, which blocks the
+  // MDI font (@mdi/font) and Vite's HMR/inlined assets, spamming the console with font-violation
+  // errors and breaking icon rendering. Set a dev CSP that allows the Vite origin + data: URIs +
+  // ws (HMR). Packaged builds serve the SPA from the app bundle (same origin) and keep the strict
+  // default — this override is dev-only.
+  if (opts.isDev) {
+    const csp = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // Vite dev needs eval for HMR/transform
+      "style-src 'self' 'unsafe-inline' http://127.0.0.1:5173",
+      "font-src 'self' data: http://127.0.0.1:5173",
+      "img-src 'self' data: blob: http://127.0.0.1:5173 http://127.0.0.1:24056",
+      "connect-src 'self' http://127.0.0.1:5173 http://127.0.0.1:24056 ws://127.0.0.1:5173 http://127.0.0.1:* ws://127.0.0.1:*",
+      "worker-src 'self' blob:",
+      "object-src 'none'",
+      "base-uri 'self'",
+    ].join('; ')
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': [csp],
+        },
+      })
+    })
+  }
 
   const win = new BrowserWindow({
     title: 'FengYu',
