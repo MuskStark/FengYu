@@ -26,9 +26,6 @@ export function createTray(win: BrowserWindow, onQuit: () => void): Tray {
   const size = process.platform === 'darwin' ? 22 : 16
   const image = source.resize({ width: size, height: size })
   tray = new Tray(image)
-  // macOS: mark as a template image so it adapts to light/dark menu bar. (No-op if the image isn't
-  // monochrome; harmless otherwise.)
-  if (process.platform === 'darwin') image.setTemplateImage(true)
   tray.setToolTip('FengYu')
 
   const menu = Menu.buildFromTemplate([
