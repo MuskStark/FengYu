@@ -380,10 +380,15 @@ jobs:
             ${{ steps.prerelease.outputs.warning }}
 
             ### Desktop (unsigned Electron packages)
-            Native installers for Windows, macOS, and Linux. These are **unsigned** Alpha builds —
+            Native packages for Windows, macOS, and Linux. These are **unsigned** Alpha builds —
             your OS may warn about an unidentified developer.
 
-            Two variants are published per platform:
+            **Windows** ships two forms per variant:
+            - **`Infinia Setup *.exe`** / **`Infinia-JRE Setup *.exe`** — installer (runs an install wizard).
+            - **`Infinia-*.exe`** / **`Infinia-JRE-*.exe`** (no "Setup") — **portable, no-install** single-file
+              executable; just double-click to run, nothing is installed.
+
+            **Two variants** are published per platform:
             - **`Infinia-JRE-*`** — bundles a jlink-minimized Java 21 runtime; self-contained, no
               external Java needed.
             - **`Infinia-*`** (no `-JRE` suffix) — smaller download; requires **Java 21+** on `PATH`.
