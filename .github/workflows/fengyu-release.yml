@@ -383,10 +383,13 @@ jobs:
             Native packages for Windows, macOS, and Linux. These are **unsigned** Alpha builds —
             your OS may warn about an unidentified developer.
 
+            Every artifact is named `<product>-<version>-<platform>-<arch>[-<form>].<ext>`
+            (e.g. `Infinia-4.0.0-mac-arm64.dmg`, `Infinia-4.0.0-linux-x64.AppImage`).
+
             **Windows** ships two forms per variant:
-            - **`Infinia Setup *.exe`** / **`Infinia-JRE Setup *.exe`** — installer (runs an install wizard).
-            - **`Infinia-*.exe`** / **`Infinia-JRE-*.exe`** (no "Setup") — **portable, no-install** single-file
-              executable; just double-click to run, nothing is installed.
+            - **`*-win-x64-setup.exe`** — installer (runs an install wizard).
+            - **`*-win-x64-portable.exe`** — **no-install single-file** executable; double-click to run,
+              nothing is installed.
 
             **Two variants** are published per platform:
             - **`Infinia-JRE-*`** — bundles a jlink-minimized Java 21 runtime; self-contained, no
