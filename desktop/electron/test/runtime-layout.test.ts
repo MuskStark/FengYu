@@ -7,10 +7,12 @@ describe('resolveLayout', () => {
     const layout = resolveLayout(true, '/app/resources', {})
     // resolveLayout picks posix/win32 path per host platform (runtime-layout.ts:36),
     // so the expected paths must follow the host separator too — assert via join()
-    // rather than hard-coded forward slashes (which fail on Windows CI).
+    // rather than hard-coded forward slashes (which fail on Windows CI). The bundled
+    // java binary also gets a platform suffix (java.exe on win32, java elsewhere).
+    const javaName = process.platform === 'win32' ? 'java.exe' : 'java'
     expect(layout.jar).toBe(join('/app/resources', 'binaries', 'FengYu.jar'))
     expect(layout.plugins).toBe(join('/app/resources', 'plugins'))
-    expect(layout.jre).toBe(join('/app/resources', 'jre', 'bin', 'java'))
+    expect(layout.jre).toBe(join('/app/resources', 'jre', 'bin', javaName))
   })
 
   it('resolves jar + plugins from FENGYU_JAR env in dev', () => {
