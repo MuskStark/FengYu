@@ -370,7 +370,8 @@ jobs:
             -name 'Infinia.jar' -o \
             -name '*.zip' -o -name '*.tar.gz' -o \
             -name '*.dmg' -o -name '*.deb' -o -name '*.AppImage' -o -name '*.rpm' -o \
-            -name '*.msi' -o -name '*.exe' \
+            -name '*.msi' -o \
+            -name '*-setup.exe' -o -name '*-portable.exe' \
           \) -print0)
           test -n "$(find release-files -type f -print -quit)"
           find release-files -maxdepth 1 -type f | sort
