@@ -109,7 +109,7 @@ cd ui-src && npm run dev
 
 对于纯 UI 插件，`vite.config.ts` 设了 `mockWorker: true`——`rpc.invoke` 返回一个确定性的桩
 响应，让你在 worker 还不存在时就能迭代 UI。完整指南见
-[`plugin-dev/README.md`](https://github.com/MuskStark/FengYu/tree/main/plugin-dev)。
+[`toolchain/dev/README.md`](https://github.com/MuskStark/FengYu/tree/main/toolchain/dev)。
 
 ## 下一步
 
