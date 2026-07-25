@@ -10,7 +10,7 @@ Plugin authors use two SDKs (one per side of the runtime), a Vite dev plugin + d
 
 ## `@infinia/plugin-sdk` (TypeScript)
 
-Source: `plugin-sdk/typescript/src/index.ts`. The current SDK version is `1.1.0`. Import the singleton client and the helper/types:
+Source: `toolchain/sdk-ts/src/index.ts`. The current SDK version is `1.1.0`. Import the singleton client and the helper/types:
 
 ```ts
 import { fengyu, FengYuClient, createId, type FileRef, type Environment } from '@infinia/plugin-sdk'

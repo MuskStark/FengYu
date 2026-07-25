@@ -93,9 +93,9 @@ Repository-internal builds (the official plugins) resolve the SDK from the local
 The three shipped plugins are built by the same CLI — there is no separate script:
 
 ```bash
-node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-markdown
-node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-excel
-node plugin-cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-email
+node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-markdown
+node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-excel
+node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-email
 ```
 
 Each writes `OfficialPlugins/plugin-<name>/dist-package/fan.summer.<name>-4.0.0-alpha.2.fyp`. CI builds them as a matrix in `.github/workflows/plugin-tooling.yml`.

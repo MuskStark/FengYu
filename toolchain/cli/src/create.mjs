@@ -7,7 +7,7 @@ import { runCommand } from './commands.mjs'
 export const toolingVersion = '1.1.0'
 
 /**
- * Canonical plugin id pattern — identical to {@code plugin-spec/manifest.schema.json}'s `id` pattern
+ * Canonical plugin id pattern — identical to {@code toolchain/spec/manifest.schema.json}'s `id` pattern
  * ({@code ^[a-z0-9]+(?:[.-][a-z0-9]+)+$}). Applied at scaffold time so a bad id (uppercase, single
  * segment, leading separator) fails fast instead of producing a project whose manifest can't pass
  * `fengyu plugin build` validation.

@@ -6,27 +6,27 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 cd "$ROOT"
-./mvnw -f FengYu-Plugin-Sdk/pom.xml install -DskipTests
-./mvnw -f FengYu-Plugin-DevKit/pom.xml install -DskipTests
+./mvnw -f toolchain/sdk-java/pom.xml install -DskipTests
+./mvnw -f toolchain/devkit-java/pom.xml install -DskipTests
 
-cd "$ROOT/plugin-sdk/typescript"
+cd "$ROOT/toolchain/sdk-ts"
 npm ci
 npm test
 SDK_TGZ="$(npm pack --ignore-scripts --silent --pack-destination "$WORK")"
 
-cd "$ROOT/plugin-ui/vue"
+cd "$ROOT/toolchain/ui"
 npm ci
 npm run typecheck
 npm test
 npm run build
 UI_TGZ="$(npm pack --ignore-scripts --silent --pack-destination "$WORK")"
 
-cd "$ROOT/plugin-dev"
+cd "$ROOT/toolchain/dev"
 npm ci
 npm test
 DEV_TGZ="$(npm pack --ignore-scripts --silent --pack-destination "$WORK")"
 
-cd "$ROOT/plugin-cli"
+cd "$ROOT/toolchain/cli"
 npm ci
 npm test
 CLI_TGZ="$(npm pack --ignore-scripts --silent --pack-destination "$WORK")"

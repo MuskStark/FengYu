@@ -28,7 +28,7 @@
     "test:visual": "playwright test",
     "prepack": "npm run typecheck && npm test && npm run build"
   },
-  "repository": { "type": "git", "url": "git+https://github.com/MuskStark/FengYu.git", "directory": "plugin-ui/vue" },
+  "repository": { "type": "git", "url": "git+https://github.com/MuskStark/FengYu.git", "directory": "toolchain/ui" },
   "publishConfig": { "access": "public" },
   "peerDependencies": {
     "@infinia/plugin-sdk": "^1.0.0",
@@ -37,7 +37,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
-    "@infinia/plugin-sdk": "file:../../plugin-sdk/typescript",
+    "@infinia/plugin-sdk": "file:../sdk-ts",
     "@mdi/font": "^7.4.47",
     "@mdi/js": "^7.4.47",
     "@playwright/test": "^1.51.0",

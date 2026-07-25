@@ -35,7 +35,7 @@ Infinia 在首次以 APP 模式启动时创建的本地身份：**id** `1`，**n
 
 ## JSON-RPC worker
 
-插件后端的协议与进程模型。worker 从 `stdin` 读取换行分隔的 JSON-RPC 2.0 请求（`{jsonrpc:"2.0", id, method, params}`），派发给已注册的处理器，并按行向 `stdout` 写入一个响应（`result` 或 `error`）。`stderr` 留给日志。`FengYu-Plugin-Sdk` 制品提供了 `JsonRpcWorker`——一个带 `.on(method, handler)` 注册、极轻量的运行时。参见 [Worker（JSON-RPC）](/zh/plugins/worker)。
+插件后端的协议与进程模型。worker 从 `stdin` 读取换行分隔的 JSON-RPC 2.0 请求（`{jsonrpc:"2.0", id, method, params}`），派发给已注册的处理器，并按行向 `stdout` 写入一个响应（`result` 或 `error`）。`stderr` 留给日志。`toolchain/sdk-java` 制品提供了 `JsonRpcWorker`——一个带 `.on(method, handler)` 注册、极轻量的运行时。参见 [Worker（JSON-RPC）](/zh/plugins/worker)。
 
 ## `.fyp`
 

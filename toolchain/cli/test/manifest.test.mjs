@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url'
 import { validateManifestObject, validateProjectManifest } from '../src/manifest.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-// plugin-cli/test -> plugin-cli -> repo root -> plugin-spec/fixtures
-const fixtures = path.resolve(__dirname, '../../plugin-spec/fixtures')
+// toolchain/cli/test -> toolchain/cli -> toolchain -> spec/fixtures
+const fixtures = path.resolve(__dirname, '../../spec/fixtures')
 const readFixture = async (name) => JSON.parse(await fs.readFile(path.join(fixtures, name), 'utf8'))
 
 test('valid full manifest (database + network.email permissions) has no errors', async () => {

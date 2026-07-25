@@ -46,7 +46,7 @@ for pom in \
   require_parent_revision "$ROOT/$pom"
 done
 
-reject_text "$ROOT/FengYu-Plugin-Sdk/pom.xml" \
+reject_text "$ROOT/toolchain/sdk-java/pom.xml" \
   '<parent>' \
   'independently versioned Worker SDK must not inherit the application reactor parent'
 

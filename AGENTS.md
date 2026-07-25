@@ -29,18 +29,18 @@ in build order:
 | Module | Role |
 |---|---|
 | `FengYu-Api` | Plugin + AI contracts (manifest schema, worker JSON-RPC protocol, `AiTool`). Other modules depend on it. |
-| `FengYu-Plugin-Sdk` | **Independently versioned** Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk`). Does not inherit the parent; kept in the reactor only so local installs work. |
+| `toolchain/sdk-java` | **Independently versioned** Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk`). Does not inherit the parent; kept in the reactor only so local installs work. |
 | `OfficialPlugins` | Aggregator for official plugins (`plugin-markdown`, `plugin-excel`, `plugin-email`, `plugin-offlinepython`). |
 | `FengYu` | The headless Spring Boot app; shaded fat JAR, main class `fan.summer.fengyu.HeadlessLauncher`. |
 
 Non-Maven top-level directories: `frontend/` (Vue), `desktop/` (Electron), plus the plugin toolchain
-(`FengYu-Plugin-Sdk/`, `plugin-sdk/typescript/`, `plugin-ui/vue/`, `plugin-cli/`, `plugin-spec/`).
+(`toolchain/sdk-java/`, `toolchain/devkit-java/`, `toolchain/sdk-ts/`, `toolchain/ui/`, `toolchain/dev/`, `toolchain/cli/`, `toolchain/spec/`).
 
 ## Two version lines (do not conflate)
 
 - **App version** — the Maven `${revision}` property (mirrored in `frontend/package.json`,
   `desktop/electron/package.json`, and each official plugin's `manifest.json`).
-- **Plugin toolchain version** — independent of the app; lives in `FengYu-Plugin-Sdk/pom.xml` and
+- **Plugin toolchain version** — independent of the app; lives in `toolchain/sdk-java/pom.xml` and
   the three `@infinia/*` `package.json` files. Releasing the toolchain must never bump the app
   version, and vice-versa.
 
@@ -51,12 +51,12 @@ When a version number matters, **read it from its source file**; do not copy a l
 When prose guidance conflicts with the repository, **the repository wins**. Inspect the actual
 file rather than trusting a summary:
 
-- Plugin runtime contract → `plugin-spec/manifest.schema.json`, a plugin's `manifest.json` and
+- Plugin runtime contract → `toolchain/spec/manifest.schema.json`, a plugin's `manifest.json` and
   `fengyu.plugin.json`, and `FengYu/src/main/java/fan/summer/fengyu/plugin/` (market + runtime).
 - Skill runtime contract → `FengYu/src/main/java/fan/summer/fengyu/ai/skill/` (discovery,
   registry, progressive-disclosure `skill` tool) and built-in skill bodies under
   `FengYu/src/main/resources/skills/`. Skills are a **peer extension surface to plugins**, not
-  a plugin feature — they never touch `plugin-spec/` or a plugin manifest. User skills live at
+  a plugin feature — they never touch `toolchain/spec/` or a plugin manifest. User skills live at
   `~/.fengyu/skills/<id>/SKILL.md`.
 - REST/SSE surface → controllers under `FengYu/src/main/java/fan/summer/fengyu/web/controller/`.
 - Build/release contracts → `pom.xml`, `package.json` files, `scripts/`, `.github/workflows/`.
@@ -122,6 +122,6 @@ Workflow skills live in `.agents/skills/` and are the canonical procedures for t
 | `fengyu-plugin-dev` | Scaffold, develop, validate, build, package, or install a plugin (official or third-party). |
 | `docs-updater` | Sync `README.md`, `CHANGELOG.md`, `docs/en/`, `docs/zh/` after a code or release change. |
 | `app-release` | Cut a main application release (`vX.Y.Z[-{alpha|beta|rc}.N]`). |
-| `plugin-tooling-release` | Cut an independently versioned plugin-toolchain release (`plugin-tooling-vX.Y.Z`). |
+| `toolchain-release` | Cut an independently versioned plugin-toolchain release (`plugin-tooling-vX.Y.Z`). |
 
 Claude Code reaches the same skills through short adapters in `.claude/skills/`.

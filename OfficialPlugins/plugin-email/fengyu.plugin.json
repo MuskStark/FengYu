@@ -4,10 +4,10 @@
     "root": "ui-src",
     "output": "dist",
     "prepare": [
-      ["npm", "--prefix", "../../../plugin-sdk/typescript", "ci"],
-      ["npm", "--prefix", "../../../plugin-sdk/typescript", "run", "build"],
-      ["npm", "--prefix", "../../../plugin-ui/vue", "ci"],
-      ["npm", "--prefix", "../../../plugin-ui/vue", "run", "build"]
+      ["npm", "--prefix", "../../../toolchain/sdk-ts", "ci"],
+      ["npm", "--prefix", "../../../toolchain/sdk-ts", "run", "build"],
+      ["npm", "--prefix", "../../../toolchain/ui", "ci"],
+      ["npm", "--prefix", "../../../toolchain/ui", "run", "build"]
     ],
     "install": ["npm", "ci"],
     "test": ["npm", "test"],
