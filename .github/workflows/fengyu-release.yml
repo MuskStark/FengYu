@@ -269,6 +269,14 @@ jobs:
         run: npm test
         working-directory: desktop/electron
 
+      # Compile the Electron main/preload TypeScript to dist/ (main.js + window/preload.js).
+      # The unit-test step above runs vitest against src/ directly (no dist/ needed), but
+      # electron-builder packages dist/main.js into app.asar — without this step the asar
+      # sanity check fails with "dist/main.js was not found in this archive".
+      - name: Build desktop TypeScript
+        run: npm run build:ts
+        working-directory: desktop/electron
+
       - name: Download shared inputs
         uses: actions/download-artifact@v5
         with:
