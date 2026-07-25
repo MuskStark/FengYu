@@ -1,6 +1,6 @@
 ---
 title: Official Plugin — Offline Python
-description: Walkthrough of fan.summer.offlinepython (v4.0.0-alpha.2) — a dev-category plugin with files.read/files.write/network permissions that builds offline Python install repositories (wheelhouses) with all dependencies, via a three-panel UI and six stateless AI tools.
+description: Walkthrough of fan.summer.offlinepython (v4.0.0-alpha.3) — a dev-category plugin with files.read/files.write/network permissions that builds offline Python install repositories (wheelhouses) with all dependencies, via a three-panel UI and six stateless AI tools.
 lang: en
 ---
 
@@ -29,7 +29,7 @@ the canonical example of a plugin that combines file I/O, **async jobs**, and AI
   "id": "fan.summer.offlinepython",
   "name": "Offline Python Builder",
   "description": "Build offline Python install repositories with all dependencies",
-  "version": "4.0.0-alpha.2",
+  "version": "4.0.0-alpha.3",
   "author": "FengYu",
   "icon": "language-python",
   "category": "dev",
