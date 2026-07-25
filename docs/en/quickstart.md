@@ -28,14 +28,14 @@ mvn install -f FengYu-Api/pom.xml -DskipTests
 mvn clean package -f FengYu/pom.xml -DskipTests
 ```
 
-The packaged backend jar lands at `FengYu/target/FengYu-4.0.0-alpha.2.jar`.
+The packaged backend jar lands at `FengYu/target/FengYu-4.0.0-alpha.3.jar`.
 
 ## Run the backend
 
 Launch the headless Spring Boot backend. It binds `127.0.0.1:24056` by default and prints `FENGYU_PORT=<n>` on startup.
 
 ```bash
-java -jar FengYu/target/FengYu-4.0.0-alpha.2.jar --token=<your-token>
+java -jar FengYu/target/FengYu-4.0.0-alpha.3.jar --token=<your-token>
 ```
 
 The entry point is `fan.summer.fengyu.HeadlessLauncher`. CLI flags are `--port` and `--token` only.
@@ -72,7 +72,7 @@ npm install
 npm run dev       # DEFAULT: connects to an IDE-started backend at http://127.0.0.1:24056
                   #   (start the backend without --token so auth is disabled; shell does NOT spawn java)
                   # To spawn its own backend instead: set FENGYU_JAR=<built shaded jar>
-                  #   (build it first: ./mvnw -pl FengYu -am package -DskipTests -Drevision=4.0.0-alpha.2)
+                  #   (build it first: ./mvnw -pl FengYu -am package -DskipTests -Drevision=4.0.0-alpha.3)
                   #   or set FENGYU_DEV_BACKEND=disabled
 ```
 
@@ -90,7 +90,7 @@ for staging the JAR / plugins and the two with/without-JRE build variants.
 
 ## Releases (Alpha)
 
-Release tags (`v4.0.0-alpha.2`, and later stable/beta/rc) trigger a GitHub Actions pipeline that
+Release tags (`v4.0.0-alpha.3`, and later stable/beta/rc) trigger a GitHub Actions pipeline that
 publishes **unsigned** Electron packages (Windows/macOS/Linux) and a **portable Web distribution**.
 The Web archive runs the same backend + bundled Vue SPA from a folder:
 

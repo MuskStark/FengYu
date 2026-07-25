@@ -1,6 +1,6 @@
 ---
 title: 官方插件——Markdown
-description: fan.summer.markdown（v4.0.0-alpha.2）讲解——一个 text 类别插件，无权限、无 AI 工具，仅暴露一个由 MarkdownWorkerMain 支撑的 render 方法，并配有一个带实时预览的 Vuetify 分栏编辑器 UI。
+description: fan.summer.markdown（v4.0.0-alpha.3）讲解——一个 text 类别插件，无权限、无 AI 工具，仅暴露一个由 MarkdownWorkerMain 支撑的 render 方法，并配有一个带实时预览的 Vuetify 分栏编辑器 UI。
 lang: zh-CN
 ---
 
@@ -22,7 +22,7 @@ lang: zh-CN
   "id": "fan.summer.markdown",
   "name": "Markdown Editor",
   "description": "Split-pane Markdown editor with isolated server-side rendering",
-  "version": "4.0.0-alpha.2",
+  "version": "4.0.0-alpha.3",
   "author": "FengYu",
   "icon": "language-markdown",
   "category": "text",

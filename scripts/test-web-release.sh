@@ -58,19 +58,32 @@ done
 
 BASE="http://127.0.0.1:$PORT"
 
-# Wait for /api/health 200 (no token needed; auth disabled without --token).
+# run.sh now generates a per-launch token by default (B2 security fix: auth no longer disabled
+# when no --token is passed). The generated token is printed to stderr, which run.sh redirects
+# into server.log. Extract it so the protected-endpoint checks below can authenticate.
+TOKEN="$(grep -o 'Generated per-launch token.*: zf-[0-9a-f-]*' "$WORK/server.log" | head -1 | sed 's/.*: //')"
+[ -n "$TOKEN" ] || { echo "FAIL: no generated token found in server.log (run.sh changed?)" >&2; tail -40 "$WORK/server.log"; exit 1; }
+AUTH=(-H "X-FengYu-Token: $TOKEN")
+
+# Wait for /api/health 200 (health bypasses token auth).
 ready=0
 for _ in $(seq 1 40); do
   code="$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/health" 2>/dev/null || true)"
   [ "$code" = "200" ] && { ready=1; break; }
   sleep 1
 done
-[ "$ready" = 1 ] || { echo "FAIL: /api/health never returned 200" >&2; tail -40 "$WORK/server.log"; exit 1; }
+[ "$ready" = "1" ] || { echo "FAIL: /api/health never returned 200" >&2; tail -40 "$WORK/server.log"; exit 1; }
 echo "PASS: /api/health 200 (port=$PORT)"
 
 # The Vue shell (/) is served from the bundled jar (SpaForwardController → index.html).
-code="$(curl -s -o /dev/null -w '%{http_code}' "$BASE/" 2>/dev/null || true)"
-[ "$code" = "200" ] || { echo "FAIL: / returned $code (expected 200)" >&2; exit 1; }
+# It is token-protected (not in the bypass list), so pass the generated token.
+code="$(curl -s -o /dev/null -w '%{http_code}' "${AUTH[@]}" "$BASE/" 2>/dev/null || true)"
+[ "$code" = "200" ] || { echo "FAIL: / returned $code (expected 200 with token)" >&2; exit 1; }
 echo "PASS: / serves Vue shell (200)"
+
+# Confirm auth is actually enforced: a tokenless request to a protected endpoint must 401.
+code="$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/plugins" 2>/dev/null || true)"
+[ "$code" = "401" ] || { echo "FAIL: tokenless /api/plugins returned $code (expected 401 — auth should be on)" >&2; exit 1; }
+echo "PASS: token auth enforced (401 without X-FengYu-Token)"
 
 echo "ALL SMOKE CHECKS PASSED"

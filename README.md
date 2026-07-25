@@ -1,6 +1,6 @@
 # Infinia
 
-![Infinia](https://img.shields.io/badge/Infinia-Web%20%2B%20Desktop-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue) ![Maven](https://img.shields.io/badge/Maven-3.6+-red) ![Version](https://img.shields.io/badge/version-4.0.0--alpha.1-blue)
+![Infinia](https://img.shields.io/badge/Infinia-Web%20%2B%20Desktop-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue) ![Maven](https://img.shields.io/badge/Maven-3.6+-red) ![Version](https://img.shields.io/badge/version-4.0.0--alpha.3-blue)
 
 **Infinia** (蜂语 / FengYu) is an *AI-native orchestration platform*. A plan-and-execute Agent
 turns natural-language goals into multi-step business workflows by orchestrating three extension
@@ -8,7 +8,7 @@ surfaces — `.fyp` plugins, `.fys` skills, and in-process AI tools. It runs as 
 backend, a Vue 3.5 + Vuetify 3 UI, and an optional Electron desktop shell; built-in tools (Excel
 splitting, email, markdown, and more) ship as official plugins the Agent can call.
 
-> ### 🚧 4.0.0-alpha.2 — web + desktop
+> ### 🚧 4.0.0-alpha.3 — web + desktop
 > This branch (`4.0.0-FengYu`) re-architects Infinia from a JavaFX desktop app into a **web +
 > desktop application**: a **headless Spring Boot backend** (loopback web server, no window), a
 > **Vue 3.5 + TypeScript** frontend (identical for browser and desktop), and an **Electron 43.x**
@@ -16,7 +16,7 @@ splitting, email, markdown, and more) ship as official plugins the Agent can cal
 > expose a JSON-RPC worker backend plus a micro-frontend UI bundle. JavaFX has been removed.
 > See [`CHANGELOG.md`](CHANGELOG.md) and the [online docs](https://muskstark.github.io/FengYu/) for the current state.
 >
-> Run the backend: `java -jar FengYu/target/FengYu-4.0.0-alpha.2.jar --token=<t>` (binds port 24056 by default)
+> Run the backend: `java -jar FengYu/target/FengYu-4.0.0-alpha.3.jar --token=<t>` (binds port 24056 by default)
 > · frontend: `cd frontend && npm run dev` · smoke test: `scripts/e2e-smoke.sh`.
 >
 > The official **Email Center** plugin now ships as `fan.summer.email`: five sandboxed UI tabs,
@@ -54,7 +54,7 @@ mvn install -f FengYu-Api/pom.xml -DskipTests
 mvn clean package -f FengYu/pom.xml -DskipTests
 
 # 3. Run the headless backend (loopback web server on 127.0.0.1:24056)
-java -jar FengYu/target/FengYu-4.0.0-alpha.2.jar --token=<your-token>
+java -jar FengYu/target/FengYu-4.0.0-alpha.3.jar --token=<your-token>
 ```
 
 ### Run the Frontend (dev)
@@ -76,7 +76,7 @@ cd desktop/electron && npm install && npm run dev   # set FENGYU_JAR or run the 
 
 ### Releases (Alpha)
 
-Pushed release tags (`v4.0.0`, `v4.0.0-alpha.2`, `-beta.*`, `-rc.*`) trigger
+Pushed release tags (`v4.0.0`, `v4.0.0-alpha.3`, `-beta.*`, `-rc.*`) trigger
 [`.github/workflows/fengyu-release.yml`](.github/workflows/fengyu-release.yml), which publishes:
 
 - **Unsigned Electron packages** for Windows, macOS, and Linux — two variants per platform: a
