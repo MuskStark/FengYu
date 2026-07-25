@@ -9,12 +9,18 @@ set -euo pipefail
 PORT="${1:-8899}"
 TOKEN="${2:-e2e-smoke-token}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-JAR="$ROOT/FengYu/target/FengYu-4.0.0-alpha.1.jar"
-
-if [ ! -f "$JAR" ]; then
-  echo "FAIL: jar not found at $JAR — build it first (mvn -f FengYu/pom.xml package -DskipTests)"
+# Resolve the built jar by glob so this script does not break on every version bump.
+# Exactly one jar must match; zero or multiple is an error (avoids ambiguity).
+JAR_GLOB="$ROOT/FengYu/target/FengYu-*.jar"
+JAR_COUNT=( $JAR_GLOB )
+if [ ${#JAR_COUNT[@]} -eq 0 ]; then
+  echo "FAIL: no jar matches $JAR_GLOB — build it first (mvn -f FengYu/pom.xml package -DskipTests)"
+  exit 1
+elif [ ${#JAR_COUNT[@]} -gt 1 ]; then
+  echo "FAIL: multiple jars match $JAR_GLOB — clean target/ first (mvn -f FengYu/pom.xml clean)"
   exit 1
 fi
+JAR="${JAR_COUNT[0]}"
 
 # Build the official plugins through the CLI into each plugin's dist-package/,
 # then stage their .fyp outputs into a single official-packages directory the
