@@ -42,10 +42,15 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
     const csp = [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // Vite dev needs eval for HMR/transform
-      "style-src 'self' 'unsafe-inline' http://127.0.0.1:5173",
-      "font-src 'self' data: http://127.0.0.1:5173",
-      "img-src 'self' data: blob: http://127.0.0.1:5173 http://127.0.0.1:24056",
-      "connect-src 'self' http://127.0.0.1:5173 http://127.0.0.1:24056 ws://127.0.0.1:5173 http://127.0.0.1:* ws://127.0.0.1:*",
+      "style-src 'self' 'unsafe-inline' http://127.0.0.1:5173 http://127.0.0.1:24056 http://localhost:24056",
+      "font-src 'self' data: http://127.0.0.1:5173 http://127.0.0.1:24056 http://localhost:24056",
+      "img-src 'self' data: blob: http://127.0.0.1:5173 http://127.0.0.1:24056 http://localhost:24056",
+      // Plugin micro-frontend UIs are served by the backend and iframed by the host. pluginAssetUrl
+      // swaps the hostname (127.0.0.1 ↔ localhost) for origin isolation, so frame-src must allow BOTH
+      // loopback hostnames on the backend port. child-src covers older browsers; both needed.
+      "frame-src 'self' http://127.0.0.1:24056 http://localhost:24056",
+      "child-src 'self' http://127.0.0.1:24056 http://localhost:24056",
+      "connect-src 'self' http://127.0.0.1:5173 http://127.0.0.1:24056 http://localhost:24056 ws://127.0.0.1:5173 http://127.0.0.1:* ws://127.0.0.1:*",
       "worker-src 'self' blob:",
       "object-src 'none'",
       "base-uri 'self'",
