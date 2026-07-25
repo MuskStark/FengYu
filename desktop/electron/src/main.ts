@@ -216,7 +216,12 @@ app.whenReady().then(() => {
   void bootstrap()
 })
 
+// Clean up the spawned backend + dev Vite on quit. before-quit covers Cmd+Q / tray Quit / app.quit();
+// will-quit fires on ALL exit paths (including some forceful ones where before-quit's async work
+// might not complete) and is the backstop that guarantees the detached Vite process group dies with
+// the shell — stop() is idempotent (guards on child.killed), so calling it from both is safe.
 app.on('before-quit', killBackend)
+app.on('will-quit', () => devFrontend?.stop())
 
 // Keep the app (and tray) alive on macOS even after the last window closes.
 // The 'window-all-closed' listener receives no event arg in these Electron
