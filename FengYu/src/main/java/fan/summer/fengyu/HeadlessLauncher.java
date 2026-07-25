@@ -140,9 +140,11 @@ public final class HeadlessLauncher {
     }
 
     /**
-     * Safety-critical defaults that must also survive the flattened shaded-jar runtime. The
-     * packaged launcher currently does not discover {@code application.yml}, so relying on that
-     * resource alone restores Spring Boot's 1 MB multipart limit and wildcard bind address.
+     * Safety-critical defaults reasserted programmatically as defense-in-depth. The shaded jar
+     * DOES package {@code application.yml} (it sets {@code server.address=127.0.0.1} and the
+     * 128 MB multipart limits), but these loopback/limits invariants are important enough to
+     * also pin here, so a future change to application.yml alone cannot silently restore the
+     * Spring Boot defaults (wildcard bind address, 1 MB multipart limit).
      */
     static Map<String, Object> runtimeDefaults() {
         return Map.of(

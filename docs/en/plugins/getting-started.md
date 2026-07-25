@@ -112,7 +112,7 @@ loopback TCP server at `127.0.0.1:24057`, serving the **same handlers** as the p
 
 For UI-only plugins, `vite.config.ts` sets `mockWorker: true` — `rpc.invoke` returns a deterministic
 stub, so you can iterate the UI before any worker exists. See
-[`plugin-dev/README.md`](https://github.com/MuskStark/FengYu/tree/main/plugin-dev) for the full guide.
+[`toolchain/dev/README.md`](https://github.com/MuskStark/FengYu/tree/main/toolchain/dev) for the full guide.
 
 ## Next steps
 
