@@ -8,4 +8,13 @@ JAVA="${JAVA_HOME:+$JAVA_HOME/bin/}java"
 command -v "$JAVA" >/dev/null 2>&1 || { echo "Java 21 is required" >&2; exit 1; }
 MAJOR="$($JAVA -version 2>&1 | sed -n '1s/.*version "\([0-9]*\).*/\1/p')"
 [ "${MAJOR:-0}" -ge 21 ] || { echo "Java 21 is required" >&2; exit 1; }
-exec "$JAVA" -Dfengyu.plugins.official-directory="$ROOT/plugins" -jar "$ROOT/Infinia.jar" "$@"
+# 若用户未显式传 --token,生成一个随机 per-launch token 并传入,避免默认认证关闭。
+# 用户传 --token=<t> 时此处不覆盖(下面的 case 检测)。
+TOKEN_ARGS=()
+case " $* " in *" --token"*) ;; *" --token="*) ;; *)
+  GEN_TOKEN="zf-$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')-$$"
+  TOKEN_ARGS=(--token="$GEN_TOKEN")
+  echo "Generated per-launch token (pass --token=<t> to override): $GEN_TOKEN" >&2
+;; esac
+
+exec "$JAVA" -Dfengyu.plugins.official-directory="$ROOT/plugins" -jar "$ROOT/Infinia.jar" "${TOKEN_ARGS[@]}" "$@"

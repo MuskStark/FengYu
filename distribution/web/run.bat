@@ -39,5 +39,16 @@ if %MAJOR% LSS 21 (
   echo Java 21 is required, found version %MAJOR% 1>&2
   exit /b 1
 )
-"%JAVA%" -Dfengyu.plugins.official-directory="%ROOT%plugins" -jar "%ROOT%Infinia.jar" %*
+REM 若用户未显式传 --token,生成随机 token 避免默认认证关闭。
+set "HAS_TOKEN=0"
+for %%A in (%*) do (
+  echo %%A | findstr /b "--token" >nul && set "HAS_TOKEN=1"
+)
+if "!HAS_TOKEN!"=="0" (
+  set "GEN_TOKEN=zf-%RANDOM%%RANDOM%-%TIME:~6,2%%TIME:~9,2%"
+  echo Generated per-launch token (pass --token=^<t^> to override): !GEN_TOKEN! >&2
+  "%JAVA%" -Dfengyu.plugins.official-directory="%ROOT%plugins" -jar "%ROOT%Infinia.jar" --token="!GEN_TOKEN!" %*
+) else (
+  "%JAVA%" -Dfengyu.plugins.official-directory="%ROOT%plugins" -jar "%ROOT%Infinia.jar" %*
+)
 endlocal
