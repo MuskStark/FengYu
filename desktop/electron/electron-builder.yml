@@ -66,7 +66,9 @@ extraResources:
 #     - { from: resources/jre, to: jre, filter: ['**/*'] }
 
 win:
-  target: nsis
+  target:
+    - target: nsis       # installer (.exe) — installs to Program Files / user dir.
+    - target: portable   # no-install portable (.exe) — single file, runs without installing.
   icon: resources/icon.ico
 
 mac:
