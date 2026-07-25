@@ -56,14 +56,13 @@ The frontend SPA is loaded from the Vite dev server in dev, so you also need the
 second terminal (`cd frontend && npm run dev`). Its Vite server (port 5173) proxies `/api` +
 `/plugin-runtime` to the backend, and is useful on its own for browser-only frontend work.
 
-There are **two dev modes** for the backend, picked by environment variables:
+### Default dev — connect to an IDE-started backend (no env vars needed)
 
-### Option A — connect to an IDE-started backend (recommended for backend work)
-
-Run the backend yourself in the IDE (or `mvn -pl FengYu spring-boot:run`) on `127.0.0.1:24056`,
-**without** `--token=` (so `TokenAuthFilter` disables auth — convenient for dev), then point the
-shell at it. The shell does NOT spawn java, generate a token, run the SETUP→APP supervisor, or
-manage the backend lifetime — you own it:
+By default, `npm run dev` connects to a backend you started yourself in the IDE (or
+`mvn -pl FengYu spring-boot:run`) at `127.0.0.1:24056`. The shell does NOT spawn java, generate a
+token, run the SETUP→APP supervisor, or manage the backend lifetime — you own it. Start the backend
+**without** `--token=` so `TokenAuthFilter` disables auth (convenient for dev); the shell then passes
+an empty token that lines up with the SPA's empty-token fallback.
 
 ```bash
 # Terminal 1: backend (IDE run config, or):
@@ -72,19 +71,23 @@ manage the backend lifetime — you own it:
 # Terminal 2: frontend
 cd frontend && npm run dev               # Vite on :5173, proxies /api → :24056
 
-# Terminal 3: desktop shell, connecting to the IDE backend
-cd desktop/electron
-FENGYU_DEV_BACKEND=http://127.0.0.1:24056 npm run dev
+# Terminal 3: desktop shell (no env vars — defaults to the IDE backend)
+cd desktop/electron && npm run dev
 ```
 
-If you started the backend **with** `--token=<t>`, also set `FENGYU_TOKEN=<t>` so the shell passes
-it through. `FENGYU_DEV_BACKEND` is honored only when the app is NOT packaged.
+If the IDE backend isn't running, the shell waits up to 30s for `/api/health`, then shows an error
+telling you to start it. Overrides:
 
-### Option B — let the shell spawn the backend from a jar (self-contained dev)
+- `FENGYU_DEV_BACKEND=http://127.0.0.1:<other-port>` — connect to a backend on a different port.
+- `FENGYU_TOKEN=<t>` — if you started the backend **with** `--token=<t>`, pass it through.
+- `FENGYU_DEV_BACKEND=disabled` (or just set `FENGYU_JAR`) — opt out of the default and let the
+  shell spawn its own backend from a jar (see below).
 
-Build the shaded jar, then point `FENGYU_JAR` at it. The shell spawns java, generates a per-launch
-token, runs the health check + SETUP→APP supervisor — the full packaged lifecycle, just loaded from
-the dev Vite server instead of the bundled SPA:
+### Self-contained dev — shell spawns the backend from a jar
+
+Set `FENGYU_DEV_BACKEND=disabled` (or just set `FENGYU_JAR`), and the shell spawns java, generates a
+per-launch token, runs the health check + SETUP→APP supervisor — the full release lifecycle, just
+loaded from the dev Vite server instead of the bundled SPA:
 
 1. **Build the jar** (once, or after any backend change):
 
@@ -99,8 +102,8 @@ the dev Vite server instead of the bundled SPA:
    npm run dev
    ```
 
-   If neither `FENGYU_DEV_BACKEND` nor `FENGYU_JAR` is set, the shell throws at startup
-   (`Dev mode requires FENGYU_JAR...`).
+   This path requires `FENGYU_JAR` set explicitly (or `FENGYU_DEV_BACKEND=disabled`); the default
+   with no env vars is the IDE-backend connection above.
 
 ## Staging the backend for packaging
 

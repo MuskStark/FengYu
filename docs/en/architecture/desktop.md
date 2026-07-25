@@ -19,22 +19,22 @@ The shell behaves differently depending on whether it is packaged:
 
 | Profile | Backend | Window |
 | --- | --- | --- |
-| **Dev — external** (`!app.isPackaged`, `FENGyu_DEV_BACKEND` set) | None — connects to a backend you started (IDE / `mvn spring-boot:run`). No spawn, no token, no supervisor. | Opens once `/api/health` on the external backend responds |
-| **Dev — spawned** (`!app.isPackaged`, `FENGyu_JAR` set) | Spawned as a jar sidecar by the shell, using the jar at `FENGyu_JAR` | Opens immediately, loads `localhost:5173` |
+| **Dev — external** (default; `!app.isPackaged`, no env or `FENGyu_DEV_BACKEND` set) | None — connects to a backend you started (IDE / `mvn spring-boot:run`) at `http://127.0.0.1:24056`. No spawn, no token, no supervisor. | Opens once `/api/health` on the external backend responds |
+| **Dev — spawned** (`!app.isPackaged`, `FENGyu_JAR` set or `FENGyu_DEV_BACKEND=disabled`) | Spawned as a jar sidecar by the shell, using the jar at `FENGyu_JAR` | Opens immediately, loads `localhost:5173` |
 | **Release** (`app.isPackaged`) | Spawned as a jar sidecar by the shell | Opens after the backend is healthy, loads the bundled SPA |
 
-Dev has **two backend modes**. With `FENGyu_DEV_BACKEND=http://127.0.0.1:24056` (recommended for backend
-work), the shell connects to a backend you started in your IDE **without** `--token=` — `TokenAuthFilter`
-then disables auth, and the shell passes an empty token so the SPA's empty-token fallback lines up. The
-shell does NOT spawn java, generate a token, or run the SETUP→APP supervisor; you own the backend's
-lifetime. If you started the backend with `--token=<t>`, also set `FENGyu_TOKEN=<t>`.
+By default, `npm run dev` connects to a backend you started in your IDE **without** `--token=` —
+`TokenAuthFilter` then disables auth, and the shell passes an empty token so the SPA's empty-token
+fallback lines up. The shell does NOT spawn java, generate a token, or run the SETUP→APP supervisor;
+you own the backend's lifetime. If you started the backend with `--token=<t>`, also set
+`FENGyu_TOKEN=<t>`. To point at a different port, set `FENGyu_DEV_BACKEND=http://127.0.0.1:<port>`.
 
-With `FENGyu_JAR=<path>` instead, the shell owns the backend: it spawns the jar, generates a per-launch
-token, runs the health check + supervisor — the full release lifecycle, just loaded from the dev Vite
-server. `FENGyu_JAR` is **required** on this path (the shell throws `Dev mode requires FENGyu_JAR...` if
-neither variable is set). The Vite dev server (port 5173) proxies `/api` to whichever backend is active,
-and is also how the developer runs the frontend in a browser separately. In release the shell owns the
-backend process end to end.
+To make the shell spawn its own backend instead (self-contained dev), set `FENGyu_JAR=<path>` (or
+`FENGyu_DEV_BACKEND=disabled`): it spawns the jar, generates a per-launch token, runs the health check +
+supervisor — the full release lifecycle, just loaded from the dev Vite server. `FENGyu_JAR` is
+**required** on this path (the shell throws `Dev mode requires FENGyu_JAR...` if it's unset). The Vite
+dev server (port 5173) proxies `/api` to whichever backend is active, and is also how the developer runs
+the frontend in a browser separately. In release the shell owns the backend process end to end.
 
 ## Backend spawn (release)
 
