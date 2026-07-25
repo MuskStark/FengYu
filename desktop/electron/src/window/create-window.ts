@@ -1,4 +1,4 @@
-import { BrowserWindow, session } from 'electron'
+import { BrowserWindow, session, shell } from 'electron'
 import { join } from 'node:path'
 
 export interface CreateWindowOptions {
@@ -78,6 +78,20 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
       nodeIntegration: false,
       sandbox: true,
     },
+  })
+
+  // Navigation guard: deny all window.open; delegate http(s) to the system browser.
+  // Without this, <a target="_blank"> opens a new Electron window with the same preload,
+  // and a compromised page could window.open('file://...') or navigate to an arbitrary origin.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//.test(url)) {
+      void shell.openExternal(url)
+    }
+    return { action: 'deny' }
+  })
+  // Block in-page navigation to a different origin (defense against iframe/top-level redirects).
+  win.webContents.on('will-navigate', (e, url) => {
+    if (url !== win.webContents.getURL()) e.preventDefault()
   })
 
   // Hide-to-tray instead of closing — UNLESS the app is genuinely quitting.
