@@ -6,7 +6,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * The Plan-and-Execute agent runtime.
@@ -51,6 +57,9 @@ import java.util.Map;
 public class AgentRunner {
 
     private static final Logger log = LoggerFactory.getLogger(AgentRunner.class);
+    private static final Pattern STEP_RESULT =
+            Pattern.compile("\\{\\{steps\\.(\\d+)\\.result}}");
+    private static final String LAST_RESULT = "{{last.result}}";
 
     private final List<ToolCallback> tools;
     private final PlanGenerator planGenerator;
@@ -141,6 +150,7 @@ public class AgentRunner {
     private void drive(AgentRun run, AgentEventSink sink) {
         AgentRunConfig cfg = run.getConfig();
         int replansRemaining = cfg.maxReplans();
+        AgentPlan suppliedWorkflow = run.getPlan();
 
         try {
             while (true) {
@@ -148,8 +158,14 @@ public class AgentRunner {
                 run.setStatus(AgentRunStatus.PLANNING);
                 AgentPlan plan;
                 try {
-                    plan = planGenerator.generate(run.getGoal(), tools,
-                            delta -> safe(sink, s -> s.onPlanToken(delta)));
+                    if (suppliedWorkflow != null) {
+                        plan = suppliedWorkflow;
+                        suppliedWorkflow = null;
+                    } else {
+                        plan = planGenerator.generate(run.getGoal(), tools,
+                                delta -> safe(sink, s -> s.onPlanToken(delta)));
+                    }
+                    validatePlan(plan, tools);
                 } catch (Exception e) {
                     log.error("agent {}: planning failed", run.getRunId(), e);
                     run.setStatus(AgentRunStatus.FAILED);
@@ -157,7 +173,8 @@ public class AgentRunner {
                     return;
                 }
                 run.setPlan(plan);
-                safe(sink, s -> s.onPlanReady(plan));
+                AgentPlan readyPlan = plan;
+                safe(sink, s -> s.onPlanReady(readyPlan));
 
                 if (cancelledAfterGate(run)) {
                     finishCancelled(run, sink);
@@ -175,6 +192,16 @@ public class AgentRunner {
                 }
 
                 // ── 3. EXECUTING ───────────────────────────────────────
+                // Approval may have supplied an edited workflow. Always execute the current
+                // run plan rather than the stale pre-approval local variable.
+                plan = run.getPlan();
+                try {
+                    validatePlan(plan, tools);
+                } catch (Exception e) {
+                    run.setStatus(AgentRunStatus.FAILED);
+                    safe(sink, s -> s.onError("Invalid workflow: " + e.getMessage()));
+                    return;
+                }
                 run.setStatus(AgentRunStatus.EXECUTING);
                 StepFailure failure = executeSteps(run, sink, cfg, plan);
 
@@ -183,6 +210,10 @@ public class AgentRunner {
                     String summary = "Completed " + plan.steps().size() + " step(s) for goal: " + plan.goal();
                     run.setStatus(AgentRunStatus.COMPLETED);
                     safe(sink, s -> s.onComplete(summary));
+                    return;
+                }
+                if (run.isCancelled()) {
+                    finishCancelled(run, sink);
                     return;
                 }
 
@@ -215,6 +246,8 @@ public class AgentRunner {
     /** Executes the plan's steps sequentially, honoring per-step approval. Returns the first failure, or {@code null} on full success. */
     private StepFailure executeSteps(AgentRun run, AgentEventSink sink, AgentRunConfig cfg, AgentPlan plan)
             throws InterruptedException {
+        Map<Integer, String> results = new HashMap<>();
+        String lastResult = null;
         for (AgentStep step : plan.steps()) {
             // Cooperative cancellation before every step.
             if (run.isCancelled()) {
@@ -237,7 +270,12 @@ public class AgentRunner {
             safe(sink, s -> s.onStepStart(step.index()));
 
             try {
-                String result = stepExecutor.execute(step, tools);
+                AgentStep resolved = new AgentStep(step.index(), step.toolName(),
+                        resolveArgs(step.args(), results, lastResult),
+                        step.description(), step.requiresApproval());
+                String result = stepExecutor.execute(resolved, tools);
+                results.put(step.index(), result);
+                lastResult = result;
                 run.addExecution(new StepExecution(step.index(), StepStatus.COMPLETED, result));
                 safe(sink, s -> s.onStepComplete(step.index(), result));
             } catch (Exception e) {
@@ -294,6 +332,108 @@ public class AgentRunner {
         } catch (Exception e) {
             // Best-effort: a tool that needs structured input will reject this, surfacing as FAILED.
             return "{}";
+        }
+    }
+
+    /** Validates workflows from both the model and the HTTP API before any tool is called. */
+    static void validatePlan(AgentPlan plan, List<ToolCallback> tools) {
+        if (plan == null) throw new IllegalArgumentException("workflow is required");
+        if (plan.steps() == null) throw new IllegalArgumentException("workflow steps are required");
+
+        Set<String> available = new HashSet<>();
+        if (tools != null) {
+            for (ToolCallback tool : tools) available.add(tool.getToolDefinition().name());
+        }
+        for (int i = 0; i < plan.steps().size(); i++) {
+            AgentStep step = plan.steps().get(i);
+            if (step == null) throw new IllegalArgumentException("step " + i + " is null");
+            if (step.index() != i) {
+                throw new IllegalArgumentException("step indexes must be contiguous from 0");
+            }
+            if (step.toolName() == null || !available.contains(step.toolName())) {
+                throw new IllegalArgumentException(
+                        "step " + i + " references unavailable tool '" + step.toolName() + "'");
+            }
+            validateReferences(step.args(), i);
+        }
+    }
+
+    private static void validateReferences(Object value, int currentIndex) {
+        if (value instanceof Map<?, ?> map) {
+            for (Object child : map.values()) validateReferences(child, currentIndex);
+        } else if (value instanceof List<?> list) {
+            for (Object child : list) validateReferences(child, currentIndex);
+        } else if (value instanceof String text) {
+            Matcher matcher = STEP_RESULT.matcher(text);
+            while (matcher.find()) {
+                int referenced = Integer.parseInt(matcher.group(1));
+                if (referenced >= currentIndex) {
+                    throw new IllegalArgumentException(
+                            "step " + currentIndex + " references non-previous step " + referenced);
+                }
+            }
+            if (text.contains(LAST_RESULT) && currentIndex == 0) {
+                throw new IllegalArgumentException("step 0 cannot reference last.result");
+            }
+        }
+    }
+
+    private static Map<String, Object> resolveArgs(Map<String, Object> args,
+                                                   Map<Integer, String> results,
+                                                   String lastResult) {
+        if (args == null || args.isEmpty()) return Map.of();
+        Map<String, Object> resolved = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : args.entrySet()) {
+            resolved.put(entry.getKey(), resolveValue(entry.getValue(), results, lastResult));
+        }
+        return resolved;
+    }
+
+    private static Object resolveValue(Object value, Map<Integer, String> results, String lastResult) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> resolved = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                resolved.put(String.valueOf(entry.getKey()),
+                        resolveValue(entry.getValue(), results, lastResult));
+            }
+            return resolved;
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().map(v -> resolveValue(v, results, lastResult)).toList();
+        }
+        if (!(value instanceof String text)) return value;
+
+        if (LAST_RESULT.equals(text)) return parsedResult(lastResult);
+        Matcher exact = STEP_RESULT.matcher(text);
+        if (exact.matches()) {
+            return parsedResult(requiredResult(results, Integer.parseInt(exact.group(1))));
+        }
+
+        String replaced = text.replace(LAST_RESULT, lastResult == null ? "" : lastResult);
+        Matcher matcher = STEP_RESULT.matcher(replaced);
+        StringBuffer output = new StringBuffer();
+        while (matcher.find()) {
+            String result = requiredResult(results, Integer.parseInt(matcher.group(1)));
+            matcher.appendReplacement(output, Matcher.quoteReplacement(result));
+        }
+        matcher.appendTail(output);
+        return output.toString();
+    }
+
+    private static String requiredResult(Map<Integer, String> results, int index) {
+        if (!results.containsKey(index)) {
+            throw new IllegalArgumentException("No result is available for step " + index);
+        }
+        return results.get(index);
+    }
+
+    private static Object parsedResult(String result) {
+        if (result == null) return null;
+        try {
+            Object parsed = JsonHelper.parse(result);
+            return parsed == null ? result : parsed;
+        } catch (Exception ignored) {
+            return result;
         }
     }
 }

@@ -230,12 +230,23 @@ public final class SpringAiCloudBackend implements ChatBackend {
     @Override
     public void chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
                      AiStreamCallback callback) throws AiServiceException {
+        startChat(history, callback, true);
+    }
+
+    @Override
+    public void chatWithoutTools(List<AiChatMessage> history, AiStreamCallback callback)
+            throws AiServiceException {
+        startChat(history, callback, false);
+    }
+
+    private void startChat(List<AiChatMessage> history, AiStreamCallback callback,
+                           boolean enableTools) throws AiServiceException {
         if (!isReady()) throw new AiServiceException(provider + " cloud backend not configured");
         if (!generating.compareAndSet(false, true)) throw new AiServiceException("Generation already in progress");
 
         Thread.ofVirtual().start(() -> {
             try {
-                runToolLoop(history, callback);
+                runToolLoop(history, callback, enableTools);
             } catch (Exception e) {
                 log.error("{} chat failed", provider, e);
                 callback.onError(e);
@@ -251,7 +262,8 @@ public final class SpringAiCloudBackend implements ChatBackend {
 
     // ── Tool loop (Spring AI ToolCallingManager, user-controlled) ──────
 
-    private void runToolLoop(List<AiChatMessage> history, AiStreamCallback callback) {
+    private void runToolLoop(List<AiChatMessage> history, AiStreamCallback callback,
+                             boolean enableTools) {
         String systemPrompt = effectiveSystemPrompt();
 
         // Attach the configured tool callbacks to the PROMPT. We MUST derive the options
@@ -265,7 +277,7 @@ public final class SpringAiCloudBackend implements ChatBackend {
         // request is built from the right options type.
         ToolCallingChatOptions options = baseOptions;
         ToolCallback[] callbacks = this.toolCallbacks.toArray(new ToolCallback[0]);
-        if (callbacks.length > 0) {
+        if (enableTools && callbacks.length > 0) {
             // Attach the callbacks so ToolCallingManager can resolve them. Prefer mutate()
             // on the provider-specific baseOptions (OpenAiChatOptions / AnthropicChatOptions)
             // so the concrete type the provider model casts to is preserved. When baseOptions

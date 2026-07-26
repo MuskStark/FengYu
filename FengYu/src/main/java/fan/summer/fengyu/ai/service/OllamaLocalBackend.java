@@ -175,12 +175,23 @@ public final class OllamaLocalBackend implements ChatBackend {
     @Override
     public void chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
                      AiStreamCallback callback) throws AiServiceException {
+        startChat(history, callback, true);
+    }
+
+    @Override
+    public void chatWithoutTools(List<AiChatMessage> history, AiStreamCallback callback)
+            throws AiServiceException {
+        startChat(history, callback, false);
+    }
+
+    private void startChat(List<AiChatMessage> history, AiStreamCallback callback,
+                           boolean enableTools) throws AiServiceException {
         if (!isReady()) throw new AiServiceException("Ollama backend not ready (model=" + ollamaModelTag + ")");
         if (!generating.compareAndSet(false, true)) throw new AiServiceException("Generation already in progress");
 
         Thread.ofVirtual().start(() -> {
             try {
-                runToolLoop(history, callback);
+                runToolLoop(history, callback, enableTools);
             } catch (Exception e) {
                 log.error("Ollama chat failed", e);
                 callback.onError(e);
@@ -200,12 +211,15 @@ public final class OllamaLocalBackend implements ChatBackend {
 
     // ── Tool loop (Spring AI ToolCallingManager, user-controlled) ──────
 
-    private void runToolLoop(List<AiChatMessage> history, AiStreamCallback callback) {
+    private void runToolLoop(List<AiChatMessage> history, AiStreamCallback callback,
+                             boolean enableTools) {
         String systemPrompt = effectiveSystemPrompt();
 
         // Tool-callback options attached to every Prompt so the model CAN request tools
         // (bug fix: previously buildToolCallbacks()'s result was discarded at the call site).
-        ToolCallback[] callbacks = this.toolCallbacks.toArray(new ToolCallback[0]);
+        ToolCallback[] callbacks = enableTools
+                ? this.toolCallbacks.toArray(new ToolCallback[0])
+                : new ToolCallback[0];
         ToolCallingChatOptions options = callbacks.length == 0
                 ? null
                 : ToolCallingChatOptions.builder().toolCallbacks(callbacks).build();
