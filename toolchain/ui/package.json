@@ -30,6 +30,9 @@
   },
   "repository": { "type": "git", "url": "git+https://github.com/MuskStark/FengYu.git", "directory": "toolchain/ui" },
   "publishConfig": { "access": "public" },
+  "overrides": {
+    "brace-expansion": "5.0.8"
+  },
   "peerDependencies": {
     "@infinia/plugin-sdk": "^1.0.0",
     "vue": "^3.5.0",
