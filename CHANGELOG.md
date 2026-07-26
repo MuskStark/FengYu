@@ -89,6 +89,18 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
     socket. `run()` / `run(InputStream, OutputStream)` are unchanged in behaviour.
   - The scaffolder now generates a shared `<Prefix>Worker.create()` handler factory, the production
     `<Prefix>WorkerMain`, and the IDE-debug `PluginDevMain`. UI-only scaffolds set `mockWorker: true`.
+- **Real LLM planner + visual canvas workflow builder (AiAgent).** The empty
+  `StubPlanGenerator` is replaced by `ChatBackendPlanGenerator`, which asks the active AI backend
+  for a validated structured workflow while keeping tools disabled during planning (new
+  `ChatBackend#chatWithoutTools` default — both `OllamaLocalBackend` and `SpringAiCloudBackend`
+  honor the toggle). `AgentRunner` validates every workflow (model- or user-supplied) before any
+  tool runs, resolves step-result references (`{{steps.N.result}}`, `{{last.result}}`), and accepts
+  a caller-supplied workflow via `POST /api/agent/run` so the HTTP API can drive deterministic
+  execution. The frontend gains a **Vue Flow** canvas (`AiAgent.vue`) with a tool palette,
+  `WorkflowToolNode`, and `workflow.ts` that compiles the graph into the `AgentPlan` sent to the
+  backend — a no-code peer to the AI plan path. EN/ZH strings updated. Also: the Electron main
+  window starts hidden on a dark surface and is revealed only on first paint (or load failure),
+  removing the white flash on cold start.
 
 ### 🐛 Fixed
 - **IDE Worker failures no longer look successful.** When `workerEndpoint` is configured,
@@ -121,6 +133,22 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 - **D4 — APP-mode backend crash shows a dialog.** A lightweight exit listener in APP mode shows
   `dialog.showErrorBox` and quits on an unexpected backend crash (previously silent — the user saw
   only connection errors). The alpha does not auto-restart.
+- **Desktop — right-edge dark strip on the window.** The shell allowed a document-level scrollbar
+  whose transparent track exposed Electron's native window backing as a thin dark line on the
+  right. `html/body/#app` now set `overflow: hidden` — the shell owns scrolling inside its panes
+  (sidebar history, chat column) and no document scrollbar is ever created. The window's
+  `backgroundColor` is also aligned to the dark theme (`#0d0d0d`) so the native backing never
+  contrasts with the renderer.
+- **Electron migration & tooling gates hardened.** New
+  `desktop/electron/scripts/verify-frontend-dist.mjs` blocks a desktop build if
+  `frontend-dist/` is missing or stale; `backend/spawn.ts`, `supervisor.ts`, `util/health.ts`
+  and `main.ts` received additional lifecycle hardening with new unit tests
+  (`health.test.ts`, `spawn.test.ts`, expanded `supervisor.test.ts`).
+- **Plugin toolchain — `sdk-ts` lockfile desynced from 1.1.0** (root version stayed at 1.0.0);
+  regenerated so the root and `packages[""]` agree. Also forced `brace-expansion=5.0.8` via
+  `npm overrides` in `toolchain/ui` to clear 6 high-severity audit findings on
+  `@vue/test-utils → js-beautify → … → brace-expansion@2.1.2` (no upstream fix exists on the
+  2.x line).
 
 ### ♻️ Changed
 - **CLI scope narrowed to `create` + `build`.** `fengyu plugin dev` moved to the IDE
