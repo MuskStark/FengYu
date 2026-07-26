@@ -31,6 +31,33 @@ GET /api/agent/stream?runId=<uuid>
 Like chat, the stream is opened with `?runId=` — never `?token=`. Authenticate with the `X-FengYu-Token` header.
 :::
 
+### Caller-supplied workflow
+
+The request body accepts an optional `workflow` (an `AgentPlan`). Omit it to let the active model
+plan from `goal`; supply it to drive **deterministic execution** — the runner validates the supplied
+plan (model- or user-authored) before any tool runs, so the HTTP API can execute a known graph
+without depending on LLM planning.
+
+```json
+{
+  "goal": "Split invoices.xlsx by the Region column",
+  "config": { ... },
+  "workflow": { "steps": [ ... ] }
+}
+```
+
+The desktop UI's visual canvas (below) compiles to exactly this `workflow` field, so the canvas and
+the AI plan path are peers against the same runner.
+
+### Visual canvas (desktop UI)
+
+The **Ai Agent** view ships a Vue Flow canvas alongside the goal input. Drag tools from the palette
+onto the canvas, connect them into a graph, and run — `workflow.ts` compiles the graph into the
+`AgentPlan` sent to `POST /api/agent/run`. This is the no-code peer to letting the model plan: the
+same runner, validation, and step-result references apply (e.g. `steps.N.result` or `last.result`,
+substituted into a later step's arguments). Tools are disabled during planning so the model only
+structures the workflow, never executes tools while planning.
+
 ## End-to-end flow
 
 ```text

@@ -31,6 +31,24 @@ GET /api/agent/stream?runId=<uuid>
 和对话一样，流通过 `?runId=` 打开——绝不使用 `?token=`。请用 `X-FengYu-Token` 头认证。
 :::
 
+### 调用方提供的 workflow
+
+请求体接受一个可选的 `workflow`（一个 `AgentPlan`）。省略时由当前模型根据 `goal` 规划；提供时则驱动**确定性执行**——运行器会在任何工具运行前校验所提供的计划（模型或用户编写均可），因此 HTTP API 可以执行一个已知图，而不依赖 LLM 规划。
+
+```json
+{
+  "goal": "按 Region 列拆分 invoices.xlsx",
+  "config": { ... },
+  "workflow": { "steps": [ ... ] }
+}
+```
+
+桌面 UI 的可视化画布（见下）编译后填入的就是这个 `workflow` 字段，因此画布与 AI 规划路径对同一个运行器而言是对等的。
+
+### 可视化画布（桌面 UI）
+
+**AI 智能体**视图在目标输入框旁内置了一个 Vue Flow 画布。把工具从面板拖到画布上，连成图后运行——`workflow.ts` 会把图编译成发送给 `POST /api/agent/run` 的 `AgentPlan`。这是「让模型规划」的无代码对等路径：使用同一个运行器、同一套校验与步骤结果引用（如 `steps.N.result` 或 `last.result`，会被替换进后续步骤的参数中）。规划期间工具被禁用，因此模型只负责组织工作流，绝不在规划时执行工具。
+
 ## 端到端流程
 
 ```text
