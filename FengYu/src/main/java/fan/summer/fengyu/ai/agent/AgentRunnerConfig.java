@@ -17,8 +17,8 @@ import java.util.List;
  *   <li>{@code tools} — the aggregated {@link ToolCallback} bean from
  *       {@code AiToolDiscoveryConfig#aiToolCallbacks(List)} (the single source of truth for
  *       "what can the agent orchestrate"); the array is defensively copied to a {@link List}.</li>
- *   <li>{@code planGenerator} — the {@link StubPlanGenerator} stub (see its javadoc for why a
- *       production {@code ChatClient}-backed planner is deferred).</li>
+ *   <li>{@code planGenerator} — {@link ChatBackendPlanGenerator}, which asks the active
+ *       backend for a validated structured workflow without enabling tools during planning.</li>
  *   <li>{@code stepExecutor} — {@link AgentRunner#toolResolvingExecutor()} (the Spring AI-native
  *       path: resolve the tool by name and call {@link ToolCallback#call(String)}).</li>
  * </ul>
@@ -27,7 +27,7 @@ import java.util.List;
 public class AgentRunnerConfig {
 
     @Bean
-    public AgentRunner agentRunner(ToolCallback[] aiToolCallbacks, StubPlanGenerator planGenerator) {
+    public AgentRunner agentRunner(ToolCallback[] aiToolCallbacks, ChatBackendPlanGenerator planGenerator) {
         List<ToolCallback> tools = aiToolCallbacks == null ? List.of() : Arrays.asList(aiToolCallbacks);
         return new AgentRunner(tools, planGenerator, AgentRunner.toolResolvingExecutor());
     }

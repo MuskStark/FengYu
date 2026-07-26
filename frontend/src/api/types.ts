@@ -223,6 +223,8 @@ export interface AgentRunConfig {
 export interface AgentRunRequest {
   goal: string
   config: AgentRunConfig
+  /** Optional deterministic workflow. Omit to let the active model plan from `goal`. */
+  workflow?: AgentPlan
 }
 
 /** POST /api/agent/run response: the id used to open the SSE stream. */
@@ -234,8 +236,10 @@ export interface AgentRunResponse {
 export interface AgentStep {
   index: number
   toolName: string
+  args?: Record<string, unknown>
   description: string
   status: string
+  requiresApproval?: boolean
 }
 
 /** A Plan-and-Execute plan: the goal, the ordered steps, and the planner's reasoning. */
