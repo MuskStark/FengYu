@@ -15,6 +15,10 @@ body,
 #app {
   height: 100%;
   margin: 0;
+  /* The shell owns scrolling inside its individual panes. Prevent Chromium
+     from creating a document-level scrollbar whose transparent track exposes
+     Electron's native window backing as a dark strip on the right. */
+  overflow: hidden;
 }
 
 body {
