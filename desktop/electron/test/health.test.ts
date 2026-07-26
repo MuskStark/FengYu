@@ -30,6 +30,19 @@ describe('pollHealth', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2)
   })
 
+  it('uses the full external backend base URL', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+    await pollHealth({
+      baseUrl: 'https://localhost:24443/',
+      token: 't',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://localhost:24443/api/health',
+      expect.any(Object),
+    )
+  })
+
   it('throws on timeout', async () => {
     const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 503 })
     const sleep = vi.fn().mockResolvedValue(undefined)

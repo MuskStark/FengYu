@@ -64,12 +64,12 @@ jobs:
       - run: cd toolchain/dev && npm ci && npm test
       - run: cd toolchain/ui && npm ci && npm run typecheck && npm test && npm run build
       - run: cd toolchain/cli && npm ci && npm test
-      # Build the Java SDK + devkit + every official plugin through the CLI.
-      - run: ./mvnw -pl toolchain/sdk-java install -DskipTests
-      - run: ./mvnw -pl toolchain/devkit-java install -DskipTests
+      # Test and install the Java SDK + DevKit, then build every official plugin through the CLI.
+      - run: ./mvnw -pl toolchain/devkit-java -am install
       - run: node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-markdown
       - run: node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-excel
       - run: node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-email
+      - run: node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-offlinepython
       - name: Verify npm package contents
         run: |
           (cd toolchain/cli && npm pack --ignore-scripts --dry-run --json) > cli-pack.json

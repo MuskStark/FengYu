@@ -21,6 +21,35 @@ export interface SpawnedBackend {
 }
 
 /**
+ * Wrap a Java child with graceful shutdown followed by a hard-kill fallback.
+ * ChildProcess.killed only records that kill() was called; it does not mean the
+ * process exited, so liveness must be checked through exitCode/signalCode.
+ */
+export function createBackendChild(proc: ChildProcess, forceKillDelayMs = 5_000): BackendChild {
+  let stopping = false
+  let forceKillTimer: NodeJS.Timeout | undefined
+
+  proc.once('exit', () => {
+    if (forceKillTimer) clearTimeout(forceKillTimer)
+  })
+
+  return {
+    process: proc,
+    kill() {
+      if (stopping || proc.exitCode !== null || proc.signalCode !== null) return
+      stopping = true
+      proc.kill('SIGTERM')
+      forceKillTimer = setTimeout(() => {
+        if (proc.exitCode === null && proc.signalCode === null) {
+          proc.kill('SIGKILL')
+        }
+      }, forceKillDelayMs)
+      forceKillTimer.unref()
+    },
+  }
+}
+
+/**
  * Spawn the Java backend and read the bound port from stdout (`FENGYU_PORT=<n>`).
  * Mirrors Rust `spawn_backend`. 30s deadline, cancellable.
  *
@@ -53,18 +82,7 @@ export async function spawnBackend(opts: SpawnOptions): Promise<SpawnedBackend> 
     windowsHide: true,
   })
 
-  const child: BackendChild = {
-    process: proc,
-    kill() {
-      if (!proc.killed) {
-        proc.kill('SIGTERM')
-        // SIGKILL fallback after grace
-        setTimeout(() => {
-          if (!proc.killed) proc.kill('SIGKILL')
-        }, 5_000)
-      }
-    },
-  }
+  const child = createBackendChild(proc)
 
   // Reject fast if java couldn't even start (e.g. ENOENT — wrong PATH).
   await new Promise<void>((resolve, reject) => {

@@ -1,5 +1,14 @@
-import { describe, it, expect } from 'vitest'
-import { isAppCrash, shouldRestartSetup, StartupAction, startupAction } from '../src/backend/supervisor'
+import { EventEmitter } from 'node:events'
+import type { ChildProcess } from 'node:child_process'
+import { describe, it, expect, vi } from 'vitest'
+import {
+  isAppCrash,
+  shouldRestartSetup,
+  StartupAction,
+  startupAction,
+  superviseSetupRestart,
+  type BackendChild,
+} from '../src/backend/supervisor'
 
 describe('shouldRestartSetup', () => {
   it('shutdown prevents a setup restart', () => {
@@ -30,7 +39,42 @@ describe('isAppCrash', () => {
   it('false during shutdown', () => {
     expect(isAppCrash(1, true)).toBe(false)
   })
-  it('false for clean exit (0)', () => {
-    expect(isAppCrash(0, false)).toBe(false)
+  it('true for a clean exit while the shell is still running', () => {
+    expect(isAppCrash(0, false)).toBe(true)
+  })
+  it('true for a signal exit while the shell is still running', () => {
+    expect(isAppCrash(null, false)).toBe(true)
+  })
+})
+
+function child(): BackendChild {
+  return {
+    process: new EventEmitter() as ChildProcess,
+    kill: vi.fn(),
+  }
+}
+
+describe('superviseSetupRestart', () => {
+  it('treats an exit after the SETUP→APP restart as fatal', async () => {
+    const setup = child()
+    const app = child()
+    let current: BackendChild | null = setup
+    const onFatal = vi.fn()
+
+    superviseSetupRestart({
+      getChild: () => current,
+      setChild: (next) => { current = next },
+      restart: async () => ({ child: app, port: 24056, setupMode: false }),
+      expectedPort: 24056,
+      isShuttingDown: () => false,
+      onFatal,
+    })
+
+    setup.process.emit('exit', 0, null)
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(current).toBe(app)
+
+    app.process.emit('exit', 0, null)
+    expect(onFatal).toHaveBeenCalledWith(expect.stringMatching(/APP backend exited/))
   })
 })

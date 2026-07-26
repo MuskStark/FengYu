@@ -65,10 +65,15 @@ function devBackendUrl(): string | null {
   if (app.isPackaged) return null
   const url = process.env.FENGYU_DEV_BACKEND
   if (url === 'disabled') return null
+  // An explicit jar opts into the self-contained spawn path. This also makes
+  // the Playwright launch test exercise the real shell → Java lifecycle.
+  if (!url && process.env.FENGYU_JAR) return null
   if (!url) return DEFAULT_DEV_BACKEND // default: connect to the IDE-started backend
   try {
-    // Validate it parses as a URL; ignore otherwise.
-    new URL(url)
+    const parsed = new URL(url)
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error('unsupported protocol')
+    }
     return url.replace(/\/$/, '')
   } catch {
     logger.error(`[desktop] ignoring invalid FENGYU_DEV_BACKEND="${url}" (not a URL); falling back to ${DEFAULT_DEV_BACKEND}`)
@@ -91,7 +96,7 @@ async function bootstrap(): Promise<void> {
     process.env.FENGYU_API_BASE = externalBackend
     process.env.FENGYU_TOKEN = token
     try {
-      await pollHealth({ port: Number(new URL(externalBackend).port), token, shouldCancel: () => isQuitting })
+      await pollHealth({ baseUrl: externalBackend, token, shouldCancel: () => isQuitting })
     } catch (err) {
       dialog.showErrorBox(
         'Backend not reachable',
@@ -173,18 +178,25 @@ async function bootstrap(): Promise<void> {
       },
       expectedPort: started.port,
       isShuttingDown: () => isQuitting,
-      onFatal: (m) => logger.error(`FATAL: ${m}`),
+      onFatal: (m) => {
+        logger.error(`FATAL: ${m}`)
+        dialog.showErrorBox(
+          'Backend stopped',
+          `${m}\n\nThe app cannot continue. Please relaunch Infinia and check the logs if the problem persists.`,
+        )
+        app.quit()
+      },
       restart: () =>
         startBackend({ layout, token, requestedPort: started.port, onBackendLine: logger.backendLine, shouldCancel: () => isQuitting })
           .then((r) => ({ child: r.child, port: r.port, setupMode: r.setupMode })),
     })
   }
 
-  // APP-mode crash guard: if the backend dies unexpectedly (not during shutdown, non-zero),
+  // APP-mode crash guard: if the backend exits while the shell is still running,
   // surface a dialog instead of silently leaving the user with connection errors.
   // Alpha does NOT auto-restart (avoid restart loops); the user relaunches manually.
   // Scoped to pure APP mode (ShowWindow) to avoid conflicting with the SETUP supervisor,
-  // which has its own exit handling via superviseSetupRestart.
+  // which carries the same fatal handling across the SETUP→APP transition.
   if (action === StartupAction.ShowWindow && backendChild) {
     const proc = backendChild.process
     proc.once('exit', (code) => {

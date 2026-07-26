@@ -13,6 +13,7 @@ const packageVersion = JSON.parse(
   readFileSync(resolve(__dirname, 'package.json'), 'utf8'),
 ).version as string
 const appVersion = resolveFrontendVersion(packageVersion)
+const desktopBuild = process.env.FENGYU_DESKTOP_BUILD === '1'
 
 // Build timestamp: captured at build / dev-server start, surfaced on the About
 // page. Reflects when the UI was built (or when the dev server was launched).
@@ -94,6 +95,10 @@ function shareVueInDev(): Plugin {
 }
 
 export default defineConfig({
+  // Browser/Web releases remain root-relative. Electron loads the staged SPA
+  // through file://, so every emitted asset and import-map URL must be relative
+  // to frontend-dist/index.html.
+  base: desktopBuild ? './' : '/',
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
     __APP_BUILD_TIME__: JSON.stringify(buildTime),
