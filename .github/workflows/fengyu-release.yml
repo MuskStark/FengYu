@@ -310,11 +310,13 @@ jobs:
       - name: Build Electron bundle (with JRE)
         working-directory: desktop/electron
         shell: bash
-        run: |
-          npx electron-builder --publish never --config.directories.output=../dist-electron-jre \
-            --config.productName=Infinia-JRE \
-            --config.extraMetadata.name=Infinia-JRE \
-            --config.extraResources="[{\"from\":\"resources/jre\",\"to\":\"jre\",\"filter\":[\"**/*\"]}]"
+        # Use a dedicated config file for the JRE variant. electron-builder's `--config.<key>`
+        # CLI override does NOT merge arrays — passing --config.extraResources from the CLI
+        # silently drops the disk config's extraResources (jar/plugins/icons), producing a
+        # JRE bundle that is missing the backend JAR and plugins entirely. A full config file
+        # declares all 5 extraResources (icons + jar + plugins + jre) and is honoured as-is.
+        # See desktop/electron/electron-builder.jre.yml.
+        run: npx electron-builder --publish never --config electron-builder.jre.yml
 
       - name: Upload desktop bundles
         uses: actions/upload-artifact@v4
