@@ -6,7 +6,10 @@
  */
 
 export interface PollHealthOptions {
-  port: number
+  /** Spawned-backend loopback port. Required when baseUrl is absent. */
+  port?: number
+  /** Full external backend base URL used by IDE-connected desktop development. */
+  baseUrl?: string
   token: string
   fetchImpl?: typeof fetch
   /** Default: setTimeout-based. */
@@ -23,6 +26,7 @@ const defaultSleep = (ms: number) =>
 export async function pollHealth(opts: PollHealthOptions): Promise<void> {
   const {
     port,
+    baseUrl,
     token,
     fetchImpl = fetch,
     sleep = defaultSleep,
@@ -32,7 +36,12 @@ export async function pollHealth(opts: PollHealthOptions): Promise<void> {
     requestTimeoutMs = 2_000,
   } = opts
 
-  const url = `http://127.0.0.1:${port}/api/health`
+  if (!baseUrl && port === undefined) {
+    throw new Error('backend health check requires port or baseUrl')
+  }
+  const url = baseUrl
+    ? `${baseUrl.replace(/\/$/, '')}/api/health`
+    : `http://127.0.0.1:${port}/api/health`
   const deadline = Date.now() + deadlineMs
   while (Date.now() < deadline) {
     if (shouldCancel()) throw new Error('backend health check cancelled')

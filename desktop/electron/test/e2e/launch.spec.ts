@@ -16,6 +16,7 @@ test.describe('desktop launch', () => {
         ...process.env,
         FENGYU_JAR: JAR,
         FENGYU_PLUGINS: process.env.FENGYU_PLUGINS ?? '',
+        FENGYU_DEV_BACKEND: 'disabled',
         NODE_ENV: 'test',
       },
     })
@@ -25,7 +26,12 @@ test.describe('desktop launch', () => {
     app.on('window', (w) => lines.push(`[event] window opened url=${w.url()}`))
 
     try {
-      const win = await app.firstWindow()
+      const first = await app.firstWindow()
+      const win = first.url().startsWith('devtools://')
+        ? await app.waitForEvent('window', {
+            predicate: (candidate) => !candidate.url().startsWith('devtools://'),
+          })
+        : first
       lines.push(`[step] firstWindow ok url=${win.url()}`)
       await win.waitForLoadState('domcontentloaded', { timeout: 60_000 })
       lines.push('[step] domcontentloaded ok')

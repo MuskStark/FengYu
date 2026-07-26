@@ -23,9 +23,9 @@ export function shouldRestartSetup(shuttingDown: boolean, exitCode: number | nul
   return !shuttingDown && exitCode === 0
 }
 
-/** APP-mode backend exited unexpectedly (non-zero, not during shutdown). */
-export function isAppCrash(exitCode: number | null, shuttingDown: boolean): boolean {
-  return !shuttingDown && exitCode !== 0 && exitCode !== null
+/** Any APP-mode exit is fatal unless the desktop shell is already shutting down. */
+export function isAppCrash(_exitCode: number | null, shuttingDown: boolean): boolean {
+  return !shuttingDown
 }
 
 /** A handle to a spawned backend: the child + how to kill it. */
@@ -55,12 +55,18 @@ export interface SupervisorConfig {
 export function superviseSetupRestart(cfg: SupervisorConfig): () => void {
   let stopped = false
 
-  const watch = () => {
+  const watch = (mode: 'setup' | 'app') => {
     const current = cfg.getChild()
     if (!current || stopped) return
     const proc = current.process
     proc.once('exit', (code, _signal) => {
       if (stopped) return
+      if (mode === 'app') {
+        if (!cfg.isShuttingDown()) {
+          cfg.onFatal(`APP backend exited unexpectedly with code ${code}`)
+        }
+        return
+      }
       if (!shouldRestartSetup(cfg.isShuttingDown(), code)) {
         if (!cfg.isShuttingDown()) {
           cfg.onFatal(`SETUP backend exited with code ${code}; not restarting`)
@@ -88,14 +94,14 @@ export function superviseSetupRestart(cfg: SupervisorConfig): () => void {
           } else {
             cfg.setChild(restarted.child)
             console.log(`[desktop] backend restarted in APP mode on port ${cfg.expectedPort}`)
-            watch() // re-arm for any future exits (defensive; APP mode shouldn't exit)
+            watch('app')
           }
         })
         .catch((err) => cfg.onFatal(`failed to restart backend after setup: ${err}`))
     })
   }
 
-  watch()
+  watch('setup')
   return () => {
     stopped = true
   }
