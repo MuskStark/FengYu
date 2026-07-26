@@ -5,7 +5,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const captured = vi.hoisted(() => ({
   openHandler: null as ((details: { url: string }) => { action: 'deny' }) | null,
   willNavigate: null as ((e: { preventDefault: () => void }, url: string) => void) | null,
+  readyToShow: null as (() => void) | null,
+  browserWindowOptions: null as Record<string, unknown> | null,
   shellOpenExternal: vi.fn<(url: string) => Promise<void>>(),
+  show: vi.fn(),
   getURL: vi.fn<() => string>(() => 'http://127.0.0.1:5173/'),
   setWindowOpenHandler: vi.fn((fn: (details: { url: string }) => { action: 'deny' }) => {
     captured.openHandler = fn
@@ -13,20 +16,29 @@ const captured = vi.hoisted(() => ({
   wcOn: vi.fn((evt: string, fn: (e: { preventDefault: () => void }, url: string) => void) => {
     if (evt === 'will-navigate') captured.willNavigate = fn
   }),
+  once: vi.fn((evt: string, fn: () => void) => {
+    if (evt === 'ready-to-show') captured.readyToShow = fn
+  }),
 }))
 
 vi.mock('electron', () => ({
-  BrowserWindow: vi.fn().mockImplementation(() => ({
-    on: vi.fn(),
-    loadURL: vi.fn(),
-    loadFile: vi.fn(),
-    webContents: {
-      openDevTools: vi.fn(),
-      setWindowOpenHandler: captured.setWindowOpenHandler,
-      on: captured.wcOn,
-      getURL: captured.getURL,
-    },
-  })),
+  BrowserWindow: vi.fn().mockImplementation((options: Record<string, unknown>) => {
+    captured.browserWindowOptions = options
+    return {
+      on: vi.fn(),
+      once: captured.once,
+      show: captured.show,
+      isDestroyed: vi.fn(() => false),
+      loadURL: vi.fn(),
+      loadFile: vi.fn(),
+      webContents: {
+        openDevTools: vi.fn(),
+        setWindowOpenHandler: captured.setWindowOpenHandler,
+        on: captured.wcOn,
+        getURL: captured.getURL,
+      },
+    }
+  }),
   session: { defaultSession: { webRequest: { onHeadersReceived: vi.fn() } } },
   shell: { openExternal: captured.shellOpenExternal },
 }))
@@ -35,7 +47,11 @@ describe('createMainWindow navigation guards', () => {
   beforeEach(() => {
     captured.openHandler = null
     captured.willNavigate = null
+    captured.readyToShow = null
+    captured.browserWindowOptions = null
     captured.shellOpenExternal.mockClear()
+    captured.show.mockClear()
+    captured.once.mockClear()
     captured.getURL.mockReturnValue('http://127.0.0.1:5173/')
   })
 
@@ -51,6 +67,26 @@ describe('createMainWindow navigation guards', () => {
     expect(captured.setWindowOpenHandler).toHaveBeenCalledTimes(1)
     expect(captured.wcOn).toHaveBeenCalledWith('will-navigate', expect.any(Function))
     expect(captured.willNavigate).not.toBeNull()
+  })
+
+  it('keeps the window hidden on a dark surface until the first renderer paint', async () => {
+    const { createMainWindow } = await import('../src/window/create-window')
+    createMainWindow({
+      apiBase: '',
+      token: '',
+      onHideToTray: () => {},
+      isDev: true,
+      isQuitting: () => false,
+    })
+
+    expect(captured.browserWindowOptions).toMatchObject({
+      show: false,
+      backgroundColor: '#121212',
+    })
+    expect(captured.show).not.toHaveBeenCalled()
+    expect(captured.readyToShow).not.toBeNull()
+    captured.readyToShow!()
+    expect(captured.show).toHaveBeenCalledTimes(1)
   })
 
   it('denies window.open for http(s) AND delegates to shell.openExternal', async () => {

@@ -142,7 +142,7 @@ class AgentRunnerTest {
         RecordingSink sink = new RecordingSink();
 
         AgentPlan failing = new AgentPlan(
-                "goal", List.of(step(0, "alwaysFail", Map.of())), "will fail");
+                "goal", List.of(step(0, "echo", Map.of("text", "first attempt"))), "will fail");
         AgentPlan good = new AgentPlan(
                 "goal", List.of(step(0, "echo", Map.of("text", "ok"))), "fixed");
         // Planner returns the failing plan first, then the good plan.
@@ -150,9 +150,10 @@ class AgentRunnerTest {
         AgentRunner.PlanGenerator planner = (goal, tks, tokenSink) ->
                 plannerCalls.getAndIncrement() == 0 ? failing : good;
 
-        // StepExecutor that makes "alwaysFail" blow up but "echo" succeed.
+        AtomicInteger executionCalls = new AtomicInteger();
+        // First execution fails; the same valid tool succeeds after replanning.
         AgentRunner.StepExecutor executor = (step1, tks) -> {
-            if (step1.toolName().equals("alwaysFail")) {
+            if (executionCalls.getAndIncrement() == 0) {
                 throw new RuntimeException("tool exploded");
             }
             return AgentRunner.toolResolvingExecutor().execute(step1, tks);
@@ -183,7 +184,7 @@ class AgentRunnerTest {
 
         // Plan that always asks for the failing tool.
         AgentPlan failing = new AgentPlan(
-                "goal", List.of(step(0, "alwaysFail", Map.of())), "will fail");
+                "goal", List.of(step(0, "echo", Map.of("text", "fail"))), "will fail");
         AtomicInteger plannerCalls = new AtomicInteger();
         AgentRunner.PlanGenerator planner = (goal, tks, tokenSink) -> {
             plannerCalls.incrementAndGet();
@@ -268,5 +269,59 @@ class AgentRunnerTest {
         assertEquals(AgentRunStatus.CANCELLED, run.getStatus(),
                 "status should be CANCELLED: " + run.getStatus());
         assertTrue(run.getExecutions().isEmpty(), "no step should execute on cancel");
+    }
+
+    @Test
+    void suppliedWorkflow_skipsPlannerAndInjectsPreviousResult() throws Exception {
+        RecordingSink sink = new RecordingSink();
+        AgentPlan workflow = new AgentPlan("chain", List.of(
+                step(0, "echo", Map.of("text", "first")),
+                step(1, "echo", Map.of("text", "{{steps.0.result}}"))
+        ), "caller supplied");
+        AgentRun run = runFor("chain", new AgentRunConfig(false, false, false, 0));
+        run.setPlan(workflow);
+
+        AtomicInteger plannerCalls = new AtomicInteger();
+        List<String> receivedInputs = new ArrayList<>();
+        AgentRunner runner = new AgentRunner(List.of(new EchoToolCallback()),
+                (goal, tools, tokenSink) -> {
+                    plannerCalls.incrementAndGet();
+                    return workflow;
+                },
+                (plannedStep, tools) -> {
+                    receivedInputs.add(String.valueOf(plannedStep.args().get("text")));
+                    return plannedStep.index() == 0 ? "{\"value\":\"from-first\"}" : "done";
+                });
+
+        runner.run(run, sink);
+        assertTrue(sink.awaitDone());
+
+        assertEquals(0, plannerCalls.get(), "a supplied workflow must bypass AI planning");
+        assertEquals(List.of("first", "{value=from-first}"), receivedInputs);
+        assertEquals(AgentRunStatus.COMPLETED, run.getStatus());
+    }
+
+    @Test
+    void editedApprovedWorkflowIsTheOneExecuted() throws Exception {
+        RecordingSink sink = new RecordingSink();
+        AgentPlan original = new AgentPlan("goal",
+                List.of(step(0, "echo", Map.of("text", "original"))), "original");
+        AgentPlan edited = new AgentPlan("goal",
+                List.of(step(0, "echo", Map.of("text", "edited"))), "edited");
+        AgentRun run = runFor("goal", new AgentRunConfig(true, false, false, 0));
+        List<String> inputs = new ArrayList<>();
+        AgentRunner runner = new AgentRunner(List.of(new EchoToolCallback()),
+                (goal, tools, tokenSink) -> original,
+                (plannedStep, tools) -> {
+                    inputs.add(String.valueOf(plannedStep.args().get("text")));
+                    return "ok";
+                });
+
+        runner.run(run, sink);
+        Thread.sleep(200);
+        run.approve(edited);
+        assertTrue(sink.awaitDone());
+
+        assertEquals(List.of("edited"), inputs);
     }
 }

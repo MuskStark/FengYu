@@ -83,7 +83,7 @@ public class AgentController {
     @PostMapping("/api/agent/run")
     public Map<String, String> run(@RequestBody AgentRunRequest req) {
         String goal = req.goal() == null ? "" : req.goal();
-        AgentRun run = registry.create(goal, req.config());
+        AgentRun run = registry.create(goal, req.config(), req.workflow());
 
         // Create the SSE sink FIRST so events emitted by the runner before the /stream
         // client connects are buffered, not lost.
@@ -367,6 +367,9 @@ public class AgentController {
 
     // ── DTOs ──────────────────────────────────────────────────────────
 
-    /** {@code POST /api/agent/run} body: the user goal + optional approval/recovery config. */
-    public record AgentRunRequest(String goal, AgentRunConfig config) {}
+    /**
+     * {@code POST /api/agent/run} body. When {@code workflow} is supplied it is executed
+     * deterministically; otherwise the active AI backend plans a workflow from {@code goal}.
+     */
+    public record AgentRunRequest(String goal, AgentRunConfig config, AgentPlan workflow) {}
 }

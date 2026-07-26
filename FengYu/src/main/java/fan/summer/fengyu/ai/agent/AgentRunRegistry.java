@@ -33,9 +33,18 @@ public class AgentRunRegistry {
      * @return the newly registered run (also retrievable thereafter via {@link #get(String)})
      */
     public AgentRun create(String goal, AgentRunConfig config) {
+        return create(goal, config, null);
+    }
+
+    /**
+     * Creates a run with an optional caller-supplied workflow. When {@code workflow} is
+     * present the runner executes it directly instead of asking the model to create a plan.
+     */
+    public AgentRun create(String goal, AgentRunConfig config, AgentPlan workflow) {
         AgentRunConfig effective = config != null ? config
                 : new AgentRunConfig(false, false, false, 0);
         AgentRun run = new AgentRun(UUID.randomUUID().toString(), goal, effective);
+        run.setPlan(workflow);
         runs.put(run.getRunId(), run);
         return run;
     }

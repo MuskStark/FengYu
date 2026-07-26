@@ -1,19 +1,43 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
+import {
+  MarkerType,
+  VueFlow,
+  useVueFlow,
+  type Connection,
+  type Edge,
+  type EdgeMouseEvent,
+  type NodeMouseEvent,
+  type ValidConnectionFunc,
+} from '@vue-flow/core'
+import { Background } from '@vue-flow/background'
+import { Controls } from '@vue-flow/controls'
+import { MiniMap } from '@vue-flow/minimap'
 import { api } from '@/api/client'
 import { backendUrl, getToken } from '@/api/config'
 import type { AgentPlan, AgentStep, AgentTool, AgentRunConfig } from '@/api/types'
+import WorkflowToolNode from '@/components/agent/WorkflowToolNode.vue'
+import {
+  topologicallySortWorkflowNodes,
+  wouldCreateCycle,
+  type WorkflowFlowNode,
+  type WorkflowNodeData,
+} from '@/components/agent/workflow'
+import '@vue-flow/core/dist/style.css'
+import '@vue-flow/core/dist/theme-default.css'
+import '@vue-flow/controls/dist/style.css'
+import '@vue-flow/minimap/dist/style.css'
 
 /**
- * Minimal Plan-and-Execute agent UI (Task 20).
+ * Plan-and-Execute agent UI with AI planning and a deterministic visual workflow canvas.
  *
  * Flow: goal textarea → POST /api/agent/run → open EventSource on
  * /api/agent/stream?runId=… → parse the backend's named SSE events
  * (plan_token / plan_ready / plan_approval_requested / step_start /
  * step_complete / step_approval_requested / complete / error) and update
- * reactive plan/steps/status. Approve/Cancel buttons drive the matching
- * endpoints. Canvas-based plan editing is deferred to Phase 2.
+ * reactive plan/steps/status. The canvas compiles connected tool nodes into
+ * the same AgentPlan contract used by AI planning.
  *
  * The SSE wiring mirrors src/api/sse.ts: EventSource can't set headers, so the
  * token (when present) rides as a `token` query param alongside `runId`.
@@ -22,6 +46,9 @@ import type { AgentPlan, AgentStep, AgentTool, AgentRunConfig } from '@/api/type
 const { t } = useI18n()
 
 // ── reactive state ───────────────────────────────────────────────────────
+type ComposerMode = 'ai' | 'canvas'
+
+const composerMode = ref<ComposerMode>('ai')
 const goal = ref('')
 const planTokens = ref('') // streamed planner deltas (plan_token)
 const plan = ref<AgentPlan | null>(null)
@@ -33,16 +60,30 @@ type Status = 'idle' | 'planning' | 'awaiting-plan' | 'running' | 'awaiting-step
 const status = ref<Status>('idle')
 const summary = ref<string | null>(null)
 const errorMsg = ref<string | null>(null)
+const canvasNodes = shallowRef<WorkflowFlowNode[]>([])
+const canvasEdges = shallowRef<Edge[]>([])
+const selectedNodeId = ref<string | null>(null)
+const paletteOpen = ref(true)
+const inspectorOpen = ref(false)
 let es: EventSource | null = null
+let nodeSequence = 0
+const {
+  addEdges,
+  fitView,
+  removeNodes,
+  removeEdges,
+  screenToFlowCoordinate,
+} = useVueFlow('agent-workflow')
 
-// Default approval/recovery config (sent on /run). Hard-coded to plan-only
-// approval for the minimal UI; step approval is surfaced but config stays simple.
+// Default AI-planning approval/recovery config. Canvas workflows override this
+// per run: the authored plan is already approved, while flagged steps still pause.
 const config: AgentRunConfig = {
   requirePlanApproval: true,
   requireStepApproval: false,
   replanOnFailure: false,
   maxReplans: 0,
 }
+const currentRequirePlanApproval = ref(config.requirePlanApproval)
 
 const busy = computed(
   () =>
@@ -54,12 +95,195 @@ const busy = computed(
 
 // Ordered step list (steps Map → array for the template).
 const stepList = computed(() => Array.from(steps.value.values()).sort((a, b) => a.index - b.index))
+const selectedNode = computed(
+  () => canvasNodes.value.find((node) => node.id === selectedNodeId.value) ?? null,
+)
 
 // ── lifecycle ────────────────────────────────────────────────────────────
 // Load the tool list once on mount for the "Available tools" hint.
 void api.agentTools().then((list) => (tools.value = list ?? [])).catch(() => {/* best effort */})
 
 onBeforeUnmount(() => closeStream())
+
+// ── visual workflow canvas ───────────────────────────────────────────────
+
+function defaultArgs(tool: AgentTool): Record<string, unknown> {
+  try {
+    const schema = JSON.parse(tool.inputSchema) as {
+      properties?: Record<string, { type?: string; default?: unknown }>
+      required?: string[]
+    }
+    const args: Record<string, unknown> = {}
+    for (const name of schema.required ?? []) {
+      const property = schema.properties?.[name]
+      if (property && 'default' in property) args[name] = property.default
+      else if (property?.type === 'array') args[name] = []
+      else if (property?.type === 'object') args[name] = {}
+      else if (property?.type === 'boolean') args[name] = false
+      else if (property?.type === 'number' || property?.type === 'integer') args[name] = 0
+      else args[name] = ''
+    }
+    return args
+  } catch {
+    return {}
+  }
+}
+
+function addTool(tool: AgentTool, x?: number, y?: number, fitAfterAdd = false) {
+  const order = canvasNodes.value.length
+  const node: WorkflowFlowNode = {
+    id: `node_${++nodeSequence}`,
+    type: 'tool',
+    position: {
+      x: x ?? 36 + (order % 3) * 210,
+      y: y ?? 36 + Math.floor(order / 3) * 110,
+    },
+    data: {
+      tool,
+      argsText: JSON.stringify(defaultArgs(tool), null, 2),
+      description: tool.description || tool.name,
+      requiresApproval: false,
+    },
+  }
+  canvasNodes.value = [...canvasNodes.value, node]
+  selectedNodeId.value = node.id
+  if (fitAfterAdd) {
+    void nextTick(() => fitView({ padding: 0.16, duration: 220, maxZoom: 1 }))
+  }
+}
+
+function onToolDragStart(event: DragEvent, tool: AgentTool) {
+  event.dataTransfer?.setData('application/x-fengyu-tool', tool.name)
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'
+}
+
+function onCanvasDrop(event: DragEvent) {
+  const name = event.dataTransfer?.getData('application/x-fengyu-tool')
+  const tool = tools.value.find((item) => item.name === name)
+  if (!tool) return
+  const position = screenToFlowCoordinate({ x: event.clientX, y: event.clientY })
+  addTool(tool, position.x - 84, position.y - 36)
+}
+
+function removeSelectedNode() {
+  const id = selectedNodeId.value
+  if (!id) return
+  removeNodes(id, true, true)
+  selectedNodeId.value = null
+  inspectorOpen.value = false
+}
+
+function onNodeClick({ node }: NodeMouseEvent) {
+  selectedNodeId.value = node.id
+  inspectorOpen.value = true
+}
+
+function onPaneClick() {
+  selectedNodeId.value = null
+  inspectorOpen.value = false
+}
+
+function togglePalette() {
+  paletteOpen.value = !paletteOpen.value
+  void nextTick(() => fitCanvas())
+}
+
+function toggleInspector() {
+  inspectorOpen.value = !inspectorOpen.value
+  void nextTick(() => fitCanvas())
+}
+
+function fitCanvas() {
+  if (canvasNodes.value.length) {
+    void fitView({ padding: 0.14, duration: 220, maxZoom: 1 })
+  }
+}
+
+function onEdgeDoubleClick({ edge }: EdgeMouseEvent) {
+  removeEdges(edge.id)
+}
+
+function canConnect(connection: Connection): boolean {
+  if (busy.value || connection.source === connection.target) return false
+  if (canvasEdges.value.some(
+    (edge) => edge.source === connection.source && edge.target === connection.target,
+  )) return false
+  return !wouldCreateCycle(canvasEdges.value, connection.source, connection.target)
+}
+const isValidConnection: ValidConnectionFunc = (connection) => canConnect(connection)
+
+function onConnect(connection: Connection) {
+  if (!canConnect(connection)) return
+  addEdges({
+    ...connection,
+    id: `edge_${connection.source}_${connection.target}`,
+    type: 'smoothstep',
+    markerEnd: MarkerType.ArrowClosed,
+  })
+}
+
+function topologicalNodes(): WorkflowFlowNode[] {
+  const ordered = topologicallySortWorkflowNodes(canvasNodes.value, canvasEdges.value)
+  if (!ordered) throw new Error(t('agent.canvasCycle'))
+  return ordered
+}
+
+function replaceNodeReferences(
+  value: unknown,
+  indexes: Map<string, number>,
+  currentIndex: number,
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => replaceNodeReferences(item, indexes, currentIndex))
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        replaceNodeReferences(item, indexes, currentIndex),
+      ]),
+    )
+  }
+  if (typeof value !== 'string') return value
+  return value.replace(/\{\{node\.([A-Za-z0-9_-]+)\.result}}/g, (_match, id: string) => {
+    const index = indexes.get(id)
+    if (index === undefined) throw new Error(t('agent.canvasUnknownReference', { id }))
+    if (index >= currentIndex) throw new Error(t('agent.canvasFutureReference', { id }))
+    return `{{steps.${index}.result}}`
+  })
+}
+
+function compileCanvasWorkflow(): AgentPlan {
+  if (!canvasNodes.value.length) throw new Error(t('agent.canvasEmpty'))
+  const ordered = topologicalNodes()
+  const indexes = new Map(ordered.map((node, index) => [node.id, index]))
+  const workflowGoal = goal.value.trim() || t('agent.canvasDefaultGoal')
+  const compiledSteps: AgentStep[] = ordered.map((node, index) => {
+    const data = node.data as WorkflowNodeData
+    let args: unknown
+    try {
+      args = JSON.parse(data.argsText || '{}')
+    } catch {
+      throw new Error(t('agent.canvasInvalidArgs', { name: data.tool.name }))
+    }
+    if (!args || Array.isArray(args) || typeof args !== 'object') {
+      throw new Error(t('agent.canvasInvalidArgs', { name: data.tool.name }))
+    }
+    return {
+      index,
+      toolName: data.tool.name,
+      args: replaceNodeReferences(args, indexes, index) as Record<string, unknown>,
+      description: data.description || data.tool.description || data.tool.name,
+      requiresApproval: data.requiresApproval,
+      status: 'pending',
+    }
+  })
+  return {
+    goal: workflowGoal,
+    steps: compiledSteps,
+    reasoning: t('agent.canvasReasoning'),
+  }
+}
 
 // ── SSE wiring ───────────────────────────────────────────────────────────
 
@@ -96,7 +320,7 @@ function openStream(id: string) {
     // Seed step bookkeeping so the UI can show pending steps immediately.
     for (const s of ps) steps.value.set(s.index, { ...s, status: s.status || 'pending' })
     planTokens.value = ''
-    if (config.requirePlanApproval) status.value = 'awaiting-plan'
+    if (currentRequirePlanApproval.value) status.value = 'awaiting-plan'
     else status.value = 'running'
   })
 
@@ -164,7 +388,7 @@ function closeStream() {
 
 async function run() {
   const g = goal.value.trim()
-  if (!g || busy.value) return
+  if (busy.value || (composerMode.value === 'ai' && !g)) return
   // Reset for a fresh run.
   errorMsg.value = null
   summary.value = null
@@ -174,7 +398,20 @@ async function run() {
   status.value = 'planning'
 
   try {
-    const { runId: id } = await api.agentRun({ goal: g, config })
+    const workflow = composerMode.value === 'canvas' ? compileCanvasWorkflow() : undefined
+    if (workflow) {
+      plan.value = workflow
+      for (const step of workflow.steps) steps.value.set(step.index, step)
+    }
+    const runConfig = workflow
+      ? { ...config, requirePlanApproval: false, requireStepApproval: true }
+      : config
+    currentRequirePlanApproval.value = runConfig.requirePlanApproval
+    const { runId: id } = await api.agentRun({
+      goal: workflow?.goal ?? g,
+      config: runConfig,
+      workflow,
+    })
     runId.value = id
     openStream(id)
   } catch (e) {
@@ -186,7 +423,7 @@ async function run() {
 async function approve() {
   if (!runId.value) return
   try {
-    // No plan editing in the minimal UI — pass undefined so the gate releases as-is.
+    // Release the current plan/step gate without replacing the workflow.
     await api.agentApprove(runId.value)
     if (status.value === 'awaiting-plan' || status.value === 'awaiting-step') status.value = 'running'
   } catch (e) {
@@ -258,6 +495,23 @@ function stepChipClass(s: string): string {
     <div class="cx-page">
       <h1 class="cx-page-title">{{ t('agent.title') }}</h1>
 
+      <div class="cx-segment agent-mode" role="tablist">
+        <button
+          :class="{ active: composerMode === 'ai' }"
+          role="tab"
+          :aria-selected="composerMode === 'ai'"
+          :disabled="busy"
+          @click="composerMode = 'ai'"
+        ><i class="mdi mdi-auto-fix" /> {{ t('agent.aiMode') }}</button>
+        <button
+          :class="{ active: composerMode === 'canvas' }"
+          role="tab"
+          :aria-selected="composerMode === 'canvas'"
+          :disabled="busy"
+          @click="composerMode = 'canvas'"
+        ><i class="mdi mdi-vector-polyline" /> {{ t('agent.canvasMode') }}</button>
+      </div>
+
       <!-- Banners -->
       <div v-if="errorMsg" class="cx-alert cx-alert--error" style="margin-bottom: 12px">
         <span class="cx-alert__body">{{ errorMsg }}</span>
@@ -267,14 +521,14 @@ function stepChipClass(s: string): string {
         <span class="cx-alert__body">{{ summary }}</span>
       </div>
 
-      <!-- Goal composer -->
+      <!-- Goal composer shared by AI planning and visual workflows -->
       <div class="cx-composer" style="display: flex; align-items: flex-end; gap: 8px; margin-bottom: 12px">
         <textarea
           v-model="goal"
           rows="2"
           class="cx-grow"
           style="padding: 8px 0; min-height: 52px"
-          :placeholder="t('agent.goalPlaceholder')"
+          :placeholder="composerMode === 'canvas' ? t('agent.canvasGoalPlaceholder') : t('agent.goalPlaceholder')"
           :disabled="busy"
         />
         <button
@@ -286,8 +540,8 @@ function stepChipClass(s: string): string {
         <button
           v-else
           class="cx-iconbtn cx-iconbtn--primary cx-iconbtn--round"
-          :disabled="!goal.trim()"
-          :title="t('agent.run')"
+          :disabled="composerMode === 'ai' ? !goal.trim() : !canvasNodes.length"
+          :title="composerMode === 'canvas' ? t('agent.runWorkflow') : t('agent.run')"
           @click="run"
         ><i class="mdi mdi-play" /></button>
       </div>
@@ -298,8 +552,141 @@ function stepChipClass(s: string): string {
         <span class="cx-chip" :class="statusChipClass">{{ statusLabel }}</span>
       </div>
 
-      <!-- Available tools -->
-      <details v-if="tools.length" class="cx-details" style="margin-bottom: 12px">
+      <!-- Visual workflow canvas -->
+      <template v-if="composerMode === 'canvas'">
+        <div class="workflow-toolbar">
+          <button
+            class="workflow-toolbar-button"
+            :class="{ active: paletteOpen }"
+            :title="t('agent.canvasToggleTools')"
+            :aria-pressed="paletteOpen"
+            @click="togglePalette"
+          ><i class="mdi mdi-toolbox-outline" /> {{ t('agent.tools') }}</button>
+          <div class="workflow-toolbar-spacer" />
+          <button
+            class="workflow-toolbar-button"
+            :title="t('agent.canvasFitView')"
+            @click="fitCanvas"
+          ><i class="mdi mdi-fit-to-screen-outline" /> {{ t('agent.canvasFitView') }}</button>
+          <button
+            class="workflow-toolbar-button"
+            :class="{ active: inspectorOpen }"
+            :title="t('agent.canvasToggleInspector')"
+            :aria-pressed="inspectorOpen"
+            @click="toggleInspector"
+          ><i class="mdi mdi-tune-variant" /> {{ t('agent.nodeSettings') }}</button>
+        </div>
+        <div
+          class="workflow-editor"
+          :class="{
+            'workflow-editor--palette-closed': !paletteOpen,
+            'workflow-editor--inspector-closed': !inspectorOpen,
+          }"
+        >
+        <aside v-show="paletteOpen" class="workflow-palette">
+          <div class="workflow-pane-title">{{ t('agent.tools') }}</div>
+          <div class="cx-muted workflow-help">{{ t('agent.canvasDragHint') }}</div>
+          <button
+            v-for="tool in tools"
+            :key="tool.name"
+            class="workflow-tool"
+            draggable="true"
+            :disabled="busy"
+            @dragstart="onToolDragStart($event, tool)"
+            @dblclick="addTool(tool, undefined, undefined, true)"
+          >
+            <i class="mdi mdi-hammer-wrench" />
+            <span>
+              <strong>{{ tool.name }}</strong>
+              <small>{{ tool.description }}</small>
+            </span>
+          </button>
+          <div v-if="!tools.length" class="cx-muted workflow-empty">{{ t('agent.noTools') }}</div>
+        </aside>
+
+        <div class="workflow-stage-wrap">
+          <VueFlow
+            id="agent-workflow"
+            v-model:nodes="canvasNodes"
+            v-model:edges="canvasEdges"
+            class="workflow-stage"
+            :min-zoom="0.2"
+            :max-zoom="2"
+            :fit-view-on-init="true"
+            :nodes-draggable="!busy"
+            :nodes-connectable="!busy"
+            :elements-selectable="!busy"
+            :is-valid-connection="isValidConnection"
+            :default-edge-options="{
+              type: 'smoothstep',
+              markerEnd: MarkerType.ArrowClosed,
+            }"
+            @dragover.prevent
+            @drop.prevent="onCanvasDrop"
+            @connect="onConnect"
+            @node-click="onNodeClick"
+            @edge-double-click="onEdgeDoubleClick"
+            @pane-click="onPaneClick"
+            @nodes-delete="selectedNodeId = null"
+          >
+            <template #node-tool="nodeProps">
+              <WorkflowToolNode v-bind="nodeProps" />
+            </template>
+
+            <div v-if="!canvasNodes.length" class="workflow-stage-empty">
+              <i class="mdi mdi-vector-polyline" />
+              <span>{{ t('agent.canvasEmptyHint') }}</span>
+            </div>
+            <Background pattern-color="rgba(255, 255, 255, .14)" :gap="20" />
+            <MiniMap
+              class="workflow-minimap"
+              node-color="rgb(var(--v-theme-primary))"
+              mask-color="rgba(0, 0, 0, .55)"
+              pannable
+              zoomable
+            />
+            <Controls :show-interactive="false" />
+          </VueFlow>
+        </div>
+
+        <aside v-show="inspectorOpen" class="workflow-inspector">
+          <template v-if="selectedNode">
+            <div class="workflow-pane-title">
+              {{ t('agent.nodeSettings') }}
+              <button class="cx-iconbtn cx-iconbtn--sm" :title="t('agent.deleteNode')" @click="removeSelectedNode">
+                <i class="mdi mdi-delete-outline" />
+              </button>
+            </div>
+            <label class="workflow-field">
+              <span>{{ t('agent.description') }}</span>
+              <input v-model="selectedNode.data.description" class="cx-input" :disabled="busy">
+            </label>
+            <label class="workflow-field">
+              <span>{{ t('agent.argumentsJson') }}</span>
+              <textarea
+                v-model="selectedNode.data.argsText"
+                class="cx-textarea mono"
+                rows="10"
+                spellcheck="false"
+                :disabled="busy"
+              />
+            </label>
+            <label class="workflow-checkbox">
+              <input v-model="selectedNode.data.requiresApproval" type="checkbox" :disabled="busy">
+              <span>{{ t('agent.requiresApproval') }}</span>
+            </label>
+            <div class="cx-muted workflow-reference-help">
+              {{ t('agent.referenceHint') }}<br>
+              <code v-pre>{{node.node_1.result}}</code>
+            </div>
+          </template>
+          <div v-else class="cx-muted workflow-empty">{{ t('agent.selectNode') }}</div>
+        </aside>
+        </div>
+      </template>
+
+      <!-- Available tools in AI-planning mode -->
+      <details v-else-if="tools.length" class="cx-details" style="margin-bottom: 12px">
         <summary>{{ t('agent.tools') }} ({{ tools.length }})</summary>
         <div class="cx-details__body">
           <div v-for="tool in tools" :key="tool.name" style="padding: 6px 0">
@@ -341,9 +728,280 @@ function stepChipClass(s: string): string {
       </div>
 
       <!-- Empty hint -->
-      <div v-if="status === 'idle' && !plan" class="cx-muted" style="text-align: center; margin-top: 24px">
+      <div v-if="composerMode === 'ai' && status === 'idle' && !plan" class="cx-muted" style="text-align: center; margin-top: 24px">
         {{ t('agent.empty') }}
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.cx-page {
+  max-width: 1480px;
+  padding: 18px 18px 36px;
+}
+
+.agent-mode {
+  width: fit-content;
+  margin-bottom: 12px;
+}
+
+.agent-mode button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.workflow-toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 7px;
+}
+
+.workflow-toolbar-spacer {
+  flex: 1 1 auto;
+}
+
+.workflow-toolbar-button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 30px;
+  padding: 4px 9px;
+  color: rgba(var(--v-theme-on-surface), .72);
+  font: inherit;
+  font-size: 11px;
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border-radius: 7px;
+  background: rgb(var(--v-theme-surface));
+  cursor: pointer;
+}
+
+.workflow-toolbar-button:hover,
+.workflow-toolbar-button.active {
+  color: rgb(var(--v-theme-on-surface));
+  border-color: rgba(var(--v-theme-primary), .7);
+  background: rgba(var(--v-theme-primary), .1);
+}
+
+.workflow-editor {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr) 220px;
+  height: clamp(560px, calc(100vh - 220px), 760px);
+  min-height: 560px;
+  margin-bottom: 16px;
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgb(var(--v-theme-surface));
+}
+
+.workflow-editor--palette-closed {
+  grid-template-columns: 0 minmax(0, 1fr) 220px;
+}
+
+.workflow-editor--inspector-closed {
+  grid-template-columns: 168px minmax(0, 1fr) 0;
+}
+
+.workflow-editor--palette-closed.workflow-editor--inspector-closed {
+  grid-template-columns: 0 minmax(0, 1fr) 0;
+}
+
+.workflow-palette,
+.workflow-inspector {
+  min-width: 0;
+  padding: 11px;
+  background: rgb(var(--v-theme-surface));
+  overflow-y: auto;
+}
+
+.workflow-palette {
+  grid-column: 1;
+  border-right: 1px solid rgb(var(--v-theme-outline-variant));
+}
+
+.workflow-inspector {
+  grid-column: 3;
+  border-left: 1px solid rgb(var(--v-theme-outline-variant));
+}
+
+.workflow-pane-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 30px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.workflow-help,
+.workflow-reference-help {
+  margin-bottom: 12px;
+  color: rgba(var(--v-theme-on-surface), .68);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.workflow-tool {
+  display: flex;
+  width: 100%;
+  gap: 7px;
+  align-items: flex-start;
+  margin-bottom: 6px;
+  padding: 8px;
+  color: rgb(var(--v-theme-on-surface));
+  text-align: left;
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border-radius: 9px;
+  background: rgb(var(--v-theme-surface-variant));
+  cursor: grab;
+}
+
+.workflow-tool:hover {
+  border-color: rgb(var(--v-theme-primary));
+}
+
+.workflow-tool span,
+.workflow-tool small {
+  display: block;
+  min-width: 0;
+}
+
+.workflow-tool strong {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.workflow-tool small {
+  margin-top: 3px;
+  color: rgba(var(--v-theme-on-surface), .68);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.workflow-stage-wrap {
+  grid-column: 2;
+  min-width: 0;
+  min-height: 0;
+  background-color: rgb(var(--v-theme-background));
+}
+
+.workflow-stage {
+  width: 100%;
+  height: 100%;
+  color: rgb(var(--v-theme-on-surface));
+  background: rgb(var(--v-theme-background));
+}
+
+.workflow-stage :deep(.vue-flow__node-tool) {
+  width: 168px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.workflow-stage :deep(.vue-flow__edge-path),
+.workflow-stage :deep(.vue-flow__connection-path) {
+  stroke: rgb(var(--v-theme-primary));
+  stroke-width: 2;
+}
+
+.workflow-stage :deep(.vue-flow__edge.selected .vue-flow__edge-path) {
+  stroke-width: 3;
+}
+
+.workflow-stage :deep(.vue-flow__controls) {
+  overflow: hidden;
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.workflow-stage :deep(.vue-flow__controls-button) {
+  color: rgb(var(--v-theme-on-surface));
+  border-color: rgb(var(--v-theme-outline-variant));
+  background: rgb(var(--v-theme-surface));
+  fill: currentColor;
+}
+
+.workflow-stage :deep(.vue-flow__controls-button:hover) {
+  background: rgb(var(--v-theme-surface-variant));
+}
+
+.workflow-stage :deep(.vue-flow__minimap) {
+  width: 132px;
+  height: 84px;
+  overflow: hidden;
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border-radius: 8px;
+  background: rgb(var(--v-theme-surface));
+}
+
+.workflow-stage-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  color: rgba(var(--v-theme-on-surface), .68);
+  pointer-events: none;
+}
+
+.workflow-stage-empty i {
+  font-size: 24px;
+}
+
+.workflow-field {
+  display: block;
+  margin-bottom: 14px;
+}
+
+.workflow-field > span {
+  display: block;
+  margin-bottom: 6px;
+  color: rgba(var(--v-theme-on-surface), .68);
+  font-size: 11px;
+}
+
+.workflow-field .cx-textarea {
+  width: 100%;
+  resize: vertical;
+  font-size: 11px;
+}
+
+.workflow-checkbox {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 14px;
+  font-size: 12px;
+}
+
+.workflow-empty {
+  padding: 20px 4px;
+  text-align: center;
+  font-size: 12px;
+}
+
+@media (max-width: 1050px) {
+  .workflow-editor {
+    grid-template-columns: 150px minmax(0, 1fr) 200px;
+  }
+
+  .workflow-editor--palette-closed {
+    grid-template-columns: 0 minmax(0, 1fr) 200px;
+  }
+
+  .workflow-editor--inspector-closed {
+    grid-template-columns: 150px minmax(0, 1fr) 0;
+  }
+
+  .workflow-editor--palette-closed.workflow-editor--inspector-closed {
+    grid-template-columns: 0 minmax(0, 1fr) 0;
+  }
+}
+</style>
