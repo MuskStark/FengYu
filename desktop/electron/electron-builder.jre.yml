@@ -1,0 +1,87 @@
+# electron-builder configuration for the Infinia desktop shell — JRE variant.
+#
+# This is a COMPLETE config (not a delta) because electron-builder's `--config.extraResources`
+# command-line override does NOT merge arrays — it silently drops the disk config's
+# extraResources (jar/plugins/icons) when any value is passed for that key from the CLI.
+# Using a dedicated config file avoids that: arrays declared in a file are honoured as-is.
+#
+# The ONLY differences from electron-builder.yml (the lite variant):
+#   - productName / extraMetadata.name = Infinia-JRE
+#   - extraResources additionally bundles the jlink JRE under <resources>/jre/
+#
+# Keep this file in sync with electron-builder.yml when changing appId/files/targets/etc.
+
+appId: fan.summer.fengyu
+productName: Infinia-JRE
+copyright: Copyright © 2026 FengYu
+
+artifactName: ${productName}-${version}-${platform}-${arch}.${ext}
+
+directories:
+  output: ../dist-electron-jre
+  buildResources: resources
+
+files:
+  - dist/**/*
+  - frontend-dist/**/*
+  - resources/icon.png
+  - resources/icon.ico
+  - resources/icon-32.png
+  - resources/icon-128.png
+  - package.json
+
+extraMetadata:
+  main: dist/main.js
+
+extraResources:
+  - from: resources/icon-32.png
+    to: icon-32.png
+    filter: ['**/*']
+  - from: resources/icon.png
+    to: icon.png
+    filter: ['**/*']
+  - from: resources/binaries/FengYu.jar
+    to: binaries/FengYu.jar
+    filter: ['**/*']
+  - from: resources/binaries/plugins
+    to: plugins
+    filter: ['**/*']
+  # JRE variant only — the jlink-minimized Java 21 runtime under <resources>/jre/.
+  - from: resources/jre
+    to: jre
+    filter: ['**/*']
+
+win:
+  target:
+    - target: nsis
+    - target: portable
+  icon: resources/icon.ico
+
+mac:
+  target:
+    - target: dmg
+      arch: [arm64]
+  icon: resources/icon.png
+  category: public.app-category.developer-tools
+
+linux:
+  target:
+    - target: AppImage
+    - target: deb
+  icon: resources/icon.png
+  category: Development
+  maintainer: FengYu
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-${version}-${platform}-${arch}-setup.${ext}
+
+portable:
+  artifactName: ${productName}-${version}-${platform}-${arch}-portable.${ext}
+
+publish:
+  provider: github
+  owner: MuskStark
+  repo: FengYu
