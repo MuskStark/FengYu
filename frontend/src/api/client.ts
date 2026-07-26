@@ -243,7 +243,7 @@ export const api = {
   /** Release the run's approval gate (plan or step); an edited plan body replaces it. */
   agentApprove: (runId: string, plan?: AgentPlan) =>
     http
-      .post(`/api/agent/${encodeURIComponent(runId)}/approve`, { plan })
+      .post(`/api/agent/${encodeURIComponent(runId)}/approve`, plan)
       .then((r) => r.data),
 
   /** Flip the run's cancellation flag (honored cooperatively by the runner). */

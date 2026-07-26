@@ -71,6 +71,10 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
     height: 820,
     minWidth: 960,
     minHeight: 640,
+    // Do not expose Chromium's default white surface while the Vue bundle is
+    // still loading. The window is revealed below after its first paint.
+    show: false,
+    backgroundColor: '#121212',
     resizable: true,
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
@@ -105,8 +109,13 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
     win.hide()
   })
 
+  win.once('ready-to-show', () => {
+    if (!opts.isQuitting()) win.show()
+  })
+
+  let loadPromise: Promise<void>
   if (opts.isDev) {
-    void win.loadURL('http://127.0.0.1:5173')
+    loadPromise = Promise.resolve(win.loadURL('http://127.0.0.1:5173'))
     // Auto-open DevTools in dev so runtime/console errors are visible without a keyboard shortcut.
     // Playwright sets NODE_ENV=test; suppressing the detached DevTools window
     // there keeps ElectronApplication window selection deterministic.
@@ -114,7 +123,13 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
       win.webContents.openDevTools({ mode: 'detach' })
     }
   } else {
-    void win.loadFile(join(__dirname, '../../frontend-dist/index.html'))
+    loadPromise = Promise.resolve(win.loadFile(join(__dirname, '../../frontend-dist/index.html')))
   }
+  void loadPromise.catch((err) => {
+    // Keep a failed renderer diagnosable: log the load error and reveal the
+    // dark-backed window instead of leaving an invisible process in the tray.
+    console.error('[desktop] failed to load renderer', err)
+    if (!win.isDestroyed()) win.show()
+  })
   return win
 }

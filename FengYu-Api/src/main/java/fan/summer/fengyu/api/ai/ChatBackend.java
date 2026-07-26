@@ -70,6 +70,15 @@ public interface ChatBackend {
     void chat(List<AiChatMessage> history, AiStreamCallback callback) throws AiServiceException;
 
     /**
+     * Streaming chat with tool callbacks disabled. Planning phases use this to produce a
+     * proposal without executing tools before the workflow has been approved.
+     */
+    default void chatWithoutTools(List<AiChatMessage> history, AiStreamCallback callback)
+            throws AiServiceException {
+        chat(history, callback);
+    }
+
+    /**
      * Streaming chat with explicit sampling parameters. All callback events
      * are delivered on the JavaFX Application Thread.
      */
