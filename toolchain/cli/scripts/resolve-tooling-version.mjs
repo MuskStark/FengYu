@@ -25,7 +25,7 @@ function isSemanticVersion(value) {
   return true
 }
 
-async function verifyRepositoryVersion(root, version) {
+export async function verifyRepositoryVersion(root, version) {
   const npmPackages = [
     'toolchain/cli/package.json',
     'toolchain/dev/package.json',
@@ -60,7 +60,7 @@ async function main(argv) {
     options[name] = value
   }
   const version = resolveToolingVersion({ inputVersion: options['--input'], refName: options['--ref'] })
-  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
   await verifyRepositoryVersion(root, version)
   if (options['--github-output']) await fs.appendFile(options['--github-output'], `version=${version}\n`)
   else process.stdout.write(version + '\n')

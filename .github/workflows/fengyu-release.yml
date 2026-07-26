@@ -252,6 +252,8 @@ jobs:
       - name: Build frontend SPA
         run: npm run build
         working-directory: frontend
+        env:
+          FENGYU_DESKTOP_BUILD: '1'
 
       - name: Stage frontend SPA for the Electron bundle
         shell: bash
@@ -260,6 +262,10 @@ jobs:
           rm -rf desktop/electron/frontend-dist
           cp -R frontend/dist desktop/electron/frontend-dist
           ls desktop/electron/frontend-dist
+
+      - name: Verify file-compatible frontend asset paths
+        run: npm run verify:frontend-dist
+        working-directory: desktop/electron
 
       - name: Install desktop deps
         run: npm ci
@@ -290,6 +296,22 @@ jobs:
           cp inputs/Infinia.jar desktop/electron/resources/binaries/FengYu.jar
           cp inputs/*.fyp desktop/electron/resources/binaries/plugins/
           ls -R desktop/electron/resources/binaries
+
+      - name: Run Electron launch E2E (Linux)
+        if: runner.os == 'Linux'
+        working-directory: desktop/electron
+        env:
+          FENGYU_JAR: ${{ github.workspace }}/desktop/electron/resources/binaries/FengYu.jar
+          FENGYU_PLUGINS: ${{ github.workspace }}/desktop/electron/resources/binaries/plugins
+        run: xvfb-run -a npm run test:e2e
+
+      - name: Run Electron launch E2E
+        if: runner.os != 'Linux'
+        working-directory: desktop/electron
+        env:
+          FENGYU_JAR: ${{ github.workspace }}/desktop/electron/resources/binaries/FengYu.jar
+          FENGYU_PLUGINS: ${{ github.workspace }}/desktop/electron/resources/binaries/plugins
+        run: npm run test:e2e
 
       - name: Build Electron bundle (without JRE)
         working-directory: desktop/electron

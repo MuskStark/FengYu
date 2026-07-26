@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/svg+xml" href="/infinia-logo.svg" />
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%infinia-logo.svg" />
     <title>Infinia</title>
 
     <!--
@@ -11,12 +11,13 @@
       Both the shell and every plugin bundle mark `vue` as external and
       resolve the bare `vue` specifier through THIS import map, so there is
       exactly one Vue instance across the whole app. The vendored ESM build
-      is copied into /vendor/ by the `vendorVue` Vite plugin (vite.config.ts).
+      is copied into the build's vendor/ directory by the `vendorVue` Vite plugin
+      (vite.config.ts).
     -->
     <script type="importmap">
       {
         "imports": {
-          "vue": "/vendor/vue.esm-browser.prod.js"
+          "vue": "%BASE_URL%vendor/vue.esm-browser.prod.js"
         }
       }
     </script>

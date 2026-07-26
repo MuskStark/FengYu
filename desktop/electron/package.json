@@ -15,7 +15,8 @@
     "build:linux": "npm run build:ts && electron-builder --linux",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test -c test/e2e/playwright.config.ts"
+    "test:e2e": "playwright test -c test/e2e/playwright.config.ts",
+    "verify:frontend-dist": "node scripts/verify-frontend-dist.mjs frontend-dist/index.html"
   },
   "devDependencies": {
     "@playwright/test": "^1.50.0",

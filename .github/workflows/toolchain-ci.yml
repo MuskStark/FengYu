@@ -6,18 +6,22 @@ name: Plugin Tooling
 
 on:
   push:
-    branches: [4.0.0-FengYu, main]
+    branches: [4.0.0-FengYu, 4.0.0-electron, main]
     paths:
       - 'toolchain/**'
       - 'OfficialPlugins/**'
       - 'scripts/plugin-tooling-local-smoke.sh'
+      - 'scripts/check-plugin-dependency-boundaries.sh'
       - '.github/workflows/toolchain-ci.yml'
+      - '.github/workflows/toolchain-release.yml'
   pull_request:
     paths:
       - 'toolchain/**'
       - 'OfficialPlugins/**'
       - 'scripts/plugin-tooling-local-smoke.sh'
+      - 'scripts/check-plugin-dependency-boundaries.sh'
       - '.github/workflows/toolchain-ci.yml'
+      - '.github/workflows/toolchain-release.yml'
   workflow_dispatch:
 
 permissions:
@@ -37,13 +41,18 @@ jobs:
         with:
           node-version: 24.18.0
           cache: npm
-          # Cache by every committed lockfile under the three packages.
-          # toolchain/sdk-ts and toolchain/cli may not commit a lockfile; the
-          # glob still matches the ones that exist (toolchain/ui).
+          # Cache by every committed lockfile under the four npm packages.
           cache-dependency-path: |
             toolchain/sdk-ts/package-lock.json
             toolchain/ui/package-lock.json
+            toolchain/dev/package-lock.json
             toolchain/cli/package-lock.json
+
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
 
       # --- SDK: typecheck-free, vitest unit tests ---
       - run: cd toolchain/sdk-ts && npm ci && npm test
@@ -61,6 +70,11 @@ jobs:
 
       # --- @infinia/plugin-cli: node --test ---
       - run: cd toolchain/cli && npm ci && npm test
+
+      # --- IDE development bridge + Java SDK/DevKit contracts ---
+      - run: cd toolchain/dev && npm ci && npm test
+      - run: ./mvnw -pl toolchain/devkit-java -am test
+      - run: scripts/check-plugin-dependency-boundaries.sh
 
       # --- Visual regression (Playwright) ---
       - run: npx playwright install --with-deps chromium

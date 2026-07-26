@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { createRouter, createWebHashHistory, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { api } from '@/api/client'
 
 const routes: RouteRecordRaw[] = [
@@ -18,7 +18,10 @@ const routes: RouteRecordRaw[] = [
 ]
 
 export const router = createRouter({
-  history: createWebHistory(),
+  // The packaged Electron shell loads index.html over file://. Hash history
+  // keeps every route anchored to that real file, while the browser build
+  // retains clean history URLs.
+  history: window.fengyu?.desktop ? createWebHashHistory() : createWebHistory(),
   routes,
 })
 
