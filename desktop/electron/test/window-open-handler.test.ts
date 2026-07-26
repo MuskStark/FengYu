@@ -81,7 +81,7 @@ describe('createMainWindow navigation guards', () => {
 
     expect(captured.browserWindowOptions).toMatchObject({
       show: false,
-      backgroundColor: '#121212',
+      backgroundColor: '#0d0d0d',
     })
     expect(captured.show).not.toHaveBeenCalled()
     expect(captured.readyToShow).not.toBeNull()

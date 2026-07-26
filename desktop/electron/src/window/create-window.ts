@@ -73,8 +73,11 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
     minHeight: 640,
     // Do not expose Chromium's default white surface while the Vue bundle is
     // still loading. The window is revealed below after its first paint.
+    // #0d0d0d matches the dark theme's `background` (md3-themes.ts) so the
+    // native window backing never leaks a lighter strip along the right edge
+    // where the renderer fails to cover the last sub-pixel.
     show: false,
-    backgroundColor: '#121212',
+    backgroundColor: '#0d0d0d',
     resizable: true,
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
