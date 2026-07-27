@@ -4,6 +4,7 @@ import { resolveJava } from './runtime-layout-helpers'
 import type { RuntimeLayout } from './runtime-layout'
 import { parseFengyuPort } from './handshake'
 import type { BackendChild } from './supervisor'
+import type { SplashStage } from '../window/splash-i18n'
 
 export interface SpawnOptions {
   layout: RuntimeLayout
@@ -13,6 +14,8 @@ export interface SpawnOptions {
   onLine?: (line: string) => void
   deadlineMs?: number
   pollIntervalMs?: number
+  /** Called when the backend reports its bound port. Optional. */
+  onProgress?: (stage: SplashStage) => void
 }
 
 export interface SpawnedBackend {
@@ -99,6 +102,8 @@ export async function spawnBackend(opts: SpawnOptions): Promise<SpawnedBackend> 
     child.kill()
     throw err
   }
+
+  opts.onProgress?.('port-ready')
 
   return { child, port }
 }
