@@ -3,6 +3,7 @@ import { pollHealth } from '../util/health'
 import { detectSetupMode } from './handshake'
 import type { RuntimeLayout } from './runtime-layout'
 import type { BackendChild } from './supervisor'
+import type { SplashStage } from '../window/splash-i18n'
 
 export interface StartedBackend {
   child: BackendChild
@@ -17,6 +18,8 @@ export interface StartBackendOptions {
   shouldCancel?: () => boolean
   fetchImpl?: typeof fetch
   onBackendLine?: (line: string) => void
+  /** Forwarded to spawn (port-ready) and health (health-ready). Optional. */
+  onProgress?: (stage: SplashStage) => void
 }
 
 /**
@@ -31,10 +34,17 @@ export async function startBackend(opts: StartBackendOptions): Promise<StartedBa
     requestedPort,
     shouldCancel: opts.shouldCancel,
     onLine: opts.onBackendLine,
+    onProgress: opts.onProgress,
   })
 
   try {
-    await pollHealth({ port, token, shouldCancel: opts.shouldCancel, fetchImpl: opts.fetchImpl })
+    await pollHealth({
+      port,
+      token,
+      shouldCancel: opts.shouldCancel,
+      fetchImpl: opts.fetchImpl,
+      onProgress: opts.onProgress,
+    })
   } catch (err) {
     child.kill()
     throw err

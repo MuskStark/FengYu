@@ -5,6 +5,8 @@
  * HTTP 200 = ready. Cancellable.
  */
 
+import type { SplashStage } from '../window/splash-i18n'
+
 export interface PollHealthOptions {
   /** Spawned-backend loopback port. Required when baseUrl is absent. */
   port?: number
@@ -18,6 +20,8 @@ export interface PollHealthOptions {
   deadlineMs?: number
   intervalMs?: number
   requestTimeoutMs?: number
+  /** Called once when the backend first reports healthy (HTTP 200). Optional. */
+  onProgress?: (stage: SplashStage) => void
 }
 
 const defaultSleep = (ms: number) =>
@@ -34,6 +38,7 @@ export async function pollHealth(opts: PollHealthOptions): Promise<void> {
     deadlineMs = 30_000,
     intervalMs = 300,
     requestTimeoutMs = 2_000,
+    onProgress,
   } = opts
 
   if (!baseUrl && port === undefined) {
@@ -53,7 +58,10 @@ export async function pollHealth(opts: PollHealthOptions): Promise<void> {
         signal: controller.signal,
       })
       clearTimeout(timer)
-      if (resp.status === 200) return
+      if (resp.status === 200) {
+        onProgress?.('health-ready')
+        return
+      }
     } catch {
       // network error / abort → keep polling until deadline
     }
