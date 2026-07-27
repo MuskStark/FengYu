@@ -136,7 +136,7 @@ contextBridge.exposeInMainWorld('splash', {
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; style-src 'unsafe-inline'; img-src data:;" />
+        content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:;" />
   <style>
     :root {
       --bg: #0d0d0d; --surface: #161616; --text: #ededed;
@@ -181,7 +181,7 @@ contextBridge.exposeInMainWorld('splash', {
 ```
 
 **关键点**：
-- **CSP**：`default-src 'none'; style-src 'unsafe-inline'; img-src data:` —— splash 不加载任何外部资源，logo 内联为 SVG。
+- **CSP**：`default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:` —— splash 不加载任何外部资源，logo 内联为 SVG。`script-src 'unsafe-inline'` 是必须的：进度订阅逻辑以内联 `<script>` 形式存在，splash 是完全自包含的（无外部脚本源），内联脚本即整个可信面。
 - **圆角阴影用 `inset box-shadow`** —— 透明窗口下外部 `box-shadow` 在 Windows/Linux 常被裁剪；`inset` 边框是三平台最稳的"卡片浮层"做法。
 - **logo 内联 SVG** —— 复用 `assets/branding/infinia-app-icon.svg`（512×512 master，与 `docs/public/logo.svg` 字节一致）的 path 数据。
 - **字体栈**包含 `PingFang SC` / `Microsoft YaHei` —— 保证中文渲染清晰。
