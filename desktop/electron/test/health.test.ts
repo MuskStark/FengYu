@@ -69,4 +69,17 @@ describe('pollHealth', () => {
       }),
     ).rejects.toThrow(/cancel/)
   })
+
+  it('invokes onProgress with health-ready on first 200', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+    const onProgress = vi.fn()
+    await pollHealth({
+      port: 24056,
+      token: 't',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      onProgress,
+    })
+    expect(onProgress).toHaveBeenCalledOnce()
+    expect(onProgress).toHaveBeenCalledWith('health-ready')
+  })
 })
