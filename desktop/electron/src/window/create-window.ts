@@ -140,6 +140,10 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
     // dark-backed window instead of leaving an invisible process in the tray.
     console.error('[desktop] failed to load renderer', err)
     if (!win.isDestroyed()) win.show()
+    // ready-to-show never fires when the load rejects, so tear down the splash
+    // here too — otherwise it stays parked over a broken main window with no
+    // way for the user to close it (frameless, focusable:false, skipTaskbar).
+    opts.onMainReady?.()
   })
   return win
 }
