@@ -17,6 +17,12 @@ export interface CreateWindowOptions {
    * close-vs-quit gotcha that Task 3's review deferred.
    */
   isQuitting: () => boolean
+  /**
+   * Called once when the main window finishes its first paint (ready-to-show).
+   * Used by main.ts to tear down the splash window at the exact moment the main
+   * window becomes visible — closing it earlier would leave a window-less gap.
+   */
+  onMainReady?: () => void
 }
 
 /**
@@ -114,6 +120,7 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
 
   win.once('ready-to-show', () => {
     if (!opts.isQuitting()) win.show()
+    opts.onMainReady?.()
   })
 
   let loadPromise: Promise<void>
