@@ -260,7 +260,7 @@ function resolveSplashHtml(): string {
 }
 ```
 
-与现有 `tray.ts:19-27` 解析 icon 的双路径策略一致，遵循项目现有约定。
+注意：这与 `tray.ts` 解析 icon 的模式**不同**。`tray.ts` 用 `process.resourcesPath`（extraResources 扁平化根），而 splash.html 通过 `electron-builder.yml` 的 `files:` 进入 app.asar，由 `__dirname` 回溯解析：`create-splash.js` 编译到 `<asar>/dist/window/`，两个 `..` 回溯到 `<asar>/`，再进 `resources/splash.html`。
 
 ## 6. 边界情况
 
