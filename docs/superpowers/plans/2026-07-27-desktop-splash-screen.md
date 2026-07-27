@@ -673,7 +673,7 @@ interface CreateSplashOptions {
  */
 function resolveSplashHtml(): string {
   const devPath = join(process.cwd(), 'resources', 'splash.html')
-  const prodPath = join(__dirname, '..', 'resources', 'splash.html')
+  const prodPath = join(__dirname, '..', '..', 'resources', 'splash.html')
   return existsSync(devPath) ? devPath : prodPath
 }
 
