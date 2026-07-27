@@ -7,6 +7,7 @@ import { isAppCrash, startupAction, StartupAction, superviseSetupRestart, type B
 import { pollHealth } from './util/health'
 import { registerDialogIpc } from './ipc/dialog'
 import { createMainWindow } from './window/create-window'
+import { createSplashWindow, sendProgress, destroySplash } from './window/create-splash'
 import { initLogger } from './desktop/logger'
 import { acquireSingleInstanceLock } from './desktop/single-instance'
 import { createTray } from './desktop/tray'
@@ -84,6 +85,10 @@ function devBackendUrl(): string | null {
 async function bootstrap(): Promise<void> {
   registerDialogIpc()
 
+  // Show the splash immediately — before any backend work — so the user sees
+  // feedback during the JVM cold start + Spring context init (the longest gap).
+  const splash = createSplashWindow({ logger })
+
   const isPackaged = app.isPackaged
 
   // ── Dev: connect to an externally-started backend ───────────────────────────
@@ -95,9 +100,11 @@ async function bootstrap(): Promise<void> {
     const token = process.env.FENGYU_TOKEN ?? ''
     process.env.FENGYU_API_BASE = externalBackend
     process.env.FENGYU_TOKEN = token
+    sendProgress(splash, 'spawning')
     try {
-      await pollHealth({ baseUrl: externalBackend, token, shouldCancel: () => isQuitting })
+      await pollHealth({ baseUrl: externalBackend, token, shouldCancel: () => isQuitting, onProgress: (s) => sendProgress(splash, s) })
     } catch (err) {
+      destroySplash(splash)
       dialog.showErrorBox(
         'Backend not reachable',
         `Could not reach the external backend at ${externalBackend}.\n${err instanceof Error ? err.message : String(err)}\n\n` +
@@ -110,6 +117,7 @@ async function bootstrap(): Promise<void> {
     try {
       await ensureDevFrontend()
     } catch (err) {
+      destroySplash(splash)
       dialog.showErrorBox(
         'Frontend not reachable',
         `Could not start the Vite frontend dev server.\n${err instanceof Error ? err.message : String(err)}\n\n` +
@@ -119,12 +127,14 @@ async function bootstrap(): Promise<void> {
       return
     }
 
+    sendProgress(splash, 'loading-ui')
     const win = createMainWindow({
       apiBase: externalBackend,
       token,
       onHideToTray: () => logger.info('[desktop] window hidden to tray'),
       isDev: true,
       isQuitting: () => isQuitting,
+      onMainReady: () => destroySplash(splash),
     })
     createTray(win, () => {
       /* external backend is owned by the IDE; nothing to kill on quit */
@@ -138,6 +148,7 @@ async function bootstrap(): Promise<void> {
   const token = genToken()
   process.env.FENGYU_TOKEN = token
   process.env.FENGYU_API_BASE = '' // set after we know the port
+  sendProgress(splash, 'spawning')
 
   let started
   try {
@@ -147,8 +158,10 @@ async function bootstrap(): Promise<void> {
       requestedPort: 24056,
       onBackendLine: logger.backendLine,
       shouldCancel: () => isQuitting,
+      onProgress: (s) => sendProgress(splash, s),
     })
   } catch (err) {
+    destroySplash(splash)
     const msg = err instanceof Error ? err.message : String(err)
     if (/spawn.*java|ENOENT/i.test(msg)) {
       dialog.showErrorBox(
@@ -217,6 +230,7 @@ async function bootstrap(): Promise<void> {
     try {
       await ensureDevFrontend()
     } catch (err) {
+      destroySplash(splash)
       dialog.showErrorBox(
         'Frontend not reachable',
         `Could not start the Vite frontend dev server.\n${err instanceof Error ? err.message : String(err)}\n\n` +
@@ -227,12 +241,14 @@ async function bootstrap(): Promise<void> {
     }
   }
 
+  sendProgress(splash, 'loading-ui')
   const win = createMainWindow({
     apiBase,
     token,
     onHideToTray: () => logger.info('[desktop] window hidden to tray'),
     isDev: !isPackaged,
     isQuitting: () => isQuitting,
+    onMainReady: () => destroySplash(splash),
   })
 
   createTray(win, killBackend)
