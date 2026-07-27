@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang data-platform="">
+<head>
+  <meta charset="UTF-8" />
+  <!-- No external resources: inline styles, inline SVG, no network/font fetch. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'; img-src data:;" />
+  <title>Infinia</title>
+  <style>
+    :root {
+      --bg: #0d0d0d;
+      --text: #ededed;
+      --text-dim: #a0a0a0;
+      --accent: #ededed;
+      --radius: 16px;
+    }
+    html, body { margin: 0; height: 100%; background: transparent; }
+    body {
+      display: grid;
+      place-items: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                   "Microsoft YaHei", "Helvetica Neue", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .card {
+      width: 416px;
+      padding: 36px 32px 32px;
+      border-radius: var(--radius);
+      background: var(--bg);
+      color: var(--text);
+      /* Inset border (not outer box-shadow): renders consistently across
+         macOS/Windows transparent windows; Linux degrades to a dark rectangle. */
+      box-shadow: inset 0 0 0 1px #2a2a2a;
+      text-align: center;
+    }
+    .logo { width: 72px; height: 72px; margin: 0 auto 20px; }
+    .logo svg { width: 100%; height: 100%; display: block; }
+    .brand { font-size: 18px; font-weight: 600; letter-spacing: 0.5px; }
+    .brand .sub {
+      display: block;
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--text-dim);
+      margin-top: 4px;
+      letter-spacing: 0;
+    }
+    .progress {
+      margin-top: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      min-height: 20px;
+    }
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid #333;
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .msg {
+      font-size: 13px;
+      color: var(--text-dim);
+      transition: opacity 0.2s ease;
+    }
+    .msg.fade { opacity: 0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo" aria-hidden="true">
+      <!-- Verbatim from assets/branding/infinia-app-icon.svg (512px master). -->
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+        <defs>
+          <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+            <stop stop-color="#ffffff"/><stop offset="1" stop-color="#edf3ff"/>
+          </linearGradient>
+          <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1">
+            <stop stop-color="#e8f8ff" stop-opacity=".94"/><stop offset=".24" stop-color="#64d2ff" stop-opacity=".78"/>
+            <stop offset=".5" stop-color="#0a84ff" stop-opacity=".84"/><stop offset=".76" stop-color="#5e5ce6" stop-opacity=".84"/>
+            <stop offset="1" stop-color="#af52de" stop-opacity=".76"/>
+          </linearGradient>
+          <linearGradient id="front" x1="0" y1="1" x2="1" y2="0">
+            <stop stop-color="#64d2ff"/><stop offset=".48" stop-color="#0a84ff"/><stop offset="1" stop-color="#5e5ce6"/>
+          </linearGradient>
+        </defs>
+        <rect x="20" y="20" width="472" height="472" rx="108" fill="url(#tile)"/>
+        <rect x="21" y="21" width="470" height="470" rx="107" fill="none" stroke="#fff" stroke-opacity=".86" stroke-width="3"/>
+        <g transform="translate(0 2) scale(2)" fill="none" stroke-linecap="round">
+          <path d="M128 128C100 79 43 70 34 119C25 169 84 193 128 128C172 63 231 87 222 137C213 186 156 177 128 128" stroke="url(#glass)" stroke-width="42"/>
+          <path d="M128 120C100 71 43 62 34 111C25 161 84 185 128 120C172 55 231 79 222 129C213 178 156 169 128 120" stroke="#fff" stroke-opacity=".52" stroke-width="5"/>
+          <path d="M89 174C105 163 117 145 128 128C141 108 151 90 169 80" stroke="url(#front)" stroke-opacity=".91" stroke-width="43"/>
+          <path d="M95 164C110 152 119 138 128 125C141 105 151 90 165 83" stroke="#fff" stroke-opacity=".58" stroke-width="5"/>
+        </g>
+      </svg>
+    </div>
+    <div class="brand">
+      <span id="brand-name">…</span>
+      <span class="sub" id="brand-sub"></span>
+    </div>
+    <div class="progress">
+      <span class="spinner" aria-hidden="true"></span>
+      <span class="msg" id="msg">…</span>
+    </div>
+  </div>
+  <script>
+    // Mirror of src/window/splash-i18n.ts MESSAGES/BRAND. Keep in sync.
+    var MESSAGES = {
+      zh: {
+        'spawning': '正在启动蜂语…',
+        'port-ready': '正在初始化服务…',
+        'health-ready': '正在加载工作区…',
+        'loading-ui': '即将就绪'
+      },
+      en: {
+        'spawning': 'Starting FengYu…',
+        'port-ready': 'Initializing service…',
+        'health-ready': 'Loading workspace…',
+        'loading-ui': 'Almost ready'
+      }
+    };
+    var BRAND = {
+      zh: { name: '蜂语', sub: 'Infinia · FengYu' },
+      en: { name: 'Infinia', sub: 'FengYu · 蜂语' }
+    };
+
+    function pickLang(query) {
+      var m = /[?&]lang=(zh|en)/.exec(query);
+      return m ? m[1] : 'en';
+    }
+
+    var lang = pickLang(location.search);
+    document.documentElement.setAttribute('lang', lang === 'zh' ? 'zh-CN' : 'en');
+    if (window.process && window.process.platform === 'linux') {
+      document.documentElement.setAttribute('data-platform', 'linux');
+    }
+
+    var brand = BRAND[lang];
+    document.getElementById('brand-name').textContent = brand.name;
+    document.getElementById('brand-sub').textContent = brand.sub;
+
+    var msgEl = document.getElementById('msg');
+    function setStage(stage) {
+      var text = (MESSAGES[lang] && MESSAGES[lang][stage]) || MESSAGES.en[stage];
+      if (msgEl.textContent === text) return;
+      msgEl.classList.add('fade');
+      setTimeout(function () {
+        msgEl.textContent = text;
+        msgEl.classList.remove('fade');
+      }, 180);
+    }
+
+    // Initial stage
+    setStage('spawning');
+
+    // Subscribe to main-process progress updates (splash-preload.ts).
+    if (window.splash && typeof window.splash.onProgress === 'function') {
+      window.splash.onProgress(function (p) { setStage(p.stage); });
+    }
+  </script>
+</body>
+</html>
