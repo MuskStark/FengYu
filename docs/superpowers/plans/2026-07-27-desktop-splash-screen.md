@@ -13,7 +13,7 @@
 - **版本约束**：不触碰 app 版本（`package.json` `version: "4.0.0-alpha.3"` 保持不变）；不触碰 plugin toolchain 版本。
 - **代码风格**：遵循现有 Electron 源码约定 —— `strict: true`、CommonJS（`module: "commonjs"`）、2 空格缩进、单引号、无分号（见现有 `src/**/*.ts`）。
 - **主题色**：splash 必须匹配主窗口暗色主题 `#0d0d0d`（`md3Dark.colors.background`，`create-window.ts:80`）。文本 `#ededed`、暗文本 `#a0a0a0`、边框 `#2a2a2a`。
-- **CSP**：splash HTML 的 CSP 必须为 `default-src 'none'; style-src 'unsafe-inline'; img-src data:`（不加载任何外部资源）。
+- **CSP**：splash HTML 的 CSP 必须为 `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:`（不加载任何外部资源；`script-src 'unsafe-inline'` 必需，因为进度订阅以内联 `<script>` 存在，splash 完全自包含）。
 - **平台支持**：macOS / Windows 用 `transparent: true`；Linux 降级为 `transparent: false` + `backgroundColor: '#0d0d0d'`。
 - **i18n**：双语（中/英），`app.getLocale()` 取 BCP-47 主标签，非 `zh*` 一律 fallback 英文。
 - **向后兼容**：`onProgress` 参数全部可选，默认 `undefined` 时现有行为必须完全不变（现有 vitest 测试不回归）。
@@ -390,7 +390,7 @@ Create `desktop/electron/resources/splash.html`. The SVG `<path>` data below is 
   <meta charset="UTF-8" />
   <!-- No external resources: inline styles, inline SVG, no network/font fetch. -->
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; style-src 'unsafe-inline'; img-src data:;" />
+        content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:;" />
   <title>Infinia</title>
   <style>
     :root {
