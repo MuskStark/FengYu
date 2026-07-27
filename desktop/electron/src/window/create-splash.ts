@@ -12,13 +12,18 @@ interface CreateSplashOptions {
 }
 
 /**
- * Resolve splash.html on disk. Dev: <cwd>/resources/splash.html (cwd is
- * desktop/electron). Packaged: <dist>/../resources/splash.html (mirrors the
- * icon-resolution pattern in src/desktop/tray.ts).
+ * Resolve splash.html on disk.
+ *
+ * Dev: <cwd>/resources/splash.html (cwd is desktop/electron when running via
+ *      `npm run dev` / `electron .`).
+ * Packaged: this file compiles to <asar>/dist/window/create-splash.js, so
+ *           __dirname is <asar>/dist/window/. Two `..` climb to <asar>/, then
+ *           resources/splash.html — which is where electron-builder.yml's
+ *           `files:` entry places it inside app.asar.
  */
 function resolveSplashHtml(): string {
   const devPath = join(process.cwd(), 'resources', 'splash.html')
-  const prodPath = join(__dirname, '..', 'resources', 'splash.html')
+  const prodPath = join(__dirname, '..', '..', 'resources', 'splash.html')
   return existsSync(devPath) ? devPath : prodPath
 }
 
