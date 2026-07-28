@@ -26,11 +26,16 @@ test.describe('desktop launch', () => {
     app.on('window', (w) => lines.push(`[event] window opened url=${w.url()}`))
 
     try {
+      // The splash window opens first (it loads resources/splash.html and exposes
+      // window.splash, NOT window.fengyu). We must wait for the MAIN window — the
+      // one that loads the SPA (frontend-dist/index.html or the dev server) and has
+      // the fengyu preload injected. Skip both the devtools window (opened when
+      // NODE_ENV!=production on some platforms) and the splash window.
+      const isAuxWindow = (url: string) =>
+        url.startsWith('devtools://') || url.endsWith('splash.html') || url.includes('splash.html')
       const first = await app.firstWindow()
-      const win = first.url().startsWith('devtools://')
-        ? await app.waitForEvent('window', {
-            predicate: (candidate) => !candidate.url().startsWith('devtools://'),
-          })
+      const win = isAuxWindow(first.url())
+        ? await app.waitForEvent('window', { predicate: (c) => !isAuxWindow(c.url()) })
         : first
       lines.push(`[step] firstWindow ok url=${win.url()}`)
       await win.waitForLoadState('domcontentloaded', { timeout: 60_000 })
