@@ -271,6 +271,14 @@ jobs:
         run: npm ci
         working-directory: desktop/electron
 
+      # Electron 43 downloads its platform binary on first require instead of via
+      # an npm lifecycle script. Do that outside Playwright's 120s test timeout;
+      # Windows runners commonly have a cold Electron cache.
+      - name: Install Electron binary
+        run: npx install-electron --no
+        working-directory: desktop/electron
+        timeout-minutes: 15
+
       - name: Run desktop unit tests
         run: npm test
         working-directory: desktop/electron
