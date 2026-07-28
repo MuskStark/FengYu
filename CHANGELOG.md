@@ -10,7 +10,12 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 - **Plugin UI icons now render reliably in sandboxed third-party plugins.** The host CSP explicitly
   permits same-origin and bundled `data:` fonts for compatibility with existing `.fyp` packages,
   while `@infinia/plugin-ui` leaves its MDI stylesheet to the consuming Vite app so new builds emit
-  ordinary hashed font assets instead of embedding multi-megabyte fonts in the library CSS.
+  ordinary hashed font assets instead of embedding multi-megabyte fonts in the library CSS. Official
+  plugin UIs now declare `@mdi/font` directly so the Vite build can resolve the externalized
+  `@import` under strict `npm ci`.
+- **`window.fengyu` access is SSR-safe.** The desktop-bridge calls added to `settings.ts`,
+  `main.ts`, and `router/index.ts` are now guarded with `typeof window !== 'undefined'`, so they no
+  longer throw `ReferenceError` in vite SSR / the `node --test` suite.
 
 ### ♻️ Changed
 - **Windows desktop releases ship an extract-and-run ZIP instead of a self-extracting portable
@@ -31,6 +36,11 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   `fengyu.runtime.dir` (default `~/.fengyu`), replacing scattered `System.getProperty("user.dir")`
   paths. `CryptoUtil` derives the `.machineid` from the same root. This makes the packaged Electron
   shell and the portable Web distribution agree on where state lives.
+- **Portable Web distribution keeps its state self-contained.** `run.sh` / `run.bat` now pass
+  `-Dfengyu.runtime.dir=<dist>/data`, so the database, config, logs, and plugin data land next to the
+  launcher inside the extracted folder rather than in the user's home directory — preserving the
+  "unzip and run, move/delete leaves nothing behind" portability contract. `scripts/e2e-smoke.sh`
+  pins the same property to its temp dir so its run is repeatable.
 
 ---
 
