@@ -17,4 +17,7 @@ case " $* " in *" --token"*) ;; *" --token="*) ;; *)
   echo "Generated per-launch token (pass --token=<t> to override): $GEN_TOKEN" >&2
 ;; esac
 
-exec "$JAVA" -Dfengyu.plugins.official-directory="$ROOT/plugins" -jar "$ROOT/Infinia.jar" "${TOKEN_ARGS[@]}" "$@"
+exec "$JAVA" \
+  -Dfengyu.runtime.dir="$ROOT/data" \
+  -Dfengyu.plugins.official-directory="$ROOT/plugins" \
+  -jar "$ROOT/Infinia.jar" "${TOKEN_ARGS[@]}" "$@"
