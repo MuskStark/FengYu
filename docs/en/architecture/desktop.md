@@ -82,6 +82,9 @@ the page loads:
 window.fengyu.apiBase()        // 'http://127.0.0.1:<port>' — read-only snapshot
 window.fengyu.token()          // the per-launch X-FengYu-Token — read-only snapshot
 window.fengyu.desktop          // true — feature flag
+window.fengyu.initialTheme()   // 'dark' | 'light' — theme chosen by the shell at startup (no flash)
+window.fengyu.setupMode()      // boolean | null — pre-probed setup state, null in a browser
+window.fengyu.setTheme(theme)  // asks the shell to persist/apply the theme
 window.fengyu.pickFile(filters)   // → native open dialog (IPC)
 window.fengyu.pickDirectory()     // → native open dialog (IPC)
 ```
@@ -135,13 +138,20 @@ close handler calls `preventDefault()` + `window.hide()` unless the app is genui
 ## Packaging
 
 Packaging is handled by **electron-builder** (`desktop/electron/electron-builder.yml`). Two installer
-variants ship per platform, built from the one base config via CI `--config` overrides:
+variants ship per platform, built from the one base config via CI `--config` overrides. Artifacts
+follow a uniform scheme `<product>-<version>-<platform>-<arch>[<form>].<ext>` (e.g.
+`Infinia-4.0.0-mac-arm64.dmg`, `Infinia-4.0.0-win-x64-setup.exe`):
 
 | Platform | Without JRE (lite) | With JRE (self-contained) |
 | --- | --- | --- |
-| macOS (arm64 + x64) | `Infinia-<ver>-mac.dmg` | `Infinia-<ver>-mac-jre.dmg` |
-| Windows (x64) | `Infinia-<ver>-win.exe` (NSIS) | `Infinia-<ver>-win-jre.exe` |
-| Linux (x64) | `Infinia-<ver>.AppImage` | `Infinia-<ver>-jre.AppImage` |
+| macOS (arm64) | `Infinia-<ver>-mac-arm64.dmg` | `Infinia-<ver>-mac-arm64-jre.dmg` |
+| Windows (x64) | `Infinia-<ver>-win-x64-setup.exe` (NSIS) + `*-portable.zip` | `Infinia-<ver>-win-x64-setup-jre.exe` + `*-portable-jre.zip` |
+| Linux (x64) | `Infinia-<ver>-linux-x64.AppImage` + `.deb` | `Infinia-<ver>-linux-x64-jre.AppImage` |
+
+The Windows **portable** form is an extract-and-run ZIP (extract, then run `Infinia.exe`) — no
+installation and no startup-time self-extraction. The with-JRE variant bundles a **jlink-minimized**
+JRE (generated in CI from JDK 21 via `jdeps` + `jlink --strip-debug`) under `<resources>/jre/`. Alpha
+builds are **unsigned**.
 
 The with-JRE variant bundles a **jlink-minimized** JRE (generated in CI from JDK 21 via
 `jdeps` + `jlink --strip-debug`) under `<resources>/jre/`. Alpha builds are **unsigned**.

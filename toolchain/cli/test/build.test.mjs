@@ -196,6 +196,30 @@ test('backend manifests require a declared worker build configuration', async ()
   )
 })
 
+test('ui entry must be a regular file, not merely an existing directory', async () => {
+  const manifestFile = path.join(root, 'manifest.json')
+  const manifest = JSON.parse(await fs.readFile(manifestFile, 'utf8'))
+  manifest.ui.entry = 'ui'
+  await fs.writeFile(manifestFile, JSON.stringify(manifest))
+
+  await assert.rejects(
+    () => buildPlugin(root, { run: fakeRunner([], root) }),
+    /UI entry|ui\.entry/i,
+  )
+})
+
+test('packaged backend command must exactly match the supported worker command', async () => {
+  const manifestFile = path.join(root, 'manifest.json')
+  const manifest = JSON.parse(await fs.readFile(manifestFile, 'utf8'))
+  manifest.backend.command = 'java -jar backend/worker.jar --unexpected'
+  await fs.writeFile(manifestFile, JSON.stringify(manifest))
+
+  await assert.rejects(
+    () => buildPlugin(root, { run: fakeRunner([], root) }),
+    /backend\.command must be java -jar backend\/worker\.jar/,
+  )
+})
+
 test('worker Main-Class must match the declared build configuration', async () => {
   await assert.rejects(
     () => buildPlugin(root, {

@@ -55,8 +55,9 @@ extraResources:
 win:
   target:
     - target: nsis
-    - target: portable
+    - target: zip
   icon: resources/icon.ico
+  artifactName: ${productName}-${version}-${platform}-${arch}-portable.${ext}
 
 mac:
   target:
@@ -78,9 +79,6 @@ nsis:
   perMachine: false
   allowToChangeInstallationDirectory: true
   artifactName: ${productName}-${version}-${platform}-${arch}-setup.${ext}
-
-portable:
-  artifactName: ${productName}-${version}-${platform}-${arch}-portable.${ext}
 
 publish:
   provider: github

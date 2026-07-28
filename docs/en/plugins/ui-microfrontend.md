@@ -42,6 +42,9 @@ The host loads the entry HTML and applies a Content Security Policy that restric
 
 - **No inline scripts.** All JS must come from external `<script src>` files (the scaffolder writes `<script type="module" src="app.js">`). See [Pitfalls](/en/plugins/pitfalls).
 - **No direct `fetch` to arbitrary origins.** Talk to the backend through `FengYuClient`, or use the `apiBase` + `token` provided in `PluginContext` for raw multipart calls.
+- **Fonts must be packaged with the plugin.** `font-src 'self' data:` supports both current
+  same-origin font assets and fonts embedded by older toolchain releases; remote font origins remain
+  blocked. `@infinia/plugin-ui` handles MDI font packaging automatically.
 - Asset paths under `/plugin-runtime/{id}/**` are the only plugin URLs that bypass the token filter, so the UI can bootstrap without a credential.
 
 ## The `FengYuClient` API

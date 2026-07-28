@@ -1,5 +1,7 @@
 package fan.summer.fengyu.sdk;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -121,28 +123,28 @@ class JsonRpcWorkerTest {
             "slf4j info() did not reach stderr — binding is missing/NOP. stderr was:\n" + stderr);
     }
 
-    /**
-     * Regression: an exception thrown from a handler is logged to stderr (with the cause) before
-     * being turned into a JSON-RPC error response. Previously {@link JsonRpcWorker#serve} swallowed
-     * the exception — only a flattened message survived in the error object, the stack trace was
-     * lost, making plugin failures impossible to diagnose.
-     */
-    @Test void handlerExceptionsAreLoggedToStderr() throws Exception {
+    /** Handler failures retain call identity and exception type without exposing exception messages. */
+    @Test void handlerExceptionsUseSafeDiagnosticsAndResponse() throws Exception {
         PrintStream originalErr = System.err;
         ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
+        ByteArrayOutputStream protocol = new ByteArrayOutputStream();
         String request = "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"boom\",\"params\":{}}\n";
         try {
             System.setErr(new PrintStream(diagnostics, true, StandardCharsets.UTF_8));
             new JsonRpcWorker()
-                .on("boom", params -> { throw new IllegalStateException("kaboom"); })
+                .on("boom", params -> { throw new IllegalStateException("credential=kaboom"); })
                 .run(new ByteArrayInputStream(request.getBytes(StandardCharsets.UTF_8)),
-                     new ByteArrayOutputStream());
+                     protocol);
         } finally {
             System.setErr(originalErr);
         }
         String stderr = diagnostics.toString(StandardCharsets.UTF_8);
-        assertTrue(stderr.contains("kaboom"),
-            "handler exception message did not reach stderr. stderr was:\n" + stderr);
+        assertTrue(stderr.contains("boom"));
+        assertTrue(stderr.contains("IllegalStateException"));
+        assertFalse(stderr.contains("credential=kaboom"), "exception message leaked to stderr:\n" + stderr);
+        JsonObject response = JsonParser.parseString(protocol.toString(StandardCharsets.UTF_8)).getAsJsonObject();
+        assertEquals("credential=kaboom", response.getAsJsonObject("error").get("message").getAsString(),
+            "the direct caller should retain the handler diagnostic");
     }
 
     /**

@@ -201,15 +201,17 @@ export async function validateRuntimeTree(project, staging) {
   // ui.entry must resolve to a regular file inside staging.
   if (manifest.ui?.entry) {
     const entry = path.resolve(staging, manifest.ui.entry)
-    if (!entry.startsWith(staging + path.sep) || !fsSync.existsSync(entry)) {
+    if (!entry.startsWith(staging + path.sep)
+        || !fsSync.existsSync(entry)
+        || !fsSync.statSync(entry).isFile()) {
       errors.push(`runtime ui.entry does not exist in package: ${manifest.ui.entry}`)
     }
   }
 
   // Declared backend: command must reference exactly backend/worker.jar.
   if (project.config?.worker && manifest.backend?.command) {
-    if (!/\bbackend\/worker\.jar\b/.test(manifest.backend.command)) {
-      errors.push('declared backend.command must reference backend/worker.jar')
+    if (manifest.backend.command !== 'java -jar backend/worker.jar') {
+      errors.push('backend.command must be java -jar backend/worker.jar')
     }
     const jar = path.join(staging, 'backend', 'worker.jar')
     if (!fsSync.existsSync(jar)) {

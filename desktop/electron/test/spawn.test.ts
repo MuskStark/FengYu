@@ -3,6 +3,7 @@ import type { ChildProcess } from 'node:child_process'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createBackendChild, spawnBackend } from '../src/backend/spawn'
 import type { RuntimeLayout } from '../src/backend/runtime-layout'
+import { runtimeRoot } from '../src/desktop/runtime-paths'
 
 // Module mocks for spawnBackend tests. vi.hoisted lets the factories reference
 // the mock fns despite vi.mock being hoisted above the imports.
@@ -107,6 +108,7 @@ describe('spawnBackend', () => {
     })
 
     expect(result.port).toBe(24056)
+    expect(mockSpawn.mock.calls[0][1]).toContain(`-Dfengyu.runtime.dir=${runtimeRoot()}`)
     expect(onProgress).toHaveBeenCalledOnce()
     expect(onProgress).toHaveBeenCalledWith('port-ready')
   })

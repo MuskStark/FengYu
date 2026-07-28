@@ -13,6 +13,7 @@ import { acquireSingleInstanceLock } from './desktop/single-instance'
 import { createTray } from './desktop/tray'
 import { checkForUpdates } from './updater/auto-updater'
 import { startDevFrontend, type DevFrontendHandle } from './desktop/dev-frontend'
+import { initializeAppearance } from './desktop/appearance'
 
 const logger = initLogger()
 let backendChild: BackendChild | null = null
@@ -84,10 +85,18 @@ function devBackendUrl(): string | null {
 
 async function bootstrap(): Promise<void> {
   registerDialogIpc()
+  const startupStartedAt = Date.now()
+  const theme = initializeAppearance(logger)
+  process.env.FENGYU_THEME = theme
+
+  const reportProgress = (splash: Electron.BrowserWindow | null, stage: Parameters<typeof sendProgress>[1]) => {
+    logger.info(`[desktop] startup ${stage} +${Date.now() - startupStartedAt} ms`)
+    sendProgress(splash, stage)
+  }
 
   // Show the splash immediately — before any backend work — so the user sees
   // feedback during the JVM cold start + Spring context init (the longest gap).
-  const splash = createSplashWindow({ logger })
+  const splash = createSplashWindow({ logger, theme })
 
   const isPackaged = app.isPackaged
 
@@ -100,9 +109,10 @@ async function bootstrap(): Promise<void> {
     const token = process.env.FENGYU_TOKEN ?? ''
     process.env.FENGYU_API_BASE = externalBackend
     process.env.FENGYU_TOKEN = token
-    sendProgress(splash, 'spawning')
+    process.env.FENGYU_SETUP_MODE = ''
+    reportProgress(splash, 'spawning')
     try {
-      await pollHealth({ baseUrl: externalBackend, token, shouldCancel: () => isQuitting, onProgress: (s) => sendProgress(splash, s) })
+      await pollHealth({ baseUrl: externalBackend, token, shouldCancel: () => isQuitting, onProgress: (s) => reportProgress(splash, s) })
     } catch (err) {
       destroySplash(splash)
       dialog.showErrorBox(
@@ -127,14 +137,18 @@ async function bootstrap(): Promise<void> {
       return
     }
 
-    sendProgress(splash, 'loading-ui')
+    reportProgress(splash, 'loading-ui')
     const win = createMainWindow({
       apiBase: externalBackend,
       token,
+      theme,
       onHideToTray: () => logger.info('[desktop] window hidden to tray'),
       isDev: true,
       isQuitting: () => isQuitting,
-      onMainReady: () => destroySplash(splash),
+      onMainReady: () => {
+        logger.info(`[desktop] startup main-ready +${Date.now() - startupStartedAt} ms`)
+        destroySplash(splash)
+      },
     })
     createTray(win, () => {
       /* external backend is owned by the IDE; nothing to kill on quit */
@@ -148,7 +162,7 @@ async function bootstrap(): Promise<void> {
   const token = genToken()
   process.env.FENGYU_TOKEN = token
   process.env.FENGYU_API_BASE = '' // set after we know the port
-  sendProgress(splash, 'spawning')
+  reportProgress(splash, 'spawning')
 
   let started
   try {
@@ -158,7 +172,7 @@ async function bootstrap(): Promise<void> {
       requestedPort: 24056,
       onBackendLine: logger.backendLine,
       shouldCancel: () => isQuitting,
-      onProgress: (s) => sendProgress(splash, s),
+      onProgress: (s) => reportProgress(splash, s),
     })
   } catch (err) {
     destroySplash(splash)
@@ -178,6 +192,7 @@ async function bootstrap(): Promise<void> {
 
   const apiBase = `http://127.0.0.1:${started.port}`
   process.env.FENGYU_API_BASE = apiBase
+  process.env.FENGYU_SETUP_MODE = String(started.setupMode)
   backendChild = started.child
 
   const action = startupAction(started.setupMode, started.port)
@@ -219,7 +234,7 @@ async function bootstrap(): Promise<void> {
           'Backend stopped',
           'The FengYu backend exited unexpectedly. The app cannot continue. ' +
             'Please relaunch Infinia. If the problem persists, check the logs at ' +
-            '<user dir>/.fengyu/logs/.',
+            '<user home>/.fengyu/logs/.',
         )
         app.quit()
       }
@@ -241,14 +256,18 @@ async function bootstrap(): Promise<void> {
     }
   }
 
-  sendProgress(splash, 'loading-ui')
+  reportProgress(splash, 'loading-ui')
   const win = createMainWindow({
     apiBase,
     token,
+    theme,
     onHideToTray: () => logger.info('[desktop] window hidden to tray'),
     isDev: !isPackaged,
     isQuitting: () => isQuitting,
-    onMainReady: () => destroySplash(splash),
+    onMainReady: () => {
+      logger.info(`[desktop] startup main-ready +${Date.now() - startupStartedAt} ms`)
+      destroySplash(splash)
+    },
   })
 
   createTray(win, killBackend)

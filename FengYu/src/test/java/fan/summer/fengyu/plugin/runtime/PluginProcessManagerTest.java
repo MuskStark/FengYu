@@ -73,11 +73,27 @@ class PluginProcessManagerTest {
 
     @Test
     void preservesRpcErrorMessage() throws Exception {
+        Logger logger = (Logger) LoggerFactory.getLogger(PluginProcessManager.class);
+        Level previousLevel = logger.getLevel();
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        logger.setLevel(Level.DEBUG);
         PluginProcessManager manager = manager();
-        var error = assertThrows(IllegalArgumentException.class,
-            () -> manager.invoke("com.example.worker", "error", Map.of()));
-        assertTrue(error.getMessage().contains("bad workbook"));
-        manager.close();
+        try {
+            var error = assertThrows(IllegalArgumentException.class,
+                () -> manager.invoke("com.example.worker", "error", Map.of()));
+            assertTrue(error.getMessage().contains("bad workbook"));
+            String logs = appender.list.stream().map(ILoggingEvent::getFormattedMessage)
+                .reduce("", (left, right) -> left + "\n" + right);
+            assertFalse(logs.contains("bad workbook"), "worker error payload leaked into host log: " + logs);
+            assertTrue(logs.contains("IllegalArgumentException"));
+        } finally {
+            manager.close();
+            logger.detachAppender(appender);
+            logger.setLevel(previousLevel);
+            appender.stop();
+        }
     }
 
     @Test

@@ -1,9 +1,11 @@
-import { BrowserWindow, session, shell } from 'electron'
+import { BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
+import type { DesktopTheme } from '../desktop/appearance'
 
 export interface CreateWindowOptions {
   apiBase: string
   token: string
+  theme?: DesktopTheme
   /** Called when the user clicks the close button (we hide-to-tray instead of closing). */
   onHideToTray: () => void
   isDev: boolean
@@ -25,6 +27,58 @@ export interface CreateWindowOptions {
   onMainReady?: () => void
 }
 
+function backendOrigins(apiBase: string): string[] {
+  if (!apiBase) return []
+  try {
+    const url = new URL(apiBase)
+    const origins = new Set([url.origin])
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') {
+      const alternate = new URL(url.origin)
+      alternate.hostname = url.hostname === '127.0.0.1' ? 'localhost' : '127.0.0.1'
+      origins.add(alternate.origin)
+    }
+    return [...origins]
+  } catch {
+    return []
+  }
+}
+
+export function contentSecurityPolicy(opts: Pick<CreateWindowOptions, 'apiBase' | 'isDev'>): string {
+  const backends = backendOrigins(opts.apiBase)
+  const devHttp = opts.isDev ? ['http://127.0.0.1:5173'] : []
+  const devWs = opts.isDev ? ['ws://127.0.0.1:5173'] : []
+  const script = opts.isDev
+    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+    : "script-src 'self' 'unsafe-inline'"
+  const sources = (values: string[]) => values.join(' ')
+  return [
+    "default-src 'self'",
+    script,
+    `style-src 'self' 'unsafe-inline' ${sources([...devHttp, ...backends])}`.trim(),
+    `font-src 'self' data: ${sources([...devHttp, ...backends])}`.trim(),
+    `img-src 'self' data: blob: ${sources([...devHttp, ...backends])}`.trim(),
+    `frame-src 'self' ${sources(backends)}`.trim(),
+    `child-src 'self' ${sources(backends)}`.trim(),
+    `connect-src 'self' ${sources([...devHttp, ...devWs, ...backends])}`.trim(),
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+  ].join('; ')
+}
+
+function isAllowedNavigation(currentValue: string, targetValue: string): boolean {
+  try {
+    const current = new URL(currentValue)
+    const target = new URL(targetValue)
+    if (current.protocol === 'file:') {
+      return target.protocol === 'file:' && target.pathname === current.pathname
+    }
+    return target.origin === current.origin
+  } catch {
+    return false
+  }
+}
+
 /**
  * Create the main BrowserWindow. 1280×820, min 960×640, matches the previous Rust window.
  * contextIsolation + sandbox on; nodeIntegration off — standard secure posture.
@@ -35,41 +89,7 @@ export interface CreateWindowOptions {
  * kept on the signature for clarity (and for future main-process consumers).
  */
 export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
-  void opts.apiBase
   void opts.token
-
-  // In dev the SPA is served by Vite over http(s) and lazy-loads modules/fonts/styles on demand.
-  // Without an explicit CSP, Electron applies its default `default-src 'self'`, which blocks the
-  // MDI font (@mdi/font) and Vite's HMR/inlined assets, spamming the console with font-violation
-  // errors and breaking icon rendering. Set a dev CSP that allows the Vite origin + data: URIs +
-  // ws (HMR). Packaged builds serve the SPA from the app bundle (same origin) and keep the strict
-  // default — this override is dev-only.
-  if (opts.isDev) {
-    const csp = [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // Vite dev needs eval for HMR/transform
-      "style-src 'self' 'unsafe-inline' http://127.0.0.1:5173 http://127.0.0.1:24056 http://localhost:24056",
-      "font-src 'self' data: http://127.0.0.1:5173 http://127.0.0.1:24056 http://localhost:24056",
-      "img-src 'self' data: blob: http://127.0.0.1:5173 http://127.0.0.1:24056 http://localhost:24056",
-      // Plugin micro-frontend UIs are served by the backend and iframed by the host. pluginAssetUrl
-      // swaps the hostname (127.0.0.1 ↔ localhost) for origin isolation, so frame-src must allow BOTH
-      // loopback hostnames on the backend port. child-src covers older browsers; both needed.
-      "frame-src 'self' http://127.0.0.1:24056 http://localhost:24056",
-      "child-src 'self' http://127.0.0.1:24056 http://localhost:24056",
-      "connect-src 'self' http://127.0.0.1:5173 http://127.0.0.1:24056 http://localhost:24056 ws://127.0.0.1:5173 http://127.0.0.1:* ws://127.0.0.1:*",
-      "worker-src 'self' blob:",
-      "object-src 'none'",
-      "base-uri 'self'",
-    ].join('; ')
-    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-      callback({
-        responseHeaders: {
-          ...details.responseHeaders,
-          'Content-Security-Policy': [csp],
-        },
-      })
-    })
-  }
 
   const win = new BrowserWindow({
     title: 'FengYu',
@@ -83,7 +103,7 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
     // native window backing never leaks a lighter strip along the right edge
     // where the renderer fails to cover the last sub-pixel.
     show: false,
-    backgroundColor: '#0d0d0d',
+    backgroundColor: opts.theme === 'light' ? '#ffffff' : '#0d0d0d',
     resizable: true,
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
@@ -91,6 +111,22 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
       nodeIntegration: false,
       sandbox: true,
     },
+  })
+
+  const csp = contentSecurityPolicy(opts)
+  win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    // Only replace the shell document's policy. Plugin iframe documents carry their own,
+    // stricter CSP from PluginRuntimeController and must not inherit the host's connect/frame rules.
+    if (details.resourceType !== 'mainFrame') {
+      callback({ responseHeaders: details.responseHeaders })
+      return
+    }
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [csp],
+      },
+    })
   })
 
   // Navigation guard: deny all window.open; delegate http(s) to the system browser.
@@ -104,7 +140,7 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
   })
   // Block in-page navigation to a different origin (defense against iframe/top-level redirects).
   win.webContents.on('will-navigate', (e, url) => {
-    if (url !== win.webContents.getURL()) e.preventDefault()
+    if (!isAllowedNavigation(win.webContents.getURL(), url)) e.preventDefault()
   })
 
   // Hide-to-tray instead of closing — UNLESS the app is genuinely quitting.
@@ -129,7 +165,7 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
     // Auto-open DevTools in dev so runtime/console errors are visible without a keyboard shortcut.
     // Playwright sets NODE_ENV=test; suppressing the detached DevTools window
     // there keeps ElectronApplication window selection deterministic.
-    if (process.env.NODE_ENV !== 'test') {
+    if (process.env.FENGYU_DEVTOOLS === '1' && process.env.NODE_ENV !== 'test') {
       win.webContents.openDevTools({ mode: 'detach' })
     }
   } else {

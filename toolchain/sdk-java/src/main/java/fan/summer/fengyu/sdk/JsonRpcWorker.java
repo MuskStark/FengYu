@@ -82,28 +82,17 @@ public final class JsonRpcWorker {
                 if (e.requestId() != null) response.put("id", e.requestId());
                 response.put("error", Map.of("code", e.code(), "message", e.getMessage()));
             } catch (Exception e) {
-                // Surface the failure so plugin failures stay diagnosable, but log only the method,
-                // request id, exception type, and the (sanitized) exception message — never the raw
-                // frame, which carries the full params JSON. The exception message is the handler
-                // author's own diagnostic (rarely a raw caller secret); collapsing its whitespace
-                // stops a multi-line value from slipping past a single-line log filter. The stack
-                // trace is attached so the cause is not lost. This reaches stderr via the slf4j-simple
-                // binding and the host's plugin-stderr drain.
+                // Log only call identity and exception type. Handler exception messages and stack
+                // traces may embed caller params (passwords, mail bodies, paths), and stderr is
+                // forwarded into the host log surface.
                 log.warn("Plugin worker dispatch failed for method={} id={}: {}",
                     method, requestId, e.getClass().getSimpleName());
-                log.warn("Plugin worker dispatch failure detail for method={} id={}: {}",
-                    method, requestId, sanitizeMessage(e.getMessage()), e);
+                // Preserve the handler diagnostic for the direct caller. The host must not copy
+                // this untrusted message into shared logs; PluginProcessManager logs only its type.
                 response.put("error", Map.of("code", -32000, "message", String.valueOf(e.getMessage())));
             }
             transport.writeFrame(json.toJson(response));
         }
-    }
-
-    /** Collapse newlines/tabs in an exception message to single spaces so a multi-line secret or
-     *  stack fragment can't slip past a single-line log filter. Returns {@code "<no message>"} for null. */
-    private static String sanitizeMessage(String message) {
-        if (message == null) return "<no message>";
-        return message.replaceAll("\\s+", " ");
     }
 
     public static String string(Map<String, Object> params, String key) {

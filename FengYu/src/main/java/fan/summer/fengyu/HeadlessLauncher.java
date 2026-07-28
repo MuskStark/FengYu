@@ -2,6 +2,7 @@ package fan.summer.fengyu;
 
 import fan.summer.fengyu.api.log.LoggerBinder;
 import fan.summer.fengyu.log.Slf4jPluginLoggerBinder;
+import fan.summer.fengyu.runtime.RuntimePaths;
 import fan.summer.fengyu.setup.DataSourceConfig;
 import fan.summer.fengyu.setup.DataSourceConfigService;
 import fan.summer.fengyu.setup.SetupApplication;
@@ -19,14 +20,14 @@ import java.util.Map;
 /**
  * Phase 4 headless entry point. Boots FengYu as a loopback Spring Boot web server in one of
  * two modes, determined by the presence AND reachability of
- * {@code ~/.fengyu/config/datasource.properties}:
+ * {@code ~/.fengyu/config/datasource.properties} (or {@code fengyu.runtime.dir}):
  *
  * <ul>
  *   <li><b>SETUP mode</b> (config missing, or config present but the DB is unreachable): boots
  *       {@link SetupApplication} — a minimal context with only the setup wizard endpoints. No
  *       DataSource/JPA. When the DB was unreachable, the stale config is backed up to
  *       {@code .bak} first so the wizard can reappear. After the wizard completes, the process
- *       exits with {@link ExitCodes#SETUP_DONE} so the Tauri supervisor restarts into APP mode.</li>
+ *       exits with {@link ExitCodes#SETUP_DONE} so the desktop supervisor restarts into APP mode.</li>
  *   <li><b>APP mode</b> (config present and DB reachable): boots {@link FengYuApplication} with
  *       {@code fengyu.mode=app} — the full context with JPA, AI, plugins.</li>
  * </ul>
@@ -43,11 +44,13 @@ public final class HeadlessLauncher {
     /** Fixed loopback port the backend binds by default. Overridable via {@code --port=<n>}. */
     public static final String DEFAULT_PORT = "24056";
 
+    static {
+        primeRuntimeDirectories(RuntimePaths.root());
+    }
+
     private HeadlessLauncher() {}
 
     public static void main(String[] args) {
-        primeLogDirectory();
-
         String port = DEFAULT_PORT;
         String token = "";
         for (String a : args) {
@@ -144,22 +147,31 @@ public final class HeadlessLauncher {
      * DOES package {@code application.yml} (it sets {@code server.address=127.0.0.1} and the
      * 128 MB multipart limits), but these loopback/limits invariants are important enough to
      * also pin here, so a future change to application.yml alone cannot silently restore the
-     * Spring Boot defaults (wildcard bind address, 1 MB multipart limit).
+     * Spring Boot defaults (wildcard bind address, 1 MB multipart limit). Writable plugin, skill,
+     * and transient runtime directories are derived from the same stable runtime root.
      */
     static Map<String, Object> runtimeDefaults() {
+        return runtimeDefaults(RuntimePaths.root());
+    }
+
+    static Map<String, Object> runtimeDefaults(Path root) {
         return Map.of(
                 "server.address", "127.0.0.1",
                 "spring.servlet.multipart.max-file-size", "128MB",
-                "spring.servlet.multipart.max-request-size", "128MB");
+                "spring.servlet.multipart.max-request-size", "128MB",
+                "fengyu.plugins.directory", RuntimePaths.pluginDirectory(root).toString(),
+                "fengyu.plugins.data-directory", RuntimePaths.pluginDataDirectory(root).toString(),
+                "fengyu.skills.directory", RuntimePaths.skillDirectory(root).toString(),
+                "fengyu.runtime-files.directory", RuntimePaths.runtimeFilesDirectory(root).toString());
     }
 
-    private static void primeLogDirectory() {
-        if (System.getProperty("fengyu.log.dir") != null) return;
-        Path logDir = Path.of(System.getProperty("user.dir"), ".fengyu", "logs");
+    private static void primeRuntimeDirectories(Path root) {
+        System.setProperty(RuntimePaths.ROOT_PROPERTY, root.toString());
+        Path logDir = RuntimePaths.logDirectory(root);
         try {
             Files.createDirectories(logDir);
         } catch (Exception ignored) {
         }
-        System.setProperty("fengyu.log.dir", logDir.toAbsolutePath().toString());
+        System.setProperty("fengyu.log.dir", logDir.toString());
     }
 }

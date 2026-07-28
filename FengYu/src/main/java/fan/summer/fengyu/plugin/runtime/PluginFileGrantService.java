@@ -1,6 +1,9 @@
 package fan.summer.fengyu.plugin.runtime;
 
+import fan.summer.fengyu.runtime.RuntimePaths;
 import jakarta.annotation.PreDestroy;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -21,7 +24,14 @@ public class PluginFileGrantService {
     private final Map<String, Grant> grants = new ConcurrentHashMap<>();
 
     public PluginFileGrantService() {
-        this(Path.of(System.getProperty("java.io.tmpdir"), "fengyu", "runtime-files"));
+        this("");
+    }
+
+    @Autowired
+    public PluginFileGrantService(@Value("${fengyu.runtime-files.directory:}") String directory) {
+        this(directory == null || directory.isBlank()
+                ? RuntimePaths.runtimeFilesDirectory(RuntimePaths.root())
+                : Path.of(directory));
     }
 
     PluginFileGrantService(Path root) {

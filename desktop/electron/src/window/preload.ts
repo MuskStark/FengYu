@@ -17,10 +17,19 @@ import { contextBridge, ipcRenderer } from 'electron'
  */
 const apiBase = process.env.FENGYU_API_BASE ?? ''
 const token = process.env.FENGYU_TOKEN ?? ''
+const initialTheme = process.env.FENGYU_THEME === 'light' ? 'light' : 'dark'
+const setupMode = process.env.FENGYU_SETUP_MODE === 'true'
+  ? true
+  : process.env.FENGYU_SETUP_MODE === 'false'
+    ? false
+    : null
 
 contextBridge.exposeInMainWorld('fengyu', {
   apiBase: () => apiBase,
   token: () => token,
+  initialTheme: () => initialTheme,
+  setupMode: () => setupMode,
+  setTheme: (theme: 'dark' | 'light') => ipcRenderer.send('appearance:set-theme', theme),
   desktop: true,
   pickFile: (filters?: { name: string; extensions: string[] }[]) =>
     ipcRenderer.invoke('dialog:open', { directory: false, filters }),

@@ -1,6 +1,7 @@
 package fan.summer.fengyu.plugin.runtime;
 
 import fan.summer.fengyu.plugin.market.PluginManifest;
+import fan.summer.fengyu.runtime.RuntimePaths;
 import fan.summer.fengyu.sdk.PluginEnvironment;
 import fan.summer.fengyu.setup.DataSourceConfig;
 import fan.summer.fengyu.setup.DataSourceConfigService;
@@ -20,9 +21,11 @@ public class PluginRuntimeEnvironmentService {
     private final Path dataRoot;
 
     public PluginRuntimeEnvironmentService(DataSourceConfigService dataSources,
-            @Value("${fengyu.plugins.data-directory:${user.home}/.fengyu/plugin-data}") String dataRoot) {
+            @Value("${fengyu.plugins.data-directory:}") String dataRoot) {
         this.dataSources = dataSources;
-        this.dataRoot = Path.of(dataRoot).toAbsolutePath().normalize();
+        this.dataRoot = dataRoot == null || dataRoot.isBlank()
+                ? RuntimePaths.pluginDataDirectory(RuntimePaths.root())
+                : Path.of(dataRoot).toAbsolutePath().normalize();
     }
 
     public Map<String, String> environmentFor(PluginManifest manifest) {
