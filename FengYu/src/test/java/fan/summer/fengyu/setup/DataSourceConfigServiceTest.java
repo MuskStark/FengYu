@@ -173,4 +173,36 @@ class DataSourceConfigServiceTest {
         DataSourceConfig cfg = svc.buildFromWizard(DbType.H2, params);
         assertEquals(svc.defaultEmbeddedPath().toString().replace("\\", "/"), cfg.filePath());
     }
+
+    @Test
+    void encryptedPasswordUsesMachineIdBesideDatasourceConfig() {
+        DataSourceConfigService svc = newService();
+        WizardParams params = new WizardParams(
+                null, "db.example.com", 3306, "fengyu", "admin", "secret");
+
+        svc.save(svc.buildFromWizard(DbType.MYSQL, params));
+
+        assertTrue(Files.isRegularFile(tempDir.resolve("config/.machineid")));
+        assertEquals("secret", svc.load().password());
+    }
+
+    @Test
+    void loadMigratesLegacyWorkingDirectoryConfigWithItsEncryptionKey() {
+        Path legacyRoot = tempDir.resolve("legacy");
+        Path stableRoot = tempDir.resolve("stable");
+        DataSourceConfigService legacy = new DataSourceConfigService(legacyRoot.toString());
+        WizardParams params = new WizardParams(
+                null, "db.example.com", 3306, "fengyu", "admin", "secret");
+        legacy.save(legacy.buildFromWizard(DbType.MYSQL, params));
+
+        DataSourceConfigService stable = new DataSourceConfigService(stableRoot, legacyRoot);
+        DataSourceConfig migrated = stable.load();
+
+        assertNotNull(migrated);
+        assertEquals("secret", migrated.password());
+        assertTrue(Files.isRegularFile(stableRoot.resolve("config/datasource.properties")));
+        assertTrue(Files.isRegularFile(stableRoot.resolve("config/.machineid")));
+        assertTrue(Files.isRegularFile(legacyRoot.resolve("config/datasource.properties")),
+                "legacy copy remains recoverable");
+    }
 }

@@ -2,6 +2,7 @@ import { BrowserWindow, app } from 'electron'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { pickLocale, type SplashStage } from './splash-i18n'
+import type { DesktopTheme } from '../desktop/appearance'
 
 interface Logger {
   info: (message: string) => void
@@ -9,6 +10,7 @@ interface Logger {
 
 interface CreateSplashOptions {
   logger?: Logger
+  theme?: DesktopTheme
 }
 
 /**
@@ -37,11 +39,13 @@ function resolveSplashHtml(): string {
 export function createSplashWindow(opts: CreateSplashOptions = {}): BrowserWindow | null {
   try {
     const isLinux = process.platform === 'linux'
+    const theme = opts.theme ?? 'dark'
     const splash = new BrowserWindow({
       width: 480,
       height: 320,
       frame: false,
       transparent: !isLinux,
+      hasShadow: false,
       resizable: false,
       maximizable: false,
       minimizable: false,
@@ -50,7 +54,7 @@ export function createSplashWindow(opts: CreateSplashOptions = {}): BrowserWindo
       show: false,
       center: true,
       focusable: false,
-      backgroundColor: isLinux ? '#0d0d0d' : undefined,
+      backgroundColor: isLinux ? (theme === 'light' ? '#f7f7f7' : '#0d0d0d') : undefined,
       webPreferences: {
         preload: join(__dirname, 'splash-preload.js'),
         contextIsolation: true,
@@ -61,7 +65,7 @@ export function createSplashWindow(opts: CreateSplashOptions = {}): BrowserWindo
 
     const locale = pickLocale(app.getLocale())
     const splashFile = resolveSplashHtml()
-    void splash.loadFile(splashFile, { query: { lang: locale } })
+    void splash.loadFile(splashFile, { query: { lang: locale, theme } })
 
     splash.once('ready-to-show', () => {
       if (!splash.isDestroyed()) splash.show()

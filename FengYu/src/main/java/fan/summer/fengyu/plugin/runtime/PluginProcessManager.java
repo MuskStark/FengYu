@@ -111,8 +111,12 @@ public class PluginProcessManager {
             return result;
         } catch (RuntimeException e) {
             long elapsedMs = (System.nanoTime() - startedNanos) / 1_000_000;
-            log.warn("Plugin {} <- {} failed after {} ms: {}", pluginId, method, elapsedMs, e.getMessage());
-            logStore.append(pluginId, "WARN", method + " failed: " + e.getMessage());
+            // Worker error messages are untrusted and may echo request values such as passwords,
+            // mail bodies, or filesystem paths. Preserve the exception for the direct API caller,
+            // but keep shared console/file/SSE logs limited to the failure type.
+            String failureType = e.getClass().getSimpleName();
+            log.warn("Plugin {} <- {} failed after {} ms ({})", pluginId, method, elapsedMs, failureType);
+            logStore.append(pluginId, "WARN", method + " failed (" + failureType + ")");
             // Only unrecoverable worker state (EOF / IO / timeout / interrupted) tears down the
             // worker. Business errors (IllegalArgumentException, e.g. "plugin is disabled") leave
             // the worker intact for the next call. failAll() drains every pending caller so the

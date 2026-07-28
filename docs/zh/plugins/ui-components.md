@@ -48,6 +48,10 @@ import {
 | `FyConfirmDialog` | v-model 对话框，支持 `destructive` 样式；发出 `confirm` / `cancel`。 |
 | `FyEmptyState` / `FyLoadingState` / `FyErrorState` / `FyPermissionNotice` | 标准化的空/加载中/错误/权限不足面板，含 `title`、`message`、`icon`。`FyErrorState` 发出 `retry`。 |
 
+### 图标契约
+
+Vuetify 图标属性接受 `mdi-home-outline` 这类常规 `mdi-*` 名称。UI 包携带 MDI 字体依赖，并由插件的 Vite 应用把字体输出为同源哈希资源，因此脚手架生成的插件不需要自定义字体 import 或 Vite 补丁。接受图标路径数据的组件也支持从 `@mdi/js` 导入、可 tree-shake 的 SVG path；这类路径通过 `FyIcon` 渲染。
+
 通知组合式 `useFengYuNotify(client)` 与 `sendFengYuNotification(client, message)` 也已导出，供非组件场景使用。
 
 ## 示例：文件选择器

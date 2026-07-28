@@ -33,6 +33,10 @@ import java.util.function.Consumer;
 @RestController
 public class PluginRuntimeController {
     private static final Logger log = LoggerFactory.getLogger(PluginRuntimeController.class);
+    static final String PLUGIN_CONTENT_SECURITY_POLICY =
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            + "img-src 'self' data:; font-src 'self' data:; connect-src 'none'; "
+            + "object-src 'none'; base-uri 'none'";
 
     private final PluginPackageService packages;
     private final PluginProcessManager processes;
@@ -135,7 +139,7 @@ public class PluginRuntimeController {
         return ResponseEntity.ok()
             .contentType(contentType(path.getFileName().toString()))
             .header("Access-Control-Allow-Origin", "*")
-            .header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'")
+            .header("Content-Security-Policy", PLUGIN_CONTENT_SECURITY_POLICY)
             .header("X-Content-Type-Options", "nosniff")
             .body(new FileSystemResource(path));
     }

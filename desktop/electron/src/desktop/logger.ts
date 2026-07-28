@@ -1,7 +1,7 @@
 import log from 'electron-log'
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
+import { runtimeRoot } from './runtime-paths'
 
 /**
  * Configure electron-log to write the desktop log alongside the backend logs
@@ -17,7 +17,8 @@ import { homedir } from 'node:os'
  * the dedicated backend-stdout.log path.
  */
 export function initLogger() {
-  const logDir = join(homedir(), '.fengyu', 'logs')
+  const logDir = join(runtimeRoot(), 'logs')
+  mkdirSync(logDir, { recursive: true })
   const desktopLogPath = join(logDir, 'desktop.log')
   const backendStdoutPath = join(logDir, 'backend-stdout.log')
   log.transports.file.resolvePathFn = () => desktopLogPath

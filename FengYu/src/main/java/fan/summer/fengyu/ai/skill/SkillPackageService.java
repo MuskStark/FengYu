@@ -2,6 +2,7 @@ package fan.summer.fengyu.ai.skill;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import fan.summer.fengyu.runtime.RuntimePaths;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -51,9 +52,11 @@ public class SkillPackageService {
     private final HttpClient http;
 
     public SkillPackageService(
-            @Value("${fengyu.skills.directory:${user.home}/.fengyu/skills}") String directory) {
+            @Value("${fengyu.skills.directory:}") String directory) {
         this.json = JsonMapper.builder().findAndAddModules().build();
-        this.root = Path.of(directory).toAbsolutePath().normalize();
+        this.root = directory == null || directory.isBlank()
+                ? RuntimePaths.skillDirectory(RuntimePaths.root())
+                : Path.of(directory).toAbsolutePath().normalize();
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
     }
 

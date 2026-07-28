@@ -4,10 +4,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { detectProject } from './project.mjs'
 import { runCommand, resolveCommand, spawnSpec } from './commands.mjs'
-import { validate, validateRuntimeTree, readManifest, validateProjectManifest } from './manifest.mjs'
+import { validateRuntimeTree, readManifest, validatePluginArchive } from './manifest.mjs'
 import { writeZip } from './zip.mjs'
 import { assembleStaging } from './staging.mjs'
-import { inspectArchive } from './archive.mjs'
 import { createHash } from 'node:crypto'
 
 /**
@@ -123,7 +122,8 @@ async function atomicPackage(project, output, hooks) {
 
     // Write the archive to a temp sibling, validate it, then atomically rename.
     const result = await writeZip(staging, tmp)
-    await inspectArchive(tmp)
+    const archiveValidation = await validatePluginArchive(tmp)
+    if (archiveValidation.errors.length) throw new Error(archiveValidation.errors.join('\n'))
     await fs.rename(tmp, output)
     // Emit a SHA256 sidecar so official-package installs can verify integrity. Format matches
     // GNU coreutils `sha256sum -c`: `<hex>  <basename>`. Opt-in verification lives in the host's

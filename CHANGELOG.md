@@ -4,7 +4,33 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ---
 
-## [Unreleased]
+## [4.0.0-alpha.4] — 2026-07-28
+
+### 🐛 Fixed
+- **Plugin UI icons now render reliably in sandboxed third-party plugins.** The host CSP explicitly
+  permits same-origin and bundled `data:` fonts for compatibility with existing `.fyp` packages,
+  while `@infinia/plugin-ui` leaves its MDI stylesheet to the consuming Vite app so new builds emit
+  ordinary hashed font assets instead of embedding multi-megabyte fonts in the library CSS.
+
+### ♻️ Changed
+- **Windows desktop releases ship an extract-and-run ZIP instead of a self-extracting portable
+  `.exe`.** Both the lite and JRE variants keep the NSIS installer (`*-win-x64-setup.exe`) and now
+  publish `*-win-x64-portable.zip` (extract once, then run `Infinia.exe`); the startup-time
+  self-extraction of the old portable executable is gone. Artifact names were unified to
+  `<product>-<version>-<platform>-<arch>[<form>].<ext>` across macOS / Windows / Linux
+  (`Infinia-4.0.0-mac-arm64.dmg`, `Infinia-4.0.0-win-x64-setup.exe`, …), and the release workflow +
+  its contract test were updated to match.
+- **Desktop startup no longer flashes and no longer requires a live backend to pick a route.** The
+  shell shows a splash window while it probes the backend, exposes the pre-probed setup state and the
+  chosen theme to the renderer via `window.fengyu.setupMode()` / `initialTheme()` / `setTheme()`, and
+  the router consumes that snapshot on first navigation before falling back to live checks.
+
+### 🔧 Internal
+- **Backend runtime directories are centralized.** Plugin, skill, plugin-data, and transient-file
+  directories are now derived from one stable root via the new `RuntimePaths` and overridable through
+  `fengyu.runtime.dir` (default `~/.fengyu`), replacing scattered `System.getProperty("user.dir")`
+  paths. `CryptoUtil` derives the `.machineid` from the same root. This makes the packaged Electron
+  shell and the portable Web distribution agree on where state lives.
 
 ---
 

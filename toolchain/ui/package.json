@@ -22,6 +22,7 @@
   ],
   "scripts": {
     "build": "vite build && vue-tsc -p tsconfig.build.json --declaration --emitDeclarationOnly --outDir dist",
+    "postbuild": "node --test test/build-output.test.mjs",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
     "dev:e2e": "vite --config vite.e2e.config.ts",
@@ -33,6 +34,9 @@
   "overrides": {
     "brace-expansion": "5.0.8"
   },
+  "dependencies": {
+    "@mdi/font": "^7.4.47"
+  },
   "peerDependencies": {
     "@infinia/plugin-sdk": "^1.0.0",
     "vue": "^3.5.0",
@@ -41,7 +45,6 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
     "@infinia/plugin-sdk": "file:../sdk-ts",
-    "@mdi/font": "^7.4.47",
     "@mdi/js": "^7.4.47",
     "@playwright/test": "^1.51.0",
     "@types/node": "^24.3.0",

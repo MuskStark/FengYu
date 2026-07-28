@@ -1,0 +1,58 @@
+import { app, ipcMain, nativeTheme } from 'electron'
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+
+export type DesktopTheme = 'dark' | 'light'
+
+interface Logger {
+  info: (message: string) => void
+}
+
+function isDesktopTheme(value: unknown): value is DesktopTheme {
+  return value === 'dark' || value === 'light'
+}
+
+export function appearanceFile(userDataDir: string): string {
+  return join(userDataDir, 'appearance.json')
+}
+
+/** Read the last backend-confirmed theme without delaying desktop startup. */
+export function readCachedTheme(userDataDir: string): DesktopTheme {
+  try {
+    const parsed = JSON.parse(readFileSync(appearanceFile(userDataDir), 'utf8')) as { theme?: unknown }
+    return isDesktopTheme(parsed.theme) ? parsed.theme : 'dark'
+  } catch {
+    return 'dark'
+  }
+}
+
+/** Persist atomically so an interrupted write cannot leave a corrupt startup preference. */
+export function writeCachedTheme(userDataDir: string, theme: DesktopTheme): void {
+  const target = appearanceFile(userDataDir)
+  const temporary = `${target}.tmp`
+  mkdirSync(dirname(target), { recursive: true })
+  writeFileSync(temporary, JSON.stringify({ theme }) + '\n', 'utf8')
+  renameSync(temporary, target)
+}
+
+/**
+ * Apply the cached theme to native Electron surfaces and accept later updates from the SPA.
+ * The backend remains authoritative; this cache only bridges the period before it is available.
+ */
+export function initializeAppearance(logger?: Logger): DesktopTheme {
+  const userDataDir = app.getPath('userData')
+  const initialTheme = readCachedTheme(userDataDir)
+  nativeTheme.themeSource = initialTheme
+
+  ipcMain.on('appearance:set-theme', (_event, value: unknown) => {
+    if (!isDesktopTheme(value)) return
+    nativeTheme.themeSource = value
+    try {
+      writeCachedTheme(userDataDir, value)
+    } catch (err) {
+      logger?.info(`[desktop] could not persist appearance: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  })
+
+  return initialTheme
+}
