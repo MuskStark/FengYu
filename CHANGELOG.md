@@ -149,6 +149,20 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   `npm overrides` in `toolchain/ui` to clear 6 high-severity audit findings on
   `@vue/test-utils → js-beautify → … → brace-expansion@2.1.2` (no upstream fix exists on the
   2.x line).
+- **Splash screen — shipped in the JRE build variant.** `electron-builder.jre.yml` had not been
+  synced with the lite config when `resources/splash.html` was added to the desktop asar, so the
+  self-contained JRE build (the flagship download) silently never showed a splash. The file list
+  now matches `electron-builder.yml`, and both configs include `resources/splash.html`.
+- **AI planner timeout no longer wedges the backend.** When a planning call exceeded its 180s
+  budget (e.g. a hung Ollama process or a stalled provider connection),
+  `ChatBackendPlanGenerator` gave up but the underlying stream kept blocking on `blockLast()` with
+  no way to interrupt it. Both `OllamaLocalBackend` and `SpringAiCloudBackend` now hold the Reactor
+  `Disposable` and await a `CountDownLatch` instead of `blockLast()`, so `cancelGeneration()` can
+  `dispose()` the stream mid-flight and release the worker. The planner calls
+  `cancelGeneration()` on any timeout/failure path, guaranteeing the `generating` flag is cleared
+  and every subsequent `chat` / planning request no longer fails with
+  *"Generation already in progress"*. Covered by a new regression test
+  (`ChatBackendPlanGeneratorTest`).
 
 ### ♻️ Changed
 - **CLI scope narrowed to `create` + `build`.** `fengyu plugin dev` moved to the IDE

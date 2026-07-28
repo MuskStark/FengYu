@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs'
 
 const workflow = readFileSync(new URL('../.github/workflows/fengyu-release.yml', import.meta.url), 'utf8')
 const builderConfig = readFileSync(new URL('../desktop/electron/electron-builder.yml', import.meta.url), 'utf8')
+const rootPom = readFileSync(new URL('../pom.xml', import.meta.url), 'utf8')
+const mavenConfig = readFileSync(new URL('../.mvn/maven.config', import.meta.url), 'utf8')
 const desktopJob = workflow.slice(
   workflow.indexOf('\n  desktop:'),
   workflow.indexOf('\n  release:'),
@@ -30,6 +32,12 @@ test('installs toolchain/cli dependencies before building plugins', () => {
 test('builds Maven artifacts with the full release version', () => {
   assert.match(workflow, /\.\/mvnw -am test package -Drevision="\$VERSION"/)
   assert.doesNotMatch(workflow, /\.\/mvnw -am test package -Drevision="\$APP_VERSION"/)
+})
+
+test('Maven wrapper default revision matches the application version', () => {
+  const appVersion = rootPom.match(/<revision>([^<]+)<\/revision>/)?.[1]
+  assert.ok(appVersion, 'root pom.xml must declare the application revision')
+  assert.match(mavenConfig, new RegExp(`^-Drevision=${appVersion}$`, 'm'))
 })
 
 test('electron-builder targets NSIS + portable on Windows, DMG arm64 on macOS, AppImage + deb on Linux', () => {

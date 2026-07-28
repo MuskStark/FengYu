@@ -24,6 +24,7 @@ directories:
 files:
   - dist/**/*
   - frontend-dist/**/*
+  - resources/splash.html
   - resources/icon.png
   - resources/icon.ico
   - resources/icon-32.png

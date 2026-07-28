@@ -31,8 +31,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+
+import reactor.core.Disposable;
 
 /**
  * Cloud-mode {@link ChatBackend} backed by Spring AI's {@code OpenAiChatModel} /
@@ -77,6 +80,16 @@ public final class SpringAiCloudBackend implements ChatBackend {
      */
     private final ToolCallingChatOptions baseOptions;
     private final AtomicBoolean generating = new AtomicBoolean(false);
+
+    /**
+     * The active Spring AI stream subscription for the in-progress generation, plus a latch
+     * the worker virtual thread awaits. {@link #cancelGeneration()} disposes the subscription,
+     * which terminates the stream and releases the latch so the worker can exit and clear
+     * {@link #generating}. Without this a hung upstream (e.g. provider connection stalled)
+     * would leave generating=true forever, wedging all subsequent requests.
+     */
+    private volatile Disposable activeStream;
+    private volatile CountDownLatch streamDone;
 
     /** Cached ChatClient built from {@link #chatModel} (built lazily; null when model is null). */
     private volatile ChatClient chatClient;
@@ -251,13 +264,31 @@ public final class SpringAiCloudBackend implements ChatBackend {
                 log.error("{} chat failed", provider, e);
                 callback.onError(e);
             } finally {
+                disposeActiveStream();
                 generating.set(false);
             }
         });
     }
 
     @Override public void cancelGeneration() {
-        log.debug("cancelGeneration() requested; mid-stream abort not wired in Phase 1");
+        // Dispose the active stream subscription. This terminates the Reactor Flux upstream,
+        // which releases the worker's streamDone latch so runToolLoop unblocks and the finally
+        // in startChat clears `generating`. Without this a hung upstream (e.g. provider
+        // connection stalled) would leave generating=true forever, wedging all subsequent requests.
+        disposeActiveStream();
+        log.debug("cancelGeneration() requested; active stream disposed");
+    }
+
+    /** Dispose the in-flight stream subscription if any; safe to call when idle. */
+    private void disposeActiveStream() {
+        Disposable d = activeStream;
+        if (d != null && !d.isDisposed()) {
+            d.dispose();
+        }
+        CountDownLatch done = streamDone;
+        if (done != null) {
+            while (done.getCount() > 0) done.countDown();
+        }
     }
 
     // ── Tool loop (Spring AI ToolCallingManager, user-controlled) ──────
@@ -339,10 +370,17 @@ public final class SpringAiCloudBackend implements ChatBackend {
         }
     }
 
-    /** Stream a prompt, fire onToken per token delta, and capture the aggregated response. */
+    /**
+     * Stream a prompt, fire onToken per token delta, capture the aggregated response, and
+     * block the calling (virtual) thread until the stream completes or is cancelled. The
+     * subscription {@link Disposable} is stored in {@link #activeStream} so
+     * {@link #cancelGeneration()} can dispose it mid-stream; {@link #streamDone} is counted
+     * down on terminal signals (complete/error/cancel) to release the await below.
+     */
     private void streamAndCollect(Prompt prompt, StringBuilder accumulated,
                                   AtomicReference<ChatResponse> aggregated, AiStreamCallback callback) {
-        new MessageAggregator().aggregate(
+        streamDone = new CountDownLatch(1);
+        activeStream = new MessageAggregator().aggregate(
                 chatModel.stream(prompt),
                 aggregated::set
         ).doOnNext(resp -> {
@@ -354,7 +392,21 @@ public final class SpringAiCloudBackend implements ChatBackend {
                 accumulated.append(delta);
                 callback.onToken(delta);
             }
-        }).blockLast();   // virtual thread, blocking is fine
+        }).subscribe(
+                // onNext consumer — empty: doOnNext above already handled each element
+                ignored -> { },
+                // onError: stream failed
+                error -> { log.warn("{} stream error", provider, error); streamDone.countDown(); },
+                // onComplete (normal finish): release the await. Dispose/cancel is covered by
+                // the explicit countDown() in disposeActiveStream().
+                streamDone::countDown
+        );
+        try {
+            streamDone.await();   // virtual thread, blocking is fine
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            disposeActiveStream();
+        }
     }
 
     private List<Message> buildSpringAiMessages(List<AiChatMessage> history, String systemPrompt) {
