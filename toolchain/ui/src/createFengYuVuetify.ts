@@ -8,9 +8,9 @@ import type { FengYuClient, Environment } from '@infinia/plugin-sdk'
 import { fengyuCodexDark, fengyuCodexLight } from './theme'
 import { fengyuDefaults } from './defaults'
 
-// Ship the Vuetify base stylesheet and the MDI icon font with the library.
+// Ship Vuetify and FengYu styles; the build appends the external MDI font CSS
+// import to dist/style.css so consuming plugin apps emit same-origin fonts.
 import 'vuetify/styles'
-import '@mdi/font/css/materialdesignicons.css'
 import './styles/codex.css'
 
 export type FengYuVuetifyOptions = { theme?: string; locale?: string }

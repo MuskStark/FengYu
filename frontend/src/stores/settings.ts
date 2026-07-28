@@ -17,6 +17,7 @@ export const useSettingsStore = defineStore('settings', () => {
     theme.value = s.theme
     language.value = s.language
     useThemeStore().setTheme(s.theme)
+    window.fengyu?.setTheme(s.theme)
     // Drive vue-i18n from the host language setting. apply() is the single
     // funnel for both the initial settings load() and every update(), so this
     // covers the initial-load case (reactively, after the fire-and-forget load

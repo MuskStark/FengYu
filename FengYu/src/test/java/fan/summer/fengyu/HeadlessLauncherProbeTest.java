@@ -81,6 +81,17 @@ class HeadlessLauncherProbeTest {
                 "reachable config must NOT be backed up / deleted");
     }
 
+    @Test
+    void runtimeDefaultsKeepAllWritableStateUnderConfiguredRoot() {
+        Path root = tempDir.resolve("runtime").toAbsolutePath().normalize();
+        Map<String, Object> defaults = HeadlessLauncher.runtimeDefaults(root);
+
+        assertEquals(root.resolve("plugins").toString(), defaults.get("fengyu.plugins.directory"));
+        assertEquals(root.resolve("plugin-data").toString(), defaults.get("fengyu.plugins.data-directory"));
+        assertEquals(root.resolve("skills").toString(), defaults.get("fengyu.skills.directory"));
+        assertEquals(root.resolve("runtime-files").toString(), defaults.get("fengyu.runtime-files.directory"));
+    }
+
     private static void deleteRecursively(Path p) {
         if (!Files.exists(p)) return;
         try (var stream = Files.walk(p)) {

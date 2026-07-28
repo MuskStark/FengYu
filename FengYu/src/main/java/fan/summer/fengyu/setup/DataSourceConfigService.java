@@ -1,5 +1,6 @@
 package fan.summer.fengyu.setup;
 
+import fan.summer.fengyu.runtime.RuntimePaths;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -18,7 +19,7 @@ import java.util.Properties;
  * Reads/writes {@code datasource.properties} and assembles {@link DataSourceConfig} from
  * wizard params. Also handles password encryption via {@link CryptoUtil} and connection testing.
  *
- * <p>Config file location defaults to {@code <userDir>/.fengyu/config/datasource.properties}.
+ * <p>Config file location defaults to {@code <userHome>/.fengyu/config/datasource.properties}.
  * The base dir is injectable for testing.
  */
 @Service
@@ -26,29 +27,36 @@ public class DataSourceConfigService {
 
     private static final Logger log = LoggerFactory.getLogger(DataSourceConfigService.class);
 
-    private final String baseDir;
+    private final Path baseDir;
+    private final Path legacyBaseDir;
 
-    /** Production constructor — uses {@code <user.dir>/.fengyu} as base. */
+    /** Production constructor — uses the stable runtime root under {@code user.home}. */
     public DataSourceConfigService() {
-        this(Path.of(System.getProperty("user.dir"), ".fengyu").toString());
+        this(RuntimePaths.root(), Path.of(System.getProperty("user.dir"), ".fengyu"));
     }
 
     /** Test constructor — injects base dir (temp dir). */
     public DataSourceConfigService(String baseDir) {
-        this.baseDir = baseDir;
+        this(Path.of(baseDir), null);
+    }
+
+    DataSourceConfigService(Path baseDir, Path legacyBaseDir) {
+        this.baseDir = baseDir.toAbsolutePath().normalize();
+        this.legacyBaseDir = legacyBaseDir == null ? null : legacyBaseDir.toAbsolutePath().normalize();
     }
 
     private Path configFile() {
-        return Path.of(baseDir, "config", "datasource.properties");
+        return baseDir.resolve("config").resolve("datasource.properties");
     }
 
     /** The program-default embedded data-file path: {@code <baseDir>/database/fengyu}. */
     public Path defaultEmbeddedPath() {
-        return Path.of(baseDir, "database", "fengyu");
+        return baseDir.resolve("database").resolve("fengyu");
     }
 
     /** Loads the datasource config. Returns {@code null} if the file is missing or invalid. */
     public DataSourceConfig load() {
+        migrateLegacyConfigIfNeeded();
         Path file = configFile();
         if (!Files.exists(file)) return null;
         try (InputStream in = Files.newInputStream(file)) {
@@ -63,7 +71,7 @@ public class DataSourceConfigService {
                     props.getProperty("db.driver"),
                     props.getProperty("db.dialect"),
                     props.getProperty("db.username", ""),
-                    CryptoUtil.decrypt(props.getProperty("db.password", "")),
+                    CryptoUtil.decrypt(props.getProperty("db.password", ""), machineIdFile()),
                     props.getProperty("db.file.path", ""));
         } catch (Exception e) {
             log.warn("Failed to load datasource.properties: {}", e.getMessage());
@@ -83,7 +91,7 @@ public class DataSourceConfigService {
             props.setProperty("db.dialect", cfg.dialect());
             if (cfg.username() != null) props.setProperty("db.username", cfg.username());
             if (cfg.password() != null && !cfg.password().isBlank()) {
-                props.setProperty("db.password", CryptoUtil.encrypt(cfg.password()));
+                props.setProperty("db.password", CryptoUtil.encrypt(cfg.password(), machineIdFile()));
             }
             if (cfg.filePath() != null) props.setProperty("db.file.path", cfg.filePath());
             try (OutputStream out = Files.newOutputStream(file)) {
@@ -143,7 +151,7 @@ public class DataSourceConfigService {
                     : params.filePath();
             Path resolved = Path.of(rawPath);
             if (!resolved.isAbsolute()) {
-                resolved = Path.of(baseDir).resolve(rawPath).toAbsolutePath();
+                resolved = baseDir.resolve(rawPath).toAbsolutePath();
             }
             // Ensure the parent directory exists — the JDBC driver creates the file itself, but
             // only if its directory is already present (H2/SQLite both fail otherwise).
@@ -206,7 +214,34 @@ public class DataSourceConfigService {
 
     /** Decrypts the password field (load() already decrypts; this is for explicitness). */
     public String decryptPassword(DataSourceConfig cfg) {
-        return CryptoUtil.decrypt(cfg.password());
+        return CryptoUtil.decrypt(cfg.password(), machineIdFile());
+    }
+
+    private Path machineIdFile() {
+        return baseDir.resolve("config").resolve(".machineid");
+    }
+
+    /**
+     * One-time compatibility bridge for builds that stored setup state relative to the process
+     * working directory. Copying (rather than moving) keeps the old installation recoverable.
+     */
+    private void migrateLegacyConfigIfNeeded() {
+        if (legacyBaseDir == null || legacyBaseDir.equals(baseDir) || Files.exists(configFile())) return;
+        Path legacyConfig = legacyBaseDir.resolve("config").resolve("datasource.properties");
+        if (!Files.isRegularFile(legacyConfig)) return;
+        try {
+            Files.createDirectories(configFile().getParent());
+            Path legacyMachineId = legacyBaseDir.resolve("config").resolve(".machineid");
+            if (Files.isRegularFile(legacyMachineId) && !Files.exists(machineIdFile())) {
+                Files.copy(legacyMachineId, machineIdFile());
+            }
+            Files.copy(legacyConfig, configFile());
+            log.info("Migrated datasource configuration from legacy runtime directory {}", legacyBaseDir);
+        } catch (java.nio.file.FileAlreadyExistsException ignored) {
+            // Another startup process completed the same migration.
+        } catch (IOException e) {
+            log.warn("Could not migrate legacy datasource configuration: {}", e.getMessage());
+        }
     }
 
     /** Test-only: read raw properties (with encrypted password) for assertions. */

@@ -408,7 +408,7 @@ jobs:
             -name '*.zip' -o -name '*.tar.gz' -o \
             -name '*.dmg' -o -name '*.deb' -o -name '*.AppImage' -o -name '*.rpm' -o \
             -name '*.msi' -o \
-            -name '*-setup.exe' -o -name '*-portable.exe' \
+            -name '*-setup.exe' \
           \) -print0)
           test -n "$(find release-files -type f -print -quit)"
           find release-files -maxdepth 1 -type f | sort
@@ -437,8 +437,9 @@ jobs:
             (e.g. `Infinia-4.0.0-mac-arm64.dmg`, `Infinia-4.0.0-linux-x64.AppImage`,
             `Infinia-4.0.0-linux-x64.deb`).
 
-            - **Windows** — `*-win-x64-setup.exe` (installer) and `*-win-x64-portable.exe` (no-install
-              single-file executable).
+            - **Windows** — `*-win-x64-setup.exe` (installer) and `*-win-x64-portable.zip`
+              (extract the archive, then run `Infinia.exe`; no installation or startup-time
+              self-extraction).
             - **macOS** — `*-mac-arm64.dmg` (Apple Silicon only).
             - **Linux** — `*-linux-x64.AppImage` (single-file) and `*-linux-x64.deb` (Debian/Ubuntu).
 

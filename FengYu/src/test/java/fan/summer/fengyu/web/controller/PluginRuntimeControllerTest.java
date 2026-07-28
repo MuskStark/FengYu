@@ -6,8 +6,15 @@ import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PluginRuntimeControllerTest {
+
+    @Test
+    void pluginCspAllowsBundledDataFontsAndSameOriginFontAssets() {
+        assertTrue(PluginRuntimeController.PLUGIN_CONTENT_SECURITY_POLICY
+                .contains("font-src 'self' data:"));
+    }
 
     @Test
     void textAssetsUseUtf8Charset() {

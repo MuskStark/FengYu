@@ -48,6 +48,14 @@ The scaffolded `src/main.ts` calls three helpers from this package. You normally
 | `FyConfirmDialog` | v-model dialog with `destructive` styling; emits `confirm` / `cancel`. |
 | `FyEmptyState` / `FyLoadingState` / `FyErrorState` / `FyPermissionNotice` | Standardized empty / loading / error / permission-denied panels with `title`, `message`, and `icon`. `FyErrorState` emits `retry`. |
 
+### Icon contract
+
+Vuetify icon props accept regular `mdi-*` names such as `mdi-home-outline`. The UI package carries
+the MDI font dependency and lets the plugin's Vite application emit it as same-origin hashed assets,
+so generated plugins do not need a custom font import or Vite workaround. Components that accept
+icon path data also support tree-shakeable SVG paths imported from `@mdi/js`; render those through
+`FyIcon`.
+
 The notification composable `useFengYuNotify(client)` and `sendFengYuNotification(client, message)` are also exported for non-component use.
 
 ## Example: a file picker

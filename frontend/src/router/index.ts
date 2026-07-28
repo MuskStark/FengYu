@@ -25,10 +25,20 @@ export const router = createRouter({
   routes,
 })
 
+// The packaged shell already probes setup mode before it creates this renderer.
+// Consume that result for the first navigation, then resume live checks so the
+// setup wizard can transition normally after its backend restart.
+let initialDesktopSetupMode = window.fengyu?.setupMode() ?? null
+
 // Global guard: redirect to /setup when the backend reports uninitialized.
 // The setup route itself is always allowed; initialized backends bounce /setup back to /.
 router.beforeEach(async (to) => {
   if (to.name === 'setup') return true
+  if (initialDesktopSetupMode !== null) {
+    const setupMode = initialDesktopSetupMode
+    initialDesktopSetupMode = null
+    return setupMode ? { name: 'setup' } : true
+  }
   try {
     const status = await api.getSetupStatus()
     if (!status.initialized) {

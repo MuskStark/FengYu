@@ -42,6 +42,7 @@ window.addEventListener('pagehide', () => { disposeEnvironment(); client.dispose
 
 - **不允许内联脚本。** 所有 JS 必须来自外部的 `<script src>` 文件（脚手架写入的是 `<script type="module" src="app.js">`）。参见 [常见陷阱](/zh/plugins/pitfalls)。
 - **不能直接 `fetch` 任意来源。** 通过 `FengYuClient` 与后端通信，或者使用 `PluginContext` 提供的 `apiBase` + `token` 做原始的 multipart 调用。
+- **字体必须随插件打包。** `font-src 'self' data:` 同时支持当前的同源字体资源和旧版工具链内嵌的字体；远程字体来源仍被阻止。MDI 字体打包由 `@infinia/plugin-ui` 自动完成。
 - `/plugin-runtime/{id}/**` 下的资源路径是唯一绕过令牌过滤的插件 URL，因此 UI 无需凭证即可启动。
 
 ## `FengYuClient` API

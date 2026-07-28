@@ -7,6 +7,10 @@ const captured = vi.hoisted(() => ({
   willNavigate: null as ((e: { preventDefault: () => void }, url: string) => void) | null,
   readyToShow: null as (() => void) | null,
   browserWindowOptions: null as Record<string, unknown> | null,
+  headersReceived: null as ((details: {
+    responseHeaders?: Record<string, string[]>
+    resourceType?: string
+  }, callback: (result: { responseHeaders?: Record<string, string[]> }) => void) => void) | null,
   shellOpenExternal: vi.fn<(url: string) => Promise<void>>(),
   show: vi.fn(),
   getURL: vi.fn<() => string>(() => 'http://127.0.0.1:5173/'),
@@ -32,14 +36,21 @@ vi.mock('electron', () => ({
       loadURL: vi.fn(),
       loadFile: vi.fn(),
       webContents: {
+        id: 7,
         openDevTools: vi.fn(),
         setWindowOpenHandler: captured.setWindowOpenHandler,
         on: captured.wcOn,
         getURL: captured.getURL,
+        session: {
+          webRequest: {
+            onHeadersReceived: vi.fn((fn) => {
+              captured.headersReceived = fn
+            }),
+          },
+        },
       },
     }
   }),
-  session: { defaultSession: { webRequest: { onHeadersReceived: vi.fn() } } },
   shell: { openExternal: captured.shellOpenExternal },
 }))
 
@@ -49,6 +60,7 @@ describe('createMainWindow navigation guards', () => {
     captured.willNavigate = null
     captured.readyToShow = null
     captured.browserWindowOptions = null
+    captured.headersReceived = null
     captured.shellOpenExternal.mockClear()
     captured.show.mockClear()
     captured.once.mockClear()
@@ -87,6 +99,58 @@ describe('createMainWindow navigation guards', () => {
     expect(captured.readyToShow).not.toBeNull()
     captured.readyToShow!()
     expect(captured.show).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses the cached light surface before the renderer paints', async () => {
+    const { createMainWindow } = await import('../src/window/create-window')
+    createMainWindow({
+      apiBase: '',
+      token: '',
+      theme: 'light',
+      onHideToTray: () => {},
+      isDev: false,
+      isQuitting: () => false,
+    })
+
+    expect(captured.browserWindowOptions).toMatchObject({
+      show: false,
+      backgroundColor: '#ffffff',
+    })
+  })
+
+  it('injects a strict production CSP that permits only the selected loopback backend', async () => {
+    const { createMainWindow } = await import('../src/window/create-window')
+    createMainWindow({
+      apiBase: 'http://127.0.0.1:24123',
+      token: '',
+      onHideToTray: () => {},
+      isDev: false,
+      isQuitting: () => false,
+    })
+
+    const callback = vi.fn()
+    captured.headersReceived!({ responseHeaders: {}, resourceType: 'mainFrame' }, callback)
+    const csp = callback.mock.calls[0][0].responseHeaders['Content-Security-Policy'][0]
+    expect(csp).toContain("default-src 'self'")
+    expect(csp).toContain('http://127.0.0.1:24123')
+    expect(csp).toContain('http://localhost:24123')
+    expect(csp).not.toContain("'unsafe-eval'")
+  })
+
+  it('preserves the backend CSP on plugin iframe documents', async () => {
+    const { createMainWindow } = await import('../src/window/create-window')
+    createMainWindow({
+      apiBase: 'http://127.0.0.1:24056',
+      token: '',
+      onHideToTray: () => {},
+      isDev: false,
+      isQuitting: () => false,
+    })
+
+    const responseHeaders = { 'Content-Security-Policy': ["default-src 'self'; connect-src 'none'"] }
+    const callback = vi.fn()
+    captured.headersReceived!({ responseHeaders, resourceType: 'subFrame' }, callback)
+    expect(callback).toHaveBeenCalledWith({ responseHeaders })
   })
 
   it('denies window.open for http(s) AND delegates to shell.openExternal', async () => {
@@ -142,8 +206,28 @@ describe('createMainWindow navigation guards', () => {
       isQuitting: () => false,
     })
     const prevented = vi.fn()
-    // Same URL as getURL() -> allow.
-    captured.willNavigate!({ preventDefault: prevented }, 'http://127.0.0.1:5173/')
+    // Same origin with a different path/query -> allow.
+    captured.willNavigate!({ preventDefault: prevented }, 'http://127.0.0.1:5173/about?from=test')
     expect(prevented).not.toHaveBeenCalled()
+  })
+
+  it('will-navigate keeps packaged file navigation on the loaded entry file', async () => {
+    const { createMainWindow } = await import('../src/window/create-window')
+    createMainWindow({
+      apiBase: 'http://127.0.0.1:24056',
+      token: '',
+      onHideToTray: () => {},
+      isDev: false,
+      isQuitting: () => false,
+    })
+    captured.getURL.mockReturnValue('file:///Applications/Infinia/frontend-dist/index.html#/about')
+
+    const allowed = vi.fn()
+    captured.willNavigate!({ preventDefault: allowed }, 'file:///Applications/Infinia/frontend-dist/index.html#/settings')
+    expect(allowed).not.toHaveBeenCalled()
+
+    const blocked = vi.fn()
+    captured.willNavigate!({ preventDefault: blocked }, 'file:///etc/passwd')
+    expect(blocked).toHaveBeenCalledTimes(1)
   })
 })
