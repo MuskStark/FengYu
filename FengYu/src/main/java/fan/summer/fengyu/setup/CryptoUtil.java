@@ -1,5 +1,6 @@
 package fan.summer.fengyu.setup;
 
+import fan.summer.fengyu.runtime.RuntimePaths;
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
@@ -35,9 +36,8 @@ public final class CryptoUtil {
 
     private CryptoUtil() {}
 
-    private static SecretKeySpec deriveKey() {
+    private static SecretKeySpec deriveKey(Path machineIdFile) {
         try {
-            Path machineIdFile = Path.of(System.getProperty("user.dir"), ".fengyu", "config", ".machineid");
             Files.createDirectories(machineIdFile.getParent());
             String machineId;
             if (Files.exists(machineIdFile)) {
@@ -55,12 +55,16 @@ public final class CryptoUtil {
     }
 
     public static String encrypt(String plain) {
+        return encrypt(plain, RuntimePaths.configDirectory(RuntimePaths.root()).resolve(".machineid"));
+    }
+
+    static String encrypt(String plain, Path machineIdFile) {
         if (plain == null) return null;
         try {
             byte[] iv = new byte[IV_BYTES];
             new SecureRandom().nextBytes(iv);
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
-            cipher.init(Cipher.ENCRYPT_MODE, deriveKey(), new GCMParameterSpec(GCM_TAG_BITS, iv));
+            cipher.init(Cipher.ENCRYPT_MODE, deriveKey(machineIdFile), new GCMParameterSpec(GCM_TAG_BITS, iv));
             byte[] cipherText = cipher.doFinal(plain.getBytes(StandardCharsets.UTF_8));
             // Prepend IV to cipher text, base64 the whole thing.
             byte[] combined = new byte[iv.length + cipherText.length];
@@ -74,6 +78,10 @@ public final class CryptoUtil {
     }
 
     public static String decrypt(String value) {
+        return decrypt(value, RuntimePaths.configDirectory(RuntimePaths.root()).resolve(".machineid"));
+    }
+
+    static String decrypt(String value, Path machineIdFile) {
         if (value == null || value.isBlank()) return value;
         if (!value.startsWith(PREFIX) || !value.endsWith(SUFFIX)) {
             return value;   // plaintext passthrough
@@ -86,7 +94,7 @@ public final class CryptoUtil {
             System.arraycopy(combined, 0, iv, 0, IV_BYTES);
             System.arraycopy(combined, IV_BYTES, cipherText, 0, cipherText.length);
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
-            cipher.init(Cipher.DECRYPT_MODE, deriveKey(), new GCMParameterSpec(GCM_TAG_BITS, iv));
+            cipher.init(Cipher.DECRYPT_MODE, deriveKey(machineIdFile), new GCMParameterSpec(GCM_TAG_BITS, iv));
             byte[] plain = cipher.doFinal(cipherText);
             return new String(plain, StandardCharsets.UTF_8);
         } catch (Exception e) {

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 
 const workflow = readFileSync(new URL('../.github/workflows/fengyu-release.yml', import.meta.url), 'utf8')
 const builderConfig = readFileSync(new URL('../desktop/electron/electron-builder.yml', import.meta.url), 'utf8')
+const jreBuilderConfig = readFileSync(new URL('../desktop/electron/electron-builder.jre.yml', import.meta.url), 'utf8')
 const rootPom = readFileSync(new URL('../pom.xml', import.meta.url), 'utf8')
 const mavenConfig = readFileSync(new URL('../.mvn/maven.config', import.meta.url), 'utf8')
 const desktopJob = workflow.slice(
@@ -40,10 +41,14 @@ test('Maven wrapper default revision matches the application version', () => {
   assert.match(mavenConfig, new RegExp(`^-Drevision=${appVersion}$`, 'm'))
 })
 
-test('electron-builder targets NSIS + portable on Windows, DMG arm64 on macOS, AppImage + deb on Linux', () => {
-  // Windows ships BOTH an installer (nsis) and a no-install portable (.exe) target.
+test('electron-builder targets NSIS + extract-and-run ZIP on Windows, DMG arm64 on macOS, AppImage + deb on Linux', () => {
+  // Windows ships an installer plus a ZIP whose contents run directly after extraction.
   assert.match(builderConfig, /win:\s*\n\s*target:\s*\n\s*-\s+target:\s*nsis/)
-  assert.match(builderConfig, /-\s+target:\s*portable/)
+  assert.match(builderConfig, /-\s+target:\s*zip/)
+  assert.doesNotMatch(builderConfig, /-\s+target:\s*portable/)
+  assert.match(jreBuilderConfig, /win:\s*\n\s*target:\s*\n\s*-\s+target:\s*nsis/)
+  assert.match(jreBuilderConfig, /-\s+target:\s*zip/)
+  assert.doesNotMatch(jreBuilderConfig, /-\s+target:\s*portable/)
   // macOS: arm64 only (no x64).
   assert.match(builderConfig, /mac:\s*\n\s*target:\s*\n\s*-\s+target:\s*dmg\s*\n\s*arch:\s*\[arm64\]/)
   // Linux: AppImage (single-file) + deb (Debian/Ubuntu package).
@@ -54,9 +59,16 @@ test('electron-builder targets NSIS + portable on Windows, DMG arm64 on macOS, A
 test('artifact names include version + platform + arch', () => {
   // Top-level uniform scheme: <product>-<version>-<platform>-<arch>.<ext>
   assert.match(builderConfig, /artifactName: \$\{productName\}-\$\{version\}-\$\{platform\}-\$\{arch\}\.\$\{ext\}/)
-  // Windows disambiguates installer vs portable with a form suffix (both keep version+platform+arch).
+  // Windows disambiguates installer vs portable ZIP with a form suffix.
   assert.match(builderConfig, /nsis:[\s\S]*?artifactName: \$\{productName\}-\$\{version\}-\$\{platform\}-\$\{arch\}-setup\.\$\{ext\}/)
-  assert.match(builderConfig, /portable:[\s\S]*?artifactName: \$\{productName\}-\$\{version\}-\$\{platform\}-\$\{arch\}-portable\.\$\{ext\}/)
+  assert.match(builderConfig, /win:[\s\S]*?artifactName: \$\{productName\}-\$\{version\}-\$\{platform\}-\$\{arch\}-portable\.\$\{ext\}/)
+  assert.match(jreBuilderConfig, /win:[\s\S]*?artifactName: \$\{productName\}-\$\{version\}-\$\{platform\}-\$\{arch\}-portable\.\$\{ext\}/)
+})
+
+test('release describes ZIP extraction and no longer publishes self-extracting portable executables', () => {
+  assert.match(workflow, /\*-win-x64-portable\.zip/)
+  assert.match(workflow, /run `Infinia\.exe`/)
+  assert.doesNotMatch(workflow, /portable\.exe/)
 })
 
 test('electron-builder bundles the FengYu jar + plugins as extraResources', () => {

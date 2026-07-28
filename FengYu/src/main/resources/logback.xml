@@ -3,13 +3,13 @@
   FengYu logging configuration.
 
   The host application sets the system property `fengyu.log.dir` to the absolute
-  path of the runtime log directory (typically `.fengyu/logs/` next to the JAR
-  or the working directory) before SLF4J initialises. A fallback default keeps the
+  path of the runtime log directory (typically `~/.fengyu/logs/`) before SLF4J
+  initialises. A fallback default keeps the
   config valid when logback is loaded outside the host (tests, IDE).
 -->
 <configuration scan="true" scanPeriod="30 seconds">
 
-    <!-- Fallback: if the host hasn't set fengyu.log.dir yet, write next to CWD. -->
+    <!-- Fallback for isolated tests/tools that do not enter through HeadlessLauncher. -->
     <property name="LOG_DIR" value="${fengyu.log.dir:-.fengyu/logs}"/>
 
     <!-- ── Console: human-friendly, INFO and above ──────────────────────── -->

@@ -2,6 +2,9 @@
 export interface FengyuBridge {
   apiBase(): string
   token(): string
+  initialTheme(): 'dark' | 'light'
+  setupMode(): boolean | null
+  setTheme(theme: 'dark' | 'light'): void
   pickFile(filters?: { name: string; extensions: string[] }[]): Promise<string | null>
   pickDirectory(): Promise<string | null>
   desktop: true

@@ -134,6 +134,19 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Pre-transform the renderer's first-paint graph while Electron is waiting
+    // for the dev server. This avoids the initial request waterfall caused by
+    // Vuetify being intentionally excluded from dependency pre-bundling.
+    warmup: {
+      clientFiles: [
+        './src/main.ts',
+        './src/App.vue',
+        './src/shell/AppShell.vue',
+        './src/shell/Sidebar.vue',
+        './src/shell/StatusBar.vue',
+        './src/views/AiChat.vue',
+      ],
+    },
     proxy: {
       '/api': { target: BACKEND, changeOrigin: true },
       '/plugin-ui': { target: BACKEND, changeOrigin: true },

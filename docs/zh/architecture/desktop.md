@@ -54,6 +54,9 @@ Java 在运行时解析：**带 JRE** 版本优先使用 `<resourcesPath>/jre/bi
 window.fengyu.apiBase()        // 'http://127.0.0.1:<port>'——只读快照
 window.fengyu.token()          // 每次启动的 X-FengYu-Token——只读快照
 window.fengyu.desktop          // true——特性标志
+window.fengyu.initialTheme()   // 'dark' | 'light'——外壳在启动时确定的主题（避免闪烁）
+window.fengyu.setupMode()      // boolean | null——预先探测的 setup 状态，浏览器中为 null
+window.fengyu.setTheme(theme)  // 请求外壳持久化/应用主题
 window.fengyu.pickFile(filters)   // → 原生打开对话框（IPC）
 window.fengyu.pickDirectory()     // → 原生打开对话框（IPC）
 ```
@@ -89,15 +92,15 @@ window.fengyu.pickDirectory()     // → 原生打开对话框（IPC）
 
 ## 打包
 
-打包由 **electron-builder** 处理（`desktop/electron/electron-builder.yml`）。每个平台发布两种安装包变体，由 CI 的 `--config` 覆盖从同一份基础配置构建：
+打包由 **electron-builder** 处理（`desktop/electron/electron-builder.yml`）。每个平台发布两种安装包变体，由 CI 的 `--config` 覆盖从同一份基础配置构建。产物遵循统一命名 `<product>-<version>-<platform>-<arch>[<form>].<ext>`（例如 `Infinia-4.0.0-mac-arm64.dmg`、`Infinia-4.0.0-win-x64-setup.exe`）：
 
 | 平台 | 不带 JRE（lite） | 带 JRE（自包含） |
 | --- | --- | --- |
-| macOS（arm64 + x64） | `Infinia-<ver>-mac.dmg` | `Infinia-<ver>-mac-jre.dmg` |
-| Windows（x64） | `Infinia-<ver>-win.exe`（NSIS） | `Infinia-<ver>-win-jre.exe` |
-| Linux（x64） | `Infinia-<ver>.AppImage` | `Infinia-<ver>-jre.AppImage` |
+| macOS（arm64） | `Infinia-<ver>-mac-arm64.dmg` | `Infinia-<ver>-mac-arm64-jre.dmg` |
+| Windows（x64） | `Infinia-<ver>-win-x64-setup.exe`（NSIS）+ `*-portable.zip` | `Infinia-<ver>-win-x64-setup-jre.exe` + `*-portable-jre.zip` |
+| Linux（x64） | `Infinia-<ver>-linux-x64.AppImage` + `.deb` | `Infinia-<ver>-linux-x64-jre.AppImage` |
 
-带 JRE 的变体在 `<resources>/jre/` 下内嵌一个 **jlink 最小化的** JRE（由 CI 从 JDK 21 通过 `jdeps` + `jlink --strip-debug` 生成）。Alpha 构建为**未签名**。
+Windows 的**便携版**是解压即用的 ZIP（解压后直接运行 `Infinia.exe`）——无需安装，启动时也无需自解压。带 JRE 的变体在 `<resources>/jre/` 下内嵌一个 **jlink 最小化的** JRE（由 CI 从 JDK 21 通过 `jdeps` + `jlink --strip-debug` 生成）。Alpha 构建为**未签名**。
 
 ## 下一步
 

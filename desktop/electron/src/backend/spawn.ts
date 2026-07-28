@@ -5,6 +5,7 @@ import type { RuntimeLayout } from './runtime-layout'
 import { parseFengyuPort } from './handshake'
 import type { BackendChild } from './supervisor'
 import type { SplashStage } from '../window/splash-i18n'
+import { runtimeRoot } from '../desktop/runtime-paths'
 
 export interface SpawnOptions {
   layout: RuntimeLayout
@@ -72,6 +73,7 @@ export async function spawnBackend(opts: SpawnOptions): Promise<SpawnedBackend> 
   const javaBin = resolveJava(layout)
 
   const args = [
+    `-Dfengyu.runtime.dir=${runtimeRoot()}`,
     `-Dfengyu.plugins.official-directory=${layout.plugins}`,
     '-cp',
     layout.jar,
