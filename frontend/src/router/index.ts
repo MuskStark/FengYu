@@ -21,14 +21,18 @@ export const router = createRouter({
   // The packaged Electron shell loads index.html over file://. Hash history
   // keeps every route anchored to that real file, while the browser build
   // retains clean history URLs.
-  history: window.fengyu?.desktop ? createWebHashHistory() : createWebHistory(),
+  history:
+    typeof window !== 'undefined' && window.fengyu?.desktop
+      ? createWebHashHistory()
+      : createWebHistory(),
   routes,
 })
 
 // The packaged shell already probes setup mode before it creates this renderer.
 // Consume that result for the first navigation, then resume live checks so the
 // setup wizard can transition normally after its backend restart.
-let initialDesktopSetupMode = window.fengyu?.setupMode() ?? null
+const hasDesktopBridge = typeof window !== 'undefined' && !!window.fengyu
+let initialDesktopSetupMode = hasDesktopBridge ? window.fengyu!.setupMode() : null
 
 // Global guard: redirect to /setup when the backend reports uninitialized.
 // The setup route itself is always allowed; initialized backends bounce /setup back to /.
