@@ -1,12 +1,22 @@
 package fan.summer.fengyu.ai.agent;
 
+import fan.summer.fengyu.ai.service.AiModeService;
+import fan.summer.fengyu.api.ai.AiChatMessage;
+import fan.summer.fengyu.api.ai.AiServiceException;
+import fan.summer.fengyu.api.ai.AiStreamCallback;
+import fan.summer.fengyu.api.ai.ChatBackend;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
 
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ChatBackendPlanGeneratorTest {
 
@@ -48,5 +58,94 @@ class ChatBackendPlanGeneratorTest {
         assertThrows(IllegalArgumentException.class, () ->
                 ChatBackendPlanGenerator.parseAndValidate(
                         response, "requested", List.of(new AgentRunnerTest.EchoToolCallback())));
+    }
+
+    /**
+     * Regression test for the planner-timeout deadlock: when the model never completes the
+     * planning stream (simulated by a backend whose chatWithoutTools never fires the callback),
+     * the generator must give up after the timeout, cancel the in-flight generation, and leave
+     * the backend with {@code generating == false} so subsequent requests are not wedged.
+     *
+     * <p>Uses a 1-second planning timeout (test seam) so the test does not wait the full 180s.
+     */
+    @Test
+    void timeoutCancelsStuckBackendAndReleasesLock() throws Exception {
+        HungBackend backend = new HungBackend();
+        AiModeService modeService = new AiModeService();
+        modeService.setService(backend);
+
+        // 1s timeout keeps the test fast while still exercising the real timeout/cancel path.
+        ChatBackendPlanGenerator generator =
+                new ChatBackendPlanGenerator(modeService, 1);
+
+        assertThrows(IllegalStateException.class, () ->
+                generator.generate("do something", List.of(new AgentRunnerTest.EchoToolCallback()), null));
+
+        // The planner gave up; cancelGeneration() must have been invoked, so the backend
+        // must no longer report an in-progress generation. Without the fix this stays true
+        // forever (the lock leaks), which is exactly the wedge we are guarding against.
+        assertTrue(backend.cancelled, "planner timeout should call backend.cancelGeneration()");
+        assertFalse(backend.isGenerating(),
+                "generating flag must be released after a timed-out planning call");
+    }
+
+    /**
+     * A minimal {@link ChatBackend} that simulates a model stream that never completes:
+     * chatWithoutTools sets {@code generating = true} and starts a worker that blocks forever
+     * (mimicking a hung Ollama process / stalled provider connection). Only
+     * {@link #cancelGeneration()} releases the lock — exactly the path the planner must take.
+     */
+    static final class HungBackend implements ChatBackend {
+        final AtomicBoolean generating = new AtomicBoolean(false);
+        volatile boolean cancelled = false;
+        private Thread worker;
+
+        @Override public void loadModel(Path modelPath) throws AiServiceException { }
+        @Override public void unloadModel() { }
+        @Override public boolean isReady() { return true; }
+        @Override public Optional<String> getModelName() { return Optional.of("hung"); }
+        @Override public long getMemoryUsage() { return -1; }
+
+        @Override
+        public void chat(List<AiChatMessage> history, AiStreamCallback callback) throws AiServiceException {
+            // chatWithoutTools delegates here; default impl would forward, but we override
+            // chatWithoutTools directly below, so this path is not taken in the test.
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void chatWithoutTools(List<AiChatMessage> history, AiStreamCallback callback)
+                throws AiServiceException {
+            if (!generating.compareAndSet(false, true)) {
+                throw new AiServiceException("Generation already in progress");
+            }
+            // Simulate a worker that blocks forever on a stream that never completes — the
+            // exact scenario that leaked the generating flag before the fix.
+            worker = Thread.ofVirtual().start(() -> {
+                try {
+                    new java.util.concurrent.CountDownLatch(1).await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    generating.set(false);
+                }
+            });
+        }
+
+        @Override
+        public void chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
+                         AiStreamCallback callback) throws AiServiceException {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void cancelGeneration() {
+            cancelled = true;
+            // Interrupt the stuck worker so its finally-block clears `generating`, mirroring
+            // how the real backends' finally runs once dispose() terminates their stream.
+            if (worker != null) worker.interrupt();
+        }
+
+        @Override public boolean isGenerating() { return generating.get(); }
     }
 }

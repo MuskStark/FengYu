@@ -73,3 +73,14 @@ docs/.vitepress/cache/
 
 ### Local agent / IDE tool configs ###
 .codex/
+
+### Stray local dev / build artifacts (sources live under toolchain/) ###
+# Tauri (Rust) shell was removed in favor of Electron (commit 8d5c7935);
+# src-tauri/ is leftover and can reappear from an old toolchain on disk.
+/desktop/src-tauri/
+# Local npm-install copies of the plugin toolchain packages. Canonical sources
+# are toolchain/sdk-ts, toolchain/ui, toolchain/dev — never these root mirrors.
+/plugin-sdk/
+/plugin-ui/
+/plugin-dev/
+/plugin-cli/

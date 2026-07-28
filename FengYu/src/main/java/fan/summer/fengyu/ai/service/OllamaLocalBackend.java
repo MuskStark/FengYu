@@ -37,8 +37,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+
+import reactor.core.Disposable;
 
 /**
  * Local-mode {@link ChatBackend} backed by Ollama via Spring AI's
@@ -66,6 +69,17 @@ public final class OllamaLocalBackend implements ChatBackend {
     private static final int MAX_TOOL_ROUNDS = 8;
 
     private final AtomicBoolean generating = new AtomicBoolean(false);
+
+    /**
+     * The active Spring AI stream subscription for the in-progress generation, plus a latch
+     * the worker virtual thread awaits. {@link #cancelGeneration()} disposes the subscription,
+     * which terminates the stream and releases the latch so the worker can exit and clear
+     * {@link #generating}. Both are volatile: written by the worker thread, read by the
+     * (possibly different) thread that calls {@code cancelGeneration()}.
+     */
+    private volatile Disposable activeStream;
+    private volatile CountDownLatch streamDone;
+
     private volatile String ollamaModelTag;
     private volatile ChatModel chatModel;
 
@@ -196,15 +210,32 @@ public final class OllamaLocalBackend implements ChatBackend {
                 log.error("Ollama chat failed", e);
                 callback.onError(e);
             } finally {
+                disposeActiveStream();
                 generating.set(false);
             }
         });
     }
 
     @Override public void cancelGeneration() {
-        // Best-effort: Spring AI 2.0 streaming Flux can be cancelled via downstream dispose,
-        // but the loop here doesn't hold the Disposable. Logged for parity.
-        log.debug("cancelGeneration() requested; mid-stream abort not wired in Phase 1");
+        // Dispose the active stream subscription. This terminates the Reactor Flux upstream,
+        // which releases the worker's streamDone latch so runToolLoop unblocks and the finally
+        // in startChat clears `generating`. Without this a hung model (e.g. ollama process
+        // unresponsive) would leave generating=true forever, wedging all subsequent requests.
+        disposeActiveStream();
+        log.debug("cancelGeneration() requested; active stream disposed");
+    }
+
+    /** Dispose the in-flight stream subscription if any; safe to call when idle. */
+    private void disposeActiveStream() {
+        Disposable d = activeStream;
+        if (d != null && !d.isDisposed()) {
+            d.dispose();
+        }
+        // Release any worker still blocked on the latch (e.g. dispose fired before onComplete).
+        CountDownLatch done = streamDone;
+        if (done != null) {
+            while (done.getCount() > 0) done.countDown();
+        }
     }
 
     @Override public boolean isGenerating() { return generating.get(); }
@@ -230,23 +261,12 @@ public final class OllamaLocalBackend implements ChatBackend {
             Prompt prompt = options != null ? new Prompt(conversation, options) : new Prompt(conversation);
 
             // Stream this round; fire onToken per token delta; the aggregator hands us the
-            // fully-assembled ChatResponse (including any tool calls) on completion.
+            // fully-assembled ChatResponse (including any tool calls) on completion. The stream
+            // is subscribed explicitly (not blockLast) so cancelGeneration() can dispose it and
+            // unblock this virtual thread via the latch.
             StringBuilder accumulated = new StringBuilder();
             AtomicReference<ChatResponse> aggregated = new AtomicReference<>();
-            new MessageAggregator().aggregate(
-                    chatModel.stream(prompt),
-                    aggregated::set
-            ).doOnNext(resp -> {
-                if (resp == null || resp.getResult() == null) return;
-                AssistantMessage am = resp.getResult().getOutput();
-                if (am == null) return;
-                String delta = am.getText();
-                if (delta != null && !delta.isEmpty()) {
-                    accumulated.append(delta);
-                    callback.onToken(delta);
-                }
-                // Task 8 fallback: thinking content is NOT surfaced in Phase 1.
-            }).blockLast();   // virtual thread, blocking is fine
+            streamAndCollect(prompt, accumulated, aggregated, callback);
 
             ChatResponse roundResp = aggregated.get();
             boolean hasToolCalls = roundResp != null && roundResp.hasToolCalls();
@@ -273,6 +293,46 @@ public final class OllamaLocalBackend implements ChatBackend {
 
             conversation = result.conversationHistory();
             mirrorToolResultsToHistory(result.conversationHistory(), history, assistantMsg);
+        }
+    }
+
+    /**
+     * Stream a prompt, fire onToken per token delta, capture the aggregated response, and
+     * block the calling (virtual) thread until the stream completes or is cancelled. The
+     * subscription {@link Disposable} is stored in {@link #activeStream} so
+     * {@link #cancelGeneration()} can dispose it mid-stream; {@link #streamDone} is counted
+     * down on terminal signals (complete/error/cancel) to release the await below.
+     */
+    private void streamAndCollect(Prompt prompt, StringBuilder accumulated,
+                                  AtomicReference<ChatResponse> aggregated, AiStreamCallback callback) {
+        streamDone = new CountDownLatch(1);
+        activeStream = new MessageAggregator().aggregate(
+                chatModel.stream(prompt),
+                aggregated::set
+        ).doOnNext(resp -> {
+            if (resp == null || resp.getResult() == null) return;
+            AssistantMessage am = resp.getResult().getOutput();
+            if (am == null) return;
+            String delta = am.getText();
+            if (delta != null && !delta.isEmpty()) {
+                accumulated.append(delta);
+                callback.onToken(delta);
+            }
+            // Task 8 fallback: thinking content is NOT surfaced in Phase 1.
+        }).subscribe(
+                // onNext consumer — empty: doOnNext above already handled each element
+                ignored -> { },
+                // onError: stream failed
+                error -> { log.warn("Ollama stream error", error); streamDone.countDown(); },
+                // onComplete (normal finish): release the await. Dispose/cancel is covered by
+                // the explicit countDown() in disposeActiveStream().
+                streamDone::countDown
+        );
+        try {
+            streamDone.await();   // virtual thread, blocking is fine
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            disposeActiveStream();
         }
     }
 
