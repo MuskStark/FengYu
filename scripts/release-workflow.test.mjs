@@ -67,6 +67,7 @@ test('electron-builder bundles the FengYu jar + plugins as extraResources', () =
 test('desktop job builds two variants and runs unit plus launch tests', () => {
   assert.match(desktopJob, /FENGYU_RELEASE_VERSION: \${{ needs\.setup\.outputs\.version }}/)
   assert.match(desktopJob, /- name: Install frontend deps\s+run: npm ci\s+working-directory: frontend/)
+  assert.match(desktopJob, /- name: Install Electron binary\s+run: npx install-electron --no\s+working-directory: desktop\/electron\s+timeout-minutes: 15/)
   assert.match(desktopJob, /- name: Run desktop unit tests\s+run: npm test\s+working-directory: desktop\/electron/)
   assert.match(desktopJob, /FENGYU_DESKTOP_BUILD: '1'/)
   assert.match(desktopJob, /- name: Verify file-compatible frontend asset paths\s+run: npm run verify:frontend-dist/)
