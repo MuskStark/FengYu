@@ -85,6 +85,11 @@ class ChatBackendPlanGeneratorTest {
         // must no longer report an in-progress generation. Without the fix this stays true
         // forever (the lock leaks), which is exactly the wedge we are guarding against.
         assertTrue(backend.cancelled, "planner timeout should call backend.cancelGeneration()");
+        // Wait for the cancelled worker to finish its cleanup (finally-block clears the flag).
+        // The cancellation is asynchronous (interrupt releases the blocked worker), so the flag
+        // is cleared shortly after cancelGeneration() returns — join the worker to avoid a race
+        // between the interrupt and the assertion.
+        backend.awaitWorkerCleared();
         assertFalse(backend.isGenerating(),
                 "generating flag must be released after a timed-out planning call");
     }
@@ -144,6 +149,17 @@ class ChatBackendPlanGeneratorTest {
             // Interrupt the stuck worker so its finally-block clears `generating`, mirroring
             // how the real backends' finally runs once dispose() terminates their stream.
             if (worker != null) worker.interrupt();
+        }
+
+        /**
+         * Block until the cancelled worker has finished (its finally-block cleared the flag).
+         * Cancellation is asynchronous — the planner calls cancelGeneration() which interrupts
+         * the blocked worker, but the finally runs slightly later — so callers asserting
+         * {@code !isGenerating()} must wait for the worker to actually exit first.
+         */
+        void awaitWorkerCleared() throws InterruptedException {
+            Thread w = worker;
+            if (w != null) w.join(5_000);
         }
 
         @Override public boolean isGenerating() { return generating.get(); }
