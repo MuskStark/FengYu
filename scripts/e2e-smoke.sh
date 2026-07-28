@@ -53,8 +53,10 @@ cd "$WORK"
 
 # Pre-seed an embedded H2 datasource config so HeadlessLauncher's startup probe (added by the
 # multi-datasource setup wizard) picks APP mode instead of SETUP mode. Without this, a fresh
-# working dir has no ~/.fengyu/config/datasource.properties and the backend boots into the
-# minimal setup-wizard context, which excludes PluginController/PluginFileController entirely.
+# working dir has no datasource.properties and the backend boots into the minimal setup-wizard
+# context, which excludes PluginController/PluginFileController entirely. Pin the runtime root to
+# this temp dir via -Dfengyu.runtime.dir so state stays isolated and the run is repeatable
+# (RuntimePaths.root() otherwise resolves to ~/.fengyu and leaks state across runs).
 DB_FILE="$WORK/.fengyu/database/fengyu"
 mkdir -p "$WORK/.fengyu/config" "$(dirname "$DB_FILE")"
 cat > "$WORK/.fengyu/config/datasource.properties" <<EOF
@@ -65,7 +67,8 @@ db.dialect=org.hibernate.dialect.H2Dialect
 db.file.path=${DB_FILE}
 EOF
 
-"$JAVA" -Dfengyu.plugins.official-directory="$OFFICIAL_DIR" \
+"$JAVA" -Dfengyu.runtime.dir="$WORK/.fengyu" \
+  -Dfengyu.plugins.official-directory="$OFFICIAL_DIR" \
   -Dfengyu.plugins.directory="$WORK/.fengyu/plugins" \
   -Dfengyu.plugins.data-directory="$WORK/.fengyu/plugin-data" \
   -cp "$JAR" fan.summer.fengyu.HeadlessLauncher --port="$PORT" --token="$TOKEN" > server.log 2>&1 &
