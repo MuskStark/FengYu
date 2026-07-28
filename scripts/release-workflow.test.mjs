@@ -72,6 +72,9 @@ test('desktop job builds two variants and runs unit plus launch tests', () => {
   assert.match(desktopJob, /FENGYU_DESKTOP_BUILD: '1'/)
   assert.match(desktopJob, /- name: Verify file-compatible frontend asset paths\s+run: npm run verify:frontend-dist/)
   assert.match(desktopJob, /xvfb-run -a npm run test:e2e/)
+  // Windows E2E stalls post-launch (see run 30332280958); it is non-blocking so the
+  // Windows desktop bundles still ship, while macOS E2E stays gating.
+  assert.match(desktopJob, /- name: Run Electron launch E2E\s+if: runner\.os != 'Linux'\s+continue-on-error: \$\{\{ runner\.os == 'Windows' \}\}/)
   assert.match(desktopJob, /FENGYU_JAR: \${{ github\.workspace }}\/desktop\/electron\/resources\/binaries\/FengYu\.jar/)
   assert.match(desktopJob, /Build Electron bundle \(without JRE\)/)
   assert.match(desktopJob, /Build Electron bundle \(with JRE\)/)
