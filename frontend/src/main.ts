@@ -19,7 +19,11 @@ app.use(vuetify)
 // Apply a saved theme class to <html> as early as possible (avoids flash).
 // index.html defaults to .theme-dark; settings load may switch it.
 const theme = useThemeStore()
-theme.setTheme(window.fengyu?.initialTheme() ?? theme.theme)
+theme.setTheme(
+  typeof window !== 'undefined' && window.fengyu
+    ? window.fengyu.initialTheme()
+    : theme.theme,
+)
 
 // Best-effort load of persisted settings from the backend. Failure (e.g.
 // backend not up yet) is non-fatal — the shell still renders with defaults.
