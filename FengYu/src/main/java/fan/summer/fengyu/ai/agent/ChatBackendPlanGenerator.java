@@ -27,7 +27,8 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class ChatBackendPlanGenerator implements AgentRunner.PlanGenerator {
 
-    private static final int PLANNING_TIMEOUT_SECONDS = 180;
+    /** Default budget (seconds) for the model to finish a planning response. */
+    static final int DEFAULT_PLANNING_TIMEOUT_SECONDS = 180;
 
     private static final String SYSTEM_PROMPT = """
             You are a workflow planner. Return exactly one JSON object and no markdown.
@@ -57,9 +58,17 @@ public class ChatBackendPlanGenerator implements AgentRunner.PlanGenerator {
             """;
 
     private final AiModeService aiModeService;
+    private final int planningTimeoutSeconds;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public ChatBackendPlanGenerator(AiModeService aiModeService) {
+        this(aiModeService, DEFAULT_PLANNING_TIMEOUT_SECONDS);
+    }
+
+    /** Test seam: inject a shorter timeout so the cancellation path can be exercised quickly. */
+    ChatBackendPlanGenerator(AiModeService aiModeService, int planningTimeoutSeconds) {
         this.aiModeService = aiModeService;
+        this.planningTimeoutSeconds = planningTimeoutSeconds;
     }
 
     @Override
@@ -104,9 +113,14 @@ public class ChatBackendPlanGenerator implements AgentRunner.PlanGenerator {
         }
 
         try {
-            return parseAndValidate(completion.get(PLANNING_TIMEOUT_SECONDS, TimeUnit.SECONDS),
+            return parseAndValidate(completion.get(planningTimeoutSeconds, TimeUnit.SECONDS),
                     goal, tools);
         } catch (Exception e) {
+            // The planning call gave up (timeout) or failed. If the backend is still streaming
+            // in the background (e.g. a hung model that never called onComplete/onError), its
+            // `generating` flag would stay set forever and wedge every subsequent request.
+            // Cancel the in-flight stream so the backend's worker can exit and release the lock.
+            backend.cancelGeneration();
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             throw new IllegalStateException("Could not generate workflow: " + cause.getMessage(), cause);
         }
