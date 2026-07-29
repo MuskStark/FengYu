@@ -137,7 +137,8 @@
   "setup":    { "dataFileLocation": "Data file location" },
   "about": {
     "title": "About",
-    "subtitle": "A modular, plugin-driven AI toolbox.",
+    "subtitle": "An AI-native orchestration platform — a plan-and-execute Agent turns natural-language goals into multi-step business workflows.",
+    "slogan": "Where bees go, flows follow.",
     "infoTitle": "Information",
     "version": "Version",
     "buildTime": "Build Time",
