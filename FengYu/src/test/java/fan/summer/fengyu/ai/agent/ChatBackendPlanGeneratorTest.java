@@ -1,10 +1,10 @@
 package fan.summer.fengyu.ai.agent;
 
 import fan.summer.fengyu.ai.service.AiModeService;
-import fan.summer.fengyu.api.ai.AiChatMessage;
-import fan.summer.fengyu.api.ai.AiServiceException;
-import fan.summer.fengyu.api.ai.AiStreamCallback;
-import fan.summer.fengyu.api.ai.ChatBackend;
+import fan.summer.fengyu.ai.AiChatMessage;
+import fan.summer.fengyu.ai.AiServiceException;
+import fan.summer.fengyu.ai.AiStreamCallback;
+import fan.summer.fengyu.ai.ChatBackend;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
 

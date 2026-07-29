@@ -1,6 +1,5 @@
 package fan.summer.fengyu.ai.util;
 
-import fan.summer.fengyu.api.theme.ThemeService;
 import org.commonmark.node.Node;
 import org.commonmark.parser.Parser;
 import org.commonmark.renderer.html.HtmlRenderer;
@@ -15,7 +14,7 @@ import org.commonmark.renderer.html.HtmlRenderer;
  *
  * <p>The embedded CSS is theme-aware: a dark palette ({@code #1e1e2e}
  * background) or a light palette ({@code #ffffff} background), picked by
- * {@link fan.summer.fengyu.api.theme.ThemeService}. Both variants use a monospaced
+ * {@link ThemeService}. Both variants use a monospaced
  * font for code blocks and inline code, and support the full CommonMark
  * spec including tables, blockquotes, and images.</p>
  *

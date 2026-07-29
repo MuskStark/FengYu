@@ -5,8 +5,8 @@ set -euo pipefail
 PORT="${1:-8900}"
 TOKEN="${2:-offlinepython-smoke-token}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-JAR="$ROOT/FengYu/target/FengYu-4.0.0-alpha.1.jar"
-PACKAGE="$ROOT/OfficialPlugins/plugin-offlinepython/dist-package/fan.summer.offlinepython-4.0.0-alpha.1.fyp"
+JAR="$ROOT/FengYu/target/FengYu-4.0.0.jar"
+PACKAGE="$ROOT/OfficialPlugins/plugin-offlinepython/dist-package/fan.summer.offlinepython-4.0.0.fyp"
 
 [ -f "$JAR" ] || { echo "FAIL: main JAR is missing: $JAR"; exit 1; }
 [ -f "$PACKAGE" ] || { echo "FAIL: plugin package is missing: $PACKAGE"; exit 1; }

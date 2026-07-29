@@ -1,6 +1,6 @@
 package fan.summer.fengyu.ai.tools;
 
-import fan.summer.fengyu.api.ai.FengYuTool;
+import fan.summer.fengyu.ai.FengYuTool;
 
 /**
  * Marker for host tools that must never run without an explicit user approval gate.

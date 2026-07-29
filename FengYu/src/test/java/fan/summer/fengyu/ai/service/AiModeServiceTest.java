@@ -1,6 +1,6 @@
 package fan.summer.fengyu.ai.service;
 
-import fan.summer.fengyu.api.ai.ChatBackend;
+import fan.summer.fengyu.ai.ChatBackend;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
@@ -19,11 +19,11 @@ class AiModeServiceTest {
             public long getMemoryUsage() { return -1; }
             public boolean isGenerating() { return false; }
             public boolean isNativeAvailable() { return false; }
-            public void chat(java.util.List<fan.summer.fengyu.api.ai.AiChatMessage> h,
-                             fan.summer.fengyu.api.ai.AiStreamCallback c) {}
-            public void chat(java.util.List<fan.summer.fengyu.api.ai.AiChatMessage> h,
+            public void chat(java.util.List<fan.summer.fengyu.ai.AiChatMessage> h,
+                             fan.summer.fengyu.ai.AiStreamCallback c) {}
+            public void chat(java.util.List<fan.summer.fengyu.ai.AiChatMessage> h,
                              float t, float tp, int m,
-                             fan.summer.fengyu.api.ai.AiStreamCallback c) {}
+                             fan.summer.fengyu.ai.AiStreamCallback c) {}
             public void cancelGeneration() {}
         };
     }

@@ -1,10 +1,10 @@
 package fan.summer.fengyu.web.controller;
 
-import fan.summer.fengyu.api.ai.AiChatMessage;
-import fan.summer.fengyu.api.ai.AiStreamCallback;
-import fan.summer.fengyu.api.ai.AiToolCall;
-import fan.summer.fengyu.api.ai.AiToolResult;
-import fan.summer.fengyu.api.ai.ChatBackend;
+import fan.summer.fengyu.ai.AiChatMessage;
+import fan.summer.fengyu.ai.AiStreamCallback;
+import fan.summer.fengyu.ai.AiToolCall;
+import fan.summer.fengyu.ai.AiToolResult;
+import fan.summer.fengyu.ai.ChatBackend;
 import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
 import fan.summer.fengyu.ai.service.AiModeService;
 import fan.summer.fengyu.ai.service.OllamaLocalBackend;

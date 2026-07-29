@@ -1,4 +1,4 @@
-package fan.summer.fengyu.api.ai;
+package fan.summer.fengyu.ai;
 
 /**
  * Marker interface for Spring AI tool beans aggregated by the app's
@@ -20,9 +20,7 @@ package fan.summer.fengyu.api.ai;
  * Tools that do not implement this marker are simply not aggregated (and therefore not
  * offered to the model / agent orchestrator).
  *
- * <p>Lives in {@code FengYu-Api} (rather than the app module) so plugin modules — which
- * depend on {@code FengYu-Api} as {@code provided} but not on the app — can implement it
- * for their own {@code @Tool}-annotated beans.
+ * <p>Lives in the app module because tools are host-side beans.
  */
 public interface FengYuTool {
 }

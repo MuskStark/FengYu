@@ -1,4 +1,4 @@
-package fan.summer.fengyu.api.ai;
+package fan.summer.fengyu.ai;
 
 import java.time.Instant;
 

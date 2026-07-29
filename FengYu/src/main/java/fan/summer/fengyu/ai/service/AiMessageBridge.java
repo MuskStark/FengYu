@@ -1,8 +1,8 @@
 package fan.summer.fengyu.ai.service;
 
 import fan.summer.fengyu.ai.util.JsonHelper;
-import fan.summer.fengyu.api.ai.AiChatMessage;
-import fan.summer.fengyu.api.ai.AiToolCall;
+import fan.summer.fengyu.ai.AiChatMessage;
+import fan.summer.fengyu.ai.AiToolCall;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;

@@ -1,6 +1,6 @@
 package fan.summer.fengyu.ai.service;
 
-import fan.summer.fengyu.api.ai.ChatBackend;
+import fan.summer.fengyu.ai.ChatBackend;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;

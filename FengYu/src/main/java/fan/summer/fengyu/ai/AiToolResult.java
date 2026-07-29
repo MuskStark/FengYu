@@ -1,4 +1,4 @@
-package fan.summer.fengyu.api.ai;
+package fan.summer.fengyu.ai;
 
 /**
  * An immutable record representing the outcome of executing an {@link AiTool}.

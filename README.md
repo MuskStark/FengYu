@@ -8,15 +8,15 @@ surfaces — `.fyp` plugins, `.fys` skills, and in-process AI tools. It runs as 
 backend, a Vue 3.5 + Vuetify 3 UI, and an optional Electron desktop shell; built-in tools (Excel
 splitting, email, markdown, and more) ship as official plugins the Agent can call.
 
-> ### 🚧 4.0.0-alpha.5 — web + desktop
-> This branch (`4.0.0-FengYu`) re-architects Infinia from a JavaFX desktop app into a **web +
+> ### 4.0.0 — web + desktop
+> This branch (`4.0.0`) re-architects Infinia from a JavaFX desktop app into a **web +
 > desktop application**: a **headless Spring Boot backend** (loopback web server, no window), a
 > **Vue 3.5 + TypeScript** frontend (identical for browser and desktop), and an **Electron 43.x**
 > desktop shell that sidecar-launches the Java backend. Built-in tools become official plugins that
 > expose a JSON-RPC worker backend plus a micro-frontend UI bundle. JavaFX has been removed.
 > See [`CHANGELOG.md`](CHANGELOG.md) and the [online docs](https://muskstark.github.io/FengYu/) for the current state.
 >
-> Run the backend: `java -jar FengYu/target/FengYu-4.0.0-alpha.5.jar --token=<t>` (binds port 24056 by default)
+> Run the backend: `java -jar FengYu/target/FengYu-4.0.0.jar --token=<t>` (binds port 24056 by default)
 > · frontend: `cd frontend && npm run dev` · smoke test: `scripts/e2e-smoke.sh`.
 >
 > The official **Email Center** plugin now ships as `fan.summer.email`: five sandboxed UI tabs,
@@ -40,21 +40,18 @@ splitting, email, markdown, and more) ship as official plugins the Agent can cal
 
 ### Build from Source
 
-The project uses standalone POMs (no parent inheritance), so the API module must be installed first:
+Build the backend module through the repository Maven wrapper:
 
 ```bash
 # Clone the repository
 git clone https://github.com/MuskStark/FengYu.git
 cd FengYu
 
-# 1. Install the API module into the local repo (required)
-mvn install -f FengYu-Api/pom.xml -DskipTests
+# 1. Build the backend fat JAR
+./mvnw clean package -f FengYu/pom.xml -DskipTests
 
-# 2. Build the backend fat JAR
-mvn clean package -f FengYu/pom.xml -DskipTests
-
-# 3. Run the headless backend (loopback web server on 127.0.0.1:24056)
-java -jar FengYu/target/FengYu-4.0.0-alpha.5.jar --token=<your-token>
+# 2. Run the headless backend (loopback web server on 127.0.0.1:24056)
+java -jar FengYu/target/FengYu-4.0.0.jar --token=<your-token>
 ```
 
 ### Run the Frontend (dev)
@@ -74,9 +71,9 @@ cd desktop/electron && npm install && npm run dev   # set FENGYU_JAR or run the 
 
 `scripts/e2e-smoke.sh` boots the jar and probes every endpoint.
 
-### Releases (Alpha)
+### Releases
 
-Pushed release tags (`v4.0.0`, `v4.0.0-alpha.5`, `-beta.*`, `-rc.*`) trigger
+Pushed release tags (`v4.0.0`, `v4.0.0-beta.*`, `v4.0.0-rc.*`) trigger
 [`.github/workflows/fengyu-release.yml`](.github/workflows/fengyu-release.yml), which publishes:
 
 - **Unsigned Electron packages** for Windows, macOS, and Linux — two variants per platform: a
@@ -86,7 +83,7 @@ Pushed release tags (`v4.0.0`, `v4.0.0-alpha.5`, `-beta.*`, `-rc.*`) trigger
   (macOS/Linux) or `run.bat` (Windows). Requires **Java 21**; the backend binds **loopback only**
   (`127.0.0.1`) and is not reachable from other machines.
 
-These are **unsigned Alpha builds**: code-signing is deferred to a later release.
+These builds are currently unsigned; code-signing is deferred to a later release.
 
 ---
 
@@ -141,7 +138,6 @@ the token + api-base to the renderer via a `contextBridge` preload. See [Archite
 
 | Module / dir | Purpose |
 |--------|---------|
-| `FengYu-Api` | Plugin + AI contract (`manifest.json` schema, worker JSON-RPC protocol, `AiTool`). |
 | `toolchain/sdk-java` | Java Worker SDK + TypeScript `@infinia/plugin-sdk` (the iframe `postMessage` bridge, in `toolchain/sdk-ts`). |
 | `OfficialPlugins` | Official plugins: `plugin-markdown`, `plugin-excel`, `plugin-email` (each ships a `.fyp`). |
 | `FengYu` | Headless Spring Boot backend — REST/SSE controllers, AI backends, JPA/Hibernate, marketplace. |

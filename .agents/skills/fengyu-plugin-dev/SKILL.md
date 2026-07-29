@@ -174,7 +174,7 @@ cd ../ui && npm run prepack && npm run test:visual
 cd ../.. && ./mvnw -pl toolchain/devkit-java -am test
 scripts/check-plugin-dependency-boundaries.sh
 scripts/plugin-tooling-local-smoke.sh
-npm run docs:build
+npm --prefix docs run build
 ```
 
 Build all four official plugins through `node toolchain/cli/bin/fengyu.mjs plugin build <plugin>` and

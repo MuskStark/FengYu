@@ -1,6 +1,6 @@
 package fan.summer.fengyu.ai.util;
 
-import fan.summer.fengyu.api.theme.ThemeService;
+import fan.summer.fengyu.ai.util.ThemeService;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
