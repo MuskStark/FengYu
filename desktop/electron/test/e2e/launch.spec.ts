@@ -55,7 +55,9 @@ test.describe('desktop launch', () => {
       }))
       lines.push(`[step] apiBase=${bridge.apiBase}`)
       expect(bridge.apiBase).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
-      expect(bridge.token).toMatch(/^zf-[0-9a-f]+-[0-9a-f]+$/)
+      // genToken() emits `zf-` + 32 random bytes as 64 hex chars (a single segment,
+      // not two). Match the real shape so this stays in sync with util/token.ts.
+      expect(bridge.token).toMatch(/^zf-[0-9a-f]{64}$/)
 
       // Backend reachable at that base, with the token the shell generated.
       const r = await fetch(`${bridge.apiBase}/api/health`, {
