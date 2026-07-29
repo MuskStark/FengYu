@@ -5,7 +5,7 @@ import { runtimeRoot } from './runtime-paths'
 
 /**
  * Configure electron-log to write the desktop log alongside the backend logs
- * (~/.fengyu/logs). Backend stdout is teed to a SEPARATE file
+ * (<program-working-directory>/logs). Backend stdout is teed to a SEPARATE file
  * (backend-stdout.log), distinct from desktop.log, matching the original Rust
  * behavior of keeping backend output separate.
  *

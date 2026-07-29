@@ -30,6 +30,27 @@ worker 是插件的后端。它是一个普通的可执行文件——通常是�
 
 > **日志走 stderr。** `stdout` 专用于协议消息。Worker SDK 通过在运行循环期间把 `System.out` 重定向到 `System.err` 来强制这一点——参见 [常见陷阱](/zh/plugins/pitfalls)。
 
+## 日志
+
+Java 插件代码直接使用标准 SLF4J API：
+
+```java
+private static final Logger log = LoggerFactory.getLogger(MyHandler.class);
+
+log.debug("Loaded {} rows", rowCount);
+log.error("Export failed", exception);
+```
+
+SDK 自带 Worker 专用的 SLF4J provider。每个事件会作为一行结构化数据写入 `stderr`，完整保留
+`TRACE`、`DEBUG`、`INFO`、`WARN`、`ERROR`，以及 logger 名称、线程、格式化消息和异常栈。
+宿主解析事件、脱敏注入的密钥，以相同等级转发到宿主日志，并通过现有插件日志 REST/SSE
+接口发布。旧 Worker 直接写出的自由格式 `System.err` 仍然兼容；无法识别等级时默认为 `INFO`。
+
+设置页控制主程序与所有 Worker 共享的单一阈值：`TRACE`、`DEBUG`、`INFO`、`WARN`、`ERROR`
+或 `OFF`。新进程通过 `FENGYU_LOG_LEVEL` 接收该值；运行中的 SDK Worker 通过内置 JSON-RPC
+通知 `$/fengyu/logging/setLevel` 接收更新，并立即作用于已有 logger 实例。插件不得自行注册
+这个保留方法。
+
 ## 每次调用超时
 
 每次 invoke 都被一个超时约束。宿主（`PluginProcessManager`）会等待那么多秒以获取 worker 的响应；超时后**worker 进程会被杀掉**，下一次调用会懒重启它。这是有意为之：SDK 的 dispatch 循环是单线程的，因此一个卡死的 handler 无法通过其他方式取消——唯一的恢复手段就是把进程拆掉。

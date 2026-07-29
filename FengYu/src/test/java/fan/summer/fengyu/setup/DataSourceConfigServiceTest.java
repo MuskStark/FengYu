@@ -4,7 +4,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
+import java.nio.file.FileSystems;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.util.EnumSet;
 import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -73,7 +76,7 @@ class DataSourceConfigServiceTest {
         DataSourceConfigService svc = newService();
         WizardParams params = new WizardParams(".fengyu/data/fengyu", null, null, null, null, null);
         DataSourceConfig cfg = svc.buildFromWizard(DbType.H2, params);
-        // Relative path resolved against user.dir (test tempDir here)
+        // Relative path is resolved against the injected program runtime root (tempDir here).
         assertTrue(cfg.url().contains(tempDir.toString().replace("\\", "/")));
     }
 
@@ -184,6 +187,27 @@ class DataSourceConfigServiceTest {
 
         assertTrue(Files.isRegularFile(tempDir.resolve("config/.machineid")));
         assertEquals("secret", svc.load().password());
+    }
+
+    @Test
+    void sensitiveConfigFilesAreOwnerOnlyOnPosixFilesystems() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                FileSystems.getDefault().supportedFileAttributeViews().contains("posix"));
+        DataSourceConfigService svc = newService();
+        WizardParams params = new WizardParams(
+                null, "db.example.com", 3306, "fengyu", "admin", "secret");
+
+        svc.save(svc.buildFromWizard(DbType.MYSQL, params));
+
+        assertEquals(EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE),
+                Files.getPosixFilePermissions(tempDir.resolve("config/datasource.properties")));
+        assertEquals(EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE),
+                Files.getPosixFilePermissions(tempDir.resolve("config/.machineid")));
+        assertEquals(EnumSet.of(
+                        PosixFilePermission.OWNER_READ,
+                        PosixFilePermission.OWNER_WRITE,
+                        PosixFilePermission.OWNER_EXECUTE),
+                Files.getPosixFilePermissions(tempDir.resolve("config")));
     }
 
     @Test

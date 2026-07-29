@@ -6,6 +6,7 @@ export type ConfirmationStatus = 'pending' | 'submitting' | 'approved' | 'reject
 export interface ConfirmationSummaryRow { label: string; value: string }
 
 export interface ToolConfirmation {
+  source: 'plugin' | 'host'
   pluginId: string
   confirmationId: string
   approveMethod: string
@@ -18,8 +19,27 @@ export interface ToolConfirmation {
 }
 
 type InvokePlugin = (id: string, method: string, params: Record<string, unknown>) => Promise<PluginInvokeResult>
+type ResolveHost = (id: string, approved: boolean) => Promise<PluginInvokeResult>
 
 export function parseToolConfirmation(payload: Record<string, unknown>): ToolConfirmation | null {
+  if (payload.phase === 'approval_required') {
+    const confirmationId = string(payload.approvalId)
+    const expiresAt = string(payload.expiresAt)
+    const toolName = string(payload.name)
+    if (!confirmationId || !expiresAt || !toolName) return null
+    const args = isRecord(payload.arguments) ? payload.arguments : {}
+    const summary = [
+      { label: 'Tool', value: toolName },
+      ...Object.entries(args).map(([label, value]) => ({
+        label,
+        value: typeof value === 'string' ? value : (JSON.stringify(value) ?? String(value)),
+      })),
+    ]
+    return {
+      source: 'host', pluginId: '', confirmationId, approveMethod: '', rejectMethod: '',
+      expiresAt, summary, status: 'pending',
+    }
+  }
   if (payload.phase !== 'result' || typeof payload.output !== 'string') return null
   let envelope: unknown
   try { envelope = JSON.parse(payload.output) } catch { return null }
@@ -35,16 +55,26 @@ export function parseToolConfirmation(payload: Record<string, unknown>): ToolCon
     ? value.summary.flatMap((row) => isRecord(row) && string(row.label) && string(row.value)
       ? [{ label: string(row.label), value: string(row.value) }] : [])
     : []
-  return { pluginId, confirmationId, approveMethod, rejectMethod, expiresAt, summary, status: 'pending' }
+  return {
+    source: 'plugin', pluginId, confirmationId, approveMethod, rejectMethod,
+    expiresAt, summary, status: 'pending',
+  }
 }
 
 export async function actOnConfirmation(item: ToolConfirmation, approve: boolean,
-    invoke: InvokePlugin = api.pluginInvoke): Promise<void> {
+    invoke: InvokePlugin = api.pluginInvoke,
+    resolveHost: ResolveHost = api.resolveAiToolApproval): Promise<void> {
   if (item.status !== 'pending') return
   item.status = 'submitting'
   try {
-    item.result = await invoke(item.pluginId, approve ? item.approveMethod : item.rejectMethod,
-      { confirmationId: item.confirmationId })
+    item.result = item.source === 'host'
+      ? await resolveHost(item.confirmationId, approve)
+      : await invoke(item.pluginId, approve ? item.approveMethod : item.rejectMethod,
+          { confirmationId: item.confirmationId })
+    if (item.result.ok === false) {
+      throw new Error(typeof item.result.error === 'string'
+        ? item.result.error : 'Approval request could not be resolved')
+    }
     item.status = approve ? 'approved' : 'rejected'
   } catch (error) {
     item.status = 'error'

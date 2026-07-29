@@ -8,6 +8,8 @@ import fan.summer.fengyu.web.controller.PluginController;
 import fan.summer.fengyu.web.controller.PluginMarketplaceController;
 import fan.summer.fengyu.web.controller.PluginRuntimeController;
 import fan.summer.fengyu.web.controller.PluginRuntimeFileController;
+import fan.summer.fengyu.web.controller.McpController;
+import fan.summer.fengyu.web.controller.SecurityController;
 import fan.summer.fengyu.web.controller.SettingsController;
 import fan.summer.fengyu.web.controller.SkillController;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -42,7 +44,9 @@ import org.springframework.context.annotation.FilterType;
  * scanned here). {@link ConversationController} needs the AI-history JPA repositories, absent in
  * this DB-less context. {@link SkillController} needs {@code SkillRegistry}/
  * {@code SkillPackageService}/{@code SkillMarketplaceService} from the {@code ai.skill} package,
- * which this context does not scan. This mirrors the {@code excludeFilters} idiom already used
+ * which this context does not scan. {@link SecurityController} depends on the APP-mode
+ * {@code ProcessSandbox} component, while {@link McpController} reports APP-mode MCP clients, so
+ * both are excluded as well. This mirrors the {@code excludeFilters} idiom already used
  * by {@link fan.summer.fengyu.FengYuApplication} on the opposite side (it excludes this class).
  */
 @SpringBootApplication(exclude = {
@@ -58,6 +62,7 @@ import org.springframework.context.annotation.FilterType;
                         PluginRuntimeFileController.class,
                         SettingsController.class,
                         AiController.class, AiConfigController.class, AgentController.class,
-                        ConversationController.class, SkillController.class}))
+                        ConversationController.class, SkillController.class,
+                        McpController.class, SecurityController.class}))
 public class SetupApplication {
 }

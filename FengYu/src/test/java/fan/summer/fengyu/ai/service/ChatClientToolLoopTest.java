@@ -4,6 +4,8 @@ import fan.summer.fengyu.api.ai.AiChatMessage;
 import fan.summer.fengyu.api.ai.AiStreamCallback;
 import fan.summer.fengyu.api.ai.AiToolCall;
 import fan.summer.fengyu.api.ai.AiToolResult;
+import fan.summer.fengyu.ai.tools.ApprovalRequiredToolCallback;
+import fan.summer.fengyu.ai.tools.ChatToolApprovalGate;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatModel;
@@ -17,6 +19,7 @@ import org.springframework.ai.tool.metadata.ToolMetadata;
 import reactor.core.publisher.Flux;
 
 import java.util.List;
+import java.time.Instant;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -152,5 +155,41 @@ class ChatClientToolLoopTest {
         assertTrue(tokens.get() >= 1, "onToken should fire");
         assertEquals(0, toolCalls.get(), "no onToolCall should fire without tools");
         assertEquals("hello there", history.get(history.size() - 1).content());
+    }
+
+    @Test
+    void sensitiveToolWaitsForChatApprovalBeforeInvocation() throws Exception {
+        SpringAiCloudBackend backend = new SpringAiCloudBackend(new ScriptedChatModel());
+        ChatToolApprovalGate gate = new ChatToolApprovalGate();
+        AtomicInteger invocations = new AtomicInteger();
+        ApprovalRequiredToolCallback sensitiveEcho = new ApprovalRequiredToolCallback() {
+            private final ToolDefinition definition = new EchoToolCallback().getToolDefinition();
+            @Override public ToolDefinition getToolDefinition() { return definition; }
+            @Override public String call(String input) {
+                invocations.incrementAndGet();
+                return "echo:" + input;
+            }
+        };
+        backend.setToolCallbacks(List.of(sensitiveEcho));
+        backend.setToolApprovalGate(gate);
+
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicInteger approvalRequests = new AtomicInteger();
+        backend.chat(new java.util.ArrayList<>(List.of(AiChatMessage.user("ping"))),
+                0.7f, 0.9f, 256, new AiStreamCallback() {
+                    @Override public void onToken(String token) {}
+                    @Override public void onToolApprovalRequired(
+                            String approvalId, AiToolCall call, Instant expiresAt) {
+                        approvalRequests.incrementAndGet();
+                        assertEquals(0, invocations.get(), "tool ran before approval");
+                        assertTrue(gate.resolve(approvalId, true));
+                    }
+                    @Override public void onComplete(String s, int t, double r) { done.countDown(); }
+                    @Override public void onError(Throwable t) { done.countDown(); }
+                });
+
+        assertTrue(done.await(5, TimeUnit.SECONDS));
+        assertEquals(1, approvalRequests.get());
+        assertEquals(1, invocations.get());
     }
 }

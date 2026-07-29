@@ -1,6 +1,7 @@
 package fan.summer.fengyu.ai.agent;
 
 import fan.summer.fengyu.ai.util.JsonHelper;
+import fan.summer.fengyu.ai.tools.ApprovalRequiredToolCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
@@ -11,6 +12,12 @@ import java.util.Map;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -151,6 +158,7 @@ public class AgentRunner {
         AgentRunConfig cfg = run.getConfig();
         int replansRemaining = cfg.maxReplans();
         AgentPlan suppliedWorkflow = run.getPlan();
+        String planningGoal = run.getGoal();
 
         try {
             while (true) {
@@ -162,7 +170,7 @@ public class AgentRunner {
                         plan = suppliedWorkflow;
                         suppliedWorkflow = null;
                     } else {
-                        plan = planGenerator.generate(run.getGoal(), tools,
+                        plan = planGenerator.generate(planningGoal, tools,
                                 delta -> safe(sink, s -> s.onPlanToken(delta)));
                     }
                     validatePlan(plan, tools);
@@ -220,9 +228,10 @@ public class AgentRunner {
                 // ── 4. Replan on failure (if enabled and budget remains) ──
                 if (cfg.replanOnFailure() && replansRemaining > 0) {
                     replansRemaining--;
+                    planningGoal = replanGoal(run.getGoal(), failure, run.getExecutions());
                     log.info("agent {}: step {} failed ({}); replanning ({} replan(s) left)",
                             run.getRunId(), failure.stepIndex, failure.message, replansRemaining);
-                    continue;   // back to PLANNING with the failure context visible to the planner
+                    continue;
                 }
 
                 // No replan possible → terminal failure.
@@ -243,48 +252,138 @@ public class AgentRunner {
         }
     }
 
-    /** Executes the plan's steps sequentially, honoring per-step approval. Returns the first failure, or {@code null} on full success. */
+    /**
+     * Executes dependency-ready DAG levels concurrently on virtual threads. Approval gates are
+     * resolved before a level starts, so no worker can leave a sibling blocked behind a shared
+     * run-level approval latch.
+     */
     private StepFailure executeSteps(AgentRun run, AgentEventSink sink, AgentRunConfig cfg, AgentPlan plan)
             throws InterruptedException {
-        Map<Integer, String> results = new HashMap<>();
-        String lastResult = null;
+        Map<Integer, String> results = Collections.synchronizedMap(new HashMap<>());
+        Set<Integer> completed = new HashSet<>();
+        for (StepExecution execution : run.getRestoredExecutions()) {
+            completed.add(execution.index());
+            results.put(execution.index(), execution.result());
+        }
+
+        Map<Integer, AgentStep> pending = new LinkedHashMap<>();
         for (AgentStep step : plan.steps()) {
-            // Cooperative cancellation before every step.
-            if (run.isCancelled()) {
-                return new StepFailure(step.index(), "cancelled before step");
-            }
+            if (!completed.contains(step.index())) pending.put(step.index(), step);
+        }
 
-            // Optional per-step approval gate.
-            if (cfg.requireStepApproval() && step.requiresApproval()) {
-                run.requestApproval(AgentRunStatus.AWAITING_STEP_APPROVAL);
-                safe(sink, s -> s.onStepApprovalRequested(step.index()));
-                if (!awaitApprovalOrCancel(run)) {
-                    return new StepFailure(step.index(), "cancelled awaiting step approval");
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            while (!pending.isEmpty()) {
+                List<AgentStep> ready = pending.values().stream()
+                        .filter(step -> completed.containsAll(dependencies(step)))
+                        .sorted(Comparator.comparingInt(AgentStep::index))
+                        .toList();
+                if (ready.isEmpty()) {
+                    return new StepFailure(pending.keySet().iterator().next(),
+                            "workflow dependencies cannot be satisfied");
                 }
+
                 if (run.isCancelled()) {
-                    return new StepFailure(step.index(), "cancelled after step approval");
+                    return new StepFailure(ready.getFirst().index(), "cancelled before step");
                 }
-            }
 
-            run.addExecution(new StepExecution(step.index(), StepStatus.RUNNING, null));
-            safe(sink, s -> s.onStepStart(step.index()));
+                // The run owns one approval latch, so approval checkpoints remain deterministic.
+                for (AgentStep step : ready) {
+                    if ((cfg.requireStepApproval() && step.requiresApproval())
+                            || toolRequiresApproval(step.toolName(), tools)) {
+                        run.requestApproval(AgentRunStatus.AWAITING_STEP_APPROVAL);
+                        safe(sink, s -> s.onStepApprovalRequested(step.index()));
+                        if (!awaitApprovalOrCancel(run)) {
+                            return new StepFailure(step.index(), "cancelled awaiting step approval");
+                        }
+                    }
+                }
 
-            try {
-                AgentStep resolved = new AgentStep(step.index(), step.toolName(),
-                        resolveArgs(step.args(), results, lastResult),
-                        step.description(), step.requiresApproval());
-                String result = stepExecutor.execute(resolved, tools);
-                results.put(step.index(), result);
-                lastResult = result;
-                run.addExecution(new StepExecution(step.index(), StepStatus.COMPLETED, result));
-                safe(sink, s -> s.onStepComplete(step.index(), result));
-            } catch (Exception e) {
-                String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-                run.addExecution(new StepExecution(step.index(), StepStatus.FAILED, msg));
-                return new StepFailure(step.index(), msg);
+                List<Callable<StepOutcome>> tasks = ready.stream()
+                        .<Callable<StepOutcome>>map(step ->
+                                () -> executeStep(run, sink, step, results))
+                        .toList();
+                List<Future<StepOutcome>> futures = executor.invokeAll(tasks);
+                List<StepFailure> failures = new ArrayList<>();
+                for (int i = 0; i < futures.size(); i++) {
+                    AgentStep step = ready.get(i);
+                    try {
+                        StepOutcome outcome = futures.get(i).get();
+                        if (outcome.failure() == null) {
+                            completed.add(step.index());
+                            pending.remove(step.index());
+                        } else {
+                            failures.add(outcome.failure());
+                        }
+                    } catch (Exception e) {
+                        Throwable cause = e.getCause() == null ? e : e.getCause();
+                        failures.add(new StepFailure(step.index(),
+                                cause.getMessage() == null
+                                        ? cause.getClass().getSimpleName()
+                                        : cause.getMessage()));
+                    }
+                }
+                if (!failures.isEmpty()) {
+                    return failures.stream()
+                            .min(Comparator.comparingInt(StepFailure::stepIndex))
+                            .orElseThrow();
+                }
             }
         }
         return null;
+    }
+
+    private StepOutcome executeStep(AgentRun run, AgentEventSink sink, AgentStep step,
+                                    Map<Integer, String> results) {
+        if (run.isCancelled()) {
+            return new StepOutcome(new StepFailure(step.index(), "cancelled before step"));
+        }
+        run.addExecution(new StepExecution(step.index(), StepStatus.RUNNING, null));
+        safe(sink, s -> s.onStepStart(step.index()));
+
+        try {
+            AgentStep resolved = new AgentStep(step.index(), step.toolName(),
+                    resolveArgs(step.args(), results, results.get(step.index() - 1)),
+                    step.description(), step.requiresApproval(), step.dependsOn());
+            String result = stepExecutor.execute(resolved, tools);
+            results.put(step.index(), result);
+            run.addExecution(new StepExecution(step.index(), StepStatus.COMPLETED, result));
+            safe(sink, s -> s.onStepComplete(step.index(), result));
+            return new StepOutcome(null);
+        } catch (Exception e) {
+            String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            run.addExecution(new StepExecution(step.index(), StepStatus.FAILED, msg));
+            return new StepOutcome(new StepFailure(step.index(), msg));
+        }
+    }
+
+    private static Set<Integer> dependencies(AgentStep step) {
+        Set<Integer> dependencies = new HashSet<>(step.dependsOn());
+        collectReferences(step.args(), dependencies);
+        if (containsLastResult(step.args()) && step.index() > 0) {
+            dependencies.add(step.index() - 1);
+        }
+        return dependencies;
+    }
+
+    private static void collectReferences(Object value, Set<Integer> references) {
+        if (value instanceof Map<?, ?> map) {
+            map.values().forEach(child -> collectReferences(child, references));
+        } else if (value instanceof List<?> list) {
+            list.forEach(child -> collectReferences(child, references));
+        } else if (value instanceof String text) {
+            Matcher matcher = STEP_RESULT.matcher(text);
+            while (matcher.find()) references.add(Integer.parseInt(matcher.group(1)));
+        }
+    }
+
+    private static boolean containsLastResult(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            return map.values().stream().anyMatch(AgentRunner::containsLastResult);
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().anyMatch(AgentRunner::containsLastResult);
+        }
+        return value instanceof String text && text.contains(LAST_RESULT);
     }
 
     // ── Approval + cancellation helpers ────────────────────────────────
@@ -314,6 +413,43 @@ public class AgentRunner {
 
     /** A recorded step failure (index + message) for the replan decision. */
     private record StepFailure(int stepIndex, String message) {}
+    private record StepOutcome(StepFailure failure) {}
+
+    private static String replanGoal(String originalGoal, StepFailure failure,
+                                     List<StepExecution> executions) {
+        StringBuilder context = new StringBuilder(originalGoal == null ? "" : originalGoal);
+        context.append("\n\nREPLAN_CONTEXT:\n")
+                .append("- The previous plan failed at step ")
+                .append(failure.stepIndex)
+                .append(": ")
+                .append(failure.message)
+                .append('\n');
+        List<StepExecution> completed = executions.stream()
+                .filter(execution -> execution.status() == StepStatus.COMPLETED)
+                .toList();
+        if (!completed.isEmpty()) {
+            context.append("- Completed step results that may be reused:\n");
+            for (StepExecution execution : completed) {
+                context.append("  - step ")
+                        .append(execution.index())
+                        .append(": ")
+                        .append(execution.result())
+                        .append('\n');
+            }
+        }
+        context.append("- Produce a revised plan that avoids or corrects this failure.");
+        return context.toString();
+    }
+
+    private static boolean toolRequiresApproval(String toolName, List<ToolCallback> tools) {
+        for (ToolCallback tool : tools) {
+            if (tool instanceof ApprovalRequiredToolCallback
+                    && tool.getToolDefinition().name().equals(toolName)) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     /** Invokes a sink method, swallowing exceptions so a buggy sink can't kill the run. */
     private void safe(AgentEventSink sink, java.util.function.Consumer<AgentEventSink> action) {
@@ -353,6 +489,12 @@ public class AgentRunner {
             if (step.toolName() == null || !available.contains(step.toolName())) {
                 throw new IllegalArgumentException(
                         "step " + i + " references unavailable tool '" + step.toolName() + "'");
+            }
+            for (Integer dependency : step.dependsOn()) {
+                if (dependency == null || dependency < 0 || dependency >= i) {
+                    throw new IllegalArgumentException(
+                            "step " + i + " has invalid dependency " + dependency);
+                }
             }
             validateReferences(step.args(), i);
         }

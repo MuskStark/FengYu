@@ -2,8 +2,11 @@ import axios, { type AxiosInstance } from 'axios'
 import { getApiBase, getToken } from './config'
 import type {
   AgentPlan,
+  AgentBatchResponse,
+  AgentRunDetail,
   AgentRunRequest,
   AgentRunResponse,
+  AgentRunSummary,
   AgentTool,
   AiConfigTestRequest,
   AiConfigTestResult,
@@ -21,11 +24,13 @@ import type {
   HealthResponse,
   InitializeResult,
   MarketplacePlugin,
+  McpStatus,
   PartialAiSettings,
   PartialSettings,
   PluginDescriptor,
   PluginFileRef,
   PluginInvokeResult,
+  ProcessIsolationStatus,
   SetupStatus,
   SkillDetail,
   SkillSummary,
@@ -184,6 +189,18 @@ export const api = {
     return data
   },
 
+  async resolveAiToolApproval(approvalId: string, approved: boolean): Promise<PluginInvokeResult> {
+    const { data } = await http.post<PluginInvokeResult>(
+      `/api/ai/tool-approvals/${encodeURIComponent(approvalId)}`,
+      { approved },
+    )
+    return data
+  },
+
+  async cancelAiGeneration(): Promise<void> {
+    await http.post('/api/ai/cancel')
+  },
+
   // ── AI conversation history (persisted) ──────────────────────
   async listConversations(): Promise<ConversationSummary[]> {
     const { data } = await http.get<ConversationSummary[]>('/api/ai/conversations')
@@ -240,6 +257,12 @@ export const api = {
   agentRun: (req: AgentRunRequest) =>
     http.post<AgentRunResponse>('/api/agent/run', req).then((r) => r.data),
 
+  /** Start 1–8 independent agent runs concurrently. */
+  agentBatch: (goals: string[], config: AgentRunRequest['config']) =>
+    http
+      .post<AgentBatchResponse>('/api/agent/batch', { goals, config })
+      .then((r) => r.data),
+
   /** Release the run's approval gate (plan or step); an edited plan body replaces it. */
   agentApprove: (runId: string, plan?: AgentPlan) =>
     http
@@ -255,6 +278,30 @@ export const api = {
   /** The orchestrable tool list (name/description/inputSchema). */
   agentTools: () =>
     http.get<AgentTool[]>('/api/agent/tools').then((r) => r.data),
+
+  /** Durable agent history and event audit trail. */
+  agentRuns: () =>
+    http.get<AgentRunSummary[]>('/api/agent/runs').then((r) => r.data),
+
+  agentRunDetail: (runId: string) =>
+    http
+      .get<AgentRunDetail>(`/api/agent/runs/${encodeURIComponent(runId)}`)
+      .then((r) => r.data),
+
+  /** Resume only the unfinished portion of a failed/cancelled run, after plan review. */
+  agentResume: (runId: string) =>
+    http
+      .post<AgentRunResponse>(`/api/agent/runs/${encodeURIComponent(runId)}/resume`)
+      .then((r) => r.data),
+
+  /** Read-only MCP connection and discovered-tool diagnostics. */
+  mcpStatus: () =>
+    http.get<McpStatus>('/api/mcp/status').then((r) => r.data),
+
+  processIsolationStatus: () =>
+    http
+      .get<ProcessIsolationStatus>('/api/security/process-isolation')
+      .then((r) => r.data),
 
   // ── Skills (Codex-style progressive disclosure, managed like plugins) ──
   /** List every discovered skill (no bodies). */

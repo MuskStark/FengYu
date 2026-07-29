@@ -2,20 +2,30 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
+import { api } from '@/api/client'
 import type {
   AiConfigTestRequest,
   AiConfigTestResult,
   AiMode,
   LanguageName,
+  LogLevel,
+  McpStatus,
+  ProcessIsolationStatus,
   ThemeName,
 } from '@/api/types'
 
 const { t } = useI18n()
 const settings = useSettingsStore()
+const mcpStatus = ref<McpStatus | null>(null)
+const isolationStatus = ref<ProcessIsolationStatus | null>(null)
 
 onMounted(() => {
   if (!settings.loaded) void settings.load().catch(() => {})
   if (!settings.aiLoaded) void settings.loadAi().catch(() => {})
+  void api.mcpStatus().then((value) => { mcpStatus.value = value }).catch(() => {})
+  void api.processIsolationStatus()
+    .then((value) => { isolationStatus.value = value })
+    .catch(() => {})
 })
 
 const themeItems: { title: string; value: ThemeName }[] = [
@@ -26,6 +36,7 @@ const languageItems: { title: string; value: LanguageName }[] = [
   { title: t('settings.english'), value: 'en' },
   { title: t('settings.chinese'), value: 'zh' },
 ]
+const logLevelItems: LogLevel[] = ['TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR', 'OFF']
 
 const aiForm = ref({
   mode: 'local' as AiMode,
@@ -125,6 +136,23 @@ async function onTest() {
       <div class="cx-card">
         <div class="cx-setting-row">
           <div class="cx-setting-row__label">
+            <i class="mdi mdi-text-box-search-outline" />
+            <div>
+              <div>{{ $t('settings.logLevel') }}</div>
+              <div class="cx-muted" style="font-size: 12px">{{ $t('settings.logLevelHint') }}</div>
+            </div>
+          </div>
+          <select
+            :value="settings.logLevel"
+            class="cx-select"
+            style="width: 140px"
+            @change="settings.setLogLevel(($event.target as HTMLSelectElement).value as LogLevel)"
+          >
+            <option v-for="level in logLevelItems" :key="level" :value="level">{{ level }}</option>
+          </select>
+        </div>
+        <div class="cx-setting-row">
+          <div class="cx-setting-row__label">
             <i class="mdi mdi-palette-outline" />
             <span>{{ $t('settings.theme') }}</span>
           </div>
@@ -150,6 +178,37 @@ async function onTest() {
               @click="settings.setLanguage(i.value)"
             >{{ i.title }}</button>
           </div>
+        </div>
+      </div>
+
+      <div class="cx-section-title">{{ $t('settings.runtimeSecurity') }}</div>
+      <div class="cx-card">
+        <div class="cx-setting-row">
+          <div class="cx-setting-row__label">
+            <i class="mdi mdi-shield-lock-outline" />
+            <span>{{ $t('settings.processIsolation') }}</span>
+          </div>
+          <span
+            v-if="isolationStatus"
+            class="cx-chip"
+            :class="isolationStatus.sandboxed ? 'cx-chip--success' : 'cx-chip--warn'"
+          >
+            {{ isolationStatus.sandboxed
+              ? $t('settings.sandboxActive', { backend: isolationStatus.backend })
+              : $t('settings.compatibilityApproval') }}
+          </span>
+        </div>
+        <div class="cx-setting-row">
+          <div class="cx-setting-row__label">
+            <i class="mdi mdi-connection" />
+            <span>MCP</span>
+          </div>
+          <span v-if="mcpStatus" class="cx-muted" style="font-size: 13px">
+            {{ $t('settings.mcpSummary', {
+              connections: mcpStatus.connectionCount,
+              tools: mcpStatus.toolCount,
+            }) }}
+          </span>
         </div>
       </div>
 

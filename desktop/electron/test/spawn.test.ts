@@ -108,7 +108,14 @@ describe('spawnBackend', () => {
     })
 
     expect(result.port).toBe(24056)
-    expect(mockSpawn.mock.calls[0][1]).toContain(`-Dfengyu.runtime.dir=${runtimeRoot()}`)
+    const args = mockSpawn.mock.calls[0][1] as string[]
+    const options = mockSpawn.mock.calls[0][2]
+    expect(args).toContain(`-Dfengyu.runtime.dir=${runtimeRoot()}`)
+    expect(args.some(arg => arg.startsWith('--token='))).toBe(false)
+    expect(options).toMatchObject({
+      cwd: runtimeRoot(),
+      env: expect.objectContaining({ FENGYU_AUTH_TOKEN: 't' }),
+    })
     expect(onProgress).toHaveBeenCalledOnce()
     expect(onProgress).toHaveBeenCalledWith('port-ready')
   })

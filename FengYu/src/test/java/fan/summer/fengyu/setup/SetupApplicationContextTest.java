@@ -7,6 +7,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.ActiveProfiles;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -37,5 +38,9 @@ class SetupApplicationContextTest {
         assertNotNull(context);
         assertTrue(context.containsBean("setupController"),
                 "SETUP-mode context must contain the setup wizard controller");
+        assertFalse(context.containsBean("securityController"),
+                "APP-only security diagnostics must not load in SETUP mode");
+        assertFalse(context.containsBean("mcpController"),
+                "APP-only MCP diagnostics must not load in SETUP mode");
     }
 }

@@ -9,15 +9,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class RuntimePathsTest {
 
     @Test
-    void defaultsToStableDirectoryUnderUserHome() {
-        Path root = RuntimePaths.resolveRoot("", "/Users/tester");
+    void defaultsToProgramWorkingDirectory() {
+        Path root = RuntimePaths.resolveRoot("", "/opt/infinia");
 
-        assertEquals(Path.of("/Users/tester", ".fengyu").toAbsolutePath().normalize(), root);
+        assertEquals(Path.of("/opt/infinia").toAbsolutePath().normalize(), root);
     }
 
     @Test
-    void explicitRuntimeDirectoryOverridesUserHome() {
-        Path root = RuntimePaths.resolveRoot("/data/infinia", "/Users/tester");
+    void explicitRuntimeDirectoryOverridesWorkingDirectory() {
+        Path root = RuntimePaths.resolveRoot("/data/infinia", "/opt/infinia");
 
         assertEquals(Path.of("/data/infinia").toAbsolutePath().normalize(), root);
     }

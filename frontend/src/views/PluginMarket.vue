@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { marked } from 'marked'
 import { api } from '@/api/client'
+import { renderMarkdown } from '@/security/markdown'
 import type { MarketplacePlugin, SkillDetail } from '@/api/types'
 import { usePluginsStore } from '@/stores/plugins'
 import { useSkillsStore } from '@/stores/skills'
@@ -239,7 +239,7 @@ function closeDetail() {
 }
 
 function md(src: string): string {
-  return marked.parse(src) as string
+  return renderMarkdown(src)
 }
 
 onMounted(async () => {

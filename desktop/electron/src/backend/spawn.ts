@@ -79,10 +79,14 @@ export async function spawnBackend(opts: SpawnOptions): Promise<SpawnedBackend> 
     layout.jar,
     'fan.summer.fengyu.HeadlessLauncher',
     `--port=${requestedPort}`,
-    `--token=${token}`,
   ]
 
   const proc = spawn(javaBin, args, {
+    cwd: runtimeRoot(),
+    // Keep the bearer token out of the child command line, which is visible to process-list
+    // readers on common desktop operating systems. HeadlessLauncher still accepts --token for
+    // explicit CLI use, but the managed desktop sidecar reads this dedicated environment value.
+    env: { ...process.env, FENGYU_AUTH_TOKEN: token },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   })

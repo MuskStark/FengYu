@@ -42,6 +42,8 @@ SSE 端点通过 `X-FengYu-Token` 头进行鉴权——**没有** `?token=` 查�
 | --- | --- | --- | --- |
 | `GET` | `/api/plugin-runtime` | token | 已启用的插件，以 `InstalledPluginDescriptor[]` 形式返回。 |
 | `POST` | `/api/plugin-runtime/{id}/invoke` | token | 调用某个 worker 方法。请求体 `{method, params}` → JSON-RPC `result`。参见 [Worker](/zh/plugins/worker)。 |
+| `GET` | `/api/plugin-runtime/{id}/logs` | token | 最近的 Worker 事件，结构为 `{timestamp, level, logger, thread, message, sequence}`；旧式 stderr 的 logger/thread 为 null。 |
+| `GET` | `/api/plugin-runtime/{id}/logs/stream` | token | 先重放最近的 Worker 事件，再通过 SSE 流式推送新事件。 |
 | `GET` | `/plugin-runtime/{id}/**` | — | 插件 UI 静态资产（入口 HTML + JS），在严格的 CSP 下提供。 |
 
 ## 插件文件
@@ -76,8 +78,8 @@ SSE 端点通过 `X-FengYu-Token` 头进行鉴权——**没有** `?token=` 查�
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/api/settings` | token | 读取 `{theme, language, sidebarCollapsed}`。 |
-| `PUT` | `/api/settings` | token | 对用户设置做局部更新。 |
+| `GET` | `/api/settings` | token | 读取 `{theme, language, sidebarCollapsed, logLevel}`。 |
+| `PUT` | `/api/settings` | token | 对用户设置做局部更新；`logLevel` 会实时应用到宿主和 Java Worker。 |
 | `POST` | `/api/settings/database/reset` | token | 备份 `datasource.properties`、清空它、重启进入 SETUP 模式。 |
 
 ## AI
@@ -118,10 +120,15 @@ SSE 端点通过 `X-FengYu-Token` 头进行鉴权——**没有** `?token=` 查�
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | `POST` | `/api/agent/run` | token | 启动一次运行。请求体 `{goal, config}` → `{runId}`。 |
+| `POST` | `/api/agent/batch` | token | 并行启动 1–8 个独立运行。请求体 `{goals, config}` → `{runIds}`。 |
 | `GET` | `/api/agent/stream?runId=` | token | 该次运行对应的 SSE 流。参见 [SSE 事件——智能体](/zh/reference/sse-events#智能体流)。 |
 | `POST` | `/api/agent/{runId}/approve` | token | 放行一道审批关卡。可选发送编辑过的 `AgentPlan` 请求体。 |
 | `POST` | `/api/agent/{runId}/cancel` | token | 协作式地取消该次运行。 |
 | `GET` | `/api/agent/tools` | token | 可被编排的工具列表（由宿主聚合的 `ToolCallback[]`）。 |
+| `GET` | `/api/agent/runs` | token | 按更新时间倒序返回持久化运行摘要。 |
+| `GET` | `/api/agent/runs/{runId}` | token | 返回持久化计划、步骤执行和有序审计事件。 |
+| `POST` | `/api/agent/runs/{runId}/resume` | token | 恢复失败/取消运行的未完成步骤，并要求重新审阅计划。 |
+| `GET` | `/api/mcp/status` | token | 已配置的 MCP 连接与发现的工具数量。 |
 
 ## Setup
 

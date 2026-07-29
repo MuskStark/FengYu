@@ -8,6 +8,7 @@ import fan.summer.fengyu.api.ai.ChatBackend;
 import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
 import fan.summer.fengyu.ai.service.AiModeService;
 import fan.summer.fengyu.ai.service.OllamaLocalBackend;
+import fan.summer.fengyu.ai.tools.ChatToolApprovalGate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -44,8 +46,12 @@ public class AiController {
     private static final Logger log = LoggerFactory.getLogger(AiController.class);
 
     private final AiModeService aiMode;
+    private final ChatToolApprovalGate toolApprovalGate;
 
-    public AiController(AiModeService aiMode) { this.aiMode = aiMode; }
+    public AiController(AiModeService aiMode, ChatToolApprovalGate toolApprovalGate) {
+        this.aiMode = aiMode;
+        this.toolApprovalGate = toolApprovalGate;
+    }
 
     /** Pending turns keyed by streamId; consumed once when the SSE opens. */
     private final Map<String, List<AiChatMessage>> pending = new ConcurrentHashMap<>();
@@ -61,6 +67,21 @@ public class AiController {
         String streamId = UUID.randomUUID().toString();
         pending.put(streamId, history);
         return Map.of("streamId", streamId);
+    }
+
+    @PostMapping("/tool-approvals/{approvalId}")
+    public Map<String, Object> resolveToolApproval(@PathVariable String approvalId,
+                                                   @RequestBody ToolApprovalDecision decision) {
+        boolean resolved = toolApprovalGate.resolve(approvalId, decision.approved());
+        return resolved
+                ? Map.of("ok", true, "approved", decision.approved())
+                : Map.of("ok", false, "error", "Unknown, expired, or already resolved approval");
+    }
+
+    @PostMapping("/cancel")
+    public Map<String, Object> cancel() {
+        aiMode.getService().ifPresent(ChatBackend::cancelGeneration);
+        return Map.of("ok", true);
     }
 
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -140,6 +161,17 @@ public class AiController {
                 "arguments", toolCall.arguments() == null ? Map.of() : toolCall.arguments()));
         }
 
+        @Override
+        public void onToolApprovalRequired(String approvalId, AiToolCall toolCall,
+                                           java.time.Instant expiresAt) {
+            send("tool", Map.of(
+                    "phase", "approval_required",
+                    "approvalId", approvalId,
+                    "name", toolCall.name(),
+                    "arguments", toolCall.arguments() == null ? Map.of() : toolCall.arguments(),
+                    "expiresAt", expiresAt.toString()));
+        }
+
         @Override public void onToolResult(String toolCallId, AiToolResult result) {
             send("tool", Map.of("phase", "result", "id", toolCallId == null ? "" : toolCallId,
                 "success", result.success(), "output", result.output() == null ? "" : result.output()));
@@ -189,4 +221,5 @@ public class AiController {
 
     public record ChatRequest(List<ChatMessageDto> messages) {}
     public record ChatMessageDto(String role, String content) {}
+    public record ToolApprovalDecision(boolean approved) {}
 }

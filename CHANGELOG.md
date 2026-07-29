@@ -4,6 +4,18 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ---
 
+## [4.0.0-alpha.5] — 2026-07-29
+
+### ✨ Added
+- **The host and Java plugin Workers now share one live log level.** The Settings page persists
+  `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `OFF`, applies it to the host's Logback namespaces,
+  and pushes it to running Workers without a restart. The Java Worker SDK replaces
+  `slf4j-simple` with a structured stderr provider, preserving logger name, thread, level, message,
+  and exception stack while keeping stdout reserved for JSON-RPC; legacy free-form stderr remains
+  supported.
+
+---
+
 ## [4.0.0-alpha.4] — 2026-07-28
 
 ### 🐛 Fixed

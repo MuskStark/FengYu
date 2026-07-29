@@ -6,7 +6,9 @@ import fan.summer.fengyu.setup.DbType;
 import fan.summer.fengyu.setup.WizardParams;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.boot.web.server.PortInUseException;
 
+import java.net.BindException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -90,6 +92,16 @@ class HeadlessLauncherProbeTest {
         assertEquals(root.resolve("plugin-data").toString(), defaults.get("fengyu.plugins.data-directory"));
         assertEquals(root.resolve("skills").toString(), defaults.get("fengyu.skills.directory"));
         assertEquals(root.resolve("runtime-files").toString(), defaults.get("fengyu.runtime-files.directory"));
+    }
+
+    @Test
+    void retriesOnlyActualPortBindingFailures() {
+        assertTrue(HeadlessLauncher.isPortBindFailure(
+                new IllegalStateException("startup failed", new PortInUseException(24056))));
+        assertTrue(HeadlessLauncher.isPortBindFailure(
+                new IllegalStateException("startup failed", new BindException("Address already in use"))));
+        assertFalse(HeadlessLauncher.isPortBindFailure(
+                new IllegalStateException("LoggerFactory is not a Logback LoggerContext")));
     }
 
     private static void deleteRecursively(Path p) {
