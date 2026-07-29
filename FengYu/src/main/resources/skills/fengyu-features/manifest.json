@@ -3,7 +3,7 @@
   "id": "fengyu-features",
   "name": "FengYu Features",
   "description": "What FengYu (Infinia) can do — its built-in AI chat, Plan-and-Execute agent, tool calling, and official plugins (Markdown, Excel, Email). Load this when the user asks what FengYu/Infinia can do, what tools are available, or how to use the AI features.",
-  "version": "4.0.0-alpha.1",
+  "version": "4.0.0",
   "author": "FengYu",
   "icon": "script-text-outline",
   "homepage": "https://github.com/MuskStark/FengYu",

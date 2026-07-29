@@ -94,7 +94,7 @@ syncing an app release). Skip matches inside historical CHANGELOG entries for pa
 - **Docs build (when the change affects the published site):** from the repo root,
 
   ```bash
-  npm run docs:build      # VitePress; builds docs/ → docs/.vitepress/dist/
+  npm --prefix docs run build      # VitePress; builds docs/ → docs/.vitepress/dist/
   ```
 
   Skip this for changes confined to `CHANGELOG.md` or `docs/superpowers/`.

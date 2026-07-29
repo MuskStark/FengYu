@@ -7,7 +7,7 @@ lang: en
 # Quick Start
 
 Get Infinia 4.0.0 — an AI-native orchestration platform — running from source in a few minutes.
-The reactor consists of two Maven modules — build them in order, then launch the backend and frontend.
+Build the backend, then launch it alongside the frontend.
 
 ## Prerequisites
 
@@ -19,23 +19,22 @@ The reactor consists of two Maven modules — build them in order, then launch t
 
 ## Build from source
 
-The build is a two-module reactor. `FengYu-Api` **must install first** because `FengYu` depends on it.
+Build the backend through the repository Maven wrapper:
 
 ```bash
 git clone https://github.com/MuskStark/FengYu.git
 cd FengYu
-mvn install -f FengYu-Api/pom.xml -DskipTests
-mvn clean package -f FengYu/pom.xml -DskipTests
+./mvnw clean package -f FengYu/pom.xml -DskipTests
 ```
 
-The packaged backend jar lands at `FengYu/target/FengYu-4.0.0-alpha.5.jar`.
+The packaged backend jar lands at `FengYu/target/FengYu-4.0.0.jar`.
 
 ## Run the backend
 
 Launch the headless Spring Boot backend. It binds `127.0.0.1:24056` by default and prints `FENGYU_PORT=<n>` on startup.
 
 ```bash
-java -jar FengYu/target/FengYu-4.0.0-alpha.5.jar --token=<your-token>
+java -jar FengYu/target/FengYu-4.0.0.jar --token=<your-token>
 ```
 
 The entry point is `fan.summer.fengyu.HeadlessLauncher`. CLI flags are `--port` and `--token` only.
@@ -72,7 +71,7 @@ npm install
 npm run dev       # DEFAULT: connects to an IDE-started backend at http://127.0.0.1:24056
                   #   (start the backend without --token so auth is disabled; shell does NOT spawn java)
                   # To spawn its own backend instead: set FENGYU_JAR=<built shaded jar>
-                  #   (build it first: ./mvnw -pl FengYu -am package -DskipTests -Drevision=4.0.0-alpha.5)
+                  #   (build it first: ./mvnw -pl FengYu -am package -DskipTests -Drevision=4.0.0)
                   #   or set FENGYU_DEV_BACKEND=disabled
 ```
 
@@ -84,13 +83,13 @@ npm run build     # = npm run build:ts && electron-builder (host platform)
 
 ::: tip
 The desktop shell ships its own Chromium (no system WebView needed). You only need Java to run the
-backend. See the [desktop README](https://github.com/MuskStark/FengYu/blob/4.0.0-FengYu/desktop/README.md)
+backend. See the [desktop README](https://github.com/MuskStark/FengYu/blob/4.0.0/desktop/README.md)
 for staging the JAR / plugins and the two with/without-JRE build variants.
 :::
 
-## Releases (Alpha)
+## Releases
 
-Release tags (`v4.0.0-alpha.5`, and later stable/beta/rc) trigger a GitHub Actions pipeline that
+Release tags (`v4.0.0`, `v4.0.0-beta.*`, and `v4.0.0-rc.*`) trigger a GitHub Actions pipeline that
 publishes **unsigned** Electron packages (Windows/macOS/Linux) and a **portable Web distribution**.
 The Web archive runs the same backend + bundled Vue SPA from a folder:
 
@@ -101,7 +100,7 @@ The Web archive runs the same backend + bundled Vue SPA from a folder:
 
 Requires **Java 21** (or use the Electron build that bundles a JRE). The backend binds **loopback
 only** (`127.0.0.1`). Code-signing is deferred to a later release; the Electron auto-updater ships
-with Alpha (GitHub Releases, unsigned).
+through GitHub Releases.
 
 ## Next steps
 

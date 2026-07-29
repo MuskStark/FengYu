@@ -6,7 +6,7 @@ lang: zh-CN
 
 # 快速开始
 
-几分钟内从源码跑起 Infinia 4.0.0 —— 一个 AI 原生的流程编排平台。整个 reactor 由两个 Maven 模块组成——按顺序构建，然后分别启动后端与前端。
+几分钟内从源码跑起 Infinia 4.0.0 —— 一个 AI 原生的流程编排平台。构建后端，然后分别启动后端与前端。
 
 ## 前置条件
 
@@ -18,23 +18,22 @@ lang: zh-CN
 
 ## 从源码构建
 
-构建是一个两模块的 reactor。`FengYu-Api` **必须先 install**，因为 `FengYu` 依赖于它。
+通过仓库自带的 Maven wrapper 构建后端：
 
 ```bash
 git clone https://github.com/MuskStark/FengYu.git
 cd FengYu
-mvn install -f FengYu-Api/pom.xml -DskipTests
-mvn clean package -f FengYu/pom.xml -DskipTests
+./mvnw clean package -f FengYu/pom.xml -DskipTests
 ```
 
-打包好的后端 jar 位于 `FengYu/target/FengYu-4.0.0-alpha.5.jar`。
+打包好的后端 jar 位于 `FengYu/target/FengYu-4.0.0.jar`。
 
 ## 运行后端
 
 启动无头（headless）Spring Boot 后端。它默认绑定 `127.0.0.1:24056`，并在启动时打印 `FENGYU_PORT=<n>`。
 
 ```bash
-java -jar FengYu/target/FengYu-4.0.0-alpha.5.jar --token=<your-token>
+java -jar FengYu/target/FengYu-4.0.0.jar --token=<your-token>
 ```
 
 入口类是 `fan.summer.fengyu.HeadlessLauncher`。CLI 参数只有 `--port` 和 `--token` 两个。
@@ -71,7 +70,7 @@ npm install
 npm run dev       # 默认：连接 IDE 启动的后端 http://127.0.0.1:24056
                   #   （后端不带 --token 启动以禁用认证；外壳不拉起 java）
                   # 改为外壳自行拉起后端：设置 FENGYU_JAR=<已构建的 shaded jar>
-                  #   （先用 ./mvnw -pl FengYu -am package -DskipTests -Drevision=4.0.0-alpha.5 构建）
+                  #   （先用 ./mvnw -pl FengYu -am package -DskipTests -Drevision=4.0.0 构建）
                   #   或设置 FENGYU_DEV_BACKEND=disabled
 ```
 
@@ -82,19 +81,19 @@ npm run build     # = npm run build:ts && electron-builder（当前平台）
 ```
 
 ::: tip
-桌面外壳自带 Chromium（无需系统 WebView）。你只需 Java 来运行后端。暂存 JAR / 插件以及带/不带 JRE 的两种构建变体，请参见 [desktop README](https://github.com/MuskStark/FengYu/blob/4.0.0-FengYu/desktop/README.md)。
+桌面外壳自带 Chromium（无需系统 WebView）。你只需 Java 来运行后端。暂存 JAR / 插件以及带/不带 JRE 的两种构建变体，请参见 [desktop README](https://github.com/MuskStark/FengYu/blob/4.0.0/desktop/README.md)。
 :::
 
-## 发布（Alpha）
+## 发布
 
-发布标签（`v4.0.0-alpha.5`，以及后续的 stable/beta/rc）会触发一条 GitHub Actions 流水线，发布**未签名**的 Electron 安装包（Windows/macOS/Linux）和一个**可移植的 Web 分发包**。Web 压缩包直接从文件夹运行同一套后端 + 内嵌的 Vue SPA：
+发布标签（`v4.0.0`、`v4.0.0-beta.*` 和 `v4.0.0-rc.*`）会触发一条 GitHub Actions 流水线，发布**未签名**的 Electron 安装包（Windows/macOS/Linux）和一个**可移植的 Web 分发包**。Web 压缩包直接从文件夹运行同一套后端 + 内嵌的 Vue SPA：
 
 ```bash
 # 解压 Infinia-<version>-web.zip 后：
 ./run.sh          # macOS/Linux（Windows 用 run.bat）
 ```
 
-需要 **Java 21**（或使用内嵌 JRE 的 Electron 构建版本）。后端仅绑定**回环地址**（`127.0.0.1`）。代码签名将留待后续版本实现；Electron 自动更新器随 Alpha 一起发布（GitHub Releases，未签名）。
+需要 **Java 21**（或使用内嵌 JRE 的 Electron 构建版本）。后端仅绑定**回环地址**（`127.0.0.1`）。代码签名将留待后续版本实现；Electron 自动更新器通过 GitHub Releases 发布。
 
 ## 下一步
 

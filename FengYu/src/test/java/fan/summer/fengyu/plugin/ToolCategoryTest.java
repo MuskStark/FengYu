@@ -1,4 +1,4 @@
-package fan.summer.fengyu.api;
+package fan.summer.fengyu.plugin;
 
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;

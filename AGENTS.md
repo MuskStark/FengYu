@@ -28,7 +28,6 @@ in build order:
 
 | Module | Role |
 |---|---|
-| `FengYu-Api` | Plugin + AI contracts (manifest schema, worker JSON-RPC protocol, `AiTool`). Other modules depend on it. |
 | `toolchain/sdk-java` | **Independently versioned** Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk`). Does not inherit the parent; kept in the reactor only so local installs work. |
 | `OfficialPlugins` | Aggregator for official plugins (`plugin-markdown`, `plugin-excel`, `plugin-email`, `plugin-offlinepython`). |
 | `FengYu` | The headless Spring Boot app; shaded fat JAR, main class `fan.summer.fengyu.HeadlessLauncher`. |
@@ -68,9 +67,8 @@ Use the repository wrappers and package scripts that already exist. Run the exac
 `README.md` ("Quick Start"); in summary:
 
 ```bash
-# Backend (API must be installed first; standalone POMs, no parent inheritance)
-mvn install -f FengYu-Api/pom.xml -DskipTests
-mvn clean package -f FengYu/pom.xml -DskipTests
+# Backend
+./mvnw clean package -f FengYu/pom.xml -DskipTests
 java -jar FengYu/target/FengYu-*.jar --token=<t>     # loopback, port 24056 by default
 
 # Frontend (dev)
@@ -85,7 +83,7 @@ cd desktop/electron && npm install && npm run dev   # DEFAULT: connects to an ID
 scripts/e2e-smoke.sh
 
 # Docs site (VitePress, EN + ZH)
-npm run docs:build
+npm --prefix docs run build
 ```
 
 Prefer `./mvnw` over a system Maven when running from a shell.
@@ -103,7 +101,7 @@ Prefer `./mvnw` over a system Maven when running from a shell.
 ## Legacy that does NOT describe 4.0.0
 
 The following are historical and must not be generated or recommended. (They appear in old plans,
-deleted skills, and the still-JavaFX `FengYu-Api` preview classes, but they are not the running app.)
+deleted skills and historical preview classes, but they are not the running app.)
 
 - **JavaFX** UI, `createView()`, `StepWizard`, `-sk-*`/`.glass-*` CSS tokens, scene/Stage code.
 - **`FengYuPluginV2`** and the in-process Spring `@Component` plugin bean model.

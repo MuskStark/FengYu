@@ -1,9 +1,9 @@
 package fan.summer.fengyu.ai.service;
 
-import fan.summer.fengyu.api.ai.AiChatMessage;
-import fan.summer.fengyu.api.ai.AiStreamCallback;
-import fan.summer.fengyu.api.ai.AiToolCall;
-import fan.summer.fengyu.api.ai.AiToolResult;
+import fan.summer.fengyu.ai.AiChatMessage;
+import fan.summer.fengyu.ai.AiStreamCallback;
+import fan.summer.fengyu.ai.AiToolCall;
+import fan.summer.fengyu.ai.AiToolResult;
 import fan.summer.fengyu.ai.tools.ApprovalRequiredToolCallback;
 import fan.summer.fengyu.ai.tools.ChatToolApprovalGate;
 import org.junit.jupiter.api.Test;

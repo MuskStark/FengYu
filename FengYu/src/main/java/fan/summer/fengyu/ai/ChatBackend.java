@@ -1,4 +1,4 @@
-package fan.summer.fengyu.api.ai;
+package fan.summer.fengyu.ai;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -28,7 +28,7 @@ import java.util.Optional;
  * <p>Note: this interface is intentionally non-sealed (not {@code sealed}).
  * Java forbids cross-module sealed permits, and the implementations live in
  * the host module ({@code FengYu}), while this contract lives in
- * {@code FengYu-Api}. The two known implementors are documented above.
+ * the FengYu application module. The two known implementors are documented above.
  */
 public interface ChatBackend {
 

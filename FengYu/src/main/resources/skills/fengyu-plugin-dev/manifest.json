@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "fengyu-plugin-dev",
+  "name": "Plugin Development",
+  "description": "How FengYu plugins work and how to build/package them — the 4.0.0 .fyp model (sandboxed iframe UI + out-of-process JSON-RPC worker), manifest.json fields, the permission enum, aiTools, and the fengyu CLI build/install flow. Load when the user asks about developing, packaging, installing, or troubleshooting plugins.",
+  "version": "4.0.0",
+  "author": "FengYu",
+  "icon": "puzzle-outline",
+  "homepage": "https://github.com/MuskStark/FengYu",
+  "official": true
+}

@@ -6,7 +6,7 @@ name: Plugin Tooling
 
 on:
   push:
-    branches: [4.0.0-FengYu, 4.0.0-electron, main]
+    branches: [4.0.0, main]
     paths:
       - 'toolchain/**'
       - 'OfficialPlugins/**'

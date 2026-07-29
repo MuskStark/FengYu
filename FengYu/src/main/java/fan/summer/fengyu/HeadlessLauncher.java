@@ -1,7 +1,5 @@
 package fan.summer.fengyu;
 
-import fan.summer.fengyu.api.log.LoggerBinder;
-import fan.summer.fengyu.log.Slf4jPluginLoggerBinder;
 import fan.summer.fengyu.runtime.RuntimePaths;
 import fan.summer.fengyu.setup.DataSourceConfig;
 import fan.summer.fengyu.setup.DataSourceConfigService;
@@ -71,8 +69,6 @@ public final class HeadlessLauncher {
         if (!token.isBlank()) {
             System.setProperty(TOKEN_PROPERTY, token);
         }
-
-        LoggerBinder.bind(new Slf4jPluginLoggerBinder());
 
         boolean configured = probeAndDecide(new DataSourceConfigService());
         startWithFallback(port, configured);
