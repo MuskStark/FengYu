@@ -85,4 +85,15 @@ class ToolDiscoveryTest {
                 .anyMatch("json_format"::equals),
             "AiToolDiscoveryConfig.aiToolCallbacks bean should expose json_format for name-based resolution");
     }
+
+    @Test
+    void aggregatedCommandToolIsMarkedAsApprovalRequired() {
+        ToolCallback command = java.util.Arrays.stream(aiToolCallbacks)
+                .filter(tc -> tc.getToolDefinition().name().equals("execute_command"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("execute_command callback not found"));
+
+        assertTrue(command instanceof ApprovalRequiredToolCallback,
+                "execute_command must retain its mandatory-approval marker after discovery");
+    }
 }

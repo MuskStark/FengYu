@@ -1,16 +1,20 @@
 package fan.summer.fengyu.ai.config;
 
 import fan.summer.fengyu.api.ai.FengYuTool;
+import fan.summer.fengyu.ai.tools.ApprovalRequiredTool;
+import fan.summer.fengyu.ai.tools.ApprovalRequiredToolCallback;
 import fan.summer.fengyu.plugin.market.OfficialPluginSeeder;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
 import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.springframework.ai.support.ToolCallbacks;
+import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.List;
 
@@ -56,9 +60,17 @@ public class AiToolDiscoveryConfig {
      */
     @Bean
     public ToolCallback[] aiToolCallbacks(List<FengYuTool> tools, OfficialPluginSeeder seeder,
-            PluginPackageService packages, PluginProcessManager processes) {
+            PluginPackageService packages, PluginProcessManager processes,
+            ObjectProvider<SyncMcpToolCallbackProvider> mcpProvider) {
         seeder.seed();
-        List<ToolCallback> callbacks = new java.util.ArrayList<>(List.of(ToolCallbacks.from(tools.toArray())));
+        List<ToolCallback> callbacks = new java.util.ArrayList<>();
+        for (FengYuTool toolBean : tools) {
+            for (ToolCallback callback : ToolCallbacks.from(toolBean)) {
+                callbacks.add(toolBean instanceof ApprovalRequiredTool
+                        ? approvalRequired(callback)
+                        : callback);
+            }
+        }
         ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
         for (var manifest : packages.installed()) {
             if (!packages.isEnabled(manifest.id()) || manifest.aiTools() == null) continue;
@@ -83,10 +95,26 @@ public class AiToolDiscoveryConfig {
                 });
             }
         }
+        SyncMcpToolCallbackProvider provider = mcpProvider.getIfAvailable();
+        if (provider != null) {
+            java.util.Collections.addAll(callbacks, provider.getToolCallbacks());
+        }
         return callbacks.toArray(ToolCallback[]::new);
     }
 
     private static String quote(ObjectMapper json, String value) {
         try { return json.writeValueAsString(value); } catch (Exception ignored) { return "\"Plugin tool failed\""; }
+    }
+
+    private static ApprovalRequiredToolCallback approvalRequired(ToolCallback delegate) {
+        return new ApprovalRequiredToolCallback() {
+            @Override public ToolDefinition getToolDefinition() {
+                return delegate.getToolDefinition();
+            }
+
+            @Override public String call(String input) {
+                return delegate.call(input);
+            }
+        };
     }
 }

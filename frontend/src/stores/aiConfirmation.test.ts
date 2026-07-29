@@ -25,4 +25,24 @@ describe('AI tool confirmations', () => {
     expect(invoke).toHaveBeenCalledTimes(1)
     expect(item.status).toBe('approved')
   })
+
+  it('parses and resolves a host tool approval before execution', async () => {
+    const item = parseToolConfirmation({
+      phase: 'approval_required',
+      approvalId: 'approval-1',
+      name: 'execute_command',
+      arguments: { command: 'pwd', workingDirectory: '/tmp' },
+      expiresAt: '2026-07-13T12:30:00Z',
+    })!
+    const invoke = vi.fn()
+    const resolveHost = vi.fn().mockResolvedValue({ ok: true })
+
+    await actOnConfirmation(item, true, invoke, resolveHost)
+
+    expect(item.source).toBe('host')
+    expect(item.summary).toContainEqual({ label: 'command', value: 'pwd' })
+    expect(resolveHost).toHaveBeenCalledWith('approval-1', true)
+    expect(invoke).not.toHaveBeenCalled()
+    expect(item.status).toBe('approved')
+  })
 })

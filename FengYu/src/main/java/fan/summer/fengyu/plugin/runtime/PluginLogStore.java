@@ -64,8 +64,15 @@ public class PluginLogStore {
 
     /** Append a captured line and notify any live subscribers. {@code message} should already be redacted. */
     public void append(String pluginId, String level, String message) {
+        append(pluginId, level, null, null, message);
+    }
+
+    /** Append a structured SDK event, retaining its logger and thread metadata. */
+    public void append(String pluginId, String level, String logger, String thread, String message) {
         if (pluginId == null || message == null) return;
-        PluginLogEntry entry = new PluginLogEntry(Instant.now(clock), level == null ? PluginLogEntry.DEFAULT_LEVEL : level, message, sequence.incrementAndGet());
+        PluginLogEntry entry = new PluginLogEntry(Instant.now(clock),
+            level == null ? PluginLogEntry.DEFAULT_LEVEL : level,
+            logger, thread, message, sequence.incrementAndGet());
         Deque<PluginLogEntry> buffer = buffers.computeIfAbsent(pluginId, ignored -> new ArrayDeque<>(CAPACITY));
         List<SubscriberQueue> snapshot;
         synchronized (buffer) {

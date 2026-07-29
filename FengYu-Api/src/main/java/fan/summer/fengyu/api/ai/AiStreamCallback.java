@@ -1,5 +1,7 @@
 package fan.summer.fengyu.api.ai;
 
+import java.time.Instant;
+
 /**
  * Callback for receiving streamed AI response tokens and tool call events.
  */
@@ -44,6 +46,12 @@ public interface AiStreamCallback {
      * @param toolCall the tool call requested by the model
      */
     default void onToolCall(AiToolCall toolCall) {}
+
+    /**
+     * Called before a sensitive tool is executed. The chat remains paused until the user
+     * approves or rejects the request identified by {@code approvalId}.
+     */
+    default void onToolApprovalRequired(String approvalId, AiToolCall toolCall, Instant expiresAt) {}
 
     /**
      * Called when a tool execution completes, before the result is fed back to the model.

@@ -95,6 +95,7 @@ describe('createMainWindow navigation guards', () => {
       show: false,
       backgroundColor: '#0d0d0d',
     })
+    expect(captured.browserWindowOptions).not.toHaveProperty('titleBarStyle')
     expect(captured.show).not.toHaveBeenCalled()
     expect(captured.readyToShow).not.toBeNull()
     captured.readyToShow!()

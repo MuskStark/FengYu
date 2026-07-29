@@ -52,20 +52,11 @@
       <artifactId>gson</artifactId>
       <version>${gson.version}</version>
     </dependency>
-    <!-- Logging. Plugin workers route every log through slf4j; without a binding slf4j 2.x
-         silently falls back to NOPLogger and drops ALL log calls, so plugin failures become
-         invisible. slf4j-simple is the dependency-light binding: it defaults its output stream
-         to System.err (the host captures worker stderr and surfaces it on its console + log
-         file), and the JSON-RPC protocol pipe on stdout stays untouched. simplelogger.properties
-         (src/main/resources) locks that behaviour down. -->
+    <!-- Logging API. The SDK supplies its own SLF4J 2.x provider, which emits structured events
+         to stderr and supports live host-controlled thresholds; stdout remains JSON-RPC-only. -->
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
-      <version>${slf4j.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-simple</artifactId>
       <version>${slf4j.version}</version>
     </dependency>
     <dependency>

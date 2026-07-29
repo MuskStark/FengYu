@@ -1,6 +1,6 @@
 ---
 title: 官方插件 —— Offline Python
-description: fan.summer.offlinepython（v4.0.0-alpha.4）详解 —— 一个 dev 类别插件，具有 files.read/files.write/network 权限，通过三栏 UI 与六个无状态 AI 工具，构建包含全部依赖的离线 Python 安装仓库（wheelhouse）。
+description: fan.summer.offlinepython（v4.0.0-alpha.5）详解 —— 一个 dev 类别插件，具有 files.read/files.write/network 权限，通过三栏 UI 与六个无状态 AI 工具，构建包含全部依赖的离线 Python 安装仓库（wheelhouse）。
 lang: zh-CN
 ---
 
@@ -25,7 +25,7 @@ lang: zh-CN
   "id": "fan.summer.offlinepython",
   "name": "Offline Python Builder",
   "description": "Build offline Python install repositories with all dependencies",
-  "version": "4.0.0-alpha.4",
+  "version": "4.0.0-alpha.5",
   "author": "FengYu",
   "icon": "language-python",
   "category": "dev",

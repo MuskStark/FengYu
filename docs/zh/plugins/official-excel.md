@@ -1,6 +1,6 @@
 ---
 title: 官方插件——Excel
-description: fan.summer.excel（v4.0.0-alpha.4）讲解——一个 file 类别插件，带 files.read/files.write 权限、三个动作（analyze、configure、split）和六个 aiTools、三种拆分模式（BY_SHEET、BY_COLUMN、COMPLEX）、文件 I/O 用法，以及一个四步向导 MF。
+description: fan.summer.excel（v4.0.0-alpha.5）讲解——一个 file 类别插件，带 files.read/files.write 权限、三个动作（analyze、configure、split）和六个 aiTools、三种拆分模式（BY_SHEET、BY_COLUMN、COMPLEX）、文件 I/O 用法，以及一个四步向导 MF。
 lang: zh-CN
 ---
 
@@ -23,7 +23,7 @@ lang: zh-CN
   "id": "fan.summer.excel",
   "name": "Excel Splitter",
   "description": "Split Excel workbooks by sheet, column value, or complex rules",
-  "version": "4.0.0-alpha.4",
+  "version": "4.0.0-alpha.5",
   "author": "FengYu",
   "icon": "file-excel",
   "category": "file",

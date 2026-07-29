@@ -1,6 +1,6 @@
 import { BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
-import type { DesktopTheme } from '../desktop/appearance'
+import { backgroundColorForTheme, type DesktopTheme } from '../desktop/appearance'
 
 export interface CreateWindowOptions {
   apiBase: string
@@ -103,7 +103,7 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
     // native window backing never leaks a lighter strip along the right edge
     // where the renderer fails to cover the last sub-pixel.
     show: false,
-    backgroundColor: opts.theme === 'light' ? '#ffffff' : '#0d0d0d',
+    backgroundColor: backgroundColorForTheme(opts.theme ?? 'dark'),
     resizable: true,
     webPreferences: {
       preload: join(__dirname, 'preload.js'),

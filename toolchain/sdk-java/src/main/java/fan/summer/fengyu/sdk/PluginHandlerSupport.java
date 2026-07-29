@@ -13,9 +13,9 @@ import java.util.Map;
  *
  * <p><b>Logging.</b> {@link #handle(String, PluginHandler)} logs every call at DEBUG on entry (the
  * method name plus an abbreviated param preview) and at DEBUG on success, and at WARN with the full
- * throwable on failure. These reach the host's {@code plugin-<id>-stderr} drain via the worker's
- * slf4j-simple binding, so plugin activity is observable from the host console and the per-plugin
- * log buffer without each handler doing its own logging.
+ * throwable on failure. These reach the host's {@code plugin-<id>-stderr} drain through the SDK's
+ * structured SLF4J provider, so plugin activity is observable from the host console and the
+ * per-plugin log buffer without each handler doing its own logging.
  *
  * <p><b>Result envelope.</b> Handlers return a {@code Map} produced by {@link #ok}/{@link #failure};
  * {@link #handle} and {@link #result} guarantee every call resolves to such a map, converting any

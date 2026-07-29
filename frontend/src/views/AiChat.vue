@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { marked } from 'marked'
 import { useI18n } from 'vue-i18n'
 import { useAiSessionStore } from '@/stores/aiSession'
+import { renderMarkdown } from '@/security/markdown'
 
 const { t } = useI18n()
 const ai = useAiSessionStore()
@@ -10,10 +10,8 @@ const draft = ref('')
 const scroller = ref<HTMLElement | null>(null)
 const textarea = ref<HTMLTextAreaElement | null>(null)
 
-marked.setOptions({ breaks: true, gfm: true })
-
 function md(src: string): string {
-  return marked.parse(src) as string
+  return renderMarkdown(src)
 }
 
 function autosize() {

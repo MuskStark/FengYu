@@ -70,24 +70,6 @@
             <artifactId>FengYu-Api</artifactId>
         </dependency>
 
-        <!-- Worker protocol/environment contracts used by the host runtime manager. -->
-        <dependency>
-            <groupId>fan.summer.fengyu.sdk</groupId>
-            <artifactId>fengyu-plugin-sdk</artifactId>
-            <version>${fengyu.plugin.sdk.version}</version>
-            <!-- The SDK declares slf4j-simple as its worker-side logging binding so shaded plugin
-                 worker JARs get a binding (otherwise slf4j is NOP and worker logs vanish). The HOST
-                 must NOT inherit it: it uses logback, and a second binding makes slf4j pick
-                 SimpleLogger at random, which crashes Spring Boot's LogbackLoggingSystem on boot
-                 ("LoggerFactory is not a Logback LoggerContext"). Exclude it here. -->
-            <exclusions>
-                <exclusion>
-                    <groupId>org.slf4j</groupId>
-                    <artifactId>slf4j-simple</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-
         <!-- JavaFX removed in 4.0.0 Phase 1 headless cutover: the UI is now Vue + Tauri and the
              backend is a headless Spring Boot web server. No javafx.* code remains. -->
 
@@ -200,6 +182,12 @@
                  onto the classpath; version managed by the spring-ai-bom import above. -->
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-client-chat</artifactId>
+        </dependency>
+        <dependency>
+            <!-- Model Context Protocol clients (STDIO, SSE and Streamable HTTP). Connections are
+                 configured explicitly; with no configured servers this contributes no tools. -->
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-client</artifactId>
         </dependency>
 
         <!-- Logging: slf4j API + logback binding -->
