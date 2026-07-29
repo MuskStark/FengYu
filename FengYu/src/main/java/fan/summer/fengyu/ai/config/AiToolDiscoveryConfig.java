@@ -1,6 +1,6 @@
 package fan.summer.fengyu.ai.config;
 
-import fan.summer.fengyu.api.ai.FengYuTool;
+import fan.summer.fengyu.ai.FengYuTool;
 import fan.summer.fengyu.ai.tools.ApprovalRequiredTool;
 import fan.summer.fengyu.ai.tools.ApprovalRequiredToolCallback;
 import fan.summer.fengyu.plugin.market.OfficialPluginSeeder;

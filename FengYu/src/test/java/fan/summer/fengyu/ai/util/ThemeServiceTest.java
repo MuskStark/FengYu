@@ -1,4 +1,4 @@
-package fan.summer.fengyu.api.theme;
+package fan.summer.fengyu.ai.util;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;

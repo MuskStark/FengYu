@@ -16,12 +16,9 @@ package fan.summer.fengyu.ai.skill;
  * from a remote catalog through the skill marketplace. Builtin skills ship on the classpath and
  * cannot be uninstalled (only disabled).
  *
- * <p><b>Why this lives in the {@code FengYu} app module and not {@code FengYu-Api}:</b>
- * skills are a host-side runtime concept (discovered from the classpath and the user
- * directory, injected into the host's system prompt). They have no need to be implemented
- * by out-of-process plugin developers, so they do not belong in the {@code FengYu-Api}
- * contract module (which is slated for removal). This keeps the new surface decoupled
- * from the legacy contract package.
+ * <p>Skills are a host-side runtime concept discovered from the classpath and the user
+ * directory, then injected into the host's system prompt. They are independent from the
+ * out-of-process plugin contract.
  *
  * <p>A skill is <em>not</em> a plugin extension — it is a peer extension surface. Plugins
  * contribute callable tools; skills contribute contextual guidance. The two are intentionally

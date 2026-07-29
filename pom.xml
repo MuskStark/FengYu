@@ -28,18 +28,16 @@
     <properties>
         <!-- Single source of truth for the project version. Child modules reference
              the parent via <parent><version>${revision}</version></parent>. -->
-        <revision>4.0.0-alpha.5</revision>
+        <revision>4.0.0</revision>
 
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
 
-        <!-- Repository-wide build versions consumed by host, SDK/API, and same-repository
+        <!-- Repository-wide build versions consumed by the host and same-repository
              official plugin modules. dependencyManagement selects build versions only; it
              does not mean the FengYu host provides these libraries to isolated Workers. -->
-        <javafx.version>21.0.2</javafx.version>
         <lombok.version>1.18.42</lombok.version>
-        <fengyu.api.version>${revision}</fengyu.api.version>
         <!-- The Plugin Worker SDK is independently versioned (1.1.0) and published
              to GitHub Packages for external plugin developers. It stays in the
              reactor so local builds install it without a token. 1.1.0 adds the
@@ -84,9 +82,8 @@
         <launch4j.maven.plugin.version>2.7.0</launch4j.maven.plugin.version>
     </properties>
 
-    <!-- Reactor modules. Built in declaration order: API first (the app depends on it). -->
+    <!-- Reactor modules. -->
     <modules>
-        <module>FengYu-Api</module>
         <module>toolchain/sdk-java</module>
         <module>toolchain/devkit-java</module>
         <module>OfficialPlugins</module>
@@ -95,86 +92,6 @@
 
     <dependencyManagement>
         <dependencies>
-            <!-- Internal modules -->
-            <dependency>
-                <groupId>fan.summer.fengyu.api</groupId>
-                <artifactId>FengYu-Api</artifactId>
-                <version>${revision}</version>
-            </dependency>
-
-            <!-- JavaFX (consumed at compile scope by the app, provided by the app at runtime for plugins).
-                 Note: Maven does not propagate versions to classifier-specific dependencies, so each
-                 platform classifier must be declared explicitly in dependencyManagement. -->
-            <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-graphics</artifactId>
-                <version>${javafx.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-graphics</artifactId>
-                <version>${javafx.version}</version>
-                <classifier>win</classifier>
-            </dependency>
-            <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-graphics</artifactId>
-                <version>${javafx.version}</version>
-                <classifier>mac</classifier>
-            </dependency>
-            <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-graphics</artifactId>
-                <version>${javafx.version}</version>
-                <classifier>linux</classifier>
-            </dependency>
-            <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-controls</artifactId>
-                <version>${javafx.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-controls</artifactId>
-                <version>${javafx.version}</version>
-                <classifier>win</classifier>
-            </dependency>
-            <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-controls</artifactId>
-                <version>${javafx.version}</version>
-                <classifier>mac</classifier>
-            </dependency>
-            <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-controls</artifactId>
-                <version>${javafx.version}</version>
-                <classifier>linux</classifier>
-            </dependency>
-            <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-web</artifactId>
-                <version>${javafx.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-web</artifactId>
-                <version>${javafx.version}</version>
-                <classifier>win</classifier>
-            </dependency>
-            <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-web</artifactId>
-                <version>${javafx.version}</version>
-                <classifier>mac</classifier>
-            </dependency>
-            <dependency>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-web</artifactId>
-                <version>${javafx.version}</version>
-                <classifier>linux</classifier>
-            </dependency>
-
             <!-- Other libs -->
             <dependency>
                 <groupId>org.projectlombok</groupId>

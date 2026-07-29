@@ -6,15 +6,32 @@ lang: zh-CN
 # 更新日志
 
 **Infinia（蜂语 / FengYu）** 的所有重要变更。仓库中的
-[CHANGELOG.md](https://github.com/MuskStark/FengYu/blob/4.0.0-electron/CHANGELOG.md) 是唯一权威、始终最新的来源 ——
+[CHANGELOG.md](https://github.com/MuskStark/FengYu/blob/4.0.0/CHANGELOG.md) 是唯一权威、始终最新的来源 ——
 本页为文档站点镜像其内容。
 
 ::: tip 最新发布
-**v4.0.0-alpha.5** — 2026-07-29 ·
-[GitHub 发布](https://github.com/MuskStark/FengYu/releases/tag/v4.0.0-alpha.5)
+**v4.0.0** — 2026-07-29 ·
+[GitHub 发布](https://github.com/MuskStark/FengYu/releases/tag/v4.0.0)
 :::
 
 ---
+
+## [4.0.0] — 2026-07-29
+
+### ✨ 新增
+- **内置 `fengyu-plugin-dev` 技能。** 第二个内置技能（与 `fengyu-features` 并列），向应用内
+  助手讲授 4.0.0 插件模型：`.fyp` 包（沙箱 iframe UI + 进程外 JSON-RPC worker）、
+  `manifest.json` 字段、权限枚举、`aiTools`，以及 `fengyu` CLI 的构建/安装流程。其正文面向
+  应用运行时上下文编写，区别于仓库内同名的 agent 工作流技能。
+
+### ♻️ 变更
+- **移除旧的 `FengYu-Api` 模块。** 仅供宿主使用的 AI 契约、工具分类和主题状态现已迁入无头
+  `FengYu` 应用模块；同时删除过时的 JavaFX 预览资源和进程内插件日志桥，Maven 也不再管理
+  JavaFX 构件。
+- **应用版本统一为 4.0.0。** Maven、前端、Electron 外壳、内置技能和官方插件包现统一使用
+  稳定版本。
+- **将 VitePress 工具链限定在 `docs/`。** 文档的包清单、锁文件、已安装依赖、本地命令和 CI
+  缓存现与文档源文件放在一起，不再占用仓库根目录。
 
 ## [4.0.0-alpha.5] — 2026-07-29
 

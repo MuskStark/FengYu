@@ -1,4 +1,4 @@
-package fan.summer.fengyu.api.ai;
+package fan.summer.fengyu.ai;
 
 /**
  * Exception thrown by {@link ChatBackend} operations when model loading, inference,
