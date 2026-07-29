@@ -22,7 +22,7 @@ import java.util.Map;
 /**
  * Phase 4 headless entry point. Boots FengYu as a loopback Spring Boot web server in one of
  * two modes, determined by the presence AND reachability of
- * {@code <programWorkingDirectory>/config/datasource.properties} (or
+ * {@code <programWorkingDirectory>/.fengyu/config/datasource.properties} (or
  * {@code fengyu.runtime.dir}):
  *
  * <ul>

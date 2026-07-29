@@ -11,7 +11,7 @@
 
   Logs still go to the shared rolling file so worker output (model load, native
   diagnostics echoed via the host's [worker-stderr] drain) stays visible in
-  ~/.fengyu/logs/fengyu.log.
+  <program-working-directory>/.fengyu/logs/fengyu.log.
 -->
 <configuration>
 

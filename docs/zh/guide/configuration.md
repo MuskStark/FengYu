@@ -98,7 +98,8 @@ MCP 工具会同时加入对话与 Agent 的工具目录。可通过 `GET /api/m
 
 ## `datasource.properties` 布局
 
-数据库连接与 AI 配置分开持久化，存放在 `~/.fengyu/config/datasource.properties`，其键为：
+数据库连接与 AI 配置分开持久化，存放在
+`<运行目录>/.fengyu/config/datasource.properties`，其键为：
 
 | 键 | 含义 |
 | --- | --- |

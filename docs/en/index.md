@@ -15,6 +15,9 @@ hero:
     - theme: alt
       text: Features
       link: /en/features
+    - theme: alt
+      text: Documentation
+      link: /en/architecture/overview
 features:
   - icon: 🤖
     title: AI Agent

@@ -11,7 +11,7 @@ package fan.summer.fengyu.ai.skill;
  *
  * <p><b>Lifecycle twin of a plugin:</b> a skill is managed exactly like a plugin. Installed
  * skills arrive as {@code .fys} packages (a zip of {@code manifest.json} + {@code SKILL.md}),
- * land under {@code <programWorkingDirectory>/skills/<id>/}, can be enabled/disabled via a
+ * land under {@code <programWorkingDirectory>/.fengyu/skills/<id>/}, can be enabled/disabled via a
  * {@code .disabled} marker file, and can be uninstalled. They can also be browsed and installed
  * from a remote catalog through the skill marketplace. Builtin skills ship on the classpath and
  * cannot be uninstalled (only disabled).
@@ -37,7 +37,7 @@ package fan.summer.fengyu.ai.skill;
  * @param body        the full markdown guidance returned by the {@code skill} tool
  * @param source      where the skill was discovered — {@link Source#BUILTIN} (classpath,
  *                    cannot be uninstalled) or {@link Source#INSTALLED} (a {@code .fys} package
- *                    under {@code <programWorkingDirectory>/skills/})
+ *                    under {@code <programWorkingDirectory>/.fengyu/skills/})
  */
 public record Skill(String id, String name, String description, String body, Source source) {
 

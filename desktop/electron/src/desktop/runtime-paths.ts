@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 
-/** Program working directory shared by the Electron shell and Java backend. */
+/** Writable runtime root under the program working directory. */
 export function runtimeRoot(): string {
-  return resolve(process.cwd())
+  return resolve(process.cwd(), '.fengyu')
 }

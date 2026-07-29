@@ -18,7 +18,8 @@ Infinia 文档中使用的领域术语，每条配有一段定义以及指向其
 
 ## SETUP 模式 / APP 模式
 
-后端在启动时根据 `~/.fengyu/config/datasource.properties` 处的数据源配置自动选择的两类运行时模式：
+后端在启动时根据 `<运行目录>/.fengyu/config/datasource.properties`
+处的数据源配置自动选择的两类运行时模式：
 
 - **SETUP 模式**启动 `SetupApplication`，**不带 JPA**，并在 `/api/setup/*` 下提供首次启动向导（绕过令牌校验）。用于尚未配置任何数据库时。
 - **APP 模式**启动 `FengYuApplication`，带上 `fengyu.mode=app` 以及完整的持久化 + AI + 插件技术栈。
