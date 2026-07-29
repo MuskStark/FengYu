@@ -68,6 +68,7 @@ const frontendDeps = [
             <span class="about-name__brand">{{ $t('brand') }}</span>
             <span class="cx-chip cx-chip--solid">v{{ appVersion }}</span>
           </div>
+          <p class="about-slogan">{{ $t('about.slogan') }}</p>
           <p class="about-subtitle cx-muted">{{ $t('about.subtitle') }}</p>
         </div>
       </div>
@@ -164,6 +165,13 @@ const frontendDeps = [
 .about-logo { width: 56px; height: 56px; flex: 0 0 auto; object-fit: contain; }
 .about-name { display: flex; align-items: center; gap: 10px; }
 .about-name__brand { font-size: 20px; font-weight: 650; }
+.about-slogan {
+  margin: 6px 0 0;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.35;
+  color: rgb(var(--v-theme-primary));
+}
 .about-subtitle { margin: 5px 0 0; font-size: 13px; }
 
 /* Information rows */

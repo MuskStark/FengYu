@@ -137,7 +137,8 @@
   "setup":    { "dataFileLocation": "数据文件位置" },
   "about": {
     "title": "关于",
-    "subtitle": "模块化、插件驱动的 AI 工具箱。",
+    "subtitle": "一个 AI 原生的流程编排平台 ——「规划-执行」智能体把自然语言目标拆解为多步业务流程。",
+    "slogan": "「蜂之所向，流之所往」",
     "infoTitle": "信息",
     "version": "版本",
     "buildTime": "编译时间",
