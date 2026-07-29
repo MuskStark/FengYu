@@ -98,7 +98,7 @@ node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-excel
 node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-email
 ```
 
-Each writes `OfficialPlugins/plugin-<name>/dist-package/fan.summer.<name>-4.0.0-alpha.5.fyp`. CI builds them as a matrix in `.github/workflows/toolchain-ci.yml`.
+Each writes `OfficialPlugins/plugin-<name>/dist-package/fan.summer.<name>-4.0.0.fyp`. CI builds them as a matrix in `.github/workflows/toolchain-ci.yml`.
 
 ## Install the result
 

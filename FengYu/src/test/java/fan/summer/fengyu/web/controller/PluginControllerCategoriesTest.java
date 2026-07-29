@@ -1,6 +1,6 @@
 package fan.summer.fengyu.web.controller;
 
-import fan.summer.fengyu.api.ToolCategory;
+import fan.summer.fengyu.plugin.ToolCategory;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

@@ -1,6 +1,6 @@
 ---
 title: Official Plugin — Excel
-description: Walkthrough of fan.summer.excel (v4.0.0-alpha.5) — a file-category plugin with files.read/files.write permissions, three actions (analyze, configure, split) and six aiTools, three split modes (BY_SHEET, BY_COLUMN, COMPLEX), file I/O usage, and a four-step wizard MF.
+description: Walkthrough of fan.summer.excel (v4.0.0) — a file-category plugin with files.read/files.write permissions, three actions (analyze, configure, split) and six aiTools, three split modes (BY_SHEET, BY_COLUMN, COMPLEX), file I/O usage, and a four-step wizard MF.
 lang: en
 ---
 
@@ -23,7 +23,7 @@ lang: en
   "id": "fan.summer.excel",
   "name": "Excel Splitter",
   "description": "Split Excel workbooks by sheet, column value, or complex rules",
-  "version": "4.0.0-alpha.5",
+  "version": "4.0.0",
   "author": "FengYu",
   "icon": "file-excel",
   "category": "file",

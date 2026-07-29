@@ -1,4 +1,4 @@
-package fan.summer.fengyu.api;
+package fan.summer.fengyu.plugin;
 
 /**
  * Categories used to group tools in the sidebar navigation and across the tool registry.

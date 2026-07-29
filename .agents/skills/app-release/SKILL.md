@@ -45,7 +45,7 @@ version; do not edit yet.
 
 Invoke the **`docs-updater`** skill for the range from the last app tag to `HEAD`: CHANGELOG entry,
 EN/ZH doc sections mapped to the code changes, and version-number replacement. Confirm
-`npm run docs:build` passes if the published site is affected.
+`npm --prefix docs run build` passes if the published site is affected.
 
 ## Step 4 — Review the release workflow and its contract tests
 
@@ -66,8 +66,7 @@ Run the focused set the release depends on (do not skip to save time):
 
 ```bash
 # Backend
-mvn install -f FengYu-Api/pom.xml -DskipTests
-mvn clean package -f FengYu/pom.xml -DskipTests
+./mvnw clean package -f FengYu/pom.xml -DskipTests
 
 # Frontend (build + typecheck + tests)
 cd frontend && npm install && npm run build && npm run test:unit && npm run typecheck && cd ..

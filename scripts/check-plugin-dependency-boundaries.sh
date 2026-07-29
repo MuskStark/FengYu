@@ -32,12 +32,11 @@ if [[ ! -f "$ROOT/.mvn/maven.config" ]]; then
   echo "FAIL: .mvn/maven.config must define the default reactor revision" >&2
   failures=$((failures + 1))
 else
-  require_text "$ROOT/.mvn/maven.config" '-Drevision=4.0.0-alpha.1' \
+  require_text "$ROOT/.mvn/maven.config" '-Drevision=4.0.0' \
     '.mvn/maven.config must define the default reactor revision'
 fi
 
 for pom in \
-  FengYu-Api/pom.xml \
   OfficialPlugins/pom.xml \
   OfficialPlugins/plugin-markdown/pom.xml \
   OfficialPlugins/plugin-excel/pom.xml \
@@ -60,9 +59,6 @@ for artifact in fesod-sheet pdfbox poi-ooxml playwright; do
     "host must not declare plugin-only or unused library $artifact"
 done
 
-reject_text "$ROOT/OfficialPlugins/plugin-markdown/pom.xml" \
-  '<artifactId>FengYu-Api</artifactId>' \
-  'Markdown Worker must not declare unused FengYu-Api'
 reject_text "$ROOT/OfficialPlugins/plugin-markdown/pom.xml" \
   '<artifactId>spring-context</artifactId>' \
   'Markdown Worker must not declare unused Spring Context'

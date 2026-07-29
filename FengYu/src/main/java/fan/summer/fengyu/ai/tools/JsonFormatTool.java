@@ -2,7 +2,7 @@ package fan.summer.fengyu.ai.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import fan.summer.fengyu.api.ai.FengYuTool;
+import fan.summer.fengyu.ai.FengYuTool;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.stereotype.Component;
 

@@ -1,7 +1,7 @@
 package fan.summer.fengyu.ai.tools;
 
-import fan.summer.fengyu.api.ai.AiStreamCallback;
-import fan.summer.fengyu.api.ai.AiToolCall;
+import fan.summer.fengyu.ai.AiStreamCallback;
+import fan.summer.fengyu.ai.AiToolCall;
 import fan.summer.fengyu.ai.util.JsonHelper;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.tool.ToolCallback;

@@ -93,13 +93,13 @@ loaded from the dev Vite server instead of the bundled SPA:
 1. **Build the jar** (once, or after any backend change):
 
    ```bash
-   ./mvnw -pl FengYu -am package -DskipTests -Drevision=4.0.0-alpha.2
+   ./mvnw -pl FengYu -am package -DskipTests -Drevision=4.0.0
    ```
 
 2. **Set `FENGYU_JAR`** to the resulting jar, then start the shell:
 
    ```bash
-   export FENGYU_JAR=/path/to/FengYu/target/FengYu-4.0.0-alpha.2.jar
+   export FENGYU_JAR=/path/to/FengYu/target/FengYu-4.0.0.jar
    npm run dev
    ```
 

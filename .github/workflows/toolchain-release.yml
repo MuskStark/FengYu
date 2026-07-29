@@ -80,7 +80,7 @@ jobs:
       - run: scripts/plugin-tooling-local-smoke.sh
       - run: ./mvnw -pl FengYu -am package -DskipTests
       - run: scripts/e2e-smoke.sh
-      - run: npm ci && npm run docs:build
+      - run: npm ci --prefix docs && npm run build --prefix docs
 
   publish-java:
     needs: [resolve-version, verify]

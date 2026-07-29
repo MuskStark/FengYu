@@ -6,15 +6,34 @@ lang: en
 # Changelog
 
 All notable changes to **Infinia (蜂语 / FengYu)**. The canonical, always-up-to-date source is the
-repository's [CHANGELOG.md](https://github.com/MuskStark/FengYu/blob/4.0.0-electron/CHANGELOG.md) —
+repository's [CHANGELOG.md](https://github.com/MuskStark/FengYu/blob/4.0.0/CHANGELOG.md) —
 this page mirrors it for the published docs site.
 
 ::: tip Latest release
-**v4.0.0-alpha.5** — 2026-07-29 ·
-[GitHub release](https://github.com/MuskStark/FengYu/releases/tag/v4.0.0-alpha.5)
+**v4.0.0** — 2026-07-29 ·
+[GitHub release](https://github.com/MuskStark/FengYu/releases/tag/v4.0.0)
 :::
 
 ---
+
+## [4.0.0] — 2026-07-29
+
+### ✨ Added
+- **Built-in `fengyu-plugin-dev` skill.** A second built-in skill (alongside `fengyu-features`)
+  that teaches the in-app assistant the 4.0.0 plugin model: `.fyp` packages (sandboxed iframe UI +
+  out-of-process JSON-RPC worker), the `manifest.json` fields, the permission enum, `aiTools`, and
+  the `fengyu` CLI build/install flow. It is authored for the app's runtime context, distinct from
+  the repo's agent-workflow skill of the same id.
+
+### ♻️ Changed
+- **Removed the legacy `FengYu-Api` module.** Host-only AI contracts, tool categories, and theme
+  state now live in the headless `FengYu` application module. The obsolete JavaFX preview assets
+  and in-process plugin logging bridge were deleted, and Maven no longer manages JavaFX artifacts.
+- **Unified the application version at 4.0.0.** Maven, the frontend, Electron shell, built-in
+  skills, and official plugin packages now use the stable version.
+- **Scoped the VitePress toolchain to `docs/`.** The documentation package manifest, lockfile,
+  installed dependencies, local commands, and CI cache now live with the documentation sources
+  instead of occupying the repository root.
 
 ## [4.0.0-alpha.5] — 2026-07-29
 

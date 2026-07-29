@@ -107,7 +107,7 @@ resolve and use them locally. It must pass before release mutation. Also confirm
 (the release workflow's `verify` job runs this):
 
 ```bash
-npm run docs:build
+npm --prefix docs run build
 ```
 
 ## Step 6 — Mutate, with explicit confirmation
