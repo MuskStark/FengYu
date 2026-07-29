@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
+import java.util.List;
 import java.util.Properties;
 
 /**
@@ -20,8 +21,8 @@ import java.util.Properties;
  * wizard params. Also handles password encryption via {@link CryptoUtil} and connection testing.
  *
  * <p>Config file location defaults to
- * {@code <programWorkingDirectory>/config/datasource.properties}. The base dir is injectable for
- * testing.
+ * {@code <programWorkingDirectory>/.fengyu/config/datasource.properties}. The runtime root is
+ * injectable for testing.
  */
 @Service
 public class DataSourceConfigService {
@@ -29,21 +30,30 @@ public class DataSourceConfigService {
     private static final Logger log = LoggerFactory.getLogger(DataSourceConfigService.class);
 
     private final Path baseDir;
-    private final Path legacyBaseDir;
+    private final List<Path> legacyBaseDirs;
 
-    /** Production constructor — uses the program working directory as the runtime root. */
+    /** Production constructor — uses {@code .fengyu} under the program working directory. */
     public DataSourceConfigService() {
-        this(RuntimePaths.root(), Path.of(System.getProperty("user.home"), ".fengyu"));
+        this(RuntimePaths.root(), List.of(
+                Path.of(System.getProperty("user.dir")),
+                Path.of(System.getProperty("user.home"), ".fengyu")));
     }
 
     /** Test constructor — injects base dir (temp dir). */
     public DataSourceConfigService(String baseDir) {
-        this(Path.of(baseDir), null);
+        this(Path.of(baseDir), List.of());
     }
 
     DataSourceConfigService(Path baseDir, Path legacyBaseDir) {
+        this(baseDir, legacyBaseDir == null ? List.of() : List.of(legacyBaseDir));
+    }
+
+    DataSourceConfigService(Path baseDir, List<Path> legacyBaseDirs) {
         this.baseDir = baseDir.toAbsolutePath().normalize();
-        this.legacyBaseDir = legacyBaseDir == null ? null : legacyBaseDir.toAbsolutePath().normalize();
+        this.legacyBaseDirs = legacyBaseDirs.stream()
+                .map(path -> path.toAbsolutePath().normalize())
+                .distinct()
+                .toList();
     }
 
     private Path configFile() {
@@ -150,7 +160,7 @@ public class DataSourceConfigService {
         String url;
         String filePath = null;
         if (type.embedded) {
-            // Default data file lives under <programWorkingDirectory>/database/fengyu.
+            // Default data file lives under <programWorkingDirectory>/.fengyu/database/fengyu.
             String rawPath = (params.filePath() == null || params.filePath().isBlank())
                     ? defaultEmbeddedPath().toString()
                     : params.filePath();
@@ -227,14 +237,22 @@ public class DataSourceConfigService {
     }
 
     /**
-     * One-time compatibility bridge for builds that stored setup state under
-     * {@code user.home/.fengyu}. Copying (rather than moving) keeps the old installation
-     * recoverable.
+     * One-time compatibility bridge for builds that stored setup state directly under the
+     * working directory or under {@code user.home/.fengyu}. Copying (rather than moving) keeps
+     * the old installation recoverable.
      */
     private void migrateLegacyConfigIfNeeded() {
-        if (legacyBaseDir == null || legacyBaseDir.equals(baseDir) || Files.exists(configFile())) return;
+        if (Files.exists(configFile())) return;
+        for (Path legacyBaseDir : legacyBaseDirs) {
+            if (!legacyBaseDir.equals(baseDir) && migrateLegacyConfig(legacyBaseDir)) {
+                return;
+            }
+        }
+    }
+
+    private boolean migrateLegacyConfig(Path legacyBaseDir) {
         Path legacyConfig = legacyBaseDir.resolve("config").resolve("datasource.properties");
-        if (!Files.isRegularFile(legacyConfig)) return;
+        if (!Files.isRegularFile(legacyConfig)) return false;
         try {
             Files.createDirectories(configFile().getParent());
             Path legacyMachineId = legacyBaseDir.resolve("config").resolve(".machineid");
@@ -246,10 +264,13 @@ public class DataSourceConfigService {
             SensitiveFilePermissions.protectDirectory(configFile().getParent());
             SensitiveFilePermissions.protectFile(configFile());
             log.info("Migrated datasource configuration from legacy runtime directory {}", legacyBaseDir);
+            return true;
         } catch (java.nio.file.FileAlreadyExistsException ignored) {
             // Another startup process completed the same migration.
+            return true;
         } catch (IOException e) {
             log.warn("Could not migrate legacy datasource configuration: {}", e.getMessage());
+            return false;
         }
     }
 

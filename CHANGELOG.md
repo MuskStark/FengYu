@@ -7,12 +7,51 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 ## [4.0.0-alpha.5] — 2026-07-29
 
 ### ✨ Added
+- **Agent runs are now durable.** Each plan-and-execute run is snapshotted to the database
+  (`ai_agent_run`) with a sequenced lifecycle-event append log (`ai_agent_run_event`) covering
+  `plan_ready`, `plan_approval_requested`, `step_start`/`step_complete`, `step_approval_requested`,
+  `complete`, and `error`/`cancelled`. History is listable/detailable per user, a failed or cancelled
+  run can be resumed from its last completed step, and on restart any non-terminal in-flight run
+  (PLANNING / AWAITING_*_APPROVAL / EXECUTING) is reclassified as FAILED. Persistence failures are
+  logged but never kill a healthy run.
+- **Sensitive tool calls require explicit user approval.** A new `ApprovalRequiredTool` contract
+  marks host tools that must never run without confirmation. In ordinary chat,
+  `ChatToolApprovalGate` blocks each model response containing such calls on a confirmation card
+  (5-minute expiry), and in the Plan-and-Execute Agent each step pauses for the same gate. Cancelling
+  a generation or swapping the backend rejects all pending approvals.
+- **`execute_command` tool with OS-level process sandboxing.** AI-authored shell commands run inside
+  a native isolator when one is available — `bwrap` (bubblewrap) on Linux and `sandbox-exec`
+  (Seatbelt) on macOS — with read-only system files, writes confined to the working directory, and
+  the network isolated unless explicitly opted in. Inherited environment variables holding
+  `TOKEN`/`SECRET`/`PASSWORD`/`API_KEY`/`CREDENTIAL`/`COOKIE`/`AUTHORIZATION` are stripped before
+  launch, output is bounded (default 64 KiB, max 256 KiB) with truncation flagged, and a bounded
+  timeout (default 30s, max 600s) forcibly terminates descendants. Where no isolator exists the tool
+  falls back to direct execution and discloses `compatibilityMode` in the result; approval stays
+  mandatory regardless. `GET /api/security/process-isolation` reports the active backend.
+- **MCP (Model Context Protocol) client.** MCP servers configured via `spring.ai.mcp.client.*` are
+  connected at startup and surface their tools to the Agent. `GET /api/mcp/status` reports the
+  enabled flag, connection/tool counts, and per-connection detail (name, version, protocol version,
+  initialized).
 - **The host and Java plugin Workers now share one live log level.** The Settings page persists
   `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `OFF`, applies it to the host's Logback namespaces,
   and pushes it to running Workers without a restart. The Java Worker SDK replaces
   `slf4j-simple` with a structured stderr provider, preserving logger name, thread, level, message,
   and exception stack while keeping stdout reserved for JSON-RPC; legacy free-form stderr remains
   supported.
+
+### 🔒 Security
+- **Runtime secret files are owner-only on POSIX.** `SensitiveFilePermissions` applies `rwx------`
+  to secret/key-material directories and `rw-------` to their files on macOS/Linux (no-op on
+  Windows, where user-profile ACLs apply).
+
+### ♻️ Changed
+- **Default runtime state is self-contained under the launch directory.** Without an explicit
+  `fengyu.runtime.dir`, the app now stores embedded databases in
+  `<program-working-directory>/.fengyu/database/` and configuration, logs, plugins, skills, and
+  other writable state under `<program-working-directory>/.fengyu/`.
+- **Plugin Workers are sandboxed per manifest permissions.** `ProcessSandbox.plugin(...)` confines
+  each Worker's writes to its plugin-owned roots (broadened when `files.write` is declared) and
+  isolates the network according to the manifest, on supported isolators.
 
 ---
 

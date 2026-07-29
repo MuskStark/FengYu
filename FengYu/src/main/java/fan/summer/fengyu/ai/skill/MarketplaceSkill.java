@@ -16,7 +16,8 @@ package fan.summer.fengyu.ai.skill;
  * @param homepage         project URL
  * @param downloadUrl      catalog download URL ({@code null} for local-only entries → no Update)
  * @param official         shipped by the FengYu team
- * @param installed        present in the local {@code <programWorkingDirectory>/skills/} directory
+ * @param installed        present in the local {@code <programWorkingDirectory>/.fengyu/skills/}
+ *                         directory
  * @param enabled          installed and not marked {@code .disabled}
  * @param updateAvailable  installed AND a newer catalog version exists
  */

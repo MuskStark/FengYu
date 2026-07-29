@@ -56,7 +56,7 @@ cd "$WORK"
 # working dir has no datasource.properties and the backend boots into the minimal setup-wizard
 # context, which excludes PluginController/PluginFileController entirely. Pin the runtime root to
 # this temp dir via -Dfengyu.runtime.dir so state stays isolated and the run is repeatable
-# (RuntimePaths.root() otherwise resolves to ~/.fengyu and leaks state across runs).
+# (RuntimePaths.root() otherwise resolves to <working-directory>/.fengyu).
 DB_FILE="$WORK/.fengyu/database/fengyu"
 mkdir -p "$WORK/.fengyu/config" "$(dirname "$DB_FILE")"
 cat > "$WORK/.fengyu/config/datasource.properties" <<EOF

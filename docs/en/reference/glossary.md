@@ -18,7 +18,8 @@ A self-contained UI bundle (the plugin's `ui/` directory) that the host serves a
 
 ## SETUP mode / APP mode
 
-The two runtime modes the backend auto-selects at launch, based on the datasource config at `~/.fengyu/config/datasource.properties`:
+The two runtime modes the backend auto-selects at launch, based on the datasource config at
+`<program-working-directory>/.fengyu/config/datasource.properties`:
 
 - **SETUP mode** boots `SetupApplication` with **no JPA** and serves the first-launch wizard under `/api/setup/*` (token-bypassed). Used before any database is configured.
 - **APP mode** boots `FengYuApplication` with `fengyu.mode=app` and the full persistence + AI + plugin stack.

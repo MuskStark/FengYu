@@ -95,7 +95,8 @@ public final class MyWorkerMain {
 
 With the manifest `database` permission, the host injects `FENGYU_DB_TYPE`, `FENGYU_DB_DRIVER`,
 `FENGYU_DB_URL`, `FENGYU_DB_USERNAME`, `FENGYU_DB_PASSWORD`, and `FENGYU_PLUGIN_DATA_DIR` into the
-Worker. The last value defaults to the stable private path `~/.fengyu/plugin-data/<pluginId>/`.
+Worker. The last value defaults to the stable private path
+`<program-working-directory>/.fengyu/plugin-data/<pluginId>/`.
 
 ```java
 PluginDatabaseConfig database = PluginDatabaseConfig.fromEnvironment(System.getenv())

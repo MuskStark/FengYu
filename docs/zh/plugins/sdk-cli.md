@@ -94,7 +94,7 @@ public final class MyWorkerMain {
 
 清单声明 `database` 权限后，宿主会向 Worker 注入 `FENGYU_DB_TYPE`、`FENGYU_DB_DRIVER`、
 `FENGYU_DB_URL`、`FENGYU_DB_USERNAME`、`FENGYU_DB_PASSWORD` 和 `FENGYU_PLUGIN_DATA_DIR`。
-最后一项默认指向稳定私有目录 `~/.fengyu/plugin-data/<pluginId>/`。
+最后一项默认指向稳定私有目录 `<运行目录>/.fengyu/plugin-data/<pluginId>/`。
 
 ```java
 PluginDatabaseConfig database = PluginDatabaseConfig.fromEnvironment(System.getenv())

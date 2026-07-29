@@ -30,8 +30,8 @@ import java.util.zip.ZipInputStream;
  * <p>The lifecycle twin of {@code PluginPackageService}: a skill is managed exactly like a plugin.
  * A {@code .fys} archive is a zip with a {@code manifest.json} ({@link SkillManifest}) and a
  * {@code SKILL.md} at its root. On install it is extracted under
- * {@code <programWorkingDirectory>/skills/<id>/} — a filesystem peer of
- * {@code <programWorkingDirectory>/plugins/<id>/} — via the same stage → validate →
+ * {@code <programWorkingDirectory>/.fengyu/skills/<id>/} — a filesystem peer of
+ * {@code <programWorkingDirectory>/.fengyu/plugins/<id>/} — via the same stage → validate →
  * atomic-publish → backup-rollback dance the plugin installer uses.
  * Enable state is a {@code .disabled} marker file (not a DB row), so it survives reinstall and
  * stays out of the JPA layer entirely.

@@ -6,13 +6,11 @@ import { tmpdir } from 'node:os'
 const electron = vi.hoisted(() => ({
   ipcHandler: null as ((event: { sender: object }, value: unknown) => void) | null,
   nativeTheme: { themeSource: 'system' },
-  userDataDir: '',
   setBackgroundColor: vi.fn(),
   isDestroyed: vi.fn(() => false),
 }))
 
 vi.mock('electron', () => ({
-  app: { getPath: () => electron.userDataDir },
   BrowserWindow: {
     fromWebContents: vi.fn(() => ({
       isDestroyed: electron.isDestroyed,
@@ -79,8 +77,7 @@ describe('desktop appearance cache', () => {
 
   it('updates the macOS native appearance and existing window immediately', () => {
     const directory = temporaryDirectory()
-    electron.userDataDir = directory
-    initializeAppearance()
+    initializeAppearance(undefined, directory)
 
     electron.ipcHandler!({ sender: {} }, 'light')
 

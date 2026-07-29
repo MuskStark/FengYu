@@ -234,7 +234,7 @@ async function bootstrap(): Promise<void> {
           'Backend stopped',
           'The FengYu backend exited unexpectedly. The app cannot continue. ' +
             'Please relaunch Infinia. If the problem persists, check the logs at ' +
-            '<user home>/.fengyu/logs/.',
+            '<program working directory>/.fengyu/logs/.',
         )
         app.quit()
       }

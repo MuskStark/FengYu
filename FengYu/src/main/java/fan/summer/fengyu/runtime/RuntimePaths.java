@@ -5,8 +5,8 @@ import java.nio.file.Path;
 /**
  * Canonical locations for writable FengYu runtime state.
  *
- * <p>The root defaults to the program working directory ({@code user.dir}). Operators and the
- * desktop shell can pin a different program directory with
+ * <p>The root defaults to {@code .fengyu} under the program working directory
+ * ({@code user.dir}). Operators and the desktop shell can pin a different runtime root with
  * {@code -Dfengyu.runtime.dir=/path/to/fengyu}.
  */
 public final class RuntimePaths {
@@ -21,7 +21,9 @@ public final class RuntimePaths {
 
     static Path resolveRoot(String configured, String workingDirectory) {
         String value = configured == null ? "" : configured.trim();
-        Path root = value.isEmpty() ? Path.of(workingDirectory) : Path.of(value);
+        Path root = value.isEmpty()
+                ? Path.of(workingDirectory).resolve(".fengyu")
+                : Path.of(value);
         return root.toAbsolutePath().normalize();
     }
 

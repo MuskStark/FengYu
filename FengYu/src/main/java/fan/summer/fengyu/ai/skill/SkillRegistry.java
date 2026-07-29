@@ -27,7 +27,7 @@ import java.util.regex.Pattern;
  *   <li><b>Builtin</b> — classpath {@code /skills/<id>/SKILL.md}, packaged inside the app JAR.
  *       Shipped with every release; cannot be uninstalled (disable instead).</li>
  *   <li><b>Installed</b> — a {@code .fys} package extracted under
- *       {@code <programWorkingDirectory>/skills/<id>/} by {@link SkillPackageService}. This is
+ *       {@code <programWorkingDirectory>/.fengyu/skills/<id>/} by {@link SkillPackageService}. This is
  *       the lifecycle twin of an installed plugin: full install/uninstall/enable/disable via the
  *       same filesystem-marker pattern.</li>
  * </ol>

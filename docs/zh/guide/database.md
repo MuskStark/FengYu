@@ -45,8 +45,10 @@ Infinia 自带一个首次启动的**设置向导**，要求你选择一个数�
 持久化的数据源存放在：
 
 ```text
-~/.fengyu/config/datasource.properties
+<运行目录>/.fengyu/config/datasource.properties
 ```
+
+嵌入式 H2 和 SQLite 数据文件默认存放在 `<运行目录>/.fengyu/database/fengyu`。
 
 其中的键：
 
@@ -64,7 +66,7 @@ Infinia 自带一个首次启动的**设置向导**，要求你选择一个数�
 
 密码通过 `CryptoUtil` 以 AES/GCM 加密。密钥是**绑定机器**的：
 
-1. 启动器将一个每机 UUID 写入 `~/.fengyu/config/.machineid`。
+1. 启动器将一个每机 UUID 写入 `<运行目录>/.fengyu/config/.machineid`。
 2. AES 密钥为 `SHA-256("FengYu-4.0-Phase4-SetupKey:" + <machine UUID>)`。
 3. 加密后的值以 `ENC(...)` 的形式包裹存放在属性文件中。
 
@@ -88,7 +90,7 @@ Infinia 自带一个首次启动的**设置向导**，要求你选择一个数�
 
 有两种等价的方式可重新进入向导：
 
-- **手动**——删除 `~/.fengyu/config/datasource.properties` 并重启后端；没有配置时它会以 SETUP 模式启动。
+- **手动**——删除 `<运行目录>/.fengyu/config/datasource.properties` 并重启后端；没有配置时它会以 SETUP 模式启动。
 - **API**——`POST /api/settings/database/reset` 会备份当前配置、清空它，并重启进入 SETUP 模式。参见[配置](/zh/guide/configuration)。
 
 两者产生相同的最终状态：一份已备份的配置，以及一个等待新参数的 SETUP 模式进程。
