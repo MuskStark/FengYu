@@ -16,7 +16,8 @@ import java.util.UUID;
  * Lightweight AES-GCM encryption for sensitive datasource config fields (e.g. db.password).
  *
  * <p>Key derivation: a fixed project constant XOR'd with a per-machine random UUID
- * (stored at {@code <programWorkingDirectory>/config/.machineid}), SHA-256'd to a 256-bit AES key.
+ * (stored at {@code <programWorkingDirectory>/.fengyu/config/.machineid}), SHA-256'd to a
+ * 256-bit AES key.
  * This means an encrypted config file cannot be decrypted on a different machine,
  * reducing the value of a stolen config file.
  *

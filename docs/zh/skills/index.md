@@ -32,7 +32,8 @@ N 个技能的每请求成本约为 N 行，与每个正文的长度无关。技
 技能与**插件具有相同的生命周期**：
 
 - 打包为 **`.fys` 包**（zip：`manifest.json` + `SKILL.md`）。
-- 安装到 `~/.fengyu/skills/<id>/`——与 `~/.fengyu/plugins/<id>/` 平级的文件系统目录。
+- 安装到 `<运行目录>/.fengyu/skills/<id>/`——与
+  `<运行目录>/.fengyu/plugins/<id>/` 平级的文件系统目录。
 - 通过 **`.disabled` 标记文件**启用/停用（状态在重装后保持，不进数据库）。
 - 可从**远程目录**通过技能市场浏览和安装。
 - 内置官方技能可由 `OfficialSkillSeeder` 在启动时**自动 seed**。
@@ -40,7 +41,7 @@ N 个技能的每请求成本约为 N 行，与每个正文的长度无关。技
 | 来源 | 位置 | 生命周期 |
 | --- | --- | --- |
 | **内置 (Built-in)** | `classpath:/skills/<id>/SKILL.md`（在 app JAR 内） | 随每次发布打包。**不可卸载或停用**（安装同名技能可覆盖定制）。 |
-| **已安装 (Installed)** | `~/.fengyu/skills/<id>/`（来自 `.fys` 包） | 完整的安装/卸载/启用/停用，与插件完全一致。 |
+| **已安装 (Installed)** | `<运行目录>/.fengyu/skills/<id>/`（来自 `.fys` 包） | 完整的安装/卸载/启用/停用，与插件完全一致。 |
 
 与某个内置技能同名的已安装技能会**覆盖**它——无需 fork JAR 即可定制内置指南。已安装来源优先。
 
@@ -76,9 +77,9 @@ manifest——元数据和正文都来自 `SKILL.md` 的 frontmatter。）
 
 ## 启用 / 停用
 
-启用状态是**文件系统标记**（`~/.fengyu/skills/<id>/.disabled`），与插件完全一致。没有该文件时，
-已安装技能默认启用。可在 **技能** 页（`/skills`）切换，或通过 `PATCH /api/skills/{id}/enabled`。
-内置技能没有安装目录，始终启用。
+启用状态是**文件系统标记**（`<运行目录>/.fengyu/skills/<id>/.disabled`），与插件完全一致。
+没有该文件时，已安装技能默认启用。可在 **技能** 页（`/skills`）切换，或通过
+`PATCH /api/skills/{id}/enabled`。内置技能没有安装目录，始终启用。
 
 ## REST API
 
@@ -102,7 +103,7 @@ manifest——元数据和正文都来自 `SKILL.md` 的 frontmatter。）
 
 | 键 | 默认值 | 用途 |
 | --- | --- | --- |
-| `fengyu.skills.directory` | `${user.home}/.fengyu/skills` | `.fys` 包安装位置。 |
+| `fengyu.skills.directory` | `${user.dir}/.fengyu/skills` | `.fys` 包安装位置。 |
 | `fengyu.skills.catalog-url` | `""`（无） | 远程技能市场目录 JSON。为空则仅本地已安装。 |
 | `fengyu.skills.official-directory` | `${user.dir}/OfficialSkills/target/packages` | `OfficialSkillSeeder` 启动时扫描。 |
 

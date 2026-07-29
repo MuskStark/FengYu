@@ -45,8 +45,11 @@ All `/api/setup/*` endpoints **bypass the token filter** so the wizard can run b
 The persisted datasource lives at:
 
 ```text
-~/.fengyu/config/datasource.properties
+<program-working-directory>/.fengyu/config/datasource.properties
 ```
+
+Embedded H2 and SQLite data files default to
+`<program-working-directory>/.fengyu/database/fengyu`.
 
 with keys:
 
@@ -64,7 +67,8 @@ with keys:
 
 Passwords are encrypted with AES/GCM via `CryptoUtil`. The key is **machine-bound**:
 
-1. The launcher writes a per-machine UUID to `~/.fengyu/config/.machineid`.
+1. The launcher writes a per-machine UUID to
+   `<program-working-directory>/.fengyu/config/.machineid`.
 2. The AES key is `SHA-256("FengYu-4.0-Phase4-SetupKey:" + <machine UUID>)`.
 3. Encrypted values are wrapped as `ENC(...)` in the properties file.
 
@@ -88,7 +92,7 @@ This is the identity conversations and other records attach to.
 
 Two equivalent ways to re-enter the wizard:
 
-- **Manual** — delete `~/.fengyu/config/datasource.properties` and restart the backend; with no config it boots into SETUP mode.
+- **Manual** — delete `<program-working-directory>/.fengyu/config/datasource.properties` and restart the backend; with no config it boots into SETUP mode.
 - **API** — `POST /api/settings/database/reset` backs up the current config, clears it, and restarts into SETUP mode. See [Configuration](/en/guide/configuration).
 
 Both produce the same end state: a backed-up config and a SETUP-mode process waiting for new parameters.

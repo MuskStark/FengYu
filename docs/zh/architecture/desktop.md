@@ -34,7 +34,7 @@ java -Dfengyu.plugins.official-directory=<plugins-dir> \
      --token=<t>
 ```
 
-外壳读取子进程的 stdout 寻找 `FENGYU_PORT=<n>` 这一行，期限为 **30 秒**（可取消，因此缓慢启动期间关闭窗口不会挂起）。如果该行在期限内没有出现，启动即告失败。后端的 stdout/stderr 行会同步写入 `~/.fengyu/logs/backend-stdout.log`。
+外壳读取子进程的 stdout 寻找 `FENGYU_PORT=<n>` 这一行，期限为 **30 秒**（可取消，因此缓慢启动期间关闭窗口不会挂起）。如果该行在期限内没有出现，启动即告失败。后端的 stdout/stderr 行会同步写入 `<运行目录>/.fengyu/logs/backend-stdout.log`。
 
 Java 在运行时解析：**带 JRE** 版本优先使用 `<resourcesPath>/jre/bin/java`；**不带 JRE** 版本使用 `PATH` 中的 `java`。若找不到 `java`，外壳会弹出一个原生错误对话框并退出。
 
@@ -71,7 +71,9 @@ window.fengyu.pickDirectory()     // → 原生打开对话框（IPC）
 
 - **单实例锁**——`app.requestSingleInstanceLock()`。再次启动会显示并聚焦已有窗口（也会从托盘恢复）。
 - **系统托盘**——图标从旧外壳迁移而来；菜单：显示 / 隐藏 / 退出。驱动下文的关闭语义。
-- **文件日志**——`electron-log` 把主进程日志写入 `~/.fengyu/logs/desktop.log`（与后端日志同目录）；后端的 stdout/stderr 同步写入 `~/.fengyu/logs/backend-stdout.log`。内置按大小/日期滚动。
+- **文件日志**——`electron-log` 把主进程日志写入
+  `<运行目录>/.fengyu/logs/desktop.log`（与后端日志同目录）；后端的 stdout/stderr 同步写入
+  `<运行目录>/.fengyu/logs/backend-stdout.log`。内置按大小/日期滚动。
 - **自动更新**——`electron-updater`，源为 GitHub Releases（`latest*.yml` 由 electron-builder 生成）。在 `app.whenReady()` 之后做非阻塞检查；发现有更新时 → 原生对话框确认 → 下载并安装。Alpha 未签名：Windows 用 NSIS，macOS 需用户在 Gatekeeper 放行。
 
 ## 关停语义（已变更——重要）

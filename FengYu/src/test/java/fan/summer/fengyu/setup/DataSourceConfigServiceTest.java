@@ -8,6 +8,7 @@ import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -228,5 +229,22 @@ class DataSourceConfigServiceTest {
         assertTrue(Files.isRegularFile(stableRoot.resolve("config/.machineid")));
         assertTrue(Files.isRegularFile(legacyRoot.resolve("config/datasource.properties")),
                 "legacy copy remains recoverable");
+    }
+
+    @Test
+    void loadChecksAllLegacyRuntimeLocations() {
+        Path missingLegacyRoot = tempDir.resolve("missing");
+        Path legacyRoot = tempDir.resolve("legacy-home");
+        Path stableRoot = tempDir.resolve(".fengyu");
+        DataSourceConfigService legacy = new DataSourceConfigService(legacyRoot.toString());
+        WizardParams params = new WizardParams(
+                null, "db.example.com", 3306, "fengyu", "admin", "secret");
+        legacy.save(legacy.buildFromWizard(DbType.MYSQL, params));
+
+        DataSourceConfigService stable =
+                new DataSourceConfigService(stableRoot, List.of(missingLegacyRoot, legacyRoot));
+
+        assertEquals("secret", stable.load().password());
+        assertTrue(Files.isRegularFile(stableRoot.resolve("config/datasource.properties")));
     }
 }
