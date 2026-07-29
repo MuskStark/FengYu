@@ -39,7 +39,8 @@ A skill body only costs tokens when it is actually loaded.
 A skill has the **same lifecycle as a plugin**:
 
 - Packaged as a **`.fys` archive** (zip: `manifest.json` + `SKILL.md`).
-- Installed under `~/.fengyu/skills/<id>/` — a filesystem peer of `~/.fengyu/plugins/<id>/`.
+- Installed under `<program-working-directory>/.fengyu/skills/<id>/` — a filesystem peer of
+  `<program-working-directory>/.fengyu/plugins/<id>/`.
 - Enabled/disabled via a **`.disabled` marker file** (so the state survives reinstall and stays
   out of the DB).
 - Browseable and installable from a **remote catalog** through the skill marketplace.
@@ -48,7 +49,7 @@ A skill has the **same lifecycle as a plugin**:
 | Source | Location | Lifecycle |
 | --- | --- | --- |
 | **Built-in** | `classpath:/skills/<id>/SKILL.md` (inside the app JAR) | Ships with every release. **Cannot be uninstalled or disabled** (install an overriding skill of the same id to customize). |
-| **Installed** | `~/.fengyu/skills/<id>/` (from a `.fys` package) | Full install / uninstall / enable / disable, exactly like a plugin. |
+| **Installed** | `<program-working-directory>/.fengyu/skills/<id>/` (from a `.fys` package) | Full install / uninstall / enable / disable, exactly like a plugin. |
 
 An installed skill with the same id as a built-in one **overrides** it — so you can tailor
 shipped guidance without forking the JAR. The installed source wins.
@@ -87,10 +88,10 @@ requires the id to start with `fan.summer.`. Versions are semver and drive the m
 
 ## Enable / disable
 
-Enable state is a **filesystem marker** (`~/.fengyu/skills/<id>/.disabled`), exactly like a
-plugin. Absent the file, an installed skill is enabled. Toggle it from the **Skills** page
-(`/skills`) or via `PATCH /api/skills/{id}/enabled`. Built-in skills have no install directory
-and are always enabled.
+Enable state is a **filesystem marker**
+(`<program-working-directory>/.fengyu/skills/<id>/.disabled`), exactly like a plugin. Absent the
+file, an installed skill is enabled. Toggle it from the **Skills** page (`/skills`) or via
+`PATCH /api/skills/{id}/enabled`. Built-in skills have no install directory and are always enabled.
 
 ## REST API
 
@@ -115,7 +116,7 @@ uninstall or disable attempts.
 
 | Key | Default | Purpose |
 | --- | --- | --- |
-| `fengyu.skills.directory` | `${user.home}/.fengyu/skills` | Where `.fys` packages are installed. |
+| `fengyu.skills.directory` | `${user.dir}/.fengyu/skills` | Where `.fys` packages are installed. |
 | `fengyu.skills.catalog-url` | `""` (none) | Remote skill marketplace catalog JSON. Blank → local installed only. |
 | `fengyu.skills.official-directory` | `${user.dir}/OfficialSkills/target/packages` | Scanned by `OfficialSkillSeeder` on boot. |
 

@@ -37,7 +37,8 @@ FENGYU_PORT=<n>
 
 ## SETUP 与 APP 模式
 
-启动器会自动检测该启动哪个 Spring 应用。决策依据是位于 `~/.fengyu/config/datasource.properties` 的数据源配置文件，以及所配置的数据库当前是否可达：
+启动器会自动检测该启动哪个 Spring 应用。决策依据是位于
+`<运行目录>/.fengyu/config/datasource.properties` 的数据源配置文件，以及所配置的数据库当前是否可达：
 
 ```text
 datasource.properties present? ──► probe DB (JDBC SELECT 1, 5s login timeout)

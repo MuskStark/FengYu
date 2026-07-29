@@ -101,7 +101,8 @@ external file.
 
 ## `datasource.properties` layout
 
-The database connection is persisted separately from AI config, at `~/.fengyu/config/datasource.properties`, with keys:
+The database connection is persisted separately from AI config, at
+`<program-working-directory>/.fengyu/config/datasource.properties`, with keys:
 
 | Key | Meaning |
 | --- | --- |

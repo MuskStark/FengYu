@@ -196,18 +196,19 @@ via a setup wizard. No database knowledge is required for the default local expe
 
 ### First-launch setup wizard
 
-On first launch (no `~/.fengyu/config/datasource.properties`), the backend boots in **SETUP mode**
-and the frontend shows a wizard that lets you pick a database:
+On first launch (no `<program-working-directory>/.fengyu/config/datasource.properties`), the
+backend boots in **SETUP mode** and the frontend shows a wizard that lets you pick a database:
 
 - **H2** (default, local embedded) — zero configuration.
 - **SQLite** (local embedded) — single-file database.
 - **MySQL** (remote) — for multi-user or server deployment.
 - **PostgreSQL** (remote) — for multi-user or server deployment.
 
-The wizard tests the connection, persists the configuration to
-`~/.fengyu/config/datasource.properties` (passwords AES-GCM encrypted, machine-bound), then exits
-(`SETUP_DONE=0`). The desktop supervisor restarts the backend into **APP mode**, where
-Hibernate `ddl-auto=update` creates the schema from the JPA entities. To reconfigure, delete
+The wizard tests the connection, persists the configuration under
+`<program-working-directory>/.fengyu/config/` (passwords AES-GCM encrypted, machine-bound), and
+stores an embedded database under `<program-working-directory>/.fengyu/database/`, then exits
+(`SETUP_DONE=0`). The desktop supervisor restarts the backend into **APP mode**, where Hibernate
+`ddl-auto=update` creates the schema from the JPA entities. To reconfigure, delete
 `datasource.properties` and restart — the wizard reappears. See [Database](docs/en/guide/database).
 
 ---

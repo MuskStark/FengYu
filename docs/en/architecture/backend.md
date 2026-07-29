@@ -37,7 +37,10 @@ The desktop shell and any external supervisor parse this line to discover which 
 
 ## SETUP vs APP mode
 
-The launcher auto-detects which Spring application to boot. The decision is based on the datasource configuration file at `~/.fengyu/config/datasource.properties` and whether the configured database is actually reachable:
+The launcher auto-detects which Spring application to boot. The decision is based on the
+datasource configuration file at
+`<program-working-directory>/.fengyu/config/datasource.properties` and whether the configured
+database is actually reachable:
 
 ```text
 datasource.properties present? ──► probe DB (JDBC SELECT 1, 5s login timeout)

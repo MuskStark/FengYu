@@ -3,7 +3,7 @@
   FengYu logging configuration.
 
   The host application sets the system property `fengyu.log.dir` to the absolute
-  path of the runtime log directory (typically `~/.fengyu/logs/`) before SLF4J
+  path of the runtime log directory (typically `<program-working-directory>/.fengyu/logs/`) before SLF4J
   initialises. A fallback default keeps the
   config valid when logback is loaded outside the host (tests, IDE).
 -->

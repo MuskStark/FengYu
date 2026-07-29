@@ -15,6 +15,9 @@ hero:
     - theme: alt
       text: 功能特性
       link: /zh/features
+    - theme: alt
+      text: 文档
+      link: /zh/architecture/overview
 features:
   - icon: 🤖
     title: AI 智能体

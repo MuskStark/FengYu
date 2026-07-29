@@ -9,10 +9,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class RuntimePathsTest {
 
     @Test
-    void defaultsToProgramWorkingDirectory() {
+    void defaultsToHiddenRuntimeDirectoryUnderProgramWorkingDirectory() {
         Path root = RuntimePaths.resolveRoot("", "/opt/infinia");
 
-        assertEquals(Path.of("/opt/infinia").toAbsolutePath().normalize(), root);
+        assertEquals(Path.of("/opt/infinia/.fengyu").toAbsolutePath().normalize(), root);
     }
 
     @Test

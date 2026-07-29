@@ -40,7 +40,8 @@ Install more from the **Plugins** page (`/plugins`) via the marketplace or a loc
 - Skills are domain guidance the assistant loads on demand (progressive disclosure).
 - Enabled skills appear as a compact catalog in the system prompt; bodies load via the
   `skill` tool only when relevant.
-- Sources: **Built-in** (shipped with the app) and **User** (`~/.fengyu/skills/<id>/SKILL.md`).
+- Sources: **Built-in** (shipped with the app) and **User**
+  (`<program-working-directory>/.fengyu/skills/<id>/SKILL.md`).
 - Manage them under **Skills** (`/skills`).
 
 ## How to answer
