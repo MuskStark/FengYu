@@ -1,8 +1,6 @@
-import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { resolve } from 'node:path'
 
-/** Stable writable root shared by the Electron shell and Java backend. */
+/** Program working directory shared by the Electron shell and Java backend. */
 export function runtimeRoot(): string {
-  return join(homedir(), '.fengyu')
+  return resolve(process.cwd())
 }
-

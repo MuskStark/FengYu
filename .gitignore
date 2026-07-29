@@ -7,6 +7,22 @@ target/
 # Local packaging output (web/desktop release artifacts staged by scripts/).
 /release/
 
+# Writable runtime state (may contain database credentials, encryption key material, and user data).
+/config/
+/database/
+/logs/
+/plugins/
+/plugin-data/
+/skills/
+/runtime-files/
+/FengYu/config/
+/FengYu/database/
+/FengYu/logs/
+/FengYu/plugins/
+/FengYu/plugin-data/
+/FengYu/skills/
+/FengYu/runtime-files/
+
 ### IntelliJ IDEA ###
 .idea/
 *.iws

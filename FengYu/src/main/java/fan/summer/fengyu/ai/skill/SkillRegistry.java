@@ -3,6 +3,7 @@ package fan.summer.fengyu.ai.skill;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Service;
 
@@ -26,9 +27,9 @@ import java.util.regex.Pattern;
  *   <li><b>Builtin</b> — classpath {@code /skills/<id>/SKILL.md}, packaged inside the app JAR.
  *       Shipped with every release; cannot be uninstalled (disable instead).</li>
  *   <li><b>Installed</b> — a {@code .fys} package extracted under
- *       {@code ~/.fengyu/skills/<id>/} by {@link SkillPackageService}. This is the lifecycle
- *       twin of an installed plugin: full install/uninstall/enable/disable via the same
- *       filesystem-marker pattern.</li>
+ *       {@code <programWorkingDirectory>/skills/<id>/} by {@link SkillPackageService}. This is
+ *       the lifecycle twin of an installed plugin: full install/uninstall/enable/disable via the
+ *       same filesystem-marker pattern.</li>
  * </ol>
  *
  * <p>An installed skill with the same id as a builtin one <em>overrides</em> it — users can
@@ -55,6 +56,7 @@ import java.util.regex.Pattern;
 public class SkillRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(SkillRegistry.class);
+    private static final long MAX_RESOURCE_BYTES = 1024L * 1024L;
 
     /** Classpath location of builtin skills (inside the JAR). */
     private static final String BUILTIN_PATTERN = "/skills/*/SKILL.md";
@@ -90,6 +92,53 @@ public class SkillRegistry {
     public Optional<Skill> find(String id) {
         if (id == null) return Optional.empty();
         return all().stream().filter(s -> id.equals(s.id())).findFirst();
+    }
+
+    /**
+     * Reads a text resource referenced by a skill body. The path is always resolved below the
+     * effective skill root; absolute paths and traversal are rejected.
+     */
+    public Optional<String> readResource(String id, String relativePath) {
+        Optional<Skill> skill = find(id);
+        if (skill.isEmpty() || !isEnabled(skill.get())) return Optional.empty();
+        Path relative = safeRelativePath(relativePath);
+        try {
+            byte[] bytes;
+            if (skill.get().source() == Skill.Source.INSTALLED) {
+                Path root = packages.directory(id).toAbsolutePath().normalize();
+                Path resource = root.resolve(relative).normalize();
+                if (!resource.startsWith(root) || !Files.isRegularFile(resource)) {
+                    return Optional.empty();
+                }
+                if (Files.size(resource) > MAX_RESOURCE_BYTES) {
+                    throw new IllegalArgumentException("Skill resource exceeds 1 MB");
+                }
+                bytes = Files.readAllBytes(resource);
+            } else {
+                Resource resource = new ClassPathResource(
+                        "skills/" + id + "/" + relative.toString().replace('\\', '/'));
+                if (!resource.exists()) return Optional.empty();
+                bytes = resource.getContentAsByteArray();
+                if (bytes.length > MAX_RESOURCE_BYTES) {
+                    throw new IllegalArgumentException("Skill resource exceeds 1 MB");
+                }
+            }
+            return Optional.of(new String(bytes, StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            throw new IllegalStateException("Could not read skill resource", e);
+        }
+    }
+
+    private static Path safeRelativePath(String value) {
+        if (value == null || value.isBlank() || value.contains("\\")
+                || value.indexOf('\0') >= 0) {
+            throw new IllegalArgumentException("Invalid skill resource path");
+        }
+        Path path = Path.of(value).normalize();
+        if (path.isAbsolute() || path.startsWith("..") || path.toString().isBlank()) {
+            throw new IllegalArgumentException("Invalid skill resource path");
+        }
+        return path;
     }
 
     /**

@@ -30,6 +30,30 @@ Messages are **newline-delimited**: one JSON object per line on `stdin`, one per
 
 > **Logs go to stderr.** `stdout` is reserved for protocol messages. The Worker SDK enforces this by redirecting `System.out` to `System.err` for the duration of the run loop — see [Pitfalls](/en/plugins/pitfalls).
 
+## Logging
+
+Use the ordinary SLF4J API in Java plugin code:
+
+```java
+private static final Logger log = LoggerFactory.getLogger(MyHandler.class);
+
+log.debug("Loaded {} rows", rowCount);
+log.error("Export failed", exception);
+```
+
+The SDK bundles a Worker-specific SLF4J provider. Each event is written as one structured line on
+`stderr`, preserving `TRACE`, `DEBUG`, `INFO`, `WARN`, and `ERROR`, plus the logger name, thread,
+formatted message, and exception stack. The host parses the event, redacts injected secrets,
+forwards it at the same level into the host log, and publishes it through the existing plugin-log
+REST/SSE surface. Direct free-form `System.err` output from older Workers remains compatible and
+defaults to `INFO` when no level token can be recognized.
+
+The Settings page controls one threshold shared by the main application and every Worker:
+`TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `OFF`. A new process receives it as
+`FENGYU_LOG_LEVEL`; a running SDK Worker receives `$/fengyu/logging/setLevel` as an internal
+JSON-RPC notification and updates existing logger instances immediately. Plugins must not register
+that reserved method themselves.
+
 ## Per-call timeout
 
 Every invoke is bounded by a timeout. The host (`PluginProcessManager`) waits that many seconds for the worker's response; when it elapses, **the worker process is killed** and the next call lazily restarts it. This is deliberate: the SDK dispatch loop is single-threaded, so a stuck handler cannot be cancelled any other way — the only recovery is to tear the process down.

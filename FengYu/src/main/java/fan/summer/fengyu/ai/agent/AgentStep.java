@@ -1,6 +1,7 @@
 package fan.summer.fengyu.ai.agent;
 
 import java.util.Map;
+import java.util.List;
 
 /**
  * A single planned action within an {@link AgentPlan}.
@@ -16,10 +17,22 @@ import java.util.Map;
  * @param args              the tool arguments as a JSON-like map; never mutated by this record
  * @param description       human-readable explanation of what the step does and why
  * @param requiresApproval  whether this step must pause for human approval before executing
+ * @param dependsOn         indexes that must complete before this step can start
  */
 public record AgentStep(int index,
                         String toolName,
                         Map<String, Object> args,
                         String description,
-                        boolean requiresApproval) {
+                        boolean requiresApproval,
+                        List<Integer> dependsOn) {
+
+    public AgentStep {
+        dependsOn = dependsOn == null ? List.of() : List.copyOf(dependsOn);
+    }
+
+    /** Backward-compatible constructor for stored plans and callers created before DAG support. */
+    public AgentStep(int index, String toolName, Map<String, Object> args,
+                     String description, boolean requiresApproval) {
+        this(index, toolName, args, description, requiresApproval, List.of());
+    }
 }

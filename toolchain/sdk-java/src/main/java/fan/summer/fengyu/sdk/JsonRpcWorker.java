@@ -71,12 +71,22 @@ public final class JsonRpcWorker {
             try {
                 Map<String, Object> request = parseRequest(line);
                 requestId = request.get("id");
-                response.put("id", requestId);
                 method = (String) request.get("method");
-                PluginHandler handler = handlers.get(method);
-                if (handler == null) throw new RpcException(-32601, "Unknown method: " + method);
                 @SuppressWarnings("unchecked") Map<String, Object> params = request.get("params") instanceof Map<?, ?> map
                     ? (Map<String, Object>) map : Map.of();
+                if (PluginLogging.SET_LEVEL_METHOD.equals(method)) {
+                    PluginLogging.setLevel(string(params, "level"));
+                    // This built-in control message is a JSON-RPC notification. It deliberately has
+                    // no id and no response, so a settings change never occupies a pending call slot.
+                    if (requestId == null) continue;
+                    response.put("id", requestId);
+                    response.put("result", Map.of("level", PluginLogging.level()));
+                    transport.writeFrame(json.toJson(response));
+                    continue;
+                }
+                response.put("id", requestId);
+                PluginHandler handler = handlers.get(method);
+                if (handler == null) throw new RpcException(-32601, "Unknown method: " + method);
                 response.put("result", handler.handle(params));
             } catch (RpcException e) {
                 if (e.requestId() != null) response.put("id", e.requestId());

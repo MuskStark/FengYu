@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, shallowRef } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   MarkerType,
@@ -16,7 +16,14 @@ import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
 import { api } from '@/api/client'
 import { backendUrl, getToken } from '@/api/config'
-import type { AgentPlan, AgentStep, AgentTool, AgentRunConfig } from '@/api/types'
+import type {
+  AgentPlan,
+  AgentRunConfig,
+  AgentRunDetail,
+  AgentRunSummary,
+  AgentStep,
+  AgentTool,
+} from '@/api/types'
 import WorkflowToolNode from '@/components/agent/WorkflowToolNode.vue'
 import {
   topologicallySortWorkflowNodes,
@@ -65,6 +72,8 @@ const canvasEdges = shallowRef<Edge[]>([])
 const selectedNodeId = ref<string | null>(null)
 const paletteOpen = ref(true)
 const inspectorOpen = ref(false)
+const runHistory = ref<AgentRunSummary[]>([])
+const selectedHistoryId = ref<string | null>(null)
 let es: EventSource | null = null
 let nodeSequence = 0
 const {
@@ -102,8 +111,69 @@ const selectedNode = computed(
 // ── lifecycle ────────────────────────────────────────────────────────────
 // Load the tool list once on mount for the "Available tools" hint.
 void api.agentTools().then((list) => (tools.value = list ?? [])).catch(() => {/* best effort */})
+onMounted(() => void loadRunHistory())
 
 onBeforeUnmount(() => closeStream())
+
+async function loadRunHistory() {
+  try {
+    runHistory.value = await api.agentRuns()
+  } catch {
+    // History is auxiliary; a current run must remain usable when it cannot be loaded.
+  }
+}
+
+function executionStatus(statusValue: string): string {
+  if (statusValue === 'COMPLETED') return 'complete'
+  if (statusValue === 'FAILED') return 'failed'
+  if (statusValue === 'RUNNING') return 'running'
+  return statusValue.toLowerCase().replaceAll('_', '-')
+}
+
+async function showPersistedRun(item: AgentRunSummary): Promise<AgentRunDetail | null> {
+  try {
+    const detail = await api.agentRunDetail(item.id)
+    selectedHistoryId.value = detail.id
+    runId.value = detail.id
+    goal.value = detail.goal
+    plan.value = detail.plan ?? null
+    summary.value = detail.summary ?? null
+    errorMsg.value = detail.error ?? null
+    const restored = new Map<number, AgentStep>()
+    for (const step of detail.plan?.steps ?? []) restored.set(step.index, { ...step })
+    for (const execution of detail.executions) {
+      const step = restored.get(execution.index)
+      if (step) step.status = executionStatus(execution.status)
+    }
+    steps.value = restored
+    if (detail.status === 'COMPLETED') status.value = 'complete'
+    else if (detail.status === 'CANCELLED') status.value = 'cancelled'
+    else if (detail.status === 'FAILED') status.value = 'error'
+    return detail
+  } catch (e) {
+    errorMsg.value = e instanceof Error ? e.message : t('agent.failed')
+    return null
+  }
+}
+
+async function resumePersisted(item: AgentRunSummary) {
+  const detail = await showPersistedRun(item)
+  if (!detail || !detail.plan || busy.value) return
+  errorMsg.value = null
+  summary.value = null
+  currentRequirePlanApproval.value = true
+  status.value = 'planning'
+  try {
+    const { runId: id } = await api.agentResume(detail.id)
+    runId.value = id
+    selectedHistoryId.value = id
+    openStream(id)
+    await loadRunHistory()
+  } catch (e) {
+    errorMsg.value = e instanceof Error ? e.message : t('agent.failed')
+    status.value = 'error'
+  }
+}
 
 // ── visual workflow canvas ───────────────────────────────────────────────
 
@@ -257,6 +327,14 @@ function compileCanvasWorkflow(): AgentPlan {
   if (!canvasNodes.value.length) throw new Error(t('agent.canvasEmpty'))
   const ordered = topologicalNodes()
   const indexes = new Map(ordered.map((node, index) => [node.id, index]))
+  const incoming = new Map<string, number[]>()
+  for (const edge of canvasEdges.value) {
+    const source = indexes.get(edge.source)
+    if (source === undefined || !indexes.has(edge.target)) continue
+    const prerequisites = incoming.get(edge.target) ?? []
+    prerequisites.push(source)
+    incoming.set(edge.target, prerequisites)
+  }
   const workflowGoal = goal.value.trim() || t('agent.canvasDefaultGoal')
   const compiledSteps: AgentStep[] = ordered.map((node, index) => {
     const data = node.data as WorkflowNodeData
@@ -275,6 +353,7 @@ function compileCanvasWorkflow(): AgentPlan {
       args: replaceNodeReferences(args, indexes, index) as Record<string, unknown>,
       description: data.description || data.tool.description || data.tool.name,
       requiresApproval: data.requiresApproval,
+      dependsOn: [...new Set(incoming.get(node.id) ?? [])].sort((a, b) => a - b),
       status: 'pending',
     }
   })
@@ -356,6 +435,7 @@ function openStream(id: string) {
     summary.value = d?.summary ?? ''
     status.value = 'complete'
     closeStream()
+    void loadRunHistory()
   })
 
   // Named "error" event from the backend carries a JSON message; the native
@@ -366,6 +446,7 @@ function openStream(id: string) {
       errorMsg.value = d.message
       status.value = 'error'
       closeStream()
+      void loadRunHistory()
     } else if (status.value !== 'complete' && status.value !== 'cancelled' && status.value !== 'error') {
       // Native connection drop — surface a generic message but don't necessarily fail the run.
       errorMsg.value = t('agent.failed')
@@ -413,7 +494,9 @@ async function run() {
       workflow,
     })
     runId.value = id
+    selectedHistoryId.value = id
     openStream(id)
+    await loadRunHistory()
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : t('agent.failed')
     status.value = 'error'
@@ -441,6 +524,7 @@ async function cancel() {
   } finally {
     status.value = 'cancelled'
     closeStream()
+    void loadRunHistory()
   }
 }
 
@@ -511,6 +595,34 @@ function stepChipClass(s: string): string {
           @click="composerMode = 'canvas'"
         ><i class="mdi mdi-vector-polyline" /> {{ t('agent.canvasMode') }}</button>
       </div>
+
+      <details class="cx-details" style="margin-bottom: 12px">
+        <summary>{{ t('agent.history') }} ({{ runHistory.length }})</summary>
+        <div class="cx-details__body">
+          <div v-if="!runHistory.length" class="cx-muted">{{ t('agent.historyEmpty') }}</div>
+          <div
+            v-for="item in runHistory"
+            :key="item.id"
+            class="cx-row"
+            :style="{
+              padding: '7px 0',
+              opacity: selectedHistoryId === item.id ? 1 : 0.82,
+              borderTop: '1px solid rgb(var(--v-theme-outline-variant))',
+            }"
+          >
+            <button class="cx-grow history-run" :disabled="busy" @click="showPersistedRun(item)">
+              <span>{{ item.goal }}</span>
+              <small>{{ item.status }} · {{ new Date(item.updatedAt).toLocaleString() }}</small>
+            </button>
+            <button
+              v-if="item.status === 'FAILED' || item.status === 'CANCELLED'"
+              class="cx-btn cx-btn--outline"
+              :disabled="busy"
+              @click="resumePersisted(item)"
+            >{{ t('agent.resume') }}</button>
+          </div>
+        </div>
+      </details>
 
       <!-- Banners -->
       <div v-if="errorMsg" class="cx-alert cx-alert--error" style="margin-bottom: 12px">
@@ -750,6 +862,25 @@ function stepChipClass(s: string): string {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+.history-run {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+}
+
+.history-run span,
+.history-run small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .workflow-toolbar {

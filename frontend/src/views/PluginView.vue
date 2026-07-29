@@ -27,11 +27,20 @@ const pluginUrl = () => {
   const entry = plugins.byId(props.id)?.uiEntry
   return entry ? pluginAssetUrl(entry) : undefined
 }
+const pluginOrigin = () => {
+  const url = pluginUrl()
+  return url ? new URL(url, window.location.href).origin : undefined
+}
 
 type BridgeRequest = { source: 'fengyu-plugin'; type: 'request'; id: string; method: string; params?: Record<string, unknown> }
 
 function respond(id: string, result?: unknown, message?: string) {
-  frame.value?.contentWindow?.postMessage({ source: 'fengyu-host', type: 'response', id, result, error: message }, '*')
+  const targetOrigin = pluginOrigin()
+  if (!targetOrigin) return
+  frame.value?.contentWindow?.postMessage(
+    { source: 'fengyu-host', type: 'response', id, result, error: message },
+    targetOrigin,
+  )
 }
 
 function clearPluginHandshakeTimeout() {
@@ -41,6 +50,7 @@ function clearPluginHandshakeTimeout() {
 
 async function onMessage(event: MessageEvent) {
   if (event.source !== frame.value?.contentWindow) return
+  if (event.origin !== pluginOrigin()) return
   const request = event.data as Partial<BridgeRequest>
   if (request.source !== 'fengyu-plugin' || request.type !== 'request' || !request.id || !request.method) return
   const requestId = request.id
@@ -132,7 +142,12 @@ async function onMessage(event: MessageEvent) {
 }
 
 function sendEnvironment() {
-  frame.value?.contentWindow?.postMessage({ source: 'fengyu-host', type: 'event', event: 'environment', data: { theme: theme.theme, locale: settings.language } }, '*')
+  const targetOrigin = pluginOrigin()
+  if (!targetOrigin) return
+  frame.value?.contentWindow?.postMessage(
+    { source: 'fengyu-host', type: 'event', event: 'environment', data: { theme: theme.theme, locale: settings.language } },
+    targetOrigin,
+  )
 }
 
 function onFrameLoad() {

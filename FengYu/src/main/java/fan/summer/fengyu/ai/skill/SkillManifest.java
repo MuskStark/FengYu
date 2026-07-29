@@ -8,8 +8,8 @@ package fan.summer.fengyu.ai.skill;
  *
  * <p>Serialized as {@code manifest.json} at the zip root of a {@code .fys} archive, and read back
  * by {@link SkillPackageService} on install. After install it lives at
- * {@code ~/.fengyu/skills/<id>/manifest.json}, a filesystem peer of
- * {@code ~/.fengyu/plugins/<id>/manifest.json}.
+ * {@code <programWorkingDirectory>/skills/<id>/manifest.json}, a filesystem peer of
+ * {@code <programWorkingDirectory>/plugins/<id>/manifest.json}.
  *
  * @param schemaVersion manifest format version (currently {@code 1}); bumped only on a breaking
  *                      change to this record's on-disk shape

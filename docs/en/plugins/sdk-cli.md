@@ -82,6 +82,9 @@ public final class MyWorkerMain {
 
 - `on(method, handler)` rejects duplicates, blank method names, and `null` handlers.
 - `run()` redirects `System.out` to `System.err` for the run loop — protocol output stays clean.
+- The bundled SLF4J provider emits structured events to `stderr`; use
+  `PluginLogging.setLevel(...)` for an explicit local override. In production the host supplies
+  `FENGYU_LOG_LEVEL` and updates running Workers automatically.
 - `serve(RpcTransport)` (new in 1.1.0) drives the same dispatch loop over any transport. `run()` and `run(InputStream, OutputStream)` are unchanged; the devkit's loopback-TCP server uses `serve()` to expose your handlers to the IDE.
 - Strict request parsing surfaces the canonical JSON-RPC error codes: `-32700` (parse error), `-32600` (invalid request — missing/blank method or wrong `jsonrpc` version), `-32601` (unknown method), and `-32000` (handler failure). The request `id` is echoed back whenever it was parseable.
 - Throw `JsonRpcWorker.RpcException(code, message)` for a structured error; anything else surfaces as `-32000`.

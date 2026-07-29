@@ -7,17 +7,15 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Headless logger for the Offline Python Builder worker.
  *
  * <p>Each line is routed two ways:
  * <ol>
- *   <li>to {@link System#err} (the {@code JsonRpcWorker} loop redirects {@code System.out}
- *       to {@code System.err}, so this is the worker's stderr — the host captures and logs it
- *       through {@code SensitiveValueRedactor});</li>
+ *   <li>to SLF4J (the Worker SDK emits a structured stderr event that the host captures);</li>
  *   <li>appended to the project-local {@code .offline-python.log} when one is set via
  *       {@link #setLogFile(Path)} (best-effort, never blocks).</li>
  * </ol>
@@ -29,9 +27,9 @@ import java.util.logging.Logger;
 public class OpbLogger {
 
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("HH:mm:ss");
-    private static final Logger HOST = Logger.getLogger("fengyu.offlinepython");
+    private static final Logger HOST = LoggerFactory.getLogger("fengyu.offlinepython");
 
-    /** No-arg ctor: the worker no longer receives a host logger (it uses System.err). */
+    /** No-arg ctor: the worker no longer receives a host logger (it uses the SDK provider). */
     public OpbLogger() {}
 
     /** 当前日志文件路径;null 时只走 stderr(项目未打开时)。 */
@@ -58,16 +56,12 @@ public class OpbLogger {
     }
 
     private static void routeToHost(String level, String rendered) {
-        Level jul = switch (level) {
-            case "ERROR" -> Level.SEVERE;
-            case "WARN"  -> Level.WARNING;
-            case "DEBUG" -> Level.FINE;
-            default      -> Level.INFO;
-        };
-        // Always mirror to stderr too: the host pumps worker stderr through its own logger,
-        // and System.err is the only host-visible channel from an isolated child process.
-        System.err.println(rendered);
-        HOST.log(jul, rendered);
+        switch (level) {
+            case "ERROR" -> HOST.error(rendered);
+            case "WARN" -> HOST.warn(rendered);
+            case "DEBUG" -> HOST.debug(rendered);
+            default -> HOST.info(rendered);
+        }
     }
 
     private synchronized void appendToFile(String rendered) {

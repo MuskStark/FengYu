@@ -2,6 +2,8 @@ package fan.summer.fengyu.web.controller;
 
 import fan.summer.fengyu.ExitCodes;
 import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
+import fan.summer.fengyu.log.LoggingLevelService;
+import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
 import fan.summer.fengyu.setup.DataSourceConfigService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,21 +34,35 @@ public class SettingsController {
 
     private final AiConfigServiceHeadless config;
     private final DataSourceConfigService dataSourceConfigService;
+    private final LoggingLevelService logging;
+    private final PluginProcessManager pluginProcesses;
     private final Runnable exitAction;
 
     /** Production constructor — Spring auto-wires this. Exit action delays 1s then exits. */
     @Autowired
     public SettingsController(AiConfigServiceHeadless config,
-                              DataSourceConfigService dataSourceConfigService) {
-        this(config, dataSourceConfigService, defaultExitAction());
+                              DataSourceConfigService dataSourceConfigService,
+                              LoggingLevelService logging,
+                              PluginProcessManager pluginProcesses) {
+        this(config, dataSourceConfigService, logging, pluginProcesses, defaultExitAction());
     }
 
     /** Test constructor — injects a no-op/recording exit action. */
     SettingsController(AiConfigServiceHeadless config,
                        DataSourceConfigService dataSourceConfigService,
                        Runnable exitAction) {
+        this(config, dataSourceConfigService, null, null, exitAction);
+    }
+
+    SettingsController(AiConfigServiceHeadless config,
+                       DataSourceConfigService dataSourceConfigService,
+                       LoggingLevelService logging,
+                       PluginProcessManager pluginProcesses,
+                       Runnable exitAction) {
         this.config = config;
         this.dataSourceConfigService = dataSourceConfigService;
+        this.logging = logging;
+        this.pluginProcesses = pluginProcesses;
         this.exitAction = exitAction;
     }
 
@@ -68,6 +84,7 @@ public class SettingsController {
         out.put("theme", config.getTheme());
         out.put("language", config.getLanguage());
         out.put("sidebarCollapsed", config.getSidebarCollapsed());
+        out.put("logLevel", logging.currentLevel());
         return out;
     }
 
@@ -78,6 +95,10 @@ public class SettingsController {
         }
         if (body.get("language") instanceof String l) {
             config.setLanguage(l);
+        }
+        if (body.get("logLevel") instanceof String level) {
+            String effective = logging.setLevel(level);
+            pluginProcesses.updateLogLevel(effective);
         }
         Object collapsed = body.get("sidebarCollapsed");
         if (collapsed instanceof Boolean b) {

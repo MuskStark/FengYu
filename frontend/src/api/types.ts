@@ -1,6 +1,7 @@
 export type ToolCategory = 'TEXT' | 'IMAGE' | 'DEV' | 'NET' | 'AI' | 'OTHER'
 export type ThemeName = 'dark' | 'light'
 export type LanguageName = 'en' | 'zh'
+export type LogLevel = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'OFF'
 
 /** Declared origin of a plugin, drives the Official/Third-party card badge. */
 export type PluginSource = 'OFFICIAL' | 'THIRD_PARTY'
@@ -71,6 +72,7 @@ export interface AppSettings {
   sidebarCollapsed: boolean
   theme: ThemeName
   language: LanguageName
+  logLevel: LogLevel
 }
 
 export type PartialSettings = Partial<AppSettings>
@@ -232,6 +234,42 @@ export interface AgentRunResponse {
   runId: string
 }
 
+export interface AgentBatchResponse {
+  runIds: string[]
+}
+
+export interface AgentRunSummary {
+  id: string
+  goal: string
+  status: string
+  summary?: string | null
+  error?: string | null
+  resumedFrom?: string | null
+  createdAt: string
+  updatedAt: string
+  completedAt?: string | null
+}
+
+export interface AgentStepExecution {
+  index: number
+  status: string
+  result?: string | null
+}
+
+export interface AgentRunEvent {
+  seq: number
+  type: string
+  data: Record<string, unknown>
+  createdAt: string
+}
+
+export interface AgentRunDetail extends AgentRunSummary {
+  config: AgentRunConfig
+  plan?: AgentPlan | null
+  executions: AgentStepExecution[]
+  events: AgentRunEvent[]
+}
+
 /** One step in an agent plan. `status` mirrors the backend's free-form string. */
 export interface AgentStep {
   index: number
@@ -240,6 +278,7 @@ export interface AgentStep {
   description: string
   status: string
   requiresApproval?: boolean
+  dependsOn?: number[]
 }
 
 /** A Plan-and-Execute plan: the goal, the ordered steps, and the planner's reasoning. */
@@ -254,6 +293,27 @@ export interface AgentTool {
   name: string
   description: string
   inputSchema: string
+}
+
+export interface McpConnectionStatus {
+  name: string
+  version: string
+  protocolVersion: string
+  initialized: boolean
+}
+
+export interface McpStatus {
+  enabled: boolean
+  connectionCount: number
+  toolCount: number
+  connections: McpConnectionStatus[]
+}
+
+export interface ProcessIsolationStatus {
+  backend: string
+  sandboxed: boolean
+  compatibilityMode: boolean
+  policy: string
 }
 
 // ── AI conversation history (persisted, GET/POST/PUT/DELETE /api/ai/conversations) ──

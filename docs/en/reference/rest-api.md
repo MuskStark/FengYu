@@ -42,6 +42,8 @@ Descriptor access and worker invocation for installed plugins.
 | --- | --- | --- | --- |
 | `GET` | `/api/plugin-runtime` | token | Enabled plugins as `InstalledPluginDescriptor[]`. |
 | `POST` | `/api/plugin-runtime/{id}/invoke` | token | Invoke a worker method. Body `{method, params}` → JSON-RPC `result`. See [Worker](/en/plugins/worker). |
+| `GET` | `/api/plugin-runtime/{id}/logs` | token | Recent Worker events as `{timestamp, level, logger, thread, message, sequence}`; legacy stderr has null logger/thread. |
+| `GET` | `/api/plugin-runtime/{id}/logs/stream` | token | Replay recent Worker events, then stream new events over SSE. |
 | `GET` | `/plugin-runtime/{id}/**` | — | Plugin UI static assets (entry HTML + JS), served under a strict CSP. |
 
 ## Plugin files
@@ -76,8 +78,8 @@ User-facing preferences. See [Configuration — User settings](/en/guide/configu
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/api/settings` | token | Read `{theme, language, sidebarCollapsed}`. |
-| `PUT` | `/api/settings` | token | Partial update of user settings. |
+| `GET` | `/api/settings` | token | Read `{theme, language, sidebarCollapsed, logLevel}`. |
+| `PUT` | `/api/settings` | token | Partial update of user settings; `logLevel` applies live to the host and Java Workers. |
 | `POST` | `/api/settings/database/reset` | token | Back up `datasource.properties`, clear it, restart into SETUP mode. |
 
 ## AI
@@ -118,10 +120,15 @@ The plan-and-execute agent. See [AI Agent](/en/guide/ai-agent).
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | `POST` | `/api/agent/run` | token | Start a run. Body `{goal, config}` → `{runId}`. |
+| `POST` | `/api/agent/batch` | token | Start 1–8 independent runs concurrently. Body `{goals, config}` → `{runIds}`. |
 | `GET` | `/api/agent/stream?runId=` | token | SSE stream for the run. See [SSE Events — Agent](/en/reference/sse-events#agent-stream). |
 | `POST` | `/api/agent/{runId}/approve` | token | Release an approval gate. Optional edited `AgentPlan` body. |
 | `POST` | `/api/agent/{runId}/cancel` | token | Cooperatively cancel the run. |
 | `GET` | `/api/agent/tools` | token | Orchestrable tool list (host-aggregated `ToolCallback[]`). |
+| `GET` | `/api/agent/runs` | token | Persisted run summaries, newest first. |
+| `GET` | `/api/agent/runs/{runId}` | token | Persisted plan, executions, and ordered audit events. |
+| `POST` | `/api/agent/runs/{runId}/resume` | token | Resume unfinished steps from a failed/cancelled run and require plan review. |
+| `GET` | `/api/mcp/status` | token | Configured MCP connections and discovered tool count. |
 
 ## Setup
 

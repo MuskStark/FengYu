@@ -71,6 +71,20 @@ class RpcTransportTest {
         assertFalse(transport.isOpen(), "transport should report closed after EOF");
     }
 
+    @Test void builtInLogLevelNotificationUpdatesWorkerWithoutAResponse() throws Exception {
+        PluginLogging.setLevel("INFO");
+        String input = "{\"jsonrpc\":\"2.0\",\"method\":\"" + PluginLogging.SET_LEVEL_METHOD
+            + "\",\"params\":{\"level\":\"DEBUG\"}}\n";
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+        new JsonRpcWorker().run(
+            new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)), out);
+
+        assertEquals("DEBUG", PluginLogging.level());
+        assertEquals("", out.toString(StandardCharsets.UTF_8));
+        PluginLogging.setLevel("INFO");
+    }
+
     @Test void loopbackSocketTransportRoundTrips() throws Exception {
         // A minimal line-framed socket transport, exercising the same contract the devkit's
         // LineFramedSocketTransport will implement. Proves serve(RpcTransport) drives a real socket.

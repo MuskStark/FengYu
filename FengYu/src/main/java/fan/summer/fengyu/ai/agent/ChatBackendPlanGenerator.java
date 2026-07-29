@@ -42,7 +42,8 @@ public class ChatBackendPlanGenerator implements AgentRunner.PlanGenerator {
                   "toolName": "an exact available tool name",
                   "args": {},
                   "description": "what this step does",
-                  "requiresApproval": false
+                  "requiresApproval": false,
+                  "dependsOn": []
                 }
               ]
             }
@@ -52,6 +53,7 @@ public class ChatBackendPlanGenerator implements AgentRunner.PlanGenerator {
             - Every args object must satisfy that tool's inputSchema.
             - Prefer the fewest steps that fully achieve the goal.
             - Mark destructive, externally visible, or irreversible actions as requiresApproval.
+            - Put prerequisite step indexes in dependsOn. Independent steps may run concurrently.
             - A later argument may reference an earlier result with
               {{steps.<index>.result}} or the immediately previous result with {{last.result}}.
             - If no tool is needed, return an empty steps array.
@@ -154,7 +156,8 @@ public class ChatBackendPlanGenerator implements AgentRunner.PlanGenerator {
                     toolName,
                     args,
                     string(raw.get("description")),
-                    Boolean.TRUE.equals(raw.get("requiresApproval"))
+                    Boolean.TRUE.equals(raw.get("requiresApproval")),
+                    integerList(raw.get("dependsOn"))
             ));
         }
 
@@ -218,6 +221,21 @@ public class ChatBackendPlanGenerator implements AgentRunner.PlanGenerator {
 
     private static String string(Object value) {
         return value instanceof String s ? s : "";
+    }
+
+    private static List<Integer> integerList(Object value) {
+        if (value == null) return List.of();
+        if (!(value instanceof List<?> values)) {
+            throw new IllegalArgumentException("Step dependsOn must be an array");
+        }
+        List<Integer> indexes = new ArrayList<>(values.size());
+        for (Object item : values) {
+            if (!(item instanceof Number number)) {
+                throw new IllegalArgumentException("Step dependsOn must contain integer indexes");
+            }
+            indexes.add(number.intValue());
+        }
+        return List.copyOf(indexes);
     }
 
     private static String safe(String value) {

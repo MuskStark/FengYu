@@ -1,6 +1,8 @@
 package fan.summer.fengyu.web.controller;
 
 import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
+import fan.summer.fengyu.log.LoggingLevelService;
+import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
 import fan.summer.fengyu.setup.DataSourceConfigService;
 import fan.summer.fengyu.setup.DbType;
 import fan.summer.fengyu.setup.WizardParams;
@@ -14,6 +16,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * Unit-tests {@link SettingsController#resetDatabase()} using a no-op, recording exit action and
@@ -63,5 +68,25 @@ class SettingsControllerTest {
 
         assertEquals(true, result.get("success"));
         assertTrue(exitFired.get(), "restart still signalled");
+    }
+
+    @Test
+    void putAppliesSameLogLevelToHostAndRunningPlugins() {
+        AiConfigServiceHeadless config = mock(AiConfigServiceHeadless.class);
+        LoggingLevelService logging = mock(LoggingLevelService.class);
+        PluginProcessManager pluginProcesses = mock(PluginProcessManager.class);
+        when(logging.setLevel("debug")).thenReturn("DEBUG");
+        when(logging.currentLevel()).thenReturn("DEBUG");
+        SettingsController controller = new SettingsController(
+            config, newService(), logging, pluginProcesses, () -> {});
+
+        Map<String, Object> result;
+        try (var ignored = mockStatic(AiConfigServiceHeadless.class)) {
+            result = controller.put(Map.of("logLevel", "debug"));
+        }
+
+        assertEquals("DEBUG", result.get("logLevel"));
+        verify(logging).setLevel("debug");
+        verify(pluginProcesses).updateLogLevel("DEBUG");
     }
 }

@@ -3,6 +3,7 @@ package fan.summer.fengyu.ai.service;
 import fan.summer.fengyu.ai.config.ChatModelConfig;
 import fan.summer.fengyu.ai.skill.SkillPromptAppender;
 import fan.summer.fengyu.ai.skill.SkillRegistry;
+import fan.summer.fengyu.ai.tools.ChatToolApprovalGate;
 import fan.summer.fengyu.ai.util.JsonHelper;
 import fan.summer.fengyu.api.ai.AiChatMessage;
 import fan.summer.fengyu.api.ai.AiServiceException;
@@ -101,6 +102,7 @@ public final class SpringAiCloudBackend implements ChatBackend {
      * empty). Replaces the old global tool-registry discovery path.
      */
     private volatile List<ToolCallback> toolCallbacks = List.of();
+    private volatile ChatToolApprovalGate toolApprovalGate;
 
     /** Shared {@link ToolCallingManager} that drives user-controlled tool execution. */
     private volatile ToolCallingManager toolCallingManager = ToolCallingManager.builder().build();
@@ -203,6 +205,10 @@ public final class SpringAiCloudBackend implements ChatBackend {
         this.toolCallbacks = toolCallbacks != null ? toolCallbacks : List.of();
     }
 
+    public void setToolApprovalGate(ChatToolApprovalGate toolApprovalGate) {
+        this.toolApprovalGate = toolApprovalGate;
+    }
+
     /**
      * The live skill registry, used to append the enabled-skills catalog to the system prompt
      * (progressive disclosure). Injected by the host wiring alongside tool callbacks; may be
@@ -276,6 +282,7 @@ public final class SpringAiCloudBackend implements ChatBackend {
         // in startChat clears `generating`. Without this a hung upstream (e.g. provider
         // connection stalled) would leave generating=true forever, wedging all subsequent requests.
         disposeActiveStream();
+        if (toolApprovalGate != null) toolApprovalGate.cancelPending();
         log.debug("cancelGeneration() requested; active stream disposed");
     }
 
@@ -359,6 +366,9 @@ public final class SpringAiCloudBackend implements ChatBackend {
             AssistantMessage assistantMsg = roundResp.getResult().getOutput();
             history.add(AiChatMessage.assistantWithTools(accumulated.toString(), mapToolCalls(assistantMsg)));
 
+            if (toolApprovalGate != null) {
+                toolApprovalGate.awaitRequiredApprovals(assistantMsg, toolCallbacks, callback);
+            }
             ToolExecutionResult result = toolCallingManager.executeToolCalls(prompt, roundResp);
             fireToolEvents(assistantMsg, result, callback);
 

@@ -82,6 +82,8 @@ public final class MyWorkerMain {
 
 - `on(method, handler)` 会拒绝重复、空白方法名以及 `null` 处理器。
 - `run()` 在运行循环期间把 `System.out` 重定向到 `System.err`——保持协议输出的干净。
+- 自带的 SLF4J provider 会把结构化事件写入 `stderr`；本地需要显式覆盖时可调用
+  `PluginLogging.setLevel(...)`。生产环境由宿主提供 `FENGYU_LOG_LEVEL`，并自动更新运行中的 Worker。
 - `serve(RpcTransport)`（1.1.0 新增）在任意传输层上驱动同一个 dispatch 循环。`run()` 和 `run(InputStream, OutputStream)` 行为不变；devkit 的回环 TCP 服务器用 `serve()` 把你的处理器暴露给 IDE。
 - 严格请求解析会暴露规范的 JSON-RPC 错误码：`-32700`（解析错误）、`-32600`（非法请求——方法缺失/空白或 `jsonrpc` 版本错误）、`-32601`（未知方法）和 `-32000`（处理器失败）。只要请求 `id` 可解析，就会被原样回传。
 - 抛出 `JsonRpcWorker.RpcException(code, message)` 以返回结构化错误；其他异常都以 `-32000` 上报。

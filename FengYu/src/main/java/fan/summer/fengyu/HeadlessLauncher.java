@@ -9,7 +9,9 @@ import fan.summer.fengyu.setup.SetupApplication;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.web.server.PortInUseException;
 
+import java.net.BindException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.DriverManager;
@@ -20,7 +22,8 @@ import java.util.Map;
 /**
  * Phase 4 headless entry point. Boots FengYu as a loopback Spring Boot web server in one of
  * two modes, determined by the presence AND reachability of
- * {@code ~/.fengyu/config/datasource.properties} (or {@code fengyu.runtime.dir}):
+ * {@code <programWorkingDirectory>/config/datasource.properties} (or
+ * {@code fengyu.runtime.dir}):
  *
  * <ul>
  *   <li><b>SETUP mode</b> (config missing, or config present but the DB is unreachable): boots
@@ -40,6 +43,7 @@ public final class HeadlessLauncher {
 
     /** System property the {@code TokenAuthFilter} reads. */
     public static final String TOKEN_PROPERTY = "fengyu.auth.token";
+    public static final String TOKEN_ENVIRONMENT = "FENGYU_AUTH_TOKEN";
 
     /** Fixed loopback port the backend binds by default. Overridable via {@code --port=<n>}. */
     public static final String DEFAULT_PORT = "24056";
@@ -52,7 +56,7 @@ public final class HeadlessLauncher {
 
     public static void main(String[] args) {
         String port = DEFAULT_PORT;
-        String token = "";
+        String token = System.getenv().getOrDefault(TOKEN_ENVIRONMENT, "").trim();
         for (String a : args) {
             if (a.startsWith("--port=")) {
                 port = a.substring("--port=".length()).trim();
@@ -120,13 +124,22 @@ public final class HeadlessLauncher {
         try {
             runSpring(baseArgs, port, configured);
         } catch (RuntimeException e) {
-            if ("0".equals(port)) {
+            if ("0".equals(port) || !isPortBindFailure(e)) {
                 throw e;
             }
             System.err.println("WARN: could not bind port " + port + " (" + e.getMessage()
                     + "); retrying on an OS-assigned free port (--server.port=0).");
             runSpring(baseArgs, "0", configured);
         }
+    }
+
+    static boolean isPortBindFailure(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof PortInUseException || cause instanceof BindException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void runSpring(List<String> baseArgs, String port, boolean configured) {
@@ -148,7 +161,7 @@ public final class HeadlessLauncher {
      * 128 MB multipart limits), but these loopback/limits invariants are important enough to
      * also pin here, so a future change to application.yml alone cannot silently restore the
      * Spring Boot defaults (wildcard bind address, 1 MB multipart limit). Writable plugin, skill,
-     * and transient runtime directories are derived from the same stable runtime root.
+     * and transient runtime directories are derived from the same program runtime root.
      */
     static Map<String, Object> runtimeDefaults() {
         return runtimeDefaults(RuntimePaths.root());

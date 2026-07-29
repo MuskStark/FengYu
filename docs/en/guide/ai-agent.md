@@ -6,7 +6,7 @@ lang: en
 
 # AI Agent
 
-The AI Agent is a **plan-and-execute** runner. Give it a goal in plain language and it drafts a multi-step plan, asks you to approve the plan (and optionally each step), then executes the steps one by one — streaming progress back over SSE. It is built on the same chat backends and reuses the host's aggregated tools, so anything callable from chat is callable from an agent run.
+The AI Agent is a **plan-and-execute** runner. Give it a goal in plain language and it drafts a multi-step plan, asks you to approve the plan (and optionally each step), then executes dependency-ready steps concurrently — streaming progress back over SSE. It is built on the same chat backends and reuses the host's aggregated tools, including MCP tools, so anything callable from chat is callable from an agent run.
 
 ## Request flow
 
@@ -28,7 +28,8 @@ GET /api/agent/stream?runId=<uuid>
 ```
 
 ::: tip
-Like chat, the stream is opened with `?runId=` — never `?token=`. Authenticate with the `X-FengYu-Token` header.
+Browser `EventSource` cannot set custom headers. The desktop UI therefore opens the stream with
+`?runId=...&token=...`; non-browser clients may instead use `X-FengYu-Token`.
 :::
 
 ### Caller-supplied workflow
@@ -57,6 +58,9 @@ onto the canvas, connect them into a graph, and run — `workflow.ts` compiles t
 same runner, validation, and step-result references apply (e.g. `steps.N.result` or `last.result`,
 substituted into a later step's arguments). Tools are disabled during planning so the model only
 structures the workflow, never executes tools while planning.
+
+Canvas edges compile to each step's `dependsOn` list. Steps in the same dependency level run on
+virtual threads in parallel; a dependent step starts only after all prerequisites complete.
 
 ## End-to-end flow
 
@@ -119,6 +123,18 @@ POST /api/agent/{runId}/cancel
 
 After a cancel the stream ends; the run does not emit `complete`.
 
+## Durable history and resume
+
+Run snapshots and ordered lifecycle events are persisted. `GET /api/agent/runs` lists history and
+`GET /api/agent/runs/{runId}` returns the plan, executions, and audit events. A failed, cancelled,
+or restart-interrupted run can be resumed with `POST /api/agent/runs/{runId}/resume`. Completed
+steps are reused, unfinished steps remain, and the restored plan always pauses for review before
+execution.
+
+For independent goals, `POST /api/agent/batch` starts between one and eight isolated run
+lifecycles concurrently and returns their `runIds`. Each run keeps separate approvals, cancellation,
+history, and SSE observation.
+
 ## Available tools
 
 `GET /api/agent/tools` returns the orchestrable tool list the agent can call during its steps:
@@ -133,7 +149,10 @@ GET /api/agent/tools
       ]
 ```
 
-The list is built from the host's aggregated Spring AI `ToolCallback[]` — every built-in `@FengYuTool` and every enabled plugin's declared `aiTools`. Plugin tools are indistinguishable from built-ins on the wire (see [AI Tools](/en/plugins/ai-tools)).
+The list is built from the host's aggregated Spring AI `ToolCallback[]` — every built-in
+`@FengYuTool`, every enabled plugin's declared `aiTools`, and every configured MCP server tool.
+Plugin and MCP tools are indistinguishable from built-ins on the wire (see
+[AI Tools](/en/plugins/ai-tools)).
 
 ## Next steps
 

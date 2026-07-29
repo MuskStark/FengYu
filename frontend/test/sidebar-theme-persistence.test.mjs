@@ -50,3 +50,31 @@ test('keeps the light theme after persisting the collapsed sidebar state', async
     console.warn = originalWarn
   }
 })
+
+test('notifies the desktop shell before theme persistence completes', async () => {
+  setActivePinia(createPinia())
+  const { api } = await vite.ssrLoadModule('/src/api/client.ts')
+  const { useSettingsStore } = await vite.ssrLoadModule('/src/stores/settings.ts')
+
+  let finishPersistence
+  api.putSettings = () => new Promise((resolve) => {
+    finishPersistence = () => resolve({ sidebarCollapsed: false, theme: 'light', language: 'en' })
+  })
+
+  const applied = []
+  globalThis.window = {
+    fengyu: {
+      setTheme: (theme) => applied.push(theme),
+    },
+  }
+
+  try {
+    const pending = useSettingsStore().setTheme('light')
+    assert.deepEqual(applied, ['light'])
+    finishPersistence()
+    await pending
+    assert.deepEqual(applied, ['light'])
+  } finally {
+    delete globalThis.window
+  }
+})

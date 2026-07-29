@@ -1,8 +1,12 @@
-import { app, ipcMain, nativeTheme } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme } from 'electron'
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 export type DesktopTheme = 'dark' | 'light'
+
+export function backgroundColorForTheme(theme: DesktopTheme): string {
+  return theme === 'light' ? '#ffffff' : '#0d0d0d'
+}
 
 interface Logger {
   info: (message: string) => void
@@ -44,9 +48,13 @@ export function initializeAppearance(logger?: Logger): DesktopTheme {
   const initialTheme = readCachedTheme(userDataDir)
   nativeTheme.themeSource = initialTheme
 
-  ipcMain.on('appearance:set-theme', (_event, value: unknown) => {
+  ipcMain.on('appearance:set-theme', (event, value: unknown) => {
     if (!isDesktopTheme(value)) return
     nativeTheme.themeSource = value
+    const window = BrowserWindow.fromWebContents(event.sender)
+    if (window && !window.isDestroyed()) {
+      window.setBackgroundColor(backgroundColorForTheme(value))
+    }
     try {
       writeCachedTheme(userDataDir, value)
     } catch (err) {

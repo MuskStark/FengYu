@@ -36,6 +36,7 @@ public class AiConfigServiceHeadless {
     private static final String THEME_KEY    = "theme";
     private static final String LANGUAGE_KEY = "language";
     private static final String SIDEBAR_COLLAPSED_KEY = "sidebar.collapsed";
+    private static final String LOG_LEVEL_KEY = "logging.level";
 
     // ── AI provider keys (duplicate AiConfigService read keys so writes round-trip) ──
     private static final String AI_MODE_KEY = "ai.mode";
@@ -80,6 +81,7 @@ public class AiConfigServiceHeadless {
     public static boolean getSidebarCollapsed() {
         return Boolean.parseBoolean(INSTANCE.readSetting(SIDEBAR_COLLAPSED_KEY, "false"));
     }
+    public static String getLogLevel() { return INSTANCE.readSetting(LOG_LEVEL_KEY, "INFO"); }
 
     public static void setSidebarCollapsed(boolean collapsed) {
         INSTANCE.writeSetting(SIDEBAR_COLLAPSED_KEY, String.valueOf(collapsed));
@@ -100,6 +102,7 @@ public class AiConfigServiceHeadless {
     public static void setAiSystemPrompt(String value) { INSTANCE.writeSetting(AI_SYSTEM_PROMPT_KEY, value); }
     public static void setTheme(String theme)        { INSTANCE.writeSetting(THEME_KEY, theme); }
     public static void setLanguage(String language)  { INSTANCE.writeSetting(LANGUAGE_KEY, language); }
+    public static void setLogLevel(String level)     { INSTANCE.writeSetting(LOG_LEVEL_KEY, level); }
 
     // ── AI provider writes (persist via JPA) ───────────────────────────────────
 

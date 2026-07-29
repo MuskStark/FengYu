@@ -10,6 +10,8 @@ public final class PluginEnvironment {
     public static final String DB_USERNAME = "FENGYU_DB_USERNAME";
     public static final String DB_PASSWORD = "FENGYU_DB_PASSWORD";
     public static final String PLUGIN_DATA_DIR = "FENGYU_PLUGIN_DATA_DIR";
+    /** Host-wide log threshold inherited by every Java Worker. */
+    public static final String LOG_LEVEL = "FENGYU_LOG_LEVEL";
 
     private static final List<String> DATABASE_KEYS = List.of(
         DB_TYPE, DB_DRIVER, DB_URL, DB_USERNAME, DB_PASSWORD, PLUGIN_DATA_DIR);

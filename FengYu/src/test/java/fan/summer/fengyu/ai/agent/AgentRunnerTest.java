@@ -1,5 +1,6 @@
 package fan.summer.fengyu.ai.agent;
 
+import fan.summer.fengyu.ai.tools.ApprovalRequiredToolCallback;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.DefaultToolDefinition;
@@ -7,6 +8,7 @@ import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -39,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class AgentRunnerTest {
 
     /** A real Spring AI {@link ToolCallback} that echoes its raw JSON input. */
-    static final class EchoToolCallback implements ToolCallback {
+    static class EchoToolCallback implements ToolCallback {
         @Override
         public ToolDefinition getToolDefinition() {
             return DefaultToolDefinition.builder()
@@ -60,9 +62,13 @@ class AgentRunnerTest {
         }
     }
 
+    static final class ApprovalRequiredEchoToolCallback
+            extends EchoToolCallback implements ApprovalRequiredToolCallback {
+    }
+
     /** Records every {@link AgentEventSink} call in arrival order for sequence assertions. */
     static final class RecordingSink implements AgentEventSink {
-        final List<String> events = new ArrayList<>();
+        final List<String> events = Collections.synchronizedList(new ArrayList<>());
         final CountDownLatch done = new CountDownLatch(1);
 
         @Override public void onPlanToken(String delta) { events.add("onPlanToken:" + delta); }
@@ -175,6 +181,35 @@ class AgentRunnerTest {
                 "the failed step should be recorded: " + run.getExecutions());
     }
 
+    @Test
+    void replanOnFailure_includesFailureContextInNextPlanningRequest() throws Exception {
+        List<ToolCallback> tools = List.of(new EchoToolCallback());
+        RecordingSink sink = new RecordingSink();
+        AgentPlan plan = new AgentPlan(
+                "goal", List.of(step(0, "echo", Map.of("text", "attempt"))), "try");
+        List<String> planningGoals = new ArrayList<>();
+        AgentRunner.PlanGenerator planner = (goal, tks, tokenSink) -> {
+            planningGoals.add(goal);
+            return plan;
+        };
+        AtomicInteger executionCalls = new AtomicInteger();
+        AgentRunner.StepExecutor executor = (plannedStep, tks) -> {
+            if (executionCalls.getAndIncrement() == 0) {
+                throw new RuntimeException("tool exploded");
+            }
+            return "ok";
+        };
+
+        AgentRun run = runFor("goal", new AgentRunConfig(false, false, true, 1));
+        new AgentRunner(tools, planner, executor).run(run, sink);
+
+        assertTrue(sink.awaitDone());
+        assertEquals(2, planningGoals.size());
+        assertEquals("goal", planningGoals.getFirst());
+        assertTrue(planningGoals.get(1).contains("tool exploded"), planningGoals.get(1));
+        assertTrue(planningGoals.get(1).contains("step 0"), planningGoals.get(1));
+    }
+
     // ── 3. Replans exhausted: tool always fails, maxReplans=1 → onError ─
 
     @Test
@@ -242,6 +277,29 @@ class AgentRunnerTest {
         assertEquals(AgentRunStatus.COMPLETED, run.getStatus());
     }
 
+    @Test
+    void approvalRequiredTool_blocksEvenWhenStepApprovalIsDisabled() throws Exception {
+        List<ToolCallback> tools = List.of(new ApprovalRequiredEchoToolCallback());
+        RecordingSink sink = new RecordingSink();
+        AgentPlan plan = new AgentPlan(
+                "echo hi", List.of(step(0, "echo", Map.of("text", "hi"))), "sensitive echo");
+        AgentRun run = runFor("echo hi", new AgentRunConfig(false, false, false, 0));
+        AgentRunner runner = new AgentRunner(
+                tools, (goal, tks, tokenSink) -> plan, AgentRunner.toolResolvingExecutor());
+
+        runner.run(run, sink);
+
+        Thread.sleep(200);
+        assertEquals(AgentRunStatus.AWAITING_STEP_APPROVAL, run.getStatus());
+        assertTrue(sink.events.contains("onStepApprovalRequested:0"));
+        assertTrue(run.getExecutions().isEmpty(), "tool must not execute before approval");
+
+        run.approve(null);
+
+        assertTrue(sink.awaitDone(), "onComplete should fire after sensitive-tool approval");
+        assertEquals(AgentRunStatus.COMPLETED, run.getStatus());
+    }
+
     // ── 5. Cancellation before a step → run ends CANCELLED, no execution ─
 
     @Test
@@ -302,6 +360,44 @@ class AgentRunnerTest {
     }
 
     @Test
+    void dependencyReadyStepsRunConcurrentlyAndJoinBeforeDependentStep() throws Exception {
+        RecordingSink sink = new RecordingSink();
+        AgentPlan workflow = new AgentPlan("parallel", List.of(
+                new AgentStep(0, "echo", Map.of("text", "left"), "left", false, List.of()),
+                new AgentStep(1, "echo", Map.of("text", "right"), "right", false, List.of()),
+                new AgentStep(2, "echo",
+                        Map.of("text", "{{steps.0.result}} + {{steps.1.result}}"),
+                        "join", false, List.of(0, 1))
+        ), "parallel branches");
+        AgentRun run = runFor("parallel", new AgentRunConfig(false, false, false, 0));
+        run.setPlan(workflow);
+        CountDownLatch branchesStarted = new CountDownLatch(2);
+        AtomicInteger branchesCompleted = new AtomicInteger();
+        List<String> joinInputs = Collections.synchronizedList(new ArrayList<>());
+
+        AgentRunner runner = new AgentRunner(List.of(new EchoToolCallback()),
+                (goal, tools, tokenSink) -> workflow,
+                (plannedStep, tools) -> {
+                    if (plannedStep.index() < 2) {
+                        branchesStarted.countDown();
+                        assertTrue(branchesStarted.await(2, TimeUnit.SECONDS),
+                                "both independent branches must start before either finishes");
+                        branchesCompleted.incrementAndGet();
+                        return plannedStep.index() == 0 ? "left-result" : "right-result";
+                    }
+                    assertEquals(2, branchesCompleted.get(),
+                            "dependent step must wait for both prerequisites");
+                    joinInputs.add(String.valueOf(plannedStep.args().get("text")));
+                    return "joined";
+                });
+
+        runner.run(run, sink);
+        assertTrue(sink.awaitDone());
+        assertEquals(AgentRunStatus.COMPLETED, run.getStatus());
+        assertEquals(List.of("left-result + right-result"), joinInputs);
+    }
+
+    @Test
     void editedApprovedWorkflowIsTheOneExecuted() throws Exception {
         RecordingSink sink = new RecordingSink();
         AgentPlan original = new AgentPlan("goal",
@@ -323,5 +419,34 @@ class AgentRunnerTest {
         assertTrue(sink.awaitDone());
 
         assertEquals(List.of("edited"), inputs);
+    }
+
+    @Test
+    void resumedWorkflowSkipsPersistedCompletedStepsAndReusesTheirResults() throws Exception {
+        RecordingSink sink = new RecordingSink();
+        AgentPlan workflow = new AgentPlan("resume", List.of(
+                step(0, "echo", Map.of("text", "already done")),
+                step(1, "echo", Map.of("text", "{{steps.0.result}}"))
+        ), "resume");
+        AgentRun run = runFor("resume", new AgentRunConfig(false, false, false, 0));
+        run.setPlan(workflow);
+        run.restoreExecutions(List.of(
+                new StepExecution(0, StepStatus.COMPLETED, "persisted-result")));
+        List<Integer> executed = new ArrayList<>();
+        List<String> inputs = new ArrayList<>();
+        AgentRunner runner = new AgentRunner(List.of(new EchoToolCallback()),
+                (goal, tools, tokenSink) -> workflow,
+                (step, tools) -> {
+                    executed.add(step.index());
+                    inputs.add(String.valueOf(step.args().get("text")));
+                    return "done";
+                });
+
+        runner.run(run, sink);
+
+        assertTrue(sink.awaitDone());
+        assertEquals(List.of(1), executed);
+        assertEquals(List.of("persisted-result"), inputs);
+        assertEquals(AgentRunStatus.COMPLETED, run.getStatus());
     }
 }
