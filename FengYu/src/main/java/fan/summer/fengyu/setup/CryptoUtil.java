@@ -16,7 +16,7 @@ import java.util.UUID;
  * Lightweight AES-GCM encryption for sensitive datasource config fields (e.g. db.password).
  *
  * <p>Key derivation: a fixed project constant XOR'd with a per-machine random UUID
- * (stored at {@code ~/.fengyu/config/.machineid}), SHA-256'd to a 256-bit AES key.
+ * (stored at {@code <programWorkingDirectory>/config/.machineid}), SHA-256'd to a 256-bit AES key.
  * This means an encrypted config file cannot be decrypted on a different machine,
  * reducing the value of a stolen config file.
  *
@@ -39,12 +39,15 @@ public final class CryptoUtil {
     private static SecretKeySpec deriveKey(Path machineIdFile) {
         try {
             Files.createDirectories(machineIdFile.getParent());
+            SensitiveFilePermissions.protectDirectory(machineIdFile.getParent());
             String machineId;
             if (Files.exists(machineIdFile)) {
+                SensitiveFilePermissions.protectFile(machineIdFile);
                 machineId = Files.readString(machineIdFile).trim();
             } else {
                 machineId = UUID.randomUUID().toString();
                 Files.writeString(machineIdFile, machineId);
+                SensitiveFilePermissions.protectFile(machineIdFile);
             }
             String material = PROJECT_CONSTANT + ":" + machineId;
             byte[] hash = MessageDigest.getInstance("SHA-256").digest(material.getBytes(StandardCharsets.UTF_8));

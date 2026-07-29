@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.plugin.market.PluginManifest;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
+import fan.summer.fengyu.security.ProcessSandbox;
 import jakarta.annotation.PreDestroy;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,15 +58,25 @@ public class PluginProcessManager {
     private final PluginFileGrantService files;
     private final PluginRuntimeEnvironmentService runtimeEnvironment;
     private final PluginLogStore logStore;
+    private final ProcessSandbox sandbox;
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
     private final Map<String, Worker> workers = new ConcurrentHashMap<>();
 
     public PluginProcessManager(PluginPackageService packages, PluginFileGrantService files,
             PluginRuntimeEnvironmentService runtimeEnvironment, PluginLogStore logStore) {
+        this(packages, files, runtimeEnvironment, logStore,
+                new ProcessSandbox(ProcessSandbox.Backend.NONE));
+    }
+
+    @Autowired
+    public PluginProcessManager(PluginPackageService packages, PluginFileGrantService files,
+            PluginRuntimeEnvironmentService runtimeEnvironment, PluginLogStore logStore,
+            ProcessSandbox sandbox) {
         this.packages = packages;
         this.files = files;
         this.runtimeEnvironment = runtimeEnvironment;
         this.logStore = logStore;
+        this.sandbox = sandbox;
     }
 
     /** Invoke with the plugin-wide default timeout (manifest {@code backend.callTimeoutSeconds} or 60s). */
@@ -162,7 +174,18 @@ public class PluginProcessManager {
         Map<String, String> environment = runtimeEnvironment.environmentFor(manifest);
         SensitiveValueRedactor redactor = SensitiveValueRedactor.fromEnvironment(environment);
         try {
-            ProcessBuilder builder = new ProcessBuilder(command).directory(root.toFile());
+            List<String> permissions = manifest.permissions() == null ? List.of() : manifest.permissions();
+            boolean broadFileWrite = permissions.contains("files.write");
+            boolean allowNetwork = permissions.contains("network")
+                    || permissions.contains("network.email")
+                    || permissions.contains("database");
+            List<Path> writableRoots = new ArrayList<>();
+            writableRoots.add(root);
+            String pluginData = environment.get(PluginWorkerProtocol.PLUGIN_DATA_DIR_ENV);
+            if (pluginData != null && !pluginData.isBlank()) writableRoots.add(Path.of(pluginData));
+            ProcessSandbox.Launch launch = sandbox.plugin(
+                    command, root, writableRoots, broadFileWrite, allowNetwork);
+            ProcessBuilder builder = new ProcessBuilder(launch.command()).directory(root.toFile());
             builder.environment().put("FENGYU_PLUGIN_ID", id);
             builder.environment().put("FENGYU_PLUGIN_ROOT", root.toString());
             environment.forEach(builder.environment()::put);
@@ -170,25 +193,31 @@ public class PluginProcessManager {
             Thread.ofVirtual().name("plugin-" + id + "-stderr").start(() -> {
                 try (BufferedReader errors = process.errorReader(StandardCharsets.UTF_8)) {
                     for (String line; (line = errors.readLine()) != null;) {
-                        String safe = redactor.redact(line);
-                        // INFO so plugin worker logs surface on the console (the host
-                        // CONSOLE appender filters at INFO). Plugin workers log to stderr
-                        // (their stdout is the JSON-RPC protocol pipe); without this the
-                        // logs were only ever visible buried in .fengyu/logs/fengyu.log
-                        // under a DEBUG line, making plugin failures impossible to diagnose.
-                        log.info("Plugin {} stderr: {}", id, abbreviate(safe));
-                        // Capture into the per-plugin ring buffer + notify SSE subscribers, so the
-                        // UI / REST endpoints can surface this line instead of it being log-only.
-                        logStore.append(id, PluginLogLineParser.levelOf(safe), abbreviate(safe));
+                        // Parse before redaction: structured JSON escapes quotes/backslashes, so
+                        // replacing a raw secret in the encoded frame can miss it. Redact the
+                        // decoded fields instead; legacy free-form stderr follows the same path.
+                        PluginLogLineParser.Parsed parsed = PluginLogLineParser.parse(line);
+                        PluginLogLineParser.Parsed event = new PluginLogLineParser.Parsed(
+                            parsed.level(),
+                            redactor.redact(parsed.logger()),
+                            redactor.redact(parsed.thread()),
+                            redactor.redact(parsed.message()));
+                        String message = abbreviateLog(event.message());
+                        forwardPluginLog(id, event, message);
+                        logStore.append(id, event.level(), event.logger(), event.thread(), message);
                     }
                 } catch (IOException ignored) {}
             });
             Worker worker = new Worker(id, process, json, redactor, logStore);
             worker.startReader();
-            // The "plugin opened / worker started" event at INFO so it is visible in the terminal
-            // (CONSOLE appender filters at INFO), not just in the ring buffer / file.
+            // Host lifecycle events use the same effective threshold as forwarded Worker events.
             log.info("Plugin {} worker started (pid={})", id, process.pid());
             logStore.append(id, "INFO", "Worker started (pid=" + process.pid() + ")");
+            String isolation = "sandbox=" + launch.backend().id()
+                    + ", network=" + (allowNetwork ? "allowed" : "isolated")
+                    + ", broadFileWrite=" + broadFileWrite;
+            log.info("Plugin {} worker isolation: {}", id, isolation);
+            logStore.append(id, launch.sandboxed() ? "INFO" : "WARN", isolation);
             return worker;
         } catch (IOException e) {
             throw new IllegalStateException("Cannot start plugin backend: " + redactor.redact(e.getMessage()), e);
@@ -229,6 +258,33 @@ public class PluginProcessManager {
         return value.substring(0, 237) + "...";
     }
 
+    private static String abbreviateLog(String value) {
+        if (value == null || value.length() <= 16_384) return value;
+        return value.substring(0, 16_381) + "...";
+    }
+
+    private static void forwardPluginLog(String pluginId, PluginLogLineParser.Parsed event,
+            String message) {
+        String source = event.logger() == null || event.logger().isBlank()
+            ? "stderr" : safeLoggerName(event.logger());
+        Logger pluginLogger = LoggerFactory.getLogger("plugin." + safeLoggerName(pluginId) + "." + source);
+        String rendered = event.thread() == null || event.thread().isBlank()
+            ? message : "[" + event.thread() + "] " + message;
+        switch (event.level()) {
+            case "TRACE" -> pluginLogger.trace(rendered);
+            case "DEBUG" -> pluginLogger.debug(rendered);
+            case "WARN" -> pluginLogger.warn(rendered);
+            case "ERROR" -> pluginLogger.error(rendered);
+            default -> pluginLogger.info(rendered);
+        }
+    }
+
+    private static String safeLoggerName(String value) {
+        if (value == null || value.isBlank()) return "worker";
+        String safe = value.replaceAll("[^A-Za-z0-9_$.-]", "_");
+        return safe.length() <= 160 ? safe : safe.substring(0, 160);
+    }
+
     /**
      * One-line, leak-safe summary of the raw invoke params for operation logs: lists the param
      * KEYS only, never the values. A value (a password, mail body, parsed absolute path) can be a
@@ -241,6 +297,12 @@ public class PluginProcessManager {
     }
 
     @PreDestroy public void close() { workers.values().forEach(Worker::close); workers.clear(); }
+
+    /** Push a log-level change to every running SDK Worker without restarting it. */
+    public void updateLogLevel(String level) {
+        workers.values().stream().filter(Worker::alive).forEach(worker ->
+            worker.sendNotification(PluginWorkerProtocol.SET_LOG_LEVEL_METHOD, Map.of("level", level)));
+    }
 
     /**
      * One Worker per plugin process. Concurrency model:
@@ -350,6 +412,22 @@ public class PluginProcessManager {
             } catch (IOException e) {
                 pending.remove(id, future);
                 throw new IllegalStateException("Plugin RPC failed: " + redactor.redact(e.getMessage()), e);
+            }
+        }
+
+        void sendNotification(String method, Map<String, Object> params) {
+            if (!alive()) return;
+            try {
+                String frame = json.writeValueAsString(
+                    Map.of("jsonrpc", "2.0", "method", method, "params", params));
+                synchronized (this) {
+                    writer.write(frame);
+                    writer.newLine();
+                    writer.flush();
+                }
+            } catch (IOException e) {
+                log.warn("Plugin {} control notification failed: {}", pluginId,
+                    redactor.redact(e.getMessage()));
             }
         }
 

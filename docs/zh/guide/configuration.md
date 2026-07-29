@@ -6,7 +6,7 @@ lang: zh-CN
 
 # 配置
 
-Infinia 中有两个配置界面：**用户设置**（主题、语言、侧边栏）与 **AI 配置**（当前后端、API 密钥、模型）。两者都通过 REST 读写，并且 AI 配置可在运行时热切换而无需重启。数据库重新配置也在此处作为一个重置端点暴露。
+Infinia 中有两个配置界面：**用户设置**（主题、语言、侧边栏、日志）与 **AI 配置**（当前后端、API 密钥、模型）。两者都通过 REST 读写，并且 AI 配置可在运行时热切换而无需重启。数据库重新配置也在此处作为一个重置端点暴露。
 
 所有端点都要求带 `X-FengYu-Token` 头。参见[后端](/zh/architecture/backend)。
 
@@ -14,7 +14,7 @@ Infinia 中有两个配置界面：**用户设置**（主题、语言、侧边�
 
 ```text
 GET /api/settings
-  ◄── 200 { "theme": "dark", "language": "en", "sidebarCollapsed": false }
+  ◄── 200 { "theme": "dark", "language": "en", "sidebarCollapsed": false, "logLevel": "INFO" }
 ```
 
 `PUT /api/settings` 接受一个**部分请求体**——只有你包含的键会被持久化，其余保持不变。
@@ -24,7 +24,7 @@ PUT /api/settings
   Content-Type: application/json
   { "sidebarCollapsed": true }
 
-  ◄── 200 { "theme": "dark", "language": "en", "sidebarCollapsed": true }
+  ◄── 200 { "theme": "dark", "language": "en", "sidebarCollapsed": true, "logLevel": "INFO" }
 ```
 
 | 键 | 类型 | 含义 |
@@ -32,6 +32,10 @@ PUT /api/settings
 | `theme` | string | `"light"` 或 `"dark"`。参见[设计系统](/zh/design-system)。 |
 | `language` | string | UI 区域设置（例如 `en`、`zh-CN`）。 |
 | `sidebarCollapsed` | boolean | 侧边栏是否初始处于折叠状态。 |
+| `logLevel` | string | `TRACE`、`DEBUG`、`INFO`、`WARN`、`ERROR` 或 `OFF`。立即应用到主程序和所有 Java 插件 Worker。 |
+
+修改 `logLevel` 不会重启 Worker。宿主会更新自身的 Logback 命名空间，并向每个运行中的
+Worker 发送内置 JSON-RPC 通知；之后新启动的 Worker 则通过 `FENGYU_LOG_LEVEL` 继承同一值。
 
 ## AI 配置
 
@@ -75,6 +79,22 @@ POST /api/ai/config/test
 ```
 
 用此端点可提前验证凭据与端点可达性。
+
+## MCP 客户端
+
+FengYu 在启动时读取 Spring AI MCP 客户端配置。STDIO、SSE 与 Streamable HTTP 分别通过
+`spring.ai.mcp.client.stdio.*`、`spring.ai.mcp.client.sse.*` 和
+`spring.ai.mcp.client.streamable-http.*` 配置。若使用 Codex 风格的 STDIO
+服务器文件，可这样启动：
+
+```bash
+java -jar FengYu-*.jar \
+  --spring.ai.mcp.client.stdio.servers-configuration=file:/absolute/path/mcp-servers.json
+```
+
+MCP 工具会同时加入对话与 Agent 的工具目录。可通过 `GET /api/mcp/status` 检查已初始化
+连接。MCP 配置仅在启动时读取，修改后需要重启。配置外部 STDIO 命令即表示明确授权启动
+该命令，因此只应使用可信服务器定义，并将凭据放在启动环境或受保护的外部文件中。
 
 ## `datasource.properties` 布局
 

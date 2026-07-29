@@ -1,7 +1,6 @@
 package fan.summer.fengyu.plugin.runtime;
 
 import fan.summer.fengyu.plugin.market.PluginManifest;
-import fan.summer.fengyu.sdk.PluginEnvironment;
 import fan.summer.fengyu.setup.DataSourceConfig;
 import fan.summer.fengyu.setup.DataSourceConfigService;
 import fan.summer.fengyu.setup.DbType;
@@ -33,11 +32,11 @@ class PluginRuntimeEnvironmentServiceTest {
         Map<String, String> first = service.environmentFor(manifest("fan.summer.email", List.of("database")));
         Map<String, String> second = service.environmentFor(manifest("fan.summer.email", List.of("database")));
 
-        assertEquals("h2", first.get(PluginEnvironment.DB_TYPE));
-        assertEquals("jdbc:h2:mem:host", first.get(PluginEnvironment.DB_URL));
-        assertEquals("secret", first.get(PluginEnvironment.DB_PASSWORD));
+        assertEquals("h2", first.get(PluginWorkerProtocol.DB_TYPE_ENV));
+        assertEquals("jdbc:h2:mem:host", first.get(PluginWorkerProtocol.DB_URL_ENV));
+        assertEquals("secret", first.get(PluginWorkerProtocol.DB_PASSWORD_ENV));
         assertEquals(first, second);
-        assertTrue(Files.isDirectory(Path.of(first.get(PluginEnvironment.PLUGIN_DATA_DIR))));
+        assertTrue(Files.isDirectory(Path.of(first.get(PluginWorkerProtocol.PLUGIN_DATA_DIR_ENV))));
     }
 
     @Test
@@ -48,7 +47,10 @@ class PluginRuntimeEnvironmentServiceTest {
         PluginRuntimeEnvironmentService service =
             new PluginRuntimeEnvironmentService(dataSources, temp.resolve("plugin-data").toString());
 
-        assertTrue(service.environmentFor(manifest("fan.summer.markdown", List.of())).isEmpty());
+        Map<String, String> environment =
+            service.environmentFor(manifest("fan.summer.markdown", List.of()));
+        assertEquals("INFO", environment.get(PluginWorkerProtocol.LOG_LEVEL_ENV));
+        assertFalse(environment.containsKey(PluginWorkerProtocol.DB_PASSWORD_ENV));
     }
 
     @Test
@@ -66,7 +68,7 @@ class PluginRuntimeEnvironmentServiceTest {
         try {
             Locale.setDefault(Locale.forLanguageTag("tr-TR"));
             assertEquals("sqlite", service.environmentFor(
-                manifest("fan.summer.email", List.of("database"))).get(PluginEnvironment.DB_TYPE));
+                manifest("fan.summer.email", List.of("database"))).get(PluginWorkerProtocol.DB_TYPE_ENV));
         } finally {
             Locale.setDefault(previous);
         }

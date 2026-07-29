@@ -5,7 +5,6 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
-import fan.summer.fengyu.sdk.PluginEnvironment;
 import fan.summer.fengyu.setup.DataSourceConfig;
 import fan.summer.fengyu.setup.DataSourceConfigService;
 import fan.summer.fengyu.setup.DbType;
@@ -129,7 +128,7 @@ class PluginProcessManagerTest {
 
     @Test
     void redactsDatabasePasswordFromWorkerStderrLogs() throws Exception {
-        Logger logger = (Logger) LoggerFactory.getLogger(PluginProcessManager.class);
+        Logger logger = (Logger) LoggerFactory.getLogger("plugin.com.example.worker.stderr");
         Level previousLevel = logger.getLevel();
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
         appender.start();
@@ -139,7 +138,7 @@ class PluginProcessManagerTest {
         PluginProcessManager manager = manager(List.of("database"));
         try {
             manager.invoke("com.example.worker", "stderr-secret", Map.of());
-            waitForLog(appender, "stderr", Duration.ofSeconds(2));
+            waitForLog(appender, "database password", Duration.ofSeconds(2));
             String logs = appender.list.stream().map(ILoggingEvent::getFormattedMessage)
                 .reduce("", (left, right) -> left + "\n" + right);
             assertTrue(logs.contains("<redacted>"));
@@ -191,7 +190,7 @@ class PluginProcessManagerTest {
     @Test
     void emptySensitiveValuesDoNotAlterDiagnosticText() {
         SensitiveValueRedactor redactor = SensitiveValueRedactor.fromEnvironment(
-            Map.of(PluginEnvironment.DB_PASSWORD, ""));
+            Map.of(PluginWorkerProtocol.DB_PASSWORD_ENV, ""));
 
         assertEquals("worker diagnostic", redactor.redact("worker diagnostic"));
     }

@@ -5,6 +5,7 @@ import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
 import fan.summer.fengyu.ai.service.AiModeService;
 import fan.summer.fengyu.FengYuApplication;
 import fan.summer.fengyu.ai.service.BackendReactivator;
+import fan.summer.fengyu.ai.tools.ChatToolApprovalGate;
 import fan.summer.fengyu.ai.skill.SkillPackageService;
 import fan.summer.fengyu.ai.skill.SkillRegistry;
 import fan.summer.fengyu.database.repository.AppSettingRepository;
@@ -58,7 +59,8 @@ class AiConfigControllerTest {
                 System.getProperty("java.io.tmpdir") + "/fengyu-skills-test");
         SkillRegistry skills = new SkillRegistry(skillPackages);
         // BackendReactivator with the real AiConfigService; local mode works without Spring context.
-        BackendReactivator reactivator = new BackendReactivator(ms, new ToolCallback[0], skills, cfg);
+        BackendReactivator reactivator = new BackendReactivator(
+                ms, new ToolCallback[0], skills, cfg, new ChatToolApprovalGate());
         controller = new AiConfigController(ms, reactivator);
     }
 

@@ -4,6 +4,7 @@ import fan.summer.fengyu.ai.agent.AgentEventSink;
 import fan.summer.fengyu.ai.agent.AgentPlan;
 import fan.summer.fengyu.ai.agent.AgentRun;
 import fan.summer.fengyu.ai.agent.AgentRunConfig;
+import fan.summer.fengyu.ai.agent.AgentRunPersistenceService;
 import fan.summer.fengyu.ai.agent.AgentRunRegistry;
 import fan.summer.fengyu.ai.agent.AgentRunner;
 import org.slf4j.Logger;
@@ -24,7 +25,11 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /**
  * HTTP + SSE layer for the Plan-and-Execute agent (Task 16).
@@ -56,8 +61,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
 @RestController
 public class AgentController {
 
+    private static final long TERMINAL_RETENTION_MINUTES = 10;
+
     private final AgentRunner runner;
     private final AgentRunRegistry registry;
+    private final AgentRunPersistenceService persistence;
     private final List<ToolCallback> toolCallbacks;
 
     /**
@@ -67,9 +75,11 @@ public class AgentController {
      */
     private final Map<String, AgentStreamSink> sinks = new ConcurrentHashMap<>();
 
-    public AgentController(AgentRunner runner, AgentRunRegistry registry, ToolCallback[] aiToolCallbacks) {
+    public AgentController(AgentRunner runner, AgentRunRegistry registry,
+            AgentRunPersistenceService persistence, ToolCallback[] aiToolCallbacks) {
         this.runner = runner;
         this.registry = registry;
+        this.persistence = persistence;
         this.toolCallbacks = aiToolCallbacks == null ? List.of() : Arrays.asList(aiToolCallbacks);
     }
 
@@ -84,14 +94,60 @@ public class AgentController {
     public Map<String, String> run(@RequestBody AgentRunRequest req) {
         String goal = req.goal() == null ? "" : req.goal();
         AgentRun run = registry.create(goal, req.config(), req.workflow());
+        return start(run, null);
+    }
+
+    /**
+     * Starts up to eight independent agent runs together. Each child has its own lifecycle,
+     * persistence record, approval gates, cancellation flag, and SSE stream; runners execute
+     * concurrently on virtual threads.
+     */
+    @PostMapping("/api/agent/batch")
+    public Map<String, List<String>> batch(@RequestBody AgentBatchRequest req) {
+        List<String> goals = req.goals() == null ? List.of() : req.goals().stream()
+                .map(goal -> goal == null ? "" : goal.trim())
+                .filter(goal -> !goal.isBlank())
+                .toList();
+        if (goals.isEmpty() || goals.size() > 8) {
+            throw new IllegalArgumentException("Batch requires between 1 and 8 non-empty goals");
+        }
+        List<String> runIds = new ArrayList<>(goals.size());
+        for (String goal : goals) {
+            AgentRun child = registry.create(goal, req.config(), null);
+            runIds.add(start(child, null).get("runId"));
+        }
+        return Map.of("runIds", List.copyOf(runIds));
+    }
+
+    private Map<String, String> start(AgentRun run, String resumedFrom) {
+        persistence.create(run, resumedFrom);
 
         // Create the SSE sink FIRST so events emitted by the runner before the /stream
         // client connects are buffered, not lost.
-        AgentStreamSink sink = new AgentStreamSink(run.getRunId());
+        AgentStreamSink sink = new AgentStreamSink(run.getRunId(),
+                terminalSink -> scheduleCleanup(run.getRunId(), terminalSink));
         sinks.put(run.getRunId(), sink);
 
-        runner.run(run, sink);
+        runner.run(run, persistence.persisting(run, sink));
         return Map.of("runId", run.getRunId());
+    }
+
+    @GetMapping("/api/agent/runs")
+    public List<AgentRunPersistenceService.RunSummary> persistedRuns() {
+        return persistence.list();
+    }
+
+    @GetMapping("/api/agent/runs/{runId}")
+    public AgentRunPersistenceService.RunDetail persistedRun(@PathVariable String runId) {
+        return persistence.detail(runId);
+    }
+
+    @PostMapping("/api/agent/runs/{runId}/resume")
+    public Map<String, String> resume(@PathVariable String runId) {
+        AgentRunPersistenceService.ResumeState state = persistence.resumeState(runId);
+        AgentRun run = registry.create(
+                state.goal(), state.config(), state.plan(), state.completedExecutions());
+        return start(run, state.resumedFrom());
     }
 
     // ── /stream (SSE) ──────────────────────────────────────────────────
@@ -132,6 +188,8 @@ public class AgentController {
             return Map.of("ok", false, "error", "Unknown runId: " + runId);
         }
         run.approve(edited);
+        persistence.appendEvent(runId, "approval_resolved",
+                Map.of("editedPlan", edited != null));
         return Map.of("ok", true, "runId", runId, "status", run.getStatus().name());
     }
 
@@ -148,6 +206,7 @@ public class AgentController {
             return Map.of("ok", false, "error", "Unknown runId: " + runId);
         }
         run.markCancelled();
+        persistence.appendEvent(runId, "cancel_requested", Map.of());
         // Releasing any armed approval gate lets the runner observe the cancellation promptly.
         run.approve(null);
         return Map.of("ok", true, "runId", runId, "status", run.getStatus().name());
@@ -173,6 +232,14 @@ public class AgentController {
         return out;
     }
 
+    private void scheduleCleanup(String runId, AgentStreamSink sink) {
+        CompletableFuture.delayedExecutor(TERMINAL_RETENTION_MINUTES, TimeUnit.MINUTES)
+                .execute(() -> {
+                    sinks.remove(runId, sink);
+                    registry.remove(runId);
+                });
+    }
+
     // ── SSE sink + buffering ──────────────────────────────────────────
 
     /**
@@ -187,6 +254,8 @@ public class AgentController {
 
         private final Logger log = LoggerFactory.getLogger(AgentStreamSink.class);
         private final String runId;
+        private final Consumer<AgentStreamSink> onTerminated;
+        private final AtomicBoolean terminationNotified = new AtomicBoolean(false);
 
         /** Buffered events that arrived before the client connected to /stream. */
         private final List<BufferedEvent> buffer = new CopyOnWriteArrayList<>();
@@ -215,7 +284,12 @@ public class AgentController {
         private volatile Throwable terminalError = null;
 
         AgentStreamSink(String runId) {
+            this(runId, ignored -> {});
+        }
+
+        AgentStreamSink(String runId, Consumer<AgentStreamSink> onTerminated) {
             this.runId = runId;
+            this.onTerminated = onTerminated;
         }
 
         /** Called by the /stream handler: registers the emitter and replays the buffer. */
@@ -281,6 +355,7 @@ public class AgentController {
             emit("complete", Map.of("summary", summary == null ? "" : summary));
             terminated = true;
             complete();
+            notifyTerminated();
         }
 
         @Override public void onError(String message) {
@@ -288,6 +363,13 @@ public class AgentController {
             terminated = true;
             terminalError = new IllegalStateException(message == null ? "" : message);
             complete();
+            notifyTerminated();
+        }
+
+        private void notifyTerminated() {
+            if (terminationNotified.compareAndSet(false, true)) {
+                onTerminated.accept(this);
+            }
         }
 
         /**
@@ -372,4 +454,5 @@ public class AgentController {
      * deterministically; otherwise the active AI backend plans a workflow from {@code goal}.
      */
     public record AgentRunRequest(String goal, AgentRunConfig config, AgentPlan workflow) {}
+    public record AgentBatchRequest(List<String> goals, AgentRunConfig config) {}
 }

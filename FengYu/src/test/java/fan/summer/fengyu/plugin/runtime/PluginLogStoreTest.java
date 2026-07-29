@@ -202,6 +202,32 @@ class PluginLogStoreTest {
         assertEquals("WARN", PluginLogLineParser.levelOf("[main] WARNING foo.Bar - x"));
     }
 
+    @Test
+    void parsesStructuredSdkEventWithoutLosingLoggerOrThrowable() {
+        PluginLogLineParser.Parsed event = PluginLogLineParser.parse(
+            "@fengyu-log:{\"level\":\"ERROR\",\"logger\":\"com.example.Worker\","
+                + "\"thread\":\"worker-1\",\"message\":\"failed\","
+                + "\"throwable\":\"java.lang.IllegalStateException: boom\\n\\tat Example.run\"}");
+
+        assertEquals("ERROR", event.level());
+        assertEquals("com.example.Worker", event.logger());
+        assertEquals("worker-1", event.thread());
+        assertTrue(event.message().contains("failed"));
+        assertTrue(event.message().contains("IllegalStateException: boom"));
+    }
+
+    @Test
+    void structuredEntriesRetainLoggerAndThreadInTheApiModel() {
+        PluginLogStore store = new PluginLogStore(fixedClock());
+
+        store.append("markdown", "DEBUG", "com.example.Worker", "worker-1", "rendering");
+
+        PluginLogEntry entry = store.recent("markdown", 1).getFirst();
+        assertEquals("com.example.Worker", entry.logger());
+        assertEquals("worker-1", entry.thread());
+        assertEquals("rendering", entry.message());
+    }
+
     private static Clock fixedClock() {
         return Clock.fixed(Instant.parse("2026-07-22T00:00:00Z"), ZoneOffset.UTC);
     }

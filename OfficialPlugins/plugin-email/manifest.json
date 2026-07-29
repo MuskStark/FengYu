@@ -3,7 +3,7 @@
   "id": "fan.summer.email",
   "name": "Email Center",
   "description": "Compose, batch-send, collect, and audit email with confirmation-first AI tools",
-  "version": "4.0.0-alpha.4",
+  "version": "4.0.0-alpha.5",
   "author": "FengYu",
   "icon": "email-multiple",
   "category": "network",

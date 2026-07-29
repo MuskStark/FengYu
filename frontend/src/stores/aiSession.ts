@@ -125,10 +125,6 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     }
   }
 
-  function history(conv: Conversation): ChatMessage[] {
-    return conv.turns.map((t) => ({ role: t.role, content: t.content }))
-  }
-
   function toPayload(conv: Conversation): ConversationPayload {
     return {
       title: conv.title,
@@ -176,7 +172,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     busy.value = true
 
     try {
-      const { streamId } = await api.aiChat(history(conv))
+      const { streamId } = await api.aiChat(toChatHistory(conv.turns))
       handle = openAiStream(streamId, {
         onToken: (t) => {
           assistant.content += t
@@ -212,6 +208,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
   function stop() {
     handle?.close()
     handle = null
+    void api.cancelAiGeneration().catch(() => {/* best effort */})
     busy.value = false
     const t = active.value?.turns
     const last = t?.[t.length - 1]
@@ -249,3 +246,13 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     clear,
   }
 })
+
+/**
+ * Convert rendered turns to provider history. The live assistant placeholder is UI state, not a
+ * model message; sending it would leave the request ending in an empty assistant turn.
+ */
+export function toChatHistory(turns: ChatTurn[]): ChatMessage[] {
+  return turns
+    .filter((turn) => !(turn.role === 'assistant' && turn.streaming))
+    .map((turn) => ({ role: turn.role, content: turn.content }))
+}

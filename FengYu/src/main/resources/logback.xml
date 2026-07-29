@@ -12,18 +12,15 @@
     <!-- Fallback for isolated tests/tools that do not enter through HeadlessLauncher. -->
     <property name="LOG_DIR" value="${fengyu.log.dir:-.fengyu/logs}"/>
 
-    <!-- ── Console: human-friendly, INFO and above ──────────────────────── -->
+    <!-- ── Console: threshold follows the host-wide logger level ────────── -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
             <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
             <charset>UTF-8</charset>
         </encoder>
-        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-            <level>INFO</level>
-        </filter>
     </appender>
 
-    <!-- ── Rolling file: full DEBUG history, daily rotation, 7-day retention ─ -->
+    <!-- ── Rolling file: shared threshold, daily rotation, 7-day retention ─── -->
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>${LOG_DIR}/fengyu.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
@@ -47,9 +44,9 @@
     <logger name="org.apache.fesod"     level="WARN"/>
     <logger name="javafx"               level="INFO"/>
 
-    <!-- ── App + plugin loggers: DEBUG to file, INFO to console (via filter) ─ -->
-    <logger name="fan.summer"           level="DEBUG"/>
-    <logger name="plugin"               level="DEBUG"/>
+    <!-- Defaults are replaced at runtime by LoggingLevelService. -->
+    <logger name="fan.summer"           level="INFO"/>
+    <logger name="plugin"               level="INFO"/>
 
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>

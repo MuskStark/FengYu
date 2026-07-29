@@ -49,7 +49,17 @@ public class SkillTool implements FengYuTool {
                   + "as markdown.")
     public String load(String id) {
         return registry.find(id)
+                .filter(registry::isEnabled)
                 .map(Skill::body)
                 .orElse("Skill not found: " + id);
+    }
+
+    @Tool(name = "skill_resource",
+          description = "Read a UTF-8 text file referenced by a loaded skill, relative to that "
+                  + "skill's directory (for example references/api.md or scripts/check.sh). "
+                  + "Paths cannot leave the skill directory and resources are limited to 1 MB.")
+    public String resource(String id, String path) {
+        return registry.readResource(id, path)
+                .orElse("Skill resource not found: " + id + "/" + path);
     }
 }

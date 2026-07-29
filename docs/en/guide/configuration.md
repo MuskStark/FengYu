@@ -6,7 +6,7 @@ lang: en
 
 # Configuration
 
-Two config surfaces live in Infinia: **user settings** (theme, language, sidebar) and **AI config** (active backend, API keys, models). Both are read and written over REST, and AI config can be hot-swapped at runtime without restarting. Database reconfiguration is also exposed here as a reset endpoint.
+Two config surfaces live in Infinia: **user settings** (theme, language, sidebar, logging) and **AI config** (active backend, API keys, models). Both are read and written over REST, and AI config can be hot-swapped at runtime without restarting. Database reconfiguration is also exposed here as a reset endpoint.
 
 All endpoints require the `X-FengYu-Token` header. See [Backend](/en/architecture/backend).
 
@@ -14,7 +14,7 @@ All endpoints require the `X-FengYu-Token` header. See [Backend](/en/architectur
 
 ```text
 GET /api/settings
-  ◄── 200 { "theme": "dark", "language": "en", "sidebarCollapsed": false }
+  ◄── 200 { "theme": "dark", "language": "en", "sidebarCollapsed": false, "logLevel": "INFO" }
 ```
 
 `PUT /api/settings` accepts a **partial body** — only the keys you include are persisted; the rest stay as they are.
@@ -24,7 +24,7 @@ PUT /api/settings
   Content-Type: application/json
   { "sidebarCollapsed": true }
 
-  ◄── 200 { "theme": "dark", "language": "en", "sidebarCollapsed": true }
+  ◄── 200 { "theme": "dark", "language": "en", "sidebarCollapsed": true, "logLevel": "INFO" }
 ```
 
 | Key | Type | Meaning |
@@ -32,6 +32,11 @@ PUT /api/settings
 | `theme` | string | `"light"` or `"dark"`. See [Design System](/en/design-system). |
 | `language` | string | UI locale (e.g. `en`, `zh-CN`). |
 | `sidebarCollapsed` | boolean | Whether the sidebar starts collapsed. |
+| `logLevel` | string | `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `OFF`. Applied immediately to the main application and every Java plugin Worker. |
+
+Changing `logLevel` does not restart Workers. The host updates its Logback namespaces and sends a
+built-in JSON-RPC notification to each running Worker; newly launched Workers inherit the same
+value through `FENGYU_LOG_LEVEL`.
 
 ## AI config
 
@@ -75,6 +80,24 @@ POST /api/ai/config/test
 ```
 
 Use this to validate credentials and endpoint reachability up front.
+
+## MCP clients
+
+FengYu accepts Spring AI MCP client configuration at startup. STDIO, SSE, and Streamable HTTP
+servers are supported through `spring.ai.mcp.client.stdio.*`,
+`spring.ai.mcp.client.sse.*`, and `spring.ai.mcp.client.streamable-http.*`. For a Codex-style
+STDIO server file, launch with:
+
+```bash
+java -jar FengYu-*.jar \
+  --spring.ai.mcp.client.stdio.servers-configuration=file:/absolute/path/mcp-servers.json
+```
+
+MCP tools are added to both chat and Agent tool catalogs. Inspect initialized connections with
+`GET /api/mcp/status`. MCP configuration is startup-scoped; changing it requires a restart.
+Configuring an external STDIO command is explicit authorization to launch that command, so only
+use trusted server definitions and keep credentials in the launch environment or a protected
+external file.
 
 ## `datasource.properties` layout
 

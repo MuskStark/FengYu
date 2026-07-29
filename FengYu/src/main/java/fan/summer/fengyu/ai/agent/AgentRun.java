@@ -30,6 +30,7 @@ public class AgentRun {
     private volatile AgentPlan plan;
 
     private final List<StepExecution> executions = new CopyOnWriteArrayList<>();
+    private final List<StepExecution> restoredExecutions = new CopyOnWriteArrayList<>();
 
     /**
      * The approval gate. A fresh count-1 latch is created by {@link #requestApproval(AgentRunStatus)};
@@ -97,6 +98,26 @@ public class AgentRun {
     /** Appends a {@link StepExecution} recording the outcome of a step transition. */
     public void addExecution(StepExecution execution) {
         executions.add(execution);
+    }
+
+    /**
+     * Restores completed execution state from a persisted interrupted run. Restored entries are
+     * tracked separately so ordinary failure replanning never mistakes an earlier plan's step
+     * index for an already-completed step in a newly generated plan.
+     */
+    public void restoreExecutions(List<StepExecution> restored) {
+        if (restored == null) return;
+        restored.stream()
+                .filter(execution -> execution != null
+                        && execution.status() == StepStatus.COMPLETED)
+                .forEach(execution -> {
+                    restoredExecutions.add(execution);
+                    executions.add(execution);
+                });
+    }
+
+    public List<StepExecution> getRestoredExecutions() {
+        return List.copyOf(restoredExecutions);
     }
 
     /** Marks the run as cancelled (terminal). Idempotent. */

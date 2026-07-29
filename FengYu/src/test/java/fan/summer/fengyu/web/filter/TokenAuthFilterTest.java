@@ -46,4 +46,19 @@ class TokenAuthFilterTest {
         assertFalse(invoked.get());
         assertEquals(401, response.getStatus());
     }
+
+    @Test
+    void allowsAgentEventSourceWithQueryToken() throws Exception {
+        System.setProperty(HeadlessLauncher.TOKEN_PROPERTY, "desktop-token");
+        var request = new MockHttpServletRequest("GET", "/api/agent/stream");
+        request.setParameter("runId", "run-1");
+        request.setParameter("token", "desktop-token");
+        var response = new MockHttpServletResponse();
+        var invoked = new AtomicBoolean();
+
+        filter.doFilter(request, response, (req, res) -> invoked.set(true));
+
+        assertTrue(invoked.get());
+        assertEquals(200, response.getStatus());
+    }
 }
