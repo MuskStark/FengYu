@@ -21,7 +21,10 @@ it('prepares tag Compose and dispatches only after confirmation', async () => {
       confirmation: { confirmationId: 'c1', expiresAt: '2026-07-14T12:00:00Z', summary: [] } })
     .mockResolvedValueOnce({ success: true, send: { status: 'COMPLETED', succeeded: 2, failed: 0 } })
   const pinia = createPinia(); setActivePinia(pinia)
-  useAccountsStore().selectedId = 7
+  // App.vue populates the account list on mount; simulate that so the tab does not re-fetch.
+  const accounts = useAccountsStore()
+  accounts.accounts = [{ id: 7, displayName: 'Sender', email: 'sender@example.com' }]
+  accounts.selectedId = 7
   useContactsStore().tags = [{ id: 4, name: 'Customers' }]
   const wrapper = mount(ComposeTab, { global: { plugins: [pinia, i18n], stubs: {
     RichTextEditor: { emits: ['update:modelValue', 'update:plainText'], template: '<div data-testid="rich-editor" />' },
