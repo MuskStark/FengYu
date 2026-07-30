@@ -206,7 +206,7 @@ class EmailArchiveServiceTest {
         Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         append(inbox, message("Metadata failure", "sender@example.com", "force metadata failure", false, now), now);
         try (var connection = database.openConnection(); var statement = connection.createStatement()) {
-            statement.executeUpdate("ALTER TABLE FengTu_PL_Email_Archive ADD CONSTRAINT archive_preview_check "
+            statement.executeUpdate("ALTER TABLE FENGYU_PL_Email_Archive ADD CONSTRAINT archive_preview_check "
                 + "CHECK (body_preview <> 'force metadata failure')");
         }
         Path output = temp.resolve("failed-metadata");
