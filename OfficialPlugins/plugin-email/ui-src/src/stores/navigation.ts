@@ -20,7 +20,7 @@ export const useNavigationStore = defineStore('email-navigation', () => {
     { id: 'contacts', labelKey: 'nav.contacts', icon: mdiAccountMultipleOutline },
     { id: 'archive', labelKey: 'nav.archive', icon: mdiArchiveArrowDownOutline },
     { id: 'records', labelKey: 'nav.records', icon: mdiHistory },
-    { id: 'accounts', labelKey: 'nav.accounts', icon: mdiCogOutline, bottom: true },
+    { id: 'accounts', labelKey: 'nav.accounts', icon: mdiCogOutline },
   ]
   return { active, items }
 })
