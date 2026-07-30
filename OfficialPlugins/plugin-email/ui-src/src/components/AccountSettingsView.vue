@@ -19,7 +19,7 @@ const testAccount = () => guard(t('accounts.testAction'), async () => {
   await invoke('email_account_test', { accountId: accounts.draft.id }); notice.value = t('accounts.testSuccess')
 })
 const saveAccount = () => guard(t('accounts.saveAction'), async () => {
-  await invoke('email_account_save', { ...accounts.draft }); accounts.draft.password = ''; notice.value = t('accounts.saved')
+  await invoke('email_account_save', { ...accounts.draft }); accounts.draft.password = ''; await accounts.load(); notice.value = t('accounts.saved')
 })
 const makeDefault = () => guard(t('accounts.defaultAction'), async () => {
   await invoke('email_account_set_default', { id: accounts.draft.id }); await accounts.load()
