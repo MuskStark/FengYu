@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { mdiCloseCircle, mdiPaperclip } from '@mdi/js'
 import { FyIcon } from '@infinia/plugin-ui'
@@ -17,6 +17,11 @@ const contacts = useContactsStore()
 const busy = ref(false), error = ref(''), dialog = ref(false)
 let draftTimer: number | undefined
 compose.restoreDraft()
+// The "from" dropdown binds to accounts.accounts, which is populated by App.vue's load(). If that
+// load failed (SDK handshake race, a transient error swallowed as a banner) this tab would render
+// an empty dropdown with no retry. Re-fetch on mount when the list is empty so the account picker
+// is always populated; load() is idempotent.
+onMounted(() => { if (!accounts.accounts.length) accounts.load().catch(value => { error.value = actionable(value, t('accounts.loading')) }) })
 
 const canReview = computed(() => Boolean(accounts.selectedId)
   && (compose.mode === 'DIRECT' ? compose.normalizedTo.length > 0 : compose.recipientTagIds.length > 0)

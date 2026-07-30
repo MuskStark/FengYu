@@ -40,7 +40,10 @@ it('keeps account passwords write-only and separates test from save', async () =
   await wrapper.get('[data-testid="smtp-test"]').trigger('click')
   expect(bridge.invoke).toHaveBeenLastCalledWith('email_account_test', expect.any(Object))
   await wrapper.get('[data-testid="account-save"]').trigger('click')
-  expect(bridge.invoke).toHaveBeenLastCalledWith('email_account_save', expect.any(Object))
+  // save dispatches email_account_save, then refreshes the list via email_accounts_list. The mocked
+  // invoke drops the default params arg, so assert on the method name only for the refresh call.
+  expect(bridge.invoke).toHaveBeenCalledWith('email_account_save', expect.any(Object))
+  await vi.waitFor(() => expect(bridge.invoke).toHaveBeenLastCalledWith('email_accounts_list'))
 })
 
 it('keeps bulk contact actions separate from tag management', () => {

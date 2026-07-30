@@ -33,6 +33,9 @@ async function openDetail(id: unknown) {
 }
 function previous() { archive.previousPage(); void loadResults() }
 function next() { archive.nextPage(); void loadResults() }
+// App.vue loads accounts once on mount; if that failed, the account dropdown here would stay empty
+// with no retry. Re-fetch on mount when the list is empty so the picker is always populated.
+onMounted(() => { if (!accounts.accounts.length) accounts.load().catch(value => { error.value = actionable(value, t('accounts.loading')) }) })
 onMounted(loadResults)
 </script>
 
