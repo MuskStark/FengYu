@@ -146,7 +146,7 @@ class EmailSendServiceTest {
 
     private int sentLogCount() {
         try (var connection = database.openConnection();
-             var statement = connection.prepareStatement("SELECT COUNT(*) FROM FengTu_PL_Email_Sent_Log");
+             var statement = connection.prepareStatement("SELECT COUNT(*) FROM FENGYU_PL_Email_Sent_Log");
              ResultSet result = statement.executeQuery()) {
             result.next();
             return result.getInt(1);
@@ -157,7 +157,7 @@ class EmailSendServiceTest {
 
     private String sentLogStatus() {
         try (var connection = database.openConnection();
-             var statement = connection.prepareStatement("SELECT status FROM FengTu_PL_Email_Sent_Log");
+             var statement = connection.prepareStatement("SELECT status FROM FENGYU_PL_Email_Sent_Log");
              ResultSet result = statement.executeQuery()) {
             result.next();
             return result.getString(1);

@@ -215,6 +215,36 @@ class PendingSendServiceTest {
         }
     }
 
+    @Test void stuckSendingIsReclaimedAsFailedOnNextCall() throws Exception {
+        EmailDatabase database = database("stuck-sending");
+        AtomicInteger sends = new AtomicInteger();
+        // A clock far in the future makes STALE_THRESHOLD (5 min) treat any already-SENDING row as stale.
+        Clock futureClock = Clock.fixed(Instant.parse("2030-01-01T00:00:00Z"), ZoneOffset.UTC);
+        var service = new PendingSendService(database,
+            (confirmationId, request) -> { sends.incrementAndGet(); return SendResult.success("sent"); },
+            futureClock, Duration.ofMinutes(30));
+        String id = service.prepareSingle(request("alice@example.com")).confirmation().confirmationId();
+        // Simulate a worker that claimed the task (PENDING -> SENDING) then died before finishing.
+        forceStatus(database, id, "SENDING", "2000-01-01 00:00:00");
+
+        String status = service.status(id).orElseThrow().status();
+
+        assertEquals("FAILED", status);
+        assertEquals(0, sends.get());
+    }
+
+    private static void forceStatus(EmailDatabase database, String confirmationId, String status, String updatedAt)
+            throws Exception {
+        try (var connection = database.openConnection();
+             var statement = connection.prepareStatement(
+                 "UPDATE FENGYU_PL_Email_Pending_Send SET status=?, updated_at=? WHERE confirmation_id=?")) {
+            statement.setString(1, status);
+            statement.setString(2, updatedAt);
+            statement.setString(3, confirmationId);
+            statement.executeUpdate();
+        }
+    }
+
     private PendingSendService service(String name, PendingSendService.Sender sender) {
         return new PendingSendService(database(name), sender, clock, Duration.ofMinutes(30));
     }

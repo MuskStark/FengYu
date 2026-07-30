@@ -4,8 +4,14 @@ import fan.summer.fengyu.plugin.email.crypto.CredentialCipher;
 import fan.summer.fengyu.plugin.email.database.EmailDatabase;
 import fan.summer.fengyu.plugin.email.model.EmailAccount;
 import fan.summer.fengyu.plugin.email.repository.AccountRepository;
+import fan.summer.fengyu.plugin.email.repository.ArchiveRepository;
 import fan.summer.fengyu.plugin.email.repository.PendingSendRepository;
+import fan.summer.fengyu.plugin.email.repository.SentLogRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.util.List;
 import java.util.Locale;
@@ -14,22 +20,30 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
 public final class AccountService {
+    private static final Logger log = LoggerFactory.getLogger(AccountService.class);
     private final AccountRepository accounts;
     private final CredentialCipher cipher;
     private final PendingSendRepository pendingSends;
+    private final ArchiveRepository archives;
+    private final SentLogRepository sentLogs;
 
     public AccountService(EmailDatabase database, CredentialCipher cipher) {
-        this(new AccountRepository(database), cipher, new PendingSendRepository(database));
+        this(new AccountRepository(database), cipher, new PendingSendRepository(database),
+            new ArchiveRepository(database), new SentLogRepository(database));
     }
 
+    /** Internal-only: account lookup without wiring send/archive cleanup. Used by EmailArchiveService. */
     AccountService(AccountRepository accounts, CredentialCipher cipher) {
-        this(accounts, cipher, null);
+        this(accounts, cipher, null, null, null);
     }
 
-    private AccountService(AccountRepository accounts, CredentialCipher cipher, PendingSendRepository pendingSends) {
+    private AccountService(AccountRepository accounts, CredentialCipher cipher, PendingSendRepository pendingSends,
+            ArchiveRepository archives, SentLogRepository sentLogs) {
         this.accounts = accounts;
         this.cipher = cipher;
         this.pendingSends = pendingSends;
+        this.archives = archives;
+        this.sentLogs = sentLogs;
     }
 
     public long save(AccountInput input) {
@@ -52,12 +66,34 @@ public final class AccountService {
     public Optional<AccountView> find(long id) { return accounts.findAccount(id).map(AccountService::view); }
     public List<AccountView> list() { return accounts.listAccounts().stream().map(AccountService::view).toList(); }
     public boolean delete(long id) {
+        // Reclaim any task a dead worker stranded in SENDING, otherwise hasOpenForAccount would block
+        // the delete forever (claim/reject/expire all require PENDING, finish requires SENDING).
+        if (pendingSends != null) pendingSends.reclaimStuck(LocalDateTime.now(ZoneOffset.UTC));
         if (pendingSends != null && pendingSends.hasOpenForAccount(id, LocalDateTime.now(ZoneOffset.UTC))) {
             throw new IllegalStateException("Account has an open send operation");
         }
-        return accounts.deleteAccount(id);
+        EmailAccount account = accounts.findAccount(id).orElse(null);
+        if (account == null) return false;
+        // There are no foreign keys in the schema (Archive/PendingSend key on account_id, SentLog on
+        // account_email), so removing the account here would orphan those rows and the EML files they
+        // reference. Clean them up explicitly before the account row is removed.
+        if (pendingSends != null) pendingSends.deleteByAccount(id);
+        if (sentLogs != null) sentLogs.deleteByAccountEmail(account.email());
+        List<String> emlPaths = archives == null ? List.of() : archives.emlPathsForAccount(id);
+        if (archives != null) archives.deleteByAccount(id);
+        boolean deleted = accounts.deleteAccount(id);
+        deleteArchiveFiles(emlPaths);
+        return deleted;
     }
     public boolean setDefault(long id) { return accounts.setDefault(id); }
+
+    /** Best-effort EML file cleanup; a missing/unreadable file must not abort the account deletion. */
+    private static void deleteArchiveFiles(List<String> emlPaths) {
+        for (String emlPath : emlPaths) {
+            try { Files.deleteIfExists(Path.of(emlPath)); }
+            catch (Exception failure) { log.warn("Could not delete archived message file {}: {}", emlPath, failure.toString()); }
+        }
+    }
 
     /** Internal-only credential access for SMTP/IMAP services. */
     public String decryptPassword(long id) {

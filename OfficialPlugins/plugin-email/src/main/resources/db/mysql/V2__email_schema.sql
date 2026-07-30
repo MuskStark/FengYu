@@ -1,1 +1,1 @@
-INSERT INTO FengTu_PL_Email_Schema_History(version) VALUES (2);
+INSERT INTO FENGYU_PL_Email_Schema_History(version) VALUES (2);

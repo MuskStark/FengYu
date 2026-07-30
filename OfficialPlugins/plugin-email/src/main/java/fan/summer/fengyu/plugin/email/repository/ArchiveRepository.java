@@ -2,6 +2,7 @@ package fan.summer.fengyu.plugin.email.repository;
 
 import fan.summer.fengyu.plugin.email.database.EmailDatabase;
 import fan.summer.fengyu.plugin.email.model.ArchivedMessage;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.Param;
@@ -48,6 +49,21 @@ public final class ArchiveRepository {
         }
     }
 
+    /** Absolute {@code eml_path} values stored for an account, used to delete files on account removal. */
+    public List<String> emlPathsForAccount(long accountId) {
+        try (SqlSession session = database.openSession()) {
+            return List.copyOf(session.getMapper(Mapper.class).emlPaths(accountId));
+        }
+    }
+
+    public int deleteByAccount(long accountId) {
+        try (SqlSession session = database.openSession()) {
+            int deleted = session.getMapper(Mapper.class).deleteByAccount(accountId);
+            session.commit();
+            return deleted;
+        }
+    }
+
     public static final class ArchiveEntry {
         private Long id;
         private final long accountId;
@@ -91,12 +107,12 @@ public final class ArchiveRepository {
             + "sent_at AS sentAt, received_at AS receivedAt, has_attachment AS hasAttachment, "
             + "body_preview AS bodyPreview, eml_path AS emlPath, archived_at AS archivedAt";
 
-        @Select("SELECT COUNT(*) FROM FengTu_PL_Email_Archive WHERE account_id=#{accountId} "
+        @Select("SELECT COUNT(*) FROM FENGYU_PL_Email_Archive WHERE account_id=#{accountId} "
             + "AND folder=#{folder} AND message_uid=#{messageUid}")
         int countByUid(@Param("accountId") long accountId, @Param("folder") String folder,
             @Param("messageUid") String messageUid);
 
-        @Insert("INSERT INTO FengTu_PL_Email_Archive(account_id,account_email,folder,message_uid,subject,"
+        @Insert("INSERT INTO FENGYU_PL_Email_Archive(account_id,account_email,folder,message_uid,subject,"
             + "from_address,recipients_json,sent_at,received_at,has_attachment,body_preview,eml_path) VALUES("
             + "#{accountId},#{accountEmail},#{folder},#{messageUid},#{subject},#{fromAddress},#{recipientsJson},"
             + "#{sentAt},#{receivedAt},#{hasAttachment},#{bodyPreview},#{emlPath})")
@@ -106,15 +122,21 @@ public final class ArchiveRepository {
         @SelectProvider(type = SearchSql.class, method = "build")
         List<ArchivedMessage> search(SearchCriteria criteria);
 
-        @Select("SELECT " + COLUMNS + " FROM FengTu_PL_Email_Archive WHERE id=#{id}")
+        @Select("SELECT " + COLUMNS + " FROM FENGYU_PL_Email_Archive WHERE id=#{id}")
         ArchivedMessage detail(@Param("id") long id);
+
+        @Select("SELECT eml_path FROM FENGYU_PL_Email_Archive WHERE account_id=#{accountId}")
+        List<String> emlPaths(@Param("accountId") long accountId);
+
+        @Delete("DELETE FROM FENGYU_PL_Email_Archive WHERE account_id=#{accountId}")
+        int deleteByAccount(@Param("accountId") long accountId);
     }
 
     public static final class SearchSql {
         private SearchSql() { }
 
         public static String build(SearchCriteria criteria) {
-            SQL sql = new SQL().SELECT(Mapper.COLUMNS).FROM("FengTu_PL_Email_Archive");
+            SQL sql = new SQL().SELECT(Mapper.COLUMNS).FROM("FENGYU_PL_Email_Archive");
             if (criteria.accountId() != null) sql.WHERE("account_id = #{accountId}");
             if (criteria.folder() != null) sql.WHERE("folder = #{folder}");
             if (criteria.senderPattern() != null) sql.WHERE("LOWER(from_address) LIKE #{senderPattern} ESCAPE '!'");
