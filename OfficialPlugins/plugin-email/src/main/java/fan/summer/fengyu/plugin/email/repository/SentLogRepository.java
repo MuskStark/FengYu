@@ -1,6 +1,7 @@
 package fan.summer.fengyu.plugin.email.repository;
 
 import fan.summer.fengyu.plugin.email.database.EmailDatabase;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -35,6 +36,15 @@ public final class SentLogRepository {
         }
     }
 
+    /** Delete audit rows for an account's email. SentLog keys on {@code account_email}, not id. */
+    public int deleteByAccountEmail(String email) {
+        try (SqlSession session = database.openSession()) {
+            int deleted = session.getMapper(Mapper.class).deleteByAccountEmail(email);
+            session.commit();
+            return deleted;
+        }
+    }
+
     public record SentLogEntry(String confirmationId, String accountEmail, String recipientsJson,
             String subject, String attachmentJson, String status, String errorMessage) { }
     public record SentMessageView(long id, String confirmationId, String accountEmail,
@@ -42,12 +52,12 @@ public final class SentLogRepository {
             String errorMessage, LocalDateTime sentAt) { }
 
     private interface Mapper {
-        @Insert("INSERT INTO FengTu_PL_Email_Sent_Log(confirmation_id,account_email,recipients_json,subject,attachment_json,status,error_message,sent_at) "
+        @Insert("INSERT INTO FENGYU_PL_Email_Sent_Log(confirmation_id,account_email,recipients_json,subject,attachment_json,status,error_message,sent_at) "
             + "VALUES(#{confirmationId},#{accountEmail},#{recipientsJson},#{subject},#{attachmentJson},#{status},#{errorMessage},CURRENT_TIMESTAMP)")
         int insert(SentLogEntry entry);
         @Select({"<script>",
             "SELECT id,confirmation_id AS confirmationId,account_email AS accountEmail,recipients_json AS recipientsJson,subject,attachment_json AS attachmentJson,status,error_message AS errorMessage,sent_at AS sentAt",
-            "FROM FengTu_PL_Email_Sent_Log",
+            "FROM FENGYU_PL_Email_Sent_Log",
             "<where>",
             "<if test='confirmationId != null and !confirmationId.isBlank()'>confirmation_id=#{confirmationId}</if>",
             "<if test='status != null and !status.isBlank()'>AND status=#{status}</if>",
@@ -58,5 +68,7 @@ public final class SentLogRepository {
         List<SentMessageView> search(@Param("confirmationId") String confirmationId,
             @Param("status") String status, @Param("pattern") String pattern,
             @Param("offset") int offset, @Param("limit") int limit);
+        @Delete("DELETE FROM FENGYU_PL_Email_Sent_Log WHERE account_email=#{email}")
+        int deleteByAccountEmail(@Param("email") String email);
     }
 }

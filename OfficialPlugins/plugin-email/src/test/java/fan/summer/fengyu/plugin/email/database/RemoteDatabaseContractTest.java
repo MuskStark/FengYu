@@ -25,10 +25,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RemoteDatabaseContractTest {
-    private static final Set<String> EXPECTED_TABLES = Set.of("fengtu_pl_email_schema_history",
-        "fengtu_pl_email_account", "fengtu_pl_email_contact", "fengtu_pl_email_tag",
-        "fengtu_pl_email_contact_tag", "fengtu_pl_email_mass_config", "fengtu_pl_email_pending_send",
-        "fengtu_pl_email_sent_log", "fengtu_pl_email_archive");
+    private static final Set<String> EXPECTED_TABLES = Set.of("fengyu_pl_email_schema_history",
+        "fengyu_pl_email_account", "fengyu_pl_email_contact", "fengyu_pl_email_tag",
+        "fengyu_pl_email_contact_tag", "fengyu_pl_email_mass_config", "fengyu_pl_email_pending_send",
+        "fengyu_pl_email_sent_log", "fengyu_pl_email_archive");
     @TempDir Path temp;
 
     @Test void h2RepositoryContractIsMandatory() throws Exception {
@@ -101,7 +101,7 @@ class RemoteDatabaseContractTest {
         Set<String> tables;
         try (Connection connection = database.openConnection()) { tables = schemaTables(connection); }
         Set<String> created = new HashSet<>(tables); created.removeAll(before);
-        assertTrue(created.stream().allMatch(name -> name.startsWith("fengtu_pl_email_")), created::toString);
+        assertTrue(created.stream().allMatch(name -> name.startsWith("fengyu_pl_email_")), created::toString);
         assertTrue(tables.containsAll(EXPECTED_TABLES), tables::toString);
     }
 

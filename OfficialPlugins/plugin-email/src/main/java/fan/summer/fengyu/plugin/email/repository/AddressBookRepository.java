@@ -161,48 +161,48 @@ public final class AddressBookRepository {
     }
 
     private interface Mapper {
-        @Select("SELECT id,email,nickname,created_at AS createdAt FROM FengTu_PL_Email_Contact WHERE id=#{id}") ContactRow findContact(long id);
-        @Select({"<script>", "SELECT DISTINCT c.id,c.email,c.nickname,c.created_at AS createdAt FROM FengTu_PL_Email_Contact c",
-            "<if test='tagIds != null and !tagIds.isEmpty()'> JOIN FengTu_PL_Email_Contact_Tag ct ON ct.contact_id=c.id</if>",
+        @Select("SELECT id,email,nickname,created_at AS createdAt FROM FENGYU_PL_Email_Contact WHERE id=#{id}") ContactRow findContact(long id);
+        @Select({"<script>", "SELECT DISTINCT c.id,c.email,c.nickname,c.created_at AS createdAt FROM FENGYU_PL_Email_Contact c",
+            "<if test='tagIds != null and !tagIds.isEmpty()'> JOIN FENGYU_PL_Email_Contact_Tag ct ON ct.contact_id=c.id</if>",
             "WHERE (LOWER(c.email) LIKE #{pattern} OR LOWER(COALESCE(c.nickname,'')) LIKE #{pattern})",
             "<if test='tagIds != null and !tagIds.isEmpty()'> AND ct.tag_id IN <foreach item='id' collection='tagIds' open='(' separator=',' close=')'>#{id}</foreach></if>",
             "ORDER BY c.id LIMIT #{limit} OFFSET #{offset}", "</script>"})
         List<ContactRow> search(@Param("pattern") String pattern, @Param("tagIds") Set<Long> tagIds,
             @Param("offset") int offset, @Param("limit") int limit);
-        @Select("SELECT tag_id FROM FengTu_PL_Email_Contact_Tag WHERE contact_id=#{id} ORDER BY tag_id") List<Long> tagIds(long id);
-        @Select({"<script>", "SELECT DISTINCT c.email FROM FengTu_PL_Email_Contact c JOIN FengTu_PL_Email_Contact_Tag ct ON ct.contact_id=c.id",
+        @Select("SELECT tag_id FROM FENGYU_PL_Email_Contact_Tag WHERE contact_id=#{id} ORDER BY tag_id") List<Long> tagIds(long id);
+        @Select({"<script>", "SELECT DISTINCT c.email FROM FENGYU_PL_Email_Contact c JOIN FENGYU_PL_Email_Contact_Tag ct ON ct.contact_id=c.id",
             "WHERE ct.tag_id IN <foreach item='id' collection='tagIds' open='(' separator=',' close=')'>#{id}</foreach>", "</script>"})
         Set<String> resolve(@Param("tagIds") Set<Long> tagIds);
-        @Select({"<script>", "SELECT c.email FROM FengTu_PL_Email_Contact c JOIN FengTu_PL_Email_Contact_Tag ct ON ct.contact_id=c.id",
+        @Select({"<script>", "SELECT c.email FROM FENGYU_PL_Email_Contact c JOIN FENGYU_PL_Email_Contact_Tag ct ON ct.contact_id=c.id",
             "WHERE ct.tag_id IN <foreach item='id' collection='tagIds' open='(' separator=',' close=')'>#{id}</foreach>",
             "GROUP BY c.id,c.email HAVING COUNT(DISTINCT ct.tag_id)=#{count}", "</script>"})
         Set<String> resolveAll(@Param("tagIds") Set<Long> tagIds, @Param("count") int count);
         @Select({"<script>",
-            "SELECT DISTINCT c.email FROM FengTu_PL_Email_Contact c",
-            "JOIN FengTu_PL_Email_Contact_Tag attachment_ct ON attachment_ct.contact_id=c.id",
-            "JOIN FengTu_PL_Email_Tag attachment_t ON attachment_t.id=attachment_ct.tag_id",
-            "JOIN FengTu_PL_Email_Contact_Tag group_ct ON group_ct.contact_id=c.id",
+            "SELECT DISTINCT c.email FROM FENGYU_PL_Email_Contact c",
+            "JOIN FENGYU_PL_Email_Contact_Tag attachment_ct ON attachment_ct.contact_id=c.id",
+            "JOIN FENGYU_PL_Email_Tag attachment_t ON attachment_t.id=attachment_ct.tag_id",
+            "JOIN FENGYU_PL_Email_Contact_Tag group_ct ON group_ct.contact_id=c.id",
             "WHERE LOWER(attachment_t.name)=#{attachmentTag}",
             "AND group_ct.tag_id IN <foreach item='id' collection='groupTagIds' open='(' separator=',' close=')'>#{id}</foreach>",
             "</script>"})
         Set<String> resolveIntersection(@Param("attachmentTag") String attachmentTag,
             @Param("groupTagIds") Set<Long> groupTagIds);
 
-        @Insert("INSERT INTO FengTu_PL_Email_Contact(email,nickname,created_at) VALUES(#{email},#{nickname},CURRENT_TIMESTAMP)")
+        @Insert("INSERT INTO FENGYU_PL_Email_Contact(email,nickname,created_at) VALUES(#{email},#{nickname},CURRENT_TIMESTAMP)")
         @Options(useGeneratedKeys=true,keyProperty="id") int insertContact(ContactRow row);
-        @Update("UPDATE FengTu_PL_Email_Contact SET email=#{email},nickname=#{nickname} WHERE id=#{id}") int updateContact(ContactRow row);
-        @Delete("DELETE FROM FengTu_PL_Email_Contact_Tag WHERE contact_id=#{id}") int deleteContactTags(long id);
-        @Delete("DELETE FROM FengTu_PL_Email_Contact WHERE id=#{id}") int deleteContact(long id);
+        @Update("UPDATE FENGYU_PL_Email_Contact SET email=#{email},nickname=#{nickname} WHERE id=#{id}") int updateContact(ContactRow row);
+        @Delete("DELETE FROM FENGYU_PL_Email_Contact_Tag WHERE contact_id=#{id}") int deleteContactTags(long id);
+        @Delete("DELETE FROM FENGYU_PL_Email_Contact WHERE id=#{id}") int deleteContact(long id);
 
-        @Select("SELECT id,name FROM FengTu_PL_Email_Tag WHERE LOWER(name)=LOWER(#{name})") Tag findTagByName(String name);
-        @Select("SELECT id,name FROM FengTu_PL_Email_Tag ORDER BY LOWER(name),id") List<Tag> listTags();
-        @Insert("INSERT INTO FengTu_PL_Email_Tag(name) VALUES(#{name})") @Options(useGeneratedKeys=true,keyProperty="id") int insertTag(TagRow row);
-        @Update("UPDATE FengTu_PL_Email_Tag SET name=#{name} WHERE id=#{id}") int updateTag(TagRow row);
-        @Delete("DELETE FROM FengTu_PL_Email_Contact_Tag WHERE tag_id=#{id}") int deleteTagAssignments(long id);
-        @Delete("DELETE FROM FengTu_PL_Email_Tag WHERE id=#{id}") int deleteTag(long id);
-        @Select("SELECT COUNT(*) FROM FengTu_PL_Email_Contact_Tag WHERE contact_id=#{contactId} AND tag_id=#{tagId}")
+        @Select("SELECT id,name FROM FENGYU_PL_Email_Tag WHERE LOWER(name)=LOWER(#{name})") Tag findTagByName(String name);
+        @Select("SELECT id,name FROM FENGYU_PL_Email_Tag ORDER BY LOWER(name),id") List<Tag> listTags();
+        @Insert("INSERT INTO FENGYU_PL_Email_Tag(name) VALUES(#{name})") @Options(useGeneratedKeys=true,keyProperty="id") int insertTag(TagRow row);
+        @Update("UPDATE FENGYU_PL_Email_Tag SET name=#{name} WHERE id=#{id}") int updateTag(TagRow row);
+        @Delete("DELETE FROM FENGYU_PL_Email_Contact_Tag WHERE tag_id=#{id}") int deleteTagAssignments(long id);
+        @Delete("DELETE FROM FENGYU_PL_Email_Tag WHERE id=#{id}") int deleteTag(long id);
+        @Select("SELECT COUNT(*) FROM FENGYU_PL_Email_Contact_Tag WHERE contact_id=#{contactId} AND tag_id=#{tagId}")
         int assignmentCount(@Param("contactId") long contactId, @Param("tagId") long tagId);
-        @Insert("INSERT INTO FengTu_PL_Email_Contact_Tag(contact_id,tag_id) VALUES(#{contactId},#{tagId})")
+        @Insert("INSERT INTO FENGYU_PL_Email_Contact_Tag(contact_id,tag_id) VALUES(#{contactId},#{tagId})")
         int insertAssignment(@Param("contactId") long contactId, @Param("tagId") long tagId);
     }
 }

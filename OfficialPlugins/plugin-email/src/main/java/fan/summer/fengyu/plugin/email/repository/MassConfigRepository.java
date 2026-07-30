@@ -64,11 +64,11 @@ public final class MassConfigRepository {
     }
 
     private interface Mapper {
-        @Select("SELECT id,name,mode,config_json AS configJson,created_at AS createdAt FROM FengTu_PL_Email_Mass_Config WHERE id=#{id}") MassConfig find(long id);
-        @Select("SELECT id,name,mode,config_json AS configJson,created_at AS createdAt FROM FengTu_PL_Email_Mass_Config ORDER BY id") List<MassConfig> list();
-        @Insert("INSERT INTO FengTu_PL_Email_Mass_Config(name,mode,config_json,created_at) VALUES(#{name},#{mode},#{configJson},CURRENT_TIMESTAMP)")
+        @Select("SELECT id,name,mode,config_json AS configJson,created_at AS createdAt FROM FENGYU_PL_Email_Mass_Config WHERE id=#{id}") MassConfig find(long id);
+        @Select("SELECT id,name,mode,config_json AS configJson,created_at AS createdAt FROM FENGYU_PL_Email_Mass_Config ORDER BY id") List<MassConfig> list();
+        @Insert("INSERT INTO FENGYU_PL_Email_Mass_Config(name,mode,config_json,created_at) VALUES(#{name},#{mode},#{configJson},CURRENT_TIMESTAMP)")
         @Options(useGeneratedKeys=true,keyProperty="id") int insert(Row row);
-        @Update("UPDATE FengTu_PL_Email_Mass_Config SET name=#{name},mode=#{mode},config_json=#{configJson} WHERE id=#{id}") int update(Row row);
-        @Delete("DELETE FROM FengTu_PL_Email_Mass_Config WHERE id=#{id}") int delete(long id);
+        @Update("UPDATE FENGYU_PL_Email_Mass_Config SET name=#{name},mode=#{mode},config_json=#{configJson} WHERE id=#{id}") int update(Row row);
+        @Delete("DELETE FROM FENGYU_PL_Email_Mass_Config WHERE id=#{id}") int delete(long id);
     }
 }

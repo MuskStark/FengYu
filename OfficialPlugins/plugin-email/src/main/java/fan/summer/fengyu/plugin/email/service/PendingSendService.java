@@ -22,6 +22,8 @@ import java.util.UUID;
 
 public final class PendingSendService {
     private static final String PLUGIN_ID = "fan.summer.email";
+    /** A task in SENDING longer than this is assumed to belong to a dead worker and reclaimed to FAILED. */
+    private static final Duration STALE_THRESHOLD = Duration.ofMinutes(5);
     private final PendingSendRepository pending;
     private final AddressBookRepository addressBook;
     private final SentLogRepository sentLogs;
@@ -42,6 +44,17 @@ public final class PendingSendService {
         this.sender = sender;
         this.clock = clock;
         this.ttl = ttl;
+    }
+
+    /**
+     * Lazily reclaim send tasks stranded in SENDING by a crashed worker. The worker is single-
+     * threaded request-driven JSON-RPC dispatch; if it dies between claiming a task (PENDING→SENDING)
+     * and finishing it, nothing else can move that row — claim/reject/expire require PENDING and
+     * finish requires SENDING. Sweeping here, on every entry point, keeps the state machine
+     * drainable without a background scheduler (there is no lifecycle hook in this worker).
+     */
+    private void reclaimStale() {
+        pending.reclaimStuck(LocalDateTime.ofInstant(clock.instant().minus(STALE_THRESHOLD), ZoneOffset.UTC));
     }
 
     public ConfirmationEnvelope prepareSingle(EmailMessageRequest request) {
@@ -94,17 +107,20 @@ public final class PendingSendService {
     }
 
     public Optional<PendingSend> status(String confirmationId) {
+        reclaimStale();
         pending.expirePast(confirmationId, now());
         return pending.find(confirmationId);
     }
 
     public ConfirmationResult reject(String confirmationId) {
+        reclaimStale();
         pending.reject(confirmationId);
         PendingSend value = require(confirmationId);
         return new ConfirmationResult(value.status(), 0, 0, List.of());
     }
 
     public ConfirmationResult confirm(String confirmationId) {
+        reclaimStale();
         if (!pending.claim(confirmationId, now())) {
             pending.expirePast(confirmationId, now());
             PendingSend value = require(confirmationId);

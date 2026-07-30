@@ -101,28 +101,28 @@ public final class AccountRepository {
             + "imap_host AS imapHost, imap_port AS imapPort, imap_security AS imapSecurity, "
             + "is_default AS defaultAccount, created_at AS createdAt";
 
-        @Select("SELECT " + COLUMNS + " FROM FengTu_PL_Email_Account WHERE id = #{id}")
+        @Select("SELECT " + COLUMNS + " FROM FENGYU_PL_Email_Account WHERE id = #{id}")
         EmailAccount find(@Param("id") long id);
 
-        @Select("SELECT " + COLUMNS + " FROM FengTu_PL_Email_Account ORDER BY is_default DESC, id")
+        @Select("SELECT " + COLUMNS + " FROM FENGYU_PL_Email_Account ORDER BY is_default DESC, id")
         List<EmailAccount> list();
 
-        @Select("SELECT COUNT(*) FROM FengTu_PL_Email_Account") int countAccounts();
-        @Select("SELECT COUNT(*) FROM FengTu_PL_Email_Account WHERE is_default = TRUE") int countDefaults();
-        @Update("UPDATE FengTu_PL_Email_Account SET is_default = FALSE WHERE is_default = TRUE") int clearDefault();
-        @Update("UPDATE FengTu_PL_Email_Account SET is_default = TRUE WHERE id = #{id}") int setDefault(long id);
-        @Update("UPDATE FengTu_PL_Email_Account SET is_default = TRUE WHERE id = (SELECT MIN(id) FROM FengTu_PL_Email_Account)") int makeFirstDefault();
+        @Select("SELECT COUNT(*) FROM FENGYU_PL_Email_Account") int countAccounts();
+        @Select("SELECT COUNT(*) FROM FENGYU_PL_Email_Account WHERE is_default = TRUE") int countDefaults();
+        @Update("UPDATE FENGYU_PL_Email_Account SET is_default = FALSE WHERE is_default = TRUE") int clearDefault();
+        @Update("UPDATE FENGYU_PL_Email_Account SET is_default = TRUE WHERE id = #{id}") int setDefault(long id);
+        @Update("UPDATE FENGYU_PL_Email_Account SET is_default = TRUE WHERE id = (SELECT MIN(id) FROM FENGYU_PL_Email_Account)") int makeFirstDefault();
 
-        @Insert("INSERT INTO FengTu_PL_Email_Account(display_name,email,encrypted_password,smtp_host,smtp_port,smtp_security,imap_host,imap_port,imap_security,is_default,created_at) "
+        @Insert("INSERT INTO FENGYU_PL_Email_Account(display_name,email,encrypted_password,smtp_host,smtp_port,smtp_security,imap_host,imap_port,imap_security,is_default,created_at) "
             + "VALUES(#{displayName},#{email},#{encryptedPassword},#{smtpHost},#{smtpPort},#{smtpSecurity},#{imapHost},#{imapPort},#{imapSecurity},#{defaultAccount},CURRENT_TIMESTAMP)")
         @Options(useGeneratedKeys = true, keyProperty = "id") int insert(AccountRow row);
 
-        @Update("UPDATE FengTu_PL_Email_Account SET display_name=#{displayName},email=#{email},encrypted_password=#{encryptedPassword},"
+        @Update("UPDATE FENGYU_PL_Email_Account SET display_name=#{displayName},email=#{email},encrypted_password=#{encryptedPassword},"
             + "smtp_host=#{smtpHost},smtp_port=#{smtpPort},smtp_security=#{smtpSecurity},imap_host=#{imapHost},imap_port=#{imapPort},"
             + "imap_security=#{imapSecurity},is_default=#{defaultAccount} WHERE id=#{id}")
         int update(AccountRow row);
 
-        @Delete("DELETE FROM FengTu_PL_Email_Account WHERE id = #{id}") int delete(long id);
+        @Delete("DELETE FROM FENGYU_PL_Email_Account WHERE id = #{id}") int delete(long id);
     }
 
     static void register(EmailDatabase database, Class<?> mapper) {
