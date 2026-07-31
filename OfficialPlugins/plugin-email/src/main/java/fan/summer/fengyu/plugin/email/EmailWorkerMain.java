@@ -41,6 +41,7 @@ public final class EmailWorkerMain {
             .on("email_account_delete", handlers.handle("email_account_delete", handlers::deleteAccount))
             .on("email_account_set_default", handlers.handle("email_account_set_default", handlers::setDefaultAccount))
             .on("email_account_test", handlers.handle("email_account_test", handlers::testAccount))
+            .on("email_account_test_imap", handlers.handle("email_account_test_imap", handlers::testImapAccount))
             .on("email_contact_find", handlers.handle("email_contact_find", handlers::findContact))
             .on("email_contact_save", handlers.handle("email_contact_save", handlers::saveContact))
             .on("email_contact_delete", handlers.handle("email_contact_delete", handlers::deleteContact))

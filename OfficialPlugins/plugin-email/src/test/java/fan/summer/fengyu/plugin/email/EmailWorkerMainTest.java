@@ -87,7 +87,7 @@ class EmailWorkerMainTest {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         List<String> methods = List.of(
             "email_account_save", "email_account_find", "email_account_delete", "email_account_set_default",
-            "email_account_test", "email_contact_save", "email_contact_find", "email_contact_delete",
+            "email_account_test", "email_account_test_imap", "email_contact_save", "email_contact_find", "email_contact_delete",
             "email_tag_save", "email_tags_list", "email_tag_delete", "email_tags_assign",
             "email_config_save", "email_configs_list", "email_config_find", "email_config_delete",
             "email_batch_preview", "email_send_records_query", "email_archive_detail", "confirm_send", "reject_send");
