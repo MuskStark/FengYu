@@ -24,7 +24,7 @@ public final class AddressBookService {
         String email = input.email().trim().toLowerCase(Locale.ROOT);
         if (!email.contains("@")) throw new IllegalArgumentException("Invalid email address");
         return addressBook.saveContact(new AddressBookRepository.ContactInput(input.id(), email,
-            trimToNull(input.nickname())), tagIds == null ? null : Set.copyOf(tagIds));
+            trimToNull(input.nickname()), trimToNull(input.notes())), tagIds == null ? null : Set.copyOf(tagIds));
     }
     public Optional<Contact> findContact(long id) { return addressBook.findContact(id); }
     public boolean deleteContact(long id) { return addressBook.deleteContact(id); }
@@ -45,5 +45,5 @@ public final class AddressBookService {
 
     private static String trimToNull(String value) { return blank(value) ? null : value.trim(); }
     private static boolean blank(String value) { return value == null || value.isBlank(); }
-    public record ContactInput(Long id, String email, String nickname) { }
+    public record ContactInput(Long id, String email, String nickname, String notes) { }
 }

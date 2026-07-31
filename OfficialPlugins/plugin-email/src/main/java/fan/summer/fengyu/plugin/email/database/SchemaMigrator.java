@@ -12,7 +12,7 @@ import java.util.List;
 /** Executes the plugin's versioned, dialect-specific schema resources. */
 public final class SchemaMigrator {
     private static final String HISTORY = "FENGYU_PL_Email_Schema_History";
-    private static final int LATEST_VERSION = 4;
+    private static final int LATEST_VERSION = 5;
     private final String dialect;
     private final DataSource dataSource;
 
