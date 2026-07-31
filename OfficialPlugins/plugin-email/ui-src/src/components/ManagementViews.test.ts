@@ -39,6 +39,10 @@ it('keeps account passwords write-only and separates test from save', async () =
   expect(wrapper.get('input[type="password"]').attributes('autocomplete')).toBe('new-password')
   await wrapper.get('[data-testid="smtp-test"]').trigger('click')
   expect(bridge.invoke).toHaveBeenLastCalledWith('email_account_test', expect.any(Object))
+  // SMTP and IMAP each have their own test button dispatching distinct methods.
+  expect(wrapper.get('[data-testid="imap-test"]').element).toBeTruthy()
+  await wrapper.get('[data-testid="imap-test"]').trigger('click')
+  expect(bridge.invoke).toHaveBeenLastCalledWith('email_account_test_imap', expect.any(Object))
   await wrapper.get('[data-testid="account-save"]').trigger('click')
   // save dispatches email_account_save, then refreshes the list via email_accounts_list. The mocked
   // invoke drops the default params arg, so assert on the method name only for the refresh call.
