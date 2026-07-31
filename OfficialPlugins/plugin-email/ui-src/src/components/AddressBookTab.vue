@@ -50,7 +50,7 @@ function confirmDelete(): void {
   <section class="panel-grid">
     <v-card class="surface" variant="flat"><v-card-title>{{ t('contacts.title') }}</v-card-title><v-card-text>
       <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
-      <div class="inline-fields"><v-text-field v-model="store.query" data-testid="contact-search" :label="t('common.search')" @keyup.enter="store.load" /><v-select v-model="store.selectedTagIds" :items="store.tags" item-title="name" item-value="id" multiple chips :label="t('contacts.filterTag')" /><v-btn @click="store.load">{{ t('common.search') }}</v-btn></div>
+      <div class="inline-fields"><v-text-field v-model="store.query" data-testid="contact-search" hide-details :label="t('common.search')" @keyup.enter="store.load" /><v-select v-model="store.selectedTagIds" :items="store.tags" item-title="name" item-value="id" multiple chips hide-details :label="t('contacts.filterTag')" /><v-btn @click="store.load">{{ t('common.search') }}</v-btn></div>
       <div class="contact-row" v-for="item in store.contacts" :key="item.id" data-testid="contact-row" @click="edit(item)">
         <v-checkbox-btn v-model="selectedContacts" :value="item.id" @click.stop />
         <div class="contact-avatar">{{ initials(item) }}</div>
@@ -66,7 +66,7 @@ function confirmDelete(): void {
         </div>
         <v-btn variant="text" color="error" size="small" @click.stop="deleteContact(item.id)">{{ t('common.delete') }}</v-btn>
       </div>
-      <div data-testid="contact-bulk-tags" class="inline-fields mt-4"><v-select v-model="assignTagIds" :items="store.tags" item-title="name" item-value="id" multiple chips :label="t('contacts.assignTags')" /><v-btn :disabled="!selectedContacts.length" @click="assign">{{ t('contacts.assignTags') }}</v-btn></div>
+      <div data-testid="contact-bulk-tags" class="inline-fields mt-4"><v-select v-model="assignTagIds" :items="store.tags" item-title="name" item-value="id" multiple chips hide-details :label="t('contacts.assignTags')" /><v-btn :disabled="!selectedContacts.length" @click="assign">{{ t('contacts.assignTags') }}</v-btn></div>
     </v-card-text></v-card>
     <div class="d-flex flex-column ga-4">
       <v-card class="surface" variant="flat"><v-card-title>{{ contactId ? t('contacts.editContact') : t('contacts.newContact') }}</v-card-title><v-card-text>
@@ -82,7 +82,7 @@ function confirmDelete(): void {
             <span>{{ tag.name }}</span><v-btn variant="text" color="error" size="small" @click="deleteTag(tag.id)">{{ t('common.delete') }}</v-btn>
           </div>
         </div>
-        <div class="inline-fields mt-4"><v-text-field v-model="tagName" :label="t('contacts.newTag')" /><v-btn @click="addTag">{{ t('common.add') }}</v-btn></div>
+        <div class="inline-fields mt-4"><v-text-field v-model="tagName" hide-details :label="t('contacts.newTag')" /><v-btn @click="addTag">{{ t('common.add') }}</v-btn></div>
       </v-card-text></v-card>
     </div>
   </section>
