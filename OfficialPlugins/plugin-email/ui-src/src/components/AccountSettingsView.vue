@@ -18,6 +18,9 @@ function newAccount(): void {
 const testAccount = () => guard(t('accounts.testAction'), async () => {
   await invoke('email_account_test', { accountId: accounts.draft.id }); notice.value = t('accounts.testSuccess')
 })
+const testImapAccount = () => guard(t('accounts.testAction'), async () => {
+  await invoke('email_account_test_imap', { accountId: accounts.draft.id }); notice.value = t('accounts.testSuccess')
+})
 const saveAccount = () => guard(t('accounts.saveAction'), async () => {
   await invoke('email_account_save', { ...accounts.draft }); accounts.draft.password = ''; await accounts.load(); notice.value = t('accounts.saved')
 })
@@ -47,10 +50,26 @@ const confirmRemoveAccount = () => {
           <v-text-field v-model="accounts.draft.displayName" :label="t('accounts.displayName')" />
           <v-text-field v-model="accounts.draft.email" :label="t('contacts.email')" />
           <v-text-field v-model="accounts.draft.password" type="password" autocomplete="new-password" :label="t('accounts.password')" :hint="t('accounts.passwordHelp')" persistent-hint />
-          <div class="form-grid"><v-text-field v-model="accounts.draft.smtpHost" :label="t('accounts.smtp')" /><v-text-field v-model.number="accounts.draft.smtpPort" type="number" :label="t('accounts.port')" /><v-select v-model="accounts.draft.smtpSecurity" :items="['SSL','STARTTLS','PLAIN']" :label="t('accounts.security')" />
-          <v-text-field v-model="accounts.draft.imapHost" :label="t('accounts.imap')" /><v-text-field v-model.number="accounts.draft.imapPort" type="number" :label="t('accounts.port')" /><v-select v-model="accounts.draft.imapSecurity" :items="['SSL','STARTTLS','PLAIN']" :label="t('accounts.security')" /></div>
+          <v-card variant="outlined" class="pa-4">
+            <div class="text-subtitle-1 font-weight-bold mb-3">{{ t('accounts.smtpSection') }}</div>
+            <div class="form-grid">
+              <v-text-field class="full-row" v-model="accounts.draft.smtpHost" :label="t('accounts.smtp')" />
+              <v-text-field v-model.number="accounts.draft.smtpPort" type="number" :label="t('accounts.port')" />
+              <v-select v-model="accounts.draft.smtpSecurity" :items="['SSL','STARTTLS','PLAIN']" :label="t('accounts.security')" />
+            </div>
+            <div class="d-flex ga-2 mt-3"><v-btn data-testid="smtp-test" variant="tonal" :loading="busy" @click="testAccount">{{ t('accounts.testSmtp') }}</v-btn></div>
+          </v-card>
+          <v-card variant="outlined" class="pa-4">
+            <div class="text-subtitle-1 font-weight-bold mb-3">{{ t('accounts.imapSection') }}</div>
+            <div class="form-grid">
+              <v-text-field class="full-row" v-model="accounts.draft.imapHost" :label="t('accounts.imap')" />
+              <v-text-field v-model.number="accounts.draft.imapPort" type="number" :label="t('accounts.port')" />
+              <v-select v-model="accounts.draft.imapSecurity" :items="['SSL','STARTTLS','PLAIN']" :label="t('accounts.security')" />
+            </div>
+            <div class="d-flex ga-2 mt-3"><v-btn data-testid="imap-test" variant="tonal" :loading="busy" @click="testImapAccount">{{ t('accounts.testImap') }}</v-btn></div>
+          </v-card>
           <v-checkbox v-model="accounts.draft.defaultAccount" :label="t('accounts.defaultAccount')" />
-          <div class="d-flex ga-2 justify-end"><v-btn v-if="accounts.draft.id" color="error" variant="text" @click="removeAccount">{{ t('common.delete') }}</v-btn><v-btn v-if="accounts.draft.id && !accounts.draft.defaultAccount" variant="tonal" @click="makeDefault">{{ t('accounts.makeDefault') }}</v-btn><v-btn data-testid="smtp-test" variant="tonal" :loading="busy" @click="testAccount">{{ t('accounts.test') }}</v-btn><v-btn data-testid="account-save" color="primary" :loading="busy" @click="saveAccount">{{ t('common.save') }}</v-btn></div>
+          <div class="d-flex ga-2 justify-end"><v-btn v-if="accounts.draft.id" color="error" variant="text" @click="removeAccount">{{ t('common.delete') }}</v-btn><v-btn v-if="accounts.draft.id && !accounts.draft.defaultAccount" variant="tonal" @click="makeDefault">{{ t('accounts.makeDefault') }}</v-btn><v-btn data-testid="account-save" color="primary" :loading="busy" @click="saveAccount">{{ t('common.save') }}</v-btn></div>
         </div>
       </div>
     </v-card-text>
