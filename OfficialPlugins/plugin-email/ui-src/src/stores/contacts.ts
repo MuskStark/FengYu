@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { invoke } from '../sdk'
 
-export interface Contact { id: number; email: string; nickname?: string; tagIds?: number[] }
+export interface Contact { id: number; email: string; nickname?: string; notes?: string; tagIds?: number[] }
 export interface Tag { id: number; name: string }
 
 export const useContactsStore = defineStore('email-contacts', () => {
