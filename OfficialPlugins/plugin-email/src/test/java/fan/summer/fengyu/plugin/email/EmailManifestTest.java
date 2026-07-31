@@ -30,9 +30,10 @@ class EmailManifestTest {
             manifest.getAsJsonArray("permissions").asList().stream().map(value -> value.getAsString()).toList());
 
         List<String> expected = List.of("email_accounts_list", "email_contacts_query", "email_send_single",
-            "email_send_batch", "email_send_status", "email_archive_fetch", "email_archive_query");
+            "email_send_batch", "email_send_status", "email_archive_fetch", "email_archive_query",
+            "email_account_test", "email_account_test_imap");
         var tools = manifest.getAsJsonArray("aiTools").asList();
-        assertEquals(7, tools.size());
+        assertEquals(expected.size(), tools.size());
         var names = tools.stream().map(value -> value.getAsJsonObject().get("name").getAsString()).toList();
         var methods = tools.stream().map(value -> value.getAsJsonObject().get("method").getAsString()).toList();
         assertEquals(expected, names);
