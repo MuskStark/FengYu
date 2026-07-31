@@ -14,7 +14,7 @@ public final class AddressBookRpc {
 
     public Contact saveContact(ContactRequest request) {
         long id = addressBook.saveContact(new AddressBookService.ContactInput(
-            request.id(), request.email(), request.nickname()), request.tagIds());
+            request.id(), request.email(), request.nickname(), request.notes()), request.tagIds());
         return addressBook.findContact(id).orElseThrow();
     }
     public Optional<Contact> findContact(long id) { return addressBook.findContact(id); }
@@ -29,7 +29,7 @@ public final class AddressBookRpc {
     public void assignTags(BulkTagRequest request) { addressBook.assignTags(request.contactIds(), request.tagIds()); }
     public Set<String> resolveRecipients(Set<Long> tagIds) { return addressBook.resolveRecipientEmails(tagIds); }
 
-    public record ContactRequest(Long id, String email, String nickname, Set<Long> tagIds) { }
+    public record ContactRequest(Long id, String email, String nickname, String notes, Set<Long> tagIds) { }
     public record TagRequest(Long id, String name) { }
     public record SearchRequest(String query, Set<Long> tagIds, int offset, int limit) {
         public SearchRequest { tagIds = tagIds == null ? Set.of() : Set.copyOf(tagIds); }

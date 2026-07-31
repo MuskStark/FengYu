@@ -42,7 +42,7 @@ class EmailWorkerMainTest {
         long tagId = addressBook.saveTag(null, "customers");
         long attachmentTagId = addressBook.saveTag(null, "East");
         long contactId = addressBook.saveContact(new AddressBookService.ContactInput(null,
-            "recipient@example.com", "Recipient"));
+            "recipient@example.com", "Recipient", null));
         addressBook.assignTags(Set.of(contactId), Set.of(tagId, attachmentTagId));
         Path batchDirectory = Files.createDirectory(temp.resolve("worker-batch"));
         Files.writeString(batchDirectory.resolve("report_East.pdf"), "report");
