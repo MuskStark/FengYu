@@ -100,7 +100,8 @@ body { margin: 0; min-width: 320px; background: rgb(var(--v-theme-background)); 
 .full-row { grid-column: 1 / -1; }
 .inline-fields { display: flex; gap: 14px; align-items: center; }
 .inline-fields > * { flex: 1; }
-.contact-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 4px; border-bottom: 1px solid var(--email-border); }
+.contact-row { display: flex; gap: 12px; align-items: center; padding: 10px 4px; border-bottom: 1px solid var(--email-border); }
+.contact-row > .v-selection-control { flex: 0 0 auto; }
 .contact-row__main { flex: 1; min-width: 0; }
 .contact-row__name { font-weight: 600; font-size: 14px; }
 .contact-row__email { color: var(--email-text-muted); font-size: 12px; margin-top: 1px; }
