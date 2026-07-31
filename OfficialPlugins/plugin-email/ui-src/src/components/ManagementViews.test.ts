@@ -54,8 +54,30 @@ it('keeps bulk contact actions separate from tag management', () => {
   bridge.invoke.mockResolvedValue({ success: true, contacts: [], tags: [] })
   const wrapper = mount(AddressBookTab, options())
   expect(wrapper.get('[data-testid="contact-bulk-tags"]').element).toBeTruthy()
-  expect(wrapper.get('[data-testid="tag-manager-open"]').element).toBeTruthy()
+  // tag manager is now a always-visible card, not a dialog opened by a button
+  expect(wrapper.get('[data-testid="tag-manager-card"]').element).toBeTruthy()
   expect(wrapper.find('[data-testid="tag-manager-dialog"]').exists()).toBe(false)
+  expect(wrapper.find('[data-testid="tag-manager-open"]').exists()).toBe(false)
+})
+
+it('folds contact tag pills beyond the first two', async () => {
+  bridge.invoke.mockResolvedValue({ success: true, contacts: [{ id: 1, email: 'a@example.com', tagIds: [10, 20, 30] }], tags: [{ id: 10, name: '客户' }, { id: 20, name: 'VIP' }, { id: 30, name: '内部' }] })
+  const wrapper = mount(AddressBookTab, options())
+  // onMounted triggers an async store.load(); wait for the row to render before asserting the fold.
+  await vi.waitFor(() => expect(wrapper.findAll('[data-testid="contact-row"]')).toHaveLength(1))
+  expect(wrapper.get('[data-testid="contact-row"]').text()).toContain('+1')
+})
+
+it('filters the tag manager list by the search query', async () => {
+  bridge.invoke.mockResolvedValue({ success: true, contacts: [], tags: [{ id: 1, name: '客户' }, { id: 2, name: 'VIP' }, { id: 3, name: '供应商' }] })
+  const wrapper = mount(AddressBookTab, options())
+  // onMounted triggers an async store.load(); wait for the tag rows to render before searching.
+  await vi.waitFor(() => expect(wrapper.findAll('[data-testid="tag-manager-row"]')).toHaveLength(3))
+  // VTextField is stubbed to render a real <input> with data-testid bound directly to it (v-bind="$attrs").
+  await wrapper.get('input[data-testid="tag-search"]').setValue('vi')
+  const rows = wrapper.findAll('[data-testid="tag-manager-row"]')
+  expect(rows).toHaveLength(1)
+  expect(rows[0].text()).toContain('VIP')
 })
 
 it('saves the contact with tags selected in the contact form', async () => {
