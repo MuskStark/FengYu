@@ -8,6 +8,7 @@ import fan.summer.fengyu.plugin.email.crypto.CredentialCipher;
 import fan.summer.fengyu.plugin.email.database.EmailDatabase;
 import fan.summer.fengyu.plugin.email.model.ArchiveRequest;
 import fan.summer.fengyu.plugin.email.model.ArchivedMessage;
+import fan.summer.fengyu.plugin.email.model.SendResult;
 import fan.summer.fengyu.sdk.PluginDatabaseConfig;
 import jakarta.activation.DataHandler;
 import jakarta.mail.Flags;
@@ -40,6 +41,7 @@ import java.util.Properties;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EmailArchiveServiceTest {
@@ -240,6 +242,24 @@ class EmailArchiveServiceTest {
         String temporaryName = EmailArchiveService.temporaryArchivePath(Path.of(archived.emlPath()))
             .getFileName().toString();
         assertTrue(temporaryName.getBytes(StandardCharsets.UTF_8).length <= 254);
+    }
+
+    @Test void imapConnectionTestSucceedsAgainstGreenMail() {
+        SendResult result = service.testImap(accountId);
+        assertTrue(result.success());
+        assertNull(result.errorMessage());
+    }
+
+    @Test void imapConnectionTestFailsAndRedactsPasswordWithoutThrowing() throws Exception {
+        long badAccount = new AccountService(database, credentialCipher).save(
+            new AccountService.AccountInput(null, "Bad", "bad@example.com", "wrong-password",
+                "127.0.0.1", 25, "PLAIN", "127.0.0.1", greenMail.getImap().getPort(), "PLAIN", false));
+
+        SendResult result = service.testImap(badAccount);
+
+        assertFalse(result.success());
+        assertNotNull(result.errorMessage());
+        assertFalse(result.errorMessage().contains("wrong-password"));
     }
 
     private MailFolder folder(String name) throws Exception {

@@ -6,6 +6,7 @@ import fan.summer.fengyu.plugin.email.database.EmailDatabase;
 import fan.summer.fengyu.plugin.email.model.ArchiveRequest;
 import fan.summer.fengyu.plugin.email.model.ArchivedMessage;
 import fan.summer.fengyu.plugin.email.model.EmailAccount;
+import fan.summer.fengyu.plugin.email.model.SendResult;
 import fan.summer.fengyu.plugin.email.repository.AccountRepository;
 import fan.summer.fengyu.plugin.email.repository.ArchiveRepository;
 import jakarta.mail.Address;
@@ -97,6 +98,22 @@ public final class EmailArchiveService {
             throw new IllegalStateException("IMAP collection failed: " + safeMessage(e, password), e);
         }
         return new CollectResult(archived, skipped, failures);
+    }
+
+    public SendResult testImap(long accountId) {
+        EmailAccount account = accounts.findAccount(accountId)
+            .orElseThrow(() -> new IllegalArgumentException("Unknown account: " + accountId));
+        if (blank(account.imapHost()) || account.imapPort() == null || blank(account.imapSecurity())) {
+            return SendResult.failure("IMAP is not configured for account: " + accountId);
+        }
+        String password = accountService.decryptPassword(accountId);
+        try (Store store = Session.getInstance(imapProperties(account.imapSecurity()))
+                .getStore(protocol(account.imapSecurity()))) {
+            store.connect(account.imapHost(), account.imapPort(), account.email(), password);
+            return SendResult.success(null);
+        } catch (Exception e) {
+            return SendResult.failure(safeMessage(e, password));
+        }
     }
 
     public List<ArchivedMessage> search(SearchFilter filter) {
