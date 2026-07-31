@@ -100,6 +100,15 @@ body { margin: 0; min-width: 320px; background: rgb(var(--v-theme-background)); 
 .full-row { grid-column: 1 / -1; }
 .inline-fields { display: flex; gap: 14px; align-items: center; }
 .inline-fields > * { flex: 1; }
+.contact-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 4px; border-bottom: 1px solid var(--email-border); }
+.contact-row__main { flex: 1; min-width: 0; }
+.contact-row__name { font-weight: 600; font-size: 14px; }
+.contact-row__email { color: var(--email-text-muted); font-size: 12px; margin-top: 1px; }
+.contact-avatar { width: 36px; height: 36px; border-radius: 50%; flex: 0 0 36px; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; background: linear-gradient(135deg, var(--email-accent), var(--email-accent-2, #9c7fd8)); font-size: 14px; text-transform: uppercase; }
+.tag-overflow { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.tag-manager-list { max-height: 220px; overflow-y: auto; }
+.tag-manager-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 4px; border-bottom: 1px solid var(--email-border); }
+.tag-manager-row:last-child { border-bottom: 0; }
 .mode-switch, .attachment-row, .d-flex { display: flex; gap: 8px; flex-wrap: wrap; }
 .attachment-row { margin-top: 14px; }
 .account-layout > :last-child > * + * { margin-block-start: 14px; }
