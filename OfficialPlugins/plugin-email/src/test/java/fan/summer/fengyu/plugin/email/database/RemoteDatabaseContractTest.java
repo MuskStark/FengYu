@@ -78,7 +78,7 @@ class RemoteDatabaseContractTest {
 
             AddressBookRepository addressBook = new AddressBookRepository(database);
             long contactId = addressBook.saveContact(new AddressBookRepository.ContactInput(null,
-                "contact-" + unique + "@example.com", "Contract"));
+                "contact-" + unique + "@example.com", "Contract", null));
             long tagId = addressBook.saveTag(null, "contract-" + unique);
             addressBook.assignTags(Set.of(contactId), Set.of(tagId));
             assertEquals(Set.of("contact-" + unique + "@example.com"), addressBook.resolveRecipientEmails(Set.of(tagId)));

@@ -113,7 +113,7 @@ class SchemaMigratorTest {
              var versions = connection.createStatement().executeQuery(
                  "SELECT MAX(version) FROM FENGYU_PL_Email_Schema_History")) {
             assertTrue(versions.next());
-            assertEquals(4, versions.getInt(1));
+            assertEquals(5, versions.getInt(1));
         }
         Set<String> names = new HashSet<>();
         try (Connection connection = data.getConnection();

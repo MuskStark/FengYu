@@ -70,8 +70,8 @@ class PendingSendServiceTest {
         long east = contacts.saveTag(null, "East");
         long customers = contacts.saveTag(null, "Customers");
         long managers = contacts.saveTag(null, "Managers");
-        long alice = contacts.saveContact(new AddressBookRepository.ContactInput(null, "alice@example.com", "Alice"));
-        long manager = contacts.saveContact(new AddressBookRepository.ContactInput(null, "manager@example.com", "Manager"));
+        long alice = contacts.saveContact(new AddressBookRepository.ContactInput(null, "alice@example.com", "Alice", null));
+        long manager = contacts.saveContact(new AddressBookRepository.ContactInput(null, "manager@example.com", "Manager", null));
         contacts.assignTags(java.util.Set.of(alice), java.util.Set.of(east, customers));
         contacts.assignTags(java.util.Set.of(manager), java.util.Set.of(east, managers));
         Path input = Files.createDirectory(temp.resolve("batch-preview-input"));
