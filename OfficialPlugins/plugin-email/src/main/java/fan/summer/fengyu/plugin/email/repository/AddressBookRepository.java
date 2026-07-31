@@ -74,7 +74,7 @@ public final class AddressBookRepository {
     public long saveContact(ContactInput input, Set<Long> tagIds) {
         try (SqlSession session = database.openSession()) {
             Mapper mapper = session.getMapper(Mapper.class);
-            ContactRow row = new ContactRow(input.id(), input.email(), input.nickname(), null);
+            ContactRow row = new ContactRow(input.id(), input.email(), input.nickname(), normalizeNotes(input.notes()), null);
             if (input.id() == null) mapper.insertContact(row); else mapper.updateContact(row);
             long contactId = input.id() == null ? row.id() : input.id();
             if (tagIds != null) {
@@ -135,19 +135,22 @@ public final class AddressBookRepository {
         }
     }
 
-    public record ContactInput(Long id, String email, String nickname) { }
+    public record ContactInput(Long id, String email, String nickname, String notes) { }
     private static final class ContactRow {
         private Long id;
         private String email;
         private String nickname;
+        private String notes;
         private LocalDateTime createdAt;
         private ContactRow() { }
-        private ContactRow(Long id, String email, String nickname, LocalDateTime createdAt) {
-            this.id = id; this.email = email; this.nickname = nickname; this.createdAt = createdAt;
+        private ContactRow(Long id, String email, String nickname, String notes, LocalDateTime createdAt) {
+            this.id = id; this.email = email; this.nickname = nickname;
+            this.notes = notes; this.createdAt = createdAt;
         }
         public Long id() { return id; }
         public String email() { return email; }
         public String nickname() { return nickname; }
+        public String notes() { return notes; }
         public LocalDateTime createdAt() { return createdAt; }
     }
     private static final class TagRow {
@@ -157,12 +160,17 @@ public final class AddressBookRepository {
     }
 
     private static Contact contact(ContactRow row, List<Long> tagIds) {
-        return new Contact(row.id(), row.email(), row.nickname(), row.createdAt(), new LinkedHashSet<>(tagIds));
+        return new Contact(row.id(), row.email(), row.nickname(), row.notes(), row.createdAt(), new LinkedHashSet<>(tagIds));
+    }
+
+    /** Normalizes notes so blank/whitespace-only values are stored as null (matches the service-layer trimToNull invariant for direct repository callers). */
+    private static String normalizeNotes(String notes) {
+        return notes == null || notes.isBlank() ? null : notes;
     }
 
     private interface Mapper {
-        @Select("SELECT id,email,nickname,created_at AS createdAt FROM FENGYU_PL_Email_Contact WHERE id=#{id}") ContactRow findContact(long id);
-        @Select({"<script>", "SELECT DISTINCT c.id,c.email,c.nickname,c.created_at AS createdAt FROM FENGYU_PL_Email_Contact c",
+        @Select("SELECT id,email,nickname,notes,created_at AS createdAt FROM FENGYU_PL_Email_Contact WHERE id=#{id}") ContactRow findContact(long id);
+        @Select({"<script>", "SELECT DISTINCT c.id,c.email,c.nickname,c.notes,c.created_at AS createdAt FROM FENGYU_PL_Email_Contact c",
             "<if test='tagIds != null and !tagIds.isEmpty()'> JOIN FENGYU_PL_Email_Contact_Tag ct ON ct.contact_id=c.id</if>",
             "WHERE (LOWER(c.email) LIKE #{pattern} OR LOWER(COALESCE(c.nickname,'')) LIKE #{pattern})",
             "<if test='tagIds != null and !tagIds.isEmpty()'> AND ct.tag_id IN <foreach item='id' collection='tagIds' open='(' separator=',' close=')'>#{id}</foreach></if>",
@@ -188,9 +196,9 @@ public final class AddressBookRepository {
         Set<String> resolveIntersection(@Param("attachmentTag") String attachmentTag,
             @Param("groupTagIds") Set<Long> groupTagIds);
 
-        @Insert("INSERT INTO FENGYU_PL_Email_Contact(email,nickname,created_at) VALUES(#{email},#{nickname},CURRENT_TIMESTAMP)")
+        @Insert("INSERT INTO FENGYU_PL_Email_Contact(email,nickname,notes,created_at) VALUES(#{email},#{nickname},#{notes},CURRENT_TIMESTAMP)")
         @Options(useGeneratedKeys=true,keyProperty="id") int insertContact(ContactRow row);
-        @Update("UPDATE FENGYU_PL_Email_Contact SET email=#{email},nickname=#{nickname} WHERE id=#{id}") int updateContact(ContactRow row);
+        @Update("UPDATE FENGYU_PL_Email_Contact SET email=#{email},nickname=#{nickname},notes=#{notes} WHERE id=#{id}") int updateContact(ContactRow row);
         @Delete("DELETE FROM FENGYU_PL_Email_Contact_Tag WHERE contact_id=#{id}") int deleteContactTags(long id);
         @Delete("DELETE FROM FENGYU_PL_Email_Contact WHERE id=#{id}") int deleteContact(long id);
 

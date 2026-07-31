@@ -23,11 +23,11 @@ class AddressBookServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service.saveTag(null, "Engineering"));
 
         long alice = service.saveContact(new AddressBookService.ContactInput(null,
-            "alice@example.com", "Alice Chen"));
+            "alice@example.com", "Alice Chen", null));
         long bob = service.saveContact(new AddressBookService.ContactInput(null,
-            "bob@example.com", "Bob Stone"));
+            "bob@example.com", "Bob Stone", null));
         long carol = service.saveContact(new AddressBookService.ContactInput(null,
-            "carol@example.com", "Carol Jones"));
+            "carol@example.com", "Carol Jones", null));
 
         service.assignTags(Set.of(alice, bob), Set.of(engineering));
         service.assignTags(Set.of(alice, carol), Set.of(release));
@@ -46,10 +46,10 @@ class AddressBookServiceTest {
         AddressBookService service = new AddressBookService(database("address-book-crud"));
         long tag = service.saveTag(null, "Friends");
         long contact = service.saveContact(new AddressBookService.ContactInput(null,
-            "old@example.com", "Old"));
+            "old@example.com", "Old", null));
         service.assignTags(Set.of(contact), Set.of(tag));
 
-        service.saveContact(new AddressBookService.ContactInput(contact, "new@example.com", "New"));
+        service.saveContact(new AddressBookService.ContactInput(contact, "new@example.com", "New", null));
         assertEquals("new@example.com", service.findContact(contact).orElseThrow().email());
         assertTrue(service.deleteContact(contact));
         assertTrue(service.deleteTag(tag));
@@ -62,11 +62,11 @@ class AddressBookServiceTest {
         long vip = service.saveTag(null, "VIP");
 
         long contact = service.saveContact(new AddressBookService.ContactInput(null,
-            "tagged@example.com", "Tagged"), Set.of(customer));
+            "tagged@example.com", "Tagged", null), Set.of(customer));
         assertEquals(Set.of(customer), service.findContact(contact).orElseThrow().tagIds());
 
         service.saveContact(new AddressBookService.ContactInput(contact,
-            "tagged@example.com", "Tagged"), Set.of(vip));
+            "tagged@example.com", "Tagged", null), Set.of(vip));
         assertEquals(Set.of(vip), service.findContact(contact).orElseThrow().tagIds());
     }
 
