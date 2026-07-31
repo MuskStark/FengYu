@@ -17,6 +17,12 @@ const deleteTitle = computed(() => pendingDelete.value?.kind === 'tag'
 onMounted(() => store.load().catch(value => { error.value = actionable(value, t('contacts.loadAction')) }))
 function edit(item: Contact) { contactId.value = item.id; email.value = item.email; nickname.value = item.nickname ?? ''; contactTagIds.value = [...(item.tagIds ?? [])] }
 function reset() { contactId.value = undefined; email.value = ''; nickname.value = ''; contactTagIds.value = [] }
+// NOTE: helper named `tagLabel` (not `tagName` as in the task brief) to avoid clobbering the
+// tag-management dialog's existing `tagName` ref above, which the brief requires to remain untouched.
+const initials = (item: Contact) => (item.nickname || item.email || '?').charAt(0)
+function tagLabel(id: number): string { return store.tags.find(tag => tag.id === id)?.name ?? '' }
+function visibleTags(item: Contact): number[] { return (item.tagIds ?? []).slice(0, 2) }
+function hiddenTagCount(item: Contact): number { return Math.max(0, (item.tagIds ?? []).length - 2) }
 async function run(action: string, task: () => Promise<unknown>) {
   try { error.value = ''; await task(); await store.load() } catch (value) { error.value = actionable(value, action) }
 }
@@ -41,7 +47,21 @@ function confirmDelete(): void {
     <v-card class="surface" variant="flat"><v-card-title>{{ t('contacts.title') }}</v-card-title><v-card-text>
       <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
       <div class="inline-fields"><v-text-field v-model="store.query" data-testid="contact-search" :label="t('common.search')" @keyup.enter="store.load" /><v-select v-model="store.selectedTagIds" :items="store.tags" item-title="name" item-value="id" multiple chips :label="t('contacts.filterTag')" /><v-btn @click="store.load">{{ t('common.search') }}</v-btn></div>
-      <v-list lines="two"><v-list-item v-for="item in store.contacts" :key="item.id" :title="item.nickname || item.email" :subtitle="item.email" @click="edit(item)"><template #prepend><v-checkbox-btn v-model="selectedContacts" :value="item.id" @click.stop /></template><template #append><v-btn variant="text" color="error" @click.stop="deleteContact(item.id)">{{ t('common.delete') }}</v-btn></template></v-list-item></v-list>
+      <div class="contact-row" v-for="item in store.contacts" :key="item.id" data-testid="contact-row" @click="edit(item)">
+        <v-checkbox-btn v-model="selectedContacts" :value="item.id" @click.stop />
+        <div class="contact-avatar">{{ initials(item) }}</div>
+        <div class="contact-row__main">
+          <div class="contact-row__name">{{ item.nickname || item.email }}</div>
+          <div class="contact-row__email">{{ item.email }}</div>
+          <div class="tag-overflow" v-if="(item.tagIds ?? []).length">
+            <v-chip v-for="id in visibleTags(item)" :key="id" size="x-small" label>{{ tagLabel(id) }}</v-chip>
+            <v-chip v-if="hiddenTagCount(item) > 0" size="x-small" label :title="(item.tagIds ?? []).slice(2).map(tagLabel).join(', ')">
+              {{ t('contacts.tagsMore', { count: hiddenTagCount(item) }) }}
+            </v-chip>
+          </div>
+        </div>
+        <v-btn variant="text" color="error" size="small" @click.stop="deleteContact(item.id)">{{ t('common.delete') }}</v-btn>
+      </div>
       <div data-testid="contact-bulk-tags" class="inline-fields mt-4"><v-select v-model="assignTagIds" :items="store.tags" item-title="name" item-value="id" multiple chips :label="t('contacts.assignTags')" /><v-btn :disabled="!selectedContacts.length" @click="assign">{{ t('contacts.assignTags') }}</v-btn></div>
     </v-card-text></v-card>
     <v-card class="surface" variant="flat"><v-card-title>{{ contactId ? t('contacts.editContact') : t('contacts.newContact') }}</v-card-title><v-card-text><v-text-field v-model="email" data-testid="contact-email" :label="t('contacts.email')" /><v-text-field v-model="nickname" :label="t('contacts.name')" /><v-select v-model="contactTagIds" data-testid="contact-tags" :items="store.tags" item-title="name" item-value="id" multiple chips :label="t('contacts.assignTags')" /></v-card-text><v-card-actions><v-btn v-if="contactId" @click="reset">{{ t('contacts.newContact') }}</v-btn><v-btn data-testid="tag-manager-open" variant="text" @click="tagDialog = true">{{ t('contacts.manageTags') }}</v-btn><v-spacer /><v-btn data-testid="contact-save" color="primary" @click="saveContact">{{ t('common.save') }}</v-btn></v-card-actions></v-card>
