@@ -92,6 +92,15 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
         });
     }
 
+    public Object testImapAccount(Map<String, Object> params) {
+        return result(() -> {
+            long accountId = requiredLong(params, "accountId");
+            var value = archive.testImap(accountId);
+            log.info("IMAP test for account {}: {}", accountId, value.success() ? "succeeded" : "failed");
+            return value.success() ? ok("IMAP connection succeeded") : failure(value.errorMessage());
+        });
+    }
+
     public Object queryContacts(Map<String, Object> params) {
         return result(() -> {
             var values = addressBook.search(new AddressBookRpc.SearchRequest(string(params, "query"),
