@@ -97,6 +97,7 @@ body { margin: 0; min-width: 320px; background: rgb(var(--v-theme-background)); 
 .workspace-grid { display: grid; grid-template-columns: minmax(0, 1fr) 230px; gap: 16px; }
 .panel-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(300px, .8fr); gap: 20px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.full-row { grid-column: 1 / -1; }
 .inline-fields { display: flex; gap: 14px; align-items: center; }
 .inline-fields > * { flex: 1; }
 .mode-switch, .attachment-row, .d-flex { display: flex; gap: 8px; flex-wrap: wrap; }
