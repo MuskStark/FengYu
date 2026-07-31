@@ -21,8 +21,8 @@ const deleteTitle = computed(() => pendingDelete.value?.kind === 'tag'
 onMounted(() => store.load().catch(value => { error.value = actionable(value, t('contacts.loadAction')) }))
 function edit(item: Contact) { contactId.value = item.id; email.value = item.email; nickname.value = item.nickname ?? ''; notes.value = item.notes ?? ''; contactTagIds.value = [...(item.tagIds ?? [])] }
 function reset() { contactId.value = undefined; email.value = ''; nickname.value = ''; notes.value = ''; contactTagIds.value = [] }
-// NOTE: helper named `tagLabel` (not `tagName` as in the task brief) to avoid clobbering the
-// tag-management dialog's existing `tagName` ref above, which the brief requires to remain untouched.
+// NOTE: helper named `tagLabel` (not `tagName`) to avoid colliding with the `tagName` ref
+// above, which is bound to the tag-manager card's new-tag input.
 const initials = (item: Contact) => (item.nickname || item.email || '?').charAt(0)
 function tagLabel(id: number): string { return store.tags.find(tag => tag.id === id)?.name ?? '' }
 function visibleTags(item: Contact): number[] { return (item.tagIds ?? []).slice(0, 2) }
