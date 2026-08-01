@@ -1,8 +1,9 @@
-import { describe, expect, it, beforeEach } from 'vitest'
+import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { toChatHistory, guessPluginForFile, type ChatTurn } from './aiSession'
-import type { PluginFileRef } from '@/api/types'
+import type { PluginDescriptor, PluginFileRef } from '@/api/types'
 import { useAiSessionStore } from './aiSession'
+import { api } from '@/api/client'
 
 function turn(role: ChatTurn['role'], content: string, streaming = false): ChatTurn {
   return {
@@ -68,5 +69,37 @@ describe('AI session active files', () => {
     const ref: PluginFileRef = { id: 'ref_y', name: 'f', kind: 'file', access: 'read', size: 1 }
     store.addActiveFile('', ref) // user has not chosen a plugin
     expect(store.sendableFileRefs()).toEqual([])
+  })
+})
+
+describe('AI session installed plugins (plugin-picker source)', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('loadInstalledPlugins caches the plugin descriptor list', async () => {
+    const store = useAiSessionStore()
+    expect(store.installedPlugins).toEqual([])
+    const excel: PluginDescriptor = {
+      id: 'fan.summer.excel', name: 'Excel', description: '', category: 'OTHER',
+      icon: '', iconStyle: '', version: '1', uiEntry: '', supportsAi: true, source: 'OFFICIAL',
+      enabled: true, permissions: ['files.read'],
+    }
+    const python: PluginDescriptor = {
+      id: 'fan.summer.offlinepython', name: 'Python', description: '', category: 'OTHER',
+      icon: '', iconStyle: '', version: '1', uiEntry: '', supportsAi: true, source: 'OFFICIAL',
+      enabled: true, permissions: ['files.read', 'files.write'],
+    }
+    const noPerm: PluginDescriptor = {
+      id: 'fan.summer.markdown', name: 'Markdown', description: '', category: 'OTHER',
+      icon: '', iconStyle: '', version: '1', uiEntry: '', supportsAi: false, source: 'OFFICIAL',
+      enabled: true, permissions: [],
+    }
+    vi.spyOn(api, 'getPlugins').mockResolvedValue([excel, python, noPerm])
+    await store.loadInstalledPlugins()
+    expect(store.installedPlugins.map((p) => p.id)).toEqual([
+      'fan.summer.excel', 'fan.summer.offlinepython', 'fan.summer.markdown',
+    ])
+    // call site filters to plugins declaring files.read when building picker options
+    expect(store.installedPlugins.filter((p) => (p.permissions ?? []).includes('files.read')).map((p) => p.id))
+      .toEqual(['fan.summer.excel', 'fan.summer.offlinepython'])
   })
 })
