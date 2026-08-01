@@ -20,6 +20,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.function.Supplier;
 
 /**
  * The Plan-and-Execute agent runtime.
@@ -65,10 +66,10 @@ public class AgentRunner {
 
     private static final Logger log = LoggerFactory.getLogger(AgentRunner.class);
     private static final Pattern STEP_RESULT =
-            Pattern.compile("\\{\\{steps\\.(\\d+)\\.result}}");
+            Pattern.compile("\\{\\{steps\\.(\\d+)\\.result((?:\\.[A-Za-z0-9_-]+)*)}}");
     private static final String LAST_RESULT = "{{last.result}}";
 
-    private final List<ToolCallback> tools;
+    private final Supplier<List<ToolCallback>> toolProvider;
     private final PlanGenerator planGenerator;
     private final StepExecutor stepExecutor;
 
@@ -82,7 +83,13 @@ public class AgentRunner {
      * @param stepExecutor  the step-execution seam; runs one step's tool
      */
     public AgentRunner(List<ToolCallback> tools, PlanGenerator planGenerator, StepExecutor stepExecutor) {
-        this.tools = tools == null ? List.of() : tools;
+        this(() -> tools == null ? List.of() : tools, planGenerator, stepExecutor);
+    }
+
+    /** Production constructor for a tool catalog that can change between agent runs. */
+    public AgentRunner(Supplier<List<ToolCallback>> toolProvider, PlanGenerator planGenerator,
+                       StepExecutor stepExecutor) {
+        this.toolProvider = toolProvider == null ? List::of : toolProvider;
         this.planGenerator = planGenerator;
         this.stepExecutor = stepExecutor;
     }
@@ -155,6 +162,9 @@ public class AgentRunner {
     // ── The state machine ──────────────────────────────────────────────
 
     private void drive(AgentRun run, AgentEventSink sink) {
+        // One consistent catalog per run. Plugin callbacks re-check enabled/installed state at call
+        // time, so disabling a plugin also safely stops a later step in an already-running plan.
+        List<ToolCallback> tools = List.copyOf(toolProvider.get());
         AgentRunConfig cfg = run.getConfig();
         int replansRemaining = cfg.maxReplans();
         AgentPlan suppliedWorkflow = run.getPlan();
@@ -211,7 +221,7 @@ public class AgentRunner {
                     return;
                 }
                 run.setStatus(AgentRunStatus.EXECUTING);
-                StepFailure failure = executeSteps(run, sink, cfg, plan);
+                StepFailure failure = executeSteps(run, sink, cfg, plan, tools);
 
                 if (failure == null) {
                     // All steps completed → terminal success.
@@ -257,7 +267,8 @@ public class AgentRunner {
      * resolved before a level starts, so no worker can leave a sibling blocked behind a shared
      * run-level approval latch.
      */
-    private StepFailure executeSteps(AgentRun run, AgentEventSink sink, AgentRunConfig cfg, AgentPlan plan)
+    private StepFailure executeSteps(AgentRun run, AgentEventSink sink, AgentRunConfig cfg,
+                                     AgentPlan plan, List<ToolCallback> tools)
             throws InterruptedException {
         Map<Integer, String> results = Collections.synchronizedMap(new HashMap<>());
         Set<Integer> completed = new HashSet<>();
@@ -300,7 +311,7 @@ public class AgentRunner {
 
                 List<Callable<StepOutcome>> tasks = ready.stream()
                         .<Callable<StepOutcome>>map(step ->
-                                () -> executeStep(run, sink, step, results))
+                                () -> executeStep(run, sink, step, results, tools))
                         .toList();
                 List<Future<StepOutcome>> futures = executor.invokeAll(tasks);
                 List<StepFailure> failures = new ArrayList<>();
@@ -333,7 +344,7 @@ public class AgentRunner {
     }
 
     private StepOutcome executeStep(AgentRun run, AgentEventSink sink, AgentStep step,
-                                    Map<Integer, String> results) {
+                                    Map<Integer, String> results, List<ToolCallback> tools) {
         if (run.isCancelled()) {
             return new StepOutcome(new StepFailure(step.index(), "cancelled before step"));
         }
@@ -548,7 +559,7 @@ public class AgentRunner {
         if (LAST_RESULT.equals(text)) return parsedResult(lastResult);
         Matcher exact = STEP_RESULT.matcher(text);
         if (exact.matches()) {
-            return parsedResult(requiredResult(results, Integer.parseInt(exact.group(1))));
+            return referencedResult(requiredResult(results, Integer.parseInt(exact.group(1))), exact.group(2));
         }
 
         String replaced = text.replace(LAST_RESULT, lastResult == null ? "" : lastResult);
@@ -556,7 +567,9 @@ public class AgentRunner {
         StringBuffer output = new StringBuffer();
         while (matcher.find()) {
             String result = requiredResult(results, Integer.parseInt(matcher.group(1)));
-            matcher.appendReplacement(output, Matcher.quoteReplacement(result));
+            Object referenced = referencedResult(result, matcher.group(2));
+            String rendered = referenced instanceof String string ? string : JsonHelper.toJson(referenced);
+            matcher.appendReplacement(output, Matcher.quoteReplacement(rendered));
         }
         matcher.appendTail(output);
         return output.toString();
@@ -577,5 +590,19 @@ public class AgentRunner {
         } catch (Exception ignored) {
             return result;
         }
+    }
+
+    private static Object referencedResult(String result, String dottedPath) {
+        Object parsed = parsedResult(result);
+        if (dottedPath == null || dottedPath.isEmpty()) return parsed;
+        if (!(parsed instanceof Map<?, ?> map)) {
+            throw new IllegalArgumentException("Tool result is not an object; cannot read " + dottedPath);
+        }
+        @SuppressWarnings("unchecked")
+        Object value = JsonHelper.navigate((Map<String, Object>) map, dottedPath.substring(1));
+        if (value == null) {
+            throw new IllegalArgumentException("Tool result has no output field " + dottedPath.substring(1));
+        }
+        return value;
     }
 }

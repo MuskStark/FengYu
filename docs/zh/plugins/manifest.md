@@ -51,6 +51,7 @@ lang: zh-CN
 | `description` | string | 是 | 给模型的自然语言描述。 |
 | `method` | string | 是 | 当模型调用此工具时要调用的 worker JSON-RPC 方法。 |
 | `inputSchema` | string | 是 | 描述工具参数的 JSON Schema，序列化为**字符串**。 |
+| `outputSchema` | string | 否 | 描述 Worker 结果信封的 JSON Schema，以字符串形式序列化，用于可视化工作流发现输出。 |
 | `timeoutSeconds` | integer | 否 | 针对此工具的调用超时（秒），钳制到 `[1, 600]`。覆盖 `backend.callTimeoutSeconds`。默认 `60`。**可能超过其声明超时的工具必须拆分为 `*_start` / `*_status` / `*_cancel` 的 job 方法**——参见 [Worker → 长任务（job 模式）](/zh/plugins/worker#长任务-job-模式)。 |
 
 端到端流程见 [AI 工具](/zh/plugins/ai-tools)。
@@ -114,7 +115,7 @@ lang: zh-CN
 
 ### Excel 插件（含 aiTools）
 
-`fan.summer.excel` 的清单——一个带读写权限和 AI 工具的文件插件。这里完整展示两个工具：`excel_analyze`（短时同步调用），以及 `excel_execute_start`（长时拆分 job 模式对的启动半边）。其余遵循同样的 `{name, description, method, inputSchema, timeoutSeconds?}` 结构：
+`fan.summer.excel` 的清单——一个带读写权限和 AI 工具的文件插件。这里完整展示两个工具：`excel_analyze`（短时同步调用），以及 `excel_execute_start`（长时拆分 job 模式对的启动半边）。其余遵循同样的 `{name, description, method, inputSchema, outputSchema?, timeoutSeconds?}` 结构：
 
 ```json
 {

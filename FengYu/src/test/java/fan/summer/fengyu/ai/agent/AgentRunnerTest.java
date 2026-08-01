@@ -334,7 +334,7 @@ class AgentRunnerTest {
         RecordingSink sink = new RecordingSink();
         AgentPlan workflow = new AgentPlan("chain", List.of(
                 step(0, "echo", Map.of("text", "first")),
-                step(1, "echo", Map.of("text", "{{steps.0.result}}"))
+                step(1, "echo", Map.of("text", "{{steps.0.result.value}}"))
         ), "caller supplied");
         AgentRun run = runFor("chain", new AgentRunConfig(false, false, false, 0));
         run.setPlan(workflow);
@@ -355,7 +355,7 @@ class AgentRunnerTest {
         assertTrue(sink.awaitDone());
 
         assertEquals(0, plannerCalls.get(), "a supplied workflow must bypass AI planning");
-        assertEquals(List.of("first", "{value=from-first}"), receivedInputs);
+        assertEquals(List.of("first", "from-first"), receivedInputs);
         assertEquals(AgentRunStatus.COMPLETED, run.getStatus());
     }
 

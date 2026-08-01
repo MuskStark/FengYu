@@ -269,6 +269,17 @@ public class PluginPackageService {
             } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
                 throw new IllegalArgumentException("Invalid inputSchema for AI tool " + tool.name(), e);
             }
+            if (tool.outputSchema() != null) {
+                try {
+                    com.fasterxml.jackson.databind.JsonNode schemaNode = new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readTree(tool.outputSchema());
+                    if (!(schemaNode.has("type") && "object".equals(schemaNode.get("type").asText()))) {
+                        throw new IllegalArgumentException("AI tool outputSchema must be a JSON object: " + tool.name());
+                    }
+                } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                    throw new IllegalArgumentException("Invalid outputSchema for AI tool " + tool.name(), e);
+                }
+            }
             validateTimeout(tool.timeoutSeconds(), "aiTools[" + tool.name() + "].timeoutSeconds");
         }
     }
