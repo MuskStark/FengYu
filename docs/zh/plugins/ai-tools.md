@@ -6,18 +6,19 @@ lang: zh-CN
 
 # AI 工具
 
-插件可以暴露方法，供宿主的聊天后端与智能体作为 **AI 工具**调用。声明纯粹是清单层面的事——无需改动宿主代码。启动时，`AiToolDiscoveryConfig` 会遍历每个已启用插件的 `aiTools` 数组，并把每一项转换成一个 Spring AI 的 `ToolCallback`。
+插件可以暴露方法，供宿主的聊天后端与智能体作为 **AI 工具**调用。声明纯粹是清单层面的事——无需改动宿主代码。动态工具注册表会在生成目录或启动智能体运行时扫描已启用插件，因此安装、升级、启用、停用和卸载后无需重启宿主。
 
 ## 声明工具
 
-在 `manifest.json` 中添加一个 `aiTools` 数组。每一项有四个字段：
+在 `manifest.json` 中添加一个 `aiTools` 数组。每一项有四个必填字段，以及一个可选的输出契约：
 
 ```json
 {
   "name": "excel_analyze",
   "description": "Analyze an Excel file and return sheets and headers.",
   "method": "excel_analyze",
-  "inputSchema": "{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"object\",\"description\":\"A FengYu FileRef\"}},\"required\":[\"filePath\"]}"
+  "inputSchema": "{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"object\",\"description\":\"A FengYu FileRef\"}},\"required\":[\"filePath\"]}",
+  "outputSchema": "{\"type\":\"object\",\"properties\":{\"success\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"},\"sheets\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}}"
 }
 ```
 
@@ -27,19 +28,20 @@ lang: zh-CN
 | `description` | string | 关于模型何时应选用此工具的自然语言指引。 |
 | `method` | string | 当模型调用此工具时，宿主调用的 worker JSON-RPC 方法。 |
 | `inputSchema` | string | 工具参数的 JSON Schema，**以字符串形式序列化**（注意转义的引号）。 |
+| `outputSchema` | string | 可选的 Worker 结果信封 JSON Schema，以字符串形式序列化。供可视化工作流配置使用，Spring AI 工具调用会忽略它。 |
 
 `inputSchema` 必须是一个 JSON Schema 文档。宿主会解析这个字符串来构建交给模型的 Spring AI `ToolDefinition`，因此模型看到的是准确的参数元数据。
 
-## 宿主聚合
+## 动态宿主聚合
 
-启动时，`AiToolDiscoveryConfig.aiToolCallbacks(...)` 构建主 `ToolCallback[]`：
+`AiToolRegistry` 会为每次智能体运行构建不可变的回调快照：
 
 1. 每一个内置的 `@FengYuTool` bean 都通过 `ToolCallbacks.from(...)` 转换。
 2. 对于每个 `aiTools` 非空的**已启用**已安装插件，其声明的每个工具都被包装进一个 `ToolCallback`，其中：
    - `getToolDefinition()` 返回一个由清单的 `name`、`description` 与解析后的 `inputSchema` 构建的 `ToolDefinition`；
    - `call(inputJson)` 反序列化模型的 JSON 参数，调用 `PluginProcessManager.invoke(pluginId, method, params)`（一次对 worker 的 JSON-RPC 调用），并把 worker 的结果序列化为字符串返回（失败时返回 `{success:false, error}`）。
 
-同一个 `ToolCallback[]` bean 会被注入到聊天后端与智能体运行器中——因此声明了 `aiTools` 的插件立即就能从聊天和智能体流程中被调用。
+可视化工作流目录还会携带稳定的 `pluginId:toolName` 身份、Schema 修订号与 `outputSchema`。已连接的下游输入可以选择完整结果或某个已声明的输出字段。工具消失时已有画布节点会被保留并标记为不可用；同一工具恢复后，节点会按最新输入 Schema 自动协调参数。
 
 ## `supportsAi`
 

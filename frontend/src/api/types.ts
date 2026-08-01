@@ -300,9 +300,13 @@ export interface AgentPlan {
 
 /** A Spring AI-discovered orchestrable tool (GET /api/agent/tools). */
 export interface AgentTool {
+  id: string
+  pluginId?: string | null
   name: string
   description: string
   inputSchema: string
+  outputSchema?: string | null
+  revision: string
 }
 
 export interface McpConnectionStatus {

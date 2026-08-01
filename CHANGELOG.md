@@ -4,6 +4,18 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ---
 
+## [Unreleased]
+
+### ✨ Added
+- **Live visual-workflow tool contracts.** Plugin AI tools may declare an optional serialized
+  `outputSchema`; the official Excel, Email, and Offline Python tools now publish user-facing input
+  metadata and result-envelope schemas for canvas configuration.
+
+### ♻️ Changed
+- **Agent tool discovery now follows the installed-plugin lifecycle.** New runs read a live tool
+  registry, while canvas nodes survive tool disable/uninstall, block unsafe execution, and reconcile
+  newly required inputs when the same tool is enabled again.
+
 ## [4.0.0] — 2026-07-29
 
 ### ✨ Added
