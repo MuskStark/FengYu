@@ -23,6 +23,7 @@ class AiModeServiceTest {
                              fan.summer.fengyu.ai.AiStreamCallback c) {}
             public void chat(java.util.List<fan.summer.fengyu.ai.AiChatMessage> h,
                              float t, float tp, int m,
+                             java.util.List<fan.summer.fengyu.ai.ChatFileContext.ActiveFileRef> refs,
                              fan.summer.fengyu.ai.AiStreamCallback c) {}
             public void cancelGeneration() {}
         };

@@ -5,6 +5,7 @@ import fan.summer.fengyu.ai.AiChatMessage;
 import fan.summer.fengyu.ai.AiServiceException;
 import fan.summer.fengyu.ai.AiStreamCallback;
 import fan.summer.fengyu.ai.ChatBackend;
+import fan.summer.fengyu.ai.ChatFileContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
 
@@ -115,6 +116,14 @@ class ChatBackendPlanGeneratorTest {
         public void chat(List<AiChatMessage> history, AiStreamCallback callback) throws AiServiceException {
             // chatWithoutTools delegates here; default impl would forward, but we override
             // chatWithoutTools directly below, so this path is not taken in the test.
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
+                         List<ChatFileContext.ActiveFileRef> activeFileRefs,
+                         AiStreamCallback callback) throws AiServiceException {
+            // Not exercised by the planner; chatWithoutTools is overridden directly below.
             throw new UnsupportedOperationException();
         }
 
