@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useAiSessionStore } from '@/stores/aiSession'
+import { useAiSessionStore, guessPluginForFile } from '@/stores/aiSession'
 import { makeDesktop } from '@/mf/desktop'
 import { api } from '@/api/client'
-import { guessPluginForFile } from '@/stores/aiSession'
-import type { PluginFileRef } from '@/api/types'
+import type { PluginDescriptor, PluginFileRef } from '@/api/types'
 import { renderMarkdown } from '@/security/markdown'
 
 const { t } = useI18n()
@@ -13,6 +12,34 @@ const ai = useAiSessionStore()
 const draft = ref('')
 const scroller = ref<HTMLElement | null>(null)
 const textarea = ref<HTMLTextAreaElement | null>(null)
+
+/**
+ * A file/dir chosen by the user but NOT yet granted. The grant is plugin-scoped and immutable to a
+ * plugin, so the user must pick the target plugin BEFORE we hit the grant endpoint. This avoids the
+ * old bug where an empty pluginId (unknown extension) produced POST /api/plugin-runtime//files/native
+ * (empty segment) and failed the permission lookup before the entry was even added.
+ */
+interface PendingAttach {
+  /** Desktop native path grant, or browser upload. */
+  source: 'native' | 'upload'
+  /** Native absolute path (source === 'native'). */
+  path?: string
+  /** Browser File list (source === 'upload'); length 1 for a file, many for a directory. */
+  files?: File[]
+  name: string
+  kind: 'file' | 'directory'
+}
+const pendingFile = ref<PendingAttach | null>(null)
+const granting = ref(false)
+
+/** Candidate plugins for the pending-file picker: enabled and declaring files.read. */
+const pluginOptions = computed<PluginDescriptor[]>(() =>
+  ai.installedPlugins.filter(
+    (p) => p.enabled !== false && (p.permissions ?? []).includes('files.read'),
+  ),
+)
+/** Preselected choice: the guessed plugin if it is among the candidates, else ''. */
+const chosenPlugin = ref('')
 
 function md(src: string): string {
   return renderMarkdown(src)
@@ -33,36 +60,99 @@ function submit() {
   void ai.send(text)
 }
 
+/** Refresh the plugin list (best-effort; failures leave the cached list intact). */
+async function ensurePlugins() {
+  try {
+    await ai.loadInstalledPlugins()
+  } catch {
+    /* surfaced via ai.error elsewhere if a grant later fails */
+  }
+}
+
+/** Step 1 of the two-step attach: pick a FILE. Stores it as pending WITHOUT granting. */
 async function attachFile() {
-  if (ai.busy) return
+  if (ai.busy || pendingFile.value) return
+  await ensurePlugins()
   const desktop = makeDesktop()
   if (desktop) {
     const path = await desktop.pickFile()
     if (!path) return
     const fileName = path.split(/[\\/]/).pop() ?? path
-    const pluginId = guessPluginForFile(fileName)
-    try {
-      const ref: PluginFileRef = await api.grantRuntimeNativePath(pluginId, path, 'file', 'read')
-      ai.addActiveFile(pluginId, ref)
-    } catch (e) {
-      ai.error = e instanceof Error ? e.message : 'Failed to attach file'
-    }
+    startPending({ source: 'native', path, name: fileName, kind: 'file' })
   } else {
     const input = document.createElement('input')
     input.type = 'file'
-    input.onchange = async () => {
+    input.onchange = () => {
       const file = input.files?.[0]
       if (!file) return
-      const pluginId = guessPluginForFile(file.name)
-      try {
-        const ref: PluginFileRef = await api.uploadRuntimeFile(pluginId, file)
-        ai.addActiveFile(pluginId, ref)
-      } catch (e) {
-        ai.error = e instanceof Error ? e.message : 'Failed to attach file'
-      }
+      startPending({ source: 'upload', files: [file], name: file.name, kind: 'file' })
     }
     input.click()
   }
+}
+
+/** Step 1 of the two-step attach: pick a DIRECTORY. Stores it as pending WITHOUT granting. */
+async function attachDirectory() {
+  if (ai.busy || pendingFile.value) return
+  await ensurePlugins()
+  const desktop = makeDesktop()
+  if (desktop) {
+    const path = await desktop.pickDirectory()
+    if (!path) return
+    const dirName = path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? path
+    startPending({ source: 'native', path, name: dirName, kind: 'directory' })
+  } else {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.setAttribute('webkitdirectory', '')
+    input.multiple = true
+    input.onchange = () => {
+      const files = input.files ? Array.from(input.files) : []
+      if (files.length === 0) return
+      // webkitRelativePath is "topdir/..."; the common top directory names the entry.
+      const top = files[0].webkitRelativePath.split('/')[0] || files[0].name
+      startPending({ source: 'upload', files, name: top, kind: 'directory' })
+    }
+    input.click()
+  }
+}
+
+/** Hold the chosen file as pending and preselect the guessed plugin (if it is a valid candidate). */
+function startPending(entry: PendingAttach) {
+  pendingFile.value = entry
+  const guess = guessPluginForFile(entry.name)
+  chosenPlugin.value =
+    guess && pluginOptions.value.some((p) => p.id === guess) ? guess : ''
+}
+
+/** Step 2: grant the pending file/dir under the chosen plugin, then commit it to the store. */
+async function confirmPending() {
+  const entry = pendingFile.value
+  const pluginId = chosenPlugin.value
+  if (!entry || !pluginId || granting.value) return
+  granting.value = true
+  try {
+    let ref: PluginFileRef
+    if (entry.source === 'native') {
+      ref = await api.grantRuntimeNativePath(pluginId, entry.path!, entry.kind, 'read')
+    } else if (entry.kind === 'directory') {
+      ref = await api.uploadRuntimeDirectory(pluginId, entry.files!, 'read')
+    } else {
+      ref = await api.uploadRuntimeFile(pluginId, entry.files![0])
+    }
+    ai.addActiveFile(pluginId, ref)
+    pendingFile.value = null
+    chosenPlugin.value = ''
+  } catch (e) {
+    ai.error = e instanceof Error ? e.message : 'Failed to attach file'
+  } finally {
+    granting.value = false
+  }
+}
+
+function cancelPending() {
+  pendingFile.value = null
+  chosenPlugin.value = ''
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -162,27 +252,51 @@ watch(() => ai.activeId, async () => {
       </div>
     </div>
 
-    <!-- Active files for this conversation -->
+    <!-- Pending attach: choose a plugin BEFORE granting (grant is plugin-scoped) -->
+    <div v-if="pendingFile" class="cx-conversation" style="padding: 0 16px">
+      <div class="cx-card" style="margin-top: 4px; padding: 10px 12px">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px">
+          <i class="mdi" :class="pendingFile.kind === 'directory' ? 'mdi-folder' : 'mdi-file-outline'" />
+          <span style="font-weight: 600">{{ pendingFile.name }}</span>
+          <span v-if="pendingFile.kind === 'directory'" class="cx-muted" style="font-size: 11px">({{ pendingFile.source === 'native' ? 'native path' : 'upload' }})</span>
+        </div>
+        <div class="cx-muted" style="font-size: 12px; margin-bottom: 8px">
+          {{ $t('aichat.attachPendingHint', { kind: pendingFile.kind }) }}
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+          <select v-model="chosenPlugin" class="cx-input" style="min-width: 220px">
+            <option value="" disabled>{{ $t('aichat.selectPlugin') }}</option>
+            <option v-for="p in pluginOptions" :key="p.id" :value="p.id">{{ p.name }} ({{ p.id }})</option>
+          </select>
+          <button
+            class="cx-btn cx-btn--primary cx-btn--sm"
+            :disabled="!chosenPlugin || granting"
+            @click="confirmPending"
+          ><span v-if="granting" class="cx-spin" /> {{ $t('aichat.approveSend') }}</button>
+          <button class="cx-btn cx-btn--text cx-btn--sm" :disabled="granting" @click="cancelPending">{{ $t('aichat.rejectSend') }}</button>
+        </div>
+        <div v-if="pluginOptions.length === 0" class="cx-muted" style="font-size: 12px; margin-top: 6px; color: var(--md-sys-color-error)">
+          {{ $t('aichat.fileNeedsPlugin') }}
+        </div>
+      </div>
+    </div>
+
+    <!-- Active files for this conversation (committed grants; plugin chosen pre-grant) -->
     <div v-if="ai.activeFiles.length" class="cx-conversation" style="padding: 0 16px">
       <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
         <span
           v-for="entry in ai.activeFiles"
           :key="entry.ref.id"
           class="cx-chip"
-          :class="{ 'cx-chip--warn': !entry.pluginId }"
           style="gap: 6px"
         >
           <i class="mdi" :class="entry.ref.kind === 'directory' ? 'mdi-folder' : 'mdi-file-outline'" />
           {{ entry.ref.name }}
-          <span v-if="entry.pluginId" class="cx-muted" style="font-size: 11px">[{{ entry.pluginId }}]</span>
-          <span v-else class="cx-muted" style="font-size: 11px">[{{ $t('aichat.selectPlugin') }}]</span>
+          <span class="cx-muted" style="font-size: 11px">[{{ entry.pluginId }}]</span>
           <button class="cx-iconbtn cx-iconbtn--sm" @click="ai.removeActiveFile(entry.pluginId, entry.ref.id)">
             <i class="mdi mdi-close" />
           </button>
         </span>
-      </div>
-      <div v-if="ai.activeFiles.some((f) => !f.pluginId)" class="cx-muted" style="font-size: 12px; margin-top: 4px; color: var(--md-sys-color-error)">
-        {{ $t('aichat.fileNeedsPlugin') }}
       </div>
     </div>
 
@@ -206,10 +320,16 @@ watch(() => ai.activeId, async () => {
         />
         <button
           class="cx-iconbtn cx-iconbtn--round"
-          :disabled="ai.busy"
+          :disabled="ai.busy || !!pendingFile"
           :title="$t('aichat.attachFile')"
           @click="attachFile"
         ><i class="mdi mdi-paperclip" /></button>
+        <button
+          class="cx-iconbtn cx-iconbtn--round"
+          :disabled="ai.busy || !!pendingFile"
+          :title="$t('aichat.attachDirectory')"
+          @click="attachDirectory"
+        ><i class="mdi mdi-folder-plus-outline" /></button>
         <button
           v-if="ai.busy"
           class="cx-iconbtn cx-iconbtn--primary cx-iconbtn--round"
