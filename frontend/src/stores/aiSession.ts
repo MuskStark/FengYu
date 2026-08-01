@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, reactive, ref } from 'vue'
 import { api } from '@/api/client'
 import { openAiStream, type SseHandle } from '@/api/sse'
-import type { ActiveFileEntry, ChatMessage, ConversationPayload, PluginFileRef } from '@/api/types'
+import type { ActiveFileEntry, ChatMessage, ConversationPayload, PluginDescriptor, PluginFileRef } from '@/api/types'
 import { actOnConfirmation, parseToolConfirmation, type ToolConfirmation } from './aiConfirmation'
 
 export interface ChatTurn {
@@ -46,6 +46,16 @@ export const useAiSessionStore = defineStore('aiSession', () => {
   let handle: SseHandle | null = null
 
   const activeFiles = ref<ActiveFileEntry[]>([])
+
+  /**
+   * Cached installed-plugin descriptors. Used by AiChat to populate the plugin picker shown before a
+   * file/dir grant (the grant is plugin-scoped, so the user must choose a plugin first). Loaded
+   * lazily when the user opens the attach affordance.
+   */
+  const installedPlugins = ref<PluginDescriptor[]>([])
+  async function loadInstalledPlugins() {
+    installedPlugins.value = await api.getPlugins()
+  }
 
   function addActiveFile(pluginId: string, ref: PluginFileRef) {
     const idx = activeFiles.value.findIndex(
@@ -276,6 +286,8 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     removeActiveFile,
     clearActiveFiles,
     sendableFileRefs,
+    installedPlugins,
+    loadInstalledPlugins,
   }
 })
 
