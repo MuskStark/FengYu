@@ -4,6 +4,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
+import fan.summer.fengyu.ai.ChatFileContext.ActiveFileRef;
+
 /**
  * Unified AI inference backend contract. Two host-supplied implementations exist:
  * {@code fan.summer.fengyu.ai.service.SpringAiCloudBackend} (Spring AI-backed cloud providers:
@@ -79,11 +81,30 @@ public interface ChatBackend {
     }
 
     /**
-     * Streaming chat with explicit sampling parameters. All callback events
-     * are delivered on the JavaFX Application Thread.
+     * Streaming chat with explicit sampling parameters and no active file grants.
+     * Preserved for callers (e.g. tool-loop tests) that drive sampling directly without
+     * a request-scoped file context; delegates to the 6-arg overload with an empty ref list.
+     */
+    default void chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
+                      AiStreamCallback callback) throws AiServiceException {
+        chat(history, temperature, topP, maxTokens, List.of(), callback);
+    }
+
+    /**
+     * Streaming chat with explicit sampling parameters and active file grants. Implementations
+     * append {@code activeFileRefs} to the effective system prompt (route A fallback) and rely on
+     * {@link ChatFileContext} (set by the caller around this call) for route B injection.
+     *
+     * @param history conversation history (system + user + assistant messages)
+     * @param temperature sampling temperature
+     * @param topP nucleus sampling probability
+     * @param maxTokens generation token cap
+     * @param activeFileRefs file grants active for this turn (scoped to a plugin); empty when none
+     * @param callback receives streamed response fragments and tool-call events
+     * @throws AiServiceException if no model is loaded or inference fails
      */
     void chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
-              AiStreamCallback callback) throws AiServiceException;
+              List<ActiveFileRef> activeFileRefs, AiStreamCallback callback) throws AiServiceException;
 
     /** Best-effort abort of the in-progress generation. */
     void cancelGeneration();

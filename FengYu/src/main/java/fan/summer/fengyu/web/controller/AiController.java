@@ -5,10 +5,13 @@ import fan.summer.fengyu.ai.AiStreamCallback;
 import fan.summer.fengyu.ai.AiToolCall;
 import fan.summer.fengyu.ai.AiToolResult;
 import fan.summer.fengyu.ai.ChatBackend;
+import fan.summer.fengyu.ai.ChatFileContext;
+import fan.summer.fengyu.ai.ChatFileContext.ActiveFileRef;
 import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
 import fan.summer.fengyu.ai.service.AiModeService;
 import fan.summer.fengyu.ai.service.OllamaLocalBackend;
 import fan.summer.fengyu.ai.tools.ChatToolApprovalGate;
+import fan.summer.fengyu.plugin.runtime.PluginFileGrantService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -54,7 +57,7 @@ public class AiController {
     }
 
     /** Pending turns keyed by streamId; consumed once when the SSE opens. */
-    private final Map<String, List<AiChatMessage>> pending = new ConcurrentHashMap<>();
+    private final Map<String, PendingTurn> pending = new ConcurrentHashMap<>();
 
     @PostMapping("/chat")
     public Map<String, Object> chat(@RequestBody ChatRequest req) {
@@ -64,8 +67,14 @@ public class AiController {
                 history.add(toDomain(m));
             }
         }
+        List<ActiveFileRef> refs = new ArrayList<>();
+        if (req.activeFileRefs() != null) {
+            for (ActiveFileRefDto dto : req.activeFileRefs()) {
+                refs.add(new ActiveFileRef(dto.pluginId(), dto.ref()));
+            }
+        }
         String streamId = UUID.randomUUID().toString();
-        pending.put(streamId, history);
+        pending.put(streamId, new PendingTurn(history, refs));
         return Map.of("streamId", streamId);
     }
 
@@ -87,12 +96,12 @@ public class AiController {
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream(@RequestParam String streamId) {
         SseEmitter emitter = new SseEmitter(0L); // no timeout — chat length is unbounded
-        List<AiChatMessage> history = pending.remove(streamId);
-
-        if (history == null) {
+        PendingTurn turn = pending.remove(streamId);
+        if (turn == null) {
             completeWithError(emitter, "Unknown or expired streamId");
             return emitter;
         }
+        List<AiChatMessage> history = turn.history();
 
         Optional<ChatBackend> svc = aiMode.getService();
         if (svc.isEmpty()) {
@@ -130,13 +139,21 @@ public class AiController {
         }
 
         try {
+            // Set the per-turn file context BEFORE chat() so the singleton plugin ToolCallbacks
+            // (Task 3's AiToolFileInjector) can read it during synchronous tool execution. The
+            // virtual-thread worker runs chat() inline under this binding, so the ThreadLocal is
+            // visible for the whole tool-execution window. Cleared in finally to avoid leakage.
+            ChatFileContext.set(turn.activeFileRefs());
             svc.get().chat(history,
                 AiConfigServiceHeadless.getAiTemperature(),
                 AiConfigServiceHeadless.getAiTopP(),
                 AiConfigServiceHeadless.getAiMaxTokens(),
+                turn.activeFileRefs(),
                 new SseCallback(emitter));
         } catch (Exception e) {
             completeWithError(emitter, e.getMessage());
+        } finally {
+            ChatFileContext.clear();
         }
         return emitter;
     }
@@ -219,7 +236,11 @@ public class AiController {
 
     // ── DTOs ────────────────────────────────────────────────────────────────────────────
 
-    public record ChatRequest(List<ChatMessageDto> messages) {}
+    public record ChatRequest(List<ChatMessageDto> messages, List<ActiveFileRefDto> activeFileRefs) {}
     public record ChatMessageDto(String role, String content) {}
     public record ToolApprovalDecision(boolean approved) {}
+    public record ActiveFileRefDto(String pluginId, PluginFileGrantService.FileRef ref) {}
+
+    /** Carries a stashed turn's history + active file refs from {@code POST /chat} to {@code GET /stream}. */
+    private record PendingTurn(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs) {}
 }
