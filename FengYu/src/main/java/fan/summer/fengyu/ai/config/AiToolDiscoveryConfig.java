@@ -82,11 +82,18 @@ public class AiToolDiscoveryConfig {
                     @Override public String call(String input) {
                         try {
                             @SuppressWarnings("unchecked") var params = json.readValue(input, java.util.Map.class);
+                            // Transparently inject an active FileRef into a single read-class file
+                            // param before dispatch (route B). When the tool has no/multiple/write
+                            // file params, this is a no-op and the model fills them from the system
+                            // prompt (route A). resolveRefs then rewrites the ref to a real path.
+                            var injected = fan.summer.fengyu.ai.AiToolFileInjector.injectFileRefs(
+                                params, manifest.id(), tool.inputSchema(),
+                                fan.summer.fengyu.ai.ChatFileContext.current());
                             // Honour the manifest-declared per-tool timeout; -1 falls back to the
                             // plugin-wide default. Tools that may run long (e.g. excel_execute) can
                             // declare up to 600s; tools that need longer must switch to job mode.
                             long timeout = tool.timeoutSeconds() == null ? -1 : tool.timeoutSeconds();
-                            Object result = processes.invoke(manifest.id(), tool.method(), params, timeout);
+                            Object result = processes.invoke(manifest.id(), tool.method(), injected, timeout);
                             return result instanceof String text ? text : json.writeValueAsString(result);
                         } catch (Exception e) {
                             return "{\"success\":false,\"error\":" + quote(json, String.valueOf(e.getMessage())) + "}";
