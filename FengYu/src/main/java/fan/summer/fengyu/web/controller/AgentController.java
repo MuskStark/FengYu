@@ -7,9 +7,9 @@ import fan.summer.fengyu.ai.agent.AgentRunConfig;
 import fan.summer.fengyu.ai.agent.AgentRunPersistenceService;
 import fan.summer.fengyu.ai.agent.AgentRunRegistry;
 import fan.summer.fengyu.ai.agent.AgentRunner;
+import fan.summer.fengyu.ai.config.AiToolRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.tool.ToolCallback;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,7 +21,6 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -44,8 +43,8 @@ import java.util.function.Consumer;
  *       with an edited plan body.</li>
  *   <li>{@code POST /api/agent/{runId}/cancel} — flip the run's cancellation flag.</li>
  *   <li>{@code GET /api/agent/tools} — the orchestrable tool list (name/description/
- *       inputSchema) sourced from the Spring AI-discovered {@link ToolCallback} beans
- *       (spec §3.6.1; consumed by the agent UI and the Phase 2 canvas).</li>
+ *       input/output schemas) sourced from the live {@link AiToolRegistry}
+ *       (consumed by the agent UI and visual workflow canvas).</li>
  * </ul>
  *
  * <h2>SSE buffering</h2>
@@ -66,7 +65,7 @@ public class AgentController {
     private final AgentRunner runner;
     private final AgentRunRegistry registry;
     private final AgentRunPersistenceService persistence;
-    private final List<ToolCallback> toolCallbacks;
+    private final AiToolRegistry toolRegistry;
 
     /**
      * Per-run SSE sinks. Created on {@code /run} (one sink per run), consumed by the
@@ -76,11 +75,11 @@ public class AgentController {
     private final Map<String, AgentStreamSink> sinks = new ConcurrentHashMap<>();
 
     public AgentController(AgentRunner runner, AgentRunRegistry registry,
-            AgentRunPersistenceService persistence, ToolCallback[] aiToolCallbacks) {
+            AgentRunPersistenceService persistence, AiToolRegistry toolRegistry) {
         this.runner = runner;
         this.registry = registry;
         this.persistence = persistence;
-        this.toolCallbacks = aiToolCallbacks == null ? List.of() : Arrays.asList(aiToolCallbacks);
+        this.toolRegistry = toolRegistry;
     }
 
     // ── /run ───────────────────────────────────────────────────────────
@@ -216,20 +215,12 @@ public class AgentController {
 
     /**
      * Lists the orchestrable tools for the agent UI and the Phase 2 canvas, one entry per
-     * Spring AI-discovered {@link ToolCallback}. The shape ({@code name} / {@code description}
-     * / {@code inputSchema}) matches the JSON Schema Spring AI attaches to every tool.
+     * currently available tool. Descriptors add stable ownership, output schema, and revision
+     * metadata to the input schema Spring AI attaches to every callback.
      */
     @GetMapping("/api/agent/tools")
-    public List<Map<String, Object>> tools() {
-        List<Map<String, Object>> out = new ArrayList<>(toolCallbacks.size());
-        for (ToolCallback tc : toolCallbacks) {
-            var def = tc.getToolDefinition();
-            out.add(Map.of(
-                    "name", def.name(),
-                    "description", def.description(),
-                    "inputSchema", def.inputSchema()));
-        }
-        return out;
+    public List<AiToolRegistry.ToolDescriptor> tools() {
+        return toolRegistry.descriptors();
     }
 
     private void scheduleCleanup(String runId, AgentStreamSink sink) {
