@@ -17,6 +17,10 @@ export interface PluginDescriptor {
   uiEntry: string
   supportsAi: boolean // NEW — drives the AI badge on the card
   source: PluginSource // NEW — drives the Official/Third-party badge
+  author?: string | null
+  enabled?: boolean
+  /** Permissions declared in the package manifest (e.g. "files.read"). Populated by the runtime descriptor endpoint. */
+  permissions?: string[]
 }
 
 /** Where a runtime skill was discovered (mirrors backend Skill.Source). */
