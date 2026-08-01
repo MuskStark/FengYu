@@ -75,7 +75,7 @@ Worker registration in `ExcelWorkerMain`:
 .on("excel_analyze", p -> analyze.analyze(JsonRpcWorker.string(p, "filePath")))
 ```
 
-When the model calls `excel_analyze`, the host forwards `{filePath: <FileRef>}` as JSON-RPC; the host rewrites the FileRef to a real path before the worker sees it (see [File I/O](/en/plugins/file-io)). The full set of six tools is documented in [Official Plugin — Excel](/en/plugins/official-excel).
+When the model calls `excel_analyze`, the host forwards the arguments as JSON-RPC. If the user has attached a file for the conversation (see the attach affordance in the AI chat) and the tool has a single read-class file parameter, the host transparently injects the FileRef before dispatch (route B); `PluginProcessManager.resolveRefs` then rewrites it to a real path before the worker sees it. For tools with a write-directory or multiple file parameters, the host instead lists the available FileRefs in the system prompt and the model fills them itself (route A). In both cases the worker ultimately receives a resolved filesystem path. See [File I/O](/en/plugins/file-io). The full set of six tools is documented in [Official Plugin — Excel](/en/plugins/official-excel).
 
 ## Next steps
 

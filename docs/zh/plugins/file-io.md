@@ -36,6 +36,8 @@ interface FileRef { id: string; name: string; kind: 'file'|'directory'; access: 
 
 一个需要某项权限但插件未声明该权限的请求会返回 `403`。参见 [常见陷阱](/zh/plugins/pitfalls)。
 
+> AI 聊天中的“为本次对话附加文件”入口，通过这些相同的 endpoint 来授权文件（桌面端走 `/api/plugin-runtime/{pluginId}/files/native`，浏览器端走 `/files/upload`）。得到的 FileRef 按所选插件划分作用域，仅在本次聊天会话中有效（不会持久化；重启后清除）。
+
 ## 临时存储与清理
 
 上传与输出目录位于按插件划分的临时根目录下：
