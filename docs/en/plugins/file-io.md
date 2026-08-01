@@ -36,6 +36,8 @@ All five endpoints live under base `/api/plugin-runtime/{id}/files`. Each is gat
 
 A request that needs a permission the plugin did not declare returns `403`. See [Pitfalls](/en/plugins/pitfalls).
 
+> The AI chat's "attach file for this conversation" affordance grants a file through these same endpoints (`/api/plugin-runtime/{pluginId}/files/native` on desktop, `/files/upload` in the browser). The resulting FileRef is scoped to the chosen plugin and lives for the chat session (it is not persisted; restart clears it).
+
 ## Temp storage and cleanup
 
 Uploads and output directories live under a per-plugin temp root:
