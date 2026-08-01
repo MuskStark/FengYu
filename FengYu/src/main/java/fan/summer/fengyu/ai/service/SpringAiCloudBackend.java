@@ -11,6 +11,7 @@ import fan.summer.fengyu.ai.AiStreamCallback;
 import fan.summer.fengyu.ai.AiToolCall;
 import fan.summer.fengyu.ai.AiToolResult;
 import fan.summer.fengyu.ai.ChatBackend;
+import fan.summer.fengyu.ai.ChatFileContext.ActiveFileRef;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -248,24 +249,24 @@ public final class SpringAiCloudBackend implements ChatBackend {
 
     @Override
     public void chat(List<AiChatMessage> history, float temperature, float topP, int maxTokens,
-                     AiStreamCallback callback) throws AiServiceException {
-        startChat(history, callback, true);
+                     List<ActiveFileRef> activeFileRefs, AiStreamCallback callback) throws AiServiceException {
+        startChat(history, activeFileRefs, callback, true);
     }
 
     @Override
     public void chatWithoutTools(List<AiChatMessage> history, AiStreamCallback callback)
             throws AiServiceException {
-        startChat(history, callback, false);
+        startChat(history, List.of(), callback, false);
     }
 
-    private void startChat(List<AiChatMessage> history, AiStreamCallback callback,
-                           boolean enableTools) throws AiServiceException {
+    private void startChat(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs,
+                           AiStreamCallback callback, boolean enableTools) throws AiServiceException {
         if (!isReady()) throw new AiServiceException(provider + " cloud backend not configured");
         if (!generating.compareAndSet(false, true)) throw new AiServiceException("Generation already in progress");
 
         Thread.ofVirtual().start(() -> {
             try {
-                runToolLoop(history, callback, enableTools);
+                runToolLoop(history, activeFileRefs, callback, enableTools);
             } catch (Exception e) {
                 log.error("{} chat failed", provider, e);
                 callback.onError(e);
@@ -300,8 +301,10 @@ public final class SpringAiCloudBackend implements ChatBackend {
 
     // ── Tool loop (Spring AI ToolCallingManager, user-controlled) ──────
 
-    private void runToolLoop(List<AiChatMessage> history, AiStreamCallback callback,
-                             boolean enableTools) {
+    private void runToolLoop(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs,
+                             AiStreamCallback callback, boolean enableTools) {
+        // Task 5 will append activeFileRefs to the effective system prompt (route A fallback).
+        // Route B injection already flows via ChatFileContext (set by AiController around this call).
         String systemPrompt = effectiveSystemPrompt();
 
         // Attach the configured tool callbacks to the PROMPT. We MUST derive the options
