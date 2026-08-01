@@ -144,7 +144,8 @@ async function confirmPending() {
     pendingFile.value = null
     chosenPlugin.value = ''
   } catch (e) {
-    ai.error = e instanceof Error ? e.message : 'Failed to attach file'
+    const fallback = entry.kind === 'directory' ? t('aichat.attachDirectoryFailed') : t('aichat.attachFileFailed')
+    ai.error = e instanceof Error ? e.message : fallback
   } finally {
     granting.value = false
   }
@@ -174,6 +175,9 @@ watch(
   },
 )
 watch(() => ai.activeId, async () => {
+  // A pending attach was started in another conversation; clear it so the grant
+  // doesn't land in the wrong conversation's activeFiles when confirmed here.
+  cancelPending()
   await nextTick()
   const el = scroller.value
   if (el) el.scrollTop = el.scrollHeight

@@ -62,6 +62,8 @@
                 "selectPlugin": "选择插件",
                 "pickPluginFor": "选择要授予「{name}」访问权限的插件：",
                 "attachPendingHint": "请选择授予此{kind}的插件。授权按插件隔离，请选择将读取它的插件。",
+                "attachFileFailed": "附加文件失败",
+                "attachDirectoryFailed": "附加目录失败",
                 "fileNeedsPlugin": "请为高亮文件选择插件，否则不会被发送。" },
   "plugin":   { "failedTitle": "插件加载失败", "loading": "正在加载插件…",
                 "unknown": "未知插件:{id}", "handshakeTimeout": "插件启动时未响应。",
