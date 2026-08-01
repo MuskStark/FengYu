@@ -75,7 +75,7 @@ lang: zh-CN
 .on("excel_analyze", p -> analyze.analyze(JsonRpcWorker.string(p, "filePath")))
 ```
 
-当模型调用 `excel_analyze` 时，宿主以 JSON-RPC 转发参数。如果用户为本次对话附加了文件（见 AI 聊天中的附加入口）且该工具只有一个读取类（read）的文件参数，宿主会在派发前透明地注入 FileRef（路由 B）；随后 `PluginProcessManager.resolveRefs` 会在 worker 看到它之前把 FileRef 改写为真实路径。对于带有写入目录或多个文件参数的工具，宿主则改为在系统提示词中列出可用的 FileRef，由模型自行填入（路由 A）。两种情况下 worker 最终收到的都是已解析的文件系统路径。见 [文件 I/O](/zh/plugins/file-io)。完整的六个工具集合见 [官方插件——Excel](/zh/plugins/official-excel)。
+当模型调用 `excel_analyze` 时，宿主以 JSON-RPC 转发参数。如果用户为本次对话附加了文件（见 AI 聊天中的附加入口）且该工具只有一个读取类（read）的文件参数，宿主会在派发前透明地注入 FileRef（路由 B）；随后 `PluginProcessManager.resolveRefs` 会在 worker 看到它之前把 FileRef 改写为真实路径。对于带有写入目录或多个文件参数的工具，**或当单个读取类参数但用户未附加文件时**，宿主则改为在系统提示词中列出可用的 FileRef，由模型自行填入（路由 A）。两种情况下 worker 最终收到的都是已解析的文件系统路径。见 [文件 I/O](/zh/plugins/file-io)。完整的六个工具集合见 [官方插件——Excel](/zh/plugins/official-excel)。
 
 ## 下一步
 
