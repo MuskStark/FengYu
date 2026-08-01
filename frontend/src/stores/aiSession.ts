@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, reactive, ref } from 'vue'
 import { api } from '@/api/client'
 import { openAiStream, type SseHandle } from '@/api/sse'
-import type { ChatMessage, ConversationPayload } from '@/api/types'
+import type { ActiveFileEntry, ChatMessage, ConversationPayload, PluginFileRef } from '@/api/types'
 import { actOnConfirmation, parseToolConfirmation, type ToolConfirmation } from './aiConfirmation'
 
 export interface ChatTurn {
@@ -45,6 +45,31 @@ export const useAiSessionStore = defineStore('aiSession', () => {
   let convSeq = 0
   let handle: SseHandle | null = null
 
+  const activeFiles = ref<ActiveFileEntry[]>([])
+
+  function addActiveFile(pluginId: string, ref: PluginFileRef) {
+    const idx = activeFiles.value.findIndex(
+      (f) => f.pluginId === pluginId && f.ref.name === ref.name,
+    )
+    if (idx >= 0) activeFiles.value[idx] = { pluginId, ref }
+    else activeFiles.value.push({ pluginId, ref })
+  }
+
+  function removeActiveFile(pluginId: string, refId: string) {
+    activeFiles.value = activeFiles.value.filter(
+      (f) => !(f.pluginId === pluginId && f.ref.id === refId),
+    )
+  }
+
+  function clearActiveFiles() {
+    activeFiles.value = []
+  }
+
+  /** Active files with a chosen plugin — the ones actually sent with the chat request. */
+  function sendableFileRefs(): ActiveFileEntry[] {
+    return activeFiles.value.filter((f) => f.pluginId.trim() !== '')
+  }
+
   const active = computed<Conversation | null>(
     () => conversations.value.find((c) => c.id === activeId.value) ?? null,
   )
@@ -62,6 +87,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     conversations.value.unshift(conv)
     activeId.value = conv.id
     error.value = null
+    clearActiveFiles()
     return conv
   }
 
@@ -172,7 +198,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     busy.value = true
 
     try {
-      const { streamId } = await api.aiChat(toChatHistory(conv.turns))
+      const { streamId } = await api.aiChat(toChatHistory(conv.turns), sendableFileRefs())
       handle = openAiStream(streamId, {
         onToken: (t) => {
           assistant.content += t
@@ -221,6 +247,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
 
   /** Delete the active conversation (backend + local) and start a fresh one. */
   async function clear() {
+    clearActiveFiles()
     stop()
     const cur = active.value
     if (cur) await removeConversation(cur.id)
@@ -244,6 +271,11 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     stop,
     resolveConfirmation,
     clear,
+    activeFiles,
+    addActiveFile,
+    removeActiveFile,
+    clearActiveFiles,
+    sendableFileRefs,
   }
 })
 
@@ -255,4 +287,19 @@ export function toChatHistory(turns: ChatTurn[]): ChatMessage[] {
   return turns
     .filter((turn) => !(turn.role === 'assistant' && turn.streaming))
     .map((turn) => ({ role: turn.role, content: turn.content }))
+}
+
+/**
+ * Best-effort plugin id for an attached file, based on extension. Empty string means "unknown —
+ * the user must pick a plugin in the UI before the file is sent with the chat request."
+ */
+export function guessPluginForFile(fileName: string): string {
+  const lower = (fileName ?? '').toLowerCase()
+  if (lower.endsWith('.xlsx') || lower.endsWith('.xls') || lower.endsWith('.xlsm')) {
+    return 'fan.summer.excel'
+  }
+  if (lower.endsWith('.py')) {
+    return 'fan.summer.offlinepython'
+  }
+  return ''
 }

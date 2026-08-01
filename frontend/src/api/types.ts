@@ -160,6 +160,12 @@ export interface PluginFileRef {
   size: number
 }
 
+/** A file grant active for one AI chat turn, scoped to a plugin whose tool may consume it. */
+export interface ActiveFileEntry {
+  pluginId: string
+  ref: PluginFileRef
+}
+
 // ── Setup wizard (Phase 4) ──────────────────────────────────
 
 export interface SetupStatus {
