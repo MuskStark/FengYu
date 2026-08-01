@@ -62,6 +62,8 @@
                 "selectPlugin": "select a plugin",
                 "pickPluginFor": "Pick a plugin to grant \"{name}\" to:",
                 "attachPendingHint": "Choose a plugin to grant this {kind}. The grant is plugin-scoped, so pick the plugin whose tool will read it.",
+                "attachFileFailed": "Failed to attach file",
+                "attachDirectoryFailed": "Failed to attach directory",
                 "fileNeedsPlugin": "Pick a plugin for the highlighted file, or it won't be sent." },
   "plugin":   { "failedTitle": "Failed to load plugin", "loading": "Loading plugin…",
                 "unknown": "Unknown plugin: {id}", "handshakeTimeout": "The plugin did not respond during startup.",
