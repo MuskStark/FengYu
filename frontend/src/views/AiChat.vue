@@ -2,6 +2,10 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAiSessionStore } from '@/stores/aiSession'
+import { makeDesktop } from '@/mf/desktop'
+import { api } from '@/api/client'
+import { guessPluginForFile } from '@/stores/aiSession'
+import type { PluginFileRef } from '@/api/types'
 import { renderMarkdown } from '@/security/markdown'
 
 const { t } = useI18n()
@@ -27,6 +31,38 @@ function submit() {
   draft.value = ''
   void nextTick(autosize)
   void ai.send(text)
+}
+
+async function attachFile() {
+  if (ai.busy) return
+  const desktop = makeDesktop()
+  if (desktop) {
+    const path = await desktop.pickFile()
+    if (!path) return
+    const fileName = path.split(/[\\/]/).pop() ?? path
+    const pluginId = guessPluginForFile(fileName)
+    try {
+      const ref: PluginFileRef = await api.grantRuntimeNativePath(pluginId, path, 'file', 'read')
+      ai.addActiveFile(pluginId, ref)
+    } catch (e) {
+      ai.error = e instanceof Error ? e.message : 'Failed to attach file'
+    }
+  } else {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      if (!file) return
+      const pluginId = guessPluginForFile(file.name)
+      try {
+        const ref: PluginFileRef = await api.uploadRuntimeFile(pluginId, file)
+        ai.addActiveFile(pluginId, ref)
+      } catch (e) {
+        ai.error = e instanceof Error ? e.message : 'Failed to attach file'
+      }
+    }
+    input.click()
+  }
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -126,6 +162,30 @@ watch(() => ai.activeId, async () => {
       </div>
     </div>
 
+    <!-- Active files for this conversation -->
+    <div v-if="ai.activeFiles.length" class="cx-conversation" style="padding: 0 16px">
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+        <span
+          v-for="entry in ai.activeFiles"
+          :key="entry.ref.id"
+          class="cx-chip"
+          :class="{ 'cx-chip--warn': !entry.pluginId }"
+          style="gap: 6px"
+        >
+          <i class="mdi" :class="entry.ref.kind === 'directory' ? 'mdi-folder' : 'mdi-file-outline'" />
+          {{ entry.ref.name }}
+          <span v-if="entry.pluginId" class="cx-muted" style="font-size: 11px">[{{ entry.pluginId }}]</span>
+          <span v-else class="cx-muted" style="font-size: 11px">[{{ $t('aichat.selectPlugin') }}]</span>
+          <button class="cx-iconbtn cx-iconbtn--sm" @click="ai.removeActiveFile(entry.pluginId, entry.ref.id)">
+            <i class="mdi mdi-close" />
+          </button>
+        </span>
+      </div>
+      <div v-if="ai.activeFiles.some((f) => !f.pluginId)" class="cx-muted" style="font-size: 12px; margin-top: 4px; color: var(--md-sys-color-error)">
+        {{ $t('aichat.fileNeedsPlugin') }}
+      </div>
+    </div>
+
     <!-- Composer -->
     <div style="padding: 8px 16px 16px">
       <div v-if="hasError" class="cx-alert cx-alert--error cx-conversation" style="margin-bottom: 8px">
@@ -144,6 +204,12 @@ watch(() => ai.activeId, async () => {
           @input="autosize"
           @keydown="onKeydown"
         />
+        <button
+          class="cx-iconbtn cx-iconbtn--round"
+          :disabled="ai.busy"
+          :title="$t('aichat.attachFile')"
+          @click="attachFile"
+        ><i class="mdi mdi-paperclip" /></button>
         <button
           v-if="ai.busy"
           class="cx-iconbtn cx-iconbtn--primary cx-iconbtn--round"
