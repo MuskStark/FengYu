@@ -29,6 +29,7 @@ import type {
   PartialSettings,
   PluginDescriptor,
   PluginFileRef,
+  ActiveFileEntry,
   PluginInvokeResult,
   ProcessIsolationStatus,
   SetupStatus,
@@ -182,9 +183,10 @@ export const api = {
     return data
   },
 
-  async aiChat(messages: ChatMessage[]): Promise<ChatStartResponse> {
+  async aiChat(messages: ChatMessage[], activeFileRefs?: ActiveFileEntry[]): Promise<ChatStartResponse> {
     const { data } = await http.post<ChatStartResponse>('/api/ai/chat', {
       messages,
+      activeFileRefs: activeFileRefs ?? [],
     })
     return data
   },
