@@ -9,7 +9,6 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AiToolFileInjectorTest {
 
@@ -117,8 +116,11 @@ class AiToolFileInjectorTest {
 
     @Test
     void doesNotInjectWhenMultipleFileParams() {
-        // email_send_batch has inputDirectory + commonAttachments(array of object)
-        String schema = "{\"type\":\"object\",\"properties\":{\"inputDirectory\":{\"type\":\"object\"},\"commonAttachments\":{\"type\":\"array\",\"items\":{\"type\":\"object\"}}}}";
+        // email_send_batch has inputDirectory + commonAttachments(array of object).
+        // Give commonAttachments items a FileRef description so the array classifies
+        // as FILE_LIST, making fileParamNames genuinely size 2 and exercising the
+        // degrade-to-A branch (size() != 1).
+        String schema = "{\"type\":\"object\",\"properties\":{\"inputDirectory\":{\"type\":\"object\"},\"commonAttachments\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"description\":\"A FengYu FileRef\"}}}}";
         Map<String, Object> modelParams = new java.util.LinkedHashMap<>(Map.of("inputDirectory", "a", "commonAttachments", List.of()));
 
         Map<String, Object> out = AiToolFileInjector.injectFileRefs(
