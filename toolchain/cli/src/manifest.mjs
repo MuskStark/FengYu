@@ -42,6 +42,14 @@ export function validateManifestObject(manifest) {
     } catch {
       errors.push(`invalid inputSchema for ${tool.name}`)
     }
+    if (tool.outputSchema != null) {
+      try {
+        const parsed = JSON.parse(tool.outputSchema)
+        if (parsed?.type !== 'object') errors.push(`outputSchema for ${tool.name} must have type object`)
+      } catch {
+        errors.push(`invalid outputSchema for ${tool.name}`)
+      }
+    }
     if (tool.timeoutSeconds != null) {
       validateTimeout(tool.timeoutSeconds, `aiTools[${tool.name ?? '<unknown>'}].timeoutSeconds`, errors)
     }

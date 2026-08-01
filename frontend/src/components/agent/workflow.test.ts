@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { topologicallySortWorkflowNodes, wouldCreateCycle } from './workflow'
+import { reconcileWorkflowArguments, topologicallySortWorkflowNodes, wouldCreateCycle } from './workflow'
 
 describe('workflow graph helpers', () => {
   const nodes = [
@@ -34,5 +34,19 @@ describe('workflow graph helpers', () => {
     expect(wouldCreateCycle([
       { source: 'a', target: 'b' },
     ], 'b', 'c')).toBe(false)
+  })
+})
+
+describe('reconcileWorkflowArguments', () => {
+  it('preserves authored values and seeds newly required inputs', () => {
+    const result = JSON.parse(reconcileWorkflowArguments(
+      '{"existing":"kept","legacy":true}',
+      '{"type":"object","properties":{"existing":{"type":"string"},"count":{"type":"integer","default":3}},"required":["existing","count"]}',
+    ))
+    expect(result).toEqual({ existing: 'kept', legacy: true, count: 3 })
+  })
+
+  it('does not destroy invalid advanced JSON during a catalog refresh', () => {
+    expect(reconcileWorkflowArguments('{unfinished', '{"type":"object"}')).toBe('{unfinished')
   })
 })

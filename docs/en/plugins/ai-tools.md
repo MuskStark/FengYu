@@ -6,18 +6,19 @@ lang: en
 
 # AI Tools
 
-A plugin can expose methods that the host's chat backends and agent can call as **AI tools**. Declaration is purely a manifest concern — no host code changes are needed. At startup, `AiToolDiscoveryConfig` walks every enabled plugin's `aiTools` array and turns each entry into a Spring AI `ToolCallback`.
+A plugin can expose methods that the host's chat backends and agent can call as **AI tools**. Declaration is purely a manifest concern — no host code changes are needed. The live tool registry scans enabled plugins when it creates a catalog or starts an agent run, so install, upgrade, enable, disable, and uninstall changes do not require a host restart.
 
 ## Declaring tools
 
-Add an `aiTools` array to `manifest.json`. Each entry has four fields:
+Add an `aiTools` array to `manifest.json`. Each entry has four required fields and one optional output contract:
 
 ```json
 {
   "name": "excel_analyze",
   "description": "Analyze an Excel file and return sheets and headers.",
   "method": "excel_analyze",
-  "inputSchema": "{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"object\",\"description\":\"A FengYu FileRef\"}},\"required\":[\"filePath\"]}"
+  "inputSchema": "{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"object\",\"description\":\"A FengYu FileRef\"}},\"required\":[\"filePath\"]}",
+  "outputSchema": "{\"type\":\"object\",\"properties\":{\"success\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"},\"sheets\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}}"
 }
 ```
 
@@ -27,19 +28,20 @@ Add an `aiTools` array to `manifest.json`. Each entry has four fields:
 | `description` | string | Natural-language guidance for when the model should pick this tool. |
 | `method` | string | The worker JSON-RPC method the host invokes when the model calls this tool. |
 | `inputSchema` | string | JSON Schema for the tool's arguments, **serialized as a string** (note the escaped quotes). |
+| `outputSchema` | string | Optional JSON Schema for the worker result envelope, serialized as a string. Used by visual workflow configuration and ignored by Spring AI tool calling. |
 
 `inputSchema` must be a JSON Schema document. The host parses this string to build the Spring AI `ToolDefinition` handed to the model, so the model sees accurate argument metadata.
 
-## Host aggregation
+## Live host aggregation
 
-At startup, `AiToolDiscoveryConfig.aiToolCallbacks(...)` builds the master `ToolCallback[]`:
+`AiToolRegistry` builds an immutable callback snapshot for each agent run:
 
 1. Every built-in `@FengYuTool` bean is converted via `ToolCallbacks.from(...)`.
 2. For each **enabled** installed plugin whose `aiTools` is non-empty, each declared tool is wrapped in a `ToolCallback` whose:
    - `getToolDefinition()` returns a `ToolDefinition` built from the manifest's `name`, `description`, and parsed `inputSchema`;
    - `call(inputJson)` deserializes the model's JSON arguments, invokes `PluginProcessManager.invoke(pluginId, method, params)` (a JSON-RPC call to the worker), and returns the worker's result serialized as a string (or `{success:false, error}` on failure).
 
-The same `ToolCallback[]` bean is injected into the chat backends and the agent runner — so plugins that declare `aiTools` are instantly callable from chat and agent flows.
+The visual workflow catalog also carries a stable `pluginId:toolName` identity, a schema revision, and `outputSchema`. Connected downstream inputs can select either the whole result or a declared output field. Existing canvas nodes are preserved when a tool disappears, marked unavailable, and reconciled with the latest input schema if the same tool returns.
 
 ## `supportsAi`
 

@@ -26,6 +26,7 @@ import type {
 } from '@/api/types'
 import WorkflowToolNode from '@/components/agent/WorkflowToolNode.vue'
 import {
+  reconcileWorkflowArguments,
   topologicallySortWorkflowNodes,
   wouldCreateCycle,
   type WorkflowFlowNode,
@@ -75,6 +76,7 @@ const inspectorOpen = ref(false)
 const runHistory = ref<AgentRunSummary[]>([])
 const selectedHistoryId = ref<string | null>(null)
 let es: EventSource | null = null
+let toolRefreshTimer: ReturnType<typeof setInterval> | null = null
 let nodeSequence = 0
 const {
   addEdges,
@@ -108,12 +110,103 @@ const selectedNode = computed(
   () => canvasNodes.value.find((node) => node.id === selectedNodeId.value) ?? null,
 )
 
+interface WorkflowInputSchema {
+  type?: string
+  title?: string
+  description?: string
+  default?: unknown
+  enum?: unknown[]
+  properties?: Record<string, WorkflowInputSchema>
+  required?: string[]
+  items?: WorkflowInputSchema
+}
+
+const selectedInputSchema = computed<WorkflowInputSchema>(() => {
+  try {
+    return JSON.parse(selectedNode.value?.data.tool.inputSchema || '{}') as WorkflowInputSchema
+  } catch {
+    return {}
+  }
+})
+const selectedInputFields = computed(() => Object.entries(selectedInputSchema.value.properties ?? {}))
+const selectedRequiredInputs = computed(() => new Set(selectedInputSchema.value.required ?? []))
+const selectedArguments = computed<Record<string, unknown>>(() => {
+  try {
+    const parsed = JSON.parse(selectedNode.value?.data.argsText || '{}')
+    return parsed && !Array.isArray(parsed) && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+})
+const upstreamNodes = computed(() => {
+  if (!selectedNode.value) return []
+  const sourceIds = new Set(
+    canvasEdges.value
+      .filter((edge) => edge.target === selectedNode.value?.id)
+      .map((edge) => edge.source),
+  )
+  return canvasNodes.value.filter((node) => sourceIds.has(node.id))
+})
+const downstreamNodes = computed(() => {
+  if (!selectedNode.value) return []
+  const targetIds = new Set(
+    canvasEdges.value
+      .filter((edge) => edge.source === selectedNode.value?.id)
+      .map((edge) => edge.target),
+  )
+  return canvasNodes.value.filter((node) => targetIds.has(node.id))
+})
+const unavailableNodes = computed(() => canvasNodes.value.filter((node) => !node.data.available))
+const selectedOutputFields = computed(() => {
+  try {
+    const schema = JSON.parse(selectedNode.value?.data.tool.outputSchema || '{}') as WorkflowInputSchema
+    return Object.entries(schema.properties ?? {}).filter(([name]) => name !== 'success' && name !== 'summary')
+  } catch {
+    return []
+  }
+})
+
 // ── lifecycle ────────────────────────────────────────────────────────────
 // Load the tool list once on mount for the "Available tools" hint.
-void api.agentTools().then((list) => (tools.value = list ?? [])).catch(() => {/* best effort */})
-onMounted(() => void loadRunHistory())
+void refreshTools()
+onMounted(() => {
+  void loadRunHistory()
+  window.addEventListener('focus', refreshTools)
+  toolRefreshTimer = setInterval(() => void refreshTools(), 10_000)
+})
 
-onBeforeUnmount(() => closeStream())
+onBeforeUnmount(() => {
+  closeStream()
+  window.removeEventListener('focus', refreshTools)
+  if (toolRefreshTimer) clearInterval(toolRefreshTimer)
+})
+
+async function refreshTools() {
+  try {
+    const list = await api.agentTools()
+    tools.value = list ?? []
+    const byId = new Map(tools.value.map((tool) => [tool.id, tool]))
+    const byName = new Map(tools.value.map((tool) => [tool.name, tool]))
+    let changed = false
+    const reconciled = canvasNodes.value.map((node) => {
+      const current = byId.get(node.data.tool.id) ?? byName.get(node.data.tool.name)
+      if (!current) {
+        if (!node.data.available) return node
+        changed = true
+        return { ...node, data: { ...node.data, available: false } }
+      }
+      if (node.data.available && current.revision === node.data.tool.revision) return node
+      changed = true
+      const argsText = current.revision !== node.data.tool.revision
+        ? reconcileWorkflowArguments(node.data.argsText, current.inputSchema)
+        : node.data.argsText
+      return { ...node, data: { ...node.data, tool: current, argsText, available: true } }
+    })
+    if (changed) canvasNodes.value = reconciled
+  } catch {
+    // Keep the last known catalog and node state when the host is temporarily unreachable.
+  }
+}
 
 async function loadRunHistory() {
   try {
@@ -199,6 +292,92 @@ function defaultArgs(tool: AgentTool): Record<string, unknown> {
   }
 }
 
+function setNodeArgument(name: string, value: unknown) {
+  if (!selectedNode.value) return
+  selectedNode.value.data.argsText = JSON.stringify({
+    ...selectedArguments.value,
+    [name]: value,
+  }, null, 2)
+}
+
+function inputSource(name: string): string {
+  const value = selectedArguments.value[name]
+  if (typeof value !== 'string') return 'manual'
+  const match = /^\{\{node\.([A-Za-z0-9_-]+)\.result(?:\.([A-Za-z0-9_-]+))?}}$/.exec(value)
+  return match ? `${match[1]}${match[2] ? `::${match[2]}` : ''}` : 'manual'
+}
+
+function changeInputSource(name: string, schema: WorkflowInputSchema, event: Event) {
+  const source = (event.target as HTMLSelectElement).value
+  if (source !== 'manual') {
+    const [nodeId, output] = source.split('::')
+    setNodeArgument(name, `{{node.${nodeId}.result${output ? `.${output}` : ''}}}`)
+    return
+  }
+  const current = selectedArguments.value[name]
+  if (typeof current === 'string' && /^\{\{node\.[A-Za-z0-9_-]+\.result(?:\.[A-Za-z0-9_-]+)?}}$/.test(current)) {
+    setNodeArgument(name, schema.default ?? emptySchemaValue(schema))
+  }
+}
+
+function toolOutputFields(tool: AgentTool): Array<[string, WorkflowInputSchema]> {
+  try {
+    const schema = JSON.parse(tool.outputSchema || '{}') as WorkflowInputSchema
+    return Object.entries(schema.properties ?? {}).filter(([name]) => name !== 'success' && name !== 'summary')
+  } catch {
+    return []
+  }
+}
+
+function emptySchemaValue(schema: WorkflowInputSchema): unknown {
+  if (schema.type === 'array') return []
+  if (schema.type === 'object') return {}
+  if (schema.type === 'boolean') return false
+  if (schema.type === 'integer' || schema.type === 'number') return 0
+  return ''
+}
+
+function displayInputValue(name: string, schema: WorkflowInputSchema): string | number {
+  const value = selectedArguments.value[name]
+  if (value === undefined || value === null) return ''
+  if (schema.type === 'array') return Array.isArray(value) ? value.join(', ') : String(value)
+  if (schema.type === 'object') return JSON.stringify(value, null, 2)
+  return typeof value === 'number' ? value : String(value)
+}
+
+function updateSimpleInput(name: string, schema: WorkflowInputSchema, event: Event) {
+  const target = event.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+  if (schema.type === 'boolean' && target instanceof HTMLInputElement) {
+    setNodeArgument(name, target.checked)
+    return
+  }
+  if (schema.type === 'integer' || schema.type === 'number') {
+    const parsed = Number(target.value)
+    setNodeArgument(name, Number.isFinite(parsed) ? parsed : 0)
+    return
+  }
+  if (schema.enum?.length) {
+    setNodeArgument(name, schema.enum.find((option) => String(option) === target.value) ?? target.value)
+    return
+  }
+  if (schema.type === 'array') {
+    const items = target.value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean)
+    setNodeArgument(name, schema.items?.type === 'integer' || schema.items?.type === 'number'
+      ? items.map(Number)
+      : items)
+    return
+  }
+  setNodeArgument(name, target.value)
+}
+
+function updateObjectInput(name: string, event: Event) {
+  try {
+    setNodeArgument(name, JSON.parse((event.target as HTMLTextAreaElement).value || '{}'))
+  } catch {
+    // Keep the last valid value; the advanced JSON editor remains available for complex objects.
+  }
+}
+
 function addTool(tool: AgentTool, x?: number, y?: number, fitAfterAdd = false) {
   const order = canvasNodes.value.length
   const node: WorkflowFlowNode = {
@@ -213,6 +392,7 @@ function addTool(tool: AgentTool, x?: number, y?: number, fitAfterAdd = false) {
       argsText: JSON.stringify(defaultArgs(tool), null, 2),
       description: tool.description || tool.name,
       requiresApproval: false,
+      available: true,
     },
   }
   canvasNodes.value = [...canvasNodes.value, node]
@@ -315,16 +495,21 @@ function replaceNodeReferences(
     )
   }
   if (typeof value !== 'string') return value
-  return value.replace(/\{\{node\.([A-Za-z0-9_-]+)\.result}}/g, (_match, id: string) => {
+  return value.replace(/\{\{node\.([A-Za-z0-9_-]+)\.result((?:\.[A-Za-z0-9_-]+)*)}}/g, (_match, id: string, path: string) => {
     const index = indexes.get(id)
     if (index === undefined) throw new Error(t('agent.canvasUnknownReference', { id }))
     if (index >= currentIndex) throw new Error(t('agent.canvasFutureReference', { id }))
-    return `{{steps.${index}.result}}`
+    return `{{steps.${index}.result${path}}}`
   })
 }
 
 function compileCanvasWorkflow(): AgentPlan {
   if (!canvasNodes.value.length) throw new Error(t('agent.canvasEmpty'))
+  if (unavailableNodes.value.length) {
+    throw new Error(t('agent.canvasUnavailableTools', {
+      names: unavailableNodes.value.map((node) => node.data.tool.name).join(', '),
+    }))
+  }
   const ordered = topologicalNodes()
   const indexes = new Map(ordered.map((node, index) => [node.id, index]))
   const incoming = new Map<string, number[]>()
@@ -652,7 +837,7 @@ function stepChipClass(s: string): string {
         <button
           v-else
           class="cx-iconbtn cx-iconbtn--primary cx-iconbtn--round"
-          :disabled="composerMode === 'ai' ? !goal.trim() : !canvasNodes.length"
+          :disabled="composerMode === 'ai' ? !goal.trim() : !canvasNodes.length || !!unavailableNodes.length"
           :title="composerMode === 'canvas' ? t('agent.runWorkflow') : t('agent.run')"
           @click="run"
         ><i class="mdi mdi-play" /></button>
@@ -769,28 +954,144 @@ function stepChipClass(s: string): string {
                 <i class="mdi mdi-delete-outline" />
               </button>
             </div>
-            <label class="workflow-field">
-              <span>{{ t('agent.description') }}</span>
-              <input v-model="selectedNode.data.description" class="cx-input" :disabled="busy">
-            </label>
-            <label class="workflow-field">
-              <span>{{ t('agent.argumentsJson') }}</span>
-              <textarea
-                v-model="selectedNode.data.argsText"
-                class="cx-textarea mono"
-                rows="10"
-                spellcheck="false"
-                :disabled="busy"
-              />
-            </label>
+            <div v-if="selectedNode.data.tool.description" class="workflow-node-intro">
+              <i class="mdi mdi-information-outline" />
+              <span>{{ selectedNode.data.tool.description }}</span>
+            </div>
+            <div v-if="!selectedNode.data.available" class="cx-alert cx-alert--error workflow-tool-unavailable">
+              <span class="cx-alert__body">{{ t('agent.toolUnavailable') }}</span>
+            </div>
+
+            <section class="workflow-config-section">
+              <h3><i class="mdi mdi-login-variant" /> {{ t('agent.inputConfig') }}</h3>
+              <div v-if="!selectedInputFields.length" class="cx-muted workflow-config-empty">
+                {{ t('agent.noInputRequired') }}
+              </div>
+              <div v-for="([name, schema]) in selectedInputFields" :key="name" class="workflow-argument">
+                <div class="workflow-argument__label">
+                  <span>{{ schema.title || name }}</span>
+                  <span v-if="selectedRequiredInputs.has(name)" class="workflow-required">{{ t('agent.required') }}</span>
+                </div>
+                <small v-if="schema.description">{{ schema.description }}</small>
+                <select
+                  v-if="upstreamNodes.length"
+                  class="cx-input workflow-source-select"
+                  :value="inputSource(name)"
+                  :disabled="busy"
+                  @change="changeInputSource(name, schema, $event)"
+                >
+                  <option value="manual">{{ t('agent.manualInput') }}</option>
+                  <option v-for="node in upstreamNodes" :key="node.id" :value="node.id">
+                    {{ t('agent.fromNodeOutput', { name: node.data.tool.name, id: node.id }) }}
+                  </option>
+                  <optgroup
+                    v-for="node in upstreamNodes.filter((item) => toolOutputFields(item.data.tool).length)"
+                    :key="`${node.id}-fields`"
+                    :label="t('agent.nodeOutputFields', { name: node.data.tool.name })"
+                  >
+                    <option
+                      v-for="([outputName, outputSchema]) in toolOutputFields(node.data.tool)"
+                      :key="`${node.id}-${outputName}`"
+                      :value="`${node.id}::${outputName}`"
+                    >
+                      {{ outputSchema.title || outputName }}
+                    </option>
+                  </optgroup>
+                </select>
+
+                <template v-if="inputSource(name) === 'manual'">
+                  <select
+                    v-if="schema.enum?.length"
+                    class="cx-input"
+                    :value="selectedArguments[name] ?? ''"
+                    :disabled="busy"
+                    @change="updateSimpleInput(name, schema, $event)"
+                  >
+                    <option v-if="!selectedRequiredInputs.has(name)" value="">{{ t('agent.notSet') }}</option>
+                    <option v-for="option in schema.enum" :key="String(option)" :value="option">{{ option }}</option>
+                  </select>
+                  <label v-else-if="schema.type === 'boolean'" class="workflow-boolean-input">
+                    <input
+                      type="checkbox"
+                      :checked="Boolean(selectedArguments[name])"
+                      :disabled="busy"
+                      @change="updateSimpleInput(name, schema, $event)"
+                    >
+                    <span>{{ t('agent.enabled') }}</span>
+                  </label>
+                  <textarea
+                    v-else-if="schema.type === 'object'"
+                    class="cx-textarea mono workflow-object-input"
+                    rows="3"
+                    :value="displayInputValue(name, schema)"
+                    :placeholder="t('agent.objectInputPlaceholder')"
+                    :disabled="busy"
+                    @change="updateObjectInput(name, $event)"
+                  />
+                  <textarea
+                    v-else-if="schema.type === 'array'"
+                    class="cx-textarea workflow-array-input"
+                    rows="2"
+                    :value="displayInputValue(name, schema)"
+                    :placeholder="t('agent.arrayInputPlaceholder')"
+                    :disabled="busy"
+                    @input="updateSimpleInput(name, schema, $event)"
+                  />
+                  <input
+                    v-else
+                    class="cx-input"
+                    :type="schema.type === 'integer' || schema.type === 'number' ? 'number' : 'text'"
+                    :value="displayInputValue(name, schema)"
+                    :placeholder="schema.description || t('agent.enterValue')"
+                    :disabled="busy"
+                    @input="updateSimpleInput(name, schema, $event)"
+                  >
+                </template>
+                <div v-else class="workflow-linked-input">
+                  <i class="mdi mdi-link-variant" /> {{ t('agent.usesNodeOutput') }}
+                </div>
+              </div>
+            </section>
+
+            <section class="workflow-config-section">
+              <h3><i class="mdi mdi-logout-variant" /> {{ t('agent.outputConfig') }}</h3>
+              <div class="workflow-output-card">
+                <strong>{{ t('agent.nodeResult') }}</strong>
+                <div v-if="selectedOutputFields.length" class="workflow-output-fields">
+                  <span v-for="([name, schema]) in selectedOutputFields" :key="name">
+                    <code>{{ name }}</code>{{ schema.description ? ` · ${schema.description}` : '' }}
+                  </span>
+                </div>
+                <span v-if="downstreamNodes.length">
+                  {{ t('agent.outputUsedBy', { count: downstreamNodes.length }) }}
+                </span>
+                <span v-else>{{ t('agent.outputConnectHint') }}</span>
+              </div>
+            </section>
+
+            <details class="workflow-advanced">
+              <summary>{{ t('agent.advancedSettings') }}</summary>
+              <div class="workflow-advanced__body">
+                <label class="workflow-field">
+                  <span>{{ t('agent.description') }}</span>
+                  <input v-model="selectedNode.data.description" class="cx-input" :disabled="busy">
+                </label>
+                <label class="workflow-field">
+                  <span>{{ t('agent.argumentsJson') }}</span>
+                  <textarea
+                    v-model="selectedNode.data.argsText"
+                    class="cx-textarea mono"
+                    rows="8"
+                    spellcheck="false"
+                    :disabled="busy"
+                  />
+                </label>
+              </div>
+            </details>
             <label class="workflow-checkbox">
               <input v-model="selectedNode.data.requiresApproval" type="checkbox" :disabled="busy">
               <span>{{ t('agent.requiresApproval') }}</span>
             </label>
-            <div class="cx-muted workflow-reference-help">
-              {{ t('agent.referenceHint') }}<br>
-              <code v-pre>{{node.node_1.result}}</code>
-            </div>
           </template>
           <div v-else class="cx-muted workflow-empty">{{ t('agent.selectNode') }}</div>
         </aside>
@@ -918,7 +1219,7 @@ function stepChipClass(s: string): string {
 
 .workflow-editor {
   display: grid;
-  grid-template-columns: 168px minmax(0, 1fr) 220px;
+  grid-template-columns: 168px minmax(0, 1fr) 320px;
   height: clamp(560px, calc(100vh - 220px), 760px);
   min-height: 560px;
   margin-bottom: 16px;
@@ -929,7 +1230,7 @@ function stepChipClass(s: string): string {
 }
 
 .workflow-editor--palette-closed {
-  grid-template-columns: 0 minmax(0, 1fr) 220px;
+  grid-template-columns: 0 minmax(0, 1fr) 320px;
 }
 
 .workflow-editor--inspector-closed {
@@ -1086,6 +1387,165 @@ function stepChipClass(s: string): string {
   font-size: 24px;
 }
 
+.workflow-node-intro {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  padding: 9px;
+  color: rgba(var(--v-theme-on-surface), .72);
+  font-size: 11px;
+  line-height: 1.5;
+  border-radius: 8px;
+  background: rgba(var(--v-theme-primary), .08);
+}
+
+.workflow-node-intro i {
+  flex: 0 0 auto;
+  color: rgb(var(--v-theme-primary));
+  font-size: 15px;
+}
+
+.workflow-tool-unavailable {
+  margin-bottom: 14px;
+  font-size: 11px;
+}
+
+.workflow-config-section {
+  margin-bottom: 18px;
+}
+
+.workflow-config-section h3 {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 0 0 9px;
+  font-size: 12px;
+}
+
+.workflow-config-section h3 i {
+  color: rgb(var(--v-theme-primary));
+  font-size: 15px;
+}
+
+.workflow-config-empty {
+  padding: 10px;
+  font-size: 11px;
+  border: 1px dashed rgb(var(--v-theme-outline-variant));
+  border-radius: 8px;
+}
+
+.workflow-argument {
+  margin-bottom: 11px;
+  padding: 9px;
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border-radius: 8px;
+}
+
+.workflow-argument__label {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  margin-bottom: 5px;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.workflow-argument > small {
+  display: block;
+  margin: -1px 0 7px;
+  color: rgba(var(--v-theme-on-surface), .6);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.workflow-required {
+  padding: 1px 5px;
+  color: rgb(var(--v-theme-primary));
+  font-size: 9px;
+  font-weight: 600;
+  border-radius: 10px;
+  background: rgba(var(--v-theme-primary), .12);
+}
+
+.workflow-source-select {
+  margin-bottom: 7px;
+}
+
+.workflow-argument .cx-input,
+.workflow-argument .cx-textarea {
+  width: 100%;
+  font-size: 11px;
+}
+
+.workflow-boolean-input {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  min-height: 30px;
+  font-size: 11px;
+}
+
+.workflow-array-input,
+.workflow-object-input {
+  resize: vertical;
+}
+
+.workflow-linked-input {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 30px;
+  padding: 6px 8px;
+  color: rgb(var(--v-theme-primary));
+  font-size: 10px;
+  border-radius: 6px;
+  background: rgba(var(--v-theme-primary), .08);
+}
+
+.workflow-output-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px;
+  font-size: 11px;
+  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border-radius: 8px;
+}
+
+.workflow-output-card span {
+  color: rgba(var(--v-theme-on-surface), .62);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.workflow-output-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px 0;
+}
+
+.workflow-output-fields code {
+  color: rgb(var(--v-theme-primary));
+}
+
+.workflow-advanced {
+  margin-bottom: 14px;
+  border-top: 1px solid rgb(var(--v-theme-outline-variant));
+}
+
+.workflow-advanced summary {
+  padding: 10px 0;
+  color: rgba(var(--v-theme-on-surface), .68);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.workflow-advanced__body {
+  padding-top: 3px;
+}
+
 .workflow-field {
   display: block;
   margin-bottom: 14px;
@@ -1120,11 +1580,11 @@ function stepChipClass(s: string): string {
 
 @media (max-width: 1050px) {
   .workflow-editor {
-    grid-template-columns: 150px minmax(0, 1fr) 200px;
+    grid-template-columns: 150px minmax(0, 1fr) 280px;
   }
 
   .workflow-editor--palette-closed {
-    grid-template-columns: 0 minmax(0, 1fr) 200px;
+    grid-template-columns: 0 minmax(0, 1fr) 280px;
   }
 
   .workflow-editor--inspector-closed {

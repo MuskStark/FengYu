@@ -1,11 +1,8 @@
 package fan.summer.fengyu.ai.agent;
 
-import org.springframework.ai.tool.ToolCallback;
+import fan.summer.fengyu.ai.config.AiToolRegistry;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-
-import java.util.Arrays;
-import java.util.List;
 
 /**
  * Wires the {@link AgentRunner} as a Spring bean from its fully-injected constructor.
@@ -14,21 +11,18 @@ import java.util.List;
  * tests and production wiring via the same 3-argument constructor). This configuration gives
  * Spring the production wiring:
  * <ul>
- *   <li>{@code tools} — the aggregated {@link ToolCallback} bean from
- *       {@code AiToolDiscoveryConfig#aiToolCallbacks(List)} (the single source of truth for
- *       "what can the agent orchestrate"); the array is defensively copied to a {@link List}.</li>
+ *   <li>{@code tools} — a fresh {@link AiToolRegistry} snapshot for every run.</li>
  *   <li>{@code planGenerator} — {@link ChatBackendPlanGenerator}, which asks the active
  *       backend for a validated structured workflow without enabling tools during planning.</li>
  *   <li>{@code stepExecutor} — {@link AgentRunner#toolResolvingExecutor()} (the Spring AI-native
- *       path: resolve the tool by name and call {@link ToolCallback#call(String)}).</li>
+ *       path: resolve the tool by name and invoke its callback).</li>
  * </ul>
  */
 @Configuration
 public class AgentRunnerConfig {
 
     @Bean
-    public AgentRunner agentRunner(ToolCallback[] aiToolCallbacks, ChatBackendPlanGenerator planGenerator) {
-        List<ToolCallback> tools = aiToolCallbacks == null ? List.of() : Arrays.asList(aiToolCallbacks);
-        return new AgentRunner(tools, planGenerator, AgentRunner.toolResolvingExecutor());
+    public AgentRunner agentRunner(AiToolRegistry toolRegistry, ChatBackendPlanGenerator planGenerator) {
+        return new AgentRunner(toolRegistry::callbacks, planGenerator, AgentRunner.toolResolvingExecutor());
     }
 }

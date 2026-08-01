@@ -51,6 +51,7 @@ Each entry declares one AI-callable tool that the host aggregates into its Sprin
 | `description` | string | yes | Natural-language description for the model. |
 | `method` | string | yes | Worker JSON-RPC method to invoke when the model calls this tool. |
 | `inputSchema` | string | yes | JSON Schema describing the tool's arguments, serialized as a **string**. |
+| `outputSchema` | string | no | JSON Schema describing the worker's result envelope, serialized as a **string**. Enables visual workflow output discovery. |
 | `timeoutSeconds` | integer | no | Per-tool call timeout in seconds, clamped to `[1, 600]`. Overrides `backend.callTimeoutSeconds`. Defaults to `60`. **A tool that may exceed its declared timeout must be split into `*_start` / `*_status` / `*_cancel` job methods** — see [Worker → Long tasks (job mode)](/en/plugins/worker#long-tasks-job-mode). |
 
 See [AI Tools](/en/plugins/ai-tools) for the end-to-end flow.
@@ -114,7 +115,7 @@ The `fan.summer.markdown` manifest — a text plugin with no permissions and no 
 
 ### Excel plugin (with aiTools)
 
-The `fan.summer.excel` manifest — a file plugin with read/write permissions and AI tools. Two tools are shown in full: `excel_analyze` (a short synchronous call), and `excel_execute_start` (the launcher half of a job-mode pair for long-running splits). The rest follow the same `{name, description, method, inputSchema, timeoutSeconds?}` shape:
+The `fan.summer.excel` manifest — a file plugin with read/write permissions and AI tools. Two tools are shown in full: `excel_analyze` (a short synchronous call), and `excel_execute_start` (the launcher half of a job-mode pair for long-running splits). The rest follow the same `{name, description, method, inputSchema, outputSchema?, timeoutSeconds?}` shape:
 
 ```json
 {

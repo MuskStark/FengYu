@@ -55,6 +55,7 @@
           "description": { "type": "string" },
           "method": { "type": "string", "minLength": 1 },
           "inputSchema": { "type": "string", "minLength": 1 },
+          "outputSchema": { "type": "string", "minLength": 1 },
           "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 600 }
         }
       }

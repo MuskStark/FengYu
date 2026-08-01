@@ -33,6 +33,13 @@ test('ai tool inputSchema must be a json object', async () => {
   assert.ok(errors.some((e) => e.includes('inputSchema')), errors.join('\n'))
 })
 
+test('optional ai tool outputSchema must be a json object', async () => {
+  const manifest = await readFixture('valid-full.json')
+  manifest.aiTools[0].outputSchema = '{"type":"array"}'
+  const errors = validateManifestObject(manifest)
+  assert.ok(errors.some((e) => e.includes('outputSchema')), errors.join('\n'))
+})
+
 test('duplicate ai tool names and methods are rejected', () => {
   const manifest = {
     schemaVersion: 1, id: 'com.example.dup', name: 'Dup', version: '1.0.0',
