@@ -10,6 +10,7 @@ import fan.summer.fengyu.ai.AiServiceException;
 import fan.summer.fengyu.ai.AiStreamCallback;
 import fan.summer.fengyu.ai.AiToolCall;
 import fan.summer.fengyu.ai.AiToolResult;
+import fan.summer.fengyu.ai.ActiveFilesPromptAppender;
 import fan.summer.fengyu.ai.ChatBackend;
 import fan.summer.fengyu.ai.ChatFileContext.ActiveFileRef;
 import org.slf4j.Logger;
@@ -303,9 +304,10 @@ public final class SpringAiCloudBackend implements ChatBackend {
 
     private void runToolLoop(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs,
                              AiStreamCallback callback, boolean enableTools) {
-        // Task 5 will append activeFileRefs to the effective system prompt (route A fallback).
-        // Route B injection already flows via ChatFileContext (set by AiController around this call).
-        String systemPrompt = effectiveSystemPrompt();
+        // Route A fallback: when the host could not transparently inject a FileRef, the model
+        // sees the active files here and picks one. Route B injection flows via ChatFileContext
+        // (set by AiController around this call) for the transparent path.
+        String systemPrompt = ActiveFilesPromptAppender.append(effectiveSystemPrompt(), activeFileRefs);
 
         // Attach the configured tool callbacks to the PROMPT. We MUST derive the options
         // from baseOptions (the provider-specific OpenAiChatOptions / AnthropicChatOptions
