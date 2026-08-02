@@ -124,6 +124,9 @@ public final class AiToolRegistry {
                     }
                     @SuppressWarnings("unchecked")
                     Map<String, Object> params = json.readValue(input, Map.class);
+                    // A WRITE_DIR parameter is satisfied by the staging grant the turn started with
+                    // (access="write"), already in ChatFileContext. No per-call promotion or worker
+                    // restart is needed: the staging root entered the sandbox at the first invoke.
                     var injected = AiToolFileInjector.injectFileRefs(
                             params, pluginId, tool.inputSchema(), ChatFileContext.current());
                     long timeout = tool.timeoutSeconds() == null ? -1 : tool.timeoutSeconds();

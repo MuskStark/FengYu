@@ -51,6 +51,8 @@ class PluginRuntimeEnvironmentServiceTest {
             service.environmentFor(manifest("fan.summer.markdown", List.of()));
         assertEquals("INFO", environment.get(PluginWorkerProtocol.LOG_LEVEL_ENV));
         assertFalse(environment.containsKey(PluginWorkerProtocol.DB_PASSWORD_ENV));
+        assertTrue(Files.isDirectory(Path.of(
+            environment.get(PluginWorkerProtocol.PLUGIN_DATA_DIR_ENV))));
     }
 
     @Test

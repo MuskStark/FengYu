@@ -155,9 +155,17 @@ public class ProcessSandbox {
         if (roots == null) return List.of();
         return roots.stream()
                 .filter(path -> path != null && Files.exists(path))
-                .map(path -> path.toAbsolutePath().normalize())
+                .map(ProcessSandbox::realPath)
                 .distinct()
                 .toList();
+    }
+
+    private static Path realPath(Path path) {
+        try {
+            return path.toRealPath();
+        } catch (java.io.IOException ignored) {
+            return path.toAbsolutePath().normalize();
+        }
     }
 
     private static String quoted(String value) {
