@@ -3,6 +3,7 @@ package fan.summer.fengyu.setup;
 import fan.summer.fengyu.web.controller.AgentController;
 import fan.summer.fengyu.web.controller.AiConfigController;
 import fan.summer.fengyu.web.controller.AiController;
+import fan.summer.fengyu.web.controller.AiFileController;
 import fan.summer.fengyu.web.controller.ConversationController;
 import fan.summer.fengyu.web.controller.PluginController;
 import fan.summer.fengyu.web.controller.PluginMarketplaceController;
@@ -61,7 +62,7 @@ import org.springframework.context.annotation.FilterType;
                         PluginRuntimeController.class,
                         PluginRuntimeFileController.class,
                         SettingsController.class,
-                        AiController.class, AiConfigController.class, AgentController.class,
+                        AiController.class, AiFileController.class, AiConfigController.class, AgentController.class,
                         ConversationController.class, SkillController.class,
                         McpController.class, SecurityController.class}))
 public class SetupApplication {

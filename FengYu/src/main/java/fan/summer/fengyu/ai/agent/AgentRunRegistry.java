@@ -1,6 +1,8 @@
 package fan.summer.fengyu.ai.agent;
 
 import org.springframework.stereotype.Component;
+import fan.summer.fengyu.security.SecurityContext;
+import fan.summer.fengyu.database.SecurityConstants;
 
 import java.util.List;
 import java.util.UUID;
@@ -23,6 +25,11 @@ import java.util.concurrent.ConcurrentMap;
 public class AgentRunRegistry {
 
     private final ConcurrentMap<String, AgentRun> runs = new ConcurrentHashMap<>();
+    private final SecurityContext securityContext;
+
+    public AgentRunRegistry(SecurityContext securityContext) {
+        this.securityContext = securityContext;
+    }
 
     /**
      * Creates and registers a fresh {@link AgentRun} with a generated id.
@@ -49,7 +56,9 @@ public class AgentRunRegistry {
                            List<StepExecution> restoredExecutions) {
         AgentRunConfig effective = config != null ? config
                 : new AgentRunConfig(false, false, false, 0);
-        AgentRun run = new AgentRun(UUID.randomUUID().toString(), goal, effective);
+        Long currentUser = securityContext.currentUserId();
+        long userId = currentUser == null ? SecurityConstants.LOCAL_VIRTUAL_USER_ID : currentUser;
+        AgentRun run = new AgentRun(UUID.randomUUID().toString(), goal, effective, userId);
         run.setPlan(workflow);
         run.restoreExecutions(restoredExecutions);
         runs.put(run.getRunId(), run);
@@ -62,7 +71,9 @@ public class AgentRunRegistry {
      */
     public AgentRun get(String runId) {
         if (runId == null) return null;
-        return runs.get(runId);
+        AgentRun run = runs.get(runId);
+        Long currentUser = securityContext.currentUserId();
+        return run != null && currentUser != null && run.getUserId() == currentUser ? run : null;
     }
 
     /**

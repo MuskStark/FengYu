@@ -59,6 +59,20 @@ class ExcelRpcHandlersTest {
 
     @Test
     @SuppressWarnings("unchecked")
+    void rejectsUnresolvedFileReferenceObjectsInsteadOfCreatingTheirStringForm() {
+        Map<String, Object> a = (Map<String, Object>) handlers.aiAnalyze(Map.of(
+            "filePath", Map.of("path", src.toString(), "kind", "file")));
+        assertEquals(Boolean.FALSE, a.get("success"));
+
+        handlers.aiAnalyze(Map.of("filePath", src.toString()));
+        handlers.aiConfigure(Map.of("mode", "BY_SHEET"));
+        Map<String, Object> r = (Map<String, Object>) handlers.aiExecute(Map.of(
+            "outputDir", Map.of("path", tmp.resolve("out"), "kind", "directory")));
+        assertEquals(Boolean.FALSE, r.get("success"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
     void analyzeConfigureExecuteBySheet() throws Exception {
         handlers.aiAnalyze(Map.of("filePath", src.toString()));
         Map<String, Object> cfg = (Map<String, Object>) handlers.aiConfigure(Map.of("mode", "BY_SHEET"));

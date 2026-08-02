@@ -24,10 +24,12 @@ public class AgentRun {
     /** The user goal — read by the AgentRunner during the planning phase. */
     private final String goal;
     private final AgentRunConfig config;
+    private final long userId;
 
     private volatile AgentRunStatus status = AgentRunStatus.PLANNING;
     private volatile boolean cancelled = false;
     private volatile AgentPlan plan;
+    private volatile Thread runnerThread;
 
     private final List<StepExecution> executions = new CopyOnWriteArrayList<>();
     private final List<StepExecution> restoredExecutions = new CopyOnWriteArrayList<>();
@@ -46,9 +48,14 @@ public class AgentRun {
      * @param config the approval/recovery configuration; must not be {@code null}
      */
     public AgentRun(String runId, String goal, AgentRunConfig config) {
+        this(runId, goal, config, fan.summer.fengyu.database.SecurityConstants.LOCAL_VIRTUAL_USER_ID);
+    }
+
+    public AgentRun(String runId, String goal, AgentRunConfig config, long userId) {
         this.runId = runId;
         this.goal = goal;
         this.config = config;
+        this.userId = userId;
     }
 
     /** @return the unique identifier for this run. */
@@ -65,6 +72,8 @@ public class AgentRun {
     public AgentRunConfig getConfig() {
         return config;
     }
+
+    public long getUserId() { return userId; }
 
     /** @return the current {@link AgentRunStatus}. */
     public AgentRunStatus getStatus() {
@@ -123,6 +132,13 @@ public class AgentRun {
     /** Marks the run as cancelled (terminal). Idempotent. */
     public void markCancelled() {
         this.cancelled = true;
+        Thread runner = runnerThread;
+        if (runner != null) runner.interrupt();
+    }
+
+    void attachRunnerThread(Thread thread) { this.runnerThread = thread; }
+    void detachRunnerThread(Thread thread) {
+        if (this.runnerThread == thread) this.runnerThread = null;
     }
 
     /** @return {@code true} if the run has been cancelled via {@link #markCancelled()}. */

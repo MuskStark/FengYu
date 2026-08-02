@@ -128,6 +128,41 @@ export const api = {
     return data
   },
 
+  async grantAiNativePath(path: string, kind: 'file' | 'directory'): Promise<ActiveFileEntry[]> {
+    const { data } = await http.post<ActiveFileEntry[]>('/api/ai/files/native', {
+      path,
+      kind,
+      writableDirectory: kind === 'directory',
+    })
+    return data
+  },
+
+  async uploadAiFile(file: File): Promise<ActiveFileEntry[]> {
+    const body = new FormData()
+    body.append('file', file)
+    const { data } = await http.post<ActiveFileEntry[]>('/api/ai/files/upload', body, {
+      headers: { 'Content-Type': undefined },
+    })
+    return data
+  },
+
+  async uploadAiDirectory(files: File[]): Promise<ActiveFileEntry[]> {
+    const body = new FormData()
+    for (const file of files) {
+      body.append('files', file)
+      body.append('paths', file.webkitRelativePath || file.name)
+    }
+    const { data } = await http.post<ActiveFileEntry[]>('/api/ai/files/upload-directory', body, {
+      headers: { 'Content-Type': undefined },
+      params: { writable: true },
+    })
+    return data
+  },
+
+  async revokeAiFile(pluginId: string, refId: string): Promise<void> {
+    await http.post('/api/ai/files/revoke', { pluginId, refId })
+  },
+
   async createRuntimeOutput(id: string): Promise<PluginFileRef> {
     const { data } = await http.post<PluginFileRef>(`/api/plugin-runtime/${encodeURIComponent(id)}/files/output`)
     return data
@@ -183,10 +218,11 @@ export const api = {
     return data
   },
 
-  async aiChat(messages: ChatMessage[], activeFileRefs?: ActiveFileEntry[]): Promise<ChatStartResponse> {
+  async aiChat(messages: ChatMessage[], activeFileRefs?: ActiveFileEntry[], permissionMode = 'ask-for-approval'): Promise<ChatStartResponse> {
     const { data } = await http.post<ChatStartResponse>('/api/ai/chat', {
       messages,
       activeFileRefs: activeFileRefs ?? [],
+      permissionMode,
     })
     return data
   },
@@ -199,8 +235,8 @@ export const api = {
     return data
   },
 
-  async cancelAiGeneration(): Promise<void> {
-    await http.post('/api/ai/cancel')
+  async cancelAiGeneration(streamId: string): Promise<void> {
+    await http.post('/api/ai/cancel', undefined, { params: { streamId } })
   },
 
   // ── AI conversation history (persisted) ──────────────────────

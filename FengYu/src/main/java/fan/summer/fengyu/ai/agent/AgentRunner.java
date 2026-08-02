@@ -2,6 +2,11 @@ package fan.summer.fengyu.ai.agent;
 
 import fan.summer.fengyu.ai.util.JsonHelper;
 import fan.summer.fengyu.ai.tools.ApprovalRequiredToolCallback;
+import fan.summer.fengyu.ai.tools.AuditedToolCallback;
+import fan.summer.fengyu.ai.tools.ToolEffect;
+import fan.summer.fengyu.ai.tools.ToolResultStatus;
+import fan.summer.fengyu.ai.tools.AiPermissionContext;
+import fan.summer.fengyu.ai.tools.AiPermissionMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
@@ -144,7 +149,7 @@ public class AgentRunner {
                 throw new IllegalStateException("No tool named '" + step.toolName() + "' is available");
             }
             String jsonArgs = toJsonArgs(step.args());
-            return cb.call(jsonArgs);
+            return ToolResultStatus.requireSuccess(cb.call(jsonArgs));
         };
     }
 
@@ -156,7 +161,12 @@ public class AgentRunner {
      * by reading {@link AgentRun#getStatus()} and calling {@link AgentRun#approve(AgentPlan)}).
      */
     public void run(AgentRun run, AgentEventSink sink) {
-        Thread.ofVirtual().name("agent-run-" + run.getRunId()).start(() -> drive(run, sink));
+        Thread.ofVirtual().name("agent-run-" + run.getRunId()).start(() -> {
+            Thread current = Thread.currentThread();
+            run.attachRunnerThread(current);
+            try { drive(run, sink); }
+            finally { run.detachRunnerThread(current); }
+        });
     }
 
     // ── The state machine ──────────────────────────────────────────────
@@ -253,8 +263,11 @@ public class AgentRunner {
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            run.setStatus(AgentRunStatus.FAILED);
-            safe(sink, s -> s.onError("Run interrupted"));
+            if (run.isCancelled()) finishCancelled(run, sink);
+            else {
+                run.setStatus(AgentRunStatus.FAILED);
+                safe(sink, s -> s.onError("Run interrupted"));
+            }
         } catch (Exception e) {
             log.error("agent {}: run failed unexpectedly", run.getRunId(), e);
             run.setStatus(AgentRunStatus.FAILED);
@@ -300,7 +313,7 @@ public class AgentRunner {
                 // The run owns one approval latch, so approval checkpoints remain deterministic.
                 for (AgentStep step : ready) {
                     if ((cfg.requireStepApproval() && step.requiresApproval())
-                            || toolRequiresApproval(step.toolName(), tools)) {
+                            || toolRequiresApproval(step, tools, cfg.effectivePermissionMode())) {
                         run.requestApproval(AgentRunStatus.AWAITING_STEP_APPROVAL);
                         safe(sink, s -> s.onStepApprovalRequested(step.index()));
                         if (!awaitApprovalOrCancel(run)) {
@@ -355,7 +368,10 @@ public class AgentRunner {
             AgentStep resolved = new AgentStep(step.index(), step.toolName(),
                     resolveArgs(step.args(), results, results.get(step.index() - 1)),
                     step.description(), step.requiresApproval(), step.dependsOn());
-            String result = stepExecutor.execute(resolved, tools);
+            AiPermissionContext.set(run.getConfig().effectivePermissionMode());
+            String result;
+            try { result = stepExecutor.execute(resolved, tools); }
+            finally { AiPermissionContext.clear(); }
             results.put(step.index(), result);
             run.addExecution(new StepExecution(step.index(), StepStatus.COMPLETED, result));
             safe(sink, s -> s.onStepComplete(step.index(), result));
@@ -452,12 +468,21 @@ public class AgentRunner {
         return context.toString();
     }
 
-    private static boolean toolRequiresApproval(String toolName, List<ToolCallback> tools) {
+    private static boolean toolRequiresApproval(AgentStep step, List<ToolCallback> tools,
+                                                AiPermissionMode mode) {
         for (ToolCallback tool : tools) {
-            if (tool instanceof ApprovalRequiredToolCallback
-                    && tool.getToolDefinition().name().equals(toolName)) {
-                return true;
+            if (!tool.getToolDefinition().name().equals(step.toolName())) continue;
+            if (tool instanceof AuditedToolCallback audited) {
+                if (mode == AiPermissionMode.FULL_ACCESS) return false;
+                if (mode == AiPermissionMode.ASK_FOR_APPROVAL) return audited.effect() != ToolEffect.READ;
+                if (audited.effect() == ToolEffect.EXTERNAL) return true;
+                if (audited.effect() == ToolEffect.COMMAND) {
+                    return fan.summer.fengyu.ai.tools.ChatToolApprovalGate.commandPotentiallyUnsafe(
+                            toJsonArgs(step.args()));
+                }
+                return false;
             }
+            if (tool instanceof ApprovalRequiredToolCallback) return mode != AiPermissionMode.FULL_ACCESS;
         }
         return false;
     }

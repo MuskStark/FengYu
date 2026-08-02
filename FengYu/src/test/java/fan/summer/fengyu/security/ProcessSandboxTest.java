@@ -9,6 +9,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ProcessSandboxTest {
     @TempDir Path workdir;
@@ -46,5 +47,12 @@ class ProcessSandboxTest {
                 sandbox.command(List.of("/bin/sh", "-lc", "pwd"), workdir, true);
 
         assertFalse(launch.command().contains("--unshare-net"));
+    }
+
+    @Test
+    void pluginWorkerFailsClosedWithoutNativeSandbox() {
+        ProcessSandbox sandbox = new ProcessSandbox(ProcessSandbox.Backend.NONE);
+        assertThrows(IllegalStateException.class, () -> sandbox.plugin(
+                List.of("worker"), workdir, List.of(workdir), false, false));
     }
 }
