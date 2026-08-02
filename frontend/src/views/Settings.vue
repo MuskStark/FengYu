@@ -47,6 +47,7 @@ const aiForm = ref({
   temperature: 0.7,
   topP: 0.9,
   maxTokens: 2048,
+  maxToolRounds: 50,
   systemPrompt: '',
 })
 const showKey = ref<Record<string, boolean>>({})
@@ -65,6 +66,7 @@ function syncFormFromStore() {
   aiForm.value.temperature = s.temperature
   aiForm.value.topP = s.topP
   aiForm.value.maxTokens = s.maxTokens
+  aiForm.value.maxToolRounds = s.maxToolRounds
   aiForm.value.systemPrompt = s.systemPrompt
 }
 
@@ -90,6 +92,7 @@ async function onSave() {
     temperature: aiForm.value.temperature,
     topP: aiForm.value.topP,
     maxTokens: aiForm.value.maxTokens,
+    maxToolRounds: aiForm.value.maxToolRounds,
     systemPrompt: aiForm.value.systemPrompt,
   }
   if (aiForm.value.mode !== 'local') {
@@ -301,6 +304,13 @@ async function onTest() {
         <div class="cx-setting-row" style="margin-bottom: 14px">
           <div class="cx-setting-row__label"><span>{{ $t('aiSettings.maxTokens') }}</span></div>
           <input v-model.number="aiForm.maxTokens" class="cx-input cx-input--narrow" type="number" step="1" min="1" />
+        </div>
+        <div class="cx-setting-row" style="margin-bottom: 14px">
+          <div class="cx-setting-row__label">
+            <span>{{ $t('aiSettings.maxToolRounds') }}</span>
+            <span class="cx-muted" style="font-size: 12px; margin-left: 6px">{{ $t('aiSettings.maxToolRoundsHint') }}</span>
+          </div>
+          <input v-model.number="aiForm.maxToolRounds" class="cx-input cx-input--narrow" type="number" step="1" min="0" max="10000" />
         </div>
         <div class="cx-field" style="margin-bottom: 16px">
           <label class="cx-label">{{ $t('aiSettings.systemPrompt') }}</label>

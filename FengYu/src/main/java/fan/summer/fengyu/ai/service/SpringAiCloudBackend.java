@@ -4,6 +4,8 @@ import fan.summer.fengyu.ai.config.ChatModelConfig;
 import fan.summer.fengyu.ai.skill.SkillPromptAppender;
 import fan.summer.fengyu.ai.skill.SkillRegistry;
 import fan.summer.fengyu.ai.tools.ChatToolApprovalGate;
+import fan.summer.fengyu.ai.tools.AiPermissionContext;
+import fan.summer.fengyu.ai.tools.AiPermissionMode;
 import fan.summer.fengyu.ai.tools.ToolResultStatus;
 import fan.summer.fengyu.ai.util.JsonHelper;
 import fan.summer.fengyu.ai.AiChatMessage;
@@ -65,7 +67,6 @@ import reactor.core.Disposable;
 public final class SpringAiCloudBackend implements ChatBackend {
 
     private static final Logger log = LoggerFactory.getLogger(SpringAiCloudBackend.class);
-    private static final int MAX_TOOL_ROUNDS = 5;
 
     public enum Provider { OPENAI, ANTHROPIC, DEEPSEEK }
 
@@ -272,16 +273,21 @@ public final class SpringAiCloudBackend implements ChatBackend {
                            AiStreamCallback callback, boolean enableTools) throws AiServiceException {
         if (!isReady()) throw new AiServiceException(provider + " cloud backend not configured");
         if (!generating.compareAndSet(false, true)) throw new AiServiceException("Generation already in progress");
+        AiPermissionMode permissionMode = AiPermissionContext.current();
+        // Snapshot the loop cap once per turn so a mid-flight setting change can't extend it.
+        int maxToolRounds = fan.summer.fengyu.ai.AiConfigService.getAiMaxToolRounds();
 
         Thread.ofVirtual().start(() -> {
+            AiPermissionContext.set(permissionMode);
             try {
-                runToolLoop(history, activeFileRefs, callback, enableTools);
+                runToolLoop(history, activeFileRefs, callback, enableTools, maxToolRounds);
             } catch (Exception e) {
                 log.error("{} chat failed", provider, e);
                 callback.onError(e);
             } finally {
                 disposeActiveStream();
                 generating.set(false);
+                AiPermissionContext.clear();
             }
         });
     }
@@ -311,7 +317,8 @@ public final class SpringAiCloudBackend implements ChatBackend {
     // ── Tool loop (Spring AI ToolCallingManager, user-controlled) ──────
 
     private void runToolLoop(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs,
-                             AiStreamCallback callback, boolean enableTools) throws AiServiceException {
+                             AiStreamCallback callback, boolean enableTools, int maxToolRounds)
+            throws AiServiceException {
         // Route A fallback: when the host could not transparently inject a FileRef, the model
         // sees the active files here and picks one. Route B injection flows via ChatFileContext
         // (set by AiController around this call) for the transparent path.
@@ -347,8 +354,10 @@ public final class SpringAiCloudBackend implements ChatBackend {
         // from FengYu history; once tool calls happen, ToolCallingManager extends it
         // (assistant tool-call msg + ToolResponseMessage) and we carry that forward.
         List<Message> conversation = buildSpringAiMessages(history, systemPrompt);
-
-        for (int round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+        // maxToolRounds bounds the number of tool-call rounds; 0 disables the safety net.
+        // A loop counter alone cannot bound cost, but it stops a model that re-requests the
+        // same tool forever from wedging this virtual thread and locking `generating`.
+        for (int round = 0; maxToolRounds <= 0 || round < maxToolRounds; round++) {
             Prompt prompt = options != null ? new Prompt(conversation, options) : new Prompt(conversation);
 
             // Stream this round; fire onToken per token delta; the aggregator hands us the
@@ -368,13 +377,6 @@ public final class SpringAiCloudBackend implements ChatBackend {
                 callback.onComplete(finalText, tokens, 0);
                 return;
             }
-            if (round == MAX_TOOL_ROUNDS) {
-                String warn = "Reached MAX_TOOL_ROUNDS (" + MAX_TOOL_ROUNDS + ")";
-                log.warn(warn);
-                callback.onError(new IllegalStateException(warn));
-                return;
-            }
-
             // User-controlled tool execution: let Spring AI's ToolCallingManager run the
             // requested tools (it resolves them against the options' toolCallbacks), firing
             // onToolCall/onToolResult for each so the UI shows tool progress.
@@ -394,6 +396,10 @@ public final class SpringAiCloudBackend implements ChatBackend {
             conversation = result.conversationHistory();
             mirrorToolResultsToHistory(result.conversationHistory(), history, assistantMsg);
         }
+        // Loop exhausted its budget without producing a tool-free answer.
+        String warn = "Reached maxToolRounds (" + maxToolRounds + ") without a final answer";
+        log.warn(warn);
+        callback.onError(new IllegalStateException(warn));
     }
 
     /**

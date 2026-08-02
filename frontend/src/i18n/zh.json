@@ -39,6 +39,8 @@
     "temperature": "Temperature",
     "topP": "Top-P",
     "maxTokens": "Max Tokens",
+    "maxToolRounds": "最大工具轮次",
+    "maxToolRoundsHint": "0 = 无限制",
     "systemPrompt": "系统提示词",
     "test": "测试连接",
     "testing": "测试中…",

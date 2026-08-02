@@ -102,6 +102,7 @@ export interface AiSettings {
   temperature: number
   topP: number
   maxTokens: number
+  maxToolRounds: number
   systemPrompt: string
   activeMode: AiMode
   ready: boolean

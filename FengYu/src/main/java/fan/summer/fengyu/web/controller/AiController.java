@@ -100,8 +100,23 @@ public class AiController {
         // normal plugin-scoped grants. The model can never create grants by mentioning a path in
         // an assistant/tool message.
         refs.addAll(fileGrants.grantPathsFromUserText(latestUserText(req.messages())));
+        // For a directory the user names as an output target, create a plugin-owned staging
+        // directory per write-capable plugin (read access to the real directory stays above).
+        // The staging grant is added to the turn's active refs so it becomes a sandbox-writable
+        // root at the worker's first call; exportStaging copies it to the target after the turn.
+        List<ChatFileGrantService.StagedOutput> staged;
+        try {
+            ChatFileGrantService.StagingPreparation preparation =
+                    fileGrants.prepareStagingForWriteTargets(latestUserText(req.messages()));
+            refs.addAll(preparation.refs());
+            staged = preparation.staged();
+        } catch (RuntimeException e) {
+            for (ActiveFileRef ref : refs) pluginFiles.revoke(ref.pluginId(), ref.ref().id());
+            throw e;
+        }
         String streamId = UUID.randomUUID().toString();
-        pending.put(streamId, new PendingTurn(history, refs, AiPermissionMode.from(req.permissionMode()), Instant.now()));
+        pending.put(streamId, new PendingTurn(history, refs, staged,
+                AiPermissionMode.from(req.permissionMode()), Instant.now()));
         List<ActiveFileRefDto> responseRefs = refs.stream()
             .map(ref -> new ActiveFileRefDto(ref.pluginId(), ref.ref())).toList();
         return Map.of("streamId", streamId, "activeFileRefs", responseRefs);
@@ -186,7 +201,13 @@ public class AiController {
                 AiConfigServiceHeadless.getAiTopP(),
                 AiConfigServiceHeadless.getAiMaxTokens(),
                 turn.activeFileRefs(),
-                new SseCallback(emitter, () -> activeStreamId.compareAndSet(streamId, null)));
+                // terminal runs on both onComplete and onError. Export staging first (copies the
+                // worker's output to the user-named target and deletes the staging tree), then
+                // release the active-stream slot. exportStaging tolerates an empty/null list.
+                new SseCallback(emitter, () -> {
+                    fileGrants.exportStaging(turn.staged());
+                    activeStreamId.compareAndSet(streamId, null);
+                }));
         } catch (Exception e) {
             activeStreamId.compareAndSet(streamId, null);
             completeWithError(emitter, e.getMessage());
@@ -305,5 +326,6 @@ public class AiController {
 
     /** Carries a stashed turn's history + active file refs from {@code POST /chat} to {@code GET /stream}. */
     private record PendingTurn(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs,
+                               List<ChatFileGrantService.StagedOutput> staged,
                                AiPermissionMode permissionMode, Instant createdAt) {}
 }

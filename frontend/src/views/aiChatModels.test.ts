@@ -8,7 +8,7 @@ const settings: AiSettings = {
   anthropic: { endpoint: 'https://api.anthropic.com', apiKey: '', apiKeySet: false, model: 'claude' },
   deepseek: { endpoint: '', apiKey: '', apiKeySet: false, model: '' },
   ollama: { baseUrl: 'http://127.0.0.1:11434', model: 'qwen3:8b' },
-  temperature: 0.7, topP: 0.9, maxTokens: 2048, systemPrompt: '',
+  temperature: 0.7, topP: 0.9, maxTokens: 2048, maxToolRounds: 50, systemPrompt: '',
 }
 
 describe('configuredChatModels', () => {
