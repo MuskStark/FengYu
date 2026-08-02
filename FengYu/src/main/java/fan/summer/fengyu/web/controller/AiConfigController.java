@@ -69,6 +69,7 @@ public class AiConfigController {
         out.put("temperature", AiConfigService.getAiTemperature());
         out.put("topP", AiConfigService.getAiTopP());
         out.put("maxTokens", AiConfigService.getAiMaxTokens());
+        out.put("maxToolRounds", AiConfigService.getAiMaxToolRounds());
         out.put("systemPrompt", AiConfigService.getAiSystemPrompt());
         out.put("activeMode", aiMode.getCurrentMode());
         out.put("ready", aiMode.getService().map(b -> b.isReady()).orElse(false));
@@ -139,6 +140,11 @@ public class AiConfigController {
             throw new IllegalArgumentException("maxTokens must be between 1 and 1000000");
         }
         if (maxTokens != null) AiConfigServiceHeadless.setAiMaxTokens(maxTokens);
+        Integer maxToolRounds = parseIntQuietly(body.get("maxToolRounds"));
+        if (body.containsKey("maxToolRounds") && (maxToolRounds == null || maxToolRounds < 0 || maxToolRounds > 10_000)) {
+            throw new IllegalArgumentException("maxToolRounds must be between 0 and 10000 (0 = unlimited)");
+        }
+        if (maxToolRounds != null) AiConfigServiceHeadless.setAiMaxToolRounds(maxToolRounds);
         if (body.get("systemPrompt") instanceof String sp) {
             AiConfigServiceHeadless.setAiSystemPrompt(sp);
         }

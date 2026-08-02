@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ChatFileGrantServiceTest {
@@ -53,15 +54,85 @@ class ChatFileGrantServiceTest {
     }
 
     @Test
-    void typedDirectoryPathsRemainReadOnly() throws Exception {
+    void typedOutputDirectoryStaysReadOnlyAndGetsAStagingGrant() throws Exception {
         Path pluginRoot = Files.createDirectories(temp.resolve("typed-plugins"));
+        installManifest(pluginRoot, "test.readwrite", List.of("files.read", "files.write"), true);
+        PluginFileGrantService files = new PluginFileGrantService(temp.resolve("typed-grants").toString());
+        ChatFileGrantService service = new ChatFileGrantService(
+            new PluginPackageService(pluginRoot.toString()),
+            files);
+        Path selected = Files.createDirectories(temp.resolve("typed project"));
+
+        // The real directory is granted read-only; a separate staging grant is prepared.
+        var refs = service.grantPathsFromUserText(
+            "我要按照‘1、部门：’列拆分excel，输出到" + selected + " 文件夹中");
+        var preparation = service.prepareStagingForWriteTargets(
+            "我要按照‘1、部门：’列拆分excel，输出到" + selected + " 文件夹中");
+
+        assertEquals(1, refs.size());
+        assertEquals("read", refs.getFirst().ref().access());
+        // A read-directory grant is a host-owned snapshot, not the real path.
+        assertNotEquals(selected.toRealPath(), files.resolve("test.readwrite", refs.getFirst().ref().id()));
+        // Staging: one write grant whose path is NOT the user's real directory.
+        assertEquals(1, preparation.staged().size());
+        assertEquals("test.readwrite", preparation.staged().getFirst().pluginId());
+        assertEquals("write", preparation.staged().getFirst().stagingRef().access());
+        assertEquals(selected.toRealPath(), preparation.staged().getFirst().targetDir());
+        Path stagingPath = files.resolve("test.readwrite", preparation.staged().getFirst().stagingRef().id());
+        assertNotEquals(selected.toRealPath(), stagingPath);
+    }
+
+    @Test
+    void exportStagingCopiesToTargetAndCleansUp() throws Exception {
+        Path pluginRoot = Files.createDirectories(temp.resolve("export-plugins"));
+        installManifest(pluginRoot, "test.readwrite", List.of("files.read", "files.write"), true);
+        PluginFileGrantService files = new PluginFileGrantService(temp.resolve("export-grants").toString());
+        ChatFileGrantService service = new ChatFileGrantService(
+            new PluginPackageService(pluginRoot.toString()), files);
+        Path target = Files.createDirectories(temp.resolve("output target"));
+
+        var preparation = service.prepareStagingForWriteTargets("导出到 " + target + " 文件夹");
+        Path stagingPath = files.resolve("test.readwrite", preparation.staged().getFirst().stagingRef().id());
+        // Simulate the worker writing into staging.
+        Files.writeString(stagingPath.resolve("result.csv"), "a,b\n1,2");
+        Files.createDirectories(stagingPath.resolve("nested"));
+        Files.writeString(stagingPath.resolve("nested").resolve("deep.txt"), "x");
+
+        List<String> exported = service.exportStaging(preparation.staged());
+
+        // targetDir is resolved via toRealPath (e.g. /var → /private/var on macOS).
+        assertEquals(List.of(preparation.staged().getFirst().targetDir().toString()), exported);
+        assertTrue(Files.exists(target.resolve("result.csv")));
+        assertTrue(Files.exists(target.resolve("nested").resolve("deep.txt")));
+        // Staging tree is gone after export (revoked owned grant deletes the whole tree).
+        assertTrue(Files.notExists(stagingPath));
+    }
+
+    @Test
+    void typedSourceDirectoryStaysReadOnlyEvenWhenMarkdownBold() throws Exception {
+        Path pluginRoot = Files.createDirectories(temp.resolve("typed-source-plugins"));
         installManifest(pluginRoot, "test.readwrite", List.of("files.read", "files.write"), true);
         ChatFileGrantService service = new ChatFileGrantService(
             new PluginPackageService(pluginRoot.toString()),
-            new PluginFileGrantService(temp.resolve("typed-grants").toString()));
-        Path selected = Files.createDirectories(temp.resolve("typed project"));
+            new PluginFileGrantService(temp.resolve("typed-source-grants").toString()));
+        Path selected = Files.createDirectories(temp.resolve("source folder"));
 
-        var refs = service.grantPathsFromUserText("请读取 `" + selected + "`");
+        var refs = service.grantPathsFromUserText("请读取 **" + selected + "** 中的文件。");
+
+        assertEquals(1, refs.size());
+        assertEquals("read", refs.getFirst().ref().access());
+    }
+
+    @Test
+    void typedFilePathsStayReadOnlyForWriteCapablePlugins() throws Exception {
+        Path pluginRoot = Files.createDirectories(temp.resolve("typed-file-plugins"));
+        installManifest(pluginRoot, "test.readwrite", List.of("files.read", "files.write"), true);
+        ChatFileGrantService service = new ChatFileGrantService(
+            new PluginPackageService(pluginRoot.toString()),
+            new PluginFileGrantService(temp.resolve("typed-file-grants").toString()));
+        Path selected = Files.writeString(temp.resolve("source.xlsx"), "input");
+
+        var refs = service.grantPathsFromUserText("拆分 `" + selected + "`");
 
         assertEquals(1, refs.size());
         assertEquals("read", refs.getFirst().ref().access());

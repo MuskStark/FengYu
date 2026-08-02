@@ -202,6 +202,7 @@ function activityIcon(status: string): string {
 }
 
 function selectPermissionMode(mode: typeof ai.permissionMode) {
+  if (ai.busy) return
   ai.permissionMode = mode
   permissionMenuOpen.value = false
 }
@@ -435,12 +436,12 @@ watch(() => ai.activeId, async () => {
               </button>
             </div>
 
-            <button class="cx-btn cx-btn--text cx-btn--sm" :style="ai.permissionMode === 'full-access' ? 'color: var(--md-sys-color-error)' : ''" style="padding: 3px 6px" @click="permissionMenuOpen = !permissionMenuOpen">
+            <button class="cx-btn cx-btn--text cx-btn--sm" :style="ai.permissionMode === 'full-access' ? 'color: var(--md-sys-color-error)' : ''" style="padding: 3px 6px" :disabled="ai.busy" @click="permissionMenuOpen = !permissionMenuOpen">
               <i class="mdi" :class="ai.permissionMode === 'full-access' ? 'mdi-shield-alert-outline' : 'mdi-shield-check-outline'" />
               {{ ai.permissionMode === 'ask-for-approval' ? $t('aichat.permissionAsk') : ai.permissionMode === 'approve-for-me' ? $t('aichat.permissionAuto') : $t('aichat.permissionFullAccess') }}
               <i class="mdi mdi-chevron-down" />
             </button>
-            <div v-if="permissionMenuOpen" class="cx-card" style="position: absolute; left: 44px; bottom: 48px; width: min(440px, calc(100% - 52px)); padding: 8px; z-index: 21; box-shadow: 0 12px 32px rgba(0,0,0,.18)">
+            <div v-if="permissionMenuOpen && !ai.busy" class="cx-card" style="position: absolute; left: 44px; bottom: 48px; width: min(440px, calc(100% - 52px)); padding: 8px; z-index: 21; box-shadow: 0 12px 32px rgba(0,0,0,.18)">
               <div class="cx-muted" style="padding: 5px 10px 8px; font-size: 12px">{{ $t('aichat.permissionQuestion') }}</div>
               <button v-for="option in permissionOptions" :key="option.id" class="cx-btn cx-btn--text" style="width: 100%; height: auto; justify-content: flex-start; text-align: left; padding: 10px; gap: 12px" :style="option.id === 'full-access' ? 'color: var(--md-sys-color-error)' : ''" @click="selectPermissionMode(option.id)">
                 <i class="mdi" :class="option.icon" style="font-size: 20px" />

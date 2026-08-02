@@ -39,6 +39,8 @@
     "temperature": "Temperature",
     "topP": "Top-P",
     "maxTokens": "Max Tokens",
+    "maxToolRounds": "Max Tool Rounds",
+    "maxToolRoundsHint": "0 = unlimited",
     "systemPrompt": "System Prompt",
     "test": "Test",
     "testing": "Testing…",

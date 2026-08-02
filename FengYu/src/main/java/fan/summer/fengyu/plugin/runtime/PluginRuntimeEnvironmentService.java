@@ -47,14 +47,6 @@ public class PluginRuntimeEnvironmentService {
     public Map<String, String> environmentFor(PluginManifest manifest) {
         Map<String, String> environment = new HashMap<>();
         environment.put(PluginWorkerProtocol.LOG_LEVEL_ENV, logLevel.get());
-        if (manifest.permissions() == null || !manifest.permissions().contains("database")) {
-            return Map.copyOf(environment);
-        }
-        DataSourceConfig config = dataSources.load();
-        if (config == null) {
-            throw new IllegalStateException("Host database is not configured");
-        }
-
         Path pluginData = dataRoot.resolve(manifest.id()).normalize();
         if (!pluginData.startsWith(dataRoot)) {
             throw new IllegalArgumentException("Invalid plugin id for data directory");
@@ -64,14 +56,22 @@ public class PluginRuntimeEnvironmentService {
         } catch (IOException e) {
             throw new IllegalStateException("Cannot create plugin data directory", e);
         }
+        environment.put(PluginWorkerProtocol.PLUGIN_DATA_DIR_ENV, pluginData.toString());
+
+        if (manifest.permissions() == null || !manifest.permissions().contains("database")) {
+            return Map.copyOf(environment);
+        }
+        DataSourceConfig config = dataSources.load();
+        if (config == null) {
+            throw new IllegalStateException("Host database is not configured");
+        }
 
         environment.putAll(Map.of(
             PluginWorkerProtocol.DB_TYPE_ENV, config.type().name().toLowerCase(Locale.ROOT),
             PluginWorkerProtocol.DB_DRIVER_ENV, config.driver(),
             PluginWorkerProtocol.DB_URL_ENV, config.url(),
             PluginWorkerProtocol.DB_USERNAME_ENV, nullToEmpty(config.username()),
-            PluginWorkerProtocol.DB_PASSWORD_ENV, nullToEmpty(config.password()),
-            PluginWorkerProtocol.PLUGIN_DATA_DIR_ENV, pluginData.toString()));
+            PluginWorkerProtocol.DB_PASSWORD_ENV, nullToEmpty(config.password())));
         return Map.copyOf(environment);
     }
 

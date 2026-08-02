@@ -190,7 +190,13 @@ public class PluginProcessManager {
             List<Path> writableRoots = new ArrayList<>();
             writableRoots.add(root);
             String pluginData = environment.get(PluginWorkerProtocol.PLUGIN_DATA_DIR_ENV);
-            if (pluginData != null && !pluginData.isBlank()) writableRoots.add(Path.of(pluginData));
+            Path workerTemp = null;
+            if (pluginData != null && !pluginData.isBlank()) {
+                Path dataDirectory = Path.of(pluginData);
+                writableRoots.add(dataDirectory);
+                workerTemp = Files.createDirectories(dataDirectory.resolve("tmp"));
+                command = withJavaTempDirectory(command, workerTemp);
+            }
             writableRoots.addAll(files.writablePaths(id));
             ProcessSandbox.Launch launch = fullAccess
                     ? sandbox.unrestricted(command)
@@ -198,6 +204,11 @@ public class PluginProcessManager {
             ProcessBuilder builder = new ProcessBuilder(launch.command()).directory(root.toFile());
             builder.environment().put("FENGYU_PLUGIN_ID", id);
             builder.environment().put("FENGYU_PLUGIN_ROOT", root.toString());
+            if (workerTemp != null) {
+                builder.environment().put("TMPDIR", workerTemp.toString());
+                builder.environment().put("TMP", workerTemp.toString());
+                builder.environment().put("TEMP", workerTemp.toString());
+            }
             environment.forEach(builder.environment()::put);
             Process process = builder.start();
             Thread.ofVirtual().name("plugin-" + id + "-stderr").start(() -> {
@@ -260,6 +271,17 @@ public class PluginProcessManager {
             parts.set(i, value);
         }
         return parts;
+    }
+
+    private static List<String> withJavaTempDirectory(List<String> command, Path tempDirectory) {
+        if (command.isEmpty()) return command;
+        String executable = Path.of(command.getFirst()).getFileName().toString();
+        if (!List.of("java", "java.exe").contains(executable.toLowerCase(java.util.Locale.ROOT))) {
+            return command;
+        }
+        List<String> configured = new ArrayList<>(command);
+        configured.add(1, "-Djava.io.tmpdir=" + tempDirectory.toAbsolutePath().normalize());
+        return configured;
     }
 
     private static boolean isWindows() { return System.getProperty("os.name", "").toLowerCase().contains("win"); }
