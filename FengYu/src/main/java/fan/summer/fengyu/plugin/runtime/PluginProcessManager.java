@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.plugin.market.PluginManifest;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
 import fan.summer.fengyu.security.ProcessSandbox;
+import fan.summer.fengyu.ai.tools.AiPermissionContext;
+import fan.summer.fengyu.ai.tools.AiPermissionMode;
 import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -65,7 +67,7 @@ public class PluginProcessManager {
     public PluginProcessManager(PluginPackageService packages, PluginFileGrantService files,
             PluginRuntimeEnvironmentService runtimeEnvironment, PluginLogStore logStore) {
         this(packages, files, runtimeEnvironment, logStore,
-                new ProcessSandbox(ProcessSandbox.Backend.NONE));
+                new ProcessSandbox());
     }
 
     @Autowired
@@ -99,8 +101,14 @@ public class PluginProcessManager {
             throw new IllegalArgumentException("Unsupported plugin backend protocol");
         }
         long timeout = resolveTimeout(timeoutSeconds, manifest);
-        Worker worker = workers.compute(pluginId, (id, current) -> current != null && current.alive()
-            ? current : start(id, manifest));
+        long grantVersion = files.grantVersion(pluginId);
+        boolean fullAccess = AiPermissionContext.current() == AiPermissionMode.FULL_ACCESS;
+        Worker worker = workers.compute(pluginId, (id, current) -> {
+            if (current != null && current.alive() && current.grantVersion() == grantVersion
+                    && current.fullAccess() == fullAccess) return current;
+            if (current != null) current.close();
+            return start(id, manifest, fullAccess);
+        });
         // Log only the param KEYS, never the values. A caller can pass arbitrary credentials or
         // body text in params (e.g. an SMTP password for email_account_save); logging the value —
         // even truncated — leaks it to the console, the host log file, and the plugin log surface.
@@ -168,14 +176,14 @@ public class PluginProcessManager {
         if (worker != null) worker.close();
     }
 
-    private Worker start(String id, PluginManifest manifest) {
+    private Worker start(String id, PluginManifest manifest, boolean fullAccess) {
         Path root = packages.directory(id);
         List<String> command = parseCommand(manifest.backend().command(), root);
         Map<String, String> environment = runtimeEnvironment.environmentFor(manifest);
         SensitiveValueRedactor redactor = SensitiveValueRedactor.fromEnvironment(environment);
         try {
             List<String> permissions = manifest.permissions() == null ? List.of() : manifest.permissions();
-            boolean broadFileWrite = permissions.contains("files.write");
+            boolean broadFileWrite = false;
             boolean allowNetwork = permissions.contains("network")
                     || permissions.contains("network.email")
                     || permissions.contains("database");
@@ -183,8 +191,10 @@ public class PluginProcessManager {
             writableRoots.add(root);
             String pluginData = environment.get(PluginWorkerProtocol.PLUGIN_DATA_DIR_ENV);
             if (pluginData != null && !pluginData.isBlank()) writableRoots.add(Path.of(pluginData));
-            ProcessSandbox.Launch launch = sandbox.plugin(
-                    command, root, writableRoots, broadFileWrite, allowNetwork);
+            writableRoots.addAll(files.writablePaths(id));
+            ProcessSandbox.Launch launch = fullAccess
+                    ? sandbox.unrestricted(command)
+                    : sandbox.plugin(command, root, writableRoots, broadFileWrite, allowNetwork);
             ProcessBuilder builder = new ProcessBuilder(launch.command()).directory(root.toFile());
             builder.environment().put("FENGYU_PLUGIN_ID", id);
             builder.environment().put("FENGYU_PLUGIN_ROOT", root.toString());
@@ -208,13 +218,14 @@ public class PluginProcessManager {
                     }
                 } catch (IOException ignored) {}
             });
-            Worker worker = new Worker(id, process, json, redactor, logStore);
+            Worker worker = new Worker(id, process, json, redactor, logStore,
+                    files.grantVersion(id), fullAccess);
             worker.startReader();
             // Host lifecycle events use the same effective threshold as forwarded Worker events.
             log.info("Plugin {} worker started (pid={})", id, process.pid());
             logStore.append(id, "INFO", "Worker started (pid=" + process.pid() + ")");
             String isolation = "sandbox=" + launch.backend().id()
-                    + ", network=" + (allowNetwork ? "allowed" : "isolated")
+                    + ", network=" + (fullAccess || allowNetwork ? "allowed" : "isolated")
                     + ", broadFileWrite=" + broadFileWrite;
             log.info("Plugin {} worker isolation: {}", id, isolation);
             logStore.append(id, launch.sandboxed() ? "INFO" : "WARN", isolation);
@@ -324,17 +335,24 @@ public class PluginProcessManager {
         private final BufferedReader reader;
         private final ConcurrentHashMap<String, CompletableFuture<JsonNode>> pending = new ConcurrentHashMap<>();
         private volatile boolean closed = false;
+        private final long grantVersion;
+        private final boolean fullAccess;
 
         Worker(String pluginId, Process process, ObjectMapper json, SensitiveValueRedactor redactor,
-                PluginLogStore logStore) {
+                PluginLogStore logStore, long grantVersion, boolean fullAccess) {
             this.pluginId = pluginId;
             this.process = process;
             this.json = json;
             this.redactor = redactor;
             this.logStore = logStore;
+            this.grantVersion = grantVersion;
+            this.fullAccess = fullAccess;
             this.writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
             this.reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
         }
+
+        long grantVersion() { return grantVersion; }
+        boolean fullAccess() { return fullAccess; }
 
         /** Start the resident reader thread that routes stdout lines by JSON-RPC id. */
         void startReader() {

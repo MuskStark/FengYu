@@ -84,6 +84,7 @@ export type PartialSettings = Partial<AppSettings>
 // ── AI Config ──────────────────────────────────────────────
 
 export type AiMode = 'local' | 'openai' | 'anthropic' | 'deepseek'
+export type AiPermissionMode = 'ask-for-approval' | 'approve-for-me' | 'full-access'
 
 export interface AiProviderConfig {
   endpoint: string
@@ -129,6 +130,8 @@ export interface ChatMessage {
 
 export interface ChatStartResponse {
   streamId: string
+  /** Includes grants discovered from absolute paths typed in the latest user message. */
+  activeFileRefs?: ActiveFileEntry[]
 }
 
 export interface HealthResponse {
@@ -229,6 +232,7 @@ export interface AgentRunConfig {
   requireStepApproval: boolean
   replanOnFailure: boolean
   maxReplans: number
+  permissionMode: AiPermissionMode
 }
 
 /** POST /api/agent/run body: the user goal + optional config. */

@@ -13,10 +13,10 @@ import java.util.Map;
  * Pure, Spring-free mapper that decides whether to transparently inject an active FileRef into a
  * plugin tool's arguments before dispatch. Two outcomes:
  * <ul>
- *   <li><b>B (transparent):</b> the tool has exactly one read-class file parameter AND a matching
+ *   <li><b>B (transparent):</b> the tool has exactly one file-class parameter AND a matching
  *       grant exists → that param's value is replaced with the whole FileRef object so the host's
  *       {@code PluginProcessManager.resolveRefs} rewrites it to a real path for the worker.</li>
- *   <li><b>A (degrade):</b> write-dir params, multiple file params, or no matching grant → params
+ *   <li><b>A (degrade):</b> multiple file params or no matching grant → params
  *       are returned unchanged and the model is expected to fill them from the FileRef list the
  *       backend appended to the system prompt.</li>
  * </ul>
@@ -58,8 +58,10 @@ public final class AiToolFileInjector {
             return FileParamClass.READ_FILE;
         }
 
-        // Fallback by name when there is no usable description (email plugin).
-        if (desc.isBlank()) {
+        // Fallback by name for object-shaped refs whose prose does not use the FileRef terms.
+        // This keeps older installed manifests (for example "Workbook selected from FengYu
+        // files") working after a host upgrade without misclassifying ordinary string paths.
+        if ("object".equals(type)) {
             if (lname.contains("output")) return FileParamClass.WRITE_DIR;
             if (lname.contains("input") || lname.contains("project")) return FileParamClass.READ_DIR;
             if (lname.contains("filepath") || lname.contains("filename")) return FileParamClass.READ_FILE;
@@ -85,18 +87,19 @@ public final class AiToolFileInjector {
         String paramName = fileParamNames.get(0);
         FileParamClass cls = classifyParam(paramName, paramSchema(inputSchema, paramName));
 
-        // Only read-class single params are auto-injected; write-dir always degrades.
-        if (cls != FileParamClass.READ_FILE && cls != FileParamClass.READ_DIR && cls != FileParamClass.FILE_LIST) {
+        if (cls == FileParamClass.NONE) {
             return modelParams;
         }
-        boolean wantDirectory = cls == FileParamClass.READ_DIR;
+        boolean wantDirectory = cls == FileParamClass.READ_DIR || cls == FileParamClass.WRITE_DIR;
 
         ActiveFileRef match = null;
         for (ActiveFileRef ref : activeRefs) {
             if (!pluginId.equals(ref.pluginId())) continue;
             FileRef f = ref.ref();
             boolean kindOk = wantDirectory ? "directory".equals(f.kind()) : "file".equals(f.kind());
-            boolean accessOk = "read".equals(f.access()) || "read-write".equals(f.access());
+            boolean accessOk = cls == FileParamClass.WRITE_DIR
+                    ? "write".equals(f.access()) || "read-write".equals(f.access())
+                    : "read".equals(f.access()) || "read-write".equals(f.access());
             if (kindOk && accessOk) { match = ref; break; }
         }
         if (match == null) return modelParams; // degrade A

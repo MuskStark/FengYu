@@ -9,6 +9,8 @@ export interface ToolConfirmation {
   source: 'plugin' | 'host'
   pluginId: string
   confirmationId: string
+  toolCallId: string
+  toolName: string
   approveMethod: string
   rejectMethod: string
   expiresAt: string
@@ -37,6 +39,7 @@ export function parseToolConfirmation(payload: Record<string, unknown>): ToolCon
     ]
     return {
       source: 'host', pluginId: '', confirmationId, approveMethod: '', rejectMethod: '',
+      toolCallId: string(payload.id) || confirmationId, toolName,
       expiresAt, summary, status: 'pending',
     }
   }
@@ -57,6 +60,7 @@ export function parseToolConfirmation(payload: Record<string, unknown>): ToolCon
     : []
   return {
     source: 'plugin', pluginId, confirmationId, approveMethod, rejectMethod,
+    toolCallId: string(payload.id) || confirmationId, toolName: string(payload.name),
     expiresAt, summary, status: 'pending',
   }
 }

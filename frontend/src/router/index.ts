@@ -7,6 +7,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/tools', name: 'tools', component: () => import('@/views/ToolGrid.vue') },
   { path: '/agent', name: 'agent', component: () => import('@/views/AiAgent.vue') },
   { path: '/plugins', name: 'plugin-market', component: () => import('@/views/PluginMarket.vue') },
+  { path: '/account', name: 'account', component: () => import('@/views/AccountProfile.vue') },
   { path: '/settings', name: 'settings', component: () => import('@/views/Settings.vue') },
   { path: '/about', name: 'about', component: () => import('@/views/About.vue') },
   {

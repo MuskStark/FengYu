@@ -15,7 +15,8 @@ import java.util.Locale;
  *
  * <p>Compatibility-first policy: Linux uses bubblewrap, macOS uses sandbox-exec, and platforms
  * without either return the original command with {@link Backend#NONE}. Callers must surface and
- * audit that downgrade; approval remains mandatory for unsandboxed AI-authored commands.
+ * audit that downgrade. The chat permission gate decides whether an AI-authored command needs an
+ * approval; the explicit full-access profile deliberately bypasses this sandbox.
  */
 @Component
 public class ProcessSandbox {
@@ -67,12 +68,26 @@ public class ProcessSandbox {
     }
 
     /**
+     * Returns whether this host can enforce the native process boundary used by AI-authored
+     * commands. Permission policy uses this to fail closed instead of treating a regex heuristic
+     * as a sandbox on unsupported platforms.
+     */
+    public static boolean isNativeSandboxAvailable() {
+        return detect() != Backend.NONE;
+    }
+
+    /**
      * Sandbox an AI-authored shell command. The command may read system files needed by the
      * runtime, but writes are limited to the selected working directory and network is isolated
      * unless the user explicitly approved it.
      */
     public Launch command(List<String> raw, Path workingDirectory, boolean allowNetwork) {
         return wrap(raw, workingDirectory, List.of(workingDirectory), false, allowNetwork);
+    }
+
+    /** Explicit full-access profile: run without the native sandbox after the user selected it. */
+    public Launch unrestricted(List<String> raw) {
+        return new Launch(raw, Backend.NONE);
     }
 
     /**
@@ -82,6 +97,9 @@ public class ProcessSandbox {
      */
     public Launch plugin(List<String> raw, Path pluginRoot, List<Path> writableRoots,
                          boolean broadFileWrite, boolean allowNetwork) {
+        if (backend == Backend.NONE) {
+            throw new IllegalStateException("Plugin workers require a supported native process sandbox");
+        }
         return wrap(raw, pluginRoot, writableRoots, broadFileWrite, allowNetwork);
     }
 
@@ -93,7 +111,7 @@ public class ProcessSandbox {
             command.add("bwrap");
             command.add("--die-with-parent");
             command.add("--new-session");
-            command.add(broadFileWrite ? "--bind" : "--ro-bind");
+            command.add("--ro-bind");
             command.add("/");
             command.add("/");
             command.add("--proc");
@@ -103,12 +121,10 @@ public class ProcessSandbox {
             command.add("/dev");
             command.add("--tmpfs");
             command.add("/tmp");
-            if (!broadFileWrite) {
-                for (Path root : normalizedExisting(writableRoots)) {
-                    command.add("--bind");
-                    command.add(root.toString());
-                    command.add(root.toString());
-                }
+            for (Path root : normalizedExisting(writableRoots)) {
+                command.add("--bind");
+                command.add(root.toString());
+                command.add(root.toString());
             }
             if (!allowNetwork) command.add("--unshare-net");
             command.add("--chdir");
@@ -120,14 +136,12 @@ public class ProcessSandbox {
 
         StringBuilder profile = new StringBuilder("(version 1)\n(allow default)\n");
         if (!allowNetwork) profile.append("(deny network*)\n");
-        if (!broadFileWrite) {
-            profile.append("(deny file-write*)\n")
-                    .append("(allow file-write* (subpath \"/tmp\"))\n");
-            for (Path root : normalizedExisting(writableRoots)) {
-                profile.append("(allow file-write* (subpath ")
-                        .append(quoted(root.toString()))
-                        .append("))\n");
-            }
+        profile.append("(deny file-write*)\n")
+                .append("(allow file-write* (subpath \"/tmp\"))\n");
+        for (Path root : normalizedExisting(writableRoots)) {
+            profile.append("(allow file-write* (subpath ")
+                    .append(quoted(root.toString()))
+                    .append("))\n");
         }
         List<String> command = new ArrayList<>();
         command.add("sandbox-exec");

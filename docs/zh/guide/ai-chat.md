@@ -29,9 +29,10 @@ AI 对话是 Infinia 中的会话界面。选择一个后端，发送一条提�
 POST /api/ai/chat
   Content-Type: application/json
   X-FengYu-Token: <token>
-  { "messages": [ { "role": "user", "content": "Summarize this workbook" } ] }
+  { "messages": [ { "role": "user", "content": "Summarize this workbook" } ],
+    "permissionMode": "ask-for-approval" }
 
-  ◄── 200 { "streamId": "<uuid>" }
+  ◄── 200 { "streamId": "<uuid>", "activeFileRefs": [...] }
 
 GET /api/ai/stream?streamId=<uuid>
   X-FengYu-Token: <token>
@@ -41,6 +42,10 @@ GET /api/ai/stream?streamId=<uuid>
 ```
 
 流上的第一帧是一个 `:connected` 注释心跳——它在任何事件到来之前确认流已打开。
+
+### 文件与目录
+
+你可以选择文件/目录，也可以在最新一条用户消息中直接输入本机已存在的绝对路径。宿主会为每个已启用且声明了 `files.read` 的后端插件分别创建不透明 FileRef；通过选择器明确选择的目录，对同时声明 `files.write` 的插件还会获得 `read-write` 权限。直接输入的路径始终只读。响应中的 `activeFileRefs` 会让新识别的路径授权在后续轮次继续有效，同时不向插件 iframe 暴露绝对路径。
 
 ::: warning
 SSE 端点是 `GET /api/ai/stream?streamId=...`。**没有** `?token=` 查询参数。请用 `X-FengYu-Token` 头来认证流请求，这与其他所有端点一致。
@@ -83,7 +88,20 @@ data: {"text":"Let me check the workbook has 3 sheets.","tokens":42,"tps":18.6}
 ### 渲染
 
 - **思考内容**渲染为折叠卡片——每段思考一张卡片，点击可展开，这样它平时不碍事，需要时才展开。
-- **工具调用**内联渲染。一个 `call` 帧显示工具名和参数；匹配的 `result` 帧用输出或错误更新同一个区块。内置的 `@FengYuTool` 与插件的 `aiTools` 在传输上无法区分（参见 [AI 工具](/zh/plugins/ai-tools)）。
+- **工具调用**显示为紧凑状态行，例如 `Read FengYu Plugin Dev skill`，并在执行和完成时原位更新。
+- **审批**显示在输入框区域内、文本框正上方；聊天记录只保留紧凑状态行，不再把大块审批卡片插进消息之间。
+
+### 授权模式
+
+输入框提供三种逐轮生效的模式：
+
+| 模式 | 行为 |
+| --- | --- |
+| **请求批准** | 读取直接执行；命令执行、文档/文件修改和外部操作会在执行前询问。 |
+| **替我批准** | 安全的沙箱命令以及已声明的读取/写入自动执行；检测为高风险的命令和外部/网络操作仍会询问。 |
+| **完全访问** | 工具无需审批，命令也不使用原生文件/网络沙箱；继承环境中的敏感变量仍会被移除。 |
+
+插件通过清单声明工具副作用，因此内置工具和进程外插件操作都经过同一个审核门。没有声明副作用的旧插件按外部操作保守处理。
 
 ## 会话
 

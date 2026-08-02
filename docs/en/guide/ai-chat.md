@@ -29,9 +29,10 @@ A chat turn is a two-step request: start the run, then open the SSE stream.
 POST /api/ai/chat
   Content-Type: application/json
   X-FengYu-Token: <token>
-  { "messages": [ { "role": "user", "content": "Summarize this workbook" } ] }
+  { "messages": [ { "role": "user", "content": "Summarize this workbook" } ],
+    "permissionMode": "ask-for-approval" }
 
-  ◄── 200 { "streamId": "<uuid>" }
+  ◄── 200 { "streamId": "<uuid>", "activeFileRefs": [...] }
 
 GET /api/ai/stream?streamId=<uuid>
   X-FengYu-Token: <token>
@@ -41,6 +42,10 @@ GET /api/ai/stream?streamId=<uuid>
 ```
 
 The first frame on the stream is a `:connected` comment heartbeat — it confirms the stream is open before any events arrive.
+
+### Files and directories
+
+You can select a file/directory or type an existing absolute path directly in the latest user message. The host creates a separate opaque FileRef for every enabled backend plugin that declares `files.read`; picker-selected directories also receive `read-write` access for plugins that declare `files.write`. Typed paths remain read-only. The response's `activeFileRefs` keeps newly discovered path grants available to follow-up turns without exposing the absolute path to plugin iframes.
 
 ::: warning
 The SSE endpoint is `GET /api/ai/stream?streamId=...`. There is **no** `?token=` query parameter. Authenticate the stream request with the `X-FengYu-Token` header, the same as every other endpoint.
@@ -83,7 +88,20 @@ data: {"text":"Let me check the workbook has 3 sheets.","tokens":42,"tps":18.6}
 ### Rendering
 
 - **Thinking** renders as collapsed cards — one card per thinking span, expandable on click so it stays out of the way unless you want it.
-- **Tool calls** render inline. A `call` frame shows the tool name and arguments; the matching `result` frame updates the same block with the output or error. Built-in `@FengYuTool`s and plugin `aiTools` are indistinguishable on the wire (see [AI Tools](/en/plugins/ai-tools)).
+- **Tool calls** render as compact activity rows such as `Read FengYu Plugin Dev skill` and update in place as the call runs or completes.
+- **Approvals** render inside the composer, directly above the text area. The transcript keeps the compact activity row instead of inserting a large approval card between messages.
+
+### Permission modes
+
+The composer offers three per-turn profiles:
+
+| Mode | Behaviour |
+| --- | --- |
+| **Ask for approval** | Reads run directly; command execution, document/file changes, and external actions ask before they run. |
+| **Approve for me** | Safe sandboxed commands and declared reads/writes run automatically; commands detected as risky and external/network actions still ask. |
+| **Full access** | Runs without tool approval and executes commands without the native file/network sandbox. Sensitive inherited environment variables are still removed. |
+
+Plugin tools declare their effect in the manifest, so the same gate covers both built-in and out-of-process plugin actions. A missing effect is handled conservatively as an external action.
 
 ## Conversations
 

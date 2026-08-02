@@ -7,6 +7,22 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### ✨ Added
+- **AI chat now has Codex-style action approval profiles.** The composer offers Ask for approval,
+  Approve for me, and Full access; command execution and plugin-declared read/write/external
+  effects share one host approval gate. Approval cards stay inside the composer, while calls render
+  as compact progress rows such as `Read FengYu Plugin Dev skill`. Plugin manifests can declare an
+  optional `aiTools[].effect`, with undeclared third-party effects treated conservatively.
+
+### 🐛 Fixed
+- **AI chat now handles Excel file workflows and approval-heavy replies reliably.** Attached
+  files/directories are granted to every compatible backend plugin, and existing absolute paths
+  typed in a user message are converted into read-only plugin-scoped FileRefs. Selected directories
+  retain writable access where declared and are injected into single write-directory plugin tool
+  parameters; Excel analysis is preferred before split operations, and unresolved FileRef objects
+  can no longer become map-shaped output folders. IME composition no longer drops a trailing English
+  segment on click-to-send, and final answers render below command approval cards.
+
+### ✨ Added
 - **Live visual-workflow tool contracts.** Plugin AI tools may declare an optional serialized
   `outputSchema`; the official Excel, Email, and Offline Python tools now publish user-facing input
   metadata and result-envelope schemas for canvas configuration.
