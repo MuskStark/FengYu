@@ -2,8 +2,9 @@ import { defineStore } from 'pinia'
 import { computed, reactive, ref } from 'vue'
 import { api } from '@/api/client'
 import { openAiStream, type SseHandle } from '@/api/sse'
-import type { ActiveFileEntry, ChatMessage, ConversationPayload, PluginDescriptor, PluginFileRef } from '@/api/types'
+import type { ActiveFileEntry, AiPermissionMode, ChatMessage, ConversationPayload, PluginDescriptor, PluginFileRef } from '@/api/types'
 import { actOnConfirmation, parseToolConfirmation, type ToolConfirmation } from './aiConfirmation'
+import { applyToolActivity, type ToolActivity } from './aiToolActivity'
 
 export interface ChatTurn {
   id: number
@@ -12,6 +13,7 @@ export interface ChatTurn {
   thinking: string
   streaming: boolean
   confirmations: ToolConfirmation[]
+  activities: ToolActivity[]
 }
 
 export interface Conversation {
@@ -41,9 +43,11 @@ export const useAiSessionStore = defineStore('aiSession', () => {
   const busy = ref(false)
   const error = ref<string | null>(null)
   const historyLoaded = ref(false)
+  const permissionMode = ref<AiPermissionMode>('ask-for-approval')
   let seq = 0
   let convSeq = 0
   let handle: SseHandle | null = null
+  let currentStreamId: string | null = null
 
   const activeFiles = ref<ActiveFileEntry[]>([])
 
@@ -61,17 +65,27 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     const idx = activeFiles.value.findIndex(
       (f) => f.pluginId === pluginId && f.ref.name === ref.name,
     )
-    if (idx >= 0) activeFiles.value[idx] = { pluginId, ref }
+    if (idx >= 0) {
+      const previous = activeFiles.value[idx]
+      if (previous.ref.id !== ref.id) {
+        void api.revokeAiFile(previous.pluginId, previous.ref.id).catch(() => {/* best effort */})
+      }
+      activeFiles.value[idx] = { pluginId, ref }
+    }
     else activeFiles.value.push({ pluginId, ref })
   }
 
   function removeActiveFile(pluginId: string, refId: string) {
+    void api.revokeAiFile(pluginId, refId).catch(() => {/* best effort */})
     activeFiles.value = activeFiles.value.filter(
       (f) => !(f.pluginId === pluginId && f.ref.id === refId),
     )
   }
 
   function clearActiveFiles() {
+    for (const entry of activeFiles.value) {
+      void api.revokeAiFile(entry.pluginId, entry.ref.id).catch(() => {/* best effort */})
+    }
     activeFiles.value = []
   }
 
@@ -127,6 +141,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
   /** Select a conversation, lazy-loading its messages from the backend on first open. */
   async function select(id: number) {
     if (busy.value) return
+    if (activeId.value !== id) clearActiveFiles()
     activeId.value = id
     error.value = null
     const conv = conversations.value.find((c) => c.id === id)
@@ -139,7 +154,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
         content: m.content,
         thinking: m.thinking,
         streaming: false,
-        confirmations: [],
+        confirmations: [], activities: [],
       }))
       conv.title = detail.title
       conv.loaded = true
@@ -194,7 +209,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     const conv = ensureActive()
     if (!conv.title) conv.title = prompt.slice(0, 48)
 
-    conv.turns.push({ id: ++seq, role: 'user', content: prompt, thinking: '', streaming: false, confirmations: [] })
+    conv.turns.push({ id: ++seq, role: 'user', content: prompt, thinking: '', streaming: false, confirmations: [], activities: [] })
     // reactive() so streaming closures mutate the proxy (live repaint), not the raw object.
     const assistant = reactive<ChatTurn>({
       id: ++seq,
@@ -203,12 +218,19 @@ export const useAiSessionStore = defineStore('aiSession', () => {
       thinking: '',
       streaming: true,
       confirmations: [],
+      activities: [],
     })
     conv.turns.push(assistant)
     busy.value = true
 
     try {
-      const { streamId } = await api.aiChat(toChatHistory(conv.turns), sendableFileRefs())
+      const { streamId, activeFileRefs: resolvedRefs = [] } = await api.aiChat(
+        toChatHistory(conv.turns), sendableFileRefs(), permissionMode.value,
+      )
+      currentStreamId = streamId
+      // The backend turns absolute paths explicitly typed in the latest user message into normal
+      // plugin-scoped grants. Keep them active so follow-up turns such as "continue" retain access.
+      for (const entry of resolvedRefs) addActiveFile(entry.pluginId, entry.ref)
       handle = openAiStream(streamId, {
         onToken: (t) => {
           assistant.content += t
@@ -217,6 +239,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
           assistant.thinking += t
         },
         onTool: (payload) => {
+          applyToolActivity(assistant.activities, payload)
           const confirmation = parseToolConfirmation(payload)
           if (confirmation) assistant.confirmations.push(confirmation)
         },
@@ -225,13 +248,18 @@ export const useAiSessionStore = defineStore('aiSession', () => {
           assistant.streaming = false
           busy.value = false
           handle = null
+          currentStreamId = null
           void persist(conv) // save the completed turn
         },
         onError: (message) => {
+          const failedStreamId = currentStreamId
           error.value = message
           assistant.streaming = false
           busy.value = false
           handle = null
+          currentStreamId = null
+          if (failedStreamId) void api.cancelAiGeneration(failedStreamId).catch(() => {/* best effort */})
+          void persist(conv)
         },
       })
     } catch (e) {
@@ -244,15 +272,22 @@ export const useAiSessionStore = defineStore('aiSession', () => {
   function stop() {
     handle?.close()
     handle = null
-    void api.cancelAiGeneration().catch(() => {/* best effort */})
+    const streamId = currentStreamId
+    currentStreamId = null
+    if (streamId) void api.cancelAiGeneration(streamId).catch(() => {/* best effort */})
     busy.value = false
     const t = active.value?.turns
     const last = t?.[t.length - 1]
     if (last && last.streaming) last.streaming = false
+    if (active.value) void persist(active.value)
   }
 
   async function resolveConfirmation(item: ToolConfirmation, approve: boolean) {
     await actOnConfirmation(item, approve)
+    const activity = active.value?.turns.flatMap(turn => turn.activities)
+      .find(value => value.id === item.toolCallId)
+    if (activity && item.status === 'rejected') activity.status = 'rejected'
+    if (activity && item.status === 'error') activity.status = 'failed'
   }
 
   /** Delete the active conversation (backend + local) and start a fresh one. */
@@ -288,6 +323,7 @@ export const useAiSessionStore = defineStore('aiSession', () => {
     sendableFileRefs,
     installedPlugins,
     loadInstalledPlugins,
+    permissionMode,
   }
 })
 
@@ -314,4 +350,9 @@ export function guessPluginForFile(fileName: string): string {
     return 'fan.summer.offlinepython'
   }
   return ''
+}
+
+/** Files are input-only; a selected directory may also be the user's output target. */
+export function grantAccessForAttachment(kind: PluginFileRef['kind']): 'read' | 'read-write' {
+  return kind === 'directory' ? 'read-write' : 'read'
 }

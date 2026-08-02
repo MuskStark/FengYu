@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -94,7 +95,13 @@ public class AiConfigController {
 
     @PutMapping
     public Map<String, Object> put(@RequestBody Map<String, Object> body) {
+        if (aiMode.getService().map(fan.summer.fengyu.ai.ChatBackend::isGenerating).orElse(false)) {
+            throw new IllegalStateException("Cannot change AI configuration while a generation is active");
+        }
         if (body.get("mode") instanceof String m) {
+            if (!List.of("local", "openai", "anthropic", "deepseek").contains(m)) {
+                throw new IllegalArgumentException("Unsupported AI mode: " + m);
+            }
             AiConfigServiceHeadless.setAiMode(m);
         }
         applyProvider(body, "openai",
@@ -118,10 +125,19 @@ public class AiConfigController {
         // Sampling params (parse quietly: a malformed string is ignored rather
         // than throwing NumberFormatException → 500; PUT always returns 200).
         Float temperature = parseFloatQuietly(body.get("temperature"));
+        if (body.containsKey("temperature") && (temperature == null || temperature < 0 || temperature > 2)) {
+            throw new IllegalArgumentException("temperature must be between 0 and 2");
+        }
         if (temperature != null) AiConfigServiceHeadless.setAiTemperature(temperature);
         Float topP = parseFloatQuietly(body.get("topP"));
+        if (body.containsKey("topP") && (topP == null || topP < 0 || topP > 1)) {
+            throw new IllegalArgumentException("topP must be between 0 and 1");
+        }
         if (topP != null) AiConfigServiceHeadless.setAiTopP(topP);
         Integer maxTokens = parseIntQuietly(body.get("maxTokens"));
+        if (body.containsKey("maxTokens") && (maxTokens == null || maxTokens < 1 || maxTokens > 1_000_000)) {
+            throw new IllegalArgumentException("maxTokens must be between 1 and 1000000");
+        }
         if (maxTokens != null) AiConfigServiceHeadless.setAiMaxTokens(maxTokens);
         if (body.get("systemPrompt") instanceof String sp) {
             AiConfigServiceHeadless.setAiSystemPrompt(sp);
@@ -199,7 +215,9 @@ public class AiConfigController {
             result = ConnectionTester.testOllama(baseUrl, model);
         } else {
             String endpoint = orDefault(req.endpoint(), endpointFor(mode));
-            String apiKey = orDefault(req.apiKey(), apiKeyFor(mode));
+            String requestedKey = req.apiKey();
+            String apiKey = requestedKey != null && requestedKey.contains("***")
+                    ? apiKeyFor(mode) : orDefault(requestedKey, apiKeyFor(mode));
             String model = orDefault(req.model(), modelFor(mode));
             result = ConnectionTester.testCloud(mode, endpoint, apiKey, model);
         }

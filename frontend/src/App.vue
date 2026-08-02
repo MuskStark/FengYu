@@ -16,11 +16,13 @@ const themeClass = computed(() => `v-theme--${theme.theme}`)
 
 <template>
   <div class="cx-root" :class="themeClass">
-    <div class="cx-body">
-      <router-view v-if="route.name === 'setup'" />
-      <AppShell v-else />
-    </div>
-    <StatusBar />
+    <template v-if="route.name === 'setup'">
+      <div class="cx-body">
+        <router-view />
+      </div>
+      <StatusBar />
+    </template>
+    <AppShell v-else />
   </div>
 </template>
 

@@ -1,6 +1,6 @@
 package fan.summer.fengyu.web.controller;
 
-import fan.summer.fengyu.database.SecurityConstants;
+import fan.summer.fengyu.security.SecurityContext;
 import fan.summer.fengyu.database.entity.ai.ChatMessageEntity;
 import fan.summer.fengyu.database.entity.ai.ConversationEntity;
 import fan.summer.fengyu.database.repository.ai.ChatMessageRepository;
@@ -46,20 +46,21 @@ import java.util.Map;
 @RequestMapping("/api/ai/conversations")
 public class ConversationController {
 
-    private static final long USER_ID = SecurityConstants.LOCAL_VIRTUAL_USER_ID;
-
     private final ConversationRepository conversations;
     private final ChatMessageRepository messages;
+    private final SecurityContext securityContext;
 
-    public ConversationController(ConversationRepository conversations, ChatMessageRepository messages) {
+    public ConversationController(ConversationRepository conversations, ChatMessageRepository messages,
+                                  SecurityContext securityContext) {
         this.conversations = conversations;
         this.messages = messages;
+        this.securityContext = securityContext;
     }
 
     @GetMapping
     public List<Map<String, Object>> list() {
         List<Map<String, Object>> out = new ArrayList<>();
-        for (ConversationEntity c : conversations.findByUserIdOrderByUpdatedAtDesc(USER_ID)) {
+        for (ConversationEntity c : conversations.findByUserIdOrderByUpdatedAtDesc(userId())) {
             out.add(summary(c));
         }
         return out;
@@ -67,7 +68,7 @@ public class ConversationController {
 
     @GetMapping("/{id}")
     public ResponseEntity<Map<String, Object>> get(@PathVariable Long id) {
-        return conversations.findByIdAndUserId(id, USER_ID)
+        return conversations.findByIdAndUserId(id, userId())
                 .map(c -> ResponseEntity.ok(detail(c)))
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
@@ -76,7 +77,7 @@ public class ConversationController {
     public Map<String, Object> create(@RequestBody ConversationDto body) {
         LocalDateTime now = LocalDateTime.now();
         ConversationEntity c = new ConversationEntity();
-        c.setUserId(USER_ID);
+        c.setUserId(userId());
         c.setTitle(clampTitle(body.title()));
         c.setCreatedAt(now);
         c.setUpdatedAt(now);
@@ -88,7 +89,7 @@ public class ConversationController {
     @PutMapping("/{id}")
     @Transactional
     public ResponseEntity<Map<String, Object>> update(@PathVariable Long id, @RequestBody ConversationDto body) {
-        return conversations.findByIdAndUserId(id, USER_ID)
+        return conversations.findByIdAndUserId(id, userId())
                 .map(c -> {
                     c.setTitle(clampTitle(body.title()));
                     c.setUpdatedAt(LocalDateTime.now());
@@ -102,7 +103,7 @@ public class ConversationController {
     @DeleteMapping("/{id}")
     @Transactional
     public ResponseEntity<Void> delete(@PathVariable Long id) {
-        return conversations.findByIdAndUserId(id, USER_ID)
+        return conversations.findByIdAndUserId(id, userId())
                 .map(c -> {
                     messages.deleteByConversationId(c.getId());
                     conversations.delete(c);
@@ -158,6 +159,12 @@ public class ConversationController {
         if (title == null) return "";
         String t = title.strip();
         return t.length() > 200 ? t.substring(0, 200) : t;
+    }
+
+    private long userId() {
+        Long id = securityContext.currentUserId();
+        if (id == null) throw new IllegalStateException("No authenticated user");
+        return id;
     }
 
     // ── DTOs ───────────────────────────────────────────────────────────────

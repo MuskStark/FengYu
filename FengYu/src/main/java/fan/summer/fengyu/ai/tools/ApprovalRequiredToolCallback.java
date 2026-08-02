@@ -1,9 +1,8 @@
 package fan.summer.fengyu.ai.tools;
 
-import org.springframework.ai.tool.ToolCallback;
-
 /**
- * A discovered tool callback whose invocation must be guarded by explicit user approval.
+ * A discovered command callback whose invocation is governed by the active permission profile.
  */
-public interface ApprovalRequiredToolCallback extends ToolCallback {
+public interface ApprovalRequiredToolCallback extends AuditedToolCallback {
+    @Override default ToolEffect effect() { return ToolEffect.COMMAND; }
 }

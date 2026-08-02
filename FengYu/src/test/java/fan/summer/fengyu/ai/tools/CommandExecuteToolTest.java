@@ -30,7 +30,7 @@ class CommandExecuteToolTest {
         assertTrue(result.path("success").asBoolean());
         assertEquals(0, result.path("exitCode").asInt());
         assertEquals("hello error", result.path("output").asText());
-        assertEquals(tempDir.toAbsolutePath().normalize().toString(),
+        assertEquals(tempDir.toRealPath().toString(),
                 result.path("workingDirectory").asText());
         assertFalse(result.path("timedOut").asBoolean());
         assertFalse(result.path("truncated").asBoolean());

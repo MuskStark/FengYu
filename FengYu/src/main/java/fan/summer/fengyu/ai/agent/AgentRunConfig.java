@@ -1,5 +1,7 @@
 package fan.summer.fengyu.ai.agent;
 
+import fan.summer.fengyu.ai.tools.AiPermissionMode;
+
 /**
  * Configuration controlling the approval and recovery behavior of a Plan-and-Execute agent run.
  *
@@ -21,5 +23,15 @@ package fan.summer.fengyu.ai.agent;
 public record AgentRunConfig(boolean requirePlanApproval,
                              boolean requireStepApproval,
                              boolean replanOnFailure,
-                             int maxReplans) {
+                             int maxReplans,
+                             AiPermissionMode permissionMode) {
+    public AgentRunConfig(boolean requirePlanApproval, boolean requireStepApproval,
+                          boolean replanOnFailure, int maxReplans) {
+        this(requirePlanApproval, requireStepApproval, replanOnFailure, maxReplans,
+                AiPermissionMode.ASK_FOR_APPROVAL);
+    }
+
+    public AiPermissionMode effectivePermissionMode() {
+        return permissionMode == null ? AiPermissionMode.ASK_FOR_APPROVAL : permissionMode;
+    }
 }

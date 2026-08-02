@@ -50,6 +50,16 @@ class AiToolFileInjectorTest {
     }
 
     @Test
+    void classifyFallsBackForOlderExcelManifestDescriptions() {
+        assertEquals(AiToolFileInjector.FileParamClass.READ_FILE,
+            AiToolFileInjector.classifyParam("filePath", Map.of(
+                "type", "object", "description", "Workbook selected from FengYu files")));
+        assertEquals(AiToolFileInjector.FileParamClass.WRITE_DIR,
+            AiToolFileInjector.classifyParam("outputDir", Map.of(
+                "type", "object", "description", "Writable directory selected from FengYu files")));
+    }
+
+    @Test
     void classifyIgnoresNonFileParams() {
         Map<String, Object> schema = Map.of("type", "string", "description", "Optional path to a Python executable");
         assertEquals(AiToolFileInjector.FileParamClass.NONE,
@@ -104,13 +114,28 @@ class AiToolFileInjectorTest {
     }
 
     @Test
-    void doesNotInjectForWriteDirParam() {
+    void injectsSingleWriteDirParamWhenWritableGrantMatches() {
         String schema = "{\"type\":\"object\",\"properties\":{\"outputDir\":{\"type\":\"object\",\"description\":\"A writable FengYu DirectoryRef\"}}}";
         Map<String, Object> modelParams = new java.util.LinkedHashMap<>(Map.of("outputDir", "model-value"));
+        ActiveFileRef output = new ActiveFileRef("fan.summer.excel",
+            new FileRef("ref_out", "results", "directory", "read-write", 0L));
 
         Map<String, Object> out = AiToolFileInjector.injectFileRefs(
-            modelParams, "fan.summer.excel", schema, List.of(excelFileRef()));
+            modelParams, "fan.summer.excel", schema, List.of(excelFileRef(), output));
 
+        @SuppressWarnings("unchecked") Map<String, Object> injected = (Map<String, Object>) out.get("outputDir");
+        assertEquals("ref_out", injected.get("id"));
+        assertEquals("directory", injected.get("kind"));
+        assertEquals("read-write", injected.get("access"));
+    }
+
+    @Test
+    void doesNotInjectReadOnlyDirectoryForWriteDirParam() {
+        String schema = "{\"type\":\"object\",\"properties\":{\"outputDir\":{\"type\":\"object\",\"description\":\"A writable FengYu DirectoryRef\"}}}";
+        ActiveFileRef output = new ActiveFileRef("fan.summer.excel",
+            new FileRef("ref_out", "results", "directory", "read", 0L));
+        Map<String, Object> out = AiToolFileInjector.injectFileRefs(
+            Map.of("outputDir", "model-value"), "fan.summer.excel", schema, List.of(output));
         assertEquals("model-value", out.get("outputDir"));
     }
 

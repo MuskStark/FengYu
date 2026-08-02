@@ -3,6 +3,7 @@ package fan.summer.fengyu.ai.tools;
 import fan.summer.fengyu.ai.AiStreamCallback;
 import fan.summer.fengyu.ai.AiToolCall;
 import fan.summer.fengyu.ai.util.JsonHelper;
+import fan.summer.fengyu.security.ProcessSandbox;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
@@ -35,7 +36,7 @@ public class ChatToolApprovalGate {
                                        AiStreamCallback callback) {
         if (assistantMessage == null || !assistantMessage.hasToolCalls()) return;
         for (AssistantMessage.ToolCall call : assistantMessage.getToolCalls()) {
-            if (!requiresApproval(call.name(), availableTools)) continue;
+            if (!requiresApproval(call, availableTools)) continue;
             awaitApproval(call, callback);
         }
     }
@@ -89,11 +90,44 @@ public class ChatToolApprovalGate {
         }
     }
 
-    private static boolean requiresApproval(String toolName, List<ToolCallback> tools) {
+    static boolean requiresApproval(AssistantMessage.ToolCall call, List<ToolCallback> tools) {
         if (tools == null) return false;
-        return tools.stream().anyMatch(tool ->
-                tool instanceof ApprovalRequiredToolCallback
-                        && tool.getToolDefinition().name().equals(toolName));
+        ToolCallback tool = tools.stream()
+            .filter(candidate -> candidate.getToolDefinition().name().equals(call.name()))
+            .findFirst().orElse(null);
+        if (!(tool instanceof AuditedToolCallback audited)) return false;
+
+        AiPermissionMode mode = AiPermissionContext.current();
+        if (mode == AiPermissionMode.FULL_ACCESS) return false;
+        if (mode == AiPermissionMode.ASK_FOR_APPROVAL) return audited.effect() != ToolEffect.READ;
+        return switch (audited.effect()) {
+            case READ, WRITE -> false;
+            case EXTERNAL -> true;
+            case COMMAND -> commandPotentiallyUnsafe(call.arguments());
+        };
+    }
+
+    public static boolean commandPotentiallyUnsafe(String arguments) {
+        // Without an enforceable OS sandbox every AI-authored command is potentially unsafe.
+        // The patterns below are only a usability optimisation when the native boundary exists.
+        if (!ProcessSandbox.isNativeSandboxAvailable()) return true;
+        Map<String, Object> args = parseArguments(arguments);
+        if (Boolean.TRUE.equals(args.get("allowNetwork"))) return true;
+        String command = args.get("command") instanceof String value ? value.toLowerCase(java.util.Locale.ROOT) : "";
+        if (java.util.regex.Pattern.compile(
+                "(^|[;&|\\s])(sudo|su|shutdown|reboot|mkfs|dd)([;&|\\s]|$)|"
+                + "rm\\s+[^\\n]*(?:-[^\\n]*r|--recursive)|git\\s+(?:reset\\s+--hard|clean\\s+-)|"
+                + "curl[^\\n]*\\|\\s*(?:sh|bash)|chmod\\s+[^\\n]*777")
+                .matcher(command).find()) return true;
+        Object raw = args.get("workingDirectory");
+        if (!(raw instanceof String value) || value.isBlank()) return false;
+        try {
+            java.nio.file.Path workspace = java.nio.file.Path.of(System.getProperty("user.dir")).toRealPath();
+            java.nio.file.Path workdir = java.nio.file.Path.of(value).toRealPath();
+            return !workdir.startsWith(workspace);
+        } catch (Exception ignored) {
+            return true;
+        }
     }
 
     private static Map<String, Object> parseArguments(String json) {

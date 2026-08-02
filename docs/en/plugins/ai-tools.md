@@ -10,13 +10,14 @@ A plugin can expose methods that the host's chat backends and agent can call as 
 
 ## Declaring tools
 
-Add an `aiTools` array to `manifest.json`. Each entry has four required fields and one optional output contract:
+Add an `aiTools` array to `manifest.json`. Each entry has four required fields plus optional output and effect metadata:
 
 ```json
 {
   "name": "excel_analyze",
   "description": "Analyze an Excel file and return sheets and headers.",
   "method": "excel_analyze",
+  "effect": "read",
   "inputSchema": "{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"object\",\"description\":\"A FengYu FileRef\"}},\"required\":[\"filePath\"]}",
   "outputSchema": "{\"type\":\"object\",\"properties\":{\"success\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"},\"sheets\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}}"
 }
@@ -29,6 +30,7 @@ Add an `aiTools` array to `manifest.json`. Each entry has four required fields a
 | `method` | string | The worker JSON-RPC method the host invokes when the model calls this tool. |
 | `inputSchema` | string | JSON Schema for the tool's arguments, **serialized as a string** (note the escaped quotes). |
 | `outputSchema` | string | Optional JSON Schema for the worker result envelope, serialized as a string. Used by visual workflow configuration and ignored by Spring AI tool calling. |
+| `effect` | string | Optional approval classification: `read`, `write`, or `external`. Older manifests that omit it are conservatively treated as `external`. |
 
 `inputSchema` must be a JSON Schema document. The host parses this string to build the Spring AI `ToolDefinition` handed to the model, so the model sees accurate argument metadata.
 
@@ -67,6 +69,7 @@ The `fan.summer.excel` plugin declares six tools. Its `excel_analyze` entry wire
   "name": "excel_analyze",
   "description": "Analyze an Excel file and return sheets and headers.",
   "method": "excel_analyze",
+  "effect": "read",
   "inputSchema": "{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"object\",\"description\":\"A FengYu FileRef\"}},\"required\":[\"filePath\"]}"
 }
 ```
@@ -77,7 +80,7 @@ Worker registration in `ExcelWorkerMain`:
 .on("excel_analyze", p -> analyze.analyze(JsonRpcWorker.string(p, "filePath")))
 ```
 
-When the model calls `excel_analyze`, the host forwards the arguments as JSON-RPC. If the user has attached a file for the conversation (see the attach affordance in the AI chat) and the tool has a single read-class file parameter, the host transparently injects the FileRef before dispatch (route B); `PluginProcessManager.resolveRefs` then rewrites it to a real path before the worker sees it. For tools with a write-directory or multiple file parameters, **or when no file has been attached for a single read-class parameter**, the host instead lists the available FileRefs in the system prompt and the model fills them itself (route A). In both cases the worker ultimately receives a resolved filesystem path. See [File I/O](/en/plugins/file-io). The full set of six tools is documented in [Official Plugin — Excel](/en/plugins/official-excel).
+When the model calls `excel_analyze`, the host forwards the arguments as JSON-RPC. If the user has attached a matching file or writable directory for the conversation (see the attach affordance in AI chat) and the tool has exactly one file-class parameter, the host transparently injects the FileRef before dispatch (route B); `PluginProcessManager.resolveRefs` then rewrites it to a real path before the worker sees it. Write-directory injection requires a `write` or `read-write` grant. For tools with multiple file parameters, **or when no matching grant is attached**, the host instead lists the available FileRefs in the system prompt and the model fills them itself (route A). In both cases the worker receives a resolved filesystem path; the Excel worker rejects unresolved objects instead of converting their map representation into a relative path. See [File I/O](/en/plugins/file-io). The full set of six tools is documented in [Official Plugin — Excel](/en/plugins/official-excel).
 
 ## Next steps
 

@@ -5,6 +5,7 @@ import fan.summer.fengyu.ai.config.ChatModelConfig;
 import fan.summer.fengyu.ai.skill.SkillPromptAppender;
 import fan.summer.fengyu.ai.skill.SkillRegistry;
 import fan.summer.fengyu.ai.tools.ChatToolApprovalGate;
+import fan.summer.fengyu.ai.tools.ToolResultStatus;
 import fan.summer.fengyu.ai.util.JsonHelper;
 import fan.summer.fengyu.ai.AiChatMessage;
 import fan.summer.fengyu.ai.AiServiceException;
@@ -43,6 +44,7 @@ import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 import reactor.core.Disposable;
 
@@ -91,6 +93,7 @@ public final class OllamaLocalBackend implements ChatBackend {
 
     /** Tool callbacks made available to the model (host wiring / tests); empty until set. */
     private volatile List<ToolCallback> toolCallbacks = List.of();
+    private volatile Supplier<List<ToolCallback>> toolCallbackSupplier = () -> toolCallbacks;
     private volatile ChatToolApprovalGate toolApprovalGate;
 
     /** Shared {@link ToolCallingManager} that drives user-controlled tool execution. */
@@ -168,6 +171,11 @@ public final class OllamaLocalBackend implements ChatBackend {
     /** Sets the {@link ToolCallback}s available to the model (host wiring / tests). */
     public void setToolCallbacks(List<ToolCallback> toolCallbacks) {
         this.toolCallbacks = toolCallbacks != null ? toolCallbacks : List.of();
+        this.toolCallbackSupplier = () -> this.toolCallbacks;
+    }
+
+    public void setToolCallbackSupplier(Supplier<List<ToolCallback>> supplier) {
+        this.toolCallbackSupplier = supplier != null ? supplier : () -> toolCallbacks;
     }
 
     public void setToolApprovalGate(ChatToolApprovalGate toolApprovalGate) {
@@ -252,7 +260,7 @@ public final class OllamaLocalBackend implements ChatBackend {
     // ── Tool loop (Spring AI ToolCallingManager, user-controlled) ──────
 
     private void runToolLoop(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs,
-                             AiStreamCallback callback, boolean enableTools) {
+                             AiStreamCallback callback, boolean enableTools) throws AiServiceException {
         // Route A fallback: when the host could not transparently inject a FileRef, the model
         // sees the active files here and picks one. Route B injection flows via ChatFileContext
         // (set by AiController around this call) for the transparent path.
@@ -260,9 +268,8 @@ public final class OllamaLocalBackend implements ChatBackend {
 
         // Tool-callback options attached to every Prompt so the model CAN request tools
         // (bug fix: previously buildToolCallbacks()'s result was discarded at the call site).
-        ToolCallback[] callbacks = enableTools
-                ? this.toolCallbacks.toArray(new ToolCallback[0])
-                : new ToolCallback[0];
+        List<ToolCallback> currentTools = enableTools ? List.copyOf(toolCallbackSupplier.get()) : List.of();
+        ToolCallback[] callbacks = currentTools.toArray(new ToolCallback[0]);
         ToolCallingChatOptions options = callbacks.length == 0
                 ? null
                 : ToolCallingChatOptions.builder().toolCallbacks(callbacks).build();
@@ -278,7 +285,8 @@ public final class OllamaLocalBackend implements ChatBackend {
             // unblock this virtual thread via the latch.
             StringBuilder accumulated = new StringBuilder();
             AtomicReference<ChatResponse> aggregated = new AtomicReference<>();
-            streamAndCollect(prompt, accumulated, aggregated, callback);
+            Throwable streamError = streamAndCollect(prompt, accumulated, aggregated, callback);
+            if (streamError != null) throw new AiServiceException("Ollama stream failed", streamError);
 
             ChatResponse roundResp = aggregated.get();
             boolean hasToolCalls = roundResp != null && roundResp.hasToolCalls();
@@ -293,7 +301,7 @@ public final class OllamaLocalBackend implements ChatBackend {
             if (round == MAX_TOOL_ROUNDS) {
                 String warn = "Reached MAX_TOOL_ROUNDS (" + MAX_TOOL_ROUNDS + ")";
                 log.warn(warn);
-                callback.onComplete(warn, 0, 0);
+                callback.onError(new IllegalStateException(warn));
                 return;
             }
 
@@ -301,8 +309,9 @@ public final class OllamaLocalBackend implements ChatBackend {
             history.add(AiChatMessage.assistantWithTools(accumulated.toString(), mapToolCalls(assistantMsg)));
 
             if (toolApprovalGate != null) {
-                toolApprovalGate.awaitRequiredApprovals(assistantMsg, toolCallbacks, callback);
+                toolApprovalGate.awaitRequiredApprovals(assistantMsg, currentTools, callback);
             }
+            fireToolCalls(assistantMsg, callback);
             ToolExecutionResult result = toolCallingManager.executeToolCalls(prompt, roundResp);
             fireToolEvents(assistantMsg, result, callback);
 
@@ -318,9 +327,10 @@ public final class OllamaLocalBackend implements ChatBackend {
      * {@link #cancelGeneration()} can dispose it mid-stream; {@link #streamDone} is counted
      * down on terminal signals (complete/error/cancel) to release the await below.
      */
-    private void streamAndCollect(Prompt prompt, StringBuilder accumulated,
-                                  AtomicReference<ChatResponse> aggregated, AiStreamCallback callback) {
+    private Throwable streamAndCollect(Prompt prompt, StringBuilder accumulated,
+                                       AtomicReference<ChatResponse> aggregated, AiStreamCallback callback) {
         streamDone = new CountDownLatch(1);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
         activeStream = new MessageAggregator().aggregate(
                 chatModel.stream(prompt),
                 aggregated::set
@@ -338,7 +348,7 @@ public final class OllamaLocalBackend implements ChatBackend {
                 // onNext consumer — empty: doOnNext above already handled each element
                 ignored -> { },
                 // onError: stream failed
-                error -> { log.warn("Ollama stream error", error); streamDone.countDown(); },
+                error -> { failure.set(error); log.warn("Ollama stream error", error); streamDone.countDown(); },
                 // onComplete (normal finish): release the await. Dispose/cancel is covered by
                 // the explicit countDown() in disposeActiveStream().
                 streamDone::countDown
@@ -348,7 +358,9 @@ public final class OllamaLocalBackend implements ChatBackend {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             disposeActiveStream();
+            failure.compareAndSet(null, e);
         }
+        return failure.get();
     }
 
     private List<Message> buildSpringAiMessages(List<AiChatMessage> history, String systemPrompt) {
@@ -386,10 +398,14 @@ public final class OllamaLocalBackend implements ChatBackend {
         for (int i = 0; i < n; i++) {
             AssistantMessage.ToolCall tc = calls.get(i);
             ToolResponseMessage.ToolResponse tr = responses.get(i);
-            callback.onToolCall(AiToolCall.of(
-                    tc.id() != null && !tc.id().isEmpty() ? tc.id() : tr.id(),
-                    tc.name(), parseArgs(tc.arguments())));
-            callback.onToolResult(tr.id(), AiToolResult.success(tr.responseData()));
+            callback.onToolResult(tr.id(), ToolResultStatus.toAiResult(tr.responseData()));
+        }
+    }
+
+    private static void fireToolCalls(AssistantMessage message, AiStreamCallback callback) {
+        if (message == null || !message.hasToolCalls()) return;
+        for (AssistantMessage.ToolCall call : message.getToolCalls()) {
+            callback.onToolCall(AiToolCall.of(call.id(), call.name(), parseArgs(call.arguments())));
         }
     }
 

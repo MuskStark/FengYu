@@ -105,11 +105,13 @@ public class SkillRegistry {
         try {
             byte[] bytes;
             if (skill.get().source() == Skill.Source.INSTALLED) {
-                Path root = packages.directory(id).toAbsolutePath().normalize();
-                Path resource = root.resolve(relative).normalize();
-                if (!resource.startsWith(root) || !Files.isRegularFile(resource)) {
+                Path root = packages.directory(id).toRealPath();
+                Path candidate = root.resolve(relative).normalize();
+                if (!candidate.startsWith(root) || !Files.isRegularFile(candidate)) {
                     return Optional.empty();
                 }
+                Path resource = candidate.toRealPath();
+                if (!resource.startsWith(root)) return Optional.empty();
                 if (Files.size(resource) > MAX_RESOURCE_BYTES) {
                     throw new IllegalArgumentException("Skill resource exceeds 1 MB");
                 }

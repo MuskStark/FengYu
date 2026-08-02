@@ -7,10 +7,13 @@ import fan.summer.fengyu.ai.AiToolResult;
 import fan.summer.fengyu.ai.ChatBackend;
 import fan.summer.fengyu.ai.ChatFileContext;
 import fan.summer.fengyu.ai.ChatFileContext.ActiveFileRef;
+import fan.summer.fengyu.ai.ChatFileGrantService;
 import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
 import fan.summer.fengyu.ai.service.AiModeService;
 import fan.summer.fengyu.ai.service.OllamaLocalBackend;
 import fan.summer.fengyu.ai.tools.ChatToolApprovalGate;
+import fan.summer.fengyu.ai.tools.AiPermissionContext;
+import fan.summer.fengyu.ai.tools.AiPermissionMode;
 import fan.summer.fengyu.plugin.runtime.PluginFileGrantService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +34,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
+import java.time.Duration;
+import java.time.Instant;
 
 /**
  * AI chat over Server-Sent Events. AI chat is a permanent core built-in — never routed through
@@ -50,17 +56,32 @@ public class AiController {
 
     private final AiModeService aiMode;
     private final ChatToolApprovalGate toolApprovalGate;
+    private final ChatFileGrantService fileGrants;
+    private final PluginFileGrantService pluginFiles;
 
-    public AiController(AiModeService aiMode, ChatToolApprovalGate toolApprovalGate) {
+    public AiController(AiModeService aiMode, ChatToolApprovalGate toolApprovalGate,
+            ChatFileGrantService fileGrants, PluginFileGrantService pluginFiles) {
         this.aiMode = aiMode;
         this.toolApprovalGate = toolApprovalGate;
+        this.fileGrants = fileGrants;
+        this.pluginFiles = pluginFiles;
     }
 
     /** Pending turns keyed by streamId; consumed once when the SSE opens. */
     private final Map<String, PendingTurn> pending = new ConcurrentHashMap<>();
+    private final AtomicReference<String> activeStreamId = new AtomicReference<>();
 
     @PostMapping("/chat")
     public Map<String, Object> chat(@RequestBody ChatRequest req) {
+        Instant cutoff = Instant.now().minus(Duration.ofMinutes(10));
+        pending.entrySet().removeIf(entry -> {
+            if (!entry.getValue().createdAt().isBefore(cutoff)) return false;
+            for (ActiveFileRef ref : entry.getValue().activeFileRefs()) {
+                pluginFiles.revoke(ref.pluginId(), ref.ref().id());
+            }
+            return true;
+        });
+        if (pending.size() >= 100) throw new IllegalStateException("Too many pending AI streams");
         List<AiChatMessage> history = new ArrayList<>();
         if (req.messages() != null) {
             for (ChatMessageDto m : req.messages()) {
@@ -70,12 +91,20 @@ public class AiController {
         List<ActiveFileRef> refs = new ArrayList<>();
         if (req.activeFileRefs() != null) {
             for (ActiveFileRefDto dto : req.activeFileRefs()) {
+                pluginFiles.validate(dto.pluginId(), dto.ref());
                 refs.add(new ActiveFileRef(dto.pluginId(), dto.ref()));
             }
         }
+        // A path typed into the composer is just as explicit as a picker selection. Resolve only
+        // the latest USER message, only when it names an existing absolute path, then turn it into
+        // normal plugin-scoped grants. The model can never create grants by mentioning a path in
+        // an assistant/tool message.
+        refs.addAll(fileGrants.grantPathsFromUserText(latestUserText(req.messages())));
         String streamId = UUID.randomUUID().toString();
-        pending.put(streamId, new PendingTurn(history, refs));
-        return Map.of("streamId", streamId);
+        pending.put(streamId, new PendingTurn(history, refs, AiPermissionMode.from(req.permissionMode()), Instant.now()));
+        List<ActiveFileRefDto> responseRefs = refs.stream()
+            .map(ref -> new ActiveFileRefDto(ref.pluginId(), ref.ref())).toList();
+        return Map.of("streamId", streamId, "activeFileRefs", responseRefs);
     }
 
     @PostMapping("/tool-approvals/{approvalId}")
@@ -88,9 +117,12 @@ public class AiController {
     }
 
     @PostMapping("/cancel")
-    public Map<String, Object> cancel() {
+    public Map<String, Object> cancel(@RequestParam String streamId) {
+        if (!activeStreamId.compareAndSet(streamId, null)) {
+            return Map.of("ok", false, "error", "Stream is not the active generation");
+        }
         aiMode.getService().ifPresent(ChatBackend::cancelGeneration);
-        return Map.of("ok", true);
+        return Map.of("ok", true, "streamId", streamId);
     }
 
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -125,6 +157,10 @@ public class AiController {
             completeWithError(emitter, "AI backend not ready (check provider config and connection)");
             return emitter;
         }
+        if (!activeStreamId.compareAndSet(null, streamId)) {
+            completeWithError(emitter, "Another AI generation is already in progress");
+            return emitter;
+        }
 
         // Send an immediate heartbeat so the response stream is "opened" before the model
         // produces its first token. WKWebView (Tauri desktop on macOS) will silently drop an
@@ -144,16 +180,19 @@ public class AiController {
             // virtual-thread worker runs chat() inline under this binding, so the ThreadLocal is
             // visible for the whole tool-execution window. Cleared in finally to avoid leakage.
             ChatFileContext.set(turn.activeFileRefs());
+            AiPermissionContext.set(turn.permissionMode());
             svc.get().chat(history,
                 AiConfigServiceHeadless.getAiTemperature(),
                 AiConfigServiceHeadless.getAiTopP(),
                 AiConfigServiceHeadless.getAiMaxTokens(),
                 turn.activeFileRefs(),
-                new SseCallback(emitter));
+                new SseCallback(emitter, () -> activeStreamId.compareAndSet(streamId, null)));
         } catch (Exception e) {
+            activeStreamId.compareAndSet(streamId, null);
             completeWithError(emitter, e.getMessage());
         } finally {
             ChatFileContext.clear();
+            AiPermissionContext.clear();
         }
         return emitter;
     }
@@ -162,8 +201,12 @@ public class AiController {
 
     private static final class SseCallback implements AiStreamCallback {
         private final SseEmitter emitter;
+        private final Runnable terminal;
 
-        SseCallback(SseEmitter emitter) { this.emitter = emitter; }
+        SseCallback(SseEmitter emitter, Runnable terminal) {
+            this.emitter = emitter;
+            this.terminal = terminal;
+        }
 
         @Override public void onToken(String fragment) {
             send("token", Map.of("text", fragment == null ? "" : fragment));
@@ -174,7 +217,7 @@ public class AiController {
         }
 
         @Override public void onToolCall(AiToolCall toolCall) {
-            send("tool", Map.of("phase", "call", "name", toolCall.name(),
+            send("tool", Map.of("phase", "call", "id", toolCall.id() == null ? "" : toolCall.id(), "name", toolCall.name(),
                 "arguments", toolCall.arguments() == null ? Map.of() : toolCall.arguments()));
         }
 
@@ -184,6 +227,7 @@ public class AiController {
             send("tool", Map.of(
                     "phase", "approval_required",
                     "approvalId", approvalId,
+                    "id", toolCall.id() == null ? "" : toolCall.id(),
                     "name", toolCall.name(),
                     "arguments", toolCall.arguments() == null ? Map.of() : toolCall.arguments(),
                     "expiresAt", expiresAt.toString()));
@@ -198,11 +242,13 @@ public class AiController {
             send("done", Map.of("text", fullResponse == null ? "" : fullResponse,
                 "tokens", tokensGenerated, "tps", tokensPerSecond));
             emitter.complete();
+            terminal.run();
         }
 
         @Override public void onError(Throwable error) {
             send("error", Map.of("message", error == null ? "unknown" : String.valueOf(error.getMessage())));
             emitter.complete();
+            terminal.run();
         }
 
         private void send(String event, Object data) {
@@ -234,13 +280,30 @@ public class AiController {
         };
     }
 
+    private static String latestUserText(List<ChatMessageDto> messages) {
+        if (messages == null) return "";
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            ChatMessageDto message = messages.get(i);
+            if (message != null && (message.role() == null || "user".equals(message.role()))) {
+                return message.content() == null ? "" : message.content();
+            }
+        }
+        return "";
+    }
+
     // ── DTOs ────────────────────────────────────────────────────────────────────────────
 
-    public record ChatRequest(List<ChatMessageDto> messages, List<ActiveFileRefDto> activeFileRefs) {}
+    public record ChatRequest(List<ChatMessageDto> messages, List<ActiveFileRefDto> activeFileRefs,
+                              String permissionMode) {
+        public ChatRequest(List<ChatMessageDto> messages, List<ActiveFileRefDto> activeFileRefs) {
+            this(messages, activeFileRefs, null);
+        }
+    }
     public record ChatMessageDto(String role, String content) {}
     public record ToolApprovalDecision(boolean approved) {}
     public record ActiveFileRefDto(String pluginId, PluginFileGrantService.FileRef ref) {}
 
     /** Carries a stashed turn's history + active file refs from {@code POST /chat} to {@code GET /stream}. */
-    private record PendingTurn(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs) {}
+    private record PendingTurn(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs,
+                               AiPermissionMode permissionMode, Instant createdAt) {}
 }

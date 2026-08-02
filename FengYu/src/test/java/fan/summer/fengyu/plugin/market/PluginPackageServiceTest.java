@@ -84,6 +84,22 @@ class PluginPackageServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service.install(file));
     }
 
+    @Test
+    void rejectsUnknownAiToolEffect() throws Exception {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        MockMultipartFile file = inlinePackage(
+            """
+            {"schemaVersion":1,"id":"com.example.effect","name":"Effect","description":"Effect test",
+             "version":"1.0.0","author":"Example","icon":"toolbox","category":"dev",
+             "ui":{"entry":"ui/index.html"},"aiTools":[{"name":"change","description":"Change",
+             "method":"change",
+             "effect":"delete-everything","inputSchema":"{\\"type\\":\\"object\\"}"}]}
+            """,
+            "ui/index.html", "<html></html>");
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.install(file));
+        assertTrue(ex.getMessage().contains("effect"));
+    }
+
     /** Locates the cross-language shared fixtures from either FengYu/ or the repository root. */
     private Path fixture(String name) {
         Path root = Path.of(System.getProperty("user.dir")).toAbsolutePath();

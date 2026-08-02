@@ -40,6 +40,15 @@ test('optional ai tool outputSchema must be a json object', async () => {
   assert.ok(errors.some((e) => e.includes('outputSchema')), errors.join('\n'))
 })
 
+test('ai tool effect accepts the approval contract and rejects unknown values', async () => {
+  const manifest = await readFixture('valid-full.json')
+  manifest.aiTools[0].effect = 'write'
+  assert.deepEqual(validateManifestObject(manifest), [])
+  manifest.aiTools[0].effect = 'delete-everything'
+  const errors = validateManifestObject(manifest)
+  assert.ok(errors.some((e) => e.includes('effect')), errors.join('\n'))
+})
+
 test('duplicate ai tool names and methods are rejected', () => {
   const manifest = {
     schemaVersion: 1, id: 'com.example.dup', name: 'Dup', version: '1.0.0',

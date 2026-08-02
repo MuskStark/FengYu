@@ -10,13 +10,14 @@ lang: zh-CN
 
 ## 声明工具
 
-在 `manifest.json` 中添加一个 `aiTools` 数组。每一项有四个必填字段，以及一个可选的输出契约：
+在 `manifest.json` 中添加一个 `aiTools` 数组。每一项有四个必填字段，以及可选的输出契约和副作用分类：
 
 ```json
 {
   "name": "excel_analyze",
   "description": "Analyze an Excel file and return sheets and headers.",
   "method": "excel_analyze",
+  "effect": "read",
   "inputSchema": "{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"object\",\"description\":\"A FengYu FileRef\"}},\"required\":[\"filePath\"]}",
   "outputSchema": "{\"type\":\"object\",\"properties\":{\"success\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"},\"sheets\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}}"
 }
@@ -29,6 +30,7 @@ lang: zh-CN
 | `method` | string | 当模型调用此工具时，宿主调用的 worker JSON-RPC 方法。 |
 | `inputSchema` | string | 工具参数的 JSON Schema，**以字符串形式序列化**（注意转义的引号）。 |
 | `outputSchema` | string | 可选的 Worker 结果信封 JSON Schema，以字符串形式序列化。供可视化工作流配置使用，Spring AI 工具调用会忽略它。 |
+| `effect` | string | 可选的审批分类：`read`、`write` 或 `external`。旧清单省略时会保守地按 `external` 处理。 |
 
 `inputSchema` 必须是一个 JSON Schema 文档。宿主会解析这个字符串来构建交给模型的 Spring AI `ToolDefinition`，因此模型看到的是准确的参数元数据。
 
@@ -67,6 +69,7 @@ lang: zh-CN
   "name": "excel_analyze",
   "description": "Analyze an Excel file and return sheets and headers.",
   "method": "excel_analyze",
+  "effect": "read",
   "inputSchema": "{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"object\",\"description\":\"A FengYu FileRef\"}},\"required\":[\"filePath\"]}"
 }
 ```
@@ -77,7 +80,7 @@ lang: zh-CN
 .on("excel_analyze", p -> analyze.analyze(JsonRpcWorker.string(p, "filePath")))
 ```
 
-当模型调用 `excel_analyze` 时，宿主以 JSON-RPC 转发参数。如果用户为本次对话附加了文件（见 AI 聊天中的附加入口）且该工具只有一个读取类（read）的文件参数，宿主会在派发前透明地注入 FileRef（路由 B）；随后 `PluginProcessManager.resolveRefs` 会在 worker 看到它之前把 FileRef 改写为真实路径。对于带有写入目录或多个文件参数的工具，**或当单个读取类参数但用户未附加文件时**，宿主则改为在系统提示词中列出可用的 FileRef，由模型自行填入（路由 A）。两种情况下 worker 最终收到的都是已解析的文件系统路径。见 [文件 I/O](/zh/plugins/file-io)。完整的六个工具集合见 [官方插件——Excel](/zh/plugins/official-excel)。
+当模型调用 `excel_analyze` 时，宿主以 JSON-RPC 转发参数。如果用户为本次对话附加了匹配的文件或可写目录（见 AI 聊天中的附加入口）且该工具只有一个文件类参数，宿主会在派发前透明地注入 FileRef（路由 B）；随后 `PluginProcessManager.resolveRefs` 会在 worker 看到它之前把 FileRef 改写为真实路径。写入目录的注入要求 `write` 或 `read-write` 授权。对于带有多个文件参数的工具，**或没有附加匹配授权时**，宿主则改为在系统提示词中列出可用的 FileRef，由模型自行填入（路由 A）。两种情况下 worker 收到的都是已解析的文件系统路径；Excel worker 会拒绝未解析的对象，而不会再把对象的 Map 文本当成相对路径。见 [文件 I/O](/zh/plugins/file-io)。完整的六个工具集合见 [官方插件——Excel](/zh/plugins/official-excel)。
 
 ## 下一步
 

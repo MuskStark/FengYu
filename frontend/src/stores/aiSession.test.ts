@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { toChatHistory, guessPluginForFile, type ChatTurn } from './aiSession'
+import { toChatHistory, guessPluginForFile, grantAccessForAttachment, type ChatTurn } from './aiSession'
 import type { PluginDescriptor, PluginFileRef } from '@/api/types'
 import { useAiSessionStore } from './aiSession'
 import { api } from '@/api/client'
@@ -13,6 +13,7 @@ function turn(role: ChatTurn['role'], content: string, streaming = false): ChatT
     thinking: '',
     streaming,
     confirmations: [],
+    activities: [],
   }
 }
 
@@ -43,6 +44,13 @@ describe('plugin guess from file name', () => {
   })
 })
 
+describe('AI attachment grant access', () => {
+  it('keeps files read-only and makes selected directories valid output targets', () => {
+    expect(grantAccessForAttachment('file')).toBe('read')
+    expect(grantAccessForAttachment('directory')).toBe('read-write')
+  })
+})
+
 describe('AI session active files', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
@@ -69,6 +77,21 @@ describe('AI session active files', () => {
     const ref: PluginFileRef = { id: 'ref_y', name: 'f', kind: 'file', access: 'read', size: 1 }
     store.addActiveFile('', ref) // user has not chosen a plugin
     expect(store.sendableFileRefs()).toEqual([])
+  })
+
+  it('clears and revokes attachments when switching conversations', async () => {
+    const revoke = vi.spyOn(api, 'revokeAiFile').mockResolvedValue()
+    const store = useAiSessionStore()
+    const first = store.newConversation().id
+    store.newConversation()
+    store.addActiveFile('fan.summer.excel', {
+      id: 'ref_private', name: 'private.xlsx', kind: 'file', access: 'read', size: 1,
+    })
+
+    await store.select(first)
+
+    expect(store.activeFiles).toEqual([])
+    expect(revoke).toHaveBeenCalledWith('fan.summer.excel', 'ref_private')
   })
 })
 

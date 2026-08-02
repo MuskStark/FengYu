@@ -2,13 +2,18 @@ package fan.summer.fengyu.web.controller;
 
 import fan.summer.fengyu.ai.ChatFileContext;
 import fan.summer.fengyu.plugin.runtime.PluginFileGrantService.FileRef;
+import fan.summer.fengyu.plugin.runtime.PluginFileGrantService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -20,6 +25,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AiControllerFileContextTest {
 
     @Autowired MockMvc mvc;
+    @Autowired PluginFileGrantService files;
+    @TempDir Path temp;
 
     @AfterEach
     void clean() { ChatFileContext.clear(); }
@@ -28,9 +35,12 @@ class AiControllerFileContextTest {
     void acceptsActiveFileRefsFieldWithoutError() throws Exception {
         // POST /api/ai/chat must accept the new activeFileRefs field. We only assert the endpoint
         // accepts the body and returns a streamId; resolving the SSE is out of scope here.
+        Path report = temp.resolve("report.xlsx");
+        Files.writeString(report, "data");
+        FileRef granted = files.grantNative("fan.summer.excel", report.toString(), "file", "read");
         String body = "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],"
             + "\"activeFileRefs\":[{\"pluginId\":\"fan.summer.excel\","
-            + "\"ref\":{\"id\":\"ref_3f2a\",\"name\":\"report.xlsx\",\"kind\":\"file\",\"access\":\"read\",\"size\":123}}]}";
+            + "\"ref\":{\"id\":\"" + granted.id() + "\",\"name\":\"report.xlsx\",\"kind\":\"file\",\"access\":\"read\",\"size\":4}}]}";
 
         mvc.perform(post("/api/ai/chat").contentType("application/json").content(body))
             .andExpect(status().isOk())

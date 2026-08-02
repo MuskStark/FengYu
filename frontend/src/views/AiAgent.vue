@@ -23,6 +23,7 @@ import type {
   AgentRunSummary,
   AgentStep,
   AgentTool,
+  AiPermissionMode,
 } from '@/api/types'
 import WorkflowToolNode from '@/components/agent/WorkflowToolNode.vue'
 import {
@@ -93,7 +94,9 @@ const config: AgentRunConfig = {
   requireStepApproval: false,
   replanOnFailure: false,
   maxReplans: 0,
+  permissionMode: 'ask-for-approval',
 }
+const permissionMode = ref<AiPermissionMode>('ask-for-approval')
 const currentRequirePlanApproval = ref(config.requirePlanApproval)
 
 const busy = computed(
@@ -669,9 +672,10 @@ async function run() {
       plan.value = workflow
       for (const step of workflow.steps) steps.value.set(step.index, step)
     }
-    const runConfig = workflow
+    const runConfig: AgentRunConfig = workflow
       ? { ...config, requirePlanApproval: false, requireStepApproval: true }
-      : config
+      : { ...config }
+    runConfig.permissionMode = permissionMode.value
     currentRequirePlanApproval.value = runConfig.requirePlanApproval
     const { runId: id } = await api.agentRun({
       goal: workflow?.goal ?? g,
@@ -820,6 +824,11 @@ function stepChipClass(s: string): string {
 
       <!-- Goal composer shared by AI planning and visual workflows -->
       <div class="cx-composer" style="display: flex; align-items: flex-end; gap: 8px; margin-bottom: 12px">
+        <select v-model="permissionMode" class="cx-select" style="width: 190px" :disabled="busy">
+          <option value="ask-for-approval">{{ t('aichat.permissionAsk') }}</option>
+          <option value="approve-for-me">{{ t('aichat.permissionAuto') }}</option>
+          <option value="full-access">{{ t('aichat.permissionFullAccess') }}</option>
+        </select>
         <textarea
           v-model="goal"
           rows="2"
