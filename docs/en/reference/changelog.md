@@ -10,11 +10,53 @@ repository's [CHANGELOG.md](https://github.com/MuskStark/FengYu/blob/4.0.0/CHANG
 this page mirrors it for the published docs site.
 
 ::: tip Latest release
-**v4.0.0** — 2026-07-29 ·
-[GitHub release](https://github.com/MuskStark/FengYu/releases/tag/v4.0.0)
+**v4.0.0-alpha.6** — 2026-08-02 ·
+[GitHub release](https://github.com/MuskStark/FengYu/releases/tag/v4.0.0-alpha.6)
 :::
 
 ---
+
+## [4.0.0-alpha.6] — 2026-08-02
+
+### ✨ Added
+- **AI chat now has Codex-style action approval profiles.** The composer offers Ask for approval,
+  Approve for me, and Full access; command execution and plugin-declared read/write/external
+  effects share one host approval gate. Approval cards stay inside the composer, while calls render
+  as compact progress rows such as `Read FengYu Plugin Dev skill`. Plugin manifests can declare an
+  optional `aiTools[].effect`, with undeclared third-party effects treated conservatively.
+- **Live visual-workflow tool contracts.** Plugin AI tools may declare an optional serialized
+  `outputSchema`; the official Excel, Email, and Offline Python tools now publish user-facing input
+  metadata and result-envelope schemas for canvas configuration.
+
+### ♻️ Changed
+- **A directory the user names as an output target never becomes worker-writable.** Instead a
+  plugin-owned staging directory is created per turn and handed to the worker as a writable sandbox
+  root; the host copies its contents to the real target after the turn completes and deletes the
+  staging tree. The real directory stays read-only, so the OS sandbox writable-roots remain stable
+  (one staging grant per turn) and a worker can never overwrite files in a user-named folder.
+  Plugin workers also now receive a per-plugin writable temp directory
+  (`-Djava.io.tmpdir` + `TMPDIR`/`TMP`/`TEMP`), and `PLUGIN_DATA_DIR_ENV` is set for every plugin
+  rather than only database-capable ones. macOS sandbox writable-roots are canonicalized via
+  `toRealPath()` before the profile is built (resolves `/var` → `/private/var`).
+- **The chat tool-loop cap is now configurable.** A new `ai.max_tool_rounds` setting (default 50,
+  `0` = unlimited) replaces the previously hard-coded per-backend limits and bounds the number of
+  tool-call rounds a turn may take, stopping a model that re-requests the same tool from wedging the
+  virtual thread and locking the backend. It is editable in Settings → AI.
+- **Agent tool discovery now follows the installed-plugin lifecycle.** New runs read a live tool
+  registry, while canvas nodes survive tool disable/uninstall, block unsafe execution, and reconcile
+  newly required inputs when the same tool is enabled again.
+- **Bumped Apache POI to 5.5.1.**
+
+### 🐛 Fixed
+- **AI chat now handles Excel file workflows and approval-heavy replies reliably.** Attached
+  files/directories are granted to every compatible backend plugin, and existing absolute paths
+  typed in a user message are converted into read-only plugin-scoped FileRefs. Selected directories
+  retain writable access where declared and are injected into single write-directory plugin tool
+  parameters; Excel analysis is preferred before split operations, and unresolved FileRef objects
+  can no longer become map-shaped output folders. IME composition no longer drops a trailing English
+  segment on click-to-send, and final answers render below command approval cards.
+- **The permission-mode menu is now disabled while a generation is in flight**, so an approval
+  profile can no longer be switched mid-turn.
 
 ## [4.0.0] — 2026-07-29
 
