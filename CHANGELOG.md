@@ -6,6 +6,10 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [4.0.0-alpha.6] — 2026-08-02
+
 ### ✨ Added
 - **AI chat now has Codex-style action approval profiles.** The composer offers Ask for approval,
   Approve for me, and Full access; command execution and plugin-declared read/write/external
@@ -31,6 +35,24 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 - **Agent tool discovery now follows the installed-plugin lifecycle.** New runs read a live tool
   registry, while canvas nodes survive tool disable/uninstall, block unsafe execution, and reconcile
   newly required inputs when the same tool is enabled again.
+- **A directory the user names as an output target never becomes worker-writable.** Instead a
+  plugin-owned staging directory is created per turn and handed to the worker as a writable sandbox
+  root; the host copies its contents to the real target after the turn completes and deletes the
+  staging tree. The real directory stays read-only, so the OS sandbox writable-roots remain stable
+  (one staging grant per turn) and a worker can never overwrite files in a user-named folder.
+  Plugin workers also now receive a per-plugin writable temp directory
+  (`-Djava.io.tmpdir` + `TMPDIR`/`TMP`/`TEMP`), and `PLUGIN_DATA_DIR_ENV` is set for every plugin
+  rather than only database-capable ones. macOS sandbox writable-roots are canonicalized via
+  `toRealPath()` before the profile is built (resolves `/var` → `/private/var`).
+- **The chat tool-loop cap is now configurable.** A new `ai.max_tool_rounds` setting (default 50,
+  `0` = unlimited) replaces the previously hard-coded per-backend limits and bounds the number of
+  tool-call rounds a turn may take, stopping a model that re-requests the same tool from wedging the
+  virtual thread and locking the backend. It is editable in Settings → AI.
+- **Bumped Apache POI to 5.5.1.**
+
+### 🐛 Fixed
+- **The permission-mode menu is now disabled while a generation is in flight**, so an approval
+  profile can no longer be switched mid-turn.
 
 ## [4.0.0] — 2026-07-29
 
