@@ -17,6 +17,7 @@ import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -110,6 +111,18 @@ class PluginProcessManagerTest {
         @SuppressWarnings("unchecked") Map<String, Object> result =
             (Map<String, Object>) manager.invoke("com.example.worker", "environment", Map.of());
         assertEquals("jdbc:h2:mem:worker-host", result.get("value"));
+        manager.close();
+    }
+
+    @Test
+    void givesSandboxedWorkerAWritablePluginOwnedTempDirectory() throws Exception {
+        PluginProcessManager manager = manager();
+
+        @SuppressWarnings("unchecked") Map<String, Object> result =
+            (Map<String, Object>) manager.invoke("com.example.worker", "temporary-file", Map.of());
+
+        Path path = Path.of(String.valueOf(result.get("value")));
+        assertTrue(path.startsWith(temp.resolve("plugin-data").resolve("com.example.worker")));
         manager.close();
     }
 
@@ -272,6 +285,12 @@ class PluginProcessManagerTest {
                         String url = System.getenv("FENGYU_DB_URL");
                         System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
                             + "\",\"result\":{\"value\":\"" + url + "\"}}");
+                    } else if (line.contains("\"method\":\"temporary-file\"")) {
+                        Path created = Files.createTempFile("fengyu-worker-", ".tmp");
+                        String value = created.toAbsolutePath().toString().replace("\\", "\\\\");
+                        Files.delete(created);
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
+                            + "\",\"result\":{\"value\":\"" + value + "\"}}");
                     } else {
                         System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id + "\",\"result\":{\"value\":\"ok\"}}");
                     }

@@ -70,6 +70,10 @@ public class AiConfigService {
     private static final String AI_MODEL_PATH_KEY = "ai.model.path";
     private static final String AI_OLLAMA_BASE_URL_KEY = "ai.ollama.base_url";
     private static final String AI_OLLAMA_MODEL_KEY = "ai.ollama.model";
+    /** Maximum rounds a chat backend's tool loop may run before aborting; {@code 0} = unlimited. */
+    private static final String AI_MAX_TOOL_ROUNDS_KEY = "ai.max_tool_rounds";
+    /** Default cap on tool-loop rounds when no setting is stored (protects against runaway loops). */
+    public static final int DEFAULT_MAX_TOOL_ROUNDS = 50;
 
     // ── Core read (instance; uses injected repo + security context) ──────────
     private String readSetting(String key, String defaultValue) {
@@ -158,4 +162,17 @@ public class AiConfigService {
 
     /** Ollama model tag (e.g. {@code "qwen3:4b"}); defaults to Qwen3 4B. */
     public static String getAiOllamaModel() { return INSTANCE.readSetting(AI_OLLAMA_MODEL_KEY, "qwen3:4b"); }
+
+    /**
+     * Maximum number of tool-call rounds a chat backend's loop may execute before aborting the
+     * turn. {@code 0} means unlimited (no safety net). Defaults to {@value #DEFAULT_MAX_TOOL_ROUNDS}
+     * when unset or unparseable, guarding against models that loop on the same tool call.
+     */
+    public static int getAiMaxToolRounds() {
+        String val = INSTANCE.readSetting(AI_MAX_TOOL_ROUNDS_KEY, null);
+        if (val != null) {
+            try { return Integer.parseInt(val); } catch (NumberFormatException ignored) { }
+        }
+        return DEFAULT_MAX_TOOL_ROUNDS;
+    }
 }

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -54,5 +55,16 @@ class ProcessSandboxTest {
         ProcessSandbox sandbox = new ProcessSandbox(ProcessSandbox.Backend.NONE);
         assertThrows(IllegalStateException.class, () -> sandbox.plugin(
                 List.of("worker"), workdir, List.of(workdir), false, false));
+    }
+
+    @Test
+    void macSandboxCanonicalizesWritableRootsBeforeBuildingProfile() throws Exception {
+        ProcessSandbox sandbox = new ProcessSandbox(ProcessSandbox.Backend.SANDBOX_EXEC);
+        Path writable = Files.createDirectories(workdir.resolve("worker-tmp"));
+
+        ProcessSandbox.Launch launch = sandbox.plugin(
+            List.of("worker"), workdir, List.of(writable), false, false);
+
+        assertTrue(launch.command().get(2).contains(writable.toRealPath().toString()));
     }
 }
