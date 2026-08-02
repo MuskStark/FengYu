@@ -94,6 +94,19 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      # Plugin workers require a native process sandbox. ProcessSandbox detects bubblewrap
+      # (`bwrap`) on Linux and sandbox-exec on macOS; ubuntu-latest ships neither, and (now that
+      # it is Ubuntu 24.04) AppArmor blocks the unprivileged user namespaces bwrap needs by
+      # default. Install bubblewrap, lift the AppArmor restriction, and prove bwrap can actually
+      # sandbox before the backend tests run — otherwise PluginProcessManagerTest would hit the
+      # deliberate fail-closed IllegalStateException (no sandbox) or "Broken pipe" (bwrap killed
+      # at uid-map/loopback setup).
+      - name: Enable bubblewrap sandbox (install + relax Ubuntu 24.04 AppArmor userns)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          bwrap --unshare-all --ro-bind / / --proc /proc --dev-bind /dev /dev -- /bin/true
+
       - name: Validate release workflow (unit tests)
         run: node --test scripts/resolve-release-version.test.mjs scripts/release-workflow.test.mjs scripts/node-version.test.mjs
 
