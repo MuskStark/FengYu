@@ -7,7 +7,7 @@ import java.util.List;
 
 /**
  * Appends the active file grants for a chat turn to the system prompt (route A fallback). When the
- * host could not transparently inject a FileRef (write-dir params, multiple file params, or no
+ * host could not transparently inject a FileRef (multiple file params or no
  * matching grant), the model picks from this list and passes the whole object as the argument.
  */
 public final class ActiveFilesPromptAppender {
@@ -26,6 +26,8 @@ public final class ActiveFilesPromptAppender {
         sb.append("## Files available for this conversation\n");
         sb.append("When a plugin tool needs a file/directory parameter, pick from this list and ");
         sb.append("pass the WHOLE object as the argument, exactly as shown:\n");
+        sb.append("Use that plugin's purpose-built tools for supported file operations instead of ");
+        sb.append("shell commands. For Excel workbooks, call excel_analyze before configuring or executing a split.\n");
         for (ActiveFileRef ref : activeRefs) {
             FileRef f = ref.ref();
             sb.append("- ").append(ref.pluginId()).append(": ");
@@ -47,7 +49,12 @@ public final class ActiveFilesPromptAppender {
                 case '"' -> b.append("\\\"");
                 case '\\' -> b.append("\\\\");
                 case '\n' -> b.append("\\n");
-                default -> b.append(c);
+                case '\r' -> b.append("\\r");
+                case '\t' -> b.append("\\t");
+                default -> {
+                    if (c < 0x20) b.append(String.format("\\u%04x", (int) c));
+                    else b.append(c);
+                }
             }
         }
         return b.append('"').toString();

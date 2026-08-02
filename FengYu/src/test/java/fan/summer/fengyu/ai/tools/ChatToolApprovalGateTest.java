@@ -3,6 +3,7 @@ package fan.summer.fengyu.ai.tools;
 import fan.summer.fengyu.ai.AiStreamCallback;
 import fan.summer.fengyu.ai.AiToolCall;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.tool.definition.DefaultToolDefinition;
 import org.springframework.ai.tool.definition.ToolDefinition;
@@ -17,6 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ChatToolApprovalGateTest {
+
+    @AfterEach void clearPermissionMode() { AiPermissionContext.clear(); }
 
     @Test
     void sensitiveToolBlocksUntilApproved() throws Exception {
@@ -86,6 +89,30 @@ class ChatToolApprovalGateTest {
     }
 
     @Test
+    void approveForMeRunsSafeCommandsButReviewsNetworkEscalation() {
+        AiPermissionContext.set(AiPermissionMode.APPROVE_FOR_ME);
+        assertFalse(ChatToolApprovalGate.requiresApproval(
+            toolCall("execute_command").getToolCalls().getFirst(), List.of(sensitiveTool())));
+        AssistantMessage network = AssistantMessage.builder().content("").toolCalls(List.of(
+            new AssistantMessage.ToolCall("call-2", "function", "execute_command",
+                "{\"command\":\"curl example.com\",\"allowNetwork\":true}"))).build();
+        assertTrue(ChatToolApprovalGate.requiresApproval(
+            network.getToolCalls().getFirst(), List.of(sensitiveTool())));
+    }
+
+    @Test
+    void documentEffectsFollowPermissionProfile() {
+        AiPermissionContext.set(AiPermissionMode.ASK_FOR_APPROVAL);
+        assertFalse(ChatToolApprovalGate.requiresApproval(
+            toolCall("read_document").getToolCalls().getFirst(), List.of(audited("read_document", ToolEffect.READ))));
+        assertTrue(ChatToolApprovalGate.requiresApproval(
+            toolCall("write_document").getToolCalls().getFirst(), List.of(audited("write_document", ToolEffect.WRITE))));
+        AiPermissionContext.set(AiPermissionMode.FULL_ACCESS);
+        assertFalse(ChatToolApprovalGate.requiresApproval(
+            toolCall("write_document").getToolCalls().getFirst(), List.of(audited("write_document", ToolEffect.WRITE))));
+    }
+
+    @Test
     void cancellationReleasesPendingApproval() throws Exception {
         ChatToolApprovalGate gate = new ChatToolApprovalGate();
         CountDownLatch requested = new CountDownLatch(1);
@@ -123,6 +150,15 @@ class ChatToolApprovalGateTest {
         ToolDefinition definition = definition("execute_command");
         return new ApprovalRequiredToolCallback() {
             @Override public ToolDefinition getToolDefinition() { return definition; }
+            @Override public String call(String input) { return input; }
+        };
+    }
+
+    private static AuditedToolCallback audited(String name, ToolEffect effect) {
+        ToolDefinition definition = definition(name);
+        return new AuditedToolCallback() {
+            @Override public ToolDefinition getToolDefinition() { return definition; }
+            @Override public ToolEffect effect() { return effect; }
             @Override public String call(String input) { return input; }
         };
     }

@@ -281,6 +281,9 @@ public class PluginPackageService {
                 }
             }
             validateTimeout(tool.timeoutSeconds(), "aiTools[" + tool.name() + "].timeoutSeconds");
+            if (tool.effect() != null && !java.util.Set.of("read", "write", "external").contains(tool.effect())) {
+                throw new IllegalArgumentException("Invalid effect for AI tool " + tool.name());
+            }
         }
     }
 

@@ -3,7 +3,7 @@ package fan.summer.fengyu.ai.agent;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
-import fan.summer.fengyu.database.SecurityConstants;
+import fan.summer.fengyu.security.SecurityContext;
 import fan.summer.fengyu.database.entity.ai.AgentRunEntity;
 import fan.summer.fengyu.database.entity.ai.AgentRunEventEntity;
 import fan.summer.fengyu.database.repository.ai.AgentRunEventRepository;
@@ -26,7 +26,6 @@ import java.util.concurrent.atomic.AtomicLong;
 @Service
 public class AgentRunPersistenceService {
     private static final Logger log = LoggerFactory.getLogger(AgentRunPersistenceService.class);
-    private static final long USER_ID = SecurityConstants.LOCAL_VIRTUAL_USER_ID;
     private static final EnumSet<AgentRunStatus> NON_TERMINAL = EnumSet.of(
             AgentRunStatus.PLANNING,
             AgentRunStatus.AWAITING_PLAN_APPROVAL,
@@ -35,12 +34,15 @@ public class AgentRunPersistenceService {
 
     private final AgentRunRepository runs;
     private final AgentRunEventRepository events;
+    private final SecurityContext securityContext;
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
     private final Map<String, AtomicLong> sequences = new ConcurrentHashMap<>();
 
-    public AgentRunPersistenceService(AgentRunRepository runs, AgentRunEventRepository events) {
+    public AgentRunPersistenceService(AgentRunRepository runs, AgentRunEventRepository events,
+                                      SecurityContext securityContext) {
         this.runs = runs;
         this.events = events;
+        this.securityContext = securityContext;
     }
 
     @Transactional
@@ -48,7 +50,7 @@ public class AgentRunPersistenceService {
         LocalDateTime now = LocalDateTime.now();
         AgentRunEntity entity = new AgentRunEntity();
         entity.setId(run.getRunId());
-        entity.setUserId(USER_ID);
+        entity.setUserId(run.getUserId());
         entity.setGoal(run.getGoal());
         entity.setStatus(run.getStatus().name());
         entity.setConfigJson(write(run.getConfig()));
@@ -125,7 +127,7 @@ public class AgentRunPersistenceService {
 
     @Transactional
     public void updateSnapshot(AgentRun run, String summary, String error) {
-        AgentRunEntity entity = runs.findByIdAndUserId(run.getRunId(), USER_ID).orElse(null);
+        AgentRunEntity entity = runs.findByIdAndUserId(run.getRunId(), run.getUserId()).orElse(null);
         if (entity == null) return;
         entity.setStatus(run.getStatus().name());
         entity.setPlanJson(run.getPlan() == null ? null : write(run.getPlan()));
@@ -152,7 +154,7 @@ public class AgentRunPersistenceService {
     }
 
     public List<RunSummary> list() {
-        return runs.findByUserIdOrderByUpdatedAtDesc(USER_ID).stream()
+        return runs.findByUserIdOrderByUpdatedAtDesc(currentUserId()).stream()
                 .map(entity -> new RunSummary(
                         entity.getId(), entity.getGoal(), entity.getStatus(),
                         entity.getSummary(), entity.getErrorMessage(), entity.getResumedFrom(),
@@ -161,7 +163,7 @@ public class AgentRunPersistenceService {
     }
 
     public RunDetail detail(String id) {
-        AgentRunEntity entity = runs.findByIdAndUserId(id, USER_ID)
+        AgentRunEntity entity = runs.findByIdAndUserId(id, currentUserId())
                 .orElseThrow(() -> new IllegalArgumentException("Unknown persisted run: " + id));
         List<PersistedEvent> eventList = events.findByRunIdOrderBySeqAsc(id).stream()
                 .map(event -> new PersistedEvent(
@@ -191,7 +193,8 @@ public class AgentRunPersistenceService {
                 true,
                 original.requireStepApproval(),
                 original.replanOnFailure(),
-                original.maxReplans());
+                original.maxReplans(),
+                original.effectivePermissionMode());
         List<StepExecution> completed = detail.executions().stream()
                 .filter(execution -> execution.status() == StepStatus.COMPLETED)
                 .toList();
@@ -220,6 +223,12 @@ public class AgentRunPersistenceService {
         } catch (Exception e) {
             throw new IllegalStateException("Could not serialize agent state", e);
         }
+    }
+
+    private long currentUserId() {
+        Long id = securityContext.currentUserId();
+        if (id == null) throw new IllegalStateException("No authenticated user");
+        return id;
     }
 
     private <T> T read(String value, Class<T> type) {

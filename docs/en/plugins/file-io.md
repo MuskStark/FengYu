@@ -36,7 +36,7 @@ All five endpoints live under base `/api/plugin-runtime/{id}/files`. Each is gat
 
 A request that needs a permission the plugin did not declare returns `403`. See [Pitfalls](/en/plugins/pitfalls).
 
-> The AI chat's "attach file for this conversation" affordance grants a file through these same endpoints (`/api/plugin-runtime/{pluginId}/files/native` on desktop, `/files/upload` in the browser). The resulting FileRef is scoped to the chosen plugin and lives for the chat session (it is not persisted; restart clears it).
+> AI chat fans a selected file/directory out into separate plugin-scoped grants for every compatible backend plugin. Files are read-only inputs. A selected directory receives `read-write` access only for plugins declaring both `files.read` and `files.write`; read-only plugins receive an isolated snapshot. An existing absolute path typed in the latest user message follows the same flow but is always read-only. FileRefs live for the chat session (they are not persisted; restart clears them).
 
 ## Temp storage and cleanup
 

@@ -4,7 +4,8 @@ import { readFile } from 'node:fs/promises'
 import { createPinia, setActivePinia } from 'pinia'
 import { createServer } from 'vite'
 
-const source = await readFile(new URL('../src/shell/Sidebar.vue', import.meta.url), 'utf8')
+const sidebarSource = await readFile(new URL('../src/shell/Sidebar.vue', import.meta.url), 'utf8')
+const settingsSource = await readFile(new URL('../src/views/Settings.vue', import.meta.url), 'utf8')
 const vite = await createServer({
   server: { middlewareMode: true },
   appType: 'custom',
@@ -15,12 +16,9 @@ after(async () => {
   await vite.close()
 })
 
-test('persists sidebar theme changes through the settings store', () => {
-  assert.match(
-    source,
-    /@click="settings\.setTheme\(theme\.theme === 'dark' \? 'light' : 'dark'\)"/,
-  )
-  assert.doesNotMatch(source, /@click="theme\.toggle\(\)"/)
+test('keeps theme changes in the settings surface after the sidebar redesign', () => {
+  assert.match(settingsSource, /@click="settings\.setTheme\(i\.value\)"/)
+  assert.doesNotMatch(sidebarSource, /@click="theme\.toggle\(\)"/)
 })
 
 test('keeps the light theme after persisting the collapsed sidebar state', async () => {

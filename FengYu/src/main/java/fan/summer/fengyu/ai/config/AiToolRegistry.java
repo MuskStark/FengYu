@@ -7,6 +7,8 @@ import fan.summer.fengyu.ai.ChatFileContext;
 import fan.summer.fengyu.ai.FengYuTool;
 import fan.summer.fengyu.ai.tools.ApprovalRequiredTool;
 import fan.summer.fengyu.ai.tools.ApprovalRequiredToolCallback;
+import fan.summer.fengyu.ai.tools.AuditedToolCallback;
+import fan.summer.fengyu.ai.tools.ToolEffect;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
 import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
@@ -60,7 +62,11 @@ public final class AiToolRegistry {
             for (var tool : manifest.aiTools()) callbacks.add(pluginCallback(manifest.id(), tool));
         }
         SyncMcpToolCallbackProvider provider = mcpProvider.getIfAvailable();
-        if (provider != null) Collections.addAll(callbacks, provider.getToolCallbacks());
+        if (provider != null) {
+            for (ToolCallback callback : provider.getToolCallbacks()) {
+                callbacks.add(audited(callback, ToolEffect.EXTERNAL));
+            }
+        }
         return List.copyOf(callbacks);
     }
 
@@ -100,11 +106,16 @@ public final class AiToolRegistry {
 
     private ToolCallback pluginCallback(String pluginId,
             fan.summer.fengyu.plugin.market.PluginManifest.AiTool tool) {
-        return new ToolCallback() {
+        return new AuditedToolCallback() {
             private final ToolDefinition definition = ToolDefinition.builder()
                     .name(tool.name()).description(tool.description()).inputSchema(tool.inputSchema()).build();
 
             @Override public ToolDefinition getToolDefinition() { return definition; }
+            @Override public ToolEffect effect() {
+                // An older third-party manifest has unknown side effects. Treat it conservatively
+                // until the author declares an explicit effect instead of silently auto-approving it.
+                return tool.effect() == null ? ToolEffect.EXTERNAL : ToolEffect.from(tool.effect());
+            }
 
             @Override public String call(String input) {
                 try {
@@ -134,6 +145,17 @@ public final class AiToolRegistry {
         return new ApprovalRequiredToolCallback() {
             @Override public ToolDefinition getToolDefinition() { return delegate.getToolDefinition(); }
             @Override public String call(String input) { return delegate.call(input); }
+        };
+    }
+
+    private static AuditedToolCallback audited(ToolCallback delegate, ToolEffect effect) {
+        return new AuditedToolCallback() {
+            @Override public ToolDefinition getToolDefinition() { return delegate.getToolDefinition(); }
+            @Override public org.springframework.ai.tool.metadata.ToolMetadata getToolMetadata() {
+                return delegate.getToolMetadata();
+            }
+            @Override public String call(String input) { return delegate.call(input); }
+            @Override public ToolEffect effect() { return effect; }
         };
     }
 

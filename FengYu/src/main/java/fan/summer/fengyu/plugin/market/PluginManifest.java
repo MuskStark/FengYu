@@ -25,14 +25,14 @@ public record PluginManifest(
         public Backend(String command, String protocol) { this(command, protocol, null); }
     }
     public record AiTool(String name, String description, String inputSchema, String outputSchema,
-                         String method, Long timeoutSeconds) {
+                         String method, Long timeoutSeconds, String effect) {
         /** Backwards-compatible constructor for callers and manifests that omit output metadata. */
         public AiTool(String name, String description, String inputSchema, String method, Long timeoutSeconds) {
-            this(name, description, inputSchema, null, method, timeoutSeconds);
+            this(name, description, inputSchema, null, method, timeoutSeconds, null);
         }
         /** Backwards-compatible constructor for callers that omit the timeout. */
         public AiTool(String name, String description, String inputSchema, String method) {
-            this(name, description, inputSchema, null, method, null);
+            this(name, description, inputSchema, null, method, null, null);
         }
     }
 }

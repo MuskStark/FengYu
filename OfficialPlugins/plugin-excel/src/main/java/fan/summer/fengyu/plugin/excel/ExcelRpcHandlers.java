@@ -62,7 +62,7 @@ public final class ExcelRpcHandlers extends PluginHandlerSupport {
 
     public Object aiAnalyze(Map<String, Object> params) {
         return result(() -> {
-            String filePath = requiredString(params, "filePath");
+            String filePath = requiredPath(params, "filePath");
             Path file = Paths.get(filePath.trim());
             if (!Files.exists(file) || !Files.isReadable(file)) return failure("File not found: " + filePath);
             SplitConfig cfg = sessions.get(AI_SESSION);
@@ -148,8 +148,7 @@ public final class ExcelRpcHandlers extends PluginHandlerSupport {
             SplitConfig cfg = sessions.active().orElse(null);
             if (cfg == null || cfg.analysisResult == null) return failure("Call excel_analyze first.");
             if (cfg.mode == null) return failure("Call excel_configure first.");
-            String outputDir = string(params, "outputDir");
-            if (outputDir == null || outputDir.isBlank()) return failure("outputDir is required");
+            String outputDir = requiredPath(params, "outputDir");
             cfg.outputDir = Paths.get(outputDir.trim());
             cfg.filePrefix = trimmed(string(params, "filePrefix"));
             ExcelSplitter.SplitResult res;
@@ -221,8 +220,7 @@ public final class ExcelRpcHandlers extends PluginHandlerSupport {
      */
     private Map<String, Object> startSplitJob(SplitConfig cfg, Map<String, Object> params) {
         if (cfg.mode == null) return failure("Call configure / excel_configure first.");
-        String outputDir = string(params, "outputDir");
-        if (outputDir == null || outputDir.isBlank()) return failure("outputDir is required");
+        String outputDir = requiredPath(params, "outputDir");
         cfg.outputDir = Paths.get(outputDir.trim());
         cfg.filePrefix = trimmed(string(params, "filePrefix"));
         try { Files.createDirectories(cfg.outputDir); } catch (Exception ignored) {}
@@ -269,6 +267,14 @@ public final class ExcelRpcHandlers extends PluginHandlerSupport {
     private static String requiredString(Map<String, Object> params, String key) {
         String value = string(params, key);
         if (value == null || value.isBlank()) throw new IllegalArgumentException(key + " is required");
+        return value;
+    }
+
+    private static String requiredPath(Map<String, Object> params, String key) {
+        Object raw = params == null ? null : params.get(key);
+        if (!(raw instanceof String value) || value.isBlank()) {
+            throw new IllegalArgumentException(key + " must be a resolved FengYu file reference");
+        }
         return value;
     }
 

@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Produces an executable workflow with the currently active AI backend.
@@ -61,6 +62,7 @@ public class ChatBackendPlanGenerator implements AgentRunner.PlanGenerator {
 
     private final AiModeService aiModeService;
     private final int planningTimeoutSeconds;
+    private final ReentrantLock planningLock = new ReentrantLock(true);
 
     @org.springframework.beans.factory.annotation.Autowired
     public ChatBackendPlanGenerator(AiModeService aiModeService) {
@@ -76,10 +78,36 @@ public class ChatBackendPlanGenerator implements AgentRunner.PlanGenerator {
     @Override
     public AgentPlan generate(String goal, List<ToolCallback> tools,
                               AgentRunner.PlanTokenSink tokenSink) {
+        try {
+            planningLock.lockInterruptibly();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Workflow planning cancelled", e);
+        }
+        try {
+            return generateLocked(goal, tools, tokenSink);
+        } finally {
+            planningLock.unlock();
+        }
+    }
+
+    private AgentPlan generateLocked(String goal, List<ToolCallback> tools,
+                                     AgentRunner.PlanTokenSink tokenSink) {
         ChatBackend backend = aiModeService.getService()
                 .orElseThrow(() -> new IllegalStateException("No active AI backend"));
         if (!backend.isReady()) {
             throw new IllegalStateException("The active AI backend is not ready");
+        }
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(planningTimeoutSeconds);
+        while (backend.isGenerating()) {
+            if (System.nanoTime() >= deadline) {
+                throw new IllegalStateException("Timed out waiting for the active AI backend");
+            }
+            try { Thread.sleep(50); }
+            catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Workflow planning cancelled", e);
+            }
         }
 
         String prompt = "GOAL:\n" + safe(goal) + "\n\nAVAILABLE_TOOLS:\n" + toolCatalog(tools);

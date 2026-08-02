@@ -1,6 +1,7 @@
 package fan.summer.fengyu.ai.service;
 
 import fan.summer.fengyu.ai.AiConfigService;
+import fan.summer.fengyu.ai.config.AiToolRegistry;
 import fan.summer.fengyu.ai.skill.SkillRegistry;
 import fan.summer.fengyu.ai.tools.ChatToolApprovalGate;
 import org.slf4j.Logger;
@@ -9,6 +10,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Reactivates the AI backend from the latest DB config. Shared by
@@ -34,16 +36,33 @@ public class BackendReactivator {
 
     private final AiModeService aiMode;
     private final ToolCallback[] toolCallbacks;
+    private final AiToolRegistry toolRegistry;
     private final SkillRegistry skillRegistry;
     private final AiConfigService aiConfigService;
     private final ChatToolApprovalGate toolApprovalGate;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    public BackendReactivator(AiModeService aiMode,
+                              AiToolRegistry toolRegistry,
+                              SkillRegistry skillRegistry,
+                              AiConfigService aiConfigService,
+                              ChatToolApprovalGate toolApprovalGate) {
+        this.aiMode = aiMode;
+        this.toolRegistry = toolRegistry;
+        this.toolCallbacks = new ToolCallback[0];
+        this.skillRegistry = skillRegistry;
+        this.aiConfigService = aiConfigService;
+        this.toolApprovalGate = toolApprovalGate;
+    }
+
+    /** Compatibility constructor for focused tests that inject a fixed callback catalog. */
     public BackendReactivator(AiModeService aiMode,
                               ToolCallback[] toolCallbacks,
                               SkillRegistry skillRegistry,
                               AiConfigService aiConfigService,
                               ChatToolApprovalGate toolApprovalGate) {
         this.aiMode = aiMode;
+        this.toolRegistry = null;
         this.toolCallbacks = toolCallbacks != null ? toolCallbacks : new ToolCallback[0];
         this.skillRegistry = skillRegistry;
         this.aiConfigService = aiConfigService;
@@ -72,10 +91,12 @@ public class BackendReactivator {
     }
 
     private void activate(SpringAiCloudBackend backend, String mode) {
-        backend.setToolCallbacks(Arrays.asList(toolCallbacks));
+        List<ToolCallback> callbacks = callbacks();
+        backend.setToolCallbacks(callbacks);
+        if (toolRegistry != null) backend.setToolCallbackSupplier(toolRegistry::callbacks);
         backend.setToolApprovalGate(toolApprovalGate);
         backend.setSkillRegistry(skillRegistry);
-        log.info("Wired {} tool callback(s) into {} backend", toolCallbacks.length, backend.provider());
+        log.info("Wired {} tool callback(s) into {} backend", callbacks.size(), backend.provider());
         aiMode.switchMode(mode, backend);
     }
 
@@ -86,9 +107,14 @@ public class BackendReactivator {
      */
     private void activateLocal() {
         OllamaLocalBackend backend = new OllamaLocalBackend();
-        backend.setToolCallbacks(Arrays.asList(toolCallbacks));
+        backend.setToolCallbacks(callbacks());
+        if (toolRegistry != null) backend.setToolCallbackSupplier(toolRegistry::callbacks);
         backend.setToolApprovalGate(toolApprovalGate);
         backend.setSkillRegistry(skillRegistry);
         aiMode.switchMode("local", backend);
+    }
+
+    private List<ToolCallback> callbacks() {
+        return toolRegistry == null ? Arrays.asList(toolCallbacks) : toolRegistry.callbacks();
     }
 }

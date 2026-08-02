@@ -3,6 +3,8 @@ package fan.summer.fengyu.ai.config;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
 import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
+import fan.summer.fengyu.ai.tools.AuditedToolCallback;
+import fan.summer.fengyu.ai.tools.ToolEffect;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
@@ -46,6 +48,8 @@ class AiToolRegistryTest {
         var descriptor = registry.descriptors().getFirst();
         assertEquals("com.example.live:live_echo", descriptor.id());
         assertTrue(descriptor.outputSchema().contains("text"));
+        assertEquals(ToolEffect.EXTERNAL,
+                ((AuditedToolCallback) registry.callbacks().getFirst()).effect());
 
         packages.setEnabled("com.example.live", false);
         assertTrue(registry.descriptors().isEmpty());

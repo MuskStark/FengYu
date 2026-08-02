@@ -20,7 +20,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Executes a shell command after approval in ordinary chat or a Plan-and-Execute agent step.
+ * Executes a shell command under the active permission profile.
  *
  * <p>The process has a bounded runtime and bounded captured output. Potentially sensitive
  * inherited environment variables are removed before launch so an AI-authored command cannot
@@ -48,8 +48,8 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
     }
 
     @Tool(name = "execute_command",
-          description = "Execute a shell command in a working directory. This tool always pauses "
-              + "for explicit user approval before running. Native sandboxing is used when "
+          description = "Execute a shell command in a working directory. Ask-for-approval mode "
+              + "always pauses; approve-for-me pauses only for risky commands. Native sandboxing is used when "
               + "available; otherwise compatibility mode is reported in the result. Returns JSON "
               + "with the exit code, combined output, sandbox, timeout, and truncation state.")
     public String execute(
@@ -82,11 +82,13 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
         Process process = null;
         OutputCapture capture = new OutputCapture(outputLimit);
         boolean timedOut = false;
-        boolean networkAllowed = Boolean.TRUE.equals(allowNetwork);
+        boolean fullAccess = AiPermissionContext.current() == AiPermissionMode.FULL_ACCESS;
+        boolean networkAllowed = fullAccess || Boolean.TRUE.equals(allowNetwork);
 
         try {
-            ProcessSandbox.Launch launch =
-                    sandbox.command(shellCommand(command), workdir, networkAllowed);
+            ProcessSandbox.Launch launch = fullAccess
+                    ? sandbox.unrestricted(shellCommand(command))
+                    : sandbox.command(shellCommand(command), workdir, networkAllowed);
             ProcessBuilder builder = new ProcessBuilder(launch.command())
                     .directory(workdir.toFile())
                     .redirectErrorStream(true);
@@ -137,7 +139,9 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
         Path directory = value == null || value.isBlank()
                 ? Path.of(System.getProperty("user.dir"))
                 : Path.of(value);
-        Path resolved = directory.toAbsolutePath().normalize();
+        Path resolved;
+        try { resolved = directory.toRealPath(); }
+        catch (IOException e) { throw new IllegalArgumentException("working directory does not exist: " + directory); }
         if (!Files.isDirectory(resolved)) {
             throw new IllegalArgumentException("working directory does not exist: " + resolved);
         }

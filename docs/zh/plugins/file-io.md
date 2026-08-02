@@ -36,7 +36,7 @@ interface FileRef { id: string; name: string; kind: 'file'|'directory'; access: 
 
 一个需要某项权限但插件未声明该权限的请求会返回 `403`。参见 [常见陷阱](/zh/plugins/pitfalls)。
 
-> AI 聊天中的“为本次对话附加文件”入口，通过这些相同的 endpoint 来授权文件（桌面端走 `/api/plugin-runtime/{pluginId}/files/native`，浏览器端走 `/files/upload`）。得到的 FileRef 按所选插件划分作用域，仅在本次聊天会话中有效（不会持久化；重启后清除）。
+> AI 聊天会为每个兼容的后端插件分别创建作用域隔离的文件/目录授权。文件是只读输入；所选目录仅对同时声明 `files.read` 与 `files.write` 的插件授予 `read-write`，只读插件获得隔离快照。在最新一条用户消息中直接输入的本机绝对路径也走相同流程，但始终只读。FileRef 仅在聊天会话中有效（不会持久化；重启后清除）。
 
 ## 临时存储与清理
 
