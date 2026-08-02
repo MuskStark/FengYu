@@ -59,6 +59,15 @@ jobs:
           java-version: '21'
           distribution: temurin
           cache: maven
+      # e2e-smoke.sh boots the backend and invokes the Markdown plugin worker, which needs the
+      # bubblewrap (`bwrap`) process sandbox. ubuntu-latest (now Ubuntu 24.04) ships neither bwrap
+      # nor sandbox-exec, and AppArmor blocks the unprivileged user namespaces bwrap needs by
+      # default. Install bwrap, lift the restriction, and prove the sandbox works before e2e-smoke.
+      - name: Enable bubblewrap sandbox (install + relax Ubuntu 24.04 AppArmor userns)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          bwrap --unshare-all --ro-bind / / --proc /proc --dev-bind /dev /dev -- /bin/true
       # SDK + dev plugin + CLI + UI tests.
       - run: cd toolchain/sdk-ts && npm ci && npm test
       - run: cd toolchain/dev && npm ci && npm test
