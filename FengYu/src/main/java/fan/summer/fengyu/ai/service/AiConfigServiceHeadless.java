@@ -37,6 +37,7 @@ public class AiConfigServiceHeadless {
     private static final String LANGUAGE_KEY = "language";
     private static final String SIDEBAR_COLLAPSED_KEY = "sidebar.collapsed";
     private static final String LOG_LEVEL_KEY = "logging.level";
+    private static final String PLUGIN_UNSANDBOXED_KEY = "plugin.unsandboxed";
 
     // ── AI provider keys (duplicate AiConfigService read keys so writes round-trip) ──
     private static final String AI_MODE_KEY = "ai.mode";
@@ -86,6 +87,20 @@ public class AiConfigServiceHeadless {
 
     public static void setSidebarCollapsed(boolean collapsed) {
         INSTANCE.writeSetting(SIDEBAR_COLLAPSED_KEY, String.valueOf(collapsed));
+    }
+
+    /**
+     * Platform-level opt-in to run plugin workers without the native process sandbox. Only meaningful
+     * on platforms where {@link fan.summer.fengyu.security.ProcessSandbox} detects no native isolator
+     * (Windows); {@link fan.summer.fengyu.web.controller.SettingsController} gates writes to those
+     * platforms. Default {@code false} (fail-closed).
+     */
+    public static boolean isUnsandboxedPluginsEnabled() {
+        return Boolean.parseBoolean(INSTANCE.readSetting(PLUGIN_UNSANDBOXED_KEY, "false"));
+    }
+
+    public static void setUnsandboxedPluginsEnabled(boolean enabled) {
+        INSTANCE.writeSetting(PLUGIN_UNSANDBOXED_KEY, String.valueOf(enabled));
     }
 
     // ── Reads (delegate to AiConfigService) ───────────────────────────────────
