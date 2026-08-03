@@ -4,6 +4,7 @@ import fan.summer.fengyu.ExitCodes;
 import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
 import fan.summer.fengyu.log.LoggingLevelService;
 import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
+import fan.summer.fengyu.security.ProcessSandbox;
 import fan.summer.fengyu.setup.DataSourceConfigService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -85,6 +86,7 @@ public class SettingsController {
         out.put("language", config.getLanguage());
         out.put("sidebarCollapsed", config.getSidebarCollapsed());
         out.put("logLevel", logging.currentLevel());
+        out.put("unsandboxedPlugins", config.isUnsandboxedPluginsEnabled());
         return out;
     }
 
@@ -106,7 +108,30 @@ public class SettingsController {
         } else if (collapsed instanceof String s) {
             config.setSidebarCollapsed(Boolean.parseBoolean(s));
         }
+        Object unsandboxed = body.get("unsandboxedPlugins");
+        if (unsandboxed instanceof Boolean b) {
+            applyUnsandboxedPlugins(b);
+        } else if (unsandboxed instanceof String s) {
+            applyUnsandboxedPlugins(Boolean.parseBoolean(s));
+        }
         return get();
+    }
+
+    /**
+     * Apply the plugin-unsandboxed toggle with a platform gate: enabling is rejected on platforms
+     * that DO have a native process sandbox (there is no reason to disable protection there).
+     * Throwing {@link IllegalArgumentException} lets {@link GlobalExceptionHandler} map it to 400.
+     * Disabling is always allowed. Audited via SLF4J.
+     */
+    private void applyUnsandboxedPlugins(boolean enabled) {
+        if (enabled && ProcessSandbox.isNativeSandboxAvailable()) {
+            throw new IllegalArgumentException(
+                "Unsandboxed plugin mode is only available on platforms without a native process sandbox");
+        }
+        config.setUnsandboxedPluginsEnabled(enabled);
+        log.info("Plugin unsandboxed mode {} (platform: {})",
+            enabled ? "ENABLED" : "disabled",
+            ProcessSandbox.isNativeSandboxAvailable() ? "native" : "none");
     }
 
     /**
