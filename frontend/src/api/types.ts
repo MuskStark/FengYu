@@ -160,6 +160,70 @@ export interface MarketplacePlugin {
   updateAvailable: boolean
 }
 
+// ── Unified Plugin Store (FengYu + Claude + Codex) ──
+export type StoreSourceType = 'FENGYU' | 'CLAUDE' | 'CODEX'
+
+export interface StoreSource {
+  origin: string
+  sourceType: StoreSourceType
+  catalogUrl: string
+  name: string
+}
+
+export interface StoreAuthor {
+  name: string
+  email?: string | null
+  url?: string | null
+}
+
+export interface StoreInterfaceMeta {
+  displayName?: string
+  shortDescription?: string
+  longDescription?: string
+  developerName?: string
+  category?: string
+  capabilities?: string[]
+  websiteURL?: string
+  brandColor?: string
+  logo?: string
+  screenshots?: string[]
+  defaultPrompt?: string[]
+}
+
+export interface UnifiedCatalogEntry {
+  uid: string
+  origin: string
+  sourceType: StoreSourceType
+  name: string
+  displayName: string
+  description: string
+  author: StoreAuthor | null
+  category: string | null
+  keywords: string[]
+  homepage: string | null
+  pinnedSha: string | null
+  declaredSkills: string[]
+  mcpServers: string[]
+  interfaceMeta: StoreInterfaceMeta | null
+  installed: boolean
+  installedVersion: string | null
+  updateAvailable: boolean
+  enabled: boolean
+}
+
+export interface InstallRecord {
+  uid: string
+  pluginName: string
+  sourceType: StoreSourceType
+  origin: string
+  version: string | null
+  pinnedSha: string | null
+  hasMcpServers: boolean
+  enabled: boolean
+  installedAt: string
+  updatedAt: string
+}
+
 export interface PluginFileRef {
   id: string
   name: string
