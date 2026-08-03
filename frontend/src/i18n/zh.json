@@ -207,7 +207,7 @@
                 "history": "运行历史", "historyEmpty": "暂无持久化运行记录。",
                 "resume": "审阅并恢复", "resumed": "已恢复运行",
                 "step": "步骤 {n}" },
-  "common":   { "back": "返回", "retry": "重试", "loading": "加载中…" },
+  "common":   { "back": "返回", "retry": "重试", "loading": "加载中…", "cancel": "取消", "confirm": "确认" },
   "setup":    { "dataFileLocation": "数据文件位置" },
   "about": {
     "title": "关于",
