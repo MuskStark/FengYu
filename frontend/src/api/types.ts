@@ -77,6 +77,7 @@ export interface AppSettings {
   theme: ThemeName
   language: LanguageName
   logLevel: LogLevel
+  unsandboxedPlugins: boolean
 }
 
 export type PartialSettings = Partial<AppSettings>
