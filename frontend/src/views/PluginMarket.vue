@@ -6,12 +6,16 @@ import { renderMarkdown } from '@/security/markdown'
 import type { MarketplacePlugin, SkillDetail } from '@/api/types'
 import { usePluginsStore } from '@/stores/plugins'
 import { useSkillsStore } from '@/stores/skills'
+import { usePluginStore } from '@/stores/pluginStore'
+import UnifiedSourceBadge from '@/components/store/UnifiedSourceBadge.vue'
+import StoreSourceManager from '@/components/store/StoreSourceManager.vue'
+import type { UnifiedCatalogEntry } from '@/api/types'
 import { makeDesktop } from '@/mf/desktop'
 
 const { t } = useI18n()
 
 // ── shared UI state ──────────────────────────────────────────────
-const tab = ref<'plugins' | 'skills'>('plugins')
+const tab = ref<'plugins' | 'skills' | 'stores'>('plugins')
 const search = ref('')
 const busy = ref<string | null>(null)
 const error = ref<string | null>(null)
@@ -54,6 +58,23 @@ interface SkillRow {
 const skillDetail = ref<SkillRow | null>(null)
 const skillBody = ref<SkillDetail | null>(null)
 const skillBodyLoading = ref(false)
+
+// ── data: unified store (tab 3) ─────────────────────────────────
+const storeView = usePluginStore()
+const storeDetail = ref<UnifiedCatalogEntry | null>(null)
+const storeFilterType = ref<string | undefined>(undefined)
+const storeSearch = ref('')
+
+async function loadStore() {
+  await Promise.all([storeView.loadSources(), storeView.loadCatalog(), storeView.loadHistory()])
+}
+function applyStoreFilter() {
+  storeView.setFilter({
+    sourceType: storeFilterType.value as UnifiedCatalogEntry['sourceType'] | undefined,
+    q: storeSearch.value || undefined,
+  })
+  storeView.loadCatalog()
+}
 
 const skillRows = computed<SkillRow[]>(() => {
   const builtin: SkillRow[] = skillStore.skills
@@ -244,6 +265,8 @@ function md(src: string): string {
 
 onMounted(async () => {
   await Promise.all([load(), skillStore.load(), skillStore.loadMarket()])
+  // Load the unified store catalog in parallel with the legacy marketplaces.
+  void loadStore()
 })
 </script>
 
@@ -257,6 +280,9 @@ onMounted(async () => {
         </button>
         <button :class="{ active: tab === 'skills' }" @click="tab = 'skills'">
           <i class="mdi mdi-script-text-outline" />{{ t('market.tabSkills') }}
+        </button>
+        <button :class="{ active: tab === 'stores' }" @click="tab = 'stores'">
+          <i class="mdi mdi-store-outline" />{{ t('market.store.tab') }}
         </button>
       </div>
       <div class="cx-input-wrap market-search">
@@ -277,6 +303,75 @@ onMounted(async () => {
     </div>
 
     <div class="market-scroll">
+      <!-- ═══ Unified store tab (FengYu + Claude + Codex) ═══ -->
+      <div v-if="tab === 'stores'" class="store-tab">
+        <StoreSourceManager />
+
+        <div class="d-flex align-center ga-2 my-3 store-filter-row">
+          <v-select v-model="storeFilterType" :items="['FENGYU','CLAUDE','CODEX']"
+                    :label="t('market.store.sourceTypeAll')" clearable density="compact"
+                    style="max-width: 180px" @update:model-value="applyStoreFilter" />
+          <v-text-field v-model="storeSearch" density="compact" append-icon="mdi-magnify"
+                        :placeholder="t('market.search')"
+                        @click:append="applyStoreFilter" @keyup.enter="applyStoreFilter" />
+        </div>
+
+        <div v-if="storeView.catalog.length" class="cx-card-grid">
+          <article
+            v-for="e in storeView.catalog" :key="e.uid"
+            class="cx-card cx-card--hover ext-card"
+            @click="storeDetail = e"
+          >
+            <div class="ext-card-head">
+              <span class="cx-avatar ext-icon"><i class="mdi mdi-store-outline" /></span>
+              <div class="ext-card-titlewrap">
+                <div class="ext-card-title">
+                  <span class="text-truncate">{{ e.displayName }}</span>
+                  <UnifiedSourceBadge :type="e.sourceType" />
+                </div>
+                <div class="cx-muted ext-card-meta">{{ e.category || '—' }}</div>
+              </div>
+            </div>
+
+            <p class="cx-muted ext-card-desc">{{ e.description }}</p>
+
+            <div class="ext-card-actions" @click.stop>
+              <button
+                v-if="!e.installed"
+                class="cx-btn cx-btn--primary cx-btn--sm"
+                :disabled="storeView.busy === e.uid"
+                @click="storeView.install(e.uid)"
+              >
+                <span v-if="storeView.busy === e.uid" class="cx-spin" />{{ t('market.store.install') }}
+              </button>
+              <button
+                v-else-if="e.updateAvailable"
+                class="cx-btn cx-btn--outline cx-btn--sm"
+                :disabled="storeView.busy === e.uid"
+                @click="storeView.update(e.uid)"
+              >{{ t('market.store.update') }}</button>
+              <label v-else class="cx-switch" :title="e.enabled ? t('market.store.disable') : t('market.store.enable')">
+                <input
+                  type="checkbox"
+                  :checked="e.enabled"
+                  :disabled="storeView.busy === e.uid"
+                  @change="storeView.setEnabled(e.uid, !e.enabled)"
+                >
+                <span class="cx-switch__track" /><span class="cx-switch__thumb" />
+                <span class="cx-muted cx-switch-label">{{ e.enabled ? t('market.store.enable') : t('market.store.disable') }}</span>
+              </label>
+            </div>
+          </article>
+        </div>
+        <div v-else-if="storeView.loading" class="market-empty"><span class="cx-spin lg" /></div>
+        <div v-else-if="storeView.error" class="cx-alert cx-alert--error market-error">
+          <i class="mdi mdi-alert-circle-outline" />
+          <div class="cx-alert__body">{{ storeView.error }}</div>
+        </div>
+      </div>
+
+      <!-- ═══ Legacy plugins/skills tabs ═══ -->
+      <template v-else>
       <!-- Installed fast-row -->
       <div v-if="installedRow.length" class="installed-row">
         <span class="installed-row-label">{{ t('market.installedRow') }}</span>
@@ -361,6 +456,7 @@ onMounted(async () => {
           </div>
         </article>
       </div>
+      </template>
     </div>
 
     <!-- Detail drawer (plugin permissions OR skill body preview) -->
@@ -404,6 +500,48 @@ onMounted(async () => {
         </template>
       </div>
     </div>
+
+    <!-- Store entry detail drawer (unified store tab) -->
+    <v-navigation-drawer
+      v-if="storeDetail"
+      :model-value="true"
+      location="right"
+      temporary
+      width="420"
+      :scrim="false"
+      style="z-index: 200"
+      @update:model-value="storeDetail = null"
+    >
+      <v-card v-if="storeDetail" flat>
+        <v-card-title class="d-flex align-center ga-2">
+          {{ storeDetail.displayName }}
+          <UnifiedSourceBadge :type="storeDetail.sourceType" />
+        </v-card-title>
+        <v-card-text>
+          <p class="mb-3">{{ storeDetail.description }}</p>
+          <div v-if="storeDetail.pinnedSha" class="mb-2">
+            <div class="text-caption text-medium-emphasis">{{ t('market.store.pinnedSha') }}</div>
+            <code class="text-caption">{{ storeDetail.pinnedSha }}</code>
+          </div>
+          <div v-if="storeDetail.declaredSkills.length" class="mb-2">
+            <div class="text-caption text-medium-emphasis">{{ t('market.store.declaredSkills') }}</div>
+            <v-chip v-for="s in storeDetail.declaredSkills" :key="s" size="small" class="mr-1">{{ s }}</v-chip>
+          </div>
+          <div v-if="storeDetail.mcpServers.length" class="mb-2">
+            <div class="text-caption text-medium-emphasis">{{ t('market.store.mcpServers') }}</div>
+            <v-chip v-for="m in storeDetail.mcpServers" :key="m" size="small" class="mr-1">{{ m }}</v-chip>
+            <v-alert type="warning" variant="tonal" density="compact" class="mt-2">
+              {{ t('market.store.mcpWarning') }}
+            </v-alert>
+          </div>
+        </v-card-text>
+        <v-card-actions>
+          <v-btn v-if="storeDetail.homepage" :href="storeDetail.homepage" target="_blank">Homepage</v-btn>
+          <v-spacer />
+          <v-btn @click="storeDetail = null">Close</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-navigation-drawer>
   </div>
 </template>
 
@@ -463,6 +601,12 @@ onMounted(async () => {
 /* Detail drawer */
 .cx-detail-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; justify-content: flex-end; z-index: 100; }
 .cx-detail-drawer { width: min(560px, 100%); height: 100%; background: rgb(var(--v-theme-surface)); padding: 22px 26px; overflow-y: auto; box-shadow: -4px 0 16px rgba(0,0,0,.25); }
+
+/* Unified store tab */
+.store-tab { display: flex; flex-direction: column; }
+.store-filter-row { flex: 0 0 auto; }
+.store-filter-row .v-field { min-height: 40px; }
+.cx-switch-label { font-size: 12px; margin-left: 8px; }
 .detail-facts { margin: 0 0 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .detail-facts div { display: flex; flex-direction: column; gap: 4px; }
 .detail-facts dt { color: rgb(var(--v-theme-secondary)); font-size: 12px; }
