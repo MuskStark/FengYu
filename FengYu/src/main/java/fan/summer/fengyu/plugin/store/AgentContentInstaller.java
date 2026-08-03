@@ -162,10 +162,17 @@ public class AgentContentInstaller {
         List<String> names = new ArrayList<>();
         if (skills == null || skills.isNull()) return names;
         if (skills.isTextual()) {
-            names.addAll(copySkillDir(pluginRoot.resolve(skills.asText()), skillDest, skills.asText()));
+            Path src = pluginRoot.resolve(skills.asText()).normalize();
+            // Source-side traversal guard: a malicious plugin.json could declare
+            // "skills":["../../../../etc/passwd"]; refuse to read outside pluginRoot.
+            if (!PluginContentPathSafety.isInside(pluginRoot, src)) return names;
+            names.addAll(copySkillDir(src, skillDest, skills.asText()));
         } else if (skills.isArray()) {
             for (JsonNode s : skills) {
-                if (s.isTextual()) names.addAll(copySkillDir(pluginRoot.resolve(s.asText()), skillDest, s.asText()));
+                if (!s.isTextual()) continue;
+                Path src = pluginRoot.resolve(s.asText()).normalize();
+                if (!PluginContentPathSafety.isInside(pluginRoot, src)) continue; // skip escaping entry
+                names.addAll(copySkillDir(src, skillDest, s.asText()));
             }
         }
         return names;
