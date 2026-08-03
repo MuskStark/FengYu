@@ -14,6 +14,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Verifies the new provider setters round-trip through the DB and are readable
@@ -39,6 +41,19 @@ class AiConfigServiceHeadlessTest {
         AiConfigServiceHeadless h = new AiConfigServiceHeadless(repo, sc, cfg);
         h.init();    // publish static singleton
         return h;
+    }
+
+    @Test
+    void unsandboxedPluginsDefaultsFalseAndRoundTrips() {
+        AiConfigServiceHeadless h = newHeadless();
+        // Default is false when no row exists.
+        assertFalse(AiConfigServiceHeadless.isUnsandboxedPluginsEnabled());
+        // Setting true persists and is read back via the static facade.
+        h.setUnsandboxedPluginsEnabled(true);
+        assertTrue(AiConfigServiceHeadless.isUnsandboxedPluginsEnabled());
+        // Setting false again round-trips.
+        h.setUnsandboxedPluginsEnabled(false);
+        assertFalse(AiConfigServiceHeadless.isUnsandboxedPluginsEnabled());
     }
 
     @Test
