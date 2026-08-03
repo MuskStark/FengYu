@@ -9,6 +9,7 @@ import fan.summer.fengyu.web.controller.PluginController;
 import fan.summer.fengyu.web.controller.PluginMarketplaceController;
 import fan.summer.fengyu.web.controller.PluginRuntimeController;
 import fan.summer.fengyu.web.controller.PluginRuntimeFileController;
+import fan.summer.fengyu.web.controller.PluginStoreController;
 import fan.summer.fengyu.web.controller.McpController;
 import fan.summer.fengyu.web.controller.SecurityController;
 import fan.summer.fengyu.web.controller.SettingsController;
@@ -61,6 +62,7 @@ import org.springframework.context.annotation.FilterType;
                 classes = {PluginController.class, PluginMarketplaceController.class,
                         PluginRuntimeController.class,
                         PluginRuntimeFileController.class,
+                        PluginStoreController.class,
                         SettingsController.class,
                         AiController.class, AiFileController.class, AiConfigController.class, AgentController.class,
                         ConversationController.class, SkillController.class,
