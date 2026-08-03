@@ -3,6 +3,7 @@ package fan.summer.fengyu.plugin.store;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import org.springframework.stereotype.Component;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Parses {@code .claude-plugin/marketplace.json}. */
+@Component
 public class ClaudeMarketplaceAdapter implements MarketplaceSourceAdapter {
 
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
