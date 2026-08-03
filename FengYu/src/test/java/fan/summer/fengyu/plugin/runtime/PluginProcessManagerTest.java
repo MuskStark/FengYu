@@ -4,7 +4,9 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
+import fan.summer.fengyu.security.ProcessSandbox;
 import fan.summer.fengyu.setup.DataSourceConfig;
 import fan.summer.fengyu.setup.DataSourceConfigService;
 import fan.summer.fengyu.setup.DbType;
@@ -208,6 +210,35 @@ class PluginProcessManagerTest {
         assertEquals("worker diagnostic", redactor.redact("worker diagnostic"));
     }
 
+    @Test
+    void unsandboxedToggleLetsPluginRunUnderForcedNoneBackend() throws Exception {
+        // Force the Windows code path: NONE backend means sandbox.plugin() would throw.
+        // With the toggle ON, the manager must route through sandbox.unrestricted() instead.
+        PluginProcessManager manager = managerWithBackend(ProcessSandbox.Backend.NONE);
+        try (var mocked = org.mockito.Mockito.mockStatic(AiConfigServiceHeadless.class)) {
+            mocked.when(AiConfigServiceHeadless::isUnsandboxedPluginsEnabled).thenReturn(true);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) manager.invoke("com.example.worker", "echo", Map.of());
+            assertEquals("ok", result.get("value"));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void toggleOffFailsClosedUnderForcedNoneBackend() throws Exception {
+        // Same forced NONE backend, but toggle OFF: the original fail-closed behavior must hold.
+        PluginProcessManager manager = managerWithBackend(ProcessSandbox.Backend.NONE);
+        try (var mocked = org.mockito.Mockito.mockStatic(AiConfigServiceHeadless.class)) {
+            mocked.when(AiConfigServiceHeadless::isUnsandboxedPluginsEnabled).thenReturn(false);
+            var error = assertThrows(IllegalStateException.class,
+                () -> manager.invoke("com.example.worker", "echo", Map.of()));
+            assertTrue(error.getMessage().contains("native process sandbox"));
+        } finally {
+            manager.close();
+        }
+    }
+
     private static void waitForLog(ListAppender<ILoggingEvent> appender, String fragment,
             Duration timeout) throws InterruptedException {
         long deadline = System.nanoTime() + timeout.toNanos();
@@ -240,6 +271,34 @@ class PluginProcessManagerTest {
         PluginRuntimeEnvironmentService runtimeEnvironment = new PluginRuntimeEnvironmentService(
             dataSources, temp.resolve("plugin-data").toString());
         return new PluginProcessManager(packages, new PluginFileGrantService(), runtimeEnvironment, new PluginLogStore());
+    }
+
+    /**
+     * Builds a manager pinned to a specific sandbox backend via the 5-arg constructor (the one
+     * normally populated by {@code @Autowired}). Used to force the {@link ProcessSandbox.Backend#NONE}
+     * Windows code path so the unsandboxed toggle can be exercised deterministically regardless of
+     * the CI host. Distinct temp subdirs (plugins-none / host-none / plugin-data-none) keep it from
+     * colliding with {@link #manager(List)} when both run in the same class.
+     */
+    private PluginProcessManager managerWithBackend(ProcessSandbox.Backend backend) throws Exception {
+        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
+        String classpath = Path.of("target", "test-classes").toAbsolutePath().toString();
+        String command = "\"" + java + "\" -cp \"" + classpath + "\" " + EchoWorker.class.getName();
+        String manifest = """
+            {"schemaVersion":1,"id":"com.example.worker","name":"Worker","description":"test",
+             "version":"1.0.0","author":"test","icon":"test","category":"test",
+             "ui":{"entry":"ui/index.html"},
+             "backend":{"command":%s,"protocol":"json-rpc-2.0"},"permissions":[]}
+            """.formatted(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(command));
+        PluginPackageService packages = new PluginPackageService(temp.resolve("plugins-none").toString());
+        packages.install(new MockMultipartFile("file", "worker.fyp", "application/zip", archive(manifest)));
+        DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host-none").toString());
+        dataSources.save(new DataSourceConfig(DbType.H2, "jdbc:h2:mem:worker-none", "org.h2.Driver",
+            "org.hibernate.dialect.H2Dialect", "sa", "", null));
+        PluginRuntimeEnvironmentService runtimeEnvironment = new PluginRuntimeEnvironmentService(
+            dataSources, temp.resolve("plugin-data-none").toString());
+        return new PluginProcessManager(packages, new PluginFileGrantService(), runtimeEnvironment,
+            new PluginLogStore(), new ProcessSandbox(backend));
     }
 
     private byte[] archive(String manifest) throws Exception {
