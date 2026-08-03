@@ -3,6 +3,7 @@ package fan.summer.fengyu.plugin.runtime;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
 import fan.summer.fengyu.plugin.market.PluginManifest;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
 import fan.summer.fengyu.security.ProcessSandbox;
@@ -102,7 +103,8 @@ public class PluginProcessManager {
         }
         long timeout = resolveTimeout(timeoutSeconds, manifest);
         long grantVersion = files.grantVersion(pluginId);
-        boolean fullAccess = AiPermissionContext.current() == AiPermissionMode.FULL_ACCESS;
+        boolean fullAccess = AiPermissionContext.current() == AiPermissionMode.FULL_ACCESS
+                || AiConfigServiceHeadless.isUnsandboxedPluginsEnabled();
         Worker worker = workers.compute(pluginId, (id, current) -> {
             if (current != null && current.alive() && current.grantVersion() == grantVersion
                     && current.fullAccess() == fullAccess) return current;
@@ -237,7 +239,8 @@ public class PluginProcessManager {
             logStore.append(id, "INFO", "Worker started (pid=" + process.pid() + ")");
             String isolation = "sandbox=" + launch.backend().id()
                     + ", network=" + (fullAccess || allowNetwork ? "allowed" : "isolated")
-                    + ", broadFileWrite=" + broadFileWrite;
+                    + ", broadFileWrite=" + broadFileWrite
+                    + (AiConfigServiceHeadless.isUnsandboxedPluginsEnabled() ? ", unsandboxedOverride=true" : "");
             log.info("Plugin {} worker isolation: {}", id, isolation);
             logStore.append(id, launch.sandboxed() ? "INFO" : "WARN", isolation);
             return worker;
