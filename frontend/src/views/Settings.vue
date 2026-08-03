@@ -18,6 +18,7 @@ const { t } = useI18n()
 const settings = useSettingsStore()
 const mcpStatus = ref<McpStatus | null>(null)
 const isolationStatus = ref<ProcessIsolationStatus | null>(null)
+const showUnsandboxedConfirm = ref(false)
 
 onMounted(() => {
   if (!settings.loaded) void settings.load().catch(() => {})
@@ -104,6 +105,16 @@ async function onSave() {
   syncFormFromStore()
   saved.value = true
   setTimeout(() => { saved.value = false }, 2000)
+}
+
+function requestEnableUnsandboxed() {
+  if (settings.unsandboxedPlugins) return
+  showUnsandboxedConfirm.value = true
+}
+
+async function confirmEnableUnsandboxed() {
+  showUnsandboxedConfirm.value = false
+  await settings.setUnsandboxedPlugins(true)
 }
 
 async function onTest() {
@@ -200,6 +211,29 @@ async function onTest() {
               ? $t('settings.sandboxActive', { backend: isolationStatus.backend })
               : $t('settings.compatibilityApproval') }}
           </span>
+        </div>
+        <div v-if="isolationStatus?.compatibilityMode" class="cx-setting-row">
+          <div class="cx-setting-row__label">
+            <i class="mdi mdi-shield-alert-outline" />
+            <span>{{ $t('settings.unsandboxedPluginsTitle') }}</span>
+          </div>
+          <div class="cx-segment">
+            <button
+              :class="{ active: !settings.unsandboxedPlugins }"
+              @click="settings.setUnsandboxedPlugins(false)"
+            >{{ $t('settings.unsandboxedOff') }}</button>
+            <button
+              :class="{ active: settings.unsandboxedPlugins }"
+              @click="requestEnableUnsandboxed()"
+            >{{ $t('settings.unsandboxedOn') }}</button>
+          </div>
+        </div>
+        <div
+          v-if="isolationStatus?.compatibilityMode"
+          class="cx-muted"
+          style="color: var(--md-sys-color-error); font-size: 12px; margin-top: -8px;"
+        >
+          {{ $t('settings.unsandboxedPluginsWarn') }}
         </div>
         <div class="cx-setting-row">
           <div class="cx-setting-row__label">
@@ -324,5 +358,16 @@ async function onTest() {
         </div>
       </div>
     </div>
+
+    <v-dialog v-model="showUnsandboxedConfirm" max-width="480">
+      <v-card>
+        <v-card-text>{{ $t('settings.unsandboxedPluginsConfirm') }}</v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="showUnsandboxedConfirm = false">{{ $t('common.cancel') }}</v-btn>
+          <v-btn color="error" variant="tonal" @click="confirmEnableUnsandboxed()">{{ $t('common.confirm') }}</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
