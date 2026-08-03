@@ -89,4 +89,27 @@ class SettingsControllerTest {
         verify(logging).setLevel("debug");
         verify(pluginProcesses).updateLogLevel("DEBUG");
     }
+
+    @Test
+    void putRejectsEnablingUnsandboxedPluginsOnSandboxedPlatform() {
+        // On the CI host (Linux/macOS) a native sandbox is available, so enabling must be rejected.
+        // This documents + guards the platform gate; IllegalArgumentException -> HTTP 400 via
+        // GlobalExceptionHandler. (The NONE-platform accept path is covered by manual verification.)
+        AiConfigServiceHeadless config = mock(AiConfigServiceHeadless.class);
+        SettingsController controller = new SettingsController(
+            config, newService(), mock(LoggingLevelService.class), mock(PluginProcessManager.class), () -> {});
+
+        // The unsandboxed read/write helpers are static facades over the AiConfigServiceHeadless
+        // singleton (Task 1); mockStatic intercepts them just as the logLevel test above does.
+        try (var mockedStatic = mockStatic(AiConfigServiceHeadless.class)) {
+            // Enabling on a sandboxed platform throws.
+            assertThrows(IllegalArgumentException.class,
+                () -> controller.put(Map.of("unsandboxedPlugins", true)));
+
+            // Disabling is always allowed (closing a protection boundary is safe everywhere) and
+            // must NOT throw, even on a sandboxed platform.
+            controller.put(Map.of("unsandboxedPlugins", false));
+            mockedStatic.verify(() -> AiConfigServiceHeadless.setUnsandboxedPluginsEnabled(false));
+        }
+    }
 }
