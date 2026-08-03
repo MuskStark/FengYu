@@ -36,6 +36,10 @@ import type {
   SkillDetail,
   SkillSummary,
   MarketplaceSkill,
+  StoreSource,
+  StoreSourceType,
+  UnifiedCatalogEntry,
+  InstallRecord,
 } from './types'
 
 const http: AxiosInstance = axios.create({
@@ -385,6 +389,48 @@ export const api = {
   /** Uninstall an installed skill. */
   uninstallSkill: (id: string) =>
     http.delete(`/api/skills/${encodeURIComponent(id)}`),
+
+  // ── Unified Plugin Store ─────────────────────────────────
+  /** List subscribed marketplace sources. */
+  getStoreSources: () =>
+    http.get<StoreSource[]>('/api/plugin-store/sources').then((r) => r.data),
+
+  /** Subscribe to a new marketplace source. */
+  addStoreSource: (name: string, sourceType: StoreSourceType, catalogUrl: string) =>
+    http
+      .post<StoreSource>('/api/plugin-store/sources', { name, sourceType, catalogUrl })
+      .then((r) => r.data),
+
+  /** Unsubscribe a source (does not uninstall plugins). */
+  deleteStoreSource: (origin: string) =>
+    http.delete(`/api/plugin-store/sources/${encodeURIComponent(origin)}`),
+
+  /** Force-refresh a source's cached catalog. */
+  refreshStoreSource: (origin: string) =>
+    http.post(`/api/plugin-store/sources/${encodeURIComponent(origin)}/refresh`),
+
+  /** Aggregated catalog (optionally filtered by sourceType/category/query server-side). */
+  getUnifiedCatalog: (params?: { sourceType?: StoreSourceType; category?: string; q?: string }) =>
+    http
+      .get<UnifiedCatalogEntry[]>('/api/plugin-store/catalog', { params })
+      .then((r) => r.data),
+
+  /** Install (or update) a plugin by uid; backend dispatches by sourceType. */
+  installUnified: (uid: string) =>
+    http.post(`/api/plugin-store/${encodeURIComponent(uid)}/install`),
+
+  updateUnified: (uid: string) =>
+    http.post(`/api/plugin-store/${encodeURIComponent(uid)}/update`),
+
+  uninstallUnified: (uid: string) =>
+    http.delete(`/api/plugin-store/${encodeURIComponent(uid)}`),
+
+  setUnifiedEnabled: (uid: string, enabled: boolean) =>
+    http.patch(`/api/plugin-store/${encodeURIComponent(uid)}/enabled`, { enabled }),
+
+  /** Installation history (install records across all sources). */
+  getInstallHistory: () =>
+    http.get<InstallRecord[]>('/api/plugin-store/history').then((r) => r.data),
 }
 
 export type FengYuApi = typeof api
