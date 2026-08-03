@@ -1,0 +1,15 @@
+[
+  {
+    "id": "fan.summer.markdown",
+    "name": "Markdown Editor",
+    "description": "Edit markdown",
+    "version": "4.0.0-alpha.6",
+    "author": "FengYu",
+    "icon": "language-markdown",
+    "category": "text",
+    "permissions": [],
+    "homepage": "https://github.com/MuskStark/FengYu",
+    "downloadUrl": "https://example.com/markdown.fyp",
+    "official": true
+  }
+]

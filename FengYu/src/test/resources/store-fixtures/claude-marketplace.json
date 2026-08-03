@@ -1,0 +1,30 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-plugins-official",
+  "description": "Directory",
+  "owner": { "name": "Anthropic", "email": "support@anthropic.com" },
+  "renames": { "old-name": "renamed-plugin" },
+  "plugins": [
+    {
+      "name": "local-skip",
+      "description": "should be skipped",
+      "category": "dev",
+      "source": "./plugins/local-skip"
+    },
+    {
+      "name": "url-plugin",
+      "description": "whole repo",
+      "category": "security",
+      "author": { "name": "Acme" },
+      "homepage": "https://acme.com",
+      "source": { "source": "url", "url": "https://github.com/acme/p.git", "sha": "abc123sha" }
+    },
+    {
+      "name": "subdir-plugin",
+      "description": "subdir",
+      "category": "design",
+      "keywords": ["design", "figma"],
+      "source": { "source": "git-subdir", "url": "https://github.com/adobe/skills.git", "path": "plugins/x", "ref": "main", "sha": "def456sha" }
+    }
+  ]
+}
