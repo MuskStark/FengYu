@@ -22,7 +22,12 @@
                 "logLevel": "日志等级",
                 "logLevelHint": "主程序与所有插件 Worker 共享此等级",
                 "dark": "深色", "light": "浅色",
-                "english": "English", "chinese": "中文" },
+                "english": "English", "chinese": "中文",
+                "unsandboxedPluginsTitle": "无沙箱运行插件",
+                "unsandboxedOff": "关闭",
+                "unsandboxedOn": "允许",
+                "unsandboxedPluginsWarn": "插件将以无进程隔离方式运行。仅在你信任所有已安装插件时启用。",
+                "unsandboxedPluginsConfirm": "禁用插件进程隔离？插件 Worker 将以与应用相同的权限运行，无沙箱边界保护。" },
   "aiSettings": {
     "sectionTitle": "AI 配置",
     "status": "状态",
