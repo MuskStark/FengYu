@@ -65,6 +65,17 @@ const storeDetail = ref<UnifiedCatalogEntry | null>(null)
 const storeFilterType = ref<string | undefined>(undefined)
 const storeSearch = ref('')
 
+/**
+ * Install record matching the currently-open store detail drawer, if the plugin is installed.
+ * Skills/MCP are only known AFTER install (read from the cloned plugin.json), so the catalog
+ * entry's declaredSkills/mcpServers are always empty — render these sections from this record.
+ */
+const storeDetailRecord = computed(() =>
+  storeDetail.value
+    ? storeView.history.find((h) => h.uid === storeDetail.value!.uid) ?? null
+    : null,
+)
+
 async function loadStore() {
   await Promise.all([storeView.loadSources(), storeView.loadCatalog(), storeView.loadHistory()])
 }
@@ -523,13 +534,13 @@ onMounted(async () => {
             <div class="text-caption text-medium-emphasis">{{ t('market.store.pinnedSha') }}</div>
             <code class="text-caption">{{ storeDetail.pinnedSha }}</code>
           </div>
-          <div v-if="storeDetail.declaredSkills.length" class="mb-2">
+          <div v-if="storeDetailRecord && storeDetailRecord.declaredSkills.length" class="mb-2">
             <div class="text-caption text-medium-emphasis">{{ t('market.store.declaredSkills') }}</div>
-            <v-chip v-for="s in storeDetail.declaredSkills" :key="s" size="small" class="mr-1">{{ s }}</v-chip>
+            <v-chip v-for="s in storeDetailRecord.declaredSkills" :key="s" size="small" class="mr-1">{{ s }}</v-chip>
           </div>
-          <div v-if="storeDetail.mcpServers.length" class="mb-2">
+          <div v-if="storeDetailRecord && storeDetailRecord.hasMcpServers" class="mb-2">
             <div class="text-caption text-medium-emphasis">{{ t('market.store.mcpServers') }}</div>
-            <v-chip v-for="m in storeDetail.mcpServers" :key="m" size="small" class="mr-1">{{ m }}</v-chip>
+            <v-chip v-for="m in storeDetailRecord.mcpServerRefs" :key="m" size="small" class="mr-1">{{ m }}</v-chip>
             <v-alert type="warning" variant="tonal" density="compact" class="mt-2">
               {{ t('market.store.mcpWarning') }}
             </v-alert>
