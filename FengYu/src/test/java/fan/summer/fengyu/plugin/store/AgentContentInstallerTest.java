@@ -92,4 +92,50 @@ class AgentContentInstallerTest {
             assertThrows(IntegrityException.class, () -> installer.install(entry));
         }
     }
+
+    @Test
+    void skipsSkillEntryThatEscapesPluginRoot() throws Exception {
+        // 1. Build a source repo whose plugin.json declares a skill path that escapes pluginRoot
+        //    via "..". The escape target is a real file OUTSIDE the repo (sibling under @TempDir).
+        Path repo = temp.resolve("src-repo");
+        Files.createDirectories(repo);
+        Path escapeTarget = temp.resolve("escape-target");
+        Files.createDirectories(escapeTarget);
+        Files.writeString(escapeTarget.resolve("secret.md"), "host-secret");
+
+        try (Git g = Git.init().setDirectory(repo.toFile()).call()) {
+            Files.createDirectories(repo.resolve(".claude-plugin"));
+            // "../escape-target" resolves outside pluginRoot (the clone dir) -> must be skipped.
+            Files.writeString(repo.resolve(".claude-plugin/plugin.json"),
+                "{\"name\":\"demo\",\"version\":\"1.0.0\",\"description\":\"d\","
+                + "\"skills\":[\"../escape-target\"]}");
+            g.add().addFilepattern(".").call();
+            ObjectId head = g.commit().setMessage("init").setSign(false).call().getId();
+            String sha = head.getName();
+
+            Path runtimeRoot = temp.resolve("runtime");
+            UnifiedCatalogEntry.SourceRef ref = new UnifiedCatalogEntry.GitUrlSource("file://" + repo, sha);
+            UnifiedCatalogEntry entry = new UnifiedCatalogEntry(
+                "test:CLAUDE:escape", "test", StoreSourceType.CLAUDE, "escape", "escape", "d",
+                null, null, List.of(), null, sha, ref,
+                List.of(), List.of(), null, false, null, false, false);
+
+            AgentContentInstaller installer = new AgentContentInstaller(records, runtimeRoot, 60);
+            installer.install(entry); // must NOT throw; the escaping entry is just skipped
+
+            // The escaped file must not have been copied into the runtime skills tree.
+            Path copiedSkill = runtimeRoot.resolve("skills")
+                .resolve("test:CLAUDE:escape").resolve("../escape-target").normalize();
+            assertFalse(Files.exists(copiedSkill),
+                "skill entry escaping pluginRoot must not be copied: " + copiedSkill);
+            // No skills should have been copied at all under the uid dir.
+            Path skillDir = runtimeRoot.resolve("skills").resolve("test:CLAUDE:escape");
+            if (Files.isDirectory(skillDir)) {
+                try (var stream = Files.walk(skillDir)) {
+                    long files = stream.filter(Files::isRegularFile).count();
+                    assertEquals(0, files, "no skill files should be materialized for an all-escaping manifest");
+                }
+            }
+        }
+    }
 }
