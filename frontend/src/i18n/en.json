@@ -22,7 +22,12 @@
                 "logLevel": "Log level",
                 "logLevelHint": "Shared by the main application and all plugin workers",
                 "dark": "Dark", "light": "Light",
-                "english": "English", "chinese": "中文" },
+                "english": "English", "chinese": "中文",
+                "unsandboxedPluginsTitle": "Unsandboxed plugins",
+                "unsandboxedOff": "Off",
+                "unsandboxedOn": "Allow",
+                "unsandboxedPluginsWarn": "Plugins will run without process isolation. Only enable if you trust all installed plugins.",
+                "unsandboxedPluginsConfirm": "Disable plugin process isolation? Plugin workers will run with the same privileges as the app, with no sandbox boundary." },
   "aiSettings": {
     "sectionTitle": "AI Configuration",
     "status": "Status",
