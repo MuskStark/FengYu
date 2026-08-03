@@ -102,7 +102,31 @@
     "pluginsSection": "Plugins", "skillsSection": "Skills",
     "tabPlugins": "Plugins", "tabSkills": "Skills",
     "installedRow": "Installed", "detail": "Details",
-    "unsupportedPackage": "Unsupported package. Use .fyp for plugins or .fys for skills."
+    "unsupportedPackage": "Unsupported package. Use .fyp for plugins or .fys for skills.",
+    "store": {
+      "title": "Plugin Store",
+      "tab": "Stores",
+      "sourceTypeAll": "All sources",
+      "addSource": "Add source",
+      "sourceName": "Name",
+      "sourceType": "Type",
+      "catalogUrl": "Catalog URL",
+      "refresh": "Refresh",
+      "delete": "Remove source",
+      "installed": "Installed",
+      "updateAvailable": "Update available",
+      "install": "Install",
+      "update": "Update",
+      "uninstall": "Uninstall",
+      "enable": "Enable",
+      "disable": "Disable",
+      "declaredSkills": "Declared skills",
+      "mcpServers": "MCP servers",
+      "pinnedSha": "Pinned SHA",
+      "mcpWarning": "Declares MCP servers — pending runtime support",
+      "cloneInProgress": "Cloning & verifying…",
+      "noSources": "No sources subscribed. Add one to browse plugins."
+    }
   },
   "skills": {
     "title": "Skills", "subtitle": "Domain guidance the assistant loads on demand",
