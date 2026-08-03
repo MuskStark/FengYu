@@ -207,7 +207,7 @@
                 "history": "Run history", "historyEmpty": "No persisted runs yet.",
                 "resume": "Review and resume", "resumed": "Resumed run",
                 "step": "Step {n}" },
-  "common":   { "back": "Back", "retry": "Retry", "loading": "Loading…" },
+  "common":   { "back": "Back", "retry": "Retry", "loading": "Loading…", "cancel": "Cancel", "confirm": "Confirm" },
   "setup":    { "dataFileLocation": "Data file location" },
   "about": {
     "title": "About",
