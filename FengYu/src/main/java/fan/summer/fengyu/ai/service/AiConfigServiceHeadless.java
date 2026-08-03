@@ -94,8 +94,14 @@ public class AiConfigServiceHeadless {
      * on platforms where {@link fan.summer.fengyu.security.ProcessSandbox} detects no native isolator
      * (Windows); {@link fan.summer.fengyu.web.controller.SettingsController} gates writes to those
      * platforms. Default {@code false} (fail-closed).
+     *
+     * <p>Null-safe against an uninitialized {@link #INSTANCE}: in pure unit tests (e.g.
+     * {@code PluginProcessManagerTest}) the Spring singleton is never published, so this method
+     * returns {@code false} instead of NPE-ing. This mirrors the null-safe default of
+     * {@code AiPermissionContext.current()} and preserves the documented fail-closed default.
      */
     public static boolean isUnsandboxedPluginsEnabled() {
+        if (INSTANCE == null) return false;
         return Boolean.parseBoolean(INSTANCE.readSetting(PLUGIN_UNSANDBOXED_KEY, "false"));
     }
 
