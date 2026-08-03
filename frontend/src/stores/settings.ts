@@ -11,6 +11,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const theme = ref<ThemeName>('dark')
   const language = ref<LanguageName>('en')
   const logLevel = ref<LogLevel>('INFO')
+  const unsandboxedPlugins = ref(false)
   const loaded = ref(false)
   let desktopTheme: ThemeName | null = null
 
@@ -27,6 +28,7 @@ export const useSettingsStore = defineStore('settings', () => {
     theme.value = s.theme
     language.value = s.language
     logLevel.value = s.logLevel ?? 'INFO'
+    unsandboxedPlugins.value = s.unsandboxedPlugins ?? false
     useThemeStore().setTheme(s.theme)
     syncDesktopTheme(s.theme)
     // Drive vue-i18n from the host language setting. apply() is the single
@@ -71,6 +73,11 @@ export const useSettingsStore = defineStore('settings', () => {
     await update({ logLevel: next })
   }
 
+  async function setUnsandboxedPlugins(enabled: boolean) {
+    unsandboxedPlugins.value = enabled
+    await update({ unsandboxedPlugins: enabled })
+  }
+
   // ── AI Config ───────────────────────────────────────────────
   const aiSettings = ref<AiSettings | null>(null)
   const aiLoaded = ref(false)
@@ -93,6 +100,7 @@ export const useSettingsStore = defineStore('settings', () => {
     theme,
     language,
     logLevel,
+    unsandboxedPlugins,
     loaded,
     load,
     update,
@@ -100,6 +108,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setLanguage,
     setSidebarCollapsed,
     setLogLevel,
+    setUnsandboxedPlugins,
     aiSettings,
     aiLoaded,
     loadAi,
