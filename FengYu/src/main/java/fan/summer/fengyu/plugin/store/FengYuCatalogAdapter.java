@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import org.springframework.stereotype.Component;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -14,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /** Parses the FengYu catalog JSON array (the legacy {@code fengyu.marketplace.catalog-url} format). */
+@Component
 public class FengYuCatalogAdapter implements MarketplaceSourceAdapter {
 
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();

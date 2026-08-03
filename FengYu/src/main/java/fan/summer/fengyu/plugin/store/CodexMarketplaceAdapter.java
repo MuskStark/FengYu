@@ -3,6 +3,7 @@ package fan.summer.fengyu.plugin.store;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import org.springframework.stereotype.Component;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -14,6 +15,7 @@ import java.util.Iterator;
 import java.util.List;
 
 /** Parses {@code .agents/plugins/marketplace.json} (Codex). Local sources are resolved against the repo. */
+@Component
 public class CodexMarketplaceAdapter implements MarketplaceSourceAdapter {
 
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
