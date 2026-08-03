@@ -220,6 +220,10 @@ export interface InstallRecord {
   pinnedSha: string | null
   hasMcpServers: boolean
   enabled: boolean
+  /** Declared skill paths (parsed from the install record's JSON-string column; empty until installed). */
+  declaredSkills: string[]
+  /** MCP server config file references (parsed from the install record's JSON-string column). */
+  mcpServerRefs: string[]
   installedAt: string
   updatedAt: string
 }
