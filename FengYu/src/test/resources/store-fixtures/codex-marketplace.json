@@ -1,0 +1,12 @@
+{
+  "name": "openai-curated",
+  "interface": { "displayName": "ChatGPT Official" },
+  "plugins": [
+    {
+      "name": "linear",
+      "source": { "source": "local", "path": "./plugins/linear" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    }
+  ]
+}
