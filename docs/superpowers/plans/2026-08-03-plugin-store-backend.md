@@ -140,15 +140,35 @@ import static org.junit.jupiter.api.Assertions.*;
 class UnifiedCatalogEntryTest {
 
     @Test
-    void uidConstructedFromOriginTypeAndName() {
+    void uidConstructorPositionMatchesRecordHeader() {
+        // The record has 19 components in this order:
+        //   uid, origin, sourceType, name, displayName, description, author, category,
+        //   keywords, homepage, pinnedSha, sourceRef, declaredSkills, mcpServers,
+        //   interfaceMeta, installed, installedVersion, updateAvailable, enabled
         var entry = new UnifiedCatalogEntry(
-            "anthropics-claude", StoreSourceType.CLAUDE, "browser-use",
-            "browser-use", "browser-use", "Give Claude a browser", null,
-            java.util.List.of(), null, null, "https://example.com", "abc123",
-            new UnifiedCatalogEntry.GitUrlSource("https://github.com/o/r.git", null),
-            java.util.List.of(), java.util.List.of(), null,
-            false, null, false, false);
+            "anthropics-claude:CLAUDE:browser-use",   // uid
+            "anthropics-claude",                       // origin
+            StoreSourceType.CLAUDE,                   // sourceType
+            "browser-use",                             // name
+            "browser-use",                             // displayName
+            "Give Claude a browser",                   // description
+            null,                                      // author
+            null,                                      // category
+            java.util.List.of(),                       // keywords
+            "https://example.com",                     // homepage
+            "abc123",                                  // pinnedSha
+            new UnifiedCatalogEntry.GitUrlSource("https://github.com/o/r.git", null),  // sourceRef
+            java.util.List.of(),                       // declaredSkills
+            java.util.List.of(),                       // mcpServers
+            null,                                      // interfaceMeta
+            false,                                     // installed
+            null,                                      // installedVersion
+            false,                                     // updateAvailable
+            false);                                    // enabled
         assertEquals("anthropics-claude:CLAUDE:browser-use", entry.uid());
+        assertEquals(StoreSourceType.CLAUDE, entry.sourceType());
+        assertEquals("abc123", entry.pinnedSha());
+        assertTrue(entry.sourceRef() instanceof UnifiedCatalogEntry.GitUrlSource);
     }
 
     @Test
@@ -884,6 +904,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 
+import org.springframework.stereotype.Component;
+
+import org.springframework.stereotype.Component;
+
+import org.springframework.stereotype.Component;
+
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -893,6 +919,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /** Parses the FengYu catalog JSON array (the legacy {@code fengyu.marketplace.catalog-url} format). */
+@Component
 public class FengYuCatalogAdapter implements MarketplaceSourceAdapter {
 
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
@@ -1024,6 +1051,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Parses {@code .claude-plugin/marketplace.json}. */
+@Component
 public class ClaudeMarketplaceAdapter implements MarketplaceSourceAdapter {
 
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
@@ -1193,6 +1221,7 @@ import java.util.Iterator;
 import java.util.List;
 
 /** Parses {@code .agents/plugins/marketplace.json} (Codex). Local sources are resolved against the repo. */
+@Component
 public class CodexMarketplaceAdapter implements MarketplaceSourceAdapter {
 
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
@@ -1209,6 +1238,7 @@ public class CodexMarketplaceAdapter implements MarketplaceSourceAdapter {
         try {
             JsonNode root = json.readTree(body);
             String marketDisplayName = root.path("interface").path("displayName").asText(null);
+            JsonNode marketInterface = root.get("interface");
             JsonNode plugins = root.get("plugins");
             if (plugins == null || !plugins.isArray()) return List.of();
 
@@ -1217,7 +1247,7 @@ public class CodexMarketplaceAdapter implements MarketplaceSourceAdapter {
 
             List<UnifiedCatalogEntry> out = new ArrayList<>();
             for (JsonNode p : plugins) {
-                UnifiedCatalogEntry e = translate(src, p, marketDisplayName, resolved);
+                UnifiedCatalogEntry e = translate(src, p, marketDisplayName, marketInterface, resolved);
                 if (e != null) out.add(e);
             }
             return out;
@@ -1227,7 +1257,7 @@ public class CodexMarketplaceAdapter implements MarketplaceSourceAdapter {
     }
 
     private UnifiedCatalogEntry translate(StoreSource src, JsonNode p,
-            String marketDisplayName, GitHubUrlResolver.Resolved resolved) {
+            String marketDisplayName, JsonNode marketInterface, GitHubUrlResolver.Resolved resolved) {
         String name = text(p, "name");
         if (name == null) return null;
         JsonNode s = p.get("source");
@@ -1243,12 +1273,16 @@ public class CodexMarketplaceAdapter implements MarketplaceSourceAdapter {
         String displayName = text(p, "interface", "displayName");
         if (displayName == null) displayName = marketDisplayName != null ? marketDisplayName : name;
 
+        // Plugin-level interface wins; otherwise fall back to the marketplace-level block.
+        JsonNode pluginInterface = p.get("interface");
+        JsonNode iface = (pluginInterface != null && !pluginInterface.isNull()) ? pluginInterface : marketInterface;
+
         return new UnifiedCatalogEntry(
             src.origin() + ":CODEX:" + name, src.origin(), StoreSourceType.CODEX,
             name, displayName, text(p, "description"),
             author(p.get("author")),
             text(p, "category"), stringList(p.get("keywords")), text(p, "homepage"),
-            null, ref0, List.of(), List.of(), interfaceMeta(p.get("interface"), displayName),
+            null, ref0, List.of(), List.of(), interfaceMeta(iface, displayName),
             false, null, false, false);
     }
 
@@ -1725,18 +1759,12 @@ public class AgentContentInstaller {
     private final long cloneTimeoutSeconds;
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
 
-    // Constructor used by Spring (runtimeRoot comes from RuntimePaths at bean-creation time
-    // via a config that injects RuntimePaths.root(); see AgentContentInstallerConfig below).
+    // Single constructor serves both Spring DI (reads @Value SpEL/property annotations)
+    // and direct construction in tests (new AgentContentInstaller(records, runtimeRoot, 60) —
+    // the annotations are plain metadata, invisible to ordinary Java calls).
     public AgentContentInstaller(PluginInstallRecordRepository records,
             @Value("#{T(fan.summer.fengyu.runtime.RuntimePaths).root()}") Path runtimeRoot,
             @Value("${fengyu.store.git-clone-timeout-seconds:120}") long cloneTimeoutSeconds) {
-        this.records = records;
-        this.runtimeRoot = runtimeRoot;
-        this.cloneTimeoutSeconds = cloneTimeoutSeconds;
-    }
-
-    // Test constructor (avoids SpEL).
-    AgentContentInstaller(PluginInstallRecordRepository records, Path runtimeRoot, long cloneTimeoutSeconds) {
         this.records = records;
         this.runtimeRoot = runtimeRoot;
         this.cloneTimeoutSeconds = cloneTimeoutSeconds;
@@ -1792,7 +1820,9 @@ public class AgentContentInstaller {
     // --- internals ------------------------------------------------------------------
 
     private Path cloneSource(UnifiedCatalogEntry entry) throws Exception {
-        Path dest = Files.createTempDirectory(runtimeRoot.resolve(".clone-"), "agent-");
+        Path cloneRoot = runtimeRoot.resolve(".clone-");
+        Files.createDirectories(cloneRoot); // parent must exist before createTempDirectory
+        Path dest = Files.createTempDirectory(cloneRoot, "agent-");
         UnifiedCatalogEntry.SourceRef ref = entry.sourceRef();
         String url;
         String refName = null;
@@ -1861,20 +1891,29 @@ public class AgentContentInstaller {
         return names;
     }
 
-    private List<String> copySkillDir(Path srcDir, Path destBase, String rel) throws IOException {
-        if (!Files.isDirectory(srcDir)) return List.of();
+    private List<String> copySkillDir(Path src, Path destBase, String rel) throws IOException {
+        if (!Files.exists(src)) return List.of();
         Files.createDirectories(destBase);
         List<String> copied = new ArrayList<>();
-        Files.walkFileTree(srcDir, new SimpleFileVisitor<>() {
+        // Skill entry may point at a single file (e.g. "skills/SKILL.md") or a directory.
+        if (Files.isRegularFile(src)) {
+            Path target = destBase.resolve(rel).normalize();
+            if (!PluginContentPathSafety.isInside(destBase, target)) return List.of();
+            Files.createDirectories(target.getParent());
+            Files.copy(src, target, StandardCopyOption.REPLACE_EXISTING);
+            copied.add(rel);
+            return copied;
+        }
+        Files.walkFileTree(src, new SimpleFileVisitor<>() {
             @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                Path relPath = srcDir.getParent() == null ? dir : srcDir.getParent().relativize(dir);
+                Path relPath = src.getParent() == null ? dir : src.getParent().relativize(dir);
                 Path target = destBase.resolve(relPath).normalize();
                 if (!PluginContentPathSafety.isInside(destBase, target)) return FileVisitResult.SKIP_SUBTREE;
                 Files.createDirectories(target);
                 return FileVisitResult.CONTINUE;
             }
             @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                Path relPath = srcDir.getParent() == null ? file : srcDir.getParent().relativize(file);
+                Path relPath = src.getParent() == null ? file : src.getParent().relativize(file);
                 Path target = destBase.resolve(relPath).normalize();
                 if (!PluginContentPathSafety.isInside(destBase, target)) return FileVisitResult.SKIP_SUBTREE;
                 Files.copy(file, target, StandardCopyOption.REPLACE_EXISTING);
@@ -2076,14 +2115,14 @@ public class InstallerDispatcher {
 
     public void uninstall(UnifiedCatalogEntry entry) {
         switch (entry.sourceType()) {
-            case FENGYU -> packages.uninstall(entry.name());
+            case FENGYU -> uninstallFengyu(entry);
             case CLAUDE, CODEX -> agent.uninstall(entry.uid());
         }
     }
 
     public void setEnabled(UnifiedCatalogEntry entry, boolean enabled) {
         switch (entry.sourceType()) {
-            case FENGYU -> packages.setEnabled(entry.name(), enabled);
+            case FENGYU -> setEnabledFengyu(entry, enabled);
             case CLAUDE, CODEX -> agent.setEnabled(entry.uid(), enabled);
         }
     }
@@ -2095,6 +2134,22 @@ public class InstallerDispatcher {
             packages.installFromUrl(zip.url());
         } catch (Exception e) {
             throw new RuntimeException("FengYu install failed: " + entry.uid(), e);
+        }
+    }
+
+    private void uninstallFengyu(UnifiedCatalogEntry entry) {
+        try {
+            packages.uninstall(entry.name());
+        } catch (Exception e) {
+            throw new RuntimeException("FengYu uninstall failed: " + entry.uid(), e);
+        }
+    }
+
+    private void setEnabledFengyu(UnifiedCatalogEntry entry, boolean enabled) {
+        try {
+            packages.setEnabled(entry.name(), enabled);
+        } catch (Exception e) {
+            throw new RuntimeException("FengYu setEnabled failed: " + entry.uid(), e);
         }
     }
 }
