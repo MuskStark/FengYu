@@ -37,10 +37,23 @@ public class UnifiedStoreService {
         for (var rec : records.findAllByUserIdOrderByInstalledAtDesc(SecurityConstants.LOCAL_VIRTUAL_USER_ID)) {
             installedByUid.put(rec.getUid(), new Installed(rec.getVersion(), rec.isEnabled(), rec.getSourceType()));
         }
+        // .fyp manifests don't store which origin they were installed from, so we cannot reconstruct
+        // their full uid (<origin>:FENGYU:<id>). Instead, build an index of manifestId -> uid for
+        // every FENGYU catalog entry already aggregated above, then for each installed manifest mark
+        // the matching entry installed. Agent-content records (already in installedByUid) win, so we
+        // only put when absent. isEnabled() is non-throwing; it just checks the .disabled marker.
+        Map<String, String> fengyuManifestIdToUid = new HashMap<>();
+        for (UnifiedCatalogEntry e : all) {
+            if (e.sourceType() == StoreSourceType.FENGYU && e.name() != null) {
+                fengyuManifestIdToUid.putIfAbsent(e.name(), e.uid());
+            }
+        }
         for (var m : packages.installed()) {
-            // .fyp entries have no stored origin; key them by name under a synthetic FENGYU uid prefix
-            // for any source that advertises the same id. (Install-state merge is best-effort for .fyp.)
-            // We rely on the catalog entry's uid matching when origin is fengyu-default.
+            if (m.id() == null) continue;
+            String uid = fengyuManifestIdToUid.get(m.id());
+            if (uid == null) continue;
+            installedByUid.putIfAbsent(uid,
+                new Installed(m.version(), packages.isEnabled(m.id()), StoreSourceType.FENGYU.name()));
         }
 
         // 3. Merge install state into entries.
