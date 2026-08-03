@@ -102,7 +102,31 @@
     "pluginsSection": "插件", "skillsSection": "技能",
     "tabPlugins": "插件", "tabSkills": "技能",
     "installedRow": "已安装", "detail": "详情",
-    "unsupportedPackage": "不支持该包类型。插件用 .fyp，技能用 .fys。"
+    "unsupportedPackage": "不支持该包类型。插件用 .fyp，技能用 .fys。",
+    "store": {
+      "title": "插件商店",
+      "tab": "商店",
+      "sourceTypeAll": "全部来源",
+      "addSource": "添加源",
+      "sourceName": "名称",
+      "sourceType": "类型",
+      "catalogUrl": "目录 URL",
+      "refresh": "刷新",
+      "delete": "移除源",
+      "installed": "已安装",
+      "updateAvailable": "有更新",
+      "install": "安装",
+      "update": "更新",
+      "uninstall": "卸载",
+      "enable": "启用",
+      "disable": "禁用",
+      "declaredSkills": "声明的技能",
+      "mcpServers": "MCP 服务器",
+      "pinnedSha": "固定 SHA",
+      "mcpWarning": "声明了 MCP 服务器 —— 运行时支持待启用",
+      "cloneInProgress": "正在克隆并校验…",
+      "noSources": "尚未订阅任何源。添加一个以浏览插件。"
+    }
   },
   "skills": {
     "title": "技能", "subtitle": "助手按需加载的领域指南",
