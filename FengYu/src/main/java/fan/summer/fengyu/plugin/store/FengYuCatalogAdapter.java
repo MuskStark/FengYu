@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.springframework.stereotype.Component;
 
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -37,9 +38,14 @@ public class FengYuCatalogAdapter implements MarketplaceSourceAdapter {
             for (JsonNode n : nodes) {
                 String id = text(n, "id");
                 if (id == null || id.isBlank()) continue;
+                // id is the catalog's own plugin id; slugify defensively so the uid path segment
+                // is always a single safe segment (PluginPackageService re-validates the .fyp id
+                // at install time, but the uid must be safe before that gate runs).
+                String safeId = PluginContentPathSafety.slugify(id);
+                String displayName = text(n, "name");
                 out.add(new UnifiedCatalogEntry(
-                    uid(src, id), src.origin(), StoreSourceType.FENGYU,
-                    id, text(n, "name"), text(n, "description"),
+                    uid(src, safeId), src.origin(), StoreSourceType.FENGYU,
+                    safeId, displayName == null ? safeId : displayName, text(n, "description"),
                     new UnifiedCatalogEntry.Author(text(n, "author"), null, null),
                     text(n, "category"), List.of(), text(n, "homepage"), null,
                     new UnifiedCatalogEntry.ZipUrlSource(text(n, "downloadUrl")),
@@ -58,10 +64,12 @@ public class FengYuCatalogAdapter implements MarketplaceSourceAdapter {
             if (!List.of("https", "http").contains(uri.getScheme()))
                 throw new IllegalStateException("Catalog URL must use HTTP(S): " + url);
             HttpRequest req = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(20)).GET().build();
-            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() < 200 || resp.statusCode() >= 300)
-                throw new IllegalStateException("Catalog HTTP " + resp.statusCode());
-            return resp.body();
+            HttpResponse<InputStream> resp = http.send(req, HttpResponse.BodyHandlers.ofInputStream());
+            try (InputStream body = resp.body()) {
+                if (resp.statusCode() < 200 || resp.statusCode() >= 300)
+                    throw new IllegalStateException("Catalog HTTP " + resp.statusCode());
+                return BoundedHttp.readAtMost(body, BoundedHttp.MAX_CATALOG_BYTES);
+            }
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Catalog request interrupted", ie);

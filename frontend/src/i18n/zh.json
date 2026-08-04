@@ -130,7 +130,9 @@
       "pinnedSha": "固定 SHA",
       "mcpWarning": "声明了 MCP 服务器 —— 运行时支持待启用",
       "cloneInProgress": "正在克隆并校验…",
-      "noSources": "尚未订阅任何源。添加一个以浏览插件。"
+      "noSources": "尚未订阅任何源。添加一个以浏览插件。",
+      "homepage": "主页",
+      "close": "关闭"
     }
   },
   "skills": {
