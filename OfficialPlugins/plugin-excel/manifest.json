@@ -3,7 +3,7 @@
   "id": "fan.summer.excel",
   "name": "Excel Splitter",
   "description": "Split Excel workbooks by sheet, column value, or complex rules",
-  "version": "4.0.0-alpha.7",
+  "version": "4.0.0-alpha.8",
   "author": "FengYu",
   "icon": "file-excel",
   "category": "file",
