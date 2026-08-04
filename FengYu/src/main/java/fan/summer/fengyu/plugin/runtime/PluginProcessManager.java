@@ -488,9 +488,26 @@ public class PluginProcessManager {
 
         void close() {
             failAll("Plugin worker closed: " + pluginId);
+            // Destroy the worker JVM itself (graceful SIGTERM, then SIGKILL after 2s). On macOS the
+            // sandbox-exec wrapper execve's into java, so process.destroy() hits the worker JVM
+            // directly (verified). On Linux bwrap --die-with-parent already reaps the worker when
+            // the host dies, but this path still covers an explicit PluginProcessManager.stop().
             process.destroy();
             try { if (!process.waitFor(2, TimeUnit.SECONDS)) process.destroyForcibly(); }
             catch (InterruptedException e) { Thread.currentThread().interrupt(); process.destroyForcibly(); }
+            // Backstop: a worker may spawn grandchildren (e.g. offlinepython's pip subprocess) that
+            // are NOT reaped when the worker JVM dies. Walk the worker's descendant tree and force-
+            // kill any survivors so they cannot leak (a leaked grandchild can hold file handles or
+            // child DB locks of its own). Idempotent: already-dead descendants are skipped.
+            killDescendants(process.descendants());
+        }
+
+        /** Recursively destroy a process tree, leaves-first to avoid orphaning. */
+        private static void killDescendants(java.util.stream.Stream<ProcessHandle> descendants) {
+            descendants.forEach(child -> {
+                killDescendants(child.children());
+                if (child.isAlive()) child.destroyForcibly();
+            });
         }
     }
 }

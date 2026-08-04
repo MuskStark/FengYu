@@ -65,27 +65,58 @@ function emitStdoutLine(proc: ChildProcess, line: string) {
 describe('backend child shutdown', () => {
   afterEach(() => vi.useRealTimers())
 
-  it('hard-kills a process that remains alive after SIGTERM', () => {
+  it('signals the whole process tree (SIGTERM, then SIGKILL) via tree-kill', () => {
     vi.useFakeTimers()
     const proc = fakeProcess()
-    const child = createBackendChild(proc, 50)
+    Object.assign(proc, { pid: 4242 })
+    const treeKillFn = vi.fn()
+    const child = createBackendChild(proc, 50, treeKillFn)
 
     child.kill()
-    expect(proc.kill).toHaveBeenCalledWith('SIGTERM')
+    // Graceful path: the entire backend tree (backend JVM + worker grandchildren) gets SIGTERM.
+    expect(treeKillFn).toHaveBeenCalledWith(4242, 'SIGTERM')
+    expect(proc.kill).not.toHaveBeenCalled()
+
     vi.advanceTimersByTime(50)
-    expect(proc.kill).toHaveBeenLastCalledWith('SIGKILL')
+    // Escalation: the tree that has not exited by the deadline gets SIGKILL.
+    expect(treeKillFn).toHaveBeenLastCalledWith(4242, 'SIGKILL')
   })
 
   it('cancels the hard kill after the process exits', () => {
     vi.useFakeTimers()
     const proc = fakeProcess()
-    const child = createBackendChild(proc, 50)
+    Object.assign(proc, { pid: 4242 })
+    const treeKillFn = vi.fn()
+    const child = createBackendChild(proc, 50, treeKillFn)
 
     child.kill()
     proc.exitCode = 0
     proc.emit('exit', 0, null)
     vi.advanceTimersByTime(50)
-    expect(proc.kill).toHaveBeenCalledTimes(1)
+    // Only the graceful SIGTERM call; no SIGKILL escalation once the tree exited.
+    expect(treeKillFn).toHaveBeenCalledTimes(1)
+    expect(treeKillFn).toHaveBeenLastCalledWith(4242, 'SIGTERM')
+  })
+
+  it('is idempotent — a second kill() is a no-op', () => {
+    const proc = fakeProcess()
+    Object.assign(proc, { pid: 4242 })
+    const treeKillFn = vi.fn()
+    const child = createBackendChild(proc, 50, treeKillFn)
+
+    child.kill()
+    child.kill()
+    expect(treeKillFn).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips an already-exited backend', () => {
+    const proc = fakeProcess()
+    Object.assign(proc, { pid: 4242, exitCode: 0 })
+    const treeKillFn = vi.fn()
+    const child = createBackendChild(proc, 50, treeKillFn)
+
+    child.kill()
+    expect(treeKillFn).not.toHaveBeenCalled()
   })
 })
 

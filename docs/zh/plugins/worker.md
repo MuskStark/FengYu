@@ -64,6 +64,24 @@ SDK 自带 Worker 专用的 SLF4J provider。每个事件会作为一行结构�
 
 所有声明值都会被钳制到 `[1, 600]` 秒（此上限可防止恶意清单无限期地占用一个 worker）。只有确实需要更长运行时间的方法才声明更长超时；当工作时长无界时，请使用下面的 job 模式。
 
+## Worker 生命周期与宿主退出
+
+worker 是一个独立的操作系统进程（JVM），绝不能比宿主存活更久。自 SDK 1.2.0 起，生产入口
+`run()` 安装了两个互补的看门狗，无论宿主以何种方式退出，worker 都会在宿主消失的瞬间终止：
+
+- **stdin EOF（主）。** 宿主关闭 worker 的 stdin 管道时（宿主 JVM 死亡时——无论是优雅退出还是被信号
+  杀死——OS 会自动关闭该管道），dispatch 循环返回，worker 调用 `System.exit(0)`。
+- **父进程存活轮询（辅）。** 一个守护线程轮询启动时快照的父进程 `ProcessHandle`；若 dispatch 循环仍
+  阻塞在 stdin 上时父进程已消失，worker 退出。这覆盖了管道被中间启动器保持打开的少数场景。
+
+两条路径都汇聚到一次显式的 `System.exit(0)`，因此即便插件创建了非守护线程（HikariCP 连接池、
+scheduled executor 等），也无法在宿主消失后继续撑着 JVM、继续持有嵌入式数据库的文件锁。宿主自身也
+注册了独立的 JVM shutdown hook，直接调用 `PluginProcessManager.close()`——它会 `destroy()`/
+`destroyForcibly()` 每个被追踪的 worker，并递归杀掉 worker 的后代进程（如 `pip` 子进程）——作为
+Spring `@PreDestroy` 之外的兜底。桌面 shell 在退出时 tree-kill 整棵 backend 进程树。Linux 上
+`bwrap --die-with-parent --new-session` 在内核层面提供了同样的保证；看门狗 + tree-kill 这两层把该
+保证扩展到了 macOS 与 Windows。
+
 ## 长任务（job 模式）
 
 任何可能超过其声明超时的操作都必须拆分为 **start / status / cancel** 三元组，而不是单个阻塞方法。启动器立即返回 `jobId`；UI 或 AI 用游标轮询 `*_status` 以排空流式日志；`*_cancel` 中止。这是唯一被支持的无界工作模式——`pip download`、大工作簿拆分、批量发送等。

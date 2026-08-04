@@ -43,7 +43,19 @@ for fyp in "$ROOT"/OfficialPlugins/plugin-*/dist-package/*.fyp; do
 done
 # Defensive `${VAR:-}` so a trap firing before WORK/SRV are set never expands to rm -rf ""
 # or kill "" (the latter would be a no-op, but under set -u an unset var is fatal).
-trap 'kill ${SRV:-} 2>/dev/null || true; rm -rf "${WORK:-}" "$OFFICIAL_DIR"' EXIT
+#
+# The kill chain is layered: `kill $SRV` SIGTERMs the backend JVM, then pkill -P walks its
+# descendants (the plugin-worker grandchildren that the backend spawned) so they cannot orphan.
+# Without the pkill -P, a worker JVM that outlived the backend would keep an exclusive lock on its
+# embedded DB file and block the `rm -rf` below. The backend's own @PreDestroy normally reaps the
+# workers on graceful exit; this trap is the backstop for a SIGKILLed or wedged backend.
+trap '
+  kill ${SRV:-} 2>/dev/null || true
+  if [ -n "${SRV:-}" ]; then
+    pkill -P "$SRV" 2>/dev/null || true
+  fi
+  rm -rf "${WORK:-}" "$OFFICIAL_DIR"
+' EXIT
 
 export JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home 2>/dev/null || echo "")}"
 JAVA="${JAVA_HOME:+$JAVA_HOME/bin/}java"
