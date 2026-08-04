@@ -15,6 +15,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -24,7 +25,7 @@ class PluginRuntimeEnvironmentServiceTest {
     @Test
     void databasePermissionReceivesConnectionAndStableDataDirectory() {
         DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host").toString());
-        dataSources.save(new DataSourceConfig(DbType.H2, "jdbc:h2:mem:host", "org.h2.Driver",
+        dataSources.save(new DataSourceConfig(DbType.H2, "jdbc:h2:file:host", "org.h2.Driver",
             "org.hibernate.dialect.H2Dialect", "sa", "secret", null));
         PluginRuntimeEnvironmentService service =
             new PluginRuntimeEnvironmentService(dataSources, temp.resolve("plugin-data").toString());
@@ -33,10 +34,84 @@ class PluginRuntimeEnvironmentServiceTest {
         Map<String, String> second = service.environmentFor(manifest("fan.summer.email", List.of("database")));
 
         assertEquals("h2", first.get(PluginWorkerProtocol.DB_TYPE_ENV));
-        assertEquals("jdbc:h2:mem:host", first.get(PluginWorkerProtocol.DB_URL_ENV));
+        // Embedded H2: the worker must NOT receive the host's URL (the host holds an exclusive file
+        // lock on it). It gets its own DB file under its plugin data dir.
+        String workerUrl = first.get(PluginWorkerProtocol.DB_URL_ENV);
         assertEquals("secret", first.get(PluginWorkerProtocol.DB_PASSWORD_ENV));
         assertEquals(first, second);
         assertTrue(Files.isDirectory(Path.of(first.get(PluginWorkerProtocol.PLUGIN_DATA_DIR_ENV))));
+        assertTrue(workerUrl.startsWith("jdbc:h2:file:"),
+            "embedded H2 worker URL must be file-based, was: " + workerUrl);
+    }
+
+    @Test
+    void embeddedH2WorkerGetsItsOwnDbFileWithoutAutoServer() {
+        // The host holds an exclusive file lock on its embedded H2 file; a sandboxed second process
+        // cannot attach (AUTO_SERVER is defeated by the sandbox and H2 rejects the combination).
+        // The worker must therefore receive its own DB file under its PLUGIN_DATA_DIR, and the URL
+        // must not carry AUTO_SERVER (useless for a single-process worker pool and the source of the
+        // misleading [50100-240] error).
+        DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host").toString()) {
+            @Override public DataSourceConfig load() {
+                return new DataSourceConfig(DbType.H2, "jdbc:h2:file:/host/app;AUTO_SERVER=TRUE",
+                    "org.h2.Driver", "org.hibernate.dialect.H2Dialect", "sa", "secret", "/host/app");
+            }
+        };
+        PluginRuntimeEnvironmentService service =
+            new PluginRuntimeEnvironmentService(dataSources, temp.resolve("plugin-data").toString());
+
+        Map<String, String> env = service.environmentFor(manifest("fan.summer.email", List.of("database")));
+        String workerUrl = env.get(PluginWorkerProtocol.DB_URL_ENV);
+        String pluginDataDir = env.get(PluginWorkerProtocol.PLUGIN_DATA_DIR_ENV);
+
+        assertFalse(workerUrl.contains("AUTO_SERVER"),
+            "worker URL must not carry AUTO_SERVER: " + workerUrl);
+        // The DB path must live under the worker's own plugin data dir, not the host's file.
+        assertTrue(workerUrl.contains(pluginDataDir),
+            "worker DB path must be under PLUGIN_DATA_DIR (" + pluginDataDir + "), was: " + workerUrl);
+        assertNotEquals("jdbc:h2:file:/host/app;AUTO_SERVER=TRUE", workerUrl,
+            "worker must not receive the host's URL verbatim");
+    }
+
+    @Test
+    void embeddedSqliteWorkerGetsItsOwnDbFile() {
+        DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host").toString()) {
+            @Override public DataSourceConfig load() {
+                return new DataSourceConfig(DbType.SQLITE, "jdbc:sqlite:/host/app.db",
+                    "org.sqlite.JDBC", "org.hibernate.community.dialect.SQLiteDialect", "", "", "/host/app.db");
+            }
+        };
+        PluginRuntimeEnvironmentService service =
+            new PluginRuntimeEnvironmentService(dataSources, temp.resolve("plugin-data").toString());
+
+        Map<String, String> env = service.environmentFor(manifest("fan.summer.email", List.of("database")));
+        String workerUrl = env.get(PluginWorkerProtocol.DB_URL_ENV);
+        String pluginDataDir = env.get(PluginWorkerProtocol.PLUGIN_DATA_DIR_ENV);
+
+        assertTrue(workerUrl.startsWith("jdbc:sqlite:"),
+            "sqlite worker URL must keep its scheme: " + workerUrl);
+        assertTrue(workerUrl.contains(pluginDataDir),
+            "worker DB path must be under PLUGIN_DATA_DIR, was: " + workerUrl);
+    }
+
+    @Test
+    void remoteDatabaseWorkerReusesHostUrlUnchanged() {
+        // Remote DBs (MySQL/PostgreSQL) are real servers that handle concurrent connections —
+        // the worker shares the host's URL verbatim (no exclusive file lock to contend with).
+        DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host").toString()) {
+            @Override public DataSourceConfig load() {
+                return new DataSourceConfig(DbType.POSTGRESQL, "jdbc:postgresql://db:5432/fengyu",
+                    "org.postgresql.Driver", "org.hibernate.dialect.PostgreSQLDialect",
+                    "fengyu", "secret", null);
+            }
+        };
+        PluginRuntimeEnvironmentService service =
+            new PluginRuntimeEnvironmentService(dataSources, temp.resolve("plugin-data").toString());
+
+        Map<String, String> env = service.environmentFor(manifest("fan.summer.email", List.of("database")));
+        assertEquals("jdbc:postgresql://db:5432/fengyu",
+            env.get(PluginWorkerProtocol.DB_URL_ENV),
+            "remote DB URL must pass through to the worker unchanged");
     }
 
     @Test

@@ -112,7 +112,11 @@ class PluginProcessManagerTest {
         PluginProcessManager manager = manager(List.of("database"));
         @SuppressWarnings("unchecked") Map<String, Object> result =
             (Map<String, Object>) manager.invoke("com.example.worker", "environment", Map.of());
-        assertEquals("jdbc:h2:mem:worker-host", result.get("value"));
+        // The worker receives a DB URL. For an embedded H2 host it gets its own file under the
+        // plugin data dir (not the host's in-memory URL), so assert it is a non-null h2 URL rather
+        // than the host's literal value.
+        String workerUrl = String.valueOf(result.get("value"));
+        assertTrue(workerUrl.startsWith("jdbc:h2:"), "worker should receive an h2 DB url, got: " + workerUrl);
         manager.close();
     }
 
