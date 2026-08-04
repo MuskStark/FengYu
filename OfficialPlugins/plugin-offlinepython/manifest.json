@@ -3,7 +3,7 @@
   "id": "fan.summer.offlinepython",
   "name": "Offline Python Builder",
   "description": "Build offline Python install repositories with all dependencies",
-  "version": "4.0.0-alpha.7",
+  "version": "4.0.0-alpha.8",
   "author": "FengYu",
   "icon": "language-python",
   "category": "dev",

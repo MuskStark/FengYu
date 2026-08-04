@@ -8,6 +8,17 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 _Nothing yet._
 
+## [4.0.0-alpha.8] — 2026-08-04
+
+### 🐛 Fixed
+- **Email plugin now works with the default embedded-H2 database.** The host holds an exclusive
+  file lock on its own H2 file, so a sandboxed plugin worker could not attach to the same file —
+  H2 rejected the `AUTO_SERVER` + sandbox combination and every email RPC failed at worker boot.
+  Database-permission workers now get their own DB file under their plugin data directory for
+  embedded databases (H2/SQLite), while remote databases (MySQL/PostgreSQL) still share the host
+  URL (real servers handle concurrent connections). The useless `AUTO_SERVER=TRUE` option was also
+  dropped from the host H2 URL template. The e2e smoke now exercises an email RPC end-to-end.
+
 ## [4.0.0-alpha.7] — 2026-08-04
 
 ### ✨ Added
