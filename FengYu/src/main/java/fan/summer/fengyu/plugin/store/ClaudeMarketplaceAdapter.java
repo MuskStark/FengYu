@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.springframework.stereotype.Component;
 
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -50,6 +51,9 @@ public class ClaudeMarketplaceAdapter implements MarketplaceSourceAdapter {
         String rawName = text(p, "name");
         if (rawName == null) return null;
         String name = applyRenames(rawName, renames);
+        // The name flows verbatim from third-party JSON into filesystem paths (skills/<uid>),
+        // so slugify it to a single safe segment before it ever reaches the runtime tree.
+        String safeName = PluginContentPathSafety.slugify(name);
 
         UnifiedCatalogEntry.SourceRef ref;
         String pinnedSha = null;
@@ -68,8 +72,8 @@ public class ClaudeMarketplaceAdapter implements MarketplaceSourceAdapter {
 
         List<String> keywords = stringList(p.get("keywords"));
         return new UnifiedCatalogEntry(
-            src.origin() + ":CLAUDE:" + name, src.origin(), StoreSourceType.CLAUDE,
-            name, name, text(p, "description"), author(p.get("author")),
+            src.origin() + ":CLAUDE:" + safeName, src.origin(), StoreSourceType.CLAUDE,
+            safeName, name, text(p, "description"), author(p.get("author")),
             text(p, "category"), keywords, text(p, "homepage"),
             pinnedSha, ref, List.of(), List.of(), null,
             false, null, false, false);
@@ -104,10 +108,12 @@ public class ClaudeMarketplaceAdapter implements MarketplaceSourceAdapter {
             if (!List.of("https", "http").contains(uri.getScheme()))
                 throw new IllegalStateException("Marketplace URL must use HTTP(S): " + url);
             HttpRequest req = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(20)).GET().build();
-            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() < 200 || resp.statusCode() >= 300)
-                throw new IllegalStateException("Marketplace HTTP " + resp.statusCode());
-            return resp.body();
+            HttpResponse<InputStream> resp = http.send(req, HttpResponse.BodyHandlers.ofInputStream());
+            try (InputStream body = resp.body()) {
+                if (resp.statusCode() < 200 || resp.statusCode() >= 300)
+                    throw new IllegalStateException("Marketplace HTTP " + resp.statusCode());
+                return BoundedHttp.readAtMost(body, BoundedHttp.MAX_CATALOG_BYTES);
+            }
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Marketplace request interrupted", ie);
