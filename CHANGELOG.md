@@ -8,6 +8,56 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 _Nothing yet._
 
+## [4.0.0-alpha.7] — 2026-08-04
+
+### ✨ Added
+- **Unified plugin store (Claude / Codex / FengYu).** A new `/api/plugin-store/*` REST surface lets
+  you subscribe to third-party Claude Code and OpenAI Codex marketplaces alongside the FengYu
+  catalog, browse a merged, filtered, source-badged grid, and install Claude/Codex plugins by
+  cloning their git source (JGit) with pinned-sha verification. The frontend ships a unified
+  "Stores" tab with a source manager, install/update/uninstall actions, declared-skills and MCP
+  rendering, and an in-app detail drawer. JGit 7.7.0 was added for clone support.
+- **Windows unsandboxed-plugins toggle.** On platforms without a native process sandbox (Windows,
+  or any host where `ProcessSandbox.detect()` is `NONE`), a new Settings row — gated behind a
+  confirmation dialog and defaulting fail-closed — lets a user opt into running plugin workers via
+  the `unrestricted()` channel (`effectiveUnrestricted = fullAccess || unsandboxedPluginsEnabled`).
+  AI command-approval and the sandbox fail-closed primitive are untouched; this only unlocks plugin
+  workers.
+
+### 🐛 Fixed
+- **Store installer path-traversal (security).** A malicious third-party marketplace entry with a
+  `name` containing path-traversal sequences (`../…`) could delete or overwrite arbitrary
+  user-writable files, because the raw name flowed unchecked into `skills/<uid>` and
+  `mcp-servers/<uid>.json` paths that are both deleted and written on install. Catalog adapters now
+  slugify the name to a single safe path segment, and the installer asserts every uid-derived path
+  stays inside the runtime root before any delete/write (defense in depth).
+- **Store clone URL scheme validation (security).** Clone URLs from third-party marketplace JSON are
+  now restricted to `https`/`http`/`file`; `ftp:`, `jar:`, and bare local paths are rejected before
+  JGit sees them.
+- **Store clone cleanup and timeouts.** A failed clone no longer leaves a `.clone-/agent-*` temp dir
+  (with `.git`) behind, and the configured `fengyu.store.git-clone-timeout-seconds` is now actually
+  applied to the clone.
+- **Symlink defense in skill extraction (security).** A malicious repo containing a symlink whose
+  target escapes the plugin root can no longer leak host-readable files into the runtime tree; the
+  skill walker now skips symlinks and copies with `NOFOLLOW_LINKS`.
+- **Codex install integrity.** Codex sources (which declare no pinned sha) now record the resolved
+  HEAD commit sha in the install record, so every install carries an auditable content fingerprint
+  instead of `null`.
+- **Catalog fetch size cap.** Catalog responses are now bounded to 16 MiB, so a malicious or broken
+  catalog URL cannot OOM the backend by streaming an unbounded body into memory.
+- **Homepage XSS (security).** The store detail drawer's Homepage button now allows only
+  `http(s):`/`mailto:` URLs, blocking `javascript:` URIs from third-party catalog fields.
+- **Frontend store error surfacing.** Install/update/uninstall failures now surface to the user
+  instead of being silently swallowed; `busy` is always reset. Malformed catalog array fields are
+  coerced to `[]` so the template never throws.
+- **Plugin enable/disable marker.** Toggling a Claude/Codex plugin's enable state now writes the
+  `.disabled` marker the skill loader reads, so disabling actually stops the skill from loading.
+
+### ♻️ Changed
+- **Hardened the unsandboxed-plugins platform gate** to rely on `compatibilityMode`
+  (`isNativeSandboxAvailable()`), per the design — the toggle appears on any platform lacking a
+  native sandbox, not strictly Windows.
+
 ## [4.0.0-alpha.6] — 2026-08-02
 
 ### ✨ Added

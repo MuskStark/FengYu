@@ -1,12 +1,21 @@
 ---
 title: 插件市场
-description: 插件市场提供 /api/plugin-market——浏览目录、以三种方式安装（.fyp 上传、本地路径、目录 id）、更新、启用/禁用以及卸载插件。
+description: 插件市场提供 /api/plugin-market——浏览目录、以三种方式安装（.fyp 上传、本地路径、目录 id）、更新、启用/禁用以及卸载插件。统一插件商店（/api/plugin-store）还聚合了 Claude Code 与 OpenAI Codex 市场。
 lang: zh-CN
 ---
 
 # 插件市场
 
 插件市场是宿主的插件注册中心。它通过 `/api/plugin-market` 暴露，用于浏览目录以及管理每一个插件（官方与第三方一视同仁）的安装生命周期。所有生命周期操作（安装、更新、启用、禁用、卸载）都经由这些 endpoint 进行；`POST /upload` 是构建好的 `.fyp` 的安装路径（市场 UI 的上传按钮走的是这条）。
+
+## 统一插件商店（Claude / Codex / FengYu）
+
+> 自 4.0.0-alpha.7 起。除上述 FengYu 市场外，**Stores** 标签页还订阅第三方 **Claude Code** 与 **OpenAI Codex** 市场目录，并把它们合并成一个可浏览、带来源徽标的网格。
+
+- **来源（Sources）。** 在 `/api/plugin-store/sources` 下添加 / 删除 / 刷新市场来源。FengYu 来源默认内置；Claude 来源提供 `.claude-plugin/marketplace.json`，Codex 来源提供 `.agents/plugins/marketplace.json`。
+- **安装。** Claude/Codex 插件通过克隆其 git 源（JGit）安装。Claude 的 `url`/`git-subdir` 来源会校验固定 sha；Codex 的 `local` 来源会把解析出的 HEAD sha 记入安装记录，确保每次安装都带有可审计的指纹。
+- **安全。** 目录中的 `name` 在触及文件系统前会被转成单段安全 segment；克隆 URL 仅限 `https`/`http`/`file`；skill 提取跳过 symlink；目录响应上限 16 MiB。第三方目录内容一律视为不可信。
+- **Windows 非沙箱开关。** 在没有原生进程沙箱的平台上，设置页的一行（需二次确认，默认关闭）允许插件 Worker 走 `unrestricted()` 通道。详见 alpha.7 更新日志的安全加固。
 
 ## 官方插件
 
