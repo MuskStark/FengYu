@@ -33,7 +33,17 @@ cd "$WORK"
   -Dfengyu.plugins.data-directory="$WORK/.fengyu/plugin-data" \
   -cp "$JAR" fan.summer.fengyu.HeadlessLauncher --port="$PORT" --token="$TOKEN" > server.log 2>&1 &
 SRV=$!
-trap 'kill "$SRV" 2>/dev/null || true; rm -rf "$WORK"' EXIT
+# SIGTERM the backend, then reap its worker grandchildren (pkill -P) so a worker JVM cannot
+# outlive the backend and keep an exclusive lock on its embedded DB file — that would block the
+# rm -rf. The backend's @PreDestroy normally handles this on graceful exit; this trap is the
+# backstop for a SIGKILLed or wedged backend. offlinepython also spawns pip grandchildren.
+trap '
+  kill ${SRV:-} 2>/dev/null || true
+  if [ -n "${SRV:-}" ]; then
+    pkill -P "$SRV" 2>/dev/null || true
+  fi
+  rm -rf "$WORK"
+' EXIT
 
 HOST="http://127.0.0.1:$PORT"
 AUTH=(-H "X-FengYu-Token: $TOKEN")

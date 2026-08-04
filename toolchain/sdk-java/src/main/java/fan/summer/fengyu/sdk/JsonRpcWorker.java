@@ -12,12 +12,44 @@ import java.io.PrintStream;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 
-/** Small, dependency-light JSON-RPC 2.0 worker runtime for FengYu child processes. */
+/**
+ * Small, dependency-light JSON-RPC 2.0 worker runtime for FengYu child processes.
+ *
+ * <p><b>Parent-death watchdog.</b> The production entry point {@link #run()} installs two
+ * complementary watchdogs so a worker can never outlive its host:
+ * <ul>
+ *   <li><b>stdin EOF (primary).</b> When the host closes the worker's stdin pipe — which the OS
+ *       does automatically when the host JVM dies — {@link StdioTransport#readFrame()} returns
+ *       {@code null}, {@link #serve(RpcTransport)} returns, and {@code run()}'s finally block
+ *       calls {@code System.exit(0)}. This covers graceful host shutdown and most host crashes.</li>
+ *   <li><b>parent-process liveness (auxiliary).</b> A daemon thread polls the snapshot of the
+ *       parent {@link ProcessHandle}; if the parent disappears while {@code serve()} is still
+ *       running (e.g. a pipe kept open by an intermediate launcher), the worker exits. This is a
+ *       fallback for the rare cases where stdin does not close promptly.</li>
+ * </ul>
+ * <p>Both watchdogs converge on {@code System.exit(0)}: a worker that has handed control back to
+ * {@code serve()} must still terminate even if the plugin spun up non-daemon threads (a HikariCP
+ * pool, a scheduled executor, etc.), which would otherwise keep the JVM alive and hold file locks
+ * on embedded databases.
+ */
 public final class JsonRpcWorker {
     private static final Logger log = LoggerFactory.getLogger(JsonRpcWorker.class);
+
+    /** How often the parent-liveness watchdog polls. Package-private for tests. */
+    static final long PARENT_WATCHDOG_INTERVAL_SECONDS = 1;
+
     private final Gson json = new Gson();
     private final Map<String, PluginHandler> handlers = new ConcurrentHashMap<>();
+    /**
+     * Invoked when the worker must terminate its JVM. Production wires {@link System#exit(int)};
+     * tests inject a no-op recorder so the test JVM is not killed. Package-private and overridable
+     * via {@link #withExitHandler(java.util.function.IntConsumer)} for testability.
+     */
+    private volatile java.util.function.IntConsumer exitHandler = System::exit;
 
     public JsonRpcWorker on(String method, PluginHandler handler) {
         if (method == null || method.isBlank()) throw new IllegalArgumentException("method is required");
@@ -27,18 +59,120 @@ public final class JsonRpcWorker {
     }
 
     public void run() throws Exception {
+        run(defaultParentLivenessProbe());
+    }
+
+    /**
+     * Production entry point with an injectable parent-liveness probe (for tests). Installs the
+     * parent-death watchdog, drives {@link #serve(RpcTransport)} against {@code System.in/out}, and
+     * guarantees JVM termination in the finally block — see the class javadoc for the full contract.
+     *
+     * <p>The stdin-EOF path is intrinsic to {@code serve()}: it returns once {@code readFrame()}
+     * yields {@code null}. The explicit {@code System.exit(0)} here ensures the JVM actually exits
+     * even when a plugin has left non-daemon threads (DB pools, executors) that would otherwise
+     * keep it alive and hold embedded-DB file locks.
+     *
+     * @param parentAlive returns {@code true} while the worker's parent process is still alive;
+     *                    returning {@code false} triggers the auxiliary watchdog exit. Production
+     *                    passes {@link #defaultParentLivenessProbe()}; tests inject a controllable one.
+     */
+    void run(BooleanSupplier parentAlive) throws Exception {
         InputStream protocolInput = System.in;
         PrintStream protocolOutput = System.out;
         System.setOut(System.err);
         // Visible on stderr (so via the host's plugin-<id>-stderr drain) — confirms the worker
         // actually started. Without it a worker that exits before reading stdin leaves no trace.
         log.info("Plugin worker started");
+        // Auxiliary watchdog: if the parent process vanishes while serve() is still blocked on
+        // stdin (pipe not yet closed), exit. The primary path is stdin EOF in serve().
+        Thread watcher = startParentWatchdog(parentAlive);
+        boolean cleanExit = false;
         try {
             serve(new StdioTransport(protocolInput, protocolOutput));
+            cleanExit = true;
         } finally {
+            if (watcher != null) watcher.interrupt();
             log.info("Plugin worker shutting down");
             System.setOut(protocolOutput);
+            // Only force JVM exit on a clean serve() return (stdin EOF / watchdog). On an exception
+            // we re-throw and let the caller/JVM decide, matching the pre-1.2 behaviour and keeping
+            // the worker's own diagnostics visible. The exit guarantees a worker with lingering
+            // non-daemon threads (HikariCP, executors) still terminates and releases DB file locks.
+            if (cleanExit) exitWorker(0);
         }
+    }
+
+    /**
+     * Daemon thread that exits the worker when the parent process is gone. Returns {@code null} on
+     * platforms without a resolvable parent (no parent handle → nothing to watch), so production
+     * workers with no parent simply rely on the stdin-EOF primary path.
+     */
+    private Thread startParentWatchdog(BooleanSupplier parentAlive) {
+        if (parentAlive == null) return null;
+        AtomicBoolean firstCheck = new AtomicBoolean(true);
+        Thread t = new Thread(() -> {
+            while (!Thread.currentThread().isInterrupted()) {
+                boolean alive;
+                try {
+                    alive = parentAlive.getAsBoolean();
+                } catch (Throwable dropped) {
+                    return; // probe is broken; stdin-EOF path still guards the worker
+                }
+                // Skip the very first check: a just-snapshotted parent is (briefly) alive, and a
+                // stale/unknown pid should not insta-kill the worker before serve() gets going.
+                if (!firstCheck.compareAndSet(true, false) && !alive) {
+                    log.warn("Plugin worker parent process exited; watchdog shutting down worker");
+                    exitWorker(0);
+                    return;
+                }
+                try {
+                    Thread.sleep(TimeUnit.SECONDS.toMillis(PARENT_WATCHDOG_INTERVAL_SECONDS));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }, "fengyu-worker-parent-watchdog");
+        t.setDaemon(true);
+        t.start();
+        return t;
+    }
+
+    /**
+     * Default parent-liveness probe: snapshots the parent {@link ProcessHandle} at first poll and
+     * reports whether it is still alive. Returns a probe that always says {@code true} (disabling
+     * the auxiliary watchdog) when the parent cannot be resolved — the stdin-EOF path still covers
+     * the worker.
+     */
+    private static BooleanSupplier defaultParentLivenessProbe() {
+        return new BooleanSupplier() {
+            private volatile ProcessHandle parent;
+            @Override public boolean getAsBoolean() {
+                ProcessHandle p = parent;
+                if (p == null) {
+                    p = ProcessHandle.current().parent().orElse(null);
+                    parent = p;
+                }
+                return p == null || p.isAlive();
+            }
+        };
+    }
+
+    /**
+     * Replace the JVM-exit handler. Production leaves {@link System#exit(int)} in place; tests pass
+     * a recorder (e.g. an {@link java.util.concurrent.atomic.AtomicInteger}) so the worker can be
+     * driven to its exit path without halting the test JVM.
+     *
+     * @return this worker, for chaining off the constructor
+     */
+    public JsonRpcWorker withExitHandler(java.util.function.IntConsumer exitHandler) {
+        this.exitHandler = java.util.Objects.requireNonNull(exitHandler);
+        return this;
+    }
+
+    /** Indirection so tests can swap out {@code System.exit} (final, otherwise un-mockable). */
+    void exitWorker(int code) {
+        exitHandler.accept(code);
     }
 
     public void run(InputStream input, OutputStream output) throws Exception {

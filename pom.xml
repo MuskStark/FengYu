@@ -40,11 +40,13 @@
         <lombok.version>1.18.42</lombok.version>
         <!-- The Plugin Worker SDK is independently versioned (1.1.0) and published
              to GitHub Packages for external plugin developers. It stays in the
-             reactor so local builds install it without a token. 1.1.0 adds the
-             RpcTransport abstraction (StdioTransport + the socket-transport contract
-             fengyu-plugin-devkit implements), so the same dispatch loop serves
-             production stdio and IDE loopback-TCP debugging. -->
-        <fengyu.plugin.sdk.version>1.1.0</fengyu.plugin.sdk.version>
+             reactor so local builds install it without a token. 1.2.0 adds a
+             parent-death watchdog (stdin EOF + parent-process liveness) to the
+             worker run() entry point so workers never outlive their host.
+             1.1.0 added the RpcTransport abstraction (StdioTransport + the
+             socket-transport contract fengyu-plugin-devkit implements), so the same
+             dispatch loop serves production stdio and IDE loopback-TCP debugging. -->
+        <fengyu.plugin.sdk.version>1.2.0</fengyu.plugin.sdk.version>
         <fesod.version>2.0.1-incubating</fesod.version>
         <h2.version>2.4.240</h2.version>
         <simplejavamail.version>8.12.6</simplejavamail.version>
