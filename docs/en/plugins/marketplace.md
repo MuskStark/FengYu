@@ -1,12 +1,31 @@
 ---
 title: Marketplace
-description: The plugin marketplace serves /api/plugin-market — browse the catalog, install three ways (.fyp upload, local path, catalog id), update, enable/disable, and uninstall plugins.
+description: The plugin marketplace serves /api/plugin-market — browse the catalog, install three ways (.fyp upload, local path, catalog id), update, enable/disable, and uninstall plugins. A unified plugin store (/api/plugin-store) also aggregates Claude Code and OpenAI Codex marketplaces.
 lang: en
 ---
 
 # Marketplace
 
 The marketplace is the host's plugin registry. It exposes `/api/plugin-market` for browsing the catalog and managing the install lifecycle of every plugin — official and third-party alike. All lifecycle operations (install, update, enable, disable, uninstall) go through these endpoints; `POST /upload` is the install path for a built `.fyp` (used by the marketplace UI's upload button).
+
+## Unified plugin store (Claude / Codex / FengYu)
+
+> Since 4.0.0-alpha.7. Alongside the FengYu marketplace above, the **Stores** tab subscribes to
+> third-party **Claude Code** and **OpenAI Codex** marketplace catalogs and merges them into one
+> browsable, source-badged grid.
+
+- **Sources.** Add/remove/refresh marketplace sources under `/api/plugin-store/sources`. The FengYu
+  source is seeded by default; Claude sources serve `.claude-plugin/marketplace.json` and Codex
+  sources serve `.agents/plugins/marketplace.json`.
+- **Install.** Claude/Codex plugins are installed by cloning their git source (JGit). Claude
+  `url`/`git-subdir` sources verify a pinned sha; Codex `local` sources record the resolved HEAD
+  sha in the install record so every install carries an auditable fingerprint.
+- **Security.** Catalog names are slugified to a single safe path segment before they reach the
+  filesystem, clone URLs are restricted to `https`/`http`/`file`, skill extraction skips symlinks,
+  and catalog responses are capped at 16 MiB. Third-party catalog content is treated as untrusted.
+- **Windows unsandboxed toggle.** On platforms without a native process sandbox, a Settings row
+  (gated behind a confirmation dialog, defaulting off) lets you opt plugin workers into the
+  `unrestricted()` channel. See the changelog for the alpha.7 security hardening.
 
 ## Official plugins
 
