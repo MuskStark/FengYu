@@ -35,7 +35,10 @@ export const usePluginStore = defineStore('pluginStore', () => {
     loading.value = true
     error.value = null
     try {
-      catalog.value = await api.getUnifiedCatalog(filter.value)
+      // Catalog data arrives from third-party marketplaces and may be malformed; coerce the array
+      // fields to [] so the template's v-for/.length can never throw on null/string values (M-7).
+      const raw = await api.getUnifiedCatalog(filter.value)
+      catalog.value = (raw ?? []).map(normalizeEntry)
     } catch (e) {
       error.value = errMsg(e)
     } finally {
@@ -70,9 +73,12 @@ export const usePluginStore = defineStore('pluginStore', () => {
 
   async function install(uid: string) {
     busy.value = uid
+    error.value = null
     try {
       await api.installUnified(uid)
       await Promise.all([loadCatalog(), loadHistory()])
+    } catch (e) {
+      error.value = errMsg(e)
     } finally {
       busy.value = null
     }
@@ -80,9 +86,12 @@ export const usePluginStore = defineStore('pluginStore', () => {
 
   async function update(uid: string) {
     busy.value = uid
+    error.value = null
     try {
       await api.updateUnified(uid)
       await Promise.all([loadCatalog(), loadHistory()])
+    } catch (e) {
+      error.value = errMsg(e)
     } finally {
       busy.value = null
     }
@@ -90,9 +99,12 @@ export const usePluginStore = defineStore('pluginStore', () => {
 
   async function uninstall(uid: string) {
     busy.value = uid
+    error.value = null
     try {
       await api.uninstallUnified(uid)
       await Promise.all([loadCatalog(), loadHistory()])
+    } catch (e) {
+      error.value = errMsg(e)
     } finally {
       busy.value = null
     }
@@ -109,6 +121,20 @@ export const usePluginStore = defineStore('pluginStore', () => {
 
   function errMsg(e: unknown): string {
     return e instanceof Error ? e.message : String(e)
+  }
+
+  /** Coerces the array fields of a (possibly malformed) catalog entry to real arrays (M-7). */
+  function normalizeEntry(e: UnifiedCatalogEntry): UnifiedCatalogEntry {
+    return {
+      ...e,
+      keywords: asArray(e.keywords),
+      declaredSkills: asArray(e.declaredSkills),
+      mcpServers: asArray(e.mcpServers),
+    }
+  }
+
+  function asArray(v: unknown): string[] {
+    return Array.isArray(v) ? v : []
   }
 
   return {

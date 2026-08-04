@@ -76,6 +76,18 @@ const storeDetailRecord = computed(() =>
     : null,
 )
 
+/**
+ * Homepage URL only if it uses a safe scheme. Catalog fields are attacker-controlled for
+ * third-party sources, so binding `homepage` straight to :href would allow `javascript:` URIs
+ * to execute in the app origin (which carries the auth token). Returns undefined for unsafe
+ * schemes so the Homepage button is hidden.
+ */
+const safeHomepage = computed(() => {
+  const url = storeDetail.value?.homepage
+  if (!url) return undefined
+  return /^(https?:|mailto:)/i.test(url) ? url : undefined
+})
+
 async function loadStore() {
   await Promise.all([storeView.loadSources(), storeView.loadCatalog(), storeView.loadHistory()])
 }
@@ -353,7 +365,7 @@ onMounted(async () => {
                 :disabled="storeView.busy === e.uid"
                 @click="storeView.install(e.uid)"
               >
-                <span v-if="storeView.busy === e.uid" class="cx-spin" />{{ t('market.store.install') }}
+                <span v-if="storeView.busy === e.uid" class="cx-spin" />{{ storeView.busy === e.uid ? t('market.store.cloneInProgress') : t('market.store.install') }}
               </button>
               <button
                 v-else-if="e.updateAvailable"
@@ -547,9 +559,9 @@ onMounted(async () => {
           </div>
         </v-card-text>
         <v-card-actions>
-          <v-btn v-if="storeDetail.homepage" :href="storeDetail.homepage" target="_blank">Homepage</v-btn>
+          <v-btn v-if="safeHomepage" :href="safeHomepage" target="_blank" rel="noopener noreferrer">{{ t('market.store.homepage') }}</v-btn>
           <v-spacer />
-          <v-btn @click="storeDetail = null">Close</v-btn>
+          <v-btn @click="storeDetail = null">{{ t('market.store.close') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-navigation-drawer>
