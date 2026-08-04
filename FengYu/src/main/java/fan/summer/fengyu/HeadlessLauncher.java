@@ -1,5 +1,6 @@
 package fan.summer.fengyu;
 
+import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
 import fan.summer.fengyu.runtime.RuntimePaths;
 import fan.summer.fengyu.setup.DataSourceConfig;
 import fan.summer.fengyu.setup.DataSourceConfigService;
@@ -8,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.web.server.PortInUseException;
+import org.springframework.context.ConfigurableApplicationContext;
 
 import java.net.BindException;
 import java.nio.file.Files;
@@ -148,7 +150,41 @@ public final class HeadlessLauncher {
             // APP mode marker — DataSourceAutoConfig is conditional on it.
             System.setProperty("fengyu.mode", "app");
         }
-        builder.run(springArgs.toArray(new String[0]));
+        ConfigurableApplicationContext context = builder.run(springArgs.toArray(new String[0]));
+        // Plugin workers are out-of-process JVMs that the OS does not auto-reap on macOS/Windows
+        // (Linux bwrap --die-with-parent handles it). Their teardown lives behind
+        // PluginProcessManager.@PreDestroy, which Spring's own shutdown hook runs on graceful exit.
+        // This explicit hook is a belt-and-braces backstop: if the JVM is signaled mid-shutdown and
+        // Spring's hook does not complete, this one still reaches PluginProcessManager.close() and
+        // destroys every tracked worker so no orphaned worker JVM survives the host (orphaned
+        // workers hold embedded-DB file locks and block database deletion). SETUP mode has no plugin
+        // beans, so the hook is APP-mode only.
+        if (configured) {
+            registerWorkerShutdownHook(context);
+        }
+    }
+
+    /**
+     * Install a JVM-level shutdown hook that closes the Spring context (running every @PreDestroy,
+     * including {@link PluginProcessManager#close()}) and then re-asserts worker teardown directly
+     * against the manager. {@code close()} is idempotent — running it twice is safe. The hook is a
+     * daemon thread so it never blocks JVM exit on its own.
+     */
+    private static void registerWorkerShutdownHook(ConfigurableApplicationContext context) {
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                // Graceful path first: triggers @PreDestroy across all beans.
+                if (context.isActive()) context.close();
+            } catch (Exception e) {
+                log.warn("Spring context close during shutdown hook failed: {}", e.getMessage());
+            }
+            // Direct backstop: even if context.close() threw or was incomplete, kill the workers.
+            try {
+                context.getBean(PluginProcessManager.class).close();
+            } catch (Exception e) {
+                log.debug("PluginProcessManager.close() during shutdown hook unavailable: {}", e.getMessage());
+            }
+        }, "fengyu-worker-shutdown"));
     }
 
     /**

@@ -7,6 +7,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import static org.junit.jupiter.api.Assertions.*;
 
 class JsonRpcWorkerTest {
@@ -39,6 +41,8 @@ class JsonRpcWorkerTest {
                     System.out.println("library-noise");
                     return java.util.Map.of("ok", true);
                 })
+                // run() forces a JVM exit once stdin EOFs; stub it so the test JVM survives.
+                .withExitHandler(c -> {})
                 .run();
 
             assertSame(protocolStream, System.out);
@@ -83,7 +87,8 @@ class JsonRpcWorkerTest {
             });
             System.setOut(protocolStream);
 
-            IOException failure = assertThrows(IOException.class, () -> new JsonRpcWorker().run());
+            IOException failure = assertThrows(IOException.class,
+                () -> new JsonRpcWorker().withExitHandler(c -> {}).run());
 
             assertEquals("read failed", failure.getMessage());
             assertSame(protocolStream, System.out);
@@ -176,5 +181,80 @@ class JsonRpcWorkerTest {
             "request frame (with param secrets) leaked to stderr. stderr was:\n" + stderr);
         assertFalse(stderr.contains("\"params\""),
             "raw params object leaked to stderr. stderr was:\n" + stderr);
+    }
+
+    // ── 1.2.0 parent-death watchdog ──────────────────────────────────────────
+
+    /**
+     * Primary watchdog path: when stdin reaches EOF the dispatch loop returns cleanly, and run()
+     * must force a JVM exit so a worker with lingering non-daemon threads cannot survive its host.
+     */
+    @Test void runExitsJvmOnStdinEof() throws Exception {
+        InputStream originalIn = System.in;
+        PrintStream originalOut = System.out;
+        AtomicInteger exitCalls = new AtomicInteger();
+        String input = "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"ping\",\"params\":{}}\n";
+        try {
+            System.setIn(new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)));
+            System.setOut(new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8));
+            new JsonRpcWorker()
+                .on("ping", p -> java.util.Map.of("ok", true))
+                .withExitHandler(c -> exitCalls.incrementAndGet())
+                // Always-alive parent so the auxiliary watchdog never fires; this isolates the EOF path.
+                .run((BooleanSupplier) () -> true);
+        } finally {
+            System.setIn(originalIn);
+            System.setOut(originalOut);
+        }
+        assertEquals(1, exitCalls.get(),
+            "run() must call exitWorker(0) once stdin EOF ends the dispatch loop");
+    }
+
+    /**
+     * Auxiliary watchdog path: if the parent process disappears while serve() is still blocked on
+     * stdin, the parent-liveness thread must exit the worker. Here stdin never EOFs (it blocks
+     * forever), so only the watchdog can end the worker. The probe reports the parent as gone after
+     * the first poll; exitHandler is intercepted so the test JVM survives.
+     *
+     * <p>run() runs on a background thread because production exitHandler (System.exit) would halt
+     * the JVM; with it intercepted, serve() stays blocked and run() never returns. We assert the
+     * watchdog fired by polling the captured exit counter, then interrupt to unwind.
+     */
+    @Test void runExitsJvmWhenParentProcessDies() throws Exception {
+        InputStream originalIn = System.in;
+        PrintStream originalOut = System.out;
+        AtomicInteger exitCalls = new AtomicInteger();
+        Thread runner = new Thread(() -> {
+            try {
+                new JsonRpcWorker()
+                    .withExitHandler(c -> exitCalls.incrementAndGet())
+                    .run((BooleanSupplier) () -> false);
+            } catch (Exception ignored) {}
+        }, "watchdog-test-runner");
+        try {
+            // A stdin that never yields a frame: keeps serve() blocked so the EOF path cannot fire.
+            System.setIn(new InputStream() {
+                @Override public int read() {
+                    try { Thread.sleep(60_000); } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    return -1;
+                }
+            });
+            System.setOut(new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8));
+            runner.setDaemon(true);
+            runner.start();
+            // The probe always reports "dead"; the watchdog skips the first poll then fires exit.
+            long deadline = System.currentTimeMillis() + 5_000;
+            while (exitCalls.get() < 1 && System.currentTimeMillis() < deadline) {
+                Thread.sleep(20);
+            }
+            assertTrue(exitCalls.get() >= 1,
+                "auxiliary parent-death watchdog should call exitHandler within 5s");
+        } finally {
+            runner.interrupt();
+            System.setIn(originalIn);
+            System.setOut(originalOut);
+        }
     }
 }

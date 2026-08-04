@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import treeKill from 'tree-kill'
 import { resolveJava } from './runtime-layout-helpers'
 import type { RuntimeLayout } from './runtime-layout'
 import { parseFengyuPort } from './handshake'
@@ -28,8 +29,20 @@ export interface SpawnedBackend {
  * Wrap a Java child with graceful shutdown followed by a hard-kill fallback.
  * ChildProcess.killed only records that kill() was called; it does not mean the
  * process exited, so liveness must be checked through exitCode/signalCode.
+ *
+ * <p>Kills the whole process tree (the backend + its plugin-worker grandchildren) instead of just
+ * the backend PID: plugin workers are out-of-process JVMs spawned by the backend, and on
+ * macOS/Windows the OS does not auto-reap them when the backend dies. Without tree-kill the worker
+ * JVMs survive and keep holding embedded-database file locks.
+ *
+ * @param treeKillFn injectable so tests can assert it is invoked; production passes the real
+ *                   `tree-kill` module (cross-platform: `pgrep -P` on POSIX, `taskkill /T` on Windows).
  */
-export function createBackendChild(proc: ChildProcess, forceKillDelayMs = 5_000): BackendChild {
+export function createBackendChild(
+  proc: ChildProcess,
+  forceKillDelayMs = 5_000,
+  treeKillFn: (pid: number, signal: string) => void = (pid, signal) => treeKill(pid, signal),
+): BackendChild {
   let stopping = false
   let forceKillTimer: NodeJS.Timeout | undefined
 
@@ -41,11 +54,16 @@ export function createBackendChild(proc: ChildProcess, forceKillDelayMs = 5_000)
     process: proc,
     kill() {
       if (stopping || proc.exitCode !== null || proc.signalCode !== null) return
+      // No pid means spawn never yielded a child (or it is already gone); nothing to signal.
+      if (proc.pid === undefined) return
       stopping = true
-      proc.kill('SIGTERM')
+      const pid = proc.pid
+      // Signal the entire backend process tree (backend JVM + worker grandchildren) at once so no
+      // plugin worker outlives the host. A single-PID proc.kill('SIGTERM') here would orphan them.
+      treeKillFn(pid, 'SIGTERM')
       forceKillTimer = setTimeout(() => {
         if (proc.exitCode === null && proc.signalCode === null) {
-          proc.kill('SIGKILL')
+          treeKillFn(pid, 'SIGKILL')
         }
       }, forceKillDelayMs)
       forceKillTimer.unref()
