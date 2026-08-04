@@ -19,7 +19,7 @@ cp "$PACKAGE" "$OFFICIAL_DIR/"
 DB_FILE="$WORK/.fengyu/database/fengyu"
 cat > "$WORK/.fengyu/config/datasource.properties" <<EOF
 db.type=h2
-db.url=jdbc:h2:file:${DB_FILE};AUTO_SERVER=TRUE
+db.url=jdbc:h2:file:${DB_FILE}
 db.driver=org.h2.Driver
 db.dialect=org.hibernate.dialect.H2Dialect
 db.file.path=${DB_FILE}
