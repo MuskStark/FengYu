@@ -5,20 +5,26 @@
   <!--
       FengYu Plugin Worker SDK — an INDEPENDENTLY versioned, self-contained POM.
       It does NOT inherit the FengYu parent reactor (which tracks ${revision}).
-      Version 1.1.0 is the publishable contract external plugin developers
+      Version 1.2.0 is the publishable contract external plugin developers
       resolve from GitHub Packages. Repository-internal consumers (OfficialPlugins,
       FengYu host) still build it through the root reactor <module>, so a local
-      `./mvnw install` produces 1.1.0 in the local .m2 with no token required.
+      `./mvnw install` produces 1.2.0 in the local .m2 with no token required.
 
       1.1.0 adds the RpcTransport abstraction (StdioTransport + the contract a
       loopback-TCP transport in fengyu-plugin-devkit implements), letting the same
       JsonRpcWorker dispatch loop be driven from stdin/stdout (production) or a
       loopback socket (IDE debugging). run() / run(InputStream, OutputStream) are
       unchanged in behaviour; serve(RpcTransport) is the new shared entry point.
+
+      1.2.0 adds a parent-death watchdog to the production run() entry point so a
+      worker can never outlive its host: stdin EOF (primary) and a parent-process
+      liveness poll (auxiliary) both converge on a guaranteed JVM exit, releasing
+      file locks a worker's non-daemon threads (DB pools, executors) would
+      otherwise hold. run(InputStream, OutputStream) is unchanged.
   -->
   <groupId>fan.summer.fengyu.sdk</groupId>
   <artifactId>fengyu-plugin-sdk</artifactId>
-  <version>1.1.0</version>
+  <version>1.2.0</version>
   <name>FengYu Plugin Worker SDK</name>
   <description>Dependency-light JSON-RPC 2.0 worker runtime for FengYu plugin child processes.</description>
 

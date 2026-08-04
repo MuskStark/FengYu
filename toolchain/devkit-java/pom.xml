@@ -13,12 +13,12 @@
       (PluginDevMain) lives under src/test/java, so the devkit NEVER ships inside a shaded
       production worker JAR.
 
-      Version 1.1.0 is the publishable contract published to GitHub Packages alongside the SDK;
+      Version 1.2.0 is the publishable contract published to GitHub Packages alongside the SDK;
       it is kept in lockstep with fengyu-plugin-sdk by the plugin-tooling-release skill.
   -->
   <groupId>fan.summer.fengyu.sdk</groupId>
   <artifactId>fengyu-plugin-devkit</artifactId>
-  <version>1.1.0</version>
+  <version>1.2.0</version>
   <name>FengYu Plugin DevKit</name>
   <description>Loopback-TCP JSON-RPC dev server for debugging FengYu plugin workers from an IDE.</description>
 
@@ -34,7 +34,7 @@
   <properties>
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <fengyu.plugin.sdk.version>1.1.0</fengyu.plugin.sdk.version>
+    <fengyu.plugin.sdk.version>1.2.0</fengyu.plugin.sdk.version>
     <junit.version>5.10.2</junit.version>
     <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
     <maven.surefire.plugin.version>3.2.5</maven.surefire.plugin.version>

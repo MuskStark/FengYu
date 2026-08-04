@@ -6,7 +6,22 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
-_Nothing yet._
+### 🐛 Fixed
+- **主程序退出后不再残留 plugin worker 进程。** Plugin worker 是 host backend spawn 的独立 JVM；此前
+  host 退出时 worker 常未被回收（macOS/Windows 上没有 Linux `bwrap --die-with-parent` 的等价机制，且
+  Electron 只对 backend 直系 PID 发信号、无 tree-kill），残留的 worker 会持有嵌入式数据库（H2/SQLite）
+  的排他文件锁，导致数据库文件无法删除。本次以四层互补防御修复：
+  - **Worker SDK 看门狗**（`fengyu-plugin-sdk` 1.1.0 → 1.2.0）：生产 `run()` 入口新增 stdin-EOF（主）
+    与父进程存活轮询（辅）双看门狗，host 关闭/崩溃时 worker 自动 `System.exit`，确保即便 worker 内
+    有非守护线程池（HikariCP 等）也会退出并释放文件锁。
+  - **Host 显式 shutdown hook**：`HeadlessLauncher` 在 APP 模式注册独立于 Spring 的 JVM shutdown hook，
+    直接调用 `PluginProcessManager.close()`，不再单纯依赖 Spring 默认 hook 的时序。
+  - **孙进程兜底**：`PluginProcessManager.Worker.close()` 在销毁 worker 后递归 `destroyForcibly` 其后代
+    进程（如 offlinepython 的 pip 子进程），避免孤儿化。
+  - **Electron tree-kill**：桌面 shell 退出时新增 `tree-kill` 依赖，对整棵 backend 进程树（含 worker
+    孙进程）发 SIGTERM→SIGKILL，作为 host 崩溃时的兜底。
+  - `scripts/e2e-smoke.sh` 与 `scripts/offlinepython-e2e-smoke.sh` 的退出 trap 同步加上 `pkill -P`
+    清理 worker 子进程树。
 
 ## [4.0.0-alpha.8] — 2026-08-04
 

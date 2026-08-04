@@ -67,6 +67,28 @@ Every invoke is bounded by a timeout. The host (`PluginProcessManager`) waits th
 
 All declared values are clamped to `[1, 600]` seconds (the cap protects against a malicious manifest pinning a worker indefinitely). Declare a longer timeout only for methods that genuinely need it, and prefer job mode (below) when the work is unbounded.
 
+## Worker lifecycle and host exit
+
+A worker is an out-of-process JVM that must never outlive its host. Since SDK 1.2.0 the production
+`run()` entry point installs two complementary watchdogs so a worker terminates the moment the host
+goes away, regardless of how the host exits:
+
+- **stdin EOF (primary).** When the host closes the worker's stdin pipe — which the OS does
+  automatically when the host JVM dies, gracefully or by signal — the dispatch loop returns and the
+  worker calls `System.exit(0)`.
+- **Parent-process liveness (auxiliary).** A daemon thread polls the snapshot of the parent
+  `ProcessHandle`; if the parent disappears while the dispatch loop is still blocked on stdin, the
+  worker exits. This covers the rare case where a pipe is held open by an intermediate launcher.
+
+Both paths converge on an explicit `System.exit(0)` so that non-daemon threads a plugin may have
+created (a HikariCP pool, a scheduled executor) cannot keep the JVM alive and hold embedded-database
+file locks after the host has gone. The host also installs its own JVM shutdown hook that calls
+`PluginProcessManager.close()` — which `destroy()`/`destroyForcibly()` every tracked worker and
+recursively kills worker descendants (e.g. a `pip` subprocess) — as a belt-and-braces backstop
+alongside Spring's `@PreDestroy`. The desktop shell tree-kills the entire backend process tree on
+quit. On Linux, `bwrap --die-with-parent --new-session` provides the same guarantee at the kernel
+level; the watchdog + tree-kill layers extend it to macOS and Windows.
+
 ## Long tasks (job mode)
 
 Any operation that may exceed its declared timeout must be split into a **start / status / cancel** triple rather than a single blocking method. The launcher returns a `jobId` immediately; the UI or AI polls `*_status` with a cursor to drain streamed logs; `*_cancel` aborts. This is the only supported pattern for unbounded work — `pip download`, large-workbook splits, batch sends, etc.
