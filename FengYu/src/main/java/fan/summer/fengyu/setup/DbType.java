@@ -13,7 +13,7 @@ package fan.summer.fengyu.setup;
  */
 public enum DbType {
     H2("org.h2.Driver", "org.hibernate.dialect.H2Dialect",
-            "jdbc:h2:file:{path};AUTO_SERVER=TRUE", true),
+            "jdbc:h2:file:{path}", true),
     SQLITE("org.sqlite.JDBC", "org.hibernate.community.dialect.SQLiteDialect",
             "jdbc:sqlite:{path}", true),
     MYSQL("com.mysql.cj.jdbc.Driver", "org.hibernate.dialect.MySQLDialect",
