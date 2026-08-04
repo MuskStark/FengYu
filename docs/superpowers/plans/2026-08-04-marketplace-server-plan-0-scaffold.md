@@ -8,6 +8,17 @@
 
 **Tech Stack:** Spring Boot 4.1.0、Spring Framework 7.0.8、Spring Security 7（Boot 4 自带，本计划只引入 starter、不写过滤链——过滤链在计划 1）、Java 21、Maven（含 `spring-boot-maven-plugin`）、Flyway 11、H2（默认 dev DB）/ MySQL / PostgreSQL / SQLite 驱动、JUnit 5 + Spring Boot Test、`com.networknt:json-schema-validator`（计划 2 用，本计划先引入）。
 
+> ## ⚠️ 执行后注记（2026-08-04，计划 0 已完成 + 最终评审通过）
+>
+> 计划 0 已在 `fengyu-marketplace-server` 仓库实现完成（tag `scaffold-v0.1`，20/20 测试通过，最终评审通过）。执行中发现的 **Boot 4.1 实际栈与计划/规格假设的差异**，记录在此供计划 1–4 参考（详见新仓库 `.superpowers/sdd/progress.md` 的 FORWARD-LOOKING FINDINGS）：
+>
+> 1. **Jackson 3（非 2）**：Boot 4.1 用 `tools.jackson.core:3.1.4`。本计划任务的 `JacksonConfig` 代码（`JavaTimeModule`/`WRITE_DATES_AS_TIMESTAMPS`）**不可编译**——实现时已改为 Jackson 3（java.time ISO 内置于 core，无需 module）。**`@JsonInclude` 等注解仍来自 `com.fasterxml.jackson.annotation`（Jackson 3 databind 内部用 2.21 的 annotations）**。计划 1–4 凡用 ObjectMapper 一律走 `tools.jackson.databind.*`。
+> 2. **Spring Security 7 多链 fail-fast**：`UnreachableFilterChainException` 拒绝多个 `anyRequest()` SecurityFilterChain bean。测试态安全配置必须用 `securityMatcher("/path/**")` + `@Order(0)`（见新仓库 `TestSecurityConfig.java`）。
+> 3. **`TestRestTemplate` 已移除**（Boot 4.1 迁到独立 artifact）。测试用 `RestTestClient.bindToServer()`（spring-test，真实 HTTP socket；见 `MarketplaceApplicationTests.java`）。
+> 4. **计划 1 硬性验收（来自最终评审）**：`GlobalExceptionHandler` 只覆盖控制器内异常；Spring Security 自己的 401/403 当前返回**空 body**（过滤链在 DispatcherServlet 之前）。§3.2 的「统一错误契约」要求 401/403 也带 `code` 字段——计划 1 必须接自定义 `AuthenticationEntryPoint` + `AccessDeniedHandler` 输出 `ApiError`，并加 `SecurityFilterChainTest` 断言 `UNAUTHORIZED`/`TOKEN_EXPIRED`/`FORBIDDEN` 三种 code。
+> 5. **JDK**：构建必须 `JAVA_HOME` 指向 JDK 21（系统默认可能是 25）。README 已写便携发现命令。
+> 6. **计划文档自身滞后**：下面任务的若干代码片段（`TestRestTemplate`、Jackson 2 API）是 Boot 3.x 时代的写法；实现时已按上面 1–3 调整。后续计划作者请直接按 Boot 4.1 实际栈写。
+
 ## 全局约束（所有任务隐含遵守）
 
 - **独立仓库**：本计划在新仓库 `fengyu-marketplace-server/` 执行，**不**在 FengYu 主程序仓库内。所有路径都以新仓库根为基准。
