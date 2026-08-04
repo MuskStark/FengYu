@@ -48,7 +48,7 @@
 以下假设由设计者在用户澄清基础上填入。审阅时可推翻：
 
 - **A-1 仓库形态**: 全新独立 Git 仓库，独立版本线 `v1.0.0` 起，**不**进 FengYu reactor。与 FengYu 主程序通过 HTTP + 共享 JSON 契约耦合，**不**共享 Java 模块。
-- **A-2 技术栈**: Spring Boot 3.x + Java 21（与主程序一致），**Spring Security 6**（全服务认证/授权/CSRF/CORS 骨干，见 §3.2），JPA/Hibernate，多 DB（H2/SQLite/MySQL/PostgreSQL，与主程序 `DbType` 对齐）。Maven。
+- **A-2 技术栈**: Spring Boot 4.1.0 + Java 21（与主程序一致，见 `pom.xml` 的 `spring-boot.version=4.1.0` / `spring-framework.version=7.0.8`），**Spring Security 7**（Boot 4 自带，全服务认证/授权/CSRF/CORS 骨干，见 §3.2），Spring AI 2.0.0（如需 MCP 客户端复用），JPA/Hibernate，多 DB（H2/SQLite/MySQL/PostgreSQL，与主程序 `DbType` 对齐），**Flyway**（schema 迁移，替代 ddl-auto）。Maven。
 - **A-3 认证回落**: 主程序访问认证中心失败（网络/宕机）→ 回落本地虚拟用户（`LOCAL_VIRTUAL_USER_ID=1`）。这是**优雅降级**，不是双写。
 - **A-4 上传物形态**: FengYu 作者上传**完整 `.fyp` zip + `.sha256` sidecar**（GNU `sha256sum` 格式）；服务端不重新构建。
 - **A-5 聚合范围**: v1 聚合 FengYu catalog（自有）+ Claude 官方市场 + Codex 官方市场；未来生态以新增 adapter 扩展。
@@ -63,7 +63,7 @@
 
 ```
 fengyu-marketplace-server/                   （新仓库根）
-├── pom.xml                                   （Spring Boot 3 + Java 21；独立版本线）
+├── pom.xml                                   （Spring Boot 4.1 + Java 21；独立版本线）
 ├── src/main/java/fan/summer/marketplace/
 │   ├── MarketplaceApplication.java           （main 类）
 │   ├── config/                               （Spring 配置：安全、CORS、Jackson、多 DB）
@@ -175,7 +175,7 @@ fengyu-marketplace-server/                   （新仓库根）
 
 **安全（Spring Security 作为全服务统一防护骨干）**：
 
-本服务用 **Spring Security 6** 统管认证 + 授权 + CSRF + CORS + 会话，**不自造过滤器替代**（与主程序的 `TokenAuthFilter` 不同——主程序是 loopback 单用户，本服务面向公网/多用户，必须用成熟框架）。
+本服务用 **Spring Security 7**（Spring Boot 4.1 自带）统管认证 + 授权 + CSRF + CORS + 会话，**不自造过滤器替代**（与主程序的 `TokenAuthFilter` 不同——主程序是 loopback 单用户，本服务面向公网/多用户，必须用成熟框架）。
 
 - **`SecurityFilterChain`（唯一一条，`@Order(SecurityProperties.BASIC_AUTH_ORDER)`）**：
   - **无状态**：`SessionCreationPolicy.STATELESS`（纯 JWT，不建 HTTP session）。
