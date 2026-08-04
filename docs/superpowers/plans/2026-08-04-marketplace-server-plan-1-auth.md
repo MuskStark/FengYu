@@ -8,6 +8,20 @@
 
 **Tech Stack:** Spring Boot 4.1.0、Spring Security 7.1.0（已确认 classpath）、Jackson 3（`tools.jackson`）、JJWT（**本计划新增依赖**，见任务 1）、JPA/Hibernate、Flyway（**本计划首次写迁移**）、Java 21、BCrypt（Spring Security 自带 `BCryptPasswordEncoder`）、JUnit 5 + Spring Boot Test + `RestTestClient`（Boot 4.1 已无 `TestRestTemplate`）。
 
+> ## ⚠️ 执行后注记（2026-08-05，计划 1 已完成 + 最终评审通过 With fixes）
+>
+> 计划 1 已在 `fengyu-marketplace-server` 仓库 `main` 实现（HEAD `a132ff6`，**55/55 测试通过**，最终评审通过）。执行中发现的实际栈差异（除计划 0 已记录的 Jackson 3 / Security 7 / TestRestTemplate 移除之外）：
+>
+> 1. **Flyway 自动配置模块化**：Boot 4.1 把 `FlywayAutoConfiguration` 从 `spring-boot-autoconfigure` 移到独立 `spring-boot-flyway` starter（包 `org.springframework.boot.fengyu.autoconfigure`？实为 `org.springframework.boot.flyway.autoconfigure`）。**裸 `flyway-core` 不再触发自动迁移**——计划 0 脚手架的 Flyway 一直是死的（Plan 0 因无实体未暴露）。任务 2 改用 `spring-boot-flyway` starter；**但该 starter 只传递 `flyway-core`，不含 DB 专用模块**——`flyway-database-postgresql` 被误丢，已补回（否则 Postgres 生产会 `FlywayException`）。
+> 2. **Hibernate 6 严格 validate + 类型规则**：`ddl-auto: validate` 把实体列映射与迁移列类型严格比对——`CHAR(64)` 列必须 `columnDefinition="CHAR(64)"`（裸 String→VARCHAR 校验失败）；JPQL `CURRENT_TIMESTAMP` 解析为 `java.sql.Timestamp`，不能赋给 `Instant` 属性（改用绑定 `:now Instant` 参数）；`@Modifying` 批量 UPDATE 后持久化上下文陈旧（需 `flushAutomatically+clearAutomatically`）。
+> 3. **H2 命名内存 DB 是 JVM 单例**：`jdbc:h2:mem:market-test;DB_CLOSE_DELAY=-1` 跨 Spring 上下文共享（MOCK + RANDOM_PORT）。`@DirtiesContext` 不能隔离 HTTP 提交的数据——AuthControllerTest 注册的 "alice" 会泄漏到 AuthServiceTest。修复：`@AfterEach` 清理 + 去 `@DirtiesContext`（移除 `DB_CLOSE_DELAY` 实测无效）。
+> 4. **Spring Security 7 bean 循环依赖**：`@Component` filter + 在 `MarketSecurityConfig` 构造注入 filter + 同类 `jwtService` `@Bean` → `BeanCurrentlyInCreationException`。解法：filter 改 `filterChain(...)` 方法参数注入（构造注入留 leaf handler）。
+> 5. **`@AuthenticationPrincipal` 类型匹配**：`MarketUserDetails.getPrincipal()` 必须返回 `this`（不是 username 字符串），否则 `@AuthenticationPrincipal MarketUserDetails` 注入失败。补 `getName()` 返 username。
+> 6. **`UserDetailsServiceAutoConfiguration` 仍激活**：无 `UserDetailsService`/`AuthenticationManager` bean 时 Boot 自动建内存用户并 WARN（即使删了 httpBasic）。无害死重，可 `@SpringBootApplication(exclude=...)` 抑制（Minor，未修）。
+> 7. **计划与实际 API 差距模式**：计划文档的代码片段是按 API 形态写的，未在 Hibernate 6 / Security 7 实际编译过——执行中每任务都发现 1-5 个此类偏差（protected→public ctor、repo.clear()→em.clear()、Mockito eq()、ApiError handler 自建 ObjectMapper 等），均在 SDD 评审循环中正确修复。**计划 2-4 作者请预期同类偏差**，直接按 Boot 4.1 实际栈写。
+>
+> **遗留（最终评审 ACCEPT+TRACK，非阻塞）**：login 区分 disabled(403) vs 错密码(422) 在密码校验前 → 用户枚举向量（仅 disabled 账户、需知用户名；§3.2 spec 设计行为；有 ~3 行可选修复：先验密码再判 disabled，留作后续硬化工单）。
+
 ## 全局约束（所有任务隐含遵守）
 
 - **仓库**：在 `fengyu-marketplace-server`（计划 0 已建）的 `main` 分支上继续，**不**新建分支（脚手架期沿用 main；正式分支策略由 release 流程决定）。
