@@ -130,7 +130,9 @@
       "pinnedSha": "Pinned SHA",
       "mcpWarning": "Declares MCP servers — pending runtime support",
       "cloneInProgress": "Cloning & verifying…",
-      "noSources": "No sources subscribed. Add one to browse plugins."
+      "noSources": "No sources subscribed. Add one to browse plugins.",
+      "homepage": "Homepage",
+      "close": "Close"
     }
   },
   "skills": {
