@@ -48,7 +48,7 @@
 以下假设由设计者在用户澄清基础上填入。审阅时可推翻：
 
 - **A-1 仓库形态**: 全新独立 Git 仓库，独立版本线 `v1.0.0` 起，**不**进 FengYu reactor。与 FengYu 主程序通过 HTTP + 共享 JSON 契约耦合，**不**共享 Java 模块。
-- **A-2 技术栈**: Spring Boot 3.x + Java 21（与主程序一致），JPA/Hibernate，多 DB（H2/SQLite/MySQL/PostgreSQL，与主程序 `DbType` 对齐）。Maven。
+- **A-2 技术栈**: Spring Boot 3.x + Java 21（与主程序一致），**Spring Security 6**（全服务认证/授权/CSRF/CORS 骨干，见 §3.2），JPA/Hibernate，多 DB（H2/SQLite/MySQL/PostgreSQL，与主程序 `DbType` 对齐）。Maven。
 - **A-3 认证回落**: 主程序访问认证中心失败（网络/宕机）→ 回落本地虚拟用户（`LOCAL_VIRTUAL_USER_ID=1`）。这是**优雅降级**，不是双写。
 - **A-4 上传物形态**: FengYu 作者上传**完整 `.fyp` zip + `.sha256` sidecar**（GNU `sha256sum` 格式）；服务端不重新构建。
 - **A-5 聚合范围**: v1 聚合 FengYu catalog（自有）+ Claude 官方市场 + Codex 官方市场；未来生态以新增 adapter 扩展。
@@ -173,11 +173,33 @@ fengyu-marketplace-server/                   （新仓库根）
 | PATCH | `/api/auth/me` | 更新 displayName / avatarUrl / 改密码（需旧密码） |
 | GET  | `/api/auth/devices` | 列出活跃设备（label、lastSeen、可单独撤销） |
 
-**安全**：
-- Spring Security + `SecurityFilterChain`：`/api/auth/register|login|refresh` 放行；`/api/admin/**` 要 `ADMIN`；其余要已认证。
-- `JwtAuthenticationFilter`（`@Order` 在 Spring Security 链内）：解析 Bearer JWT → 填充 `MarketUserDetails`（含 roles）→ 方法级 `@PreAuthorize("hasRole('ADMIN')")`。
-- 登录限流：同 IP + 同 username 滑窗（默认 5 次/分钟），失败 5 次锁定 15 分钟。
-- 密码策略：≥8 位，含字母+数字（可配置）。
+**安全（Spring Security 作为全服务统一防护骨干）**：
+
+本服务用 **Spring Security 6** 统管认证 + 授权 + CSRF + CORS + 会话，**不自造过滤器替代**（与主程序的 `TokenAuthFilter` 不同——主程序是 loopback 单用户，本服务面向公网/多用户，必须用成熟框架）。
+
+- **`SecurityFilterChain`（唯一一条，`@Order(SecurityProperties.BASIC_AUTH_ORDER)`）**：
+  - **无状态**：`SessionCreationPolicy.STATELESS`（纯 JWT，不建 HTTP session）。
+  - **CSRF**：`POST`/`PATCH`/`DELETE` 走 double-submit token；但 `/marketplaces/**`（机器订阅的清单文件，纯 GET）和 `/api/auth/*`（token 端点）按需禁用 CSRF。**默认开启**，不图省事全关。
+  - **CORS**：可配置源白名单（`market.cors.allowed-origins`）；自托管前端同源时收紧到同源。
+  - **密码编码**：`PasswordEncoder` = `BCryptPasswordEncoder`（strength 可配）。
+  - **方法级授权**：`@EnableMethodSecurity` → 控制器/服务用 `@PreAuthorize("hasAnyRole('ADMIN')")`、`@PreAuthorize("hasRole('AUTHOR')")`、`@PreAuthorize("#submission.authorId == authentication.principal.id")`（作者只能改自己的提交，服务层兜底）。
+- **`JwtAuthenticationFilter`**（插入在 `UsernamePasswordAuthenticationFilter` 之前）：解析 `Authorization: Bearer <accessToken>` → 校验签名/过期 → 构造 `MarketUserDetails(userId, username, roles)` → 填入 `SecurityContextHolder`。失败不抛异常到容器，而是写入 401 + §3.2 错误契约的 JSON（`AuthenticationEntryPoint` + `AccessDeniedHandler` 定制化输出）。
+- **完整授权矩阵**（三大支柱统一在此声明，§4/§5 的端点都受此约束）：
+
+  | 路径模式 | 访客（匿名） | `USER` | `AUTHOR` | `ADMIN` |
+  |---|---|---|---|---|
+  | `/api/auth/register|login|refresh` | ✅ | — | — | — |
+  | `/api/auth/me`(GET) `/api/auth/devices` `/api/account/**` | ❌ | ✅（仅自己） | ✅ | ✅ |
+  | `/marketplaces/**`（清单文件） | ✅ | ✅ | ✅ | ✅ |
+  | `/api/catalog/**`(GET 浏览) | ✅ | ✅ | ✅ | ✅ |
+  | `/api/catalog/**/{version}/download`（制品下载） | ✅（限流） | ✅ | ✅ | ✅ |
+  | `/api/submissions/**`（上传/管理） | ❌ | ❌ | ✅（仅自己） | ✅ |
+  | `/api/admin/**`（审核/用户/插件管理） | ❌ | ❌ | ❌ | ✅ |
+  | `/actuator/**` | ❌ | ❌ | ❌ | ✅（仅 `/actuator/health` 放行供探活） |
+
+- **登录限流**：同 IP + 同 username 滑窗（默认 5 次/分钟），失败 5 次锁定 15 分钟。用 Spring Security 的 `AuthenticationFailureHandler` + 自定义 `RateLimitService`（Bucket4j 或自实现）。
+- **密码策略**：≥8 位，含字母+数字（可配置 `market.auth.password-policy`）。
+- **资源归属兜底**：`USER`/`AUTHOR` 的写操作在**服务层**二次校验「资源 owner == 当前用户」，不只靠 URL 模式（防越权 IDOR，如 `/api/submissions/{别人的id}/withdraw`）。
 
 **错误响应契约**（统一 JSON，供主程序集成 spec 依赖）：
 
@@ -388,6 +410,7 @@ fengyu.marketplace.catalog-url = https://marketplace.fengyu.app/marketplaces/fen
 | 上游返回畸形 JSON 撑爆内存 | `BoundedHttp.readAtMost`（移植）；adapter 解析失败 → 标记 stale，不崩。 |
 | 第三方插件名注入 XSS / 路径穿越（slug） | 发布器 slugify 插件名（移植 `PluginContentPathSafety.slugify`）；catalog JSON 输出做 JSON-escape（Jackson 默认）。 |
 | 认证 brute-force | §3.2 登录限流 + 锁定。 |
+| 越权 / IDOR（用户 A 访问用户 B 的提交/账户） | §3.2 Spring Security 方法级授权 + **服务层资源归属兜底**（owner == 当前用户）；不只靠 URL 模式。 |
 | JWT 泄露 | 短期 access + refresh 轮换 + 设备撤销；主程序回落本地是降级不是无鉴权（主程序仍 loopback + 本地 token）。 |
 | 公网实例被抢占首管理员 | §3.1 引导令牌（`market.bootstrap.admin-token`，仅首次有效）。 |
 
