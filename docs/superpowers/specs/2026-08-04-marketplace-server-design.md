@@ -102,7 +102,12 @@ fengyu-marketplace-server/                   （新仓库根）
 ├── src/main/resources/
 │   ├── application.yml                       （默认配置）
 │   ├── schemas/manifest.schema.json          （从 FengYu toolchain/spec 复制，作为权威源）
+│   ├── static/                               （构建期由 frontend/dist/ 拷入，托管 SPA）
 │   └── db/migration/                         （Flyway 迁移；不依赖 ddl-auto）
+├── frontend/                                 【§8】服务自带前端（Vue 3 + Vuetify 3，独立于主程序前端）
+│   ├── package.json
+│   ├── src/{views,components,stores,api,i18n,router}/
+│   └── dist/                                 （构建产物 → 拷进后端 static/）
 └── src/test/...
 ```
 
@@ -446,7 +451,61 @@ spring:
 
 ---
 
-## 8. 测试策略
+## 8. 前端（服务自带）
+
+本服务**自带前端**（Q-5 决议），与 Spring Boot 后端同仓（`frontend/` 子目录），与 FengYu 主程序前端**互相独立**——它服务市场的三类用户：访客/已登录用户（浏览 catalog）、作者（上传 + 管理提交）、管理员（审核 + 用户/插件管理）。
+
+### 8.1 技术栈
+
+与 FengYu 主程序前端**对齐**（降低跨项目认知成本，便于复用设计 token / 组件思路）：
+
+- **Vue 3.5 + TypeScript + Vite**
+- **Vuetify 3 / Material Design 3**（与主程序 MD3 风格一致）
+- **Pinia**（状态）、**vue-router**、**vue-i18n**（EN + ZH，与主程序一样双语镜像）
+- **TypeBox / zod** 校验 API 响应（防契约漂移）
+
+> **不**共享主程序前端的代码（独立仓库、独立版本线、独立打包）。仅复用设计风格与 i18n 文案习惯。
+
+### 8.2 页面/路由
+
+| 路由 | 视图 | 角色 | 说明 |
+|---|---|---|---|
+| `/login`、`/register` | 认证页 | 访客 | 登录/注册；JWT 存内存 + httpOnly cookie（refresh），access token 存内存随刷新轮换。 |
+| `/` (Browse) | Catalog 浏览 | 访客/用户 | 聚合后的统一 catalog，按 sourceType 徽章/分类/关键词搜索/过滤/分页；插件详情抽屉（manifest 预览、sha256、版本、下载链接、上游 homepage）。**只读**，不安装（安装是主程序的事）。 |
+| `/account` | 账户 | 用户 | 个人资料、改密码、**多设备会话列表**（标签、最后活跃、单独撤销）、登出全部。 |
+| `/author/submissions` | 作者提交列表 | AUTHOR | 自己的提交（DRAFT/PENDING_REVIEW/APPROVED/REJECTED 状态过滤）。 |
+| `/author/upload` | 上传页 | AUTHOR | 拖拽上传 `.fyp` + `.sha256` sidecar；实时校验报告（§4.3 每项 ✓/✗）；提交审核按钮。 |
+| `/admin/reviews` | 审核队列 | ADMIN | 待审列表（分页）；进入详情看完整 manifest + 校验报告 + 作者信息；批准/拒绝（带备注）。 |
+| `/admin/plugins` | 插件管理 | ADMIN | 已发布插件；下架（全版本/指定版本）；历史版本。 |
+| `/admin/users` | 用户管理 | ADMIN | 用户列表；授予/撤销 AUTHOR/ADMIN 角色；禁用账户。 |
+
+- 路由守卫：`meta.roles` 声明所需角色；store 里 `user.roles` 不匹配 → 重定向 `/login`（或 403 页）。
+- 访客可浏览 `/`（catalog 端点公开）；写操作（上传/审核/账户）要登录。
+
+### 8.3 API 客户端层
+
+`frontend/src/api/`：axios 实例 + 拦截器。
+- **请求拦截**：附带 `Authorization: Bearer <accessToken>`。
+- **响应拦截**：401 + `code=TOKEN_EXPIRED`（§3.2 错误契约）→ 自动调 `/auth/refresh`（用 refresh token cookie），成功则重放原请求；refresh 也失败 → 清登录态、跳 `/login`。
+- **并发刷新去重**：多个请求同时遇 401 时，只发**一个** refresh，其余等同一个 Promise（经典「silent refresh」模式）。
+
+类型定义 `frontend/src/api/types.ts` 与后端 DTO 一一对应（`UnifiedCatalogEntry`、`Submission`、`ReviewRecord`、`AccountUser`、`AuthTokens` 等）。
+
+### 8.4 打包与托管
+
+- **构建产物**：`npm run build` → `frontend/dist/`。
+- **托管**：Spring Boot 静态资源托管——把 `frontend/dist/` 拷进后端 `src/main/resources/static/`（构建期 Maven `frontend-maven-plugin` 触发 `npm run build`），或 `WebMvcConfigurer.addResourceHandlers` 指向外部 `dist/`（便于自托管实例不重新打包就能换前端）。
+- **SPA fallback**：history 模式 → `NoHandlerMapping` 把未匹配的 GET 路由转发到 `index.html`（Vue Router 接管）。**例外**：`/api/**`、`/marketplaces/**`（清单文件）、`/actuator/**` 由后端控制器处理，不走 SPA fallback。
+- **API base**：同源（前端与后端同进程托管），`VITE_API_BASE=""`；开发期 Vite proxy `/api` → `:24057`（与主程序前端 dev 模式一致）。
+
+### 8.5 i18n
+
+- EN + ZH 双语，键集镜像（与主程序 i18n 纪律一致）。
+- 顶层命名空间建议：`auth`、`browse`、`account`、`author`、`admin`、`common`、`validation`（上传校验报告文案）。
+
+---
+
+## 9. 测试策略
 
 遵循主程序仓库的 TDD 风格（RED→GREEN）。
 
@@ -458,29 +517,33 @@ spring:
 - **发布器**：`FengYuCatalogPublisherTest`（输出含 sha256）、`ClaudeMarketplacePublisherTest`、`CodexMarketplacePublisherTest`（格式合规）。
 - **集成**：`MarketplaceApplicationTests`（全链路：注册→上传→审核→发布→catalog 可见→清单文件生成）。
 - **契约测试**：把 catalog/清单的 JSON 输出固化为 golden file，防回归。
+- **前端**：Vitest 单测（stores、API 客户端的 silent-refresh 去重逻辑）；组件测试（上传校验报告渲染、角色守卫）。端到端可用 Playwright 覆盖关键流（登录→上传→审核→发布→catalog 可见）。
 
 ---
 
-## 9. 与主程序的边界（关键不变式）
+## 10. 与主程序的边界（关键不变式）
 
 1. **独立版本线**：本服务 `v1.0.0` 起，**不**随 FengYu `${revision}` 变。JSON 契约（catalog/清单/auth 响应）有独立版本号字段，主程序按兼容性消费。
 2. **不共享 Java 模块**：`UnifiedCatalogEntry`、adapter、`ProcessSandbox` 等**移植**到本仓库，不引主程序 jar。理由：独立仓库 + 独立部署 + 独立发布节奏。
 3. **主程序侧配套改动单独成 spec**：`MarketAuthClient`、`MarketAccountProvider`、`TokenAuthFilter` JWT 校验扩展、catalog sha256 字段读取——这些是**主程序**的改动，在主程序仓库另立 spec，依赖本 spec 的 §3.2/§5.3 契约。
 4. **契约演进**：本服务契约变更走 semver；破坏性变更需主程序 spec 同步。新增字段向后兼容（主程序旧版忽略）。
+5. **前端独立**：本服务前端（§8）与主程序前端互相独立——独立打包、独立路由、独立 i18n 文件。不共享代码，仅风格对齐。
 
 ---
 
-## 10. 开放问题（待评审决议）
+## 11. 已决议的开放问题
 
-- **Q-1 多租户**：可自托管场景下，是否支持「一个实例多个组织」？v1 假设**单租户**（一个实例 = 一个市场 = 一份用户/插件集）。多租户留 v2。（建议：v1 单租户，YAGNI。）
-- **Q-2 Claude/Codex 镜像是否做内容过滤**：聚合上游官方市场时，是否允许管理员「屏蔽某些插件」？v1 假设**全量镜像**，不做过滤。（建议：v1 全量，过滤留后续。）
-- **Q-3 制品签名升级**：v1 用 SHA256（与主程序一致）。是否在 v1 就引入 GPG/_sigstore 内容签名？建议**不做**（YAGNI；SHA256 + HTTPS + 管理员审核在 v1 已足够）。
-- **Q-4 主程序回落期间的归属**：回落本地虚拟用户期间产生的数据，认证恢复后是否迁移归属？§3.3 已决议**不迁移**（避免冲突）。请确认。
-- **Q-5 前端**：本服务是否带自己的管理/上传前端？还是只做 API、前端在主程序或独立仓库？v1 建议**只做 API + 最小 admin 审核页**（作者上传走 API，审核用服务端渲染的简单页或主程序后续接）。请决议。
+评审已逐项确认，结论如下（**不再悬而未决**）：
+
+- **Q-1 多租户** → **v1 单租户**（一个实例 = 一个市场 = 一份用户/插件集）。多租户留 v2。
+- **Q-2 Claude/Codex 镜像过滤** → **v1 全量镜像**上游官方市场，不做管理员屏蔽/过滤。过滤留后续。
+- **Q-3 制品签名** → **v1 仅 SHA256**（与主程序一致），不引入 GPG/_sigstore。SHA256 + HTTPS + 管理员审核在 v1 足够。
+- **Q-4 主程序回落期间归属** → **不迁移**。回落本地虚拟用户 id=1 期间产生的数据，认证恢复后保持归属 id=1，不自动迁移（避免数据冲突）。
+- **Q-5 前端** → **本服务自带前端**（不再是「只做 API」）。见 §8。
 
 ---
 
-## 11. 不在本 spec 范围（重申）
+## 12. 不在本 spec 范围（重申）
 
 - 主程序侧的安装/MCP runtime（主程序后续 spec）。
 - 主程序侧的认证集成代码（主程序后续 spec）。
