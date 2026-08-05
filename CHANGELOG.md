@@ -6,6 +6,16 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### ✨ Added
+- **Windows Job Object process isolation backend (`ProcessSandbox` `WINDOWS_JOB`).** Plugin workers
+  and AI-authored commands on Windows now run inside a Win32 Job Object configured with
+  `KILL_ON_JOB_CLOSE`, giving reliable process-tree termination: closing the job handle (or
+  `TerminateJobObject`) kills the worker and any descendants (e.g. a `pip` subprocess) without
+  relying on `ProcessHandle.descendants()`, which was unreliable on Windows. The Job Object is a
+  process-layer isolation only — filesystem and network confinement remain a known gap on Windows
+  (the explicit-approval gate still guards every effect there). `GET /api/security/process-isolation`
+  reports `backend: "windows-job"`. JNA 5.19.1 was added for the Win32 binding.
+
 ### 🐛 Fixed
 - **主程序退出后不再残留 plugin worker 进程。** Plugin worker 是 host backend spawn 的独立 JVM；此前
   host 退出时 worker 常未被回收（macOS/Windows 上没有 Linux `bwrap --die-with-parent` 的等价机制，且

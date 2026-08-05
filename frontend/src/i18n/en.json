@@ -26,8 +26,8 @@
                 "unsandboxedPluginsTitle": "Unsandboxed plugins",
                 "unsandboxedOff": "Off",
                 "unsandboxedOn": "Allow",
-                "unsandboxedPluginsWarn": "Plugins will run without process isolation. Only enable if you trust all installed plugins.",
-                "unsandboxedPluginsConfirm": "Disable plugin process isolation? Plugin workers will run with the same privileges as the app, with no sandbox boundary." },
+                "unsandboxedPluginsWarn": "Off keeps the native process sandbox (Job Object on Windows, bwrap/sandbox-exec elsewhere). Allow runs plugin workers bare, with app-equivalent privileges and no isolation — only enable if you trust every installed plugin.",
+                "unsandboxedPluginsConfirm": "Run plugin workers without process isolation? Workers will run with app-equivalent privileges and no sandbox boundary." },
   "aiSettings": {
     "sectionTitle": "AI Configuration",
     "status": "Status",

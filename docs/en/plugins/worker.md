@@ -87,7 +87,10 @@ file locks after the host has gone. The host also installs its own JVM shutdown 
 recursively kills worker descendants (e.g. a `pip` subprocess) — as a belt-and-braces backstop
 alongside Spring's `@PreDestroy`. The desktop shell tree-kills the entire backend process tree on
 quit. On Linux, `bwrap --die-with-parent --new-session` provides the same guarantee at the kernel
-level; the watchdog + tree-kill layers extend it to macOS and Windows.
+level; on Windows the host assigns each worker to a Win32 **Job Object** with `KILL_ON_JOB_CLOSE`,
+so closing the job handle (or `TerminateJobObject`) reliably tears down the whole tree — the
+process-layer isolation backend described in [Plugin System → Process isolation backends](/en/architecture/plugin-system#process-isolation-backends).
+On macOS the watchdog + tree-kill layers provide the same guarantee.
 
 ## Long tasks (job mode)
 
