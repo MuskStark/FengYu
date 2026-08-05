@@ -13,9 +13,10 @@ public final class EmailWorkerMain {
     private EmailWorkerMain() { }
 
     public static void main(String[] args) throws Exception {
-        // Silence JDBC/driver noise during DB + key-store construction (before run() takes over).
-        // run() re-applies this redirection for the dispatch loop and restores stdout on exit.
-        System.setOut(System.err);
+        // Do NOT call System.setOut here. JsonRpcWorker.run() captures System.out as the JSON-RPC
+        // protocol stream and only then redirects System.out to stderr to keep handler/JDBC noise
+        // off the wire. Redirecting here first makes run() capture stderr instead, so every
+        // response lands on the host's stderr drain and all RPCs time out (60s). See SDK contract.
         worker(handlers(System.getenv())).run();
     }
 
@@ -46,6 +47,8 @@ public final class EmailWorkerMain {
             .on("email_tag_delete", handlers.handle("email_tag_delete", handlers::deleteTag))
             .on("email_tags_assign", handlers.handle("email_tags_assign", handlers::assignTags))
             .on("email_tags_resolve", handlers.handle("email_tags_resolve", handlers::resolveRecipients))
+            .on("email_contacts_import_preview", handlers.handle("email_contacts_import_preview", handlers::importContactsPreview))
+            .on("email_contacts_import_commit", handlers.handle("email_contacts_import_commit", handlers::importContactsCommit))
             .on("email_configs_list", handlers.handle("email_configs_list", handlers::listConfigs))
             .on("email_config_find", handlers.handle("email_config_find", handlers::findConfig))
             .on("email_config_save", handlers.handle("email_config_save", handlers::saveConfig))
