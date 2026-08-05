@@ -17,6 +17,8 @@ import jakarta.mail.Part;
 import jakarta.mail.Session;
 import jakarta.mail.Store;
 import jakarta.mail.UIDFolder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.OutputStream;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -41,6 +43,8 @@ public final class EmailArchiveService {
     private static final int MAX_PAGE = 100;
     private static final int MAX_FILENAME_UTF8_BYTES = 254;
     private static final int IMAP_TIMEOUT_MILLIS = 10_000;
+
+    private static final Logger log = LoggerFactory.getLogger(EmailArchiveService.class);
 
     private final AccountRepository accounts;
     private final AccountService accountService;
@@ -76,6 +80,7 @@ public final class EmailArchiveService {
                     throw new IllegalStateException("IMAP server does not expose stable message UIDs");
                 }
                 List<Message> messages = filterByDate(folder.getMessages(), request.start(), request.end());
+                log.info("archive collect: account={} folder='{}' messages={}", account.id(), request.folder(), messages.size());
                 for (int i = 0; i < messages.size(); i++) {
                     Message message = messages.get(i);
                     try {
@@ -88,6 +93,8 @@ public final class EmailArchiveService {
                         }
                     } catch (Exception messageFailure) {
                         failures++;
+                        log.warn("archive failed for one message in account={} folder='{}': {}",
+                            account.id(), request.folder(), messageFailure.toString());
                     }
                     sink.accept(new Progress(i + 1, messages.size(), archived, skipped, failures));
                 }
@@ -95,8 +102,12 @@ public final class EmailArchiveService {
         } catch (IllegalArgumentException | IllegalStateException e) {
             throw e;
         } catch (Exception e) {
+            log.error("IMAP collection failed for account={} folder='{}': {}",
+                account.id(), request.folder(), e.toString(), e);
             throw new IllegalStateException("IMAP collection failed: " + safeMessage(e, password), e);
         }
+        log.info("archive collect done: account={} folder='{}' new={} skipped={} failed={}",
+            account.id(), request.folder(), archived, skipped, failures);
         return new CollectResult(archived, skipped, failures);
     }
 
@@ -110,8 +121,10 @@ public final class EmailArchiveService {
         try (Store store = Session.getInstance(imapProperties(account.imapSecurity()))
                 .getStore(protocol(account.imapSecurity()))) {
             store.connect(account.imapHost(), account.imapPort(), account.email(), password);
+            log.info("IMAP test succeeded for account {} ({})", accountId, account.email());
             return SendResult.success(null);
         } catch (Exception e) {
+            log.warn("IMAP test failed for account {} ({}): {}", accountId, account.email(), safeMessage(e, password));
             return SendResult.failure(safeMessage(e, password));
         }
     }
