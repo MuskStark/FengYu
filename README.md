@@ -1,6 +1,6 @@
 # Infinia
 
-![Infinia](https://img.shields.io/badge/Infinia-Web%20%2B%20Desktop-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue) ![Maven](https://img.shields.io/badge/Maven-3.6+-red) ![Version](https://img.shields.io/badge/version-4.0.0--alpha.4-blue)
+![Infinia](https://img.shields.io/badge/Infinia-Web%20%2B%20Desktop-blue) ![Java](https://img.shields.io/badge/Java-21-orange) ![License](https://img.shields.io/badge/License-GPL--3.0-blue) ![Maven](https://img.shields.io/badge/Maven-3.6+-red) ![Version](https://img.shields.io/badge/version-4.0.0--alpha.8-blue)
 
 **Infinia** (蜂语 / FengYu) is an *AI-native orchestration platform*. A plan-and-execute Agent
 turns natural-language goals into multi-step business workflows by orchestrating three extension
@@ -16,11 +16,11 @@ splitting, email, markdown, and more) ship as official plugins the Agent can cal
 > expose a JSON-RPC worker backend plus a micro-frontend UI bundle. JavaFX has been removed.
 > See [`CHANGELOG.md`](CHANGELOG.md) and the [online docs](https://muskstark.github.io/FengYu/) for the current state.
 >
-> Run the backend: `java -jar FengYu/target/FengYu-4.0.0.jar --token=<t>` (binds port 24056 by default)
+> Run the backend: `java -jar FengYu/target/FengYu-*.jar --token=<t>` (binds port 24056 by default)
 > · frontend: `cd frontend && npm run dev` · smoke test: `scripts/e2e-smoke.sh`.
 >
-> The official **Email Center** plugin now ships as `fan.summer.email`: five sandboxed UI tabs,
-> multi-account SMTP/IMAP, manual-only collection, encrypted credentials, and seven confirmation-first AI tools.
+> The official **Email Center** plugin now ships as `fan.summer.email`: six sandboxed UI tabs,
+> multi-account SMTP/IMAP, manual-only collection, encrypted credentials, and nine confirmation-first AI tools.
 > See [Email Center](docs/en/plugins/email-center.md) and the [plugin database standard](docs/en/plugins/database.md).
 >
 > **Skills** — Codex-style progressive disclosure: enabled skills appear as a compact catalog in
@@ -51,7 +51,7 @@ cd FengYu
 ./mvnw clean package -f FengYu/pom.xml -DskipTests
 
 # 2. Run the headless backend (loopback web server on 127.0.0.1:24056)
-java -jar FengYu/target/FengYu-4.0.0.jar --token=<your-token>
+java -jar FengYu/target/FengYu-*.jar --token=<your-token>
 ```
 
 ### Run the Frontend (dev)
@@ -93,8 +93,9 @@ These builds are currently unsigned; code-signing is deferred to a later release
 - **🧩 Plugins (`.fyp`)** — Capabilities the Agent calls: isolated packages of a JSON-RPC worker + micro-frontend UI, installed from the marketplace. See [Marketplace](docs/en/plugins/marketplace).
 - **📜 Skills (`.fys`)** — Progressive-disclosure domain knowledge and procedures the Agent loads on demand. See [Skills](docs/en/skills/).
 - **📊 Excel Splitter** — Split workbooks by sheet, column value, or complex rules — an official plugin with six AI tools. See [Excel](docs/en/plugins/official-excel).
-- **📧 Email Center** — Multi-account SMTP/IMAP, contact/tag management, filename-tag batch sending, manual archive collection, and seven confirmation-first AI tools. See [Email Center](docs/en/plugins/email-center.md).
+- **📧 Email Center** — Multi-account SMTP/IMAP, contact/tag management, filename-tag batch sending, manual archive collection, and nine confirmation-first AI tools. See [Email Center](docs/en/plugins/email-center.md).
 - **📝 Markdown Editor** — Split-pane editor with isolated server-side rendering. See [Markdown](docs/en/plugins/official-markdown).
+- **📦 Offline Python Builder** — Build air-gap-ready Python wheelhouses (full dependency resolution via `pip download`) as an async job, with verify and deploy. See [Offline Python](docs/en/plugins/official-offlinepython).
 - **🌐 Browser Agent** — Drive a real Chromium via Playwright: navigate, click, type, scrape, screenshot, and eval JS through nine AI tools. See [Browser Agent](docs/en/plugins/official-browser.md).
 - **💾 Multi-Database** — First-launch wizard picks H2, SQLite, MySQL, or PostgreSQL; passwords AES-GCM encrypted. See [Database](docs/en/guide/database).
 - **🎨 Material Design 3** — Vuetify 3 MD3 UI, shared with plugin micro-frontends, dark and light themes. See [Design System](docs/en/design-system).
@@ -140,7 +141,7 @@ the token + api-base to the renderer via a `contextBridge` preload. See [Archite
 | Module / dir | Purpose |
 |--------|---------|
 | `toolchain/sdk-java` | Java Worker SDK + TypeScript `@infinia/plugin-sdk` (the iframe `postMessage` bridge, in `toolchain/sdk-ts`). |
-| `OfficialPlugins` | Official plugins: `plugin-markdown`, `plugin-excel`, `plugin-email` (each ships a `.fyp`). |
+| `OfficialPlugins` | Official plugins: `plugin-markdown`, `plugin-excel`, `plugin-email`, `plugin-offlinepython`, `plugin-browser` (each ships a `.fyp`). |
 | `FengYu` | Headless Spring Boot backend — REST/SSE controllers, AI backends, JPA/Hibernate, marketplace. |
 | `frontend/` | Vue 3.5 + TS SPA (runs identically in the browser or the Electron BrowserWindow). |
 | `desktop/` | Electron 43.x desktop shell — sidecar-launches the JAR, tray, native dialogs, auto-updater. |
