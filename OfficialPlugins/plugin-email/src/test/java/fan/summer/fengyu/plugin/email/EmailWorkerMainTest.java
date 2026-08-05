@@ -22,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -90,7 +91,8 @@ class EmailWorkerMainTest {
             "email_account_test", "email_account_test_imap", "email_contact_save", "email_contact_find", "email_contact_delete",
             "email_tag_save", "email_tags_list", "email_tag_delete", "email_tags_assign",
             "email_config_save", "email_configs_list", "email_config_find", "email_config_delete",
-            "email_batch_preview", "email_send_records_query", "email_archive_detail", "confirm_send", "reject_send");
+            "email_batch_preview", "email_send_records_query", "email_archive_detail", "confirm_send", "reject_send",
+            "email_contacts_import_preview", "email_contacts_import_commit");
         String input = methods.stream().map(method -> request(methods.indexOf(method) + 1, method, Map.of()).json())
             .reduce("", (left, right) -> left + right + "\n");
 
@@ -104,6 +106,66 @@ class EmailWorkerMainTest {
             Object error = response.get("error");
             return error instanceof Map<?, ?> map && ((Number) map.get("code")).intValue() == -32601;
         }), responses::toString);
+    }
+
+    /**
+     * Regression for the 4.0.0 timeout bug where every email RPC failed after 60s with
+     * "Host request timed out: rpc.invoke". The cause: {@code main()} called
+     * {@code System.setOut(System.err)} before {@code worker(...).run()}, so the SDK's no-arg
+     * {@code run()} captured stderr (not fd 1) as the JSON-RPC protocol stream and wrote every
+     * response to the host's stderr drain. The host's stdout correlator then never matched a reply.
+     *
+     * <p>The other tests here call {@code worker(...).run(in, out)} or {@code .run()} on a worker
+     * built without going through {@code main()} — both blind to the {@code main()}-level
+     * poisoning. This test launches {@code EmailWorkerMain.main()} in a real subprocess (the way
+     * the host does), so it exercises the actual production entry point with real fd 1/2, and
+     * asserts the JSON-RPC response arrives on <strong>stdout</strong>, not stderr. If a future
+     * change re-poisons {@code System.out} before {@code run()}, the response lands on stderr and
+     * {@code stdout} stays empty → assertion fails.
+     */
+    @Test void mainEntryPointWritesJsonRpcResponsesToStdoutNotStderr() throws Exception {
+        String classpath = System.getProperty("java.class.path");
+        String java = ProcessHandle.current().info().command().orElse("java");
+        Path dbFile = temp.resolve("main-entry-db");
+
+        ProcessBuilder builder = new ProcessBuilder(java,
+                "-cp", classpath,
+                "fan.summer.fengyu.plugin.email.EmailWorkerMain");
+        builder.environment().put("FENGYU_DB_TYPE", "h2");
+        builder.environment().put("FENGYU_DB_DRIVER", "org.h2.Driver");
+        builder.environment().put("FENGYU_DB_URL",
+            "jdbc:h2:file:" + dbFile + ";DB_CLOSE_DELAY=-1");
+        builder.environment().put("FENGYU_DB_USERNAME", "sa");
+        builder.environment().put("FENGYU_PLUGIN_DATA_DIR", temp.toString());
+        builder.redirectErrorStream(false);
+
+        Process process = builder.start();
+        try {
+            // One email_tags_list request; closing stdin signals EOF so the worker exits cleanly.
+            process.getOutputStream().write(
+                (request(1, "email_tags_list", Map.of()).json() + "\n").getBytes(StandardCharsets.UTF_8));
+            process.getOutputStream().close();
+
+            String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            boolean finished = process.waitFor(60, TimeUnit.SECONDS);
+            assertTrue(finished, "EmailWorkerMain subprocess did not exit within 60s");
+
+            assertFalse(stdout.isBlank(),
+                "main() must write the JSON-RPC response to stdout. If this is blank, a stray "
+                + "System.setOut(System.err) before run() has routed every response to stderr and "
+                + "all RPCs time out at the host. stderr was:\n" + stderr);
+
+            String firstJson = stdout.lines().filter(line -> line.startsWith("{\"jsonrpc"))
+                .findFirst().orElseThrow(() -> new AssertionError(
+                    "no JSON-RPC frame on stdout; got:\n" + stdout));
+            Map<String, Object> response = object(firstJson);
+            assertEquals(1.0, response.get("id"));
+            assertFalse(response.containsKey("error"), () -> "unexpected error envelope: " + response);
+            assertNotNull(castMap(response.get("result")).get("success"), response::toString);
+        } finally {
+            process.destroyForcibly();
+        }
     }
 
     @Test void missingMutationTargetsReturnFailureEnvelopes() throws Exception {
