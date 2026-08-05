@@ -138,7 +138,12 @@ public class ProcessSandbox {
             // caller can later terminate/close the job (see WindowsJobSandbox).
             java.util.function.BiConsumer<Process, long[]> onStarted = (process, handleOut) -> {
                 long job = WindowsJobSandbox.createAndConfigureJob();
-                WindowsJobSandbox.assign(job, process);
+                try {
+                    WindowsJobSandbox.assign(job, process);
+                } catch (RuntimeException e) {
+                    WindowsJobSandbox.closeHandle(job);  // reclaim the created-but-unassigned job
+                    throw e;
+                }
                 handleOut[0] = job;
             };
             return new Launch(raw, backend, onStarted);
