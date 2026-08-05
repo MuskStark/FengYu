@@ -9,6 +9,8 @@
     <dependency><groupId>com.google.code.gson</groupId><artifactId>gson</artifactId></dependency>
     <dependency><groupId>org.jsoup</groupId><artifactId>jsoup</artifactId></dependency>
     <dependency><groupId>org.mybatis</groupId><artifactId>mybatis</artifactId></dependency>
+    <!-- Apache POI: contact-list import from .xlsx/.xls workbooks. Version inherited from parent dependencyManagement. -->
+    <dependency><groupId>org.apache.poi</groupId><artifactId>poi-ooxml</artifactId></dependency>
     <dependency><groupId>org.simplejavamail</groupId><artifactId>simple-java-mail</artifactId></dependency>
     <dependency><groupId>org.eclipse.angus</groupId><artifactId>angus-mail</artifactId></dependency>
     <dependency><groupId>com.h2database</groupId><artifactId>h2</artifactId></dependency>
