@@ -11,6 +11,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class ProcessSandboxTest {
     @TempDir Path workdir;
@@ -66,5 +68,22 @@ class ProcessSandboxTest {
             List.of("worker"), workdir, List.of(writable), false, false);
 
         assertTrue(launch.command().get(2).contains(writable.toRealPath().toString()));
+    }
+
+    @Test
+    void launchCarriesOnStartedCallback() {
+        // NONE/BUBBLEWRAP/SANDBOX_EXEC Launches carry no onStarted hook; only WINDOWS_JOB does.
+        ProcessSandbox noneSandbox = new ProcessSandbox(ProcessSandbox.Backend.NONE);
+        ProcessSandbox.Launch l = noneSandbox.unrestricted(java.util.List.of("echo", "hi"));
+        assertNull(l.onStarted(), "NONE backend has no onStarted hook");
+    }
+
+    @Test
+    void windowsJobBackendIsNotSelectedOnNonWindows() {
+        // detect() is private; infer via the public backend() default constructor.
+        // On a non-Windows host WINDOWS_JOB must never be selected.
+        assertNotEquals(ProcessSandbox.Backend.WINDOWS_JOB,
+                new ProcessSandbox().backend(),
+                "non-Windows host must not select WINDOWS_JOB");
     }
 }
