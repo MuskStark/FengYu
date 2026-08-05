@@ -227,10 +227,17 @@ public final class ExcelRpcHandlers extends PluginHandlerSupport {
 
         Jobs.Job job = jobs.start("SPLIT", handle -> {
             ExcelSplitter splitter = new ExcelSplitter(cfg, (pct, msg) -> handle.log(msg), handle::isCancelled);
-            ExcelSplitter.SplitResult res = splitter.split();
-            handle.setSummary(Map.of(
-                "fileCount", res.fileCount(),
-                "files", res.outputFiles().stream().map(p -> p.getFileName().toString()).toList()));
+            try {
+                ExcelSplitter.SplitResult res = splitter.split();
+                handle.setSummary(Map.of(
+                    "fileCount", res.fileCount(),
+                    "files", res.outputFiles().stream().map(p -> p.getFileName().toString()).toList()));
+            } catch (Exception e) {
+                // Jobs.start flattens exceptions to a one-line markFailed without a stack trace;
+                // log the full stack here so the host log surface has diagnostics, then rethrow.
+                log.error("split job failed for {} (mode={}): {}", cfg.sourceFile, cfg.mode, e.toString(), e);
+                throw e;
+            }
         });
         return ok("split started", "jobId", job.id);
     }
