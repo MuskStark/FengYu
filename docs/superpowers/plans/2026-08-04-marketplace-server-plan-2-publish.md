@@ -8,6 +8,20 @@
 
 **Tech Stack:** Spring Boot 4.1.0、Spring Security 7（`@PreAuthorize` 方法级授权）、JPA/Hibernate 6（**严格 validate，新实体必须有 Flyway 迁移匹配**）、Jackson 3（`tools.jackson`，注解 `com.fasterxml.jackson.annotation`）、`com.networknt:json-schema-validator`（已在 pom）、Java 21 ZipFile/MessageDigest、JUnit 5 + Spring Boot Test + `RestTestClient.bindToServer()`。
 
+> ## ⚠️ 执行后注记（2026-08-05，计划 2 已完成 + 最终评审通过 With fixes）
+>
+> 计划 2 已在 `fengyu-marketplace-server` 仓库 `main` 实现（HEAD `787b37e`，**97/97 测试通过**，最终评审通过 With fixes）。执行中发现的关键实际栈差异（除计划 0/1 已记录的之外）：
+>
+> 1. **Boot 4.1 移除 `@MockBean`** → 用 `@MockitoBean`（`org.springframework.test.context.bean.override.mockito`）。
+> 2. **`MultipartBodyBuilder.asyncPart` 引用 `org.reactivestreams.Publisher`**（servlet-only starter 无此依赖）→ NoClassDefFoundError。解法：用 `LinkedMultiValueMap` + `ByteArrayResource`（override `getFilename()`）。
+> 3. **`json-schema-validator` 1.5.6 API**：返回 `Set<ValidationMessage>`（非 `ValidationResult`）；用 `schema.validate(String, InputFormat.JSON)` 字符串入参避开 Jackson 2/3 类型冲突（库内部用 Jackson 2，我们的语义校验用 Jackson 3，二者 ObjectMapper 类隔离）。
+> 4. **`@PreAuthorize` AOP 抛 `AccessDeniedException`**：在 DispatcherServlet 内（晚于 `ExceptionTranslationFilter`），所以 Plan 1 的 filter-chain `ApiErrorAccessDeniedHandler` 接不到 → 会 500。**必须**在 `GlobalExceptionHandler` 加 `@ExceptionHandler(AccessDeniedException.class)` → `ApiError{FORBIDDEN}`（这是 §3.2 方法级授权场景的关键补丁）。
+> 5. **最终评审的 2 个 Important 修复**：(a) ArchiveInspector 解压上限原来信 `entry.getSize()`（可伪造）→ 改为 `drain` 累积真实解压字节防 zip-bomb；(b) `manifest_json` 原来存 `ManifestSummary` 投影（丢 permissions/backend/aiTools）→ 改存原始 manifest.json 文本（Plan 3 catalog 需要）。
+> 6. **遗留（最终评审 ACCEPT+TRACK，非阻塞）**：ManifestSchemaValidator 的 `effect`/`outputSchema` 规则已实现未测（faithful port）；`submissions.plugin_id` 逻辑 FK（无 DB 约束，但单一写入路径 + `plugin_versions` 有真 FK，足够）；Plan 1 的 login 用户枚举向量仍未修（独立后续硬化工单）。
+> 7. **生产前 gate（非合并 gate）**：Flyway V2 的 `Instant`↔Postgres `TIMESTAMP` 校验需在真实 Postgres 上验证一次（H2 MODE=PostgreSQL 宽松，测不出）。计划 3-4 作者请预期同类偏差。
+
+## 全局约束（所有任务隐含遵守）
+
 ## ⚠️ 计划 2 执行前须知（来自计划 0/1 评审，已确认的实际栈）
 
 - **JDK 21**：`JAVA_HOME=/Users/phoebej/Library/Java/JavaVirtualMachines/azul-21.0.12/Contents/Home`（系统默认 25）。
