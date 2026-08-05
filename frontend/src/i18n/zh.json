@@ -26,8 +26,8 @@
                 "unsandboxedPluginsTitle": "无沙箱运行插件",
                 "unsandboxedOff": "关闭",
                 "unsandboxedOn": "允许",
-                "unsandboxedPluginsWarn": "插件将以无进程隔离方式运行。仅在你信任所有已安装插件时启用。",
-                "unsandboxedPluginsConfirm": "禁用插件进程隔离？插件 Worker 将以与应用相同的权限运行，无沙箱边界保护。" },
+                "unsandboxedPluginsWarn": "关闭保留原生进程沙箱（Windows 上为 Job Object，其他平台为 bwrap/sandbox-exec）。允许则让插件 Worker 裸跑，与应用同等权限、无隔离——仅在你信任所有已安装插件时启用。",
+                "unsandboxedPluginsConfirm": "以无进程隔离方式运行插件 Worker？Worker 将以与应用同等的权限运行，无沙箱边界保护。" },
   "aiSettings": {
     "sectionTitle": "AI 配置",
     "status": "状态",
