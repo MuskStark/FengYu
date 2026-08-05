@@ -36,6 +36,15 @@
             <version>${fengyu.plugin.sdk.version}</version>
             <scope>test</scope>
         </dependency>
+        <!-- Mockito for unit-testing the Playwright lifecycle without a real browser.
+             Not managed in FengYu-parent's dependencyManagement; pinned to 5.23.0,
+             the version the Spring Boot 4.1 BOM resolves for the FengYu host. -->
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>5.23.0</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
