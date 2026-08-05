@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "worker": {
+    "root": ".",
+    "test": ["maven", "-f", "../../pom.xml", "-pl", "OfficialPlugins/plugin-browser", "-am", "test"],
+    "build": ["maven", "-f", "../../pom.xml", "-pl", "OfficialPlugins/plugin-browser", "-am", "package", "-DskipTests"],
+    "artifact": "target/browser-worker.jar",
+    "mainClass": "fan.summer.fengyu.plugin.browser.BrowserWorkerMain"
+  },
+  "package": { "outputDirectory": "dist-package" }
+}
