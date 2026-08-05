@@ -30,6 +30,25 @@ Worker 是插件的后端。它通过 stdio 使用 **JSON-RPC 2.0** 通信，并
 
 由于 Worker 是进程外的，Worker 崩溃或挂起都无法拖垮宿主，Worker 也无法触及宿主的 bean 或 JPA 会话。
 
+## 进程隔离后端
+
+Worker 与 AI 编写的命令由 `ProcessSandbox` 包装，它会按平台选择一个原生隔离器。`GET /api/security/process-isolation`
+端点报告当前后端，并在无可用隔离器时返回 `compatibilityMode: true`。
+
+| 平台 | 后端 | 进程树终止 | 文件系统隔离 | 网络隔离 |
+| --- | --- | --- | --- | --- |
+| Linux | `bubblewrap`（`bwrap --die-with-parent --new-session`） | 内核级 | 系统文件只读，写入限制在插件/工作根目录 | 默认隔离，声明时放行 |
+| macOS | `sandbox-exec`（Seatbelt profile） | tree-kill | 系统文件只读，写入限制在插件/工作根目录 | 默认隔离，声明时放行 |
+| Windows | `windows-job`（Win32 Job Object，`KILL_ON_JOB_CLOSE`） | **可靠**——宿主关闭句柄或调用 `TerminateJobObject` 时 Job 杀掉整棵树 | **不强制**（已知缺口） | **不强制**（已知缺口） |
+| 其他/无隔离器 | `none` | 宿主 shutdown hook + tree-kill 兜底 | 无——仅靠显式审批 | 无——仅靠显式审批 |
+
+Windows 上的 Job Object 后端**仅做进程层**隔离：它保证 worker 及其任何后代（如 `pip` 子进程）
+在宿主关闭 job 句柄时被可靠终止，弥补了长期以来 Windows 上 `ProcessHandle.descendants()` 可能
+漏杀孤儿进程的缺口。它**不像** Linux 上的 `bwrap` 和 macOS 上的 `sandbox-exec` 那样约束文件系统写入
+或阻断网络——这一缺口是有意为之并已记录在案；Windows 上每一次副作用仍由显式审批闸门守护。
+`unsandboxedPlugins` 设置开关（在受支持处可见）允许受信任用户退出进程层隔离：关闭 = Windows 上 Job
+隔离 / 其他平台原生沙箱；开启 = worker 以应用同等权限裸跑。
+
 ## 沙箱化 UI
 
 插件的 `ui/` 微前端由宿主作为静态资产提供，位于严格的 Content Security Policy 之下的 `/plugin-runtime/{id}/**`——这些资产路径是唯一绕过令牌过滤器的插件 URL，因此 UI 能在没有凭据的情况下自举。宿主通过其[微前端宿主](/zh/architecture/frontend)加载该 UI（`import(uiEntry)` → `default.mount(el, ctx)`），并复用宿主的 Vuetify 实例以获得一致的 MD3 主题。

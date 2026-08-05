@@ -79,8 +79,10 @@ scheduled executor 等），也无法在宿主消失后继续撑着 JVM、继续
 注册了独立的 JVM shutdown hook，直接调用 `PluginProcessManager.close()`——它会 `destroy()`/
 `destroyForcibly()` 每个被追踪的 worker，并递归杀掉 worker 的后代进程（如 `pip` 子进程）——作为
 Spring `@PreDestroy` 之外的兜底。桌面 shell 在退出时 tree-kill 整棵 backend 进程树。Linux 上
-`bwrap --die-with-parent --new-session` 在内核层面提供了同样的保证；看门狗 + tree-kill 这两层把该
-保证扩展到了 macOS 与 Windows。
+`bwrap --die-with-parent --new-session` 在内核层面提供了同样的保证；Windows 上宿主把每个 worker
+分配给一个 Win32 **Job Object**（设置 `KILL_ON_JOB_CLOSE`），因此关闭 job 句柄（或调用
+`TerminateJobObject`）即可可靠地拆掉整棵树——即[插件系统 → 进程隔离后端](/zh/architecture/plugin-system#进程隔离后端)
+中描述的进程层隔离后端。macOS 上由看门狗 + tree-kill 两层提供同样的保证。
 
 ## 长任务（job 模式）
 
