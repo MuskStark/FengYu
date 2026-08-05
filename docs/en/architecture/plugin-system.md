@@ -30,6 +30,28 @@ The worker is the plugin's backend. It speaks **JSON-RPC 2.0** over stdio and is
 
 Because workers are out-of-process, a worker crash or hang cannot take down the host, and a worker cannot reach into host beans or the JPA session.
 
+## Process isolation backends
+
+Workers and AI-authored commands are wrapped by `ProcessSandbox`, which selects a native isolator per
+platform. The `GET /api/security/process-isolation` endpoint reports the active backend and surfaces
+`compatibilityMode: true` when no isolator is available.
+
+| Platform | Backend | Process-tree termination | Filesystem isolation | Network isolation |
+| --- | --- | --- | --- | --- |
+| Linux | `bubblewrap` (`bwrap --die-with-parent --new-session`) | kernel | read-only system files, writes confined to plugin/working roots | isolated unless declared |
+| macOS | `sandbox-exec` (Seatbelt profile) | tree-kill | read-only system files, writes confined to plugin/working roots | isolated unless declared |
+| Windows | `windows-job` (Win32 Job Object, `KILL_ON_JOB_CLOSE`) | **reliable** — the Job kills the whole tree on handle close or `TerminateJobObject` | **not enforced** (known gap) | **not enforced** (known gap) |
+| Other / no isolator | `none` | host shutdown hook + tree-kill backstop | none — explicit approval only | none — explicit approval only |
+
+On Windows the Job Object backend is a **process-layer** isolation only: it guarantees the worker and
+any descendants (e.g. a `pip` subprocess) terminate reliably when the host closes the job handle, which
+removes the long-standing gap where `ProcessHandle.descendants()` could miss orphans on Windows. It
+does **not** confine filesystem writes or block network the way `bwrap` and `sandbox-exec` do on Linux
+and macOS — that gap is intentional and documented; the explicit-approval gate still guards every
+effect on Windows. The `unsandboxedPlugins` Settings toggle (where exposed) lets a trusted user opt out
+of even the process-layer isolation: OFF = Job isolation on Windows / native sandbox elsewhere;
+ON = workers run bare with app-equivalent privileges.
+
 ## Sandboxed UI
 
 The plugin's `ui/` micro-frontend is served by the host as static assets under a strict Content Security Policy at `/plugin-runtime/{id}/**` — these asset paths are the only plugin URLs that bypass the token filter, so the UI can bootstrap without a credential. The host loads the UI through its [micro-frontend host](/en/architecture/frontend) (`import(uiEntry)` → `default.mount(el, ctx)`) and reuses the host's Vuetify instance for consistent MD3 theming.

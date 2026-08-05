@@ -16,6 +16,20 @@ this page mirrors it for the published docs site.
 
 ---
 
+## [Unreleased]
+
+### ✨ Added
+- **Windows Job Object process isolation backend (`ProcessSandbox` `WINDOWS_JOB`).** Plugin workers
+  and AI-authored commands on Windows now run inside a Win32 Job Object configured with
+  `KILL_ON_JOB_CLOSE`, giving reliable process-tree termination: closing the job handle (or
+  `TerminateJobObject`) kills the worker and any descendants (e.g. a `pip` subprocess) without
+  relying on `ProcessHandle.descendants()`, which was unreliable on Windows. The Job Object is a
+  process-layer isolation only — filesystem and network confinement remain a known gap on Windows
+  (the explicit-approval gate still guards every effect there). `GET /api/security/process-isolation`
+  reports `backend: "windows-job"`. JNA 5.19.1 was added for the Win32 binding.
+
+---
+
 ## [4.0.0-alpha.6] — 2026-08-02
 
 ### ✨ Added

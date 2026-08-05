@@ -16,6 +16,18 @@ lang: zh-CN
 
 ---
 
+## [Unreleased]
+
+### ✨ 新增
+- **Windows Job Object 进程隔离后端（`ProcessSandbox` `WINDOWS_JOB`）。** Windows 上的插件 Worker
+  与 AI 编写的命令现运行于一个配置了 `KILL_ON_JOB_CLOSE` 的 Win32 Job Object 内，从而获得可靠的进程树
+  终止：关闭 job 句柄（或调用 `TerminateJobObject`）即可杀掉 Worker 及其任何后代（如 `pip` 子进程），
+  不再依赖在 Windows 上并不可靠的 `ProcessHandle.descendants()`。Job Object 仅做进程层隔离——Windows
+  上的文件系统与网络隔离仍是已知缺口（每一次副作用仍由显式审批闸门守护）。
+  `GET /api/security/process-isolation` 报告 `backend: "windows-job"`。新增 JNA 5.19.1 用于 Win32 绑定。
+
+---
+
 ## [4.0.0-alpha.6] — 2026-08-02
 
 ### ✨ 新增
