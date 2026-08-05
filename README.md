@@ -95,6 +95,7 @@ These builds are currently unsigned; code-signing is deferred to a later release
 - **📊 Excel Splitter** — Split workbooks by sheet, column value, or complex rules — an official plugin with six AI tools. See [Excel](docs/en/plugins/official-excel).
 - **📧 Email Center** — Multi-account SMTP/IMAP, contact/tag management, filename-tag batch sending, manual archive collection, and seven confirmation-first AI tools. See [Email Center](docs/en/plugins/email-center.md).
 - **📝 Markdown Editor** — Split-pane editor with isolated server-side rendering. See [Markdown](docs/en/plugins/official-markdown).
+- **🌐 Browser Agent** — Drive a real Chromium via Playwright: navigate, click, type, scrape, screenshot, and eval JS through nine AI tools. See [Browser Agent](docs/en/plugins/official-browser.md).
 - **💾 Multi-Database** — First-launch wizard picks H2, SQLite, MySQL, or PostgreSQL; passwords AES-GCM encrypted. See [Database](docs/en/guide/database).
 - **🎨 Material Design 3** — Vuetify 3 MD3 UI, shared with plugin micro-frontends, dark and light themes. See [Design System](docs/en/design-system).
 - **🌍 Internationalization** — English-first docs and a localized Vue UI (vue-i18n).
