@@ -114,6 +114,85 @@ must surface an RPC error; never accept a `devMock` response as evidence that th
 Use `mockWorker: true` only for intentional UI-only/stub development. To change ports, use
 `-Dfengyu.dev.port=<n>` and update `vite.config.ts` together.
 
+### Logging (Java workers) — the canonical pattern
+
+A worker has **two parallel log channels**; a well-instrumented plugin uses both. Read this before
+writing any handler or service — it is the difference between an observable plugin and a black box.
+
+**Channel 1 — SLF4J → stderr → host log + frontend SSE (diagnostics).** Use the standard SLF4J API:
+`private static final Logger log = LoggerFactory.getLogger(MyClass.class)`. The SDK ships its own
+SLF4J 2.x provider (auto-discovered via SPI; **no** logback/log4j dependency or config file needed),
+which formats each event as a `@fengyu-log:`-prefixed JSON line on **stderr**. The host's
+`plugin-<id>-stderr` drain captures it, redacts secrets, forwards it to the host log file (logger
+name `plugin.<id>.<source>`) and to the frontend via `GET /api/plugin-runtime/{id}/logs/stream` (SSE)
+and `GET /api/plugin-runtime/{id}/logs` (REST history, 500-line ring buffer).
+
+**Channel 2 — `Jobs.handle.log()` → job snapshot (real-time progress).** For long-running async
+operations launched via `Jobs.start(type, handle -> ...)`, call `handle.log(line)` for each step.
+These lines land in the `Job.logs` queue and are returned to the UI via `<method>.status` polling —
+they do **not** enter the host log file or the frontend SSE stream, and expire with the job (30 min
+TTL). Use this for per-step progress ("reading Excel…", "installed 3/10 wheels"); use SLF4J for
+milestones, failures, and anything an operator needs after the job is gone.
+
+**`stdout` is JSON-RPC only.** Never `System.out.println(...)`. Both stdio entry points
+(`run()` and `run(in, out)`) redirect `System.out` → `System.err` to protect the protocol stream,
+so stray prints end up on stderr anyway — but do not rely on that; use SLF4J.
+
+**Mandatory logging rules (from the official plugins + FY-Report):**
+
+1. **Every class that does I/O or business logic holds its own SLF4J logger** — services,
+   repositories, listeners, utils. Don't centralize; a logger named after the class tells you *where*
+   the event happened. Declare it as `private static final Logger log = LoggerFactory.getLogger(X.class)`.
+2. **Failure paths always log, with the throwable.** Every `catch (Exception e)` that represents a
+   real failure (not a deliberate best-effort swallow) calls `log.warn`/`log.error("... failed: {}", context, e)`.
+   The exception object is essential — the SDK's `Jobs.start` flattens a thrown exception to a
+   one-line `markFailed` message without a stack trace, so the host log surface has no diagnostics
+   unless you log it yourself first. Pattern (see `FyreportWorker`, `BuildService`):
+   ```java
+   } catch (Exception e) {
+       log.error("[SetTarget] job failed", e);   // full stack to stderr → host log
+       throw e;                                  // rethrow so Jobs marks it FAILED
+   }
+   ```
+3. **Async job bodies wrap their work in try/catch-log-rethrow.** This is the single most important
+   rule: a bare `jobs.start("X", handle -> { doWork(); })` loses all stack traces on failure. Wrap it:
+   ```java
+   jobs.start("X", handle -> {
+       try {
+           Result r = doWork(handle::log);       // progress via Channel 2
+           handle.setSummary(toMap(r));
+       } catch (Exception e) {
+           log.error("X job failed: {}", context, e);  // Channel 1 for the host log
+           throw e;
+       }
+   });
+   ```
+4. **Milestones log at INFO; recovery/fallback logs at WARN.** "sent mail to 3 recipients" = INFO;
+   "reclaimed 2 stuck tasks (dead worker)" = WARN. Avoid DEBUG for anything operators need by default.
+5. **Redact secrets before logging, or let the host redactor catch them.** The host's
+   `SensitiveValueRedactor` scrubs values from env vars named `*_PASSWORD/*_SECRET/*_TOKEN`. But
+   business data (mail bodies, credentials in exception messages) is *not* redacted on the direct
+   RPC return path — so do not log raw request params or full exception messages that embed them.
+   The SDK's `JsonRpcWorker.serve()` deliberately logs only method name + exception class for this
+   reason; match that discipline in your handlers.
+
+**Reference implementations:**
+- `FY-Report` (`FengYu-Plugin-Private/FY-Report`) — the gold standard: 21 logger classes, 97 log
+  calls, every async body wrapped, both channels used. Start here when in doubt.
+- `OfficialPlugins/plugin-excel` — SLF4J in splitter/util/listener + `handle.log` progress in
+  `splitStart`; async body try/catch-log-rethrow.
+- `OfficialPlugins/plugin-email` — SLF4J in Send/Archive/Pending services; IMAP/SMTP failures logged
+  with context; `EmailWorkerMain` shows the one-line `System.setOut(System.err)` for construction-
+  phase silence when DB/driver init noise risks leaking to stdout before `run()` takes over.
+
+**Anti-patterns to remove on sight:**
+- `System.out.println(...)` / `printStackTrace()` — replace with SLF4J.
+- A bare `catch (Exception e) { failures++; }` with no log — at minimum add
+  `log.warn("... failed: {}", e.toString())`.
+- An async `jobs.start(...)` body with no try/catch — wrap it so failures reach the host log.
+- A custom `OpbLogger`-style wrapper that reinvents logging — use SLF4J directly; the SDK provider
+  already routes to stderr, and a custom wrapper risks double-logging or missing the host drain.
+
 ## Step 4 — Declare permissions and (optional) AI tools
 
 Edit `manifest.json`:

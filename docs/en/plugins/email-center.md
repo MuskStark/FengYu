@@ -1,6 +1,6 @@
 ---
 title: Official Plugin — Email Center
-description: Task-focused confirmed sending, filename-tag batches, contacts, manual collection, archives, and seven AI tools.
+description: Task-focused confirmed sending, filename-tag batches, contacts, manual collection, archives, and nine AI tools.
 lang: en
 ---
 

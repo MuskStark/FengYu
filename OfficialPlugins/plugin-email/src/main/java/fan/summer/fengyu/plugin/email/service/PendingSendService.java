@@ -8,6 +8,8 @@ import fan.summer.fengyu.plugin.email.model.SendResult;
 import fan.summer.fengyu.plugin.email.repository.AddressBookRepository;
 import fan.summer.fengyu.plugin.email.repository.PendingSendRepository;
 import fan.summer.fengyu.plugin.email.repository.SentLogRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.time.Clock;
@@ -24,6 +26,7 @@ public final class PendingSendService {
     private static final String PLUGIN_ID = "fan.summer.email";
     /** A task in SENDING longer than this is assumed to belong to a dead worker and reclaimed to FAILED. */
     private static final Duration STALE_THRESHOLD = Duration.ofMinutes(5);
+    private static final Logger log = LoggerFactory.getLogger(PendingSendService.class);
     private final PendingSendRepository pending;
     private final AddressBookRepository addressBook;
     private final SentLogRepository sentLogs;
@@ -54,7 +57,8 @@ public final class PendingSendService {
      * drainable without a background scheduler (there is no lifecycle hook in this worker).
      */
     private void reclaimStale() {
-        pending.reclaimStuck(LocalDateTime.ofInstant(clock.instant().minus(STALE_THRESHOLD), ZoneOffset.UTC));
+        int reclaimed = pending.reclaimStuck(LocalDateTime.ofInstant(clock.instant().minus(STALE_THRESHOLD), ZoneOffset.UTC));
+        if (reclaimed > 0) log.warn("reclaimed {} stuck SENDING task(s) (assumed dead worker)", reclaimed);
     }
 
     public ConfirmationEnvelope prepareSingle(EmailMessageRequest request) {
@@ -132,11 +136,18 @@ public final class PendingSendService {
         for (MessageSnapshot message : snapshot.messages()) {
             SendResult result;
             try { result = sender.send(confirmationId, message.toRequest()); }
-            catch (RuntimeException error) { result = SendResult.failure(error.getMessage()); }
-            if (result.success()) succeeded++; else failed.addAll(message.to());
+            catch (RuntimeException error) {
+                log.warn("send threw for confirmation={} to={}: {}", confirmationId, message.to(), error.toString());
+                result = SendResult.failure(error.getMessage());
+            }
+            if (result.success()) succeeded++; else {
+                failed.addAll(message.to());
+                log.warn("send failed for confirmation={} to={}", confirmationId, message.to());
+            }
         }
         String terminal = failed.isEmpty() ? "COMPLETED" : succeeded == 0 ? "FAILED" : "PARTIAL_FAILED";
         pending.finish(confirmationId, terminal);
+        log.info("confirmation {} finished: {} ({} succeeded, {} failed)", confirmationId, terminal, succeeded, failed.size());
         return new ConfirmationResult(terminal, succeeded, failed.size(), failed);
     }
 
