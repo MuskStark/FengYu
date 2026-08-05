@@ -4,9 +4,13 @@
   "version": "4.0.0",
   "type": "module",
   "scripts": {
+    "sync:changelog": "node scripts/sync-changelog.mjs",
     "dev": "vitepress dev .",
     "build": "vitepress build .",
-    "preview": "vitepress preview ."
+    "preview": "vitepress preview .",
+    "predev": "npm run sync:changelog",
+    "prebuild": "npm run sync:changelog",
+    "prepreview": "npm run sync:changelog"
   },
   "devDependencies": {
     "vitepress": "^1.6.4",
