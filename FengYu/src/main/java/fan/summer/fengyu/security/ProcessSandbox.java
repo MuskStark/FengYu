@@ -76,6 +76,24 @@ public class ProcessSandbox {
     }
 
     /**
+     * Terminate the job tree (Windows). No-op when {@code jobHandle == 0} or on a non-Windows host.
+     * Delegates to {@link WindowsJobSandbox#terminate(long)}; exposed publicly because callers that
+     * own a job handle (e.g. {@code PluginProcessManager.Worker}) live outside this package and
+     * cannot reach the package-private {@code WindowsJobSandbox} directly.
+     */
+    public void terminateJob(long jobHandle) {
+        WindowsJobSandbox.terminate(jobHandle);
+    }
+
+    /**
+     * Close the job handle (triggers {@code KILL_ON_JOB_CLOSE} on any survivors). No-op when
+     * {@code jobHandle == 0} or on a non-Windows host. See {@link #terminateJob(long)}.
+     */
+    public void closeJobHandle(long jobHandle) {
+        WindowsJobSandbox.closeHandle(jobHandle);
+    }
+
+    /**
      * Returns whether this host can enforce the native process boundary used by AI-authored
      * commands. Permission policy uses this to fail closed instead of treating a regex heuristic
      * as a sandbox on unsupported platforms.
