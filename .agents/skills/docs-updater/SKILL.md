@@ -71,6 +71,11 @@ the formatting of the nearest existing entry.
 - Keep `docs/en/` and `docs/zh/` **structurally aligned**: the same headings, the same section order,
   the same facts. Translate to 简体中文 for the `zh` tree; do not let one language drift ahead of the
   other. Preserve all historical changelog entries — never rewrite past releases.
+- **The changelog mirror pages are auto-generated.** `docs/{en,zh}/reference/changelog.md` are
+  regenerated from the root `CHANGELOG.md` by `docs/scripts/sync-changelog.mjs` on every
+  `npm --prefix docs run dev/build/preview` (via `predev`/`prebuild`/`prepreview` hooks). Only edit
+  the root `CHANGELOG.md`; never hand-edit the two mirror pages. The docs build regenerates them, so
+  the "Latest release" callout and body are always in sync.
 
 ## Step 4 — Replace version numbers (exact string matching)
 
