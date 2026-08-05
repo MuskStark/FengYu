@@ -10,6 +10,12 @@
   <p>AI-driven browser automation. Chromium is downloaded automatically on first use.</p>
   <label>Browser path (optional — leave blank to auto-download):</label>
   <input id="path" style="width:100%" placeholder="/usr/bin/google-chrome or C:\\Program Files\\..." />
+  <!-- The worker reads the configured path from <dataDir>/settings.json (browserPath field) at
+       startup. MVP: this field is NOT yet wired through the host to the worker — the
+       fengyu:setBrowserPath postMessage below is captured by the parent but no host settings
+       endpoint writes the file yet. Until that bridge lands, an admin can drop a settings.json
+       in the plugin data dir manually. The postMessage handler is retained so the future
+       UI→worker wiring only needs a host-side listener, not a UI change. -->
   <p id="status">Status: loading…</p>
   <script>
     // Minimal postMessage bridge usage; adapt to @infinia/plugin-sdk API.

@@ -46,9 +46,13 @@ public final class BrowserWorkerMain {
         boolean headless = Boolean.parseBoolean(
                 System.getenv().getOrDefault("FENGYU_BROWSER_HEADLESS", "false"));
 
-        // User-configured executable path is wired through plugin settings in a later task; for now
-        // the resolver consults the on-disk cache and auto-downloads on first use.
-        ChromiumResolver resolver = ChromiumResolver.forEnvironment(dataDir, () -> null);
+        // User-configured executable path is read from <dataDir>/settings.json (browserPath field).
+        // MVP: the file may be dropped in manually by a user/admin, or written by a future UI
+        // integration; the UI's fengyu:setBrowserPath postMessage is not yet wired through the host
+        // to this worker. A missing/malformed file makes the supplier return null, so the resolver
+        // falls through to the on-disk Chromium cache and auto-download as before.
+        ChromiumResolver resolver = ChromiumResolver.forEnvironment(
+                dataDir, () -> BrowserSettings.readBrowserPath(dataDir));
         String executablePath = resolver.resolve();
         log.info("Resolved browser executablePath={}", executablePath);
 
