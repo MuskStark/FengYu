@@ -213,6 +213,16 @@ public class PluginProcessManager {
             }
             environment.forEach(builder.environment()::put);
             Process process = builder.start();
+            // WINDOWS_JOB backend assigns the process to a Job Object after start; the hook writes
+            // the job handle into handleOut[0]. On other backends onStarted() is null and jobHandle
+            // stays 0 (terminate/close then no-op). If the hook throws (create/assign failed), let
+            // it propagate — the worker must fail to start explicitly rather than run un-jailed.
+            long jobHandle = 0L;
+            if (launch.onStarted() != null) {
+                long[] handleOut = {0L};
+                launch.onStarted().accept(process, handleOut);
+                jobHandle = handleOut[0];
+            }
             Thread.ofVirtual().name("plugin-" + id + "-stderr").start(() -> {
                 try (BufferedReader errors = process.errorReader(StandardCharsets.UTF_8)) {
                     for (String line; (line = errors.readLine()) != null;) {
@@ -232,7 +242,7 @@ public class PluginProcessManager {
                 } catch (IOException ignored) {}
             });
             Worker worker = new Worker(id, process, json, redactor, logStore,
-                    files.grantVersion(id), fullAccess);
+                    files.grantVersion(id), fullAccess, sandbox, jobHandle);
             worker.startReader();
             // Host lifecycle events use the same effective threshold as forwarded Worker events.
             log.info("Plugin {} worker started (pid={})", id, process.pid());
@@ -362,9 +372,13 @@ public class PluginProcessManager {
         private volatile boolean closed = false;
         private final long grantVersion;
         private final boolean fullAccess;
+        private final ProcessSandbox sandbox;
+        /** Windows Job Object handle (0 on non-Windows / NONE backend → terminate/close no-op). */
+        private final long jobHandle;
 
         Worker(String pluginId, Process process, ObjectMapper json, SensitiveValueRedactor redactor,
-                PluginLogStore logStore, long grantVersion, boolean fullAccess) {
+                PluginLogStore logStore, long grantVersion, boolean fullAccess,
+                ProcessSandbox sandbox, long jobHandle) {
             this.pluginId = pluginId;
             this.process = process;
             this.json = json;
@@ -372,6 +386,8 @@ public class PluginProcessManager {
             this.logStore = logStore;
             this.grantVersion = grantVersion;
             this.fullAccess = fullAccess;
+            this.sandbox = sandbox;
+            this.jobHandle = jobHandle;
             this.writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
             this.reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
         }
@@ -488,6 +504,14 @@ public class PluginProcessManager {
 
         void close() {
             failAll("Plugin worker closed: " + pluginId);
+            // Primary on Windows: terminate the entire job tree via the kernel (TerminateJobObject).
+            // ProcessHandle.descendants() is unreliable on Windows, so when a job handle is present
+            // (WINDOWS_JOB backend) it is the authoritative tree-kill. No-op when jobHandle == 0
+            // (macOS sandbox-exec / Linux bwrap / NONE backend). Wrapped so a cleanup failure cannot
+            // mask the destroy path below.
+            if (jobHandle != 0L) {
+                try { sandbox.terminateJob(jobHandle); } catch (RuntimeException ignored) {}
+            }
             // Destroy the worker JVM itself (graceful SIGTERM, then SIGKILL after 2s). On macOS the
             // sandbox-exec wrapper execve's into java, so process.destroy() hits the worker JVM
             // directly (verified). On Linux bwrap --die-with-parent already reaps the worker when
@@ -498,8 +522,15 @@ public class PluginProcessManager {
             // Backstop: a worker may spawn grandchildren (e.g. offlinepython's pip subprocess) that
             // are NOT reaped when the worker JVM dies. Walk the worker's descendant tree and force-
             // kill any survivors so they cannot leak (a leaked grandchild can hold file handles or
-            // child DB locks of its own). Idempotent: already-dead descendants are skipped.
+            // child DB locks of its own). On Windows this is now secondary (the Job already
+            // terminated the tree); on mac/linux (jobHandle==0) it remains the primary grandchild
+            // reaper. Idempotent: already-dead descendants are skipped.
             killDescendants(process.descendants());
+            // Close the job handle last. With KILL_ON_JOB_CLOSE the kernel kills any survivors on
+            // the final close; this also releases the kernel handle. No-op when jobHandle == 0.
+            if (jobHandle != 0L) {
+                try { sandbox.closeJobHandle(jobHandle); } catch (RuntimeException ignored) {}
+            }
         }
 
         /** Recursively destroy a process tree, leaves-first to avoid orphaning. */
