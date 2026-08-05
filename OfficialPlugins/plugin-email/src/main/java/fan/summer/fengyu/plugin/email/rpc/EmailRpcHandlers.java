@@ -9,10 +9,12 @@ import fan.summer.fengyu.plugin.email.model.PendingSend;
 import fan.summer.fengyu.plugin.email.repository.MassConfigRepository;
 import fan.summer.fengyu.plugin.email.service.AccountService;
 import fan.summer.fengyu.plugin.email.service.AddressBookService;
+import fan.summer.fengyu.plugin.email.service.ContactImporter;
 import fan.summer.fengyu.plugin.email.service.EmailArchiveService;
 import fan.summer.fengyu.plugin.email.service.EmailHtmlSanitizer;
 import fan.summer.fengyu.plugin.email.service.EmailSendService;
 import fan.summer.fengyu.plugin.email.service.PendingSendService;
+import fan.summer.fengyu.plugin.email.model.ContactImport.ImportOptions;
 import fan.summer.fengyu.sdk.FileRef;
 import fan.summer.fengyu.sdk.JsonRpcWorker;
 import fan.summer.fengyu.sdk.PluginHandlerSupport;
@@ -39,6 +41,7 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
     private final Gson json = new Gson();
     private final AccountRpc accounts;
     private final AddressBookRpc addressBook;
+    private final ContactImporter importer;
     private final MassConfigRepository configs;
     private final EmailSendService sends;
     private final PendingSendService pending;
@@ -49,6 +52,7 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
         super("email");
         accounts = new AccountRpc(new AccountService(database, cipher));
         addressBook = new AddressBookRpc(new AddressBookService(database));
+        importer = new ContactImporter(database);
         configs = new MassConfigRepository(database);
         sends = new EmailSendService(database, cipher);
         pending = new PendingSendService(database, sends);
@@ -155,6 +159,36 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
             Set<String> recipients = addressBook.resolveRecipients(longSet(params.get("tagIds")));
             return ok("Resolved " + recipients.size() + " recipient(s)", "recipients", recipients);
         });
+    }
+
+    public Object importContactsPreview(Map<String, Object> params) {
+        return result(() -> {
+            ImportOptions options = importOptions(params);
+            var preview = importer.preview(
+                path(params.get("sourceFile"), "sourceFile", "file"), options);
+            return ok("Parsed " + preview.rowsTotal() + " row(s); " + preview.createdContacts()
+                + " new, " + preview.mergedContacts() + " merge, " + preview.skippedContacts()
+                + " skip; " + preview.createdTags().size() + " new tag(s); "
+                + preview.errors().size() + " error(s)", "preview", preview);
+        });
+    }
+
+    public Object importContactsCommit(Map<String, Object> params) {
+        return result(() -> {
+            ImportOptions options = importOptions(params);
+            var outcome = importer.commit(
+                path(params.get("sourceFile"), "sourceFile", "file"), options);
+            String summary = "Imported " + outcome.created() + " new, merged " + outcome.merged()
+                + ", skipped " + outcome.skipped() + "; created " + outcome.tagsCreated()
+                + " tag(s), assigned " + outcome.tagsAssigned() + " tag(s)";
+            return outcome.errors().isEmpty()
+                ? ok(summary, "result", outcome)
+                : ok(summary + "; " + outcome.errors().size() + " row error(s)", "result", outcome);
+        });
+    }
+
+    private ImportOptions importOptions(Map<String, Object> params) {
+        return new ImportOptions(string(params, "duplicateMode"), string(params, "tagDelimiter"));
     }
 
     public Object listConfigs(Map<String, Object> params) {
