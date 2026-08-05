@@ -32,15 +32,18 @@ export default defineConfig({
   }
 })
 
-// Nav + sidebar for both locales (Task 2). Every link below resolves to a
-// committed page in docs/{en,zh}; if you add a link here, ship the page too.
+// Nav + sidebar for both locales. Every link below resolves to a committed page
+// in docs/{en,zh}; if you add a link here, ship the page too. The Changelog nav
+// entry targets docs/{en,zh}/reference/changelog.md, which is regenerated from
+// the root CHANGELOG.md by docs/scripts/sync-changelog.mjs on every dev/build.
 
 const enNav = [
   { text: 'Quickstart', link: '/en/quickstart' },
   { text: 'Architecture', link: '/en/architecture/overview' },
   { text: 'Plugins', link: '/en/plugins/overview' },
   { text: 'Guide', link: '/en/guide/ai-chat' },
-  { text: 'Reference', link: '/en/reference/rest-api' }
+  { text: 'Reference', link: '/en/reference/rest-api' },
+  { text: 'Changelog', link: '/en/reference/changelog' }
 ]
 
 const enSidebar = {
@@ -101,7 +104,8 @@ const zhNav = [
   { text: '架构', link: '/zh/architecture/overview' },
   { text: '插件', link: '/zh/plugins/overview' },
   { text: '指南', link: '/zh/guide/ai-chat' },
-  { text: '参考', link: '/zh/reference/rest-api' }
+  { text: '参考', link: '/zh/reference/rest-api' },
+  { text: '更新日志', link: '/zh/reference/changelog' }
 ]
 
 const zhSidebar = {
