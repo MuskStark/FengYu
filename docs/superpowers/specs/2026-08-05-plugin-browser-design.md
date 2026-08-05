@@ -104,7 +104,7 @@ BrowserWorkerMain
 | `browser_type` | `selector`, `text`, `clear?`(默认 true) | `{filled: bool}` | 输入文字 |
 | `browser_get_text` | `selector?`(空则整页) | `{text, length}` | 读取文本 |
 | `browser_query` | `selector` | `{count, samples[]}` | 查询元素存在性 + 取样(不返回全量) |
-| `browser_screenshot` | `fullPage?`(默认 false), `selector?` | `{imagePath, width, height}` | 截图,存文件返回 FileRef 路径 |
+| `browser_screenshot` | `fullPage?`(默认 false), `selector?` | `{imagePath, width, height, a11yTree}` | 截图存文件(给用户看)+ 返回页面可访问性树文本(给 AI 读,因 AI 工具层无图像注入) |
 | `browser_wait_for` | `selector`, `state?`(attached/detached/visible/hidden,默认 visible), `timeout?`(默认 30s) | `{ok: bool}` | 等待元素状态 |
 | `browser_eval_js` | `script` | `{value}` | 执行页面 JS,返回序列化结果 |
 | `browser_close` | — | `{closed: bool}` | 关闭浏览器释放资源 |
@@ -112,7 +112,7 @@ BrowserWorkerMain
 ### 关键设计点
 
 1. **effect 统一 `external`** — 走现有审批门,无需改宿主审批逻辑。
-2. **`browser_screenshot` 返回 FileRef** — 截图存到插件 data 目录,返回路径,复用 FengYu 现有的 `AiToolFileInjector` / FileRef 机制让 AI 在对话里看到图。
+2. **`browser_screenshot` 返回文本而非图像** — FengYu 的 AI 工具层只处理文本/JSON 结果,**无多模态/图像注入通道**(已确认:`FengYu/src/.../ai/` 下无 image/base64/media_type 处理)。因此截图工具返回:`imagePath`(截图文件绝对路径,给用户在 UI 里看)+ `a11yTree`(页面可访问性树的文本快照,给 AI 模型读)。视觉注入(工具结果 → 模型 image part)是**后续独立 feature**,需改 `FengYu/src/.../ai/` 核心子系统,不在本插件范围。
 3. **`browser_get_text` 不返回全量 HTML** — 只返回纯文本 + 长度,长内容截断(参考 `CommandExecuteTool` 的输出上限模式,默认上限 64K,防 token 爆炸)。
 4. **`browser_query` 返回取样而非全量** — `samples[]` 最多 N 个元素(如前 5 个的文本/属性),避免大列表撑爆上下文。
 5. **错误处理** — 选择器找不到、JS 抛异常、超时等,统一返回 `{success: false, error, summary}`,worker 不崩(`PluginHandlerSupport` 已有异常兜底,把异常压扁成失败响应)。
@@ -204,10 +204,10 @@ OfficialPlugins/plugin-browser/
       "inputSchema": "{\"type\":\"object\",\"properties\":{\"selector\":{\"type\":\"string\"}},\"required\":[\"selector\"]}",
       "outputSchema": "{\"type\":\"object\",\"properties\":{\"success\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"},\"count\":{\"type\":\"integer\"},\"samples\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}},\"required\":[\"success\",\"summary\"]}" },
     { "name": "browser_screenshot", "effect": "external", "method": "browser_screenshot",
-      "description": "Capture a screenshot (viewport, full page, or element). Saved to plugin data dir; returns a FileRef path.",
+      "description": "Capture a screenshot (viewport, full page, or element). Saved to plugin data dir; returns the file path plus the page accessibility tree as text (the AI cannot see images, so it reads the a11y tree).",
       "timeoutSeconds": 30,
       "inputSchema": "{\"type\":\"object\",\"properties\":{\"fullPage\":{\"type\":\"boolean\",\"default\":false},\"selector\":{\"type\":\"string\"}}}",
-      "outputSchema": "{\"type\":\"object\",\"properties\":{\"success\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"},\"imagePath\":{\"type\":\"string\"},\"width\":{\"type\":\"integer\"},\"height\":{\"type\":\"integer\"}},\"required\":[\"success\",\"summary\"]}" },
+      "outputSchema": "{\"type\":\"object\",\"properties\":{\"success\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"},\"imagePath\":{\"type\":\"string\"},\"width\":{\"type\":\"integer\"},\"height\":{\"type\":\"integer\"},\"a11yTree\":{\"type\":\"string\"}},\"required\":[\"success\",\"summary\"]}" },
     { "name": "browser_wait_for", "effect": "external", "method": "browser_wait_for",
       "description": "Wait for an element to reach a state (attached/detached/visible/hidden).",
       "timeoutSeconds": 40,
@@ -240,9 +240,12 @@ OfficialPlugins/plugin-browser/
 - worker 进程结束(插件禁用 / 宿主关闭 / worker 超时重建)即会话结束,所有内存状态丢失(profile 目录里的 Cookie/登录态保留)。
 
 ### 8.2 进程回收
-- **正常关闭**:`BrowserSession.close()` 调 `page.context().browser().close()`(Playwright 终止所有 Chromium 子进程)+ `playwright.close()`。worker 内注册 JVM `shutdownHook` 兜底,确保即便 handler 路径异常也能清理。
-- **worker 被强杀**:依赖宿主 `PluginProcessManager.close()` 的 `process.toHandle().descendants().forEach(...destroyForcibly())` + 根进程 `destroyForcibly()`(现有逻辑)。
-- **Windows 强杀残留(已知限制)**:`descendants()` 在 Windows 上不一定枚举到 Chromium 的孙进程(renderer/GPU/utility),可能残留孤儿 Chromium 进程。**MVP 不修**,作为已知限制 + follow-up issue(需在宿主层 `PluginProcessManager` 加 `taskkill /F /T /PID`,与 Electron 已用的 `tree-kill` 同策略,超出本插件范围)。
+
+> **playwright-java 运行时架构**(影响进程树深度):`playwright-java` 并非纯 Java 引擎,它在 `Playwright.create()` 时把一个**捆绑的 Node.js 驱动**解压到临时目录并 spawn 为子进程,Java 客户端经 stdin/stdout 协议与该 Node 驱动通信,Node 驱动再管理 Chromium 进程。因此实际进程树是三层:**Host JVM → worker JVM → Node driver → Chromium(browser + renderer/GPU/utility)**。这使进程回收比普通插件更深。
+
+- **正常关闭**:`BrowserSession.close()` 调 `page.context().browser().close()`(Playwright 终止 Chromium 子进程)+ `playwright.close()`(终止 Node driver)。worker 内注册 JVM `shutdownHook` 兜底,确保即便 handler 路径异常也能清理。
+- **worker 被强杀**:依赖宿主 `PluginProcessManager.close()` 的 `process.toHandle().descendants().forEach(...destroyForcibly())` + 根进程 `destroyForcibly()`(现有逻辑)。`descendants()` 应能覆盖 worker JVM 的直接子进程(Node driver);Chromium 进程由 Node driver 派生,正常关闭路径已处理。
+- **Windows 强杀残留(已知限制)**:Windows 上 `descendants()` 枚举不可靠,若 worker 被强杀而 `playwright.close()` 没来得及跑,可能残留孤儿 Node driver / Chromium 进程。**MVP 不修**,作为已知限制 + follow-up issue(需在宿主层 `PluginProcessManager` 加 `taskkill /F /T /PID`,与 Electron 已用的 `tree-kill` 同策略,超出本插件范围)。
 
 ## 9. Windows 兼容性
 
