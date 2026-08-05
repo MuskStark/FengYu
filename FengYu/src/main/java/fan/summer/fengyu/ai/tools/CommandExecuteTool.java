@@ -80,6 +80,7 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
         int timeout = bounded(timeoutSeconds, DEFAULT_TIMEOUT_SECONDS, 1, MAX_TIMEOUT_SECONDS);
         int outputLimit = bounded(maxOutputChars, DEFAULT_MAX_OUTPUT_CHARS, 1, MAX_OUTPUT_CHARS);
         Process process = null;
+        long jobHandle = 0L;
         OutputCapture capture = new OutputCapture(outputLimit);
         boolean timedOut = false;
         boolean fullAccess = AiPermissionContext.current() == AiPermissionMode.FULL_ACCESS;
@@ -94,6 +95,15 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
                     .redirectErrorStream(true);
             removeSensitiveEnvironment(builder.environment());
             process = builder.start();
+            // WINDOWS_JOB backend assigns the process to a Job Object after start; the hook writes
+            // the job handle into handleOut[0]. On other backends onStarted() is null and jobHandle
+            // stays 0 (terminate/close then no-op). If the hook throws (create/assign failed), let
+            // it propagate — the command must fail to start rather than run un-jailed.
+            if (launch.onStarted() != null) {
+                long[] handleOut = {0L};
+                launch.onStarted().accept(process, handleOut);
+                jobHandle = handleOut[0];
+            }
 
             Process running = process;
             Thread reader = Thread.ofVirtual().name("command-output-reader").start(
@@ -101,7 +111,7 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
 
             if (!process.waitFor(timeout, TimeUnit.SECONDS)) {
                 timedOut = true;
-                terminate(process);
+                terminate(process, jobHandle);
                 process.waitFor(5, TimeUnit.SECONDS);
             }
             reader.join(Duration.ofSeconds(5));
@@ -121,10 +131,10 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
             return toJson(result);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            if (process != null) terminate(process);
+            if (process != null) terminate(process, jobHandle);
             return error("command execution was interrupted");
         } catch (Exception e) {
-            if (process != null && process.isAlive()) terminate(process);
+            if (process != null && process.isAlive()) terminate(process, jobHandle);
             return error("failed to execute command: " + e.getMessage());
         }
     }
@@ -177,7 +187,19 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
                 || upper.contains("AUTHORIZATION");
     }
 
-    private static void terminate(Process process) {
+    /**
+     * Terminate a command process and any descendants. Instance method so it can reach the
+     * {@link ProcessSandbox} job-handle API; the two-arg form takes the WINDOWS_JOB handle captured
+     * by {@code onStarted} (0 on other backends / NONE). Order: kernel tree-kill via the Job Object
+     * (Windows primary, guarded by handle != 0, wrapped so a cleanup failure cannot mask the
+     * destroy path) → descendants {@code destroyForcibly} (backstop for macOS/Linux and any
+     * grandchildren not tracked by the Job) → {@code destroyForcibly} the root → close the job
+     * handle last (KILL_ON_JOB_CLOSE on survivors + kernel-handle release).
+     */
+    private void terminate(Process process, long jobHandle) {
+        if (jobHandle != 0L) {
+            try { sandbox.terminateJob(jobHandle); } catch (RuntimeException ignored) {}
+        }
         process.toHandle().descendants().forEach(handle -> {
             try {
                 handle.destroyForcibly();
@@ -186,6 +208,14 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
             }
         });
         process.destroyForcibly();
+        if (jobHandle != 0L) {
+            try { sandbox.closeJobHandle(jobHandle); } catch (RuntimeException ignored) {}
+        }
+    }
+
+    /** Defensive single-arg overload for any path that does not own a job handle. */
+    private void terminate(Process process) {
+        terminate(process, 0L);
     }
 
     private static String error(String message) {
