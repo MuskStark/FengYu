@@ -572,3 +572,9 @@ spring:
 - 主程序侧的认证集成代码（主程序后续 spec）。
 - 支付/付费、评论评分、多租户、OIDC IdP 模式（v2+）。
 - FengYu 主程序现有 `/api/plugin-store/*` 的迁移（不迁；本服务是它的新数据源）。
+
+---
+
+## 跨仓库后续工单（执行 Plan 3 后发现）
+
+- **主程序 `PluginMarketplaceService` Jackson mapper 严格未知属性**：市场服务 `/marketplaces/fengyu.json` 新增了 `sha256` 字段（§5.3）。统一插件商店消费端（`FengYuCatalogAdapter`）安全忽略未知字段。但主程序**仍在用的旧** `PluginMarketplaceService.fetchCatalog()` 直接反序列化到 11 字段的 `MarketplaceCatalogEntry`（无 sha256），其 Jackson mapper 用默认 `FAIL_ON_UNKNOWN_PROPERTIES=true` → 遇 `sha256` 抛 `UnrecognizedPropertyException`。**后续**：在主程序侧给该 mapper 配 `FAIL_ON_UNKNOWN_PROPERTIES=false`（一行，向前兼容），或确认 `PluginMarketplaceService` 已被统一商店取代而退役。
