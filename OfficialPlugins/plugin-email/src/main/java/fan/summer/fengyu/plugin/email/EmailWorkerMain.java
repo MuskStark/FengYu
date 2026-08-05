@@ -7,20 +7,16 @@ import fan.summer.fengyu.plugin.email.rpc.EmailRpcHandlers;
 import fan.summer.fengyu.sdk.JsonRpcWorker;
 import fan.summer.fengyu.sdk.PluginDatabaseConfig;
 
-import java.io.PrintStream;
 import java.util.Map;
 
 public final class EmailWorkerMain {
     private EmailWorkerMain() { }
 
     public static void main(String[] args) throws Exception {
-        PrintStream protocolOutput = System.out;
+        // Silence JDBC/driver noise during DB + key-store construction (before run() takes over).
+        // run() re-applies this redirection for the dispatch loop and restores stdout on exit.
         System.setOut(System.err);
-        try {
-            worker(handlers(System.getenv())).run(System.in, protocolOutput);
-        } finally {
-            System.setOut(protocolOutput);
-        }
+        worker(handlers(System.getenv())).run();
     }
 
     static JsonRpcWorker worker(EmailRpcHandlers handlers) {
