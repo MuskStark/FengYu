@@ -7,6 +7,8 @@ import fan.summer.fengyu.plugin.offlinepython.domain.PlatformMatcher;
 import fan.summer.fengyu.plugin.offlinepython.domain.WheelEntry;
 import fan.summer.fengyu.plugin.offlinepython.infra.ProcessRunner;
 import fan.summer.fengyu.plugin.offlinepython.infra.PythonDetector;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -22,6 +24,8 @@ import java.util.zip.ZipFile;
  * 不依赖 JavaFX;ProcessRunner 注入便于测试。
  */
 public class DeployService {
+
+    private static final Logger log = LoggerFactory.getLogger(DeployService.class);
 
     private final ProcessRunner runner;
 
@@ -88,6 +92,12 @@ public class DeployService {
             }
 
             long dur = System.currentTimeMillis() - start;
+            if (failed > 0) {
+                log.warn("deploy finished with {} failure(s): installed={}, skipped={} in {} ms",
+                    failed, installed, skipped, dur);
+            } else {
+                log.info("deploy completed: installed={}, skipped={} in {} ms", installed, skipped, dur);
+            }
             return new DeployResult(installed, skipped, failed, dur);
         } finally {
             // 清理临时目录(失败时保留以便排查?此处统一清理,日志已有记录)

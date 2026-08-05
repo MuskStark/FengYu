@@ -9,6 +9,8 @@ import fan.summer.fengyu.plugin.offlinepython.domain.WheelEntry;
 import fan.summer.fengyu.plugin.offlinepython.infra.HashUtil;
 import fan.summer.fengyu.plugin.offlinepython.infra.JsonStore;
 import fan.summer.fengyu.plugin.offlinepython.infra.ProcessRunner;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -24,6 +26,8 @@ import java.util.stream.Stream;
 
 /** Runs pip download for the configured target platform, then writes manifest + SHA256SUMS. */
 public class BuildService {
+
+    private static final Logger log = LoggerFactory.getLogger(BuildService.class);
 
     /** @return a BuildSummary describing the build outcome (wheels, cache hits, size, duration). */
     public BuildSummary build(
@@ -52,13 +56,18 @@ public class BuildService {
             int code = runner.run(cmd, onLog);
             if (code != 0) {
                 long duration = System.currentTimeMillis() - start;
+                log.warn("pip download failed (exit {}) for group platforms={} in {} ms; build produced no new wheels",
+                    code, g.platforms, duration);
                 return new BuildSummary(preExisting, preExisting, 0L, duration);
             }
         }
         long duration = System.currentTimeMillis() - start;
         writeManifest(projectDir, cfg, output, wheelhouse, unionPlatforms(groups));
         writeSha256Sums(output);
-        return BuildSummary.compute(wheelhouse, preExisting, duration);
+        BuildSummary summary = BuildSummary.compute(wheelhouse, preExisting, duration);
+        log.info("build completed: {} wheel(s) ({} pre-existing) in {} ms",
+            summary.totalWheels(), preExisting, duration);
+        return summary;
     }
 
     private int countWheels(Path wheelhouse) throws IOException {

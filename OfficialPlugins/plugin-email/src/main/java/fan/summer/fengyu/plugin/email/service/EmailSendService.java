@@ -15,6 +15,8 @@ import org.simplejavamail.api.mailer.Mailer;
 import org.simplejavamail.api.mailer.config.TransportStrategy;
 import org.simplejavamail.email.EmailBuilder;
 import org.simplejavamail.mailer.MailerBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,6 +27,8 @@ import java.util.Map;
 
 public final class EmailSendService {
     static final int SESSION_TIMEOUT_MILLIS = 10_000;
+
+    private static final Logger log = LoggerFactory.getLogger(EmailSendService.class);
 
     private final AccountRepository accounts;
     private final AccountService accountService;
@@ -42,8 +46,10 @@ public final class EmailSendService {
         String password = accountService.decryptPassword(accountId);
         try (Mailer mailer = createMailer(account, password)) {
             mailer.testConnection();
+            log.info("SMTP test succeeded for account {} ({})", accountId, account.email());
             return SendResult.success(null);
         } catch (Exception e) {
+            log.warn("SMTP test failed for account {} ({}): {}", accountId, account.email(), safeError(e, password));
             return SendResult.failure(safeError(e, password));
         }
     }
@@ -63,10 +69,13 @@ public final class EmailSendService {
             mailer.sendMail(email).join();
             SendResult result = SendResult.success(email.getId());
             insertLog(account, request, confirmationId, "SUCCESS", null);
+            log.info("sent mail id={} from {} to {} recipients (account={})",
+                confirmationId, account.email(), request.to().size() + request.cc().size() + request.bcc().size(), account.id());
             return result;
         } catch (Exception e) {
             String error = safeError(e, password);
             if (attempted) insertLog(account, request, confirmationId, "FAILED", error);
+            log.warn("send failed id={} account={}: {}", confirmationId, account.id(), error, e);
             return SendResult.failure(error);
         }
     }
