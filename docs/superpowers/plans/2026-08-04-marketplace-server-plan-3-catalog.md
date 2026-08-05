@@ -8,6 +8,19 @@
 
 **Tech Stack:** Spring Boot 4.1.0、Spring Security 7（清单端点 `permitAll`，已在计划 1 配置）、JPA、Jackson 3（`tools.jackson`；**上游 JSON 解析也用 Jackson 3，与 json-schema-validator 隔离**）、Java 21 `HttpClient`、JUnit 5 + Spring Boot Test + `RestTestClient.bindToServer()`。
 
+> ## ⚠️ 执行后注记（2026-08-05，计划 3 已完成 + 最终评审通过 With fixes/decision）
+>
+> 计划 3 已在 `fengyu-marketplace-server` 仓库 `main` 实现（HEAD `eb662d3`，**148/148 测试通过**，最终评审通过 With fixes→RESOLVED by decision）。关键发现：
+>
+> 1. **Jackson 3 `JsonNode.elements()` 移除** → `JsonNode` 现在是 `Iterable`，用 for-each（移植 adapter 时发现）。
+> 2. **`SourceFetchService` "never throws" 漏了 DB 操作**（findByUrl 在 try 外、save 在 catch 内未保护）→ 评审 Important 修复：包裹 findByUrl（降级为无缓存）+ `saveCacheQuietly` 吞 save 失败。
+> 3. **跨仓库契约冲突（IMPORTANT，已决策）**：`fengyu.json` 新增 `sha256` 会冲撞主程序旧 `PluginMarketplaceService`（严格未知属性）。**决策**：Plan 3 照原样合并（保留 sha256，§5.3 设计意图）；统一商店消费端安全；旧服务的兼容性修复/退役作为主程序侧跨仓库工单（已记入 spec）。
+> 4. **`UnifiedCatalogEntry` 加 `version` 字段**（cross-cutting，Task 6）：self-adapter 从 PluginVersionEntity 填，upstream null；17 处构造调用全部更新。
+> 5. **遗留（ACCEPT+TRACK，非阻塞）**：download 404 路径未测（代码 sound，两个显式 notFound）；aggregator 两标量配置（v1 等价于 brief 的 list）；publisher 顶层元数据占位（聚合丢失，客户端用 plugins[]）；Plan 1 login 枚举向量（独立工单）；CatalogQuery DTO 死代码；q-filter 漏 keywords；下载无 Content-Length；downloadUrl 是相对路径（Plan 2 设计）。
+> 6. 计划 4（前端）作者请预期同类 Boot 4.1 差异。
+
+## 全局约束（所有任务隐含遵守）
+
 ## ⚠️ 计划 3 执行前须知（来自计划 0/1/2 评审）
 
 - **JDK 21**：`JAVA_HOME=/Users/phoebej/Library/Java/JavaVirtualMachines/azul-21.0.12/Contents/Home`。
