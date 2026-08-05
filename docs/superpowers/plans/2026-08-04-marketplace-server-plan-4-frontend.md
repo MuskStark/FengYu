@@ -8,6 +8,21 @@
 
 **Tech Stack:** Vue 3.5、TypeScript、Vite、Vuetify 3、Pinia、vue-router、vue-i18n、axios。**不**共享 FengYu 主程序前端代码（独立仓库、独立打包）。
 
+> ## ⚠️ 执行后注记（2026-08-05，计划 4 已完成 + 最终评审通过 YES Ready to merge）
+>
+> 计划 4 已在 `fengyu-marketplace-server` 仓库 `main` 实现（HEAD `47a3200`，**153/153 后端 + 40/40 前端测试通过**，最终评审通过 YES）。安全姿态干净（零 XSS 面、token 仅内存、silent-refresh 正确且测试充分、SPA 角色 guard 是 UX-only 真鉴权在服务端）。SPA 集成结构稳健（9 深链全 forward、正向列表排除 /api//marketplaces/、frontend-maven-plugin 构建进 static/、jar 端到端可用）。i18n 195/195 镜像零漂移。诚实的后端缺口处理（unpublish 禁用、admin-users 空态、无捏造 API）。
+>
+> 关键发现：
+> 1. **silent-refresh 去重 + 防递归**：模块级 refreshPromise 单飞并发 401；REPLAYED symbol 防循环；refresh 端点 URL guard 防递归（auth.refresh() 走拦截实例的坑）。
+> 2. **SourceRef @JsonTypeInfo**（跨计划修复）：后端 sealed interface 加 `@JsonTypeInfo(property="type")` 让 TS discriminated union 的 type 判别字段确定。**Jackson 3.1.4 复用 jackson-annotations 2.21（com.fasterxml.jackson.annotation），非 tools.jackson.annotation。**
+> 3. **SpaFallbackConfig 正向列表**：显式列 9 SPA 路由（非贪婪正则），结构性排除 /api//marketplaces//actuator，绝不劫持。permitAll 仅 SPA shell（不含 /api）。
+> 4. **vite build.outDir → ../src/main/resources/static**，frontend-maven-plugin（Node v20.18.0 LTS）在 generate-resources 阶段构建。
+> 5. **遗留（ACCEPT+TRACK）**：double-submit UX（后端防）；admin-users/unpublish 后端缺口；无自动化 SPA/排除回归测试；favicon/vite.svg；Plan1 login 枚举。
+>
+> **🎉 4 个支柱全部完成**（认证 + 发布 + 聚合 + 前端）。市场服务 v1 就绪。
+
+## 全局约束
+
 ## ⚠️ 计划 4 执行前须知
 
 - **JDK 21**（后端 Maven 用）：`JAVA_HOME=/Users/phoebej/Library/Java/JavaVirtualMachines/azul-21.0.12/Contents/Home`。
