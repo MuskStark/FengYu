@@ -1,41 +1,13 @@
 import { defineConfig } from 'vitepress'
 
-export default defineConfig({
-  title: 'Infinia',
-  description: 'Where bees go, flows follow. — A modular web + desktop toolbox.',
-  // The docs site is served from a sub-path (muskstark.github.io/FengYu/),
-  // not the domain root, so every internal link/asset must be prefixed with it.
-  base: '/FengYu/',
-  lastUpdated: true,
-  cleanUrls: true,
-  srcExclude: ['superpowers/**'],
-  // Dead-link checking is intentionally left enabled (no `ignoreDeadLinks`):
-  // all EN + ZH pages are complete, so the build must fail loudly on any
-  // broken internal link rather than silently swallowing it.
-  sitemap: { hostname: 'https://muskstark.github.io/FengYu/' },
-  head: [
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/FengYu/logo.svg' }],
-    ['meta', { name: 'theme-color', content: '#6750A4' }]
-  ],
-  locales: {
-    root: { label: 'English', lang: 'en', link: '/en/', themeConfig: { nav: enNav, sidebar: enSidebar } },
-    zh: { label: '简体中文', lang: 'zh-CN', link: '/zh/', themeConfig: { nav: zhNav, sidebar: zhSidebar } }
-  },
-  themeConfig: {
-    logo: '/logo.svg',
-    socialLinks: [{ icon: 'github', link: 'https://github.com/MuskStark/FengYu' }],
-    search: { provider: 'local' },
-    footer: {
-      message: 'Released under the GPL-3.0 License.',
-      copyright: 'Copyright © 2026 Infinia · 蜂语 FengYu'
-    }
-  }
-})
-
 // Nav + sidebar for both locales. Every link below resolves to a committed page
 // in docs/{en,zh}; if you add a link here, ship the page too. The Changelog nav
 // entry targets docs/{en,zh}/reference/changelog.md, which is regenerated from
 // the root CHANGELOG.md by docs/scripts/sync-changelog.mjs on every dev/build.
+//
+// IMPORTANT: these `const` declarations MUST come before `defineConfig()` below.
+// `const` bindings are not hoisted — referencing them inside the config object
+// before their declaration line leaves the property undefined (no nav renders).
 
 const enNav = [
   { text: 'Quickstart', link: '/en/quickstart' },
@@ -160,3 +132,35 @@ const zhSidebar = {
     ]}
   ]
 }
+
+export default defineConfig({
+  title: 'Infinia',
+  description: 'Where bees go, flows follow. — A modular web + desktop toolbox.',
+  // The docs site is served from a sub-path (muskstark.github.io/FengYu/),
+  // not the domain root, so every internal link/asset must be prefixed with it.
+  base: '/FengYu/',
+  lastUpdated: true,
+  cleanUrls: true,
+  srcExclude: ['superpowers/**'],
+  // Dead-link checking is intentionally left enabled (no `ignoreDeadLinks`):
+  // all EN + ZH pages are complete, so the build must fail loudly on any
+  // broken internal link rather than silently swallowing it.
+  sitemap: { hostname: 'https://muskstark.github.io/FengYu/' },
+  head: [
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/FengYu/logo.svg' }],
+    ['meta', { name: 'theme-color', content: '#6750A4' }]
+  ],
+  locales: {
+    root: { label: 'English', lang: 'en', link: '/en/', themeConfig: { nav: enNav, sidebar: enSidebar } },
+    zh: { label: '简体中文', lang: 'zh-CN', link: '/zh/', themeConfig: { nav: zhNav, sidebar: zhSidebar } }
+  },
+  themeConfig: {
+    logo: '/logo.svg',
+    socialLinks: [{ icon: 'github', link: 'https://github.com/MuskStark/FengYu' }],
+    search: { provider: 'local' },
+    footer: {
+      message: 'Released under the GPL-3.0 License.',
+      copyright: 'Copyright © 2026 Infinia · 蜂语 FengYu'
+    }
+  }
+})
