@@ -4,11 +4,13 @@ import { useI18n } from 'vue-i18n'
 import { useContactsStore, type Contact } from '../stores/contacts'
 import { actionable, invoke } from '../sdk'
 import ActionDialog from './ActionDialog.vue'
+import ImportContactsDialog from './ImportContactsDialog.vue'
 
 const { t } = useI18n(), store = useContactsStore()
 const contactId = ref<number>(), email = ref(''), nickname = ref(''), notes = ref(''), tagName = ref('')
 const contactTagIds = ref<number[]>([])
 const selectedContacts = ref<number[]>([]), assignTagIds = ref<number[]>([]), error = ref(''), tagQuery = ref('')
+const showImport = ref(false)
 const pendingDelete = ref<{ kind: 'contact' | 'tag'; id: number }>()
 const filteredTags = computed(() => {
   const q = tagQuery.value.trim().toLowerCase()
@@ -51,6 +53,7 @@ function confirmDelete(): void {
     <v-card class="surface" variant="flat"><v-card-title>{{ t('contacts.title') }}</v-card-title><v-card-text>
       <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
       <div class="inline-fields"><v-text-field v-model="store.query" data-testid="contact-search" hide-details :label="t('common.search')" @keyup.enter="store.load" /><v-select v-model="store.selectedTagIds" :items="store.tags" item-title="name" item-value="id" multiple chips hide-details :label="t('contacts.filterTag')" /><v-btn @click="store.load">{{ t('common.search') }}</v-btn></div>
+      <div class="mt-4"><v-btn data-testid="contact-import" variant="outlined" @click="showImport = true">{{ t('contacts.importButton') }}</v-btn></div>
       <div class="contact-row" v-for="item in store.contacts" :key="item.id" data-testid="contact-row" @click="edit(item)">
         <v-checkbox-btn v-model="selectedContacts" :value="item.id" @click.stop />
         <div class="contact-avatar">{{ initials(item) }}</div>
@@ -88,4 +91,5 @@ function confirmDelete(): void {
   </section>
   <ActionDialog :model-value="Boolean(pendingDelete)" :title="deleteTitle" :message="deleteMessage"
     :confirm-text="t('common.delete')" destructive @update:model-value="value => { if (!value) pendingDelete = undefined }" @confirm="confirmDelete" />
+  <ImportContactsDialog v-model="showImport" @imported="store.load" />
 </template>

@@ -12,8 +12,10 @@ import org.apache.ibatis.annotations.Update;
 import org.apache.ibatis.session.SqlSession;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -24,6 +26,15 @@ public final class AddressBookRepository {
         this.database = database;
         AccountRepository.register(database, Mapper.class);
     }
+
+    /** Opens a session for read-only diffing (preview). Callers close it. */
+    public SqlSession openSessionForRead() { return database.openSession(); }
+
+    /**
+     * Opens a transactional session for the importer's atomic commit (tag-create +
+     * contact-upsert + assignment). Callers own the transaction and commit/rollback.
+     */
+    public SqlSession openSession() { return database.openSession(); }
 
     public Optional<Contact> findContact(long id) {
         try (SqlSession session = database.openSession()) {
@@ -125,6 +136,37 @@ public final class AddressBookRepository {
         }
     }
 
+    /**
+     * Resolves tag names to ids within the given session, creating any that don't
+     * exist. Used by the batch importer so tag auto-create stays atomic with the
+     * contact writes in the same transaction. Names are compared case-insensitively
+     * (matching the {@code LOWER(name)} uniqueness constraint); the original casing
+     * is preserved on create.
+     *
+     * @param names   the distinct tag names to resolve (any casing)
+     * @param session the caller-owned transactional session (not committed here)
+     * @return lowercase-name → tag id for every input name
+     */
+    public Map<String, Long> ensureTagsByName(Set<String> names, SqlSession session) {
+        if (names == null || names.isEmpty()) return Map.of();
+        Mapper mapper = session.getMapper(Mapper.class);
+        Map<String, Long> resolved = new LinkedHashMap<>();
+        Set<String> missing = new LinkedHashSet<>();
+        for (String name : names) {
+            String trimmed = name == null ? "" : name.trim();
+            if (trimmed.isEmpty()) continue;
+            Tag existing = mapper.findTagByName(trimmed);
+            if (existing != null) resolved.put(trimmed.toLowerCase(), existing.id());
+            else missing.add(trimmed);
+        }
+        for (String name : missing) {
+            TagRow row = new TagRow(null, name);
+            mapper.insertTag(row);
+            resolved.put(name.toLowerCase(), row.id);
+        }
+        return resolved;
+    }
+
     public void assignTags(Set<Long> contactIds, Set<Long> tagIds) {
         if (contactIds == null || tagIds == null || contactIds.isEmpty() || tagIds.isEmpty()) return;
         try (SqlSession session = database.openSession()) {
@@ -134,6 +176,54 @@ public final class AddressBookRepository {
             session.commit();
         }
     }
+
+    /**
+     * Returns the existing contact (id + current nickname/notes + tag ids) whose email
+     * matches case-insensitively, within the caller's session. Used by the importer
+     * to diff each parsed row against the address book.
+     */
+    public Contact findContactByEmail(String email, SqlSession session) {
+        if (email == null || email.isBlank()) return null;
+        Mapper mapper = session.getMapper(Mapper.class);
+        ContactRow row = mapper.findContactByEmail(email.trim().toLowerCase());
+        return row == null ? null : contact(row, mapper.tagIds(row.id()));
+    }
+
+    /**
+     * Inserts a new contact (no existing id) and returns the generated id, within the
+     * caller's session. Email is lowercased to match the {@link #findContactByEmail}
+     * lookup so re-imports are idempotent regardless of source casing.
+     */
+    public long insertContact(ContactInput input, SqlSession session) {
+        Mapper mapper = session.getMapper(Mapper.class);
+        ContactRow row = new ContactRow(null, input.email().trim().toLowerCase(),
+            trimToNull(input.nickname()), normalizeNotes(input.notes()), null);
+        mapper.insertContact(row);
+        return row.id();
+    }
+
+    /** Updates an existing contact's email/nickname/notes within the caller's session. */
+    public void updateContact(long id, String email, String nickname, String notes, SqlSession session) {
+        Mapper mapper = session.getMapper(Mapper.class);
+        mapper.updateContact(new ContactRow(id, email.trim().toLowerCase(),
+            trimToNull(nickname), normalizeNotes(notes), null));
+    }
+
+    /** Replaces a contact's tag assignments within the caller's session (delete-then-insert). */
+    public void replaceTags(long contactId, Set<Long> tagIds, SqlSession session) {
+        Mapper mapper = session.getMapper(Mapper.class);
+        mapper.deleteContactTags(contactId);
+        for (long tagId : new LinkedHashSet<>(tagIds)) mapper.insertAssignment(contactId, tagId);
+    }
+
+    /** Adds tag assignments for a contact without removing existing ones (used by merge mode). */
+    public void addTags(long contactId, Set<Long> tagIds, SqlSession session) {
+        Mapper mapper = session.getMapper(Mapper.class);
+        for (long tagId : new LinkedHashSet<>(tagIds))
+            if (mapper.assignmentCount(contactId, tagId) == 0) mapper.insertAssignment(contactId, tagId);
+    }
+
+    private static String trimToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
 
     public record ContactInput(Long id, String email, String nickname, String notes) { }
     private static final class ContactRow {
@@ -170,6 +260,7 @@ public final class AddressBookRepository {
 
     private interface Mapper {
         @Select("SELECT id,email,nickname,notes,created_at AS createdAt FROM FENGYU_PL_Email_Contact WHERE id=#{id}") ContactRow findContact(long id);
+        @Select("SELECT id,email,nickname,notes,created_at AS createdAt FROM FENGYU_PL_Email_Contact WHERE LOWER(email)=#{email} ORDER BY id LIMIT 1") ContactRow findContactByEmail(String email);
         @Select({"<script>", "SELECT DISTINCT c.id,c.email,c.nickname,c.notes,c.created_at AS createdAt FROM FENGYU_PL_Email_Contact c",
             "<if test='tagIds != null and !tagIds.isEmpty()'> JOIN FENGYU_PL_Email_Contact_Tag ct ON ct.contact_id=c.id</if>",
             "WHERE (LOWER(c.email) LIKE #{pattern} OR LOWER(COALESCE(c.nickname,'')) LIKE #{pattern})",
