@@ -13,10 +13,11 @@ import java.util.Locale;
 /**
  * Builds an OS-sandboxed process command when a supported native isolator is available.
  *
- * <p>Compatibility-first policy: Linux uses bubblewrap, macOS uses sandbox-exec, and platforms
- * without either return the original command with {@link Backend#NONE}. Callers must surface and
- * audit that downgrade. The chat permission gate decides whether an AI-authored command needs an
- * approval; the explicit full-access profile deliberately bypasses this sandbox.
+ * <p>Compatibility-first policy: Linux uses bubblewrap, macOS uses sandbox-exec, Windows uses a
+ * Job Object (process-tree lifecycle isolation via {@link WindowsJobSandbox}), and platforms
+ * without a supported isolator return the original command with {@link Backend#NONE}. Callers must
+ * surface and audit that downgrade. The chat permission gate decides whether an AI-authored
+ * command needs an approval; the explicit full-access profile deliberately bypasses this sandbox.
  */
 @Component
 public class ProcessSandbox {
@@ -25,6 +26,7 @@ public class ProcessSandbox {
     public enum Backend {
         BUBBLEWRAP("bubblewrap"),
         SANDBOX_EXEC("sandbox-exec"),
+        WINDOWS_JOB("windows-job"),
         NONE("none");
 
         private final String id;
@@ -38,9 +40,15 @@ public class ProcessSandbox {
         }
     }
 
-    public record Launch(List<String> command, Backend backend) {
+    public record Launch(List<String> command, Backend backend,
+                         java.util.function.BiConsumer<Process, long[]> onStarted) {
         public Launch {
             command = List.copyOf(command);
+        }
+
+        /** Backwards-compatible 2-arg constructor: no onStarted hook (NONE/bwrap/sandbox-exec). */
+        public Launch(List<String> command, Backend backend) {
+            this(command, backend, null);
         }
 
         public boolean sandboxed() {
@@ -106,6 +114,17 @@ public class ProcessSandbox {
     private Launch wrap(List<String> raw, Path workdir, List<Path> writableRoots,
                         boolean broadFileWrite, boolean allowNetwork) {
         if (backend == Backend.NONE) return new Launch(raw, backend);
+        if (backend == Backend.WINDOWS_JOB) {
+            // Job Objects are assigned AFTER the process starts; the command itself is unchanged.
+            // The caller passes a long[1] receiver; the hook writes the job handle into it so the
+            // caller can later terminate/close the job (see WindowsJobSandbox).
+            java.util.function.BiConsumer<Process, long[]> onStarted = (process, handleOut) -> {
+                long job = WindowsJobSandbox.createAndConfigureJob();
+                WindowsJobSandbox.assign(job, process);
+                handleOut[0] = job;
+            };
+            return new Launch(raw, backend, onStarted);
+        }
         if (backend == Backend.BUBBLEWRAP) {
             List<String> command = new ArrayList<>();
             command.add("bwrap");
@@ -178,6 +197,7 @@ public class ProcessSandbox {
         if (os.contains("mac") && Files.isExecutable(Path.of("/usr/bin/sandbox-exec"))) {
             return Backend.SANDBOX_EXEC;
         }
+        if (os.contains("win") && WindowsJobSandbox.isAvailable()) return Backend.WINDOWS_JOB;
         return Backend.NONE;
     }
 
