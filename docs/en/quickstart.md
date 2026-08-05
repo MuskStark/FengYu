@@ -27,14 +27,14 @@ cd FengYu
 ./mvnw clean package -f FengYu/pom.xml -DskipTests
 ```
 
-The packaged backend jar lands at `FengYu/target/FengYu-4.0.0.jar`.
+The packaged backend jar lands at `FengYu/target/FengYu-*.jar` (versioned, e.g. `FengYu-4.0.0-alpha.8.jar`).
 
 ## Run the backend
 
 Launch the headless Spring Boot backend. It binds `127.0.0.1:24056` by default and prints `FENGYU_PORT=<n>` on startup.
 
 ```bash
-java -jar FengYu/target/FengYu-4.0.0.jar --token=<your-token>
+java -jar FengYu/target/FengYu-*.jar --token=<your-token>
 ```
 
 The entry point is `fan.summer.fengyu.HeadlessLauncher`. CLI flags are `--port` and `--token` only.

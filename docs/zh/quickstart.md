@@ -26,14 +26,14 @@ cd FengYu
 ./mvnw clean package -f FengYu/pom.xml -DskipTests
 ```
 
-打包好的后端 jar 位于 `FengYu/target/FengYu-4.0.0.jar`。
+打包好的后端 jar 位于 `FengYu/target/FengYu-*.jar`（带版本号，例如 `FengYu-4.0.0-alpha.8.jar`）。
 
 ## 运行后端
 
 启动无头（headless）Spring Boot 后端。它默认绑定 `127.0.0.1:24056`，并在启动时打印 `FENGYU_PORT=<n>`。
 
 ```bash
-java -jar FengYu/target/FengYu-4.0.0.jar --token=<your-token>
+java -jar FengYu/target/FengYu-*.jar --token=<your-token>
 ```
 
 入口类是 `fan.summer.fengyu.HeadlessLauncher`。CLI 参数只有 `--port` 和 `--token` 两个。
