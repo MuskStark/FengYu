@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -176,8 +177,17 @@ public final class JsonRpcWorker {
     }
 
     public void run(InputStream input, OutputStream output) throws Exception {
-        try (StdioTransport transport = new StdioTransport(input, output)) {
+        // Mirror run()'s stdout→stderr redirection so the protocol stream on the caller-supplied
+        // output stays clean from handler/System.out noise. Both stdio entry points now enforce the
+        // same "stdout is JSON-RPC only" contract documented in pitfalls.md / worker.md.
+        PrintStream savedOut = System.out;
+        PrintStream protocolOutput = output instanceof PrintStream ps
+            ? ps : new PrintStream(output, true, StandardCharsets.UTF_8);
+        System.setOut(System.err);
+        try (StdioTransport transport = new StdioTransport(input, protocolOutput)) {
             serve(transport);
+        } finally {
+            System.setOut(savedOut);
         }
     }
 
@@ -187,8 +197,9 @@ public final class JsonRpcWorker {
      * request. Returns cleanly when the transport reaches end-of-stream ({@code readFrame() == null}).
      *
      * <p>This method performs <strong>no</strong> {@code System.setOut} redirection — that behaviour
-     * is exclusive to the stdio entry point {@link #run()}. Socket / in-memory transports use this
-     * method directly, so handler {@code System.out} writes go wherever the caller has pointed them.
+     * is exclusive to the stdio entry points ({@link #run()} and {@link #run(InputStream, OutputStream)}).
+     * Socket / in-memory transports use this method directly, so handler {@code System.out} writes go
+     * wherever the caller has pointed them.
      *
      * @param transport the frame-oriented transport (stdin/stdout, loopback socket, in-memory)
      * @throws Exception if the transport raises a read/write error
