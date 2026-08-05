@@ -47,6 +47,41 @@
         </dependency>
     </dependencies>
 
+    <!-- Playwright's driver-bundle ships Node.js binaries for ALL platforms
+         (~570MB unpacked, ~190MB shaded). The antrun step below runs after shade
+         and strips the four non-current-platform driver/<platform>/ trees, keeping
+         only the build host's platform so the worker JAR stays well under the
+         100MB .fyp limit. Build once per target platform to produce
+         platform-specific .fyp packages; override with
+         -Dplaywright.driver.platform=<mac|mac-arm64|linux|linux-arm64|win32_x64>. -->
+    <profiles>
+        <profile>
+            <id>driver-mac-arm64</id>
+            <activation><os><family>mac</family><arch>aarch64</arch></os></activation>
+            <properties><playwright.driver.platform>mac-arm64</playwright.driver.platform></properties>
+        </profile>
+        <profile>
+            <id>driver-mac-x64</id>
+            <activation><os><family>mac</family><arch>x86_64</arch></os></activation>
+            <properties><playwright.driver.platform>mac</playwright.driver.platform></properties>
+        </profile>
+        <profile>
+            <id>driver-linux-x64</id>
+            <activation><os><family>unix</family><name>Linux</name><arch>x86_64</arch></os></activation>
+            <properties><playwright.driver.platform>linux</playwright.driver.platform></properties>
+        </profile>
+        <profile>
+            <id>driver-linux-arm64</id>
+            <activation><os><family>unix</family><name>Linux</name><arch>aarch64</arch></os></activation>
+            <properties><playwright.driver.platform>linux-arm64</playwright.driver.platform></properties>
+        </profile>
+        <profile>
+            <id>driver-win-x64</id>
+            <activation><os><family>windows</family><arch>x86_64</arch></os></activation>
+            <properties><playwright.driver.platform>win32_x64</playwright.driver.platform></properties>
+        </profile>
+    </profiles>
+
     <build>
         <finalName>browser-worker</finalName>
         <plugins>
@@ -78,6 +113,47 @@
                                 </transformer>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                             </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- After shade, strip the four non-current-platform Node driver trees
+                 from the shaded JAR. Playwright bundles all 5 platforms (~570MB);
+                 keeping one drops the JAR from ~190MB to ~40-50MB, under the .fyp limit.
+                 Requires ${playwright.driver.platform} (set by the profiles above). -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>strip-non-current-driver-platforms</id>
+                        <phase>package</phase>
+                        <goals><goal>run</goal></goals>
+                        <configuration>
+                            <failOnError>false</failOnError>
+                            <target>
+                                <condition property="platform.set">
+                                    <isset property="playwright.driver.platform"/>
+                                </condition>
+                                <fail message="playwright.driver.platform is not set (no OS profile activated)">
+                                    <condition><not><isset property="platform.set"/></not></condition>
+                                </fail>
+                                <unzip src="${project.build.directory}/browser-worker.jar"
+                                       dest="${project.build.directory}/browser-worker-unpacked"/>
+                                <!-- Delete every driver/<platform>/ except the current one. -->
+                                <delete includeemptydirs="true">
+                                    <fileset dir="${project.build.directory}/browser-worker-unpacked/driver">
+                                        <include name="*/**"/>
+                                        <exclude name="${playwright.driver.platform}/**"/>
+                                    </fileset>
+                                </delete>
+                                <delete file="${project.build.directory}/browser-worker.jar"/>
+                                <zip destfile="${project.build.directory}/browser-worker.jar"
+                                     basedir="${project.build.directory}/browser-worker-unpacked"
+                                     keepcompression="true"/>
+                                <delete dir="${project.build.directory}/browser-worker-unpacked"/>
+                                <echo message="browser-worker.jar: kept driver/${playwright.driver.platform}, stripped others"/>
+                            </target>
                         </configuration>
                     </execution>
                 </executions>

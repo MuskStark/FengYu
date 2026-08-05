@@ -1,5 +1,12 @@
 {
   "schemaVersion": 1,
+  "ui": {
+    "root": "ui",
+    "output": ".",
+    "install": ["true"],
+    "test": ["true"],
+    "build": ["true"]
+  },
   "worker": {
     "root": ".",
     "test": ["maven", "-f", "../../pom.xml", "-pl", "OfficialPlugins/plugin-browser", "-am", "test"],
