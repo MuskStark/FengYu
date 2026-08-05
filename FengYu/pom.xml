@@ -191,6 +191,20 @@
             <artifactId>spring-ai-starter-mcp-client</artifactId>
         </dependency>
 
+        <!-- Windows Job Object process isolation (ProcessSandbox WINDOWS_JOB backend).
+             jna-platform carries the Win32 Kernel32 bindings; base jna is its prerequisite.
+             Only loaded on Windows — WindowsJobSandbox.isAvailable() guards non-Windows hosts. -->
+        <dependency>
+            <groupId>net.java.dev.jna</groupId>
+            <artifactId>jna</artifactId>
+            <version>5.19.1</version>
+        </dependency>
+        <dependency>
+            <groupId>net.java.dev.jna</groupId>
+            <artifactId>jna-platform</artifactId>
+            <version>5.19.1</version>
+        </dependency>
+
         <!-- Logging: slf4j API + logback binding -->
         <dependency>
             <groupId>org.slf4j</groupId>
