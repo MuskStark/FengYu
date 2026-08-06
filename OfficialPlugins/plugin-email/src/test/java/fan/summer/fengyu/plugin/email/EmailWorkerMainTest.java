@@ -38,7 +38,7 @@ class EmailWorkerMainTest {
         CredentialCipher cipher = cipher();
         long accountId = new AccountService(database, cipher).save(new AccountService.AccountInput(null,
             "Sender", "sender@example.com", "secret", "127.0.0.1", 2525, "PLAIN",
-            null, null, null, true));
+            null, null, null, false, false, true));
         AddressBookService addressBook = new AddressBookService(database);
         long tagId = addressBook.saveTag(null, "customers");
         long attachmentTagId = addressBook.saveTag(null, "East");

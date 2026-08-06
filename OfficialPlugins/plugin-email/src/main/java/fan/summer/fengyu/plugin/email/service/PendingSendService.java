@@ -170,28 +170,40 @@ public final class PendingSendService {
 
     private LocalDateTime now() { return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC); }
 
+    /**
+     * Build the confirmation summary as stable snake_case label keys grouped by message. Labels are
+     * data, not UI copy: the frontend resolves them through its i18n message table. {@code group}
+     * is null for top-level meta rows (account/mode/messages/ignored/skipped); per-message rows carry
+     * the attachment tag when present, otherwise a synthetic {@code "Message N"} so the frontend can
+     * still cluster single-recipient (tagless) sends. Empty values are returned as empty strings —
+     * the frontend decides how to render "none", so no English fallback is baked in here.
+     */
     private static List<SummaryRow> summary(String mode, Snapshot snapshot) {
         List<MessageSnapshot> messages = snapshot.messages();
         MessageSnapshot first = messages.getFirst();
         List<SummaryRow> rows = new ArrayList<>();
-        rows.add(new SummaryRow("Account", Long.toString(first.accountId())));
-        rows.add(new SummaryRow("Mode", mode));
-        rows.add(new SummaryRow("Messages", Integer.toString(messages.size())));
+        rows.add(new SummaryRow("account", Long.toString(first.accountId()), null));
+        rows.add(new SummaryRow("mode", mode, null));
+        rows.add(new SummaryRow("messages", Integer.toString(messages.size()), null));
         for (int index = 0; index < messages.size(); index++) {
             MessageSnapshot message = messages.get(index);
-            String prefix = "Message " + (index + 1) + " / ";
-            if (message.attachmentTag() != null) rows.add(new SummaryRow(prefix + "Attachment tag", message.attachmentTag()));
-            rows.add(new SummaryRow(prefix + "To", joinDistinct(message.to())));
-            rows.add(new SummaryRow(prefix + "CC", joinDistinct(message.cc())));
-            rows.add(new SummaryRow(prefix + "BCC", joinDistinct(message.bcc())));
-            rows.add(new SummaryRow(prefix + "Subject", String.valueOf(message.subject())));
-            rows.add(new SummaryRow(prefix + "Tag attachments", fileNames(message.tagAttachments())));
-            rows.add(new SummaryRow(prefix + "Common attachments", fileNames(message.commonAttachments())));
+            String group = message.attachmentTag() != null
+                ? message.attachmentTag()
+                : "Message " + (index + 1);
+            if (message.attachmentTag() != null) {
+                rows.add(new SummaryRow("attachment_tag", message.attachmentTag(), group));
+            }
+            rows.add(new SummaryRow("to", joinDistinct(message.to()), group));
+            rows.add(new SummaryRow("cc", joinDistinct(message.cc()), group));
+            rows.add(new SummaryRow("bcc", joinDistinct(message.bcc()), group));
+            rows.add(new SummaryRow("subject", String.valueOf(message.subject()), group));
+            rows.add(new SummaryRow("tag_attachments", fileNames(message.tagAttachments()), group));
+            rows.add(new SummaryRow("common_attachments", fileNames(message.commonAttachments()), group));
         }
-        rows.add(new SummaryRow("Ignored files", joinDistinct(snapshot.ignoredFiles().stream()
-            .map(path -> Path.of(path).getFileName().toString()).toList())));
-        rows.add(new SummaryRow("Skipped tags", joinDistinct(snapshot.skippedTags().stream()
-            .map(value -> value.attachmentTag() + ": " + value.reason()).toList())));
+        rows.add(new SummaryRow("ignored_files", joinDistinct(snapshot.ignoredFiles().stream()
+            .map(path -> Path.of(path).getFileName().toString()).toList()), null));
+        rows.add(new SummaryRow("skipped_tags", joinDistinct(snapshot.skippedTags().stream()
+            .map(value -> value.attachmentTag() + ": " + value.reason()).toList()), null));
         return List.copyOf(rows);
     }
 
@@ -200,9 +212,8 @@ public final class PendingSendService {
     }
 
     private static String joinDistinct(List<String> values) {
-        String joined = values.stream().filter(value -> value != null && !value.isBlank()).distinct()
+        return values.stream().filter(value -> value != null && !value.isBlank()).distinct()
             .collect(java.util.stream.Collectors.joining(", "));
-        return joined.isBlank() ? "None" : joined;
     }
 
     private PendingSend require(String id) {
@@ -215,7 +226,7 @@ public final class PendingSendService {
     public record ConfirmationEnvelope(boolean confirmationRequired, Confirmation confirmation) { }
     public record Confirmation(String pluginId, String confirmationId, String approveMethod,
         String rejectMethod, java.time.Instant expiresAt, List<SummaryRow> summary) { }
-    public record SummaryRow(String label, String value) { }
+    public record SummaryRow(String label, String value, String group) { }
     public record ConfirmationResult(String status, int succeeded, int failed, List<String> failedRecipients) {
         public ConfirmationResult { failedRecipients = List.copyOf(failedRecipients); }
     }

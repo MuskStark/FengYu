@@ -41,6 +41,7 @@ class EmailSendServiceTest {
     private GreenMail greenMail;
     private EmailDatabase database;
     private EmailSendService service;
+    private CredentialCipher credentialCipher;
     private long accountId;
 
     @BeforeEach void startServerAndAccount() throws Exception {
@@ -51,11 +52,11 @@ class EmailSendServiceTest {
         greenMail.setUser("cc@example.com", "cc@example.com", "unused");
         greenMail.setUser("bcc@example.com", "bcc@example.com", "unused");
         database = database("smtp-" + System.nanoTime());
-        CredentialCipher cipher = cipher();
-        AccountService accounts = new AccountService(database, cipher);
+        credentialCipher = cipher();
+        AccountService accounts = new AccountService(database, credentialCipher);
         accountId = accounts.save(new AccountService.AccountInput(null, "Sender", "sender@example.com",
-            "smtp-secret", "127.0.0.1", greenMail.getSmtp().getPort(), "PLAIN", null, null, null, true));
-        service = new EmailSendService(database, cipher);
+            "smtp-secret", "127.0.0.1", greenMail.getSmtp().getPort(), "PLAIN", null, null, null, false, false, true));
+        service = new EmailSendService(database, credentialCipher);
     }
 
     @AfterEach void stopServer() {
@@ -122,6 +123,33 @@ class EmailSendServiceTest {
             assertEquals("10000", mailer.getSession().getProperty(prefix + "connectiontimeout"));
             assertEquals("10000", mailer.getSession().getProperty(prefix + "timeout"));
             assertEquals("10000", mailer.getSession().getProperty(prefix + "writetimeout"));
+        }
+    }
+
+    @Test void smtpSkipCertVerifyConnectsOverSslWithSelfSignedCertificateAndSetsTrustAll() throws Exception {
+        // GreenMail SMTPS presents a bundled self-signed certificate the JDK default truststore
+        // does not trust. With smtpSkipCertVerify=true the mailer must set ssl.trust=* and connect
+        // anyway — proving the per-account bypass clears the PKIX path-building failure.
+        GreenMail sslServer = new GreenMail(new ServerSetup(0, "127.0.0.1", ServerSetup.PROTOCOL_SMTPS));
+        sslServer.start();
+        try {
+            sslServer.setUser("ssl-sender@example.com", "ssl-sender@example.com", "ssl-secret");
+            long sslAccountId = new AccountService(database, credentialCipher).save(
+                new AccountService.AccountInput(null, "SslSender", "ssl-sender@example.com",
+                    "ssl-secret", "127.0.0.1", sslServer.getSmtps().getPort(), "SSL",
+                    null, null, null, true, false, true));
+            EmailAccount account = new fan.summer.fengyu.plugin.email.repository.AccountRepository(database)
+                .findAccount(sslAccountId).orElseThrow();
+
+            try (Mailer mailer = service.createMailer(account, "ssl-secret")) {
+                // SimpleJavaMail maps trustingAllHosts(true) → mail.smtps.ssl.trust=*.
+                assertEquals("*", mailer.getSession().getProperty("mail.smtps.ssl.trust"));
+                assertEquals("false", mailer.getSession().getProperty("mail.smtps.ssl.checkserveridentity"));
+            }
+            SendResult connection = service.testSmtp(sslAccountId);
+            assertTrue(connection.success(), () -> "expected SSL connect to succeed, got: " + connection.errorMessage());
+        } finally {
+            sslServer.stop();
         }
     }
 

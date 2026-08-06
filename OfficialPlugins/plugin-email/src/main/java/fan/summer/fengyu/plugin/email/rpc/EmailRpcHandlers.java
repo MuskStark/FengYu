@@ -17,6 +17,7 @@ import fan.summer.fengyu.plugin.email.service.PendingSendService;
 import fan.summer.fengyu.plugin.email.model.ContactImport.ImportOptions;
 import fan.summer.fengyu.sdk.FileRef;
 import fan.summer.fengyu.sdk.JsonRpcWorker;
+import fan.summer.fengyu.sdk.Jobs;
 import fan.summer.fengyu.sdk.PluginHandlerSupport;
 
 import java.lang.reflect.RecordComponent;
@@ -47,6 +48,7 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
     private final PendingSendService pending;
     private final EmailArchiveService archive;
     private final EmailHtmlSanitizer htmlSanitizer = new EmailHtmlSanitizer();
+    private final Jobs jobs = new Jobs();
 
     public EmailRpcHandlers(EmailDatabase database, CredentialCipher cipher) {
         super("email");
@@ -102,6 +104,15 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
             var value = archive.testImap(accountId);
             log.info("IMAP test for account {}: {}", accountId, value.success() ? "succeeded" : "failed");
             return value.success() ? ok("IMAP connection succeeded") : failure(value.errorMessage());
+        });
+    }
+
+    public Object listFolders(Map<String, Object> params) {
+        return result(() -> {
+            long accountId = requiredLong(params, "accountId");
+            var value = archive.listFolders(accountId);
+            log.info("IMAP folder list for account {}: {} folder(s)", accountId, value.folders().size());
+            return ok("Found " + value.folders().size() + " folder(s)", "folders", value.folders());
         });
     }
 
@@ -295,6 +306,49 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
             return ok("Archived " + value.newArchived() + " new message(s); skipped "
                 + value.skippedDuplicates() + " duplicate(s); " + value.failures() + " failure(s)",
                 "collection", value);
+        });
+    }
+
+    /**
+     * Launch archive collection on a virtual thread so it survives beyond the host's per-RPC timeout.
+     * Returns a {@code jobId} immediately; the UI polls {@link #collectStatus} to drain progress and
+     * fetch the final result. The existing per-message {@link EmailArchiveService.ProgressSink} is
+     * forwarded into the job's streamed log lines, so each poll sees the latest archived/skipped/failed
+     * counts without holding the RPC open. Mirrors the Excel {@code split_start}/{@code split_status}
+     * async trio built on the SDK {@link Jobs} registry.
+     */
+    public Object collectStart(Map<String, Object> params) {
+        return result(() -> {
+            long accountId = requiredLong(params, "accountId");
+            String folder = requiredString(params, "folder");
+            ArchiveRequest request = new ArchiveRequest(accountId, folder,
+                instant(params, "start"), instant(params, "end"),
+                path(params.get("outputDirectory"), "outputDirectory", "directory"));
+            Jobs.Job job = jobs.start("ARCHIVE", handle -> {
+                var value = archive.collect(request, progress -> handle.log(
+                    progress.completed() + "/" + progress.total() + " new=" + progress.newArchived()
+                    + " skipped=" + progress.skippedDuplicates() + " failed=" + progress.failures()));
+                handle.setSummary(value);
+                log.info("archived {} new, {} duplicate(s), {} failure(s) from account {} folder '{}'",
+                    value.newArchived(), value.skippedDuplicates(), value.failures(), accountId, folder);
+            });
+            return ok("Archive started", "jobId", job.id);
+        });
+    }
+
+    public Object collectStatus(Map<String, Object> params) {
+        return result(() -> {
+            String jobId = requiredString(params, "jobId");
+            int cursor = JsonRpcWorker.integer(params, "cursor", 0);
+            return jobs.snapshot(jobId, cursor);
+        });
+    }
+
+    public Object collectCancel(Map<String, Object> params) {
+        return result(() -> {
+            String jobId = requiredString(params, "jobId");
+            if (!jobs.cancel(jobId)) return failure("job is no longer running: " + jobId);
+            return ok("cancel requested", "jobId", jobId);
         });
     }
 

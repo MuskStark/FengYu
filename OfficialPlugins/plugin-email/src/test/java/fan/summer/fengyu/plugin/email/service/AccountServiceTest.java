@@ -31,9 +31,9 @@ class AccountServiceTest {
         AccountService service = new AccountService(database, cipher);
 
         long first = service.save(new AccountService.AccountInput(null, "Primary", "first@example.com",
-            "first-secret", "smtp.example.com", 465, "SSL", "imap.example.com", 993, "SSL", true));
+            "first-secret", "smtp.example.com", 465, "SSL", "imap.example.com", 993, "SSL", false, false, true));
         long second = service.save(new AccountService.AccountInput(null, "Secondary", "second@example.com",
-            "second-secret", "smtp.example.com", 587, "STARTTLS", null, null, null, true));
+            "second-secret", "smtp.example.com", 587, "STARTTLS", null, null, null, false, false, true));
 
         var accounts = service.list();
         assertEquals(2, accounts.size());
@@ -49,13 +49,13 @@ class AccountServiceTest {
         assertEquals("first-secret", cipher.decrypt(encryptedBefore));
 
         service.save(new AccountService.AccountInput(first, "Primary edited", "first@example.com",
-            "  ", "smtp2.example.com", 465, "SSL", "imap.example.com", 993, "SSL", false));
+            "  ", "smtp2.example.com", 465, "SSL", "imap.example.com", 993, "SSL", false, false, false));
         assertEquals(encryptedBefore, encryptedPassword(database, first));
         assertEquals("Primary edited", service.find(first).orElseThrow().displayName());
         assertEquals(1, service.list().stream().filter(AccountService.AccountView::defaultAccount).count());
 
         service.save(new AccountService.AccountInput(second, "Secondary", "second@example.com",
-            "", "smtp.example.com", 587, "STARTTLS", null, null, null, false));
+            "", "smtp.example.com", 587, "STARTTLS", null, null, null, false, false, false));
         assertEquals(1, service.list().stream().filter(AccountService.AccountView::defaultAccount).count());
     }
 
@@ -63,7 +63,7 @@ class AccountServiceTest {
         EmailDatabase database = database("delete-account");
         AccountService service = new AccountService(database, cipher());
         long id = service.save(new AccountService.AccountInput(null, "Temporary", "temp@example.com",
-            "secret", "smtp.example.com", 465, "SSL", null, null, null, true));
+            "secret", "smtp.example.com", 465, "SSL", null, null, null, false, false, true));
 
         assertTrue(service.delete(id));
         assertTrue(service.find(id).isEmpty());
@@ -73,7 +73,7 @@ class AccountServiceTest {
         EmailDatabase database = database("delete-open-send");
         AccountService service = new AccountService(database, cipher());
         long id = service.save(new AccountService.AccountInput(null, "Busy", "busy@example.com",
-            "secret", "smtp.example.com", 465, "SSL", null, null, null, true));
+            "secret", "smtp.example.com", 465, "SSL", null, null, null, false, false, true));
         new PendingSendRepository(database).create(
             "confirm-open", id, "SINGLE", "{}", LocalDateTime.now().plusMinutes(30));
 
@@ -85,7 +85,7 @@ class AccountServiceTest {
         EmailDatabase database = database("delete-cleanup");
         AccountService service = new AccountService(database, cipher());
         long id = service.save(new AccountService.AccountInput(null, "Archived", "archived@example.com",
-            "secret", "smtp.example.com", 465, "SSL", null, null, null, true));
+            "secret", "smtp.example.com", 465, "SSL", null, null, null, false, false, true));
 
         // An archived EML on disk + its Archive row, a SentLog row, and a closed PendingSend row.
         Path eml = Files.writeString(temp.resolve("archived-cleanup.eml"), "raw message bytes");

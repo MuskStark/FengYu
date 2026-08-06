@@ -59,7 +59,8 @@ public final class AccountService {
         var repositoryInput = new AccountRepository.AccountInput(input.id(), input.displayName().trim(),
             input.email().trim().toLowerCase(Locale.ROOT), input.smtpHost().trim(), input.smtpPort(),
             input.smtpSecurity().trim(), trimToNull(input.imapHost()), input.imapPort(),
-            trimToNull(input.imapSecurity()), input.defaultAccount());
+            trimToNull(input.imapSecurity()), input.smtpSkipCertVerify(), input.imapSkipCertVerify(),
+            input.defaultAccount());
         return accounts.saveAccount(repositoryInput, encrypted);
     }
 
@@ -110,7 +111,8 @@ public final class AccountService {
     private static AccountView view(EmailAccount account) {
         return new AccountView(account.id(), account.displayName(), account.email(), account.smtpHost(),
             account.smtpPort(), account.smtpSecurity(), account.imapHost(), account.imapPort(),
-            account.imapSecurity(), account.defaultAccount(), !blank(account.encryptedPassword()));
+            account.imapSecurity(), account.smtpSkipCertVerify(), account.imapSkipCertVerify(),
+            account.defaultAccount(), !blank(account.encryptedPassword()));
     }
 
     private static String required(String value, String field) {
@@ -122,11 +124,11 @@ public final class AccountService {
 
     public record AccountInput(Long id, String displayName, String email, String password,
         String smtpHost, int smtpPort, String smtpSecurity, String imapHost, Integer imapPort,
-        String imapSecurity, boolean defaultAccount) {
+        String imapSecurity, boolean smtpSkipCertVerify, boolean imapSkipCertVerify, boolean defaultAccount) {
         @Override public String toString() { return "AccountInput[id=" + id + ",email=" + email + ",password=<redacted>]"; }
     }
 
     public record AccountView(long id, String displayName, String email, String smtpHost, int smtpPort,
         String smtpSecurity, String imapHost, Integer imapPort, String imapSecurity,
-        boolean defaultAccount, boolean passwordConfigured) { }
+        boolean smtpSkipCertVerify, boolean imapSkipCertVerify, boolean defaultAccount, boolean passwordConfigured) { }
 }

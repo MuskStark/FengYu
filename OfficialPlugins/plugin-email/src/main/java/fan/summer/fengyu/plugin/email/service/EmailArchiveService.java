@@ -10,6 +10,7 @@ import fan.summer.fengyu.plugin.email.model.SendResult;
 import fan.summer.fengyu.plugin.email.repository.AccountRepository;
 import fan.summer.fengyu.plugin.email.repository.ArchiveRepository;
 import jakarta.mail.Address;
+import jakarta.mail.FetchProfile;
 import jakarta.mail.Folder;
 import jakarta.mail.Message;
 import jakarta.mail.Multipart;
@@ -17,6 +18,11 @@ import jakarta.mail.Part;
 import jakarta.mail.Session;
 import jakarta.mail.Store;
 import jakarta.mail.UIDFolder;
+import jakarta.mail.search.AndTerm;
+import jakarta.mail.search.ComparisonTerm;
+import jakarta.mail.search.ReceivedDateTerm;
+import jakarta.mail.search.SearchTerm;
+import org.eclipse.angus.mail.imap.IMAPFolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,6 +35,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -66,7 +73,7 @@ public final class EmailArchiveService {
             throw new IllegalArgumentException("IMAP is not configured for account: " + request.accountId());
         }
         String password = accountService.decryptPassword(account.id());
-        Properties properties = imapProperties(account.imapSecurity());
+        Properties properties = imapProperties(account.imapSecurity(), account.imapSkipCertVerify());
         Session session = Session.getInstance(properties);
         int archived = 0;
         int skipped = 0;
@@ -79,10 +86,20 @@ public final class EmailArchiveService {
                 if (!(folder instanceof UIDFolder uidFolder)) {
                     throw new IllegalStateException("IMAP server does not expose stable message UIDs");
                 }
-                List<Message> messages = filterByDate(folder.getMessages(), request.start(), request.end());
-                log.info("archive collect: account={} folder='{}' messages={}", account.id(), request.folder(), messages.size());
-                for (int i = 0; i < messages.size(); i++) {
-                    Message message = messages.get(i);
+                Message[] folderMessages = selectMessages(folder, request.start(), request.end());
+                log.info("archive collect: account={} folder='{}' messages={}", account.id(), request.folder(), folderMessages.length);
+                // Batch-prefetch only INTERNALDATE over the matched subset — NOT FetchProfile.Item.ENVELOPE.
+                // Angus Mail bundles ENVELOPE+INTERNALDATE+RFC822.SIZE into one command, so lazy access to
+                // getReceivedDate() would also parse every address header (From/To/Cc), and one malformed
+                // address makes that message's whole FETCH throw "Failed to load IMAP envelope" after a
+                // per-message timeout retry. Fetching INTERNALDATE alone populates the cached receivedDate,
+                // so getReceivedDate() returns without ever touching the envelope — decoupling the stored
+                // received timestamp from address parsing and coalescing lazy round-trips into one fetch.
+                FetchProfile profile = new FetchProfile();
+                profile.add(IMAPFolder.FetchProfileItem.INTERNALDATE);
+                folder.fetch(folderMessages, profile);
+                for (int i = 0; i < folderMessages.length; i++) {
+                    Message message = folderMessages[i];
                     try {
                         String uid = Long.toString(uidFolder.getUID(message));
                         if (archives.exists(account.id(), request.folder(), uid)) {
@@ -96,7 +113,7 @@ public final class EmailArchiveService {
                         log.warn("archive failed for one message in account={} folder='{}': {}",
                             account.id(), request.folder(), messageFailure.toString());
                     }
-                    sink.accept(new Progress(i + 1, messages.size(), archived, skipped, failures));
+                    sink.accept(new Progress(i + 1, folderMessages.length, archived, skipped, failures));
                 }
             }
         } catch (IllegalArgumentException | IllegalStateException e) {
@@ -118,7 +135,7 @@ public final class EmailArchiveService {
             return SendResult.failure("IMAP is not configured for account: " + accountId);
         }
         String password = accountService.decryptPassword(accountId);
-        try (Store store = Session.getInstance(imapProperties(account.imapSecurity()))
+        try (Store store = Session.getInstance(imapProperties(account.imapSecurity(), account.imapSkipCertVerify()))
                 .getStore(protocol(account.imapSecurity()))) {
             store.connect(account.imapHost(), account.imapPort(), account.email(), password);
             log.info("IMAP test succeeded for account {} ({})", accountId, account.email());
@@ -128,6 +145,45 @@ public final class EmailArchiveService {
             return SendResult.failure(safeMessage(e, password));
         }
     }
+
+    /**
+     * Enumerate the IMAP folders available on the server for this account, so the UI can present a
+     * picker instead of asking the user to type a folder path blind. Returns the full folder names
+     * (e.g. {@code "INBOX"}, {@code "Sent"}, {@code "Receipts/2026"}) sorted alphabetically with
+     * INBOX pinned first. Folders that cannot be opened (no-select) are skipped.
+     */
+    public FolderList listFolders(long accountId) {
+        EmailAccount account = accounts.findAccount(accountId)
+            .orElseThrow(() -> new IllegalArgumentException("Unknown account: " + accountId));
+        if (blank(account.imapHost()) || account.imapPort() == null || blank(account.imapSecurity())) {
+            throw new IllegalArgumentException("IMAP is not configured for account: " + accountId);
+        }
+        String password = accountService.decryptPassword(accountId);
+        try (Store store = Session.getInstance(imapProperties(account.imapSecurity(), account.imapSkipCertVerify()))
+                .getStore(protocol(account.imapSecurity()))) {
+            store.connect(account.imapHost(), account.imapPort(), account.email(), password);
+            // list("*") recursively enumerates all folders; listSubscribed would miss unsubscribed ones.
+            Folder[] folders = store.getDefaultFolder().list("*");
+            List<String> names = new ArrayList<>();
+            for (Folder folder : folders) {
+                if ((folder.getType() & Folder.HOLDS_MESSAGES) == 0) continue;
+                String name = folder.getFullName();
+                if (name != null && !name.isBlank()) names.add(name.trim());
+            }
+            names.sort(String.CASE_INSENSITIVE_ORDER);
+            // Pin INBOX first — it's the default collect target and the one users look for.
+            names.remove("INBOX");
+            names.add(0, "INBOX");
+            log.info("IMAP listed {} folder(s) for account {} ({})", names.size(), accountId, account.email());
+            return new FolderList(List.copyOf(names));
+        } catch (Exception e) {
+            log.warn("IMAP folder listing failed for account {} ({}): {}", accountId, account.email(), safeMessage(e, password));
+            throw new IllegalStateException("IMAP folder listing failed: " + safeMessage(e, password), e);
+        }
+    }
+
+    /** Folder names returned by {@link #listFolders(long)}; a record so it JSON-encodes cleanly. */
+    public record FolderList(List<String> folders) { }
 
     public List<ArchivedMessage> search(SearchFilter filter) {
         if (filter == null) throw new IllegalArgumentException("filter is required");
@@ -173,17 +229,6 @@ public final class EmailArchiveService {
         }
     }
 
-    private static List<Message> filterByDate(Message[] messages, Instant start, Instant end) throws Exception {
-        List<Message> selected = new ArrayList<>();
-        for (Message message : messages) {
-            Instant received = instant(message.getReceivedDate());
-            if (start != null && (received == null || received.isBefore(start))) continue;
-            if (end != null && (received == null || received.isAfter(end))) continue;
-            selected.add(message);
-        }
-        return selected;
-    }
-
     private String recipients(Message message) throws Exception {
         Map<String, List<String>> values = new LinkedHashMap<>();
         values.put("to", addresses(message.getRecipients(Message.RecipientType.TO)));
@@ -225,6 +270,36 @@ public final class EmailArchiveService {
         }
     }
 
+    /**
+     * Select the messages to archive, pushing date filtering to the IMAP server when a range is given.
+     * With no start/end this is a cheap {@code getMessages()} (no FETCH). With a range it issues a real
+     * {@code SEARCH SINCE start (OR BEFORE end ON end)} — Angus Mail translates
+     * {@link ReceivedDateTerm} to IMAP date keywords that operate on INTERNALDATE, so the server only
+     * returns messages whose received date falls within {@code [start, end]} (both inclusive, day
+     * granularity). This avoids fetching and Java-filtering every message in a large folder.
+     *
+     * <p>Date→IMAP-date conversion in Angus Mail uses the JVM default timezone, so the {@code Instant}
+     * range is materialised with {@code Date.from(instant)} to match that same timezone. The frontend
+     * already sends local day boundaries, so this keeps SEARCH aligned with the dates the user picked.
+     */
+    private static Message[] selectMessages(Folder folder, Instant start, Instant end) throws Exception {
+        if (start == null && end == null) return folder.getMessages();
+        SearchTerm term = dateRange(start, end);
+        Message[] matches = folder.search(term);
+        return matches == null ? new Message[0] : matches;
+    }
+
+    /** Build an AND of inclusive-bounds received-date terms; null bounds are omitted. */
+    private static SearchTerm dateRange(Instant start, Instant end) {
+        if (start != null && end != null) {
+            return new AndTerm(
+                new ReceivedDateTerm(ComparisonTerm.GE, Date.from(start)),
+                new ReceivedDateTerm(ComparisonTerm.LE, Date.from(end)));
+        }
+        if (start != null) return new ReceivedDateTerm(ComparisonTerm.GE, Date.from(start));
+        return new ReceivedDateTerm(ComparisonTerm.LE, Date.from(end));
+    }
+
     private static void validate(ArchiveRequest request) {
         if (request == null) throw new IllegalArgumentException("request is required");
         if (blank(request.folder())) throw new IllegalArgumentException("folder is required");
@@ -234,7 +309,7 @@ public final class EmailArchiveService {
         }
     }
 
-    private static Properties imapProperties(String security) {
+    private static Properties imapProperties(String security, boolean skipCertVerify) {
         String protocol = protocol(security);
         Properties properties = new Properties();
         properties.setProperty("mail." + protocol + ".connectiontimeout", Integer.toString(IMAP_TIMEOUT_MILLIS));
@@ -243,6 +318,14 @@ public final class EmailArchiveService {
         if ("TLS".equalsIgnoreCase(security) || "STARTTLS".equalsIgnoreCase(security)) {
             properties.setProperty("mail.imap.starttls.enable", "true");
             properties.setProperty("mail.imap.starttls.required", "true");
+        }
+        // Per-account opt-in: accept self-signed / private-CA certificates by skipping both the
+        // certificate chain validation (ssl.trust=*) and the RFC 6125 hostname check. Angus Mail's
+        // MailSSLSocketFactory short-circuits checkServerTrusted when trust is "*", so this clears
+        // the PKIX "unable to find valid certification path" failure for intranet SMTP/IMAP servers.
+        if (skipCertVerify) {
+            properties.setProperty("mail." + protocol + ".ssl.trust", "*");
+            properties.setProperty("mail." + protocol + ".ssl.checkserveridentity", "false");
         }
         return properties;
     }
