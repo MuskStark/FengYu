@@ -109,12 +109,14 @@ class PendingSendServiceTest {
 
         var summary = service.prepareSingle(request).confirmation().summary();
 
-        assertTrue(summary.contains(new PendingSendService.SummaryRow("Account", "42")));
-        assertTrue(summary.contains(new PendingSendService.SummaryRow("Message 1 / To", "to@example.com")));
-        assertTrue(summary.contains(new PendingSendService.SummaryRow("Message 1 / CC", "cc@example.com")));
-        assertTrue(summary.contains(new PendingSendService.SummaryRow("Message 1 / BCC", "bcc@example.com")));
-        assertTrue(summary.contains(new PendingSendService.SummaryRow("Message 1 / Subject", "Quarterly report")));
-        assertTrue(summary.contains(new PendingSendService.SummaryRow("Message 1 / Tag attachments", "report.pdf")));
+        // Single send has no attachment tag, so per-message rows group under the synthetic "Message 1".
+        assertTrue(summary.contains(new PendingSendService.SummaryRow("account", "42", null)));
+        assertTrue(summary.contains(new PendingSendService.SummaryRow("mode", "SINGLE", null)));
+        assertTrue(summary.contains(new PendingSendService.SummaryRow("to", "to@example.com", "Message 1")));
+        assertTrue(summary.contains(new PendingSendService.SummaryRow("cc", "cc@example.com", "Message 1")));
+        assertTrue(summary.contains(new PendingSendService.SummaryRow("bcc", "bcc@example.com", "Message 1")));
+        assertTrue(summary.contains(new PendingSendService.SummaryRow("subject", "Quarterly report", "Message 1")));
+        assertTrue(summary.contains(new PendingSendService.SummaryRow("tag_attachments", "report.pdf", "Message 1")));
         assertFalse(summary.toString().contains("private body"));
     }
 
@@ -200,7 +202,7 @@ class PendingSendServiceTest {
             CredentialCipher cipher = cipher();
             long accountId = new AccountService(database, cipher).save(new AccountService.AccountInput(null,
                 "Sender", "sender@example.com", "smtp-secret", "127.0.0.1", greenMail.getSmtp().getPort(),
-                "PLAIN", null, null, null, true));
+                "PLAIN", null, null, null, false, false, true));
             var service = new PendingSendService(database, new EmailSendService(database, cipher));
             String id = service.prepareSingle(new EmailMessageRequest(accountId, List.of("alice@example.com"),
                 List.of(), List.of(), "Subject", "Body", null, List.of())).confirmation().confirmationId();

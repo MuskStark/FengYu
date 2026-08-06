@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { invoke } from '../sdk'
 
-export interface Account { id: number; displayName: string; email: string; defaultAccount?: boolean; smtpHost?: string; smtpPort?: number; smtpSecurity?: string; imapHost?: string; imapPort?: number; imapSecurity?: string }
+export interface Account { id: number; displayName: string; email: string; defaultAccount?: boolean; smtpHost?: string; smtpPort?: number; smtpSecurity?: string; smtpSkipCertVerify?: boolean; imapHost?: string; imapPort?: number; imapSecurity?: string; imapSkipCertVerify?: boolean }
 export interface AccountDraft extends Omit<Account, 'id'> { id?: number; password?: string }
 
 export const useAccountsStore = defineStore('email-accounts', () => {

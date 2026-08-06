@@ -1,0 +1,3 @@
+ALTER TABLE FENGYU_PL_Email_Account ADD COLUMN imap_skip_cert_verify BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE FENGYU_PL_Email_Account ADD COLUMN smtp_skip_cert_verify BOOLEAN NOT NULL DEFAULT FALSE;
+INSERT INTO FENGYU_PL_Email_Schema_History(version) VALUES (6);

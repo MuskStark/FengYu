@@ -36,6 +36,7 @@ it('previews the exact batch parameters before preparing and only sends after co
     VDialog: { props: ['modelValue'], template: '<div v-if="modelValue"><slot /></div>' },
     VAlert: true, VCard: true, VCardTitle: true, VCardText: true, VCardActions: true, VChip: true,
     VList: true, VListItem: true, VProgressLinear: true, VSelect: true, VSpacer: true, VTextField: true,
+    VExpansionPanels: true, VExpansionPanel: true, VExpansionPanelTitle: true, VExpansionPanelText: true,
   } } })
   await wrapper.vm.$nextTick()
   await wrapper.get('[data-testid="batch-refresh"]').trigger('click')
