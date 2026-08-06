@@ -81,10 +81,15 @@ public final class EmailSendService {
     }
 
     Mailer createMailer(EmailAccount account, String password) {
-        return MailerBuilder.withSMTPServer(account.smtpHost(), account.smtpPort(), account.email(), password)
+        var builder = MailerBuilder.withSMTPServer(account.smtpHost(), account.smtpPort(), account.email(), password)
             .withTransportStrategy(transportStrategy(account.smtpSecurity()))
-            .withSessionTimeout(SESSION_TIMEOUT_MILLIS)
-            .buildMailer();
+            .withSessionTimeout(SESSION_TIMEOUT_MILLIS);
+        // Per-account opt-in: accept self-signed / private-CA certificates. trustingAllHosts(true)
+        // sets mail.smtp.ssl.trust=* (Angus Mail then skips the certificate-chain check entirely);
+        // verifyingServerIdentity(false) skips the RFC 6125 hostname-vs-cert check. Both are needed
+        // for intranet SMTP servers whose certificate CN/SAN does not match the configured host.
+        if (account.smtpSkipCertVerify()) builder = builder.trustingAllHosts(true).verifyingServerIdentity(false);
+        return builder.buildMailer();
     }
 
     private Email buildEmail(EmailAccount account, EmailMessageRequest request) {
