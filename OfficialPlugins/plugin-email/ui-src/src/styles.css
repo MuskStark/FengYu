@@ -93,6 +93,14 @@ body { margin: 0; min-width: 320px; background: rgb(var(--v-theme-background)); 
 .v-overlay-container .v-card-text > :not(:first-child) { margin-block-start: 14px; }
 .v-overlay-container .v-card-actions { gap: 8px; padding: 10px 20px 18px; }
 .codex-dialog { overflow: hidden; }
+.confirm-dialog .v-card-text { max-height: 70vh; overflow-y: auto; }
+.confirm-dialog .confirm-section-title { margin: 4px 0 8px; font-size: 12px; font-weight: 650; color: var(--email-text-muted); text-transform: uppercase; letter-spacing: .04em; }
+.confirm-dialog .confirm-section-title:not(:first-child) { margin-top: 18px; }
+.confirm-dialog .confirm-meta { grid-template-columns: minmax(90px, max-content) minmax(0, 1fr); }
+.confirm-dialog .confirm-fields { grid-template-columns: minmax(110px, max-content) minmax(0, 1fr); }
+.confirm-dialog .v-expansion-panel { border: 1px solid var(--email-border); border-radius: 8px !important; background: var(--email-surface-muted); }
+.confirm-dialog .v-expansion-panel-title { min-height: 44px; font-size: 13px; font-weight: 600; }
+.confirm-dialog .v-expansion-panel-text { padding: 0 12px 8px; }
 .codex-dialog__message { font-size: 13px; }
 .workspace-grid { display: grid; grid-template-columns: minmax(0, 1fr) 230px; gap: 16px; }
 .panel-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(300px, .8fr); gap: 20px; }

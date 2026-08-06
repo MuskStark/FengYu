@@ -73,7 +73,7 @@ class RemoteDatabaseContractTest {
             AccountRepository accounts = new AccountRepository(database);
             long accountId = accounts.saveAccount(new AccountRepository.AccountInput(null, "Contract",
                 unique + "@example.com", "smtp.example.com", 587, "STARTTLS", "imap.example.com", 993,
-                "SSL", true), "encrypted-contract-secret");
+                "SSL", false, false, true), "encrypted-contract-secret");
             assertTrue(accounts.findAccount(accountId).isPresent());
 
             AddressBookRepository addressBook = new AddressBookRepository(database);

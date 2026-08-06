@@ -4,7 +4,7 @@ import type { FileRef } from '@infinia/plugin-sdk'
 import { sanitizeEmailHtml } from '../richText'
 
 export type ComposeMode = 'DIRECT' | 'CONTACT_TAGS'
-export interface SummaryRow { label: string; value: string }
+export interface SummaryRow { label: string; value: string; group?: string }
 export interface Confirmation { confirmationId: string; summary: SummaryRow[]; expiresAt: string; approveMethod?: string; rejectMethod?: string }
 export interface SendResult { status: string; succeeded: number; failed: number; failedRecipients?: string[] }
 

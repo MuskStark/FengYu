@@ -21,10 +21,10 @@ public final class AccountRpc {
 
     public record AccountRequest(Long id, String displayName, String email, String password,
         String smtpHost, int smtpPort, String smtpSecurity, String imapHost, Integer imapPort,
-        String imapSecurity, boolean defaultAccount) {
+        String imapSecurity, boolean smtpSkipCertVerify, boolean imapSkipCertVerify, boolean defaultAccount) {
         AccountService.AccountInput toInput() {
             return new AccountService.AccountInput(id, displayName, email, password, smtpHost, smtpPort,
-                smtpSecurity, imapHost, imapPort, imapSecurity, defaultAccount);
+                smtpSecurity, imapHost, imapPort, imapSecurity, smtpSkipCertVerify, imapSkipCertVerify, defaultAccount);
         }
         @Override public String toString() { return "AccountRequest[id=" + id + ",email=" + email + ",password=<redacted>]"; }
     }

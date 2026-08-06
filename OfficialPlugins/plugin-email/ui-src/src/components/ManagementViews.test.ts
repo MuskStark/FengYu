@@ -16,7 +16,7 @@ const stubs = {
   VTextField: { props: ['modelValue', 'type', 'autocomplete'], emits: ['update:modelValue'], template: '<input v-bind="$attrs" :type="type" :autocomplete="autocomplete" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' },
   VAlert: true, VCard: true, VCardTitle: true, VCardText: true, VCardActions: true, VCheckbox: true,
   VCheckboxBtn: true, VChip: true, VDialog: { props: ['modelValue'], template: '<div v-if="modelValue"><slot /></div>' }, VList: true, VListItem: true, VSelect: true,
-  VSheet: true, VSpacer: true, VTable: { template: '<table><slot /></table>' },
+  VSheet: true, VSpacer: true, VSwitch: true, VTable: { template: '<table><slot /></table>' },
 }
 function options(pinia = createPinia()) { setActivePinia(pinia); return { global: { plugins: [pinia, i18n], stubs } } }
 
