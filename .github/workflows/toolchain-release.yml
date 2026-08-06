@@ -98,20 +98,36 @@ jobs:
           cache: maven
       # Publish the independently-versioned Java artifacts (SDK + devkit) to GitHub Packages.
       # Credentials come from the GITHUB_ACTOR / GITHUB_TOKEN server settings;
-      # generated files never contain a token.
+      # generated files never contain a token. GitHub Packages rejects redeploy of an existing
+      # version (409 Conflict), so a deploy that fails with 409 means the artifact is already
+      # published from a prior run — treat that as success (idempotent) so partial reruns don't fail.
       - name: Publish Java Worker SDK
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           FENGYU_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./mvnw -f toolchain/sdk-java/pom.xml deploy -DskipTests -s .mvn/release-settings.xml
+        run: |
+          set +e
+          ./mvnw -f toolchain/sdk-java/pom.xml deploy -DskipTests -s .mvn/release-settings.xml > sdk-deploy.log 2>&1
+          code=$?
+          if [ $code -ne 0 ]; then
+            if grep -q 'status code: 409' sdk-deploy.log; then echo "::warning::fengyu-plugin-sdk 1.x already published (409) — treating as success"; cat sdk-deploy.log; exit 0; fi
+            cat sdk-deploy.log; exit $code
+          fi
       - name: Publish Java Plugin DevKit
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           FENGYU_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./mvnw -f toolchain/devkit-java/pom.xml deploy -DskipTests -s .mvn/release-settings.xml
+        run: |
+          set +e
+          ./mvnw -f toolchain/devkit-java/pom.xml deploy -DskipTests -s .mvn/release-settings.xml > devkit-deploy.log 2>&1
+          code=$?
+          if [ $code -ne 0 ]; then
+            if grep -q 'status code: 409' devkit-deploy.log; then echo "::warning::fengyu-plugin-devkit 1.x already published (409) — treating as success"; cat devkit-deploy.log; exit 0; fi
+            cat devkit-deploy.log; exit $code
+          fi
 
   publish-npm:
-    needs: [resolve-version, publish-java]
+    needs: [resolve-version, verify]
     runs-on: ubuntu-latest
     environment: npm-publish
     steps:
