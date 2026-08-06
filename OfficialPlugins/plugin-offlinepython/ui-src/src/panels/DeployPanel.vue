@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type { FengYuClient, FileRef } from '@infinia/plugin-sdk'
 import { FyFilePicker, FyPageHeader } from '@infinia/plugin-ui'
 import { call, callChecked, field } from '../rpc'
@@ -19,6 +19,15 @@ const installing = ref(false)
 const jobId = ref<string | null>(null)
 let poll: ReturnType<typeof setInterval> | null = null
 
+// ---- deployment-machine Python (auto-detect; manual override on failure) ----
+// The build machine's configured interpreter is NOT reused here: deploy often runs
+// on a different, offline machine whose interpreter (conda/pyenv/venv) is not on PATH.
+// We auto-detect THIS machine's python; if that fails, the user types the path.
+const detecting = ref(false)
+const detectedExe = ref<string | null>(null)   // null = not detected (yet / at all)
+const detectedVersion = ref<string | null>(null)
+const manualExe = ref('')                        // user override; empty = rely on detection
+
 function errorText(error: unknown): string {
   return error instanceof Error && error.message ? error.message : props.t('opb.common.error')
 }
@@ -28,13 +37,49 @@ function stopPolling() {
   poll = null
 }
 
+/** The interpreter path that will be sent to deploy.start: manual override wins, else detected. */
+const resolvedPythonExe = computed(() => {
+  const manual = manualExe.value.trim()
+  if (manual) return manual
+  return detectedExe.value ?? ''
+})
+
+/** Whether a usable interpreter is available (detected OR manually entered). */
+const hasPython = computed(() => resolvedPythonExe.value.length > 0)
+
+async function detectPython() {
+  detecting.value = true
+  try {
+    const res = await call(props.client, 'python.detect', { executable: manualExe.value.trim() || undefined })
+    const d = field<{ executable?: string; pythonVersion?: string; ok?: boolean }>(res, 'detection')
+    if (d?.ok && d.executable) {
+      detectedExe.value = d.executable
+      detectedVersion.value = d.pythonVersion ?? null
+    } else {
+      detectedExe.value = null
+      detectedVersion.value = null
+    }
+  } catch {
+    detectedExe.value = null
+    detectedVersion.value = null
+  } finally {
+    detecting.value = false
+  }
+}
+
+onMounted(detectPython)
+
 async function startInstall() {
   if (!bundle.value) { emit('toast', props.t('opb.deploy.bundleRequired')); return }
+  if (!hasPython.value) {
+    emit('toast', props.t('opb.deploy.notDetected'))
+    return
+  }
   logs.value = []
   status.value = 'starting'
   installing.value = true
   try {
-    const target: Record<string, unknown> = { kind: targetKind.value }
+    const target: Record<string, unknown> = { kind: targetKind.value, pythonExe: resolvedPythonExe.value }
     if (targetKind.value === 'venv') target.venvPath = venvPath.value
     const res = await callChecked(props.client, 'deploy.start', { zipPath: bundle.value, target })
     const id = field<string>(res, 'jobId')
@@ -104,6 +149,7 @@ const statusClass = computed(() => ({
   'opb-status--error': status.value === 'failed' || status.value === 'error',
 }))
 const canInstall = computed(() => Boolean(bundle.value)
+  && hasPython.value
   && (targetKind.value === 'global' || Boolean(venvPath.value.trim()))
   && !installing.value)
 </script>
@@ -139,6 +185,30 @@ const canInstall = computed(() => Boolean(bundle.value)
         :label="t('opb.deploy.venvPath')"
         :hint="t('opb.deploy.venvHint')"
         persistent-hint
+        class="opb-deploy__venv"
+      />
+    </div>
+
+    <div class="opb-surface__section">
+      <h2 class="opb-section-heading">{{ t('opb.deploy.pythonTitle') }}</h2>
+      <p class="opb-section-copy">{{ t('opb.deploy.pythonHint') }}</p>
+      <div class="opb-actions">
+        <v-btn variant="outlined" :loading="detecting" :disabled="detecting || installing" @click="detectPython">
+          {{ t('opb.deploy.redetect') }}
+        </v-btn>
+        <span v-if="detecting" class="opb-status">{{ t('opb.deploy.detecting') }}</span>
+        <span v-else-if="detectedExe && !manualExe.trim()" class="opb-status opb-status--success">
+          {{ t('opb.deploy.detected', detectedExe, detectedVersion ?? '') }}
+        </span>
+        <span v-else-if="!detectedExe && !manualExe.trim()" class="opb-status opb-status--error">
+          {{ t('opb.deploy.notDetected') }}
+        </span>
+      </div>
+      <v-text-field
+        v-model="manualExe"
+        :label="t('opb.deploy.pythonExe')"
+        :placeholder="detectedExe || ''"
+        persistent-placeholder
         class="opb-deploy__venv"
       />
     </div>
