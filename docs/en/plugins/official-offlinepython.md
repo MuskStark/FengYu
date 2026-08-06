@@ -100,7 +100,10 @@ The UI is a `FyPluginShell` with three panels (not a wizard):
 - **Project** — pick a writable project directory grant, initialize it, edit `config.json` /
   `requirements.txt`, detect Python, and resolve/search dependencies.
 - **Deploy** — run the async `pip download` build, watch streamed logs, verify the output,
-  package it, and deploy to a target.
+  package it, and deploy to a target. The panel auto-detects this machine's Python interpreter on
+  load (the one that will run `pip install`) and offers a manual path override when detection fails
+  — this matters on offline machines whose interpreter (conda/pyenv/venv) is not on `PATH`, which
+  differs from the build machine's interpreter.
 - **Doctor** — run environment diagnostics on the host Python/pip setup.
 
 A shared writable `FileRef` (the project directory, granted by the host) is selected in the
