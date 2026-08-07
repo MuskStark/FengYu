@@ -51,6 +51,15 @@ lang: zh-CN
     fallback when the host crashes.
   - The exit traps in `scripts/e2e-smoke.sh` and `scripts/offlinepython-e2e-smoke.sh` now also run
     `pkill -P` to clean up worker subprocess trees.
+- **Offline Python Builder deploy now uses the deployment machine's Python.** The deploy step
+  previously re-ran Python detection with a null hint, discarding the interpreter resolved from the
+  target — so on machines whose Python (conda/pyenv/venv) was not on `PATH`, version detection
+  returned `null`, every C-extension wheel (numpy/pandas/…) was judged incompatible, and the deploy
+  silently installed zero packages (or reported success with nothing actually installed).
+  `DeployService` now resolves the version from the target's interpreter and fails loudly if it
+  cannot, instead of masking the failure as an empty match. The Deploy panel also auto-detects this
+  machine's interpreter on load and falls back to a manual path input when detection fails, so
+  offline machines with non-`PATH` interpreters can still deploy.
 
 ## [4.0.0-alpha.8] — 2026-08-04
 
