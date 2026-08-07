@@ -53,12 +53,20 @@ public class DeployService {
             // 2. (仅 venv)创建虚拟环境
             Path pythonExe = resolvePython(target, onLog);
 
-            // 3. 读 manifest + 筛选适配本机的 wheel
+            // 3. 读 manifest + 筛选适配本机的 wheel。
+            //    必须用刚解析出的 pythonExe 探测版本 —— 不能再 detect(null) 另起探测,
+            //    否则用户指定的解释器(conda/pyenv/venv)会被丢弃:探测失败 → pythonVersion=null
+            //    → PlatformMatcher 把所有 C 扩展 wheel (numpy/pandas/…) 判为不兼容 → 关键依赖装不上。
             BundleReader.Bundle bundle = BundleReader.read(zip);
-            PythonDetector.Detection det = PythonDetector.detect(null);
-            PlatformMatcher.HostTags host = PlatformMatcher.detectHost(det.pythonVersion());
+            String pyVersion = detectPythonVersion(pythonExe);
+            if (pyVersion == null) {
+                throw new IllegalStateException("无法解析部署目标 Python 版本:" + pythonExe
+                    + "(请确认该解释器存在且带 pip,或换一个全局/venv 目标)");
+            }
+            PlatformMatcher.HostTags host = PlatformMatcher.detectHost(pyVersion);
             List<WheelEntry> matched = PlatformMatcher.match(host, bundle.wheels());
-            onLog.accept("适配本机的 wheel:" + matched.size() + " / " + bundle.wheels().size());
+            onLog.accept("适配本机的 wheel:" + matched.size() + " / " + bundle.wheels().size()
+                + "(python " + pyVersion + " · " + pythonExe + ")");
 
             // 4. 逐包安装
             int installed = 0, failed = 0, skipped = 0;
@@ -134,6 +142,15 @@ public class DeployService {
                 yield venvPython(v.venvPath());
             }
         };
+    }
+
+    /**
+     * 探测给定 Python 解释器的版本(major.minor[.patch]),探测失败返回 null。
+     * 抽成 protected 便于单测覆盖(避免真的 shell-out 到某个固定路径的解释器)。
+     */
+    protected String detectPythonVersion(Path pythonExe) {
+        PythonDetector.Detection d = PythonDetector.detect(pythonExe.toString());
+        return d.ok() ? d.pythonVersion() : null;
     }
 
     /** venv 内 python 路径:Windows = venv/Scripts/python.exe,其他 = venv/bin/python。 */
