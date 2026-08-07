@@ -54,7 +54,7 @@ Chromium 沙箱在 Linux 上只有两条出路:
 |---|---|
 | 方案 | C — 硬化版 `--no-sandbox`(独立 UOS 产物) |
 | 沙箱关闭方式 | **构建期常量注入**(非运行时探测 user namespace) |
-| 常量载体 | 生成 `build-flavor.json` + `tsc resolveJsonModule` 内联进 `dist/main.js`(无 bundler define) |
+| 常量载体 | 构建期生成 `src/build-flavor.json` + `tsc resolveJsonModule` 发出 `require()`,JSON 被烤进 `dist/build-flavor.json` 并打入 app.asar(无 bundler define) |
 | 触发开关 | 环境变量 `FENGYU_BUILD_FLAVOR=uos` |
 | 产物形态 | deb,仅 x86_64,基于 lite 配置(无 JRE) |
 | appId | **不变**(`fan.summer.fengyu`,同一应用身份);用 productName 区分 |
@@ -66,12 +66,15 @@ Chromium 沙箱在 Linux 上只有两条出路:
 
 由于主进程用纯 `tsc`(无 bundler,没有 `define` 插件),采用**生成 JSON + `resolveJsonModule`** 方案。`tsconfig.json` 已有 `resolveJsonModule: true`(第 14 行),无需改 tsconfig。
 
+> **机制实测确认**(非凭记忆):`tsc` 在 `resolveJsonModule` 下**不会**把 JSON 内联成字面量,而是:① 在 `dist/` 生成一份 `build-flavor.json`;② 在 `dist/flavor.js` 发出 `require("./build-flavor.json")`。因此 flavor 的值在**构建期被烤进磁盘上的 JSON 文件**,运行时只 `require` 该文件、**不读 `process.env`**——构建后再改 `FENGYU_BUILD_FLAVOR` 不影响已构建产物。这满足"构建期常量注入"的意图(值由构建决定、运行时不可变),只是载体是构建期生成的 JSON 而非 main.js 里的字面量。electron-builder 的 `files: ['dist/**/*']` 会把该 JSON 一并打入 `app.asar`,运行时 `require` 能解析到。
+
 **新增文件 `desktop/electron/scripts/gen-build-flavor.mjs`**:
 - 读 `process.env.FENGYU_BUILD_FLAVOR`;
 - 合法值:`'uos'` / 未设(视为 `'standard'`);
 - 写 `desktop/electron/src/build-flavor.json`,内容 `{"flavor":"uos"}` 或默认 `{"flavor":"standard"}`;
 - 幂等:每次构建前重写,保证文件总在、总有合法默认值;
-- 用 Node 内置 `fs.writeFileSync`,无新依赖。
+- 用 Node 内置 `fs.writeFileSync`,无新依赖;
+- 必须在 `tsc` 之前运行,这样 `tsc` 才能把对应内容烤进 `dist/build-flavor.json`。
 
 **新增文件 `desktop/electron/src/flavor.ts`**(收敛判断,避免散落):
 ```ts
@@ -79,10 +82,19 @@ import data from './build-flavor.json';
 
 export type BuildFlavor = 'standard' | 'uos';
 
-const raw = (data as { flavor?: string }).flavor;
-export const BUILD_FLAVOR: BuildFlavor = raw === 'uos' ? 'uos' : 'standard';
+/**
+ * Resolve a raw flavor value into a typed BuildFlavor. Pure & standalone so it can be
+ * unit-tested without mocking JSON module loading. Safe default: anything other than the
+ * literal 'uos' keeps the Chromium sandbox ON.
+ */
+export function resolveFlavor(raw: unknown): BuildFlavor {
+  return raw === 'uos' ? 'uos' : 'standard';
+}
+
+export const BUILD_FLAVOR: BuildFlavor = resolveFlavor((data as { flavor?: unknown }).flavor);
 export const SANDBOX_DISABLED = BUILD_FLAVOR === 'uos';
 ```
+> **测试策略:** `import data from './build-flavor.json'` 是模块顶层执行,且 vitest/vite 在首次 import 时就把 JSON 内联进转换结果,无法用 `vi.resetModules`/重写文件/`vi.doMock` 在运行时切换 flavor(三者实测失败)。因此把判断抽成纯函数 `resolveFlavor(raw)` 做参数化单测,wiring 测试只验证 `SANDBOX_DISABLED` 是与 `BUILD_FLAVOR` 一致的布尔。
 
 **`build-flavor.json` 加入 `.gitignore`**(生成物,不入库)。
 
