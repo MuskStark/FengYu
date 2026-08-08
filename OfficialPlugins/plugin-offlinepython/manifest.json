@@ -19,5 +19,19 @@
     {"name":"offlinepython_verify","effect":"read","description":"Verify an offline-build output against its manifest.","method":"offlinepython_verify","inputSchema":"{\"type\":\"object\",\"properties\":{\"projectDir\":{\"type\":\"object\",\"title\":\"Project directory\",\"description\":\"Project directory selected from FengYu files\"},\"scope\":{\"type\":\"string\",\"title\":\"Verification scope\",\"default\":\"ALL\",\"enum\":[\"ALL\",\"INTEGRITY\",\"SHA256\"]}},\"required\":[\"projectDir\"]}","outputSchema":"{\"type\":\"object\",\"properties\":{\"success\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"},\"result\":{\"type\":\"object\",\"description\":\"Verification totals and problems\"}},\"required\":[\"success\",\"summary\"]}"},
     {"name":"offlinepython_build_start","effect":"external","description":"Start an offline wheelhouse build and return its job ID.","method":"offlinepython_build_start","inputSchema":"{\"type\":\"object\",\"properties\":{\"projectDir\":{\"type\":\"object\",\"title\":\"Project directory\",\"description\":\"Project directory selected from FengYu files\"},\"executable\":{\"type\":\"string\",\"title\":\"Python executable\",\"description\":\"Leave empty to detect Python automatically\"}},\"required\":[\"projectDir\"]}","outputSchema":"{\"type\":\"object\",\"properties\":{\"success\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"},\"jobId\":{\"type\":\"string\",\"description\":\"Job identifier for status polling\"}},\"required\":[\"success\",\"summary\"]}"},
     {"name":"offlinepython_build_status","effect":"read","description":"Poll an offline-build job and return logs and its final result.","method":"offlinepython_build_status","inputSchema":"{\"type\":\"object\",\"properties\":{\"jobId\":{\"type\":\"string\",\"title\":\"Job ID\"},\"cursor\":{\"type\":\"integer\",\"title\":\"Log cursor\",\"default\":0,\"minimum\":0}},\"required\":[\"jobId\"]}","outputSchema":"{\"type\":\"object\",\"properties\":{\"success\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"},\"jobId\":{\"type\":\"string\"},\"status\":{\"type\":\"string\"},\"logs\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"cursor\":{\"type\":\"integer\"},\"done\":{\"type\":\"boolean\"},\"result\":{\"type\":\"object\"},\"error\":{\"type\":\"string\"}},\"required\":[\"success\",\"summary\"]}"}
-  ]
+  ],
+  "i18n": {
+    "zh": {
+      "name": "离线 Python 构建器",
+      "description": "构建包含全部依赖的离线 Python 安装仓库",
+      "aiTools": {
+        "offlinepython_doctor": { "description": "诊断宿主 Python 与 pip 环境的离线构建就绪情况。" },
+        "offlinepython_search_deps": { "description": "在 PyPI 搜索某包可用的 wheel。" },
+        "offlinepython_init_project": { "description": "在可写目录中初始化离线 Python 项目。" },
+        "offlinepython_verify": { "description": "对照清单校验离线构建产物。" },
+        "offlinepython_build_start": { "description": "启动离线 wheelhouse 构建并返回任务 ID。" },
+        "offlinepython_build_status": { "description": "轮询离线构建任务，返回日志及最终结果。" }
+      }
+    }
+  }
 }

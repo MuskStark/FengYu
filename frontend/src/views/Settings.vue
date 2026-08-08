@@ -80,6 +80,13 @@ const activeProvider = computed(() => {
   return null
 })
 
+// Whether the active provider expects /v1 in its base URL (OpenAI-compatible: yes;
+// Anthropic: no). Drives the endpoint input hint so the user fills it in correctly.
+const endpointNeedsV1 = computed(() => {
+  const m = aiForm.value.mode
+  return m === 'openai' || m === 'deepseek'
+})
+
 const modes: { title: string; value: AiMode }[] = [
   { title: t('aiSettings.modeLocal'), value: 'local' },
   { title: t('aiSettings.modeOpenai'), value: 'openai' },
@@ -273,7 +280,14 @@ async function onTest() {
         <template v-if="activeProvider">
           <div class="cx-field" style="margin-bottom: 14px">
             <label class="cx-label">{{ $t('aiSettings.endpoint') }}</label>
-            <input v-model="aiForm[activeProvider].endpoint" class="cx-input" />
+            <input
+              v-model="aiForm[activeProvider].endpoint"
+              class="cx-input"
+              :placeholder="endpointNeedsV1 ? 'https://api.openai.com/v1' : 'https://api.anthropic.com'"
+            />
+            <div class="cx-muted" style="font-size: 12px; margin-top: 4px">
+              {{ endpointNeedsV1 ? $t('aiSettings.endpointHintOpenai') : $t('aiSettings.endpointHintAnthropic') }}
+            </div>
           </div>
           <div class="cx-field" style="margin-bottom: 14px">
             <label class="cx-label">{{ $t('aiSettings.apiKey') }}</label>

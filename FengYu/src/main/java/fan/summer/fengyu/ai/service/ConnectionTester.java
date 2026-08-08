@@ -1,5 +1,6 @@
 package fan.summer.fengyu.ai.service;
 
+import fan.summer.fengyu.ai.util.BaseUrlNormalizer;
 import fan.summer.fengyu.ai.util.JsonHelper;
 
 import java.net.URI;
@@ -36,23 +37,42 @@ public final class ConnectionTester {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(15);
 
     /**
-     * Probe a cloud provider (openai / anthropic / deepseek). DeepSeek uses the
-     * OpenAI-compatible {@code /v1/chat/completions} path.
+     * Probe a cloud provider (openai / anthropic / deepseek). The base URL is first
+     * normalized to the provider's official SDK contract via {@link BaseUrlNormalizer}
+     * (OpenAI-compatible: ensure {@code /v1}; Anthropic: strip {@code /v1}), so the probe
+     * hits the same endpoint {@code ChatModelConfig} builds for live chat. DeepSeek uses
+     * the OpenAI-compatible {@code chat/completions} path.
      */
     public static TestResult testCloud(String mode, String endpoint, String apiKey, String model) {
         if (isBlank(endpoint) || isBlank(apiKey) || isBlank(model)) {
             return TestResult.fail("Endpoint, API key, and model are all required");
         }
-        String base = stripTrailingSlash(endpoint);
+        BaseUrlNormalizer.Provider provider = switch (mode) {
+            case "openai", "deepseek" -> BaseUrlNormalizer.Provider.OPENAI_COMPATIBLE;
+            case "anthropic"           -> BaseUrlNormalizer.Provider.ANTHROPIC;
+            default                    -> null;
+        };
+        if (provider == null) return TestResult.fail("Unknown cloud mode: " + mode);
+        // Normalize the base URL to the provider's SDK contract so the probe hits the same
+        // endpoint the live chat client (ChatModelConfig) will use. This makes the test and
+        // the real path agree on /v1 handling regardless of how the user typed the URL.
+        String normalized = BaseUrlNormalizer.normalizeForSdk(endpoint, provider);
+        String fixNote = BaseUrlNormalizer.describeFix(endpoint, normalized);
         try (HttpClient client = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(CONNECT_TIMEOUT)
                 .build()) {
-            return switch (mode) {
-                case "openai", "deepseek" -> testOpenAiCompatible(client, base, apiKey, model);
-                case "anthropic"           -> testAnthropic(client, base, apiKey, model);
-                default -> TestResult.fail("Unknown cloud mode: " + mode);
+            TestResult result = switch (mode) {
+                case "openai", "deepseek" -> testOpenAiCompatible(client, normalized, apiKey, model);
+                case "anthropic"           -> testAnthropic(client, normalized, apiKey, model);
+                default -> throw new IllegalStateException();  // guarded above
             };
+            // Surface the auto-fix as a non-blocking warning on a successful probe so the
+            // user can correct the stored setting; a failure already carries its own error.
+            if (result.success() && fixNote != null) {
+                return TestResult.okWithWarning(fixNote);
+            }
+            return result;
         } catch (Exception e) {
             return TestResult.fail(errMsg(e));
         }
@@ -95,7 +115,7 @@ public final class ConnectionTester {
         ));
         try {
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(base + "/v1/chat/completions"))
+                    .uri(URI.create(base + "/chat/completions"))
                     .header("Content-Type", "application/json")
                     .header("Authorization", "Bearer " + apiKey)
                     .POST(HttpRequest.BodyPublishers.ofString(body))
@@ -118,7 +138,7 @@ public final class ConnectionTester {
         ));
         try {
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(base + "/v1/messages"))
+                    .uri(URI.create(base + "/messages"))
                     .header("Content-Type", "application/json")
                     .header("x-api-key", apiKey)
                     .header("anthropic-version", "2023-06-01")

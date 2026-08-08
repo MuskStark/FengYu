@@ -1,8 +1,14 @@
 package fan.summer.fengyu.web.config;
 
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.LocaleResolver;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import org.springframework.web.servlet.i18n.AcceptHeaderLocaleResolver;
+
+import java.util.List;
+import java.util.Locale;
 
 /**
  * CORS for the Vite dev server and the Tauri webview. In production (Tauri) the frontend is
@@ -19,6 +25,20 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  */
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
+
+    /**
+     * Resolves the request locale from the {@code Accept-Language} header so plugin manifest
+     * strings can be localized server-side. Supports {@code en}/{@code zh} (mirroring the frontend's
+     * {@code LanguageName}) and defaults to {@code en} when the header is absent or unsupported —
+     * which keeps single-language plugins rendering their top-level English defaults.
+     */
+    @Bean
+    public LocaleResolver localeResolver() {
+        AcceptHeaderLocaleResolver resolver = new AcceptHeaderLocaleResolver();
+        resolver.setSupportedLocales(List.of(Locale.ENGLISH, Locale.SIMPLIFIED_CHINESE));
+        resolver.setDefaultLocale(Locale.ENGLISH);
+        return resolver;
+    }
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {

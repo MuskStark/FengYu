@@ -58,14 +58,14 @@ class AiToolRegistryTest {
         AiToolRegistry registry = new AiToolRegistry(List.of(), packages,
                 mock(PluginProcessManager.class), mcp);
 
-        var descriptor = registry.descriptors().getFirst();
+        var descriptor = registry.descriptors(null).getFirst();
         assertEquals("com.example.live:live_echo", descriptor.id());
         assertTrue(descriptor.outputSchema().contains("text"));
         assertEquals(ToolEffect.EXTERNAL,
                 ((AuditedToolCallback) registry.callbacks().getFirst()).effect());
 
         packages.setEnabled("com.example.live", false);
-        assertTrue(registry.descriptors().isEmpty());
+        assertTrue(registry.descriptors(null).isEmpty());
         packages.setEnabled("com.example.live", true);
         assertEquals(1, registry.callbacks().size());
         packages.uninstall("com.example.live");

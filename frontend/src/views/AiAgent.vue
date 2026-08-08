@@ -904,7 +904,7 @@ function stepChipClass(s: string): string {
             <i class="mdi mdi-hammer-wrench" />
             <span>
               <strong>{{ tool.name }}</strong>
-              <small>{{ tool.description }}</small>
+              <small>{{ tool.localizedDescription || tool.description }}</small>
             </span>
           </button>
           <div v-if="!tools.length" class="cx-muted workflow-empty">{{ t('agent.noTools') }}</div>
@@ -963,9 +963,9 @@ function stepChipClass(s: string): string {
                 <i class="mdi mdi-delete-outline" />
               </button>
             </div>
-            <div v-if="selectedNode.data.tool.description" class="workflow-node-intro">
+            <div v-if="selectedNode.data.tool.localizedDescription || selectedNode.data.tool.description" class="workflow-node-intro">
               <i class="mdi mdi-information-outline" />
-              <span>{{ selectedNode.data.tool.description }}</span>
+              <span>{{ selectedNode.data.tool.localizedDescription || selectedNode.data.tool.description }}</span>
             </div>
             <div v-if="!selectedNode.data.available" class="cx-alert cx-alert--error workflow-tool-unavailable">
               <span class="cx-alert__body">{{ t('agent.toolUnavailable') }}</span>
@@ -1113,7 +1113,7 @@ function stepChipClass(s: string): string {
         <div class="cx-details__body">
           <div v-for="tool in tools" :key="tool.name" style="padding: 6px 0">
             <code>{{ tool.name }}</code>
-            <div v-if="tool.description" class="cx-muted" style="font-size: 12px">{{ tool.description }}</div>
+            <div v-if="tool.localizedDescription || tool.description" class="cx-muted" style="font-size: 12px">{{ tool.localizedDescription || tool.description }}</div>
           </div>
         </div>
       </details>
