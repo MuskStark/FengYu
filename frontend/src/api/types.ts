@@ -273,6 +273,8 @@ export interface WizardParams {
   database?: string
   username?: string
   password?: string
+  adminUsername?: string
+  adminPassword?: string
 }
 
 export interface ConnectionTestRequest {
