@@ -3,6 +3,8 @@ package fan.summer.fengyu.plugin.market;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.runtime.RuntimePaths;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -28,6 +30,7 @@ import java.util.zip.ZipInputStream;
 /** Installs, updates and removes isolated .fyp plugin packages. */
 @Service
 public class PluginPackageService {
+    private static final Logger log = LoggerFactory.getLogger(PluginPackageService.class);
     private static final long MAX_PACKAGE_BYTES = 100L * 1024 * 1024;
     private static final long MAX_EXPANDED_BYTES = 300L * 1024 * 1024;
     private static final long MIN_TIMEOUT_SECONDS = 1L;
@@ -42,7 +45,12 @@ public class PluginPackageService {
 
     public PluginPackageService(
             @Value("${fengyu.plugins.directory:}") String directory) {
-        this.json = JsonMapper.builder().findAndAddModules().build();
+        // The manifest schema declares `additionalProperties: true`, so third-party packages may
+        // carry forward-compatible fields the host doesn't model yet (e.g. a future `i18n` block
+        // before the host upgraded). Tolerate unknown fields on read instead of failing the whole
+        // install — a strict mapper would crash a package whose only offense is shipping a new field.
+        this.json = JsonMapper.builder().findAndAddModules().build()
+                .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         this.root = directory == null || directory.isBlank()
                 ? RuntimePaths.pluginDirectory(RuntimePaths.root())
                 : Path.of(directory).toAbsolutePath().normalize();
@@ -214,7 +222,13 @@ public class PluginPackageService {
 
     private Optional<PluginManifest> readManifestQuietly(Path dir) {
         try { return Optional.of(readManifest(dir)); }
-        catch (Exception ignored) { return Optional.empty(); }
+        catch (Exception e) {
+            // Don't crash the installed() listing — one broken package shouldn't hide the rest.
+            // But log the cause so a silently-skipped plugin (corrupt manifest, schema drift) is
+            // debuggable instead of vanishing without a trace.
+            log.warn("Skipping plugin at {}: could not read manifest.json ({})", dir, e.getMessage());
+            return Optional.empty();
+        }
     }
 
     private void validate(PluginManifest m, Path staging) {

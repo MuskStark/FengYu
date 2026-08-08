@@ -1,5 +1,6 @@
 package fan.summer.fengyu.web.controller;
 
+import fan.summer.fengyu.plugin.market.ManifestI18n;
 import fan.summer.fengyu.plugin.market.MarketplacePlugin;
 import fan.summer.fengyu.plugin.market.PluginManifest;
 import fan.summer.fengyu.plugin.market.PluginMarketplaceService;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -42,8 +44,13 @@ public class PluginMarketplaceController {
     }
 
     @GetMapping
-    public List<MarketplacePlugin> list() {
-        return marketplace.list();
+    public List<MarketplacePlugin> list(
+            @RequestHeader(name = "Accept-Language", required = false) String acceptLanguage) {
+        // Resolve the locale straight from the header and pass it down explicitly. This sidesteps
+        // LocaleContextHolder (which can be empty when the LocaleResolver bean isn't wired or when a
+        // service call escapes the request thread), so localization never silently falls back to the
+        // default locale just because the Spring locale context wasn't populated.
+        return marketplace.list(ManifestI18n.resolveLocale(acceptLanguage));
     }
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

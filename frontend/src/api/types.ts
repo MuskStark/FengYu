@@ -377,7 +377,14 @@ export interface AgentTool {
   id: string
   pluginId?: string | null
   name: string
+  /** English description — the one sent to the LLM. */
   description: string
+  /**
+   * Locale-localized description for frontend display only (resolved server-side from the plugin
+   * manifest's i18n block). Falls back to {@link description} when the plugin ships no translation
+   * for the current locale or this is a built-in / MCP tool without manifest metadata.
+   */
+  localizedDescription?: string | null
   inputSchema: string
   outputSchema?: string | null
   revision: string
