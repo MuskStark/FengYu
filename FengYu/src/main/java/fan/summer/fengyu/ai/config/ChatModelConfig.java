@@ -5,6 +5,7 @@ import com.anthropic.client.AnthropicClientAsync;
 import com.openai.client.OpenAIClient;
 import com.openai.client.OpenAIClientAsync;
 import fan.summer.fengyu.ai.AiConfigService;
+import fan.summer.fengyu.ai.util.BaseUrlNormalizer;
 import io.micrometer.observation.ObservationRegistry;
 import org.springframework.ai.anthropic.AnthropicChatModel;
 import org.springframework.ai.anthropic.AnthropicChatOptions;
@@ -23,6 +24,9 @@ import org.springframework.context.annotation.Lazy;
 
 import java.time.Duration;
 import java.util.List;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Defines the three Spring AI {@code ChatModel} beans manually (no starter
@@ -59,6 +63,14 @@ public class ChatModelConfig {
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(120);
     private static final int MAX_RETRIES = 2;
 
+    private static final Logger log = LoggerFactory.getLogger(ChatModelConfig.class);
+
+    /** Logs a base-URL normalization when it actually changed the value. */
+    private static void logNormalization(String label, String original, String normalized) {
+        String note = BaseUrlNormalizer.describeFix(original, normalized);
+        if (note != null) log.info("{} base URL normalized: {}", label, note);
+    }
+
     /**
      * A resolved cloud model together with the provider-specific
      * {@link ToolCallingChatOptions} it was built from. The options are returned to the
@@ -92,6 +104,11 @@ public class ChatModelConfig {
      *         {@link ResolvedModel}).
      */
     public static ResolvedModel buildOpenAiCompatible(String baseUrl, String apiKey, String modelName) {
+        // The OpenAI SDK (Spring AI's OpenAiSetup) expects the base URL to carry /v1 and
+        // appends chat/completions to it. A bare root would 404, so normalize first —
+        // this is the same fix ConnectionTester applies on the test path.
+        String normalized = BaseUrlNormalizer.normalizeForSdk(baseUrl, BaseUrlNormalizer.Provider.OPENAI_COMPATIBLE);
+        logNormalization("OpenAI-compatible", baseUrl, normalized);
         // Spring AI 2.0.0's OpenAiChatModel.Builder.build() builds BOTH a sync and an
         // async client when the corresponding field is null (see OpenAiChatModel.java
         // ~L1373/L1382), pulling baseUrl/apiKey/credential from OpenAiChatOptions — which
@@ -101,7 +118,7 @@ public class ChatModelConfig {
         // workloadIdentity, or adminApiKey". Fix: build BOTH clients ourselves and hand
         // them to the builder so build() never falls back to the options-derived path.
         OpenAIClient client = OpenAiSetup.setupSyncClient(
-                baseUrl,                 // baseUrl
+                normalized,              // baseUrl
                 apiKey,                  // apiKey
                 null,                    // credential
                 null,                    // azureDeploymentName
@@ -119,7 +136,7 @@ public class ChatModelConfig {
                 List.of()                // httpClientCustomizers
         );
         OpenAIClientAsync asyncClient = OpenAiSetup.setupAsyncClient(
-                baseUrl,                 // baseUrl
+                normalized,              // baseUrl
                 apiKey,                  // apiKey
                 null,                    // credential
                 null,                    // azureDeploymentName
@@ -159,11 +176,16 @@ public class ChatModelConfig {
      *         {@link ResolvedModel}).
      */
     public static ResolvedModel buildAnthropic(String baseUrl, String apiKey, String modelName) {
+        // The Anthropic SDK expects the base URL WITHOUT /v1 (its default is
+        // https://api.anthropic.com and it builds the v1/messages path itself). A user-supplied
+        // /v1 suffix would yield /v1/v1/messages, so strip it — matching ConnectionTester.
+        String normalized = BaseUrlNormalizer.normalizeForSdk(baseUrl, BaseUrlNormalizer.Provider.ANTHROPIC);
+        logNormalization("Anthropic", baseUrl, normalized);
         // Same trap as OpenAI (see buildOpenAiCompatible): AnthropicChatModel's constructor
         // rebuilds whichever client (sync/async) is null from AnthropicChatOptions, which
         // carries no credentials here. Build BOTH and hand them in.
         AnthropicClient client = AnthropicSetup.setupSyncClient(
-                baseUrl,                 // baseUrl
+                normalized,              // baseUrl
                 apiKey,                  // apiKey
                 HTTP_TIMEOUT,            // timeout
                 MAX_RETRIES,             // maxRetries
@@ -171,7 +193,7 @@ public class ChatModelConfig {
                 null                     // customHeaders
         );
         AnthropicClientAsync asyncClient = AnthropicSetup.setupAsyncClient(
-                baseUrl,                 // baseUrl
+                normalized,              // baseUrl
                 apiKey,                  // apiKey
                 HTTP_TIMEOUT,            // timeout
                 MAX_RETRIES,             // maxRetries

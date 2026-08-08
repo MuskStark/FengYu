@@ -1,5 +1,6 @@
 package fan.summer.fengyu.web.controller;
 
+import fan.summer.fengyu.plugin.market.ManifestI18n;
 import fan.summer.fengyu.plugin.market.PluginManifest;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
 import fan.summer.fengyu.plugin.runtime.InstalledPluginDescriptor;
@@ -50,8 +51,13 @@ public class PluginRuntimeController {
     }
 
     @GetMapping("/api/plugin-runtime")
-    public List<InstalledPluginDescriptor> plugins() {
-        return packages.installed().stream().filter(m -> packages.isEnabled(m.id())).map(this::descriptor).toList();
+    public List<InstalledPluginDescriptor> plugins(
+            @org.springframework.web.bind.annotation.RequestHeader(name = "Accept-Language", required = false) String acceptLanguage) {
+        // Resolve locale from the header directly and pass it down, matching the marketplace path.
+        String locale = ManifestI18n.resolveLocale(acceptLanguage);
+        return packages.installed().stream()
+                .filter(m -> packages.isEnabled(m.id()))
+                .map(m -> descriptor(m, locale)).toList();
     }
 
     @PostMapping("/api/plugin-runtime/{id}/invoke")
@@ -144,8 +150,8 @@ public class PluginRuntimeController {
             .body(new FileSystemResource(path));
     }
 
-    private InstalledPluginDescriptor descriptor(PluginManifest m) {
-        return new InstalledPluginDescriptor(m.id(), m.name(), m.description(),
+    private InstalledPluginDescriptor descriptor(PluginManifest m, String locale) {
+        return new InstalledPluginDescriptor(m.id(), ManifestI18n.name(m, locale), ManifestI18n.description(m, locale),
             m.category() == null ? "OTHER" : m.category().toUpperCase(), m.icon(), m.version(),
             "/plugin-runtime/" + m.id() + "/" + m.ui().entry(), m.author(),
             m.permissions() == null ? List.of() : m.permissions(), packages.isEnabled(m.id()),

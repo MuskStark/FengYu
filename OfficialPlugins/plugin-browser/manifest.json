@@ -62,5 +62,22 @@
       "timeoutSeconds": 15,
       "inputSchema": "{\"type\":\"object\",\"properties\":{}}",
       "outputSchema": "{\"type\":\"object\",\"properties\":{\"success\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"},\"closed\":{\"type\":\"boolean\"}},\"required\":[\"success\",\"summary\"]}" }
-  ]
+  ],
+  "i18n": {
+    "zh": {
+      "name": "浏览器代理",
+      "description": "AI 驱动的浏览器自动化：导航、点击、输入、抓取、截图、执行 JS",
+      "aiTools": {
+        "browser_navigate": { "description": "导航浏览器到指定 URL。返回最终 URL 与页面标题。" },
+        "browser_click": { "description": "点击由 CSS 选择器匹配的元素。" },
+        "browser_type": { "description": "向由 CSS 选择器匹配的元素输入文本。默认先清空。" },
+        "browser_get_text": { "description": "读取某元素的文本内容（省略选择器则读取整页）。截断为 64K。" },
+        "browser_query": { "description": "按 CSS 选择器查询元素；返回数量及最多 5 条样本文本。" },
+        "browser_screenshot": { "description": "截取屏幕快照（视口、整页或元素）。保存到插件数据目录；返回文件路径及页面的可访问性树文本（AI 无法查看图片，故读取 a11y 树）。" },
+        "browser_wait_for": { "description": "等待元素进入某状态（出现/消失/可见/隐藏）。" },
+        "browser_eval_js": { "description": "在页面中执行 JavaScript 表达式并返回序列化结果。" },
+        "browser_close": { "description": "关闭浏览器并释放资源。下一次 browser_* 调用会重新启动。" }
+      }
+    }
+  }
 }

@@ -33,7 +33,7 @@ public class PluginMarketplaceService {
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     }
 
-    public List<MarketplacePlugin> list() {
+    public List<MarketplacePlugin> list(String locale) {
         Map<String, MarketplaceCatalogEntry> catalog = new LinkedHashMap<>();
         for (MarketplaceCatalogEntry entry : fetchCatalog()) {
             if (entry.id() != null && !entry.id().isBlank()) catalog.put(entry.id(), entry);
@@ -44,9 +44,9 @@ public class PluginMarketplaceService {
         List<MarketplacePlugin> result = new ArrayList<>();
         for (MarketplaceCatalogEntry entry : catalog.values()) {
             PluginManifest local = installed.remove(entry.id());
-            result.add(toView(entry, local));
+            result.add(toView(entry, local, locale));
         }
-        for (PluginManifest local : installed.values()) result.add(toView(null, local));
+        for (PluginManifest local : installed.values()) result.add(toView(null, local, locale));
         return result.stream().sorted((a, b) -> a.name().compareToIgnoreCase(b.name())).toList();
     }
 
@@ -82,14 +82,18 @@ public class PluginMarketplaceService {
         }
     }
 
-    private MarketplacePlugin toView(MarketplaceCatalogEntry remote, PluginManifest local) {
+    private MarketplacePlugin toView(MarketplaceCatalogEntry remote, PluginManifest local, String locale) {
         boolean installed = local != null;
         String id = installed ? local.id() : remote.id();
         String available = remote != null ? remote.version() : local.version();
+        // Localize name/description from the installed manifest when present — remote catalog
+        // entries are single-language, so a locally installed package overrides them with the
+        // user's locale. Catalog-only rows (not yet installed) keep the catalog's English strings.
         return new MarketplacePlugin(
             id,
-            remote != null ? remote.name() : local.name(),
-            remote != null ? remote.description() : local.description(),
+            installed ? ManifestI18n.name(local, locale) : (remote != null ? remote.name() : local.name()),
+            installed ? ManifestI18n.description(local, locale)
+                : (remote != null ? remote.description() : local.description()),
             available,
             installed ? local.version() : null,
             remote != null ? remote.author() : local.author(),

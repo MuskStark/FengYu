@@ -5,6 +5,29 @@
   "type": "object",
   "additionalProperties": true,
   "required": ["schemaVersion", "id", "name", "description", "version", "author", "icon", "category", "ui"],
+  "definitions": {
+    "localeOverride": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Locale-specific overrides for the manifest's display strings. Every field is independently optional; the host falls back to the top-level (default, English) field whenever an override is absent.",
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "aiTools": {
+          "type": "object",
+          "description": "Per-tool display overrides keyed by tool `name` (stable across versions). Each entry may override `name` and/or `description`; these are frontend-only and never reach the LLM.",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "description": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    }
+  },
   "properties": {
     "schemaVersion": { "type": "integer", "const": 1 },
     "id": { "type": "string", "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)+$" },
@@ -60,6 +83,14 @@
           "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 600 }
         }
       }
+    },
+    "i18n": {
+      "type": "object",
+      "description": "Optional locale overrides for the manifest's display strings. Keys are short lowercased locale tags (e.g. \"en\", \"zh\"); the host resolves the request locale (Accept-Language) with language-family fallback (\"zh-CN\" -> \"zh\"), then falls back to the top-level default. Author/inputSchema strings are never localized here.",
+      "patternProperties": {
+        "^[a-z]{2,3}(-[A-Za-z0-9]+)*$": { "$ref": "#/definitions/localeOverride" }
+      },
+      "additionalProperties": false
     }
   }
 }

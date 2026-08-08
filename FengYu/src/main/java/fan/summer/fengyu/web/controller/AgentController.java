@@ -219,8 +219,9 @@ public class AgentController {
      * metadata to the input schema Spring AI attaches to every callback.
      */
     @GetMapping("/api/agent/tools")
-    public List<AiToolRegistry.ToolDescriptor> tools() {
-        return toolRegistry.descriptors();
+    public List<AiToolRegistry.ToolDescriptor> tools(
+            @org.springframework.web.bind.annotation.RequestHeader(name = "Accept-Language", required = false) String acceptLanguage) {
+        return toolRegistry.descriptors(fan.summer.fengyu.plugin.market.ManifestI18n.resolveLocale(acceptLanguage));
     }
 
     private void scheduleCleanup(String runId, AgentStreamSink sink) {

@@ -9,7 +9,7 @@ const { t } = useI18n()
 </script>
 
 <template>
-  <div class="workflow-tool-node" :class="{ selected, unavailable: !data.available }" :title="data.tool.description">
+  <div class="workflow-tool-node" :class="{ selected, unavailable: !data.available }" :title="data.tool.localizedDescription || data.tool.description">
     <Handle
       type="target"
       :position="Position.Left"
