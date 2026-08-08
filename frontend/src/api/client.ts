@@ -31,6 +31,7 @@ import type {
   PluginDescriptor,
   PluginFileRef,
   ActiveFileEntry,
+  PluginDbProvisionResult,
   PluginInvokeResult,
   ProcessIsolationStatus,
   SetupStatus,
@@ -109,6 +110,16 @@ export const api = {
 
   async setPluginEnabled(id: string, enabled: boolean): Promise<void> {
     await http.patch(`/api/plugin-market/${encodeURIComponent(id)}/enabled`, { enabled })
+  },
+
+  async provisionPluginDb(id: string): Promise<PluginDbProvisionResult> {
+    const { data } = await http.post<PluginDbProvisionResult>(`/api/plugin-db/provision/${encodeURIComponent(id)}`)
+    return data
+  },
+
+  async pluginDbStatus(id: string): Promise<PluginDbProvisionResult> {
+    const { data } = await http.post<PluginDbProvisionResult>(`/api/plugin-db/status/${encodeURIComponent(id)}`)
+    return data
   },
 
   async uploadRuntimeFile(id: string, file: File): Promise<PluginFileRef> {
