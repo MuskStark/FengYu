@@ -71,4 +71,31 @@ class PluginLoggingTest {
     void rejectsUnknownLevel() {
         assertThrows(IllegalArgumentException.class, () -> PluginLogging.setLevel("verbose"));
     }
+
+    /**
+     * Regression guard for PluginLogging.severity(Level). The SLF4J 2.x Level enum has exactly
+     * TRACE..ERROR, and isEnabled short-circuits OFF before reaching severity — so severity's
+     * new default branch (which throws) is unreachable today. We cannot synthesize a new enum
+     * constant in a test, so instead assert the observable invariant: for every (level,
+     * threshold) pair, isEnabled matches level.severity >= threshold.severity. This walks all
+     * five constants through severity() and catches a reordering.
+     */
+    @Test
+    void severityMapsEachSlf4jLevel() {
+        for (SeverityLattice threshold : SeverityLattice.values()) {
+            PluginLogging.setLevel(threshold.name());
+            for (SeverityLattice level : SeverityLattice.values()) {
+                boolean expected = level.severity >= threshold.severity;
+                org.slf4j.event.Level slf4j = org.slf4j.event.Level.valueOf(level.name());
+                assertEquals(expected, PluginLogging.isEnabled(slf4j),
+                    "level=" + level + " threshold=" + threshold);
+            }
+        }
+    }
+
+    private enum SeverityLattice {
+        TRACE(0), DEBUG(1), INFO(2), WARN(3), ERROR(4);
+        final int severity;
+        SeverityLattice(int severity) { this.severity = severity; }
+    }
 }
