@@ -44,7 +44,7 @@ public class PluginDbProvisioningStore {
     }
 
     /** Test constructor — injects the base dir (typically a @TempDir). */
-    PluginDbProvisioningStore(Path baseDir) {
+    public PluginDbProvisioningStore(Path baseDir) {
         this.baseDir = baseDir.toAbsolutePath().normalize();
     }
 
