@@ -1,5 +1,7 @@
 package fan.summer.fengyu.plugin.market;
 
+import fan.summer.fengyu.setup.PluginDbProvisioner;
+import fan.summer.fengyu.setup.PluginDbProvisioningStore;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.mock.web.MockMultipartFile;
@@ -98,6 +100,35 @@ class PluginPackageServiceTest {
             "ui/index.html", "<html></html>");
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.install(file));
         assertTrue(ex.getMessage().contains("effect"));
+    }
+
+    @Test
+    void uninstallInvokesDeprovisionWhenAProvisionerIsAttached(
+            @TempDir Path pluginsRoot,
+            @TempDir Path hostConfig) throws Exception {
+        Path pluginDir = pluginsRoot.resolve("fan.summer.email");
+        Files.createDirectories(pluginDir);
+        Files.writeString(pluginDir.resolve("manifest.json"),
+            "{\"schemaVersion\":1,\"id\":\"fan.summer.email\",\"name\":\"Email\","
+            + "\"description\":\"d\",\"version\":\"1.0.0\",\"author\":\"a\",\"icon\":\"email\","
+            + "\"category\":\"net\",\"ui\":{\"entry\":\"ui/index.html\"},"
+            + "\"backend\":{\"command\":\"java\",\"protocol\":\"json-rpc-2.0\"},"
+            + "\"permissions\":[\"database\"]}");
+
+        java.util.List<String> deprovisioned = new java.util.ArrayList<>();
+        PluginDbProvisioner provisioner = new PluginDbProvisioner(
+            new fan.summer.fengyu.setup.DataSourceConfigService(hostConfig.toString()),
+            new PluginDbProvisioningStore(hostConfig)) {
+            @Override public void deprovision(String pluginId) { deprovisioned.add(pluginId); }
+        };
+        PluginPackageService service = new PluginPackageService(pluginsRoot.toString());
+        service.attachProvisionerForTest(provisioner);
+
+        service.uninstall("fan.summer.email");
+
+        assertEquals(java.util.List.of("fan.summer.email"), deprovisioned,
+            "uninstall must deprovision the plugin's DB credentials");
+        assertFalse(Files.exists(pluginDir), "plugin directory must be deleted too");
     }
 
     /** Locates the cross-language shared fixtures from either FengYu/ or the repository root. */
