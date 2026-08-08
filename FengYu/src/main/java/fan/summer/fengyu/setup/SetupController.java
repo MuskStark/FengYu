@@ -104,6 +104,15 @@ public class SetupController {
                 fields.add(Map.of("name", "username", "required", true, "secret", false));
                 fields.add(Map.of("name", "password", "required", true, "secret", true));
             }
+            // Admin credentials enable per-plugin DB RBAC provisioning (CREATE USER/SCHEMA/GRANT).
+            // Optional: a plugin's "Authorize database" action in Settings will fail with a clear
+            // message if these are left blank. Shown for all RBAC-capable types (H2 server-mode,
+            // MySQL, PostgreSQL); hidden for SQLite (no engine RBAC).
+            if (t != DbType.SQLITE) {
+                fields.add(Map.of("name", "adminUsername", "required", false, "secret", false,
+                        "default", "sa"));
+                fields.add(Map.of("name", "adminPassword", "required", false, "secret", true));
+            }
             entry.put("fields", fields);
             out.add(entry);
         }

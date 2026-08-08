@@ -222,7 +222,18 @@
                 "resume": "审阅并恢复", "resumed": "已恢复运行",
                 "step": "步骤 {n}" },
   "common":   { "back": "返回", "retry": "重试", "loading": "加载中…", "cancel": "取消", "confirm": "确认" },
-  "setup":    { "dataFileLocation": "数据文件位置" },
+  "setup":    {
+    "dataFileLocation": "数据文件位置",
+    "fields": {
+      "host": "主机",
+      "port": "端口",
+      "database": "数据库",
+      "username": "用户名",
+      "password": "密码",
+      "adminUsername": "管理员用户名（用于插件数据库 provisioning）",
+      "adminPassword": "管理员密码"
+    }
+  },
   "about": {
     "title": "关于",
     "subtitle": "一个 AI 原生的流程编排平台 ——「规划-执行」智能体把自然语言目标拆解为多步业务流程。",
