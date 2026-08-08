@@ -78,6 +78,8 @@ public class DataSourceConfigService {
             String typeStr = props.getProperty("db.type");
             if (typeStr == null || typeStr.isBlank()) return null;
             DbType type = DbType.fromName(typeStr);
+            String adminUser = props.getProperty("db.admin.username");
+            String adminPass = CryptoUtil.decrypt(props.getProperty("db.admin.password"), machineIdFile());
             return new DataSourceConfig(
                     type,
                     props.getProperty("db.url"),
@@ -85,7 +87,9 @@ public class DataSourceConfigService {
                     props.getProperty("db.dialect"),
                     props.getProperty("db.username", ""),
                     CryptoUtil.decrypt(props.getProperty("db.password", ""), machineIdFile()),
-                    props.getProperty("db.file.path", ""));
+                    props.getProperty("db.file.path", ""),
+                    adminUser != null && adminUser.isBlank() ? null : adminUser,
+                    adminPass != null && adminPass.isBlank() ? null : adminPass);
         } catch (Exception e) {
             log.warn("Failed to load datasource.properties: {}", e.getMessage());
             return null;
@@ -106,6 +110,13 @@ public class DataSourceConfigService {
             if (cfg.username() != null) props.setProperty("db.username", cfg.username());
             if (cfg.password() != null && !cfg.password().isBlank()) {
                 props.setProperty("db.password", CryptoUtil.encrypt(cfg.password(), machineIdFile()));
+            }
+            if (cfg.adminUsername() != null && !cfg.adminUsername().isBlank()) {
+                props.setProperty("db.admin.username", cfg.adminUsername());
+            }
+            if (cfg.adminPassword() != null && !cfg.adminPassword().isBlank()) {
+                props.setProperty("db.admin.password",
+                    CryptoUtil.encrypt(cfg.adminPassword(), machineIdFile()));
             }
             if (cfg.filePath() != null) props.setProperty("db.file.path", cfg.filePath());
             try (OutputStream out = Files.newOutputStream(file)) {
@@ -192,7 +203,9 @@ public class DataSourceConfigService {
                 type, url, type.driver, type.dialect,
                 params.username() == null ? "" : params.username(),
                 params.password() == null ? "" : params.password(),
-                filePath);
+                filePath,
+                params.adminUsername(),
+                params.adminPassword());
     }
 
     private int defaultPort(DbType type) {
