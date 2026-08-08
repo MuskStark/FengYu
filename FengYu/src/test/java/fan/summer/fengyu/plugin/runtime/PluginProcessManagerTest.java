@@ -32,6 +32,7 @@ import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -162,6 +163,43 @@ class PluginProcessManagerTest {
                 .reduce("", (left, right) -> left + "\n" + right);
             assertTrue(logs.contains("<redacted>"));
             assertFalse(logs.contains("do-not-log-me"));
+        } finally {
+            manager.close();
+            logger.detachAppender(appender);
+            logger.setLevel(previousLevel);
+            appender.stop();
+        }
+    }
+
+    /**
+     * forwardPluginLog must stamp MDC["pluginId"] = safeLoggerName(pluginId) on every forwarded
+     * worker event so the logback SiftingAppender routes it to plugin-&lt;pluginId&gt;.log. The MDC
+     * key must be removed again afterwards (balanced put/remove) so unrelated host log lines do not
+     * leak into a per-plugin bucket. Reuses the same fixture as
+     * {@link #redactsDatabasePasswordFromWorkerStderrLogs} (stderr-secret worker method → forwarded
+     * event on the plugin.&lt;id&gt;.stderr logger).
+     */
+    @Test
+    void forwardedPluginLogCarriesPluginIdMdc() throws Exception {
+        Logger logger = (Logger) LoggerFactory.getLogger("plugin.com.example.worker.stderr");
+        Level previousLevel = logger.getLevel();
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        logger.setLevel(Level.DEBUG);
+
+        PluginProcessManager manager = manager(List.of("database"));
+        try {
+            manager.invoke("com.example.worker", "stderr-secret", Map.of());
+            waitForLog(appender, "database password", Duration.ofSeconds(2));
+            assertFalse(appender.list.isEmpty(), "no forwarded event captured");
+            ILoggingEvent event = appender.list.getLast();
+            assertEquals("com.example.worker", event.getMDCPropertyMap().get("pluginId"),
+                "forwarded plugin log must carry MDC pluginId for SiftingAppender routing");
+            // The MDC key must be cleared after the forwarded event so the surrounding host thread
+            // does not keep leaking its events into the per-plugin bucket.
+            assertNull(org.slf4j.MDC.get("pluginId"),
+                "MDC pluginId must be removed after forwarding the worker log event");
         } finally {
             manager.close();
             logger.detachAppender(appender);
