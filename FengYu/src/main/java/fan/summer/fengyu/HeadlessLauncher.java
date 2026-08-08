@@ -1,5 +1,6 @@
 package fan.summer.fengyu;
 
+import fan.summer.fengyu.config.H2TcpServerConfig;
 import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
 import fan.summer.fengyu.runtime.RuntimePaths;
 import fan.summer.fengyu.setup.DataSourceConfig;
@@ -72,7 +73,12 @@ public final class HeadlessLauncher {
             System.setProperty(TOKEN_PROPERTY, token);
         }
 
-        boolean configured = probeAndDecide(new DataSourceConfigService());
+        DataSourceConfigService configService = new DataSourceConfigService();
+        // H2 TCP server must start BEFORE probeAndDecide: the probe opens a JDBC connection, and
+        // in H2 server mode that connection is tcp:// and needs the server already listening.
+        // No-op for non-H2 / SETUP-mode hosts.
+        H2TcpServerConfig.startIfNeeded(configService);
+        boolean configured = probeAndDecide(configService);
         startWithFallback(port, configured);
         // main() returns; the embedded Tomcat's non-daemon threads keep the JVM alive.
     }
