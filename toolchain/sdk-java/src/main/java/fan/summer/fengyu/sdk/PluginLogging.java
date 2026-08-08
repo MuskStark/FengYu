@@ -51,6 +51,10 @@ public final class PluginLogging {
             case INFO -> 2;
             case WARN -> 3;
             case ERROR -> 4;
+            // Defensive: Level currently has exactly these five constants and isEnabled()
+            // short-circuits OFF, so this branch is unreachable today. Throw (mirroring
+            // Threshold.parse's message) rather than silently mis-grade a future enum constant.
+            default -> throw new IllegalArgumentException("Unsupported plugin log level: " + level);
         };
     }
 
