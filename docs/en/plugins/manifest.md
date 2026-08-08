@@ -84,7 +84,7 @@ See [AI Tools](/en/plugins/ai-tools) for the end-to-end flow.
 | `clipboard.read` | Read from the host clipboard. |
 | `clipboard.write` | Write to the host clipboard. |
 | `notifications` | Show host notifications / toasts. |
-| `database` | The host injects a datasource connection (`FENGYU_DB_*` + a private data directory) into the worker environment. See [Plugin Database Standard](/en/plugins/database). |
+| `database` | The host injects database connection coordinates (`FENGYU_DB_*` — type/driver/url/username/password — plus a private data directory) into the worker environment, provisioned as an isolated DB user/schema. The worker opens its own connection. See [Plugin Database Standard](/en/plugins/database). |
 
 Any other value is rejected as an unknown permission at both validate and install time. A file operation attempted without the matching permission is rejected with `403`. See [File I/O](/en/plugins/file-io).
 
