@@ -10,6 +10,7 @@ import type {
   LanguageName,
   LogLevel,
   McpStatus,
+  PluginDbProvisionResult,
   ProcessIsolationStatus,
   ThemeName,
 } from '@/api/types'
@@ -19,6 +20,11 @@ const settings = useSettingsStore()
 const mcpStatus = ref<McpStatus | null>(null)
 const isolationStatus = ref<ProcessIsolationStatus | null>(null)
 const showUnsandboxedConfirm = ref(false)
+const showDbProvisionConfirm = ref(false)
+const dbProvisionTargetId = ref<string | null>(null)
+const dbPlugins = ref<Array<PluginDbProvisionResult & { name: string }>>([])
+const dbProvisioning = ref<string | null>(null)
+const dbError = ref<string | null>(null)
 
 onMounted(() => {
   if (!settings.loaded) void settings.load().catch(() => {})
@@ -27,6 +33,7 @@ onMounted(() => {
   void api.processIsolationStatus()
     .then((value) => { isolationStatus.value = value })
     .catch(() => {})
+  void loadDbPlugins()
 })
 
 const themeItems: { title: string; value: ThemeName }[] = [
@@ -122,6 +129,53 @@ function requestEnableUnsandboxed() {
 async function confirmEnableUnsandboxed() {
   showUnsandboxedConfirm.value = false
   await settings.setUnsandboxedPlugins(true)
+}
+
+async function loadDbPlugins() {
+  try {
+    const all = await api.getPlugins()
+    const dbOnes = all.filter((p) => p.permissions?.includes('database'))
+    const results = await Promise.all(
+      dbOnes.map(async (p) => {
+        const status = await api.pluginDbStatus(p.id).catch(() => null)
+        return {
+          provisioned: status?.provisioned ?? false,
+          status: status?.status ?? 'unknown',
+          pluginId: p.id,
+          name: p.name,
+        }
+      }),
+    )
+    dbPlugins.value = results
+  } catch {
+    dbPlugins.value = []
+  }
+}
+
+function requestDbProvision(pluginId: string) {
+  dbProvisionTargetId.value = pluginId
+  dbError.value = null
+  showDbProvisionConfirm.value = true
+}
+
+async function confirmDbProvision() {
+  const id = dbProvisionTargetId.value
+  showDbProvisionConfirm.value = false
+  if (!id) return
+  dbProvisioning.value = id
+  dbError.value = null
+  try {
+    const result = await api.provisionPluginDb(id)
+    if (!result.provisioned) {
+      dbError.value = result.status
+    } else {
+      void loadDbPlugins()
+    }
+  } catch (e: unknown) {
+    dbError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    dbProvisioning.value = null
+  }
 }
 
 async function onTest() {
@@ -256,6 +310,44 @@ async function onTest() {
         </div>
       </div>
 
+      <div class="cx-section-title">{{ $t('settings.pluginDbSection') }}</div>
+      <div class="cx-card">
+        <div class="cx-muted" style="font-size: 12px; margin-bottom: 12px">
+          {{ $t('settings.pluginDbSectionHint') }}
+        </div>
+        <div v-if="dbPlugins.length === 0" class="cx-muted" style="font-size: 13px">
+          {{ $t('settings.pluginDbNoPlugins') }}
+        </div>
+        <div
+          v-for="p in dbPlugins"
+          :key="p.pluginId"
+          class="cx-setting-row"
+        >
+          <div class="cx-setting-row__label">
+            <i class="mdi mdi-database-lock-outline" />
+            <span>{{ p.name }} <span class="cx-muted" style="font-size: 12px">{{ p.pluginId }}</span></span>
+          </div>
+          <span v-if="p.provisioned" class="cx-chip cx-chip--success">
+            {{ $t('settings.pluginDbAuthorized') }}
+          </span>
+          <button
+            v-else
+            class="cx-btn cx-btn--primary"
+            :disabled="dbProvisioning === p.pluginId"
+            @click="requestDbProvision(p.pluginId)"
+          >
+            {{ dbProvisioning === p.pluginId ? $t('settings.pluginDbProvisioning') : $t('settings.pluginDbAuthorize') }}
+          </button>
+        </div>
+        <div
+          v-if="dbError"
+          class="cx-muted"
+          style="color: var(--md-sys-color-error); font-size: 12px; margin-top: 8px"
+        >
+          {{ $t('settings.pluginDbError', { message: dbError }) }}
+        </div>
+      </div>
+
       <!-- AI configuration -->
       <div class="cx-section-title">{{ $t('aiSettings.sectionTitle') }}</div>
       <div class="cx-card">
@@ -380,6 +472,18 @@ async function onTest() {
           <v-spacer />
           <v-btn variant="text" @click="showUnsandboxedConfirm = false">{{ $t('common.cancel') }}</v-btn>
           <v-btn color="error" variant="tonal" @click="confirmEnableUnsandboxed()">{{ $t('common.confirm') }}</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="showDbProvisionConfirm" max-width="480">
+      <v-card>
+        <v-card-title>{{ $t('settings.pluginDbConfirmTitle') }}</v-card-title>
+        <v-card-text>{{ $t('settings.pluginDbConfirm') }}</v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="showDbProvisionConfirm = false">{{ $t('common.cancel') }}</v-btn>
+          <v-btn color="primary" variant="tonal" @click="confirmDbProvision()">{{ $t('common.confirm') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
