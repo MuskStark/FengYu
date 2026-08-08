@@ -134,7 +134,7 @@ public class PluginDbProvisioner {
         try (Connection conn = DriverManager.getConnection(cfg.url(), adminUser, adminPw);
                 Statement stmt = conn.createStatement()) {
             for (String sql : ddl) {
-                log.debug("Provisioning DDL for {}: {}", pluginId, sql);
+                log.debug("Provisioning DDL for {}: {}", pluginId, redactPassword(sql));
                 stmt.execute(sql);
             }
         } catch (SQLException e) {
@@ -163,7 +163,10 @@ public class PluginDbProvisioner {
             case H2 -> cfg.url() + ";SCHEMA=" + schemaName;
             case POSTGRESQL -> appendQuery(cfg.url(), "currentSchema=" + schemaName);
             case MYSQL -> {
-                URI uri = URI.create(cfg.url().substring("jdbc:mysql://".length()));
+                // Keep the leading "//" so URI parses host:port as an authority, not an opaque
+                // scheme. Stripping "//jdbc:mysql://" leaves "localhost:3306/db?q" which URI
+                // treats as opaque (scheme=localhost) → host/port are lost.
+                URI uri = URI.create(cfg.url().substring("jdbc:mysql:".length()));
                 String hostPart = uri.getHost() == null ? "" : uri.getHost();
                 if (uri.getPort() != -1) hostPart += ":" + uri.getPort();
                 yield "jdbc:mysql://" + hostPart + "/" + schemaName
@@ -181,6 +184,15 @@ public class PluginDbProvisioner {
         String cleaned = SAFE_CHAR.matcher(pluginId).replaceAll("_");
         if (cleaned.isEmpty() || Character.isDigit(cleaned.charAt(0))) cleaned = "p_" + cleaned;
         return cleaned;
+    }
+
+    /**
+     * Masks the literal in {@code PASSWORD '...'} / {@code IDENTIFIED BY '...'} so plugin-user
+     * credentials never enter the log, even at DEBUG. Keeps the keyword so the statement kind
+     * stays legible. The actual {@code stmt.execute} always uses the unredacted statement.
+     */
+    static String redactPassword(String sql) {
+        return sql.replaceAll("(?i)(PASSWORD|IDENTIFIED BY) '[^']*'", "$1 '***'");
     }
 
     private String generatePassword() {
