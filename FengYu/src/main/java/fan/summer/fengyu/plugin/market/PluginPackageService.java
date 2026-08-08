@@ -3,6 +3,7 @@ package fan.summer.fengyu.plugin.market;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.runtime.RuntimePaths;
+import fan.summer.fengyu.setup.PluginDbProvisioner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -42,6 +43,7 @@ public class PluginPackageService {
     private final ObjectMapper json;
     private final Path root;
     private final HttpClient http;
+    private PluginDbProvisioner dbProvisioner;  // nullable; null when no DB isolation is active
 
     public PluginPackageService(
             @Value("${fengyu.plugins.directory:}") String directory) {
@@ -55,6 +57,24 @@ public class PluginPackageService {
                 ? RuntimePaths.pluginDirectory(RuntimePaths.root())
                 : Path.of(directory).toAbsolutePath().normalize();
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
+    }
+
+    /**
+     * Spring-injection constructor: wires the optional DB provisioner so {@link #uninstall} can
+     * deprovision plugin DB credentials. The provisioner is a separate bean; in SETUP mode or in
+     * tests that use the single-arg constructor it stays null and uninstall behaves as before.
+     */
+    @org.springframework.beans.factory.annotation.Autowired
+    public PluginPackageService(
+            @Value("${fengyu.plugins.directory:}") String directory,
+            PluginDbProvisioner provisioner) {
+        this(directory);
+        this.dbProvisioner = provisioner;
+    }
+
+    /** Test-only: attach a provisioner so uninstall can be asserted to deprovision. */
+    void attachProvisionerForTest(PluginDbProvisioner provisioner) {
+        this.dbProvisioner = provisioner;
     }
 
     public List<PluginManifest> installed() {
@@ -157,6 +177,15 @@ public class PluginPackageService {
     public void uninstall(String id) throws IOException {
         Path dir = pluginDir(id);
         if (!Files.isDirectory(dir)) throw new IllegalArgumentException("Plugin is not installed: " + id);
+        // Deprovision the plugin's DB credentials/user/schema FIRST. Non-blocking: deprovision
+        // catches+logs its own DDL failures, so even a broken DB never blocks the file cleanup.
+        if (dbProvisioner != null) {
+            try {
+                dbProvisioner.deprovision(id);
+            } catch (RuntimeException e) {
+                log.warn("DB deprovision for {} failed; continuing with file removal: {}", id, e.getMessage());
+            }
+        }
         deleteTree(dir);
     }
 
