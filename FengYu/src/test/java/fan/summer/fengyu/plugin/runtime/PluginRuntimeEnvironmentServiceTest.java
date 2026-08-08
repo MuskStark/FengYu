@@ -4,6 +4,7 @@ import fan.summer.fengyu.plugin.market.PluginManifest;
 import fan.summer.fengyu.setup.DataSourceConfig;
 import fan.summer.fengyu.setup.DataSourceConfigService;
 import fan.summer.fengyu.setup.DbType;
+import fan.summer.fengyu.setup.PluginDbProvisioningStore;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -95,23 +96,77 @@ class PluginRuntimeEnvironmentServiceTest {
     }
 
     @Test
-    void remoteDatabaseWorkerReusesHostUrlUnchanged() {
-        // Remote DBs (MySQL/PostgreSQL) are real servers that handle concurrent connections —
-        // the worker shares the host's URL verbatim (no exclusive file lock to contend with).
+    void provisionedRemoteDatabaseWorkerReceivesIsolatedCredentials() {
         DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host").toString()) {
             @Override public DataSourceConfig load() {
                 return new DataSourceConfig(DbType.POSTGRESQL, "jdbc:postgresql://db:5432/fengyu",
                     "org.postgresql.Driver", "org.hibernate.dialect.PostgreSQLDialect",
-                    "fengyu", "secret", null);
+                    "fengyu", "secret", null, "fengyu_admin", "admin-secret");
             }
         };
+        PluginDbProvisioningStore store = new PluginDbProvisioningStore(temp.resolve("host"));
+        store.put(new PluginDbProvisioningStore.ProvisionedPluginDb(
+            "fan.summer.email", DbType.POSTGRESQL, "fengyu_fan_summer_email",
+            "fengyu_plugin_email", "plugin-pw",
+            "jdbc:postgresql://db:5432/fengyu?currentSchema=fengyu_fan_summer_email",
+            "org.postgresql.Driver", "2026-08-08T00:00:00Z"));
         PluginRuntimeEnvironmentService service =
-            new PluginRuntimeEnvironmentService(dataSources, temp.resolve("plugin-data").toString());
+            new PluginRuntimeEnvironmentService(dataSources, temp.resolve("plugin-data").toString(), store);
 
         Map<String, String> env = service.environmentFor(manifest("fan.summer.email", List.of("database")));
-        assertEquals("jdbc:postgresql://db:5432/fengyu",
+
+        assertEquals("jdbc:postgresql://db:5432/fengyu?currentSchema=fengyu_fan_summer_email",
             env.get(PluginWorkerProtocol.DB_URL_ENV),
-            "remote DB URL must pass through to the worker unchanged");
+            "provisioned worker must receive its OWN url, not the host's");
+        assertEquals("fengyu_plugin_email", env.get(PluginWorkerProtocol.DB_USERNAME_ENV));
+        assertEquals("plugin-pw", env.get(PluginWorkerProtocol.DB_PASSWORD_ENV));
+        assertFalse(env.get(PluginWorkerProtocol.DB_PASSWORD_ENV).contains("secret"),
+            "host's global DB password must NEVER appear in the worker env");
+    }
+
+    @Test
+    void notProvisionedRemoteDatabaseWorkerReceivesNoDatabaseEnv() {
+        DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host").toString()) {
+            @Override public DataSourceConfig load() {
+                return new DataSourceConfig(DbType.MYSQL, "jdbc:mysql://db:3306/fengyu",
+                    "com.mysql.cj.jdbc.Driver", "org.hibernate.dialect.MySQLDialect",
+                    "fengyu", "secret", null, "fengyu_admin", "admin-secret");
+            }
+        };
+        PluginDbProvisioningStore store = new PluginDbProvisioningStore(temp.resolve("host"));
+        PluginRuntimeEnvironmentService service =
+            new PluginRuntimeEnvironmentService(dataSources, temp.resolve("plugin-data").toString(), store);
+
+        Map<String, String> env = service.environmentFor(manifest("fan.summer.email", List.of("database")));
+        assertFalse(env.containsKey(PluginWorkerProtocol.DB_URL_ENV));
+        assertFalse(env.containsKey(PluginWorkerProtocol.DB_USERNAME_ENV));
+        assertFalse(env.containsKey(PluginWorkerProtocol.DB_PASSWORD_ENV));
+        assertEquals("INFO", env.get(PluginWorkerProtocol.LOG_LEVEL_ENV));
+        assertTrue(env.containsKey(PluginWorkerProtocol.PLUGIN_DATA_DIR_ENV));
+    }
+
+    @Test
+    void provisionedH2WorkerReceivesTcpUrlAndItsOwnCredentials() {
+        DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host").toString()) {
+            @Override public DataSourceConfig load() {
+                return new DataSourceConfig(DbType.H2, "jdbc:h2:tcp://127.0.0.1:12345/fengyu",
+                    "org.h2.Driver", "org.hibernate.dialect.H2Dialect", "sa", "", null, "sa", "");
+            }
+        };
+        PluginDbProvisioningStore store = new PluginDbProvisioningStore(temp.resolve("host"));
+        store.put(new PluginDbProvisioningStore.ProvisionedPluginDb(
+            "fan.summer.email", DbType.H2, "fengyu_fan_summer_email", "fengyu_plugin_email",
+            "plugin-pw", "jdbc:h2:tcp://127.0.0.1:12345/fengyu;SCHEMA=fengyu_fan_summer_email",
+            "org.h2.Driver", "2026-08-08T00:00:00Z"));
+        PluginRuntimeEnvironmentService service =
+            new PluginRuntimeEnvironmentService(dataSources, temp.resolve("plugin-data").toString(), store);
+
+        Map<String, String> env = service.environmentFor(manifest("fan.summer.email", List.of("database")));
+        assertEquals("h2", env.get(PluginWorkerProtocol.DB_TYPE_ENV));
+        assertEquals("jdbc:h2:tcp://127.0.0.1:12345/fengyu;SCHEMA=fengyu_fan_summer_email",
+            env.get(PluginWorkerProtocol.DB_URL_ENV));
+        assertEquals("fengyu_plugin_email", env.get(PluginWorkerProtocol.DB_USERNAME_ENV));
+        assertEquals("plugin-pw", env.get(PluginWorkerProtocol.DB_PASSWORD_ENV));
     }
 
     @Test
