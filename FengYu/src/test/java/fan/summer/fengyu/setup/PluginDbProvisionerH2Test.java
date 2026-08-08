@@ -145,4 +145,51 @@ class PluginDbProvisionerH2Test {
         assertTrue(ex.getMessage().toLowerCase().contains("admin"),
             "error message must explain admin credentials are required: " + ex.getMessage());
     }
+
+    /**
+     * Regression for the MySQL worker-URL bug where stripping {@code jdbc:mysql://} (with the
+     * {@code //}) made {@code URI} parse the remainder as an opaque scheme, dropping host and
+     * port. The fix keeps the leading {@code //} so the authority survives.
+     */
+    @Test
+    void workerUrlForMysqlPreservesHostPortAndQuery() {
+        DataSourceConfig cfg = new DataSourceConfig(DbType.MYSQL,
+            "jdbc:mysql://db.example.com:3306/fengyu?useSSL=true",
+            "com.mysql.cj.jdbc.Driver", "org.hibernate.dialect.MySQLDialect",
+            "u", "p", null, "u", "p");
+        String url = PluginDbProvisioner.workerUrlFor(cfg, "fengyu_fan_summer_email");
+        assertEquals("jdbc:mysql://db.example.com:3306/fengyu_fan_summer_email?useSSL=true", url,
+            "MySQL worker URL must preserve host, port, and query: " + url);
+    }
+
+    @Test
+    void workerUrlForMysqlPreservesHostWhenNoPortOrQuery() {
+        DataSourceConfig cfg = new DataSourceConfig(DbType.MYSQL,
+            "jdbc:mysql://db.example.com/fengyu",
+            "com.mysql.cj.jdbc.Driver", "org.hibernate.dialect.MySQLDialect",
+            "u", "p", null, "u", "p");
+        String url = PluginDbProvisioner.workerUrlFor(cfg, "fengyu_fan_summer_email");
+        assertEquals("jdbc:mysql://db.example.com/fengyu_fan_summer_email", url,
+            "MySQL worker URL must preserve host when port/query are absent: " + url);
+    }
+
+    @Test
+    void redactPasswordMasksIdentifiedByLiteral() {
+        String sql = "CREATE USER IF NOT EXISTS 'u'@'127.0.0.1' IDENTIFIED BY 'S3cr3t!'";
+        String redacted = PluginDbProvisioner.redactPassword(sql);
+        assertTrue(redacted.contains("IDENTIFIED BY '***'"),
+            "redacted SQL must keep the keyword with masked literal: " + redacted);
+        assertFalse(redacted.contains("S3cr3t!"),
+            "redacted SQL must NOT contain the plaintext password: " + redacted);
+    }
+
+    @Test
+    void redactPasswordMasksPasswordLiteral() {
+        String sql = "CREATE ROLE r PASSWORD 'hunter2'";
+        String redacted = PluginDbProvisioner.redactPassword(sql);
+        assertTrue(redacted.contains("PASSWORD '***'"),
+            "redacted SQL must mask the PASSWORD literal: " + redacted);
+        assertFalse(redacted.contains("hunter2"),
+            "redacted SQL must NOT contain the plaintext password: " + redacted);
+    }
 }
