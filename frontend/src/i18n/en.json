@@ -222,7 +222,18 @@
                 "resume": "Review and resume", "resumed": "Resumed run",
                 "step": "Step {n}" },
   "common":   { "back": "Back", "retry": "Retry", "loading": "Loading…", "cancel": "Cancel", "confirm": "Confirm" },
-  "setup":    { "dataFileLocation": "Data file location" },
+  "setup":    {
+    "dataFileLocation": "Data file location",
+    "fields": {
+      "host": "Host",
+      "port": "Port",
+      "database": "Database",
+      "username": "Username",
+      "password": "Password",
+      "adminUsername": "Admin username (for plugin DB provisioning)",
+      "adminPassword": "Admin password"
+    }
+  },
   "about": {
     "title": "About",
     "subtitle": "An AI-native orchestration platform — a plan-and-execute Agent turns natural-language goals into multi-step business workflows.",

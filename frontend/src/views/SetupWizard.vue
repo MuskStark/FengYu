@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useSetupStore } from '@/stores/setup'
 import { useConnectionStore } from '@/stores/connection'
 import { api } from '@/api/client'
@@ -8,6 +9,7 @@ import { api } from '@/api/client'
 const router = useRouter()
 const setup = useSetupStore()
 const conn = useConnectionStore()
+const { t, tm } = useI18n()
 
 const step = ref<1 | 2 | 3>(1)
 const restartMessage = ref('')
@@ -31,6 +33,16 @@ function chooseType(t: string) {
 
 function backToSelect() {
   step.value = 1
+}
+
+// Resolve a field's display label via i18n where a key exists, else fall back to the
+// server-supplied label or the raw field name.
+function fieldLabel(name: string): string {
+  // tm (message map) lets us detect whether the key exists without vue-i18n warning on miss.
+  const messages = tm('setup.fields') as Record<string, string> | undefined
+  if (messages && messages[name]) return messages[name]
+  const meta = selectedMeta.value?.fields.find((f) => f.name === name)
+  return name === 'filePath' ? t('setup.dataFileLocation') : (meta?.label ?? name)
 }
 
 async function onTest() {
@@ -103,7 +115,7 @@ async function waitForRestart() {
         <h2 style="font-size: 17px; font-weight: 650; margin: 8px 0 18px">{{ selectedMeta?.label }} configuration</h2>
 
         <div v-for="f in selectedMeta?.fields ?? []" :key="f.name" class="cx-field" style="margin-bottom: 14px">
-          <label class="cx-label">{{ f.name === 'filePath' ? $t('setup.dataFileLocation') : (f.label ?? f.name) }}</label>
+          <label class="cx-label">{{ fieldLabel(f.name) }}</label>
           <input
             class="cx-input"
             :type="f.secret ? 'password' : 'text'"
