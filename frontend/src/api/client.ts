@@ -1,5 +1,6 @@
 import axios, { type AxiosInstance } from 'axios'
 import { getApiBase, getToken } from './config'
+import { i18n } from '@/i18n'
 import type {
   AgentPlan,
   AgentBatchResponse,
@@ -49,6 +50,8 @@ const http: AxiosInstance = axios.create({
 
 // Attach the FengYu token to every request except /api/health and /api/setup/.
 // Setup calls run before a token exists (backend TokenAuthFilter bypasses /api/setup/).
+// Also forward the active UI locale so the backend can localize plugin manifest strings
+// (name/description/AI-tool descriptions) for the marketplace and tool grid.
 http.interceptors.request.use((config) => {
   const url = config.url ?? ''
   if (!url.includes('/api/health') && !url.includes('/api/setup/')) {
@@ -57,6 +60,9 @@ http.interceptors.request.use((config) => {
       config.headers.set('X-FengYu-Token', token)
     }
   }
+  // vue-i18n locale mirrors settings.language (settings store keeps them in sync on apply()).
+  const locale = (i18n.global.locale as unknown as { value: string }).value || 'en'
+  config.headers.set('Accept-Language', locale)
   return config
 })
 

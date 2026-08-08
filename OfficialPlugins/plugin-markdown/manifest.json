@@ -12,5 +12,11 @@
   "permissions": [],
   "homepage": "https://github.com/MuskStark/FengYu",
   "official": true,
-  "aiTools": []
+  "aiTools": [],
+  "i18n": {
+    "zh": {
+      "name": "Markdown 编辑器",
+      "description": "分栏式 Markdown 编辑器，服务端隔离渲染"
+    }
+  }
 }

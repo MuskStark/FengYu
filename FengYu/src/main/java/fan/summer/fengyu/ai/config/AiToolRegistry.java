@@ -9,6 +9,7 @@ import fan.summer.fengyu.ai.tools.ApprovalRequiredTool;
 import fan.summer.fengyu.ai.tools.ApprovalRequiredToolCallback;
 import fan.summer.fengyu.ai.tools.AuditedToolCallback;
 import fan.summer.fengyu.ai.tools.ToolEffect;
+import fan.summer.fengyu.plugin.market.ManifestI18n;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
 import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
@@ -71,37 +72,42 @@ public final class AiToolRegistry {
     }
 
     /** UI descriptors include stable ownership and output metadata absent from Spring's definition. */
-    public List<ToolDescriptor> descriptors() {
+    /** UI descriptors include stable ownership and output metadata absent from Spring's definition. */
+    public List<ToolDescriptor> descriptors(String locale) {
         List<ToolDescriptor> descriptors = new ArrayList<>();
         for (ToolCallback callback : builtins) {
             var definition = callback.getToolDefinition();
-            descriptors.add(descriptor("builtin:" + definition.name(), null, definition, null));
+            descriptors.add(descriptor("builtin:" + definition.name(), null, definition, null, null));
         }
         for (var manifest : packages.installed()) {
             if (!packages.isEnabled(manifest.id()) || manifest.aiTools() == null) continue;
             for (var tool : manifest.aiTools()) {
                 ToolDefinition definition = ToolDefinition.builder()
                         .name(tool.name()).description(tool.description()).inputSchema(tool.inputSchema()).build();
+                // Localized description is for frontend display only; the LLM still sees the English
+                // `description` baked into the ToolDefinition above. Falls back to the English original
+                // when the manifest ships no i18n override for this tool.
+                String localized = ManifestI18n.aiToolDescription(manifest, tool.name(), locale);
                 descriptors.add(descriptor(manifest.id() + ":" + tool.name(), manifest.id(),
-                        definition, tool.outputSchema()));
+                        definition, tool.outputSchema(), localized));
             }
         }
         SyncMcpToolCallbackProvider provider = mcpProvider.getIfAvailable();
         if (provider != null) {
             for (ToolCallback callback : provider.getToolCallbacks()) {
                 var definition = callback.getToolDefinition();
-                descriptors.add(descriptor("mcp:" + definition.name(), "mcp", definition, null));
+                descriptors.add(descriptor("mcp:" + definition.name(), "mcp", definition, null, null));
             }
         }
         return List.copyOf(descriptors);
     }
 
     private ToolDescriptor descriptor(String id, String pluginId, ToolDefinition definition,
-            String outputSchema) {
+            String outputSchema, String localizedDescription) {
         String revision = Integer.toUnsignedString(Objects.hash(
                 definition.description(), definition.inputSchema(), outputSchema), 36);
         return new ToolDescriptor(id, pluginId, definition.name(), definition.description(),
-                definition.inputSchema(), outputSchema, revision);
+                definition.inputSchema(), outputSchema, revision, localizedDescription);
     }
 
     private ToolCallback pluginCallback(String pluginId,
@@ -163,5 +169,5 @@ public final class AiToolRegistry {
     }
 
     public record ToolDescriptor(String id, String pluginId, String name, String description,
-            String inputSchema, String outputSchema, String revision) {}
+            String inputSchema, String outputSchema, String revision, String localizedDescription) {}
 }
