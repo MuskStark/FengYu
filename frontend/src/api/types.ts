@@ -411,6 +411,13 @@ export interface ProcessIsolationStatus {
   policy: string
 }
 
+/** Result of POST /api/plugin-db/provision/{id} or /api/plugin-db/status/{id}. */
+export interface PluginDbProvisionResult {
+  provisioned: boolean
+  status: string
+  pluginId: string
+}
+
 // ── AI conversation history (persisted, GET/POST/PUT/DELETE /api/ai/conversations) ──
 
 /** A persisted chat message as returned by the backend. */
