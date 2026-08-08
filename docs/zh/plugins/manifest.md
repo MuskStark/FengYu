@@ -84,7 +84,7 @@ lang: zh-CN
 | `clipboard.read` | 读取宿主剪贴板。 |
 | `clipboard.write` | 写入宿主剪贴板。 |
 | `notifications` | 显示宿主通知/toast。 |
-| `database` | 宿主向 worker 环境注入一个数据源连接（`FENGYU_DB_*` + 一个私有数据目录）。参见[插件数据库规范](/zh/plugins/database)。 |
+| `database` | 宿主向 worker 环境注入数据库连接坐标（`FENGYU_DB_*` —— type/driver/url/username/password —— 以及一个私有数据目录），以隔离 DB 用户/schema 形式 provision；由 worker 自行建立连接。参见[插件数据库规范](/zh/plugins/database)。 |
 
 任何其他取值在 validate 与 install 时都会被当作未知权限拒绝。在缺少对应权限的情况下尝试文件操作会被以 `403` 拒绝。参见 [文件 I/O](/zh/plugins/file-io)。
 
