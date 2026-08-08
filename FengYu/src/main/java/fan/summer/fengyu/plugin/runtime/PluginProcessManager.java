@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -311,17 +312,27 @@ public class PluginProcessManager {
 
     private static void forwardPluginLog(String pluginId, PluginLogLineParser.Parsed event,
             String message) {
+        // safeLoggerName is reused as the MDC value so the on-disk filename (plugin-<that>.log)
+        // matches the logger name AND keeps manifest-supplied ids out of the filesystem
+        // (path-traversal / weird chars collapse to underscores). Truncation keeps it within
+        // OS filename limits.
+        String safePluginId = safeLoggerName(pluginId);
         String source = event.logger() == null || event.logger().isBlank()
             ? "stderr" : safeLoggerName(event.logger());
-        Logger pluginLogger = LoggerFactory.getLogger("plugin." + safeLoggerName(pluginId) + "." + source);
+        Logger pluginLogger = LoggerFactory.getLogger("plugin." + safePluginId + "." + source);
         String rendered = event.thread() == null || event.thread().isBlank()
             ? message : "[" + event.thread() + "] " + message;
-        switch (event.level()) {
-            case "TRACE" -> pluginLogger.trace(rendered);
-            case "DEBUG" -> pluginLogger.debug(rendered);
-            case "WARN" -> pluginLogger.warn(rendered);
-            case "ERROR" -> pluginLogger.error(rendered);
-            default -> pluginLogger.info(rendered);
+        MDC.put("pluginId", safePluginId);
+        try {
+            switch (event.level()) {
+                case "TRACE" -> pluginLogger.trace(rendered);
+                case "DEBUG" -> pluginLogger.debug(rendered);
+                case "WARN" -> pluginLogger.warn(rendered);
+                case "ERROR" -> pluginLogger.error(rendered);
+                default -> pluginLogger.info(rendered);
+            }
+        } finally {
+            MDC.remove("pluginId");
         }
     }
 
