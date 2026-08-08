@@ -48,6 +48,8 @@ forwards it at the same level into the host log, and publishes it through the ex
 REST/SSE surface. Direct free-form `System.err` output from older Workers remains compatible and
 defaults to `INFO` when no level token can be recognized.
 
+Forwarded events are also persisted to their own rolling file at `<LOG_DIR>/plugin-<pluginId>.log` (10 MB and daily rotation, 7-day history, 50 MB cap per plugin), so recent plugin output survives a host restart. The shared `fengyu.log` still contains every event as well.
+
 The Settings page controls one threshold shared by the main application and every Worker:
 `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `OFF`. A new process receives it as
 `FENGYU_LOG_LEVEL`; a running SDK Worker receives `$/fengyu/logging/setLevel` as an internal

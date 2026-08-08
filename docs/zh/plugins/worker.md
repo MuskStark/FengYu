@@ -46,6 +46,8 @@ SDK 自带 Worker 专用的 SLF4J provider。每个事件会作为一行结构�
 宿主解析事件、脱敏注入的密钥，以相同等级转发到宿主日志，并通过现有插件日志 REST/SSE
 接口发布。旧 Worker 直接写出的自由格式 `System.err` 仍然兼容；无法识别等级时默认为 `INFO`。
 
+转发的事件还会落盘到各自的滚动文件 `<LOG_DIR>/plugin-<pluginId>.log`（按 10 MB 与每日滚动，保留 7 天，每个插件上限 50 MB），因此宿主重启后近期的插件输出仍然可查。共享的 `fengyu.log` 仍会包含全部事件。
+
 设置页控制主程序与所有 Worker 共享的单一阈值：`TRACE`、`DEBUG`、`INFO`、`WARN`、`ERROR`
 或 `OFF`。新进程通过 `FENGYU_LOG_LEVEL` 接收该值；运行中的 SDK Worker 通过内置 JSON-RPC
 通知 `$/fengyu/logging/setLevel` 接收更新，并立即作用于已有 logger 实例。插件不得自行注册
