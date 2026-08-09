@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
 import fan.summer.fengyu.plugin.market.PluginManifest;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
+import fan.summer.fengyu.plugin.market.PluginIntegrityStore;
 import fan.summer.fengyu.security.ProcessSandbox;
 import fan.summer.fengyu.ai.tools.AiPermissionContext;
 import fan.summer.fengyu.ai.tools.AiPermissionMode;
@@ -16,16 +17,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
-import java.io.BufferedReader;
+import java.io.BufferedInputStream;
 import java.io.BufferedWriter;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.InputStream;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -57,6 +60,16 @@ public class PluginProcessManager {
     public static final long DEFAULT_TIMEOUT_SECONDS = 60;
     /** Hard cap on any declared timeout; prevents a malicious manifest from pinning a worker. */
     public static final long MAX_TIMEOUT_SECONDS = 600;
+    /**
+     * Hard cap on a single newline-delimited JSON-RPC frame on stdout (P1-6). A runaway worker that
+     * emits an enormous single line (no newline) would otherwise let {@code readLine()} buffer it
+     * all and OOM the host. When a frame exceeds this the worker is torn down and every pending call
+     * is failed with the overrun reason. 16 MiB is generous for any legitimate result blob while
+     * still bounded.
+     */
+    static final int MAX_FRAME_BYTES = 16 * 1024 * 1024;
+    /** Per-line cap on forwarded stderr (P1-6): bounded independently of stdout, smaller since logs. */
+    static final int MAX_STDERR_LINE_BYTES = 1 * 1024 * 1024;
 
     private final PluginPackageService packages;
     private final PluginFileGrantService files;
@@ -65,6 +78,25 @@ public class PluginProcessManager {
     private final ProcessSandbox sandbox;
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
     private final Map<String, Worker> workers = new ConcurrentHashMap<>();
+    /**
+     * Plugins mid-update (package swap in progress). While present, {@link #invoke} refuses new
+     * calls for the id (P0-6): an in-flight Worker must not be reused against a half-swapped
+     * package, and concurrent invokes must not race the stop→install→restart sequence.
+     */
+    private final java.util.Set<String> updating = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /**
+     * Per-plugin lock that makes the "acquire a Worker" step in {@link #invoke} mutually exclusive
+     * with the "begin/end an update" step ({@link #beginUpdate}/{@link #stop}/{@link #endUpdate}).
+     *
+     * <p>Without it the update gate had a TOCTOU race: {@code invoke} checked {@link #updating} then
+     * later entered {@code workers.compute(...)} with no synchronization between the two, so a
+     * concurrent {@code beginUpdate → stop} could fire between the check and the acquire — either
+     * killing a Worker an invoke just started, or letting an invoke reuse a Worker against a package
+     * that is mid-swap. The lock serializes the two critical sections; the long RPC itself runs
+     * outside the lock (an update's stop then closes the Worker and the in-flight call fails through
+     * the normal worker-error path, which is the intended behavior).
+     */
+    private final java.util.Map<String, java.util.concurrent.locks.ReentrantLock> updateLocks = new ConcurrentHashMap<>();
 
     public PluginProcessManager(PluginPackageService packages, PluginFileGrantService files,
             PluginRuntimeEnvironmentService runtimeEnvironment, PluginLogStore logStore) {
@@ -94,24 +126,64 @@ public class PluginProcessManager {
      */
     public Object invoke(String pluginId, String method, Map<String, Object> params, long timeoutSeconds) {
         if (!packages.isEnabled(pluginId)) throw new IllegalArgumentException("Plugin is disabled: " + pluginId);
-        PluginManifest manifest = packages.find(pluginId)
-            .orElseThrow(() -> new IllegalArgumentException("Plugin is not installed: " + pluginId));
-        if (manifest.backend() == null || manifest.backend().command() == null || manifest.backend().command().isBlank()) {
-            throw new IllegalArgumentException("Plugin has no backend: " + pluginId);
+        // The entire "is it updating? find manifest + acquire/reuse a Worker" sequence runs under the
+        // per-plugin update lock so it is mutually exclusive with beginUpdate/stop/endUpdate. Without
+        // the lock the updating-check (line below) and the worker-acquire were two separate steps a
+        // concurrent update could interleave between (TOCTOU). The actual RPC (worker.invoke) runs
+        // OUTSIDE the lock so a long call does not block updates; an update that stops the Worker
+        // mid-RPC closes it and the call fails through the normal worker-error path.
+        Worker worker;
+        long timeout;
+        java.util.concurrent.locks.ReentrantLock lock = lockFor(pluginId);
+        lock.lock();
+        try {
+            // P0-6: a plugin whose package is mid-swap must refuse new calls — invoking during an
+            // update would race the stop→install→restart sequence and could reuse a stale Worker or
+            // hit a half-written package. Checked INSIDE the lock so beginUpdate cannot slip in here.
+            if (updating.contains(pluginId)) {
+                throw new IllegalStateException("Plugin is being updated; retry shortly: " + pluginId);
+            }
+            PluginManifest manifest = packages.find(pluginId)
+                .orElseThrow(() -> new IllegalArgumentException("Plugin is not installed: " + pluginId));
+            if (manifest.backend() == null || manifest.backend().command() == null || manifest.backend().command().isBlank()) {
+                throw new IllegalArgumentException("Plugin has no backend: " + pluginId);
+            }
+            if (!"json-rpc-2.0".equals(manifest.backend().protocol())) {
+                throw new IllegalArgumentException("Unsupported plugin backend protocol");
+            }
+            timeout = resolveTimeout(timeoutSeconds, manifest);
+            long grantVersion = files.grantVersion(pluginId);
+            // P0-6: the Worker identity keys on the installed package's CONTENT digest (not just the
+            // manifest version), so a same-version repack with different bytes — or an upgrade that
+            // forgot to bump the version — still invalidates the cached Worker. The digest is read
+            // from the integrity store (recorded at install time); when absent (legacy install, or
+            // no store wired in tests) the identity falls back to version-only so existing behavior
+            // is preserved.
+            PluginIntegrityStore integrity = packages.integrityStore();
+            String packageDigest = integrity == null ? null
+                    : integrity.packageDigest(pluginId).orElse(null);
+            // P0-4: the plugin OS boundary is decoupled from the AI per-turn permission. A user
+            // granting the AI "full access" for tool-call *effects* must NOT also disable every
+            // called plugin's sandbox — that would let any plugin the AI invokes run bare, bypassing
+            // its declared permissions and platform isolation. Only the explicit, host-wide
+            // unsandboxed-plugins toggle lifts the plugin OS boundary.
+            boolean unsandboxed = AiConfigServiceHeadless.isUnsandboxedPluginsEnabled();
+            worker = workers.compute(pluginId, (id, current) -> {
+                // Reuse the cached Worker only if it is alive, the file-grant version matches, the
+                // unsandboxed flag matches, AND the package identity (version + content digest)
+                // matches. Any mismatch closes the old Worker and starts a fresh one.
+                if (current != null && current.alive() && current.grantVersion() == grantVersion
+                        && current.fullAccess() == unsandboxed
+                        && java.util.Objects.equals(current.manifestVersion(), manifest.version())
+                        && java.util.Objects.equals(current.packageDigest(), packageDigest)) {
+                    return current;
+                }
+                if (current != null) current.close();
+                return start(id, manifest, unsandboxed, packageDigest);
+            });
+        } finally {
+            lock.unlock();
         }
-        if (!"json-rpc-2.0".equals(manifest.backend().protocol())) {
-            throw new IllegalArgumentException("Unsupported plugin backend protocol");
-        }
-        long timeout = resolveTimeout(timeoutSeconds, manifest);
-        long grantVersion = files.grantVersion(pluginId);
-        boolean fullAccess = AiPermissionContext.current() == AiPermissionMode.FULL_ACCESS
-                || AiConfigServiceHeadless.isUnsandboxedPluginsEnabled();
-        Worker worker = workers.compute(pluginId, (id, current) -> {
-            if (current != null && current.alive() && current.grantVersion() == grantVersion
-                    && current.fullAccess() == fullAccess) return current;
-            if (current != null) current.close();
-            return start(id, manifest, fullAccess);
-        });
         // Log only the param KEYS, never the values. A caller can pass arbitrary credentials or
         // body text in params (e.g. an SMTP password for email_account_save); logging the value —
         // even truncated — leaks it to the console, the host log file, and the plugin log surface.
@@ -175,23 +247,121 @@ public class PluginProcessManager {
     }
 
     public void stop(String pluginId) {
-        Worker worker = workers.remove(pluginId);
-        if (worker != null) worker.close();
+        // Hold the per-plugin lock so a concurrent invoke cannot (re)acquire a Worker between this
+        // remove and the close, and so beginUpdate's "mark updating + stop" is atomic w.r.t. invoke.
+        java.util.concurrent.locks.ReentrantLock lock = lockFor(pluginId);
+        lock.lock();
+        try {
+            Worker worker = workers.remove(pluginId);
+            if (worker != null) worker.close();
+        } finally {
+            lock.unlock();
+        }
     }
 
-    private Worker start(String id, PluginManifest manifest, boolean fullAccess) {
+    /**
+     * Begin an atomic package update for a plugin (P0-6): under the per-plugin lock, mark the id as
+     * updating so concurrent {@link #invoke} calls refuse to start/reuse a Worker, then stop any
+     * running Worker. The lock makes the "mark updating + stop" sequence atomic with invoke's
+     * "check updating + acquire Worker" sequence, eliminating the TOCTOU race where an invoke could
+     * slip past the updating-check and start a Worker that stop then kills (or reuse one against a
+     * half-swapped package). Callers MUST pair this with {@link #endUpdate} in a {@code finally}.
+     */
+    public void beginUpdate(String pluginId) {
+        java.util.concurrent.locks.ReentrantLock lock = lockFor(pluginId);
+        lock.lock();
+        try {
+            updating.add(pluginId);
+            Worker worker = workers.remove(pluginId);
+            if (worker != null) worker.close();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** Re-enable invokes for a plugin after an update attempt (success or failure). */
+    public void endUpdate(String pluginId) {
+        updating.remove(pluginId);
+    }
+
+    /** The per-plugin update lock (lazily created, one per id, retained for the manager's life). */
+    private java.util.concurrent.locks.ReentrantLock lockFor(String pluginId) {
+        return updateLocks.computeIfAbsent(pluginId, id -> new java.util.concurrent.locks.ReentrantLock());
+    }
+
+    /**
+     * Test-only: number of unreaped in-flight invoke slots for a plugin's worker. Successful
+     * responses must atomically reclaim their slot (P0-5), so after a sequence of successful
+     * invokes this must read 0. Returns -1 when no worker is currently cached for the plugin.
+     */
+    public int pendingCountForTest(String pluginId) {
+        Worker worker = workers.get(pluginId);
+        return worker == null ? -1 : worker.pendingCountForTest();
+    }
+
+    private Worker start(String id, PluginManifest manifest, boolean fullAccess, String packageDigest) {
         Path root = packages.directory(id);
+        // P0-2: re-verify the installed manifest against the recorded digest before launching. A
+        // plugin must not be able to rewrite its own manifest.json (now that the package dir is
+        // read-only to the Worker, this catches out-of-band tampering too) and have the host honor
+        // new/escalated permissions on restart. Fail closed: a known record that does not match, or
+        // an unreadable live manifest, refuses to start the Worker.
+        //
+        // A MISSING record is also fail-closed once the integrity store is wired: the host
+        // re-establishes records for already-installed OFFICIAL plugins at startup by reinstalling
+        // them from the trusted bundled archive (OfficialPluginSeeder.seed), and every fresh install
+        // records one. So a missing record here means the plugin was dropped onto disk out-of-band
+        // (or, for a third-party plugin, predates the store and has no trusted source to reinstall
+        // from) — refuse to start rather than run unverified. (Tests that build a manager without a
+        // store still pass: integrity is null and this whole block is skipped.)
+        PluginIntegrityStore integrity = packages.integrityStore();
+        if (integrity != null) {
+            java.util.Optional<Boolean> ok = integrity.verify(id, root.resolve("manifest.json"));
+            if (ok.isEmpty()) {
+                throw new IllegalStateException(
+                    "Plugin " + id + " has no integrity record on file. The host records one for every "
+                        + "install and re-establishes one for official plugins by reinstalling from the "
+                        + "bundled archive at startup; a missing record means the package was introduced "
+                        + "out-of-band or predates the store. Reinstall the plugin to establish a record.");
+            }
+            if (!ok.get()) {
+                throw new IllegalStateException(
+                    "Plugin " + id + " manifest tamper detected: on-disk manifest.json does not match the "
+                        + "installed record. Reinstall the plugin to update the record.");
+            }
+            // P0-2 whole-package verify: recompute the live package directory digest and compare to
+            // the record. This catches tampering of ANY file in the package (the Worker JAR, libs,
+            // assets) — not just manifest.json — so a Worker whose JAR was rewritten out-of-band
+            // while the manifest was left intact is refused. A record that predates package digests
+            // (legacy manifest-only) returns empty here and is NOT enforced for the whole package,
+            // but the manifest check above still applies.
+            java.util.Optional<Boolean> pkgOk = integrity.verifyPackage(id, root);
+            if (pkgOk.isPresent() && !pkgOk.get()) {
+                throw new IllegalStateException(
+                    "Plugin " + id + " package tamper detected: the on-disk package contents do not match "
+                        + "the installed record (a file was added/removed/modified). Reinstall the plugin.");
+            }
+        }
         List<String> command = parseCommand(manifest.backend().command(), root);
         Map<String, String> environment = runtimeEnvironment.environmentFor(manifest);
         SensitiveValueRedactor redactor = SensitiveValueRedactor.fromEnvironment(environment);
         try {
             List<String> permissions = manifest.permissions() == null ? List.of() : manifest.permissions();
             boolean broadFileWrite = false;
+            // Network gating (P1-9 honest model): `network.email` and `database` are currently treated
+            // as full network egress — same as `network` — because the host does not yet broker
+            // SMTP/IMAP or restrict DB connections to a specific host. A real mail/DB proxy is a
+            // tracked follow-up; until then these permissions are advisory at the network layer (a
+            // plugin declaring them gets broad egress). The manifest docs surface this so the UI does
+            // not imply finer isolation than the OS enforces.
             boolean allowNetwork = permissions.contains("network")
                     || permissions.contains("network.email")
                     || permissions.contains("database");
+            // P0-2: the plugin's installed package directory is read-only to the Worker. Allowing a
+            // Worker to write its own install dir let a plugin rewrite its manifest.json and escalate
+            // permissions on the next restart. Runtime state lives under plugin-data/<id> (and the
+            // plugin-owned tmp dir) plus any explicitly authorized FileRef roots — never the package.
             List<Path> writableRoots = new ArrayList<>();
-            writableRoots.add(root);
             String pluginData = environment.get(PluginWorkerProtocol.PLUGIN_DATA_DIR_ENV);
             Path workerTemp = null;
             if (pluginData != null && !pluginData.isBlank()) {
@@ -205,6 +375,14 @@ public class PluginProcessManager {
                     ? sandbox.unrestricted(command)
                     : sandbox.plugin(command, root, writableRoots, broadFileWrite, allowNetwork);
             ProcessBuilder builder = new ProcessBuilder(launch.command()).directory(root.toFile());
+            // A Worker must NOT inherit the host JVM's full environment — that would hand the
+            // plugin every host secret (OPENAI_API_KEY, GH_TOKEN, proxy creds, CI secrets, ...).
+            // Clear the inherited map and restore only an explicit OS/runtime allowlist the JVM and
+            // the plugin's own runtime need to function. Plugin protocol vars (FENGYU_*) and the
+            // per-plugin environment map are layered on AFTER the allowlist below. This mirrors the
+            // positive-allowlist strategy the review requires; the denylist used by the AI command
+            // path (CommandExecuteTool) is deliberately NOT reused here.
+            applyEnvironmentAllowlist(builder.environment());
             builder.environment().put("FENGYU_PLUGIN_ID", id);
             builder.environment().put("FENGYU_PLUGIN_ROOT", root.toString());
             if (workerTemp != null) {
@@ -216,17 +394,28 @@ public class PluginProcessManager {
             Process process = builder.start();
             // WINDOWS_JOB backend assigns the process to a Job Object after start; the hook writes
             // the job handle into handleOut[0]. On other backends onStarted() is null and jobHandle
-            // stays 0 (terminate/close then no-op). If the hook throws (create/assign failed), let
-            // it propagate — the worker must fail to start explicitly rather than run un-jailed.
+            // stays 0 (terminate/close then no-op). If the hook throws (create/assign failed), the
+            // worker must fail to start explicitly rather than run un-jailed — AND the just-started
+            // process must be destroyed so it cannot leak as an orphan (P1-7). The hook is wrapped
+            // for ALL throwables (not just IOException) so a JNA/Win32 error from Job creation also
+            // triggers the cleanup; any job handle the hook created before failing is closed too.
             long jobHandle = 0L;
             if (launch.onStarted() != null) {
                 long[] handleOut = {0L};
-                launch.onStarted().accept(process, handleOut);
-                jobHandle = handleOut[0];
+                try {
+                    launch.onStarted().accept(process, handleOut);
+                    jobHandle = handleOut[0];
+                } catch (RuntimeException | Error hookFailure) {
+                    safeDestroy(process);
+                    if (handleOut[0] != 0L) {
+                        try { sandbox.closeJobHandle(handleOut[0]); } catch (RuntimeException ignored) {}
+                    }
+                    throw hookFailure;
+                }
             }
             Thread.ofVirtual().name("plugin-" + id + "-stderr").start(() -> {
-                try (BufferedReader errors = process.errorReader(StandardCharsets.UTF_8)) {
-                    for (String line; (line = errors.readLine()) != null;) {
+                try (InputStream errors = new BufferedInputStream(process.getErrorStream())) {
+                    for (String line; (line = readBoundedLine(errors, MAX_STDERR_LINE_BYTES, "stderr")) != null;) {
                         // Parse before redaction: structured JSON escapes quotes/backslashes, so
                         // replacing a raw secret in the encoded frame can miss it. Redact the
                         // decoded fields instead; legacy free-form stderr follows the same path.
@@ -243,7 +432,7 @@ public class PluginProcessManager {
                 } catch (IOException ignored) {}
             });
             Worker worker = new Worker(id, process, json, redactor, logStore,
-                    files.grantVersion(id), fullAccess, sandbox, jobHandle);
+                    files.grantVersion(id), fullAccess, manifest.version(), packageDigest, sandbox, jobHandle);
             worker.startReader();
             // Host lifecycle events use the same effective threshold as forwarded Worker events.
             log.info("Plugin {} worker started (pid={})", id, process.pid());
@@ -299,6 +488,115 @@ public class PluginProcessManager {
     }
 
     private static boolean isWindows() { return System.getProperty("os.name", "").toLowerCase().contains("win"); }
+
+    /**
+     * Read one line from {@code input}, throwing {@link IOException} if the line exceeds
+     * {@code maxBytes} of UTF-8-encoded content before a newline (P1-6). A runaway worker that emits
+     * an enormous single line would otherwise exhaust host memory. Counting raw bytes avoids the
+     * surrogate-pair and malformed-input ambiguity of counting decoded UTF-16 chars. On overrun the
+     * caller's read loop propagates the {@link IOException},
+     * which triggers {@code failAll()} so every pending caller learns the worker is dead and the
+     * worker process is torn down. {@code channel} labels the overrun message ("stdout"/"stderr").
+     */
+    static String readBoundedLine(InputStream input, int maxBytes, String channel) throws IOException {
+        ByteArrayOutputStream line = new ByteArrayOutputStream(Math.min(maxBytes, 8192));
+        int value;
+        while ((value = input.read()) != -1) {
+            if (value == '\n') return decodeLine(line);
+            if (line.size() >= maxBytes) {
+                throw new IOException("Plugin " + channel + " frame exceeded " + maxBytes
+                    + " byte limit without a newline; worker torn down to bound memory");
+            }
+            line.write(value);
+        }
+        return line.size() == 0 ? null : decodeLine(line);
+    }
+
+    private static String decodeLine(ByteArrayOutputStream line) {
+        byte[] bytes = line.toByteArray();
+        int length = bytes.length;
+        if (length > 0 && bytes[length - 1] == '\r') length--;
+        return new String(bytes, 0, length, StandardCharsets.UTF_8);
+    }
+
+    static void ensureFrameWithinLimit(String frame, int maxBytes, String channel) throws IOException {
+        int bytes = frame.getBytes(StandardCharsets.UTF_8).length;
+        if (bytes > maxBytes) {
+            throw new IOException("Plugin " + channel + " frame exceeded " + maxBytes
+                + " byte limit (was " + bytes + ")");
+        }
+    }
+
+    /** Destroy a process tree (root + descendants) best-effort; never throws. (P1-7 cleanup path.) */
+    private static void safeDestroy(Process process) {
+        if (process == null) return;
+        try { process.descendants().forEach(p -> { try { p.destroyForcibly(); } catch (RuntimeException ignored) {} }); } catch (RuntimeException ignored) {}
+        try { process.destroyForcibly(); } catch (RuntimeException ignored) {}
+    }
+
+    /**
+     * Positive allowlist of host environment names a plugin Worker may inherit. Kept deliberately
+     * small: only the essentials for a JVM/native runtime to launch and format output. Secrets are
+     * excluded by construction (they are not named here), not by pattern-matching their names.
+     * Compared per a case-insensitive prefix/equals match so platform variants (e.g. {@code LC_ALL},
+     * {@code ComSpec}) are caught without enumerating every locale.
+     */
+    private static final java.util.Set<String> ENV_ALLOWLIST_EXACT = java.util.Set.of(
+            // OS path + runtime lookups
+            "PATH", "PATHEXT", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "PROGRAMFILES",
+            // Java — JAVA_HOME only. JAVA_OPTS / JAVA_TOOL_OPTIONS are deliberately EXCLUDED: a new
+            // JVM auto-interprets them, so they could smuggle in -javaagent, system properties, or
+            // host-sensitive configuration into every plugin Worker. (P0-1 review follow-up.)
+            "JAVA_HOME",
+            // Locale / timezone
+            "LANG", "LC_ALL", "LC_CTYPE", "LC_COLLATE", "LC_MESSAGES", "LC_TIME", "LC_NUMERIC",
+            "LC_MONETARY", "LANGUAGE", "TZ",
+            // POSIX user/home (needed by some toolchains; secrets live under env, not these names)
+            "USER", "LOGNAME", "SHELL", "TERM",
+            // Windows essentials
+            "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP",
+            // macOS GUI / X11 display identifiers. XAUTHORITY is deliberately EXCLUDED: it can name
+            // a credential file, and X11 apps resolve it from the default ~/.Xauthority when absent.
+            // HOME is retained: many JDK/toolchains read it for caches/preferences and redirecting it
+            // to a plugin-owned home is a larger change tracked separately.
+            "HOME", "DISPLAY");
+
+    /** Prefix families (case-insensitive) that broaden the exact set without admitting secrets. */
+    private static final java.util.List<String> ENV_ALLOWLIST_PREFIXES = java.util.List.of("LC_");
+
+    /**
+     * Replace {@code env} in place with only the allowlisted host variables. Clears everything the
+     * {@link ProcessBuilder} copied from {@code System.getenv()}, then restores the allowlisted
+     * entries that actually exist in the host environment. {@code TMPDIR} is handled by the caller
+     * (it is redirected to the plugin-owned temp directory), so it is intentionally not restored
+     * here even when present on POSIX.
+     */
+    private static void applyEnvironmentAllowlist(java.util.Map<String, String> env) {
+        applyEnvironmentAllowlist(env, System.getenv());
+    }
+
+    /**
+     * Test seam for {@link #applyEnvironmentAllowlist(java.util.Map)}: filters an arbitrary host
+     * environment instead of {@code System.getenv()}. Same logic, observable in isolation so the
+     * allowlist contract (drop everything not named; no name-pattern denylist) is unit-testable.
+     */
+    static void applyEnvironmentAllowlist(java.util.Map<String, String> env, java.util.Map<String, String> host) {
+        env.clear();
+        for (String name : ENV_ALLOWLIST_EXACT) {
+            String value = host.get(name);
+            if (value != null) env.put(name, value);
+        }
+        // LC_* family: cover any LC_FOO locale category without an exhaustive literal list.
+        for (java.util.Map.Entry<String, String> entry : host.entrySet()) {
+            String upper = entry.getKey().toUpperCase(Locale.ROOT);
+            for (String prefix : ENV_ALLOWLIST_PREFIXES) {
+                if (upper.startsWith(prefix) && !env.containsKey(entry.getKey())) {
+                    env.put(entry.getKey(), entry.getValue());
+                    break;
+                }
+            }
+        }
+    }
 
     private static String abbreviate(String value) {
         if (value == null || value.length() <= 240) return value;
@@ -378,18 +676,22 @@ public class PluginProcessManager {
         private final SensitiveValueRedactor redactor;
         private final PluginLogStore logStore;
         private final BufferedWriter writer;
-        private final BufferedReader reader;
+        private final InputStream reader;
         private final ConcurrentHashMap<String, CompletableFuture<JsonNode>> pending = new ConcurrentHashMap<>();
         private volatile boolean closed = false;
         private final long grantVersion;
         private final boolean fullAccess;
+        /** Manifest version the Worker was started against (P0-6: cache must not reuse across upgrades). */
+        private final String manifestVersion;
+        /** Content digest of the installed package the Worker was started against (P0-6). */
+        private final String packageDigest;
         private final ProcessSandbox sandbox;
         /** Windows Job Object handle (0 on non-Windows / NONE backend → terminate/close no-op). */
         private final long jobHandle;
 
         Worker(String pluginId, Process process, ObjectMapper json, SensitiveValueRedactor redactor,
                 PluginLogStore logStore, long grantVersion, boolean fullAccess,
-                ProcessSandbox sandbox, long jobHandle) {
+                String manifestVersion, String packageDigest, ProcessSandbox sandbox, long jobHandle) {
             this.pluginId = pluginId;
             this.process = process;
             this.json = json;
@@ -397,20 +699,28 @@ public class PluginProcessManager {
             this.logStore = logStore;
             this.grantVersion = grantVersion;
             this.fullAccess = fullAccess;
+            this.manifestVersion = manifestVersion;
+            this.packageDigest = packageDigest;
             this.sandbox = sandbox;
             this.jobHandle = jobHandle;
             this.writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
-            this.reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+            this.reader = new BufferedInputStream(process.getInputStream());
         }
 
         long grantVersion() { return grantVersion; }
         boolean fullAccess() { return fullAccess; }
+        String manifestVersion() { return manifestVersion; }
+        String packageDigest() { return packageDigest; }
+
+        /** Test-only: number of in-flight/unreaped invoke slots. Must return to 0 after every
+         *  successful response so successful invokes do not leak entries (P0-5 regression guard). */
+        int pendingCountForTest() { return pending.size(); }
 
         /** Start the resident reader thread that routes stdout lines by JSON-RPC id. */
         void startReader() {
             Thread.ofVirtual().name("plugin-" + pluginId + "-stdout").start(() -> {
                 try {
-                    for (String line; (line = reader.readLine()) != null;) {
+                    for (String line; (line = readBoundedLine(reader, MAX_FRAME_BYTES, "stdout")) != null;) {
                         JsonNode response;
                         try {
                             response = json.readTree(line);
@@ -423,7 +733,11 @@ public class PluginProcessManager {
                             continue;
                         }
                         String responseId = response.path("id").asText("");
-                        CompletableFuture<JsonNode> slot = responseId.isEmpty() ? null : pending.get(responseId);
+                        // Atomically remove+claim the slot as the response arrives, so a successful
+                        // invoke does not leak its (id, future) entry for the worker's lifetime.
+                        // The invoke() catch arms also remove on their own timeout/error paths
+                        // (when no response ever arrives); a no-op there after this remove is safe.
+                        CompletableFuture<JsonNode> slot = responseId.isEmpty() ? null : pending.remove(responseId);
                         if (slot == null) {
                             String idText = redactor.redact(response.path("id").asText("<missing>"));
                             log.warn("Plugin {} returned response for unexpected id={}", pluginId, idText);
@@ -452,6 +766,7 @@ public class PluginProcessManager {
             pending.put(id, future);
             try {
                 String frame = json.writeValueAsString(Map.of("jsonrpc", "2.0", "id", id, "method", method, "params", params));
+                ensureOutboundFrameSize(frame);
                 // DEBUG-only wire trace: log the id + method but NOT the frame. The frame carries the
                 // full params JSON (caller-supplied passwords, mail bodies, parsed paths); the env
                 // redactor only knows env-borne secrets, so a param value would leak verbatim here.
@@ -490,6 +805,7 @@ public class PluginProcessManager {
             try {
                 String frame = json.writeValueAsString(
                     Map.of("jsonrpc", "2.0", "method", method, "params", params));
+                ensureOutboundFrameSize(frame);
                 synchronized (this) {
                     writer.write(frame);
                     writer.newLine();
@@ -499,6 +815,10 @@ public class PluginProcessManager {
                 log.warn("Plugin {} control notification failed: {}", pluginId,
                     redactor.redact(e.getMessage()));
             }
+        }
+
+        private static void ensureOutboundFrameSize(String frame) throws IOException {
+            ensureFrameWithinLimit(frame, MAX_FRAME_BYTES, "stdin");
         }
 
         /** Drain every pending caller with {@code reason}; idempotent. */

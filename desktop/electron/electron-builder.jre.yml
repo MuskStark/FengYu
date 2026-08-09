@@ -8,6 +8,7 @@
 # The ONLY differences from electron-builder.yml (the lite variant):
 #   - productName / extraMetadata.name = Infinia-JRE
 #   - extraResources additionally bundles the jlink JRE under <resources>/jre/
+# Both configs copy the complete resources/binaries/plugins directory, including .fyp.sha256 files.
 #
 # Keep this file in sync with electron-builder.yml when changing appId/files/targets/etc.
 
@@ -31,8 +32,12 @@ files:
   - resources/icon-128.png
   - package.json
 
+# P0-9 build-time signed-state contract: see electron-builder.yml. Defaults to false (unsigned);
+# a signed+notarized release overrides via --config.extraMetadata.fengyu.signedRelease=true.
 extraMetadata:
   main: dist/main.js
+  fengyu:
+    signedRelease: false
 
 extraResources:
   - from: resources/icon-32.png

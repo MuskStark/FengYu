@@ -70,6 +70,14 @@ public class AiController {
     /** Pending turns keyed by streamId; consumed once when the SSE opens. */
     private final Map<String, PendingTurn> pending = new ConcurrentHashMap<>();
     private final AtomicReference<String> activeStreamId = new AtomicReference<>();
+    /**
+     * The backend instance actually driving the active generation, captured at stream start.
+     * {@link AiModeService#getService()} reflects the currently-configured provider, so if the user
+     * switches backend mid-stream the value at cancel() time could differ from the one generating —
+     * a cancel would hit the wrong backend and the real generation would run orphaned. Holding the
+     * exact instance ensures cancel targets the generation we started.
+     */
+    private final AtomicReference<ChatBackend> activeBackend = new AtomicReference<>();
 
     @PostMapping("/chat")
     public Map<String, Object> chat(@RequestBody ChatRequest req) {
@@ -136,7 +144,12 @@ public class AiController {
         if (!activeStreamId.compareAndSet(streamId, null)) {
             return Map.of("ok", false, "error", "Stream is not the active generation");
         }
-        aiMode.getService().ifPresent(ChatBackend::cancelGeneration);
+        // Cancel the backend instance that is actually generating, not whatever is configured now
+        // (the user may have switched provider in another tab since the stream started).
+        ChatBackend backend = activeBackend.getAndSet(null);
+        if (backend != null) {
+            backend.cancelGeneration();
+        }
         return Map.of("ok", true, "streamId", streamId);
     }
 
@@ -176,6 +189,7 @@ public class AiController {
             completeWithError(emitter, "Another AI generation is already in progress");
             return emitter;
         }
+        activeBackend.set(backend);
 
         // Send an immediate heartbeat so the response stream is "opened" before the model
         // produces its first token. WKWebView (Tauri desktop on macOS) will silently drop an
@@ -207,9 +221,11 @@ public class AiController {
                 new SseCallback(emitter, () -> {
                     fileGrants.exportStaging(turn.staged());
                     activeStreamId.compareAndSet(streamId, null);
+                    activeBackend.compareAndSet(backend, null);
                 }));
         } catch (Exception e) {
             activeStreamId.compareAndSet(streamId, null);
+            activeBackend.compareAndSet(backend, null);
             completeWithError(emitter, e.getMessage());
         } finally {
             ChatFileContext.clear();

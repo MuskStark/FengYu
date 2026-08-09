@@ -10,13 +10,13 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@infinia/plugin-sdk": "^1.0.0",
-    "@infinia/plugin-ui": "^1.0.0",
+    "@infinia/plugin-sdk": "^{{toolingVersion}}",
+    "@infinia/plugin-ui": "^{{toolingVersion}}",
     "vue": "3.5.39",
     "vuetify": "^3.9.3"
   },
   "devDependencies": {
-    "@infinia/plugin-dev": "^1.1.0",
+    "@infinia/plugin-dev": "^{{toolingVersion}}",
     "@vitejs/plugin-vue": "^6.0.1",
     "typescript": "^5.9.2",
     "vite": "^7.1.3",

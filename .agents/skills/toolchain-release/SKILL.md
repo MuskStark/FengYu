@@ -94,7 +94,8 @@ fengyu plugin build OfficialPlugins/plugin-markdown
 ```
 
 Repeat for the other official plugins the toolchain must support (`plugin-excel`, `plugin-email`,
-`plugin-offlinepython`).
+`plugin-offlinepython`, `plugin-browser`). Each build must produce both the `.fyp` archive and its
+matching `.fyp.sha256` sidecar; verify the pair before continuing.
 
 ## Step 5 — Exercise the local toolchain smoke path
 

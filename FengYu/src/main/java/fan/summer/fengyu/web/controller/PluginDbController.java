@@ -54,8 +54,15 @@ public class PluginDbController {
 
     @PostMapping("/api/plugin-db/status/{id}")
     public ProvisionResponse status(@PathVariable String id) {
-        boolean provisioned = provisioner.isProvisioned(id);
-        return new ProvisionResponse(provisioned, provisioned ? "provisioned" : "not-provisioned", id);
+        String state = provisioner.status(id);
+        return new ProvisionResponse("provisioned".equals(state), state, id);
+    }
+
+    /** Operator-triggered counterpart to the scheduled crash/transient-failure reconciler. */
+    @PostMapping("/api/plugin-db/retry/{id}")
+    public ProvisionResponse retry(@PathVariable String id) {
+        String state = provisioner.retryIncompleteOperation(id);
+        return new ProvisionResponse("provisioned".equals(state), state, id);
     }
 
     /** Response body for provision/status. Never includes the credentials themselves. */

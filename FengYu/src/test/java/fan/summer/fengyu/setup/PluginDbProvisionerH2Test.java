@@ -9,6 +9,9 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -130,6 +133,97 @@ class PluginDbProvisionerH2Test {
     }
 
     @Test
+    void failedIntentWriteRunsNoDdl() throws Exception {
+        DataSourceConfig cfg = h2Config("intent_write_failure");
+        DataSourceConfigService dataSources = fixedConfig(cfg);
+        PluginDbProvisioningStore store = new PluginDbProvisioningStore(config) {
+            @Override public void put(ProvisionedPluginDb record) {
+                throw new IllegalStateException("injected store failure");
+            }
+        };
+        PluginDbProvisioner provisioner = new PluginDbProvisioner(dataSources, store);
+
+        DbProvisioningException error = assertThrows(DbProvisioningException.class,
+            () -> provisioner.provision("fan.summer.intentfailure"));
+        assertTrue(error.getMessage().contains("no database changes"));
+
+        try (Connection admin = DriverManager.getConnection(cfg.url(), "sa", "");
+                PreparedStatement query = admin.prepareStatement(
+                    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.USERS WHERE USER_NAME = ?")) {
+            query.setString(1, PluginDbProvisioner.userNameFor(
+                "fan.summer.intentfailure").toUpperCase(java.util.Locale.ROOT));
+            try (var result = query.executeQuery()) {
+                assertTrue(result.next());
+                assertEquals(0, result.getInt(1),
+                    "DDL must not start until the recovery record is durable");
+            }
+        }
+    }
+
+    @Test
+    void activationWriteFailureIsRecoveredIdempotently() throws Exception {
+        DataSourceConfig cfg = h2Config("activation_write_failure");
+        AtomicBoolean failActivation = new AtomicBoolean(true);
+        PluginDbProvisioningStore store = new PluginDbProvisioningStore(config) {
+            @Override public void setStatus(String pluginId, String status) {
+                if (PluginDbProvisioningStore.STATUS_ACTIVE.equals(status)
+                        && failActivation.get()) {
+                    throw new IllegalStateException("injected activation failure");
+                }
+                super.setStatus(pluginId, status);
+            }
+        };
+        PluginDbProvisioner provisioner = new PluginDbProvisioner(fixedConfig(cfg), store);
+
+        DbProvisioningException error = assertThrows(DbProvisioningException.class,
+            () -> provisioner.provision("fan.summer.activationfailure"));
+        assertTrue(error.getMessage().contains("recovery is pending"));
+        PluginDbProvisioningStore.ProvisionedPluginDb pending =
+            store.get("fan.summer.activationfailure");
+        assertEquals(PluginDbProvisioningStore.STATUS_PROVISIONING, pending.canonicalStatus());
+        assertFalse(provisioner.isProvisioned("fan.summer.activationfailure"));
+
+        failActivation.set(false);
+        assertEquals("provisioned",
+            provisioner.retryIncompleteOperation("fan.summer.activationfailure"));
+        PluginDbProvisioningStore.ProvisionedPluginDb active =
+            store.get("fan.summer.activationfailure");
+        assertTrue(active.isActive());
+        try (Connection ignored = DriverManager.getConnection(
+                active.url(), active.userName(), active.password())) {
+            assertNotNull(ignored);
+        }
+    }
+
+    @Test
+    void missingConfigKeepsDeletePendingUntilRetrySucceeds() throws Exception {
+        DataSourceConfig cfg = h2Config("delete_pending_recovery");
+        AtomicReference<DataSourceConfig> current = new AtomicReference<>(cfg);
+        DataSourceConfigService dataSources = new DataSourceConfigService(config.toString()) {
+            @Override public DataSourceConfig load() { return current.get(); }
+        };
+        PluginDbProvisioningStore store = new PluginDbProvisioningStore(config);
+        PluginDbProvisioner provisioner = new PluginDbProvisioner(dataSources, store);
+        PluginDbProvisioner.ProvisionedCredentials creds =
+            provisioner.provision("fan.summer.deletepending");
+
+        current.set(null);
+        provisioner.deprovision("fan.summer.deletepending");
+        assertEquals("delete-pending", provisioner.status("fan.summer.deletepending"));
+        assertFalse(provisioner.isProvisioned("fan.summer.deletepending"));
+        try (Connection ignored = DriverManager.getConnection(
+                creds.url(), creds.username(), creds.password())) {
+            assertNotNull(ignored, "failed cleanup must retain usable recovery coordinates");
+        }
+
+        current.set(cfg);
+        provisioner.reconcileIncompleteOperations();
+        assertEquals("not-provisioned", provisioner.status("fan.summer.deletepending"));
+        assertThrows(java.sql.SQLException.class, () ->
+            DriverManager.getConnection(creds.url(), creds.username(), creds.password()));
+    }
+
+    @Test
     void provisionThrowsWhenAdminCredentialsMissing() {
         DataSourceConfigService dataSources = new DataSourceConfigService(config.toString()) {
             @Override public DataSourceConfig load() {
@@ -191,5 +285,17 @@ class PluginDbProvisionerH2Test {
             "redacted SQL must mask the PASSWORD literal: " + redacted);
         assertFalse(redacted.contains("hunter2"),
             "redacted SQL must NOT contain the plaintext password: " + redacted);
+    }
+
+    private static DataSourceConfig h2Config(String database) {
+        return new DataSourceConfig(DbType.H2,
+            "jdbc:h2:tcp://127.0.0.1:" + port + "/" + database, "org.h2.Driver",
+            "org.hibernate.dialect.H2Dialect", "sa", "", null, "sa", "");
+    }
+
+    private DataSourceConfigService fixedConfig(DataSourceConfig cfg) {
+        return new DataSourceConfigService(config.toString()) {
+            @Override public DataSourceConfig load() { return cfg; }
+        };
     }
 }

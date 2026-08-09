@@ -1,4 +1,4 @@
-export declare const SDK_VERSION = "1.0.0";
+export declare const SDK_VERSION = "1.2.0";
 export type Theme = 'dark' | 'light';
 export type FileAccess = 'read' | 'write' | 'read-write';
 export interface FileRef {

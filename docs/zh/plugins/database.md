@@ -63,7 +63,12 @@ provisioning 是**用户授权、绝不隐式触发**的：
 
 ### 卸载时 deprovision
 
-卸载插件会通过 admin 凭据 `DROP USER` / `DROP SCHEMA` / `DROP DATABASE`，随后删除存储记录。deprovisioning **非阻塞**：DDL 失败会被捕获并记录日志（留待日后重试），但存储记录始终会被删除，卸载本身必然成功。SQLite 无 deprovisioning 步骤 —— 插件数据目录下的 `.db` 文件随常规卸载清理。
+卸载时必须显式选择运行数据策略。选择保留数据时，也会保留插件数据库命名空间和加密凭据，
+以便日后重装继续连接。选择删除数据时，宿主先把记录标为 `DELETE_PENDING`，再尝试执行
+`DROP USER` / `DROP SCHEMA` / `DROP DATABASE`；仅在 DDL 成功后删除记录。admin 配置缺失、连接失败
+或进程崩溃都会留下足够的恢复信息，由定时 reconciler 或 `POST /api/plugin-db/retry/{id}` 重试。
+provisioning 同样会在 DDL 前写入 `PROVISIONING` 意图，且只有状态变为 `ACTIVE` 后才向 worker 注入
+凭据。SQLite 没有 RBAC DDL，其私有 `.db` 文件随插件数据目录采用相同的保留/删除选择。
 
 ## 表前缀约定（命名整洁）
 

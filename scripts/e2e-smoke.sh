@@ -23,14 +23,14 @@ fi
 JAR="${JAR_COUNT[0]}"
 
 # Build the official plugins through the CLI into each plugin's dist-package/,
-# then stage their .fyp outputs into a single official-packages directory the
+# then stage their .fyp outputs and required checksum sidecars into a single official-packages directory the
 # host is pointed at. This replaces the old per-plugin shell packager.
 OFFICIAL_DIR="$(mktemp -d)"
 # WORK is assigned below; pre-declare so the EXIT trap can reference it safely even if the
 # script is interrupted between setting the trap and assigning WORK.
 WORK=""
 SRV=""
-for plugin in markdown excel email offlinepython; do
+for plugin in markdown excel email offlinepython browser; do
   if ! node "$ROOT/toolchain/cli/bin/fengyu.mjs" plugin build "$ROOT/OfficialPlugins/plugin-$plugin" >/dev/null; then
     echo "FAIL: fengyu plugin build OfficialPlugins/plugin-$plugin failed"
     rm -rf "$OFFICIAL_DIR"
@@ -39,7 +39,8 @@ for plugin in markdown excel email offlinepython; do
 done
 mkdir -p "$OFFICIAL_DIR"
 for fyp in "$ROOT"/OfficialPlugins/plugin-*/dist-package/*.fyp; do
-  cp "$fyp" "$OFFICIAL_DIR/"
+  [ -f "$fyp.sha256" ] || { echo "FAIL: missing checksum sidecar: $fyp.sha256"; exit 1; }
+  cp "$fyp" "$fyp.sha256" "$OFFICIAL_DIR/"
 done
 # Defensive `${VAR:-}` so a trap firing before WORK/SRV are set never expands to rm -rf ""
 # or kill "" (the latter would be a no-op, but under set -u an unset var is fatal).
@@ -76,6 +77,8 @@ db.type=h2
 db.url=jdbc:h2:file:${DB_FILE}
 db.driver=org.h2.Driver
 db.dialect=org.hibernate.dialect.H2Dialect
+db.username=sa
+db.admin.username=sa
 db.file.path=${DB_FILE}
 EOF
 
@@ -140,8 +143,20 @@ curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
 echo "$RUNTIME" | grep -q 'fan.summer.excel' || fail "Excel plugin not listed"
 echo "PASS: excel plugin registered"
 
+# Browser Agent is an official plugin; verify it is registered. Its RPC methods drive a real
+# Chromium via Playwright, so we do not invoke them here (that belongs to the plugin's own tests).
+echo "$RUNTIME" | grep -q 'fan.summer.browser' || fail "Browser Agent plugin not listed"
+echo "PASS: browser plugin registered"
+
 # Email Center is seeded as an isolated .fyp and its Worker answers through the official SDK protocol.
 echo "$RUNTIME" | grep -q 'fan.summer.email' || fail "Email Center plugin not listed"
+# Database access is intentionally user-authorized rather than implicit at install/start. Exercise
+# that public boundary before starting the Email Worker, then verify the ACTIVE credentials flow
+# into its process environment by making a real database-backed RPC.
+EMAIL_DB="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+  "$H/api/plugin-db/provision/fan.summer.email" -d '{}')"
+echo "$EMAIL_DB" | grep -q '"provisioned":true' \
+  && echo "PASS: email database provisioned" || fail "email database provisioning: $EMAIL_DB"
 EMAIL_ACCOUNTS="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
   "$H/api/plugin-runtime/fan.summer.email/invoke" -d '{"method":"email_accounts_list","params":{}}')"
 echo "$EMAIL_ACCOUNTS" | grep -q '"success":true' \

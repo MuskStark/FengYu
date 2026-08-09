@@ -1,12 +1,13 @@
 package fan.summer.fengyu.sdk;
 
 import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * In-worker registry for long-running operations that would otherwise exceed the host's per-RPC
@@ -28,6 +29,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * status snapshot and used only for the virtual-thread name and diagnostics.
  */
 public final class Jobs {
+
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(Jobs.class);
 
     /** Default completed-job retention: 30 minutes. */
     public static final long DEFAULT_TTL_MILLIS = 30L * 60 * 1000;
@@ -72,8 +75,17 @@ public final class Jobs {
             } catch (CancellationException e) {
                 job.markCancelled();
             } catch (Throwable t) {
-                if (handle.isCancelled()) job.markCancelled();
-                else job.markFailed(safeMessage(t));
+                if (handle.isCancelled()) {
+                    job.markCancelled();
+                } else {
+                    // P1-2: preserve the full stack trace in the worker's log BEFORE flattening the
+                    // message onto the job. markFailed stores only a one-line message; without this
+                    // the stack (the only path to the root cause) is lost. Individual plugin bodies
+                    // are still encouraged to catch+log+rethrow themselves (see ExcelRpcHandlers),
+                    // but this guarantees diagnostics even when they forget.
+                    log.warn("{} job {} failed: {}", type, id, t.getClass().getSimpleName(), t);
+                    job.markFailed(safeMessage(t));
+                }
             } finally {
                 handles.remove(id, handle);
                 evictExpired();
@@ -145,12 +157,21 @@ public final class Jobs {
 
     /** A running job and its streamed log lines. */
     public static final class Job {
+        /** Per-job cap on retained log lines (P1-2): a chatty job cannot grow this without bound. */
+        public static final int MAX_LOG_LINES = 5000;
+        /** Per-job cap on retained log bytes (P1-2): the tail keeps the most recent ~2 MiB of lines. */
+        public static final int MAX_LOG_BYTES = 2 * 1024 * 1024;
+
         public final String id;
         public final String type;
         public final long startedAt = System.currentTimeMillis();
         /** One of RUNNING / DONE / FAILED / CANCELLED. */
         public volatile String status = "RUNNING";
-        private final ConcurrentLinkedQueue<String> logs = new ConcurrentLinkedQueue<>();
+        private final Deque<String> logs = new ArrayDeque<>();
+        /** UTF-8 bytes retained in {@link #logs}; guarded by {@code synchronized (logs)}. */
+        private int logBytes;
+        /** Absolute number of evicted lines; also the cursor of the first retained line. */
+        private int droppedLogs;
         /** Summary produced on success (e.g. a BuildSummary serialised to a Map). */
         public volatile Object summary;
         /** Failure detail (status=FAILED only). */
@@ -158,16 +179,42 @@ public final class Jobs {
 
         Job(String id, String type) { this.id = id; this.type = type; }
 
-        public void append(String line) { logs.add(line); }
+        public void append(String line) {
+            if (line == null) return;
+            synchronized (logs) {
+                logs.addLast(line);
+                logBytes += line.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+                // Dual-bound eviction (P1-2): drop the OLDEST lines until both the line count and the
+                // byte budget are within their caps. This keeps the most recent diagnostics (the tail
+                // is what a developer triaging a failure needs) and bounds memory for a chatty job.
+                while ((logs.size() > MAX_LOG_LINES || logBytes > MAX_LOG_BYTES) && !logs.isEmpty()) {
+                    String removed = logs.pollFirst();
+                    if (removed != null) {
+                        logBytes -= removed.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+                        droppedLogs++;
+                    }
+                }
+            }
+        }
         void markDone() { status = "DONE"; }
         void markFailed(String message) { status = "FAILED"; this.error = message; }
         void markCancelled() { status = "CANCELLED"; }
         boolean isTerminal() { return !"RUNNING".equals(status); }
 
-        /** Snapshot the log tail starting at {@code cursor} (0-based line index). */
+        /**
+         * Snapshot the log tail starting at an absolute {@code cursor}. A cursor returned by an
+         * earlier snapshot remains valid after oldest-line eviction: it is translated relative to
+         * {@link #droppedLogs}, rather than being reused as an index into the shorter retained deque.
+         */
         public Map<String, Object> snapshot(int cursor) {
-            List<String> all = new ArrayList<>(logs);
-            int from = Math.max(0, Math.min(cursor, all.size()));
+            List<String> all;
+            int dropped;
+            synchronized (logs) {
+                all = new ArrayList<>(logs);
+                dropped = droppedLogs;
+            }
+            long relative = (long) Math.max(0, cursor) - dropped;
+            int from = (int) Math.max(0L, Math.min(relative, all.size()));
             List<String> tail = new ArrayList<>(all.subList(from, all.size()));
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("success", true);
@@ -176,7 +223,10 @@ public final class Jobs {
             out.put("type", type);
             out.put("status", status);
             out.put("logs", tail);
-            out.put("cursor", all.size());     // next poll's starting cursor
+            // Absolute line cursor: dropped count + current size, so a client that last polled at the
+            // tail does not re-read the same lines after an overflow eviction.
+            out.put("cursor", dropped + all.size());
+            out.put("droppedLogs", dropped);
             out.put("done", isTerminal());
             if (summary != null) out.put("result", summary);
             if (error != null) out.put("error", error);

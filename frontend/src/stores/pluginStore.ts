@@ -97,11 +97,11 @@ export const usePluginStore = defineStore('pluginStore', () => {
     }
   }
 
-  async function uninstall(uid: string) {
+  async function uninstall(uid: string, deleteData: boolean) {
     busy.value = uid
     error.value = null
     try {
-      await api.uninstallUnified(uid)
+      await api.uninstallUnified(uid, deleteData)
       await Promise.all([loadCatalog(), loadHistory()])
     } catch (e) {
       error.value = errMsg(e)

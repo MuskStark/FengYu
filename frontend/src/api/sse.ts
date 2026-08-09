@@ -35,12 +35,16 @@ export function openAiStream(streamId: string, cb: SseCallbacks): SseHandle {
   let closed = false
 
   // Diagnostic: some webviews silently drop SSE connections that never receive data;
-  // log open/error/readyState so we can confirm the heartbeat fix works.
+  // log open/error/readyState so we can confirm the heartbeat fix works. The URL carries the
+  // auth token as a query param (EventSource cannot set headers), so redact it before logging —
+  // the token must never land in the devtools console, where a screenshot or error-report hook
+  // could exfiltrate it.
+  const redactedUrl = url.replace(/([?&]token=)[^&]*/i, '$1***')
   es.onopen = () => {
-    console.debug('[sse] connected', { readyState: es.readyState, url })
+    console.debug('[sse] connected', { readyState: es.readyState, url: redactedUrl })
   }
   es.onerror = () => {
-    console.debug('[sse] native error', { readyState: es.readyState, url })
+    console.debug('[sse] native error', { readyState: es.readyState, url: redactedUrl })
   }
   const close = () => {
     if (!closed) {

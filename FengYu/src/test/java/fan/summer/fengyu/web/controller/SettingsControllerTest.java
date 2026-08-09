@@ -3,6 +3,7 @@ package fan.summer.fengyu.web.controller;
 import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
 import fan.summer.fengyu.log.LoggingLevelService;
 import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
+import fan.summer.fengyu.security.ProcessSandbox;
 import fan.summer.fengyu.setup.DataSourceConfigService;
 import fan.summer.fengyu.setup.DbType;
 import fan.summer.fengyu.setup.WizardParams;
@@ -92,16 +93,19 @@ class SettingsControllerTest {
 
     @Test
     void putRejectsEnablingUnsandboxedPluginsOnSandboxedPlatform() {
-        // On the CI host (Linux/macOS) a native sandbox is available, so enabling must be rejected.
-        // This documents + guards the platform gate; IllegalArgumentException -> HTTP 400 via
-        // GlobalExceptionHandler. (The NONE-platform accept path is covered by manual verification.)
+        // The platform gate keys on ProcessSandbox.isNativeSandboxAvailable(), which is true only on
+        // FULL-isolation platforms (Linux bwrap). macOS is now honestly reported as REDUCED (not
+        // full), so it no longer counts as "sandboxed" for this gate. Pin a full-sandbox platform
+        // via mockStatic so the "enabling is rejected" contract is deterministic on every CI host.
         AiConfigServiceHeadless config = mock(AiConfigServiceHeadless.class);
         SettingsController controller = new SettingsController(
             config, newService(), mock(LoggingLevelService.class), mock(PluginProcessManager.class), () -> {});
 
         // The unsandboxed read/write helpers are static facades over the AiConfigServiceHeadless
         // singleton (Task 1); mockStatic intercepts them just as the logLevel test above does.
-        try (var mockedStatic = mockStatic(AiConfigServiceHeadless.class)) {
+        try (var mockedAi = mockStatic(AiConfigServiceHeadless.class);
+             var mockedSandbox = mockStatic(ProcessSandbox.class)) {
+            mockedSandbox.when(ProcessSandbox::isNativeSandboxAvailable).thenReturn(true);
             // Enabling on a sandboxed platform throws.
             assertThrows(IllegalArgumentException.class,
                 () -> controller.put(Map.of("unsandboxedPlugins", true)));
@@ -109,7 +113,7 @@ class SettingsControllerTest {
             // Disabling is always allowed (closing a protection boundary is safe everywhere) and
             // must NOT throw, even on a sandboxed platform.
             controller.put(Map.of("unsandboxedPlugins", false));
-            mockedStatic.verify(() -> AiConfigServiceHeadless.setUnsandboxedPluginsEnabled(false));
+            mockedAi.verify(() -> AiConfigServiceHeadless.setUnsandboxedPluginsEnabled(false));
         }
     }
 }

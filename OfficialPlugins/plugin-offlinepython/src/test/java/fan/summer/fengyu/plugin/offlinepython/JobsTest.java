@@ -45,6 +45,35 @@ class JobsTest {
         assertEquals("CANCELLED", job.status);
     }
 
+    /**
+     * Regression (P1-2): a job's log buffer is dual-bounded (max lines + max bytes) and evicts the
+     * OLDEST lines on overflow. A chatty job cannot grow memory without bound; the dropped count is
+     * surfaced in the snapshot so a polling client knows lines were skipped.
+     */
+    @Test
+    void jobLogsAreBoundedAndReportDroppedCount() throws Exception {
+        Jobs jobs = new Jobs();
+        // A job body that logs many more lines than the per-job line cap.
+        int over = 5500;  // MAX_LOG_LINES is 5000
+        CountDownLatch done = new CountDownLatch(1);
+        Jobs.Job job = jobs.start("BUILD", handle -> {
+            for (int i = 0; i < over; i++) handle.log("line-" + i);
+            done.countDown();
+        });
+        assertTrue(done.await(5, TimeUnit.SECONDS));
+        awaitDone(job);
+
+        Map<String, Object> snapshot = jobs.snapshot(job.id, 0);
+        @SuppressWarnings("unchecked")
+        java.util.List<String> logs = (java.util.List<String>) snapshot.get("logs");
+        int dropped = (int) snapshot.get("droppedLogs");
+
+        assertTrue(logs.size() <= 5000, "job log buffer must be capped, got " + logs.size());
+        assertTrue(dropped >= over - 5000, "droppedLogs must reflect evicted overflow, got " + dropped);
+        // The tail keeps the most-recent lines.
+        assertEquals("line-" + (over - 1), logs.get(logs.size() - 1), "the newest line must survive");
+    }
+
     private static void awaitDone(Jobs.Job job) throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
         while ("RUNNING".equals(job.status) && System.nanoTime() < deadline) Thread.sleep(10);

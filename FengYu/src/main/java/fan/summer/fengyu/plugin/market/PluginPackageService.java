@@ -36,6 +36,21 @@ public class PluginPackageService {
     private static final long MAX_EXPANDED_BYTES = 300L * 1024 * 1024;
     private static final long MIN_TIMEOUT_SECONDS = 1L;
     private static final long MAX_TIMEOUT_SECONDS = 600L;
+    /**
+     * Permission tokens accepted by a plugin manifest. The enforcement matrix (P1-9):
+     * <ul>
+     *   <li><strong>Enforced by the host/OS sandbox:</strong> {@code files.read},
+     *       {@code files.write} (FileRef grant gate), {@code network} (OS network namespace).</li>
+     *   <li><strong>Treated as full network egress (advisory at the network layer):</strong>
+     *       {@code network.email}, {@code database}. A real SMTP/IMAP broker and DB-host allowlist
+     *       are tracked follow-ups; today these grant broad egress, so the UI must not imply finer
+     *       isolation than the OS enforces.</li>
+     *   <li><strong>Advisory only (no host enforcement yet):</strong> {@code clipboard.read},
+     *       {@code clipboard.write}, {@code notifications}. No host capability or OS gate reads
+     *       these at runtime; they document intent for a future capability bridge to the desktop
+     *       shell.</li>
+     * </ul>
+     */
     private static final java.util.Set<String> ALLOWED_PERMISSIONS = java.util.Set.of(
         "files.read", "files.write", "network", "network.email",
         "clipboard.read", "clipboard.write", "notifications", "database");
@@ -44,9 +59,22 @@ public class PluginPackageService {
     private final Path root;
     private final HttpClient http;
     private PluginDbProvisioner dbProvisioner;  // nullable; null when no DB isolation is active
+    private PluginIntegrityStore integrityStore;  // nullable; null in some tests
+    /**
+     * Sibling data root ({@code .fengyu/plugin-data}). Each plugin's runtime state (embedded SQLite
+     * files, browser profiles/cookies, screenshots, mail keys) lives under {@code <dataRoot>/<id>}.
+     * Uninstall applies the caller's explicit retain/delete policy to this directory (P1-4); the
+     * old code either always left it behind or later deleted it without giving the user a choice.
+     */
+    private final Path dataRoot;
 
     public PluginPackageService(
             @Value("${fengyu.plugins.directory:}") String directory) {
+        this(directory, RuntimePaths.pluginDataDirectory(RuntimePaths.root()));
+    }
+
+    /** Test seam for verifying uninstall data-retention policy without touching the real runtime. */
+    PluginPackageService(String directory, Path dataRoot) {
         // The manifest schema declares `additionalProperties: true`, so third-party packages may
         // carry forward-compatible fields the host doesn't model yet (e.g. a future `i18n` block
         // before the host upgraded). Tolerate unknown fields on read instead of failing the whole
@@ -56,25 +84,39 @@ public class PluginPackageService {
         this.root = directory == null || directory.isBlank()
                 ? RuntimePaths.pluginDirectory(RuntimePaths.root())
                 : Path.of(directory).toAbsolutePath().normalize();
+        this.dataRoot = dataRoot.toAbsolutePath().normalize();
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
     }
 
     /**
      * Spring-injection constructor: wires the optional DB provisioner so {@link #uninstall} can
-     * deprovision plugin DB credentials. The provisioner is a separate bean; in SETUP mode or in
-     * tests that use the single-arg constructor it stays null and uninstall behaves as before.
+     * deprovision plugin DB credentials, and the integrity store so installs record a manifest
+     * digest the host re-verifies before starting a Worker (P0-2 tamper detection). Each is a
+     * separate bean; in SETUP mode or in tests that use the single-arg constructor they stay null.
      */
     @org.springframework.beans.factory.annotation.Autowired
     public PluginPackageService(
             @Value("${fengyu.plugins.directory:}") String directory,
-            PluginDbProvisioner provisioner) {
+            PluginDbProvisioner provisioner,
+            PluginIntegrityStore integrityStore) {
         this(directory);
         this.dbProvisioner = provisioner;
+        this.integrityStore = integrityStore;
     }
 
     /** Test-only: attach a provisioner so uninstall can be asserted to deprovision. */
     void attachProvisionerForTest(PluginDbProvisioner provisioner) {
         this.dbProvisioner = provisioner;
+    }
+
+    /** Test-only: attach an integrity store so install/verify can be exercised in isolation. */
+    public void attachIntegrityStoreForTest(PluginIntegrityStore integrityStore) {
+        this.integrityStore = integrityStore;
+    }
+
+    /** The integrity store, if wired; null in tests that use the single-arg constructor. */
+    public PluginIntegrityStore integrityStore() {
+        return integrityStore;
     }
 
     public List<PluginManifest> installed() {
@@ -125,7 +167,22 @@ public class PluginPackageService {
             throw new IllegalArgumentException("Expected a .fyp plugin package");
         }
         if (Files.size(archive) > MAX_PACKAGE_BYTES) throw new IllegalArgumentException("Plugin package exceeds 100 MB");
-        try (InputStream input = Files.newInputStream(archive)) { return installArchive(input); }
+        try (InputStream input = Files.newInputStream(archive)) { return installArchive(input, false); }
+    }
+
+    /**
+     * Install a package from a host-trusted source (the official-plugin seeder). Trusted installs
+     * may declare {@code official: true} and use the reserved {@code fan.summer.*} namespace; the
+     * seeder verifies a SHA-256 sidecar before calling this, so the package's identity claims are
+     * trusted. User uploads/marketplace installs must go through {@link #install(MultipartFile)} /
+     * {@link #install(Path)} (untrusted) and cannot claim either.
+     */
+    public PluginManifest installTrusted(Path archive) throws IOException {
+        if (!Files.isRegularFile(archive) || !archive.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".fyp")) {
+            throw new IllegalArgumentException("Expected a .fyp plugin package");
+        }
+        if (Files.size(archive) > MAX_PACKAGE_BYTES) throw new IllegalArgumentException("Plugin package exceeds 100 MB");
+        try (InputStream input = Files.newInputStream(archive)) { return installArchive(input, true); }
     }
 
     /**
@@ -144,6 +201,22 @@ public class PluginPackageService {
             }
         }
         throw new IllegalArgumentException("manifest.json is missing in " + archive);
+    }
+
+    /**
+     * Read an uploaded package's manifest without installing it (P0-6). Used to learn the incoming
+     * plugin id before a replace-style upload so the host can stop the running Worker first.
+     */
+    public PluginManifest readArchiveManifest(MultipartFile file) throws IOException {
+        try (InputStream input = file.getInputStream();
+                ZipInputStream zip = new ZipInputStream(input)) {
+            for (ZipEntry entry; (entry = zip.getNextEntry()) != null;) {
+                if ("manifest.json".equals(entry.getName())) {
+                    return json.readValue(zip.readAllBytes(), PluginManifest.class);
+                }
+            }
+        }
+        throw new IllegalArgumentException("manifest.json is missing in the uploaded package");
     }
 
     public PluginManifest installFromUrl(String url) throws IOException, InterruptedException {
@@ -174,22 +247,59 @@ public class PluginPackageService {
         return !Files.exists(pluginDir(id).resolve(".disabled"));
     }
 
+    /** Backwards-compatible internal default: remove both package and runtime data. */
     public void uninstall(String id) throws IOException {
+        uninstall(id, true);
+    }
+
+    /**
+     * Uninstall a plugin with an explicit runtime-data policy (P1-4).
+     *
+     * @param deleteData when true, delete {@code plugin-data/<id>} and surface any failure to the
+     *                   caller; when false, retain runtime state for a later reinstall
+     */
+    public void uninstall(String id, boolean deleteData) throws IOException {
         Path dir = pluginDir(id);
         if (!Files.isDirectory(dir)) throw new IllegalArgumentException("Plugin is not installed: " + id);
-        // Deprovision the plugin's DB credentials/user/schema FIRST. Non-blocking: deprovision
-        // catches+logs its own DDL failures, so even a broken DB never blocks the file cleanup.
-        if (dbProvisioner != null) {
+        // Database namespace/credentials are plugin-owned runtime data too. Retain them when the
+        // user selected retain-data so a later reinstall can reconnect to the same state; only a
+        // delete-data uninstall requests deprovisioning.
+        if (deleteData && dbProvisioner != null) {
             try {
                 dbProvisioner.deprovision(id);
             } catch (RuntimeException e) {
                 log.warn("DB deprovision for {} failed; continuing with file removal: {}", id, e.getMessage());
             }
         }
+        // Delete user-selected runtime data before removing the package. A failure is not swallowed:
+        // returning success while profiles/credentials/files remain would falsely tell the user the
+        // requested data deletion completed. Keeping the package makes the operation retryable.
+        if (deleteData) {
+            Path dataDir = dataRoot.resolve(id).normalize();
+            if (!dataDir.startsWith(dataRoot)) {
+                throw new IOException("Refusing to delete plugin data outside the runtime data root");
+            }
+            if (Files.exists(dataDir)) deleteTree(dataDir);
+        }
         deleteTree(dir);
+        // Drop the manifest-digest record so a future reinstall with the same id starts clean.
+        if (integrityStore != null) integrityStore.forget(id);
     }
 
     private PluginManifest installArchive(InputStream input) throws IOException {
+        return installArchive(input, false);
+    }
+
+    /**
+     * Install an archive with an explicit trust marker.
+     *
+     * @param trustedSource {@code true} when the install was produced by a host-trusted path
+     *                      (the bundled official-plugin seeder, which verifies a SHA-256 sidecar
+     *                      before installing). {@code false} for user uploads, marketplace
+     *                      installs, and URL installs — these cannot claim {@code official:true}
+     *                      or the reserved {@code fan.summer.*} namespace.
+     */
+    PluginManifest installArchive(InputStream input, boolean trustedSource) throws IOException {
         Files.createDirectories(root);
         Path staging = Files.createTempDirectory(root, ".install-");
         try {
@@ -197,7 +307,7 @@ public class PluginPackageService {
             // Runtime state belongs to the host and cannot be smuggled in by a package.
             Files.deleteIfExists(staging.resolve(".disabled"));
             PluginManifest manifest = readManifest(staging);
-            validate(manifest, staging);
+            validate(manifest, staging, trustedSource);
             Path destination = pluginDir(manifest.id());
             Path backup = root.resolve(".backup-" + manifest.id());
             boolean wasEnabled = !Files.exists(destination.resolve(".disabled"));
@@ -212,6 +322,15 @@ public class PluginPackageService {
                     Files.move(backup, destination, StandardCopyOption.ATOMIC_MOVE);
                 }
                 throw e;
+            }
+            // Record the installed manifest's digest so the host can detect a runtime tamper of
+            // manifest.json (a Worker must not be able to rewrite its own manifest and escalate).
+            // P0-2: recorded only after the atomic swap succeeds, so a failed install leaves no
+            // record that could later mask a tampered package. P0-6: the package directory digest
+            // is also recorded so the Worker cache can key on content (a same-version repack with
+            // different bytes gets a different digest → the stale Worker is invalidated).
+            if (integrityStore != null) {
+                integrityStore.record(manifest.id(), manifest.version(), destination.resolve("manifest.json"), destination);
             }
             return manifest;
         } finally {
@@ -260,7 +379,7 @@ public class PluginPackageService {
         }
     }
 
-    private void validate(PluginManifest m, Path staging) {
+    private void validate(PluginManifest m, Path staging, boolean trustedSource) {
         if (m.schemaVersion() != 1) throw new IllegalArgumentException("Unsupported manifest schemaVersion");
         if (m.id() == null || !m.id().matches("[a-z0-9]+(?:[.-][a-z0-9]+)+")) {
             throw new IllegalArgumentException("Plugin id must be a lowercase reverse-domain identifier");
@@ -272,7 +391,28 @@ public class PluginPackageService {
         if (m.author() == null || m.author().isBlank()) throw new IllegalArgumentException("Plugin author is required");
         if (m.icon() == null || m.icon().isBlank()) throw new IllegalArgumentException("Plugin icon is required");
         if (m.category() == null || m.category().isBlank()) throw new IllegalArgumentException("Plugin category is required");
-        if (m.official() && !m.id().startsWith("fan.summer.")) throw new IllegalArgumentException("Official plugin ids must use fan.summer.*");
+        // P0-8: official identity is reserved and cannot be self-declared by an uploaded/marketplace
+        // package. The `official` flag and the `fan.summer.*` namespace are host-trusted only — a
+        // package that claims either without coming through a trusted path (the official-plugin
+        // seeder, which verifies a SHA-256 sidecar) is rejected, so no third party can masquerade as
+        // an official plugin or squat the official namespace. Asymmetric signature verification is a
+        // tracked follow-up; namespace reservation + official-claim rejection close the impersonation
+        // hole today.
+        if (!trustedSource) {
+            if (m.official()) {
+                throw new IllegalArgumentException(
+                    "Plugin declares 'official: true' but was installed via an untrusted path "
+                        + "(upload/marketplace). Only host-trusted (signed) packages may be official.");
+            }
+            if (m.id().startsWith("fan.summer.")) {
+                throw new IllegalArgumentException(
+                    "Plugin id uses the reserved 'fan.summer.*' namespace but was installed via an "
+                        + "untrusted path (upload/marketplace). Choose a different reverse-domain id.");
+            }
+        } else if (m.official() && !m.id().startsWith("fan.summer.")) {
+            // A trusted install may legitimately be official, but the id must still be in-namespace.
+            throw new IllegalArgumentException("Official plugin ids must use fan.summer.*");
+        }
         if (m.version() == null || !m.version().matches("\\d+\\.\\d+\\.\\d+(?:[-+].+)?")) {
             throw new IllegalArgumentException("Plugin version must be semantic versioning");
         }

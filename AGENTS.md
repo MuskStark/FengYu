@@ -29,19 +29,21 @@ in build order:
 | Module | Role |
 |---|---|
 | `toolchain/sdk-java` | **Independently versioned** Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk`). Does not inherit the parent; kept in the reactor only so local installs work. |
-| `OfficialPlugins` | Aggregator for official plugins (`plugin-markdown`, `plugin-excel`, `plugin-email`, `plugin-offlinepython`). |
+| `toolchain/devkit-java` | **Independently versioned** Java dev kit (`fan.summer.fengyu.sdk:fengyu-plugin-devkit`) — the in-IDE loopback dev server. Same versioning rules as `sdk-java`. |
+| `OfficialPlugins` | Aggregator for official plugins (`plugin-markdown`, `plugin-excel`, `plugin-email`, `plugin-offlinepython`, `plugin-browser`). |
 | `FengYu` | The headless Spring Boot app; shaded fat JAR, main class `fan.summer.fengyu.HeadlessLauncher`. |
 
 Non-Maven top-level directories: `frontend/` (Vue), `desktop/` (Electron), plus the plugin toolchain
-(`toolchain/sdk-java/`, `toolchain/devkit-java/`, `toolchain/sdk-ts/`, `toolchain/ui/`, `toolchain/dev/`, `toolchain/cli/`, `toolchain/spec/`).
+(`toolchain/sdk-ts/`, `toolchain/ui/`, `toolchain/dev/`, `toolchain/cli/`, `toolchain/spec/`).
 
 ## Two version lines (do not conflate)
 
 - **App version** — the Maven `${revision}` property (mirrored in `frontend/package.json`,
   `desktop/electron/package.json`, and each official plugin's `manifest.json`).
-- **Plugin toolchain version** — independent of the app; lives in `toolchain/sdk-java/pom.xml` and
-  the three `@infinia/*` `package.json` files. Releasing the toolchain must never bump the app
-  version, and vice-versa.
+- **Plugin toolchain version** — independent of the app; lives in `toolchain/sdk-java/pom.xml`,
+  `toolchain/devkit-java/pom.xml`, and the four `@infinia/*` `package.json` files
+  (`plugin-sdk`, `plugin-ui`, `plugin-dev`, `plugin-cli`). Releasing the toolchain must never bump
+  the app version, and vice-versa.
 
 When a version number matters, **read it from its source file**; do not copy a literal here.
 

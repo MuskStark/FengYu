@@ -6,7 +6,8 @@ description: Cut a main FengYu/Infinia application release (tag vX.Y.Z or vX.Y.Z
 # App Release
 
 Cut a **main application** release. The app version is the Maven `${revision}` property, mirrored in
-`frontend/package.json`, `desktop/electron/package.json`, and each official plugin's `manifest.json`.
+`.mvn/maven.config`, `frontend/package.json`, `desktop/electron/package.json` plus its lockfile, and
+each of the five official plugins' `manifest.json` files.
 
 This skill does **not** touch the plugin toolchain version (`toolchain/sdk-java/pom.xml` /
 `@infinia/*`). Use the `toolchain-release` skill for that.
@@ -35,11 +36,12 @@ agree a valid tag with the user.
 
 ## Step 2 — Check version consistency
 
-Read the current app version from root `pom.xml` (`<revision>`) and confirm the source manifests that
-carry a base app version are consistent with the intended release — notably each official plugin's
-`manifest.json` `version` and the desktop Electron manifest (`desktop/electron/package.json`). Decide
-with the user whether the `${revision}` property (and its mirrors) should be bumped to the release
-version; do not edit yet.
+Read the current app version from root `pom.xml` (`<revision>`) and confirm every mirror is
+consistent: `.mvn/maven.config`, `frontend/package.json`, `desktop/electron/package.json` and
+`desktop/electron/package-lock.json`, plus the `markdown`, `excel`, `email`, `offlinepython`, and
+`browser` official manifests. Decide with the user whether the `${revision}` property and mirrors
+should be bumped to the release version; do not edit yet. Do not rewrite unrelated version strings
+in test fixtures or historical changelog entries.
 
 ## Step 3 — Update documentation
 
@@ -60,6 +62,10 @@ node --test scripts/release-workflow.test.mjs
 
 All must pass before any release mutation.
 
+Also confirm the workflow stages, uploads, and assembles every official `.fyp` together with its
+`.fyp.sha256` sidecar for Web and both desktop variants. A sidecar is an integrity check, not an
+independent authenticity root; do not describe unsigned packages as cryptographically signed.
+
 ## Step 5 — Run pre-release verification
 
 Run the focused set the release depends on (do not skip to save time):
@@ -68,14 +74,20 @@ Run the focused set the release depends on (do not skip to save time):
 # Backend
 ./mvnw clean package -f FengYu/pom.xml -DskipTests
 
-# Frontend (build + typecheck + tests)
-cd frontend && npm install && npm run build && npm run test:unit && npm run typecheck && cd ..
+# Frontend (audit + build + typecheck + tests)
+cd frontend && npm install && npm audit --omit=dev && npm run build && npm run test:unit && npm run typecheck && cd ..
+
+# Desktop shell (audit + unit tests + TypeScript; cross-platform packaging stays in CI)
+cd desktop/electron && npm install && npm audit --omit=dev && npm test && npm run build:ts && cd ../..
 
 # End-to-end smoke
 scripts/e2e-smoke.sh
 
 # Portable web distribution self-check (used by the release's web job)
-scripts/package-web-release.sh && scripts/test-web-release.sh
+# Stage the five freshly-built `.fyp` + `.fyp.sha256` pairs in a temporary plugin directory,
+# then pass VERSION, the shaded JAR, that directory, and an output directory explicitly.
+scripts/package-web-release.sh VERSION JAR PLUGIN_DIR OUTPUT_DIR
+scripts/test-web-release.sh OUTPUT_DIR/Infinia-VERSION-web.zip
 ```
 
 (Desktop packaging is exercised by the workflow's matrix; you do not need to build all three
@@ -86,7 +98,7 @@ platforms locally.)
 **Committing, tagging, pushing a branch, or pushing a tag requires explicit user confirmation at
 each step.** Do not run these automatically. When the user confirms:
 
-1. Apply the version bump (`<revision>` and its mirrors) and the docs-updater changes; commit with a
+1. Apply the version bump (`<revision>` and every mirror listed in Step 2) and the docs-updater changes; commit with a
    `📝`/`⬆️` conventional message.
 2. Create the tag `vX.Y.Z[-{alpha|beta|rc}.N]`.
 3. Push the branch and the tag — the tag push triggers `.github/workflows/fengyu-release.yml`, which

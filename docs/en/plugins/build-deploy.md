@@ -6,7 +6,7 @@ lang: en
 
 # Build & Deploy
 
-A `.fyp` is a zip archive with a fixed runtime layout. There is **one** build flow for every plugin — third-party and official alike — driven by `fengyu plugin build` and the `fengyu.plugin.json` declaration. The legacy shell packager has been removed; the three shipped plugins are now built by the same CLI.
+A `.fyp` is a zip archive with a fixed runtime layout. There is **one** build flow for every plugin — third-party and official alike — driven by `fengyu plugin build` and the `fengyu.plugin.json` declaration. The legacy shell packager has been removed; the five shipped plugins are now built by the same CLI.
 
 ## The `.fyp` layout
 
@@ -68,8 +68,9 @@ Zero-config projects (no `fengyu.plugin.json`) still build: a `vite.config.*` is
 6. **assemble staging** — copy only `manifest.json`, the UI output, `backend/worker.jar`, and declared resources into an isolated temp directory.
 7. **validate staging** — manifest object rules, `ui.entry` resolves to a real file, the backend command references `backend/worker.jar`, the worker JAR carries the configured `Main-Class` and class entry, and the runtime tree contains no source / `node_modules` / token-bearing files / symlinks.
 8. **package** — write to `<output>.tmp-<pid>-<random>`, inspect the completed archive, then atomically rename to the final `.fyp`.
+9. **checksum** — atomically write `<output>.sha256` in GNU `sha256sum -c` format. Keep this sidecar beside the archive: bundled official-plugin installation fails closed when it is missing or does not match. It detects corruption; it is not a substitute for asymmetric release signing.
 
-`--skip-tests` skips tests only — never type checking or packaging. Any failure (UI build, worker build, validation, rename) leaves **no** `.fyp`, no `.tmp-*`, and no staging directory behind.
+`--skip-tests` skips tests only — never type checking or packaging. A failure before the archive rename leaves **no** `.fyp`, no `.tmp-*`, and no staging directory behind. If checksum creation fails after the archive rename, the command still fails and may leave the valid `.fyp` without its required sidecar; release staging rejects that incomplete pair.
 
 ### GitHub Packages authentication
 
@@ -90,15 +91,17 @@ Repository-internal builds (the official plugins) resolve the SDK from the local
 
 ## Build the official plugins
 
-The three shipped plugins are built by the same CLI — there is no separate script:
+The five shipped plugins are built by the same CLI — there is no separate script:
 
 ```bash
 node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-markdown
 node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-excel
 node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-email
+node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-offlinepython
+node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-browser
 ```
 
-Each writes `OfficialPlugins/plugin-<name>/dist-package/fan.summer.<name>-4.0.0.fyp`. CI builds them as a matrix in `.github/workflows/toolchain-ci.yml`.
+Each writes `OfficialPlugins/plugin-<name>/dist-package/fan.summer.<name>-<version>.fyp` plus the adjacent `.fyp.sha256` sidecar. CI builds them as a matrix in `.github/workflows/toolchain-ci.yml`; the application release workflow carries each package/sidecar pair into both Web and desktop distributions.
 
 ## Install the result
 

@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -54,23 +55,70 @@ public class PluginMarketplaceController {
     }
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<PluginManifest> upload(@RequestPart("file") MultipartFile file) throws IOException {
-        return ResponseEntity.status(HttpStatus.CREATED).body(packages.install(file));
+    public ResponseEntity<PluginManifest> upload(@RequestPart("file") MultipartFile file) throws IOException, InterruptedException {
+        String id = readIncomingId(() -> packages.readArchiveManifest(file));
+        return ResponseEntity.status(HttpStatus.CREATED).body(installWithUpdateGate(id, () -> packages.install(file)));
     }
 
     @PostMapping("/upload-native")
-    public ResponseEntity<PluginManifest> uploadNative(@RequestBody NativeUpload request) throws IOException {
-        return ResponseEntity.status(HttpStatus.CREATED).body(packages.install(java.nio.file.Path.of(request.path())));
+    public ResponseEntity<PluginManifest> uploadNative(@RequestBody NativeUpload request) throws IOException, InterruptedException {
+        String id = readIncomingId(() -> packages.readArchiveManifest(java.nio.file.Path.of(request.path())));
+        return ResponseEntity.status(HttpStatus.CREATED).body(installWithUpdateGate(id, () -> packages.install(java.nio.file.Path.of(request.path()))));
     }
 
     @PostMapping("/{id}/install")
     public ResponseEntity<PluginManifest> install(@PathVariable String id) throws IOException, InterruptedException {
-        return ResponseEntity.status(HttpStatus.CREATED).body(marketplace.install(id));
+        return ResponseEntity.status(HttpStatus.CREATED).body(installWithUpdateGate(id, () -> marketplace.install(id)));
     }
 
     @PostMapping("/{id}/update")
     public PluginManifest update(@PathVariable String id) throws IOException, InterruptedException {
-        return marketplace.install(id);
+        return installWithUpdateGate(id, () -> marketplace.install(id));
+    }
+
+    /**
+     * Run an install/upgrade inside a per-plugin update gate (P0-6). {@link PluginProcessManager#beginUpdate}
+     * marks the id updating (concurrent invokes refuse) and stops the running Worker; the install
+     * then swaps the package; {@link PluginProcessManager#endUpdate} re-enables invokes in a
+     * finally. beginUpdate throws if the Worker cannot be stopped — that aborts the swap rather than
+     * leaving the old code running against a new package (and on Windows a running JVM would also
+     * hold the jar, blocking the atomic move).
+     */
+    private PluginManifest installWithUpdateGate(String id, InstallAction installAction) throws IOException, InterruptedException {
+        if (id == null) {
+            // Brand-new package whose id could not be previewed: no Worker to stop, just install.
+            return installAction.run();
+        }
+        processes.beginUpdate(id);   // throws on stop failure → install never runs
+        try {
+            return installAction.run();
+        } finally {
+            processes.endUpdate(id);
+        }
+    }
+
+    /** Read the incoming package's manifest (without installing) to learn its id, for the gate. */
+    private String readIncomingId(IoManifestReader reader) {
+        try {
+            PluginManifest incoming = reader.read();
+            return incoming == null ? null : incoming.id();
+        } catch (IOException | RuntimeException ignored) {
+            // If the manifest can't be previewed the install's own validation surfaces the real
+            // error; proceed without a gate (a brand-new id has no Worker to stop).
+            return null;
+        }
+    }
+
+    /** Runs the actual install/upgrade, rethrowing its checked exceptions. */
+    @FunctionalInterface
+    interface InstallAction {
+        PluginManifest run() throws IOException, InterruptedException;
+    }
+
+    /** Reads a plugin's manifest from an incoming package, throwing {@link IOException} on failure. */
+    @FunctionalInterface
+    interface IoManifestReader {
+        PluginManifest read() throws IOException;
     }
 
     @PatchMapping("/{id}/enabled")
@@ -81,9 +129,10 @@ public class PluginMarketplaceController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> uninstall(@PathVariable String id) throws IOException {
+    public ResponseEntity<Void> uninstall(@PathVariable String id,
+            @RequestParam(name = "deleteData") boolean deleteData) throws IOException {
         processes.stop(id);
-        packages.uninstall(id);
+        packages.uninstall(id, deleteData);
         // Drop the plugin's captured log buffer and any live log subscribers, so an uninstalled
         // plugin doesn't leave up to CAPACITY stale lines (and a dangling subscriber map entry)
         // behind — and a reinstalled plugin with the same id doesn't surface the old history.
