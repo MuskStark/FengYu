@@ -133,6 +133,13 @@ public class PluginFileGrantService {
                 .map(Grant::path).distinct().toList();
     }
 
+    /** Paths granted to a plugin for reading, including read-only uploads and native snapshots. */
+    public List<Path> readablePaths(String pluginId) {
+        return grants.values().stream()
+                .filter(grant -> grant.pluginId.equals(pluginId))
+                .map(Grant::path).distinct().toList();
+    }
+
     public long grantVersion(String pluginId) {
         AtomicLong version = versions.get(pluginId);
         return version == null ? 0 : version.get();
