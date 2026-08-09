@@ -70,6 +70,12 @@
             <activation><os><family>unix</family><name>Linux</name><arch>x86_64</arch></os></activation>
             <properties><playwright.driver.platform>linux</playwright.driver.platform></properties>
         </profile>
+        <!-- Temurin reports x64 as "amd64" on GitHub-hosted Linux runners. -->
+        <profile>
+            <id>driver-linux-amd64</id>
+            <activation><os><family>unix</family><name>Linux</name><arch>amd64</arch></os></activation>
+            <properties><playwright.driver.platform>linux</playwright.driver.platform></properties>
+        </profile>
         <profile>
             <id>driver-linux-arm64</id>
             <activation><os><family>unix</family><name>Linux</name><arch>aarch64</arch></os></activation>
@@ -78,6 +84,11 @@
         <profile>
             <id>driver-win-x64</id>
             <activation><os><family>windows</family><arch>x86_64</arch></os></activation>
+            <properties><playwright.driver.platform>win32_x64</playwright.driver.platform></properties>
+        </profile>
+        <profile>
+            <id>driver-win-amd64</id>
+            <activation><os><family>windows</family><arch>amd64</arch></os></activation>
             <properties><playwright.driver.platform>win32_x64</playwright.driver.platform></properties>
         </profile>
     </profiles>
@@ -130,7 +141,9 @@
                         <phase>package</phase>
                         <goals><goal>run</goal></goals>
                         <configuration>
-                            <failOnError>false</failOnError>
+                            <!-- A missing/unknown platform must never leave the all-platform
+                                 Playwright bundle in a deceptively successful oversized JAR. -->
+                            <failOnError>true</failOnError>
                             <target>
                                 <condition property="platform.set">
                                     <isset property="playwright.driver.platform"/>
