@@ -7,6 +7,7 @@ const builderConfig = readFileSync(new URL('../desktop/electron/electron-builder
 const jreBuilderConfig = readFileSync(new URL('../desktop/electron/electron-builder.jre.yml', import.meta.url), 'utf8')
 const rootPom = readFileSync(new URL('../pom.xml', import.meta.url), 'utf8')
 const mavenConfig = readFileSync(new URL('../.mvn/maven.config', import.meta.url), 'utf8')
+const browserPom = readFileSync(new URL('../OfficialPlugins/plugin-browser/pom.xml', import.meta.url), 'utf8')
 const desktopJob = workflow.slice(
   workflow.indexOf('\n  desktop:'),
   workflow.indexOf('\n  release:'),
@@ -102,6 +103,18 @@ test('keeps official plugin checksum sidecars in Web and desktop assembly', () =
   assert.match(packageWebRelease, /cp "\$\{archives\[0\]\}" "\$\{archives\[0\]\}\.sha256" "\$DEST\/plugins\/"/)
   assert.match(testWebRelease, /sha256sum -c/)
   assert.match(testWebRelease, /shasum -a 256 -c/)
+})
+
+test('desktop rebuilds the browser plugin for its native Playwright driver', () => {
+  assert.match(desktopJob, /- name: Install plugin CLI deps\s+run: npm ci\s+working-directory: toolchain\/cli/)
+  assert.match(desktopJob, /- name: Build native browser plugin\s+run: node toolchain\/cli\/bin\/fengyu\.mjs plugin build OfficialPlugins\/plugin-browser/)
+  assert.match(desktopJob, /cp OfficialPlugins\/plugin-browser\/dist-package\/\*\.fyp[\s\\]+OfficialPlugins\/plugin-browser\/dist-package\/\*\.fyp\.sha256[\s\\]+desktop\/electron\/resources\/binaries\/plugins\//)
+})
+
+test('browser worker recognizes GitHub runner architecture names and fails closed', () => {
+  assert.match(browserPom, /<id>driver-linux-amd64<\/id>[\s\S]*?<arch>amd64<\/arch>[\s\S]*?<playwright\.driver\.platform>linux<\/playwright\.driver\.platform>/)
+  assert.match(browserPom, /<id>driver-win-amd64<\/id>[\s\S]*?<arch>amd64<\/arch>[\s\S]*?<playwright\.driver\.platform>win32_x64<\/playwright\.driver\.platform>/)
+  assert.match(browserPom, /<failOnError>true<\/failOnError>/)
 })
 
 test('end-to-end smoke stages official plugin checksum sidecars', () => {

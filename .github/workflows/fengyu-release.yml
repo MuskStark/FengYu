@@ -4,9 +4,10 @@ name: FengYu-Release
 #   - unsigned Windows/macOS/Linux Electron desktop packages (with + without bundled JRE)
 #   - a portable, loopback-only Web distribution (zip + tar.gz)
 #
-# Shared inputs (one Vue bundle + one shaded JAR + official .fyp plugins and their SHA-256
-# sidecars) feed both the
-# Web packaging job and the desktop matrix. A GitHub prerelease is created at the end.
+# Shared inputs (one Vue bundle + one shaded JAR + Linux official .fyp plugins and their SHA-256
+# sidecars) feed Web packaging. Each desktop runner rebuilds the browser plugin so its bundled
+# Playwright driver matches that target platform, then replaces the shared Linux browser package.
+# A GitHub prerelease is created at the end.
 #
 # See docs/superpowers/plans/2026-07-16-alpha-desktop-web-release.md for the design.
 
@@ -299,6 +300,10 @@ jobs:
         run: npm ci
         working-directory: desktop/electron
 
+      - name: Install plugin CLI deps
+        run: npm ci
+        working-directory: toolchain/cli
+
       # Electron 43 downloads its platform binary on first require instead of via
       # an npm lifecycle script. Do that outside Playwright's 120s test timeout;
       # Windows runners commonly have a cold Electron cache.
@@ -325,12 +330,21 @@ jobs:
           path: inputs
           merge-multiple: true
 
+      # Playwright's Java driver embeds a platform-specific Node executable. The shared package
+      # was built on Linux for the Web archive, so rebuild only plugin-browser on each desktop
+      # runner before staging resources. Maven OS profiles retain the correct native driver.
+      - name: Build native browser plugin
+        run: node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-browser
+
       - name: Stage runtime resources
         shell: bash
         run: |
           mkdir -p desktop/electron/resources/binaries/plugins
           cp inputs/Infinia.jar desktop/electron/resources/binaries/FengYu.jar
           cp inputs/*.fyp inputs/*.fyp.sha256 desktop/electron/resources/binaries/plugins/
+          cp OfficialPlugins/plugin-browser/dist-package/*.fyp \
+             OfficialPlugins/plugin-browser/dist-package/*.fyp.sha256 \
+             desktop/electron/resources/binaries/plugins/
           ls -R desktop/electron/resources/binaries
 
       - name: Run Electron launch E2E (Linux)
