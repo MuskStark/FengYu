@@ -222,17 +222,20 @@ public class ProcessSandbox {
             for (String ro : List.of("/usr", "/bin", "/lib", "/lib64", "/etc")) {
                 appendReadOnlyBind(command, Path.of(ro), "--ro-bind");
             }
+            command.add("--proc");
+            command.add("/proc");
+            command.add("--dev");
+            command.add("/dev");
+            // Establish the private /tmp before mounting any narrower paths. JUnit and other
+            // callers commonly place plugin roots/data below the host /tmp; mounting tmpfs after
+            // those binds hides them and makes --chdir fail inside the sandbox.
+            command.add("--tmpfs");
+            command.add("/tmp");
             appendReadOnlyBind(command, Path.of(System.getProperty("java.home", "")), "--ro-bind");
             appendReadOnlyBind(command, workdir.toAbsolutePath().normalize(), "--ro-bind");
             for (Path cp : classpathRoots(raw)) {
                 appendReadOnlyBind(command, cp, "--ro-bind");
             }
-            command.add("--proc");
-            command.add("/proc");
-            command.add("--dev");
-            command.add("/dev");
-            command.add("--tmpfs");
-            command.add("/tmp");
             for (Path root : normalizedExisting(writableRoots)) {
                 command.add("--bind");
                 command.add(root.toString());

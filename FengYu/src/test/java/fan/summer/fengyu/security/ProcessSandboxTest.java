@@ -182,6 +182,20 @@ class ProcessSandboxTest {
         }
     }
 
+    @Test
+    void bubblewrapCreatesPrivateTmpBeforeBindingNestedPluginPaths() throws Exception {
+        Path pluginUnderTmp = Files.createDirectories(workdir.resolve("tmp-parent/plugin"));
+        ProcessSandbox sandbox = new ProcessSandbox(ProcessSandbox.Backend.BUBBLEWRAP);
+        ProcessSandbox.Launch launch = sandbox.plugin(
+            List.of("/bin/true"), pluginUnderTmp, List.of(pluginUnderTmp), false, false);
+
+        List<String> command = launch.command();
+        int tmpfs = command.indexOf("--tmpfs");
+        int pluginBind = command.indexOf(pluginUnderTmp.toRealPath().toString());
+        assertTrue(tmpfs >= 0 && pluginBind > tmpfs,
+            "private /tmp must be mounted before nested plugin binds: " + command);
+    }
+
     /**
      * Regression (P0-2c): the macOS sandbox-exec profile must deny reads of the genuinely sensitive
      * host paths (SSH/AWS/cloud credentials, the FengYu runtime root) so a plugin cannot harvest host
