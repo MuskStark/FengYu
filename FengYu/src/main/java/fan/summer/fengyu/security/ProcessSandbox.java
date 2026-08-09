@@ -353,13 +353,8 @@ public class ProcessSandbox {
     }
 
     /** Append a read-only bind for {@code path} to a bwrap command list (no-op if missing). */
-    private static void appendReadOnlyBind(List<String> command, Path path, String flag) {
-        if (path == null) return;
-        Path resolved = realPath(path);
-        if (!Files.exists(resolved)) return;
-        command.add(flag);
-        command.add(resolved.toString());
-        command.add(resolved.toString());
+    static void appendReadOnlyBind(List<String> command, Path path, String flag) {
+        appendReadOnlyBindAt(command, path, path, flag);
     }
 
     /** Bind a resolved source at the caller-visible destination (important for symlinked runtimes). */
