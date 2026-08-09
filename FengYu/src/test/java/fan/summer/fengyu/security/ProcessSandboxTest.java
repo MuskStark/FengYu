@@ -203,7 +203,7 @@ class ProcessSandboxTest {
         Files.createSymbolicLink(logicalRuntime, realRuntime);
         List<String> command = new java.util.ArrayList<>();
 
-        ProcessSandbox.appendReadOnlyBindAt(command, logicalRuntime, logicalRuntime, "--ro-bind");
+        ProcessSandbox.appendReadOnlyBind(command, logicalRuntime, "--ro-bind");
 
         assertEquals(List.of("--ro-bind", realRuntime.toRealPath().toString(),
             logicalRuntime.toAbsolutePath().normalize().toString()), command);
