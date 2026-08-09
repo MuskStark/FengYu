@@ -196,6 +196,19 @@ class ProcessSandboxTest {
             "private /tmp must be mounted before nested plugin binds: " + command);
     }
 
+    @Test
+    void bubblewrapCanBindResolvedRuntimeAtItsLogicalSymlinkPath() throws Exception {
+        Path realRuntime = Files.createDirectories(workdir.resolve("real-jdk"));
+        Path logicalRuntime = workdir.resolve("logical-jdk");
+        Files.createSymbolicLink(logicalRuntime, realRuntime);
+        List<String> command = new java.util.ArrayList<>();
+
+        ProcessSandbox.appendReadOnlyBindAt(command, logicalRuntime, logicalRuntime, "--ro-bind");
+
+        assertEquals(List.of("--ro-bind", realRuntime.toRealPath().toString(),
+            logicalRuntime.toAbsolutePath().normalize().toString()), command);
+    }
+
     /**
      * Regression (P0-2c): the macOS sandbox-exec profile must deny reads of the genuinely sensitive
      * host paths (SSH/AWS/cloud credentials, the FengYu runtime root) so a plugin cannot harvest host
