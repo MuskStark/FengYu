@@ -796,6 +796,12 @@ public class PluginProcessManager {
                 throw new IllegalStateException("Plugin call failed", cause);
             } catch (IOException e) {
                 pending.remove(id, future);
+                // An update may close the Worker after the outer gate releases its lock but while
+                // this call is writing. Surface that documented in-flight teardown state instead
+                // of leaking platform-specific pipe text ("Stream Closed"/"Broken pipe").
+                if (closed) {
+                    throw new IllegalStateException("Plugin worker tearing down: " + pluginId, e);
+                }
                 throw new IllegalStateException("Plugin RPC failed: " + redactor.redact(e.getMessage()), e);
             }
         }
