@@ -231,7 +231,11 @@ public class ProcessSandbox {
             // those binds hides them and makes --chdir fail inside the sandbox.
             command.add("--tmpfs");
             command.add("/tmp");
-            appendReadOnlyBind(command, Path.of(System.getProperty("java.home", "")), "--ro-bind");
+            // Keep the JVM's logical java.home as the mount destination. GitHub's Temurin setup
+            // exposes /usr/lib/jvm/... as a symlink into /opt/hostedtoolcache; binding only the
+            // resolved source under /opt leaves the absolute launcher path under /usr unusable.
+            Path javaHome = Path.of(System.getProperty("java.home", "")).toAbsolutePath().normalize();
+            appendReadOnlyBindAt(command, javaHome, javaHome, "--ro-bind");
             appendReadOnlyBind(command, workdir.toAbsolutePath().normalize(), "--ro-bind");
             for (Path cp : classpathRoots(raw)) {
                 appendReadOnlyBind(command, cp, "--ro-bind");
@@ -356,6 +360,16 @@ public class ProcessSandbox {
         command.add(flag);
         command.add(resolved.toString());
         command.add(resolved.toString());
+    }
+
+    /** Bind a resolved source at the caller-visible destination (important for symlinked runtimes). */
+    static void appendReadOnlyBindAt(List<String> command, Path source, Path destination, String flag) {
+        if (source == null || destination == null) return;
+        Path resolved = realPath(source);
+        if (!Files.exists(resolved)) return;
+        command.add(flag);
+        command.add(resolved.toString());
+        command.add(destination.toAbsolutePath().normalize().toString());
     }
 
     /** Append an {@code (allow file-read* (subpath "<path>"))} line to a macOS profile. */
