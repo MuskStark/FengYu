@@ -38,6 +38,38 @@ public class ProcessSandbox {
         public String id() {
             return id;
         }
+
+        /**
+         * {@code true} when this backend enforces a FULL OS-level filesystem/network security
+         * boundary. Only {@link #BUBBLEWRAP} (Linux) does: it builds a minimal read-only view that
+         * excludes the user home, so a plugin genuinely cannot read host secrets. The
+         * permission/approval gates key on this — treating a reduced-or-none backend as a full
+         * security sandbox reports a false sense of security.
+         *
+         * <p>{@link #SANDBOX_EXEC} (macOS) is intentionally NOT full: a JVM cannot launch under a
+         * strict deny-default on macOS, so the profile is deny-sensitive (allow-default + explicit
+         * denies of known credential dirs) rather than a true minimal allowlist. A plugin can still
+         * read non-allowlisted user files, so it is reported as {@link #reducedIsolation()}, not
+         * full. {@link #WINDOWS_JOB} confines the process tree's lifecycle only.
+         */
+        public boolean providesSecurityIsolation() {
+            return this == BUBBLEWRAP;
+        }
+
+        /**
+         * {@code true} when this backend provides a partial/reduced security boundary (better than
+         * bare, but not the full minimal-allowlist isolation the gates require for
+         * "sandboxed" reporting). {@link #SANDBOX_EXEC} (macOS) — deny-sensitive, denies known
+         * credential paths but cannot be deny-default. Windows Job Object and NONE are not reduced.
+         */
+        public boolean reducedIsolation() {
+            return this == SANDBOX_EXEC;
+        }
+
+        /** {@code true} when this backend reliably terminates the worker process tree on host exit. */
+        public boolean providesLifecycleIsolation() {
+            return this != NONE;
+        }
     }
 
     public record Launch(List<String> command, Backend backend,
@@ -53,6 +85,17 @@ public class ProcessSandbox {
 
         public boolean sandboxed() {
             return backend != Backend.NONE;
+        }
+
+        /**
+         * {@code true} when the backend enforces an OS filesystem/network security boundary. Distinct
+         * from {@link #sandboxed()} (which only means "a backend is active"): {@code WINDOWS_JOB}
+         * provides lifecycle isolation only. Callers that need the security boundary (permission
+         * gates, the settings UI's compatibility-mode branch, the process-isolation endpoint)
+         * should use this rather than {@link #sandboxed()}.
+         */
+        public boolean securityIsolated() {
+            return backend.providesSecurityIsolation();
         }
     }
 
@@ -94,12 +137,20 @@ public class ProcessSandbox {
     }
 
     /**
-     * Returns whether this host can enforce the native process boundary used by AI-authored
-     * commands. Permission policy uses this to fail closed instead of treating a regex heuristic
-     * as a sandbox on unsupported platforms.
+     * Returns whether this host can enforce a native filesystem/network security boundary. This is
+     * the gate the permission/approval policy and the settings UI key on: when it returns
+     * {@code false}, plugins and AI-authored commands run in compatibility mode (fail-closed,
+     * explicit approval) rather than under a real OS sandbox.
+     *
+     * <p>Note this is narrower than "a backend is active": a {@link Backend#WINDOWS_JOB Windows Job
+     * Object} is active and provides process-tree lifecycle isolation, but it does NOT isolate
+     * filesystem or network access. Reporting Windows as having a security sandbox (the old
+     * behavior) was a false sense of security. Until Windows AppContainer/restricted-token work
+     * lands, this returns {@code false} on Windows so the host treats it as a no-security-sandbox
+     * platform honestly.
      */
     public static boolean isNativeSandboxAvailable() {
-        return detect() != Backend.NONE;
+        return detect().providesSecurityIsolation();
     }
 
     /**
@@ -138,28 +189,47 @@ public class ProcessSandbox {
             // caller can later terminate/close the job (see WindowsJobSandbox).
             java.util.function.BiConsumer<Process, long[]> onStarted = (process, handleOut) -> {
                 long job = WindowsJobSandbox.createAndConfigureJob();
+                // Publish ownership immediately so the caller can reclaim the handle even if the
+                // native assignment hook throws an Error after creating the Job Object.
+                handleOut[0] = job;
                 try {
                     WindowsJobSandbox.assign(job, process);
-                } catch (RuntimeException e) {
+                } catch (RuntimeException | Error e) {
                     WindowsJobSandbox.closeHandle(job);  // reclaim the created-but-unassigned job
+                    handleOut[0] = 0L;
                     throw e;
                 }
-                handleOut[0] = job;
             };
             return new Launch(raw, backend, onStarted);
         }
         if (backend == Backend.BUBBLEWRAP) {
+            // Minimal read-only view: instead of bind-mounting the entire host root (the old
+            // --ro-bind / /, which exposed the user's home, SSH config, ~/.fengyu secrets, ... to
+            // every plugin), expose only what a JVM worker actually needs to launch:
+            //   - the OS/runtime trees a JDK and native libs resolve from (/usr, /bin, /lib, /etc)
+            //   - the JDK itself (java.home — may live under $HOME on some distros, so bind JUST it,
+            //     never the whole home)
+            //   - the plugin's own read-only package directory
+            //   - any classpath roots the worker command itself references (so a worker whose deps
+            //     live outside the package — e.g. a dev classpath — still launches; production
+            //     plugins ship their jars inside the package, so this adds nothing for them)
+            // The user home, other plugins, and ~/.fengyu stay invisible. Plugin-owned writable
+            // roots (plugin-data, worker tmp, authorized FileRefs) are bound read-write.
             List<String> command = new ArrayList<>();
             command.add("bwrap");
             command.add("--die-with-parent");
             command.add("--new-session");
-            command.add("--ro-bind");
-            command.add("/");
-            command.add("/");
+            for (String ro : List.of("/usr", "/bin", "/lib", "/lib64", "/etc")) {
+                appendReadOnlyBind(command, Path.of(ro), "--ro-bind");
+            }
+            appendReadOnlyBind(command, Path.of(System.getProperty("java.home", "")), "--ro-bind");
+            appendReadOnlyBind(command, workdir.toAbsolutePath().normalize(), "--ro-bind");
+            for (Path cp : classpathRoots(raw)) {
+                appendReadOnlyBind(command, cp, "--ro-bind");
+            }
             command.add("--proc");
             command.add("/proc");
-            command.add("--dev-bind");
-            command.add("/dev");
+            command.add("--dev");
             command.add("/dev");
             command.add("--tmpfs");
             command.add("/tmp");
@@ -176,14 +246,46 @@ public class ProcessSandbox {
             return new Launch(command, backend);
         }
 
+        // macOS sandbox-exec: deny-sensitive. A strict deny-default profile breaks a JVM launch on
+        // macOS (the JDK reads/writes under ~/Library for caches/preferences and needs broad system
+        // access to even start). Instead, start from (allow default) so the worker launches, then
+        // DENY READ of the genuinely sensitive host paths a plugin has no business seeing: the
+        // user's SSH/AWS/gcloud/cloud credentials, the FengYu runtime root (host DB, config, logs,
+        // other plugins' data), and sibling plugin packages. Writes are denied everywhere except
+        // the plugin-owned roots (the package itself stays read-only via the writableRoots list —
+        // the host no longer adds the package dir to it, P0-2(a)). This satisfies the review's
+        // intent (a plugin must not read host secrets) on a platform where a JVM cannot survive a
+        // true deny-default.
+        String home = System.getProperty("user.home", "");
         StringBuilder profile = new StringBuilder("(version 1)\n(allow default)\n");
-        if (!allowNetwork) profile.append("(deny network*)\n");
-        profile.append("(deny file-write*)\n")
-                .append("(allow file-write* (subpath \"/tmp\"))\n");
+        if (!home.isBlank()) {
+            for (String secret : List.of(".ssh", ".aws", ".config/gcloud", ".config/github-copilot",
+                    ".gnupg", ".docker", ".kube")) {
+                profile.append("(deny file-read* (subpath ")
+                        .append(quoted(Path.of(home, secret).toString())).append("))\n");
+            }
+        }
+        // The FengYu runtime root holds the host DB, config, per-plugin data, and logs — deny every
+        // plugin from reading any of it except its own authorized roots (added back below).
+        Path runtimeRoot = fan.summer.fengyu.runtime.RuntimePaths.root();
+        profile.append("(deny file-read* (subpath ").append(quoted(runtimeRoot.toString())).append("))\n");
+        // Writes are denied by default; only the plugin-owned roots may be written.
+        profile.append("(deny file-write*)\n");
         for (Path root : normalizedExisting(writableRoots)) {
+            // Each writable root is both writable AND readable (it was denied above as a runtime-root
+            // subpath; the plugin must still read its own data/tmp dirs).
+            profile.append("(allow file-read* (subpath ")
+                    .append(quoted(root.toString())).append("))\n");
             profile.append("(allow file-write* (subpath ")
-                    .append(quoted(root.toString()))
-                    .append("))\n");
+                    .append(quoted(root.toString())).append("))\n");
+        }
+        // The plugin's own package dir must remain READABLE (it's under the runtime root, denied above).
+        appendReadSubpath(profile, workdir.toAbsolutePath().normalize());
+        // System tmp is needed for JVM/worker scratch files.
+        profile.append("(allow file-write* (subpath \"/tmp\"))\n");
+        profile.append("(allow file-write* (subpath \"/private/tmp\"))\n");
+        if (!allowNetwork) {
+            profile.append("(deny network*)\n");
         }
         List<String> command = new ArrayList<>();
         command.add("sandbox-exec");
@@ -202,12 +304,63 @@ public class ProcessSandbox {
                 .toList();
     }
 
+    /**
+     * Paths the worker command references for its classpath, so the sandbox can grant them read
+     * access without exposing the whole host. Scans {@code raw} for JVM {@code -cp}/{@code -classpath}
+     * arguments (path-separator-split) and {@code -jar} arguments, plus the executable's own
+     * directory (for a worker launched by a script next to its jars). Production plugins ship their
+     * dependencies inside the package directory (already granted read), so this typically adds
+     * nothing for them; it exists so a worker whose deps legitimately resolve outside the package
+     * still launches under the tightened view.
+     */
+    static List<Path> classpathRoots(List<String> raw) {
+        if (raw == null || raw.isEmpty()) return List.of();
+        java.util.List<Path> roots = new ArrayList<>();
+        for (int i = 0; i < raw.size(); i++) {
+            String arg = raw.get(i);
+            if (("-cp".equals(arg) || "-classpath".equals(arg) || "--class-path".equals(arg))
+                    && i + 1 < raw.size()) {
+                for (String entry : raw.get(++i).split(java.io.File.pathSeparator)) {
+                    addIfReadable(roots, Path.of(entry));
+                }
+            } else if (("-jar".equals(arg) || "--jar".equals(arg)) && i + 1 < raw.size()) {
+                addIfReadable(roots, Path.of(raw.get(++i)));
+            }
+        }
+        return roots.stream().distinct().toList();
+    }
+
+    private static void addIfReadable(java.util.List<Path> roots, Path path) {
+        if (path == null) return;
+        Path resolved = realPath(path);
+        if (Files.isReadable(resolved)) roots.add(resolved);
+    }
+
+    /** Resolve a path to its real (symlink-followed) absolute form. */
     private static Path realPath(Path path) {
         try {
             return path.toRealPath();
         } catch (java.io.IOException ignored) {
             return path.toAbsolutePath().normalize();
         }
+    }
+
+    /** Append a read-only bind for {@code path} to a bwrap command list (no-op if missing). */
+    private static void appendReadOnlyBind(List<String> command, Path path, String flag) {
+        if (path == null) return;
+        Path resolved = realPath(path);
+        if (!Files.exists(resolved)) return;
+        command.add(flag);
+        command.add(resolved.toString());
+        command.add(resolved.toString());
+    }
+
+    /** Append an {@code (allow file-read* (subpath "<path>"))} line to a macOS profile. */
+    private static void appendReadSubpath(StringBuilder profile, Path path) {
+        if (path == null) return;
+        Path resolved = realPath(path);
+        if (!Files.exists(resolved)) return;
+        profile.append("(allow file-read* (subpath ").append(quoted(resolved.toString())).append("))\n");
     }
 
     private static String quoted(String value) {

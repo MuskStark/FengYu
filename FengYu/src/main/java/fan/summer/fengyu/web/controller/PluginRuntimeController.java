@@ -29,6 +29,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 @RestController
@@ -86,33 +87,39 @@ public class PluginRuntimeController {
      * connection never keeps receiving (and its drain thread is freed). This is idempotent — the
      * {@code unsubscribe} runnable and {@code emitter.complete()} are both safe to call repeatedly.
      *
-     * <p><b>Replay ordering.</b> The live subscriber is registered, then the buffered history is
-     * replayed. To avoid delivering the same entry twice on the race window between subscribe and
-     * replay, the live path skips any entry whose {@link PluginLogEntry#sequence()} is at or below
-     * the replay high-water mark.
+     * <p><b>Replay ordering.</b> The live subscriber is registered in a paused state, the buffered
+     * history is replayed, and only then is its FIFO drainer activated. Concurrent appends queue
+     * behind that barrier, so live delivery cannot overtake history and no mutable array/high-water
+     * data race is needed.
      */
     @GetMapping(value = "/api/plugin-runtime/{id}/logs/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter logStream(@PathVariable String id) {
         // No timeout: the stream is a long-lived console; the client (or emitter error/timeout)
         // ends it. Subscribers are unregistered on every terminal callback so dead clients don't leak.
         SseEmitter emitter = new SseEmitter(0L);
-        // Track the replay high-water mark so the live path can skip entries already replayed.
-        long[] replayHighWater = { -1L };
+        // The subscription does not start its live drainer until activate(), below. An AtomicReference
+        // lets the live failure path own lifecycle cleanup without the ordinary-array publication race
+        // of the previous high-water holder.
+        AtomicReference<Runnable> unsubscribeRef = new AtomicReference<>(() -> {});
         Consumer<PluginLogEntry> subscriber = entry -> {
-            if (entry.sequence() <= replayHighWater[0]) return; // already delivered in the replay snapshot
-            sendLogEntry(emitter, id, entry);
+            if (!sendLogEntry(emitter, id, entry)) unsubscribeRef.get().run();
         };
-        Runnable unsubscribe = logStore.subscribe(id, subscriber);
-        // Replay buffered history first so a late-connecting client sees context. Subscribe happens
-        // BEFORE the replay snapshot, so any entry added after subscribe is also in the snapshot (and
-        // thus at or below the high-water mark) — the live path drops the duplicate by sequence.
-        for (PluginLogEntry entry : logStore.recent(id, PluginLogStore.CAPACITY)) {
-            if (!sendLogEntry(emitter, id, entry)) break;
-            replayHighWater[0] = Math.max(replayHighWater[0], entry.sequence());
-        }
+        PluginLogStore.Subscription subscription = logStore.subscribeWithSnapshot(id, subscriber);
+        Runnable unsubscribe = subscription.unsubscribe();
+        unsubscribeRef.set(unsubscribe);
         emitter.onCompletion(unsubscribe);
         emitter.onTimeout(unsubscribe);
         emitter.onError(ignored -> unsubscribe.run());
+        // Replay the snapshot (taken atomically with the subscribe) so a late client sees context.
+        for (PluginLogEntry entry : subscription.snapshot()) {
+            if (!sendLogEntry(emitter, id, entry)) {
+                // The callbacks above are not guaranteed to run synchronously from complete(); own
+                // cleanup here so a failure during replay cannot leave a paused subscriber registered.
+                unsubscribe.run();
+                return emitter;
+            }
+        }
+        subscription.activate();
         return emitter;
     }
 
@@ -121,7 +128,7 @@ public class PluginRuntimeController {
      * emitter is completed (idempotent) and the caller's terminal callbacks unregister it. Returns
      * {@code false} when the send failed so the replay loop can stop early.
      */
-    private boolean sendLogEntry(SseEmitter emitter, String id, PluginLogEntry entry) {
+    protected boolean sendLogEntry(SseEmitter emitter, String id, PluginLogEntry entry) {
         try {
             emitter.send(SseEmitter.event().name("log").data(entry, MediaType.APPLICATION_JSON));
             return true;

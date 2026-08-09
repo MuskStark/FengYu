@@ -70,7 +70,7 @@ Plugin registry and lifecycle. Base `/api/plugin-market`. See [Marketplace](/en/
 | `POST` | `/api/plugin-market/{id}/install` | token | Install a catalog plugin by id. |
 | `POST` | `/api/plugin-market/{id}/update` | token | Update an installed plugin to the catalog's latest. |
 | `PATCH` | `/api/plugin-market/{id}/enabled` | token | Toggle enabled. Body `{enabled}`. Disabling stops the worker immediately. |
-| `DELETE` | `/api/plugin-market/{id}` | token | Uninstall — stops worker, removes package, drops descriptor. |
+| `DELETE` | `/api/plugin-market/{id}?deleteData=<boolean>` | token | Uninstall with an explicit runtime-data retain/delete policy. Retain also preserves the provisioned DB namespace. |
 
 ## Settings
 

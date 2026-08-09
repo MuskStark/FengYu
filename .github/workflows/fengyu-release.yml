@@ -4,7 +4,8 @@ name: FengYu-Release
 #   - unsigned Windows/macOS/Linux Electron desktop packages (with + without bundled JRE)
 #   - a portable, loopback-only Web distribution (zip + tar.gz)
 #
-# Shared inputs (one Vue bundle + one shaded JAR + official .fyp plugins) feed both the
+# Shared inputs (one Vue bundle + one shaded JAR + official .fyp plugins and their SHA-256
+# sidecars) feed both the
 # Web packaging job and the desktop matrix. A GitHub prerelease is created at the end.
 #
 # See docs/superpowers/plans/2026-07-16-alpha-desktop-web-release.md for the design.
@@ -63,7 +64,7 @@ jobs:
   # ==========================================================================
   # build-runtime — produce the shared inputs used by Web + desktop packaging:
   #   - the shaded Spring Boot JAR (with the Vue bundle baked in as static/)
-  #   - the four official .fyp plugin packages
+  #   - the five official .fyp plugin packages and their .sha256 sidecars
   #   - the frontend dist (already copied into the JAR, kept for inspection)
   # ==========================================================================
   build-runtime:
@@ -130,14 +131,18 @@ jobs:
 
       - name: Build official plugins (.fyp via toolchain/cli)
         run: |
-          for plugin in markdown excel email offlinepython; do
+          for plugin in markdown excel email offlinepython browser; do
             node toolchain/cli/bin/fengyu.mjs plugin build "OfficialPlugins/plugin-$plugin"
           done
 
-      - name: Stage official .fyp packages
+      - name: Stage official .fyp packages and SHA-256 sidecars
         run: |
           mkdir -p staging/plugins
-          cp OfficialPlugins/plugin-*/dist-package/*.fyp staging/plugins/
+          for archive in OfficialPlugins/plugin-*/dist-package/*.fyp; do
+            test -f "$archive.sha256" \
+              || { echo "Missing required checksum sidecar: $archive.sha256"; exit 1; }
+            cp "$archive" "$archive.sha256" staging/plugins/
+          done
           ls -la staging/plugins/
 
       - name: Build + test the backend (reactor, -Drevision)
@@ -148,6 +153,13 @@ jobs:
           test -f "FengYu/target/FengYu-${VERSION}.jar"
           jar tf "FengYu/target/FengYu-${VERSION}.jar" | grep -q '^static/index.html' \
             || { echo "static/index.html missing from JAR"; exit 1; }
+
+      # End-to-end smoke: boot the freshly built JAR, exercise token auth, plugin invoke, FileRef
+      # resolution, and the markdown/excel/email/offlinepython/browser plugin RPC surface. The
+      # bubblewrap sandbox enabled above is required (PluginProcessManager fails closed without it),
+      # and the JAR + official .fyp packages built earlier in this job are already on disk.
+      - name: Run host-level e2e smoke (boots JAR + probes every endpoint)
+        run: scripts/e2e-smoke.sh
 
       - name: Stage the runtime JAR (uniform name)
         run: cp "FengYu/target/FengYu-${VERSION}.jar" staging/Infinia.jar
@@ -163,7 +175,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: official-plugins
-          path: staging/plugins/*.fyp
+          path: |
+            staging/plugins/*.fyp
+            staging/plugins/*.fyp.sha256
           if-no-files-found: error
 
       - name: Upload frontend dist
@@ -204,7 +218,7 @@ jobs:
         run: |
           mkdir -p out/plugins
           cp inputs/Infinia.jar out/Infinia.jar
-          cp inputs/*.fyp out/plugins/
+          cp inputs/*.fyp inputs/*.fyp.sha256 out/plugins/
           scripts/package-web-release.sh "$VERSION" out/Infinia.jar out/plugins out
 
       - name: Smoke-test the Web archive
@@ -221,7 +235,8 @@ jobs:
 
   # ==========================================================================
   # Desktop — build the Electron bundle for each platform (with + without JRE).
-  # CI stages the tested JAR + .fyp plugins into desktop/electron/resources/binaries/,
+  # CI stages the tested JAR + .fyp plugins and their SHA-256 sidecars into
+  # desktop/electron/resources/binaries/,
   # builds the Vue SPA into desktop/electron/frontend-dist/ (loaded via loadFile in
   # packaged mode), generates a jlink JRE for the with-JRE variant, then runs
   # electron-builder twice. Both variants are uploaded per platform.
@@ -315,7 +330,7 @@ jobs:
         run: |
           mkdir -p desktop/electron/resources/binaries/plugins
           cp inputs/Infinia.jar desktop/electron/resources/binaries/FengYu.jar
-          cp inputs/*.fyp desktop/electron/resources/binaries/plugins/
+          cp inputs/*.fyp inputs/*.fyp.sha256 desktop/electron/resources/binaries/plugins/
           ls -R desktop/electron/resources/binaries
 
       - name: Run Electron launch E2E (Linux)

@@ -58,4 +58,20 @@ class PluginDbProvisioningStoreTest {
         assertEquals("u2", loaded.userName());
         assertEquals("pw2", loaded.password());
     }
+
+    @Test
+    void lifecycleStatusAndListRoundTrip() {
+        PluginDbProvisioningStore store = newStore();
+        store.put(new PluginDbProvisioningStore.ProvisionedPluginDb(
+            "fan.summer.email", DbType.H2, "fengyu_fan_summer_email", "worker",
+            "pw", "jdbc:h2:tcp://localhost/db", "org.h2.Driver", "t",
+            PluginDbProvisioningStore.STATUS_PROVISIONING));
+
+        assertEquals(PluginDbProvisioningStore.STATUS_PROVISIONING,
+            store.get("fan.summer.email").canonicalStatus());
+        assertEquals(1, store.list().size());
+        store.setStatus("fan.summer.email", PluginDbProvisioningStore.STATUS_DELETE_PENDING);
+        assertEquals(PluginDbProvisioningStore.STATUS_DELETE_PENDING,
+            store.list().getFirst().canonicalStatus());
+    }
 }

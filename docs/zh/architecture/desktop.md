@@ -74,7 +74,7 @@ window.fengyu.pickDirectory()     // → 原生打开对话框（IPC）
 - **文件日志**——`electron-log` 把主进程日志写入
   `<运行目录>/.fengyu/logs/desktop.log`（与后端日志同目录）；后端的 stdout/stderr 同步写入
   `<运行目录>/.fengyu/logs/backend-stdout.log`。内置按大小/日期滚动。
-- **自动更新**——`electron-updater`，源为 GitHub Releases（`latest*.yml` 由 electron-builder 生成）。在 `app.whenReady()` 之后做非阻塞检查；发现有更新时 → 原生对话框确认 → 下载并安装。Alpha 未签名：Windows 用 NSIS，macOS 需用户在 Gatekeeper 放行。
+- **自动更新**——`electron-updater`，源为 GitHub Releases（`latest*.yml` 由 electron-builder 生成）。在 `app.whenReady()` 之后做非阻塞检查。自动安装（下载 + `quitAndInstall`）以**已签名发行版**为门禁（`FENGYU_SIGNED_RELEASE=true`，由未来的签名+公证构建注入）。当前构建为未签名，因此发现更新时只**通知**用户并提供打开手动下载页——绝不调用安装器，因为仅凭 GitHub feed 无法校验发布者（尚无 OS 代码签名 / macOS 公证）。
 
 ## 关停语义（已变更——重要）
 

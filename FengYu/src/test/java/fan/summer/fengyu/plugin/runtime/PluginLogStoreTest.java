@@ -1,6 +1,8 @@
 package fan.summer.fengyu.plugin.runtime;
 
+import fan.summer.fengyu.web.controller.PluginRuntimeController;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -9,6 +11,9 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -60,7 +65,7 @@ class PluginLogStoreTest {
     @Test
     void subscriberReceivesLiveEntriesAfterSubscribe() throws Exception {
         PluginLogStore store = new PluginLogStore();
-        List<PluginLogEntry> received = new ArrayList<>();
+        List<PluginLogEntry> received = new CopyOnWriteArrayList<>();
         Runnable unsubscribe = store.subscribe("markdown", received::add);
         store.append("markdown", "INFO", "after-subscribe");
         // Delivery is asynchronous (each subscriber has its own drain thread), so wait for it.
@@ -96,7 +101,7 @@ class PluginLogStoreTest {
     void slowSubscriberDoesNotBlockAppendOnDrainThread() throws Exception {
         PluginLogStore store = new PluginLogStore();
         CountDownLatch blockSubscriber = new CountDownLatch(1);
-        List<PluginLogEntry> slowReceived = new ArrayList<>();
+        List<PluginLogEntry> slowReceived = new CopyOnWriteArrayList<>();
         store.subscribe("excel", entry -> {
             slowReceived.add(entry);
             // Block this subscriber's delivery until the test releases it.
@@ -147,7 +152,7 @@ class PluginLogStoreTest {
     @Test
     void clearDropsBufferAndSubscribers() {
         PluginLogStore store = new PluginLogStore();
-        List<PluginLogEntry> received = new ArrayList<>();
+        List<PluginLogEntry> received = new CopyOnWriteArrayList<>();
         store.subscribe("offlinepython", received::add);
         store.append("offlinepython", "INFO", "kept");
         store.clear("offlinepython");
@@ -175,6 +180,97 @@ class PluginLogStoreTest {
         long s2 = store.recent("markdown", 10).get(0).sequence();
         assertTrue(s1 > s0, "sequence must be strictly increasing: " + s0 + " -> " + s1);
         assertTrue(s2 > s1, "sequence must be store-wide monotonic: " + s1 + " -> " + s2);
+    }
+
+    @Test
+    void pausedSubscriptionQueuesConcurrentLiveEntriesUntilReplayActivation() throws Exception {
+        PluginLogStore store = new PluginLogStore();
+        for (int i = 0; i < 8; i++) store.append("excel", "INFO", "history-" + i);
+        CopyOnWriteArrayList<PluginLogEntry> live = new CopyOnWriteArrayList<>();
+        PluginLogStore.Subscription subscription = store.subscribeWithSnapshot("excel", live::add);
+
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            CountDownLatch start = new CountDownLatch(1);
+            var futures = new ArrayList<java.util.concurrent.Future<?>>();
+            for (int i = 0; i < 64; i++) {
+                int n = i;
+                futures.add(executor.submit(() -> {
+                    start.await();
+                    store.append("excel", "INFO", "live-" + n);
+                    return null;
+                }));
+            }
+            start.countDown();
+            for (var future : futures) future.get(2, TimeUnit.SECONDS);
+        }
+
+        assertTrue(live.isEmpty(), "live delivery must remain paused while history is replayed");
+        subscription.activate();
+        waitFor(() -> live.size() == 64, Duration.ofSeconds(2));
+
+        List<PluginLogEntry> ordered = new ArrayList<>(subscription.snapshot());
+        ordered.addAll(live);
+        for (int i = 1; i < ordered.size(); i++) {
+            assertTrue(ordered.get(i).sequence() > ordered.get(i - 1).sequence(),
+                "replay/live sequence regressed at index " + i);
+        }
+        subscription.unsubscribe().run();
+    }
+
+    @Test
+    void controllerNeverLetsLiveDeliveryOvertakeReplay() throws Exception {
+        PluginLogStore store = new PluginLogStore();
+        for (int i = 0; i < 5; i++) store.append("excel", "INFO", "history-" + i);
+        CountDownLatch replayStarted = new CountDownLatch(1);
+        CountDownLatch continueReplay = new CountDownLatch(1);
+        CopyOnWriteArrayList<PluginLogEntry> delivered = new CopyOnWriteArrayList<>();
+        PluginRuntimeController controller = new PluginRuntimeController(null, null, store) {
+            @Override
+            protected boolean sendLogEntry(SseEmitter emitter, String id, PluginLogEntry entry) {
+                delivered.add(entry);
+                if (delivered.size() == 1) {
+                    replayStarted.countDown();
+                    try {
+                        assertTrue(continueReplay.await(2, TimeUnit.SECONDS));
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return false;
+                    }
+                }
+                return true;
+            }
+        };
+
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var connecting = executor.submit(() -> controller.logStream("excel"));
+            assertTrue(replayStarted.await(2, TimeUnit.SECONDS));
+            for (int i = 0; i < 10; i++) store.append("excel", "INFO", "live-" + i);
+            continueReplay.countDown();
+            SseEmitter emitter = connecting.get(2, TimeUnit.SECONDS);
+            waitFor(() -> delivered.size() == 15, Duration.ofSeconds(2));
+            emitter.complete();
+        }
+        for (int i = 1; i < delivered.size(); i++) {
+            assertTrue(delivered.get(i).sequence() > delivered.get(i - 1).sequence(),
+                "live event overtook replay at index " + i);
+        }
+    }
+
+    @Test
+    void replayFailureUnsubscribesImmediately() {
+        PluginLogStore store = new PluginLogStore();
+        store.append("excel", "INFO", "history");
+        PluginRuntimeController controller = new PluginRuntimeController(null, null, store) {
+            @Override
+            protected boolean sendLogEntry(SseEmitter emitter, String id, PluginLogEntry entry) {
+                return false;
+            }
+        };
+
+        controller.logStream("excel");
+
+        assertEquals(0, store.subscriberCountForTest("excel"),
+            "a replay send failure must remove the paused subscriber before returning");
     }
 
     @Test

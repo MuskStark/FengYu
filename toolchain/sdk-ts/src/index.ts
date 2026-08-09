@@ -1,4 +1,8 @@
-export const SDK_VERSION = '1.0.0'
+// MUST stay in lockstep with the package version (package.json "version"). This is the single
+// value sent on host.ready and used for the major-version compatibility gate below; if it drifts
+// from the published version the gate becomes decorative. resolve-tooling-version.mjs asserts the
+// six toolchain artifacts agree — this constant must agree with them too.
+export const SDK_VERSION = '1.2.0'
 
 export type Theme = 'dark' | 'light'
 export type FileAccess = 'read' | 'write' | 'read-write'

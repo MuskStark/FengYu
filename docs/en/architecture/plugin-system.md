@@ -38,19 +38,37 @@ platform. The `GET /api/security/process-isolation` endpoint reports the active 
 
 | Platform | Backend | Process-tree termination | Filesystem isolation | Network isolation |
 | --- | --- | --- | --- | --- |
-| Linux | `bubblewrap` (`bwrap --die-with-parent --new-session`) | kernel | read-only system files, writes confined to plugin/working roots | isolated unless declared |
-| macOS | `sandbox-exec` (Seatbelt profile) | tree-kill | read-only system files, writes confined to plugin/working roots | isolated unless declared |
+| Platform | Backend | Process-tree termination | Filesystem isolation | Network isolation |
+| --- | --- | --- | --- | --- |
+| Linux | `bubblewrap` (`bwrap --die-with-parent --new-session`) | kernel | **full** — minimal read-only view (OS/runtime trees + JDK + the plugin's own package + its classpath roots — **not** `$HOME`); writes confined to plugin-owned roots | isolated unless declared |
+| macOS | `sandbox-exec` (Seatbelt profile) | tree-kill | **reduced / advisory** — deny-sensitive (allow-default, then deny reads of host credentials `~/.ssh` `~/.aws` `~/.config/gcloud` `~/.gnupg` etc. and the whole FengYu runtime root; writes confined to plugin-owned roots + `/tmp`). A plugin can still read non-allowlisted user files, so this is NOT reported as full isolation. | isolated unless declared |
 | Windows | `windows-job` (Win32 Job Object, `KILL_ON_JOB_CLOSE`) | **reliable** — the Job kills the whole tree on handle close or `TerminateJobObject` | **not enforced** (known gap) | **not enforced** (known gap) |
 | Other / no isolator | `none` | host shutdown hook + tree-kill backstop | none — explicit approval only | none — explicit approval only |
+
+> **Honest reporting.** Only Linux reports `sandboxed: true` (full isolation). macOS reports
+> `sandboxed: false, reduced: true` — its profile is deny-sensitive rather than a strict
+> `deny-default` (a JVM cannot launch under `deny-default` on macOS; it reads/writes under
+> `~/Library` for caches/preferences), so a plugin can still read non-allowlisted user files. The
+> host does NOT claim macOS is fully sandboxed; the chat approval gate treats it as reduced. Linux
+> bwrap uses a minimal read-only view that excludes the user home, so `~/.fengyu` and user secrets
+> are invisible to the plugin there. A true minimal allowlist on macOS (deny-default + an explicit
+> JDK/runtime read set) is a tracked follow-up that would flip macOS to full isolation.
 
 On Windows the Job Object backend is a **process-layer** isolation only: it guarantees the worker and
 any descendants (e.g. a `pip` subprocess) terminate reliably when the host closes the job handle, which
 removes the long-standing gap where `ProcessHandle.descendants()` could miss orphans on Windows. It
 does **not** confine filesystem writes or block network the way `bwrap` and `sandbox-exec` do on Linux
 and macOS — that gap is intentional and documented; the explicit-approval gate still guards every
-effect on Windows. The `unsandboxedPlugins` Settings toggle (where exposed) lets a trusted user opt out
-of even the process-layer isolation: OFF = Job isolation on Windows / native sandbox elsewhere;
-ON = workers run bare with app-equivalent privileges.
+effect on Windows.
+
+Because a Job Object is **not** a security sandbox, the host reports Windows honestly as
+`compatibilityMode: true` / `sandboxed: false` (with `lifecycleIsolation: job-object`) and the chat
+approval gate treats Windows like any other no-security-sandbox platform — it does not relax approval
+just because a backend is active. The `unsandboxedPlugins` Settings toggle is therefore shown on
+Windows (it is in compatibility mode); ON = workers run bare with app-equivalent privileges, OFF =
+Job-Object lifecycle isolation only (no filesystem/network boundary). Real OS filesystem/network
+isolation on Windows (AppContainer / restricted token + ACL + network capability) is a tracked
+follow-up.
 
 ## Sandboxed UI
 

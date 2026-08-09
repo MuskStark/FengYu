@@ -1,6 +1,9 @@
 package fan.summer.fengyu.plugin.store;
 
 import fan.summer.fengyu.plugin.market.PluginPackageService;
+import fan.summer.fengyu.plugin.market.PluginManifest;
+import fan.summer.fengyu.plugin.runtime.PluginLogStore;
+import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -8,6 +11,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 class InstallerDispatcherTest {
 
@@ -50,6 +54,30 @@ class InstallerDispatcherTest {
         assertEquals("test:CLAUDE:y", agent.lastUid);
     }
 
+    @Test
+    void fengyuUpdateUsesProcessGateAndUninstallHonorsDataPolicy() {
+        CapturingPackageService packages = new CapturingPackageService(temp);
+        CapturingAgentInstaller agent = new CapturingAgentInstaller();
+        PluginProcessManager processes = mock(PluginProcessManager.class);
+        PluginLogStore logs = mock(PluginLogStore.class);
+        InstallerDispatcher dispatcher = new InstallerDispatcher(packages, agent, processes, logs);
+        UnifiedCatalogEntry entry = new UnifiedCatalogEntry(
+            "fengyu-default:FENGYU:com.example.demo", "fengyu-default", StoreSourceType.FENGYU,
+            "com.example.demo", "Demo", "d", null, null, List.of(), null, null,
+            new UnifiedCatalogEntry.ZipUrlSource("https://example.com/demo.fyp"),
+            List.of(), List.of(), null, true, "1.0.0", true, true);
+
+        dispatcher.update(entry);
+        verify(processes).beginUpdate("com.example.demo");
+        verify(processes).endUpdate("com.example.demo");
+        assertTrue(packages.installedFromUrl);
+
+        dispatcher.uninstall(entry, false);
+        verify(processes).stop("com.example.demo");
+        verify(logs).clear("com.example.demo");
+        assertFalse(packages.deleteData);
+    }
+
     /** Minimal AgentContentInstaller stand-in that records invocations. */
     static class CapturingAgentInstaller extends AgentContentInstaller {
         boolean invoked;
@@ -57,5 +85,18 @@ class InstallerDispatcherTest {
         CapturingAgentInstaller() { super(null, Path.of(System.getProperty("java.io.tmpdir")), 10); }
         @Override public void install(UnifiedCatalogEntry e) { invoked = true; lastUid = e.uid(); }
         @Override public void uninstall(String uid) { invoked = true; lastUid = uid; }
+    }
+
+    static class CapturingPackageService extends PluginPackageService {
+        boolean installedFromUrl;
+        boolean deleteData;
+        CapturingPackageService(Path root) { super(root.toString()); }
+        @Override public PluginManifest installFromUrl(String url) {
+            installedFromUrl = true;
+            return null;
+        }
+        @Override public void uninstall(String id, boolean deleteData) {
+            this.deleteData = deleteData;
+        }
     }
 }

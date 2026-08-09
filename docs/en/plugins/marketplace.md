@@ -81,10 +81,15 @@ Toggles the plugin's enabled flag. **Disabling stops the worker process immediat
 ## Uninstall
 
 ```
-DELETE /api/plugin-market/{id}
+DELETE /api/plugin-market/{id}?deleteData=true|false
 ```
 
-Removes the plugin entirely: stops the worker process if it is running, deletes the unpacked package, and drops the descriptor from the catalog.
+The data policy is required and explicit. The marketplace UI asks twice: first whether to uninstall,
+then whether to permanently delete runtime data. `deleteData=false` stops the worker and removes the
+unpacked package while retaining `plugin-data/<id>` and the provisioned DB namespace/credentials for
+a later reinstall. `deleteData=true` also removes those resources; if filesystem deletion cannot be
+completed, the endpoint returns an error instead of reporting a false success. Database cleanup that
+cannot complete is retained as `DELETE_PENDING` for retry.
 
 ## Catalog URL override
 
@@ -104,7 +109,7 @@ java -Dfengyu.marketplace.catalog-url=https://internal.example/fengyu-catalog.js
 | `POST /api/plugin-market/{id}/install` | Install a catalog plugin by id |
 | `POST /api/plugin-market/{id}/update` | Update to latest |
 | `PATCH /api/plugin-market/{id}/enabled` | Enable/disable (disabling stops the worker) |
-| `DELETE /api/plugin-market/{id}` | Uninstall (stops process + removes package) |
+| `DELETE /api/plugin-market/{id}?deleteData=<boolean>` | Uninstall with explicit runtime-data retain/delete policy |
 
 ## Next steps
 

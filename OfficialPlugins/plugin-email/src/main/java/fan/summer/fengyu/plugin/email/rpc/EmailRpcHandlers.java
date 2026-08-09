@@ -325,12 +325,19 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
                 instant(params, "start"), instant(params, "end"),
                 path(params.get("outputDirectory"), "outputDirectory", "directory"));
             Jobs.Job job = jobs.start("ARCHIVE", handle -> {
-                var value = archive.collect(request, progress -> handle.log(
-                    progress.completed() + "/" + progress.total() + " new=" + progress.newArchived()
-                    + " skipped=" + progress.skippedDuplicates() + " failed=" + progress.failures()));
-                handle.setSummary(value);
-                log.info("archived {} new, {} duplicate(s), {} failure(s) from account {} folder '{}'",
-                    value.newArchived(), value.skippedDuplicates(), value.failures(), accountId, folder);
+                try {
+                    var value = archive.collect(request, progress -> handle.log(
+                        progress.completed() + "/" + progress.total() + " new=" + progress.newArchived()
+                        + " skipped=" + progress.skippedDuplicates() + " failed=" + progress.failures()));
+                    handle.setSummary(value);
+                    log.info("archived {} new, {} duplicate(s), {} failure(s) from account {} folder '{}'",
+                        value.newArchived(), value.skippedDuplicates(), value.failures(), accountId, folder);
+                } catch (Exception e) {
+                    // Jobs.start flattens exceptions to a one-line markFailed without a stack trace;
+                    // log the full stack here so the host log surface has diagnostics, then rethrow.
+                    log.error("archive job failed for account {} folder '{}': {}", accountId, folder, e.toString(), e);
+                    throw e;
+                }
             });
             return ok("Archive started", "jobId", job.id);
         });

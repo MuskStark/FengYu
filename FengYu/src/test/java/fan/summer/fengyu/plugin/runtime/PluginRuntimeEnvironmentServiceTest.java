@@ -146,6 +146,33 @@ class PluginRuntimeEnvironmentServiceTest {
     }
 
     @Test
+    void incompleteProvisioningStatesNeverExposeCredentialsToWorker() {
+        DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host-incomplete").toString()) {
+            @Override public DataSourceConfig load() {
+                return new DataSourceConfig(DbType.POSTGRESQL, "jdbc:postgresql://db/fengyu",
+                    "org.postgresql.Driver", "org.hibernate.dialect.PostgreSQLDialect",
+                    "host", "host-secret", null, "admin", "admin-secret");
+            }
+        };
+        for (String state : List.of(PluginDbProvisioningStore.STATUS_PROVISIONING,
+                PluginDbProvisioningStore.STATUS_DELETE_PENDING)) {
+            Path stateRoot = temp.resolve("state-" + state);
+            PluginDbProvisioningStore store = new PluginDbProvisioningStore(stateRoot);
+            store.put(new PluginDbProvisioningStore.ProvisionedPluginDb(
+                "fan.summer.email", DbType.POSTGRESQL, "plugin_schema", "plugin_user",
+                "plugin-secret", "jdbc:postgresql://db/fengyu?currentSchema=plugin_schema",
+                "org.postgresql.Driver", "t", state));
+            PluginRuntimeEnvironmentService service = new PluginRuntimeEnvironmentService(
+                dataSources, stateRoot.resolve("plugin-data").toString(), store);
+
+            Map<String, String> env = service.environmentFor(
+                manifest("fan.summer.email", List.of("database")));
+            assertFalse(env.containsKey(PluginWorkerProtocol.DB_URL_ENV), state);
+            assertFalse(env.containsKey(PluginWorkerProtocol.DB_PASSWORD_ENV), state);
+        }
+    }
+
+    @Test
     void provisionedH2WorkerReceivesTcpUrlAndItsOwnCredentials() {
         DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host").toString()) {
             @Override public DataSourceConfig load() {

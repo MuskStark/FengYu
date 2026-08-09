@@ -6,6 +6,7 @@ import fan.summer.fengyu.web.controller.AiController;
 import fan.summer.fengyu.web.controller.AiFileController;
 import fan.summer.fengyu.web.controller.ConversationController;
 import fan.summer.fengyu.web.controller.PluginController;
+import fan.summer.fengyu.web.controller.PluginDbController;
 import fan.summer.fengyu.web.controller.PluginMarketplaceController;
 import fan.summer.fengyu.web.controller.PluginRuntimeController;
 import fan.summer.fengyu.web.controller.PluginRuntimeFileController;
@@ -43,6 +44,10 @@ import org.springframework.context.annotation.FilterType;
  * needs {@code AgentRunner}/{@code ToolCallback}, {@link AiController} is
  * meaningless before setup completes, and {@link AiConfigController} needs
  * {@code AiModeService}/{@code BackendReactivator} (which live in the {@code ai} package, not
+ * scanned here). {@link PluginDbController} needs {@code PluginPackageService} (from the
+ * {@code plugin.market} package) and {@link PluginDbProvisioner}, neither of which is a bean in
+ * this DB-less SETUP context, so it is excluded alongside the other APP-only plugin
+ * controllers. {@link ConversationController} needs the AI-history JPA repositories, absent in
  * scanned here). {@link ConversationController} needs the AI-history JPA repositories, absent in
  * this DB-less context. {@link SkillController} needs {@code SkillRegistry}/
  * {@code SkillPackageService}/{@code SkillMarketplaceService} from the {@code ai.skill} package,
@@ -61,6 +66,7 @@ import org.springframework.context.annotation.FilterType;
                 type = FilterType.ASSIGNABLE_TYPE,
                 classes = {PluginController.class, PluginMarketplaceController.class,
                         PluginRuntimeController.class,
+                        PluginDbController.class,
                         PluginRuntimeFileController.class,
                         PluginStoreController.class,
                         SettingsController.class,

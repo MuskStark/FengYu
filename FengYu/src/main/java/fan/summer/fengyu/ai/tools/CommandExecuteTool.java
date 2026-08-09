@@ -80,7 +80,10 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
         int timeout = bounded(timeoutSeconds, DEFAULT_TIMEOUT_SECONDS, 1, MAX_TIMEOUT_SECONDS);
         int outputLimit = bounded(maxOutputChars, DEFAULT_MAX_OUTPUT_CHARS, 1, MAX_OUTPUT_CHARS);
         Process process = null;
-        long jobHandle = 0L;
+        // Mutable receiver shared with the WINDOWS_JOB onStarted hook. Keep the receiver itself for
+        // the whole method: a hook may assign a handle and then throw, in which case copying the
+        // value only after accept() returns would lose the handle and leak it.
+        long[] jobHandle = {0L};
         OutputCapture capture = new OutputCapture(outputLimit);
         boolean timedOut = false;
         boolean fullAccess = AiPermissionContext.current() == AiPermissionMode.FULL_ACCESS;
@@ -100,9 +103,7 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
             // stays 0 (terminate/close then no-op). If the hook throws (create/assign failed), let
             // it propagate — the command must fail to start rather than run un-jailed.
             if (launch.onStarted() != null) {
-                long[] handleOut = {0L};
-                launch.onStarted().accept(process, handleOut);
-                jobHandle = handleOut[0];
+                launch.onStarted().accept(process, jobHandle);
             }
 
             Process running = process;
@@ -111,7 +112,8 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
 
             if (!process.waitFor(timeout, TimeUnit.SECONDS)) {
                 timedOut = true;
-                terminate(process, jobHandle);
+                terminate(process, jobHandle[0]);
+                jobHandle[0] = 0L;
                 process.waitFor(5, TimeUnit.SECONDS);
             }
             reader.join(Duration.ofSeconds(5));
@@ -131,11 +133,38 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
             return toJson(result);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            if (process != null) terminate(process, jobHandle);
+            if (process != null) {
+                terminate(process, jobHandle[0]);
+                jobHandle[0] = 0L;
+            }
             return error("command execution was interrupted");
+        } catch (Error e) {
+            // Preserve Error semantics, but never let an onStarted/JNA failure orphan the process
+            // or leak a Job Object handle. This mirrors PluginProcessManager's hook cleanup.
+            if (process != null) {
+                terminate(process, jobHandle[0]);
+                awaitTermination(process);
+                jobHandle[0] = 0L;
+            }
+            throw e;
         } catch (Exception e) {
-            if (process != null && process.isAlive()) terminate(process, jobHandle);
+            // Always run the cleanup when a process was started, even if it exited between the
+            // failure and this catch. A WINDOWS_JOB hook can write the handle and then throw; the
+            // process may already be dead while the kernel handle still needs closing.
+            if (process != null) {
+                terminate(process, jobHandle[0]);
+                awaitTermination(process);
+                jobHandle[0] = 0L;
+            }
             return error("failed to execute command: " + e.getMessage());
+        } finally {
+            // Normal completion does not call terminate(), but the Job Object handle is still an
+            // owned kernel resource. Close it after output collection/return preparation. On the
+            // timeout/error paths the slot was reset to zero after terminate() closed it.
+            if (jobHandle[0] != 0L) {
+                try { sandbox.closeJobHandle(jobHandle[0]); } catch (RuntimeException ignored) {}
+                jobHandle[0] = 0L;
+            }
         }
     }
 
@@ -210,6 +239,17 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
         process.destroyForcibly();
         if (jobHandle != 0L) {
             try { sandbox.closeJobHandle(jobHandle); } catch (RuntimeException ignored) {}
+        }
+    }
+
+    /** Briefly wait for a requested force-kill so a failed launch cannot return with a live child. */
+    private static void awaitTermination(Process process) {
+        try {
+            process.onExit().get(2, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException ignored) {
+            // Kill has already been requested; no stronger portable primitive is available here.
         }
     }
 

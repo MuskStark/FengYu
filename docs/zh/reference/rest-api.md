@@ -70,7 +70,7 @@ SSE 端点通过 `X-FengYu-Token` 头进行鉴权——**没有** `?token=` 查�
 | `POST` | `/api/plugin-market/{id}/install` | token | 按 id 安装目录中的某个插件。 |
 | `POST` | `/api/plugin-market/{id}/update` | token | 把已安装的插件更新到目录的最新版。 |
 | `PATCH` | `/api/plugin-market/{id}/enabled` | token | 切换启用状态。请求体 `{enabled}`。禁用会立即停止 worker。 |
-| `DELETE` | `/api/plugin-market/{id}` | token | 卸载——停止 worker、移除包、删除描述符。 |
+| `DELETE` | `/api/plugin-market/{id}?deleteData=<boolean>` | token | 使用显式运行数据保留/删除策略卸载；保留数据时也保留已 provision 的数据库命名空间。 |
 
 ## 设置
 

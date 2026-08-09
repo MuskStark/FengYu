@@ -11,6 +11,17 @@ const desktopJob = workflow.slice(
   workflow.indexOf('\n  desktop:'),
   workflow.indexOf('\n  release:'),
 )
+const buildRuntimeJob = workflow.slice(
+  workflow.indexOf('\n  build-runtime:'),
+  workflow.indexOf('\n  web:'),
+)
+const webJob = workflow.slice(
+  workflow.indexOf('\n  web:'),
+  workflow.indexOf('\n  desktop:'),
+)
+const packageWebRelease = readFileSync(new URL('./package-web-release.sh', import.meta.url), 'utf8')
+const testWebRelease = readFileSync(new URL('./test-web-release.sh', import.meta.url), 'utf8')
+const e2eSmoke = readFileSync(new URL('./e2e-smoke.sh', import.meta.url), 'utf8')
 
 test('uses the runner-provided GITHUB_OUTPUT file', () => {
   assert.doesNotMatch(workflow, /^\s+GITHUB_OUTPUT:/m)
@@ -74,6 +85,30 @@ test('release describes ZIP extraction and no longer publishes self-extracting p
 test('electron-builder bundles the FengYu jar + plugins as extraResources', () => {
   assert.match(builderConfig, /from: resources\/binaries\/FengYu\.jar/)
   assert.match(builderConfig, /from: resources\/binaries\/plugins/)
+})
+
+test('keeps official plugin checksum sidecars through staging and shared artifacts', () => {
+  assert.match(buildRuntimeJob, /test -f "\$archive\.sha256"/)
+  assert.match(buildRuntimeJob, /cp "\$archive" "\$archive\.sha256" staging\/plugins\//)
+  assert.match(buildRuntimeJob, /staging\/plugins\/\*\.fyp\s+staging\/plugins\/\*\.fyp\.sha256/)
+})
+
+test('keeps official plugin checksum sidecars in Web and desktop assembly', () => {
+  assert.match(webJob, /cp inputs\/\*\.fyp inputs\/\*\.fyp\.sha256 out\/plugins\//)
+  assert.match(desktopJob, /cp inputs\/\*\.fyp inputs\/\*\.fyp\.sha256 desktop\/electron\/resources\/binaries\/plugins\//)
+  assert.match(packageWebRelease, /OFFICIAL_PLUGINS=\(markdown excel email offlinepython browser\)/)
+  assert.match(packageWebRelease, /sha256sum -c/)
+  assert.match(packageWebRelease, /shasum -a 256 -c/)
+  assert.match(packageWebRelease, /cp "\$\{archives\[0\]\}" "\$\{archives\[0\]\}\.sha256" "\$DEST\/plugins\/"/)
+  assert.match(testWebRelease, /sha256sum -c/)
+  assert.match(testWebRelease, /shasum -a 256 -c/)
+})
+
+test('end-to-end smoke stages official plugin checksum sidecars', () => {
+  assert.match(e2eSmoke, /\[ -f "\$fyp\.sha256" \]/)
+  assert.match(e2eSmoke, /cp "\$fyp" "\$fyp\.sha256" "\$OFFICIAL_DIR\//)
+  assert.match(e2eSmoke, /api\/plugin-db\/provision\/fan\.summer\.email/)
+  assert.match(e2eSmoke, /'"provisioned":true'/)
 })
 
 test('desktop job builds two variants and runs unit plus launch tests', () => {

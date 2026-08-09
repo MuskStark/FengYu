@@ -229,9 +229,18 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
             Jobs.Job job = jobs.start("BUILD", handle -> {
                 ProcessRunner runner = new ProcessRunner();
                 handle.onCancel(runner::cancel);
-                var summary = buildService.build(projectDir, cfg, pythonExe, handle::log, runner);
-                if (handle.isCancelled()) throw new Jobs.CancellationException();
-                handle.setSummary(JsonRpcParams.toMap(summary));
+                try {
+                    var summary = buildService.build(projectDir, cfg, pythonExe, handle::log, runner);
+                    if (handle.isCancelled()) throw new Jobs.CancellationException();
+                    handle.setSummary(JsonRpcParams.toMap(summary));
+                } catch (Jobs.CancellationException ce) {
+                    throw ce;
+                } catch (Exception e) {
+                    // Jobs.start flattens exceptions to a one-line markFailed without a stack trace;
+                    // log the full stack here so the host log surface has diagnostics, then rethrow.
+                    log.error("build job failed for {} with python {}: {}", projectDir, pythonExe, e.toString(), e);
+                    throw e;
+                }
             });
             log.info("build job {} started for {} with python {}", job.id, projectDir, pythonExe);
             return ok("build started", "jobId", job.id);
@@ -255,9 +264,18 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
             @SuppressWarnings("unchecked") Map<String, Object> targetMap = (Map<String, Object>) raw;
             DeployTarget target = decodeTarget(targetMap);
             Jobs.Job job = jobs.start("DEPLOY", handle -> {
-                var res = deployService.install(zip, target, handle::log);
-                if (handle.isCancelled()) throw new Jobs.CancellationException();
-                handle.setSummary(JsonRpcParams.toMap(res));
+                try {
+                    var res = deployService.install(zip, target, handle::log);
+                    if (handle.isCancelled()) throw new Jobs.CancellationException();
+                    handle.setSummary(JsonRpcParams.toMap(res));
+                } catch (Jobs.CancellationException ce) {
+                    throw ce;
+                } catch (Exception e) {
+                    // Jobs.start flattens exceptions to a one-line markFailed without a stack trace;
+                    // log the full stack here so the host log surface has diagnostics, then rethrow.
+                    log.error("deploy job failed for {} -> {}: {}", zip, target, e.toString(), e);
+                    throw e;
+                }
             });
             log.info("deploy job {} started for {} -> {}", job.id, zip, target);
             return ok("deploy started", "jobId", job.id);

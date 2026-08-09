@@ -6,7 +6,7 @@ lang: zh
 
 # 构建与部署
 
-一个 `.fyp` 是一个具有固定运行时布局的 zip 归档。所有插件——无论第三方还是官方——都有**一条**构建流程，由 `fengyu plugin build` 和 `fengyu.plugin.json` 声明驱动。旧的 shell 打包器已被移除；三个随产品发布的官方插件现在由同一套 CLI 构建。
+一个 `.fyp` 是一个具有固定运行时布局的 zip 归档。所有插件——无论第三方还是官方——都有**一条**构建流程，由 `fengyu plugin build` 和 `fengyu.plugin.json` 声明驱动。旧的 shell 打包器已被移除；五个随产品发布的官方插件现在由同一套 CLI 构建。
 
 ## `.fyp` 布局
 
@@ -68,8 +68,9 @@ my-plugin-1.0.0.fyp
 6. **assemble staging**——仅把 `manifest.json`、UI 产物、`backend/worker.jar` 以及声明的资源复制到一个隔离的临时目录。
 7. **validate staging**——清单对象规则、`ui.entry` 解析到真实文件、后端命令引用 `backend/worker.jar`、worker JAR 带有配置的 `Main-Class` 与类入口，以及运行时目录树中不含源码 / `node_modules` / 带凭据的文件 / 符号链接。
 8. **package**——写入 `<output>.tmp-<pid>-<random>`，检查已完成的归档，再原子地重命名为最终的 `.fyp`。
+9. **checksum**——以 GNU `sha256sum -c` 格式原子写入 `<output>.sha256`。必须让侧车文件始终与归档相邻：内置官方插件缺少侧车或校验不匹配时，宿主会拒绝安装。它用于发现损坏，不能替代非对称发布签名。
 
-`--skip-tests` 仅跳过测试——绝不跳过类型检查或打包。任何失败（UI 构建、worker 构建、校验、重命名）都不会留下任何 `.fyp`、任何 `.tmp-*`、任何 staging 目录。
+`--skip-tests` 仅跳过测试——绝不跳过类型检查或打包。归档重命名前的失败不会留下任何 `.fyp`、任何 `.tmp-*` 或 staging 目录。如果归档重命名后的校验和写入失败，命令仍会失败，并可能留下缺少必需侧车的有效 `.fyp`；发布暂存阶段会拒绝这组不完整产物。
 
 ### GitHub Packages 认证
 
@@ -90,15 +91,17 @@ GitHub Packages authentication is required. Set FENGYU_GITHUB_TOKEN or GITHUB_TO
 
 ## 构建官方插件
 
-三个随产品发布的插件由同一套 CLI 构建——没有单独的脚本：
+五个随产品发布的插件由同一套 CLI 构建——没有单独的脚本：
 
 ```bash
 node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-markdown
 node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-excel
 node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-email
+node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-offlinepython
+node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-browser
 ```
 
-每条都会写出 `OfficialPlugins/plugin-<name>/dist-package/fan.summer.<name>-4.0.0.fyp`。CI 在 `.github/workflows/toolchain-ci.yml` 中以矩阵方式构建它们。
+每条都会写出 `OfficialPlugins/plugin-<name>/dist-package/fan.summer.<name>-<version>.fyp` 及其相邻的 `.fyp.sha256` 侧车。CI 在 `.github/workflows/toolchain-ci.yml` 中以矩阵方式构建它们；应用发布工作流会把每一对包与侧车一起带入 Web 和桌面发行包。
 
 ## 安装产物
 

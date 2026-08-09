@@ -91,7 +91,11 @@ class ConnectionTesterTest {
     @Test
     void testCloud_anthropic_hitsV1Messages() throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
-        server.createContext("/v1/messages", exchange -> {
+        // The Anthropic SDK builds the /v1/messages path itself, so the probe POSTs to
+        // {normalizedBase}/messages (BaseUri normalization strips a trailing /v1). The stub must
+        // therefore serve /messages — the path ConnectionTester.testAnthropic actually requests —
+        // not the full /v1/messages wire path the SDK emits in production. See BaseUrlNormalizer.
+        server.createContext("/messages", exchange -> {
             byte[] body = "{}".getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(200, body.length);
             exchange.getResponseBody().write(body);

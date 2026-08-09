@@ -197,8 +197,8 @@ export const api = {
     URL.revokeObjectURL(url)
   },
 
-  async uninstallPlugin(id: string): Promise<void> {
-    await http.delete(`/api/plugin-market/${encodeURIComponent(id)}`)
+  async uninstallPlugin(id: string, deleteData: boolean): Promise<void> {
+    await http.delete(`/api/plugin-market/${encodeURIComponent(id)}`, { params: { deleteData } })
   },
 
   async getSettings(): Promise<AppSettings> {
@@ -439,8 +439,8 @@ export const api = {
   updateUnified: (uid: string) =>
     http.post(`/api/plugin-store/${encodeURIComponent(uid)}/update`),
 
-  uninstallUnified: (uid: string) =>
-    http.delete(`/api/plugin-store/${encodeURIComponent(uid)}`),
+  uninstallUnified: (uid: string, deleteData: boolean) =>
+    http.delete(`/api/plugin-store/${encodeURIComponent(uid)}`, { params: { deleteData } }),
 
   setUnifiedEnabled: (uid: string, enabled: boolean) =>
     http.patch(`/api/plugin-store/${encodeURIComponent(uid)}/enabled`, { enabled }),

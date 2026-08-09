@@ -9,7 +9,7 @@
 #
 # Runtime layout contract (must agree with src/backend/runtime-layout.ts):
 #   <resources>/binaries/FengYu.jar
-#   <resources>/plugins/         (the official .fyp packages)
+#   <resources>/plugins/         (official .fyp packages + .fyp.sha256 sidecars)
 #   <resources>/jre/bin/java     (with-JRE variant only, added by CI)
 #
 # Tray icons are listed BOTH in `files` (so they ride inside app.asar for any in-asar
@@ -46,8 +46,15 @@ files:
 
 # Frontend SPA, built by `cd ../frontend && npm run build` (output copied to frontend-dist/)
 # before packaging. main.js is the Electron entry (matches package.json "main").
+#
+# P0-9 build-time signed-state contract: `fengyu.signedRelease` defaults to false (unsigned). The
+# updater reads ONLY this field from the packaged package.json and has no env-var fallback, so a
+# packaged build is unsigned unless a signed+notarized release workflow overrides it via
+# `--config.extraMetadata.fengyu.signedRelease=true`. Unsigned builds notify-only (no auto-install).
 extraMetadata:
   main: dist/main.js
+  fengyu:
+    signedRelease: false
 
 # Assets placed OUTSIDE app.asar at <process.resourcesPath>/, resolved by the main
 # process via process.resourcesPath (runtime-layout.ts + tray.ts). Tray icons are added
