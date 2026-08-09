@@ -159,7 +159,7 @@ public class ProcessSandbox {
      * unless the user explicitly approved it.
      */
     public Launch command(List<String> raw, Path workingDirectory, boolean allowNetwork) {
-        return wrap(raw, workingDirectory, List.of(workingDirectory), false, allowNetwork);
+        return wrap(raw, workingDirectory, List.of(workingDirectory), List.of(), false, allowNetwork);
     }
 
     /** Explicit full-access profile: run without the native sandbox after the user selected it. */
@@ -174,14 +174,20 @@ public class ProcessSandbox {
      */
     public Launch plugin(List<String> raw, Path pluginRoot, List<Path> writableRoots,
                          boolean broadFileWrite, boolean allowNetwork) {
+        return plugin(raw, pluginRoot, writableRoots, List.of(), broadFileWrite, allowNetwork);
+    }
+
+    /** Sandbox a plugin with separate read-only and read-write authorized file roots. */
+    public Launch plugin(List<String> raw, Path pluginRoot, List<Path> writableRoots,
+                         List<Path> readableRoots, boolean broadFileWrite, boolean allowNetwork) {
         if (backend == Backend.NONE) {
             throw new IllegalStateException("Plugin workers require a supported native process sandbox");
         }
-        return wrap(raw, pluginRoot, writableRoots, broadFileWrite, allowNetwork);
+        return wrap(raw, pluginRoot, writableRoots, readableRoots, broadFileWrite, allowNetwork);
     }
 
     private Launch wrap(List<String> raw, Path workdir, List<Path> writableRoots,
-                        boolean broadFileWrite, boolean allowNetwork) {
+                        List<Path> readableRoots, boolean broadFileWrite, boolean allowNetwork) {
         if (backend == Backend.NONE) return new Launch(raw, backend);
         if (backend == Backend.WINDOWS_JOB) {
             // Job Objects are assigned AFTER the process starts; the command itself is unchanged.
@@ -240,6 +246,11 @@ public class ProcessSandbox {
             for (Path cp : classpathRoots(raw)) {
                 appendReadOnlyBind(command, cp, "--ro-bind");
             }
+            for (Path root : normalizedExisting(readableRoots)) {
+                command.add("--ro-bind");
+                command.add(root.toString());
+                command.add(root.toString());
+            }
             for (Path root : normalizedExisting(writableRoots)) {
                 command.add("--bind");
                 command.add(root.toString());
@@ -284,6 +295,10 @@ public class ProcessSandbox {
             profile.append("(allow file-read* (subpath ")
                     .append(quoted(root.toString())).append("))\n");
             profile.append("(allow file-write* (subpath ")
+                    .append(quoted(root.toString())).append("))\n");
+        }
+        for (Path root : normalizedExisting(readableRoots)) {
+            profile.append("(allow file-read* (subpath ")
                     .append(quoted(root.toString())).append("))\n");
         }
         // The plugin's own package dir must remain READABLE (it's under the runtime root, denied above).
