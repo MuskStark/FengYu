@@ -99,7 +99,9 @@ public class PluginRuntimeEnvironmentService {
         // at all — the UI guides authorization. The host's global DB credentials NEVER reach a worker.
         if (provisioningStore != null) {
             PluginDbProvisioningStore.ProvisionedPluginDb creds = provisioningStore.get(manifest.id());
-            if (creds != null) {
+            // PROVISIONING has not committed successfully; DELETE_PENDING has been revoked by
+            // uninstall. Only ACTIVE credentials may ever cross the worker process boundary.
+            if (creds != null && creds.isActive()) {
                 environment.putAll(Map.of(
                     PluginWorkerProtocol.DB_TYPE_ENV, creds.dbType().name().toLowerCase(Locale.ROOT),
                     PluginWorkerProtocol.DB_DRIVER_ENV, creds.driver(),

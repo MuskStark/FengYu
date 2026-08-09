@@ -61,7 +61,9 @@ async function onMessage(event: MessageEvent) {
       respond(request.id, await api.pluginInvoke(props.id, method, params))
     } else if (request.method === 'host.ready') {
       respond(request.id, {
-        sdkVersion: '1.0.0', theme: theme.theme, locale: settings.language,
+        // MUST match the major version of @infinia/plugin-sdk (toolchain/sdk-ts). The plugin's
+        // FengYuClient.ready() compares its SDK_VERSION against this value for compatibility gating.
+        sdkVersion: '1.2.0', theme: theme.theme, locale: settings.language,
         platform: desktop ? 'desktop' : 'web',
         capabilities: ['rpc.invoke', 'notify', 'files.open', 'files.inputDirectory', 'files.workspaceDirectory', 'files.outputDirectory', 'files.export'],
       })

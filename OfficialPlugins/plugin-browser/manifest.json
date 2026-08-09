@@ -3,7 +3,7 @@
   "id": "fan.summer.browser",
   "name": "Browser Agent",
   "description": "AI-driven browser automation: navigate, click, type, scrape, screenshot, eval JS",
-  "version": "4.0.0-alpha.8",
+  "version": "4.0.0-beta.1",
   "author": "FengYu",
   "icon": "browser",
   "category": "automation",

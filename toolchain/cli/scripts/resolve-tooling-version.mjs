@@ -44,6 +44,14 @@ export async function verifyRepositoryVersion(root, version) {
     const pomVersion = pom.match(/<version>([^<]+)<\/version>/)?.[1]
     if (pomVersion !== version) mismatches.push(`${pomFile}: ${pomVersion ?? '<missing>'}`)
   }
+  // The TS SDK's SDK_VERSION constant is the handshake value plugins send on host.ready and the
+  // basis of the major-version compatibility gate. It must match the published package version;
+  // if it drifts the gate silently never trips. Assert it here so a release fails loudly instead.
+  const sdkSource = await fs.readFile(path.join(root, 'toolchain/sdk-ts/src/index.ts'), 'utf8')
+  const sdkVersionConst = sdkSource.match(/export const SDK_VERSION = ['"]([^'"]+)['"]/)?.[1]
+  if (sdkVersionConst !== version) {
+    mismatches.push(`toolchain/sdk-ts/src/index.ts SDK_VERSION: ${sdkVersionConst ?? '<missing>'}`)
+  }
   if (mismatches.length) {
     throw new Error(`tooling version ${version} does not match:\n${mismatches.join('\n')}`)
   }

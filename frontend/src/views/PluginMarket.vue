@@ -203,7 +203,9 @@ const installPlugin = (id: string) => runPlugin(id, () => api.installPlugin(id))
 const updatePlugin = (id: string) => runPlugin(id, () => api.updatePlugin(id))
 const togglePlugin = (id: string, enabled: boolean) => runPlugin(id, () => api.setPluginEnabled(id, enabled))
 function uninstallPlugin(id: string) {
-  if (window.confirm(t('market.confirmUninstall'))) void runPlugin(id, () => api.uninstallPlugin(id))
+  if (!window.confirm(t('market.confirmUninstall'))) return
+  const deleteData = window.confirm(t('market.confirmDeleteData'))
+  void runPlugin(id, () => api.uninstallPlugin(id, deleteData))
 }
 
 const installSkill = (id: string) => runSkill(id, () => skillStore.install(id))

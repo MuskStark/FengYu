@@ -81,9 +81,10 @@ public class PluginStoreController {
     }
 
     @DeleteMapping("/{uid}")
-    public void uninstall(@PathVariable String uid) {
+    public void uninstall(@PathVariable String uid,
+            @RequestParam(name = "deleteData") boolean deleteData) {
         UnifiedCatalogEntry entry = findEntry(uid);
-        dispatcher.uninstall(entry);
+        dispatcher.uninstall(entry, deleteData);
     }
 
     @PatchMapping("/{uid}/enabled")

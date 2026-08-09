@@ -16,8 +16,12 @@ class DbDialectStatementsTest {
     @Test
     void h2CreateCreatesUserSchemaAndGrantsAll() {
         List<String> ddl = DbDialectStatements.createStatements(DbType.H2, SCHEMA, USER, PW);
+        // P1-5: an explicit ALTER USER ... SET PASSWORD follows CREATE so a re-provision of a
+        // leftover user rotates the password to the freshly-generated one (CREATE IF NOT EXISTS is
+        // a no-op on an existing user and would leave the stored password unable to log in).
         assertEquals(List.of(
             "CREATE USER IF NOT EXISTS " + USER + " PASSWORD '" + PW + "'",
+            "ALTER USER " + USER + " SET PASSWORD '" + PW + "'",
             "CREATE SCHEMA IF NOT EXISTS " + SCHEMA + " AUTHORIZATION " + USER,
             "GRANT ALL ON SCHEMA " + SCHEMA + " TO " + USER), ddl);
     }
@@ -33,8 +37,10 @@ class DbDialectStatementsTest {
     @Test
     void mysqlCreateCreatesUserDatabaseAndGrantsPrivileges() {
         List<String> ddl = DbDialectStatements.createStatements(DbType.MYSQL, SCHEMA, USER, PW);
+        // P1-5: ALTER USER ... IDENTIFIED BY rotates the password for an existing user.
         assertEquals(List.of(
             "CREATE USER IF NOT EXISTS '" + USER + "'@'127.0.0.1' IDENTIFIED BY '" + PW + "'",
+            "ALTER USER '" + USER + "'@'127.0.0.1' IDENTIFIED BY '" + PW + "'",
             "CREATE DATABASE IF NOT EXISTS `" + SCHEMA + "`",
             "GRANT ALL PRIVILEGES ON `" + SCHEMA + "`.* TO '" + USER + "'@'127.0.0.1'"), ddl);
     }
@@ -50,8 +56,16 @@ class DbDialectStatementsTest {
     @Test
     void postgresCreateCreatesRoleSchemaAndGrantsUsageCreate() {
         List<String> ddl = DbDialectStatements.createStatements(DbType.POSTGRESQL, SCHEMA, USER, PW);
+        // PostgreSQL has no "CREATE ROLE IF NOT EXISTS". The create arm wraps the CREATE ROLE in a
+        // DO block that swallows the DUPLICATE_OBJECT error, so a leftover role from a failed DROP
+        // is reused instead of fatal — the statement is idempotent. P1-5: ALTER ROLE ... PASSWORD
+        // then rotates the password for that leftover role so the stored creds always work.
         assertEquals(List.of(
-            "CREATE ROLE \"" + USER + "\" LOGIN PASSWORD '" + PW + "'",
+            "DO $$ BEGIN"
+                + " CREATE ROLE \"" + USER + "\" LOGIN PASSWORD '" + PW + "';"
+                + " EXCEPTION WHEN DUPLICATE_OBJECT THEN NULL;"
+                + " END $$",
+            "ALTER ROLE \"" + USER + "\" LOGIN PASSWORD '" + PW + "'",
             "CREATE SCHEMA IF NOT EXISTS " + SCHEMA + " AUTHORIZATION \"" + USER + "\"",
             "GRANT USAGE, CREATE ON SCHEMA " + SCHEMA + " TO \"" + USER + "\""), ddl);
     }

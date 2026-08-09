@@ -31,15 +31,29 @@ final class DbDialectStatements {
     static List<String> createStatements(DbType type, String schemaName, String userName, String password) {
         return switch (type) {
             case H2 -> List.of(
+                    // IF NOT EXISTS is a no-op when the user already exists (it does NOT rotate the
+                    // password). P1-5: follow with an explicit ALTER so a re-provision of a leftover
+                    // user still sets the freshly-generated password the store just recorded — the
+                    // old code left the stored password unable to log in.
                     "CREATE USER IF NOT EXISTS " + userName + " PASSWORD '" + password + "'",
+                    "ALTER USER " + userName + " SET PASSWORD '" + password + "'",
                     "CREATE SCHEMA IF NOT EXISTS " + schemaName + " AUTHORIZATION " + userName,
                     "GRANT ALL ON SCHEMA " + schemaName + " TO " + userName);
             case MYSQL -> List.of(
+                    // Same rationale: CREATE USER IF NOT EXISTS won't change an existing password.
+                    // ALTER USER ... IDENTIFIED BY rotates it so the stored creds always work.
                     "CREATE USER IF NOT EXISTS '" + userName + "'@'127.0.0.1' IDENTIFIED BY '" + password + "'",
+                    "ALTER USER '" + userName + "'@'127.0.0.1' IDENTIFIED BY '" + password + "'",
                     "CREATE DATABASE IF NOT EXISTS `" + schemaName + "`",
                     "GRANT ALL PRIVILEGES ON `" + schemaName + "`.* TO '" + userName + "'@'127.0.0.1'");
             case POSTGRESQL -> List.of(
-                    "CREATE ROLE \"" + userName + "\" LOGIN PASSWORD '" + password + "'",
+                    // P1-5: on DUPLICATE_OBJECT the role already exists from a failed prior DROP.
+                    // Swallow the duplicate, then ALTER ROLE ... PASSWORD so the stored creds match.
+                    "DO $$ BEGIN"
+                    + " CREATE ROLE \"" + userName + "\" LOGIN PASSWORD '" + password + "';"
+                    + " EXCEPTION WHEN DUPLICATE_OBJECT THEN NULL;"
+                    + " END $$",
+                    "ALTER ROLE \"" + userName + "\" LOGIN PASSWORD '" + password + "'",
                     "CREATE SCHEMA IF NOT EXISTS " + schemaName + " AUTHORIZATION \"" + userName + "\"",
                     "GRANT USAGE, CREATE ON SCHEMA " + schemaName + " TO \"" + userName + "\"");
             case SQLITE -> List.of();

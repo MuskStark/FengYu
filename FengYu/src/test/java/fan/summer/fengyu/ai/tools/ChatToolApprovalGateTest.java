@@ -2,6 +2,7 @@ package fan.summer.fengyu.ai.tools;
 
 import fan.summer.fengyu.ai.AiStreamCallback;
 import fan.summer.fengyu.ai.AiToolCall;
+import fan.summer.fengyu.security.ProcessSandbox;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -90,14 +91,38 @@ class ChatToolApprovalGateTest {
 
     @Test
     void approveForMeRunsSafeCommandsButReviewsNetworkEscalation() {
-        AiPermissionContext.set(AiPermissionMode.APPROVE_FOR_ME);
-        assertFalse(ChatToolApprovalGate.requiresApproval(
-            toolCall("execute_command").getToolCalls().getFirst(), List.of(sensitiveTool())));
-        AssistantMessage network = AssistantMessage.builder().content("").toolCalls(List.of(
-            new AssistantMessage.ToolCall("call-2", "function", "execute_command",
-                "{\"command\":\"curl example.com\",\"allowNetwork\":true}"))).build();
-        assertTrue(ChatToolApprovalGate.requiresApproval(
-            network.getToolCalls().getFirst(), List.of(sensitiveTool())));
+        // Pin a full-sandbox platform (Linux bwrap) so commandPotentiallyUnsafe falls back to the
+        // pattern/network heuristics rather than blanket-flagging every command. On a reduced-or-none
+        // platform (macOS deny-sensitive, Windows Job Object, NONE) every command needs approval —
+        // that's tested implicitly by the gate, but this test pins the full-sandbox branch so the
+        // "safe command runs, network command is reviewed" contract is deterministic.
+        try (var mocked = org.mockito.Mockito.mockStatic(ProcessSandbox.class)) {
+            mocked.when(ProcessSandbox::isNativeSandboxAvailable).thenReturn(true);
+            AiPermissionContext.set(AiPermissionMode.APPROVE_FOR_ME);
+            assertFalse(ChatToolApprovalGate.requiresApproval(
+                toolCall("execute_command").getToolCalls().getFirst(), List.of(sensitiveTool())));
+            AssistantMessage network = AssistantMessage.builder().content("").toolCalls(List.of(
+                new AssistantMessage.ToolCall("call-2", "function", "execute_command",
+                    "{\"command\":\"curl example.com\",\"allowNetwork\":true}"))).build();
+            assertTrue(ChatToolApprovalGate.requiresApproval(
+                network.getToolCalls().getFirst(), List.of(sensitiveTool())));
+        }
+    }
+
+    /**
+     * Regression (P0-2/P0-3): on a reduced-or-no-isolation platform every AI-authored command must
+     * require approval — there is no enforceable OS boundary to make a command "safe". macOS is now
+     * honestly reported as reduced (not full), so on a macOS host commandPotentiallyUnsafe is true.
+     */
+    @Test
+    void everyCommandNeedsApprovalWithoutFullIsolation() {
+        try (var mocked = org.mockito.Mockito.mockStatic(ProcessSandbox.class)) {
+            mocked.when(ProcessSandbox::isNativeSandboxAvailable).thenReturn(false);
+            AiPermissionContext.set(AiPermissionMode.APPROVE_FOR_ME);
+            assertTrue(ChatToolApprovalGate.requiresApproval(
+                toolCall("execute_command").getToolCalls().getFirst(), List.of(sensitiveTool())),
+                "on a reduced/no-isolation platform every command must require approval");
+        }
     }
 
     @Test

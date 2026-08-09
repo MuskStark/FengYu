@@ -37,17 +37,29 @@ Worker 与 AI 编写的命令由 `ProcessSandbox` 包装，它会按平台选择
 
 | 平台 | 后端 | 进程树终止 | 文件系统隔离 | 网络隔离 |
 | --- | --- | --- | --- | --- |
-| Linux | `bubblewrap`（`bwrap --die-with-parent --new-session`） | 内核级 | 系统文件只读，写入限制在插件/工作根目录 | 默认隔离，声明时放行 |
-| macOS | `sandbox-exec`（Seatbelt profile） | tree-kill | 系统文件只读，写入限制在插件/工作根目录 | 默认隔离，声明时放行 |
+| Linux | `bubblewrap`（`bwrap --die-with-parent --new-session`） | 内核级 | **完整**——最小只读视图（OS/运行时目录 + JDK + 插件自身包目录 + 其 classpath 根——**不含** `$HOME`）；写入限制在插件自有根目录 | 默认隔离，声明时放行 |
+| macOS | `sandbox-exec`（Seatbelt profile） | tree-kill | **降级/建议性**——拒绝敏感（allow-default，再显式拒绝读取主机凭据 `~/.ssh` `~/.aws` `~/.config/gcloud` `~/.gnupg` 等以及整个 FengYu 运行时根；写入限制在插件自有根目录 + `/tmp`）。插件仍可读取未列入拒绝列表的用户文件，因此**不报告为完整隔离**。 | 默认隔离，声明时放行 |
 | Windows | `windows-job`（Win32 Job Object，`KILL_ON_JOB_CLOSE`） | **可靠**——宿主关闭句柄或调用 `TerminateJobObject` 时 Job 杀掉整棵树 | **不强制**（已知缺口） | **不强制**（已知缺口） |
 | 其他/无隔离器 | `none` | 宿主 shutdown hook + tree-kill 兜底 | 无——仅靠显式审批 | 无——仅靠显式审批 |
+
+> **如实报告。** 只有 Linux 报告 `sandboxed: true`（完整隔离）。macOS 报告 `sandboxed: false,
+> reduced: true`——它的 profile 是拒绝敏感而非严格 `deny-default`（JVM 在 macOS 上无法在
+> `deny-default` 下启动；它要在 `~/Library` 下读写缓存/偏好），因此插件仍可读取未列入拒绝列表的
+> 用户文件。宿主**不**宣称 macOS 已完整沙箱化；对话审批闸门按降级处理。Linux 的 bwrap 使用不含
+> 用户主目录的最小只读视图，因此 `~/.fengyu` 和用户密钥在该平台上对插件不可见。在 macOS 上实现真正的
+> 最小 allowlist（deny-default + 显式 JDK/运行时读取集）是一项已立项的后续工作，落地后会把 macOS 翻为完整隔离。
 
 Windows 上的 Job Object 后端**仅做进程层**隔离：它保证 worker 及其任何后代（如 `pip` 子进程）
 在宿主关闭 job 句柄时被可靠终止，弥补了长期以来 Windows 上 `ProcessHandle.descendants()` 可能
 漏杀孤儿进程的缺口。它**不像** Linux 上的 `bwrap` 和 macOS 上的 `sandbox-exec` 那样约束文件系统写入
 或阻断网络——这一缺口是有意为之并已记录在案；Windows 上每一次副作用仍由显式审批闸门守护。
-`unsandboxedPlugins` 设置开关（在受支持处可见）允许受信任用户退出进程层隔离：关闭 = Windows 上 Job
-隔离 / 其他平台原生沙箱；开启 = worker 以应用同等权限裸跑。
+
+由于 Job Object **不是**安全沙箱，宿主在 Windows 上如实报告 `compatibilityMode: true` /
+`sandboxed: false`（并附带 `lifecycleIsolation: job-object`），对话审批闸门也把 Windows 当作任何
+其他“无安全沙箱”平台对待——不会仅因为某个后端已激活就放宽审批。因此 `unsandboxedPlugins` 设置开关
+在 Windows 上可见（它处于兼容模式）：开启 = worker 以应用同等权限裸跑；关闭 = 仅 Job Object 生命周期
+隔离（无文件系统/网络边界）。Windows 上真正的 OS 文件系统/网络隔离（AppContainer / 受限令牌 + ACL +
+网络 capability）是一项已立项的后续工作。
 
 ## 沙箱化 UI
 

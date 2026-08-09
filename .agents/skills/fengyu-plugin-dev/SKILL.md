@@ -95,6 +95,9 @@ newline-delimited JSON-RPC 2.0 over stdin/stdout (one request object per line, r
 `id`). The worker runs in **its own process** with its own classpath; it must not assume any
 host-provided dependency beyond the SDK. The host sets env vars `FENGYU_PLUGIN_ID`,
 `FENGYU_PLUGIN_ROOT`, and (for plugins with the `database` permission) an injected datasource.
+The host, SDK, and DevKit enforce a 16 MiB UTF-8 frame limit in both directions. Keep responses
+bounded; return paginated results or opaque file references instead of embedding arbitrarily large
+payloads.
 
 **IDE dev loop:** do not look for a CLI dev command. The CLI has exactly `create` and `build`.
 Run the two development processes from the tools the developer prefers:
@@ -208,6 +211,13 @@ Confirm the manifest validates against `toolchain/spec/manifest.schema.json` and
 loader's rules in `FengYu/src/main/java/fan/summer/fengyu/plugin/market/` (`.fyp` only,
 `schemaVersion == 1`, semver `version`, official ids start `fan.summer.`).
 
+`database` is explicit user authorization, not an install-time grant. On server databases the host
+creates a per-plugin user/schema only after `POST /api/plugin-db/provision/{id}`. Credentials are
+injected only after the durable state reaches `ACTIVE`; `PROVISIONING` and `DELETE_PENDING` remain
+recoverable through `/status/{id}` and `/retry/{id}`. A Worker must surface a clear unavailable or
+not-authorized error when DB environment variables are absent and must never fall back to host
+credentials. Embedded file databases use the host-allocated plugin data directory.
+
 ## Step 5 — Validate, build, package, install
 
 Use the CLI for build/package only; do not hand-zip. Validation is an unconditional build stage,
@@ -217,6 +227,11 @@ and installation is a host UI/API operation rather than a CLI subcommand:
 fengyu plugin build ./my-plugin            # → .fyp in the configured package.outputDirectory
 fengyu plugin build ./my-plugin --out dist/x.fyp --skip-tests
 ```
+
+Every successful build also writes `<archive>.fyp.sha256`. Treat the archive and checksum sidecar
+as a pair when staging, copying, or publishing an official plugin. The sidecar detects corruption
+and partial releases; it is not an independent authenticity signature if an attacker can replace
+both files. Do not claim package provenance without a separate trusted signature or pinned digest.
 
 Install the resulting `.fyp` through the host plugin marketplace UI. For automated local host
 verification, use the authenticated `POST /api/plugin-market/upload` path exercised by
@@ -256,8 +271,9 @@ scripts/plugin-tooling-local-smoke.sh
 npm --prefix docs run build
 ```
 
-Build all four official plugins through `node toolchain/cli/bin/fengyu.mjs plugin build <plugin>` and
-run `npm audit` for every publishable npm package. Treat any schema drift, dependency-boundary
+Build all five official plugins (`markdown`, `excel`, `email`, `offlinepython`, `browser`) through
+`node toolchain/cli/bin/fengyu.mjs plugin build <plugin>` and verify every `.fyp.sha256` sidecar. Run
+`npm audit` for every publishable npm package. Treat any schema drift, dependency-boundary
 failure, high/critical audit finding, missing `npm run dev`, mock response from a configured Worker,
 or dirty generated package content as a release blocker. Never publish, tag, or push unless the user
 explicitly asks after all blockers are resolved.

@@ -2,6 +2,7 @@ package fan.summer.fengyu.setup;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
@@ -13,7 +14,12 @@ import java.sql.Statement;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Pattern;
+
+import static fan.summer.fengyu.setup.PluginDbProvisioningStore.STATUS_ACTIVE;
+import static fan.summer.fengyu.setup.PluginDbProvisioningStore.STATUS_DELETE_PENDING;
+import static fan.summer.fengyu.setup.PluginDbProvisioningStore.STATUS_PROVISIONING;
 
 /**
  * Orchestrates per-plugin DB credential provisioning. For H2 / MySQL / PostgreSQL it uses the
@@ -49,9 +55,22 @@ public class PluginDbProvisioner {
     public record ProvisionedCredentials(
             DbType type, String driver, String url, String username, String password) {}
 
-    /** {@code true} if a provisioned record exists for {@code pluginId}. */
+    /** {@code true} only when credentials are fully provisioned and safe to inject. */
     public boolean isProvisioned(String pluginId) {
-        return store.get(pluginId) != null;
+        PluginDbProvisioningStore.ProvisionedPluginDb record = store.get(pluginId);
+        return record != null && record.isActive();
+    }
+
+    /** Observable lifecycle state for the plugin DB API. */
+    public String status(String pluginId) {
+        PluginDbProvisioningStore.ProvisionedPluginDb record = store.get(pluginId);
+        if (record == null) return "not-provisioned";
+        return switch (record.canonicalStatus()) {
+            case STATUS_ACTIVE -> "provisioned";
+            case STATUS_PROVISIONING -> "provisioning";
+            case STATUS_DELETE_PENDING -> "delete-pending";
+            default -> "unknown-" + record.canonicalStatus().toLowerCase(Locale.ROOT);
+        };
     }
 
     /**
@@ -60,73 +79,173 @@ public class PluginDbProvisioner {
      *
      * @throws DbProvisioningException if admin credentials are absent or the DDL fails.
      */
-    public ProvisionedCredentials provision(String pluginId) {
+    public synchronized ProvisionedCredentials provision(String pluginId) {
         PluginDbProvisioningStore.ProvisionedPluginDb existing = store.get(pluginId);
         if (existing != null) {
-            return new ProvisionedCredentials(
-                    existing.dbType(), existing.driver(), existing.url(),
-                    existing.userName(), existing.password());
+            if (STATUS_DELETE_PENDING.equals(existing.canonicalStatus())) {
+                throw new DbProvisioningException(
+                    "Database cleanup is pending for plugin " + pluginId + "; retry cleanup first.");
+            }
+            if (existing.isActive()) return credentials(existing);
+            if (STATUS_PROVISIONING.equals(existing.canonicalStatus())) {
+                return resumeProvision(existing);
+            }
+            throw new DbProvisioningException(
+                "Unknown database provisioning state for plugin " + pluginId + ": "
+                    + existing.canonicalStatus());
         }
 
+        DataSourceConfig cfg = requireProvisioningConfig(null);
+
+        String schemaName = schemaNameFor(pluginId);
+        String userName = userNameFor(pluginId);
+        String password = generatePassword();
+        String workerUrl = workerUrlFor(cfg, schemaName);
+        PluginDbProvisioningStore.ProvisionedPluginDb record =
+                new PluginDbProvisioningStore.ProvisionedPluginDb(
+                        pluginId, cfg.type(), schemaName, userName, password,
+                        workerUrl, cfg.driver(), Instant.now().toString(), STATUS_PROVISIONING);
+        try {
+            // Persist the full recovery record before the first side effect. If this fails no DDL
+            // is attempted, so a DB account can never exist without durable coordinates.
+            store.put(record);
+        } catch (RuntimeException e) {
+            throw new DbProvisioningException(
+                "Could not persist DB provisioning intent; no database changes were attempted.", e);
+        }
+        return resumeProvision(record);
+    }
+
+    private ProvisionedCredentials resumeProvision(
+            PluginDbProvisioningStore.ProvisionedPluginDb record) {
+        DataSourceConfig cfg = requireProvisioningConfig(record.dbType());
+        List<String> ddl = DbDialectStatements.createStatements(record.dbType(),
+                record.schemaName(), record.userName(), record.password());
+        executeDdl(cfg, cfg.adminUsername(), cfg.adminPassword(), ddl, record.pluginId());
+        try {
+            store.setStatus(record.pluginId(), STATUS_ACTIVE);
+        } catch (RuntimeException e) {
+            // The durable PROVISIONING record remains and the idempotent DDL can be reconciled.
+            throw new DbProvisioningException(
+                "Database DDL completed, but activation could not be persisted; recovery is pending.", e);
+        }
+        log.info("Provisioned DB credentials for plugin {} ({} schema {} as {})",
+                record.pluginId(), record.dbType(), record.schemaName(), record.userName());
+        return credentials(record);
+    }
+
+    /**
+     * Drops the plugin's DB user + namespace and removes the store record. On DDL FAILURE the record
+     * is marked {@code DELETE_PENDING} and retained (P1-3): the old behavior deleted the only record
+     * holding the schema/user/password, leaving an orphan DB account with no way to retry the drop.
+     * Retaining the record lets a background sweep (or the next deprovision attempt) retry with the
+     * credentials still in hand. The caller (uninstall) is never blocked — a failed drop surfaces as
+     * a {@code DELETE_PENDING} status the UI can distinguish from a clean removal.
+     */
+    public synchronized void deprovision(String pluginId) {
+        PluginDbProvisioningStore.ProvisionedPluginDb rec = store.get(pluginId);
+        if (rec == null) {
+            log.debug("Deprovision: no stored record for {}, nothing to do.", pluginId);
+            return;
+        }
+        if (!STATUS_DELETE_PENDING.equals(rec.canonicalStatus())) {
+            // Commit cleanup intent before DDL. A crash, missing config, or SQL error therefore
+            // always leaves enough durable information for the scheduled reconciler.
+            store.setStatus(pluginId, STATUS_DELETE_PENDING);
+            rec = store.get(pluginId);
+        }
+        retryDelete(rec);
+    }
+
+    private boolean retryDelete(PluginDbProvisioningStore.ProvisionedPluginDb rec) {
+        DataSourceConfig cfg;
+        try {
+            cfg = requireProvisioningConfig(rec.dbType());
+        } catch (DbProvisioningException e) {
+            log.warn("DB cleanup remains DELETE_PENDING for {}: {}", rec.pluginId(), e.getMessage());
+            return false;
+        }
+        List<String> ddl = DbDialectStatements.dropStatements(rec.dbType(),
+                rec.schemaName(), rec.userName());
+        try {
+            executeDdl(cfg, cfg.adminUsername(), cfg.adminPassword(), ddl, rec.pluginId());
+        } catch (DbProvisioningException e) {
+            log.warn("DB cleanup remains DELETE_PENDING for {}: {}", rec.pluginId(), e.getMessage());
+            return false;
+        }
+        try {
+            store.remove(rec.pluginId());
+        } catch (RuntimeException e) {
+            // Drop statements are idempotent. Keep DELETE_PENDING and retry record removal later.
+            log.warn("DB cleanup DDL succeeded for {}, but recovery record removal failed",
+                    rec.pluginId(), e);
+            return false;
+        }
+        log.info("Deprovisioned DB credentials for plugin {}", rec.pluginId());
+        return true;
+    }
+
+    /**
+     * Reconciles durable operations after crashes and transient DB/config failures. The method is
+     * public so operators/tests can trigger it, and Spring also invokes it periodically.
+     */
+    @Scheduled(initialDelayString = "${fengyu.plugin-db.reconcile-initial-delay-ms:30000}",
+            fixedDelayString = "${fengyu.plugin-db.reconcile-delay-ms:60000}")
+    public synchronized void reconcileIncompleteOperations() {
+        for (PluginDbProvisioningStore.ProvisionedPluginDb record : store.list()) {
+            try {
+                switch (record.canonicalStatus()) {
+                    case STATUS_PROVISIONING -> resumeProvision(record);
+                    case STATUS_DELETE_PENDING -> retryDelete(record);
+                    default -> { }
+                }
+            } catch (RuntimeException e) {
+                log.warn("DB reconciliation remains pending for {} ({}): {}",
+                        record.pluginId(), record.canonicalStatus(), e.getMessage());
+            }
+        }
+    }
+
+    /** Reconciles one plugin immediately and returns its resulting observable state. */
+    public synchronized String retryIncompleteOperation(String pluginId) {
+        PluginDbProvisioningStore.ProvisionedPluginDb record = store.get(pluginId);
+        if (record == null) return "not-provisioned";
+        switch (record.canonicalStatus()) {
+            case STATUS_PROVISIONING -> resumeProvision(record);
+            case STATUS_DELETE_PENDING -> retryDelete(record);
+            default -> { }
+        }
+        return status(pluginId);
+    }
+
+    private DataSourceConfig requireProvisioningConfig(DbType expectedType) {
         DataSourceConfig cfg = dataSources.load();
         if (cfg == null) {
             throw new DbProvisioningException(
-                "Host database is not configured; cannot provision plugin DB.");
+                "Host database is not configured; cannot reconcile plugin DB.");
+        }
+        if (expectedType != null && cfg.type() != expectedType) {
+            throw new DbProvisioningException(
+                "Host database type changed from " + expectedType + " to " + cfg.type()
+                    + "; refusing to run recovery DDL against the wrong database.");
         }
         if (!DbDialectStatements.supportsRbac(cfg.type())) {
             throw new DbProvisioningException(
                 "Database type " + cfg.type() + " does not support RBAC provisioning "
                 + "(SQLite uses file-level isolation).");
         }
-        String adminUser = cfg.adminUsername();
-        String adminPw = cfg.adminPassword();
-        if (adminUser == null || adminUser.isBlank()) {
+        if (cfg.adminUsername() == null || cfg.adminUsername().isBlank()) {
             throw new DbProvisioningException(
                 "Admin credentials are required to provision plugin DBs. "
                 + "Set db.admin.username / db.admin.password in the setup wizard.");
         }
-
-        String schemaName = schemaNameFor(pluginId);
-        String userName = userNameFor(pluginId);
-        String password = generatePassword();
-
-        List<String> ddl = DbDialectStatements.createStatements(cfg.type(), schemaName, userName, password);
-        executeDdl(cfg, adminUser, adminPw, ddl, pluginId);
-
-        String workerUrl = workerUrlFor(cfg, schemaName);
-        PluginDbProvisioningStore.ProvisionedPluginDb record =
-                new PluginDbProvisioningStore.ProvisionedPluginDb(
-                        pluginId, cfg.type(), schemaName, userName, password,
-                        workerUrl, cfg.driver(), Instant.now().toString());
-        store.put(record);
-        log.info("Provisioned DB credentials for plugin {} ({} schema {} as {})",
-                pluginId, cfg.type(), schemaName, userName);
-        return new ProvisionedCredentials(cfg.type(), cfg.driver(), workerUrl, userName, password);
+        return cfg;
     }
 
-    /**
-     * Drops the plugin's DB user + namespace and removes the store record. Non-blocking on
-     * failure: a DDL error is logged but never prevents the store record removal — uninstall
-     * must always succeed so the user is not stuck with an orphaned plugin entry.
-     */
-    public void deprovision(String pluginId) {
-        PluginDbProvisioningStore.ProvisionedPluginDb rec = store.get(pluginId);
-        if (rec == null) {
-            log.debug("Deprovision: no stored record for {}, nothing to do.", pluginId);
-            return;
-        }
-        DataSourceConfig cfg = dataSources.load();
-        if (cfg != null && DbDialectStatements.supportsRbac(cfg.type())
-                && cfg.adminUsername() != null && !cfg.adminUsername().isBlank()) {
-            List<String> ddl = DbDialectStatements.dropStatements(cfg.type(), rec.schemaName(), rec.userName());
-            try {
-                executeDdl(cfg, cfg.adminUsername(), cfg.adminPassword(), ddl, pluginId);
-            } catch (DbProvisioningException e) {
-                log.warn("Deprovision DDL failed for {} (left for retry): {}", pluginId, e.getMessage());
-            }
-        }
-        store.remove(pluginId);
-        log.info("Deprovisioned DB credentials for plugin {}", pluginId);
+    private static ProvisionedCredentials credentials(
+            PluginDbProvisioningStore.ProvisionedPluginDb record) {
+        return new ProvisionedCredentials(record.dbType(), record.driver(), record.url(),
+                record.userName(), record.password());
     }
 
     private void executeDdl(DataSourceConfig cfg, String adminUser, String adminPw,
@@ -134,7 +253,7 @@ public class PluginDbProvisioner {
         try (Connection conn = DriverManager.getConnection(cfg.url(), adminUser, adminPw);
                 Statement stmt = conn.createStatement()) {
             for (String sql : ddl) {
-                log.debug("Provisioning DDL for {}: {}", pluginId, redactPassword(sql));
+                log.debug("Plugin database DDL for {}: {}", pluginId, redactPassword(sql));
                 stmt.execute(sql);
             }
         } catch (SQLException e) {

@@ -1,6 +1,6 @@
 ---
 title: Official Plugin — Browser Agent
-description: Walkthrough of fan.summer.browser (v4.0.0-alpha.8) — an automation-category plugin with network/files.write permissions and nine aiTools that drive a real Chromium via Playwright (Java) — navigate, click, type, scrape, screenshot, eval JS. Headed by default, Chromium auto-downloaded to the plugin's data dir on first use.
+description: Walkthrough of fan.summer.browser (v4.0.0-beta.1) — an automation-category plugin with network/files.write permissions and nine aiTools that drive a real Chromium via Playwright (Java) — navigate, click, type, scrape, screenshot, eval JS. Headed by default, Chromium auto-downloaded to the plugin's data dir on first use.
 lang: en
 ---
 
@@ -24,7 +24,7 @@ lang: en
   "id": "fan.summer.browser",
   "name": "Browser Agent",
   "description": "AI-driven browser automation: navigate, click, type, scrape, screenshot, eval JS",
-  "version": "4.0.0-alpha.8",
+  "version": "4.0.0-beta.1",
   "author": "FengYu",
   "icon": "browser",
   "category": "automation",

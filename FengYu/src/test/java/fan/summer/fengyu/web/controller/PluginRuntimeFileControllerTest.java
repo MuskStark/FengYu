@@ -23,36 +23,37 @@ class PluginRuntimeFileControllerTest {
     @Test
     void uploadDirectoryRequiresFilesReadPermission() throws Exception {
         PluginPackageService packages = new PluginPackageService(temp.resolve("plugins").toString());
-        install(packages, "fan.summer.email", List.of("files.read"));
-        install(packages, "fan.summer.denied", List.of());
+        // Test plugins use a non-reserved namespace (P0-8 reserves fan.summer.* for trusted installs).
+        install(packages, "com.example.email", List.of("files.read"));
+        install(packages, "com.example.denied", List.of());
         PluginRuntimeFileController controller = new PluginRuntimeFileController(
             packages, new PluginFileGrantService());
         var upload = new MockMultipartFile("files", "a.txt", "text/plain", "a".getBytes());
 
         var response = controller.uploadDirectory(
-            "fan.summer.email", List.of(upload), List.of("reports/a.txt"), "read");
+            "com.example.email", List.of(upload), List.of("reports/a.txt"), "read");
         assertEquals("read", response.getBody().access());
         assertThrows(IllegalArgumentException.class, () -> controller.uploadDirectory(
-            "fan.summer.denied", List.of(upload), List.of("reports/a.txt"), "read"));
+            "com.example.denied", List.of(upload), List.of("reports/a.txt"), "read"));
     }
 
     @Test
     void writableWorkspaceUploadRequiresFilesWritePermission() throws Exception {
         PluginPackageService packages = new PluginPackageService(temp.resolve("plugins-write").toString());
-        install(packages, "fan.summer.offlinepython", List.of("files.read", "files.write"));
-        install(packages, "fan.summer.readonly", List.of("files.read"));
-        install(packages, "fan.summer.writeonly", List.of("files.write"));
+        install(packages, "com.example.offlinepython", List.of("files.read", "files.write"));
+        install(packages, "com.example.readonly", List.of("files.read"));
+        install(packages, "com.example.writeonly", List.of("files.write"));
         PluginRuntimeFileController controller = new PluginRuntimeFileController(
             packages, new PluginFileGrantService());
         var upload = new MockMultipartFile("files", "requirements.txt", "text/plain", "numpy".getBytes());
 
-        var response = controller.uploadDirectory("fan.summer.offlinepython", List.of(upload),
+        var response = controller.uploadDirectory("com.example.offlinepython", List.of(upload),
             List.of("requirements.txt"), "read-write");
         assertEquals("read-write", response.getBody().access());
         assertThrows(IllegalArgumentException.class, () -> controller.uploadDirectory(
-            "fan.summer.readonly", List.of(upload), List.of("requirements.txt"), "read-write"));
+            "com.example.readonly", List.of(upload), List.of("requirements.txt"), "read-write"));
         assertThrows(IllegalArgumentException.class, () -> controller.uploadDirectory(
-            "fan.summer.writeonly", List.of(upload), List.of("requirements.txt"), "read-write"));
+            "com.example.writeonly", List.of(upload), List.of("requirements.txt"), "read-write"));
     }
 
     private static void install(PluginPackageService packages, String id, List<String> permissions) throws Exception {
