@@ -371,9 +371,11 @@ public class PluginProcessManager {
                 command = withJavaTempDirectory(command, workerTemp);
             }
             writableRoots.addAll(files.writablePaths(id));
+            List<Path> readableRoots = files.readablePaths(id).stream()
+                    .filter(path -> !writableRoots.contains(path)).toList();
             ProcessSandbox.Launch launch = fullAccess
                     ? sandbox.unrestricted(command)
-                    : sandbox.plugin(command, root, writableRoots, broadFileWrite, allowNetwork);
+                    : sandbox.plugin(command, root, writableRoots, readableRoots, broadFileWrite, allowNetwork);
             ProcessBuilder builder = new ProcessBuilder(launch.command()).directory(root.toFile());
             // A Worker must NOT inherit the host JVM's full environment — that would hand the
             // plugin every host secret (OPENAI_API_KEY, GH_TOKEN, proxy creds, CI secrets, ...).
