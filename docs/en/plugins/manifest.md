@@ -88,6 +88,20 @@ See [AI Tools](/en/plugins/ai-tools) for the end-to-end flow.
 
 Any other value is rejected as an unknown permission at both validate and install time. A file operation attempted without the matching permission is rejected with `403`. See [File I/O](/en/plugins/file-io).
 
+> **Enforcement is not uniform (P1-9).** Do not assume every accepted token is enforced to the same
+> degree:
+> - **Enforced by the host/OS sandbox:** `files.read`, `files.write` (FileRef grant gate), `network`
+>   (OS network namespace).
+> - **Treated as full network egress (advisory at the network layer):** `network.email` and `database`
+>   currently grant broad outbound network access — the host does not yet broker SMTP/IMAP or
+>   restrict DB connections to a specific host. A real mail/DB proxy is a tracked follow-up.
+> - **Advisory only (no host enforcement yet):** `clipboard.read`, `clipboard.write`, `notifications`
+>   document intent for a future capability bridge to the desktop shell; nothing reads them at
+>   runtime today.
+>
+> Surface these honestly in any UI that summarizes a plugin's permissions — do not imply finer
+> network isolation than the OS actually enforces for `network.email` / `database`.
+
 ## Examples
 
 ### Markdown plugin

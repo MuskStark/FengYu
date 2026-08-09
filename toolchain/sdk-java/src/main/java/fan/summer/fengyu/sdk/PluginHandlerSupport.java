@@ -12,10 +12,11 @@ import java.util.Map;
  * entry/exit logging that previously had to be copy-pasted into every plugin.
  *
  * <p><b>Logging.</b> {@link #handle(String, PluginHandler)} logs every call at DEBUG on entry (the
- * method name plus an abbreviated param preview) and at DEBUG on success, and at WARN with the full
- * throwable on failure. These reach the host's {@code plugin-<id>-stderr} drain through the SDK's
- * structured SLF4J provider, so plugin activity is observable from the host console and the
- * per-plugin log buffer without each handler doing its own logging.
+ * method name plus the param KEYS only — never values, since a value may be a request-carried
+ * secret) and at DEBUG on success, and at WARN with the throwable on failure. These reach the
+ * host's {@code plugin-<id>-stderr} drain through the SDK's structured SLF4J provider, so plugin
+ * activity is observable from the host console and the per-plugin log buffer without each handler
+ * doing its own logging.
  *
  * <p><b>Result envelope.</b> Handlers return a {@code Map} produced by {@link #ok}/{@link #failure};
  * {@link #handle} and {@link #result} guarantee every call resolves to such a map, converting any
@@ -49,7 +50,10 @@ public abstract class PluginHandlerSupport {
                 log.debug("{} <- {} ok: {}", pluginName, method, envelope.get("summary"));
                 return envelope;
             } catch (Exception error) {
-                log.warn("{} handler failed for {}: {}", pluginName, method, String.valueOf(error.getMessage()), error);
+                // The throwable (with stack) goes to SLF4J for diagnostics, but the shared WARN
+                // message uses only the exception TYPE — error.getMessage() can echo request values
+                // (a parsed path, a body fragment), so it is not safe in the shared log channel.
+                log.warn("{} handler failed for {}: {}", pluginName, method, error.getClass().getSimpleName(), error);
                 return failure(safeMessage(error));
             }
         };
@@ -64,7 +68,8 @@ public abstract class PluginHandlerSupport {
         try {
             return operation.run();
         } catch (Exception error) {
-            log.warn("{} operation failed: {}", pluginName, String.valueOf(error.getMessage()), error);
+            // Shared WARN message uses the exception type only; getMessage() may carry request values.
+            log.warn("{} operation failed: {}", pluginName, error.getClass().getSimpleName(), error);
             return failure(safeMessage(error));
         }
     }
@@ -107,22 +112,20 @@ public abstract class PluginHandlerSupport {
         return message.replace('\r', ' ').replace('\n', ' ');
     }
 
-    /** Compact preview of the params map for entry logs; large/unknown values are elided. */
+    /**
+     * Compact preview of the params map's KEYS for entry logs. Only the param names are recorded —
+     * never the values — because a value may be a secret the request carries (an SMTP password, a
+     * mail body, a token, a filesystem path). Truncating by length is not a safe redaction, so
+     * values are omitted entirely. The env redactor only knows env-borne secrets, so it cannot
+     * catch request-carried secrets here. This mirrors the host's "log param keys, not values"
+     * policy (PluginProcessManager#paramKeys).
+     *
+     * @param params the RPC params map (nullable)
+     * @return a stable, value-free preview such as {@code [accountId, folder, outputDirectory]}
+     */
     protected static String abbreviateParams(Map<String, Object> params) {
         if (params == null || params.isEmpty()) return "{}";
-        StringBuilder out = new StringBuilder("{");
-        boolean first = true;
-        for (Map.Entry<String, Object> entry : params.entrySet()) {
-            if (!first) out.append(", ");
-            first = false;
-            out.append(entry.getKey()).append('=');
-            Object value = entry.getValue();
-            String rendered = value == null ? "null" : value.toString();
-            if (rendered.length() > 60) rendered = rendered.substring(0, 57) + "...";
-            out.append(rendered);
-        }
-        out.append('}');
-        return out.toString();
+        return params.keySet().toString();
     }
 
     /** An operation that may throw a checked exception, so handlers can call IO methods directly. */

@@ -25,7 +25,9 @@ public class OfficialPluginSeeder implements ApplicationRunner {
         this.packages = packages; this.source = Path.of(source).toAbsolutePath().normalize();
     }
 
-    @Override public void run(ApplicationArguments args) { seed(); }
+    @Override public void run(ApplicationArguments args) {
+        seed();
+    }
 
     public synchronized void seed() {
         if (!Files.isDirectory(source)) return;
@@ -36,23 +38,48 @@ public class OfficialPluginSeeder implements ApplicationRunner {
                     PluginManifest incoming = packages.readArchiveManifest(archive);
                     PluginManifest installed = packages.find(id).orElse(null);
                     if (installed != null) {
-                        // Upgrade only when the bundled archive is strictly newer; never downgrade.
-                        // This honours the class Javadoc ("upgrades them when newer") and is what
-                        // lets a rebuilt worker JAR reach a user who already has the plugin installed.
-                        if (PluginMarketplaceService.compareVersions(incoming.version(), installed.version()) <= 0) continue;
-                        log.info("Upgrading official plugin {} {} → {}", id, installed.version(), incoming.version());
+                        // P0-2 trusted-reinstall migration: an installed official plugin that has NO
+                        // integrity record predates the integrity store (it was installed by an older
+                        // host that may have let a Worker write its own install dir). Do NOT endorse the
+                        // current on-disk state — reinstall from this trusted bundled archive (SHA-256
+                        // sidecar verified below) so a fresh, trusted baseline record is established.
+                        // This re-runs even when the bundled version equals/older the installed one;
+                        // the normal upgrade path below still handles strictly-newer bundles.
+                        boolean lacksRecord = packages.integrityStore() == null
+                                || packages.integrityStore().read(id).isEmpty();
+                        if (lacksRecord) {
+                            log.info("Reinstalling official plugin {} from bundled archive to establish a trusted integrity baseline", id);
+                        } else if (PluginMarketplaceService.compareVersions(incoming.version(), installed.version()) <= 0) {
+                            // Upgrade only when the bundled archive is strictly newer; never downgrade.
+                            // This honours the class Javadoc ("upgrades them when newer") and is what
+                            // lets a rebuilt worker JAR reach a user who already has the plugin installed.
+                            continue;
+                        } else {
+                            log.info("Upgrading official plugin {} {} → {}", id, installed.version(), incoming.version());
+                        }
                     }
-                    // When a .sha256 sidecar ships alongside the package, verify integrity BEFORE
-                    // handing the archive to the installer. This catches bit-rot and transport
-                    // corruption without blocking dev workflows that copy packages by hand (no
-                    // sidecar → treated as backwards-compatible, install proceeds).
+                    // P0-8: every bundled official plugin MUST ship a `.sha256` sidecar, and it MUST
+                    // match. The seeder is a host-controlled bundled-package path; the sidecar is a
+                    // corruption/partial-release check, not an independent authenticity anchor (an
+                    // attacker able to replace both files can still make them agree). Code signing or
+                    // an asymmetric package signature remains the distribution-level authenticity
+                    // boundary. Missing/mismatching pairs fail closed so incomplete or corrupted
+                    // releases can never acquire official identity.
                     Path checksum = Path.of(archive + ".sha256");
-                    if (Files.exists(checksum) && !verifySha256(archive, checksum)) {
-                        log.warn("Skipping official plugin {}: SHA256 checksum mismatch", archive);
+                    if (!Files.exists(checksum)) {
+                        log.warn("Skipping official plugin {}: missing required .sha256 sidecar (official packages must be checksummed)", archive);
+                        continue;
+                    }
+                    if (!verifySha256(archive, checksum)) {
+                        log.warn("Skipping official plugin {}: SHA256 checksum mismatch (package tampered or corrupt)", archive);
                         continue;
                     }
                     // The package service performs the authoritative validation and atomic install.
-                    packages.install(archive);
+                    // installTrusted marks this as a host-trusted path so the package may legitimately
+                    // declare official:true / use the fan.summer.* namespace. Trust comes from this
+                    // host-controlled bundled path; the sidecar verifies pair consistency. User uploads
+                    // cannot claim either identity property (P0-8).
+                    packages.installTrusted(archive);
                     log.info("Official plugin ready: {} {}", incoming.id(), incoming.version());
                 } catch (Exception e) {
                     log.warn("Cannot seed official plugin {}: {}", archive, e.getMessage());

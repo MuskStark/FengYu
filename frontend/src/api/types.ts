@@ -409,7 +409,9 @@ export interface McpStatus {
 export interface ProcessIsolationStatus {
   backend: string
   sandboxed: boolean
+  reduced: boolean
   compatibilityMode: boolean
+  lifecycleIsolation: string
   policy: string
 }
 

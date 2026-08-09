@@ -71,10 +71,13 @@ PATCH /api/plugin-market/{id}/enabled
 ## 卸载
 
 ```
-DELETE /api/plugin-market/{id}
+DELETE /api/plugin-market/{id}?deleteData=true|false
 ```
 
-彻底移除该插件：若其 worker 进程正在运行则停止它，删除解包后的包，并从目录中丢弃描述符。
+数据策略必须显式指定。市场 UI 会进行两次确认：先确认卸载，再确认是否永久删除运行数据。
+`deleteData=false` 会停止 worker 并删除解包后的插件包，但保留 `plugin-data/<id>` 以及已 provision
+的数据库命名空间/凭据，供以后重装继续使用。`deleteData=true` 还会删除这些资源；若文件删除失败，
+endpoint 会返回错误，而不会假报成功。无法完成的数据库清理会以 `DELETE_PENDING` 状态保留并重试。
 
 ## 目录 URL 覆盖
 
@@ -94,7 +97,7 @@ java -Dfengyu.marketplace.catalog-url=https://internal.example/fengyu-catalog.js
 | `POST /api/plugin-market/{id}/install` | 按 id 安装一个目录插件 |
 | `POST /api/plugin-market/{id}/update` | 更新到最新 |
 | `PATCH /api/plugin-market/{id}/enabled` | 启用/禁用（禁用会停止 worker） |
-| `DELETE /api/plugin-market/{id}` | 卸载（停止进程 + 移除包） |
+| `DELETE /api/plugin-market/{id}?deleteData=<boolean>` | 使用显式的运行数据保留/删除策略卸载 |
 
 ## 下一步
 

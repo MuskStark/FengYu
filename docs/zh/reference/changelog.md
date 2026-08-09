@@ -11,15 +11,25 @@ lang: zh-CN
 本文件，请在根 CHANGELOG.md 中修改。
 
 ::: tip 最新发布
-**v4.0.0-alpha.8** — 2026-08-04 ·
-[GitHub 发布](https://github.com/MuskStark/FengYu/releases/tag/v4.0.0-alpha.8)
+**v4.0.0-beta.1** — 2026-08-09 ·
+[GitHub 发布](https://github.com/MuskStark/FengYu/releases/tag/v4.0.0-beta.1)
 :::
 
 ---
 
 ## [Unreleased]
 
+## [4.0.0-beta.1] — 2026-08-09
+
 ### ✨ Added
+- **Official Browser Agent.** The fifth bundled plugin drives a real Chromium through nine
+  confirmation-aware AI tools for navigation, clicking, typing, DOM inspection, screenshots,
+  waiting, JavaScript evaluation, and session shutdown. Chromium resolution supports a configured
+  system browser, a plugin-managed download, and Playwright fallback.
+- **Isolated plugin database lifecycle and localized manifests.** Database-capable workers now use
+  user-authorized per-plugin credentials with recoverable provisioning/deprovisioning state, while
+  manifest display strings and AI-tool descriptions support locale-family fallback. Plugin logs are
+  persisted per plugin and exposed through ordered REST/SSE history.
 - **Windows Job Object process isolation backend (`ProcessSandbox` `WINDOWS_JOB`).** Plugin workers
   and AI-authored commands on Windows now run inside a Win32 Job Object configured with
   `KILL_ON_JOB_CLOSE`, giving reliable process-tree termination: closing the job handle (or
@@ -30,6 +40,15 @@ lang: zh-CN
   reports `backend: "windows-job"`. JNA 5.19.1 was added for the Win32 binding.
 
 ### 🐛 Fixed
+- **Web and desktop dependency advisories.** Updated DOMPurify, nanoid, js-yaml, PostCSS, fast-uri,
+  and brace-expansion to patched compatible versions; both npm dependency audits now report zero
+  known vulnerabilities.
+- **Beta plugin runtime hardening.** Official package checksum sidecars now travel with `.fyp`
+  artifacts through Web/desktop release assembly; plugin DB provisioning/deprovisioning keeps
+  recoverable lifecycle state; JSON-RPC frames, async job logs, and plugin-log SSE replay are
+  bounded and ordered; Windows command Job Object handles are reclaimed on every path. Plugin
+  uninstall now asks whether to retain or permanently delete runtime data and the provisioned DB
+  namespace, and reports deletion failures instead of silently leaving data behind.
 - **Plugin worker processes no longer leak after the host exits.** A plugin worker is an
   independent JVM spawned by the host backend; previously the worker was often not reaped when the
   host exited (macOS/Windows have no equivalent of Linux's `bwrap --die-with-parent`, and Electron

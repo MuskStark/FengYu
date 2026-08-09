@@ -71,6 +71,34 @@ class RpcTransportTest {
         assertFalse(transport.isOpen(), "transport should report closed after EOF");
     }
 
+    @Test void boundedReaderCountsRawUtf8BytesAcrossSurrogatePairs() throws Exception {
+        byte[] frame = "😀\n".getBytes(StandardCharsets.UTF_8);
+        assertEquals("😀", StdioTransport.readBoundedLine(new ByteArrayInputStream(frame), 4));
+        var error = assertThrows(java.io.IOException.class,
+            () -> StdioTransport.readBoundedLine(new ByteArrayInputStream(frame), 3));
+        assertTrue(error.getMessage().contains("3 byte limit"));
+    }
+
+    @Test void outboundLimitCountsUtf8BytesAcrossSurrogatePairs() {
+        assertDoesNotThrow(() -> StdioTransport.ensureFrameWithinLimit("😀", 4, "outbound"));
+        var error = assertThrows(java.io.IOException.class,
+            () -> StdioTransport.ensureFrameWithinLimit("😀", 3, "outbound"));
+        assertTrue(error.getMessage().contains("was 4"));
+    }
+
+    @Test void oversizedResponseIsRejectedBeforeWritingAnyBytes() throws Exception {
+        ByteArrayOutputStream accepted = new ByteArrayOutputStream();
+        StdioTransport exact = new StdioTransport(new ByteArrayInputStream(new byte[0]), accepted, 4);
+        exact.writeFrame("😀");
+        assertEquals("😀" + System.lineSeparator(), accepted.toString(StandardCharsets.UTF_8));
+
+        ByteArrayOutputStream rejected = new ByteArrayOutputStream();
+        StdioTransport over = new StdioTransport(new ByteArrayInputStream(new byte[0]), rejected, 3);
+        assertThrows(java.io.IOException.class, () -> over.writeFrame("😀"));
+        assertEquals(0, rejected.size(), "an oversized response must not be partially written");
+        assertFalse(over.isOpen(), "oversize is a terminal protocol error");
+    }
+
     @Test void builtInLogLevelNotificationUpdatesWorkerWithoutAResponse() throws Exception {
         PluginLogging.setLevel("INFO");
         String input = "{\"jsonrpc\":\"2.0\",\"method\":\"" + PluginLogging.SET_LEVEL_METHOD

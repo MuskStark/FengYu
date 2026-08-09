@@ -24,10 +24,16 @@ The UI runs in a **sandboxed iframe** and talks to the host through a `postMessa
 
 Two sources of plugins:
 
-- **Official** — built and signed by the FengYu team, declared with `"official": true` in the manifest, and seeded into every fresh install by the `OfficialPluginSeeder`. The shipped set includes `fan.summer.markdown`, `fan.summer.excel`, `fan.summer.email`, `fan.summer.offlinepython`, and `fan.summer.browser`.
-- **Third-party** — any `.fyp` archive installed by the user through the marketplace. Their `source` is `THIRD_PARTY`.
+- **Official** — built by the FengYu team, declared with `"official": true` in the manifest, and seeded into every fresh install by the `OfficialPluginSeeder` (which verifies a SHA-256 sidecar before installing). The shipped set includes `fan.summer.markdown`, `fan.summer.excel`, `fan.summer.email`, `fan.summer.offlinepython`, and `fan.summer.browser`.
+- **Third-party** — any `.fyp` archive installed by the user through the marketplace or an upload. Their `source` is `THIRD_PARTY`.
 
 The descriptor exposes this as the `source` field — `OFFICIAL` or `THIRD_PARTY` — on every `InstalledPluginDescriptor` returned by `GET /api/plugin-runtime`.
+
+> **Identity is reserved, not self-declared.** The `fan.summer.*` namespace and the `official: true`
+> flag are host-trusted and can only be set by the trusted seeder path. A package installed via an
+> upload or the marketplace (an untrusted path) that declares either is **rejected** — it cannot
+> claim to be official or squat an official id. This closes the impersonation hole; full asymmetric
+> signature verification (a published key signing each `.fyp`) is a tracked follow-up.
 
 > Each official plugin is documented in depth: [Markdown](/en/plugins/official-markdown), [Excel](/en/plugins/official-excel), [Email Center](/en/plugins/email-center), [Offline Python](/en/plugins/official-offlinepython), [Browser Agent](/en/plugins/official-browser).
 

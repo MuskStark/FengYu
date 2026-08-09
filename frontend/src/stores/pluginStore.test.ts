@@ -50,9 +50,10 @@ describe('pluginStore', () => {
     apiMocks.getUnifiedCatalog.mockResolvedValue([])
     const store = usePluginStore()
 
-    await store.uninstall('evil:CLAUDE:x')
+    await store.uninstall('evil:CLAUDE:x', false)
 
     expect(store.error).toContain('not found')
+    expect(apiMocks.uninstallUnified).toHaveBeenCalledWith('evil:CLAUDE:x', false)
     expect(store.busy).toBeNull()
   })
 

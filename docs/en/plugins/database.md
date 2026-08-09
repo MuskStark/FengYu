@@ -63,7 +63,14 @@ If the admin credentials lack the required privileges, provisioning fails with a
 
 ### Deprovisioning on uninstall
 
-Uninstalling a plugin drops its DB user and namespace (`DROP USER` / `DROP SCHEMA` / `DROP DATABASE` via the admin credentials) and then removes the store record. Deprovisioning is **non-blocking**: a DDL failure is caught and logged (left for a later retry), but the store record is always removed so uninstall itself always succeeds. SQLite has no deprovisioning step — the plugin's `.db` file under its data directory is cleaned up as part of normal uninstall.
+Uninstall requires an explicit runtime-data policy. Retaining data also retains the plugin's DB
+namespace and encrypted credentials so a later reinstall can reconnect. Deleting data marks the
+record `DELETE_PENDING` before attempting `DROP USER` / `DROP SCHEMA` / `DROP DATABASE`. The record
+is removed only after DDL succeeds; missing admin configuration, connection failures, and crashes
+leave enough durable information for the scheduled reconciler or `POST /api/plugin-db/retry/{id}`
+to retry. Provisioning similarly writes a `PROVISIONING` intent before DDL and exposes credentials
+to a worker only after the record becomes `ACTIVE`. SQLite has no RBAC DDL; its private `.db` file
+follows the same retain/delete choice for the plugin data directory.
 
 ## Table-prefix convention (naming hygiene)
 

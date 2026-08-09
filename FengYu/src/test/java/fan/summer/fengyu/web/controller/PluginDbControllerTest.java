@@ -92,11 +92,28 @@ class PluginDbControllerTest {
     void statusReflectsProvisionerState() throws Exception {
         PluginPackageService packages = mock(PluginPackageService.class);
         PluginDbProvisioner provisioner = mock(PluginDbProvisioner.class);
-        when(provisioner.isProvisioned("fan.summer.email")).thenReturn(true);
+        when(provisioner.status("fan.summer.email")).thenReturn("provisioned");
 
         setup(packages, provisioner).perform(post("/api/plugin-db/status/fan.summer.email"))
             .andExpect(status().isOk())
             .andExpect(content().json("{\"provisioned\":true,\"status\":\"provisioned\",\"pluginId\":\"fan.summer.email\"}"));
+    }
+
+    @Test
+    void statusExposesDeletePendingAndRetryResult() throws Exception {
+        PluginPackageService packages = mock(PluginPackageService.class);
+        PluginDbProvisioner provisioner = mock(PluginDbProvisioner.class);
+        when(provisioner.status("fan.summer.email")).thenReturn("delete-pending");
+        when(provisioner.retryIncompleteOperation("fan.summer.email"))
+            .thenReturn("not-provisioned");
+        MockMvc mvc = setup(packages, provisioner);
+
+        mvc.perform(post("/api/plugin-db/status/fan.summer.email"))
+            .andExpect(status().isOk())
+            .andExpect(content().json("{\"provisioned\":false,\"status\":\"delete-pending\"}"));
+        mvc.perform(post("/api/plugin-db/retry/fan.summer.email"))
+            .andExpect(status().isOk())
+            .andExpect(content().json("{\"provisioned\":false,\"status\":\"not-provisioned\"}"));
     }
 
     // Adjusted to the current PluginManifest constructor signature (14-arg backwards-compatible

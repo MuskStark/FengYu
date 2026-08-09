@@ -102,6 +102,80 @@ class PluginPackageServiceTest {
         assertTrue(ex.getMessage().contains("effect"));
     }
 
+    /**
+     * Regression (P0-8): an uploaded (untrusted) package cannot claim {@code official: true}. The
+     * {@code official} flag is host-trusted only; a self-declared official badge must be rejected so
+     * no third party can masquerade as an official plugin (or replace one by id).
+     */
+    @Test
+    void untrustedUploadCannotClaimOfficial() throws Exception {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        MockMultipartFile file = inlinePackage(
+            """
+            {"schemaVersion":1,"id":"com.example.claim","name":"Claim","description":"claims official",
+             "version":"1.0.0","author":"X","icon":"puzzle-outline","category":"dev",
+             "ui":{"entry":"ui/index.html"},"official":true,"permissions":[]}
+            """,
+            "ui/index.html", "<html></html>");
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.install(file));
+        assertTrue(ex.getMessage().toLowerCase(java.util.Locale.ROOT).contains("official"),
+            "untrusted official claim must be rejected: " + ex.getMessage());
+    }
+
+    /**
+     * Regression (P0-8): an uploaded (untrusted) package cannot use the reserved
+     * {@code fan.summer.*} namespace, even with {@code official: false}. Without this a hostile
+     * package could squat e.g. {@code fan.summer.browser} and be indistinguishable from the real one.
+     */
+    @Test
+    void untrustedUploadCannotUseReservedNamespace() throws Exception {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        MockMultipartFile file = inlinePackage(
+            """
+            {"schemaVersion":1,"id":"fan.summer.browser","name":"Fake Browser","description":"impersonation",
+             "version":"1.0.0","author":"attacker","icon":"puzzle-outline","category":"dev",
+             "ui":{"entry":"ui/index.html"},"permissions":[]}
+            """,
+            "ui/index.html", "<html></html>");
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.install(file));
+        assertTrue(ex.getMessage().toLowerCase(java.util.Locale.ROOT).contains("reserved"),
+            "reserved namespace must be rejected on the untrusted path: " + ex.getMessage());
+    }
+
+    /**
+     * Regression (P0-8): the trusted install path (the official-plugin seeder) MAY legitimately
+     * declare {@code official: true} and use {@code fan.summer.*}. This is the path that justifies
+     * the trust (a SHA-256 sidecar verified by the caller before reaching installTrusted).
+     */
+    @Test
+    void trustedInstallAllowsOfficialInReservedNamespace() throws Exception {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        Path archive = writeArchive(temp.resolve("official.fyp"),
+            """
+            {"schemaVersion":1,"id":"fan.summer.demo","name":"Official Demo","description":"trusted",
+             "version":"1.0.0","author":"FengYu","icon":"puzzle-outline","category":"dev",
+             "ui":{"entry":"ui/index.html"},"official":true,"permissions":[]}
+            """,
+            "ui/index.html", "<html>official</html>");
+        PluginManifest manifest = service.installTrusted(archive);
+        assertEquals("fan.summer.demo", manifest.id());
+        assertTrue(manifest.official(), "trusted install must preserve the official flag");
+    }
+
+    /**
+     * Regression (P0-8): a normal third-party upload with a non-reserved id and {@code official:false}
+     * installs unchanged — namespace reservation and official-claim rejection must not break the
+     * ordinary third-party install path.
+     */
+    @Test
+    void thirdPartyUploadWithoutClaimsInstallsNormally() throws Exception {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        PluginManifest manifest = service.install(packageFile("1.0.0"));
+        assertEquals("com.example.demo", manifest.id());
+        assertFalse(manifest.official());
+    }
+
+
     @Test
     void uninstallInvokesDeprovisionWhenAProvisionerIsAttached(
             @TempDir Path pluginsRoot,
@@ -129,6 +203,46 @@ class PluginPackageServiceTest {
         assertEquals(java.util.List.of("fan.summer.email"), deprovisioned,
             "uninstall must deprovision the plugin's DB credentials");
         assertFalse(Files.exists(pluginDir), "plugin directory must be deleted too");
+    }
+
+    @Test
+    void uninstallRetainsOrDeletesRuntimeDataAccordingToExplicitPolicy() throws Exception {
+        Path pluginsRoot = temp.resolve("plugins");
+        Path dataRoot = temp.resolve("plugin-data");
+        PluginPackageService service = new PluginPackageService(pluginsRoot.toString(), dataRoot);
+
+        service.install(packageFile("1.0.0"));
+        Path dataFile = dataRoot.resolve("com.example.demo/state/profile.db");
+        Files.createDirectories(dataFile.getParent());
+        Files.writeString(dataFile, "state");
+        service.uninstall("com.example.demo", false);
+        assertTrue(Files.exists(dataFile), "retain policy must keep runtime data");
+
+        service.install(packageFile("1.0.0"));
+        service.uninstall("com.example.demo", true);
+        assertFalse(Files.exists(dataRoot.resolve("com.example.demo")),
+            "delete policy must remove the complete plugin data directory");
+    }
+
+    @Test
+    void retainDataPolicyAlsoRetainsProvisionedDatabaseNamespace() throws Exception {
+        Path pluginsRoot = temp.resolve("retain-db-plugins");
+        Path dataRoot = temp.resolve("retain-db-data");
+        PluginPackageService service = new PluginPackageService(pluginsRoot.toString(), dataRoot);
+        service.install(packageFile("1.0.0"));
+
+        java.util.List<String> deprovisioned = new java.util.ArrayList<>();
+        PluginDbProvisioner provisioner = new PluginDbProvisioner(
+            new fan.summer.fengyu.setup.DataSourceConfigService(temp.resolve("retain-db-config").toString()),
+            new PluginDbProvisioningStore(temp.resolve("retain-db-config"))) {
+            @Override public void deprovision(String pluginId) { deprovisioned.add(pluginId); }
+        };
+        service.attachProvisionerForTest(provisioner);
+
+        service.uninstall("com.example.demo", false);
+
+        assertTrue(deprovisioned.isEmpty(),
+            "retaining plugin data must also retain its provisioned DB namespace and credentials");
     }
 
     /** Locates the cross-language shared fixtures from either FengYu/ or the repository root. */
@@ -169,5 +283,16 @@ class PluginPackageServiceTest {
         zip.putNextEntry(new ZipEntry(path));
         zip.write(content.getBytes(StandardCharsets.UTF_8));
         zip.closeEntry();
+    }
+
+    /** Write a .fyp (zip) archive to {@code path} with a manifest and a single UI asset. */
+    private Path writeArchive(Path path, String manifest, String assetPath, String assetContent) throws Exception {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
+            add(zip, "manifest.json", manifest);
+            add(zip, assetPath, assetContent);
+        }
+        Files.write(path, bytes.toByteArray());
+        return path;
     }
 }

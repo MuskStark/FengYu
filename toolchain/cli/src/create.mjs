@@ -3,8 +3,16 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runCommand } from './commands.mjs'
 
-/** Toolchain version shared by the CLI, the SDK, and generated templates. */
-export const toolingVersion = '1.1.0'
+/**
+ * Toolchain version shared by the CLI, the SDK, the devkit, and generated plugin templates.
+ * Read from this package's own {@code package.json} so a scaffolded plugin's {@code @infinia/*}
+ * dependency ranges can never drift from the toolchain that generated it. The CLI is itself part
+ * of the toolchain release, so {@code toolchain/cli/scripts/resolve-tooling-version.mjs} already
+ * guarantees this version matches the other five toolchain artifacts.
+ */
+export const toolingVersion = JSON.parse(
+  await fs.readFile(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'),
+).version
 
 /**
  * Canonical plugin id pattern — identical to {@code toolchain/spec/manifest.schema.json}'s `id` pattern

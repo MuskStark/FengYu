@@ -23,8 +23,9 @@ Out of scope (never touch here):
 
 - **App version** — Maven `${revision}` (root `pom.xml`), mirrored in `frontend/package.json`,
   `desktop/electron/package.json`, and each official plugin's `manifest.json`.
-- **Plugin toolchain version** — independent; `toolchain/sdk-java/pom.xml` and the three
-  `@infinia/*` `package.json` files (`toolchain/cli/`, `toolchain/sdk-ts/`, `toolchain/ui/`).
+- **Plugin toolchain version** — independent; `toolchain/sdk-java/pom.xml`,
+  `toolchain/devkit-java/pom.xml`, and the four `@infinia/*` `package.json` files
+  (`toolchain/cli/`, `toolchain/dev/`, `toolchain/sdk-ts/`, `toolchain/ui/`).
 
 Always read the literal from its source file before replacing it anywhere. An app release does not
 touch the toolchain version, and vice-versa.

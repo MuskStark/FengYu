@@ -1,6 +1,6 @@
 ---
 title: 官方插件——浏览器代理
-description: fan.summer.browser（v4.0.0-alpha.8）讲解——一个 automation 类别插件，带有 network/files.write 权限和九个 aiTools，通过 Playwright（Java）驱动真实的 Chromium——导航、点击、输入、抓取、截图、执行 JS。默认有头模式，Chromium 在首次使用时自动下载到插件的 data dir。
+description: fan.summer.browser（v4.0.0-beta.1）讲解——一个 automation 类别插件，带有 network/files.write 权限和九个 aiTools，通过 Playwright（Java）驱动真实的 Chromium——导航、点击、输入、抓取、截图、执行 JS。默认有头模式，Chromium 在首次使用时自动下载到插件的 data dir。
 lang: zh-CN
 ---
 
@@ -24,7 +24,7 @@ lang: zh-CN
   "id": "fan.summer.browser",
   "name": "Browser Agent",
   "description": "AI-driven browser automation: navigate, click, type, scrape, screenshot, eval JS",
-  "version": "4.0.0-alpha.8",
+  "version": "4.0.0-beta.1",
   "author": "FengYu",
   "icon": "browser",
   "category": "automation",

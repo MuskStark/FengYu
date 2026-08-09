@@ -10,6 +10,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 
 /**
  * Per-launch token auth. When {@link HeadlessLauncher#TOKEN_PROPERTY} is set, every request must
@@ -53,7 +55,14 @@ public class TokenAuthFilter extends OncePerRequestFilter {
             provided = request.getParameter("token");   // EventSource fallback
         }
 
-        if (expected.equals(provided)) {
+        // Constant-time comparison: the token is the only thing gating every API call, so a
+        // short-circuiting String.equals would expose a timing side-channel on the loopback API
+        // (reachable by every local user/process, and via DNS rebinding from a browser tab).
+        // provided is null only when no header/query was sent at all — treat as a plain mismatch.
+        boolean ok = provided != null
+                && MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8),
+                                         provided.getBytes(StandardCharsets.UTF_8));
+        if (ok) {
             chain.doFilter(request, response);
         } else {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);

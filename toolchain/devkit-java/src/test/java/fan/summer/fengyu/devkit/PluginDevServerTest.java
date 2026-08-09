@@ -3,6 +3,7 @@ package fan.summer.fengyu.devkit;
 import fan.summer.fengyu.sdk.JsonRpcWorker;
 import org.junit.jupiter.api.Test;
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.InputStreamReader;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
@@ -145,5 +146,17 @@ class PluginDevServerTest {
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             () -> PluginDevServer.builder().port(0).start());
         assertTrue(ex.getMessage().contains("worker"));
+    }
+
+    @Test void transportLimitsBothDirectionsByRawUtf8Bytes() throws Exception {
+        byte[] frame = "😀\n".getBytes(StandardCharsets.UTF_8);
+        assertEquals("😀", LineFramedSocketTransport.readBoundedLine(
+            new ByteArrayInputStream(frame), 4));
+        assertThrows(java.io.IOException.class, () -> LineFramedSocketTransport.readBoundedLine(
+            new ByteArrayInputStream(frame), 3));
+        assertDoesNotThrow(() -> LineFramedSocketTransport.ensureFrameWithinLimit(
+            "😀", 4, "outbound dev frame"));
+        assertThrows(java.io.IOException.class, () -> LineFramedSocketTransport.ensureFrameWithinLimit(
+            "😀", 3, "outbound dev frame"));
     }
 }
