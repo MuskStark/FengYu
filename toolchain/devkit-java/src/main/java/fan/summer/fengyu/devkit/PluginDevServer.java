@@ -192,7 +192,10 @@ public final class PluginDevServer {
             // the production host's environment injection (there it is a ProcessBuilder env var;
             // here System.setProperty is the equivalent for a same-process IDE launch).
             if (pluginRoot != null) {
-                System.setProperty("FENGYU_PLUGIN_ROOT", pluginRoot.toAbsolutePath().toString());
+                // Use portable separators so the value is stable when serialized by a worker
+                // and compared with slash-delimited manifest paths on Windows as well as Unix.
+                System.setProperty("FENGYU_PLUGIN_ROOT",
+                    pluginRoot.toAbsolutePath().normalize().toString().replace('\\', '/'));
             }
 
             ServerSocket socket;
