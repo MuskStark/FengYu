@@ -33,8 +33,10 @@ import {
   saveExcelWizardRecord,
   type ExcelWizardDraft,
 } from './excelWizardState'
+import { useFengYuEnvironment } from './env'
 
 const client = useFengYuClient()
+const { t } = useFengYuEnvironment()
 
 type SplitMode = 'BY_SHEET' | 'BY_COLUMN' | 'COMPLEX'
 
@@ -45,11 +47,11 @@ interface ModeOption {
   icon: string
 }
 
-const modeOptions: ModeOption[] = [
-  { value: 'BY_SHEET', label: 'By sheet', hint: 'One file per sheet', icon: mdiTableMultiple },
-  { value: 'BY_COLUMN', label: 'By column', hint: 'One file per value in a column', icon: mdiFormatColumns },
-  { value: 'COMPLEX', label: 'Complex', hint: 'Multiple rules combined', icon: mdiSitemapOutline },
-]
+const modeOptions = computed<ModeOption[]>(() => [
+  { value: 'BY_SHEET', label: t('exui.mode.bySheet.label'), hint: t('exui.mode.bySheet.hint'), icon: mdiTableMultiple },
+  { value: 'BY_COLUMN', label: t('exui.mode.byColumn.label'), hint: t('exui.mode.byColumn.hint'), icon: mdiFormatColumns },
+  { value: 'COMPLEX', label: t('exui.mode.complex.label'), hint: t('exui.mode.complex.hint'), icon: mdiSitemapOutline },
+])
 
 interface AnalyzeResponse {
   success: boolean
@@ -74,15 +76,15 @@ interface ComplexEntryRow {
   copyAll: boolean
 }
 
-const steps: FyWizardStep[] = [
-  { value: 'source', title: 'Source' },
-  { value: 'mode', title: 'Mode' },
-  { value: 'output', title: 'Output' },
-  { value: 'run', title: 'Run' },
-]
+const steps = computed<FyWizardStep[]>(() => [
+  { value: 'source', title: t('exui.step.source') },
+  { value: 'mode', title: t('exui.step.mode') },
+  { value: 'output', title: t('exui.step.output') },
+  { value: 'run', title: t('exui.step.run') },
+])
 const activeStep = ref('source')
 const wizardStates = ref<Record<string, FyWizardStepState>>(
-  createWizardStates(steps, 'source'),
+  createWizardStates(steps.value, 'source'),
 )
 const wizardCompleted = ref(false)
 const restoreSnapshot = shallowRef<FyWizardSnapshot>()
@@ -153,7 +155,7 @@ function notifyErr(msg: string): void {
 function reportPersistenceFailure(): void {
   if (persistenceWarningShown) return
   persistenceWarningShown = true
-  notifyErr('Unable to save wizard progress')
+  notifyErr(t('exui.notify.unableSave'))
 }
 
 function responseError(
@@ -207,10 +209,10 @@ function persistSnapshot(snapshot: FyWizardSnapshot): void {
 }
 
 function resetNavigationFrom(changedStep: string): void {
-  const changedIndex = steps.findIndex((step) => step.value === changedStep)
+  const changedIndex = steps.value.findIndex((step) => step.value === changedStep)
   if (changedIndex < 0) return
   const sourceSnapshot = latestSnapshot.value
-  const allowed = new Set(steps.slice(0, changedIndex + 1).map((step) => step.value))
+  const allowed = new Set(steps.value.slice(0, changedIndex + 1).map((step) => step.value))
   const visitedPath = sourceSnapshot?.visitedPath.filter((step) => allowed.has(step)) ?? []
   if (!visitedPath.includes(changedStep)) visitedPath.push(changedStep)
   const states = {
@@ -244,7 +246,7 @@ function invalidateDependencies(changedStep: string): void {
 
 async function validateSource(signal: AbortSignal): Promise<FyWizardValidationResult> {
   if (!sourceFileRef.value || !session.value) {
-    return { valid: false, message: 'Choose an Excel file' }
+    return { valid: false, message: t('exui.validation.chooseExcelFile') }
   }
   const source = sourceFileRef.value
   const sessionId = session.value
@@ -262,7 +264,7 @@ async function validateSource(signal: AbortSignal): Promise<FyWizardValidationRe
       throw new DOMException('Aborted', 'AbortError')
     }
     if (!res.success) {
-      const msg = responseError(res, 'Analyze failed')
+      const msg = responseError(res, t('exui.fallback.analyzeFailed'))
       analyzeError.value = msg
       return { valid: false, message: msg }
     }
@@ -376,12 +378,14 @@ async function refreshEstimate(expectedSession: string, expectedMode: SplitMode)
 const modeLabel = computed(() => {
   switch (mode.value) {
     case 'BY_SHEET': return selectedSheets.value.length > 0
-      ? `By sheet (${selectedSheets.value.length} selected)`
-      : 'By sheet (all)'
+      ? t('exui.modeLabel.bySheetSelected', selectedSheets.value.length)
+      : t('exui.modeLabel.bySheetAll')
     case 'BY_COLUMN': return splitSheet.value && splitColumn.value
-      ? `By column: ${splitColumn.value} in ${splitSheet.value}`
-      : 'By column'
-    case 'COMPLEX': return `Complex (${complexEntries.value.length} rule${complexEntries.value.length === 1 ? '' : 's'})`
+      ? t('exui.modeLabel.byColumn', splitColumn.value, splitSheet.value)
+      : t('exui.modeLabel.byColumnPlain')
+    case 'COMPLEX': return complexEntries.value.length === 1
+      ? t('exui.modeLabel.complex', complexEntries.value.length)
+      : t('exui.modeLabel.complexPlural', complexEntries.value.length)
   }
 })
 
@@ -394,40 +398,40 @@ const configDetails = computed<string[]>(() => {
         : sheetNames.value
     case 'BY_COLUMN':
       return splitSheet.value && splitColumn.value
-        ? [`Column “${splitColumn.value}” in sheet “${splitSheet.value}”`]
+        ? [t('exui.detail.columnInSheet', splitColumn.value, splitSheet.value)]
         : []
     case 'COMPLEX':
       return complexEntries.value.map((entry) => entry.copyAll
-        ? `Copy entire sheet “${entry.sheetName}”`
-        : `Split sheet “${entry.sheetName}” by column ${entry.columnIndex} (header row ${entry.headerIndex})`)
+        ? t('exui.detail.copyEntireSheet', entry.sheetName)
+        : t('exui.detail.splitSheetByColumn', entry.sheetName, entry.columnIndex, entry.headerIndex))
   }
 })
 
 async function validateMode(signal: AbortSignal): Promise<FyWizardValidationResult> {
-  if (!session.value) return { valid: false, message: 'Choose an Excel file' }
+  if (!session.value) return { valid: false, message: t('exui.validation.chooseExcelFile') }
   if (mode.value === 'BY_COLUMN') {
     if (!splitSheet.value || !splitColumn.value) {
-      return { valid: false, message: 'Choose a sheet and column' }
+      return { valid: false, message: t('exui.validation.chooseSheetAndColumn') }
     }
     if (!sheetNames.value.includes(splitSheet.value)) {
-      return { valid: false, message: 'Choose a sheet from the analyzed workbook' }
+      return { valid: false, message: t('exui.validation.chooseSheetFromWorkbook') }
     }
     if (!columnsForSheet(splitSheet.value).includes(splitColumn.value)) {
-      return { valid: false, message: 'Choose a column from the analyzed sheet' }
+      return { valid: false, message: t('exui.validation.chooseColumnFromSheet') }
     }
   }
   if (
     mode.value === 'COMPLEX'
     && (complexEntries.value.length === 0 || complexEntries.value.some((entry) => !entry.sheetName))
   ) {
-    return { valid: false, message: 'Add at least one complete split rule' }
+    return { valid: false, message: t('exui.validation.addOneRule') }
   }
   if (
     mode.value === 'COMPLEX'
     && complexEntries.value.some((entry) => entry.copyAll
       && (entry.headerIndex !== -1 || entry.columnIndex !== -1))
   ) {
-    return { valid: false, message: 'Copy-all rules require both indices to be -1' }
+    return { valid: false, message: t('exui.validation.copyAllIndices') }
   }
   if (
     mode.value === 'COMPLEX'
@@ -438,7 +442,7 @@ async function validateMode(signal: AbortSignal): Promise<FyWizardValidationResu
       || entry.columnIndex < 1
     ))
   ) {
-    return { valid: false, message: 'Use whole-number indices of 1 or greater' }
+    return { valid: false, message: t('exui.validation.positiveIndices') }
   }
 
   configuring.value = true
@@ -466,7 +470,7 @@ async function validateMode(signal: AbortSignal): Promise<FyWizardValidationResu
     const res = await client.invoke<ConfigureResponse>('configure', args, { signal })
     abortIfStale(signal)
     if (!res.success) {
-      const msg = responseError(res, 'Configure failed')
+      const msg = responseError(res, t('exui.fallback.configureFailed'))
       configureError.value = msg
       return { valid: false, message: msg }
     }
@@ -486,9 +490,9 @@ async function validateMode(signal: AbortSignal): Promise<FyWizardValidationResu
 
 async function runSplit(signal: AbortSignal): Promise<FyWizardValidationResult> {
   if (!session.value || !sourceFileRef.value) {
-    return { valid: false, message: 'Choose an Excel file' }
+    return { valid: false, message: t('exui.validation.chooseExcelFile') }
   }
-  if (!outputDirRef.value) return { valid: false, message: 'Choose an output folder' }
+  if (!outputDirRef.value) return { valid: false, message: t('exui.validation.chooseOutputFolder') }
   running.value = true
   runError.value = null
   result.value = null
@@ -522,7 +526,7 @@ async function runSplit(signal: AbortSignal): Promise<FyWizardValidationResult> 
     const res = await client.invoke<SplitResponse>('split', splitArgs, { signal })
     abortIfStale(signal)
     if (!res.success) {
-      const msg = responseError(res, 'Split failed')
+      const msg = responseError(res, t('exui.fallback.splitFailed'))
       runError.value = msg
       return { valid: false, message: msg }
     }
@@ -560,10 +564,10 @@ async function validateStep(
   if (step === 'output') {
     return outputDirRef.value
       ? { valid: true }
-      : { valid: false, message: 'Choose an output folder' }
+      : { valid: false, message: t('exui.validation.chooseOutputFolder') }
   }
   if (step === 'run') return runSplit(signal)
-  return { valid: false, message: `Unknown wizard step: ${step}` }
+  return { valid: false, message: t('exui.validation.unknownStep', step) }
 }
 
 function onValidationError(_step: string, message?: string): void {
@@ -608,7 +612,7 @@ async function restoreProgress(): Promise<void> {
   result.value = null
   activeStep.value = 'source'
   wizardStates.value = {
-    ...createWizardStates(steps, 'source'),
+    ...createWizardStates(steps.value, 'source'),
     source: { status: 'validating' },
   }
   wizardCompleted.value = false
@@ -617,7 +621,7 @@ async function restoreProgress(): Promise<void> {
   const restoredActive = record.wizard.activeStep === 'run'
     ? 'output'
     : record.wizard.activeStep
-  const restoredIndex = steps.findIndex((step) => step.value === restoredActive)
+  const restoredIndex = steps.value.findIndex((step) => step.value === restoredActive)
   const promise = validateSource(controller.signal)
   restoreValidation = { generation, sourceId, sessionId, promise }
   try {
@@ -632,7 +636,7 @@ async function restoreProgress(): Promise<void> {
     if (!sourceResult.valid) {
       activeStep.value = 'source'
       wizardStates.value = {
-        ...createWizardStates(steps, 'source'),
+        ...createWizardStates(steps.value, 'source'),
         source: { status: 'error', error: sourceResult.message },
       }
       wizardCompleted.value = false
@@ -647,7 +651,7 @@ async function restoreProgress(): Promise<void> {
       return
     }
 
-    if (restoredIndex >= steps.findIndex((step) => step.value === 'output')) {
+    if (restoredIndex >= steps.value.findIndex((step) => step.value === 'output')) {
       const modeResult = await validateMode(controller.signal)
       if (
         controller.signal.aborted
@@ -657,7 +661,7 @@ async function restoreProgress(): Promise<void> {
       ) return
       if (!modeResult.valid) {
         const states: Record<string, FyWizardStepState> = {
-          ...createWizardStates(steps, 'mode'),
+          ...createWizardStates(steps.value, 'mode'),
           source: { status: 'complete' },
           mode: modeResult.message
             ? { status: 'error', error: modeResult.message }
@@ -680,7 +684,7 @@ async function restoreProgress(): Promise<void> {
     }
 
     const restoredVisitedPath = record.wizard.visitedPath.filter((value) => {
-      const index = steps.findIndex((step) => step.value === value)
+      const index = steps.value.findIndex((step) => step.value === value)
       return index >= 0 && index <= restoredIndex
     })
     if (!restoredVisitedPath.includes(restoredActive)) restoredVisitedPath.push(restoredActive)
@@ -725,11 +729,11 @@ onBeforeUnmount(cancelRestore)
           :validate-step="validateStep"
           :resolve-next="resolveNext"
           :invalidate-after="invalidateFrom"
-          back-text="Back"
-          next-text="Next"
-          finish-text="Run split"
-          retry-text="Retry"
-          optional-text="optional"
+          :back-text="t('exui.wizard.back')"
+          :next-text="t('exui.wizard.next')"
+          :finish-text="t('exui.wizard.finish')"
+          :retry-text="t('exui.wizard.retry')"
+          :optional-text="t('exui.wizard.optional')"
           @snapshot="persistSnapshot"
           @validation-error="onValidationError"
         >
@@ -741,17 +745,17 @@ onBeforeUnmount(cancelRestore)
                     :model-value="sourceFileRef"
                     :extensions="['xlsx', 'xls']"
                     :filters="[{ name: 'Excel', extensions: ['xlsx', 'xls'] }]"
-                    label="Choose Excel file"
+                    :label="t('exui.source.chooseFile')"
                     @update:model-value="(ref: FileRef | null) => onFilePicked(ref, actions.next)"
                   />
 
                   <div v-if="sourceFileRef" class="mt-2 text-body-2">
-                    Selected: {{ sourceFileRef.name }}
+                    {{ t('exui.source.selected', sourceFileRef.name) }}
                   </div>
 
                   <v-alert v-if="analyzing" :icon="false" type="info" class="mt-3" density="compact">
                     <template #prepend><FyIcon :path="mdiInformationOutline" :size="20" class="mr-3" /></template>
-                    Analyzing…
+                    {{ t('exui.source.analyzing') }}
                   </v-alert>
                 </div>
               </v-card-text>
@@ -761,7 +765,7 @@ onBeforeUnmount(cancelRestore)
           <template #mode>
             <v-card variant="flat">
               <v-card-text>
-                <div class="excel-mode-cards" role="radiogroup" aria-label="Split mode">
+                <div class="excel-mode-cards" role="radiogroup" :aria-label="t('exui.source.ariaSplitMode')">
                   <button
                     v-for="option in modeOptions"
                     :key="option.value"
@@ -782,7 +786,7 @@ onBeforeUnmount(cancelRestore)
                   v-if="mode === 'BY_SHEET'"
                   v-model="selectedSheets"
                   :items="sheetNames"
-                  label="Sheets (leave empty for all)"
+                  :label="t('exui.mode.sheets')"
                   multiple
                   chips
                   clearable
@@ -793,13 +797,13 @@ onBeforeUnmount(cancelRestore)
                   <v-select
                     :model-value="splitSheet"
                     :items="sheetNames"
-                    label="Sheet"
+                    :label="t('exui.mode.sheet')"
                     @update:model-value="onSplitSheetChanged"
                   />
                   <v-select
                     v-model="splitColumn"
                     :items="columnsForSplitSheet"
-                    label="Column"
+                    :label="t('exui.mode.column')"
                     :disabled="!splitSheet"
                     @update:model-value="invalidateModeConfiguration"
                   />
@@ -809,10 +813,10 @@ onBeforeUnmount(cancelRestore)
                   <v-table density="compact">
                     <thead>
                       <tr>
-                        <th>Sheet</th>
-                        <th>Header row</th>
-                        <th>Column</th>
-                        <th>Copy entire sheet</th>
+                        <th>{{ t('exui.complex.sheet') }}</th>
+                        <th>{{ t('exui.complex.headerRow') }}</th>
+                        <th>{{ t('exui.complex.column') }}</th>
+                        <th>{{ t('exui.complex.copyEntire') }}</th>
                         <th></th>
                       </tr>
                     </thead>
@@ -857,18 +861,18 @@ onBeforeUnmount(cancelRestore)
                         </td>
                         <td>
                           <v-btn variant="text" size="small" @click="removeComplexEntry(i)">
-                            Remove
+                            {{ t('exui.complex.remove') }}
                           </v-btn>
                         </td>
                       </tr>
                     </tbody>
                   </v-table>
-                  <v-btn class="mt-2" variant="tonal" @click="addComplexEntry">Add rule</v-btn>
+                  <v-btn class="mt-2" variant="tonal" @click="addComplexEntry">{{ t('exui.complex.addRule') }}</v-btn>
                 </template>
 
                 <v-text-field
                   v-model="filePrefix"
-                  label="Output file prefix (optional)"
+                  :label="t('exui.mode.filePrefix')"
                   class="mt-4"
                   @update:model-value="invalidateModeConfiguration"
                 />
@@ -881,22 +885,22 @@ onBeforeUnmount(cancelRestore)
             <v-card variant="flat">
               <v-card-text>
                 <div class="excel-config-summary mb-4">
-                  <div class="text-subtitle-2 mb-1">Split configuration</div>
+                  <div class="text-subtitle-2 mb-1">{{ t('exui.output.configTitle') }}</div>
                   <div class="excel-config-summary__row">
-                    <span class="excel-config-summary__label">Mode</span>
+                    <span class="excel-config-summary__label">{{ t('exui.output.mode') }}</span>
                     <span>{{ modeLabel }}</span>
                   </div>
                   <div v-if="configDetails.length" class="excel-config-summary__row">
-                    <span class="excel-config-summary__label">Rules</span>
+                    <span class="excel-config-summary__label">{{ t('exui.output.rules') }}</span>
                     <ul class="excel-config-summary__list">
                       <li v-for="(detail, i) in configDetails" :key="i">{{ detail }}</li>
                     </ul>
                   </div>
                   <div class="excel-config-summary__row">
-                    <span class="excel-config-summary__label">Expected files</span>
+                    <span class="excel-config-summary__label">{{ t('exui.output.expectedFiles') }}</span>
                     <span v-if="estimating" class="d-inline-flex align-center">
                       <v-progress-circular indeterminate size="14" width="2" class="mr-2" />
-                      estimating…
+                      {{ t('exui.output.estimating') }}
                     </span>
                     <strong v-else-if="estimatedFileCount !== null">{{ estimatedFileCount }}</strong>
                     <span v-else class="text-medium-emphasis">—</span>
@@ -906,11 +910,11 @@ onBeforeUnmount(cancelRestore)
                 <FyDirectoryPicker
                   :model-value="outputDirRef"
                   mode="output"
-                  label="Choose output folder"
+                  :label="t('exui.output.chooseFolder')"
                   @update:model-value="onOutputPicked"
                 />
                 <div v-if="outputDirRef" class="mt-2 text-body-2">
-                  Output: {{ outputDirRef.name }}
+                  {{ t('exui.output.outputName', outputDirRef.name) }}
                 </div>
                 <v-alert
                   v-if="platform === 'desktop'"
@@ -920,11 +924,11 @@ onBeforeUnmount(cancelRestore)
                   class="mt-3"
                 >
                   <template #prepend><FyIcon :path="mdiFolderCheckOutline" :size="20" class="mr-3" /></template>
-                  Files are written directly into this folder — no download step needed.
+                  {{ t('exui.output.desktopHint') }}
                 </v-alert>
                 <v-alert v-else :icon="false" type="info" density="compact" class="mt-3">
                   <template #prepend><FyIcon :path="mdiDownloadOutline" :size="20" class="mr-3" /></template>
-                  Results are staged in a temporary folder; after the split you can download them as a zip.
+                  {{ t('exui.output.webHint') }}
                 </v-alert>
               </v-card-text>
             </v-card>
@@ -935,7 +939,7 @@ onBeforeUnmount(cancelRestore)
               <v-card-text>
                 <div v-if="running" class="d-flex align-center">
                   <v-progress-circular indeterminate size="24" class="mr-2" />
-                  Splitting…
+                  {{ t('exui.run.splitting') }}
                 </div>
 
               </v-card-text>
@@ -947,14 +951,14 @@ onBeforeUnmount(cancelRestore)
               <v-card-text>
                 <v-alert v-if="result" :icon="false" type="success" density="compact" class="mb-3">
                   <template #prepend><FyIcon :path="mdiCheckCircleOutline" :size="20" class="mr-3" /></template>
-                  {{ result.fileCount }} file(s) written to {{ outputDirRef?.name ?? 'the output folder' }}
+                  {{ t('exui.complete.written', result.fileCount, outputDirRef?.name ?? t('exui.complete.outputFolderFallback')) }}
                 </v-alert>
                 <v-alert v-if="runError" :icon="false" type="error" density="compact" class="mb-3">
                   <template #prepend><FyIcon :path="mdiAlertCircleOutline" :size="20" class="mr-3" /></template>
                   {{ runError }}
                 </v-alert>
                 <div v-if="outputDirRef" class="text-body-2 mb-2">
-                  Output folder: {{ outputDirRef.name }}
+                  {{ t('exui.complete.outputFolder', outputDirRef.name) }}
                 </div>
                 <v-list v-if="result" density="compact">
                   <v-list-item v-for="f in result.files" :key="f">{{ f }}</v-list-item>
@@ -968,7 +972,7 @@ onBeforeUnmount(cancelRestore)
                   data-action="export-results"
                   @click="downloadResult"
                 >
-                  Download results
+                  {{ t('exui.complete.download') }}
                 </v-btn>
               </v-card-text>
             </v-card>
