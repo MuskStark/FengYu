@@ -14,6 +14,8 @@ import fan.summer.fengyu.ai.service.OllamaLocalBackend;
 import fan.summer.fengyu.ai.tools.ChatToolApprovalGate;
 import fan.summer.fengyu.ai.tools.AiPermissionContext;
 import fan.summer.fengyu.ai.tools.AiPermissionMode;
+import fan.summer.fengyu.ai.tools.AiToolLocaleContext;
+import fan.summer.fengyu.plugin.market.ManifestI18n;
 import fan.summer.fengyu.plugin.runtime.PluginFileGrantService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -80,7 +83,8 @@ public class AiController {
     private final AtomicReference<ChatBackend> activeBackend = new AtomicReference<>();
 
     @PostMapping("/chat")
-    public Map<String, Object> chat(@RequestBody ChatRequest req) {
+    public Map<String, Object> chat(@RequestBody ChatRequest req,
+            @RequestHeader(name = "Accept-Language", required = false) String acceptLanguage) {
         Instant cutoff = Instant.now().minus(Duration.ofMinutes(10));
         pending.entrySet().removeIf(entry -> {
             if (!entry.getValue().createdAt().isBefore(cutoff)) return false;
@@ -124,7 +128,7 @@ public class AiController {
         }
         String streamId = UUID.randomUUID().toString();
         pending.put(streamId, new PendingTurn(history, refs, staged,
-                AiPermissionMode.from(req.permissionMode()), Instant.now()));
+                AiPermissionMode.from(req.permissionMode()), ManifestI18n.resolveLocale(acceptLanguage), Instant.now()));
         List<ActiveFileRefDto> responseRefs = refs.stream()
             .map(ref -> new ActiveFileRefDto(ref.pluginId(), ref.ref())).toList();
         return Map.of("streamId", streamId, "activeFileRefs", responseRefs);
@@ -210,6 +214,7 @@ public class AiController {
             // visible for the whole tool-execution window. Cleared in finally to avoid leakage.
             ChatFileContext.set(turn.activeFileRefs());
             AiPermissionContext.set(turn.permissionMode());
+            AiToolLocaleContext.set(turn.locale());
             svc.get().chat(history,
                 AiConfigServiceHeadless.getAiTemperature(),
                 AiConfigServiceHeadless.getAiTopP(),
@@ -230,6 +235,7 @@ public class AiController {
         } finally {
             ChatFileContext.clear();
             AiPermissionContext.clear();
+            AiToolLocaleContext.clear();
         }
         return emitter;
     }
@@ -343,5 +349,5 @@ public class AiController {
     /** Carries a stashed turn's history + active file refs from {@code POST /chat} to {@code GET /stream}. */
     private record PendingTurn(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs,
                                List<ChatFileGrantService.StagedOutput> staged,
-                               AiPermissionMode permissionMode, Instant createdAt) {}
+                               AiPermissionMode permissionMode, String locale, Instant createdAt) {}
 }
