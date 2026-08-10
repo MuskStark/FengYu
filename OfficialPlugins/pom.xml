@@ -21,6 +21,5 @@
     <module>plugin-excel</module>
     <module>plugin-email</module>
     <module>plugin-offlinepython</module>
-    <module>plugin-browser</module>
   </modules>
 </project>
