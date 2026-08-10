@@ -35,6 +35,15 @@ public class OfficialPluginSeeder implements ApplicationRunner {
             for (Path archive : entries.filter(p -> p.getFileName().toString().endsWith(".fyp")).toList()) {
                 try {
                     String id = archive.getFileName().toString().replaceFirst("-\\d+\\.\\d+\\.\\d+.*\\.fyp$", "");
+                    // Honour a user uninstall: a tombstone is written on uninstall so the seeder can
+                    // distinguish a user-removed plugin (skip) from a never-installed one (seed). This
+                    // check MUST precede the lacksRecord reinstall block below — otherwise a plugin
+                    // whose package dir + integrity record were both deleted by uninstall would be
+                    // reinstalled as if brand new. A later reinstall clears the tombstone.
+                    if (packages.integrityStore() != null && packages.integrityStore().isUninstalled(id)) {
+                        log.info("Skipping official plugin {}: uninstalled by user", id);
+                        continue;
+                    }
                     PluginManifest incoming = packages.readArchiveManifest(archive);
                     PluginManifest installed = packages.find(id).orElse(null);
                     if (installed != null) {

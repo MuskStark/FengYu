@@ -127,6 +127,40 @@ class PluginIntegrityStoreTest {
             "a legacy manifest-only record must not be treated as whole-package verified");
     }
 
+    /**
+     * The uninstall tombstone is the marker the official-plugin seeder checks to honour a user
+     * uninstall across restarts. markUninstalled → isUninstalled must be true; it is independent of
+     * the integrity record (record/forget operate on {@code <id>.json}, the tombstone on
+     * {@code <id>.uninstalled}); and clearUninstalled must remove it so a later reinstall is allowed.
+     */
+    @Test
+    void uninstallTombstoneIsIndependentOfIntegrityRecord() {
+        PluginIntegrityStore store = new PluginIntegrityStore(temp);
+        assertFalse(store.isUninstalled(ID), "no tombstone before markUninstalled");
+
+        store.markUninstalled(ID);
+        assertTrue(store.isUninstalled(ID), "tombstone present after markUninstalled");
+
+        // Coexists with a record: recording/clearing the record does not touch the tombstone.
+        store.forget(ID);
+        assertTrue(store.isUninstalled(ID), "forget does not clear the tombstone");
+
+        store.clearUninstalled(ID);
+        assertFalse(store.isUninstalled(ID), "clearUninstalled removes the tombstone");
+    }
+
+    @Test
+    void recordDoesNotImplyUninstalledAndViceVersa() throws Exception {
+        PluginIntegrityStore store = new PluginIntegrityStore(temp);
+        Path manifest = writeManifest("{}");
+        store.record(ID, VERSION, manifest);
+        assertFalse(store.isUninstalled(ID), "a recorded plugin is NOT uninstalled");
+
+        store.markUninstalled(ID);
+        assertTrue(store.verify(ID, manifest).isPresent(), "the tombstone does not disturb the record");
+        assertTrue(store.read(ID).isPresent(), "record survives a tombstone mark");
+    }
+
     private Path writeManifest(String content) throws Exception {
         Path dir = Files.createDirectories(temp.resolve(ID));
         Path manifest = dir.resolve("manifest.json");
