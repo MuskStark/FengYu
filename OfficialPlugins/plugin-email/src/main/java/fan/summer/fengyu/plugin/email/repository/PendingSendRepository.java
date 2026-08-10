@@ -2,6 +2,7 @@ package fan.summer.fengyu.plugin.email.repository;
 
 import fan.summer.fengyu.plugin.email.database.EmailDatabase;
 import fan.summer.fengyu.plugin.email.model.PendingSend;
+import fan.summer.fengyu.sdk.PluginMessages;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Options;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Optional;
 
 public final class PendingSendRepository {
+    private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, PendingSendRepository.class);
     private final EmailDatabase database;
 
     public PendingSendRepository(EmailDatabase database) {
@@ -100,7 +102,7 @@ public final class PendingSendRepository {
     }
 
     public List<SendTaskView> search(String status, int offset, int limit) {
-        if (offset < 0 || limit < 1 || limit > 100) throw new IllegalArgumentException("Invalid send task page");
+        if (offset < 0 || limit < 1 || limit > 100) throw new IllegalArgumentException(MSGS.format("em.err.invalidSendTaskPage"));
         try (SqlSession session = database.openSession()) {
             return List.copyOf(session.getMapper(Mapper.class).search(status, offset, limit));
         }

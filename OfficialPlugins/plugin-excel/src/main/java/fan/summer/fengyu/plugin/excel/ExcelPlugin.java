@@ -1,6 +1,7 @@
 package fan.summer.fengyu.plugin.excel;
 
 
+import fan.summer.fengyu.sdk.PluginMessages;
 import org.apache.fesod.sheet.ExcelReader;
 import org.apache.fesod.sheet.FesodSheet;
 import org.apache.fesod.sheet.read.metadata.ReadSheet;
@@ -12,20 +13,28 @@ import java.util.stream.Collectors;
 
 public class ExcelPlugin {
     private final ExcelSessionStore sessions;
+    private final PluginMessages msgs;
 
-    public ExcelPlugin(ExcelSessionStore sessions) { this.sessions = sessions; }
+    public ExcelPlugin(ExcelSessionStore sessions) {
+        this(sessions, PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, ExcelPlugin.class));
+    }
+
+    public ExcelPlugin(ExcelSessionStore sessions, PluginMessages msgs) {
+        this.sessions = sessions;
+        this.msgs = msgs;
+    }
 
     public Object invoke(String action, Map<String, Object> args) {
         String session = str(args, "session");
         if (session == null || session.isBlank()) {
-            throw new IllegalArgumentException("session is required");
+            throw new IllegalArgumentException(msgs.format("ex.err.sessionRequired"));
         }
         return switch (action) {
             case "analyze"   -> analyze(session, args);
             case "configure" -> configure(session, args);
             case "estimate"  -> estimate(session, args);
             case "split"     -> split(session, args);
-            default -> throw new IllegalArgumentException("Unknown action: " + action);
+            default -> throw new IllegalArgumentException(msgs.format("ex.err.unknownAction", action));
         };
     }
 
@@ -36,7 +45,7 @@ public class ExcelPlugin {
         try {
             cfg.analysisResult = ExcelSplitter.analyze(file);
         } catch (Exception e) {
-            throw new IllegalArgumentException("Analyze failed: " + e.getMessage(), e);
+            throw new IllegalArgumentException(msgs.format("ex.err.analyzeFailed", e.getMessage()), e);
         }
         Map<String, Map<String, String>> sheets = new LinkedHashMap<>();
         cfg.analysisResult.forEach((name, cols) -> {
@@ -46,7 +55,7 @@ public class ExcelPlugin {
         });
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("success", true);
-        out.put("summary", "analyzed " + sheets.size() + " sheet(s)");
+        out.put("summary", msgs.format("ex.analyzed", sheets.size()));
         out.put("sheets", sheets);
         return out;
     }
@@ -62,7 +71,7 @@ public class ExcelPlugin {
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("success", true);
-        out.put("summary", "configured mode=" + cfg.mode);
+        out.put("summary", msgs.format("ex.configured", cfg.mode));
         return out;
     }
 
@@ -118,40 +127,40 @@ public class ExcelPlugin {
         }
     }
 
-    private static void validateSelectedSheets(SplitConfig cfg) {
+    private void validateSelectedSheets(SplitConfig cfg) {
         if (cfg.selectedSheets == null || cfg.selectedSheets.isEmpty()) {
-            throw new IllegalArgumentException("Select at least one sheet");
+            throw new IllegalArgumentException(msgs.format("ex.err.selectSheet"));
         }
         if (cfg.analysisResult == null
                 || !cfg.analysisResult.keySet().containsAll(cfg.selectedSheets)) {
-            throw new IllegalArgumentException("Selected sheet does not exist");
+            throw new IllegalArgumentException(msgs.format("ex.err.selectedSheetNotExist"));
         }
     }
 
-    private static void validateColumn(SplitConfig cfg) {
+    private void validateColumn(SplitConfig cfg) {
         Map<Integer, String> headers = cfg.analysisResult == null
             ? null : cfg.analysisResult.get(cfg.splitSheet);
         if (headers == null) {
-            throw new IllegalArgumentException("Select a valid sheet");
+            throw new IllegalArgumentException(msgs.format("ex.err.selectValidSheet"));
         }
         if (cfg.splitColumnIndex < 0 || !headers.containsKey(cfg.splitColumnIndex)) {
-            throw new IllegalArgumentException("Select a valid split column");
+            throw new IllegalArgumentException(msgs.format("ex.err.selectValidColumn"));
         }
     }
 
-    private static void validateComplex(SplitConfig cfg) {
+    private void validateComplex(SplitConfig cfg) {
         if (cfg.complexEntries == null || cfg.complexEntries.isEmpty()) {
-            throw new IllegalArgumentException("Add at least one complex rule");
+            throw new IllegalArgumentException(msgs.format("ex.err.addComplexRule"));
         }
         for (ComplexSplitEntry entry : cfg.complexEntries) {
             if (cfg.analysisResult == null || !cfg.analysisResult.containsKey(entry.sheetName())) {
                 throw new IllegalArgumentException(
-                    "Complex rule sheet does not exist: " + entry.sheetName());
+                    msgs.format("ex.err.complexSheetNotExist", entry.sheetName()));
             }
             boolean copyAll = entry.headerIndex() == -1 && entry.columnIndex() == -1;
             if (!copyAll && (entry.headerIndex() < 1 || entry.columnIndex() < 1)) {
                 throw new IllegalArgumentException(
-                    "Header row and split column must be positive integers");
+                    msgs.format("ex.err.positiveIndices"));
             }
         }
     }
@@ -162,7 +171,7 @@ public class ExcelPlugin {
         cfg.outputDir = requirePath(args, "outputDir");
         if (cfg.analysisResult == null) {
             try { cfg.analysisResult = ExcelSplitter.analyze(cfg.sourceFile); }
-            catch (Exception e) { throw new IllegalArgumentException("Analyze failed: " + e.getMessage(), e); }
+            catch (Exception e) { throw new IllegalArgumentException(msgs.format("ex.err.analyzeFailed", e.getMessage()), e); }
         }
         // Re-apply the split config from this call's args so split is self-contained: the host may
         // restart the worker (and thus wipe the in-memory session) between configure and split —
@@ -174,11 +183,11 @@ public class ExcelPlugin {
             java.nio.file.Files.createDirectories(cfg.outputDir);
             res = new ExcelSplitter(cfg, null).split();
         } catch (Exception e) {
-            throw new IllegalArgumentException("Split failed: " + e.getMessage(), e);
+            throw new IllegalArgumentException(msgs.format("ex.err.splitFailed", e.getMessage()), e);
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("success", true);
-        out.put("summary", "wrote " + res.fileCount() + " file(s)");
+        out.put("summary", msgs.format("ex.wrote", res.fileCount()));
         out.put("fileCount", res.fileCount());
         out.put("files", res.outputFiles().stream().map(p -> p.getFileName().toString()).toList());
         return out;
@@ -199,10 +208,10 @@ public class ExcelPlugin {
     private Map<String, Object> estimate(String session, Map<String, Object> args) {
         SplitConfig cfg = sessions.get(session);
         if (cfg.analysisResult == null) {
-            throw new IllegalArgumentException("Call analyze first.");
+            throw new IllegalArgumentException(msgs.format("ex.err.callAnalyzeFirst"));
         }
         if (cfg.mode == null) {
-            throw new IllegalArgumentException("Call configure first.");
+            throw new IllegalArgumentException(msgs.format("ex.err.callConfigureFirst"));
         }
         int count;
         try {
@@ -212,11 +221,11 @@ public class ExcelPlugin {
                 case COMPLEX -> estimateComplex(cfg);
             };
         } catch (Exception e) {
-            throw new IllegalArgumentException("Estimate failed: " + e.getMessage(), e);
+            throw new IllegalArgumentException(msgs.format("ex.err.estimateFailed", e.getMessage()), e);
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("success", true);
-        out.put("summary", "estimated " + count + " file(s)");
+        out.put("summary", msgs.format("ex.estimated", count));
         out.put("fileCount", count);
         out.put("exact", true);
         return out;
@@ -279,9 +288,9 @@ public class ExcelPlugin {
     private static int num(Map<String, Object> args, String k) {
         return ((Number) args.get(k)).intValue();
     }
-    private static Path requirePath(Map<String, Object> args, String k) {
+    private Path requirePath(Map<String, Object> args, String k) {
         String v = str(args, k);
-        if (v == null || v.isBlank()) throw new IllegalArgumentException(k + " is required");
+        if (v == null || v.isBlank()) throw new IllegalArgumentException(msgs.format("ex.err.paramRequired", k));
         return Paths.get(v);
     }
 }

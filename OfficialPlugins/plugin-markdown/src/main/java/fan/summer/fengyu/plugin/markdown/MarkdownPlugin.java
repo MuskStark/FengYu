@@ -1,5 +1,6 @@
 package fan.summer.fengyu.plugin.markdown;
 
+import fan.summer.fengyu.sdk.PluginMessages;
 import org.commonmark.node.Node;
 import org.commonmark.parser.Parser;
 import org.commonmark.renderer.html.HtmlRenderer;
@@ -23,6 +24,11 @@ public class MarkdownPlugin {
             .escapeHtml(true)
             .sanitizeUrls(true)
             .build();
+    private final PluginMessages msgs;
+
+    public MarkdownPlugin(PluginMessages msgs) {
+        this.msgs = msgs;
+    }
 
     /**
      * Actions:
@@ -33,7 +39,7 @@ public class MarkdownPlugin {
      */
     public Object invoke(String action, Map<String, Object> args) {
         if (!"render".equals(action)) {
-            throw new IllegalArgumentException("Unknown action: " + action);
+            throw new IllegalArgumentException(msgs.format("md.unknownAction", action));
         }
         Object md = args == null ? null : args.get("markdown");
         String markdown = md == null ? "" : md.toString();
@@ -43,7 +49,7 @@ public class MarkdownPlugin {
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("success", true);
-        out.put("summary", "rendered " + markdown.length() + " chars");
+        out.put("summary", msgs.format("md.rendered", markdown.length()));
         out.put("html", html);
         return out;
     }

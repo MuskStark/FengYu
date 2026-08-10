@@ -1,5 +1,7 @@
 package fan.summer.fengyu.plugin.email.crypto;
 
+import fan.summer.fengyu.sdk.PluginMessages;
+
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -12,6 +14,7 @@ import java.util.Set;
 
 /** Loads or atomically creates the plugin-local AES key. */
 public final class PluginKeyStore {
+    private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, PluginKeyStore.class);
     private final Path keyFile;
     public PluginKeyStore(Path dataDirectory) { this.keyFile = dataDirectory.resolve("credential.key"); }
 
@@ -31,12 +34,12 @@ public final class PluginKeyStore {
                 catch (java.nio.file.FileAlreadyExistsException race) { Files.deleteIfExists(temporary); }
             } catch (java.nio.file.FileAlreadyExistsException race) { Files.deleteIfExists(temporary); }
             return Files.exists(keyFile) ? decode(Files.readString(keyFile).trim()) : key;
-        } catch (Exception e) { throw new IllegalStateException("Cannot load email credential key", e); }
+        } catch (Exception e) { throw new IllegalStateException(MSGS.format("em.err.cannotLoadCredentialKey"), e); }
     }
 
     private static SecretKey decode(String encoded) {
         byte[] bytes = Base64.getDecoder().decode(encoded);
-        if (bytes.length != 32) throw new IllegalStateException("Email credential key has invalid length");
+        if (bytes.length != 32) throw new IllegalStateException(MSGS.format("em.err.credentialKeyInvalidLength"));
         return new SecretKeySpec(bytes, "AES");
     }
 }

@@ -19,6 +19,7 @@ import fan.summer.fengyu.sdk.FileRef;
 import fan.summer.fengyu.sdk.JsonRpcWorker;
 import fan.summer.fengyu.sdk.Jobs;
 import fan.summer.fengyu.sdk.PluginHandlerSupport;
+import fan.summer.fengyu.sdk.PluginMessages;
 
 import java.lang.reflect.RecordComponent;
 import java.nio.file.Path;
@@ -39,6 +40,10 @@ import java.util.Set;
  * worker. Register handlers via {@code worker.on("m", handlers.handle("m", handlers::m))}.
  */
 public final class EmailRpcHandlers extends PluginHandlerSupport {
+    /** Static message resolver for the static param/path-validation helpers (which cannot reach the
+     * inherited instance {@link #msgs}). Resolves the same bundle the handler uses. */
+    private static final PluginMessages MSGS =
+            PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, EmailRpcHandlers.class);
     private final Gson json = new Gson();
     private final AccountRpc accounts;
     private final AddressBookRpc addressBook;
@@ -64,29 +69,29 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
     public Object listAccounts(Map<String, Object> params) {
         return result(() -> {
             var values = accounts.list();
-            return ok("Found " + values.size() + " email account(s)", "accounts", values);
+            return ok(t("em.account.found", values.size()), "accounts", values);
         });
     }
 
     public Object findAccount(Map<String, Object> params) {
         return result(() -> accounts.find(requiredLong(params, "id"))
-            .map(value -> ok("Email account found", "account", value))
-            .orElseGet(() -> failure("Email account not found")));
+            .map(value -> ok(t("em.account.foundOne"), "account", value))
+            .orElseGet(() -> failKey("em.account.notFound")));
     }
 
     public Object saveAccount(Map<String, Object> params) {
-        return result(() -> ok("Email account saved", "account",
+        return result(() -> ok(t("em.account.saved"), "account",
             accounts.save(json.fromJson(json.toJson(params), AccountRpc.AccountRequest.class))));
     }
 
     public Object deleteAccount(Map<String, Object> params) {
         return result(() -> accounts.delete(requiredLong(params, "id"))
-            ? ok("Email account deleted") : failure("Email account not found"));
+            ? okKey("em.account.deleted") : failKey("em.account.notFound"));
     }
 
     public Object setDefaultAccount(Map<String, Object> params) {
         return result(() -> accounts.setDefault(requiredLong(params, "id"))
-            ? ok("Default email account updated") : failure("Email account not found"));
+            ? okKey("em.account.defaultUpdated") : failKey("em.account.notFound"));
     }
 
     public Object testAccount(Map<String, Object> params) {
@@ -94,7 +99,7 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
             long accountId = requiredLong(params, "accountId");
             var value = sends.testSmtp(accountId);
             log.info("SMTP test for account {}: {}", accountId, value.success() ? "succeeded" : "failed");
-            return value.success() ? ok("SMTP connection succeeded") : failure(value.errorMessage());
+            return value.success() ? okKey("em.account.smtpSucceeded") : failure(value.errorMessage());
         });
     }
 
@@ -103,7 +108,7 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
             long accountId = requiredLong(params, "accountId");
             var value = archive.testImap(accountId);
             log.info("IMAP test for account {}: {}", accountId, value.success() ? "succeeded" : "failed");
-            return value.success() ? ok("IMAP connection succeeded") : failure(value.errorMessage());
+            return value.success() ? okKey("em.account.imapSucceeded") : failure(value.errorMessage());
         });
     }
 
@@ -112,7 +117,7 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
             long accountId = requiredLong(params, "accountId");
             var value = archive.listFolders(accountId);
             log.info("IMAP folder list for account {}: {} folder(s)", accountId, value.folders().size());
-            return ok("Found " + value.folders().size() + " folder(s)", "folders", value.folders());
+            return ok(t("em.folder.found", value.folders().size()), "folders", value.folders());
         });
     }
 
@@ -120,55 +125,55 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
         return result(() -> {
             var values = addressBook.search(new AddressBookRpc.SearchRequest(string(params, "query"),
                 longSet(params.get("tagIds")), integer(params, "offset", 0), integer(params, "limit", 50)));
-            return ok("Found " + values.size() + " contact(s)", "contacts", values);
+            return ok(t("em.contact.found", values.size()), "contacts", values);
         });
     }
 
     public Object findContact(Map<String, Object> params) {
         return result(() -> addressBook.findContact(requiredLong(params, "id"))
-            .map(value -> ok("Contact found", "contact", value))
-            .orElseGet(() -> failure("Contact not found")));
+            .map(value -> ok(t("em.contact.foundOne"), "contact", value))
+            .orElseGet(() -> failKey("em.contact.notFound")));
     }
 
     public Object saveContact(Map<String, Object> params) {
-        return result(() -> ok("Contact saved", "contact", addressBook.saveContact(
+        return result(() -> ok(t("em.contact.saved"), "contact", addressBook.saveContact(
             json.fromJson(json.toJson(params), AddressBookRpc.ContactRequest.class))));
     }
 
     public Object deleteContact(Map<String, Object> params) {
         return result(() -> addressBook.deleteContact(requiredLong(params, "id"))
-            ? ok("Contact deleted") : failure("Contact not found"));
+            ? okKey("em.contact.deleted") : failKey("em.contact.notFound"));
     }
 
     public Object listTags(Map<String, Object> params) {
         return result(() -> {
             var tags = addressBook.listTags();
-            return ok("Found " + tags.size() + " tag(s)", "tags", tags);
+            return ok(t("em.tag.found", tags.size()), "tags", tags);
         });
     }
 
     public Object saveTag(Map<String, Object> params) {
-        return result(() -> ok("Tag saved", "tag", addressBook.saveTag(
+        return result(() -> ok(t("em.tag.saved"), "tag", addressBook.saveTag(
             json.fromJson(json.toJson(params), AddressBookRpc.TagRequest.class))));
     }
 
     public Object deleteTag(Map<String, Object> params) {
         return result(() -> addressBook.deleteTag(requiredLong(params, "id"))
-            ? ok("Tag deleted") : failure("Tag not found"));
+            ? okKey("em.tag.deleted") : failKey("em.tag.notFound"));
     }
 
     public Object assignTags(Map<String, Object> params) {
         return result(() -> {
             addressBook.assignTags(new AddressBookRpc.BulkTagRequest(
                 longSet(params.get("contactIds")), longSet(params.get("tagIds"))));
-            return ok("Contact tags updated");
+            return okKey("em.contact.tagsUpdated");
         });
     }
 
     public Object resolveRecipients(Map<String, Object> params) {
         return result(() -> {
             Set<String> recipients = addressBook.resolveRecipients(longSet(params.get("tagIds")));
-            return ok("Resolved " + recipients.size() + " recipient(s)", "recipients", recipients);
+            return ok(t("em.contact.resolvedRecipients", recipients.size()), "recipients", recipients);
         });
     }
 
@@ -177,10 +182,9 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
             ImportOptions options = importOptions(params);
             var preview = importer.preview(
                 path(params.get("sourceFile"), "sourceFile", "file"), options);
-            return ok("Parsed " + preview.rowsTotal() + " row(s); " + preview.createdContacts()
-                + " new, " + preview.mergedContacts() + " merge, " + preview.skippedContacts()
-                + " skip; " + preview.createdTags().size() + " new tag(s); "
-                + preview.errors().size() + " error(s)", "preview", preview);
+            return ok(t("em.contact.importPreview", preview.rowsTotal(), preview.createdContacts(),
+                preview.mergedContacts(), preview.skippedContacts(), preview.createdTags().size(),
+                preview.errors().size()), "preview", preview);
         });
     }
 
@@ -189,12 +193,12 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
             ImportOptions options = importOptions(params);
             var outcome = importer.commit(
                 path(params.get("sourceFile"), "sourceFile", "file"), options);
-            String summary = "Imported " + outcome.created() + " new, merged " + outcome.merged()
-                + ", skipped " + outcome.skipped() + "; created " + outcome.tagsCreated()
-                + " tag(s), assigned " + outcome.tagsAssigned() + " tag(s)";
             return outcome.errors().isEmpty()
-                ? ok(summary, "result", outcome)
-                : ok(summary + "; " + outcome.errors().size() + " row error(s)", "result", outcome);
+                ? ok(t("em.contact.imported", outcome.created(), outcome.merged(), outcome.skipped(),
+                    outcome.tagsCreated(), outcome.tagsAssigned()), "result", outcome)
+                : ok(t("em.contact.importedWithErrors", outcome.created(), outcome.merged(),
+                    outcome.skipped(), outcome.tagsCreated(), outcome.tagsAssigned(),
+                    outcome.errors().size()), "result", outcome);
         });
     }
 
@@ -205,14 +209,14 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
     public Object listConfigs(Map<String, Object> params) {
         return result(() -> {
             var values = configs.list();
-            return ok("Found " + values.size() + " batch configuration(s)", "configs", values);
+            return ok(t("em.batch.foundConfigs", values.size()), "configs", values);
         });
     }
 
     public Object findConfig(Map<String, Object> params) {
         return result(() -> configs.find(requiredLong(params, "id"))
-            .map(value -> ok("Batch configuration found", "config", value))
-            .orElseGet(() -> failure("Batch configuration not found")));
+            .map(value -> ok(t("em.batch.configFound"), "config", value))
+            .orElseGet(() -> failKey("em.batch.configNotFound")));
     }
 
     public Object saveConfig(Map<String, Object> params) {
@@ -220,13 +224,13 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
             Long id = optionalLong(params, "id");
             long saved = configs.save(id, requiredString(params, "name"), requiredString(params, "mode"),
                 requiredString(params, "configJson"));
-            return ok("Batch configuration saved", "config", configs.find(saved).orElseThrow());
+            return ok(t("em.batch.configSaved"), "config", configs.find(saved).orElseThrow());
         });
     }
 
     public Object deleteConfig(Map<String, Object> params) {
         return result(() -> configs.delete(requiredLong(params, "id"))
-            ? ok("Batch configuration deleted") : failure("Batch configuration not found"));
+            ? okKey("em.batch.configDeleted") : failKey("em.batch.configNotFound"));
     }
 
     public Object prepareSingle(Map<String, Object> params) {
@@ -234,16 +238,16 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
             EmailMessageRequest request = message(params);
             Set<Long> recipientTagIds = longSet(params.get("recipientTagIds"));
             if (!recipientTagIds.isEmpty()) {
-                return confirmation("Tagged emails are ready for confirmation",
+                return confirmation(t("em.send.taggedReady"),
                     pending.prepareComposeByTags(request, recipientTagIds));
             }
-            if (request.to().isEmpty()) throw new IllegalArgumentException("to is required for direct sending");
-            return confirmation("Single email is ready for confirmation", pending.prepareSingle(request));
+            if (request.to().isEmpty()) throw new IllegalArgumentException(t("em.err.toRequiredForDirect"));
+            return confirmation(t("em.send.singleReady"), pending.prepareSingle(request));
         });
     }
 
     public Object prepareBatch(Map<String, Object> params) {
-        return result(() -> confirmation("Batch email is ready for confirmation",
+        return result(() -> confirmation(t("em.send.batchReady"),
             pending.prepareAttachmentBatch(message(params),
                 path(params.get("inputDirectory"), "inputDirectory", "directory"),
                 paths(params.get("commonAttachments")), longSet(params.get("recipientGroupTagIds")),
@@ -251,7 +255,7 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
     }
 
     public Object previewBatch(Map<String, Object> params) {
-        return result(() -> ok("Batch preview generated", "preview", pending.previewBatch(message(params),
+        return result(() -> ok(t("em.batch.preview"), "preview", pending.previewBatch(message(params),
             path(params.get("inputDirectory"), "inputDirectory", "directory"),
             paths(params.get("commonAttachments")), longSet(params.get("recipientGroupTagIds")),
             longSet(params.get("ccGroupTagIds")))));
@@ -259,8 +263,8 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
 
     public Object sendStatus(Map<String, Object> params) {
         return result(() -> pending.status(requiredString(params, "confirmationId"))
-            .map(value -> ok("Send status is " + value.status(), "send", sendView(value)))
-            .orElseGet(() -> failure("Send confirmation not found")));
+            .map(value -> ok(t("em.send.statusIs", value.status()), "send", sendView(value)))
+            .orElseGet(() -> failKey("em.send.confirmationNotFound")));
     }
 
     public Object querySendRecords(Map<String, Object> params) {
@@ -268,7 +272,7 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
             var records = pending.records(string(params, "taskStatus"), string(params, "confirmationId"),
                 string(params, "messageStatus"), string(params, "query"), integer(params, "offset", 0),
                 integer(params, "limit", 50));
-            Map<String, Object> value = ok("Found " + records.tasks().size() + " send task(s)");
+            Map<String, Object> value = okKey("em.send.foundTasks", records.tasks().size());
             value.put("tasks", jsonValue(records.tasks()));
             value.put("messages", jsonValue(records.messages()));
             return value;
@@ -280,7 +284,7 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
             String confirmationId = requiredString(params, "confirmationId");
             var value = pending.confirm(confirmationId);
             log.info("send {} confirmed: {}", confirmationId, value.status());
-            return ok("Send confirmation is " + value.status(), "send", value);
+            return ok(t("em.send.confirmationIs", value.status()), "send", value);
         });
     }
 
@@ -289,7 +293,7 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
             String confirmationId = requiredString(params, "confirmationId");
             var value = pending.reject(confirmationId);
             log.info("send {} rejected: {}", confirmationId, value.status());
-            return ok("Send confirmation is " + value.status(), "send", value);
+            return ok(t("em.send.confirmationIs", value.status()), "send", value);
         });
     }
 
@@ -303,8 +307,7 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
             var value = archive.collect(request, ignored -> { });
             log.info("archived {} new, {} duplicate(s), {} failure(s) from account {} folder '{}'",
                 value.newArchived(), value.skippedDuplicates(), value.failures(), accountId, folder);
-            return ok("Archived " + value.newArchived() + " new message(s); skipped "
-                + value.skippedDuplicates() + " duplicate(s); " + value.failures() + " failure(s)",
+            return ok(t("em.archive.archived", value.newArchived(), value.skippedDuplicates(), value.failures()),
                 "collection", value);
         });
     }
@@ -339,7 +342,7 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
                     throw e;
                 }
             });
-            return ok("Archive started", "jobId", job.id);
+            return ok(t("em.archive.started"), "jobId", job.id);
         });
     }
 
@@ -354,8 +357,8 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
     public Object collectCancel(Map<String, Object> params) {
         return result(() -> {
             String jobId = requiredString(params, "jobId");
-            if (!jobs.cancel(jobId)) return failure("job is no longer running: " + jobId);
-            return ok("cancel requested", "jobId", jobId);
+            if (!jobs.cancel(jobId)) return failKey("em.archive.jobNotRunning", jobId);
+            return ok(t("em.archive.cancelRequested"), "jobId", jobId);
         });
     }
 
@@ -365,14 +368,14 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
                 string(params, "folder"), string(params, "sender"), string(params, "subject"),
                 instant(params, "start"), instant(params, "end"), integer(params, "offset", 0),
                 integer(params, "limit", 50)));
-            return ok("Found " + values.size() + " archived message(s)", "messages", values);
+            return ok(t("em.archive.found", values.size()), "messages", values);
         });
     }
 
     public Object archiveDetail(Map<String, Object> params) {
         return result(() -> archive.detail(requiredLong(params, "id"))
-            .map(value -> ok("Archived message found", "message", value))
-            .orElseGet(() -> failure("Archived message not found")));
+            .map(value -> ok(t("em.archive.messageFound"), "message", value))
+            .orElseGet(() -> failKey("em.archive.messageNotFound")));
     }
 
     private Map<String, Object> confirmation(String summary, PendingSendService.ConfirmationEnvelope envelope) {
@@ -403,11 +406,11 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
         if (value instanceof Map<?, ?>) {
             FileRef reference = json.fromJson(json.toJson(value), FileRef.class);
             if (!expectedKind.equals(reference.kind())) {
-                throw new IllegalArgumentException(field + " must reference a " + expectedKind);
+                throw new IllegalArgumentException(MSGS.format("em.err.fileRefKind", field, expectedKind));
             }
-            throw new IllegalArgumentException(field + " FileRef must be resolved by the FengYu host");
+            throw new IllegalArgumentException(MSGS.format("em.err.fileRefUnresolved", field));
         }
-        throw new IllegalArgumentException(field + " is required");
+        throw new IllegalArgumentException(MSGS.format("em.err.fieldRequired", field));
     }
 
     private static Map<String, Object> sendView(PendingSend value) {
@@ -452,7 +455,7 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
                 }
                 return result;
             } catch (ReflectiveOperationException error) {
-                throw new IllegalStateException("Could not encode email result", error);
+                throw new IllegalStateException(MSGS.format("em.err.couldNotEncode"), error);
             }
         }
         return value.toString();
@@ -464,13 +467,13 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
 
     private static String requiredString(Map<String, Object> params, String key) {
         String value = string(params, key);
-        if (value == null || value.isBlank()) throw new IllegalArgumentException(key + " is required");
+        if (value == null || value.isBlank()) throw new IllegalArgumentException(MSGS.format("em.err.fieldRequired", key));
         return value;
     }
 
     private static long requiredLong(Map<String, Object> params, String key) {
         Long value = optionalLong(params, key);
-        if (value == null) throw new IllegalArgumentException(key + " is required");
+        if (value == null) throw new IllegalArgumentException(MSGS.format("em.err.fieldRequired", key));
         return value;
     }
 
@@ -479,7 +482,7 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
         if (value == null) return null;
         if (value instanceof Number number) return number.longValue();
         try { return Long.parseLong(value.toString()); }
-        catch (NumberFormatException e) { throw new IllegalArgumentException(key + " must be an integer"); }
+        catch (NumberFormatException e) { throw new IllegalArgumentException(MSGS.format("em.err.fieldMustBeInteger", key)); }
     }
 
     private static int integer(Map<String, Object> params, String key, int fallback) {

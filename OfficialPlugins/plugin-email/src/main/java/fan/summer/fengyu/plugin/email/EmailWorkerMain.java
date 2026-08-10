@@ -6,10 +6,12 @@ import fan.summer.fengyu.plugin.email.database.EmailDatabase;
 import fan.summer.fengyu.plugin.email.rpc.EmailRpcHandlers;
 import fan.summer.fengyu.sdk.JsonRpcWorker;
 import fan.summer.fengyu.sdk.PluginDatabaseConfig;
+import fan.summer.fengyu.sdk.PluginMessages;
 
 import java.util.Map;
 
 public final class EmailWorkerMain {
+    private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, EmailWorkerMain.class);
     private EmailWorkerMain() { }
 
     public static void main(String[] args) throws Exception {
@@ -62,7 +64,7 @@ public final class EmailWorkerMain {
 
     static EmailRpcHandlers handlers(Map<String, String> environment) {
         PluginDatabaseConfig config = PluginDatabaseConfig.fromEnvironment(environment)
-            .orElseThrow(() -> new IllegalStateException("Email plugin requires the database permission"));
+            .orElseThrow(() -> new IllegalStateException(MSGS.format("em.err.databasePermissionRequired")));
         EmailDatabase database = new EmailDatabase(config);
         CredentialCipher cipher = new CredentialCipher(new PluginKeyStore(config.dataDirectory()).loadOrCreate());
         return new EmailRpcHandlers(database, cipher);

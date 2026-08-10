@@ -7,6 +7,7 @@ import fan.summer.fengyu.plugin.offlinepython.domain.PlatformMatcher;
 import fan.summer.fengyu.plugin.offlinepython.domain.WheelEntry;
 import fan.summer.fengyu.plugin.offlinepython.infra.ProcessRunner;
 import fan.summer.fengyu.plugin.offlinepython.infra.PythonDetector;
+import fan.summer.fengyu.sdk.PluginMessages;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,6 +27,10 @@ import java.util.zip.ZipFile;
 public class DeployService {
 
     private static final Logger log = LoggerFactory.getLogger(DeployService.class);
+
+    /** Localized worker messages for envelope summaries / exception messages. */
+    private static final PluginMessages MSGS =
+            PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, DeployService.class);
 
     private final ProcessRunner runner;
 
@@ -60,13 +65,11 @@ public class DeployService {
             BundleReader.Bundle bundle = BundleReader.read(zip);
             String pyVersion = detectPythonVersion(pythonExe);
             if (pyVersion == null) {
-                throw new IllegalStateException("无法解析部署目标 Python 版本:" + pythonExe
-                    + "(请确认该解释器存在且带 pip,或换一个全局/venv 目标)");
+                throw new IllegalStateException(MSGS.format("opb.msg.deploy.versionUnresolvable", pythonExe));
             }
             PlatformMatcher.HostTags host = PlatformMatcher.detectHost(pyVersion);
             List<WheelEntry> matched = PlatformMatcher.match(host, bundle.wheels());
-            onLog.accept("适配本机的 wheel:" + matched.size() + " / " + bundle.wheels().size()
-                + "(python " + pyVersion + " · " + pythonExe + ")");
+            onLog.accept(MSGS.format("opb.msg.deploy.wheelMatch", matched.size(), bundle.wheels().size(), pyVersion, pythonExe));
 
             // 4. 逐包安装
             int installed = 0, failed = 0, skipped = 0;
@@ -74,7 +77,7 @@ public class DeployService {
                 String whlFile = Path.of(w.getFile()).getFileName().toString();
                 Path whlPath = wheelsDir.resolve(whlFile);
                 if (!Files.exists(whlPath)) {
-                    onLog.accept("跳过(ZIP 内缺失文件):" + whlFile);
+                    onLog.accept(MSGS.format("opb.msg.deploy.skipMissing", whlFile));
                     skipped++;
                     continue;
                 }
@@ -138,7 +141,7 @@ public class DeployService {
                 List<String> cmd = List.of(v.pythonExe().toString(), "-m", "venv", v.venvPath().toString());
                 onLog.accept("$ " + String.join(" ", cmd));
                 int code = runner.run(cmd, onLog);
-                if (code != 0) throw new IllegalStateException("虚拟环境创建失败(exit " + code + ")");
+                if (code != 0) throw new IllegalStateException(MSGS.format("opb.msg.deploy.venvCreateFailed", code));
                 yield venvPython(v.venvPath());
             }
         };
