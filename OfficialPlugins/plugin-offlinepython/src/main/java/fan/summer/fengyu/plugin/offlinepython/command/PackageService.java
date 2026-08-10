@@ -2,6 +2,7 @@ package fan.summer.fengyu.plugin.offlinepython.command;
 
 import fan.summer.fengyu.plugin.offlinepython.domain.BuildConfig;
 import fan.summer.fengyu.plugin.offlinepython.infra.OpbLogger;
+import fan.summer.fengyu.sdk.PluginMessages;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -21,6 +22,10 @@ public class PackageService {
     private static final String BUNDLE_ROOT = "bundle/";
     private static final String WHEELS_DIR = BUNDLE_ROOT + "wheels/";
 
+    /** Localized worker messages for envelope summaries / exception messages. */
+    private static final PluginMessages MSGS =
+            PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, PackageService.class);
+
     private final OpbLogger log;
 
     public PackageService() { this(null); }
@@ -31,12 +36,12 @@ public class PackageService {
         Path output = projectDir.resolve(cfg.getRepository().getOutput());
         Path manifest = output.resolve("manifest.json");
         if (!Files.exists(manifest)) {
-            throw new IOException("请先构建:未找到 output/manifest.json");
+            throw new IOException(MSGS.format("opb.msg.package.buildFirst"));
         }
         Path wheelhouse = output.resolve(cfg.getRepository().getWheelDir())
                 .resolve(cfg.getPython().getVersion());
         if (!Files.exists(wheelhouse) || countWheels(wheelhouse) == 0) {
-            throw new IOException("无 wheel 可打包:wheelhouse 为空");
+            throw new IOException(MSGS.format("opb.msg.package.noWheels"));
         }
 
         String bundleName = (cfg.getBundle() != null && cfg.getBundle().getName() != null
@@ -74,7 +79,7 @@ public class PackageService {
             }
         }
 
-        if (log != null) log.log("打包完成:" + count + " wheels · " + humanBytes(bytes) + " · " + zip.getFileName());
+        if (log != null) log.log(MSGS.format("opb.msg.package.done", count, humanBytes(bytes), zip.getFileName()));
         return zip;
     }
 

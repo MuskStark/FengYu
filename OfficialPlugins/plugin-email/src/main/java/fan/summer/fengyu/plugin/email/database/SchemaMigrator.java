@@ -1,5 +1,7 @@
 package fan.summer.fengyu.plugin.email.database;
 
+import fan.summer.fengyu.sdk.PluginMessages;
+
 import javax.sql.DataSource;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -11,6 +13,7 @@ import java.util.List;
 
 /** Executes the plugin's versioned, dialect-specific schema resources. */
 public final class SchemaMigrator {
+    private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, SchemaMigrator.class);
     private static final String HISTORY = "FENGYU_PL_Email_Schema_History";
     private static final int LATEST_VERSION = 6;
     private final String dialect;
@@ -38,7 +41,7 @@ public final class SchemaMigrator {
             }
             connection.commit();
         } catch (Exception e) {
-            throw new IllegalStateException("Email database migration failed", e);
+            throw new IllegalStateException(MSGS.format("em.err.databaseMigrationFailed"), e);
         }
     }
 

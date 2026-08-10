@@ -73,7 +73,7 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
             String session = JsonRpcParams.string(params, "session");
             initService.initialize(projectDir);
             if (session != null) sessions.bind(session, projectDir);
-            return ok("initialized project at " + projectDir, "projectDir", projectDir.toString());
+            return ok(t("opb.msg.init.ok", projectDir), "projectDir", projectDir.toString());
         });
     }
 
@@ -84,7 +84,7 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
             BuildConfig cfg = (projectDir != null && session != null)
                     ? sessions.bind(session, projectDir)
                     : sessions.get(session != null ? session : OfflinePythonSessionStore.AI_SESSION);
-            return ok("config loaded", "config", JsonRpcParams.toMap(cfg));
+            return ok(t("opb.msg.config.loaded"), "config", JsonRpcParams.toMap(cfg));
         });
     }
 
@@ -93,7 +93,7 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
             String session = JsonRpcParams.string(params, "session");
             Path projectDir = requiredPath(params, "projectDir");
             Object cfgObj = params.get("config");
-            if (!(cfgObj instanceof Map<?, ?> raw)) return failure("config object is required");
+            if (!(cfgObj instanceof Map<?, ?> raw)) return failKey("opb.msg.config.required");
 
             // Merge the incoming config onto the on-disk config (or defaults) so
             // sections the caller omitted (e.g. repository/pkg/bundle when a UI
@@ -111,7 +111,7 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
             sessions.put(session != null ? session : OfflinePythonSessionStore.AI_SESSION, cfg);
             sessions.bind(session, projectDir);
             JsonStore.save(cfg, cfgFile);
-            return ok("config saved", null, null);
+            return ok(t("opb.msg.config.saved"), null, null);
         });
     }
 
@@ -120,7 +120,7 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
             Path projectDir = requiredPath(params, "projectDir");
             Path req = projectDir.resolve("requirements.txt");
             String text = Files.exists(req) ? Files.readString(req) : "";
-            return ok("requirements read", "text", text);
+            return ok(t("opb.msg.requirements.read"), "text", text);
         });
     }
 
@@ -130,7 +130,7 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
             String text = JsonRpcParams.string(params, "text");
             Files.createDirectories(projectDir);
             Files.writeString(projectDir.resolve("requirements.txt"), text == null ? "" : text);
-            return ok("requirements saved", null, null);
+            return ok(t("opb.msg.requirements.saved"), null, null);
         });
     }
 
@@ -143,8 +143,8 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
             out.put("pythonVersion", d.pythonVersion());
             out.put("pipVersion", d.pipVersion());
             out.put("ok", d.ok());
-            return ok(d.ok() ? "Python " + d.pythonVersion() + " · pip " + d.pipVersion()
-                             : "Python not detected", "detection", out);
+            return ok(d.ok() ? t("opb.python.detected", d.pythonVersion(), d.pipVersion())
+                             : t("opb.python.missing"), "detection", out);
         });
     }
 
@@ -153,9 +153,9 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
             String pkg = requiredString(params, "pkg");
             String exe = JsonRpcParams.string(params, "executable");
             PythonDetector.Detection d = PythonDetector.detect(exe);
-            if (!d.ok()) return failure("Python not detected; set executable or install Python >=3.10");
+            if (!d.ok()) return failKey("opb.msg.python.notDetected");
             var v = depsService.latestVersion(pkg, d.executable());
-            return ok(v.isPresent() ? "latest: " + v.get() : "no version found", "version", v.orElse(null));
+            return ok(v.isPresent() ? t("opb.msg.deps.latest", v.get()) : t("opb.msg.deps.noVersion"), "version", v.orElse(null));
         });
     }
 
@@ -172,7 +172,7 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
                         return m;
                     })
                     .toList();
-            return ok(wheels.size() + " wheel(s)", "wheels", wheels);
+            return ok(t("opb.msg.deps.wheels", wheels.size()), "wheels", wheels);
         });
     }
 
@@ -182,11 +182,11 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
             BuildConfig cfg = sessions.bind(JsonRpcParams.string(params, "session"), projectDir);
             Path output = projectDir.resolve(cfg.getRepository().getOutput());
             Path manifestFile = output.resolve("manifest.json");
-            if (!Files.exists(manifestFile)) return failure("Build first: output/manifest.json not found");
+            if (!Files.exists(manifestFile)) return failKey("opb.msg.verify.buildFirst");
             Manifest manifest = JsonStore.load(manifestFile, Manifest.class);
             String scopeText = JsonRpcParams.string(params, "scope");
             VerifyScope scope = scopeText == null ? VerifyScope.ALL : VerifyScope.valueOf(scopeText);
-            return ok("verified", "result", JsonRpcParams.toMap(verifyService.verify(output, manifest, scope)));
+            return ok(t("opb.msg.verify.ok"), "result", JsonRpcParams.toMap(verifyService.verify(output, manifest, scope)));
         });
     }
 
@@ -195,7 +195,7 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
             Path projectDir = requiredPath(params, "projectDir");
             BuildConfig cfg = sessions.bind(JsonRpcParams.string(params, "session"), projectDir);
             Path zip = packageService.packageBundle(projectDir, cfg);
-            return ok("packaged bundle", "zipPath", zip.toString());
+            return ok(t("opb.msg.package.ok"), "zipPath", zip.toString());
         });
     }
 
@@ -211,7 +211,7 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
                         return m;
                     })
                     .toList();
-            return ok(checks.size() + " checks", "checks", checks);
+            return ok(t("opb.msg.doctor.count", checks.size()), "checks", checks);
         });
     }
 
@@ -224,7 +224,7 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
             String exe = JsonRpcParams.string(params, "executable");
             BuildConfig cfg = sessions.bind(session != null ? session : OfflinePythonSessionStore.AI_SESSION, projectDir);
             PythonDetector.Detection det = PythonDetector.detect(exe);
-            if (!det.ok()) return failure("Python not detected; set executable or install Python >=3.10");
+            if (!det.ok()) return failKey("opb.msg.python.notDetected");
             String pythonExe = det.executable();
             Jobs.Job job = jobs.start("BUILD", handle -> {
                 ProcessRunner runner = new ProcessRunner();
@@ -243,7 +243,7 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
                 }
             });
             log.info("build job {} started for {} with python {}", job.id, projectDir, pythonExe);
-            return ok("build started", "jobId", job.id);
+            return ok(t("opb.msg.build.started"), "jobId", job.id);
         });
     }
 
@@ -258,9 +258,9 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
     public Object deployStart(Map<String, Object> params) {
         return result(() -> {
             Path zip = requiredPath(params, "zipPath");
-            if (!Files.exists(zip)) return failure("bundle ZIP not found: " + zip);
+            if (!Files.exists(zip)) return failKey("opb.msg.bundle.zipNotFound", zip);
             Object targetObj = params.get("target");
-            if (!(targetObj instanceof Map<?, ?> raw)) return failure("target is required");
+            if (!(targetObj instanceof Map<?, ?> raw)) return failKey("opb.msg.target.required");
             @SuppressWarnings("unchecked") Map<String, Object> targetMap = (Map<String, Object>) raw;
             DeployTarget target = decodeTarget(targetMap);
             Jobs.Job job = jobs.start("DEPLOY", handle -> {
@@ -278,7 +278,7 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
                 }
             });
             log.info("deploy job {} started for {} -> {}", job.id, zip, target);
-            return ok("deploy started", "jobId", job.id);
+            return ok(t("opb.msg.deploy.started"), "jobId", job.id);
         });
     }
 
@@ -315,7 +315,7 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
             String jobId = requiredString(params, "jobId");
             int cursor = JsonRpcParams.integer(params, "cursor", 0);
             Jobs.Job job = jobs.get(jobId);
-            if (job == null) return failure("unknown jobId: " + jobId);
+            if (job == null) return failKey("opb.msg.job.unknownJobId", jobId);
             return job.snapshot(cursor);
         });
     }
@@ -324,9 +324,9 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
         return result(() -> {
             String jobId = requiredString(params, "jobId");
             Jobs.Job job = jobs.get(jobId);
-            if (job == null) return failure("unknown jobId: " + jobId);
-            if (!jobs.cancel(jobId)) return failure("job is no longer running: " + jobId);
-            return ok("cancel requested", "jobId", jobId);
+            if (job == null) return failKey("opb.msg.job.unknownJobId", jobId);
+            if (!jobs.cancel(jobId)) return failKey("opb.msg.job.notRunning", jobId);
+            return ok(t("opb.msg.cancel.ok"), "jobId", jobId);
         });
     }
 
@@ -366,17 +366,17 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
         return v.toString();
     }
 
-    private static DeployTarget decodeTarget(Map<String, Object> target) {
+    private DeployTarget decodeTarget(Map<String, Object> target) {
         String kind = JsonRpcParams.string(target, "kind");
         String pythonExe = JsonRpcParams.string(target, "pythonExe");
         if (pythonExe == null || pythonExe.isBlank()) {
             PythonDetector.Detection d = PythonDetector.detect(null);
-            if (!d.ok()) throw new IllegalArgumentException("Python not detected; provide pythonExe");
+            if (!d.ok()) throw new IllegalArgumentException(t("opb.msg.python.notDetectedProvide"));
             pythonExe = d.executable();
         }
         if ("venv".equalsIgnoreCase(kind)) {
             String venv = JsonRpcParams.string(target, "venvPath");
-            if (venv == null || venv.isBlank()) throw new IllegalArgumentException("venvPath required for venv target");
+            if (venv == null || venv.isBlank()) throw new IllegalArgumentException(t("opb.msg.venvPath.required"));
             return new DeployTarget.Venv(Paths.get(pythonExe.trim()), Paths.get(venv.trim()));
         }
         return new DeployTarget.Global(Paths.get(pythonExe.trim()));

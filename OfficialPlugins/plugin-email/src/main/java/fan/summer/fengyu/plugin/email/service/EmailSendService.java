@@ -8,6 +8,7 @@ import fan.summer.fengyu.plugin.email.model.EmailMessageRequest;
 import fan.summer.fengyu.plugin.email.model.SendResult;
 import fan.summer.fengyu.plugin.email.repository.AccountRepository;
 import fan.summer.fengyu.plugin.email.repository.SentLogRepository;
+import fan.summer.fengyu.sdk.PluginMessages;
 import jakarta.activation.FileDataSource;
 import org.simplejavamail.api.email.Email;
 import org.simplejavamail.api.email.EmailPopulatingBuilder;
@@ -29,6 +30,7 @@ public final class EmailSendService {
     static final int SESSION_TIMEOUT_MILLIS = 10_000;
 
     private static final Logger log = LoggerFactory.getLogger(EmailSendService.class);
+    private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, EmailSendService.class);
 
     private final AccountRepository accounts;
     private final AccountService accountService;
@@ -120,24 +122,24 @@ public final class EmailSendService {
     }
 
     private EmailAccount account(long id) {
-        return accounts.findAccount(id).orElseThrow(() -> new IllegalArgumentException("Unknown account: " + id));
+        return accounts.findAccount(id).orElseThrow(() -> new IllegalArgumentException(MSGS.format("em.err.accountUnknown", id)));
     }
 
     private static void validate(EmailMessageRequest request) {
-        if (request == null) throw new IllegalArgumentException("request is required");
+        if (request == null) throw new IllegalArgumentException(MSGS.format("em.err.sendRequestRequired"));
         headerValue(request.subject(), "subject", true);
         validateRecipients(request.to(), "to");
         validateRecipients(request.cc(), "cc");
         validateRecipients(request.bcc(), "bcc");
         if (request.to().isEmpty() && request.cc().isEmpty() && request.bcc().isEmpty()) {
-            throw new IllegalArgumentException("At least one recipient is required");
+            throw new IllegalArgumentException(MSGS.format("em.err.sendRecipientRequired"));
         }
         if (request.plainText() == null && request.htmlText() == null) {
-            throw new IllegalArgumentException("A message body is required");
+            throw new IllegalArgumentException(MSGS.format("em.err.sendMessageBodyRequired"));
         }
         for (Path attachment : request.attachments()) {
             if (attachment == null || !Files.isRegularFile(attachment)) {
-                throw new IllegalArgumentException("Attachment does not exist: " + attachment);
+                throw new IllegalArgumentException(MSGS.format("em.err.sendAttachmentMissing", attachment));
             }
         }
     }
@@ -148,10 +150,10 @@ public final class EmailSendService {
 
     private static void headerValue(String value, String field, boolean nullable) {
         if ((!nullable && (value == null || value.isBlank()))) {
-            throw new IllegalArgumentException(field + " contains an empty value");
+            throw new IllegalArgumentException(MSGS.format("em.err.sendEmptyValue", field));
         }
         if (value != null && (value.indexOf('\r') >= 0 || value.indexOf('\n') >= 0)) {
-            throw new IllegalArgumentException(field + " contains a line break");
+            throw new IllegalArgumentException(MSGS.format("em.err.sendLineBreak", field));
         }
     }
 
@@ -160,7 +162,7 @@ public final class EmailSendService {
             case "PLAIN", "SMTP", "NONE" -> TransportStrategy.SMTP;
             case "SSL", "SMTPS" -> TransportStrategy.SMTPS;
             case "TLS", "STARTTLS" -> TransportStrategy.SMTP_TLS;
-            default -> throw new IllegalArgumentException("Unsupported SMTP security: " + configured);
+            default -> throw new IllegalArgumentException(MSGS.format("em.err.unsupportedSmtpSecurity", configured));
         };
     }
 

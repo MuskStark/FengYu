@@ -3,6 +3,7 @@ package fan.summer.fengyu.plugin.email.service;
 import fan.summer.fengyu.plugin.email.model.ContactImport.ParseError;
 import fan.summer.fengyu.plugin.email.model.ContactImport.ParsedContact;
 import fan.summer.fengyu.plugin.email.service.ContactHeaderResolver.Column;
+import fan.summer.fengyu.sdk.PluginMessages;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DataFormatter;
@@ -31,6 +32,7 @@ import java.util.Map;
  * numeric codes (important for phone-like or id-like fields).
  */
 final class ContactExcelParser implements ContactFileParser {
+    private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, ContactExcelParser.class);
     private final String tagDelimiter;
     private Workbook workbook;
 
@@ -51,12 +53,12 @@ final class ContactExcelParser implements ContactFileParser {
                     if (i > 1) names.append(", ");
                     names.append(workbook.getSheetName(i));
                 }
-                errors.add(new ParseError(0, "Import used the first sheet; ignored: " + names));
+                errors.add(new ParseError(0, MSGS.format("em.err.contactExcelIgnoredSheets", names)));
             }
             Map<Column, Integer> columns = new LinkedHashMap<>();
             int headerRow = findHeader(sheet, columns);
             if (headerRow < 0 || !columns.containsKey(Column.EMAIL)) {
-                errors.add(new ParseError(0, "Missing an email column (expected a header like 'email', 'E-mail', or '邮箱')"));
+                errors.add(new ParseError(0, MSGS.format("em.err.contactMissingEmailColumnExcel")));
                 return new Result(contacts, errors);
             }
             DataFormatter formatter = new DataFormatter();
@@ -68,7 +70,7 @@ final class ContactExcelParser implements ContactFileParser {
                 if (contact != null) contacts.add(contact);
             }
         } catch (IOException e) {
-            errors.add(new ParseError(0, "Could not read Excel file: " + e.getMessage()));
+            errors.add(new ParseError(0, MSGS.format("em.err.contactExcelReadFailed", e.getMessage())));
         }
         return new Result(contacts, errors);
     }
@@ -108,7 +110,7 @@ final class ContactExcelParser implements ContactFileParser {
         List<String> tags = tagCell == null ? List.of() : TagSplitter.split(tagCell, tagDelimiter);
 
         if (email == null || email.isBlank()) {
-            errors.add(new ParseError(row, "Missing email address"));
+            errors.add(new ParseError(row, MSGS.format("em.err.contactMissingEmail")));
             return null;
         }
         return new ParsedContact(row, email.trim(), trimToNull(nickname), trimToNull(notes), tags);
