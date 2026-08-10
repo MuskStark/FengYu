@@ -20,7 +20,25 @@ CHANGELOG.md instead.
 
 ## [Unreleased]
 
-_Nothing yet._
+### ✨ Added
+- **Full i18n for all official plugins (front + back end).** Plugin worker backends now render
+  localized `summary`/`error` messages, and the Markdown and Excel plugin UIs are fully localized
+  to match the Email and Offline Python Builder plugins. Locale flows per-request from the host
+  `Accept-Language` header (and the AI chat turn) into the worker, with no change to the JSON-RPC
+  envelope or the `PluginHandler` signature:
+  - **SDK `1.3.0`** adds `WorkerLocale` (per-request locale ThreadLocal bound by `JsonRpcWorker.serve`
+    from a `locale` params key), `PluginMessages` (a classpath `i18n/messages[_zh].properties` bundle
+    resolver), and keyed `okKey`/`failKey`/`t` helpers on `PluginHandlerSupport`. Workers without
+    bundles keep their prior English behaviour (default locale `en`).
+  - **Host** injects the resolved locale on both call paths: `PluginRuntimeController.invoke` reads
+    `Accept-Language`, and the AI path carries the locale through a new `AiToolLocaleContext`
+    ThreadLocal (mirroring `AiPermissionContext`) bound for the chat turn.
+  - **Plugin backends** ship `i18n/messages[_zh].properties` and key their user-facing strings:
+    Markdown, Excel (worker + progress logs), Email (handlers + services), and Offline Python Builder
+    (activating the previously-orphaned bundles). The Offline Python doctor check `id`/`value`
+    protocol tokens stay locale-neutral (the frontend translates them, as before).
+  - **Markdown + Excel frontends** gain a lightweight `i18n.ts` + `useFengYuEnvironment()` composable
+    (mirroring the Offline Python pattern), keying every visible UI string.
 
 ## [4.0.0-beta.1] — 2026-08-09
 
