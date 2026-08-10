@@ -100,6 +100,47 @@ Prefer `./mvnw` over a system Maven when running from a shell.
 - **Commit convention:** conventional commits with emojis — `✨` feat, `🐛` fix, `♻️` refactor,
   `📝` docs, `⬆️` deps, `🔥` removal. Commit, push, tag, or publish only when the user asks.
 
+### Pitfalls confirmed by 4.0.0-beta.1
+
+These cost real release cycles; do not repeat them.
+
+- **Desktop E2E (`desktop/electron/test/e2e/*.spec.ts`) runs in CI and is gating on macOS + Linux.**
+  `launch.spec.ts` is the stable one. `browser-bridge.spec.ts` is **opt-in**
+  (`FENGYU_E2E_BROWSER_BRIDGE=1`) because it opens a real `BrowserWindow`, navigates a live URL,
+  and runs CDP capture — fragile under xvfb/sandboxed runners, and a teardown timeout there also
+  kills `launch.spec.ts` in the same Playwright worker. The release workflow does NOT set the
+  opt-in env var, so only `launch.spec.ts` runs there. When adding a new desktop E2E, either keep
+  it gating-stable or gate it behind its own opt-in env var — never let an unstable spec take down
+  the stable one.
+- **A Playwright Electron `app.evaluate` that reads `process.env.*` set during main-process init
+  races that init.** Wait for the main window's `domcontentloaded` first (skip splash + devtools
+  windows, as `launch.spec.ts` does) — that guarantees `main.ts` async init (including
+  `startBrowserBridge()`, which sets `FENGYU_BROWSER_BRIDGE_PORT/TOKEN` before the JVM spawn) has
+  completed. Reading earlier yields `undefined` or "Execution context was destroyed".
+- **The local `scripts/e2e-smoke.sh` does NOT cover the Electron launch chain.** It boots the bare
+  JAR and probes REST endpoints; it cannot catch desktop-shell regressions (bridge startup, window
+  lifecycle, preload bridge). A green e2e-smoke is necessary but NOT sufficient before a desktop
+  release — the CI desktop E2E is the real gate.
+- **When you change `desktop/electron/electron-builder.yml`, update
+  `scripts/release-workflow.test.mjs` in the same change.** That contract test pins the packaging
+  config (targets, artifact names, sidecars). A config edit with a stale test passes locally but
+  fails the release job. Run `node --test scripts/release-workflow.test.mjs` after editing the
+  builder config. (Example: the auto-updater change added a macOS `zip` target + comments; the test
+  regex needed to allow comment lines and assert the new target.)
+- **`scripts/release-workflow.test.mjs` and the `app-release` SKILL.md still mention "five" official
+  plugins / `browser`; there are four** (`markdown`, `excel`, `email`, `offlinepython`). Browser
+  automation is a host-embedded `BrowserTool`, not a plugin. Trust `OfficialPlugins/` and
+  `package-web-release.sh`'s `OFFICIAL_PLUGINS=(markdown excel email offlinepython)` over that
+  stale count when verifying version consistency.
+- **Reissuing an existing prerelease tag (e.g. re-running beta.1) is a force-tag**
+  (`git tag -f <tag> HEAD` then `git push origin <tag> --force`). It re-triggers
+  `fengyu-release.yml`, which overwrites the GitHub Release's assets. Only do this for prereleases
+  not yet promoted to a real audience; otherwise cut the next prerelease (e.g. beta.2).
+- **The docs changelog mirrors are generated, not hand-edited.** After editing root `CHANGELOG.md`,
+  run `npm --prefix docs run sync:changelog` to regenerate `docs/{en,zh}/reference/changelog.md`.
+  That script is also a pre-hook for docs dev/build/preview, but run it explicitly in a release so
+  the mirrors land in the same commit as the CHANGELOG change.
+
 ## Legacy that does NOT describe 4.0.0
 
 The following are historical and must not be generated or recommended. (They appear in old plans,
