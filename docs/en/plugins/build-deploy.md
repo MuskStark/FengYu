@@ -6,7 +6,7 @@ lang: en
 
 # Build & Deploy
 
-A `.fyp` is a zip archive with a fixed runtime layout. There is **one** build flow for every plugin — third-party and official alike — driven by `fengyu plugin build` and the `fengyu.plugin.json` declaration. The legacy shell packager has been removed; the five shipped plugins are now built by the same CLI.
+A `.fyp` is a zip archive with a fixed runtime layout. There is **one** build flow for every plugin — third-party and official alike — driven by `fengyu plugin build` and the `fengyu.plugin.json` declaration. The legacy shell packager has been removed; the four shipped plugins are now built by the same CLI.
 
 ## The `.fyp` layout
 
@@ -91,14 +91,13 @@ Repository-internal builds (the official plugins) resolve the SDK from the local
 
 ## Build the official plugins
 
-The five shipped plugins are built by the same CLI — there is no separate script:
+The four shipped plugins are built by the same CLI — there is no separate script:
 
 ```bash
 node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-markdown
 node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-excel
 node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-email
 node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-offlinepython
-node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-browser
 ```
 
 Each writes `OfficialPlugins/plugin-<name>/dist-package/fan.summer.<name>-<version>.fyp` plus the adjacent `.fyp.sha256` sidecar. CI builds them as a matrix in `.github/workflows/toolchain-ci.yml`; the application release workflow carries each package/sidecar pair into both Web and desktop distributions.
