@@ -30,7 +30,7 @@ in build order:
 |---|---|
 | `toolchain/sdk-java` | **Independently versioned** Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk`). Does not inherit the parent; kept in the reactor only so local installs work. |
 | `toolchain/devkit-java` | **Independently versioned** Java dev kit (`fan.summer.fengyu.sdk:fengyu-plugin-devkit`) — the in-IDE loopback dev server. Same versioning rules as `sdk-java`. |
-| `OfficialPlugins` | Aggregator for official plugins (`plugin-markdown`, `plugin-excel`, `plugin-email`, `plugin-offlinepython`, `plugin-browser`). |
+| `OfficialPlugins` | Aggregator for official plugins (`plugin-markdown`, `plugin-excel`, `plugin-email`, `plugin-offlinepython`). Browser automation is a host-embedded backend capability (`BrowserTool`), not a plugin. |
 | `FengYu` | The headless Spring Boot app; shaded fat JAR, main class `fan.summer.fengyu.HeadlessLauncher`. |
 
 Non-Maven top-level directories: `frontend/` (Vue), `desktop/` (Electron), plus the plugin toolchain

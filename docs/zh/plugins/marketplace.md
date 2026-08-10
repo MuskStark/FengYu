@@ -27,7 +27,6 @@ Infinia 自带一组官方插件 —— 智能体开箱即可编排的真实能�
 | **邮件中心** | 多账户 SMTP/IMAP、通讯录管理、批量发送、归档 —— 九个需确认的 AI 工具。 | [邮件中心 →](/zh/plugins/email-center) |
 | **Offline Python Builder** | 构建包含全部依赖的离线 Python 安装仓库（wheelhouse）—— 六个 AI 工具与异步构建。 | [Offline Python →](/zh/plugins/official-offlinepython) |
 | **Markdown 编辑器** | 分栏编辑器，采用隔离的服务端渲染。 | [Markdown 编辑器 →](/zh/plugins/official-markdown) |
-| **浏览器代理** | 通过 Playwright 驱动真实 Chromium —— 导航、点击、输入、抓取、截图、执行 JS —— 九个 AI 工具。 | [浏览器代理 →](/zh/plugins/official-browser) |
 
 ## 浏览目录
 

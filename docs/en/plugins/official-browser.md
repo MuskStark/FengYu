@@ -1,54 +1,42 @@
 ---
-title: Official Plugin — Browser Agent
-description: Walkthrough of fan.summer.browser (v4.0.0-beta.1) — an automation-category plugin with network/files.write permissions and nine aiTools that drive a real Chromium via Playwright (Java) — navigate, click, type, scrape, screenshot, eval JS. Headed by default, Chromium auto-downloaded to the plugin's data dir on first use.
+title: Built-in Browser Capability
+description: Browser automation in Infinia 4.0.0 is a host-embedded capability, not a plugin — built into the desktop app, driven by Electron's native webContents and CDP over a loopback HTTP bridge. No Playwright, no separate Chromium download, not a plugin. Desktop-only. Nine approval-gated AI tools.
 lang: en
 ---
 
-# Official Plugin — Browser Agent
+# Built-in Browser Capability
 
-`fan.summer.browser` is the official browser-automation plugin. It launches a real Chromium and exposes nine AI tools — navigate, click, type, read text, query elements, screenshot, wait, eval JS, close — so an Agent flow can drive a live web page end to end. It is the canonical example of a plugin that combines an **external-effect** engine (a browser), the **network** permission, and an out-of-process Playwright worker.
+Browser automation in Infinia is a **host-embedded capability**: it is built into the desktop
+application and exposed by the backend `BrowserTool`, **not** a `.fyp` plugin. An Agent flow can
+drive a live web page end to end through nine AI tools — navigate, click, type, read text, query
+elements, screenshot, wait, eval JS, close — each gated by the host's approval flow for
+external-effect actions.
 
-## What it does
+::: tip What changed
+The former official plugin `plugin-browser` (`fan.summer.browser`, Playwright-based) has been
+**removed**. Browser automation is now host-embedded: it reuses the Electron shell's native
+webContents and the Chrome DevTools Protocol (CDP) over a loopback HTTP bridge. There is **no
+Playwright dependency** and **no separate Chromium download**.
+:::
 
-- Launches a persistent Chromium (Playwright, Java) in its own process tree and drives one browsing session across sequential tool calls.
-- Lets the AI navigate, click, type, read and query DOM, take screenshots, wait for state, and evaluate arbitrary JavaScript.
-- Keeps a real user profile (cookies, login state) under the plugin's data dir so the session survives worker restarts.
-- Auto-downloads Chromium into the plugin's data dir on first use, or reuses a user-configured system Chrome/Edge.
-- Runs **headed by default** so a human can watch the AI drive a visible browser.
+## How it works
 
-## The manifest
-
-```json
-{
-  "schemaVersion": 1,
-  "id": "fan.summer.browser",
-  "name": "Browser Agent",
-  "description": "AI-driven browser automation: navigate, click, type, scrape, screenshot, eval JS",
-  "version": "4.0.0-beta.1",
-  "author": "FengYu",
-  "icon": "browser",
-  "category": "automation",
-  "ui": { "entry": "ui/index.html" },
-  "backend": { "command": "java -jar backend/worker.jar", "protocol": "json-rpc-2.0", "callTimeoutSeconds": 120 },
-  "permissions": ["network", "files.write"],
-  "homepage": "https://github.com/MuskStark/FengYu",
-  "official": true,
-  "aiTools": [ /* nine tools — see below */ ]
-}
-```
-
-Key points:
-
-- **`category: "automation"`** — an automation / drive-a-real-app plugin.
-- **`permissions: ["network", "files.write"]`** — `network` is required because every tool drives a live browser that opens URLs; `files.write` is required because `browser_screenshot` saves PNGs into the plugin's data dir.
-- **`backend.command: "java -jar backend/worker.jar"`** with **`protocol: "json-rpc-2.0"`** and **`callTimeoutSeconds: 120`** — the worker is allowed a longer single-RPC budget than the default because navigation/loading can be slow.
-- **`aiTools`** has nine entries, so `supportsAi` is `true`. Each `{name, method, effect: "external", ...}` maps a model-facing tool to a worker JSON-RPC method; every tool is marked `external` because it mutates the outside world.
-
-See [Manifest](/en/plugins/manifest) for every field.
+- **Host-embedded, not a plugin.** The capability is provided by the backend `BrowserTool` (a
+  Spring AI `ToolCallback`), which talks to the desktop shell — there is no `manifest.json`, no
+  out-of-process worker, and no `.fyp` package.
+- **Electron's native engine.** A real browser window is driven through Electron's native
+  `webContents` plus CDP over a loopback HTTP bridge. No bundled Playwright and no separate
+  Chromium binary are downloaded or launched.
+- **Desktop-only.** This capability requires the Electron desktop shell. It is **unavailable in
+  pure-web / headless mode** (a browser tab cannot drive another browser), so the `browser_*`
+  tools are not registered when running without the desktop shell.
+- **Approval-gated.** Every tool is an external-effect action; the host approval gate confirms
+  each call before it runs, in both ordinary chat and the Plan-and-Execute Agent.
 
 ## The nine AI tools
 
-The worker (`BrowserWorkerMain`) registers nine JSON-RPC methods. Each maps 1:1 to an `aiTools` entry — there are no extra UI-only actions; the AI surface *is* the entire backend contract.
+`BrowserTool` registers nine AI tools. Each maps 1:1 to a host-side browser operation — there is
+no plugin worker and no separate UI pipeline; the AI surface *is* the entire contract.
 
 | Tool | Purpose |
 | --- | --- |
@@ -60,48 +48,31 @@ The worker (`BrowserWorkerMain`) registers nine JSON-RPC methods. Each maps 1:1 
 | `browser_screenshot` | Capture viewport / full page / element to a PNG; returns the path, dimensions, and the page accessibility tree as text. |
 | `browser_wait_for` | Wait for an element to reach `attached` / `detached` / `visible` / `hidden`. |
 | `browser_eval_js` | Evaluate a JS expression in the page and return the serialized result. |
-| `browser_close` | Close the browser and release resources; the next `browser_*` call relaunches. |
+| `browser_close` | Close the browser window and release resources; the next `browser_*` call reopens it. |
 
-Every tool returns the standard `{ success, summary, ... }` envelope. The AI tools are the same methods the UI would call — there is no separate UI-side pipeline. See [AI Tools](/en/plugins/ai-tools) and [Worker (JSON-RPC)](/en/plugins/worker).
+Every tool returns the standard `{ success, summary, ... }` envelope. See [AI Tools](/en/plugins/ai-tools).
 
-> **Screenshots are text, not pixels.** `browser_screenshot` saves the PNG to the data dir *and* attaches the page's accessibility tree as YAML text, because the model cannot see images — it reads the a11y tree to understand the page.
+> **Screenshots are text, not pixels.** `browser_screenshot` saves the PNG *and* attaches the
+> page's accessibility tree as YAML text, because the model cannot see images — it reads the a11y
+> tree to understand the page.
 
-## The Playwright engine
+## Why not a plugin
 
-The worker is a Playwright (Java) process. `BrowserSession` owns the full lifecycle:
+Driving a real browser window requires capabilities that only the desktop shell has (native
+`webContents`, CDP access, window lifecycle). A sandboxed plugin worker cannot reach the shell, so
+the previous Playwright-based plugin shipped its own Chromium download and an extra process tree.
+Embedding the capability in the host removes that download, the Playwright dependency, and the
+worker lifecycle, while keeping the same nine-tool AI surface.
 
-- One `Playwright` instance (which spawns Playwright's bundled Node driver subprocess), one persistent `BrowserContext`, and one `Page` — lazily started on first tool call and reused so the AI's `navigate → click → type` sequence shares one browsing session.
-- Launched via `launchPersistentContext(userDataDir, ...)` so the profile (cookies, login) survives worker restarts. Closing the context terminates the Chromium process tree; closing the `Playwright` instance terminates the bundled Node driver subprocess.
-- `browser_close` and a JVM shutdown hook both reap the whole three-level tree (Chromium children → Chromium → Node driver), so a killed worker cannot leak browsers.
+## Availability
 
-### Chromium resolution (three-tier)
-
-`ChromiumResolver` picks the executable in priority order:
-
-1. **User-configured path** (a system Chrome/Edge), if it is executable.
-2. **Already-downloaded Chromium** under `<dataDir>/chromium/`.
-3. **Auto-download** into `<dataDir>/chromium/` via `com.microsoft.playwright.CLI install chromium`.
-
-If all three fail it falls back to Playwright's bundled/installed browser. The network-touching install lives behind a seam, so the resolution logic is unit-testable without a network.
-
-### Configuration (environment variables)
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `FENGYU_PLUGIN_DATA_DIR` | `~/.fengyu/plugins/fan.summer.browser` | Root data dir: profile, screenshots, downloaded Chromium. |
-| `FENGYU_BROWSER_HEADLESS` | `false` | `true`/`false`; defaults to **headed** so a human can watch. |
-
-## Windows: unsandboxed plugins
-
-Chromium's native sandbox relies on OS features that the plugin worker cannot use under FengYu's sandbox on Windows. On Windows the plugin therefore requires the host's **`unsandboxedPlugins`** toggle (Settings → Runtime & Security); without it the worker cannot launch Chromium. On macOS/Linux the sandboxed worker runs as normal.
-
-## The UI
-
-The UI is a minimal micro-frontend (a landing/config panel) — the real capability is the nine AI tools, not a rich UI. It loads in the sandboxed iframe under `/plugin-runtime/fan.summer.browser/**` and bridges to the host through `@infinia/plugin-sdk`. See [UI Micro-frontend](/en/plugins/ui-microfrontend).
+| Target | Browser capability |
+| --- | --- |
+| Desktop (Electron shell) | Available — nine AI tools registered. |
+| Web / headless (no Electron shell) | **Unavailable** — the `browser_*` tools are not registered. |
 
 ## Next steps
 
-- [Manifest](/en/plugins/manifest) — the full schema, including `aiTools` and `permissions`.
 - [AI Tools](/en/plugins/ai-tools) — how the nine `browser_*` tools are aggregated into Spring AI `ToolCallback[]`.
-- [Worker (JSON-RPC)](/en/plugins/worker) — the `browser_*` registration pattern.
-- [Official Plugin — Excel](/en/plugins/official-excel) — a sibling plugin with a wizard UI and file I/O.
+- [Desktop architecture](/en/architecture/desktop) — the Electron shell that provides `webContents` + CDP.
+- [Plugin Overview](/en/plugins/overview) — the shipped official plugins (browser automation is not among them).

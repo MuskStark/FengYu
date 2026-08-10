@@ -37,7 +37,6 @@ Infinia ships with a set of official plugins — real capabilities the Agent can
 | **Email Center** | Multi-account SMTP/IMAP, contact management, batch sending, archives — nine confirmation-first AI tools. | [Email Center →](/en/plugins/email-center) |
 | **Offline Python Builder** | Build offline Python install repositories (wheelhouses) with all dependencies — six AI tools and async builds. | [Offline Python →](/en/plugins/official-offlinepython) |
 | **Markdown Editor** | Split-pane editor with isolated server-side rendering. | [Markdown Editor →](/en/plugins/official-markdown) |
-| **Browser Agent** | Drive a real Chromium via Playwright — navigate, click, type, scrape, screenshot, eval JS — nine AI tools. | [Browser Agent →](/en/plugins/official-browser) |
 
 ## Browse the catalog
 
