@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useFengYuClient } from '@infinia/plugin-ui'
+import { useFengYuEnvironment } from './env'
 
 // The host provides the client via provideFengYuClient() in main.ts. In a bare
 // standalone preview (no host) the inject throws, so guard with a try/catch.
 let client: ReturnType<typeof useFengYuClient> | undefined
-try { client = useFengYuClient() } catch { client = undefined }
+let t: (key: string, ...args: (string | number)[]) => string = (key) => key
+try {
+  client = useFengYuClient()
+  t = useFengYuEnvironment().t
+} catch { client = undefined }
 
 const SAMPLE = '# Hello FengYu\n\nType **markdown** here.'
 
@@ -35,7 +40,7 @@ async function render(): Promise<void> {
       html.value = typeof res.html === 'string' ? res.html : ''
     } else {
       isError.value = true
-      html.value = escapeHtml((res && res.error) || 'Render failed')
+      html.value = escapeHtml((res && res.error) || t('mde.renderFailed'))
     }
   } catch (err) {
     isError.value = true
@@ -60,12 +65,12 @@ onBeforeUnmount(() => {
     <v-main>
       <v-card variant="outlined" rounded="lg" class="mde-card">
         <v-card-item>
-          <v-card-title class="text-subtitle-1">Markdown</v-card-title>
+          <v-card-title class="text-subtitle-1">{{ t('mde.cardTitle') }}</v-card-title>
         </v-card-item>
 
         <v-card-text class="mde-split">
           <div class="mde-pane mde-editor">
-            <div class="mde-pane-title">Markdown</div>
+            <div class="mde-pane-title">{{ t('mde.editor') }}</div>
             <textarea
               class="mde-textarea"
               v-model="markdown"
@@ -74,7 +79,7 @@ onBeforeUnmount(() => {
             ></textarea>
           </div>
           <div class="mde-pane mde-preview">
-            <div class="mde-pane-title">Preview</div>
+            <div class="mde-pane-title">{{ t('mde.preview') }}</div>
             <div class="mde-preview-body" :class="{ 'mde-error': isError }" v-html="html"></div>
           </div>
         </v-card-text>
