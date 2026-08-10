@@ -15,6 +15,7 @@ import fan.summer.fengyu.web.controller.McpController;
 import fan.summer.fengyu.web.controller.SecurityController;
 import fan.summer.fengyu.web.controller.SettingsController;
 import fan.summer.fengyu.web.controller.SkillController;
+import fan.summer.fengyu.web.controller.UpdateController;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
@@ -53,7 +54,9 @@ import org.springframework.context.annotation.FilterType;
  * {@code SkillPackageService}/{@code SkillMarketplaceService} from the {@code ai.skill} package,
  * which this context does not scan. {@link SecurityController} depends on the APP-mode
  * {@code ProcessSandbox} component, while {@link McpController} reports APP-mode MCP clients, so
- * both are excluded as well. This mirrors the {@code excludeFilters} idiom already used
+ * both are excluded as well. {@link UpdateController} needs {@code UpdateCheckService}/
+ * {@code SelfUpdateService} from the {@code update} package, which this context does not scan.
+ * This mirrors the {@code excludeFilters} idiom already used
  * by {@link fan.summer.fengyu.FengYuApplication} on the opposite side (it excludes this class).
  */
 @SpringBootApplication(exclude = {
@@ -72,6 +75,6 @@ import org.springframework.context.annotation.FilterType;
                         SettingsController.class,
                         AiController.class, AiFileController.class, AiConfigController.class, AgentController.class,
                         ConversationController.class, SkillController.class,
-                        McpController.class, SecurityController.class}))
+                        McpController.class, SecurityController.class, UpdateController.class}))
 public class SetupApplication {
 }
