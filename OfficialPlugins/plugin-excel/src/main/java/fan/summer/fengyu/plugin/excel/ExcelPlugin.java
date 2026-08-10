@@ -54,6 +54,30 @@ public class ExcelPlugin {
     @SuppressWarnings("unchecked")
     private Map<String, Object> configure(String session, Map<String, Object> args) {
         SplitConfig cfg = sessions.get(session);
+        applyConfig(cfg, args);
+        switch (cfg.mode) {
+            case BY_SHEET -> validateSelectedSheets(cfg);
+            case BY_COLUMN -> validateColumn(cfg);
+            case COMPLEX -> validateComplex(cfg);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("success", true);
+        out.put("summary", "configured mode=" + cfg.mode);
+        return out;
+    }
+
+    /**
+     * Applies the split-config fields from {@code args} onto {@code cfg}. Shared by {@code configure}
+     * and {@code split} so that a {@code split} call carries everything it needs to run even when the
+     * worker process was restarted between {@code configure} and {@code split} — the host tears down
+     * and relaunches a plugin worker whenever its file-grant version changes (e.g. the user picks an
+     * output folder on the wizard's Output step), which wipes the in-memory session store. Sending
+     * the full config on {@code split} makes the session store a cache rather than a correctness
+     * dependency. Fields absent from {@code args} are left untouched (partial-update semantics),
+     * preserving the existing AI/UI behavior for callers that rely on a prior {@code configure}.
+     */
+    @SuppressWarnings("unchecked")
+    private static void applyConfig(SplitConfig cfg, Map<String, Object> args) {
         String mode = str(args, "mode");
         if (mode != null) cfg.mode = SplitConfig.SplitMode.valueOf(mode);
         Object sel = args.get("selectedSheets");
@@ -92,15 +116,6 @@ public class ExcelPlugin {
             }
             cfg.complexEntries = parsed;
         }
-        switch (cfg.mode) {
-            case BY_SHEET -> validateSelectedSheets(cfg);
-            case BY_COLUMN -> validateColumn(cfg);
-            case COMPLEX -> validateComplex(cfg);
-        }
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("success", true);
-        out.put("summary", "configured mode=" + cfg.mode);
-        return out;
     }
 
     private static void validateSelectedSheets(SplitConfig cfg) {
@@ -149,6 +164,11 @@ public class ExcelPlugin {
             try { cfg.analysisResult = ExcelSplitter.analyze(cfg.sourceFile); }
             catch (Exception e) { throw new IllegalArgumentException("Analyze failed: " + e.getMessage(), e); }
         }
+        // Re-apply the split config from this call's args so split is self-contained: the host may
+        // restart the worker (and thus wipe the in-memory session) between configure and split —
+        // see applyConfig. A split call that omits the config fields still works as before because
+        // applyConfig leaves absent fields untouched.
+        applyConfig(cfg, args);
         ExcelSplitter.SplitResult res;
         try {
             java.nio.file.Files.createDirectories(cfg.outputDir);
