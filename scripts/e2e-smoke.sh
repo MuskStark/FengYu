@@ -143,6 +143,13 @@ curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
 echo "$RUNTIME" | grep -q 'fan.summer.excel' || fail "Excel plugin not listed"
 echo "PASS: excel plugin registered"
 
+# plugin-browser was removed in favor of the host-embedded (desktop-only) browser capability.
+# It must NOT be registered in web mode.
+if echo "$RUNTIME" | grep -q 'fan.summer.browser'; then
+  fail "fan.summer.browser should not be registered after plugin removal"
+fi
+echo "PASS: browser plugin correctly absent"
+
 # Email Center is seeded as an isolated .fyp and its Worker answers through the official SDK protocol.
 echo "$RUNTIME" | grep -q 'fan.summer.email' || fail "Email Center plugin not listed"
 # Database access is intentionally user-authorized rather than implicit at install/start. Exercise
