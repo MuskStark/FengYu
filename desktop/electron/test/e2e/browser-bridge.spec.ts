@@ -4,6 +4,14 @@ import { existsSync } from 'node:fs'
 
 const JAR = process.env.FENGYU_JAR ?? ''
 const haveJar = !!JAR && existsSync(JAR)
+// This test opens a REAL BrowserWindow, navigates it to a live URL (example.com), and
+// captures a screenshot + CDP a11y tree — so beyond a JAR it needs a display and outbound
+// network. That is fragile in CI (xvfb, sandboxed runners, flaky e2gress) and a failure
+// here also tears down launch.spec.ts via Playwright's worker teardown timeout. It is
+// therefore opt-in: set FENGYU_E2E_BROWSER_BRIDGE=1 to run it (e.g. locally or on a
+// dedicated self-hosted runner). The release workflow does NOT set it, so the gating
+// desktop E2E there runs only the stable launch.spec.ts.
+const enabled = process.env.FENGYU_E2E_BROWSER_BRIDGE === '1'
 
 /**
  * End-to-end test of the browser-automation bridge chain that no unit test covers:
@@ -14,10 +22,12 @@ const haveJar = !!JAR && existsSync(JAR)
  * one drives the REAL Electron app with a REAL BrowserWindow, exercised through the same
  * node:http loopback endpoint the backend's BrowserTool calls into.
  *
- * NOT executed in CI without a JAR + display + network — see the skip guard below.
+ * Opt-in (FENGYU_E2E_BROWSER_BRIDGE=1): needs a JAR + display + network, so it is skipped
+ * in the release workflow by default to keep the desktop E2E gating stable.
  */
 test.describe('browser bridge chain', () => {
   test.skip(!haveJar, 'FENGYU_JAR not set or jar missing — build one with `mvn -pl FengYu -am package -DskipTests`')
+  test.skip(!enabled, 'browser-bridge E2E is opt-in (set FENGYU_E2E_BROWSER_BRIDGE=1); needs a display + network')
 
   test('navigate → screenshot → close over the loopback bridge', async () => {
     const lines: string[] = []
@@ -37,13 +47,29 @@ test.describe('browser bridge chain', () => {
     app.on('window', (w) => lines.push(`[event] window opened url=${w.url()}`))
 
     try {
+      // Wait for the MAIN window (skip splash + devtools) to reach domcontentloaded.
+      // This guarantees main.ts has finished its async init — including
+      // startBrowserBridge(), which sets FENGYU_BROWSER_BRIDGE_PORT/TOKEN on the main
+      // process's process.env BEFORE the JVM spawn. Reading those vars earlier (e.g.
+      // immediately after launch) races main init and yields undefined / an
+      // "Execution context was destroyed" error, because app.evaluate runs against an
+      // execution context that splash→main navigation tears down. Mirrors launch.spec.
+      const isAuxWindow = (url: string) =>
+        url.startsWith('devtools://') || url.endsWith('splash.html') || url.includes('splash.html')
+      const first = await app.firstWindow()
+      const win = isAuxWindow(first.url())
+        ? await app.waitForEvent('window', { predicate: (c) => !isAuxWindow(c.url()) })
+        : first
+      await win.waitForLoadState('domcontentloaded', { timeout: 60_000 })
+      lines.push(`[step] main window ready url=${win.url()}`)
+
       // The bridge port + token are set on the MAIN process's process.env by main.ts
       // (before the JVM spawn so the backend inherits them). app.evaluate runs the
       // callback in the main Electron process, where `process` is a Node global — so
       // we read it directly rather than via an IPC round-trip. The electron module
       // exports do NOT include `process`, so we reference the global (not destructured
       // off the electron param).
-      const bridgeInfo = await app.evaluate(async () => ({
+      const bridgeInfo = await app.evaluate(() => ({
         port: process.env.FENGYU_BROWSER_BRIDGE_PORT,
         token: process.env.FENGYU_BROWSER_BRIDGE_TOKEN,
       }))
