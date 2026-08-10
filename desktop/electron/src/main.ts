@@ -117,6 +117,32 @@ async function bootstrap(): Promise<void> {
     process.env.FENGYU_API_BASE = externalBackend
     process.env.FENGYU_TOKEN = token
     process.env.FENGYU_SETUP_MODE = ''
+    // Browser automation bridge: start it here too (not only in the spawn branch) so the
+    // IDE-started backend can drive a real BrowserWindow. The IDE JVM must in turn be
+    // launched with `-Dfengyu.desktop=true` and these two env vars. A *fixed* port + token
+    // (read from env below) is required: the JVM is launched by IntelliJ, which cannot
+    // learn a random OS port after the fact. When unset, the bridge still starts on a
+    // random port — logged for ad-hoc use — but browser_* calls from the IDE backend will
+    // stay in degraded mode (it does not know the address).
+    const bridgePort = Number.parseInt(process.env.FENGYU_BROWSER_BRIDGE_PORT ?? '', 10)
+    const bridgeToken = process.env.FENGYU_BROWSER_BRIDGE_TOKEN
+    try {
+      browserBridge = await startBrowserBridge(new BrowserSession(), {
+        port: Number.isFinite(bridgePort) && bridgePort > 0 ? bridgePort : undefined,
+        token: bridgeToken && bridgeToken.length > 0 ? bridgeToken : undefined,
+      })
+      process.env.FENGYU_BROWSER_BRIDGE_PORT = String(browserBridge.port)
+      process.env.FENGYU_BROWSER_BRIDGE_TOKEN = browserBridge.token
+      logger.info(
+        `[desktop] browser bridge ready on 127.0.0.1:${browserBridge.port} (token=${browserBridge.token}). ` +
+          'For the IDE backend to use it, set VM option `-Dfengyu.desktop=true` and env ' +
+          `FENGYU_BROWSER_BRIDGE_PORT=${browserBridge.port} FENGYU_BROWSER_BRIDGE_TOKEN=${browserBridge.token}.`,
+      )
+    } catch (err) {
+      // Bridge is an adjunct to the IDE backend, not a prerequisite — keep booting so the
+      // user can still use the shell for non-browser work and see the warning in the log.
+      logger.warn(`[desktop] browser bridge not started: ${err instanceof Error ? err.message : String(err)}`)
+    }
     reportProgress(splash, 'spawning')
     try {
       await pollHealth({ baseUrl: externalBackend, token, shouldCancel: () => isQuitting, onProgress: (s) => reportProgress(splash, s) })

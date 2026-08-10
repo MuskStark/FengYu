@@ -18,9 +18,9 @@ import java.util.Map;
  * Electron sidecar at JVM spawn). In web mode the bean is absent and {@code browser_*}
  * tools never appear in the AI catalog.
  *
- * <p>The 9 {@code @Tool} method names and the {@code {success, summary, ...}} return
- * envelope mirror the former {@code plugin-browser} worker verbatim so prompts/skills
- * are unaffected. Text capping ({@link #TEXT_CAP}) and sample limiting
+ * <p>The 10 {@code @Tool} method names and the {@code {success, summary, ...}} return
+ * envelope mirror the former {@code plugin-browser} worker (plus {@code browser_find} for
+ * element refs) so prompts/skills are unaffected. Text capping ({@link #TEXT_CAP}) and sample limiting
  * ({@link #SAMPLE_LIMIT}) are applied here (Electron returns raw values).
  *
  * <p>Approval-gated via {@link ApprovalRequiredTool} — same gate as {@code execute_command}.
@@ -61,7 +61,7 @@ public class BrowserTool implements ApprovalRequiredTool {
         this.client = client;
     }
 
-    // ── 9 AI tools ────────────────────────────────────────────────────────────
+    // ── 10 AI tools ───────────────────────────────────────────────────────────
 
     @Tool(name = "browser_navigate",
           description = "Navigate the browser to a URL. Returns the final URL and page title.")
@@ -73,27 +73,43 @@ public class BrowserTool implements ApprovalRequiredTool {
         return bridge("browser_navigate", params("url", url, "waitUntil", waitUntil), 60);
     }
 
+    @Tool(name = "browser_find",
+          description = "Locate an element by CSS selector and return a stable ref id for use in later click/type/get_text calls. Stamps a data attribute on the matched node so the same element is targeted across re-renders.")
+    public String find(
+            @ToolParam(description = "CSS selector of the element.") String selector,
+            @ToolParam(required = false,
+                       description = "1-based index when the selector matches several elements. If omitted and the selector matches more than one, the call fails with a hint to pass nth or refine the selector.")
+            Integer nth) {
+        return bridge("browser_find", params("selector", selector, "nth", nth), 30);
+    }
+
     @Tool(name = "browser_click",
-          description = "Click an element matching the CSS selector.")
+          description = "Click an element. Uses a real CDP mouse press+release at the element centre (not a JS click), so isTrusted-checked buttons and mousedown listeners fire. Pass either a CSS selector or a ref from browser_find (ref wins).")
     public String click(
-            @ToolParam(description = "CSS selector of the element to click.") String selector) {
-        return bridge("browser_click", params("selector", selector), 30);
+            @ToolParam(required = false, description = "CSS selector of the element to click.") String selector,
+            @ToolParam(required = false, description = "1-based index of the match when the selector matches several.") Integer nth,
+            @ToolParam(required = false, description = "Ref id returned by browser_find; takes precedence over selector.") String ref) {
+        return bridge("browser_click", params("selector", selector, "nth", nth, "ref", ref), 30);
     }
 
     @Tool(name = "browser_type",
-          description = "Type text into an element matching the selector, optionally clearing it first.")
+          description = "Type text into an input element. Uses CDP Input.insertText (the browser's real text-edit pipeline), so React/Vue controlled components update their state correctly — unlike direct value assignment. Optionally clears first. Pass either a CSS selector or a ref from browser_find (ref wins).")
     public String type(
-            @ToolParam(description = "CSS selector of the input element.") String selector,
+            @ToolParam(required = false, description = "CSS selector of the input element.") String selector,
             @ToolParam(description = "Text to type.") String text,
-            @ToolParam(required = false, description = "Clear the field first (default true).") Boolean clear) {
-        return bridge("browser_type", params("selector", selector, "text", text, "clear", clear), 30);
+            @ToolParam(required = false, description = "Clear the field first (default true).") Boolean clear,
+            @ToolParam(required = false, description = "1-based index of the match when the selector matches several.") Integer nth,
+            @ToolParam(required = false, description = "Ref id returned by browser_find; takes precedence over selector.") String ref) {
+        return bridge("browser_type", params("selector", selector, "text", text, "clear", clear, "nth", nth, "ref", ref), 30);
     }
 
     @Tool(name = "browser_get_text",
-          description = "Read visible text of the page or a single element. Capped at " + TEXT_CAP + " chars.")
+          description = "Read visible text of the page or a single element. Capped at " + TEXT_CAP + " chars. Pass a selector/ref to scope to one element.")
     public String getText(
-            @ToolParam(required = false, description = "CSS selector; defaults to whole page body.") String selector) {
-        String result = bridge("browser_get_text", params("selector", selector), 30);
+            @ToolParam(required = false, description = "CSS selector; defaults to whole page body.") String selector,
+            @ToolParam(required = false, description = "1-based index of the match when the selector matches several.") Integer nth,
+            @ToolParam(required = false, description = "Ref id returned by browser_find; takes precedence over selector.") String ref) {
+        String result = bridge("browser_get_text", params("selector", selector, "nth", nth, "ref", ref), 30);
         return capText(result);
     }
 
@@ -106,22 +122,26 @@ public class BrowserTool implements ApprovalRequiredTool {
     }
 
     @Tool(name = "browser_screenshot",
-          description = "Capture a PNG screenshot. Returns the saved file path, dimensions, and an accessibility tree (YAML) the model reads instead of the image.")
+          description = "Capture a PNG screenshot. Returns the saved file path, dimensions, and an accessibility tree (YAML) the model reads instead of the image. Pass a selector/ref to capture a single element.")
     public String screenshot(
             @ToolParam(required = false, description = "Capture the full scrollable page (default false).") Boolean fullPage,
-            @ToolParam(required = false, description = "CSS selector to capture a single element.") String selector) {
-        return bridge("browser_screenshot", params("fullPage", fullPage, "selector", selector), 30);
+            @ToolParam(required = false, description = "CSS selector to capture a single element.") String selector,
+            @ToolParam(required = false, description = "1-based index of the match when the selector matches several.") Integer nth,
+            @ToolParam(required = false, description = "Ref id returned by browser_find; takes precedence over selector.") String ref) {
+        return bridge("browser_screenshot", params("fullPage", fullPage, "selector", selector, "nth", nth, "ref", ref), 30);
     }
 
     @Tool(name = "browser_wait_for",
           description = "Wait until an element reaches a state (attached, detached, visible, hidden).")
     public String waitFor(
-            @ToolParam(description = "CSS selector.") String selector,
+            @ToolParam(required = false, description = "CSS selector.") String selector,
             @ToolParam(required = false,
                        description = "State to wait for: attached, detached, visible, hidden (default visible).")
             String state,
-            @ToolParam(required = false, description = "Timeout in seconds (default 30, max 600).") Integer timeout) {
-        return bridge("browser_wait_for", params("selector", selector, "state", state, "timeout", timeout), 40);
+            @ToolParam(required = false, description = "Timeout in seconds (default 30, max 600).") Integer timeout,
+            @ToolParam(required = false, description = "1-based index of the match when the selector matches several.") Integer nth,
+            @ToolParam(required = false, description = "Ref id returned by browser_find; takes precedence over selector.") String ref) {
+        return bridge("browser_wait_for", params("selector", selector, "state", state, "timeout", timeout, "nth", nth, "ref", ref), 40);
     }
 
     @Tool(name = "browser_eval_js",

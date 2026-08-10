@@ -84,6 +84,41 @@ telling you to start it. Overrides:
 - `FENGYU_DEV_BACKEND=disabled` (or just set `FENGYU_JAR`) — opt out of the default and let the
   shell spawn its own backend from a jar (see below).
 
+#### Verifying the browser control feature against an IDE-started backend
+
+The host-embedded `browser_*` AI tools drive a real `BrowserWindow` over a loopback bridge that
+the desktop shell owns. In dev connect mode the shell starts this bridge too, but the IDE-started
+backend must be told where it is listening. Because IntelliJ launches the JVM on its own, the
+bridge address has to be **fixed** (not the OS-random default) so both sides agree.
+
+Pick a free port + a token once, then set the same two values on **both** the IDE run config and
+the shell env:
+
+```bash
+# Terminal 2: desktop shell — pin the bridge address, auto-starts Vite
+cd desktop/electron && \
+  FENGYU_BROWSER_BRIDGE_PORT=9123 \
+  FENGYU_BROWSER_BRIDGE_TOKEN=dev-token \
+  npm run dev
+# The startup log prints the effective port/token — confirm they match what the IDE got.
+```
+
+In the IntelliJ `HeadlessLauncher` run config:
+
+- **VM options:** `-Dfengyu.desktop=true` (registers `BrowserTool`; without it `browser_*` tools
+  are absent from the AI catalog).
+- **Environment variables:** `FENGYU_BROWSER_BRIDGE_PORT=9123`, `FENGYU_BROWSER_BRIDGE_TOKEN=dev-token`
+  (the same values the shell was launched with).
+
+Then in the AiChat, ask the model to e.g. "open example.com and screenshot it": you get the
+approval card, a real `BrowserWindow` opens, and the tool returns `{url, title}` + a screenshot
+with an a11y tree. Java breakpoints in `BrowserTool` / `BrowserBridgeClient` hit as normal.
+
+> Without the fixed values the bridge still starts (random port), but the IDE backend cannot
+> discover it, so every `browser_*` call returns
+> `{"success":false,"summary":"browser bridge unavailable"}`. Browser automation in web mode
+> (no Electron) is unsupported by design — the bridge only exists inside the desktop shell.
+
 ### Self-contained dev — shell spawns the backend from a jar
 
 Set `FENGYU_DEV_BACKEND=disabled` (or just set `FENGYU_JAR`), and the shell spawns java, generates a

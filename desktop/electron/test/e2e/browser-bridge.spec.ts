@@ -127,7 +127,94 @@ test.describe('browser bridge chain', () => {
       // The screenshot PNG must actually exist on disk.
       expect(existsSync(shotJson.imagePath as string)).toBe(true)
 
-      // 4. Close — destroys the BrowserWindow created by navigate.
+      // 4. Inject a login form with a controlled-component mirror (the span's textContent
+      //    updates on a real 'input' event, mimicking how React/Vue controlled inputs
+      //    observe value changes). Direct el.value= assignment would NOT fire the handler
+      //    that updates the mirror — only a real input event (from CDP Input.insertText)
+      //    does. This is the regression guard for the original "type doesn't fill" bug.
+      const inject = await fetch(`${base}/invoke`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          method: 'browser_eval_js',
+          params: {
+            script: `(() => {
+              document.body.innerHTML = `
+              + '`'
+              + `<form id="login"><input id="user" name="user" type="text"/>`
+              + `<input id="pwd" name="pwd" type="password"/>`
+              + `<button id="go" type="button">Go</button></form>`
+              + `<span id="mirror"></span>`
+              + '`'
+              + `;
+              document.getElementById('user').addEventListener('input', (e) => {
+                document.getElementById('mirror').textContent = 'user=' + e.target.value;
+              });
+              document.getElementById('go').addEventListener('click', () => {
+                document.getElementById('mirror').textContent = 'submitted user=' + document.getElementById('user').value;
+              });
+              return 'ok';
+            })()`,
+          },
+        }),
+      })
+      const injectJson = (await inject.json()) as { success: boolean; value?: string }
+      lines.push(`[step] inject form success=${injectJson.success} value=${injectJson.value}`)
+      expect(injectJson.success).toBe(true)
+
+      // 5. find → type on the username input, then assert the controlled mirror updated.
+      //    The mirror only reflects the typed value if a real 'input' event fired — proving
+      //    CDP Input.insertText (not el.value= assignment) drove the change.
+      const findUser = await fetch(`${base}/invoke`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ method: 'browser_find', params: { selector: '#user' } }),
+      })
+      const findUserJson = (await findUser.json()) as { success: boolean; ref?: string }
+      lines.push(`[step] find #user success=${findUserJson.success} ref=${findUserJson.ref}`)
+      expect(findUserJson.success).toBe(true)
+      expect(findUserJson.ref).toMatch(/^el_\d+$/)
+
+      const typeUser = await fetch(`${base}/invoke`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ method: 'browser_type', params: { ref: findUserJson.ref, text: 'alice' } }),
+      })
+      const typeUserJson = (await typeUser.json()) as { success: boolean; filled?: boolean }
+      lines.push(`[step] type user success=${typeUserJson.success}`)
+      expect(typeUserJson.success).toBe(true)
+
+      const mirror = await fetch(`${base}/invoke`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ method: 'browser_eval_js', params: { script: `document.getElementById('mirror').textContent` } }),
+      })
+      const mirrorJson = (await mirror.json()) as { success: boolean; value?: string }
+      lines.push(`[step] mirror value=${mirrorJson.value}`)
+      expect(mirrorJson.value).toBe('user=alice')
+
+      // 6. click the Go button via real CDP mouse events, then assert the submit handler
+      //    ran (the mirror text changes to 'submitted user=alice'). A JS el.click() would
+      //    fire this too, but combined with step 5 this exercises the full real-input chain.
+      const clickGo = await fetch(`${base}/invoke`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ method: 'browser_click', params: { selector: '#go' } }),
+      })
+      const clickGoJson = (await clickGo.json()) as { success: boolean; clicked?: boolean }
+      lines.push(`[step] click #go success=${clickGoJson.success}`)
+      expect(clickGoJson.success).toBe(true)
+
+      const submitted = await fetch(`${base}/invoke`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ method: 'browser_eval_js', params: { script: `document.getElementById('mirror').textContent` } }),
+      })
+      const submittedJson = (await submitted.json()) as { success: boolean; value?: string }
+      lines.push(`[step] submit mirror value=${submittedJson.value}`)
+      expect(submittedJson.value).toBe('submitted user=alice')
+
+      // 7. Close — destroys the BrowserWindow created by navigate.
       const close = await fetch(`${base}/invoke`, {
         method: 'POST',
         headers,
