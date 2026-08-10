@@ -175,6 +175,84 @@ class PluginPackageServiceTest {
         assertFalse(manifest.official());
     }
 
+    /**
+     * Feature: a local install via the native path may claim official identity when it ships a
+     * matching {@code .sha256} sidecar (the CLI packager's trust credential, the same one the
+     * official seeder verifies). This lets a user install a rebuilt official plugin locally through
+     * the same trust level as the seeder. The sidecar format is GNU coreutils {@code sha256sum -c}:
+     * {@code <hex>  <basename>}.
+     */
+    @Test
+    void nativeInstallWithMatchingSidecarInstallsOfficialPlugin() throws Exception {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        Path archive = writeArchive(temp.resolve("official.fyp"),
+            """
+            {"schemaVersion":1,"id":"fan.summer.demo","name":"Official Demo","description":"trusted",
+             "version":"1.0.0","author":"FengYu","icon":"puzzle-outline","category":"dev",
+             "ui":{"entry":"ui/index.html"},"official":true,"permissions":[]}
+            """,
+            "ui/index.html", "<html>official</html>");
+        writeSidecar(archive);
+
+        PluginManifest manifest = service.install(archive);
+        assertEquals("fan.summer.demo", manifest.id());
+        assertTrue(manifest.official(), "a sidecar-verified local install may claim official");
+    }
+
+    /**
+     * Regression: without a sidecar, the native install path stays untrusted, so an official claim
+     * must still be rejected. A third party cannot gain official identity merely by dropping a
+     * hand-zipped {@code .fyp} onto disk.
+     */
+    @Test
+    void nativeInstallWithoutSidecarRejectsOfficialClaim() throws Exception {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        Path archive = writeArchive(temp.resolve("official.fyp"),
+            """
+            {"schemaVersion":1,"id":"fan.summer.demo","name":"Official Demo","description":"trusted",
+             "version":"1.0.0","author":"FengYu","icon":"puzzle-outline","category":"dev",
+             "ui":{"entry":"ui/index.html"},"official":true,"permissions":[]}
+            """,
+            "ui/index.html", "<html>official</html>");
+        // No .sha256 sidecar → untrusted → validate() rejects the official claim.
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.install(archive));
+        assertTrue(ex.getMessage().toLowerCase(java.util.Locale.ROOT).contains("official"));
+    }
+
+    /** A mismatched sidecar (e.g. for a different file) must NOT grant trust. */
+    @Test
+    void nativeInstallWithMismatchedSidecarRejectsOfficialClaim() throws Exception {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        Path archive = writeArchive(temp.resolve("official.fyp"),
+            """
+            {"schemaVersion":1,"id":"fan.summer.demo","name":"Official Demo","description":"trusted",
+             "version":"1.0.0","author":"FengYu","icon":"puzzle-outline","category":"dev",
+             "ui":{"entry":"ui/index.html"},"official":true,"permissions":[]}
+            """,
+            "ui/index.html", "<html>official</html>");
+        // Sidecar for a *different* (non-matching) hash.
+        Files.writeString(Path.of(archive + ".sha256"),
+            "0000000000000000000000000000000000000000000000000000000000000000  official.fyp\n");
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.install(archive));
+        assertTrue(ex.getMessage().toLowerCase(java.util.Locale.ROOT).contains("official"),
+            "a mismatched sidecar must not grant trust: " + ex.getMessage());
+    }
+
+    /** Write a valid {@code <archive>.sha256} sidecar (GNU coreutils format). */
+    private void writeSidecar(Path archive) throws Exception {
+        java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+        byte[] buf = new byte[64 * 1024];
+        try (var in = Files.newInputStream(archive)) {
+            int n;
+            while ((n = in.read(buf)) >= 0) digest.update(buf, 0, n);
+        }
+        byte[] hash = digest.digest();
+        StringBuilder hex = new StringBuilder(hash.length * 2);
+        for (byte b : hash) hex.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
+        Files.writeString(Path.of(archive + ".sha256"), hex + "  " + archive.getFileName() + "\n");
+    }
+
 
     @Test
     void uninstallInvokesDeprovisionWhenAProvisionerIsAttached(

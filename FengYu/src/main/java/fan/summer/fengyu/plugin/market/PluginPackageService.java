@@ -167,7 +167,13 @@ public class PluginPackageService {
             throw new IllegalArgumentException("Expected a .fyp plugin package");
         }
         if (Files.size(archive) > MAX_PACKAGE_BYTES) throw new IllegalArgumentException("Plugin package exceeds 100 MB");
-        try (InputStream input = Files.newInputStream(archive)) { return installArchive(input, false); }
+        // A matching `.fyp.sha256` sidecar (written by the CLI packager, verified by the official
+        // seeder) is the trust credential that lets a local install claim official identity /
+        // the fan.summer.* namespace. Without it the install stays untrusted, so the existing
+        // validate() reservation blocks official/namespace-squatting. Multipart upload cannot
+        // carry a sidecar and stays untrusted; official plugins are installed via this native path.
+        boolean trusted = verifySidecar(archive);
+        try (InputStream input = Files.newInputStream(archive)) { return installArchive(input, trusted); }
     }
 
     /**
@@ -284,6 +290,10 @@ public class PluginPackageService {
         deleteTree(dir);
         // Drop the manifest-digest record so a future reinstall with the same id starts clean.
         if (integrityStore != null) integrityStore.forget(id);
+        // Write an uninstall tombstone so the official-plugin seeder does not re-seed the bundled
+        // archive on the next restart. Without it the seeder cannot distinguish a user uninstall
+        // from a never-installed plugin (both leave no package dir and no integrity record).
+        if (integrityStore != null) integrityStore.markUninstalled(id);
     }
 
     private PluginManifest installArchive(InputStream input) throws IOException {
@@ -331,6 +341,10 @@ public class PluginPackageService {
             // different bytes gets a different digest → the stale Worker is invalidated).
             if (integrityStore != null) {
                 integrityStore.record(manifest.id(), manifest.version(), destination.resolve("manifest.json"), destination);
+                // A reinstall (local/online/seeder) clears any prior uninstall tombstone so the
+                // official-plugin seeder's normal upgrade path resumes and a future uninstall is
+                // honoured again. Paired with uninstall()'s markUninstalled().
+                integrityStore.clearUninstalled(manifest.id());
             }
             return manifest;
         } finally {
@@ -493,5 +507,61 @@ public class PluginPackageService {
         try (var paths = Files.walk(root)) {
             for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
         }
+    }
+
+    /**
+     * Verify a local {@code .fyp} archive against a sibling {@code <archive>.sha256} sidecar. The
+     * sidecar is the CLI packager's trust credential (GNU coreutils {@code sha256sum -c} format:
+     * {@code <hex>  <basename>}); a present-and-matching sidecar lets the install claim official
+     * identity / the {@code fan.summer.*} namespace via {@code trustedSource=true}. This is the same
+     * check the official seeder performs on bundled archives, so a user can install a rebuilt
+     * official plugin locally through the same trust level.
+     *
+     * <p>Returns {@code false} (never throws) when the sidecar is absent or mismatched — the caller
+     * then installs as untrusted and {@code validate()}'s official/namespace reservation applies.
+     * This is a tamper/corruption check, not an independent authenticity anchor (an attacker who can
+     * replace both files can make them agree); asymmetric signature verification remains a tracked
+     * follow-up.
+     */
+    static boolean verifySidecar(Path archive) {
+        Path sidecar = Path.of(archive + ".sha256");
+        if (!Files.isRegularFile(sidecar)) return false;
+        try {
+            String expected = parseFirstToken(Files.readString(sidecar).trim());
+            if (expected == null) return false;
+            return expected.equalsIgnoreCase(sha256Hex(archive));
+        } catch (IOException e) {
+            log.warn("Cannot verify .sha256 sidecar for {}: {}", archive, e.getMessage());
+            return false;
+        }
+    }
+
+    /** The first whitespace-delimited token of a {@code sha256sum} line (the hex digest). */
+    private static String parseFirstToken(String line) {
+        for (int i = 0; i < line.length(); i++) {
+            if (Character.isWhitespace(line.charAt(i))) return line.substring(0, i);
+        }
+        return line.isEmpty() ? null : line;
+    }
+
+    /** Compute the SHA-256 hex digest of a file's bytes. */
+    private static String sha256Hex(Path file) throws IOException {
+        java.security.MessageDigest digest;
+        try {
+            digest = java.security.MessageDigest.getInstance("SHA-256");
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 unavailable", e);
+        }
+        byte[] buffer = new byte[64 * 1024];
+        try (InputStream in = Files.newInputStream(file)) {
+            int count;
+            while ((count = in.read(buffer)) >= 0) digest.update(buffer, 0, count);
+        }
+        byte[] hash = digest.digest();
+        StringBuilder hex = new StringBuilder(hash.length * 2);
+        for (byte b : hash) {
+            hex.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
+        }
+        return hex.toString();
     }
 }

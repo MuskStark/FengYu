@@ -10,6 +10,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -115,6 +116,72 @@ class OfficialPluginSeederUpgradeTest {
         seeder.seed();
         assertTrue(integrity.read("fan.summer.demo").isPresent(),
             "seeder must reinstall a record-less official plugin from the bundled archive to establish a trusted baseline");
+    }
+
+    /**
+     * Regression: the seeder must NOT re-seed an official plugin the user uninstalled. Previously
+     * uninstall deleted both the package dir and the integrity record, leaving no trace; on the next
+     * restart the seeder could not distinguish "user uninstalled" from "never installed" and
+     * reinstalled the bundled archive. The fix is an uninstall tombstone the seeder checks before
+     * its lacksRecord-reinstall block.
+     */
+    @Test
+    void doesNotReseedUserUninstalledPlugin() throws Exception {
+        Path packagesDir = temp.resolve("packages");
+        Path installDir = temp.resolve("installed");
+        Path digestsDir = temp.resolve("digests");
+        Files.createDirectories(packagesDir);
+        PluginPackageService service = new PluginPackageService(installDir.toString());
+        PluginIntegrityStore integrity = new PluginIntegrityStore(digestsDir);
+        service.attachIntegrityStoreForTest(integrity);
+
+        writeArchive(packagesDir, "fan.summer.demo-1.0.0.fyp", "1.0.0");
+        OfficialPluginSeeder seeder = new OfficialPluginSeeder(service, packagesDir.toString());
+        seeder.seed();
+        assertTrue(service.find("fan.summer.demo").isPresent(), "first seed installs the plugin");
+
+        // User uninstalls: package dir + integrity record deleted, tombstone written.
+        service.uninstall("fan.summer.demo", false);
+        assertTrue(service.find("fan.summer.demo").isEmpty(), "uninstall removes the package dir");
+        assertTrue(integrity.isUninstalled("fan.summer.demo"), "uninstall writes a tombstone");
+
+        // Restart (re-seed): the seeder MUST skip the tombstoned plugin instead of reinstalling it.
+        seeder.seed();
+        assertTrue(service.find("fan.summer.demo").isEmpty(),
+            "seeder must not reseed a plugin the user uninstalled");
+    }
+
+    /**
+     * Regression: a reinstall after uninstall must clear the tombstone so the seeder's normal
+     * upgrade path resumes. Otherwise a user who uninstalled, then changed their mind and installed
+     * the plugin back, would find it reseeded-then-immediately-suppressed forever (the tombstone
+     * would survive and suppress all future re-seeds even though the plugin is installed again).
+     */
+    @Test
+    void reinstallClearsTombstoneSoFutureUninstallIsHonoured() throws Exception {
+        Path packagesDir = temp.resolve("packages");
+        Path installDir = temp.resolve("installed");
+        Path digestsDir = temp.resolve("digests");
+        Files.createDirectories(packagesDir);
+        PluginPackageService service = new PluginPackageService(installDir.toString());
+        PluginIntegrityStore integrity = new PluginIntegrityStore(digestsDir);
+        service.attachIntegrityStoreForTest(integrity);
+
+        writeArchive(packagesDir, "fan.summer.demo-1.0.0.fyp", "1.0.0");
+        OfficialPluginSeeder seeder = new OfficialPluginSeeder(service, packagesDir.toString());
+        seeder.seed();
+        service.uninstall("fan.summer.demo", false);
+        assertTrue(integrity.isUninstalled("fan.summer.demo"));
+
+        // Simulate the user explicitly reinstalling (e.g. a newer bundled version drops, or they
+        // clear their intent): the tombstone is cleared and the seeder resumes seeding.
+        integrity.clearUninstalled("fan.summer.demo");
+        assertFalse(integrity.isUninstalled("fan.summer.demo"));
+        seeder.seed();
+        assertTrue(service.find("fan.summer.demo").isPresent(), "plugin reinstalled after tombstone cleared");
+        // After the reinstall, a fresh uninstall must write a new tombstone (i.e. the cycle works).
+        service.uninstall("fan.summer.demo", false);
+        assertTrue(integrity.isUninstalled("fan.summer.demo"), "a fresh uninstall re-tombstones");
     }
 
     /** As {@link #writeArchive} but omits the {@code .sha256} sidecar (for the fail-closed test). */

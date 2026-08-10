@@ -139,6 +139,63 @@ public class PluginIntegrityStore {
     }
 
     /**
+     * Write a persistent tombstone marking that the user explicitly uninstalled the plugin. The
+     * official-plugin seeder consults {@link #isUninstalled(String)} on startup to distinguish a
+     * user uninstall (which it must honour) from a never-installed plugin (which it may seed).
+     * Without this marker the seeder cannot tell the two apart — after uninstall both the package
+     * dir and the integrity record are gone — so it would re-seed the bundled archive on every
+     * restart.
+     *
+     * <p>Co-located with the integrity records (this store is the host-owned, per-plugin runtime
+     * state) rather than inside the application bundle, so deleting/marking does not touch the
+     * (potentially code-signed) bundled {@code .fyp} source. A reinstall clears it via
+     * {@link #clearUninstalled(String)} so a later install is allowed.
+     */
+    public void markUninstalled(String id) {
+        try {
+            Path tombstone = tombstonePath(id);
+            Files.createDirectories(tombstone.getParent());
+            // An empty marker suffices; its presence is the signal. Atomic write matches `record`.
+            Path tmp = Files.createTempFile(tombstone.getParent(), ".uninstalled-", ".tmp");
+            try {
+                Files.move(tmp, tombstone, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } finally {
+                Files.deleteIfExists(tmp);
+            }
+        } catch (IOException e) {
+            // A failed write means the seeder may re-seed on the next restart. Surface it so the
+            // user can investigate (read-only runtime root, full disk, ...); do not silently lose
+            // the uninstall intent.
+            log.warn("Cannot write uninstall tombstone for plugin {}: {}", id, e.getMessage());
+        }
+    }
+
+    /** Whether the user has explicitly uninstalled the plugin (the seeder must not re-seed it). */
+    public boolean isUninstalled(String id) {
+        return Files.exists(tombstonePath(id));
+    }
+
+    /**
+     * Clear the uninstall tombstone. Called when the plugin is reinstalled (local upload, online
+     * upgrade, or a bundled seeder upgrade) so future uninstalls are honoured again and the seeder's
+     * normal upgrade path resumes.
+     */
+    public void clearUninstalled(String id) {
+        try {
+            Files.deleteIfExists(tombstonePath(id));
+        } catch (IOException e) {
+            log.debug("Cannot clear uninstall tombstone for {}: {}", id, e.getMessage());
+        }
+    }
+
+    private Path tombstonePath(String id) {
+        if (id == null || !id.matches("[a-z0-9]+(?:[.-][a-z0-9]+)+")) {
+            throw new IllegalArgumentException("Invalid plugin id for integrity record");
+        }
+        return root.resolve(id + ".uninstalled");
+    }
+
+    /**
      * Verify that a live {@code manifest.json} matches the recorded digest for the plugin.
      *
      * @return {@code true} if a record exists AND the live manifest matches it; {@code false} if
