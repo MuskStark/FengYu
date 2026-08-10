@@ -494,11 +494,32 @@ async function runSplit(signal: AbortSignal): Promise<FyWizardValidationResult> 
   result.value = null
   try {
     abortIfStale(signal)
-    const res = await client.invoke<SplitResponse>('split', {
+    // The split call carries the full split config so the worker can re-apply it. The host tears
+    // down and relaunches a plugin worker whenever its file-grant version changes — picking the
+    // output folder on the Output step grants the output dir and bumps that version, so the worker
+    // serving `split` is a fresh process that never saw the earlier `configure`. Without re-sending
+    // the config, split falls back to the default BY_SHEET mode and just copies the source file.
+    const splitArgs: Record<string, unknown> = {
       session: session.value,
       sourceFile: sourceFileRef.value,
       outputDir: outputDirRef.value,
-    }, { signal })
+      mode: mode.value,
+      filePrefix: filePrefix.value,
+    }
+    if (mode.value === 'BY_SHEET') {
+      if (selectedSheets.value.length > 0) splitArgs.selectedSheets = selectedSheets.value
+    } else if (mode.value === 'BY_COLUMN') {
+      splitArgs.splitSheet = splitSheet.value
+      splitArgs.splitColumn = splitColumn.value
+    } else if (mode.value === 'COMPLEX') {
+      splitArgs.complexEntries = complexEntries.value.map((e) => ({
+        fieldName: e.fieldName,
+        sheetName: e.sheetName,
+        headerIndex: e.headerIndex,
+        columnIndex: e.columnIndex,
+      }))
+    }
+    const res = await client.invoke<SplitResponse>('split', splitArgs, { signal })
     abortIfStale(signal)
     if (!res.success) {
       const msg = responseError(res, 'Split failed')

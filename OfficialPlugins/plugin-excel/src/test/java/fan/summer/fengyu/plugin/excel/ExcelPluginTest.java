@@ -46,6 +46,51 @@ class ExcelPluginTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void splitByColumnSurvivesWorkerRestart() throws Exception {
+        // Regression: the host tears down and relaunches a plugin worker whenever its file-grant
+        // version changes. In the Excel wizard, picking the output folder (Output step) grants the
+        // output dir AFTER configure (Mode step), so the worker serving `split` is a fresh process
+        // whose in-memory session store is empty. simulate that by handing the plugin a brand-new
+        // store right before split, then sending the full config on the split call — split must
+        // re-apply the config and split by column (2 files), not fall back to BY_SHEET (1 file = copy).
+        Path byCol = tmp.resolve("restart.xlsx");
+        try (Workbook wb = new XSSFWorkbook(); FileOutputStream fos = new FileOutputStream(byCol.toFile())) {
+            Sheet s = wb.createSheet("Data");
+            Row header = s.createRow(0);
+            header.createCell(0).setCellValue("id");
+            header.createCell(1).setCellValue("region");
+            Row r1 = s.createRow(1); r1.createCell(0).setCellValue(1); r1.createCell(1).setCellValue("east");
+            Row r2 = s.createRow(2); r2.createCell(0).setCellValue(2); r2.createCell(1).setCellValue("west");
+            wb.write(fos);
+        }
+
+        String sess = "restart-sess";
+        plugin.invoke("analyze", Map.of("session", sess, "sourceFile", byCol.toString()));
+        plugin.invoke("configure", Map.of(
+            "session", sess, "mode", "BY_COLUMN",
+            "splitSheet", "Data", "splitColumn", "region"));
+
+        // Simulate the worker restart: a fresh plugin instance with an empty session store, as a
+        // relaunched worker would have. The only thing the frontend knows is the config it already
+        // showed the user, so it re-sends it on the split call.
+        plugin = new ExcelPlugin(new ExcelSessionStore());
+        Path out = Files.createDirectories(tmp.resolve("outRestart"));
+        Map<String, Object> r = (Map<String, Object>) plugin.invoke("split", Map.of(
+            "session", sess,
+            "sourceFile", byCol.toString(),
+            "outputDir", out.toString(),
+            "mode", "BY_COLUMN",
+            "splitSheet", "Data",
+            "splitColumn", "region"));
+
+        assertEquals(Boolean.TRUE, r.get("success"));
+        // 2 distinct region values (east, west) => 2 output files. Under the bug (config lost on
+        // restart → mode defaults to BY_SHEET → single sheet copied) this was 1.
+        assertEquals(2, ((Number) r.get("fileCount")).intValue());
+    }
+
+    @Test
     void unknownActionThrows() {
         assertThrows(IllegalArgumentException.class,
             () -> plugin.invoke("bogus", Map.of()));
