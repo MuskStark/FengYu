@@ -15,7 +15,7 @@ export async function handleBrowserOp(
   try {
     switch (method) {
       case 'browser_navigate':
-        return await navigate(session, str(params, 'url'))
+        return await navigate(session, str(params, 'url'), optStr(params, 'waitUntil'))
       case 'browser_click':
         return await click(session, str(params, 'selector'))
       case 'browser_type':
@@ -47,11 +47,21 @@ function requireWindow(session: BrowserSession): Electron.BrowserWindow {
   return w
 }
 
-async function navigate(session: BrowserSession, url: string) {
+async function navigate(session: BrowserSession, url: string, waitUntil: string | null) {
   if (!/^https?:\/\//i.test(url)) return { success: false, summary: 'url must be absolute http(s)' }
   const win = session.ensureWindow()
+  // loadURL() resolves on did-finish-load, which fires after DOMContentLoaded; so the
+  // "load" (default) and "domcontentloaded" cases are both satisfied here (the distinction
+  // is approximate in Electron — there is no separate dom-ready to await post-loadURL).
   await win.webContents.loadURL(url)
-  return { success: true, summary: `navigated to ${url}`, url, title: win.webContents.getTitle() }
+  if (waitUntil === 'networkidle') {
+    // Electron has no exact networkidle equivalent; degrade to load + 500ms settle delay.
+    await new Promise((r) => setTimeout(r, 500))
+  }
+  // Read the title from the live DOM rather than webContents.getTitle(), which may still
+  // hold the previous page's title on redirects/slow pages before the renderer updates it.
+  const title = String(await win.webContents.executeJavaScript('document.title') ?? '')
+  return { success: true, summary: `navigated to ${url}`, url, title }
 }
 
 async function click(session: BrowserSession, selector: string) {
