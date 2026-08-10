@@ -60,8 +60,11 @@ test('electron-builder targets NSIS + extract-and-run ZIP on Windows, DMG arm64 
   assert.match(jreBuilderConfig, /win:\s*\n\s*target:\s*\n\s*-\s+target:\s*nsis/)
   assert.match(jreBuilderConfig, /-\s+target:\s*zip/)
   assert.doesNotMatch(jreBuilderConfig, /-\s+target:\s*portable/)
-  // macOS: arm64 only (no x64).
-  assert.match(builderConfig, /mac:\s*\n\s*target:\s*\n\s*-\s+target:\s*dmg\s*\n\s*arch:\s*\[arm64\]/)
+  // macOS: arm64 only (no x64). Ships BOTH dmg (first-time install) and zip
+  // (REQUIRED by electron-updater for in-place auto-update — dmg can't be used for updates).
+  // The dmg/zip target lines may carry explanatory comments above them.
+  assert.match(builderConfig, /mac:\s*\n\s*target:\s*\n(?:\s*#[^\n]*\n)*\s*-\s+target:\s*dmg\s*\n\s*arch:\s*\[arm64\]/)
+  assert.match(builderConfig, /-\s+target:\s*zip\s*\n\s*arch:\s*\[arm64\]/)
   // Linux: AppImage (single-file) + deb (Debian/Ubuntu package).
   assert.match(builderConfig, /linux:\s*\n\s*target:\s*\n\s*-\s+target:\s*AppImage/)
   assert.match(builderConfig, /-\s+target:\s*deb/)

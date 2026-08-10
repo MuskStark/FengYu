@@ -6,21 +6,7 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
-### ♻️ Changed
-- **Browser automation moved from `plugin-browser` (Playwright) to a host-embedded capability.**
-  Browser automation is now built into the desktop application and exposed by the backend
-  `BrowserTool`, not a `.fyp` plugin. It drives a real browser window through Electron's native
-  `webContents` and the Chrome DevTools Protocol (CDP) over a loopback HTTP bridge — **no Playwright
-  dependency and no separate Chromium download**. The nine AI tools (`browser_navigate`,
-  `browser_click`, `browser_type`, `browser_get_text`, `browser_query`, `browser_screenshot`,
-  `browser_wait_for`, `browser_eval_js`, `browser_close`) remain, each approval-gated. The capability
-  is **desktop-only**: it requires the Electron shell and is unavailable in pure-web / headless mode.
-
-### 🗑️ Removed
-- **`plugin-browser` (`fan.summer.browser`) official plugin.** The Playwright-based browser plugin
-  has been removed; its function is now provided by the host-embedded `BrowserTool` (see Changed
-  above). `OfficialPlugins` now ships four plugins: `plugin-markdown`, `plugin-excel`,
-  `plugin-email`, and `plugin-offlinepython`.
+_Nothing yet._
 
 ## [4.0.0-beta.1] — 2026-08-09
 
@@ -42,7 +28,43 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   (the explicit-approval gate still guards every effect there). `GET /api/security/process-isolation`
   reports `backend: "windows-job"`. JNA 5.19.1 was added for the Win32 binding.
 
+### ♻️ Changed
+- **Browser automation moved from `plugin-browser` (Playwright) to a host-embedded capability.**
+  Browser automation is now built into the desktop application and exposed by the backend
+  `BrowserTool`, not a `.fyp` plugin. It drives a real browser window through Electron's native
+  `webContents` and the Chrome DevTools Protocol (CDP) over a loopback HTTP bridge — **no Playwright
+  dependency and no separate Chromium download**. The nine AI tools (`browser_navigate`,
+  `browser_click`, `browser_type`, `browser_get_text`, `browser_query`, `browser_screenshot`,
+  `browser_wait_for`, `browser_eval_js`, `browser_close`) remain, each approval-gated. The capability
+  is **desktop-only**: it requires the Electron shell and is unavailable in pure-web / headless mode.
+
+### 🗑️ Removed
+- **`plugin-browser` (`fan.summer.browser`) official plugin.** The Playwright-based browser plugin
+  has been removed; its function is now provided by the host-embedded `BrowserTool` (see Changed
+  above). `OfficialPlugins` now ships four plugins: `plugin-markdown`, `plugin-excel`,
+  `plugin-email`, and `plugin-offlinepython`.
+
 ### 🐛 Fixed
+- **Official plugins no longer reappear after the user uninstalls them.** Uninstall previously
+  deleted both the package directory and the integrity record, leaving no trace; on the next restart
+  the official-plugin seeder could not distinguish a user uninstall from a never-installed plugin and
+  reinstalled the bundled archive. A persistent **uninstall tombstone** now marks uninstalled
+  plugins; the seeder checks it before seeding and skips them. A later reinstall (local upload,
+  online upgrade, or a bundled upgrade) clears the tombstone so the cycle is repeatable.
+- **Local `.fyp` install with a matching `.sha256` sidecar may now claim official identity.** The
+  native install path now verifies a sibling `<archive>.sha256` sidecar (GNU coreutils
+  `sha256sum -c` format — the same credential the official seeder verifies), letting a user install
+  a rebuilt official plugin locally at the same trust level. Without a sidecar (or with a mismatched
+  one) the install stays untrusted, so the existing reservation still blocks official /
+  namespace-squatting. (Asymmetric signature verification remains a tracked follow-up; a sidecar is
+  a tamper/corruption check, not an independent authenticity anchor.)
+- **Excel split no longer falls back to copying the whole sheet after a worker restart.** The host
+  tears down and relaunches a plugin worker whenever its file-grant version changes — in the Excel
+  wizard, picking the output folder (Output step) grants the output dir *after* `configure` (Mode
+  step), so the worker serving `split` is a fresh process whose in-memory session store is empty.
+  `split` now re-applies the full split config from its own arguments (fields absent are left
+  untouched, preserving partial-update callers), making the session store a cache rather than a
+  correctness dependency.
 - **Web and desktop dependency advisories.** Updated DOMPurify, nanoid, js-yaml, PostCSS, fast-uri,
   and brace-expansion to patched compatible versions; both npm dependency audits now report zero
   known vulnerabilities.
