@@ -40,6 +40,14 @@ public final class AiToolRegistry {
     private final ObjectProvider<SyncMcpToolCallbackProvider> mcpProvider;
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
 
+    /** When the desktop shell provides built-in browser tools, suppress the legacy plugin's tools to avoid name collisions. */
+    private static final String DESKTOP_PROPERTY = "fengyu.desktop";
+    private static final String BROWSER_PLUGIN_ID = "fan.summer.browser";
+
+    private static boolean desktopMode() {
+        return Boolean.parseBoolean(System.getProperty(DESKTOP_PROPERTY));
+    }
+
     public AiToolRegistry(List<FengYuTool> tools, PluginPackageService packages,
             PluginProcessManager processes, ObjectProvider<SyncMcpToolCallbackProvider> mcpProvider) {
         List<ToolCallback> callbacks = new ArrayList<>();
@@ -60,6 +68,7 @@ public final class AiToolRegistry {
         List<ToolCallback> callbacks = new ArrayList<>(builtins);
         for (var manifest : packages.installed()) {
             if (!packages.isEnabled(manifest.id()) || manifest.aiTools() == null) continue;
+            if (desktopMode() && BROWSER_PLUGIN_ID.equals(manifest.id())) continue;
             for (var tool : manifest.aiTools()) callbacks.add(pluginCallback(manifest.id(), tool));
         }
         SyncMcpToolCallbackProvider provider = mcpProvider.getIfAvailable();
@@ -81,6 +90,7 @@ public final class AiToolRegistry {
         }
         for (var manifest : packages.installed()) {
             if (!packages.isEnabled(manifest.id()) || manifest.aiTools() == null) continue;
+            if (desktopMode() && BROWSER_PLUGIN_ID.equals(manifest.id())) continue;
             for (var tool : manifest.aiTools()) {
                 ToolDefinition definition = ToolDefinition.builder()
                         .name(tool.name()).description(tool.description()).inputSchema(tool.inputSchema()).build();
