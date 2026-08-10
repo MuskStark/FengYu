@@ -20,4 +20,5 @@ case " $* " in *" --token"*) ;; *" --token="*) ;; *)
 exec "$JAVA" \
   -Dfengyu.runtime.dir="$ROOT/data" \
   -Dfengyu.plugins.official-directory="$ROOT/plugins" \
+  -Dfengyu.update.portable=true \
   -jar "$ROOT/Infinia.jar" "${TOKEN_ARGS[@]}" "$@"
