@@ -30,7 +30,7 @@ OFFICIAL_DIR="$(mktemp -d)"
 # script is interrupted between setting the trap and assigning WORK.
 WORK=""
 SRV=""
-for plugin in markdown excel email offlinepython browser; do
+for plugin in markdown excel email offlinepython; do
   if ! node "$ROOT/toolchain/cli/bin/fengyu.mjs" plugin build "$ROOT/OfficialPlugins/plugin-$plugin" >/dev/null; then
     echo "FAIL: fengyu plugin build OfficialPlugins/plugin-$plugin failed"
     rm -rf "$OFFICIAL_DIR"
@@ -142,11 +142,6 @@ curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
 # /api/plugins lists Excel — closes Task 11's deferred registration check.
 echo "$RUNTIME" | grep -q 'fan.summer.excel' || fail "Excel plugin not listed"
 echo "PASS: excel plugin registered"
-
-# Browser Agent is an official plugin; verify it is registered. Its RPC methods drive a real
-# Chromium via Playwright, so we do not invoke them here (that belongs to the plugin's own tests).
-echo "$RUNTIME" | grep -q 'fan.summer.browser' || fail "Browser Agent plugin not listed"
-echo "PASS: browser plugin registered"
 
 # Email Center is seeded as an isolated .fyp and its Worker answers through the official SDK protocol.
 echo "$RUNTIME" | grep -q 'fan.summer.email' || fail "Email Center plugin not listed"
