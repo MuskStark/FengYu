@@ -37,9 +37,23 @@ public class BrowserTool implements ApprovalRequiredTool {
 
     private final BrowserBridgeClient client;
 
-    /** Spring constructor: reads bridge address from env. */
+    /**
+     * Spring constructor: reads the bridge address from env. When the bridge env
+     * ({@code FENGYU_BROWSER_BRIDGE_PORT/TOKEN}) is absent — e.g. the backend is started from
+     * an IDE without the Electron shell — the bean still registers (so {@code fengyu.desktop=true}
+     * alone surfaces the {@code browser_*} tools) but enters a degraded mode: every call returns a
+     * {@code "browser bridge unavailable"} envelope instead of throwing at construction time.
+     */
     public BrowserTool() {
-        this(BrowserBridgeClient.fromEnv());
+        this(safeFromEnv());
+    }
+
+    private static BrowserBridgeClient safeFromEnv() {
+        try {
+            return BrowserBridgeClient.fromEnv();
+        } catch (IllegalStateException envMissing) {
+            return null;  // degraded mode — see invokeBridge null-check
+        }
     }
 
     /** Test/injection constructor. */
@@ -126,6 +140,9 @@ public class BrowserTool implements ApprovalRequiredTool {
 
     /** Subclass seam for tests (in-memory stub). */
     protected Map<String, Object> invokeBridge(String method, Map<String, Object> params, int timeoutSeconds) {
+        if (client == null) {
+            throw new BrowserBridgeUnavailableException("browser bridge unavailable (no Electron shell)");
+        }
         return client.invoke(method, params, timeoutSeconds);
     }
 
