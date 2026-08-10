@@ -42,6 +42,8 @@ import type {
   StoreSourceType,
   UnifiedCatalogEntry,
   InstallRecord,
+  UpdateApplyResult,
+  UpdateCheckResult,
 } from './types'
 
 const http: AxiosInstance = axios.create({
@@ -448,6 +450,15 @@ export const api = {
   /** Installation history (install records across all sources). */
   getInstallHistory: () =>
     http.get<InstallRecord[]>('/api/plugin-store/history').then((r) => r.data),
+
+  // ── Application update (shared by desktop/portable/web) ────────────────
+  /** Probe the latest GitHub release against the running build's version. */
+  checkForUpdates: (force = false) =>
+    http.get<UpdateCheckResult>('/api/updates/check', { params: { force } }).then((r) => r.data),
+
+  /** Portable-mode only: download + verify + spawn the JAR self-restart. */
+  applyPortableUpdate: () =>
+    http.post<UpdateApplyResult>('/api/updates/apply').then((r) => r.data),
 }
 
 export type FengYuApi = typeof api

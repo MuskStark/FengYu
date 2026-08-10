@@ -272,5 +272,25 @@
       "sass": "Style preprocessing",
       "electron": "Desktop shell (Electron)"
     }
+  },
+  "update": {
+    "title": "Update",
+    "check": "Check for updates",
+    "checking": "Checking…",
+    "recheck": "Recheck",
+    "retry": "Retry",
+    "newVersion": "New",
+    "available": "Version {version} is available",
+    "latest": "Up to date",
+    "upgradeNow": "Update now",
+    "download": "Download",
+    "openPage": "Open page",
+    "downloading": "Downloading",
+    "unsignedWarning": "This build is unsigned. The OS may warn after updating. Continue?",
+    "confirm": "Continue",
+    "cancel": "Cancel",
+    "error": "Update check failed",
+    "macManual": "macOS unsigned build: open the releases page and replace the app manually.",
+    "portableRestart": "Downloading and restarting…"
   }
 }

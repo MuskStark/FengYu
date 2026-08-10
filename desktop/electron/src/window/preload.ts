@@ -34,4 +34,31 @@ contextBridge.exposeInMainWorld('fengyu', {
   pickFile: (filters?: { name: string; extensions: string[] }[]) =>
     ipcRenderer.invoke('dialog:open', { directory: false, filters }),
   pickDirectory: () => ipcRenderer.invoke('dialog:open', { directory: true }),
+  // ── Update (renderer-driven; consent comes from the UI "update now" click) ──
+  checkForUpdates: () =>
+    ipcRenderer.invoke('update:check'),
+  downloadAndInstall: () =>
+    ipcRenderer.invoke('update:download-install'),
+  onUpdateProgress: (cb: (info: UpdateProgressInfo) => void) => {
+    const handler = (_e: unknown, p: UpdateProgressInfo) => cb(p)
+    ipcRenderer.on('update:progress', handler)
+    return () => ipcRenderer.removeListener('update:progress', handler)
+  },
+  onUpdateState: (cb: (state: UpdateStateEvent) => void) => {
+    const handler = (_e: unknown, s: UpdateStateEvent) => cb(s)
+    ipcRenderer.on('update:state', handler)
+    return () => ipcRenderer.removeListener('update:state', handler)
+  },
 })
+
+interface UpdateProgressInfo {
+  percent: number
+  transferred: number
+  total: number
+  bytesPerSecond: number
+}
+
+interface UpdateStateEvent {
+  state: string
+  message?: string
+}

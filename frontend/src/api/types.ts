@@ -449,3 +449,30 @@ export interface ConversationPayload {
   title: string
   messages: PersistedMessage[]
 }
+
+// ── Application update check (GET /api/updates/check) ───────────────────────
+
+/**
+ * Latest-release probe shared by every deployment mode. `portableMode` tells the UI whether
+ * the running backend can self-swap its JAR (portable java -jar) or whether the Electron shell
+ * owns the install via electron-updater. `downloadAssetUrl` is the Infinia.jar asset URL used
+ * only by the portable self-update path; null when the asset is absent.
+ */
+export interface UpdateCheckResult {
+  currentVersion: string
+  latestVersion: string
+  updateAvailable: boolean
+  releaseUrl: string
+  releaseName: string
+  publishedAt: string
+  prerelease: boolean
+  releaseNotes: string
+  portableMode: boolean
+  downloadAssetUrl: string | null
+}
+
+/** Result of POST /api/updates/apply (portable self-update only). */
+export interface UpdateApplyResult {
+  success: boolean
+  action: string
+}

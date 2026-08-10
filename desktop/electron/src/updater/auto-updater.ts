@@ -2,6 +2,7 @@ import { autoUpdater } from 'electron-updater'
 import { app, dialog, shell } from 'electron'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { isWindowsPortable } from './portable-updater'
 
 /**
  * Check for updates (async, non-blocking). Source: GitHub Releases (`latest*.yml`).
@@ -33,6 +34,15 @@ export async function checkForUpdates(): Promise<void> {
   // JRE users to the Java-dependent lite build. Skip the check until per-variant feeds exist.
   if (existsSync(join(process.resourcesPath, 'jre'))) {
     console.log('[updater] JRE variant detected; skipping auto-update (would downgrade to lite)')
+    return
+  }
+
+  // Windows portable zip: electron-updater (NsisUpdater) cannot self-install it — there is no
+  // setup.exe / elevate.exe / app-update.yml in a portable extract. The renderer-driven path
+  // (ipc/update.ts) handles portable updates via portable-updater.ts; skip the startup notify
+  // here so NsisUpdater never tries to run a non-existent installer.
+  if (isWindowsPortable()) {
+    console.log('[updater] Windows portable build detected; skipping electron-updater (no NSIS installer)')
     return
   }
 

@@ -6,6 +6,7 @@ import { startBackend } from './backend/orchestrator'
 import { isAppCrash, startupAction, StartupAction, superviseSetupRestart, type BackendChild } from './backend/supervisor'
 import { pollHealth } from './util/health'
 import { registerDialogIpc } from './ipc/dialog'
+import { registerUpdateIpc } from './ipc/update'
 import { createMainWindow } from './window/create-window'
 import { createSplashWindow, sendProgress, destroySplash } from './window/create-splash'
 import { initLogger } from './desktop/logger'
@@ -85,6 +86,7 @@ function devBackendUrl(): string | null {
 
 async function bootstrap(): Promise<void> {
   registerDialogIpc()
+  registerUpdateIpc()
   const startupStartedAt = Date.now()
   const theme = initializeAppearance(logger)
   process.env.FENGYU_THEME = theme
