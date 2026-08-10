@@ -9,6 +9,7 @@ import fan.summer.fengyu.plugin.email.model.ContactImport.ParseError;
 import fan.summer.fengyu.plugin.email.model.ContactImport.ParsedContact;
 import fan.summer.fengyu.plugin.email.model.Tag;
 import fan.summer.fengyu.plugin.email.repository.AddressBookRepository;
+import fan.summer.fengyu.sdk.PluginMessages;
 import org.apache.ibatis.session.SqlSession;
 
 import java.nio.file.Path;
@@ -38,6 +39,7 @@ import java.util.Set;
  * notes filled only when the file cell is non-blank).
  */
 public final class ContactImporter {
+    private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, ContactImporter.class);
     private final AddressBookRepository addressBook;
 
     public ContactImporter(EmailDatabase database) {
@@ -117,7 +119,7 @@ public final class ContactImporter {
             ContactFileParser.Result result = parser.parse(file);
             return new Parsed(result.contacts(), result.errors());
         } catch (Exception e) {
-            return new Parsed(List.of(), List.of(new ParseError(0, "Could not read file: " + e.getMessage())));
+            return new Parsed(List.of(), List.of(new ParseError(0, MSGS.format("em.err.contactImportCouldNotReadFile", e.getMessage()))));
         }
     }
 
@@ -181,12 +183,12 @@ public final class ContactImporter {
     private static String validateEmail(ParsedContact contact, List<ParseError> errors) {
         String email = contact.email();
         if (email == null || email.isBlank()) {
-            errors.add(new ParseError(contact.row(), "Missing email address"));
+            errors.add(new ParseError(contact.row(), MSGS.format("em.err.contactMissingEmail")));
             return null;
         }
         email = email.trim().toLowerCase(Locale.ROOT);
         if (!email.contains("@")) {
-            errors.add(new ParseError(contact.row(), "Invalid email address: " + contact.email()));
+            errors.add(new ParseError(contact.row(), MSGS.format("em.err.contactInvalidEmailValue", contact.email())));
             return null;
         }
         return email;

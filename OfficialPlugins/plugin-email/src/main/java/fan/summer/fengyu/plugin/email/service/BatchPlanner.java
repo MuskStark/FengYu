@@ -1,6 +1,7 @@
 package fan.summer.fengyu.plugin.email.service;
 
 import fan.summer.fengyu.plugin.email.model.EmailMessageRequest;
+import fan.summer.fengyu.sdk.PluginMessages;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -15,14 +16,15 @@ import java.util.Set;
 
 /** Pure deterministic batch expansion; no messages are sent while a plan is built. */
 public final class BatchPlanner {
+    private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, BatchPlanner.class);
     private BatchPlanner() { }
 
     public static BatchPlan byAttachmentTags(EmailMessageRequest template, Path directory,
             List<Path> commonAttachments, RecipientResolver recipientResolver) {
         if (directory == null || !Files.isDirectory(directory)) {
-            throw new IllegalArgumentException("Batch input directory does not exist: " + directory);
+            throw new IllegalArgumentException(MSGS.format("em.err.batchDirMissing", directory));
         }
-        if (recipientResolver == null) throw new IllegalArgumentException("Recipient resolver is required");
+        if (recipientResolver == null) throw new IllegalArgumentException(MSGS.format("em.err.recipientResolverRequired"));
         List<Path> common = commonAttachments == null ? List.of() : List.copyOf(commonAttachments);
         Map<String, List<Path>> grouped = new LinkedHashMap<>();
         List<Path> ignored = new ArrayList<>();
@@ -35,7 +37,7 @@ public final class BatchPlanner {
                     else grouped.computeIfAbsent(tag, unused -> new ArrayList<>()).add(path);
                 });
         } catch (IOException e) {
-            throw new IllegalStateException("Could not read batch input directory", e);
+            throw new IllegalStateException(MSGS.format("em.err.couldNotReadBatchDir"), e);
         }
 
         List<PlannedMessage> messages = new ArrayList<>();
@@ -50,7 +52,7 @@ public final class BatchPlanner {
                 .toList();
             List<Path> tagFiles = List.copyOf(entry.getValue());
             if (to.isEmpty()) {
-                skipped.add(new SkippedTag(entry.getKey(), "No primary recipients", tagFiles));
+                skipped.add(new SkippedTag(entry.getKey(), MSGS.format("em.batch.noPrimaryRecipients"), tagFiles));
                 continue;
             }
             List<Path> all = new ArrayList<>(tagFiles);

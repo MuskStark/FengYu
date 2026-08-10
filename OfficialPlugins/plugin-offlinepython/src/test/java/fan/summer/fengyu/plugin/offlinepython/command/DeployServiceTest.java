@@ -146,9 +146,10 @@ class DeployServiceTest {
         List<String> logs = new ArrayList<>();
         DeployResult r = svc.install(zip, target, logs::add);
 
-        // 关键:无论本机平台如何,都不应抛 "无法解析部署目标 Python 版本" —— 版本已从 target 拿到。
-        // 且日志里 wheel 计数行应出现(0/N 或 1/N 取决于本机平台)。
-        assertTrue(logs.stream().anyMatch(l -> l.startsWith("适配本机的 wheel")),
+        // 关键:无论本机平台如何,都不应抛无法解析 Python 版本的错误 —— 版本已从 target 拿到。
+        // 且日志里 wheel 计数行应出现(0/N 或 1/N 取决于本机平台)。该日志行现在来自
+        // opb.msg.deploy.wheelMatch(en locale default):以 "Wheels matching this host:" 开头。
+        assertTrue(logs.stream().anyMatch(l -> l.startsWith("Wheels matching this host")),
             "expected a wheel-match summary line, got: " + logs);
         // 路径前缀 wheelhouse/3.12.10/ 不含 '-',解析不会错;win/x64 机应装上 1 个。
         assertEquals(r.failed(), 0, "no install failures expected on a stubbed-success runner");
@@ -169,7 +170,9 @@ class DeployServiceTest {
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             () -> svc.install(zip, target, s -> {}));
 
-        assertTrue(ex.getMessage().contains("无法解析部署目标 Python 版本"),
+        // The version-unresolvable failure now surfaces the opb.msg.deploy.versionUnresolvable
+        // message; in the default en locale it starts with "Could not resolve target Python version".
+        assertTrue(ex.getMessage().contains("Could not resolve target Python version"),
             "expected clear failure message, got: " + ex.getMessage());
         assertFalse(ex.getMessage().isBlank());
         // 不应调用过 pip(在报错前就失败了)

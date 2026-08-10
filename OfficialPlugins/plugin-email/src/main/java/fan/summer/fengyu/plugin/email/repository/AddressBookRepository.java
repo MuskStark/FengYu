@@ -3,6 +3,7 @@ package fan.summer.fengyu.plugin.email.repository;
 import fan.summer.fengyu.plugin.email.database.EmailDatabase;
 import fan.summer.fengyu.plugin.email.model.Contact;
 import fan.summer.fengyu.plugin.email.model.Tag;
+import fan.summer.fengyu.sdk.PluginMessages;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Options;
@@ -20,6 +21,7 @@ import java.util.Optional;
 import java.util.Set;
 
 public final class AddressBookRepository {
+    private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, AddressBookRepository.class);
     private final EmailDatabase database;
 
     public AddressBookRepository(EmailDatabase database) {
@@ -45,7 +47,7 @@ public final class AddressBookRepository {
     }
 
     public List<Contact> searchContacts(String query, Set<Long> tagIds, int offset, int limit) {
-        if (offset < 0 || limit < 1) throw new IllegalArgumentException("Invalid contact page");
+        if (offset < 0 || limit < 1) throw new IllegalArgumentException(MSGS.format("em.err.invalidContactPage"));
         try (SqlSession session = database.openSession()) {
             Mapper mapper = session.getMapper(Mapper.class);
             String pattern = "%" + (query == null ? "" : query.trim().toLowerCase()) + "%";
@@ -112,7 +114,7 @@ public final class AddressBookRepository {
             Mapper mapper = session.getMapper(Mapper.class);
             Tag duplicate = mapper.findTagByName(name);
             if (duplicate != null && (id == null || duplicate.id() != id))
-                throw new IllegalArgumentException("Tag name already exists: " + name);
+                throw new IllegalArgumentException(MSGS.format("em.err.tagNameExists", name));
             TagRow row = new TagRow(id, name);
             if (id == null) mapper.insertTag(row); else mapper.updateTag(row);
             session.commit();

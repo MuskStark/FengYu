@@ -1,5 +1,6 @@
 package fan.summer.fengyu.plugin.excel;
 
+import fan.summer.fengyu.sdk.PluginMessages;
 import org.apache.fesod.sheet.ExcelReader;
 import org.apache.fesod.sheet.FesodSheet;
 import org.apache.fesod.sheet.read.metadata.ReadSheet;
@@ -42,6 +43,13 @@ import java.util.stream.Collectors;
 public class ExcelSplitter {
 
     private static final Logger logger = LoggerFactory.getLogger(ExcelSplitter.class);
+
+    /**
+     * Localized message resolver for split progress log messages, resolved once per instance from
+     * this plugin's {@code i18n/messages[_zh].properties}. A field rather than a constructor param
+     * so existing callers (and tests) keep working unchanged.
+     */
+    private final PluginMessages msgs = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, ExcelSplitter.class);
 
     /**
      * Result of a split operation, containing the number of output files produced and
@@ -132,7 +140,7 @@ public class ExcelSplitter {
      * @throws Exception if the split fails (file access, etc.)
      */
     public SplitResult split() throws Exception {
-        onProgress(0.0, "Starting...");
+        onProgress(0.0, msgs.format("ex.progress.starting"));
         return switch (config.mode) {
             case BY_SHEET  -> splitBySheet();
             case BY_COLUMN -> splitByColumn();
@@ -169,7 +177,7 @@ public class ExcelSplitter {
             for (int i = 0; i < sheets.size(); i++) {
                 String sheetName = sheets.get(i);
                 checkCancelled();
-                onProgress((double) i / sheets.size(), "Processing sheet: " + sheetName);
+                onProgress((double) i / sheets.size(), msgs.format("ex.progress.processingSheet", sheetName));
 
                 ReadSheet readSheet = FesodSheet.readSheet(sheetName)
                         .registerReadListener(listener).build();
@@ -189,7 +197,7 @@ public class ExcelSplitter {
             }
         }
 
-        onProgress(1.0, "Done");
+        onProgress(1.0, msgs.format("ex.progress.done"));
         logger.info("Split by sheet completed | files={}", outputs.size());
         return new SplitResult(outputs.size(), outputs);
     }
@@ -233,14 +241,14 @@ public class ExcelSplitter {
                             .doWrite(buildRows(headerMap, e.getValue()));
                     outputs.add(out);
                     int n = current.incrementAndGet();
-                    onProgress((double) n / total, "Writing: " + key);
+                    onProgress((double) n / total, msgs.format("ex.progress.writing", key));
                 })
             ).get();
         } finally {
             pool.shutdown();
         }
 
-        onProgress(1.0, "Done");
+        onProgress(1.0, msgs.format("ex.progress.done"));
         logger.info("Split by column completed | groups={}", total);
         return new SplitResult(outputs.size(), outputs);
     }
@@ -248,7 +256,7 @@ public class ExcelSplitter {
     private SplitResult complexSplit() throws Exception {
         List<ComplexSplitEntry> splitConfigs = config.complexEntries;
         if (splitConfigs == null || splitConfigs.isEmpty()) {
-            throw new RuntimeException("No complex split entries configured");
+            throw new RuntimeException(msgs.format("ex.err.noComplexEntries"));
         }
 
         List<ComplexSplitEntry> normalConfigs = new ArrayList<>();
@@ -269,7 +277,7 @@ public class ExcelSplitter {
             ComplexSplitEntry cfg = normalConfigs.get(i);
             checkCancelled();
             onProgress(0.05 + 0.3 * i / Math.max(1, normalConfigs.size()),
-                    "Reading: " + cfg.sheetName());
+                    msgs.format("ex.progress.reading", cfg.sheetName()));
 
             NoModelDataListener listener = new NoModelDataListener();
             try (ExcelReader reader = FesodSheet.read(config.sourceFile.toFile()).build()) {
@@ -325,7 +333,7 @@ public class ExcelSplitter {
 
                 createdFiles.add(outPath);
                 writeDone++;
-                onProgress(0.35 + 0.5 * writeDone / Math.max(1, totalFiles), "Writing: " + baseName);
+                onProgress(0.35 + 0.5 * writeDone / Math.max(1, totalFiles), msgs.format("ex.progress.writing", baseName));
             }
 
             // Phase 3: copyAll sheets — only merge into files created by Phase 2
@@ -345,7 +353,7 @@ public class ExcelSplitter {
                         }
                     }
                     onProgress(0.85 + 0.15 * (i + 1) / Math.max(1, createdFiles.size()),
-                            "Copying sheets: " + targetFile.getName());
+                            msgs.format("ex.progress.copyingSheets", targetFile.getName()));
                 }
             }
         }
@@ -354,7 +362,7 @@ public class ExcelSplitter {
                 .sorted(java.util.Comparator.comparing(Path::getFileName))
                 .collect(Collectors.toList());
 
-        onProgress(1.0, "Done");
+        onProgress(1.0, msgs.format("ex.progress.done"));
         logger.info("Complex split completed | normalConfigs={}, copyAllConfigs={}, outputFiles={}",
                 normalConfigs.size(), copyAllConfigs.size(), outputPaths.size());
         return new SplitResult(outputPaths.size(), outputPaths);

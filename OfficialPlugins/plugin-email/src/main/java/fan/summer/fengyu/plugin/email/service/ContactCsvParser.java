@@ -3,6 +3,7 @@ package fan.summer.fengyu.plugin.email.service;
 import fan.summer.fengyu.plugin.email.model.ContactImport.ParseError;
 import fan.summer.fengyu.plugin.email.model.ContactImport.ParsedContact;
 import fan.summer.fengyu.plugin.email.service.ContactHeaderResolver.Column;
+import fan.summer.fengyu.sdk.PluginMessages;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -29,6 +30,8 @@ import java.util.Map;
  */
 final class ContactCsvParser implements ContactFileParser {
 
+    private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, ContactCsvParser.class);
+
     @Override
     public Result parse(Path file) {
         List<ParsedContact> contacts = new ArrayList<>();
@@ -36,13 +39,13 @@ final class ContactCsvParser implements ContactFileParser {
         try (Reader reader = openReader(file)) {
             String headerLine = nextNonBlankLine(reader);
             if (headerLine == null) {
-                errors.add(new ParseError(0, "File is empty"));
+                errors.add(new ParseError(0, MSGS.format("em.err.contactFileEmpty")));
                 return new Result(contacts, errors);
             }
             char delimiter = detectDelimiter(headerLine);
             Map<Column, Integer> columns = mapColumns(split(headerLine, delimiter));
             if (!columns.containsKey(Column.EMAIL)) {
-                errors.add(new ParseError(1, "Missing an email column (expected a header like 'email', 'E-mail', or '邮箱')"));
+                errors.add(new ParseError(1, MSGS.format("em.err.contactMissingEmailColumn")));
                 return new Result(contacts, errors);
             }
 
@@ -57,7 +60,7 @@ final class ContactCsvParser implements ContactFileParser {
             }
         } catch (IOException e) {
             // Hard I/O failure surfaces as a single error; contacts parsed so far are returned.
-            errors.add(new ParseError(0, "Could not read file: " + e.getMessage()));
+            errors.add(new ParseError(0, MSGS.format("em.err.contactCsvReadFailed", e.getMessage())));
         }
         return new Result(contacts, errors);
     }
@@ -136,7 +139,7 @@ final class ContactCsvParser implements ContactFileParser {
         List<String> tags = tagCell == null ? List.of() : TagSplitter.split(tagCell, "auto");
 
         if (email == null || email.isBlank()) {
-            errors.add(new ParseError(row, "Missing email address"));
+            errors.add(new ParseError(row, MSGS.format("em.err.contactMissingEmail")));
             return null;
         }
         return new ParsedContact(row, email.trim(), trimToNull(nickname), trimToNull(notes), tags);

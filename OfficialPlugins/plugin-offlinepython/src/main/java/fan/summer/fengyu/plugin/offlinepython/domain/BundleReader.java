@@ -1,6 +1,7 @@
 package fan.summer.fengyu.plugin.offlinepython.domain;
 
 import fan.summer.fengyu.plugin.offlinepython.infra.JsonStore;
+import fan.summer.fengyu.sdk.PluginMessages;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -20,6 +21,10 @@ public final class BundleReader {
     private static final String MANIFEST_ENTRY = "bundle/manifest.json";
     private static final String WHEELS_DIR = "bundle/wheels/";
 
+    /** Localized worker messages for exception messages. */
+    private static final PluginMessages MSGS =
+            PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, BundleReader.class);
+
     private BundleReader() {}
 
     public record Bundle(Manifest manifest, List<WheelEntry> wheels) {}
@@ -28,7 +33,7 @@ public final class BundleReader {
     public static Bundle read(Path zip) throws IOException {
         try (ZipFile zf = new ZipFile(zip.toFile())) {
             ZipEntry entry = zf.getEntry(MANIFEST_ENTRY);
-            if (entry == null) throw new IOException("无效的 bundle 包:缺少 " + MANIFEST_ENTRY);
+            if (entry == null) throw new IOException(MSGS.format("opb.msg.bundleReader.invalid", MANIFEST_ENTRY));
             try (InputStream in = zf.getInputStream(entry)) {
                 String json = new String(in.readAllBytes(), StandardCharsets.UTF_8);
                 Manifest m = JsonStore.fromJson(json, Manifest.class);
