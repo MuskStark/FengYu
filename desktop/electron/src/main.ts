@@ -15,10 +15,13 @@ import { createTray } from './desktop/tray'
 import { checkForUpdates } from './updater/auto-updater'
 import { startDevFrontend, type DevFrontendHandle } from './desktop/dev-frontend'
 import { initializeAppearance } from './desktop/appearance'
+import { BrowserSession } from './browser/session'
+import { startBrowserBridge, type BrowserBridge } from './browser/bridge'
 
 const logger = initLogger()
 let backendChild: BackendChild | null = null
 let devFrontend: DevFrontendHandle | null = null
+let browserBridge: BrowserBridge | null = null
 let stopSupervisor: (() => void) | null = null
 let isQuitting = false
 
@@ -32,6 +35,8 @@ function killBackend() {
   stopSupervisor?.()
   stopSupervisor = null
   backendChild?.kill()
+  browserBridge?.close()
+  browserBridge = null
   devFrontend?.stop()
 }
 
@@ -164,6 +169,11 @@ async function bootstrap(): Promise<void> {
   const token = genToken()
   process.env.FENGYU_TOKEN = token
   process.env.FENGYU_API_BASE = '' // set after we know the port
+  // Browser automation bridge: must start before the JVM spawn so the backend inherits
+  // the bridge port/token via process.env and fengyu.desktop=true enables the host tool.
+  browserBridge = await startBrowserBridge(new BrowserSession())
+  process.env.FENGYU_BROWSER_BRIDGE_PORT = String(browserBridge.port)
+  process.env.FENGYU_BROWSER_BRIDGE_TOKEN = browserBridge.token
   reportProgress(splash, 'spawning')
 
   let started
