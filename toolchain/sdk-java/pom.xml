@@ -5,10 +5,10 @@
   <!--
       FengYu Plugin Worker SDK — an INDEPENDENTLY versioned, self-contained POM.
       It does NOT inherit the FengYu parent reactor (which tracks ${revision}).
-      Version 1.2.0 is the publishable contract external plugin developers
+      Version 1.3.0 is the publishable contract external plugin developers
       resolve from GitHub Packages. Repository-internal consumers (OfficialPlugins,
       FengYu host) still build it through the root reactor <module>, so a local
-      `./mvnw install` produces 1.2.0 in the local .m2 with no token required.
+      `./mvnw install` produces 1.3.0 in the local .m2 with no token required.
 
       1.1.0 adds the RpcTransport abstraction (StdioTransport + the contract a
       loopback-TCP transport in fengyu-plugin-devkit implements), letting the same
@@ -21,10 +21,17 @@
       liveness poll (auxiliary) both converge on a guaranteed JVM exit, releasing
       file locks a worker's non-daemon threads (DB pools, executors) would
       otherwise hold. run(InputStream, OutputStream) is unchanged.
+
+      1.3.0 adds worker-side i18n: WorkerLocale (per-request locale ThreadLocal
+      bound by JsonRpcWorker.serve from the `locale` params key), PluginMessages
+      (classpath message-bundle resolver for i18n/messages[_zh].properties), and
+      keyed okKey/failKey/t helpers on PluginHandlerSupport so a worker renders
+      localized summaries without changing the PluginHandler signature or the
+      JSON-RPC envelope. Legacy workers without bundles keep prior English behaviour.
   -->
   <groupId>fan.summer.fengyu.sdk</groupId>
   <artifactId>fengyu-plugin-sdk</artifactId>
-  <version>1.2.0</version>
+  <version>1.3.0</version>
   <name>FengYu Plugin Worker SDK</name>
   <description>Dependency-light JSON-RPC 2.0 worker runtime for FengYu plugin child processes.</description>
 
