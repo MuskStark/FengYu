@@ -12,14 +12,14 @@
 #   <OUTPUT_DIR>/Infinia-<VERSION>-web.tar.gz
 # Both contain: Infinia.jar, run.sh (executable), run.bat, README.md,
 #               plugins/*.fyp, and plugins/*.fyp.sha256
-# Fails unless all five official plugin IDs and valid checksum sidecars are present.
+# Fails unless all four official plugin IDs and valid checksum sidecars are present.
 set -euo pipefail
 
 # Single source of truth for which official plugins ship in the portable Web bundle. This set
 # matches OfficialPlugins/pom.xml's module list and scripts/e2e-smoke.sh's build loop. Keep in
 # sync with scripts/test-web-release.sh (which asserts the same set on the unpacked archive)
 # and .github/workflows/fengyu-release.yml's `Build official plugins` step.
-OFFICIAL_PLUGINS=(markdown excel email offlinepython browser)
+OFFICIAL_PLUGINS=(markdown excel email offlinepython)
 
 if [ "$#" -ne 4 ]; then
   echo "Usage: $0 VERSION JAR PLUGIN_DIR OUTPUT_DIR" >&2

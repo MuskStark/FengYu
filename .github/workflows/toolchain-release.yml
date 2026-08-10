@@ -70,7 +70,6 @@ jobs:
       - run: node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-excel
       - run: node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-email
       - run: node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-offlinepython
-      - run: node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-browser
       - name: Verify npm package contents
         run: |
           (cd toolchain/cli && npm pack --ignore-scripts --dry-run --json) > cli-pack.json
