@@ -88,7 +88,12 @@ win:
 
 mac:
   target:
+    # dmg: first-time distribution / manual install.
+    # zip: REQUIRED for electron-updater auto-update on macOS (dmg can't be used for in-place
+    # updates). The mac updater fetches the zip + .blockmap referenced by latest-mac.yml.
     - target: dmg
+      arch: [arm64]
+    - target: zip
       arch: [arm64]
   icon: resources/icon.png
   category: public.app-category.developer-tools

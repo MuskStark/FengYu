@@ -47,8 +47,8 @@ for %%A in (%*) do (
 if "!HAS_TOKEN!"=="0" (
   set "GEN_TOKEN=zf-%RANDOM%%RANDOM%-%TIME:~6,2%%TIME:~9,2%"
   echo Generated per-launch token (pass --token=^<t^> to override): !GEN_TOKEN! >&2
-  "%JAVA%" -Dfengyu.runtime.dir="%ROOT%data" -Dfengyu.plugins.official-directory="%ROOT%plugins" -jar "%ROOT%Infinia.jar" --token="!GEN_TOKEN!" %*
+  "%JAVA%" -Dfengyu.runtime.dir="%ROOT%data" -Dfengyu.plugins.official-directory="%ROOT%plugins" -Dfengyu.update.portable=true -jar "%ROOT%Infinia.jar" --token="!GEN_TOKEN!" %*
 ) else (
-  "%JAVA%" -Dfengyu.runtime.dir="%ROOT%data" -Dfengyu.plugins.official-directory="%ROOT%plugins" -jar "%ROOT%Infinia.jar" %*
+  "%JAVA%" -Dfengyu.runtime.dir="%ROOT%data" -Dfengyu.plugins.official-directory="%ROOT%plugins" -Dfengyu.update.portable=true -jar "%ROOT%Infinia.jar" %*
 )
 endlocal

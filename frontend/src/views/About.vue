@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useUpdateStore } from '@/stores/update'
 
 const { locale } = useI18n()
+const update = useUpdateStore()
 
 const appVersion = __APP_VERSION__
 const buildTime = __APP_BUILD_TIME__
@@ -16,6 +18,22 @@ const formattedBuildTime = computed(() => {
     timeStyle: 'short',
   }).format(d)
 })
+
+// Confirmation gate before triggering an unsigned install / portable self-restart.
+const confirming = ref(false)
+
+async function onAgreeUpdate() {
+  confirming.value = false
+  await update.agreeAndUpdate()
+}
+
+function openReleasePage() {
+  window.open(update.releaseUrl || REPO + '/releases', '_blank', 'noopener')
+}
+
+// macOS desktop: the shell can only open the release page for an unsigned build.
+const isDesktop = computed(() => typeof window !== 'undefined' && window.fengyu?.desktop === true)
+const isMacDesktop = computed(() => isDesktop.value && navigator.userAgent.toLowerCase().includes('mac'))
 
 const REPO = 'https://github.com/MuskStark/FengYu'
 const DOCS = 'https://muskstark.github.io/FengYu/'
@@ -82,6 +100,56 @@ const frontendDeps = [
             <span>{{ $t('about.version') }}</span>
           </div>
           <span class="about-value">{{ appVersion }}</span>
+        </div>
+        <!-- Update check + user-consented install -->
+        <div class="cx-setting-row">
+          <div class="cx-setting-row__label">
+            <i class="mdi mdi-update" />
+            <span>{{ $t('update.title') }}</span>
+          </div>
+          <div class="about-update">
+            <template v-if="update.checking">
+              <span class="about-value cx-muted"><i class="mdi mdi-loading mdi-spin" /> {{ $t('update.checking') }}</span>
+            </template>
+            <template v-else-if="update.error">
+              <span class="about-value about-value--error">{{ $t('update.error') }}</span>
+              <button class="cx-btn cx-btn--tonal about-update__btn" @click="update.check(true)">{{ $t('update.retry') }}</button>
+            </template>
+            <template v-else-if="update.updateAvailable">
+              <span class="about-value">{{ $t('update.available', { version: update.latestVersion }) }}</span>
+              <!-- macOS desktop: unsigned install cannot relaunch; just open the page -->
+              <button v-if="isMacDesktop" class="cx-btn cx-btn--tonal about-update__btn" @click="openReleasePage">
+                <i class="mdi mdi-open-in-new" /> {{ $t('update.openPage') }}
+              </button>
+              <!-- Browser (non-portable) deployment: no self-install, open page -->
+              <button
+                v-else-if="!isDesktop && !update.portableMode"
+                class="cx-btn cx-btn--tonal about-update__btn"
+                @click="openReleasePage"
+              >
+                <i class="mdi mdi-open-in-new" /> {{ $t('update.download') }}
+              </button>
+              <!-- Confirm before the unsigned / self-restarting install -->
+              <button v-else-if="!confirming" class="cx-btn cx-btn--primary about-update__btn" :disabled="update.downloading" @click="confirming = true">
+                <i v-if="update.downloading" class="mdi mdi-loading mdi-spin" />
+                {{ update.downloading ? $t('update.downloading') + ' ' + update.downloadPercent + '%' : $t('update.upgradeNow') }}
+              </button>
+              <!-- Inline confirm popover -->
+              <span v-else class="about-update__confirm">
+                <span class="about-update__warn">{{ $t('update.unsignedWarning') }}</span>
+                <button class="cx-btn cx-btn--primary about-update__btn" @click="onAgreeUpdate">{{ $t('update.confirm') }}</button>
+                <button class="cx-btn cx-btn--tonal about-update__btn" @click="confirming = false">{{ $t('update.cancel') }}</button>
+              </span>
+            </template>
+            <template v-else-if="update.lastChecked">
+              <span class="about-value cx-muted">{{ $t('update.latest') }}</span>
+              <button class="cx-btn cx-btn--tonal about-update__btn" @click="update.check(true)">{{ $t('update.recheck') }}</button>
+            </template>
+            <template v-else>
+              <button class="cx-btn cx-btn--tonal about-update__btn" @click="update.check(true)">{{ $t('update.check') }}</button>
+            </template>
+            <span v-if="update.manualRequired" class="about-value about-value--hint">{{ $t('update.macManual') }}</span>
+          </div>
         </div>
         <div class="cx-setting-row">
           <div class="cx-setting-row__label">
@@ -177,6 +245,37 @@ const frontendDeps = [
 /* Information rows */
 .about-value { font-size: 13px; text-align: right; }
 .about-value--time { max-width: 320px; }
+.about-value--error { color: rgb(var(--v-theme-error)); }
+.about-value--hint { max-width: 220px; font-size: 12px; }
+
+/* Update row */
+.about-update {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.about-update__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  padding: 4px 12px;
+}
+.about-update__confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.about-update__warn {
+  font-size: 11px;
+  color: #d9a441;
+  max-width: 240px;
+  text-align: right;
+}
 
 /* Reusable themed external link (matches cx-btn--tonal text color) */
 .about-link {
