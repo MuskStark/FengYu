@@ -17,7 +17,7 @@
   <properties>
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <fengyu.plugin.sdk.version>1.2.0</fengyu.plugin.sdk.version>
+    <fengyu.plugin.sdk.version>1.3.0</fengyu.plugin.sdk.version>
     <gson.version>2.13.1</gson.version>
     <junit.version>5.10.2</junit.version>
     <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
