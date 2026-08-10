@@ -93,6 +93,7 @@ export async function spawnBackend(opts: SpawnOptions): Promise<SpawnedBackend> 
   const args = [
     `-Dfengyu.runtime.dir=${runtimeRoot()}`,
     `-Dfengyu.plugins.official-directory=${layout.plugins}`,
+    '-Dfengyu.desktop=true',
     '-cp',
     layout.jar,
     'fan.summer.fengyu.HeadlessLauncher',
