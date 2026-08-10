@@ -1,5 +1,6 @@
 package fan.summer.fengyu.plugin.excel;
 
+import fan.summer.fengyu.sdk.PluginMessages;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -27,6 +28,9 @@ import java.util.Set;
 public class ExcelUtil {
     private static final Logger logger = LoggerFactory.getLogger(ExcelUtil.class);
 
+    /** Localized message resolver for this class's thrown exceptions. */
+    private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, ExcelUtil.class);
+
     private static final Set<String> INVALID_VALUES = Set.of(
             "NA", "N/A", "NULL", "NIL", "NONE", "NAN",
             "#N/A", "#NULL!", "#REF!", "#DIV/0!", "#VALUE!", "#NAME?", "#NUM!", "#ERROR!",
@@ -44,7 +48,7 @@ public class ExcelUtil {
      */
     public static void appendSheet(String sourceFilePath, String targetFilePath,
                                    String sheetName, int endRowIndex) throws IOException {
-        if (endRowIndex < 0) throw new IllegalArgumentException("endRowIndex cannot be negative");
+        if (endRowIndex < 0) throw new IllegalArgumentException(MSGS.format("ex.util.endRowIndexNegative"));
 
         // 1. Read source file and locate sheet
         try (FileInputStream srcFis = new FileInputStream(sourceFilePath);
@@ -52,15 +56,14 @@ public class ExcelUtil {
 
             Sheet sourceSheet = sourceWorkbook.getSheet(sheetName);
             if (sourceSheet == null) {
-                throw new IllegalArgumentException("Sheet not found: " + sheetName
-                        + ", available sheets: " + getSheetNames(sourceWorkbook));
+                throw new IllegalArgumentException(MSGS.format("ex.util.sheetNotFound", sheetName, getSheetNames(sourceWorkbook)));
             }
 
             // 2. Load or create target workbook (try-with-resources so it is closed even on throw)
             try (Workbook targetWorkbook = loadOrCreate(targetFilePath)) {
                 // 3. Target file must not have a sheet with the same name
                 if (targetWorkbook.getSheet(sheetName) != null) {
-                    throw new IllegalArgumentException("Target file already has sheet: " + sheetName);
+                    throw new IllegalArgumentException(MSGS.format("ex.util.targetHasSheet", sheetName));
                 }
 
                 // 4. Append sheet
@@ -86,14 +89,13 @@ public class ExcelUtil {
      */
     public static void appendSheet(String sourceFilePath, String targetFilePath,
                                    int sheetIndex, int endRowIndex) throws IOException {
-        if (endRowIndex < 0) throw new IllegalArgumentException("endRowIndex cannot be negative");
+        if (endRowIndex < 0) throw new IllegalArgumentException(MSGS.format("ex.util.endRowIndexNegative"));
 
         try (FileInputStream srcFis = new FileInputStream(sourceFilePath);
              Workbook sourceWorkbook = WorkbookFactory.create(srcFis)) {
 
             if (sheetIndex < 0 || sheetIndex >= sourceWorkbook.getNumberOfSheets()) {
-                throw new IllegalArgumentException("sheetIndex out of bounds: " + sheetIndex
-                        + ", total sheets: " + sourceWorkbook.getNumberOfSheets());
+                throw new IllegalArgumentException(MSGS.format("ex.util.sheetIndexOutOfBounds", sheetIndex, sourceWorkbook.getNumberOfSheets()));
             }
 
             Sheet sourceSheet = sourceWorkbook.getSheetAt(sheetIndex);
@@ -117,13 +119,12 @@ public class ExcelUtil {
 
             Sheet sourceSheet = sourceWorkbook.getSheet(sheetName);
             if (sourceSheet == null) {
-                throw new IllegalArgumentException("Sheet not found: " + sheetName
-                        + ", available sheets: " + getSheetNames(sourceWorkbook));
+                throw new IllegalArgumentException(MSGS.format("ex.util.sheetNotFound", sheetName, getSheetNames(sourceWorkbook)));
             }
 
             try (Workbook targetWorkbook = loadOrCreate(targetFilePath)) {
                 if (targetWorkbook.getSheet(sheetName) != null) {
-                    throw new IllegalArgumentException("Target file already has sheet: " + sheetName);
+                    throw new IllegalArgumentException(MSGS.format("ex.util.targetHasSheet", sheetName));
                 }
 
                 copySheetRows(sourceSheet, targetWorkbook, sheetName, sourceSheet.getLastRowNum());

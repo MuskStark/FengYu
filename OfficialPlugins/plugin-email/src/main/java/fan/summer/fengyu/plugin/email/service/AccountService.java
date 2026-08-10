@@ -7,6 +7,7 @@ import fan.summer.fengyu.plugin.email.repository.AccountRepository;
 import fan.summer.fengyu.plugin.email.repository.ArchiveRepository;
 import fan.summer.fengyu.plugin.email.repository.PendingSendRepository;
 import fan.summer.fengyu.plugin.email.repository.SentLogRepository;
+import fan.summer.fengyu.sdk.PluginMessages;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,6 +22,7 @@ import java.time.ZoneOffset;
 
 public final class AccountService {
     private static final Logger log = LoggerFactory.getLogger(AccountService.class);
+    private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, AccountService.class);
     private final AccountRepository accounts;
     private final CredentialCipher cipher;
     private final PendingSendRepository pendingSends;
@@ -51,9 +53,9 @@ public final class AccountService {
         required(input.email(), "email");
         required(input.smtpHost(), "smtpHost");
         required(input.smtpSecurity(), "smtpSecurity");
-        if (input.smtpPort() < 1 || input.smtpPort() > 65535) throw new IllegalArgumentException("Invalid SMTP port");
+        if (input.smtpPort() < 1 || input.smtpPort() > 65535) throw new IllegalArgumentException(MSGS.format("em.err.accountInvalidSmtpPort"));
         EmailAccount existing = input.id() == null ? null : accounts.findAccount(input.id()).orElseThrow(
-            () -> new IllegalArgumentException("Unknown account: " + input.id()));
+            () -> new IllegalArgumentException(MSGS.format("em.err.accountUnknown", input.id())));
         String encrypted = existing == null || !blank(input.password())
             ? encrypt(required(input.password(), "password")) : existing.encryptedPassword();
         var repositoryInput = new AccountRepository.AccountInput(input.id(), input.displayName().trim(),
@@ -71,7 +73,7 @@ public final class AccountService {
         // the delete forever (claim/reject/expire all require PENDING, finish requires SENDING).
         if (pendingSends != null) pendingSends.reclaimStuck(LocalDateTime.now(ZoneOffset.UTC));
         if (pendingSends != null && pendingSends.hasOpenForAccount(id, LocalDateTime.now(ZoneOffset.UTC))) {
-            throw new IllegalStateException("Account has an open send operation");
+            throw new IllegalStateException(MSGS.format("em.err.accountHasOpenSend"));
         }
         EmailAccount account = accounts.findAccount(id).orElse(null);
         if (account == null) return false;
@@ -98,14 +100,14 @@ public final class AccountService {
 
     /** Internal-only credential access for SMTP/IMAP services. */
     public String decryptPassword(long id) {
-        EmailAccount account = accounts.findAccount(id).orElseThrow(() -> new IllegalArgumentException("Unknown account: " + id));
+        EmailAccount account = accounts.findAccount(id).orElseThrow(() -> new IllegalArgumentException(MSGS.format("em.err.accountUnknown", id)));
         try { return cipher.decrypt(account.encryptedPassword()); }
-        catch (GeneralSecurityException e) { throw new IllegalStateException("Account credentials are locked", e); }
+        catch (GeneralSecurityException e) { throw new IllegalStateException(MSGS.format("em.err.accountCredentialsLocked"), e); }
     }
 
     private String encrypt(String password) {
         try { return cipher.encrypt(password); }
-        catch (GeneralSecurityException e) { throw new IllegalStateException("Could not encrypt account credentials", e); }
+        catch (GeneralSecurityException e) { throw new IllegalStateException(MSGS.format("em.err.couldNotEncrypt"), e); }
     }
 
     private static AccountView view(EmailAccount account) {
@@ -116,7 +118,7 @@ public final class AccountService {
     }
 
     private static String required(String value, String field) {
-        if (blank(value)) throw new IllegalArgumentException(field + " is required");
+        if (blank(value)) throw new IllegalArgumentException(MSGS.format("em.err.fieldRequired", field));
         return value;
     }
     private static String trimToNull(String value) { return blank(value) ? null : value.trim(); }

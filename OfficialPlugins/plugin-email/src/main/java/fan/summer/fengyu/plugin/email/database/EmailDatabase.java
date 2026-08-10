@@ -1,6 +1,7 @@
 package fan.summer.fengyu.plugin.email.database;
 
 import fan.summer.fengyu.sdk.PluginDatabaseConfig;
+import fan.summer.fengyu.sdk.PluginMessages;
 import org.apache.ibatis.datasource.unpooled.UnpooledDataSource;
 import org.apache.ibatis.mapping.Environment;
 import org.apache.ibatis.session.Configuration;
@@ -14,6 +15,7 @@ import java.sql.SQLException;
 
 /** Plugin-owned JDBC/MyBatis entry point. */
 public final class EmailDatabase {
+    private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, EmailDatabase.class);
     private final PluginDatabaseConfig config;
     private final UnpooledDataSource dataSource;
     private final SqlSessionFactory sessions;
@@ -21,7 +23,7 @@ public final class EmailDatabase {
     public EmailDatabase(PluginDatabaseConfig config) {
         this.config = config;
         try { Class.forName(config.driver()); }
-        catch (ClassNotFoundException e) { throw new IllegalStateException("Database driver is unavailable", e); }
+        catch (ClassNotFoundException e) { throw new IllegalStateException(MSGS.format("em.err.databaseDriverUnavailable"), e); }
         dataSource = new UnpooledDataSource(config.driver(), config.url(), config.username(), config.password());
         new SchemaMigrator(config.type(), dataSource).migrate();
         Configuration mybatis = new Configuration(new Environment("email", new JdbcTransactionFactory(), dataSource));

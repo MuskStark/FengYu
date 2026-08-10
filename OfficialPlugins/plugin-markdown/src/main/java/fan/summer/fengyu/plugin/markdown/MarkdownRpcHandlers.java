@@ -14,10 +14,11 @@ import java.util.Map;
  */
 public final class MarkdownRpcHandlers extends PluginHandlerSupport {
 
-    private final MarkdownPlugin plugin = new MarkdownPlugin();
+    private final MarkdownPlugin plugin;
 
     public MarkdownRpcHandlers() {
         super("markdown");
+        this.plugin = new MarkdownPlugin(msgs);
     }
 
     public Object render(Map<String, Object> params) {
@@ -27,7 +28,7 @@ public final class MarkdownRpcHandlers extends PluginHandlerSupport {
             Object value = plugin.invoke("render", params);
             long elapsedMs = (System.nanoTime() - started) / 1_000_000;
             log.info("rendered {} chars to HTML in {} ms", inputLength, elapsedMs);
-            return value instanceof Map<?, ?> map ? cast(map) : ok("ok", null, value);
+            return value instanceof Map<?, ?> map ? cast(map) : ok(t("md.ok"), null, value);
         });
     }
 }

@@ -9,6 +9,7 @@ import fan.summer.fengyu.plugin.email.model.EmailAccount;
 import fan.summer.fengyu.plugin.email.model.SendResult;
 import fan.summer.fengyu.plugin.email.repository.AccountRepository;
 import fan.summer.fengyu.plugin.email.repository.ArchiveRepository;
+import fan.summer.fengyu.sdk.PluginMessages;
 import jakarta.mail.Address;
 import jakarta.mail.FetchProfile;
 import jakarta.mail.Folder;
@@ -52,6 +53,7 @@ public final class EmailArchiveService {
     private static final int IMAP_TIMEOUT_MILLIS = 10_000;
 
     private static final Logger log = LoggerFactory.getLogger(EmailArchiveService.class);
+    private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, EmailArchiveService.class);
 
     private final AccountRepository accounts;
     private final AccountService accountService;
@@ -68,9 +70,9 @@ public final class EmailArchiveService {
         validate(request);
         ProgressSink sink = progressSink == null ? ignored -> { } : progressSink;
         EmailAccount account = accounts.findAccount(request.accountId()).orElseThrow(
-            () -> new IllegalArgumentException("Unknown account: " + request.accountId()));
+            () -> new IllegalArgumentException(MSGS.format("em.err.accountUnknown", request.accountId())));
         if (blank(account.imapHost()) || account.imapPort() == null || blank(account.imapSecurity())) {
-            throw new IllegalArgumentException("IMAP is not configured for account: " + request.accountId());
+            throw new IllegalArgumentException(MSGS.format("em.err.imapNotConfigured", request.accountId()));
         }
         String password = accountService.decryptPassword(account.id());
         Properties properties = imapProperties(account.imapSecurity(), account.imapSkipCertVerify());
@@ -81,10 +83,10 @@ public final class EmailArchiveService {
         try (Store store = session.getStore(protocol(account.imapSecurity()))) {
             store.connect(account.imapHost(), account.imapPort(), account.email(), password);
             try (Folder folder = store.getFolder(request.folder())) {
-                if (!folder.exists()) throw new IllegalArgumentException("Unknown IMAP folder: " + request.folder());
+                if (!folder.exists()) throw new IllegalArgumentException(MSGS.format("em.err.unknownImapFolder", request.folder()));
                 folder.open(Folder.READ_ONLY);
                 if (!(folder instanceof UIDFolder uidFolder)) {
-                    throw new IllegalStateException("IMAP server does not expose stable message UIDs");
+                    throw new IllegalStateException(MSGS.format("em.err.imapNoStableUids"));
                 }
                 Message[] folderMessages = selectMessages(folder, request.start(), request.end());
                 log.info("archive collect: account={} folder='{}' messages={}", account.id(), request.folder(), folderMessages.length);
@@ -121,7 +123,7 @@ public final class EmailArchiveService {
         } catch (Exception e) {
             log.error("IMAP collection failed for account={} folder='{}': {}",
                 account.id(), request.folder(), e.toString(), e);
-            throw new IllegalStateException("IMAP collection failed: " + safeMessage(e, password), e);
+            throw new IllegalStateException(MSGS.format("em.err.imapCollectionFailed", safeMessage(e, password)), e);
         }
         log.info("archive collect done: account={} folder='{}' new={} skipped={} failed={}",
             account.id(), request.folder(), archived, skipped, failures);
@@ -130,9 +132,9 @@ public final class EmailArchiveService {
 
     public SendResult testImap(long accountId) {
         EmailAccount account = accounts.findAccount(accountId)
-            .orElseThrow(() -> new IllegalArgumentException("Unknown account: " + accountId));
+            .orElseThrow(() -> new IllegalArgumentException(MSGS.format("em.err.accountUnknown", accountId)));
         if (blank(account.imapHost()) || account.imapPort() == null || blank(account.imapSecurity())) {
-            return SendResult.failure("IMAP is not configured for account: " + accountId);
+            return SendResult.failure(MSGS.format("em.err.imapNotConfigured", accountId));
         }
         String password = accountService.decryptPassword(accountId);
         try (Store store = Session.getInstance(imapProperties(account.imapSecurity(), account.imapSkipCertVerify()))
@@ -154,9 +156,9 @@ public final class EmailArchiveService {
      */
     public FolderList listFolders(long accountId) {
         EmailAccount account = accounts.findAccount(accountId)
-            .orElseThrow(() -> new IllegalArgumentException("Unknown account: " + accountId));
+            .orElseThrow(() -> new IllegalArgumentException(MSGS.format("em.err.accountUnknown", accountId)));
         if (blank(account.imapHost()) || account.imapPort() == null || blank(account.imapSecurity())) {
-            throw new IllegalArgumentException("IMAP is not configured for account: " + accountId);
+            throw new IllegalArgumentException(MSGS.format("em.err.imapNotConfigured", accountId));
         }
         String password = accountService.decryptPassword(accountId);
         try (Store store = Session.getInstance(imapProperties(account.imapSecurity(), account.imapSkipCertVerify()))
@@ -178,7 +180,7 @@ public final class EmailArchiveService {
             return new FolderList(List.copyOf(names));
         } catch (Exception e) {
             log.warn("IMAP folder listing failed for account {} ({}): {}", accountId, account.email(), safeMessage(e, password));
-            throw new IllegalStateException("IMAP folder listing failed: " + safeMessage(e, password), e);
+            throw new IllegalStateException(MSGS.format("em.err.imapFolderListingFailed", safeMessage(e, password)), e);
         }
     }
 
@@ -186,7 +188,7 @@ public final class EmailArchiveService {
     public record FolderList(List<String> folders) { }
 
     public List<ArchivedMessage> search(SearchFilter filter) {
-        if (filter == null) throw new IllegalArgumentException("filter is required");
+        if (filter == null) throw new IllegalArgumentException(MSGS.format("em.err.filterRequired"));
         int offset = Math.max(0, filter.offset());
         int limit = Math.max(1, Math.min(MAX_PAGE, filter.limit()));
         return archives.search(new ArchiveRepository.SearchCriteria(filter.accountId(), trimToNull(filter.folder()),
@@ -266,7 +268,7 @@ public final class EmailArchiveService {
         try {
             Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE);
         } catch (AtomicMoveNotSupportedException e) {
-            throw new IllegalStateException("Archive directory does not support atomic file moves", e);
+            throw new IllegalStateException(MSGS.format("em.err.archiveDirNoAtomicMove"), e);
         }
     }
 
@@ -301,11 +303,11 @@ public final class EmailArchiveService {
     }
 
     private static void validate(ArchiveRequest request) {
-        if (request == null) throw new IllegalArgumentException("request is required");
-        if (blank(request.folder())) throw new IllegalArgumentException("folder is required");
-        if (request.outputDirectory() == null) throw new IllegalArgumentException("outputDirectory is required");
+        if (request == null) throw new IllegalArgumentException(MSGS.format("em.err.archiveRequestRequired"));
+        if (blank(request.folder())) throw new IllegalArgumentException(MSGS.format("em.err.folderRequired"));
+        if (request.outputDirectory() == null) throw new IllegalArgumentException(MSGS.format("em.err.outputDirectoryRequired"));
         if (request.start() != null && request.end() != null && request.start().isAfter(request.end())) {
-            throw new IllegalArgumentException("start must not be after end");
+            throw new IllegalArgumentException(MSGS.format("em.err.startAfterEnd"));
         }
     }
 
@@ -334,7 +336,7 @@ public final class EmailArchiveService {
         return switch (security.trim().toUpperCase(Locale.ROOT)) {
             case "PLAIN", "IMAP", "NONE", "TLS", "STARTTLS" -> "imap";
             case "SSL", "IMAPS" -> "imaps";
-            default -> throw new IllegalArgumentException("Unsupported IMAP security: " + security);
+            default -> throw new IllegalArgumentException(MSGS.format("em.err.unsupportedImapSecurity", security));
         };
     }
 
@@ -378,7 +380,7 @@ public final class EmailArchiveService {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                 .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException("SHA-256 is unavailable", impossible);
+            throw new IllegalStateException(MSGS.format("em.err.sha256Unavailable"), impossible);
         }
     }
 

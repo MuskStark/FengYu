@@ -2,6 +2,7 @@ package fan.summer.fengyu.plugin.email.repository;
 
 import fan.summer.fengyu.plugin.email.database.EmailDatabase;
 import fan.summer.fengyu.plugin.email.model.MassConfig;
+import fan.summer.fengyu.sdk.PluginMessages;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Options;
@@ -13,6 +14,7 @@ import java.util.List;
 import java.util.Optional;
 
 public final class MassConfigRepository {
+    private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, MassConfigRepository.class);
     private final EmailDatabase database;
 
     public MassConfigRepository(EmailDatabase database) {
@@ -33,9 +35,9 @@ public final class MassConfigRepository {
     }
 
     public long save(Long id, String name, String mode, String configJson) {
-        if (name == null || name.isBlank()) throw new IllegalArgumentException("name is required");
-        if (mode == null || mode.isBlank()) throw new IllegalArgumentException("mode is required");
-        if (configJson == null || configJson.isBlank()) throw new IllegalArgumentException("configJson is required");
+        if (name == null || name.isBlank()) throw new IllegalArgumentException(MSGS.format("em.err.configNameRequired"));
+        if (mode == null || mode.isBlank()) throw new IllegalArgumentException(MSGS.format("em.err.configModeRequired"));
+        if (configJson == null || configJson.isBlank()) throw new IllegalArgumentException(MSGS.format("em.err.configJsonRequired"));
         try (SqlSession session = database.openSession()) {
             Row row = new Row(id, name.trim(), mode.trim(), configJson);
             Mapper mapper = session.getMapper(Mapper.class);

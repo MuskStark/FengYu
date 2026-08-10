@@ -1,6 +1,7 @@
 package fan.summer.fengyu.plugin.email.repository;
 
 import fan.summer.fengyu.plugin.email.database.EmailDatabase;
+import fan.summer.fengyu.sdk.PluginMessages;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Param;
@@ -12,6 +13,7 @@ import java.util.List;
 
 /** Append-only audit log for immutable message snapshots. */
 public final class SentLogRepository {
+    private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, SentLogRepository.class);
     private final EmailDatabase database;
 
     public SentLogRepository(EmailDatabase database) {
@@ -28,7 +30,7 @@ public final class SentLogRepository {
 
     public List<SentMessageView> search(String confirmationId, String status, String query,
             int offset, int limit) {
-        if (offset < 0 || limit < 1 || limit > 100) throw new IllegalArgumentException("Invalid sent message page");
+        if (offset < 0 || limit < 1 || limit > 100) throw new IllegalArgumentException(MSGS.format("em.err.invalidSentMessagePage"));
         String pattern = query == null || query.isBlank() ? null : "%" + query.trim().toLowerCase() + "%";
         try (SqlSession session = database.openSession()) {
             return List.copyOf(session.getMapper(Mapper.class)

@@ -36,7 +36,7 @@ public final class ExcelRpcHandlers extends PluginHandlerSupport {
     public ExcelRpcHandlers(ExcelSessionStore sessions, Jobs jobs) {
         super("excel");
         this.sessions = sessions;
-        this.plugin = new ExcelPlugin(sessions);
+        this.plugin = new ExcelPlugin(sessions, msgs);
         this.jobs = jobs;
     }
 
@@ -64,24 +64,24 @@ public final class ExcelRpcHandlers extends PluginHandlerSupport {
         return result(() -> {
             String filePath = requiredPath(params, "filePath");
             Path file = Paths.get(filePath.trim());
-            if (!Files.exists(file) || !Files.isReadable(file)) return failure("File not found: " + filePath);
+            if (!Files.exists(file) || !Files.isReadable(file)) return failKey("ex.err.fileNotFound", filePath);
             SplitConfig cfg = sessions.get(AI_SESSION);
             cfg.sourceFile = file;
             try { cfg.analysisResult = ExcelSplitter.analyze(file); }
-            catch (Exception e) { return failure("Analyze failed: " + safeMessage(e)); }
+            catch (Exception e) { return failKey("ex.err.analyzeFailed", safeMessage(e)); }
             log.info("analyzed {} sheet(s) from {}", cfg.analysisResult.size(), file.getFileName());
-            return ok("analyzed " + cfg.analysisResult.size() + " sheet(s)", "sheets", cfg.analysisResult.keySet());
+            return ok(t("ex.analyzed", cfg.analysisResult.size()), "sheets", cfg.analysisResult.keySet());
         });
     }
 
     public Object aiConfigure(Map<String, Object> params) {
         return result(() -> {
             SplitConfig cfg = sessions.active().orElse(null);
-            if (cfg == null || cfg.analysisResult == null) return failure("Call excel_analyze first.");
+            if (cfg == null || cfg.analysisResult == null) return failKey("ex.err.callAiAnalyzeFirst");
             String modeText = string(params, "mode");
             SplitConfig.SplitMode mode;
             try { mode = SplitConfig.SplitMode.valueOf(modeText); }
-            catch (Exception e) { return failure("Invalid mode: " + modeText); }
+            catch (Exception e) { return failKey("ex.err.invalidMode", modeText); }
             cfg.mode = mode;
             switch (mode) {
                 case BY_SHEET -> {
@@ -93,52 +93,52 @@ public final class ExcelRpcHandlers extends PluginHandlerSupport {
                     String splitSheet = string(params, "splitSheet");
                     String splitColumn = string(params, "splitColumn");
                     if (splitSheet == null || splitColumn == null)
-                        return failure("splitSheet and splitColumn required for BY_COLUMN");
+                        return failKey("ex.err.byColumnMissing");
                     Map<Integer, String> headers = cfg.analysisResult.get(splitSheet);
-                    if (headers == null) return failure("Unknown sheet: " + splitSheet);
+                    if (headers == null) return failKey("ex.err.unknownSheet", splitSheet);
                     Integer idx = null;
                     for (var e : headers.entrySet()) if (splitColumn.equals(e.getValue())) { idx = e.getKey(); break; }
-                    if (idx == null) return failure("Unknown column: " + splitColumn);
+                    if (idx == null) return failKey("ex.err.unknownColumn", splitColumn);
                     cfg.splitSheet = splitSheet;
                     cfg.splitColumn = splitColumn;
                     cfg.splitColumnIndex = idx;
                 }
                 case COMPLEX -> {
-                    if (cfg.complexEntries.isEmpty()) return failure("Add entries via excel_complex_config first");
+                    if (cfg.complexEntries.isEmpty()) return failKey("ex.err.addViaComplexConfig");
                 }
             }
-            return ok("configured mode=" + mode, null, null);
+            return ok(t("ex.configured", mode), null, null);
         });
     }
 
     public Object aiComplexConfig(Map<String, Object> params) {
         return result(() -> {
             SplitConfig cfg = sessions.active().orElse(null);
-            if (cfg == null) return failure("Call excel_analyze first.");
+            if (cfg == null) return failKey("ex.err.callAiAnalyzeFirst");
             String action = string(params, "action");
             String a = action == null ? "" : action.trim().toLowerCase(Locale.ROOT);
             switch (a) {
                 case "add" -> {
                     String sheetName = string(params, "sheetName");
-                    if (sheetName == null || sheetName.isBlank()) return failure("sheetName required for add");
+                    if (sheetName == null || sheetName.isBlank()) return failKey("ex.err.sheetNameRequired");
                     int headerIndex = integer(params, "headerIndex", -1);
                     int columnIndex = integer(params, "columnIndex", -1);
                     String field = cfg.sourceFile != null ? cfg.sourceFile.getFileName().toString() : "";
                     cfg.complexEntries.add(new ComplexSplitEntry(field, sheetName, headerIndex, columnIndex));
-                    return ok("added entry; total=" + cfg.complexEntries.size(), null, null);
+                    return ok(t("ex.complexAdded", cfg.complexEntries.size()), null, null);
                 }
                 case "list" -> {
                     List<Map<String, Object>> entries = cfg.complexEntries.stream()
                         .map(e -> Map.<String, Object>of("sheetName", e.sheetName(),
                             "headerIndex", e.headerIndex(), "columnIndex", e.columnIndex()))
                         .toList();
-                    return ok(cfg.complexEntries.size() + " entr(ies)", "entries", entries);
+                    return ok(t("ex.complexEntries", cfg.complexEntries.size()), "entries", entries);
                 }
                 case "clear" -> {
                     cfg.complexEntries.clear();
-                    return ok("cleared", null, null);
+                    return ok(t("ex.cleared"), null, null);
                 }
-                default -> { return failure("Invalid action: " + action); }
+                default -> { return failKey("ex.err.invalidAction", action); }
             }
         });
     }
@@ -146,8 +146,8 @@ public final class ExcelRpcHandlers extends PluginHandlerSupport {
     public Object aiExecute(Map<String, Object> params) {
         return result(() -> {
             SplitConfig cfg = sessions.active().orElse(null);
-            if (cfg == null || cfg.analysisResult == null) return failure("Call excel_analyze first.");
-            if (cfg.mode == null) return failure("Call excel_configure first.");
+            if (cfg == null || cfg.analysisResult == null) return failKey("ex.err.callAiAnalyzeFirst");
+            if (cfg.mode == null) return failKey("ex.err.callAiConfigureFirst");
             String outputDir = requiredPath(params, "outputDir");
             cfg.outputDir = Paths.get(outputDir.trim());
             cfg.filePrefix = trimmed(string(params, "filePrefix"));
@@ -155,9 +155,9 @@ public final class ExcelRpcHandlers extends PluginHandlerSupport {
             try {
                 Files.createDirectories(cfg.outputDir);
                 res = new ExcelSplitter(cfg, null).split();
-            } catch (Exception e) { return failure("Split failed: " + safeMessage(e)); }
+            } catch (Exception e) { return failKey("ex.err.splitFailed", safeMessage(e)); }
             log.info("split produced {} file(s) into {}", res.fileCount(), cfg.outputDir);
-            return ok("wrote " + res.fileCount() + " file(s)", "files", Map.of(
+            return ok(t("ex.wrote", res.fileCount()), "files", Map.of(
                 "fileCount", res.fileCount(),
                 "files", res.outputFiles().stream().map(p -> p.getFileName().toString()).toList()));
         });
@@ -173,7 +173,7 @@ public final class ExcelRpcHandlers extends PluginHandlerSupport {
         return result(() -> {
             // AI tools share the fixed "ai" session; aiAnalyze has populated it.
             SplitConfig cfg = sessions.get(AI_SESSION);
-            if (cfg.analysisResult == null) return failure("Call excel_analyze first.");
+            if (cfg.analysisResult == null) return failKey("ex.err.callAiAnalyzeFirst");
             return startSplitJob(cfg, params);
         });
     }
@@ -191,9 +191,9 @@ public final class ExcelRpcHandlers extends PluginHandlerSupport {
     public Object splitStart(Map<String, Object> params) {
         return result(() -> {
             String session = string(params, "session");
-            if (session == null || session.isBlank()) return failure("session is required");
+            if (session == null || session.isBlank()) return failKey("ex.err.sessionRequired");
             SplitConfig cfg = sessions.get(session);
-            if (cfg.analysisResult == null) return failure("Call analyze first.");
+            if (cfg.analysisResult == null) return failKey("ex.err.callAnalyzeFirst");
             return startSplitJob(cfg, params);
         });
     }
@@ -209,8 +209,8 @@ public final class ExcelRpcHandlers extends PluginHandlerSupport {
     public Object splitCancel(Map<String, Object> params) {
         return result(() -> {
             String jobId = requiredString(params, "jobId");
-            if (!jobs.cancel(jobId)) return failure("job is no longer running: " + jobId);
-            return ok("cancel requested", "jobId", jobId);
+            if (!jobs.cancel(jobId)) return failKey("ex.err.jobNotRunning", jobId);
+            return ok(t("ex.cancelRequested"), "jobId", jobId);
         });
     }
 
@@ -219,7 +219,7 @@ public final class ExcelRpcHandlers extends PluginHandlerSupport {
      * virtual thread with cooperative cancellation wired into {@link ExcelSplitter}.
      */
     private Map<String, Object> startSplitJob(SplitConfig cfg, Map<String, Object> params) {
-        if (cfg.mode == null) return failure("Call configure / excel_configure first.");
+        if (cfg.mode == null) return failKey("ex.err.callUiConfigureFirst");
         String outputDir = requiredPath(params, "outputDir");
         cfg.outputDir = Paths.get(outputDir.trim());
         cfg.filePrefix = trimmed(string(params, "filePrefix"));
@@ -239,13 +239,13 @@ public final class ExcelRpcHandlers extends PluginHandlerSupport {
                 throw e;
             }
         });
-        return ok("split started", "jobId", job.id);
+        return ok(t("ex.splitStarted"), "jobId", job.id);
     }
 
     public Object aiQuery(Map<String, Object> params) {
         return result(() -> {
             SplitConfig cfg = sessions.active().orElse(null);
-            if (cfg == null) return failure("No active Excel session; call excel_analyze first.");
+            if (cfg == null) return failKey("ex.err.noActiveSession");
             Map<String, Object> state = new LinkedHashMap<>();
             state.put("sourceFile", cfg.sourceFile != null ? cfg.sourceFile.toString() : null);
             state.put("mode", cfg.mode != null ? cfg.mode.name() : null);
@@ -254,14 +254,14 @@ public final class ExcelRpcHandlers extends PluginHandlerSupport {
             state.put("splitColumnIndex", cfg.splitColumnIndex);
             state.put("complexEntries", cfg.complexEntries.size());
             state.put("outputDir", cfg.outputDir != null ? cfg.outputDir.toString() : null);
-            return ok("mode=" + (cfg.mode != null ? cfg.mode.name() : "unset"), "state", state);
+            return ok(cfg.mode != null ? t("ex.modeIs", cfg.mode.name()) : t("ex.modeUnset"), "state", state);
         });
     }
 
     public Object aiCancel(Map<String, Object> params) {
         return result(() -> {
             sessions.remove(AI_SESSION);
-            return ok("session reset", null, null);
+            return ok(t("ex.sessionReset"), null, null);
         });
     }
 
@@ -271,16 +271,16 @@ public final class ExcelRpcHandlers extends PluginHandlerSupport {
         return JsonRpcWorker.string(params, key);
     }
 
-    private static String requiredString(Map<String, Object> params, String key) {
+    private String requiredString(Map<String, Object> params, String key) {
         String value = string(params, key);
-        if (value == null || value.isBlank()) throw new IllegalArgumentException(key + " is required");
+        if (value == null || value.isBlank()) throw new IllegalArgumentException(msgs.format("ex.err.paramRequired", key));
         return value;
     }
 
-    private static String requiredPath(Map<String, Object> params, String key) {
+    private String requiredPath(Map<String, Object> params, String key) {
         Object raw = params == null ? null : params.get(key);
         if (!(raw instanceof String value) || value.isBlank()) {
-            throw new IllegalArgumentException(key + " must be a resolved FengYu file reference");
+            throw new IllegalArgumentException(msgs.format("ex.err.notFileRef", key));
         }
         return value;
     }

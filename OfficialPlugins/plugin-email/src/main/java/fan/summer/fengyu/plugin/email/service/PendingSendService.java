@@ -8,6 +8,7 @@ import fan.summer.fengyu.plugin.email.model.SendResult;
 import fan.summer.fengyu.plugin.email.repository.AddressBookRepository;
 import fan.summer.fengyu.plugin.email.repository.PendingSendRepository;
 import fan.summer.fengyu.plugin.email.repository.SentLogRepository;
+import fan.summer.fengyu.sdk.PluginMessages;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,6 +28,7 @@ public final class PendingSendService {
     /** A task in SENDING longer than this is assumed to belong to a dead worker and reclaimed to FAILED. */
     private static final Duration STALE_THRESHOLD = Duration.ofMinutes(5);
     private static final Logger log = LoggerFactory.getLogger(PendingSendService.class);
+    private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, PendingSendService.class);
     private final PendingSendRepository pending;
     private final AddressBookRepository addressBook;
     private final SentLogRepository sentLogs;
@@ -67,7 +69,7 @@ public final class PendingSendService {
     }
 
     public ConfirmationEnvelope prepareBatch(String mode, BatchPlanner.BatchPlan plan) {
-        if (plan.messages().isEmpty()) throw new IllegalArgumentException("Batch contains no recipients");
+        if (plan.messages().isEmpty()) throw new IllegalArgumentException(MSGS.format("em.err.batchNoRecipients"));
         return prepare(mode, plan);
     }
 
@@ -217,7 +219,7 @@ public final class PendingSendService {
     }
 
     private PendingSend require(String id) {
-        return pending.find(id).orElseThrow(() -> new IllegalArgumentException("Unknown confirmation: " + id));
+        return pending.find(id).orElseThrow(() -> new IllegalArgumentException(MSGS.format("em.err.confirmationUnknown", id)));
     }
 
     private Snapshot decode(String json) { return gson.fromJson(json, Snapshot.class); }
