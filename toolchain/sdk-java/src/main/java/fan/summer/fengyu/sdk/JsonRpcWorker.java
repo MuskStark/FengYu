@@ -232,6 +232,12 @@ public final class JsonRpcWorker {
                 response.put("id", requestId);
                 PluginHandler handler = handlers.get(method);
                 if (handler == null) throw new RpcException(-32601, "Unknown method: " + method);
+                // Bind the per-request locale (host-injected via the `locale` params key) for the
+                // duration of the handler call so handlers can resolve localized messages through
+                // WorkerLocale.current() without changing the PluginHandler signature. Legacy hosts
+                // that omit the key leave the default "en" — no behaviour change for them. The
+                // outer finally unbinds it after every frame.
+                WorkerLocale.set(string(params, "locale"));
                 response.put("result", handler.handle(params));
             } catch (RpcException e) {
                 if (e.requestId() != null) response.put("id", e.requestId());
@@ -245,6 +251,10 @@ public final class JsonRpcWorker {
                 // Preserve the handler diagnostic for the direct caller. The host must not copy
                 // this untrusted message into shared logs; PluginProcessManager logs only its type.
                 response.put("error", Map.of("code", -32000, "message", String.valueOf(e.getMessage())));
+            } finally {
+                // Always unbind after a frame so no locale leaks across requests, regardless of
+                // whether the handler returned normally, threw, or never ran (e.g. unknown method).
+                WorkerLocale.clear();
             }
             transport.writeFrame(json.toJson(response));
         }

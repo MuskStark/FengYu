@@ -26,14 +26,33 @@ import java.util.Map;
  */
 public abstract class PluginHandlerSupport {
 
+    /** Base name of the SDK's own fallback bundle ({@value}), shipped inside the SDK jar. */
+    private static final String SDK_BUNDLE = "i18n.sdk-messages";
+    /**
+     * SDK-level fallback messages (e.g. {@code sdk.operationFailed}), loaded once from the SDK's own
+     * classpath via {@link PluginMessages#DEFAULT_BASE_NAME}-independent base name. Used for the
+     * shared envelope defaults so they stay English for legacy workers and localize for workers that
+     * opt into a locale — independent of each plugin's own message bundle.
+     */
+    private static final PluginMessages SDK_MESSAGES =
+            new PluginMessages(SDK_BUNDLE, PluginHandlerSupport.class.getClassLoader());
+
     /** Human-readable plugin name used in log lines and default failure summaries. */
     protected final String pluginName;
     /** Logger named after the concrete subclass so logs carry the real handler class. */
     protected final Logger log;
+    /**
+     * Localized message resolver for this worker, loaded from the plugin's own
+     * {@code i18n/messages[_zh].properties}. Resolves against {@link WorkerLocale#current()} per
+     * call. A worker that ships no bundles still works — every lookup falls back to the raw key, so
+     * legacy handlers that never call {@link #t(String, Object...)} see no behaviour change.
+     */
+    protected final PluginMessages msgs;
 
     protected PluginHandlerSupport(String pluginName) {
         this.pluginName = pluginName;
         this.log = LoggerFactory.getLogger(getClass());
+        this.msgs = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, getClass());
     }
 
     /**
@@ -95,8 +114,38 @@ public abstract class PluginHandlerSupport {
     protected Map<String, Object> failure(String summary) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("success", false);
-        result.put("summary", summary == null || summary.isBlank() ? "operation failed" : summary);
+        result.put("summary", summary == null || summary.isBlank() ? SDK_MESSAGES.format("sdk.operationFailed") : summary);
         return result;
+    }
+
+    // ── keyed (localized) envelope builders ─────────────────────────────
+    // Use these when the summary comes from a message-bundle key. They resolve the key against the
+    // current worker locale via {@link #t(String, Object...)}. The plain String overloads above are
+    // retained for handlers that build a summary from a non-keyed value (e.g. echoing a filename).
+    // Distinct names (okKey/failKey) avoid overload ambiguity with ok(String)/failure(String).
+
+    /** Envelope success whose summary is the localized {@code summaryKey} with interpolation. */
+    protected Map<String, Object> okKey(String summaryKey, Object... args) {
+        return ok(t(summaryKey, args));
+    }
+
+    /** Envelope success with a localized summary plus a single result field. */
+    protected Map<String, Object> okKey(String summaryKey, Object[] args, String key, Object value) {
+        return ok(t(summaryKey, args), key, value);
+    }
+
+    /** Envelope failure whose summary is the localized {@code failureKey} with interpolation. */
+    protected Map<String, Object> failKey(String failureKey, Object... args) {
+        return failure(t(failureKey, args));
+    }
+
+    /**
+     * Resolve a message-bundle key for the current worker locale with {@code {0}}/{@code {1}}/…
+     * positional interpolation. Convenience passthrough to {@link PluginMessages#format} so handlers
+     * write {@code t("ex.analyzed", sheets)} instead of {@code msgs.format(...)}.
+     */
+    protected String t(String key, Object... args) {
+        return msgs.format(key, args);
     }
 
     @SuppressWarnings("unchecked")
@@ -108,7 +157,7 @@ public abstract class PluginHandlerSupport {
     /** One-line, throwable→message conversion that strips newlines so the summary stays single-line. */
     protected String safeMessage(Throwable error) {
         String message = error.getMessage();
-        if (message == null || message.isBlank()) return pluginName + " operation failed";
+        if (message == null || message.isBlank()) return SDK_MESSAGES.format("sdk.pluginOperationFailed", pluginName);
         return message.replace('\r', ' ').replace('\n', ' ');
     }
 
