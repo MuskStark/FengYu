@@ -88,6 +88,20 @@ public final class SpringAiCloudBackend implements ChatBackend {
     private final AtomicBoolean generating = new AtomicBoolean(false);
 
     /**
+     * Cancel handle for the in-flight generation's worker virtual thread. The thread reference
+     * is captured when {@code runToolLoop} starts and cleared in its finally; {@link
+     * #cancelGeneration()} sets the flag AND interrupts the thread so a worker blocked inside
+     * a tool call (e.g. {@code BrowserBridgeClient.invoke}'s HTTP send, which is interruptible
+     * per the JDK HttpClient contract) unblocks immediately. The {@code cancelled} flag is the
+     * authoritative signal: even if the tool swallows the interrupt (BrowserTool.bridge catches
+     * all exceptions into a failure envelope), the round-boundary check in runToolLoop still
+     * terminates the loop. Mirrors the AgentRun/AgentRunner pattern (agent path already does
+     * this; the ordinary-chat path previously did not, so "stop AI" left in-flight tools running).
+     */
+    private volatile boolean cancelled = false;
+    private volatile Thread workerThread;
+
+    /**
      * The active Spring AI stream subscription for the in-progress generation, plus a latch
      * the worker virtual thread awaits. {@link #cancelGeneration()} disposes the subscription,
      * which terminates the stream and releases the latch so the worker can exit and clear
@@ -280,11 +294,16 @@ public final class SpringAiCloudBackend implements ChatBackend {
         Thread.ofVirtual().start(() -> {
             AiPermissionContext.set(permissionMode);
             try {
+                workerThread = Thread.currentThread();
                 runToolLoop(history, activeFileRefs, callback, enableTools, maxToolRounds);
             } catch (Exception e) {
                 log.error("{} chat failed", provider, e);
                 callback.onError(e);
             } finally {
+                workerThread = null;
+                // Clear any interrupt raised by cancelGeneration() so it does not leak into a
+                // subsequent reuse of this pooled virtual thread.
+                Thread.interrupted();
                 disposeActiveStream();
                 generating.set(false);
                 AiPermissionContext.clear();
@@ -299,6 +318,12 @@ public final class SpringAiCloudBackend implements ChatBackend {
         // connection stalled) would leave generating=true forever, wedging all subsequent requests.
         disposeActiveStream();
         if (toolApprovalGate != null) toolApprovalGate.cancelPending();
+        // Stop in-flight tool calls too (not just the LLM stream): set the flag the loop checks
+        // at each round boundary and interrupt the worker so a blocking call inside a tool
+        // (e.g. BrowserBridgeClient.invoke's HTTP send) unblocks immediately.
+        cancelled = true;
+        Thread worker = workerThread;
+        if (worker != null) worker.interrupt();
         log.debug("cancelGeneration() requested; active stream disposed");
     }
 
@@ -319,6 +344,11 @@ public final class SpringAiCloudBackend implements ChatBackend {
     private void runToolLoop(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs,
                              AiStreamCallback callback, boolean enableTools, int maxToolRounds)
             throws AiServiceException {
+        // Re-arm for a fresh turn: cancelGeneration() flips `cancelled` to terminate the previous
+        // run; a singleton backend reuses this instance, so the flag must be cleared here or every
+        // subsequent chat would abort immediately. Set false AFTER startChat captured the worker
+        // thread, so a cancel that races this reset still has a thread to interrupt.
+        cancelled = false;
         // Route A fallback: when the host could not transparently inject a FileRef, the model
         // sees the active files here and picks one. Route B injection flows via ChatFileContext
         // (set by AiController around this call) for the transparent path.
@@ -358,6 +388,11 @@ public final class SpringAiCloudBackend implements ChatBackend {
         // A loop counter alone cannot bound cost, but it stops a model that re-requests the
         // same tool forever from wedging this virtual thread and locking `generating`.
         for (int round = 0; maxToolRounds <= 0 || round < maxToolRounds; round++) {
+            // Authoritative cancel gate: a tool may swallow the interrupt into a failure envelope
+            // (BrowserTool.bridge catches all exceptions), so without this check the loop would
+            // re-prompt the model with that failure and keep going. Checked at the top of every
+            // round — the tightest boundary Spring AI's ToolCallingManager exposes to us.
+            if (cancelled) throw new AiServiceException("cancelled");
             Prompt prompt = options != null ? new Prompt(conversation, options) : new Prompt(conversation);
 
             // Stream this round; fire onToken per token delta; the aggregator hands us the
