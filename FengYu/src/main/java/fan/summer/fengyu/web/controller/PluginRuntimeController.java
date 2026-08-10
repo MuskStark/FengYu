@@ -62,8 +62,13 @@ public class PluginRuntimeController {
     }
 
     @PostMapping("/api/plugin-runtime/{id}/invoke")
-    public Object invoke(@PathVariable String id, @RequestBody InvokeRequest request) {
-        return processes.invoke(id, request.method(), request.params());
+    public Object invoke(@PathVariable String id, @RequestBody InvokeRequest request,
+            @org.springframework.web.bind.annotation.RequestHeader(name = "Accept-Language", required = false) String acceptLanguage) {
+        // Resolve the request locale (same resolver as the plugin list above) and thread it into the
+        // worker call so plugin summaries/errors render in the user's language. Null header → default
+        // locale (en), matching pre-i18n behaviour.
+        String locale = ManifestI18n.resolveLocale(acceptLanguage);
+        return processes.invoke(id, request.method(), request.params(), locale);
     }
 
     /**

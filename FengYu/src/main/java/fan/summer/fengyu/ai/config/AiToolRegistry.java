@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.ai.AiToolFileInjector;
 import fan.summer.fengyu.ai.ChatFileContext;
 import fan.summer.fengyu.ai.FengYuTool;
+import fan.summer.fengyu.ai.tools.AiToolLocaleContext;
 import fan.summer.fengyu.ai.tools.ApprovalRequiredTool;
 import fan.summer.fengyu.ai.tools.ApprovalRequiredToolCallback;
 import fan.summer.fengyu.ai.tools.AuditedToolCallback;
@@ -146,7 +147,7 @@ public final class AiToolRegistry {
                     var injected = AiToolFileInjector.injectFileRefs(
                             params, pluginId, tool.inputSchema(), ChatFileContext.current());
                     long timeout = tool.timeoutSeconds() == null ? -1 : tool.timeoutSeconds();
-                    Object result = processes.invoke(pluginId, tool.method(), injected, timeout);
+                    Object result = processes.invoke(pluginId, tool.method(), injected, timeout, AiToolLocaleContext.current());
                     return result instanceof String text ? text : json.writeValueAsString(result);
                 } catch (Exception error) {
                     return "{\"success\":false,\"error\":" + quote(String.valueOf(error.getMessage())) + "}";

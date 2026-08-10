@@ -120,11 +120,28 @@ public class PluginProcessManager {
         return invoke(pluginId, method, params, -1);
     }
 
+    /** Invoke with the plugin-wide default timeout and a request locale (e.g. {@code "zh"}/{@code "en"}). */
+    public Object invoke(String pluginId, String method, Map<String, Object> params, String locale) {
+        return invoke(pluginId, method, params, -1, locale);
+    }
+
     /**
      * Invoke with an explicit per-call timeout in seconds. Caller-supplied values are clamped to
      * {@code [1, MAX_TIMEOUT_SECONDS]}; {@code -1} means "use the plugin-wide default".
      */
     public Object invoke(String pluginId, String method, Map<String, Object> params, long timeoutSeconds) {
+        return invoke(pluginId, method, params, timeoutSeconds, null);
+    }
+
+    /**
+     * Invoke with an explicit per-call timeout and a request locale. The locale is injected into the
+     * params map sent to the worker (key {@code "locale"}) so a worker that resolves localized
+     * messages can read it via {@code WorkerLocale.current()} without changing the JSON-RPC envelope.
+     * A {@code null}/blank locale is omitted entirely — the worker then defaults to English, matching
+     * pre-i18n behaviour for callers that don't know the locale.
+     */
+    public Object invoke(String pluginId, String method, Map<String, Object> params,
+            long timeoutSeconds, String locale) {
         if (!packages.isEnabled(pluginId)) throw new IllegalArgumentException("Plugin is disabled: " + pluginId);
         // The entire "is it updating? find manifest + acquire/reuse a Worker" sequence runs under the
         // per-plugin update lock so it is mutually exclusive with beginUpdate/stop/endUpdate. Without
@@ -194,6 +211,13 @@ public class PluginProcessManager {
         long startedNanos = System.nanoTime();
         try {
             @SuppressWarnings("unchecked") Map<String, Object> resolved = (Map<String, Object>) resolveRefs(pluginId, params == null ? Map.of() : params);
+            // Inject the request locale AFTER resolveRefs so a FileRef resolver never tries to treat
+            // the locale string as a file reference. The locale rides alongside the call params; the
+            // worker SDK binds it to WorkerLocale for the handler call. A null/blank locale is skipped
+            // so legacy workers and callers without a locale see no extra key (English default).
+            if (locale != null && !locale.isBlank()) {
+                resolved.put("locale", locale);
+            }
             // Resolved params carry FileRefs turned into absolute paths (and still hold any secret
             // values), so only their KEYS are safe to log even at DEBUG.
             log.debug("Plugin {} resolved {} keys={}", pluginId, method, resolved.keySet());
