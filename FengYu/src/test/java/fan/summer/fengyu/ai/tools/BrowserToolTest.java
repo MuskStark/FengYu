@@ -78,4 +78,15 @@ class BrowserToolTest {
         assertEquals(Boolean.FALSE, r.get("success"));
         assertTrue(((String) r.get("summary")).contains("browser bridge unavailable"));
     }
+
+    @Test
+    void degradedModeNoBridgeClientReturnsFailureNotException() throws Exception {
+        // When the Electron bridge env is absent (e.g. IDE start without the shell), the
+        // Spring constructor leaves client=null. Every tool call must return a friendly
+        // failure envelope, not throw — so the bean registers and AI sees browser_* tools.
+        var tool = new BrowserTool(null);
+        Map<String, Object> r = parse(tool.navigate("https://example.com", "load"));
+        assertEquals(Boolean.FALSE, r.get("success"));
+        assertTrue(((String) r.get("summary")).contains("browser bridge unavailable"));
+    }
 }
