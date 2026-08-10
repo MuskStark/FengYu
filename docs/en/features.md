@@ -50,7 +50,7 @@ The Agent orchestrates three distinct, intentionally separate surfaces:
 | **Email Center** | Multi-account confirmed SMTP sending, address books, manual IMAP collection, archives, and nine AI tools. | [Email Center](/en/plugins/email-center) |
 | **Markdown Editor** | Edit and preview Markdown in the built-in editor. | [Markdown plugin](/en/plugins/official-markdown) |
 | **Offline Python Builder** | Build air-gap-ready Python wheelhouses (full dependency resolution via `pip download`) as an async job, with verify and deploy. | [Offline Python](/en/plugins/official-offlinepython) |
-| **Browser Agent** | Drive a real Chromium via Playwright — navigate, click, type, scrape, screenshot, and eval JS through nine AI tools. | [Browser Agent](/en/plugins/official-browser) |
+| **Browser Agent** | Built-in browser automation via Electron's native engine — navigate, click, type, scrape, screenshot, and eval JS through nine approval-gated AI tools. Desktop-only. | [Browser Capability](/en/plugins/official-browser) |
 | **Multi-Database** | First-launch wizard picks H2, SQLite, MySQL, or PostgreSQL. Passwords are AES-GCM encrypted. | [Database guide](/en/guide/database) |
 | **Internationalization** | English-first docs and a localized Vue UI via `vue-i18n`. | [Design System](/en/design-system) |
 | **Dark / Light theme** | Material Design 3 theming with dark and light modes, shared with plugin micro-frontends. | [Design System](/en/design-system) |

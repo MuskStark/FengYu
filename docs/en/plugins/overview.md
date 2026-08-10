@@ -24,7 +24,7 @@ The UI runs in a **sandboxed iframe** and talks to the host through a `postMessa
 
 Two sources of plugins:
 
-- **Official** — built by the FengYu team, declared with `"official": true` in the manifest, and seeded into every fresh install by the `OfficialPluginSeeder` (which verifies a SHA-256 sidecar before installing). The shipped set includes `fan.summer.markdown`, `fan.summer.excel`, `fan.summer.email`, `fan.summer.offlinepython`, and `fan.summer.browser`.
+- **Official** — built by the FengYu team, declared with `"official": true` in the manifest, and seeded into every fresh install by the `OfficialPluginSeeder` (which verifies a SHA-256 sidecar before installing). The shipped set includes `fan.summer.markdown`, `fan.summer.excel`, `fan.summer.email`, and `fan.summer.offlinepython`. (Browser automation is now a host-embedded backend capability, not a plugin — see [Browser Capability](/en/plugins/official-browser).)
 - **Third-party** — any `.fyp` archive installed by the user through the marketplace or an upload. Their `source` is `THIRD_PARTY`.
 
 The descriptor exposes this as the `source` field — `OFFICIAL` or `THIRD_PARTY` — on every `InstalledPluginDescriptor` returned by `GET /api/plugin-runtime`.
@@ -35,7 +35,7 @@ The descriptor exposes this as the `source` field — `OFFICIAL` or `THIRD_PARTY
 > claim to be official or squat an official id. This closes the impersonation hole; full asymmetric
 > signature verification (a published key signing each `.fyp`) is a tracked follow-up.
 
-> Each official plugin is documented in depth: [Markdown](/en/plugins/official-markdown), [Excel](/en/plugins/official-excel), [Email Center](/en/plugins/email-center), [Offline Python](/en/plugins/official-offlinepython), [Browser Agent](/en/plugins/official-browser).
+> Each official plugin is documented in depth: [Markdown](/en/plugins/official-markdown), [Excel](/en/plugins/official-excel), [Email Center](/en/plugins/email-center), [Offline Python](/en/plugins/official-offlinepython). The built-in [Browser Capability](/en/plugins/official-browser) is documented separately — it is not a plugin.
 
 ## Lifecycle
 

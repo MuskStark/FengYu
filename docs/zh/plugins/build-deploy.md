@@ -6,7 +6,7 @@ lang: zh
 
 # 构建与部署
 
-一个 `.fyp` 是一个具有固定运行时布局的 zip 归档。所有插件——无论第三方还是官方——都有**一条**构建流程，由 `fengyu plugin build` 和 `fengyu.plugin.json` 声明驱动。旧的 shell 打包器已被移除；五个随产品发布的官方插件现在由同一套 CLI 构建。
+一个 `.fyp` 是一个具有固定运行时布局的 zip 归档。所有插件——无论第三方还是官方——都有**一条**构建流程，由 `fengyu plugin build` 和 `fengyu.plugin.json` 声明驱动。旧的 shell 打包器已被移除；四个随产品发布的官方插件现在由同一套 CLI 构建。
 
 ## `.fyp` 布局
 
@@ -91,14 +91,13 @@ GitHub Packages authentication is required. Set FENGYU_GITHUB_TOKEN or GITHUB_TO
 
 ## 构建官方插件
 
-五个随产品发布的插件由同一套 CLI 构建——没有单独的脚本：
+四个随产品发布的插件由同一套 CLI 构建——没有单独的脚本：
 
 ```bash
 node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-markdown
 node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-excel
 node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-email
 node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-offlinepython
-node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-browser
 ```
 
 每条都会写出 `OfficialPlugins/plugin-<name>/dist-package/fan.summer.<name>-<version>.fyp` 及其相邻的 `.fyp.sha256` 侧车。CI 在 `.github/workflows/toolchain-ci.yml` 中以矩阵方式构建它们；应用发布工作流会把每一对包与侧车一起带入 Web 和桌面发行包。

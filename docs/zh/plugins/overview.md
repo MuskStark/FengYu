@@ -24,7 +24,7 @@ UI 运行在**沙箱化的 iframe** 中，通过 `@infinia/plugin-sdk` 提供的
 
 插件有两个来源：
 
-- **官方插件**——由 FengYu 团队构建，清单中声明 `"official": true`，由 `OfficialPluginSeeder`（在安装前校验 SHA-256 sidecar）预置进每一次全新安装。随产品发布的官方插件集合包括 `fan.summer.markdown`、`fan.summer.excel`、`fan.summer.email`、`fan.summer.offlinepython` 和 `fan.summer.browser`。
+- **官方插件**——由 FengYu 团队构建，清单中声明 `"official": true`，由 `OfficialPluginSeeder`（在安装前校验 SHA-256 sidecar）预置进每一次全新安装。随产品发布的官方插件集合包括 `fan.summer.markdown`、`fan.summer.excel`、`fan.summer.email` 和 `fan.summer.offlinepython`。（浏览器自动化现在是宿主内嵌的后端能力，不再是插件——参见[浏览器能力](/zh/plugins/official-browser)。）
 - **第三方插件**——任何用户通过插件市场或上传安装的 `.fyp` 归档。其 `source` 为 `THIRD_PARTY`。
 
 描述符将这一点以 `source` 字段——`OFFICIAL` 或 `THIRD_PARTY`——暴露出来，该字段出现在 `GET /api/plugin-runtime` 返回的每一个 `InstalledPluginDescriptor` 上。
@@ -34,7 +34,7 @@ UI 运行在**沙箱化的 iframe** 中，通过 `@infinia/plugin-sdk` 提供的
 > **拒绝**——它既不能自称官方，也不能占用官方 id。这关闭了冒充漏洞；完整的非对称签名校验
 > （用已发布的密钥对每个 `.fyp` 签名）是一项已立项的后续工作。
 
-> 每个官方插件都有详细文档：[Markdown](/zh/plugins/official-markdown)、[Excel](/zh/plugins/official-excel)、[邮件中心](/zh/plugins/email-center)、[Offline Python](/zh/plugins/official-offlinepython)、[浏览器代理](/zh/plugins/official-browser)。
+> 每个官方插件都有详细文档：[Markdown](/zh/plugins/official-markdown)、[Excel](/zh/plugins/official-excel)、[邮件中心](/zh/plugins/email-center)、[Offline Python](/zh/plugins/official-offlinepython)。内置的[浏览器能力](/zh/plugins/official-browser)单独成篇——它不是插件。
 
 ## 生命周期
 

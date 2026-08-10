@@ -6,6 +6,22 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### ♻️ Changed
+- **Browser automation moved from `plugin-browser` (Playwright) to a host-embedded capability.**
+  Browser automation is now built into the desktop application and exposed by the backend
+  `BrowserTool`, not a `.fyp` plugin. It drives a real browser window through Electron's native
+  `webContents` and the Chrome DevTools Protocol (CDP) over a loopback HTTP bridge — **no Playwright
+  dependency and no separate Chromium download**. The nine AI tools (`browser_navigate`,
+  `browser_click`, `browser_type`, `browser_get_text`, `browser_query`, `browser_screenshot`,
+  `browser_wait_for`, `browser_eval_js`, `browser_close`) remain, each approval-gated. The capability
+  is **desktop-only**: it requires the Electron shell and is unavailable in pure-web / headless mode.
+
+### 🗑️ Removed
+- **`plugin-browser` (`fan.summer.browser`) official plugin.** The Playwright-based browser plugin
+  has been removed; its function is now provided by the host-embedded `BrowserTool` (see Changed
+  above). `OfficialPlugins` now ships four plugins: `plugin-markdown`, `plugin-excel`,
+  `plugin-email`, and `plugin-offlinepython`.
+
 ## [4.0.0-beta.1] — 2026-08-09
 
 ### ✨ Added
