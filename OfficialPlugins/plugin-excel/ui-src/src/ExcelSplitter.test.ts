@@ -690,7 +690,16 @@ describe('ExcelSplitter stateful wizard', () => {
     expect(invoke.mock.calls.filter(([method]) => method === 'split')).toHaveLength(1)
     expect(invoke).toHaveBeenCalledWith(
       'split',
-      { session: 'new-session', sourceFile: sourceRef, outputDir: outputRef },
+      // split re-sends the full config so a worker restarted between configure and split
+      // (the host tears down/restarts a worker on a file-grant version change, e.g. the
+      // output-dir grant on the Output step) can re-apply it instead of falling back.
+      {
+        session: 'new-session',
+        sourceFile: sourceRef,
+        outputDir: outputRef,
+        mode: 'BY_SHEET',
+        filePrefix: '',
+      },
       { signal: expect.any(AbortSignal) },
     )
     resolveSplit({ success: true, fileCount: 2, files: ['north.xlsx', 'south.xlsx'] })
