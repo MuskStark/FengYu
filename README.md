@@ -96,7 +96,7 @@ These builds are currently unsigned; code-signing is deferred to a later release
 - **📧 Email Center** — Multi-account SMTP/IMAP, contact/tag management, filename-tag batch sending, manual archive collection, and nine confirmation-first AI tools. See [Email Center](docs/en/plugins/email-center.md).
 - **📝 Markdown Editor** — Split-pane editor with isolated server-side rendering. See [Markdown](docs/en/plugins/official-markdown).
 - **📦 Offline Python Builder** — Build air-gap-ready Python wheelhouses (full dependency resolution via `pip download`) as an async job, with verify and deploy. See [Offline Python](docs/en/plugins/official-offlinepython).
-- **🌐 Browser Agent** — Drive a real Chromium via Playwright: navigate, click, type, scrape, screenshot, and eval JS through nine AI tools. See [Browser Agent](docs/en/plugins/official-browser.md).
+- **🌐 Browser Agent** — A **built-in** (host-embedded, not a plugin) capability that drives a real browser window through Electron's native engine — no separate Chromium/Playwright download. Nine approval-gated AI tools: navigate, click, type, scrape, screenshot, eval JS. **Desktop-only** (requires the Electron shell). See [Browser Capability](docs/en/plugins/official-browser.md).
 - **💾 Multi-Database** — First-launch wizard picks H2, SQLite, MySQL, or PostgreSQL; passwords AES-GCM encrypted. See [Database](docs/en/guide/database).
 - **🎨 Material Design 3** — Vuetify 3 MD3 UI, shared with plugin micro-frontends, dark and light themes. See [Design System](docs/en/design-system).
 - **🌍 Internationalization** — English-first docs and a localized Vue UI (vue-i18n).
@@ -141,7 +141,7 @@ the token + api-base to the renderer via a `contextBridge` preload. See [Archite
 | Module / dir | Purpose |
 |--------|---------|
 | `toolchain/sdk-java` | Java Worker SDK + TypeScript `@infinia/plugin-sdk` (the iframe `postMessage` bridge, in `toolchain/sdk-ts`). |
-| `OfficialPlugins` | Official plugins: `plugin-markdown`, `plugin-excel`, `plugin-email`, `plugin-offlinepython`, `plugin-browser` (each ships a `.fyp`). |
+| `OfficialPlugins` | Official plugins: `plugin-markdown`, `plugin-excel`, `plugin-email`, `plugin-offlinepython` (each ships a `.fyp`). Browser automation is now a host-embedded capability, not a plugin. |
 | `FengYu` | Headless Spring Boot backend — REST/SSE controllers, AI backends, JPA/Hibernate, marketplace. |
 | `frontend/` | Vue 3.5 + TS SPA (runs identically in the browser or the Electron BrowserWindow). |
 | `desktop/` | Electron 43.x desktop shell — sidecar-launches the JAR, tray, native dialogs, auto-updater. |
