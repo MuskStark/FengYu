@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import { useConnectionStore, type ConnState } from '@/stores/connection'
+import { useUpdateStore } from '@/stores/update'
 
 const conn = useConnectionStore()
+const update = useUpdateStore()
+const router = useRouter()
 const appVersion = __APP_VERSION__
 let timer: number | undefined
 let everConnected = false
@@ -26,6 +30,8 @@ async function poll() {
 onMounted(() => {
   void poll()
   timer = window.setInterval(poll, 5000)
+  // Non-blocking update probe — badge stays hidden until a newer release is found.
+  void update.check()
 })
 onUnmounted(() => {
   if (timer) window.clearInterval(timer)
@@ -50,6 +56,16 @@ const indicatorClass: Record<ConnState, string> = {
 <template>
   <footer class="cx-statusbar">
     <span class="status-version">{{ $t('brand') }} {{ appVersion }}</span>
+    <button
+      v-if="update.updateAvailable"
+      type="button"
+      class="cx-chip cx-chip--warn status-update-badge"
+      :title="$t('update.available', { version: update.latestVersion })"
+      @click="router.push({ name: 'about' })"
+    >
+      <i class="mdi mdi-arrow-up-circle" aria-hidden="true" />
+      {{ $t('update.newVersion') }} v{{ update.latestVersion }}
+    </button>
     <span
       class="status-indicator"
       :class="indicatorClass[conn.state]"
@@ -82,6 +98,18 @@ const indicatorClass: Record<ConnState, string> = {
   color: rgb(var(--v-theme-secondary));
 }
 .status-version { font-size: 12px; }
+.status-update-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  font-size: 11px;
+  line-height: 1.6;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+}
+.status-update-badge .mdi { font-size: 13px; }
 .status-indicator {
   position: relative;
   width: 16px;
