@@ -36,11 +36,30 @@ describe('handleBrowserOp', () => {
 
   it('navigate creates the window and loads the url', async () => {
     loadURL.mockResolvedValue(undefined)
+    execJs.mockResolvedValue('Example')
     const s = new BrowserSession()
     const r = await handleBrowserOp(s, 'browser_navigate', { url: 'https://example.com' })
     expect(loadURL).toHaveBeenCalledWith('https://example.com')
     expect(r.success).toBe(true)
+    // Title must come from the live DOM (executeJavaScript 'document.title'), not getTitle().
+    expect(execJs).toHaveBeenCalledWith('document.title')
     expect(r.title).toBe('Example')
+  })
+
+  it('navigate honors waitUntil:networkidle with a settle delay', async () => {
+    loadURL.mockResolvedValue(undefined)
+    execJs.mockResolvedValue('Idle Page')
+    const s = new BrowserSession()
+    const start = Date.now()
+    const r = await handleBrowserOp(s, 'browser_navigate', {
+      url: 'https://example.com',
+      waitUntil: 'networkidle',
+    })
+    // The networkidle path must wait the documented 500ms degrade delay.
+    expect(Date.now() - start).toBeGreaterThanOrEqual(480)
+    expect(r.success).toBe(true)
+    expect(execJs).toHaveBeenCalledWith('document.title')
+    expect(r.title).toBe('Idle Page')
   })
 
   it('click returns no session when window absent', async () => {
