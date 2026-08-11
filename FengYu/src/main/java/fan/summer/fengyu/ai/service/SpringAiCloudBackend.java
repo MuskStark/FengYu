@@ -298,6 +298,16 @@ public final class SpringAiCloudBackend implements ChatBackend {
                 runToolLoop(history, activeFileRefs, callback, enableTools, maxToolRounds);
             } catch (Exception e) {
                 log.error("{} chat failed", provider, e);
+                // Clear `generating` BEFORE invoking onError. A caller that awaits the error
+                // callback (e.g. a test, or the UI starting a retry) observes the backend as
+                // reusable the moment onError fires; if the flag stayed set until the finally
+                // block, a racing next chat() would hit "Generation already in progress" even
+                // though this turn had already failed. Dispose + clear here, keep the finally
+                // clear as a belt-and-braces fallback (idempotent set).
+                workerThread = null;
+                Thread.interrupted();
+                disposeActiveStream();
+                generating.set(false);
                 callback.onError(e);
             } finally {
                 workerThread = null;
