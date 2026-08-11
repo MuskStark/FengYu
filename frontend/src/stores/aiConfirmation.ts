@@ -66,7 +66,9 @@ export function parseToolConfirmation(payload: Record<string, unknown>): ToolCon
 }
 
 export async function actOnConfirmation(item: ToolConfirmation, approve: boolean,
-    invoke: InvokePlugin = api.pluginInvoke,
+    invoke: InvokePlugin = (id, method, params) => api.pluginInvoke(id, method, params, {
+      callId: crypto.randomUUID(),
+    }),
     resolveHost: ResolveHost = api.resolveAiToolApproval): Promise<void> {
   if (item.status !== 'pending') return
   item.status = 'submitting'

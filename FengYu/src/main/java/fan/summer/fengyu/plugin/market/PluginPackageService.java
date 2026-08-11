@@ -394,7 +394,8 @@ public class PluginPackageService {
     }
 
     private void validate(PluginManifest m, Path staging, boolean trustedSource) {
-        if (m.schemaVersion() != 1) throw new IllegalArgumentException("Unsupported manifest schemaVersion");
+        // T2-04 bullet 1: the host accepts ONLY schema v2.
+        if (m.schemaVersion() != 2) throw new IllegalArgumentException("Unsupported manifest schemaVersion");
         if (m.id() == null || !m.id().matches("[a-z0-9]+(?:[.-][a-z0-9]+)+")) {
             throw new IllegalArgumentException("Plugin id must be a lowercase reverse-domain identifier");
         }
@@ -443,45 +444,59 @@ public class PluginPackageService {
             }
         }
         if (m.backend() != null) {
-            if (m.backend().protocol() != null
-                    && !"json-rpc-2.0".equals(m.backend().protocol())) {
-                throw new IllegalArgumentException("Unsupported plugin backend protocol: " + m.backend().protocol());
-            }
             validateTimeout(m.backend().callTimeoutSeconds(), "backend.callTimeoutSeconds");
         }
+        // T2-04: validate the rpc.methods table. Each method's inputSchema must be a JSON-Schema
+        // object (read directly from the parsed JsonNode — no string re-parsing). A backend with no
+        // callable method is invalid (a worker that cannot be invoked serves no purpose).
+        java.util.Map<String, PluginManifest.RpcMethod> methods = m.rpc() != null ? m.rpc().methods() : null;
+        if (m.backend() != null && (methods == null || methods.isEmpty())) {
+            throw new IllegalArgumentException(
+                "Plugin declares a backend but no rpc.methods — a worker must expose at least one method");
+        }
+        if (methods != null) {
+            for (var entry : methods.entrySet()) {
+                String methodName = entry.getKey();
+                PluginManifest.RpcMethod method = entry.getValue();
+                if (!isObjectSchema(method.inputSchema())) {
+                    throw new IllegalArgumentException(
+                        "rpc.methods." + methodName + ".inputSchema must be a JSON object schema");
+                }
+                if (method.outputSchema() != null && !isObjectSchema(method.outputSchema())) {
+                    throw new IllegalArgumentException(
+                        "rpc.methods." + methodName + ".outputSchema must be a JSON object schema");
+                }
+                validateTimeout(method.timeoutSeconds(), "rpc.methods." + methodName + ".timeoutSeconds");
+            }
+        }
         java.util.Set<String> toolNames = new java.util.HashSet<>();
-        java.util.Set<String> toolMethods = new java.util.HashSet<>();
         for (PluginManifest.AiTool tool : Optional.ofNullable(m.aiTools()).orElse(List.of())) {
             if (tool.name() == null || tool.name().isBlank() || !toolNames.add(tool.name())) {
                 throw new IllegalArgumentException("Invalid or duplicate AI tool name: " + tool.name());
             }
-            if (tool.method() == null || tool.method().isBlank() || !toolMethods.add(tool.method())) {
-                throw new IllegalArgumentException("Invalid or duplicate AI tool method: " + tool.method());
+            if (tool.method() == null || tool.method().isBlank()) {
+                throw new IllegalArgumentException("Invalid AI tool method: " + tool.name());
             }
-            try {
-                com.fasterxml.jackson.databind.JsonNode schemaNode = new com.fasterxml.jackson.databind.ObjectMapper().readTree(tool.inputSchema());
-                if (!(schemaNode.has("type") && "object".equals(schemaNode.get("type").asText()))) {
-                    throw new IllegalArgumentException("AI tool inputSchema must be a JSON object: " + tool.name());
-                }
-            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
-                throw new IllegalArgumentException("Invalid inputSchema for AI tool " + tool.name(), e);
+            // T2-04 bullet 3: the input schema is resolved from the referenced rpc method's OBJECT
+            // schema — there is no inline string to parse. A dangling method reference (the tool
+            // points at a method that does not exist in rpc.methods) is rejected at install time.
+            if (methods == null || !methods.containsKey(tool.method())) {
+                throw new IllegalArgumentException(
+                    "AI tool " + tool.name() + " references unknown method: " + tool.method());
             }
-            if (tool.outputSchema() != null) {
-                try {
-                    com.fasterxml.jackson.databind.JsonNode schemaNode = new com.fasterxml.jackson.databind.ObjectMapper()
-                        .readTree(tool.outputSchema());
-                    if (!(schemaNode.has("type") && "object".equals(schemaNode.get("type").asText()))) {
-                        throw new IllegalArgumentException("AI tool outputSchema must be a JSON object: " + tool.name());
-                    }
-                } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
-                    throw new IllegalArgumentException("Invalid outputSchema for AI tool " + tool.name(), e);
-                }
-            }
-            validateTimeout(tool.timeoutSeconds(), "aiTools[" + tool.name() + "].timeoutSeconds");
-            if (tool.effect() != null && !java.util.Set.of("read", "write", "external").contains(tool.effect())) {
+            // v2 makes effect mandatory authorization metadata.
+            if (tool.effect() == null
+                    || !java.util.Set.of("read", "write", "external").contains(tool.effect())) {
                 throw new IllegalArgumentException("Invalid effect for AI tool " + tool.name());
             }
+            validateTimeout(tool.timeoutSeconds(), "aiTools[" + tool.name() + "].timeoutSeconds");
         }
+    }
+
+    /** A JsonNode is a valid OBJECT input/output schema when it has {@code type:"object"}. */
+    private static boolean isObjectSchema(com.fasterxml.jackson.databind.JsonNode schema) {
+        return schema != null && schema.isObject()
+                && schema.has("type") && "object".equals(schema.get("type").asText());
     }
 
     private static void validateTimeout(Long seconds, String field) {

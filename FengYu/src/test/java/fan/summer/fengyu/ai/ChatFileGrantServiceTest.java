@@ -161,12 +161,12 @@ class ChatFileGrantServiceTest {
             boolean backend) throws Exception {
         Path directory = Files.createDirectories(root.resolve(id));
         String backendJson = backend
-            ? "{\"command\":\"java -jar worker.jar\",\"protocol\":\"json-rpc-2.0\"}"
+            ? "{\"callTimeoutSeconds\":60}"
             : "null";
         String permissionJson = permissions.stream().map(value -> "\"" + value + "\"")
             .collect(java.util.stream.Collectors.joining(",", "[", "]"));
         Files.writeString(directory.resolve("manifest.json"), """
-            {"schemaVersion":1,"id":"%s","name":"%s","description":"test","version":"1.0.0",
+            {"schemaVersion":2,"id":"%s","name":"%s","description":"test","version":"1.0.0",
              "author":"test","icon":"test","category":"OTHER","ui":{"entry":"ui/index.html"},
              "backend":%s,"permissions":%s,"official":false,"aiTools":[]}
             """.formatted(id, id, backendJson, permissionJson));

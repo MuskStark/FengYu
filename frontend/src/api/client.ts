@@ -233,12 +233,18 @@ export const api = {
     id: string,
     action: string,
     args: Record<string, unknown> = {},
+    options: { callId: string; signal?: AbortSignal },
   ): Promise<PluginInvokeResult> {
     const { data } = await http.post<PluginInvokeResult>(
       `/api/plugin-runtime/${encodeURIComponent(id)}/invoke`,
-      { method: action, params: args },
+      { callId: options.callId, method: action, params: args },
+      { signal: options.signal },
     )
     return data
+  },
+
+  async cancelPluginInvoke(id: string, callId: string): Promise<void> {
+    await http.post(`/api/plugin-runtime/${encodeURIComponent(id)}/invoke/${encodeURIComponent(callId)}/cancel`)
   },
 
   async aiChat(messages: ChatMessage[], activeFileRefs?: ActiveFileEntry[], permissionMode = 'ask-for-approval'): Promise<ChatStartResponse> {

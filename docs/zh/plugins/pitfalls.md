@@ -30,13 +30,13 @@ const file = await fengyu.files.open({ extensions: ['xlsx'] })
 await fengyu.invoke('analyze', { filePath: file })   // 宿主把 ref → path
 ```
 
-## 3. 两个 Vue 实例破坏响应性
+## 3. 插件始终无法完成宿主握手
 
-**问题。** 你的插件 MF 自带了它自己的 Vue 和/或 Vuetify，于是响应性、主题或组件表现异常（或者 app 挂载失败）。
+**问题。** iframe 只渲染了一部分，但宿主 RPC 调用超时，主题或语言变化也始终没有到达。
 
-**原因。** 插件 MF bundle 必须复用宿主的 Vue 与 Vuetify 实例。如果某个插件自带一份副本，同一个 app 中就会并存两个 Vue 实例，这会破坏响应性并破坏共享的组件/主题注册表。
+**原因。** 插件与宿主没有使用相同的 `@infinia/plugin-sdk/protocol` 版本，或者 UI 在 `fengyu.ready()` 完成前就开始调用方法。Toolchain 2 有意要求协议版本完全匹配。
 
-**修复。** **不要**打包 Vue 或 Vuetify。从宿主的 import map 解析它们，并通过来自 `PluginContext` 的 `app.use(ctx.vuetify)` 安装宿主实例。参见 [UI 微前端](/zh/plugins/ui-microfrontend)。
+**修复。** 让 `@infinia/plugin-sdk`、`@infinia/plugin-ui`、CLI 与宿主使用同一套 toolchain release。在第一次宿主调用前直接等待 `fengyu.ready()`，或使用 `bindFengYuEnvironment`。参见 [UI 微前端](/zh/plugins/ui-microfrontend)。
 
 ## 4. 某个文件操作返回 403
 

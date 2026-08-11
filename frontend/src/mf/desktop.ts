@@ -1,4 +1,7 @@
-import type { PluginContext } from './loader'
+export interface DesktopFileDialogs {
+  pickFile(filters?: { name: string; extensions: string[] }[]): Promise<string | null>
+  pickDirectory(): Promise<string | null>
+}
 
 /** True when running inside the Electron desktop shell. */
 export function isDesktop(): boolean {
@@ -6,7 +9,7 @@ export function isDesktop(): boolean {
 }
 
 /** Build the native-dialog facade, or undefined when not under Electron. */
-export function makeDesktop(): PluginContext['desktop'] {
+export function makeDesktop(): DesktopFileDialogs | undefined {
   if (!isDesktop()) return undefined
   return {
     async pickFile(filters) {

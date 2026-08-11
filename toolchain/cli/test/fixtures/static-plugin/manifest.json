@@ -1,14 +1,13 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "com.example.legacy",
   "name": "Legacy Static Plugin",
-  "description": "A legacy static-HTML plugin fixture",
+  "description": "A static-HTML plugin fixture packaged directly via staging",
   "version": "1.0.0",
   "author": "Test Author",
   "icon": "puzzle-outline",
   "category": "other",
   "ui": { "entry": "ui/index.html" },
   "permissions": [],
-  "official": false,
-  "aiTools": []
+  "official": false
 }

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "id": "com.example.dupmethod",
+  "name": "DupMethod",
+  "description": "Rejects a duplicate rpc.methods key. JSON.parse silently keeps the last value, so the validator must scan the raw text to surface this.",
+  "version": "1.0.0",
+  "author": "Fixture",
+  "icon": "puzzle-outline",
+  "category": "other",
+  "ui": { "entry": "ui/index.html" },
+  "backend": {},
+  "rpc": {
+    "methods": {
+      "render": {
+        "inputSchema": { "type": "object" }
+      },
+      "render": {
+        "inputSchema": { "type": "object", "properties": { "sneaky": { "type": "string" } } }
+      }
+    }
+  }
+}

@@ -68,18 +68,18 @@ See [Worker (JSON-RPC)](/en/plugins/worker) and [Pitfalls — Logging to stdout]
 
 ## Micro-frontend load errors
 
-**Symptom.** The plugin UI iframe is blank, scripts silently fail to run, or Vue reactivity/theme/components behave strangely.
+**Symptom.** The plugin UI iframe is blank, scripts silently fail to run, or the UI never adopts the host theme.
 
 **Cause.** Two distinct mechanisms:
 
 - **CSP.** The host serves plugin UI assets under a strict Content Security Policy. Inline scripts and disallowed origins are refused — they never execute.
-- **Vue/Vuetify dedupe.** If the MF bundles its own Vue or Vuetify, two instances coexist and corrupt reactivity and the shared component/theme registry.
+- **Bridge setup.** The iframe is an isolated JavaScript realm and must initialize its own `@infinia/plugin-ui` instance, then bind it to a ready `FengYuClient`.
 
 **Fix.**
 
 - **CSP:** put all JavaScript in external files loaded via `<script src>` (the scaffolder writes `<script type="module" src="app.js">`), and load every asset from the plugin's own `/plugin-runtime/{id}/**` tree. Do not inline scripts or inline event handlers.
-- **Vue/Vuetify dedupe:** do **not** bundle Vue or Vuetify. Resolve them from the host's import map and install the host instance via `app.use(ctx.vuetify)` from the `PluginContext`. The host's MF loader passes the shared Vuetify (MD3) instance specifically so plugins can reuse it.
-- For "module not found" / import-map errors, confirm the MF is loading Vue/Vuetify from the host map and not declaring its own.
+- **Bridge setup:** bundle the plugin's declared Vue/Vuetify dependencies, create Vuetify with `createFengYuVuetify`, and call `bindFengYuEnvironment(vuetify, fengyu)`. Check the `host.ready` error for an exact protocol-version mismatch.
+- For "module not found" errors, install the dependencies declared by the plugin UI and rebuild it with the standard `npm run build` path.
 
 See [UI Micro-frontend](/en/plugins/ui-microfrontend) and [Pitfalls](/en/plugins/pitfalls).
 

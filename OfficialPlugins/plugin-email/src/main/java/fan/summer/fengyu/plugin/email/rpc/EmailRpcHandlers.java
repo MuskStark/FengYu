@@ -1,11 +1,11 @@
 package fan.summer.fengyu.plugin.email.rpc;
 
-import com.google.gson.Gson;
 import fan.summer.fengyu.plugin.email.crypto.CredentialCipher;
 import fan.summer.fengyu.plugin.email.database.EmailDatabase;
 import fan.summer.fengyu.plugin.email.model.ArchiveRequest;
 import fan.summer.fengyu.plugin.email.model.EmailMessageRequest;
 import fan.summer.fengyu.plugin.email.model.PendingSend;
+import fan.summer.fengyu.plugin.email.model.ContactImport.ImportOptions;
 import fan.summer.fengyu.plugin.email.repository.MassConfigRepository;
 import fan.summer.fengyu.plugin.email.service.AccountService;
 import fan.summer.fengyu.plugin.email.service.AddressBookService;
@@ -14,12 +14,48 @@ import fan.summer.fengyu.plugin.email.service.EmailArchiveService;
 import fan.summer.fengyu.plugin.email.service.EmailHtmlSanitizer;
 import fan.summer.fengyu.plugin.email.service.EmailSendService;
 import fan.summer.fengyu.plugin.email.service.PendingSendService;
-import fan.summer.fengyu.plugin.email.model.ContactImport.ImportOptions;
-import fan.summer.fengyu.sdk.FileRef;
-import fan.summer.fengyu.sdk.JsonRpcWorker;
 import fan.summer.fengyu.sdk.Jobs;
-import fan.summer.fengyu.sdk.PluginHandlerSupport;
 import fan.summer.fengyu.sdk.PluginMessages;
+import fan.summer.fengyu.sdk.RpcContext;
+import fan.summer.email.generated.ConfirmSendInput;
+import fan.summer.email.generated.EmailAccountDeleteInput;
+import fan.summer.email.generated.EmailAccountFindInput;
+import fan.summer.email.generated.EmailAccountSaveInput;
+import fan.summer.email.generated.EmailAccountSetDefaultInput;
+import fan.summer.email.generated.EmailAccountTestImapInput;
+import fan.summer.email.generated.EmailAccountTestInput;
+import fan.summer.email.generated.EmailAccountsListInput;
+import fan.summer.email.generated.EmailArchiveDetailInput;
+import fan.summer.email.generated.EmailArchiveFetchCancelInput;
+import fan.summer.email.generated.EmailArchiveFetchStartInput;
+import fan.summer.email.generated.EmailArchiveFetchStatusInput;
+import fan.summer.email.generated.EmailArchiveFetchInput;
+import fan.summer.email.generated.EmailArchiveQueryInput;
+import fan.summer.email.generated.EmailBatchPreviewInput;
+import fan.summer.email.generated.EmailConfigDeleteInput;
+import fan.summer.email.generated.EmailConfigFindInput;
+import fan.summer.email.generated.EmailConfigSaveInput;
+import fan.summer.email.generated.EmailConfigsListInput;
+import fan.summer.email.generated.EmailContactDeleteInput;
+import fan.summer.email.generated.EmailContactFindInput;
+import fan.summer.email.generated.EmailContactSaveInput;
+import fan.summer.email.generated.EmailContactsImportCommitInput;
+import fan.summer.email.generated.EmailContactsImportPreviewInput;
+import fan.summer.email.generated.EmailContactsQueryInput;
+import fan.summer.email.generated.EmailImapFoldersInput;
+import fan.summer.email.generated.EmailSendBatchInput;
+import fan.summer.email.generated.EmailSendRecordsQueryInput;
+import fan.summer.email.generated.EmailSendSingleInput;
+import fan.summer.email.generated.EmailSendStatusInput;
+import fan.summer.email.generated.EmailTagDeleteInput;
+import fan.summer.email.generated.EmailTagSaveInput;
+import fan.summer.email.generated.EmailTagsAssignInput;
+import fan.summer.email.generated.EmailTagsListInput;
+import fan.summer.email.generated.EmailTagsResolveInput;
+import fan.summer.email.generated.RejectSendInput;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.RecordComponent;
 import java.nio.file.Path;
@@ -31,20 +67,53 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Adapts email services to official SDK handlers without owning any transport logic.
+/**
+ * Typed RPC handlers for the Email Center worker, registered through the SDK's typed
+ * {@code worker.method(PluginMethods.X, XInput.class, Object.class, h::x)} API in
+ * {@link fan.summer.fengyu.plugin.email.EmailWorkerMain}. Each handler reads its fields off a
+ * generated Input record (no raw {@code Map} parsing, no removed
+ * {@code JsonRpcWorker.string/integer} extraction) and returns the existing {success, summary, ...}
+ * envelope; Gson serializes that envelope directly, so records/Path/Instant values are still
+ * normalised through {@link #jsonValue} before they leave the worker. The class no longer extends
+ * {@code PluginHandlerSupport}: the envelope builders and failure-flattening {@link #result} wrapper
+ * are inlined here, mirroring how {@code MarkdownRpcHandlers} drops the base class and assembles its
+ * typed output directly.
  *
- * <p>Entry/exit/failure logging, the {success, summary, ...} envelope and the {@code result()}
- * / {@code failure()} / {@code cast()} / {@code safeMessage()} helpers are inherited from
- * {@link PluginHandlerSupport}. Email additionally overrides {@code ok(summary,key,value)} so it
- * can JSON-encode records/Path/Instant values via {@link #jsonValue(Object)} before they leave the
- * worker. Register handlers via {@code worker.on("m", handlers.handle("m", handlers::m))}.
+ * <p><b>Output shape.</b> Handlers return the rich {success, summary, &lt;payload&gt;} envelope
+ * {@link Map} rather than the generated {@code <Method>Output} record. The manifest declares each
+ * payload (accounts, contacts, tags, ...) as a free-form {@code object} "carried in the runtime
+ * result", so the generator emits empty nested records / omits the data field entirely — returning
+ * those records would drop every list and detail payload the UI needs. The SDK treats the registered
+ * {@code outputClass} as documentary ("the returned value is serialized by Gson regardless of its
+ * declared type"), so {@code Object.class} is registered and the full envelope Map is returned.
+ *
+ * <p><b>Cancellation.</b> SMTP/IMAP-touching handlers ({@link #testAccount}, {@link #testImapAccount},
+ * {@link #listFolders}, {@link #collect}, {@link #confirmSend}) cooperative-check
+ * {@link RpcContext#cancellation()} before the network call so a {@code $/cancelRequest} from the
+ * host returns a clean {@code CANCELLED} response (transport-level cancel). The long-running archive
+ * job ({@link #collectStart}/{@link #collectStatus}/{@link #collectCancel}) keeps its own
+ * <em>domain</em> cancel via the {@link Jobs} registry keyed by {@code jobId}, independent of any
+ * single RPC.
+ *
+ * <p><b>Secret discipline.</b> Credential fields are accepted on account writes and scrubbed before
+ * they can reach any log or response: the {@link EmailAccountSaveInput#password()} secret is funneled
+ * straight into the secret-aware {@link AccountRpc.AccountRequest} (whose {@code toString} redacts
+ * it as {@code password=<redacted>}) and encrypted at rest by {@link AccountService}; responses use
+ * the credential-free {@link AccountService.AccountView}. The typed registration never logs params
+ * (the SDK entry path logs method identity only). The {@link #result} wrapper logs only the exception
+ * <em>type</em> — never {@code getMessage()} or the stack — because a transport/parse exception
+ * message can echo request values (a parsed path, a credential touched by an SMTP/IMAP error); this
+ * matches the SDK dispatch loop's own type-only WARN policy.
  */
-public final class EmailRpcHandlers extends PluginHandlerSupport implements AutoCloseable {
-    /** Static message resolver for the static param/path-validation helpers (which cannot reach the
-     * inherited instance {@link #msgs}). Resolves the same bundle the handler uses. */
+public final class EmailRpcHandlers implements AutoCloseable {
+    private static final Logger LOG = LoggerFactory.getLogger(EmailRpcHandlers.class);
+    /** Static message resolver for the envelope summaries and the path-validation helpers. */
     private static final PluginMessages MSGS =
             PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, EmailRpcHandlers.class);
-    private final Gson json = new Gson();
+    /** English fallback summary when an exception/result carries no message (prior behaviour came
+     * from the SDK bundle; inlined here so no raw key is ever rendered to a client). */
+    private static final String DEFAULT_FAILURE_SUMMARY = "email operation failed";
+
     private final AccountRpc accounts;
     private final AddressBookRpc addressBook;
     private final ContactImporter importer;
@@ -56,7 +125,6 @@ public final class EmailRpcHandlers extends PluginHandlerSupport implements Auto
     private final Jobs jobs = new Jobs();
 
     public EmailRpcHandlers(EmailDatabase database, CredentialCipher cipher) {
-        super("email");
         accounts = new AccountRpc(new AccountService(database, cipher));
         addressBook = new AddressBookRpc(new AddressBookService(database));
         importer = new ContactImporter(database);
@@ -68,133 +136,142 @@ public final class EmailRpcHandlers extends PluginHandlerSupport implements Auto
 
     @Override public void close() { jobs.close(); }
 
-    public Object listAccounts(Map<String, Object> params) {
-        return result(() -> {
+    // ── accounts ────────────────────────────────────────────────────────────
+
+    public Map<String, Object> listAccounts(EmailAccountsListInput input, RpcContext ctx) {
+        return result(ctx, () -> {
             var values = accounts.list();
             return ok(t("em.account.found", values.size()), "accounts", values);
         });
     }
 
-    public Object findAccount(Map<String, Object> params) {
-        return result(() -> accounts.find(requiredLong(params, "id"))
+    public Map<String, Object> findAccount(EmailAccountFindInput input, RpcContext ctx) {
+        return result(ctx, () -> accounts.find(input.id())
             .map(value -> ok(t("em.account.foundOne"), "account", value))
             .orElseGet(() -> failKey("em.account.notFound")));
     }
 
-    public Object saveAccount(Map<String, Object> params) {
-        return result(() -> ok(t("em.account.saved"), "account",
-            accounts.save(json.fromJson(json.toJson(params), AccountRpc.AccountRequest.class))));
+    public Map<String, Object> saveAccount(EmailAccountSaveInput input, RpcContext ctx) {
+        return result(ctx, () -> ok(t("em.account.saved"), "account",
+            accounts.save(toAccountRequest(input))));
     }
 
-    public Object deleteAccount(Map<String, Object> params) {
-        return result(() -> accounts.delete(requiredLong(params, "id"))
+    public Map<String, Object> deleteAccount(EmailAccountDeleteInput input, RpcContext ctx) {
+        return result(ctx, () -> accounts.delete(input.id())
             ? okKey("em.account.deleted") : failKey("em.account.notFound"));
     }
 
-    public Object setDefaultAccount(Map<String, Object> params) {
-        return result(() -> accounts.setDefault(requiredLong(params, "id"))
+    public Map<String, Object> setDefaultAccount(EmailAccountSetDefaultInput input, RpcContext ctx) {
+        return result(ctx, () -> accounts.setDefault(input.id())
             ? okKey("em.account.defaultUpdated") : failKey("em.account.notFound"));
     }
 
-    public Object testAccount(Map<String, Object> params) {
-        return result(() -> {
-            long accountId = requiredLong(params, "accountId");
+    public Map<String, Object> testAccount(EmailAccountTestInput input, RpcContext ctx) {
+        return result(ctx, () -> {
+            // SMTP I/O: honour a transport cancel that arrived before we open the socket.
+            ctx.cancellation().throwIfCancelled();
+            long accountId = input.accountId();
             var value = sends.testSmtp(accountId);
-            log.info("SMTP test for account {}: {}", accountId, value.success() ? "succeeded" : "failed");
+            ctx.logger().info("SMTP test for account {}: {}", accountId, value.success() ? "succeeded" : "failed");
             return value.success() ? okKey("em.account.smtpSucceeded") : failure(value.errorMessage());
         });
     }
 
-    public Object testImapAccount(Map<String, Object> params) {
-        return result(() -> {
-            long accountId = requiredLong(params, "accountId");
+    public Map<String, Object> testImapAccount(EmailAccountTestImapInput input, RpcContext ctx) {
+        return result(ctx, () -> {
+            // IMAP I/O: honour a transport cancel that arrived before we open the socket.
+            ctx.cancellation().throwIfCancelled();
+            long accountId = input.accountId();
             var value = archive.testImap(accountId);
-            log.info("IMAP test for account {}: {}", accountId, value.success() ? "succeeded" : "failed");
+            ctx.logger().info("IMAP test for account {}: {}", accountId, value.success() ? "succeeded" : "failed");
             return value.success() ? okKey("em.account.imapSucceeded") : failure(value.errorMessage());
         });
     }
 
-    public Object listFolders(Map<String, Object> params) {
-        return result(() -> {
-            long accountId = requiredLong(params, "accountId");
+    public Map<String, Object> listFolders(EmailImapFoldersInput input, RpcContext ctx) {
+        return result(ctx, () -> {
+            // IMAP I/O: honour a transport cancel that arrived before we list folders.
+            ctx.cancellation().throwIfCancelled();
+            long accountId = input.accountId();
             var value = archive.listFolders(accountId);
-            log.info("IMAP folder list for account {}: {} folder(s)", accountId, value.folders().size());
+            ctx.logger().info("IMAP folder list for account {}: {} folder(s)", accountId, value.folders().size());
             return ok(t("em.folder.found", value.folders().size()), "folders", value.folders());
         });
     }
 
-    public Object queryContacts(Map<String, Object> params) {
-        return result(() -> {
-            var values = addressBook.search(new AddressBookRpc.SearchRequest(string(params, "query"),
-                longSet(params.get("tagIds")), integer(params, "offset", 0), integer(params, "limit", 50)));
+    // ── contacts / tags / address book ──────────────────────────────────────
+
+    public Map<String, Object> queryContacts(EmailContactsQueryInput input, RpcContext ctx) {
+        return result(ctx, () -> {
+            var values = addressBook.search(new AddressBookRpc.SearchRequest(input.query(),
+                longSet(input.tagIds()), orZero(input.offset()), orDefault(input.limit(), 50)));
             return ok(t("em.contact.found", values.size()), "contacts", values);
         });
     }
 
-    public Object findContact(Map<String, Object> params) {
-        return result(() -> addressBook.findContact(requiredLong(params, "id"))
+    public Map<String, Object> findContact(EmailContactFindInput input, RpcContext ctx) {
+        return result(ctx, () -> addressBook.findContact(input.id())
             .map(value -> ok(t("em.contact.foundOne"), "contact", value))
             .orElseGet(() -> failKey("em.contact.notFound")));
     }
 
-    public Object saveContact(Map<String, Object> params) {
-        return result(() -> ok(t("em.contact.saved"), "contact", addressBook.saveContact(
-            json.fromJson(json.toJson(params), AddressBookRpc.ContactRequest.class))));
+    public Map<String, Object> saveContact(EmailContactSaveInput input, RpcContext ctx) {
+        return result(ctx, () -> ok(t("em.contact.saved"), "contact", addressBook.saveContact(
+            new AddressBookRpc.ContactRequest(toLong(input.id()), input.email(), input.nickname(),
+                input.notes(), longSet(input.tagIds())))));
     }
 
-    public Object deleteContact(Map<String, Object> params) {
-        return result(() -> addressBook.deleteContact(requiredLong(params, "id"))
+    public Map<String, Object> deleteContact(EmailContactDeleteInput input, RpcContext ctx) {
+        return result(ctx, () -> addressBook.deleteContact(input.id())
             ? okKey("em.contact.deleted") : failKey("em.contact.notFound"));
     }
 
-    public Object listTags(Map<String, Object> params) {
-        return result(() -> {
+    public Map<String, Object> listTags(EmailTagsListInput input, RpcContext ctx) {
+        return result(ctx, () -> {
             var tags = addressBook.listTags();
             return ok(t("em.tag.found", tags.size()), "tags", tags);
         });
     }
 
-    public Object saveTag(Map<String, Object> params) {
-        return result(() -> ok(t("em.tag.saved"), "tag", addressBook.saveTag(
-            json.fromJson(json.toJson(params), AddressBookRpc.TagRequest.class))));
+    public Map<String, Object> saveTag(EmailTagSaveInput input, RpcContext ctx) {
+        return result(ctx, () -> ok(t("em.tag.saved"), "tag",
+            addressBook.saveTag(new AddressBookRpc.TagRequest(toLong(input.id()), input.name()))));
     }
 
-    public Object deleteTag(Map<String, Object> params) {
-        return result(() -> addressBook.deleteTag(requiredLong(params, "id"))
+    public Map<String, Object> deleteTag(EmailTagDeleteInput input, RpcContext ctx) {
+        return result(ctx, () -> addressBook.deleteTag(input.id())
             ? okKey("em.tag.deleted") : failKey("em.tag.notFound"));
     }
 
-    public Object assignTags(Map<String, Object> params) {
-        return result(() -> {
+    public Map<String, Object> assignTags(EmailTagsAssignInput input, RpcContext ctx) {
+        return result(ctx, () -> {
             addressBook.assignTags(new AddressBookRpc.BulkTagRequest(
-                longSet(params.get("contactIds")), longSet(params.get("tagIds"))));
+                longSet(input.contactIds()), longSet(input.tagIds())));
             return okKey("em.contact.tagsUpdated");
         });
     }
 
-    public Object resolveRecipients(Map<String, Object> params) {
-        return result(() -> {
-            Set<String> recipients = addressBook.resolveRecipients(longSet(params.get("tagIds")));
+    public Map<String, Object> resolveRecipients(EmailTagsResolveInput input, RpcContext ctx) {
+        return result(ctx, () -> {
+            Set<String> recipients = addressBook.resolveRecipients(longSet(input.tagIds()));
             return ok(t("em.contact.resolvedRecipients", recipients.size()), "recipients", recipients);
         });
     }
 
-    public Object importContactsPreview(Map<String, Object> params) {
-        return result(() -> {
-            ImportOptions options = importOptions(params);
-            var preview = importer.preview(
-                path(params.get("sourceFile"), "sourceFile", "file"), options);
+    public Map<String, Object> importContactsPreview(EmailContactsImportPreviewInput input, RpcContext ctx) {
+        return result(ctx, () -> {
+            ImportOptions options = importOptions(input.duplicateMode(), input.tagDelimiter());
+            var preview = importer.preview(path(input.sourceFile(), "sourceFile", "file"), options);
             return ok(t("em.contact.importPreview", preview.rowsTotal(), preview.createdContacts(),
                 preview.mergedContacts(), preview.skippedContacts(), preview.createdTags().size(),
                 preview.errors().size()), "preview", preview);
         });
     }
 
-    public Object importContactsCommit(Map<String, Object> params) {
-        return result(() -> {
-            ImportOptions options = importOptions(params);
-            var outcome = importer.commit(
-                path(params.get("sourceFile"), "sourceFile", "file"), options);
+    public Map<String, Object> importContactsCommit(EmailContactsImportCommitInput input, RpcContext ctx) {
+        return result(ctx, () -> {
+            ImportOptions options = importOptions(input.duplicateMode(), input.tagDelimiter());
+            var outcome = importer.commit(path(input.sourceFile(), "sourceFile", "file"), options);
             return outcome.errors().isEmpty()
                 ? ok(t("em.contact.imported", outcome.created(), outcome.merged(), outcome.skipped(),
                     outcome.tagsCreated(), outcome.tagsAssigned()), "result", outcome)
@@ -204,41 +281,40 @@ public final class EmailRpcHandlers extends PluginHandlerSupport implements Auto
         });
     }
 
-    private ImportOptions importOptions(Map<String, Object> params) {
-        return new ImportOptions(string(params, "duplicateMode"), string(params, "tagDelimiter"));
-    }
+    // ── batch-send configuration templates ──────────────────────────────────
 
-    public Object listConfigs(Map<String, Object> params) {
-        return result(() -> {
+    public Map<String, Object> listConfigs(EmailConfigsListInput input, RpcContext ctx) {
+        return result(ctx, () -> {
             var values = configs.list();
             return ok(t("em.batch.foundConfigs", values.size()), "configs", values);
         });
     }
 
-    public Object findConfig(Map<String, Object> params) {
-        return result(() -> configs.find(requiredLong(params, "id"))
+    public Map<String, Object> findConfig(EmailConfigFindInput input, RpcContext ctx) {
+        return result(ctx, () -> configs.find(input.id())
             .map(value -> ok(t("em.batch.configFound"), "config", value))
             .orElseGet(() -> failKey("em.batch.configNotFound")));
     }
 
-    public Object saveConfig(Map<String, Object> params) {
-        return result(() -> {
-            Long id = optionalLong(params, "id");
-            long saved = configs.save(id, requiredString(params, "name"), requiredString(params, "mode"),
-                requiredString(params, "configJson"));
+    public Map<String, Object> saveConfig(EmailConfigSaveInput input, RpcContext ctx) {
+        return result(ctx, () -> {
+            long saved = configs.save(toLong(input.id()), requiredField(input.name(), "name"),
+                requiredField(input.mode(), "mode"), requiredField(input.configJson(), "configJson"));
             return ok(t("em.batch.configSaved"), "config", configs.find(saved).orElseThrow());
         });
     }
 
-    public Object deleteConfig(Map<String, Object> params) {
-        return result(() -> configs.delete(requiredLong(params, "id"))
+    public Map<String, Object> deleteConfig(EmailConfigDeleteInput input, RpcContext ctx) {
+        return result(ctx, () -> configs.delete(input.id())
             ? okKey("em.batch.configDeleted") : failKey("em.batch.configNotFound"));
     }
 
-    public Object prepareSingle(Map<String, Object> params) {
-        return result(() -> {
-            EmailMessageRequest request = message(params);
-            Set<Long> recipientTagIds = longSet(params.get("recipientTagIds"));
+    // ── send: confirmation-first prepare → confirm/reject → status/records ──
+
+    public Map<String, Object> prepareSingle(EmailSendSingleInput input, RpcContext ctx) {
+        return result(ctx, () -> {
+            EmailMessageRequest request = message(input);
+            Set<Long> recipientTagIds = longSet(input.recipientTagIds());
             if (!recipientTagIds.isEmpty()) {
                 return confirmation(t("em.send.taggedReady"),
                     pending.prepareComposeByTags(request, recipientTagIds));
@@ -248,32 +324,31 @@ public final class EmailRpcHandlers extends PluginHandlerSupport implements Auto
         });
     }
 
-    public Object prepareBatch(Map<String, Object> params) {
-        return result(() -> confirmation(t("em.send.batchReady"),
-            pending.prepareAttachmentBatch(message(params),
-                path(params.get("inputDirectory"), "inputDirectory", "directory"),
-                paths(params.get("commonAttachments")), longSet(params.get("recipientGroupTagIds")),
-                longSet(params.get("ccGroupTagIds")))));
+    public Map<String, Object> prepareBatch(EmailSendBatchInput input, RpcContext ctx) {
+        return result(ctx, () -> confirmation(t("em.send.batchReady"),
+            pending.prepareAttachmentBatch(message(input),
+                path(input.inputDirectory(), "inputDirectory", "directory"),
+                paths(input.commonAttachments()), longSet(input.recipientGroupTagIds()),
+                longSet(input.ccGroupTagIds()))));
     }
 
-    public Object previewBatch(Map<String, Object> params) {
-        return result(() -> ok(t("em.batch.preview"), "preview", pending.previewBatch(message(params),
-            path(params.get("inputDirectory"), "inputDirectory", "directory"),
-            paths(params.get("commonAttachments")), longSet(params.get("recipientGroupTagIds")),
-            longSet(params.get("ccGroupTagIds")))));
+    public Map<String, Object> previewBatch(EmailBatchPreviewInput input, RpcContext ctx) {
+        return result(ctx, () -> ok(t("em.batch.preview"), "preview", pending.previewBatch(message(input),
+            path(input.inputDirectory(), "inputDirectory", "directory"),
+            paths(input.commonAttachments()), longSet(input.recipientGroupTagIds()),
+            longSet(input.ccGroupTagIds()))));
     }
 
-    public Object sendStatus(Map<String, Object> params) {
-        return result(() -> pending.status(requiredString(params, "confirmationId"))
+    public Map<String, Object> sendStatus(EmailSendStatusInput input, RpcContext ctx) {
+        return result(ctx, () -> pending.status(requiredField(input.confirmationId(), "confirmationId"))
             .map(value -> ok(t("em.send.statusIs", value.status()), "send", sendView(value)))
             .orElseGet(() -> failKey("em.send.confirmationNotFound")));
     }
 
-    public Object querySendRecords(Map<String, Object> params) {
-        return result(() -> {
-            var records = pending.records(string(params, "taskStatus"), string(params, "confirmationId"),
-                string(params, "messageStatus"), string(params, "query"), integer(params, "offset", 0),
-                integer(params, "limit", 50));
+    public Map<String, Object> querySendRecords(EmailSendRecordsQueryInput input, RpcContext ctx) {
+        return result(ctx, () -> {
+            var records = pending.records(input.taskStatus(), input.confirmationId(),
+                input.messageStatus(), input.query(), orZero(input.offset()), orDefault(input.limit(), 50));
             Map<String, Object> value = okKey("em.send.foundTasks", records.tasks().size());
             value.put("tasks", jsonValue(records.tasks()));
             value.put("messages", jsonValue(records.messages()));
@@ -281,33 +356,39 @@ public final class EmailRpcHandlers extends PluginHandlerSupport implements Auto
         });
     }
 
-    public Object confirmSend(Map<String, Object> params) {
-        return result(() -> {
-            String confirmationId = requiredString(params, "confirmationId");
+    public Map<String, Object> confirmSend(ConfirmSendInput input, RpcContext ctx) {
+        return result(ctx, () -> {
+            // SMTP send: honour a transport cancel that arrived before the confirmed dispatch.
+            ctx.cancellation().throwIfCancelled();
+            String confirmationId = requiredField(input.confirmationId(), "confirmationId");
             var value = pending.confirm(confirmationId);
-            log.info("send {} confirmed: {}", confirmationId, value.status());
+            ctx.logger().info("send {} confirmed: {}", confirmationId, value.status());
             return ok(t("em.send.confirmationIs", value.status()), "send", value);
         });
     }
 
-    public Object rejectSend(Map<String, Object> params) {
-        return result(() -> {
-            String confirmationId = requiredString(params, "confirmationId");
+    public Map<String, Object> rejectSend(RejectSendInput input, RpcContext ctx) {
+        return result(ctx, () -> {
+            String confirmationId = requiredField(input.confirmationId(), "confirmationId");
             var value = pending.reject(confirmationId);
-            log.info("send {} rejected: {}", confirmationId, value.status());
+            ctx.logger().info("send {} rejected: {}", confirmationId, value.status());
             return ok(t("em.send.confirmationIs", value.status()), "send", value);
         });
     }
 
-    public Object collect(Map<String, Object> params) {
-        return result(() -> {
-            long accountId = requiredLong(params, "accountId");
-            String folder = requiredString(params, "folder");
+    // ── archive (IMAP collection): synchronous fetch + async job trio ───────
+
+    public Map<String, Object> collect(EmailArchiveFetchInput input, RpcContext ctx) {
+        return result(ctx, () -> {
+            // IMAP fetch: honour a transport cancel that arrived before the synchronous collect.
+            ctx.cancellation().throwIfCancelled();
+            long accountId = input.accountId();
+            String folder = input.folder();
             ArchiveRequest request = new ArchiveRequest(accountId, folder,
-                instant(params, "start"), instant(params, "end"),
-                path(params.get("outputDirectory"), "outputDirectory", "directory"));
+                instant(input.start()), instant(input.end()),
+                path(input.outputDirectory(), "outputDirectory", "directory"));
             var value = archive.collect(request, ignored -> { });
-            log.info("archived {} new, {} duplicate(s), {} failure(s) from account {} folder '{}'",
+            ctx.logger().info("archived {} new, {} duplicate(s), {} failure(s) from account {} folder '{}'",
                 value.newArchived(), value.skippedDuplicates(), value.failures(), accountId, folder);
             return ok(t("em.archive.archived", value.newArchived(), value.skippedDuplicates(), value.failures()),
                 "collection", value);
@@ -317,30 +398,30 @@ public final class EmailRpcHandlers extends PluginHandlerSupport implements Auto
     /**
      * Launch archive collection on a virtual thread so it survives beyond the host's per-RPC timeout.
      * Returns a {@code jobId} immediately; the UI polls {@link #collectStatus} to drain progress and
-     * fetch the final result. The existing per-message {@link EmailArchiveService.ProgressSink} is
-     * forwarded into the job's streamed log lines, so each poll sees the latest archived/skipped/failed
-     * counts without holding the RPC open. Mirrors the Excel {@code split_start}/{@code split_status}
-     * async trio built on the SDK {@link Jobs} registry.
+     * fetch the final result, and cancels via {@link #collectCancel} (domain-level job cancel, which
+     * interrupts the job thread independent of the launching RPC).
      */
-    public Object collectStart(Map<String, Object> params) {
-        return result(() -> {
-            long accountId = requiredLong(params, "accountId");
-            String folder = requiredString(params, "folder");
+    public Map<String, Object> collectStart(EmailArchiveFetchStartInput input, RpcContext ctx) {
+        return result(ctx, () -> {
+            long accountId = input.accountId();
+            String folder = input.folder();
             ArchiveRequest request = new ArchiveRequest(accountId, folder,
-                instant(params, "start"), instant(params, "end"),
-                path(params.get("outputDirectory"), "outputDirectory", "directory"));
+                instant(input.start()), instant(input.end()),
+                path(input.outputDirectory(), "outputDirectory", "directory"));
             Jobs.Job job = jobs.start("ARCHIVE", handle -> {
                 try {
                     var value = archive.collect(request, progress -> handle.log(
                         progress.completed() + "/" + progress.total() + " new=" + progress.newArchived()
                         + " skipped=" + progress.skippedDuplicates() + " failed=" + progress.failures()));
                     handle.setSummary(value);
-                    log.info("archived {} new, {} duplicate(s), {} failure(s) from account {} folder '{}'",
+                    LOG.info("archived {} new, {} duplicate(s), {} failure(s) from account {} folder '{}'",
                         value.newArchived(), value.skippedDuplicates(), value.failures(), accountId, folder);
                 } catch (Exception e) {
-                    // Jobs.start flattens exceptions to a one-line markFailed without a stack trace;
-                    // log the full stack here so the host log surface has diagnostics, then rethrow.
-                    log.error("archive job failed for account {} folder '{}': {}", accountId, folder, e.toString(), e);
+                    // Log the exception TYPE only: the message/stack of a transport exception can
+                    // echo request-carried values, so it is not safe in the shared log channel. The
+                    // job is marked failed (one-line) regardless; the host log surface keeps the type.
+                    LOG.warn("archive job failed for account {} folder '{}': {}",
+                        accountId, folder, e.getClass().getSimpleName());
                     throw e;
                 }
             });
@@ -348,71 +429,120 @@ public final class EmailRpcHandlers extends PluginHandlerSupport implements Auto
         });
     }
 
-    public Object collectStatus(Map<String, Object> params) {
-        return result(() -> {
-            String jobId = requiredString(params, "jobId");
-            int cursor = JsonRpcWorker.integer(params, "cursor", 0);
-            return jobs.snapshot(jobId, cursor);
-        });
+    public Map<String, Object> collectStatus(EmailArchiveFetchStatusInput input, RpcContext ctx) {
+        return result(ctx, () -> jobs.snapshot(input.jobId(), orZero(input.cursor())));
     }
 
-    public Object collectCancel(Map<String, Object> params) {
-        return result(() -> {
-            String jobId = requiredString(params, "jobId");
+    public Map<String, Object> collectCancel(EmailArchiveFetchCancelInput input, RpcContext ctx) {
+        return result(ctx, () -> {
+            String jobId = input.jobId();
             if (!jobs.cancel(jobId)) return failKey("em.archive.jobNotRunning", jobId);
             return ok(t("em.archive.cancelRequested"), "jobId", jobId);
         });
     }
 
-    public Object queryArchive(Map<String, Object> params) {
-        return result(() -> {
-            var values = archive.search(new EmailArchiveService.SearchFilter(optionalLong(params, "accountId"),
-                string(params, "folder"), string(params, "sender"), string(params, "subject"),
-                instant(params, "start"), instant(params, "end"), integer(params, "offset", 0),
-                integer(params, "limit", 50)));
+    public Map<String, Object> queryArchive(EmailArchiveQueryInput input, RpcContext ctx) {
+        return result(ctx, () -> {
+            var values = archive.search(new EmailArchiveService.SearchFilter(toLong(input.accountId()),
+                input.folder(), input.sender(), input.subject(),
+                instant(input.start()), instant(input.end()), orZero(input.offset()), orDefault(input.limit(), 50)));
             return ok(t("em.archive.found", values.size()), "messages", values);
         });
     }
 
-    public Object archiveDetail(Map<String, Object> params) {
-        return result(() -> archive.detail(requiredLong(params, "id"))
+    public Map<String, Object> archiveDetail(EmailArchiveDetailInput input, RpcContext ctx) {
+        return result(ctx, () -> archive.detail(input.id())
             .map(value -> ok(t("em.archive.messageFound"), "message", value))
             .orElseGet(() -> failKey("em.archive.messageNotFound")));
     }
 
-    private Map<String, Object> confirmation(String summary, PendingSendService.ConfirmationEnvelope envelope) {
+    // ── envelope + conversion helpers ───────────────────────────────────────
+
+    private static Map<String, Object> confirmation(String summary, PendingSendService.ConfirmationEnvelope envelope) {
         Map<String, Object> value = ok(summary);
         value.put("confirmation_required", envelope.confirmationRequired());
         value.put("confirmation", jsonValue(envelope.confirmation()));
         return value;
     }
 
-    private EmailMessageRequest message(Map<String, Object> params) {
-        String html = htmlSanitizer.sanitize(string(params, "htmlText"));
-        String plain = string(params, "plainText");
-        if (plain == null || plain.isBlank()) plain = htmlSanitizer.toPlainText(html);
-        return new EmailMessageRequest(requiredLong(params, "accountId"), strings(params.get("to")),
-            strings(params.get("cc")), strings(params.get("bcc")), string(params, "subject"),
-            plain, html, paths(params.get("attachments")));
+    /** Build the credential-bearing AccountRequest from the typed save input. The password flows
+     * straight into {@link AccountRequest} (whose toString redacts it) and is encrypted at rest. */
+    private static AccountRpc.AccountRequest toAccountRequest(EmailAccountSaveInput input) {
+        return new AccountRpc.AccountRequest(toLong(input.id()), input.displayName(), input.email(), input.password(),
+            input.smtpHost(), input.smtpPort() == null ? 0 : input.smtpPort(), input.smtpSecurity(),
+            input.imapHost(), input.imapPort(), input.imapSecurity(),
+            input.smtpSkipCertVerify() == null ? false : input.smtpSkipCertVerify(),
+            input.imapSkipCertVerify() == null ? false : input.imapSkipCertVerify(),
+            input.defaultAccount() == null ? false : input.defaultAccount());
     }
 
-    private List<Path> paths(Object value) {
-        if (!(value instanceof List<?> values)) return List.of();
-        List<Path> result = new ArrayList<>(values.size());
-        for (Object item : values) result.add(path(item, "attachment", "file"));
+    private EmailMessageRequest message(EmailSendSingleInput input) {
+        return messageOf(input.accountId(), input.to(), input.cc(), input.bcc(), input.subject(),
+            input.plainText(), input.htmlText(), input.attachments());
+    }
+
+    private EmailMessageRequest message(EmailSendBatchInput input) {
+        // Batch messages carry the shared body only; recipients come from the group tags and the
+        // attachment files come from the input directory, so to/cc/bcc/attachments are empty here.
+        return messageOf(input.accountId(), List.of(), List.of(), List.of(), input.subject(),
+            input.plainText(), input.htmlText(), List.of());
+    }
+
+    private EmailMessageRequest message(EmailBatchPreviewInput input) {
+        // A preview reuses the batch message shape (shared body, group-tag recipients, directory
+        // attachments) so the planner computes the exact plan that prepare would later confirm.
+        return messageOf(input.accountId(), List.of(), List.of(), List.of(), input.subject(),
+            input.plainText(), input.htmlText(), List.of());
+    }
+
+    private EmailMessageRequest messageOf(long accountId, List<String> to, List<String> cc, List<String> bcc,
+            String subject, String plainText, String htmlText, List<String> attachments) {
+        String html = htmlSanitizer.sanitize(htmlText);
+        String plain = plainText;
+        if (plain == null || plain.isBlank()) plain = htmlSanitizer.toPlainText(html);
+        return new EmailMessageRequest(accountId, orEmpty(to), orEmpty(cc), orEmpty(bcc), subject,
+            plain, html, paths(attachments));
+    }
+
+    private List<Path> paths(List<String> values) {
+        List<String> safe = orEmpty(values);
+        List<Path> result = new ArrayList<>(safe.size());
+        for (String item : safe) result.add(path(item, "attachment", "file"));
         return List.copyOf(result);
     }
 
-    private Path path(Object value, String field, String expectedKind) {
-        if (value instanceof String resolved && !resolved.isBlank()) return Path.of(resolved);
-        if (value instanceof Map<?, ?>) {
-            FileRef reference = json.fromJson(json.toJson(value), FileRef.class);
-            if (!expectedKind.equals(reference.kind())) {
-                throw new IllegalArgumentException(MSGS.format("em.err.fileRefKind", field, expectedKind));
-            }
-            throw new IllegalArgumentException(MSGS.format("em.err.fileRefUnresolved", field));
-        }
+    private Path path(String resolved, String field, String expectedKind) {
+        if (resolved != null && !resolved.isBlank()) return Path.of(resolved);
         throw new IllegalArgumentException(MSGS.format("em.err.fieldRequired", field));
+    }
+
+    private static ImportOptions importOptions(String duplicateMode, String tagDelimiter) {
+        return new ImportOptions(duplicateMode, tagDelimiter);
+    }
+
+    private static Instant instant(String value) {
+        return value == null || value.isBlank() ? null : Instant.parse(value);
+    }
+
+    private static <T> List<T> orEmpty(List<T> values) { return values == null ? List.of() : values; }
+
+    private static int orZero(Integer value) { return value == null ? 0 : value; }
+
+    private static int orDefault(Integer value, int fallback) { return value == null ? fallback : value; }
+
+    /** Widen a nullable generated {@code Integer} id/accountId to the {@code Long} the service layer
+     * expects (save/create inputs declare {@code id} nullable → {@code Integer}; reads use {@code int}). */
+    private static Long toLong(Integer value) { return value == null ? null : value.longValue(); }
+
+    private static String requiredField(String value, String field) {
+        if (value == null || value.isBlank()) throw new IllegalArgumentException(MSGS.format("em.err.fieldRequired", field));
+        return value;
+    }
+
+    private static Set<Long> longSet(List<Integer> values) {
+        if (values == null) return Set.of();
+        return values.stream().map(Number::longValue)
+            .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     private static Map<String, Object> sendView(PendingSend value) {
@@ -426,15 +556,65 @@ public final class EmailRpcHandlers extends PluginHandlerSupport implements Auto
         return result;
     }
 
-    /** Overrides the base envelope to JSON-encode records/Path/Instant values before they leave. */
-    @Override
-    protected Map<String, Object> ok(String summary, String key, Object value) {
-        Map<String, Object> result = ok(summary);
-        result.put(key, jsonValue(value));
+    // ── inlined {success, summary, ...} envelope (was PluginHandlerSupport) ──
+
+    /** Resolve a message-bundle key for the current worker locale with positional interpolation. */
+    private static String t(String key, Object... args) { return MSGS.format(key, args); }
+
+    private static Map<String, Object> ok(String summary) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("success", true);
+        result.put("summary", summary);
         return result;
     }
 
-    private Object jsonValue(Object value) {
+    /** Success envelope with a single result field; the value is JSON-normalised via {@link #jsonValue}. */
+    private static Map<String, Object> ok(String summary, String key, Object value) {
+        Map<String, Object> result = ok(summary);
+        if (key != null) result.put(key, jsonValue(value));
+        return result;
+    }
+
+    private static Map<String, Object> okKey(String summaryKey, Object... args) {
+        return ok(t(summaryKey, args));
+    }
+
+    private static Map<String, Object> failKey(String failureKey, Object... args) {
+        return failure(t(failureKey, args));
+    }
+
+    private static Map<String, Object> failure(String summary) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("success", false);
+        result.put("summary", summary == null || summary.isBlank()
+            ? DEFAULT_FAILURE_SUMMARY : summary);
+        return result;
+    }
+
+    /**
+     * Run an operation that may throw, flattening it into the result envelope so a thrown exception
+     * escapes as a {@code {success:false, summary}} response rather than an RPC error. Logs only the
+     * exception <em>type</em> — never the message or stack — to keep request-carried values (which a
+     * transport/parse exception message can echo) out of the shared log channel.
+     */
+    private Map<String, Object> result(RpcContext ctx, ThrowingOperation operation) {
+        try {
+            return operation.run();
+        } catch (Exception error) {
+            ctx.logger().warn("email operation failed: {}", error.getClass().getSimpleName());
+            return failure(safeMessage(error));
+        }
+    }
+
+    /** One-line, throwable→message conversion that strips newlines so the summary stays single-line. */
+    private static String safeMessage(Throwable error) {
+        String message = error.getMessage();
+        if (message == null || message.isBlank()) return DEFAULT_FAILURE_SUMMARY;
+        return message.replace('\r', ' ').replace('\n', ' ');
+    }
+
+    /** Normalise records/Path/Instant values to JSON-friendly forms before they leave the worker. */
+    private static Object jsonValue(Object value) {
         if (value == null || value instanceof String || value instanceof Number || value instanceof Boolean) {
             return value;
         }
@@ -463,51 +643,9 @@ public final class EmailRpcHandlers extends PluginHandlerSupport implements Auto
         return value.toString();
     }
 
-    private static String string(Map<String, Object> params, String key) {
-        return JsonRpcWorker.string(params, key);
-    }
-
-    private static String requiredString(Map<String, Object> params, String key) {
-        String value = string(params, key);
-        if (value == null || value.isBlank()) throw new IllegalArgumentException(MSGS.format("em.err.fieldRequired", key));
-        return value;
-    }
-
-    private static long requiredLong(Map<String, Object> params, String key) {
-        Long value = optionalLong(params, key);
-        if (value == null) throw new IllegalArgumentException(MSGS.format("em.err.fieldRequired", key));
-        return value;
-    }
-
-    private static Long optionalLong(Map<String, Object> params, String key) {
-        Object value = params.get(key);
-        if (value == null) return null;
-        if (value instanceof Number number) return number.longValue();
-        try { return Long.parseLong(value.toString()); }
-        catch (NumberFormatException e) { throw new IllegalArgumentException(MSGS.format("em.err.fieldMustBeInteger", key)); }
-    }
-
-    private static int integer(Map<String, Object> params, String key, int fallback) {
-        return JsonRpcWorker.integer(params, key, fallback);
-    }
-
-    private static Instant instant(Map<String, Object> params, String key) {
-        String value = string(params, key);
-        return value == null || value.isBlank() ? null : Instant.parse(value);
-    }
-
-    private static List<String> strings(Object value) {
-        if (!(value instanceof List<?> values)) return List.of();
-        return values.stream().map(String::valueOf).toList();
-    }
-
-    private static Set<String> stringSet(Object value) { return Set.copyOf(strings(value)); }
-
-    private static Set<Long> longSet(Object value) {
-        if (!(value instanceof List<?> values)) return Set.of();
-        return values.stream().map(item -> {
-            if (item instanceof Number number) return number.longValue();
-            return Long.parseLong(item.toString());
-        }).collect(java.util.stream.Collectors.toUnmodifiableSet());
+    /** An operation that may throw a checked exception, so handlers can call IO methods directly. */
+    @FunctionalInterface
+    private interface ThrowingOperation {
+        Map<String, Object> run() throws Exception;
     }
 }

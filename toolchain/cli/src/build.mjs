@@ -7,18 +7,17 @@ import { runCommand, resolveCommand, spawnSpec } from './commands.mjs'
 import { validateRuntimeTree, readManifest, validatePluginArchive } from './manifest.mjs'
 import { writeZip } from './zip.mjs'
 import { assembleStaging } from './staging.mjs'
+import { writeGenerated } from './generate.mjs'
 import { createHash } from 'node:crypto'
 
 /**
  * Build a plugin package (.fyp).
  *
- * Lifecycle for a `declared` project (fengyu.plugin.json):
- *   ui.prepare → ui.install (if needed) → [ui.test, worker.test] → ui.build → worker.build
+ * Lifecycle for a conventional project:
+ *   ui.install (if needed) → ui.test → ui.build → worker.test → worker.build
  *   → assemble staging → validate staging → atomically package
  *
- * For legacy `vue-vite` / `static` projects, the zero-config behavior is
- * preserved: run the frontend build (vue-vite) then route through staging so
- * the produced archive still excludes src/node_modules/.git/target.
+ * Prebuilt `ui/` projects skip npm and route directly through staging.
  *
  * `build` runs UI and worker tests by default; `--skip-tests` skips tests only,
  * never type checking or packaging. Failures leave NO partial output: no `.fyp`,
@@ -33,38 +32,45 @@ export async function buildPlugin(root, options = {}) {
   const { out, run = runCommand, skipTests = false, hooks = {} } = options
 
   const project = await detectProject(dir)
-
-  if (project.kind === 'declared') {
-    await runDeclaredLifecycle(project, run, skipTests)
-  } else if (project.kind === 'vue-vite') {
-    // Legacy zero-config Vue: run the frontend build first (emits ui/).
-    await run('npm', ['run', 'build'], { cwd: dir })
-  }
-
   const manifest = await readManifest(dir)
-  const output = out ?? path.resolve(dir, project.config?.package?.outputDirectory ?? 'dist-package', `${manifest.id}-${manifest.version}.fyp`)
+
+  // Regenerate the typed RPC client (TS) and DTO records (Java) from the manifest's rpc.methods
+  // BEFORE the UI/worker builds, so the generated sources are compiled into the package.
+  await writeGenerated(project, manifest)
+
+  await runStandardLifecycle(project, run, skipTests)
+
+  const output = out ?? path.resolve(dir, project.config?.package?.outputDirectory ?? 'dist', `${manifest.id}-${manifest.version}.fyp`)
 
   return atomicPackage(project, output, hooks)
 }
 
-async function runDeclaredLifecycle(project, run, skipTests) {
+async function runStandardLifecycle(project, run, skipTests) {
   const cfg = project.config
-  // ui.prepare (e.g. building shared tooling dependencies) runs first.
-  if (cfg.ui) {
-    for (const command of cfg.ui.prepare ?? []) {
-      await runConfigured(command, cfg.ui.root, run)
-    }
+  if (cfg.ui?.root) {
+    const pkg = JSON.parse(await fs.readFile(path.join(cfg.ui.root, 'package.json'), 'utf8'))
     // Install only when node_modules is absent or the lockfile fingerprint drifted.
-    await ensureUiInstalled(cfg.ui, run)
-    if (!skipTests) {
-      await runConfigured(cfg.ui.test, cfg.ui.root, run)
-      if (cfg.worker) await runConfigured(cfg.worker.test, cfg.worker.root, run)
-    }
-    await runConfigured(cfg.ui.build, cfg.ui.root, run)
+    await ensureUiInstalled({ ...cfg.ui, install: ['npm', 'ci'] }, run)
+    if (!skipTests && pkg.scripts?.test) await run('npm', ['test'], { cwd: cfg.ui.root })
+    if (!pkg.scripts?.build) throw new Error('ui-src/package.json must define scripts.build')
+    await run('npm', ['run', 'build'], { cwd: cfg.ui.root })
   }
   if (cfg.worker) {
-    await runConfigured(cfg.worker.build, cfg.worker.root, run)
+    if (!skipTests) await runConfigured(['maven', 'test'], cfg.worker.root, run)
+    await runConfigured(['maven', 'package', '-DskipTests'], cfg.worker.root, run)
+    cfg.worker.artifact = await findWorkerArtifact(cfg.worker.root)
   }
+}
+
+async function findWorkerArtifact(workerRoot) {
+  const target = path.join(workerRoot, 'target')
+  let names
+  try { names = await fs.readdir(target) } catch { throw new Error(`worker build did not create ${target}`) }
+  const jars = names.filter(name => name.endsWith('-worker.jar') && !name.startsWith('original-')).sort()
+  if (jars.length !== 1) {
+    throw new Error(`worker build must produce exactly one target/*-worker.jar; found ${jars.length}`)
+  }
+  return path.join(target, jars[0])
 }
 
 async function runConfigured(command, cwd, run) {

@@ -31,6 +31,7 @@ import java.util.function.Supplier;
  *     .worker(MyWorker.create())          // your JsonRpcWorker, same handlers as production
  *     .host("127.0.0.1")                  // default
  *     .port(24057)                        // default
+ *     .pluginId("com.example.my-plugin")  // sets FENGYU_PLUGIN_ID for the worker
  *     .pluginRoot(Path.of(".."))          // sets FENGYU_PLUGIN_ROOT for the worker
  *     .start()
  *     .await();                           // block until shut down via the IDE Stop button
@@ -122,6 +123,7 @@ public final class PluginDevServer {
         private Supplier<JsonRpcWorker> workerFactory;
         private String host = "127.0.0.1";
         private int port = 24057;
+        private String pluginId;
         private Path pluginRoot;
         private Consumer<String> onDiag = msg -> System.err.println("[fengyu-dev] " + msg);
 
@@ -151,6 +153,15 @@ public final class PluginDevServer {
         public Builder port(int port) {
             if (port < 0 || port > 65535) throw new IllegalArgumentException("port out of range: " + port);
             this.port = port;
+            return this;
+        }
+
+        /**
+         * Plugin id exposed to the worker via the {@code FENGYU_PLUGIN_ID} system property,
+         * mirroring the {@code FENGYU_PLUGIN_ID} env var the production host injects. Optional.
+         */
+        public Builder pluginId(String pluginId) {
+            this.pluginId = pluginId;
             return this;
         }
 
@@ -188,9 +199,16 @@ public final class PluginDevServer {
                     "dev server must bind a loopback address; '" + host + "' is not loopback");
             }
 
-            // Set FENGYU_PLUGIN_ROOT for the worker before any connection is accepted, mirroring
-            // the production host's environment injection (there it is a ProcessBuilder env var;
-            // here System.setProperty is the equivalent for a same-process IDE launch).
+            // Set FENGYU_PLUGIN_ID / FENGYU_PLUGIN_ROOT for the worker before any connection is
+            // accepted, mirroring the production host's environment injection by name (there they
+            // are ProcessBuilder env vars; here System.setProperty is the same-process IDE launch
+            // equivalent). NOTE: JsonRpcWorker reads these via System.getenv, which is captured at
+            // JVM startup — so for RpcContext.pluginId()/pluginRoot() to be populated in the IDE,
+            // launch the dev process with the env vars set, or set -DFENGYU_PLUGIN_ID=... and have
+            // the worker read the property. Mirrors how ROOT is already handled.
+            if (pluginId != null) {
+                System.setProperty("FENGYU_PLUGIN_ID", pluginId);
+            }
             if (pluginRoot != null) {
                 // Use portable separators so the value is stable when serialized by a worker
                 // and compared with slash-delimited manifest paths on Windows as well as Unix.

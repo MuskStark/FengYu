@@ -10,7 +10,7 @@ lang: zh-CN
 
 ## 默认入口：一个 Vue/Vuetify 应用
 
-自 4.0 起，`fengyu plugin create` 脚手架生成的是一个构建到 `ui/` 的 Vue 3 + Vuetify 应用。生成的 `src/main.ts` 会把完整的启动与销毁生命周期交给共享 UI 套件：
+`fengyu init` 脚手架生成的是一个构建到 `ui/` 的 Vue 3 + Vuetify 应用。生成的 `src/main.ts` 会把完整的启动与销毁生命周期交给共享 UI 套件：
 
 ```ts
 import { fengyu } from '@infinia/plugin-sdk'
@@ -48,10 +48,10 @@ client、挂载应用，并在 `pagehide` 时卸载、取消订阅和销毁。�
 ```ts
 import { fengyu } from './sdk.js'
 
-// 1. 协商 SDK 版本并接收宿主的 Environment。
+// 1. 协商协议 2.0.0 并接收宿主的 Environment。
 const env = await fengyu.ready()
-//   → { sdkVersion, theme:'dark'|'light', locale, platform?, capabilities? }
-//   在插件 SDK 与宿主主版本不匹配时抛出异常。
+//   → { protocolVersion, theme, locale, platform, capabilities }
+//   宿主协议版本不完全一致时抛出异常。
 
 // 2. 调用插件自己的 worker（宿主以 JSON-RPC 转发）。
 const out = await fengyu.invoke('render', { markdown: '# hi' })
@@ -75,7 +75,7 @@ off()
 
 | 方法 | 返回 | 说明 |
 | --- | --- | --- |
-| `ready(options?)` | `Promise<Environment>` | 发送 `sdkVersion`；并发调用共享一次握手。主版本不匹配时抛出异常，并缓存 `theme` + `locale`。 |
+| `ready(options?)` | `Promise<Environment>` | 协商精确的协议 `2.0.0`；并发调用共享一次握手，并缓存 `theme` + `locale`。 |
 | `currentEnvironment()` | `Environment \| undefined` | 无需再次访问宿主即可读取最近一次合并后的 ready/event 状态。 |
 | `invoke(method, params?, options?)` | `Promise<T>` | 对插件 worker 的 RPC。`options:{signal?, timeoutMs?}`。 |
 | `notify(message)` | `Promise<boolean>` | 显示一个宿主 toast。 |
@@ -94,33 +94,8 @@ type FileAccess = 'read' | 'write' | 'read-write'
 
 interface FileRef { id: string; name: string; kind: 'file'|'directory'; access: FileAccess; size: number }
 interface FileFilter { name: string; extensions: string[] }
-interface Environment { sdkVersion?: string; theme: Theme; locale: string; platform?: 'web'|'desktop'; capabilities?: string[] }
+interface Environment { protocolVersion: string; theme: Theme; locale: string; platform: 'web'|'desktop'; capabilities: HostMethod[] }
 ```
-
-## 共享宿主集成：`default.mount(el, ctx)`
-
-除了 iframe 路径之外，宿主的 MF 加载器还可以直接加载一个插件 ESM bundle 并调用其 default 导出：
-
-```ts
-// 插件 bundle 为共享宿主挂载而 default 导出的内容。
-export default {
-  mount(el: HTMLElement, ctx: PluginContext): () => void { /* ... */ return () => {} }
-}
-```
-
-宿主传入的 `PluginContext` 让 MF 能访问共享基础设施，从而不必各自打包一份：
-
-| 字段 | 用途 |
-| --- | --- |
-| `ctx.vuetify` | 宿主的 Vuetify（MD3）实例——调用 `app.use(ctx.vuetify)` 以让插件共享主题与组件。**不要打包 Vuetify。** |
-| `ctx.theme`, `ctx.onThemeChange(cb)` | 当前主题 + 变更订阅。 |
-| `ctx.locale`, `ctx.t(key)`, `ctx.onLocaleChange(cb)` | 宿主 locale、一个翻译器以及变更订阅。插件**不得**自带语言切换器。 |
-| `ctx.api.invoke(action, args?)` | 通往 worker 的便捷 RPC。 |
-| `ctx.notify(msg)` | 显示一个宿主 toast。 |
-| `ctx.apiBase`, `ctx.token` | 后端基址 URL 与用于原始 `fetch` 的 `X-FengYu-Token`。 |
-| `ctx.desktop?` | 原生 Electron 文件对话框（`pickFile`、`pickDirectory`）——**仅**在 Electron 桌面外壳下存在，浏览器中为 `undefined`。 |
-
-locale 契约见 [国际化](/zh/plugins/i18n)，Vue/Vuetify 去重规则见 [常见陷阱](/zh/plugins/pitfalls)。
 
 ## 最小化的 `ui/index.html`
 

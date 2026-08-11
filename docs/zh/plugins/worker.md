@@ -209,7 +209,7 @@ public final class MyWorkerMain {
 
 ## 打包 worker
 
-用 `maven-shade-plugin` 把 worker 构建为 shaded fat JAR，把 `mainClass` 设为你的 `*WorkerMain`，并把产物复制到 `backend/worker.jar`。官方构建流程以及等价的单插件 `fengyu plugin build` 见 [构建与部署](/zh/plugins/build-deploy)。
+用 `maven-shade-plugin` 把 worker 构建为 shaded fat JAR，并把 `mainClass` 设为你的 `*WorkerMain`；`fengyu build` 会发现唯一的 `target/*-worker.jar` 并暂存为 `backend/worker.jar`。详见[构建与部署](/zh/plugins/build-deploy)。
 
 ## 下一步
 

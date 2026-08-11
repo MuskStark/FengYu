@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "com.example.bad-timeout",
   "name": "BadTimeout",
   "description": "timeoutSeconds exceeds the 600s cap",
@@ -10,11 +10,18 @@
   "ui": { "entry": "ui/index.html" },
   "permissions": [],
   "official": false,
+  "rpc": {
+    "methods": {
+      "slow": {
+        "inputSchema": { "type": "object", "properties": {} }
+      }
+    }
+  },
   "aiTools": [{
     "name": "slow",
     "description": "Slow tool",
     "method": "slow",
     "timeoutSeconds": 9999,
-    "inputSchema": "{\"type\":\"object\",\"properties\":{}}"
+    "effect": "read"
   }]
 }

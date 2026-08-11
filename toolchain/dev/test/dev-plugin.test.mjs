@@ -49,7 +49,11 @@ test('simulatorHtml: contains iframe with sandbox and the postMessage bridge', (
   const html = simulatorHtml({ iframeSrc: '/', manifest: { id: 'com.example.x' } })
   assert.match(html, /<iframe[^>]*sandbox="allow-scripts allow-forms allow-downloads allow-same-origin"/)
   assert.match(html, /f\.src=iframeSrc/)
-  assert.match(html, /source:'fengyu-host'/)
+  assert.match(html, /hostSource/)
+  // Protocol version comes from the shared PROTOCOL_VERSION constant (T2-05 → 3.0.0), never a
+  // hardcoded literal. If this fails, the simulator is shipping a stale protocol version.
+  assert.match(html, /3\.0\.0/)
+  assert.doesNotMatch(html, /"protocolVersion":"2\./)
   assert.match(html, /fetch\('\/__fengyu\/rpc'/)
   assert.match(html, /\/__fengyu\/ref/)
   assert.match(html, /type=['"]file['"]/)
@@ -58,10 +62,43 @@ test('simulatorHtml: contains iframe with sandbox and the postMessage bridge', (
   assert.match(html, /com\.example\.x/)
 })
 
+test('simulatorHtml: mock host.ready environment mirrors the production HostEnvironment shape', () => {
+  // The simulator's env must carry every field the production PluginView.vue handshake emits
+  // (post-T2-05): protocolVersion, pluginId, pluginVersion, permissions, theme, locale,
+  // platform, capabilities — built from the shared constants + parsed manifest, not hardcoded.
+  const html = simulatorHtml({
+    iframeSrc: '/',
+    manifest: { id: 'com.example.x', version: '1.2.3', permissions: ['files.read', 'files.write'] },
+  })
+  // The env object is serialized into the browser script as JSON; assert its full shape.
+  const envMatch = html.match(/const env=(\{.*?\});/)
+  assert.ok(envMatch, 'env object should be present in the simulator script')
+  const env = JSON.parse(envMatch[1])
+  assert.equal(env.protocolVersion, '3.0.0')
+  assert.equal(env.pluginId, 'com.example.x')
+  assert.equal(env.pluginVersion, '1.2.3')
+  assert.deepEqual(env.permissions, ['files.read', 'files.write'])
+  assert.equal(env.theme, 'dark')
+  assert.equal(env.locale, 'en')
+  assert.equal(env.platform, 'web')
+  assert.ok(Array.isArray(env.capabilities) && env.capabilities.includes('rpc.invoke'))
+})
+
+test('simulatorHtml: defaults pluginId/pluginVersion/permissions when the manifest omits them', () => {
+  const html = simulatorHtml({ iframeSrc: '/', manifest: { id: 'com.example.x' } })
+  const env = JSON.parse(html.match(/const env=(\{.*?\});/)[1])
+  assert.equal(env.pluginId, 'com.example.x')
+  assert.equal(env.pluginVersion, '0.0.0-dev')
+  assert.deepEqual(env.permissions, [])
+})
+
 test('simulatorHtml: handles null manifest without producing NaN/undefined artifacts', () => {
   const html = simulatorHtml({ iframeSrc: '/', manifest: null })
   assert.doesNotMatch(html, /NaN|undefinedundefined/)
   assert.match(html, /<iframe/)
+  const env = JSON.parse(html.match(/const env=(\{.*?\});/)[1])
+  assert.equal(env.pluginId, 'dev-plugin')
+  assert.deepEqual(env.permissions, [])
 })
 
 // ---------- fengyuPluginDev: Vite middleware end-to-end (mock mode) ----------

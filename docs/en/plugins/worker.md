@@ -219,7 +219,7 @@ See [Official Plugin — Markdown](/en/plugins/official-markdown) and [Official 
 
 ## Packaging the worker
 
-Build the worker as a shaded fat JAR with `maven-shade-plugin`, set the `mainClass` to your `*WorkerMain`, and copy the result to `backend/worker.jar`. See [Build & Deploy](/en/plugins/build-deploy) for the official build flow and the equivalent single-plugin `fengyu plugin build`.
+Build the worker as a shaded fat JAR with `maven-shade-plugin` and set the `mainClass` to your `*WorkerMain`; `fengyu build` discovers the unique `target/*-worker.jar` and stages it as `backend/worker.jar`. See [Build & Deploy](/en/plugins/build-deploy).
 
 ## Next steps
 

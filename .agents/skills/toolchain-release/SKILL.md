@@ -90,7 +90,7 @@ the CLI (this is the same path the release's `consumer-smoke` job exercises agai
 packages):
 
 ```bash
-fengyu plugin build OfficialPlugins/plugin-markdown
+fengyu build OfficialPlugins/plugin-markdown
 ```
 
 Repeat for the other official plugins the toolchain must support (`plugin-excel`, `plugin-email`,

@@ -59,8 +59,19 @@ class RpcTransportTest {
         }
         String serveResult = serveOut.toString(StandardCharsets.UTF_8);
 
-        assertEquals(legacyResult, serveResult,
-            "serve(RpcTransport) must be byte-for-byte identical to run(InputStream, OutputStream)");
+        // Both entry points share the same concurrent serve() dispatch loop. Since 1.4.0 the loop
+        // dispatches each request onto a handler pool so $/cancelRequest can arrive mid-handler,
+        // which means response frames are no longer guaranteed to be emitted in submission order —
+        // JSON-RPC clients correlate by id, not by line order. So we compare the multiset of
+        // response frames (sorted) rather than the exact byte sequence.
+        assertEquals(sortedLines(legacyResult), sortedLines(serveResult),
+            "serve(RpcTransport) and run(InputStream, OutputStream) must emit the same response frames");
+    }
+
+    private static java.util.List<String> sortedLines(String output) {
+        return output.trim().isEmpty()
+            ? java.util.List.of()
+            : output.trim().lines().sorted().toList();
     }
 
     @Test void stdioTransportReportsEofAsNullFrame() throws Exception {
@@ -117,7 +128,7 @@ class RpcTransportTest {
         // A minimal line-framed socket transport, exercising the same contract the devkit's
         // LineFramedSocketTransport will implement. Proves serve(RpcTransport) drives a real socket.
         try (ServerSocket server = new ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"))) {
-            JsonRpcWorker worker = new JsonRpcWorker().on("hello", p -> java.util.Map.of("message", "Hello, " + JsonRpcWorker.string(p, "name")));
+            JsonRpcWorker worker = new JsonRpcWorker().on("hello", p -> java.util.Map.of("message", "Hello, " + p.get("name")));
             Thread accepter = Thread.startVirtualThread(() -> {
                 try (Socket conn = server.accept()) {
                     RpcTransport t = new LineFramedSocketTransport(conn);

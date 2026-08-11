@@ -14,7 +14,7 @@ An **opaque handle** the host mints to let a sandboxed plugin refer to a file or
 
 ## MF (micro-frontend)
 
-A self-contained UI bundle (the plugin's `ui/` directory) that the host serves as static assets under `/plugin-runtime/{id}/**` and loads into a **sandboxed iframe** under a strict Content Security Policy. Inside the iframe, `@infinia/plugin-sdk`'s `FengYuClient` bridges to the host over `postMessage`. The host's MF loader can also mount a plugin's ESM bundle directly via `import(uiEntry)` → `default.mount(el, ctx)`. See [UI Micro-frontend](/en/plugins/ui-microfrontend).
+A self-contained UI bundle (the plugin's `ui/` directory) that the host serves as static assets under `/plugin-runtime/{id}/**` and loads exclusively into a **sandboxed iframe** under a strict Content Security Policy. Inside the iframe, `@infinia/plugin-sdk`'s `FengYuClient` bridges to the host over the shared, versioned `postMessage` protocol. See [UI Micro-frontend](/en/plugins/ui-microfrontend).
 
 ## SETUP mode / APP mode
 
@@ -40,11 +40,11 @@ The protocol and process model for plugin backends. The worker reads newline-del
 
 ## `.fyp`
 
-The plugin package format — a zip archive with three parts: `manifest.json` (metadata, permissions, AI tools), `ui/` (the micro-frontend assets), and `backend/worker.jar` (the sidecar executable). Installed via the marketplace (`POST /api/plugin-market/upload` for a `.fyp`, or `upload-native` for a local path). Built with `fengyu plugin build` or the Maven shade flow. See [Plugin Overview](/en/plugins/overview) and [Build & Deploy](/en/plugins/build-deploy).
+The plugin package format — a zip archive with three parts: `manifest.json` (metadata, permissions, AI tools), `ui/` (the micro-frontend assets), and `backend/worker.jar` (the sidecar executable). Installed via the marketplace (`POST /api/plugin-market/upload` for a `.fyp`, or `upload-native` for a local path). Built with `fengyu build`. See [Plugin Overview](/en/plugins/overview) and [Build & Deploy](/en/plugins/build-deploy).
 
 ## `uiEntry`
 
-The resolved UI entry URL on an `InstalledPluginDescriptor` — the address the host's MF loader imports to mount the plugin (`import(uiEntry)` → `default.mount(el, ctx)`). It is derived from the manifest's `ui.entry` (typically `ui/index.html`) and served under `/plugin-runtime/{id}/<entry>`. See [Plugin System — Installed plugin descriptor](/en/architecture/plugin-system#installed-plugin-descriptor).
+The resolved UI entry URL on an `InstalledPluginDescriptor` — the page the host opens in the plugin's sandboxed iframe. It is derived from the manifest's `ui.entry` (typically `ui/index.html`) and served under `/plugin-runtime/{id}/<entry>`. See [Plugin System — Installed plugin descriptor](/en/architecture/plugin-system#installed-plugin-descriptor).
 
 ## `ToolCallback`
 
@@ -52,7 +52,7 @@ The Spring AI abstraction for a tool the model can call. Infinia aggregates ever
 
 ## MD3
 
-Material Design 3 — the design system the host UI (Vuetify) implements. The host passes its Vuetify instance to plugin MFs via `ctx.vuetify` so plugins reuse the host's theme and components rather than bundling their own; this is the "do not bundle Vuetify" rule. The purple `#6750A4` theme color is the MD3 baseline. See [Design System](/en/design-system) and [UI Micro-frontend](/en/plugins/ui-microfrontend).
+Material Design 3 — the design system implemented by the host UI (Vuetify) and `@infinia/plugin-ui`. Plugin UIs render inside their own iframe realm and track host theme/environment changes through the SDK bridge. The purple `#6750A4` theme color is the MD3 baseline. See [Design System](/en/design-system) and [UI Micro-frontend](/en/plugins/ui-microfrontend).
 
 ## Ollama backend
 

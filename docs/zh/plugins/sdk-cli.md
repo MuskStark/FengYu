@@ -1,12 +1,14 @@
 ---
 title: SDK 与 CLI
-description: "@infinia/plugin-sdk TypeScript 客户端、独立版本化的 Java Worker SDK（1.1.0）、用于 IDE 调试的 @infinia/plugin-dev Vite 插件 + fengyu-plugin-devkit，以及两个 fengyu plugin CLI 子命令——create、build 的参考。"
+description: 共享协议 TypeScript 客户端、Java Worker SDK 1.3.0、IDE 模拟器与 Toolchain 2 CLI 参考。
 lang: zh
 ---
 
 # SDK 与 CLI
 
-插件作者使用两套 SDK（运行时两侧各一套）、一套用于 IDE 调试的 Vite 开发插件 + devkit，以及一套 CLI。TypeScript SDK 运行在 iframe UI 中；Java Worker SDK 用来构建 `worker.jar`；`@infinia/plugin-dev` + `fengyu-plugin-devkit` 把你的编辑器变成 FengYu 宿主模拟器，让你用断点调试 UI 和 worker；`fengyu plugin` CLI 负责脚手架（`create`）和打包（`build`）——开发在 IDE 里完成。Java Worker SDK（`fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.1.0`）相对于宿主应用**独立版本化**，并发布到 GitHub Packages。
+插件作者使用两套 SDK、一套 Vite 模拟器 + DevKit，以及 `fengyu` CLI。TypeScript SDK 从 sandbox
+iframe 使用共享协议；Java SDK 运行进程外 Worker。Java Worker SDK
+（`fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.3.0`）相对于宿主应用独立版本化，并发布到 GitHub Packages。
 
 ## `@infinia/plugin-sdk`（TypeScript）
 
@@ -22,9 +24,9 @@ import { fengyu, FengYuClient, createId, type FileRef, type Environment } from '
 
 | 成员 | 签名 | 说明 |
 | --- | --- | --- |
-| `ready(options?)` | `(InvokeOptions?) => Promise<Environment>` | 对并发协商去重；**主版本不匹配时抛出异常**，并应用、缓存 theme/locale。 |
+| `ready(options?)` | `(InvokeOptions?) => Promise<Environment>` | 对协商去重，并要求协议精确为 `2.0.0`；应用、缓存 theme/locale。 |
 | `currentEnvironment()` | `→ Environment \| undefined` | 无需访问宿主即可读取最近一次合并后的 ready/event 状态。 |
-| `invoke<T>(method, params?, options?)` | `→ Promise<T>` | 对 worker 的 RPC。`InvokeOptions { signal?, timeoutMs? }`。 |
+| `invoke<T>(method, params?, options?)` | `→ Promise<T>` | 对 worker 的 RPC；中止 `signal` 会把取消传递到宿主和 Worker。 |
 | `notify(message)` | `→ Promise<boolean>` | 显示一个宿主 toast。 |
 | `files.open(opts?, req?)` | `→ Promise<FileRef \| null>` | 单个文件。`{extensions?, filters?}`。需要权限 `files.read`。 |
 | `files.inputDirectory(req?)` | `→ Promise<FileRef \| null>` | 输入目录。需要权限 `files.read`。 |
@@ -43,7 +45,7 @@ type FileAccess = 'read' | 'write' | 'read-write'
 
 interface FileRef     { id: string; name: string; kind: 'file'|'directory'; access: FileAccess; size: number }
 interface FileFilter  { name: string; extensions: string[] }
-interface Environment { sdkVersion?: string; theme: Theme; locale: string; platform?: 'web'|'desktop'; capabilities?: string[] }
+interface Environment { protocolVersion: string; theme: Theme; locale: string; platform: 'web'|'desktop'; capabilities: HostMethod[] }
 interface InvokeOptions { signal?: AbortSignal; timeoutMs?: number }
 ```
 
@@ -53,7 +55,7 @@ interface InvokeOptions { signal?: AbortSignal; timeoutMs?: number }
 
 ## Java Worker SDK
 
-制品 `fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.1.0`（独立版本化，发布到 GitHub Packages）。包 `fan.summer.fengyu.sdk`。运行时是 `JsonRpcWorker`；处理器实现 `@FunctionalInterface PluginHandler`：
+制品 `fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.3.0`（独立版本化，发布到 GitHub Packages）。包 `fan.summer.fengyu.sdk`。运行时是 `JsonRpcWorker`；处理器实现 `@FunctionalInterface PluginHandler`：
 
 ```java
 Object handle(Map<String, Object> params) throws Exception
@@ -133,44 +135,36 @@ Debug PluginDevMain.main()        # → 监听 127.0.0.1:24057
 [`toolchain/dev/README.md`](https://github.com/MuskStark/FengYu/tree/main/toolchain/dev)。如果配置了
 `workerEndpoint`，连接失败会作为 RPC 错误返回，绝不会被 mock 响应静默替代。
 
-## `fengyu plugin` CLI
+## `fengyu` CLI
 
-源码：`toolchain/cli/src/cli.mjs`。CLI 只负责脚手架和打包——开发和校验都在别处完成（IDE 做开发；
-`build` 自动校验）。用法：
-
-```
-fengyu plugin <create|build> [path] [options]
-```
-
-恰好有**两个**子命令。
+源码：`toolchain/cli/src/cli.mjs`。Toolchain 2 使用扁平且遵循约定的命令：
 
 | 子命令 | 选项 | 说明 |
 | --- | --- | --- |
-| `create <path> --id <id>` | `--id`（必填）、`--no-install`、`--ui-only` | 脚手架生成一个新插件。默认产出一个完整的 Vue + Java 项目（`vue-java` 模板）：`manifest.json`、`fengyu.plugin.json`、`ui-src/`（Vue，`vite.config.ts` 已接入 `@infinia/plugin-dev`）、`worker/`（Java + Maven Wrapper，`PluginDevMain` 已生成在 `src/test/java` 下）以及 `.mvn/settings.xml`。`--ui-only` 保留轻量的纯 UI 模板。默认运行 `npm install`（`--no-install` 可跳过）。拒绝覆盖已存在的目录。 |
-| `build [path] [--out <file>]` | `--out`（默认 `dist-package/<id>-<version>.fyp`）、`--skip-tests` | 对于声明式项目，运行完整的分阶段生命周期（prepare → install → test → build → **校验 staging** → package）。`--skip-tests` 仅跳过测试——绝不跳过类型检查、校验或打包。零配置的 Vue/Vite 与静态项目保留其现有的构建探测。归档写入是原子的——失败时不会留下半成品 `.fyp`、`.tmp-*` 或 staging 目录。 |
+| `init <path> --id <id>` | `--no-install`、`--ui-only` | 创建标准 Vue + Java 项目或纯 UI 项目。 |
+| `dev [path]` | — | 通过标准 `npm run dev` 启动 UI 模拟器；Java 断点仍单独 Debug `PluginDevMain`。 |
+| `check [path]` | — | 不打包，校验 manifest 与标准 UI/Worker 布局。 |
+| `build [path]` | `--out <file>`、`--skip-tests` | 执行 npm/Maven 生命周期、校验 staging，并原子写入 `.fyp` 与校验和。 |
 
-::: tip `dev` / `validate` / `install` 去哪了？
-`fengyu plugin dev` 迁移到了 IDE，通过 `@infinia/plugin-dev` + `fengyu-plugin-devkit` 实现
-（见上方 [IDE 开发](#ide-开发)）——你得到的是真实断点，而不是一个 CLI 管理的进程。`validate`
-现在是 `build` 的内建步骤（staging 树在打包前总会被校验）。`install` 通过宿主的插件市场 UI
-完成（`POST /api/plugin-market/upload`）；详见[插件市场](/zh/plugins/marketplace)。
-:::
+不再支持 `fengyu.plugin.json` 与任意命令数组。标准布局使用 `ui-src/package.json` 和
+`worker/pom.xml`（或根 `pom.xml`）；Worker 必须产出唯一的 `target/*-worker.jar`。默认输出为
+`dist/<id>-<version>.fyp`。
 
 ### 示例
 
 ```bash
 # 脚手架生成（默认安装依赖；加 --no-install 可跳过）
-fengyu plugin create ./my-plugin --id com.example.my-plugin
+fengyu init ./my-plugin --id com.example.my-plugin
 
-# 开发：在 IDE 里打开项目，然后
-#   UI:    cd ui-src && npm run dev
-#   Worker: Debug PluginDevMain（见上方“IDE 开发”）
+fengyu dev ./my-plugin
+# Java Worker 同时在 IDE 中 Debug PluginDevMain。
 
 # 打包（先跑前端构建，校验 staging，原子化打 zip）
-fengyu plugin build . --out dist-package/com.example.my-plugin-1.0.0.fyp
+fengyu check .
+fengyu build . --out dist/com.example.my-plugin-1.0.0.fyp
 ```
 
-脚手架生成的项目同时依赖 `@infinia/plugin-sdk` 与 [`@infinia/plugin-ui`](/zh/plugins/ui-components)；它的 `src/main.ts` 调用 `mountFengYuApp`，统一持有环境同步、client 注入、挂载与 pagehide 销毁。旧式静态插件（没有构建工具的纯 `ui/`）依然被 `build` 接受。
+脚手架生成的项目同时依赖 `@infinia/plugin-sdk` 与 [`@infinia/plugin-ui`](/zh/plugins/ui-components)；它的 `src/main.ts` 调用 `mountFengYuApp`，统一持有环境同步、client 注入、挂载与 pagehide 销毁。
 
 ## 下一步
 

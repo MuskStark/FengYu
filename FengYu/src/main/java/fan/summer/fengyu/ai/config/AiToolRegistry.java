@@ -93,14 +93,20 @@ public final class AiToolRegistry {
             if (!packages.isEnabled(manifest.id()) || manifest.aiTools() == null) continue;
             if (desktopMode() && BROWSER_PLUGIN_ID.equals(manifest.id())) continue;
             for (var tool : manifest.aiTools()) {
+                // T2-04 bullet 3: the input schema is resolved from the referenced rpc method's
+                // OBJECT schema (a JsonNode) and serialized ONCE at this boundary — Spring AI's
+                // ToolDefinition takes a String. This is serialization of a parsed object, not
+                // re-parsing a stored string.
+                String inputSchema = schemaToString(manifest.inputSchemaFor(tool.method()));
+                String outputSchema = schemaToString(manifest.outputSchemaFor(tool.method()));
                 ToolDefinition definition = ToolDefinition.builder()
-                        .name(tool.name()).description(tool.description()).inputSchema(tool.inputSchema()).build();
+                        .name(tool.name()).description(tool.description()).inputSchema(inputSchema).build();
                 // Localized description is for frontend display only; the LLM still sees the English
                 // `description` baked into the ToolDefinition above. Falls back to the English original
                 // when the manifest ships no i18n override for this tool.
                 String localized = ManifestI18n.aiToolDescription(manifest, tool.name(), locale);
                 descriptors.add(descriptor(manifest.id() + ":" + tool.name(), manifest.id(),
-                        definition, tool.outputSchema(), localized));
+                        definition, outputSchema, localized));
             }
         }
         SyncMcpToolCallbackProvider provider = mcpProvider.getIfAvailable();
@@ -123,14 +129,16 @@ public final class AiToolRegistry {
 
     private ToolCallback pluginCallback(String pluginId,
             fan.summer.fengyu.plugin.market.PluginManifest.AiTool tool) {
+        // T2-04 bullet 3: resolve the input schema ONCE from the referenced rpc method. The
+        // serialized form is reused for both the LLM-facing ToolDefinition and the FileRef injector.
         return new AuditedToolCallback() {
+            private final String inputSchema = resolveInputSchema(pluginId, tool);
             private final ToolDefinition definition = ToolDefinition.builder()
-                    .name(tool.name()).description(tool.description()).inputSchema(tool.inputSchema()).build();
+                    .name(tool.name()).description(tool.description()).inputSchema(inputSchema).build();
 
             @Override public ToolDefinition getToolDefinition() { return definition; }
             @Override public ToolEffect effect() {
-                // An older third-party manifest has unknown side effects. Treat it conservatively
-                // until the author declares an explicit effect instead of silently auto-approving it.
+                // v2 makes effect mandatory; the manifest validator enforces non-null at install.
                 return tool.effect() == null ? ToolEffect.EXTERNAL : ToolEffect.from(tool.effect());
             }
 
@@ -145,7 +153,7 @@ public final class AiToolRegistry {
                     // (access="write"), already in ChatFileContext. No per-call promotion or worker
                     // restart is needed: the staging root entered the sandbox at the first invoke.
                     var injected = AiToolFileInjector.injectFileRefs(
-                            params, pluginId, tool.inputSchema(), ChatFileContext.current());
+                            params, pluginId, inputSchema, ChatFileContext.current());
                     long timeout = tool.timeoutSeconds() == null ? -1 : tool.timeoutSeconds();
                     Object result = processes.invoke(pluginId, tool.method(), injected, timeout, AiToolLocaleContext.current());
                     return result instanceof String text ? text : json.writeValueAsString(result);
@@ -154,6 +162,28 @@ public final class AiToolRegistry {
                 }
             }
         };
+    }
+
+    /**
+     * Resolve a tool's input schema from its referenced rpc method, serialized to a String for
+     * Spring AI / the FileRef injector. Falls back to an empty object schema when the manifest has
+     * been removed or the method is missing (a stale callback after an uninstall); the call then
+     * surfaces a clean "tool no longer available" error rather than an NPE.
+     */
+    private String resolveInputSchema(String pluginId,
+            fan.summer.fengyu.plugin.market.PluginManifest.AiTool tool) {
+        return packages.find(pluginId)
+                .map(manifest -> schemaToString(manifest.inputSchemaFor(tool.method())))
+                .orElse("{\"type\":\"object\",\"properties\":{}}");
+    }
+
+    /** Serialize a JsonNode schema to a String once, at the Spring-AI boundary (null → empty object). */
+    private String schemaToString(com.fasterxml.jackson.databind.JsonNode node) {
+        if (node == null || node.isNull()) return "{\"type\":\"object\",\"properties\":{}}";
+        try { return json.writeValueAsString(node); }
+        catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            return "{\"type\":\"object\",\"properties\":{}}";
+        }
     }
 
     private String quote(String value) {

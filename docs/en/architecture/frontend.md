@@ -19,7 +19,7 @@ The Infinia frontend is a **Vue 3 single-page application** written in TypeScrip
 | `vue-i18n` | 10 | Internationalization |
 | `vite` | 6 | Dev server + build |
 
-The MD3 palette (Google default, primary `#6750A4`) and light/dark themes are shared with plugin micro-frontends via the host's Vuetify instance. See the [Design System](/en/design-system) page.
+The MD3 palette (Google default, primary `#6750A4`) is implemented by the host and the plugin UI kit. The host bridge reports environment and theme changes to sandboxed plugin UIs. See the [Design System](/en/design-system) page.
 
 ## Pinia stores
 
@@ -37,14 +37,7 @@ Application state is split across focused Pinia stores:
 
 ## Micro-frontend host
 
-Plugin UIs are not bundled into the SPA. They are loaded on demand by the MF host at `frontend/src/mf/loader.ts`, which dynamically imports the plugin's UI entry and mounts it into a target element with a host-provided context:
-
-```ts
-const mod = await import(uiEntry)
-mod.default.mount(el, ctx)
-```
-
-The micro-frontend reuses the host's Vuetify instance and theme via `ctx`, so MD3 tokens stay consistent across the shell and every plugin. Details live on [Plugin System](/en/architecture/plugin-system).
+Plugin UIs are not bundled into the SPA. `PluginView.vue` loads each plugin's `uiEntry` in a sandboxed iframe. The iframe and host negotiate the shared `@infinia/plugin-sdk/protocol` version, then exchange typed request, response, cancellation, and environment messages over `postMessage`. A plugin cannot access the host's Vue or Vuetify objects directly; `@infinia/plugin-ui` renders the matching MD3 surface inside the isolation boundary. Details live on [Plugin System](/en/architecture/plugin-system).
 
 ## Desktop integration
 

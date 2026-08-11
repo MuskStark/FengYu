@@ -120,12 +120,12 @@ jobs:
       - run: ./mvnw -pl toolchain/sdk-java install -DskipTests
       - run: npm ci
         working-directory: toolchain/cli
-      - run: node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-${{ matrix.plugin }}
+      - run: node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-${{ matrix.plugin }}
       - name: Upload .fyp
         uses: actions/upload-artifact@v4
         with:
           name: official-${{ matrix.plugin }}-fyp
-          path: OfficialPlugins/plugin-${{ matrix.plugin }}/dist-package/*.fyp
+          path: OfficialPlugins/plugin-${{ matrix.plugin }}/dist/*.fyp
           if-no-files-found: error
 
   local-consumer-smoke:

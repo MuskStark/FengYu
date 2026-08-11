@@ -7,7 +7,14 @@ import fan.summer.fengyu.plugin.email.database.EmailDatabase;
 import fan.summer.fengyu.plugin.email.rpc.EmailRpcHandlers;
 import fan.summer.fengyu.plugin.email.service.AccountService;
 import fan.summer.fengyu.plugin.email.service.AddressBookService;
+import fan.summer.fengyu.sdk.CancellationToken;
 import fan.summer.fengyu.sdk.PluginDatabaseConfig;
+import fan.summer.fengyu.sdk.RpcContext;
+import fan.summer.email.generated.EmailAccountDeleteInput;
+import fan.summer.email.generated.EmailAccountSetDefaultInput;
+import fan.summer.email.generated.EmailConfigDeleteInput;
+import fan.summer.email.generated.EmailContactDeleteInput;
+import fan.summer.email.generated.EmailTagDeleteInput;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -63,20 +70,27 @@ class EmailWorkerMainTest {
         EmailWorkerMain.worker(new EmailRpcHandlers(database, cipher)).run(
             new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)), output);
 
-        List<Map<String, Object>> responses = output.toString(StandardCharsets.UTF_8).lines()
-            .map(EmailWorkerMainTest::object).toList();
+        // The SDK dispatches each request on a cached thread pool and writes each response frame as
+        // its handler completes, so response order is NOT guaranteed to match request order. Key the
+        // parsed responses by their JSON-RPC id and look them up by id rather than by position.
+        Map<Integer, Map<String, Object>> responses = new LinkedHashMap<>();
+        for (Map<String, Object> response : output.toString(StandardCharsets.UTF_8).lines()
+                .map(EmailWorkerMainTest::object).toList()) {
+            responses.put(((Number) response.get("id")).intValue(), response);
+        }
         assertEquals(requests.size(), responses.size(), "stdout must contain exactly one response per request");
-        for (int index = 0; index < responses.size(); index++) {
-            Map<String, Object> response = responses.get(index);
-            assertEquals((double) (index + 1), response.get("id"));
+        for (int index = 0; index < requests.size(); index++) {
+            int requestId = index + 1;
+            Map<String, Object> response = responses.get(requestId);
+            assertNotNull(response, () -> "missing response for request id " + requestId);
             assertFalse(response.containsKey("error"), response::toString);
             Map<String, Object> result = castMap(response.get("result"));
             assertNotNull(result.get("success"), result::toString);
             assertTrue(result.get("summary") instanceof String, result::toString);
         }
 
-        Map<String, Object> single = result(responses.get(2));
-        Map<String, Object> batch = result(responses.get(3));
+        Map<String, Object> single = result(responses.get(3));
+        Map<String, Object> batch = result(responses.get(4));
         assertEquals(true, single.get("confirmation_required"));
         assertEquals(true, batch.get("confirmation_required"));
         assertNotNull(single.get("confirmation"));
@@ -170,12 +184,13 @@ class EmailWorkerMainTest {
 
     @Test void missingMutationTargetsReturnFailureEnvelopes() throws Exception {
         EmailRpcHandlers handlers = new EmailRpcHandlers(database(), cipher());
+        RpcContext ctx = new RpcContext(null, null, null, null, new CancellationToken(), null);
         List<Object> results = List.of(
-            handlers.setDefaultAccount(Map.of("id", 999)),
-            handlers.deleteAccount(Map.of("id", 999)),
-            handlers.deleteContact(Map.of("id", 999)),
-            handlers.deleteTag(Map.of("id", 999)),
-            handlers.deleteConfig(Map.of("id", 999)));
+            handlers.setDefaultAccount(new EmailAccountSetDefaultInput(999), ctx),
+            handlers.deleteAccount(new EmailAccountDeleteInput(999), ctx),
+            handlers.deleteContact(new EmailContactDeleteInput(999), ctx),
+            handlers.deleteTag(new EmailTagDeleteInput(999), ctx),
+            handlers.deleteConfig(new EmailConfigDeleteInput(999), ctx));
 
         for (Object value : results) {
             assertEquals(false, castMap(value).get("success"), value::toString);

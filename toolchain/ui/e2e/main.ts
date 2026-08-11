@@ -7,7 +7,7 @@
  * matrix can cover both themes without editing the fixture.
  */
 import { createApp } from 'vue'
-import type { FengYuClient, Environment, FileRef } from '@infinia/plugin-sdk'
+import { HOST_CAPABILITIES, PROTOCOL_VERSION, type FengYuClient, type Environment, type FileRef } from '@infinia/plugin-sdk'
 import { createFengYuVuetify, provideFengYuClient } from '../src'
 import Workbench from './Workbench.vue'
 
@@ -27,7 +27,7 @@ function fakeClient(): FengYuClient {
   }
   return {
     ready: async () =>
-      ({ sdkVersion: '1.0.0', theme: initialTheme(), locale: 'en' }) as Environment,
+      ({ protocolVersion: PROTOCOL_VERSION, theme: initialTheme(), locale: 'en', platform: 'web', capabilities: HOST_CAPABILITIES }) as Environment,
     on: () => () => {},
     notify: async () => true,
     files: {

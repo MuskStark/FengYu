@@ -1,40 +1,55 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { loadBuildConfig } from './config.mjs'
 
 /**
  * Classify a plugin project root and resolve its build model.
  *
- * Detection order:
- *  1. `declared` — a `fengyu.plugin.json` exists; its normalized config is returned.
- *  2. `vue-vite` — a `vite.config.*` or a `package.json` with a `dev` script that
- *     references Vite (zero-config Vue project).
- *  3. `static` — a `ui/` entry HTML + `manifest.json` with no build tooling.
+ * Toolchain 2 uses one conventional layout and intentionally has no command-array DSL:
+ * `manifest.json`, `ui-src/` (or prebuilt `ui/`), and an optional Maven worker at
+ * `worker/pom.xml` or `pom.xml`.
  *
  * @param {string} root - project root
- * @returns {Promise<{ kind: 'declared' | 'vue-vite' | 'static', root: string, config: import('./config.mjs').BuildConfig | null }>}
+ * @returns {Promise<{ kind: 'standard', root: string, config: object }>}
  */
 export async function detectProject(root) {
   const dir = path.resolve(root)
-  const config = await loadBuildConfig(dir)
-  if (config) return { kind: 'declared', root: dir, config }
-  if (await isVueVite(dir)) return { kind: 'vue-vite', root: dir, config: null }
-  return { kind: 'static', root: dir, config: null }
+  if (await exists(path.join(dir, 'fengyu.plugin.json'))) {
+    throw new Error('fengyu.plugin.json was removed in Toolchain 2; use the standard project layout')
+  }
+  const nestedUiSource = await exists(path.join(dir, 'ui-src', 'package.json'))
+  const rootUiSource = await exists(path.join(dir, 'package.json'))
+  const uiSourceRoot = nestedUiSource ? path.join(dir, 'ui-src') : rootUiSource ? dir : null
+  const staticUi = await exists(path.join(dir, 'ui', 'index.html'))
+  if (!uiSourceRoot && !staticUi) throw new Error('plugin must contain ui-src/package.json, package.json, or ui/index.html')
+
+  let workerRoot = null
+  if (await exists(path.join(dir, 'worker', 'pom.xml'))) workerRoot = path.join(dir, 'worker')
+  else if (await exists(path.join(dir, 'pom.xml'))) workerRoot = dir
+
+  return {
+    kind: 'standard',
+    root: dir,
+    config: {
+      ui: {
+        root: uiSourceRoot,
+        output: nestedUiSource ? path.join(dir, 'ui-src', 'dist') : path.join(dir, 'ui'),
+      },
+      worker: workerRoot ? { root: workerRoot, artifact: await existingWorkerArtifact(workerRoot) } : null,
+      package: { outputDirectory: 'dist' },
+    },
+  }
 }
 
-async function isVueVite(dir) {
-  if (await exists(path.join(dir, 'vite.config.ts'))) return true
-  if (await exists(path.join(dir, 'vite.config.js'))) return true
+async function existingWorkerArtifact(workerRoot) {
   try {
-    const raw = await fs.readFile(path.join(dir, 'package.json'), 'utf8')
-    const pkg = JSON.parse(raw)
-    const hasDevScript = typeof pkg.scripts?.dev === 'string'
-    const referencesVite = JSON.stringify(pkg).toLowerCase().includes('vite')
-    if (hasDevScript && referencesVite) return true
+    const target = path.join(workerRoot, 'target')
+    const jars = (await fs.readdir(target))
+      .filter(name => name.endsWith('-worker.jar') && !name.startsWith('original-'))
+      .sort()
+    return jars.length === 1 ? path.join(target, jars[0]) : null
   } catch {
-    /* no package.json or invalid JSON → static */
+    return null
   }
-  return false
 }
 
 /** @returns {Promise<boolean>} true if the path is reachable. */

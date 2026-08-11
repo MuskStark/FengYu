@@ -20,7 +20,7 @@ test('toolchain release tests Java contracts and builds every official plugin', 
   for (const plugin of ['markdown', 'excel', 'email', 'offlinepython']) {
     assert.match(
       release,
-      new RegExp(`plugin build OfficialPlugins/plugin-${plugin}`),
+      new RegExp(`build OfficialPlugins/plugin-${plugin}`),
     )
   }
 })

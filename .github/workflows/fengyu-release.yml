@@ -131,13 +131,13 @@ jobs:
       - name: Build official plugins (.fyp via toolchain/cli)
         run: |
           for plugin in markdown excel email offlinepython; do
-            node toolchain/cli/bin/fengyu.mjs plugin build "OfficialPlugins/plugin-$plugin"
+            node toolchain/cli/bin/fengyu.mjs build "OfficialPlugins/plugin-$plugin"
           done
 
       - name: Stage official .fyp packages and SHA-256 sidecars
         run: |
           mkdir -p staging/plugins
-          for archive in OfficialPlugins/plugin-*/dist-package/*.fyp; do
+          for archive in OfficialPlugins/plugin-*/dist/*.fyp; do
             test -f "$archive.sha256" \
               || { echo "Missing required checksum sidecar: $archive.sha256"; exit 1; }
             cp "$archive" "$archive.sha256" staging/plugins/

@@ -1,40 +1,31 @@
-import type { FengYuClient } from '@infinia/plugin-sdk'
-
 /**
- * Typed wrappers around the worker JSON-RPC surface. Every worker result follows the
- * {success, summary, ...payload} contract.
+ * Typed RPC surface for the Offline Python Builder UI.
+ *
+ * The generated {@link createPluginRpc} client (from `manifest.json` `rpc.methods`) replaces the
+ * v1 string-based `client.invoke('method', ...)` calls. Every panel builds one `rpc` instance from
+ * its host-provided `FengYuClient` and calls typed methods, passing an `AbortSignal` (via
+ * `InvokeOptions`) so an in-flight call is transport-cancelled when the panel unmounts.
+ *
+ * The worker result envelope `{ success, summary, ...payload }` is expressed as fields of the
+ * generated Output types; {@link checked} asserts `success` and throws the summary otherwise
+ * (mirrors the legacy `callChecked`). {@link RpcResult} is the base structural shape used by the
+ * shared job-snapshot reader.
  */
+export { createPluginRpc } from './generated/fengyu-rpc'
 
+/** Base envelope shape every worker result follows (generated Output types are structurally compatible). */
 export interface RpcResult {
   success: boolean
   summary: string
-  // The payload is free-form per method; panels narrow it with `field()`.
   [k: string]: unknown
 }
 
 /**
- * Invoke a worker method. `FengYuClient.invoke(method, params)` posts `rpc.invoke` to the host,
- * which bridges the call to the worker process over JSON-RPC and returns its `result`.
+ * Assert success and throw the worker summary otherwise. Use for calls where a `success:false`
+ * envelope is an error the caller wants to surface via try/catch (init, save, build.start, ...).
+ * Status-polling calls (build/deploy status) do NOT use this — a failed job is a normal snapshot.
  */
-export async function call(
-  client: FengYuClient,
-  method: string,
-  params: Record<string, unknown> = {},
-): Promise<RpcResult> {
-  return client.invoke<RpcResult>(method, params)
-}
-
-export async function callChecked(
-  client: FengYuClient,
-  method: string,
-  params: Record<string, unknown> = {},
-): Promise<RpcResult> {
-  const result = await call(client, method, params)
-  if (!result.success) throw new Error(result.summary)
-  return result
-}
-
-/** Read a typed field off an RpcResult payload (undefined if absent). */
-export function field<T>(res: RpcResult, key: string): T | undefined {
-  return res[key] as T | undefined
+export function checked<T extends RpcResult>(r: T): T {
+  if (!r.success) throw new Error(r.summary)
+  return r
 }

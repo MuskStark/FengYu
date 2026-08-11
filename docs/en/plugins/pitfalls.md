@@ -30,13 +30,13 @@ const file = await fengyu.files.open({ extensions: ['xlsx'] })
 await fengyu.invoke('analyze', { filePath: file })   // host rewrites ref → path
 ```
 
-## 3. Two Vue instances break reactivity
+## 3. The plugin never completes the host handshake
 
-**Problem.** Your plugin MF bundles its own Vue and/or Vuetify, and reactivity, theming, or components behave strangely (or the app fails to mount).
+**Problem.** The iframe renders partially, but host RPC calls time out and theme or locale changes never arrive.
 
-**Cause.** Plugin MF bundles must reuse the host's Vue and Vuetify instance. If a plugin ships its own copy, two Vue instances coexist in the same app, which corrupts reactivity and breaks the shared component/theme registry.
+**Cause.** The plugin and host do not use the same `@infinia/plugin-sdk/protocol` version, or the UI starts invoking methods before `fengyu.ready()` completes. Toolchain 2 intentionally requires an exact protocol match.
 
-**Fix.** Do **not** bundle Vue or Vuetify. Resolve them from the host's import map and install the host instance via `app.use(ctx.vuetify)` from the `PluginContext`. See [UI Micro-frontend](/en/plugins/ui-microfrontend).
+**Fix.** Keep `@infinia/plugin-sdk`, `@infinia/plugin-ui`, CLI, and host on one toolchain release. Await `fengyu.ready()` directly, or use `bindFengYuEnvironment`, before the first host call. See [UI Micro-frontend](/en/plugins/ui-microfrontend).
 
 ## 4. A file operation returns 403
 
