@@ -16,6 +16,8 @@ const autoUpdater = {
   quitAndInstall: vi.fn(),
   autoDownload: true,
   autoInstallOnAppQuit: true,
+  disableDifferentialDownload: false,
+  setFeedURL: vi.fn(),
   currentVersion: '4.0.0',
   on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
     listeners[event] = cb
@@ -62,6 +64,7 @@ beforeEach(async () => {
   allWindows.push({ isDestroyed: () => false, webContents: { send: (c, p) => sentMessages.push({ channel: c, payload: p }) } })
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
+  delete process.env.FENGYU_UPDATE_API_BASE
 })
 
 describe('update:check', () => {
@@ -107,6 +110,7 @@ describe('update:check', () => {
 describe('update:download-install (Windows/Linux)', () => {
   beforeEach(() => {
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    process.env.FENGYU_UPDATE_API_BASE = 'http://proxy.local:8088'
   })
 
   it('downloads and installs on user consent (win/linux)', async () => {
@@ -121,6 +125,18 @@ describe('update:download-install (Windows/Linux)', () => {
     expect(autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1)
     expect(autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1)
     expect(result.action).toBe('restarting')
+  })
+
+  it('uses manual download for the ambiguous shared GitHub feed', async () => {
+    delete process.env.FENGYU_UPDATE_API_BASE
+    const { shell } = await import('electron')
+    const { registerUpdateIpc } = await import('../src/ipc/update')
+    registerUpdateIpc()
+
+    const result = (await handlers.get('update:download-install')!({ sender: {} })) as { action: string }
+    expect(result.action).toBe('manual')
+    expect(shell.openExternal).toHaveBeenCalledWith('https://github.com/MuskStark/FengYu/releases')
+    expect(autoUpdater.downloadUpdate).not.toHaveBeenCalled()
   })
 })
 

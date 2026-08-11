@@ -5,6 +5,8 @@
  *
  * Both tables MUST keep identical key sets so neither locale ever renders a raw key.
  */
+import { createFengYuI18n } from '@infinia/plugin-ui'
+
 export type Messages = Record<string, string>
 
 const en: Messages = {
@@ -21,7 +23,8 @@ const zh: Messages = {
   'mde.renderFailed': '渲染失败',
 }
 
-const tables: Record<string, Messages> = { en, zh }
+export const tables: Record<string, Messages> = { en, zh }
+export const pluginI18n = createFengYuI18n(tables)
 
 /** Resolve the active message table from a locale string (defaults to en). */
 export function messagesFor(locale: string | undefined): Messages {

@@ -2,7 +2,7 @@
 // value sent on host.ready and used for the major-version compatibility gate below; if it drifts
 // from the published version the gate becomes decorative. resolve-tooling-version.mjs asserts the
 // six toolchain artifacts agree — this constant must agree with them too.
-export const SDK_VERSION = '1.2.0';
+export const SDK_VERSION = '1.3.0';
 let fallbackIdSequence = 0;
 /** Correlation id that also works in opaque sandbox origins where Web Crypto is unavailable. */
 export function createId() {
@@ -42,6 +42,8 @@ export class FengYuClient {
     allowedOrigin;
     pending = new Map();
     handlers = new Map();
+    readyPromise;
+    environment;
     disposed = false;
     constructor(options = {}) {
         this.target = options.target ?? window.parent;
@@ -49,14 +51,27 @@ export class FengYuClient {
         this.allowedOrigin = options.allowedOrigin ?? '*';
         window.addEventListener('message', this.onMessage);
     }
-    async ready() {
-        const env = await this.request('host.ready', { sdkVersion: SDK_VERSION });
-        if (env.sdkVersion && env.sdkVersion.split('.')[0] !== SDK_VERSION.split('.')[0]) {
-            throw new Error(`Incompatible FengYu SDK: host=${env.sdkVersion}, plugin=${SDK_VERSION}`);
+    async ready(options = {}) {
+        if (this.environment)
+            return { ...this.environment };
+        if (!this.readyPromise) {
+            this.readyPromise = this.request('host.ready', { sdkVersion: SDK_VERSION }, options)
+                .then(env => {
+                if (env.sdkVersion && env.sdkVersion.split('.')[0] !== SDK_VERSION.split('.')[0]) {
+                    throw new Error(`Incompatible FengYu SDK: host=${env.sdkVersion}, plugin=${SDK_VERSION}`);
+                }
+                this.applyEnvironment(env);
+                return { ...env };
+            })
+                .catch(error => {
+                this.readyPromise = undefined;
+                throw error;
+            });
         }
-        this.applyEnvironment(env);
-        return env;
+        return this.readyPromise;
     }
+    /** Last environment received from ready/environment events; undefined before negotiation. */
+    currentEnvironment() { return this.environment ? { ...this.environment } : undefined; }
     invoke(method, params = {}, options) {
         return this.request('rpc.invoke', { method, params }, options);
     }
@@ -130,10 +145,15 @@ export class FengYuClient {
         else if (message.type === 'event') {
             if (message.event === 'environment')
                 this.applyEnvironment(message.data);
-            this.handlers.get(message.event)?.forEach(handler => handler(message.data));
+            const data = message.event === 'environment' ? (this.currentEnvironment() ?? message.data) : message.data;
+            this.handlers.get(message.event)?.forEach(handler => handler(data));
         }
     };
     applyEnvironment(value) {
+        if (this.environment)
+            this.environment = { ...this.environment, ...value };
+        else if (value.theme && value.locale)
+            this.environment = value;
         if (value.theme)
             document.documentElement.dataset.theme = value.theme;
         if (value.locale)

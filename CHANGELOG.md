@@ -25,6 +25,15 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
     protocol tokens stay locale-neutral (the frontend translates them, as before).
   - **Markdown + Excel frontends** gain a lightweight `i18n.ts` + `useFengYuEnvironment()` composable
     (mirroring the Offline Python pattern), keying every visible UI string.
+  - **Unified production lifecycle.** All six plugin-tooling artifacts now agree on `1.3.0`.
+    `@infinia/plugin-ui` provides `mountFengYuApp` and `createFengYuI18n`, so the four official
+    plugin UIs share one ready/theme/locale/mount/pagehide-dispose path. The TS SDK deduplicates
+    `ready()`, caches and merges environment updates, and exposes `currentEnvironment()`.
+    Worker `Jobs` inherit the initiating request locale, support race-safe cancellation and
+    reject starts after close; `JsonRpcWorker.onClose` closes registered resources in reverse
+    order before exit, and the official async workers register their job registries for teardown.
+    Toolchain and official-plugin lockfiles also pick up patched `fast-uri`, `nanoid`, `dompurify`,
+    and `brace-expansion` releases; their npm audits now report zero known vulnerabilities.
 
 ## [4.0.0-beta.1] — 2026-08-09
 

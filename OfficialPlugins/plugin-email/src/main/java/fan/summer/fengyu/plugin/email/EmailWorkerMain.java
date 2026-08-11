@@ -24,6 +24,7 @@ public final class EmailWorkerMain {
 
     static JsonRpcWorker worker(EmailRpcHandlers handlers) {
         return new JsonRpcWorker()
+            .onClose(handlers)
             .on("email_accounts_list", handlers.handle("email_accounts_list", handlers::listAccounts))
             .on("email_contacts_query", handlers.handle("email_contacts_query", handlers::queryContacts))
             .on("email_send_single", handlers.handle("email_send_single", handlers::prepareSingle))

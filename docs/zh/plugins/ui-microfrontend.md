@@ -10,12 +10,11 @@ lang: zh-CN
 
 ## 默认入口：一个 Vue/Vuetify 应用
 
-自 4.0 起，`fengyu plugin create` 脚手架生成的是一个构建到 `ui/` 的 Vue 3 + Vuetify 应用。生成的 `src/main.ts` 就是全部启动逻辑——它创建 Vuetify 实例、绑定宿主主题/locale、注入 SDK client 并挂载应用：
+自 4.0 起，`fengyu plugin create` 脚手架生成的是一个构建到 `ui/` 的 Vue 3 + Vuetify 应用。生成的 `src/main.ts` 会把完整的启动与销毁生命周期交给共享 UI 套件：
 
 ```ts
-import { createApp } from 'vue'
 import { fengyu } from '@infinia/plugin-sdk'
-import { bindFengYuEnvironment, createFengYuVuetify, provideFengYuClient } from '@infinia/plugin-ui'
+import { mountFengYuApp } from '@infinia/plugin-ui'
 import '@infinia/plugin-ui/style.css'
 import App from './App.vue'
 
@@ -23,16 +22,13 @@ if (!fengyu) throw new Error('FengYu SDK requires a browser environment')
 // 绑定到一个局部变量，使得收窄（非 undefined）的类型能撑过下面
 // 的顶层 `await`——TS 会跨 await 把导入的 `const` 绑定重新放宽。
 const client = fengyu
-const vuetify = createFengYuVuetify()
-const disposeEnvironment = await bindFengYuEnvironment(vuetify, client)
-const app = createApp(App)
-provideFengYuClient(app, client)
-app.use(vuetify)
-app.mount('#app')
-window.addEventListener('pagehide', () => { disposeEnvironment(); client.dispose() }, { once: true })
+await mountFengYuApp({ root: App, client })
 ```
 
-`bindFengYuEnvironment` 会先调用一次 `fengyu.ready()`，再订阅 `environment` 事件，因此主题与 locale 会自动从宿主传播进 Vuetify。在组件内部，调用 `useFengYuClient()` 获取 `FengYuClient`，而不是直接 import `fengyu` 单例。完整的组件套件见 [UI 组件](/zh/plugins/ui-components) 页面。
+`mountFengYuApp` 持有完整的 UI 生命周期：只协商一次环境、同步 Vuetify 主题/locale、注入
+client、挂载应用，并在 `pagehide` 时卸载、取消订阅和销毁。额外 Vue 插件可通过
+`plugins: [pinia, i18n]` 传入；插件自己的消息表可在 `onEnvironment` 中同步。在组件内部应
+调用 `useFengYuClient()`，而不是直接 import 单例。完整组件套件见 [UI 组件](/zh/plugins/ui-components)。
 
 旧式静态插件——手写的 `ui/index.html` + `ui/app.js`，`import { fengyu } from './sdk.js'`——依然被接受。本页其余部分描述**两种**入口方式共用的 SDK API。
 
@@ -79,7 +75,8 @@ off()
 
 | 方法 | 返回 | 说明 |
 | --- | --- | --- |
-| `ready()` | `Promise<Environment>` | 发送 `sdkVersion`；主版本不匹配时抛出异常。把 `theme` + `locale` 应用到文档。 |
+| `ready(options?)` | `Promise<Environment>` | 发送 `sdkVersion`；并发调用共享一次握手。主版本不匹配时抛出异常，并缓存 `theme` + `locale`。 |
+| `currentEnvironment()` | `Environment \| undefined` | 无需再次访问宿主即可读取最近一次合并后的 ready/event 状态。 |
 | `invoke(method, params?, options?)` | `Promise<T>` | 对插件 worker 的 RPC。`options:{signal?, timeoutMs?}`。 |
 | `notify(message)` | `Promise<boolean>` | 显示一个宿主 toast。 |
 | `files.open({extensions?, filters?}, req?)` | `Promise<FileRef \| null>` | 打开单个文件。用户取消时返回 `null`。需要权限 `files.read`。 |

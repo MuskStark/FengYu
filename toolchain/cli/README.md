@@ -55,8 +55,8 @@ only `manifest.json`, the UI output, `backend/worker.jar`, and declared resource
 
 ## GitHub Packages authentication
 
-The Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.1.0`) and the devkit
-(`fan.summer.fengyu.sdk:fengyu-plugin-devkit:1.1.0`) are published to GitHub Packages. External worker
+The Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.3.0`) and the devkit
+(`fan.summer.fengyu.sdk:fengyu-plugin-devkit:1.3.0`) are published to GitHub Packages. External worker
 builds authenticate via `FENGYU_GITHUB_TOKEN` (or `GITHUB_TOKEN`, with `read:packages`). If the wrapper
 root's `settings.xml` references `maven.pkg.github.com` and neither token is set, the CLI throws a
 precise auth message rather than failing ambiguously.

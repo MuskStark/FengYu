@@ -1,6 +1,6 @@
 {
   "name": "@infinia/plugin-dev",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Vite plugin + simulator host for developing FengYu plugins in an IDE — replaces `fengyu plugin dev`.",
   "license": "GPL-3.0",
   "type": "module",

@@ -30,6 +30,10 @@ export function startBrowserBridge(session: BrowserSession, opts: BrowserBridgeO
   return new Promise((resolve, reject) => {
     const token = opts.token && opts.token.length > 0 ? opts.token : genToken()
     const listenPort = opts.port && opts.port > 0 ? opts.port : 0
+    // Browser input is stateful (focus, mouse position, navigation). Serialize requests so
+    // overlapping model/tool calls cannot steal focus or type into the element being clicked
+    // by a different operation. Keep the queue alive after an individual failure.
+    let operationTail: Promise<void> = Promise.resolve()
     const server: Server = createServer((req, res) => {
       // CORS not needed (loopback only). Keep handlers tiny.
       if (req.method !== 'POST' || req.url !== '/invoke') {
@@ -45,7 +49,9 @@ export function startBrowserBridge(session: BrowserSession, opts: BrowserBridgeO
       req.on('end', async () => {
         try {
           const { method, params } = JSON.parse(body || '{}')
-          const envelope = await handleBrowserOp(session, String(method), params ?? {})
+          const operation = operationTail.then(() => handleBrowserOp(session, String(method), params ?? {}))
+          operationTail = operation.then(() => undefined, () => undefined)
+          const envelope = await operation
           res.writeHead(200, { 'Content-Type': 'application/json' })
           res.end(JSON.stringify(envelope))
         } catch (e) {

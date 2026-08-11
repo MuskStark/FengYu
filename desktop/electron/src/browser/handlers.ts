@@ -1,10 +1,14 @@
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { nativeImage } from 'electron'
 import type { BrowserSession } from './session'
 import { formatA11yTree, type CdpAxTree } from './a11y'
 
 /** Attribute stamped on an element by browser_find so later ops target the exact node. */
 export const REF_ATTR = 'data-fengyu-ref'
+
+/** Match locator-based browser tools: actions auto-wait briefly for a usable target. */
+const ACTION_TIMEOUT_MS = 10_000
 
 /**
  * Execute one browser_* operation against the session. Returns the envelope that the
@@ -27,10 +31,14 @@ export async function handleBrowserOp(
         return await navigate(session, str(params, 'url'), optStr(params, 'waitUntil'))
       case 'browser_find':
         return await find(session, str(params, 'selector'), optNum(params, 'nth', null))
+      case 'browser_snapshot':
+        return await snapshot(session)
       case 'browser_click':
         return await click(session, target(params))
       case 'browser_type':
         return await type(session, target(params), str(params, 'text'), params.clear !== false)
+      case 'browser_press':
+        return await press(session, target(params), str(params, 'key'))
       case 'browser_get_text':
         return await getText(session, optTarget(params))
       case 'browser_query':
@@ -119,7 +127,8 @@ async function navigate(session: BrowserSession, url: string, waitUntil: string 
   // Read the title from the live DOM rather than webContents.getTitle(), which may still
   // hold the previous page's title on redirects/slow pages before the renderer updates it.
   const title = String(await win.webContents.executeJavaScript('document.title') ?? '')
-  return { success: true, summary: `navigated to ${url}`, url, title }
+  const finalUrl = win.webContents.getURL()
+  return { success: true, summary: `navigated to ${finalUrl}`, url: finalUrl, title }
 }
 
 /**
@@ -130,11 +139,17 @@ async function navigate(session: BrowserSession, url: string, waitUntil: string 
 async function find(session: BrowserSession, selector: string, nth: number | null) {
   const w = requireWindow(session)
   const refId = session.nextRefId()
-  // Match + pick logic runs in-page: returns a descriptive error envelope when 0 matches
-  // or when a multi-match selector is used without nth, instead of throwing into the log.
-  const res = await w.webContents.executeJavaScript(`(function(){
-    var all = Array.from(document.querySelectorAll(${JSON.stringify(selector)}));
-    if (all.length === 0) return { error: 'no element matches selector ' + ${JSON.stringify(selector)} };
+  // Auto-wait for dynamically rendered elements. Ambiguous selectors still fail strictly
+  // instead of silently returning whichever match happened to render first.
+  const res = await w.webContents.executeJavaScript(`(async function(){
+    const deadline = Date.now() + ${ACTION_TIMEOUT_MS};
+    var all = [];
+    while (Date.now() < deadline) {
+      all = Array.from(document.querySelectorAll(${JSON.stringify(selector)}));
+      if (all.length > 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (all.length === 0) return { error: 'timed out waiting for selector ' + ${JSON.stringify(selector)} };
     if (${JSON.stringify(nth)} === null && all.length > 1) return { error: 'selector matched ' + all.length + ' elements; pass nth (1-based) or refine the selector' };
     var idx = ${JSON.stringify(nth)} === null ? 0 : (${JSON.stringify(nth)} - 1);
     if (idx < 0 || idx >= all.length) return { error: 'nth=' + ${JSON.stringify(nth)} + ' out of range (matched ' + all.length + ')' };
@@ -157,47 +172,327 @@ async function find(session: BrowserSession, selector: string, nth: number | nul
   return { success: true, summary: `found ${res.tag}`, ref: refId, ...res }
 }
 
+/**
+ * Return the model-facing equivalent of Codex's DOM snapshot: only rendered controls receive
+ * stable refs, accompanied by their semantic role/name and a bounded visible-text excerpt.
+ * This removes the need to guess CSS selectors or probe the page repeatedly with eval_js.
+ */
+async function snapshot(session: BrowserSession) {
+  const w = requireWindow(session)
+  const result = await w.webContents.executeJavaScript(`(function(){
+    const refAttr = ${JSON.stringify(REF_ATTR)};
+    const prefix = 'snap_' + Date.now().toString(36) + '_';
+    let sequence = 0;
+    const clean = (value, limit=180) => String(value || '').replace(/\\s+/g, ' ').trim().slice(0, limit);
+    const visible = (el) => {
+      if (!el || !el.isConnected) return false;
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) !== 0 && rect.width > 0 && rect.height > 0;
+    };
+    const roleOf = (el) => {
+      const explicit = el.getAttribute('role');
+      if (explicit) return explicit;
+      const tag = el.tagName.toLowerCase();
+      const type = (el.getAttribute('type') || '').toLowerCase();
+      if (tag === 'a' && el.hasAttribute('href')) return 'link';
+      if (tag === 'button' || (tag === 'input' && ['button','submit','reset','image'].includes(type))) return 'button';
+      if (tag === 'textarea' || el.isContentEditable) return 'textbox';
+      if (tag === 'input' && type === 'search') return 'searchbox';
+      if (tag === 'input' && type === 'checkbox') return 'checkbox';
+      if (tag === 'input' && type === 'radio') return 'radio';
+      if (tag === 'input' && type === 'range') return 'slider';
+      if (tag === 'input') return 'textbox';
+      if (tag === 'select') return el.multiple ? 'listbox' : 'combobox';
+      if (tag === 'summary') return 'button';
+      return 'control';
+    };
+    const nameOf = (el) => {
+      const labelledBy = el.getAttribute('aria-labelledby');
+      if (labelledBy) {
+        const text = labelledBy.split(/\\s+/).map(id => document.getElementById(id)?.innerText || '').join(' ');
+        if (clean(text)) return clean(text);
+      }
+      const aria = clean(el.getAttribute('aria-label'));
+      if (aria) return aria;
+      if (el.id) {
+        try { const label = document.querySelector('label[for="' + CSS.escape(el.id) + '"]'); if (label && clean(label.innerText)) return clean(label.innerText); } catch {}
+      }
+      const wrappingLabel = el.closest('label');
+      if (wrappingLabel && clean(wrappingLabel.innerText)) return clean(wrappingLabel.innerText);
+      return clean(el.getAttribute('alt') || el.getAttribute('title') || el.getAttribute('placeholder') || el.innerText || (['button','submit','reset'].includes((el.type || '').toLowerCase()) ? el.value : ''));
+    };
+    const selector = 'a[href],button,input:not([type="hidden"]),textarea,select,summary,[role],[contenteditable="true"],[tabindex]:not([tabindex="-1"])';
+    const controls = Array.from(document.querySelectorAll(selector)).filter(visible).slice(0, 300);
+    const lines = controls.map((el) => {
+      let ref = el.getAttribute(refAttr);
+      if (!ref) { ref = prefix + (++sequence); el.setAttribute(refAttr, ref); }
+      const role = roleOf(el);
+      const name = nameOf(el);
+      const attrs = [];
+      const placeholder = clean(el.getAttribute('placeholder'), 100);
+      if (placeholder && placeholder !== name) attrs.push('placeholder=' + JSON.stringify(placeholder));
+      if ('value' in el && el.type !== 'password' && clean(el.value, 120)) attrs.push('value=' + JSON.stringify(clean(el.value, 120)));
+      if (el.disabled || el.getAttribute('aria-disabled') === 'true') attrs.push('disabled');
+      if (el.readOnly || el.getAttribute('aria-readonly') === 'true') attrs.push('readonly');
+      return '[' + ref + '] ' + role + (name ? ' ' + JSON.stringify(name) : '') + (attrs.length ? ' ' + attrs.join(' ') : '');
+    });
+    const bodyText = clean(document.body?.innerText || '', 12000);
+    const header = 'URL: ' + location.href + '\\nTitle: ' + document.title;
+    const controlsText = lines.length ? 'Interactive elements:\\n' + lines.join('\\n') : 'Interactive elements: none';
+    return { url: location.href, title: document.title, count: lines.length, snapshot: header + '\\n' + controlsText + '\\nVisible text:\\n' + bodyText };
+  })()`)
+  return { success: true, summary: `captured ${result.count} interactive element(s)`, ...result }
+}
+
 async function click(session: BrowserSession, t: ResolvedTarget & { nth: number | null }) {
   const w = requireWindow(session)
-  // Scroll into view + read the element's centre point relative to the viewport.
-  const notFoundTail = t.ref ? ` + ' for ref ' + ${JSON.stringify(t.ref)}` : ''
-  const point = await w.webContents.executeJavaScript(`(function(){
-    var el = ${pickExpr(t.selector, t.nth)};
-    if (!el) throw new Error('element not found'${notFoundTail});
-    el.scrollIntoView({ block: 'center', inline: 'center' });
-    var r = el.getBoundingClientRect();
-    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
-  })()`)
+  const point = await waitForActionable(session, t, 'click')
   // Real mouse event sequence via CDP Input domain — equivalent to a human click, passes
   // isTrusted checks and triggers mousedown/mouseup/focus listeners (JS el.click() does not).
   const dbg = await session.cdp()
-  const common = { x: point.x, y: point.y, button: 'left', buttons: 1 }
-  await dbg.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', ...common, buttons: 0 })
-  await dbg.sendCommand('Input.dispatchMouseEvent', { type: 'mousePressed', ...common, clickCount: 1 })
-  await dbg.sendCommand('Input.dispatchMouseEvent', { type: 'mouseReleased', ...common, clickCount: 1 })
+  await dispatchClick(dbg, point)
+  await settleAfterAction(w)
   const where = t.ref ?? t.selector ?? '(unknown)'
-  return { success: true, summary: `clicked ${where}`, clicked: true }
+  return { success: true, summary: `clicked ${where}`, clicked: true, ...await pageState(w) }
 }
 
 async function type(session: BrowserSession, t: ResolvedTarget & { nth: number | null }, text: string, clear: boolean) {
   const w = requireWindow(session)
-  // Focus the field and optionally clear it. We do NOT set el.value directly for the text
-  // itself — that bypasses the framework's event pipeline. The actual text goes in via
-  // CDP Input.insertText below, which fires a real input event React/Vue observe.
-  const notFoundTail = t.ref ? ` + ' for ref ' + ${JSON.stringify(t.ref)}` : ''
-  await w.webContents.executeJavaScript(`(function(){
-    var el = ${pickExpr(t.selector, t.nth)};
-    if (!el) throw new Error('element not found'${notFoundTail});
-    el.focus();
-    ${clear ? "if ('value' in el) { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); }" : ''}
-  })()`)
+  const point = await waitForActionable(session, t, 'type')
+  const dbg = await session.cdp()
+
+  // Focus through a real pointer click. This catches overlays and focus-stealing handlers in
+  // the same way a user sees them, instead of focusing an otherwise unreachable field via JS.
+  await dispatchClick(dbg, point)
+  await assertTargetFocused(w, t)
+
+  if (clear) {
+    // Select-all + Backspace goes through the browser's keyboard editing pipeline. Directly
+    // assigning el.value='' desynchronises React's value tracker and is a common cause of text
+    // reappearing on the next render.
+    const modifier = process.platform === 'darwin' ? 4 : 2 // CDP Meta=4, Control=2
+    await dispatchKey(dbg, { key: 'a', code: 'KeyA', keyCode: 65, modifiers: modifier })
+    await dispatchKey(dbg, { key: 'Backspace', code: 'Backspace', keyCode: 8 })
+  }
   // CDP Input.insertText inserts text at the caret through the browser's real text-edit
   // pipeline (same path as paste / IME), so React/Vue controlled components observe a
   // proper input event and update their state — direct el.value assignment does not.
-  const dbg = await session.cdp()
   await dbg.sendCommand('Input.insertText', { text })
+
+  // A framework may synchronously restore a rejected value. Verify clear-and-fill calls so
+  // the model never receives a false positive and can recover with a different target.
+  let value: string | undefined
+  if (clear) {
+    value = await readEditableValue(w, t)
+    if (value !== text) {
+      throw new Error(`typed text did not persist (expected ${text.length} chars, found ${value.length})`)
+    }
+  }
   const where = t.ref ?? t.selector ?? '(unknown)'
-  return { success: true, summary: `typed into ${where}`, filled: true }
+  return { success: true, summary: `typed into ${where}`, filled: true, ...(value === undefined ? {} : { value }) }
+}
+
+async function press(session: BrowserSession, t: ResolvedTarget & { nth: number | null }, key: string) {
+  const w = requireWindow(session)
+  const point = await waitForActionable(session, t, 'type')
+  const dbg = await session.cdp()
+  await dispatchClick(dbg, point)
+  await assertTargetFocused(w, t)
+  await dispatchNamedKey(dbg, key)
+  await settleAfterAction(w)
+  const where = t.ref ?? t.selector ?? '(unknown)'
+  return { success: true, summary: `pressed ${key} on ${where}`, pressed: true, ...await pageState(w) }
+}
+
+interface ActionPoint {
+  x: number
+  y: number
+}
+
+/**
+ * Wait for locator actionability using the same core contract as modern browser drivers:
+ * attached, visible, enabled/editable, geometrically stable, and able to receive pointer
+ * events. The hit-test uses several points within the visible intersection, which avoids a
+ * small badge/icon obscuring only the exact centre of an otherwise clickable control.
+ */
+async function waitForActionable(
+  session: BrowserSession,
+  t: ResolvedTarget & { nth: number | null },
+  action: 'click' | 'type',
+): Promise<ActionPoint> {
+  const w = requireWindow(session)
+  const refLabel = t.ref ? ` for ref ${t.ref}` : ''
+  const refLabelLiteral = JSON.stringify(refLabel)
+  const selectorLiteral = JSON.stringify(t.selector)
+  const nthLiteral = JSON.stringify(t.nth)
+  return await w.webContents.executeJavaScript(`(async function(){
+    const deadline = Date.now() + ${ACTION_TIMEOUT_MS};
+    let reason = 'element not found' + ${refLabelLiteral};
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    const sameRect = (a, b) => a && Math.abs(a.x-b.x)<0.5 && Math.abs(a.y-b.y)<0.5 && Math.abs(a.width-b.width)<0.5 && Math.abs(a.height-b.height)<0.5;
+    while (Date.now() < deadline) {
+      const all = Array.from(document.querySelectorAll(${selectorLiteral}));
+      if (${nthLiteral} === null && all.length > 1) {
+        throw new Error('selector matched ' + all.length + ' elements; pass nth (1-based), a ref, or refine the selector');
+      }
+      const idx = ${nthLiteral} === null ? 0 : (${nthLiteral} - 1);
+      const el = all[idx] || null;
+      if (!el || !el.isConnected) { reason = 'element is detached' + ${refLabelLiteral}; await sleep(100); continue; }
+      const style = getComputedStyle(el);
+      const r0 = el.getBoundingClientRect();
+      if (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0 || r0.width <= 0 || r0.height <= 0) {
+        reason = 'element is not visible' + ${refLabelLiteral}; await sleep(100); continue;
+      }
+      if (el.disabled || el.getAttribute('aria-disabled') === 'true') {
+        reason = 'element is disabled' + ${refLabelLiteral}; await sleep(100); continue;
+      }
+      if (${JSON.stringify(action)} === 'type') {
+        const tag = el.tagName.toLowerCase();
+        const editable = tag === 'textarea' || (tag === 'input' && !['button','checkbox','color','file','hidden','image','radio','range','reset','submit'].includes((el.type || '').toLowerCase())) || el.isContentEditable;
+        if (!editable) { reason = 'element is not editable' + ${refLabelLiteral}; await sleep(100); continue; }
+        if (el.readOnly || el.getAttribute('aria-readonly') === 'true') { reason = 'element is read-only' + ${refLabelLiteral}; await sleep(100); continue; }
+      }
+      el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+      await frame(); await frame();
+      if (!el.isConnected) { reason = 'element detached while scrolling' + ${refLabelLiteral}; continue; }
+      const r1 = el.getBoundingClientRect();
+      await frame();
+      const r2 = el.getBoundingClientRect();
+      if (!sameRect(r1, r2)) { reason = 'element is moving' + ${refLabelLiteral}; continue; }
+      const left = Math.max(0, r2.left), top = Math.max(0, r2.top);
+      const right = Math.min(innerWidth, r2.right), bottom = Math.min(innerHeight, r2.bottom);
+      if (right <= left || bottom <= top) { reason = 'element is outside the viewport' + ${refLabelLiteral}; await sleep(100); continue; }
+      const points = [
+        [(left+right)/2, (top+bottom)/2],
+        [left+(right-left)*0.25, top+(bottom-top)*0.5],
+        [left+(right-left)*0.75, top+(bottom-top)*0.5],
+        [left+(right-left)*0.5, top+(bottom-top)*0.25],
+        [left+(right-left)*0.5, top+(bottom-top)*0.75],
+      ];
+      for (const [x, y] of points) {
+        const hit = document.elementFromPoint(x, y);
+        if (hit && (hit === el || el.contains(hit))) {
+          return { x: Math.round(x), y: Math.round(y) };
+        }
+      }
+      reason = 'element is covered by another element' + ${refLabelLiteral};
+      await sleep(100);
+    }
+    throw new Error('element is not actionable: ' + reason);
+  })()`)
+}
+
+async function dispatchClick(dbg: Electron.Debugger, point: ActionPoint): Promise<void> {
+  const common = { x: point.x, y: point.y, button: 'left' as const }
+  await dbg.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', ...common, buttons: 0 })
+  await dbg.sendCommand('Input.dispatchMouseEvent', { type: 'mousePressed', ...common, buttons: 1, clickCount: 1 })
+  await dbg.sendCommand('Input.dispatchMouseEvent', { type: 'mouseReleased', ...common, buttons: 0, clickCount: 1 })
+}
+
+async function dispatchKey(
+  dbg: Electron.Debugger,
+  key: { key: string; code: string; keyCode: number; modifiers?: number; text?: string },
+): Promise<void> {
+  const params = {
+    key: key.key,
+    code: key.code,
+    windowsVirtualKeyCode: key.keyCode,
+    nativeVirtualKeyCode: key.keyCode,
+    modifiers: key.modifiers ?? 0,
+  }
+  const textParams = key.text == null ? {} : { text: key.text, unmodifiedText: key.text }
+  await dbg.sendCommand('Input.dispatchKeyEvent', {
+    type: key.text == null ? 'rawKeyDown' : 'keyDown', ...params, ...textParams,
+  })
+  await dbg.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', ...params })
+}
+
+async function dispatchNamedKey(dbg: Electron.Debugger, shortcut: string): Promise<void> {
+  const parts = shortcut.split('+').map((part) => part.trim()).filter(Boolean)
+  const keyName = parts.pop()
+  if (!keyName) throw new Error('missing key')
+  let modifiers = 0
+  for (const modifier of parts) {
+    switch (modifier.toLowerCase()) {
+      case 'alt': modifiers |= 1; break
+      case 'control': case 'ctrl': modifiers |= 2; break
+      case 'meta': case 'command': modifiers |= 4; break
+      case 'shift': modifiers |= 8; break
+      case 'controlormeta': modifiers |= process.platform === 'darwin' ? 4 : 2; break
+      default: throw new Error(`unsupported modifier: ${modifier}`)
+    }
+  }
+  const named: Record<string, { key: string; code: string; keyCode: number; text?: string }> = {
+    enter: { key: 'Enter', code: 'Enter', keyCode: 13, text: '\r' },
+    tab: { key: 'Tab', code: 'Tab', keyCode: 9 },
+    escape: { key: 'Escape', code: 'Escape', keyCode: 27 },
+    backspace: { key: 'Backspace', code: 'Backspace', keyCode: 8 },
+    delete: { key: 'Delete', code: 'Delete', keyCode: 46 },
+    space: { key: ' ', code: 'Space', keyCode: 32, text: ' ' },
+    arrowup: { key: 'ArrowUp', code: 'ArrowUp', keyCode: 38 },
+    arrowdown: { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 },
+    arrowleft: { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37 },
+    arrowright: { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 },
+    home: { key: 'Home', code: 'Home', keyCode: 36 },
+    end: { key: 'End', code: 'End', keyCode: 35 },
+    pageup: { key: 'PageUp', code: 'PageUp', keyCode: 33 },
+    pagedown: { key: 'PageDown', code: 'PageDown', keyCode: 34 },
+  }
+  const lower = keyName.toLowerCase()
+  const descriptor = named[lower] ?? (/^[a-z0-9]$/i.test(keyName)
+    ? { key: keyName, code: /^[a-z]$/i.test(keyName) ? `Key${keyName.toUpperCase()}` : `Digit${keyName}`, keyCode: keyName.toUpperCase().charCodeAt(0), ...(modifiers === 0 ? { text: keyName } : {}) }
+    : null)
+  if (!descriptor) throw new Error(`unsupported key: ${keyName}`)
+  await dispatchKey(dbg, { ...descriptor, modifiers })
+}
+
+/** Wait for a navigation started by click/Enter, while keeping non-navigation actions fast. */
+async function settleAfterAction(w: Electron.BrowserWindow): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  if (!w.webContents.isLoading()) return
+  await Promise.race([
+    new Promise<void>((resolve) => w.webContents.once('did-stop-loading', () => resolve())),
+    new Promise<void>((resolve) => setTimeout(resolve, 10_000)),
+  ])
+}
+
+async function pageState(w: Electron.BrowserWindow): Promise<{ url: string; title: string }> {
+  const url = w.webContents.getURL()
+  try {
+    const title = String(await w.webContents.executeJavaScript('document.title') ?? '')
+    return { url, title }
+  } catch {
+    return { url, title: w.webContents.getTitle() }
+  }
+}
+
+async function readEditableValue(
+  w: Electron.BrowserWindow,
+  t: ResolvedTarget & { nth: number | null },
+): Promise<string> {
+  return String(await w.webContents.executeJavaScript(`(function(){
+    return new Promise((resolve, reject) => requestAnimationFrame(() => requestAnimationFrame(() => {
+      try {
+        const el = ${pickExpr(t.selector, t.nth)};
+        if (!el || !el.isConnected) throw new Error('element detached after typing');
+        resolve('value' in el ? String(el.value) : String(el.innerText || el.textContent || ''));
+      } catch (error) { reject(error); }
+    })));
+  })()`))
+}
+
+async function assertTargetFocused(
+  w: Electron.BrowserWindow,
+  t: ResolvedTarget & { nth: number | null },
+): Promise<void> {
+  const focused = await w.webContents.executeJavaScript(`(function(){
+    const el = ${pickExpr(t.selector, t.nth)};
+    const active = document.activeElement;
+    return !!el && !!active && (active === el || el.contains(active));
+  })()`)
+  if (!focused) throw new Error('target did not receive focus; typing was cancelled')
 }
 
 async function getText(session: BrowserSession, t: ResolvedTarget & { nth: number | null }) {
@@ -225,10 +520,25 @@ async function screenshot(session: BrowserSession, fullPage: boolean, t: Resolve
   if (rect) {
     img = await w.webContents.capturePage(rect)
   } else if (fullPage) {
-    const dims = await w.webContents.executeJavaScript(`({w: document.body.scrollWidth, h: document.body.scrollHeight})`)
-    // fullPage approximated by resizing once; for MVP capture the current viewport.
-    img = await w.webContents.capturePage()
-    void dims
+    const cdp = await session.cdp()
+    const metrics = await cdp.sendCommand('Page.getLayoutMetrics') as {
+      cssContentSize?: { width: number; height: number }
+      contentSize?: { width: number; height: number }
+    }
+    const size = metrics.cssContentSize ?? metrics.contentSize
+    if (!size || !Number.isFinite(size.width) || !Number.isFinite(size.height)
+      || size.width <= 0 || size.height <= 0) {
+      throw new Error('could not determine full-page dimensions')
+    }
+    const result = await cdp.sendCommand('Page.captureScreenshot', {
+      format: 'png',
+      fromSurface: true,
+      captureBeyondViewport: true,
+      clip: { x: 0, y: 0, width: Math.ceil(size.width), height: Math.ceil(size.height), scale: 1 },
+    }) as { data?: string }
+    if (!result.data) throw new Error('full-page screenshot returned no image data')
+    img = nativeImage.createFromBuffer(Buffer.from(result.data, 'base64'))
+    if (img.isEmpty()) throw new Error('full-page screenshot returned an empty image')
   } else {
     img = await w.webContents.capturePage()
   }
@@ -236,7 +546,15 @@ async function screenshot(session: BrowserSession, fullPage: boolean, t: Resolve
   writeFileSync(file, img.toPNG())
   const size = img.getSize()
   const a11yTree = await captureA11y(session)
-  return { success: true, summary: 'screenshot saved', imagePath: file, width: size.width, height: size.height, a11yTree }
+  // Always pair pixels with an actionable snapshot. Even models that choose screenshot as
+  // their inspection primitive receive refs they can use directly instead of falling back to
+  // repeated eval_js probes.
+  const dom = await snapshot(session)
+  return {
+    success: true, summary: 'screenshot saved', imagePath: file,
+    width: size.width, height: size.height, a11yTree,
+    url: dom.url, title: dom.title, domSnapshot: dom.snapshot,
+  }
 }
 
 async function captureA11y(session: BrowserSession): Promise<string> {
@@ -258,17 +576,18 @@ async function waitFor(session: BrowserSession, t: ResolvedTarget & { nth: numbe
     if (ok) return { success: true, summary: 'wait satisfied', ok: true }
     await new Promise((r) => setTimeout(r, 200))
   }
-  return { success: true, summary: 'wait timed out', ok: false }
+  return { success: false, summary: 'wait timed out', ok: false }
 }
 
 function buildPredicate(selector: string | null, nth: number | null, state: string): string {
   const pick = pickExpr(selector, nth)
-  // If selector is null pickExpr yields 'null' and these evaluate sensibly (never attached).
+  // getClientRects + computed style handles fixed-position elements correctly; offsetParent
+  // does not (a visible position:fixed element may have no offset parent).
   switch (state) {
     case 'attached': return `!!${pick}`
     case 'detached': return `!${pick}`
-    case 'hidden': return `(${pick} === null || ${pick}.offsetParent === null)`
-    default: return `(${pick} !== null && ${pick}.offsetParent !== null)` // visible
+    case 'hidden': return `(() => { const e=${pick}; if(!e) return true; const s=getComputedStyle(e); const r=e.getBoundingClientRect(); return s.display==='none'||s.visibility==='hidden'||Number(s.opacity)===0||r.width<=0||r.height<=0; })()`
+    default: return `(() => { const e=${pick}; if(!e) return false; const s=getComputedStyle(e); const r=e.getBoundingClientRect(); return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)!==0&&r.width>0&&r.height>0; })()`
   }
 }
 

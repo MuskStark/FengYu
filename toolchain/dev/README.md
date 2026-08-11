@@ -34,7 +34,7 @@ For a Java-worker plugin, also add the devkit as a **test-scope** Maven dependen
 <dependency>
   <groupId>fan.summer.fengyu.sdk</groupId>
   <artifactId>fengyu-plugin-devkit</artifactId>
-  <version>1.1.0</version>
+  <version>1.3.0</version>
   <scope>test</scope>
 </dependency>
 ```

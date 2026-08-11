@@ -8,10 +8,21 @@ import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.BooleanSupplier;
 import static org.junit.jupiter.api.Assertions.*;
 
 class JsonRpcWorkerTest {
+    @Test void closesLifecycleResourcesInReverseOrderExactlyOnce() throws Exception {
+        List<String> closed = new ArrayList<>();
+        JsonRpcWorker worker = new JsonRpcWorker()
+            .onClose(() -> closed.add("first"))
+            .onClose(() -> closed.add("second"));
+        worker.run(new ByteArrayInputStream(new byte[0]), new ByteArrayOutputStream());
+        assertEquals(List.of("second", "first"), closed);
+        assertThrows(IllegalStateException.class, () -> worker.onClose(() -> {}));
+    }
     @Test void dispatchesAndReportsUnknownMethods() throws Exception {
         JsonRpcWorker worker = new JsonRpcWorker().on("hello", p -> java.util.Map.of("value", "hi " + p.get("name")));
         String input = "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"hello\",\"params\":{\"name\":\"Ada\"}}\n" +

@@ -8,6 +8,22 @@ test('request ids work inside an opaque sandbox without Web Crypto',async()=>{co
 test('input directory uses the official host capability',async()=>{const c=new FengYuClient({target:fake,timeoutMs:100});const p=c.files.inputDirectory();const sent=fake.sent.at(-1);assert.equal(sent.method,'files.inputDirectory');fake.emit({source:'fengyu-host',type:'response',id:sent.id,result:{id:'ref_dir',name:'reports',kind:'directory',access:'read',size:0}});assert.equal((await p).id,'ref_dir');c.dispose()});
 test('workspace directory requests a writable existing project',async()=>{const c=new FengYuClient({target:fake,timeoutMs:100});const p=c.files.workspaceDirectory();const sent=fake.sent.at(-1);assert.equal(sent.method,'files.workspaceDirectory');fake.emit({source:'fengyu-host',type:'response',id:sent.id,result:{id:'ref_workspace',name:'project',kind:'directory',access:'read-write',size:0}});assert.equal((await p).access,'read-write');c.dispose()});
 
+test('ready is deduplicated and environment events merge into current state',async()=>{
+  const c=new FengYuClient({target:fake,timeoutMs:100})
+  const first=c.ready(),second=c.ready()
+  const readyRequests=fake.sent.filter(item=>item.method==='host.ready')
+  assert.equal(readyRequests.length>=1,true)
+  const sent=readyRequests.at(-1)
+  fake.emit({source:'fengyu-host',type:'response',id:sent.id,result:{sdkVersion:'1.3.0',theme:'light',locale:'en'}})
+  assert.deepEqual(await first,await second)
+  const before=fake.sent.length
+  assert.equal((await c.ready()).theme,'light')
+  assert.equal(fake.sent.length,before)
+  fake.emit({source:'fengyu-host',type:'event',event:'environment',data:{locale:'zh-CN'}})
+  assert.deepEqual(c.currentEnvironment(),{sdkVersion:'1.3.0',theme:'light',locale:'zh-CN'})
+  c.dispose()
+})
+
 test('settled requests remove abort listeners',async()=>{
   const controller=new AbortController()
   let adds=0,removes=0
