@@ -8,6 +8,15 @@ import { useSettingsStore } from '@/stores/settings'
 import { api } from '@/api/client'
 import { makeDesktop } from '@/mf/desktop'
 import { pluginAssetUrl } from '@/api/config'
+import {
+  HOST_CAPABILITIES,
+  HOST_MESSAGE_SOURCE,
+  HOST_METHODS,
+  PROTOCOL_VERSION,
+  hostError,
+  isPluginMessage,
+  type HostError,
+} from '@infinia/plugin-sdk/protocol'
 
 const props = defineProps<{ id: string }>()
 const { t } = useI18n()
@@ -22,6 +31,7 @@ const bridgeListening = ref(false)
 const bridgeReady = ref(false)
 const frameKey = ref(0)
 let pluginHandshakeTimeout: ReturnType<typeof setTimeout> | undefined
+const activeInvokes = new Map<string, AbortController>()
 const desktop = makeDesktop()
 const pluginUrl = () => {
   const entry = plugins.byId(props.id)?.uiEntry
@@ -32,13 +42,11 @@ const pluginOrigin = () => {
   return url ? new URL(url, window.location.href).origin : undefined
 }
 
-type BridgeRequest = { source: 'fengyu-plugin'; type: 'request'; id: string; method: string; params?: Record<string, unknown> }
-
-function respond(id: string, result?: unknown, message?: string) {
+function respond(id: string, result?: unknown, error?: HostError) {
   const targetOrigin = pluginOrigin()
   if (!targetOrigin) return
   frame.value?.contentWindow?.postMessage(
-    { source: 'fengyu-host', type: 'response', id, result, error: message },
+    { source: HOST_MESSAGE_SOURCE, type: 'response', protocolVersion: PROTOCOL_VERSION, id, result, error },
     targetOrigin,
   )
 }
@@ -51,29 +59,48 @@ function clearPluginHandshakeTimeout() {
 async function onMessage(event: MessageEvent) {
   if (event.source !== frame.value?.contentWindow) return
   if (event.origin !== pluginOrigin()) return
-  const request = event.data as Partial<BridgeRequest>
-  if (request.source !== 'fengyu-plugin' || request.type !== 'request' || !request.id || !request.method) return
+  if (!isPluginMessage(event.data)) return
+  const request = event.data
+  if (request.type === 'cancel') {
+    activeInvokes.get(request.id)?.abort()
+    activeInvokes.delete(request.id)
+    void api.cancelPluginInvoke(props.id, request.id).catch(() => {})
+    return
+  }
   const requestId = request.id
   try {
-    if (request.method === 'rpc.invoke') {
+    if (request.method === HOST_METHODS.invoke) {
       const method = String(request.params?.method ?? '')
       const params = (request.params?.params ?? {}) as Record<string, unknown>
-      respond(request.id, await api.pluginInvoke(props.id, method, params))
-    } else if (request.method === 'host.ready') {
+      if (!method) throw new Error('rpc.invoke requires a method')
+      const controller = new AbortController()
+      activeInvokes.set(request.id, controller)
+      try {
+        respond(request.id, await api.pluginInvoke(props.id, method, params, {
+          callId: request.id,
+          signal: controller.signal,
+        }))
+      } finally {
+        activeInvokes.delete(request.id)
+      }
+    } else if (request.method === HOST_METHODS.ready) {
+      const descriptor = plugins.byId(props.id)
       respond(request.id, {
-        // MUST match the major version of @infinia/plugin-sdk (toolchain/sdk-ts). The plugin's
-        // FengYuClient.ready() compares its SDK_VERSION against this value for compatibility gating.
-        sdkVersion: '1.2.0', theme: theme.theme, locale: settings.language,
+        protocolVersion: PROTOCOL_VERSION,
+        pluginId: props.id,
+        pluginVersion: descriptor?.version ?? '',
+        permissions: descriptor?.permissions ?? [],
+        theme: theme.theme, locale: settings.language,
         platform: desktop ? 'desktop' : 'web',
-        capabilities: ['rpc.invoke', 'notify', 'files.open', 'files.inputDirectory', 'files.workspaceDirectory', 'files.outputDirectory', 'files.export'],
+        capabilities: HOST_CAPABILITIES,
       })
       bridgeReady.value = true
       loading.value = false
       clearPluginHandshakeTimeout()
-    } else if (request.method === 'notify') {
+    } else if (request.method === HOST_METHODS.notify) {
       console.info(`[${props.id}]`, request.params?.message)
       respond(request.id, true)
-    } else if (request.method === 'files.open') {
+    } else if (request.method === HOST_METHODS.filesOpen) {
       if (desktop) {
         const path = await desktop.pickFile((request.params?.filters ?? []) as { name: string; extensions: string[] }[])
         respond(request.id, path ? await api.grantRuntimeNativePath(props.id, path, 'file', 'read') : null)
@@ -83,11 +110,11 @@ async function onMessage(event: MessageEvent) {
         input.accept = ((request.params?.extensions ?? []) as string[]).map(x => `.${x}`).join(',')
         input.onchange = async () => {
           try { respond(requestId, input.files?.[0] ? await api.uploadRuntimeFile(props.id, input.files[0]) : null) }
-          catch (e) { respond(requestId, undefined, e instanceof Error ? e.message : String(e)) }
+          catch (e) { respond(requestId, undefined, hostError(e)) }
         }
         input.click()
       }
-    } else if (request.method === 'files.inputDirectory') {
+    } else if (request.method === HOST_METHODS.filesInputDirectory) {
       if (desktop) {
         const path = await desktop.pickDirectory()
         respond(request.id, path ? await api.grantRuntimeNativePath(props.id, path, 'directory', 'read') : null)
@@ -101,12 +128,12 @@ async function onMessage(event: MessageEvent) {
             const selected = Array.from(input.files ?? [])
             respond(requestId, selected.length ? await api.uploadRuntimeDirectory(props.id, selected) : null)
           } catch (e) {
-            respond(requestId, undefined, e instanceof Error ? e.message : String(e))
+            respond(requestId, undefined, hostError(e))
           }
         }
         input.click()
       }
-    } else if (request.method === 'files.workspaceDirectory') {
+    } else if (request.method === HOST_METHODS.filesWorkspaceDirectory) {
       if (desktop) {
         const path = await desktop.pickDirectory()
         respond(request.id, path ? await api.grantRuntimeNativePath(props.id, path, 'directory', 'read-write') : null)
@@ -122,24 +149,24 @@ async function onMessage(event: MessageEvent) {
               ? await api.uploadRuntimeDirectory(props.id, selected, 'read-write')
               : null)
           } catch (e) {
-            respond(requestId, undefined, e instanceof Error ? e.message : String(e))
+            respond(requestId, undefined, hostError(e))
           }
         }
         input.click()
       }
-    } else if (request.method === 'files.outputDirectory') {
+    } else if (request.method === HOST_METHODS.filesOutputDirectory) {
       if (desktop) {
         const path = await desktop.pickDirectory()
         respond(request.id, path ? await api.grantRuntimeNativePath(props.id, path, 'directory', 'write') : null)
       } else respond(request.id, await api.createRuntimeOutput(props.id))
-    } else if (request.method === 'files.export') {
+    } else if (request.method === HOST_METHODS.filesExport) {
       await api.exportRuntimeOutput(props.id, String(request.params?.id ?? ''))
       respond(request.id, true)
     } else {
       throw new Error(`Unsupported host capability: ${request.method}`)
     }
   } catch (e) {
-    respond(request.id, undefined, e instanceof Error ? e.message : String(e))
+    if (!(e instanceof DOMException && e.name === 'AbortError')) respond(request.id, undefined, hostError(e))
   }
 }
 
@@ -147,7 +174,7 @@ function sendEnvironment() {
   const targetOrigin = pluginOrigin()
   if (!targetOrigin) return
   frame.value?.contentWindow?.postMessage(
-    { source: 'fengyu-host', type: 'event', event: 'environment', data: { theme: theme.theme, locale: settings.language } },
+    { source: HOST_MESSAGE_SOURCE, type: 'event', protocolVersion: PROTOCOL_VERSION, event: 'environment', data: { theme: theme.theme, locale: settings.language } },
     targetOrigin,
   )
 }
@@ -183,6 +210,8 @@ watch(() => theme.theme, sendEnvironment)
 watch(() => settings.language, sendEnvironment)
 watch(() => props.id, retryPlugin)
 onBeforeUnmount(() => {
+  activeInvokes.forEach(controller => controller.abort())
+  activeInvokes.clear()
   clearPluginHandshakeTimeout()
   window.removeEventListener('message', onMessage)
 })

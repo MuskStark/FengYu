@@ -23,19 +23,15 @@ class AiToolRegistryBrowserSuppressionTest {
 
     /** Builds a minimal {@link PluginManifest} whose aiTools list carries a browser_* tool name. */
     private static PluginManifest browserManifest(String id) {
-        // PluginManifest is a 15-component record (see PluginManifest.java). AiTool has a 7-component
-        // canonical constructor (name, description, inputSchema, outputSchema, method, timeoutSeconds, effect)
-        // and Backend has (command, protocol, callTimeoutSeconds).
+        // v2: AiTool has (name, description, method, timeoutSeconds, effect); Backend has only
+        // callTimeoutSeconds. The input schema lives on rpc.methods, referenced by the tool's method.
         var tool = new PluginManifest.AiTool(
-                "browser_navigate", "nav", "{\"type\":\"object\"}", "{\"type\":\"object\"}",
-                "browser_navigate", 60L, "external");
-        // 15 components: schemaVersion,id,name,description,version,author,icon,category,
-        //                ui,backend,permissions,homepage,official,aiTools,i18n
+                "browser_navigate", "nav", "browser_navigate", 60L, "external");
         return new PluginManifest(
-                1, id, "Browser", "browser automation", "1.0.0", "test", null, "automation",
+                2, id, "Browser", "browser automation", "1.0.0", "test", null, "automation",
                 null,
-                new PluginManifest.Backend("cmd", "json-rpc-2.0", 60L),
-                List.of("network"), null, true, List.of(tool), null);
+                new PluginManifest.Backend(60L),
+                List.of("network"), null, true, null, List.of(tool), null);
     }
 
     @SuppressWarnings("unchecked")

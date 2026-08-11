@@ -70,7 +70,7 @@ The UI is a Vuetify split-pane MF:
 
 - **Left pane** — a Markdown source editor (`<v-textarea>` or equivalent).
 - **Right pane** — the live HTML preview, repainted from each `render` result.
-- Built with the host's Vuetify instance (MD3) via the shared-host `PluginContext.vuetify` — it does **not** bundle its own copy. See [Pitfalls](/en/plugins/pitfalls) for the Vue/Vuetify dedupe rule.
+- Built with its iframe-local `@infinia/plugin-ui` Vuetify instance (MD3), bound to host theme and locale changes through the SDK environment bridge.
 
 It loads in the sandboxed iframe under `/plugin-runtime/fan.summer.markdown/**` and bridges to the host through `@infinia/plugin-sdk`. See [UI Micro-frontend](/en/plugins/ui-microfrontend).
 

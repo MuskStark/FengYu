@@ -58,7 +58,7 @@ class PluginRuntimeFileControllerTest {
 
     private static void install(PluginPackageService packages, String id, List<String> permissions) throws Exception {
         String manifest = """
-            {"schemaVersion":1,"id":%s,"name":"Test","description":"test","version":"1.0.0",
+            {"schemaVersion":2,"id":%s,"name":"Test","description":"test","version":"1.0.0",
              "author":"Test","icon":"mdi-test","category":"file",
              "ui":{"entry":"ui/index.html"},"permissions":%s}
             """.formatted(new ObjectMapper().writeValueAsString(id),

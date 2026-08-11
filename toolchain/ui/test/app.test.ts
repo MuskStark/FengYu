@@ -1,6 +1,7 @@
 import { defineComponent } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 import { mountFengYuApp } from '../src'
+import { HOST_CAPABILITIES, PROTOCOL_VERSION } from '@infinia/plugin-sdk'
 
 describe('mountFengYuApp', () => {
   it('owns mount, environment binding, and idempotent teardown', async () => {
@@ -10,7 +11,13 @@ describe('mountFengYuApp', () => {
     const disposeClient = vi.fn()
     const environments: unknown[] = []
     const client = {
-      ready: vi.fn().mockResolvedValue({ theme: 'light', locale: 'zh-CN' }),
+      ready: vi.fn().mockResolvedValue({
+        protocolVersion: PROTOCOL_VERSION,
+        theme: 'light',
+        locale: 'zh-CN',
+        platform: 'web',
+        capabilities: HOST_CAPABILITIES,
+      }),
       on: vi.fn().mockReturnValue(unsubscribe),
       dispose: disposeClient,
     }
@@ -21,7 +28,13 @@ describe('mountFengYuApp', () => {
       onEnvironment: value => environments.push(value),
     })
     expect(target.textContent).toBe('ready')
-    expect(environments).toEqual([{ theme: 'light', locale: 'zh-CN' }])
+    expect(environments).toEqual([{
+      protocolVersion: PROTOCOL_VERSION,
+      theme: 'light',
+      locale: 'zh-CN',
+      platform: 'web',
+      capabilities: HOST_CAPABILITIES,
+    }])
 
     dispose()
     dispose()

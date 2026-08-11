@@ -6,12 +6,12 @@ export function assertPackContents(packages) {
     '@infinia/plugin-cli': [
       'bin/fengyu.mjs',
       'src/cli.mjs',
+      'src/generate.mjs',
       'spec/manifest.schema.json',
       'templates/vue-java/mvnw',
       'templates/vue-java/mvnw.cmd',
       'templates/vue-java/.mvn/settings.xml',
       'templates/vue-java/.mvn/wrapper/maven-wrapper.properties',
-      'templates/vue-java/fengyu.plugin.json.tpl',
       'templates/vue-java/manifest.json.tpl',
       'templates/vue-java/ui-src/src/App.test.ts',
       'templates/vue-java/worker/pom.xml.tpl',
@@ -21,7 +21,7 @@ export function assertPackContents(packages) {
       'templates/vue-codex/manifest.json.tpl',
     ],
     '@infinia/plugin-dev': ['dist/index.js', 'dist/index.d.ts'],
-    '@infinia/plugin-sdk': ['dist/index.js', 'dist/index.d.ts'],
+    '@infinia/plugin-sdk': ['dist/index.js', 'dist/index.d.ts', 'dist/protocol.js', 'dist/protocol.d.ts'],
     '@infinia/plugin-ui': ['dist/index.js', 'dist/index.d.ts', 'dist/style.css'],
   }
   for (const pkg of packages) {

@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { validateManifestObject } from '../toolchain/cli/src/manifest.mjs'
 
 const workflow = readFileSync(new URL('../.github/workflows/fengyu-release.yml', import.meta.url), 'utf8')
 const builderConfig = readFileSync(new URL('../desktop/electron/electron-builder.yml', import.meta.url), 'utf8')
@@ -135,4 +136,29 @@ test('flattens nested desktop installers before checksums and release upload', (
   assert.match(workflow, /find artifacts -type f/)
   assert.match(workflow, /release-files\/\$\(basename "\$file"\)/)
   assert.match(workflow, /files: \|\s+release-files\/\*/)
+})
+
+test('schema v1 manifests are rejected — releases ship v2-only, no v1 compat', () => {
+  // A release must never accept a legacy schemaVersion:1 manifest. The CLI validator is the
+  // gate both `fengyu build` (per-plugin) and the host installer use; pinning it here means a
+  // regression that silently re-admits v1 fails the release contract test suite.
+  const v1 = {
+    schemaVersion: 1, id: 'com.example.legacy', name: 'Legacy', description: 'd',
+    version: '1.0.0', author: 'a', icon: 'i', category: 'c', ui: { entry: 'ui/index.html' },
+    backend: { command: 'java -jar backend/worker.jar', protocol: 'json-rpc-2.0' },
+  }
+  const errors = validateManifestObject(v1)
+  assert.ok(errors.some((e) => /schemaVersion/i.test(e)),
+    `schemaVersion:1 must be rejected, got: ${errors.join('; ')}`)
+})
+
+test('schema v2 manifests with v1-only fields (backend.command/protocol) are rejected', () => {
+  const v2WithV1Backend = {
+    schemaVersion: 2, id: 'com.example.mix', name: 'Mix', description: 'd',
+    version: '1.0.0', author: 'a', icon: 'i', category: 'c', ui: { entry: 'ui/index.html' },
+    backend: { command: 'java -jar backend/worker.jar', protocol: 'json-rpc-2.0' },
+  }
+  const errors = validateManifestObject(v2WithV1Backend)
+  assert.ok(errors.some((e) => /backend|additional prop/i.test(e)),
+    `v2 manifest must reject v1 backend.command/protocol, got: ${errors.join('; ')}`)
 })

@@ -8,12 +8,11 @@ import org.junit.jupiter.api.Test;
 import java.util.ResourceBundle;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Pins that the markdown worker message bundles ship complete, matching key sets in both locales so
- * neither ever renders a raw key, and that the {@code render} summary / unknown-action message
- * resolve localized through {@link WorkerLocale}.
+ * neither ever renders a raw key, and that the {@code render} summary resolves localized through
+ * {@link WorkerLocale}.
  */
 class MarkdownMessagesTest {
 
@@ -40,12 +39,5 @@ class MarkdownMessagesTest {
         assertEquals("rendered 42 chars", msgs.format("md.rendered", 42));
         WorkerLocale.set("zh");
         assertEquals("已渲染 42 字符", msgs.format("md.rendered", 42));
-    }
-
-    @Test
-    void unknownActionIsLocalized() {
-        WorkerLocale.set("zh");
-        assertTrue(msgs.format("md.unknownAction", "frobnicate").contains("frobnicate"));
-        assertEquals("未知操作：frobnicate", msgs.format("md.unknownAction", "frobnicate"));
     }
 }

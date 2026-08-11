@@ -12,7 +12,99 @@ const ajv = new Ajv({ allErrors: true, strict: false })
 const validateSchema = ajv.compile(schema)
 
 export async function readManifest(root) {
-  return JSON.parse(await fs.readFile(path.join(root, 'manifest.json'), 'utf8'))
+  const text = await fs.readFile(path.join(root, 'manifest.json'), 'utf8')
+  return parseManifest(text).manifest
+}
+
+/**
+ * Parse manifest JSON text while detecting duplicate object keys. JSON.parse
+ * silently keeps the last value for a duplicated key (the parser collapses
+ * duplicates before any reviver runs, so a reviver cannot see them), so a
+ * manifest with two `rpc.methods.render` entries would otherwise lose the
+ * first definition without any signal. {@link detectDuplicateKeys} scans the
+ * raw text instead.
+ *
+ * @param {string} text - raw manifest file contents
+ * @returns {{ manifest: object|null, errors: string[] }} best-effort parse plus duplicate-key errors
+ */
+export function parseManifest(text) {
+  let manifest
+  try {
+    manifest = JSON.parse(text)
+  } catch (e) {
+    return { manifest: null, errors: [`manifest.json: ${e.message}`] }
+  }
+  const errors = []
+  for (const key of detectDuplicateKeys(text)) {
+    errors.push(`manifest has a duplicate key: "${key}"`)
+  }
+  return { manifest, errors }
+}
+
+/**
+ * Detect duplicate keys in raw JSON text. Walks the text tracking the key set
+ * of each open object; a quoted string is a key iff its enclosing frame is an
+ * object and it is followed (ignoring whitespace) by ':'. Array indices cannot
+ * duplicate in JSON, so only object members are considered. Assumes the text is
+ * well-formed — callers JSON.parse the same text first and surface parse errors
+ * separately, so the scanner only ever runs on valid JSON.
+ *
+ * @param {string} text
+ * @returns {string[]} duplicate key names found
+ */
+function detectDuplicateKeys(text) {
+  const dupes = []
+  const stack = []     // 'object' | 'array'
+  const keySets = []   // Set per open object frame; null for array frames
+  const n = text.length
+  let i = 0
+  while (i < n) {
+    const c = text[i]
+    if (c === '{') { stack.push('object'); keySets.push(new Set()); i++; continue }
+    if (c === '[') { stack.push('array'); keySets.push(null); i++; continue }
+    if (c === '}' || c === ']') { stack.pop(); keySets.pop(); i++; continue }
+    if (c === '"') {
+      const end = scanString(text, i)
+      if (stack[stack.length - 1] === 'object') {
+        let j = end
+        while (j < n && (text[j] === ' ' || text[j] === '\t' || text[j] === '\n' || text[j] === '\r')) j++
+        if (j < n && text[j] === ':') {
+          const set = keySets[keySets.length - 1]
+          const key = text.slice(i + 1, end - 1)
+          if (set.has(key)) dupes.push(key)
+          else set.add(key)
+        }
+      }
+      i = end
+      continue
+    }
+    i++
+  }
+  return dupes
+}
+
+/** Index just past the closing quote of the string starting at text[i] === '"'. */
+function scanString(text, i) {
+  const n = text.length
+  let j = i + 1
+  while (j < n) {
+    const c = text[j]
+    if (c === '\\') { j += 2; continue }
+    if (c === '"') return j + 1
+    j++
+  }
+  return n
+}
+
+/**
+ * Validate manifest JSON text: duplicate-key scan + object/semantic validation.
+ * Use this (not {@link validateManifestObject}) whenever the raw bytes are
+ * available, so the duplicate-method contract is enforced.
+ */
+export function validateManifestText(text) {
+  const { manifest, errors } = parseManifest(text)
+  if (manifest) errors.push(...validateManifestObject(manifest))
+  return errors
 }
 
 /** Schema + semantic validation against a parsed manifest object (no filesystem access). */
@@ -23,40 +115,59 @@ export function validateManifestObject(manifest) {
       errors.push(`manifest${e.instancePath}: ${e.message}`)
     }
   }
-  const names = new Set(), methods = new Set()
+  const methods = manifest.rpc?.methods ?? {}
+  const methodNames = new Set(Object.keys(methods))
+
+  // A declared backend means a worker exists to serve RPC; an empty method
+  // table would make the worker unreachable.
+  if (manifest.backend && methodNames.size === 0) {
+    errors.push('backend requires at least one rpc.methods entry')
+  }
+
+  const toolNames = new Set()
   for (const tool of manifest.aiTools ?? []) {
     if (typeof tool.name !== 'string' || !tool.name) {
       errors.push('AI tool name is required')
-    } else if (names.has(tool.name)) {
+    } else if (toolNames.has(tool.name)) {
       errors.push(`duplicate AI tool name: ${tool.name}`)
     }
+    toolNames.add(tool.name)
+
+    // aiTools.method must resolve to a declared rpc method (no dangling tools).
     if (typeof tool.method !== 'string' || !tool.method) {
       errors.push(`AI tool method is required for ${tool.name ?? '<unknown>'}`)
-    } else if (methods.has(tool.method)) {
-      errors.push(`duplicate AI tool method: ${tool.method}`)
+    } else if (!methodNames.has(tool.method)) {
+      errors.push(`AI tool ${tool.name} references unknown method: ${tool.method}`)
     }
-    names.add(tool.name); methods.add(tool.method)
-    try {
-      const parsed = JSON.parse(tool.inputSchema)
-      if (parsed?.type !== 'object') errors.push(`inputSchema for ${tool.name} must have type object`)
-    } catch {
-      errors.push(`invalid inputSchema for ${tool.name}`)
-    }
-    if (tool.outputSchema != null) {
-      try {
-        const parsed = JSON.parse(tool.outputSchema)
-        if (parsed?.type !== 'object') errors.push(`outputSchema for ${tool.name} must have type object`)
-      } catch {
-        errors.push(`invalid outputSchema for ${tool.name}`)
-      }
-    }
+
     if (tool.timeoutSeconds != null) {
       validateTimeout(tool.timeoutSeconds, `aiTools[${tool.name ?? '<unknown>'}].timeoutSeconds`, errors)
     }
   }
+
+  for (const [name, method] of Object.entries(methods)) {
+    if (method?.timeoutSeconds != null) {
+      validateTimeout(method.timeoutSeconds, `rpc.methods[${name}].timeoutSeconds`, errors)
+    }
+  }
+
   if (manifest.backend?.callTimeoutSeconds != null) {
     validateTimeout(manifest.backend.callTimeoutSeconds, 'backend.callTimeoutSeconds', errors)
   }
+
+  // i18n tool overrides must reference a real aiTool name.
+  if (manifest.i18n) {
+    for (const [locale, override] of Object.entries(manifest.i18n)) {
+      if (override?.aiTools) {
+        for (const toolName of Object.keys(override.aiTools)) {
+          if (!toolNames.has(toolName)) {
+            errors.push(`i18n[${locale}].aiTools references unknown tool: ${toolName}`)
+          }
+        }
+      }
+    }
+  }
+
   if (manifest.official === true && typeof manifest.id === 'string' && !manifest.id.startsWith('fan.summer.')) {
     errors.push('official plugin ids must use fan.summer.*')
   }
@@ -67,8 +178,8 @@ export function validateManifestObject(manifest) {
  * Per-call / per-tool timeout bounds. Mirrors the host-side caps in
  * {@code FengYu/src/main/java/fan/summer/fengyu/plugin/runtime/PluginProcessManager.java}
  * ({@code MAX_TIMEOUT_SECONDS = 600}) and {@code PluginPackageService.java}. Keeping the
- * CLI validator and the host installer in sync means a package that passes `fengyu plugin
- * build`'s built-in staging validation also passes host-side install validation.
+ * CLI validator and the host installer in sync means a package that passes `fengyu build`'s
+ * built-in staging validation also passes host-side install validation.
  */
 export const TIMEOUT_MIN_SECONDS = 1
 export const TIMEOUT_MAX_SECONDS = 600
@@ -115,16 +226,14 @@ async function validateWorkerJar(jar, expectedMainClass) {
 export async function validatePluginArchive(file) {
   const { entries } = await inspectArchive(file)
   const names = new Set(entries.filter((entry) => !entry.isDirectory).map((entry) => entry.name))
-  const manifest = JSON.parse((await readArchiveEntry(file, 'manifest.json', { maxBytes: 1024 * 1024 })).toString('utf8'))
-  const errors = validateManifestObject(manifest)
+  const manifestText = (await readArchiveEntry(file, 'manifest.json', { maxBytes: 1024 * 1024 })).toString('utf8')
+  const errors = validateManifestText(manifestText)
+  const manifest = JSON.parse(manifestText)
   if (manifest.ui?.entry && !names.has(manifest.ui.entry)) {
     errors.push(`package is missing UI entry: ${manifest.ui.entry}`)
   }
   if (manifest.backend) {
-    if (manifest.backend.protocol !== 'json-rpc-2.0') errors.push('unsupported backend protocol')
-    if (manifest.backend.command !== 'java -jar backend/worker.jar') {
-      errors.push('backend.command must be java -jar backend/worker.jar')
-    }
+    // v2: the worker is fixed to backend/worker.jar; command/protocol are implicit.
     if (!names.has('backend/worker.jar')) {
       errors.push('package is missing backend/worker.jar')
     } else {
@@ -140,35 +249,26 @@ export async function validatePluginArchive(file) {
 }
 
 /**
- * Validate a project's source manifest: object rules (schema, permissions, AI
- * tools, official-id) plus path-escape safety for ui.entry and the backend JAR.
+ * Validate a project's source manifest: object rules (schema, permissions, RPC
+ * method table, AI tools, official-id) plus path-escape safety for ui.entry.
  * Build outputs (ui.entry, backend/worker.jar) are NOT required to exist at
  * source — they are produced by the build and validated post-build by
  * {@link validateRuntimeTree}.
  */
 export async function validateProjectManifest(root) {
-  let manifest
+  let text
   try {
-    manifest = await readManifest(root)
+    text = await fs.readFile(path.join(root, 'manifest.json'), 'utf8')
   } catch (e) {
     return [`manifest.json: ${e.message}`]
   }
-  const errors = validateManifestObject(manifest)
+  const errors = validateManifestText(text)
+  const manifest = JSON.parse(text)
   const rootAbs = path.resolve(root)
   if (manifest.ui?.entry) {
     const entry = path.resolve(rootAbs, manifest.ui.entry)
     if (!entry.startsWith(rootAbs + path.sep) && entry !== rootAbs) {
       errors.push('ui.entry escapes package root')
-    }
-  }
-  if (manifest.backend?.command) {
-    const match = manifest.backend.command.match(/(?:^|\s)-jar\s+(?:"([^"]+)"|'([^']+)'|(\S+))/)
-    if (match) {
-      const jar = match[1] ?? match[2] ?? match[3]
-      const jarPath = path.resolve(rootAbs, jar)
-      if (!jarPath.startsWith(rootAbs + path.sep) && jarPath !== rootAbs) {
-        errors.push('backend JAR escapes package root')
-      }
     }
   }
   return errors
@@ -188,22 +288,23 @@ const TOKEN_BEARING_FILES = ['settings.xml', '.npmrc', '.env']
  * manifest validation cannot (missing build outputs, smuggled source/token
  * files, JAR manifest mismatches).
  *
- * @param {{ kind: string, root: string, config: import('./config.mjs').BuildConfig | null }} project
+ * @param {{ kind: string, root: string, config: object }} project
  * @param {string} staging - absolute staging directory
  * @returns {Promise<string[]>} list of error messages (empty = valid)
  */
 export async function validateRuntimeTree(project, staging) {
   const errors = []
-  let manifest
+  let text
   try {
-    manifest = JSON.parse(await fs.readFile(path.join(staging, 'manifest.json'), 'utf8'))
+    text = await fs.readFile(path.join(staging, 'manifest.json'), 'utf8')
   } catch (e) {
     return [`staging manifest.json: ${e.message}`]
   }
-  errors.push(...validateManifestObject(manifest))
+  errors.push(...validateManifestText(text))
+  const manifest = JSON.parse(text)
 
   if (manifest.backend && !project.config?.worker) {
-    errors.push('runtime backend requires a declared worker build configuration')
+    errors.push('runtime backend requires pom.xml or worker/pom.xml')
   }
 
   // ui.entry must resolve to a regular file inside staging.
@@ -216,19 +317,15 @@ export async function validateRuntimeTree(project, staging) {
     }
   }
 
-  // Declared backend: command must reference exactly backend/worker.jar.
-  if (project.config?.worker && manifest.backend?.command) {
-    if (manifest.backend.command !== 'java -jar backend/worker.jar') {
-      errors.push('backend.command must be java -jar backend/worker.jar')
-    }
+  // Declared backend: the worker is fixed to backend/worker.jar (v2).
+  if (manifest.backend) {
     const jar = path.join(staging, 'backend', 'worker.jar')
     if (!fsSync.existsSync(jar)) {
       errors.push('runtime backend/worker.jar is missing')
     } else {
       // Inspect the JAR (a zip) for Main-Class + the class entry, without running it.
       try {
-        const mainClass = project.config.worker.mainClass
-        errors.push(...await validateWorkerJar(jar, mainClass))
+        errors.push(...await validateWorkerJar(jar))
       } catch (e) {
         errors.push(`worker JAR inspection failed: ${e.message}`)
       }

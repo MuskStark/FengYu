@@ -1,17 +1,22 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import type { FengYuClient } from '@infinia/plugin-sdk'
 import { FyEmptyState, FyLoadingState, FyPageHeader } from '@infinia/plugin-ui'
 import { mdiStethoscope } from '@mdi/js'
-import { call, field } from '../rpc'
+import { createPluginRpc } from '../rpc'
 
 type Translate = (key: string, ...args: (string | number)[]) => string
 
 const props = defineProps<{ client: FengYuClient; t: Translate }>()
 const emit = defineEmits<{ (e: 'toast', msg: string): void }>()
 
-interface Check { id: string; value: string; ok: boolean }
-interface Detection { executable: string | null; pythonVersion: string | null; pipVersion: string | null; ok: boolean }
+// Typed RPC client generated from manifest rpc.methods.
+const rpc = createPluginRpc(props.client)
+const abortController = new AbortController()
+const signal = () => abortController.signal
+
+interface Check { id?: string; value?: string | null; ok?: boolean }
+interface Detection { executable?: string | null; pythonVersion?: string | null; pipVersion?: string | null; ok?: boolean }
 
 const detection = ref<Detection | null>(null)
 const checks = ref<Check[]>([])
@@ -21,14 +26,15 @@ const loading = ref(false)
  *  translate them here. Data values (versions, paths) pass through unchanged. */
 const VALUE_LABELS = new Set(['not_found', 'missing', 'supported', 'unsupported', 'reachable', 'unreachable'])
 
-function checkName(id: string): string {
-  return props.t(`opb.doctor.check.${id}`)
+function checkName(id?: string): string {
+  return id ? props.t(`opb.doctor.check.${id}`) : ''
 }
 
 function checkValue(c: Check): string {
-  if (VALUE_LABELS.has(c.value)) return props.t(`opb.doctor.value.${c.value}`)
-  if (c.id === 'disk_space') return props.t('opb.doctor.value.gb_available', c.value)
-  return c.value
+  const v = c.value ?? ''
+  if (VALUE_LABELS.has(v)) return props.t(`opb.doctor.value.${v}`)
+  if (c.id === 'disk_space') return props.t('opb.doctor.value.gb_available', v)
+  return v
 }
 
 function errorText(error: unknown): string {
@@ -38,10 +44,10 @@ function errorText(error: unknown): string {
 async function refresh() {
   loading.value = true
   try {
-    const det = await call(props.client, 'python.detect', {})
-    detection.value = det.success ? (field<Detection>(det, 'detection') ?? null) : null
-    const doc = await call(props.client, 'doctor', {})
-    checks.value = doc.success ? (field<Check[]>(doc, 'checks') ?? []) : []
+    const det = await rpc.pythonDetect({}, { signal: signal() })
+    detection.value = det.success ? (det.detection ?? null) : null
+    const doc = await rpc.doctor({}, { signal: signal() })
+    checks.value = doc.success ? (doc.checks ?? []) : []
     if (!doc.success) emit('toast', doc.summary)
   } catch (error) {
     emit('toast', errorText(error))
@@ -51,6 +57,7 @@ async function refresh() {
 }
 
 onMounted(refresh)
+onUnmounted(() => abortController.abort())
 </script>
 
 <template>

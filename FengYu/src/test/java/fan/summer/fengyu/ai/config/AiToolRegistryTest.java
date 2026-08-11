@@ -40,13 +40,14 @@ class AiToolRegistryTest {
         Path plugin = temp.resolve("com.example.live");
         Files.createDirectories(plugin);
         Files.writeString(plugin.resolve("manifest.json"), """
-            {"schemaVersion":1,"id":"com.example.live","name":"Live","description":"Live tools",
+            {"schemaVersion":2,"id":"com.example.live","name":"Live","description":"Live tools",
              "version":"1.0.0","author":"Example","icon":"toolbox","category":"dev",
-             "ui":{"entry":"ui/index.html"},"aiTools":[{
-               "name":"live_echo","description":"Echo","method":"echo",
-               "inputSchema":"{\\\"type\\\":\\\"object\\\",\\\"properties\\\":{}}",
-               "outputSchema":"{\\\"type\\\":\\\"object\\\",\\\"properties\\\":{\\\"text\\\":{\\\"type\\\":\\\"string\\\"}}}"
-             }]}
+             "ui":{"entry":"ui/index.html"},
+             "rpc":{"methods":{"echo":{
+               "inputSchema":{"type":"object","properties":{}},
+               "outputSchema":{"type":"object","properties":{"text":{"type":"string"}}}
+             }}},
+             "aiTools":[{"name":"live_echo","description":"Echo","method":"echo","effect":"read"}]}
             """);
         JsonMapper.builder().findAndAddModules().build()
                 .readValue(plugin.resolve("manifest.json").toFile(),
@@ -61,7 +62,8 @@ class AiToolRegistryTest {
         var descriptor = registry.descriptors(null).getFirst();
         assertEquals("com.example.live:live_echo", descriptor.id());
         assertTrue(descriptor.outputSchema().contains("text"));
-        assertEquals(ToolEffect.EXTERNAL,
+        // v2 declares effect explicitly ("read"); the old null→EXTERNAL fallback no longer applies.
+        assertEquals(ToolEffect.READ,
                 ((AuditedToolCallback) registry.callbacks().getFirst()).effect());
 
         packages.setEnabled("com.example.live", false);
@@ -76,14 +78,15 @@ class AiToolRegistryTest {
     void writeDirectoryToolUsesStagingGrantWithoutRestartingWorker() throws Exception {
         Path plugin = Files.createDirectories(temp.resolve("fan.summer.excel"));
         Files.writeString(plugin.resolve("manifest.json"), """
-            {"schemaVersion":1,"id":"fan.summer.excel","name":"Excel","description":"test",
+            {"schemaVersion":2,"id":"fan.summer.excel","name":"Excel","description":"test",
              "version":"1.0.0","author":"test","icon":"table","category":"dev",
              "ui":{"entry":"ui/index.html"},
-             "backend":{"command":"java -jar worker.jar","protocol":"json-rpc-2.0"},
-             "permissions":["files.read","files.write"],"aiTools":[{
-               "name":"excel_execute","description":"Execute split","method":"execute",
-               "inputSchema":"{\\"type\\":\\"object\\",\\"properties\\":{\\"outputDir\\":{\\"type\\":\\"object\\",\\"description\\":\\"A writable FengYu DirectoryRef\\"}}}"
-             }]}
+             "backend":{"callTimeoutSeconds":60},
+             "permissions":["files.read","files.write"],
+             "rpc":{"methods":{"execute":{
+               "inputSchema":{"type":"object","properties":{"outputDir":{"type":"object","description":"A writable FengYu DirectoryRef"}}}
+             }}},
+             "aiTools":[{"name":"excel_execute","description":"Execute split","method":"execute","effect":"write"}]}
             """);
         PluginPackageService packages = new PluginPackageService(temp.toString());
         PluginFileGrantService files = new PluginFileGrantService(temp.resolve("runtime").toString());

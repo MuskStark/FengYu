@@ -1,7 +1,7 @@
 {
   "name": "@infinia/plugin-dev",
   "version": "1.3.0",
-  "description": "Vite plugin + simulator host for developing FengYu plugins in an IDE — replaces `fengyu plugin dev`.",
+  "description": "Vite plugin and simulator host used by `fengyu dev` for FengYu plugin development.",
   "license": "GPL-3.0",
   "type": "module",
   "main": "dist/index.js",
@@ -29,8 +29,10 @@
   "peerDependencies": {
     "vite": "^5.0.0 || ^6.0.0 || ^7.0.0"
   },
+  "dependencies": {
+    "@infinia/plugin-sdk": "file:../sdk-ts"
+  },
   "devDependencies": {
-    "@infinia/plugin-sdk": "file:../sdk-ts",
     "@types/node": "^22.0.0",
     "typescript": "^5.9.2"
   }

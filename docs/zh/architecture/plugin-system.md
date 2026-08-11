@@ -63,7 +63,7 @@ Windows 上的 Job Object 后端**仅做进程层**隔离：它保证 worker 及
 
 ## 沙箱化 UI
 
-插件的 `ui/` 微前端由宿主作为静态资产提供，位于严格的 Content Security Policy 之下的 `/plugin-runtime/{id}/**`——这些资产路径是唯一绕过令牌过滤器的插件 URL，因此 UI 能在没有凭据的情况下自举。宿主通过其[微前端宿主](/zh/architecture/frontend)加载该 UI（`import(uiEntry)` → `default.mount(el, ctx)`），并复用宿主的 Vuetify 实例以获得一致的 MD3 主题。
+插件的 `ui/` 微前端由宿主作为静态资产提供，位于严格的 Content Security Policy 之下的 `/plugin-runtime/{id}/**`——这些资产路径是唯一绕过令牌过滤器的插件 URL，因此 UI 能在没有凭据的情况下自举。[微前端宿主](/zh/architecture/frontend)把入口页面加载进沙箱化 iframe；任何插件代码都不会被导入宿主的 JavaScript 运行域。
 
 在 iframe 内部，SDK `@infinia/plugin-sdk` 提供一个 `FengYuClient`，它通过 `postMessage` 与宿主桥接。插件用这个 client 调用自己的 Worker（由宿主以 JSON-RPC 转发）以及请求文件访问——它永远不会直接与操作系统打交道。
 

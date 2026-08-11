@@ -14,7 +14,7 @@ Infinia 文档中使用的领域术语，每条配有一段定义以及指向其
 
 ## MF（微前端）
 
-一种自包含的 UI 包（插件的 `ui/` 目录），宿主将其作为静态资产提供在 `/plugin-runtime/{id}/**` 下，并加载进一个处于严格内容安全策略（CSP）下的**沙箱化 iframe**。在 iframe 内部，`@infinia/plugin-sdk` 的 `FengYuClient` 通过 `postMessage` 与宿主桥接。宿主的 MF 加载器也可以通过 `import(uiEntry)` → `default.mount(el, ctx)` 直接挂载插件的 ESM 包。参见 [UI 微前端](/zh/plugins/ui-microfrontend)。
+一种自包含的 UI 包（插件的 `ui/` 目录），宿主将其作为静态资产提供在 `/plugin-runtime/{id}/**` 下，并且只加载进处于严格内容安全策略（CSP）下的**沙箱化 iframe**。在 iframe 内部，`@infinia/plugin-sdk` 的 `FengYuClient` 通过共享且带版本的 `postMessage` 协议与宿主桥接。参见 [UI 微前端](/zh/plugins/ui-microfrontend)。
 
 ## SETUP 模式 / APP 模式
 
@@ -40,11 +40,11 @@ Infinia 在首次以 APP 模式启动时创建的本地身份：**id** `1`，**n
 
 ## `.fyp`
 
-插件包格式——一个 zip 归档，包含三部分：`manifest.json`（元数据、权限、AI 工具）、`ui/`（微前端资产），以及 `backend/worker.jar`（sidecar 可执行文件）。通过插件市场安装（针对 `.fyp` 用 `POST /api/plugin-market/upload`，针对本地路径用 `upload-native`）。用 `fengyu plugin build` 或 Maven shade 流程构建。参见 [插件概述](/zh/plugins/overview) 与 [构建与部署](/zh/plugins/build-deploy)。
+插件包格式——一个 zip 归档，包含三部分：`manifest.json`（元数据、权限、AI 工具）、`ui/`（微前端资产），以及 `backend/worker.jar`（sidecar 可执行文件）。通过插件市场安装（针对 `.fyp` 用 `POST /api/plugin-market/upload`，针对本地路径用 `upload-native`）。用 `fengyu build` 构建。参见 [插件概述](/zh/plugins/overview) 与 [构建与部署](/zh/plugins/build-deploy)。
 
 ## `uiEntry`
 
-`InstalledPluginDescriptor` 上已解析的 UI 入口 URL——即宿主 MF 加载器为挂载插件而 import 的地址（`import(uiEntry)` → `default.mount(el, ctx)`）。它衍生自清单中的 `ui.entry`（通常是 `ui/index.html`），并被提供在 `/plugin-runtime/{id}/<entry>` 下。参见 [插件系统——已安装插件描述符](/zh/architecture/plugin-system#installed-plugin-descriptor)。
+`InstalledPluginDescriptor` 上已解析的 UI 入口 URL——即宿主在插件沙箱化 iframe 中打开的页面。它衍生自清单中的 `ui.entry`（通常是 `ui/index.html`），并被提供在 `/plugin-runtime/{id}/<entry>` 下。参见 [插件系统——已安装插件描述符](/zh/architecture/plugin-system#installed-plugin-descriptor)。
 
 ## `ToolCallback`
 
@@ -52,7 +52,7 @@ Spring AI 对「模型可调用工具」的抽象。Infinia 把每一个内置�
 
 ## MD3
 
-Material Design 3——宿主 UI（Vuetify）所实现的设计系统。宿主通过 `ctx.vuetify` 把自己的 Vuetify 实例传递给插件 MF，使插件复用宿主的主题与组件，而非各自打包；这便是「不要打包 Vuetify」规则的由来。紫色 `#6750A4` 主题色是 MD3 的基线。参见 [设计系统](/zh/design-system) 与 [UI 微前端](/zh/plugins/ui-microfrontend)。
+Material Design 3——由宿主 UI（Vuetify）与 `@infinia/plugin-ui` 共同实现的设计系统。插件 UI 在各自的 iframe 运行域中渲染，并通过 SDK 桥梁跟随宿主的主题与环境变化。紫色 `#6750A4` 主题色是 MD3 的基线。参见 [设计系统](/zh/design-system) 与 [UI 微前端](/zh/plugins/ui-microfrontend)。
 
 ## Ollama 后端
 

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 2,
+  "id": "com.example.minimal",
+  "name": "Minimal",
+  "description": "Smallest valid v2 manifest: UI-only, no backend, no rpc, no aiTools.",
+  "version": "1.0.0",
+  "author": "Fixture",
+  "icon": "puzzle-outline",
+  "category": "other",
+  "ui": { "entry": "ui/index.html" }
+}

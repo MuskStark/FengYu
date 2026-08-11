@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * {{pluginName}} — a FengYu plugin scaffolded by `fengyu plugin create`.
+ * {{pluginName}} — a FengYu plugin scaffolded by `fengyu init`.
  *
  * This is the canonical Codex composition: the plugin shell, page header, file
  * picker, task table, and notification center around a realistic "import and

@@ -22,14 +22,14 @@ class ManifestI18nTest {
         List<PluginManifest.AiTool> tools = List.of(
                 new PluginManifest.AiTool("excel_analyze",
                         "Analyze the granted Excel workbook before configuring or executing any split; returns sheet names.",
-                        "{}", null, "excel_analyze", 30L, "read"),
+                        "excel_analyze", 30L, "read"),
                 new PluginManifest.AiTool("excel_cancel", "Clear the active Excel split session.",
-                        "{}", null, "excel_cancel", 30L, "read"));
-        return new PluginManifest(1, "fan.summer.excel", DEFAULT_NAME, DEFAULT_DESC, "4.0.0-alpha.8",
+                        "excel_cancel", 30L, "read"));
+        return new PluginManifest(2, "fan.summer.excel", DEFAULT_NAME, DEFAULT_DESC, "4.0.0-alpha.8",
                 "FengYu", "file-excel", "file",
                 new PluginManifest.Ui("ui/index.html"),
-                new PluginManifest.Backend("java -jar backend/worker.jar", "json-rpc-2.0"),
-                List.of("files.read"), "https://example.com", true, tools, i18n);
+                new PluginManifest.Backend(60L),
+                List.of("files.read"), "https://example.com", true, null, tools, i18n);
     }
 
     @Test

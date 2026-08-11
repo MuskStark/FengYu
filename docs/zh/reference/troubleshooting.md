@@ -68,18 +68,18 @@ lang: zh-CN
 
 ## 微前端加载错误
 
-**症状。** 插件 UI 的 iframe 是空白的、脚本悄悄执行失败，或者 Vue 的响应式/主题/组件表现异常。
+**症状。** 插件 UI 的 iframe 是空白的、脚本悄悄执行失败，或者 UI 始终无法跟随宿主主题。
 
 **原因。** 两个彼此独立的机制：
 
 - **CSP。** 宿主在严格的内容安全策略下提供插件 UI 资产。内联脚本与不被允许的来源都会被拒绝——它们从不执行。
-- **Vue/Vuetify 去重。** 如果 MF 打包了自己的 Vue 或 Vuetify，两个实例会并存，从而破坏响应式以及共享的组件/主题注册表。
+- **桥梁初始化。** iframe 是隔离的 JavaScript 运行域，必须初始化自己的 `@infinia/plugin-ui` 实例，再把它绑定到已 ready 的 `FengYuClient`。
 
 **修复。**
 
 - **CSP：** 把所有 JavaScript 放进通过 `<script src>` 加载的外部文件（脚手架写的是 `<script type="module" src="app.js">`），并且从插件自身的 `/plugin-runtime/{id}/**` 树加载每一份资产。不要内联脚本或内联事件处理器。
-- **Vue/Vuetify 去重：** **不要**打包 Vue 或 Vuetify。从宿主的 import map 中解析它们，并从 `PluginContext` 通过 `app.use(ctx.vuetify)` 安装宿主实例。宿主的 MF 加载器专门把共享的 Vuetify（MD3）实例传递进来，以便插件复用。
-- 对于「module not found」/ import-map 错误，请确认 MF 是从宿主 map 加载 Vue/Vuetify，而不是自行声明。
+- **桥梁初始化：** 打包插件所声明的 Vue/Vuetify 依赖，用 `createFengYuVuetify` 创建 Vuetify，并调用 `bindFengYuEnvironment(vuetify, fengyu)`。如果 `host.ready` 失败，检查是否为协议版本不完全匹配。
+- 对于「module not found」错误，请安装插件 UI 声明的依赖，再通过标准的 `npm run build` 路径重新构建。
 
 参见 [UI 微前端](/zh/plugins/ui-microfrontend) 与 [常见陷阱](/zh/plugins/pitfalls)。
 

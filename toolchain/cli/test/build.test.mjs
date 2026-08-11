@@ -18,40 +18,26 @@ let root
 test.before(async () => { base = await fs.mkdtemp(path.join(os.tmpdir(), 'fy-build-')) })
 test.after(async () => { await fs.rm(base, { recursive: true, force: true }).catch(() => {}) })
 
-/** A declared project whose fengyu.plugin.json drives the full lifecycle. */
+/** A standard convention-based Vue + Maven plugin. */
 async function makeDeclaredProject() {
   const dir = path.join(base, `declared-${Date.now()}-${Math.random().toString(36).slice(2)}`)
   await fs.mkdir(dir, { recursive: true })
   await fs.writeFile(path.join(dir, 'manifest.json'), JSON.stringify({
-    schemaVersion: 1, id: 'com.example.declared', name: 'Declared',
+    schemaVersion: 2, id: 'com.example.declared', name: 'Declared',
     description: 'Declared build fixture', version: '1.0.0', author: 'Test Author',
     icon: 'puzzle-outline', category: 'other',
     ui: { entry: 'ui/index.html' },
-    backend: { command: 'java -jar backend/worker.jar', protocol: 'json-rpc-2.0' },
+    backend: { callTimeoutSeconds: 30 },
+    rpc: { methods: { declared: { inputSchema: { type: 'object' } } } },
     permissions: [], official: false, aiTools: [],
   }))
-  await fs.writeFile(path.join(dir, 'fengyu.plugin.json'), JSON.stringify({
-    schemaVersion: 1,
-    ui: {
-      root: 'ui-src', output: 'dist',
-      prepare: [['node', '-e', '0']],
-      install: ['npm', 'ci'], test: ['npm', 'test'], build: ['npm', 'run', 'build'],
-    },
-    worker: {
-      root: 'worker', test: ['maven', 'test'],
-      build: ['maven', 'package', '-DskipTests'],
-      artifact: 'worker/target/declared-worker.jar',
-      mainClass: 'com.example.DeclaredWorkerMain',
-    },
-    package: {
-      outputDirectory: 'dist-package',
-      resources: [{ from: 'assets', to: 'runtime-assets' }],
-    },
+  await fs.mkdir(path.join(dir, 'ui-src'), { recursive: true })
+  await fs.writeFile(path.join(dir, 'ui-src/package.json'), JSON.stringify({
+    scripts: { dev: 'vite', test: 'vitest run', build: 'vite build' },
   }))
-  await fs.mkdir(path.join(dir, 'assets'), { recursive: true })
-  await fs.writeFile(path.join(dir, 'assets/example.txt'), 'example')
   // A stub mvnw so resolveCommand finds the wrapper in the worker root.
   await fs.mkdir(path.join(dir, 'worker'), { recursive: true })
+  await fs.writeFile(path.join(dir, 'worker/pom.xml'), '<project/>')
   await fs.writeFile(path.join(dir, 'worker/mvnw'), '#!/bin/sh\nexec mvn "$@"\n', { mode: 0o755 })
   return dir
 }
@@ -106,11 +92,11 @@ async function makeFakeJar(file, mainClass) {
 
 test.beforeEach(async () => { root = await makeDeclaredProject() })
 
-test('declared lifecycle runs phases in the exact required order', async () => {
+test('standard lifecycle runs npm and Maven phases in order', async () => {
   const order = []
   const result = await buildPlugin(root, { run: fakeRunner(order, root) })
   assert.deepEqual(order, [
-    'ui-prepare', 'ui-install', 'ui-test', 'worker-test', 'ui-build', 'worker-build',
+    'ui-install', 'ui-test', 'ui-build', 'worker-test', 'worker-build',
   ])
   assert.ok(result.output.endsWith('.fyp'))
   assert.ok(await fs.stat(result.output))
@@ -119,7 +105,7 @@ test('declared lifecycle runs phases in the exact required order', async () => {
 test('skipTests omits both test phases but keeps build/package', async () => {
   const order = []
   await buildPlugin(root, { run: fakeRunner(order, root), skipTests: true })
-  assert.deepEqual(order, ['ui-prepare', 'ui-install', 'ui-build', 'worker-build'])
+  assert.deepEqual(order, ['ui-install', 'ui-build', 'worker-build'])
 })
 
 test('ui build failure leaves no fyp, tmp, or staging', async () => {
@@ -135,8 +121,8 @@ test('ui build failure leaves no fyp, tmp, or staging', async () => {
     }),
     /vite failed/,
   )
-  const pkgDir = path.join(root, 'dist-package')
-  const leftovers = (await fs.readdir(pkgDir).catch(() => [])).filter((x) => x.endsWith('.fyp') || x.startsWith('.staging-') || x.includes('.tmp-'))
+  const pkgDir = path.join(root, 'dist')
+  const leftovers = (await fs.readdir(pkgDir).catch(() => [])).filter((x) => x.endsWith('.fyp') || x.endsWith('.sha256') || x.startsWith('.staging-') || x.includes('.tmp-'))
   assert.deepEqual(leftovers, [])
 })
 
@@ -154,8 +140,8 @@ test('worker build failure leaves no fyp, tmp, or staging', async () => {
     }),
     /mvn failed/,
   )
-  const pkgDir = path.join(root, 'dist-package')
-  const leftovers = (await fs.readdir(pkgDir).catch(() => [])).filter((x) => x.endsWith('.fyp') || x.startsWith('.staging-') || x.includes('.tmp-'))
+  const pkgDir = path.join(root, 'dist')
+  const leftovers = (await fs.readdir(pkgDir).catch(() => [])).filter((x) => x.endsWith('.fyp') || x.endsWith('.sha256') || x.startsWith('.staging-') || x.includes('.tmp-'))
   assert.deepEqual(leftovers, [])
 })
 
@@ -173,16 +159,13 @@ test('missing worker artifact fails validation with no partial output', async ()
     }),
     /worker/,
   )
-  const pkgDir = path.join(root, 'dist-package')
+  const pkgDir = path.join(root, 'dist')
   const leftovers = (await fs.readdir(pkgDir).catch(() => [])).filter((x) => x.endsWith('.fyp'))
   assert.deepEqual(leftovers, [])
 })
 
-test('backend manifests require a declared worker build configuration', async () => {
-  const configFile = path.join(root, 'fengyu.plugin.json')
-  const config = JSON.parse(await fs.readFile(configFile, 'utf8'))
-  delete config.worker
-  await fs.writeFile(configFile, JSON.stringify(config))
+test('backend manifests require a conventional Maven worker', async () => {
+  await fs.rm(path.join(root, 'worker'), { recursive: true, force: true })
   await assert.rejects(
     () => buildPlugin(root, {
       run: async (command, args, options) => {
@@ -208,19 +191,19 @@ test('ui entry must be a regular file, not merely an existing directory', async 
   )
 })
 
-test('packaged backend command must exactly match the supported worker command', async () => {
+test('packaged backend rejects an unknown field (additionalProperties: false)', async () => {
   const manifestFile = path.join(root, 'manifest.json')
   const manifest = JSON.parse(await fs.readFile(manifestFile, 'utf8'))
-  manifest.backend.command = 'java -jar backend/worker.jar --unexpected'
+  manifest.backend.bogus = true
   await fs.writeFile(manifestFile, JSON.stringify(manifest))
 
   await assert.rejects(
     () => buildPlugin(root, { run: fakeRunner([], root) }),
-    /backend\.command must be java -jar backend\/worker\.jar/,
+    /backend|additional prop/i,
   )
 })
 
-test('worker Main-Class must match the declared build configuration', async () => {
+test('worker JAR Main-Class must resolve to a class entry', async () => {
   await assert.rejects(
     () => buildPlugin(root, {
       run: async (command, args, options) => {
@@ -237,7 +220,7 @@ test('worker Main-Class must match the declared build configuration', async () =
         }
       },
     }),
-    /worker JAR Main-Class .* does not match com\.example\.DeclaredWorkerMain/,
+    /worker JAR is missing class entry com\/example\/WrongMain\.class/,
   )
 })
 
@@ -252,10 +235,9 @@ test('assembleStaging copies manifest, ui output, and worker jar only', async ()
     assert.ok(entries.includes('manifest.json'))
     assert.ok(entries.includes('ui/index.html'))
     assert.ok(entries.includes('backend/worker.jar'))
-    assert.ok(entries.includes('runtime-assets/example.txt'))
     assert.equal(entries.some((entry) => entry.includes(root.replace(/^\//, ''))), false)
     // No source/tooling smuggled in.
-    assert.ok(!entries.some((e) => e.startsWith('ui-src/') || e.includes('fengyu.plugin.json') || e.includes('node_modules')))
+    assert.ok(!entries.some((e) => e.startsWith('ui-src/') || e.includes('node_modules')))
   } finally {
     await fs.rm(staging, { recursive: true, force: true }).catch(() => {})
   }
@@ -280,7 +262,7 @@ test('legacy vue-vite plugin runs frontend build then packages', async () => {
       await fs.writeFile(path.join(dir, 'ui/index.html'), '<div id="app"></div>')
     },
   })
-  assert.deepEqual(order, ['frontend'])
+  assert.deepEqual(order, ['frontend', 'frontend'])
   assert.ok(await fs.stat(out))
 })
 

@@ -187,7 +187,7 @@ class OfficialPluginSeederUpgradeTest {
     /** As {@link #writeArchive} but omits the {@code .sha256} sidecar (for the fail-closed test). */
     private void writeArchiveWithoutSidecar(Path dir, String name, String version) throws Exception {
         String manifest = """
-            {"schemaVersion":1,"id":"fan.summer.demo","name":"Demo","description":"Demo plugin",
+            {"schemaVersion":2,"id":"fan.summer.demo","name":"Demo","description":"Demo plugin",
              "version":"%s","author":"Example","icon":"puzzle-outline","category":"dev",
              "ui":{"entry":"ui/index.html"},"permissions":["files.read"]}
             """.formatted(version);
@@ -204,7 +204,7 @@ class OfficialPluginSeederUpgradeTest {
 
     private void writeArchive(Path dir, String name, String version) throws Exception {
         String manifest = """
-            {"schemaVersion":1,"id":"fan.summer.demo","name":"Demo","description":"Demo plugin",
+            {"schemaVersion":2,"id":"fan.summer.demo","name":"Demo","description":"Demo plugin",
              "version":"%s","author":"Example","icon":"puzzle-outline","category":"dev",
              "ui":{"entry":"ui/index.html"},"permissions":["files.read"]}
             """.formatted(version);

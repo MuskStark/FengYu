@@ -14,8 +14,8 @@ import { md3Dark, md3Light } from './md3-themes'
  * - Dual theme (dark default); flipped via `vuetify.theme.global.name.value`
  *   from stores/theme.ts (NOT useTheme(), which needs a component context).
  *
- * Also injected into the micro-frontend PluginContext so plugin apps call
- * `app.use(ctx.vuetify)` and share this exact instance + theme.
+ * Sandboxed plugin iframes use their own `@infinia/plugin-ui` instance and
+ * receive theme changes through the versioned SDK environment bridge.
  */
 export const vuetify = createVuetify({
   blueprint: md3,

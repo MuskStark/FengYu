@@ -1,12 +1,15 @@
 ---
 title: SDK & CLI
-description: Reference for the @infinia/plugin-sdk TypeScript client, the independently-versioned Java Worker SDK (1.1.0), the @infinia/plugin-dev Vite plugin + fengyu-plugin-devkit for IDE debugging, and the two fengyu plugin CLI subcommands — create, build.
+description: Reference for the protocol-based TypeScript client, Java Worker SDK 1.3.0, IDE simulator, and Toolchain 2 CLI.
 lang: en
 ---
 
 # SDK & CLI
 
-Plugin authors use two SDKs (one per side of the runtime), a Vite dev plugin + devkit for IDE debugging, and one CLI. The TypeScript SDK lives in the iframe UI; the Java Worker SDK builds the `worker.jar`; `@infinia/plugin-dev` + `fengyu-plugin-devkit` turn your editor into a FengYu host simulator so you can debug UI and worker with breakpoints; the `fengyu plugin` CLI scaffolds (`create`) and packages (`build`) plugins — development happens in the IDE. The Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.1.0`) is **independently versioned** from the host app and published to GitHub Packages.
+Plugin authors use two SDKs, a Vite simulator + DevKit, and the `fengyu` CLI. The TypeScript SDK
+speaks the shared protocol from the sandbox iframe; the Java SDK runs the out-of-process Worker.
+The Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.3.0`) is independently versioned
+from the host app and published to GitHub Packages.
 
 ## `@infinia/plugin-sdk` (TypeScript)
 
@@ -22,9 +25,9 @@ A `postMessage` bridge to the host. Construct your own with options, or use the 
 
 | Member | Signature | Notes |
 | --- | --- | --- |
-| `ready(options?)` | `(InvokeOptions?) => Promise<Environment>` | Deduplicates concurrent negotiation; **throws on major-version mismatch**. Applies and caches theme/locale. |
+| `ready(options?)` | `(InvokeOptions?) => Promise<Environment>` | Deduplicates negotiation and requires exact protocol `2.0.0`. Applies and caches theme/locale. |
 | `currentEnvironment()` | `→ Environment \| undefined` | Latest merged ready/event state, without a host round-trip. |
-| `invoke<T>(method, params?, options?)` | `→ Promise<T>` | RPC to the worker. `InvokeOptions { signal?, timeoutMs? }`. |
+| `invoke<T>(method, params?, options?)` | `→ Promise<T>` | RPC to the worker. Aborting `signal` propagates cancellation to the host and Worker. |
 | `notify(message)` | `→ Promise<boolean>` | Show a host toast. |
 | `files.open(opts?, req?)` | `→ Promise<FileRef \| null>` | Single file. `{extensions?, filters?}`. Perm `files.read`. |
 | `files.inputDirectory(req?)` | `→ Promise<FileRef \| null>` | Input directory. Perm `files.read`. |
@@ -43,7 +46,7 @@ type FileAccess = 'read' | 'write' | 'read-write'
 
 interface FileRef     { id: string; name: string; kind: 'file'|'directory'; access: FileAccess; size: number }
 interface FileFilter  { name: string; extensions: string[] }
-interface Environment { sdkVersion?: string; theme: Theme; locale: string; platform?: 'web'|'desktop'; capabilities?: string[] }
+interface Environment { protocolVersion: string; theme: Theme; locale: string; platform: 'web'|'desktop'; capabilities: HostMethod[] }
 interface InvokeOptions { signal?: AbortSignal; timeoutMs?: number }
 ```
 
@@ -53,7 +56,7 @@ interface InvokeOptions { signal?: AbortSignal; timeoutMs?: number }
 
 ## Java Worker SDK
 
-Artifact `fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.1.0` (independently versioned, published to GitHub Packages). Package `fan.summer.fengyu.sdk`. The runtime is `JsonRpcWorker`; handlers implement the `@FunctionalInterface PluginHandler`:
+Artifact `fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.3.0` (independently versioned, published to GitHub Packages). Package `fan.summer.fengyu.sdk`. The runtime is `JsonRpcWorker`; handlers implement the `@FunctionalInterface PluginHandler`:
 
 ```java
 Object handle(Map<String, Object> params) throws Exception
@@ -138,45 +141,36 @@ deterministic stub, so you can iterate the UI before any worker exists. See
 guide. If `workerEndpoint` is configured, connection failures are surfaced as RPC errors and never
 silently replaced by mock responses.
 
-## `fengyu plugin` CLI
+## `fengyu` CLI
 
-Source: `toolchain/cli/src/cli.mjs`. The CLI only scaffolds and packages — development and validation
-both happen elsewhere (IDE for dev; `build` validates automatically). Usage:
+Source: `toolchain/cli/src/cli.mjs`. Toolchain 2 uses flat, conventional commands:
 
-```
-fengyu plugin <create|build> [path] [options]
-```
-
-There are exactly **two** subcommands.
-
-| Subcommand | Options | Description |
+| Command | Options | Description |
 | --- | --- | --- |
-| `create <path> --id <id>` | `--id` (required), `--no-install`, `--ui-only` | Scaffold a new plugin. By default produces a complete Vue + Java project (`vue-java` template): `manifest.json`, `fengyu.plugin.json`, `ui-src/` (Vue, with `@infinia/plugin-dev` wired into `vite.config.ts`), `worker/` (Java + Maven Wrapper, with `PluginDevMain` scaffolded under `src/test/java`), and `.mvn/settings.xml`. `--ui-only` keeps the lightweight UI-only template. Runs `npm install` by default (`--no-install` skips it). Refuses to overwrite an existing directory. |
-| `build [path] [--out <file>]` | `--out` (default `dist-package/<id>-<version>.fyp`), `--skip-tests` | For a declared project, run the full staged lifecycle (prepare → install → test → build → **validate staging** → package). `--skip-tests` skips tests only — never type checking, validation, or packaging. Zero-config Vue/Vite and static projects keep their existing build detection. The archive write is atomic — no partial `.fyp`, `.tmp-*`, or staging dir is left on failure. |
+| `init <path> --id <id>` | `--no-install`, `--ui-only` | Create a standard Vue + Java project, or a UI-only project. |
+| `dev [path]` | — | Run the UI's standard `npm run dev` simulator. Debug `PluginDevMain` separately for Java breakpoints. |
+| `check [path]` | — | Validate the manifest and standard UI/Worker layout without packaging. |
+| `build [path]` | `--out <file>`, `--skip-tests` | Run npm/Maven lifecycle commands, validate staging, and atomically write the `.fyp` plus checksum. |
 
-::: tip What happened to `dev` / `validate` / `install`?
-`fengyu plugin dev` moved to the IDE via `@infinia/plugin-dev` + `fengyu-plugin-devkit` (see
-[IDE development](#ide-development) above) — you get real breakpoints instead of a CLI-managed
-process. `validate` is now a built-in step of `build` (the staging tree is always validated before
-packaging). `install` is done through the host's plugin marketplace UI (`POST /api/plugin-market/upload`);
-see [Marketplace](/en/plugins/marketplace).
-:::
+`fengyu.plugin.json` and arbitrary command arrays are not supported. The standard layout uses
+`ui-src/package.json` plus `worker/pom.xml` (or a root `pom.xml`); the Worker build must produce one
+`target/*-worker.jar`. Output defaults to `dist/<id>-<version>.fyp`.
 
 ### Examples
 
 ```bash
 # Scaffold (installs deps by default; add --no-install to skip)
-fengyu plugin create ./my-plugin --id com.example.my-plugin
+fengyu init ./my-plugin --id com.example.my-plugin
 
-# Develop: open the project in your IDE, then
-#   UI:   cd ui-src && npm run dev
-#   Worker: Debug PluginDevMain (see "IDE development" above)
+fengyu dev ./my-plugin
+# Also debug PluginDevMain for a Java Worker.
 
 # Package (runs the frontend build, validates staging, zips atomically)
-fengyu plugin build . --out dist-package/com.example.my-plugin-1.0.0.fyp
+fengyu check .
+fengyu build . --out dist/com.example.my-plugin-1.0.0.fyp
 ```
 
-The scaffolded project depends on `@infinia/plugin-sdk` **and** [`@infinia/plugin-ui`](/en/plugins/ui-components); its `src/main.ts` calls `mountFengYuApp`, which owns environment synchronization, client injection, mount, and pagehide disposal. Legacy static plugins (plain `ui/` with no build tooling) are still accepted by `build`.
+The scaffolded project depends on `@infinia/plugin-sdk` **and** [`@infinia/plugin-ui`](/en/plugins/ui-components); its `src/main.ts` calls `mountFengYuApp`, which owns environment synchronization, client injection, mount, and pagehide disposal.
 
 ## Next steps
 

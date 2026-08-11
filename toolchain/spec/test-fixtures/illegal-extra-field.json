@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 2,
+  "id": "com.example.extra",
+  "name": "Extra",
+  "description": "Rejects an unknown root property (additionalProperties: false).",
+  "version": "1.0.0",
+  "author": "Fixture",
+  "icon": "puzzle-outline",
+  "category": "other",
+  "ui": { "entry": "ui/index.html" },
+  "legacyCommand": "rm -rf /"
+}

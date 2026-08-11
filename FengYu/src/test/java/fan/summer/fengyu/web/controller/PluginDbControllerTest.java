@@ -116,13 +116,12 @@ class PluginDbControllerTest {
             .andExpect(content().json("{\"provisioned\":false,\"status\":\"not-provisioned\"}"));
     }
 
-    // Adjusted to the current PluginManifest constructor signature (14-arg backwards-compatible
-    // form, omitting the trailing `Map<String, LocaleOverride> i18n`). Nested records Ui(String)
-    // and Backend(String, String) [via its 2-arg compat ctor] match the current shape.
+    // Adjusted to the v2 PluginManifest constructor signature (15-arg form omitting i18n).
+    // Backend carries only callTimeoutSeconds; rpc is null (this test does not invoke a worker).
     private static PluginManifest manifest(String id, List<String> permissions) {
-        return new PluginManifest(1, id, "Test", "Test", "1.0.0", "FengYu", "email", "net",
+        return new PluginManifest(2, id, "Test", "Test", "1.0.0", "FengYu", "email", "net",
             new PluginManifest.Ui("ui/index.html"),
-            new PluginManifest.Backend("java -jar backend/worker.jar", "json-rpc-2.0"),
-            permissions, null, true, List.of());
+            new PluginManifest.Backend(60L),
+            permissions, null, true, null, List.of());
     }
 }

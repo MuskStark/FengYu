@@ -72,7 +72,7 @@ follow-up.
 
 ## Sandboxed UI
 
-The plugin's `ui/` micro-frontend is served by the host as static assets under a strict Content Security Policy at `/plugin-runtime/{id}/**` — these asset paths are the only plugin URLs that bypass the token filter, so the UI can bootstrap without a credential. The host loads the UI through its [micro-frontend host](/en/architecture/frontend) (`import(uiEntry)` → `default.mount(el, ctx)`) and reuses the host's Vuetify instance for consistent MD3 theming.
+The plugin's `ui/` micro-frontend is served by the host as static assets under a strict Content Security Policy at `/plugin-runtime/{id}/**` — these asset paths are the only plugin URLs that bypass the token filter, so the UI can bootstrap without a credential. The [micro-frontend host](/en/architecture/frontend) loads the entry page in a sandboxed iframe; no plugin code is imported into the host JavaScript realm.
 
 Inside the iframe, the SDK `@infinia/plugin-sdk` provides a `FengYuClient` that bridges to the host over `postMessage`. The plugin uses this client to call its own worker (which the host forwards as JSON-RPC) and to request file access — it never talks to the OS directly.
 

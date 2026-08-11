@@ -146,7 +146,7 @@ the token + api-base to the renderer via a `contextBridge` preload. See [Archite
 | `frontend/` | Vue 3.5 + TS SPA (runs identically in the browser or the Electron BrowserWindow). |
 | `desktop/` | Electron 43.x desktop shell — sidecar-launches the JAR, tray, native dialogs, auto-updater. |
 | `toolchain/ui/` | `@infinia/plugin-ui` — the official Vue/Vuetify component kit for plugin micro-frontends. |
-| `toolchain/cli/` | `fengyu plugin` CLI — `create`, `build` (development moved to the IDE via `toolchain/dev/` + `toolchain/devkit-java/`). |
+| `toolchain/cli/` | Toolchain 2 `fengyu` CLI — conventional `init`, `dev`, `check`, and `build` commands. |
 | `toolchain/dev/` | `@infinia/plugin-dev` — Vite plugin that turns the dev server into a FengYu host simulator for IDE debugging. |
 | `toolchain/devkit-java/` | `fengyu-plugin-devkit` — loopback-TCP JSON-RPC dev server (`PluginDevMain`) so worker breakpoints fire in the IDE. |
 
@@ -163,9 +163,9 @@ path into the same opaque `FileRef`. Plugin UI code is identical on both targets
 absolute path. Plugins that need persistence declare the `database` permission and get an
 injected datasource connection (table-name-prefixed, plugin-owned schema).
 
-Third-party authors scaffold with `fengyu plugin create`, develop in their IDE (the `@infinia/plugin-dev`
-Vite plugin + `fengyu-plugin-devkit`'s `PluginDevMain` give them real breakpoints in UI and worker),
-and package with `fengyu plugin build` — there is no `FengYuPluginV2` interface and no in-host JavaFX.
+Third-party authors scaffold with `fengyu init`, run the UI simulator with `fengyu dev`, debug
+`PluginDevMain` in their IDE, validate with `fengyu check`, and package with `fengyu build`. The
+standard layout needs no build-command DSL; there is no `FengYuPluginV2` interface or in-host JavaFX.
 See the [Plugin Overview](docs/en/plugins/overview).
 
 ---
