@@ -13,6 +13,8 @@ export interface FengyuBridge {
   downloadAndInstall(): Promise<{ action: 'restarting' } | { action: 'manual'; releaseUrl: string }>
   onUpdateProgress(cb: (info: { percent: number; transferred: number; total: number; bytesPerSecond: number }) => void): () => void
   onUpdateState(cb: (state: { state: string; message?: string }) => void): () => void
+  /** Push the update-channel proxy URL into the main process so the next check honors it. */
+  setUpdateApiBase(url: string): Promise<void>
 }
 
 declare global {

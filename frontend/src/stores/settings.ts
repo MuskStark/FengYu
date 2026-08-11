@@ -12,6 +12,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const language = ref<LanguageName>('en')
   const logLevel = ref<LogLevel>('INFO')
   const unsandboxedPlugins = ref(false)
+  const updateApiBase = ref('')
   const loaded = ref(false)
   let desktopTheme: ThemeName | null = null
 
@@ -23,14 +24,25 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
+  // Push the update-channel proxy URL into the Electron main process so the next update check
+  // reads it. In-process IPC over the preload bridge — works offline (no network needed). The
+  // guard keeps the no-op call benign in browser mode (window.fengyu undefined).
+  function syncDesktopUpdateApiBase(next: string) {
+    if (typeof window !== 'undefined' && window.fengyu?.setUpdateApiBase) {
+      void window.fengyu.setUpdateApiBase(next ?? '')
+    }
+  }
+
   function apply(s: AppSettings) {
     sidebarCollapsed.value = s.sidebarCollapsed
     theme.value = s.theme
     language.value = s.language
     logLevel.value = s.logLevel ?? 'INFO'
     unsandboxedPlugins.value = s.unsandboxedPlugins ?? false
+    updateApiBase.value = s.updateApiBase ?? ''
     useThemeStore().setTheme(s.theme)
     syncDesktopTheme(s.theme)
+    syncDesktopUpdateApiBase(updateApiBase.value)
     // Drive vue-i18n from the host language setting. apply() is the single
     // funnel for both the initial settings load() and every update(), so this
     // covers the initial-load case (reactively, after the fire-and-forget load
@@ -78,6 +90,10 @@ export const useSettingsStore = defineStore('settings', () => {
     await update({ unsandboxedPlugins: enabled })
   }
 
+  async function setUpdateApiBase(next: string) {
+    await update({ updateApiBase: next })
+  }
+
   // ── AI Config ───────────────────────────────────────────────
   const aiSettings = ref<AiSettings | null>(null)
   const aiLoaded = ref(false)
@@ -101,6 +117,7 @@ export const useSettingsStore = defineStore('settings', () => {
     language,
     logLevel,
     unsandboxedPlugins,
+    updateApiBase,
     loaded,
     load,
     update,
@@ -109,6 +126,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setSidebarCollapsed,
     setLogLevel,
     setUnsandboxedPlugins,
+    setUpdateApiBase,
     aiSettings,
     aiLoaded,
     loadAi,

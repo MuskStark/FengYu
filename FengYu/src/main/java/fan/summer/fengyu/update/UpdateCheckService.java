@@ -2,6 +2,7 @@ package fan.summer.fengyu.update;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -86,6 +87,9 @@ public class UpdateCheckService {
     }
 
     private UpdateInfo fetchLatest() {
+        // DB-persisted value (from the Settings UI) takes precedence over the bootstrap @Value;
+        // both default to empty → GitHub. Read per-check so a Settings change is live without restart.
+        String apiBase = AiConfigServiceHeadless.getUpdateApiBase(this.apiBase);
         // 配了 apiBase 就只走内网镜像（FY-Proxy），否则走 GitHub。
         boolean internal = !apiBase.isBlank();
         String url = internal

@@ -57,3 +57,54 @@ describe('configureUpdateFeed', () => {
     expect(updateDownloadPageUrl()).toBe('http://proxy.local:8088/admin')
   })
 })
+
+describe('bootstrapUpdateApiBaseFromBackend', () => {
+  const originalFetch = globalThis.fetch
+
+  afterEach(() => {
+    delete process.env.FENGYU_UPDATE_API_BASE
+    globalThis.fetch = originalFetch
+    vi.restoreAllMocks()
+  })
+
+  it('seeds the env var from the backend settings payload (trailing slash trimmed)', async () => {
+    globalThis.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ updateApiBase: 'http://10.0.0.5:8088/' }), { status: 200 }),
+    ) as unknown as typeof fetch
+    const { bootstrapUpdateApiBaseFromBackend } = await import('../src/updater/update-feed')
+    await bootstrapUpdateApiBaseFromBackend('http://127.0.0.1:24056', 'tok')
+    expect(process.env.FENGYU_UPDATE_API_BASE).toBe('http://10.0.0.5:8088')
+    expect(globalThis.fetch).toHaveBeenCalledWith('http://127.0.0.1:24056/api/settings', {
+      headers: { 'X-FengYu-Token': 'tok' },
+    })
+  })
+
+  it('clears the env var when the persisted value is empty (GitHub default)', async () => {
+    process.env.FENGYU_UPDATE_API_BASE = 'http://preexisting:9999'
+    globalThis.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ updateApiBase: '' }), { status: 200 }),
+    ) as unknown as typeof fetch
+    const { bootstrapUpdateApiBaseFromBackend } = await import('../src/updater/update-feed')
+    await bootstrapUpdateApiBaseFromBackend('http://127.0.0.1:24056', 'tok')
+    expect(process.env.FENGYU_UPDATE_API_BASE).toBe('')
+  })
+
+  it('leaves the env var untouched when the backend responds non-200', async () => {
+    process.env.FENGYU_UPDATE_API_BASE = 'http://preexisting:9999'
+    globalThis.fetch = vi.fn(async () => new Response('nope', { status: 503 })) as unknown as typeof fetch
+    const { bootstrapUpdateApiBaseFromBackend } = await import('../src/updater/update-feed')
+    await bootstrapUpdateApiBaseFromBackend('http://127.0.0.1:24056', 'tok')
+    expect(process.env.FENGYU_UPDATE_API_BASE).toBe('http://preexisting:9999')
+  })
+
+  it('propagates fetch errors (the main.ts caller swallows them)', async () => {
+    // The function itself does NOT swallow errors — it surfaces them so the caller (main.ts's
+    // startup bootstrap) can decide. main.ts wraps the call in `.catch(() => {})`, which is the
+    // documented "fall back to env default" behavior. Here we assert the raw contract: a network
+    // failure rejects.
+    globalThis.fetch = vi.fn(async () => { throw new Error('connection refused') }) as unknown as typeof fetch
+    const { bootstrapUpdateApiBaseFromBackend } = await import('../src/updater/update-feed')
+    await expect(bootstrapUpdateApiBaseFromBackend('http://127.0.0.1:24056', 'tok'))
+      .rejects.toThrow('connection refused')
+  })
+})

@@ -39,6 +39,9 @@ contextBridge.exposeInMainWorld('fengyu', {
     ipcRenderer.invoke('update:check'),
   downloadAndInstall: () =>
     ipcRenderer.invoke('update:download-install'),
+  // Push the persisted update-proxy URL into the main process (see ipc/update.ts).
+  setUpdateApiBase: (url: string) =>
+    ipcRenderer.invoke('update:set-api-base', url),
   onUpdateProgress: (cb: (info: UpdateProgressInfo) => void) => {
     const handler = (_e: unknown, p: UpdateProgressInfo) => cb(p)
     ipcRenderer.on('update:progress', handler)
