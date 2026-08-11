@@ -11,7 +11,11 @@
  */
 
 export { createFengYuVuetify, bindFengYuEnvironment, themeName, localeName } from './createFengYuVuetify'
-export type { FengYuVuetifyOptions } from './createFengYuVuetify'
+export type { FengYuVuetifyOptions, FengYuEnvironmentBindingOptions } from './createFengYuVuetify'
+export { mountFengYuApp } from './app'
+export type { MountFengYuAppOptions } from './app'
+export { createFengYuI18n, normalizeFengYuLocale } from './i18n'
+export type { FengYuI18n, FengYuMessages, FengYuMessageTables } from './i18n'
 export { fengyuCodexLight, fengyuCodexDark } from './theme'
 export { fengyuDefaults } from './defaults'
 export { provideFengYuClient, useFengYuClient, FENGYU_CLIENT_KEY } from './client'

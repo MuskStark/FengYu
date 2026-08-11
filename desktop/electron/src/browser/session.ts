@@ -15,9 +15,9 @@ const CDP_VERSION = '1.3'
  *  - a persistent CDP (webContents.debugger) attachment, so real-input dispatch
  *    (Input.dispatchMouseEvent / Input.insertText) and a11y capture reuse one channel
  *    instead of attach/detach per call;
- *  - an element-ref registry: {@link markRef} stamps a `data-fengyu-ref="<id>"` attribute
- *    on a matched element so subsequent click/type/fill operations target the exact node
- *    across re-renders of the same page (refs are cleared on navigation/close).
+ *  - an element-ref sequence: browser_find stamps a `data-fengyu-ref="<id>"` attribute
+ *    on a matched element so subsequent operations target that exact node. A framework
+ *    replacement intentionally makes the ref stale; refs also reset on navigation/close.
  */
 export class BrowserSession {
   private win: BrowserWindow | null = null

@@ -144,6 +144,14 @@ public class ChatFileGrantService {
         return exported;
     }
 
+    /** Revoke unexported staging grants when a chat transport disconnects or is abandoned. */
+    public void discardStaging(List<StagedOutput> staged) {
+        if (staged == null) return;
+        for (StagedOutput item : staged) {
+            files.revoke(item.pluginId(), item.stagingRef().id());
+        }
+    }
+
     private static void copyTree(Path source, Path target) throws IOException {
         Files.createDirectories(target);
         try (var paths = Files.walk(source)) {

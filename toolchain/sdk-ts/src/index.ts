@@ -2,7 +2,7 @@
 // value sent on host.ready and used for the major-version compatibility gate below; if it drifts
 // from the published version the gate becomes decorative. resolve-tooling-version.mjs asserts the
 // six toolchain artifacts agree — this constant must agree with them too.
-export const SDK_VERSION = '1.2.0'
+export const SDK_VERSION = '1.3.0'
 
 export type Theme = 'dark' | 'light'
 export type FileAccess = 'read' | 'write' | 'read-write'
@@ -59,6 +59,8 @@ export class FengYuClient {
   private readonly allowedOrigin: string
   private readonly pending = new Map<string, Pending>()
   private readonly handlers = new Map<string, Set<EventHandler>>()
+  private readyPromise?: Promise<Environment>
+  private environment?: Environment
   private disposed = false
 
   constructor(options: FengYuClientOptions = {}) {
@@ -68,14 +70,27 @@ export class FengYuClient {
     window.addEventListener('message', this.onMessage)
   }
 
-  async ready(): Promise<Environment> {
-    const env = await this.request<Environment>('host.ready', { sdkVersion: SDK_VERSION })
-    if (env.sdkVersion && env.sdkVersion.split('.')[0] !== SDK_VERSION.split('.')[0]) {
-      throw new Error(`Incompatible FengYu SDK: host=${env.sdkVersion}, plugin=${SDK_VERSION}`)
+  async ready(options: InvokeOptions = {}): Promise<Environment> {
+    if (this.environment) return { ...this.environment }
+    if (!this.readyPromise) {
+      this.readyPromise = this.request<Environment>('host.ready', { sdkVersion: SDK_VERSION }, options)
+        .then(env => {
+          if (env.sdkVersion && env.sdkVersion.split('.')[0] !== SDK_VERSION.split('.')[0]) {
+            throw new Error(`Incompatible FengYu SDK: host=${env.sdkVersion}, plugin=${SDK_VERSION}`)
+          }
+          this.applyEnvironment(env)
+          return { ...env }
+        })
+        .catch(error => {
+          this.readyPromise = undefined
+          throw error
+        })
     }
-    this.applyEnvironment(env)
-    return env
+    return this.readyPromise
   }
+
+  /** Last environment received from ready/environment events; undefined before negotiation. */
+  currentEnvironment(): Environment | undefined { return this.environment ? { ...this.environment } : undefined }
 
   invoke<T = unknown>(method: string, params: Record<string, unknown> = {}, options?: InvokeOptions): Promise<T> {
     return this.request<T>('rpc.invoke', { method, params }, options)
@@ -143,11 +158,14 @@ export class FengYuClient {
       message.error ? item.reject(new Error(message.error)) : item.resolve(message.result)
     } else if (message.type === 'event') {
       if (message.event === 'environment') this.applyEnvironment(message.data)
-      this.handlers.get(message.event)?.forEach(handler => handler(message.data))
+      const data = message.event === 'environment' ? (this.currentEnvironment() ?? message.data) : message.data
+      this.handlers.get(message.event)?.forEach(handler => handler(data))
     }
   }
 
   private applyEnvironment(value: Partial<Environment>): void {
+    if (this.environment) this.environment = { ...this.environment, ...value }
+    else if (value.theme && value.locale) this.environment = value as Environment
     if (value.theme) document.documentElement.dataset.theme = value.theme
     if (value.locale) document.documentElement.lang = value.locale
   }

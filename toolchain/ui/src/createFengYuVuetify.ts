@@ -14,6 +14,10 @@ import 'vuetify/styles'
 import './styles/codex.css'
 
 export type FengYuVuetifyOptions = { theme?: string; locale?: string }
+export type FengYuEnvironmentBindingOptions = {
+  onEnvironment?: (environment: Environment) => void
+  onReadyError?: (error: unknown) => void
+}
 
 /** Map an Environment.theme value (or option) to the registered Vuetify theme name. */
 export function themeName(value?: string): string {
@@ -48,14 +52,18 @@ export function createFengYuVuetify(options: FengYuVuetifyOptions = {}): ReturnT
 export async function bindFengYuEnvironment(
   vuetify: ReturnType<typeof createFengYuVuetify>,
   client: FengYuClient,
+  options: FengYuEnvironmentBindingOptions = {},
 ): Promise<() => void> {
+  let current: Environment = { theme: 'dark', locale: 'en' }
   const apply = (environment: Partial<Environment>) => {
+    current = { ...current, ...environment }
     // theme.change(name) is the non-deprecated Vuetify 3.12 API; assigning
     // `theme.global.name.value` triggers a `[Vuetify UPGRADE]` console warning
     // on every call (and this runs on every `environment` event). `locale.current`
     // has no such deprecation, so its assignment stays.
-    vuetify.theme.change(themeName(environment.theme))
-    vuetify.locale.current.value = localeName(environment.locale)
+    vuetify.theme.change(themeName(current.theme))
+    vuetify.locale.current.value = localeName(current.locale)
+    options.onEnvironment?.({ ...current })
   }
   // Await the host's ready handshake so theme/locale apply before first paint.
   // When there is no host (e.g. `vite` started standalone, outside any simulator),
@@ -63,9 +71,10 @@ export async function bindFengYuEnvironment(
   // leaving a blank page. Fall back to defaults after a short timeout so the UI at
   // least renders — invoke calls will still surface a clear error per-call.
   try {
-    apply(await client.ready())
-  } catch {
+    apply(await client.ready({ timeoutMs: 3_000 }))
+  } catch (error) {
     apply({})
+    options.onReadyError?.(error)
   }
   return client.on('environment', (value) => apply(value as Partial<Environment>))
 }

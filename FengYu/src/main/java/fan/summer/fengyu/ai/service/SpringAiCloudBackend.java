@@ -297,7 +297,13 @@ public final class SpringAiCloudBackend implements ChatBackend {
                 workerThread = Thread.currentThread();
                 runToolLoop(history, activeFileRefs, callback, enableTools, maxToolRounds);
             } catch (Exception e) {
-                log.error("{} chat failed", provider, e);
+                if (e instanceof ChatToolApprovalGate.ToolApprovalException) {
+                    // Rejection, timeout, and cancellation are expected user-controlled outcomes,
+                    // not backend crashes. Preserve the concise message without an alarming stack.
+                    log.info("{} chat stopped at tool approval: {}", provider, e.getMessage());
+                } else {
+                    log.error("{} chat failed", provider, e);
+                }
                 // Clear `generating` BEFORE invoking onError. A caller that awaits the error
                 // callback (e.g. a test, or the UI starting a retry) observes the backend as
                 // reusable the moment onError fires; if the flag stayed set until the finally

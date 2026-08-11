@@ -77,7 +77,9 @@ worker 是一个独立的操作系统进程（JVM），绝不能比宿主存活�
   阻塞在 stdin 上时父进程已消失，worker 退出。这覆盖了管道被中间启动器保持打开的少数场景。
 
 两条路径都汇聚到一次显式的 `System.exit(0)`，因此即便插件创建了非守护线程（HikariCP 连接池、
-scheduled executor 等），也无法在宿主消失后继续撑着 JVM、继续持有嵌入式数据库的文件锁。宿主自身也
+scheduled executor 等），也无法在宿主消失后继续撑着 JVM、继续持有嵌入式数据库的文件锁。SDK 1.3.0
+新增 `JsonRpcWorker.onClose(AutoCloseable)`：注册的资源会在强制退出前按注册逆序关闭且只关闭一次。
+handler 持有的 job 注册表、连接池和存储应在此注册，而不是只依赖进程终止。宿主自身也
 注册了独立的 JVM shutdown hook，直接调用 `PluginProcessManager.close()`——它会 `destroy()`/
 `destroyForcibly()` 每个被追踪的 worker，并递归杀掉 worker 的后代进程（如 `pip` 子进程）——作为
 Spring `@PreDestroy` 之外的兜底。桌面 shell 在退出时 tree-kill 整棵 backend 进程树。Linux 上
@@ -123,6 +125,8 @@ return jobs.cancel(jobId);
 - **有界保留。** 已完成的 job 保留 30 分钟（可配置）且上限为 200 条；最旧的已完成 job 优先驱逐。这防止了在 fan out 大量 job 的 worker 中出现无界的内存增长。
 - **协作式取消。** `Cancellable.onCancel(Runnable)` 在宿主调用 `*_cancel` 时触发一次；job 体还应在长步骤之间轮询 `Cancellable.isCancelled()`，并抛出 `Jobs.CancellationException` 以表示一次干净的放弃。
 - **流式日志。** `Cancellable.log(String)` 追加到每个 job 的队列；`snapshot(jobId, cursor)` 返回从 `cursor` 起的尾部以及下一个游标，UI 可据此增量轮询。
+- **locale 与关闭安全。** 虚拟线程 job 继承启动请求的 locale，因此延迟生成的摘要/日志保持同一语言。
+  `Jobs.close()` 会取消所有运行中的 job 并拒绝新任务；即使取消与钩子注册发生竞态，取消钩子也只执行一次。
 
 参考实现：
 

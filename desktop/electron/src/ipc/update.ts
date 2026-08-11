@@ -7,6 +7,7 @@ import {
   downloadAndExtractPortable,
   applyPortableUpdate,
 } from '../updater/portable-updater'
+import { configureUpdateFeed, updateApiBase, updateDownloadPageUrl } from '../updater/update-feed'
 
 /**
  * Renderer-driven update flow, distinct from the startup check in `auto-updater.ts`.
@@ -16,11 +17,10 @@ import {
  * signedRelease flag from `auto-updater.ts` untouched. The consent that authorizes an
  * unsigned install comes from the user gesture, not from flipping the signed flag.
  *
- * Platform split: on Windows/Linux the user-consented path calls downloadUpdate() +
- * quitAndInstall() (the OS may warn about an unsigned binary — expected). On macOS an
- * unsigned replace cannot relaunch under Gatekeeper, so we open the releases page for a
- * manual download+drag-in instead — the only reliable unsigned-mac path until code-signing
- * lands.
+ * Platform split: on Windows/Linux, a user-consented FY-Proxy update calls downloadUpdate() +
+ * quitAndInstall() (the OS may warn about an unsigned binary — expected). The shared public
+ * GitHub feed and unsigned macOS builds use manual download because they cannot safely identify
+ * and replace the current lite/JRE variant.
  */
 
 export interface UpdateCheckPayload {
@@ -65,6 +65,7 @@ export function registerUpdateIpc(): void {
     autoUpdater.autoDownload = false
     autoUpdater.autoInstallOnAppQuit = false
     try {
+      configureUpdateFeed()
       const result = await autoUpdater.checkForUpdates()
       const info = result?.updateInfo
       return {
@@ -104,6 +105,20 @@ export function registerUpdateIpc(): void {
     autoUpdater.autoDownload = false
     autoUpdater.autoInstallOnAppQuit = false
 
+    // GitHub publishes one shared latest*.yml for lite + JRE and the last build overwrites it.
+    // Installing from that ambiguous feed can switch variants. FY-Proxy has separate feeds and
+    // is the only electron-updater source that is safe to install automatically at runtime.
+    try {
+      if (!updateApiBase()) {
+        await shell.openExternal(releasePageUrl())
+        return { action: 'manual', releaseUrl: releasePageUrl() }
+      }
+    } catch (err) {
+      console.error('[updater] invalid intranet update feed:', err)
+      await shell.openExternal(releasePageUrl())
+      return { action: 'manual', releaseUrl: releasePageUrl() }
+    }
+
     // macOS: an unsigned quitAndInstall leaves the app unable to relaunch (Gatekeeper). Open the
     // releases page for a manual download + drag-in until a signed+notarized build exists.
     if (process.platform === 'darwin') {
@@ -131,7 +146,12 @@ function extractReleaseUrl(info: { releaseNotes?: unknown } | undefined): string
 }
 
 function releasePageUrl(): string {
-  return 'https://github.com/MuskStark/FengYu/releases'
+  try {
+    return updateDownloadPageUrl()
+  } catch (err) {
+    console.error('[updater] invalid intranet update download page:', err)
+    return 'https://github.com/MuskStark/FengYu/releases'
+  }
 }
 
 /** Send a payload to every live renderer window (guards isDestroyed). */
@@ -140,4 +160,3 @@ function broadcast(channel: string, payload: unknown): void {
     if (!win.isDestroyed()) win.webContents.send(channel, payload)
   }
 }
-

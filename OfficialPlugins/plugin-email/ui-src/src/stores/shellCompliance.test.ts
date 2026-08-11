@@ -11,11 +11,13 @@ describe('Email Center shell uses the official plugin-ui foundation', () => {
     // The hand-rolled createVuetify + bespoke themes are gone; the kit owns them.
     expect(main).not.toContain('emailLightTheme')
     expect(main).not.toContain('emailDarkTheme')
-    expect(main).toContain('createFengYuVuetify')
-    expect(main).toContain('provideFengYuClient')
-    // The app still wires Pinia + vue-i18n and mounts into #app.
+    expect(main).toContain('mountFengYuApp')
+    // The shared lifecycle owns Vuetify, client DI, mounting and pagehide disposal.
+    expect(main).not.toContain('createFengYuVuetify')
+    expect(main).not.toContain('provideFengYuClient')
+    // The app still wires Pinia + vue-i18n through the shared bootstrap.
     expect(main).toContain('createPinia')
-    expect(main).toContain('.mount(\'#app\')')
+    expect(main).toContain('plugins: [createPinia(), i18n]')
   })
 
   it('keeps the email layout styling on top of the shared component system', () => {

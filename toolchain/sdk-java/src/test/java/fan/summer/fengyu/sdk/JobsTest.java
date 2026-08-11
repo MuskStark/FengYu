@@ -4,11 +4,59 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class JobsTest {
+
+    @Test
+    void asyncJobInheritsRequestLocaleAndClearsCallerState() throws Exception {
+        Jobs jobs = new Jobs();
+        AtomicReference<String> observed = new AtomicReference<>();
+        CountDownLatch finished = new CountDownLatch(1);
+        WorkerLocale.set("zh-CN");
+        try {
+            jobs.start("I18N", handle -> {
+                observed.set(WorkerLocale.current());
+                finished.countDown();
+            });
+            assertTrue(finished.await(2, TimeUnit.SECONDS));
+            assertEquals("zh", observed.get());
+            assertEquals("zh", WorkerLocale.current(), "the job must not mutate the request thread");
+        } finally {
+            WorkerLocale.clear();
+            jobs.close();
+        }
+    }
+
+    @Test
+    void closeCancelsRunningJobsAndRejectsNewWork() throws Exception {
+        Jobs jobs = new Jobs();
+        CountDownLatch started = new CountDownLatch(1);
+        AtomicInteger cancellations = new AtomicInteger();
+        jobs.start("BLOCK", handle -> {
+            started.countDown();
+            try {
+                while (!handle.isCancelled()) Thread.sleep(10);
+            } catch (InterruptedException expected) {
+                Thread.currentThread().interrupt();
+            }
+            handle.onCancel(cancellations::incrementAndGet);
+        });
+        assertTrue(started.await(2, TimeUnit.SECONDS));
+        jobs.close();
+        long deadline = System.currentTimeMillis() + 2_000;
+        while (cancellations.get() == 0 && System.currentTimeMillis() < deadline) Thread.sleep(10);
+        assertEquals(1, cancellations.get(), "late cancel hooks must still run exactly once");
+        assertThrows(IllegalStateException.class, () -> jobs.start("LATE", handle -> {}));
+        jobs.close();
+    }
 
     @Test
     void cursorRemainsAbsoluteAfterOldestLinesAreEvicted() {

@@ -10,12 +10,11 @@ The plugin's `ui/` directory is a self-contained micro-frontend (MF) that the ho
 
 ## The default entry: a Vue/Vuetify app
 
-Since 4.0, `fengyu plugin create` scaffolds a Vue 3 + Vuetify app that builds into `ui/`. The generated `src/main.ts` is the whole bootstrap — it creates the Vuetify instance, binds the host theme/locale, provides the SDK client, and mounts the app:
+Since 4.0, `fengyu plugin create` scaffolds a Vue 3 + Vuetify app that builds into `ui/`. The generated `src/main.ts` delegates the complete bootstrap and teardown lifecycle to the shared UI kit:
 
 ```ts
-import { createApp } from 'vue'
 import { fengyu } from '@infinia/plugin-sdk'
-import { bindFengYuEnvironment, createFengYuVuetify, provideFengYuClient } from '@infinia/plugin-ui'
+import { mountFengYuApp } from '@infinia/plugin-ui'
 import '@infinia/plugin-ui/style.css'
 import App from './App.vue'
 
@@ -23,16 +22,14 @@ if (!fengyu) throw new Error('FengYu SDK requires a browser environment')
 // Bind to a local so the narrowed (non-undefined) type survives the
 // top-level `await` below — TS widens imported `const` bindings across await.
 const client = fengyu
-const vuetify = createFengYuVuetify()
-const disposeEnvironment = await bindFengYuEnvironment(vuetify, client)
-const app = createApp(App)
-provideFengYuClient(app, client)
-app.use(vuetify)
-app.mount('#app')
-window.addEventListener('pagehide', () => { disposeEnvironment(); client.dispose() }, { once: true })
+await mountFengYuApp({ root: App, client })
 ```
 
-`bindFengYuEnvironment` calls `fengyu.ready()` once and then subscribes to `environment` events, so theme and locale propagate from the host into Vuetify automatically. Inside your components, call `useFengYuClient()` to get the `FengYuClient` instead of importing the `fengyu` singleton directly. The full component kit is documented on the [UI Components](/en/plugins/ui-components) page.
+`mountFengYuApp` owns the complete UI lifecycle: it negotiates the environment once, synchronizes
+Vuetify theme/locale, injects the client, mounts the app, and unmounts/unsubscribes/disposes on
+`pagehide`. Pass `plugins: [pinia, i18n]` for extra Vue plugins and `onEnvironment` to synchronize
+plugin-specific message tables. Inside components, call `useFengYuClient()` instead of importing
+the singleton directly. The full component kit is documented on the [UI Components](/en/plugins/ui-components) page.
 
 Legacy static plugins — a hand-written `ui/index.html` + `ui/app.js` that `import { fengyu } from './sdk.js'` — are still accepted. The rest of this page describes the SDK API that **both** entry styles share.
 
@@ -81,7 +78,8 @@ off()
 
 | Method | Returns | Notes |
 | --- | --- | --- |
-| `ready()` | `Promise<Environment>` | Sends `sdkVersion`; throws on major-version mismatch. Applies `theme` + `locale` to the document. |
+| `ready(options?)` | `Promise<Environment>` | Sends `sdkVersion`; concurrent calls share one handshake. Throws on major-version mismatch. Applies and caches `theme` + `locale`. |
+| `currentEnvironment()` | `Environment \| undefined` | Latest merged ready/event state without another host round-trip. |
 | `invoke(method, params?, options?)` | `Promise<T>` | RPC to the plugin worker. `options:{signal?, timeoutMs?}`. |
 | `notify(message)` | `Promise<boolean>` | Shows a host toast. |
 | `files.open({extensions?, filters?}, req?)` | `Promise<FileRef \| null>` | Open a single file. `null` if the user cancels. Perm `files.read`. |

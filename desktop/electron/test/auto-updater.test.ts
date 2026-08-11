@@ -5,10 +5,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 vi.mock('electron-updater', () => ({
   autoUpdater: {
     checkForUpdates: vi.fn(),
+    setFeedURL: vi.fn(),
     downloadUpdate: vi.fn(),
     quitAndInstall: vi.fn(),
     autoDownload: true,
     autoInstallOnAppQuit: true,
+    disableDifferentialDownload: false,
   },
 }))
 vi.mock('electron', () => ({
@@ -27,6 +29,7 @@ const UPDATE_AVAILABLE = { updateInfo: { version: '9.9.9' } }
 describe('checkForUpdates skips JRE variant', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
+    delete process.env.FENGYU_UPDATE_API_BASE
     ;(process as any).resourcesPath = '/fake/resources'
     const fs = await import('node:fs')
     ;(fs.existsSync as any).mockImplementation((p: string) => p.includes('jre'))
@@ -51,11 +54,24 @@ describe('checkForUpdates skips JRE variant', () => {
     await checkForUpdates()
     expect((autoUpdater.checkForUpdates as any).mock.calls.length).toBeGreaterThanOrEqual(1)
   })
+
+  it('checks the dedicated JRE feed when FY-Proxy is configured', async () => {
+    process.env.FENGYU_UPDATE_API_BASE = 'http://proxy.local:8088'
+    const { autoUpdater } = await import('electron-updater')
+    ;(autoUpdater.checkForUpdates as any).mockResolvedValue(UPDATE_AVAILABLE)
+    const { checkForUpdates } = await import('../src/updater/auto-updater')
+    await checkForUpdates()
+    expect(autoUpdater.setFeedURL).toHaveBeenCalledWith(expect.objectContaining({
+      url: 'http://proxy.local:8088/fengyu-updates/jre',
+    }))
+    expect(autoUpdater.checkForUpdates).toHaveBeenCalled()
+  })
 })
 
 describe('checkForUpdates unsigned build (default metadata)', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
+    delete process.env.FENGYU_UPDATE_API_BASE
     ;(process as any).resourcesPath = '/fake/resources'
     const electron = await import('electron')
     const fs = await import('node:fs')
@@ -137,6 +153,7 @@ describe('checkForUpdates unsigned build (default metadata)', () => {
 describe('checkForUpdates signed build (baked metadata fengyu.signedRelease=true)', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
+    process.env.FENGYU_UPDATE_API_BASE = 'http://proxy.local:8088'
     ;(process as any).resourcesPath = '/fake/resources'
     const electron = await import('electron')
     const fs = await import('node:fs')
@@ -164,6 +181,18 @@ describe('checkForUpdates signed build (baked metadata fengyu.signedRelease=true
     expect(autoUpdater.autoInstallOnAppQuit).toBe(true)
     expect((autoUpdater.downloadUpdate as any).mock.calls.length).toBe(1)
     expect((autoUpdater.quitAndInstall as any).mock.calls.length).toBe(1)
+  })
+
+  it('does not auto-install from the shared public feed even for a signed build', async () => {
+    delete process.env.FENGYU_UPDATE_API_BASE
+    const { autoUpdater } = await import('electron-updater')
+    const electron = await import('electron')
+    ;(autoUpdater.checkForUpdates as any).mockResolvedValue(UPDATE_AVAILABLE)
+    await (await import('../src/updater/auto-updater')).checkForUpdates()
+    expect(autoUpdater.autoDownload).toBe(false)
+    expect(autoUpdater.autoInstallOnAppQuit).toBe(false)
+    expect(autoUpdater.downloadUpdate).not.toHaveBeenCalled()
+    expect(electron.shell.openExternal).toHaveBeenCalledWith('https://github.com/MuskStark/FengYu/releases')
   })
 })
 

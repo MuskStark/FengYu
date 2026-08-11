@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * In-worker registry for long-running operations that would otherwise exceed the host's per-RPC
@@ -28,9 +30,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * (e.g. {@code "BUILD"}, {@code "SPLIT"}, {@code "DEPLOY"}); it is surfaced verbatim in the
  * status snapshot and used only for the virtual-thread name and diagnostics.
  */
-public final class Jobs {
+public final class Jobs implements AutoCloseable {
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(Jobs.class);
+    private static final PluginMessages messages =
+            new PluginMessages("i18n.sdk-messages", Jobs.class.getClassLoader());
 
     /** Default completed-job retention: 30 minutes. */
     public static final long DEFAULT_TTL_MILLIS = 30L * 60 * 1000;
@@ -41,6 +45,7 @@ public final class Jobs {
     private final ConcurrentHashMap<String, Cancellable> handles = new ConcurrentHashMap<>();
     private final long ttlMillis;
     private final int maxRetained;
+    private final AtomicBoolean closed = new AtomicBoolean();
 
     public Jobs() { this(DEFAULT_TTL_MILLIS, DEFAULT_MAX_RETAINED); }
 
@@ -61,13 +66,16 @@ public final class Jobs {
 
     /** Start a job. {@code runner} executes on a virtual thread; the returned handle drives cancellation. */
     public Job start(String type, ThrowingRunner runner) {
+        if (closed.get()) throw new IllegalStateException("jobs registry is closed");
         evictExpired();
         String id = "job_" + UUID.randomUUID();
         Job job = new Job(id, type);
         jobs.put(id, job);
         Cancellable handle = new Cancellable(job);
         handles.put(id, handle);
-        Thread.ofVirtual().name("fy-job-" + safeThreadToken(type) + "-" + id).start(() -> {
+        String requestLocale = WorkerLocale.current();
+        Thread thread = Thread.ofVirtual().name("fy-job-" + safeThreadToken(type) + "-" + id).unstarted(() -> {
+            WorkerLocale.set(requestLocale);
             try {
                 runner.run(handle);
                 if (handle.isCancelled()) job.markCancelled();
@@ -87,10 +95,18 @@ public final class Jobs {
                     job.markFailed(safeMessage(t));
                 }
             } finally {
+                WorkerLocale.clear();
                 handles.remove(id, handle);
                 evictExpired();
             }
         });
+        handle.attach(thread);
+        if (closed.get()) {
+            handle.cancel();
+            jobs.remove(id, job);
+            throw new IllegalStateException("jobs registry is closed");
+        }
+        thread.start();
         return job;
     }
 
@@ -105,7 +121,7 @@ public final class Jobs {
         if (job == null) {
             Map<String, Object> missing = new LinkedHashMap<>();
             missing.put("success", false);
-            missing.put("summary", "job not found (unknown id or evicted): " + id);
+            missing.put("summary", messages.format("sdk.jobNotFound", id));
             missing.put("jobId", id);
             missing.put("done", true);
             return missing;
@@ -119,6 +135,12 @@ public final class Jobs {
         if (handle == null) return false;
         handle.cancel();
         return true;
+    }
+
+    /** Cancel every running job and reject future starts. Idempotent and safe during worker teardown. */
+    @Override public void close() {
+        if (!closed.compareAndSet(false, true)) return;
+        handles.values().forEach(Cancellable::cancel);
     }
 
     /**
@@ -218,7 +240,7 @@ public final class Jobs {
             List<String> tail = new ArrayList<>(all.subList(from, all.size()));
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("success", true);
-            out.put("summary", "job status");
+            out.put("summary", messages.format("sdk.jobStatus"));
             out.put("jobId", id);
             out.put("type", type);
             out.put("status", status);
@@ -238,32 +260,46 @@ public final class Jobs {
     /** Handle handed to a running job: the job logs via {@code log()}, the host cancels via {@code cancel()}. */
     public static final class Cancellable {
         private final Job job;
-        private volatile boolean cancelled;
-        private volatile Runnable cancelHook;
+        private final AtomicBoolean cancelled = new AtomicBoolean();
+        private final AtomicReference<Runnable> cancelHook = new AtomicReference<>();
+        private volatile Thread thread;
 
         Cancellable(Job job) { this.job = job; }
 
         /** Append a streamed log line (subprocess stdout etc.). */
         public void log(String line) {
-            if (!cancelled) job.append(line);
+            if (!cancelled.get()) job.append(line);
         }
 
-        public boolean isCancelled() { return cancelled; }
+        public boolean isCancelled() { return cancelled.get(); }
 
-        /** Register a cancel hook (e.g. {@code pool::shutdownNow}); invoked once on cancel. */
-        public void onCancel(Runnable hook) { this.cancelHook = hook; }
+        /** Register a cancel hook. If cancellation already won the race, invoke it immediately. */
+        public void onCancel(Runnable hook) {
+            java.util.Objects.requireNonNull(hook, "hook");
+            if (!cancelHook.compareAndSet(null, hook)) {
+                throw new IllegalStateException("cancel hook already registered");
+            }
+            if (cancelled.get()) runCancelHook(cancelHook.getAndSet(null));
+        }
 
         /** Publish the operation's summary onto the job (for status polling). */
         public void setSummary(Object summary) { job.summary = summary; }
 
         /** Flip the cancel flag and fire the registered hook (idempotent). */
         public void cancel() {
-            if (cancelled) return;
-            cancelled = true;
-            Runnable h = cancelHook;
-            if (h != null) {
-                try { h.run(); } catch (Exception ignored) { /* best-effort */ }
-            }
+            if (!cancelled.compareAndSet(false, true)) return;
+            Runnable h = cancelHook.getAndSet(null);
+            if (h != null) runCancelHook(h);
+            Thread running = thread;
+            if (running != null) running.interrupt();
+        }
+
+        private void attach(Thread thread) { this.thread = thread; }
+
+        private static void runCancelHook(Runnable hook) {
+            if (hook == null) return;
+            try { hook.run(); }
+            catch (Exception e) { log.warn("Job cancellation hook failed: {}", e.getClass().getSimpleName()); }
         }
     }
 

@@ -16,3 +16,17 @@ it('applies ready state, reacts to environment events, and unsubscribes', async 
   dispose()
   expect(stop).toHaveBeenCalledOnce()
 })
+
+it('merges partial environment events and forwards the normalized state', async () => {
+  let environmentHandler: ((value: unknown) => void) | undefined
+  const states: unknown[] = []
+  const client = {
+    ready: vi.fn().mockResolvedValue({ theme: 'light', locale: 'zh-CN' }),
+    on: vi.fn((_event, handler) => { environmentHandler = handler; return vi.fn() }),
+  }
+  const vuetify = createFengYuVuetify()
+  await bindFengYuEnvironment(vuetify, client as never, { onEnvironment: value => states.push(value) })
+  environmentHandler?.({ locale: 'en' })
+  expect(vuetify.theme.global.name.value).toBe('fengyuCodexLight')
+  expect(states.at(-1)).toEqual({ theme: 'light', locale: 'en' })
+})

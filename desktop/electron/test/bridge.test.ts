@@ -50,6 +50,32 @@ describe('startBrowserBridge', () => {
     expect(handleBrowserOp).toHaveBeenCalledTimes(1)
   })
 
+  it('serializes overlapping browser operations', async () => {
+    bridge = await startBrowserBridge({} as never)
+    let releaseFirst!: () => void
+    const firstBlocked = new Promise<void>((resolve) => { releaseFirst = resolve })
+    const order: string[] = []
+    handleBrowserOp.mockImplementation(async (_session, method: string) => {
+      order.push(`start:${method}`)
+      if (method === 'first') await firstBlocked
+      order.push(`end:${method}`)
+      return { success: true, summary: method }
+    })
+    const invoke = (method: string) => fetch(`http://127.0.0.1:${bridge!.port}/invoke`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Browser-Token': bridge!.token },
+      body: JSON.stringify({ method, params: {} }),
+    })
+    const first = invoke('first')
+    await vi.waitFor(() => expect(order).toEqual(['start:first']))
+    const second = invoke('second')
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(order).toEqual(['start:first'])
+    releaseFirst()
+    await Promise.all([first, second])
+    expect(order).toEqual(['start:first', 'end:first', 'start:second', 'end:second'])
+  })
+
   it('rejects non-POST / non-/invoke paths', async () => {
     bridge = await startBrowserBridge({} as never)
     const res = await fetch(`http://127.0.0.1:${bridge.port}/foo`, {
