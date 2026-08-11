@@ -191,3 +191,22 @@ describe('progress / state broadcasts', () => {
     expect(sentMessages.length).toBe(0)
   })
 })
+
+describe('update:set-api-base', () => {
+  it('writes the renderer-supplied URL into process.env.FENGYU_UPDATE_API_BASE', async () => {
+    const { registerUpdateIpc } = await import('../src/ipc/update')
+    registerUpdateIpc()
+
+    await handlers.get('update:set-api-base')!({}, 'http://10.0.0.5:8088')
+    expect(process.env.FENGYU_UPDATE_API_BASE).toBe('http://10.0.0.5:8088')
+  })
+
+  it('coerces a non-string argument to an empty string (clears the override)', async () => {
+    process.env.FENGYU_UPDATE_API_BASE = 'http://preexisting:9999'
+    const { registerUpdateIpc } = await import('../src/ipc/update')
+    registerUpdateIpc()
+
+    await handlers.get('update:set-api-base')!({}, 123)
+    expect(process.env.FENGYU_UPDATE_API_BASE).toBe('')
+  })
+})
