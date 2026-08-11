@@ -7,6 +7,6 @@ test('local consumer credentials do not leak into tooling package tests', async 
   assert.doesNotMatch(script, /^export (?:FENGYU_GITHUB_TOKEN|GITHUB_ACTOR)=/m)
   assert.match(
     script,
-    /FENGYU_GITHUB_TOKEN="local-smoke-placeholder" GITHUB_ACTOR="fengyu-local-smoke" \\\n+\s+npm exec .* plugin build \./,
+    /FENGYU_GITHUB_TOKEN="local-smoke-placeholder" GITHUB_ACTOR="fengyu-local-smoke" \\\n+\s+npm exec .* fengyu build \./,
   )
 })

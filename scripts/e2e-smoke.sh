@@ -22,7 +22,7 @@ elif [ ${#JAR_COUNT[@]} -gt 1 ]; then
 fi
 JAR="${JAR_COUNT[0]}"
 
-# Build the official plugins through the CLI into each plugin's dist-package/,
+# Build the official plugins through the CLI into each plugin's dist/,
 # then stage their .fyp outputs and required checksum sidecars into a single official-packages directory the
 # host is pointed at. This replaces the old per-plugin shell packager.
 OFFICIAL_DIR="$(mktemp -d)"
@@ -31,14 +31,14 @@ OFFICIAL_DIR="$(mktemp -d)"
 WORK=""
 SRV=""
 for plugin in markdown excel email offlinepython; do
-  if ! node "$ROOT/toolchain/cli/bin/fengyu.mjs" plugin build "$ROOT/OfficialPlugins/plugin-$plugin" >/dev/null; then
-    echo "FAIL: fengyu plugin build OfficialPlugins/plugin-$plugin failed"
+  if ! node "$ROOT/toolchain/cli/bin/fengyu.mjs" build "$ROOT/OfficialPlugins/plugin-$plugin" >/dev/null; then
+    echo "FAIL: fengyu build OfficialPlugins/plugin-$plugin failed"
     rm -rf "$OFFICIAL_DIR"
     exit 1
   fi
 done
 mkdir -p "$OFFICIAL_DIR"
-for fyp in "$ROOT"/OfficialPlugins/plugin-*/dist-package/*.fyp; do
+for fyp in "$ROOT"/OfficialPlugins/plugin-*/dist/*.fyp; do
   [ -f "$fyp.sha256" ] || { echo "FAIL: missing checksum sidecar: $fyp.sha256"; exit 1; }
   cp "$fyp" "$fyp.sha256" "$OFFICIAL_DIR/"
 done
@@ -112,7 +112,7 @@ echo "$RUNTIME" | grep -q 'fan.summer.offlinepython' || fail "Offline Python plu
 # invoke render returns correct HTML.
 RENDER="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
   "$H/api/plugin-runtime/fan.summer.markdown/invoke" \
-  -d '{"method":"render","params":{"markdown":"# Hello\n\n**bold**"}}')"
+  -d '{"callId":"smoke","method":"render","params":{"markdown":"# Hello\n\n**bold**"}}')"
 echo "$RENDER" | grep -q '<h1>Hello</h1>' || fail "render missing <h1>: $RENDER"
 echo "$RENDER" | grep -q '<strong>bold</strong>' || fail "render missing <strong>: $RENDER"
 
@@ -128,11 +128,11 @@ printf 'numpy==1.26.4\n' > "$WORK/requirements.txt"
 OPB_PROJECT="$(curl -s "${AUTH[@]}" -F "files=@$WORK/requirements.txt" -F 'paths=requirements.txt' \
   "$H/api/plugin-runtime/fan.summer.offlinepython/files/upload-directory?access=read-write")"
 echo "$OPB_PROJECT" | grep -q '"access":"read-write"' || fail "offlinepython workspace grant: $OPB_PROJECT"
-OPB_GET_BODY="$(python3 -c 'import json,sys; print(json.dumps({"method":"requirements.get","params":{"projectDir":json.loads(sys.argv[1])}}))' "$OPB_PROJECT")"
+OPB_GET_BODY="$(python3 -c 'import json,sys; print(json.dumps({"callId":"smoke","method":"requirementsGet","params":{"projectDir":json.loads(sys.argv[1])}}))' "$OPB_PROJECT")"
 OPB_GET="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
   "$H/api/plugin-runtime/fan.summer.offlinepython/invoke" -d "$OPB_GET_BODY")"
 echo "$OPB_GET" | grep -q 'numpy==1.26.4' || fail "offlinepython FileRef resolution: $OPB_GET"
-OPB_SAVE_BODY="$(python3 -c 'import json,sys; print(json.dumps({"method":"requirements.save","params":{"projectDir":json.loads(sys.argv[1]),"text":"requests==2.32.4\\n"}}))' "$OPB_PROJECT")"
+OPB_SAVE_BODY="$(python3 -c 'import json,sys; print(json.dumps({"callId":"smoke","method":"requirementsSave","params":{"projectDir":json.loads(sys.argv[1]),"text":"requests==2.32.4\\n"}}))' "$OPB_PROJECT")"
 curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
   "$H/api/plugin-runtime/fan.summer.offlinepython/invoke" -d "$OPB_SAVE_BODY" | grep -q '"success":true' \
   && echo "PASS: offlinepython writable workspace + FileRef bridge" || fail "offlinepython requirements save"
@@ -160,31 +160,31 @@ EMAIL_DB="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
 echo "$EMAIL_DB" | grep -q '"provisioned":true' \
   && echo "PASS: email database provisioned" || fail "email database provisioning: $EMAIL_DB"
 EMAIL_ACCOUNTS="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
-  "$H/api/plugin-runtime/fan.summer.email/invoke" -d '{"method":"email_accounts_list","params":{}}')"
+  "$H/api/plugin-runtime/fan.summer.email/invoke" -d '{"callId":"smoke","method":"email_accounts_list","params":{}}')"
 echo "$EMAIL_ACCOUNTS" | grep -q '"success":true' \
   && echo "PASS: email worker discovered" || fail "email account RPC: $EMAIL_ACCOUNTS"
 
 # Email batch preview parses the final filename tag and resolves the attachment/group intersection.
 EAST_TAG="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
   "$H/api/plugin-runtime/fan.summer.email/invoke" \
-  -d '{"method":"email_tag_save","params":{"name":"East"}}')"
+  -d '{"callId":"smoke","method":"email_tag_save","params":{"name":"East"}}')"
 GROUP_TAG="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
   "$H/api/plugin-runtime/fan.summer.email/invoke" \
-  -d '{"method":"email_tag_save","params":{"name":"Smoke recipients"}}')"
+  -d '{"callId":"smoke","method":"email_tag_save","params":{"name":"Smoke recipients"}}')"
 CONTACT="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
   "$H/api/plugin-runtime/fan.summer.email/invoke" \
-  -d '{"method":"email_contact_save","params":{"email":"smoke@example.com","nickname":"Smoke"}}')"
+  -d '{"callId":"smoke","method":"email_contact_save","params":{"email":"smoke@example.com","nickname":"Smoke"}}')"
 EAST_ID="$(printf '%s' "$EAST_TAG" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag"]["id"])')"
 GROUP_ID="$(printf '%s' "$GROUP_TAG" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag"]["id"])')"
 CONTACT_ID="$(printf '%s' "$CONTACT" | python3 -c 'import json,sys; print(json.load(sys.stdin)["contact"]["id"])')"
-ASSIGN_BODY="$(python3 -c 'import json,sys; print(json.dumps({"method":"email_tags_assign","params":{"contactIds":[int(sys.argv[1])],"tagIds":[int(sys.argv[2]),int(sys.argv[3])]}}))' "$CONTACT_ID" "$EAST_ID" "$GROUP_ID")"
+ASSIGN_BODY="$(python3 -c 'import json,sys; print(json.dumps({"callId":"smoke","method":"email_tags_assign","params":{"contactIds":[int(sys.argv[1])],"tagIds":[int(sys.argv[2]),int(sys.argv[3])]}}))' "$CONTACT_ID" "$EAST_ID" "$GROUP_ID")"
 curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
   "$H/api/plugin-runtime/fan.summer.email/invoke" -d "$ASSIGN_BODY" | grep -q '"success":true' \
   || fail "email tag assignment"
 printf 'report' > "$WORK/report_East.pdf"
 EMAIL_DIR="$(curl -s "${AUTH[@]}" -F "files=@$WORK/report_East.pdf" -F 'paths=report_East.pdf' \
   "$H/api/plugin-runtime/fan.summer.email/files/upload-directory")"
-PREVIEW_BODY="$(python3 -c 'import json,sys; print(json.dumps({"method":"email_batch_preview","params":{"accountId":1,"recipientGroupTagIds":[int(sys.argv[1])],"ccGroupTagIds":[],"inputDirectory":json.loads(sys.argv[2]),"commonAttachments":[],"subject":"Smoke","plainText":"Preview"}}))' "$GROUP_ID" "$EMAIL_DIR")"
+PREVIEW_BODY="$(python3 -c 'import json,sys; print(json.dumps({"callId":"smoke","method":"email_batch_preview","params":{"accountId":1,"recipientGroupTagIds":[int(sys.argv[1])],"ccGroupTagIds":[],"inputDirectory":json.loads(sys.argv[2]),"commonAttachments":[],"subject":"Smoke","plainText":"Preview"}}))' "$GROUP_ID" "$EMAIL_DIR")"
 EMAIL_PREVIEW="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
   "$H/api/plugin-runtime/fan.summer.email/invoke" -d "$PREVIEW_BODY")"
 echo "$EMAIL_PREVIEW" | grep -q '"attachmentTag":"East"' \
@@ -208,8 +208,8 @@ command -v "$JAVAC" >/dev/null 2>&1 || JAVAC="$(command -v javac)"
 UP="$(curl -s "${AUTH[@]}" -F "file=@$XLSX" "$H/api/plugin-runtime/fan.summer.excel/files/upload")"
 OUT="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
   "$H/api/plugin-runtime/fan.summer.excel/files/output" -d '{}')"
-ANALYZE_BODY="$(python3 -c 'import json,sys; print(json.dumps({"method":"analyze","params":{"session":"e2e-smoke","sourceFile":json.loads(sys.argv[1])}}))' "$UP")"
-SPLIT_BODY="$(python3 -c 'import json,sys; print(json.dumps({"method":"split","params":{"session":"e2e-smoke","sourceFile":json.loads(sys.argv[1]),"outputDir":json.loads(sys.argv[2])}}))' "$UP" "$OUT")"
+ANALYZE_BODY="$(python3 -c 'import json,sys; print(json.dumps({"callId":"smoke","method":"analyze","params":{"session":"e2e-smoke","sourceFile":json.loads(sys.argv[1])}}))' "$UP")"
+SPLIT_BODY="$(python3 -c 'import json,sys; print(json.dumps({"callId":"smoke","method":"split","params":{"session":"e2e-smoke","sourceFile":json.loads(sys.argv[1]),"outputDir":json.loads(sys.argv[2])}}))' "$UP" "$OUT")"
 OUT_REF="$(printf '%s' "$OUT" | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')"
 
 curl -s "${AUTH[@]}" -H 'Content-Type: application/json' \

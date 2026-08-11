@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "com.example.bad-perm",
   "name": "BadPerm",
   "description": "Invalid permission",

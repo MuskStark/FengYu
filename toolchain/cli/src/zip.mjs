@@ -42,7 +42,7 @@ function u32(n) {
  */
 export async function collect(root, dir = root, out = []) {
   for (const e of await fs.readdir(dir, { withFileTypes: true })) {
-    if (['.git', 'node_modules', 'target', 'dist-package', 'src'].includes(e.name)) continue
+    if (['.git', 'node_modules', 'target', 'dist', 'src'].includes(e.name)) continue
     const p = path.join(dir, e.name)
     if (e.isDirectory()) {
       await collect(root, p, out)

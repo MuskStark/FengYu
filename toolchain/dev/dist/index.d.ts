@@ -36,8 +36,8 @@ export interface FengYuDevOptions {
 /**
  * A Vite plugin that turns the dev server into a FengYu plugin host simulator.
  *
- * Replace `fengyu plugin dev` with this: add it to your `vite.config.ts`, then run `npm run dev`
- * in `ui-src/`. The plugin UI renders at the Vite dev server root with full HMR, and the
+ * `fengyu dev` runs the `npm run dev` script that loads this Vite plugin. The plugin UI renders at
+ * the Vite dev server root with full HMR, and the
  * simulator shell at `/__fengyu` bridges `postMessage` to the dev worker.
  *
  * The Java side is debugged separately: run `PluginDevMain.main()` in your IDE — it starts the

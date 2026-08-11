@@ -23,7 +23,7 @@ class EmailManifestTest {
         assertTrue(manifest.get("version").getAsString().matches("\\d+\\.\\d+\\.\\d+(-(alpha|beta|rc)\\.\\d+)?"));
         assertTrue(manifest.get("official").getAsBoolean());
         assertEquals("ui/index.html", manifest.getAsJsonObject("ui").get("entry").getAsString());
-        assertEquals("java -jar backend/worker.jar", manifest.getAsJsonObject("backend").get("command").getAsString());
+        assertEquals(60, manifest.getAsJsonObject("backend").get("callTimeoutSeconds").getAsInt());
         assertTrue(Files.isRegularFile(Path.of("ui-src/index.html")));
         assertTrue(Files.isRegularFile(Path.of("src/main/java/fan/summer/fengyu/plugin/email/EmailWorkerMain.java")));
         assertEquals(List.of("database", "network.email", "files.read", "files.write"),
@@ -39,13 +39,18 @@ class EmailManifestTest {
         assertEquals(expected, names);
         assertEquals(expected, methods);
         assertEquals(names.size(), new HashSet<>(names).size());
+        // v2 manifest: each aiTool references a method by name; the input/output schemas live as
+        // inline objects under rpc.methods.<method> (v1 embedded inputSchema as a JSON string in
+        // each aiTool entry).
+        JsonObject rpcMethods = manifest.getAsJsonObject("rpc").getAsJsonObject("methods");
         for (var value : tools) {
-            JsonObject schema = JSON.fromJson(value.getAsJsonObject().get("inputSchema").getAsString(), JsonObject.class);
-            assertEquals("object", schema.get("type").getAsString());
+            String method = value.getAsJsonObject().get("method").getAsString();
+            JsonObject schema = rpcMethods.getAsJsonObject(method).getAsJsonObject("inputSchema");
+            assertEquals("object", schema.get("type").getAsString(), method + " inputSchema.type");
         }
         assertTrue(tools.get(2).getAsJsonObject().get("description").getAsString().contains("does not send"));
         assertTrue(tools.get(3).getAsJsonObject().get("description").getAsString().contains("without sending"));
-        JsonObject batchSchema = JSON.fromJson(tools.get(3).getAsJsonObject().get("inputSchema").getAsString(), JsonObject.class);
+        JsonObject batchSchema = rpcMethods.getAsJsonObject("email_send_batch").getAsJsonObject("inputSchema");
         assertEquals(List.of("accountId", "recipientGroupTagIds", "ccGroupTagIds", "inputDirectory"),
             batchSchema.getAsJsonArray("required").asList().stream().map(value -> value.getAsString()).toList());
         assertTrue(batchSchema.getAsJsonObject("properties").has("commonAttachments"));

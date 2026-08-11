@@ -10,7 +10,7 @@ The plugin's `ui/` directory is a self-contained micro-frontend (MF) that the ho
 
 ## The default entry: a Vue/Vuetify app
 
-Since 4.0, `fengyu plugin create` scaffolds a Vue 3 + Vuetify app that builds into `ui/`. The generated `src/main.ts` delegates the complete bootstrap and teardown lifecycle to the shared UI kit:
+`fengyu init` scaffolds a Vue 3 + Vuetify app that builds into `ui/`. The generated `src/main.ts` delegates the complete bootstrap and teardown lifecycle to the shared UI kit:
 
 ```ts
 import { fengyu } from '@infinia/plugin-sdk'
@@ -51,10 +51,10 @@ The host loads the entry HTML and applies a Content Security Policy that restric
 ```ts
 import { fengyu } from './sdk.js'
 
-// 1. Negotiate the SDK version and receive the host Environment.
+// 1. Negotiate protocol 2.0.0 and receive the host Environment.
 const env = await fengyu.ready()
-//   → { sdkVersion, theme:'dark'|'light', locale, platform?, capabilities? }
-//   Throws on major-version mismatch between plugin SDK and host.
+//   → { protocolVersion, theme, locale, platform, capabilities }
+//   Throws unless the host speaks the exact protocol version.
 
 // 2. Call the plugin's own worker (host forwards as JSON-RPC).
 const out = await fengyu.invoke('render', { markdown: '# hi' })
@@ -78,7 +78,7 @@ off()
 
 | Method | Returns | Notes |
 | --- | --- | --- |
-| `ready(options?)` | `Promise<Environment>` | Sends `sdkVersion`; concurrent calls share one handshake. Throws on major-version mismatch. Applies and caches `theme` + `locale`. |
+| `ready(options?)` | `Promise<Environment>` | Negotiates exact protocol `2.0.0`; concurrent calls share one handshake. Applies and caches `theme` + `locale`. |
 | `currentEnvironment()` | `Environment \| undefined` | Latest merged ready/event state without another host round-trip. |
 | `invoke(method, params?, options?)` | `Promise<T>` | RPC to the plugin worker. `options:{signal?, timeoutMs?}`. |
 | `notify(message)` | `Promise<boolean>` | Shows a host toast. |
@@ -97,33 +97,8 @@ type FileAccess = 'read' | 'write' | 'read-write'
 
 interface FileRef { id: string; name: string; kind: 'file'|'directory'; access: FileAccess; size: number }
 interface FileFilter { name: string; extensions: string[] }
-interface Environment { sdkVersion?: string; theme: Theme; locale: string; platform?: 'web'|'desktop'; capabilities?: string[] }
+interface Environment { protocolVersion: string; theme: Theme; locale: string; platform: 'web'|'desktop'; capabilities: HostMethod[] }
 ```
-
-## Shared-host integration: `default.mount(el, ctx)`
-
-In addition to the iframe path, the host's MF loader can load a plugin ESM bundle directly and call its default export:
-
-```ts
-// What the plugin bundle default-exports for shared-host mounting.
-export default {
-  mount(el: HTMLElement, ctx: PluginContext): () => void { /* ... */ return () => {} }
-}
-```
-
-The `PluginContext` the host passes gives the MF access to shared infrastructure so it does not have to bundle its own:
-
-| Field | Purpose |
-| --- | --- |
-| `ctx.vuetify` | The host's Vuetify (MD3) instance — call `app.use(ctx.vuetify)` so the plugin shares theme + components. **Do not bundle Vuetify.** |
-| `ctx.theme`, `ctx.onThemeChange(cb)` | Current theme + change subscription. |
-| `ctx.locale`, `ctx.t(key)`, `ctx.onLocaleChange(cb)` | Host locale, a translator, and a change subscription. Plugins must **not** ship a language switcher. |
-| `ctx.api.invoke(action, args?)` | Convenience RPC to the worker. |
-| `ctx.notify(msg)` | Show a host toast. |
-| `ctx.apiBase`, `ctx.token` | Backend base URL and `X-FengYu-Token` for raw `fetch`. |
-| `ctx.desktop?` | Native Electron file dialogs (`pickFile`, `pickDirectory`) — present **only** under the Electron desktop shell, `undefined` in the browser. |
-
-See [i18n](/en/plugins/i18n) for the locale contract and [Pitfalls](/en/plugins/pitfalls) for the Vue/Vuetify dedupe rule.
 
 ## Minimal `ui/index.html`
 

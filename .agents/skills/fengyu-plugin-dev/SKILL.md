@@ -15,8 +15,8 @@ Do not write plugin code from memory. Read the current contract first:
 
 - `toolchain/spec/manifest.schema.json` — the canonical manifest JSON schema (required fields,
   permission enum, `aiTools` shape).
-- The target plugin's `manifest.json` (runtime contract) and `fengyu.plugin.json` (toolchain /
-  build contract: `ui.{root,output,prepare,install,test,build}`, `worker.{root,test,build,artifact,mainClass}`, `package.outputDirectory`).
+- The target plugin's `manifest.json` and its conventional `ui-src/package.json` plus optional
+  `worker/pom.xml` (or root `pom.xml`). Toolchain 2 does not use `fengyu.plugin.json`.
 - `toolchain/sdk-java/` — the Java Worker SDK (`JsonRpcWorker`, `PluginHandler`, `PluginEnvironment`,
   `FileRef`).
 - `toolchain/sdk-ts/` — `@infinia/plugin-sdk`, the browser `postMessage` bridge the iframe UI uses.
@@ -50,19 +50,19 @@ Read the target plugin's `manifest.json` and decide. Everything below branches o
 
 ```bash
 # UI + Java worker (default)
-fengyu plugin create my-plugin --id com.example.my-plugin
+fengyu init my-plugin --id com.example.my-plugin
 # UI-only (no backend worker)
-fengyu plugin create my-plugin --id com.example.my-plugin --ui-only
+fengyu init my-plugin --id com.example.my-plugin --ui-only
 # Skip auto-installing SDK/UI deps during scaffold
-fengyu plugin create my-plugin --id com.example.my-plugin --no-install
+fengyu init my-plugin --id com.example.my-plugin --no-install
 ```
 
 `--id` is required and must match the manifest id pattern `^[a-z0-9]+(?:[.-][a-z0-9]+)+$`. Official
 plugin ids start with `fan.summer.`.
 
 **Official (in this repo):** the plugin already lives under `OfficialPlugins/<name>/` with
-`manifest.json`, `fengyu.plugin.json`, `pom.xml` (if it has a worker), `src/`, `ui-src/`, and a
-`dist-package/` output dir. Do not re-scaffold; edit in place.
+`manifest.json`, `pom.xml`, `src/`, `ui-src/`, and a `dist/` output dir. Do not re-scaffold; edit
+in place.
 
 ## Step 3 — Develop
 
@@ -99,12 +99,12 @@ The host, SDK, and DevKit enforce a 16 MiB UTF-8 frame limit in both directions.
 bounded; return paginated results or opaque file references instead of embedding arbitrarily large
 payloads.
 
-**IDE dev loop:** do not look for a CLI dev command. The CLI has exactly `create` and `build`.
-Run the two development processes from the tools the developer prefers:
+**IDE dev loop:** `fengyu dev` runs the UI simulator; start the Java Worker separately in the IDE
+so handler breakpoints remain native:
 
 ```bash
 # UI terminal or IDE npm run configuration
-cd ui-src && npm run dev                   # simulator: http://127.0.0.1:5173/__fengyu
+fengyu dev                                 # simulator: http://127.0.0.1:5173/__fengyu
 
 # Java IDE Debug configuration
 PluginDevMain.main()                       # Worker endpoint: 127.0.0.1:24057
@@ -224,8 +224,9 @@ Use the CLI for build/package only; do not hand-zip. Validation is an unconditio
 and installation is a host UI/API operation rather than a CLI subcommand:
 
 ```bash
-fengyu plugin build ./my-plugin            # → .fyp in the configured package.outputDirectory
-fengyu plugin build ./my-plugin --out dist/x.fyp --skip-tests
+fengyu check ./my-plugin
+fengyu build ./my-plugin                   # → dist/<id>-<version>.fyp
+fengyu build ./my-plugin --out dist/x.fyp --skip-tests
 ```
 
 Every successful build also writes `<archive>.fyp.sha256`. Treat the archive and checksum sidecar
@@ -237,9 +238,8 @@ Install the resulting `.fyp` through the host plugin marketplace UI. For automat
 verification, use the authenticated `POST /api/plugin-market/upload` path exercised by
 `scripts/e2e-smoke.sh`; do not invent a `fengyu plugin install` command.
 
-For official plugins, prefer the repo's Maven-driven worker build declared in `fengyu.plugin.json`
-(`worker.build` runs `mvn ... -pl OfficialPlugins/<name> -am package -DskipTests`) so the worker JAR
-is fresh before the CLI packages the `.fyp`.
+For official plugins, the CLI runs the plugin's standard npm scripts and Maven lifecycle so the
+Worker JAR is fresh before packaging.
 
 ## Step 6 — Focused verification
 
@@ -249,11 +249,11 @@ is fresh before the CLI packages the `.fyp`.
   components, run the exact scaffold/component regression tests plus
   `cd toolchain/ui && npm test && npm run typecheck && npm run build`. Run
   `npm run test:visual` when rendered presentation changes.
-- **UI + Java Worker:** also build/test the worker (`mvn -f OfficialPlugins/<name>/pom.xml test` or
-  the `fengyu.plugin.json` `worker.test` command) and confirm the worker's JSON-RPC methods round-trip.
+- **UI + Java Worker:** also build/test the worker (`mvn -f OfficialPlugins/<name>/pom.xml test`)
+  and confirm the worker's JSON-RPC methods round-trip.
 - **IDE integration:** start `PluginDevMain` with the IDE and `npm run dev` in `ui-src`; call a real
   Worker method through `/__fengyu/rpc` and verify its non-mock result or expected domain error.
-- **Package:** run `fengyu plugin build <path>` without `--skip-tests` and inspect the resulting
+- **Package:** run `fengyu build <path>` without `--skip-tests` and inspect the resulting
   `.fyp` when package contents are in question.
 - **End to end:** run `scripts/e2e-smoke.sh` to boot the host, upload built plugins, and exercise the
   documented API methods.
@@ -272,7 +272,7 @@ npm --prefix docs run build
 ```
 
 Build all five official plugins (`markdown`, `excel`, `email`, `offlinepython`, `browser`) through
-`node toolchain/cli/bin/fengyu.mjs plugin build <plugin>` and verify every `.fyp.sha256` sidecar. Run
+`node toolchain/cli/bin/fengyu.mjs build <plugin>` and verify every `.fyp.sha256` sidecar. Run
 `npm audit` for every publishable npm package. Treat any schema drift, dependency-boundary
 failure, high/critical audit finding, missing `npm run dev`, mock response from a configured Worker,
 or dirty generated package content as a release blocker. Never publish, tag, or push unless the user

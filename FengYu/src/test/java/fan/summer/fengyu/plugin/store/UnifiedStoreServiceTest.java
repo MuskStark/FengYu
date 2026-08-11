@@ -70,7 +70,7 @@ class UnifiedStoreServiceTest {
         Path pluginDir = temp.resolve(pluginId);
         Files.createDirectories(pluginDir);
         Files.writeString(pluginDir.resolve("manifest.json"),
-            "{\"schemaVersion\":1,\"id\":\"" + pluginId + "\",\"name\":\"Demo\","
+            "{\"schemaVersion\":2,\"id\":\"" + pluginId + "\",\"name\":\"Demo\","
             + "\"description\":\"d\",\"version\":\"1.2.3\",\"author\":\"a\",\"icon\":\"i\","
             + "\"category\":\"c\",\"ui\":{\"entry\":\"index.html\"}}");
 

@@ -4,6 +4,8 @@ import java.util.List;
 
 /** Environment variables supplied by the FengYu host to plugin workers. */
 public final class PluginEnvironment {
+    public static final String PLUGIN_ID = "FENGYU_PLUGIN_ID";
+    public static final String PLUGIN_ROOT = "FENGYU_PLUGIN_ROOT";
     public static final String DB_TYPE = "FENGYU_DB_TYPE";
     public static final String DB_DRIVER = "FENGYU_DB_DRIVER";
     public static final String DB_URL = "FENGYU_DB_URL";

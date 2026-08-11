@@ -70,6 +70,14 @@ public class PluginProcessManager {
     static final int MAX_FRAME_BYTES = 16 * 1024 * 1024;
     /** Per-line cap on forwarded stderr (P1-6): bounded independently of stdout, smaller since logs. */
     static final int MAX_STDERR_LINE_BYTES = 1 * 1024 * 1024;
+    /**
+     * Grace window (T2-04 bullet 5) the cancel path waits for a cooperative {@code $/cancelRequest}
+     * to resolve the in-flight call before falling back to interrupting the request thread (which
+     * tears down the worker). A real SDK worker answers in milliseconds; a worker that cannot
+     * honour the notification (e.g. a legacy single-threaded one) lets the grace lapse and the
+     * interrupt path applies.
+     */
+    static final long CANCEL_GRACE_NANOS = 1_000_000_000L;
 
     private final PluginPackageService packages;
     private final PluginFileGrantService files;
@@ -78,6 +86,8 @@ public class PluginProcessManager {
     private final ProcessSandbox sandbox;
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
     private final Map<String, Worker> workers = new ConcurrentHashMap<>();
+    /** UI-originated calls keyed by the protocol correlation id, used for explicit cancellation. */
+    private final Map<ActiveCallKey, Thread> activeCalls = new ConcurrentHashMap<>();
     /**
      * Plugins mid-update (package swap in progress). While present, {@link #invoke} refuses new
      * calls for the id (P0-6): an in-flight Worker must not be reused against a half-swapped
@@ -126,6 +136,61 @@ public class PluginProcessManager {
     }
 
     /**
+     * Invoke a UI-originated call with a stable protocol id. The {@code callId} is threaded through
+     * as the JSON-RPC {@code id} (T2-04 bullet 4) so the host can correlate a cooperative
+     * {@code $/cancelRequest} with the exact in-flight call. Cancellation first asks the worker to
+     * cancel cooperatively; only on timeout does it interrupt the request thread (which tears down
+     * the single-threaded worker).
+     */
+    public Object invokeTracked(String pluginId, String callId, String method,
+            Map<String, Object> params, String locale) {
+        if (callId == null || callId.isBlank()) throw new IllegalArgumentException("callId is required");
+        ActiveCallKey key = new ActiveCallKey(pluginId, callId);
+        Thread current = Thread.currentThread();
+        if (activeCalls.putIfAbsent(key, current) != null) {
+            throw new IllegalArgumentException("Duplicate plugin call id: " + callId);
+        }
+        try {
+            return invoke(pluginId, callId, method, params, -1, locale);
+        } finally {
+            activeCalls.remove(key, current);
+            // Servlet container threads may be reused; do not leak the cancellation interrupt.
+            Thread.interrupted();
+        }
+    }
+
+    /**
+     * Cancel a tracked UI call (T2-04 bullet 5). Returns {@code false} when the call already
+     * completed or was never registered. Otherwise the worker is asked to cancel cooperatively via
+     * a {@code $/cancelRequest} notification; if the in-flight call resolves within the grace
+     * window (the worker returns a CANCELLED error and stays healthy) the method returns
+     * immediately. If it does NOT resolve — the worker cannot honour the notification — the request
+     * thread is interrupted as a fallback, which triggers the normal kill + restart path.
+     */
+    public boolean cancel(String pluginId, String callId) {
+        if (callId == null || callId.isBlank()) return false;
+        ActiveCallKey key = new ActiveCallKey(pluginId, callId);
+        Thread thread = activeCalls.get(key);
+        if (thread == null) return false;
+        Worker worker = workers.get(pluginId);
+        if (worker != null && worker.alive()) {
+            worker.sendNotification(PluginWorkerProtocol.CANCEL_REQUEST_METHOD, Map.of("id", callId));
+            long deadline = System.nanoTime() + CANCEL_GRACE_NANOS;
+            while (System.nanoTime() < deadline) {
+                if (!worker.hasPending(callId)) return true; // resolved cooperatively
+                try { Thread.sleep(20); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
+            }
+        }
+        // Fallback: the call did not resolve cooperatively within the grace window. Interrupt the
+        // request thread; Worker.invoke() converts the interrupt into an IllegalStateException and
+        // the outer invoke() tears the worker down so a stuck handler cannot continue.
+        thread.interrupt();
+        return true;
+    }
+
+    private record ActiveCallKey(String pluginId, String callId) {}
+
+    /**
      * Invoke with an explicit per-call timeout in seconds. Caller-supplied values are clamped to
      * {@code [1, MAX_TIMEOUT_SECONDS]}; {@code -1} means "use the plugin-wide default".
      */
@@ -141,6 +206,17 @@ public class PluginProcessManager {
      * pre-i18n behaviour for callers that don't know the locale.
      */
     public Object invoke(String pluginId, String method, Map<String, Object> params,
+            long timeoutSeconds, String locale) {
+        return invoke(pluginId, null, method, params, timeoutSeconds, locale);
+    }
+
+    /**
+     * Invoke with an explicit per-call timeout, request locale, and an optional JSON-RPC id. When
+     * {@code callId} is non-blank it is used verbatim as the JSON-RPC {@code id} (T2-04 bullet 4),
+     * letting the host correlate a {@code $/cancelRequest} with the exact in-flight call; otherwise a
+     * fresh UUID is minted. The locale rides in the params (see {@link #invoke(String, String, Map, long, String)}).
+     */
+    public Object invoke(String pluginId, String callId, String method, Map<String, Object> params,
             long timeoutSeconds, String locale) {
         if (!packages.isEnabled(pluginId)) throw new IllegalArgumentException("Plugin is disabled: " + pluginId);
         // The entire "is it updating? find manifest + acquire/reuse a Worker" sequence runs under the
@@ -162,11 +238,15 @@ public class PluginProcessManager {
             }
             PluginManifest manifest = packages.find(pluginId)
                 .orElseThrow(() -> new IllegalArgumentException("Plugin is not installed: " + pluginId));
-            if (manifest.backend() == null || manifest.backend().command() == null || manifest.backend().command().isBlank()) {
+            if (manifest.backend() == null) {
                 throw new IllegalArgumentException("Plugin has no backend: " + pluginId);
             }
-            if (!"json-rpc-2.0".equals(manifest.backend().protocol())) {
-                throw new IllegalArgumentException("Unsupported plugin backend protocol");
+            // T2-04 bullet 2: validate the method against rpc.methods BEFORE starting the worker.
+            // An unknown method is rejected without paying the cost of a process spawn, and a UI/AI
+            // typo never reaches the worker channel.
+            if (manifest.rpc() == null || manifest.rpc().methods() == null
+                    || !manifest.rpc().methods().containsKey(method)) {
+                throw new IllegalArgumentException("Unknown plugin method: " + method);
             }
             timeout = resolveTimeout(timeoutSeconds, manifest);
             long grantVersion = files.grantVersion(pluginId);
@@ -221,9 +301,13 @@ public class PluginProcessManager {
             // Resolved params carry FileRefs turned into absolute paths (and still hold any secret
             // values), so only their KEYS are safe to log even at DEBUG.
             log.debug("Plugin {} resolved {} keys={}", pluginId, method, resolved.keySet());
-            // Worker.invoke enforces its own timeout via future.get(timeout); on timeout it throws
-            // IllegalStateException, which the catch below turns into a worker kill + restart.
-            Object result = worker.invoke(method, resolved, timeout);
+            // T2-04 bullet 4: use the caller's callId as the JSON-RPC id when supplied (tracked UI
+            // calls), so cancel() can correlate a $/cancelRequest with the exact pending entry.
+            // Otherwise mint a UUID (AI/untracked calls). Worker.invoke enforces its own timeout via
+            // future.get(timeout); on timeout it throws IllegalStateException, which the catch below
+            // turns into a worker kill + restart.
+            String rpcId = callId != null && !callId.isBlank() ? callId : UUID.randomUUID().toString();
+            Object result = worker.invoke(rpcId, method, resolved, timeout);
             long elapsedMs = (System.nanoTime() - startedNanos) / 1_000_000;
             log.info("Plugin {} <- {} ok ({} ms)", pluginId, method, elapsedMs);
             logStore.append(pluginId, "INFO", method + " ok (" + elapsedMs + " ms)");
@@ -366,7 +450,9 @@ public class PluginProcessManager {
                         + "the installed record (a file was added/removed/modified). Reinstall the plugin.");
             }
         }
-        List<String> command = parseCommand(manifest.backend().command(), root);
+        // T2-04: the worker command is fixed to `java -jar backend/worker.jar` (schema v2 dropped
+        // backend.command/protocol — the channel is always JSON-RPC 2.0 over the bundled JAR).
+        List<String> command = fixedWorkerCommand(root);
         Map<String, String> environment = runtimeEnvironment.environmentFor(manifest);
         SensitiveValueRedactor redactor = SensitiveValueRedactor.fromEnvironment(environment);
         try {
@@ -475,31 +561,15 @@ public class PluginProcessManager {
         }
     }
 
-    private static List<String> parseCommand(String raw, Path root) {
-        List<String> parts = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        boolean quoted = false;
-        for (int i = 0; i < raw.length(); i++) {
-            char c = raw.charAt(i);
-            if (c == '"') quoted = !quoted;
-            else if (Character.isWhitespace(c) && !quoted) {
-                if (!current.isEmpty()) { parts.add(current.toString()); current.setLength(0); }
-            } else current.append(c);
-        }
-        if (quoted) throw new IllegalArgumentException("Unclosed quote in backend command");
-        if (!current.isEmpty()) parts.add(current.toString());
-        if (parts.isEmpty()) throw new IllegalArgumentException("Backend command is empty");
-        if ("java".equals(parts.getFirst()) || "${java}".equals(parts.getFirst())) {
-            parts.set(0, Path.of(System.getProperty("java.home"), "bin", isWindows() ? "java.exe" : "java").toString());
-        }
-        for (int i = 0; i < parts.size(); i++) {
-            String value = parts.get(i).replace("${pluginRoot}", root.toString());
-            if (i > 0 && !Path.of(value).isAbsolute() && Files.exists(root.resolve(value))) {
-                value = root.resolve(value).normalize().toString();
-            }
-            parts.set(i, value);
-        }
-        return parts;
+    /**
+     * The fixed v2 worker launch command: the current JVM's {@code java} executable running the
+     * plugin's {@code backend/worker.jar}. Schema v2 dropped the manifest's {@code backend.command}
+     * / {@code backend.protocol} — the worker is always a JSON-RPC 2.0 JAR at this conventional path.
+     */
+    private static List<String> fixedWorkerCommand(Path root) {
+        String javaExe = Path.of(System.getProperty("java.home"), "bin",
+                isWindows() ? "java.exe" : "java").toString();
+        return List.of(javaExe, "-jar", root.resolve("backend/worker.jar").toString());
     }
 
     private static List<String> withJavaTempDirectory(List<String> command, Path tempDirectory) {
@@ -742,6 +812,9 @@ public class PluginProcessManager {
          *  successful response so successful invokes do not leak entries (P0-5 regression guard). */
         int pendingCountForTest() { return pending.size(); }
 
+        /** Whether an in-flight call with this JSON-RPC id is still pending (cancel grace poll). */
+        boolean hasPending(String id) { return id != null && pending.containsKey(id); }
+
         /** Start the resident reader thread that routes stdout lines by JSON-RPC id. */
         void startReader() {
             Thread.ofVirtual().name("plugin-" + pluginId + "-stdout").start(() -> {
@@ -771,9 +844,16 @@ public class PluginProcessManager {
                             continue;
                         }
                         if (response.hasNonNull("error")) {
+                            // T2-04 bullets 6 & 7: map the worker's semantic error.data.code to a
+                            // typed exception so the HTTP layer can distinguish authorization denial
+                            // (403) and cancellation from a generic failure. Unknown codes fall back
+                            // to IllegalArgumentException (400). The message is always redacted — a
+                            // worker may echo request values (passwords, paths) in its error text.
+                            JsonNode errorNode = response.path("error");
                             String message = redactor.redact(
-                                response.path("error").path("message").asText("Plugin call failed"));
-                            slot.completeExceptionally(new IllegalArgumentException(message));
+                                errorNode.path("message").asText("Plugin call failed"));
+                            String dataCode = errorNode.path("data").path("code").asText(null);
+                            slot.completeExceptionally(mapWorkerError(dataCode, message));
                         } else {
                             slot.complete(response.get("result"));
                         }
@@ -785,9 +865,24 @@ public class PluginProcessManager {
             });
         }
 
-        /** Invoke a method, returning the raw result node. Blocks up to {@code timeoutSeconds}. */
-        Object invoke(String method, Map<String, Object> params, long timeoutSeconds) {
-            String id = UUID.randomUUID().toString();
+        /**
+         * Map a worker error's semantic {@code data.code} (the T2-03 label) to a typed exception.
+         * PERMISSION_DENIED → 403, CANCELLED → a clean cancellation; anything else is a generic
+         * IllegalArgumentException (400). None of these extend IllegalStateException, so the worker
+         * is NOT torn down — these are business-level outcomes, not channel/transport failures.
+         */
+        private static RuntimeException mapWorkerError(String dataCode, String message) {
+            if (dataCode == null) return new IllegalArgumentException(message);
+            return switch (dataCode) {
+                case "PERMISSION_DENIED" -> new PluginPermissionDeniedException(message);
+                case "CANCELLED" -> new PluginCancelledException(message);
+                default -> new IllegalArgumentException(message);
+            };
+        }
+
+        /** Invoke a method with an explicit JSON-RPC id, returning the raw result node. Blocks up to
+         *  {@code timeoutSeconds}. */
+        Object invoke(String id, String method, Map<String, Object> params, long timeoutSeconds) {
             CompletableFuture<JsonNode> future = new CompletableFuture<>();
             pending.put(id, future);
             try {

@@ -1,6 +1,8 @@
 package fan.summer.fengyu.devkit;
 
 import fan.summer.fengyu.sdk.JsonRpcWorker;
+import fan.summer.fengyu.sdk.RpcError;
+import fan.summer.fengyu.sdk.RpcException;
 import org.junit.jupiter.api.Test;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
@@ -16,9 +18,13 @@ import static org.junit.jupiter.api.Assertions.*;
 class PluginDevServerTest {
 
     @Test void roundTripsJsonRpcOverLoopbackSocket() throws Exception {
+        // Handlers read params directly from the map (the public string()/integer() helpers were
+        // removed in 1.4.0 in favour of the typed method() API); Gson exposes JSON numbers as
+        // Double, so coerce via Number. The serve() loop is concurrent (T2-03), so the two
+        // responses may arrive in either order — assert by content, not sequence.
         JsonRpcWorker worker = new JsonRpcWorker()
-            .on("hello", p -> Map.of("message", "Hello, " + JsonRpcWorker.string(p, "name")))
-            .on("add", p -> Map.of("sum", JsonRpcWorker.integer(p, "a", 0) + JsonRpcWorker.integer(p, "b", 0)));
+            .on("hello", p -> Map.of("message", "Hello, " + String.valueOf(p.get("name"))))
+            .on("add", p -> Map.of("sum", ((Number) p.get("a")).intValue() + ((Number) p.get("b")).intValue()));
 
         List<String> diag = new ArrayList<>();
         PluginDevServer server = PluginDevServer.builder()
@@ -37,16 +43,17 @@ class PluginDevServerTest {
                 out.flush();
 
                 BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream(), StandardCharsets.UTF_8));
-                String first = in.readLine();
-                String second = in.readLine();
+                List<String> responses = new ArrayList<>();
+                responses.add(in.readLine());
+                responses.add(in.readLine());
 
-                assertNotNull(first, "hello response");
-                assertTrue(first.contains("\"id\":1"), "response id matches request: " + first);
-                assertTrue(first.contains("Hello, Ada"), "hello handler ran under the dev server: " + first);
-
-                assertNotNull(second, "add response");
-                assertTrue(second.contains("\"id\":2"), "second response id: " + second);
-                assertTrue(second.contains("\"sum\":7"), "add handler ran: " + second);
+                // Both handlers must have run; match each payload to its response regardless of order.
+                String hello = responses.stream().filter(r -> r.contains("\"id\":1")).findFirst().orElse(null);
+                String add = responses.stream().filter(r -> r.contains("\"id\":2")).findFirst().orElse(null);
+                assertNotNull(hello, "hello response present: " + responses);
+                assertNotNull(add, "add response present: " + responses);
+                assertTrue(hello.contains("Hello, Ada"), "hello handler ran under the dev server: " + hello);
+                assertTrue(add.contains("\"sum\":7"), "add handler ran: " + add);
             }
         } finally {
             server.close();
@@ -130,6 +137,73 @@ class PluginDevServerTest {
             server.close();
             if (previous != null) System.setProperty("FENGYU_PLUGIN_ROOT", previous);
             else System.clearProperty("FENGYU_PLUGIN_ROOT");
+        }
+    }
+
+    @Test void setsFengyuPluginIdSystemProperty() throws Exception {
+        // Mirrors the ROOT test: the devkit exposes the plugin id via FENGYU_PLUGIN_ID so the
+        // worker sees the same identity the production host injects via its env var.
+        JsonRpcWorker worker = new JsonRpcWorker().on("probe", p -> Map.of("id", System.getProperty("FENGYU_PLUGIN_ID")));
+        String previous = System.getProperty("FENGYU_PLUGIN_ID");
+        PluginDevServer server = PluginDevServer.builder()
+            .worker(worker)
+            .port(0)
+            .pluginId("com.example.my-plugin")
+            .start();
+        try {
+            try (Socket client = new Socket("127.0.0.1", server.port())) {
+                client.getOutputStream().write(
+                    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"probe\",\"params\":{}}\n".getBytes(StandardCharsets.UTF_8));
+                client.getOutputStream().flush();
+                BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream(), StandardCharsets.UTF_8));
+                String response = in.readLine();
+                assertNotNull(response);
+                assertTrue(response.contains("com.example.my-plugin"),
+                    "pluginId should be visible to the worker: " + response);
+            }
+        } finally {
+            server.close();
+            if (previous != null) System.setProperty("FENGYU_PLUGIN_ID", previous);
+            else System.clearProperty("FENGYU_PLUGIN_ID");
+        }
+    }
+
+    @Test void cancelRequestOverSocketIsHandledByServeLoop() throws Exception {
+        // Bullet 2b: a $/cancelRequest notification sent to the devkit socket must be honoured by
+        // JsonRpcWorker.serve() (the SAME loop production uses over stdio). The cancelled call
+        // returns a structured CANCELLED error envelope (numeric -32800 + data.code "CANCELLED"),
+        // never a worker crash. The cancel notification itself is a JSON-RPC notification (no id)
+        // and produces no response.
+        JsonRpcWorker worker = new JsonRpcWorker().on("slow", p -> {
+            try {
+                Thread.sleep(30_000); // would only complete if cancel FAILS
+                return Map.of("done", true);
+            } catch (InterruptedException ie) {
+                // Honour the interrupt serve() issued via the cancellation token and surface a
+                // clean CANCELLED error rather than letting the pool swallow it.
+                Thread.currentThread().interrupt();
+                throw new RpcException(RpcError.Code.CANCELLED, "request cancelled");
+            }
+        });
+        PluginDevServer server = PluginDevServer.builder().worker(worker).port(0).start();
+        try {
+            try (Socket client = new Socket("127.0.0.1", server.port())) {
+                client.setSoTimeout(5_000);
+                var out = client.getOutputStream();
+                out.write("{\"jsonrpc\":\"2.0\",\"id\":\"c1\",\"method\":\"slow\",\"params\":{}}\n".getBytes(StandardCharsets.UTF_8));
+                out.write("{\"jsonrpc\":\"2.0\",\"method\":\"$/cancelRequest\",\"params\":{\"id\":\"c1\"}}\n".getBytes(StandardCharsets.UTF_8));
+                out.flush();
+                BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream(), StandardCharsets.UTF_8));
+                String response = in.readLine();
+                assertNotNull(response, "cancelled call must still produce a response");
+                assertTrue(response.contains("\"id\":\"c1\""), "response correlated to the cancelled call: " + response);
+                assertTrue(response.contains("\"error\""), "cancelled call is an error, not a result: " + response);
+                assertTrue(response.contains("-32800"), "CANCELLED numeric JSON-RPC code: " + response);
+                assertTrue(response.contains("\"code\":\"CANCELLED\""),
+                    "structured error.data.code label (matches production RpcError.Code): " + response);
+            }
+        } finally {
+            server.close();
         }
     }
 

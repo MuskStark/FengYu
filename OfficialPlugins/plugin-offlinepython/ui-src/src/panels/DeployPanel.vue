@@ -2,13 +2,20 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type { FengYuClient, FileRef } from '@infinia/plugin-sdk'
 import { FyFilePicker, FyPageHeader } from '@infinia/plugin-ui'
-import { call, callChecked, field } from '../rpc'
+import { createPluginRpc, checked } from '../rpc'
 import { readJobSnapshot, type UiJobStatus } from '../jobState'
 
 type Translate = (key: string, ...args: (string | number)[]) => string
 
 const props = defineProps<{ client: FengYuClient; t: Translate }>()
 const emit = defineEmits<{ (e: 'toast', msg: string): void }>()
+
+// Typed RPC client generated from manifest rpc.methods. zipPath is a FileRef the host resolves to
+// an absolute path string before the worker receives it; the cast encodes that boundary.
+const rpc = createPluginRpc(props.client)
+// Abort in-flight RPC on unmount (transport-cancel). Domain job cancel (deploy.cancel) is separate.
+const abortController = new AbortController()
+const signal = () => abortController.signal
 
 const bundle = ref<FileRef | null>(null)
 const targetKind = ref<'global' | 'venv'>('global')
@@ -37,7 +44,7 @@ function stopPolling() {
   poll = null
 }
 
-/** The interpreter path that will be sent to deploy.start: manual override wins, else detected. */
+/** The interpreter path that will be sent to deployStart: manual override wins, else detected. */
 const resolvedPythonExe = computed(() => {
   const manual = manualExe.value.trim()
   if (manual) return manual
@@ -50,8 +57,8 @@ const hasPython = computed(() => resolvedPythonExe.value.length > 0)
 async function detectPython() {
   detecting.value = true
   try {
-    const res = await call(props.client, 'python.detect', { executable: manualExe.value.trim() || undefined })
-    const d = field<{ executable?: string; pythonVersion?: string; ok?: boolean }>(res, 'detection')
+    const res = await rpc.pythonDetect({ executable: manualExe.value.trim() || undefined }, { signal: signal() })
+    const d = res.detection
     if (d?.ok && d.executable) {
       detectedExe.value = d.executable
       detectedVersion.value = d.pythonVersion ?? null
@@ -79,10 +86,11 @@ async function startInstall() {
   status.value = 'starting'
   installing.value = true
   try {
-    const target: Record<string, unknown> = { kind: targetKind.value, pythonExe: resolvedPythonExe.value }
-    if (targetKind.value === 'venv') target.venvPath = venvPath.value
-    const res = await callChecked(props.client, 'deploy.start', { zipPath: bundle.value, target })
-    const id = field<string>(res, 'jobId')
+    const target = targetKind.value === 'venv'
+      ? { kind: 'venv' as const, pythonExe: resolvedPythonExe.value, venvPath: venvPath.value }
+      : { kind: 'global' as const, pythonExe: resolvedPythonExe.value }
+    const res = await checked(await rpc.deployStart({ zipPath: bundle.value as unknown as string, target }, { signal: signal() }))
+    const id = res.jobId
     if (!id) {
       status.value = 'error'
       installing.value = false
@@ -101,7 +109,7 @@ async function startInstall() {
 async function pollStatus() {
   if (!jobId.value) return
   try {
-    const s = await call(props.client, 'deploy.status', { jobId: jobId.value, cursor: logs.value.length })
+    const s = await rpc.deployStatus({ jobId: jobId.value, cursor: logs.value.length }, { signal: signal() })
     const snapshot = readJobSnapshot(s)
     if (snapshot.logs.length) logs.value.push(...snapshot.logs)
     status.value = snapshot.status
@@ -131,7 +139,7 @@ async function pollStatus() {
 async function cancel() {
   if (!jobId.value) return
   try {
-    await callChecked(props.client, 'deploy.cancel', { jobId: jobId.value })
+    await checked(await rpc.deployCancel({ jobId: jobId.value }, { signal: signal() }))
     installing.value = false
     stopPolling()
     jobId.value = null
@@ -141,7 +149,10 @@ async function cancel() {
   }
 }
 
-onUnmounted(stopPolling)
+onUnmounted(() => {
+  stopPolling()
+  abortController.abort()
+})
 
 const statusClass = computed(() => ({
   'opb-status--running': status.value === 'starting' || status.value === 'running',

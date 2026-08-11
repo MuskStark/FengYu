@@ -2,6 +2,9 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runCommand } from './commands.mjs'
+import { detectProject } from './project.mjs'
+import { readManifest } from './manifest.mjs'
+import { writeGenerated } from './generate.mjs'
 
 /**
  * Toolchain version shared by the CLI, the SDK, the devkit, and generated plugin templates.
@@ -18,7 +21,7 @@ export const toolingVersion = JSON.parse(
  * Canonical plugin id pattern — identical to {@code toolchain/spec/manifest.schema.json}'s `id` pattern
  * ({@code ^[a-z0-9]+(?:[.-][a-z0-9]+)+$}). Applied at scaffold time so a bad id (uppercase, single
  * segment, leading separator) fails fast instead of producing a project whose manifest can't pass
- * `fengyu plugin build` validation.
+ * `fengyu build` validation.
  */
 const PLUGIN_ID_PATTERN = /^[a-z0-9]+(?:[.-][a-z0-9]+)+$/
 
@@ -71,6 +74,13 @@ export async function createPlugin(directory, id, { install = true, uiOnly = fal
 
   const template = uiOnly ? VUE_CODEX_DIR : VUE_JAVA_DIR
   await renderTemplate(template, root, replacements)
+
+  // Generate the typed RPC client from the scaffolded manifest so the new project passes
+  // `fengyu check` immediately. A no-op for templates without rpc.methods (the generated tree
+  // is empty); becomes active once a template declares rpc.methods.
+  const project = await detectProject(root)
+  const scaffoldManifest = await readManifest(root)
+  await writeGenerated(project, scaffoldManifest)
 
   if (install) {
     const cwd = uiOnly ? root : path.join(root, 'ui-src')

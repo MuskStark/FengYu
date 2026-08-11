@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "fan.summer.excel",
   "name": "Excel Splitter",
   "description": "Split Excel workbooks by sheet, column value, or complex rules",
@@ -8,19 +8,436 @@
   "icon": "file-excel",
   "category": "file",
   "ui": { "entry": "ui/index.html" },
-  "backend": { "command": "java -jar backend/worker.jar", "protocol": "json-rpc-2.0" },
+  "backend": { "callTimeoutSeconds": 60 },
   "permissions": ["files.read", "files.write"],
   "homepage": "https://github.com/MuskStark/FengYu",
   "official": true,
+  "rpc": {
+    "methods": {
+      "analyze": {
+        "description": "Analyze a workbook on the session-keyed UI workflow; returns sheet names + header columns.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "session": { "type": "string", "description": "UI workflow session id." },
+            "sourceFile": { "type": "string", "description": "Resolved absolute path of a readable FengYu FileRef (the host resolves the ref before the worker receives it)." }
+          },
+          "required": ["session", "sourceFile"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean", "description": "true when analysis completed." },
+            "summary": { "type": "string", "description": "Short localized result summary." },
+            "sheets": {
+              "type": "array",
+              "description": "One entry per analyzed sheet.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string", "description": "Sheet name." },
+                  "columns": {
+                    "type": "array",
+                    "description": "Header columns of the sheet.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "index": { "type": "string", "description": "0-based column index (stringified)." },
+                        "header": { "type": "string", "description": "Header cell text (empty when blank)." }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "required": ["success", "summary"]
+        }
+      },
+      "configure": {
+        "description": "Apply the split configuration onto the session (mode + mode-specific fields).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "session": { "type": "string", "description": "UI workflow session id." },
+            "mode": { "type": "string", "enum": ["BY_SHEET", "BY_COLUMN", "COMPLEX"], "description": "Split mode." },
+            "selectedSheets": { "type": "array", "items": { "type": "string" }, "description": "BY_SHEET selection; omit to use all analyzed sheets." },
+            "splitSheet": { "type": "string", "description": "BY_COLUMN source sheet." },
+            "splitColumn": { "type": "string", "description": "BY_COLUMN header text to split on." },
+            "splitColumnIndex": { "type": "integer", "description": "BY_COLUMN resolved column index (optional; resolved from header text when absent)." },
+            "filePrefix": { "type": "string", "description": "Prefix prepended to every output file name." },
+            "complexEntries": {
+              "type": "array",
+              "description": "COMPLEX split rules.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "fieldName": { "type": "string", "description": "Original source file name (informational)." },
+                  "sheetName": { "type": "string", "description": "Sheet this rule applies to." },
+                  "headerIndex": { "type": "integer", "description": "1-based header row; -1 with columnIndex -1 = copy entire sheet." },
+                  "columnIndex": { "type": "integer", "description": "1-based split column; -1 with headerIndex -1 = copy entire sheet." }
+                }
+              }
+            }
+          },
+          "required": ["session", "mode"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" }
+          },
+          "required": ["success", "summary"]
+        }
+      },
+      "estimate": {
+        "description": "Estimate the output-file count for the session's current configuration without writing anything.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "session": { "type": "string", "description": "UI workflow session id." }
+          },
+          "required": ["session"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" },
+            "fileCount": { "type": "integer", "description": "Estimated number of output files." },
+            "exact": { "type": "boolean", "description": "true — the estimate is exact for the current engine." }
+          },
+          "required": ["success", "summary"]
+        }
+      },
+      "split": {
+        "description": "Execute a configured split synchronously and write output files. Carries the full config so a worker restarted between configure and split can re-apply it.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "session": { "type": "string", "description": "UI workflow session id." },
+            "sourceFile": { "type": "string", "description": "Resolved absolute path of a readable FengYu FileRef." },
+            "outputDir": { "type": "string", "description": "Resolved absolute path of a writable FengYu DirectoryRef." },
+            "mode": { "type": "string", "enum": ["BY_SHEET", "BY_COLUMN", "COMPLEX"] },
+            "selectedSheets": { "type": "array", "items": { "type": "string" } },
+            "splitSheet": { "type": "string" },
+            "splitColumn": { "type": "string" },
+            "splitColumnIndex": { "type": "integer" },
+            "filePrefix": { "type": "string" },
+            "complexEntries": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "fieldName": { "type": "string" },
+                  "sheetName": { "type": "string" },
+                  "headerIndex": { "type": "integer" },
+                  "columnIndex": { "type": "integer" }
+                }
+              }
+            }
+          },
+          "required": ["session", "sourceFile", "outputDir"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" },
+            "fileCount": { "type": "integer", "description": "Number of files written." },
+            "files": { "type": "array", "items": { "type": "string" }, "description": "Names of the written files." }
+          },
+          "required": ["success", "summary"]
+        }
+      },
+      "split_start": {
+        "description": "Launch the configured split as a background job and return its job id immediately (large workbooks). Poll with split_status, cancel with split_cancel.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "session": { "type": "string", "description": "UI workflow session id (must already be analyzed + configured)." },
+            "outputDir": { "type": "string", "description": "Resolved absolute path of a writable FengYu DirectoryRef." },
+            "filePrefix": { "type": "string" }
+          },
+          "required": ["session", "outputDir"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" },
+            "jobId": { "type": "string", "description": "Job identifier for status polling / cancellation." }
+          },
+          "required": ["success", "summary"]
+        }
+      },
+      "split_status": {
+        "description": "Poll a UI split job: streamed logs (from cursor) and final result.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "jobId": { "type": "string" },
+            "cursor": { "type": "integer", "minimum": 0, "description": "Absolute log cursor returned by a previous poll; 0 for the tail from the start." }
+          },
+          "required": ["jobId"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" },
+            "jobId": { "type": "string" },
+            "type": { "type": "string", "description": "Job type label (SPLIT)." },
+            "status": { "type": "string", "description": "RUNNING / DONE / FAILED / CANCELLED." },
+            "logs": { "type": "array", "items": { "type": "string" }, "description": "Log lines from the cursor onward." },
+            "cursor": { "type": "integer", "description": "Absolute cursor after this read." },
+            "droppedLogs": { "type": "integer", "description": "Number of oldest log lines evicted by the retention cap." },
+            "done": { "type": "boolean", "description": "true once the job has reached a terminal state." },
+            "result": {
+              "type": "object",
+              "nullable": true,
+              "description": "Split summary (present on success).",
+              "properties": {
+                "fileCount": { "type": "integer" },
+                "files": { "type": "array", "items": { "type": "string" } }
+              }
+            },
+            "error": { "type": "string", "nullable": true, "description": "Failure detail (status=FAILED only)." },
+            "elapsedMs": { "type": "integer", "description": "Wall-clock time since the job started." }
+          },
+          "required": ["success", "summary"]
+        }
+      },
+      "split_cancel": {
+        "description": "Cancel a running UI split job by id (domain cancellation of a background job — distinct from transport $/cancelRequest of the current RPC).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "jobId": { "type": "string" }
+          },
+          "required": ["jobId"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" },
+            "jobId": { "type": "string" }
+          },
+          "required": ["success", "summary"]
+        }
+      },
+      "excel_analyze": {
+        "description": "AI: analyze the granted workbook into the shared AI session; returns sheet names.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "filePath": { "type": "string", "description": "Resolved absolute path of a readable FengYu FileRef for the workbook." }
+          },
+          "required": ["filePath"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" },
+            "sheets": { "type": "array", "items": { "type": "string" }, "description": "Workbook sheet names." }
+          },
+          "required": ["success", "summary"]
+        }
+      },
+      "excel_configure": {
+        "description": "AI: configure the split mode (and BY_SHEET/BY_COLUMN specifics) on the shared AI session.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "mode": { "type": "string", "enum": ["BY_SHEET", "BY_COLUMN", "COMPLEX"] },
+            "sheets": { "type": "array", "items": { "type": "string" }, "description": "BY_SHEET selection; omit to use all sheets." },
+            "splitSheet": { "type": "string" },
+            "splitColumn": { "type": "string" }
+          },
+          "required": ["mode"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" }
+          },
+          "required": ["success", "summary"]
+        }
+      },
+      "excel_complex_config": {
+        "description": "AI: add, list, or clear complex split rules on the shared AI session.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "action": { "type": "string", "enum": ["add", "list", "clear"] },
+            "sheetName": { "type": "string" },
+            "headerIndex": { "type": "integer" },
+            "columnIndex": { "type": "integer" }
+          },
+          "required": ["action"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" },
+            "entries": {
+              "type": "array",
+              "description": "Configured complex split rules (action=list).",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "sheetName": { "type": "string" },
+                  "headerIndex": { "type": "integer" },
+                  "columnIndex": { "type": "integer" }
+                }
+              }
+            }
+          },
+          "required": ["success", "summary"]
+        }
+      },
+      "excel_execute": {
+        "description": "AI: execute the configured split synchronously into outputDir (small workbooks).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "outputDir": { "type": "string", "description": "Resolved absolute path of a writable FengYu DirectoryRef." },
+            "filePrefix": { "type": "string" }
+          },
+          "required": ["outputDir"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" },
+            "files": {
+              "type": "object",
+              "description": "Generated file count and names.",
+              "properties": {
+                "fileCount": { "type": "integer" },
+                "files": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          },
+          "required": ["success", "summary"]
+        }
+      },
+      "excel_execute_start": {
+        "description": "AI: launch the configured split as a background job and return its job id (large workbooks). Poll with excel_execute_status.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "outputDir": { "type": "string", "description": "Resolved absolute path of a writable FengYu DirectoryRef." },
+            "filePrefix": { "type": "string" }
+          },
+          "required": ["outputDir"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" },
+            "jobId": { "type": "string", "description": "Job identifier for status polling." }
+          },
+          "required": ["success", "summary"]
+        }
+      },
+      "excel_execute_status": {
+        "description": "AI: poll an Excel split job and return streamed logs and its final result.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "jobId": { "type": "string" },
+            "cursor": { "type": "integer", "minimum": 0 }
+          },
+          "required": ["jobId"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" },
+            "jobId": { "type": "string" },
+            "type": { "type": "string" },
+            "status": { "type": "string" },
+            "logs": { "type": "array", "items": { "type": "string" } },
+            "cursor": { "type": "integer" },
+            "droppedLogs": { "type": "integer" },
+            "done": { "type": "boolean" },
+            "result": {
+              "type": "object",
+              "nullable": true,
+              "properties": {
+                "fileCount": { "type": "integer" },
+                "files": { "type": "array", "items": { "type": "string" } }
+              }
+            },
+            "error": { "type": "string", "nullable": true },
+            "elapsedMs": { "type": "integer" }
+          },
+          "required": ["success", "summary"]
+        }
+      },
+      "excel_query": {
+        "description": "AI: return the current Excel split session state.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" },
+            "state": {
+              "type": "object",
+              "description": "Current Excel split session state.",
+              "properties": {
+                "sourceFile": { "type": "string", "nullable": true },
+                "mode": { "type": "string", "nullable": true },
+                "selectedSheets": { "type": "array", "items": { "type": "string" } },
+                "splitSheet": { "type": "string", "nullable": true },
+                "splitColumnIndex": { "type": "integer" },
+                "complexEntries": { "type": "integer", "description": "Number of configured complex rules." },
+                "outputDir": { "type": "string", "nullable": true }
+              }
+            }
+          },
+          "required": ["success", "summary"]
+        }
+      },
+      "excel_cancel": {
+        "description": "AI: clear the active Excel split session.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" }
+          },
+          "required": ["success", "summary"]
+        }
+      }
+    }
+  },
   "aiTools": [
-    {"name":"excel_analyze","effect":"read","description":"Analyze the granted Excel workbook before configuring or executing any split; returns sheet names.","method":"excel_analyze","timeoutSeconds":30,"inputSchema":"{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"object\",\"title\":\"Excel file\",\"description\":\"A readable FengYu FileRef for the Excel workbook\"}},\"required\":[\"filePath\"]}","outputSchema":"{\"type\":\"object\",\"properties\":{\"success\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"},\"sheets\":{\"type\":\"array\",\"description\":\"Workbook sheet names\",\"items\":{\"type\":\"string\"}}},\"required\":[\"success\",\"summary\"]}"},
-    {"name":"excel_configure","effect":"read","description":"Configure sheet, column, or complex splitting.","method":"excel_configure","timeoutSeconds":30,"inputSchema":"{\"type\":\"object\",\"properties\":{\"mode\":{\"type\":\"string\",\"title\":\"Split mode\",\"enum\":[\"BY_SHEET\",\"BY_COLUMN\",\"COMPLEX\"]},\"sheets\":{\"type\":\"array\",\"title\":\"Sheets\",\"description\":\"Leave empty to use all sheets\",\"items\":{\"type\":\"string\"}},\"splitSheet\":{\"type\":\"string\",\"title\":\"Source sheet\"},\"splitColumn\":{\"type\":\"string\",\"title\":\"Split column\"}},\"required\":[\"mode\"]}","outputSchema":"{\"type\":\"object\",\"properties\":{\"success\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"}},\"required\":[\"success\",\"summary\"]}"},
-    {"name":"excel_complex_config","effect":"read","description":"Add, list, or clear complex split rules.","method":"excel_complex_config","timeoutSeconds":30,"inputSchema":"{\"type\":\"object\",\"properties\":{\"action\":{\"type\":\"string\",\"title\":\"Action\",\"enum\":[\"add\",\"list\",\"clear\"]},\"sheetName\":{\"type\":\"string\",\"title\":\"Sheet name\"},\"headerIndex\":{\"type\":\"integer\",\"title\":\"Header row index\"},\"columnIndex\":{\"type\":\"integer\",\"title\":\"Column index\"}},\"required\":[\"action\"]}","outputSchema":"{\"type\":\"object\",\"properties\":{\"success\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"},\"entries\":{\"type\":\"array\",\"description\":\"Configured complex split rules\",\"items\":{\"type\":\"object\"}}},\"required\":[\"success\",\"summary\"]}"},
-    {"name":"excel_execute","effect":"write","description":"Execute a configured split synchronously for a small workbook.","method":"excel_execute","timeoutSeconds":60,"inputSchema":"{\"type\":\"object\",\"properties\":{\"outputDir\":{\"type\":\"object\",\"title\":\"Output directory\",\"description\":\"A writable FengYu DirectoryRef selected for split results\"},\"filePrefix\":{\"type\":\"string\",\"title\":\"File prefix\"}},\"required\":[\"outputDir\"]}","outputSchema":"{\"type\":\"object\",\"properties\":{\"success\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"},\"files\":{\"type\":\"object\",\"description\":\"Generated file count and names\"}},\"required\":[\"success\",\"summary\"]}"},
-    {"name":"excel_execute_start","effect":"write","description":"Start a configured split job and return its job ID.","method":"excel_execute_start","timeoutSeconds":30,"inputSchema":"{\"type\":\"object\",\"properties\":{\"outputDir\":{\"type\":\"object\",\"title\":\"Output directory\",\"description\":\"A writable FengYu DirectoryRef selected for split results\"},\"filePrefix\":{\"type\":\"string\",\"title\":\"File prefix\"}},\"required\":[\"outputDir\"]}","outputSchema":"{\"type\":\"object\",\"properties\":{\"success\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"},\"jobId\":{\"type\":\"string\",\"description\":\"Job identifier for status polling\"}},\"required\":[\"success\",\"summary\"]}"},
-    {"name":"excel_execute_status","effect":"read","description":"Poll an Excel split job and return logs and its final result.","method":"excel_execute_status","timeoutSeconds":30,"inputSchema":"{\"type\":\"object\",\"properties\":{\"jobId\":{\"type\":\"string\",\"title\":\"Job ID\"},\"cursor\":{\"type\":\"integer\",\"title\":\"Log cursor\",\"default\":0,\"minimum\":0}},\"required\":[\"jobId\"]}","outputSchema":"{\"type\":\"object\",\"properties\":{\"success\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"},\"jobId\":{\"type\":\"string\"},\"status\":{\"type\":\"string\"},\"logs\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"cursor\":{\"type\":\"integer\"},\"done\":{\"type\":\"boolean\"},\"result\":{\"type\":\"object\"},\"error\":{\"type\":\"string\"}},\"required\":[\"success\",\"summary\"]}"},
-    {"name":"excel_query","effect":"read","description":"Return the current Excel split session state.","method":"excel_query","timeoutSeconds":30,"inputSchema":"{\"type\":\"object\",\"properties\":{}}","outputSchema":"{\"type\":\"object\",\"properties\":{\"success\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"},\"state\":{\"type\":\"object\",\"description\":\"Current Excel split session state\"}},\"required\":[\"success\",\"summary\"]}"},
-    {"name":"excel_cancel","effect":"read","description":"Clear the active Excel split session.","method":"excel_cancel","timeoutSeconds":30,"inputSchema":"{\"type\":\"object\",\"properties\":{}}","outputSchema":"{\"type\":\"object\",\"properties\":{\"success\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"}},\"required\":[\"success\",\"summary\"]}"}
+    { "name": "excel_analyze", "description": "Analyze the granted Excel workbook before configuring or executing any split; returns sheet names.", "effect": "read", "method": "excel_analyze", "timeoutSeconds": 30 },
+    { "name": "excel_configure", "description": "Configure sheet, column, or complex splitting.", "effect": "read", "method": "excel_configure", "timeoutSeconds": 30 },
+    { "name": "excel_complex_config", "description": "Add, list, or clear complex split rules.", "effect": "read", "method": "excel_complex_config", "timeoutSeconds": 30 },
+    { "name": "excel_execute", "description": "Execute a configured split synchronously for a small workbook.", "effect": "write", "method": "excel_execute", "timeoutSeconds": 60 },
+    { "name": "excel_execute_start", "description": "Start a configured split job and return its job ID.", "effect": "write", "method": "excel_execute_start", "timeoutSeconds": 30 },
+    { "name": "excel_execute_status", "description": "Poll an Excel split job and return logs and its final result.", "effect": "read", "method": "excel_execute_status", "timeoutSeconds": 30 },
+    { "name": "excel_query", "description": "Return the current Excel split session state.", "effect": "read", "method": "excel_query", "timeoutSeconds": 30 },
+    { "name": "excel_cancel", "description": "Clear the active Excel split session.", "effect": "read", "method": "excel_cancel", "timeoutSeconds": 30 }
   ],
   "i18n": {
     "zh": {

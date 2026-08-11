@@ -69,7 +69,7 @@ class HeadlessIntegrationTest {
     @Test
     void invokeUnknownPlugin_returns404() throws Exception {
         HttpResponse<String> resp = postJson("/api/plugin-runtime/does.not.exist/invoke",
-            "{\"method\":\"x\",\"params\":{}}");
+            "{\"callId\":\"integration-unknown\",\"method\":\"x\",\"params\":{}}");
         assertEquals(400, resp.statusCode());
     }
 

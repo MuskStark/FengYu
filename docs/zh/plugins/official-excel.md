@@ -123,7 +123,7 @@ await fengyu.files.export(outDir)                                  // 打 zip + 
 
 ## 向导 UI
 
-UI 是一个受控、有状态的**四步向导**微前端，使用 `FyStepWizard` 与宿主的 Vuetify 实例构建：
+UI 是一个受控、有状态的**四步向导**微前端，使用 `FyStepWizard` 与 iframe 内部的 `@infinia/plugin-ui` Vuetify 实例构建：
 
 ```
 1. Source  ──►  2. Mode  ──►  3. Output  ──►  4. Run

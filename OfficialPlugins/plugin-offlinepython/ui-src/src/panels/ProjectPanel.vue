@@ -3,7 +3,7 @@ import { computed, onUnmounted, ref } from 'vue'
 import type { FengYuClient, FileRef } from '@infinia/plugin-sdk'
 import { FyDirectoryPicker, FyEmptyState, FyPageHeader } from '@infinia/plugin-ui'
 import { mdiFolderOpenOutline } from '@mdi/js'
-import { call, callChecked, field } from '../rpc'
+import { createPluginRpc, checked } from '../rpc'
 import { readJobSnapshot, type UiJobStatus } from '../jobState'
 import { buildWorkerConfig, configForm, DEFAULT_FORM, type WorkerConfig } from '../configState'
 
@@ -18,6 +18,15 @@ const emit = defineEmits<{
   (e: 'update:project', project: FileRef): void
   (e: 'toast', msg: string): void
 }>()
+
+// Typed RPC client generated from manifest rpc.methods. Path inputs (projectDir) are FileRef
+// objects the host resolves to absolute path strings before the worker receives them, so the
+// `as unknown as string` casts below encode that host-side resolution at the call boundary.
+const rpc = createPluginRpc(props.client)
+// Abort all in-flight RPC when the panel unmounts (transport-cancel), so navigating away during a
+// build/config-load does not leave a dangling worker call. Domain job cancel is separate (build.cancel).
+const abortController = new AbortController()
+const signal = () => abortController.signal
 
 // ---- shared build/job state (was in BuildVerifyPanel) -----------------------
 const logs = ref<string[]>([])
@@ -66,7 +75,7 @@ async function selectProject(next: FileRef | null) {
   // exists before we try to load it — InitService is idempotent (skips files
   // that already exist), so this is safe for re-selecting an existing project.
   try {
-    await callChecked(props.client, 'init', { projectDir: next })
+    await checked(await rpc.init({ projectDir: next as unknown as string }, { signal: signal() }))
   } catch (error) {
     // init is best-effort: if it fails (e.g. read-only), still attempt to load
     // whatever config is already on disk, and surface the issue.
@@ -85,12 +94,12 @@ async function loadConfig(projectOverride?: FileRef) {
   if (!project) return
   loading.value = true
   try {
-    const req = await callChecked(props.client, 'requirements.get', { projectDir: project })
+    const req = await checked(await rpc.requirementsGet({ projectDir: project as unknown as string }, { signal: signal() }))
     if (version !== loadVersion) return
-    requirements.value = String(field<string>(req, 'text') ?? '')
-    const cfg = await callChecked(props.client, 'config.get', { projectDir: project, session: 'ui' })
+    requirements.value = String(req.text ?? '')
+    const cfg = await checked(await rpc.configGet({ projectDir: project as unknown as string, session: 'ui' }, { signal: signal() }))
     if (version !== loadVersion) return
-    const workerCfg = field<WorkerConfig>(cfg, 'config')
+    const workerCfg = cfg.config as WorkerConfig | undefined
     form.value = configForm(workerCfg)
   } catch (error) {
     if (version === loadVersion) emit('toast', errorText(error))
@@ -109,11 +118,12 @@ async function save() {
   }
   loading.value = true
   try {
-    await callChecked(props.client, 'requirements.save', { projectDir: project, text: requirements.value })
-    // Send the FULL config so the worker's `Gson.fromJson(..., BuildConfig.class)`
-    // does not reset repository/pkg/bundle sections to Java defaults.
+    await checked(await rpc.requirementsSave({ projectDir: project as unknown as string, text: requirements.value }, { signal: signal() }))
+    // Send the FULL config so the worker's merge onto config.json does not reset
+    // repository/pkg/bundle sections to Java defaults. depPlatforms is preserved
+    // on disk by the worker merge (the typed config record omits it by design).
     const config = buildWorkerConfig(form.value, /* preserve depPlatforms */ undefined)
-    await callChecked(props.client, 'config.save', { projectDir: project, session: 'ui', config })
+    await checked(await rpc.configSave({ projectDir: project as unknown as string, session: 'ui', config }, { signal: signal() }))
     saved.value = true
     emit('toast', props.t('opb.config.saved'))
   } catch (error) {
@@ -135,8 +145,8 @@ async function startBuild() {
   status.value = 'starting'
   building.value = true
   try {
-    const res = await callChecked(props.client, 'build.start', { projectDir: props.project, session: 'ui' })
-    const id = field<string>(res, 'jobId')
+    const res = await checked(await rpc.buildStart({ projectDir: props.project as unknown as string, session: 'ui' }, { signal: signal() }))
+    const id = res.jobId
     if (!id) {
       status.value = 'error'
       building.value = false
@@ -155,7 +165,7 @@ async function startBuild() {
 async function pollStatus() {
   if (!jobId.value) return
   try {
-    const s = await call(props.client, 'build.status', { jobId: jobId.value, cursor: logs.value.length })
+    const s = await rpc.buildStatus({ jobId: jobId.value, cursor: logs.value.length }, { signal: signal() })
     const snapshot = readJobSnapshot(s)
     if (snapshot.logs.length) logs.value.push(...snapshot.logs)
     status.value = snapshot.status
@@ -185,7 +195,7 @@ async function pollStatus() {
 async function cancel() {
   if (!jobId.value) return
   try {
-    await callChecked(props.client, 'build.cancel', { jobId: jobId.value })
+    await checked(await rpc.buildCancel({ jobId: jobId.value }, { signal: signal() }))
     building.value = false
     stopPolling()
     jobId.value = null
@@ -199,8 +209,8 @@ async function doPackage() {
   if (!props.project) return
   building.value = true
   try {
-    const res = await callChecked(props.client, 'package', { projectDir: props.project, session: 'ui' })
-    const zip = field<string>(res, 'zipPath') ?? ''
+    const res = await checked(await rpc.package({ projectDir: props.project as unknown as string, session: 'ui' }, { signal: signal() }))
+    const zip = res.zipPath ?? ''
     emit('toast', props.t('opb.build.packaged', zip))
   } catch (error) {
     emit('toast', errorText(error))
@@ -214,7 +224,7 @@ async function verify() {
   if (!props.project) return
   building.value = true
   try {
-    await callChecked(props.client, 'verify', { projectDir: props.project, session: 'ui', scope: 'ALL' })
+    await checked(await rpc.verify({ projectDir: props.project as unknown as string, session: 'ui', scope: 'ALL' }, { signal: signal() }))
     emit('toast', props.t('opb.build.verifyOk'))
   } catch (error) {
     emit('toast', errorText(error))
@@ -250,7 +260,10 @@ const statusClass = computed(() => ({
   'opb-status--error': status.value === 'failed' || status.value === 'error',
 }))
 
-onUnmounted(stopPolling)
+onUnmounted(() => {
+  stopPolling()
+  abortController.abort()
+})
 </script>
 
 <template>

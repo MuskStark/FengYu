@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 2,
+  "id": "fan.summer.example",
+  "name": "Example",
+  "description": "A complete v2 manifest exercising backend, rpc.methods, aiTools, permissions and i18n.",
+  "version": "1.2.3",
+  "author": "FengYu",
+  "icon": "language-markdown",
+  "category": "text",
+  "homepage": "https://github.com/MuskStark/FengYu",
+  "official": true,
+  "ui": { "entry": "ui/index.html" },
+  "backend": { "callTimeoutSeconds": 30 },
+  "permissions": ["files.read", "network"],
+  "rpc": {
+    "methods": {
+      "render": {
+        "description": "Render input to output.",
+        "inputSchema": {
+          "type": "object",
+          "properties": { "source": { "type": "string", "description": "Raw input text." } },
+          "required": ["source"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "html": { "type": "string" } },
+          "required": ["html"]
+        },
+        "timeoutSeconds": 20
+      },
+      "summarize": {
+        "inputSchema": {
+          "type": "object",
+          "properties": { "lines": { "type": "array", "items": { "type": "string" } } },
+          "required": ["lines"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "summary": { "type": "string", "nullable": true } },
+          "required": ["summary"]
+        }
+      }
+    }
+  },
+  "aiTools": [
+    {
+      "name": "example_render",
+      "description": "Render the input.",
+      "method": "render",
+      "effect": "read"
+    },
+    {
+      "name": "example_summarize",
+      "description": "Summarize the input lines.",
+      "method": "summarize",
+      "effect": "read",
+      "timeoutSeconds": 15
+    }
+  ],
+  "i18n": {
+    "zh": {
+      "name": "示例",
+      "description": "完整的 v2 清单。",
+      "aiTools": {
+        "example_render": { "name": "渲染", "description": "渲染输入。" }
+      }
+    }
+  }
+}

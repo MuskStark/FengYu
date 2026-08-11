@@ -68,7 +68,12 @@ public class PluginRuntimeController {
         // worker call so plugin summaries/errors render in the user's language. Null header → default
         // locale (en), matching pre-i18n behaviour.
         String locale = ManifestI18n.resolveLocale(acceptLanguage);
-        return processes.invoke(id, request.method(), request.params(), locale);
+        return processes.invokeTracked(id, request.callId(), request.method(), request.params(), locale);
+    }
+
+    @PostMapping("/api/plugin-runtime/{id}/invoke/{callId}/cancel")
+    public Map<String, Object> cancelInvoke(@PathVariable String id, @PathVariable String callId) {
+        return Map.of("cancelled", processes.cancel(id, callId));
     }
 
     /**
@@ -183,5 +188,5 @@ public class PluginRuntimeController {
         return new MediaType(type, subtype, StandardCharsets.UTF_8);
     }
 
-    public record InvokeRequest(String method, Map<String, Object> params) {}
+    public record InvokeRequest(String callId, String method, Map<String, Object> params) {}
 }

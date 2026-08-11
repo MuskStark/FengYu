@@ -6,7 +6,7 @@ lang: en
 
 # UI Components
 
-`@infinia/plugin-ui` is the official Vuetify 3 (Material Design 3) component library for FengYu plugins. The project scaffolded by `fengyu plugin create` depends on it, and its `src/main.ts` already wires up the Vuetify instance, theme/locale binding, and client injection — so you only compose components. Import the pieces you use from a single entry:
+`@infinia/plugin-ui` is the official Vuetify 3 (Material Design 3) component library for FengYu plugins. The project scaffolded by `fengyu init` depends on it, and its `src/main.ts` already wires up the Vuetify instance, theme/locale binding, and client injection — so you only compose components. Import the pieces you use from a single entry:
 
 ```ts
 import {

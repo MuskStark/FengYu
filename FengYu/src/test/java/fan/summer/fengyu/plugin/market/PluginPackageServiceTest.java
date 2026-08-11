@@ -70,7 +70,7 @@ class PluginPackageServiceTest {
     void rejectsInvalidId() throws Exception {
         PluginPackageService service = new PluginPackageService(temp.toString());
         MockMultipartFile file = inlinePackage(
-            "{\"schemaVersion\":1,\"id\":\"UPPER\",\"name\":\"X\",\"version\":\"1.0.0\",\"ui\":{\"entry\":\"ui/index.html\"}}",
+            "{\"schemaVersion\":2,\"id\":\"UPPER\",\"name\":\"X\",\"description\":\"d\",\"author\":\"a\",\"icon\":\"i\",\"category\":\"c\",\"version\":\"1.0.0\",\"ui\":{\"entry\":\"ui/index.html\"}}",
             "ui/index.html", "<html></html>");
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.install(file));
         assertTrue(ex.getMessage().toLowerCase(java.util.Locale.ROOT).contains("id"));
@@ -81,7 +81,7 @@ class PluginPackageServiceTest {
         PluginPackageService service = new PluginPackageService(temp.toString());
         // ui.entry points at ui/index.html but the archive only carries README.txt, not the UI file.
         MockMultipartFile file = inlinePackage(
-            "{\"schemaVersion\":1,\"id\":\"com.example.no-ui\",\"name\":\"NoUi\",\"version\":\"1.0.0\",\"ui\":{\"entry\":\"ui/index.html\"}}",
+            "{\"schemaVersion\":2,\"id\":\"com.example.no-ui\",\"name\":\"NoUi\",\"description\":\"d\",\"author\":\"a\",\"icon\":\"i\",\"category\":\"c\",\"version\":\"1.0.0\",\"ui\":{\"entry\":\"ui/index.html\"}}",
             "README.txt", "placeholder");
         assertThrows(IllegalArgumentException.class, () -> service.install(file));
     }
@@ -91,11 +91,11 @@ class PluginPackageServiceTest {
         PluginPackageService service = new PluginPackageService(temp.toString());
         MockMultipartFile file = inlinePackage(
             """
-            {"schemaVersion":1,"id":"com.example.effect","name":"Effect","description":"Effect test",
+            {"schemaVersion":2,"id":"com.example.effect","name":"Effect","description":"Effect test",
              "version":"1.0.0","author":"Example","icon":"toolbox","category":"dev",
-             "ui":{"entry":"ui/index.html"},"aiTools":[{"name":"change","description":"Change",
-             "method":"change",
-             "effect":"delete-everything","inputSchema":"{\\"type\\":\\"object\\"}"}]}
+             "ui":{"entry":"ui/index.html"},
+             "rpc":{"methods":{"change":{"inputSchema":{"type":"object","properties":{}}}}},
+             "aiTools":[{"name":"change","description":"Change","method":"change","effect":"delete-everything"}]}
             """,
             "ui/index.html", "<html></html>");
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.install(file));
@@ -112,7 +112,7 @@ class PluginPackageServiceTest {
         PluginPackageService service = new PluginPackageService(temp.toString());
         MockMultipartFile file = inlinePackage(
             """
-            {"schemaVersion":1,"id":"com.example.claim","name":"Claim","description":"claims official",
+            {"schemaVersion":2,"id":"com.example.claim","name":"Claim","description":"claims official",
              "version":"1.0.0","author":"X","icon":"puzzle-outline","category":"dev",
              "ui":{"entry":"ui/index.html"},"official":true,"permissions":[]}
             """,
@@ -132,7 +132,7 @@ class PluginPackageServiceTest {
         PluginPackageService service = new PluginPackageService(temp.toString());
         MockMultipartFile file = inlinePackage(
             """
-            {"schemaVersion":1,"id":"fan.summer.browser","name":"Fake Browser","description":"impersonation",
+            {"schemaVersion":2,"id":"fan.summer.browser","name":"Fake Browser","description":"impersonation",
              "version":"1.0.0","author":"attacker","icon":"puzzle-outline","category":"dev",
              "ui":{"entry":"ui/index.html"},"permissions":[]}
             """,
@@ -152,7 +152,7 @@ class PluginPackageServiceTest {
         PluginPackageService service = new PluginPackageService(temp.toString());
         Path archive = writeArchive(temp.resolve("official.fyp"),
             """
-            {"schemaVersion":1,"id":"fan.summer.demo","name":"Official Demo","description":"trusted",
+            {"schemaVersion":2,"id":"fan.summer.demo","name":"Official Demo","description":"trusted",
              "version":"1.0.0","author":"FengYu","icon":"puzzle-outline","category":"dev",
              "ui":{"entry":"ui/index.html"},"official":true,"permissions":[]}
             """,
@@ -187,7 +187,7 @@ class PluginPackageServiceTest {
         PluginPackageService service = new PluginPackageService(temp.toString());
         Path archive = writeArchive(temp.resolve("official.fyp"),
             """
-            {"schemaVersion":1,"id":"fan.summer.demo","name":"Official Demo","description":"trusted",
+            {"schemaVersion":2,"id":"fan.summer.demo","name":"Official Demo","description":"trusted",
              "version":"1.0.0","author":"FengYu","icon":"puzzle-outline","category":"dev",
              "ui":{"entry":"ui/index.html"},"official":true,"permissions":[]}
             """,
@@ -209,7 +209,7 @@ class PluginPackageServiceTest {
         PluginPackageService service = new PluginPackageService(temp.toString());
         Path archive = writeArchive(temp.resolve("official.fyp"),
             """
-            {"schemaVersion":1,"id":"fan.summer.demo","name":"Official Demo","description":"trusted",
+            {"schemaVersion":2,"id":"fan.summer.demo","name":"Official Demo","description":"trusted",
              "version":"1.0.0","author":"FengYu","icon":"puzzle-outline","category":"dev",
              "ui":{"entry":"ui/index.html"},"official":true,"permissions":[]}
             """,
@@ -225,7 +225,7 @@ class PluginPackageServiceTest {
         PluginPackageService service = new PluginPackageService(temp.toString());
         Path archive = writeArchive(temp.resolve("official.fyp"),
             """
-            {"schemaVersion":1,"id":"fan.summer.demo","name":"Official Demo","description":"trusted",
+            {"schemaVersion":2,"id":"fan.summer.demo","name":"Official Demo","description":"trusted",
              "version":"1.0.0","author":"FengYu","icon":"puzzle-outline","category":"dev",
              "ui":{"entry":"ui/index.html"},"official":true,"permissions":[]}
             """,
@@ -261,10 +261,10 @@ class PluginPackageServiceTest {
         Path pluginDir = pluginsRoot.resolve("fan.summer.email");
         Files.createDirectories(pluginDir);
         Files.writeString(pluginDir.resolve("manifest.json"),
-            "{\"schemaVersion\":1,\"id\":\"fan.summer.email\",\"name\":\"Email\","
+            "{\"schemaVersion\":2,\"id\":\"fan.summer.email\",\"name\":\"Email\","
             + "\"description\":\"d\",\"version\":\"1.0.0\",\"author\":\"a\",\"icon\":\"email\","
             + "\"category\":\"net\",\"ui\":{\"entry\":\"ui/index.html\"},"
-            + "\"backend\":{\"command\":\"java\",\"protocol\":\"json-rpc-2.0\"},"
+            + "\"backend\":{\"callTimeoutSeconds\":60},"
             + "\"permissions\":[\"database\"]}");
 
         java.util.List<String> deprovisioned = new java.util.ArrayList<>();
@@ -341,7 +341,7 @@ class PluginPackageServiceTest {
 
     private MockMultipartFile packageFile(String version) throws Exception {
         String manifest = """
-            {"schemaVersion":1,"id":"com.example.demo","name":"Demo","description":"Demo plugin",
+            {"schemaVersion":2,"id":"com.example.demo","name":"Demo","description":"Demo plugin",
              "version":"%s","author":"Example","icon":"puzzle-outline","category":"dev",
              "ui":{"entry":"ui/index.html"},"permissions":["files.read"]}
             """.formatted(version);

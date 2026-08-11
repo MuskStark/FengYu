@@ -123,7 +123,7 @@ A `files.write` operation (output/export) without `files.write` in `permissions`
 
 ## The wizard UI
 
-The UI is a controlled, stateful **four-step wizard** micro-frontend built with `FyStepWizard` and the host's Vuetify instance:
+The UI is a controlled, stateful **four-step wizard** micro-frontend built with `FyStepWizard` and the iframe-local `@infinia/plugin-ui` Vuetify instance:
 
 ```
 1. Source  ──►  2. Mode  ──►  3. Output  ──►  4. Run

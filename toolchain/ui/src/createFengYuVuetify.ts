@@ -4,7 +4,7 @@ import * as directives from 'vuetify/directives'
 import { md3 } from 'vuetify/blueprints'
 import { aliases, mdi } from 'vuetify/iconsets/mdi'
 import { en, zhHans } from 'vuetify/locale'
-import type { FengYuClient, Environment } from '@infinia/plugin-sdk'
+import { HOST_CAPABILITIES, PROTOCOL_VERSION, type FengYuClient, type Environment } from '@infinia/plugin-sdk'
 import { fengyuCodexDark, fengyuCodexLight } from './theme'
 import { fengyuDefaults } from './defaults'
 
@@ -54,7 +54,13 @@ export async function bindFengYuEnvironment(
   client: FengYuClient,
   options: FengYuEnvironmentBindingOptions = {},
 ): Promise<() => void> {
-  let current: Environment = { theme: 'dark', locale: 'en' }
+  let current: Environment = {
+    protocolVersion: PROTOCOL_VERSION,
+    theme: 'dark',
+    locale: 'en',
+    platform: 'web',
+    capabilities: HOST_CAPABILITIES,
+  }
   const apply = (environment: Partial<Environment>) => {
     current = { ...current, ...environment }
     // theme.change(name) is the non-deprecated Vuetify 3.12 API; assigning
