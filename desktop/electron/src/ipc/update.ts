@@ -45,6 +45,14 @@ export function registerUpdateIpc(): void {
     progressWired = true
   }
 
+  // Push the update-channel proxy URL from the renderer into the main process. The next update
+  // check reads `process.env.FENGYU_UPDATE_API_BASE` fresh (see update-feed.ts), so this takes
+  // effect immediately without a restart. In-process IPC — works offline. Only the env var is
+  // mutated; validation happens lazily in updateApiBase() at check time.
+  ipcMain.handle('update:set-api-base', (_event, url: unknown) => {
+    process.env.FENGYU_UPDATE_API_BASE = typeof url === 'string' ? url : ''
+  })
+
   // Check only — never downloads. The startup check (auto-updater.ts) keeps its own notify-only
   // behavior; this is the renderer's "is there something new?" probe for the About page.
   ipcMain.handle('update:check', async (): Promise<UpdateCheckPayload> => {

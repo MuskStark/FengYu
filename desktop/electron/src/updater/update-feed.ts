@@ -31,6 +31,33 @@ export function updateApiBase(): string | null {
 }
 
 /**
+ * Pull the persisted update-proxy URL from the backend's settings store and seed it into
+ * `process.env.FENGYU_UPDATE_API_BASE` before the first update check runs. This makes a
+ * Settings-UI change survive a relaunch without requiring the user to reconfigure the launcher.
+ *
+ * Loopback-only and runs entirely offline (no external network). Any failure — backend not yet
+ * reachable, SETUP mode (no user context), malformed response, network error — is swallowed and
+ * leaves the env var at whatever the launch environment provided (the GitHub default if unset).
+ * Safe to call once per startup; later renderer-driven `update:set-api-base` IPC overrides it.
+ *
+ * @param backendApiBase the loopback origin, e.g. `http://127.0.0.1:24056`
+ * @param token          the per-launch bearer token (X-FengYu-Token header)
+ */
+export async function bootstrapUpdateApiBaseFromBackend(
+  backendApiBase: string,
+  token: string,
+): Promise<void> {
+  const res = await fetch(`${backendApiBase}/api/settings`, {
+    headers: { 'X-FengYu-Token': token },
+  })
+  if (!res.ok) return
+  const body = (await res.json()) as { updateApiBase?: unknown }
+  const value = typeof body.updateApiBase === 'string' ? body.updateApiBase.trim().replace(/\/+$/, '') : ''
+  // Empty value → clear any launch-time env so the default GitHub feed is used.
+  process.env.FENGYU_UPDATE_API_BASE = value
+}
+
+/**
  * Redirect electron-updater to FY-Proxy when configured. The proxy exposes separate lite/JRE
  * feeds, preventing the two variants' identically named latest*.yml files from overwriting each
  * other. Differential download is disabled for this feed so a basic intranet HTTP deployment

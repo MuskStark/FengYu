@@ -78,6 +78,7 @@ export interface AppSettings {
   language: LanguageName
   logLevel: LogLevel
   unsandboxedPlugins: boolean
+  updateApiBase: string
 }
 
 export type PartialSettings = Partial<AppSettings>

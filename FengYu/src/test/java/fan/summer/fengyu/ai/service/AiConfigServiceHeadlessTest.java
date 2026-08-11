@@ -126,4 +126,18 @@ class AiConfigServiceHeadlessTest {
         assertEquals(1, count);
         assertEquals("anthropic", AiConfigService.getAiMode());
     }
+
+    @Test
+    void setUpdateApiBase_roundTripsAndFallsBackToBootstrap() {
+        AiConfigServiceHeadless h = newHeadless();
+        // Absent → bootstrap default is returned untouched.
+        assertEquals("http://fallback:8088", AiConfigServiceHeadless.getUpdateApiBase("http://fallback:8088"));
+        // Setting a value persists and is read back via the static facade.
+        h.setUpdateApiBase("http://10.0.0.5:8088/");
+        // Stored value is trimmed of trailing slashes; bootstrap default is ignored when a value exists.
+        assertEquals("http://10.0.0.5:8088", AiConfigServiceHeadless.getUpdateApiBase("http://fallback:8088"));
+        // Empty clears the override → bootstrap default applies again.
+        h.setUpdateApiBase("");
+        assertEquals("http://fallback:8088", AiConfigServiceHeadless.getUpdateApiBase("http://fallback:8088"));
+    }
 }

@@ -116,4 +116,44 @@ class SettingsControllerTest {
             mockedAi.verify(() -> AiConfigServiceHeadless.setUnsandboxedPluginsEnabled(false));
         }
     }
+
+    @Test
+    void putUpdateApiBase_acceptsAbsoluteHttpUrlAndClearsWhenEmpty() {
+        AiConfigServiceHeadless config = mock(AiConfigServiceHeadless.class);
+        SettingsController controller = new SettingsController(
+            config, newService(), mock(LoggingLevelService.class), mock(PluginProcessManager.class), () -> {});
+
+        // setUpdateApiBase is a static facade, so mockStatic intercepts it (the mock instance is only
+        // the receiver — the call goes to the static method). A valid URL is persisted with the
+        // trailing slash normalized away; an empty value clears the override.
+        try (var mockedAi = mockStatic(AiConfigServiceHeadless.class)) {
+            controller.put(Map.of("updateApiBase", "http://10.0.0.5:8088/"));
+            mockedAi.verify(() -> AiConfigServiceHeadless.setUpdateApiBase("http://10.0.0.5:8088"));
+
+            controller.put(Map.of("updateApiBase", ""));
+            mockedAi.verify(() -> AiConfigServiceHeadless.setUpdateApiBase(""));
+        }
+    }
+
+    @Test
+    void putUpdateApiBase_rejectsInvalidValues() {
+        AiConfigServiceHeadless config = mock(AiConfigServiceHeadless.class);
+        SettingsController controller = new SettingsController(
+            config, newService(), mock(LoggingLevelService.class), mock(PluginProcessManager.class), () -> {});
+
+        try (var ignored = mockStatic(AiConfigServiceHeadless.class)) {
+            // Non-http scheme.
+            assertThrows(IllegalArgumentException.class,
+                () -> controller.put(Map.of("updateApiBase", "ftp://10.0.0.5:8088")));
+            // Relative path, not absolute.
+            assertThrows(IllegalArgumentException.class,
+                () -> controller.put(Map.of("updateApiBase", "10.0.0.5:8088")));
+            // Query parameter present.
+            assertThrows(IllegalArgumentException.class,
+                () -> controller.put(Map.of("updateApiBase", "http://10.0.0.5:8088?x=1")));
+            // Embedded credentials.
+            assertThrows(IllegalArgumentException.class,
+                () -> controller.put(Map.of("updateApiBase", "http://u:p@10.0.0.5:8088")));
+        }
+    }
 }

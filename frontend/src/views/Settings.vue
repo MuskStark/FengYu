@@ -63,6 +63,15 @@ const testing = ref(false)
 const testResult = ref<AiConfigTestResult | null>(null)
 const saved = ref(false)
 
+// ── Update channel proxy ───────────────────────────────────────────────
+// Local editable buffer; synced from the store on mount. Saved via the store's
+// setUpdateApiBase(), which also pushes the value to the Electron main process.
+const proxyUrl = ref('')
+const proxySaved = ref(false)
+const proxyError = ref<string | null>(null)
+
+watch(() => settings.updateApiBase, (v) => { proxyUrl.value = v ?? '' }, { immediate: true })
+
 function syncFormFromStore() {
   const s = settings.aiSettings
   if (!s) return
@@ -198,6 +207,17 @@ async function onTest() {
     testResult.value = { success: false, error: e instanceof Error ? e.message : String(e) }
   } finally {
     testing.value = false
+  }
+}
+
+async function onSaveProxy() {
+  proxyError.value = null
+  try {
+    await settings.setUpdateApiBase(proxyUrl.value.trim())
+    proxySaved.value = true
+    setTimeout(() => { proxySaved.value = false }, 2000)
+  } catch (e: unknown) {
+    proxyError.value = e instanceof Error ? e.message : String(e)
   }
 }
 </script>
@@ -461,6 +481,27 @@ async function onTest() {
         <div class="cx-row">
           <button class="cx-btn cx-btn--primary" @click="onSave">{{ $t('aiSettings.save') }}</button>
           <span v-if="saved" class="cx-chip cx-chip--success">{{ $t('aiSettings.saved') }}</span>
+        </div>
+      </div>
+
+      <!-- Update channel proxy -->
+      <div class="cx-section-title">{{ $t('settings.updateChannelSection') }}</div>
+      <div class="cx-card">
+        <div class="cx-field" style="margin-bottom: 14px">
+          <label class="cx-label">{{ $t('settings.updateProxyUrl') }}</label>
+          <input
+            v-model="proxyUrl"
+            class="cx-input"
+            :placeholder="$t('settings.updateProxyUrlPlaceholder')"
+          />
+          <div class="cx-muted" style="font-size: 12px; margin-top: 4px">
+            {{ $t('settings.updateProxyUrlHint') }}
+          </div>
+        </div>
+        <div class="cx-row">
+          <button class="cx-btn cx-btn--primary" @click="onSaveProxy">{{ $t('aiSettings.save') }}</button>
+          <span v-if="proxySaved" class="cx-chip cx-chip--success">{{ $t('settings.updateProxyUrlSaved') }}</span>
+          <span v-if="proxyError" class="cx-alert cx-alert--error">{{ $t('settings.updateProxyUrlInvalid', { message: proxyError }) }}</span>
         </div>
       </div>
     </div>

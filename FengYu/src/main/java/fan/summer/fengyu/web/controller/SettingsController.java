@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.net.URI;
 
 /**
  * UI-shell settings — theme, language, sidebar-collapsed. Backed by
@@ -87,6 +88,7 @@ public class SettingsController {
         out.put("sidebarCollapsed", config.getSidebarCollapsed());
         out.put("logLevel", logging.currentLevel());
         out.put("unsandboxedPlugins", config.isUnsandboxedPluginsEnabled());
+        out.put("updateApiBase", config.getUpdateApiBase(""));
         return out;
     }
 
@@ -114,6 +116,9 @@ public class SettingsController {
         } else if (unsandboxed instanceof String s) {
             applyUnsandboxedPlugins(Boolean.parseBoolean(s));
         }
+        if (body.get("updateApiBase") instanceof String u) {
+            applyUpdateApiBase(u);
+        }
         return get();
     }
 
@@ -132,6 +137,45 @@ public class SettingsController {
         log.info("Plugin unsandboxed mode {} (platform: {})",
             enabled ? "ENABLED" : "disabled",
             ProcessSandbox.isNativeSandboxAvailable() ? "native" : "none");
+    }
+
+    /**
+     * Persist the update-channel proxy base URL. An empty/blank value clears the override (the
+     * client falls back to the bootstrap default / GitHub feed). A non-empty value must be an
+     * absolute {@code http(s)} URL without credentials, query parameters, or a fragment — mirroring
+     * the Electron {@code update-feed.ts} validation so both channels accept the same value.
+     * Throwing {@link IllegalArgumentException} lets {@link GlobalExceptionHandler} map it to 400.
+     * Audited via SLF4J.
+     */
+    private void applyUpdateApiBase(String raw) {
+        String value = raw == null ? "" : raw.trim();
+        if (!value.isEmpty()) {
+            // Validate BEFORE the setter strips the trailing slash — a path-suffix like "/" is legal,
+            // but query/fragment/credentials are not. Mirrors update-feed.ts validation.
+            URI uri;
+            try {
+                uri = URI.create(value);
+            } catch (IllegalArgumentException ex) {
+                throw new IllegalArgumentException("Update API base must be an absolute HTTP(S) URL");
+            }
+            String scheme = uri.getScheme();
+            if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
+                throw new IllegalArgumentException("Update API base must use HTTP or HTTPS");
+            }
+            if (uri.getRawUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null) {
+                throw new IllegalArgumentException(
+                    "Update API base must not contain credentials, query parameters, or a fragment");
+            }
+            if (uri.getHost() == null || uri.getHost().isBlank()) {
+                throw new IllegalArgumentException("Update API base must contain a host");
+            }
+        }
+        // Normalize here (trailing-slash strip) so every consumer reads a canonical base; the
+        // setter re-normalizes defensively, so double-strip is a harmless no-op.
+        String normalized = value.replaceAll("/+$", "");
+        config.setUpdateApiBase(normalized);
+        log.info("Update API base {} (source: settings UI)",
+            normalized.isEmpty() ? "cleared → default GitHub feed" : normalized);
     }
 
     /**
