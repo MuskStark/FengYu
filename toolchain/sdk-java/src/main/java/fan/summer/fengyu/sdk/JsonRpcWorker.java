@@ -12,14 +12,37 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 
 /**
  * Small, dependency-light JSON-RPC 2.0 worker runtime for FengYu child processes.
+ *
+ * <h2>Concurrency model (1.4.0)</h2>
+ * <p>The dispatch loop is split so cancellation can arrive while a handler runs:
+ * <ul>
+ *   <li><b>Reader.</b> {@link #serve(RpcTransport)} reads one frame at a time on its own thread.
+ *       Each valid request is dispatched onto a handler pool; the reader does NOT block on the
+ *       handler, so a {@code $/cancelRequest} notification arriving mid-handler is read and
+ *       applied immediately (mark the call's {@link CancellationToken} + interrupt its thread).</li>
+ *   <li><b>Handlers.</b> Run concurrently on a cached pool. Each binds a per-call
+ *       {@link RpcContext} (callId, locale, cancellation token) to its thread, invokes the
+ *       registered handler, and writes exactly one response frame. All writes are serialized on
+ *       a write lock so each emitted JSON object is a single complete line.</li>
+ *   <li><b>Drain.</b> At end-of-stream the reader shuts the pool down and awaits up to 60s; any
+ *       call still pending past the grace window is force-cancelled.</li>
+ * </ul>
+ * <p>Normal cancellation returns a {@link RpcError.Code#CANCELLED} response — it is never treated
+ * as a worker crash. Only a call that ignores both token and thread interruption past the grace
+ * window is forcibly reaped.
  *
  * <p><b>Parent-death watchdog.</b> The production entry point {@link #run()} installs two
  * complementary watchdogs so a worker can never outlive its host:
@@ -27,76 +50,86 @@ import java.util.function.BooleanSupplier;
  *   <li><b>stdin EOF (primary).</b> When the host closes the worker's stdin pipe — which the OS
  *       does automatically when the host JVM dies — {@link StdioTransport#readFrame()} returns
  *       {@code null}, {@link #serve(RpcTransport)} returns, and {@code run()}'s finally block
- *       calls {@code System.exit(0)}. This covers graceful host shutdown and most host crashes.</li>
+ *       calls {@code System.exit(0)}.</li>
  *   <li><b>parent-process liveness (auxiliary).</b> A daemon thread polls the snapshot of the
  *       parent {@link ProcessHandle}; if the parent disappears while {@code serve()} is still
- *       running (e.g. a pipe kept open by an intermediate launcher), the worker exits. This is a
- *       fallback for the rare cases where stdin does not close promptly.</li>
+ *       running, the worker exits.</li>
  * </ul>
- * <p>Both watchdogs converge on {@code System.exit(0)}: a worker that has handed control back to
- * {@code serve()} must still terminate even if the plugin spun up non-daemon threads (a HikariCP
- * pool, a scheduled executor, etc.), which would otherwise keep the JVM alive and hold file locks
- * on embedded databases.
  */
 public final class JsonRpcWorker {
     private static final Logger log = LoggerFactory.getLogger(JsonRpcWorker.class);
 
     /** How often the parent-liveness watchdog polls. Package-private for tests. */
     static final long PARENT_WATCHDOG_INTERVAL_SECONDS = 1;
+    /** Grace window for in-flight handlers to drain after EOF before force-cancelling. */
+    static final long DRAIN_TIMEOUT_SECONDS = 60;
+    /** JSON-RPC notification method the host sends to cancel an in-flight request. */
+    static final String CANCEL_METHOD = "$/cancelRequest";
 
     private final Gson json = new Gson();
     private final Map<String, PluginHandler> handlers = new ConcurrentHashMap<>();
     private final CopyOnWriteArrayList<AutoCloseable> closeables = new CopyOnWriteArrayList<>();
     private final AtomicBoolean closed = new AtomicBoolean();
-    /**
-     * Invoked when the worker must terminate its JVM. Production wires {@link System#exit(int)};
-     * tests inject a no-op recorder so the test JVM is not killed. Package-private and overridable
-     * via {@link #withExitHandler(java.util.function.IntConsumer)} for testability.
-     */
+    private final String pluginId = System.getenv("FENGYU_PLUGIN_ID");
+    private final String pluginRoot = System.getenv("FENGYU_PLUGIN_ROOT");
     private volatile java.util.function.IntConsumer exitHandler = System::exit;
 
+    // ── registration ────────────────────────────────────────────────────────
+
+    /** Register a low-level handler that receives the raw params map. */
     public JsonRpcWorker on(String method, PluginHandler handler) {
         if (method == null || method.isBlank()) throw new IllegalArgumentException("method is required");
-        java.util.Objects.requireNonNull(handler, "handler");
-        if (handlers.putIfAbsent(method, handler) != null) throw new IllegalArgumentException("duplicate method: " + method);
+        Objects.requireNonNull(handler, "handler");
+        if (handlers.putIfAbsent(method, handler) != null) {
+            throw new IllegalArgumentException("duplicate method: " + method);
+        }
         return this;
+    }
+
+    /**
+     * Register a typed handler. The worker deserializes JSON-RPC {@code params} into {@code Input}
+     * (via Gson), binds an {@link RpcContext} to the handler thread, and serializes the returned
+     * {@code Output} back into the response. {@code outputClass} is accepted for API symmetry /
+     * future validation; the returned value is serialized by Gson regardless of its declared type.
+     *
+     * @param name        the method name (typically a {@code PluginMethods} constant)
+     * @param inputClass  the generated input record class
+     * @param outputClass the generated output record class (or {@code Object} if the method has no
+     *                    declared output schema)
+     * @param handler     the typed handler
+     */
+    public <I, O> JsonRpcWorker method(String name, Class<I> inputClass, Class<O> outputClass, RpcHandler<I, O> handler) {
+        Objects.requireNonNull(name, "method name");
+        if (name.isBlank()) throw new IllegalArgumentException("method name is required");
+        Objects.requireNonNull(inputClass, "inputClass");
+        Objects.requireNonNull(outputClass, "outputClass");
+        Objects.requireNonNull(handler, "handler");
+        PluginHandler adapter = params -> {
+            I input = json.fromJson(json.toJson(params), inputClass);
+            return handler.handle(input, RpcContext.current());
+        };
+        return on(name, adapter);
     }
 
     /** Register a worker-owned resource to close in reverse order before the process exits. */
     public JsonRpcWorker onClose(AutoCloseable resource) {
-        java.util.Objects.requireNonNull(resource, "resource");
+        Objects.requireNonNull(resource, "resource");
         if (closed.get()) throw new IllegalStateException("worker is already closed");
         closeables.add(resource);
         return this;
     }
 
+    // ── entry points (unchanged shape; serve() is now concurrent) ───────────
+
     public void run() throws Exception {
         run(defaultParentLivenessProbe());
     }
 
-    /**
-     * Production entry point with an injectable parent-liveness probe (for tests). Installs the
-     * parent-death watchdog, drives {@link #serve(RpcTransport)} against {@code System.in/out}, and
-     * guarantees JVM termination in the finally block — see the class javadoc for the full contract.
-     *
-     * <p>The stdin-EOF path is intrinsic to {@code serve()}: it returns once {@code readFrame()}
-     * yields {@code null}. The explicit {@code System.exit(0)} here ensures the JVM actually exits
-     * even when a plugin has left non-daemon threads (DB pools, executors) that would otherwise
-     * keep it alive and hold embedded-DB file locks.
-     *
-     * @param parentAlive returns {@code true} while the worker's parent process is still alive;
-     *                    returning {@code false} triggers the auxiliary watchdog exit. Production
-     *                    passes {@link #defaultParentLivenessProbe()}; tests inject a controllable one.
-     */
     void run(BooleanSupplier parentAlive) throws Exception {
         InputStream protocolInput = System.in;
         PrintStream protocolOutput = System.out;
         System.setOut(System.err);
-        // Visible on stderr (so via the host's plugin-<id>-stderr drain) — confirms the worker
-        // actually started. Without it a worker that exits before reading stdin leaves no trace.
         log.info("Plugin worker started");
-        // Auxiliary watchdog: if the parent process vanishes while serve() is still blocked on
-        // stdin (pipe not yet closed), exit. The primary path is stdin EOF in serve().
         Thread watcher = startParentWatchdog(parentAlive);
         boolean cleanExit = false;
         try {
@@ -107,19 +140,10 @@ public final class JsonRpcWorker {
             log.info("Plugin worker shutting down");
             closeResources();
             System.setOut(protocolOutput);
-            // Only force JVM exit on a clean serve() return (stdin EOF / watchdog). On an exception
-            // we re-throw and let the caller/JVM decide, matching the pre-1.2 behaviour and keeping
-            // the worker's own diagnostics visible. The exit guarantees a worker with lingering
-            // non-daemon threads (HikariCP, executors) still terminates and releases DB file locks.
             if (cleanExit) exitWorker(0);
         }
     }
 
-    /**
-     * Daemon thread that exits the worker when the parent process is gone. Returns {@code null} on
-     * platforms without a resolvable parent (no parent handle → nothing to watch), so production
-     * workers with no parent simply rely on the stdin-EOF primary path.
-     */
     private Thread startParentWatchdog(BooleanSupplier parentAlive) {
         if (parentAlive == null) return null;
         AtomicBoolean firstCheck = new AtomicBoolean(true);
@@ -129,10 +153,8 @@ public final class JsonRpcWorker {
                 try {
                     alive = parentAlive.getAsBoolean();
                 } catch (Throwable dropped) {
-                    return; // probe is broken; stdin-EOF path still guards the worker
+                    return;
                 }
-                // Skip the very first check: a just-snapshotted parent is (briefly) alive, and a
-                // stale/unknown pid should not insta-kill the worker before serve() gets going.
                 if (!firstCheck.compareAndSet(true, false) && !alive) {
                     log.warn("Plugin worker parent process exited; watchdog shutting down worker");
                     closeResources();
@@ -152,12 +174,6 @@ public final class JsonRpcWorker {
         return t;
     }
 
-    /**
-     * Default parent-liveness probe: snapshots the parent {@link ProcessHandle} at first poll and
-     * reports whether it is still alive. Returns a probe that always says {@code true} (disabling
-     * the auxiliary watchdog) when the parent cannot be resolved — the stdin-EOF path still covers
-     * the worker.
-     */
     private static BooleanSupplier defaultParentLivenessProbe() {
         return new BooleanSupplier() {
             private volatile ProcessHandle parent;
@@ -172,27 +188,16 @@ public final class JsonRpcWorker {
         };
     }
 
-    /**
-     * Replace the JVM-exit handler. Production leaves {@link System#exit(int)} in place; tests pass
-     * a recorder (e.g. an {@link java.util.concurrent.atomic.AtomicInteger}) so the worker can be
-     * driven to its exit path without halting the test JVM.
-     *
-     * @return this worker, for chaining off the constructor
-     */
     public JsonRpcWorker withExitHandler(java.util.function.IntConsumer exitHandler) {
-        this.exitHandler = java.util.Objects.requireNonNull(exitHandler);
+        this.exitHandler = Objects.requireNonNull(exitHandler);
         return this;
     }
 
-    /** Indirection so tests can swap out {@code System.exit} (final, otherwise un-mockable). */
     void exitWorker(int code) {
         exitHandler.accept(code);
     }
 
     public void run(InputStream input, OutputStream output) throws Exception {
-        // Mirror run()'s stdout→stderr redirection so the protocol stream on the caller-supplied
-        // output stays clean from handler/System.out noise. Both stdio entry points now enforce the
-        // same "stdout is JSON-RPC only" contract documented in pitfalls.md / worker.md.
         PrintStream savedOut = System.out;
         PrintStream protocolOutput = output instanceof PrintStream ps
             ? ps : new PrintStream(output, true, StandardCharsets.UTF_8);
@@ -217,82 +222,183 @@ public final class JsonRpcWorker {
         closeables.clear();
     }
 
-    /**
-     * Drive the dispatch loop against any {@link RpcTransport}. Reads newline-delimited JSON-RPC
-     * 2.0 requests, dispatches each to the registered handler, and writes one response frame per
-     * request. Returns cleanly when the transport reaches end-of-stream ({@code readFrame() == null}).
-     *
-     * <p>This method performs <strong>no</strong> {@code System.setOut} redirection — that behaviour
-     * is exclusive to the stdio entry points ({@link #run()} and {@link #run(InputStream, OutputStream)}).
-     * Socket / in-memory transports use this method directly, so handler {@code System.out} writes go
-     * wherever the caller has pointed them.
-     *
-     * @param transport the frame-oriented transport (stdin/stdout, loopback socket, in-memory)
-     * @throws Exception if the transport raises a read/write error
-     */
-    public void serve(RpcTransport transport) throws Exception {
-        String line;
-        while (transport.isOpen() && (line = transport.readFrame()) != null) {
-            Map<String, Object> response = new LinkedHashMap<>(); response.put("jsonrpc", "2.0");
-            // Hoisted before the try so the generic catch can log them WITHOUT the raw request frame.
-            // The frame carries the full params (passwords, mail bodies, parsed paths); logging it
-            // leaks caller secrets to stderr, which the host forwards to its console + log surface.
-            String method = "<unknown>";
-            Object requestId = null;
-            try {
-                Map<String, Object> request = parseRequest(line);
-                requestId = request.get("id");
-                method = (String) request.get("method");
-                @SuppressWarnings("unchecked") Map<String, Object> params = request.get("params") instanceof Map<?, ?> map
-                    ? (Map<String, Object>) map : Map.of();
-                if (PluginLogging.SET_LEVEL_METHOD.equals(method)) {
-                    PluginLogging.setLevel(string(params, "level"));
-                    // This built-in control message is a JSON-RPC notification. It deliberately has
-                    // no id and no response, so a settings change never occupies a pending call slot.
-                    if (requestId == null) continue;
-                    response.put("id", requestId);
-                    response.put("result", Map.of("level", PluginLogging.level()));
-                    transport.writeFrame(json.toJson(response));
-                    continue;
-                }
-                response.put("id", requestId);
-                PluginHandler handler = handlers.get(method);
-                if (handler == null) throw new RpcException(-32601, "Unknown method: " + method);
-                // Bind the per-request locale (host-injected via the `locale` params key) for the
-                // duration of the handler call so handlers can resolve localized messages through
-                // WorkerLocale.current() without changing the PluginHandler signature. Legacy hosts
-                // that omit the key leave the default "en" — no behaviour change for them. The
-                // outer finally unbinds it after every frame.
-                WorkerLocale.set(string(params, "locale"));
-                response.put("result", handler.handle(params));
-            } catch (RpcException e) {
-                if (e.requestId() != null) response.put("id", e.requestId());
-                response.put("error", Map.of("code", e.code(), "message", e.getMessage()));
-            } catch (Exception e) {
-                // Log only call identity and exception type. Handler exception messages and stack
-                // traces may embed caller params (passwords, mail bodies, paths), and stderr is
-                // forwarded into the host log surface.
-                log.warn("Plugin worker dispatch failed for method={} id={}: {}",
-                    method, requestId, e.getClass().getSimpleName());
-                // Preserve the handler diagnostic for the direct caller. The host must not copy
-                // this untrusted message into shared logs; PluginProcessManager logs only its type.
-                response.put("error", Map.of("code", -32000, "message", String.valueOf(e.getMessage())));
-            } finally {
-                // Always unbind after a frame so no locale leaks across requests, regardless of
-                // whether the handler returned normally, threw, or never ran (e.g. unknown method).
-                WorkerLocale.clear();
-            }
-            transport.writeFrame(json.toJson(response));
+    // ── concurrent dispatch loop ────────────────────────────────────────────
+
+    /** Per-call bookkeeping so the reader can cancel a handler running on the pool. */
+    private static final class PendingCall {
+        final CancellationToken token;
+        volatile Thread thread;
+        PendingCall(CancellationToken token) { this.token = token; }
+        void cancel() {
+            token.cancel();
+            Thread t = thread;
+            if (t != null) t.interrupt();
         }
     }
 
-    public static String string(Map<String, Object> params, String key) {
-        Object value = params.get(key); return value == null ? null : value.toString();
-    }
-    public static int integer(Map<String, Object> params, String key, int fallback) {
-        Object value = params.get(key); return value instanceof Number number ? number.intValue() : fallback;
+    private static final AtomicInteger THREAD_SEQ = new AtomicInteger();
+
+    /**
+     * Drive the dispatch loop against any {@link RpcTransport}. Reads newline-delimited JSON-RPC
+     * 2.0 frames, dispatches each request onto a handler pool (so {@code $/cancelRequest}
+     * notifications are still read while handlers run), serializes one response frame per request,
+     * and drains all in-flight calls cleanly at end-of-stream.
+     */
+    public void serve(RpcTransport transport) throws Exception {
+        ExecutorService pool = Executors.newCachedThreadPool(r -> {
+            Thread t = new Thread(r, "fengyu-worker-handler-" + THREAD_SEQ.incrementAndGet());
+            t.setDaemon(true);
+            return t;
+        });
+        ConcurrentMap<Object, PendingCall> pending = new ConcurrentHashMap<>();
+        Object writeLock = new Object();
+
+        try {
+            String line;
+            while (transport.isOpen() && (line = transport.readFrame()) != null) {
+                Object id = null;
+                String method = "<unknown>";
+                try {
+                    Map<String, Object> request = parseRequest(line);
+                    id = request.get("id");
+                    method = (String) request.get("method");
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> params = request.get("params") instanceof Map<?, ?> map
+                        ? (Map<String, Object>) map : Map.of();
+
+                    // Built-in logging-control notification (unchanged behaviour).
+                    if (PluginLogging.SET_LEVEL_METHOD.equals(method)) {
+                        PluginLogging.setLevel(str(params, "level"));
+                        if (id == null) continue;
+                        Map<String, Object> resp = envelope(id);
+                        resp.put("result", Map.of("level", PluginLogging.level()));
+                        writeFrame(transport, writeLock, resp);
+                        continue;
+                    }
+
+                    // Cancellation notification: no id, no response — just signal the target call.
+                    if (CANCEL_METHOD.equals(method)) {
+                        PendingCall target = pending.remove(params.get("id"));
+                        if (target != null) target.cancel();
+                        log.debug("received $/cancelRequest for id={}", params.get("id"));
+                        continue;
+                    }
+
+                    final CancellationToken token = new CancellationToken();
+                    if (id != null) {
+                        // A duplicate request id while the first call is still in flight violates
+                        // JSON-RPC's id-uniqueness; cancel the older call so its thread frees and
+                        // its token reports CANCELLED, then track the new call under the same id.
+                        PendingCall created = new PendingCall(token);
+                        PendingCall previous = pending.put(id, created);
+                        if (previous != null) previous.cancel();
+                    }
+                    final PluginHandler handler = handlers.get(method);
+                    final Object fid = id;
+                    final String fmethod = method;
+                    final Map<String, Object> fparams = params;
+                    pool.submit(() -> dispatchOne(transport, writeLock, fid, fmethod, fparams, handler, token, pending));
+                } catch (RpcException e) {
+                    Object errId = e.requestId() != null ? e.requestId() : id;
+                    Map<String, Object> resp = envelope(errId);
+                    resp.put("error", errorEnvelope(e));
+                    writeFrame(transport, writeLock, resp);
+                }
+            }
+            // EOF: stop accepting new work, let in-flight handlers finish (cooperative drain).
+            pool.shutdown();
+            if (!pool.awaitTermination(DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                log.warn("worker drain timed out with {} in-flight call(s); force-cancelling", pending.size());
+                for (PendingCall c : pending.values()) c.cancel();
+                pool.shutdownNow();
+                pool.awaitTermination(5, TimeUnit.SECONDS);
+            }
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
+    private void dispatchOne(RpcTransport transport, Object writeLock, Object id, String method,
+            Map<String, Object> params, PluginHandler handler, CancellationToken token,
+            ConcurrentMap<Object, PendingCall> pending) {
+        Map<String, Object> resp = envelope(id);
+        // Register this call's thread so a $/cancelRequest that lands mid-handler can interrupt it.
+        if (id != null) {
+            PendingCall call = pending.get(id);
+            if (call != null) call.thread = Thread.currentThread();
+        }
+        RpcContext.bind(new RpcContext(id == null ? null : id.toString(), pluginId, pluginRoot,
+                str(params, "locale"), token, log));
+        try {
+            token.throwIfCancelled();
+            if (handler == null) {
+                throw new RpcException(-32601, "Unknown method: " + method);
+            }
+            Object result = handler.handle(params);
+            if (token.isCancelled()) {
+                // Handler returned normally despite cancellation — honour the cancel signal.
+                throw new RpcException(RpcError.Code.CANCELLED, "request cancelled");
+            }
+            resp.put("result", result);
+        } catch (RpcException e) {
+            resp.put("error", errorEnvelope(e));
+        } catch (Exception e) {
+            // Log only call identity and exception type; messages may embed caller secrets.
+            log.warn("Plugin worker dispatch failed for method={} id={}: {}",
+                method, id, e.getClass().getSimpleName());
+            resp.put("error", Map.of("code", -32000, "message", String.valueOf(e.getMessage())));
+        } catch (Throwable t) {
+            // A handler/linkage Error (e.g. NoSuchMethodError) must still produce a well-formed
+            // error response, never a frame missing both result and error. Mapped to INTERNAL;
+            // only the exception type is logged (safer than the message for Error subtypes).
+            log.warn("Plugin worker dispatch failed for method={} id={}: {}",
+                method, id, t.getClass().getSimpleName());
+            resp.put("error", Map.of("code", RpcError.Code.INTERNAL.jsonRpcCode(),
+                "message", t.getClass().getSimpleName(), "data", Map.of("code", RpcError.Code.INTERNAL.name())));
+        } finally {
+            RpcContext.clear();
+            WorkerLocale.clear();
+            if (id != null) pending.remove(id);
+            try {
+                writeFrame(transport, writeLock, resp);
+            } catch (Exception e) {
+                log.warn("worker failed to write response for method={} id={}: {}",
+                    method, id, e.getClass().getSimpleName());
+            }
+        }
+    }
+
+    private Map<String, Object> envelope(Object id) {
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("jsonrpc", "2.0");
+        r.put("id", id);
+        return r;
+    }
+
+    private Map<String, Object> errorEnvelope(RpcException e) {
+        Map<String, Object> err = new LinkedHashMap<>();
+        err.put("code", e.code());
+        err.put("message", e.getMessage() == null ? "" : e.getMessage());
+        if (e.semanticCode() != null) {
+            err.put("data", Map.of("code", e.semanticCode().name()));
+        }
+        return err;
+    }
+
+    private void writeFrame(RpcTransport transport, Object writeLock, Map<String, Object> resp) throws Exception {
+        String frame = json.toJson(resp);
+        synchronized (writeLock) {
+            transport.writeFrame(frame);
+        }
+    }
+
+    /** Read a string-valued param, coercing to {@code null} when absent (internal helper). */
+    private static String str(Map<String, Object> params, String key) {
+        Object value = params.get(key);
+        return value == null ? null : value.toString();
+    }
+
+    @SuppressWarnings("unchecked")
     private Map<String, Object> parseRequest(String line) {
         Map<String, Object> request;
         try {
@@ -305,16 +411,5 @@ public final class JsonRpcWorker {
             throw new RpcException(-32600, "Invalid Request", request == null ? null : request.get("id"));
         }
         return request;
-    }
-
-    public static final class RpcException extends RuntimeException {
-        private final int code;
-        private final Object requestId;
-        public RpcException(int code, String message) { this(code, message, null); }
-        public RpcException(int code, String message, Object requestId) {
-            super(message); this.code = code; this.requestId = requestId;
-        }
-        public int code() { return code; }
-        public Object requestId() { return requestId; }
     }
 }

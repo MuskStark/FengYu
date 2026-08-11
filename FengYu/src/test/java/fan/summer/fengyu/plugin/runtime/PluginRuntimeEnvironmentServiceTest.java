@@ -257,9 +257,9 @@ class PluginRuntimeEnvironmentServiceTest {
     }
 
     private static PluginManifest manifest(String id, List<String> permissions) {
-        return new PluginManifest(1, id, "Test", "Test", "1.0.0", "FengYu", "email", "net",
+        return new PluginManifest(2, id, "Test", "Test", "1.0.0", "FengYu", "email", "net",
             new PluginManifest.Ui("ui/index.html"),
-            new PluginManifest.Backend("java -jar backend/worker.jar", "json-rpc-2.0"),
-            permissions, null, true, List.of());
+            new PluginManifest.Backend(60L),
+            permissions, null, true, null, List.of());
     }
 }

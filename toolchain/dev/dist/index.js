@@ -1,5 +1,7 @@
 import { promises as fs } from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
+import { PROTOCOL_VERSION } from '@infinia/plugin-sdk/protocol';
 import { createWorkerClient, probeWorker } from './worker-client.js';
 import { FileRefRegistry } from './file-refs.js';
 import { DevFileStore } from './dev-files.js';
@@ -9,8 +11,8 @@ export { FileRefRegistry };
 /**
  * A Vite plugin that turns the dev server into a FengYu plugin host simulator.
  *
- * Replace `fengyu plugin dev` with this: add it to your `vite.config.ts`, then run `npm run dev`
- * in `ui-src/`. The plugin UI renders at the Vite dev server root with full HMR, and the
+ * `fengyu dev` runs the `npm run dev` script that loads this Vite plugin. The plugin UI renders at
+ * the Vite dev server root with full HMR, and the
  * simulator shell at `/__fengyu` bridges `postMessage` to the dev worker.
  *
  * The Java side is debugged separately: run `PluginDevMain.main()` in your IDE — it starts the
@@ -214,8 +216,31 @@ export function fengyuPluginDev(options) {
             server.httpServer?.once('listening', () => {
                 const addr = server.httpServer?.address();
                 const port = typeof addr === 'object' && addr ? addr.port : '?';
-                const target = mockMode ? '(mock worker)' : `${endpoint.host}:${endpoint.port}`;
-                console.log(`[fengyu-dev] simulator at http://127.0.0.1:${port}/__fengyu  →  worker ${target}`);
+                const uiUrl = `http://127.0.0.1:${port}/__fengyu`;
+                // `fengyu dev` output: the UI simulator URL, the worker dev-server status, and a
+                // protocol-mismatch diagnostic. This is diagnostic text only — the CLI does not spawn or
+                // manage the JVM (bullet 5); the Java worker is started separately via PluginDevMain.
+                console.log(`[fengyu-dev] UI simulator:   ${uiUrl}`);
+                if (mockMode) {
+                    console.log(`[fengyu-dev] Java worker:    mock mode (no real worker). Set workerEndpoint to forward rpc.invoke to PluginDevMain.`);
+                }
+                else {
+                    console.log(`[fengyu-dev] Java worker:    start PluginDevMain in the IDE — it must listen on ${endpoint.host}:${endpoint.port}`);
+                }
+                // Best-effort protocol-mismatch check: the plugin UI bundles its own @infinia/plugin-sdk,
+                // whose PROTOCOL_VERSION may lag the simulator's. A mismatch rejects the ready() handshake
+                // with INCOMPATIBLE_PROTOCOL at runtime; surface it up front so the cause is obvious.
+                void detectPluginUiProtocolVersion(server.config.root).then((uiProtocol) => {
+                    if (!uiProtocol)
+                        return; // SDK not resolvable yet (UI-only plugin / not installed) — stay quiet
+                    if (uiProtocol !== PROTOCOL_VERSION) {
+                        console.warn(`[fengyu-dev] ⚠ protocol mismatch: plugin UI @infinia/plugin-sdk v${uiProtocol} ≠ simulator v${PROTOCOL_VERSION}.`);
+                        console.warn(`[fengyu-dev]   ready() will reject with INCOMPATIBLE_PROTOCOL. Align the plugin UI's @infinia/plugin-sdk dependency.`);
+                    }
+                    else {
+                        console.log(`[fengyu-dev] protocol:      v${PROTOCOL_VERSION} (plugin UI SDK matches)`);
+                    }
+                });
             });
         },
         async closeBundle() {
@@ -237,6 +262,26 @@ async function readJsonBody(req) {
     }
     try {
         return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    }
+    catch {
+        return null;
+    }
+}
+/**
+ * Resolve the plugin UI's bundled `@infinia/plugin-sdk` protocol version (best-effort, diagnostic
+ * only). Returns `null` when the SDK cannot be resolved from the Vite root (UI-only plugin, deps
+ * not installed, …) — callers stay silent in that case. This reads the SHARED protocol constant
+ * the plugin UI itself consumes, so it never duplicates protocol logic.
+ */
+async function detectPluginUiProtocolVersion(viteRoot) {
+    try {
+        // createResolve from the Vite root honors Node's normal resolution (symlinks, hoisting,
+        // workspace/file: links), so a plugin whose SDK is hoisted to a parent node_modules is found.
+        const requireFromRoot = createRequire(path.resolve(viteRoot) + '/');
+        const resolved = requireFromRoot.resolve('@infinia/plugin-sdk/protocol');
+        const src = await fs.readFile(resolved, 'utf8');
+        const match = src.match(/PROTOCOL_VERSION\s*=\s*['"]([^'"]+)['"]/);
+        return match ? match[1] : null;
     }
     catch {
         return null;

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 2,
+  "id": "com.example.badi18n",
+  "name": "BadI18n",
+  "description": "Rejects an invalid locale key (uppercase / underscore form). Keys must be short lowercased tags.",
+  "version": "1.0.0",
+  "author": "Fixture",
+  "icon": "puzzle-outline",
+  "category": "other",
+  "ui": { "entry": "ui/index.html" },
+  "i18n": {
+    "en_US": {
+      "name": "Bad locale key"
+    }
+  }
+}

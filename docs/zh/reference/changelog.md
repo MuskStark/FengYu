@@ -19,6 +19,56 @@ lang: zh-CN
 
 ## [Unreleased]
 
+### ✨ Added
+- **Plugin manifest schema v2 — the single hand-written contract.** `manifest.json` is now
+  `schemaVersion: 2` with `additionalProperties: false` throughout. RPC methods live once in an
+  `rpc.methods` table whose `inputSchema`/`outputSchema` are JSON-Schema **objects** (not escaped
+  strings); `aiTools` reference those methods by `method` with a mandatory `effect`, duplicating no
+  schema. `backend` keeps only `callTimeoutSeconds` — the worker is implicitly
+  `java -jar backend/worker.jar` over JSON-RPC 2.0 (`backend.command`/`backend.protocol` removed).
+  The CLI validator enforces every rule, including a raw-text duplicate-`rpc.methods`-key scan
+  (JSON.parse would otherwise silently merge duplicates).
+- **Deterministic contract generator.** `fengyu init|dev|build` generate a typed TS RPC client
+  (`ui-src/src/generated/fengyu-rpc.ts` — `createPluginRpc(client)` + per-method `Input`/`Output`
+  types) and Java records + a centralized `PluginMethods` name class
+  (`src/main/java/<id>/generated/`) straight from `rpc.methods`. Output is byte-for-byte stable
+  (sorted), handles identifier escaping / reserved words / nullable / required, nests records for
+  object/array fields, and rejects unsupported JSON-Schema constructs instead of coercing to
+  `Object`. `fengyu check` detects generated-file drift without writing.
+- **Typed Java Worker SDK + standard cancellation.** `JsonRpcWorker.method(NAME, Input, Output,
+  handler)` registers typed handlers; `RpcContext` exposes `callId`/`pluginId`/`pluginRoot`/
+  `locale`/`cancellation()`/`logger()`. The dispatch loop is split into a reader + handler pool so a
+  `$/cancelRequest` notification cancels an in-flight call (returns `CANCELLED`, worker survives);
+  EOF drains gracefully. Stable `RpcError.Code` set (`INVALID_ARGUMENT`/`PERMISSION_DENIED`/
+  `NOT_FOUND`/`CONFLICT`/`CANCELLED`/`INTERNAL`) maps to JSON-RPC codes and an `error.data.code`
+  label. The old `JsonRpcWorker.string/integer` Map-parsing helpers were removed.
+- **Shared plugin bridge protocol `3.0.0` and capability pre-check.** `@infinia/plugin-sdk/protocol`
+  is the side-effect-free source for iframe/host message types, method constants, capabilities, and
+  structured errors. `HostEnvironment` now carries `pluginId`/`pluginVersion`/`permissions`;
+  `HostError.code` adds `TIMEOUT`/`CANCELLED`. The SDK validates the capability before each request,
+  posts the cancel notification on both timeout and abort, and silently drops responses for unknown
+  ids / wrong origin / wrong protocol version.
+- **Host v2 install + dispatch.** Install accepts schema v2 only and validates `rpc.methods`
+  (unknown method rejected before worker start; AI tool schemas read from the referenced method's
+  object schema — no string re-parsing). The iframe/HTTP `callId` is passed through as the JSON-RPC
+  `id`. Cancel sends `$/cancelRequest` first and only force-restarts on timeout. Worker errors map
+  to typed exceptions: `PERMISSION_DENIED` → HTTP 403 (no longer a generic 500), `CANCELLED` → 499.
+- **All four official plugins migrated to the typed model.** `markdown` (canary), `excel`,
+  `offlinepython`, and `email` now ship schema-v2 manifests, generated TS/Java contracts, typed
+  `method(...)` workers, and transport-cancellation tests. `offlinepython`'s domain
+  `build.cancel`/`deploy.cancel` now reaps the whole Python/pip subprocess tree.
+
+### ♻️ Changed
+- **Convention-based Toolchain 2 CLI.** The public command surface is `fengyu init`, `dev`,
+  `check`, and `build`. `fengyu.plugin.json` and arbitrary command arrays were removed; projects use
+  standard npm scripts and Maven lifecycles, the Worker is discovered as the unique
+  `target/*-worker.jar`, and packages are written under `dist/`. The unused direct-ESM
+  `default.mount(el, ctx)` loader was removed; sandboxed iframe + shared protocol is the only UI
+  runtime.
+- **`offlinepython` RPC method names are lowerCamelCase.** Schema v2 forbids dots in method keys,
+  so `config.get`→`configGet`, `requirements.save`→`requirementsSave`, `build.start`→`buildStart`,
+  etc. The smoke scripts were updated; external callers of the old dotted names must switch.
+
 ## [4.0.0-beta.2] — 2026-08-11
 
 ### ✨ Added

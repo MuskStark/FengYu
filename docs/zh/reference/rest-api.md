@@ -41,7 +41,8 @@ SSE 端点通过 `X-FengYu-Token` 头进行鉴权——**没有** `?token=` 查�
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | `GET` | `/api/plugin-runtime` | token | 已启用的插件，以 `InstalledPluginDescriptor[]` 形式返回。 |
-| `POST` | `/api/plugin-runtime/{id}/invoke` | token | 调用某个 worker 方法。请求体 `{method, params}` → JSON-RPC `result`。参见 [Worker](/zh/plugins/worker)。 |
+| `POST` | `/api/plugin-runtime/{id}/invoke` | token | 调用某个 worker 方法。请求体 `{callId, method, params}` → JSON-RPC `result`；`callId` 为协议关联 ID。参见 [Worker](/zh/plugins/worker)。 |
+| `POST` | `/api/plugin-runtime/{id}/invoke/{callId}/cancel` | token | 中断一个已跟踪的调用。返回 `{cancelled}`；取消 Worker 调用会终止该 Worker，避免卡住的处理器继续运行。 |
 | `GET` | `/api/plugin-runtime/{id}/logs` | token | 最近的 Worker 事件，结构为 `{timestamp, level, logger, thread, message, sequence}`；旧式 stderr 的 logger/thread 为 null。 |
 | `GET` | `/api/plugin-runtime/{id}/logs/stream` | token | 先重放最近的 Worker 事件，再通过 SSE 流式推送新事件。 |
 | `GET` | `/plugin-runtime/{id}/**` | — | 插件 UI 静态资产（入口 HTML + JS），在严格的 CSP 下提供。 |

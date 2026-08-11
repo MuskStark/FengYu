@@ -4,7 +4,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { createPlugin } from '../src/create.mjs'
-import { loadBuildConfig } from '../src/config.mjs'
+import { detectProject } from '../src/project.mjs'
 
 let base
 let root
@@ -25,10 +25,17 @@ test('create defaults to Vue plus Java worker', async () => {
   const calls = []
   const run = async (...args) => calls.push(args)
   await createPlugin(root, 'com.example.hello-world', { install: false, run })
-  assert.ok(await fs.stat(path.join(root, 'fengyu.plugin.json')))
+  await assert.rejects(fs.stat(path.join(root, 'fengyu.plugin.json')))
   assert.ok(await fs.stat(path.join(root, 'worker/pom.xml')))
   assert.ok(await fs.stat(path.join(root, 'mvnw')))
-  assert.match(await fs.readFile(path.join(root, 'manifest.json'), 'utf8'), /backend\/worker\.jar/)
+  // v2 manifest: no backend.command string; a backend + rpc.methods.hello declares the worker.
+  const manifest = await fs.readFile(path.join(root, 'manifest.json'), 'utf8')
+  assert.match(manifest, /"schemaVersion":\s*2/)
+  assert.match(manifest, /"rpc"[\s\S]*"hello"/)
+  // init regenerates the typed RPC client + Java records from rpc.methods (T2-02 generator).
+  assert.ok(await fs.stat(path.join(root, 'ui-src/src/generated/fengyu-rpc.ts')))
+  assert.ok(await fs.stat(path.join(root, 'worker/src/main/java/com/example/hello_world/generated/PluginMethods.java')))
+  assert.ok(await fs.stat(path.join(root, 'worker/src/main/java/com/example/hello_world/generated/HelloInput.java')))
   // Production entry delegates to the shared handler factory (HelloWorldWorker.create()).
   const javaDir = path.join(root, 'worker/src/main/java/com/example/hello_world')
   const workerMain = path.join(javaDir, 'HelloWorldWorkerMain.java')
@@ -51,8 +58,9 @@ test('full scaffold preserves the Maven wrapper mode and resolves the worker art
     assert.equal(mode, 0o755)
   }
 
-  const config = await loadBuildConfig(root)
-  assert.equal(config.worker.artifact, path.join(root, 'worker', 'target', 'Demo-worker.jar'))
+  const project = await detectProject(root)
+  assert.equal(project.kind, 'standard')
+  assert.equal(project.config.worker.root, path.join(root, 'worker'))
 })
 
 test('full template install runs npm inside ui-src', async () => {
@@ -77,7 +85,7 @@ test('uiOnly install runs npm in the project root', async () => {
 test('--no-install keeps a complete scaffold without invoking npm', async () => {
   const run = async () => assert.fail('runner must not execute')
   await createPlugin(root, 'com.example.demo', { install: false, run })
-  assert.ok(await fs.stat(path.join(root, 'fengyu.plugin.json')))
+  await assert.rejects(fs.stat(path.join(root, 'fengyu.plugin.json')))
   assert.ok(await fs.stat(path.join(root, 'ui-src/src/App.vue')))
 })
 

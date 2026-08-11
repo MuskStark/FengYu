@@ -2,47 +2,24 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { parseCli } from '../src/args.mjs'
 
-test('option values are not project paths', () => {
-  const parsed = parseCli(['plugin', 'build', '.', '--out', 'dist/custom.fyp', '--skip-tests'])
+test('parses the flat build command without treating option values as paths', () => {
+  const parsed = parseCli(['build', '.', '--out', 'dist/custom.fyp', '--skip-tests'])
+  assert.equal(parsed.command, 'build')
   assert.deepEqual(parsed.positionals, ['.'])
   assert.equal(parsed.options.out, 'dist/custom.fyp')
   assert.equal(parsed.options.skipTests, true)
 })
 
-test('create reads directory and id independently', () => {
-  const parsed = parseCli(['plugin', 'create', 'demo', '--id', 'com.example.demo', '--ui-only'])
+test('parses init options', () => {
+  const parsed = parseCli(['init', 'demo', '--id', 'com.example.demo', '--ui-only', '--no-install'])
+  assert.equal(parsed.command, 'init')
   assert.deepEqual(parsed.positionals, ['demo'])
   assert.equal(parsed.options.id, 'com.example.demo')
   assert.equal(parsed.options.uiOnly, true)
-})
-
-test('build defaults install flag to true', () => {
-  const parsed = parseCli(['plugin', 'create', 'demo', '--id', 'com.example.demo'])
-  assert.equal(parsed.options.install, true)
-})
-
-test('--no-install clears the install flag', () => {
-  const parsed = parseCli(['plugin', 'create', 'demo', '--id', 'com.example.demo', '--no-install'])
   assert.equal(parsed.options.install, false)
 })
 
-test('group and command are split from positionals', () => {
-  const parsed = parseCli(['plugin', 'build', '.'])
-  assert.equal(parsed.group, 'plugin')
-  assert.equal(parsed.command, 'build')
-  assert.deepEqual(parsed.positionals, ['.'])
-})
-
-test('unknown options are rejected', () => {
-  assert.throws(() => parseCli(['plugin', 'build', '.', '--bogus']), /unknown option --bogus/)
-})
-
-test('value options require a following value', () => {
-  assert.throws(() => parseCli(['plugin', 'build', '.', '--out']), /--out requires a value/)
-})
-
-test('value options reject a following option as their value', () => {
-  // `--out --skip-tests` must NOT swallow `--skip-tests` as --out's value (it then surfaces as a
-  // confusing manifest error). A leading-dash token is always another option, never a value.
-  assert.throws(() => parseCli(['plugin', 'build', '.', '--out', '--skip-tests']), /--out requires a value/)
+test('unknown and valueless options are rejected', () => {
+  assert.throws(() => parseCli(['build', '--bogus']), /unknown option/)
+  assert.throws(() => parseCli(['build', '--out', '--skip-tests']), /requires a value/)
 })

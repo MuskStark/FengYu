@@ -1,5 +1,17 @@
 package fan.summer.fengyu.plugin.excel;
 
+import fan.summer.fengyu.sdk.CancellationToken;
+import fan.summer.fengyu.sdk.RpcContext;
+import fan.summer.excel.generated.ExcelAnalyzeInput;
+import fan.summer.excel.generated.ExcelAnalyzeOutput;
+import fan.summer.excel.generated.ExcelCancelInput;
+import fan.summer.excel.generated.ExcelCancelOutput;
+import fan.summer.excel.generated.ExcelConfigureInput;
+import fan.summer.excel.generated.ExcelConfigureOutput;
+import fan.summer.excel.generated.ExcelExecuteInput;
+import fan.summer.excel.generated.ExcelExecuteOutput;
+import fan.summer.excel.generated.ExcelQueryInput;
+import fan.summer.excel.generated.ExcelQueryOutput;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.*;
@@ -7,14 +19,13 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.FileOutputStream;
 import java.nio.file.*;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Covers the stateless AI tools ({@code excel_*}) now that they live on
- * {@link ExcelRpcHandlers} instead of Spring AI {@code @Tool} beans. Each handler
- * returns the {success, summary, ...} envelope as a Map.
+ * Covers the stateless AI tools ({@code excel_*}) on the typed {@link ExcelRpcHandlers}. Each handler
+ * consumes a generated {@code *Input} record and returns the matching {@code *Output} record; a
+ * success/failure is carried in-band by the record's {@code success} flag rather than a Map envelope.
  */
 class ExcelRpcHandlersTest {
     @TempDir Path tmp;
@@ -35,58 +46,54 @@ class ExcelRpcHandlersTest {
         }
     }
 
+    /** A non-cancelled per-call context, mirroring what the worker dispatch loop binds. */
+    private static RpcContext ctx() {
+        return new RpcContext("test", null, null, "en", new CancellationToken(), null);
+    }
+
     @Test
-    @SuppressWarnings("unchecked")
     void analyzeThenQueryThenCancel() {
-        Map<String, Object> a = (Map<String, Object>) handlers.aiAnalyze(Map.of("filePath", src.toString()));
-        assertEquals(Boolean.TRUE, a.get("success"));
+        ExcelAnalyzeOutput a = handlers.aiAnalyze(new ExcelAnalyzeInput(src.toString()), ctx());
+        assertTrue(a.success());
 
-        Map<String, Object> q = (Map<String, Object>) handlers.aiQuery(Map.of());
-        String sourceFile = String.valueOf(((Map<String, Object>) q.get("state")).get("sourceFile"));
-        assertTrue(sourceFile.endsWith(src.getFileName().toString()));
+        ExcelQueryOutput q = handlers.aiQuery(new ExcelQueryInput(), ctx());
+        assertNotNull(q.state());
+        assertEquals(src.toString(), q.state().sourceFile());
 
-        Map<String, Object> c = (Map<String, Object>) handlers.aiCancel(Map.of());
-        assertEquals(Boolean.TRUE, c.get("success"));
+        ExcelCancelOutput c = handlers.aiCancel(new ExcelCancelInput(), ctx());
+        assertTrue(c.success());
         assertTrue(store.active().isEmpty());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void analyzeMissingFileErrors() {
-        Map<String, Object> a = (Map<String, Object>) handlers.aiAnalyze(Map.of("filePath", "/no/such/file.xlsx"));
-        assertEquals(Boolean.FALSE, a.get("success"));
+        ExcelAnalyzeOutput a = handlers.aiAnalyze(new ExcelAnalyzeInput("/no/such/file.xlsx"), ctx());
+        assertFalse(a.success());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void rejectsUnresolvedFileReferenceObjectsInsteadOfCreatingTheirStringForm() {
-        Map<String, Object> a = (Map<String, Object>) handlers.aiAnalyze(Map.of(
-            "filePath", Map.of("path", src.toString(), "kind", "file")));
-        assertEquals(Boolean.FALSE, a.get("success"));
-
-        handlers.aiAnalyze(Map.of("filePath", src.toString()));
-        handlers.aiConfigure(Map.of("mode", "BY_SHEET"));
-        Map<String, Object> r = (Map<String, Object>) handlers.aiExecute(Map.of(
-            "outputDir", Map.of("path", tmp.resolve("out"), "kind", "directory")));
-        assertEquals(Boolean.FALSE, r.get("success"));
+    void executeRejectsBlankOutputDir() {
+        // analyze + configure first so the handler reaches the outputDir validation.
+        handlers.aiAnalyze(new ExcelAnalyzeInput(src.toString()), ctx());
+        handlers.aiConfigure(new ExcelConfigureInput("BY_SHEET", null, null, null), ctx());
+        ExcelExecuteOutput r = handlers.aiExecute(new ExcelExecuteInput(null, "  "), ctx());
+        assertFalse(r.success());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void analyzeConfigureExecuteBySheet() throws Exception {
-        handlers.aiAnalyze(Map.of("filePath", src.toString()));
-        Map<String, Object> cfg = (Map<String, Object>) handlers.aiConfigure(Map.of("mode", "BY_SHEET"));
-        assertEquals(Boolean.TRUE, cfg.get("success"));
+        handlers.aiAnalyze(new ExcelAnalyzeInput(src.toString()), ctx());
+        ExcelConfigureOutput cfg = handlers.aiConfigure(new ExcelConfigureInput("BY_SHEET", null, null, null), ctx());
+        assertTrue(cfg.success());
         Path out = Files.createDirectories(tmp.resolve("out"));
-        Map<String, Object> r = (Map<String, Object>) handlers.aiExecute(Map.of("outputDir", out.toString()));
-        assertEquals(Boolean.TRUE, r.get("success"));
+        ExcelExecuteOutput r = handlers.aiExecute(new ExcelExecuteInput(null, out.toString()), ctx());
+        assertTrue(r.success());
         assertTrue(Files.exists(out.resolve("Alpha.xlsx")));
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void executeWithoutConfigErrors() {
-        Map<String, Object> r = (Map<String, Object>) handlers.aiExecute(Map.of("outputDir", "/tmp/x"));
-        assertEquals(Boolean.FALSE, r.get("success"));
+        ExcelExecuteOutput r = handlers.aiExecute(new ExcelExecuteInput(null, "/tmp/x"), ctx());
+        assertFalse(r.success());
     }
 }

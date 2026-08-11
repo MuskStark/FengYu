@@ -66,6 +66,6 @@ Every installed descriptor carries a `source` discriminator so the UI can distin
 
 ## Next steps
 
-- [Getting Started](/en/plugins/getting-started) — scaffold a plugin with `fengyu plugin create`.
+- [Getting Started](/en/plugins/getting-started) — scaffold a plugin with `fengyu init`.
 - [Manifest](/en/plugins/manifest) — the full `manifest.json` field reference.
 - [Architecture: Plugin System](/en/architecture/plugin-system) — how the host mounts and supervises plugins.

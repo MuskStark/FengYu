@@ -19,7 +19,7 @@ Infinia 前端是一个用 TypeScript 编写的 **Vue 3 单页应用**。它渲�
 | `vue-i18n` | 10 | 国际化 |
 | `vite` | 6 | 开发服务器 + 构建 |
 
-MD3 调色板（Google 默认值，主色 `#6750A4`）和浅色/深色主题，通过宿主的 Vuetify 实例与插件微前端共享。见[设计系统](/zh/design-system)页面。
+MD3 调色板（Google 默认值，主色 `#6750A4`）由宿主与插件 UI kit 分别实现。宿主桥梁会向沙箱化插件 UI 报告环境与主题变化。见[设计系统](/zh/design-system)页面。
 
 ## Pinia store
 
@@ -37,14 +37,7 @@ MD3 调色板（Google 默认值，主色 `#6750A4`）和浅色/深色主题，�
 
 ## 微前端宿主
 
-插件 UI 并不打包进 SPA。它们由位于 `frontend/src/mf/loader.ts` 的 MF 宿主按需加载——动态导入插件的 UI 入口，并把它挂载到一个目标元素上，同时传入宿主提供的上下文：
-
-```ts
-const mod = await import(uiEntry)
-mod.default.mount(el, ctx)
-```
-
-微前端通过 `ctx` 复用宿主的 Vuetify 实例和主题，因此 MD3 token 在外壳和每一个插件之间保持一致。详见[插件系统](/zh/architecture/plugin-system)。
+插件 UI 并不打包进 SPA。`PluginView.vue` 会把每个插件的 `uiEntry` 加载进沙箱化 iframe。iframe 与宿主先协商共享的 `@infinia/plugin-sdk/protocol` 版本，再通过 `postMessage` 交换类型化的请求、响应、取消和环境消息。插件无法直接访问宿主的 Vue 或 Vuetify 对象；`@infinia/plugin-ui` 在隔离边界内渲染一致的 MD3 界面。详见[插件系统](/zh/architecture/plugin-system)。
 
 ## 桌面端集成
 

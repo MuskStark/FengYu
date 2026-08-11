@@ -11,26 +11,32 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Enforces the official SDK worker pattern: the plugin speaks JSON-RPC 2.0 through
- * {@code JsonRpcWorker} + {@code PluginHandler}, never hand-rolling its own RPC loop
- * or shadowing the SDK protocol types.
+ * Enforces the official SDK worker pattern for the Toolchain 2 typed model: the markdown package
+ * registers its RPC method through {@code JsonRpcWorker#method(...)} with the generated
+ * {@code PluginMethods} constants + {@code RenderInput}/{@code RenderOutput} DTOs, never
+ * hand-rolling its own RPC loop, shadowing SDK protocol types, or using the removed
+ * {@code JsonRpcWorker.string}/{@code .integer} param helpers.
  */
 class OfficialSdkUsageTest {
     private static final Path SOURCE = Path.of("src/main/java/fan/summer/fengyu/plugin/markdown");
 
     @Test
-    void workerUsesOnlyOfficialSdkProtocolTypes() throws IOException {
+    void workerUsesTypedMethodRegistration() throws IOException {
         String allSource = readJavaSources();
-        Pattern shadows = Pattern.compile("\\b(?:class|record|interface)\\s+(?:JsonRpcWorker|PluginHandler)\\b");
+        Pattern shadows = Pattern.compile("\\b(?:class|record|interface)\\s+(?:JsonRpcWorker|PluginHandler|RpcContext)\\b");
 
         assertFalse(shadows.matcher(allSource).find(), "markdown package must not shadow official SDK types");
         assertFalse(allSource.contains("readLine()"), "markdown package must not implement a JSON-RPC loop");
-        assertTrue(allSource.contains("import fan.summer.fengyu.sdk.JsonRpcWorker;"));
-        // Handlers use the SDK: either the legacy PluginHandler import or the newer
-        // PluginHandlerSupport base class (which lives in the same package).
-        assertTrue(allSource.contains("import fan.summer.fengyu.sdk.PluginHandler;")
-                || allSource.contains("import fan.summer.fengyu.sdk.PluginHandlerSupport;"),
-                "markdown package must use an official SDK handler type");
+        assertFalse(allSource.contains("JsonRpcWorker.string"),
+                "markdown package must not use the removed JsonRpcWorker.string param helper");
+        assertFalse(allSource.contains("JsonRpcWorker.integer"),
+                "markdown package must not use the removed JsonRpcWorker.integer param helper");
+        assertTrue(allSource.contains("import fan.summer.fengyu.sdk.JsonRpcWorker;"),
+                "markdown package must use the official SDK worker runtime");
+        assertTrue(allSource.contains("import fan.summer.markdown.generated.PluginMethods;"),
+                "markdown package must register methods via the generated PluginMethods constants");
+        assertTrue(allSource.contains(".method("),
+                "markdown package must register handlers via the typed worker.method(...) API");
     }
 
     private static String readJavaSources() throws IOException {

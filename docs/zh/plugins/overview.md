@@ -65,6 +65,6 @@ install  ──►  enabled  ──►  invoked (UI + worker RPC)  ──►  di
 
 ## 下一步
 
-- [入门](/zh/plugins/getting-started)——用 `fengyu plugin create` 脚手架生成一个插件。
+- [入门](/zh/plugins/getting-started)——用 `fengyu init` 脚手架生成一个插件。
 - [清单](/zh/plugins/manifest)——完整的 `manifest.json` 字段参考。
 - [架构：插件系统](/zh/architecture/plugin-system)——宿主如何挂载并监管插件。

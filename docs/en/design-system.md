@@ -1,6 +1,6 @@
 ---
 title: Design System
-description: Infinia 4.0.0 uses Material Design 3 on Vuetify 3, shared across the host UI and plugin micro-frontends.
+description: Infinia 4.0.0 uses Material Design 3 on Vuetify 3, with isolated plugin UIs synchronized through the host bridge.
 lang: en
 ---
 
@@ -19,15 +19,17 @@ The palette is Google's MD3 default (primary `#6750A4`). Colors, elevation, shap
 
 Theming is driven by a single Pinia store, the `useThemeStore` singleton. Components read theme state from this store rather than touching Vuetify directly, so dark/light mode and palette swaps propagate consistently.
 
-## Plugin micro-frontends share the host's Vuetify
+## Plugin micro-frontends use the UI kit
 
-A plugin's `ui/` micro-frontend mounts inside the host and reuses the **same Vuetify instance** the shell already installed — it does not bring its own copy. The host exposes that instance through `PluginContext.vuetify`, and the micro-frontend consumes it at mount:
+A plugin runs in a separate iframe JavaScript realm, so it cannot reuse the host's Vue or Vuetify instances. It installs `@infinia/plugin-ui`, which creates a plugin-local Vuetify instance with FengYu's components, defaults, and themes:
 
 ```ts
-app.use(ctx.vuetify)
+const vuetify = createFengYuVuetify()
+app.use(vuetify)
+await bindFengYuEnvironment(vuetify, fengyu)
 ```
 
-This keeps MD3 tokens, components, and theme state identical between the host and every loaded plugin.
+`bindFengYuEnvironment` obtains the initial locale and theme during `host.ready`, then applies later `environment` events. Isolation is preserved while the visible theme stays aligned.
 
 ## Summary
 
@@ -37,7 +39,7 @@ This keeps MD3 tokens, components, and theme state identical between the host an
 | Design language | Material Design 3 (Google default palette) |
 | Palette source | `frontend/src/plugins/md3-themes.ts` |
 | Theme runtime | Pinia `useThemeStore` singleton |
-| Plugin theming | Reuses host Vuetify via `PluginContext.vuetify` (`app.use(ctx.vuetify)`) |
+| Plugin theming | Local `@infinia/plugin-ui` instance bound to SDK environment events |
 | Themes | Light and dark |
 
 ## Next steps

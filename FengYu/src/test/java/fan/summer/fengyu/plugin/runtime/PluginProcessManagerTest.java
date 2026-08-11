@@ -79,6 +79,30 @@ class PluginProcessManagerTest {
     }
 
     @Test
+    void trackedInvokeCanBeCancelledByProtocolCallId() throws Exception {
+        PluginProcessManager manager = manager();
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var call = executor.submit(() ->
+                manager.invokeTracked("com.example.worker", "ui-call-1", "sleep", Map.of(), "en"));
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            boolean cancelled = false;
+            while (!cancelled && System.nanoTime() < deadline) {
+                cancelled = manager.cancel("com.example.worker", "ui-call-1");
+                if (!cancelled) Thread.sleep(10);
+            }
+            assertTrue(cancelled);
+            var error = assertThrows(java.util.concurrent.ExecutionException.class,
+                () -> call.get(5, TimeUnit.SECONDS));
+            assertTrue(error.getCause() instanceof IllegalStateException);
+            @SuppressWarnings("unchecked") Map<String, Object> result = (Map<String, Object>)
+                manager.invoke("com.example.worker", "echo", Map.of());
+            assertEquals("ok", result.get("value"));
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void concurrentInvokesOnSamePluginBothSucceed() throws Exception {
         PluginProcessManager manager = manager();
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -338,12 +362,9 @@ class PluginProcessManagerTest {
     @Test
     void upgradeRestartsWorkerByManifestVersion() throws Exception {
         // Build the manager and its package service together so we can reinstall the plugin in place.
-        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
-        String classpath = Path.of("target", "test-classes").toAbsolutePath().toString();
-        String command = "\"" + java + "\" -cp \"" + classpath + "\" " + EchoWorker.class.getName();
         PluginPackageService packages = new PluginPackageService(temp.resolve("plugins-up").toString());
         packages.install(new MockMultipartFile("file", "worker.fyp", "application/zip",
-            archive(manifestFor("com.example.worker", "1.0.0", command))));
+            archive(manifestFor("com.example.worker", "1.0.0"))));
         DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host-up").toString());
         PluginRuntimeEnvironmentService runtimeEnvironment = new PluginRuntimeEnvironmentService(
             dataSources, temp.resolve("plugin-data-up").toString());
@@ -360,7 +381,7 @@ class PluginProcessManagerTest {
             // (stop) + install.
             manager.stop("com.example.worker");
             packages.install(new MockMultipartFile("file", "worker.fyp", "application/zip",
-                archive(manifestFor("com.example.worker", "2.0.0", command))));
+                archive(manifestFor("com.example.worker", "2.0.0"))));
 
             // The next invoke must start a NEW worker process for v2 — a different pid.
             @SuppressWarnings("unchecked")
@@ -380,14 +401,11 @@ class PluginProcessManagerTest {
      */
     @Test
     void sameVersionRepackRestartsWorkerByContentDigest() throws Exception {
-        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
-        String classpath = Path.of("target", "test-classes").toAbsolutePath().toString();
-        String command = "\"" + java + "\" -cp \"" + classpath + "\" " + EchoWorker.class.getName();
         PluginPackageService packages = new PluginPackageService(temp.resolve("plugins-repack").toString());
         packages.attachIntegrityStoreForTest(new PluginIntegrityStore(temp.resolve("digests-repack")));
         // v1.0.0 with description "original".
         packages.install(new MockMultipartFile("file", "worker.fyp", "application/zip",
-            archive(manifestFor("com.example.worker", "1.0.0", command, "original"))));
+            archive(manifestFor("com.example.worker", "1.0.0", "original"))));
         DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host-repack").toString());
         PluginRuntimeEnvironmentService runtimeEnvironment = new PluginRuntimeEnvironmentService(
             dataSources, temp.resolve("plugin-data-repack").toString());
@@ -400,7 +418,7 @@ class PluginProcessManagerTest {
             // Repack the SAME version with different content (description "patched") + stop + reinstall.
             manager.stop("com.example.worker");
             packages.install(new MockMultipartFile("file", "worker.fyp", "application/zip",
-                archive(manifestFor("com.example.worker", "1.0.0", command, "patched"))));
+                archive(manifestFor("com.example.worker", "1.0.0", "patched"))));
 
             // The version is identical, but the package digest changed → the next invoke must start a
             // NEW worker process (different pid), proving the stale Worker was not reused.
@@ -516,18 +534,41 @@ class PluginProcessManagerTest {
         }
     }
 
-    private static String manifestFor(String id, String version, String command) throws Exception {
-        return manifestFor(id, version, command, "test");
+    private static String manifestFor(String id, String version) throws Exception {
+        return echoManifest(id, version, "test", List.of());
     }
 
-    private static String manifestFor(String id, String version, String command, String description) throws Exception {
+    private static String manifestFor(String id, String version, String description) throws Exception {
+        return echoManifest(id, version, description, List.of());
+    }
+
+    /**
+     * Build a v2 manifest for the EchoWorker fixture. Every method the EchoWorker responds to is
+     * declared in rpc.methods so the host's pre-worker method validation (bullet 2) accepts them.
+     */
+    private static String echoManifest(String id, String version, String description,
+            List<String> permissions) throws Exception {
+        String perms = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(permissions);
         return """
-            {"schemaVersion":1,"id":"%s","name":"Worker","description":"%s",
+            {"schemaVersion":2,"id":"%s","name":"Worker","description":"%s",
              "version":"%s","author":"test","icon":"test","category":"test",
              "ui":{"entry":"ui/index.html"},
-             "backend":{"command":%s,"protocol":"json-rpc-2.0"},"permissions":[]}
-            """.formatted(id, description, version,
-                new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(command));
+             "backend":{"callTimeoutSeconds":60},
+             "permissions":%s,
+             "rpc":{"methods":{
+               "echo":{"inputSchema":{"type":"object","properties":{}}},
+               "sleep":{"inputSchema":{"type":"object","properties":{}}},
+               "error":{"inputSchema":{"type":"object","properties":{}}},
+               "secret-error":{"inputSchema":{"type":"object","properties":{}}},
+               "stderr-secret":{"inputSchema":{"type":"object","properties":{}}},
+               "command":{"inputSchema":{"type":"object","properties":{}}},
+               "environment":{"inputSchema":{"type":"object","properties":{}}},
+               "env-probe":{"inputSchema":{"type":"object","properties":{}}},
+               "temporary-file":{"inputSchema":{"type":"object","properties":{}}},
+               "pid":{"inputSchema":{"type":"object","properties":{}}},
+               "eof":{"inputSchema":{"type":"object","properties":{}}}
+             }}}
+            """.formatted(id, description, version, perms);
     }
 
     @Test
@@ -748,16 +789,7 @@ class PluginProcessManagerTest {
     }
 
     private PluginProcessManager manager(List<String> permissions) throws Exception {
-        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
-        String classpath = Path.of("target", "test-classes").toAbsolutePath().toString();
-        String command = "\"" + java + "\" -cp \"" + classpath + "\" " + EchoWorker.class.getName();
-        String manifest = """
-            {"schemaVersion":1,"id":"com.example.worker","name":"Worker","description":"test",
-             "version":"1.0.0","author":"test","icon":"test","category":"test",
-             "ui":{"entry":"ui/index.html"},
-             "backend":{"command":%s,"protocol":"json-rpc-2.0"},"permissions":%s}
-            """.formatted(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(command),
-                new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(permissions));
+        String manifest = echoManifest("com.example.worker", "1.0.0", "test", permissions);
         PluginPackageService packages = new PluginPackageService(temp.resolve("plugins").toString());
         packages.install(new MockMultipartFile("file", "worker.fyp", "application/zip", archive(manifest)));
         DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host").toString());
@@ -773,15 +805,7 @@ class PluginProcessManagerTest {
      * {@link PluginIntegrityStore} pinned under the temp dir. Used by P0-2 tamper-detection tests.
      */
     private PluginProcessManager managerWithIntegrity() throws Exception {
-        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
-        String classpath = Path.of("target", "test-classes").toAbsolutePath().toString();
-        String command = "\"" + java + "\" -cp \"" + classpath + "\" " + EchoWorker.class.getName();
-        String manifest = """
-            {"schemaVersion":1,"id":"com.example.worker","name":"Worker","description":"test",
-             "version":"1.0.0","author":"test","icon":"test","category":"test",
-             "ui":{"entry":"ui/index.html"},
-             "backend":{"command":%s,"protocol":"json-rpc-2.0"},"permissions":[]}
-            """.formatted(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(command));
+        String manifest = echoManifest("com.example.worker", "1.0.0", "test", List.of());
         PluginPackageService packages = new PluginPackageService(temp.resolve("plugins-int").toString());
         packages.attachIntegrityStoreForTest(new PluginIntegrityStore(temp.resolve("digests-int")));
         packages.install(new MockMultipartFile("file", "worker.fyp", "application/zip", archive(manifest)));
@@ -801,15 +825,7 @@ class PluginProcessManagerTest {
      * colliding with {@link #manager(List)} when both run in the same class.
      */
     private PluginProcessManager managerWithBackend(ProcessSandbox.Backend backend) throws Exception {
-        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
-        String classpath = Path.of("target", "test-classes").toAbsolutePath().toString();
-        String command = "\"" + java + "\" -cp \"" + classpath + "\" " + EchoWorker.class.getName();
-        String manifest = """
-            {"schemaVersion":1,"id":"com.example.worker","name":"Worker","description":"test",
-             "version":"1.0.0","author":"test","icon":"test","category":"test",
-             "ui":{"entry":"ui/index.html"},
-             "backend":{"command":%s,"protocol":"json-rpc-2.0"},"permissions":[]}
-            """.formatted(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(command));
+        String manifest = echoManifest("com.example.worker", "1.0.0", "test", List.of());
         PluginPackageService packages = new PluginPackageService(temp.resolve("plugins-none").toString());
         packages.install(new MockMultipartFile("file", "worker.fyp", "application/zip", archive(manifest)));
         DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host-none").toString());
@@ -824,12 +840,43 @@ class PluginProcessManagerTest {
     private byte[] archive(String manifest) throws Exception {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
-            add(zip, "manifest.json", manifest); add(zip, "ui/index.html", "test");
+            add(zip, "manifest.json", manifest);
+            add(zip, "ui/index.html", "test");
+            // T2-04: the worker command is fixed to `java -jar backend/worker.jar`, so the archive
+            // must ship an executable jar containing EchoWorker with a Main-Class manifest entry.
+            add(zip, "backend/worker.jar", workerJar());
         }
         return bytes.toByteArray();
     }
+
+    /**
+     * Build a minimal executable jar containing only the compiled EchoWorker class (it uses only
+     * JDK types, so no classpath dependencies are needed). The Main-Class manifest entry lets the
+     * fixed {@code java -jar backend/worker.jar} command launch it.
+     */
+    private static byte[] workerJar() throws Exception {
+        String className = EchoWorker.class.getName();
+        Path classFile = Path.of("target", "test-classes").toAbsolutePath()
+                .resolve(className.replace('.', '/') + ".class");
+        assertTrue(Files.exists(classFile),
+                "EchoWorker class file not found at " + classFile + " — run test-compile first");
+        var manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(java.util.jar.Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(java.util.jar.Attributes.Name.MAIN_CLASS, className);
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (var jar = new java.util.jar.JarOutputStream(bytes, manifest)) {
+            jar.putNextEntry(new ZipEntry(className.replace('.', '/') + ".class"));
+            jar.write(Files.readAllBytes(classFile));
+            jar.closeEntry();
+        }
+        return bytes.toByteArray();
+    }
+
+    private static void add(ZipOutputStream zip, String name, byte[] value) throws Exception {
+        zip.putNextEntry(new ZipEntry(name)); zip.write(value); zip.closeEntry();
+    }
     private static void add(ZipOutputStream zip, String name, String value) throws Exception {
-        zip.putNextEntry(new ZipEntry(name)); zip.write(value.getBytes(StandardCharsets.UTF_8)); zip.closeEntry();
+        add(zip, name, value.getBytes(StandardCharsets.UTF_8));
     }
 
     public static final class EchoWorker {

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 2,
+  "id": "com.example.schematring",
+  "name": "SchemaString",
+  "description": "Rejects inputSchema written as an escaped JSON string instead of an object.",
+  "version": "1.0.0",
+  "author": "Fixture",
+  "icon": "puzzle-outline",
+  "category": "other",
+  "ui": { "entry": "ui/index.html" },
+  "backend": {},
+  "rpc": {
+    "methods": {
+      "render": {
+        "inputSchema": "{\"type\":\"object\"}"
+      }
+    }
+  }
+}

@@ -16,6 +16,8 @@ final class PluginWorkerProtocol {
     static final String LOG_LEVEL_ENV = "FENGYU_LOG_LEVEL";
     static final String PLUGIN_DATA_DIR_ENV = "FENGYU_PLUGIN_DATA_DIR";
     static final String SET_LOG_LEVEL_METHOD = "$/fengyu/logging/setLevel";
+    /** JSON-RPC notification the host sends to cooperatively cancel an in-flight worker call. */
+    static final String CANCEL_REQUEST_METHOD = "$/cancelRequest";
     static final String LOG_FRAME_PREFIX = "@fengyu-log:";
 
     private PluginWorkerProtocol() {}

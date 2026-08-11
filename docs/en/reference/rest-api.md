@@ -41,7 +41,8 @@ Descriptor access and worker invocation for installed plugins.
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | `GET` | `/api/plugin-runtime` | token | Enabled plugins as `InstalledPluginDescriptor[]`. |
-| `POST` | `/api/plugin-runtime/{id}/invoke` | token | Invoke a worker method. Body `{method, params}` → JSON-RPC `result`. See [Worker](/en/plugins/worker). |
+| `POST` | `/api/plugin-runtime/{id}/invoke` | token | Invoke a worker method. Body `{callId, method, params}` → JSON-RPC `result`. `callId` is the protocol correlation id. See [Worker](/en/plugins/worker). |
+| `POST` | `/api/plugin-runtime/{id}/invoke/{callId}/cancel` | token | Interrupt a tracked invocation. Returns `{cancelled}`; cancelling a Worker call tears down that Worker so a stuck handler cannot continue. |
 | `GET` | `/api/plugin-runtime/{id}/logs` | token | Recent Worker events as `{timestamp, level, logger, thread, message, sequence}`; legacy stderr has null logger/thread. |
 | `GET` | `/api/plugin-runtime/{id}/logs/stream` | token | Replay recent Worker events, then stream new events over SSE. |
 | `GET` | `/plugin-runtime/{id}/**` | — | Plugin UI static assets (entry HTML + JS), served under a strict CSP. |

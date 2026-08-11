@@ -12,10 +12,16 @@ import java.util.function.Consumer;
 /**
  * Runs subprocesses, streaming stdout/stderr line-by-line to a sink (the log console).
  * Supports cancellation via the volatile {@code destroyed} flag set by {@link #cancel()}.
+ *
+ * <p><b>Tree reaping on cancel.</b> A build/deploy spawns pip, which in turn spawns its own
+ * children (download workers, installer subprocesses). {@link #cancel()} destroys the whole
+ * process <em>tree</em> — the tracked pip process plus every live descendant — so a domain
+ * {@code build.cancel}/{@code deploy.cancel} never leaves orphaned python/pip/temp-download
+ * processes holding locks or burning CPU after the job reports CANCELLED.
  */
 public class ProcessRunner {
 
-    private Process process;
+    private volatile Process process;
     private volatile boolean destroyed;
 
     /** Build the platform-targeted pip download command list. Requirement specs are passed
@@ -50,7 +56,7 @@ public class ProcessRunner {
             }
         }
         if (destroyed) {
-            process.destroyForcibly();
+            destroyTree(process);
             process.waitFor(2, TimeUnit.SECONDS);
             return -1;
         }
@@ -59,7 +65,32 @@ public class ProcessRunner {
 
     public void cancel() {
         destroyed = true;
-        if (process != null) process.destroyForcibly();
+        if (process != null) destroyTree(process);
+    }
+
+    /** Process handle of the tracked subprocess (null until {@link #run} starts it). Inspection hook. */
+    ProcessHandle handle() {
+        return process == null ? null : process.toHandle();
+    }
+
+    /**
+     * Forcibly destroy {@code process} and every live descendant (pip's children, grand-children,
+     * …) so a domain cancel reaps the whole subprocess tree, not just the immediate pip process.
+     * Descendants are destroyed BEFORE the parent so a child cannot be reparented to init and
+     * escape; each destroy is best-effort (a handle may already be dead).
+     */
+    private static void destroyTree(Process process) {
+        try {
+            // Destroy descendants first, then the process itself, so none slip away via re-parenting.
+            process.descendants().forEach(ProcessRunner::destroyForciblyQuiet);
+            process.destroyForcibly();
+        } catch (Exception ignored) {
+            // Best-effort: never let a cleanup failure mask the cancel outcome.
+        }
+    }
+
+    private static void destroyForciblyQuiet(ProcessHandle handle) {
+        try { handle.destroyForcibly(); } catch (Exception ignored) {}
     }
 
     /** Run a short command and return combined stdout (best-effort, quiet). */

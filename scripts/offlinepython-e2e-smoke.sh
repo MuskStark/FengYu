@@ -6,7 +6,7 @@ PORT="${1:-8900}"
 TOKEN="${2:-offlinepython-smoke-token}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 JAR="$ROOT/FengYu/target/FengYu-4.0.0.jar"
-PACKAGE="$ROOT/OfficialPlugins/plugin-offlinepython/dist-package/fan.summer.offlinepython-4.0.0.fyp"
+PACKAGE="$ROOT/OfficialPlugins/plugin-offlinepython/dist/fan.summer.offlinepython-4.0.0.fyp"
 
 [ -f "$JAR" ] || { echo "FAIL: main JAR is missing: $JAR"; exit 1; }
 [ -f "$PACKAGE" ] || { echo "FAIL: plugin package is missing: $PACKAGE"; exit 1; }
@@ -65,12 +65,12 @@ PROJECT="$(curl -s "${AUTH[@]}" -F 'files=@requirements.txt' -F 'paths=requireme
   "$HOST/api/plugin-runtime/fan.summer.offlinepython/files/upload-directory?access=read-write")"
 echo "$PROJECT" | grep -q '"access":"read-write"' || fail "workspace grant: $PROJECT"
 
-GET_BODY="$(python3 -c 'import json,sys; print(json.dumps({"method":"requirements.get","params":{"projectDir":json.loads(sys.argv[1])}}))' "$PROJECT")"
+GET_BODY="$(python3 -c 'import json,sys; print(json.dumps({"callId":"smoke","method":"requirementsGet","params":{"projectDir":json.loads(sys.argv[1])}}))' "$PROJECT")"
 GET_RESULT="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' \
   -d "$GET_BODY" "$HOST/api/plugin-runtime/fan.summer.offlinepython/invoke")"
 echo "$GET_RESULT" | grep -q 'numpy==1.26.4' || fail "FileRef resolution: $GET_RESULT"
 
-SAVE_BODY="$(python3 -c 'import json,sys; print(json.dumps({"method":"requirements.save","params":{"projectDir":json.loads(sys.argv[1]),"text":"requests==2.32.4\\n"}}))' "$PROJECT")"
+SAVE_BODY="$(python3 -c 'import json,sys; print(json.dumps({"callId":"smoke","method":"requirementsSave","params":{"projectDir":json.loads(sys.argv[1]),"text":"requests==2.32.4\\n"}}))' "$PROJECT")"
 SAVE_RESULT="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' \
   -d "$SAVE_BODY" "$HOST/api/plugin-runtime/fan.summer.offlinepython/invoke")"
 echo "$SAVE_RESULT" | grep -q '"success":true' || fail "writable workspace: $SAVE_RESULT"

@@ -1,8 +1,13 @@
-import { expect, it, vi } from 'vitest'
-import type { FengYuClient } from '@infinia/plugin-sdk'
-import { callChecked } from './rpc'
+import { expect, it } from 'vitest'
+import { checked } from './rpc'
 
-it('throws the worker summary when an operation reports failure', async () => {
-  const client = { invoke: vi.fn().mockResolvedValue({ success: false, summary: 'requirements failed' }) } as unknown as FengYuClient
-  await expect(callChecked(client, 'requirements.save', {})).rejects.toThrow('requirements failed')
+it('returns the result when an operation reports success', () => {
+  const ok = { success: true, summary: 'ok', jobId: 'job_1' }
+  expect(checked(ok)).toBe(ok)
+})
+
+it('throws the worker summary when an operation reports failure', () => {
+  // Mirrors the legacy callChecked contract: a {success:false} envelope surfaces as a thrown
+  // Error carrying the worker's localized summary, so panels can catch + toast it.
+  expect(() => checked({ success: false, summary: 'requirements failed' })).toThrow('requirements failed')
 })

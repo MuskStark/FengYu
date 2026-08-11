@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useFengYuClient } from '@infinia/plugin-ui'
 import { useFengYuEnvironment } from './env'
+import { createPluginRpc } from './generated/fengyu-rpc'
 
 // The host provides the client via provideFengYuClient() in main.ts. In a bare
 // standalone preview (no host) the inject throws, so guard with a try/catch.
@@ -11,6 +12,9 @@ try {
   client = useFengYuClient()
   t = useFengYuEnvironment().t
 } catch { client = undefined }
+
+// Typed RPC client generated from manifest rpc.methods. null when there is no host.
+const rpc = client ? createPluginRpc(client) : undefined
 
 const SAMPLE = '# Hello FengYu\n\nType **markdown** here.'
 
@@ -24,23 +28,21 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-interface RenderResult { success: boolean; html?: string; error?: string; summary?: string }
-
 async function render(): Promise<void> {
-  if (!client) {
+  if (!rpc) {
     // No host wiring (standalone) — show the raw source so the pane isn't blank.
     isError.value = false
     html.value = '<pre>' + escapeHtml(markdown.value) + '</pre>'
     return
   }
   try {
-    const res = await client.invoke<RenderResult>('render', { markdown: markdown.value })
-    if (res && res.success) {
+    const res = await rpc.render({ markdown: markdown.value })
+    if (res.success) {
       isError.value = false
       html.value = typeof res.html === 'string' ? res.html : ''
     } else {
       isError.value = true
-      html.value = escapeHtml((res && res.error) || t('mde.renderFailed'))
+      html.value = escapeHtml(res.summary || t('mde.renderFailed'))
     }
   } catch (err) {
     isError.value = true

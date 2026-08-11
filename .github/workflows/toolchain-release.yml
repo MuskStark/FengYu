@@ -66,10 +66,10 @@ jobs:
       - run: cd toolchain/cli && npm ci && npm test
       # Test and install the Java SDK + DevKit, then build every official plugin through the CLI.
       - run: ./mvnw -pl toolchain/devkit-java -am install
-      - run: node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-markdown
-      - run: node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-excel
-      - run: node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-email
-      - run: node toolchain/cli/bin/fengyu.mjs plugin build OfficialPlugins/plugin-offlinepython
+      - run: node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-markdown
+      - run: node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-excel
+      - run: node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-email
+      - run: node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-offlinepython
       - name: Verify npm package contents
         run: |
           (cd toolchain/cli && npm pack --ignore-scripts --dry-run --json) > cli-pack.json
@@ -192,7 +192,7 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
         run: |
           cd "$(mktemp -d)"
-          npx --yes @infinia/plugin-cli@$VERSION plugin create demo --id com.example.demo
+          npx --yes @infinia/plugin-cli@$VERSION init demo --id com.example.demo
           cd demo
-          npx --yes @infinia/plugin-cli@$VERSION plugin build .
-          test -f dist-package/com.example.demo-1.0.0.fyp
+          npx --yes @infinia/plugin-cli@$VERSION build .
+          test -f dist/com.example.demo-1.0.0.fyp

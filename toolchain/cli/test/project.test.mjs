@@ -24,10 +24,10 @@ test.after(async () => {
   await fs.rm(base, { recursive: true, force: true }).catch(() => {})
 })
 
-// detectProject was previously exercised by dev.test.mjs; with `fengyu plugin dev` removed,
-// project classification is still load-bearing for `build` (declared/vue-vite/static dispatch),
+// detectProject was previously exercised by the legacy dev command tests; project
+// classification is still load-bearing for `build` (declared/vue-vite/static dispatch),
 // so the contract is kept here.
-test('detectProject recognizes generated Vite and legacy static projects', async () => {
-  assert.equal((await detectProject(generatedRoot)).kind, 'vue-vite')
-  assert.equal((await detectProject(staticFixture)).kind, 'static')
+test('detectProject recognizes source and static standard projects', async () => {
+  assert.equal((await detectProject(generatedRoot)).kind, 'standard')
+  assert.equal((await detectProject(staticFixture)).kind, 'standard')
 })

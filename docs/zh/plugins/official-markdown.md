@@ -70,7 +70,7 @@ UI 是一个 Vuetify 分栏 MF：
 
 - **左栏**——一个 Markdown 源码编辑器（`<v-textarea>` 或等价物）。
 - **右栏**——实时 HTML 预览，每次 `render` 结果都会重绘。
-- 通过共享宿主的 `PluginContext.vuetify` 使用宿主的 Vuetify 实例（MD3）构建——它**不**自带一份副本。Vue/Vuetify 去重规则见 [常见陷阱](/zh/plugins/pitfalls)。
+- 使用 iframe 内部的 `@infinia/plugin-ui` Vuetify 实例（MD3）构建，并通过 SDK 环境桥梁跟随宿主的主题与语言变化。
 
 它加载在 `/plugin-runtime/fan.summer.markdown/**` 下的沙箱化 iframe 中，并通过 `@infinia/plugin-sdk` 与宿主桥接。参见 [UI 微前端](/zh/plugins/ui-microfrontend)。
 

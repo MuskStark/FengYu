@@ -25,7 +25,7 @@ export async function assembleStaging(project, staging) {
   // 1. manifest.json (always from the project root).
   await fs.copyFile(path.join(root, 'manifest.json'), path.join(staging, 'manifest.json'))
 
-  if (project.kind === 'declared' && project.config) {
+  if (project.kind === 'standard' && project.config) {
     const cfg = project.config
     // 2. UI build output -> staging/ui.
     if (cfg.ui) {
@@ -37,7 +37,7 @@ export async function assembleStaging(project, staging) {
       await fs.copyFile(cfg.worker.artifact, path.join(staging, 'backend', 'worker.jar'))
     }
     // 4. Declared extra resources.
-    for (const { from, to } of cfg.package.resources) {
+    for (const { from, to } of cfg.package.resources ?? []) {
       const dest = path.join(staging, ...to.split('/'))
       const stat = await fs.lstat(from)
       if (stat.isDirectory()) {
@@ -46,12 +46,6 @@ export async function assembleStaging(project, staging) {
         await fs.mkdir(path.dirname(dest), { recursive: true })
         await fs.copyFile(from, dest)
       }
-    }
-  } else {
-    // Legacy vue-vite / static: the project's own ui/ directory is the output.
-    const uiDir = path.join(root, 'ui')
-    if (fsSync.existsSync(uiDir)) {
-      await copyRuntimeTree(uiDir, path.join(staging, 'ui'))
     }
   }
 }

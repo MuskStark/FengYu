@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "{{pluginId}}",
   "name": "{{pluginName}}",
   "description": "A FengYu plugin",

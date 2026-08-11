@@ -52,8 +52,9 @@ When a version number matters, **read it from its source file**; do not copy a l
 When prose guidance conflicts with the repository, **the repository wins**. Inspect the actual
 file rather than trusting a summary:
 
-- Plugin runtime contract → `toolchain/spec/manifest.schema.json`, a plugin's `manifest.json` and
-  `fengyu.plugin.json`, and `FengYu/src/main/java/fan/summer/fengyu/plugin/` (market + runtime).
+- Plugin runtime contract → `toolchain/spec/manifest.schema.json`, a plugin's `manifest.json`, its
+  conventional `ui-src/package.json` + optional Maven Worker, and
+  `FengYu/src/main/java/fan/summer/fengyu/plugin/` (market + runtime).
 - Skill runtime contract → `FengYu/src/main/java/fan/summer/fengyu/ai/skill/` (discovery,
   registry, progressive-disclosure `skill` tool) and built-in skill bodies under
   `FengYu/src/main/resources/skills/`. Skills are a **peer extension surface to plugins**, not

@@ -7,9 +7,72 @@ import fan.summer.fengyu.plugin.email.rpc.EmailRpcHandlers;
 import fan.summer.fengyu.sdk.JsonRpcWorker;
 import fan.summer.fengyu.sdk.PluginDatabaseConfig;
 import fan.summer.fengyu.sdk.PluginMessages;
+import fan.summer.email.generated.PluginMethods;
+
+// Generated Input records (one per rpc.methods entry). Explicit imports keep the set of registered
+// methods auditable; the types are pure data carriers produced by the toolchain generator.
+import fan.summer.email.generated.EmailAccountDeleteInput;
+import fan.summer.email.generated.EmailAccountFindInput;
+import fan.summer.email.generated.EmailAccountSaveInput;
+import fan.summer.email.generated.EmailAccountSetDefaultInput;
+import fan.summer.email.generated.EmailAccountTestImapInput;
+import fan.summer.email.generated.EmailAccountTestInput;
+import fan.summer.email.generated.EmailAccountsListInput;
+import fan.summer.email.generated.EmailArchiveDetailInput;
+import fan.summer.email.generated.EmailArchiveFetchCancelInput;
+import fan.summer.email.generated.EmailArchiveFetchStartInput;
+import fan.summer.email.generated.EmailArchiveFetchStatusInput;
+import fan.summer.email.generated.EmailArchiveFetchInput;
+import fan.summer.email.generated.EmailArchiveQueryInput;
+import fan.summer.email.generated.EmailBatchPreviewInput;
+import fan.summer.email.generated.EmailConfigDeleteInput;
+import fan.summer.email.generated.EmailConfigFindInput;
+import fan.summer.email.generated.EmailConfigSaveInput;
+import fan.summer.email.generated.EmailConfigsListInput;
+import fan.summer.email.generated.EmailContactDeleteInput;
+import fan.summer.email.generated.EmailContactFindInput;
+import fan.summer.email.generated.EmailContactSaveInput;
+import fan.summer.email.generated.EmailContactsImportCommitInput;
+import fan.summer.email.generated.EmailContactsImportPreviewInput;
+import fan.summer.email.generated.EmailContactsQueryInput;
+import fan.summer.email.generated.EmailImapFoldersInput;
+import fan.summer.email.generated.EmailSendBatchInput;
+import fan.summer.email.generated.EmailSendRecordsQueryInput;
+import fan.summer.email.generated.EmailSendSingleInput;
+import fan.summer.email.generated.EmailSendStatusInput;
+import fan.summer.email.generated.EmailTagDeleteInput;
+import fan.summer.email.generated.EmailTagSaveInput;
+import fan.summer.email.generated.EmailTagsAssignInput;
+import fan.summer.email.generated.EmailTagsListInput;
+import fan.summer.email.generated.EmailTagsResolveInput;
+import fan.summer.email.generated.ConfirmSendInput;
+import fan.summer.email.generated.RejectSendInput;
 
 import java.util.Map;
 
+/**
+ * Email Center worker. Speaks newline-delimited JSON-RPC 2.0 on stdio under the Toolchain 2 typed
+ * contract: every method is registered through {@link JsonRpcWorker#method}, so the SDK deserializes
+ * each incoming {@code params} object into the matching generated Input record (package
+ * {@code fan.summer.email.generated}), binds an {@code RpcContext} (call id, locale, cancellation
+ * token, logger) to the handler thread, and serializes the returned envelope back into the response.
+ *
+ * <p>The handler implementations live in {@link EmailRpcHandlers}; they read typed fields off the
+ * Input records (no raw {@code Map} parsing, no removed {@code JsonRpcWorker.string/integer}
+ * extraction) and return the existing {success, summary, ...} envelope, which Gson serializes
+ * directly. <b>Output type.</b> Each method is registered with {@code Object.class} as its output
+ * type: the SDK treats {@code outputClass} as documentary ("the returned value is serialized by Gson
+ * regardless of its declared type") and the manifest declares the rich payload (accounts, contacts,
+ * tags, ...) as a free-form object "carried in the runtime result", so the generated
+ * {@code <Method>Output} records are structurally insufficient (empty nested types / missing data
+ * fields) and the handlers return the full envelope {@link java.util.Map} instead. SMTP/IMAP handlers
+ * cooperative-check {@code RpcContext.cancellation()} so a {@code $/cancelRequest} from the host
+ * yields a clean {@code CANCELLED} response instead of running to completion.
+ *
+ * <p>{@link JsonRpcWorker#run()} captures stdout as the JSON-RPC protocol stream and only then
+ * redirects stdout to stderr to keep handler/JDBC noise off the wire, so this class must NOT call
+ * {@code System.setOut} first (see the regression documented below).
+ */
 public final class EmailWorkerMain {
     private static final PluginMessages MSGS = PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, EmailWorkerMain.class);
     private EmailWorkerMain() { }
@@ -22,45 +85,50 @@ public final class EmailWorkerMain {
         worker(handlers(System.getenv())).run();
     }
 
-    static JsonRpcWorker worker(EmailRpcHandlers handlers) {
+    static JsonRpcWorker worker(EmailRpcHandlers h) {
         return new JsonRpcWorker()
-            .onClose(handlers)
-            .on("email_accounts_list", handlers.handle("email_accounts_list", handlers::listAccounts))
-            .on("email_contacts_query", handlers.handle("email_contacts_query", handlers::queryContacts))
-            .on("email_send_single", handlers.handle("email_send_single", handlers::prepareSingle))
-            .on("email_send_batch", handlers.handle("email_send_batch", handlers::prepareBatch))
-            .on("email_batch_preview", handlers.handle("email_batch_preview", handlers::previewBatch))
-            .on("email_send_status", handlers.handle("email_send_status", handlers::sendStatus))
-            .on("email_send_records_query", handlers.handle("email_send_records_query", handlers::querySendRecords))
-            .on("email_archive_fetch", handlers.handle("email_archive_fetch", handlers::collect))
-            .on("email_archive_fetch_start", handlers.handle("email_archive_fetch_start", handlers::collectStart))
-            .on("email_archive_fetch_status", handlers.handle("email_archive_fetch_status", handlers::collectStatus))
-            .on("email_archive_fetch_cancel", handlers.handle("email_archive_fetch_cancel", handlers::collectCancel))
-            .on("email_archive_query", handlers.handle("email_archive_query", handlers::queryArchive))
-            .on("email_imap_folders", handlers.handle("email_imap_folders", handlers::listFolders))
-            .on("confirm_send", handlers.handle("confirm_send", handlers::confirmSend))
-            .on("reject_send", handlers.handle("reject_send", handlers::rejectSend))
-            .on("email_account_find", handlers.handle("email_account_find", handlers::findAccount))
-            .on("email_account_save", handlers.handle("email_account_save", handlers::saveAccount))
-            .on("email_account_delete", handlers.handle("email_account_delete", handlers::deleteAccount))
-            .on("email_account_set_default", handlers.handle("email_account_set_default", handlers::setDefaultAccount))
-            .on("email_account_test", handlers.handle("email_account_test", handlers::testAccount))
-            .on("email_account_test_imap", handlers.handle("email_account_test_imap", handlers::testImapAccount))
-            .on("email_contact_find", handlers.handle("email_contact_find", handlers::findContact))
-            .on("email_contact_save", handlers.handle("email_contact_save", handlers::saveContact))
-            .on("email_contact_delete", handlers.handle("email_contact_delete", handlers::deleteContact))
-            .on("email_tags_list", handlers.handle("email_tags_list", handlers::listTags))
-            .on("email_tag_save", handlers.handle("email_tag_save", handlers::saveTag))
-            .on("email_tag_delete", handlers.handle("email_tag_delete", handlers::deleteTag))
-            .on("email_tags_assign", handlers.handle("email_tags_assign", handlers::assignTags))
-            .on("email_tags_resolve", handlers.handle("email_tags_resolve", handlers::resolveRecipients))
-            .on("email_contacts_import_preview", handlers.handle("email_contacts_import_preview", handlers::importContactsPreview))
-            .on("email_contacts_import_commit", handlers.handle("email_contacts_import_commit", handlers::importContactsCommit))
-            .on("email_configs_list", handlers.handle("email_configs_list", handlers::listConfigs))
-            .on("email_config_find", handlers.handle("email_config_find", handlers::findConfig))
-            .on("email_config_save", handlers.handle("email_config_save", handlers::saveConfig))
-            .on("email_config_delete", handlers.handle("email_config_delete", handlers::deleteConfig))
-            .on("email_archive_detail", handlers.handle("email_archive_detail", handlers::archiveDetail));
+            .onClose(h)
+            // Accounts (credentials are write-only: accepted, encrypted at rest, never returned).
+            .method(PluginMethods.EMAIL_ACCOUNTS_LIST, EmailAccountsListInput.class, Object.class, h::listAccounts)
+            .method(PluginMethods.EMAIL_ACCOUNT_FIND, EmailAccountFindInput.class, Object.class, h::findAccount)
+            .method(PluginMethods.EMAIL_ACCOUNT_SAVE, EmailAccountSaveInput.class, Object.class, h::saveAccount)
+            .method(PluginMethods.EMAIL_ACCOUNT_DELETE, EmailAccountDeleteInput.class, Object.class, h::deleteAccount)
+            .method(PluginMethods.EMAIL_ACCOUNT_SET_DEFAULT, EmailAccountSetDefaultInput.class, Object.class, h::setDefaultAccount)
+            .method(PluginMethods.EMAIL_ACCOUNT_TEST, EmailAccountTestInput.class, Object.class, h::testAccount)
+            .method(PluginMethods.EMAIL_ACCOUNT_TEST_IMAP, EmailAccountTestImapInput.class, Object.class, h::testImapAccount)
+            // Contacts, tags, address book.
+            .method(PluginMethods.EMAIL_CONTACTS_QUERY, EmailContactsQueryInput.class, Object.class, h::queryContacts)
+            .method(PluginMethods.EMAIL_CONTACT_FIND, EmailContactFindInput.class, Object.class, h::findContact)
+            .method(PluginMethods.EMAIL_CONTACT_SAVE, EmailContactSaveInput.class, Object.class, h::saveContact)
+            .method(PluginMethods.EMAIL_CONTACT_DELETE, EmailContactDeleteInput.class, Object.class, h::deleteContact)
+            .method(PluginMethods.EMAIL_TAGS_LIST, EmailTagsListInput.class, Object.class, h::listTags)
+            .method(PluginMethods.EMAIL_TAG_SAVE, EmailTagSaveInput.class, Object.class, h::saveTag)
+            .method(PluginMethods.EMAIL_TAG_DELETE, EmailTagDeleteInput.class, Object.class, h::deleteTag)
+            .method(PluginMethods.EMAIL_TAGS_ASSIGN, EmailTagsAssignInput.class, Object.class, h::assignTags)
+            .method(PluginMethods.EMAIL_TAGS_RESOLVE, EmailTagsResolveInput.class, Object.class, h::resolveRecipients)
+            .method(PluginMethods.EMAIL_CONTACTS_IMPORT_PREVIEW, EmailContactsImportPreviewInput.class, Object.class, h::importContactsPreview)
+            .method(PluginMethods.EMAIL_CONTACTS_IMPORT_COMMIT, EmailContactsImportCommitInput.class, Object.class, h::importContactsCommit)
+            // Batch-send configuration templates.
+            .method(PluginMethods.EMAIL_CONFIGS_LIST, EmailConfigsListInput.class, Object.class, h::listConfigs)
+            .method(PluginMethods.EMAIL_CONFIG_FIND, EmailConfigFindInput.class, Object.class, h::findConfig)
+            .method(PluginMethods.EMAIL_CONFIG_SAVE, EmailConfigSaveInput.class, Object.class, h::saveConfig)
+            .method(PluginMethods.EMAIL_CONFIG_DELETE, EmailConfigDeleteInput.class, Object.class, h::deleteConfig)
+            // Send: prepare (confirmation-first) → confirm/reject → status/records.
+            .method(PluginMethods.EMAIL_SEND_SINGLE, EmailSendSingleInput.class, Object.class, h::prepareSingle)
+            .method(PluginMethods.EMAIL_SEND_BATCH, EmailSendBatchInput.class, Object.class, h::prepareBatch)
+            .method(PluginMethods.EMAIL_BATCH_PREVIEW, EmailBatchPreviewInput.class, Object.class, h::previewBatch)
+            .method(PluginMethods.EMAIL_SEND_STATUS, EmailSendStatusInput.class, Object.class, h::sendStatus)
+            .method(PluginMethods.EMAIL_SEND_RECORDS_QUERY, EmailSendRecordsQueryInput.class, Object.class, h::querySendRecords)
+            .method(PluginMethods.CONFIRM_SEND, ConfirmSendInput.class, Object.class, h::confirmSend)
+            .method(PluginMethods.REJECT_SEND, RejectSendInput.class, Object.class, h::rejectSend)
+            // Archive (IMAP collection). Synchronous fetch + async job trio with domain cancel.
+            .method(PluginMethods.EMAIL_ARCHIVE_FETCH, EmailArchiveFetchInput.class, Object.class, h::collect)
+            .method(PluginMethods.EMAIL_ARCHIVE_FETCH_START, EmailArchiveFetchStartInput.class, Object.class, h::collectStart)
+            .method(PluginMethods.EMAIL_ARCHIVE_FETCH_STATUS, EmailArchiveFetchStatusInput.class, Object.class, h::collectStatus)
+            .method(PluginMethods.EMAIL_ARCHIVE_FETCH_CANCEL, EmailArchiveFetchCancelInput.class, Object.class, h::collectCancel)
+            .method(PluginMethods.EMAIL_ARCHIVE_QUERY, EmailArchiveQueryInput.class, Object.class, h::queryArchive)
+            .method(PluginMethods.EMAIL_ARCHIVE_DETAIL, EmailArchiveDetailInput.class, Object.class, h::archiveDetail)
+            .method(PluginMethods.EMAIL_IMAP_FOLDERS, EmailImapFoldersInput.class, Object.class, h::listFolders);
     }
 
     static EmailRpcHandlers handlers(Map<String, String> environment) {

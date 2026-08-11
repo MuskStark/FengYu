@@ -239,10 +239,9 @@ public class ChatFileGrantService {
     private List<PluginManifest> eligiblePlugins() {
         return packages.installed().stream()
             .filter(plugin -> packages.isEnabled(plugin.id()))
-            .filter(plugin -> plugin.backend() != null
-                && plugin.backend().command() != null
-                && !plugin.backend().command().isBlank()
-                && "json-rpc-2.0".equals(plugin.backend().protocol()))
+            // T2-04: backend presence means a JSON-RPC worker exists (the command/protocol fields
+            // were removed in schema v2 — the worker is fixed to java -jar backend/worker.jar).
+            .filter(plugin -> plugin.backend() != null)
             .toList();
     }
 
