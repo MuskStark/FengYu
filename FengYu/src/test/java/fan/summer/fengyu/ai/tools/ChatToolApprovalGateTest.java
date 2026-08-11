@@ -142,6 +142,7 @@ class ChatToolApprovalGateTest {
         ChatToolApprovalGate gate = new ChatToolApprovalGate();
         CountDownLatch requested = new CountDownLatch(1);
         CountDownLatch completed = new CountDownLatch(1);
+        AtomicReference<String> message = new AtomicReference<>();
 
         Thread.ofVirtual().start(() -> {
             try {
@@ -154,6 +155,7 @@ class ChatToolApprovalGateTest {
                             }
                         });
             } catch (ChatToolApprovalGate.ToolApprovalException expected) {
+                message.set(expected.getMessage());
                 completed.countDown();
             }
         });
@@ -161,6 +163,7 @@ class ChatToolApprovalGateTest {
         assertTrue(requested.await(2, TimeUnit.SECONDS));
         gate.cancelPending();
         assertTrue(completed.await(2, TimeUnit.SECONDS));
+        assertTrue(message.get().contains("cancelled"));
     }
 
     private static AssistantMessage toolCall(String name) {

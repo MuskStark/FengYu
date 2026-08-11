@@ -12,6 +12,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -45,6 +46,8 @@ public final class JsonRpcWorker {
 
     private final Gson json = new Gson();
     private final Map<String, PluginHandler> handlers = new ConcurrentHashMap<>();
+    private final CopyOnWriteArrayList<AutoCloseable> closeables = new CopyOnWriteArrayList<>();
+    private final AtomicBoolean closed = new AtomicBoolean();
     /**
      * Invoked when the worker must terminate its JVM. Production wires {@link System#exit(int)};
      * tests inject a no-op recorder so the test JVM is not killed. Package-private and overridable
@@ -56,6 +59,14 @@ public final class JsonRpcWorker {
         if (method == null || method.isBlank()) throw new IllegalArgumentException("method is required");
         java.util.Objects.requireNonNull(handler, "handler");
         if (handlers.putIfAbsent(method, handler) != null) throw new IllegalArgumentException("duplicate method: " + method);
+        return this;
+    }
+
+    /** Register a worker-owned resource to close in reverse order before the process exits. */
+    public JsonRpcWorker onClose(AutoCloseable resource) {
+        java.util.Objects.requireNonNull(resource, "resource");
+        if (closed.get()) throw new IllegalStateException("worker is already closed");
+        closeables.add(resource);
         return this;
     }
 
@@ -94,6 +105,7 @@ public final class JsonRpcWorker {
         } finally {
             if (watcher != null) watcher.interrupt();
             log.info("Plugin worker shutting down");
+            closeResources();
             System.setOut(protocolOutput);
             // Only force JVM exit on a clean serve() return (stdin EOF / watchdog). On an exception
             // we re-throw and let the caller/JVM decide, matching the pre-1.2 behaviour and keeping
@@ -123,6 +135,7 @@ public final class JsonRpcWorker {
                 // stale/unknown pid should not insta-kill the worker before serve() gets going.
                 if (!firstCheck.compareAndSet(true, false) && !alive) {
                     log.warn("Plugin worker parent process exited; watchdog shutting down worker");
+                    closeResources();
                     exitWorker(0);
                     return;
                 }
@@ -187,8 +200,21 @@ public final class JsonRpcWorker {
         try (StdioTransport transport = new StdioTransport(input, protocolOutput)) {
             serve(transport);
         } finally {
+            closeResources();
             System.setOut(savedOut);
         }
+    }
+
+    private void closeResources() {
+        if (!closed.compareAndSet(false, true)) return;
+        for (int i = closeables.size() - 1; i >= 0; i--) {
+            try { closeables.get(i).close(); }
+            catch (Exception e) {
+                log.warn("Plugin worker resource close failed for {}: {}",
+                    closeables.get(i).getClass().getSimpleName(), e.getClass().getSimpleName());
+            }
+        }
+        closeables.clear();
     }
 
     /**

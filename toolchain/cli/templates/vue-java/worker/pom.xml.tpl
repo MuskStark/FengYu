@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
 
   <!-- A self-contained worker build. It depends on the independently-versioned
-       FengYu Plugin Worker SDK (1.1.0). In-repo builds resolve it from the local
+       FengYu Plugin Worker SDK (1.3.0). In-repo builds resolve it from the local
        reactor install; external builds resolve it from GitHub Packages via
        .mvn/settings.xml (FENGYU_GITHUB_TOKEN with read:packages). The devkit
        (fengyu-plugin-devkit) is test-scoped so it never ships in the shaded JAR;

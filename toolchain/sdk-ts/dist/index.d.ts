@@ -1,4 +1,4 @@
-export declare const SDK_VERSION = "1.2.0";
+export declare const SDK_VERSION = "1.3.0";
 export type Theme = 'dark' | 'light';
 export type FileAccess = 'read' | 'write' | 'read-write';
 export interface FileRef {
@@ -37,9 +37,13 @@ export declare class FengYuClient {
     private readonly allowedOrigin;
     private readonly pending;
     private readonly handlers;
+    private readyPromise?;
+    private environment?;
     private disposed;
     constructor(options?: FengYuClientOptions);
-    ready(): Promise<Environment>;
+    ready(options?: InvokeOptions): Promise<Environment>;
+    /** Last environment received from ready/environment events; undefined before negotiation. */
+    currentEnvironment(): Environment | undefined;
     invoke<T = unknown>(method: string, params?: Record<string, unknown>, options?: InvokeOptions): Promise<T>;
     notify(message: string): Promise<boolean>;
     files: {

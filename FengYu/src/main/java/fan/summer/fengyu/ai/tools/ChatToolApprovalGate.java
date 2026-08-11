@@ -44,18 +44,19 @@ public class ChatToolApprovalGate {
     public boolean resolve(String approvalId, boolean approved) {
         PendingApproval request = pending.get(approvalId);
         if (request == null || Instant.now().isAfter(request.expiresAt())) return false;
-        if (!request.decision().compareAndSet(null, approved)) return false;
+        ApprovalDecision decision = approved ? ApprovalDecision.APPROVED : ApprovalDecision.REJECTED;
+        if (!request.decision().compareAndSet(null, decision)) return false;
         request.latch().countDown();
         return true;
     }
 
     /**
-     * Rejects every outstanding request. FengYu permits only one active chat generation, so this
+     * Cancels every outstanding request. FengYu permits only one active chat generation, so this
      * is used when that generation is cancelled or the backend is replaced.
      */
     public void cancelPending() {
         pending.forEach((id, request) -> {
-            if (request.decision().compareAndSet(null, false)) {
+            if (request.decision().compareAndSet(null, ApprovalDecision.CANCELLED)) {
                 request.latch().countDown();
             }
         });
@@ -79,7 +80,10 @@ public class ChatToolApprovalGate {
             if (!resolved) {
                 throw new ToolApprovalException("Tool approval timed out: " + call.name());
             }
-            if (!Boolean.TRUE.equals(request.decision().get())) {
+            if (request.decision().get() == ApprovalDecision.CANCELLED) {
+                throw new ToolApprovalException("Tool approval cancelled: " + call.name());
+            }
+            if (request.decision().get() != ApprovalDecision.APPROVED) {
                 throw new ToolApprovalException("Tool execution rejected: " + call.name());
             }
         } catch (InterruptedException e) {
@@ -140,9 +144,11 @@ public class ChatToolApprovalGate {
     }
 
     private record PendingApproval(CountDownLatch latch,
-                                   AtomicReference<Boolean> decision,
+                                   AtomicReference<ApprovalDecision> decision,
                                    Instant expiresAt) {
     }
+
+    private enum ApprovalDecision { APPROVED, REJECTED, CANCELLED }
 
     public static final class ToolApprovalException extends RuntimeException {
         public ToolApprovalException(String message) {

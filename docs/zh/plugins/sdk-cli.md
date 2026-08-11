@@ -10,7 +10,7 @@ lang: zh
 
 ## `@infinia/plugin-sdk`（TypeScript）
 
-源码：`toolchain/sdk-ts/src/index.ts`。当前 SDK 版本为 `1.1.0`。导入单例 client 以及辅助方法/类型：
+源码：`toolchain/sdk-ts/src/index.ts`。当前插件工具链版本为 `1.3.0`。导入单例 client 以及辅助方法/类型：
 
 ```ts
 import { fengyu, FengYuClient, createId, type FileRef, type Environment } from '@infinia/plugin-sdk'
@@ -22,7 +22,8 @@ import { fengyu, FengYuClient, createId, type FileRef, type Environment } from '
 
 | 成员 | 签名 | 说明 |
 | --- | --- | --- |
-| `ready()` | `() => Promise<Environment>` | 协商 `sdkVersion`；**主版本不匹配时抛出异常**。把 theme/locale 应用到文档。 |
+| `ready(options?)` | `(InvokeOptions?) => Promise<Environment>` | 对并发协商去重；**主版本不匹配时抛出异常**，并应用、缓存 theme/locale。 |
+| `currentEnvironment()` | `→ Environment \| undefined` | 无需访问宿主即可读取最近一次合并后的 ready/event 状态。 |
 | `invoke<T>(method, params?, options?)` | `→ Promise<T>` | 对 worker 的 RPC。`InvokeOptions { signal?, timeoutMs? }`。 |
 | `notify(message)` | `→ Promise<boolean>` | 显示一个宿主 toast。 |
 | `files.open(opts?, req?)` | `→ Promise<FileRef \| null>` | 单个文件。`{extensions?, filters?}`。需要权限 `files.read`。 |
@@ -169,7 +170,7 @@ fengyu plugin create ./my-plugin --id com.example.my-plugin
 fengyu plugin build . --out dist-package/com.example.my-plugin-1.0.0.fyp
 ```
 
-脚手架生成的项目同时依赖 `@infinia/plugin-sdk` 与 [`@infinia/plugin-ui`](/zh/plugins/ui-components)；它的 `src/main.ts` 已经调用 `bindFengYuEnvironment` 同步主题/locale，并调用 `provideFengYuClient` 在全应用注入 SDK client。旧式静态插件（没有构建工具的纯 `ui/`）依然被 `build` 接受。
+脚手架生成的项目同时依赖 `@infinia/plugin-sdk` 与 [`@infinia/plugin-ui`](/zh/plugins/ui-components)；它的 `src/main.ts` 调用 `mountFengYuApp`，统一持有环境同步、client 注入、挂载与 pagehide 销毁。旧式静态插件（没有构建工具的纯 `ui/`）依然被 `build` 接受。
 
 ## 下一步
 

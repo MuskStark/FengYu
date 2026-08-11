@@ -84,7 +84,10 @@ goes away, regardless of how the host exits:
 
 Both paths converge on an explicit `System.exit(0)` so that non-daemon threads a plugin may have
 created (a HikariCP pool, a scheduled executor) cannot keep the JVM alive and hold embedded-database
-file locks after the host has gone. The host also installs its own JVM shutdown hook that calls
+file locks after the host has gone. SDK 1.3.0 adds `JsonRpcWorker.onClose(AutoCloseable)`: registered
+resources close once in reverse registration order before the forced exit. Register handler-owned
+job registries, pools, and stores there instead of relying only on process termination. The host also
+installs its own JVM shutdown hook that calls
 `PluginProcessManager.close()` — which `destroy()`/`destroyForcibly()` every tracked worker and
 recursively kills worker descendants (e.g. a `pip` subprocess) — as a belt-and-braces backstop
 alongside Spring's `@PreDestroy`. The desktop shell tree-kills the entire backend process tree on
@@ -131,6 +134,9 @@ Key properties of `Jobs`:
 - **Bounded retention.** Completed jobs are retained for 30 minutes (configurable) and capped at 200 entries; oldest completed jobs are evicted first. This prevents unbounded memory growth in workers that fan out many jobs.
 - **Cooperative cancellation.** `Cancellable.onCancel(Runnable)` runs once when the host calls `*_cancel`; the body should also poll `Cancellable.isCancelled()` between long steps and throw `Jobs.CancellationException` to signal a clean abort.
 - **Streaming logs.** `Cancellable.log(String)` appends to a per-job queue; `snapshot(jobId, cursor)` returns the tail from `cursor` plus the next cursor, so the UI can poll incrementally.
+- **Locale and teardown safety.** A virtual job inherits the locale of its start request, so deferred
+  summaries/logs use the same language. `Jobs.close()` cancels every running job and rejects new
+  starts; cancellation hooks remain once-only even when registration races cancellation.
 
 Reference implementations:
 

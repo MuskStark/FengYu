@@ -109,6 +109,25 @@ class ChatFileGrantServiceTest {
     }
 
     @Test
+    void discardStagingCleansUpWithoutExportingPartialOutput() throws Exception {
+        Path pluginRoot = Files.createDirectories(temp.resolve("discard-plugins"));
+        installManifest(pluginRoot, "test.readwrite", List.of("files.read", "files.write"), true);
+        PluginFileGrantService files = new PluginFileGrantService(temp.resolve("discard-grants").toString());
+        ChatFileGrantService service = new ChatFileGrantService(
+            new PluginPackageService(pluginRoot.toString()), files);
+        Path target = Files.createDirectories(temp.resolve("discard target"));
+
+        var preparation = service.prepareStagingForWriteTargets("导出到 " + target + " 文件夹");
+        Path stagingPath = files.resolve("test.readwrite", preparation.staged().getFirst().stagingRef().id());
+        Files.writeString(stagingPath.resolve("partial.csv"), "incomplete");
+
+        service.discardStaging(preparation.staged());
+
+        assertTrue(Files.notExists(stagingPath));
+        assertTrue(Files.notExists(target.resolve("partial.csv")));
+    }
+
+    @Test
     void typedSourceDirectoryStaysReadOnlyEvenWhenMarkdownBold() throws Exception {
         Path pluginRoot = Files.createDirectories(temp.resolve("typed-source-plugins"));
         installManifest(pluginRoot, "test.readwrite", List.of("files.read", "files.write"), true);

@@ -20,6 +20,7 @@ public final class ExcelWorkerMain {
 
     static JsonRpcWorker worker(ExcelRpcHandlers handlers) {
         return new JsonRpcWorker()
+            .onClose(handlers)
             // UI-facing, session-keyed workflow.
             .on("analyze", handlers.handle("analyze", handlers::analyze))
             .on("configure", handlers.handle("configure", handlers::configure))

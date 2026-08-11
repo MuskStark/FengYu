@@ -37,6 +37,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.time.Duration;
 import java.time.Instant;
@@ -195,18 +196,27 @@ public class AiController {
         }
         activeBackend.set(backend);
 
-        // Send an immediate heartbeat so the response stream is "opened" before the model
-        // produces its first token. WKWebView (Tauri desktop on macOS) will silently drop an
-        // SSE connection that has been accepted but has not yet received any data by the time
-        // its internal idle timer fires — Chrome is more lenient. Flushing one byte right away
-        // guarantees the connection is live for every client, and costs nothing (a comment line
-        // is a valid SSE frame the browser ignores).
-        try {
-            emitter.send(SseEmitter.event().comment("connected"));
-        } catch (IOException e) {
-            log.debug("SSE initial heartbeat failed: {}", e.getMessage());
-        }
-
+        Runnable releaseActiveStream = () -> {
+            activeStreamId.compareAndSet(streamId, null);
+            activeBackend.compareAndSet(backend, null);
+        };
+        AtomicBoolean generationStarted = new AtomicBoolean();
+        SseCallback streamCallback = new SseCallback(emitter, () -> {
+            fileGrants.exportStaging(turn.staged());
+            releaseActiveStream.run();
+        }, () -> {
+            // A transport disconnect has no model callback to release the active slot. Cancel the
+            // exact backend captured for this turn and release it here; SseCallback guarantees this
+            // path runs at most once even when completion/error callbacks race a failed send.
+            fileGrants.discardStaging(turn.staged());
+            if (activeStreamId.compareAndSet(streamId, null) && generationStarted.get()) {
+                backend.cancelGeneration();
+            }
+            activeBackend.compareAndSet(backend, null);
+        });
+        // Open the transport only after all close callbacks are registered. If this first write
+        // already fails, open() runs the same disconnect path and the backend is never started.
+        if (!streamCallback.open()) return emitter;
         try {
             // Set the per-turn file context BEFORE chat() so the singleton plugin ToolCallbacks
             // (Task 3's AiToolFileInjector) can read it during synchronous tool execution. The
@@ -215,23 +225,20 @@ public class AiController {
             ChatFileContext.set(turn.activeFileRefs());
             AiPermissionContext.set(turn.permissionMode());
             AiToolLocaleContext.set(turn.locale());
-            svc.get().chat(history,
-                AiConfigServiceHeadless.getAiTemperature(),
-                AiConfigServiceHeadless.getAiTopP(),
-                AiConfigServiceHeadless.getAiMaxTokens(),
-                turn.activeFileRefs(),
-                // terminal runs on both onComplete and onError. Export staging first (copies the
-                // worker's output to the user-named target and deletes the staging tree), then
-                // release the active-stream slot. exportStaging tolerates an empty/null list.
-                new SseCallback(emitter, () -> {
-                    fileGrants.exportStaging(turn.staged());
-                    activeStreamId.compareAndSet(streamId, null);
-                    activeBackend.compareAndSet(backend, null);
-                }));
+            streamCallback.start(() -> {
+                svc.get().chat(history,
+                        AiConfigServiceHeadless.getAiTemperature(),
+                        AiConfigServiceHeadless.getAiTopP(),
+                        AiConfigServiceHeadless.getAiMaxTokens(),
+                        turn.activeFileRefs(),
+                        // terminal runs on both onComplete and onError. It exports staging and releases
+                        // the active-stream slot; exportStaging tolerates an empty/null list.
+                        streamCallback);
+                generationStarted.set(true);
+            });
         } catch (Exception e) {
-            activeStreamId.compareAndSet(streamId, null);
-            activeBackend.compareAndSet(backend, null);
-            completeWithError(emitter, e.getMessage());
+            // Also stops the heartbeat if chat() fails synchronously before its worker starts.
+            streamCallback.onError(e);
         } finally {
             ChatFileContext.clear();
             AiPermissionContext.clear();
@@ -242,13 +249,54 @@ public class AiController {
 
     // ── AiStreamCallback → SSE bridge ──────────────────────────────────────────────────
 
-    private static final class SseCallback implements AiStreamCallback {
+    static final class SseCallback implements AiStreamCallback {
+        private static final Duration HEARTBEAT_INTERVAL = Duration.ofSeconds(10);
+
         private final SseEmitter emitter;
         private final Runnable terminal;
+        private final Runnable disconnected;
+        private final AtomicBoolean finished = new AtomicBoolean();
+        private final Thread heartbeatThread;
+        private final Object lifecycleLock = new Object();
 
-        SseCallback(SseEmitter emitter, Runnable terminal) {
+        SseCallback(SseEmitter emitter, Runnable terminal, Runnable disconnected) {
             this.emitter = emitter;
             this.terminal = terminal;
+            this.disconnected = disconnected;
+            // Approval can legitimately leave the stream otherwise silent for minutes. Keep
+            // Electron/WebView and intermediate HTTP stacks from treating that idle period as a
+            // dead SSE connection; a dropped frontend stream calls /cancel, which would reject
+            // the pending approval and surface a misleading ToolApprovalException.
+            this.heartbeatThread = Thread.ofVirtual().name("ai-sse-heartbeat").unstarted(() -> {
+                while (!finished.get()) {
+                    try {
+                        Thread.sleep(HEARTBEAT_INTERVAL);
+                    } catch (InterruptedException ignored) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                    if (!finished.get()) sendComment("heartbeat");
+                }
+            });
+            emitter.onCompletion(this::disconnect);
+            emitter.onTimeout(this::disconnect);
+            emitter.onError(ignored -> disconnect());
+            heartbeatThread.start();
+        }
+
+        /** Flush the initial SSE frame after disconnect callbacks are installed. */
+        boolean open() {
+            sendComment("connected");
+            return !finished.get();
+        }
+
+        /** Prevent a disconnect from racing between the open check and backend startup. */
+        boolean start(StartAction action) throws Exception {
+            synchronized (lifecycleLock) {
+                if (finished.get()) return false;
+                action.run();
+                return true;
+            }
         }
 
         @Override public void onToken(String fragment) {
@@ -282,14 +330,21 @@ public class AiController {
         }
 
         @Override public void onComplete(String fullResponse, int tokensGenerated, double tokensPerSecond) {
-            send("done", Map.of("text", fullResponse == null ? "" : fullResponse,
-                "tokens", tokensGenerated, "tps", tokensPerSecond));
-            emitter.complete();
-            terminal.run();
+            finish("done", Map.of("text", fullResponse == null ? "" : fullResponse,
+                    "tokens", tokensGenerated, "tps", tokensPerSecond));
         }
 
         @Override public void onError(Throwable error) {
-            send("error", Map.of("message", error == null ? "unknown" : String.valueOf(error.getMessage())));
+            finish("error", Map.of("message",
+                    error == null ? "unknown" : String.valueOf(error.getMessage())));
+        }
+
+        private void finish(String event, Object data) {
+            synchronized (lifecycleLock) {
+                if (!finished.compareAndSet(false, true)) return;
+            }
+            heartbeatThread.interrupt();
+            send(event, data);
             emitter.complete();
             terminal.run();
         }
@@ -299,7 +354,30 @@ public class AiController {
                 emitter.send(SseEmitter.event().name(event).data(data, MediaType.APPLICATION_JSON));
             } catch (IOException | IllegalStateException e) {
                 log.debug("SSE send failed ({}): {}", event, e.getMessage());
+                disconnect();
             }
+        }
+
+        private void sendComment(String comment) {
+            try {
+                emitter.send(SseEmitter.event().comment(comment));
+            } catch (IOException | IllegalStateException e) {
+                log.debug("SSE heartbeat failed: {}", e.getMessage());
+                disconnect();
+            }
+        }
+
+        private void disconnect() {
+            synchronized (lifecycleLock) {
+                if (!finished.compareAndSet(false, true)) return;
+            }
+            heartbeatThread.interrupt();
+            disconnected.run();
+        }
+
+        @FunctionalInterface
+        interface StartAction {
+            void run() throws Exception;
         }
     }
 

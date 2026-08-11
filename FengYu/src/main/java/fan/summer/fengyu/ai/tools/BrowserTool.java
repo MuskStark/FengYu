@@ -18,7 +18,7 @@ import java.util.Map;
  * Electron sidecar at JVM spawn). In web mode the bean is absent and {@code browser_*}
  * tools never appear in the AI catalog.
  *
- * <p>The 10 {@code @Tool} method names and the {@code {success, summary, ...}} return
+ * <p>The 12 {@code @Tool} method names and the {@code {success, summary, ...}} return
  * envelope mirror the former {@code plugin-browser} worker (plus {@code browser_find} for
  * element refs) so prompts/skills are unaffected. Text capping ({@link #TEXT_CAP}) and sample limiting
  * ({@link #SAMPLE_LIMIT}) are applied here (Electron returns raw values).
@@ -74,7 +74,7 @@ public class BrowserTool implements ApprovalRequiredTool {
     }
 
     @Tool(name = "browser_find",
-          description = "Locate an element by CSS selector and return a stable ref id for use in later click/type/get_text calls. Stamps a data attribute on the matched node so the same element is targeted across re-renders.")
+          description = "Auto-wait for an element located by CSS selector and return a ref id for later click/type/get_text calls. The ref keeps targeting that exact DOM node until navigation or node replacement; a stale ref fails instead of silently targeting another element.")
     public String find(
             @ToolParam(description = "CSS selector of the element.") String selector,
             @ToolParam(required = false,
@@ -83,8 +83,14 @@ public class BrowserTool implements ApprovalRequiredTool {
         return bridge("browser_find", params("selector", selector, "nth", nth), 30);
     }
 
+    @Tool(name = "browser_snapshot",
+          description = "Inspect the current page like Codex domSnapshot. Returns URL, title, visible text, and only rendered interactive elements with stable [ref] ids. Call this immediately after navigation and when page state changes; prefer its refs for click/type/press instead of guessing CSS or using eval_js.")
+    public String snapshot() {
+        return bridge("browser_snapshot", Map.of(), 30);
+    }
+
     @Tool(name = "browser_click",
-          description = "Click an element. Uses a real CDP mouse press+release at the element centre (not a JS click), so isTrusted-checked buttons and mousedown listeners fire. Pass either a CSS selector or a ref from browser_find (ref wins).")
+          description = "Click an element with real CDP pointer input. Auto-waits until the target is visible, stable, enabled, in the viewport, and not covered. Pass either a CSS selector or a ref from browser_find (ref wins).")
     public String click(
             @ToolParam(required = false, description = "CSS selector of the element to click.") String selector,
             @ToolParam(required = false, description = "1-based index of the match when the selector matches several.") Integer nth,
@@ -93,7 +99,7 @@ public class BrowserTool implements ApprovalRequiredTool {
     }
 
     @Tool(name = "browser_type",
-          description = "Type text into an input element. Uses CDP Input.insertText (the browser's real text-edit pipeline), so React/Vue controlled components update their state correctly — unlike direct value assignment. Optionally clears first. Pass either a CSS selector or a ref from browser_find (ref wins).")
+          description = "Type text into an input with real pointer and keyboard/CDP input. Auto-waits for an actionable editable target, clears with Select All + Backspace by default, and verifies that the text persisted. Pass either a CSS selector or a ref from browser_find (ref wins).")
     public String type(
             @ToolParam(required = false, description = "CSS selector of the input element.") String selector,
             @ToolParam(description = "Text to type.") String text,
@@ -101,6 +107,16 @@ public class BrowserTool implements ApprovalRequiredTool {
             @ToolParam(required = false, description = "1-based index of the match when the selector matches several.") Integer nth,
             @ToolParam(required = false, description = "Ref id returned by browser_find; takes precedence over selector.") String ref) {
         return bridge("browser_type", params("selector", selector, "text", text, "clear", clear, "nth", nth, "ref", ref), 30);
+    }
+
+    @Tool(name = "browser_press",
+          description = "Press a keyboard key on an actionable input using real CDP keyboard events. Use refs from browser_snapshot. Supports Enter, Tab, Escape, Backspace, Delete, Space, arrows, Home/End/PageUp/PageDown, letters/digits, and modifiers such as ControlOrMeta+Enter.")
+    public String press(
+            @ToolParam(required = false, description = "CSS selector of the target element.") String selector,
+            @ToolParam(description = "Key or shortcut to press, for example Enter or ControlOrMeta+A.") String key,
+            @ToolParam(required = false, description = "1-based index when the selector matches several.") Integer nth,
+            @ToolParam(required = false, description = "Ref id returned by browser_snapshot/browser_find; takes precedence over selector.") String ref) {
+        return bridge("browser_press", params("selector", selector, "key", key, "nth", nth, "ref", ref), 30);
     }
 
     @Tool(name = "browser_get_text",
@@ -122,7 +138,7 @@ public class BrowserTool implements ApprovalRequiredTool {
     }
 
     @Tool(name = "browser_screenshot",
-          description = "Capture a PNG screenshot. Returns the saved file path, dimensions, and an accessibility tree (YAML) the model reads instead of the image. Pass a selector/ref to capture a single element.")
+          description = "Capture a PNG screenshot and return dimensions, URL/title, accessibility tree, and an actionable DOM snapshot with stable refs. Use those refs for the next click/type/press. Pass a selector/ref to capture a single element.")
     public String screenshot(
             @ToolParam(required = false, description = "Capture the full scrollable page (default false).") Boolean fullPage,
             @ToolParam(required = false, description = "CSS selector to capture a single element.") String selector,
@@ -145,7 +161,7 @@ public class BrowserTool implements ApprovalRequiredTool {
     }
 
     @Tool(name = "browser_eval_js",
-          description = "Evaluate a JavaScript expression in the page and return its stringified value.")
+          description = "Last-resort diagnostic: evaluate JavaScript in the page. Do not use it to discover controls, fill fields, click, submit, read URL/title, or verify navigation; use browser_snapshot and ref-based actions instead.")
     public String evalJs(
             @ToolParam(description = "JavaScript expression to evaluate.") String script) {
         return bridge("browser_eval_js", params("script", script), 30);

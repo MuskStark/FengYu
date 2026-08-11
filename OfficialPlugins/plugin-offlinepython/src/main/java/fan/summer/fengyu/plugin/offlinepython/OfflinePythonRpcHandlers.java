@@ -45,7 +45,7 @@ import java.util.Map;
  * <p>Every result follows the {@code {success, summary, ...}} contract; exceptions become
  * {@code {success:false, summary}} via the inherited {@link PluginHandlerSupport#handle(String, fan.summer.fengyu.sdk.PluginHandler)}.
  */
-public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
+public final class OfflinePythonRpcHandlers extends PluginHandlerSupport implements AutoCloseable {
 
     private final OfflinePythonSessionStore sessions;
     private final Jobs jobs;
@@ -64,6 +64,8 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport {
         this.sessions = sessions;
         this.jobs = jobs;
     }
+
+    @Override public void close() { jobs.close(); }
 
     // ---- UI-facing: project lifecycle --------------------------------------
 

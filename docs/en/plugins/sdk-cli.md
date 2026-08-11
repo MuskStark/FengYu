@@ -10,7 +10,7 @@ Plugin authors use two SDKs (one per side of the runtime), a Vite dev plugin + d
 
 ## `@infinia/plugin-sdk` (TypeScript)
 
-Source: `toolchain/sdk-ts/src/index.ts`. The current SDK version is `1.1.0`. Import the singleton client and the helper/types:
+Source: `toolchain/sdk-ts/src/index.ts`. The current plugin-tooling version is `1.3.0`. Import the singleton client and the helper/types:
 
 ```ts
 import { fengyu, FengYuClient, createId, type FileRef, type Environment } from '@infinia/plugin-sdk'
@@ -22,7 +22,8 @@ A `postMessage` bridge to the host. Construct your own with options, or use the 
 
 | Member | Signature | Notes |
 | --- | --- | --- |
-| `ready()` | `() => Promise<Environment>` | Negotiates `sdkVersion`; **throws on major-version mismatch**. Applies theme/locale to the document. |
+| `ready(options?)` | `(InvokeOptions?) => Promise<Environment>` | Deduplicates concurrent negotiation; **throws on major-version mismatch**. Applies and caches theme/locale. |
+| `currentEnvironment()` | `→ Environment \| undefined` | Latest merged ready/event state, without a host round-trip. |
 | `invoke<T>(method, params?, options?)` | `→ Promise<T>` | RPC to the worker. `InvokeOptions { signal?, timeoutMs? }`. |
 | `notify(message)` | `→ Promise<boolean>` | Show a host toast. |
 | `files.open(opts?, req?)` | `→ Promise<FileRef \| null>` | Single file. `{extensions?, filters?}`. Perm `files.read`. |
@@ -175,7 +176,7 @@ fengyu plugin create ./my-plugin --id com.example.my-plugin
 fengyu plugin build . --out dist-package/com.example.my-plugin-1.0.0.fyp
 ```
 
-The scaffolded project depends on `@infinia/plugin-sdk` **and** [`@infinia/plugin-ui`](/en/plugins/ui-components); its `src/main.ts` already calls `bindFengYuEnvironment` to sync theme/locale, and `provideFengYuClient` to inject the SDK client app-wide. Legacy static plugins (plain `ui/` with no build tooling) are still accepted by `build`.
+The scaffolded project depends on `@infinia/plugin-sdk` **and** [`@infinia/plugin-ui`](/en/plugins/ui-components); its `src/main.ts` calls `mountFengYuApp`, which owns environment synchronization, client injection, mount, and pagehide disposal. Legacy static plugins (plain `ui/` with no build tooling) are still accepted by `build`.
 
 ## Next steps
 
