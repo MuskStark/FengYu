@@ -476,10 +476,12 @@ class PluginProcessManagerTest {
                             if (e.getMessage() != null && e.getMessage().contains("being updated")) {
                                 refused.incrementAndGet();
                             } else {
-                                // Worker teardown (EOF/stop during RPC) surfaces as IllegalStateException
+                                // Worker teardown (EOF/stop/close during RPC) surfaces as IllegalStateException
                                 // too; that's the documented in-flight-call failure path, not a race bug.
-                                // Only assert it is one of the known benign causes.
+                                // Only assert it is one of the known benign causes. "closed" is the message
+                                // failAll() emits on an explicit stop()/close() racing an in-flight call.
                                 assertTrue(e.getMessage().contains("stopped") || e.getMessage().contains("tearing down")
+                                        || e.getMessage().contains("closed")
                                         || e.getMessage().contains("timed out") || e.getMessage().contains("interrupted")
                                         || e.getMessage().contains("being updated"),
                                     "unexpected invoke failure: " + e.getMessage());
