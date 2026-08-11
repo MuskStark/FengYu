@@ -22,7 +22,7 @@ import java.util.Map;
  * <p>Entry/exit/failure logging and the {success, summary, ...} envelope are inherited from
  * {@link PluginHandlerSupport}; register handlers via {@code worker.on("m", handlers.handle("m", handlers::m))}.
  */
-public final class ExcelRpcHandlers extends PluginHandlerSupport {
+public final class ExcelRpcHandlers extends PluginHandlerSupport implements AutoCloseable {
     static final String AI_SESSION = "ai";
 
     private final ExcelSessionStore sessions;
@@ -39,6 +39,8 @@ public final class ExcelRpcHandlers extends PluginHandlerSupport {
         this.plugin = new ExcelPlugin(sessions, msgs);
         this.jobs = jobs;
     }
+
+    @Override public void close() { jobs.close(); }
 
     // ---- UI-facing, session-keyed workflow ---------------------------------
 

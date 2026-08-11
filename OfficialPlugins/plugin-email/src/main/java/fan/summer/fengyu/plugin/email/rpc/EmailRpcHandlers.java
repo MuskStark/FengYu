@@ -39,7 +39,7 @@ import java.util.Set;
  * can JSON-encode records/Path/Instant values via {@link #jsonValue(Object)} before they leave the
  * worker. Register handlers via {@code worker.on("m", handlers.handle("m", handlers::m))}.
  */
-public final class EmailRpcHandlers extends PluginHandlerSupport {
+public final class EmailRpcHandlers extends PluginHandlerSupport implements AutoCloseable {
     /** Static message resolver for the static param/path-validation helpers (which cannot reach the
      * inherited instance {@link #msgs}). Resolves the same bundle the handler uses. */
     private static final PluginMessages MSGS =
@@ -65,6 +65,8 @@ public final class EmailRpcHandlers extends PluginHandlerSupport {
         pending = new PendingSendService(database, sends);
         archive = new EmailArchiveService(database, cipher);
     }
+
+    @Override public void close() { jobs.close(); }
 
     public Object listAccounts(Map<String, Object> params) {
         return result(() -> {

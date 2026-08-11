@@ -103,11 +103,12 @@ test.describe('browser bridge chain', () => {
       expect(navJson).toHaveProperty('url')
       expect(navJson).toHaveProperty('title')
 
-      // 3. Screenshot — exercises capturePage + writeFileSync + CDP a11y capture.
+      // 3. Full-page screenshot — exercises CDP captureBeyondViewport + writeFileSync +
+      //    CDP a11y capture against a real BrowserWindow.
       const shot = await fetch(`${base}/invoke`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ method: 'browser_screenshot', params: {} }),
+        body: JSON.stringify({ method: 'browser_screenshot', params: { fullPage: true } }),
       })
       expect(shot.status).toBe(200)
       const shotJson = (await shot.json()) as {
@@ -124,6 +125,8 @@ test.describe('browser bridge chain', () => {
       expect(shotJson).toHaveProperty('height')
       expect(shotJson).toHaveProperty('a11yTree')
       expect(typeof shotJson.imagePath).toBe('string')
+      expect(shotJson.width).toBeGreaterThan(0)
+      expect(shotJson.height).toBeGreaterThan(0)
       // The screenshot PNG must actually exist on disk.
       expect(existsSync(shotJson.imagePath as string)).toBe(true)
 
@@ -141,16 +144,17 @@ test.describe('browser bridge chain', () => {
             script: `(() => {
               document.body.innerHTML = `
               + '`'
-              + `<form id="login"><input id="user" name="user" type="text"/>`
-              + `<input id="pwd" name="pwd" type="password"/>`
-              + `<button id="go" type="button">Go</button></form>`
+              + `<form id="login"><input id="user" name="user" type="text" placeholder="Username"/>`
+              + `<input id="pwd" name="pwd" type="password" placeholder="Password"/>`
+              + `<button id="go" type="submit">Go</button></form>`
               + `<span id="mirror"></span>`
               + '`'
               + `;
               document.getElementById('user').addEventListener('input', (e) => {
                 document.getElementById('mirror').textContent = 'user=' + e.target.value;
               });
-              document.getElementById('go').addEventListener('click', () => {
+              document.getElementById('login').addEventListener('submit', (event) => {
+                event.preventDefault();
                 document.getElementById('mirror').textContent = 'submitted user=' + document.getElementById('user').value;
               });
               return 'ok';
@@ -162,23 +166,26 @@ test.describe('browser bridge chain', () => {
       lines.push(`[step] inject form success=${injectJson.success} value=${injectJson.value}`)
       expect(injectJson.success).toBe(true)
 
-      // 5. find → type on the username input, then assert the controlled mirror updated.
-      //    The mirror only reflects the typed value if a real 'input' event fired — proving
-      //    CDP Input.insertText (not el.value= assignment) drove the change.
-      const findUser = await fetch(`${base}/invoke`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ method: 'browser_find', params: { selector: '#user' } }),
+      // 5. Codex-style DOM snapshot → type by semantic ref on the username input, then
+      //    assert the controlled mirror updated. No CSS discovery/eval loop is needed.
+      const snapshot = await fetch(`${base}/invoke`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ method: 'browser_snapshot', params: {} }),
       })
-      const findUserJson = (await findUser.json()) as { success: boolean; ref?: string }
-      lines.push(`[step] find #user success=${findUserJson.success} ref=${findUserJson.ref}`)
-      expect(findUserJson.success).toBe(true)
-      expect(findUserJson.ref).toMatch(/^el_\d+$/)
+      const snapshotJson = (await snapshot.json()) as { success: boolean; snapshot?: string; count?: number }
+      lines.push(`[step] snapshot success=${snapshotJson.success} count=${snapshotJson.count}`)
+      expect(snapshotJson.success).toBe(true)
+      expect(snapshotJson.snapshot).toContain('textbox "Username"')
+      expect(snapshotJson.snapshot).toContain('button "Go"')
+      const userRef = snapshotJson.snapshot?.match(/^\[([^\]]+)\] textbox "Username"/m)?.[1]
+      expect(userRef).toMatch(/^snap_/)
 
+      // The mirror only reflects the typed value if a real input event fired, proving
+      // CDP Input.insertText (not el.value assignment) drove the change.
       const typeUser = await fetch(`${base}/invoke`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ method: 'browser_type', params: { ref: findUserJson.ref, text: 'alice' } }),
+        body: JSON.stringify({ method: 'browser_type', params: { ref: userRef, text: 'alice' } }),
       })
       const typeUserJson = (await typeUser.json()) as { success: boolean; filled?: boolean }
       lines.push(`[step] type user success=${typeUserJson.success}`)
@@ -193,17 +200,16 @@ test.describe('browser bridge chain', () => {
       lines.push(`[step] mirror value=${mirrorJson.value}`)
       expect(mirrorJson.value).toBe('user=alice')
 
-      // 6. click the Go button via real CDP mouse events, then assert the submit handler
-      //    ran (the mirror text changes to 'submitted user=alice'). A JS el.click() would
-      //    fire this too, but combined with step 5 this exercises the full real-input chain.
-      const clickGo = await fetch(`${base}/invoke`, {
+      // 6. Submit through a real Enter keypress on the same snapshot ref — the normal search
+      //    box path used by Codex when a page has no discoverable submit button.
+      const pressEnter = await fetch(`${base}/invoke`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ method: 'browser_click', params: { selector: '#go' } }),
+        body: JSON.stringify({ method: 'browser_press', params: { ref: userRef, key: 'Enter' } }),
       })
-      const clickGoJson = (await clickGo.json()) as { success: boolean; clicked?: boolean }
-      lines.push(`[step] click #go success=${clickGoJson.success}`)
-      expect(clickGoJson.success).toBe(true)
+      const pressEnterJson = (await pressEnter.json()) as { success: boolean; pressed?: boolean }
+      lines.push(`[step] press Enter success=${pressEnterJson.success}`)
+      expect(pressEnterJson.success).toBe(true)
 
       const submitted = await fetch(`${base}/invoke`, {
         method: 'POST',

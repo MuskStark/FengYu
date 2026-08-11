@@ -23,6 +23,7 @@ public final class OfflinePythonWorkerMain {
 
     static JsonRpcWorker worker(OfflinePythonRpcHandlers handlers) {
         return new JsonRpcWorker()
+            .onClose(handlers)
             // ---- UI-facing, session-keyed workflow ----
             .on("init", handlers.handle("init", handlers::init))
             .on("config.get", handlers.handle("config.get", handlers::configGet))

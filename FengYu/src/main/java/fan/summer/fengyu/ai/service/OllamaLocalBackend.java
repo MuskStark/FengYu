@@ -243,7 +243,11 @@ public final class OllamaLocalBackend implements ChatBackend {
                 workerThread = Thread.currentThread();
                 runToolLoop(history, activeFileRefs, callback, enableTools, maxToolRounds);
             } catch (Exception e) {
-                log.error("Ollama chat failed", e);
+                if (e instanceof ChatToolApprovalGate.ToolApprovalException) {
+                    log.info("Ollama chat stopped at tool approval: {}", e.getMessage());
+                } else {
+                    log.error("Ollama chat failed", e);
+                }
                 callback.onError(e);
             } finally {
                 workerThread = null;

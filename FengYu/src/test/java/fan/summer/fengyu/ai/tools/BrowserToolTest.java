@@ -111,6 +111,18 @@ class BrowserToolTest {
     }
 
     @Test
+    void snapshotReturnsModelFacingDomState() throws Exception {
+        var tool = new StubTool((m, p) -> Map.of(
+                "success", true, "summary", "captured 1 interactive element(s)",
+                "url", "https://example.com", "title", "Example", "count", 1,
+                "snapshot", "[snap_1] textbox \"Search\""));
+        Map<String, Object> r = parse(tool.snapshot());
+        assertEquals(Boolean.TRUE, r.get("success"));
+        assertEquals("https://example.com", r.get("url"));
+        assertTrue(((String) r.get("snapshot")).contains("snap_1"));
+    }
+
+    @Test
     void clickForwardsRefOverSelector() throws Exception {
         // When both ref and selector are given, the backend forwards both; Electron's
         // resolveSelector prefers ref. Here we only assert both keys reach the bridge.
@@ -160,5 +172,19 @@ class BrowserToolTest {
         assertFalse(captured.get("browser_type").containsKey("clear"));
         assertFalse(captured.get("browser_type").containsKey("nth"));
         assertFalse(captured.get("browser_type").containsKey("ref"));
+    }
+
+    @Test
+    void pressForwardsKeyAndSnapshotRef() throws Exception {
+        java.util.Map<String, java.util.Map<String, Object>> captured = new java.util.HashMap<>();
+        var tool = new StubTool((m, p) -> {
+            captured.put(m, p);
+            return Map.of("success", true, "pressed", true);
+        });
+        Map<String, Object> r = parse(tool.press(null, "Enter", null, "snap_1"));
+        assertEquals(Boolean.TRUE, r.get("success"));
+        assertEquals("Enter", captured.get("browser_press").get("key"));
+        assertEquals("snap_1", captured.get("browser_press").get("ref"));
+        assertFalse(captured.get("browser_press").containsKey("selector"));
     }
 }

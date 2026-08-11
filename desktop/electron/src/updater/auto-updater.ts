@@ -3,9 +3,11 @@ import { app, dialog, shell } from 'electron'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { isWindowsPortable } from './portable-updater'
+import { configureUpdateFeed, updateDownloadPageUrl } from './update-feed'
 
 /**
- * Check for updates (async, non-blocking). Source: GitHub Releases (`latest*.yml`).
+ * Check for updates (async, non-blocking). Source: GitHub Releases by default, or FY-Proxy's
+ * variant-specific generic feed when FENGYU_UPDATE_API_BASE is configured.
  *
  * P0-9 — auto-download/auto-install must be disabled for unsigned builds. `electron-updater`'s
  * defaults are `autoDownload = true` and `autoInstallOnAppQuit = true`, so merely *not calling*
@@ -30,12 +32,9 @@ import { isWindowsPortable } from './portable-updater'
  */
 export async function checkForUpdates(): Promise<void> {
   // JRE variant bundles its own jlink JRE under <resourcesPath>/jre. The updater feed
-  // (latest*.yml) only references the lite variant, so auto-update would silently downgrade
-  // JRE users to the Java-dependent lite build. Skip the check until per-variant feeds exist.
-  if (existsSync(join(process.resourcesPath, 'jre'))) {
-    console.log('[updater] JRE variant detected; skipping auto-update (would downgrade to lite)')
-    return
-  }
+  // on GitHub is shared by both variants and currently references just one of them. FY-Proxy
+  // exposes separate feeds, so JRE updates are safe only when the intranet feed is configured.
+  const hasBundledJre = existsSync(join(process.resourcesPath, 'jre'))
 
   // Windows portable zip: electron-updater (NsisUpdater) cannot self-install it — there is no
   // setup.exe / elevate.exe / app-update.yml in a portable extract. The renderer-driven path
@@ -46,17 +45,33 @@ export async function checkForUpdates(): Promise<void> {
     return
   }
 
+  let intranetFeed: string | null
+  try {
+    intranetFeed = configureUpdateFeed(autoUpdater, hasBundledJre)
+  } catch (err) {
+    console.error('[updater] invalid intranet update feed:', err)
+    return
+  }
+  if (hasBundledJre && !intranetFeed) {
+    console.log('[updater] JRE variant detected; skipping shared GitHub update feed')
+    return
+  }
+
   const signedRelease = readSignedReleaseFlag()
+  const canAutoInstall = signedRelease && intranetFeed !== null
   // CRITICAL: disable electron-updater's implicit download + quit-and-install for unsigned builds
   // BEFORE checkForUpdates() — otherwise the library starts downloading the moment it finds an
   // update and installs it on next quit regardless of our dialog choice.
-  autoUpdater.autoDownload = signedRelease
-  autoUpdater.autoInstallOnAppQuit = signedRelease
+  autoUpdater.autoDownload = canAutoInstall
+  autoUpdater.autoInstallOnAppQuit = canAutoInstall
 
   try {
     const result = await autoUpdater.checkForUpdates()
     if (!result?.updateInfo) return
-    if (signedRelease) {
+    // The public GitHub release currently has one shared latest*.yml for both lite and JRE; the
+    // JRE build overwrites it. Never auto-install from that ambiguous feed. FY-Proxy is safe
+    // because configureUpdateFeed selected a variant-specific URL above.
+    if (canAutoInstall) {
       await offerAutoInstall(result.updateInfo.version)
     } else {
       await offerManualDownload(result.updateInfo.version)
@@ -126,9 +141,9 @@ async function offerManualDownload(version: string): Promise<void> {
     title: 'Update available',
     message: `Infinia ${version} is available.`,
     detail:
-      'This build is not code-signed, so it will not auto-install. Open the releases page to download and install manually.',
+      'This update cannot be installed automatically from the current release feed. Open the download page to install it manually.',
   })
   if (choice.response === 0) {
-    await shell.openExternal('https://github.com/MuskStark/FengYu/releases')
+    await shell.openExternal(updateDownloadPageUrl())
   }
 }
