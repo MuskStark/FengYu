@@ -12,15 +12,25 @@ this page is generated from it on every docs build (see
 CHANGELOG.md instead.
 
 ::: tip Latest release
-**v4.0.0-beta.1** — 2026-08-09 ·
-[GitHub release](https://github.com/MuskStark/FengYu/releases/tag/v4.0.0-beta.1)
+**v4.0.0-beta.2** — 2026-08-11 ·
+[GitHub release](https://github.com/MuskStark/FengYu/releases/tag/v4.0.0-beta.2)
 :::
 
 ---
 
 ## [Unreleased]
 
+## [4.0.0-beta.2] — 2026-08-11
+
 ### ✨ Added
+- **Settings-driven update channel.** The Settings page can now point the app's update check at an
+  intranet/offline FY-Proxy base URL instead of the default GitHub feed. The value is persisted in
+  the `app_setting` store and honored on both update paths: the backend `UpdateCheckService` reads
+  it per check (live without a JVM restart), and the Electron shell bootstraps
+  `FENGYU_UPDATE_API_BASE` from the backend before the first update check and updates it live via an
+  `update:set-api-base` IPC from the renderer. `PUT /api/settings` validates the value as an absolute
+  HTTP(S) URL with no credentials, query, or fragment, mirroring the desktop `update-feed.ts`
+  validation so both channels accept the same value; invalid values map to HTTP 400.
 - **Full i18n for all official plugins (front + back end).** Plugin worker backends now render
   localized `summary`/`error` messages, and the Markdown and Excel plugin UIs are fully localized
   to match the Email and Offline Python Builder plugins. Locale flows per-request from the host
