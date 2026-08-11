@@ -13,6 +13,7 @@ import { initLogger } from './desktop/logger'
 import { acquireSingleInstanceLock } from './desktop/single-instance'
 import { createTray } from './desktop/tray'
 import { checkForUpdates } from './updater/auto-updater'
+import { bootstrapUpdateApiBaseFromBackend } from './updater/update-feed'
 import { startDevFrontend, type DevFrontendHandle } from './desktop/dev-frontend'
 import { initializeAppearance } from './desktop/appearance'
 import { BrowserSession } from './browser/session'
@@ -311,7 +312,16 @@ async function bootstrap(): Promise<void> {
   createTray(win, killBackend)
 
   // Non-blocking update check — only when packaged (dev builds have no update channel).
-  if (isPackaged) void checkForUpdates()
+  // First seed process.env.FENGYU_UPDATE_API_BASE from the persisted Settings value so the
+  // startup check honors an intranet/offline proxy configured via the UI on a previous run.
+  // APP mode only (SETUP mode has no user context). Swallow all errors → fall back to env default.
+  if (isPackaged && !started.setupMode) {
+    void bootstrapUpdateApiBaseFromBackend(apiBase, token)
+      .catch(() => {})
+      .finally(() => { void checkForUpdates() })
+  } else if (isPackaged) {
+    void checkForUpdates()
+  }
 }
 
 app.whenReady().then(() => {

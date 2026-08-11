@@ -38,6 +38,8 @@ public class AiConfigServiceHeadless {
     private static final String SIDEBAR_COLLAPSED_KEY = "sidebar.collapsed";
     private static final String LOG_LEVEL_KEY = "logging.level";
     private static final String PLUGIN_UNSANDBOXED_KEY = "plugin.unsandboxed";
+    /** Update-channel proxy base (e.g. {@code http://10.0.0.5:8088}). Empty → default GitHub feed. */
+    private static final String UPDATE_API_BASE_KEY = "update.api_base";
 
     // ── AI provider keys (duplicate AiConfigService read keys so writes round-trip) ──
     private static final String AI_MODE_KEY = "ai.mode";
@@ -107,6 +109,28 @@ public class AiConfigServiceHeadless {
 
     public static void setUnsandboxedPluginsEnabled(boolean enabled) {
         INSTANCE.writeSetting(PLUGIN_UNSANDBOXED_KEY, String.valueOf(enabled));
+    }
+
+    /**
+     * The configured update-channel proxy base URL (e.g. an intranet FY-Proxy at
+     * {@code http://10.0.0.5:8088}), or {@code bootstrapDefault} when the setting is absent/blank.
+     * The bootstrap default (typically the {@code fengyu.updates.api-base} {@code @Value} captured
+     * at construction) is returned as-is when the Spring singleton is uninitialized (pure unit
+     * tests), mirroring {@link #isUnsandboxedPluginsEnabled()}'s null-safe fallback.
+     *
+     * <p>Read from within {@code UpdateCheckService.fetchLatest()} so the channel is live-reconfigured
+     * by a Settings-UI change without a JVM restart.
+     */
+    public static String getUpdateApiBase(String bootstrapDefault) {
+        if (INSTANCE == null) return bootstrapDefault;
+        return INSTANCE.readSetting(UPDATE_API_BASE_KEY, bootstrapDefault);
+    }
+
+    public static void setUpdateApiBase(String value) {
+        // Normalize: null → empty, trim, strip trailing slashes. Keeps a single canonical form so
+        // every consumer (backend UpdateCheckService, desktop update-feed.ts) reads a clean base.
+        String normalized = value == null ? "" : value.trim().replaceAll("/+$", "");
+        INSTANCE.writeSetting(UPDATE_API_BASE_KEY, normalized);
     }
 
     // ── Reads (delegate to AiConfigService) ───────────────────────────────────
