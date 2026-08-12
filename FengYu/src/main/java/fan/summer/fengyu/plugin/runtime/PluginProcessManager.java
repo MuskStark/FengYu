@@ -291,13 +291,6 @@ public class PluginProcessManager {
         long startedNanos = System.nanoTime();
         try {
             @SuppressWarnings("unchecked") Map<String, Object> resolved = (Map<String, Object>) resolveRefs(pluginId, params == null ? Map.of() : params);
-            // Inject the request locale AFTER resolveRefs so a FileRef resolver never tries to treat
-            // the locale string as a file reference. The locale rides alongside the call params; the
-            // worker SDK binds it to WorkerLocale for the handler call. A null/blank locale is skipped
-            // so legacy workers and callers without a locale see no extra key (English default).
-            if (locale != null && !locale.isBlank()) {
-                resolved.put("locale", locale);
-            }
             // Resolved params carry FileRefs turned into absolute paths (and still hold any secret
             // values), so only their KEYS are safe to log even at DEBUG.
             log.debug("Plugin {} resolved {} keys={}", pluginId, method, resolved.keySet());
@@ -307,7 +300,7 @@ public class PluginProcessManager {
             // future.get(timeout); on timeout it throws IllegalStateException, which the catch below
             // turns into a worker kill + restart.
             String rpcId = callId != null && !callId.isBlank() ? callId : UUID.randomUUID().toString();
-            Object result = worker.invoke(rpcId, method, resolved, timeout);
+            Object result = worker.invoke(rpcId, method, resolved, timeout, locale);
             long elapsedMs = (System.nanoTime() - startedNanos) / 1_000_000;
             log.info("Plugin {} <- {} ok ({} ms)", pluginId, method, elapsedMs);
             logStore.append(pluginId, "INFO", method + " ok (" + elapsedMs + " ms)");
@@ -881,20 +874,34 @@ public class PluginProcessManager {
         }
 
         /** Invoke a method with an explicit JSON-RPC id, returning the raw result node. Blocks up to
-         *  {@code timeoutSeconds}. */
-        Object invoke(String id, String method, Map<String, Object> params, long timeoutSeconds) {
+         *  {@code timeoutSeconds}. The {@code locale} rides in the reserved top-level {@code _fengyu}
+         *  envelope (not in {@code params}), so it cannot collide with a plugin method's own input. */
+        Object invoke(String id, String method, Map<String, Object> params, long timeoutSeconds, String locale) {
             CompletableFuture<JsonNode> future = new CompletableFuture<>();
             pending.put(id, future);
             try {
-                String frame = json.writeValueAsString(Map.of("jsonrpc", "2.0", "id", id, "method", method, "params", params));
-                ensureOutboundFrameSize(frame);
+                // Frame shape: standard JSON-RPC 2.0 plus a reserved, host-owned `_fengyu` envelope
+                // carrying the request locale. The locale rides here — NOT in params — so a plugin
+                // method that declares its own `locale` input field receives the caller's value
+                // verbatim. The `_fengyu` key is omitted entirely when no locale is set, so legacy
+                // and locale-less callers see an unchanged frame.
+                Map<String, Object> frame = new java.util.LinkedHashMap<>();
+                frame.put("jsonrpc", "2.0");
+                frame.put("id", id);
+                frame.put("method", method);
+                frame.put("params", params);
+                if (locale != null && !locale.isBlank()) {
+                    frame.put("_fengyu", Map.of("locale", locale));
+                }
+                String wire = json.writeValueAsString(frame);
+                ensureOutboundFrameSize(wire);
                 // DEBUG-only wire trace: log the id + method but NOT the frame. The frame carries the
                 // full params JSON (caller-supplied passwords, mail bodies, parsed paths); the env
                 // redactor only knows env-borne secrets, so a param value would leak verbatim here.
                 log.debug("Plugin {} \u2192 {} id={}", pluginId, method, id);
                 // Writer lock: keep concurrent callers from interleaving frames on stdin.
                 synchronized (this) {
-                    writer.write(frame);
+                    writer.write(wire);
                     writer.newLine();
                     writer.flush();
                 }
@@ -989,6 +996,14 @@ public class PluginProcessManager {
             if (jobHandle != 0L) {
                 try { sandbox.closeJobHandle(jobHandle); } catch (RuntimeException ignored) {}
             }
+            // Close the host end of the worker's stdin/stdout pipes. The process is reaped by now, so
+            // the resident stdout reader thread has normally seen EOF and exited; closing the reader
+            // here is also what unblocks it if an escaped grandchild held the pipe's write-end (which
+            // would otherwise pin the FD and the reader thread for the host's lifetime). Best-effort:
+            // a close failure never masks the teardown that already completed above. Workers are torn
+            // down on every call timeout/transport error, so without this the FD churn accumulates.
+            try { writer.close(); } catch (Exception ignored) {}
+            try { reader.close(); } catch (Exception ignored) {}
         }
 
         /** Recursively destroy a process tree, leaves-first to avoid orphaning. */

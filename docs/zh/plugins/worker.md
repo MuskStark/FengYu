@@ -14,7 +14,7 @@ worker 是插件的后端。它是一个普通的可执行文件——通常是�
 
 ```jsonc
 // host → worker（stdin 上的一行）
-{"jsonrpc":"2.0","id":"req-1","method":"render","params":{"markdown":"# hi"}}
+{"jsonrpc":"2.0","id":"req-1","method":"render","params":{"markdown":"# hi"},"_fengyu":{"locale":"zh"}}
 
 // worker → host（stdout 上的一行）
 {"jsonrpc":"2.0","id":"req-1","result":{"success":true,"html":"<h1>hi</h1>"}}
@@ -22,11 +22,23 @@ worker 是插件的后端。它是一个普通的可执行文件——通常是�
 
 | 消息 | 结构 |
 | --- | --- |
-| 请求 | `{jsonrpc:"2.0", id, method, params}` |
+| 请求 | `{jsonrpc:"2.0", id, method, params, _fengyu?}` |
 | 响应（成功） | `{jsonrpc:"2.0", id, result}` |
 | 响应（错误） | `{jsonrpc:"2.0", id, error:{code, message}}` |
 
 消息是**换行分隔**的：`stdin` 上每行一个 JSON 对象，`stdout` 上每行一个。`id` 用于把响应与其请求关联起来。
+
+可选的顶层 `_fengyu` 对象是一个**保留的、宿主拥有的元数据信封**——参见[保留元数据通道](#保留元数据通道)。插件必须把任何以 `_fengyu` 开头的帧根键视为宿主拥有，且不得将其声明为方法输入。
+
+## 保留元数据通道
+
+除标准 JSON-RPC 2.0 字段（`jsonrpc`、`id`、`method`、`params`）外，宿主可附加一个顶层 `_fengyu` 对象，携带宿主拥有的传输级元数据。它**绝不**属于 `params`，因此不会与插件方法自身的输入字段冲突。Worker SDK 读取它并绑定到本次调用的上下文；插件通过 `RpcContext` 读取，绝不直接从帧中读取。
+
+| 字段 | 含义 |
+| --- | --- |
+| `_fengyu.locale` | 请求的 locale（如 `"zh"`、`"en"`），绑定到 `RpcContext.locale()` 与 `WorkerLocale`，使消息束解析遵循调用方的语言。当宿主对该调用没有 locale 时省略（worker 随后默认英文）。 |
+
+> **保留键。** 任何以 `_fengyu` 开头的帧根键都由宿主拥有。插件方法完全可以在其 `inputSchema` 中声明名为 `locale`（或任何其他非保留名称）的参数；它从 `params` 反序列化，绝不会被请求 locale 覆盖。Worker SDK 仍接受遗留的 `params.locale` 键作为回退，以便尚未采用 `_fengyu` 信封的宿主在滚动升级期间继续工作。
 
 > **日志走 stderr。** `stdout` 专用于协议消息。Worker SDK 通过在运行循环期间把 `System.out` 重定向到 `System.err` 来强制这一点——参见 [常见陷阱](/zh/plugins/pitfalls)。
 

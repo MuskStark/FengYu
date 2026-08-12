@@ -140,6 +140,44 @@ class PluginProcessManagerTest {
     }
 
     @Test
+    void requestLocaleRidesInFengyuEnvelopeAndDoesNotOverwriteParam() throws Exception {
+        // Regression guard for the reserved-locale-channel fix: the host must carry the request
+        // locale in the top-level `_fengyu` envelope and must NOT inject it into `params`, so a
+        // plugin method that declares its own `locale` input field receives the caller's value.
+        // Here the caller passes params={"locale":"fr"} (a plugin-level field) and request locale
+        // "zh"; the EchoWorker reflects both and they must stay distinct.
+        PluginProcessManager manager = manager();
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) manager.invoke(
+                "com.example.worker", "locale-probe", Map.of("locale", "fr"), "zh");
+            assertEquals("zh", result.get("fengyuLocale"),
+                "request locale must ride in the _fengyu envelope");
+            assertEquals("fr", result.get("paramsLocale"),
+                "the caller's params.locale must NOT be overwritten by the request locale");
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void fengyuEnvelopeOmittedWhenNoRequestLocale() throws Exception {
+        // A call without a request locale must produce no `_fengyu` envelope at all (the worker then
+        // defaults to English), and a caller's own params.locale still passes through untouched.
+        PluginProcessManager manager = manager();
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) manager.invoke(
+                "com.example.worker", "locale-probe", Map.of("locale", "de"));
+            assertNull(result.get("fengyuLocale"), "no _fengyu envelope when locale is absent");
+            assertEquals("de", result.get("paramsLocale"),
+                "caller's params.locale passes through when no request locale is set");
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void preservesRpcErrorMessage() throws Exception {
         Logger logger = (Logger) LoggerFactory.getLogger(PluginProcessManager.class);
         Level previousLevel = logger.getLevel();
@@ -585,9 +623,10 @@ class PluginProcessManagerTest {
                "secret-error":{"inputSchema":{"type":"object","properties":{}}},
                "stderr-secret":{"inputSchema":{"type":"object","properties":{}}},
                "command":{"inputSchema":{"type":"object","properties":{}}},
-               "environment":{"inputSchema":{"type":"object","properties":{}}},
-               "env-probe":{"inputSchema":{"type":"object","properties":{}}},
-               "temporary-file":{"inputSchema":{"type":"object","properties":{}}},
+              "environment":{"inputSchema":{"type":"object","properties":{}}},
+              "env-probe":{"inputSchema":{"type":"object","properties":{}}},
+              "locale-probe":{"inputSchema":{"type":"object","properties":{}}},
+              "temporary-file":{"inputSchema":{"type":"object","properties":{}}},
                "pid":{"inputSchema":{"type":"object","properties":{}}},
                "eof":{"inputSchema":{"type":"object","properties":{}}}
              }}}
@@ -904,6 +943,21 @@ class PluginProcessManagerTest {
 
     public static final class EchoWorker {
         private static final Pattern ID = Pattern.compile("\\\"id\\\":\\\"([^\\\"]+)\\\"");
+        // Extract the request locale from the reserved `_fengyu` envelope and a `locale` param from
+        // inside the `params` object. `[^}]*` keeps each match inside its own JSON object so the
+        // params scan cannot bleed across into the `_fengyu` object.
+        private static final Pattern FENGYU_LOCALE =
+            Pattern.compile("\\\"_fengyu\\\":\\{[^}]*\\\"locale\\\":\\\"([^\\\"]*)\\\"");
+        private static final Pattern PARAMS_LOCALE =
+            Pattern.compile("\\\"params\\\":\\{[^}]*\\\"locale\\\":\\\"([^\\\"]*)\\\"");
+        private static String find(String line, Pattern p) {
+            var m = p.matcher(line);
+            return m.find() ? m.group(1) : null;
+        }
+        /** Emit a JSON value: null → bare null, else a quoted string with minimal escaping. */
+        private static String jsonValue(String s) {
+            return s == null ? "null" : "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+        }
         public static void main(String[] args) throws Exception {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
                 for (String line; (line = reader.readLine()) != null;) {
@@ -934,6 +988,15 @@ class PluginProcessManagerTest {
                         String url = System.getenv("FENGYU_DB_URL");
                         System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
                             + "\",\"result\":{\"value\":\"" + url + "\"}}");
+                    } else if (line.contains("\"method\":\"locale-probe\"")) {
+                        // Reflect where the locale actually arrived: the reserved `_fengyu` envelope
+                        // (host request locale) vs a `locale` key inside `params` (a plugin method's
+                        // own input field). Proves the host no longer overwrites params.locale.
+                        String fengyu = find(line, FENGYU_LOCALE);
+                        String param = find(line, PARAMS_LOCALE);
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
+                            + "\",\"result\":{\"fengyuLocale\":" + jsonValue(fengyu)
+                            + ",\"paramsLocale\":" + jsonValue(param) + "}}");
                     } else if (line.contains("\"method\":\"env-probe\"")) {
                         // Echo which host env vars are visible to the worker. Used by P0-1 to prove
                         // the worker does NOT inherit arbitrary host secrets while it DOES still see
