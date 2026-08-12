@@ -90,6 +90,42 @@ class UnifiedStoreServiceTest {
         assertTrue(e.enabled(), "freshly installed .fyp plugin (no .disabled marker) should be enabled");
     }
 
+    @Test
+    void localizesInstalledEntryNameAndDescriptionByLocale() throws Exception {
+        // The catalog entry carries single-language strings, but the installed manifest has a zh
+        // i18n override. The store must surface the localized name/description so an installed
+        // plugin's display strings follow the request locale (regression guard for the lost-i18n
+        // bug: previously the catalog path ignored the manifest i18n block entirely).
+        String pluginId = "fan.summer.demo";
+        Path pluginDir = temp.resolve(pluginId);
+        Files.createDirectories(pluginDir);
+        Files.writeString(pluginDir.resolve("manifest.json"),
+            "{\"schemaVersion\":2,\"id\":\"" + pluginId + "\",\"name\":\"Demo\","
+            + "\"description\":\"Demo plugin\",\"version\":\"1.0.0\",\"author\":\"a\",\"icon\":\"i\","
+            + "\"category\":\"c\",\"ui\":{\"entry\":\"index.html\"},"
+            + "\"i18n\":{\"zh\":{\"name\":\"\u6f14\u793a\u63d2\u4ef6\",\"description\":\"\u6f14\u793a\u8bf4\u660e\"}}}");
+
+        StoreSource s = new StoreSource("fengyu-default", StoreSourceType.FENGYU, "https://e/f.json", "F");
+        StubRegistry registry = new StubRegistry(List.of(s), Map.of(
+            "fengyu-default", List.of(entry("fengyu-default:FENGYU:" + pluginId,
+                StoreSourceType.FENGYU, pluginId, "Catalog description"))
+        ));
+        UnifiedStoreService svc = new UnifiedStoreService(registry, records,
+            new PluginPackageService(temp.toString()));
+
+        // zh locale: installed entry surfaces the manifest's localized name/description, not the
+        // catalog's English strings.
+        UnifiedCatalogEntry zh = svc.list(new UnifiedStoreService.StoreFilter(null, null, null), "zh").get(0);
+        assertTrue(zh.installed());
+        assertEquals("\u6f14\u793a\u63d2\u4ef6", zh.displayName(), "zh locale must surface the localized name");
+        assertEquals("\u6f14\u793a\u8bf4\u660e", zh.description(), "zh locale must surface the localized description");
+
+        // null locale (install-lifecycle lookup path): no localization, catalog strings preserved.
+        UnifiedCatalogEntry raw = svc.list(new UnifiedStoreService.StoreFilter(null, null, null)).get(0);
+        assertEquals(pluginId, raw.displayName(), "null locale keeps the catalog display name");
+        assertEquals("Catalog description", raw.description(), "null locale keeps the catalog description");
+    }
+
     private static UnifiedCatalogEntry entry(String uid, StoreSourceType type, String name, String desc) {
         return new UnifiedCatalogEntry(uid, uid.split(":")[0], type, name, name, desc,
             null, null, List.of(), null, null,

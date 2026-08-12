@@ -14,7 +14,7 @@ The host sends a request and reads one response per line:
 
 ```jsonc
 // host → worker (one line on stdin)
-{"jsonrpc":"2.0","id":"req-1","method":"render","params":{"markdown":"# hi"}}
+{"jsonrpc":"2.0","id":"req-1","method":"render","params":{"markdown":"# hi"},"_fengyu":{"locale":"zh"}}
 
 // worker → host (one line on stdout)
 {"jsonrpc":"2.0","id":"req-1","result":{"success":true,"html":"<h1>hi</h1>"}}
@@ -22,11 +22,23 @@ The host sends a request and reads one response per line:
 
 | Message | Shape |
 | --- | --- |
-| Request | `{jsonrpc:"2.0", id, method, params}` |
+| Request | `{jsonrpc:"2.0", id, method, params, _fengyu?}` |
 | Response (success) | `{jsonrpc:"2.0", id, result}` |
 | Response (error) | `{jsonrpc:"2.0", id, error:{code, message}}` |
 
 Messages are **newline-delimited**: one JSON object per line on `stdin`, one per line on `stdout`. The `id` correlates the response to its request.
+
+The optional top-level `_fengyu` object is a **reserved, host-owned metadata envelope** — see [Reserved metadata channel](#reserved-metadata-channel). Plugins must treat any frame-root key beginning with `_fengyu` as host-owned and never declare it as a method input.
+
+## Reserved metadata channel
+
+Besides the standard JSON-RPC 2.0 fields (`jsonrpc`, `id`, `method`, `params`), the host may attach a top-level `_fengyu` object carrying host-owned, transport-level metadata. It is **never** part of `params`, so it cannot collide with a plugin method's own input fields. The Worker SDK reads it and binds it to the per-call context; a plugin reads it through `RpcContext`, never directly from the frame.
+
+| Field | Meaning |
+| --- | --- |
+| `_fengyu.locale` | The request locale (e.g. `"zh"`, `"en"`), bound to `RpcContext.locale()` and `WorkerLocale` so message-bundle resolution honours the caller's language. Omitted when the host has no locale for the call (the worker then defaults to English). |
+
+> **Reserved key.** Any frame-root key beginning with `_fengyu` is host-owned. A plugin method may freely declare a parameter named `locale` (or any other non-reserved name) in its `inputSchema`; it deserializes from `params` and is never overwritten by the request locale. The Worker SDK still accepts the legacy `params.locale` key as a fallback so a host that has not yet adopted the `_fengyu` envelope keeps working across the rollout.
 
 > **Logs go to stderr.** `stdout` is reserved for protocol messages. The Worker SDK enforces this by redirecting `System.out` to `System.err` for the duration of the run loop — see [Pitfalls](/en/plugins/pitfalls).
 

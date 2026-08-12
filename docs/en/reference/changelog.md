@@ -43,6 +43,13 @@ CHANGELOG.md instead.
   EOF drains gracefully. Stable `RpcError.Code` set (`INVALID_ARGUMENT`/`PERMISSION_DENIED`/
   `NOT_FOUND`/`CONFLICT`/`CANCELLED`/`INTERNAL`) maps to JSON-RPC codes and an `error.data.code`
   label. The old `JsonRpcWorker.string/integer` Map-parsing helpers were removed.
+- **Reserved `_fengyu` metadata envelope on the worker RPC frame.** The request locale now rides in
+  a host-owned top-level `_fengyu` object (`_fengyu.locale`) instead of being injected into `params`,
+  so a plugin method may freely declare its own `locale` input field without it being overwritten by
+  the request locale. The Worker SDK reads `_fengyu.locale` (binding both `RpcContext.locale()` and
+  `WorkerLocale`, so synchronous handlers now resolve messages in the request language — previously
+  only `Jobs` propagated locale) and falls back to the legacy `params.locale` key for hosts that have
+  not yet adopted the envelope. Any frame-root key beginning with `_fengyu` is reserved.
 - **Shared plugin bridge protocol `3.0.0` and capability pre-check.** `@infinia/plugin-sdk/protocol`
   is the side-effect-free source for iframe/host message types, method constants, capabilities, and
   structured errors. `HostEnvironment` now carries `pluginId`/`pluginVersion`/`permissions`;
