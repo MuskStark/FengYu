@@ -12,7 +12,7 @@ lang: en
 
 | Field | Type | Required | Default | Notes |
 | --- | --- | --- | --- | --- |
-| `schemaVersion` | number | yes | — | Manifest schema version. Currently `1`. |
+| `schemaVersion` | number | yes | — | Manifest schema version. Currently `2`. |
 | `id` | string | yes | — | Reverse-DNS plugin id, e.g. `fan.summer.excel`. Must be unique across installed plugins. |
 | `name` | string | yes | — | Human-readable display name. |
 | `description` | string | yes | — | One-line description shown in the marketplace and plugin list. |
@@ -22,6 +22,7 @@ lang: en
 | `category` | string | yes | — | One of the [valid category values](#valid-category-values). |
 | `ui` | object | yes | — | UI sub-record. See [`ui`](#ui). |
 | `backend` | object | no | — | Worker sub-record. See [`backend`](#backend). **Optional** — omit it for supported UI-only plugins. |
+| `rpc` | object | no | — | Worker JSON-RPC method declarations with typed input/output schemas. See [`rpc.methods`](#rpc-methods). |
 | `permissions` | string[] | no | `[]` | Declared [permissions](#valid-permissions). Drives file-I/O authorization. |
 | `homepage` | string | no | — | URL to the plugin's homepage or source repository. |
 | `official` | boolean | no | `false` | `true` for plugins seeded by `OfficialPluginSeeder`; sets descriptor `source = OFFICIAL`. |
@@ -37,22 +38,32 @@ lang: en
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `command` | string | yes | Shell command the host uses to spawn the worker, e.g. `java -jar backend/worker.jar`. |
-| `protocol` | string | yes | Wire protocol. Currently `json-rpc-2.0`. |
-| `callTimeoutSeconds` | integer | no | Plugin-wide default per-call timeout in seconds. Clamped to `[1, 600]`. When omitted, the host uses `60`. A per-tool `aiTools[].timeoutSeconds` overrides this for that tool. |
+| `callTimeoutSeconds` | integer | no | Plugin-wide default per-call timeout in seconds. Clamped to `[1, 600]`. When omitted, the host uses `60`. |
+
+Toolchain 2 dropped the v1 `command` and `protocol` fields: the host derives the worker launch from the standard `backend/worker.jar` layout and speaks JSON-RPC 2.0 over stdio unconditionally.
+
+### `rpc.methods`
+
+Each entry declares one worker JSON-RPC method with its typed input/output JSON Schemas. In Toolchain 2 the schemas are JSON-Schema **objects** (not escaped strings) and live here rather than on `aiTools`.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `description` | string | no | Human-readable summary of the method. |
+| `inputSchema` | object | no | JSON-Schema **object** describing the method's arguments. Path/FileRef inputs are typed as `string` because the host resolves FileRefs to absolute paths before the worker sees them. |
+| `outputSchema` | object | no | JSON-Schema **object** describing the worker's result envelope. Most results follow `{ success: boolean, summary: string, … }`. |
 
 ### `aiTools[]`
 
-Each entry declares one AI-callable tool that the host aggregates into its Spring AI `ToolCallback[]`.
+Each entry declares one AI-callable tool that the host aggregates into its Spring AI `ToolCallback[]`. An `aiTool` references an [`rpc.methods`](#rpc-methods) entry by `method` and carries no schema of its own — the input/output schemas live on the method it points at.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `name` | string | yes | Tool name surfaced to the model. |
+| `method` | string | yes | The `rpc.methods` key the host invokes when the model calls this tool. |
+| `effect` | string | yes | Approval classification: `read`, `write`, or `external`. |
 | `description` | string | yes | Natural-language description for the model. |
-| `method` | string | yes | Worker JSON-RPC method to invoke when the model calls this tool. |
-| `inputSchema` | string | yes | JSON Schema describing the tool's arguments, serialized as a **string**. |
-| `outputSchema` | string | no | JSON Schema describing the worker's result envelope, serialized as a **string**. Enables visual workflow output discovery. |
-| `timeoutSeconds` | integer | no | Per-tool call timeout in seconds, clamped to `[1, 600]`. Overrides `backend.callTimeoutSeconds`. Defaults to `60`. **A tool that may exceed its declared timeout must be split into `*_start` / `*_status` / `*_cancel` job methods** — see [Worker → Long tasks (job mode)](/en/plugins/worker#long-tasks-job-mode). |
+
+A method that may exceed `backend.callTimeoutSeconds` **must be split into `*_start` / `*_status` / `*_cancel` job methods** — see [Worker → Long tasks (job mode)](/en/plugins/worker#long-tasks-job-mode).
 
 See [AI Tools](/en/plugins/ai-tools) for the end-to-end flow.
 
@@ -110,7 +121,7 @@ The `fan.summer.markdown` manifest — a text plugin with no permissions and no 
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "fan.summer.markdown",
   "name": "Markdown Editor",
   "description": "Split-pane Markdown editor with isolated server-side rendering",
@@ -119,21 +130,44 @@ The `fan.summer.markdown` manifest — a text plugin with no permissions and no 
   "icon": "language-markdown",
   "category": "text",
   "ui": { "entry": "ui/index.html" },
-  "backend": { "command": "java -jar backend/worker.jar", "protocol": "json-rpc-2.0" },
+  "backend": { "callTimeoutSeconds": 30 },
   "permissions": [],
   "homepage": "https://github.com/MuskStark/FengYu",
   "official": true,
+  "rpc": {
+    "methods": {
+      "render": {
+        "description": "Render Markdown source to sanitized HTML via commonmark (server-side).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "markdown": { "type": "string", "description": "The Markdown source to render." }
+          },
+          "required": ["markdown"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" },
+            "html": { "type": "string", "nullable": true, "description": "The rendered, sanitized HTML." }
+          },
+          "required": ["success", "summary"]
+        }
+      }
+    }
+  },
   "aiTools": []
 }
 ```
 
 ### Excel plugin (with aiTools)
 
-The `fan.summer.excel` manifest — a file plugin with read/write permissions and AI tools. Two tools are shown in full: `excel_analyze` (a short synchronous call), and `excel_execute_start` (the launcher half of a job-mode pair for long-running splits). The rest follow the same `{name, description, method, inputSchema, outputSchema?, timeoutSeconds?}` shape:
+The `fan.summer.excel` manifest — a file plugin with read/write permissions and AI tools. Two methods are declared in full under `rpc.methods`: `excel_analyze` (a short synchronous call) and `excel_execute_start` (the launcher half of a job-mode pair for long-running splits). Each `aiTools` entry references one by `method` and adds an `effect`; the rest follow the same shape:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "fan.summer.excel",
   "name": "Excel Splitter",
   "description": "Split Excel workbooks by sheet, column value, or complex rules",
@@ -142,33 +176,63 @@ The `fan.summer.excel` manifest — a file plugin with read/write permissions an
   "icon": "file-excel",
   "category": "file",
   "ui": { "entry": "ui/index.html" },
-  "backend": { "command": "java -jar backend/worker.jar", "protocol": "json-rpc-2.0" },
+  "backend": { "callTimeoutSeconds": 30 },
   "permissions": ["files.read", "files.write"],
   "homepage": "https://github.com/MuskStark/FengYu",
   "official": true,
-  "aiTools": [
-    {
-      "name": "excel_analyze",
-      "description": "Analyze an Excel file and return sheets and headers.",
-      "method": "excel_analyze",
-      "timeoutSeconds": 30,
-      "inputSchema": "{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"object\",\"description\":\"A FengYu FileRef\"}},\"required\":[\"filePath\"]}"
-    },
-    {
-      "name": "excel_execute_start",
-      "description": "Launch the configured split as a background job for large workbooks and return a jobId immediately. Poll excel_execute_status with a cursor to drain progress logs.",
-      "method": "excel_execute_start",
-      "timeoutSeconds": 30,
-      "inputSchema": "{\"type\":\"object\",\"properties\":{\"outputDir\":{\"type\":\"object\",\"description\":\"A writable FengYu DirectoryRef\"},\"filePrefix\":{\"type\":\"string\"}},\"required\":[\"outputDir\"]}"
+  "rpc": {
+    "methods": {
+      "excel_analyze": {
+        "description": "Analyze an Excel file and return sheets and headers.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "filePath": { "type": "string", "description": "Resolved path of a granted FengYu FileRef." }
+          },
+          "required": ["filePath"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" }
+          },
+          "required": ["success", "summary"]
+        }
+      },
+      "excel_execute_start": {
+        "description": "Launch the configured split as a background job for large workbooks and return a jobId immediately. Poll excel_execute_status with a cursor to drain progress logs.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "outputDir": { "type": "string", "description": "Resolved writable FengYu output directory." },
+            "filePrefix": { "type": "string" }
+          },
+          "required": ["outputDir"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" },
+            "jobId": { "type": "string" }
+          },
+          "required": ["success", "summary"]
+        }
+      }
     }
+  },
+  "aiTools": [
+    { "name": "excel_analyze", "method": "excel_analyze", "effect": "read", "description": "Analyze an Excel file and return sheets and headers." },
+    { "name": "excel_execute_start", "method": "excel_execute_start", "effect": "write", "description": "Launch the configured split as a background job for large workbooks and return a jobId immediately. Poll excel_execute_status with a cursor to drain progress logs." }
   ]
 }
 ```
 
-> `inputSchema` is a **JSON Schema serialized as a string** — note the escaped quotes. The host parses it to build the Spring AI `ToolDefinition`.
+> `inputSchema` and `outputSchema` are JSON-Schema **objects** (not strings). The host reads `inputSchema` to build the Spring AI `ToolDefinition` handed to the model.
 
 ## Next steps
 
-- [Worker (JSON-RPC)](/en/plugins/worker) — implement the `backend.command` target.
+- [Worker (JSON-RPC)](/en/plugins/worker) — implement the `rpc.methods` handlers.
 - [AI Tools](/en/plugins/ai-tools) — declare and expose `aiTools`.
 - [File I/O](/en/plugins/file-io) — what each `permissions` entry unlocks.

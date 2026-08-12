@@ -5,5 +5,11 @@ import com.google.gson.annotations.SerializedName;
 
 public record OfflinepythonVerifyInput(
     @SerializedName("projectDir") String projectDir,
-    @SerializedName("scope") String scope
-) {}
+    @SerializedName("scope") OfflinepythonVerifyInputScope scope
+) {
+  public enum OfflinepythonVerifyInputScope {
+    ALL,
+    INTEGRITY,
+    SHA256
+  }
+}

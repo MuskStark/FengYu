@@ -7,7 +7,7 @@ import java.util.List;
 public record ConfigureInput(
     @SerializedName("complexEntries") List<ConfigureInputComplexEntries> complexEntries,
     @SerializedName("filePrefix") String filePrefix,
-    @SerializedName("mode") String mode,
+    @SerializedName("mode") ConfigureInputMode mode,
     @SerializedName("selectedSheets") List<String> selectedSheets,
     @SerializedName("session") String session,
     @SerializedName("splitColumn") String splitColumn,
@@ -20,4 +20,10 @@ public record ConfigureInput(
       @SerializedName("headerIndex") Integer headerIndex,
       @SerializedName("sheetName") String sheetName
   ) {}
+
+  public enum ConfigureInputMode {
+    BY_SHEET,
+    BY_COLUMN,
+    COMPLEX
+  }
 }

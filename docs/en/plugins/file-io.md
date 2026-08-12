@@ -70,8 +70,10 @@ await fengyu.files.export(outDir)                                     // → GET
 `workspaceDirectory()` requires `files.write`; it returns the selected native directory on desktop and a writable uploaded working copy in a browser. Pass every FileRef straight into an RPC — do not extract its `id` — so the host can recognize and rewrite the complete `{id, kind, access}` object before the worker sees it:
 
 ```js
-const analysis = await fengyu.invoke('analyze', { filePath: file })
-await fengyu.invoke('excel_execute', { outputDir: outDir, filePrefix: 'q3-' })
+import { createPluginRpc } from './generated/fengyu-rpc'
+const rpc = createPluginRpc(fengyu)
+const analysis = await rpc.analyze({ filePath: file as unknown as string })
+await rpc.excelExecute({ outputDir: outDir as unknown as string, filePrefix: 'q3-' })
 ```
 
 See [Official Plugin — Excel](/en/plugins/official-excel) for this flow end to end.

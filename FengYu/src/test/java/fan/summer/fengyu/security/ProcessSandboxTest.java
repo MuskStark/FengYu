@@ -71,6 +71,27 @@ class ProcessSandboxTest {
     }
 
     @Test
+    void macSandboxDoesNotDenyThePluginsOwnDataDirectory() throws Exception {
+        Path runtimeRoot = fan.summer.fengyu.runtime.RuntimePaths.root();
+        Path pluginDataRoot = Files.createDirectories(
+            fan.summer.fengyu.runtime.RuntimePaths.pluginDataDirectory(runtimeRoot));
+        Path ownData = Files.createDirectories(pluginDataRoot.resolve("com.example.worker"));
+        Path otherData = Files.createDirectories(pluginDataRoot.resolve("com.example.other"));
+        ProcessSandbox sandbox = new ProcessSandbox(ProcessSandbox.Backend.SANDBOX_EXEC);
+
+        ProcessSandbox.Launch launch = sandbox.plugin(
+            List.of("worker"), workdir, List.of(ownData), false, false);
+
+        String profile = launch.command().get(2);
+        assertFalse(profile.contains("(deny file-read* (subpath \"" + pluginDataRoot.toRealPath() + "\"))"),
+            "a parent deny cannot be overridden for the plugin's own SQLite/native temp files");
+        assertFalse(profile.contains("(deny file-read* (subpath \"" + ownData.toRealPath() + "\"))"),
+            "the plugin must read its own data directory");
+        assertTrue(profile.contains("(deny file-read* (subpath \"" + otherData.toRealPath() + "\"))"),
+            "sibling plugin data must remain unreadable");
+    }
+
+    @Test
     void launchCarriesOnStartedCallback() {
         // NONE/BUBBLEWRAP/SANDBOX_EXEC Launches carry no onStarted hook; only WINDOWS_JOB does.
         ProcessSandbox noneSandbox = new ProcessSandbox(ProcessSandbox.Backend.NONE);
@@ -217,7 +238,7 @@ class ProcessSandboxTest {
      * those denials.
      */
     @Test
-    void macSandboxDeniesSensitiveHostPaths() {
+    void macSandboxDeniesSensitiveHostPaths() throws java.io.IOException {
         ProcessSandbox sandbox = new ProcessSandbox(ProcessSandbox.Backend.SANDBOX_EXEC);
         ProcessSandbox.Launch launch = sandbox.plugin(
             List.of("worker"), workdir, List.of(workdir), false, false);
@@ -231,10 +252,26 @@ class ProcessSandboxTest {
             assertTrue(profile.contains("(deny file-read* (subpath \"" + home + "/.aws\"))"),
                 "macOS profile must deny reading ~/.aws: " + profile);
         }
-        // The FengYu runtime root (host DB, config, other plugins' data) must be denied.
-        String runtimeRoot = fan.summer.fengyu.runtime.RuntimePaths.root().toString();
-        assertTrue(profile.contains("(deny file-read* (subpath \"" + runtimeRoot + "\"))"),
-            "macOS profile must deny reading the FengYu runtime root: " + profile);
+        // The FengYu runtime root's SENSITIVE subdirs (host DB, config, logs, other plugins' data)
+        // must be denied. The whole root is NOT denied: the plugin's own package lives under
+        // <root>/plugins/<id>, and a whole-root deny broke the worker JVM (it could not load
+        // backend/worker.jar's Main-Class when the package sat under the denied root). So the
+        // profile denies the sensitive leaves, leaving the package readable. Each existing sensitive
+        // subdir is denied; non-existent ones (test temp root) are skipped.
+        Path runtimeRoot = fan.summer.fengyu.runtime.RuntimePaths.root();
+        for (Path sensitive : new Path[] {
+                fan.summer.fengyu.runtime.RuntimePaths.configDirectory(runtimeRoot),
+                fan.summer.fengyu.runtime.RuntimePaths.databaseDirectory(runtimeRoot),
+                fan.summer.fengyu.runtime.RuntimePaths.logDirectory(runtimeRoot),
+                fan.summer.fengyu.runtime.RuntimePaths.skillDirectory(runtimeRoot),
+        }) {
+            Path resolved = sensitive.toAbsolutePath().normalize();
+            java.nio.file.Path real = java.nio.file.Files.isDirectory(resolved) ? resolved.toRealPath() : null;
+            if (real != null) {
+                assertTrue(profile.contains("(deny file-read* (subpath \"" + real + "\"))"),
+                    "macOS profile must deny reading sensitive runtime subdir " + sensitive.getFileName() + ": " + profile);
+            }
+        }
         // Writes denied by default; only plugin-owned roots writable.
         assertTrue(profile.contains("(deny file-write*)"),
             "macOS profile must deny writes by default: " + profile);

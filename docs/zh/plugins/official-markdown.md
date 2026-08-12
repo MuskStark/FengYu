@@ -18,7 +18,7 @@ lang: zh-CN
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "fan.summer.markdown",
   "name": "Markdown Editor",
   "description": "Split-pane Markdown editor with isolated server-side rendering",
@@ -27,11 +27,33 @@ lang: zh-CN
   "icon": "language-markdown",
   "category": "text",
   "ui": { "entry": "ui/index.html" },
-  "backend": { "command": "java -jar backend/worker.jar", "protocol": "json-rpc-2.0" },
+  "backend": { "callTimeoutSeconds": 30 },
   "permissions": [],
   "homepage": "https://github.com/MuskStark/FengYu",
   "official": true,
-  "aiTools": []
+  "rpc": {
+    "methods": {
+      "render": {
+        "description": "Render Markdown source to sanitized HTML via commonmark.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "markdown": { "type": "string", "description": "The Markdown source to render." }
+          },
+          "required": ["markdown"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" },
+            "html": { "type": "string", "nullable": true }
+          },
+          "required": ["success", "summary"]
+        }
+      }
+    }
+  }
 }
 ```
 
@@ -39,23 +61,27 @@ lang: zh-CN
 
 - **`category: "text"`**——一个文本编辑/渲染插件。
 - **`permissions: []`**——它永远不触碰文件系统；没有任何文件 I/O 授权。
-- **`aiTools: []`**——`supportsAi` 为 `false`；它是一个纯 UI 工具，无法从聊天中调用。
-- **`backend.command: "java -jar backend/worker.jar"`** 搭配 **`protocol: "json-rpc-2.0"`**——宿主启动该 shaded jar 并通过 stdio 上的 JSON-RPC 驱动它。
+- **没有 `aiTools`**——`supportsAi` 为 `false`；它是一个纯 UI 工具，无法从聊天中调用。
+- **`backend: { "callTimeoutSeconds": 30 }`**——线协议固定为 stdio 上的 JSON-RPC 2.0，宿主按约定启动 `java -jar backend/worker.jar`；清单不再声明启动命令或协议。
 
 每个字段见 [清单](/zh/plugins/manifest)。
 
 ## `render` 动作
 
-`MarkdownWorkerMain` 注册了**单个** JSON-RPC 方法：`render`。
+`MarkdownWorkerMain` 注册了**单个** JSON-RPC 方法：`render`。它通过类型化 `method(...)` API 注册——SDK 把入参反序列化为 `RenderInput`，绑定一个 `RpcContext`，再把 `RenderOutput` 序列化回响应：
 
 ```java
-new JsonRpcWorker().on("render", params -> plugin.invoke("render", params)).run()
+return new JsonRpcWorker().method(
+        PluginMethods.RENDER, RenderInput.class, RenderOutput.class,
+        (RenderInput input, RpcContext ctx) -> handlers.render(input, ctx));
 ```
 
-UI 在每次按键时调用它（做了防抖）：
+UI 通过由 `rpc.methods` 生成的类型化客户端在每次按键时调用它（做了防抖）：
 
 ```js
-const { html } = await fengyu.invoke('render', { markdown: source })
+import { createPluginRpc } from './generated/fengyu-rpc'
+const rpc = createPluginRpc(fengyu)
+const { html } = await rpc.render({ markdown: source })
 ```
 
 | 方法 | 参数 | 返回 |

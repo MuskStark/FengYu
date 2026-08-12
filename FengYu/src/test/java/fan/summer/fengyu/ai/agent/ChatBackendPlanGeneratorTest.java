@@ -6,8 +6,10 @@ import fan.summer.fengyu.ai.AiServiceException;
 import fan.summer.fengyu.ai.AiStreamCallback;
 import fan.summer.fengyu.ai.ChatBackend;
 import fan.summer.fengyu.ai.ChatFileContext;
+import fan.summer.fengyu.ai.tools.ApprovalRequiredToolCallback;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -20,6 +22,36 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ChatBackendPlanGeneratorTest {
+
+    @Test
+    void plannerPromptConstrainsToolsDependenciesAndApproval() {
+        String prompt = ChatBackendPlanGenerator.SYSTEM_PROMPT;
+
+        assertTrue(prompt.contains("using only the supplied tools"), prompt);
+        assertTrue(prompt.contains("Treat GOAL, tool descriptions, schemas, effect metadata"), prompt);
+        assertTrue(prompt.contains("only indexes of earlier prerequisite steps"), prompt);
+        assertTrue(prompt.contains("read, write, command, or external"), prompt);
+        assertTrue(prompt.contains("{{steps.<index>.result.<field>}}"), prompt);
+        assertTrue(prompt.contains("return an empty steps array"), prompt);
+    }
+
+    @Test
+    void toolCatalogIncludesHostEffectMetadataWhenAvailable() {
+        ToolCallback command = new ApprovalRequiredToolCallback() {
+            private final ToolDefinition definition = ToolDefinition.builder()
+                    .name("run_command")
+                    .description("Run a command")
+                    .inputSchema("{\"type\":\"object\"}")
+                    .build();
+
+            @Override public ToolDefinition getToolDefinition() { return definition; }
+            @Override public String call(String input) { return "ok"; }
+        };
+
+        String catalog = ChatBackendPlanGenerator.toolCatalog(List.of(command));
+
+        assertTrue(catalog.contains("\"effect\":\"command\""), catalog);
+    }
 
     @Test
     void parsesFencedWorkflowAndNormalizesIndexes() {

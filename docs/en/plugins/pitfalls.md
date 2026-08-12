@@ -1,12 +1,12 @@
 ---
 title: Pitfalls
-description: The five traps plugin authors hit most often — iframe CSP, FileRef resolution timing, MF Vue/Vuetify dedupe, permission gating, and worker stdio framing — each as problem, cause, and fix.
+description: Common plugin traps — iframe CSP, FileRef resolution timing, environment subscription races, permission gating, and worker stdio framing — each as problem, cause, and fix.
 lang: en
 ---
 
 # Pitfalls
 
-These are the five traps plugin authors hit most often. Each is laid out as **problem → cause → fix**.
+These are the traps plugin authors hit most often. Each is laid out as **problem → cause → fix**.
 
 ## 1. Inline scripts don't load in the iframe
 
@@ -26,8 +26,10 @@ These are the five traps plugin authors hit most often. Each is laid out as **pr
 
 ```js
 // UI — pass the ref through; do NOT try to read .id or build a path
+import { createPluginRpc } from './generated/fengyu-rpc'
+const rpc = createPluginRpc(fengyu)
 const file = await fengyu.files.open({ extensions: ['xlsx'] })
-await fengyu.invoke('analyze', { filePath: file })   // host rewrites ref → path
+await rpc.analyze({ filePath: file as unknown as string })   // host rewrites ref → path
 ```
 
 ## 3. The plugin never completes the host handshake
@@ -38,7 +40,23 @@ await fengyu.invoke('analyze', { filePath: file })   // host rewrites ref → pa
 
 **Fix.** Keep `@infinia/plugin-sdk`, `@infinia/plugin-ui`, CLI, and host on one toolchain release. Await `fengyu.ready()` directly, or use `bindFengYuEnvironment`, before the first host call. See [UI Micro-frontend](/en/plugins/ui-microfrontend).
 
-## 4. A file operation returns 403
+## 4. The plugin stays dark/English while the host is light/Chinese
+
+**Problem.** The plugin loads and RPC works, but its theme and language do not match the host or do
+not react to later host changes.
+
+**Cause.** Custom bootstrap code subscribes to `environment` only after awaiting `ready()`. The host
+can send the initial event during iframe load, so that ordering creates a lost-event window. A local
+`file:` dependency or installed `.fyp` can also retain the old UI-toolchain bundle after source is
+fixed.
+
+**Fix.** Use `mountFengYuApp`. For a custom binding, subscribe before calling/awaiting `ready()`,
+merge partial environment updates, and update HTML attributes plus Vuetify and plugin i18n state.
+Test an event while the ready promise is pending. Rebuild `@infinia/plugin-ui`, refresh the plugin's
+copied dependency, rebuild/reinstall the `.fyp`, and inspect the installed asset rather than assuming
+the source edit reached runtime.
+
+## 5. A file operation returns 403
 
 **Problem.** Calling an output or export operation (`files.outputDirectory()`, `files.export(ref)`, or the underlying `POST .../files/output`, `GET .../files/export/{ref}`) returns `403`.
 
@@ -46,7 +64,7 @@ await fengyu.invoke('analyze', { filePath: file })   // host rewrites ref → pa
 
 **Fix.** Declare **every** permission you use. If you read an uploaded file and also write split results + export a zip, you need both: `"permissions": ["files.read", "files.write"]`. See [Manifest](/en/plugins/manifest) and [File I/O](/en/plugins/file-io).
 
-## 5. Logging to stdout corrupts the RPC stream
+## 6. Logging to stdout corrupts the RPC stream
 
 **Problem.** You add a `System.out.println(...)` (or a logger that writes to stdout) in the worker, and the host starts failing to parse responses — RPC calls hang or error.
 

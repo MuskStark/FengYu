@@ -2,11 +2,24 @@
 package fan.summer.email.generated;
 
 import com.google.gson.annotations.SerializedName;
+import java.util.List;
 
 public record EmailContactsImportCommitOutput(
     @SerializedName("result") EmailContactsImportCommitOutputResult result,
     @SerializedName("success") boolean success,
     @SerializedName("summary") String summary
 ) {
-  public record EmailContactsImportCommitOutputResult() {}
+  public record EmailContactsImportCommitOutputResult(
+      @SerializedName("created") int created,
+      @SerializedName("errors") List<EmailContactsImportCommitOutputResultErrors> errors,
+      @SerializedName("merged") int merged,
+      @SerializedName("skipped") int skipped,
+      @SerializedName("tagsAssigned") int tagsAssigned,
+      @SerializedName("tagsCreated") int tagsCreated
+  ) {
+    public record EmailContactsImportCommitOutputResultErrors(
+        @SerializedName("message") String message,
+        @SerializedName("row") int row
+    ) {}
+  }
 }

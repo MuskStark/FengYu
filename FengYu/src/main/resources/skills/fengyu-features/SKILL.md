@@ -1,6 +1,6 @@
 ---
 name: FengYu Features
-description: What FengYu (Infinia) can do — its built-in AI chat, Plan-and-Execute agent, tool calling, and official plugins (Markdown, Excel, Email). Load this when the user asks what FengYu/Infinia can do, what tools are available, or how to use the AI features.
+description: What FengYu (Infinia) can do — its built-in AI chat, Plan-and-Execute agent, tool calling, and official plugins (Markdown, Excel, Email, Offline Python). Load this when the user asks what FengYu/Infinia can do, what tools are available, or how to use the AI features.
 ---
 
 # FengYu (Infinia) Features

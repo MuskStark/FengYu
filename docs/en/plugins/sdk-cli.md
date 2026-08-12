@@ -56,10 +56,10 @@ interface InvokeOptions { signal?: AbortSignal; timeoutMs?: number }
 
 ## Java Worker SDK
 
-Artifact `fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.3.0` (independently versioned, published to GitHub Packages). Package `fan.summer.fengyu.sdk`. The runtime is `JsonRpcWorker`; handlers implement the `@FunctionalInterface PluginHandler`:
+Artifact `fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.3.0` (independently versioned, published to GitHub Packages). Package `fan.summer.fengyu.sdk`. The runtime is `JsonRpcWorker`; handlers are typed `(Input input, RpcContext ctx) -> Output`, where `Input`/`Output` are records generated from the manifest's `rpc.methods` and `PluginMethods` holds a constant per method name:
 
 ```java
-Object handle(Map<String, Object> params) throws Exception
+Output handle(Input input, RpcContext ctx) throws Exception
 ```
 
 Register handlers in a shared factory so the production entry point and the IDE-debug entry point run exactly the same code:
@@ -68,8 +68,10 @@ Register handlers in a shared factory so the production entry point and the IDE-
 public final class MyWorker {
     private MyWorker() {}
     public static JsonRpcWorker create() {
+        MyHandlers handlers = new MyHandlers();
         return new JsonRpcWorker()
-            .on("hello", MyHandler::handle);         // register one method per call
+            .method(PluginMethods.HELLO, HelloInput.class, HelloOutput.class,
+                    (HelloInput input, RpcContext ctx) -> handlers.hello(input, ctx));
     }
 }
 ```
@@ -84,7 +86,7 @@ public final class MyWorkerMain {
 }
 ```
 
-- `on(method, handler)` rejects duplicates, blank method names, and `null` handlers.
+- `method(name, Input.class, Output.class, handler)` rejects duplicate method names, blank names, and `null` handlers.
 - `run()` redirects `System.out` to `System.err` for the run loop — protocol output stays clean.
   `run(InputStream, OutputStream)` (the overload that takes an explicit input/output pair) applies
   the same redirection, so both stdio entry points enforce the "stdout is JSON-RPC only" contract.
@@ -95,8 +97,8 @@ public final class MyWorkerMain {
   performs **no** `System.setOut` redirection — that is exclusive to the stdio entry points.
   The devkit's loopback-TCP server uses `serve()` to expose your handlers to the IDE.
 - Strict request parsing surfaces the canonical JSON-RPC error codes: `-32700` (parse error), `-32600` (invalid request — missing/blank method or wrong `jsonrpc` version), `-32601` (unknown method), and `-32000` (handler failure). The request `id` is echoed back whenever it was parseable.
-- Throw `JsonRpcWorker.RpcException(code, message)` for a structured error; anything else surfaces as `-32000`.
-- Helpers: `JsonRpcWorker.string(params, key)`, `JsonRpcWorker.integer(params, key, fallback)`.
+- Throw `RpcException(code, message)` for a structured error; anything else surfaces as `-32000`.
+- Params arrive typed: the SDK deserializes the JSON-RPC `params` into your generated `Input` record, so you read strongly typed fields (`input.name()`) instead of fishing values out of a `Map`.
 - Build a shaded fat JAR with `maven-shade-plugin`; set `mainClass` to your `*WorkerMain`. See [Build & Deploy](/en/plugins/build-deploy).
 
 ### Database environment
@@ -152,9 +154,10 @@ Source: `toolchain/cli/src/cli.mjs`. Toolchain 2 uses flat, conventional command
 | `check [path]` | — | Validate the manifest and standard UI/Worker layout without packaging. |
 | `build [path]` | `--out <file>`, `--skip-tests` | Run npm/Maven lifecycle commands, validate staging, and atomically write the `.fyp` plus checksum. |
 
-`fengyu.plugin.json` and arbitrary command arrays are not supported. The standard layout uses
-`ui-src/package.json` plus `worker/pom.xml` (or a root `pom.xml`); the Worker build must produce one
-`target/*-worker.jar`. Output defaults to `dist/<id>-<version>.fyp`.
+The legacy per-plugin build-config file and arbitrary command arrays are not supported. The standard
+layout uses `manifest.json` plus `ui-src/package.json` and `worker/pom.xml` (or a root `pom.xml`);
+the Worker build must produce one `target/*-worker.jar`. Output defaults to
+`dist/<id>-<version>.fyp`.
 
 ### Examples
 

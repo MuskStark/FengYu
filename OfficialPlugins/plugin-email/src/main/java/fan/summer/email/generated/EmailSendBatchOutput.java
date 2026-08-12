@@ -2,6 +2,7 @@
 package fan.summer.email.generated;
 
 import com.google.gson.annotations.SerializedName;
+import java.util.List;
 
 public record EmailSendBatchOutput(
     @SerializedName("confirmation") EmailSendBatchOutputConfirmation confirmation,
@@ -9,5 +10,18 @@ public record EmailSendBatchOutput(
     @SerializedName("success") boolean success,
     @SerializedName("summary") String summary
 ) {
-  public record EmailSendBatchOutputConfirmation() {}
+  public record EmailSendBatchOutputConfirmation(
+      @SerializedName("approveMethod") String approveMethod,
+      @SerializedName("confirmationId") String confirmationId,
+      @SerializedName("expiresAt") String expiresAt,
+      @SerializedName("pluginId") String pluginId,
+      @SerializedName("rejectMethod") String rejectMethod,
+      @SerializedName("summary") List<EmailSendBatchOutputConfirmationSummary> summary
+  ) {
+    public record EmailSendBatchOutputConfirmationSummary(
+        @SerializedName("group") String group,
+        @SerializedName("label") String label,
+        @SerializedName("value") String value
+    ) {}
+  }
 }

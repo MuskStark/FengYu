@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import type { FileRef } from '@infinia/plugin-sdk'
 import { useAccountsStore } from '../stores/accounts'
 import { useArchiveStore } from '../stores/archive'
-import { actionable, files, invoke } from '../sdk'
+import { actionable, checked, files, rpc } from '../sdk'
 
 const { t } = useI18n(), accounts = useAccountsStore(), archive = useArchiveStore()
 const folder = ref('INBOX'), start = ref(''), end = ref(''), output = ref<FileRef | null>(null)
@@ -20,7 +20,7 @@ async function loadFolders() {
   if (!accounts.selectedId) { folders.value = ['INBOX']; return }
   foldersLoading.value = true
   try {
-    const result = await invoke<{ folders: string[] }>('email_imap_folders', { accountId: accounts.selectedId })
+    const result = await checked(rpc.email_imap_folders({ accountId: accounts.selectedId! }))
     folders.value = result.folders?.length ? result.folders : ['INBOX']
     if (!folders.value.includes(folder.value)) folder.value = 'INBOX'
   } catch (value) {
@@ -46,16 +46,16 @@ async function collect() {
   busy.value = true; error.value = ''; summary.value = ''
   archive.updateProgress({ processed: 0, newArchived: 0, duplicates: 0, failed: 0, successful: 0 })
   try {
-    const started = await invoke<{ jobId: string }>('email_archive_fetch_start',
-      { accountId: accounts.selectedId, folder: folder.value, start: dayStart(start.value), end: dayEnd(end.value), outputDirectory: output.value })
-    jobId.value = started.jobId
+    const started = await checked(rpc.email_archive_fetch_start(
+      { accountId: accounts.selectedId!, folder: folder.value, start: dayStart(start.value), end: dayEnd(end.value), outputDirectory: output.value as unknown as string }))
+    jobId.value = started.jobId ?? ''
     let cursor = 0
     pollTimer.value = window.setInterval(async () => {
       try {
-        const snap = await invoke<{ done: boolean; logs: string[]; cursor: number; status: string; result?: { newArchived: number; skippedDuplicates: number; failures: number }; error?: string }>(
-          'email_archive_fetch_status', { jobId: jobId.value, cursor })
+        const snap = await checked(
+          rpc.email_archive_fetch_status({ jobId: jobId.value, cursor }))
         for (const line of snap.logs ?? []) applyProgressLine(line)
-        cursor = snap.cursor
+        cursor = snap.cursor ?? 0
         if (snap.done) {
           stopPolling(); jobId.value = ''; busy.value = false
           if (snap.status === 'FAILED') { error.value = snap.error ?? t('archive.collectAction') }
@@ -72,17 +72,17 @@ async function collect() {
 }
 async function cancelCollect() {
   if (!jobId.value) return
-  try { await invoke('email_archive_fetch_cancel', { jobId: jobId.value }) }
+  try { await checked(rpc.email_archive_fetch_cancel({ jobId: jobId.value })) }
   catch (value) { error.value = actionable(value, t('archive.collectAction')) }
 }
 async function loadResults() {
   try {
-    const result = await invoke<{ messages: Record<string, unknown>[] }>('email_archive_query', { accountId: accounts.selectedId, folder: folder.value, offset: archive.offset, limit: archive.limit })
+    const result = await checked(rpc.email_archive_query({ accountId: accounts.selectedId, folder: folder.value, offset: archive.offset, limit: archive.limit }))
     archive.messages = result.messages ?? []
   } catch (value) { error.value = actionable(value, t('archive.loadAction')) }
 }
 async function openDetail(id: unknown) {
-  try { const result = await invoke<{ message: Record<string, unknown> }>('email_archive_detail', { id }); detail.value = result.message }
+  try { const result = await checked(rpc.email_archive_detail({ id: id as number })); detail.value = result.message }
   catch (value) { error.value = actionable(value, t('archive.detailAction')) }
 }
 function previous() { archive.previousPage(); void loadResults() }

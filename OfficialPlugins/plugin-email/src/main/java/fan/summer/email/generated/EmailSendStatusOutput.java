@@ -9,9 +9,11 @@ public record EmailSendStatusOutput(
     @SerializedName("summary") String summary
 ) {
   public record EmailSendStatusOutputSend(
-      @SerializedName("accountId") Integer accountId,
+      @SerializedName("accountId") int accountId,
       @SerializedName("confirmationId") String confirmationId,
+      @SerializedName("expiresAt") String expiresAt,
       @SerializedName("mode") String mode,
-      @SerializedName("status") String status
+      @SerializedName("status") String status,
+      @SerializedName("updatedAt") String updatedAt
   ) {}
 }

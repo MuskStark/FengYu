@@ -17,6 +17,9 @@ describe('mountFengYuApp', () => {
         locale: 'zh-CN',
         platform: 'web',
         capabilities: HOST_CAPABILITIES,
+        pluginId: 'fan.summer.test',
+        pluginVersion: '1.0.0',
+        permissions: [],
       }),
       on: vi.fn().mockReturnValue(unsubscribe),
       dispose: disposeClient,
@@ -34,6 +37,9 @@ describe('mountFengYuApp', () => {
       locale: 'zh-CN',
       platform: 'web',
       capabilities: HOST_CAPABILITIES,
+      pluginId: 'fan.summer.test',
+      pluginVersion: '1.0.0',
+      permissions: [],
     }])
 
     dispose()

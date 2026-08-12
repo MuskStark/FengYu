@@ -1,10 +1,15 @@
 import { reactive } from 'vue'
 import { FengYuClient, type Environment, type FileRef } from '@infinia/plugin-sdk'
 import { i18n } from './i18n'
-
-export type RpcEnvelope<T = Record<string, unknown>> = T & { success: boolean; summary: string }
+import { createPluginRpc } from './generated/fengyu-rpc'
 
 export const client = new FengYuClient()
+
+/**
+ * Typed RPC surface built from the generated client (one method per `manifest.json` `rpc.methods`
+ * entry). Replaces the v1 string-based method-dispatch wrapper.
+ */
+export const rpc = createPluginRpc(client)
 const environment = reactive({ theme: 'light', locale: 'en' })
 let unsubscribe: (() => void) | undefined
 
@@ -29,10 +34,17 @@ export function cloneableParams(params: Record<string, unknown>): Record<string,
   return JSON.parse(JSON.stringify(params)) as Record<string, unknown>
 }
 
-export async function invoke<T extends Record<string, unknown>>(method: string, params: Record<string, unknown> = {}) {
-  const result = await client.invoke<RpcEnvelope<T>>(method, cloneableParams(params))
-  if (!result.success) throw new Error(result.summary || `Email operation failed: ${method}`)
-  return result
+/**
+ * Awaits a generated-RPC promise and asserts its success envelope. The manifest now declares a
+ * complete, strongly-typed `outputSchema` for every method, so `rpc.method(...)` already resolves
+ * to the generated `<Method>Output` (success/summary + payload); this wrapper only throws on
+ * `{ success:false }` (surfacing the worker's summary) and returns the typed result unchanged — no
+ * caller-side cast is needed.
+ */
+export async function checked<T extends { success: boolean; summary: string }>(p: Promise<T>): Promise<T> {
+  const r = await p
+  if (!r.success) throw new Error(r.summary || 'Email operation failed')
+  return r
 }
 
 export const files = {

@@ -192,8 +192,13 @@ class EmailWorkerMainTest {
             handlers.deleteTag(new EmailTagDeleteInput(999), ctx),
             handlers.deleteConfig(new EmailConfigDeleteInput(999), ctx));
 
+        // Handlers now return typed <Method>Output records (not free-form Maps); serialise each back
+        // to its wire envelope via Gson and assert the failure shape {success:false, summary}.
         for (Object value : results) {
-            assertEquals(false, castMap(value).get("success"), value::toString);
+            Map<String, Object> envelope = JSON.fromJson(JSON.toJson(value),
+                new TypeToken<Map<String, Object>>() { }.getType());
+            assertEquals(false, envelope.get("success"), value::toString);
+            assertTrue(envelope.get("summary") instanceof String, value::toString);
         }
     }
 

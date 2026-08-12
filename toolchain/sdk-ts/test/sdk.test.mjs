@@ -26,6 +26,20 @@ test('ready is deduplicated and environment events merge into current state',asy
   c.dispose()
 })
 
+test('an environment event before ready does not complete the handshake',async()=>{
+  const c=new FengYuClient({target:fake,timeoutMs:100})
+  fake.emit({source:'fengyu-host',type:'event',event:'environment',data:{theme:'dark',locale:'zh-CN'}})
+  assert.equal(c.currentEnvironment(),undefined)
+  const before=fake.sent.length
+  const ready=c.ready()
+  assert.equal(fake.sent.length,before+1)
+  const sent=fake.sent.at(-1)
+  assert.equal(sent.method,'host.ready')
+  fake.emit({source:'fengyu-host',type:'response',id:sent.id,result:{protocolVersion:'3.0.0',pluginId:'demo',pluginVersion:'1.2.0',permissions:['files.read'],theme:'dark',locale:'zh-CN',platform:'desktop',capabilities:Object.values(HOST_METHODS)}})
+  assert.deepEqual(await ready,{protocolVersion:'3.0.0',pluginId:'demo',pluginVersion:'1.2.0',permissions:['files.read'],theme:'dark',locale:'zh-CN',platform:'desktop',capabilities:Object.values(HOST_METHODS)})
+  c.dispose()
+})
+
 test('settled requests remove abort listeners',async()=>{
   const controller=new AbortController()
   let adds=0,removes=0

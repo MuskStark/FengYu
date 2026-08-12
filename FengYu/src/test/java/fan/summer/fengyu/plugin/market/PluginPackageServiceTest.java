@@ -326,8 +326,8 @@ class PluginPackageServiceTest {
     /** Locates the cross-language shared fixtures from either FengYu/ or the repository root. */
     private Path fixture(String name) {
         Path root = Path.of(System.getProperty("user.dir")).toAbsolutePath();
-        Path direct = root.resolve("toolchain/spec/fixtures").resolve(name);
-        return Files.exists(direct) ? direct : root.resolve("../toolchain/spec/fixtures").resolve(name).normalize();
+        Path direct = root.resolve("toolchain/spec/test-fixtures").resolve(name);
+        return Files.exists(direct) ? direct : root.resolve("../toolchain/spec/test-fixtures").resolve(name).normalize();
     }
 
     private MockMultipartFile fixturePackage(String fixtureName, String assetPath, String assetContent) throws Exception {

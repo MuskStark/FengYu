@@ -18,7 +18,7 @@ lang: en
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "fan.summer.markdown",
   "name": "Markdown Editor",
   "description": "Split-pane Markdown editor with isolated server-side rendering",
@@ -27,10 +27,33 @@ lang: en
   "icon": "language-markdown",
   "category": "text",
   "ui": { "entry": "ui/index.html" },
-  "backend": { "command": "java -jar backend/worker.jar", "protocol": "json-rpc-2.0" },
+  "backend": { "callTimeoutSeconds": 30 },
   "permissions": [],
   "homepage": "https://github.com/MuskStark/FengYu",
   "official": true,
+  "rpc": {
+    "methods": {
+      "render": {
+        "description": "Render Markdown source to sanitized HTML via commonmark (server-side).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "markdown": { "type": "string", "description": "The Markdown source to render." }
+          },
+          "required": ["markdown"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" },
+            "html": { "type": "string", "nullable": true, "description": "The rendered, sanitized HTML." }
+          },
+          "required": ["success", "summary"]
+        }
+      }
+    }
+  },
   "aiTools": []
 }
 ```
@@ -40,7 +63,7 @@ Key points:
 - **`category: "text"`** — a text editing / rendering plugin.
 - **`permissions: []`** — it never touches the filesystem; no file I/O grants.
 - **`aiTools: []`** — `supportsAi` is `false`; it is a pure UI tool, not callable from chat.
-- **`backend.command: "java -jar backend/worker.jar"`** with **`protocol: "json-rpc-2.0"`** — the host spawns the shaded jar and drives it over JSON-RPC on stdio.
+- **`backend.callTimeoutSeconds: 30`** — the host spawns the shaded jar and drives it over JSON-RPC on stdio.
 
 See [Manifest](/en/plugins/manifest) for every field.
 
@@ -49,13 +72,17 @@ See [Manifest](/en/plugins/manifest) for every field.
 `MarkdownWorkerMain` registers a **single** JSON-RPC method: `render`.
 
 ```java
-new JsonRpcWorker().on("render", params -> plugin.invoke("render", params)).run()
+new JsonRpcWorker().method(
+        PluginMethods.RENDER, RenderInput.class, RenderOutput.class,
+        (RenderInput input, RpcContext ctx) -> plugin.render(input, ctx)).run()
 ```
 
 The UI invokes it on every keystroke (debounced):
 
 ```js
-const { html } = await fengyu.invoke('render', { markdown: source })
+import { createPluginRpc } from './generated/fengyu-rpc'
+const rpc = createPluginRpc(fengyu)
+const { html } = await rpc.render({ markdown: source })
 ```
 
 | Method | Params | Returns |

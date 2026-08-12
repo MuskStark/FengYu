@@ -6,7 +6,7 @@ import { FyIcon } from '@infinia/plugin-ui'
 import { useAccountsStore } from '../stores/accounts'
 import { useComposeStore, type ComposeMode } from '../stores/compose'
 import { useContactsStore } from '../stores/contacts'
-import { actionable, files, invoke } from '../sdk'
+import { actionable, checked, files, rpc } from '../sdk'
 import RichTextEditor from './RichTextEditor.vue'
 import ConfirmationDialog from './ConfirmationDialog.vue'
 
@@ -56,15 +56,15 @@ async function prepare(): Promise<void> {
     const recipients = compose.mode === 'DIRECT'
       ? { to: compose.normalizedTo }
       : { recipientTagIds: compose.recipientTagIds }
-    const result = await invoke<{ confirmation: NonNullable<typeof compose.confirmation> }>('email_send_single', {
-      accountId: accounts.selectedId,
+    const result = await checked(rpc.email_send_single({
+      accountId: accounts.selectedId!,
       ...recipients,
       cc: compose.normalizedCc,
       subject: compose.subject,
       plainText: compose.plainText,
       htmlText: compose.htmlText,
-      attachments: compose.attachments,
-    })
+      attachments: compose.attachments as unknown as string[],
+    }))
     compose.setConfirmation(result.confirmation)
     dialog.value = true
   } catch (value) { error.value = actionable(value, t('compose.prepareAction')) }
@@ -74,9 +74,9 @@ async function confirm(): Promise<void> {
   if (!compose.confirmation) return
   busy.value = true
   try {
-    const result = await invoke<{ send: NonNullable<typeof compose.sendResult> }>('confirm_send', {
+    const result = await checked(rpc.confirm_send({
       confirmationId: compose.confirmation.confirmationId,
-    })
+    }))
     compose.sendResult = result.send; dialog.value = false
   } catch (value) { error.value = actionable(value, t('compose.sendAction')) }
   finally { busy.value = false }
@@ -84,7 +84,7 @@ async function confirm(): Promise<void> {
 async function reject(): Promise<void> {
   if (!compose.confirmation) return
   try {
-    await invoke('reject_send', { confirmationId: compose.confirmation.confirmationId })
+    await checked(rpc.reject_send({ confirmationId: compose.confirmation.confirmationId }))
     dialog.value = false
   } catch (value) { error.value = actionable(value, t('compose.cancelAction')) }
 }
