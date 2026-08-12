@@ -8,8 +8,13 @@ public record DeployStartInput(
     @SerializedName("zipPath") String zipPath
 ) {
   public record DeployStartInputTarget(
-      @SerializedName("kind") String kind,
+      @SerializedName("kind") DeployStartInputTargetKind kind,
       @SerializedName("pythonExe") String pythonExe,
       @SerializedName("venvPath") String venvPath
-  ) {}
+  ) {
+    public enum DeployStartInputTargetKind {
+      global,
+      venv
+    }
+  }
 }

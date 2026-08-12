@@ -9,7 +9,20 @@ import CollectTab from './CollectTab.vue'
 import { useArchiveStore } from '../stores/archive'
 
 const bridge = vi.hoisted(() => ({ invoke: vi.fn(), files: { open: vi.fn(), inputDirectory: vi.fn(), outputDirectory: vi.fn() } }))
-vi.mock('../sdk', () => ({ ...bridge, actionable: (_error: unknown, action: string) => action }))
+vi.mock('../sdk', () => ({
+  ...bridge,
+  actionable: (_error: unknown, action: string) => action,
+  rpc: new Proxy({}, {
+    get: (_t, prop) => typeof prop === 'string' && prop !== 'then'
+      ? (input?: unknown, options?: unknown) => bridge.invoke(prop, input, options)
+      : undefined,
+  }),
+  checked: async (p: Promise<{ success: boolean; summary: string }>) => {
+    const r = await p
+    if (!r.success) throw new Error(r.summary || 'Email operation failed')
+    return r
+  },
+}))
 
 const stubs = {
   VBtn: { emits: ['click'], template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' },
@@ -28,7 +41,7 @@ it('renders structured send records without retry controls or raw JSON', async (
   await wrapper.get('[data-testid="record-search"]').setValue('c1')
   await wrapper.get('[data-testid="record-search-submit"]').trigger('click')
   await vi.waitFor(() => expect(wrapper.text()).toContain('PARTIAL_FAILED'))
-  expect(bridge.invoke).toHaveBeenCalledWith('email_send_records_query', expect.objectContaining({ query: 'c1', offset: 0 }))
+  expect(bridge.invoke).toHaveBeenCalledWith('email_send_records_query', expect.objectContaining({ query: 'c1', offset: 0 }), undefined)
   expect(wrapper.find('pre').exists()).toBe(false)
   expect(wrapper.text().toLowerCase()).not.toContain('retry')
 })
@@ -38,16 +51,17 @@ it('keeps account passwords write-only and separates test from save', async () =
   const wrapper = mount(AccountSettingsView, options())
   expect(wrapper.get('input[type="password"]').attributes('autocomplete')).toBe('new-password')
   await wrapper.get('[data-testid="smtp-test"]').trigger('click')
-  expect(bridge.invoke).toHaveBeenLastCalledWith('email_account_test', expect.any(Object))
+  expect(bridge.invoke).toHaveBeenLastCalledWith('email_account_test', expect.any(Object), undefined)
   // SMTP and IMAP each have their own test button dispatching distinct methods.
   expect(wrapper.get('[data-testid="imap-test"]').element).toBeTruthy()
   await wrapper.get('[data-testid="imap-test"]').trigger('click')
-  expect(bridge.invoke).toHaveBeenLastCalledWith('email_account_test_imap', expect.any(Object))
+  expect(bridge.invoke).toHaveBeenLastCalledWith('email_account_test_imap', expect.any(Object), undefined)
   await wrapper.get('[data-testid="account-save"]').trigger('click')
-  // save dispatches email_account_save, then refreshes the list via email_accounts_list. The mocked
-  // invoke drops the default params arg, so assert on the method name only for the refresh call.
-  expect(bridge.invoke).toHaveBeenCalledWith('email_account_save', expect.any(Object))
-  await vi.waitFor(() => expect(bridge.invoke).toHaveBeenLastCalledWith('email_accounts_list'))
+  // save dispatches email_account_save, then refreshes the list via email_accounts_list. The generated
+  // client always passes three positional args (input {} + undefined options), so assert the full
+  // signature for the accounts-list refresh call.
+  expect(bridge.invoke).toHaveBeenCalledWith('email_account_save', expect.any(Object), undefined)
+  await vi.waitFor(() => expect(bridge.invoke).toHaveBeenLastCalledWith('email_accounts_list', {}, undefined))
 })
 
 it('keeps bulk contact actions separate from tag management', () => {
@@ -91,7 +105,7 @@ it('saves the contact with tags selected in the contact form', async () => {
   await wrapper.get('[data-testid="contact-email"]').setValue('tagged@example.com')
   await wrapper.get('[data-testid="contact-save"]').trigger('click')
   await vi.waitFor(() => expect(bridge.invoke).toHaveBeenCalledWith('email_contact_save',
-    expect.objectContaining({ email: 'tagged@example.com', tagIds: [7] })))
+    expect.objectContaining({ email: 'tagged@example.com', tagIds: [7] }), undefined))
 })
 
 it('shows collection counters and archive pagination together', () => {

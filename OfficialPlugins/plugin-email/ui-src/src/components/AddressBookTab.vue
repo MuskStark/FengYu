@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useContactsStore, type Contact } from '../stores/contacts'
-import { actionable, invoke } from '../sdk'
+import { actionable, checked, rpc } from '../sdk'
 import ActionDialog from './ActionDialog.vue'
 import ImportContactsDialog from './ImportContactsDialog.vue'
 
@@ -32,19 +32,19 @@ function hiddenTagCount(item: Contact): number { return Math.max(0, (item.tagIds
 async function run(action: string, task: () => Promise<unknown>) {
   try { error.value = ''; await task(); await store.load() } catch (value) { error.value = actionable(value, action) }
 }
-const saveContact = () => run(t('contacts.saveAction'), async () => { await invoke('email_contact_save', {
+const saveContact = () => run(t('contacts.saveAction'), async () => { await checked(rpc.email_contact_save({
   id: contactId.value, email: email.value, nickname: nickname.value, notes: notes.value, tagIds: [...contactTagIds.value],
-}); reset() })
+})); reset() })
 const deleteContact = (id: number) => { pendingDelete.value = { kind: 'contact', id } }
-const addTag = () => run(t('contacts.tagSaveAction'), async () => { await invoke('email_tag_save', { name: tagName.value }); tagName.value = '' })
+const addTag = () => run(t('contacts.tagSaveAction'), async () => { await checked(rpc.email_tag_save({ name: tagName.value })); tagName.value = '' })
 const deleteTag = (id: number) => { pendingDelete.value = { kind: 'tag', id } }
-const assign = () => run(t('contacts.assignAction'), () => invoke('email_tags_assign', { contactIds: selectedContacts.value, tagIds: assignTagIds.value }))
+const assign = () => run(t('contacts.assignAction'), () => checked(rpc.email_tags_assign({ contactIds: selectedContacts.value, tagIds: assignTagIds.value })))
 function confirmDelete(): void {
   const target = pendingDelete.value
   pendingDelete.value = undefined
   if (!target) return
-  if (target.kind === 'contact') void run(t('contacts.deleteAction'), () => invoke('email_contact_delete', { id: target.id }))
-  else void run(t('contacts.tagDeleteAction'), () => invoke('email_tag_delete', { id: target.id }))
+  if (target.kind === 'contact') void run(t('contacts.deleteAction'), () => checked(rpc.email_contact_delete({ id: target.id })))
+  else void run(t('contacts.tagDeleteAction'), () => checked(rpc.email_tag_delete({ id: target.id })))
 }
 </script>
 

@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAccountsStore } from '../stores/accounts'
-import { actionable, invoke } from '../sdk'
+import { actionable, checked, rpc } from '../sdk'
 import ActionDialog from './ActionDialog.vue'
 
 const { t } = useI18n(), accounts = useAccountsStore(), error = ref(''), notice = ref(''), busy = ref(false), deleteDialog = ref(false)
@@ -17,16 +17,16 @@ function newAccount(): void {
     imapSecurity: 'SSL', imapSkipCertVerify: false, defaultAccount: false })
 }
 const testAccount = () => guard(t('accounts.testAction'), async () => {
-  await invoke('email_account_test', { accountId: accounts.draft.id }); notice.value = t('accounts.testSuccess')
+  await checked(rpc.email_account_test({ accountId: accounts.draft.id! })); notice.value = t('accounts.testSuccess')
 })
 const testImapAccount = () => guard(t('accounts.testAction'), async () => {
-  await invoke('email_account_test_imap', { accountId: accounts.draft.id }); notice.value = t('accounts.testSuccess')
+  await checked(rpc.email_account_test_imap({ accountId: accounts.draft.id! })); notice.value = t('accounts.testSuccess')
 })
 const saveAccount = () => guard(t('accounts.saveAction'), async () => {
-  await invoke('email_account_save', { ...accounts.draft }); accounts.draft.password = ''; await accounts.load(); notice.value = t('accounts.saved')
+  await checked(rpc.email_account_save({ ...accounts.draft })); accounts.draft.password = ''; await accounts.load(); notice.value = t('accounts.saved')
 })
 const makeDefault = () => guard(t('accounts.defaultAction'), async () => {
-  await invoke('email_account_set_default', { id: accounts.draft.id }); await accounts.load()
+  await checked(rpc.email_account_set_default({ id: accounts.draft.id! })); await accounts.load()
 })
 const removeAccount = () => {
   if (!accounts.draft.id) return
@@ -35,7 +35,7 @@ const removeAccount = () => {
 const confirmRemoveAccount = () => {
   if (!accounts.draft.id) return
   void guard(t('accounts.deleteAction'), async () => {
-    await invoke('email_account_delete', { id: accounts.draft.id }); newAccount(); await accounts.load()
+    await checked(rpc.email_account_delete({ id: accounts.draft.id! })); newAccount(); await accounts.load()
   })
 }
 </script>

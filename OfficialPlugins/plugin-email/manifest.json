@@ -7,24 +7,102 @@
   "author": "FengYu",
   "icon": "email-multiple",
   "category": "network",
-  "ui": { "entry": "ui/index.html" },
-  "backend": { "callTimeoutSeconds": 60 },
-  "permissions": ["database", "network.email", "files.read", "files.write"],
+  "ui": {
+    "entry": "ui/index.html"
+  },
+  "backend": {
+    "callTimeoutSeconds": 60
+  },
+  "permissions": [
+    "database",
+    "network.email",
+    "files.read",
+    "files.write"
+  ],
   "homepage": "https://github.com/MuskStark/FengYu",
   "official": true,
   "rpc": {
     "methods": {
       "email_accounts_list": {
         "description": "List configured email accounts. Credentials are never returned.",
-        "inputSchema": { "type": "object", "properties": {} },
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        },
         "outputSchema": {
           "type": "object",
-          "description": "success/summary envelope; the configured accounts (without credentials) are carried in the runtime result.",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "accounts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "integer"
+                  },
+                  "displayName": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "smtpHost": {
+                    "type": "string"
+                  },
+                  "smtpPort": {
+                    "type": "integer"
+                  },
+                  "smtpSecurity": {
+                    "type": "string"
+                  },
+                  "imapHost": {
+                    "type": "string"
+                  },
+                  "imapPort": {
+                    "type": "integer"
+                  },
+                  "imapSecurity": {
+                    "type": "string"
+                  },
+                  "smtpSkipCertVerify": {
+                    "type": "boolean"
+                  },
+                  "imapSkipCertVerify": {
+                    "type": "boolean"
+                  },
+                  "defaultAccount": {
+                    "type": "boolean"
+                  },
+                  "passwordConfigured": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "displayName",
+                  "email",
+                  "smtpHost",
+                  "smtpPort",
+                  "smtpSecurity",
+                  "smtpSkipCertVerify",
+                  "imapSkipCertVerify",
+                  "defaultAccount",
+                  "passwordConfigured"
+                ]
+              }
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "accounts",
+            "success",
+            "summary"
+          ]
         }
       },
       "email_contacts_query": {
@@ -32,20 +110,79 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "query": { "type": "string", "description": "Search text." },
-            "tagIds": { "type": "array", "items": { "type": "integer" }, "description": "Restrict to contacts tagged with any of these ids." },
-            "offset": { "type": "integer", "minimum": 0, "description": "Page offset." },
-            "limit": { "type": "integer", "minimum": 1, "maximum": 100, "description": "Page size." }
+            "query": {
+              "type": "string",
+              "description": "Search text."
+            },
+            "tagIds": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "description": "Restrict to contacts tagged with any of these ids."
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Page offset."
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Page size."
+            }
           }
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "contacts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "integer"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "nickname": {
+                    "type": "string"
+                  },
+                  "notes": {
+                    "type": "string"
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "tagIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "email",
+                  "tagIds"
+                ]
+              }
+            }
           },
-          "description": "success/summary envelope; matching contacts are carried in the runtime result.",
-          "required": ["success", "summary"]
+          "required": [
+            "contacts",
+            "success",
+            "summary"
+          ]
         }
       },
       "email_send_single": {
@@ -53,27 +190,126 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "accountId": { "type": "integer", "description": "Sender account id." },
-            "to": { "type": "array", "items": { "type": "string" }, "description": "Direct recipient email addresses." },
-            "recipientTagIds": { "type": "array", "items": { "type": "integer" }, "description": "Resolve recipients from these tags." },
-            "cc": { "type": "array", "items": { "type": "string" } },
-            "bcc": { "type": "array", "items": { "type": "string" } },
-            "subject": { "type": "string" },
-            "plainText": { "type": "string", "description": "Plain-text body." },
-            "htmlText": { "type": "string", "description": "HTML body (sanitized server-side)." },
-            "attachments": { "type": "array", "items": { "type": "string" }, "description": "Resolved attachment file paths." }
+            "accountId": {
+              "type": "integer",
+              "description": "Sender account id."
+            },
+            "to": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Direct recipient email addresses."
+            },
+            "recipientTagIds": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "description": "Resolve recipients from these tags."
+            },
+            "cc": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "bcc": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "subject": {
+              "type": "string"
+            },
+            "plainText": {
+              "type": "string",
+              "description": "Plain-text body."
+            },
+            "htmlText": {
+              "type": "string",
+              "description": "HTML body (sanitized server-side)."
+            },
+            "attachments": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Resolved attachment file paths."
+            }
           },
-          "required": ["accountId"]
+          "required": [
+            "accountId"
+          ]
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
-            "confirmation_required": { "type": "boolean" },
-            "confirmation": { "type": "object", "description": "Prepared send confirmation including confirmationId and status." }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "confirmation_required": {
+              "type": "boolean"
+            },
+            "confirmation": {
+              "type": "object",
+              "properties": {
+                "pluginId": {
+                  "type": "string"
+                },
+                "confirmationId": {
+                  "type": "string"
+                },
+                "approveMethod": {
+                  "type": "string"
+                },
+                "rejectMethod": {
+                  "type": "string"
+                },
+                "expiresAt": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "label",
+                      "value"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "pluginId",
+                "confirmationId",
+                "approveMethod",
+                "rejectMethod",
+                "expiresAt",
+                "summary"
+              ]
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "confirmation",
+            "success",
+            "summary"
+          ]
         }
       },
       "email_send_batch": {
@@ -81,26 +317,119 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "accountId": { "type": "integer", "description": "Sender account id." },
-            "recipientGroupTagIds": { "type": "array", "items": { "type": "integer" }, "description": "Tags whose members receive per-attachment messages." },
-            "ccGroupTagIds": { "type": "array", "items": { "type": "integer" }, "description": "Tags whose members are CC'd on every message." },
-            "inputDirectory": { "type": "string", "description": "Resolved directory of per-recipient attachment files." },
-            "commonAttachments": { "type": "array", "items": { "type": "string" }, "description": "Resolved attachment paths attached to every message." },
-            "subject": { "type": "string" },
-            "plainText": { "type": "string" },
-            "htmlText": { "type": "string" }
+            "accountId": {
+              "type": "integer",
+              "description": "Sender account id."
+            },
+            "recipientGroupTagIds": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "description": "Tags whose members receive per-attachment messages."
+            },
+            "ccGroupTagIds": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "description": "Tags whose members are CC'd on every message."
+            },
+            "inputDirectory": {
+              "type": "string",
+              "description": "Resolved directory of per-recipient attachment files."
+            },
+            "commonAttachments": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Resolved attachment paths attached to every message."
+            },
+            "subject": {
+              "type": "string"
+            },
+            "plainText": {
+              "type": "string"
+            },
+            "htmlText": {
+              "type": "string"
+            }
           },
-          "required": ["accountId", "recipientGroupTagIds", "ccGroupTagIds", "inputDirectory"]
+          "required": [
+            "accountId",
+            "recipientGroupTagIds",
+            "ccGroupTagIds",
+            "inputDirectory"
+          ]
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
-            "confirmation_required": { "type": "boolean" },
-            "confirmation": { "type": "object", "description": "Prepared batch confirmation including confirmationId and status." }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "confirmation_required": {
+              "type": "boolean"
+            },
+            "confirmation": {
+              "type": "object",
+              "properties": {
+                "pluginId": {
+                  "type": "string"
+                },
+                "confirmationId": {
+                  "type": "string"
+                },
+                "approveMethod": {
+                  "type": "string"
+                },
+                "rejectMethod": {
+                  "type": "string"
+                },
+                "expiresAt": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "label",
+                      "value"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "pluginId",
+                "confirmationId",
+                "approveMethod",
+                "rejectMethod",
+                "expiresAt",
+                "summary"
+              ]
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "confirmation",
+            "success",
+            "summary"
+          ]
         }
       },
       "email_batch_preview": {
@@ -108,51 +437,206 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "accountId": { "type": "integer" },
-            "recipientGroupTagIds": { "type": "array", "items": { "type": "integer" } },
-            "ccGroupTagIds": { "type": "array", "items": { "type": "integer" } },
-            "inputDirectory": { "type": "string" },
-            "commonAttachments": { "type": "array", "items": { "type": "string" } },
-            "subject": { "type": "string" },
-            "plainText": { "type": "string" },
-            "htmlText": { "type": "string" }
+            "accountId": {
+              "type": "integer"
+            },
+            "recipientGroupTagIds": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            },
+            "ccGroupTagIds": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            },
+            "inputDirectory": {
+              "type": "string"
+            },
+            "commonAttachments": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "subject": {
+              "type": "string"
+            },
+            "plainText": {
+              "type": "string"
+            },
+            "htmlText": {
+              "type": "string"
+            }
           },
-          "required": ["accountId", "recipientGroupTagIds", "ccGroupTagIds", "inputDirectory"]
+          "required": [
+            "accountId",
+            "recipientGroupTagIds",
+            "ccGroupTagIds",
+            "inputDirectory"
+          ]
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
-            "preview": { "type": "object", "description": "Per-recipient batch plan preview." }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "preview": {
+              "type": "object",
+              "properties": {
+                "messages": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "attachmentTag": {
+                        "type": "string"
+                      },
+                      "to": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "cc": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "tagAttachments": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "commonAttachments": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "to",
+                      "cc",
+                      "tagAttachments",
+                      "commonAttachments"
+                    ]
+                  }
+                },
+                "ignoredFiles": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "skippedTags": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "attachmentTag": {
+                        "type": "string"
+                      },
+                      "reason": {
+                        "type": "string"
+                      },
+                      "attachments": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "reason",
+                      "attachments"
+                    ]
+                  }
+                },
+                "messageCount": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "messages",
+                "ignoredFiles",
+                "skippedTags",
+                "messageCount"
+              ]
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "preview",
+            "success",
+            "summary"
+          ]
         }
       },
       "email_send_status": {
         "description": "Query a prepared or completed send by confirmation id.",
         "inputSchema": {
           "type": "object",
-          "properties": { "confirmationId": { "type": "string" } },
-          "required": ["confirmationId"]
+          "properties": {
+            "confirmationId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "confirmationId"
+          ]
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
             "send": {
               "type": "object",
-              "description": "Prepared or completed send status.",
               "properties": {
-                "confirmationId": { "type": "string" },
-                "accountId": { "type": "integer" },
-                "mode": { "type": "string" },
-                "status": { "type": "string", "enum": ["prepared", "confirmed", "rejected", "sending", "sent", "completed", "failed", "cancelled", "expired"] }
-              }
+                "confirmationId": {
+                  "type": "string"
+                },
+                "accountId": {
+                  "type": "integer"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "expiresAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "confirmationId",
+                "accountId",
+                "mode",
+                "status"
+              ]
             }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "send",
+            "success",
+            "summary"
+          ]
         }
       },
       "email_send_records_query": {
@@ -160,22 +644,117 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "taskStatus": { "type": "string" },
-            "confirmationId": { "type": "string" },
-            "messageStatus": { "type": "string" },
-            "query": { "type": "string" },
-            "offset": { "type": "integer", "minimum": 0 },
-            "limit": { "type": "integer", "minimum": 1, "maximum": 100 }
+            "taskStatus": {
+              "type": "string"
+            },
+            "confirmationId": {
+              "type": "string"
+            },
+            "messageStatus": {
+              "type": "string"
+            },
+            "query": {
+              "type": "string"
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
           }
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "tasks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "confirmationId": {
+                    "type": "string"
+                  },
+                  "accountId": {
+                    "type": "integer"
+                  },
+                  "mode": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "expiresAt": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "confirmationId",
+                  "accountId",
+                  "mode",
+                  "status"
+                ]
+              }
+            },
+            "messages": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "integer"
+                  },
+                  "confirmationId": {
+                    "type": "string"
+                  },
+                  "accountEmail": {
+                    "type": "string"
+                  },
+                  "recipientsJson": {
+                    "type": "string"
+                  },
+                  "subject": {
+                    "type": "string"
+                  },
+                  "attachmentJson": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "errorMessage": {
+                    "type": "string"
+                  },
+                  "sentAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "accountEmail",
+                  "status"
+                ]
+              }
+            }
           },
-          "description": "success/summary envelope; matching send tasks and per-message delivery records are carried in the runtime result.",
-          "required": ["success", "summary"]
+          "required": [
+            "messages",
+            "success",
+            "summary",
+            "tasks"
+          ]
         }
       },
       "email_archive_fetch": {
@@ -183,22 +762,66 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "accountId": { "type": "integer" },
-            "folder": { "type": "string", "description": "IMAP folder name." },
-            "start": { "type": "string", "description": "ISO-8601 inclusive start instant." },
-            "end": { "type": "string", "description": "ISO-8601 inclusive end instant." },
-            "outputDirectory": { "type": "string", "description": "Resolved output directory." }
+            "accountId": {
+              "type": "integer"
+            },
+            "folder": {
+              "type": "string",
+              "description": "IMAP folder name."
+            },
+            "start": {
+              "type": "string",
+              "description": "ISO-8601 inclusive start instant."
+            },
+            "end": {
+              "type": "string",
+              "description": "ISO-8601 inclusive end instant."
+            },
+            "outputDirectory": {
+              "type": "string",
+              "description": "Resolved output directory."
+            }
           },
-          "required": ["accountId", "folder", "outputDirectory"]
+          "required": [
+            "accountId",
+            "folder",
+            "outputDirectory"
+          ]
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
-            "collection": { "type": "object", "description": "New, duplicate, and failed message counts." }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "collection": {
+              "type": "object",
+              "properties": {
+                "newArchived": {
+                  "type": "integer"
+                },
+                "skippedDuplicates": {
+                  "type": "integer"
+                },
+                "failures": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "newArchived",
+                "skippedDuplicates",
+                "failures"
+              ]
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "collection",
+            "success",
+            "summary"
+          ]
         }
       },
       "email_archive_fetch_start": {
@@ -206,22 +829,49 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "accountId": { "type": "integer" },
-            "folder": { "type": "string" },
-            "start": { "type": "string", "description": "ISO-8601 inclusive start instant." },
-            "end": { "type": "string", "description": "ISO-8601 inclusive end instant." },
-            "outputDirectory": { "type": "string", "description": "Resolved output directory." }
+            "accountId": {
+              "type": "integer"
+            },
+            "folder": {
+              "type": "string"
+            },
+            "start": {
+              "type": "string",
+              "description": "ISO-8601 inclusive start instant."
+            },
+            "end": {
+              "type": "string",
+              "description": "ISO-8601 inclusive end instant."
+            },
+            "outputDirectory": {
+              "type": "string",
+              "description": "Resolved output directory."
+            }
           },
-          "required": ["accountId", "folder", "outputDirectory"]
+          "required": [
+            "accountId",
+            "folder",
+            "outputDirectory"
+          ]
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
-            "jobId": { "type": "string" }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "jobId": {
+              "type": "string"
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "jobId",
+            "success",
+            "summary"
+          ]
         }
       },
       "email_archive_fetch_status": {
@@ -229,42 +879,120 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "jobId": { "type": "string" },
-            "cursor": { "type": "integer", "minimum": 0, "description": "Absolute log cursor returned by the previous poll." }
+            "jobId": {
+              "type": "string"
+            },
+            "cursor": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Absolute log cursor returned by the previous poll."
+            }
           },
-          "required": ["jobId"]
+          "required": [
+            "jobId"
+          ]
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
-            "jobId": { "type": "string" },
-            "status": { "type": "string", "enum": ["RUNNING", "DONE", "FAILED", "CANCELLED"] },
-            "done": { "type": "boolean" },
-            "logs": { "type": "array", "items": { "type": "string" } },
-            "cursor": { "type": "integer" },
-            "result": { "type": "object", "description": "Final collection counts when the job is done." },
-            "error": { "type": "string", "nullable": true }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "jobId": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "RUNNING",
+                "DONE",
+                "FAILED",
+                "CANCELLED"
+              ]
+            },
+            "logs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "cursor": {
+              "type": "integer"
+            },
+            "droppedLogs": {
+              "type": "integer"
+            },
+            "done": {
+              "type": "boolean"
+            },
+            "result": {
+              "type": "object",
+              "properties": {
+                "newArchived": {
+                  "type": "integer"
+                },
+                "skippedDuplicates": {
+                  "type": "integer"
+                },
+                "failures": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "newArchived",
+                "skippedDuplicates",
+                "failures"
+              ]
+            },
+            "error": {
+              "type": "string"
+            },
+            "elapsedMs": {
+              "type": "integer"
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "success",
+            "summary"
+          ]
         }
       },
       "email_archive_fetch_cancel": {
         "description": "Request cancellation of a running archive job by id (domain-level job cancel).",
         "inputSchema": {
           "type": "object",
-          "properties": { "jobId": { "type": "string" } },
-          "required": ["jobId"]
+          "properties": {
+            "jobId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "jobId"
+          ]
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
-            "jobId": { "type": "string" }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "jobId": {
+              "type": "string"
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "success",
+            "summary"
+          ]
         }
       },
       "email_archive_query": {
@@ -272,92 +1000,342 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "accountId": { "type": "integer", "nullable": true },
-            "folder": { "type": "string" },
-            "sender": { "type": "string" },
-            "subject": { "type": "string" },
-            "start": { "type": "string", "description": "ISO-8601 inclusive start instant." },
-            "end": { "type": "string", "description": "ISO-8601 inclusive end instant." },
-            "offset": { "type": "integer", "minimum": 0 },
-            "limit": { "type": "integer", "minimum": 1, "maximum": 100 }
+            "accountId": {
+              "type": "integer",
+              "nullable": true
+            },
+            "folder": {
+              "type": "string"
+            },
+            "sender": {
+              "type": "string"
+            },
+            "subject": {
+              "type": "string"
+            },
+            "start": {
+              "type": "string",
+              "description": "ISO-8601 inclusive start instant."
+            },
+            "end": {
+              "type": "string",
+              "description": "ISO-8601 inclusive end instant."
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
           }
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "messages": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "integer"
+                  },
+                  "accountId": {
+                    "type": "integer"
+                  },
+                  "accountEmail": {
+                    "type": "string"
+                  },
+                  "folder": {
+                    "type": "string"
+                  },
+                  "messageUid": {
+                    "type": "string"
+                  },
+                  "subject": {
+                    "type": "string"
+                  },
+                  "fromAddress": {
+                    "type": "string"
+                  },
+                  "recipientsJson": {
+                    "type": "string"
+                  },
+                  "sentAt": {
+                    "type": "string"
+                  },
+                  "receivedAt": {
+                    "type": "string"
+                  },
+                  "hasAttachment": {
+                    "type": "boolean"
+                  },
+                  "bodyPreview": {
+                    "type": "string"
+                  },
+                  "emlPath": {
+                    "type": "string"
+                  },
+                  "archivedAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "accountId",
+                  "accountEmail",
+                  "folder",
+                  "hasAttachment"
+                ]
+              }
+            }
           },
-          "description": "success/summary envelope; matching archived message metadata are carried in the runtime result.",
-          "required": ["success", "summary"]
+          "required": [
+            "messages",
+            "success",
+            "summary"
+          ]
         }
       },
       "email_imap_folders": {
         "description": "List the IMAP folders available on a saved account.",
         "inputSchema": {
           "type": "object",
-          "properties": { "accountId": { "type": "integer" } },
-          "required": ["accountId"]
+          "properties": {
+            "accountId": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "accountId"
+          ]
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
-            "folders": { "type": "array", "items": { "type": "string" } }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "folders": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "folders",
+            "success",
+            "summary"
+          ]
         }
       },
       "confirm_send": {
         "description": "Confirm and dispatch a previously prepared send by confirmation id.",
         "inputSchema": {
           "type": "object",
-          "properties": { "confirmationId": { "type": "string" } },
-          "required": ["confirmationId"]
+          "properties": {
+            "confirmationId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "confirmationId"
+          ]
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
-            "send": { "type": "object", "description": "Confirmed send status." }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "send": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string"
+                },
+                "succeeded": {
+                  "type": "integer"
+                },
+                "failed": {
+                  "type": "integer"
+                },
+                "failedRecipients": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "status",
+                "succeeded",
+                "failed"
+              ]
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "send",
+            "success",
+            "summary"
+          ]
         }
       },
       "reject_send": {
         "description": "Reject and discard a previously prepared send by confirmation id.",
         "inputSchema": {
           "type": "object",
-          "properties": { "confirmationId": { "type": "string" } },
-          "required": ["confirmationId"]
+          "properties": {
+            "confirmationId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "confirmationId"
+          ]
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
-            "send": { "type": "object", "description": "Rejected send status." }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "send": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string"
+                },
+                "succeeded": {
+                  "type": "integer"
+                },
+                "failed": {
+                  "type": "integer"
+                },
+                "failedRecipients": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "status",
+                "succeeded",
+                "failed"
+              ]
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "send",
+            "success",
+            "summary"
+          ]
         }
       },
       "email_account_find": {
         "description": "Find a configured account by id without returning credentials.",
         "inputSchema": {
           "type": "object",
-          "properties": { "id": { "type": "integer" } },
-          "required": ["id"]
+          "properties": {
+            "id": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ]
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
-            "account": { "type": "object", "description": "Account without credentials." }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "account": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": "string"
+                },
+                "smtpHost": {
+                  "type": "string"
+                },
+                "smtpPort": {
+                  "type": "integer"
+                },
+                "smtpSecurity": {
+                  "type": "string"
+                },
+                "imapHost": {
+                  "type": "string"
+                },
+                "imapPort": {
+                  "type": "integer"
+                },
+                "imapSecurity": {
+                  "type": "string"
+                },
+                "smtpSkipCertVerify": {
+                  "type": "boolean"
+                },
+                "imapSkipCertVerify": {
+                  "type": "boolean"
+                },
+                "defaultAccount": {
+                  "type": "boolean"
+                },
+                "passwordConfigured": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "displayName",
+                "email",
+                "smtpHost",
+                "smtpPort",
+                "smtpSecurity",
+                "smtpSkipCertVerify",
+                "imapSkipCertVerify",
+                "defaultAccount",
+                "passwordConfigured"
+              ]
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "account",
+            "success",
+            "summary"
+          ]
         }
       },
       "email_account_save": {
@@ -365,98 +1343,298 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "id": { "type": "integer", "nullable": true },
-            "displayName": { "type": "string" },
-            "email": { "type": "string" },
-            "password": { "type": "string", "description": "SMTP/IMAP credential secret. Scrubbed from all logs and responses." },
-            "smtpHost": { "type": "string" },
-            "smtpPort": { "type": "integer" },
-            "smtpSecurity": { "type": "string" },
-            "imapHost": { "type": "string" },
-            "imapPort": { "type": "integer", "nullable": true },
-            "imapSecurity": { "type": "string" },
-            "smtpSkipCertVerify": { "type": "boolean" },
-            "imapSkipCertVerify": { "type": "boolean" },
-            "defaultAccount": { "type": "boolean" }
+            "id": {
+              "type": "integer",
+              "nullable": true
+            },
+            "displayName": {
+              "type": "string"
+            },
+            "email": {
+              "type": "string"
+            },
+            "password": {
+              "type": "string",
+              "description": "SMTP/IMAP credential secret. Scrubbed from all logs and responses."
+            },
+            "smtpHost": {
+              "type": "string"
+            },
+            "smtpPort": {
+              "type": "integer"
+            },
+            "smtpSecurity": {
+              "type": "string"
+            },
+            "imapHost": {
+              "type": "string"
+            },
+            "imapPort": {
+              "type": "integer",
+              "nullable": true
+            },
+            "imapSecurity": {
+              "type": "string"
+            },
+            "smtpSkipCertVerify": {
+              "type": "boolean"
+            },
+            "imapSkipCertVerify": {
+              "type": "boolean"
+            },
+            "defaultAccount": {
+              "type": "boolean"
+            }
           }
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
-            "account": { "type": "object", "description": "Saved account without credentials." }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "account": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": "string"
+                },
+                "smtpHost": {
+                  "type": "string"
+                },
+                "smtpPort": {
+                  "type": "integer"
+                },
+                "smtpSecurity": {
+                  "type": "string"
+                },
+                "imapHost": {
+                  "type": "string"
+                },
+                "imapPort": {
+                  "type": "integer"
+                },
+                "imapSecurity": {
+                  "type": "string"
+                },
+                "smtpSkipCertVerify": {
+                  "type": "boolean"
+                },
+                "imapSkipCertVerify": {
+                  "type": "boolean"
+                },
+                "defaultAccount": {
+                  "type": "boolean"
+                },
+                "passwordConfigured": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "displayName",
+                "email",
+                "smtpHost",
+                "smtpPort",
+                "smtpSecurity",
+                "smtpSkipCertVerify",
+                "imapSkipCertVerify",
+                "defaultAccount",
+                "passwordConfigured"
+              ]
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "account",
+            "success",
+            "summary"
+          ]
         }
       },
       "email_account_delete": {
         "description": "Delete a configured account by id.",
         "inputSchema": {
           "type": "object",
-          "properties": { "id": { "type": "integer" } },
-          "required": ["id"]
+          "properties": {
+            "id": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ]
         },
         "outputSchema": {
           "type": "object",
-          "properties": { "success": { "type": "boolean" }, "summary": { "type": "string" } },
-          "required": ["success", "summary"]
+          "properties": {
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "success",
+            "summary"
+          ]
         }
       },
       "email_account_set_default": {
         "description": "Mark a configured account as the default sender.",
         "inputSchema": {
           "type": "object",
-          "properties": { "id": { "type": "integer" } },
-          "required": ["id"]
+          "properties": {
+            "id": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ]
         },
         "outputSchema": {
           "type": "object",
-          "properties": { "success": { "type": "boolean" }, "summary": { "type": "string" } },
-          "required": ["success", "summary"]
+          "properties": {
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "success",
+            "summary"
+          ]
         }
       },
       "email_account_test": {
         "description": "Test the SMTP connection for a saved account without sending mail.",
         "inputSchema": {
           "type": "object",
-          "properties": { "accountId": { "type": "integer" } },
-          "required": ["accountId"]
+          "properties": {
+            "accountId": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "accountId"
+          ]
         },
         "outputSchema": {
           "type": "object",
-          "properties": { "success": { "type": "boolean" }, "summary": { "type": "string" } },
-          "required": ["success", "summary"]
+          "properties": {
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "success",
+            "summary"
+          ]
         }
       },
       "email_account_test_imap": {
         "description": "Test the IMAP connection for a saved account without fetching mail.",
         "inputSchema": {
           "type": "object",
-          "properties": { "accountId": { "type": "integer" } },
-          "required": ["accountId"]
+          "properties": {
+            "accountId": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "accountId"
+          ]
         },
         "outputSchema": {
           "type": "object",
-          "properties": { "success": { "type": "boolean" }, "summary": { "type": "string" } },
-          "required": ["success", "summary"]
+          "properties": {
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "success",
+            "summary"
+          ]
         }
       },
       "email_contact_find": {
         "description": "Find a contact by id.",
         "inputSchema": {
           "type": "object",
-          "properties": { "id": { "type": "integer" } },
-          "required": ["id"]
+          "properties": {
+            "id": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ]
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
-            "contact": { "type": "object" }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "contact": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "email": {
+                  "type": "string"
+                },
+                "nickname": {
+                  "type": "string"
+                },
+                "notes": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "tagIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "email",
+                "tagIds"
+              ]
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "contact",
+            "success",
+            "summary"
+          ]
         }
       },
       "email_contact_save": {
@@ -464,47 +1642,143 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "id": { "type": "integer", "nullable": true },
-            "email": { "type": "string" },
-            "nickname": { "type": "string" },
-            "notes": { "type": "string" },
-            "tagIds": { "type": "array", "items": { "type": "integer" } }
+            "id": {
+              "type": "integer",
+              "nullable": true
+            },
+            "email": {
+              "type": "string"
+            },
+            "nickname": {
+              "type": "string"
+            },
+            "notes": {
+              "type": "string"
+            },
+            "tagIds": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            }
           }
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
-            "contact": { "type": "object" }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "contact": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "email": {
+                  "type": "string"
+                },
+                "nickname": {
+                  "type": "string"
+                },
+                "notes": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "tagIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "email",
+                "tagIds"
+              ]
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "contact",
+            "success",
+            "summary"
+          ]
         }
       },
       "email_contact_delete": {
         "description": "Delete a contact by id.",
         "inputSchema": {
           "type": "object",
-          "properties": { "id": { "type": "integer" } },
-          "required": ["id"]
+          "properties": {
+            "id": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ]
         },
         "outputSchema": {
           "type": "object",
-          "properties": { "success": { "type": "boolean" }, "summary": { "type": "string" } },
-          "required": ["success", "summary"]
+          "properties": {
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "success",
+            "summary"
+          ]
         }
       },
       "email_tags_list": {
         "description": "List all contact tags.",
-        "inputSchema": { "type": "object", "properties": {} },
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ]
+              }
+            }
           },
-          "description": "success/summary envelope; contact tags are carried in the runtime result.",
-          "required": ["success", "summary"]
+          "required": [
+            "success",
+            "summary",
+            "tags"
+          ]
         }
       },
       "email_tag_save": {
@@ -512,31 +1786,74 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "id": { "type": "integer", "nullable": true },
-            "name": { "type": "string" }
+            "id": {
+              "type": "integer",
+              "nullable": true
+            },
+            "name": {
+              "type": "string"
+            }
           }
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
-            "tag": { "type": "object" }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ]
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "success",
+            "summary",
+            "tag"
+          ]
         }
       },
       "email_tag_delete": {
         "description": "Delete a contact tag by id.",
         "inputSchema": {
           "type": "object",
-          "properties": { "id": { "type": "integer" } },
-          "required": ["id"]
+          "properties": {
+            "id": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ]
         },
         "outputSchema": {
           "type": "object",
-          "properties": { "success": { "type": "boolean" }, "summary": { "type": "string" } },
-          "required": ["success", "summary"]
+          "properties": {
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "success",
+            "summary"
+          ]
         }
       },
       "email_tags_assign": {
@@ -544,30 +1861,70 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "contactIds": { "type": "array", "items": { "type": "integer" } },
-            "tagIds": { "type": "array", "items": { "type": "integer" } }
+            "contactIds": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            },
+            "tagIds": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            }
           }
         },
         "outputSchema": {
           "type": "object",
-          "properties": { "success": { "type": "boolean" }, "summary": { "type": "string" } },
-          "required": ["success", "summary"]
+          "properties": {
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "success",
+            "summary"
+          ]
         }
       },
       "email_tags_resolve": {
         "description": "Resolve the de-duplicated recipient email addresses for a set of tags.",
         "inputSchema": {
           "type": "object",
-          "properties": { "tagIds": { "type": "array", "items": { "type": "integer" } } }
+          "properties": {
+            "tagIds": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            }
+          }
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
-            "recipients": { "type": "array", "items": { "type": "string" } }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "recipients": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "recipients",
+            "success",
+            "summary"
+          ]
         }
       },
       "email_contacts_import_preview": {
@@ -575,20 +1932,96 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "sourceFile": { "type": "string", "description": "Resolved CSV or Excel source file path." },
-            "duplicateMode": { "type": "string", "enum": ["merge", "skip", "overwrite"], "description": "How existing contacts are handled." },
-            "tagDelimiter": { "type": "string", "description": "Tag delimiter for multi-value cells; 'auto' to sniff." }
+            "sourceFile": {
+              "type": "string",
+              "description": "Resolved CSV or Excel source file path."
+            },
+            "duplicateMode": {
+              "type": "string",
+              "enum": [
+                "merge",
+                "skip",
+                "overwrite"
+              ],
+              "description": "How existing contacts are handled."
+            },
+            "tagDelimiter": {
+              "type": "string",
+              "description": "Tag delimiter for multi-value cells; 'auto' to sniff."
+            }
           },
-          "required": ["sourceFile"]
+          "required": [
+            "sourceFile"
+          ]
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
-            "preview": { "type": "object", "description": "Import preview counts, tags, and row errors." }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "preview": {
+              "type": "object",
+              "properties": {
+                "rowsTotal": {
+                  "type": "integer"
+                },
+                "rowsValid": {
+                  "type": "integer"
+                },
+                "createdContacts": {
+                  "type": "integer"
+                },
+                "mergedContacts": {
+                  "type": "integer"
+                },
+                "skippedContacts": {
+                  "type": "integer"
+                },
+                "createdTags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "errors": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "row": {
+                        "type": "integer"
+                      },
+                      "message": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "row",
+                      "message"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "rowsTotal",
+                "rowsValid",
+                "createdContacts",
+                "mergedContacts",
+                "skippedContacts",
+                "createdTags",
+                "errors"
+              ]
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "preview",
+            "success",
+            "summary"
+          ]
         }
       },
       "email_contacts_import_commit": {
@@ -596,50 +2029,195 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "sourceFile": { "type": "string", "description": "Resolved CSV or Excel source file path." },
-            "duplicateMode": { "type": "string", "enum": ["merge", "skip", "overwrite"] },
-            "tagDelimiter": { "type": "string" }
+            "sourceFile": {
+              "type": "string",
+              "description": "Resolved CSV or Excel source file path."
+            },
+            "duplicateMode": {
+              "type": "string",
+              "enum": [
+                "merge",
+                "skip",
+                "overwrite"
+              ]
+            },
+            "tagDelimiter": {
+              "type": "string"
+            }
           },
-          "required": ["sourceFile"]
+          "required": [
+            "sourceFile"
+          ]
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
-            "result": { "type": "object", "description": "Import outcome counts and any row errors." }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "result": {
+              "type": "object",
+              "properties": {
+                "created": {
+                  "type": "integer"
+                },
+                "merged": {
+                  "type": "integer"
+                },
+                "skipped": {
+                  "type": "integer"
+                },
+                "tagsCreated": {
+                  "type": "integer"
+                },
+                "tagsAssigned": {
+                  "type": "integer"
+                },
+                "errors": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "row": {
+                        "type": "integer"
+                      },
+                      "message": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "row",
+                      "message"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "created",
+                "merged",
+                "skipped",
+                "tagsCreated",
+                "tagsAssigned",
+                "errors"
+              ]
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "result",
+            "success",
+            "summary"
+          ]
         }
       },
       "email_configs_list": {
         "description": "List saved batch-send configuration templates.",
-        "inputSchema": { "type": "object", "properties": {} },
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "configs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "mode": {
+                    "type": "string"
+                  },
+                  "configJson": {
+                    "type": "string"
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "mode",
+                  "configJson"
+                ]
+              }
+            }
           },
-          "description": "success/summary envelope; saved batch-send configuration templates are carried in the runtime result.",
-          "required": ["success", "summary"]
+          "required": [
+            "configs",
+            "success",
+            "summary"
+          ]
         }
       },
       "email_config_find": {
         "description": "Find a saved batch-send configuration template by id.",
         "inputSchema": {
           "type": "object",
-          "properties": { "id": { "type": "integer" } },
-          "required": ["id"]
+          "properties": {
+            "id": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ]
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
-            "config": { "type": "object" }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "config": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "configJson": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "mode",
+                "configJson"
+              ]
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "config",
+            "success",
+            "summary"
+          ]
         }
       },
       "email_config_save": {
@@ -647,80 +2225,273 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "id": { "type": "integer", "nullable": true },
-            "name": { "type": "string" },
-            "mode": { "type": "string" },
-            "configJson": { "type": "string", "description": "Template payload serialized as JSON." }
+            "id": {
+              "type": "integer",
+              "nullable": true
+            },
+            "name": {
+              "type": "string"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "configJson": {
+              "type": "string",
+              "description": "Template payload serialized as JSON."
+            }
           },
-          "required": ["name", "mode", "configJson"]
+          "required": [
+            "name",
+            "mode",
+            "configJson"
+          ]
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
-            "config": { "type": "object" }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "config": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "configJson": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "mode",
+                "configJson"
+              ]
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "config",
+            "success",
+            "summary"
+          ]
         }
       },
       "email_config_delete": {
         "description": "Delete a saved batch-send configuration template by id.",
         "inputSchema": {
           "type": "object",
-          "properties": { "id": { "type": "integer" } },
-          "required": ["id"]
+          "properties": {
+            "id": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ]
         },
         "outputSchema": {
           "type": "object",
-          "properties": { "success": { "type": "boolean" }, "summary": { "type": "string" } },
-          "required": ["success", "summary"]
+          "properties": {
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "success",
+            "summary"
+          ]
         }
       },
       "email_archive_detail": {
         "description": "Fetch the full metadata of a single archived message by id (bodies are not exposed).",
         "inputSchema": {
           "type": "object",
-          "properties": { "id": { "type": "integer" } },
-          "required": ["id"]
+          "properties": {
+            "id": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ]
         },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "success": { "type": "boolean" },
-            "summary": { "type": "string" },
-            "message": { "type": "object", "description": "Archived message metadata." }
+            "success": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "message": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "accountId": {
+                  "type": "integer"
+                },
+                "accountEmail": {
+                  "type": "string"
+                },
+                "folder": {
+                  "type": "string"
+                },
+                "messageUid": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "fromAddress": {
+                  "type": "string"
+                },
+                "recipientsJson": {
+                  "type": "string"
+                },
+                "sentAt": {
+                  "type": "string"
+                },
+                "receivedAt": {
+                  "type": "string"
+                },
+                "hasAttachment": {
+                  "type": "boolean"
+                },
+                "bodyPreview": {
+                  "type": "string"
+                },
+                "emlPath": {
+                  "type": "string"
+                },
+                "archivedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "accountId",
+                "accountEmail",
+                "folder",
+                "hasAttachment"
+              ]
+            }
           },
-          "required": ["success", "summary"]
+          "required": [
+            "message",
+            "success",
+            "summary"
+          ]
         }
       }
     }
   },
   "aiTools": [
-    { "name": "email_accounts_list", "effect": "read", "description": "List configured email accounts without returning credentials.", "method": "email_accounts_list" },
-    { "name": "email_contacts_query", "effect": "read", "description": "Search contacts and tags for recipient planning.", "method": "email_contacts_query" },
-    { "name": "email_send_single", "effect": "read", "description": "Prepare direct or tag-selected private messages for confirmation; this call does not send.", "method": "email_send_single" },
-    { "name": "email_send_batch", "effect": "read", "description": "Prepare attachment-matched batch messages for confirmation without sending.", "method": "email_send_batch" },
-    { "name": "email_send_status", "effect": "read", "description": "Query a prepared or completed send by confirmation ID.", "method": "email_send_status" },
-    { "name": "email_archive_fetch", "effect": "external", "description": "Collect messages from an IMAP folder into an authorized output directory.", "method": "email_archive_fetch" },
-    { "name": "email_archive_query", "effect": "read", "description": "Search paginated archived email metadata without exposing message bodies.", "method": "email_archive_query" },
-    { "name": "email_account_test", "effect": "external", "description": "Test the SMTP connection for a saved account without sending mail.", "method": "email_account_test" },
-    { "name": "email_account_test_imap", "effect": "external", "description": "Test the IMAP connection for a saved account without fetching mail.", "method": "email_account_test_imap" }
+    {
+      "name": "email_accounts_list",
+      "effect": "read",
+      "description": "List configured email accounts without returning credentials.",
+      "method": "email_accounts_list"
+    },
+    {
+      "name": "email_contacts_query",
+      "effect": "read",
+      "description": "Search contacts and tags for recipient planning.",
+      "method": "email_contacts_query"
+    },
+    {
+      "name": "email_send_single",
+      "effect": "read",
+      "description": "Prepare direct or tag-selected private messages for confirmation; this call does not send.",
+      "method": "email_send_single"
+    },
+    {
+      "name": "email_send_batch",
+      "effect": "read",
+      "description": "Prepare attachment-matched batch messages for confirmation without sending.",
+      "method": "email_send_batch"
+    },
+    {
+      "name": "email_send_status",
+      "effect": "read",
+      "description": "Query a prepared or completed send by confirmation ID.",
+      "method": "email_send_status"
+    },
+    {
+      "name": "email_archive_fetch",
+      "effect": "external",
+      "description": "Collect messages from an IMAP folder into an authorized output directory.",
+      "method": "email_archive_fetch"
+    },
+    {
+      "name": "email_archive_query",
+      "effect": "read",
+      "description": "Search paginated archived email metadata without exposing message bodies.",
+      "method": "email_archive_query"
+    },
+    {
+      "name": "email_account_test",
+      "effect": "external",
+      "description": "Test the SMTP connection for a saved account without sending mail.",
+      "method": "email_account_test"
+    },
+    {
+      "name": "email_account_test_imap",
+      "effect": "external",
+      "description": "Test the IMAP connection for a saved account without fetching mail.",
+      "method": "email_account_test_imap"
+    }
   ],
   "i18n": {
     "zh": {
       "name": "邮件中心",
       "description": "撰写、批量发送、收取并审计邮件，采用确认优先的 AI 工具",
       "aiTools": {
-        "email_accounts_list": { "description": "列出已配置的邮件账户，不返回凭据。" },
-        "email_contacts_query": { "description": "搜索联系人与标签以规划收件人。" },
-        "email_send_single": { "description": "准备直发或按标签选择的私信以供确认；此调用不会发送。" },
-        "email_send_batch": { "description": "准备附件匹配的批量邮件以供确认，但不发送。" },
-        "email_send_status": { "description": "按确认 ID 查询已准备或已完成的发送。" },
-        "email_archive_fetch": { "description": "将 IMAP 文件夹中的邮件收集到已授权的输出目录。" },
-        "email_archive_query": { "description": "分页搜索已归档邮件元数据，不暴露邮件正文。" },
-        "email_account_test": { "description": "测试已保存账户的 SMTP 连接，不发送邮件。" },
-        "email_account_test_imap": { "description": "测试已保存账户的 IMAP 连接，不收取邮件。" }
+        "email_accounts_list": {
+          "description": "列出已配置的邮件账户，不返回凭据。"
+        },
+        "email_contacts_query": {
+          "description": "搜索联系人与标签以规划收件人。"
+        },
+        "email_send_single": {
+          "description": "准备直发或按标签选择的私信以供确认；此调用不会发送。"
+        },
+        "email_send_batch": {
+          "description": "准备附件匹配的批量邮件以供确认，但不发送。"
+        },
+        "email_send_status": {
+          "description": "按确认 ID 查询已准备或已完成的发送。"
+        },
+        "email_archive_fetch": {
+          "description": "将 IMAP 文件夹中的邮件收集到已授权的输出目录。"
+        },
+        "email_archive_query": {
+          "description": "分页搜索已归档邮件元数据，不暴露邮件正文。"
+        },
+        "email_account_test": {
+          "description": "测试已保存账户的 SMTP 连接，不发送邮件。"
+        },
+        "email_account_test_imap": {
+          "description": "测试已保存账户的 IMAP 连接，不收取邮件。"
+        }
       }
     }
   }

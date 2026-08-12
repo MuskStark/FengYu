@@ -8,6 +8,9 @@ const readyEnvironment = {
   locale: 'zh-CN',
   platform: 'web' as const,
   capabilities: HOST_CAPABILITIES,
+  pluginId: 'fan.summer.test',
+  pluginVersion: '1.0.0',
+  permissions: [] as string[],
 }
 
 it('applies ready state, reacts to environment events, and unsubscribes', async () => {
@@ -38,4 +41,22 @@ it('merges partial environment events and forwards the normalized state', async 
   environmentHandler?.({ locale: 'en' })
   expect(vuetify.theme.global.name.value).toBe('fengyuCodexLight')
   expect(states.at(-1)).toEqual({ ...readyEnvironment, locale: 'en' })
+})
+
+it('does not lose environment events while the ready handshake is pending', async () => {
+  let environmentHandler: ((value: unknown) => void) | undefined
+  let resolveReady!: (value: typeof readyEnvironment) => void
+  const client = {
+    ready: vi.fn().mockReturnValue(new Promise<typeof readyEnvironment>((resolve) => { resolveReady = resolve })),
+    on: vi.fn((_event, handler) => { environmentHandler = handler; return vi.fn() }),
+  }
+  const vuetify = createFengYuVuetify()
+  const binding = bindFengYuEnvironment(vuetify, client as never)
+
+  environmentHandler?.({ theme: 'light', locale: 'zh-CN' })
+  expect(vuetify.theme.global.name.value).toBe('fengyuCodexLight')
+  expect(vuetify.locale.current.value).toBe('zhHans')
+
+  resolveReady(readyEnvironment)
+  await binding
 })

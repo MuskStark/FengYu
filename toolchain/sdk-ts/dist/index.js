@@ -54,6 +54,7 @@ export class FengYuClient {
     handlers = new Map();
     readyPromise;
     environment;
+    pendingEnvironment = {};
     disposed = false;
     constructor(options = {}) {
         this.target = options.target ?? window.parent;
@@ -73,8 +74,8 @@ export class FengYuClient {
                         message: `Incompatible FengYu protocol: host=${env.protocolVersion}, plugin=${PROTOCOL_VERSION}`,
                     });
                 }
-                this.applyEnvironment(env);
-                return { ...env };
+                this.applyEnvironment(env, true);
+                return { ...this.environment };
             })
                 .catch(error => {
                 this.readyPromise = undefined;
@@ -198,11 +199,15 @@ export class FengYuClient {
             this.handlers.get(message.event)?.forEach(handler => handler(data));
         }
     };
-    applyEnvironment(value) {
+    applyEnvironment(value, negotiated = false) {
         if (this.environment)
             this.environment = { ...this.environment, ...value };
-        else if (value.theme && value.locale)
-            this.environment = value;
+        else if (negotiated) {
+            this.environment = { ...value, ...this.pendingEnvironment };
+            this.pendingEnvironment = {};
+        }
+        else
+            this.pendingEnvironment = { ...this.pendingEnvironment, ...value };
         if (value.theme)
             document.documentElement.dataset.theme = value.theme;
         if (value.locale)

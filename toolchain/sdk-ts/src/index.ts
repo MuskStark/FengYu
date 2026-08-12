@@ -83,6 +83,7 @@ export class FengYuClient {
   private readonly handlers = new Map<string, Set<EventHandler>>()
   private readyPromise?: Promise<Environment>
   private environment?: Environment
+  private pendingEnvironment: Partial<Environment> = {}
   private disposed = false
 
   constructor(options: FengYuClientOptions = {}) {
@@ -103,8 +104,8 @@ export class FengYuClient {
               message: `Incompatible FengYu protocol: host=${env.protocolVersion}, plugin=${PROTOCOL_VERSION}`,
             })
           }
-          this.applyEnvironment(env)
-          return { ...env }
+          this.applyEnvironment(env, true)
+          return { ...this.environment! }
         })
         .catch(error => {
           this.readyPromise = undefined
@@ -222,9 +223,12 @@ export class FengYuClient {
     }
   }
 
-  private applyEnvironment(value: Partial<Environment>): void {
+  private applyEnvironment(value: Partial<Environment>, negotiated = false): void {
     if (this.environment) this.environment = { ...this.environment, ...value }
-    else if (value.theme && value.locale) this.environment = value as Environment
+    else if (negotiated) {
+      this.environment = { ...value, ...this.pendingEnvironment } as Environment
+      this.pendingEnvironment = {}
+    } else this.pendingEnvironment = { ...this.pendingEnvironment, ...value }
     if (value.theme) document.documentElement.dataset.theme = value.theme
     if (value.locale) document.documentElement.lang = value.locale
   }

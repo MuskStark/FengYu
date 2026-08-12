@@ -139,7 +139,46 @@ class JsonRpcWorkerTest {
             "slf4j info() did not reach stderr — binding is missing/NOP. stderr was:\n" + stderr);
     }
 
-    /** Handler failures retain call identity and exception type without exposing exception messages. */
+    /**
+     * The IDE devkit launches the worker in the SAME JVM and injects FENGYU_PLUGIN_ID / ROOT via
+     * {@link System#setProperty} (getenv is captured at JVM startup and stays empty there). The
+     * worker must fall back to the system property so {@link RpcContext#pluginId()} /
+     * {@link RpcContext#pluginRoot()} stay populated for in-IDE debugging. (Env still wins in
+     * production, where the host injects ProcessBuilder env vars.)
+     */
+    @Test void pluginIdResolvesFromSystemPropertyWhenEnvAbsent() throws Exception {
+        String prevId = System.getProperty("FENGYU_PLUGIN_ID");
+        String prevRoot = System.getProperty("FENGYU_PLUGIN_ROOT");
+        ByteArrayOutputStream protocol = new ByteArrayOutputStream();
+        String request = "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"whoami\",\"params\":{}}\n";
+        try {
+            System.setProperty("FENGYU_PLUGIN_ID", "ide.samejvm");
+            System.setProperty("FENGYU_PLUGIN_ROOT", "/ide/root");
+            String[] captured = new String[2];
+            new JsonRpcWorker()
+                .on("whoami", params -> {
+                    RpcContext ctx = RpcContext.current();
+                    captured[0] = ctx == null ? null : ctx.pluginId();
+                    captured[1] = ctx == null ? null : ctx.pluginRoot();
+                    return java.util.Map.of("ok", true);
+                })
+                .run(new ByteArrayInputStream(request.getBytes(StandardCharsets.UTF_8)), protocol);
+            // Assert only when the env var was not already set by the surrounding process — env is
+            // authoritative in production, so a pre-set env would (correctly) shadow the property.
+            if (System.getenv("FENGYU_PLUGIN_ID") == null) {
+                assertEquals("ide.samejvm", captured[0], "IDE same-JVM property must populate RpcContext.pluginId()");
+                assertEquals("/ide/root", captured[1], "IDE same-JVM property must populate RpcContext.pluginRoot()");
+            }
+        } finally {
+            if (prevId == null) System.clearProperty("FENGYU_PLUGIN_ID");
+            else System.setProperty("FENGYU_PLUGIN_ID", prevId);
+            if (prevRoot == null) System.clearProperty("FENGYU_PLUGIN_ROOT");
+            else System.setProperty("FENGYU_PLUGIN_ROOT", prevRoot);
+        }
+    }
+
+    /** Handler failures map to the stable INTERNAL code, redact the raw message everywhere, and
+     *  emit the stack frames to stderr. */
     @Test void handlerExceptionsUseSafeDiagnosticsAndResponse() throws Exception {
         PrintStream originalErr = System.err;
         ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
@@ -155,12 +194,22 @@ class JsonRpcWorkerTest {
             System.setErr(originalErr);
         }
         String stderr = diagnostics.toString(StandardCharsets.UTF_8);
-        assertTrue(stderr.contains("boom"));
-        assertTrue(stderr.contains("IllegalStateException"));
+        // Call identity + the exception class reach stderr, and the stack frames do too (WHERE).
+        assertTrue(stderr.contains("boom"), "stderr must name the method");
+        assertTrue(stderr.contains("IllegalStateException"), "stderr must name the exception class");
+        assertTrue(stderr.contains("at fan.summer.fengyu.sdk."), "stderr must carry the stack frames:\n" + stderr);
+        // The raw (secret-bearing) message is redacted from BOTH stderr and the response.
         assertFalse(stderr.contains("credential=kaboom"), "exception message leaked to stderr:\n" + stderr);
         JsonObject response = JsonParser.parseString(protocol.toString(StandardCharsets.UTF_8)).getAsJsonObject();
-        assertEquals("credential=kaboom", response.getAsJsonObject("error").get("message").getAsString(),
-            "the direct caller should retain the handler diagnostic");
+        JsonObject err = response.getAsJsonObject("error");
+        assertEquals(RpcError.Code.INTERNAL.jsonRpcCode(), err.get("code").getAsInt(),
+            "plain exceptions must map to the stable INTERNAL code, not a magic number");
+        assertEquals("INTERNAL", err.getAsJsonObject("data").get("code").getAsString(),
+            "error.data.code must carry the stable semantic label");
+        assertEquals("Internal error", err.get("message").getAsString(),
+            "the response must carry a generic message, not the raw exception text");
+        assertFalse(protocol.toString(StandardCharsets.UTF_8).contains("credential=kaboom"),
+            "exception message leaked into the response envelope");
     }
 
     /**

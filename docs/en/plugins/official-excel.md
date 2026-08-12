@@ -19,7 +19,7 @@ lang: en
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "fan.summer.excel",
   "name": "Excel Splitter",
   "description": "Split Excel workbooks by sheet, column value, or complex rules",
@@ -28,47 +28,106 @@ lang: en
   "icon": "file-excel",
   "category": "file",
   "ui": { "entry": "ui/index.html" },
-  "backend": { "command": "java -jar backend/worker.jar", "protocol": "json-rpc-2.0" },
+  "backend": { "callTimeoutSeconds": 30 },
   "permissions": ["files.read", "files.write"],
   "homepage": "https://github.com/MuskStark/FengYu",
   "official": true,
-  "aiTools": [
-    {
-      "name": "excel_analyze",
-      "description": "Analyze an Excel file and return sheets and headers.",
-      "method": "excel_analyze",
-      "inputSchema": "{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"object\",\"description\":\"A FengYu FileRef\"}},\"required\":[\"filePath\"]}"
-    },
-    {
-      "name": "excel_configure",
-      "description": "Configure BY_SHEET, BY_COLUMN, or COMPLEX splitting.",
-      "method": "excel_configure",
-      "inputSchema": "{\"type\":\"object\",\"properties\":{\"mode\":{\"type\":\"string\",\"enum\":[\"BY_SHEET\",\"BY_COLUMN\",\"COMPLEX\"]},\"sheets\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"splitSheet\":{\"type\":\"string\"},\"splitColumn\":{\"type\":\"string\"}},\"required\":[\"mode\"]}"
-    },
-    {
-      "name": "excel_complex_config",
-      "description": "Add, list, or clear complex split rules.",
-      "method": "excel_complex_config",
-      "inputSchema": "{\"type\":\"object\",\"properties\":{\"action\":{\"type\":\"string\",\"enum\":[\"add\",\"list\",\"clear\"]},\"sheetName\":{\"type\":\"string\"},\"headerIndex\":{\"type\":\"integer\"},\"columnIndex\":{\"type\":\"integer\"}},\"required\":[\"action\"]}"
-    },
-    {
-      "name": "excel_execute",
-      "description": "Execute the configured split into an authorized output directory.",
-      "method": "excel_execute",
-      "inputSchema": "{\"type\":\"object\",\"properties\":{\"outputDir\":{\"type\":\"object\",\"description\":\"A writable FengYu DirectoryRef\"},\"filePrefix\":{\"type\":\"string\"}},\"required\":[\"outputDir\"]}"
-    },
-    {
-      "name": "excel_query",
-      "description": "Query the active Excel split session.",
-      "method": "excel_query",
-      "inputSchema": "{\"type\":\"object\",\"properties\":{}}"
-    },
-    {
-      "name": "excel_cancel",
-      "description": "Cancel and clear the active Excel split session.",
-      "method": "excel_cancel",
-      "inputSchema": "{\"type\":\"object\",\"properties\":{}}"
+  "rpc": {
+    "methods": {
+      "excel_analyze": {
+        "description": "Analyze an Excel file and return sheets and headers.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "filePath": { "type": "string", "description": "Resolved path of a granted FengYu FileRef." }
+          },
+          "required": ["filePath"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "success": { "type": "boolean" }, "summary": { "type": "string" } },
+          "required": ["success", "summary"]
+        }
+      },
+      "excel_configure": {
+        "description": "Configure BY_SHEET, BY_COLUMN, or COMPLEX splitting.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "mode": { "type": "string", "enum": ["BY_SHEET", "BY_COLUMN", "COMPLEX"] },
+            "sheets": { "type": "array", "items": { "type": "string" } },
+            "splitSheet": { "type": "string" },
+            "splitColumn": { "type": "string" }
+          },
+          "required": ["mode"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "success": { "type": "boolean" }, "summary": { "type": "string" } },
+          "required": ["success", "summary"]
+        }
+      },
+      "excel_complex_config": {
+        "description": "Add, list, or clear complex split rules.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "action": { "type": "string", "enum": ["add", "list", "clear"] },
+            "sheetName": { "type": "string" },
+            "headerIndex": { "type": "integer" },
+            "columnIndex": { "type": "integer" }
+          },
+          "required": ["action"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "success": { "type": "boolean" }, "summary": { "type": "string" } },
+          "required": ["success", "summary"]
+        }
+      },
+      "excel_execute": {
+        "description": "Execute the configured split into an authorized output directory.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "outputDir": { "type": "string", "description": "Resolved writable FengYu output directory." },
+            "filePrefix": { "type": "string" }
+          },
+          "required": ["outputDir"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "success": { "type": "boolean" }, "summary": { "type": "string" } },
+          "required": ["success", "summary"]
+        }
+      },
+      "excel_query": {
+        "description": "Query the active Excel split session.",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "success": { "type": "boolean" }, "summary": { "type": "string" } },
+          "required": ["success", "summary"]
+        }
+      },
+      "excel_cancel": {
+        "description": "Cancel and clear the active Excel split session.",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "success": { "type": "boolean" }, "summary": { "type": "string" } },
+          "required": ["success", "summary"]
+        }
+      }
     }
+  },
+  "aiTools": [
+    { "name": "excel_analyze", "method": "excel_analyze", "effect": "read", "description": "Analyze an Excel file and return sheets and headers." },
+    { "name": "excel_configure", "method": "excel_configure", "effect": "write", "description": "Configure BY_SHEET, BY_COLUMN, or COMPLEX splitting." },
+    { "name": "excel_complex_config", "method": "excel_complex_config", "effect": "write", "description": "Add, list, or clear complex split rules." },
+    { "name": "excel_execute", "method": "excel_execute", "effect": "write", "description": "Execute the configured split into an authorized output directory." },
+    { "name": "excel_query", "method": "excel_query", "effect": "read", "description": "Query the active Excel split session." },
+    { "name": "excel_cancel", "method": "excel_cancel", "effect": "write", "description": "Cancel and clear the active Excel split session." }
   ]
 }
 ```
@@ -77,8 +136,8 @@ Key points:
 
 - **`category: "file"`** — a file-processing plugin.
 - **`permissions: ["files.read", "files.write"]`** — it reads an uploaded input file and writes split files into an output directory (then exports a zip). Both permissions are required.
-- **`aiTools`** has six entries, so `supportsAi` is `true`. Each `{name, description, method, inputSchema}` maps a model-facing tool to a worker JSON-RPC method.
-- **`backend.command: "java -jar backend/worker.jar"`** with **`protocol: "json-rpc-2.0"`**.
+- **`aiTools`** has six entries, so `supportsAi` is `true`. Each `{name, method, effect, description}` references an `rpc.methods` entry whose typed input/output schemas the host reads to build the Spring AI `ToolDefinition`.
+- **`backend.callTimeoutSeconds: 30`** — the host spawns the standard `backend/worker.jar` and drives it over JSON-RPC on stdio.
 
 ## The three actions
 
@@ -111,11 +170,14 @@ The plugin uses the host's file-grant model end to end (see [File I/O](/en/plugi
 3. **Export zips it.** `fengyu.files.export(outDir)` → `GET .../files/export/{ref}` (needs `files.write`) streams a zip of the output directory for download.
 
 ```js
+import { createPluginRpc } from './generated/fengyu-rpc'
+const rpc = createPluginRpc(fengyu)
+
 const file   = await fengyu.files.open({ extensions: ['xlsx'] })   // files.read
-await fengyu.invoke('analyze', { filePath: file })                 // host rewrites ref → path
+await rpc.analyze({ filePath: file as unknown as string })         // host rewrites ref → path
 
 const outDir = await fengyu.files.outputDirectory()                // files.write
-await fengyu.invoke('split', { outputDir: outDir, filePrefix: 'q3-' })
+await rpc.split({ outputDir: outDir as unknown as string, filePrefix: 'q3-' })
 await fengyu.files.export(outDir)                                  // zip + download
 ```
 

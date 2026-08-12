@@ -35,6 +35,21 @@ Every plugin is one of two shapes. Read the target plugin's `manifest.json` to d
   The host injects env vars `FENGYU_PLUGIN_ID`, `FENGYU_PLUGIN_ROOT`, and (for plugins with the
   `database` permission) a datasource.
 
+## Host theme and locale synchronization
+
+Use `mountFengYuApp` from `@infinia/plugin-ui` for Vue plugin startup. Theme and locale are live
+host state. If a plugin implements a custom binding, subscribe to `client.on('environment', ...)`
+**before** awaiting `client.ready()`: the host can emit the initial environment event during iframe
+load, and a later subscription can miss it permanently, leaving the UI dark/English. Merge partial
+events and update the HTML `data-theme`/`lang` attributes, Vuetify theme/locale, and any plugin
+message-table locale.
+
+When repairing this behavior, change the shared UI toolchain rather than each business plugin. Add
+a regression test that emits an environment event while `ready()` is pending, rebuild
+`@infinia/plugin-ui`, refresh the plugin's copied `file:` dependency, rebuild the `.fyp`, and inspect
+the installed bundle. A source-only fix is not sufficient because npm may retain an older local
+dependency copy and the host may still serve an older installed archive.
+
 ## manifest.json contract
 
 `manifest.json` is the runtime contract. Required top-level fields: `schemaVersion`, `id`,

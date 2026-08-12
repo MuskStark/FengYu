@@ -4,8 +4,14 @@ package fan.summer.excel.generated;
 import com.google.gson.annotations.SerializedName;
 
 public record ExcelComplexConfigInput(
-    @SerializedName("action") String action,
+    @SerializedName("action") ExcelComplexConfigInputAction action,
     @SerializedName("columnIndex") Integer columnIndex,
     @SerializedName("headerIndex") Integer headerIndex,
     @SerializedName("sheetName") String sheetName
-) {}
+) {
+  public enum ExcelComplexConfigInputAction {
+    add,
+    list,
+    clear
+  }
+}

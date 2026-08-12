@@ -1,12 +1,12 @@
 ---
 title: 常见陷阱
-description: 插件作者最常踩的五个坑——iframe CSP、FileRef 解析时机、MF Vue/Vuetify 去重、权限把关，以及 worker stdio 帧化——每个都以问题、原因、修复的形式呈现。
+description: 插件开发常见陷阱——iframe CSP、FileRef 解析时机、环境订阅竞态、权限把关，以及 worker stdio 帧化——每个都以问题、原因、修复的形式呈现。
 lang: zh-CN
 ---
 
 # 常见陷阱
 
-这些是插件作者最常踩的五个坑。每一个都按**问题 → 原因 → 修复**的形式展开。
+这些是插件作者最常踩的坑。每一个都按**问题 → 原因 → 修复**的形式展开。
 
 ## 1. 内联脚本在 iframe 中不加载
 
@@ -26,8 +26,10 @@ lang: zh-CN
 
 ```js
 // UI——把 ref 透传；不要尝试读取 .id 或自行拼路径
+import { createPluginRpc } from './generated/fengyu-rpc'
+const rpc = createPluginRpc(fengyu)
 const file = await fengyu.files.open({ extensions: ['xlsx'] })
-await fengyu.invoke('analyze', { filePath: file })   // 宿主把 ref → path
+await rpc.analyze({ filePath: file })   // 宿主把 ref → path
 ```
 
 ## 3. 插件始终无法完成宿主握手
@@ -38,7 +40,20 @@ await fengyu.invoke('analyze', { filePath: file })   // 宿主把 ref → path
 
 **修复。** 让 `@infinia/plugin-sdk`、`@infinia/plugin-ui`、CLI 与宿主使用同一套 toolchain release。在第一次宿主调用前直接等待 `fengyu.ready()`，或使用 `bindFengYuEnvironment`。参见 [UI 微前端](/zh/plugins/ui-microfrontend)。
 
-## 4. 某个文件操作返回 403
+## 4. 宿主是浅色/中文，但插件仍是深色/英文
+
+**问题。** 插件可以加载，RPC 也正常，但主题与语言不跟随宿主，或宿主后续切换时插件没有响应。
+
+**原因。** 自定义启动代码直到 `ready()` 完成后才订阅 `environment`。宿主可能在 iframe 加载
+期间就发送初始事件，因此这种顺序会产生事件丢失窗口。即使源码已修复，本地 `file:` 依赖或已
+安装的 `.fyp` 也可能仍包含旧版 UI 工具链。
+
+**修复。** 使用 `mountFengYuApp`。若必须自定义绑定，应先订阅、再调用/等待 `ready()`，合并
+部分环境更新，并同步 HTML 属性、Vuetify 与插件 i18n 状态。增加“ready promise 尚未完成时收到
+environment 事件”的测试；随后重建 `@infinia/plugin-ui`、刷新插件中复制的依赖、重建并重装
+`.fyp`，最后检查实际安装资源，而不是假设源码修改已经进入运行时。
+
+## 5. 某个文件操作返回 403
 
 **问题。** 调用某个 output 或 export 操作（`files.outputDirectory()`、`files.export(ref)`，或其底层的 `POST .../files/output`、`GET .../files/export/{ref}`）返回 `403`。
 
@@ -46,7 +61,7 @@ await fengyu.invoke('analyze', { filePath: file })   // 宿主把 ref → path
 
 **修复。** 声明你用到的**每一项**权限。如果你既读取一个上传的文件，又写拆分结果 + 导出一个 zip，你两者都需要：`"permissions": ["files.read", "files.write"]`。参见 [清单](/zh/plugins/manifest) 与 [文件 I/O](/zh/plugins/file-io)。
 
-## 5. 往 stdout 打日志会破坏 RPC 流
+## 6. 往 stdout 打日志会破坏 RPC 流
 
 **问题。** 你在 worker 里加了一个 `System.out.println(...)`（或一个往 stdout 写的 logger），于是宿主开始无法解析响应——RPC 调用挂起或报错。
 

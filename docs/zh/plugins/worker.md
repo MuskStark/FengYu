@@ -151,7 +151,7 @@ return jobs.cancel(jobId);
 
 当 UI 通过 SDK 传递一个挑选到的文件（见 [文件 I/O](/zh/plugins/file-io)）时，它会以 **FileRef** 的形式到达——一个不透明的 `{id, name, kind, access, size}` 对象，其 `id` 以 `ref_` 开头。worker 永远不会收到原始的上传字节。取而代之的是：
 
-1. UI 调用 `client.invoke("analyze", { filePath: <FileRef> })`。
+1. UI 调用 `rpc.analyze({ filePath: <FileRef> })`（`rpc` 是由 `rpc.methods` 生成的类型化客户端，基于 `FengYuClient`）。
 2. 宿主的 `PluginProcessManager` 遍历 params，找出任何形如 FileRef 的值（`{id:"ref_..."}`），并利用其内存中的授权表**将其改写为绝对文件系统路径**。
 3. worker 收到 `{filePath: "/tmp/fengyu/runtime-files/.../in/data.xlsx"}`——一个它能直接打开的真实路径。
 
@@ -159,29 +159,33 @@ worker 把这些当作普通的字符串路径处理；它无需知道 FileRef �
 
 ## Worker SDK（Java）
 
-`toolchain/sdk-java` 制品提供了 `JsonRpcWorker`，一个轻量、依赖极少的运行时，它从 `stdin` 读取请求、派发给已注册的处理器，并把响应写入 `stdout`。用 `.on(method, handler)` 注册处理器，再调用 `.run()`：
+`toolchain/sdk-java` 制品提供了 `JsonRpcWorker`，一个轻量、依赖极少的运行时，它从 `stdin` 读取请求、派发给已注册的处理器，并把响应写入 `stdout`。处理器通过类型化 API `worker.method(name, InputClass, OutputClass, handler)` 注册：SDK 依据 `manifest.json` 的 `rpc.methods` 生成 `PluginMethods`（方法名常量）以及每方法一对 `*Input`/`*Output` 记录，把入参反序列化为 `*Input`、为本次调用绑定一个 `RpcContext`，再把返回的 `*Output` 序列化回响应。最后调用 `.run()` 阻塞读 stdin/写 stdout：
 
 ```java
 package com.example.myplugin;
 
 import fan.summer.fengyu.sdk.JsonRpcWorker;
-import java.util.Map;
+import fan.summer.fengyu.sdk.RpcContext;
+import com.example.myplugin.generated.PluginMethods;
+import com.example.myplugin.generated.HelloInput;
+import com.example.myplugin.generated.HelloOutput;
 
 public final class MyWorkerMain {
     private MyWorkerMain() {}
     public static void main(String[] args) throws Exception {
         new JsonRpcWorker()
-            .on("hello", MyWorkerMain::hello)
+            .method(PluginMethods.HELLO, HelloInput.class, HelloOutput.class,
+                (HelloInput input, RpcContext ctx) -> hello(input, ctx))
             .run();
     }
 
-    static Object hello(Map<String, Object> params) {
-        return Map.of("success", true, "echo", params.get("name"));
+    static HelloOutput hello(HelloInput input, RpcContext ctx) {
+        return new HelloOutput(true, "echo: " + input.name());
     }
 }
 ```
 
-`PluginHandler` 是一个 `@FunctionalInterface`——`Object handle(Map<String,Object> params) throws Exception`。抛出 `JsonRpcWorker.RpcException(code, message)` 以返回结构化错误；任何其他异常都会以 `-32000` 上报。辅助访问器 `JsonRpcWorker.string(params, key)` 与 `JsonRpcWorker.integer(params, key, fallback)` 可安全地读取 params。
+`RpcHandler<I, O>` 是一个 `@FunctionalInterface`——`O handle(I input, RpcContext ctx) throws Exception`。抛出 `RpcException(code, message)` 以返回结构化错误；任何其他异常都会以 `-32000` 上报。`RpcContext` 暴露协作式取消（`ctx.cancellation().throwIfCancelled()`）与 logger（`ctx.logger()`）。**不要**直接读取原始 `Map<String,Object>` params——让 SDK 把它反序列化为生成的 `*Input` 记录。
 
 ### 参考实现
 
@@ -190,20 +194,27 @@ public final class MyWorkerMain {
 - **`MarkdownWorkerMain`** 注册了单个方法：
 
   ```java
-  new JsonRpcWorker().on("render", params -> plugin.invoke("render", params)).run();
+  return new JsonRpcWorker().method(
+          PluginMethods.RENDER, RenderInput.class, RenderOutput.class,
+          (RenderInput input, RpcContext ctx) -> handlers.render(input, ctx));
   ```
 
-- **`ExcelWorkerMain`** 注册了三个 action 方法外加六个 AI 工具方法：
+- **`ExcelWorkerMain`** 注册了 UI 工作流方法（`analyze`/`configure`/`split` 等）外加多个 AI 工具方法：
 
   ```java
   return new JsonRpcWorker()
-      .on("analyze",       p -> plugin.invoke("analyze", p))
-      .on("configure",     p -> plugin.invoke("configure", p))
-      .on("split",         p -> plugin.invoke("split", p))
-      .on("excel_analyze", p -> analyze.analyze(JsonRpcWorker.string(p, "filePath")))
-      // ... excel_configure, excel_complex_config, excel_execute, excel_query, excel_cancel
+      .onClose(handlers)
+      .method(PluginMethods.ANALYZE, AnalyzeInput.class, AnalyzeOutput.class,
+          (AnalyzeInput in, RpcContext ctx) -> handlers.analyze(in, ctx))
+      .method(PluginMethods.CONFIGURE, ConfigureInput.class, ConfigureOutput.class,
+          (ConfigureInput in, RpcContext ctx) -> handlers.configure(in, ctx))
+      .method(PluginMethods.SPLIT, SplitInput.class, SplitOutput.class,
+          (SplitInput in, RpcContext ctx) -> handlers.split(in, ctx))
+      // ... estimate, split_start/status/cancel, excel_analyze, excel_configure, ...
       ;
   ```
+
+  入口 `main` 调用 `worker(handlers).run()`——`.run()` 在运行循环期间把 `System.out` 重定向到 `System.err`，以保持协议输出干净。
 
 完整讲解见 [官方插件——Markdown](/zh/plugins/official-markdown) 与 [官方插件——Excel](/zh/plugins/official-excel)。
 
@@ -213,6 +224,6 @@ public final class MyWorkerMain {
 
 ## 下一步
 
-- [UI 微前端](/zh/plugins/ui-microfrontend)——调用 `client.invoke` 的 UI 侧。
+- [UI 微前端](/zh/plugins/ui-microfrontend)——通过生成 client 调用方法的 UI 侧。
 - [文件 I/O](/zh/plugins/file-io)——FileRef 如何被创建并解析。
 - [常见陷阱](/zh/plugins/pitfalls)——stdio 纪律、FileRef 时机等。

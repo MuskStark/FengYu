@@ -9,44 +9,80 @@ import fan.summer.fengyu.sdk.PluginDatabaseConfig;
 import fan.summer.fengyu.sdk.PluginMessages;
 import fan.summer.email.generated.PluginMethods;
 
-// Generated Input records (one per rpc.methods entry). Explicit imports keep the set of registered
-// methods auditable; the types are pure data carriers produced by the toolchain generator.
-import fan.summer.email.generated.EmailAccountDeleteInput;
-import fan.summer.email.generated.EmailAccountFindInput;
-import fan.summer.email.generated.EmailAccountSaveInput;
-import fan.summer.email.generated.EmailAccountSetDefaultInput;
-import fan.summer.email.generated.EmailAccountTestImapInput;
-import fan.summer.email.generated.EmailAccountTestInput;
-import fan.summer.email.generated.EmailAccountsListInput;
-import fan.summer.email.generated.EmailArchiveDetailInput;
-import fan.summer.email.generated.EmailArchiveFetchCancelInput;
-import fan.summer.email.generated.EmailArchiveFetchStartInput;
-import fan.summer.email.generated.EmailArchiveFetchStatusInput;
-import fan.summer.email.generated.EmailArchiveFetchInput;
-import fan.summer.email.generated.EmailArchiveQueryInput;
-import fan.summer.email.generated.EmailBatchPreviewInput;
-import fan.summer.email.generated.EmailConfigDeleteInput;
-import fan.summer.email.generated.EmailConfigFindInput;
-import fan.summer.email.generated.EmailConfigSaveInput;
-import fan.summer.email.generated.EmailConfigsListInput;
-import fan.summer.email.generated.EmailContactDeleteInput;
-import fan.summer.email.generated.EmailContactFindInput;
-import fan.summer.email.generated.EmailContactSaveInput;
-import fan.summer.email.generated.EmailContactsImportCommitInput;
-import fan.summer.email.generated.EmailContactsImportPreviewInput;
-import fan.summer.email.generated.EmailContactsQueryInput;
-import fan.summer.email.generated.EmailImapFoldersInput;
-import fan.summer.email.generated.EmailSendBatchInput;
-import fan.summer.email.generated.EmailSendRecordsQueryInput;
-import fan.summer.email.generated.EmailSendSingleInput;
-import fan.summer.email.generated.EmailSendStatusInput;
-import fan.summer.email.generated.EmailTagDeleteInput;
-import fan.summer.email.generated.EmailTagSaveInput;
-import fan.summer.email.generated.EmailTagsAssignInput;
-import fan.summer.email.generated.EmailTagsListInput;
-import fan.summer.email.generated.EmailTagsResolveInput;
+// Generated Input/Output records (one pair per rpc.methods entry). Explicit imports keep the set of
+// registered methods auditable; the types are pure data carriers produced by the toolchain generator.
 import fan.summer.email.generated.ConfirmSendInput;
+import fan.summer.email.generated.ConfirmSendOutput;
+import fan.summer.email.generated.EmailAccountDeleteInput;
+import fan.summer.email.generated.EmailAccountDeleteOutput;
+import fan.summer.email.generated.EmailAccountFindInput;
+import fan.summer.email.generated.EmailAccountFindOutput;
+import fan.summer.email.generated.EmailAccountSaveInput;
+import fan.summer.email.generated.EmailAccountSaveOutput;
+import fan.summer.email.generated.EmailAccountSetDefaultInput;
+import fan.summer.email.generated.EmailAccountSetDefaultOutput;
+import fan.summer.email.generated.EmailAccountTestImapInput;
+import fan.summer.email.generated.EmailAccountTestImapOutput;
+import fan.summer.email.generated.EmailAccountTestInput;
+import fan.summer.email.generated.EmailAccountTestOutput;
+import fan.summer.email.generated.EmailAccountsListInput;
+import fan.summer.email.generated.EmailAccountsListOutput;
+import fan.summer.email.generated.EmailArchiveDetailInput;
+import fan.summer.email.generated.EmailArchiveDetailOutput;
+import fan.summer.email.generated.EmailArchiveFetchCancelInput;
+import fan.summer.email.generated.EmailArchiveFetchCancelOutput;
+import fan.summer.email.generated.EmailArchiveFetchStartInput;
+import fan.summer.email.generated.EmailArchiveFetchStartOutput;
+import fan.summer.email.generated.EmailArchiveFetchStatusInput;
+import fan.summer.email.generated.EmailArchiveFetchStatusOutput;
+import fan.summer.email.generated.EmailArchiveFetchInput;
+import fan.summer.email.generated.EmailArchiveFetchOutput;
+import fan.summer.email.generated.EmailArchiveQueryInput;
+import fan.summer.email.generated.EmailArchiveQueryOutput;
+import fan.summer.email.generated.EmailBatchPreviewInput;
+import fan.summer.email.generated.EmailBatchPreviewOutput;
+import fan.summer.email.generated.EmailConfigDeleteInput;
+import fan.summer.email.generated.EmailConfigDeleteOutput;
+import fan.summer.email.generated.EmailConfigFindInput;
+import fan.summer.email.generated.EmailConfigFindOutput;
+import fan.summer.email.generated.EmailConfigSaveInput;
+import fan.summer.email.generated.EmailConfigSaveOutput;
+import fan.summer.email.generated.EmailConfigsListInput;
+import fan.summer.email.generated.EmailConfigsListOutput;
+import fan.summer.email.generated.EmailContactDeleteInput;
+import fan.summer.email.generated.EmailContactDeleteOutput;
+import fan.summer.email.generated.EmailContactFindInput;
+import fan.summer.email.generated.EmailContactFindOutput;
+import fan.summer.email.generated.EmailContactSaveInput;
+import fan.summer.email.generated.EmailContactSaveOutput;
+import fan.summer.email.generated.EmailContactsImportCommitInput;
+import fan.summer.email.generated.EmailContactsImportCommitOutput;
+import fan.summer.email.generated.EmailContactsImportPreviewInput;
+import fan.summer.email.generated.EmailContactsImportPreviewOutput;
+import fan.summer.email.generated.EmailContactsQueryInput;
+import fan.summer.email.generated.EmailContactsQueryOutput;
+import fan.summer.email.generated.EmailImapFoldersInput;
+import fan.summer.email.generated.EmailImapFoldersOutput;
+import fan.summer.email.generated.EmailSendBatchInput;
+import fan.summer.email.generated.EmailSendBatchOutput;
+import fan.summer.email.generated.EmailSendRecordsQueryInput;
+import fan.summer.email.generated.EmailSendRecordsQueryOutput;
+import fan.summer.email.generated.EmailSendSingleInput;
+import fan.summer.email.generated.EmailSendSingleOutput;
+import fan.summer.email.generated.EmailSendStatusInput;
+import fan.summer.email.generated.EmailSendStatusOutput;
+import fan.summer.email.generated.EmailTagDeleteInput;
+import fan.summer.email.generated.EmailTagDeleteOutput;
+import fan.summer.email.generated.EmailTagSaveInput;
+import fan.summer.email.generated.EmailTagSaveOutput;
+import fan.summer.email.generated.EmailTagsAssignInput;
+import fan.summer.email.generated.EmailTagsAssignOutput;
+import fan.summer.email.generated.EmailTagsListInput;
+import fan.summer.email.generated.EmailTagsListOutput;
+import fan.summer.email.generated.EmailTagsResolveInput;
+import fan.summer.email.generated.EmailTagsResolveOutput;
 import fan.summer.email.generated.RejectSendInput;
+import fan.summer.email.generated.RejectSendOutput;
 
 import java.util.Map;
 
@@ -59,14 +95,11 @@ import java.util.Map;
  *
  * <p>The handler implementations live in {@link EmailRpcHandlers}; they read typed fields off the
  * Input records (no raw {@code Map} parsing, no removed {@code JsonRpcWorker.string/integer}
- * extraction) and return the existing {success, summary, ...} envelope, which Gson serializes
- * directly. <b>Output type.</b> Each method is registered with {@code Object.class} as its output
- * type: the SDK treats {@code outputClass} as documentary ("the returned value is serialized by Gson
- * regardless of its declared type") and the manifest declares the rich payload (accounts, contacts,
- * tags, ...) as a free-form object "carried in the runtime result", so the generated
- * {@code <Method>Output} records are structurally insufficient (empty nested types / missing data
- * fields) and the handlers return the full envelope {@link java.util.Map} instead. SMTP/IMAP handlers
- * cooperative-check {@code RpcContext.cancellation()} so a {@code $/cancelRequest} from the host
+ * extraction) and return the matching generated {@code <Method>Output} record, which Gson serializes
+ * directly. Each record's {@link com.google.gson.annotations.SerializedName @SerializedName} values
+ * are byte-identical to the JSON keys the previous free-form {@code Map} envelope emitted, so the
+ * wire format is unchanged end to end (strongly typed on both sides of the bridge). SMTP/IMAP handlers
+ * cooperative-check {@code RpcContext#cancellation()} so a {@code $/cancelRequest} from the host
  * yields a clean {@code CANCELLED} response instead of running to completion.
  *
  * <p>{@link JsonRpcWorker#run()} captures stdout as the JSON-RPC protocol stream and only then
@@ -89,46 +122,46 @@ public final class EmailWorkerMain {
         return new JsonRpcWorker()
             .onClose(h)
             // Accounts (credentials are write-only: accepted, encrypted at rest, never returned).
-            .method(PluginMethods.EMAIL_ACCOUNTS_LIST, EmailAccountsListInput.class, Object.class, h::listAccounts)
-            .method(PluginMethods.EMAIL_ACCOUNT_FIND, EmailAccountFindInput.class, Object.class, h::findAccount)
-            .method(PluginMethods.EMAIL_ACCOUNT_SAVE, EmailAccountSaveInput.class, Object.class, h::saveAccount)
-            .method(PluginMethods.EMAIL_ACCOUNT_DELETE, EmailAccountDeleteInput.class, Object.class, h::deleteAccount)
-            .method(PluginMethods.EMAIL_ACCOUNT_SET_DEFAULT, EmailAccountSetDefaultInput.class, Object.class, h::setDefaultAccount)
-            .method(PluginMethods.EMAIL_ACCOUNT_TEST, EmailAccountTestInput.class, Object.class, h::testAccount)
-            .method(PluginMethods.EMAIL_ACCOUNT_TEST_IMAP, EmailAccountTestImapInput.class, Object.class, h::testImapAccount)
+            .method(PluginMethods.EMAIL_ACCOUNTS_LIST, EmailAccountsListInput.class, EmailAccountsListOutput.class, h::listAccounts)
+            .method(PluginMethods.EMAIL_ACCOUNT_FIND, EmailAccountFindInput.class, EmailAccountFindOutput.class, h::findAccount)
+            .method(PluginMethods.EMAIL_ACCOUNT_SAVE, EmailAccountSaveInput.class, EmailAccountSaveOutput.class, h::saveAccount)
+            .method(PluginMethods.EMAIL_ACCOUNT_DELETE, EmailAccountDeleteInput.class, EmailAccountDeleteOutput.class, h::deleteAccount)
+            .method(PluginMethods.EMAIL_ACCOUNT_SET_DEFAULT, EmailAccountSetDefaultInput.class, EmailAccountSetDefaultOutput.class, h::setDefaultAccount)
+            .method(PluginMethods.EMAIL_ACCOUNT_TEST, EmailAccountTestInput.class, EmailAccountTestOutput.class, h::testAccount)
+            .method(PluginMethods.EMAIL_ACCOUNT_TEST_IMAP, EmailAccountTestImapInput.class, EmailAccountTestImapOutput.class, h::testImapAccount)
             // Contacts, tags, address book.
-            .method(PluginMethods.EMAIL_CONTACTS_QUERY, EmailContactsQueryInput.class, Object.class, h::queryContacts)
-            .method(PluginMethods.EMAIL_CONTACT_FIND, EmailContactFindInput.class, Object.class, h::findContact)
-            .method(PluginMethods.EMAIL_CONTACT_SAVE, EmailContactSaveInput.class, Object.class, h::saveContact)
-            .method(PluginMethods.EMAIL_CONTACT_DELETE, EmailContactDeleteInput.class, Object.class, h::deleteContact)
-            .method(PluginMethods.EMAIL_TAGS_LIST, EmailTagsListInput.class, Object.class, h::listTags)
-            .method(PluginMethods.EMAIL_TAG_SAVE, EmailTagSaveInput.class, Object.class, h::saveTag)
-            .method(PluginMethods.EMAIL_TAG_DELETE, EmailTagDeleteInput.class, Object.class, h::deleteTag)
-            .method(PluginMethods.EMAIL_TAGS_ASSIGN, EmailTagsAssignInput.class, Object.class, h::assignTags)
-            .method(PluginMethods.EMAIL_TAGS_RESOLVE, EmailTagsResolveInput.class, Object.class, h::resolveRecipients)
-            .method(PluginMethods.EMAIL_CONTACTS_IMPORT_PREVIEW, EmailContactsImportPreviewInput.class, Object.class, h::importContactsPreview)
-            .method(PluginMethods.EMAIL_CONTACTS_IMPORT_COMMIT, EmailContactsImportCommitInput.class, Object.class, h::importContactsCommit)
+            .method(PluginMethods.EMAIL_CONTACTS_QUERY, EmailContactsQueryInput.class, EmailContactsQueryOutput.class, h::queryContacts)
+            .method(PluginMethods.EMAIL_CONTACT_FIND, EmailContactFindInput.class, EmailContactFindOutput.class, h::findContact)
+            .method(PluginMethods.EMAIL_CONTACT_SAVE, EmailContactSaveInput.class, EmailContactSaveOutput.class, h::saveContact)
+            .method(PluginMethods.EMAIL_CONTACT_DELETE, EmailContactDeleteInput.class, EmailContactDeleteOutput.class, h::deleteContact)
+            .method(PluginMethods.EMAIL_TAGS_LIST, EmailTagsListInput.class, EmailTagsListOutput.class, h::listTags)
+            .method(PluginMethods.EMAIL_TAG_SAVE, EmailTagSaveInput.class, EmailTagSaveOutput.class, h::saveTag)
+            .method(PluginMethods.EMAIL_TAG_DELETE, EmailTagDeleteInput.class, EmailTagDeleteOutput.class, h::deleteTag)
+            .method(PluginMethods.EMAIL_TAGS_ASSIGN, EmailTagsAssignInput.class, EmailTagsAssignOutput.class, h::assignTags)
+            .method(PluginMethods.EMAIL_TAGS_RESOLVE, EmailTagsResolveInput.class, EmailTagsResolveOutput.class, h::resolveRecipients)
+            .method(PluginMethods.EMAIL_CONTACTS_IMPORT_PREVIEW, EmailContactsImportPreviewInput.class, EmailContactsImportPreviewOutput.class, h::importContactsPreview)
+            .method(PluginMethods.EMAIL_CONTACTS_IMPORT_COMMIT, EmailContactsImportCommitInput.class, EmailContactsImportCommitOutput.class, h::importContactsCommit)
             // Batch-send configuration templates.
-            .method(PluginMethods.EMAIL_CONFIGS_LIST, EmailConfigsListInput.class, Object.class, h::listConfigs)
-            .method(PluginMethods.EMAIL_CONFIG_FIND, EmailConfigFindInput.class, Object.class, h::findConfig)
-            .method(PluginMethods.EMAIL_CONFIG_SAVE, EmailConfigSaveInput.class, Object.class, h::saveConfig)
-            .method(PluginMethods.EMAIL_CONFIG_DELETE, EmailConfigDeleteInput.class, Object.class, h::deleteConfig)
+            .method(PluginMethods.EMAIL_CONFIGS_LIST, EmailConfigsListInput.class, EmailConfigsListOutput.class, h::listConfigs)
+            .method(PluginMethods.EMAIL_CONFIG_FIND, EmailConfigFindInput.class, EmailConfigFindOutput.class, h::findConfig)
+            .method(PluginMethods.EMAIL_CONFIG_SAVE, EmailConfigSaveInput.class, EmailConfigSaveOutput.class, h::saveConfig)
+            .method(PluginMethods.EMAIL_CONFIG_DELETE, EmailConfigDeleteInput.class, EmailConfigDeleteOutput.class, h::deleteConfig)
             // Send: prepare (confirmation-first) → confirm/reject → status/records.
-            .method(PluginMethods.EMAIL_SEND_SINGLE, EmailSendSingleInput.class, Object.class, h::prepareSingle)
-            .method(PluginMethods.EMAIL_SEND_BATCH, EmailSendBatchInput.class, Object.class, h::prepareBatch)
-            .method(PluginMethods.EMAIL_BATCH_PREVIEW, EmailBatchPreviewInput.class, Object.class, h::previewBatch)
-            .method(PluginMethods.EMAIL_SEND_STATUS, EmailSendStatusInput.class, Object.class, h::sendStatus)
-            .method(PluginMethods.EMAIL_SEND_RECORDS_QUERY, EmailSendRecordsQueryInput.class, Object.class, h::querySendRecords)
-            .method(PluginMethods.CONFIRM_SEND, ConfirmSendInput.class, Object.class, h::confirmSend)
-            .method(PluginMethods.REJECT_SEND, RejectSendInput.class, Object.class, h::rejectSend)
+            .method(PluginMethods.EMAIL_SEND_SINGLE, EmailSendSingleInput.class, EmailSendSingleOutput.class, h::prepareSingle)
+            .method(PluginMethods.EMAIL_SEND_BATCH, EmailSendBatchInput.class, EmailSendBatchOutput.class, h::prepareBatch)
+            .method(PluginMethods.EMAIL_BATCH_PREVIEW, EmailBatchPreviewInput.class, EmailBatchPreviewOutput.class, h::previewBatch)
+            .method(PluginMethods.EMAIL_SEND_STATUS, EmailSendStatusInput.class, EmailSendStatusOutput.class, h::sendStatus)
+            .method(PluginMethods.EMAIL_SEND_RECORDS_QUERY, EmailSendRecordsQueryInput.class, EmailSendRecordsQueryOutput.class, h::querySendRecords)
+            .method(PluginMethods.CONFIRM_SEND, ConfirmSendInput.class, ConfirmSendOutput.class, h::confirmSend)
+            .method(PluginMethods.REJECT_SEND, RejectSendInput.class, RejectSendOutput.class, h::rejectSend)
             // Archive (IMAP collection). Synchronous fetch + async job trio with domain cancel.
-            .method(PluginMethods.EMAIL_ARCHIVE_FETCH, EmailArchiveFetchInput.class, Object.class, h::collect)
-            .method(PluginMethods.EMAIL_ARCHIVE_FETCH_START, EmailArchiveFetchStartInput.class, Object.class, h::collectStart)
-            .method(PluginMethods.EMAIL_ARCHIVE_FETCH_STATUS, EmailArchiveFetchStatusInput.class, Object.class, h::collectStatus)
-            .method(PluginMethods.EMAIL_ARCHIVE_FETCH_CANCEL, EmailArchiveFetchCancelInput.class, Object.class, h::collectCancel)
-            .method(PluginMethods.EMAIL_ARCHIVE_QUERY, EmailArchiveQueryInput.class, Object.class, h::queryArchive)
-            .method(PluginMethods.EMAIL_ARCHIVE_DETAIL, EmailArchiveDetailInput.class, Object.class, h::archiveDetail)
-            .method(PluginMethods.EMAIL_IMAP_FOLDERS, EmailImapFoldersInput.class, Object.class, h::listFolders);
+            .method(PluginMethods.EMAIL_ARCHIVE_FETCH, EmailArchiveFetchInput.class, EmailArchiveFetchOutput.class, h::collect)
+            .method(PluginMethods.EMAIL_ARCHIVE_FETCH_START, EmailArchiveFetchStartInput.class, EmailArchiveFetchStartOutput.class, h::collectStart)
+            .method(PluginMethods.EMAIL_ARCHIVE_FETCH_STATUS, EmailArchiveFetchStatusInput.class, EmailArchiveFetchStatusOutput.class, h::collectStatus)
+            .method(PluginMethods.EMAIL_ARCHIVE_FETCH_CANCEL, EmailArchiveFetchCancelInput.class, EmailArchiveFetchCancelOutput.class, h::collectCancel)
+            .method(PluginMethods.EMAIL_ARCHIVE_QUERY, EmailArchiveQueryInput.class, EmailArchiveQueryOutput.class, h::queryArchive)
+            .method(PluginMethods.EMAIL_ARCHIVE_DETAIL, EmailArchiveDetailInput.class, EmailArchiveDetailOutput.class, h::archiveDetail)
+            .method(PluginMethods.EMAIL_IMAP_FOLDERS, EmailImapFoldersInput.class, EmailImapFoldersOutput.class, h::listFolders);
     }
 
     static EmailRpcHandlers handlers(Map<String, String> environment) {

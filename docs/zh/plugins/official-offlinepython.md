@@ -19,9 +19,9 @@ lang: zh-CN
 
 ## 清单
 
-```json
+```jsonc
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "fan.summer.offlinepython",
   "name": "Offline Python Builder",
   "description": "Build offline Python install repositories with all dependencies",
@@ -30,10 +30,11 @@ lang: zh-CN
   "icon": "language-python",
   "category": "dev",
   "ui": { "entry": "ui/index.html" },
-  "backend": { "command": "java -jar backend/worker.jar", "protocol": "json-rpc-2.0" },
+  "backend": { "callTimeoutSeconds": 60 },
   "permissions": ["files.read", "files.write", "network"],
   "homepage": "https://github.com/MuskStark/FengYu",
   "official": true,
+  "rpc": { "methods": { /* 见下文方法表 */ } },
   "aiTools": [ /* 六个工具，见下文 */ ]
 }
 ```
@@ -42,7 +43,7 @@ lang: zh-CN
 
 - **`category: "dev"`** —— 一个开发者工具类插件。
 - **`permissions: ["files.read", "files.write", "network"]`** —— 它读写项目文件，并在 `pip download` 期间**需要联网**访问 PyPI。正是 `network` 权限让离线*构建*（而非安装）成为可能。
-- **`backend.command: "java -jar backend/worker.jar"`**，**`protocol: "json-rpc-2.0"`**。
+- **`backend: { "callTimeoutSeconds": 60 }`** —— 线协议固定为 stdio 上的 JSON-RPC 2.0，宿主按约定启动 `java -jar backend/worker.jar`；清单不再声明启动命令或协议。
 - **`aiTools`** 有六项，因此 `supportsAi` 为 `true`。
 
 ## 方法

@@ -25,7 +25,7 @@ the canonical example of a plugin that combines file I/O, **async jobs**, and AI
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "fan.summer.offlinepython",
   "name": "Offline Python Builder",
   "description": "Build offline Python install repositories with all dependencies",
@@ -34,10 +34,11 @@ the canonical example of a plugin that combines file I/O, **async jobs**, and AI
   "icon": "language-python",
   "category": "dev",
   "ui": { "entry": "ui/index.html" },
-  "backend": { "command": "java -jar backend/worker.jar", "protocol": "json-rpc-2.0" },
+  "backend": { "callTimeoutSeconds": 60 },
   "permissions": ["files.read", "files.write", "network"],
   "homepage": "https://github.com/MuskStark/FengYu",
   "official": true,
+  "rpc": { "methods": { /* init, config.*, build.*, deploy.*, … — see below */ } },
   "aiTools": [ /* six tools — see below */ ]
 }
 ```
@@ -46,7 +47,7 @@ Key points:
 
 - **`category: "dev"`** — a developer-tooling plugin.
 - **`permissions: ["files.read", "files.write", "network"]`** — it reads/writes project files and **needs network** to reach PyPI during `pip download`. The `network` permission is what makes air-gapped *building* (not installing) possible.
-- **`backend.command: "java -jar backend/worker.jar"`** with **`protocol: "json-rpc-2.0"`**.
+- **`backend.callTimeoutSeconds: 60`** — the host spawns the standard `backend/worker.jar` and drives it over JSON-RPC on stdio.
 - **`aiTools`** has six entries, so `supportsAi` is `true`.
 
 ## Methods

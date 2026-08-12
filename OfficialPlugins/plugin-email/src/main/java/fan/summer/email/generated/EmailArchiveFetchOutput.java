@@ -8,5 +8,9 @@ public record EmailArchiveFetchOutput(
     @SerializedName("success") boolean success,
     @SerializedName("summary") String summary
 ) {
-  public record EmailArchiveFetchOutputCollection() {}
+  public record EmailArchiveFetchOutputCollection(
+      @SerializedName("failures") int failures,
+      @SerializedName("newArchived") int newArchived,
+      @SerializedName("skippedDuplicates") int skippedDuplicates
+  ) {}
 }

@@ -2,11 +2,17 @@
 package fan.summer.email.generated;
 
 import com.google.gson.annotations.SerializedName;
+import java.util.List;
 
 public record RejectSendOutput(
     @SerializedName("send") RejectSendOutputSend send,
     @SerializedName("success") boolean success,
     @SerializedName("summary") String summary
 ) {
-  public record RejectSendOutputSend() {}
+  public record RejectSendOutputSend(
+      @SerializedName("failed") int failed,
+      @SerializedName("failedRecipients") List<String> failedRecipients,
+      @SerializedName("status") String status,
+      @SerializedName("succeeded") int succeeded
+  ) {}
 }

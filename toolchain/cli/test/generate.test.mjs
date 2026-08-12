@@ -186,6 +186,43 @@ test('Java emits a nested record declaration for array-of-object fields (not jus
   assert.match(out, /public record AnalyzeOutputCols\(/, 'cols nested record is DECLARED — no name collision with rows')
 })
 
+test('Java emits a real enum for a closed string-enum field (constant == wire value, no @SerializedName)', () => {
+  const m = { schemaVersion: 2, id: 'fan.summer.demo', name: 'd', description: 'd', version: '1.0.0',
+    author: 'a', icon: 'i', category: 'c', ui: { entry: 'ui/index.html' }, backend: {},
+    rpc: { methods: {
+      configure: { inputSchema: { type: 'object', properties: {
+        mode: { type: 'string', enum: ['BY_SHEET', 'BY_COLUMN', 'COMPLEX'] },
+        dup: { type: 'string', enum: ['merge', 'skip', 'overwrite'] },
+      } } },
+    } } }
+  const input = generateJava(m).find((f) => f.name === 'ConfigureInput.java').content
+  // The field type is the nested enum, and the enum is DECLARED with constants equal to the wire
+  // values (so Enum.name()/toString()/String.valueOf all round-trip the wire value with no alias).
+  assert.match(input, /ConfigureInputMode mode/, 'enum-typed field references the nested enum type')
+  assert.match(input, /public enum ConfigureInputMode \{/, 'UPPER enum is DECLARED')
+  assert.match(input, /BY_SHEET,\s*BY_COLUMN,\s*COMPLEX/, 'UPPER constants equal their wire values')
+  assert.match(input, /ConfigureInputDup dup/, 'lowercase-wire enum field references its nested enum type')
+  assert.match(input, /public enum ConfigureInputDup \{/, 'lowercase enum is DECLARED')
+  assert.match(input, /merge,\s*skip,\s*overwrite/,
+    'lowercase constants equal their wire values (valid Java identifiers)')
+  // The enum constants are bare identifiers (no @SerializedName aliasing) — proven by the bare
+  // constant matches above. (The record FIELDS still carry @SerializedName for their JSON keys,
+  // which is correct and unrelated to enum aliasing.)
+})
+
+test('Java falls back to String when an enum value is not a valid Java identifier', () => {
+  const m = { schemaVersion: 2, id: 'fan.summer.demo', name: 'd', description: 'd', version: '1.0.0',
+    author: 'a', icon: 'i', category: 'c', ui: { entry: 'ui/index.html' }, backend: {},
+    rpc: { methods: {
+      configure: { inputSchema: { type: 'object', properties: {
+        mode: { type: 'string', enum: ['by-sheet', 'by-column'] }, // hyphens are not valid identifiers
+      } } },
+    } } }
+  const input = generateJava(m).find((f) => f.name === 'ConfigureInput.java').content
+  assert.match(input, /String mode/, 'non-identifier enum values fall back to String (no aliasing/trap)')
+  assert.doesNotMatch(input, /public enum/, 'no enum emitted for non-identifier values')
+})
+
 test('pascal() handles underscore method names: excel_complex_config → ExcelComplexConfig', () => {
   const m = { schemaVersion: 2, id: 'fan.summer.demo', name: 'd', description: 'd', version: '1.0.0',
     author: 'a', icon: 'i', category: 'c', ui: { entry: 'ui/index.html' }, backend: {},

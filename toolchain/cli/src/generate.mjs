@@ -205,7 +205,19 @@ function javaFieldType(schema, where, required, ownerRecordName, fieldName) {
   const nullable = schema.nullable === true
   const primitive = required && !nullable
   switch (schema.type) {
-    case 'string': return { type: 'String' }
+    case 'string': {
+      // A closed enum (all values valid Java identifiers, none reserved) becomes a real Java enum
+      // nested in the owning record. The constant name IS the wire value, so Enum.name(),
+      // toString(), and String.valueOf(enum) all return the wire value — Gson round-trips it
+      // exactly with no @SerializedName, and worker code that bridges the enum into a legacy
+      // Map (String.valueOf(map.get(field))) keeps seeing the wire value. A value that is not a
+      // valid Java identifier (or is reserved) falls back to String rather than aliasing it.
+      if (Array.isArray(schema.enum) && schema.enum.length && schema.enum.every(isValidJavaEnumConstant)) {
+        const enumName = `${ownerRecordName}${pascal(fieldName)}`
+        return { type: enumName, nested: javaEnum(enumName, schema.enum) }
+      }
+      return { type: 'String' }
+    }
     case 'integer': return { type: primitive ? 'int' : 'Integer' }
     case 'number': return { type: primitive ? 'double' : 'Double' }
     case 'boolean': return { type: primitive ? 'boolean' : 'Boolean' }
@@ -224,6 +236,19 @@ function javaFieldType(schema, where, required, ownerRecordName, fieldName) {
     default:
       throw new Error(`${where}: unsupported schema type ${JSON.stringify(schema.type)}`)
   }
+}
+
+/** True when `v` is a valid Java enum constant name equal to its own wire value (so name()
+ *  round-trips with no aliasing): a valid identifier and not a Java reserved word. */
+function isValidJavaEnumConstant(v) {
+  const s = String(v)
+  return TS_IDENT.test(s) && !JAVA_RESERVED.has(s)
+}
+
+/** A nested Java enum whose constants are exactly the schema enum values (== wire values). */
+function javaEnum(name, values) {
+  const constants = values.map((v) => `  ${String(v)}`).join(',\n')
+  return `public enum ${name} {\n${constants}\n}`
 }
 
 /** Emit a Java record (with nested static records for object-typed fields). */

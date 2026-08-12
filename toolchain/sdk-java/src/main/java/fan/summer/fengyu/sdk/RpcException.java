@@ -7,10 +7,11 @@ package fan.summer.fengyu.sdk;
  * e.g. {@code -32601} method-not-found).
  *
  * <p>The worker never puts stack traces or raw exception messages that may embed caller secrets
- * into the response unconditionally — see {@code JsonRpcWorker}'s logging discipline. A handler
- * that throws a plain (non-{@code RpcException}) {@link RuntimeException} is mapped to
- * {@link RpcError.Code#INTERNAL} with the message echoed only to the direct caller, never to
- * shared host logs.
+ * into the response. A handler that throws a plain (non-{@code RpcException}) {@link Throwable}
+ * is mapped to {@link RpcError.Code#INTERNAL}: the caller receives a generic message plus the
+ * stable {@code data.code} label, while the full causal chain and stack frames (but NOT the raw
+ * message) are written to the worker's stderr for operator diagnostics. Only a handler-authored
+ * {@code RpcException} carries its (controlled) message into the response.
  *
  * @since 1.4.0
  */

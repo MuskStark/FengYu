@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { FileRef } from '@infinia/plugin-sdk'
-import { actionable, files, invoke } from '../sdk'
+import { actionable, checked, files, rpc } from '../sdk'
 
 const { t } = useI18n()
 
@@ -77,10 +77,10 @@ async function runPreview(): Promise<void> {
   if (!fileRef.value) { error.value = t('contacts.importNoFile'); return }
   busy.value = true; error.value = ''; preview.value = null
   try {
-    const result = await invoke<{ preview: ImportPreview }>('email_contacts_import_preview', {
-      sourceFile: fileRef.value,
+    const result = await checked(rpc.email_contacts_import_preview({
+      sourceFile: fileRef.value as unknown as string,
       duplicateMode: duplicateMode.value,
-    })
+    }))
     preview.value = result.preview
   } catch (value) {
     error.value = actionable(value, t('contacts.importPreviewAction'))
@@ -93,10 +93,10 @@ async function runCommit(): Promise<void> {
   if (!fileRef.value) return
   busy.value = true; error.value = ''
   try {
-    const result = await invoke<{ result: ImportResult }>('email_contacts_import_commit', {
-      sourceFile: fileRef.value,
+    const result = await checked(rpc.email_contacts_import_commit({
+      sourceFile: fileRef.value as unknown as string,
       duplicateMode: duplicateMode.value,
-    })
+    }))
     const outcome = result.result
     info.value = t('contacts.importDone', {
       created: outcome.created, merged: outcome.merged, skipped: outcome.skipped, tags: outcome.tagsCreated,

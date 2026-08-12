@@ -47,14 +47,17 @@ client、挂载应用，并在 `pagehide` 时卸载、取消订阅和销毁。�
 
 ```ts
 import { fengyu } from './sdk.js'
+import { createPluginRpc } from './generated/fengyu-rpc'
 
 // 1. 协商协议 2.0.0 并接收宿主的 Environment。
 const env = await fengyu.ready()
 //   → { protocolVersion, theme, locale, platform, capabilities }
 //   宿主协议版本不完全一致时抛出异常。
 
-// 2. 调用插件自己的 worker（宿主以 JSON-RPC 转发）。
-const out = await fengyu.invoke('render', { markdown: '# hi' })
+// 2. 调用插件自己的 worker。推荐使用由 rpc.methods 生成的类型化客户端
+//    （基于 FengYuClient.invoke 构建）；宿主以 JSON-RPC 转发。
+const rpc = createPluginRpc(fengyu)
+const out = await rpc.render({ markdown: '# hi' })
 
 // 3. 向用户请求文件/目录。
 const file: FileRef | null    = await fengyu.files.open({ extensions: ['xlsx'] })
@@ -77,7 +80,7 @@ off()
 | --- | --- | --- |
 | `ready(options?)` | `Promise<Environment>` | 协商精确的协议 `2.0.0`；并发调用共享一次握手，并缓存 `theme` + `locale`。 |
 | `currentEnvironment()` | `Environment \| undefined` | 无需再次访问宿主即可读取最近一次合并后的 ready/event 状态。 |
-| `invoke(method, params?, options?)` | `Promise<T>` | 对插件 worker 的 RPC。`options:{signal?, timeoutMs?}`。 |
+| `invoke(method, params?, options?)` | `Promise<T>` | 对插件 worker 的低层 RPC（`options:{signal?, timeoutMs?}`）。推荐改用由 `rpc.methods` 生成的类型化客户端 `createPluginRpc(client)`，它基于此方法构建。 |
 | `notify(message)` | `Promise<boolean>` | 显示一个宿主 toast。 |
 | `files.open({extensions?, filters?}, req?)` | `Promise<FileRef \| null>` | 打开单个文件。用户取消时返回 `null`。需要权限 `files.read`。 |
 | `files.inputDirectory(req?)` | `Promise<FileRef \| null>` | 选取一个输入目录。需要权限 `files.read`。 |
@@ -117,11 +120,13 @@ interface Environment { protocolVersion: string; theme: Theme; locale: string; p
 
 ```js
 import { fengyu } from './sdk.js'
+import { createPluginRpc } from './generated/fengyu-rpc'
 
 await fengyu.ready()  // 在任何其他调用之前先协商
+const rpc = createPluginRpc(fengyu)
 
 document.querySelector('#hello').onclick = async () => {
-  const result = await fengyu.invoke('hello', {})
+  const result = await rpc.hello({})
   document.querySelector('#out').textContent = JSON.stringify(result, null, 2)
 }
 ```
