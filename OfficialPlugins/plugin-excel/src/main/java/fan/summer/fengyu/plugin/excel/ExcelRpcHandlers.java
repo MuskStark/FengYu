@@ -219,6 +219,7 @@ public final class ExcelRpcHandlers implements AutoCloseable {
             try {
                 cfg.analysisResult = ExcelSplitter.analyze(file);
             } catch (Exception e) {
+                ctx.logger().warn("excel analyze body failed: {}", e.getClass().getSimpleName(), e);
                 return new ExcelAnalyzeOutput(null, false, t("ex.err.analyzeFailed", safeMessage(e)));
             }
             ctx.logger().info("analyzed {} sheet(s) from {}", cfg.analysisResult.size(), file.getFileName());
@@ -330,6 +331,7 @@ public final class ExcelRpcHandlers implements AutoCloseable {
             } catch (Exception e) {
                 // If the engine aborted because the call was cancelled, surface CANCELLED, not a failure.
                 if (ctx.cancellation().isCancelled()) ctx.cancellation().throwIfCancelled();
+                ctx.logger().warn("excel execute body failed: {}", e.getClass().getSimpleName(), e);
                 return new ExcelExecuteOutput(null, false, t("ex.err.splitFailed", safeMessage(e)));
             }
             ctx.cancellation().throwIfCancelled();

@@ -1,8 +1,9 @@
 package fan.summer.fengyu.plugin.offlinepython.command;
 
 import fan.summer.fengyu.plugin.offlinepython.domain.BuildConfig;
-import fan.summer.fengyu.plugin.offlinepython.infra.OpbLogger;
 import fan.summer.fengyu.sdk.PluginMessages;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -26,10 +27,9 @@ public class PackageService {
     private static final PluginMessages MSGS =
             PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, PackageService.class);
 
-    private final OpbLogger log;
+    private static final Logger log = LoggerFactory.getLogger(PackageService.class);
 
-    public PackageService() { this(null); }
-    public PackageService(OpbLogger log) { this.log = log; }
+    public PackageService() {}
 
     /** 打包 projectDir/output 为 bundle ZIP,返回生成的 ZIP 路径。 */
     public Path packageBundle(Path projectDir, BuildConfig cfg) throws IOException {
@@ -79,7 +79,10 @@ public class PackageService {
             }
         }
 
-        if (log != null) log.log(MSGS.format("opb.msg.package.done", count, humanBytes(bytes), zip.getFileName()));
+        // Route through SLF4J directly: the SDK provider emits the structured stderr event the host
+        // captures. (The old OpbLogger wrapper was wired with a null instance in production, so this
+        // milestone used to be silently dropped — see fengyu-plugin-dev logging rules.)
+        log.info(MSGS.format("opb.msg.package.done", count, humanBytes(bytes), zip.getFileName()));
         return zip;
     }
 
