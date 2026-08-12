@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import fan.summer.fengyu.database.SecurityConstants;
 import fan.summer.fengyu.database.entity.store.PluginInstallRecordEntity;
 import fan.summer.fengyu.database.repository.PluginInstallRecordRepository;
+import fan.summer.fengyu.plugin.market.ManifestI18n;
 import fan.summer.fengyu.plugin.store.InstallerDispatcher;
 import fan.summer.fengyu.plugin.store.StoreSource;
 import fan.summer.fengyu.plugin.store.StoreSourceRegistry;
@@ -62,9 +63,13 @@ public class PluginStoreController {
     public List<UnifiedCatalogEntry> catalog(
             @RequestParam(required = false) String sourceType,
             @RequestParam(required = false) String category,
-            @RequestParam(required = false) String q) {
+            @RequestParam(required = false) String q,
+            @RequestHeader(name = "Accept-Language", required = false) String acceptLanguage) {
         StoreSourceType st = sourceType == null ? null : StoreSourceType.valueOf(sourceType);
-        return store.list(new UnifiedStoreService.StoreFilter(st, category, q));
+        // Resolve the request locale so installed entries render their localized name/description
+        // from the on-disk manifest's i18n block (catalog-only entries carry a single language).
+        String locale = ManifestI18n.resolveLocale(acceptLanguage);
+        return store.list(new UnifiedStoreService.StoreFilter(st, category, q), locale);
     }
 
     // ── install lifecycle ────────────────────────────────────
