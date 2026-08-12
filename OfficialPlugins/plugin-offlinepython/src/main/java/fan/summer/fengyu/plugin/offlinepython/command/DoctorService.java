@@ -1,6 +1,8 @@
 package fan.summer.fengyu.plugin.offlinepython.command;
 
 import fan.summer.fengyu.plugin.offlinepython.infra.ProcessRunner;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.file.FileStore;
 import java.nio.file.Files;
@@ -10,6 +12,8 @@ import java.util.List;
 
 /** Diagnoses the host environment for build readiness. */
 public class DoctorService {
+
+    private static final Logger log = LoggerFactory.getLogger(DoctorService.class);
 
     /**
      * One diagnostic row. {@code id} is a stable, locale-independent identifier the
@@ -56,19 +60,26 @@ public class DoctorService {
                     .send(req, java.net.http.HttpResponse.BodyHandlers.discarding());
             return r.statusCode() >= 200 && r.statusCode() < 500;
         } catch (Exception e) {
+            log.warn("PyPI reachability probe failed: {}", e.toString());
             return false;
         }
     }
 
     private boolean isWritable(Path dir) {
         try { Files.createDirectories(dir); return Files.isWritable(dir); }
-        catch (Exception e) { return false; }
+        catch (Exception e) {
+            log.warn("cache dir writability probe failed for {}: {}", dir, e.toString());
+            return false;
+        }
     }
 
     private long freeSpaceGb(Path p) {
         try {
             FileStore store = Files.getFileStore(p);
             return store.getUsableSpace() / (1024L * 1024 * 1024);
-        } catch (Exception e) { return 0; }
+        } catch (Exception e) {
+            log.warn("disk space probe failed for {}: {}", p, e.toString());
+            return 0;
+        }
     }
 }

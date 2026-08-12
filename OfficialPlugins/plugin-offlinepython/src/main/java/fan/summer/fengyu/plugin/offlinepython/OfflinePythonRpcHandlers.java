@@ -245,7 +245,8 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport impleme
     public VerifyOutput verify(VerifyInput input, RpcContext ctx) {
         return run(VerifyOutput.class, ctx,
                 () -> envelope(VerifyOutput.class,
-                        verifyBody(input.projectDir(), input.session(), input.scope().name())));
+                        verifyBody(input.projectDir(), input.session(),
+                                input.scope() == null ? null : input.scope().name())));
     }
 
     public PackageOutput packageBundle(PackageInput input, RpcContext ctx) {
@@ -316,7 +317,8 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport impleme
     public OfflinepythonVerifyOutput offlinepythonVerify(OfflinepythonVerifyInput input, RpcContext ctx) {
         return run(OfflinepythonVerifyOutput.class, ctx,
                 () -> envelope(OfflinepythonVerifyOutput.class,
-                        verifyBody(input.projectDir(), OfflinePythonSessionStore.AI_SESSION, input.scope().name())));
+                        verifyBody(input.projectDir(), OfflinePythonSessionStore.AI_SESSION,
+                                input.scope() == null ? null : input.scope().name())));
     }
 
     public OfflinepythonBuildStartOutput offlinepythonBuildStart(OfflinepythonBuildStartInput input, RpcContext ctx) {
@@ -500,7 +502,7 @@ public final class OfflinePythonRpcHandlers extends PluginHandlerSupport impleme
             if (!d.ok()) throw new IllegalArgumentException(t("opb.msg.python.notDetectedProvide"));
             pythonExe = d.executable();
         }
-        if ("venv".equalsIgnoreCase(target.kind().name())) {
+        if (target.kind() != null && "venv".equalsIgnoreCase(target.kind().name())) {
             if (target.venvPath() == null || target.venvPath().isBlank())
                 throw new IllegalArgumentException(t("opb.msg.venvPath.required"));
             return new DeployTarget.Venv(Paths.get(pythonExe.trim()), Paths.get(target.venvPath().trim()));
