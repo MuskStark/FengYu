@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { api } from '@/api/client'
+import { localeRef } from '@/i18n'
 import type {
   InstallRecord,
   StoreSource,
@@ -45,6 +46,10 @@ export const usePluginStore = defineStore('pluginStore', () => {
       loading.value = false
     }
   }
+
+  // Installed entries' display name/description are localized server-side from each manifest's i18n
+  // block, so re-fetch the catalog when the UI language changes so the Store tab cards track it.
+  watch(localeRef, () => { void loadCatalog() })
 
   async function loadHistory() {
     try {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '@/api/client'
 import { renderMarkdown } from '@/security/markdown'
@@ -12,7 +12,7 @@ import StoreSourceManager from '@/components/store/StoreSourceManager.vue'
 import type { UnifiedCatalogEntry } from '@/api/types'
 import { makeDesktop } from '@/mf/desktop'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 // ── shared UI state ──────────────────────────────────────────────
 const tab = ref<'plugins' | 'skills' | 'stores'>('plugins')
@@ -40,6 +40,11 @@ async function load() {
     loading.value = false
   }
 }
+
+// The "plugins" tab name/description are resolved server-side per request locale, so re-fetch when
+// the UI language changes so the cards track it without a manual reload. (The Store tab is covered
+// by the pluginStore locale watcher; this view-local ref needs its own.)
+watch(locale, () => { void load() })
 
 // ── data: skills (tab 2) ─────────────────────────────────────────
 /** Normalized row for either a builtin or an installed/market skill. */
