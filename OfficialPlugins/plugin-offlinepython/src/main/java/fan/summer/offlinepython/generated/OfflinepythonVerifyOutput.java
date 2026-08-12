@@ -19,31 +19,61 @@ public record OfflinepythonVerifyOutput(
     public record OfflinepythonVerifyOutputResultFileIntegrity(
         @SerializedName("detail") String detail,
         @SerializedName("problems") List<String> problems,
-        @SerializedName("status") String status
-    ) {}
+        @SerializedName("status") OfflinepythonVerifyOutputResultFileIntegrityStatus status
+    ) {
+      public enum OfflinepythonVerifyOutputResultFileIntegrityStatus {
+        PASS,
+        WARN,
+        FAIL
+      }
+    }
 
     public record OfflinepythonVerifyOutputResultManifest(
         @SerializedName("detail") String detail,
         @SerializedName("problems") List<String> problems,
-        @SerializedName("status") String status
-    ) {}
+        @SerializedName("status") OfflinepythonVerifyOutputResultManifestStatus status
+    ) {
+      public enum OfflinepythonVerifyOutputResultManifestStatus {
+        PASS,
+        WARN,
+        FAIL
+      }
+    }
 
     public record OfflinepythonVerifyOutputResultRequirements(
         @SerializedName("detail") String detail,
         @SerializedName("problems") List<String> problems,
-        @SerializedName("status") String status
-    ) {}
+        @SerializedName("status") OfflinepythonVerifyOutputResultRequirementsStatus status
+    ) {
+      public enum OfflinepythonVerifyOutputResultRequirementsStatus {
+        PASS,
+        WARN,
+        FAIL
+      }
+    }
 
     public record OfflinepythonVerifyOutputResultSha256(
         @SerializedName("detail") String detail,
         @SerializedName("problems") List<String> problems,
-        @SerializedName("status") String status
-    ) {}
+        @SerializedName("status") OfflinepythonVerifyOutputResultSha256Status status
+    ) {
+      public enum OfflinepythonVerifyOutputResultSha256Status {
+        PASS,
+        WARN,
+        FAIL
+      }
+    }
 
     public record OfflinepythonVerifyOutputResultWheels(
         @SerializedName("detail") String detail,
         @SerializedName("problems") List<String> problems,
-        @SerializedName("status") String status
-    ) {}
+        @SerializedName("status") OfflinepythonVerifyOutputResultWheelsStatus status
+    ) {
+      public enum OfflinepythonVerifyOutputResultWheelsStatus {
+        PASS,
+        WARN,
+        FAIL
+      }
+    }
   }
 }

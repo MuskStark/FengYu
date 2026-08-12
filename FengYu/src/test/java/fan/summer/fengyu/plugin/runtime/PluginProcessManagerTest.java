@@ -78,6 +78,29 @@ class PluginProcessManagerTest {
         manager.close();
     }
 
+    /** A timed-out (force-killed) worker must not leak as an orphan process; the host must start a
+     *  fresh worker for the next call. Closes the "crash/timeout orphan reaping" integration gap. */
+    @Test
+    void timedOutWorkerLeavesNoOrphanProcess() throws Exception {
+        PluginProcessManager manager = manager();
+        long pidV1 = ((Number) ((Map<String, Object>) manager.invoke("com.example.worker", "pid", Map.of())).get("value")).longValue();
+        assertTrue(pidV1 > 0);
+        // Force a timeout-kill of the in-flight worker.
+        assertThrows(IllegalStateException.class,
+            () -> manager.invoke("com.example.worker", "sleep", Map.of(), 1));
+        // The killed worker's process must be fully reaped — no orphan pid surviving.
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (ProcessHandle.of(pidV1).isPresent() && System.nanoTime() < deadline) {
+            Thread.sleep(20);
+        }
+        assertFalse(ProcessHandle.of(pidV1).isPresent(),
+            "timed-out worker pid " + pidV1 + " must not survive as an orphan process");
+        // And the host must lazily start a fresh worker for the next call.
+        long pidV2 = ((Number) ((Map<String, Object>) manager.invoke("com.example.worker", "pid", Map.of())).get("value")).longValue();
+        assertNotEquals(pidV1, pidV2, "a fresh worker must be started after the timeout-kill");
+        manager.close();
+    }
+
     @Test
     void trackedInvokeCanBeCancelledByProtocolCallId() throws Exception {
         PluginProcessManager manager = manager();

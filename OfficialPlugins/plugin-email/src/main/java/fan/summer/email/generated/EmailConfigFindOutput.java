@@ -8,5 +8,11 @@ public record EmailConfigFindOutput(
     @SerializedName("success") boolean success,
     @SerializedName("summary") String summary
 ) {
-  public record EmailConfigFindOutputConfig() {}
+  public record EmailConfigFindOutputConfig(
+      @SerializedName("configJson") String configJson,
+      @SerializedName("createdAt") String createdAt,
+      @SerializedName("id") int id,
+      @SerializedName("mode") String mode,
+      @SerializedName("name") String name
+  ) {}
 }

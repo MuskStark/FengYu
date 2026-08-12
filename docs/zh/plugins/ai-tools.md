@@ -10,16 +10,41 @@ lang: zh-CN
 
 ## 声明工具
 
-在 `manifest.json` 中添加一个 `aiTools` 数组。每一项有四个必填字段，以及可选的输出契约和副作用分类：
+在 `manifest.json` 中添加一个 `aiTools` 数组。每一项引用 `rpc.methods` 中已声明的方法，并携带面向模型的元数据与副作用分类；参数与输出 Schema 是 `rpc.methods` 里的 JSON-Schema **对象**，不再内联在工具项中：
 
 ```json
 {
-  "name": "excel_analyze",
-  "description": "Analyze an Excel file and return sheets and headers.",
-  "method": "excel_analyze",
-  "effect": "read",
-  "inputSchema": "{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"object\",\"description\":\"A FengYu FileRef\"}},\"required\":[\"filePath\"]}",
-  "outputSchema": "{\"type\":\"object\",\"properties\":{\"success\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\"},\"sheets\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}}}"
+  "rpc": {
+    "methods": {
+      "excel_analyze": {
+        "description": "Analyze the granted Excel workbook; returns sheet names.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "filePath": { "type": "string", "description": "Resolved absolute path of a readable FengYu FileRef." }
+          },
+          "required": ["filePath"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": { "type": "string" },
+            "sheets": { "type": "array", "items": { "type": "string" } }
+          },
+          "required": ["success", "summary"]
+        }
+      }
+    }
+  },
+  "aiTools": [
+    {
+      "name": "excel_analyze",
+      "description": "Analyze the granted Excel workbook; returns sheet names.",
+      "method": "excel_analyze",
+      "effect": "read"
+    }
+  ]
 }
 ```
 
@@ -27,12 +52,11 @@ lang: zh-CN
 | --- | --- | --- |
 | `name` | string | 提供给模型的工具名。 |
 | `description` | string | 关于模型何时应选用此工具的自然语言指引。 |
-| `method` | string | 当模型调用此工具时，宿主调用的 worker JSON-RPC 方法。 |
-| `inputSchema` | string | 工具参数的 JSON Schema，**以字符串形式序列化**（注意转义的引号）。 |
-| `outputSchema` | string | 可选的 Worker 结果信封 JSON Schema，以字符串形式序列化。供可视化工作流配置使用，Spring AI 工具调用会忽略它。 |
-| `effect` | string | 可选的审批分类：`read`、`write` 或 `external`。旧清单省略时会保守地按 `external` 处理。 |
+| `method` | string | 当模型调用此工具时，宿主调用的 worker JSON-RPC 方法（必须在 `rpc.methods` 中存在）。 |
+| `effect` | string | 审批分类：`read`、`write` 或 `external`（必填）。 |
+| `timeoutSeconds` | integer | 可选的调用超时（秒），钳制到 `[1, 600]`，覆盖 `backend.callTimeoutSeconds`。 |
 
-`inputSchema` 必须是一个 JSON Schema 文档。宿主会解析这个字符串来构建交给模型的 Spring AI `ToolDefinition`，因此模型看到的是准确的参数元数据。
+`inputSchema` 必须是一个 JSON-Schema **对象**。宿主会解析它来构建交给模型的 Spring AI `ToolDefinition`，因此模型看到的是准确的参数元数据。`outputSchema` 供可视化工作流发现输出，Spring AI 工具调用本身会忽略它。
 
 ## 动态宿主聚合
 
@@ -62,22 +86,22 @@ lang: zh-CN
 
 ## 实战示例：`excel_analyze`
 
-`fan.summer.excel` 插件声明了六个工具。其 `excel_analyze` 项把模型接到 worker 的 `excel_analyze` JSON-RPC 方法，后者委托给 `ExcelAnalyzeTool.analyze(filePath)`：
+`fan.summer.excel` 插件声明了六个工具。其 `excel_analyze` 项把模型接到 worker 的 `excel_analyze` JSON-RPC 方法；参数 Schema 作为 JSON-Schema **对象**声明在 `rpc.methods` 中，工具项本身只携带元数据与 `effect`：
 
 ```json
 {
   "name": "excel_analyze",
-  "description": "Analyze an Excel file and return sheets and headers.",
+  "description": "Analyze the granted Excel workbook; returns sheet names.",
   "method": "excel_analyze",
-  "effect": "read",
-  "inputSchema": "{\"type\":\"object\",\"properties\":{\"filePath\":{\"type\":\"object\",\"description\":\"A FengYu FileRef\"}},\"required\":[\"filePath\"]}"
+  "effect": "read"
 }
 ```
 
-在 `ExcelWorkerMain` 中的 worker 注册：
+在 `ExcelWorkerMain` 中的 worker 注册——类型化 `method(...)` API，SDK 把入参反序列化为生成的 `ExcelAnalyzeInput` 记录：
 
 ```java
-.on("excel_analyze", p -> analyze.analyze(JsonRpcWorker.string(p, "filePath")))
+.method(PluginMethods.EXCEL_ANALYZE, ExcelAnalyzeInput.class, ExcelAnalyzeOutput.class,
+    (ExcelAnalyzeInput in, RpcContext ctx) -> handlers.aiAnalyze(in, ctx))
 ```
 
 当模型调用 `excel_analyze` 时，宿主以 JSON-RPC 转发参数。如果用户为本次对话附加了匹配的文件或可写目录（见 AI 聊天中的附加入口）且该工具只有一个文件类参数，宿主会在派发前透明地注入 FileRef（路由 B）；随后 `PluginProcessManager.resolveRefs` 会在 worker 看到它之前把 FileRef 改写为真实路径。写入目录的注入要求 `write` 或 `read-write` 授权。对于带有多个文件参数的工具，**或没有附加匹配授权时**，宿主则改为在系统提示词中列出可用的 FileRef，由模型自行填入（路由 A）。两种情况下 worker 收到的都是已解析的文件系统路径；Excel worker 会拒绝未解析的对象，而不会再把对象的 Map 文本当成相对路径。见 [文件 I/O](/zh/plugins/file-io)。完整的六个工具集合见 [官方插件——Excel](/zh/plugins/official-excel)。

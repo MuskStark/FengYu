@@ -7,7 +7,7 @@ export type ConfirmSendInput = {
 }
 
 export type ConfirmSendOutput = {
-  send?: {  }
+  send: { failed: number; failedRecipients?: string[]; status: string; succeeded: number }
   success: boolean
   summary: string
 }
@@ -26,7 +26,7 @@ export type EmailAccountFindInput = {
 }
 
 export type EmailAccountFindOutput = {
-  account?: {  }
+  account: { defaultAccount: boolean; displayName: string; email: string; id: number; imapHost?: string; imapPort?: number; imapSecurity?: string; imapSkipCertVerify: boolean; passwordConfigured: boolean; smtpHost: string; smtpPort: number; smtpSecurity: string; smtpSkipCertVerify: boolean }
   success: boolean
   summary: string
 }
@@ -48,7 +48,7 @@ export type EmailAccountSaveInput = {
 }
 
 export type EmailAccountSaveOutput = {
-  account?: {  }
+  account: { defaultAccount: boolean; displayName: string; email: string; id: number; imapHost?: string; imapPort?: number; imapSecurity?: string; imapSkipCertVerify: boolean; passwordConfigured: boolean; smtpHost: string; smtpPort: number; smtpSecurity: string; smtpSkipCertVerify: boolean }
   success: boolean
   summary: string
 }
@@ -83,6 +83,7 @@ export type EmailAccountTestImapOutput = {
 export type EmailAccountsListInput = {}
 
 export type EmailAccountsListOutput = {
+  accounts: { defaultAccount: boolean; displayName: string; email: string; id: number; imapHost?: string; imapPort?: number; imapSecurity?: string; imapSkipCertVerify: boolean; passwordConfigured: boolean; smtpHost: string; smtpPort: number; smtpSecurity: string; smtpSkipCertVerify: boolean }[]
   success: boolean
   summary: string
 }
@@ -92,7 +93,7 @@ export type EmailArchiveDetailInput = {
 }
 
 export type EmailArchiveDetailOutput = {
-  message?: {  }
+  message: { accountEmail: string; accountId: number; archivedAt?: string; bodyPreview?: string; emlPath?: string; folder: string; fromAddress?: string; hasAttachment: boolean; id: number; messageUid?: string; receivedAt?: string; recipientsJson?: string; sentAt?: string; subject?: string }
   success: boolean
   summary: string
 }
@@ -106,7 +107,7 @@ export type EmailArchiveFetchInput = {
 }
 
 export type EmailArchiveFetchOutput = {
-  collection?: {  }
+  collection: { failures: number; newArchived: number; skippedDuplicates: number }
   success: boolean
   summary: string
 }
@@ -130,7 +131,7 @@ export type EmailArchiveFetchStartInput = {
 }
 
 export type EmailArchiveFetchStartOutput = {
-  jobId?: string
+  jobId: string
   success: boolean
   summary: string
 }
@@ -143,13 +144,16 @@ export type EmailArchiveFetchStatusInput = {
 export type EmailArchiveFetchStatusOutput = {
   cursor?: number
   done?: boolean
-  error?: string | null
+  droppedLogs?: number
+  elapsedMs?: number
+  error?: string
   jobId?: string
   logs?: string[]
-  result?: {  }
+  result?: { failures: number; newArchived: number; skippedDuplicates: number }
   status?: "RUNNING" | "DONE" | "FAILED" | "CANCELLED"
   success: boolean
   summary: string
+  type?: string
 }
 
 export type EmailArchiveQueryInput = {
@@ -164,6 +168,7 @@ export type EmailArchiveQueryInput = {
 }
 
 export type EmailArchiveQueryOutput = {
+  messages: { accountEmail: string; accountId: number; archivedAt?: string; bodyPreview?: string; emlPath?: string; folder: string; fromAddress?: string; hasAttachment: boolean; id: number; messageUid?: string; receivedAt?: string; recipientsJson?: string; sentAt?: string; subject?: string }[]
   success: boolean
   summary: string
 }
@@ -180,7 +185,7 @@ export type EmailBatchPreviewInput = {
 }
 
 export type EmailBatchPreviewOutput = {
-  preview?: {  }
+  preview: { ignoredFiles: string[]; messageCount: number; messages: { attachmentTag?: string; cc: string[]; commonAttachments: string[]; tagAttachments: string[]; to: string[] }[]; skippedTags: { attachmentTag?: string; attachments: string[]; reason: string }[] }
   success: boolean
   summary: string
 }
@@ -199,7 +204,7 @@ export type EmailConfigFindInput = {
 }
 
 export type EmailConfigFindOutput = {
-  config?: {  }
+  config: { configJson: string; createdAt?: string; id: number; mode: string; name: string }
   success: boolean
   summary: string
 }
@@ -212,7 +217,7 @@ export type EmailConfigSaveInput = {
 }
 
 export type EmailConfigSaveOutput = {
-  config?: {  }
+  config: { configJson: string; createdAt?: string; id: number; mode: string; name: string }
   success: boolean
   summary: string
 }
@@ -220,6 +225,7 @@ export type EmailConfigSaveOutput = {
 export type EmailConfigsListInput = {}
 
 export type EmailConfigsListOutput = {
+  configs: { configJson: string; createdAt?: string; id: number; mode: string; name: string }[]
   success: boolean
   summary: string
 }
@@ -238,7 +244,7 @@ export type EmailContactFindInput = {
 }
 
 export type EmailContactFindOutput = {
-  contact?: {  }
+  contact: { createdAt?: string; email: string; id: number; nickname?: string; notes?: string; tagIds: number[] }
   success: boolean
   summary: string
 }
@@ -252,7 +258,7 @@ export type EmailContactSaveInput = {
 }
 
 export type EmailContactSaveOutput = {
-  contact?: {  }
+  contact: { createdAt?: string; email: string; id: number; nickname?: string; notes?: string; tagIds: number[] }
   success: boolean
   summary: string
 }
@@ -264,7 +270,7 @@ export type EmailContactsImportCommitInput = {
 }
 
 export type EmailContactsImportCommitOutput = {
-  result?: {  }
+  result: { created: number; errors: { message: string; row: number }[]; merged: number; skipped: number; tagsAssigned: number; tagsCreated: number }
   success: boolean
   summary: string
 }
@@ -276,7 +282,7 @@ export type EmailContactsImportPreviewInput = {
 }
 
 export type EmailContactsImportPreviewOutput = {
-  preview?: {  }
+  preview: { createdContacts: number; createdTags: string[]; errors: { message: string; row: number }[]; mergedContacts: number; rowsTotal: number; rowsValid: number; skippedContacts: number }
   success: boolean
   summary: string
 }
@@ -289,6 +295,7 @@ export type EmailContactsQueryInput = {
 }
 
 export type EmailContactsQueryOutput = {
+  contacts: { createdAt?: string; email: string; id: number; nickname?: string; notes?: string; tagIds: number[] }[]
   success: boolean
   summary: string
 }
@@ -298,7 +305,7 @@ export type EmailImapFoldersInput = {
 }
 
 export type EmailImapFoldersOutput = {
-  folders?: string[]
+  folders: string[]
   success: boolean
   summary: string
 }
@@ -315,7 +322,7 @@ export type EmailSendBatchInput = {
 }
 
 export type EmailSendBatchOutput = {
-  confirmation?: {  }
+  confirmation: { approveMethod: string; confirmationId: string; expiresAt: string; pluginId: string; rejectMethod: string; summary: { group?: string; label: string; value: string }[] }
   confirmation_required?: boolean
   success: boolean
   summary: string
@@ -331,8 +338,10 @@ export type EmailSendRecordsQueryInput = {
 }
 
 export type EmailSendRecordsQueryOutput = {
+  messages: { accountEmail: string; attachmentJson?: string; confirmationId?: string; errorMessage?: string; id: number; recipientsJson?: string; sentAt?: string; status: string; subject?: string }[]
   success: boolean
   summary: string
+  tasks: { accountId: number; confirmationId: string; expiresAt?: string; mode: string; status: string; updatedAt?: string }[]
 }
 
 export type EmailSendSingleInput = {
@@ -348,7 +357,7 @@ export type EmailSendSingleInput = {
 }
 
 export type EmailSendSingleOutput = {
-  confirmation?: {  }
+  confirmation: { approveMethod: string; confirmationId: string; expiresAt: string; pluginId: string; rejectMethod: string; summary: { group?: string; label: string; value: string }[] }
   confirmation_required?: boolean
   success: boolean
   summary: string
@@ -359,7 +368,7 @@ export type EmailSendStatusInput = {
 }
 
 export type EmailSendStatusOutput = {
-  send?: { accountId?: number; confirmationId?: string; mode?: string; status?: "prepared" | "confirmed" | "rejected" | "sending" | "sent" | "completed" | "failed" | "cancelled" | "expired" }
+  send: { accountId: number; confirmationId: string; expiresAt?: string; mode: string; status: string; updatedAt?: string }
   success: boolean
   summary: string
 }
@@ -381,7 +390,7 @@ export type EmailTagSaveInput = {
 export type EmailTagSaveOutput = {
   success: boolean
   summary: string
-  tag?: {  }
+  tag: { id: number; name: string }
 }
 
 export type EmailTagsAssignInput = {
@@ -399,6 +408,7 @@ export type EmailTagsListInput = {}
 export type EmailTagsListOutput = {
   success: boolean
   summary: string
+  tags: { id: number; name: string }[]
 }
 
 export type EmailTagsResolveInput = {
@@ -406,7 +416,7 @@ export type EmailTagsResolveInput = {
 }
 
 export type EmailTagsResolveOutput = {
-  recipients?: string[]
+  recipients: string[]
   success: boolean
   summary: string
 }
@@ -416,7 +426,7 @@ export type RejectSendInput = {
 }
 
 export type RejectSendOutput = {
-  send?: {  }
+  send: { failed: number; failedRecipients?: string[]; status: string; succeeded: number }
   success: boolean
   summary: string
 }

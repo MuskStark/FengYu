@@ -2,8 +2,15 @@
 package fan.summer.email.generated;
 
 import com.google.gson.annotations.SerializedName;
+import java.util.List;
 
 public record EmailTagsListOutput(
     @SerializedName("success") boolean success,
-    @SerializedName("summary") String summary
-) {}
+    @SerializedName("summary") String summary,
+    @SerializedName("tags") List<EmailTagsListOutputTags> tags
+) {
+  public record EmailTagsListOutputTags(
+      @SerializedName("id") int id,
+      @SerializedName("name") String name
+  ) {}
+}

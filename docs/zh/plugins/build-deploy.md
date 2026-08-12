@@ -6,7 +6,7 @@ lang: zh
 
 # 构建与部署
 
-Toolchain 2 从标准布局构建所有插件。`fengyu.plugin.json` 与任意构建命令数组已移除。
+Toolchain 2 从标准布局构建所有插件。旧版独立配置文件（已统一为 `manifest.json`）与任意构建命令数组已移除。
 
 ## 项目与包布局
 

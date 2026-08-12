@@ -8,5 +8,19 @@ public record EmailAccountFindOutput(
     @SerializedName("success") boolean success,
     @SerializedName("summary") String summary
 ) {
-  public record EmailAccountFindOutputAccount() {}
+  public record EmailAccountFindOutputAccount(
+      @SerializedName("defaultAccount") boolean defaultAccount,
+      @SerializedName("displayName") String displayName,
+      @SerializedName("email") String email,
+      @SerializedName("id") int id,
+      @SerializedName("imapHost") String imapHost,
+      @SerializedName("imapPort") Integer imapPort,
+      @SerializedName("imapSecurity") String imapSecurity,
+      @SerializedName("imapSkipCertVerify") boolean imapSkipCertVerify,
+      @SerializedName("passwordConfigured") boolean passwordConfigured,
+      @SerializedName("smtpHost") String smtpHost,
+      @SerializedName("smtpPort") int smtpPort,
+      @SerializedName("smtpSecurity") String smtpSecurity,
+      @SerializedName("smtpSkipCertVerify") boolean smtpSkipCertVerify
+  ) {}
 }

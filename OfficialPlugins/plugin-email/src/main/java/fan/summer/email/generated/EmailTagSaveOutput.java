@@ -8,5 +8,8 @@ public record EmailTagSaveOutput(
     @SerializedName("summary") String summary,
     @SerializedName("tag") EmailTagSaveOutputTag tag
 ) {
-  public record EmailTagSaveOutputTag() {}
+  public record EmailTagSaveOutputTag(
+      @SerializedName("id") int id,
+      @SerializedName("name") String name
+  ) {}
 }

@@ -4,13 +4,13 @@ import type { FileRef } from '@infinia/plugin-sdk'
 import type { Confirmation, SendResult } from './compose'
 
 export interface BatchPreviewMessage {
-  attachmentTag: string
+  attachmentTag?: string
   to: string[]
   cc: string[]
   tagAttachments: string[]
   commonAttachments: string[]
 }
-export interface BatchSkippedTag { attachmentTag: string; reason: string; attachments: string[] }
+export interface BatchSkippedTag { attachmentTag?: string; reason: string; attachments: string[] }
 export interface BatchPreview {
   messages: BatchPreviewMessage[]
   ignoredFiles: string[]

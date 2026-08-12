@@ -4,7 +4,13 @@ package fan.summer.email.generated;
 import com.google.gson.annotations.SerializedName;
 
 public record EmailContactsImportCommitInput(
-    @SerializedName("duplicateMode") String duplicateMode,
+    @SerializedName("duplicateMode") EmailContactsImportCommitInputDuplicateMode duplicateMode,
     @SerializedName("sourceFile") String sourceFile,
     @SerializedName("tagDelimiter") String tagDelimiter
-) {}
+) {
+  public enum EmailContactsImportCommitInputDuplicateMode {
+    merge,
+    skip,
+    overwrite
+  }
+}

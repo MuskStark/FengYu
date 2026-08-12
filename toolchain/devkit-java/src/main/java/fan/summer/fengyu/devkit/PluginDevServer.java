@@ -202,10 +202,9 @@ public final class PluginDevServer {
             // Set FENGYU_PLUGIN_ID / FENGYU_PLUGIN_ROOT for the worker before any connection is
             // accepted, mirroring the production host's environment injection by name (there they
             // are ProcessBuilder env vars; here System.setProperty is the same-process IDE launch
-            // equivalent). NOTE: JsonRpcWorker reads these via System.getenv, which is captured at
-            // JVM startup — so for RpcContext.pluginId()/pluginRoot() to be populated in the IDE,
-            // launch the dev process with the env vars set, or set -DFENGYU_PLUGIN_ID=... and have
-            // the worker read the property. Mirrors how ROOT is already handled.
+            // equivalent). JsonRpcWorker resolves these via getenv with a System.getProperty
+            // fallback, so this same-JVM injection populates RpcContext.pluginId()/pluginRoot()
+            // for in-IDE debugging (env stays authoritative in production).
             if (pluginId != null) {
                 System.setProperty("FENGYU_PLUGIN_ID", pluginId);
             }

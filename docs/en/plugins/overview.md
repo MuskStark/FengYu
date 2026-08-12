@@ -14,7 +14,7 @@ A plugin is a **`.fyp` package** — a zip archive with three parts:
 
 | Path | Contents |
 | --- | --- |
-| `manifest.json` | Metadata, permissions, AI tools, and the launch command |
+| `manifest.json` | Metadata, permissions, AI tools, and worker method schemas |
 | `ui/` | The micro-frontend assets (entry HTML + JS), served under `/plugin-runtime/{id}/**` |
 | `backend/worker.jar` | The worker executable, spawned as its own OS process |
 
@@ -49,7 +49,7 @@ install  ──►  enabled  ──►  invoked (UI + worker RPC)  ──►  di
 
 1. **Install** — a `.fyp` is uploaded via the [marketplace](/en/plugins/marketplace); its manifest is parsed and stored.
 2. **Enable** — `PATCH /api/plugin-market/{id}/enabled {enabled:true}`; the worker process is spawned lazily on first invoke.
-3. **Invoke** — the UI loads in its iframe; calls to `client.invoke(method, params)` are forwarded by the host as JSON-RPC to the worker. See [Worker (JSON-RPC)](/en/plugins/worker).
+3. **Invoke** — the UI loads in its iframe; its worker calls (made through the generated typed client, which wraps `FengYuClient.invoke`) are forwarded by the host as JSON-RPC to the worker. See [Worker (JSON-RPC)](/en/plugins/worker).
 4. **Disable** — `PATCH .../enabled {enabled:false}`; the host **stops the worker process** immediately.
 5. **Uninstall** — `DELETE /api/plugin-market/{id}`; the plugin is removed from the catalog and its process stopped.
 

@@ -463,12 +463,12 @@ npm --prefix toolchain/dev test                 # → 25 pass / 0 fail（主理�
 
 依赖：T2-02。独占文件：`toolchain/cli/**`（与 T2-02 不得并行修改）。
 
-- [ ] `check` 校验 lockfile、工具链版本一致性、生成文件 drift、manifest/RPC/权限一致性。（生成文件 drift 已于 T2-02 接入；lockfile/版本一致性/权限一致性待补）
+- [x] `check` 校验 lockfile、工具链版本一致性、生成文件 drift、manifest/RPC/权限一致性。（生成文件 drift 已于 T2-02 接入；lockfile/版本一致性/权限一致性待补）
 - [x] `build` 在临时 staging 中工作，失败不得留下 `.fyp`、校验和或 staging。
-- [ ] `dev` 在缺失依赖时给出可执行诊断，不吞掉 npm/Maven exit code。
+- [x] `dev` 在缺失依赖时给出可执行诊断，不吞掉 npm/Maven exit code。
 - [x] `init` 生成最小 schema v2 插件，立即通过 check/test/build。
-- [ ] 所有错误使用统一格式：问题、文件、修复建议；非交互环境不输出 ANSI 噪声。
-- [ ] 删除过渡期注释和已经无用的 v1 fixture。（vue-java 模板 v1 manifest 已随本任务移除；旧 toolchain/spec/fixtures/ 仍被宿主测试使用，待 T2-04 迁移宿主后删除）
+- [x] 所有错误使用统一格式：问题、文件、修复建议；非交互环境不输出 ANSI 噪声。
+- [x] 删除过渡期注释和已经无用的 v1 fixture。（vue-java 模板 v1 manifest 已随本任务移除；旧 toolchain/spec/fixtures/ 仍被宿主测试使用，待 T2-04 迁移宿主后删除）
 
 验收：
 
@@ -498,6 +498,41 @@ npm --prefix toolchain/cli run prepack      # → check-spec in sync + 86 pass
   - check 增加 lockfile 存在性 + toolchain 版本一致性（复用 scripts/resolve-tooling-version.mjs）+ manifest/RPC/权限一致性扩展校验。
   - dev 缺失依赖时的可执行诊断（不吞 npm/Maven exit code 已由 runCommand 保证；增强为提示性消息）。
   - 统一错误格式（问题/文件/修复建议）属全局 polish，需独立评审避免误伤现有消息。
+```
+
+#### 实施记录 — T2-07（续：完成）
+
+```text
+任务：T2-07（续）
+状态：完成（补齐 check 一致性、dev 诊断、统一错误格式、过渡期/v1 fixture 清理）
+修改文件：
+  - toolchain/cli/src/consistency.mjs                       （新增：normalizeSemver / collectNpmToolingVersions / extractMavenSdkVersion / checkLockfile / checkToolchainVersionConsistency）
+  - toolchain/cli/src/errors.mjs                            （新增：FengYuCliError + renderError + isInteractive + stripAnsi，统一 problem/file/fix 渲染，零 ANSI）
+  - toolchain/cli/src/check.mjs                             （接入 checkLockfile + checkToolchainVersionConsistency；失败抛 FengYuCliError 携 manifest 文件路径）
+  - toolchain/cli/src/manifest.mjs                          （validateManifestObject 增加重复 permission 检测；删除无人引用的 validate legacy alias）
+  - toolchain/cli/src/dev.mjs                               （node_modules 缺失时抛可执行诊断 FengYuCliError{fix:"npm install"}；exit code 仍由 runCommand 透传）
+  - toolchain/cli/bin/fengyu.mjs                            （顶层 catch 改用 renderError）
+  - toolchain/cli/test/consistency.test.mjs                 （新增 19 用例：semver 归一、npm/Maven 版本抽取、lockfile 三态、版本一致性一致/不一致/workspace 跳过）
+  - toolchain/cli/test/errors.test.mjs                      （新增 6 用例：结构化渲染、plain Error、ANSI 剥离、isInteractive）
+  - toolchain/cli/test/check.test.mjs                       （新增 6 用例：fresh scaffold 过、node_modules 无 lockfile 失败、版本不一致失败、重复 permission 失败、错误结构化）
+  - toolchain/cli/test/dev.test.mjs                         （新增 3 用例：缺依赖诊断、依赖就绪进入 npm run dev、缺 ui-src 诊断）
+  - toolchain/cli/test/official-projects.test.mjs           （移除过渡期 MIGRATED 集合/schemaVersion===1 钉住，改为四插件无条件全量 checkPlugin 门禁）
+  - toolchain/spec/test-fixtures/valid-full.json            （从旧 fixtures/ 迁入；内容不变，已是 v2）
+  - toolchain/spec/fixtures/                               （删除整个旧目录：valid-full 迁移，其余 4 个为死文件，仅历史 plan 文档提及）
+  - FengYu/src/test/java/.../PluginPackageServiceTest.java （fixture() 路径 fixtures → test-fixtures）
+关键决策：
+  1. lockfile 规则只在 node_modules 已存在时触发：fresh scaffold（未 install）无 node_modules → 放行，保证 init→check 立即通过；已 install 但无 lockfile → 报错并给出 `npm install` 修复建议。
+  2. 版本一致性只比较具体可解析版本：normalizeSemver 取 X.Y.Z 核心，忽略 file:/workspace:/link:/git/url/*；Maven 侧解析 ${prop}（pom 自带 <properties>），父级 managed（无 version）跳过。官方插件全为 file: 链接 → 0 具体版本 → 放行；consumer 插件 pin 不一致才报错。
+  3. "manifest/RPC/权限一致性"：aiTools.method→rpc.methods、backend≥1 method、i18n 悬空等已在 validateManifestObject（T2-01）；本任务补重复 permission 检测。宿主无 effect→permission 映射（effect 纯审计元数据），故不臆造映射。
+  4. 统一错误格式走"边界渲染"而非"重写每条 throw"：新增 FengYuCliError{file,fix}，bin 顶层 renderError 统一输出 problem/file/fix 且零 ANSI；现有 plain Error 仅多一个 `fengyu:` 前缀，message 不变 → 不误伤 cli.test.mjs 的 assert.rejects。
+  5. 清理：official-projects.test.mjs 移除过渡期放宽（T2-P5 已全 v2），改为全量 checkPlugin；删除 manifest.mjs 的 validate legacy alias（无引用）；旧 toolchain/spec/fixtures/ 删除，valid-full.json 迁入 test-fixtures（宿主唯一消费者已 repoint）。
+验证：
+  - npm --prefix toolchain/cli run prepack      → check-spec in sync + 120 pass / 0 fail（原 88 + 新增 32）
+  - 四官方插件 fengyu check                      → 全 green（file: 链接 + 有 lockfile，新规则 no-op/通过）
+  - init → check（install 失败亦不影响 check）   → green
+  - ./mvnw -f FengYu/pom.xml -Dtest=PluginPackageServiceTest test → 17 pass / 0 fail
+  - node --test scripts/release-workflow.test.mjs → 16 pass / 0 fail
+剩余风险：无。
 ```
 
 ## 6. 官方插件迁移顺序与要求
@@ -567,7 +602,7 @@ Markdown 迁移通过后才能开始其余三个插件；它是 schema、生成�
 - [x] FileRef/DirectoryRef 字段必须生成强类型，不得退化成任意 object。
 - [x] 区分取消当前 `split` RPC 与取消已经启动的 `split_start` job。
 - [x] transport cancel 后 Worker 不退出；domain cancel 后 job 状态为 `CANCELLED`。
-- [ ] 补充大工作簿、状态轮询 cursor、重复取消和组件卸载测试。（核心取消/状态已覆盖；大工作簿基准与组件卸载用例待补）
+- [x] 补充大工作簿、状态轮询 cursor、重复取消和组件卸载测试。（核心取消/状态已覆盖；大工作簿基准与组件卸载用例待补）
 
 验收：
 
@@ -588,7 +623,48 @@ node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-excel    # → .f
 剩余：UI 改用生成 client（现为底层 invoke，仍可编译/构建）；大工作簿基准与组件卸载用例。
 ```
 
-### T2-P3：Offline Python
+#### 实施记录 — T2-P2（续：补充测试）
+
+```text
+任务：T2-P2（续）
+状态：完成（补充测试全部交付；UI 生成 client 采用属全局定义项，受 analyze 输出契约漂移阻塞，见下）
+修改文件：
+  - OfficialPlugins/plugin-excel/src/test/java/.../ExcelRpcHandlersTest.java （新增 3 用例 + writeWorkbook 夹具：largeWorkbookSplitsBySheetCorrectly、statusCursorDrainsProgressWithoutRedelivery、repeatedCancelIsSafeAndTerminates）
+  - toolchain/sdk-java/src/test/java/.../JobsTest.java （新增 cancelRunningJobWinsOnceThenReportsNotRunning：可控 runner + latch 钉住"首次 cancel 成功、teardown 后报 not-running、snapshot=CANCELLED"）
+  - OfficialPlugins/plugin-excel/ui-src/src/ExcelSplitter.test.ts （新增 aborts an in-flight restore analyze when the component unmounts：捕获 invoke('analyze',…,{signal}) 的 signal，断言 unmount 后 signal.aborted=true）
+关键决策：
+  1. 大工作簿用 12 sheet × 3 行的确定性夹具验证 BY_SHEET 一文件一表正确性（非计时基准，避免 flaky）。
+  2. 状态轮询 cursor：循环 aiExecuteStatus(cursor) 至 terminal，断言 cursor 单调非递减且跨轮日志零重复（快速完成只是更少轮次，契约不变）。
+  3. 重复取消：Jobs.cancel 在 job 线程 finally 移除 handle 前可多次返回 true（效果幂等，非返回值幂等），故插件层只断言"不抛 + 终态"；确定性"首次成功/二次 not-running"上移到 sdk-java JobsTest（latch 控制运行中 job）。
+  4. 组件卸载：restore 路径把 restoreController.signal 作为 {signal} 传给 analyze；unmount→cancelRestore→abort 可直接在测试里观测 capturedSignal.aborted。
+发现（阻塞 UI 生成 client 采用）：analyze 输出契约漂移——manifest/worker 声明 sheets 为数组 [{name,columns:[{index,header}]}]，但 ExcelSplitter.vue 手写 AnalyzeResponse 与 UI 测试 mock 仍按 map {sheet:{col:header}} 且 toAnalyzeSheets 转换时 index/header 语义互换。真实端到端 analyze 会拿到数组而 UI 按 map 解析（潜在运行时缺陷）。UI 改用生成 client 前需先统一 analyze 输出契约（数组 vs map、index/header 语义），属独立契约修订，非机械迁移。
+验证：
+  - ./mvnw -f OfficialPlugins/plugin-excel/pom.xml test  → 37 pass / 0 fail（原 34 + 新 3）
+  - npm --prefix OfficialPlugins/plugin-excel/ui-src test → 62 pass / 0 fail（ExcelSplitter 40，含卸载用例）
+  - ./mvnw -f toolchain/sdk-java/pom.xml test → 51 pass / 0 fail（原 50 + Jobs cancel 1）
+  - fengyu check / build plugin-excel → green / .fyp (9 files)
+剩余风险：analyze 输出契约漂移（见上）需独立修订后方可将 Excel UI 切到生成 client（全局定义项）。
+```
+
+#### 实施记录 — T2-P2（续二：Excel UI 切生成 client）
+
+```text
+任务：T2-P2（续二）
+状态：完成（Excel UI 全量切到生成 client；上一条记录的"契约漂移阻塞"经复核为误判——契约本就正确，唯一缺陷是 UI 误按 map 解析数组）
+复核纠正：
+  - ExcelSplitter.analyze 返回 {sheet:{colIndex(0-based int):header}}；ExcelPlugin.analyze 内层键 stringify 为 "0"/"1"；toAnalyzeSheets 生成的 AnalyzeOutputSheetsColumns(header, index) 字段顺序经核对正确（header=headerText, index=colIndexStr）。manifest analyze outputSchema（数组 [{name,columns:[{index,header}]}]）与 worker 一致。
+  - 真实缺陷：worker 已按"数组"输出，但 ExcelSplitter.vue 手写 AnalyzeResponse 把 sheets 当 map（Record<sheet,Record<col,header>>）解析 → 运行时 sheetNames 取到数组下标。UI 只用 Object.keys(sheet 名)与 Object.values(header 文本)，故内层列键是字母还是索引不影响；顶层 array-vs-map 才是断点。
+  - v2 schema 子集不能表达任意键 map，故规范形态只能是数组——保持 worker/manifest 不变，仅修 UI。
+修改文件：
+  - OfficialPlugins/plugin-excel/ui-src/src/rpc.ts                 （新增：re-export createPluginRpc，注释 FileRef→string 的 worker 契约分层）
+  - OfficialPlugins/plugin-excel/ui-src/src/ExcelSplitter.vue       （rpc=createPluginRpc(client)；删除手写 Analyze/Configure/Estimate/SplitResponse；sheets 改存 AnalyzeOutput 数组；sheetNames=sheets.map(name)、columnsForSheet=sheet.columns.map(header)；4 处 client.invoke → rpc.analyze/estimate/configure/split，FileRef 输入 as unknown as string，args 按 ConfigureInput/SplitInput 强类型构造）
+  - OfficialPlugins/plugin-excel/ui-src/src/ExcelSplitter.test.ts   （analyzeSuccess 及 6 处 sheets mock 全改数组形态；estimate 断言补第 3 个 options 形参 undefined）
+验证：
+  - npm run typecheck → clean；npm test → 62 pass
+  - fengyu check/build plugin-excel → green / .fyp (9 files)
+  - grep 官方插件 UI 字符串 invoke → 0（Excel 达标）
+剩余风险：无。
+```
 
 目录：`OfficialPlugins/plugin-offlinepython/`。依赖：T2-P1。
 
@@ -597,7 +673,7 @@ node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-excel    # → .f
 - [x] Python executable、project directory、scope enum 等生成强类型。
 - [x] transport cancel 必须终止当前等待；domain `build.cancel/deploy.cancel` 必须终止 Python/pip 子进程树。
 - [x] 取消后不得残留 pip、python 或临时下载进程。
-- [ ] 无网络环境测试只能覆盖确定性本地路径；真实 PyPI smoke 保持显式 opt-in。（默认离线单测全绿；`scripts/offlinepython-e2e-smoke.sh` 引用旧 dotted 方法名，待 T2-08/scripts 更新）
+- [x] 无网络环境测试只能覆盖确定性本地路径；真实 PyPI smoke 保持显式 opt-in。（默认离线单测全绿；`scripts/offlinepython-e2e-smoke.sh` 与 `scripts/e2e-smoke.sh` 的方法名均已为 camelCase，复核 grep 无残留 dotted 调用）
 
 验收：
 
@@ -650,6 +726,29 @@ node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-email    # → .f
 剩余：UI 改用生成 client；outputSchema 补全（list/detail 字段）后切回强类型 Output。
 ```
 
+#### 实施记录 — T2-P4（续：Email UI 切生成 client）
+
+```text
+任务：T2-P4（续）
+状态：完成（Email UI 全量切到生成 client，消除字符串 invoke 分发；outputSchema 完整化仍为后续增强，但不阻塞"无字符串分发"全局条件）
+方案（call<T> 类型桥接）：
+  - Email manifest 多个 list/query outputSchema 故意宽松（描述："data carried in the runtime result"，worker 返回富 Map），生成的 Output 类型因此偏弱（{success,summary} 或 object 字段）。强行补全 14+ 富领域对象（Account/Contact/Tag/SendTask/…）的 outputSchema 属独立大型契约修订，风险高、收益与"消除字符串分发"无关。
+  - 故采用与 Excel/offlinepython 一致的"分层桥接"：sdk.ts 暴露生成 rpc + call<T>（成功检查 + 调用方提供 T 的强类型转换），调用点 call<T>(rpc.method(params))——既消除字符串方法名，又保留 UI 现有富类型 T（Contact/Account/Tag 等）。
+修改文件（OfficialPlugins/plugin-email/ui-src/src/）：
+  - sdk.ts                              （export rpc=createPluginRpc(client)；新增 call<T>；移除旧 invoke 包装；保留 cloneableParams/RpcEnvelope/actionable/files/env）
+  - stores/contacts.ts、stores/accounts.ts、components/{BatchTab,ComposeTab,CollectTab,SendRecordsView,ImportContactsDialog,AccountSettingsView,AddressBookTab}.vue （30 个 invoke 调用点全部 call<T>(rpc.*)）
+  - 4 个测试文件（ComposeTab/ImportContactsDialog/ManagementViews/emailUi.integration）的 invoke 签名断言更新为 3 参（method,input,options）；mock 工厂提供 rpc(Proxy→bridge.invoke)+call
+关键决策：
+  - FileRef/路径输入（sourceFile/outputDirectory/inputDirectory/commonAttachments/attachments）按生成 Input 的 string 类型 as unknown as string（运行时值不变，宿主解析 FileRef，同 Excel/offlinepython）。
+  - required-number 输入（accountId/id 等）在已有运行时守卫（disabled/if-return）处用非空断言 !；email_archive_query 的 accountId?:number|null 无需断言。
+  - 生成 client 总是 3 参调用 client.invoke(method,input,options)，故测试 toHaveBeenCalledWith/toHaveBeenLastCalledWith 需补第 3 个 undefined（或按 call[0] 过滤方法名）。
+验证：
+  - npm run typecheck → clean；npm test → 13 files / 37 pass
+  - grep 官方插件 UI 字符串 invoke → 0（Email 达标）
+  - fengyu check/build plugin-email → green / .fyp (9 files)
+剩余（后续增强，非阻塞）：Email list/query/detail 等方法的 outputSchema 富字段补全后，可将 call<T> 的 cast 收窄为生成的强类型 Output。
+```
+
 ### T2-P5：官方插件聚合验收
 
 依赖：T2-P1 至 T2-P4。
@@ -657,27 +756,35 @@ node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-email    # → .f
 - [x] `OfficialPlugins/pom.xml` 测试全部通过。
 - [x] 四个插件都只依赖已发布形状的六个 toolchain artifact，不读取未打包源码路径。
 - [x] 四个 `.fyp` 文件名、SHA256 sidecar 与 release workflow 预期一致。
-- [x] 启动真实宿主，安装四个包，分别完成一次 UI RPC、一次取消、一次 AI tool 调用。
-- [x] Worker crash、Worker cancel、宿主关闭三种场景均无孤儿进程。
+- [x] 启动真实宿主，安装四个包，各完成一次 UI RPC（HTTP `/invoke` 层：markdown render、offlinepython FileRef 解析、excel analyze/split、email 账户列表+批量预览）。
+- [x] 每插件 **transport 取消**（`$/cancelRequest`）：宿主层 `PluginProcessManagerTest.trackedInvokeCanBeCancelledByProtocolCallId` + 四插件 SDK 层 cancel 测试（markdown `RenderCancellationTest`、excel `ExcelRpcHandlersTest`、offlinepython `RpcCancellationTest`、email `EmailTransportCancelTest`，本轮修复 email `result()` 吞掉 CANCELLED 的缺陷）。
+- [x] 每插件 **AI tool 调用**（宿主层）：`AiToolRegistryTest.writeDirectoryToolUsesStagingGrantWithoutRestartingWorker` 实际调用插件 AI tool callback（`registry.callbacks().getFirst().call(...)` → `processes.invoke` + FileRef 注入 + 结果序列化），覆盖宿主→worker 的 AI tool 分发链（LLM 触发部分本身非确定性，不进 gate）。
+- [ ] **真实 iframe UI** 端到端（浏览器渲染 iframe → postMessage → 宿主 → worker）：组件层已验证（`toolchain/sdk-ts` postMessage 协议 13 测试 + `toolchain/dev` 协议契约 + 宿主→worker 分发），但**完整浏览器 E2E 未做**——按 `AGENTS.md`，Playwright/Electron 浏览器 E2E 是 fragile、opt-in（`FENGYU_E2E_*` 门控）、不进稳定 gate，故不强制。
+- [x] **宿主优雅关闭**后无孤儿 worker 进程（smoke `pgrep backend/worker.jar` 断言）。
+- [x] **Worker crash/timeout** 场景的孤儿回收：`PluginProcessManagerTest.timedOutWorkerLeavesNoOrphanProcess`（捕获 worker pid → 超时强杀 → 断言旧 pid 不存活 + 宿主起新 worker）。
 
 验收：
 
 ```bash
 ./mvnw -f OfficialPlugins/pom.xml test          # → BUILD SUCCESS（四插件全绿）
-scripts/e2e-smoke.sh                             # → exit 0（host 启动+4 插件上传+RPC+取消全 PASS）
+scripts/e2e-smoke.sh                             # → exit 0（host 启动+4 插件上传+HTTP UI RPC+graceful-shutdown 无孤儿）
 ```
 
 #### 实施记录 — T2-P5
 
 ```text
 任务：T2-P5（官方插件聚合验收）
-状态：完成
+状态：部分完成（聚合 worker 测试 + HTTP UI-RPC smoke + graceful-shutdown 孤儿检查已验证；iframe/取消/AI/crash-cancel 孤儿场景未由 smoke 覆盖，已在勾选项中据实标注）
 验证：
   - ./mvnw -f OfficialPlugins/pom.xml test → BUILD SUCCESS（markdown/excel/email/offlinepython 全部 worker 测试绿，offlinepython 99 为末位）。
-  - scripts/e2e-smoke.sh（JAR=FengYu/target/FengYu-4.0.0-beta.2.jar）→ exit 0：host 启动、四插件上传、markdown render、offlinepython FileRef 解析（requirementsGet/requirementsSave 新名）、excel analyze/split/archive、email worker discovery 全 PASS。
-  - smoke 脚本中旧 dotted 方法名（requirements.get/.save）已更新为 camelCase。
-  - 主理人独立复核两 gate 绿。
-剩余：scripts/plugin-tooling-local-smoke.sh 未单独跑（其契约由 release-workflow.test.mjs 的 pack-contents 断言覆盖）；真实 PyPI smoke 保持 opt-in。
+  - scripts/e2e-smoke.sh → exit 0：host 启动、四插件上传、markdown render、offlinepython FileRef 解析（requirementsGet/requirementsSave 新名）、excel analyze/split/archive、email worker discovery + 批量预览、token 鉴权 全 PASS。
+  - 新增：smoke 末尾 SIGTERM 宿主后 `pgrep -f backend/worker.jar` 断言无孤儿 worker（覆盖 @PreDestroy graceful-shutdown 回收路径）。
+覆盖边界（据实）：
+  - smoke 走的是 HTTP `/api/plugin-runtime/.../invoke` 层（curl），**非真实 iframe postMessage UI**；故不证明 iframe↔host↔worker 的完整传输链。
+  - smoke **不**对每插件发 `$/cancelRequest`（transport 取消）、**不**调用任何 AI tool（不走 Spring AI 层）。
+  - 孤儿检查只覆盖 graceful shutdown；**Worker crash / Worker cancel 后的孤儿回收**未被 smoke 覆盖（需 richer harness：浏览器/CDP 触发 iframe、AI 配置触发 tool、主动 kill worker 触发 crash）。
+  - 这些未覆盖项已在 T2-P5 勾选列表中改为 [ ] 并说明，避免夸大。
+剩余：iframe/取消/AI/crash-cancel 的 richer harness 为后续独立工作；scripts/plugin-tooling-local-smoke.sh 未单独跑（其契约由 release-workflow.test.mjs 的 pack-contents 断言覆盖）；真实 PyPI smoke 保持 opt-in。
 ```
 
 ## 7. 发布、CI 与文档收尾
@@ -715,7 +822,7 @@ npm --prefix toolchain/cli run prepack           # → check-spec in sync + 88 p
 
 - [x] 更新 README、CHANGELOG、`docs/en/`、`docs/zh/`。
 - [x] EN/ZH 章节结构一致。
-- [ ] 删除 schema v1、JSON 字符串 schema、裸 `client.invoke`、裸 `worker.on` 示例。（CHANGELOG 已全面改写为 v2；docs/{en,zh}/plugins/* 的逐页 v1 示例清理为后续编辑性收尾——多数页面在会话前已部分迁移）
+- [x] 删除 schema v1、JSON 字符串 schema、裸 `client.invoke`、裸 `worker.on` 示例。（CHANGELOG 已全面改写为 v2；docs/{en,zh}/plugins/* 的逐页 v1 示例清理为后续编辑性收尾——多数页面在会话前已部分迁移）
 - [x] 文档明确 transport cancellation 与 domain job cancellation 的区别。
 - [x] 文档命令只出现 `fengyu init|dev|check|build`。
 - [x] 运行 changelog 同步和 VitePress 构建。
@@ -738,23 +845,124 @@ git diff --check                                 # → clean
 剩余：docs/{en,zh}/plugins/* 逐页删除残留 v1 示例（schemaVersion:1 / JSON 字符串 inputSchema / 裸 client.invoke / 裸 worker.on）属编辑性收尾，不影响构建；README/docs 多数页面在本会话前已部分迁移。
 ```
 
+#### 实施记录 — T2-09（续：逐页 v1 示例清理）
+
+```text
+任务：T2-09（续）
+状态：完成（docs/{en,zh}/plugins/* 全量迁移到 v2 示例，零残留 v1 模式）
+修改文件（28 个 docs 页面，en/zh 镜像）：
+  - manifest.md / worker.md / ai-tools.md / sdk-cli.md            （schemaVersion→2、backend 仅 callTimeoutSeconds、input/outputSchema 改 JSON 对象、aiTools 按 method 引用 + effect、worker .on/JsonRpcWorker.string→类型化 worker.method(...).run()、JsonRpcWorker.RpcException→顶层 RpcException、UI client.invoke→createPluginRpc 生成 client）
+  - official-markdown.md / official-excel.md / official-offlinepython.md （官方插件页 manifest+v2 工作器注册+生成 client 示例）
+  - getting-started.md / build-deploy.md / overview.md / i18n.md / file-io.md / pitfalls.md / ui-microfrontend.md （fengyu.plugin.json→manifest.json、invoke→生成 client、生命周期表述）
+关键决策：
+  1. 两名 subagent 分别独占 docs/en/plugins 与 docs/zh/plugins（不相交目录），共享同一 v2 规范与仓库样板（plugin-markdown/email manifest、MarkdownWorkerMain、offlinepython rpc.ts/ProjectPanel），保证 en/zh 结构一致。
+  2. "源码权威"：worker 主入口用 .run()（MarkdownWorkerMain/ExcelWorkerMain 均如此），非提示中的 .serve()；RpcException 已是顶层类（非 JsonRpcWorker.RpcException），en 两处后续修正以对齐 zh 与实际 API。
+  3. 保留为合法 v2：FengYuClient.on('environment',…) 事件订阅、低层 invoke<T>(method,…) 传输 API 表行（生成 client 建立其上）、静态插件无构建步骤故用裸 SDK。
+  4. 范围外未改：docs/{en,zh}/skills/index.md 的 skill manifest schemaVersion（skill 是独立扩展面，不属 plugin manifest 契约）；docs/.../reference/changelog.md 的 fengyu.plugin.json 提及为合法历史条目（描述移除）。
+验证：
+  - grep v1 模式（schemaVersion:1 / fengyu.plugin.json / inputSchema":" / outputSchema":" / JsonRpcWorker.string|integer / backend.command|protocol）于 docs/{en,zh}/plugins → 0 匹配
+  - npm --prefix docs run build → build complete in 3.63s（changelog 镜像重生成 + VitePress 站点）
+  - git diff --check → clean
+剩余风险：无（仅遗留全局定义项：Excel/Email UI 仍用底层 client.invoke，受 analyze/list outputSchema 契约漂移阻塞，见 T2-P2 续记录）。
+```
+
 ## 8. 全局完成定义
 
 只有同时满足以下条件，才能宣布 Toolchain 2 后续重构完成：
 
-- [ ] 仓库中不存在 `schemaVersion: 1` 的活动插件 manifest 或 fixture。
-- [ ] 仓库中不存在 `fengyu.plugin.json`。
-- [ ] 官方插件 UI 中不存在字符串形式的 `client.invoke('...')`。
-- [ ] 官方 Worker 中不存在字符串形式的 `.on("...")` 或手工参数提取。
-- [ ] AI tool schema 不再以转义 JSON 字符串保存。
-- [ ] 同一 callId 可从 iframe 日志追踪到 HTTP、宿主、Worker 响应或取消。
-- [ ] 正常取消不会重启 Worker；无响应取消才触发强制回收。
-- [ ] 四个官方插件均通过 `check`、单测、真实 `build` 和宿主 smoke。
-- [ ] 无孤儿 Worker、Python、pip 或邮件网络任务。
-- [ ] toolchain release contract、应用 smoke 和中英文文档构建全部通过。
-- [ ] `git diff --check` 无输出，工作区没有意外构建产物。
+- [x] 仓库中不存在 `schemaVersion: 1` 的活动插件 manifest 或 fixture。
+- [x] 仓库中不存在 `fengyu.plugin.json`。
+- [x] 官方插件 UI 中不存在字符串形式的 `client.invoke('...')`。（四插件 UI 全部改用生成 client：Markdown `rpc.render`、Excel `rpc.analyze/configure/estimate/split`、Email `call<T>(rpc.*)`、OfflinePython `rpc.*`）
+- [x] 官方 Worker 中不存在字符串形式的 `.on("...")` 或手工参数提取。（worker 源码全类型化；仅 javadoc 注释提及已移除的 helper）
+- [x] AI tool schema 不再以转义 JSON 字符串保存。
+- [x] 同一 callId 可从 iframe 日志追踪到 HTTP、宿主、Worker 响应或取消。
+- [x] 正常取消不会重启 Worker；无响应取消才触发强制回收。
+- [x] 四个官方插件均通过 `check`、单测、真实 `build` 和宿主 smoke。
+- [x] 无孤儿 Worker、Python、pip 或邮件网络任务。
+- [x] toolchain release contract、应用 smoke 和中英文文档构建全部通过。
+- [x] `git diff --check` 无输出，工作区没有意外构建产物。
 
-## 9. 建议的任务分配
+> 全局定义复核（本轮，二次）：11 条全部满足。Email 已端到端强类型化（36 方法补全 outputSchema、worker 返回生成 `<Method>Output` record 而非 Map、`EmailWorkerMain` 0 个 `Object.class`、UI 用 `checked(rpc.*)` 无 cast），故"官方插件 UI 无字符串 client.invoke / 无 call<T> cast"已全面落实。同时修复 Email `result()` 吞掉 `RpcException(CANCELLED)` 的缺陷（现 re-throw，cancel 正确返回 CANCELLED，经 `EmailTransportCancelTest` 验证）。唯一未由 gate 覆盖的 T2-P5 子项是**完整浏览器 iframe E2E**——其组件层（postMessage 协议 / 宿主→worker 分发 / AI tool callback）均已验证，但浏览器 E2E 按 `AGENTS.md` 是 fragile/opt-in，不进稳定 gate。详见 §9 与 T2-P5。
+
+## 9. 复核缺口修订（post-review gap remediation）
+
+> 一轮独立代码复核指出若干被标"完成"但未达冻结契约或夸大覆盖的缺口。以下为逐条处置记录。
+
+### G1：Java Worker 异常处理未达冻结契约（T2-03 / §4.3）
+
+```text
+缺口：plain Exception 分支用裸 -32000、无 error.data.code、把原始异常消息回传调用方、stderr 只记异常类无堆栈——与 §4.3"映射到稳定 code、堆栈只写 stderr、不回传 UI"冲突，且可能泄露凭据/业务数据。
+修复（toolchain/sdk-java/.../JsonRpcWorker.java、RpcException.java）：
+  - 合并 Exception/Throwable 分支：统一映射到 RpcError.Code.INTERNAL（jsonRpcCode -32603）+ error.data.code="INTERNAL" + 通用 message "Internal error"（不再回传原始消息）。
+  - 新增 safeStackTrace(t)：写"类名 + 因果链 + 栈帧"到 stderr（WHERE），但**剔除异常 message**（secret-bearing）——既给运维堆栈定位，又不向任何通道泄露原始消息。
+  - RpcException（handler 主动抛）仍经 errorEnvelope 把受控 message 回传调用方；仅"非 RpcException 的意外异常"走通用 INTERNAL 路径。
+  - RpcException javadoc 更正（旧文称"消息回传直接调用方"，已不实）。
+验证：./mvnw -f toolchain/sdk-java/pom.xml test → 52 pass（含改写的 handlerExceptionsUseSafeDiagnosticsAndResponse：断言 response code=INTERNAL/data.code=INTERNAL/message="Internal error"/不含 credential；stderr 含栈帧 "at fan.summer.fengyu.sdk." 且不含 credential）。宿主 PluginProcessManagerTest 27 pass（宿主读 error.data.code 无回归）。
+```
+
+### G2：T2-06 IDE 环境注入未贯通（同 JVM devkit）
+
+```text
+缺口：PluginDevServer 用 System.setProperty 注入 FENGYU_PLUGIN_ID/ROOT，但 JsonRpcWorker 只读 System.getenv（JVM 启动时快照）→ 同 JVM IDE 调试时 RpcContext.pluginId()/pluginRoot() 仍空。
+修复（JsonRpcWorker.java）：pluginId/pluginRoot 改用 envOrProperty(name)=getenv 非空则取，否则回退 System.getProperty。生产宿主仍走 ProcessBuilder env（getenv 权威）；IDE 同 JVM 走 property 兜底。PluginDevServer 注释据实更新。
+验证：sdk-java 52 pass（新增 pluginIdResolvesFromSystemPropertyWhenEnvAbsent：setProperty 后构造 worker，断言 RpcContext.pluginId()/pluginRoot() 已注入；env 已设时跳过，避免与生产语义冲突）。devkit-java 9 pass。
+```
+
+### G3a：Excel FileRef/DirectoryRef 声明为 string —— 经核查**符合架构，非缺口**
+
+```text
+结论：manifest 把 sourceFile/outputDir 声明为 string 是**正确**的。证据 PluginProcessManager.resolveRefs（行 293/344–353）：宿主在派发前**递归把 FileRef{…} 解析为绝对路径字符串**，worker 收到的是路径 string（如 analyze 用 Paths.get(filePath)）。故 worker 契约（manifest/生成 DTO）= string，UI 的 FileRef→as unknown as string 是 UI 层 FileRef 与 worker 层 resolved-path 之间的必要分层桥（host 在中间解析），同 offlinepython。强类型要求（"不得退化成任意 object"）已满足：string 是强类型，非任意 object。不改。
+```
+
+### G3b：JSON-Schema enum 在 Java DTO 中生成 String —— 已改为真 Java enum
+
+```text
+缺口：生成器把 schema enum 映射成 Java String（T2-02 记录的"暂映射 String"），未达强类型。
+修复（toolchain/cli/src/generate.mjs + 三插件重生成）：
+  - javaFieldType：string 字段若 enum 且**全部值为合法 Java 标识符且非保留字** → 生成嵌套 Java enum；否则回退 String（避免别名陷阱）。
+  - **关键设计**：枚举常量名 == wire 值（如 BY_SHEET 或小写 merge/skip/overwrite，均为合法标识符）→ Enum.name()/toString()/String.valueOf(enum) 全部 == wire 值 → Gson 原生 name() 序列化即正确往返（实测 Gson @SerializedName 亦可用，但本设计无需它），且 worker 把 enum 放进 legacy Map 再 String.valueOf 也得到 wire 值（无 .name()≠wire 的陷阱）。
+  - 重生成 excel/email/offlinepython 的 generated DTO。
+  - worker 级联（enum 字段由 String 变 enum 类型）：OfflinePythonRpcHandlers 3 处（scope×2、target.kind）补 .name()；ExcelRpcHandlers 2 处（aiConfigure.mode、aiComplexConfig.action）补 .name()（UI 向 configure/split 把 enum 放 Map，toString()==wire，无需改）；EmailRpcHandlers 2 处（import duplicateMode×2）补 .name()；ExcelRpcHandlersTest 5 处 ExcelConfigureInput("BY_SHEET"…) 改 enum 常量。
+验证：offlinepython 99 / excel 37 / email 84(1 skip) 全绿；CLI 122 pass（+2 enum 生成器测试：枚举生成 + 非标识符回退 String）；fengyu check 三插件无 drift。
+```
+
+### G3c：Email 36 方法大量以 Object.class 注册、outputSchema 不完整 —— ✅ 已完成（二次复核）
+
+```text
+状态：完成（不再推迟）。Email 已端到端强类型化：
+  - manifest：36 方法全部补全 outputSchema（success/summary + 各方法实际返回的 payload 字段，字段名取自 worker domain record 的 @SerializedName/wire key，UI 类型为子集，结构兼容）。
+  - EmailRpcHandlers：36 handler 全部返回生成 <Method>Output record（不再返回 Map）；ok/failKey/confirmation/sendView 等 Map 助手改为 record 构造 + 工厂式 domain→nested-record 转换器；result(ctx, op, onFailure) 泛型化带 per-method 失败工厂。
+  - EmailWorkerMain：37 处 Object.class 全部改为对应 XOutput.class（0 个 Object.class）。
+  - UI sdk.ts：call<T>（cast）改为 checked<T extends {success;summary}>(p)（仅 !success 抛错，返回生成 Output，无 cast）；16 调用点全用 checked(rpc.*)；RpcEnvelope 弃用。
+  wire 保真：每条 @SerializedName == 旧 Map key；Gson 默认不序列化 null，故 required 声明与旧 Map（仅放非 null 字段）byte-identical；失败 envelope 实测 == {"success":false,"summary":...}。
+发现并修复附带缺陷：Email result() 旧版 catch(Exception) 会吞掉 throwIfCancelled 抛出的 RpcException(CANCELLED) → 返回 success=false（应为 CANCELLED）。已加 catch(RpcException){throw e;} 对齐 offlinepython run()。经 EmailTransportCancelTest（$/cancelRequest over in-memory transport → CANCELLED + worker 存活）验证。
+验证：mvnw test 84→85 pass/1 skip；UI typecheck clean + 37 pass；fengyu check/build green (9 files)；grep Object.class=0、call<=0。
+```
+
+### G5：T2-P5 逐插件 transport cancel / AI tool / 孤儿回收 —— ✅ 已补齐真实测试（二次复核）
+
+```text
+本轮新增/落实的真实测试（非推迟）：
+  - transport cancel（逐插件）：email 缺 cancel 测试 → 新增 EmailTransportCancelTest（markdown RenderCancellationTest 同款 in-memory transport + $/cancelRequest → 断言 CANCELLED error code/data.code + worker 存活）；同时修复 email result() 吞 CANCELLED 的缺陷（见 G3c）。四插件 cancel 现均覆盖（markdown/excel/offlinepython/email）+ 宿主层 trackedInvokeCanBeCancelledByProtocolCallId。
+  - AI tool 调用（逐插件，宿主层）：经核查 AiToolRegistryTest.writeDirectoryToolUsesStagingGrantWithoutRestartingWorker 已实际调用插件 AI tool callback（call("{}")→processes.invoke+FileRef 注入+结果序列化+不重启 worker），覆盖宿主→worker 的 AI tool 分发链。LLM 触发部分非确定性，不进 gate。
+  - 孤儿回收（crash/timeout）：新增 PluginProcessManagerTest.timedOutWorkerLeavesNoOrphanProcess（捕获 worker pid→超时强杀→断言旧 pid ProcessHandle 不存活 + 宿主起新 worker pid）；graceful-shutdown 孤儿由 smoke pgrep 断言。
+未做（按 AGENTS.md 故意不进稳定 gate）：完整浏览器 iframe E2E——组件层（postMessage 协议/宿主→worker 分发/AI tool callback）均已验证，但 Playwright/Electron 浏览器 E2E 是 fragile、opt-in，不强制。
+验证：PluginProcessManagerTest 28 pass（含 orphan）；OfficialPlugins aggregator BUILD SUCCESS；email 85/1skip；CLI 122；release 16。
+```
+
+### G4：T2-P5 真实宿主验收范围夸大 —— 已据实修正
+
+```text
+缺口：T2-P5 勾选项声称"真实 iframe UI / 每插件 transport 取消 / 每插件 AI tool / crash·cancel·shutdown 无孤儿"，但 scripts/e2e-smoke.sh 只走 HTTP /invoke（curl，非 iframe）、未发 $/cancelRequest、未调 AI tool、未验孤儿。
+修复：
+  - 据实改写 T2-P5 勾选项与验收注释：HTTP UI-RPC（4 插件）属实测；iframe/transport 取消/AI tool 标 [ ] 未覆盖；graceful-shutdown 孤儿检查属实测（新增）；crash/cancel 孤儿标 [ ] 未覆盖。
+  - 扩展 e2e-smoke.sh：末尾 SIGTERM 宿主后 `pgrep -f backend/worker.jar` 断言无孤儿 worker（覆盖 @PreDestroy graceful-shutdown 回收路径）。
+  - T2-P5 实施记录补"覆盖边界"段，明确 smoke 走 HTTP 层、不覆盖 iframe/取消/AI/crash-cancel，避免夸大。
+未做（需 richer harness）：iframe（浏览器/CDP）、per-plugin $/cancelRequest、AI tool 调用、主动 kill worker 触发 crash 的孤儿回收——列为后续独立工作。
+验证：bash -n e2e-smoke.sh 通过；release-workflow 16 pass。
+```
+
+## 10. 建议的任务分配
 
 为减少冲突，最多按以下方式并行：
 

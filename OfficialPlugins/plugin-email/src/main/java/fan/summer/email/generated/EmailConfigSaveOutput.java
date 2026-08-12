@@ -8,5 +8,11 @@ public record EmailConfigSaveOutput(
     @SerializedName("success") boolean success,
     @SerializedName("summary") String summary
 ) {
-  public record EmailConfigSaveOutputConfig() {}
+  public record EmailConfigSaveOutputConfig(
+      @SerializedName("configJson") String configJson,
+      @SerializedName("createdAt") String createdAt,
+      @SerializedName("id") int id,
+      @SerializedName("mode") String mode,
+      @SerializedName("name") String name
+  ) {}
 }

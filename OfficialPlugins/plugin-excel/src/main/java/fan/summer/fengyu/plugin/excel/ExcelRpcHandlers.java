@@ -234,7 +234,7 @@ public final class ExcelRpcHandlers implements AutoCloseable {
         try {
             SplitConfig cfg = sessions.active().orElse(null);
             if (cfg == null || cfg.analysisResult == null) return new ExcelConfigureOutput(false, t("ex.err.callAiAnalyzeFirst"));
-            String modeText = in.mode();
+            String modeText = in.mode() == null ? null : in.mode().name();
             SplitConfig.SplitMode mode;
             try { mode = SplitConfig.SplitMode.valueOf(modeText); }
             catch (Exception e) { return new ExcelConfigureOutput(false, t("ex.err.invalidMode", modeText)); }
@@ -275,7 +275,7 @@ public final class ExcelRpcHandlers implements AutoCloseable {
         try {
             SplitConfig cfg = sessions.active().orElse(null);
             if (cfg == null) return new ExcelComplexConfigOutput(null, false, t("ex.err.callAiAnalyzeFirst"));
-            String action = in.action();
+            String action = in.action() == null ? null : in.action().name();
             String a = action == null ? "" : action.trim().toLowerCase(Locale.ROOT);
             switch (a) {
                 case "add" -> {

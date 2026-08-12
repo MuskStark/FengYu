@@ -39,6 +39,7 @@ export declare class FengYuClient {
     private readonly handlers;
     private readyPromise?;
     private environment?;
+    private pendingEnvironment;
     private disposed;
     constructor(options?: FengYuClientOptions);
     ready(options?: InvokeOptions): Promise<Environment>;

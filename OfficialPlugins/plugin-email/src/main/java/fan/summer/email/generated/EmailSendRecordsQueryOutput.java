@@ -2,8 +2,32 @@
 package fan.summer.email.generated;
 
 import com.google.gson.annotations.SerializedName;
+import java.util.List;
 
 public record EmailSendRecordsQueryOutput(
+    @SerializedName("messages") List<EmailSendRecordsQueryOutputMessages> messages,
     @SerializedName("success") boolean success,
-    @SerializedName("summary") String summary
-) {}
+    @SerializedName("summary") String summary,
+    @SerializedName("tasks") List<EmailSendRecordsQueryOutputTasks> tasks
+) {
+  public record EmailSendRecordsQueryOutputMessages(
+      @SerializedName("accountEmail") String accountEmail,
+      @SerializedName("attachmentJson") String attachmentJson,
+      @SerializedName("confirmationId") String confirmationId,
+      @SerializedName("errorMessage") String errorMessage,
+      @SerializedName("id") int id,
+      @SerializedName("recipientsJson") String recipientsJson,
+      @SerializedName("sentAt") String sentAt,
+      @SerializedName("status") String status,
+      @SerializedName("subject") String subject
+  ) {}
+
+  public record EmailSendRecordsQueryOutputTasks(
+      @SerializedName("accountId") int accountId,
+      @SerializedName("confirmationId") String confirmationId,
+      @SerializedName("expiresAt") String expiresAt,
+      @SerializedName("mode") String mode,
+      @SerializedName("status") String status,
+      @SerializedName("updatedAt") String updatedAt
+  ) {}
+}

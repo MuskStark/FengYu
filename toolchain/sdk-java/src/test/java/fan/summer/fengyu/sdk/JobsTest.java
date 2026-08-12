@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -89,5 +90,46 @@ class JobsTest {
         assertTrue(logs.isEmpty(), "one line larger than the byte budget must be evicted");
         assertEquals(1, ((Number) snapshot.get("droppedLogs")).intValue());
         assertEquals(1, ((Number) snapshot.get("cursor")).intValue());
+    }
+
+    /**
+     * Cancelling a running job wins exactly once: the first {@code cancel(id)} against a still-running
+     * job returns true and flips the snapshot to CANCELLED once the runner observes it. The job thread
+     * removes its handle in a {@code finally} block, so once teardown completes a further cancel
+     * reports not-running (false). This pins the deterministic "first cancel wins, second is a no-op"
+     * invariant that the plugin-level cancel test can only assert non-deterministically (a fast job
+     * may finish before the first cancel lands).
+     */
+    @Test
+    void cancelRunningJobWinsOnceThenReportsNotRunning() throws Exception {
+        Jobs jobs = new Jobs();
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch cancelObserved = new CountDownLatch(1);
+        try {
+            Jobs.Job job = jobs.start("CANC", handle -> {
+                started.countDown();
+                try {
+                    while (!handle.isCancelled()) Thread.sleep(10);
+                } catch (InterruptedException expected) {
+                    Thread.currentThread().interrupt();
+                }
+                cancelObserved.countDown();
+            });
+            assertTrue(started.await(2, TimeUnit.SECONDS));
+
+            assertTrue(jobs.cancel(job.id), "first cancel against a running job must succeed");
+            assertTrue(cancelObserved.await(2, TimeUnit.SECONDS), "runner must observe cancellation");
+
+            // The handle is torn down in the job thread's finally; spin until cancel reports false.
+            long deadline = System.currentTimeMillis() + 2_000;
+            while (jobs.cancel(job.id) && System.currentTimeMillis() < deadline) Thread.sleep(5);
+            assertFalse(jobs.cancel(job.id), "cancel must report not-running after handle teardown");
+
+            Map<String, Object> snap = jobs.snapshot(job.id, 0);
+            assertEquals("CANCELLED", snap.get("status"), "cancelled job must snapshot CANCELLED");
+            assertEquals(Boolean.TRUE, snap.get("done"));
+        } finally {
+            jobs.close();
+        }
     }
 }

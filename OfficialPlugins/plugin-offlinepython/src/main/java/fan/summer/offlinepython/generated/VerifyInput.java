@@ -5,6 +5,12 @@ import com.google.gson.annotations.SerializedName;
 
 public record VerifyInput(
     @SerializedName("projectDir") String projectDir,
-    @SerializedName("scope") String scope,
+    @SerializedName("scope") VerifyInputScope scope,
     @SerializedName("session") String session
-) {}
+) {
+  public enum VerifyInputScope {
+    ALL,
+    INTEGRITY,
+    SHA256
+  }
+}

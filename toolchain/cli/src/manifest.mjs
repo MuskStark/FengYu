@@ -171,6 +171,17 @@ export function validateManifestObject(manifest) {
   if (manifest.official === true && typeof manifest.id === 'string' && !manifest.id.startsWith('fan.summer.')) {
     errors.push('official plugin ids must use fan.summer.*')
   }
+
+  // Permission hygiene: the schema enum already rejects unknown permissions, but
+  // JSON arrays allow duplicates. A repeated permission is always a copy/paste
+  // mistake and muddies the grant surface, so reject it at validation time.
+  if (Array.isArray(manifest.permissions)) {
+    const seen = new Set()
+    for (const permission of manifest.permissions) {
+      if (seen.has(permission)) errors.push(`duplicate permission: ${permission}`)
+      else seen.add(permission)
+    }
+  }
   return errors
 }
 
@@ -272,11 +283,6 @@ export async function validateProjectManifest(root) {
     }
   }
   return errors
-}
-
-/** Legacy alias used by older build/create code paths. */
-export async function validate(root) {
-  return validateProjectManifest(root)
 }
 
 const FORBIDDEN_RUNTIME_ENTRIES = ['.git', 'node_modules', 'target', 'src']

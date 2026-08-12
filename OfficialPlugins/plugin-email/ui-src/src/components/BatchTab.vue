@@ -4,9 +4,9 @@ import { useI18n } from 'vue-i18n'
 import { mdiCloseCircle, mdiPaperclip } from '@mdi/js'
 import { FyIcon } from '@infinia/plugin-ui'
 import { useAccountsStore } from '../stores/accounts'
-import { useBatchStore, type BatchPreview } from '../stores/batch'
+import { useBatchStore } from '../stores/batch'
 import { useContactsStore } from '../stores/contacts'
-import { actionable, files, invoke } from '../sdk'
+import { actionable, checked, files, rpc } from '../sdk'
 import RichTextEditor from './RichTextEditor.vue'
 import ConfirmationDialog from './ConfirmationDialog.vue'
 
@@ -17,11 +17,11 @@ let previewTimer: number | undefined
 const canPreview = computed(() => Boolean(accounts.selectedId && batch.inputDirectory
   && batch.recipientGroupTagIds.length && (batch.plainText.trim() || batch.htmlText.trim())))
 const params = () => ({
-  accountId: accounts.selectedId,
+  accountId: accounts.selectedId!,
   recipientGroupTagIds: batch.recipientGroupTagIds,
   ccGroupTagIds: batch.ccGroupTagIds,
-  inputDirectory: batch.inputDirectory,
-  commonAttachments: batch.commonAttachments,
+  inputDirectory: batch.inputDirectory as unknown as string,
+  commonAttachments: batch.commonAttachments as unknown as string[],
   subject: batch.subject,
   plainText: batch.plainText,
   htmlText: batch.htmlText,
@@ -53,7 +53,7 @@ async function refreshPreview(): Promise<void> {
   if (!canPreview.value) return
   previewBusy.value = true; error.value = ''
   try {
-    const result = await invoke<{ preview: BatchPreview }>('email_batch_preview', params())
+    const result = await checked(rpc.email_batch_preview(params()))
     batch.applyPreview(result.preview)
   } catch (value) { error.value = actionable(value, t('batch.previewAction')) }
   finally { previewBusy.value = false }
@@ -61,7 +61,7 @@ async function refreshPreview(): Promise<void> {
 async function prepare(): Promise<void> {
   busy.value = true; error.value = ''
   try {
-    const result = await invoke<{ confirmation: NonNullable<typeof batch.confirmation> }>('email_send_batch', params())
+    const result = await checked(rpc.email_send_batch(params()))
     batch.confirmation = result.confirmation; dialog.value = true
   } catch (value) { error.value = actionable(value, t('batch.prepareAction')) }
   finally { busy.value = false }
@@ -70,16 +70,16 @@ async function confirm(): Promise<void> {
   if (!batch.confirmation) return
   busy.value = true
   try {
-    const result = await invoke<{ send: NonNullable<typeof batch.sendResult> }>('confirm_send', {
+    const result = await checked(rpc.confirm_send({
       confirmationId: batch.confirmation.confirmationId,
-    })
+    }))
     batch.sendResult = result.send; dialog.value = false
   } catch (value) { error.value = actionable(value, t('batch.sendAction')) }
   finally { busy.value = false }
 }
 async function reject(): Promise<void> {
   if (!batch.confirmation) return
-  try { await invoke('reject_send', { confirmationId: batch.confirmation.confirmationId }); dialog.value = false }
+  try { await checked(rpc.reject_send({ confirmationId: batch.confirmation.confirmationId })); dialog.value = false }
   catch (value) { error.value = actionable(value, t('batch.cancelAction')) }
 }
 </script>
@@ -126,7 +126,7 @@ async function reject(): Promise<void> {
       <v-card-text>
         <v-progress-linear v-if="previewBusy" indeterminate />
         <div v-if="batch.preview.messages.length" class="batch-preview-list">
-          <article v-for="message in batch.preview.messages" :key="message.attachmentTag" class="batch-preview-item">
+          <article v-for="(message, index) in batch.preview.messages" :key="index" class="batch-preview-item">
             <h3>{{ message.attachmentTag }}</h3>
             <p><strong>{{ t('compose.to') }}:</strong> {{ message.to.join(', ') }}</p>
             <p><strong>{{ t('compose.cc') }}:</strong> {{ message.cc.join(', ') || t('common.none') }}</p>

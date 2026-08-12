@@ -14,7 +14,7 @@ FengYu 插件通过新的 UI 与后端能力扩展宿主，同时保持**严格�
 
 | 路径 | 内容 |
 | --- | --- |
-| `manifest.json` | 元数据、权限、AI 工具以及启动命令 |
+| `manifest.json` | 元数据、权限、AI 工具以及 RPC 方法表（`rpc.methods`） |
 | `ui/` | 微前端资源（入口 HTML + JS），通过 `/plugin-runtime/{id}/**` 提供 |
 | `backend/worker.jar` | worker 可执行文件，作为独立的操作系统进程被启动 |
 
@@ -48,7 +48,7 @@ install  ──►  enabled  ──►  invoked (UI + worker RPC)  ──►  di
 
 1. **安装（Install）**——通过[插件市场](/zh/plugins/marketplace)上传 `.fyp`；解析其清单并存储。
 2. **启用（Enable）**——`PATCH /api/plugin-market/{id}/enabled {enabled:true}`；worker 进程在首次调用时被惰性启动。
-3. **调用（Invoke）**——UI 在其 iframe 中加载；对 `client.invoke(method, params)` 的调用会被宿主以 JSON-RPC 形式转发给 worker。参见 [Worker（JSON-RPC）](/zh/plugins/worker)。
+3. **调用（Invoke）**——UI 在其 iframe 中加载；UI 通过由 `rpc.methods` 生成的类型化客户端（基于 `FengYuClient`）调用方法，宿主以 JSON-RPC 形式将其转发给 worker。参见 [Worker（JSON-RPC）](/zh/plugins/worker)。
 4. **禁用（Disable）**——`PATCH .../enabled {enabled:false}`；宿主**立即停止 worker 进程**。
 5. **卸载（Uninstall）**——`DELETE /api/plugin-market/{id}`；将该插件从目录中移除并停止其进程。
 

@@ -70,8 +70,8 @@ public final class JsonRpcWorker {
     private final Map<String, PluginHandler> handlers = new ConcurrentHashMap<>();
     private final CopyOnWriteArrayList<AutoCloseable> closeables = new CopyOnWriteArrayList<>();
     private final AtomicBoolean closed = new AtomicBoolean();
-    private final String pluginId = System.getenv("FENGYU_PLUGIN_ID");
-    private final String pluginRoot = System.getenv("FENGYU_PLUGIN_ROOT");
+    private final String pluginId = envOrProperty("FENGYU_PLUGIN_ID");
+    private final String pluginRoot = envOrProperty("FENGYU_PLUGIN_ROOT");
     private volatile java.util.function.IntConsumer exitHandler = System::exit;
 
     // ── registration ────────────────────────────────────────────────────────
@@ -342,19 +342,21 @@ public final class JsonRpcWorker {
             resp.put("result", result);
         } catch (RpcException e) {
             resp.put("error", errorEnvelope(e));
-        } catch (Exception e) {
-            // Log only call identity and exception type; messages may embed caller secrets.
-            log.warn("Plugin worker dispatch failed for method={} id={}: {}",
-                method, id, e.getClass().getSimpleName());
-            resp.put("error", Map.of("code", -32000, "message", String.valueOf(e.getMessage())));
         } catch (Throwable t) {
-            // A handler/linkage Error (e.g. NoSuchMethodError) must still produce a well-formed
-            // error response, never a frame missing both result and error. Mapped to INTERNAL;
-            // only the exception type is logged (safer than the message for Error subtypes).
-            log.warn("Plugin worker dispatch failed for method={} id={}: {}",
-                method, id, t.getClass().getSimpleName());
-            resp.put("error", Map.of("code", RpcError.Code.INTERNAL.jsonRpcCode(),
-                "message", t.getClass().getSimpleName(), "data", Map.of("code", RpcError.Code.INTERNAL.name())));
+            // An unhandled handler Exception/Error is an unexpected bug. Its raw message is
+            // untrusted — it may embed caller secrets (credentials, business data, file paths) —
+            // so it never enters the response: the caller gets a generic message plus the stable
+            // INTERNAL code + data.code label. The full causal chain and stack frames (WHERE it
+            // failed) go to this worker's stderr for operator diagnostics; the exception message
+            // itself is redacted from stderr too (safeStackTrace). A handler that wants to surface
+            // a controlled diagnostic throws RpcException, whose message DOES reach the caller via
+            // errorEnvelope above.
+            log.warn("Plugin worker dispatch failed for method={} id={}: {}\n{}",
+                method, id, t.getClass().getName(), safeStackTrace(t));
+            resp.put("error", Map.of(
+                "code", RpcError.Code.INTERNAL.jsonRpcCode(),
+                "message", "Internal error",
+                "data", Map.of("code", RpcError.Code.INTERNAL.name())));
         } finally {
             RpcContext.clear();
             WorkerLocale.clear();
@@ -385,6 +387,25 @@ public final class JsonRpcWorker {
         return err;
     }
 
+    /**
+     * Format a throwable's causal chain and stack frames WITHOUT the exception messages. Plain
+     * (non-RpcException) throwables carry untrusted messages that may embed caller secrets, so the
+     * message is redacted from stderr; only the class names, the causal chain, and the stack frames
+     * (WHERE it failed) are retained for operator diagnostics.
+     */
+    private static String safeStackTrace(Throwable t) {
+        StringBuilder sb = new StringBuilder();
+        Throwable cur = t;
+        while (cur != null) {
+            if (cur != t) sb.append("Caused by: ");
+            sb.append(cur.getClass().getName());
+            for (StackTraceElement frame : cur.getStackTrace()) sb.append("\n\tat ").append(frame);
+            cur = cur.getCause();
+            if (cur != null) sb.append('\n');
+        }
+        return sb.toString();
+    }
+
     private void writeFrame(RpcTransport transport, Object writeLock, Map<String, Object> resp) throws Exception {
         String frame = json.toJson(resp);
         synchronized (writeLock) {
@@ -396,6 +417,19 @@ public final class JsonRpcWorker {
     private static String str(Map<String, Object> params, String key) {
         Object value = params.get(key);
         return value == null ? null : value.toString();
+    }
+
+    /**
+     * Resolve a worker environment value. The production host injects {@code FENGYU_PLUGIN_ID} /
+     * {@code FENGYU_PLUGIN_ROOT} as process environment variables (read via {@link System#getenv}).
+     * The IDE devkit launches the worker in the SAME JVM via {@link System#setProperty}, where
+     * {@code getenv} (captured at JVM startup) stays empty — so fall back to the system property to
+     * keep {@link RpcContext#pluginId()} / {@link RpcContext#pluginRoot()} populated for in-IDE
+     * debugging. Env wins because the host's ProcessBuilder values are authoritative in production.
+     */
+    private static String envOrProperty(String name) {
+        String env = System.getenv(name);
+        return (env != null && !env.isEmpty()) ? env : System.getProperty(name);
     }
 
     @SuppressWarnings("unchecked")

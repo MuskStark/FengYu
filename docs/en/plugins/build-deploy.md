@@ -6,8 +6,8 @@ lang: en
 
 # Build & Deploy
 
-Toolchain 2 builds every plugin from a standard layout. `fengyu.plugin.json` and arbitrary build
-command arrays have been removed.
+Toolchain 2 builds every plugin from a standard layout. The legacy per-plugin build-config file
+and arbitrary build command arrays have been removed.
 
 ## Project and package layouts
 

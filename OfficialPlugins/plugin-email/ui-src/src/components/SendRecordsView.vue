@@ -1,19 +1,19 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { actionable, invoke } from '../sdk'
+import { actionable, checked, rpc } from '../sdk'
 
-interface SendTask { confirmationId: string; accountId: number; mode: string; status: string; expiresAt: string; updatedAt: string }
-interface SentMessage { id: number; confirmationId?: string; accountEmail: string; subject?: string; status: string; errorMessage?: string; sentAt: string }
+interface SendTask { confirmationId: string; accountId: number; mode: string; status: string; expiresAt?: string; updatedAt?: string }
+interface SentMessage { id: number; confirmationId?: string; accountEmail: string; subject?: string; status: string; errorMessage?: string; sentAt?: string }
 const { t } = useI18n()
 const query = ref(''), status = ref<string>(), offset = ref(0), limit = 25
 const tasks = ref<SendTask[]>([]), messages = ref<SentMessage[]>([]), error = ref(''), busy = ref(false)
 async function load(): Promise<void> {
   busy.value = true; error.value = ''
   try {
-    const result = await invoke<{ tasks: SendTask[]; messages: SentMessage[] }>('email_send_records_query', {
+    const result = await checked(rpc.email_send_records_query({
       query: query.value, taskStatus: status.value, offset: offset.value, limit,
-    })
+    }))
     tasks.value = result.tasks ?? []; messages.value = result.messages ?? []
   } catch (value) { error.value = actionable(value, t('records.loadAction')) }
   finally { busy.value = false }

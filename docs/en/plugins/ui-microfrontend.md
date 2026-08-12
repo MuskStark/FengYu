@@ -56,7 +56,9 @@ const env = await fengyu.ready()
 //   → { protocolVersion, theme, locale, platform, capabilities }
 //   Throws unless the host speaks the exact protocol version.
 
-// 2. Call the plugin's own worker (host forwards as JSON-RPC).
+// 2. Call the plugin's own worker (host forwards as JSON-RPC). A Vue plugin
+//    normally wraps this with the generated typed client:
+//      const rpc = createPluginRpc(fengyu); await rpc.render({ markdown: '# hi' })
 const out = await fengyu.invoke('render', { markdown: '# hi' })
 
 // 3. Ask the user for files / directories.

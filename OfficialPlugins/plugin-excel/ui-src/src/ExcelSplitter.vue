@@ -34,8 +34,11 @@ import {
   type ExcelWizardDraft,
 } from './excelWizardState'
 import { useFengYuEnvironment } from './env'
+import { createPluginRpc } from './rpc'
+import type { AnalyzeOutput, ConfigureInput, SplitInput } from './generated/fengyu-rpc'
 
 const client = useFengYuClient()
+const rpc = createPluginRpc(client)
 const { t } = useFengYuEnvironment()
 
 type SplitMode = 'BY_SHEET' | 'BY_COLUMN' | 'COMPLEX'
@@ -53,21 +56,8 @@ const modeOptions = computed<ModeOption[]>(() => [
   { value: 'COMPLEX', label: t('exui.mode.complex.label'), hint: t('exui.mode.complex.hint'), icon: mdiSitemapOutline },
 ])
 
-interface AnalyzeResponse {
-  success: boolean
-  summary?: string
-  sheets?: Record<string, Record<string, string>>
-  error?: string
-}
-interface ConfigureResponse { success: boolean; summary?: string; error?: string }
-interface EstimateResponse { success: boolean; summary?: string; fileCount?: number; exact?: boolean; error?: string }
-interface SplitResponse {
-  success: boolean
-  summary?: string
-  fileCount?: number
-  files?: string[]
-  error?: string
-}
+/** Analyzed workbook shape from the generated `analyze` Output: one entry per sheet. */
+type AnalyzedSheet = NonNullable<NonNullable<AnalyzeOutput['sheets']>[number]>
 interface ComplexEntryRow {
   fieldName: string
   sheetName: string
@@ -107,7 +97,7 @@ const sourceFileRef = ref<FileRef | null>(null)
 const session = ref<string | null>(null)
 const analyzing = ref(false)
 const analyzeError = ref<string | null>(null)
-const sheets = ref<Record<string, Record<string, string>> | null>(null)
+const sheets = ref<AnalyzedSheet[] | null>(null)
 
 // Step 2 — mode + config
 const mode = ref<SplitMode>('BY_SHEET')
@@ -131,11 +121,12 @@ const downloading = ref(false)
 const runError = ref<string | null>(null)
 const result = ref<{ fileCount: number; files: string[] } | null>(null)
 
-const sheetNames = computed<string[]>(() => (sheets.value ? Object.keys(sheets.value) : []))
+const sheetNames = computed<string[]>(() => (sheets.value ? sheets.value.map((s) => s.name ?? '') : []))
 
 function columnsForSheet(sheetName: string | null): string[] {
   if (!sheetName || !sheets.value) return []
-  return Object.values(sheets.value[sheetName] ?? {})
+  const sheet = sheets.value.find((s) => s.name === sheetName)
+  return (sheet?.columns ?? []).map((c) => c.header ?? '')
 }
 const columnsForSplitSheet = computed<string[]>(() => columnsForSheet(splitSheet.value))
 
@@ -255,9 +246,9 @@ async function validateSource(signal: AbortSignal): Promise<FyWizardValidationRe
   analyzeError.value = null
   try {
     abortIfStale(signal)
-    const res = await client.invoke<AnalyzeResponse>('analyze', {
+    const res = await rpc.analyze({
       session: sessionId,
-      sourceFile: source,
+      sourceFile: source as unknown as string,
     }, { signal })
     abortIfStale(signal)
     if (sourceFileRef.value?.id !== source.id || session.value !== sessionId) {
@@ -268,7 +259,7 @@ async function validateSource(signal: AbortSignal): Promise<FyWizardValidationRe
       analyzeError.value = msg
       return { valid: false, message: msg }
     }
-    sheets.value = res.sheets ?? {}
+    sheets.value = res.sheets ?? []
     return { valid: true }
   } catch (err) {
     if (signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) throw err
@@ -364,7 +355,7 @@ async function refreshEstimate(expectedSession: string, expectedMode: SplitMode)
   const generation = ++estimateGeneration
   estimating.value = true
   try {
-    const res = await client.invoke<EstimateResponse>('estimate', { session: expectedSession })
+    const res = await rpc.estimate({ session: expectedSession })
     if (generation !== estimateGeneration) return
     if (session.value !== expectedSession || mode.value !== expectedMode) return
     estimatedFileCount.value = res.success && typeof res.fileCount === 'number' ? res.fileCount : null
@@ -448,16 +439,16 @@ async function validateMode(signal: AbortSignal): Promise<FyWizardValidationResu
   configuring.value = true
   configureError.value = null
   try {
-    const args: Record<string, unknown> = {
+    const args: ConfigureInput = {
       session: session.value,
       mode: mode.value,
       filePrefix: filePrefix.value,
     }
     if (mode.value === 'BY_SHEET') {
-      if (selectedSheets.value.length > 0) args.selectedSheets = selectedSheets.value
+      if (selectedSheets.value.length > 0) args.selectedSheets = [...selectedSheets.value]
     } else if (mode.value === 'BY_COLUMN') {
-      args.splitSheet = splitSheet.value
-      args.splitColumn = splitColumn.value
+      if (splitSheet.value) args.splitSheet = splitSheet.value
+      if (splitColumn.value) args.splitColumn = splitColumn.value
     } else if (mode.value === 'COMPLEX') {
       args.complexEntries = complexEntries.value.map((e) => ({
         fieldName: e.fieldName,
@@ -467,7 +458,7 @@ async function validateMode(signal: AbortSignal): Promise<FyWizardValidationResu
       }))
     }
     abortIfStale(signal)
-    const res = await client.invoke<ConfigureResponse>('configure', args, { signal })
+    const res = await rpc.configure(args, { signal })
     abortIfStale(signal)
     if (!res.success) {
       const msg = responseError(res, t('exui.fallback.configureFailed'))
@@ -503,18 +494,18 @@ async function runSplit(signal: AbortSignal): Promise<FyWizardValidationResult> 
     // output folder on the Output step grants the output dir and bumps that version, so the worker
     // serving `split` is a fresh process that never saw the earlier `configure`. Without re-sending
     // the config, split falls back to the default BY_SHEET mode and just copies the source file.
-    const splitArgs: Record<string, unknown> = {
+    const splitArgs: SplitInput = {
       session: session.value,
-      sourceFile: sourceFileRef.value,
-      outputDir: outputDirRef.value,
+      sourceFile: sourceFileRef.value as unknown as string,
+      outputDir: outputDirRef.value as unknown as string,
       mode: mode.value,
       filePrefix: filePrefix.value,
     }
     if (mode.value === 'BY_SHEET') {
-      if (selectedSheets.value.length > 0) splitArgs.selectedSheets = selectedSheets.value
+      if (selectedSheets.value.length > 0) splitArgs.selectedSheets = [...selectedSheets.value]
     } else if (mode.value === 'BY_COLUMN') {
-      splitArgs.splitSheet = splitSheet.value
-      splitArgs.splitColumn = splitColumn.value
+      if (splitSheet.value) splitArgs.splitSheet = splitSheet.value
+      if (splitColumn.value) splitArgs.splitColumn = splitColumn.value
     } else if (mode.value === 'COMPLEX') {
       splitArgs.complexEntries = complexEntries.value.map((e) => ({
         fieldName: e.fieldName,
@@ -523,7 +514,7 @@ async function runSplit(signal: AbortSignal): Promise<FyWizardValidationResult> 
         columnIndex: e.columnIndex,
       }))
     }
-    const res = await client.invoke<SplitResponse>('split', splitArgs, { signal })
+    const res = await rpc.split(splitArgs, { signal })
     abortIfStale(signal)
     if (!res.success) {
       const msg = responseError(res, t('exui.fallback.splitFailed'))

@@ -62,7 +62,6 @@ Every invoke is bounded by a timeout. The host (`PluginProcessManager`) waits th
 
 | Source | Priority |
 | --- | --- |
-| `aiTools[].timeoutSeconds` (manifest) | highest — used when the AI tool path invokes the method |
 | Caller-supplied timeout (host-internal) | overrides the default for a specific call |
 | `backend.callTimeoutSeconds` (manifest) | plugin-wide default |
 | Built-in default | `60` |
@@ -161,7 +160,7 @@ A failed call returns an `error` object instead of `result`:
 
 When a UI passes a file picked through the SDK (see [File I/O](/en/plugins/file-io)), it arrives as a **FileRef** — an opaque `{id, name, kind, access, size}` object whose `id` begins with `ref_`. The worker never receives raw upload bytes. Instead:
 
-1. The UI calls `client.invoke("analyze", { filePath: <FileRef> })`.
+1. The UI invokes the worker's `analyze` method, passing `{ filePath: <FileRef> }`.
 2. The host's `PluginProcessManager` walks the params, finds any value shaped like a FileRef (`{id:"ref_..."}`), and **rewrites it to an absolute filesystem path** using its in-memory grant table.
 3. The worker receives `{filePath: "/tmp/fengyu/runtime-files/.../in/data.xlsx"}` — a real path it can open directly.
 
@@ -169,29 +168,30 @@ The worker treats these as ordinary string paths; it does not need to know the F
 
 ## Worker SDK (Java)
 
-The `toolchain/sdk-java` artifact ships `JsonRpcWorker`, a tiny dependency-light runtime that reads requests from `stdin`, dispatches to registered handlers, and writes responses to `stdout`. Register handlers with `.on(method, handler)` and call `.run()`:
+The `toolchain/sdk-java` artifact ships `JsonRpcWorker`, a tiny dependency-light runtime that reads requests from `stdin`, dispatches to registered handlers, and writes responses to `stdout`. Register handlers with the typed `.method(...)` API and call `.run()`:
 
 ```java
 package com.example.myplugin;
 
 import fan.summer.fengyu.sdk.JsonRpcWorker;
-import java.util.Map;
+import fan.summer.fengyu.sdk.RpcContext;
+import com.example.myplugin.generated.PluginMethods;
+import com.example.myplugin.generated.HelloInput;
+import com.example.myplugin.generated.HelloOutput;
 
 public final class MyWorkerMain {
     private MyWorkerMain() {}
     public static void main(String[] args) throws Exception {
+        MyHandlers handlers = new MyHandlers();
         new JsonRpcWorker()
-            .on("hello", MyWorkerMain::hello)
+            .method(PluginMethods.HELLO, HelloInput.class, HelloOutput.class,
+                    (HelloInput input, RpcContext ctx) -> handlers.hello(input, ctx))
             .run();
-    }
-
-    static Object hello(Map<String, Object> params) {
-        return Map.of("success", true, "echo", params.get("name"));
     }
 }
 ```
 
-`PluginHandler` is a `@FunctionalInterface` — `Object handle(Map<String,Object> params) throws Exception`. Throw `JsonRpcWorker.RpcException(code, message)` for a structured error; any other exception surfaces as `-32000`. Helper accessors `JsonRpcWorker.string(params, key)` and `JsonRpcWorker.integer(params, key, fallback)` read params safely.
+Handlers are typed: `(Input input, RpcContext ctx) -> Output`. `Input` and `Output` are the record classes generated from `manifest.json`'s `rpc.methods` (e.g. `HelloInput`, `HelloOutput`), and `PluginMethods` holds a constant for each method name. The SDK deserializes the incoming params into your `Input` record, binds an `RpcContext` (cancellation token + logger) to the handler thread, and serializes the returned `Output` back into the response. Throw `RpcException(code, message)` for a structured error; any other exception surfaces as `-32000`.
 
 ### Reference implementations
 
@@ -200,19 +200,24 @@ The two official plugins are the canonical examples:
 - **`MarkdownWorkerMain`** registers a single method:
 
   ```java
-  new JsonRpcWorker().on("render", params -> plugin.invoke("render", params)).run();
+  new JsonRpcWorker().method(
+          PluginMethods.RENDER, RenderInput.class, RenderOutput.class,
+          (RenderInput input, RpcContext ctx) -> plugin.render(input, ctx)).run();
   ```
 
 - **`ExcelWorkerMain`** registers three action methods plus six AI-tool methods:
 
   ```java
   return new JsonRpcWorker()
-      .on("analyze",       p -> plugin.invoke("analyze", p))
-      .on("configure",     p -> plugin.invoke("configure", p))
-      .on("split",         p -> plugin.invoke("split", p))
-      .on("excel_analyze", p -> analyze.analyze(JsonRpcWorker.string(p, "filePath")))
+      .method(PluginMethods.ANALYZE, AnalyzeInput.class, AnalyzeOutput.class,
+              (AnalyzeInput input, RpcContext ctx) -> plugin.analyze(input, ctx))
+      .method(PluginMethods.CONFIGURE, ConfigureInput.class, ConfigureOutput.class,
+              (ConfigureInput input, RpcContext ctx) -> plugin.configure(input, ctx))
+      .method(PluginMethods.SPLIT, SplitInput.class, SplitOutput.class,
+              (SplitInput input, RpcContext ctx) -> plugin.split(input, ctx))
+      .method(PluginMethods.EXCEL_ANALYZE, ExcelAnalyzeInput.class, ExcelAnalyzeOutput.class,
+              (ExcelAnalyzeInput input, RpcContext ctx) -> analyze.analyze(input, ctx));
       // ... excel_configure, excel_complex_config, excel_execute, excel_query, excel_cancel
-      ;
   ```
 
 See [Official Plugin — Markdown](/en/plugins/official-markdown) and [Official Plugin — Excel](/en/plugins/official-excel) for full walkthroughs.
@@ -223,6 +228,6 @@ Build the worker as a shaded fat JAR with `maven-shade-plugin` and set the `main
 
 ## Next steps
 
-- [UI Micro-frontend](/en/plugins/ui-microfrontend) — the UI side that calls `client.invoke`.
+- [UI Micro-frontend](/en/plugins/ui-microfrontend) — the UI side that calls the worker via the generated typed client.
 - [File I/O](/en/plugins/file-io) — how FileRefs are minted and resolved.
 - [Pitfalls](/en/plugins/pitfalls) — stdio discipline, FileRef timing, and more.
