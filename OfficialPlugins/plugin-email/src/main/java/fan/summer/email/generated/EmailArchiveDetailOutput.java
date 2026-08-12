@@ -8,5 +8,20 @@ public record EmailArchiveDetailOutput(
     @SerializedName("success") boolean success,
     @SerializedName("summary") String summary
 ) {
-  public record EmailArchiveDetailOutputMessage() {}
+  public record EmailArchiveDetailOutputMessage(
+      @SerializedName("accountEmail") String accountEmail,
+      @SerializedName("accountId") int accountId,
+      @SerializedName("archivedAt") String archivedAt,
+      @SerializedName("bodyPreview") String bodyPreview,
+      @SerializedName("emlPath") String emlPath,
+      @SerializedName("folder") String folder,
+      @SerializedName("fromAddress") String fromAddress,
+      @SerializedName("hasAttachment") boolean hasAttachment,
+      @SerializedName("id") int id,
+      @SerializedName("messageUid") String messageUid,
+      @SerializedName("receivedAt") String receivedAt,
+      @SerializedName("recipientsJson") String recipientsJson,
+      @SerializedName("sentAt") String sentAt,
+      @SerializedName("subject") String subject
+  ) {}
 }

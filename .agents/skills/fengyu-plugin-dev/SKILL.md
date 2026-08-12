@@ -90,6 +90,24 @@ When changing CLI UI templates, theme definitions, icon handling, or public UI c
 against the host implementation and add a contract test for the exact generated input. Keep
 `frontend/src/plugins/md3-themes.ts` and `toolchain/ui/src/theme.ts` value-aligned.
 
+### Host environment synchronization invariant
+
+Theme and locale are live host state, not one-time startup options. Prefer `mountFengYuApp`, which
+owns the correct ordering. If custom code binds a `FengYuClient` manually, register
+`client.on('environment', ...)` **before** awaiting `client.ready()`. The host may emit its initial
+environment event as soon as the iframe loads; subscribing after `await ready()` creates a race in
+which that event is lost, leaving the plugin on the UI kit's default dark/English state. Merge
+partial events into the last environment and apply both the document attributes and UI runtimes:
+
+- `document.documentElement.dataset.theme` and Vuetify's active theme;
+- `document.documentElement.lang`, Vuetify locale, and the plugin's message-table locale.
+
+Do not fix this independently in each business plugin. Fix the shared `@infinia/plugin-ui` binding,
+add a regression test that emits an environment event while `ready()` is still pending, then rebuild
+and refresh every affected plugin's local `file:` dependency before packaging. `npm install` may
+reuse the old copied package; verify `ui-src/node_modules/@infinia/plugin-ui/dist/index.js` contains
+the new ordering and use a targeted forced reinstall when it does not.
+
 **Worker (UI + Java Worker only):** a Java `main()` that links `toolchain/sdk-java` and speaks
 newline-delimited JSON-RPC 2.0 over stdin/stdout (one request object per line, responses matched by
 `id`). The worker runs in **its own process** with its own classpath; it must not assume any
@@ -249,6 +267,10 @@ Worker JAR is fresh before packaging.
   components, run the exact scaffold/component regression tests plus
   `cd toolchain/ui && npm test && npm run typecheck && npm run build`. Run
   `npm run test:visual` when rendered presentation changes.
+- **Environment synchronization:** test an `environment` event both after ready and while the ready
+  promise is pending. Package at least one representative plugin, inspect the installed bundle (not
+  only source/dist), and verify a live host theme + language switch updates the open iframe without
+  reloading it.
 - **UI + Java Worker:** also build/test the worker (`mvn -f OfficialPlugins/<name>/pom.xml test`)
   and confirm the worker's JSON-RPC methods round-trip.
 - **IDE integration:** start `PluginDevMain` with the IDE and `npm run dev` in `ui-src`; call a real

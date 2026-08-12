@@ -7,13 +7,27 @@ import java.util.List;
 public record EmailArchiveFetchStatusOutput(
     @SerializedName("cursor") Integer cursor,
     @SerializedName("done") Boolean done,
+    @SerializedName("droppedLogs") Integer droppedLogs,
+    @SerializedName("elapsedMs") Integer elapsedMs,
     @SerializedName("error") String error,
     @SerializedName("jobId") String jobId,
     @SerializedName("logs") List<String> logs,
     @SerializedName("result") EmailArchiveFetchStatusOutputResult result,
-    @SerializedName("status") String status,
+    @SerializedName("status") EmailArchiveFetchStatusOutputStatus status,
     @SerializedName("success") boolean success,
-    @SerializedName("summary") String summary
+    @SerializedName("summary") String summary,
+    @SerializedName("type") String type
 ) {
-  public record EmailArchiveFetchStatusOutputResult() {}
+  public record EmailArchiveFetchStatusOutputResult(
+      @SerializedName("failures") int failures,
+      @SerializedName("newArchived") int newArchived,
+      @SerializedName("skippedDuplicates") int skippedDuplicates
+  ) {}
+
+  public enum EmailArchiveFetchStatusOutputStatus {
+    RUNNING,
+    DONE,
+    FAILED,
+    CANCELLED
+  }
 }

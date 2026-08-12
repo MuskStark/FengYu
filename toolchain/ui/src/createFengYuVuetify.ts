@@ -60,6 +60,12 @@ export async function bindFengYuEnvironment(
     locale: 'en',
     platform: 'web',
     capabilities: HOST_CAPABILITIES,
+    // Placeholder identity/permissions until the host's real `ready` environment arrives (the
+    // `apply(...)` below merges the live values over these). HostEnvironment (sdk-ts v3) makes
+    // these required, so the default must populate them.
+    pluginId: '',
+    pluginVersion: '',
+    permissions: [],
   }
   const apply = (environment: Partial<Environment>) => {
     current = { ...current, ...environment }
@@ -71,6 +77,10 @@ export async function bindFengYuEnvironment(
     vuetify.locale.current.value = localeName(current.locale)
     options.onEnvironment?.({ ...current })
   }
+  // Subscribe before starting the handshake. The host may publish its first environment event as
+  // soon as the iframe loads; registering after await ready() creates a window where that update is
+  // lost (or permanently lost when ready falls back after its timeout).
+  const dispose = client.on('environment', (value) => apply(value as Partial<Environment>))
   // Await the host's ready handshake so theme/locale apply before first paint.
   // When there is no host (e.g. `vite` started standalone, outside any simulator),
   // ready() never gets a response and would block mount for the full 30s timeout,
@@ -82,5 +92,5 @@ export async function bindFengYuEnvironment(
     apply({})
     options.onReadyError?.(error)
   }
-  return client.on('environment', (value) => apply(value as Partial<Environment>))
+  return dispose
 }

@@ -31,9 +31,9 @@ my-plugin/
     └── src/test/java/…/PluginDevMain.java
 ```
 
-There is no `fengyu.plugin.json`. The CLI uses npm's `dev`, optional `test`, and `build` scripts,
-plus the Maven `test` and `package` lifecycle. The worker build must emit one
-`worker/target/*-worker.jar`.
+There is no separate legacy build-config file; the single descriptor is `manifest.json`. The CLI
+uses npm's `dev`, optional `test`, and `build` scripts, plus the Maven `test` and `package`
+lifecycle. The worker build must emit one `worker/target/*-worker.jar`.
 
 Run the UI simulator through the unified command:
 

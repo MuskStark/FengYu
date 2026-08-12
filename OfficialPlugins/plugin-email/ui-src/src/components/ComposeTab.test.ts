@@ -11,7 +11,22 @@ const bridge = vi.hoisted(() => ({
   invoke: vi.fn(),
   files: { open: vi.fn(), inputDirectory: vi.fn(), outputDirectory: vi.fn() },
 }))
-vi.mock('../sdk', () => ({ ...bridge, actionable: (_error: unknown, action: string) => action }))
+vi.mock('../sdk', () => ({
+  ...bridge,
+  actionable: (_error: unknown, action: string) => action,
+  // Generated client routes every typed method to client.invoke(method, input, options); mirror that
+  // here so bridge.invoke captures the exact 3-arg signature the worker bridge would receive.
+  rpc: new Proxy({}, {
+    get: (_t, prop) => typeof prop === 'string' && prop !== 'then'
+      ? (input?: unknown, options?: unknown) => bridge.invoke(prop, input, options)
+      : undefined,
+  }),
+  checked: async (p: Promise<{ success: boolean; summary: string }>) => {
+    const r = await p
+    if (!r.success) throw new Error(r.summary || 'Email operation failed')
+    return r
+  },
+}))
 
 beforeEach(() => { bridge.invoke.mockReset(); bridge.files.open.mockReset(); config.global.renderStubDefaultSlot = true })
 
@@ -42,7 +57,7 @@ it('prepares tag Compose and dispatches only after confirmation', async () => {
   await wrapper.get('[data-testid="compose-review"]').trigger('click')
   await vi.waitFor(() => expect(bridge.invoke).toHaveBeenCalledTimes(1))
   expect(bridge.invoke).toHaveBeenCalledWith('email_send_single',
-    expect.objectContaining({ recipientTagIds: [4], cc: ['manager@example.com'] }))
+    expect.objectContaining({ recipientTagIds: [4], cc: ['manager@example.com'] }), undefined)
   await wrapper.get('[data-testid="confirmation-approve"]').trigger('click')
   await vi.waitFor(() => expect(bridge.invoke).toHaveBeenCalledTimes(2))
   expect(bridge.invoke.mock.calls.map(call => call[0])).toEqual(['email_send_single', 'confirm_send'])

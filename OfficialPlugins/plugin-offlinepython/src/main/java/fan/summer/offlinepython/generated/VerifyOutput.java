@@ -19,31 +19,61 @@ public record VerifyOutput(
     public record VerifyOutputResultFileIntegrity(
         @SerializedName("detail") String detail,
         @SerializedName("problems") List<String> problems,
-        @SerializedName("status") String status
-    ) {}
+        @SerializedName("status") VerifyOutputResultFileIntegrityStatus status
+    ) {
+      public enum VerifyOutputResultFileIntegrityStatus {
+        PASS,
+        WARN,
+        FAIL
+      }
+    }
 
     public record VerifyOutputResultManifest(
         @SerializedName("detail") String detail,
         @SerializedName("problems") List<String> problems,
-        @SerializedName("status") String status
-    ) {}
+        @SerializedName("status") VerifyOutputResultManifestStatus status
+    ) {
+      public enum VerifyOutputResultManifestStatus {
+        PASS,
+        WARN,
+        FAIL
+      }
+    }
 
     public record VerifyOutputResultRequirements(
         @SerializedName("detail") String detail,
         @SerializedName("problems") List<String> problems,
-        @SerializedName("status") String status
-    ) {}
+        @SerializedName("status") VerifyOutputResultRequirementsStatus status
+    ) {
+      public enum VerifyOutputResultRequirementsStatus {
+        PASS,
+        WARN,
+        FAIL
+      }
+    }
 
     public record VerifyOutputResultSha256(
         @SerializedName("detail") String detail,
         @SerializedName("problems") List<String> problems,
-        @SerializedName("status") String status
-    ) {}
+        @SerializedName("status") VerifyOutputResultSha256Status status
+    ) {
+      public enum VerifyOutputResultSha256Status {
+        PASS,
+        WARN,
+        FAIL
+      }
+    }
 
     public record VerifyOutputResultWheels(
         @SerializedName("detail") String detail,
         @SerializedName("problems") List<String> problems,
-        @SerializedName("status") String status
-    ) {}
+        @SerializedName("status") VerifyOutputResultWheelsStatus status
+    ) {
+      public enum VerifyOutputResultWheelsStatus {
+        PASS,
+        WARN,
+        FAIL
+      }
+    }
   }
 }

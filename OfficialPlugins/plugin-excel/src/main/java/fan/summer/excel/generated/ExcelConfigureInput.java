@@ -5,8 +5,14 @@ import com.google.gson.annotations.SerializedName;
 import java.util.List;
 
 public record ExcelConfigureInput(
-    @SerializedName("mode") String mode,
+    @SerializedName("mode") ExcelConfigureInputMode mode,
     @SerializedName("sheets") List<String> sheets,
     @SerializedName("splitColumn") String splitColumn,
     @SerializedName("splitSheet") String splitSheet
-) {}
+) {
+  public enum ExcelConfigureInputMode {
+    BY_SHEET,
+    BY_COLUMN,
+    COMPLEX
+  }
+}

@@ -2,11 +2,25 @@
 package fan.summer.email.generated;
 
 import com.google.gson.annotations.SerializedName;
+import java.util.List;
 
 public record EmailContactsImportPreviewOutput(
     @SerializedName("preview") EmailContactsImportPreviewOutputPreview preview,
     @SerializedName("success") boolean success,
     @SerializedName("summary") String summary
 ) {
-  public record EmailContactsImportPreviewOutputPreview() {}
+  public record EmailContactsImportPreviewOutputPreview(
+      @SerializedName("createdContacts") int createdContacts,
+      @SerializedName("createdTags") List<String> createdTags,
+      @SerializedName("errors") List<EmailContactsImportPreviewOutputPreviewErrors> errors,
+      @SerializedName("mergedContacts") int mergedContacts,
+      @SerializedName("rowsTotal") int rowsTotal,
+      @SerializedName("rowsValid") int rowsValid,
+      @SerializedName("skippedContacts") int skippedContacts
+  ) {
+    public record EmailContactsImportPreviewOutputPreviewErrors(
+        @SerializedName("message") String message,
+        @SerializedName("row") int row
+    ) {}
+  }
 }

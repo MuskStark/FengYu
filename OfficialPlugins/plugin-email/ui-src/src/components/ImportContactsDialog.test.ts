@@ -13,7 +13,16 @@ const bridge = vi.hoisted(() => ({
 vi.mock('../sdk', () => ({
   ...bridge,
   actionable: (_error: unknown, action: string) => action,
-  invoke: bridge.invoke,
+  rpc: new Proxy({}, {
+    get: (_t, prop) => typeof prop === 'string' && prop !== 'then'
+      ? (input?: unknown, options?: unknown) => bridge.invoke(prop, input, options)
+      : undefined,
+  }),
+  checked: async (p: Promise<{ success: boolean; summary: string }>) => {
+    const r = await p
+    if (!r.success) throw new Error(r.summary || 'Email operation failed')
+    return r
+  },
   files: bridge.files,
 }))
 

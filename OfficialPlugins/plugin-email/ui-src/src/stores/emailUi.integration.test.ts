@@ -11,7 +11,20 @@ const bridge = vi.hoisted(() => ({
   invoke: vi.fn(),
   files: { open: vi.fn(), inputDirectory: vi.fn(), outputDirectory: vi.fn() },
 }))
-vi.mock('../sdk', () => ({ ...bridge, actionable: (_error: unknown, action: string) => action }))
+vi.mock('../sdk', () => ({
+  ...bridge,
+  actionable: (_error: unknown, action: string) => action,
+  rpc: new Proxy({}, {
+    get: (_t, prop) => typeof prop === 'string' && prop !== 'then'
+      ? (input?: unknown, options?: unknown) => bridge.invoke(prop, input, options)
+      : undefined,
+  }),
+  checked: async (p: Promise<{ success: boolean; summary: string }>) => {
+    const r = await p
+    if (!r.success) throw new Error(r.summary || 'Email operation failed')
+    return r
+  },
+}))
 
 beforeEach(() => { bridge.invoke.mockReset(); config.global.renderStubDefaultSlot = true })
 
@@ -47,7 +60,7 @@ it('previews the exact batch parameters before preparing and only sends after co
 
   await wrapper.get('[data-testid="batch-review"]').trigger('click')
   await vi.waitFor(() => expect(bridge.invoke).toHaveBeenCalledTimes(2))
-  expect(bridge.invoke.mock.calls[1]).toEqual(['email_send_batch', previewParams])
+  expect(bridge.invoke.mock.calls[1]).toEqual(['email_send_batch', previewParams, undefined])
   expect(bridge.invoke).toHaveBeenCalledTimes(2)
 
   await wrapper.get('[data-testid="confirmation-approve"]').trigger('click')

@@ -222,3 +222,18 @@ curl -s "${AUTH[@]}" -H 'Content-Type: application/json' \
 
 curl -s "${AUTH[@]}" "$H/api/plugin-runtime/fan.summer.excel/files/export/$OUT_REF" -o "$WORK/r.zip"
 unzip -l "$WORK/r.zip" | grep -q '\.xlsx' && echo "PASS: excel archive" || fail "excel archive"
+
+# Active orphan check (graceful-shutdown reap): SIGTERM the backend and assert its @PreDestroy
+# reaps every plugin worker — no worker JVM may outlive the backend (a survivor would orphan and
+# hold resources, e.g. an exclusive embedded-DB lock). Covers the shutdown-reap path; crash/cancel
+# reap need a richer harness (real iframe UI, per-plugin $/cancelRequest, AI-tool invocation) that
+# this HTTP smoke does not provide — see the T2-P5 record for the exact coverage boundary.
+kill "${SRV:-}" 2>/dev/null || true
+SRV=""
+sleep 3
+ORPHANS="$(pgrep -f 'backend/worker.jar' 2>/dev/null || true)"
+if [ -n "$ORPHANS" ]; then
+  echo "FAIL: orphan plugin-worker process(es) survived backend shutdown: $ORPHANS" >&2
+  exit 1
+fi
+echo "PASS: no orphan plugin-worker processes after backend shutdown"

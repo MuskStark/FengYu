@@ -40,7 +40,7 @@ const replacementSourceRef: FileRef = {
 
 const analyzeSuccess = {
   success: true,
-  sheets: { Sales: { A: 'Region', B: 'Amount' } },
+  sheets: [{ name: 'Sales', columns: [{ index: '0', header: 'Region' }, { index: '1', header: 'Amount' }] }],
 }
 
 type FakeClientOverrides = Omit<Partial<FengYuClient>, 'files'> & {
@@ -203,6 +203,41 @@ describe('ExcelSplitter stateful wizard', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
+  })
+
+  it('aborts an in-flight restore analyze when the component unmounts', async () => {
+    // A stored record triggers restoreProgress → validateSource on mount, which fires analyze with
+    // the restore controller's AbortSignal. Unmounting must abort that signal so the in-flight call
+    // is transport-cancelled and its late resolution never mutates unmounted state.
+    saveExcelWizardRecord(sessionStorage, storedRecord('mode'))
+    let resolveAnalyze!: (value: unknown) => void
+    const analyzePromise = new Promise((resolve) => { resolveAnalyze = resolve })
+    let capturedSignal: AbortSignal | undefined
+    const invoke = vi.fn().mockImplementation(
+      (method: string, _params: unknown, options?: { signal?: AbortSignal }) => {
+        if (method === 'analyze') {
+          capturedSignal = options?.signal
+          return analyzePromise
+        }
+        return Promise.resolve({ success: true })
+      },
+    )
+    const client = fakeClient({ invoke: invoke as FengYuClient['invoke'] })
+    const wrapper = mountSplitter(client)
+    await flushPromises() // restoreProgress → validateSource → invoke('analyze', …, { signal })
+
+    expect(invoke).toHaveBeenCalledWith(
+      'analyze', expect.anything(), expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+    expect(capturedSignal?.aborted, 'signal is live while mounted').toBe(false)
+
+    wrapper.unmount() // onBeforeUnmount → cancelRestore → restoreController.abort()
+
+    expect(capturedSignal?.aborted, 'unmount must abort the in-flight analyze signal').toBe(true)
+
+    // Resolving the now-stale request after unmount must not throw or mutate anything.
+    resolveAnalyze({ success: true, sheets: [] })
+    await flushPromises()
   })
 
   it('validates a selected source once and advances only after analyze succeeds', async () => {
@@ -739,7 +774,7 @@ describe('ExcelSplitter stateful wizard', () => {
     await next(wrapper) // configure + estimate fire here
 
     expect(invoke.mock.calls.filter(([method]) => method === 'estimate'))
-      .toEqual([['estimate', { session: 'new-session' }]])
+      .toEqual([['estimate', { session: 'new-session' }, undefined]])
     await flushPromises()
     expect(wrapper.text()).toContain('Expected files')
     expect(wrapper.text()).toContain('3')
@@ -855,12 +890,12 @@ describe('ExcelSplitter stateful wizard', () => {
   it.each([
     [
       'sheet',
-      { Archive: { A: 'Region' } },
+      [{ name: 'Archive', columns: [{ index: '0', header: 'Region' }] }],
       'Choose a sheet from the analyzed workbook',
     ],
     [
       'column',
-      { Sales: { A: 'Customer', B: 'Amount' } },
+      [{ name: 'Sales', columns: [{ index: '0', header: 'Customer' }, { index: '1', header: 'Amount' }] }],
       'Choose a column from the analyzed sheet',
     ],
   ])(
@@ -929,7 +964,7 @@ describe('ExcelSplitter stateful wizard', () => {
       if (method === 'analyze') {
         return Promise.resolve((params.sourceFile as FileRef).id === sourceRef.id
           ? analyzeSuccess
-          : { success: true, sheets: { Replacement: { A: 'Fresh value' } } })
+          : { success: true, sheets: [{ name: 'Replacement', columns: [{ index: '0', header: 'Fresh value' }] }] })
       }
       return Promise.reject(new Error(`Unexpected method: ${method}`))
     })
@@ -968,7 +1003,7 @@ describe('ExcelSplitter stateful wizard', () => {
         if ((params.sourceFile as FileRef).id === sourceRef.id) return restoreAnalyze
         return Promise.resolve({
           success: true,
-          sheets: { Replacement: { A: 'Fresh value' } },
+          sheets: [{ name: 'Replacement', columns: [{ index: '0', header: 'Fresh value' }] }],
         })
       })
       const wrapper = mountSplitter(fakeClient({
@@ -983,7 +1018,7 @@ describe('ExcelSplitter stateful wizard', () => {
       expect(step(wrapper, 'mode').attributes('aria-current')).toBe('step')
 
       if (settlement === 'resolve') {
-        resolveRestore({ success: true, sheets: { Stale: { A: 'Old value' } } })
+        resolveRestore({ success: true, sheets: [{ name: 'Stale', columns: [{ index: '0', header: 'Old value' }] }] })
       } else {
         rejectRestore(new Error('Old restore failed'))
       }

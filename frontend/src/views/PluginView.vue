@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { nextTick, onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { usePluginsStore } from '@/stores/plugins'
@@ -30,7 +30,8 @@ const loading = ref(true)
 const bridgeListening = ref(false)
 const bridgeReady = ref(false)
 const frameKey = ref(0)
-let pluginHandshakeTimeout: ReturnType<typeof setTimeout> | undefined
+const frameUrl = ref('about:blank')
+let activeFrameWindow: Window | null = null
 const activeInvokes = new Map<string, AbortController>()
 const desktop = makeDesktop()
 const pluginUrl = () => {
@@ -42,25 +43,26 @@ const pluginOrigin = () => {
   return url ? new URL(url, window.location.href).origin : undefined
 }
 
-function respond(id: string, result?: unknown, error?: HostError) {
+function respond(id: string, result?: unknown, error?: HostError, target: Window | null = activeFrameWindow) {
   const targetOrigin = pluginOrigin()
-  if (!targetOrigin) return
-  frame.value?.contentWindow?.postMessage(
+  if (!targetOrigin || !target) return
+  target.postMessage(
     { source: HOST_MESSAGE_SOURCE, type: 'response', protocolVersion: PROTOCOL_VERSION, id, result, error },
     targetOrigin,
   )
 }
 
-function clearPluginHandshakeTimeout() {
-  if (pluginHandshakeTimeout !== undefined) clearTimeout(pluginHandshakeTimeout)
-  pluginHandshakeTimeout = undefined
-}
-
 async function onMessage(event: MessageEvent) {
-  if (event.source !== frame.value?.contentWindow) return
   if (event.origin !== pluginOrigin()) return
   if (!isPluginMessage(event.data)) return
   const request = event.data
+  // WebKit can replace the iframe's WindowProxy while navigating away from about:blank. Adopt the
+  // source only for the bootstrap request after origin/protocol validation; all later messages stay
+  // pinned to that exact window.
+  if (event.source !== activeFrameWindow) {
+    if (request.type !== 'request' || request.method !== HOST_METHODS.ready || !event.source) return
+    activeFrameWindow = event.source as Window
+  }
   if (request.type === 'cancel') {
     activeInvokes.get(request.id)?.abort()
     activeInvokes.delete(request.id)
@@ -93,10 +95,9 @@ async function onMessage(event: MessageEvent) {
         theme: theme.theme, locale: settings.language,
         platform: desktop ? 'desktop' : 'web',
         capabilities: HOST_CAPABILITIES,
-      })
+      }, undefined, event.source as Window)
       bridgeReady.value = true
       loading.value = false
-      clearPluginHandshakeTimeout()
     } else if (request.method === HOST_METHODS.notify) {
       console.info(`[${props.id}]`, request.params?.message)
       respond(request.id, true)
@@ -172,30 +173,29 @@ async function onMessage(event: MessageEvent) {
 
 function sendEnvironment() {
   const targetOrigin = pluginOrigin()
-  if (!targetOrigin) return
-  frame.value?.contentWindow?.postMessage(
+  if (!targetOrigin || !activeFrameWindow) return
+  activeFrameWindow.postMessage(
     { source: HOST_MESSAGE_SOURCE, type: 'event', protocolVersion: PROTOCOL_VERSION, event: 'environment', data: { theme: theme.theme, locale: settings.language } },
     targetOrigin,
   )
 }
 
 function onFrameLoad() {
+  if (frameUrl.value === 'about:blank') return
   sendEnvironment()
-  clearPluginHandshakeTimeout()
-  if (!bridgeReady.value) {
-    pluginHandshakeTimeout = setTimeout(() => {
-      loading.value = false
-      error.value = t('plugin.handshakeTimeout')
-    }, 8_000)
-  }
+  loading.value = false
 }
 
-function retryPlugin() {
-  clearPluginHandshakeTimeout()
+async function retryPlugin() {
   error.value = null
   loading.value = true
   bridgeReady.value = false
+  frameUrl.value = 'about:blank'
   frameKey.value += 1
+  await nextTick()
+  activeFrameWindow = frame.value?.contentWindow ?? null
+  const targetUrl = pluginUrl() ?? 'about:blank'
+  frameUrl.value = targetUrl
 }
 
 onBeforeMount(() => {
@@ -204,15 +204,22 @@ onBeforeMount(() => {
 })
 onMounted(async () => {
   if (!plugins.plugins.length) await plugins.load()
-  if (!plugins.byId(props.id)) error.value = t('plugin.unknown', { id: props.id })
+  if (!plugins.byId(props.id)) {
+    error.value = t('plugin.unknown', { id: props.id })
+    return
+  }
+  await nextTick()
+  activeFrameWindow = frame.value?.contentWindow ?? null
+  const targetUrl = pluginUrl() ?? 'about:blank'
+  frameUrl.value = targetUrl
 })
 watch(() => theme.theme, sendEnvironment)
 watch(() => settings.language, sendEnvironment)
-watch(() => props.id, retryPlugin)
+watch(() => props.id, () => void retryPlugin())
 onBeforeUnmount(() => {
   activeInvokes.forEach(controller => controller.abort())
   activeInvokes.clear()
-  clearPluginHandshakeTimeout()
+  activeFrameWindow = null
   window.removeEventListener('message', onMessage)
 })
 </script>
@@ -234,7 +241,7 @@ onBeforeUnmount(() => {
         :key="frameKey"
         ref="frame"
         class="plugin-frame"
-        :src="pluginUrl()"
+        :src="frameUrl"
         sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"
         referrerpolicy="no-referrer"
         @load="onFrameLoad"

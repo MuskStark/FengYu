@@ -145,10 +145,10 @@ public class AiConfigService {
         return 2048;
     }
 
-    /** Returns the system prompt; defaults to "You are a helpful assistant." */
+    /** Returns the user-configured system prompt, or Infinia's default assistant prompt. */
     public static String getAiSystemPrompt() {
         String val = INSTANCE.readSetting(AI_SYSTEM_PROMPT_KEY, null);
-        return (val != null && !val.isBlank()) ? val : "You are a helpful assistant.";
+        return (val != null && !val.isBlank()) ? val : SystemPrompts.DEFAULT_CHAT;
     }
 
     /** Returns the local backend type: {@code "java"} or {@code "native"}. */

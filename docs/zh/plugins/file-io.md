@@ -70,8 +70,11 @@ await fengyu.files.export(outDir)                                     // → GET
 `workspaceDirectory()` 需要 `files.write`；桌面端返回用户选择的原生目录，浏览器端返回可写的上传工作副本。请把每个 FileRef 直接传进 RPC，不要只提取其 `id`，这样宿主才能识别并改写完整的 `{id, kind, access}` 对象：
 
 ```js
-const analysis = await fengyu.invoke('analyze', { filePath: file })
-await fengyu.invoke('excel_execute', { outputDir: outDir, filePrefix: 'q3-' })
+import { createPluginRpc } from './generated/fengyu-rpc'
+const rpc = createPluginRpc(fengyu)
+
+const analysis = await rpc.analyze({ filePath: file })
+await rpc.excelExecute({ outputDir: outDir, filePrefix: 'q3-' })
 ```
 
 此流程的端到端讲解见 [官方插件——Excel](/zh/plugins/official-excel)。

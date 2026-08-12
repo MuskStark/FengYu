@@ -31,7 +31,7 @@ my-plugin/
     └── src/test/java/…/PluginDevMain.java
 ```
 
-项目不再包含 `fengyu.plugin.json`。CLI 使用 npm 的 `dev`、可选 `test`、`build` scripts，
+项目不再包含旧版独立配置文件（已统一为 `manifest.json`）。CLI 使用 npm 的 `dev`、可选 `test`、`build` scripts，
 以及 Maven 的 `test`、`package` 生命周期。Worker 构建必须产出唯一的
 `worker/target/*-worker.jar`。
 

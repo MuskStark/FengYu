@@ -2,8 +2,18 @@
 package fan.summer.email.generated;
 
 import com.google.gson.annotations.SerializedName;
+import java.util.List;
 
 public record EmailConfigsListOutput(
+    @SerializedName("configs") List<EmailConfigsListOutputConfigs> configs,
     @SerializedName("success") boolean success,
     @SerializedName("summary") String summary
-) {}
+) {
+  public record EmailConfigsListOutputConfigs(
+      @SerializedName("configJson") String configJson,
+      @SerializedName("createdAt") String createdAt,
+      @SerializedName("id") int id,
+      @SerializedName("mode") String mode,
+      @SerializedName("name") String name
+  ) {}
+}

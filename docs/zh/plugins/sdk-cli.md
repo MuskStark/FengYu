@@ -55,20 +55,21 @@ interface InvokeOptions { signal?: AbortSignal; timeoutMs?: number }
 
 ## Java Worker SDK
 
-制品 `fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.3.0`（独立版本化，发布到 GitHub Packages）。包 `fan.summer.fengyu.sdk`。运行时是 `JsonRpcWorker`；处理器实现 `@FunctionalInterface PluginHandler`：
+制品 `fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.3.0`（独立版本化，发布到 GitHub Packages）。包 `fan.summer.fengyu.sdk`。运行时是 `JsonRpcWorker`；处理器实现类型化 `@FunctionalInterface RpcHandler<I, O>`：
 
 ```java
-Object handle(Map<String, Object> params) throws Exception
+O handle(I input, RpcContext ctx) throws Exception
 ```
 
-把处理器注册抽到一个共享工厂里，让生产入口和 IDE 调试入口运行完全相同的代码：
+`I` 与 `O` 是依据 `manifest.json` 的 `rpc.methods` 生成的 `*Input`/`*Output` 记录，方法名常量则集中在生成的 `PluginMethods` 中。把处理器注册抽到一个共享工厂里，让生产入口和 IDE 调试入口运行完全相同的代码：
 
 ```java
 public final class MyWorker {
     private MyWorker() {}
     public static JsonRpcWorker create() {
         return new JsonRpcWorker()
-            .on("hello", MyHandler::handle);         // 每次调用注册一个方法
+            .method(PluginMethods.HELLO, HelloInput.class, HelloOutput.class,
+                (HelloInput in, RpcContext ctx) -> MyHandler.handle(in, ctx));   // 每次调用注册一个方法
     }
 }
 ```
@@ -83,7 +84,7 @@ public final class MyWorkerMain {
 }
 ```
 
-- `on(method, handler)` 会拒绝重复、空白方法名以及 `null` 处理器。
+- `method(name, inputClass, outputClass, handler)` 会拒绝重复、空白方法名以及 `null` 处理器；它反序列化入参、绑定 `RpcContext`，再把返回的 `*Output` 序列化回响应。
 - `run()` 在运行循环期间把 `System.out` 重定向到 `System.err`——保持协议输出的干净。
   `run(InputStream, OutputStream)`（接收显式输入/输出流的重载）也应用同样的重定向，因此两个 stdio
   入口都强制"stdout 仅用于 JSON-RPC"契约。
@@ -92,8 +93,7 @@ public final class MyWorkerMain {
 - `serve(RpcTransport)`（1.1.0 新增）在任意传输层上驱动同一个 dispatch 循环，**不做**
   `System.setOut` 重定向——该行为仅属于 stdio 入口。devkit 的回环 TCP 服务器用 `serve()` 把你的处理器暴露给 IDE。
 - 严格请求解析会暴露规范的 JSON-RPC 错误码：`-32700`（解析错误）、`-32600`（非法请求——方法缺失/空白或 `jsonrpc` 版本错误）、`-32601`（未知方法）和 `-32000`（处理器失败）。只要请求 `id` 可解析，就会被原样回传。
-- 抛出 `JsonRpcWorker.RpcException(code, message)` 以返回结构化错误；其他异常都以 `-32000` 上报。
-- 辅助方法：`JsonRpcWorker.string(params, key)`、`JsonRpcWorker.integer(params, key, fallback)`。
+- 抛出 `RpcException(code, message)` 以返回结构化错误；其他异常都以 `-32000` 上报。
 - 用 `maven-shade-plugin` 构建 shaded fat JAR；把 `mainClass` 设为你的 `*WorkerMain`。参见 [构建与部署](/zh/plugins/build-deploy)。
 
 ### 数据库环境
@@ -146,7 +146,7 @@ Debug PluginDevMain.main()        # → 监听 127.0.0.1:24057
 | `check [path]` | — | 不打包，校验 manifest 与标准 UI/Worker 布局。 |
 | `build [path]` | `--out <file>`、`--skip-tests` | 执行 npm/Maven 生命周期、校验 staging，并原子写入 `.fyp` 与校验和。 |
 
-不再支持 `fengyu.plugin.json` 与任意命令数组。标准布局使用 `ui-src/package.json` 和
+不再支持旧版独立配置文件（已统一为 `manifest.json`）与任意命令数组。标准布局使用 `ui-src/package.json` 和
 `worker/pom.xml`（或根 `pom.xml`）；Worker 必须产出唯一的 `target/*-worker.jar`。默认输出为
 `dist/<id>-<version>.fyp`。
 
