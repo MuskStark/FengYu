@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { api } from '@/api/client'
+import { localeRef } from '@/i18n'
 import type { PluginDescriptor } from '@/api/types'
 
 export const usePluginsStore = defineStore('plugins', () => {
@@ -20,6 +21,11 @@ export const usePluginsStore = defineStore('plugins', () => {
       loading.value = false
     }
   }
+
+  // Plugin name/description are resolved server-side per request locale (each manifest's i18n
+  // block), so re-fetch when the UI language changes so the cards (ToolGrid, PluginView) track the
+  // new language without a manual page reload.
+  watch(localeRef, () => { void load() })
 
   function byId(id: string): PluginDescriptor | undefined {
     return plugins.value.find((p) => p.id === id)
