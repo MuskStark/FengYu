@@ -265,6 +265,11 @@ public final class JsonRpcWorker {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> params = request.get("params") instanceof Map<?, ?> map
                         ? (Map<String, Object>) map : Map.of();
+                    // The request locale rides in the reserved top-level `_fengyu` envelope (so it
+                    // never collides with a plugin method's own `locale` input field). Fall back to
+                    // the legacy `params.locale` key for backward compat with an older host that has
+                    // not yet adopted the reserved channel.
+                    final String requestLocale = localeOf(request, params);
 
                     // Built-in logging-control notification (unchanged behaviour).
                     if (PluginLogging.SET_LEVEL_METHOD.equals(method)) {
@@ -285,19 +290,22 @@ public final class JsonRpcWorker {
                     }
 
                     final CancellationToken token = new CancellationToken();
+                    final PendingCall created;
                     if (id != null) {
                         // A duplicate request id while the first call is still in flight violates
                         // JSON-RPC's id-uniqueness; cancel the older call so its thread frees and
                         // its token reports CANCELLED, then track the new call under the same id.
-                        PendingCall created = new PendingCall(token);
+                        created = new PendingCall(token);
                         PendingCall previous = pending.put(id, created);
                         if (previous != null) previous.cancel();
+                    } else {
+                        created = null;
                     }
                     final PluginHandler handler = handlers.get(method);
                     final Object fid = id;
                     final String fmethod = method;
                     final Map<String, Object> fparams = params;
-                    pool.submit(() -> dispatchOne(transport, writeLock, fid, fmethod, fparams, handler, token, pending));
+                    pool.submit(() -> dispatchOne(transport, writeLock, fid, fmethod, fparams, requestLocale, handler, token, created, pending));
                 } catch (RpcException e) {
                     Object errId = e.requestId() != null ? e.requestId() : id;
                     Map<String, Object> resp = envelope(errId);
@@ -319,16 +327,23 @@ public final class JsonRpcWorker {
     }
 
     private void dispatchOne(RpcTransport transport, Object writeLock, Object id, String method,
-            Map<String, Object> params, PluginHandler handler, CancellationToken token,
-            ConcurrentMap<Object, PendingCall> pending) {
+            Map<String, Object> params, String requestLocale, PluginHandler handler,
+            CancellationToken token, PendingCall call, ConcurrentMap<Object, PendingCall> pending) {
         Map<String, Object> resp = envelope(id);
-        // Register this call's thread so a $/cancelRequest that lands mid-handler can interrupt it.
-        if (id != null) {
-            PendingCall call = pending.get(id);
-            if (call != null) call.thread = Thread.currentThread();
+        // Register this call's own thread so a $/cancelRequest that lands mid-handler can interrupt
+        // it. We use the specific PendingCall captured at dispatch time (not pending.get(id)) so a
+        // duplicate-id call that replaced this slot cannot steal or clobber our interrupt target.
+        if (call != null) {
+            call.thread = Thread.currentThread();
         }
         RpcContext.bind(new RpcContext(id == null ? null : id.toString(), pluginId, pluginRoot,
-                str(params, "locale"), token, log));
+                requestLocale, token, log));
+        // Bind WorkerLocale too so message-bundle resolution (PluginMessages / PluginHandlerSupport.t)
+        // honours the request locale on this handler thread. Previously only Jobs propagated it, so
+        // synchronous handlers resolved messages in English regardless of the request locale. Cleared
+        // in the finally below; the InheritableThreadLocal means any Jobs thread spawned from here
+        // inherits the correct locale until that clear runs.
+        WorkerLocale.set(requestLocale);
         try {
             token.throwIfCancelled();
             if (handler == null) {
@@ -360,7 +375,10 @@ public final class JsonRpcWorker {
         } finally {
             RpcContext.clear();
             WorkerLocale.clear();
-            if (id != null) pending.remove(id);
+            // Remove only OUR entry: a duplicate-id call may have already replaced this slot, and
+            // removing by key alone would drop the newer call's PendingCall (breaking its
+            // cancellation). remove(key, value) is a no-op when the slot no longer maps to `call`.
+            if (call != null) pending.remove(id, call);
             try {
                 writeFrame(transport, writeLock, resp);
             } catch (Exception e) {
@@ -417,6 +435,21 @@ public final class JsonRpcWorker {
     private static String str(Map<String, Object> params, String key) {
         Object value = params.get(key);
         return value == null ? null : value.toString();
+    }
+
+    /**
+     * Resolve the request locale from its reserved channel: the top-level {@code _fengyu.locale}
+     * envelope preferred (host-owned, never collides with a plugin method's own {@code locale}
+     * input field), falling back to the legacy {@code params.locale} key for a host that has not
+     * yet adopted the reserved channel. Returns {@code null} when neither is present.
+     */
+    private static String localeOf(Map<String, Object> request, Map<String, Object> params) {
+        Object meta = request.get("_fengyu");
+        if (meta instanceof Map<?, ?> fengyu) {
+            Object locale = fengyu.get("locale");
+            if (locale != null) return locale.toString();
+        }
+        return str(params, "locale");
     }
 
     /**
