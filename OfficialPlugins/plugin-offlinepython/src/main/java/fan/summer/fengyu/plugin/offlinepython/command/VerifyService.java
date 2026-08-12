@@ -7,6 +7,8 @@ import fan.summer.fengyu.plugin.offlinepython.domain.Status;
 import fan.summer.fengyu.plugin.offlinepython.domain.VerifyResult;
 import fan.summer.fengyu.plugin.offlinepython.domain.WheelEntry;
 import fan.summer.fengyu.plugin.offlinepython.infra.HashUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -16,6 +18,8 @@ import java.util.List;
 
 /** Verifies an output/ repository against its manifest (no subprocess calls). */
 public class VerifyService {
+
+    private static final Logger log = LoggerFactory.getLogger(VerifyService.class);
 
     public VerifyResult verify(Path outputDir, Manifest manifest) {
         return verify(outputDir, manifest, fan.summer.fengyu.plugin.offlinepython.domain.VerifyScope.ALL);
@@ -43,6 +47,7 @@ public class VerifyService {
                 if (!Files.exists(f)) problems.add("missing: " + w.getFile());
                 else if (Files.size(f) == 0) problems.add("empty: " + w.getFile());
             } catch (IOException e) {
+                log.debug("cannot stat wheel during integrity check: {}", w.getFile(), e);
                 problems.add("cannot stat: " + w.getFile());
             }
         }
@@ -65,7 +70,11 @@ public class VerifyService {
             if (!Files.exists(f)) { problems.add("cannot hash missing " + w.getFile()); continue; }
             String actual;
             try { actual = HashUtil.sha256Hex(f); }
-            catch (IOException e) { problems.add("hash error " + w.getFile()); continue; }
+            catch (IOException e) {
+                log.debug("cannot hash wheel during sha256 check: {}", w.getFile(), e);
+                problems.add("hash error " + w.getFile());
+                continue;
+            }
             if (!actual.equalsIgnoreCase(w.getSha256()))
                 problems.add("hash mismatch: " + w.getFile());
         }

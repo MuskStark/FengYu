@@ -5,6 +5,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import fan.summer.fengyu.plugin.offlinepython.domain.PlatformCatalog;
 import fan.summer.fengyu.plugin.offlinepython.infra.ProcessRunner;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -23,6 +25,8 @@ import java.util.regex.Pattern;
  * the live calls are thin wrappers.
  */
 public final class DepsService {
+
+    private static final Logger log = LoggerFactory.getLogger(DepsService.class);
 
     private static final Pattern FIRST_VERSION = Pattern.compile("\\(([0-9][^)]*)\\)");
     private static final HttpClient HTTP = HttpClient.newBuilder()
@@ -47,6 +51,7 @@ public final class DepsService {
             HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
             return parsePyPIWheelSize(resp.body(), platform, ver);
         } catch (Exception e) {
+            log.warn("PyPI size lookup failed for {}@{} on {}: {}", pkg, versionSpec, platform, e.toString());
             return 0L;
         }
     }
@@ -78,6 +83,7 @@ public final class DepsService {
             }
             return fallback;
         } catch (Exception ex) {
+            log.debug("PyPI size parse fallback to 0", ex);
             return 0L;
         }
     }
@@ -92,6 +98,7 @@ public final class DepsService {
             HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
             return parseWheels(resp.body());
         } catch (Exception e) {
+            log.warn("PyPI wheel search failed for {}: {}", pkg, e.toString());
             return List.of();
         }
     }
@@ -118,6 +125,7 @@ public final class DepsService {
             }
             return out;
         } catch (Exception ex) {
+            log.debug("PyPI wheels parse fallback to empty", ex);
             return List.of();
         }
     }
