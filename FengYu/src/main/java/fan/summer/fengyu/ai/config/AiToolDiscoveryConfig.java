@@ -9,6 +9,8 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.ObjectProvider;
+import fan.summer.fengyu.ai.workflow.WorkflowExecutionService;
+import fan.summer.fengyu.ai.workflow.WorkflowService;
 
 import java.util.List;
 
@@ -50,9 +52,12 @@ public class AiToolDiscoveryConfig {
     @Bean
     public AiToolRegistry aiToolRegistry(List<FengYuTool> tools, OfficialPluginSeeder seeder,
             PluginPackageService packages, PluginProcessManager processes,
-            ObjectProvider<SyncMcpToolCallbackProvider> mcpProvider) {
+            ObjectProvider<SyncMcpToolCallbackProvider> mcpProvider,
+            ObjectProvider<WorkflowService> workflowProvider,
+            ObjectProvider<WorkflowExecutionService> workflowExecutionProvider) {
         seeder.seed();
-        return new AiToolRegistry(tools, packages, processes, mcpProvider);
+        return new AiToolRegistry(tools, packages, processes, mcpProvider,
+                workflowProvider, workflowExecutionProvider);
     }
 
     /** Startup snapshot retained for chat-backend compatibility; Agent uses the live registry. */

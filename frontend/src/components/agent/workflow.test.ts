@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { reconcileWorkflowArguments, topologicallySortWorkflowNodes, wouldCreateCycle } from './workflow'
+import {
+  humanizeWorkflowField,
+  humanizeWorkflowToolName,
+  missingRequiredWorkflowInputs,
+  reconcileWorkflowArguments,
+  topologicallySortWorkflowNodes,
+  workflowInputSummaries,
+  workflowOutputSummaries,
+  workflowToolCategory,
+  wouldCreateCycle,
+} from './workflow'
 
 describe('workflow graph helpers', () => {
   const nodes = [
@@ -48,5 +58,59 @@ describe('reconcileWorkflowArguments', () => {
 
   it('does not destroy invalid advanced JSON during a catalog refresh', () => {
     expect(reconcileWorkflowArguments('{unfinished', '{"type":"object"}')).toBe('{unfinished')
+  })
+})
+
+describe('workflow schema presentation', () => {
+  const inputSchema = JSON.stringify({
+    type: 'object',
+    properties: {
+      sourceFile: { type: 'string', description: 'Workbook path' },
+      split_mode: { type: 'string', title: 'Split method', enum: ['sheet', 'column'] },
+      sendEmail: { type: 'boolean' },
+    },
+    required: ['sourceFile', 'split_mode'],
+  })
+
+  it('turns technical names into readable labels', () => {
+    expect(humanizeWorkflowField('sourceFile')).toBe('Source File')
+    expect(humanizeWorkflowField('split_mode')).toBe('Split mode')
+    expect(humanizeWorkflowField('apiUrl')).toBe('API URL')
+    expect(humanizeWorkflowToolName('browser_navigate')).toBe('Browser Navigate')
+    expect(workflowToolCategory({ name: 'browser_navigate', pluginId: null })).toBe('browser')
+  })
+
+  it('summarizes manual values, workflow inputs, and node outputs', () => {
+    const summaries = workflowInputSummaries(inputSchema, JSON.stringify({
+      sourceFile: '{{inputs.workbookPath}}',
+      split_mode: '{{node.node_2.result.mode}}',
+      sendEmail: false,
+    }))
+    expect(summaries).toEqual([
+      expect.objectContaining({ label: 'Source File', source: 'workflow', configured: true, value: 'Workbook Path' }),
+      expect.objectContaining({ label: 'Split method', source: 'node', configured: true, value: 'node_2 · Mode' }),
+      expect.objectContaining({ label: 'Send Email', source: 'manual', configured: true, value: 'false' }),
+    ])
+  })
+
+  it('reports missing required values without treating false or zero as empty', () => {
+    expect(missingRequiredWorkflowInputs(inputSchema, '{"sourceFile":"","split_mode":"sheet","sendEmail":false}'))
+      .toEqual(['sourceFile'])
+  })
+
+  it('exposes user-facing output labels while hiding protocol fields', () => {
+    const outputs = workflowOutputSummaries(JSON.stringify({
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        summary: { type: 'string' },
+        fileCount: { type: 'integer' },
+        output_path: { type: 'string', title: 'Saved file' },
+      },
+    }))
+    expect(outputs).toEqual([
+      { name: 'fileCount', label: 'File Count', type: 'integer' },
+      { name: 'output_path', label: 'Saved file', type: 'string' },
+    ])
   })
 })

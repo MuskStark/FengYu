@@ -11,6 +11,8 @@ import fan.summer.fengyu.ai.tools.ApprovalRequiredToolCallback;
 import fan.summer.fengyu.ai.tools.AuditedToolCallback;
 import fan.summer.fengyu.ai.tools.ToolEffect;
 import fan.summer.fengyu.ai.tools.ToolEffectProvider;
+import fan.summer.fengyu.ai.workflow.WorkflowExecutionService;
+import fan.summer.fengyu.ai.workflow.WorkflowService;
 import fan.summer.fengyu.plugin.market.ManifestI18n;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
 import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
@@ -40,6 +42,8 @@ public final class AiToolRegistry {
     private final PluginPackageService packages;
     private final PluginProcessManager processes;
     private final ObjectProvider<SyncMcpToolCallbackProvider> mcpProvider;
+    private final ObjectProvider<WorkflowService> workflowProvider;
+    private final ObjectProvider<WorkflowExecutionService> workflowExecutionProvider;
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
 
     /** When the desktop shell provides built-in browser tools, suppress the legacy plugin's tools to avoid name collisions. */
@@ -52,6 +56,13 @@ public final class AiToolRegistry {
 
     public AiToolRegistry(List<FengYuTool> tools, PluginPackageService packages,
             PluginProcessManager processes, ObjectProvider<SyncMcpToolCallbackProvider> mcpProvider) {
+        this(tools, packages, processes, mcpProvider, null, null);
+    }
+
+    public AiToolRegistry(List<FengYuTool> tools, PluginPackageService packages,
+            PluginProcessManager processes, ObjectProvider<SyncMcpToolCallbackProvider> mcpProvider,
+            ObjectProvider<WorkflowService> workflowProvider,
+            ObjectProvider<WorkflowExecutionService> workflowExecutionProvider) {
         List<ToolCallback> callbacks = new ArrayList<>();
         for (FengYuTool toolBean : tools) {
             for (ToolCallback callback : ToolCallbacks.from(toolBean)) {
@@ -69,6 +80,8 @@ public final class AiToolRegistry {
         this.packages = packages;
         this.processes = processes;
         this.mcpProvider = mcpProvider;
+        this.workflowProvider = workflowProvider;
+        this.workflowExecutionProvider = workflowExecutionProvider;
     }
 
     /** An immutable, internally consistent snapshot for one planning/execution operation. */
@@ -83,6 +96,14 @@ public final class AiToolRegistry {
         if (provider != null) {
             for (ToolCallback callback : provider.getToolCallbacks()) {
                 callbacks.add(audited(callback, ToolEffect.EXTERNAL));
+            }
+        }
+        WorkflowService workflowService = workflowProvider == null ? null : workflowProvider.getIfAvailable();
+        WorkflowExecutionService executionService = workflowExecutionProvider == null
+                ? null : workflowExecutionProvider.getIfAvailable();
+        if (workflowService != null && executionService != null) {
+            for (var workflow : workflowService.published()) {
+                callbacks.add(workflowCallback(workflow, workflowService, executionService));
             }
         }
         return List.copyOf(callbacks);
@@ -123,7 +144,52 @@ public final class AiToolRegistry {
                 descriptors.add(descriptor("mcp:" + definition.name(), "mcp", definition, null, null));
             }
         }
+        WorkflowService workflowService = workflowProvider == null ? null : workflowProvider.getIfAvailable();
+        if (workflowService != null) {
+            for (var workflow : workflowService.published()) {
+                String toolName = workflowToolName(workflow.id());
+                ToolDefinition definition = ToolDefinition.builder()
+                        .name(toolName)
+                        .description(workflowToolDescription(workflow.name(), workflow.description()))
+                        .inputSchema(workflowService.inputSchemaJson(workflow))
+                        .build();
+                descriptors.add(descriptor("workflow:" + workflow.id(), "workflow", definition,
+                        "{\"type\":\"object\"}", null));
+            }
+        }
         return List.copyOf(descriptors);
+    }
+
+    private ToolCallback workflowCallback(fan.summer.fengyu.ai.workflow.WorkflowDefinition workflow,
+            WorkflowService workflowService, WorkflowExecutionService executionService) {
+        return new AuditedToolCallback() {
+            private final ToolDefinition definition = ToolDefinition.builder()
+                    .name(workflowToolName(workflow.id()))
+                    .description(workflowToolDescription(workflow.name(), workflow.description()))
+                    .inputSchema(workflowService.inputSchemaJson(workflow))
+                    .build();
+
+            @Override public ToolDefinition getToolDefinition() { return definition; }
+            @Override public ToolEffect effect() { return ToolEffect.EXTERNAL; }
+            @Override public String call(String input) {
+                try {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> args = json.readValue(input == null ? "{}" : input, Map.class);
+                    return executionService.executeForAi(workflow.id(), args);
+                } catch (Exception error) {
+                    return "{\"success\":false,\"error\":" + quote(String.valueOf(error.getMessage())) + "}";
+                }
+            }
+        };
+    }
+
+    private static String workflowToolName(String id) {
+        return "run_workflow_" + id.replace('-', '_');
+    }
+
+    private static String workflowToolDescription(String name, String description) {
+        String detail = description == null || description.isBlank() ? "" : ": " + description;
+        return "Run the published FengYu workflow '" + name + "'" + detail;
     }
 
     private ToolDescriptor descriptor(String id, String pluginId, ToolDefinition definition,

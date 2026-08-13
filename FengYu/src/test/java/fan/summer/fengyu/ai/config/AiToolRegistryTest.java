@@ -14,11 +14,16 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.beans.factory.ObjectProvider;
+import fan.summer.fengyu.ai.agent.AgentPlan;
+import fan.summer.fengyu.ai.workflow.WorkflowDefinition;
+import fan.summer.fengyu.ai.workflow.WorkflowExecutionService;
+import fan.summer.fengyu.ai.workflow.WorkflowService;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -90,6 +95,39 @@ class AiToolRegistryTest {
                         callback -> ((AuditedToolCallback) callback).effect()));
         assertEquals(ToolEffect.READ, effects.get("inspect_test"));
         assertEquals(ToolEffect.EXTERNAL, effects.get("mutate_test"));
+    }
+
+    @Test
+    void publishedWorkflowIsDiscoveredAndInvokesSharedExecutionService() {
+        PluginPackageService packages = new PluginPackageService(temp.toString());
+        @SuppressWarnings("unchecked")
+        ObjectProvider<SyncMcpToolCallbackProvider> mcp = mock(ObjectProvider.class);
+        WorkflowService workflows = mock(WorkflowService.class);
+        WorkflowExecutionService execution = mock(WorkflowExecutionService.class);
+        WorkflowDefinition workflow = new WorkflowDefinition(
+                "flow-1", "Daily report", "Build the daily report",
+                Map.of("type", "object", "properties", Map.of("date", Map.of("type", "string"))),
+                new AgentPlan("report", List.of(), ""), true, 3,
+                LocalDateTime.now(), LocalDateTime.now());
+        when(workflows.published()).thenReturn(List.of(workflow));
+        when(workflows.inputSchemaJson(workflow)).thenReturn(
+                "{\"type\":\"object\",\"properties\":{\"date\":{\"type\":\"string\"}}}");
+        when(execution.executeForAi("flow-1", Map.of("date", "2026-08-13")))
+                .thenReturn("report ready");
+        @SuppressWarnings("unchecked")
+        ObjectProvider<WorkflowService> workflowProvider = mock(ObjectProvider.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<WorkflowExecutionService> executionProvider = mock(ObjectProvider.class);
+        when(workflowProvider.getIfAvailable()).thenReturn(workflows);
+        when(executionProvider.getIfAvailable()).thenReturn(execution);
+
+        AiToolRegistry registry = new AiToolRegistry(List.of(), packages,
+                mock(PluginProcessManager.class), mcp, workflowProvider, executionProvider);
+
+        assertEquals("run_workflow_flow_1",
+                registry.descriptors(null).getFirst().name());
+        assertEquals("report ready",
+                registry.callbacks().getFirst().call("{\"date\":\"2026-08-13\"}"));
     }
 
     @Test

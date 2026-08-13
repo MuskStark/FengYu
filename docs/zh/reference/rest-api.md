@@ -131,6 +131,21 @@ SSE 端点通过 `X-FengYu-Token` 头进行鉴权——**没有** `?token=` 查�
 | `POST` | `/api/agent/runs/{runId}/resume` | token | 恢复失败/取消运行的未完成步骤，并要求重新审阅计划。 |
 | `GET` | `/api/mcp/status` | token | 已配置的 MCP 连接与发现的工具数量。 |
 
+## 工作流
+
+可复用工作流定义与智能体运行器使用同一份 `AgentPlan` DAG。`inputSchema` 是 JSON Schema
+对象，运行时输入会绑定到 <code v-pre>{{inputs.name}}</code> 占位符；已发布定义会加入实时 AI 工具目录。
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/workflows` | token | 列出当前用户的工作流定义。 |
+| `GET` | `/api/workflows/{workflowId}` | token | 读取一个定义。 |
+| `POST` | `/api/workflows` | token | 通过 `{name, description, inputSchema, plan}` 创建。 |
+| `PUT` | `/api/workflows/{workflowId}` | token | 替换可编辑定义并递增修订号。 |
+| `POST` | `/api/workflows/{workflowId}/publish` | token | 通过 `{published}` 设置发布状态；发布后成为 AI 工具。 |
+| `DELETE` | `/api/workflows/{workflowId}` | token | 删除定义。 |
+| `POST` | `/api/workflows/{workflowId}/run` | token | 使用 `{inputs, config}` 人工运行并返回 `{runId}`；通过标准智能体 SSE 流观察。 |
+
 ## Setup
 
 首次启动向导。所有 endpoint 都绕过令牌过滤器，且仅在 SETUP 模式下存在。参见 [数据库——Setup endpoint](/zh/guide/database#setup-endpoints)。
