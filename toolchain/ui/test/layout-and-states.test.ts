@@ -1,7 +1,14 @@
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { describe, expect, it } from 'vitest'
-import { createFengYuVuetify, FyEmptyState, FyErrorState, FyPluginShell } from '../src'
+import {
+  createFengYuVuetify,
+  FyEmptyState,
+  FyErrorState,
+  FyPluginPage,
+  FyPluginShell,
+  FyProgress,
+} from '../src'
 
 const global = { plugins: [createFengYuVuetify()] }
 
@@ -69,6 +76,39 @@ it('exposes a retry action with readable error text', async () => {
   await wrapper.get('[data-action="retry"]').trigger('click')
   expect(wrapper.text()).toContain('Timed out')
   expect(wrapper.emitted('retry')).toHaveLength(1)
+})
+
+it('renders a navigation-free shell for single-workspace plugins', () => {
+  const wrapper = mount(FyPluginShell, {
+    global,
+    props: { title: 'Markdown' },
+    slots: { default: '<main>Editor</main>' },
+  })
+
+  expect(wrapper.find('.v-navigation-drawer').exists()).toBe(false)
+  expect(wrapper.find('.v-app-bar').exists()).toBe(false)
+  expect(wrapper.text()).toContain('Editor')
+  expect(wrapper.find('.fy-notification-center').exists()).toBe(true)
+})
+
+it('provides a responsive page frame and unified progress presentation', () => {
+  const page = mount(FyPluginPage, {
+    global,
+    props: { maxWidth: 960, fullHeight: true },
+    slots: { default: '<p>Content</p>' },
+  })
+  expect(page.classes()).toContain('fy-plugin-page')
+  expect(page.classes()).toContain('fy-plugin-page--full-height')
+  expect(page.attributes('style')).toContain('max-width: 960px')
+
+  const progress = mount(FyProgress, {
+    global,
+    props: { label: 'Building', detail: '12 files', modelValue: 42, status: 'running' },
+  })
+  expect(progress.attributes('data-status')).toBe('running')
+  expect(progress.text()).toContain('Building')
+  expect(progress.text()).toContain('42%')
+  expect(progress.get('.v-progress-linear').attributes('aria-valuenow')).toBe('42')
 })
 
 describe('FyPluginShell drawer breakpoint', () => {

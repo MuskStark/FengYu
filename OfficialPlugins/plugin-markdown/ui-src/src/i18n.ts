@@ -13,6 +13,7 @@ const en: Messages = {
   'mde.cardTitle': 'Markdown',
   'mde.editor': 'Markdown',
   'mde.preview': 'Preview',
+  'mde.rendering': 'Rendering preview…',
   'mde.renderFailed': 'Render failed',
 }
 
@@ -20,6 +21,7 @@ const zh: Messages = {
   'mde.cardTitle': 'Markdown',
   'mde.editor': 'Markdown',
   'mde.preview': '预览',
+  'mde.rendering': '正在渲染预览…',
   'mde.renderFailed': '渲染失败',
 }
 

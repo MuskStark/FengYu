@@ -6,8 +6,7 @@ import path from 'node:path'
  * Source-level contract for the Codex refinement surface in `codex.css`.
  *
  * The refinement layer gives every plugin that uses `@infinia/plugin-ui` the
- * same polished look bespoke plugin shells (e.g. the email center's TaskRail)
- * achieve by hand: hairline borders, soft elevation, comfortable density, and
+ * same polished look across every official plugin: hairline borders, soft elevation, comfortable density, and
  * primary-tinted active/selection states. Two rules govern this layer:
  *
  * 1. It must be theme-driven — every color resolves through a Vuetify theme
@@ -20,8 +19,7 @@ const css = fs.readFileSync(path.resolve('src', 'styles', 'codex.css'), 'utf8')
 
 describe('codex.css refinement surface', () => {
   it('styles the refined rail chrome hooks', () => {
-    // The rail is icon-only; the brand block was removed, so only the rail
-    // scope, nav list, and active item hooks carry rules.
+    // The shell owns the rail scope, nav list, and active-item hooks.
     for (const hook of ['.fy-shell__rail', '.fy-shell__item', '.fy-shell__item--active']) {
       expect(css, `${hook} rule`).toContain(hook)
     }

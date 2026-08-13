@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { useFengYuClient } from '@infinia/plugin-ui'
+import {
+  FyPageHeader,
+  FyPluginPage,
+  FyPluginShell,
+  FyProgress,
+  useFengYuClient,
+} from '@infinia/plugin-ui'
 import { useFengYuEnvironment } from './env'
 import { createPluginRpc } from './generated/fengyu-rpc'
 
@@ -21,6 +27,7 @@ const SAMPLE = '# Hello FengYu\n\nType **markdown** here.'
 const markdown = ref<string>(SAMPLE)
 const html = ref<string>('')
 const isError = ref<boolean>(false)
+const rendering = ref<boolean>(false)
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -29,10 +36,12 @@ function escapeHtml(s: string): string {
 }
 
 async function render(): Promise<void> {
+  rendering.value = true
   if (!rpc) {
     // No host wiring (standalone) — show the raw source so the pane isn't blank.
     isError.value = false
     html.value = '<pre>' + escapeHtml(markdown.value) + '</pre>'
+    rendering.value = false
     return
   }
   try {
@@ -47,6 +56,8 @@ async function render(): Promise<void> {
   } catch (err) {
     isError.value = true
     html.value = escapeHtml(err instanceof Error ? err.message : String(err))
+  } finally {
+    rendering.value = false
   }
 }
 
@@ -63,8 +74,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <v-app>
-    <v-main>
+  <FyPluginShell :title="t('mde.cardTitle')">
+    <FyPluginPage fluid full-height class="mde-page">
+      <FyPageHeader :title="t('mde.cardTitle')" />
+      <FyProgress v-if="rendering" :label="t('mde.rendering')" class="mde-progress" />
       <v-card variant="outlined" rounded="lg" class="mde-card">
         <v-card-item>
           <v-card-title class="text-subtitle-1">{{ t('mde.cardTitle') }}</v-card-title>
@@ -86,11 +99,18 @@ onBeforeUnmount(() => {
           </div>
         </v-card-text>
       </v-card>
-    </v-main>
-  </v-app>
+    </FyPluginPage>
+  </FyPluginShell>
 </template>
 
 <style scoped>
+.mde-page {
+  display: flex;
+  flex-direction: column;
+}
+
+.mde-progress { margin-bottom: 12px; }
+
 .mde-card {
   width: 100%;
   min-height: 320px;
@@ -205,4 +225,26 @@ onBeforeUnmount(() => {
 .mde-preview-body :deep(td) { border: 1px solid rgba(var(--v-theme-on-surface), 0.12); padding: 4px 8px; }
 .mde-preview-body :deep(img) { max-width: 100%; }
 .mde-preview-body :deep(hr) { border: none; border-top: 1px solid rgba(var(--v-theme-on-surface), 0.12); margin: 1em 0; }
+
+@media (max-width: 720px) {
+  .mde-split {
+    flex-direction: column;
+    min-height: 640px;
+  }
+
+  .mde-pane {
+    min-height: 300px;
+  }
+}
+
+@container fy-plugin-page (max-width: 720px) {
+  .mde-split {
+    flex-direction: column;
+    min-height: 640px;
+  }
+
+  .mde-pane {
+    min-height: 300px;
+  }
+}
 </style>

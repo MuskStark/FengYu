@@ -9,7 +9,7 @@
  * Plugin id: {{pluginId}}
  */
 import { ref } from 'vue'
-import { FyPluginShell, FyPageHeader, useFengYuClient } from '@infinia/plugin-ui'
+import { FyPluginPage, FyPluginShell, FyPageHeader, FyProgress, useFengYuClient } from '@infinia/plugin-ui'
 
 const client = useFengYuClient()
 const greeting = ref('')
@@ -30,12 +30,13 @@ async function sayHello(): Promise<void> {
 
 <template>
   <FyPluginShell title="{{pluginName}}" :items="[{ value: 'home', title: 'Home', icon: 'mdi-home-outline' }]">
-    <div class="pa-4">
+    <FyPluginPage>
       <FyPageHeader title="{{pluginName}}" description="A FengYu plugin with a Vue UI and a Java worker." />
       <v-btn color="primary" variant="flat" prepend-icon="mdi-hand-wave" :loading="busy" @click="sayHello">
         Say hello
       </v-btn>
+      <FyProgress v-if="busy" label="Contacting worker…" class="mt-4" />
       <p v-if="greeting" class="mt-4 text-h6">{{ greeting }}</p>
-    </div>
+    </FyPluginPage>
   </FyPluginShell>
 </template>

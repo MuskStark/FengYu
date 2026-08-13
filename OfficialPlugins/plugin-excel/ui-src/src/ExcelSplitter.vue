@@ -6,7 +6,6 @@ import {
   mdiDownloadOutline,
   mdiFolderCheckOutline,
   mdiFormatColumns,
-  mdiInformationOutline,
   mdiSitemapOutline,
   mdiTableMultiple,
 } from '@mdi/js'
@@ -15,8 +14,12 @@ import {
   FyDirectoryPicker,
   FyFilePicker,
   FyIcon,
+  FyPluginPage,
+  FyPluginShell,
+  FyProgress,
   FyStepWizard,
   invalidateWizardStates,
+  useFengYuNotify,
   useFengYuClient,
 } from '@infinia/plugin-ui'
 import type {
@@ -40,6 +43,7 @@ import type { AnalyzeOutput, ConfigureInput, SplitInput } from './generated/feng
 const client = useFengYuClient()
 const rpc = createPluginRpc(client)
 const { t } = useFengYuEnvironment()
+const { notify } = useFengYuNotify(client)
 
 type SplitMode = 'BY_SHEET' | 'BY_COLUMN' | 'COMPLEX'
 
@@ -140,7 +144,7 @@ function errMsg(err: unknown): string {
 }
 
 function notifyErr(msg: string): void {
-  void client.notify(msg)
+  void notify(msg, { tone: 'error' })
 }
 
 function reportPersistenceFailure(): void {
@@ -707,9 +711,8 @@ onBeforeUnmount(cancelRestore)
 </script>
 
 <template>
-  <v-app>
-    <v-main>
-      <v-container class="excel-splitter">
+  <FyPluginShell :title="t('exui.title')">
+    <FyPluginPage :max-width="960" class="excel-splitter">
         <FyStepWizard
           v-model="activeStep"
           v-model:states="wizardStates"
@@ -744,10 +747,7 @@ onBeforeUnmount(cancelRestore)
                     {{ t('exui.source.selected', sourceFileRef.name) }}
                   </div>
 
-                  <v-alert v-if="analyzing" :icon="false" type="info" class="mt-3" density="compact">
-                    <template #prepend><FyIcon :path="mdiInformationOutline" :size="20" class="mr-3" /></template>
-                    {{ t('exui.source.analyzing') }}
-                  </v-alert>
+                  <FyProgress v-if="analyzing" :label="t('exui.source.analyzing')" class="mt-3 w-100" />
                 </div>
               </v-card-text>
             </v-card>
@@ -801,6 +801,7 @@ onBeforeUnmount(cancelRestore)
                 </template>
 
                 <template v-else-if="mode === 'COMPLEX'">
+                  <div class="fy-responsive-table">
                   <v-table density="compact">
                     <thead>
                       <tr>
@@ -858,6 +859,7 @@ onBeforeUnmount(cancelRestore)
                       </tr>
                     </tbody>
                   </v-table>
+                  </div>
                   <v-btn class="mt-2" variant="tonal" @click="addComplexEntry">{{ t('exui.complex.addRule') }}</v-btn>
                 </template>
 
@@ -889,14 +891,12 @@ onBeforeUnmount(cancelRestore)
                   </div>
                   <div class="excel-config-summary__row">
                     <span class="excel-config-summary__label">{{ t('exui.output.expectedFiles') }}</span>
-                    <span v-if="estimating" class="d-inline-flex align-center">
-                      <v-progress-circular indeterminate size="14" width="2" class="mr-2" />
-                      {{ t('exui.output.estimating') }}
-                    </span>
-                    <strong v-else-if="estimatedFileCount !== null">{{ estimatedFileCount }}</strong>
+                    <strong v-if="!estimating && estimatedFileCount !== null">{{ estimatedFileCount }}</strong>
                     <span v-else class="text-medium-emphasis">—</span>
                   </div>
                 </div>
+
+                <FyProgress v-if="estimating" :label="t('exui.output.estimating')" class="mb-4" />
 
                 <FyDirectoryPicker
                   :model-value="outputDirRef"
@@ -928,10 +928,7 @@ onBeforeUnmount(cancelRestore)
           <template #run>
             <v-card variant="flat">
               <v-card-text>
-                <div v-if="running" class="d-flex align-center">
-                  <v-progress-circular indeterminate size="24" class="mr-2" />
-                  {{ t('exui.run.splitting') }}
-                </div>
+                <FyProgress v-if="running" :label="t('exui.run.splitting')" />
 
               </v-card-text>
             </v-card>
@@ -969,14 +966,13 @@ onBeforeUnmount(cancelRestore)
             </v-card>
           </template>
         </FyStepWizard>
-      </v-container>
-    </v-main>
-  </v-app>
+    </FyPluginPage>
+  </FyPluginShell>
 </template>
 
 <style scoped>
 .excel-splitter {
-  max-width: 960px;
+  min-width: 0;
 }
 /* Source step: keep the picker and its feedback centered in the card. */
 .excel-source {
@@ -988,7 +984,7 @@ onBeforeUnmount(cancelRestore)
 /* Mode step: selectable cards with a clear selected state. */
 .excel-mode-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 8px;
 }
@@ -1050,4 +1046,16 @@ onBeforeUnmount(cancelRestore)
 }
 .excel-config-summary__list li { padding: 1px 0; }
 .excel-config-summary__list li + li { margin-top: 2px; }
+
+@media (max-width: 600px) {
+  .excel-mode-cards { grid-template-columns: 1fr; }
+  .excel-config-summary__row { align-items: flex-start; flex-direction: column; gap: 2px; }
+  .excel-config-summary__label { flex-basis: auto; }
+}
+
+@container fy-plugin-page (max-width: 600px) {
+  .excel-mode-cards { grid-template-columns: 1fr; }
+  .excel-config-summary__row { align-items: flex-start; flex-direction: column; gap: 2px; }
+  .excel-config-summary__label { flex-basis: auto; }
+}
 </style>
