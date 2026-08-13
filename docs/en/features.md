@@ -43,14 +43,14 @@ The Agent orchestrates three distinct, intentionally separate surfaces:
 | Feature | What it does | Learn more |
 | --- | --- | --- |
 | **AI Agent** | Plan-and-execute agent that decomposes a goal into steps, with approvals for sensitive actions. | [AI Agent guide](/en/guide/ai-agent) |
-| **AI Chat** | Multi-backend chat with streaming (SSE). Supports Ollama, OpenAI, Anthropic, and DeepSeek backends. | [AI Chat guide](/en/guide/ai-chat) |
+| **AI Chat** | Multi-backend chat with streaming (SSE), automatic long-conversation compaction, and bounded tool context. Supports Ollama, OpenAI, Anthropic, and DeepSeek backends. | [AI Chat guide](/en/guide/ai-chat) |
 | **Plugin Marketplace** | Browse, install, update, and manage `.fyp` plugin packages — JSON-RPC workers and micro-frontend UIs. | [Marketplace](/en/plugins/marketplace) |
 | **Skills** | Progressive-disclosure `.fys` packages that feed the Agent on-demand domain procedures. | [Skills](/en/skills/) |
 | **Excel Splitter** | Splits workbooks by sheet, by column value, or by complex rules. Ships as a plugin with six AI tools. | [Excel plugin](/en/plugins/official-excel) |
 | **Email Center** | Multi-account confirmed SMTP sending, address books, manual IMAP collection, archives, and nine AI tools. | [Email Center](/en/plugins/email-center) |
 | **Markdown Editor** | Edit and preview Markdown in the built-in editor. | [Markdown plugin](/en/plugins/official-markdown) |
 | **Offline Python Builder** | Build air-gap-ready Python wheelhouses (full dependency resolution via `pip download`) as an async job, with verify and deploy. | [Offline Python](/en/plugins/official-offlinepython) |
-| **Browser Agent** | Built-in browser automation via Electron's native engine — navigate, click, type, scrape, screenshot, and eval JS through nine approval-gated AI tools. Desktop-only. | [Browser Capability](/en/plugins/official-browser) |
+| **Browser Agent** | Built-in browser automation via Electron's native engine — 21 effect-classified tools for isolated contexts, stateful tabs, stable refs, interaction, multimodal screenshots, batching, and eval JS. Desktop-only. | [Browser Capability](/en/plugins/official-browser) |
 | **Multi-Database** | First-launch wizard picks H2, SQLite, MySQL, or PostgreSQL. Passwords are AES-GCM encrypted. | [Database guide](/en/guide/database) |
 | **Internationalization** | English-first docs and a localized Vue UI via `vue-i18n`. | [Design System](/en/design-system) |
 | **Dark / Light theme** | Material Design 3 theming with dark and light modes, shared with plugin micro-frontends. | [Design System](/en/design-system) |

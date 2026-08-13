@@ -10,6 +10,20 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BrowserToolTest {
 
+    @Test
+    void classifiesReadOnlyAndExternalBrowserEffects() {
+        BrowserTool tool = new BrowserTool((BrowserBridgeClient) null);
+        assertEquals(ToolEffect.READ, tool.effectFor("browser_snapshot"));
+        assertEquals(ToolEffect.READ, tool.effectFor("browser_get_text"));
+        assertEquals(ToolEffect.READ, tool.effectFor("browser_tabs"));
+        assertEquals(ToolEffect.READ, tool.effectFor("browser_contexts"));
+        assertEquals(ToolEffect.EXTERNAL, tool.effectFor("browser_navigate"));
+        assertEquals(ToolEffect.EXTERNAL, tool.effectFor("browser_batch"));
+        assertEquals(ToolEffect.EXTERNAL, tool.effectFor("browser_new_context"));
+        assertEquals(ToolEffect.EXTERNAL, tool.effectFor("browser_eval_js"));
+        assertEquals(ToolEffect.EXTERNAL, tool.effectFor("future_browser_tool"));
+    }
+
     /** Test subclass that swaps the real HTTP client for an in-memory stub. */
     private static final class StubTool extends BrowserTool {
         private final java.util.function.BiFunction<String, Map<String, Object>, Map<String, Object>> stub;
@@ -97,6 +111,8 @@ class BrowserToolTest {
         java.util.Map<String, java.util.Map<String, Object>> captured = new java.util.HashMap<>();
         var tool = new StubTool((m, p) -> {
             captured.put(m, p);
+            if (m.equals("browser_snapshot")) return Map.of("success", true,
+                    "snapshot", "[el_1] button \"Login\"");
             Map<String, Object> e = new LinkedHashMap<>();
             e.put("success", true); e.put("summary", "found input"); e.put("ref", "el_1");
             e.put("tag", "input"); e.put("role", "textbox");
@@ -129,10 +145,13 @@ class BrowserToolTest {
         java.util.Map<String, java.util.Map<String, Object>> captured = new java.util.HashMap<>();
         var tool = new StubTool((m, p) -> {
             captured.put(m, p);
+            if (m.equals("browser_snapshot")) return Map.of("success", true,
+                    "snapshot", "[el_1] button \"Login\"");
             Map<String, Object> e = new LinkedHashMap<>();
             e.put("success", true); e.put("summary", "clicked el_1"); e.put("clicked", true);
             return e;
         });
+        tool.snapshot();
         Map<String, Object> r = parse(tool.click("#login", null, "el_1"));
         assertEquals(Boolean.TRUE, r.get("success"));
         assertEquals("el_1", captured.get("browser_click").get("ref"));
@@ -140,14 +159,30 @@ class BrowserToolTest {
     }
 
     @Test
+    void clickRejectsUnknownRefWithoutCallingBridge() throws Exception {
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        var tool = new StubTool((m, p) -> {
+            calls.incrementAndGet();
+            return Map.of("success", true);
+        });
+        Map<String, Object> result = parse(tool.click(null, null, "missing"));
+        assertEquals(Boolean.FALSE, result.get("success"));
+        assertTrue(((String) result.get("summary")).contains("stale browser ref"));
+        assertEquals(0, calls.get());
+    }
+
+    @Test
     void typeForwardsTextClearNthRef() throws Exception {
         java.util.Map<String, java.util.Map<String, Object>> captured = new java.util.HashMap<>();
         var tool = new StubTool((m, p) -> {
             captured.put(m, p);
+            if (m.equals("browser_snapshot")) return Map.of("success", true,
+                    "snapshot", "[el_2] textbox \"Password\"");
             Map<String, Object> e = new LinkedHashMap<>();
             e.put("success", true); e.put("summary", "typed into el_2"); e.put("filled", true);
             return e;
         });
+        tool.snapshot();
         Map<String, Object> r = parse(tool.type("input[name=pwd]", "secret", false, 3, "el_2"));
         assertEquals(Boolean.TRUE, r.get("success"));
         Map<String, Object> p = captured.get("browser_type");
@@ -179,8 +214,11 @@ class BrowserToolTest {
         java.util.Map<String, java.util.Map<String, Object>> captured = new java.util.HashMap<>();
         var tool = new StubTool((m, p) -> {
             captured.put(m, p);
+            if (m.equals("browser_snapshot")) return Map.of("success", true,
+                    "snapshot", "[snap_1] textbox \"Search\"");
             return Map.of("success", true, "pressed", true);
         });
+        tool.snapshot();
         Map<String, Object> r = parse(tool.press(null, "Enter", null, "snap_1"));
         assertEquals(Boolean.TRUE, r.get("success"));
         assertEquals("Enter", captured.get("browser_press").get("key"));

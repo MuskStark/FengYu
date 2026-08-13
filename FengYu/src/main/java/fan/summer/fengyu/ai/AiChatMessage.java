@@ -30,7 +30,8 @@ public record AiChatMessage(
     List<AiToolCall> toolCalls,
     String toolCallId,
     String toolName,
-    String reasoningContent
+    String reasoningContent,
+    List<AiMedia> media
 ) {
 
     /**
@@ -58,6 +59,14 @@ public record AiChatMessage(
         Objects.requireNonNull(role, "role must not be null");
         if (content == null) content = "";
         if (toolCalls == null) toolCalls = List.of();
+        if (media == null) media = List.of();
+        else media = List.copyOf(media);
+    }
+
+    /** Compatibility constructor for existing text-only callers and persisted JSON fixtures. */
+    public AiChatMessage(Role role, String content, List<AiToolCall> toolCalls,
+                         String toolCallId, String toolName, String reasoningContent) {
+        this(role, content, toolCalls, toolCallId, toolName, reasoningContent, List.of());
     }
 
     /**
@@ -67,7 +76,7 @@ public record AiChatMessage(
      * @param content the text content
      */
     public AiChatMessage(Role role, String content) {
-        this(role, content, List.of(), null, null, null);
+        this(role, content, List.of(), null, null, null, List.of());
     }
 
     /**
@@ -143,7 +152,13 @@ public record AiChatMessage(
      * @return a new TOOL message
      */
     public static AiChatMessage toolResult(String toolCallId, String toolName, String content) {
-        return new AiChatMessage(Role.TOOL, content, List.of(), toolCallId, toolName, null);
+        return toolResult(toolCallId, toolName, content, List.of());
+    }
+
+    /** Creates a tool-result message with image parts for the next multimodal model turn. */
+    public static AiChatMessage toolResult(String toolCallId, String toolName, String content,
+                                           List<AiMedia> media) {
+        return new AiChatMessage(Role.TOOL, content, List.of(), toolCallId, toolName, null, media);
     }
 
     /**

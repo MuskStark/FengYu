@@ -25,5 +25,7 @@ class AiChatMessageTest {
         AiChatMessage m = new AiChatMessage(AiChatMessage.Role.USER, "q", null, null, null, null);
         assertNotNull(m.toolCalls());
         assertTrue(m.toolCalls().isEmpty());
+        assertNotNull(m.media());
+        assertTrue(m.media().isEmpty());
     }
 }

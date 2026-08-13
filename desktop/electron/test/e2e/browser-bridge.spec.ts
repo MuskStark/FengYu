@@ -114,6 +114,8 @@ test.describe('browser bridge chain', () => {
       const shotJson = (await shot.json()) as {
         success: boolean
         imagePath?: string
+        imageBase64?: string
+        mimeType?: string
         width?: number
         height?: number
         a11yTree?: string
@@ -121,6 +123,8 @@ test.describe('browser bridge chain', () => {
       lines.push(`[step] screenshot success=${shotJson.success} imagePath=${shotJson.imagePath}`)
       expect(shotJson.success).toBe(true)
       expect(shotJson).toHaveProperty('imagePath')
+      expect(shotJson.mimeType).toBe('image/png')
+      expect(shotJson.imageBase64).toMatch(/^iVBOR/)
       expect(shotJson).toHaveProperty('width')
       expect(shotJson).toHaveProperty('height')
       expect(shotJson).toHaveProperty('a11yTree')

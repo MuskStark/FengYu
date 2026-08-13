@@ -2,7 +2,7 @@
 
 针对"检测更新 → 用户同意 → 自行下载/安装/重启"流程的端到端验证，覆盖全部三种部署模式。每节独立可用：在目标平台按先决条件准备好后执行。
 
-> 单元测试（`UpdateCheckServiceTest`、`portable-updater.test.ts`、`auto-updater.test.ts`）已覆盖版本比较与检测逻辑。本清单验证的是**真实**的"下载 → 校验 → 替换 → 重启"流水线——这部分只能在目标 OS 上对着真实的 GitHub release 才能跑通。
+> 单元测试（`UpdateCheckServiceTest`、`portable-updater.test.ts`、`auto-updater.test.ts`）已覆盖版本比较与检测逻辑。本清单验证的是**真实**的"下载 → 校验 → 替换 → 重启"流水线——这部分必须在目标 OS 上对着真实的 GitHub release 或 FY-Proxy 内网仓库运行。
 
 ---
 
@@ -10,7 +10,7 @@
 
 1. **GitHub 上必须存在两个 release**，这样"旧版"才能检测到"新版"：
    - 一个**较旧**的 tagged release，你要安装/运行它（如 `v4.0.0-beta.1`）。
-   - 一个**较新**的 tagged release，已发布在 Releases 页（如 `v4.0.0-beta.3`）。
+   - 一个**较新**的 tagged release，已发布在 Releases 页（如 `v4.0.0-beta.4`）。
    - 较新的 release 必须是在本次改动合入**之后**由 `fengyu-release.yml` 构建的（这样 `latest*.yml`、`*.blockmap`、`checksums.txt` 才会发布——electron-updater 和便携自更新都需要）。
 2. 确认较新 release 包含你所在模式需要的产物（见下）。
 3. 先把旧版装好/解压好并跑起来，再触发检查。
@@ -23,14 +23,37 @@
 |---|---|
 | `latest.yml`（Windows）/ `latest-mac.yml`（macOS） | electron-updater（NSIS 安装版 + macOS） |
 | `*.blockmap` | electron-updater 增量下载 |
-| `Infinia-<版本>-win-x64-portable.zip` | Windows 便携自更新 |
+| `Infinia-<版本>-win32-x64-portable.zip` | Windows 便携自更新 |
 | `Infinia.jar` + `checksums.txt` | 便携 Web（java -jar）自更新 |
+
+---
+
+## 内网 / 离线 FY-Proxy 模式
+
+在**设置 → 更新通道 → 升级代理地址**填写 FY-Proxy 源地址，例如
+`http://10.0.0.5:8088`。该值会被持久化，并在桌面窗口创建前加载，因此启动自动探测与
+**关于 → 检查更新**都会绕过 GitHub。
+
+FY-Proxy 只接受并发布以下两类产物：
+
+| 平台/包类型 | 必须使用的文件名 | 发现端点 |
+|---|---|---|
+| Windows x64 便携版 | `Infinia-<version>-win32-x64-portable.zip` | `/fengyu-releases/api/releases/latest?channel=windows-portable` |
+| Debian/Ubuntu lite x64 | `Infinia-<version>-linux-x64.deb` | `/fengyu-updates/deb/latest-linux.yml` |
+
+在 FY-Proxy 的**文件管理**页（`/files`）上传产物，填写与文件名完全一致的版本号。
+FY-Proxy 会拒绝版本不匹配及其他所有包类型。便携 ZIP 的 release 响应包含 SHA-256，
+Infinia 会在解压前校验；deb feed 由 electron-updater 执行 SHA-512 校验。启动后确认自动
+发现，再用**关于 → 重新检查**确认手动发现。NSIS、AppImage、macOS、JRE 和便携 Web/JAR
+在内网模式下均不受支持。
 
 ---
 
 ## 模式 1：Windows NSIS 安装版（`*-setup.exe`）
 
 **平台：** Windows 10/11 · **更新机制：** electron-updater
+
+> 仅支持公共 GitHub 通道；FY-Proxy 会拒绝 NSIS 产物。
 
 ### 准备
 1. 下载并安装**旧版** `*-win-x64-setup.exe`。
@@ -74,7 +97,8 @@
 2. 运行 `C:\Users\<你>\Infinia\Infinia.exe`。
 
 ### 步骤
-1. 打开**关于** → "更新"行检测到 `<新版本>`（走 GitHub API，不走 latest.yml）。
+1. 打开**关于** → "更新"行检测到 `<新版本>`（走 GitHub API 或已配置 FY-Proxy 的
+   `windows-portable` release 端点，不走 `latest.yml`）。
 2. 点击**立即更新** → **继续**（未签名警告）。
 3. 下载进度填充（便携 zip 较大，留意百分比）。
 4. 应用**退出**。一个 detached 的 `.bat`（在 `%TEMP%`）接管：
@@ -114,6 +138,7 @@
 （JAR 下载 → SHA256 校验 → detached 重启脚本 → JVM 退出 → 替换 → 重启）
 
 > 这是唯一能在 macOS/Linux 上端到端测试的模式。它只替换 JAR（启动脚本和插件保持原位）。
+> 此模式只支持 GitHub；FY-Proxy 会拒绝 JAR 产物。
 
 ### 准备
 1. 下载并解压**旧版** `Infinia-<旧版本>-web.zip`（或 `.tar.gz`）。
@@ -168,7 +193,7 @@
 
 **平台：** macOS（Apple Silicon） · **更新机制：** 手动下载（未签名 Gatekeeper 降级路径）
 
-> macOS 未签名构建在 `quitAndInstall` 替换后**无法**重启（Gatekeeper 会拦截被替换的 bundle）。应用降级为"下载 + 打开发布页"。在实现代码签名 + 公证之前，这是有意为之。
+> macOS 未签名构建在 `quitAndInstall` 替换后**无法**重启（Gatekeeper 会拦截被替换的 bundle）。应用降级为"下载 + 打开发布页"。在实现代码签名 + 公证之前，这是有意为之。FY-Proxy 内网模式不支持 macOS。
 
 ### 准备
 1. 下载并安装**旧版** `*-mac-arm64.dmg`（把 Infinia 拖进应用程序）。

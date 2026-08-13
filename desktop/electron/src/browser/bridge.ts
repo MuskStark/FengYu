@@ -2,6 +2,7 @@ import { createServer, type Server } from 'node:http'
 import { genToken } from '../util/token'
 import type { BrowserSession } from './session'
 import { handleBrowserOp } from './handlers'
+import { BrowserSessionHub } from './session-hub'
 
 export interface BrowserBridge {
   port: number
@@ -34,6 +35,7 @@ export function startBrowserBridge(session: BrowserSession, opts: BrowserBridgeO
     // overlapping model/tool calls cannot steal focus or type into the element being clicked
     // by a different operation. Keep the queue alive after an individual failure.
     let operationTail: Promise<void> = Promise.resolve()
+    const sessions = new BrowserSessionHub(session)
     const server: Server = createServer((req, res) => {
       // CORS not needed (loopback only). Keep handlers tiny.
       if (req.method !== 'POST' || req.url !== '/invoke') {
@@ -49,7 +51,24 @@ export function startBrowserBridge(session: BrowserSession, opts: BrowserBridgeO
       req.on('end', async () => {
         try {
           const { method, params } = JSON.parse(body || '{}')
-          const operation = operationTail.then(() => handleBrowserOp(session, String(method), params ?? {}))
+          const safeParams = params && typeof params === 'object' ? params as Record<string, unknown> : {}
+          const operation = operationTail.then(async () => {
+            const op = String(method)
+            if (op === 'browser_contexts') return sessions.listContexts(safeParams)
+            if (op === 'browser_new_context') return sessions.newContext(safeParams)
+            if (op === 'browser_select_context') return sessions.selectContext(safeParams)
+            if (op === 'browser_close_context') return sessions.closeContext(safeParams)
+            if (op === 'browser_tabs') return sessions.list(safeParams)
+            if (op === 'browser_new_tab') {
+              return sessions.newTab(safeParams,
+                (tab, url) => handleBrowserOp(tab, 'browser_navigate', { url }))
+            }
+            if (op === 'browser_select_tab') return sessions.selectTab(safeParams)
+            if (op === 'browser_close_tab') return sessions.closeTab(safeParams)
+            const route = sessions.resolve(safeParams)
+            const result = await handleBrowserOp(route.session, op, safeParams)
+            return sessions.decorate(route, result)
+          })
           operationTail = operation.then(() => undefined, () => undefined)
           const envelope = await operation
           res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -64,7 +83,7 @@ export function startBrowserBridge(session: BrowserSession, opts: BrowserBridgeO
     server.listen(listenPort, '127.0.0.1', () => {
       const addr = server.address()
       if (addr && typeof addr === 'object') {
-        resolve({ port: addr.port, token, close: () => server.close() })
+        resolve({ port: addr.port, token, close: () => { server.close(); sessions.closeAll() } })
       } else {
         reject(new Error('failed to bind browser bridge'))
       }

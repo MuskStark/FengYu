@@ -99,16 +99,8 @@ public class ChatToolApprovalGate {
         ToolCallback tool = tools.stream()
             .filter(candidate -> candidate.getToolDefinition().name().equals(call.name()))
             .findFirst().orElse(null);
-        if (!(tool instanceof AuditedToolCallback audited)) return false;
-
-        AiPermissionMode mode = AiPermissionContext.current();
-        if (mode == AiPermissionMode.FULL_ACCESS) return false;
-        if (mode == AiPermissionMode.ASK_FOR_APPROVAL) return audited.effect() != ToolEffect.READ;
-        return switch (audited.effect()) {
-            case READ, WRITE -> false;
-            case EXTERNAL -> true;
-            case COMMAND -> commandPotentiallyUnsafe(call.arguments());
-        };
+        return ToolApprovalPolicy.requiresApproval(
+                tool, AiPermissionContext.current(), call.arguments());
     }
 
     public static boolean commandPotentiallyUnsafe(String arguments) {

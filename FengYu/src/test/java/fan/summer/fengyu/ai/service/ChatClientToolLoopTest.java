@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -37,6 +38,49 @@ import static org.junit.jupiter.api.Assertions.*;
  * {@link ToolCallback} registered via {@code setToolCallbacks(...)}.
  */
 class ChatClientToolLoopTest {
+
+    @Test
+    void longHistoryIsCompactedBeforeStreaming() throws Exception {
+        AtomicInteger summaries = new AtomicInteger();
+        AtomicReference<Prompt> streamedPrompt = new AtomicReference<>();
+        ChatModel model = new ChatModel() {
+            @Override public ChatResponse call(Prompt prompt) {
+                summaries.incrementAndGet();
+                assertTrue(prompt.getContents().contains("user-1"));
+                return new ChatResponse(List.of(new Generation(
+                        new AssistantMessage("preserved goals and decisions"))));
+            }
+
+            @Override public Flux<ChatResponse> stream(Prompt prompt) {
+                streamedPrompt.set(prompt);
+                return Flux.just(new ChatResponse(List.of(new Generation(
+                        new AssistantMessage("final")))));
+            }
+        };
+        List<AiChatMessage> history = new java.util.ArrayList<>();
+        for (int round = 1; round <= 10; round++) {
+            history.add(AiChatMessage.user("user-" + round + " " + "x".repeat(5_000)));
+            history.add(AiChatMessage.assistant("assistant-" + round + " " + "y".repeat(5_000)));
+        }
+        CountDownLatch done = new CountDownLatch(1);
+
+        new SpringAiCloudBackend(model).chat(history, 0.7f, 0.9f, 256,
+                new AiStreamCallback() {
+                    @Override public void onToken(String token) { }
+                    @Override public void onComplete(String s, int t, double r) { done.countDown(); }
+                    @Override public void onError(Throwable t) { done.countDown(); }
+                });
+
+        assertTrue(done.await(5, TimeUnit.SECONDS));
+        assertEquals(1, summaries.get());
+        assertNotNull(streamedPrompt.get());
+        String sent = streamedPrompt.get().getContents();
+        assertTrue(sent.contains("[FengYu conversation summary]"));
+        assertTrue(sent.contains("preserved goals and decisions"));
+        assertTrue(sent.contains("user-10"));
+        assertFalse(sent.contains("user-1 "));
+        assertEquals(21, history.size(), "the full transcript remains intact and gains the final reply");
+    }
 
     /** First stream → assistant message requesting tool "echo"; second stream → final text. */
     static final class ScriptedChatModel implements ChatModel {

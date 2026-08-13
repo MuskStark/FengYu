@@ -72,6 +72,7 @@ class AiConfigControllerTest {
         assertEquals("", openai.get("apiKey"));
         assertEquals(false, openai.get("apiKeySet"));
         assertEquals("gpt-4o", openai.get("model"));
+        assertEquals(32_768, result.get("contextWindowTokens"));
         assertEquals("local", result.get("activeMode"));
     }
 
@@ -113,10 +114,12 @@ class AiConfigControllerTest {
 
     @Test
     void put_writesSamplingParams() {
-        controller.put(Map.of("temperature", 0.5, "topP", 0.8, "maxTokens", 1024));
+        controller.put(Map.of("temperature", 0.5, "topP", 0.8, "maxTokens", 1024,
+                "contextWindowTokens", 65_536));
         assertEquals(0.5f, AiConfigService.getAiTemperature(), 0.001);
         assertEquals(0.8f, AiConfigService.getAiTopP(), 0.001);
         assertEquals(1024, AiConfigService.getAiMaxTokens());
+        assertEquals(65_536, AiConfigService.getAiContextWindowTokens());
     }
 
     @Test

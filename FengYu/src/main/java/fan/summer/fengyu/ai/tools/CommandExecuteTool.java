@@ -9,6 +9,7 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -51,7 +52,8 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
           description = "Execute a shell command in a working directory. Ask-for-approval mode "
               + "always pauses; approve-for-me pauses only for risky commands. Native sandboxing is used when "
               + "available; otherwise compatibility mode is reported in the result. Returns JSON "
-              + "with the exit code, combined output, sandbox, timeout, and truncation state.")
+              + "with the exit code, separated stdout/stderr, backward-compatible combined output, "
+              + "sandbox, timeout, and head/tail truncation state.")
     public String execute(
             @ToolParam(description = "The exact shell command to execute.") String command,
             @ToolParam(required = false,
@@ -61,7 +63,8 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
                        description = "Timeout in seconds (default 30, maximum 600).")
             Integer timeoutSeconds,
             @ToolParam(required = false,
-                       description = "Maximum captured output characters (default 65536, maximum 262144).")
+                       description = "Maximum captured characters per stdout/stderr stream "
+                           + "(default 65536, maximum 262144).")
             Integer maxOutputChars,
             @ToolParam(required = false,
                        description = "Allow network access inside the native sandbox. Defaults to false.")
@@ -84,7 +87,8 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
         // the whole method: a hook may assign a handle and then throw, in which case copying the
         // value only after accept() returns would lose the handle and leak it.
         long[] jobHandle = {0L};
-        OutputCapture capture = new OutputCapture(outputLimit);
+        OutputCapture stdout = new OutputCapture(outputLimit);
+        OutputCapture stderr = new OutputCapture(outputLimit);
         boolean timedOut = false;
         boolean fullAccess = AiPermissionContext.current() == AiPermissionMode.FULL_ACCESS;
         boolean networkAllowed = fullAccess || Boolean.TRUE.equals(allowNetwork);
@@ -94,8 +98,7 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
                     ? sandbox.unrestricted(shellCommand(command))
                     : sandbox.command(shellCommand(command), workdir, networkAllowed);
             ProcessBuilder builder = new ProcessBuilder(launch.command())
-                    .directory(workdir.toFile())
-                    .redirectErrorStream(true);
+                    .directory(workdir.toFile());
             removeSensitiveEnvironment(builder.environment());
             process = builder.start();
             // WINDOWS_JOB backend assigns the process to a Job Object after start; the hook writes
@@ -107,8 +110,10 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
             }
 
             Process running = process;
-            Thread reader = Thread.ofVirtual().name("command-output-reader").start(
-                    () -> capture.read(running));
+            Thread stdoutReader = Thread.ofVirtual().name("command-stdout-reader").start(
+                    () -> stdout.read(running.getInputStream()));
+            Thread stderrReader = Thread.ofVirtual().name("command-stderr-reader").start(
+                    () -> stderr.read(running.getErrorStream()));
 
             if (!process.waitFor(timeout, TimeUnit.SECONDS)) {
                 timedOut = true;
@@ -116,7 +121,8 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
                 jobHandle[0] = 0L;
                 process.waitFor(5, TimeUnit.SECONDS);
             }
-            reader.join(Duration.ofSeconds(5));
+            stdoutReader.join(Duration.ofSeconds(5));
+            stderrReader.join(Duration.ofSeconds(5));
             Integer exitCode = process.isAlive() ? null : process.exitValue();
 
             Map<String, Object> result = new LinkedHashMap<>();
@@ -128,8 +134,12 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
             result.put("sandboxed", launch.sandboxed());
             result.put("sandboxBackend", launch.backend().id());
             result.put("networkAllowed", networkAllowed);
-            result.put("output", capture.output());
-            result.put("truncated", capture.truncated());
+            result.put("stdout", stdout.output());
+            result.put("stderr", stderr.output());
+            result.put("stdoutTruncated", stdout.truncated());
+            result.put("stderrTruncated", stderr.truncated());
+            result.put("output", stdout.output() + stderr.output());
+            result.put("truncated", stdout.truncated() || stderr.truncated());
             return toJson(result);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -275,23 +285,34 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
 
     private static final class OutputCapture {
         private final int limit;
-        private final StringBuilder output = new StringBuilder();
+        private final int headLimit;
+        private final int tailLimit;
+        private final StringBuilder prefix = new StringBuilder();
+        private final StringBuilder tail = new StringBuilder();
         private long totalChars;
 
         private OutputCapture(int limit) {
             this.limit = limit;
+            this.headLimit = limit <= 1 ? limit : Math.max(1, limit * 3 / 4);
+            this.tailLimit = limit - headLimit;
         }
 
-        private void read(Process process) {
+        private void read(InputStream input) {
             try (InputStreamReader reader = new InputStreamReader(
-                    process.getInputStream(), StandardCharsets.UTF_8)) {
+                    input, StandardCharsets.UTF_8)) {
                 char[] buffer = new char[4096];
                 int read;
                 while ((read = reader.read(buffer)) >= 0) {
                     totalChars += read;
-                    int remaining = limit - output.length();
+                    int remaining = limit - prefix.length();
                     if (remaining > 0) {
-                        output.append(buffer, 0, Math.min(read, remaining));
+                        prefix.append(buffer, 0, Math.min(read, remaining));
+                    }
+                    if (tailLimit > 0) {
+                        tail.append(buffer, 0, read);
+                        if (tail.length() > tailLimit) {
+                            tail.delete(0, tail.length() - tailLimit);
+                        }
                     }
                 }
             } catch (IOException ignored) {
@@ -300,7 +321,11 @@ public class CommandExecuteTool implements ApprovalRequiredTool {
         }
 
         private String output() {
-            return output.toString();
+            if (!truncated()) return prefix.toString();
+            long omitted = totalChars - headLimit - tail.length();
+            return prefix.substring(0, Math.min(headLimit, prefix.length()))
+                    + "\n... [FengYu omitted " + omitted + " characters] ...\n"
+                    + tail;
         }
 
         private boolean truncated() {

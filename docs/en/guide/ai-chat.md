@@ -21,6 +21,19 @@ Chat runs against four backends, selected in [Configuration](/en/guide/configura
 
 The active mode is whatever `PUT /api/ai/config` last persisted; it is hot-swapped at runtime via `BackendReactivator.reactivate()` so a mode switch takes effect without a restart.
 
+## Context management
+
+The complete transcript remains stored and visible, but the model-facing copy is automatically
+compacted before a long turn exceeds the provider window. FengYu estimates tokens from UTF-8 bytes;
+at 60% of the configured context window it summarizes the oldest complete rounds into a marked
+assistant context note, preserves system messages, and keeps the latest eight rounds verbatim. A
+summary failure is non-fatal and falls back to the original history.
+
+Set **Context Window** in AI Configuration to the actual window supported by the selected model.
+The default is 32,768 tokens; `0` disables automatic compaction. Tool results are governed
+separately: a result larger than 64 KiB keeps its head and tail in model context so one tool cannot
+consume the remaining window, while the live SSE activity still receives the complete result.
+
 ## Request flow
 
 A chat turn is a two-step request: start the run, then open the SSE stream.
@@ -102,6 +115,25 @@ The composer offers three per-turn profiles:
 | **Full access** | Runs without tool approval and executes commands without the native file/network sandbox. Sensitive inherited environment variables are still removed. |
 
 Plugin tools declare their effect in the manifest, so the same gate covers both built-in and out-of-process plugin actions. A missing effect is handled conservatively as an external action.
+
+### Command results
+
+`execute_command` returns stdout and stderr separately, including a truncation flag for each stream.
+When a stream exceeds its configured capture limit, FengYu preserves both the beginning and the end
+with an omitted-character marker, so trailing compiler or shell errors remain available. The legacy
+combined `output` and `truncated` fields remain present for compatible consumers.
+
+### Web discovery and visual browser results
+
+Two host-embedded read tools keep ordinary research out of the stateful browser: `web_search`
+returns compact public-web result titles/URLs, and `web_fetch` retrieves bounded readable text.
+Both reject local/private-network targets and run as `read` effects. Use the desktop-only
+`browser_*` tools when the task needs navigation, page state, login context, or interaction.
+
+`browser_screenshot` sends the actual PNG to Spring AI as an `image/png` media part after its tool
+response, so a vision-capable model can inspect the pixels. The same result also contains a DOM
+snapshot and accessibility tree for text-only models. Images are preserved in the in-memory tool
+history for follow-up model rounds; conversation persistence remains text-only.
 
 ## Conversations
 

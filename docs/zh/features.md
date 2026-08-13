@@ -36,14 +36,14 @@ lang: zh-CN
 | 功能 | 做什么 | 了解更多 |
 | --- | --- | --- |
 | **AI 智能体** | 「规划-执行」智能体，把目标拆解为多个步骤，敏感操作需人工确认。 | [智能体指南](/zh/guide/ai-agent) |
-| **AI 对话** | 多后端对话，支持流式输出（SSE）。支持 Ollama、OpenAI、Anthropic、DeepSeek 等后端。 | [对话指南](/zh/guide/ai-chat) |
+| **AI 对话** | 多后端对话，支持流式输出（SSE）、长对话自动压缩与有界工具上下文。支持 Ollama、OpenAI、Anthropic、DeepSeek 等后端。 | [对话指南](/zh/guide/ai-chat) |
 | **插件市场** | 浏览、安装、更新与管理 `.fyp` 插件包 —— JSON-RPC Worker 与微前端 UI。 | [市场](/zh/plugins/marketplace) |
 | **技能** | 渐进式 `.fys` 插件包，为智能体按需提供领域流程。 | [技能](/zh/skills/) |
 | **Excel 拆分** | 按工作表、列值或复杂规则拆分工作簿。以插件形式提供并附带六个 AI 工具。 | [Excel 插件](/zh/plugins/official-excel) |
 | **邮件中心** | 多账户 SMTP 确认式发送、通讯录、手动 IMAP 收取、归档，以及九个 AI 工具。 | [邮件中心](/zh/plugins/email-center) |
 | **Markdown 编辑器** | 在内置编辑器中编辑与预览 Markdown。 | [Markdown 插件](/zh/plugins/official-markdown) |
 | **Offline Python 构建器** | 以异步任务构建可离线安装的 Python wheelhouse（通过 `pip download` 完整解析依赖），并支持校验与部署。 | [Offline Python](/zh/plugins/official-offlinepython) |
-| **浏览器代理** | 基于 Electron 原生引擎的内置浏览器自动化 —— 导航、点击、输入、抓取、截图与执行 JS，共九个需确认的 AI 工具。仅桌面端。 | [浏览器能力](/zh/plugins/official-browser) |
+| **浏览器代理** | 基于 Electron 原生引擎的内置浏览器自动化——21 个按副作用分类的工具，覆盖隔离上下文、有状态标签页、稳定 ref、交互、多模态截图、批处理与执行 JS。仅桌面端。 | [浏览器能力](/zh/plugins/official-browser) |
 | **多数据库** | 首次启动向导可选择 H2、SQLite、MySQL 或 PostgreSQL，密码采用 AES-GCM 加密。 | [数据库指南](/zh/guide/database) |
 | **国际化** | 以英文为主的文档，以及通过 `vue-i18n` 本地化的 Vue UI。 | [设计系统](/zh/design-system) |
 | **深色 / 浅色主题** | Material Design 3 主题，支持深色与浅色模式，与插件微前端共享。 | [设计系统](/zh/design-system) |

@@ -1,5 +1,5 @@
 import { autoUpdater } from 'electron-updater'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 interface FeedConfigurableUpdater {
@@ -58,10 +58,25 @@ export async function bootstrapUpdateApiBaseFromBackend(
 }
 
 /**
- * Redirect electron-updater to FY-Proxy when configured. The proxy exposes separate lite/JRE
- * feeds, preventing the two variants' identically named latest*.yml files from overwriting each
- * other. Differential download is disabled for this feed so a basic intranet HTTP deployment
- * does not need multipart byte-range or historical blockmap support.
+ * True only for a packaged Debian installation. electron-updater writes this marker into deb
+ * packages and uses the same marker to select its DebUpdater implementation.
+ */
+export function isDebPackage(resourcesPath = process.resourcesPath): boolean {
+  if (process.platform !== 'linux' || typeof resourcesPath !== 'string') return false
+  const marker = join(resourcesPath, 'package-type')
+  try {
+    return existsSync(marker) && readFileSync(marker, 'utf8').trim() === 'deb'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Redirect electron-updater to FY-Proxy when configured. The intranet contract intentionally
+ * supports only the lite Debian package here; Windows portable ZIP is handled by
+ * portable-updater.ts and every other desktop package remains on the public release channel.
+ * Differential download is disabled so a basic intranet HTTP deployment does not need multipart
+ * byte-range or historical blockmap support.
  */
 export function configureUpdateFeed(
   updater: FeedConfigurableUpdater = autoUpdater,
@@ -71,8 +86,12 @@ export function configureUpdateFeed(
   if (!base) return null
   const bundledJre = hasBundledJre ??
     (typeof process.resourcesPath === 'string' && existsSync(join(process.resourcesPath, 'jre')))
-  const variant = bundledJre ? 'jre' : 'lite'
-  const feedUrl = `${base}/fengyu-updates/${variant}`
+  if (bundledJre || !isDebPackage()) {
+    throw new Error(
+      'The FY-Proxy update channel supports only Windows portable ZIP and the lite Debian package',
+    )
+  }
+  const feedUrl = `${base}/fengyu-updates/deb`
   updater.setFeedURL({ provider: 'generic', url: feedUrl, useMultipleRangeRequest: false })
   updater.disableDifferentialDownload = true
   return feedUrl
@@ -80,5 +99,5 @@ export function configureUpdateFeed(
 
 export function updateDownloadPageUrl(): string {
   const base = updateApiBase()
-  return base ? `${base}/admin` : 'https://github.com/MuskStark/FengYu/releases'
+  return base ? `${base}/files` : 'https://github.com/MuskStark/FengYu/releases'
 }
