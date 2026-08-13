@@ -43,6 +43,7 @@ The Agent orchestrates three distinct, intentionally separate surfaces:
 | Feature | What it does | Learn more |
 | --- | --- | --- |
 | **AI Agent** | Plan-and-execute agent that decomposes a goal into steps, with approvals for sensitive actions. | [AI Agent guide](/en/guide/ai-agent) |
+| **Reusable workflows** | Persist visual DAGs with JSON Schema inputs, run them manually, or publish them as AI-callable tools through the same execution runtime. | [Reusable workflows](/en/guide/ai-agent#reusable-workflows-manual-and-ai-invocation) |
 | **AI Chat** | Multi-backend chat with streaming (SSE), automatic long-conversation compaction, and bounded tool context. Supports Ollama, OpenAI, Anthropic, and DeepSeek backends. | [AI Chat guide](/en/guide/ai-chat) |
 | **Plugin Marketplace** | Browse, install, update, and manage `.fyp` plugin packages — JSON-RPC workers and micro-frontend UIs. | [Marketplace](/en/plugins/marketplace) |
 | **Skills** | Progressive-disclosure `.fys` packages that feed the Agent on-demand domain procedures. | [Skills](/en/skills/) |

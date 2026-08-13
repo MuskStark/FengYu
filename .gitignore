@@ -103,3 +103,4 @@ docs/.vitepress/cache/
 /plugin-ui/
 /plugin-dev/
 /plugin-cli/
+.firecrawl/

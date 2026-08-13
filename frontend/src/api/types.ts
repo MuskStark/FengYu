@@ -376,6 +376,31 @@ export interface AgentPlan {
   reasoning: string
 }
 
+/** A reusable workflow definition. Published definitions are also exposed as AI tools. */
+export interface WorkflowDefinition {
+  id: string
+  name: string
+  description: string
+  inputSchema: Record<string, unknown>
+  plan: AgentPlan
+  published: boolean
+  revision: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface WorkflowDraft {
+  name: string
+  description: string
+  inputSchema: Record<string, unknown>
+  plan: AgentPlan
+}
+
+export interface WorkflowRunRequest {
+  inputs: Record<string, unknown>
+  config: AgentRunConfig
+}
+
 /** A Spring AI-discovered orchestrable tool (GET /api/agent/tools). */
 export interface AgentTool {
   id: string
