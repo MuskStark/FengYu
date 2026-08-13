@@ -3,7 +3,7 @@
   "id": "fan.summer.markdown",
   "name": "Markdown Editor",
   "description": "Split-pane Markdown editor with isolated server-side rendering",
-  "version": "4.0.0-beta.2",
+  "version": "4.0.0-beta.3",
   "author": "FengYu",
   "icon": "language-markdown",
   "category": "text",
