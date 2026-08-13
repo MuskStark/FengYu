@@ -1,9 +1,9 @@
 /* ================================================================
-   tokens.css — FengYu 4.0.0 web shell global base + Codex-look skin.
-   Vuetify MD3 (plugins/vuetify.ts + md3-themes.ts) owns the color
-   palette; this file layers the Codex-desktop flat aesthetic on top:
-   tighter radii, hairline borders, monospace code, and the composer /
-   conversation primitives the shell reuses.
+   tokens.css — FengYu 4.0.0 web shell global base + cherry-studio-
+   inspired skin. Vuetify MD3 (plugins/vuetify.ts + md3-themes.ts)
+   owns the color palette; this file layers a flat, hairline-bordered
+   aesthetic on top: translucent overlays, consistent radii, monospace
+   code, and the composer / conversation primitives the shell reuses.
    ================================================================ */
 
 * {
@@ -22,7 +22,7 @@ body,
 }
 
 body {
-  font-family: 'SF Pro Text', 'Inter', -apple-system, BlinkMacSystemFont,
+  font-family: 'Inter', 'SF Pro Text', -apple-system, BlinkMacSystemFont,
     'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 14px;
   line-height: 1.55;
@@ -39,6 +39,34 @@ pre,
 .mono {
   font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', ui-monospace,
     'SFMono-Regular', Menlo, Consolas, monospace;
+}
+
+/* ================================================================
+   Semantic design tokens — translucent overlays (cherry-studio style)
+   layered on Vuetify's --v-theme-* palette. The same token resolves in
+   both themes; only the provider values flip. Surfaces stay flat with
+   hairline borders instead of solid grey fills + shadows.
+   ================================================================ */
+:root {
+  --cx-radius-sm: 8px;
+  --cx-radius: 10px;
+  --cx-radius-lg: 14px;
+}
+.v-theme--dark {
+  --cx-hover: rgba(255, 255, 255, 0.05);
+  --cx-hover-strong: rgba(255, 255, 255, 0.08);
+  --cx-border: rgba(255, 255, 255, 0.10);
+  --cx-border-subtle: rgba(255, 255, 255, 0.06);
+  --cx-user-tint: rgba(255, 255, 255, 0.05);
+  --cx-code-bg: #161616;
+}
+.v-theme--light {
+  --cx-hover: rgba(0, 0, 0, 0.04);
+  --cx-hover-strong: rgba(0, 0, 0, 0.06);
+  --cx-border: rgba(0, 0, 0, 0.10);
+  --cx-border-subtle: rgba(0, 0, 0, 0.05);
+  --cx-user-tint: rgba(0, 0, 0, 0.035);
+  --cx-code-bg: #f4f4f4;
 }
 
 /* ── scrollbars (thin, self-effacing) ──────────────────────────── */
@@ -62,13 +90,13 @@ pre,
 }
 
 /* ================================================================
-   Codex shell primitives
+   Shell primitives
    ================================================================ */
 
-/* Flatten Vuetify's default elevation everywhere in the shell — Codex
-   uses borders, not shadows. Cards/drawers/menus get hairline outlines. */
+/* Flatten Vuetify's default elevation everywhere in the shell — the
+   look uses borders, not shadows. Cards/drawers/menus get hairline outlines. */
 .v-navigation-drawer {
-  border-color: rgb(var(--v-theme-outline-variant)) !important;
+  border-color: var(--cx-border) !important;
 }
 
 /* Conversation column: a centered, readable measure like Codex. */
@@ -78,14 +106,11 @@ pre,
   margin: 0 auto;
 }
 
-/* Message blocks — assistant is plain flowing text; the user turn is a
-   right-aligned rounded chip, Codex-desktop style. */
+/* Message blocks — full-width rows (cherry-studio / ChatGPT style).
+   The user turn is a tinted block; the assistant turn flows as plain
+   markdown. No right-aligned bubbles. */
 .cx-msg {
   padding: 6px 0 22px;
-}
-.cx-msg--user {
-  display: flex;
-  justify-content: flex-end;
 }
 .cx-msg-role {
   font-size: 11px;
@@ -95,15 +120,50 @@ pre,
   opacity: 0.45;
   margin-bottom: 7px;
 }
-.cx-user-body {
-  background: rgb(var(--v-theme-surface-container-high));
-  border: 1px solid rgb(var(--v-theme-outline-variant));
-  border-radius: 16px 16px 4px 16px;
-  padding: 9px 14px;
-  max-width: 85%;
-  white-space: pre-wrap;
+.cx-msg-body {
+  line-height: 1.6;
   overflow-wrap: anywhere;
-  line-height: 1.5;
+}
+.cx-msg--user .cx-msg-body {
+  background: var(--cx-user-tint);
+  border-radius: var(--cx-radius-lg);
+  padding: 11px 15px;
+  white-space: pre-wrap;
+}
+
+/* Hover-revealed action footer under a message (copy / regenerate). */
+.cx-msg-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+  opacity: 0;
+  transition: opacity 0.13s ease;
+}
+.cx-msg:hover .cx-msg-actions,
+.cx-msg:focus-within .cx-msg-actions {
+  opacity: 1;
+}
+.cx-msg-action {
+  height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: var(--cx-radius-sm);
+  background: transparent;
+  color: rgb(var(--v-theme-secondary));
+  font: inherit;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: background 0.13s ease, color 0.13s ease;
+}
+.cx-msg-action:hover {
+  background: var(--cx-hover);
+  color: rgb(var(--v-theme-on-surface));
+}
+.cx-msg-action .mdi {
+  font-size: 16px;
 }
 
 /* Markdown rendering inside assistant turns. */
@@ -126,10 +186,71 @@ pre,
   border-radius: 5px;
   padding: 1px 5px;
 }
+
+/* Code block with language label + copy (rendered by security/markdown.ts). */
+.cx-md .cx-code {
+  border: 1px solid var(--cx-border);
+  border-radius: var(--cx-radius);
+  overflow: hidden;
+  margin: 0 0 12px;
+  background: var(--cx-code-bg);
+}
+.cx-md .cx-code__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 6px 0 12px;
+  border-bottom: 1px solid var(--cx-border-subtle);
+  font-size: 11px;
+  color: rgb(var(--v-theme-secondary));
+}
+.cx-md .cx-code__lang {
+  flex: 1 1 auto;
+  font-family: 'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+}
+.cx-md .cx-code__copy {
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgb(var(--v-theme-secondary));
+  font: inherit;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: background 0.13s ease, color 0.13s ease;
+}
+.cx-md .cx-code__copy:hover {
+  background: var(--cx-hover);
+  color: rgb(var(--v-theme-on-surface));
+}
+.cx-md .cx-code__copy .mdi {
+  font-size: 14px;
+}
+.cx-md .cx-code pre {
+  margin: 0;
+  padding: 12px 14px;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  overflow-x: auto;
+}
+.cx-md .cx-code pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.86em;
+}
+/* Bare <pre> fallback (when not wrapped, e.g. plain HTML pre). */
 .cx-md pre {
   background: rgb(var(--v-theme-surface-container));
-  border: 1px solid rgb(var(--v-theme-outline-variant));
-  border-radius: 10px;
+  border: 1px solid var(--cx-border);
+  border-radius: var(--cx-radius);
   padding: 12px 14px;
   overflow-x: auto;
   margin: 0 0 12px;
@@ -142,7 +263,7 @@ pre,
 .cx-md blockquote {
   margin: 0 0 12px;
   padding-left: 12px;
-  border-left: 2px solid rgb(var(--v-theme-outline-variant));
+  border-left: 2px solid var(--cx-border);
   opacity: 0.8;
 }
 .cx-md table {
@@ -152,23 +273,23 @@ pre,
 }
 .cx-md th,
 .cx-md td {
-  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border: 1px solid var(--cx-border);
   padding: 5px 10px;
 }
 
-/* Composer — the rounded input dock pinned to the bottom, Codex-style. */
+/* Composer — rounded input dock pinned to the bottom. */
 .cx-composer {
   width: 100%;
   max-width: 760px;
   margin: 0 auto;
-  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border: 1px solid var(--cx-border);
   background: rgb(var(--v-theme-surface-container));
-  border-radius: 22px;
+  border-radius: var(--cx-radius-lg);
   padding: 8px 8px 8px 16px;
   transition: border-color 0.15s ease;
 }
 .cx-composer:focus-within {
-  border-color: rgba(128, 128, 128, 0.55);
+  border-color: var(--cx-hover-strong);
 }
 .cx-composer textarea {
   resize: none;

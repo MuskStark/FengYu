@@ -260,6 +260,17 @@ async function chooseLocalPackage() {
   await dispatchUpload(path, () => skillStore.uploadNative(path), () => api.uploadNativePlugin(path))
 }
 
+// Drag-and-drop a local .fyp/.fys onto the install zone (extension dispatched by dispatchUpload).
+async function onDropPackage(e: DragEvent) {
+  e.preventDefault()
+  const file = e.dataTransfer?.files?.[0]
+  if (!file) return
+  await dispatchUpload(file.name, () => skillStore.uploadFile(file), () => api.uploadPlugin(file))
+}
+function onDragOverPackage(e: DragEvent) {
+  e.preventDefault()
+}
+
 // ── detail drawer ────────────────────────────────────────────────
 
 function openDetail(card: CardItem) {
@@ -402,6 +413,27 @@ onMounted(async () => {
 
       <!-- ═══ Legacy plugins/skills tabs ═══ -->
       <template v-else>
+      <!-- Local install dropzone: click or drag a .fyp/.fys package -->
+      <div
+        class="local-install"
+        role="button"
+        tabindex="0"
+        :title="t('market.uploadHint')"
+        @click="chooseLocalPackage"
+        @keydown.enter.prevent="chooseLocalPackage"
+        @dragover="onDragOverPackage"
+        @drop="onDropPackage"
+      >
+        <span class="li-ic"><i class="mdi" :class="busy === 'upload' ? 'mdi-loading mdi-spin' : 'mdi-package-variant-closed'" /></span>
+        <span class="li-txt">
+          <strong>{{ t('market.upload') }}</strong>
+          <span class="cx-muted">{{ t('market.uploadHint') }}（.fyp / .fys）</span>
+        </span>
+        <span class="cx-btn cx-btn--primary cx-btn--sm li-btn">
+          <span v-if="busy === 'upload'" class="cx-spin" /><i v-else class="mdi mdi-tray-arrow-up" />{{ t('market.uploadHint') }}
+        </span>
+      </div>
+
       <!-- Installed fast-row -->
       <div v-if="installedRow.length" class="installed-row">
         <span class="installed-row-label">{{ t('market.installedRow') }}</span>
@@ -584,6 +616,30 @@ onMounted(async () => {
 .market-search .cx-input { padding-left: 36px; }
 .market-search-icon { position: absolute; left: 11px; z-index: 1; color: rgb(var(--v-theme-secondary)); font-size: 18px; }
 .market-error { margin: 12px 20px 0; flex: 0 0 auto; }
+
+/* Local install dropzone (click or drag a .fyp/.fys package) */
+.local-install {
+  display: flex; align-items: center; gap: 14px;
+  margin-bottom: 16px;
+  padding: 16px 18px;
+  border: 1.5px dashed var(--cx-border);
+  border-radius: var(--cx-radius-lg);
+  background: rgb(var(--v-theme-surface));
+  cursor: pointer;
+  transition: border-color .13s ease, background .13s ease;
+}
+.local-install:hover { border-color: var(--cx-hover-strong); background: var(--cx-hover); }
+.local-install .li-ic {
+  width: 44px; height: 44px; border-radius: 12px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  background: rgb(var(--v-theme-surface-container-high));
+  color: rgb(var(--v-theme-on-surface));
+}
+.local-install .li-ic .mdi { font-size: 22px; }
+.local-install .li-txt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.local-install .li-txt strong { font-size: 14px; font-weight: 600; }
+.local-install .li-txt .cx-muted { font-size: 12px; }
+.local-install .li-btn { flex: 0 0 auto; pointer-events: none; }
 
 .market-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 20px 24px; }
 
