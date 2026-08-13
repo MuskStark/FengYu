@@ -18,6 +18,8 @@
   "settings": { "title": "设置", "theme": "主题", "language": "语言",
                 "runtimeSecurity": "运行时与安全", "processIsolation": "进程隔离",
                 "sandboxActive": "沙箱已启用（{backend}）",
+                "sandboxReduced": "部分沙箱已启用（{backend}）",
+                "sandboxReducedHint": "已限制访问已知凭据目录等敏感路径；非完全最小化沙箱。",
                 "compatibilityApproval": "兼容模式 · 必须明确审批",
                 "mcpSummary": "{connections} 个连接，{tools} 个工具",
                 "logLevel": "日志等级",
