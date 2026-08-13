@@ -103,6 +103,28 @@ const endpointNeedsV1 = computed(() => {
   return m === 'openai' || m === 'deepseek'
 })
 
+// Process-isolation badge state. The backend distinguishes three postures:
+//   sandboxed        — full OS security boundary (Linux bwrap)            → green, "active"
+//   reduced          — partial deny-sensitive boundary (macOS sandbox-exec)→ green, "reduced"
+//   compatibilityMode— no boundary at all (Windows Job Object / none)     → warn, "compatibility"
+// Collapsing macOS's `reduced` into the no-isolation branch made the badge read
+// "兼容模式 · 必须明确审批" while the card below (keyed on compatibilityMode) hid the
+// toggle — a self-contradictory state. `reduced` is its own green-but-distinct posture.
+const isolationChipClass = computed(() => {
+  const s = isolationStatus.value
+  if (!s) return ''
+  if (s.compatibilityMode) return 'cx-chip--warn'
+  return 'cx-chip--success' // full (sandboxed) or reduced
+})
+const isolationChipLabel = computed(() => {
+  const s = isolationStatus.value
+  if (!s) return ''
+  if (s.compatibilityMode) return t('settings.compatibilityApproval')
+  if (s.sandboxed) return t('settings.sandboxActive', { backend: s.backend })
+  if (s.reduced) return t('settings.sandboxReduced', { backend: s.backend })
+  return t('settings.compatibilityApproval')
+})
+
 const modes: { title: string; value: AiMode }[] = [
   { title: t('aiSettings.modeLocal'), value: 'local' },
   { title: t('aiSettings.modeOpenai'), value: 'openai' },
@@ -286,12 +308,17 @@ async function onSaveProxy() {
           <span
             v-if="isolationStatus"
             class="cx-chip"
-            :class="isolationStatus.sandboxed ? 'cx-chip--success' : 'cx-chip--warn'"
+            :class="isolationChipClass"
           >
-            {{ isolationStatus.sandboxed
-              ? $t('settings.sandboxActive', { backend: isolationStatus.backend })
-              : $t('settings.compatibilityApproval') }}
+            {{ isolationChipLabel }}
           </span>
+        </div>
+        <div
+          v-if="isolationStatus?.reduced"
+          class="cx-muted"
+          style="font-size: 12px; margin-top: -8px;"
+        >
+          {{ $t('settings.sandboxReducedHint') }}
         </div>
         <div v-if="isolationStatus?.compatibilityMode" class="cx-setting-row">
           <div class="cx-setting-row__label">

@@ -18,6 +18,8 @@
   "settings": { "title": "Settings", "theme": "Theme", "language": "Language",
                 "runtimeSecurity": "Runtime & security", "processIsolation": "Process isolation",
                 "sandboxActive": "Sandbox active ({backend})",
+                "sandboxReduced": "Reduced sandbox active ({backend})",
+                "sandboxReducedHint": "Known credential and sensitive paths are denied; this is not a full minimal-allowlist sandbox.",
                 "compatibilityApproval": "Compatibility mode · explicit approval required",
                 "mcpSummary": "{connections} connection(s), {tools} tool(s)",
                 "logLevel": "Log level",
