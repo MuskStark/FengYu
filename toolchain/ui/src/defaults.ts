@@ -60,6 +60,15 @@ export const fengyuDefaults: DefaultsInstance = {
   VSnackbar: {
     elevation: 4,
   },
+  VProgressLinear: {
+    color: 'primary',
+    rounded: true,
+    height: 4,
+  },
+  VProgressCircular: {
+    color: 'primary',
+    width: 2,
+  },
   VNavigationDrawer: {
     elevation: 0,
   },

@@ -20,16 +20,15 @@ describe('Email Center shell uses the official plugin-ui foundation', () => {
     expect(main).toContain('plugins: [createPinia(), i18n]')
   })
 
-  it('keeps the email layout styling on top of the shared component system', () => {
+  it('uses the shared responsive shell without a private color system', () => {
+    const app = fs.readFileSync(path.resolve('src/App.vue'), 'utf8')
     const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
 
-    // Layout grid + responsive task rail are email-specific CSS layered over the kit.
-    expect(css).toContain('.email-layout')
-    expect(css).toContain('.email-layout .v-field__outline')
-    expect(css).toContain('.email-layout .v-btn--variant-tonal')
-    expect(css).toContain('.email-layout .v-selection-control')
-    expect(css).toContain('.v-overlay-container .v-list')
-    expect(css).toContain('.v-overlay-container .v-card')
+    expect(app).toContain('FyPluginShell')
+    expect(app).toContain('FyPluginPage')
+    expect(css).not.toContain('--email-')
+    expect(css).not.toContain('.email-layout')
+    expect(css).toContain('rgb(var(--v-theme-surface-container-low))')
   })
 
   it('keeps forms spacious, buttons visible, and popups inside the component system', () => {
@@ -39,25 +38,19 @@ describe('Email Center shell uses the official plugin-ui foundation', () => {
       .map(name => fs.readFileSync(path.resolve('src/components', name), 'utf8'))
       .join('\n')
 
-    expect(css).toContain('.email-layout .v-card-text > :not(:first-child)')
     expect(css).toContain('.account-layout > :last-child > * + *')
-    expect(css).toContain('.email-layout .v-btn--variant-elevated')
-    expect(css).toContain('.v-card-actions .v-btn.text-primary')
     expect(css).toContain('.editor-toolbar .v-btn')
     expect(css).toContain('.codex-dialog')
-    expect(css).toContain('.v-overlay-container .v-field__outline')
-    expect(css).toContain('.v-overlay-container .v-btn--variant-elevated')
     expect(components).not.toMatch(/window\.(confirm|prompt)\s*\(/)
   })
 
-  it('turns the task rail into a compact horizontally scrollable mobile navigation', () => {
+  it('keeps business grids responsive below shared shell breakpoints', () => {
     const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
-    const mobile = css.match(/@media\s*\(max-width:\s*720px\)\s*\{([\s\S]*)\}\s*$/)?.[1] ?? ''
 
-    expect(mobile).toMatch(/\.email-layout\s*\{[^}]*display:\s*block/)
-    expect(mobile).toMatch(/\.task-rail\s*\{[^}]*flex-direction:\s*row/)
-    expect(mobile).toMatch(/\.task-rail\s*\{[^}]*overflow-x:\s*auto/)
-    expect(mobile).toMatch(/\.task-rail__item\s*\{[^}]*flex:\s*0\s+0\s+auto/)
+    expect(css).toContain('@media (max-width: 1000px)')
+    expect(css).toContain('@media (max-width: 720px)')
+    expect(css).toMatch(/\.workspace-grid, \.panel-grid, \.account-layout\s*\{[^}]*grid-template-columns:\s*1fr/)
+    expect(css).toMatch(/\.form-grid\s*\{[^}]*grid-template-columns:\s*1fr/)
   })
 
   it('localizes the account-loading action in both message catalogs', () => {

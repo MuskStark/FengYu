@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref } from 'vue'
 import type { FengYuClient, FileRef } from '@infinia/plugin-sdk'
-import { FyDirectoryPicker, FyEmptyState, FyPageHeader } from '@infinia/plugin-ui'
+import { FyDirectoryPicker, FyEmptyState, FyPageHeader, FyProgress } from '@infinia/plugin-ui'
 import { mdiFolderOpenOutline } from '@mdi/js'
 import { createPluginRpc, checked } from '../rpc'
 import { readJobSnapshot, type UiJobStatus } from '../jobState'
@@ -255,9 +255,9 @@ function goToStep(value: number) {
 }
 
 const statusClass = computed(() => ({
-  'opb-status--running': status.value === 'starting' || status.value === 'running',
-  'opb-status--success': status.value === 'done',
-  'opb-status--error': status.value === 'failed' || status.value === 'error',
+  'fy-status--running': status.value === 'starting' || status.value === 'running',
+  'fy-status--success': status.value === 'done',
+  'fy-status--error': status.value === 'failed' || status.value === 'error',
 }))
 
 onUnmounted(() => {
@@ -307,12 +307,12 @@ onUnmounted(() => {
       </button>
     </nav>
 
-    <section class="opb-surface opb-project-panel">
+    <section class="fy-surface opb-project-panel">
       <!-- Step 1: configure dependencies -->
       <template v-if="step === 1">
-        <div class="opb-surface__section">
-            <h2 class="opb-section-heading">{{ t('opb.config.requirements') }}</h2>
-            <p class="opb-section-copy">{{ t('opb.config.requirementsHint') }}</p>
+        <div class="fy-surface__section">
+            <h2 class="fy-section-title">{{ t('opb.config.requirements') }}</h2>
+            <p class="fy-section-copy">{{ t('opb.config.requirementsHint') }}</p>
             <v-textarea
               v-model="requirements"
               rows="6"
@@ -324,9 +324,9 @@ onUnmounted(() => {
             />
         </div>
 
-        <div class="opb-surface__section">
-            <h2 class="opb-section-heading">{{ t('opb.config.runtime') }}</h2>
-            <p class="opb-section-copy">{{ t('opb.config.runtimeHint') }}</p>
+        <div class="fy-surface__section">
+            <h2 class="fy-section-title">{{ t('opb.config.runtime') }}</h2>
+            <p class="fy-section-copy">{{ t('opb.config.runtimeHint') }}</p>
             <v-row>
               <v-col cols="12" sm="6">
                 <v-text-field
@@ -349,8 +349,8 @@ onUnmounted(() => {
             </v-row>
         </div>
 
-        <div class="opb-surface__section">
-            <h2 class="opb-section-heading">{{ t('opb.config.download') }}</h2>
+        <div class="fy-surface__section">
+            <h2 class="fy-section-title">{{ t('opb.config.download') }}</h2>
             <div class="opb-option-grid">
               <v-switch v-model="form.onlyBinary" color="primary" :label="t('opb.config.onlyBinary')" hide-details @change="markDirty" />
               <v-switch v-model="form.recursive" color="primary" :label="t('opb.config.recursive')" hide-details @change="markDirty" />
@@ -380,12 +380,12 @@ onUnmounted(() => {
             </v-expansion-panels>
         </div>
 
-        <div class="opb-surface__section opb-actions opb-actions--split">
-            <div class="opb-actions">
+        <div class="fy-surface__section fy-actions fy-actions--split">
+            <div class="fy-actions">
               <v-chip v-if="!saved" color="warning" variant="tonal" size="small">{{ t('opb.config.unsaved') }}</v-chip>
-              <span v-else class="opb-status opb-status--success">{{ t('opb.config.saved') }}</span>
+              <span v-else class="fy-status fy-status--success">{{ t('opb.config.saved') }}</span>
             </div>
-            <div class="opb-actions">
+            <div class="fy-actions">
               <v-btn variant="text" :loading="loading" :disabled="loading" @click="save">{{ t('opb.config.save') }}</v-btn>
               <v-btn color="primary" variant="flat" :disabled="!saved" @click="step = 2">{{ t('opb.common.next') }}</v-btn>
             </div>
@@ -394,23 +394,24 @@ onUnmounted(() => {
 
       <!-- Step 2: download & package -->
       <template v-else-if="step === 2">
-        <div class="opb-surface__section">
-            <h2 class="opb-section-heading">{{ t('opb.build.title') }}</h2>
-            <p class="opb-section-copy">{{ t('opb.build.description') }}</p>
-            <div class="opb-actions">
+        <div class="fy-surface__section">
+            <h2 class="fy-section-title">{{ t('opb.build.title') }}</h2>
+            <p class="fy-section-copy">{{ t('opb.build.description') }}</p>
+            <div class="fy-actions">
               <v-btn color="primary" :loading="building" :disabled="!canBuild" @click="startBuild">{{ t('opb.build.start') }}</v-btn>
               <v-btn variant="outlined" :disabled="building" @click="doPackage">{{ t('opb.build.package') }}</v-btn>
               <v-btn v-if="building" color="error" variant="text" @click="cancel">{{ t('opb.build.cancel') }}</v-btn>
-              <span class="opb-status" :class="statusClass">{{ t(`opb.build.status.${status}`, status) }}</span>
+              <span v-if="!building" class="fy-status" :class="statusClass">{{ t(`opb.build.status.${status}`, status) }}</span>
             </div>
+            <FyProgress v-if="building" :label="t(`opb.build.status.${status}`, status)" class="mt-3" />
         </div>
-        <div class="opb-surface__section">
-            <h3 class="opb-section-heading">{{ t('opb.build.logTitle') }}</h3>
-              <pre class="opb-log">{{
+        <div class="fy-surface__section">
+            <h3 class="fy-section-title">{{ t('opb.build.logTitle') }}</h3>
+              <pre class="fy-log">{{
                 logs.length ? logs.join('\n') : t('opb.build.logEmpty')
               }}</pre>
         </div>
-        <div class="opb-surface__section opb-actions opb-actions--split">
+        <div class="fy-surface__section fy-actions fy-actions--split">
           <v-btn variant="text" :disabled="building" @click="step = 1">{{ t('opb.common.prev') }}</v-btn>
           <v-btn color="primary" variant="flat" :disabled="building" @click="step = 3">{{ t('opb.common.next') }}</v-btn>
         </div>
@@ -418,15 +419,16 @@ onUnmounted(() => {
 
       <!-- Step 3: verify -->
       <template v-else>
-        <div class="opb-surface__section">
-            <h2 class="opb-section-heading">{{ t('opb.step.verify') }}</h2>
-            <p class="opb-section-copy">{{ t('opb.verify.hint') }}</p>
-            <div class="opb-actions">
+        <div class="fy-surface__section">
+            <h2 class="fy-section-title">{{ t('opb.step.verify') }}</h2>
+            <p class="fy-section-copy">{{ t('opb.verify.hint') }}</p>
+            <div class="fy-actions">
               <v-btn color="primary" :loading="building" :disabled="building" @click="verify">{{ t('opb.build.verify') }}</v-btn>
-              <span class="opb-status" :class="statusClass">{{ t(`opb.build.status.${status}`, status) }}</span>
+              <span v-if="!building" class="fy-status" :class="statusClass">{{ t(`opb.build.status.${status}`, status) }}</span>
             </div>
+            <FyProgress v-if="building" :label="t(`opb.build.status.${status}`, status)" class="mt-3" />
         </div>
-        <div class="opb-surface__section opb-actions">
+        <div class="fy-surface__section fy-actions">
           <v-btn variant="text" :disabled="building" @click="step = 2">{{ t('opb.common.prev') }}</v-btn>
         </div>
       </template>
@@ -498,6 +500,12 @@ onUnmounted(() => {
 .opb-requirements :deep(textarea) { font-family: var(--fengyu-font-mono); }
 
 @media (max-width: 600px) {
+  .opb-workflow { grid-template-columns: 1fr; }
+  .opb-workflow__step { min-height: 40px; }
+  .opb-option-grid { grid-template-columns: 1fr; }
+}
+
+@container fy-plugin-page (max-width: 600px) {
   .opb-workflow { grid-template-columns: 1fr; }
   .opb-workflow__step { min-height: 40px; }
   .opb-option-grid { grid-template-columns: 1fr; }

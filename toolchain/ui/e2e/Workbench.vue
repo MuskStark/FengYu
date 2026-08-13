@@ -7,7 +7,9 @@
 import { computed, onMounted, ref } from 'vue'
 import {
   FyPageHeader,
+  FyPluginPage,
   FyPluginShell,
+  FyProgress,
   FyStepWizard,
 } from '../src'
 import type {
@@ -146,7 +148,7 @@ const stateLabel = computed(() => ({
         { value: 'settings', title: 'Settings', icon: mdiCogOutline },
       ]"
     >
-      <main class="workbench" data-workbench>
+      <FyPluginPage data-workbench>
         <FyPageHeader
           title="Create spreadsheet import"
           description="Configure a source, review the output, and run the import."
@@ -202,10 +204,7 @@ const stateLabel = computed(() => ({
                 readonly
                 hide-details
               />
-              <div v-if="fixtureState === 'validating'" class="workbench__validation" role="status">
-                <v-progress-circular indeterminate size="18" width="2" />
-                Validating column mappings…
-              </div>
+              <FyProgress v-if="fixtureState === 'validating'" label="Validating column mappings…" />
             </section>
           </template>
 
@@ -257,7 +256,7 @@ const stateLabel = computed(() => ({
             </section>
           </template>
         </FyStepWizard>
-      </main>
+      </FyPluginPage>
     </FyPluginShell>
   </div>
 </template>
@@ -267,12 +266,6 @@ const stateLabel = computed(() => ({
   min-width: 0;
   min-height: 100vh;
   background: rgb(var(--v-theme-background));
-}
-
-.workbench {
-  width: min(100%, 1120px);
-  padding: 28px 32px 40px;
-  margin: 0 auto;
 }
 
 .workbench__fixture-label {
@@ -339,16 +332,6 @@ const stateLabel = computed(() => ({
 .workbench__hint {
   margin-top: -8px !important;
   font-size: 0.75rem !important;
-}
-
-.workbench__validation {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  font-size: 0.8125rem;
-  background: rgb(var(--v-theme-surface-container));
-  border-radius: 8px;
 }
 
 .workbench__summary {

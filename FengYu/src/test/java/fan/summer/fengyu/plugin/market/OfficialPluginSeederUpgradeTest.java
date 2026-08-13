@@ -14,8 +14,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Regression: {@link OfficialPluginSeeder} must UPGRADE an already-installed official plugin when
- * the bundled {@code .fyp} carries a newer version. Previously it skipped any id already present
+ * Regression: {@link OfficialPluginSeeder} must upgrade an already-installed official plugin when
+ * the bundled {@code .fyp} carries a newer version, and refresh same-version packages when their
+ * trusted archive bytes change. Previously it skipped any id already present
  * ({@code if (packages.find(id).isPresent()) continue}) with no version check — so a rebuilt
  * worker JAR (e.g. a logging fix) never reached a user who had an older plugin installed. The
  * class Javadoc already promised "upgrades them when newer"; these tests pin that behaviour.
@@ -41,6 +42,34 @@ class OfficialPluginSeederUpgradeTest {
         writeArchive(packagesDir, "fan.summer.demo-2.0.0.fyp", "2.0.0");
         seeder.seed();
         assertEquals("2.0.0", service.find("fan.summer.demo").orElseThrow().version());
+    }
+
+    @Test
+    void refreshesChangedSameVersionBundleButTracksItsSourceDigest() throws Exception {
+        Path packagesDir = temp.resolve("packages");
+        Path installDir = temp.resolve("installed");
+        Path digestsDir = temp.resolve("digests");
+        Files.createDirectories(packagesDir);
+        PluginPackageService service = new PluginPackageService(installDir.toString());
+        PluginIntegrityStore integrity = new PluginIntegrityStore(digestsDir);
+        service.attachIntegrityStoreForTest(integrity);
+        OfficialPluginSeeder seeder = new OfficialPluginSeeder(service, packagesDir.toString());
+
+        writeArchive(packagesDir, "fan.summer.demo-1.0.0.fyp", "1.0.0", "old-ui");
+        seeder.seed();
+        String firstSourceDigest = integrity.sourceArchiveSha256("fan.summer.demo").orElseThrow();
+        assertEquals("<html>old-ui</html>", Files.readString(
+                installDir.resolve("fan.summer.demo/ui/index.html")));
+
+        // Development/repack flow: the semantic version is unchanged but the trusted bundle's
+        // UI bytes changed. The seeder must install those bytes instead of skipping by version.
+        writeArchive(packagesDir, "fan.summer.demo-1.0.0.fyp", "1.0.0", "new-ui");
+        seeder.seed();
+
+        assertEquals("<html>new-ui</html>", Files.readString(
+                installDir.resolve("fan.summer.demo/ui/index.html")));
+        String refreshedSourceDigest = integrity.sourceArchiveSha256("fan.summer.demo").orElseThrow();
+        assertFalse(firstSourceDigest.equals(refreshedSourceDigest));
     }
 
     @Test
@@ -203,6 +232,10 @@ class OfficialPluginSeederUpgradeTest {
     }
 
     private void writeArchive(Path dir, String name, String version) throws Exception {
+        writeArchive(dir, name, version, "");
+    }
+
+    private void writeArchive(Path dir, String name, String version, String uiMarker) throws Exception {
         String manifest = """
             {"schemaVersion":2,"id":"fan.summer.demo","name":"Demo","description":"Demo plugin",
              "version":"%s","author":"Example","icon":"puzzle-outline","category":"dev",
@@ -214,7 +247,7 @@ class OfficialPluginSeederUpgradeTest {
             zip.write(manifest.getBytes(StandardCharsets.UTF_8));
             zip.closeEntry();
             zip.putNextEntry(new ZipEntry("ui/index.html"));
-            zip.write("<html></html>".getBytes(StandardCharsets.UTF_8));
+            zip.write(("<html>" + uiMarker + "</html>").getBytes(StandardCharsets.UTF_8));
             zip.closeEntry();
         }
         // P0-8: a bundled official plugin now REQUIRES a matching .sha256 sidecar (the seeder is

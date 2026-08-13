@@ -92,7 +92,7 @@ async function reject(): Promise<void> {
 
 <template>
   <section class="workspace-grid">
-    <v-card class="surface" variant="flat">
+    <v-card class="fy-surface" variant="flat">
       <v-card-title>{{ t('compose.title') }}</v-card-title>
       <v-card-text>
         <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
@@ -123,7 +123,7 @@ async function reject(): Promise<void> {
         <v-btn data-testid="compose-review" color="primary" :loading="busy" :disabled="!canReview" @click="prepare">{{ t('compose.review') }}</v-btn>
       </v-card-actions>
     </v-card>
-    <v-card class="surface workspace-summary" variant="flat">
+    <v-card class="fy-surface workspace-summary" variant="flat">
       <v-card-title>{{ t('compose.previewTitle') }}</v-card-title>
       <v-card-text>
         <v-alert v-if="compose.sendResult" :type="compose.sendResult.failed ? 'warning' : 'success'" class="mb-4">

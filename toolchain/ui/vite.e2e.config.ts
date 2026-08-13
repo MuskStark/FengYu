@@ -16,7 +16,7 @@ export default defineConfig({
   root: resolve(__dirname, 'e2e'),
   plugins: [vue()],
   server: {
-    port: 5173,
+    port: 4175,
     strictPort: true,
     host: '127.0.0.1',
   },

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useDisplay } from 'vuetify'
 import { useSettingsStore } from '@/stores/settings'
 import { useAiSessionStore } from '@/stores/aiSession'
 import { useAccountStore } from '@/stores/account'
@@ -11,7 +12,9 @@ const account = useAccountStore()
 const router = useRouter()
 const route = useRoute()
 
-const rail = computed(() => settings.sidebarCollapsed)
+const { width } = useDisplay()
+const autoRail = computed(() => width.value < 900)
+const rail = computed(() => settings.sidebarCollapsed || autoRail.value)
 const accountMenuOpen = ref(false)
 const accountArea = ref<HTMLElement | null>(null)
 
@@ -75,6 +78,7 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
       <img v-if="!rail" class="brand-logo" src="/infinia-logo.svg" alt="" />
       <span v-if="!rail" class="sidebar-brand-name">{{ $t('brand') }}</span>
       <button
+        v-if="!autoRail"
         class="cx-iconbtn cx-iconbtn--sm"
         :title="rail ? $t('sidebar.expand') : $t('sidebar.collapse')"
         :aria-label="rail ? $t('sidebar.expand') : $t('sidebar.collapse')"

@@ -23,11 +23,14 @@ export { provideFengYuClient, useFengYuClient, FENGYU_CLIENT_KEY } from './clien
 // Layout and standard state components.
 export { default as FyPluginShell } from './components/FyPluginShell.vue'
 export type { FyNavItem } from './components/FyPluginShell.vue'
+export { default as FyPluginPage } from './components/FyPluginPage.vue'
 export { default as FyIcon } from './components/FyIcon.vue'
 export { default as FyPageHeader } from './components/FyPageHeader.vue'
 export { default as FyToolbar } from './components/FyToolbar.vue'
 export { default as FyEmptyState } from './components/FyEmptyState.vue'
 export { default as FyLoadingState } from './components/FyLoadingState.vue'
+export { default as FyProgress } from './components/FyProgress.vue'
+export type { FyProgressStatus } from './components/FyProgress.vue'
 export { default as FyErrorState } from './components/FyErrorState.vue'
 export { default as FyPermissionNotice } from './components/FyPermissionNotice.vue'
 
@@ -68,6 +71,11 @@ export type { FyTaskRow, FyTaskStatus } from './components/FyTaskTable.vue'
 
 // Notification composable + the host-fallback helper it builds on.
 export { useFengYuNotify, sendFengYuNotification } from './composables/useFengYuNotify'
+export type {
+  FyNotification,
+  FyNotificationOptions,
+  FyNotificationTone,
+} from './composables/useFengYuNotify'
 
 // Re-export the SDK types this library consumes, so plugin authors have a
 // single import surface for the host bindings.
