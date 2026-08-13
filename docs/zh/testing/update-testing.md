@@ -10,7 +10,7 @@
 
 1. **GitHub 上必须存在两个 release**，这样"旧版"才能检测到"新版"：
    - 一个**较旧**的 tagged release，你要安装/运行它（如 `v4.0.0-beta.1`）。
-   - 一个**较新**的 tagged release，已发布在 Releases 页（如 `v4.0.0-beta.2`）。
+   - 一个**较新**的 tagged release，已发布在 Releases 页（如 `v4.0.0-beta.3`）。
    - 较新的 release 必须是在本次改动合入**之后**由 `fengyu-release.yml` 构建的（这样 `latest*.yml`、`*.blockmap`、`checksums.txt` 才会发布——electron-updater 和便携自更新都需要）。
 2. 确认较新 release 包含你所在模式需要的产物（见下）。
 3. 先把旧版装好/解压好并跑起来，再触发检查。

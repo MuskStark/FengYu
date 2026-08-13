@@ -12,13 +12,15 @@ this page is generated from it on every docs build (see
 CHANGELOG.md instead.
 
 ::: tip Latest release
-**v4.0.0-beta.2** — 2026-08-11 ·
-[GitHub release](https://github.com/MuskStark/FengYu/releases/tag/v4.0.0-beta.2)
+**v4.0.0-beta.3** — 2026-08-13 ·
+[GitHub release](https://github.com/MuskStark/FengYu/releases/tag/v4.0.0-beta.3)
 :::
 
 ---
 
 ## [Unreleased]
+
+## [4.0.0-beta.3] — 2026-08-13
 
 ### ✨ Added
 - **Plugin manifest schema v2 — the single hand-written contract.** `manifest.json` is now
@@ -76,6 +78,17 @@ CHANGELOG.md instead.
 - **`offlinepython` RPC method names are lowerCamelCase.** Schema v2 forbids dots in method keys,
   so `config.get`→`configGet`, `requirements.save`→`requirementsSave`, `build.start`→`buildStart`,
   etc. The smoke scripts were updated; external callers of the old dotted names must switch.
+
+### 🐛 Fixed
+- **macOS no longer shows "compatibility mode" for process isolation.** The Settings "Process
+  isolation" badge was a strict `sandboxed ? active : compatibility` binary, so macOS's
+  `sandbox-exec` posture (correctly classified by the backend as `reduced` — a deny-sensitive
+  boundary, not full isolation) collapsed into the no-isolation warning "兼容模式 · 必须明确审批",
+  contradicting the card below it (which keys the compatibility toggle on `compatibilityMode`).
+  The badge is now three-state — `sandboxed` (Linux bwrap) and `reduced` (macOS) both render green;
+  the yellow "compatibility mode" chip is reserved for Windows Job Object / no-backend. A muted
+  hint explains the macOS deny-sensitive model. Backend behavior was already correct; this is a
+  frontend display fix.
 
 ## [4.0.0-beta.2] — 2026-08-11
 
