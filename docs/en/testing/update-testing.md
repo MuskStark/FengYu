@@ -15,7 +15,7 @@ platform with the listed prerequisites.
 
 1. **Two releases must exist on GitHub** so "old" can detect "new":
    - An **older** tagged release you will install/run (e.g. `v4.0.0-beta.1`).
-   - A **newer** tagged release available on the Releases page (e.g. `v4.0.0-beta.2`).
+   - A **newer** tagged release available on the Releases page (e.g. `v4.0.0-beta.3`).
    - The newer release MUST have been built by `fengyu-release.yml` AFTER the changes in this
      feature landed (so `latest*.yml`, `*.blockmap`, and `checksums.txt` are published — required
      by electron-updater and the portable self-updater).

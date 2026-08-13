@@ -27,7 +27,7 @@ cd FengYu
 ./mvnw clean package -f FengYu/pom.xml -DskipTests
 ```
 
-The packaged backend jar lands at `FengYu/target/FengYu-*.jar` (versioned, e.g. `FengYu-4.0.0-beta.2.jar`).
+The packaged backend jar lands at `FengYu/target/FengYu-*.jar` (versioned, e.g. `FengYu-4.0.0-beta.3.jar`).
 
 ## Run the backend
 
