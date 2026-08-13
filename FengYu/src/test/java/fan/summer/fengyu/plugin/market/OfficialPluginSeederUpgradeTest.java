@@ -6,6 +6,8 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -87,6 +89,32 @@ class OfficialPluginSeederUpgradeTest {
         writeArchive(packagesDir, "fan.summer.demo-1.0.0.fyp", "1.0.0");
         seeder.seed();
         assertEquals("2.0.0", service.find("fan.summer.demo").orElseThrow().version());
+    }
+
+    /**
+     * The packages directory may hold several same-id archives (an old build left beside a new one).
+     * The seeder must install the highest-version one regardless of the (filesystem-dependent,
+     * non-deterministic) listing order — otherwise the upgrade/downgrade behaviour above passed on
+     * one OS and failed on another. This drives the grouping helper with both orders so the invariant
+     * is pinned deterministically (the end-to-end tests cannot — @TempDir listing order is OS-driven).
+     */
+    @Test
+    void keepsOnlyTheHighestVersionArchivePerIdRegardlessOfListOrder() throws Exception {
+        Path packagesDir = temp.resolve("packages");
+        Files.createDirectories(packagesDir);
+        PluginPackageService service = new PluginPackageService(temp.resolve("installed").toString());
+        OfficialPluginSeeder seeder = new OfficialPluginSeeder(service, packagesDir.toString());
+
+        writeArchive(packagesDir, "fan.summer.demo-1.0.0.fyp", "1.0.0");
+        writeArchive(packagesDir, "fan.summer.demo-2.0.0.fyp", "2.0.0");
+        Path v1 = packagesDir.resolve("fan.summer.demo-1.0.0.fyp");
+        Path v2 = packagesDir.resolve("fan.summer.demo-2.0.0.fyp");
+
+        List<Path> lowThenHigh = seeder.highestVersionArchivePerId(Stream.of(v1, v2));
+        List<Path> highThenLow = seeder.highestVersionArchivePerId(Stream.of(v2, v1));
+
+        assertEquals(List.of(v2), lowThenHigh, "must keep the newer archive");
+        assertEquals(List.of(v2), highThenLow, "listing order must not change which archive wins");
     }
 
     /**
