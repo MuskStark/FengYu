@@ -1,10 +1,11 @@
 /* ================================================================
-   codex.css — native Codex-desktop component kit for the ZhiFlow shell.
-   The shell no longer uses Vuetify components; every button / input /
-   card / chip / nav-row here is plain HTML styled to the Codex look.
+   codex.css — component kit for the FengYu shell, restyled to the
+   cherry-studio-inspired system: translucent overlays, hairline
+   borders, consistent radii. Plain HTML elements styled via cx-* classes.
    Colors resolve through Vuetify's theme CSS vars (rgb(var(--v-theme-*)))
-   so light/dark still flip via the theme store. Vuetify remains loaded
-   ONLY to hand its instance to micro-frontend plugins.
+   plus the semantic --cx-* tokens defined in tokens.css, so light/dark
+   still flip via the theme store. Vuetify remains loaded only to hand
+   its instance to micro-frontend plugins.
    ================================================================ */
 
 /* ── icons (mdi webfont) ───────────────────────────────────────── */
@@ -20,7 +21,7 @@
   gap: 8px;
   height: 36px;
   padding: 0 14px;
-  border-radius: 10px;
+  border-radius: var(--cx-radius);
   border: 1px solid transparent;
   background: transparent;
   color: rgb(var(--v-theme-on-surface));
@@ -42,20 +43,20 @@
 .cx-btn--primary:hover:not(:disabled) { opacity: 0.88; }
 
 .cx-btn--tonal {
-  background: rgb(var(--v-theme-surface-container-high));
+  background: var(--cx-hover-strong);
   color: rgb(var(--v-theme-on-surface));
 }
-.cx-btn--tonal:hover:not(:disabled) { background: rgb(var(--v-theme-surface-bright)); }
+.cx-btn--tonal:hover:not(:disabled) { background: var(--cx-hover); }
 
 .cx-btn--outline {
-  border-color: rgb(var(--v-theme-outline));
+  border-color: var(--cx-border);
   color: rgb(var(--v-theme-on-surface));
 }
-.cx-btn--outline:hover:not(:disabled) { background: rgb(var(--v-theme-surface-container-high)); }
+.cx-btn--outline:hover:not(:disabled) { background: var(--cx-hover); }
 
 .cx-btn--text { padding: 0 10px; color: rgb(var(--v-theme-secondary)); }
 .cx-btn--text:hover:not(:disabled) {
-  background: rgb(var(--v-theme-surface-container-high));
+  background: var(--cx-hover);
   color: rgb(var(--v-theme-on-surface));
 }
 
@@ -69,7 +70,7 @@
   justify-content: center;
   width: 34px;
   height: 34px;
-  border-radius: 9px;
+  border-radius: var(--cx-radius);
   border: none;
   background: transparent;
   color: rgb(var(--v-theme-secondary));
@@ -77,7 +78,7 @@
   transition: background 0.13s ease, color 0.13s ease, opacity 0.13s ease;
 }
 .cx-iconbtn:hover:not(:disabled) {
-  background: rgb(var(--v-theme-surface-container-high));
+  background: var(--cx-hover);
   color: rgb(var(--v-theme-on-surface));
 }
 .cx-iconbtn:disabled { opacity: 0.35; cursor: default; }
@@ -101,15 +102,15 @@
   font-size: 13px;
   color: rgb(var(--v-theme-on-surface));
   background: rgb(var(--v-theme-surface-container));
-  border: 1px solid rgb(var(--v-theme-outline-variant));
-  border-radius: 10px;
+  border: 1px solid var(--cx-border);
+  border-radius: var(--cx-radius);
   padding: 9px 12px;
   outline: none;
   transition: border-color 0.13s ease;
 }
 .cx-input:focus,
 .cx-textarea:focus,
-.cx-select:focus { border-color: rgba(128, 128, 128, 0.6); }
+.cx-select:focus { border-color: var(--cx-hover-strong); }
 .cx-textarea { resize: vertical; min-height: 72px; line-height: 1.5; }
 .cx-select { appearance: none; cursor: pointer;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
@@ -122,14 +123,14 @@
 /* ── cards ─────────────────────────────────────────────────────── */
 .cx-card {
   background: rgb(var(--v-theme-surface-container));
-  border: 1px solid rgb(var(--v-theme-outline-variant));
-  border-radius: 14px;
+  border: 1px solid var(--cx-border);
+  border-radius: var(--cx-radius-lg);
   padding: 16px;
 }
 .cx-card--hover { cursor: pointer; transition: border-color 0.13s ease, background 0.13s ease; }
 .cx-card--hover:hover {
-  border-color: rgb(var(--v-theme-outline));
-  background: rgb(var(--v-theme-surface-container-high));
+  border-color: var(--cx-hover-strong);
+  background: var(--cx-hover);
 }
 
 /* ── chips / badges ────────────────────────────────────────────── */
@@ -142,14 +143,14 @@
   border-radius: 999px;
   font-size: 11px;
   font-weight: 600;
-  border: 1px solid rgb(var(--v-theme-outline-variant));
+  border: 1px solid var(--cx-border);
   color: rgb(var(--v-theme-secondary));
   background: transparent;
 }
 .cx-chip--success { color: rgb(var(--v-theme-tertiary)); border-color: rgb(var(--v-theme-tertiary)); }
 .cx-chip--error { color: rgb(var(--v-theme-error)); border-color: rgb(var(--v-theme-error)); }
 .cx-chip--warn { color: #d9a441; border-color: #d9a441; }
-.cx-chip--primary { color: rgb(var(--v-theme-on-surface)); border-color: rgb(var(--v-theme-outline)); }
+.cx-chip--primary { color: rgb(var(--v-theme-on-surface)); border-color: var(--cx-hover-strong); }
 .cx-chip--solid {
   background: rgb(var(--v-theme-surface-container-highest));
   border-color: transparent;
@@ -179,7 +180,7 @@
   flex: 0 0 256px;
   height: 100%;
   background: rgb(var(--v-theme-surface-container));
-  border-right: 1px solid rgb(var(--v-theme-outline-variant));
+  border-right: 1px solid var(--cx-border);
   transition: width 0.16s ease, flex-basis 0.16s ease;
 }
 .cx-sidebar.rail { width: 60px; flex-basis: 60px; }
@@ -191,15 +192,15 @@
   height: 36px;
   padding: 0 10px;
   margin: 1px 6px;
-  border-radius: 9px;
+  border-radius: var(--cx-radius);
   color: rgb(var(--v-theme-secondary));
   cursor: pointer;
   font-size: 13px;
   user-select: none;
   transition: background 0.12s ease, color 0.12s ease;
 }
-.cx-nav-item:hover { background: rgb(var(--v-theme-surface-container-high)); color: rgb(var(--v-theme-on-surface)); }
-.cx-nav-item.active { background: rgb(var(--v-theme-surface-container-highest)); color: rgb(var(--v-theme-on-surface)); }
+.cx-nav-item:hover { background: var(--cx-hover); color: rgb(var(--v-theme-on-surface)); }
+.cx-nav-item.active { background: var(--cx-hover-strong); color: rgb(var(--v-theme-on-surface)); }
 .cx-nav-item.rail { justify-content: center; padding: 0; }
 .cx-nav-item .mdi { font-size: 19px; flex: 0 0 auto; }
 .cx-nav-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; }
@@ -223,7 +224,7 @@
   justify-content: center;
   background: rgb(var(--v-theme-primary));
   color: rgb(var(--v-theme-on-primary));
-  border-radius: 10px;
+  border-radius: var(--cx-radius);
   font-weight: 700;
   flex: 0 0 auto;
 }
@@ -242,8 +243,8 @@
 
 /* ── collapsible (native details) ──────────────────────────────── */
 .cx-details {
-  border: 1px solid rgb(var(--v-theme-outline-variant));
-  border-radius: 10px;
+  border: 1px solid var(--cx-border);
+  border-radius: var(--cx-radius);
   overflow: hidden;
 }
 .cx-details > summary {
@@ -278,7 +279,7 @@
 .cx-topbar {
   display: flex; align-items: center; gap: 12px;
   padding: 0 16px; min-height: 52px;
-  border-bottom: 1px solid rgb(var(--v-theme-outline-variant));
+  border-bottom: 1px solid var(--cx-border);
 }
 
 /* ── segmented control (Codex-style toggle for 2–4 options) ────── */
@@ -286,8 +287,8 @@
   display: inline-flex;
   padding: 3px;
   gap: 2px;
-  background: rgb(var(--v-theme-surface-container-highest));
-  border-radius: 10px;
+  background: var(--cx-hover-strong);
+  border-radius: var(--cx-radius);
 }
 .cx-segment button {
   border: none;
@@ -297,7 +298,7 @@
   font-size: 13px;
   font-weight: 550;
   padding: 5px 14px;
-  border-radius: 8px;
+  border-radius: var(--cx-radius-sm);
   cursor: pointer;
   transition: background 0.13s ease, color 0.13s ease;
 }
@@ -317,7 +318,7 @@
   padding: 13px 0;
 }
 .cx-setting-row + .cx-setting-row {
-  border-top: 1px solid rgb(var(--v-theme-outline-variant));
+  border-top: 1px solid var(--cx-border);
 }
 .cx-setting-row__label { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .cx-setting-row__label .mdi { color: rgb(var(--v-theme-secondary)); flex: 0 0 auto; }

@@ -22,6 +22,7 @@ const attachMenuOpen = ref(false)
 const modelMenuOpen = ref(false)
 const modelSwitching = ref(false)
 const listening = ref(false)
+const copiedId = ref<number | null>(null)
 let speechRecognition: SpeechRecognitionLike | null = null
 
 interface SpeechRecognitionLike {
@@ -63,6 +64,45 @@ const granting = ref(false)
 
 function md(src: string): string {
   return renderMarkdown(src)
+}
+
+/** Copy a whole message turn to the clipboard with a transient "copied" state. */
+async function copyMessage(turn: { id: number; content: string }) {
+  try {
+    await navigator.clipboard.writeText(turn.content)
+  } catch {
+    /* clipboard unavailable in this context — ignore */
+  }
+  copiedId.value = turn.id
+  window.setTimeout(() => {
+    if (copiedId.value === turn.id) copiedId.value = null
+  }, 1500)
+}
+
+/** Copy a rendered code block via click/keyboard delegation on the scroll region. */
+async function copyCodeFromEvent(target: HTMLElement) {
+  const block = target.closest('.cx-code')
+  const pre = block?.querySelector('pre')
+  if (!pre) return
+  try {
+    await navigator.clipboard.writeText(pre.textContent ?? '')
+  } catch {
+    /* ignore */
+  }
+}
+function onScrollerClick(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  if (target.closest('.cx-code__copy')) {
+    e.preventDefault()
+    void copyCodeFromEvent(target)
+  }
+}
+function onScrollerKeydown(e: KeyboardEvent) {
+  const target = e.target as HTMLElement
+  if (target.closest('.cx-code__copy') && (e.key === 'Enter' || e.key === ' ')) {
+    e.preventDefault()
+    void copyCodeFromEvent(target)
+  }
 }
 
 function autosize() {
@@ -182,6 +222,10 @@ function onCompositionEnd(e: CompositionEvent) {
 
 const hasError = computed(() => ai.error !== null)
 const empty = computed(() => ai.turns.length === 0)
+const activeTitle = computed(() => {
+  const c = ai.conversations.find((x) => x.id === ai.activeId)
+  return c?.title || ''
+})
 const modelOptions = computed(() => configuredChatModels(settings.aiSettings))
 const activeModel = computed(() => modelOptions.value.find(
   option => option.mode === (settings.aiSettings?.activeMode ?? settings.aiSettings?.mode),
@@ -279,14 +323,27 @@ watch(() => ai.activeId, async () => {
 <template>
   <div class="d-flex flex-column h-100" style="display: flex; flex-direction: column; height: 100%; position: relative">
     <!-- Top bar -->
-    <div class="cx-topbar" style="justify-content: flex-end; border-bottom: none; min-height: 48px">
+    <div class="cx-topbar" style="border-bottom: none; min-height: 48px">
+      <span
+        v-if="!empty && activeTitle"
+        class="cx-muted"
+        style="font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-flex; align-items: center; gap: 7px"
+      >
+        <i class="mdi mdi-chevron-right" style="opacity: .5" />{{ activeTitle }}
+      </span>
+      <div style="flex: 1 1 auto"></div>
       <button v-if="!empty" class="cx-btn cx-btn--text cx-btn--sm" @click="ai.clear()">
         <i class="mdi mdi-broom" />{{ $t('aichat.clear') }}
       </button>
     </div>
 
     <!-- Scroll region -->
-    <div ref="scroller" style="flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 16px">
+    <div
+      ref="scroller"
+      style="flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 16px"
+      @click="onScrollerClick"
+      @keydown="onScrollerKeydown"
+    >
       <!-- Empty / hero -->
       <div
         v-if="empty"
@@ -308,8 +365,14 @@ watch(() => ai.activeId, async () => {
           class="cx-msg"
           :class="{ 'cx-msg--user': turn.role === 'user' }"
         >
-          <!-- User: right-aligned chip, no role label (Codex style) -->
-          <div v-if="turn.role === 'user'" class="cx-user-body">{{ turn.content }}</div>
+          <!-- User: full-width tinted block (block style) -->
+          <div v-if="turn.role === 'user'" class="cx-msg-body">{{ turn.content }}</div>
+          <div v-if="turn.role === 'user'" class="cx-msg-actions">
+            <button class="cx-msg-action" @click="copyMessage(turn)">
+              <i class="mdi" :class="copiedId === turn.id ? 'mdi-check' : 'mdi-content-copy'" />
+              {{ copiedId === turn.id ? $t('aichat.copied') : $t('aichat.copy') }}
+            </button>
+          </div>
 
           <!-- Assistant: flowing text with role label + optional thinking -->
           <template v-else>
@@ -323,7 +386,7 @@ watch(() => ai.activeId, async () => {
             <div v-if="turn.activities.length" style="display: grid; gap: 5px; margin: 6px 0 10px">
               <div v-for="activity in turn.activities" :key="activity.id" class="cx-muted" style="display: flex; gap: 8px; align-items: center; font-size: 13px">
                 <i class="mdi" :class="activityIcon(activity.status)" />
-                <span style="color: var(--md-sys-color-on-surface)">{{ activity.label }}</span>
+                <span style="color: rgb(var(--v-theme-on-surface))">{{ activity.label }}</span>
                 <span v-if="activity.status === 'waiting'">{{ $t('aichat.awaitingApproval') }}</span>
                 <span v-else-if="activity.status === 'failed'">{{ $t('aichat.toolFailed') }}</span>
               </div>
@@ -334,6 +397,12 @@ watch(() => ai.activeId, async () => {
 
             <div v-if="turn.streaming && !turn.content" style="margin-top: 4px">
               <span class="cx-spin" />
+            </div>
+            <div v-if="!turn.streaming && turn.content" class="cx-msg-actions">
+              <button class="cx-msg-action" @click="copyMessage(turn)">
+                <i class="mdi" :class="copiedId === turn.id ? 'mdi-check' : 'mdi-content-copy'" />
+                {{ copiedId === turn.id ? $t('aichat.copied') : $t('aichat.copy') }}
+              </button>
             </div>
           </template>
         </div>
@@ -389,7 +458,7 @@ watch(() => ai.activeId, async () => {
       </div>
 
       <div class="cx-composer" style="display: block; padding: 0; position: relative">
-        <div v-for="item in composerConfirmations" :key="item.confirmationId" style="padding: 12px 14px; border-bottom: 1px solid var(--md-sys-color-outline-variant)">
+        <div v-for="item in composerConfirmations" :key="item.confirmationId" style="padding: 12px 14px; border-bottom: 1px solid var(--cx-border)">
           <div style="display: flex; align-items: center; gap: 8px; font-weight: 650; margin-bottom: 7px">
             <i class="mdi mdi-shield-outline" />{{ $t('aichat.confirmTitle') }}
           </div>
@@ -436,14 +505,14 @@ watch(() => ai.activeId, async () => {
               </button>
             </div>
 
-            <button class="cx-btn cx-btn--text cx-btn--sm" :style="ai.permissionMode === 'full-access' ? 'color: var(--md-sys-color-error)' : ''" style="padding: 3px 6px" :disabled="ai.busy" @click="permissionMenuOpen = !permissionMenuOpen">
+            <button class="cx-btn cx-btn--text cx-btn--sm" :style="ai.permissionMode === 'full-access' ? 'color: rgb(var(--v-theme-error))' : ''" style="padding: 3px 6px" :disabled="ai.busy" @click="permissionMenuOpen = !permissionMenuOpen">
               <i class="mdi" :class="ai.permissionMode === 'full-access' ? 'mdi-shield-alert-outline' : 'mdi-shield-check-outline'" />
               {{ ai.permissionMode === 'ask-for-approval' ? $t('aichat.permissionAsk') : ai.permissionMode === 'approve-for-me' ? $t('aichat.permissionAuto') : $t('aichat.permissionFullAccess') }}
               <i class="mdi mdi-chevron-down" />
             </button>
             <div v-if="permissionMenuOpen && !ai.busy" class="cx-card" style="position: absolute; left: 44px; bottom: 48px; width: min(440px, calc(100% - 52px)); padding: 8px; z-index: 21; box-shadow: 0 12px 32px rgba(0,0,0,.18)">
               <div class="cx-muted" style="padding: 5px 10px 8px; font-size: 12px">{{ $t('aichat.permissionQuestion') }}</div>
-              <button v-for="option in permissionOptions" :key="option.id" class="cx-btn cx-btn--text" style="width: 100%; height: auto; justify-content: flex-start; text-align: left; padding: 10px; gap: 12px" :style="option.id === 'full-access' ? 'color: var(--md-sys-color-error)' : ''" @click="selectPermissionMode(option.id)">
+              <button v-for="option in permissionOptions" :key="option.id" class="cx-btn cx-btn--text" style="width: 100%; height: auto; justify-content: flex-start; text-align: left; padding: 10px; gap: 12px" :style="option.id === 'full-access' ? 'color: rgb(var(--v-theme-error))' : ''" @click="selectPermissionMode(option.id)">
                 <i class="mdi" :class="option.icon" style="font-size: 20px" />
                 <span style="display: grid; gap: 2px; flex: 1">
                   <span style="font-weight: 650">{{ option.title }}</span>
