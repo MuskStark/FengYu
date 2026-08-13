@@ -132,7 +132,7 @@ jobs:
       # directory, and the package entry resolves to ./dist/index.js. dist/ is gitignored
       # and never exists in a fresh checkout, so the library must be built here, before the
       # plugin builds install + bundle it — otherwise vite/vitest cannot resolve the package.
-      - name: Build @infinia/plugin-ui (local dist required by plugin file: deps)
+      - name: Build @infinia/plugin-ui (local dist required by plugin file dependencies)
         run: |
           npm ci
           npm run build
