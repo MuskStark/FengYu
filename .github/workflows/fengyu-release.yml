@@ -138,6 +138,13 @@ jobs:
           npm run build
         working-directory: toolchain/ui
 
+      # Official plugin workers depend on fengyu-plugin-sdk and fengyu-plugin-devkit
+      # (independently versioned, never published to Maven Central). They must be installed
+      # to ~/.m2 before the plugin worker builds resolve them; the full reactor build that
+      # also installs them runs only later in this job.
+      - name: Install Java plugin toolchain (sdk + devkit) to local Maven repo
+        run: ./mvnw -B -pl toolchain/sdk-java,toolchain/devkit-java -am install -DskipTests
+
       - name: Build official plugins (.fyp via toolchain/cli)
         run: |
           for plugin in markdown excel email offlinepython; do

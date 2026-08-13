@@ -54,6 +54,17 @@ test('builds @infinia/plugin-ui dist before packaging official plugins', () => {
   assert.ok(uiBuild < pluginBuild, '@infinia/plugin-ui must be built before plugins are packaged')
 })
 
+test('installs the Java plugin toolchain (sdk + devkit) before packaging official plugins', () => {
+  // Plugin workers depend on fengyu-plugin-sdk + fengyu-plugin-devkit (independently versioned,
+  // never published to Maven Central). build-runtime must install them to ~/.m2 before the
+  // plugin worker builds resolve them, or Maven fails with "Could not find artifact" (beta.3).
+  const install = buildRuntimeJob.indexOf('toolchain/sdk-java,toolchain/devkit-java')
+  const pluginBuild = buildRuntimeJob.indexOf('Build official plugins')
+  assert.notEqual(install, -1, 'build-runtime must install toolchain/sdk-java + devkit-java')
+  assert.notEqual(pluginBuild, -1, 'build-runtime must build the official plugins')
+  assert.ok(install < pluginBuild, 'sdk + devkit must be installed before plugins are packaged')
+})
+
 test('builds Maven artifacts with the full release version', () => {
   assert.match(workflow, /\.\/mvnw -am test package -Drevision="\$VERSION"/)
   assert.doesNotMatch(workflow, /\.\/mvnw -am test package -Drevision="\$APP_VERSION"/)
