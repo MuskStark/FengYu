@@ -128,6 +128,16 @@ jobs:
         run: npm run build
         working-directory: frontend
 
+      # Official plugins depend on @infinia/plugin-ui through a `file:` link to this
+      # directory, and the package entry resolves to ./dist/index.js. dist/ is gitignored
+      # and never exists in a fresh checkout, so the library must be built here, before the
+      # plugin builds install + bundle it — otherwise vite/vitest cannot resolve the package.
+      - name: Build @infinia/plugin-ui (local dist required by plugin file: deps)
+        run: |
+          npm ci
+          npm run build
+        working-directory: toolchain/ui
+
       - name: Build official plugins (.fyp via toolchain/cli)
         run: |
           for plugin in markdown excel email offlinepython; do
