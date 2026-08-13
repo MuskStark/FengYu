@@ -66,6 +66,13 @@ lang: zh-CN
   `offlinepython`, and `email` now ship schema-v2 manifests, generated TS/Java contracts, typed
   `method(...)` workers, and transport-cancellation tests. `offlinepython`'s domain
   `build.cancel`/`deploy.cancel` now reaps the whole Python/pip subprocess tree.
+- **Plugin cards re-fetch their server-localized name/description on locale change.** Names and
+  descriptions are resolved server-side per request locale (each manifest's i18n block), but the
+  tools page, market "plugins" tab, and store tab fetched once and cached — so switching the UI
+  language flipped the `$t()` strings but left the cards' server-supplied text in the old language
+  until a manual reload. A reactive `localeRef` now drives re-fetches in the plugins/plugin stores
+  and `PluginMarket.vue`; the axios interceptor already sends the current `Accept-Language` header
+  on every request.
 
 ### ♻️ Changed
 - **Convention-based Toolchain 2 CLI.** The public command surface is `fengyu init`, `dev`,
@@ -88,6 +95,13 @@ lang: zh-CN
   the yellow "compatibility mode" chip is reserved for Windows Job Object / no-backend. A muted
   hint explains the macOS deny-sensitive model. Backend behavior was already correct; this is a
   frontend display fix.
+- **offlinepython no longer crashes on omitted nullable fields, and its logging is no longer
+  silently dropped.** `verify`'s `scope` and `deploy`'s `target.kind` are nullable enums in the
+  manifest (defaulting to ALL / global); omitting them threw `NullPointerException` before the
+  existing null-handling ran. The custom `OpbLogger` wrapper — wired with a null instance in
+  production — was removed in favour of direct SLF4J, so the package-done milestone now emits and
+  previously silent `catch` blocks log. (Excel's analyze/execute `catch` blocks also warn-log now;
+  cancellation still propagates as `CANCELLED` first.)
 
 ## [4.0.0-beta.2] — 2026-08-11
 
