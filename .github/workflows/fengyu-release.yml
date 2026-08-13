@@ -107,16 +107,16 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           bwrap --unshare-all --ro-bind / / --proc /proc --dev-bind /dev /dev -- /bin/true
 
+      - name: Install toolchain/cli deps
+        run: npm ci
+        working-directory: toolchain/cli
+
       - name: Validate release workflow (unit tests)
         run: node --test scripts/resolve-release-version.test.mjs scripts/release-workflow.test.mjs scripts/node-version.test.mjs
 
       - name: Install frontend deps
         run: npm ci
         working-directory: frontend
-
-      - name: Install toolchain/cli deps
-        run: npm ci
-        working-directory: toolchain/cli
 
       - name: Run frontend tests + typecheck
         run: |
