@@ -3,7 +3,6 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useThemeStore } from '@/stores/theme'
 import AppShell from './shell/AppShell.vue'
-import StatusBar from './shell/StatusBar.vue'
 
 const route = useRoute()
 const theme = useThemeStore()
@@ -20,7 +19,6 @@ const themeClass = computed(() => `v-theme--${theme.theme}`)
       <div class="cx-body">
         <router-view />
       </div>
-      <StatusBar />
     </template>
     <AppShell v-else />
   </div>
