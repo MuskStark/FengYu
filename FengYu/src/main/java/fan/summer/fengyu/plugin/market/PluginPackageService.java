@@ -173,7 +173,10 @@ public class PluginPackageService {
         // validate() reservation blocks official/namespace-squatting. Multipart upload cannot
         // carry a sidecar and stays untrusted; official plugins are installed via this native path.
         boolean trusted = verifySidecar(archive);
-        try (InputStream input = Files.newInputStream(archive)) { return installArchive(input, trusted); }
+        String archiveSha256 = PluginIntegrityStore.sha256Hex(archive);
+        try (InputStream input = Files.newInputStream(archive)) {
+            return installArchive(input, trusted, archiveSha256);
+        }
     }
 
     /**
@@ -188,7 +191,10 @@ public class PluginPackageService {
             throw new IllegalArgumentException("Expected a .fyp plugin package");
         }
         if (Files.size(archive) > MAX_PACKAGE_BYTES) throw new IllegalArgumentException("Plugin package exceeds 100 MB");
-        try (InputStream input = Files.newInputStream(archive)) { return installArchive(input, true); }
+        String archiveSha256 = PluginIntegrityStore.sha256Hex(archive);
+        try (InputStream input = Files.newInputStream(archive)) {
+            return installArchive(input, true, archiveSha256);
+        }
     }
 
     /**
@@ -310,6 +316,11 @@ public class PluginPackageService {
      *                      or the reserved {@code fan.summer.*} namespace.
      */
     PluginManifest installArchive(InputStream input, boolean trustedSource) throws IOException {
+        return installArchive(input, trustedSource, null);
+    }
+
+    private PluginManifest installArchive(InputStream input, boolean trustedSource,
+            String sourceArchiveSha256) throws IOException {
         Files.createDirectories(root);
         Path staging = Files.createTempDirectory(root, ".install-");
         try {
@@ -340,7 +351,8 @@ public class PluginPackageService {
             // is also recorded so the Worker cache can key on content (a same-version repack with
             // different bytes gets a different digest → the stale Worker is invalidated).
             if (integrityStore != null) {
-                integrityStore.record(manifest.id(), manifest.version(), destination.resolve("manifest.json"), destination);
+                integrityStore.record(manifest.id(), manifest.version(), destination.resolve("manifest.json"),
+                        destination, sourceArchiveSha256);
                 // A reinstall (local/online/seeder) clears any prior uninstall tombstone so the
                 // official-plugin seeder's normal upgrade path resumes and a future uninstall is
                 // honoured again. Paired with uninstall()'s markUninstalled().

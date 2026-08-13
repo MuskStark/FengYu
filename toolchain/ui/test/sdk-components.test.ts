@@ -214,29 +214,30 @@ describe('useFengYuNotify', () => {
     const client = fakeClient({ notify: vi.fn().mockResolvedValue(false) })
     const { localMessages, notify } = useFengYuNotify(client)
     await notify('queued')
-    expect(localMessages.value).toEqual(['queued'])
+    expect(localMessages.value.map(item => item.message)).toEqual(['queued'])
   })
 
   it('falls back to the local queue when the host throws', async () => {
     const client = fakeClient({ notify: vi.fn().mockRejectedValue(new Error('boom')) })
     const { localMessages, notify } = useFengYuNotify(client)
-    await notify('queued')
-    expect(localMessages.value).toEqual(['queued'])
+    await notify('queued', { tone: 'error', timeout: -1 })
+    expect(localMessages.value.map(item => item.message)).toEqual(['queued'])
+    expect(localMessages.value[0]).toMatchObject({ tone: 'error', timeout: -1 })
   })
 
   it('sendFengYuNotification appends only on reject or throw', async () => {
-    const local: { value: string[] } = { value: [] }
+    const local: { value: import('../src').FyNotification[] } = { value: [] }
     const accepted = fakeClient({ notify: vi.fn().mockResolvedValue(true) })
     await sendFengYuNotification(accepted, 'ok', local as never)
     expect(local.value).toEqual([])
 
     const rejected = fakeClient({ notify: vi.fn().mockResolvedValue(false) })
     await sendFengYuNotification(rejected, 'no', local as never)
-    expect(local.value).toEqual(['no'])
+    expect(local.value.map(item => item.message)).toEqual(['no'])
 
     const thrown = fakeClient({ notify: vi.fn().mockRejectedValue(new Error('x')) })
     await sendFengYuNotification(thrown, 'boom', local as never)
-    expect(local.value).toEqual(['no', 'boom'])
+    expect(local.value.map(item => item.message)).toEqual(['no', 'boom'])
   })
 
   it('FyNotificationCenter renders and dismisses local messages', async () => {

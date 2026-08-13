@@ -4,6 +4,7 @@ import { useDisplay } from 'vuetify'
 import { mdiBackburger, mdiForwardburger } from '@mdi/js'
 import { isSvgPathIcon } from '../icon'
 import FyIcon from './FyIcon.vue'
+import FyNotificationCenter from './FyNotificationCenter.vue'
 
 /**
  * A single navigation entry rendered by {@link FyPluginShell}.
@@ -49,6 +50,7 @@ const emit = defineEmits<{
 }>()
 
 const { width } = useDisplay()
+const hasNavigation = computed(() => props.items.length > 0)
 
 /**
  * Below `railBreakpoint` the drawer is temporary (overlays content and is
@@ -80,12 +82,13 @@ function select(item: FyNavItem): void {
 
 <template>
   <v-app>
-    <v-app-bar v-if="temporary" flat density="comfortable">
+    <v-app-bar v-if="hasNavigation && temporary" flat density="comfortable">
       <v-app-bar-nav-icon @click="drawerOpen = !drawerOpen" />
       <v-app-bar-title>{{ title }}</v-app-bar-title>
     </v-app-bar>
 
     <v-navigation-drawer
+      v-if="hasNavigation"
       class="fy-shell__rail"
       :rail="!temporary && collapsed"
       :temporary="temporary"
@@ -134,6 +137,7 @@ function select(item: FyNavItem): void {
 
     <v-main>
       <slot />
+      <FyNotificationCenter />
     </v-main>
   </v-app>
 </template>

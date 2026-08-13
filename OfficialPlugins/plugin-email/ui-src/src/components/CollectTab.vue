@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { FileRef } from '@infinia/plugin-sdk'
+import { FyProgress } from '@infinia/plugin-ui'
 import { useAccountsStore } from '../stores/accounts'
 import { useArchiveStore } from '../stores/archive'
 import { actionable, checked, files, rpc } from '../sdk'
@@ -100,14 +101,14 @@ onBeforeUnmount(stopPolling)
 
 <template>
   <section class="archive-workspace">
-    <v-card class="surface" variant="flat"><v-card-title>{{ t('archive.title') }}</v-card-title><v-card-text>
+    <v-card class="fy-surface" variant="flat"><v-card-title>{{ t('archive.title') }}</v-card-title><v-card-text>
       <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert><v-alert v-if="summary" type="success" class="mb-4">{{ summary }}</v-alert>
       <div class="form-grid"><v-select v-model="accounts.selectedId" :items="accounts.accounts" item-title="email" item-value="id" :label="t('archive.account')" /><v-select v-model="folder" :items="folders" :loading="foldersLoading" :label="t('archive.folder')" /><v-text-field v-model="start" type="date" :label="t('archive.from')" /><v-text-field v-model="end" type="date" :label="t('archive.to')" /></div>
       <div class="d-flex ga-2"><v-btn variant="tonal" @click="choose">{{ output?.name || t('archive.output') }}</v-btn><v-btn color="primary" :loading="busy" :disabled="!output || !accounts.selectedId || !!jobId" @click="collect">{{ t('archive.collect') }}</v-btn><v-btn v-if="jobId" color="error" variant="tonal" @click="cancelCollect">{{ t('archive.cancel') }}</v-btn></div>
-      <v-progress-linear v-if="jobId" indeterminate class="mt-2" />
+      <FyProgress v-if="jobId" :label="t('archive.collectAction')" class="mt-3" />
       <div data-testid="archive-progress" class="progress-grid"><span>{{ t('archive.processed') }} {{ archive.progress.processed }}</span><span>{{ t('archive.new') }} {{ archive.progress.newArchived }}</span><span>{{ t('archive.duplicates') }} {{ archive.progress.duplicates }}</span><span>{{ t('archive.failed') }} {{ archive.progress.failed }}</span></div>
     </v-card-text></v-card>
-    <v-card data-testid="archive-results" class="surface mt-4" variant="flat"><v-card-title>{{ t('archive.results') }}</v-card-title><v-card-text><v-table><thead><tr><th>{{ t('compose.subject') }}</th><th>{{ t('archive.sender') }}</th><th>{{ t('archive.folder') }}</th><th>{{ t('archive.archivedAt') }}</th></tr></thead><tbody><tr v-for="message in archive.messages" :key="String(message.id)" @click="openDetail(message.id)"><td>{{ message.subject }}</td><td>{{ message.fromAddress }}</td><td>{{ message.folder }}</td><td>{{ message.archivedAt }}</td></tr></tbody></v-table><div class="pager"><v-btn :disabled="archive.offset === 0" @click="previous">{{ t('common.previous') }}</v-btn><span>{{ t('common.page', { page: Math.floor(archive.offset / archive.limit) + 1 }) }}</span><v-btn data-testid="archive-next-page" @click="next">{{ t('common.next') }}</v-btn></div>
+    <v-card data-testid="archive-results" class="fy-surface mt-4" variant="flat"><v-card-title>{{ t('archive.results') }}</v-card-title><v-card-text><v-table><thead><tr><th>{{ t('compose.subject') }}</th><th>{{ t('archive.sender') }}</th><th>{{ t('archive.folder') }}</th><th>{{ t('archive.archivedAt') }}</th></tr></thead><tbody><tr v-for="message in archive.messages" :key="String(message.id)" @click="openDetail(message.id)"><td>{{ message.subject }}</td><td>{{ message.fromAddress }}</td><td>{{ message.folder }}</td><td>{{ message.archivedAt }}</td></tr></tbody></v-table><div class="pager"><v-btn :disabled="archive.offset === 0" @click="previous">{{ t('common.previous') }}</v-btn><span>{{ t('common.page', { page: Math.floor(archive.offset / archive.limit) + 1 }) }}</span><v-btn data-testid="archive-next-page" @click="next">{{ t('common.next') }}</v-btn></div>
       <v-sheet v-if="detail" class="detail pa-4 mt-4" rounded><dl><template v-for="(value, key) in detail" :key="key"><dt>{{ key }}</dt><dd>{{ value }}</dd></template></dl></v-sheet>
     </v-card-text></v-card>
   </section>

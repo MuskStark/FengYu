@@ -21,6 +21,12 @@ test('keeps theme changes in the settings surface after the sidebar redesign', (
   assert.doesNotMatch(sidebarSource, /@click="theme\.toggle\(\)"/)
 })
 
+test('automatically collapses the host sidebar before plugin content becomes cramped', () => {
+  assert.match(sidebarSource, /const \{ width \} = useDisplay\(\)/)
+  assert.match(sidebarSource, /autoRail = computed\(\(\) => width\.value < 900\)/)
+  assert.match(sidebarSource, /settings\.sidebarCollapsed \|\| autoRail\.value/)
+})
+
 test('keeps the light theme after persisting the collapsed sidebar state', async () => {
   setActivePinia(createPinia())
   const { api } = await vite.ssrLoadModule('/src/api/client.ts')

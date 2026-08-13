@@ -25,7 +25,7 @@ onMounted(load)
 </script>
 
 <template>
-  <v-card class="surface" variant="flat">
+  <v-card class="fy-surface" variant="flat">
     <v-card-title>{{ t('records.title') }}</v-card-title>
     <v-card-text>
       <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>

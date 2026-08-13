@@ -23,6 +23,11 @@ CHANGELOG.md instead.
 ## [4.0.0-beta.3] — 2026-08-13
 
 ### ✨ Added
+- **One responsive UI system for every official plugin.** `@infinia/plugin-ui` now provides
+  `FyPluginPage` for shared responsive content gutters and `FyProgress` for determinate or
+  indeterminate long-running state, plus reusable surface/action/status/log/table CSS hooks.
+  `FyPluginShell` owns the notification center and supports navigation-free single-workspace apps;
+  notification composables share one client-bound fallback queue with consistent tones and timing.
 - **Plugin manifest schema v2 — the single hand-written contract.** `manifest.json` is now
   `schemaVersion: 2` with `additionalProperties: false` throughout. RPC methods live once in an
   `rpc.methods` table whose `inputSchema`/`outputSchema` are JSON-Schema **objects** (not escaped
@@ -76,6 +81,11 @@ CHANGELOG.md instead.
   on every request.
 
 ### ♻️ Changed
+- **Markdown, Excel, Email Center, and Offline Python now use the same official UI foundation.**
+  Email's private green palette and custom task rail were removed; all four plugins now use the
+  shared responsive shell/page, notification path, progress treatment, theme tokens, and
+  container-aware narrow layouts. The host sidebar automatically enters rail mode when space is
+  constrained, and both CLI Vue templates emit the same composition for new plugins.
 - **Convention-based Toolchain 2 CLI.** The public command surface is `fengyu init`, `dev`,
   `check`, and `build`. `fengyu.plugin.json` and arbitrary command arrays were removed; projects use
   standard npm scripts and Maven lifecycles, the Worker is discovered as the unique
@@ -87,6 +97,10 @@ CHANGELOG.md instead.
   etc. The smoke scripts were updated; external callers of the old dotted names must switch.
 
 ### 🐛 Fixed
+- **Official plugin layouts now update correctly in real host iframes.** Step changes remount their
+  keyed content so restored Excel sessions cannot retain a previous step's layout class; host
+  notification rejection reaches the shared local snackbar; and bundled official plugins are
+  refreshed when same-version `.fyp` bytes change instead of leaving stale installed UI behind.
 - **macOS no longer shows "compatibility mode" for process isolation.** The Settings "Process
   isolation" badge was a strict `sandboxed ? active : compatibility` binary, so macOS's
   `sandbox-exec` posture (correctly classified by the backend as `reduced` — a deny-sensitive

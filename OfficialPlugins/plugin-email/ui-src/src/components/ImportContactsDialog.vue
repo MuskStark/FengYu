@@ -113,7 +113,7 @@ async function runCommit(): Promise<void> {
 
 <template>
   <v-dialog :model-value="modelValue" max-width="560" @update:model-value="value => { if (!value) close() }">
-    <v-card class="surface" variant="flat">
+    <v-card class="fy-surface" variant="flat">
       <v-card-title>{{ t('contacts.importTitle') }}</v-card-title>
       <v-card-text>
         <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>

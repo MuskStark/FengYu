@@ -1,6 +1,6 @@
 ---
 title: UI Components
-description: "The @infinia/plugin-ui kit — a Codex-style Vuetify 3 foundation for FengYu plugins. Shell, file/directory pickers, step wizard, task table, notification center, and the theme/locale bindings the scaffolded main.ts wires up."
+description: "The @infinia/plugin-ui kit — a Codex-style Vuetify 3 foundation for FengYu plugins. Responsive shell/page, progress, notifications, pickers, workflows, and live theme/locale bindings."
 lang: en
 ---
 
@@ -11,6 +11,8 @@ lang: en
 ```ts
 import {
   FyFilePicker,
+  FyPluginPage,
+  FyProgress,
   FyStepWizard,
   FyPluginShell,
   useFengYuClient,
@@ -38,13 +40,15 @@ The scaffolded `src/main.ts` calls three helpers from this package. You normally
 | Component | Purpose |
 | --- | --- |
 | `FyPluginShell` | App chrome: a navigation drawer (title + `items[]`) + app bar + content slot. Collapses to a temporary drawer below `railBreakpoint` (default 720px). v-model is the active item value. |
+| `FyPluginPage` | Responsive content frame with shared desktop/mobile gutters and a configurable maximum width. Use `fluid` for editors/canvases and `fullHeight` for full-height workspaces. |
 | `FyPageHeader` | A page title, optional `description`, and a trailing `#actions` slot for toolbar buttons. |
 | `FyToolbar` | A horizontal button row for `#actions`. |
 | `FyFilePicker` | SDK-backed file button — wraps `client.files.open`. v-model is the `FileRef` or `null`. |
 | `FyDirectoryPicker` | SDK-backed directory button — `mode: 'input' \| 'workspace' \| 'output'` selects a readable input, writable project workspace, or fresh output directory. |
 | `FyStepWizard` | Stateful, value-keyed workflow controller with controlled progress, async validation, branching, invalidation, and JSON snapshots. |
 | `FyTaskTable` | Read-only task list (`tasks: FyTaskRow[]`) rendered with `v-data-table`; status shown as icon + label. |
-| `FyNotificationCenter` | Fallback snackbar stack. Call its `notify(msg)` (via template ref) to surface a message; forwards to the host and falls back locally if the host rejects. |
+| `FyProgress` | Unified determinate/indeterminate progress panel with `label`, `detail`, `modelValue` (0–100), `status`, and an `#actions` slot. |
+| `FyNotificationCenter` | Host-aware snackbar queue. `FyPluginShell` mounts it automatically; it renders the shared local fallback when the host rejects a notification. |
 | `FyConfirmDialog` | v-model dialog with `destructive` styling; emits `confirm` / `cancel`. |
 | `FyEmptyState` / `FyLoadingState` / `FyErrorState` / `FyPermissionNotice` | Standardized empty / loading / error / permission-denied panels with `title`, `message`, and `icon`. `FyErrorState` emits `retry`. |
 
@@ -56,7 +60,9 @@ so generated plugins do not need a custom font import or Vite workaround. Compon
 icon path data also support tree-shakeable SVG paths imported from `@mdi/js`; render those through
 `FyIcon`.
 
-The notification composable `useFengYuNotify(client)` and `sendFengYuNotification(client, message)` are also exported for non-component use.
+`FyPluginShell` is also valid with no navigation items: it omits the drawer and app bar for a single-workspace plugin while retaining the standard app, feedback, and responsive behavior. Pair it with `FyPluginPage` instead of copying viewport padding into each plugin.
+
+The notification composable `useFengYuNotify(client)` and `sendFengYuNotification(client, message)` are also exported for non-component use. `notify(message, { tone, timeout })` accepts `info`, `success`, `warning`, or `error`; the options style the local fallback, while a host-accepted notification uses the host's own unified notification surface. Composables bound to the same client share one queue, so a notification raised anywhere in the plugin reaches the center mounted by `FyPluginShell`.
 
 ## Example: a file picker
 
@@ -65,16 +71,16 @@ The notification composable `useFengYuNotify(client)` and `sendFengYuNotificatio
 ```vue
 <script setup lang="ts">
 import { ref } from 'vue'
-import { FyFilePicker, FyNotificationCenter, useFengYuClient } from '@infinia/plugin-ui'
+import { FyFilePicker, useFengYuClient, useFengYuNotify } from '@infinia/plugin-ui'
 import type { FileRef } from '@infinia/plugin-sdk'
 
 const client = useFengYuClient()
 const selectedFile = ref<FileRef | null>(null)
-const notifications = ref<InstanceType<typeof FyNotificationCenter> | null>(null)
+const { notify } = useFengYuNotify(client)
 
 async function onFile(file: FileRef | null): Promise<void> {
   selectedFile.value = file
-  if (file) await notifications.value?.notify(`Selected ${file.name}`)
+  if (file) await notify(`Selected ${file.name}`, { tone: 'success' })
 }
 </script>
 
@@ -86,9 +92,27 @@ async function onFile(file: FileRef | null): Promise<void> {
     @update:model-value="onFile"
     @cancel="onFile(null)"
   />
-  <FyNotificationCenter ref="notifications" />
 </template>
 ```
+
+## Responsive layout and progress
+
+All plugin-level layout should begin with `FyPluginShell` + `FyPluginPage`. Business content can use the shared CSS hooks `.fy-surface`, `.fy-surface__section`, `.fy-section-title`, `.fy-section-copy`, `.fy-actions`, `.fy-actions--split`, `.fy-status`, `.fy-log`, and `.fy-responsive-table`. These hooks use only theme tokens and include the shared narrow-screen behavior. `FyPluginPage` establishes the named `fy-plugin-page` inline-size container, so plugin-specific grids should add `@container fy-plugin-page (...)` rules when the iframe's available content width matters more than the browser window width.
+
+Use `FyProgress` for explicit long-running state instead of mixing custom circular and linear indicators:
+
+```vue
+<FyProgress
+  v-if="running"
+  label="Building offline repository…"
+  :model-value="percent"
+  status="running"
+>
+  <template #actions><v-btn variant="text" @click="cancel">Cancel</v-btn></template>
+</FyProgress>
+```
+
+Omit `modelValue` for indeterminate work. Set `status` to `success`, `warning`, or `error` for a terminal/result presentation. The component includes live-region semantics, responsive action wrapping, and the same theme-driven bar treatment used by official plugins.
 
 | Prop | Type | Notes |
 | --- | --- | --- |

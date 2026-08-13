@@ -253,6 +253,99 @@ samp,
 }
 
 /*
+ * Shared business-content primitives. These class hooks cover simple cases
+ * where introducing another wrapper component would add noise, while keeping
+ * surfaces, actions, logs and overflow behavior identical across plugins.
+ */
+.fy-surface {
+  overflow: hidden;
+  background: rgb(var(--v-theme-surface-container-low));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: var(--fy-radius-lg);
+}
+
+.fy-surface__section {
+  padding: 20px;
+}
+
+.fy-surface__section + .fy-surface__section {
+  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.fy-section-title {
+  margin: 0 0 4px;
+  font-size: 0.875rem;
+  font-weight: 620;
+}
+
+.fy-section-copy {
+  margin: 0 0 16px;
+  color: rgb(var(--v-theme-secondary));
+  font-size: 0.8125rem;
+}
+
+.fy-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.fy-actions--split {
+  justify-content: space-between;
+}
+
+.fy-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 3px 9px;
+  color: rgb(var(--v-theme-secondary));
+  background: rgb(var(--v-theme-surface-container-high));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 560;
+}
+
+.fy-status::before {
+  width: 7px;
+  height: 7px;
+  content: '';
+  background: currentColor;
+  border-radius: 50%;
+}
+
+.fy-status--running { color: rgb(var(--v-theme-on-surface)); }
+.fy-status--success { color: rgb(var(--v-theme-tertiary)); }
+.fy-status--warning,
+.fy-status--error { color: rgb(var(--v-theme-error)); }
+
+.fy-log {
+  min-height: 180px;
+  max-height: 360px;
+  padding: 14px 16px;
+  margin: 0;
+  overflow: auto;
+  color: rgb(var(--v-theme-on-surface));
+  background: rgb(var(--v-theme-background));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: var(--fy-radius-md);
+  font-family: var(--fengyu-font-mono);
+  font-size: 0.75rem;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.fy-responsive-table {
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: var(--fy-radius-md);
+}
+
+/*
  * Refined rail chrome for FyPluginShell. The DOM hooks live on the component;
  * this is where they gain visual polish. Colors flow from the theme so the
  * rail reads identically in light and dark.
@@ -365,6 +458,15 @@ samp,
 
   .v-dialog > .v-overlay__content {
     margin: 12px;
+  }
+
+  .fy-surface__section {
+    padding: 16px;
+  }
+
+  .fy-actions--split {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 

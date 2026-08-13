@@ -666,15 +666,22 @@ function visitedStep(value: string): FyWizardStep | undefined {
       data-wizard-content
       tabindex="-1"
     >
-      <slot v-if="!stepDefinitionError && effectiveCompleted" name="complete" :actions="slotActions" />
-      <slot
-        v-else-if="!stepDefinitionError && activeSlot"
-        :name="activeSlot"
-        :step="activeStep"
-        :state="effectiveStates[activeStepId]"
-        :context="context"
-        :actions="slotActions"
-      />
+      <div
+        v-if="!stepDefinitionError && (effectiveCompleted || activeSlot)"
+        :key="effectiveCompleted ? '__complete' : activeStepId"
+        class="fy-wizard__step-content"
+        data-wizard-step-content
+      >
+        <slot v-if="effectiveCompleted" name="complete" :actions="slotActions" />
+        <slot
+          v-else
+          :name="activeSlot!"
+          :step="activeStep"
+          :state="effectiveStates[activeStepId]"
+          :context="context"
+          :actions="slotActions"
+        />
+      </div>
       <div
         v-if="activeIsError"
         :id="`fy-wizard-active-error-${activeStepId}`"
@@ -876,6 +883,11 @@ function visitedStep(value: string): FyWizardStep | undefined {
   background: rgb(var(--v-theme-surface-container-low));
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: var(--fy-radius-lg, 14px);
+}
+
+.fy-wizard__step-content {
+  width: 100%;
+  min-width: 0;
 }
 
 .fy-wizard__error,
