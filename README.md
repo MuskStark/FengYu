@@ -90,6 +90,7 @@ These builds are currently unsigned; code-signing is deferred to a later release
 ## Features
 
 - **🤖 AI Agent (the spine)** — A plan-and-execute Agent decomposes a goal into steps and orchestrates the surfaces below. Sensitive actions require your approval. Multi-backend (Ollama, OpenAI, Anthropic, DeepSeek) with streaming, thinking cards, tool calls, automatic long-conversation compaction, and read-only `web_search` / `web_fetch`. See [AI Agent](docs/en/guide/ai-agent) / [AI Chat](docs/en/guide/ai-chat).
+- **🔀 Reusable workflows** — Save a visual DAG with a JSON Schema input contract, run it manually with typed inputs, or publish it as a dynamically discovered AI tool. Both paths share the same runner, approvals, SSE events, and durable history. See [AI Agent](docs/en/guide/ai-agent#reusable-workflows-manual-and-ai-invocation).
 - **🧩 Plugins (`.fyp`)** — Capabilities the Agent calls: isolated packages of a JSON-RPC worker + micro-frontend UI, installed from the marketplace. See [Marketplace](docs/en/plugins/marketplace).
 - **📜 Skills (`.fys`)** — Progressive-disclosure domain knowledge and procedures the Agent loads on demand. See [Skills](docs/en/skills/).
 - **📊 Excel Splitter** — Split workbooks by sheet, column value, or complex rules — an official plugin with six AI tools. See [Excel](docs/en/plugins/official-excel).

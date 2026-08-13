@@ -62,6 +62,25 @@ structures the workflow, never executes tools while planning.
 Canvas edges compile to each step's `dependsOn` list. Steps in the same dependency level run on
 virtual threads in parallel; a dependent step starts only after all prerequisites complete.
 
+### Reusable workflows: manual and AI invocation
+
+The canvas can persist a graph as a reusable workflow instead of sending a one-off `AgentPlan`.
+Each definition stores a name, description, JSON Schema input contract, plan, publication state,
+and revision. Use <code v-pre>{{inputs.name}}</code> in the goal or any node argument; an exact placeholder keeps
+the JSON value's original type, while a placeholder embedded in text is rendered as a string.
+Existing <code v-pre>{{steps.N.result...}}</code> references continue to connect step outputs.
+
+- **Manual:** select the saved workflow, enter an input JSON object, and run it. The host binds the
+  inputs, validates required fields and basic JSON Schema types, then starts a normal agent run.
+- **AI:** publish the workflow. It immediately appears in the live Spring AI catalog as
+  `run_workflow_<id>`, using the workflow input schema as its tool schema. The model's tool call
+  binds the same inputs and uses the same DAG runner, persisted run history, and tool callbacks.
+
+AI invocation cannot pause for human approval inside the synchronous tool call, so published
+workflow execution uses the permissions already granted to the outer chat tool call. Manual runs
+retain the normal per-step approval policy. Workflow tools cannot be nested in saved definitions;
+this prevents recursive invocation and keeps execution/audit boundaries explicit.
+
 ## End-to-end flow
 
 ```text

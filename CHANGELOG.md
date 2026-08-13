@@ -6,6 +6,13 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### ✨ Added
+- **Reusable workflows with one manual/AI execution path.** Visual DAGs can now be persisted with
+  JSON Schema inputs, loaded and revised in the canvas, run manually with typed `{{inputs.*}}`
+  bindings, and published as dynamically discovered Spring AI tools. Manual and model-triggered
+  calls share the existing dependency-aware runner, tool registry, durable run history, SSE events,
+  and audit trail; saved definitions reject nested workflow tools to prevent recursion.
+
 ## [4.0.0-beta.4] — 2026-08-13
 
 ### ✨ Added

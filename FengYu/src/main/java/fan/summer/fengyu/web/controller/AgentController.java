@@ -8,6 +8,9 @@ import fan.summer.fengyu.ai.agent.AgentRunPersistenceService;
 import fan.summer.fengyu.ai.agent.AgentRunRegistry;
 import fan.summer.fengyu.ai.agent.AgentRunner;
 import fan.summer.fengyu.ai.config.AiToolRegistry;
+import fan.summer.fengyu.ai.workflow.WorkflowDefinition;
+import fan.summer.fengyu.ai.workflow.WorkflowExecutionService;
+import fan.summer.fengyu.ai.workflow.WorkflowService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -16,6 +19,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -66,6 +71,8 @@ public class AgentController {
     private final AgentRunRegistry registry;
     private final AgentRunPersistenceService persistence;
     private final AiToolRegistry toolRegistry;
+    private final WorkflowService workflows;
+    private final WorkflowExecutionService workflowExecution;
 
     /**
      * Per-run SSE sinks. Created on {@code /run} (one sink per run), consumed by the
@@ -75,11 +82,14 @@ public class AgentController {
     private final Map<String, AgentStreamSink> sinks = new ConcurrentHashMap<>();
 
     public AgentController(AgentRunner runner, AgentRunRegistry registry,
-            AgentRunPersistenceService persistence, AiToolRegistry toolRegistry) {
+            AgentRunPersistenceService persistence, AiToolRegistry toolRegistry,
+            WorkflowService workflows, WorkflowExecutionService workflowExecution) {
         this.runner = runner;
         this.registry = registry;
         this.persistence = persistence;
         this.toolRegistry = toolRegistry;
+        this.workflows = workflows;
+        this.workflowExecution = workflowExecution;
     }
 
     // ── /run ───────────────────────────────────────────────────────────
@@ -222,6 +232,51 @@ public class AgentController {
     public List<AiToolRegistry.ToolDescriptor> tools(
             @org.springframework.web.bind.annotation.RequestHeader(name = "Accept-Language", required = false) String acceptLanguage) {
         return toolRegistry.descriptors(fan.summer.fengyu.plugin.market.ManifestI18n.resolveLocale(acceptLanguage));
+    }
+
+    // ── reusable workflows ────────────────────────────────────────────
+
+    @GetMapping("/api/workflows")
+    public List<WorkflowDefinition> workflows() {
+        return workflows.list();
+    }
+
+    @GetMapping("/api/workflows/{workflowId}")
+    public WorkflowDefinition workflow(@PathVariable String workflowId) {
+        return workflows.get(workflowId);
+    }
+
+    @PostMapping("/api/workflows")
+    public WorkflowDefinition createWorkflow(@RequestBody WorkflowService.WorkflowDraft draft) {
+        return workflows.create(draft);
+    }
+
+    @PutMapping("/api/workflows/{workflowId}")
+    public WorkflowDefinition updateWorkflow(@PathVariable String workflowId,
+                                             @RequestBody WorkflowService.WorkflowDraft draft) {
+        return workflows.update(workflowId, draft);
+    }
+
+    @PostMapping("/api/workflows/{workflowId}/publish")
+    public WorkflowDefinition publishWorkflow(@PathVariable String workflowId,
+                                              @RequestBody(required = false) PublishRequest request) {
+        return workflows.setPublished(workflowId, request == null || request.published());
+    }
+
+    @DeleteMapping("/api/workflows/{workflowId}")
+    public Map<String, Object> deleteWorkflow(@PathVariable String workflowId) {
+        workflows.delete(workflowId);
+        return Map.of("ok", true);
+    }
+
+    @PostMapping("/api/workflows/{workflowId}/run")
+    public Map<String, String> runWorkflow(@PathVariable String workflowId,
+                                          @RequestBody(required = false) WorkflowRunRequest request) {
+        Map<String, Object> inputs = request == null || request.inputs() == null
+                ? Map.of() : request.inputs();
+        AgentRunConfig config = request == null ? null : request.config();
+        AgentRun run = workflowExecution.createManual(workflowId, inputs, config);
+        return start(run, null);
     }
 
     private void scheduleCleanup(String runId, AgentStreamSink sink) {
@@ -447,4 +502,6 @@ public class AgentController {
      */
     public record AgentRunRequest(String goal, AgentRunConfig config, AgentPlan workflow) {}
     public record AgentBatchRequest(List<String> goals, AgentRunConfig config) {}
+    public record WorkflowRunRequest(Map<String, Object> inputs, AgentRunConfig config) {}
+    public record PublishRequest(boolean published) {}
 }

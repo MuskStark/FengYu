@@ -36,6 +36,7 @@ lang: zh-CN
 | 功能 | 做什么 | 了解更多 |
 | --- | --- | --- |
 | **AI 智能体** | 「规划-执行」智能体，把目标拆解为多个步骤，敏感操作需人工确认。 | [智能体指南](/zh/guide/ai-agent) |
+| **可复用工作流** | 持久化带 JSON Schema 输入的可视化 DAG，既可人工运行，也可发布为 AI 可调用工具；两种路径共用同一执行内核。 | [可复用工作流](/zh/guide/ai-agent#可复用工作流人工与-ai-调用) |
 | **AI 对话** | 多后端对话，支持流式输出（SSE）、长对话自动压缩与有界工具上下文。支持 Ollama、OpenAI、Anthropic、DeepSeek 等后端。 | [对话指南](/zh/guide/ai-chat) |
 | **插件市场** | 浏览、安装、更新与管理 `.fyp` 插件包 —— JSON-RPC Worker 与微前端 UI。 | [市场](/zh/plugins/marketplace) |
 | **技能** | 渐进式 `.fys` 插件包，为智能体按需提供领域流程。 | [技能](/zh/skills/) |
