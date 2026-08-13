@@ -46,3 +46,10 @@ test('propagates the configured host locale through handshake and environment up
   assert.match(source, /event: 'environment'[\s\S]*data: \{ theme: theme\.theme, locale: settings\.language \}/)
   assert.match(source, /watch\(\(\) => settings\.language, sendEnvironment\)/)
 })
+
+test('uses the shared plugin notification center when the host has no toast surface', () => {
+  assert.match(
+    source,
+    /request\.method === HOST_METHODS\.notify[\s\S]*respond\(request\.id, false\)/,
+  )
+})

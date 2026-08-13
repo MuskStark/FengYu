@@ -21,8 +21,9 @@ import java.util.Optional;
  * Host-owned record of each installed plugin's {@code manifest.json} digest, used to detect (and
  * block) a plugin rewriting its own manifest at runtime to escalate permissions.
  *
- * <p>On every successful install a record {@code {id, version, sha256(manifest.json), installedAt}}
- * is written under {@code <runtime-root>/manifest-digests/<id>.json}. Before a Worker starts, the
+ * <p>On every successful install a record containing the manifest digest, package digest, and the
+ * trusted source archive digest (when available) is written under
+ * {@code <runtime-root>/manifest-digests/<id>.json}. Before a Worker starts, the
  * host recomputes the live manifest's SHA-256 and compares it to the stored record; a mismatch
  * means the on-disk package (which is now read-only to the Worker) was tampered with out-of-band,
  * and the Worker is refused.
@@ -61,12 +62,23 @@ public class PluginIntegrityStore {
      * so a same-version repack invalidates the cached Worker.
      */
     public void record(String id, String version, Path manifestPath, Path packageDir) {
+        record(id, version, manifestPath, packageDir, null);
+    }
+
+    /**
+     * Record installed bytes together with the trusted source archive digest when available.
+     * The source digest lets the official seeder distinguish an identical same-version bundle
+     * from a same-version rebuild whose UI/Worker bytes must replace the installed copy.
+     */
+    public void record(String id, String version, Path manifestPath, Path packageDir,
+            String sourceArchiveSha256) {
         try {
             String manifestDigest = sha256Hex(manifestPath);
             String packageDigest = packageDigest(packageDir);
             Path target = recordPath(id);
             Files.createDirectories(target.getParent());
-            Entry entry = new Entry(id, version, manifestDigest, packageDigest, java.time.Instant.now().toString());
+            Entry entry = new Entry(id, version, manifestDigest, packageDigest,
+                    sourceArchiveSha256, java.time.Instant.now().toString());
             Path tmp = Files.createTempFile(target.getParent(), ".digest-", ".tmp");
             try {
                 Files.writeString(tmp, json.writeValueAsString(entry));
@@ -89,6 +101,11 @@ public class PluginIntegrityStore {
     /** The recorded package digest for a plugin, or empty if none was recorded. */
     public Optional<String> packageDigest(String id) {
         return read(id).map(Entry::packageDigest).filter(d -> d != null && !d.isBlank());
+    }
+
+    /** Trusted source .fyp digest recorded at install time, when the install came from a path. */
+    public Optional<String> sourceArchiveSha256(String id) {
+        return read(id).map(Entry::sourceArchiveSha256).filter(d -> d != null && !d.isBlank());
     }
 
     /**
@@ -288,10 +305,16 @@ public class PluginIntegrityStore {
      * Worker cache (P0-6); it may be {@code null} on records written before that field existed
      * (Jackson deserializes a missing field as null for a record's nullable component).
      */
-    public record Entry(String id, String version, String sha256, String packageDigest, String installedAt) {
+    public record Entry(String id, String version, String sha256, String packageDigest,
+            String sourceArchiveSha256, String installedAt) {
         /** Backwards-compatible constructor for records/manifest-only writes lacking a package digest. */
         public Entry(String id, String version, String sha256, String installedAt) {
-            this(id, version, sha256, null, installedAt);
+            this(id, version, sha256, null, null, installedAt);
+        }
+
+        /** Backwards-compatible constructor for records written before source archive tracking. */
+        public Entry(String id, String version, String sha256, String packageDigest, String installedAt) {
+            this(id, version, sha256, packageDigest, null, installedAt);
         }
     }
 }

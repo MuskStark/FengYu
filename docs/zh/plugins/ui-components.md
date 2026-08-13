@@ -1,6 +1,6 @@
 ---
 title: UI 组件
-description: "@infinia/plugin-ui 套件——面向 FengYu 插件的 Codex 风格 Vuetify 3 基础库。外壳、文件/目录选择器、步骤向导、任务表、通知中心，以及脚手架 main.ts 接线的主题/locale 绑定。"
+description: "@infinia/plugin-ui 套件——面向 FengYu 插件的 Codex 风格 Vuetify 3 基础库，包含响应式外壳/页面、进度、通知、选择器、工作流与实时主题/locale 绑定。"
 lang: zh-CN
 ---
 
@@ -11,6 +11,8 @@ lang: zh-CN
 ```ts
 import {
   FyFilePicker,
+  FyPluginPage,
+  FyProgress,
   FyStepWizard,
   FyPluginShell,
   useFengYuClient,
@@ -38,13 +40,15 @@ import {
 | 组件 | 用途 |
 | --- | --- |
 | `FyPluginShell` | 应用外壳：一个导航抽屉（标题 + `items[]`）+ 应用栏 + 内容插槽。在 `railBreakpoint`（默认 720px）以下折叠为临时抽屉。v-model 为活动项 value。 |
+| `FyPluginPage` | 统一桌面/移动端边距且可配置最大宽度的响应式内容框架。编辑器/画布使用 `fluid`，全高工作区使用 `fullHeight`。 |
 | `FyPageHeader` | 页面标题、可选 `description` 与尾部的 `#actions` 插槽（放工具栏按钮）。 |
 | `FyToolbar` | 用于 `#actions` 的横向按钮行。 |
 | `FyFilePicker` | SDK 文件按钮——封装 `client.files.open`。v-model 为 `FileRef` 或 `null`。 |
 | `FyDirectoryPicker` | SDK 目录按钮——`mode: 'input' \| 'workspace' \| 'output'` 分别选择只读输入、可写项目工作目录或全新输出目录。 |
 | `FyStepWizard` | 有状态、按 value 索引的工作流控制器，支持受控进度、异步校验、分支、失效与 JSON 快照。 |
 | `FyTaskTable` | 只读任务列表（`tasks: FyTaskRow[]`），用 `v-data-table` 渲染；状态以图标 + 文字展示。 |
-| `FyNotificationCenter` | 兜底 snackbar 堆栈。调用其 `notify(msg)`（经模板 ref）展示消息；转发给宿主，宿主拒绝时本地兜底。 |
+| `FyProgress` | 统一的确定/不确定进度面板，支持 `label`、`detail`、`modelValue`（0–100）、`status` 与 `#actions` 插槽。 |
+| `FyNotificationCenter` | 感知宿主的 snackbar 队列。`FyPluginShell` 会自动挂载；宿主拒绝通知时渲染统一的本地兜底。 |
 | `FyConfirmDialog` | v-model 对话框，支持 `destructive` 样式；发出 `confirm` / `cancel`。 |
 | `FyEmptyState` / `FyLoadingState` / `FyErrorState` / `FyPermissionNotice` | 标准化的空/加载中/错误/权限不足面板，含 `title`、`message`、`icon`。`FyErrorState` 发出 `retry`。 |
 
@@ -52,7 +56,9 @@ import {
 
 Vuetify 图标属性接受 `mdi-home-outline` 这类常规 `mdi-*` 名称。UI 包携带 MDI 字体依赖，并由插件的 Vite 应用把字体输出为同源哈希资源，因此脚手架生成的插件不需要自定义字体 import 或 Vite 补丁。接受图标路径数据的组件也支持从 `@mdi/js` 导入、可 tree-shake 的 SVG path；这类路径通过 `FyIcon` 渲染。
 
-通知组合式 `useFengYuNotify(client)` 与 `sendFengYuNotification(client, message)` 也已导出，供非组件场景使用。
+`FyPluginShell` 也可以不传导航项：单工作区插件会省略抽屉和应用栏，同时保留标准应用、反馈与响应式行为。应配合 `FyPluginPage` 使用，不要在每个插件中复制视口边距。
+
+通知组合式 `useFengYuNotify(client)` 与 `sendFengYuNotification(client, message)` 也已导出，供非组件场景使用。`notify(message, { tone, timeout })` 接受 `info`、`success`、`warning` 或 `error`；选项用于本地兜底样式，宿主接收的通知则使用宿主自己的统一通知界面。绑定同一个 client 的组合式共享一个队列，因此插件任何位置发出的通知都会到达 `FyPluginShell` 挂载的通知中心。
 
 ## 示例：文件选择器
 
@@ -61,16 +67,16 @@ Vuetify 图标属性接受 `mdi-home-outline` 这类常规 `mdi-*` 名称。UI �
 ```vue
 <script setup lang="ts">
 import { ref } from 'vue'
-import { FyFilePicker, FyNotificationCenter, useFengYuClient } from '@infinia/plugin-ui'
+import { FyFilePicker, useFengYuClient, useFengYuNotify } from '@infinia/plugin-ui'
 import type { FileRef } from '@infinia/plugin-sdk'
 
 const client = useFengYuClient()
 const selectedFile = ref<FileRef | null>(null)
-const notifications = ref<InstanceType<typeof FyNotificationCenter> | null>(null)
+const { notify } = useFengYuNotify(client)
 
 async function onFile(file: FileRef | null): Promise<void> {
   selectedFile.value = file
-  if (file) await notifications.value?.notify(`Selected ${file.name}`)
+  if (file) await notify(`Selected ${file.name}`, { tone: 'success' })
 }
 </script>
 
@@ -82,9 +88,27 @@ async function onFile(file: FileRef | null): Promise<void> {
     @update:model-value="onFile"
     @cancel="onFile(null)"
   />
-  <FyNotificationCenter ref="notifications" />
 </template>
 ```
+
+## 响应式布局与进度
+
+所有插件级布局都应从 `FyPluginShell` + `FyPluginPage` 开始。业务内容可使用共享 CSS 钩子 `.fy-surface`、`.fy-surface__section`、`.fy-section-title`、`.fy-section-copy`、`.fy-actions`、`.fy-actions--split`、`.fy-status`、`.fy-log` 与 `.fy-responsive-table`。这些钩子只使用主题令牌，并包含统一的窄屏行为。`FyPluginPage` 会建立名为 `fy-plugin-page` 的内联尺寸容器；当 iframe 实际可用内容宽度比浏览器窗口宽度更重要时，插件专用网格应补充 `@container fy-plugin-page (...)` 规则。
+
+显式长任务状态统一使用 `FyProgress`，不要混用自定义圆形和线性进度条：
+
+```vue
+<FyProgress
+  v-if="running"
+  label="正在构建离线仓库…"
+  :model-value="percent"
+  status="running"
+>
+  <template #actions><v-btn variant="text" @click="cancel">取消</v-btn></template>
+</FyProgress>
+```
+
+不传 `modelValue` 即为不确定进度。终态/结果可把 `status` 设为 `success`、`warning` 或 `error`。组件内置实时区域语义、响应式操作换行，以及与官方插件一致的主题驱动进度条样式。
 
 | Prop | 类型 | 说明 |
 | --- | --- | --- |

@@ -12,8 +12,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Verifies the SHA256 sidecar check performed by {@link OfficialPluginSeeder}. The host treats a
- * present sidecar as authoritative (mismatch → skip) and a missing sidecar as backwards-compatible
- * (install proceeds). These tests exercise {@link OfficialPluginSeeder#verifySha256} directly so
+ * sidecar as required and authoritative (missing or mismatched → skip). These tests exercise
+ * {@link OfficialPluginSeeder#verifySha256} directly so
  * they don't need to boot a plugin runtime.
  */
 class OfficialPluginSeederChecksumTest {

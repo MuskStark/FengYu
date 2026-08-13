@@ -11,6 +11,7 @@ import { createFengYuI18n } from '@infinia/plugin-ui'
 export type Messages = Record<string, string>
 
 const en: Messages = {
+  'exui.title': 'Excel Splitter',
   // Wizard steps
   'exui.step.source': 'Source',
   'exui.step.mode': 'Mode',
@@ -93,6 +94,7 @@ const en: Messages = {
 }
 
 const zh: Messages = {
+  'exui.title': 'Excel 拆分器',
   'exui.step.source': '来源',
   'exui.step.mode': '方式',
   'exui.step.output': '输出',

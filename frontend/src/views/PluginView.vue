@@ -100,7 +100,9 @@ async function onMessage(event: MessageEvent) {
       loading.value = false
     } else if (request.method === HOST_METHODS.notify) {
       console.info(`[${props.id}]`, request.params?.message)
-      respond(request.id, true)
+      // There is no host-level toast surface yet. Returning false activates
+      // @infinia/plugin-ui's shared notification-center fallback in the iframe.
+      respond(request.id, false)
     } else if (request.method === HOST_METHODS.filesOpen) {
       if (desktop) {
         const path = await desktop.pickFile((request.params?.filters ?? []) as { name: string; extensions: string[] }[])

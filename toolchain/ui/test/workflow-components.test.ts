@@ -48,6 +48,38 @@ describe('FyStepWizard', () => {
     )
   })
 
+  it('remounts keyed step content so static layout classes cannot leak across slots', async () => {
+    const wrapper = mount(FyStepWizard, {
+      global,
+      props: {
+        steps: steps.slice(0, 2),
+        modelValue: 'source',
+        states: {
+          source: { status: 'active' },
+          mode: { status: 'pending' },
+        },
+      },
+      slots: {
+        source: () => h('div', { class: 'source-layout' }, 'Source content'),
+        mode: () => h('div', { class: 'mode-layout' }, 'Mode content'),
+      },
+    })
+
+    const sourceElement = wrapper.get('.source-layout').element
+    await wrapper.setProps({
+      modelValue: 'mode',
+      states: {
+        source: { status: 'complete' },
+        mode: { status: 'active' },
+      },
+    })
+    await flushPromises()
+
+    const modeElement = wrapper.get('.mode-layout').element
+    expect(wrapper.find('.source-layout').exists()).toBe(false)
+    expect(modeElement).not.toBe(sourceElement)
+  })
+
   it('fails fast with a clear error for duplicate step values', () => {
     expect(() => mount(FyStepWizard, {
       global,

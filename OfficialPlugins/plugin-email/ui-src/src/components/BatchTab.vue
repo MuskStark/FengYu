@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { mdiCloseCircle, mdiPaperclip } from '@mdi/js'
-import { FyIcon } from '@infinia/plugin-ui'
+import { FyIcon, FyProgress } from '@infinia/plugin-ui'
 import { useAccountsStore } from '../stores/accounts'
 import { useBatchStore } from '../stores/batch'
 import { useContactsStore } from '../stores/contacts'
@@ -86,7 +86,7 @@ async function reject(): Promise<void> {
 
 <template>
   <section class="batch-workspace">
-    <v-card class="surface" variant="flat">
+    <v-card class="fy-surface" variant="flat">
       <v-card-title>{{ t('batch.title') }}</v-card-title>
       <v-card-text>
         <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
@@ -121,10 +121,10 @@ async function reject(): Promise<void> {
       </v-card-actions>
     </v-card>
 
-    <v-card class="surface mt-4" variant="flat">
+    <v-card class="fy-surface mt-4" variant="flat">
       <v-card-title>{{ t('batch.preview') }}</v-card-title>
       <v-card-text>
-        <v-progress-linear v-if="previewBusy" indeterminate />
+        <FyProgress v-if="previewBusy" :label="t('batch.previewAction')" class="mb-4" />
         <div v-if="batch.preview.messages.length" class="batch-preview-list">
           <article v-for="(message, index) in batch.preview.messages" :key="index" class="batch-preview-item">
             <h3>{{ message.attachmentTag }}</h3>

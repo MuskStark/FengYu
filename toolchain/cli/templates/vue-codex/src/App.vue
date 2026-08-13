@@ -14,17 +14,19 @@
 import { ref } from 'vue'
 import {
   FyFilePicker,
-  FyNotificationCenter,
   FyPageHeader,
+  FyPluginPage,
   FyPluginShell,
   FyTaskTable,
   FyToolbar,
   useFengYuClient,
+  useFengYuNotify,
 } from '@infinia/plugin-ui'
 import type { FyTaskRow } from '@infinia/plugin-ui'
 import type { FileRef } from '@infinia/plugin-sdk'
 
 const client = useFengYuClient()
+const { notify } = useFengYuNotify(client)
 
 /** Deterministic seed so the initial view is stable. */
 const tasks = ref<FyTaskRow[]>([
@@ -36,20 +38,18 @@ const tasks = ref<FyTaskRow[]>([
 
 const activeView = ref('tasks')
 const selectedFile = ref<FileRef | null>(null)
-const notifications = ref<InstanceType<typeof FyNotificationCenter> | null>(null)
-
 async function onFile(file: FileRef | null): Promise<void> {
   selectedFile.value = file
   if (file) {
     // Surface a host notification; the notification center falls back to a
     // local queue if the host rejects it.
-    await notifications.value?.notify(`Selected ${file.name}`)
+    await notify(`Selected ${file.name}`)
   }
 }
 
 async function runImport(): Promise<void> {
   if (!selectedFile.value) {
-    await notifications.value?.notify('Choose a file first')
+    await notify('Choose a file first', { tone: 'warning' })
     return
   }
   tasks.value.unshift({
@@ -57,7 +57,7 @@ async function runImport(): Promise<void> {
     name: selectedFile.value.name,
     status: 'queued',
   })
-  await notifications.value?.notify(`Queued ${selectedFile.value.name} for import`)
+  await notify(`Queued ${selectedFile.value.name} for import`)
 }
 </script>
 
@@ -70,7 +70,7 @@ async function runImport(): Promise<void> {
       { value: 'sources', title: 'Sources', icon: 'mdi-folder-multiple-outline' },
     ]"
   >
-    <div data-workbench class="pa-4">
+    <FyPluginPage data-workbench>
       <FyPageHeader
         title="Import spreadsheets"
         description="Pick a source file, then queue it for processing."
@@ -106,7 +106,6 @@ async function runImport(): Promise<void> {
 
       <FyTaskTable :tasks="tasks" />
 
-      <FyNotificationCenter ref="notifications" />
-    </div>
+    </FyPluginPage>
   </FyPluginShell>
 </template>

@@ -48,6 +48,11 @@ test('create defaults to Vue plus Java worker', async () => {
   assert.match(await fs.readFile(devMain, 'utf8'), /PluginDevServer\.builder/)
   // The devkit is declared test-scope so it stays out of the production JAR.
   assert.match(await fs.readFile(path.join(root, 'worker/pom.xml'), 'utf8'), /fengyu-plugin-devkit[\s\S]*<scope>test<\/scope>/)
+  // New plugins inherit the official responsive page and progress contract.
+  const app = await fs.readFile(path.join(root, 'ui-src/src/App.vue'), 'utf8')
+  assert.match(app, /FyPluginShell/)
+  assert.match(app, /FyPluginPage/)
+  assert.match(app, /FyProgress/)
 })
 
 test('full scaffold preserves the Maven wrapper mode and resolves the worker artifact', async () => {
@@ -74,6 +79,10 @@ test('uiOnly retains the lightweight template', async () => {
   await createPlugin(root, 'com.example.ui', { install: false, uiOnly: true, run: async () => {} })
   await assert.rejects(fs.stat(path.join(root, 'worker/pom.xml')))
   assert.ok(await fs.stat(path.join(root, 'src/App.vue')))
+  const app = await fs.readFile(path.join(root, 'src/App.vue'), 'utf8')
+  assert.match(app, /FyPluginShell/)
+  assert.match(app, /FyPluginPage/)
+  assert.match(app, /useFengYuNotify/)
 })
 
 test('uiOnly install runs npm in the project root', async () => {

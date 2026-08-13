@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type { FengYuClient, FileRef } from '@infinia/plugin-sdk'
-import { FyFilePicker, FyPageHeader } from '@infinia/plugin-ui'
+import { FyFilePicker, FyPageHeader, FyProgress } from '@infinia/plugin-ui'
 import { createPluginRpc, checked } from '../rpc'
 import { readJobSnapshot, type UiJobStatus } from '../jobState'
 
@@ -155,9 +155,9 @@ onUnmounted(() => {
 })
 
 const statusClass = computed(() => ({
-  'opb-status--running': status.value === 'starting' || status.value === 'running',
-  'opb-status--success': status.value === 'done',
-  'opb-status--error': status.value === 'failed' || status.value === 'error',
+  'fy-status--running': status.value === 'starting' || status.value === 'running',
+  'fy-status--success': status.value === 'done',
+  'fy-status--error': status.value === 'failed' || status.value === 'error',
 }))
 const canInstall = computed(() => Boolean(bundle.value)
   && hasPython.value
@@ -168,10 +168,10 @@ const canInstall = computed(() => Boolean(bundle.value)
 <template>
   <FyPageHeader :title="t('opb.deploy.title')" :description="t('opb.deploy.description')" />
 
-  <section class="opb-surface">
-    <div class="opb-surface__section">
-      <h2 class="opb-section-heading">{{ t('opb.deploy.bundleTitle') }}</h2>
-      <p class="opb-section-copy">{{ t('opb.deploy.bundleHint') }}</p>
+  <section class="fy-surface">
+    <div class="fy-surface__section">
+      <h2 class="fy-section-title">{{ t('opb.deploy.bundleTitle') }}</h2>
+      <p class="fy-section-copy">{{ t('opb.deploy.bundleHint') }}</p>
         <FyFilePicker
           v-model="bundle"
           :label="t('opb.deploy.selectZip')"
@@ -179,9 +179,9 @@ const canInstall = computed(() => Boolean(bundle.value)
         />
     </div>
 
-    <div class="opb-surface__section">
-      <h2 class="opb-section-heading">{{ t('opb.deploy.targetTitle') }}</h2>
-      <p class="opb-section-copy">{{ t('opb.deploy.targetHint') }}</p>
+    <div class="fy-surface__section">
+      <h2 class="fy-section-title">{{ t('opb.deploy.targetTitle') }}</h2>
+      <p class="fy-section-copy">{{ t('opb.deploy.targetHint') }}</p>
       <div class="opb-segment" role="group" :aria-label="t('opb.deploy.targetTitle')">
         <button type="button" :aria-pressed="targetKind === 'global'" @click="targetKind = 'global'">
           {{ t('opb.deploy.targetGlobal') }}
@@ -200,18 +200,18 @@ const canInstall = computed(() => Boolean(bundle.value)
       />
     </div>
 
-    <div class="opb-surface__section">
-      <h2 class="opb-section-heading">{{ t('opb.deploy.pythonTitle') }}</h2>
-      <p class="opb-section-copy">{{ t('opb.deploy.pythonHint') }}</p>
-      <div class="opb-actions">
+    <div class="fy-surface__section">
+      <h2 class="fy-section-title">{{ t('opb.deploy.pythonTitle') }}</h2>
+      <p class="fy-section-copy">{{ t('opb.deploy.pythonHint') }}</p>
+      <div class="fy-actions">
         <v-btn variant="outlined" :loading="detecting" :disabled="detecting || installing" @click="detectPython">
           {{ t('opb.deploy.redetect') }}
         </v-btn>
-        <span v-if="detecting" class="opb-status">{{ t('opb.deploy.detecting') }}</span>
-        <span v-else-if="detectedExe && !manualExe.trim()" class="opb-status opb-status--success">
+        <span v-if="detecting" class="fy-status">{{ t('opb.deploy.detecting') }}</span>
+        <span v-else-if="detectedExe && !manualExe.trim()" class="fy-status fy-status--success">
           {{ t('opb.deploy.detected', detectedExe, detectedVersion ?? '') }}
         </span>
-        <span v-else-if="!detectedExe && !manualExe.trim()" class="opb-status opb-status--error">
+        <span v-else-if="!detectedExe && !manualExe.trim()" class="fy-status fy-status--error">
           {{ t('opb.deploy.notDetected') }}
         </span>
       </div>
@@ -224,17 +224,18 @@ const canInstall = computed(() => Boolean(bundle.value)
       />
     </div>
 
-    <div class="opb-surface__section">
-      <div class="opb-actions">
+    <div class="fy-surface__section">
+      <div class="fy-actions">
         <v-btn color="primary" :loading="installing" :disabled="!canInstall" @click="startInstall">{{ t('opb.deploy.start') }}</v-btn>
         <v-btn v-if="installing" color="error" variant="text" @click="cancel">{{ t('opb.deploy.cancel') }}</v-btn>
-        <span class="opb-status" :class="statusClass">{{ t(`opb.deploy.status.${status}`, status) }}</span>
+        <span v-if="!installing" class="fy-status" :class="statusClass">{{ t(`opb.deploy.status.${status}`, status) }}</span>
       </div>
+      <FyProgress v-if="installing" :label="t(`opb.deploy.status.${status}`, status)" class="mt-3" />
     </div>
 
-    <div class="opb-surface__section">
-      <h2 class="opb-section-heading">{{ t('opb.deploy.logTitle') }}</h2>
-        <pre class="opb-log">{{
+    <div class="fy-surface__section">
+      <h2 class="fy-section-title">{{ t('opb.deploy.logTitle') }}</h2>
+        <pre class="fy-log">{{
           logs.length ? logs.join('\n') : t('opb.deploy.logEmpty')
         }}</pre>
     </div>

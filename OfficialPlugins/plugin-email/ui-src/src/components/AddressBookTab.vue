@@ -50,7 +50,7 @@ function confirmDelete(): void {
 
 <template>
   <section class="panel-grid">
-    <v-card class="surface" variant="flat"><v-card-title>{{ t('contacts.title') }}</v-card-title><v-card-text>
+    <v-card class="fy-surface" variant="flat"><v-card-title>{{ t('contacts.title') }}</v-card-title><v-card-text>
       <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
       <div class="inline-fields"><v-text-field v-model="store.query" data-testid="contact-search" hide-details :label="t('common.search')" @keyup.enter="store.load" /><v-select v-model="store.selectedTagIds" :items="store.tags" item-title="name" item-value="id" multiple chips hide-details :label="t('contacts.filterTag')" /><v-btn @click="store.load">{{ t('common.search') }}</v-btn></div>
       <div class="mt-4"><v-btn data-testid="contact-import" variant="outlined" @click="showImport = true">{{ t('contacts.importButton') }}</v-btn></div>
@@ -72,13 +72,13 @@ function confirmDelete(): void {
       <div data-testid="contact-bulk-tags" class="inline-fields mt-4"><v-select v-model="assignTagIds" :items="store.tags" item-title="name" item-value="id" multiple chips hide-details :label="t('contacts.assignTags')" /><v-btn :disabled="!selectedContacts.length" @click="assign">{{ t('contacts.assignTags') }}</v-btn></div>
     </v-card-text></v-card>
     <div class="d-flex flex-column ga-4">
-      <v-card class="surface" variant="flat"><v-card-title>{{ contactId ? t('contacts.editContact') : t('contacts.newContact') }}</v-card-title><v-card-text>
+      <v-card class="fy-surface" variant="flat"><v-card-title>{{ contactId ? t('contacts.editContact') : t('contacts.newContact') }}</v-card-title><v-card-text>
         <v-text-field v-model="email" data-testid="contact-email" :label="t('contacts.email')" />
         <v-text-field v-model="nickname" :label="t('contacts.name')" />
         <v-select v-model="contactTagIds" data-testid="contact-tags" :items="store.tags" item-title="name" item-value="id" multiple chips :label="t('contacts.assignTags')" />
         <v-textarea v-model="notes" data-testid="contact-notes" :label="t('contacts.notes')" rows="2" auto-grow />
       </v-card-text><v-card-actions><v-btn v-if="contactId" variant="text" @click="reset">{{ t('contacts.newContact') }}</v-btn><v-spacer /><v-btn data-testid="contact-save" color="primary" @click="saveContact">{{ t('common.save') }}</v-btn></v-card-actions></v-card>
-      <v-card class="surface" variant="flat" data-testid="tag-manager-card"><v-card-title>{{ t('contacts.manageTags') }}</v-card-title><v-card-text>
+      <v-card class="fy-surface" variant="flat" data-testid="tag-manager-card"><v-card-title>{{ t('contacts.manageTags') }}</v-card-title><v-card-text>
         <v-text-field v-model="tagQuery" data-testid="tag-search" density="compact" :label="t('contacts.tagSearch')" />
         <div class="tag-manager-list">
           <div class="tag-manager-row" v-for="tag in filteredTags" :key="tag.id" data-testid="tag-manager-row">

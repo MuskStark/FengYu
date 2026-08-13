@@ -102,6 +102,16 @@ class PluginIntegrityStoreTest {
     }
 
     @Test
+    void recordsTrustedSourceArchiveDigestWhenProvided() throws Exception {
+        PluginIntegrityStore store = new PluginIntegrityStore(temp.resolve("records"));
+        Path pkg = writePackage("{\"v\":1}", "worker.jar-bytes");
+
+        store.record(ID, VERSION, pkg.resolve("manifest.json"), pkg, "abc123");
+
+        assertEquals("abc123", store.sourceArchiveSha256(ID).orElseThrow());
+    }
+
+    @Test
     void verifyPackageFailsOnTamperedNonManifestFile() throws Exception {
         PluginIntegrityStore store = new PluginIntegrityStore(temp);
         Path pkg = writePackage("{\"v\":1}", "worker.jar-bytes", "lib/deps.jar");

@@ -13,7 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 
-/** Installs bundled/development official .fyp artifacts once and upgrades them when newer. */
+/** Installs official .fyp artifacts, upgrades newer versions, and refreshes changed same-version bundles. */
 @Component
 public class OfficialPluginSeeder implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(OfficialPluginSeeder.class);
@@ -44,6 +44,19 @@ public class OfficialPluginSeeder implements ApplicationRunner {
                         log.info("Skipping official plugin {}: uninstalled by user", id);
                         continue;
                     }
+                    // P0-8: every bundled official plugin MUST ship a matching checksum sidecar.
+                    // Verify before version/content decisions so an untrusted archive never
+                    // influences the installed package selection.
+                    Path checksum = Path.of(archive + ".sha256");
+                    if (!Files.exists(checksum)) {
+                        log.warn("Skipping official plugin {}: missing required .sha256 sidecar (official packages must be checksummed)", archive);
+                        continue;
+                    }
+                    if (!verifySha256(archive, checksum)) {
+                        log.warn("Skipping official plugin {}: SHA256 checksum mismatch (package tampered or corrupt)", archive);
+                        continue;
+                    }
+                    String incomingSha256 = sha256Hex(archive);
                     PluginManifest incoming = packages.readArchiveManifest(archive);
                     PluginManifest installed = packages.find(id).orElse(null);
                     if (installed != null) {
@@ -58,30 +71,26 @@ public class OfficialPluginSeeder implements ApplicationRunner {
                                 || packages.integrityStore().read(id).isEmpty();
                         if (lacksRecord) {
                             log.info("Reinstalling official plugin {} from bundled archive to establish a trusted integrity baseline", id);
-                        } else if (PluginMarketplaceService.compareVersions(incoming.version(), installed.version()) <= 0) {
-                            // Upgrade only when the bundled archive is strictly newer; never downgrade.
-                            // This honours the class Javadoc ("upgrades them when newer") and is what
-                            // lets a rebuilt worker JAR reach a user who already has the plugin installed.
-                            continue;
                         } else {
-                            log.info("Upgrading official plugin {} {} → {}", id, installed.version(), incoming.version());
+                            int comparison = PluginMarketplaceService.compareVersions(
+                                    incoming.version(), installed.version());
+                            if (comparison < 0) {
+                                continue; // never downgrade
+                            }
+                            if (comparison == 0) {
+                                String recordedSource = packages.integrityStore()
+                                        .sourceArchiveSha256(id).orElse(null);
+                                if (recordedSource != null
+                                        && incomingSha256.equalsIgnoreCase(recordedSource)) {
+                                    continue; // same version and identical trusted source bytes
+                                }
+                                log.info("Refreshing official plugin {} {} from changed bundled archive",
+                                        id, installed.version());
+                            } else {
+                                log.info("Upgrading official plugin {} {} → {}", id,
+                                        installed.version(), incoming.version());
+                            }
                         }
-                    }
-                    // P0-8: every bundled official plugin MUST ship a `.sha256` sidecar, and it MUST
-                    // match. The seeder is a host-controlled bundled-package path; the sidecar is a
-                    // corruption/partial-release check, not an independent authenticity anchor (an
-                    // attacker able to replace both files can still make them agree). Code signing or
-                    // an asymmetric package signature remains the distribution-level authenticity
-                    // boundary. Missing/mismatching pairs fail closed so incomplete or corrupted
-                    // releases can never acquire official identity.
-                    Path checksum = Path.of(archive + ".sha256");
-                    if (!Files.exists(checksum)) {
-                        log.warn("Skipping official plugin {}: missing required .sha256 sidecar (official packages must be checksummed)", archive);
-                        continue;
-                    }
-                    if (!verifySha256(archive, checksum)) {
-                        log.warn("Skipping official plugin {}: SHA256 checksum mismatch (package tampered or corrupt)", archive);
-                        continue;
                     }
                     // The package service performs the authoritative validation and atomic install.
                     // installTrusted marks this as a host-trusted path so the package may legitimately

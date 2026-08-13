@@ -41,7 +41,7 @@ const confirmRemoveAccount = () => {
 </script>
 
 <template>
-  <v-card class="surface" variant="flat">
+  <v-card class="fy-surface" variant="flat">
     <v-card-title>{{ t('accounts.title') }}</v-card-title>
     <v-card-text>
       <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert><v-alert v-if="notice" type="success" class="mb-4">{{ notice }}</v-alert>

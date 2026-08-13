@@ -67,25 +67,25 @@ onUnmounted(() => abortController.abort())
     </template>
   </FyPageHeader>
 
-  <section class="opb-surface">
-    <div class="opb-surface__section opb-doctor__summary">
+  <section class="fy-surface">
+    <div class="fy-surface__section opb-doctor__summary">
       <div>
-        <h2 class="opb-section-heading">{{ t('opb.doctor.runtimeTitle') }}</h2>
-        <p class="opb-section-copy">{{ t('opb.doctor.runtimeHint') }}</p>
+        <h2 class="fy-section-title">{{ t('opb.doctor.runtimeTitle') }}</h2>
+        <p class="fy-section-copy">{{ t('opb.doctor.runtimeHint') }}</p>
       </div>
-      <div class="opb-actions">
-        <span v-if="detection?.ok" class="opb-status opb-status--success">
+      <div class="fy-actions">
+        <span v-if="detection?.ok" class="fy-status fy-status--success">
           {{ t('opb.python.detected', detection.pythonVersion ?? '', detection.pipVersion ?? '') }}
         </span>
-        <span v-else-if="detection" class="opb-status opb-status--error">{{ t('opb.python.missing') }}</span>
-        <span v-else class="opb-status">{{ t('opb.doctor.notChecked') }}</span>
+        <span v-else-if="detection" class="fy-status fy-status--error">{{ t('opb.python.missing') }}</span>
+        <span v-else class="fy-status">{{ t('opb.doctor.notChecked') }}</span>
       </div>
       <code v-if="detection?.executable" class="opb-doctor__path">{{ detection.executable }}</code>
     </div>
 
-    <div class="opb-surface__section">
-      <h2 class="opb-section-heading">{{ t('opb.doctor.checksTitle') }}</h2>
-      <p class="opb-section-copy">{{ t('opb.doctor.checksHint') }}</p>
+    <div class="fy-surface__section">
+      <h2 class="fy-section-title">{{ t('opb.doctor.checksTitle') }}</h2>
+      <p class="fy-section-copy">{{ t('opb.doctor.checksHint') }}</p>
 
       <FyLoadingState v-if="loading && !checks.length" :label="t('opb.doctor.checking')" />
       <FyEmptyState
@@ -94,7 +94,7 @@ onUnmounted(() => abortController.abort())
         :message="t('opb.doctor.emptyHint')"
         :icon="mdiStethoscope"
       />
-      <div v-else class="opb-table-scroll">
+      <div v-else class="fy-responsive-table">
         <v-table>
         <thead>
           <tr>
@@ -108,7 +108,7 @@ onUnmounted(() => abortController.abort())
             <td>{{ checkName(c.id) }}</td>
             <td>{{ checkValue(c) }}</td>
             <td>
-              <span class="opb-status" :class="c.ok ? 'opb-status--success' : 'opb-status--error'">
+              <span class="fy-status" :class="c.ok ? 'fy-status--success' : 'fy-status--error'">
                 {{ c.ok ? t('opb.common.ok') : t('opb.common.fail') }}
               </span>
             </td>
@@ -128,7 +128,7 @@ onUnmounted(() => abortController.abort())
   align-items: start;
 }
 
-.opb-doctor__summary .opb-section-copy { margin-bottom: 0; }
+.opb-doctor__summary .fy-section-copy { margin-bottom: 0; }
 .opb-doctor__path {
   grid-column: 1 / -1;
   margin-top: 8px;
@@ -138,6 +138,11 @@ onUnmounted(() => abortController.abort())
 }
 
 @media (max-width: 600px) {
+  .opb-doctor__summary { grid-template-columns: 1fr; }
+  .opb-doctor__path { grid-column: 1; }
+}
+
+@container fy-plugin-page (max-width: 600px) {
   .opb-doctor__summary { grid-template-columns: 1fr; }
   .opb-doctor__path { grid-column: 1; }
 }
