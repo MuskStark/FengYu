@@ -131,6 +131,22 @@ The plan-and-execute agent. See [AI Agent](/en/guide/ai-agent).
 | `POST` | `/api/agent/runs/{runId}/resume` | token | Resume unfinished steps from a failed/cancelled run and require plan review. |
 | `GET` | `/api/mcp/status` | token | Configured MCP connections and discovered tool count. |
 
+## Workflows
+
+Reusable workflow definitions use the same `AgentPlan` DAG as the agent runner. `inputSchema` is a
+JSON Schema object; runtime inputs bind to <code v-pre>{{inputs.name}}</code> placeholders. Published definitions
+are added to the live AI tool catalog.
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/workflows` | token | List the current user's workflow definitions. |
+| `GET` | `/api/workflows/{workflowId}` | token | Read one definition. |
+| `POST` | `/api/workflows` | token | Create from `{name, description, inputSchema, plan}`. |
+| `PUT` | `/api/workflows/{workflowId}` | token | Replace the editable definition and increment its revision. |
+| `POST` | `/api/workflows/{workflowId}/publish` | token | Set publication with `{published}`; published workflows become AI tools. |
+| `DELETE` | `/api/workflows/{workflowId}` | token | Delete a definition. |
+| `POST` | `/api/workflows/{workflowId}/run` | token | Manually run with `{inputs, config}` → `{runId}`; observe the normal agent SSE stream. |
+
 ## Setup
 
 First-launch wizard. All endpoints bypass the token filter and exist only in SETUP mode. See [Database — Setup endpoints](/en/guide/database#setup-endpoints).

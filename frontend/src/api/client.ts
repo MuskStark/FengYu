@@ -44,6 +44,9 @@ import type {
   InstallRecord,
   UpdateApplyResult,
   UpdateCheckResult,
+  WorkflowDefinition,
+  WorkflowDraft,
+  WorkflowRunRequest,
 } from './types'
 
 const http: AxiosInstance = axios.create({
@@ -360,6 +363,27 @@ export const api = {
     http
       .post<AgentRunResponse>(`/api/agent/runs/${encodeURIComponent(runId)}/resume`)
       .then((r) => r.data),
+
+  workflows: () =>
+    http.get<WorkflowDefinition[]>('/api/workflows').then((r) => r.data),
+
+  workflow: (workflowId: string) =>
+    http.get<WorkflowDefinition>(`/api/workflows/${encodeURIComponent(workflowId)}`).then((r) => r.data),
+
+  createWorkflow: (draft: WorkflowDraft) =>
+    http.post<WorkflowDefinition>('/api/workflows', draft).then((r) => r.data),
+
+  updateWorkflow: (workflowId: string, draft: WorkflowDraft) =>
+    http.put<WorkflowDefinition>(`/api/workflows/${encodeURIComponent(workflowId)}`, draft).then((r) => r.data),
+
+  publishWorkflow: (workflowId: string, published: boolean) =>
+    http.post<WorkflowDefinition>(`/api/workflows/${encodeURIComponent(workflowId)}/publish`, { published }).then((r) => r.data),
+
+  deleteWorkflow: (workflowId: string) =>
+    http.delete(`/api/workflows/${encodeURIComponent(workflowId)}`).then((r) => r.data),
+
+  runWorkflow: (workflowId: string, request: WorkflowRunRequest) =>
+    http.post<AgentRunResponse>(`/api/workflows/${encodeURIComponent(workflowId)}/run`, request).then((r) => r.data),
 
   /** Read-only MCP connection and discovered-tool diagnostics. */
   mcpStatus: () =>
