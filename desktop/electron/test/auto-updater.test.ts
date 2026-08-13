@@ -20,7 +20,9 @@ vi.mock('electron', () => ({
 }))
 vi.mock('node:fs', () => ({
   existsSync: vi.fn((p: string) => p.includes('jre')),
-  readFileSync: vi.fn(() => JSON.stringify({ fengyu: { signedRelease: false } })),
+  readFileSync: vi.fn((p: string) => p.includes('package-type')
+    ? 'deb'
+    : JSON.stringify({ fengyu: { signedRelease: false } })),
 }))
 
 // A reusable "an update is available" response from autoUpdater.checkForUpdates().
@@ -55,16 +57,14 @@ describe('checkForUpdates skips JRE variant', () => {
     expect((autoUpdater.checkForUpdates as any).mock.calls.length).toBeGreaterThanOrEqual(1)
   })
 
-  it('checks the dedicated JRE feed when FY-Proxy is configured', async () => {
+  it('rejects the JRE variant when FY-Proxy is configured', async () => {
     process.env.FENGYU_UPDATE_API_BASE = 'http://proxy.local:8088'
     const { autoUpdater } = await import('electron-updater')
     ;(autoUpdater.checkForUpdates as any).mockResolvedValue(UPDATE_AVAILABLE)
     const { checkForUpdates } = await import('../src/updater/auto-updater')
     await checkForUpdates()
-    expect(autoUpdater.setFeedURL).toHaveBeenCalledWith(expect.objectContaining({
-      url: 'http://proxy.local:8088/fengyu-updates/jre',
-    }))
-    expect(autoUpdater.checkForUpdates).toHaveBeenCalled()
+    expect(autoUpdater.setFeedURL).not.toHaveBeenCalled()
+    expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
   })
 })
 
@@ -73,11 +73,14 @@ describe('checkForUpdates unsigned build (default metadata)', () => {
     vi.clearAllMocks()
     delete process.env.FENGYU_UPDATE_API_BASE
     ;(process as any).resourcesPath = '/fake/resources'
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
     const electron = await import('electron')
     const fs = await import('node:fs')
-    ;(fs.existsSync as any).mockReturnValue(false)
+    ;(fs.existsSync as any).mockImplementation((p: string) => p.endsWith('package-type'))
     // Packaged metadata: signedRelease absent / false → unsigned.
-    ;(fs.readFileSync as any).mockReturnValue(JSON.stringify({ fengyu: { signedRelease: false } }))
+    ;(fs.readFileSync as any).mockImplementation((p: string) => p.endsWith('package-type')
+      ? 'deb'
+      : JSON.stringify({ fengyu: { signedRelease: false } }))
     // Reset the autoDownload/autoInstallOnAppQuit to the library defaults so the production code's
     // assignment is what we assert against, not a leftover from a previous test.
     const { autoUpdater } = await import('electron-updater')
@@ -155,11 +158,14 @@ describe('checkForUpdates signed build (baked metadata fengyu.signedRelease=true
     vi.clearAllMocks()
     process.env.FENGYU_UPDATE_API_BASE = 'http://proxy.local:8088'
     ;(process as any).resourcesPath = '/fake/resources'
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
     const electron = await import('electron')
     const fs = await import('node:fs')
-    ;(fs.existsSync as any).mockReturnValue(false)
+    ;(fs.existsSync as any).mockImplementation((p: string) => p.endsWith('package-type'))
     // Packaged metadata: signedRelease true → signed (a future signed+notarized build sets this).
-    ;(fs.readFileSync as any).mockReturnValue(JSON.stringify({ fengyu: { signedRelease: true } }))
+    ;(fs.readFileSync as any).mockImplementation((p: string) => p.endsWith('package-type')
+      ? 'deb'
+      : JSON.stringify({ fengyu: { signedRelease: true } }))
     const { autoUpdater } = await import('electron-updater')
     autoUpdater.autoDownload = false
     autoUpdater.autoInstallOnAppQuit = false

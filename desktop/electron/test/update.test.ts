@@ -28,8 +28,14 @@ const autoUpdater = {
 const handlers = new Map<string, (...args: unknown[]) => unknown>()
 const sentMessages: { channel: string; payload: unknown }[] = []
 const allWindows: { isDestroyed: () => boolean; webContents: { send: (c: string, p: unknown) => void } }[] = []
+const portableMode = { value: false }
+const portableCheck = vi.fn()
 
 vi.mock('electron-updater', () => ({ autoUpdater }))
+vi.mock('node:fs', () => ({
+  existsSync: vi.fn((p: string) => p.endsWith('package-type')),
+  readFileSync: vi.fn(() => 'deb'),
+}))
 vi.mock('electron', () => ({
   app: { quit: vi.fn() },
   ipcMain: {
@@ -44,8 +50,8 @@ vi.mock('electron', () => ({
 // These tests exercise the electron-updater (nsis) path; force the portable branch off so the
 // ipc handler routes to autoUpdater. The portable pipeline has its own dedicated test file.
 vi.mock('../src/updater/portable-updater', () => ({
-  isWindowsPortable: () => false,
-  checkPortableUpdate: vi.fn(),
+  isWindowsPortable: () => portableMode.value,
+  checkPortableUpdate: portableCheck,
   downloadAndExtractPortable: vi.fn(),
   applyPortableUpdate: vi.fn(),
 }))
@@ -64,6 +70,7 @@ beforeEach(async () => {
   allWindows.push({ isDestroyed: () => false, webContents: { send: (c, p) => sentMessages.push({ channel: c, payload: p }) } })
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
+  portableMode.value = false
   delete process.env.FENGYU_UPDATE_API_BASE
 })
 
@@ -86,13 +93,12 @@ describe('update:check', () => {
     expect(result.version).toBe('9.9.9')
   })
 
-  it('returns updateAvailable=false when checkForUpdates throws', async () => {
+  it('propagates a failed check so the renderer can show an error', async () => {
     autoUpdater.checkForUpdates.mockRejectedValue(new Error('network down'))
     const { registerUpdateIpc } = await import('../src/ipc/update')
     registerUpdateIpc()
 
-    const result = (await handlers.get('update:check')!({ sender: {} })) as { updateAvailable: boolean }
-    expect(result.updateAvailable).toBe(false)
+    await expect(handlers.get('update:check')!({ sender: {} })).rejects.toThrow('network down')
   })
 
   it('reports no update when the latest version equals currentVersion', async () => {
@@ -105,15 +111,25 @@ describe('update:check', () => {
     expect(result.updateAvailable).toBe(false)
     autoUpdater.currentVersion = '4.0.0'
   })
+
+  it('propagates a failed portable check so the renderer can show an error', async () => {
+    portableMode.value = true
+    portableCheck.mockRejectedValue(new Error('proxy offline'))
+    const { registerUpdateIpc } = await import('../src/ipc/update')
+    registerUpdateIpc()
+
+    await expect(handlers.get('update:check')!({ sender: {} })).rejects.toThrow('proxy offline')
+  })
 })
 
 describe('update:download-install (Windows/Linux)', () => {
   beforeEach(() => {
-    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
+    ;(process as { resourcesPath?: string }).resourcesPath = '/fake/resources'
     process.env.FENGYU_UPDATE_API_BASE = 'http://proxy.local:8088'
   })
 
-  it('downloads and installs on user consent (win/linux)', async () => {
+  it('downloads and installs a deb update on user consent', async () => {
     autoUpdater.downloadUpdate.mockResolvedValue(['/tmp/pkg'])
     const { registerUpdateIpc } = await import('../src/ipc/update')
     registerUpdateIpc()

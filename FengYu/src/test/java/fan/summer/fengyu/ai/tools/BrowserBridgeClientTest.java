@@ -66,4 +66,16 @@ class BrowserBridgeClientTest {
         assertThrows(BrowserBridgeUnavailableException.class,
                 () -> client.invoke("browser_close", Map.of(), 5));
     }
+
+    @Test
+    void asyncInvokeCompletesWithoutUsingBlockingHttpSend() throws Exception {
+        startStub("{\"success\":true,\"summary\":\"async ok\"}", 200);
+        var client = new BrowserBridgeClient(server.getAddress().getPort(), "async-token");
+
+        Map<String, Object> result = client.invokeAsync("browser_snapshot", Map.of(), 5).get();
+
+        assertEquals(Boolean.TRUE, result.get("success"));
+        assertEquals("async ok", result.get("summary"));
+        assertEquals("async-token", receivedToken);
+    }
 }

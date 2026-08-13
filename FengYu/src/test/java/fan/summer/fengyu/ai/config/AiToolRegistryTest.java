@@ -8,9 +8,11 @@ import fan.summer.fengyu.ai.ChatFileContext;
 import org.junit.jupiter.api.AfterEach;
 import fan.summer.fengyu.ai.tools.AuditedToolCallback;
 import fan.summer.fengyu.ai.tools.ToolEffect;
+import fan.summer.fengyu.ai.tools.ToolEffectProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
+import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.beans.factory.ObjectProvider;
 
 import java.nio.file.Files;
@@ -75,6 +77,22 @@ class AiToolRegistryTest {
     }
 
     @Test
+    void builtinCanDeclarePerCallbackEffects() {
+        PluginPackageService packages = new PluginPackageService(temp.toString());
+        @SuppressWarnings("unchecked")
+        ObjectProvider<SyncMcpToolCallbackProvider> mcp = mock(ObjectProvider.class);
+        AiToolRegistry registry = new AiToolRegistry(List.of(new MixedEffectTool()), packages,
+                mock(PluginProcessManager.class), mcp);
+
+        Map<String, ToolEffect> effects = registry.callbacks().stream().collect(
+                java.util.stream.Collectors.toMap(
+                        callback -> callback.getToolDefinition().name(),
+                        callback -> ((AuditedToolCallback) callback).effect()));
+        assertEquals(ToolEffect.READ, effects.get("inspect_test"));
+        assertEquals(ToolEffect.EXTERNAL, effects.get("mutate_test"));
+    }
+
+    @Test
     void writeDirectoryToolUsesStagingGrantWithoutRestartingWorker() throws Exception {
         Path plugin = Files.createDirectories(temp.resolve("fan.summer.excel"));
         Files.writeString(plugin.resolve("manifest.json"), """
@@ -110,5 +128,17 @@ class AiToolRegistryTest {
 
         // The worker is NOT stopped after the call — staging lives for the whole turn.
         verify(processes, never()).stop("fan.summer.excel");
+    }
+
+    static final class MixedEffectTool implements ToolEffectProvider {
+        @Tool(name = "inspect_test", description = "inspect")
+        public String inspect() { return "ok"; }
+
+        @Tool(name = "mutate_test", description = "mutate")
+        public String mutate() { return "ok"; }
+
+        @Override public ToolEffect effectFor(String toolName) {
+            return "inspect_test".equals(toolName) ? ToolEffect.READ : ToolEffect.EXTERNAL;
+        }
     }
 }

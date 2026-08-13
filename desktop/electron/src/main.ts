@@ -295,6 +295,18 @@ async function bootstrap(): Promise<void> {
     }
   }
 
+  // Resolve the persisted update channel before creating the renderer. StatusBar performs its
+  // automatic update check as soon as the window mounts; if this local bootstrap were left in the
+  // background, a Windows portable build could race it, probe unreachable GitHub, and never retry
+  // FY-Proxy. This is a loopback-only settings read and failures preserve the launch-time env.
+  if (isPackaged && !started.setupMode) {
+    try {
+      await bootstrapUpdateApiBaseFromBackend(apiBase, token)
+    } catch (err) {
+      logger.warn(`[updater] cannot load persisted update channel: ${String(err)}`)
+    }
+  }
+
   reportProgress(splash, 'loading-ui')
   const win = createMainWindow({
     apiBase,
@@ -311,15 +323,10 @@ async function bootstrap(): Promise<void> {
 
   createTray(win, killBackend)
 
-  // Non-blocking update check — only when packaged (dev builds have no update channel).
-  // First seed process.env.FENGYU_UPDATE_API_BASE from the persisted Settings value so the
-  // startup check honors an intranet/offline proxy configured via the UI on a previous run.
-  // APP mode only (SETUP mode has no user context). Swallow all errors → fall back to env default.
-  if (isPackaged && !started.setupMode) {
-    void bootstrapUpdateApiBaseFromBackend(apiBase, token)
-      .catch(() => {})
-      .finally(() => { void checkForUpdates() })
-  } else if (isPackaged) {
+  // Non-blocking native update check — only when packaged (dev builds have no update channel).
+  // APP mode has already loaded the persisted FY-Proxy address before the renderer was created,
+  // so both this probe and StatusBar's automatic probe see the same channel.
+  if (isPackaged) {
     void checkForUpdates()
   }
 }

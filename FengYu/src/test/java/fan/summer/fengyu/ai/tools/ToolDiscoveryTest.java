@@ -96,4 +96,17 @@ class ToolDiscoveryTest {
         assertTrue(command instanceof ApprovalRequiredToolCallback,
                 "execute_command must retain its mandatory-approval marker after discovery");
     }
+
+    @Test
+    void aggregatedWebToolsAreDiscoveredAsReadOnly() {
+        for (String name : java.util.List.of("web_search", "web_fetch")) {
+            ToolCallback callback = java.util.Arrays.stream(aiToolCallbacks)
+                    .filter(tc -> tc.getToolDefinition().name().equals(name))
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(name + " callback not found"));
+            assertTrue(callback instanceof AuditedToolCallback,
+                    name + " must retain its per-callback effect wrapper");
+            assertEquals(ToolEffect.READ, ((AuditedToolCallback) callback).effect());
+        }
+    }
 }

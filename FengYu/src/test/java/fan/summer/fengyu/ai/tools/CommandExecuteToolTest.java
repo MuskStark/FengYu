@@ -33,10 +33,14 @@ class CommandExecuteToolTest {
         assertTrue(result.path("success").asBoolean());
         assertEquals(0, result.path("exitCode").asInt());
         assertEquals("hello error", result.path("output").asText());
+        assertEquals("hello", result.path("stdout").asText());
+        assertEquals(" error", result.path("stderr").asText());
         assertEquals(tempDir.toRealPath().toString(),
                 result.path("workingDirectory").asText());
         assertFalse(result.path("timedOut").asBoolean());
         assertFalse(result.path("truncated").asBoolean());
+        assertFalse(result.path("stdoutTruncated").asBoolean());
+        assertFalse(result.path("stderrTruncated").asBoolean());
         assertFalse(result.path("sandboxed").asBoolean());
         assertEquals("none", result.path("sandboxBackend").asText());
         assertFalse(result.path("networkAllowed").asBoolean());
@@ -52,12 +56,17 @@ class CommandExecuteToolTest {
     }
 
     @Test
-    void truncatesCapturedOutputWithoutBlockingProcess() throws Exception {
+    void truncatesCapturedOutputHeadAndTailWithoutBlockingProcess() throws Exception {
         JsonNode result = JSON.readTree(tool.execute(
-                "printf '1234567890'", tempDir.toString(), 5, 4));
+                "printf '1234567890'; printf 'abcdefghij' >&2", tempDir.toString(), 5, 4));
 
         assertTrue(result.path("success").asBoolean());
-        assertEquals("1234", result.path("output").asText());
+        assertTrue(result.path("stdout").asText().startsWith("123"));
+        assertTrue(result.path("stdout").asText().endsWith("0"));
+        assertTrue(result.path("stderr").asText().startsWith("abc"));
+        assertTrue(result.path("stderr").asText().endsWith("j"));
+        assertTrue(result.path("stdoutTruncated").asBoolean());
+        assertTrue(result.path("stderrTruncated").asBoolean());
         assertTrue(result.path("truncated").asBoolean());
     }
 

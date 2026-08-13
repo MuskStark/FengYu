@@ -87,7 +87,7 @@ describe('checkPortableUpdate', () => {
       html_url: 'https://github.com/MuskStark/FengYu/releases/tag/v4.0.0-beta.2',
       assets: [
         { name: 'Infinia-4.0.0-beta.2-win-x64-setup.exe', browser_download_url: 'https://x/setup.exe' },
-        { name: 'Infinia-4.0.0-beta.2-win-x64-portable.zip', browser_download_url: 'https://x/portable.zip' },
+        { name: 'Infinia-4.0.0-beta.2-win32-x64-portable.zip', browser_download_url: 'https://x/portable.zip', digest: `sha256:${'a'.repeat(64)}` },
       ],
     }
     const fakeFetch = vi.fn(async () => ({
@@ -101,6 +101,7 @@ describe('checkPortableUpdate', () => {
     expect(result).not.toBeNull()
     expect(result!.version).toBe('4.0.0-beta.2')
     expect(result!.zipUrl).toBe('https://x/portable.zip')
+    expect(result!.sha256).toBe('a'.repeat(64))
     expect(result!.releaseUrl).toContain('v4.0.0-beta.2')
   })
 
@@ -112,7 +113,7 @@ describe('checkPortableUpdate', () => {
       tag_name: 'v4.0.0',
       name: 'Infinia 4.0.0',
       html_url: 'https://github.com/MuskStark/FengYu/releases/tag/v4.0.0',
-      assets: [{ name: 'Infinia-4.0.0-win-x64-portable.zip', browser_download_url: 'https://x/p.zip' }],
+      assets: [{ name: 'Infinia-4.0.0-win32-x64-portable.zip', browser_download_url: 'https://x/p.zip' }],
     }
     const fakeFetch = vi.fn(async () => ({ ok: true, json: async () => [fakeRelease] })) as unknown as typeof fetch
     const { checkPortableUpdate } = await import('../src/updater/portable-updater')
@@ -150,7 +151,7 @@ describe('checkPortableUpdate', () => {
       name: 'Infinia 4.0.0',
       html_url: 'http://10.0.0.5:8088/admin',
       assets: [
-        { name: 'Infinia-4.0.0-win-x64-portable.zip', browser_download_url: 'http://10.0.0.5:8088/fengyu-releases/download/Infinia-4.0.0-win-x64-portable.zip' },
+        { name: 'Infinia-4.0.0-win32-x64-portable.zip', browser_download_url: 'http://10.0.0.5:8088/fengyu-releases/download/Infinia-4.0.0-win32-x64-portable.zip', digest: `sha256:${'b'.repeat(64)}` },
       ],
     }
     const fakeFetch = vi.fn(async () => ({ ok: true, json: async () => fakeRelease })) as unknown as typeof fetch
@@ -174,8 +175,29 @@ describe('checkPortableUpdate', () => {
       await checkPortableUpdate('MuskStark/FengYu', fakeFetch)
       // Verify the URL used the intranet base (with trailing slash trimmed), not GitHub
       expect((fakeFetch as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe(
-        'http://10.0.0.5:8088/fengyu-releases/api/releases/latest',
+        'http://10.0.0.5:8088/fengyu-releases/api/releases/latest?channel=windows-portable',
       )
+    } finally {
+      delete process.env.FENGYU_UPDATE_API_BASE
+    }
+  })
+
+  it('rejects FY-Proxy portable metadata without a valid SHA-256 digest', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    process.env.FENGYU_UPDATE_API_BASE = 'http://10.0.0.5:8088'
+    const fakeRelease = {
+      tag_name: 'v4.0.0',
+      name: 'Infinia 4.0.0',
+      html_url: 'http://10.0.0.5:8088/files',
+      assets: [{
+        name: 'Infinia-4.0.0-win32-x64-portable.zip',
+        browser_download_url: 'http://10.0.0.5:8088/fengyu-releases/download/portable.zip',
+      }],
+    }
+    const fakeFetch = vi.fn(async () => ({ ok: true, json: async () => fakeRelease })) as unknown as typeof fetch
+    try {
+      const { checkPortableUpdate } = await import('../src/updater/portable-updater')
+      await expect(checkPortableUpdate('MuskStark/FengYu', fakeFetch)).rejects.toThrow(/SHA-256 digest/)
     } finally {
       delete process.env.FENGYU_UPDATE_API_BASE
     }

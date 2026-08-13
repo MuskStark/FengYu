@@ -135,6 +135,8 @@ describe('handleBrowserOp', () => {
     const r = await handleBrowserOp(s, 'browser_screenshot', {})
     expect(r.success).toBe(true)
     expect(String(r.imagePath)).toMatch(/\.png$/)
+    expect(r.mimeType).toBe('image/png')
+    expect(r.imageBase64).toBe(Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('base64'))
     expect(r.domSnapshot).toContain('[snap_1] button')
   })
 
@@ -242,6 +244,26 @@ describe('handleBrowserOp', () => {
       expect(c.params.y).toBe(300)
       expect(c.params.button).toBe('left')
     }
+  })
+
+  it('batch performs snapshot and click in one handler call', async () => {
+    execJs
+      .mockResolvedValueOnce({
+        url: 'https://example.com', title: 'Example', count: 1,
+        snapshot: 'URL: https://example.com\n[snap_1] button "Go"',
+      })
+      .mockResolvedValueOnce({ x: 20, y: 30 })
+      .mockResolvedValueOnce('After click')
+    const s = new BrowserSession()
+    s.ensureWindow()
+
+    const r = await handleBrowserOp(s, 'browser_batch', { action: 'click', ref: 'snap_1' })
+
+    expect(r.success).toBe(true)
+    expect(r.summary).toBe('snapshot + click completed')
+    expect(r.snapshot).toContain('[snap_1] button')
+    expect(Array.isArray(r.results)).toBe(true)
+    expect(cdpCalls.filter((c) => c.method === 'Input.dispatchMouseEvent')).toHaveLength(3)
   })
 
   it('click by ref reuses the data-fengyu-ref attribute selector', async () => {

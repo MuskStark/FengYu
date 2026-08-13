@@ -9,6 +9,8 @@ export const REF_ATTR = 'data-fengyu-ref'
 
 /** Match locator-based browser tools: actions auto-wait briefly for a usable target. */
 const ACTION_TIMEOUT_MS = 10_000
+/** Keep the loopback JSON envelope bounded; larger PNGs remain available at imagePath. */
+const MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024
 
 /**
  * Execute one browser_* operation against the session. Returns the envelope that the
@@ -47,6 +49,8 @@ export async function handleBrowserOp(
         return await screenshot(session, params.fullPage === true, optTarget(params))
       case 'browser_wait_for':
         return await waitFor(session, target(params), optStr(params, 'state') ?? 'visible', num(params, 'timeout', 30))
+      case 'browser_batch':
+        return await batch(session, params)
       case 'browser_eval_js':
         return await evalJs(session, str(params, 'script'))
       case 'browser_close':
@@ -542,8 +546,9 @@ async function screenshot(session: BrowserSession, fullPage: boolean, t: Resolve
   } else {
     img = await w.webContents.capturePage()
   }
+  const png = img.toPNG()
   const file = join(session.screenshotsDir(), `shot-${Date.now()}.png`)
-  writeFileSync(file, img.toPNG())
+  writeFileSync(file, png)
   const size = img.getSize()
   const a11yTree = await captureA11y(session)
   // Always pair pixels with an actionable snapshot. Even models that choose screenshot as
@@ -552,8 +557,43 @@ async function screenshot(session: BrowserSession, fullPage: boolean, t: Resolve
   const dom = await snapshot(session)
   return {
     success: true, summary: 'screenshot saved', imagePath: file,
+    ...(png.length <= MAX_INLINE_IMAGE_BYTES
+      ? { imageBase64: png.toString('base64'), mimeType: 'image/png', imageInline: true }
+      : { mimeType: 'image/png', imageInline: false, imageBytes: png.length }),
     width: size.width, height: size.height, a11yTree,
     url: dom.url, title: dom.title, domSnapshot: dom.snapshot,
+  }
+}
+
+/** One serialized snapshot + action round trip for latency-sensitive browser turns. */
+async function batch(session: BrowserSession, params: Record<string, unknown>) {
+  const inspected = await snapshot(session)
+  if (inspected.success !== true) return inspected
+  const action = str(params, 'action').toLowerCase()
+  let actionResult: Record<string, unknown>
+  switch (action) {
+    case 'click':
+      actionResult = await click(session, target(params))
+      break
+    case 'type':
+      actionResult = await type(session, target(params), str(params, 'text'), params.clear !== false)
+      break
+    case 'press':
+      actionResult = await press(session, target(params), str(params, 'key'))
+      break
+    default:
+      return { success: false, summary: "action must be 'click', 'type', or 'press'", snapshot: inspected.snapshot }
+  }
+  return {
+    success: actionResult.success === true,
+    summary: actionResult.success === true
+      ? `snapshot + ${action} completed`
+      : `snapshot captured; ${action} failed: ${String(actionResult.summary ?? 'unknown error')}`,
+    snapshot: inspected.snapshot,
+    count: inspected.count,
+    url: actionResult.url ?? inspected.url,
+    title: actionResult.title ?? inspected.title,
+    results: [inspected, actionResult],
   }
 }
 

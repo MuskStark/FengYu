@@ -16,8 +16,8 @@ import java.time.Instant;
 
 /**
  * Checks the configured GitHub repository's latest release against the running build's version
- * and reports whether an update is available. Used by all deployment modes (desktop shell,
- * portable Web, browser) via {@code GET /api/updates/check}.
+ * and reports whether an update is available. Used by portable Web and browser deployments via
+ * {@code GET /api/updates/check}; the desktop shell owns both GitHub and FY-Proxy checks.
  *
  * <p>The actual download + install is mode-specific: the desktop shell uses electron-updater
  * against {@code latest*.yml}, while the portable/{@code java -jar} deployment uses
@@ -87,14 +87,15 @@ public class UpdateCheckService {
     }
 
     private UpdateInfo fetchLatest() {
-        // DB-persisted value (from the Settings UI) takes precedence over the bootstrap @Value;
-        // both default to empty → GitHub. Read per-check so a Settings change is live without restart.
-        String apiBase = AiConfigServiceHeadless.getUpdateApiBase(this.apiBase);
-        // 配了 apiBase 就只走内网镜像（FY-Proxy），否则走 GitHub。
-        boolean internal = !apiBase.isBlank();
-        String url = internal
-                ? apiBase + "/fengyu-releases/api/releases/latest"
-                : "https://api.github.com/repos/" + repo + "/releases?per_page=1";
+        // FY-Proxy deliberately distributes only desktop Windows-portable/deb packages. Desktop
+        // requests never reach this backend service; they use Electron IPC. Reject a custom base
+        // here so portable Web cannot report an update whose required Infinia.jar is unavailable.
+        String configuredBase = AiConfigServiceHeadless.getUpdateApiBase(this.apiBase);
+        if (!configuredBase.isBlank()) {
+            throw new IllegalStateException(
+                    "The FY-Proxy update channel supports only Electron Windows portable ZIP and Debian packages");
+        }
+        String url = "https://api.github.com/repos/" + repo + "/releases?per_page=1";
         URI uri = URI.create(url);
         HttpRequest request = HttpRequest.newBuilder(uri)
                 .timeout(Duration.ofSeconds(15))
@@ -109,14 +110,14 @@ public class UpdateCheckService {
                 throw new IllegalStateException("Release check returned HTTP " + status);
             }
             JsonNode root = json.readTree(response.body());
-            // GitHub 返回数组 [release]；FY-Proxy 返回单个 release 对象或空数组（无版本时）。
+            // GitHub 返回数组 [release]。
             JsonNode release = root.isArray() ? (root.isEmpty() ? null : root.get(0)) : root;
             if (release == null || release.isNull()) {
                 throw new IllegalStateException("No releases available");
             }
             return parse(release);
         } catch (IOException e) {
-            throw new IllegalStateException("Cannot read latest release" + (internal ? " from internal mirror" : " from GitHub"), e);
+            throw new IllegalStateException("Cannot read latest release from GitHub", e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Release check was interrupted", e);

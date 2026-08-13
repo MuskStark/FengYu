@@ -105,6 +105,7 @@ export interface AiSettings {
   topP: number
   maxTokens: number
   maxToolRounds: number
+  contextWindowTokens: number
   systemPrompt: string
   activeMode: AiMode
   ready: boolean
