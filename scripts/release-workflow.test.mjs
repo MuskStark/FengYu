@@ -42,6 +42,18 @@ test('installs toolchain/cli dependencies before building plugins', () => {
   )
 })
 
+test('builds @infinia/plugin-ui dist before packaging official plugins', () => {
+  // Official plugins depend on @infinia/plugin-ui via a `file:` link to toolchain/ui, whose
+  // package entry resolves to ./dist/index.js. dist/ is gitignored and absent from a fresh
+  // checkout, so build-runtime must build the library before the plugin builds install +
+  // bundle it — otherwise vite/vitest fail to resolve the package (see beta.3 build-runtime).
+  const uiBuild = buildRuntimeJob.indexOf('working-directory: toolchain/ui')
+  const pluginBuild = buildRuntimeJob.indexOf('Build official plugins')
+  assert.notEqual(uiBuild, -1, 'build-runtime must build @infinia/plugin-ui (toolchain/ui)')
+  assert.notEqual(pluginBuild, -1, 'build-runtime must build the official plugins')
+  assert.ok(uiBuild < pluginBuild, '@infinia/plugin-ui must be built before plugins are packaged')
+})
+
 test('builds Maven artifacts with the full release version', () => {
   assert.match(workflow, /\.\/mvnw -am test package -Drevision="\$VERSION"/)
   assert.doesNotMatch(workflow, /\.\/mvnw -am test package -Drevision="\$APP_VERSION"/)
