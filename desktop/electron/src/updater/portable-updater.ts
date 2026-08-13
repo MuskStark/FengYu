@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import { spawn, spawnSync } from 'node:child_process'
 import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -18,6 +19,7 @@ import { dirname, join } from 'node:path'
 export interface PortableUpdateInfo {
   version: string
   zipUrl: string
+  sha256: string | null
   releaseUrl: string
   releaseName: string
 }
@@ -25,6 +27,7 @@ export interface PortableUpdateInfo {
 interface GitHubAsset {
   name: string
   browser_download_url: string
+  digest?: string | null
 }
 
 interface GitHubRelease {
@@ -43,7 +46,7 @@ interface GitHubRelease {
 const RELEASES_API = (repo: string) => {
   const apiBase = (process.env.FENGYU_UPDATE_API_BASE || '').replace(/\/+$/, '')
   return apiBase
-    ? `${apiBase}/fengyu-releases/api/releases/latest`
+    ? `${apiBase}/fengyu-releases/api/releases/latest?channel=windows-portable`
     : `https://api.github.com/repos/${repo}/releases?per_page=1`
 }
 
@@ -83,13 +86,19 @@ export async function checkPortableUpdate(
     ? body.length > 0 ? body[0] : null
     : body
   if (!release) return null
-  const asset = (release.assets ?? []).find((a) => a.name.includes('-portable.zip'))
-  if (!asset) return null
   const latest = stripLeadingV(release.tag_name)
+  const expectedName = `Infinia-${latest}-win32-x64-portable.zip`
+  const asset = (release.assets ?? []).find((a) => a.name === expectedName)
+  if (!asset) return null
   if (compareVersions(latest, currentVersion()) <= 0) return null
+  const sha256 = parseSha256Digest(asset.digest)
+  if (process.env.FENGYU_UPDATE_API_BASE && !sha256) {
+    throw new Error('FY-Proxy portable update metadata is missing a valid SHA-256 digest')
+  }
   return {
     version: latest,
     zipUrl: asset.browser_download_url,
+    sha256,
     releaseUrl: release.html_url,
     releaseName: release.name ?? latest,
   }
@@ -109,7 +118,7 @@ export async function downloadAndExtractPortable(
   const extractDir = join(staging, 'extracted')
 
   try {
-    await downloadFile(info.zipUrl, zipPath, onProgress, fetchImpl)
+    await downloadFile(info.zipUrl, zipPath, info.sha256, onProgress, fetchImpl)
     mkdirSync(extractDir, { recursive: true })
     // Windows 10 1803+ ships bsdtar as tar.exe; it handles .zip archives natively.
     const result = spawnSync('tar', ['-xf', zipPath, '-C', extractDir], { windowsHide: true })
@@ -176,6 +185,7 @@ export function applyPortableUpdate(extractDir: string): void {
 async function downloadFile(
   url: string,
   dest: string,
+  expectedSha256: string | null,
   onProgress: (percent: number) => void,
   fetchImpl: typeof fetch,
 ): Promise<void> {
@@ -183,6 +193,7 @@ async function downloadFile(
   if (!resp.ok || !resp.body) throw new Error(`Download failed: HTTP ${resp.status}`)
   const total = Number(resp.headers.get('content-length') || 0)
   let received = 0
+  const sha256 = createHash('sha256')
   const stream = createWriteStream(dest)
   const reader = (
     resp.body as unknown as { getReader: () => { read: () => Promise<{ done: boolean; value?: Uint8Array }> } }
@@ -193,6 +204,7 @@ async function downloadFile(
       if (done) break
       if (value) {
         received += value.byteLength
+        sha256.update(value)
         if (total > 0) onProgress(Math.min(100, Math.round((received / total) * 100)))
         await new Promise<void>((resolve) => stream.write(Buffer.from(value), () => resolve()))
       }
@@ -200,6 +212,16 @@ async function downloadFile(
   } finally {
     await new Promise<void>((resolve) => stream.end(resolve))
   }
+  const actualSha256 = sha256.digest('hex')
+  if (expectedSha256 && actualSha256 !== expectedSha256) {
+    throw new Error(`Portable update SHA-256 mismatch: expected ${expectedSha256}, got ${actualSha256}`)
+  }
+}
+
+function parseSha256Digest(digest: string | null | undefined): string | null {
+  if (!digest) return null
+  const match = /^sha256:([0-9a-f]{64})$/i.exec(digest.trim())
+  return match ? match[1].toLowerCase() : null
 }
 
 /** Find an `Infinia.exe` one level deep inside the extract dir (nested-zip case). */

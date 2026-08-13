@@ -10,6 +10,7 @@ import fan.summer.fengyu.ai.tools.ApprovalRequiredTool;
 import fan.summer.fengyu.ai.tools.ApprovalRequiredToolCallback;
 import fan.summer.fengyu.ai.tools.AuditedToolCallback;
 import fan.summer.fengyu.ai.tools.ToolEffect;
+import fan.summer.fengyu.ai.tools.ToolEffectProvider;
 import fan.summer.fengyu.plugin.market.ManifestI18n;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
 import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
@@ -54,8 +55,14 @@ public final class AiToolRegistry {
         List<ToolCallback> callbacks = new ArrayList<>();
         for (FengYuTool toolBean : tools) {
             for (ToolCallback callback : ToolCallbacks.from(toolBean)) {
-                callbacks.add(toolBean instanceof ApprovalRequiredTool
-                        ? approvalRequired(callback) : callback);
+                if (toolBean instanceof ToolEffectProvider effects) {
+                    ToolEffect effect = effects.effectFor(callback.getToolDefinition().name());
+                    callbacks.add(audited(callback,
+                            effect == null ? ToolEffect.EXTERNAL : effect));
+                } else {
+                    callbacks.add(toolBean instanceof ApprovalRequiredTool
+                            ? approvalRequired(callback) : callback);
+                }
             }
         }
         this.builtins = List.copyOf(callbacks);

@@ -6,8 +6,8 @@ platform with the listed prerequisites.
 
 > The unit tests (`UpdateCheckServiceTest`, `portable-updater.test.ts`, `auto-updater.test.ts`)
 > cover version comparison and detection logic. This checklist verifies the **real** download →
-> verify → swap → relaunch pipeline, which can only be exercised against a real GitHub release
-> on the target OS.
+> verify → swap → relaunch pipeline, which must be exercised against a real GitHub release or an
+> FY-Proxy intranet repository on the target OS.
 
 ---
 
@@ -15,7 +15,7 @@ platform with the listed prerequisites.
 
 1. **Two releases must exist on GitHub** so "old" can detect "new":
    - An **older** tagged release you will install/run (e.g. `v4.0.0-beta.1`).
-   - A **newer** tagged release available on the Releases page (e.g. `v4.0.0-beta.3`).
+   - A **newer** tagged release available on the Releases page (e.g. `v4.0.0-beta.4`).
    - The newer release MUST have been built by `fengyu-release.yml` AFTER the changes in this
      feature landed (so `latest*.yml`, `*.blockmap`, and `checksums.txt` are published — required
      by electron-updater and the portable self-updater).
@@ -31,14 +31,38 @@ exist (if any is missing, the CI change did not take effect and auto-update cann
 |---|---|
 | `latest.yml` (Windows) / `latest-mac.yml` (macOS) | electron-updater (NSIS install + macOS) |
 | `*.blockmap` | electron-updater differential download |
-| `Infinia-<ver>-win-x64-portable.zip` | Windows portable self-update |
+| `Infinia-<ver>-win32-x64-portable.zip` | Windows portable self-update |
 | `Infinia.jar` + `checksums.txt` | Portable Web (java -jar) self-update |
+
+---
+
+## Intranet / offline FY-Proxy mode
+
+Set **Settings → Update channel → Update proxy URL** to the FY-Proxy origin, for example
+`http://10.0.0.5:8088`. The value is persisted and loaded before the desktop window opens, so both
+the startup probe and **About → Check for updates** avoid GitHub.
+
+FY-Proxy accepts and publishes only these two asset classes:
+
+| Platform/package | Required filename | Discovery endpoint |
+|---|---|---|
+| Windows portable x64 | `Infinia-<version>-win32-x64-portable.zip` | `/fengyu-releases/api/releases/latest?channel=windows-portable` |
+| Debian/Ubuntu lite x64 | `Infinia-<version>-linux-x64.deb` | `/fengyu-updates/deb/latest-linux.yml` |
+
+Upload the asset from FY-Proxy's **File management** page (`/files`) with the exact version from
+its filename. FY-Proxy rejects mismatched versions and all other package types. For portable ZIP,
+the release response carries a SHA-256 digest that Infinia verifies before extraction; the deb feed
+uses electron-updater's SHA-512 verification. Confirm automatic discovery after launch, then use
+**About → Recheck** to confirm manual discovery. NSIS, AppImage, macOS, JRE, and portable Web/JAR
+updates are deliberately unsupported in intranet mode.
 
 ---
 
 ## Mode 1: Windows NSIS install (`*-setup.exe`)
 
 **Platform:** Windows 10/11 · **Update mechanism:** electron-updater
+
+> Public GitHub channel only; FY-Proxy rejects NSIS assets.
 
 ### Setup
 1. Download and install the **older** `*-win-x64-setup.exe`.
@@ -86,7 +110,8 @@ exist (if any is missing, the CI change did not take effect and auto-update cann
 2. Run `C:\Users\<you>\Infinia\Infinia.exe`.
 
 ### Steps
-1. Open **About** → the "Update" row detects `<NEW_VERSION>` (via GitHub API, NOT latest.yml).
+1. Open **About** → the "Update" row detects `<NEW_VERSION>` (via the GitHub API or the configured
+   FY-Proxy `windows-portable` release endpoint, not `latest.yml`).
 2. Click **Update now** → **Continue** (unsigned warning).
 3. Download progress fills (the portable zip is large; watch the percent).
 4. The app **quits**. A detached `.bat` (in `%TEMP%`) takes over:
@@ -126,7 +151,8 @@ exist (if any is missing, the CI change did not take effect and auto-update cann
 (JAR download → SHA256 verify → detached restart script → JVM exit → swap → relaunch)
 
 > This is the only mode testable end-to-end on macOS/Linux. It swaps only the JAR (the launcher
-> scripts and plugins stay put).
+> scripts and plugins stay put). This mode is available only through GitHub; FY-Proxy rejects JAR
+> assets.
 
 ### Setup
 1. Download and extract the **older** `Infinia-<OLD>-web.zip` (or `.tar.gz`).
@@ -186,7 +212,7 @@ exist (if any is missing, the CI change did not take effect and auto-update cann
 
 > macOS unsigned builds CANNOT auto-relaunch after a `quitAndInstall` (Gatekeeper blocks the
 > replaced bundle). The app degrades to "download + open releases page". This is intentional
-> until code-signing + notarization lands.
+> until code-signing + notarization lands. FY-Proxy intranet mode does not support macOS.
 
 ### Setup
 1. Download and install the **older** `*-mac-arm64.dmg` (drag Infinia to Applications).

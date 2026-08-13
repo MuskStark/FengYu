@@ -83,6 +83,15 @@ When a model invokes a plugin tool during a streaming chat or agent run, the cal
 
 These are the same `tool` events built-in `@FengYuTool`s emit — plugin tools are indistinguishable from built-ins on the wire. See [SSE Events](/en/reference/sse-events) for the full event taxonomy.
 
+## Built-in web and browser tools
+
+The host also discovers `@FengYuTool` beans. `web_search` and `web_fetch` are always-available
+read-only tools for public-web discovery and bounded page text. The Electron desktop adds the
+stateful `browser_*` family for interaction. Built-in tools declare per-callback effects through
+`ToolEffectProvider`, so reads bypass approval while external navigation and interaction follow the
+same policy as plugin tools. Screenshot tool responses may additionally append a Spring AI image
+media part; the SSE result remains a compact JSON envelope rather than carrying base64 pixels.
+
 ## Worked example: `excel_analyze`
 
 The `fan.summer.excel` plugin declares six tools. Its `excel_analyze` entry wires the model to the worker's `excel_analyze` JSON-RPC method, which delegates to `ExcelAnalyzeTool.analyze(filePath)`:

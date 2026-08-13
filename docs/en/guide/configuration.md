@@ -14,7 +14,8 @@ All endpoints require the `X-FengYu-Token` header. See [Backend](/en/architectur
 
 ```text
 GET /api/settings
-  ◄── 200 { "theme": "dark", "language": "en", "sidebarCollapsed": false, "logLevel": "INFO" }
+  ◄── 200 { "theme": "dark", "language": "en", "sidebarCollapsed": false,
+             "logLevel": "INFO", "updateApiBase": "" }
 ```
 
 `PUT /api/settings` accepts a **partial body** — only the keys you include are persisted; the rest stay as they are.
@@ -33,10 +34,17 @@ PUT /api/settings
 | `language` | string | UI locale (e.g. `en`, `zh-CN`). |
 | `sidebarCollapsed` | boolean | Whether the sidebar starts collapsed. |
 | `logLevel` | string | `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `OFF`. Applied immediately to the main application and every Java plugin Worker. |
+| `updateApiBase` | string | Empty for GitHub, or the absolute HTTP(S) base URL of an intranet FY-Proxy update server. |
 
 Changing `logLevel` does not restart Workers. The host updates its Logback namespaces and sends a
 built-in JSON-RPC notification to each running Worker; newly launched Workers inherit the same
 value through `FENGYU_LOG_LEVEL`.
+
+`updateApiBase` is loaded before the desktop window opens, so the automatic startup probe and the
+manual **About → Check for updates** action use the same channel. FY-Proxy mode intentionally
+supports only `Infinia-<version>-win32-x64-portable.zip` and the lite
+`Infinia-<version>-linux-x64.deb`; NSIS, AppImage, macOS, JRE, and portable Web/JAR builds continue
+to use the public GitHub channel and are rejected when pointed at FY-Proxy.
 
 ## AI config
 
@@ -50,10 +58,15 @@ GET /api/ai/config
   ◄── 200 {
         "activeMode": "openai",
         "ready": true,
+        "contextWindowTokens": 32768,
         "openai":  { "apiKey": "sk-1***wXYZ", "model": "gpt-4o", "baseUrl": "..." },
         ...
       }
 ```
+
+`contextWindowTokens` controls long-chat compaction. FengYu starts summarizing old rounds at 60%
+of this value; the default is `32768`, and `0` disables automatic compaction. Set it to the selected
+model's actual context window rather than its output-token limit.
 
 ### Updating AI config
 

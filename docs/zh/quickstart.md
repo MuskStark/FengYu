@@ -26,7 +26,7 @@ cd FengYu
 ./mvnw clean package -f FengYu/pom.xml -DskipTests
 ```
 
-打包好的后端 jar 位于 `FengYu/target/FengYu-*.jar`（带版本号，例如 `FengYu-4.0.0-beta.3.jar`）。
+打包好的后端 jar 位于 `FengYu/target/FengYu-*.jar`（带版本号，例如 `FengYu-4.0.0-beta.4.jar`）。
 
 ## 运行后端
 

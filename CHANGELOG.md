@@ -6,6 +6,53 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [4.0.0-beta.4] — 2026-08-13
+
+### ✨ Added
+- **Constrained intranet application updates through FY-Proxy.** The desktop loads its persisted
+  update channel before the first automatic probe, supports the same channel for manual checks,
+  verifies FY-Proxy SHA-256 metadata for Windows portable ZIP updates, and uses a dedicated
+  electron-updater feed for lite x64 deb packages. The proxy accepts and serves only those two
+  package classes and rejects NSIS, AppImage, macOS, JRE, and portable Web/JAR assets.
+- **Automatic conversation compaction for long AI chats.** The cloud and Ollama chat paths now
+  estimate provider input from UTF-8 bytes and, at 60% of the configured context window, summarize
+  the oldest complete rounds into a marked assistant context note while preserving system messages
+  and the latest eight rounds verbatim. The full transcript remains unchanged for the UI and
+  persistence, and a failed summary falls back safely to the original history. Settings exposes the
+  context-window size (32,768 tokens by default; `0` disables compaction).
+- **Stateful, multimodal browser sessions.** A Java-side `BrowserSession` now routes operations to
+  the same isolated Electron context/tab, caches URL/title and snapshot refs per tab, and rejects
+  unknown or stale refs before an action. Four tab-management tools plus `browser_batch` extend the
+  browser surface to 21 tools; the batch path performs one snapshot plus click/type/press in a
+  single serialized bridge request. `browser_screenshot` now carries the actual PNG into the next
+  Spring AI model round as `Media(image/png)` while retaining its DOM snapshot and accessibility
+  text fallback.
+- **First-class read-only web retrieval.** New host-embedded `web_search` and `web_fetch` tools
+  separate lightweight discovery/content reading from interactive browser work. Fetches are
+  bounded, follow a limited redirect chain, reject local/private-network targets, and enter the
+  shared approval policy as `read` operations.
+
+### ♻️ Changed
+- **Tool-loop context is now bounded.** Tool responses larger than 64 KiB retain their first 75%
+  and final 25% with an explicit omitted-character marker before the next model round, preventing a
+  single result from consuming the conversation window while the SSE activity still receives the
+  complete result.
+- **Chat and Plan-and-Execute share one approval policy.** Both paths now use the same decision for
+  `read`, `write`, `command`, and `external` effects, eliminating future permission drift. MCP tools
+  remain conservatively wrapped as `external`, isolated plugin tools keep their manifest effect,
+  and the 21 built-in browser tools now declare per-operation effects: inspection is `read`, while
+  navigation, page interaction, JavaScript evaluation, and window close are `external`.
+- **Browser bridge I/O is asynchronous.** Java uses `HttpClient.sendAsync` with virtual-thread
+  response processing and waits only at Spring AI's synchronous tool boundary. Electron preserves
+  serialized input semantics while routing independent logical sessions, contexts, and tabs.
+
+### 🐛 Fixed
+- **Command failures no longer lose their diagnostic tail.** `execute_command` drains stdout and
+  stderr concurrently and returns them separately (`stdout`/`stderr` plus per-stream truncation
+  flags), while keeping the combined `output`/`truncated` fields for compatibility. Oversized streams
+  preserve both the head and tail instead of discarding the end where compilers and shells usually
+  report the actionable error.
+
 ## [4.0.0-beta.3] — 2026-08-13
 
 ### ✨ Added

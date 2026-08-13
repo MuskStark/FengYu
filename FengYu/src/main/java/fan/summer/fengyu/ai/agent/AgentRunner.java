@@ -1,9 +1,7 @@
 package fan.summer.fengyu.ai.agent;
 
 import fan.summer.fengyu.ai.util.JsonHelper;
-import fan.summer.fengyu.ai.tools.ApprovalRequiredToolCallback;
-import fan.summer.fengyu.ai.tools.AuditedToolCallback;
-import fan.summer.fengyu.ai.tools.ToolEffect;
+import fan.summer.fengyu.ai.tools.ToolApprovalPolicy;
 import fan.summer.fengyu.ai.tools.ToolResultStatus;
 import fan.summer.fengyu.ai.tools.AiPermissionContext;
 import fan.summer.fengyu.ai.tools.AiPermissionMode;
@@ -472,17 +470,7 @@ public class AgentRunner {
                                                 AiPermissionMode mode) {
         for (ToolCallback tool : tools) {
             if (!tool.getToolDefinition().name().equals(step.toolName())) continue;
-            if (tool instanceof AuditedToolCallback audited) {
-                if (mode == AiPermissionMode.FULL_ACCESS) return false;
-                if (mode == AiPermissionMode.ASK_FOR_APPROVAL) return audited.effect() != ToolEffect.READ;
-                if (audited.effect() == ToolEffect.EXTERNAL) return true;
-                if (audited.effect() == ToolEffect.COMMAND) {
-                    return fan.summer.fengyu.ai.tools.ChatToolApprovalGate.commandPotentiallyUnsafe(
-                            toJsonArgs(step.args()));
-                }
-                return false;
-            }
-            if (tool instanceof ApprovalRequiredToolCallback) return mode != AiPermissionMode.FULL_ACCESS;
+            return ToolApprovalPolicy.requiresApproval(tool, mode, toJsonArgs(step.args()));
         }
         return false;
     }

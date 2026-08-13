@@ -28,7 +28,7 @@
     <properties>
         <!-- Single source of truth for the project version. Child modules reference
              the parent via <parent><version>${revision}</version></parent>. -->
-        <revision>4.0.0-beta.3</revision>
+        <revision>4.0.0-beta.4</revision>
 
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>21</maven.compiler.source>

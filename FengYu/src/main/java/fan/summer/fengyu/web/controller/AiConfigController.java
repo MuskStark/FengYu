@@ -70,6 +70,7 @@ public class AiConfigController {
         out.put("topP", AiConfigService.getAiTopP());
         out.put("maxTokens", AiConfigService.getAiMaxTokens());
         out.put("maxToolRounds", AiConfigService.getAiMaxToolRounds());
+        out.put("contextWindowTokens", AiConfigService.getAiContextWindowTokens());
         out.put("systemPrompt", AiConfigService.getAiSystemPrompt());
         out.put("activeMode", aiMode.getCurrentMode());
         out.put("ready", aiMode.getService().map(b -> b.isReady()).orElse(false));
@@ -145,6 +146,16 @@ public class AiConfigController {
             throw new IllegalArgumentException("maxToolRounds must be between 0 and 10000 (0 = unlimited)");
         }
         if (maxToolRounds != null) AiConfigServiceHeadless.setAiMaxToolRounds(maxToolRounds);
+        Integer contextWindowTokens = parseIntQuietly(body.get("contextWindowTokens"));
+        if (body.containsKey("contextWindowTokens")
+                && (contextWindowTokens == null || (contextWindowTokens != 0
+                && (contextWindowTokens < 4_096 || contextWindowTokens > 2_000_000)))) {
+            throw new IllegalArgumentException(
+                    "contextWindowTokens must be 0 or between 4096 and 2000000");
+        }
+        if (contextWindowTokens != null) {
+            AiConfigServiceHeadless.setAiContextWindowTokens(contextWindowTokens);
+        }
         if (body.get("systemPrompt") instanceof String sp) {
             AiConfigServiceHeadless.setAiSystemPrompt(sp);
         }

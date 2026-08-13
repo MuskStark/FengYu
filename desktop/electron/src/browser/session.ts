@@ -24,6 +24,11 @@ export class BrowserSession {
   private refSeq = 0
   private cdpAttached = false
 
+  constructor(
+    private readonly partition = 'persist:fengyu-browser',
+    private readonly windowTitle = 'FengYu Browser',
+  ) {}
+
   /** The current window, or null if closed/not yet created. */
   window(): BrowserWindow | null {
     return this.win && !this.win.isDestroyed() ? this.win : null
@@ -34,12 +39,12 @@ export class BrowserSession {
     const existing = this.window()
     if (existing) return existing
     this.win = new BrowserWindow({
-      title: 'FengYu Browser',
+      title: this.windowTitle,
       width: 1280,
       height: 900,
       show: true,
       webPreferences: {
-        partition: 'persist:fengyu-browser',
+        partition: this.partition,
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
@@ -48,7 +53,7 @@ export class BrowserSession {
     // A page navigation invalidates every stamped data-fengyu-ref anchor (the DOM is
     // replaced), so drop the registry so callers do not resolve stale refs into nothing.
     const reset = (): void => { this.refSeq = 0 }
-    this.win.webContents.once('did-start-loading', reset)
+    this.win.webContents.on('did-start-loading', reset)
     return this.win
   }
 
@@ -76,6 +81,16 @@ export class BrowserSession {
   /** Reset ref state (invoked on navigation/close). */
   resetRefs(): void {
     this.refSeq = 0
+  }
+
+  /** Lightweight tab metadata; never creates a window. */
+  describe(): { open: boolean; url: string; title: string } {
+    const w = this.window()
+    return {
+      open: w != null,
+      url: w?.webContents.getURL() ?? '',
+      title: w?.webContents.getTitle() ?? '',
+    }
   }
 
   /** Destroy the window and clear all session state. Idempotent. */
