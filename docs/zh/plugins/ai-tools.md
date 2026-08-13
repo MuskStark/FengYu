@@ -84,6 +84,14 @@ lang: zh-CN
 
 这些与内置 `@FengYuTool` 发出的 `tool` 事件完全相同——插件工具在线上与内置工具无从区分。完整的事件分类见 [SSE 事件](/zh/reference/sse-events)。
 
+## 内置 Web 与浏览器工具
+
+宿主也会发现 `@FengYuTool` bean。`web_search` 与 `web_fetch` 是始终可用的只读工具，用于
+公网检索和有界网页正文获取；Electron 桌面端另行提供有状态的 `browser_*` 交互工具族。
+内置工具通过 `ToolEffectProvider` 为每个回调声明副作用，因此读取无需审批，而外部导航与
+交互遵循和插件工具相同的策略。截图工具响应还可以追加 Spring AI image media part；SSE
+结果保持紧凑 JSON 信封，不携带 base64 像素。
+
 ## 实战示例：`excel_analyze`
 
 `fan.summer.excel` 插件声明了六个工具。其 `excel_analyze` 项把模型接到 worker 的 `excel_analyze` JSON-RPC 方法；参数 Schema 作为 JSON-Schema **对象**声明在 `rpc.methods` 中，工具项本身只携带元数据与 `effect`：

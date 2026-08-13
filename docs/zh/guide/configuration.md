@@ -14,7 +14,8 @@ Infinia 中有两个配置界面：**用户设置**（主题、语言、侧边�
 
 ```text
 GET /api/settings
-  ◄── 200 { "theme": "dark", "language": "en", "sidebarCollapsed": false, "logLevel": "INFO" }
+  ◄── 200 { "theme": "dark", "language": "en", "sidebarCollapsed": false,
+             "logLevel": "INFO", "updateApiBase": "" }
 ```
 
 `PUT /api/settings` 接受一个**部分请求体**——只有你包含的键会被持久化，其余保持不变。
@@ -33,9 +34,15 @@ PUT /api/settings
 | `language` | string | UI 区域设置（例如 `en`、`zh-CN`）。 |
 | `sidebarCollapsed` | boolean | 侧边栏是否初始处于折叠状态。 |
 | `logLevel` | string | `TRACE`、`DEBUG`、`INFO`、`WARN`、`ERROR` 或 `OFF`。立即应用到主程序和所有 Java 插件 Worker。 |
+| `updateApiBase` | string | 留空使用 GitHub，或填写内网 FY-Proxy 更新服务的绝对 HTTP(S) 基础地址。 |
 
 修改 `logLevel` 不会重启 Worker。宿主会更新自身的 Logback 命名空间，并向每个运行中的
 Worker 发送内置 JSON-RPC 通知；之后新启动的 Worker 则通过 `FENGYU_LOG_LEVEL` 继承同一值。
+
+桌面端会在创建窗口前加载 `updateApiBase`，因此启动自动探测与**关于 → 检查更新**手动操作
+会使用同一通道。FY-Proxy 模式有意只支持 `Infinia-<version>-win32-x64-portable.zip`
+和 lite `Infinia-<version>-linux-x64.deb`；NSIS、AppImage、macOS、JRE 与便携 Web/JAR
+构建仍使用公共 GitHub 通道，指向 FY-Proxy 时会被拒绝。
 
 ## AI 配置
 
@@ -49,10 +56,15 @@ GET /api/ai/config
   ◄── 200 {
         "activeMode": "openai",
         "ready": true,
+        "contextWindowTokens": 32768,
         "openai":  { "apiKey": "sk-1***wXYZ", "model": "gpt-4o", "baseUrl": "..." },
         ...
       }
 ```
+
+`contextWindowTokens` 控制长对话压缩。FengYu 会在用量达到该值的 60% 时开始总结旧轮次；
+默认值为 `32768`，`0` 表示禁用自动压缩。应把它设为所选模型真实的上下文窗口，而不是
+模型的输出 token 上限。
 
 ### 更新 AI 配置
 

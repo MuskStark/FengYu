@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -75,5 +76,13 @@ class UpdateCheckServiceTest {
         assertNotNull(service);
         // currentVersion 不依赖 apiBase，仅确认构造成功
         assertNotNull(service.currentVersion());
+    }
+
+    @Test
+    void backendRejectsIntranetChannelBecauseItCannotInstallDesktopPackages() {
+        UpdateCheckService service = new UpdateCheckService(
+                "MuskStark/FengYu", "http://10.0.0.5:8088/", 60);
+        IllegalStateException error = assertThrows(IllegalStateException.class, () -> service.check(true));
+        assertTrue(error.getMessage().contains("Windows portable ZIP and Debian"));
     }
 }

@@ -8,6 +8,11 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutionException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -21,9 +26,12 @@ import java.util.Map;
 final class BrowserBridgeClient {
 
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ExecutorService COMPLETIONS = Executors.newThreadPerTaskExecutor(
+            Thread.ofVirtual().name("browser-bridge-", 0).factory());
 
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
+            .executor(COMPLETIONS)
             .build();
     private final int port;
     private final String token;
@@ -51,6 +59,29 @@ final class BrowserBridgeClient {
      */
     @SuppressWarnings("unchecked")
     Map<String, Object> invoke(String method, Map<String, Object> params, int timeoutSeconds) {
+        CompletableFuture<Map<String, Object>> pending = invokeAsync(method, params, timeoutSeconds);
+        try {
+            return pending.get();
+        } catch (InterruptedException interrupted) {
+            pending.cancel(true);
+            Thread.currentThread().interrupt();
+            throw new BrowserBridgeUnavailableException("browser bridge request interrupted", interrupted);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() == null ? e : e.getCause();
+            if (cause instanceof BrowserBridgeUnavailableException unavailable) throw unavailable;
+            throw new BrowserBridgeUnavailableException(
+                    "browser bridge request failed: " + safeMessage(cause), cause);
+        }
+    }
+
+    /**
+     * Non-blocking transport used by browser calls and batches. Spring's tool callback contract is
+     * synchronous, so {@link #invoke} joins only at that boundary; HTTP I/O and response decoding
+     * run asynchronously, with JSON work dispatched onto virtual threads.
+     */
+    @SuppressWarnings("unchecked")
+    CompletableFuture<Map<String, Object>> invokeAsync(
+            String method, Map<String, Object> params, int timeoutSeconds) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("method", method);
         body.put("params", params == null ? Map.of() : params);
@@ -67,16 +98,28 @@ final class BrowserBridgeClient {
                 .header("X-Browser-Token", token)
                 .POST(HttpRequest.BodyPublishers.ofByteArray(payload))
                 .build();
-        try {
-            HttpResponse<byte[]> resp = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
+        return http.sendAsync(req, HttpResponse.BodyHandlers.ofByteArray())
+                .thenApplyAsync(resp -> {
             if (resp.statusCode() != 200) {
                 throw new BrowserBridgeUnavailableException("bridge returned HTTP " + resp.statusCode());
             }
-            return JSON.readValue(resp.body(), Map.class);
-        } catch (BrowserBridgeUnavailableException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new BrowserBridgeUnavailableException("browser bridge request failed: " + e.getMessage(), e);
-        }
+                    try {
+                        return (Map<String, Object>) JSON.readValue(resp.body(), Map.class);
+                    } catch (Exception e) {
+                        throw new BrowserBridgeUnavailableException("failed to parse bridge response", e);
+                    }
+                }, COMPLETIONS)
+                .orTimeout(Math.max(2, timeoutSeconds + 1L), java.util.concurrent.TimeUnit.SECONDS)
+                .exceptionally(error -> {
+                    Throwable cause = error instanceof CompletionException && error.getCause() != null
+                            ? error.getCause() : error;
+                    if (cause instanceof BrowserBridgeUnavailableException unavailable) throw unavailable;
+                    throw new BrowserBridgeUnavailableException(
+                            "browser bridge request failed: " + safeMessage(cause), cause);
+                });
+    }
+
+    private static String safeMessage(Throwable error) {
+        return error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
     }
 }

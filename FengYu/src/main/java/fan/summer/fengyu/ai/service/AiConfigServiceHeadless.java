@@ -55,6 +55,7 @@ public class AiConfigServiceHeadless {
     private static final String AI_OLLAMA_BASE_URL_KEY = "ai.ollama.base_url";
     private static final String AI_OLLAMA_MODEL_KEY   = "ai.ollama.model";
     private static final String AI_MAX_TOOL_ROUNDS_KEY = "ai.max_tool_rounds";
+    private static final String AI_CONTEXT_WINDOW_TOKENS_KEY = "ai.context_window_tokens";
 
     private final AppSettingRepository appSettingRepo;
     private final SecurityContext securityContext;
@@ -140,6 +141,7 @@ public class AiConfigServiceHeadless {
     public static int   getAiMaxTokens()   { return AiConfigService.getAiMaxTokens(); }
     public static String getAiSystemPrompt() { return AiConfigService.getAiSystemPrompt(); }
     public static int   getAiMaxToolRounds() { return AiConfigService.getAiMaxToolRounds(); }
+    public static int   getAiContextWindowTokens() { return AiConfigService.getAiContextWindowTokens(); }
 
     // ── Writes (persist via JPA) ──────────────────────────────────────────────
 
@@ -147,6 +149,9 @@ public class AiConfigServiceHeadless {
     public static void setAiTopP(float value)        { INSTANCE.writeSetting(AI_TOP_P_KEY, String.valueOf(value)); }
     public static void setAiMaxTokens(int value)     { INSTANCE.writeSetting(AI_MAX_TOKENS_KEY, String.valueOf(value)); }
     public static void setAiMaxToolRounds(int value) { INSTANCE.writeSetting(AI_MAX_TOOL_ROUNDS_KEY, String.valueOf(value)); }
+    public static void setAiContextWindowTokens(int value) {
+        INSTANCE.writeSetting(AI_CONTEXT_WINDOW_TOKENS_KEY, String.valueOf(value));
+    }
     public static void setAiSystemPrompt(String value) { INSTANCE.writeSetting(AI_SYSTEM_PROMPT_KEY, value); }
     public static void setTheme(String theme)        { INSTANCE.writeSetting(THEME_KEY, theme); }
     public static void setLanguage(String language)  { INSTANCE.writeSetting(LANGUAGE_KEY, language); }

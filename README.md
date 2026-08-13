@@ -89,14 +89,14 @@ These builds are currently unsigned; code-signing is deferred to a later release
 
 ## Features
 
-- **🤖 AI Agent (the spine)** — A plan-and-execute Agent decomposes a goal into steps and orchestrates the surfaces below. Sensitive actions require your approval. Multi-backend (Ollama, OpenAI, Anthropic, DeepSeek) with streaming, thinking cards, and tool calls. See [AI Agent](docs/en/guide/ai-agent) / [AI Chat](docs/en/guide/ai-chat).
+- **🤖 AI Agent (the spine)** — A plan-and-execute Agent decomposes a goal into steps and orchestrates the surfaces below. Sensitive actions require your approval. Multi-backend (Ollama, OpenAI, Anthropic, DeepSeek) with streaming, thinking cards, tool calls, automatic long-conversation compaction, and read-only `web_search` / `web_fetch`. See [AI Agent](docs/en/guide/ai-agent) / [AI Chat](docs/en/guide/ai-chat).
 - **🧩 Plugins (`.fyp`)** — Capabilities the Agent calls: isolated packages of a JSON-RPC worker + micro-frontend UI, installed from the marketplace. See [Marketplace](docs/en/plugins/marketplace).
 - **📜 Skills (`.fys`)** — Progressive-disclosure domain knowledge and procedures the Agent loads on demand. See [Skills](docs/en/skills/).
 - **📊 Excel Splitter** — Split workbooks by sheet, column value, or complex rules — an official plugin with six AI tools. See [Excel](docs/en/plugins/official-excel).
 - **📧 Email Center** — Multi-account SMTP/IMAP, contact/tag management, filename-tag batch sending, manual archive collection, and nine confirmation-first AI tools. See [Email Center](docs/en/plugins/email-center.md).
 - **📝 Markdown Editor** — Split-pane editor with isolated server-side rendering. See [Markdown](docs/en/plugins/official-markdown).
 - **📦 Offline Python Builder** — Build air-gap-ready Python wheelhouses (full dependency resolution via `pip download`) as an async job, with verify and deploy. See [Offline Python](docs/en/plugins/official-offlinepython).
-- **🌐 Browser Agent** — A **built-in** (host-embedded, not a plugin) capability that drives a real browser window through Electron's native engine — no separate Chromium/Playwright download. Nine approval-gated AI tools: navigate, click, type, scrape, screenshot, eval JS. **Desktop-only** (requires the Electron shell). See [Browser Capability](docs/en/plugins/official-browser.md).
+- **🌐 Browser Agent** — A **built-in** (host-embedded, not a plugin) capability that drives real browser tabs through Electron's native engine — no separate Chromium/Playwright download. Twenty-one effect-classified AI tools cover isolated contexts, stateful tabs, per-tab stable refs, interaction, multimodal PNG screenshots, batching, and eval JS. **Desktop-only** (requires the Electron shell). See [Browser Capability](docs/en/plugins/official-browser.md).
 - **💾 Multi-Database** — First-launch wizard picks H2, SQLite, MySQL, or PostgreSQL; passwords AES-GCM encrypted. See [Database](docs/en/guide/database).
 - **🎨 Material Design 3** — Vuetify 3 MD3 UI, shared with plugin micro-frontends, dark and light themes. See [Design System](docs/en/design-system).
 - **🌍 Internationalization** — English-first docs and a localized Vue UI (vue-i18n).

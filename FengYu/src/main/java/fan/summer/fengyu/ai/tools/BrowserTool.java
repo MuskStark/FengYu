@@ -18,7 +18,7 @@ import java.util.Map;
  * Electron sidecar at JVM spawn). In web mode the bean is absent and {@code browser_*}
  * tools never appear in the AI catalog.
  *
- * <p>The 12 {@code @Tool} method names and the {@code {success, summary, ...}} return
+ * <p>The {@code @Tool} method names and the {@code {success, summary, ...}} return
  * envelope mirror the former {@code plugin-browser} worker (plus {@code browser_find} for
  * element refs) so prompts/skills are unaffected. Text capping ({@link #TEXT_CAP}) and sample limiting
  * ({@link #SAMPLE_LIMIT}) are applied here (Electron returns raw values).
@@ -27,7 +27,7 @@ import java.util.Map;
  */
 @Component
 @ConditionalOnProperty("fengyu.desktop")
-public class BrowserTool implements ApprovalRequiredTool {
+public class BrowserTool implements ApprovalRequiredTool, ToolEffectProvider {
 
     public static final int TEXT_CAP = 64_000;
     public static final int SAMPLE_LIMIT = 5;
@@ -36,6 +36,7 @@ public class BrowserTool implements ApprovalRequiredTool {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final BrowserBridgeClient client;
+    private final BrowserSession session;
 
     /**
      * Spring constructor: reads the bridge address from env. When the bridge env
@@ -58,10 +59,29 @@ public class BrowserTool implements ApprovalRequiredTool {
 
     /** Test/injection constructor. */
     BrowserTool(BrowserBridgeClient client) {
-        this.client = client;
+        this(client, new BrowserSession());
     }
 
-    // ── 10 AI tools ───────────────────────────────────────────────────────────
+    BrowserTool(BrowserBridgeClient client, BrowserSession session) {
+        this.client = client;
+        this.session = session;
+    }
+
+    @Override
+    public ToolEffect effectFor(String toolName) {
+        return switch (toolName) {
+            case "browser_find", "browser_snapshot", "browser_get_text", "browser_query",
+                    "browser_screenshot", "browser_wait_for", "browser_tabs",
+                    "browser_contexts" -> ToolEffect.READ;
+            case "browser_navigate", "browser_click", "browser_type", "browser_press",
+                    "browser_eval_js", "browser_close", "browser_new_tab", "browser_select_tab",
+                    "browser_close_tab", "browser_new_context", "browser_select_context",
+                    "browser_close_context", "browser_batch" -> ToolEffect.EXTERNAL;
+            default -> ToolEffect.EXTERNAL;
+        };
+    }
+
+    // ── AI tools ──────────────────────────────────────────────────────────────
 
     @Tool(name = "browser_navigate",
           description = "Navigate the browser to a URL. Returns the final URL and page title.")
@@ -87,6 +107,58 @@ public class BrowserTool implements ApprovalRequiredTool {
           description = "Inspect the current page like Codex domSnapshot. Returns URL, title, visible text, and only rendered interactive elements with stable [ref] ids. Call this immediately after navigation and when page state changes; prefer its refs for click/type/press instead of guessing CSS or using eval_js.")
     public String snapshot() {
         return bridge("browser_snapshot", Map.of(), 30);
+    }
+
+    @Tool(name = "browser_contexts",
+          description = "List isolated browser contexts in this logical session, including active context and tab counts. Contexts do not share cookies or local storage.")
+    public String contexts() {
+        return bridge("browser_contexts", Map.of(), 15);
+    }
+
+    @Tool(name = "browser_new_context",
+          description = "Create and select an isolated browser context with its own cookies/local storage and a new main tab.")
+    public String newContext() {
+        return bridge("browser_new_context", Map.of(), 15);
+    }
+
+    @Tool(name = "browser_select_context",
+          description = "Select an existing isolated browser context and restore its active tab and cached refs.")
+    public String selectContext(
+            @ToolParam(description = "Context id returned by browser_contexts/browser_new_context.") String contextId) {
+        return bridge("browser_select_context", params("contextId", contextId), 15);
+    }
+
+    @Tool(name = "browser_close_context",
+          description = "Close every tab in a browser context. Defaults to the current context; another context becomes active.")
+    public String closeContext(
+            @ToolParam(required = false, description = "Context id; defaults to current context.") String contextId) {
+        return bridge("browser_close_context", params("contextId", contextId), 15);
+    }
+
+    @Tool(name = "browser_tabs",
+          description = "List tabs in the current isolated browser context, including each tab id, URL, title, and which tab is active.")
+    public String tabs() {
+        return bridge("browser_tabs", Map.of(), 15);
+    }
+
+    @Tool(name = "browser_new_tab",
+          description = "Open and select a new tab in the current isolated browser context. Optionally navigate it to an absolute http(s) URL.")
+    public String newTab(
+            @ToolParam(required = false, description = "Optional absolute http(s) URL to open.") String url) {
+        return bridge("browser_new_tab", params("url", url), 60);
+    }
+
+    @Tool(name = "browser_select_tab",
+          description = "Select an existing browser tab by id. Its cached URL/title and element refs become current again.")
+    public String selectTab(@ToolParam(description = "Tab id returned by browser_tabs/browser_new_tab.") String tabId) {
+        return bridge("browser_select_tab", params("tabId", tabId), 15);
+    }
+
+    @Tool(name = "browser_close_tab",
+          description = "Close a browser tab by id, or the current tab when omitted. Another remaining tab becomes active.")
+    public String closeTab(
+            @ToolParam(required = false, description = "Tab id to close; defaults to the current tab.") String tabId) {
+        return bridge("browser_close_tab", params("tabId", tabId), 15);
     }
 
     @Tool(name = "browser_click",
@@ -160,6 +232,20 @@ public class BrowserTool implements ApprovalRequiredTool {
         return bridge("browser_wait_for", params("selector", selector, "state", state, "timeout", timeout, "nth", nth, "ref", ref), 40);
     }
 
+    @Tool(name = "browser_batch",
+          description = "Capture one DOM snapshot and immediately perform one click, type, or key press in the same serialized bridge request. Use this when the target selector/ref is already known and a fresh snapshot plus action should be atomic.")
+    public String batch(
+            @ToolParam(description = "Action after the snapshot: click, type, or press.") String action,
+            @ToolParam(required = false, description = "CSS selector for the action target.") String selector,
+            @ToolParam(required = false, description = "1-based selector match index.") Integer nth,
+            @ToolParam(required = false, description = "Previously cached ref; takes precedence over selector.") String ref,
+            @ToolParam(required = false, description = "Text for action=type.") String text,
+            @ToolParam(required = false, description = "Key or shortcut for action=press.") String key,
+            @ToolParam(required = false, description = "Clear before action=type (default true).") Boolean clear) {
+        return bridge("browser_batch", params("action", action, "selector", selector, "nth", nth,
+                "ref", ref, "text", text, "key", key, "clear", clear), 45);
+    }
+
     @Tool(name = "browser_eval_js",
           description = "Last-resort diagnostic: evaluate JavaScript in the page. Do not use it to discover controls, fill fields, click, submit, read URL/title, or verify navigation; use browser_snapshot and ref-based actions instead.")
     public String evalJs(
@@ -185,7 +271,10 @@ public class BrowserTool implements ApprovalRequiredTool {
     /** Sends to the bridge and serializes the envelope to a JSON string. */
     private String bridge(String method, Map<String, Object> params, int timeoutSeconds) {
         try {
-            Map<String, Object> envelope = invokeBridge(method, params, timeoutSeconds);
+            String validation = session.validate(method, params);
+            if (validation != null) return failure(validation);
+            Map<String, Object> envelope = invokeBridge(method, session.route(params), timeoutSeconds);
+            session.observe(method, envelope);
             return JSON.writeValueAsString(envelope);
         } catch (BrowserBridgeUnavailableException e) {
             return failure("browser bridge unavailable");

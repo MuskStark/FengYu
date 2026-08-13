@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+const packageType = { value: 'deb' }
+const originalPlatform = process.platform
+
+vi.mock('node:fs', () => ({
+  existsSync: vi.fn(() => true),
+  readFileSync: vi.fn(() => packageType.value),
+}))
+
 vi.mock('electron-updater', () => ({
   autoUpdater: {
     setFeedURL: vi.fn(),
@@ -9,6 +17,8 @@ vi.mock('electron-updater', () => ({
 
 afterEach(() => {
   delete process.env.FENGYU_UPDATE_API_BASE
+  packageType.value = 'deb'
+  Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
   vi.clearAllMocks()
 })
 
@@ -20,24 +30,35 @@ describe('configureUpdateFeed', () => {
     expect(autoUpdater.setFeedURL).not.toHaveBeenCalled()
   })
 
-  it('selects separate lite and JRE generic feeds and disables differential download', async () => {
+  it('selects the deb generic feed and disables differential download', async () => {
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
+    ;(process as { resourcesPath?: string }).resourcesPath = '/fake/resources'
     process.env.FENGYU_UPDATE_API_BASE = 'http://10.0.0.5:8088/'
     const { autoUpdater } = await import('electron-updater')
     const { configureUpdateFeed } = await import('../src/updater/update-feed')
 
     expect(configureUpdateFeed(autoUpdater as any, false)).toBe(
-      'http://10.0.0.5:8088/fengyu-updates/lite',
+      'http://10.0.0.5:8088/fengyu-updates/deb',
     )
     expect(autoUpdater.setFeedURL).toHaveBeenLastCalledWith({
       provider: 'generic',
-      url: 'http://10.0.0.5:8088/fengyu-updates/lite',
+      url: 'http://10.0.0.5:8088/fengyu-updates/deb',
       useMultipleRangeRequest: false,
     })
-
-    expect(configureUpdateFeed(autoUpdater as any, true)).toBe(
-      'http://10.0.0.5:8088/fengyu-updates/jre',
-    )
     expect(autoUpdater.disableDifferentialDownload).toBe(true)
+  })
+
+  it('rejects JRE and non-deb packages on the intranet channel', async () => {
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
+    ;(process as { resourcesPath?: string }).resourcesPath = '/fake/resources'
+    process.env.FENGYU_UPDATE_API_BASE = 'http://10.0.0.5:8088'
+    const { configureUpdateFeed } = await import('../src/updater/update-feed')
+    const updater = { setFeedURL: vi.fn(), disableDifferentialDownload: false }
+
+    expect(() => configureUpdateFeed(updater, true)).toThrow(/Windows portable ZIP.*Debian package/)
+    packageType.value = 'appimage'
+    expect(() => configureUpdateFeed(updater, false)).toThrow(/Windows portable ZIP.*Debian package/)
+    expect(updater.setFeedURL).not.toHaveBeenCalled()
   })
 
   it('rejects non-HTTP and credential-bearing proxy URLs', async () => {
@@ -51,10 +72,10 @@ describe('configureUpdateFeed', () => {
       .toThrow(/must not contain credentials/)
   })
 
-  it('uses the proxy admin page for manual downloads', async () => {
+  it('uses the proxy file-management page for manual downloads', async () => {
     process.env.FENGYU_UPDATE_API_BASE = 'http://proxy.local:8088'
     const { updateDownloadPageUrl } = await import('../src/updater/update-feed')
-    expect(updateDownloadPageUrl()).toBe('http://proxy.local:8088/admin')
+    expect(updateDownloadPageUrl()).toBe('http://proxy.local:8088/files')
   })
 })
 

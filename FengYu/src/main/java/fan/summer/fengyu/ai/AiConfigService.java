@@ -72,8 +72,11 @@ public class AiConfigService {
     private static final String AI_OLLAMA_MODEL_KEY = "ai.ollama.model";
     /** Maximum rounds a chat backend's tool loop may run before aborting; {@code 0} = unlimited. */
     private static final String AI_MAX_TOOL_ROUNDS_KEY = "ai.max_tool_rounds";
+    /** Provider context window used by automatic history compaction; {@code 0} disables it. */
+    private static final String AI_CONTEXT_WINDOW_TOKENS_KEY = "ai.context_window_tokens";
     /** Default cap on tool-loop rounds when no setting is stored (protects against runaway loops). */
     public static final int DEFAULT_MAX_TOOL_ROUNDS = 50;
+    public static final int DEFAULT_CONTEXT_WINDOW_TOKENS = 32_768;
 
     // ── Core read (instance; uses injected repo + security context) ──────────
     private String readSetting(String key, String defaultValue) {
@@ -169,10 +172,24 @@ public class AiConfigService {
      * when unset or unparseable, guarding against models that loop on the same tool call.
      */
     public static int getAiMaxToolRounds() {
+        if (INSTANCE == null) return DEFAULT_MAX_TOOL_ROUNDS;
         String val = INSTANCE.readSetting(AI_MAX_TOOL_ROUNDS_KEY, null);
         if (val != null) {
             try { return Integer.parseInt(val); } catch (NumberFormatException ignored) { }
         }
         return DEFAULT_MAX_TOOL_ROUNDS;
+    }
+
+    /**
+     * Context-window estimate used to trigger conversation compaction at 60% utilisation.
+     * {@code 0} explicitly disables automatic compaction.
+     */
+    public static int getAiContextWindowTokens() {
+        if (INSTANCE == null) return DEFAULT_CONTEXT_WINDOW_TOKENS;
+        String val = INSTANCE.readSetting(AI_CONTEXT_WINDOW_TOKENS_KEY, null);
+        if (val != null) {
+            try { return Integer.parseInt(val); } catch (NumberFormatException ignored) { }
+        }
+        return DEFAULT_CONTEXT_WINDOW_TOKENS;
     }
 }

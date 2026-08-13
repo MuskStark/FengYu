@@ -67,7 +67,7 @@ export function registerUpdateIpc(): void {
         }
       } catch (err) {
         console.error('[updater] portable update:check failed:', err)
-        return { updateAvailable: false, version: null, releaseUrl: releasePageUrl() }
+        throw err
       }
     }
     autoUpdater.autoDownload = false
@@ -83,7 +83,7 @@ export function registerUpdateIpc(): void {
       }
     } catch (err) {
       console.error('[updater] update:check failed:', err)
-      return { updateAvailable: false, version: null, releaseUrl: releasePageUrl() }
+      throw err
     }
   })
 
@@ -121,6 +121,7 @@ export function registerUpdateIpc(): void {
         await shell.openExternal(releasePageUrl())
         return { action: 'manual', releaseUrl: releasePageUrl() }
       }
+      configureUpdateFeed()
     } catch (err) {
       console.error('[updater] invalid intranet update feed:', err)
       await shell.openExternal(releasePageUrl())

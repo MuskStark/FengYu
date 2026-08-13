@@ -17,7 +17,11 @@ async function freePort(): Promise<number> {
 // We test the bridge as a real HTTP round-trip: start the listener, then fetch.
 const handleBrowserOp = vi.fn()
 vi.mock('../src/browser/handlers', () => ({ handleBrowserOp: (...a: unknown[]) => handleBrowserOp(...a) }))
-vi.mock('../src/browser/session', () => ({ BrowserSession: class {} }))
+vi.mock('../src/browser/session', () => ({ BrowserSession: class {
+  ensureWindow() { return {} }
+  describe() { return { open: true, url: '', title: '' } }
+  close() {}
+} }))
 
 const { startBrowserBridge } = await import('../src/browser/bridge')
 
@@ -112,5 +116,44 @@ describe('startBrowserBridge', () => {
     // Regression guard: no opts → keeps the original random-address behaviour.
     expect(bridge.port).toBeGreaterThan(0)
     expect(bridge.token).toMatch(/^zf-[0-9a-f]{64}$/)
+  })
+
+  it('creates and selects independently routed tabs', async () => {
+    bridge = await startBrowserBridge({ close: () => undefined } as never)
+    handleBrowserOp.mockResolvedValue({ success: true, summary: 'navigated', url: 'https://example.com', title: 'Example' })
+    const invoke = (method: string, params: Record<string, unknown>) => fetch(`http://127.0.0.1:${bridge!.port}/invoke`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Browser-Token': bridge!.token },
+      body: JSON.stringify({ method, params: { _sessionId: 'java-session', ...params } }),
+    }).then((res) => res.json())
+
+    const opened = await invoke('browser_new_tab', { url: 'https://example.com' })
+    expect(opened.success).toBe(true)
+    expect(opened.sessionId).toBe('java-session')
+    expect(opened.contextId).toBe('default')
+    expect(opened.tabId).toMatch(/^tab_/)
+
+    const selected = await invoke('browser_select_tab', { tabId: opened.tabId })
+    expect(selected.success).toBe(true)
+    expect(selected.tabId).toBe(opened.tabId)
+  })
+
+  it('creates contexts that remain isolated from the default context', async () => {
+    bridge = await startBrowserBridge({ close: () => undefined } as never)
+    const invoke = (method: string, params: Record<string, unknown> = {}) => fetch(`http://127.0.0.1:${bridge!.port}/invoke`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Browser-Token': bridge!.token },
+      body: JSON.stringify({ method, params: { _sessionId: 'context-session', ...params } }),
+    }).then((res) => res.json())
+
+    const created = await invoke('browser_new_context')
+    expect(created.success).toBe(true)
+    expect(created.contextId).toMatch(/^context_/)
+    const listed = await invoke('browser_contexts', { _contextId: created.contextId })
+    expect(listed.contexts).toHaveLength(2)
+    expect(listed.contexts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ contextId: 'default' }),
+      expect.objectContaining({ contextId: created.contextId, active: true }),
+    ]))
   })
 })

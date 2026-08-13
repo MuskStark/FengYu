@@ -4,6 +4,7 @@ import fan.summer.fengyu.ai.AiConfigService;
 import fan.summer.fengyu.ai.config.ChatModelConfig;
 import fan.summer.fengyu.ai.skill.SkillPromptAppender;
 import fan.summer.fengyu.ai.skill.SkillRegistry;
+import fan.summer.fengyu.ai.session.ConversationCompactor;
 import fan.summer.fengyu.ai.tools.ChatToolApprovalGate;
 import fan.summer.fengyu.ai.tools.AiPermissionContext;
 import fan.summer.fengyu.ai.tools.AiPermissionMode;
@@ -24,6 +25,7 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.MessageAggregator;
@@ -315,7 +317,14 @@ public final class OllamaLocalBackend implements ChatBackend {
                 ? null
                 : ToolCallingChatOptions.builder().toolCallbacks(callbacks).build();
 
-        List<Message> conversation = buildSpringAiMessages(history, systemPrompt);
+        ConversationCompactor.Result compaction = ConversationCompactor.compact(
+                history, AiConfigService.getAiContextWindowTokens(),
+                promptOverheadTokens(systemPrompt, currentTools), this::summarizeConversation);
+        if (compaction.compacted()) {
+            log.info("Compacted chat context: estimatedTokens={} -> {}",
+                    compaction.estimatedTokensBefore(), compaction.estimatedTokensAfter());
+        }
+        List<Message> conversation = buildSpringAiMessages(compaction.history(), systemPrompt);
         // maxToolRounds bounds the number of tool-call rounds; 0 disables the safety net.
         // A loop counter alone cannot bound cost, but it stops a model that re-requests the
         // same tool forever from wedging this virtual thread and locking `generating`.
@@ -354,10 +363,11 @@ public final class OllamaLocalBackend implements ChatBackend {
             }
             fireToolCalls(assistantMsg, callback);
             ToolExecutionResult result = toolCallingManager.executeToolCalls(prompt, roundResp);
-            fireToolEvents(assistantMsg, result, callback);
+            ToolMediaBridge.Result media = ToolMediaBridge.extract(result.conversationHistory());
+            fireToolEvents(assistantMsg, media.messages(), callback);
 
-            conversation = result.conversationHistory();
-            mirrorToolResultsToHistory(result.conversationHistory(), history, assistantMsg);
+            conversation = ToolResultContextLimiter.limit(media.messages());
+            mirrorToolResultsToHistory(conversation, history, assistantMsg, media.lastResponseMedia());
         }
         // Loop exhausted its budget without producing a tool-free answer.
         String warn = "Reached maxToolRounds (" + maxToolRounds + ") without a final answer";
@@ -413,8 +423,29 @@ public final class OllamaLocalBackend implements ChatBackend {
         if (systemPrompt != null && !systemPrompt.isBlank()) {
             msgs.add(new SystemMessage(systemPrompt));
         }
-        for (AiChatMessage m : history) msgs.add(AiMessageBridge.toSpringAi(m));
+        for (AiChatMessage m : history) msgs.addAll(AiMessageBridge.toSpringAiMessages(m));
         return msgs;
+    }
+
+    private String summarizeConversation(String transcript) {
+        Prompt prompt = new Prompt(List.of(
+                new SystemMessage(ConversationCompactor.SUMMARY_INSTRUCTIONS),
+                new UserMessage(transcript)));
+        ChatResponse response = chatModel.call(prompt);
+        if (response == null || response.getResult() == null
+                || response.getResult().getOutput() == null) return "";
+        return response.getResult().getOutput().getText();
+    }
+
+    private static int promptOverheadTokens(String systemPrompt, List<ToolCallback> tools) {
+        long estimate = ConversationCompactor.estimateTextTokens(systemPrompt);
+        for (ToolCallback tool : tools) {
+            var definition = tool.getToolDefinition();
+            estimate += 12L + ConversationCompactor.estimateTextTokens(definition.name())
+                    + ConversationCompactor.estimateTextTokens(definition.description())
+                    + ConversationCompactor.estimateTextTokens(definition.inputSchema());
+        }
+        return (int) Math.min(Integer.MAX_VALUE, estimate);
     }
 
     private static List<AiToolCall> mapToolCalls(AssistantMessage am) {
@@ -433,9 +464,9 @@ public final class OllamaLocalBackend implements ChatBackend {
         catch (Exception e) { return Map.of(); }
     }
 
-    private static void fireToolEvents(AssistantMessage assistantMsg, ToolExecutionResult result,
+    private static void fireToolEvents(AssistantMessage assistantMsg, List<Message> messages,
                                        AiStreamCallback callback) {
-        ToolResponseMessage trm = lastToolResponseMessage(result.conversationHistory());
+        ToolResponseMessage trm = lastToolResponseMessage(messages);
         if (trm == null || assistantMsg == null || !assistantMsg.hasToolCalls()) return;
         List<AssistantMessage.ToolCall> calls = assistantMsg.getToolCalls();
         List<ToolResponseMessage.ToolResponse> responses = trm.getResponses();
@@ -463,7 +494,8 @@ public final class OllamaLocalBackend implements ChatBackend {
     }
 
     private static void mirrorToolResultsToHistory(List<Message> springAiHistory, List<AiChatMessage> fengyuHistory,
-                                                   AssistantMessage assistantMsg) {
+                                                   AssistantMessage assistantMsg,
+                                                   List<List<fan.summer.fengyu.ai.AiMedia>> responseMedia) {
         ToolResponseMessage trm = lastToolResponseMessage(springAiHistory);
         if (trm == null || assistantMsg == null || !assistantMsg.hasToolCalls()) return;
         List<AssistantMessage.ToolCall> calls = assistantMsg.getToolCalls();
@@ -474,7 +506,8 @@ public final class OllamaLocalBackend implements ChatBackend {
             ToolResponseMessage.ToolResponse tr = responses.get(i);
             fengyuHistory.add(AiChatMessage.toolResult(
                     tc.id() != null && !tc.id().isEmpty() ? tc.id() : tr.id(),
-                    tc.name(), tr.responseData()));
+                    tc.name(), tr.responseData(), i < responseMedia.size()
+                            ? responseMedia.get(i) : List.of()));
         }
     }
 
