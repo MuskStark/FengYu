@@ -24,6 +24,7 @@ import java.net.URI;
 import java.net.http.HttpRequest;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -350,19 +351,26 @@ public final class McpRuntimeManager {
             Files.createDirectories(directory);
             if (Files.exists(registryFile)) {
                 List<StoredServer> loaded = json.readValue(Files.readString(registryFile), new TypeReference<>() {});
-                for (StoredServer value : loaded) definitions.put(value.id(), value);
+                if (loaded != null) {
+                    for (StoredServer value : loaded) {
+                        if (value != null && value.id() != null && !value.id().isBlank()) {
+                            definitions.put(value.id(), value);
+                        }
+                    }
+                }
             }
         } catch (Exception error) {
-            throw new McpRuntimeException("Cannot read MCP server registry", error);
+            // MCP is an optional integration. A truncated or hand-edited registry must not make
+            // the host unbootable; leave the file untouched so the user can recover it manually.
+            definitions.clear();
+            log.warn("Ignoring unreadable MCP server registry {}: {}", registryFile, safeMessage(error));
         }
     }
 
     private void saveFiles() {
         try {
             Files.createDirectories(directory);
-            Files.writeString(registryFile, json.writerWithDefaultPrettyPrinter().writeValueAsString(definitions.values()),
-                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-            protect(registryFile);
+            writeAtomically(registryFile, json.writerWithDefaultPrettyPrinter().writeValueAsString(definitions.values()));
         } catch (Exception error) {
             throw new McpRuntimeException("Cannot save MCP server registry", error);
         }
@@ -384,9 +392,7 @@ public final class McpRuntimeManager {
             Files.createDirectories(directory);
             Map<String, SecretConfig> all = new LinkedHashMap<>(readSecrets());
             all.put(id, secrets);
-            Files.writeString(secretsFile, json.writerWithDefaultPrettyPrinter().writeValueAsString(all),
-                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-            protect(secretsFile);
+            writeAtomically(secretsFile, json.writerWithDefaultPrettyPrinter().writeValueAsString(all));
         } catch (Exception error) {
             throw new McpRuntimeException("Cannot save MCP credentials", error);
         }
@@ -399,12 +405,25 @@ public final class McpRuntimeManager {
             if (all.isEmpty()) {
                 Files.deleteIfExists(secretsFile);
             } else {
-                Files.writeString(secretsFile, json.writerWithDefaultPrettyPrinter().writeValueAsString(all),
-                        StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-                protect(secretsFile);
+                writeAtomically(secretsFile, json.writerWithDefaultPrettyPrinter().writeValueAsString(all));
             }
         } catch (Exception error) {
             throw new McpRuntimeException("Cannot delete MCP credentials", error);
+        }
+    }
+
+    private static void writeAtomically(Path target, String content) throws IOException {
+        Path temporary = target.resolveSibling(target.getFileName() + ".tmp-" + UUID.randomUUID());
+        try {
+            Files.writeString(temporary, content, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+            try {
+                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+            protect(target);
+        } finally {
+            Files.deleteIfExists(temporary);
         }
     }
 
@@ -456,6 +475,15 @@ public final class McpRuntimeManager {
     }
 
     private static void closeQuietly(McpSyncClient client) {
-        if (client != null) try { client.closeGracefully(); } catch (Exception ignored) { client.close(); }
+        if (client == null) return;
+        try {
+            client.closeGracefully();
+        } catch (Exception gracefulFailure) {
+            try {
+                client.close();
+            } catch (Exception closeFailure) {
+                log.debug("MCP client close failed after graceful close failure", closeFailure);
+            }
+        }
     }
 }

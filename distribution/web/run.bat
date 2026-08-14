@@ -39,10 +39,25 @@ if %MAJOR% LSS 21 (
   echo Java 21 is required, found version %MAJOR% 1>&2
   exit /b 1
 )
-REM 若用户未显式传 --token,生成随机 token 避免默认认证关闭。
+REM 若用户未显式传 --token=<t>,生成随机 token 避免默认认证关闭。
+REM 精确校验参数；空值、重复值和 --tokenized 等拼写错误均 fail closed。
 set "HAS_TOKEN=0"
+set "TOKEN_ERROR="
 for %%A in (%*) do (
-  echo %%A | findstr /b "--token" >nul && set "HAS_TOKEN=1"
+  set "ARG=%%~A"
+  if "!ARG:~0,8!"=="--token=" (
+    set "TOKEN_VALUE=!ARG:~8!"
+    set "TOKEN_NONSPACE=!TOKEN_VALUE: =!"
+    if not defined TOKEN_NONSPACE set "TOKEN_ERROR=Invalid --token argument: use --token=^<non-empty value^>"
+    if "!HAS_TOKEN!"=="1" set "TOKEN_ERROR=Invalid arguments: --token may be supplied only once"
+    set "HAS_TOKEN=1"
+  ) else if "!ARG:~0,7!"=="--token" (
+    set "TOKEN_ERROR=Invalid token argument '!ARG!': use --token=^<non-empty value^>"
+  )
+)
+if defined TOKEN_ERROR (
+  echo !TOKEN_ERROR! 1>&2
+  exit /b 2
 )
 if "!HAS_TOKEN!"=="0" (
   set "GEN_TOKEN=zf-%RANDOM%%RANDOM%-%TIME:~6,2%%TIME:~9,2%"
@@ -51,4 +66,5 @@ if "!HAS_TOKEN!"=="0" (
 ) else (
   "%JAVA%" -Dfengyu.runtime.dir="%ROOT%data" -Dfengyu.plugins.official-directory="%ROOT%plugins" -Dfengyu.update.portable=true -jar "%ROOT%Infinia.jar" %*
 )
-endlocal
+set "EXIT_CODE=%ERRORLEVEL%"
+endlocal & exit /b %EXIT_CODE%
