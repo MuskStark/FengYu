@@ -3,7 +3,12 @@ package fan.summer.fengyu.ai.tools;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
 
 /**
@@ -153,29 +158,67 @@ class ComputerApps {
 
     /** Default runner: captures stdout, fails on non-zero exit, caps captured output. */
     static String runCommand(List<String> command, long timeoutMillis) {
+        if (timeoutMillis <= 0) throw new IllegalArgumentException("timeout must be positive");
+        Process process = null;
+        ExecutorService readerExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        Future<String> outputFuture = null;
         try {
-            Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-            StringBuilder out = new StringBuilder();
-            try (var reader = process.inputReader()) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (out.length() < 20_000) out.append(line).append('\n');
-                }
-            }
+            process = new ProcessBuilder(command).redirectErrorStream(true).start();
+            Process runningProcess = process;
+            outputFuture = readerExecutor.submit(() -> readOutput(runningProcess));
             if (!process.waitFor(timeoutMillis, TimeUnit.MILLISECONDS)) {
                 process.destroyForcibly();
+                closeOutput(process);
                 throw new IllegalStateException("timed out after " + timeoutMillis + " ms");
             }
+            String output = readOutputFuture(outputFuture);
             if (process.exitValue() != 0) {
                 throw new IllegalStateException("exit " + process.exitValue() + ": "
-                        + out.toString().trim().replaceAll("[\\r\\n]", " "));
+                        + output.trim().replaceAll("[\\r\\n]", " "));
             }
-            return out.toString().trim();
+            return output.trim();
         } catch (IllegalStateException e) {
             throw e;
         } catch (Exception e) {
             throw new IllegalStateException(e.getMessage() == null
                     ? e.getClass().getSimpleName() : e.getMessage(), e);
+        } finally {
+            if (process != null && process.isAlive()) {
+                process.destroyForcibly();
+            }
+            if (process != null) closeOutput(process);
+            if (outputFuture != null) outputFuture.cancel(true);
+            readerExecutor.shutdownNow();
         }
+    }
+
+    /** Drain output concurrently so a child cannot block the timeout while its pipe is open. */
+    private static String readOutput(Process process) throws Exception {
+        StringBuilder out = new StringBuilder();
+        char[] buffer = new char[2048];
+        try (var reader = process.inputReader()) {
+            int count;
+            while ((count = reader.read(buffer)) != -1) {
+                if (out.length() < 20_000) {
+                    out.append(buffer, 0, Math.min(count, 20_000 - out.length()));
+                }
+            }
+        }
+        return out.toString();
+    }
+
+    private static String readOutputFuture(Future<String> outputFuture) {
+        try {
+            return outputFuture.get(1, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted while reading command output", e);
+        } catch (ExecutionException | TimeoutException e) {
+            throw new IllegalStateException("could not collect command output", e);
+        }
+    }
+
+    private static void closeOutput(Process process) {
+        try { process.getInputStream().close(); } catch (Exception ignored) { }
     }
 }

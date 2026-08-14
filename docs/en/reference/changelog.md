@@ -20,6 +20,15 @@ CHANGELOG.md instead.
 
 ## [Unreleased]
 
+### 🐛 Fixed
+- **Text-only fallback for strict OpenAI-compatible gateways.** Some gateways only accept
+  string `content` in chat messages and reject the array-form (multimodal) content that
+  screenshot tools produce — e.g. Go-based relays answering
+  `json: cannot unmarshal array into Go struct field ChatMessage.messages.content of type string`.
+  The chat round now detects that 400, retries once without image attachments, and stays
+  text-only for that endpoint from then on; screenshots remain in the conversation history
+  and UI, and vision-capable endpoints are unaffected.
+
 ### ✨ Added
 - **Computer use (ChatGPT-desktop-style screen control).** Desktop builds now expose a
   `computer_*` AI tool family driven by `java.awt.Robot` inside the backend JVM, with the same
