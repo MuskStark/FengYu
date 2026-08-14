@@ -94,6 +94,15 @@ test('electron-builder targets NSIS + extract-and-run ZIP on Windows, DMG arm64 
   assert.match(builderConfig, /-\s+target:\s*deb/)
 })
 
+test('Windows release builds mark only the dedicated portable ZIP pass', () => {
+  assert.match(builderConfig, /afterPack:\s*scripts\/after-pack\.cjs/)
+  assert.match(jreBuilderConfig, /afterPack:\s*scripts\/after-pack\.cjs/)
+  assert.match(desktopJob, /electron-builder --win nsis[^\n]*dist-electron-lite/)
+  assert.match(desktopJob, /FENGYU_WINDOWS_PORTABLE_ZIP=1 npx electron-builder --win zip[^\n]*dist-electron-lite/)
+  assert.match(desktopJob, /electron-builder --win nsis[^\n]*electron-builder\.jre\.yml/)
+  assert.match(desktopJob, /FENGYU_WINDOWS_PORTABLE_ZIP=1 npx electron-builder --win zip[^\n]*electron-builder\.jre\.yml/)
+})
+
 test('artifact names include version + platform + arch', () => {
   // Top-level uniform scheme: <product>-<version>-<platform>-<arch>.<ext>
   assert.match(builderConfig, /artifactName: \$\{productName\}-\$\{version\}-\$\{platform\}-\$\{arch\}\.\$\{ext\}/)

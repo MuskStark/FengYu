@@ -76,8 +76,11 @@ export function registerUpdateIpc(): void {
       configureUpdateFeed()
       const result = await autoUpdater.checkForUpdates()
       const info = result?.updateInfo
+      const currentVersion = typeof autoUpdater.currentVersion === 'string'
+        ? autoUpdater.currentVersion
+        : autoUpdater.currentVersion.version
       return {
-        updateAvailable: !!info && info.version !== autoUpdater.currentVersion,
+        updateAvailable: !!info && info.version !== currentVersion,
         version: info?.version ?? null,
         releaseUrl: extractReleaseUrl(info),
       }

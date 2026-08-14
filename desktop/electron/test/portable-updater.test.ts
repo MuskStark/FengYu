@@ -5,10 +5,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
  *
  * The network download, tar extraction, and bat spawn are real side-effects — we mock fetch and
  * fs/child_process and focus on the load-bearing logic: portable detection, version comparison,
- * release-asset parsing, and the absence-of-app-update.yml signal.
+ * release-asset parsing, and the explicit package marker / legacy uninstaller fallback.
  */
 
-const APP_UPDATE_YML_EXISTS = { value: false } // toggled per test via fs.existsSync mock
+const PORTABLE_MARKER_EXISTS = { value: false }
+const NSIS_UNINSTALLER_EXISTS = { value: false }
 
 vi.mock('electron', () => ({
   app: {
@@ -19,8 +20,8 @@ vi.mock('electron', () => ({
 }))
 vi.mock('node:fs', () => ({
   existsSync: vi.fn((p: string) => {
-    // app-update.yml presence is the portable-vs-nsis signal.
-    if (typeof p === 'string' && p.endsWith('app-update.yml')) return APP_UPDATE_YML_EXISTS.value
+    if (typeof p === 'string' && p.endsWith('fengyu-portable-zip')) return PORTABLE_MARKER_EXISTS.value
+    if (typeof p === 'string' && p.endsWith('Uninstall Infinia.exe')) return NSIS_UNINSTALLER_EXISTS.value
     return false
   }),
   readdirSync: vi.fn(() => []),
@@ -33,7 +34,8 @@ vi.mock('node:fs', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
-  APP_UPDATE_YML_EXISTS.value = false
+  PORTABLE_MARKER_EXISTS.value = false
+  NSIS_UNINSTALLER_EXISTS.value = false
   // process.resourcesPath is undefined outside a packaged Electron — pin it so existsSync joins work.
   ;(process as { resourcesPath?: string }).resourcesPath = 'C:\\Infinia\\resources'
 })
@@ -57,16 +59,25 @@ describe('compareVersions', () => {
 })
 
 describe('isWindowsPortable', () => {
-  it('returns true on win32 when app-update.yml is absent', async () => {
+  it('returns true when the packaged ZIP carries the explicit marker', async () => {
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
-    APP_UPDATE_YML_EXISTS.value = false
+    PORTABLE_MARKER_EXISTS.value = true
+    NSIS_UNINSTALLER_EXISTS.value = true
     const { isWindowsPortable } = await import('../src/updater/portable-updater')
     expect(isWindowsPortable()).toBe(true)
   })
 
-  it('returns false when app-update.yml exists (nsis install)', async () => {
+  it('returns true for a legacy extracted ZIP even if electron-builder included app-update.yml', async () => {
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
-    APP_UPDATE_YML_EXISTS.value = true
+    PORTABLE_MARKER_EXISTS.value = false
+    NSIS_UNINSTALLER_EXISTS.value = false
+    const { isWindowsPortable } = await import('../src/updater/portable-updater')
+    expect(isWindowsPortable()).toBe(true)
+  })
+
+  it('returns false for an installed NSIS app with its uninstaller', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    NSIS_UNINSTALLER_EXISTS.value = true
     const { isWindowsPortable } = await import('../src/updater/portable-updater')
     expect(isWindowsPortable()).toBe(false)
   })

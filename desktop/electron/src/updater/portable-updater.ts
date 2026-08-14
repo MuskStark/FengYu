@@ -3,7 +3,9 @@ import { spawn, spawnSync } from 'node:child_process'
 import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, win32 as windowsPath } from 'node:path'
+
+const PORTABLE_MARKER = 'fengyu-portable-zip'
 
 /**
  * Windows portable-zip self-update.
@@ -51,14 +53,23 @@ const RELEASES_API = (repo: string) => {
 }
 
 /**
- * True when running inside a Windows portable zip (not an NSIS install). electron-builder only
- * emits `app-update.yml` for the nsis target, so its absence in a packaged build is the
- * reliable signal that this is a portable extract.
+ * True when running inside a Windows portable zip (not an NSIS install).
+ *
+ * New packages carry an explicit marker written by scripts/after-pack.cjs. The uninstaller check
+ * keeps already-published ZIPs working: electron-builder writes app-update.yml into the shared
+ * appOutDir whenever NSIS and ZIP are built together, so absence of app-update.yml was never a
+ * reliable discriminator. A real installed NSIS app has `Uninstall <exe-name>.exe` beside the app;
+ * an extracted ZIP does not.
  */
 export function isWindowsPortable(): boolean {
   if (process.platform !== 'win32') return false
   if (!app.isPackaged) return false
-  return !existsSync(join(process.resourcesPath, 'app-update.yml'))
+  if (existsSync(join(process.resourcesPath, PORTABLE_MARKER))) return true
+
+  const exePath = app.getPath('exe')
+  const exeName = windowsPath.basename(exePath, windowsPath.extname(exePath))
+  const uninstaller = windowsPath.join(windowsPath.dirname(exePath), `Uninstall ${exeName}.exe`)
+  return !existsSync(uninstaller)
 }
 
 /** The directory containing `Infinia.exe` (the portable app root). */

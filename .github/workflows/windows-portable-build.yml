@@ -219,7 +219,9 @@ jobs:
       - name: Build Electron bundle (without JRE)
         working-directory: desktop/electron
         shell: bash
-        run: npx electron-builder --win --publish never --config.directories.output=../dist-electron-lite
+        env:
+          FENGYU_WINDOWS_PORTABLE_ZIP: '1'
+        run: npx electron-builder --win zip --publish never --config.directories.output=../dist-electron-lite
 
       - name: Generate jlink JRE
         shell: bash
@@ -231,7 +233,9 @@ jobs:
       - name: Build Electron bundle (with JRE)
         working-directory: desktop/electron
         shell: bash
-        run: npx electron-builder --win --publish never --config electron-builder.jre.yml
+        env:
+          FENGYU_WINDOWS_PORTABLE_ZIP: '1'
+        run: npx electron-builder --win zip --publish never --config electron-builder.jre.yml
 
       - name: Upload Windows portable zips
         uses: actions/upload-artifact@v4

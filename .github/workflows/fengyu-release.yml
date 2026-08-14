@@ -381,7 +381,14 @@ jobs:
         # electron-builder auto-publish when running on a git tag. The desktop job only BUILDS;
         # the release job aggregates all artifacts and creates the GitHub release via gh CLI.
         # Without --publish never, electron-builder tries to upload with a missing GH_TOKEN.
-        run: npx electron-builder --publish never --config.directories.output=../dist-electron-lite
+        # Windows NSIS and ZIP are separate passes so after-pack.cjs can mark only the ZIP.
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            npx electron-builder --win nsis --publish never --config.directories.output=../dist-electron-lite
+            FENGYU_WINDOWS_PORTABLE_ZIP=1 npx electron-builder --win zip --publish never --config.directories.output=../dist-electron-lite
+          else
+            npx electron-builder --publish never --config.directories.output=../dist-electron-lite
+          fi
 
       - name: Generate jlink JRE
         shell: bash
@@ -399,7 +406,13 @@ jobs:
         # JRE bundle that is missing the backend JAR and plugins entirely. A full config file
         # declares all 5 extraResources (icons + jar + plugins + jre) and is honoured as-is.
         # See desktop/electron/electron-builder.jre.yml.
-        run: npx electron-builder --publish never --config electron-builder.jre.yml
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            npx electron-builder --win nsis --publish never --config electron-builder.jre.yml
+            FENGYU_WINDOWS_PORTABLE_ZIP=1 npx electron-builder --win zip --publish never --config electron-builder.jre.yml
+          else
+            npx electron-builder --publish never --config electron-builder.jre.yml
+          fi
 
       - name: Upload desktop bundles
         uses: actions/upload-artifact@v4
