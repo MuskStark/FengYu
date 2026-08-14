@@ -1,0 +1,243 @@
+name: Windows-Portable-Build
+
+# Build ONLY the Windows portable desktop packages (with + without bundled JRE)
+# and upload them as workflow artifacts. Never creates or touches a GitHub Release.
+#
+# Mirrors the build-runtime + desktop jobs of fengyu-release.yml, trimmed to
+# Windows and with the release job replaced by artifact upload. When a step
+# diverges from fengyu-release.yml intentionally, the comment says why.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch / tag to build (default: current branch)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  # Resolve the app version (from the root pom ${revision}; no release tag involved).
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.ref.outputs.ref }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          fetch-depth: 0
+
+      - name: Export build ref
+        id: ref
+        run: echo "ref=${{ inputs.ref || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Export app version (root pom ${revision})
+        id: version
+        run: echo "version=$(sed -n 's/.*<revision>\(.*\)<\/revision>.*/\1/p' pom.xml | head -1)" >> "$GITHUB_OUTPUT"
+
+  # Same shared inputs as fengyu-release.yml's build-runtime: shaded JAR (SPA baked
+  # in) + official .fyp plugins + SHA-256 sidecars + frontend dist.
+  build-runtime:
+    needs: setup
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.setup.outputs.version }}
+      FENGYU_RELEASE_VERSION: ${{ needs.setup.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.setup.outputs.ref }}
+          fetch-depth: 0
+
+      - name: Set up Node 24.18.0
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24.18.0'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      # Same bubblewrap/AppArmor dance as fengyu-release.yml — backend tests fail
+      # closed without a usable process sandbox on ubuntu-latest.
+      - name: Enable bubblewrap sandbox (install + relax Ubuntu 24.04 AppArmor userns)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          bwrap --unshare-all --ro-bind / / --proc /proc --dev-bind /dev /dev -- /bin/true
+
+      - name: Install frontend deps
+        run: npm ci
+        working-directory: frontend
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: frontend
+
+      - name: Build @infinia/plugin-ui (local dist required by plugin file dependencies)
+        run: |
+          npm ci
+          npm run build
+        working-directory: toolchain/ui
+
+      - name: Install Java plugin toolchain (sdk + devkit) to local Maven repo
+        run: ./mvnw -B -pl toolchain/sdk-java,toolchain/devkit-java -am install -DskipTests
+
+      - name: Install plugin CLI deps
+        run: npm ci
+        working-directory: toolchain/cli
+
+      - name: Build official plugins (.fyp via toolchain/cli)
+        run: |
+          for plugin in markdown excel email offlinepython; do
+            node toolchain/cli/bin/fengyu.mjs build "OfficialPlugins/plugin-$plugin"
+          done
+
+      - name: Stage official .fyp packages and SHA-256 sidecars
+        run: |
+          mkdir -p staging/plugins
+          for archive in OfficialPlugins/plugin-*/dist/*.fyp; do
+            test -f "$archive.sha256" \
+              || { echo "Missing required checksum sidecar: $archive.sha256"; exit 1; }
+            cp "$archive" "$archive.sha256" staging/plugins/
+          done
+
+      - name: Build + test the backend (reactor, -Drevision)
+        run: ./mvnw -am test package -Drevision="$VERSION"
+
+      - name: Stage the runtime JAR (uniform name)
+        run: cp "FengYu/target/FengYu-${VERSION}.jar" staging/Infinia.jar
+
+      - name: Upload runtime JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-jar
+          path: staging/Infinia.jar
+          if-no-files-found: error
+
+      - name: Upload official plugins
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-plugins
+          path: |
+            staging/plugins/*.fyp
+            staging/plugins/*.fyp.sha256
+          if-no-files-found: error
+
+      - name: Upload frontend dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          if-no-files-found: error
+
+  # Windows desktop build, trimmed from fengyu-release.yml's desktop job: only
+  # windows-latest, only the two electron-builder passes, and only the portable
+  # zips are uploaded (installer/dmg/deb/latest*.yml stay on the runner).
+  windows-desktop:
+    needs: [setup, build-runtime]
+    runs-on: windows-latest
+    env:
+      APP_VERSION: ${{ needs.setup.outputs.version }}
+      FENGYU_RELEASE_VERSION: ${{ needs.setup.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.setup.outputs.ref }}
+
+      - name: Set up Node 24.18.0
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24.18.0'
+          cache: npm
+          cache-dependency-path: desktop/electron/package-lock.json
+
+      - name: Set up JDK 21 (for jlink)
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Install frontend deps
+        run: npm ci
+        working-directory: frontend
+
+      - name: Build frontend SPA
+        run: npm run build
+        working-directory: frontend
+        env:
+          FENGYU_DESKTOP_BUILD: '1'
+
+      - name: Stage frontend SPA for the Electron bundle
+        shell: bash
+        run: |
+          rm -rf desktop/electron/frontend-dist
+          cp -R frontend/dist desktop/electron/frontend-dist
+
+      - name: Verify file-compatible frontend asset paths
+        run: npm run verify:frontend-dist
+        working-directory: desktop/electron
+
+      - name: Install desktop deps
+        run: npm ci
+        working-directory: desktop/electron
+
+      - name: Install Electron binary
+        run: npx install-electron --no
+        working-directory: desktop/electron
+        timeout-minutes: 15
+
+      - name: Build desktop TypeScript
+        run: npm run build:ts
+        working-directory: desktop/electron
+
+      - name: Download shared inputs
+        uses: actions/download-artifact@v5
+        with:
+          path: inputs
+          merge-multiple: true
+
+      - name: Stage runtime resources
+        shell: bash
+        run: |
+          mkdir -p desktop/electron/resources/binaries/plugins
+          cp inputs/Infinia.jar desktop/electron/resources/binaries/FengYu.jar
+          cp inputs/*.fyp inputs/*.fyp.sha256 desktop/electron/resources/binaries/plugins/
+
+      - name: Build Electron bundle (without JRE)
+        working-directory: desktop/electron
+        shell: bash
+        run: npx electron-builder --win --publish never --config.directories.output=../dist-electron-lite
+
+      - name: Generate jlink JRE
+        shell: bash
+        run: |
+          desktop/electron/scripts/build-jre.sh \
+            desktop/electron/resources/binaries/FengYu.jar \
+            desktop/electron/resources/jre
+
+      - name: Build Electron bundle (with JRE)
+        working-directory: desktop/electron
+        shell: bash
+        run: npx electron-builder --win --publish never --config electron-builder.jre.yml
+
+      - name: Upload Windows portable zips
+        uses: actions/upload-artifact@v4
+        with:
+          name: infinia-windows-portable
+          path: |
+            desktop/dist-electron-lite/*-portable.zip
+            desktop/dist-electron-jre/*-portable.zip
+          if-no-files-found: error
