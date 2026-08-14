@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -109,5 +110,18 @@ class ComputerAppsTest {
         assertThrows(IllegalArgumentException.class, () -> mac.launch("  "));
         assertThrows(IllegalArgumentException.class, () -> mac.launch(null));
         assertThrows(IllegalArgumentException.class, () -> mac.activate("$HOME"));
+    }
+
+    @Test
+    void commandTimeoutIsNotBlockedByAnInheritedOpenStdout() {
+        if (System.getProperty("os.name", "").toLowerCase().startsWith("win")) return;
+
+        long started = System.nanoTime();
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> ComputerApps.runCommand(List.of("sh", "-c", "sleep 30"), 100));
+
+        assertTrue(error.getMessage().contains("timed out"), error.getMessage());
+        assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) < 2_000,
+                "command timeout took too long");
     }
 }

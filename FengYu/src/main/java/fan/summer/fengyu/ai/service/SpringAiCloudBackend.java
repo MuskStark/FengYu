@@ -126,6 +126,15 @@ public final class SpringAiCloudBackend implements ChatBackend {
     private volatile Supplier<List<ToolCallback>> toolCallbackSupplier = () -> toolCallbacks;
     private volatile ChatToolApprovalGate toolApprovalGate;
 
+    /**
+     * Sticky per-endpoint verdict set after a provider 400 that rejected array-form
+     * (multimodal) message content — common with strict OpenAI-compatible gateways whose
+     * schema only allows string {@code content}. Once observed, tool screenshots are no
+     * longer attached for this backend (they stay in FengYu history for the UI); a backend
+     * rebind (provider/endpoint change) builds a fresh instance and re-probes.
+     */
+    private volatile boolean endpointRejectsMediaContent = false;
+
     /** Shared {@link ToolCallingManager} that drives user-controlled tool execution. */
     private volatile ToolCallingManager toolCallingManager = ToolCallingManager.builder().build();
 
@@ -418,13 +427,33 @@ public final class SpringAiCloudBackend implements ChatBackend {
             // re-prompt the model with that failure and keep going. Checked at the top of every
             // round — the tightest boundary Spring AI's ToolCallingManager exposes to us.
             if (cancelled) throw new AiServiceException("cancelled");
-            Prompt prompt = options != null ? new Prompt(conversation, options) : new Prompt(conversation);
+            // When the endpoint has already rejected multimodal content, send a media-free
+            // view of the conversation. `conversation` itself keeps the media messages so
+            // history mirroring and the UI are unaffected — only the wire format degrades.
+            List<Message> roundMessages = endpointRejectsMediaContent
+                    ? ToolMediaBridge.withoutMedia(conversation) : conversation;
+            Prompt prompt = options != null ? new Prompt(roundMessages, options) : new Prompt(roundMessages);
 
             // Stream this round; fire onToken per token delta; the aggregator hands us the
             // fully-assembled ChatResponse (including any tool calls) on completion.
             StringBuilder accumulated = new StringBuilder();
             AtomicReference<ChatResponse> aggregated = new AtomicReference<>();
             Throwable streamError = streamAndCollect(prompt, accumulated, aggregated, callback);
+            if (streamError != null && !endpointRejectsMediaContent
+                    && accumulated.length() == 0
+                    && ToolMediaBridge.containsMedia(conversation)
+                    && ToolMediaBridge.isMediaContentRejection(streamError)) {
+                // Strict gateway: retry this round once without image attachments instead of
+                // failing the whole turn. Rejections happen before the first token, so nothing
+                // was streamed to the UI yet; if the retry also fails, the original error wins.
+                endpointRejectsMediaContent = true;
+                log.warn("{} endpoint rejected multimodal (array-form) message content; "
+                        + "continuing text-only — screenshots stay in the UI history", provider);
+                List<Message> stripped = ToolMediaBridge.withoutMedia(conversation);
+                streamError = streamAndCollect(
+                        options != null ? new Prompt(stripped, options) : new Prompt(stripped),
+                        accumulated, aggregated, callback);
+            }
             if (streamError != null) throw new AiServiceException(provider + " stream failed", streamError);
 
             ChatResponse roundResp = aggregated.get();
