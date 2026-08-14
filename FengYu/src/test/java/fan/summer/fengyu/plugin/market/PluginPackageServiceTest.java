@@ -58,6 +58,36 @@ class PluginPackageServiceTest {
     }
 
     @Test
+    void archiveManifestPreviewRejectsManifestLargerThanOneMegabyte() throws Exception {
+        String oversized = """
+            {"schemaVersion":2,"id":"com.example.large","name":"Large","description":"%s",
+             "version":"1.0.0","author":"Example","icon":"puzzle-outline","category":"dev",
+             "ui":{"entry":"ui/index.html"},"permissions":[]}
+            """.formatted("x".repeat(PluginPackageService.MAX_MANIFEST_BYTES));
+        MockMultipartFile archive = inlinePackage(oversized, "ui/index.html", "<html></html>");
+        PluginPackageService service = new PluginPackageService(temp.toString());
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+            () -> service.readArchiveManifest(archive));
+
+        assertTrue(error.getMessage().contains("1 MB"));
+    }
+
+    @Test
+    void nativeArchiveManifestPreviewUsesTheSameBound() throws Exception {
+        String oversized = " ".repeat(PluginPackageService.MAX_MANIFEST_BYTES + 1);
+        Path archive = temp.resolve("large-manifest.fyp");
+        Files.write(archive, zip("large-manifest.fyp", oversized,
+            "ui/index.html", "<html></html>").getBytes());
+        PluginPackageService service = new PluginPackageService(temp.toString());
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+            () -> service.readArchiveManifest(archive));
+
+        assertTrue(error.getMessage().contains("1 MB"));
+    }
+
+    @Test
     void installsSharedValidFullFixture() throws Exception {
         PluginPackageService service = new PluginPackageService(temp.toString());
         PluginManifest manifest = service.install(fixturePackage("valid-full.json", "ui/index.html", "<html>full</html>"));
