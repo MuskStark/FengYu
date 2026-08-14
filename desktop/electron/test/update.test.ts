@@ -18,7 +18,7 @@ const autoUpdater = {
   autoInstallOnAppQuit: true,
   disableDifferentialDownload: false,
   setFeedURL: vi.fn(),
-  currentVersion: '4.0.0',
+  currentVersion: '4.0.0' as string | { version: string },
   on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
     listeners[event] = cb
     return autoUpdater
@@ -102,7 +102,8 @@ describe('update:check', () => {
   })
 
   it('reports no update when the latest version equals currentVersion', async () => {
-    autoUpdater.currentVersion = '9.9.9'
+    // electron-updater exposes currentVersion as a SemVer object in production.
+    autoUpdater.currentVersion = { version: '9.9.9' }
     autoUpdater.checkForUpdates.mockResolvedValue(UPDATE_AVAILABLE)
     const { registerUpdateIpc } = await import('../src/ipc/update')
     registerUpdateIpc()

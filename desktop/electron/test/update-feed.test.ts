@@ -43,6 +43,7 @@ describe('configureUpdateFeed', () => {
     expect(autoUpdater.setFeedURL).toHaveBeenLastCalledWith({
       provider: 'generic',
       url: 'http://10.0.0.5:8088/fengyu-updates/deb',
+      channel: 'latest',
       useMultipleRangeRequest: false,
     })
     expect(autoUpdater.disableDifferentialDownload).toBe(true)
