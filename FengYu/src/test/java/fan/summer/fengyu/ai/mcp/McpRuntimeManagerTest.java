@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
 import com.sun.net.httpserver.HttpExchange;
@@ -77,6 +78,19 @@ class McpRuntimeManagerTest {
                     .toString().contains("chrome-fixture-ready"));
             manager.stop();
         }
+    }
+
+    @Test
+    void unreadableRegistryDoesNotPreventHostStartup() throws Exception {
+        Path registry = temp.resolve("mcp-servers").resolve("servers.json");
+        Files.createDirectories(registry.getParent());
+        Files.writeString(registry, "[{\"id\":");
+
+        McpRuntimeManager manager = new McpRuntimeManager(temp);
+        assertTrue(manager.servers().isEmpty());
+        manager.start();
+        assertTrue(manager.servers().isEmpty());
+        manager.stop();
     }
 
     /** Minimal newline-delimited JSON-RPC fixture; it exercises the real MCP SDK transport. */
