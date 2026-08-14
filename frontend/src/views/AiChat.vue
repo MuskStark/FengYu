@@ -350,8 +350,8 @@ watch(() => ai.activeId, async () => {
         class="cx-conversation"
         style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 55vh"
       >
-        <span class="cx-avatar" style="width: 46px; height: 46px; margin-bottom: 16px">
-          <i class="mdi lg mdi-hexagon-multiple-outline" />
+        <span class="cx-avatar ai-empty-avatar" aria-hidden="true">
+          <img src="/infinia-logo.svg" alt="" />
         </span>
         <div style="font-size: 20px; font-weight: 600; margin-bottom: 4px">{{ $t('aichat.heroTitle') }}</div>
         <div class="cx-muted">{{ $t('aichat.empty') }}</div>
@@ -574,3 +574,19 @@ watch(() => ai.activeId, async () => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.ai-empty-avatar {
+  width: 46px;
+  height: 46px;
+  margin-bottom: 16px;
+  padding: 7px;
+  background: #0d0d0d;
+  border-radius: 11px;
+}
+.ai-empty-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+</style>

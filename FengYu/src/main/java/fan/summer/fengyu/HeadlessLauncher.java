@@ -152,6 +152,12 @@ public final class HeadlessLauncher {
         Class<?> appClass = configured ? FengYuApplication.class : SetupApplication.class;
         SpringApplicationBuilder builder = new SpringApplicationBuilder(appClass);
         builder.properties(runtimeDefaults());
+        if (Boolean.parseBoolean(System.getProperty("fengyu.desktop"))) {
+            // Desktop mode drives the real screen (computer_use tools via java.awt.Robot).
+            // Spring Boot defaults to headless, which would make every AWT call fail; the
+            // Robot-based tools degrade gracefully on truly display-less machines anyway.
+            builder.headless(false);
+        }
         if (configured) {
             // APP mode marker — DataSourceAutoConfig is conditional on it.
             System.setProperty("fengyu.mode", "app");

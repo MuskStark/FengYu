@@ -1,0 +1,102 @@
+name: Computer Use
+
+# Cross-OS verification for the computer_* screen-control tools (ChatGPT-desktop-style
+# computer use). Path-filtered so it only runs when the computer-use surface changes:
+#
+#   unit        — the pure-logic contracts (envelopes, key map, per-OS app commands,
+#                 registry filtering) on windows/ubuntu/macos. Never touches a real
+#                 display, so headless Linux runners behave like production web mode.
+#   real-display — the REAL java.awt.Robot driver (observe-only: availability, display
+#                 enumeration, capture, cursor position — never input injection) on a
+#                 Windows runner, which provides an interactive desktop session.
+#
+# Kept as its own workflow with its own paths: a failure here never takes down the
+# stable plugin-tooling or release jobs (see AGENTS.md CI pitfalls).
+
+on:
+  push:
+    branches: [4.0.0, main]
+    paths:
+      - 'FengYu/src/main/java/fan/summer/fengyu/ai/tools/Computer*.java'
+      - 'FengYu/src/main/java/fan/summer/fengyu/ai/config/AiToolRegistry.java'
+      - 'FengYu/src/main/java/fan/summer/fengyu/HeadlessLauncher.java'
+      - 'FengYu/src/test/java/fan/summer/fengyu/ai/tools/Computer*.java'
+      - 'FengYu/src/test/java/fan/summer/fengyu/ai/config/AiToolRegistryComputerUseFilterTest.java'
+      - 'FengYu/pom.xml'
+      - 'pom.xml'
+      - '.github/workflows/computer-use-ci.yml'
+  pull_request:
+    paths:
+      - 'FengYu/src/main/java/fan/summer/fengyu/ai/tools/Computer*.java'
+      - 'FengYu/src/main/java/fan/summer/fengyu/ai/config/AiToolRegistry.java'
+      - 'FengYu/src/main/java/fan/summer/fengyu/HeadlessLauncher.java'
+      - 'FengYu/src/test/java/fan/summer/fengyu/ai/tools/Computer*.java'
+      - 'FengYu/src/test/java/fan/summer/fengyu/ai/config/AiToolRegistryComputerUseFilterTest.java'
+      - 'FengYu/pom.xml'
+      - 'pom.xml'
+      - '.github/workflows/computer-use-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: computer-use-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: unit (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      # The plugin SDK artifacts are not on Maven Central; install them first (same
+      # bootstrap the release workflow's build-runtime job uses).
+      - name: Install plugin SDK artifacts
+        shell: bash
+        run: ./mvnw -B -pl toolchain/sdk-java,toolchain/devkit-java -am install -DskipTests
+
+      - name: Computer-use unit tests
+        shell: bash
+        run: >
+          ./mvnw -B -f FengYu/pom.xml test
+          -Dtest='ComputerToolTest,ComputerKeyMapTest,ComputerAppsTest,AiToolRegistryComputerUseFilterTest'
+          -Dsurefire.failIfNoSpecifiedTests=false
+
+  real-display:
+    # Windows is the primary desktop target for computer use; GitHub Windows runners
+    # expose an interactive desktop, so the Robot driver can be exercised for real.
+    name: real-display (windows)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Install plugin SDK artifacts
+        shell: bash
+        run: ./mvnw -B -pl toolchain/sdk-java,toolchain/devkit-java -am install -DskipTests
+
+      - name: Real-display driver integration test
+        shell: bash
+        run: >
+          ./mvnw -B -f FengYu/pom.xml test
+          -Dtest='AwtComputerDriverLocalIT' -Dfengyu.local-it=true
+          -Dsurefire.failIfNoSpecifiedTests=false

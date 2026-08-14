@@ -81,6 +81,9 @@ function isAllowedNavigation(currentValue: string, targetValue: string): boolean
 
 /**
  * Create the main BrowserWindow. 1280×820, min 960×640, matches the previous Rust window.
+ * The native frame stays enabled so every platform keeps its own system window controls.
+ * macOS hides only the title-bar background, allowing the native traffic lights to sit over
+ * the renderer like the ChatGPT desktop app.
  * contextIsolation + sandbox on; nodeIntegration off — standard secure posture.
  *
  * The preload script (`dist/window/preload.js`) reads `apiBase`/`token` from `process.env`
@@ -97,6 +100,7 @@ export function createMainWindow(opts: CreateWindowOptions): BrowserWindow {
     height: 820,
     minWidth: 960,
     minHeight: 640,
+    ...(process.platform === 'darwin' ? { titleBarStyle: 'hidden' as const } : {}),
     // Do not expose Chromium's default white surface while the Vue bundle is
     // still loading. The window is revealed below after its first paint.
     // #0d0d0d matches the dark theme's `background` (md3-themes.ts) so the

@@ -40,6 +40,13 @@ public class AiConfigServiceHeadless {
     private static final String PLUGIN_UNSANDBOXED_KEY = "plugin.unsandboxed";
     /** Update-channel proxy base (e.g. {@code http://10.0.0.5:8088}). Empty → default GitHub feed. */
     private static final String UPDATE_API_BASE_KEY = "update.api_base";
+    /**
+     * Master switch for the {@code computer_*} screen-control tools (ChatGPT-desktop-style
+     * computer use). Default {@code true}: the desktop build ships the capability on, and every
+     * input-injecting call still passes the tool approval gate. Null-safe against an
+     * uninitialized {@link #INSTANCE} (pure unit tests) like the unsandboxed toggle.
+     */
+    private static final String COMPUTER_USE_KEY = "computer.use.enabled";
 
     // ── AI provider keys (duplicate AiConfigService read keys so writes round-trip) ──
     private static final String AI_MODE_KEY = "ai.mode";
@@ -132,6 +139,20 @@ public class AiConfigServiceHeadless {
         // every consumer (backend UpdateCheckService, desktop update-feed.ts) reads a clean base.
         String normalized = value == null ? "" : value.trim().replaceAll("/+$", "");
         INSTANCE.writeSetting(UPDATE_API_BASE_KEY, normalized);
+    }
+
+    /**
+     * Whether the {@code computer_*} screen-control tools are exposed to the AI. Read per
+     * registry snapshot by {@code AiToolRegistry} so toggling in Settings takes effect on the
+     * next turn without a restart.
+     */
+    public static boolean isComputerUseEnabled() {
+        if (INSTANCE == null) return true;
+        return Boolean.parseBoolean(INSTANCE.readSetting(COMPUTER_USE_KEY, "true"));
+    }
+
+    public static void setComputerUseEnabled(boolean enabled) {
+        INSTANCE.writeSetting(COMPUTER_USE_KEY, String.valueOf(enabled));
     }
 
     // ── Reads (delegate to AiConfigService) ───────────────────────────────────

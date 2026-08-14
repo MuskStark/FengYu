@@ -19,7 +19,7 @@ const accountMenuOpen = ref(false)
 const accountArea = ref<HTMLElement | null>(null)
 
 const primaryNav = [
-  { key: 'chat', to: '/', labelKey: 'sidebar.aiChat', icon: 'mdi-message-outline' },
+  { key: 'chat', to: '/', labelKey: 'sidebar.newChat', icon: 'mdi-message-outline' },
   { key: 'tools', to: '/tools', labelKey: 'sidebar.all', icon: 'mdi-view-grid-outline' },
   { key: 'plugins', to: '/plugins', labelKey: 'sidebar.plugins', icon: 'mdi-shopping-outline' },
   { key: 'agent', to: '/agent', labelKey: 'sidebar.agent', icon: 'mdi-source-branch' },
@@ -42,6 +42,14 @@ onBeforeUnmount(() => {
 function startChat() {
   ai.newConversation()
   if (route.name !== 'ai') void router.push('/')
+}
+
+function openPrimary(item: typeof primaryNav[number]) {
+  if (item.key === 'chat') {
+    startChat()
+    return
+  }
+  void router.push(item.to)
 }
 
 function openConversation(id: number) {
@@ -86,16 +94,6 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
       ><i class="mdi" :class="rail ? 'mdi-dock-right' : 'mdi-dock-left'" /></button>
     </div>
 
-    <div class="sidebar-new-chat-wrap">
-      <button v-if="!rail" class="sidebar-new-chat" @click="startChat">
-        <i class="mdi mdi-plus" />
-        <span>{{ $t('sidebar.newChat') }}</span>
-      </button>
-      <button v-else class="cx-iconbtn sidebar-rail-action" :title="$t('sidebar.newChat')" @click="startChat">
-        <i class="mdi mdi-plus" />
-      </button>
-    </div>
-
     <nav class="sidebar-primary-nav" :aria-label="$t('sidebar.primaryNavigation')">
       <button
         v-for="item in primaryNav"
@@ -103,7 +101,7 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
         class="cx-nav-item sidebar-nav-button"
         :class="{ rail, active: route.path === item.to }"
         :title="rail ? $t(item.labelKey) : undefined"
-        @click="router.push(item.to)"
+        @click="openPrimary(item)"
       >
         <i class="mdi" :class="item.icon" />
         <span v-if="!rail" class="cx-nav-label">{{ $t(item.labelKey) }}</span>
@@ -194,26 +192,6 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
 .sidebar-brand.rail { justify-content: center; padding-inline: 0; }
 .brand-logo { width: 28px; height: 28px; flex: 0 0 auto; object-fit: contain; }
 .sidebar-brand-name { flex: 1 1 auto; min-width: 0; overflow: hidden; font-weight: 600; white-space: nowrap; }
-.sidebar-new-chat-wrap { padding: 3px 8px 5px; }
-.sidebar-new-chat {
-  width: 100%;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: 0;
-  border-radius: 9px;
-  background: rgb(var(--v-theme-primary));
-  color: rgb(var(--v-theme-on-primary));
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.sidebar-new-chat:hover { opacity: .88; }
-.sidebar-new-chat .mdi { font-size: 18px; }
-.sidebar-rail-action { margin: 0 auto; }
 .sidebar-primary-nav { padding-top: 2px; }
 .sidebar-nav-button { width: calc(100% - 12px); border: 0; background: transparent; text-align: left; font: inherit; }
 .sidebar-history { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-bottom: 7px; }

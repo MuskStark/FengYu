@@ -11,6 +11,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.ObjectProvider;
 import fan.summer.fengyu.ai.workflow.WorkflowExecutionService;
 import fan.summer.fengyu.ai.workflow.WorkflowService;
+import fan.summer.fengyu.ai.mcp.McpRuntimeManager;
 
 import java.util.List;
 
@@ -53,11 +54,12 @@ public class AiToolDiscoveryConfig {
     public AiToolRegistry aiToolRegistry(List<FengYuTool> tools, OfficialPluginSeeder seeder,
             PluginPackageService packages, PluginProcessManager processes,
             ObjectProvider<SyncMcpToolCallbackProvider> mcpProvider,
+            McpRuntimeManager mcpRuntime,
             ObjectProvider<WorkflowService> workflowProvider,
             ObjectProvider<WorkflowExecutionService> workflowExecutionProvider) {
         seeder.seed();
         return new AiToolRegistry(tools, packages, processes, mcpProvider,
-                workflowProvider, workflowExecutionProvider);
+                workflowProvider, workflowExecutionProvider, mcpRuntime);
     }
 
     /** Startup snapshot retained for chat-backend compatibility; Agent uses the live registry. */

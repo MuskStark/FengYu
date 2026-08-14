@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '@/api/client'
-import type { AppSettings, LanguageName, LogLevel, ThemeName } from '@/api/types'
+import type { AppSettings, ComputerUseStatus, LanguageName, LogLevel, ThemeName } from '@/api/types'
 import type { AiConfigTestRequest, AiConfigTestResult, AiSettings, PartialAiSettings } from '@/api/types'
 import { i18n } from '@/i18n'
 import { useThemeStore } from './theme'
@@ -13,6 +13,8 @@ export const useSettingsStore = defineStore('settings', () => {
   const logLevel = ref<LogLevel>('INFO')
   const unsandboxedPlugins = ref(false)
   const updateApiBase = ref('')
+  const computerUseEnabled = ref(true)
+  const computerUse = ref<ComputerUseStatus | null>(null)
   const loaded = ref(false)
   let desktopTheme: ThemeName | null = null
 
@@ -40,6 +42,8 @@ export const useSettingsStore = defineStore('settings', () => {
     logLevel.value = s.logLevel ?? 'INFO'
     unsandboxedPlugins.value = s.unsandboxedPlugins ?? false
     updateApiBase.value = s.updateApiBase ?? ''
+    computerUseEnabled.value = s.computerUseEnabled ?? true
+    computerUse.value = s.computerUse ?? null
     useThemeStore().setTheme(s.theme)
     syncDesktopTheme(s.theme)
     syncDesktopUpdateApiBase(updateApiBase.value)
@@ -94,6 +98,11 @@ export const useSettingsStore = defineStore('settings', () => {
     await update({ updateApiBase: next })
   }
 
+  async function setComputerUseEnabled(enabled: boolean) {
+    computerUseEnabled.value = enabled
+    await update({ computerUseEnabled: enabled })
+  }
+
   // ── AI Config ───────────────────────────────────────────────
   const aiSettings = ref<AiSettings | null>(null)
   const aiLoaded = ref(false)
@@ -118,6 +127,8 @@ export const useSettingsStore = defineStore('settings', () => {
     logLevel,
     unsandboxedPlugins,
     updateApiBase,
+    computerUseEnabled,
+    computerUse,
     loaded,
     load,
     update,
@@ -127,6 +138,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setLogLevel,
     setUnsandboxedPlugins,
     setUpdateApiBase,
+    setComputerUseEnabled,
     aiSettings,
     aiLoaded,
     loadAi,

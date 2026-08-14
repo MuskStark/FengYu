@@ -131,6 +131,28 @@ data: {"text":"Let me check the workbook has 3 sheets.","tokens":42,"tps":18.6}
 Spring AI，因此支持视觉的模型能直接检查像素。同一结果也包含 DOM snapshot 与可访问性树，
 供纯文本模型使用。图片会保留在内存中的工具历史里供后续模型轮次使用；会话持久化仍为纯文本。
 
+### 电脑操作（Computer Use）
+
+桌面构建额外提供 `computer_*` 工具族——由后端 JVM 内的 `java.awt.Robot` 驱动的
+ChatGPT 桌面版式电脑操作：`computer_screenshot` 捕获真实屏幕（PNG 与
+`browser_screenshot` 一样直达视觉模型），`computer_displays` / `computer_apps` /
+`computer_cursor_position` 观察环境，`computer_click` / `computer_double_click` /
+`computer_mouse_move` / `computer_drag` / `computer_scroll` / `computer_type` /
+`computer_key` 注入真实输入。`computer_app_launch` 与 `computer_app_activate`
+负责打开或聚焦应用（`open -a`、PowerShell `Start-Process`/`AppActivate`、
+`gtk-launch`/`wmctrl`）。所有坐标均为逻辑屏幕点；截图响应会报告 Hi-DPI `scale`，
+模型在点击前据此换算图像像素。
+
+每个注入输入的调用都是 `external` 副作用，必须通过每轮审批门；只有观察类工具
+（`computer_screenshot`、`computer_displays`、`computer_apps`、
+`computer_cursor_position`、`computer_wait`）归类为 `read`。整个工具族可通过
+**设置 → 运行时与安全 → 电脑操作**开关（`computerUseEnabled`，默认开启）隐藏。
+同一套实现可运行于 Windows、macOS 与 Linux：**Windows 无需任何额外权限**
+（应用列举/启动/聚焦走 PowerShell；UAC 安全桌面与以管理员运行的窗口仍受系统保护）；
+**macOS 需要授予应用「屏幕录制」**（捕获）**与「辅助功能」**（输入）**权限**——缺失时
+捕获只剩壁纸、输入被系统静默丢弃。截图会镜像保存到 `.fengyu/computer-screenshots/`。
+当无可用显示器时，所有调用都降级为 `"computer use unavailable"` 响应而非抛出异常。
+
 ## 会话
 
 会话存储在后端。所有端点都要求带 `X-FengYu-Token` 头。

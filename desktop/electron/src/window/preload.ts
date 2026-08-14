@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('fengyu', {
   initialTheme: () => initialTheme,
   setupMode: () => setupMode,
   setTheme: (theme: 'dark' | 'light') => ipcRenderer.send('appearance:set-theme', theme),
+  platform: process.platform,
   desktop: true,
   pickFile: (filters?: { name: string; extensions: string[] }[]) =>
     ipcRenderer.invoke('dialog:open', { directory: false, filters }),
