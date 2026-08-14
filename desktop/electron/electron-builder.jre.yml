@@ -22,6 +22,8 @@ directories:
   output: ../dist-electron-jre
   buildResources: resources
 
+afterPack: scripts/after-pack.cjs
+
 files:
   - dist/**/*
   - frontend-dist/**/*

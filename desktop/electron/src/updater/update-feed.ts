@@ -6,6 +6,7 @@ interface FeedConfigurableUpdater {
   setFeedURL(options: {
     provider: 'generic'
     url: string
+    channel: 'latest'
     useMultipleRangeRequest: boolean
   }): void
   disableDifferentialDownload: boolean
@@ -92,7 +93,15 @@ export function configureUpdateFeed(
     )
   }
   const feedUrl = `${base}/fengyu-updates/deb`
-  updater.setFeedURL({ provider: 'generic', url: feedUrl, useMultipleRangeRequest: false })
+  // Pin the generic provider to latest-linux.yml. Without an explicit channel,
+  // electron-updater can retain a prerelease channel and request beta-linux.yml/rc-linux.yml,
+  // while FY-Proxy intentionally exposes one channel-selected feed.
+  updater.setFeedURL({
+    provider: 'generic',
+    url: feedUrl,
+    channel: 'latest',
+    useMultipleRangeRequest: false,
+  })
   updater.disableDifferentialDownload = true
   return feedUrl
 }

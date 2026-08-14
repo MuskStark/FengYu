@@ -32,6 +32,10 @@ directories:
   output: ../dist-electron
   buildResources: resources
 
+# Writes an explicit marker only during the dedicated Windows ZIP build pass. See
+# scripts/after-pack.cjs and src/updater/portable-updater.ts.
+afterPack: scripts/after-pack.cjs
+
 # app.asar contents. `dist/` is the TypeScript build output (main.js + preload + desktop/...);
 # `frontend-dist/` is the Vue SPA copied in by CI (loaded via loadFile in packaged mode).
 files:
