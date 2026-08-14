@@ -130,6 +130,8 @@ data: {"text":"Let me check the workbook has 3 sheets.","tokens":42,"tps":18.6}
 `browser_screenshot` 会在工具响应之后把真实 PNG 作为 `image/png` media part 发送给
 Spring AI，因此支持视觉的模型能直接检查像素。同一结果也包含 DOM snapshot 与可访问性树，
 供纯文本模型使用。图片会保留在内存中的工具历史里供后续模型轮次使用；会话持久化仍为纯文本。
+只接受字符串 `content`（不支持多模态数组）的网关会被自动适配：当轮去图重试一次，此后该端点
+保持纯文本——截图仍会正常出现在聊天界面。
 
 ### 电脑操作（Computer Use）
 

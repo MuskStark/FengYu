@@ -115,5 +115,65 @@ final class ToolMediaBridge {
                 && data[6] == 0x1a && data[7] == 0x0a;
     }
 
-    private record Extracted(String text, List<AiMedia> media) {}
+    // ── Endpoint compatibility: media-free fallback ─────────────────────────
+
+    /**
+     * True when any message carries media parts. OpenAI-compatible endpoints serialize such
+     * user messages with array-form {@code content} (text + image_url parts) — required for
+     * vision, but strict gateways only accept string content.
+     */
+    static boolean containsMedia(List<Message> messages) {
+        for (Message message : messages) {
+            if (message instanceof UserMessage user
+                    && user.getMedia() != null && !user.getMedia().isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Copy of {@code messages} with media attachments removed: each media-bearing
+     * {@link UserMessage} becomes a plain text message (its explanatory text is kept).
+     * Used after an endpoint rejected multimodal content so the chat can continue text-only.
+     */
+    static List<Message> withoutMedia(List<Message> messages) {
+        List<Message> out = new ArrayList<>(messages.size());
+        for (Message message : messages) {
+            if (message instanceof UserMessage user
+                    && user.getMedia() != null && !user.getMedia().isEmpty()) {
+                String text = user.getText() == null || user.getText().isBlank()
+                        ? "[image attachment omitted for this endpoint]"
+                        : user.getText();
+                out.add(new UserMessage(text));
+            } else {
+                out.add(message);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Heuristic for a provider 400 caused by array-form message content: observed from
+     * Go-based OpenAI-compatible gateways as
+     * {@code json: cannot unmarshal array into Go struct field ChatMessage.messages.content of type string}.
+     * Matching is deliberately narrow (array-vs-string content mismatch) so unrelated bad
+     * requests still surface; callers retry once without media and propagate the original
+     * error when the retry also fails.
+     */
+    static boolean isMediaContentRejection(Throwable error) {
+        for (Throwable c = error; c != null; c = c.getCause()) {
+            String message = c.getMessage();
+            if (message == null) continue;
+            String lower = message.toLowerCase(java.util.Locale.ROOT);
+            if (!lower.contains("content")) continue;
+            if (lower.contains("cannot unmarshal array") && lower.contains("string")) return true;
+            if (lower.contains("content should be a string")) return true;
+            if (lower.contains("content must be a string")) return true;
+            if (lower.contains("expected string") && lower.contains("messages")) return true;
+        }
+        return false;
+    }
+
+    private static record Extracted(String text, List<AiMedia> media) {}
 }
