@@ -133,7 +133,10 @@ Both reject local/private-network targets and run as `read` effects. Use the des
 `browser_screenshot` sends the actual PNG to Spring AI as an `image/png` media part after its tool
 response, so a vision-capable model can inspect the pixels. The same result also contains a DOM
 snapshot and accessibility tree for text-only models. Images are preserved in the in-memory tool
-history for follow-up model rounds; conversation persistence remains text-only.
+history for follow-up model rounds; conversation persistence remains text-only. Gateways that
+only accept string `content` (no multimodal arrays) are handled automatically: the round is
+retried once without the image and the endpoint stays text-only from then on — screenshots keep
+arriving in the chat UI.
 
 ### Computer use (screen control)
 
