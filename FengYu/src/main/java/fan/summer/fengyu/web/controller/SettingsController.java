@@ -2,12 +2,14 @@ package fan.summer.fengyu.web.controller;
 
 import fan.summer.fengyu.ExitCodes;
 import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
+import fan.summer.fengyu.ai.tools.ComputerTool;
 import fan.summer.fengyu.log.LoggingLevelService;
 import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
 import fan.summer.fengyu.security.ProcessSandbox;
 import fan.summer.fengyu.setup.DataSourceConfigService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -38,6 +40,7 @@ public class SettingsController {
     private final DataSourceConfigService dataSourceConfigService;
     private final LoggingLevelService logging;
     private final PluginProcessManager pluginProcesses;
+    private final ObjectProvider<ComputerTool> computerTool;
     private final Runnable exitAction;
 
     /** Production constructor — Spring auto-wires this. Exit action delays 1s then exits. */
@@ -45,26 +48,38 @@ public class SettingsController {
     public SettingsController(AiConfigServiceHeadless config,
                               DataSourceConfigService dataSourceConfigService,
                               LoggingLevelService logging,
-                              PluginProcessManager pluginProcesses) {
-        this(config, dataSourceConfigService, logging, pluginProcesses, defaultExitAction());
+                              PluginProcessManager pluginProcesses,
+                              ObjectProvider<ComputerTool> computerTool) {
+        this(config, dataSourceConfigService, logging, pluginProcesses, computerTool, defaultExitAction());
     }
 
     /** Test constructor — injects a no-op/recording exit action. */
     SettingsController(AiConfigServiceHeadless config,
                        DataSourceConfigService dataSourceConfigService,
                        Runnable exitAction) {
-        this(config, dataSourceConfigService, null, null, exitAction);
+        this(config, dataSourceConfigService, null, null, null, exitAction);
+    }
+
+    /** Test constructor — pre-computer-use shape retained for existing tests. */
+    SettingsController(AiConfigServiceHeadless config,
+                       DataSourceConfigService dataSourceConfigService,
+                       LoggingLevelService logging,
+                       PluginProcessManager pluginProcesses,
+                       Runnable exitAction) {
+        this(config, dataSourceConfigService, logging, pluginProcesses, null, exitAction);
     }
 
     SettingsController(AiConfigServiceHeadless config,
                        DataSourceConfigService dataSourceConfigService,
                        LoggingLevelService logging,
                        PluginProcessManager pluginProcesses,
+                       ObjectProvider<ComputerTool> computerTool,
                        Runnable exitAction) {
         this.config = config;
         this.dataSourceConfigService = dataSourceConfigService;
         this.logging = logging;
         this.pluginProcesses = pluginProcesses;
+        this.computerTool = computerTool;
         this.exitAction = exitAction;
     }
 
@@ -89,6 +104,11 @@ public class SettingsController {
         out.put("logLevel", logging.currentLevel());
         out.put("unsandboxedPlugins", config.isUnsandboxedPluginsEnabled());
         out.put("updateApiBase", config.getUpdateApiBase(""));
+        out.put("computerUseEnabled", AiConfigServiceHeadless.isComputerUseEnabled());
+        // Capability probe (null when the desktop-mode bean is absent, e.g. plain web mode):
+        // the Settings UI shows the computer-use card only when this is present.
+        ComputerTool tool = computerTool == null ? null : computerTool.getIfAvailable();
+        out.put("computerUse", tool == null ? null : tool.availability());
         return out;
     }
 
@@ -119,7 +139,23 @@ public class SettingsController {
         if (body.get("updateApiBase") instanceof String u) {
             applyUpdateApiBase(u);
         }
+        Object computerUse = body.get("computerUseEnabled");
+        if (computerUse instanceof Boolean b) {
+            applyComputerUseEnabled(b);
+        } else if (computerUse instanceof String s) {
+            applyComputerUseEnabled(Boolean.parseBoolean(s));
+        }
         return get();
+    }
+
+    /**
+     * Master switch for the {@code computer_*} screen-control tools. Hides (or restores) the
+     * tool family on the next registry snapshot — no restart. Input-injecting calls keep
+     * passing the per-turn tool approval gate independently of this switch.
+     */
+    private void applyComputerUseEnabled(boolean enabled) {
+        AiConfigServiceHeadless.setComputerUseEnabled(enabled);
+        log.info("Computer use tools {} via settings", enabled ? "ENABLED" : "disabled");
     }
 
     /**

@@ -13,6 +13,8 @@ import fan.summer.fengyu.ai.tools.ToolEffect;
 import fan.summer.fengyu.ai.tools.ToolEffectProvider;
 import fan.summer.fengyu.ai.workflow.WorkflowExecutionService;
 import fan.summer.fengyu.ai.workflow.WorkflowService;
+import fan.summer.fengyu.ai.mcp.McpRuntimeManager;
+import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
 import fan.summer.fengyu.plugin.market.ManifestI18n;
 import fan.summer.fengyu.plugin.market.PluginPackageService;
 import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
@@ -42,13 +44,17 @@ public final class AiToolRegistry {
     private final PluginPackageService packages;
     private final PluginProcessManager processes;
     private final ObjectProvider<SyncMcpToolCallbackProvider> mcpProvider;
+    private final McpRuntimeManager mcpRuntime;
     private final ObjectProvider<WorkflowService> workflowProvider;
     private final ObjectProvider<WorkflowExecutionService> workflowExecutionProvider;
+    private final java.util.function.BooleanSupplier computerUseEnabled;
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
 
     /** When the desktop shell provides built-in browser tools, suppress the legacy plugin's tools to avoid name collisions. */
     private static final String DESKTOP_PROPERTY = "fengyu.desktop";
     private static final String BROWSER_PLUGIN_ID = "fan.summer.browser";
+    /** Screen-control tool family hidden while the Settings master switch is off. */
+    private static final String COMPUTER_TOOL_PREFIX = "computer_";
 
     private static boolean desktopMode() {
         return Boolean.parseBoolean(System.getProperty(DESKTOP_PROPERTY));
@@ -56,13 +62,31 @@ public final class AiToolRegistry {
 
     public AiToolRegistry(List<FengYuTool> tools, PluginPackageService packages,
             PluginProcessManager processes, ObjectProvider<SyncMcpToolCallbackProvider> mcpProvider) {
-        this(tools, packages, processes, mcpProvider, null, null);
+        this(tools, packages, processes, mcpProvider, null, null, null);
     }
 
     public AiToolRegistry(List<FengYuTool> tools, PluginPackageService packages,
             PluginProcessManager processes, ObjectProvider<SyncMcpToolCallbackProvider> mcpProvider,
             ObjectProvider<WorkflowService> workflowProvider,
             ObjectProvider<WorkflowExecutionService> workflowExecutionProvider) {
+        this(tools, packages, processes, mcpProvider, workflowProvider, workflowExecutionProvider, null);
+    }
+
+    public AiToolRegistry(List<FengYuTool> tools, PluginPackageService packages,
+            PluginProcessManager processes, ObjectProvider<SyncMcpToolCallbackProvider> mcpProvider,
+            ObjectProvider<WorkflowService> workflowProvider,
+            ObjectProvider<WorkflowExecutionService> workflowExecutionProvider,
+            McpRuntimeManager mcpRuntime) {
+        this(tools, packages, processes, mcpProvider, workflowProvider, workflowExecutionProvider,
+                mcpRuntime, AiConfigServiceHeadless::isComputerUseEnabled);
+    }
+
+    /** Full constructor — the computer-use switch is injectable so tests can pin it off. */
+    AiToolRegistry(List<FengYuTool> tools, PluginPackageService packages,
+            PluginProcessManager processes, ObjectProvider<SyncMcpToolCallbackProvider> mcpProvider,
+            ObjectProvider<WorkflowService> workflowProvider,
+            ObjectProvider<WorkflowExecutionService> workflowExecutionProvider,
+            McpRuntimeManager mcpRuntime, java.util.function.BooleanSupplier computerUseEnabled) {
         List<ToolCallback> callbacks = new ArrayList<>();
         for (FengYuTool toolBean : tools) {
             for (ToolCallback callback : ToolCallbacks.from(toolBean)) {
@@ -80,13 +104,29 @@ public final class AiToolRegistry {
         this.packages = packages;
         this.processes = processes;
         this.mcpProvider = mcpProvider;
+        this.mcpRuntime = mcpRuntime;
         this.workflowProvider = workflowProvider;
         this.workflowExecutionProvider = workflowExecutionProvider;
+        this.computerUseEnabled = computerUseEnabled;
+    }
+
+    /** True when {@code computer_*} tools may appear in this snapshot (Settings master switch). */
+    private boolean computerUseVisible() {
+        return computerUseEnabled == null || computerUseEnabled.getAsBoolean();
+    }
+
+    private static boolean isComputerTool(String name) {
+        return name != null && name.startsWith(COMPUTER_TOOL_PREFIX);
     }
 
     /** An immutable, internally consistent snapshot for one planning/execution operation. */
     public List<ToolCallback> callbacks() {
-        List<ToolCallback> callbacks = new ArrayList<>(builtins);
+        boolean computerUse = computerUseVisible();
+        List<ToolCallback> callbacks = new ArrayList<>();
+        for (ToolCallback callback : builtins) {
+            if (!computerUse && isComputerTool(callback.getToolDefinition().name())) continue;
+            callbacks.add(callback);
+        }
         for (var manifest : packages.installed()) {
             if (!packages.isEnabled(manifest.id()) || manifest.aiTools() == null) continue;
             if (desktopMode() && BROWSER_PLUGIN_ID.equals(manifest.id())) continue;
@@ -95,6 +135,11 @@ public final class AiToolRegistry {
         SyncMcpToolCallbackProvider provider = mcpProvider.getIfAvailable();
         if (provider != null) {
             for (ToolCallback callback : provider.getToolCallbacks()) {
+                callbacks.add(audited(callback, ToolEffect.EXTERNAL));
+            }
+        }
+        if (mcpRuntime != null) {
+            for (ToolCallback callback : mcpRuntime.callbacks()) {
                 callbacks.add(audited(callback, ToolEffect.EXTERNAL));
             }
         }
@@ -110,11 +155,12 @@ public final class AiToolRegistry {
     }
 
     /** UI descriptors include stable ownership and output metadata absent from Spring's definition. */
-    /** UI descriptors include stable ownership and output metadata absent from Spring's definition. */
     public List<ToolDescriptor> descriptors(String locale) {
+        boolean computerUse = computerUseVisible();
         List<ToolDescriptor> descriptors = new ArrayList<>();
         for (ToolCallback callback : builtins) {
             var definition = callback.getToolDefinition();
+            if (!computerUse && isComputerTool(definition.name())) continue;
             descriptors.add(descriptor("builtin:" + definition.name(), null, definition, null, null));
         }
         for (var manifest : packages.installed()) {
@@ -140,6 +186,12 @@ public final class AiToolRegistry {
         SyncMcpToolCallbackProvider provider = mcpProvider.getIfAvailable();
         if (provider != null) {
             for (ToolCallback callback : provider.getToolCallbacks()) {
+                var definition = callback.getToolDefinition();
+                descriptors.add(descriptor("mcp:" + definition.name(), "mcp", definition, null, null));
+            }
+        }
+        if (mcpRuntime != null) {
+            for (ToolCallback callback : mcpRuntime.callbacks()) {
                 var definition = callback.getToolDefinition();
                 descriptors.add(descriptor("mcp:" + definition.name(), "mcp", definition, null, null));
             }

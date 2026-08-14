@@ -135,6 +135,29 @@ response, so a vision-capable model can inspect the pixels. The same result also
 snapshot and accessibility tree for text-only models. Images are preserved in the in-memory tool
 history for follow-up model rounds; conversation persistence remains text-only.
 
+### Computer use (screen control)
+
+Desktop builds additionally expose the `computer_*` family — ChatGPT-desktop-style computer use
+driven by `java.awt.Robot` inside the backend JVM: `computer_screenshot` captures the real screen
+(the PNG reaches a vision model exactly like `browser_screenshot`), `computer_displays` /
+`computer_apps` / `computer_cursor_position` observe the environment, and `computer_click` /
+`computer_double_click` / `computer_mouse_move` / `computer_drag` / `computer_scroll` /
+`computer_type` / `computer_key` inject real input. `computer_app_launch` and
+`computer_app_activate` open or focus applications (`open -a`, PowerShell `Start-Process`/
+`AppActivate`, `gtk-launch`/`wmctrl`). All coordinates are logical screen points; the screenshot
+envelope reports the Hi-DPI `scale` so the model converts image pixels before clicking.
+
+Every input-injecting call is an `external` effect and passes the per-turn approval gate; only
+observing tools (`computer_screenshot`, `computer_displays`, `computer_apps`,
+`computer_cursor_position`, `computer_wait`) classify as `read`. The family can be hidden entirely
+with the **Settings → Runtime & security → Computer use** switch (`computerUseEnabled`, default on).
+The same implementation runs on Windows, macOS, and Linux: **Windows needs no extra permissions**
+(app listing/launch/activation use PowerShell; UAC secure-desktop and elevated-app windows stay
+protected by the OS), while **macOS needs Screen Recording** (capture) **and Accessibility** (input)
+permissions — without them captures show wallpaper only and input is dropped silently by the OS.
+Captures are mirrored to `.fengyu/computer-screenshots/`. When no display is reachable every call
+degrades to a `"computer use unavailable"` envelope instead of throwing.
+
 ## Conversations
 
 Conversations are stored on the backend. All endpoints require the `X-FengYu-Token` header.
