@@ -5,6 +5,7 @@ export interface FengyuBridge {
   initialTheme(): 'dark' | 'light'
   setupMode(): boolean | null
   setTheme(theme: 'dark' | 'light'): void
+  platform: NodeJS.Platform
   pickFile(filters?: { name: string; extensions: string[] }[]): Promise<string | null>
   pickDirectory(): Promise<string | null>
   desktop: true

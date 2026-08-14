@@ -15,7 +15,8 @@ All endpoints require the `X-FengYu-Token` header. See [Backend](/en/architectur
 ```text
 GET /api/settings
   ◄── 200 { "theme": "dark", "language": "en", "sidebarCollapsed": false,
-             "logLevel": "INFO", "updateApiBase": "" }
+             "logLevel": "INFO", "updateApiBase": "", "computerUseEnabled": true,
+             "computerUse": { "available": true, "reason": null } }
 ```
 
 `PUT /api/settings` accepts a **partial body** — only the keys you include are persisted; the rest stay as they are.
@@ -35,6 +36,8 @@ PUT /api/settings
 | `sidebarCollapsed` | boolean | Whether the sidebar starts collapsed. |
 | `logLevel` | string | `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `OFF`. Applied immediately to the main application and every Java plugin Worker. |
 | `updateApiBase` | string | Empty for GitHub, or the absolute HTTP(S) base URL of an intranet FY-Proxy update server. |
+| `computerUseEnabled` | boolean | Master switch for the desktop `computer_*` screen-control tools (default `true`). `false` removes them from the AI catalog on the next turn; input actions always keep the per-turn approval gate. |
+| `computerUse` | object | Read-only capability probe: `{available, reason}`. Present only in desktop mode; `null` in plain web mode. |
 
 Changing `logLevel` does not restart Workers. The host updates its Logback namespaces and sends a
 built-in JSON-RPC notification to each running Worker; newly launched Workers inherit the same
@@ -96,21 +99,31 @@ Use this to validate credentials and endpoint reachability up front.
 
 ## MCP clients
 
-FengYu accepts Spring AI MCP client configuration at startup. STDIO, SSE, and Streamable HTTP
-servers are supported through `spring.ai.mcp.client.stdio.*`,
-`spring.ai.mcp.client.sse.*`, and `spring.ai.mcp.client.streamable-http.*`. For a Codex-style
-STDIO server file, launch with:
+FengYu can dynamically add, test, enable, disable, and remove MCP servers from **Settings → MCP**
+or through the REST API. STDIO, SSE, and Streamable HTTP connections are established immediately
+after saving, and discovered tools are added to the live chat and Agent catalogs without a restart.
+
+To connect [mcp-chrome](https://github.com/hangwin/mcp-chrome):
+
+1. Install its Chrome extension and `mcp-chrome-bridge` as described by the project, then click
+   Connect in the extension.
+2. Open **Settings → MCP** in FengYu and click **Add Chrome MCP**.
+3. Save the prefilled Streamable HTTP configuration: `http://127.0.0.1:12306` with endpoint
+   `/mcp`.
+
+The official mcp-chrome client URL is `http://127.0.0.1:12306/mcp`. FengYu accepts either the
+host URL plus `/mcp` endpoint or the complete URL in the address field.
+
+For a Codex-style STDIO server file, Spring AI startup configuration remains available:
 
 ```bash
 java -jar FengYu-*.jar \
   --spring.ai.mcp.client.stdio.servers-configuration=file:/absolute/path/mcp-servers.json
 ```
 
-MCP tools are added to both chat and Agent tool catalogs. Inspect initialized connections with
-`GET /api/mcp/status`. MCP configuration is startup-scoped; changing it requires a restart.
-Configuring an external STDIO command is explicit authorization to launch that command, so only
-use trusted server definitions and keep credentials in the launch environment or a protected
-external file.
+Inspect connections with `GET /api/mcp/status` and `GET /api/mcp/servers`. Configuring an external
+STDIO command is explicit authorization to launch that command, so only use trusted server
+definitions and keep credentials in protected local configuration.
 
 ## `datasource.properties` layout
 

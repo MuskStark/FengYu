@@ -72,6 +72,12 @@ export interface CategoryDescriptor {
   icon: string
 }
 
+/** Screen-control (computer use) capability probe; null when the desktop-mode bean is absent. */
+export interface ComputerUseStatus {
+  available: boolean
+  reason?: string | null
+}
+
 export interface AppSettings {
   sidebarCollapsed: boolean
   theme: ThemeName
@@ -79,6 +85,8 @@ export interface AppSettings {
   logLevel: LogLevel
   unsandboxedPlugins: boolean
   updateApiBase: string
+  computerUseEnabled: boolean
+  computerUse?: ComputerUseStatus | null
 }
 
 export type PartialSettings = Partial<AppSettings>
@@ -428,9 +436,63 @@ export interface McpConnectionStatus {
 
 export interface McpStatus {
   enabled: boolean
+  /** Present on backends that expose runtime MCP server management endpoints. */
+  dynamicManagement?: boolean
   connectionCount: number
   toolCount: number
   connections: McpConnectionStatus[]
+}
+
+export type McpTransportType = 'STDIO' | 'SSE' | 'STREAMABLE_HTTP'
+
+export interface McpServer {
+  id: string
+  name: string
+  type: McpTransportType
+  command?: string | null
+  args: string[]
+  url?: string | null
+  endpoint?: string | null
+  enabled: boolean
+  status: 'connected' | 'disconnected' | 'error' | string
+  error?: string | null
+  serverVersion: string
+  protocolVersion: string
+  tools: string[]
+  envKeys: string[]
+  headerNames: string[]
+}
+
+export interface McpServerRequest {
+  name: string
+  type: McpTransportType
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  url?: string
+  endpoint?: string
+  headers?: Record<string, string>
+  enabled?: boolean
+}
+
+export interface McpPrompt {
+  name: string
+  title: string
+  description: string
+  arguments: string[]
+}
+
+export interface McpResource {
+  name: string
+  title: string
+  uri: string
+  description: string
+  mimeType: string
+}
+
+export interface McpCallResult {
+  isError: boolean
+  content: unknown[]
 }
 
 export interface ProcessIsolationStatus {

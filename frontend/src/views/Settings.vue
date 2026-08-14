@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
 import { api } from '@/api/client'
 import type {
@@ -9,15 +10,42 @@ import type {
   AiMode,
   LanguageName,
   LogLevel,
+  McpPrompt,
+  McpResource,
   McpStatus,
+  McpServer,
+  McpServerRequest,
+  McpTransportType,
   PluginDbProvisionResult,
   ProcessIsolationStatus,
   ThemeName,
 } from '@/api/types'
 
 const { t } = useI18n()
+const router = useRouter()
 const settings = useSettingsStore()
 const mcpStatus = ref<McpStatus | null>(null)
+const mcpServers = ref<McpServer[]>([])
+const mcpSelectedId = ref<string | null>(null)
+const mcpSaving = ref(false)
+const mcpTesting = ref<string | null>(null)
+const mcpError = ref<string | null>(null)
+const mcpView = ref<'list' | 'detail'>('list')
+const mcpQuery = ref('')
+const mcpFilter = ref<'all' | 'enabled' | 'disabled' | 'stdio' | 'sse' | 'streamableHttp'>('all')
+const mcpTab = ref<'general' | 'description' | 'tools' | 'prompts' | 'resources' | 'logs'>('general')
+const mcpToolQuery = ref('')
+const mcpPrompts = ref<McpPrompt[]>([])
+const mcpResources = ref<McpResource[]>([])
+const mcpDetailsLoading = ref(false)
+const mcpCallTool = ref('')
+const mcpCallArguments = ref('{}')
+const mcpCalling = ref(false)
+const mcpCallResult = ref<string | null>(null)
+const mcpForm = ref({
+  name: '', type: 'STDIO' as McpTransportType, command: '', args: '', url: '', endpoint: '',
+  env: '', headers: '', enabled: true,
+})
 const isolationStatus = ref<ProcessIsolationStatus | null>(null)
 const showUnsandboxedConfirm = ref(false)
 const showDbProvisionConfirm = ref(false)
@@ -29,7 +57,13 @@ const dbError = ref<string | null>(null)
 onMounted(() => {
   if (!settings.loaded) void settings.load().catch(() => {})
   if (!settings.aiLoaded) void settings.loadAi().catch(() => {})
-  void api.mcpStatus().then((value) => { mcpStatus.value = value }).catch(() => {})
+  void api.mcpStatus().then((value) => {
+    mcpStatus.value = value
+    // Older developer-mode backends expose the diagnostics endpoint but not
+    // the runtime management endpoints. Avoid a noisy 404 while Settings is
+    // still usable during a backend restart/rebuild.
+    if (value.dynamicManagement === true) void loadMcpServers()
+  }).catch(() => {})
   void api.processIsolationStatus()
     .then((value) => { isolationStatus.value = value })
     .catch(() => {})
@@ -73,14 +107,15 @@ watch(() => settings.updateApiBase, (v) => { proxyUrl.value = v ?? '' }, { immed
 
 // Left-nav section switching (in-page, no new routes).
 type SectionId = 'providers' | 'generate' | 'appearance' | 'runtime' | 'mcp' | 'database' | 'update'
-const activeSection = ref<SectionId>('providers')
+const activeSection = ref<SectionId>('appearance')
+const settingsQuery = ref('')
 type NavGroup = 'ai' | 'personalize' | 'system'
 const groupLabel = (g: NavGroup) =>
   g === 'ai' ? t('settings.groupAI') : g === 'personalize' ? t('settings.groupPersonalize') : t('settings.groupSystem')
 const sections = computed(() => [
   { id: 'providers' as const, icon: 'mdi-robot-outline', label: t('aiSettings.providers'), group: 'ai' as NavGroup },
   { id: 'generate' as const, icon: 'mdi-tune-vertical', label: t('aiSettings.generate'), group: 'ai' as NavGroup },
-  { id: 'appearance' as const, icon: 'mdi-palette-outline', label: t('settings.theme'), group: 'personalize' as NavGroup },
+  { id: 'appearance' as const, icon: 'mdi-palette-outline', label: t('settings.general'), group: 'personalize' as NavGroup },
   { id: 'runtime' as const, icon: 'mdi-shield-lock-outline', label: t('settings.runtimeSecurity'), group: 'system' as NavGroup },
   { id: 'mcp' as const, icon: 'mdi-connection', label: 'MCP', group: 'system' as NavGroup },
   { id: 'database' as const, icon: 'mdi-database-lock-outline', label: t('settings.pluginDbSection'), group: 'system' as NavGroup },
@@ -101,6 +136,18 @@ const navRows = computed<NavRow[]>(() => {
   }
   return rows
 })
+const visibleNavRows = computed<NavRow[]>(() => {
+  const query = settingsQuery.value.trim().toLowerCase()
+  if (!query) return navRows.value
+  const matches = new Set(sections.value
+    .filter((section) => `${section.label} ${groupLabel(section.group)}`.toLowerCase().includes(query))
+    .map((section) => section.id))
+  return navRows.value.filter((row) => row.type === 'item' && matches.has(row.id))
+})
+
+function backToApp() {
+  void router.push('/')
+}
 
 // ── Provider master-detail ─────────────────────────────────────────────
 type ProviderId = 'openai' | 'anthropic' | 'deepseek'
@@ -228,6 +275,33 @@ const isolationChipLabel = computed(() => {
   return t('settings.compatibilityApproval')
 })
 
+// Computer use (AI screen control) badge + guarded enable.
+const showComputerUseConfirm = ref(false)
+const computerUseChipClass = computed(() => {
+  const status = settings.computerUse
+  if (!status) return ''
+  if (!status.available) return 'cx-chip--error'
+  return settings.computerUseEnabled ? 'cx-chip--success' : 'cx-chip--warn'
+})
+const computerUseChipLabel = computed(() => {
+  const status = settings.computerUse
+  if (!status) return ''
+  if (!status.available) return t('settings.computerUseUnavailableShort')
+  return settings.computerUseEnabled
+    ? t('settings.computerUseReady')
+    : t('settings.computerUseDisabledShort')
+})
+
+function requestEnableComputerUse() {
+  if (settings.computerUseEnabled) return
+  showComputerUseConfirm.value = true
+}
+
+async function confirmEnableComputerUse() {
+  showComputerUseConfirm.value = false
+  await settings.setComputerUseEnabled(true)
+}
+
 // Persist every provider's config (not just the active one) so editing any
 // provider in the master-detail survives a save.
 async function onSave() {
@@ -333,14 +407,216 @@ async function onSaveProxy() {
     proxyError.value = e instanceof Error ? e.message : String(e)
   }
 }
+
+function resetMcpForm() {
+  mcpSelectedId.value = null
+  mcpForm.value = { name: '', type: 'STDIO', command: '', args: '', url: '', endpoint: '', env: '', headers: '', enabled: true }
+  mcpError.value = null
+  mcpCallResult.value = null
+  mcpTab.value = 'general'
+  mcpView.value = 'detail'
+}
+
+/** Pre-fill the official mcp-chrome Streamable HTTP endpoint. */
+function presetMcpChrome() {
+  mcpSelectedId.value = null
+  mcpForm.value = {
+    name: 'mcp-chrome', type: 'STREAMABLE_HTTP', command: '', args: '',
+    url: 'http://127.0.0.1:12306', endpoint: '/mcp', env: '', headers: '', enabled: true,
+  }
+  mcpError.value = null
+  mcpCallResult.value = null
+  mcpTab.value = 'general'
+  mcpView.value = 'detail'
+}
+
+function selectMcpServer(server: McpServer) {
+  mcpSelectedId.value = server.id
+  mcpForm.value = {
+    name: server.name, type: server.type, command: server.command ?? '', args: server.args.join('\n'),
+    url: server.url ?? '', endpoint: server.endpoint ?? '', env: '', headers: '', enabled: server.enabled,
+  }
+  mcpError.value = null
+  mcpCallTool.value = ''
+  mcpCallArguments.value = '{}'
+  mcpCallResult.value = null
+  mcpTab.value = 'general'
+  mcpView.value = 'detail'
+  void loadMcpDetails(server)
+}
+
+const selectedMcpServer = computed(() => mcpServers.value.find((server) => server.id === mcpSelectedId.value) ?? null)
+const filteredMcpServers = computed(() => {
+  const query = mcpQuery.value.trim().toLowerCase()
+  return mcpServers.value.filter((server) => {
+    if (mcpFilter.value === 'enabled' && !server.enabled) return false
+    if (mcpFilter.value === 'disabled' && server.enabled) return false
+    if (mcpFilter.value === 'stdio' && server.type !== 'STDIO') return false
+    if (mcpFilter.value === 'sse' && server.type !== 'SSE') return false
+    if (mcpFilter.value === 'streamableHttp' && server.type !== 'STREAMABLE_HTTP') return false
+    return !query || `${server.name} ${server.type} ${server.serverVersion}`.toLowerCase().includes(query)
+  })
+})
+const filteredMcpTools = computed(() => {
+  const query = mcpToolQuery.value.trim().toLowerCase()
+  return (selectedMcpServer.value?.tools ?? []).filter((tool) => !query || tool.toLowerCase().includes(query))
+})
+const mcpConnected = computed(() => selectedMcpServer.value?.status === 'connected')
+
+function mcpTypeLabel(type: McpTransportType) {
+  return type === 'STDIO' ? t('settings.mcp.typeStdio')
+    : type === 'SSE' ? t('settings.mcp.typeSse')
+      : t('settings.mcp.typeStreamableHttp')
+}
+
+function mcpEndpointLabel(server: McpServer | null) {
+  if (!server) return '—'
+  if (!server.url) return server.command || '—'
+  try { return new URL(server.endpoint || '/mcp', server.url).toString() }
+  catch { return `${server.url}${server.endpoint || ''}` }
+}
+
+function mcpStatusLabel(server: McpServer | null) {
+  if (!server || !server.enabled) return t('settings.mcp.statusDisabled')
+  if (server.status === 'connected') return t('settings.mcp.statusConnected')
+  if (server.status === 'error') return t('settings.mcp.statusError')
+  return t('settings.mcp.statusDisconnected')
+}
+
+async function loadMcpDetails(server: McpServer) {
+  mcpPrompts.value = []
+  mcpResources.value = []
+  if (server.status !== 'connected') {
+    mcpDetailsLoading.value = false
+    return
+  }
+  mcpDetailsLoading.value = true
+  try {
+    const [prompts, resources] = await Promise.all([
+      api.mcpPrompts(server.id).catch(() => []),
+      api.mcpResources(server.id).catch(() => []),
+    ])
+    if (mcpSelectedId.value === server.id) {
+      mcpPrompts.value = prompts
+      mcpResources.value = resources
+    }
+  } finally {
+    mcpDetailsLoading.value = false
+  }
+}
+
+function parseMcpMap(text: string, label: string): Record<string, string> | undefined {
+  if (!text.trim()) return undefined
+  const parsed: unknown = JSON.parse(text)
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(t('settings.mcp.jsonObjectError', { label }))
+  return Object.fromEntries(Object.entries(parsed as Record<string, unknown>).map(([key, value]) => {
+    if (typeof value !== 'string') throw new Error(t('settings.mcp.jsonValueError', { label, key }))
+    return [key, value]
+  }))
+}
+
+async function loadMcpServers() {
+  try { mcpServers.value = await api.mcpServers() } catch { mcpServers.value = [] }
+}
+
+async function saveMcpServer() {
+  mcpSaving.value = true
+  mcpError.value = null
+  try {
+    const form = mcpForm.value
+    const request: McpServerRequest = {
+      name: form.name.trim(), type: form.type, command: form.command.trim() || undefined,
+      args: form.args.split('\n').map((value) => value.trim()).filter(Boolean), url: form.url.trim() || undefined,
+      endpoint: form.endpoint.trim() || undefined, env: parseMcpMap(form.env, t('settings.mcp.environment')),
+      headers: parseMcpMap(form.headers, t('settings.mcp.headers')), enabled: form.enabled,
+    }
+    const savedServer = mcpSelectedId.value
+      ? await api.updateMcpServer(mcpSelectedId.value, request)
+      : await api.createMcpServer(request)
+    await loadMcpServers()
+    selectMcpServer(savedServer)
+  } catch (e: unknown) {
+    mcpError.value = e instanceof Error ? e.message : String(e)
+  } finally { mcpSaving.value = false }
+}
+
+async function testMcpServer(server: McpServer) {
+  mcpTesting.value = server.id
+  mcpError.value = null
+  try {
+    const tested = await api.testMcpServer(server.id)
+    await loadMcpServers()
+    selectMcpServer(tested)
+  }
+  catch (e: unknown) { mcpError.value = e instanceof Error ? e.message : String(e) }
+  finally { mcpTesting.value = null }
+}
+
+async function removeMcpServer(server: McpServer) {
+  if (!window.confirm(t('settings.mcp.deleteConfirm', { name: server.name }))) return
+  try {
+    await api.deleteMcpServer(server.id)
+    if (mcpSelectedId.value === server.id) {
+      mcpSelectedId.value = null
+      mcpView.value = 'list'
+    }
+    await loadMcpServers()
+  } catch (e: unknown) { mcpError.value = e instanceof Error ? e.message : String(e) }
+}
+
+async function toggleMcpServer(server: McpServer) {
+  mcpError.value = null
+  try {
+    const updated = await api.updateMcpServer(server.id, {
+      name: server.name,
+      type: server.type,
+      command: server.command ?? undefined,
+      args: server.args,
+      url: server.url ?? undefined,
+      endpoint: server.endpoint ?? undefined,
+      enabled: !server.enabled,
+    })
+    await loadMcpServers()
+    if (mcpSelectedId.value === server.id) selectMcpServer(updated)
+  } catch (e: unknown) { mcpError.value = e instanceof Error ? e.message : String(e) }
+}
+
+async function toggleSelectedMcpServer() {
+  if (mcpSelectedId.value) await saveMcpServer()
+}
+
+async function callSelectedMcpTool() {
+  const server = selectedMcpServer.value
+  if (!server || !mcpCallTool.value) return
+  mcpCalling.value = true
+  mcpError.value = null
+  mcpCallResult.value = null
+  try {
+    const parsed: unknown = JSON.parse(mcpCallArguments.value || '{}')
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(t('settings.mcp.argumentsObject'))
+    const result = await api.callMcpTool(server.id, mcpCallTool.value, parsed as Record<string, unknown>)
+    mcpCallResult.value = JSON.stringify(result, null, 2)
+  } catch (e: unknown) {
+    mcpError.value = e instanceof Error ? e.message : String(e)
+  } finally { mcpCalling.value = false }
+}
 </script>
 
 <template>
-  <div class="set-shell">
+  <div class="set-shell set-shell--settings">
     <!-- Left section navigation -->
     <aside class="set-nav">
-      <div class="set-nav-hd">{{ $t('settings.title') }}</div>
-      <template v-for="(row, i) in navRows" :key="i">
+      <div class="set-nav-back">
+        <button class="set-nav-back-btn" @click="backToApp">
+          <i class="mdi mdi-arrow-left" />
+          <span>{{ $t('settings.backToApp') }}</span>
+        </button>
+      </div>
+      <div class="set-nav-search">
+        <i class="mdi mdi-magnify" />
+        <input v-model="settingsQuery" :placeholder="$t('settings.searchSettings')" :aria-label="$t('settings.searchSettings')">
+      </div>
+      <template v-for="(row, i) in visibleNavRows" :key="i">
         <div v-if="row.type === 'group'" class="set-nav-grp">{{ row.label }}</div>
         <button
           v-else
@@ -544,7 +820,7 @@ async function onSaveProxy() {
 
         <!-- Appearance -->
         <section v-show="activeSection === 'appearance'">
-          <h2 class="set-h">{{ $t('settings.theme') }}</h2>
+          <h2 class="set-h">{{ $t('settings.general') }}</h2>
           <div class="cx-card">
             <div class="cx-setting-row">
               <div class="cx-setting-row__label">
@@ -612,21 +888,117 @@ async function onSaveProxy() {
               {{ $t('settings.unsandboxedPluginsWarn') }}
             </div>
           </div>
+
+          <!-- Computer use (AI screen control) — only present in desktop mode -->
+          <div v-if="settings.computerUse" class="cx-card" style="margin-top: 16px">
+            <div class="cx-setting-row">
+              <div class="cx-setting-row__label">
+                <i class="mdi mdi-cursor-default-click" />
+                <span>{{ $t('settings.computerUseTitle') }}</span>
+              </div>
+              <span class="cx-chip" :class="computerUseChipClass">{{ computerUseChipLabel }}</span>
+            </div>
+            <div class="cx-muted" style="font-size: 12px; margin: -6px 0 12px;">
+              {{ $t('settings.computerUseHint') }}
+            </div>
+            <div v-if="!settings.computerUse.available" class="cx-muted" style="color: rgb(var(--v-theme-error)); font-size: 12px; margin: -6px 0 12px;">
+              {{ $t('settings.computerUseUnavailable', { reason: settings.computerUse.reason ?? '' }) }}
+            </div>
+            <div class="cx-setting-row">
+              <div class="cx-setting-row__label">
+                <i class="mdi mdi-robot-outline" />
+                <span>{{ $t('settings.computerUseAllowAi') }}</span>
+              </div>
+              <div class="cx-segment">
+                <button :class="{ active: !settings.computerUseEnabled }" @click="settings.setComputerUseEnabled(false)">{{ $t('settings.computerUseOff') }}</button>
+                <button :class="{ active: settings.computerUseEnabled }" @click="requestEnableComputerUse()">{{ $t('settings.computerUseOn') }}</button>
+              </div>
+            </div>
+          </div>
         </section>
 
         <!-- MCP -->
         <section v-show="activeSection === 'mcp'">
-          <h2 class="set-h">MCP</h2>
-          <div class="cx-card">
-            <div class="cx-setting-row">
-              <div class="cx-setting-row__label">
-                <i class="mdi mdi-connection" />
-                <span>MCP</span>
+          <div v-if="mcpView === 'list'" class="mcp-page">
+            <div class="mcp-page-head">
+              <div>
+                <h2 class="set-h">{{ $t('settings.mcp.allServers') }}</h2>
+                <div class="cx-muted mcp-page-subtitle">
+                  {{ mcpStatus ? $t('settings.mcpSummary', { connections: mcpStatus.connectionCount, tools: mcpStatus.toolCount }) : $t('settings.mcp.subtitle') }}
+                </div>
               </div>
-              <span v-if="mcpStatus" class="cx-muted" style="font-size: 13px">
-                {{ $t('settings.mcpSummary', { connections: mcpStatus.connectionCount, tools: mcpStatus.toolCount }) }}
-              </span>
+              <div class="mcp-page-actions">
+                <button class="cx-btn" @click="presetMcpChrome"><i class="mdi mdi-google-chrome" /> {{ $t('settings.mcp.addChrome') }}</button>
+                <button class="cx-btn cx-btn--primary" @click="resetMcpForm"><i class="mdi mdi-plus" /> {{ $t('settings.mcp.addServer') }}</button>
+              </div>
             </div>
+            <div class="mcp-toolbar">
+              <div class="cx-input-wrap mcp-search">
+                <i class="mdi mdi-magnify mcp-search-icon" />
+                <input v-model="mcpQuery" class="cx-input" :placeholder="$t('settings.mcp.search')">
+              </div>
+              <select v-model="mcpFilter" class="cx-input mcp-filter" :aria-label="$t('settings.mcp.filter')">
+                <option value="all">{{ $t('settings.mcp.filterAll') }}</option>
+                <option value="enabled">{{ $t('settings.mcp.filterEnabled') }}</option>
+                <option value="disabled">{{ $t('settings.mcp.filterDisabled') }}</option>
+                <option value="stdio">{{ $t('settings.mcp.typeStdio') }}</option>
+                <option value="sse">{{ $t('settings.mcp.typeSse') }}</option>
+                <option value="streamableHttp">{{ $t('settings.mcp.typeStreamableHttp') }}</option>
+              </select>
+            </div>
+            <div class="mcp-table">
+              <div class="mcp-table-head">
+                <span>{{ $t('settings.mcp.server') }}</span><span>{{ $t('settings.mcp.version') }}</span><span>{{ $t('settings.mcp.transport') }}</span><span>{{ $t('settings.mcp.tools') }}</span><span />
+              </div>
+              <button v-for="server in filteredMcpServers" :key="server.id" class="mcp-server-row" @click="selectMcpServer(server)">
+                <span class="mcp-server-name">
+                  <span class="mcp-avatar">{{ server.name.slice(0, 1).toUpperCase() }}</span>
+                  <span class="mcp-status-dot" :class="`mcp-status-dot--${server.enabled ? server.status : 'disabled'}`" />
+                  <span class="mcp-server-name-text"><strong>{{ server.name }}</strong><small>{{ mcpStatusLabel(server) }}</small></span>
+                </span>
+                <span class="mcp-table-muted">{{ server.serverVersion || '—' }}</span>
+                <span><span class="mcp-type-badge" :class="`mcp-type-badge--${server.type.toLowerCase()}`">{{ mcpTypeLabel(server.type) }}</span></span>
+                <span class="mcp-table-muted">{{ server.tools.length }}</span>
+                <span class="mcp-row-actions" @click.stop>
+                  <button class="mcp-icon-btn" :title="$t('settings.mcp.edit')" @click="selectMcpServer(server)"><i class="mdi mdi-pencil-outline" /></button>
+                  <label class="mcp-switch" :title="$t('settings.mcp.toggle')"><input :checked="server.enabled" type="checkbox" @change="toggleMcpServer(server)"><span /></label>
+                </span>
+              </button>
+              <div v-if="filteredMcpServers.length === 0" class="mcp-empty">
+                <i class="mdi mdi-connection" />
+                <strong>{{ mcpServers.length === 0 ? $t('settings.mcp.empty') : $t('settings.mcp.noResults') }}</strong>
+                <span>{{ mcpServers.length === 0 ? $t('settings.mcp.emptyHint') : $t('settings.mcp.noResultsHint') }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="mcp-detail">
+            <div class="mcp-detail-head">
+              <button class="mcp-back-btn" :title="$t('common.back')" @click="mcpView = 'list'"><i class="mdi mdi-arrow-left" /></button>
+              <span class="mcp-avatar mcp-avatar--large">{{ (mcpSelectedId ? (selectedMcpServer?.name ?? mcpForm.name) : mcpForm.name || '?').slice(0, 1).toUpperCase() }}</span>
+              <div class="mcp-detail-title"><h2>{{ mcpSelectedId ? selectedMcpServer?.name : $t('settings.mcp.newServer') }}</h2><span v-if="mcpSelectedId" class="mcp-status-badge" :class="`mcp-status-badge--${mcpForm.enabled ? selectedMcpServer?.status : 'disabled'}`">{{ mcpStatusLabel(selectedMcpServer) }}</span><span v-if="selectedMcpServer?.serverVersion" class="mcp-table-muted">{{ selectedMcpServer.serverVersion }}</span></div>
+              <label v-if="mcpSelectedId" class="mcp-switch mcp-switch--large" :title="$t('settings.mcp.toggle')"><input v-model="mcpForm.enabled" type="checkbox" :disabled="mcpSaving" @change="toggleSelectedMcpServer"><span /></label>
+            </div>
+            <div class="mcp-tabs" role="tablist">
+              <button v-for="tab in (['general', 'description', 'tools', 'prompts', 'resources', 'logs'] as const)" :key="tab" class="mcp-tab" :class="{ active: mcpTab === tab }" @click="mcpTab = tab">{{ $t(`settings.mcp.tabs.${tab}`) }}<span v-if="tab === 'tools' && selectedMcpServer">{{ selectedMcpServer.tools.length }}</span><span v-if="tab === 'prompts'">{{ mcpPrompts.length }}</span><span v-if="tab === 'resources'">{{ mcpResources.length }}</span></button>
+            </div>
+            <div v-if="mcpError" class="cx-alert cx-alert--error mcp-detail-alert">{{ mcpError }}</div>
+
+            <div v-if="mcpTab === 'general'" class="mcp-detail-body">
+              <div class="mcp-form-section"><div class="mcp-section-title">{{ $t('settings.mcp.identity') }}</div><div class="mcp-form-grid"><div class="cx-field"><label class="cx-label">{{ $t('settings.mcp.name') }}</label><input v-model="mcpForm.name" class="cx-input" :placeholder="$t('settings.mcp.placeholderName')"></div><div class="cx-field"><label class="cx-label">{{ $t('settings.mcp.transport') }}</label><select v-model="mcpForm.type" class="cx-input"><option value="STDIO">{{ $t('settings.mcp.typeStdio') }}</option><option value="STREAMABLE_HTTP">{{ $t('settings.mcp.typeStreamableHttp') }}</option><option value="SSE">{{ $t('settings.mcp.typeSse') }}</option></select></div></div></div>
+              <div class="mcp-form-section"><div class="mcp-section-title">{{ $t('settings.mcp.connection') }}</div><div v-if="mcpForm.type === 'STDIO'" class="mcp-form-grid"><div class="cx-field"><label class="cx-label">{{ $t('settings.mcp.command') }}</label><input v-model="mcpForm.command" class="cx-input" :placeholder="$t('settings.mcp.placeholderCommand')"></div><div class="cx-field"><label class="cx-label">{{ $t('settings.mcp.arguments') }}</label><textarea v-model="mcpForm.args" class="cx-input mcp-textarea" :placeholder="$t('settings.mcp.placeholderArguments')" /></div></div><div v-else class="mcp-form-grid"><div class="cx-field"><label class="cx-label">{{ $t('settings.mcp.url') }}</label><input v-model="mcpForm.url" class="cx-input" :placeholder="$t('settings.mcp.placeholderUrl')"></div><div class="cx-field"><label class="cx-label">{{ $t('settings.mcp.endpoint') }}</label><input v-model="mcpForm.endpoint" class="cx-input" :placeholder="mcpForm.type === 'SSE' ? $t('settings.mcp.placeholderSseEndpoint') : $t('settings.mcp.placeholderHttpEndpoint')"></div></div></div>
+              <div class="mcp-form-section"><div class="mcp-section-title">{{ $t('settings.mcp.credentials') }}<span>{{ $t('settings.mcp.credentialsHint') }}</span></div><div class="mcp-form-grid"><div class="cx-field"><label class="cx-label">{{ $t('settings.mcp.environment') }}</label><textarea v-model="mcpForm.env" class="cx-input mcp-textarea" :placeholder="$t('settings.mcp.placeholderEnvironment')" /></div><div v-if="mcpForm.type !== 'STDIO'" class="cx-field"><label class="cx-label">{{ $t('settings.mcp.headers') }}</label><textarea v-model="mcpForm.headers" class="cx-input mcp-textarea" :placeholder="$t('settings.mcp.placeholderHeaders')" /></div></div></div>
+            </div>
+
+            <div v-else-if="mcpTab === 'description'" class="mcp-detail-body"><div class="mcp-info-card"><i class="mdi mdi-information-outline" /><div><strong>{{ $t('settings.mcp.liveConnection') }}</strong><p>{{ $t('settings.mcp.liveConnectionHint') }}</p></div></div><div class="mcp-meta-grid"><div><small>{{ $t('settings.mcp.protocol') }}</small><strong>{{ selectedMcpServer?.protocolVersion || '—' }}</strong></div><div><small>{{ $t('settings.mcp.endpoint') }}</small><strong>{{ mcpEndpointLabel(selectedMcpServer) }}</strong></div><div><small>{{ $t('settings.mcp.environment') }}</small><strong>{{ selectedMcpServer?.envKeys.length || 0 }} {{ $t('settings.mcp.keys') }}</strong></div><div><small>{{ $t('settings.mcp.headers') }}</small><strong>{{ selectedMcpServer?.headerNames.length || 0 }} {{ $t('settings.mcp.keys') }}</strong></div></div><div v-if="selectedMcpServer?.error" class="cx-alert cx-alert--error">{{ selectedMcpServer.error }}</div></div>
+
+            <div v-else-if="mcpTab === 'tools'" class="mcp-detail-body"><div class="mcp-tab-toolbar"><div><strong>{{ $t('settings.mcp.tools') }}</strong><span class="cx-muted">{{ $t('settings.mcp.toolsHint') }}</span></div><div class="cx-input-wrap mcp-tool-search"><i class="mdi mdi-magnify mcp-search-icon" /><input v-model="mcpToolQuery" class="cx-input" :placeholder="$t('settings.mcp.searchTools')"></div></div><div v-if="!mcpConnected" class="mcp-empty mcp-empty--small"><i class="mdi mdi-lan-disconnect" /><strong>{{ $t('settings.mcp.notConnected') }}</strong><span>{{ $t('settings.mcp.notConnectedHint') }}</span></div><div v-else-if="filteredMcpTools.length === 0" class="mcp-empty mcp-empty--small"><i class="mdi mdi-wrench-outline" /><strong>{{ $t('settings.mcp.noTools') }}</strong><span>{{ $t('settings.mcp.noToolsHint') }}</span></div><div v-else class="mcp-tool-list"><button v-for="tool in filteredMcpTools" :key="tool" class="mcp-tool-row" :class="{ active: mcpCallTool === tool }" @click="mcpCallTool = tool; mcpCallResult = null"><i class="mdi mdi-wrench-outline" /><span>{{ tool }}</span><i class="mdi mdi-chevron-right" /></button></div><div v-if="mcpCallTool && mcpConnected" class="mcp-call-panel"><div class="mcp-call-title"><strong>{{ $t('settings.mcp.callTool') }}</strong><code>{{ mcpCallTool }}</code></div><label class="cx-label">{{ $t('settings.mcp.arguments') }}</label><textarea v-model="mcpCallArguments" class="cx-input mcp-textarea mcp-call-input" spellcheck="false" :placeholder="$t('settings.mcp.placeholderArgumentsObject')" /><div class="mcp-call-actions"><button class="cx-btn cx-btn--primary" :disabled="mcpCalling" @click="callSelectedMcpTool">{{ mcpCalling ? $t('settings.mcp.calling') : $t('settings.mcp.call') }}</button><span class="cx-muted">{{ $t('settings.mcp.callHint') }}</span></div><pre v-if="mcpCallResult" class="mcp-call-result">{{ mcpCallResult }}</pre></div></div>
+
+            <div v-else-if="mcpTab === 'prompts'" class="mcp-detail-body"><div v-if="mcpDetailsLoading" class="mcp-loading"><i class="mdi mdi-loading mdi-spin" /> {{ $t('settings.mcp.loading') }}</div><div v-else-if="mcpPrompts.length === 0" class="mcp-empty mcp-empty--small"><i class="mdi mdi-message-text-outline" /><strong>{{ $t('settings.mcp.noPrompts') }}</strong><span>{{ $t('settings.mcp.noPromptsHint') }}</span></div><div v-else class="mcp-resource-list"><div v-for="prompt in mcpPrompts" :key="prompt.name" class="mcp-resource-row"><i class="mdi mdi-message-text-outline" /><div><strong>{{ prompt.title || prompt.name }}</strong><small>{{ prompt.description || prompt.name }}</small></div><span v-if="prompt.arguments.length" class="mcp-table-muted">{{ $t('settings.mcp.argumentsCount', { count: prompt.arguments.length }) }}</span></div></div></div>
+            <div v-else-if="mcpTab === 'resources'" class="mcp-detail-body"><div v-if="mcpDetailsLoading" class="mcp-loading"><i class="mdi mdi-loading mdi-spin" /> {{ $t('settings.mcp.loading') }}</div><div v-else-if="mcpResources.length === 0" class="mcp-empty mcp-empty--small"><i class="mdi mdi-file-link-outline" /><strong>{{ $t('settings.mcp.noResources') }}</strong><span>{{ $t('settings.mcp.noResourcesHint') }}</span></div><div v-else class="mcp-resource-list"><div v-for="resource in mcpResources" :key="resource.uri" class="mcp-resource-row"><i class="mdi mdi-file-link-outline" /><div><strong>{{ resource.title || resource.name }}</strong><small>{{ resource.uri }}</small></div><span class="mcp-table-muted">{{ resource.mimeType || $t('settings.mcp.resourceType') }}</span></div></div></div>
+            <div v-else class="mcp-detail-body"><div class="mcp-info-card"><i class="mdi mdi-console-line" /><div><strong>{{ $t('settings.mcp.logs') }}</strong><p>{{ $t('settings.mcp.logsHint') }}</p></div></div><pre v-if="selectedMcpServer?.error" class="mcp-call-result">{{ selectedMcpServer.error }}</pre><div v-else class="mcp-empty mcp-empty--small"><i class="mdi mdi-check-circle-outline" /><strong>{{ $t('settings.mcp.noLogs') }}</strong><span>{{ $t('settings.mcp.noLogsHint') }}</span></div></div>
+
+            <div class="mcp-detail-footer"><button class="cx-btn cx-btn--danger" :disabled="!mcpSelectedId" @click="selectedMcpServer && removeMcpServer(selectedMcpServer)">{{ $t('common.delete') }}</button><div class="mcp-footer-actions"><button v-if="mcpSelectedId" class="cx-btn" :disabled="mcpTesting === mcpSelectedId" @click="selectedMcpServer && testMcpServer(selectedMcpServer)">{{ mcpTesting ? $t('settings.mcp.testing') : $t('settings.mcp.test') }}</button><button class="cx-btn cx-btn--primary" :disabled="mcpSaving" @click="saveMcpServer">{{ mcpSaving ? $t('settings.mcp.saving') : $t('common.save') }}</button></div></div>
           </div>
         </section>
 
@@ -683,6 +1055,18 @@ async function onSaveProxy() {
     </v-card>
   </v-dialog>
 
+  <v-dialog v-model="showComputerUseConfirm" max-width="480">
+    <v-card>
+      <v-card-title>{{ $t('settings.computerUseTitle') }}</v-card-title>
+      <v-card-text>{{ $t('settings.computerUseConfirm') }}</v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn variant="text" @click="showComputerUseConfirm = false">{{ $t('common.cancel') }}</v-btn>
+        <v-btn color="primary" variant="tonal" @click="confirmEnableComputerUse()">{{ $t('common.confirm') }}</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
   <v-dialog v-model="showDbProvisionConfirm" max-width="480">
     <v-card>
       <v-card-title>{{ $t('settings.pluginDbConfirmTitle') }}</v-card-title>
@@ -713,6 +1097,36 @@ async function onSaveProxy() {
 .set-nav-item:hover { background: var(--cx-hover); color: rgb(var(--v-theme-on-surface)); }
 .set-nav-item.active { background: var(--cx-hover-strong); color: rgb(var(--v-theme-on-surface)); }
 .set-nav-item .mdi { font-size: 18px; flex: 0 0 auto; }
+
+/* Standalone settings window — a quiet, native-feeling settings surface. */
+.set-shell--settings { background: rgb(var(--v-theme-background)); }
+.set-shell--settings .set-nav {
+  width: 270px; flex-basis: 270px; padding: 10px 12px 18px;
+  background: rgb(var(--v-theme-surface-container));
+}
+.set-nav-back { padding: 4px 0 12px; }
+.set-nav-back-btn {
+  display: flex; align-items: center; gap: 7px; width: 100%; height: 30px; padding: 0 6px;
+  border: 0; border-radius: 8px; background: transparent; color: rgb(var(--v-theme-secondary));
+  font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+}
+.set-nav-back-btn:hover { background: var(--cx-hover); color: rgb(var(--v-theme-on-surface)); }
+.set-nav-back-btn .mdi { font-size: 17px; }
+.set-nav-search { position: relative; margin-bottom: 12px; }
+.set-nav-search .mdi { position: absolute; left: 9px; top: 7px; color: rgb(var(--v-theme-secondary)); font-size: 16px; pointer-events: none; }
+.set-nav-search input {
+  width: 100%; height: 31px; padding: 0 10px 0 30px; border: 0; border-radius: 9px;
+  outline: 0; background: rgb(var(--v-theme-surface)); color: rgb(var(--v-theme-on-surface));
+  font: inherit; font-size: 12px; box-shadow: inset 0 0 0 1px var(--cx-border-subtle);
+}
+.set-nav-search input::placeholder { color: rgb(var(--v-theme-secondary)); }
+.set-shell--settings .set-nav-grp { padding: 14px 8px 5px; font-size: 12px; letter-spacing: 0; text-transform: none; }
+.set-shell--settings .set-nav-item { height: 34px; padding: 0 9px; border-radius: 8px; }
+.set-shell--settings .set-nav-item .mdi { font-size: 16px; }
+.set-shell--settings .set-nav-item.active { background: var(--cx-hover-strong); }
+.set-shell--settings .set-content { background: rgb(var(--v-theme-background)); }
+.set-shell--settings .set-inner { max-width: 820px; padding: 20px 42px 72px; }
+.set-shell--settings .set-h { margin-bottom: 28px; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
 
 .set-content { flex: 1 1 auto; min-width: 0; height: 100%; overflow: hidden; }
 .set-inner { height: 100%; overflow-y: auto; max-width: 720px; margin: 0 auto; padding: 28px 32px 48px; }
@@ -787,4 +1201,102 @@ async function onSaveProxy() {
 .prov-model-row .mdi-lightning-bolt { color: rgb(var(--v-theme-secondary)); font-size: 16px; }
 .prov-model-name { flex: 1 1 auto; font-family: 'SF Mono','JetBrains Mono',ui-monospace,monospace; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .prov-model-empty { font-size: 13px; padding: 8px 0; }
+
+.mcp-page, .mcp-detail { height: 100%; overflow-y: auto; padding: 28px 32px 48px; max-width: 980px; margin: 0 auto; }
+.mcp-page-head, .mcp-detail-head { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+.mcp-page-head > div:first-child { flex: 1 1 auto; min-width: 0; }
+.mcp-page-head .set-h { margin-bottom: 4px; }
+.mcp-page-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.mcp-page-subtitle { font-size: 12px; }
+.mcp-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.mcp-search { flex: 1 1 auto; max-width: 320px; }
+.mcp-search .cx-input, .mcp-tool-search .cx-input { padding-left: 32px; }
+.mcp-search-icon { position: absolute; left: 10px; top: 9px; color: rgb(var(--v-theme-secondary)); font-size: 16px; pointer-events: none; }
+.mcp-filter { width: auto; min-width: 140px; }
+.mcp-table { border-top: 1px solid var(--cx-border); }
+.mcp-table-head, .mcp-server-row { display: grid; grid-template-columns: minmax(220px, 1.7fr) minmax(70px, .6fr) minmax(120px, .9fr) 60px 108px; align-items: center; gap: 14px; }
+.mcp-table-head { min-height: 34px; padding: 0 12px; color: rgb(var(--v-theme-secondary)); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.mcp-server-row { width: 100%; min-height: 62px; padding: 8px 12px; border: 0; border-top: 1px solid var(--cx-border-subtle); background: transparent; color: rgb(var(--v-theme-on-surface)); text-align: left; cursor: pointer; transition: background .12s ease; }
+.mcp-server-row:hover { background: var(--cx-hover); }
+.mcp-server-name { min-width: 0; display: flex; align-items: center; gap: 8px; }
+.mcp-avatar { width: 27px; height: 27px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 7px; background: rgb(var(--v-theme-primary)); color: rgb(var(--v-theme-on-primary)); font-weight: 700; font-size: 12px; }
+.mcp-avatar--large { width: 38px; height: 38px; border-radius: 10px; font-size: 16px; }
+.mcp-status-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: rgb(var(--v-theme-secondary)); opacity: .45; }
+.mcp-status-dot--connected { background: rgb(var(--v-theme-success)); opacity: 1; }
+.mcp-status-dot--error { background: rgb(var(--v-theme-error)); opacity: 1; }
+.mcp-status-dot--disconnected { background: rgb(var(--v-theme-warning)); opacity: 1; }
+.mcp-status-dot--disabled { background: rgb(var(--v-theme-secondary)); }
+.mcp-server-name-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mcp-server-name-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
+.mcp-server-name-text small { color: rgb(var(--v-theme-secondary)); font-size: 11px; }
+.mcp-table-muted { color: rgb(var(--v-theme-secondary)); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mcp-type-badge, .mcp-status-badge { display: inline-flex; align-items: center; min-height: 21px; padding: 0 8px; border: 1px solid var(--cx-border); border-radius: 999px; color: rgb(var(--v-theme-secondary)); font-size: 11px; white-space: nowrap; }
+.mcp-type-badge--sse { color: rgb(var(--v-theme-success)); border-color: rgba(var(--v-theme-success), .35); }
+.mcp-type-badge--streamable_http { color: rgb(var(--v-theme-info)); border-color: rgba(var(--v-theme-info), .35); }
+.mcp-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.mcp-icon-btn, .mcp-back-btn { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: rgb(var(--v-theme-secondary)); cursor: pointer; }
+.mcp-icon-btn:hover, .mcp-back-btn:hover { background: var(--cx-hover-strong); color: rgb(var(--v-theme-on-surface)); }
+.mcp-switch { position: relative; display: inline-flex; width: 34px; height: 19px; flex: 0 0 auto; cursor: pointer; }
+.mcp-switch input { position: absolute; inset: 0; z-index: 1; opacity: 0; margin: 0; cursor: pointer; }
+.mcp-switch span { width: 34px; height: 19px; border-radius: 999px; background: rgb(var(--v-theme-surface-variant)); transition: background .15s ease; }
+.mcp-switch span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 13px; height: 13px; border-radius: 50%; background: rgb(var(--v-theme-surface)); box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: transform .15s ease; }
+.mcp-switch input:checked + span { background: rgb(var(--v-theme-success)); }
+.mcp-switch input:checked + span::after { transform: translateX(15px); }
+.mcp-switch--large { width: 40px; height: 22px; margin-left: auto; }
+.mcp-switch--large span { width: 40px; height: 22px; }
+.mcp-switch--large span::after { width: 16px; height: 16px; }
+.mcp-switch--large input:checked + span::after { transform: translateX(18px); }
+.mcp-empty { display: flex; min-height: 230px; align-items: center; justify-content: center; flex-direction: column; gap: 7px; color: rgb(var(--v-theme-secondary)); text-align: center; }
+.mcp-empty .mdi { font-size: 28px; opacity: .6; margin-bottom: 3px; }
+.mcp-empty strong { color: rgb(var(--v-theme-on-surface)); font-size: 13px; }
+.mcp-empty span { font-size: 12px; max-width: 330px; }
+.mcp-empty--small { min-height: 170px; border: 1px dashed var(--cx-border); border-radius: var(--cx-radius); }
+.mcp-detail { max-width: 820px; padding-top: 22px; }
+.mcp-detail-head { margin-bottom: 16px; }
+.mcp-detail-title { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; flex: 1 1 auto; }
+.mcp-detail-title h2 { margin: 0; font-size: 17px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mcp-status-badge--connected { color: rgb(var(--v-theme-success)); border-color: rgba(var(--v-theme-success), .35); }
+.mcp-status-badge--error { color: rgb(var(--v-theme-error)); border-color: rgba(var(--v-theme-error), .35); }
+.mcp-status-badge--disabled { color: rgb(var(--v-theme-secondary)); }
+.mcp-tabs { display: flex; gap: 4px; overflow-x: auto; padding: 4px; margin-bottom: 18px; border-radius: 999px; background: rgb(var(--v-theme-surface-container)); }
+.mcp-tab { min-height: 30px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: rgb(var(--v-theme-secondary)); font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer; }
+.mcp-tab:hover { color: rgb(var(--v-theme-on-surface)); }
+.mcp-tab.active { background: rgb(var(--v-theme-surface)); color: rgb(var(--v-theme-on-surface)); box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+.mcp-tab span { margin-left: 4px; opacity: .65; }
+.mcp-detail-alert { margin-bottom: 14px; }
+.mcp-detail-body { min-height: 260px; padding-bottom: 16px; }
+.mcp-form-section { padding: 0 0 18px; margin-bottom: 18px; border-bottom: 1px solid var(--cx-border-subtle); }
+.mcp-section-title { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; font-size: 14px; font-weight: 650; }
+.mcp-section-title span { color: rgb(var(--v-theme-secondary)); font-size: 11px; font-weight: 400; }
+.mcp-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.mcp-textarea { min-height: 74px; resize: vertical; font-family: 'SF Mono','JetBrains Mono',ui-monospace,monospace; font-size: 12px; }
+.mcp-tab-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.mcp-tab-toolbar > div:first-child { display: flex; flex-direction: column; gap: 3px; }
+.mcp-tab-toolbar .cx-muted { font-size: 12px; }
+.mcp-tool-search { width: 190px; }
+.mcp-tool-list, .mcp-resource-list { display: flex; flex-direction: column; border-top: 1px solid var(--cx-border); }
+.mcp-tool-row, .mcp-resource-row { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 10px; border: 0; border-bottom: 1px solid var(--cx-border-subtle); background: transparent; color: rgb(var(--v-theme-on-surface)); text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
+.mcp-tool-row:hover, .mcp-tool-row.active { background: var(--cx-hover); }
+.mcp-tool-row .mdi:first-child, .mcp-resource-row > .mdi { color: rgb(var(--v-theme-secondary)); font-size: 17px; }
+.mcp-tool-row span { flex: 1; font-family: 'SF Mono','JetBrains Mono',ui-monospace,monospace; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+.mcp-resource-row > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.mcp-resource-row small { color: rgb(var(--v-theme-secondary)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mcp-call-panel { margin-top: 18px; padding: 14px; border: 1px solid var(--cx-border); border-radius: var(--cx-radius); background: rgb(var(--v-theme-surface-container)); }
+.mcp-call-title { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.mcp-call-title code { color: rgb(var(--v-theme-primary)); font-size: 12px; }
+.mcp-call-input { width: 100%; min-height: 100px; }
+.mcp-call-actions, .mcp-detail-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mcp-call-actions { margin-top: 10px; }
+.mcp-call-result { max-height: 260px; margin: 12px 0 0; overflow: auto; padding: 12px; border-radius: var(--cx-radius); background: rgb(var(--v-theme-background)); color: rgb(var(--v-theme-on-surface)); font: 12px/1.5 'SF Mono','JetBrains Mono',ui-monospace,monospace; white-space: pre-wrap; }
+.mcp-info-card { display: flex; gap: 12px; padding: 14px; margin-bottom: 16px; border: 1px solid var(--cx-border); border-radius: var(--cx-radius); background: rgb(var(--v-theme-surface-container)); }
+.mcp-info-card > .mdi { color: rgb(var(--v-theme-primary)); font-size: 20px; }
+.mcp-info-card p { margin: 5px 0 0; color: rgb(var(--v-theme-secondary)); font-size: 12px; line-height: 1.5; }
+.mcp-meta-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; overflow: hidden; border: 1px solid var(--cx-border); border-radius: var(--cx-radius); background: var(--cx-border); }
+.mcp-meta-grid > div { display: flex; min-height: 74px; flex-direction: column; gap: 5px; padding: 12px; background: rgb(var(--v-theme-surface)); }
+.mcp-meta-grid small { color: rgb(var(--v-theme-secondary)); font-size: 11px; }
+.mcp-meta-grid strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
+.mcp-loading { display: flex; align-items: center; justify-content: center; min-height: 160px; gap: 8px; color: rgb(var(--v-theme-secondary)); font-size: 12px; }
+.mcp-detail-footer { min-height: 52px; padding-top: 14px; border-top: 1px solid var(--cx-border); }
+.mcp-footer-actions { display: flex; align-items: center; gap: 8px; }
+@media (max-width: 760px) { .mcp-page, .mcp-detail { padding: 20px 16px 36px; } .mcp-table-head { display: none; } .mcp-server-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; } .mcp-server-row > :nth-child(2), .mcp-server-row > :nth-child(3), .mcp-server-row > :nth-child(4) { display: none; } .mcp-form-grid, .mcp-meta-grid { grid-template-columns: 1fr; } .mcp-tab-toolbar { align-items: flex-start; flex-direction: column; } .mcp-tool-search { width: 100%; } }
 </style>

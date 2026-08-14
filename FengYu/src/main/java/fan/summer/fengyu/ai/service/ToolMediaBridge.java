@@ -103,7 +103,7 @@ final class ToolMediaBridge {
                 .name(item.name())
                 .build()).toList();
         return UserMessage.builder()
-                .text("Visual output attached from the preceding browser tool result.")
+                .text("Visual output attached from the preceding tool result.")
                 .media(parts)
                 .build();
     }

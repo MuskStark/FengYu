@@ -52,6 +52,7 @@ The Agent orchestrates three distinct, intentionally separate surfaces:
 | **Markdown Editor** | Edit and preview Markdown in the built-in editor. | [Markdown plugin](/en/plugins/official-markdown) |
 | **Offline Python Builder** | Build air-gap-ready Python wheelhouses (full dependency resolution via `pip download`) as an async job, with verify and deploy. | [Offline Python](/en/plugins/official-offlinepython) |
 | **Browser Agent** | Built-in browser automation via Electron's native engine — 21 effect-classified tools for isolated contexts, stateful tabs, stable refs, interaction, multimodal screenshots, batching, and eval JS. Desktop-only. | [Browser Capability](/en/plugins/official-browser) |
+| **Computer Use** | ChatGPT-desktop-style screen control: capture the real screen (vision PNGs), then click, type, scroll, drag, and launch/focus apps — input actions gated by per-turn approval, with a Settings master switch. Works on Windows (no extra permissions) and macOS (needs Screen Recording + Accessibility). Desktop-only. | [Computer use](/en/guide/ai-chat#computer-use-screen-control) |
 | **Multi-Database** | First-launch wizard picks H2, SQLite, MySQL, or PostgreSQL. Passwords are AES-GCM encrypted. | [Database guide](/en/guide/database) |
 | **Internationalization** | English-first docs and a localized Vue UI via `vue-i18n`. | [Design System](/en/design-system) |
 | **Dark / Light theme** | Material Design 3 theming with dark and light modes, shared with plugin micro-frontends. | [Design System](/en/design-system) |

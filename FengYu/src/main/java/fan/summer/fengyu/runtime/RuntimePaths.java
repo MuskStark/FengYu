@@ -51,6 +51,16 @@ public final class RuntimePaths {
         return root.resolve("skills");
     }
 
+    /** Persistent MCP connection definitions and their protected credentials. */
+    public static Path mcpDirectory(Path root) {
+        return root.resolve("mcp-servers");
+    }
+
+    /** Full-screen captures taken by the computer-use tools (mirrors browser-screenshots). */
+    public static Path computerScreenshotsDirectory(Path root) {
+        return root.resolve("computer-screenshots");
+    }
+
     public static Path runtimeFilesDirectory(Path root) {
         return root.resolve("runtime-files");
     }

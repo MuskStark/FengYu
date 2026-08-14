@@ -15,7 +15,8 @@ Infinia 中有两个配置界面：**用户设置**（主题、语言、侧边�
 ```text
 GET /api/settings
   ◄── 200 { "theme": "dark", "language": "en", "sidebarCollapsed": false,
-             "logLevel": "INFO", "updateApiBase": "" }
+             "logLevel": "INFO", "updateApiBase": "", "computerUseEnabled": true,
+             "computerUse": { "available": true, "reason": null } }
 ```
 
 `PUT /api/settings` 接受一个**部分请求体**——只有你包含的键会被持久化，其余保持不变。
@@ -35,6 +36,8 @@ PUT /api/settings
 | `sidebarCollapsed` | boolean | 侧边栏是否初始处于折叠状态。 |
 | `logLevel` | string | `TRACE`、`DEBUG`、`INFO`、`WARN`、`ERROR` 或 `OFF`。立即应用到主程序和所有 Java 插件 Worker。 |
 | `updateApiBase` | string | 留空使用 GitHub，或填写内网 FY-Proxy 更新服务的绝对 HTTP(S) 基础地址。 |
+| `computerUseEnabled` | boolean | 桌面端 `computer_*` 屏幕控制工具族的总开关（默认 `true`）。置为 `false` 后，下一轮对话即从 AI 目录中移除这些工具；输入动作始终保留每轮审批门。 |
+| `computerUse` | object | 只读能力探测：`{available, reason}`。仅桌面模式返回；纯 Web 模式为 `null`。 |
 
 修改 `logLevel` 不会重启 Worker。宿主会更新自身的 Logback 命名空间，并向每个运行中的
 Worker 发送内置 JSON-RPC 通知；之后新启动的 Worker 则通过 `FENGYU_LOG_LEVEL` 继承同一值。
@@ -94,19 +97,29 @@ POST /api/ai/config/test
 
 ## MCP 客户端
 
-FengYu 在启动时读取 Spring AI MCP 客户端配置。STDIO、SSE 与 Streamable HTTP 分别通过
-`spring.ai.mcp.client.stdio.*`、`spring.ai.mcp.client.sse.*` 和
-`spring.ai.mcp.client.streamable-http.*` 配置。若使用 Codex 风格的 STDIO
-服务器文件，可这样启动：
+FengYu 支持在 **设置 → MCP** 中动态添加、测试、启停和删除 MCP 服务，也支持对应的 REST
+API。STDIO、SSE 与 Streamable HTTP 均可在保存后立即连接，发现的工具会实时加入对话和 Agent
+工具目录，不需要重启。
+
+若要接入 [mcp-chrome](https://github.com/hangwin/mcp-chrome)：
+
+1. 按其说明安装 Chrome 扩展和 `mcp-chrome-bridge`，并在扩展中点击 Connect。
+2. 在 FengYu 的 **设置 → MCP** 点击 **添加 Chrome MCP**。
+3. 保存预填配置：Streamable HTTP，地址 `http://127.0.0.1:12306`，端点 `/mcp`。
+
+也可以手动创建同样的配置。mcp-chrome 官方推荐的连接地址是
+`http://127.0.0.1:12306/mcp`；FengYu 的地址字段既可填写主机地址并单独填写端点，
+也可直接填写完整地址。
+
+如果使用 Codex 风格的 STDIO 服务器文件，仍可通过 Spring AI 的启动配置加载：
 
 ```bash
 java -jar FengYu-*.jar \
   --spring.ai.mcp.client.stdio.servers-configuration=file:/absolute/path/mcp-servers.json
 ```
 
-MCP 工具会同时加入对话与 Agent 的工具目录。可通过 `GET /api/mcp/status` 检查已初始化
-连接。MCP 配置仅在启动时读取，修改后需要重启。配置外部 STDIO 命令即表示明确授权启动
-该命令，因此只应使用可信服务器定义，并将凭据放在启动环境或受保护的外部文件中。
+也可通过 `GET /api/mcp/status` 和 `/api/mcp/servers` 检查连接。配置外部 STDIO 命令即表示
+明确授权启动该命令，因此只应使用可信服务器定义，并将凭据放在受保护的本机配置中。
 
 ## `datasource.properties` 布局
 

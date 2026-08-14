@@ -320,7 +320,6 @@ async function bootstrap(): Promise<void> {
       destroySplash(splash)
     },
   })
-
   createTray(win, killBackend)
 
   // Non-blocking native update check — only when packaged (dev builds have no update channel).

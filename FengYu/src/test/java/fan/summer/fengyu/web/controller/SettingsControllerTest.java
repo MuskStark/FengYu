@@ -1,6 +1,7 @@
 package fan.summer.fengyu.web.controller;
 
 import fan.summer.fengyu.ai.service.AiConfigServiceHeadless;
+import fan.summer.fengyu.ai.tools.ComputerTool;
 import fan.summer.fengyu.log.LoggingLevelService;
 import fan.summer.fengyu.plugin.runtime.PluginProcessManager;
 import fan.summer.fengyu.security.ProcessSandbox;
@@ -9,9 +10,11 @@ import fan.summer.fengyu.setup.DbType;
 import fan.summer.fengyu.setup.WizardParams;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -154,6 +157,50 @@ class SettingsControllerTest {
             // Embedded credentials.
             assertThrows(IllegalArgumentException.class,
                 () -> controller.put(Map.of("updateApiBase", "http://u:p@10.0.0.5:8088")));
+        }
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void computerUseSwitchReportsCapabilityAndPersists() {
+        AiConfigServiceHeadless config = mock(AiConfigServiceHeadless.class);
+        LoggingLevelService logging = mock(LoggingLevelService.class);
+        ObjectProvider<ComputerTool> provider = mock(ObjectProvider.class);
+        ComputerTool tool = mock(ComputerTool.class);
+        when(provider.getIfAvailable()).thenReturn(tool);
+        Map<String, Object> availability = new LinkedHashMap<>();
+        availability.put("available", true);
+        availability.put("reason", null);
+        when(tool.availability()).thenReturn(availability);
+        SettingsController controller = new SettingsController(
+            config, newService(), logging, mock(PluginProcessManager.class), provider, () -> {});
+
+        try (var mockedAi = mockStatic(AiConfigServiceHeadless.class)) {
+            mockedAi.when(AiConfigServiceHeadless::isComputerUseEnabled).thenReturn(true);
+
+            Map<String, Object> get = controller.get();
+            assertEquals(true, get.get("computerUseEnabled"));
+            assertEquals(availability, (Map<String, Object>) get.get("computerUse"));
+
+            // Toggling off persists and is reflected in the response of the same PUT.
+            mockedAi.when(AiConfigServiceHeadless::isComputerUseEnabled).thenReturn(false);
+            Map<String, Object> put = controller.put(Map.of("computerUseEnabled", false));
+            mockedAi.verify(() -> AiConfigServiceHeadless.setComputerUseEnabled(false));
+            assertEquals(false, put.get("computerUseEnabled"));
+        }
+    }
+
+    @Test
+    void computerUseCapabilityIsNullWhenBeanAbsent() {
+        AiConfigServiceHeadless config = mock(AiConfigServiceHeadless.class);
+        SettingsController controller = new SettingsController(
+            config, newService(), mock(LoggingLevelService.class), mock(PluginProcessManager.class), () -> {});
+
+        try (var mockedAi = mockStatic(AiConfigServiceHeadless.class)) {
+            mockedAi.when(AiConfigServiceHeadless::isComputerUseEnabled).thenReturn(true);
+            Map<String, Object> get = controller.get();
+            assertNull(get.get("computerUse"), "web mode (no ComputerTool bean) hides the card");
+            assertEquals(true, get.get("computerUseEnabled"));
         }
     }
 }
