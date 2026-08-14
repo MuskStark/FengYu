@@ -25,7 +25,12 @@ import type {
   HealthResponse,
   InitializeResult,
   MarketplacePlugin,
+  McpCallResult,
+  McpPrompt,
+  McpResource,
   McpStatus,
+  McpServer,
+  McpServerRequest,
   PartialAiSettings,
   PartialSettings,
   PluginDescriptor,
@@ -385,9 +390,33 @@ export const api = {
   runWorkflow: (workflowId: string, request: WorkflowRunRequest) =>
     http.post<AgentRunResponse>(`/api/workflows/${encodeURIComponent(workflowId)}/run`, request).then((r) => r.data),
 
-  /** Read-only MCP connection and discovered-tool diagnostics. */
+  /** MCP connection management, discovery, and live tool diagnostics. */
   mcpStatus: () =>
     http.get<McpStatus>('/api/mcp/status').then((r) => r.data),
+
+  mcpServers: () =>
+    http.get<McpServer[]>('/api/mcp/servers').then((r) => r.data),
+
+  createMcpServer: (request: McpServerRequest) =>
+    http.post<McpServer>('/api/mcp/servers', request).then((r) => r.data),
+
+  updateMcpServer: (id: string, request: McpServerRequest) =>
+    http.put<McpServer>(`/api/mcp/servers/${encodeURIComponent(id)}`, request).then((r) => r.data),
+
+  deleteMcpServer: (id: string) =>
+    http.delete<{ deleted: boolean }>(`/api/mcp/servers/${encodeURIComponent(id)}`).then((r) => r.data),
+
+  testMcpServer: (id: string) =>
+    http.post<McpServer>(`/api/mcp/servers/${encodeURIComponent(id)}/test`).then((r) => r.data),
+
+  mcpPrompts: (id: string) =>
+    http.get<McpPrompt[]>(`/api/mcp/servers/${encodeURIComponent(id)}/prompts`).then((r) => r.data),
+
+  mcpResources: (id: string) =>
+    http.get<McpResource[]>(`/api/mcp/servers/${encodeURIComponent(id)}/resources`).then((r) => r.data),
+
+  callMcpTool: (id: string, tool: string, arguments_: Record<string, unknown> = {}) =>
+    http.post<McpCallResult>(`/api/mcp/servers/${encodeURIComponent(id)}/call`, { tool, arguments: arguments_ }).then((r) => r.data),
 
   processIsolationStatus: () =>
     http

@@ -79,8 +79,8 @@ User-facing preferences. See [Configuration — User settings](/en/guide/configu
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/api/settings` | token | Read `{theme, language, sidebarCollapsed, logLevel}`. |
-| `PUT` | `/api/settings` | token | Partial update of user settings; `logLevel` applies live to the host and Java Workers. |
+| `GET` | `/api/settings` | token | Read `{theme, language, sidebarCollapsed, logLevel, computerUseEnabled, computerUse}`. |
+| `PUT` | `/api/settings` | token | Partial update of user settings; `logLevel` applies live to the host and Java Workers, `computerUseEnabled` toggles the desktop `computer_*` tools. |
 | `POST` | `/api/settings/database/reset` | token | Back up `datasource.properties`, clear it, restart into SETUP mode. |
 
 ## AI
@@ -130,6 +130,14 @@ The plan-and-execute agent. See [AI Agent](/en/guide/ai-agent).
 | `GET` | `/api/agent/runs/{runId}` | token | Persisted plan, executions, and ordered audit events. |
 | `POST` | `/api/agent/runs/{runId}/resume` | token | Resume unfinished steps from a failed/cancelled run and require plan review. |
 | `GET` | `/api/mcp/status` | token | Configured MCP connections and discovered tool count. |
+| `GET` | `/api/mcp/servers` | token | List dynamically managed MCP servers, connection state, and discovered tool names. |
+| `POST` | `/api/mcp/servers` | token | Add a `STDIO`, `SSE`, or `STREAMABLE_HTTP` server and connect immediately. Credentials are accepted in `env`/`headers` and are never returned by the API. |
+| `PUT` | `/api/mcp/servers/{id}` | token | Replace a server definition, close the old session, reconnect, and refresh the live AI tool catalog. |
+| `DELETE` | `/api/mcp/servers/{id}` | token | Disconnect and remove a dynamically managed server. |
+| `POST` | `/api/mcp/servers/{id}/test` | token | Reconnect and perform MCP initialization plus `tools/list`. |
+| `POST` | `/api/mcp/servers/{id}/call` | token | Directly call a discovered MCP tool. Body `{tool, arguments}`. |
+| `GET` | `/api/mcp/servers/{id}/prompts` | token | List prompts exposed by the live MCP session. |
+| `GET` | `/api/mcp/servers/{id}/resources` | token | List resources exposed by the live MCP session. |
 
 ## Workflows
 

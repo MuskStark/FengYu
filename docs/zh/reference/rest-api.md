@@ -79,8 +79,8 @@ SSE 端点通过 `X-FengYu-Token` 头进行鉴权——**没有** `?token=` 查�
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/api/settings` | token | 读取 `{theme, language, sidebarCollapsed, logLevel}`。 |
-| `PUT` | `/api/settings` | token | 对用户设置做局部更新；`logLevel` 会实时应用到宿主和 Java Worker。 |
+| `GET` | `/api/settings` | token | 读取 `{theme, language, sidebarCollapsed, logLevel, computerUseEnabled, computerUse}`。 |
+| `PUT` | `/api/settings` | token | 对用户设置做局部更新；`logLevel` 会实时应用到宿主和 Java Worker，`computerUseEnabled` 切换桌面端 `computer_*` 工具。 |
 | `POST` | `/api/settings/database/reset` | token | 备份 `datasource.properties`、清空它、重启进入 SETUP 模式。 |
 
 ## AI
@@ -130,6 +130,14 @@ SSE 端点通过 `X-FengYu-Token` 头进行鉴权——**没有** `?token=` 查�
 | `GET` | `/api/agent/runs/{runId}` | token | 返回持久化计划、步骤执行和有序审计事件。 |
 | `POST` | `/api/agent/runs/{runId}/resume` | token | 恢复失败/取消运行的未完成步骤，并要求重新审阅计划。 |
 | `GET` | `/api/mcp/status` | token | 已配置的 MCP 连接与发现的工具数量。 |
+| `GET` | `/api/mcp/servers` | token | 列出动态管理的 MCP 服务、连接状态和已发现的工具名。 |
+| `POST` | `/api/mcp/servers` | token | 新增 `STDIO`、`SSE` 或 `STREAMABLE_HTTP` 服务并立即连接。凭据通过 `env`/`headers` 传入，API 不会回传凭据值。 |
+| `PUT` | `/api/mcp/servers/{id}` | token | 替换服务定义，关闭旧会话、重新连接，并刷新实时 AI 工具目录。 |
+| `DELETE` | `/api/mcp/servers/{id}` | token | 断开并删除动态管理的 MCP 服务。 |
+| `POST` | `/api/mcp/servers/{id}/test` | token | 重新连接并执行 MCP 初始化及 `tools/list`。 |
+| `POST` | `/api/mcp/servers/{id}/call` | token | 直接调用已发现的 MCP 工具。请求体 `{tool, arguments}`。 |
+| `GET` | `/api/mcp/servers/{id}/prompts` | token | 列出实时 MCP 会话暴露的提示词。 |
+| `GET` | `/api/mcp/servers/{id}/resources` | token | 列出实时 MCP 会话暴露的资源。 |
 
 ## 工作流
 

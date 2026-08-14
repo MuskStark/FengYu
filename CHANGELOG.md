@@ -7,6 +7,25 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 ## [Unreleased]
 
 ### ✨ Added
+- **Computer use (ChatGPT-desktop-style screen control).** Desktop builds now expose a
+  `computer_*` AI tool family driven by `java.awt.Robot` inside the backend JVM, with the same
+  behavior on Windows, macOS, and Linux: screen capture with Hi-DPI scale reporting (the PNG
+  reaches vision models through the same media bridge as `browser_screenshot`), display/app
+  enumeration, application launch and activation (PowerShell on Windows with `.exe`-stripped
+  process-name and window-title fallback matching; `open`/osascript on macOS; `gtk-launch`/
+  `wmctrl` on Linux), mouse move/click/double-click/drag/scroll, keyboard typing with
+  clipboard-paste fallback for non-ASCII text, key combos, and a settle wait. Input-injecting
+  calls are `external` effects that pass the per-turn approval gate; observing calls are `read`.
+  A Settings card (**Runtime & security → Computer use**, `computerUseEnabled`, default on) shows
+  the capability probe and can hide the whole family per registry snapshot. Windows needs no
+  extra permissions (UAC/elevated windows stay OS-protected); macOS needs Screen Recording and
+  Accessibility. Display-less hosts degrade to `"computer use unavailable"` envelopes. A dedicated
+  cross-OS workflow (`.github/workflows/computer-use-ci.yml`) runs the family's unit tests on
+  Windows/Linux/macOS and the real-display Robot integration test on a Windows runner.
+- **Dynamic MCP server runtime.** MCP servers can now be added, edited, removed, tested, and called
+  from Settings or the REST API. STDIO, SSE, and Streamable HTTP connections are persisted,
+  initialized immediately, discovered with `tools/list`, and injected into the live AI tool catalog
+  without restarting FengYu; credentials are kept in a protected sidecar file and are never returned.
 - **Reusable workflows with one manual/AI execution path.** Visual DAGs can now be persisted with
   JSON Schema inputs, loaded and revised in the canvas, run manually with typed `{{inputs.*}}`
   bindings, and published as dynamically discovered Spring AI tools. Manual and model-triggered

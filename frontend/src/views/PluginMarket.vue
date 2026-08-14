@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '@/api/client'
 import { renderMarkdown } from '@/security/markdown'
@@ -19,6 +19,20 @@ const tab = ref<'plugins' | 'skills' | 'stores'>('plugins')
 const search = ref('')
 const busy = ref<string | null>(null)
 const error = ref<string | null>(null)
+const addMenuOpen = ref(false)
+const catalogScope = ref<'public' | 'personal'>('public')
+const marketSettingsOpen = ref(false)
+const marketSettingsBusy = ref(false)
+const marketSettingsError = ref<string | null>(null)
+const marketSourceName = ref('FengYu Market')
+const marketSourceUrl = ref('')
+const marketSourceOrigin = ref<string | null>(null)
+const remoteSearchResults = ref<UnifiedCatalogEntry[]>([])
+const remoteSearchReady = ref(false)
+const remoteSearching = ref(false)
+const remoteSearchError = ref<string | null>(null)
+let remoteSearchTimer: ReturnType<typeof setTimeout> | undefined
+let remoteSearchRequest = 0
 const fileInput = ref<HTMLInputElement | null>(null)
 const runtimePlugins = usePluginsStore()
 const skillStore = useSkillsStore()
@@ -142,6 +156,7 @@ interface CardItem {
   enabled: boolean
   updateAvailable: boolean
   permissions: string[]
+  category: string
 }
 
 const needle = computed(() => search.value.trim().toLocaleLowerCase())
@@ -157,6 +172,7 @@ const pluginCards = computed<CardItem[]>(() =>
       author: p.author || p.id, official: p.official, builtin: false,
       installed: p.installed, enabled: p.enabled, updateAvailable: p.updateAvailable,
       permissions: p.permissions ?? [],
+      category: p.category || 'other',
     })),
 )
 
@@ -169,13 +185,43 @@ const skillCards = computed<CardItem[]>(() =>
       icon: s.icon, version: s.builtin ? '—' : (s.meta.split('· v')[1] || '').trim(),
       author: s.builtin ? t('skillsMarket.builtin') : (s.meta.split(' ·')[0] || s.id),
       official: s.official, builtin: s.builtin, installed: s.installed, enabled: s.enabled,
-      updateAvailable: s.updateAvailable, permissions: [],
+      updateAvailable: s.updateAvailable, permissions: [], category: 'skills',
     })),
 )
 
 const cards = computed<CardItem[]>(() => (tab.value === 'plugins' ? pluginCards.value : skillCards.value))
 /** Top installed fast-row for the current tab. */
 const installedRow = computed<CardItem[]>(() => cards.value.filter((c) => c.installed || c.builtin))
+
+interface PluginSection {
+  id: string
+  title: string
+  items: CardItem[]
+}
+
+const catalogPlugins = computed(() => catalogScope.value === 'public'
+  ? pluginCards.value
+  : pluginCards.value.filter((card) => card.installed))
+const featuredPlugins = computed(() => catalogPlugins.value.filter((card) => card.official).slice(0, 6))
+const pluginSections = computed<PluginSection[]>(() => {
+  const grouped = new Map<string, CardItem[]>()
+  for (const card of catalogPlugins.value) {
+    const category = card.category || 'other'
+    const items = grouped.get(category) ?? []
+    items.push(card)
+    grouped.set(category, items)
+  }
+  return [...grouped.entries()]
+    .sort(([a], [b]) => (a === 'other' ? 1 : b === 'other' ? -1 : a.localeCompare(b)))
+    .map(([id, items]) => ({
+      id,
+      title: t(`category.${id}`) === `category.${id}` ? id : t(`category.${id}`),
+      items,
+    }))
+})
+
+const localPluginSearchEmpty = computed(() => tab.value === 'plugins' && Boolean(needle.value) && pluginCards.value.length === 0)
+const remoteFallbackVisible = computed(() => localPluginSearchEmpty.value)
 
 // ── mutation wrappers ────────────────────────────────────────────
 
@@ -260,17 +306,6 @@ async function chooseLocalPackage() {
   await dispatchUpload(path, () => skillStore.uploadNative(path), () => api.uploadNativePlugin(path))
 }
 
-// Drag-and-drop a local .fyp/.fys onto the install zone (extension dispatched by dispatchUpload).
-async function onDropPackage(e: DragEvent) {
-  e.preventDefault()
-  const file = e.dataTransfer?.files?.[0]
-  if (!file) return
-  await dispatchUpload(file.name, () => skillStore.uploadFile(file), () => api.uploadPlugin(file))
-}
-function onDragOverPackage(e: DragEvent) {
-  e.preventDefault()
-}
-
 // ── detail drawer ────────────────────────────────────────────────
 
 function openDetail(card: CardItem) {
@@ -309,32 +344,146 @@ onMounted(async () => {
   // Load the unified store catalog in parallel with the legacy marketplaces.
   void loadStore()
 })
+
+function refreshMarket() {
+  addMenuOpen.value = false
+  if (tab.value === 'stores') void loadStore()
+  else if (tab.value === 'skills') void Promise.all([skillStore.load(), skillStore.loadMarket()])
+  else void load()
+}
+
+function openSources() {
+  addMenuOpen.value = false
+  tab.value = 'stores'
+}
+
+async function openMarketSettings() {
+  marketSettingsError.value = null
+  await storeView.loadSources()
+  const current = storeView.sources.find((source) => source.sourceType === 'FENGYU')
+  marketSourceOrigin.value = current?.origin ?? null
+  marketSourceName.value = current?.name ?? 'FengYu Market'
+  marketSourceUrl.value = current?.catalogUrl ?? ''
+  marketSettingsOpen.value = true
+}
+
+async function saveMarketSettings() {
+  const url = marketSourceUrl.value.trim()
+  const name = marketSourceName.value.trim() || 'FengYu Market'
+  if (!/^https?:\/\//i.test(url)) {
+    marketSettingsError.value = t('market.marketAddressInvalid')
+    return
+  }
+
+  marketSettingsBusy.value = true
+  marketSettingsError.value = null
+  try {
+    const current = marketSourceOrigin.value
+      ? storeView.sources.find((source) => source.origin === marketSourceOrigin.value)
+      : undefined
+    const unchanged = current?.sourceType === 'FENGYU' && current.name === name && current.catalogUrl === url
+    if (!unchanged) {
+      if (current) await storeView.deleteSource(current.origin)
+      await storeView.addSource(name, 'FENGYU', url)
+    }
+    await storeView.loadSources()
+    await storeView.loadCatalog()
+    marketSettingsOpen.value = false
+    if (remoteFallbackVisible.value) void searchRemoteCatalog()
+  } catch (e) {
+    marketSettingsError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    marketSettingsBusy.value = false
+  }
+}
+
+async function searchRemoteCatalog() {
+  const query = needle.value
+  if (!remoteFallbackVisible.value || !query) {
+    remoteSearchResults.value = []
+    remoteSearchReady.value = false
+    remoteSearchError.value = null
+    remoteSearching.value = false
+    return
+  }
+
+  const request = ++remoteSearchRequest
+  remoteSearching.value = true
+  remoteSearchReady.value = false
+  remoteSearchError.value = null
+  try {
+    const results = await api.getUnifiedCatalog({ q: query })
+    if (request !== remoteSearchRequest) return
+    remoteSearchResults.value = results ?? []
+    remoteSearchReady.value = true
+  } catch (e) {
+    if (request !== remoteSearchRequest) return
+    remoteSearchResults.value = []
+    remoteSearchError.value = e instanceof Error ? e.message : String(e)
+    remoteSearchReady.value = true
+  } finally {
+    if (request === remoteSearchRequest) remoteSearching.value = false
+  }
+}
+
+function scheduleRemoteSearch() {
+  if (remoteSearchTimer) clearTimeout(remoteSearchTimer)
+  remoteSearchResults.value = []
+  remoteSearchReady.value = false
+  remoteSearchError.value = null
+  if (!localPluginSearchEmpty.value) {
+    remoteSearchRequest += 1
+    remoteSearching.value = false
+    return
+  }
+  remoteSearchTimer = setTimeout(() => { void searchRemoteCatalog() }, 220)
+}
+
+watch([search, tab, () => pluginCards.value.length], scheduleRemoteSearch)
+onBeforeUnmount(() => {
+  if (remoteSearchTimer) clearTimeout(remoteSearchTimer)
+  remoteSearchRequest += 1
+})
+
+// Keep template-only bindings visible to vue-tsc's noUnusedLocals pass. These are consumed by
+// event/directive expressions and component tags in the SFC template.
+void [
+  UnifiedSourceBadge, StoreSourceManager, storeDetailRecord, safeHomepage, applyStoreFilter,
+  installedRow, featuredPlugins, pluginSections, installPlugin, updatePlugin, togglePlugin,
+  uninstallPlugin, installSkill, toggleSkill, upload, chooseLocalPackage, openDetail, closeDetail,
+  refreshMarket, openSources,
+]
 </script>
 
 <template>
   <div class="market-page">
-    <!-- header: tabs + search + upload -->
+    <!-- ChatGPT-style app bar: view switching is separate from the catalog controls. -->
     <header class="market-header">
       <div class="cx-segment tab-segment">
         <button :class="{ active: tab === 'plugins' }" @click="tab = 'plugins'">
-          <i class="mdi mdi-puzzle-outline" />{{ t('market.tabPlugins') }}
+          {{ t('market.tabPlugins') }}
         </button>
         <button :class="{ active: tab === 'skills' }" @click="tab = 'skills'">
-          <i class="mdi mdi-script-text-outline" />{{ t('market.tabSkills') }}
-        </button>
-        <button :class="{ active: tab === 'stores' }" @click="tab = 'stores'">
-          <i class="mdi mdi-store-outline" />{{ t('market.store.tab') }}
+          {{ t('market.tabSkills') }}
         </button>
       </div>
-      <div class="cx-input-wrap market-search">
-        <i class="mdi mdi-magnify market-search-icon" />
-        <input v-model="search" class="cx-input" :placeholder="t('market.search')">
+      <div class="market-header-actions">
+        <button class="cx-iconbtn" :title="t('market.refresh')" :aria-label="t('market.refresh')" @click="refreshMarket">
+          <i class="mdi mdi-refresh" />
+        </button>
+        <button class="cx-iconbtn" :title="t('market.marketSettings')" :aria-label="t('market.marketSettings')" @click="openMarketSettings">
+          <i class="mdi mdi-cog-outline" />
+        </button>
+        <div class="market-add-wrap">
+          <button class="market-add-button" :aria-expanded="addMenuOpen" @click="addMenuOpen = !addMenuOpen">
+            {{ t('market.add') }} <i class="mdi mdi-chevron-down sm" />
+          </button>
+          <div v-if="addMenuOpen" class="market-add-menu">
+            <button @click="addMenuOpen = false; chooseLocalPackage()"><i class="mdi mdi-tray-arrow-up" />{{ t('market.upload') }}</button>
+            <button @click="openSources"><i class="mdi mdi-store-outline" />{{ t('market.store.tab') }}</button>
+          </div>
+        </div>
       </div>
-      <input ref="fileInput" type="file" accept=".fyp,.fys" hidden @change="upload">
-      <button class="cx-btn cx-btn--outline" :disabled="busy === 'upload'" @click="chooseLocalPackage">
-        <span v-if="busy === 'upload'" class="cx-spin" />
-        <i v-else class="mdi mdi-tray-arrow-up" />{{ t('market.upload') }}
-      </button>
     </header>
 
     <div v-if="error" class="cx-alert cx-alert--error market-error">
@@ -412,113 +561,114 @@ onMounted(async () => {
       </div>
 
       <!-- ═══ Legacy plugins/skills tabs ═══ -->
-      <template v-else>
-      <!-- Local install dropzone: click or drag a .fyp/.fys package -->
-      <div
-        class="local-install"
-        role="button"
-        tabindex="0"
-        :title="t('market.uploadHint')"
-        @click="chooseLocalPackage"
-        @keydown.enter.prevent="chooseLocalPackage"
-        @dragover="onDragOverPackage"
-        @drop="onDropPackage"
-      >
-        <span class="li-ic"><i class="mdi" :class="busy === 'upload' ? 'mdi-loading mdi-spin' : 'mdi-package-variant-closed'" /></span>
-        <span class="li-txt">
-          <strong>{{ t('market.upload') }}</strong>
-          <span class="cx-muted">{{ t('market.uploadHint') }}（.fyp / .fys）</span>
-        </span>
-        <span class="cx-btn cx-btn--primary cx-btn--sm li-btn">
-          <span v-if="busy === 'upload'" class="cx-spin" /><i v-else class="mdi mdi-tray-arrow-up" />{{ t('market.uploadHint') }}
-        </span>
-      </div>
+      <div v-else class="market-content">
+        <section class="market-intro">
+          <h1>{{ tab === 'plugins' ? t('market.title') : t('skillsMarket.title') }}</h1>
+          <p>{{ tab === 'plugins' ? t('market.subtitle') : t('skillsMarket.subtitle') }}</p>
+        </section>
 
-      <!-- Installed fast-row -->
-      <div v-if="installedRow.length" class="installed-row">
-        <span class="installed-row-label">{{ t('market.installedRow') }}</span>
-        <div class="installed-row-pills">
-          <button
-            v-for="item in installedRow" :key="item.id"
-            class="installed-pill"
-            :title="item.name"
-            @click="openDetail(item)"
-          >
-            <i class="mdi" :class="`mdi-${item.icon}`" />
-            <span class="installed-pill-name">{{ item.name }}</span>
-          </button>
+        <div class="cx-input-wrap market-search">
+          <i class="mdi mdi-magnify market-search-icon" />
+          <input v-model="search" class="cx-input" :placeholder="t('market.search')">
         </div>
-      </div>
+
+        <input ref="fileInput" type="file" accept=".fyp,.fys" hidden @change="upload">
+
+        <section v-if="installedRow.length" class="installed-row">
+          <div class="section-heading">
+            <h2>{{ t('market.installedRow') }}</h2>
+            <button class="cx-iconbtn cx-iconbtn--sm" :title="t('market.manageInstalled')" @click="tab = 'plugins'">
+              <i class="mdi mdi-cog-outline" />
+            </button>
+          </div>
+          <div class="installed-row-pills">
+            <button v-for="item in installedRow" :key="item.id" class="installed-pill" :title="item.name" :aria-label="item.name" @click="openDetail(item)">
+              <i class="mdi" :class="`mdi-${item.icon}`" />
+            </button>
+          </div>
+        </section>
+
+        <div class="market-filter-row">
+          <div class="cx-segment catalog-tabs">
+            <button :class="{ active: catalogScope === 'public' }" @click="catalogScope = 'public'">{{ t('market.public') }}</button>
+            <button :class="{ active: catalogScope === 'personal' }" @click="catalogScope = 'personal'">{{ t('market.personal') }}</button>
+          </div>
+          <button class="cx-iconbtn" :title="t('market.filter')" :aria-label="t('market.filter')"><i class="mdi mdi-filter-variant" /></button>
+        </div>
 
       <!-- Loading / empty / grid -->
       <div v-if="loading && tab === 'plugins'" class="market-empty"><span class="cx-spin lg" /></div>
-      <div v-else-if="cards.length === 0" class="market-empty">
+      <div v-else-if="cards.length === 0 && !remoteFallbackVisible" class="market-empty">
         <i class="mdi lg" :class="tab === 'plugins' ? 'mdi-puzzle-outline' : 'mdi-script-text-outline'" />
         <span>{{ plugins.length || skillRows.length ? t('market.empty') : t('market.catalogEmpty') }}</span>
       </div>
-      <div v-else class="cx-card-grid">
-        <article
-          v-for="card in cards" :key="`${card.kind}-${card.id}`"
-          class="cx-card cx-card--hover ext-card"
-          @click="openDetail(card)"
-        >
-          <div class="ext-card-head">
-            <span class="cx-avatar ext-icon"><i class="mdi" :class="`mdi-${card.icon}`" /></span>
-            <div class="ext-card-titlewrap">
-              <div class="ext-card-title">
-                {{ card.name }}
-                <span v-if="card.updateAvailable" class="cx-dot update-dot" :title="t('market.update')" />
-              </div>
-              <div class="cx-muted ext-card-meta">{{ card.author }} <template v-if="card.version && card.version !== '—'">· v{{ card.version }}</template></div>
+      <section v-else-if="remoteFallbackVisible" class="remote-fallback-section">
+        <div class="plugin-section-heading">
+          <h2>{{ t('market.remoteResults') }}</h2>
+          <span v-if="remoteSearching" class="cx-muted remote-search-status"><span class="cx-spin" />{{ t('market.remoteSearching') }}</span>
+        </div>
+        <div v-if="remoteSearchResults.length" class="plugin-list-grid">
+          <article v-for="entry in remoteSearchResults" :key="entry.uid" class="plugin-list-item" @click="storeDetail = entry">
+            <span class="plugin-list-icon"><i class="mdi mdi-store-outline" /></span>
+            <div class="plugin-list-copy">
+              <strong>{{ entry.displayName }}</strong>
+              <span>{{ entry.description }}</span>
             </div>
+            <UnifiedSourceBadge :type="entry.sourceType" />
+            <div class="plugin-list-action" @click.stop>
+              <button v-if="!entry.installed" class="cx-btn cx-btn--outline cx-btn--sm" :disabled="storeView.busy === entry.uid" @click="storeView.install(entry.uid)">
+                <span v-if="storeView.busy === entry.uid" class="cx-spin" />{{ t('market.install') }}
+              </button>
+              <button v-else-if="entry.updateAvailable" class="cx-btn cx-btn--outline cx-btn--sm" :disabled="storeView.busy === entry.uid" @click="storeView.update(entry.uid)">{{ t('market.update') }}</button>
+              <button v-else class="plugin-status-button" :class="{ enabled: entry.enabled }" @click="storeView.setEnabled(entry.uid, !entry.enabled)">{{ entry.enabled ? t('market.enabledShort') : t('market.disabledShort') }}</button>
+            </div>
+          </article>
+        </div>
+        <div v-else-if="!remoteSearching" class="remote-empty">
+          <i class="mdi mdi-store-search-outline lg" />
+          <p v-if="remoteSearchError">{{ remoteSearchError }}</p>
+          <p v-else-if="!storeView.sources.length">{{ t('market.remoteConfigureHint') }}</p>
+          <p v-else>{{ t('market.remoteNoResults') }}</p>
+          <button v-if="!storeView.sources.length" class="cx-btn cx-btn--outline" @click="openMarketSettings">{{ t('market.marketSettings') }}</button>
+        </div>
+      </section>
+      <div v-else-if="tab === 'plugins'" class="plugin-catalog">
+        <section v-if="featuredPlugins.length" class="plugin-section">
+          <div class="plugin-section-heading"><h2>{{ t('market.featured') }}</h2></div>
+          <div class="plugin-list-grid">
+            <article v-for="card in featuredPlugins" :key="`featured-${card.id}`" class="plugin-list-item" @click="openDetail(card)">
+              <span class="plugin-list-icon"><i class="mdi" :class="`mdi-${card.icon}`" /></span>
+              <div class="plugin-list-copy"><strong>{{ card.name }}</strong><span>{{ card.description }}</span></div>
+              <div class="plugin-list-action" @click.stop>
+                <button v-if="!card.installed" class="cx-btn cx-btn--outline cx-btn--sm" :disabled="busy === card.id" @click="installPlugin(card.id)"><span v-if="busy === card.id" class="cx-spin" />{{ t('market.install') }}</button>
+                <button v-else class="plugin-more-button" :title="t('market.manageInstalled')" @click="openDetail(card)">•••</button>
+              </div>
+            </article>
           </div>
-
+        </section>
+        <section v-for="section in pluginSections" :key="section.id" class="plugin-section">
+          <div class="plugin-section-heading"><h2>{{ section.title }}</h2></div>
+          <div class="plugin-list-grid">
+            <article v-for="card in section.items" :key="card.id" class="plugin-list-item" @click="openDetail(card)">
+              <span class="plugin-list-icon"><i class="mdi" :class="`mdi-${card.icon}`" /></span>
+              <div class="plugin-list-copy"><strong>{{ card.name }}</strong><span>{{ card.description }}</span></div>
+              <div class="plugin-list-action" @click.stop>
+                <button v-if="!card.installed && !card.builtin" class="cx-btn cx-btn--outline cx-btn--sm" :disabled="busy === card.id" @click="installPlugin(card.id)"><span v-if="busy === card.id" class="cx-spin" />{{ t('market.install') }}</button>
+                <button v-else-if="card.updateAvailable" class="cx-btn cx-btn--outline cx-btn--sm" :disabled="busy === card.id" @click="updatePlugin(card.id)">{{ t('market.update') }}</button>
+                <button v-else class="plugin-status-button" :class="{ enabled: card.enabled }" @click="togglePlugin(card.id, !card.enabled)">{{ card.enabled ? t('market.enabledShort') : t('market.disabledShort') }}</button>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
+      <div v-else class="cx-card-grid">
+        <article v-for="card in cards" :key="`${card.kind}-${card.id}`" class="cx-card cx-card--hover ext-card" @click="openDetail(card)">
+          <div class="ext-card-head"><span class="cx-avatar ext-icon"><i class="mdi" :class="`mdi-${card.icon}`" /></span><div class="ext-card-titlewrap"><div class="ext-card-title">{{ card.name }}</div><div class="cx-muted ext-card-meta">{{ card.author }}</div></div></div>
           <p class="cx-muted ext-card-desc">{{ card.description }}</p>
-
-          <div class="ext-card-badges">
-            <span v-if="card.official" class="cx-chip cx-chip--solid"><i class="mdi mdi-check-decagram sm" />{{ t('market.official') }}</span>
-            <span v-else class="cx-chip">{{ t('source.third_party') }}</span>
-            <span v-if="card.builtin" class="cx-chip cx-chip--success">{{ t('skillsMarket.builtin') }}</span>
-            <span v-if="card.installed" class="cx-chip cx-chip--muted">{{ t('market.installedLabel') }}</span>
-          </div>
-
-          <!-- actions: stop propagation so the card click (detail) doesn't fire -->
-          <div class="ext-card-actions" @click.stop>
-            <button
-              v-if="!card.installed && !card.builtin"
-              class="cx-btn cx-btn--primary cx-btn--sm"
-              :disabled="busy === card.id"
-              @click="card.kind === 'plugin' ? installPlugin(card.id) : installSkill(card.id)"
-            >
-              <span v-if="busy === card.id" class="cx-spin" />{{ t('market.install') }}
-            </button>
-            <button
-              v-if="card.updateAvailable"
-              class="cx-btn cx-btn--outline cx-btn--sm"
-              :disabled="busy === card.id"
-              @click="card.kind === 'plugin' ? updatePlugin(card.id) : updateSkill(card.id)"
-            >{{ t('market.update') }}</button>
-            <template v-if="card.installed">
-              <label class="cx-switch" :title="card.enabled ? t('market.disable') : t('market.enable')">
-                <input
-                  type="checkbox"
-                  :checked="card.enabled"
-                  :disabled="busy === card.id"
-                  @change="card.kind === 'plugin' ? togglePlugin(card.id, !card.enabled) : toggleSkill(card.id, !card.enabled)"
-                >
-                <span class="cx-switch__track" /><span class="cx-switch__thumb" />
-              </label>
-              <button
-                class="cx-iconbtn cx-iconbtn--sm danger"
-                :title="t('market.uninstall')"
-                :disabled="busy === card.id"
-                @click="card.kind === 'plugin' ? uninstallPlugin(card.id) : uninstallSkill(card.id)"
-              ><i class="mdi mdi-delete-outline" /></button>
-            </template>
-          </div>
+          <div class="ext-card-actions" @click.stop><button v-if="!card.installed && !card.builtin" class="cx-btn cx-btn--primary cx-btn--sm" :disabled="busy === card.id" @click="installSkill(card.id)">{{ t('market.install') }}</button><template v-if="card.installed"><label class="cx-switch"><input type="checkbox" :checked="card.enabled" @change="toggleSkill(card.id, !card.enabled)"><span class="cx-switch__track" /><span class="cx-switch__thumb" /></label></template></div>
         </article>
       </div>
-      </template>
+      </div>
     </div>
 
     <!-- Detail drawer (plugin permissions OR skill body preview) -->
@@ -547,21 +697,53 @@ onMounted(async () => {
             </span>
           </div>
           <p v-else class="cx-muted">{{ t('market.noPermissions') }}</p>
+          <div v-if="pluginDetail.installed" class="detail-actions">
+            <button v-if="pluginDetail.updateAvailable" class="cx-btn cx-btn--outline" @click="updatePlugin(pluginDetail.id)">{{ t('market.update') }}</button>
+            <button class="cx-btn cx-btn--outline" @click="togglePlugin(pluginDetail.id, !pluginDetail.enabled)">{{ pluginDetail.enabled ? t('market.disable') : t('market.enable') }}</button>
+            <button class="cx-btn cx-btn--text danger" @click="uninstallPlugin(pluginDetail.id)">{{ t('market.uninstall') }}</button>
+          </div>
         </template>
 
         <!-- skill detail -->
         <template v-else-if="skillDetail">
-          <p class="cx-muted" style="line-height: 1.6; margin-bottom: 16px">{{ skillDetail.description }}</p>
+          <p class="cx-muted" style="line-height: 1.6; margin-bottom: 16px">{{ skillDetail?.description }}</p>
           <dl class="detail-facts">
-            <div><dt>{{ t('skillsMarket.author') }}</dt><dd>{{ skillDetail.builtin ? t('skillsMarket.builtin') : (skillDetail.meta.split(' ·')[0] || '—') }}</dd></div>
+            <div><dt>{{ t('skillsMarket.author') }}</dt><dd>{{ skillDetail?.builtin ? t('skillsMarket.builtin') : (skillDetail?.meta.split(' ·')[0] || '—') }}</dd></div>
           </dl>
           <h3 class="detail-h3">{{ t('skillsMarket.preview') }}</h3>
           <div v-if="skillBodyLoading" class="cx-muted">{{ t('common.loading') }}</div>
           <div v-else-if="skillBody" class="cx-md cx-skill-body" v-html="md(skillBody.body)" />
           <p v-else class="cx-muted">{{ t('skillsMarket.builtinReadonly') }}</p>
+          <div v-if="skillDetail?.installed" class="detail-actions">
+            <button v-if="skillDetail?.updateAvailable" class="cx-btn cx-btn--outline" @click="skillDetail && updateSkill(skillDetail.id)">{{ t('market.update') }}</button>
+            <button class="cx-btn cx-btn--text danger" @click="skillDetail && uninstallSkill(skillDetail.id)">{{ t('market.uninstall') }}</button>
+          </div>
         </template>
       </div>
     </div>
+
+    <!-- Remote market address settings. The backend persists this as a FengYu store source. -->
+    <v-dialog v-model="marketSettingsOpen" max-width="560">
+      <v-card :title="t('market.marketSettings')">
+        <v-card-text>
+          <p class="market-settings-description">{{ t('market.marketAddressHint') }}</p>
+          <v-text-field v-model="marketSourceName" :label="t('market.marketName')" :disabled="marketSettingsBusy" />
+          <v-text-field v-model="marketSourceUrl" :label="t('market.marketAddress')" placeholder="https://example.com/marketplace.json" :disabled="marketSettingsBusy" />
+          <v-alert v-if="marketSettingsError" type="error" density="compact">{{ marketSettingsError }}</v-alert>
+          <div v-if="storeView.sources.length" class="market-source-summary">
+            <span class="cx-muted">{{ t('market.configuredSources') }}</span>
+            <span v-for="source in storeView.sources" :key="source.origin" class="market-source-line">
+              <UnifiedSourceBadge :type="source.sourceType" />{{ source.name }} · {{ source.catalogUrl }}
+            </span>
+          </div>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="marketSettingsBusy" @click="marketSettingsOpen = false">{{ t('common.cancel') }}</v-btn>
+          <v-btn variant="tonal" :loading="marketSettingsBusy" @click="saveMarketSettings">{{ t('market.saveMarketSettings') }}</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- Store entry detail drawer (unified store tab) -->
     <v-navigation-drawer
@@ -609,10 +791,20 @@ onMounted(async () => {
 
 <style scoped>
 .market-page { height: 100%; min-height: 0; display: flex; flex-direction: column; background: rgb(var(--v-theme-background)); }
-.market-header { padding: 14px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgb(var(--v-theme-outline-variant)); flex: 0 0 auto; }
-.tab-segment { flex: 0 0 auto; }
-.tab-segment button { display: inline-flex; align-items: center; gap: 6px; }
-.market-search { flex: 1; max-width: 420px; }
+.market-header { min-height: 56px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid rgb(var(--v-theme-outline-variant)); flex: 0 0 auto; background: rgb(var(--v-theme-surface)); }
+.tab-segment { flex: 0 0 auto; gap: 8px; padding: 0; background: transparent; }
+.tab-segment button { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 5px 12px; border-radius: 14px; font-size: 16px; font-weight: 400; }
+.tab-segment button.active { background: var(--cx-hover-strong); box-shadow: none; color: rgb(var(--v-theme-on-surface)); }
+.market-header-actions { display: flex; align-items: center; gap: 4px; }
+.market-add-wrap { position: relative; }
+.market-add-button { display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 10px; padding: 6px 10px; background: #202123; color: #fff; font: inherit; font-size: 13px; cursor: pointer; }
+.market-add-button:hover { opacity: .88; }
+.market-add-button .mdi { font-size: 16px; }
+.market-add-menu { position: absolute; top: calc(100% + 7px); right: 0; z-index: 20; min-width: 190px; padding: 5px; border: 1px solid var(--cx-border); border-radius: 10px; background: rgb(var(--v-theme-surface)); box-shadow: 0 8px 24px rgba(0,0,0,.16); }
+.market-add-menu button { width: 100%; display: flex; align-items: center; gap: 9px; border: 0; border-radius: 7px; padding: 9px 10px; background: transparent; color: inherit; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.market-add-menu button:hover { background: var(--cx-hover); }
+.market-add-menu .mdi { font-size: 17px; color: rgb(var(--v-theme-secondary)); }
+.market-search { width: 100%; max-width: none; }
 .market-search .cx-input { padding-left: 36px; }
 .market-search-icon { position: absolute; left: 11px; z-index: 1; color: rgb(var(--v-theme-secondary)); font-size: 18px; }
 .market-error { margin: 12px 20px 0; flex: 0 0 auto; }
@@ -641,15 +833,46 @@ onMounted(async () => {
 .local-install .li-txt .cx-muted { font-size: 12px; }
 .local-install .li-btn { flex: 0 0 auto; pointer-events: none; }
 
-.market-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 20px 24px; }
+.market-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 20px 40px; }
+.market-content { width: min(730px, 100%); margin: 0 auto; padding: 28px 8px 40px; }
+.market-intro { margin: 0 0 18px; }
+.market-intro h1 { margin: 0 0 7px; font-size: 28px; line-height: 1.2; font-weight: 600; letter-spacing: -.02em; }
+.market-intro p { margin: 0; color: rgb(var(--v-theme-secondary)); font-size: 15px; }
+.market-content .market-search .cx-input { height: 34px; border-radius: 18px; background: rgb(var(--v-theme-surface)); }
+.market-filter-row { display: flex; align-items: center; justify-content: space-between; margin: 20px 0 22px; }
+.catalog-tabs { background: transparent; padding: 0; }
+.catalog-tabs button { padding: 6px 10px; }
+.catalog-tabs button.active { background: var(--cx-hover-strong); box-shadow: none; }
+.section-heading, .plugin-section-heading { display: flex; align-items: center; justify-content: space-between; min-height: 32px; border-bottom: 1px solid rgb(var(--v-theme-outline-variant)); }
+.section-heading h2, .plugin-section-heading h2 { margin: 0; font-size: 16px; font-weight: 550; }
 
 /* Installed fast-row */
 .installed-row { margin-bottom: 18px; }
-.installed-row-label { display: block; font-size: 12px; color: rgb(var(--v-theme-secondary)); margin-bottom: 8px; text-transform: uppercase; letter-spacing: .04em; }
-.installed-row-pills { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
-.installed-pill { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px 6px 8px; border: 1px solid rgb(var(--v-theme-outline-variant)); border-radius: 999px; background: rgb(var(--v-theme-surface)); color: inherit; font: inherit; font-size: 13px; cursor: pointer; transition: background .12s; }
-.installed-pill:hover { background: rgb(var(--v-theme-surface-container-high)); }
-.installed-pill .mdi { font-size: 18px; color: rgb(var(--v-theme-primary)); }
+.installed-row-pills { display: flex; gap: 10px; overflow-x: auto; padding: 10px 2px 4px; }
+.installed-pill { width: 38px; height: 38px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgb(var(--v-theme-outline-variant)); border-radius: 10px; background: rgb(var(--v-theme-surface)); color: inherit; font: inherit; cursor: pointer; transition: background .12s, transform .12s; }
+.installed-pill:hover { background: rgb(var(--v-theme-surface-container-high)); transform: translateY(-1px); }
+.installed-pill .mdi { font-size: 21px; color: rgb(var(--v-theme-primary)); }
+.plugin-section { margin-top: 22px; }
+.plugin-list-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 38px; }
+.plugin-list-item { min-width: 0; min-height: 76px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgb(var(--v-theme-outline-variant)); cursor: pointer; }
+.plugin-list-item:hover .plugin-list-copy strong { text-decoration: underline; }
+.plugin-list-icon { width: 40px; height: 40px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgb(var(--v-theme-outline-variant)); border-radius: 10px; background: rgb(var(--v-theme-surface)); }
+.plugin-list-icon .mdi { font-size: 23px; color: rgb(var(--v-theme-primary)); }
+.plugin-list-copy { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 3px; }
+.plugin-list-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 550; }
+.plugin-list-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: rgb(var(--v-theme-secondary)); font-size: 12px; }
+.plugin-list-action { flex: 0 0 auto; }
+.plugin-more-button { border: 0; background: transparent; color: rgb(var(--v-theme-secondary)); font: inherit; cursor: pointer; padding: 4px 7px; letter-spacing: 2px; }
+.plugin-more-button:hover { color: rgb(var(--v-theme-on-surface)); }
+.plugin-status-button { border: 1px solid var(--cx-border); border-radius: 8px; padding: 5px 9px; background: transparent; color: rgb(var(--v-theme-secondary)); font: inherit; font-size: 12px; cursor: pointer; }
+.plugin-status-button.enabled { color: rgb(var(--v-theme-on-surface)); background: var(--cx-hover-strong); }
+.remote-search-status { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; }
+.remote-search-status .cx-spin { width: 13px; height: 13px; border-width: 1.5px; }
+.remote-empty { min-height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; color: rgb(var(--v-theme-secondary)); }
+.remote-empty p { max-width: 460px; margin: 0; font-size: 13px; }
+.market-settings-description { margin: 0 0 16px; color: rgb(var(--v-theme-secondary)); font-size: 13px; line-height: 1.5; }
+.market-source-summary { display: flex; flex-direction: column; gap: 7px; margin-top: 18px; padding-top: 14px; border-top: 1px solid rgb(var(--v-theme-outline-variant)); font-size: 12px; }
+.market-source-line { display: flex; align-items: center; gap: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .installed-pill-name { white-space: nowrap; }
 
 /* Card grid */
@@ -699,8 +922,17 @@ onMounted(async () => {
 .detail-facts dd { margin: 0; font-size: 13px; }
 .detail-h3 { margin: 0 0 10px; font-size: 13px; }
 .permission-list { display: flex; flex-wrap: wrap; gap: 7px; }
+.detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; padding-top: 16px; border-top: 1px solid rgb(var(--v-theme-outline-variant)); }
 .cx-skill-body { font-size: 13px; line-height: 1.6; }
 .cx-skill-body :deep(h1), .cx-skill-body :deep(h2), .cx-skill-body :deep(h3) { margin: 16px 0 8px; }
 .cx-skill-body :deep(pre) { background: rgb(var(--v-theme-surface-variant)); padding: 10px; border-radius: 8px; overflow-x: auto; }
 .cx-skill-body :deep(code) { font-family: ui-monospace, monospace; font-size: 12px; }
+
+@media (max-width: 700px) {
+  .market-scroll { padding-left: 12px; padding-right: 12px; }
+  .market-content { padding-left: 2px; padding-right: 2px; }
+  .plugin-list-grid { grid-template-columns: 1fr; }
+  .market-intro h1 { font-size: 25px; }
+  .plugin-list-item { min-height: 70px; }
+}
 </style>
