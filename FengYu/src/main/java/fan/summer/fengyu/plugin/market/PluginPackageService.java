@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -34,6 +35,7 @@ public class PluginPackageService {
     private static final Logger log = LoggerFactory.getLogger(PluginPackageService.class);
     private static final long MAX_PACKAGE_BYTES = 100L * 1024 * 1024;
     private static final long MAX_EXPANDED_BYTES = 300L * 1024 * 1024;
+    static final int MAX_MANIFEST_BYTES = 1024 * 1024;
     private static final long MIN_TIMEOUT_SECONDS = 1L;
     private static final long MAX_TIMEOUT_SECONDS = 600L;
     /**
@@ -204,11 +206,12 @@ public class PluginPackageService {
      */
     public PluginManifest readArchiveManifest(Path archive) throws IOException {
         if (!Files.isRegularFile(archive)) throw new IllegalArgumentException("Plugin package not found: " + archive);
+        if (Files.size(archive) > MAX_PACKAGE_BYTES) throw new IllegalArgumentException("Plugin package exceeds 100 MB");
         try (InputStream input = Files.newInputStream(archive);
                 ZipInputStream zip = new ZipInputStream(input)) {
             for (ZipEntry entry; (entry = zip.getNextEntry()) != null;) {
                 if ("manifest.json".equals(entry.getName())) {
-                    return json.readValue(zip.readAllBytes(), PluginManifest.class);
+                    return readArchiveManifestEntry(zip, entry);
                 }
             }
         }
@@ -220,11 +223,13 @@ public class PluginPackageService {
      * plugin id before a replace-style upload so the host can stop the running Worker first.
      */
     public PluginManifest readArchiveManifest(MultipartFile file) throws IOException {
+        if (file.isEmpty()) throw new IllegalArgumentException("Plugin package is empty");
+        if (file.getSize() > MAX_PACKAGE_BYTES) throw new IllegalArgumentException("Plugin package exceeds 100 MB");
         try (InputStream input = file.getInputStream();
                 ZipInputStream zip = new ZipInputStream(input)) {
             for (ZipEntry entry; (entry = zip.getNextEntry()) != null;) {
                 if ("manifest.json".equals(entry.getName())) {
-                    return json.readValue(zip.readAllBytes(), PluginManifest.class);
+                    return readArchiveManifestEntry(zip, entry);
                 }
             }
         }
@@ -391,7 +396,26 @@ public class PluginPackageService {
     private PluginManifest readManifest(Path dir) throws IOException {
         Path path = dir.resolve("manifest.json");
         if (!Files.isRegularFile(path)) throw new IllegalArgumentException("manifest.json is missing");
+        if (Files.size(path) > MAX_MANIFEST_BYTES) throw new IllegalArgumentException("manifest.json exceeds 1 MB");
         return json.readValue(path.toFile(), PluginManifest.class);
+    }
+
+    private PluginManifest readArchiveManifestEntry(ZipInputStream zip, ZipEntry entry) throws IOException {
+        if (entry.getSize() > MAX_MANIFEST_BYTES) {
+            throw new IllegalArgumentException("manifest.json exceeds 1 MB");
+        }
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream(
+            (int) Math.min(Math.max(0, entry.getSize()), 16 * 1024));
+        byte[] buffer = new byte[8 * 1024];
+        int total = 0;
+        for (int count; (count = zip.read(buffer)) != -1;) {
+            total += count;
+            if (total > MAX_MANIFEST_BYTES) {
+                throw new IllegalArgumentException("manifest.json exceeds 1 MB");
+            }
+            bytes.write(buffer, 0, count);
+        }
+        return json.readValue(bytes.toByteArray(), PluginManifest.class);
     }
 
     private Optional<PluginManifest> readManifestQuietly(Path dir) {
