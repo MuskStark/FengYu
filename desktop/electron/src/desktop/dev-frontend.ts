@@ -6,7 +6,7 @@ import net from 'node:net'
 
 /**
  * Dev-only frontend (Vite) launcher. Mirrors what the old Tauri shell did via
- * `beforeDevCommand: "cd ../frontend && npm run dev"`: spawn the Vite dev server and wait until
+ * `beforeDevCommand: "cd ../frontend && yarn run dev"`: spawn the Vite dev server and wait until
  * it's listening before the BrowserWindow tries to load `http://localhost:5173`.
  *
  * Idempotent: if Vite is already reachable, no process is spawned. The returned stop() function
@@ -55,7 +55,7 @@ export function isPortListening(port: number): Promise<boolean> {
 }
 
 /**
- * Spawn `npm run dev` in `frontend/` and wait until Vite is listening on `port`. If Vite is
+ * Spawn the Vite dev server in `frontend/` and wait until it is listening on `port`. If Vite is
  * already up, returns immediately with process=null. Resolves once ready; rejects on timeout
  * or spawn failure.
  */
@@ -108,16 +108,16 @@ export async function startDevFrontend(opts: StartDevFrontendOptions): Promise<D
   child.once('exit', (code, signal) => {
     if (!isQuitting()) {
       log(`[desktop] WARNING: dev frontend (vite) exited unexpectedly (code=${code} signal=${signal}). ` +
-        'Lazy-loaded routes will fail. Restart the shell or run `npm run dev` in frontend/ manually.')
+        'Lazy-loaded routes will fail. Restart the shell or run `yarn run dev` in frontend/ manually.')
     }
   })
 
-  // Wait for Vite to bind. Abort fast if the npm process dies first.
+  // Wait for Vite to bind. Abort fast if the Vite process dies first.
   const deadline = Date.now() + deadlineMs
   await new Promise<void>((resolve, reject) => {
     const onExit = (code: number | null) => {
       cleanup()
-      reject(new Error(`frontend (npm run dev) exited with code ${code} before binding :${port}`))
+      reject(new Error(`frontend (vite) exited with code ${code} before binding :${port}`))
     }
     const poll = setInterval(async () => {
       if (await isPortListening(port)) {

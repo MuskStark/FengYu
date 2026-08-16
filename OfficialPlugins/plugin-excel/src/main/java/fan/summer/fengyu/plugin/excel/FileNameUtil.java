@@ -13,6 +13,12 @@ public class FileNameUtil {
 
     private static final Logger log = LoggerFactory.getLogger(FileNameUtil.class);
 
+    /** Path separators and characters illegal in Windows filenames. */
+    private static final String ILLEGAL_FILENAME_CHARS = "<>:\"/\\|?*";
+
+    /** Cap on a sanitized filename segment; split keys are raw cell values, so keep names sane. */
+    private static final int MAX_SEGMENT_LENGTH = 120;
+
     /**
      * Returns the filename without its extension.
      * If the input contains no dot, the full string is returned unchanged.
@@ -35,5 +41,25 @@ public class FileNameUtil {
             return result;
         }
         return fileName;
+    }
+
+    /**
+     * Sanitizes an arbitrary cell value (a split key) into a safe filename segment: path
+     * separators, Windows-illegal characters ({@code <>:"/\|?*}) and control characters are
+     * replaced with {@code '_'}, and the result is truncated to 120 characters. This keeps a
+     * crafted cell value like {@code ../../evil} from steering the output path outside the
+     * output directory, and keeps {@code / \ :} etc. from producing broken filenames.
+     *
+     * @param segment the raw split-key value
+     * @return a safe, non-empty filename segment; never null
+     */
+    public static String sanitizeSegment(String segment) {
+        if (segment == null || segment.isEmpty()) return "_";
+        StringBuilder out = new StringBuilder(Math.min(segment.length(), MAX_SEGMENT_LENGTH));
+        for (int i = 0; i < segment.length() && out.length() < MAX_SEGMENT_LENGTH; i++) {
+            char c = segment.charAt(i);
+            out.append(ILLEGAL_FILENAME_CHARS.indexOf(c) >= 0 || Character.isISOControl(c) ? '_' : c);
+        }
+        return out.length() == 0 ? "_" : out.toString();
     }
 }

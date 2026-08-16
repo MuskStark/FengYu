@@ -17,6 +17,37 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class PluginDevServerTest {
 
+    /** Connects and completes the dev-server AUTH handshake (every connection must lead with
+     *  'AUTH <token>'; the token file is per server start). */
+    private static Socket connectAuthorized(PluginDevServer server) throws Exception {
+        Socket client = new Socket("127.0.0.1", server.port());
+        client.getOutputStream().write(("AUTH " + java.nio.file.Files.readString(server.tokenFile()).trim()
+                + "\n").getBytes(StandardCharsets.UTF_8));
+        client.getOutputStream().flush();
+        return client;
+    }
+
+    @Test void tokenFileIsCreatedOwnerOnly() throws Exception {
+        // The token file must be born with 0600, not written first and tightened afterwards
+        // (that ordering left a brief default-permissions window holding the dev token).
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                !System.getProperty("os.name", "").toLowerCase().contains("win"),
+                "POSIX permissions are unavailable on Windows");
+        PluginDevServer server = PluginDevServer.builder()
+            .worker(new JsonRpcWorker().on("ping", p -> Map.of("ok", true)))
+            .port(0)
+            .start();
+        try {
+            assertEquals(java.util.Set.of(
+                    java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                    java.nio.file.attribute.PosixFilePermission.OWNER_WRITE),
+                java.nio.file.Files.getPosixFilePermissions(server.tokenFile()),
+                "token file must be owner-only (rw-------) from creation");
+        } finally {
+            server.close();
+        }
+    }
+
     @Test void roundTripsJsonRpcOverLoopbackSocket() throws Exception {
         // Handlers read params directly from the map (the public string()/integer() helpers were
         // removed in 1.4.0 in favour of the typed method() API); Gson exposes JSON numbers as
@@ -36,7 +67,7 @@ class PluginDevServerTest {
 
         try {
             int port = server.port();
-            try (Socket client = new Socket("127.0.0.1", port)) {
+            try (Socket client = connectAuthorized(server)) {
                 var out = client.getOutputStream();
                 out.write("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"hello\",\"params\":{\"name\":\"Ada\"}}\n".getBytes(StandardCharsets.UTF_8));
                 out.write("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"add\",\"params\":{\"a\":3,\"b\":4}}\n".getBytes(StandardCharsets.UTF_8));
@@ -70,7 +101,7 @@ class PluginDevServerTest {
             .port(0)
             .start();
         try {
-            try (Socket client = new Socket("127.0.0.1", server.port())) {
+            try (Socket client = connectAuthorized(server)) {
                 client.getOutputStream().write(
                     "{\"jsonrpc\":\"2.0\",\"id\":\"x\",\"method\":\"missing\",\"params\":{}}\n".getBytes(StandardCharsets.UTF_8));
                 client.getOutputStream().flush();
@@ -98,7 +129,7 @@ class PluginDevServerTest {
             .start();
         try {
             for (int i = 1; i <= 2; i++) {
-                try (Socket client = new Socket("127.0.0.1", server.port())) {
+                try (Socket client = connectAuthorized(server)) {
                     client.getOutputStream().write(
                         "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\",\"params\":{}}\n".getBytes(StandardCharsets.UTF_8));
                     client.getOutputStream().flush();
@@ -124,7 +155,7 @@ class PluginDevServerTest {
             .pluginRoot(Path.of("/tmp/my-plugin"))
             .start();
         try {
-            try (Socket client = new Socket("127.0.0.1", server.port())) {
+            try (Socket client = connectAuthorized(server)) {
                 client.getOutputStream().write(
                     "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"probe\",\"params\":{}}\n".getBytes(StandardCharsets.UTF_8));
                 client.getOutputStream().flush();
@@ -151,7 +182,7 @@ class PluginDevServerTest {
             .pluginId("com.example.my-plugin")
             .start();
         try {
-            try (Socket client = new Socket("127.0.0.1", server.port())) {
+            try (Socket client = connectAuthorized(server)) {
                 client.getOutputStream().write(
                     "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"probe\",\"params\":{}}\n".getBytes(StandardCharsets.UTF_8));
                 client.getOutputStream().flush();
@@ -187,7 +218,7 @@ class PluginDevServerTest {
         });
         PluginDevServer server = PluginDevServer.builder().worker(worker).port(0).start();
         try {
-            try (Socket client = new Socket("127.0.0.1", server.port())) {
+            try (Socket client = connectAuthorized(server)) {
                 client.setSoTimeout(5_000);
                 var out = client.getOutputStream();
                 out.write("{\"jsonrpc\":\"2.0\",\"id\":\"c1\",\"method\":\"slow\",\"params\":{}}\n".getBytes(StandardCharsets.UTF_8));
@@ -232,5 +263,45 @@ class PluginDevServerTest {
             "😀", 4, "outbound dev frame"));
         assertThrows(java.io.IOException.class, () -> LineFramedSocketTransport.ensureFrameWithinLimit(
             "😀", 3, "outbound dev frame"));
+    }
+
+    @Test void rejectsConnectionWithoutTheAuthHandshake() throws Exception {
+        JsonRpcWorker worker = new JsonRpcWorker().on("hello", p -> Map.of("ok", true));
+        PluginDevServer server = PluginDevServer.builder()
+            .worker(worker).host("127.0.0.1").port(0).start();
+        try {
+            try (Socket client = new Socket("127.0.0.1", server.port())) {
+                client.getOutputStream().write(
+                    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"hello\",\"params\":{}}\n".getBytes(StandardCharsets.UTF_8));
+                client.getOutputStream().flush();
+                BufferedReader in = new BufferedReader(
+                    new InputStreamReader(client.getInputStream(), StandardCharsets.UTF_8));
+                String line = in.readLine();
+                assertNotNull(line, "server must answer the missing handshake");
+                assertTrue(line.contains("dev auth required"),
+                    "expected the auth rejection envelope, got: " + line);
+                assertNull(in.readLine(), "no RPC response may follow a rejected handshake");
+            }
+        } finally {
+            server.close();
+        }
+    }
+
+    @Test void rejectsConnectionWithAForgedToken() throws Exception {
+        JsonRpcWorker worker = new JsonRpcWorker().on("hello", p -> Map.of("ok", true));
+        PluginDevServer server = PluginDevServer.builder()
+            .worker(worker).host("127.0.0.1").port(0).start();
+        try {
+            try (Socket client = new Socket("127.0.0.1", server.port())) {
+                client.getOutputStream().write("AUTH forged-token\n".getBytes(StandardCharsets.UTF_8));
+                client.getOutputStream().flush();
+                BufferedReader in = new BufferedReader(
+                    new InputStreamReader(client.getInputStream(), StandardCharsets.UTF_8));
+                assertTrue(in.readLine().contains("dev auth required"),
+                    "a forged token must be rejected");
+            }
+        } finally {
+            server.close();
+        }
     }
 }

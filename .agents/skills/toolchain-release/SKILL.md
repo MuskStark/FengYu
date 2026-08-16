@@ -54,18 +54,18 @@ manifest.
 
 ## Step 3 — Validate lockfiles and package contents
 
-- Regenerate/confirm lockfiles for the four npm packages are consistent with the bumped versions.
+- Regenerate/confirm `yarn.lock` files for the four Yarn 4 toolchain packages are consistent with the bumped versions.
 - Run each package's own checks:
 
 ```bash
 # CLI
-cd toolchain/cli && npm install && npm test && cd ../..
+cd toolchain/cli && corepack yarn install && corepack yarn test && cd ../..
 # Dev plugin (Vite host simulator)
-cd toolchain/dev && npm install && npm test && cd ../..
+cd toolchain/dev && corepack yarn install && corepack yarn test && cd ../..
 # TS SDK
-cd toolchain/sdk-ts && npm install && npm test && cd ../..
+cd toolchain/sdk-ts && corepack yarn install && corepack yarn test && cd ../..
 # UI kit
-cd toolchain/ui && npm install && npm run prepack && npm run test:visual && cd ../..
+cd toolchain/ui && corepack yarn install && corepack yarn run prepack && corepack yarn run test:visual && cd ../..
 # Java Worker SDK
 mvn -f toolchain/sdk-java/pom.xml test
 # Java Plugin DevKit
@@ -108,7 +108,7 @@ resolve and use them locally. It must pass before release mutation. Also confirm
 (the release workflow's `verify` job runs this):
 
 ```bash
-npm --prefix docs run build
+cd docs && corepack yarn run build
 ```
 
 ## Step 6 — Mutate, with explicit confirmation
@@ -116,11 +116,11 @@ npm --prefix docs run build
 **Committing, tagging, pushing, dispatching the workflow, or publishing to a registry each require
 explicit user confirmation.** Do not run these automatically. When the user confirms:
 
-1. Commit the four version bumps (+ any tracked dependent range) with a `⬆️`/`📝` conventional message.
+1. Commit the six version bumps (+ any tracked dependent range) with a `⬆️`/`📝` conventional message.
 2. Create the tag `plugin-tooling-vX.Y.Z`.
 3. Push the branch and the tag — the tag push triggers
    `.github/workflows/toolchain-release.yml`, which verifies, publishes
-   `fengyu-plugin-sdk` to GitHub Packages and the three `@infinia/*` packages to npm (with provenance),
+   `fengyu-plugin-sdk` + `fengyu-plugin-devkit` to GitHub Packages and the four `@infinia/*` packages to npm (with provenance),
    then runs a consumer smoke against the just-published packages. (Manual `workflow_dispatch` with a
    `tooling_version` input is the alternative trigger.)
 

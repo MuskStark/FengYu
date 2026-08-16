@@ -4,5 +4,6 @@ package fan.summer.excel.generated;
 import com.google.gson.annotations.SerializedName;
 
 public record ExcelAnalyzeInput(
-    @SerializedName("filePath") String filePath
+    @SerializedName("filePath") String filePath,
+    @SerializedName("sessionId") String sessionId
 ) {}

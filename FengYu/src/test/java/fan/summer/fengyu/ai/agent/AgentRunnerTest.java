@@ -1,6 +1,9 @@
 package fan.summer.fengyu.ai.agent;
 
+import fan.summer.fengyu.ai.hooks.HookDispatcher;
+import fan.summer.fengyu.ai.tools.AiPermissionMode;
 import fan.summer.fengyu.ai.tools.ApprovalRequiredToolCallback;
+import fan.summer.fengyu.ai.tools.ToolGuardService;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.DefaultToolDefinition;
@@ -64,6 +67,37 @@ class AgentRunnerTest {
 
     static final class ApprovalRequiredEchoToolCallback
             extends EchoToolCallback implements ApprovalRequiredToolCallback {
+    }
+
+    /** An audited callback with a fixed effect — the read-only capability dimension. */
+    static final class EffectToolCallback extends EchoToolCallback
+            implements fan.summer.fengyu.ai.tools.AuditedToolCallback {
+        private final fan.summer.fengyu.ai.tools.ToolEffect effect;
+        EffectToolCallback(String name, fan.summer.fengyu.ai.tools.ToolEffect effect) {
+            this.effect = effect;
+        }
+        @Override public ToolDefinition getToolDefinition() {
+            return DefaultToolDefinition.builder()
+                    .name(effect == fan.summer.fengyu.ai.tools.ToolEffect.READ ? "peek" : "mutate")
+                    .description("effect probe").inputSchema("{}").build();
+        }
+        @Override public fan.summer.fengyu.ai.tools.ToolEffect effect() { return effect; }
+    }
+
+    @Test
+    void readOnlyCapabilityRejectsNonReadStepsAndAcceptsReadOnes() {
+        ToolCallback read = new EffectToolCallback("peek", fan.summer.fengyu.ai.tools.ToolEffect.READ);
+        ToolCallback write = new EffectToolCallback("mutate", fan.summer.fengyu.ai.tools.ToolEffect.WRITE);
+        AgentPlan research = new AgentPlan("g", List.of(step(0, "peek", Map.of())), "");
+        AgentRunner.validatePlan(research, List.of(read), true);
+
+        AgentPlan mutates = new AgentPlan("g", List.of(step(0, "mutate", Map.of())), "");
+        IllegalArgumentException rejected = assertThrows(IllegalArgumentException.class,
+                () -> AgentRunner.validatePlan(mutates, List.of(read, write), true));
+        assertTrue(rejected.getMessage().contains("read-only"));
+        assertTrue(rejected.getMessage().contains("mutate"));
+        // Without the capability flag the same plan is fine.
+        AgentRunner.validatePlan(mutates, List.of(read, write), false);
     }
 
     /** Records every {@link AgentEventSink} call in arrival order for sequence assertions. */
@@ -297,6 +331,36 @@ class AgentRunnerTest {
         run.approve(null);
 
         assertTrue(sink.awaitDone(), "onComplete should fire after sensitive-tool approval");
+        assertEquals(AgentRunStatus.COMPLETED, run.getStatus());
+    }
+
+    @Test
+    void requiresApprovalFlagPausesEvenWhenTheGuardAllows() throws Exception {
+        // Regression for the dead-code branch: with a guard installed (production always
+        // installs one), a step flagged requiresApproval must pause even when the guard
+        // says ALLOW — blanket allow rules and FULL_ACCESS cannot skip an explicit flag.
+        List<ToolCallback> tools = List.of(new EchoToolCallback());
+        RecordingSink sink = new RecordingSink();
+        AgentPlan plan = new AgentPlan("echo hi", List.of(
+                new AgentStep(0, "echo", Map.of("text", "hi"), "sensitive", true)), "flagged step");
+        AgentRun run = runFor("echo hi",
+                new AgentRunConfig(false, false, false, 0, AiPermissionMode.FULL_ACCESS));
+        ToolGuardService guard =
+                new ToolGuardService(new HookDispatcher(), "{\"allow\":[\"Tool\"]}", "[]");
+        AgentRunner runner = new AgentRunner(() -> tools, (goal, tks, tokenSink) -> plan,
+                AgentRunner.toolResolvingExecutor(), guard);
+
+        runner.run(run, sink);
+
+        Thread.sleep(200);
+        assertEquals(AgentRunStatus.AWAITING_STEP_APPROVAL, run.getStatus(),
+                "explicit requiresApproval must pause despite guard ALLOW + FULL_ACCESS");
+        assertTrue(sink.events.contains("onStepApprovalRequested:0"));
+        assertTrue(run.getExecutions().isEmpty(), "tool must not execute before approval");
+
+        run.approve(null);
+
+        assertTrue(sink.awaitDone(), "onComplete should fire after approval");
         assertEquals(AgentRunStatus.COMPLETED, run.getStatus());
     }
 

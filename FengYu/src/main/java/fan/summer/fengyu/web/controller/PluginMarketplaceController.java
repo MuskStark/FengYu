@@ -54,10 +54,19 @@ public class PluginMarketplaceController {
         return marketplace.list(ManifestI18n.resolveLocale(acceptLanguage));
     }
 
+    /**
+     * Uploads a {@code .fyp} package, optionally together with its {@code .fyp.sha256}
+     * sidecar. The sidecar is mandatory once the user enabled checksum enforcement in
+     * Settings (supply-chain hardening); otherwise it is still verified when present.
+     */
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<PluginManifest> upload(@RequestPart("file") MultipartFile file) throws IOException, InterruptedException {
+    public ResponseEntity<PluginManifest> upload(
+            @RequestPart("file") MultipartFile file,
+            @RequestPart(name = "sidecar", required = false) MultipartFile sidecar)
+            throws IOException, InterruptedException {
         String id = readIncomingId(() -> packages.readArchiveManifest(file));
-        return ResponseEntity.status(HttpStatus.CREATED).body(installWithUpdateGate(id, () -> packages.install(file)));
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+                installWithUpdateGate(id, () -> packages.install(file, sidecar)));
     }
 
     @PostMapping("/upload-native")
@@ -131,8 +140,14 @@ public class PluginMarketplaceController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> uninstall(@PathVariable String id,
             @RequestParam(name = "deleteData") boolean deleteData) throws IOException {
-        processes.stop(id);
-        packages.uninstall(id, deleteData);
+        // The update gate (not a bare stop) so an invoke arriving mid-uninstall cannot
+        // respawn a worker from the directory being deleted.
+        processes.beginUpdate(id);
+        try {
+            packages.uninstall(id, deleteData);
+        } finally {
+            processes.endUpdate(id);
+        }
         // Drop the plugin's captured log buffer and any live log subscribers, so an uninstalled
         // plugin doesn't leave up to CAPACITY stale lines (and a dangling subscriber map entry)
         // behind — and a reinstalled plugin with the same id doesn't surface the old history.

@@ -4,7 +4,7 @@ import path from 'node:path'
 import { detectProject } from './project.mjs'
 import { readManifest } from './manifest.mjs'
 import { writeGenerated } from './generate.mjs'
-import { runCommand } from './commands.mjs'
+import { runCommand, uiPackageManager } from './commands.mjs'
 import { FengYuCliError } from './errors.mjs'
 
 export async function devPlugin(root, { run = runCommand, exists = (p) => fsSync.existsSync(p) } = {}) {
@@ -33,12 +33,12 @@ export async function devPlugin(root, { run = runCommand, exists = (p) => fsSync
     if (hasDeps) {
       throw new FengYuCliError(`UI dependencies are not installed in ${rel}`, {
         file: path.join(uiRoot, 'package.json'),
-        fix: `run \`npm install\` in ${rel} before \`fengyu dev\``,
+        fix: `run \`${uiPackageManager(uiRoot).bootstrap.join(' ')}\` in ${rel} before \`fengyu dev\``,
       })
     }
   }
   // Regenerate the typed RPC client before starting Vite so the dev server serves fresh types.
   const manifest = await readManifest(project.root)
   await writeGenerated(project, manifest)
-  await run('npm', ['run', 'dev'], { cwd: uiRoot })
+  await run(uiPackageManager(uiRoot).bin, ['run', 'dev'], { cwd: uiRoot })
 }

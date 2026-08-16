@@ -43,7 +43,8 @@ POST /api/ai/chat
   Content-Type: application/json
   X-FengYu-Token: <token>
   { "messages": [ { "role": "user", "content": "Summarize this workbook" } ],
-    "permissionMode": "ask-for-approval" }
+    "permissionMode": "ask-for-approval",
+    "workflowId": "<optional: bind this turn to a flow — see AI Agent → Visual flows>" }
 
   ◄── 200 { "streamId": "<uuid>", "activeFileRefs": [...] }
 

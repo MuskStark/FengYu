@@ -247,4 +247,75 @@ class DataSourceConfigServiceTest {
         assertEquals("secret", stable.load().password());
         assertTrue(Files.isRegularFile(stableRoot.resolve("config/datasource.properties")));
     }
+
+    // ---- URL-component injection hardening ----------------------------------------------
+
+    @Test
+    void buildFromWizard_embedded_rejectsH2SettingsInjection() {
+        DataSourceConfigService svc = newService();
+        WizardParams params = new WizardParams(
+                tempDir.resolve("fengyu;INIT=CREATE ALIAS s FOR 'exec:id'").toString(),
+                null, null, null, null, null);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> svc.buildFromWizard(DbType.H2, params));
+        assertTrue(ex.getMessage().contains("file path"), "got: " + ex.getMessage());
+    }
+
+    @Test
+    void buildFromWizard_embedded_rejectsSqliteQueryParam() {
+        DataSourceConfigService svc = newService();
+        WizardParams params = new WizardParams(
+                tempDir.resolve("fengyu?immutable=1").toString(), null, null, null, null, null);
+        assertThrows(IllegalArgumentException.class,
+                () -> svc.buildFromWizard(DbType.SQLITE, params));
+    }
+
+    @Test
+    void buildFromWizard_embedded_acceptsPathsWithSpacesAndUnicode() {
+        DataSourceConfigService svc = newService();
+        WizardParams params = new WizardParams(
+                tempDir.resolve("数据 库/fengyu").toString(), null, null, null, null, null);
+        DataSourceConfig cfg = svc.buildFromWizard(DbType.H2, params);
+        assertTrue(cfg.url().startsWith("jdbc:h2:file:"));
+        assertFalse(cfg.url().contains("%20"), "path is interpolated raw, never URL-encoded");
+    }
+
+    @Test
+    void buildFromWizard_mysql_rejectsHostWithConnectorParams() {
+        WizardParams params = new WizardParams(null, "host?useSSL=false", 3306, "fengyu", "u", "p");
+        assertThrows(IllegalArgumentException.class,
+                () -> newService().buildFromWizard(DbType.MYSQL, params));
+    }
+
+    @Test
+    void buildFromWizard_mysql_rejectsMultiHostList() {
+        WizardParams params = new WizardParams(null, "h1,h2", 3306, "fengyu", "u", "p");
+        assertThrows(IllegalArgumentException.class,
+                () -> newService().buildFromWizard(DbType.MYSQL, params));
+    }
+
+    @Test
+    void buildFromWizard_mysql_acceptsIpv6LiteralHost() {
+        WizardParams params = new WizardParams(null, "[::1]", 3306, "fengyu", "u", "p");
+        DataSourceConfig cfg = newService().buildFromWizard(DbType.MYSQL, params);
+        assertEquals("jdbc:mysql://[::1]:3306/fengyu", cfg.url());
+    }
+
+    @Test
+    void buildFromWizard_mysql_rejectsDatabaseWithSettingsSegment() {
+        WizardParams params = new WizardParams(null, "localhost", 3306, "db?autoDeserialize=true",
+                "u", "p");
+        assertThrows(IllegalArgumentException.class,
+                () -> newService().buildFromWizard(DbType.MYSQL, params));
+    }
+
+    @Test
+    void buildFromWizard_mysql_rejectsOutOfRangePort() {
+        WizardParams zero = new WizardParams(null, "localhost", 0, "fengyu", "u", "p");
+        assertThrows(IllegalArgumentException.class,
+                () -> newService().buildFromWizard(DbType.MYSQL, zero));
+        WizardParams big = new WizardParams(null, "localhost", 99999, "fengyu", "u", "p");
+        assertThrows(IllegalArgumentException.class,
+                () -> newService().buildFromWizard(DbType.MYSQL, big));
+    }
 }

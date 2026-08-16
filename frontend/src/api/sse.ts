@@ -1,4 +1,6 @@
-import { backendUrl, getToken } from './config'
+import { backendUrl } from './config'
+import { api } from './client'
+import { i18n } from '@/i18n'
 
 export interface AiDonePayload {
   text: string
@@ -22,36 +24,21 @@ export interface SseHandle {
  * Open an EventSource on /api/ai/stream and dispatch the backend's named
  * events (token / thinking / tool / done / error) to the callbacks.
  *
- * EventSource cannot set headers, so the token is passed as a query param
- * when non-empty (per the backend contract).
+ * Auth: EventSource cannot set headers, so each connection redeems a one-time
+ * `?ticket=` minted by the header-authenticated POST /api/ai/stream-ticket —
+ * the full token never rides in a URL that proxy/access logs can capture.
+ *
+ * Reconnection is MANAGED HERE instead of left to the EventSource: a ticket is
+ * single-use, so the browser's built-in retry would replay a spent ticket and
+ * die on 401. On a native connection drop we close, mint a fresh ticket, and
+ * reconnect — giving up after RETRY_LIMIT consecutive failures.
  */
 export function openAiStream(streamId: string, cb: SseCallbacks): SseHandle {
-  const token = getToken()
-  const params = new URLSearchParams({ streamId })
-  if (token) params.set('token', token)
-  const url = backendUrl(`/api/ai/stream?${params.toString()}`)
-
-  const es = new EventSource(url)
+  let es: EventSource | null = null
   let closed = false
-
-  // Diagnostic: some webviews silently drop SSE connections that never receive data;
-  // log open/error/readyState so we can confirm the heartbeat fix works. The URL carries the
-  // auth token as a query param (EventSource cannot set headers), so redact it before logging —
-  // the token must never land in the devtools console, where a screenshot or error-report hook
-  // could exfiltrate it.
-  const redactedUrl = url.replace(/([?&]token=)[^&]*/i, '$1***')
-  es.onopen = () => {
-    console.debug('[sse] connected', { readyState: es.readyState, url: redactedUrl })
-  }
-  es.onerror = () => {
-    console.debug('[sse] native error', { readyState: es.readyState, url: redactedUrl })
-  }
-  const close = () => {
-    if (!closed) {
-      closed = true
-      es.close()
-    }
-  }
+  let retries = 0
+  const RETRY_LIMIT = 5
+  const RETRY_DELAY_MS = 800
 
   const parse = <T>(ev: MessageEvent): T | null => {
     try {
@@ -61,34 +48,93 @@ export function openAiStream(streamId: string, cb: SseCallbacks): SseHandle {
     }
   }
 
-  es.addEventListener('token', (ev) => {
-    const d = parse<{ text: string }>(ev as MessageEvent)
-    if (d && cb.onToken) cb.onToken(d.text)
-  })
+  const fail = (message: string) => {
+    if (closed) return
+    closed = true
+    es?.close()
+    cb.onError?.(message)
+  }
 
-  es.addEventListener('thinking', (ev) => {
-    const d = parse<{ text: string }>(ev as MessageEvent)
-    if (d && cb.onThinking) cb.onThinking(d.text)
-  })
+  const connect = async () => {
+    let ticket: string
+    try {
+      ticket = await api.issueStreamTicket('ai')
+    } catch {
+      fail(i18n.global.t('agent.streamTicketFailed'))
+      return
+    }
+    if (closed) return
+    const url = backendUrl(`/api/ai/stream?streamId=${encodeURIComponent(streamId)}&ticket=${encodeURIComponent(ticket)}`)
+    es = new EventSource(url)
 
-  es.addEventListener('tool', (ev) => {
-    const d = parse<Record<string, unknown>>(ev as MessageEvent)
-    if (d && cb.onTool) cb.onTool(d)
-  })
+    // A successful (re)connect clears the failure streak — the limit below counts
+    // consecutive drops, not lifetime failures.
+    es.addEventListener('open', () => {
+      retries = 0
+    })
 
-  es.addEventListener('done', (ev) => {
-    const d = parse<AiDonePayload>(ev as MessageEvent)
-    if (cb.onDone) cb.onDone(d ?? { text: '' })
-    close()
-  })
+    es.addEventListener('token', (ev) => {
+      const d = parse<{ text: string }>(ev as MessageEvent)
+      if (d && cb.onToken) cb.onToken(d.text)
+    })
 
-  es.addEventListener('error', (ev) => {
-    // Named "error" event from the backend carries a JSON message; the native
-    // EventSource error (connection drop) has no parseable data.
-    const d = parse<{ message: string }>(ev as MessageEvent)
-    if (cb.onError) cb.onError(d?.message ?? 'Connection to AI stream lost')
-    close()
-  })
+    es.addEventListener('thinking', (ev) => {
+      const d = parse<{ text: string }>(ev as MessageEvent)
+      if (d && cb.onThinking) cb.onThinking(d.text)
+    })
 
-  return { close }
+    es.addEventListener('tool', (ev) => {
+      const d = parse<Record<string, unknown>>(ev as MessageEvent)
+      if (d && cb.onTool) cb.onTool(d)
+    })
+
+    es.addEventListener('done', (ev) => {
+      const d = parse<AiDonePayload>(ev as MessageEvent)
+      closed = true
+      es?.close()
+      if (cb.onDone) cb.onDone(d ?? { text: '' })
+    })
+
+    es.addEventListener('error', (ev) => {
+      // Named "error" event from the backend carries a JSON message; the native
+      // EventSource error (connection drop) has no parseable data.
+      const d = parse<{ message: string; code?: string }>(ev as MessageEvent)
+      if (d?.message) {
+        // The backend consumed the stream entry on FIRST connect and cancels the
+        // generation when the transport drops — reconnecting with the same streamId
+        // can only earn this error again. AI chat is single-shot (no resume), so fail
+        // fast with an honest "send again" message; `fail` sets `closed`, so the
+        // network-drop retry path below can never re-arm after this.
+        if (d.code === 'unknown_stream' || String(d.message).includes('Unknown or expired streamId')) {
+          fail(i18n.global.t('agent.streamEnded'))
+          return
+        }
+        fail(d.message)
+        return
+      }
+      // Native drop: the built-in retry would replay the spent ticket (401), so
+      // take over — close, mint a fresh ticket, reconnect, up to RETRY_LIMIT.
+      if (closed) return
+      es?.close()
+      es = null
+      retries += 1
+      if (retries >= RETRY_LIMIT) {
+        fail(i18n.global.t('agent.streamLost'))
+        return
+      }
+      window.setTimeout(() => {
+        if (!closed) void connect()
+      }, RETRY_DELAY_MS)
+    })
+  }
+
+  void connect()
+
+  return {
+    close: () => {
+      closed = true
+      es?.close()
+      es = null
+    },
+  }
 }

@@ -6,16 +6,113 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
-### 🐛 Fixed
-- **Text-only fallback for strict OpenAI-compatible gateways.** Some gateways only accept
-  string `content` in chat messages and reject the array-form (multimodal) content that
-  screenshot tools produce — e.g. Go-based relays answering
-  `json: cannot unmarshal array into Go struct field ChatMessage.messages.content of type string`.
-  The chat round now detects that 400, retries once without image attachments, and stays
-  text-only for that endpoint from then on; screenshots remain in the conversation history
-  and UI, and vision-capable endpoints are unaffected.
-
 ### ✨ Added
+- **Explicit flow-node declarations (canvas no longer derives node forms from AI-tool schemas).**
+  Plugins declare nodes in `manifest.flowNodes[]` (tool binding, label, color, icon, typed
+  `inputs` with widget configs — text/number/switch/select/textarea/json/analyze/rows — and
+  named `outputs`); the host ships built-in declarations in `flow-nodes/builtin.json`
+  (currently `json_format`). The tool descriptor API carries the declaration through, the
+  canvas palette lists ONLY declared nodes, node cards render declared labels/icons/colors and
+  NAMED OUTPUT PORTS (Flowise outputAnchors), and the node inspector renders the declared
+  widgets (descriptor defaults apply on drop, e.g. `action=add`). Non-declared tools remain
+  available to the model but never appear as canvas nodes. Excel (复杂拆分/执行拆分) and
+  Email (批量发送/放行发送) ship the first declarations; legacy saved graphs keep the
+  schema-derived fallback rendering.
+
+### ♻️ Changed
+- **1:1 Vue replica of Flowise's AgentFlow v2 canvas (React removed).** The flow builder's
+  canvas now mirrors the dark AgentFlow canvas from the screenshot, rebuilt in pure Vue on
+  vue-flow after a full read of Flowise's source: node-type colors from `tokens.ts` tint each
+  card via MUI's `darken(color, 0.8)` formula (hover 0.7, border alpha .5/.8/selected), the
+  40px radius-15 icon badge, NodeInputHandle's 5×20 color bar, the hover-revealed chevron
+  output handle, AgentFlowEdge's gradient bezier strokes with hover delete buttons, the
+  #1a1a1a dot grid, bottom-center Controls with snap/background toggles, and the dark MiniMap.
+  The Delete key is now history-aware (vue-flow's built-in deleteKeyCode bypassed the undo
+  stack). react/react-dom/reactflow and the React island are gone.
+- **One-click workflow templates & ordinary-user run form.** The canvas ships a built-in
+  template gallery (empty-canvas state and the workflow library); the first template,
+  *Excel split → batch email*, pre-wires `excel_complex_config → excel_execute →
+  email_send_batch → confirm_send`, pre-maps nested output references
+  (`confirmation.confirmationId`), and ships a run form a non-technical user fills in:
+  file inputs render upload pickers, shared output folders are minted automatically, and
+  account/recipient-group inputs render live dropdowns fed by plugin list tools
+  (`email_accounts_list`, `email_tags_list`) instead of numeric ids.
+- **Multi-rule complex split configuration.** The template's *split rules* input is a
+  dynamic row editor — one row per worksheet (`工作表` + `拆分列`), bound whole as
+  `entries: {{inputs.rules}}` — and an omitted `headerIndex` now defaults to the first
+  header row in the Excel plugin, so neither the canvas nor the model needs row numbers.
+  Uploading a workbook analyzes it through the plugin (`excel_analyze`) and turns the
+  sheet/column fields into datalist candidates, so users pick their real sheet and column
+  names instead of typing them blind; the union fallback keeps fields free-text.
+- **Run-scoped file grants for workflows.** `POST /api/agent/run` and
+  `POST /api/workflows/{id}/run` accept a `files` array (pass-through picker grants, a
+  native path, or `createSharedDirectory`). File-class inputs travel as `@file:<name>`
+  placeholders that the host swaps for the current plugin's FileRef at dispatch
+  (`RunFileContext` + `AiToolFileInjector.bindRunFilePlaceholders`), and a host-minted
+  shared scratch directory is granted **live** to every eligible plugin — so an Excel
+  split step's outputs are readable by a later Email step on every sandbox backend.
+- **`confirm_send` as an approval-gated AI tool.** The email plugin now exposes
+  `confirm_send` with effect `external`: chat keeps its confirmation card, while visual
+  workflows mark the send step *requires approval*, so every permission mode except
+  full-access pauses for a one-click human go-ahead before dispatching the batch.
+- **Nested node-output mapping.** The inspector's output picker flattens one nesting
+  level into dotted paths (`confirmation.confirmationId`), so a follow-up step can map a
+  specific nested field instead of the whole result object.
+- **e2e smoke: full template chain.** `scripts/e2e-smoke.sh` now boots a local SMTP sink
+  and drives the whole scenario — uploaded workbook + shared dir + run file grants +
+  approval-gated `confirm_send` — asserting four completed steps and a delivered message.
+- **Permission rules & lifecycle hooks (grok-build-informed agent runtime hardening).**
+  A user-configurable guard now sits between the permission modes and every AI tool call,
+  evaluated as `PreToolUse hooks → deny rules → ask rules → allow rules → mode default`.
+  Rules follow the `Command(git status)` / `Tool(excel_*)` / `Effect(read)` /
+  `Mcp(server__*)` / `WebFetch(domain:…)` grammar with order-independent
+  `deny > ask > allow` precedence, per-segment shell-chain checks (an allow must cover
+  every segment of `a && b | c`; deny/ask match any), and a dangerous-command floor
+  (`rm`, `sudo`, `git push`, …) that allow rules cannot bypass. Lifecycle hooks extend
+  the same pipeline: command hooks (event JSON on stdin; exit 2 denies with stderr as
+  the reason; a stdout `{"decision":"deny"}` gate document denies on any exit code) and
+  HTTP callbacks for `pre_tool_use`, `post_tool_use`, `post_tool_use_failure`,
+  `run_complete`, and `run_error`, failing open when a hook crashes or times out.
+  Configured in Settings (runtime & security), shared by chat and agent runs; a denied
+  call fails its step with the rule's reason so the model can replan around it.
+- **Plugin-contributed hooks with an enable≠trust gate.** A `.fyp` package may ship
+  `hooks/hooks.json` (grok-shaped or FengYu's flat list); installing or enabling the
+  plugin never activates them — the user trusts the plugin explicitly via
+  `POST /api/plugin-hooks/{id}/trust`, and untrusting takes effect on the next call.
+  Trusted hooks run with the plugin install dir as working directory plus
+  `FENGYU_PLUGIN_ROOT`/`FENGYU_PLUGIN_DATA` env and `plugin/<id>/<name>` namespacing.
+- **Workflow schedules.** Published workflows run on schedules (`task_schedule` tools +
+  `/api/agent/schedules` REST): 60-second minimum interval, 50-schedule cap, 7-day
+  expiry, optional immediate first fire, delayed one-shots via `recurring:false`.
+  Scheduled runs are ordinary background tasks (task_output/wait/kill apply); schedules
+  are in-memory by default.
+- **Host-level background tasks.** Long workflows no longer block the synchronous tool
+  slot: `task_submit_workflow` returns a `taskId` immediately, `task_output` polls or
+  blocks, `task_wait` waits on up to 20 tasks (`any`/`all`), and `task_kill` stops a
+  runaway task with cooperative cancellation first and SIGTERM → SIGKILL escalation for
+  process-backed ones. The same registry backs `GET /api/agent/tasks` for the UI.
+- **Run-history search, fork, and rewind.** `GET /api/agent/runs?q=…` searches
+  goal/summary/error text; `POST /runs/{id}/fork` re-runs a finished run's plan as a
+  fresh peer; `POST /runs/{id}/rewind {keepSteps}` truncates the plan to its first N
+  steps (inheriting only earlier completed executions) and resumes under plan review —
+  dropped steps' side effects are documented as not rolled back. Runs also record the
+  plugin-sandbox posture they were created under and refuse replay while the host runs
+  unsandboxed, so isolation can never silently weaken.
+- **Read-only batch capability.** `POST /api/agent/batch` accepts
+  `capabilityMode: "read-only"`, restricting every child run to `read`-effect tools —
+  parallel research/review tasks can be declared mutation-free up front.
+- **Cross-session memory (experimental, off by default).** `memory_remember`,
+  `memory_search`, `memory_list`, and `memory_forget` tools over a per-user store with
+  keyword × 7-day-half-life recency ranking; relevant memories are injected into agent
+  planning context when the Settings toggle is on.
+- **Usage metrics with OTLP export.** Agent runs and per-tool steps are counted and
+  timed through Micrometer (`fengyu.agent.runs` / `fengyu.agent.steps` /
+  `fengyu.agent.run.duration`), readable at `/actuator/metrics`; setting
+  `management.otlp.metrics.export.url` streams the same metrics to an OpenTelemetry
+  collector for production observability (the registry stays dormant with no URL).
+- **Marketplace checksum pinning.** With "require plugin checksums" enabled, installing
+  a plugin demands its `.fyp.sha256` sidecar (fengyu CLI packager output) and rejects
+  mismatches — supply-chain hardening for third-party packages.
 - **Computer use (ChatGPT-desktop-style screen control).** Desktop builds now expose a
   `computer_*` AI tool family driven by `java.awt.Robot` inside the backend JVM, with the same
   behavior on Windows, macOS, and Linux: screen capture with Hi-DPI scale reporting (the PNG
@@ -39,7 +136,147 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   JSON Schema inputs, loaded and revised in the canvas, run manually with typed `{{inputs.*}}`
   bindings, and published as dynamically discovered Spring AI tools. Manual and model-triggered
   calls share the existing dependency-aware runner, tool registry, durable run history, SSE events,
-  and audit trail; saved definitions reject nested workflow tools to prevent recursion.
+  and audit trail; saved definitions reject nested workflow tools to prevent recursion. Definitions
+  persist the canvas node layout, so a saved graph reopens exactly as arranged; the workflow
+  library can save a copy of any definition as a starting point, and the run panel shows each
+  step's actual output.
+- **One-call complex Excel split configuration.** `excel_complex_config` accepts an `entries`
+  array declaring the complete rule set in one call (one rule per sheet, `columnName` resolved to
+  a column index against the analysis) plus an optional `filePath` that analyzes the workbook in
+  the same call and leaves the session in `COMPLEX` mode — a FengyuFlow canvas needs just
+  `excel_complex_config → excel_execute`. Re-running the same call is idempotent (entries replace,
+  not append), duplicate rules for one sheet are rejected up front, and the shared AI session is
+  now pinned and synchronized so concurrent workflow steps cannot corrupt it. `excel_execute`
+  with a blank `outputDir` writes into the plugin's default output folder — injected by the host
+  as a plain sandbox-writable path, deliberately not registered as a file grant because grant
+  registration restarts stateful plugin workers and would destroy their in-memory sessions
+  mid-flow. `scripts/e2e-smoke.sh` covers the single-node complex-split workflow end to end.
+
+### ♻️ Changed
+- **The canvas is now a literal port of Flowise's canvas (vue-flow removed).** The flow builder's
+  stage runs Flowise's own React + React Flow stack as an island inside the Vue shell: ported
+  `CanvasNode`/`ButtonEdge`/`StickyNote` components and the chatflow canvas wiring live in
+  `src/flowise/`, mounted through `FlowiseCanvasHost.vue`. The Vue side stays the single source
+  of truth — nodes/edges flow in as props and every renderer mutation (select/position/dimensions/
+  remove, connects, note edits, edge deletes) travels back through controlled-mode change
+  channels (`applyCanvasNodeChanges`/`applyCanvasEdgeChanges`). reactflow v11's controlled mode
+  requires the parent to store measured dimensions back onto nodes — miss it and nodes stay
+  invisible with edgeless rendering; that round-trip is now covered by unit tests. All
+  `@vue-flow/*` dependencies are gone.
+- **Flowise canvas replica.** The flow builder's canvas now mirrors Flowise's CanvasNode design
+  (source-verified against the archived FlowiseAI/Flowise repo): 300px node cards with a circular
+  white icon badge and per-category accent colors, grey "Inputs"/"Output" section bands, and
+  Flowise's handle states (red on invalid connection, green on a valid target). Edges are Flowise
+  ButtonEdge replicas — smooth bezier curves with a midpoint delete button — and structural edits
+  (node/edge/note add, remove, moves) gained undo/redo (toolbar buttons, ⌘/Ctrl+Z, ⇧⌘Z / Ctrl+Y,
+  50-step cap).
+- **Fixed silently dropped canvas edges.** vue-flow re-validates programmatic edge assignments
+  through `isValidConnection` AFTER the parent state already contains the new edge — the builder's
+  duplicate check therefore rejected every auto-connected, restored, or linked edge. Validation now
+  runs against the store-supplied pre-update edge list. (The same latent bug existed in the old
+  AiAgent canvas.) The Flowise edge-delete button also needed an explicit `pointer-events: all` —
+  vue-flow's edge-label layer disables pointer events for its whole subtree.
+- **One tool-call mode for AI Chat and flows (Flowise chat-with-your-flow).** The flow
+  builder ships a Flowise-style docked chat panel: sending a message binds the turn to the
+  flow being edited (`POST /api/ai/chat` now accepts `workflowId`), and the backend exposes
+  that flow — draft or published — to the model as `run_current_flow`, an ordinary tool call
+  in the same chat tool-call loop that powers AI Chat (identical permission modes, approval
+  gates, and SSE `tool` events; the panel auto-saves pending edits first). AI Chat reaches
+  published flows through the same loop via `run_workflow_<id>`, making chat and the canvas
+  peers over one runtime. Internals: request-scoped `BoundToolsContext` merges bound tools
+  into each turn's registry snapshot (cloud + Ollama backends), and
+  `WorkflowExecutionService.executeForAi(…, requirePublished)` admits drafts on the bound
+  path only.
+- **Flow builder rebuilt Flowise-style (flows refactor).** The visual canvas moved out of the
+  AI Agent page into a dedicated **Flows** section (`/flows`): a library page listing saved
+  flows as cards (open / duplicate / delete) plus templates, and a full-workspace builder with
+  a categorized, collapsible node palette (search, drag-to-add), a right-hand node
+  configuration panel, Flowise-style sticky notes (annotation-only nodes), per-category node
+  accent colors, and the same run dialog / execution panel / settings drawer as before. The
+  AI Agent page (`/agent`) is now the pure AI-planning view; `AiAgent.vue` shrank from ~3300
+  lines to ~350 by extracting the shared SSE run engine (`useAgentRunStream`) and the canvas
+  into `FlowBuilder.vue` + focused child components.
+- **Workflows persist the authored canvas graph.** Definitions gained an optional `graph`
+  field (`ai_workflow.graph_json`) storing the exact nodes/edges/sticky-notes as arranged —
+  node ids are stable across save/reload, so `{{node.<id>.result}}` references survive.
+  `plan` + `layout` remain the compiled execution contract; older definitions without a graph
+  still reconstruct the canvas from the plan. The backend validates graph shape (nodes/edges
+  lists, size caps) without interpreting node internals.
+- **FengyuFlow fails fast instead of failing mid-run.** Saving a workflow now rejects
+  `{{inputs.*}}` references that the input schema never declares (previously such a graph saved
+  fine and failed at every run) and caps definitions at 64 steps. The manual-run dialog blocks the
+  start until required workflow inputs are filled, host validation messages surface localized in
+  the UI, and unsaved canvas work is protected by confirm dialogs on switch/new/delete plus a
+  browser close guard. `scripts/e2e-smoke.sh` now probes workflow create/layout/manual-run/
+  publish-as-AI-tool/delete end to end against a real backend.
+- **Plugin tool failures now carry their reason.** Most official plugin methods report failure as
+  `success:false` plus a localized `summary` with no `error` field; the host's result normalizer
+  only read `error`, so agent runs and workflows showed a useless "Tool reported failure". The
+  normalizer now falls back to `summary`, surfacing the actual localized diagnostic.
+- **All JavaScript areas now install through Yarn 4 (corepack).** `frontend/`,
+  `desktop/electron/`, `docs/`, and the four `@infinia/*` toolchain packages pin
+  `yarn@4.18.0` via `packageManager` + `.yarnrc.yml` and install from committed
+  `yarn.lock` files (`--immutable` in CI); the `package-lock.json` files are gone and npm
+  lockfiles are deprecated for repository areas. Only `fengyu init` still scaffolds
+  npm-based projects for third-party plugin authors, and the release workflows cache and
+  install with yarn accordingly.
+
+### ✨ Added
+- **Three-control complex-split rows + in-node workbook analysis.** `excel_complex_config`
+  entry rows in the flow builder now show only Sheet 名称 / 拆分列 / 整表拷贝 (headerIndex and
+  columnIndex fold away as `x-fengyu-advanced`; the new per-entry `copyEntireSheet` boolean is
+  the canvas-friendly spelling of the (-1, -1) whole-sheet convention, honored by the Excel
+  worker). The node's File Path input gains an analyze button (plugin `analyze` RPC, isolated
+  `canvas-<nodeId>` session) whose sheet/column results feed datalist pickers — the 拆分列
+  candidates narrow to the chosen sheet.
+
+### 🐛 Fixed
+- **Drag-connect on the canvas.** Flowise's NodeInputHandle color bar (the 5×20 vertical strip)
+  broke vue-flow's drop hit-test — `elementFromPoint` landed on the bar's inner div instead of
+  the handle, so no connection ever fired. The input handle is now a small node-colored dot
+  with no inner content, which also removes the vertical line from every node.
+- **Canvas follows the app theme.** The hardcoded #1a1a1a surface, white text, and dark
+  controls/minimap are gone — nodes tint per Flowise's useNodeColors formulas on BOTH themes
+  (dark: `darken(color, 0.8)`, light: `lighten(color, 0.9)`) and the surface, controls, minimap,
+  and text use the Vuetify theme tokens, switching with the app's light/dark setting.
+- **Empty-canvas "添加节点" button and template cards were unclickable.** The empty-state
+  overlay rendered inside VueFlow's default slot, where the interactive pane stacks above
+  slot content and swallowed every click. The overlay now lives outside the VueFlow root
+  (pointer-events only on its buttons), so both the centered add-node button and the
+  built-in template cards respond.
+- **Canvas test runs now bind `{{inputs.*}}`.** An unsaved canvas run used to post the
+  compiled plan with literal placeholders, so tools received `{{inputs.x}}` strings; the
+  client-side compiler now binds run-form inputs with the same semantics as the backend
+  (exact reference → typed value, embedded → rendered text) while saves keep placeholders
+  for later re-binding. The Excel→Email template's required-but-empty `ccGroupTagIds`
+  likewise no longer blocks the run: it maps to an optional input seeded with `[]`.
+- **Text-only fallback for strict OpenAI-compatible gateways.** Some gateways only accept
+  string `content` in chat messages and reject the array-form (multimodal) content that
+  screenshot tools produce — e.g. Go-based relays answering
+  `json: cannot unmarshal array into Go struct field ChatMessage.messages.content of type string`.
+  The chat round now detects that 400, retries once without image attachments, and stays
+  text-only for that endpoint from then on; screenshots remain in the conversation history
+  and UI, and vision-capable endpoints are unaffected.
+
+### 🔒 Security
+- **Plugin SDK no longer bridges to a wildcard origin (BREAKING for plugin toolchain 2.0.0).**
+  `@infinia/plugin-sdk` removed the historical `'*'` default for the postMessage bridge:
+  the embedding shell must append `?shellOrigin=<its origin>` to the plugin URL (or the
+  caller passes `allowedOrigin`), otherwise the client refuses every request — previously
+  ANY website that iframed the loopback-served plugin page could silently receive every
+  invoke response. Plugin UIs built with this SDK therefore refuse to bridge on hosts that
+  do not pass `?shellOrigin=`, which is why the unreleased toolchain line moves to 2.0.0.
+  The parameter pins the bridge for well-behaved hosts but is not an authenticity boundary
+  (an embedder controlling the iframe URL can forge it); origin assurance belongs server-side.
+- **Dev-server AUTH token handshake.** The `fengyu-plugin-devkit` loopback dev server
+  requires every connection to lead with `AUTH <token>`; the token is random per start and
+  shared with the dev Vite client through a user-only file under `~/.fengyu/` that is
+  created `0600` owner-only from the first byte. Loopback binding alone had left the full
+  worker RPC surface open to any local process.
+- **Optional Ed25519 checksum signing for releases.** `fengyu-release.yml` signs
+  `checksums.txt` into `checksums.txt.sig` (base64 Ed25519) whenever the
+  `FENGYU_SIGNING_KEY` secret is configured; without the secret the release stays
+  checksum-only, so unsigned builds keep working.
 
 ## [4.0.0-beta.4] — 2026-08-13
 

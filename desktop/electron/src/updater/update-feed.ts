@@ -12,22 +12,37 @@ interface FeedConfigurableUpdater {
   disableDifferentialDownload: boolean
 }
 
-/** Return the configured intranet proxy base, or null when the normal GitHub feed should be used. */
-export function updateApiBase(): string | null {
-  const raw = (process.env.FENGYU_UPDATE_API_BASE || '').trim().replace(/\/+$/, '')
-  if (!raw) return null
+/**
+ * Full update api-base validation, shared by the renderer-facing IPC boundary
+ * (`update:set-api-base` in ipc/update.ts) and `updateApiBase()`: an absolute http(s) URL with
+ * no embedded credentials, query parameters, or fragment. Validating at BOTH ends keeps the
+ * renderer from writing a URL (e.g. `http://user:pass@proxy:8088`) that every later update
+ * check would reject with a confusing error. Plain http is intentionally allowed — intranet
+ * FY-Proxy feeds over HTTP are a supported deployment. Throws an Error with an actionable
+ * message on violation; returns the parsed URL (callers use `.origin` for credential-free
+ * logging).
+ */
+export function validateUpdateApiBase(raw: string): URL {
   let parsed: URL
   try {
     parsed = new URL(raw)
   } catch {
-    throw new Error('FENGYU_UPDATE_API_BASE must be an absolute HTTP(S) URL')
+    throw new Error('update api-base must be an absolute HTTP(S) URL')
   }
   if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error('FENGYU_UPDATE_API_BASE must use HTTP or HTTPS')
+    throw new Error('update api-base must use HTTP or HTTPS')
   }
   if (parsed.username || parsed.password || parsed.search || parsed.hash) {
-    throw new Error('FENGYU_UPDATE_API_BASE must not contain credentials, query parameters, or a fragment')
+    throw new Error('update api-base must not contain credentials, query parameters, or a fragment')
   }
+  return parsed
+}
+
+/** Return the configured intranet proxy base, or null when the normal GitHub feed should be used. */
+export function updateApiBase(): string | null {
+  const raw = (process.env.FENGYU_UPDATE_API_BASE || '').trim().replace(/\/+$/, '')
+  if (!raw) return null
+  validateUpdateApiBase(raw)
   return raw
 }
 

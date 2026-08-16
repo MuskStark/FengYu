@@ -3,7 +3,7 @@ import fsSync from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { detectProject } from './project.mjs'
-import { runCommand, resolveCommand, spawnSpec } from './commands.mjs'
+import { runCommand, resolveCommand, spawnSpec, uiPackageManager } from './commands.mjs'
 import { validateRuntimeTree, readManifest, validatePluginArchive } from './manifest.mjs'
 import { writeZip } from './zip.mjs'
 import { assembleStaging } from './staging.mjs'
@@ -17,7 +17,7 @@ import { createHash } from 'node:crypto'
  *   ui.install (if needed) → ui.test → ui.build → worker.test → worker.build
  *   → assemble staging → validate staging → atomically package
  *
- * Prebuilt `ui/` projects skip npm and route directly through staging.
+ * Prebuilt `ui/` projects skip the install phase and route directly through staging.
  *
  * `build` runs UI and worker tests by default; `--skip-tests` skips tests only,
  * never type checking or packaging. Failures leave NO partial output: no `.fyp`,
@@ -48,12 +48,13 @@ export async function buildPlugin(root, options = {}) {
 async function runStandardLifecycle(project, run, skipTests) {
   const cfg = project.config
   if (cfg.ui?.root) {
-    const pkg = JSON.parse(await fs.readFile(path.join(cfg.ui.root, 'package.json'), 'utf8'))
+    const pkg = JSON.parse(await fs.readFile(path.join(cfg.ui.root, 'package.json'), 'utf-8'))
+    const pm = uiPackageManager(cfg.ui.root)
     // Install only when node_modules is absent or the lockfile fingerprint drifted.
-    await ensureUiInstalled({ ...cfg.ui, install: ['npm', 'ci'] }, run)
-    if (!skipTests && pkg.scripts?.test) await run('npm', ['test'], { cwd: cfg.ui.root })
+    await ensureUiInstalled({ root: cfg.ui.root, pm }, run)
+    if (!skipTests && pkg.scripts?.test) await run(pm.bin, ['test'], { cwd: cfg.ui.root })
     if (!pkg.scripts?.build) throw new Error('ui-src/package.json must define scripts.build')
-    await run('npm', ['run', 'build'], { cwd: cfg.ui.root })
+    await run(pm.bin, ['run', 'build'], { cwd: cfg.ui.root })
   }
   if (cfg.worker) {
     if (!skipTests) await runConfigured(['maven', 'test'], cfg.worker.root, run)
@@ -79,21 +80,14 @@ async function runConfigured(command, cwd, run) {
   await run(spec.command, spec.args, { cwd, env: resolved.env, shell: spec.shell })
 }
 
-async function ensureUiInstalled(ui, run) {
-  const nodeModules = path.join(ui.root, 'node_modules')
-  const lockfile = path.join(ui.root, 'package-lock.json')
+async function ensureUiInstalled({ root, pm }, run) {
+  const nodeModules = path.join(root, 'node_modules')
   const hashFile = path.join(nodeModules, '.fengyu-lock-hash')
-  const currentHash = await lockFingerprint(lockfile)
+  const currentHash = await lockFingerprint(path.join(root, pm.lockfile))
   const installedHash = await readFileSafe(hashFile)
   if (currentHash && installedHash === currentHash && fsSync.existsSync(nodeModules)) return
-  // `npm ci` requires a committed lockfile; when none exists yet (e.g. a fresh
-  // scaffold created with --no-install), fall back to `npm install` which also
-  // generates the lockfile the next `ci` will pin to.
-  const installCommand = (!currentHash && ui.install[0] === 'npm' && ui.install[1] === 'ci')
-    ? ['npm', 'install', ...ui.install.slice(2)]
-    : ui.install
-  await runConfigured(installCommand, ui.root, run)
-  const freshHash = await lockFingerprint(lockfile)
+  await runConfigured(currentHash ? pm.install : pm.bootstrap, root, run)
+  const freshHash = await lockFingerprint(path.join(root, pm.lockfile))
   if (freshHash) {
     await fs.mkdir(nodeModules, { recursive: true })
     await fs.writeFile(hashFile, freshHash)

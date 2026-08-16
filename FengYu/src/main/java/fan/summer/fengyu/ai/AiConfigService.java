@@ -79,13 +79,21 @@ public class AiConfigService {
     public static final int DEFAULT_CONTEXT_WINDOW_TOKENS = 32_768;
 
     // ── Core read (instance; uses injected repo + security context) ──────────
+    /** Provider API keys are written by AiConfigServiceHeadless in CryptoUtil's machine-bound
+     *  ENC(...) envelope — decrypt on read here (plaintext rows from older builds pass through). */
+    private static final java.util.Set<String> SECRET_SETTING_KEYS = java.util.Set.of(
+            AI_OPENAI_API_KEY_KEY, AI_ANTHROPIC_API_KEY_KEY, AI_DEEPSEEK_API_KEY_KEY);
+
     private String readSetting(String key, String defaultValue) {
         try {
             Long uid = securityContext.currentUserId();
             Optional<AppSettingEntity> entity = appSettingRepo.findByUserIdAndSettingKey(uid, key);
             if (entity.isPresent()) {
                 String v = entity.get().getSettingValue();
-                if (v != null && !v.isBlank()) return v;
+                if (v != null && !v.isBlank()) {
+                    return SECRET_SETTING_KEYS.contains(key)
+                            ? fan.summer.fengyu.setup.CryptoUtil.decrypt(v) : v;
+                }
             }
         } catch (Exception e) {
             log.warn("Could not read AI setting '{}': {}", key, e.toString());

@@ -90,6 +90,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- OTLP metrics export (dormant until management.otlp.metrics.export.url is set) -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-otlp</artifactId>
+            <scope>runtime</scope>
+        </dependency>
 
         <!-- Multi-datasource JDBC drivers (runtime) -->
         <dependency>
@@ -112,6 +118,32 @@
         <dependency>
             <groupId>org.hibernate.orm</groupId>
             <artifactId>hibernate-community-dialects</artifactId>
+        </dependency>
+
+        <!-- Versioned schema migrations (P3): Flyway provides the versioned migration
+             channel ddl-auto=update cannot express (renames, drops, data fixes). V1 is an
+             empty baseline; see db/migration/V1__baseline.sql for the workflow. flyway-core
+             carries the engine plus the community DBs (H2, SQLite); MySQL and PostgreSQL
+             support ship as their own modules since Flyway 10. spring-boot-flyway is the
+             Boot-4 module that actually carries FlywayAutoConfiguration — without it the
+             shaded jar has the engine on the classpath but no migration ever runs. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-flyway</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+            <scope>runtime</scope>
         </dependency>
 
         <!-- Email -->

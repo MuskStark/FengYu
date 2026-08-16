@@ -380,18 +380,40 @@ public final class McpRuntimeManager {
         try {
             if (!Files.exists(secretsFile)) return Map.of();
             Map<String, SecretConfig> result = json.readValue(Files.readString(secretsFile), new TypeReference<>() {});
-            return result == null ? Map.of() : result;
+            if (result == null) return Map.of();
+            // Values are stored in CryptoUtil's machine-bound ENC(...) envelope; rows written
+            // before that (plaintext) still decrypt transparently.
+            Map<String, SecretConfig> decrypted = new LinkedHashMap<>();
+            result.forEach((id, cfg) -> decrypted.put(id, new SecretConfig(
+                    decryptAll(cfg.env()), decryptAll(cfg.headers()))));
+            return decrypted;
         } catch (Exception error) {
             log.warn("Cannot read MCP secrets: {}", error.toString());
             return Map.of();
         }
     }
 
+    private static Map<String, String> decryptAll(Map<String, String> values) {
+        if (values == null || values.isEmpty()) return values == null ? Map.of() : values;
+        Map<String, String> out = new LinkedHashMap<>();
+        values.forEach((key, value) ->
+                out.put(key, fan.summer.fengyu.setup.CryptoUtil.decrypt(value)));
+        return out;
+    }
+
+    private static Map<String, String> encryptAll(Map<String, String> values) {
+        if (values == null || values.isEmpty()) return values == null ? Map.of() : values;
+        Map<String, String> out = new LinkedHashMap<>();
+        values.forEach((key, value) -> out.put(key,
+                value == null || value.isBlank() ? value : fan.summer.fengyu.setup.CryptoUtil.encrypt(value)));
+        return out;
+    }
+
     private void writeSecret(String id, SecretConfig secrets) {
         try {
             Files.createDirectories(directory);
             Map<String, SecretConfig> all = new LinkedHashMap<>(readSecrets());
-            all.put(id, secrets);
+            all.put(id, new SecretConfig(encryptAll(secrets.env()), encryptAll(secrets.headers())));
             writeAtomically(secretsFile, json.writerWithDefaultPrettyPrinter().writeValueAsString(all));
         } catch (Exception error) {
             throw new McpRuntimeException("Cannot save MCP credentials", error);

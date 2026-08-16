@@ -49,6 +49,8 @@ public final class HeadlessLauncher {
     /** Fixed loopback port the backend binds by default. Overridable via {@code --port=<n>}. */
     public static final String DEFAULT_PORT = "24056";
 
+    static final String MAC_UI_ELEMENT_PROPERTY = "apple.awt.UIElement";
+
     static {
         primeRuntimeDirectories(RuntimePaths.root());
     }
@@ -56,6 +58,9 @@ public final class HeadlessLauncher {
     private HeadlessLauncher() {}
 
     public static void main(String[] args) {
+        configureDesktopPlatform(
+                Boolean.parseBoolean(System.getProperty("fengyu.desktop")),
+                System.getProperty("os.name", ""));
         String port = DEFAULT_PORT;
         String token = System.getenv().getOrDefault(TOKEN_ENVIRONMENT, "").trim();
         for (String a : args) {
@@ -81,6 +86,19 @@ public final class HeadlessLauncher {
         boolean configured = probeAndDecide(configService);
         startWithFallback(port, configured);
         // main() returns; the embedded Tomcat's non-daemon threads keep the JVM alive.
+    }
+
+    /**
+     * Prevent a desktop-mode backend from acquiring a second Dock icon on macOS when its
+     * {@code java.awt.Robot} computer-use driver initializes. The UIElement property keeps AWT
+     * headful, so screen capture and input injection remain available. Windows and Linux are left
+     * untouched, and an explicit caller-provided Apple setting is respected.
+     */
+    static void configureDesktopPlatform(boolean desktop, String osName) {
+        if (desktop && osName.toLowerCase(java.util.Locale.ROOT).contains("mac")
+                && System.getProperty(MAC_UI_ELEMENT_PROPERTY) == null) {
+            System.setProperty(MAC_UI_ELEMENT_PROPERTY, "true");
+        }
     }
 
     private static final Logger log = LoggerFactory.getLogger(HeadlessLauncher.class);

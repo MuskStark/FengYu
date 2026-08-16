@@ -2,7 +2,9 @@ name: Plugin Tooling
 
 # Type-checks, tests, and builds the plugin SDK, the @infinia/plugin-ui Vue kit,
 # the @infinia/plugin-cli, and runs the Playwright visual suite. Triggers only
-# when the plugin tooling changes.
+# when the plugin tooling changes. The toolchain + official plugins install with
+# Yarn 4 (see the packageManager field in each package.json); corepack provides
+# the pinned yarn release on the Node 24 runner.
 
 on:
   push:
@@ -40,13 +42,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24.18.0
-          cache: npm
-          # Cache by every committed lockfile under the four npm packages.
+          cache: yarn
+          # Cache by every committed lockfile across the yarn-managed packages.
           cache-dependency-path: |
-            toolchain/sdk-ts/package-lock.json
-            toolchain/ui/package-lock.json
-            toolchain/dev/package-lock.json
-            toolchain/cli/package-lock.json
+            toolchain/sdk-ts/yarn.lock
+            toolchain/ui/yarn.lock
+            toolchain/dev/yarn.lock
+            toolchain/cli/yarn.lock
 
       - uses: actions/setup-java@v5
         with:
@@ -54,32 +56,34 @@ jobs:
           distribution: temurin
           cache: maven
 
+      - run: corepack enable
+
       # --- SDK: typecheck-free, vitest unit tests ---
-      - run: cd toolchain/sdk-ts && npm ci && npm test
+      - run: cd toolchain/sdk-ts && yarn install --immutable && yarn test
       - name: Verify TypeScript SDK in isolation
         run: |
           SDK_TMP="$(mktemp -d)"
           cp -R toolchain/sdk-ts/. "$SDK_TMP/"
           rm -rf "$SDK_TMP/node_modules"
           cd "$SDK_TMP"
-          npm ci
-          npm test
+          yarn install --immutable
+          yarn test
 
       # --- @infinia/plugin-ui: typecheck + unit tests + Vite build ---
-      - run: cd toolchain/ui && npm ci && npm run typecheck && npm test && npm run build
+      - run: cd toolchain/ui && yarn install --immutable && yarn run typecheck && yarn test && yarn run build
 
       # --- @infinia/plugin-cli: node --test ---
-      - run: cd toolchain/cli && npm ci && npm test
+      - run: cd toolchain/cli && yarn install --immutable && yarn test
 
       # --- IDE development bridge + Java SDK/DevKit contracts ---
-      - run: cd toolchain/dev && npm ci && npm test
+      - run: cd toolchain/dev && yarn install --immutable && yarn test
       - run: ./mvnw -pl toolchain/devkit-java -am test
       - run: scripts/check-plugin-dependency-boundaries.sh
 
       # --- Visual regression (Playwright) ---
       - run: npx playwright install --with-deps chromium
         working-directory: toolchain/ui
-      - run: npm run test:visual
+      - run: yarn run test:visual
         working-directory: toolchain/ui
 
       # Upload visual diffs only when the suite fails, so reviewers can see the
@@ -108,18 +112,24 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24.18.0
-          cache: npm
-          cache-dependency-path: toolchain/cli/package-lock.json
+          cache: yarn
+          cache-dependency-path: |
+            toolchain/ui/yarn.lock
+            toolchain/cli/yarn.lock
+            OfficialPlugins/plugin-${{ matrix.plugin }}/ui-src/yarn.lock
       - uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: temurin
           cache: maven
+      - run: corepack enable
       # The Java SDK is independently versioned (1.0.0) but stays in the reactor,
       # so a local install makes it resolvable without a GitHub Packages token.
       - run: ./mvnw -pl toolchain/sdk-java install -DskipTests
-      - run: npm ci
-        working-directory: toolchain/cli
+      # The plugins link @infinia/plugin-ui at toolchain/ui and its package entry
+      # resolves to ./dist/index.js — dist/ is gitignored, so build it here first.
+      - run: cd toolchain/ui && yarn install --immutable && yarn run build
+      - run: cd toolchain/cli && yarn install --immutable
       - run: node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-${{ matrix.plugin }}
       - name: Upload .fyp
         uses: actions/upload-artifact@v4
@@ -134,7 +144,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 24.18.0, cache: npm }
+        with:
+          node-version: 24.18.0
+          cache: yarn
+          cache-dependency-path: |
+            toolchain/sdk-ts/yarn.lock
+            toolchain/ui/yarn.lock
+            toolchain/dev/yarn.lock
+            toolchain/cli/yarn.lock
       - uses: actions/setup-java@v5
         with: { java-version: '21', distribution: temurin, cache: maven }
+      - run: corepack enable
       - run: scripts/plugin-tooling-local-smoke.sh

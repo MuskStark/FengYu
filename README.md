@@ -17,7 +17,7 @@ splitting, email, markdown, and more) ship as official plugins the Agent can cal
 > See [`CHANGELOG.md`](CHANGELOG.md) and the [online docs](https://muskstark.github.io/FengYu/) for the current state.
 >
 > Run the backend: `java -jar FengYu/target/FengYu-*.jar --token=<t>` (binds port 24056 by default)
-> · frontend: `cd frontend && npm run dev` · smoke test: `scripts/e2e-smoke.sh`.
+> · frontend: `cd frontend && yarn run dev` · smoke test: `scripts/e2e-smoke.sh`.
 >
 > The official **Email Center** plugin now ships as `fan.summer.email`: six sandboxed UI tabs,
 > multi-account SMTP/IMAP, manual-only collection, encrypted credentials, and nine confirmation-first AI tools.
@@ -36,7 +36,10 @@ splitting, email, markdown, and more) ship as official plugins the Agent can cal
 **Requirements:**
 
 - **JDK 21 or higher** (recommended: [Eclipse Temurin](https://adoptium.net/))
-- **Node 24.18.0 and npm** (for the frontend dev server, plugin UIs, and the Electron desktop shell)
+- **Node 24.18.0 and Yarn 4 via corepack** — every JavaScript area of the repo (frontend,
+  desktop shell, docs site, plugin toolchain, official plugins) installs with Yarn 4, pinned per
+  package through the `packageManager` field. Run `corepack enable` once; Node ≥25 drops bundled
+  corepack, so install it standalone there: `npm install -g corepack`.
 
 ### Build from Source
 
@@ -57,14 +60,15 @@ java -jar FengYu/target/FengYu-*.jar --token=<your-token>
 ### Run the Frontend (dev)
 
 ```bash
-cd frontend && npm install && npm run dev   # Vite proxies /api + /plugin-runtime to :24056
+corepack enable                             # once per machine: activates the pinned Yarn 4
+cd frontend && yarn install && yarn run dev  # Vite proxies /api + /plugin-runtime to :24056
 ```
 
 ### Run the Desktop Shell (dev)
 
 ```bash
-cd desktop/electron && npm install && npm run dev   # set FENGYU_JAR or run the backend on :24056
-# release: cd desktop/electron && npm run build
+cd desktop/electron && yarn install && yarn run dev # set FENGYU_JAR or run the backend on :24056
+# release: cd desktop/electron && yarn run build
 ```
 
 ### Smoke Test
@@ -90,7 +94,7 @@ These builds are currently unsigned; code-signing is deferred to a later release
 ## Features
 
 - **🤖 AI Agent (the spine)** — A plan-and-execute Agent decomposes a goal into steps and orchestrates the surfaces below. Sensitive actions require your approval. Multi-backend (Ollama, OpenAI, Anthropic, DeepSeek) with streaming, thinking cards, tool calls, automatic long-conversation compaction, and read-only `web_search` / `web_fetch`. See [AI Agent](docs/en/guide/ai-agent) / [AI Chat](docs/en/guide/ai-chat).
-- **🔀 Reusable workflows** — Save a visual DAG with a JSON Schema input contract, run it manually with typed inputs, or publish it as a dynamically discovered AI tool. Both paths share the same runner, approvals, SSE events, and durable history. See [AI Agent](docs/en/guide/ai-agent#reusable-workflows-manual-and-ai-invocation).
+- **🔀 Reusable workflows** — Build visual DAGs on the dedicated Flows canvas (Flowise-inspired: categorized palette, node config panel, sticky notes, one-click templates), save them with a JSON Schema input contract, run them manually with typed inputs, or publish them as dynamically discovered AI tools. Both paths share the same runner, approvals, SSE events, and durable history. See [AI Agent](docs/en/guide/ai-agent#reusable-workflows-manual-and-ai-invocation).
 - **🧩 Plugins (`.fyp`)** — Capabilities the Agent calls: isolated packages of a JSON-RPC worker + micro-frontend UI, installed from the marketplace. See [Marketplace](docs/en/plugins/marketplace).
 - **📜 Skills (`.fys`)** — Progressive-disclosure domain knowledge and procedures the Agent loads on demand. See [Skills](docs/en/skills/).
 - **📊 Excel Splitter** — Split workbooks by sheet, column value, or complex rules — an official plugin with six AI tools. See [Excel](docs/en/plugins/official-excel).

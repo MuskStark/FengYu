@@ -80,8 +80,10 @@ export function fengyuPluginDev(options) {
                 if (pathname === '/__fengyu') {
                     const manifest = await resolveManifest(server.config.root);
                     // Iframe points at the Vite dev server root — the plugin UI is the index served there,
-                    // same-origin, with full HMR. No separate process, no port wait.
-                    const iframeSrc = '/';
+                    // same-origin, with full HMR. No separate process, no port wait. shellOrigin pins the
+                    // plugin SDK's postMessage bridge to this dev server (the SDK refuses a wildcard).
+                    const devOrigin = `http://${req.headers.host ?? '127.0.0.1:5173'}`;
+                    const iframeSrc = `/?shellOrigin=${encodeURIComponent(devOrigin)}`;
                     res.setHeader('Content-Type', 'text/html; charset=utf-8');
                     res.end(simulatorHtml({ iframeSrc, manifest }));
                     return;

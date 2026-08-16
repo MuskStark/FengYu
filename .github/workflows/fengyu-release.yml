@@ -84,8 +84,11 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: '24.18.0'
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache: yarn
+          cache-dependency-path: |
+            frontend/yarn.lock
+            toolchain/cli/yarn.lock
+            toolchain/ui/yarn.lock
 
       - name: Set up JDK 21
         uses: actions/setup-java@v5
@@ -107,35 +110,40 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           bwrap --unshare-all --ro-bind / / --proc /proc --dev-bind /dev /dev -- /bin/true
 
+      # Yarn 4 manages the toolchain + official plugins; corepack supplies the pinned
+      # release (see the packageManager field in each package.json).
+      - name: Enable corepack (pinned Yarn 4 for toolchain + plugins)
+        run: corepack enable
+
       - name: Install toolchain/cli deps
-        run: npm ci
+        run: yarn install --immutable
         working-directory: toolchain/cli
 
       - name: Validate release workflow (unit tests)
         run: node --test scripts/resolve-release-version.test.mjs scripts/release-workflow.test.mjs scripts/node-version.test.mjs
 
       - name: Install frontend deps
-        run: npm ci
+        run: corepack yarn install --immutable
         working-directory: frontend
 
       - name: Run frontend tests + typecheck
         run: |
-          npm test
-          npm run typecheck
+          corepack yarn test
+          corepack yarn run typecheck
         working-directory: frontend
 
       - name: Build frontend (release version injected)
-        run: npm run build
+        run: corepack yarn run build
         working-directory: frontend
 
-      # Official plugins depend on @infinia/plugin-ui through a `file:` link to this
+      # Official plugins depend on @infinia/plugin-ui through a `link:` symlink to this
       # directory, and the package entry resolves to ./dist/index.js. dist/ is gitignored
       # and never exists in a fresh checkout, so the library must be built here, before the
       # plugin builds install + bundle it — otherwise vite/vitest cannot resolve the package.
-      - name: Build @infinia/plugin-ui (local dist required by plugin file dependencies)
+      - name: Build @infinia/plugin-ui (local dist required by plugin link dependencies)
         run: |
-          npm ci
-          npm run build
+          yarn install --immutable
+          yarn run build
         working-directory: toolchain/ui
 
       # Official plugin workers depend on fengyu-plugin-sdk and fengyu-plugin-devkit
@@ -280,8 +288,13 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: '24.18.0'
-          cache: npm
-          cache-dependency-path: desktop/electron/package-lock.json
+          cache: yarn
+          cache-dependency-path: |
+            frontend/yarn.lock
+            desktop/electron/yarn.lock
+            toolchain/cli/yarn.lock
+      - name: Enable corepack (pinned Yarn 4 across the repo)
+        run: corepack enable
 
       - name: Set up JDK 21 (for jlink)
         uses: actions/setup-java@v5
@@ -290,11 +303,11 @@ jobs:
           distribution: 'temurin'
 
       - name: Install frontend deps
-        run: npm ci
+        run: corepack yarn install --immutable
         working-directory: frontend
 
       - name: Build frontend SPA
-        run: npm run build
+        run: corepack yarn run build
         working-directory: frontend
         env:
           FENGYU_DESKTOP_BUILD: '1'
@@ -308,15 +321,15 @@ jobs:
           ls desktop/electron/frontend-dist
 
       - name: Verify file-compatible frontend asset paths
-        run: npm run verify:frontend-dist
+        run: corepack yarn run verify:frontend-dist
         working-directory: desktop/electron
 
       - name: Install desktop deps
-        run: npm ci
+        run: corepack yarn install --immutable
         working-directory: desktop/electron
 
       - name: Install plugin CLI deps
-        run: npm ci
+        run: corepack yarn install --immutable
         working-directory: toolchain/cli
 
       # Electron 43 downloads its platform binary on first require instead of via
@@ -328,7 +341,7 @@ jobs:
         timeout-minutes: 15
 
       - name: Run desktop unit tests
-        run: npm test
+        run: corepack yarn test
         working-directory: desktop/electron
 
       # Compile the Electron main/preload TypeScript to dist/ (main.js + window/preload.js).
@@ -336,7 +349,7 @@ jobs:
       # electron-builder packages dist/main.js into app.asar — without this step the asar
       # sanity check fails with "dist/main.js was not found in this archive".
       - name: Build desktop TypeScript
-        run: npm run build:ts
+        run: corepack yarn run build:ts
         working-directory: desktop/electron
 
       - name: Download shared inputs
@@ -359,7 +372,7 @@ jobs:
         env:
           FENGYU_JAR: ${{ github.workspace }}/desktop/electron/resources/binaries/FengYu.jar
           FENGYU_PLUGINS: ${{ github.workspace }}/desktop/electron/resources/binaries/plugins
-        run: xvfb-run -a npm run test:e2e
+        run: xvfb-run -a corepack yarn run test:e2e
 
       # Windows E2E currently stalls after launch (Electron now starts fine thanks to the
       # pre-download step, but the test hangs 120s with no window/diagnostic output — likely
@@ -372,7 +385,7 @@ jobs:
         env:
           FENGYU_JAR: ${{ github.workspace }}/desktop/electron/resources/binaries/FengYu.jar
           FENGYU_PLUGINS: ${{ github.workspace }}/desktop/electron/resources/binaries/plugins
-        run: npm run test:e2e
+        run: corepack yarn run test:e2e
 
       - name: Build Electron bundle (without JRE)
         working-directory: desktop/electron
@@ -481,6 +494,26 @@ jobs:
           cd release-files
           sha256sum -- * > checksums.txt
           cat checksums.txt
+
+      # Optional Ed25519 release signing: set the FENGYU_SIGNING_KEY repository secret to a
+      # base64 SPKI Ed25519 PRIVATE key (openssl genpkey -algorithm ed25519 | base64). The
+      # signature is verified by the backend's self-updater whenever its public-key resource
+      # is bundled (see SelfUpdateService.SIGNING_PUBLIC_KEY_RESOURCE). Without the secret the
+      # release is unsigned and older/unsigned builds keep checksum-only verification.
+      - name: Sign checksums (Ed25519, optional)
+        env:
+          FENGYU_SIGNING_KEY: ${{ secrets.FENGYU_SIGNING_KEY }}
+        run: |
+          cd release-files
+          if [ -z "$FENGYU_SIGNING_KEY" ]; then
+            echo "FENGYU_SIGNING_KEY not set — shipping an unsigned release (checksum-only verification)."
+            exit 0
+          fi
+          printf '%s' "$FENGYU_SIGNING_KEY" | base64 --decode > /tmp/release-ed25519.key
+          openssl pkeyutl -sign -inkey /tmp/release-ed25519.key -rawin -in checksums.txt \
+            | base64 > checksums.txt.sig
+          rm -f /tmp/release-ed25519.key
+          echo "Signed checksums.txt (Ed25519): $(cat checksums.txt.sig)"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

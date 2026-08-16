@@ -37,6 +37,22 @@ public class WorkflowEntity {
     @Column(name = "plan_json", columnDefinition = "TEXT", nullable = false)
     private String planJson;
 
+    /**
+     * Canvas node positions keyed by step index, so a saved graph reopens exactly as arranged.
+     * Nullable on purpose: the column is added by {@code ddl-auto} to tables that may already
+     * hold rows, and a NOT NULL ADD COLUMN would fail there; readers treat null as empty.
+     */
+    @Column(name = "layout_json", columnDefinition = "TEXT")
+    private String layoutJson = "{}";
+
+    /**
+     * The raw canvas graph (nodes + edges + sticky notes) as authored in the flow builder —
+     * the Flowise flowData equivalent. Nullable like {@code layout_json}: the column is added
+     * by {@code ddl-auto} onto existing rows; readers treat null as "reconstruct from plan".
+     */
+    @Column(name = "graph_json", columnDefinition = "TEXT")
+    private String graphJson;
+
     @Column(nullable = false)
     private boolean published;
 

@@ -56,7 +56,7 @@ class ProcessSandboxTest {
     void pluginWorkerFailsClosedWithoutNativeSandbox() {
         ProcessSandbox sandbox = new ProcessSandbox(ProcessSandbox.Backend.NONE);
         assertThrows(IllegalStateException.class, () -> sandbox.plugin(
-                List.of("worker"), workdir, List.of(workdir), false, false));
+                List.of("worker"), workdir, List.of(workdir), false));
     }
 
     @Test
@@ -65,7 +65,7 @@ class ProcessSandboxTest {
         Path writable = Files.createDirectories(workdir.resolve("worker-tmp"));
 
         ProcessSandbox.Launch launch = sandbox.plugin(
-            List.of("worker"), workdir, List.of(writable), false, false);
+            List.of("worker"), workdir, List.of(writable), false);
 
         assertTrue(launch.command().get(2).contains(writable.toRealPath().toString()));
     }
@@ -80,7 +80,7 @@ class ProcessSandboxTest {
         ProcessSandbox sandbox = new ProcessSandbox(ProcessSandbox.Backend.SANDBOX_EXEC);
 
         ProcessSandbox.Launch launch = sandbox.plugin(
-            List.of("worker"), workdir, List.of(ownData), false, false);
+            List.of("worker"), workdir, List.of(ownData), false);
 
         String profile = launch.command().get(2);
         assertFalse(profile.contains("(deny file-read* (subpath \"" + pluginDataRoot.toRealPath() + "\"))"),
@@ -208,7 +208,7 @@ class ProcessSandboxTest {
         Path pluginUnderTmp = Files.createDirectories(workdir.resolve("tmp-parent/plugin"));
         ProcessSandbox sandbox = new ProcessSandbox(ProcessSandbox.Backend.BUBBLEWRAP);
         ProcessSandbox.Launch launch = sandbox.plugin(
-            List.of("/bin/true"), pluginUnderTmp, List.of(pluginUnderTmp), false, false);
+            List.of("/bin/true"), pluginUnderTmp, List.of(pluginUnderTmp), false);
 
         List<String> command = launch.command();
         int tmpfs = command.indexOf("--tmpfs");
@@ -241,7 +241,7 @@ class ProcessSandboxTest {
     void macSandboxDeniesSensitiveHostPaths() throws java.io.IOException {
         ProcessSandbox sandbox = new ProcessSandbox(ProcessSandbox.Backend.SANDBOX_EXEC);
         ProcessSandbox.Launch launch = sandbox.plugin(
-            List.of("worker"), workdir, List.of(workdir), false, false);
+            List.of("worker"), workdir, List.of(workdir), false);
 
         String profile = launch.command().get(2);
         // Credential dirs a plugin has no business reading.

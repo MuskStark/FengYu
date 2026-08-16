@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue'
 import vuetify from 'vite-plugin-vuetify'
 import { fileURLToPath, URL } from 'node:url'
 import { copyFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { resolve } from 'node:path'
 import { resolveFrontendVersion } from './build/release-version.mjs'
 
@@ -94,6 +95,59 @@ function shareVueInDev(): Plugin {
   }
 }
 
+/**
+ * Build-only: bakes a Content-Security-Policy meta tag into the built index.html.
+ *
+ * The WEB release is served over HTTP(S), where a meta CSP is honored fully — this closes
+ * the gap where the only CSP delivery was Electron's onHeadersReceived hook (which never
+ * fires for file://, so the packaged desktop build had none). The DESKTOP build
+ * (FENGYU_DESKTOP_BUILD=1) deliberately skips the tag: Chromium treats a file:// page's
+ * origin as opaque, and NO source expression ('self', file:, …) matches it — a meta CSP
+ * there would block the app's own bundle scripts and white-screen the shell (verified
+ * empirically against headless Chromium). The desktop shell instead relies on its
+ * contextIsolation/sandbox/nodeIntegration posture plus its own header hook.
+ *
+ * connect-src/frame-src keep loopback wildcards: browser dev/access against a loopback
+ * backend crosses ports (127.0.0.1:24056, localhost:5173), and the plugin iframes are
+ * served from the loopback backend origin. wasm-unsafe-eval keeps WASM-based plugin
+ * tooling (e.g. offline Python) functional without reopening eval.
+ */
+function webReleaseCsp(): Plugin {
+  return {
+    name: 'fengyu-web-release-csp',
+    apply: 'build',
+    transformIndexHtml(html) {
+      if (desktopBuild) return html
+      // The shell's Vue import map is an INLINE script (shared with plugin bundles), so
+      // script-src needs its content hash — 'self' alone would block it and white-screen
+      // the app. Everything else script-shaped is an external same-origin file.
+      // (frame-ancestors is deliberately absent: it is ignored inside a meta element.)
+      let scriptSrc = "script-src 'self' 'wasm-unsafe-eval'"
+      const importMap = html.match(/<script type="importmap"[^>]*>([\s\S]*?)<\/script>/)
+      if (importMap) {
+        const hash = createHash('sha256').update(importMap[1]).digest('base64')
+        scriptSrc += ` 'sha256-${hash}'`
+      }
+      const policy = [
+        "default-src 'self'",
+        scriptSrc,
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob:",
+        "font-src 'self' data:",
+        "connect-src 'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*",
+        "media-src 'self' blob:",
+        "worker-src 'self' blob:",
+        "frame-src http://127.0.0.1:* http://localhost:*",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+      ].join('; ')
+      return html.replace('<head>',
+        `<head><meta http-equiv="Content-Security-Policy" content="${policy}">`)
+    },
+  }
+}
+
 export default defineConfig({
   // Browser/Web releases remain root-relative. Electron loads the staged SPA
   // through file://, so every emitted asset and import-map URL must be relative
@@ -106,6 +160,7 @@ export default defineConfig({
   plugins: [
     vendorVue(),
     shareVueInDev(),
+    webReleaseCsp(),
     vue(),
     // MD3 Vuetify: auto tree-shake components, wire Sass overrides.
     vuetify({ styles: { configFile: 'src/plugins/vuetify-settings.scss' } }),

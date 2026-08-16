@@ -1,23 +1,40 @@
 {
   "name": "@infinia/plugin-cli",
-  "version": "1.3.0",
+  "version": "2.0.0",
   "type": "module",
   "description": "Convention-based init, dev, check, and build workflow for FengYu plugins.",
-  "bin": { "fengyu": "bin/fengyu.mjs" },
-  "files": ["bin", "src", "spec", "templates", "README.md"],
+  "bin": {
+    "fengyu": "bin/fengyu.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "spec",
+    "templates",
+    "README.md"
+  ],
   "scripts": {
     "test": "node --test test/*.test.mjs",
     "sync-spec": "node scripts/sync-spec.mjs",
     "check-spec": "node scripts/sync-spec.mjs --check",
-    "verify-version": "node scripts/resolve-tooling-version.mjs --ref plugin-tooling-v1.3.0",
-    "prepack": "npm run check-spec && npm test"
+    "verify-version": "node scripts/resolve-tooling-version.mjs --ref plugin-tooling-v2.0.0",
+    "prepack": "yarn run check-spec && yarn test"
   },
-  "engines": { "node": ">=24.18.0" },
+  "engines": {
+    "node": ">=24.18.0"
+  },
   "license": "GPL-3.0",
-  "repository": { "type": "git", "url": "git+https://github.com/MuskStark/FengYu.git", "directory": "toolchain/cli" },
-  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MuskStark/FengYu.git",
+    "directory": "toolchain/cli"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "ajv": "^8.17.1",
     "yauzl": "^3.2.0"
-  }
+  },
+  "packageManager": "yarn@4.18.0+sha512.fcb8716fe7cd0eece141ffc18b92193a9df9204c1ba83189c288835223fc0bbe64af473bab0d5e9927a7daeb5caf2bb07eb2787cc9338ca040ea125f2a1f2f7e"
 }

@@ -33,6 +33,44 @@ class HeadlessLauncherProbeTest {
         assertEquals("128MB", defaults.get("spring.servlet.multipart.max-request-size"));
     }
 
+    @Test
+    void desktopBackendBecomesMacUiElementWithoutChangingOtherPlatforms() {
+        String previous = System.getProperty(HeadlessLauncher.MAC_UI_ELEMENT_PROPERTY);
+        try {
+            System.clearProperty(HeadlessLauncher.MAC_UI_ELEMENT_PROPERTY);
+            HeadlessLauncher.configureDesktopPlatform(true, "Mac OS X");
+            assertEquals("true", System.getProperty(HeadlessLauncher.MAC_UI_ELEMENT_PROPERTY));
+
+            System.clearProperty(HeadlessLauncher.MAC_UI_ELEMENT_PROPERTY);
+            HeadlessLauncher.configureDesktopPlatform(true, "Windows 11");
+            assertNull(System.getProperty(HeadlessLauncher.MAC_UI_ELEMENT_PROPERTY));
+            HeadlessLauncher.configureDesktopPlatform(true, "Linux");
+            assertNull(System.getProperty(HeadlessLauncher.MAC_UI_ELEMENT_PROPERTY));
+        } finally {
+            if (previous == null) {
+                System.clearProperty(HeadlessLauncher.MAC_UI_ELEMENT_PROPERTY);
+            } else {
+                System.setProperty(HeadlessLauncher.MAC_UI_ELEMENT_PROPERTY, previous);
+            }
+        }
+    }
+
+    @Test
+    void desktopPlatformConfigurationRespectsExplicitMacOverride() {
+        String previous = System.getProperty(HeadlessLauncher.MAC_UI_ELEMENT_PROPERTY);
+        try {
+            System.setProperty(HeadlessLauncher.MAC_UI_ELEMENT_PROPERTY, "false");
+            HeadlessLauncher.configureDesktopPlatform(true, "Mac OS X");
+            assertEquals("false", System.getProperty(HeadlessLauncher.MAC_UI_ELEMENT_PROPERTY));
+        } finally {
+            if (previous == null) {
+                System.clearProperty(HeadlessLauncher.MAC_UI_ELEMENT_PROPERTY);
+            } else {
+                System.setProperty(HeadlessLauncher.MAC_UI_ELEMENT_PROPERTY, previous);
+            }
+        }
+    }
+
     private DataSourceConfigService newService() {
         return new DataSourceConfigService(tempDir.toString());
     }

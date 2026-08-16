@@ -74,6 +74,31 @@ export async function resolveCommand(command, cwd, options = {}) {
 }
 
 /**
+ * Pick the package manager for a ui-src project from its committed lockfile: yarn.lock selects
+ * Yarn 4 (the in-repo official plugins), everything else stays on npm (fresh scaffolds and
+ * third-party projects). The `bootstrap` command is the no-lockfile-yet variant.
+ */
+export function uiPackageManager(uiRoot) {
+  if (fsSync.existsSync(path.join(uiRoot, 'yarn.lock'))) {
+    return {
+      bin: 'yarn',
+      install: ['yarn', 'install', '--immutable'],
+      bootstrap: ['yarn', 'install'],
+      lockfile: 'yarn.lock',
+    }
+  }
+  return {
+    bin: 'npm',
+    install: ['npm', 'ci'],
+    // `npm ci` requires a committed lockfile; when none exists yet (e.g. a fresh
+    // scaffold created with --no-install), fall back to `npm install` which also
+    // generates the lockfile the next `ci` will pin to.
+    bootstrap: ['npm', 'install'],
+    lockfile: 'package-lock.json',
+  }
+}
+
+/**
  * Turn a resolved command into the exact spawn arguments. Windows `.cmd` files
  * must be launched through `cmd.exe /d /s /c` explicitly rather than enabling
  * `shell: true` for arbitrary commands.

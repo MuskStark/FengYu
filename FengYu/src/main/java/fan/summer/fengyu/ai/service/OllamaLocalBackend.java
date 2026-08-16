@@ -17,6 +17,7 @@ import fan.summer.fengyu.ai.AiToolCall;
 import fan.summer.fengyu.ai.AiToolResult;
 import fan.summer.fengyu.ai.ActiveFilesPromptAppender;
 import fan.summer.fengyu.ai.ChatBackend;
+import fan.summer.fengyu.ai.tools.BoundToolsContext;
 import fan.summer.fengyu.ai.ChatFileContext.ActiveFileRef;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -311,7 +312,8 @@ public final class OllamaLocalBackend implements ChatBackend {
 
         // Tool-callback options attached to every Prompt so the model CAN request tools
         // (bug fix: previously buildToolCallbacks()'s result was discarded at the call site).
-        List<ToolCallback> currentTools = enableTools ? List.copyOf(toolCallbackSupplier.get()) : List.of();
+        List<ToolCallback> currentTools = enableTools
+                ? BoundToolsContext.mergeWith(toolCallbackSupplier.get()) : List.of();
         ToolCallback[] callbacks = currentTools.toArray(new ToolCallback[0]);
         ToolCallingChatOptions options = callbacks.length == 0
                 ? null

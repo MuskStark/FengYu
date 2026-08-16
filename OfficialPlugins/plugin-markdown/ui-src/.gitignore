@@ -2,3 +2,7 @@ node_modules/
 dist/
 *.log
 .vite/
+.yarn/*
+!.yarn/releases
+!.yarn/plugins
+.yarn/install-state.gz

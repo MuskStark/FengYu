@@ -17,7 +17,8 @@ and `build --skip-tests` skips npm/Maven tests. Installation remains a host mark
 
 The CLI no longer reads `fengyu.plugin.json` or executes user-defined command arrays. A Java plugin
 uses `manifest.json`, `ui-src/package.json`, and `worker/pom.xml` (or a root `pom.xml`). UI commands
-come from standard npm scripts (`dev`, optional `test`, `build`); workers use the Maven `test` and
+come from the project's standard scripts (`dev`, optional `test`, `build` — npm for scaffolds,
+Yarn 4 for the in-repo official plugins); workers use the Maven `test` and
 `package` lifecycle through the nearest Maven Wrapper. The build must produce exactly one
 `target/*-worker.jar`. A UI-only plugin may use a root `package.json`; a prebuilt plugin may contain
 `ui/index.html`.

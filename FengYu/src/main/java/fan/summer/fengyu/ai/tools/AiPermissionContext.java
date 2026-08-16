@@ -9,5 +9,7 @@ public final class AiPermissionContext {
         AiPermissionMode mode = CURRENT.get();
         return mode == null ? AiPermissionMode.ASK_FOR_APPROVAL : mode;
     }
+    /** True while an agent run executes a step (the runner owns per-step hook firing there). */
+    public static boolean isBound() { return CURRENT.get() != null; }
     public static void clear() { CURRENT.remove(); }
 }

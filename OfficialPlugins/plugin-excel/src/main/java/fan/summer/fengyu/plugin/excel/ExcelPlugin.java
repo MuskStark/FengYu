@@ -41,14 +41,21 @@ public class ExcelPlugin {
     private Map<String, Object> analyze(String session, Map<String, Object> args) {
         Path file = requirePath(args, "sourceFile");
         SplitConfig cfg = sessions.get(session);
-        cfg.sourceFile = file;
+        // Analyze into a local and commit sourceFile + analysis together under the session
+        // lock (mirroring the AI-path aiAnalyze): a failed analyze must not leave the NEW
+        // sourceFile paired with the PREVIOUS, now-stale analysis.
+        Map<String, Map<Integer, String>> analysis;
         try {
-            cfg.analysisResult = ExcelSplitter.analyze(file);
+            analysis = ExcelSplitter.analyze(file);
         } catch (Exception e) {
             throw new IllegalArgumentException(msgs.format("ex.err.analyzeFailed", e.getMessage()), e);
         }
+        synchronized (cfg) {
+            cfg.sourceFile = file;
+            cfg.analysisResult = analysis;
+        }
         Map<String, Map<String, String>> sheets = new LinkedHashMap<>();
-        cfg.analysisResult.forEach((name, cols) -> {
+        analysis.forEach((name, cols) -> {
             Map<String, String> m = new LinkedHashMap<>();
             cols.forEach((idx, header) -> m.put(String.valueOf(idx), header));
             sheets.put(name, m);
@@ -275,7 +282,9 @@ public class ExcelPlugin {
             int colKey = entry.columnIndex() - 1;
             listener.getCachedDataList().stream()
                     .map(row -> ExcelUtil.normalizeOrInvalid(row.getOrDefault(colKey, null)))
-                    .forEach(key -> outputNames.add(sourceBase + "_" + key + ".xlsx"));
+                    // Same sanitized naming as the engine's Phase-1 plan, so the estimate counts
+                    // exactly what the split will produce (keys that sanitize identically merge).
+                    .forEach(key -> outputNames.add(sourceBase + "_" + FileNameUtil.sanitizeSegment(key) + ".xlsx"));
             listener.clear();
         }
         return outputNames.size();

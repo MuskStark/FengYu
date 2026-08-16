@@ -14,8 +14,8 @@ Build the backend, then launch it alongside the frontend.
 | Tool | Version | Used for |
 | --- | --- | --- |
 | JDK | 21+ (Eclipse Temurin recommended) | Backend (`Java 21`) |
-| Node.js + npm | 20+ | Frontend dev server |
-| Node.js + npm | 24.18.0 | Desktop shell only (skip if you only need web) |
+| Node.js + Yarn 4 (corepack) | 24.18.0 | Frontend dev server |
+| Node.js + Yarn 4 (corepack) | 24.18.0 | Desktop shell only (skip if you only need web) |
 
 ## Build from source
 
@@ -44,9 +44,10 @@ The entry point is `fan.summer.fengyu.HeadlessLauncher`. CLI flags are `--port` 
 The Vue 3 + Vuetify 3 frontend runs against the backend via Vite, which proxies `/api` and `/plugin-runtime` to `localhost:24056`.
 
 ```bash
+corepack enable   # once per machine: activates the pinned Yarn 4
 cd frontend
-npm install
-npm run dev
+yarn install
+yarn run dev
 ```
 
 Open the printed local URL and the UI will talk to the backend you started above.
@@ -67,8 +68,8 @@ The Electron desktop shell sidecar-launches the Java backend. From the repo root
 
 ```bash
 cd desktop/electron
-npm install
-npm run dev       # DEFAULT: connects to an IDE-started backend at http://127.0.0.1:24056
+yarn install
+yarn run dev       # DEFAULT: connects to an IDE-started backend at http://127.0.0.1:24056
                   #   (start the backend without --token so auth is disabled; shell does NOT spawn java)
                   # To spawn its own backend instead: set FENGYU_JAR=<built shaded jar>
                   #   (build it first: ./mvnw -pl FengYu -am package -DskipTests -Drevision=4.0.0)
@@ -78,7 +79,7 @@ npm run dev       # DEFAULT: connects to an IDE-started backend at http://127.0.
 For a distributable build:
 
 ```bash
-npm run build     # = npm run build:ts && electron-builder (host platform)
+yarn run build    # = yarn build:ts && electron-builder (host platform)
 ```
 
 ::: tip

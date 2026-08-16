@@ -12,6 +12,7 @@ import { createSplashWindow, sendProgress, destroySplash } from './window/create
 import { initLogger } from './desktop/logger'
 import { acquireSingleInstanceLock } from './desktop/single-instance'
 import { createTray } from './desktop/tray'
+import { createGracefulQuitHandler } from './desktop/graceful-quit'
 import { checkForUpdates } from './updater/auto-updater'
 import { bootstrapUpdateApiBaseFromBackend } from './updater/update-feed'
 import { startDevFrontend, type DevFrontendHandle } from './desktop/dev-frontend'
@@ -25,21 +26,56 @@ let devFrontend: DevFrontendHandle | null = null
 let browserBridge: BrowserBridge | null = null
 let stopSupervisor: (() => void) | null = null
 let isQuitting = false
+// The main window, once created (null during splash-only startup). Held explicitly so the
+// second-instance handler can target it directly instead of guessing from window URLs.
+let mainWindow: Electron.BrowserWindow | null = null
 
 // Prevents an extra console window on Windows in release builds. Must run after the
 // `electron` import (CommonJS require() is source-order, unlike ESM import hoisting) but
 // before app.whenReady — placing it here at module top-level satisfies both.
 if (process.platform === 'win32') app.setAppUserModelId('fan.summer.fengyu')
 
-function killBackend() {
+/**
+ * Synchronous shell teardown for a quit: flags quitting and stops everything EXCEPT the
+ * backend child (whose shutdown is sequenced separately — see the before-quit handler below).
+ * Idempotent; safe to call from both before-quit and will-quit.
+ */
+function teardownShell() {
   isQuitting = true
   stopSupervisor?.()
   stopSupervisor = null
-  backendChild?.kill()
   browserBridge?.close()
   browserBridge = null
   devFrontend?.stop()
 }
+
+/** Crash-path teardown: SIGTERM now — the caller force-kills immediately after (app.exit bypasses quit events). */
+function killBackend() {
+  teardownShell()
+  backendChild?.kill()
+}
+
+// Crash backstops. A rejection (a missed `await` in some event handler) is logged and
+// tolerated — the shell keeps running. An uncaught exception is unrecoverable: log it,
+// tear down the sidecar (app.exit bypasses before-quit/will-quit, so cleanup must be
+// explicit) and exit non-zero so the backend JVM can never be orphaned by a shell crash.
+process.on('unhandledRejection', (reason) => {
+  logger.error(
+    `[desktop] unhandled rejection: ${reason instanceof Error ? reason.stack ?? reason.message : String(reason)}`,
+  )
+})
+process.on('uncaughtException', (err) => {
+  logger.error(`[desktop] uncaught exception: ${err instanceof Error ? err.stack ?? err.message : String(err)}`)
+  try {
+    killBackend()
+    // killBackend signals SIGTERM and arms a 5s escalation that app.exit below will never
+    // let fire — escalate synchronously so the JVM tree dies with the shell.
+    backendChild?.forceKill()
+  } catch {
+    // Best-effort cleanup on an already-crashing process; still exit below.
+  }
+  app.exit(1)
+})
 
 /**
  * In dev, auto-start the Vite frontend (the old Tauri shell did this via `beforeDevCommand`).
@@ -134,10 +170,13 @@ async function bootstrap(): Promise<void> {
       })
       process.env.FENGYU_BROWSER_BRIDGE_PORT = String(browserBridge.port)
       process.env.FENGYU_BROWSER_BRIDGE_TOKEN = browserBridge.token
+      // The token authorizes browser automation from the backend; keep its value out of
+      // desktop.log — log presence/length only. In this dev path you supplied it yourself
+      // via FENGYU_BROWSER_BRIDGE_TOKEN (or it was generated for ad-hoc use).
       logger.info(
-        `[desktop] browser bridge ready on 127.0.0.1:${browserBridge.port} (token=${browserBridge.token}). ` +
+        `[desktop] browser bridge ready on 127.0.0.1:${browserBridge.port} (token present, ${browserBridge.token.length} chars, redacted). ` +
           'For the IDE backend to use it, set VM option `-Dfengyu.desktop=true` and env ' +
-          `FENGYU_BROWSER_BRIDGE_PORT=${browserBridge.port} FENGYU_BROWSER_BRIDGE_TOKEN=${browserBridge.token}.`,
+          `FENGYU_BROWSER_BRIDGE_PORT=${browserBridge.port} FENGYU_BROWSER_BRIDGE_TOKEN=<your configured token>.`,
       )
     } catch (err) {
       // Bridge is an adjunct to the IDE backend, not a prerequisite — keep booting so the
@@ -165,7 +204,7 @@ async function bootstrap(): Promise<void> {
       dialog.showErrorBox(
         'Frontend not reachable',
         `Could not start the Vite frontend dev server.\n${err instanceof Error ? err.message : String(err)}\n\n` +
-          'Run `cd frontend && npm install && npm run dev` manually, then relaunch the desktop shell.',
+          'Run `cd frontend && yarn install && yarn run dev` manually, then relaunch the desktop shell.',
       )
       app.quit()
       return
@@ -184,6 +223,7 @@ async function bootstrap(): Promise<void> {
         destroySplash(splash)
       },
     })
+    mainWindow = win
     createTray(win, () => {
       /* external backend is owned by the IDE; nothing to kill on quit */
     })
@@ -198,9 +238,17 @@ async function bootstrap(): Promise<void> {
   process.env.FENGYU_API_BASE = '' // set after we know the port
   // Browser automation bridge: must start before the JVM spawn so the backend inherits
   // the bridge port/token via process.env and fengyu.desktop=true enables the host tool.
-  browserBridge = await startBrowserBridge(new BrowserSession())
-  process.env.FENGYU_BROWSER_BRIDGE_PORT = String(browserBridge.port)
-  process.env.FENGYU_BROWSER_BRIDGE_TOKEN = browserBridge.token
+  // Same tolerance as the dev-connect path above: the bridge is an adjunct (the backend's
+  // browser_* tools degrade gracefully without it), so a startup failure — e.g. the port
+  // already in use — must not take the whole app down.
+  try {
+    browserBridge = await startBrowserBridge(new BrowserSession())
+    process.env.FENGYU_BROWSER_BRIDGE_PORT = String(browserBridge.port)
+    process.env.FENGYU_BROWSER_BRIDGE_TOKEN = browserBridge.token
+  } catch (err) {
+    browserBridge = null
+    logger.warn(`[desktop] browser bridge not started: ${err instanceof Error ? err.message : String(err)}`)
+  }
   reportProgress(splash, 'spawning')
 
   let started
@@ -288,7 +336,7 @@ async function bootstrap(): Promise<void> {
       dialog.showErrorBox(
         'Frontend not reachable',
         `Could not start the Vite frontend dev server.\n${err instanceof Error ? err.message : String(err)}\n\n` +
-          'Run `cd frontend && npm install && npm run dev` manually, then relaunch the desktop shell.',
+          'Run `cd frontend && yarn install && yarn run dev` manually, then relaunch the desktop shell.',
       )
       app.quit()
       return
@@ -320,6 +368,7 @@ async function bootstrap(): Promise<void> {
       destroySplash(splash)
     },
   })
+  mainWindow = win
   createTray(win, killBackend)
 
   // Non-blocking native update check — only when packaged (dev builds have no update channel).
@@ -331,28 +380,67 @@ async function bootstrap(): Promise<void> {
 }
 
 app.whenReady().then(() => {
-  const locked = acquireSingleInstanceLock((existing) => {
-    if (existing) {
-      existing.show()
-      existing.focus()
-    }
-  })
+  const locked = acquireSingleInstanceLock(
+    (existing) => {
+      if (existing) {
+        existing.show()
+        existing.focus()
+      }
+    },
+    () => mainWindow,
+  )
   if (!locked) return
-  void bootstrap()
+  void bootstrap().catch((err) => {
+    // Bootstrap failures that have their own recovery path (backend unreachable, frontend
+    // down) already show a specific dialog inside bootstrap(); this catches everything else.
+    // app.exit bypasses before-quit/will-quit, so the backend must be torn down explicitly.
+    logger.error(`[desktop] bootstrap failed: ${err instanceof Error ? err.stack ?? err.message : String(err)}`)
+    killBackend()
+    backendChild?.forceKill() // app.exit below never lets kill()'s 5s escalation fire
+    try {
+      dialog.showErrorBox(
+        'Startup failed',
+        `Infinia failed to start and must close.\n${err instanceof Error ? err.message : String(err)}\n\n` +
+          'Please relaunch Infinia. If the problem persists, check the logs at ' +
+          '<program working directory>/.fengyu/logs/.',
+      )
+    } catch {
+      // Best-effort dialog: never let a dialog failure mask the exit below.
+    }
+    app.exit(1)
+  })
 })
 
-// Clean up the spawned backend + dev Vite on quit. before-quit covers Cmd+Q / tray Quit / app.quit();
-// will-quit fires on ALL exit paths (including some forceful ones where before-quit's async work
-// might not complete) and is the backstop that guarantees the detached Vite process group dies with
-// the shell — stop() is idempotent (guards on child.killed), so calling it from both is safe.
-app.on('before-quit', killBackend)
-app.on('will-quit', () => devFrontend?.stop())
-
-// Keep the app (and tray) alive on macOS even after the last window closes.
-// The 'window-all-closed' listener receives no event arg in these Electron
-// typings (signature is `() => void`); on macOS the default already does not
-// quit, so an explicit no-op is sufficient to keep the tray alive. On other
-// platforms we intentionally let the default quit-on-all-closed stand.
-app.on('window-all-closed', () => {
-  // no-op: prevent default quit so the tray remains (macOS default behavior)
+// Clean up the spawned backend + dev Vite on quit. before-quit covers Cmd+Q / tray Quit /
+// app.quit() and runs the graceful sequence from desktop/graceful-quit.ts: SIGTERM the backend
+// tree, wait (capped ~2.5s) for it to exit so Spring Boot can flush, then force-kill and re-quit.
+// Update install-restarts (portable apply / quitAndInstall) skip the wait via markUpdateInstallRestart.
+// will-quit fires on ALL exit paths (including forceful ones where before-quit's async wait never
+// completes) and is the backstop that guarantees the backend tree and the detached Vite process
+// group die with the shell — forceKill() and stop() are idempotent, so calling them from both is safe.
+app.on(
+  'before-quit',
+  createGracefulQuitHandler({
+    getChild: () => backendChild,
+    onTeardown: teardownShell,
+    log: (m) => logger.info(m),
+  }),
+)
+app.on('will-quit', () => {
+  // Final backstop on every exit path: before-quit's graceful wait may never complete (or was
+  // skipped), and tree-kill's async SIGKILL enumeration may not get to run after this handler
+  // returns — the direct-child signal inside forceKill() is the synchronous guarantee that the
+  // backend JVM itself dies before this process exits. No-op once the child has exited.
+  backendChild?.forceKill()
+  devFrontend?.stop()
 })
+
+// Keep the app (and tray) alive on macOS even after the last window closes. Registering the
+// listener at all suppresses Electron's default quit-on-all-closed, so the no-op is gated on
+// macOS only — every other platform intentionally keeps the default quit when the last window
+// closes (which then tears the backend down through before-quit above).
+if (process.platform === 'darwin') {
+  app.on('window-all-closed', () => {
+    // no-op: prevent default quit so the tray remains (macOS default behavior)
+  })
+}

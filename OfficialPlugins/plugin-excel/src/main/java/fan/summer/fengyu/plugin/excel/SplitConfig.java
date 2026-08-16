@@ -27,4 +27,26 @@ public class SplitConfig {
              + ", complexEntries=" + complexEntries.size() + ", outputDir=" + outputDir
              + ", filePrefix='" + filePrefix + "'}";
     }
+
+    /**
+     * Private copy for background split jobs: the session config stays mutable (and is
+     * mutated under its session lock) while a job runs on a virtual thread, so the job must
+     * operate on a snapshot taken under that lock. The analysis map is only ever replaced
+     * wholesale, so a reference copy is sufficient; the mutable lists are copied defensively
+     * so a later clear/re-configure on the session can never reach a running job.
+     */
+    public SplitConfig snapshot() {
+        SplitConfig c = new SplitConfig();
+        c.sourceFile = sourceFile;
+        c.analysisResult = analysisResult;
+        c.mode = mode;
+        c.selectedSheets = selectedSheets == null ? new ArrayList<>() : new ArrayList<>(selectedSheets);
+        c.splitSheet = splitSheet;
+        c.splitColumn = splitColumn;
+        c.splitColumnIndex = splitColumnIndex;
+        c.complexEntries = complexEntries == null ? new ArrayList<>() : new ArrayList<>(complexEntries);
+        c.outputDir = outputDir;
+        c.filePrefix = filePrefix;
+        return c;
+    }
 }

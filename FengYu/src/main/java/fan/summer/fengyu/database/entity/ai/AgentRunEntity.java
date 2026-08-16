@@ -46,6 +46,14 @@ public class AgentRunEntity {
     @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
 
+    /**
+     * Plugin sandbox posture at create time ("sandboxed"/"unsandboxed"). Resume/fork
+     * refuses to replay a sandboxed run while the host now runs unsandboxed — the
+     * isolation a run was recorded under must not silently weaken.
+     */
+    @Column(name = "sandbox_profile", length = 32)
+    private String sandboxProfile;
+
     @Column(name = "resumed_from", length = 64)
     private String resumedFrom;
 

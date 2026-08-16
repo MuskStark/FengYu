@@ -24,14 +24,37 @@ public record AgentRunConfig(boolean requirePlanApproval,
                              boolean requireStepApproval,
                              boolean replanOnFailure,
                              int maxReplans,
-                             AiPermissionMode permissionMode) {
+                             AiPermissionMode permissionMode,
+                             String capabilityMode) {
+
+    /** Capability mode restricting a run's steps to read-effect tools (research/review). */
+    public static final String CAPABILITY_READ_ONLY = "read-only";
+
     public AgentRunConfig(boolean requirePlanApproval, boolean requireStepApproval,
                           boolean replanOnFailure, int maxReplans) {
         this(requirePlanApproval, requireStepApproval, replanOnFailure, maxReplans,
-                AiPermissionMode.ASK_FOR_APPROVAL);
+                AiPermissionMode.ASK_FOR_APPROVAL, null);
+    }
+
+    public AgentRunConfig(boolean requirePlanApproval, boolean requireStepApproval,
+                          boolean replanOnFailure, int maxReplans, AiPermissionMode permissionMode) {
+        this(requirePlanApproval, requireStepApproval, replanOnFailure, maxReplans,
+                permissionMode, null);
     }
 
     public AiPermissionMode effectivePermissionMode() {
         return permissionMode == null ? AiPermissionMode.ASK_FOR_APPROVAL : permissionMode;
+    }
+
+    /** True when the run is restricted to {@code read}-effect tools. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public boolean isReadOnly() {
+        return CAPABILITY_READ_ONLY.equalsIgnoreCase(capabilityMode);
+    }
+
+    /** Copies the config with a capability mode set (batch children share their parent's). */
+    public AgentRunConfig withCapabilityMode(String mode) {
+        return new AgentRunConfig(requirePlanApproval, requireStepApproval,
+                replanOnFailure, maxReplans, permissionMode, mode);
     }
 }

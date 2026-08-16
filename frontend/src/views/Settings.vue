@@ -16,6 +16,7 @@ import type {
   McpServer,
   McpServerRequest,
   McpTransportType,
+  PartialAiSettings,
   PluginDbProvisionResult,
   ProcessIsolationStatus,
   ThemeName,
@@ -47,6 +48,52 @@ const mcpForm = ref({
   env: '', headers: '', enabled: true,
 })
 const isolationStatus = ref<ProcessIsolationStatus | null>(null)
+
+// ── AI guard: permission rules + lifecycle hooks ─────────────────────────
+const guardSaving = ref(false)
+const guardError = ref<string | null>(null)
+const localHooksJson = ref('[]')
+const HOOKS_PLACEHOLDER = '[{"name":"audit","event":"post_tool_use","matcher":".*","type":"command","command":"logger -t fengyu","timeoutSeconds":5}]'
+
+watch(() => settings.hooksJson, (next) => { localHooksJson.value = next }, { immediate: true })
+
+// Placeholders live in the script: HTML entities like &#10; are not decoded inside
+// Vue expression bindings, which breaks the template compiler.
+const RULE_PLACEHOLDERS: Record<'allow' | 'ask' | 'deny', string> = {
+  allow: 'Command(git status)\nEffect(read)',
+  ask: 'Command(git push*)\nTool(browser_*)',
+  deny: 'Tool(computer_*)\nWebFetch(domain:internal.example.com)',
+}
+
+function setRules(kind: 'allow' | 'ask' | 'deny', event: Event) {
+  const lines = (event.target as HTMLTextAreaElement).value
+    .split('\n').map((line) => line.trim()).filter(Boolean)
+  settings.permissionRules = { ...settings.permissionRules, [kind]: lines }
+}
+
+async function saveRules() {
+  guardSaving.value = true
+  guardError.value = null
+  try {
+    await settings.savePermissionRules()
+  } catch (e) {
+    guardError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    guardSaving.value = false
+  }
+}
+
+async function saveHooks() {
+  guardSaving.value = true
+  guardError.value = null
+  try {
+    await settings.saveHooks(localHooksJson.value)
+  } catch (e) {
+    guardError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    guardSaving.value = false
+  }
+}
 const showUnsandboxedConfirm = ref(false)
 const showDbProvisionConfirm = ref(false)
 const dbProvisionTargetId = ref<string | null>(null)
@@ -297,15 +344,28 @@ function requestEnableComputerUse() {
   showComputerUseConfirm.value = true
 }
 
+// Runtime toggles are optimistic in the store (they revert on failure); surface the
+// rethrown error next to the toggles so the confirm dialogs and switches never fail silently.
+const runtimeError = ref<string | null>(null)
+async function runToggle(action: () => Promise<void>) {
+  runtimeError.value = null
+  try {
+    await action()
+  } catch (e: unknown) {
+    runtimeError.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
 async function confirmEnableComputerUse() {
   showComputerUseConfirm.value = false
-  await settings.setComputerUseEnabled(true)
+  await runToggle(() => settings.setComputerUseEnabled(true))
 }
 
 // Persist every provider's config (not just the active one) so editing any
 // provider in the master-detail survives a save.
+const saveError = ref<string | null>(null)
 async function onSave() {
-  const partial: Record<string, unknown> = {
+  const partial: PartialAiSettings = {
     mode: aiForm.value.mode,
     openai: { endpoint: aiForm.value.openai.endpoint, apiKey: aiForm.value.openai.apiKey, model: aiForm.value.openai.model },
     anthropic: { endpoint: aiForm.value.anthropic.endpoint, apiKey: aiForm.value.anthropic.apiKey, model: aiForm.value.anthropic.model },
@@ -318,10 +378,15 @@ async function onSave() {
     contextWindowTokens: aiForm.value.contextWindowTokens,
     systemPrompt: aiForm.value.systemPrompt,
   }
-  await settings.updateAi(partial as never)
-  syncFormFromStore()
-  saved.value = true
-  setTimeout(() => { saved.value = false }, 2000)
+  saveError.value = null
+  try {
+    await settings.updateAi(partial)
+    syncFormFromStore()
+    saved.value = true
+    setTimeout(() => { saved.value = false }, 2000)
+  } catch (e: unknown) {
+    saveError.value = e instanceof Error ? e.message : String(e)
+  }
 }
 
 function requestEnableUnsandboxed() {
@@ -331,7 +396,7 @@ function requestEnableUnsandboxed() {
 
 async function confirmEnableUnsandboxed() {
   showUnsandboxedConfirm.value = false
-  await settings.setUnsandboxedPlugins(true)
+  await runToggle(() => settings.setUnsandboxedPlugins(true))
 }
 
 async function loadDbPlugins() {
@@ -763,6 +828,7 @@ async function callSelectedMcpTool() {
             <div class="cx-row" style="margin-top: 16px">
               <button class="cx-btn cx-btn--primary" @click="onSave">{{ $t('aiSettings.save') }}</button>
               <span v-if="saved" class="cx-chip cx-chip--success">{{ $t('aiSettings.saved') }}</span>
+              <span v-if="saveError" class="cx-alert cx-alert--error">{{ saveError }}</span>
             </div>
           </div>
         </div>
@@ -814,6 +880,7 @@ async function callSelectedMcpTool() {
             <div class="cx-row">
               <button class="cx-btn cx-btn--primary" @click="onSave">{{ $t('aiSettings.save') }}</button>
               <span v-if="saved" class="cx-chip cx-chip--success">{{ $t('aiSettings.saved') }}</span>
+              <span v-if="saveError" class="cx-alert cx-alert--error">{{ saveError }}</span>
             </div>
           </div>
         </section>
@@ -863,6 +930,10 @@ async function callSelectedMcpTool() {
         <!-- Runtime & security -->
         <section v-show="activeSection === 'runtime'">
           <h2 class="set-h">{{ $t('settings.runtimeSecurity') }}</h2>
+          <div v-if="runtimeError" class="cx-alert cx-alert--error" style="margin-bottom: 12px">
+            <span class="cx-alert__body">{{ runtimeError }}</span>
+            <button class="cx-iconbtn cx-iconbtn--sm" @click="runtimeError = null"><i class="mdi mdi-close" /></button>
+          </div>
           <div class="cx-card">
             <div class="cx-setting-row">
               <div class="cx-setting-row__label">
@@ -880,12 +951,105 @@ async function callSelectedMcpTool() {
                 <span>{{ $t('settings.unsandboxedPluginsTitle') }}</span>
               </div>
               <div class="cx-segment">
-                <button :class="{ active: !settings.unsandboxedPlugins }" @click="settings.setUnsandboxedPlugins(false)">{{ $t('settings.unsandboxedOff') }}</button>
+                <button :class="{ active: !settings.unsandboxedPlugins }" @click="runToggle(() => settings.setUnsandboxedPlugins(false))">{{ $t('settings.unsandboxedOff') }}</button>
                 <button :class="{ active: settings.unsandboxedPlugins }" @click="requestEnableUnsandboxed()">{{ $t('settings.unsandboxedOn') }}</button>
               </div>
             </div>
             <div v-if="isolationStatus?.compatibilityMode" class="cx-muted" style="color: rgb(var(--v-theme-error)); font-size: 12px; margin: -6px 0 0;">
               {{ $t('settings.unsandboxedPluginsWarn') }}
+            </div>
+          </div>
+
+          <!-- AI guard: permission rules, lifecycle hooks, memory, marketplace pinning -->
+          <div class="cx-card" style="margin-top: 16px">
+            <div class="cx-setting-row">
+              <div class="cx-setting-row__label">
+                <i class="mdi mdi-shield-check-outline" />
+                <span>{{ $t('settings.guardTitle') }}</span>
+              </div>
+            </div>
+            <div class="cx-muted" style="font-size: 12px; margin: -6px 0 12px;">
+              {{ $t('settings.guardHint') }}
+            </div>
+
+            <div class="guard-grid">
+              <label v-for="kind in (['allow', 'ask', 'deny'] as const)" :key="kind" class="guard-field">
+                <span class="guard-field__label">
+                  {{ $t(`settings.guardRules.${kind}`) }}
+                  <em class="guard-field__badge" :data-kind="kind">{{ $t(`settings.guardRules.${kind}Desc`) }}</em>
+                </span>
+                <textarea
+                  class="cx-textarea mono"
+                  rows="4"
+                  spellcheck="false"
+                  :placeholder="RULE_PLACEHOLDERS[kind]"
+                  :value="(settings.permissionRules[kind] ?? []).join('\n')"
+                  @change="setRules(kind, $event)"
+                />
+              </label>
+            </div>
+            <div v-if="settings.invalidPermissionRules.length" class="cx-alert cx-alert--error" style="margin: 8px 0">
+              <span class="cx-alert__body">{{ $t('settings.guardInvalid', { rules: settings.invalidPermissionRules.join('; ') }) }}</span>
+            </div>
+            <div v-if="guardError" class="cx-alert cx-alert--error" style="margin: 8px 0">
+              <span class="cx-alert__body">{{ guardError }}</span>
+            </div>
+            <div class="cx-row" style="margin-top: 8px">
+              <button class="cx-btn cx-btn--primary" :disabled="guardSaving" @click="saveRules">
+                <i class="mdi mdi-content-save-outline" /> {{ $t('settings.guardSaveRules') }}
+              </button>
+              <span class="cx-muted" style="font-size: 11px">{{ $t('settings.guardRuleSyntax') }}</span>
+            </div>
+
+            <label class="guard-field" style="margin-top: 16px">
+              <span class="guard-field__label">{{ $t('settings.guardHooks') }}</span>
+              <textarea
+                v-model="localHooksJson"
+                class="cx-textarea mono"
+                rows="5"
+                spellcheck="false"
+                :placeholder="HOOKS_PLACEHOLDER"
+              />
+            </label>
+            <div class="cx-row" style="margin-top: 8px">
+              <button class="cx-btn cx-btn--primary" :disabled="guardSaving" @click="saveHooks">
+                <i class="mdi mdi-content-save-outline" /> {{ $t('settings.guardSaveHooks') }}
+              </button>
+              <span class="cx-muted" style="font-size: 11px">{{ $t('settings.guardHooksHint') }}</span>
+            </div>
+          </div>
+
+          <!-- Cross-session memory (experimental) -->
+          <div class="cx-card" style="margin-top: 16px">
+            <div class="cx-setting-row">
+              <div class="cx-setting-row__label">
+                <i class="mdi mdi-book-clock-outline" />
+                <span>{{ $t('settings.memoryTitle') }}</span>
+              </div>
+              <div class="cx-segment">
+                <button :class="{ active: !settings.memoryEnabled }" @click="runToggle(() => settings.setMemoryEnabled(false))">{{ $t('common.off') }}</button>
+                <button :class="{ active: settings.memoryEnabled }" @click="runToggle(() => settings.setMemoryEnabled(true))">{{ $t('common.on') }}</button>
+              </div>
+            </div>
+            <div class="cx-muted" style="font-size: 12px; margin: -6px 0 12px;">
+              {{ $t('settings.memoryHint') }}
+            </div>
+          </div>
+
+          <!-- Marketplace checksum pinning -->
+          <div class="cx-card" style="margin-top: 16px">
+            <div class="cx-setting-row">
+              <div class="cx-setting-row__label">
+                <i class="mdi mdi-certificate-outline" />
+                <span>{{ $t('settings.checksumTitle') }}</span>
+              </div>
+              <div class="cx-segment">
+                <button :class="{ active: !settings.marketplaceRequireChecksum }" @click="runToggle(() => settings.setMarketplaceRequireChecksum(false))">{{ $t('common.off') }}</button>
+                <button :class="{ active: settings.marketplaceRequireChecksum }" @click="runToggle(() => settings.setMarketplaceRequireChecksum(true))">{{ $t('common.on') }}</button>
+              </div>
+            </div>
+            <div class="cx-muted" style="font-size: 12px; margin: -6px 0 12px;">
+              {{ $t('settings.checksumHint') }}
             </div>
           </div>
 
@@ -910,7 +1074,7 @@ async function callSelectedMcpTool() {
                 <span>{{ $t('settings.computerUseAllowAi') }}</span>
               </div>
               <div class="cx-segment">
-                <button :class="{ active: !settings.computerUseEnabled }" @click="settings.setComputerUseEnabled(false)">{{ $t('settings.computerUseOff') }}</button>
+                <button :class="{ active: !settings.computerUseEnabled }" @click="runToggle(() => settings.setComputerUseEnabled(false))">{{ $t('settings.computerUseOff') }}</button>
                 <button :class="{ active: settings.computerUseEnabled }" @click="requestEnableComputerUse()">{{ $t('settings.computerUseOn') }}</button>
               </div>
             </div>
@@ -1081,6 +1245,13 @@ async function callSelectedMcpTool() {
 </template>
 
 <style scoped>
+.guard-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 960px) { .guard-grid { grid-template-columns: 1fr; } }
+.guard-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.guard-field__label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+.guard-field__badge { padding: 1px 6px; font-size: 10px; font-style: normal; border-radius: 8px; background: rgb(var(--v-theme-surface-variant)); color: rgba(var(--v-theme-on-surface), .6); }
+.guard-field textarea { width: 100%; font-size: 11px; }
+
 .set-shell { flex: 1 1 auto; min-height: 0; height: 100%; display: flex; }
 .set-nav {
   width: 232px; flex: 0 0 232px; height: 100%; overflow-y: auto;

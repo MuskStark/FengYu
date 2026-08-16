@@ -100,4 +100,116 @@ class ExcelSplitterTest {
             }
         }
     }
+
+    // ---- sanitized output names: cell values become filename segments ----
+
+    @Test
+    void byColumnSanitizesKeysIntoSafeFilenames() throws Exception {
+        // A crafted region value must become a sanitized in-directory filename, never an
+        // output path escaping outputDir or a name broken on Windows.
+        Path evil = tmp.resolve("evil.xlsx");
+        try (Workbook wb = new XSSFWorkbook(); FileOutputStream fos = new FileOutputStream(evil.toFile())) {
+            Sheet s = wb.createSheet("Data");
+            Row header = s.createRow(0);
+            header.createCell(0).setCellValue("id");
+            header.createCell(1).setCellValue("region");
+            s.createRow(1).createCell(1).setCellValue("../../evil");
+            s.createRow(2).createCell(1).setCellValue("ok");
+            wb.write(fos);
+        }
+        SplitConfig c = new SplitConfig();
+        c.sourceFile = evil;
+        c.analysisResult = ExcelSplitter.analyze(evil);
+        c.mode = SplitConfig.SplitMode.BY_COLUMN;
+        c.splitSheet = "Data";
+        c.splitColumnIndex = 1;
+        c.outputDir = Files.createDirectories(tmp.resolve("out-evil"));
+        var res = new ExcelSplitter(c, null).split();
+        assertEquals(2, res.fileCount());
+        assertTrue(Files.exists(c.outputDir.resolve("evil_.._.._evil.xlsx")));
+        assertTrue(Files.exists(c.outputDir.resolve("evil_ok.xlsx")));
+        // Un-sanitized, the first key would have escaped the output directory.
+        assertFalse(Files.exists(c.outputDir.resolve("../../evil.xlsx").normalize()));
+    }
+
+    // ---- failed/cancelled splits leave no partial outputs ----
+
+    /** Normal complex entry on Alpha/region (2 groups: east, west), no copy-all rules. */
+    private SplitConfig complexConfig(Path outDir) throws Exception {
+        SplitConfig c = new SplitConfig();
+        c.sourceFile = src;
+        c.analysisResult = ExcelSplitter.analyze(src);
+        c.mode = SplitConfig.SplitMode.COMPLEX;
+        c.outputDir = Files.createDirectories(outDir);
+        c.complexEntries = List.of(new ComplexSplitEntry("in.xlsx", "Alpha", 1, 1));
+        return c;
+    }
+
+    @Test
+    void failedComplexSplitDeletesPartialOutputs() throws Exception {
+        SplitConfig c = complexConfig(tmp.resolve("out-cpx-fail"));
+        // A pre-created DIRECTORY at the second planned output makes Phase 2's second
+        // FileOutputStream fail deterministically AFTER the first file was written.
+        Files.createDirectory(c.outputDir.resolve("in_west.xlsx"));
+        assertThrows(Exception.class, () -> new ExcelSplitter(c, null).split());
+        assertFalse(Files.exists(c.outputDir.resolve("in_east.xlsx")),
+            "partial output from a failed split must be deleted");
+    }
+
+    @Test
+    void cancelledComplexSplitDeletesPartialOutputs() throws Exception {
+        SplitConfig c = complexConfig(tmp.resolve("out-cpx-cancel"));
+        // Cancel as soon as the FIRST Phase-2 output lands: the next checkpoint (inside the
+        // Phase-2 write loop) aborts, and the cleanup must remove the already-written file.
+        Path east = c.outputDir.resolve("in_east.xlsx");
+        ExcelSplitter splitter = new ExcelSplitter(c, null, () -> Files.exists(east));
+        assertThrows(InterruptedException.class, () -> splitter.split());
+        assertFalse(Files.exists(east), "partial output from a cancelled split must be deleted");
+    }
+
+    @Test
+    void failedBySheetSplitDeletesPartialOutputs() throws Exception {
+        SplitConfig c = new SplitConfig();
+        c.sourceFile = src;
+        c.analysisResult = ExcelSplitter.analyze(src);
+        c.mode = SplitConfig.SplitMode.BY_SHEET;
+        c.outputDir = Files.createDirectories(tmp.resolve("out-sheet-fail"));
+        // A directory at Beta.xlsx makes the SECOND sheet write fail after Alpha.xlsx landed.
+        Files.createDirectory(c.outputDir.resolve("Beta.xlsx"));
+        assertThrows(Exception.class, () -> new ExcelSplitter(c, null).split());
+        assertFalse(Files.exists(c.outputDir.resolve("Alpha.xlsx")),
+            "partial output from a failed split must be deleted");
+    }
+
+    @Test
+    void failedByColumnSplitDeletesPartialOutputs() throws Exception {
+        SplitConfig c = new SplitConfig();
+        c.sourceFile = src;
+        c.analysisResult = ExcelSplitter.analyze(src);
+        c.mode = SplitConfig.SplitMode.BY_COLUMN;
+        c.splitSheet = "Alpha";
+        c.splitColumnIndex = 0;
+        c.outputDir = Files.createDirectories(tmp.resolve("out-col-fail"));
+        // One parallel writer fails (directory at its output); whatever the split managed to
+        // create must be gone once the failure surfaces (cleanup runs after the pool quiesces).
+        Files.createDirectory(c.outputDir.resolve("in_west.xlsx"));
+        assertThrows(Exception.class, () -> new ExcelSplitter(c, null).split());
+        assertFalse(Files.exists(c.outputDir.resolve("in_east.xlsx")),
+            "partial output from a failed split must be deleted");
+    }
+
+    // ---- clear errors for stale selections ----
+
+    @Test
+    void bySheetUnknownSelectionThrowsClearLocalizedError() throws Exception {
+        SplitConfig c = new SplitConfig();
+        c.sourceFile = src;
+        c.analysisResult = ExcelSplitter.analyze(src);
+        c.mode = SplitConfig.SplitMode.BY_SHEET;
+        c.selectedSheets = List.of("Alpha", "Ghost");
+        c.outputDir = Files.createDirectories(tmp.resolve("out-ghost"));
+        // Pre-fix this was a bare NullPointerException (TreeMap(null) in buildHeaders).
+        Exception e = assertThrows(RuntimeException.class, () -> new ExcelSplitter(c, null).split());
+        assertTrue(e.getMessage().contains("Ghost"), e.getMessage());
+    }
 }

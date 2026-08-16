@@ -1,8 +1,11 @@
 package fan.summer.fengyu.ai.agent;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+
+import fan.summer.fengyu.ai.ChatFileContext;
 
 /**
  * The stateful runtime container for a single Plan-and-Execute agent run.
@@ -33,6 +36,14 @@ public class AgentRun {
 
     private final List<StepExecution> executions = new CopyOnWriteArrayList<>();
     private final List<StepExecution> restoredExecutions = new CopyOnWriteArrayList<>();
+
+    /**
+     * Run-scoped file grants keyed by workflow input name (see {@code RunFileContext}). Volatile
+     * and never persisted: a resumed run whose steps still carry {@code @file:<name>} placeholders
+     * fails those steps with the injector's explicit "no granted file" error instead of a silent
+     * wrong-path read.
+     */
+    private volatile Map<String, List<ChatFileContext.ActiveFileRef>> fileRefs = Map.of();
 
     /**
      * The approval gate. A fresh count-1 latch is created by {@link #requestApproval(AgentRunStatus)};
@@ -74,6 +85,15 @@ public class AgentRun {
     }
 
     public long getUserId() { return userId; }
+
+    /** Attaches run-scoped file grants (workflow file inputs resolved before the run started). */
+    public void attachFileRefs(Map<String, List<ChatFileContext.ActiveFileRef>> fileRefs) {
+        this.fileRefs = fileRefs == null ? Map.of() : Map.copyOf(fileRefs);
+    }
+
+    public Map<String, List<ChatFileContext.ActiveFileRef>> getFileRefs() {
+        return fileRefs;
+    }
 
     /** @return the current {@link AgentRunStatus}. */
     public AgentRunStatus getStatus() {

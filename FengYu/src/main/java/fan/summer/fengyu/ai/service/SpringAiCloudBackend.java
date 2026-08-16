@@ -16,6 +16,7 @@ import fan.summer.fengyu.ai.AiToolCall;
 import fan.summer.fengyu.ai.AiToolResult;
 import fan.summer.fengyu.ai.ActiveFilesPromptAppender;
 import fan.summer.fengyu.ai.ChatBackend;
+import fan.summer.fengyu.ai.tools.BoundToolsContext;
 import fan.summer.fengyu.ai.ChatFileContext.ActiveFileRef;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,6 +70,9 @@ import reactor.core.Disposable;
 public final class SpringAiCloudBackend implements ChatBackend {
 
     private static final Logger log = LoggerFactory.getLogger(SpringAiCloudBackend.class);
+
+    /** Hard ceiling when the configured maxToolRounds is 0 ("unlimited") — see runToolLoop. */
+    private static final int HARD_MAX_TOOL_ROUNDS = 200;
 
     public enum Provider { OPENAI, ANTHROPIC, DEEPSEEK }
 
@@ -391,7 +395,8 @@ public final class SpringAiCloudBackend implements ChatBackend {
         // registered we still send baseOptions (carries model + sampling params) so the
         // request is built from the right options type.
         ToolCallingChatOptions options = baseOptions;
-        List<ToolCallback> currentTools = enableTools ? List.copyOf(toolCallbackSupplier.get()) : List.of();
+        List<ToolCallback> currentTools = enableTools
+                ? BoundToolsContext.mergeWith(toolCallbackSupplier.get()) : List.of();
         ToolCallback[] callbacks = currentTools.toArray(new ToolCallback[0]);
         if (enableTools && callbacks.length > 0) {
             // Attach the callbacks so ToolCallingManager can resolve them. Prefer mutate()
@@ -421,7 +426,10 @@ public final class SpringAiCloudBackend implements ChatBackend {
         // maxToolRounds bounds the number of tool-call rounds; 0 disables the safety net.
         // A loop counter alone cannot bound cost, but it stops a model that re-requests the
         // same tool forever from wedging this virtual thread and locking `generating`.
-        for (int round = 0; maxToolRounds <= 0 || round < maxToolRounds; round++) {
+        // "Unlimited" (0) still hits the hard ceiling below — a looping model paired with an
+        // auto-approve rule must not spin this thread forever.
+        int effectiveMaxToolRounds = maxToolRounds > 0 ? maxToolRounds : HARD_MAX_TOOL_ROUNDS;
+        for (int round = 0; round < effectiveMaxToolRounds; round++) {
             // Authoritative cancel gate: a tool may swallow the interrupt into a failure envelope
             // (BrowserTool.bridge catches all exceptions), so without this check the loop would
             // re-prompt the model with that failure and keep going. Checked at the top of every
@@ -487,7 +495,7 @@ public final class SpringAiCloudBackend implements ChatBackend {
             mirrorToolResultsToHistory(conversation, history, assistantMsg, media.lastResponseMedia());
         }
         // Loop exhausted its budget without producing a tool-free answer.
-        String warn = "Reached maxToolRounds (" + maxToolRounds + ") without a final answer";
+        String warn = "Reached maxToolRounds (" + effectiveMaxToolRounds + ") without a final answer";
         log.warn(warn);
         callback.onError(new IllegalStateException(warn));
     }

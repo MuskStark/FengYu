@@ -71,6 +71,96 @@ class AgentRunPersistenceServiceTest {
         assertTrue(detail.events().stream().anyMatch(event -> "interrupted".equals(event.type())));
     }
 
+    @Test
+    void searchMatchesGoalSummaryAndErrorText() {
+        AgentRun run = new AgentRun("run-search", "Split quarterly invoices",
+                new AgentRunConfig(false, false, false, 0));
+        persistence.create(run, null);
+        run.setStatus(AgentRunStatus.FAILED);
+        persistence.updateSnapshot(run, null, "Excel column not found");
+
+        assertTrue(persistence.search("invoices", 10).stream()
+                .anyMatch(summary -> summary.id().equals("run-search")));
+        assertTrue(persistence.search("column", 10).stream()
+                .anyMatch(summary -> summary.id().equals("run-search")));
+        assertTrue(persistence.search("nothing-matches-this", 10).stream()
+                .noneMatch(summary -> summary.id().equals("run-search")));
+    }
+
+    @Test
+    void forkCopiesThePlanWithoutInheritingCompletedSteps() {
+        AgentRun run = new AgentRun("run-fork", "goal",
+                new AgentRunConfig(false, false, false, 0));
+        AgentPlan plan = new AgentPlan("goal", List.of(
+                new AgentStep(0, "echo", Map.of(), "one", false),
+                new AgentStep(1, "echo", Map.of(), "two", false)), "r");
+        run.setPlan(plan);
+        persistence.create(run, null);
+        persistence.persisting(run, new NoopSink()).onPlanReady(plan);
+        run.addExecution(new StepExecution(0, StepStatus.COMPLETED, "done-0"));
+        run.setStatus(AgentRunStatus.COMPLETED);
+        persistence.updateSnapshot(run, "finished", null);
+
+        AgentRunPersistenceService.ResumeState fork = persistence.forkState("run-fork");
+        assertEquals(2, fork.plan().steps().size());
+        assertEquals(0, fork.completedExecutions().size());
+        assertTrue(fork.config().requirePlanApproval());
+        assertEquals("run-fork", fork.resumedFrom());
+    }
+
+    @Test
+    void rewindKeepsTheFullPlanAndInheritsOnlyEarlierCompletions() {
+        AgentRun run = new AgentRun("run-rewind", "goal",
+                new AgentRunConfig(false, false, false, 0));
+        AgentPlan plan = new AgentPlan("goal", List.of(
+                new AgentStep(0, "echo", Map.of(), "one", false),
+                new AgentStep(1, "echo", Map.of(), "two", false, List.of(0)),
+                new AgentStep(2, "excel_execute", Map.of(), "three", false, List.of(1))), "r");
+        run.setPlan(plan);
+        persistence.create(run, null);
+        AgentEventSink sink = persistence.persisting(run, new NoopSink());
+        sink.onPlanReady(plan);
+        run.addExecution(new StepExecution(0, StepStatus.COMPLETED, "done-0"));
+        run.addExecution(new StepExecution(1, StepStatus.COMPLETED, "done-1"));
+        run.addExecution(new StepExecution(2, StepStatus.FAILED, "boom"));
+        run.setStatus(AgentRunStatus.FAILED);
+        sink.onError("step 2 failed: boom");
+
+        AgentRunPersistenceService.ResumeState rewind = persistence.rewindState("run-rewind", 1);
+        // The FULL plan is preserved — the runner skips inherited completions (step 0)
+        // and re-executes from step 1 onward. Truncating instead would leave nothing to run.
+        assertEquals(3, rewind.plan().steps().size());
+        assertEquals(1, rewind.completedExecutions().size());
+        assertEquals(0, rewind.completedExecutions().getFirst().index());
+        // Rewinding to step 0 re-runs everything (no completions inherited).
+        AgentRunPersistenceService.ResumeState full = persistence.rewindState("run-rewind", 0);
+        assertEquals(3, full.plan().steps().size());
+        assertEquals(0, full.completedExecutions().size());
+    }
+
+    @Test
+    void rewindRejectsActiveRunsAndOutOfRangeBoundaries() {
+        AgentRun active = new AgentRun("run-active", "goal",
+                new AgentRunConfig(false, false, false, 0));
+        persistence.create(active, null);
+        active.setStatus(AgentRunStatus.EXECUTING);
+        persistence.updateSnapshot(active, null, null);
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                () -> persistence.rewindState("run-active", 0));
+
+        AgentRun done = new AgentRun("run-done", "goal",
+                new AgentRunConfig(false, false, false, 0));
+        AgentPlan plan = new AgentPlan("goal", List.of(
+                new AgentStep(0, "echo", Map.of(), "one", false)), "r");
+        done.setPlan(plan);
+        persistence.create(done, null);
+        persistence.persisting(done, new NoopSink()).onPlanReady(plan);
+        done.setStatus(AgentRunStatus.COMPLETED);
+        persistence.updateSnapshot(done, "ok", null);
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> persistence.rewindState("run-done", 1));
+    }
+
     private static final class NoopSink implements AgentEventSink {
         @Override public void onPlanToken(String delta) {}
         @Override public void onPlanReady(AgentPlan plan) {}

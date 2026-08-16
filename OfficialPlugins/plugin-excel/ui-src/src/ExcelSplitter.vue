@@ -2,10 +2,17 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import {
   mdiAlertCircleOutline,
+  mdiAlertOutline,
+  mdiArrowLeft,
+  mdiCheck,
   mdiCheckCircleOutline,
   mdiDownloadOutline,
+  mdiFileExcelOutline,
   mdiFolderCheckOutline,
   mdiFormatColumns,
+  mdiInformationOutline,
+  mdiPlus,
+  mdiProgressClock,
   mdiSitemapOutline,
   mdiTableMultiple,
 } from '@mdi/js'
@@ -24,6 +31,7 @@ import {
 } from '@infinia/plugin-ui'
 import type {
   FyWizardSnapshot,
+  FyWizardSlotActions,
   FyWizardStep,
   FyWizardStepState,
   FyWizardValidationResult,
@@ -94,6 +102,38 @@ let restoreValidation: {
   sessionId: string
   promise: Promise<FyWizardValidationResult>
 } | undefined
+
+/**
+ * FyStepWizard hands the same stable slot-actions object to every step slot. Stashing it lets
+ * {@link onWizardTransition} trigger the next advance programmatically without re-implementing
+ * wizard navigation in this component. Called from a hidden interpolation in the slots; the
+ * return value renders as an empty string.
+ */
+const wizardActions = ref<FyWizardSlotActions | null>(null)
+
+function captureWizardActions(actions: FyWizardSlotActions): string {
+  wizardActions.value = actions
+  return ''
+}
+
+/**
+ * Confirmed design: advancing Output → Run executes the split immediately — no second click on
+ * the Run step. The wizard only emits `transition` on a genuine validated advance, so clicking
+ * back into Run through the step rail never re-triggers a split.
+ *
+ * The auto-advance must be deferred past the emitting `advance()` itself: after `transition`
+ * fires, FyStepWizard still awaits its focus helper and clears its `transitioning` flag in a
+ * `finally`. A macrotask boundary guarantees the wizard has fully settled (another `nextTick`
+ * would run while `isBusy` is still true and be dropped).
+ */
+function onWizardTransition(from: string, to: string): void {
+  if (from !== 'output' || to !== 'run') return
+  if (wizardCompleted.value || running.value) return
+  setTimeout(() => {
+    if (activeStep.value !== 'run' || wizardCompleted.value || running.value) return
+    void wizardActions.value?.next()
+  }, 0)
+}
 
 // Step 1 — source. sourceFileRef is the host FileRef (resolved to an absolute path
 // by PluginProcessManager before reaching the worker).
@@ -584,6 +624,39 @@ async function downloadResult(): Promise<void> {
   }
 }
 
+/** "Split another file" on the completed screen: reset every wizard state and return to Source. */
+function restartWizard(): void {
+  cancelRestore()
+  if (!clearExcelWizardRecord(sessionStorage)) reportPersistenceFailure()
+  sourceFileRef.value = null
+  session.value = null
+  sheets.value = null
+  analyzeError.value = null
+  mode.value = 'BY_SHEET'
+  selectedSheets.value = []
+  splitSheet.value = null
+  splitColumn.value = null
+  filePrefix.value = ''
+  complexEntries.value = []
+  outputDirRef.value = null
+  result.value = null
+  runError.value = null
+  estimatedFileCount.value = null
+  configureError.value = null
+  wizardCompleted.value = false
+  const states = createWizardStates(steps.value, 'source')
+  const snapshot: FyWizardSnapshot = {
+    version: 1,
+    activeStep: 'source',
+    visitedPath: ['source'],
+    states,
+    completed: false,
+  }
+  wizardStates.value = states
+  restoreSnapshot.value = snapshot
+  latestSnapshot.value = snapshot
+}
+
 function applyDraft(draft: ExcelWizardDraft): void {
   sourceFileRef.value = draft.sourceFileRef ? { ...draft.sourceFileRef } : null
   session.value = draft.sessionId
@@ -712,7 +785,7 @@ onBeforeUnmount(cancelRestore)
 
 <template>
   <FyPluginShell :title="t('exui.title')">
-    <FyPluginPage :max-width="960" class="excel-splitter">
+    <FyPluginPage fluid class="excel-splitter">
         <FyStepWizard
           v-model="activeStep"
           v-model:states="wizardStates"
@@ -730,51 +803,94 @@ onBeforeUnmount(cancelRestore)
           :optional-text="t('exui.wizard.optional')"
           @snapshot="persistSnapshot"
           @validation-error="onValidationError"
+          @transition="onWizardTransition"
         >
+          <!-- Vuetify-style stepper header: numbered avatar + title, green when complete. -->
+          <template #step-label="{ step, index, state, statusLabel }">
+            <span
+              class="excel-avatar"
+              :class="`excel-avatar--${state.status}`"
+              aria-hidden="true"
+            >
+              <FyIcon v-if="state.status === 'complete'" :path="mdiCheck" :size="16" />
+              <FyIcon v-else-if="state.status === 'validating'" :path="mdiProgressClock" :size="16" />
+              <FyIcon v-else-if="state.status === 'error'" :path="mdiAlertOutline" :size="16" />
+              <template v-else>{{ index + 1 }}</template>
+            </span>
+            <span class="excel-step-title">{{ step.title }}</span>
+            <span class="excel-sr-only">({{ statusLabel }})</span>
+          </template>
+
           <template #source="{ actions }">
-            <v-card variant="flat">
-              <v-card-text>
-                <div class="excel-source">
-                  <FyFilePicker
-                    :model-value="sourceFileRef"
-                    :extensions="['xlsx', 'xls']"
-                    :filters="[{ name: 'Excel', extensions: ['xlsx', 'xls'] }]"
-                    :label="t('exui.source.chooseFile')"
-                    @update:model-value="(ref: FileRef | null) => onFilePicked(ref, actions.next)"
-                  />
-
-                  <div v-if="sourceFileRef" class="mt-2 text-body-2">
-                    {{ t('exui.source.selected', sourceFileRef.name) }}
-                  </div>
-
-                  <FyProgress v-if="analyzing" :label="t('exui.source.analyzing')" class="mt-3 w-100" />
+            <span hidden>{{ captureWizardActions(actions) }}</span>
+            <div class="excel-card-title">{{ t('exui.source.cardTitle') }}</div>
+            <div class="excel-source-grid">
+              <div class="excel-drop-zone">
+                <FyIcon :path="mdiFileExcelOutline" :size="34" class="excel-drop-zone__icon" />
+                <div class="excel-drop-zone__copy">
+                  <div class="excel-drop-zone__title">{{ t('exui.source.zoneTitle') }}</div>
+                  <div class="excel-drop-zone__sub">{{ t('exui.source.zoneSub') }}</div>
                 </div>
-              </v-card-text>
-            </v-card>
+                <FyFilePicker
+                  class="excel-drop-zone__picker"
+                  :model-value="sourceFileRef"
+                  :extensions="['xlsx', 'xls']"
+                  :filters="[{ name: 'Excel', extensions: ['xlsx', 'xls'] }]"
+                  :label="t('exui.source.browse')"
+                  @update:model-value="(ref: FileRef | null) => onFilePicked(ref, actions.next)"
+                />
+              </div>
+              <div class="excel-source-tips">
+                <strong>{{ t('exui.source.tipsTitle') }}</strong>
+                <span class="excel-tip">
+                  <FyIcon :path="mdiCheck" :size="15" class="excel-tip__icon" />
+                  {{ t('exui.source.tip1') }}
+                </span>
+                <span class="excel-tip">
+                  <FyIcon :path="mdiCheck" :size="15" class="excel-tip__icon" />
+                  {{ t('exui.source.tip2') }}
+                </span>
+                <span class="excel-tip">
+                  <FyIcon :path="mdiCheck" :size="15" class="excel-tip__icon" />
+                  {{ t('exui.source.tip3') }}
+                </span>
+              </div>
+            </div>
+
+            <FyProgress v-if="analyzing" :label="t('exui.source.analyzing')" class="mt-4 w-100" />
           </template>
 
           <template #mode>
-            <v-card variant="flat">
-              <v-card-text>
-                <div class="excel-mode-cards" role="radiogroup" :aria-label="t('exui.source.ariaSplitMode')">
-                  <button
-                    v-for="option in modeOptions"
-                    :key="option.value"
-                    type="button"
-                    role="radio"
-                    :aria-checked="mode === option.value"
-                    :class="['excel-mode-card', { 'excel-mode-card--active': mode === option.value }]"
-                    :data-mode="option.value"
-                    @click="onModeChanged(option.value)"
-                  >
-                    <FyIcon :path="option.icon" :size="22" class="excel-mode-card__icon" />
-                    <span class="excel-mode-card__label">{{ option.label }}</span>
-                    <span class="excel-mode-card__hint">{{ option.hint }}</span>
-                  </button>
-                </div>
+            <div class="excel-card-title">{{ t('exui.mode.cardTitle') }}</div>
+            <div class="excel-mode-cards" role="radiogroup" :aria-label="t('exui.source.ariaSplitMode')">
+              <button
+                v-for="option in modeOptions"
+                :key="option.value"
+                type="button"
+                role="radio"
+                :aria-checked="mode === option.value"
+                :class="['excel-mode-card', { 'excel-mode-card--active': mode === option.value }]"
+                :data-mode="option.value"
+                @click="onModeChanged(option.value)"
+              >
+                <FyIcon :path="option.icon" :size="22" class="excel-mode-card__icon" />
+                <span class="excel-mode-card__label">{{ option.label }}</span>
+                <span class="excel-mode-card__hint">{{ option.hint }}</span>
+              </button>
+            </div>
 
+            <div v-if="mode === 'BY_COLUMN'" class="excel-mode-note">
+              <FyIcon :path="mdiInformationOutline" :size="16" />
+              {{ t('exui.mode.noteColumn') }}
+            </div>
+            <div v-else-if="mode === 'COMPLEX'" class="excel-mode-note">
+              <FyIcon :path="mdiInformationOutline" :size="16" />
+              {{ t('exui.mode.noteComplex') }}
+            </div>
+
+            <template v-if="mode === 'BY_SHEET'">
+              <div class="excel-grid-2">
                 <v-select
-                  v-if="mode === 'BY_SHEET'"
                   v-model="selectedSheets"
                   :items="sheetNames"
                   :label="t('exui.mode.sheets')"
@@ -783,187 +899,238 @@ onBeforeUnmount(cancelRestore)
                   clearable
                   @update:model-value="invalidateModeConfiguration"
                 />
-
-                <template v-else-if="mode === 'BY_COLUMN'">
-                  <v-select
-                    :model-value="splitSheet"
-                    :items="sheetNames"
-                    :label="t('exui.mode.sheet')"
-                    @update:model-value="onSplitSheetChanged"
-                  />
-                  <v-select
-                    v-model="splitColumn"
-                    :items="columnsForSplitSheet"
-                    :label="t('exui.mode.column')"
-                    :disabled="!splitSheet"
-                    @update:model-value="invalidateModeConfiguration"
-                  />
-                </template>
-
-                <template v-else-if="mode === 'COMPLEX'">
-                  <div class="fy-responsive-table">
-                  <v-table density="compact">
-                    <thead>
-                      <tr>
-                        <th>{{ t('exui.complex.sheet') }}</th>
-                        <th>{{ t('exui.complex.headerRow') }}</th>
-                        <th>{{ t('exui.complex.column') }}</th>
-                        <th>{{ t('exui.complex.copyEntire') }}</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="(entry, i) in complexEntries" :key="i">
-                        <td>
-                          <v-select
-                            v-model="entry.sheetName"
-                            :items="sheetNames"
-                            density="compact"
-                            hide-details
-                            @update:model-value="invalidateModeConfiguration"
-                          />
-                        </td>
-                        <td>
-                          <v-text-field
-                            v-model.number="entry.headerIndex"
-                            type="number"
-                            density="compact"
-                            hide-details
-                            :disabled="entry.copyAll"
-                            @update:model-value="invalidateModeConfiguration"
-                          />
-                        </td>
-                        <td>
-                          <v-text-field
-                            v-model.number="entry.columnIndex"
-                            type="number"
-                            density="compact"
-                            hide-details
-                            :disabled="entry.copyAll"
-                            @update:model-value="invalidateModeConfiguration"
-                          />
-                        </td>
-                        <td>
-                          <v-checkbox
-                            v-model="entry.copyAll"
-                            density="compact"
-                            hide-details
-                            @update:model-value="onCopyAllToggle(entry)"
-                          />
-                        </td>
-                        <td>
-                          <v-btn variant="text" size="small" @click="removeComplexEntry(i)">
-                            {{ t('exui.complex.remove') }}
-                          </v-btn>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </v-table>
-                  </div>
-                  <v-btn class="mt-2" variant="tonal" @click="addComplexEntry">{{ t('exui.complex.addRule') }}</v-btn>
-                </template>
-
                 <v-text-field
                   v-model="filePrefix"
                   :label="t('exui.mode.filePrefix')"
-                  class="mt-4"
                   @update:model-value="invalidateModeConfiguration"
                 />
+              </div>
+            </template>
 
-              </v-card-text>
-            </v-card>
+            <template v-else-if="mode === 'BY_COLUMN'">
+              <div class="excel-grid-2">
+                <v-select
+                  :model-value="splitSheet"
+                  :items="sheetNames"
+                  :label="t('exui.mode.sheet')"
+                  @update:model-value="onSplitSheetChanged"
+                />
+                <v-select
+                  v-model="splitColumn"
+                  :items="columnsForSplitSheet"
+                  :label="t('exui.mode.column')"
+                  :disabled="!splitSheet"
+                  @update:model-value="invalidateModeConfiguration"
+                />
+              </div>
+              <v-text-field
+                v-model="filePrefix"
+                :label="t('exui.mode.filePrefix')"
+                class="mt-4"
+                @update:model-value="invalidateModeConfiguration"
+              />
+            </template>
+
+            <template v-else-if="mode === 'COMPLEX'">
+              <div class="fy-responsive-table">
+              <v-table density="compact" class="excel-rules-table">
+                <thead>
+                  <tr>
+                    <th>{{ t('exui.complex.sheet') }}</th>
+                    <th>{{ t('exui.complex.headerRow') }}</th>
+                    <th>{{ t('exui.complex.column') }}</th>
+                    <th>{{ t('exui.complex.copyEntire') }}</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(entry, i) in complexEntries" :key="i">
+                    <td>
+                      <v-select
+                        v-model="entry.sheetName"
+                        :items="sheetNames"
+                        density="compact"
+                        hide-details
+                        @update:model-value="invalidateModeConfiguration"
+                      />
+                    </td>
+                    <td>
+                      <v-text-field
+                        v-model.number="entry.headerIndex"
+                        type="number"
+                        density="compact"
+                        hide-details
+                        :disabled="entry.copyAll"
+                        @update:model-value="invalidateModeConfiguration"
+                      />
+                    </td>
+                    <td>
+                      <v-text-field
+                        v-model.number="entry.columnIndex"
+                        type="number"
+                        density="compact"
+                        hide-details
+                        :disabled="entry.copyAll"
+                        @update:model-value="invalidateModeConfiguration"
+                      />
+                    </td>
+                    <td>
+                      <v-checkbox
+                        v-model="entry.copyAll"
+                        density="compact"
+                        hide-details
+                        @update:model-value="onCopyAllToggle(entry)"
+                      />
+                    </td>
+                    <td>
+                      <v-btn variant="text" size="small" @click="removeComplexEntry(i)">
+                        {{ t('exui.complex.remove') }}
+                      </v-btn>
+                    </td>
+                  </tr>
+                </tbody>
+              </v-table>
+              </div>
+              <div class="excel-complex-foot">
+                <v-btn variant="tonal" color="tertiary" rounded="pill" @click="addComplexEntry">
+                  <template #prepend><FyIcon :path="mdiPlus" :size="15" /></template>
+                  {{ t('exui.complex.addRule') }}
+                </v-btn>
+              </div>
+              <v-text-field
+                v-model="filePrefix"
+                :label="t('exui.mode.filePrefix')"
+                class="mt-4"
+                @update:model-value="invalidateModeConfiguration"
+              />
+            </template>
           </template>
 
           <template #output>
-            <v-card variant="flat">
-              <v-card-text>
-                <div class="excel-config-summary mb-4">
-                  <div class="text-subtitle-2 mb-1">{{ t('exui.output.configTitle') }}</div>
-                  <div class="excel-config-summary__row">
-                    <span class="excel-config-summary__label">{{ t('exui.output.mode') }}</span>
-                    <span>{{ modeLabel }}</span>
-                  </div>
-                  <div v-if="configDetails.length" class="excel-config-summary__row">
-                    <span class="excel-config-summary__label">{{ t('exui.output.rules') }}</span>
-                    <ul class="excel-config-summary__list">
-                      <li v-for="(detail, i) in configDetails" :key="i">{{ detail }}</li>
-                    </ul>
-                  </div>
-                  <div class="excel-config-summary__row">
-                    <span class="excel-config-summary__label">{{ t('exui.output.expectedFiles') }}</span>
-                    <strong v-if="!estimating && estimatedFileCount !== null">{{ estimatedFileCount }}</strong>
-                    <span v-else class="text-medium-emphasis">—</span>
-                  </div>
+            <div class="excel-card-title">{{ t('exui.output.cardTitle') }}</div>
+            <div class="excel-output-grid">
+              <div class="excel-panel">
+                <div class="excel-panel__title">{{ t('exui.output.configTitle') }}</div>
+                <div class="excel-kv">
+                  <span class="excel-kv__k">{{ t('exui.output.mode') }}</span>
+                  <span class="excel-kv__v">{{ modeLabel }}</span>
                 </div>
-
-                <FyProgress v-if="estimating" :label="t('exui.output.estimating')" class="mb-4" />
-
+                <div v-if="configDetails.length" class="excel-kv">
+                  <span class="excel-kv__k">{{ t('exui.output.rules') }}</span>
+                  <span class="excel-kv__v">
+                    <span class="excel-chip-row">
+                      <span v-for="(detail, i) in configDetails" :key="i" class="excel-chip">
+                        {{ detail }}
+                      </span>
+                    </span>
+                  </span>
+                </div>
+                <div class="excel-kv">
+                  <span class="excel-kv__k">{{ t('exui.output.expectedFiles') }}</span>
+                  <span class="excel-kv__v">
+                    <strong
+                      v-if="!estimating && estimatedFileCount !== null"
+                      class="excel-count"
+                    >{{ estimatedFileCount }}</strong>
+                    <span v-else class="text-medium-emphasis">
+                      {{ estimating ? t('exui.output.estimating') : '—' }}
+                    </span>
+                  </span>
+                </div>
+                <div class="excel-kv">
+                  <span class="excel-kv__k">{{ t('exui.output.prefixLabel') }}</span>
+                  <span class="excel-kv__v">{{ filePrefix || '—' }}</span>
+                </div>
+              </div>
+              <div class="excel-panel">
+                <div class="excel-panel__title">{{ t('exui.output.dirPanel') }}</div>
                 <FyDirectoryPicker
                   :model-value="outputDirRef"
                   mode="output"
                   :label="t('exui.output.chooseFolder')"
                   @update:model-value="onOutputPicked"
                 />
-                <div v-if="outputDirRef" class="mt-2 text-body-2">
-                  {{ t('exui.output.outputName', outputDirRef.name) }}
+                <div class="excel-hintbox">
+                  <FyIcon
+                    :path="platform === 'desktop' ? mdiFolderCheckOutline : mdiDownloadOutline"
+                    :size="18"
+                  />
+                  <span>{{ t(platform === 'desktop' ? 'exui.output.desktopHint' : 'exui.output.webHint') }}</span>
                 </div>
-                <v-alert
-                  v-if="platform === 'desktop'"
-                  :icon="false"
-                  type="info"
-                  density="compact"
-                  class="mt-3"
-                >
-                  <template #prepend><FyIcon :path="mdiFolderCheckOutline" :size="20" class="mr-3" /></template>
-                  {{ t('exui.output.desktopHint') }}
-                </v-alert>
-                <v-alert v-else :icon="false" type="info" density="compact" class="mt-3">
-                  <template #prepend><FyIcon :path="mdiDownloadOutline" :size="20" class="mr-3" /></template>
-                  {{ t('exui.output.webHint') }}
-                </v-alert>
-              </v-card-text>
-            </v-card>
+              </div>
+            </div>
           </template>
 
-          <template #run>
-            <v-card variant="flat">
-              <v-card-text>
-                <FyProgress v-if="running" :label="t('exui.run.splitting')" />
-
-              </v-card-text>
-            </v-card>
+          <template #run="{ actions }">
+            <span hidden>{{ captureWizardActions(actions) }}</span>
+            <div class="excel-run-box">
+              <div class="excel-run-box__label">
+                {{ running ? t('exui.run.splitting') : t('exui.run.starting') }}
+              </div>
+              <v-progress-linear
+                class="excel-run-box__bar"
+                indeterminate
+                color="tertiary"
+                rounded
+                height="8"
+              />
+              <div class="excel-run-box__sub">
+                {{ t('exui.run.detail', sourceFileRef?.name ?? '', modeLabel, outputDirRef?.name ?? '') }}
+              </div>
+            </div>
           </template>
 
           <template #complete>
-            <v-card variant="flat">
-              <v-card-text>
-                <v-alert v-if="result" :icon="false" type="success" density="compact" class="mb-3">
-                  <template #prepend><FyIcon :path="mdiCheckCircleOutline" :size="20" class="mr-3" /></template>
-                  {{ t('exui.complete.written', result.fileCount, outputDirRef?.name ?? t('exui.complete.outputFolderFallback')) }}
-                </v-alert>
-                <v-alert v-if="runError" :icon="false" type="error" density="compact" class="mb-3">
-                  <template #prepend><FyIcon :path="mdiAlertCircleOutline" :size="20" class="mr-3" /></template>
-                  {{ runError }}
-                </v-alert>
-                <div v-if="outputDirRef" class="text-body-2 mb-2">
-                  {{ t('exui.complete.outputFolder', outputDirRef.name) }}
+            <v-alert v-if="runError" :icon="false" type="error" density="compact" class="mb-4">
+              <template #prepend><FyIcon :path="mdiAlertCircleOutline" :size="20" class="mr-3" /></template>
+              {{ runError }}
+            </v-alert>
+            <div v-if="result" class="excel-done-alert">
+              <FyIcon :path="mdiCheckCircleOutline" :size="22" />
+              <span>
+                <strong>{{ t('exui.complete.title') }}</strong>
+                · {{ t('exui.complete.written', result.fileCount, outputDirRef?.name ?? t('exui.complete.outputFolderFallback')) }}
+              </span>
+            </div>
+            <div class="excel-done-grid">
+              <div class="excel-panel">
+                <div class="excel-panel__title">{{ t('exui.complete.filesPanel') }}</div>
+                <ul v-if="result" class="excel-file-list">
+                  <li v-for="f in result.files" :key="f">
+                    <FyIcon :path="mdiFileExcelOutline" :size="16" class="excel-file-icon" />
+                    {{ f }}
+                  </li>
+                </ul>
+              </div>
+              <div class="excel-panel">
+                <div class="excel-panel__title">{{ t('exui.complete.actionsPanel') }}</div>
+                <div class="excel-kv">
+                  <span class="excel-kv__k">{{ t('exui.complete.outputFolderLabel') }}</span>
+                  <span class="excel-kv__v">
+                    {{ outputDirRef?.name ?? t('exui.complete.outputFolderFallback') }}
+                  </span>
                 </div>
-                <v-list v-if="result" density="compact">
-                  <v-list-item v-for="f in result.files" :key="f">{{ f }}</v-list-item>
-                </v-list>
-                <v-btn
-                  v-if="result && outputDirRef && platform === 'web'"
-                  color="primary"
-                  variant="tonal"
-                  :loading="downloading"
-                  :disabled="downloading"
-                  data-action="export-results"
-                  @click="downloadResult"
-                >
-                  {{ t('exui.complete.download') }}
-                </v-btn>
-              </v-card-text>
-            </v-card>
+                <div class="excel-done-actions">
+                  <v-btn
+                    v-if="result && outputDirRef && platform === 'web'"
+                    color="tertiary"
+                    variant="flat"
+                    rounded="pill"
+                    :loading="downloading"
+                    :disabled="downloading"
+                    data-action="export-results"
+                    @click="downloadResult"
+                  >
+                    <template #prepend><FyIcon :path="mdiDownloadOutline" :size="16" /></template>
+                    {{ t('exui.complete.download') }}
+                  </v-btn>
+                  <v-btn variant="text" rounded="pill" @click="restartWizard">
+                    <template #prepend><FyIcon :path="mdiArrowLeft" :size="16" /></template>
+                    {{ t('exui.complete.restart') }}
+                  </v-btn>
+                </div>
+              </div>
+            </div>
           </template>
         </FyStepWizard>
     </FyPluginPage>
@@ -971,22 +1138,292 @@ onBeforeUnmount(cancelRestore)
 </template>
 
 <style scoped>
-.excel-splitter {
+main.excel-splitter {
   min-width: 0;
 }
-/* Source step: keep the picker and its feedback centered in the card. */
-.excel-source {
+
+/* ===== Stepper header — Vuetify v-stepper look (desktop path only; the wizard's
+   compact mobile path keeps its own layout). Green (tertiary) marks completed steps. ===== */
+.excel-avatar {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: rgb(var(--v-theme-secondary));
+  background: rgb(var(--v-theme-surface-variant));
+  border-radius: 50%;
+  transition: background-color 0.18s ease, color 0.18s ease;
+}
+.excel-avatar--complete {
+  color: rgb(var(--v-theme-on-tertiary));
+  background: rgb(var(--v-theme-tertiary));
+}
+.excel-avatar--active,
+.excel-avatar--validating {
+  color: rgb(var(--v-theme-on-primary));
+  background: rgb(var(--v-theme-primary));
+}
+.excel-avatar--error {
+  color: rgb(var(--v-theme-on-error));
+  background: rgb(var(--v-theme-error));
+}
+.excel-step-title {
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: rgb(var(--v-theme-secondary));
+}
+.excel-splitter :deep(.fy-wizard__step-button[data-status='complete']) .excel-step-title {
+  color: rgb(var(--v-theme-tertiary));
+  font-weight: 600;
+}
+.excel-splitter :deep(
+    .fy-wizard__step-button[data-status='active'] .excel-step-title,
+    .fy-wizard__step-button[data-status='validating'] .excel-step-title,
+    .fy-wizard__step-button[data-status='error'] .excel-step-title
+  ) {
+  color: rgb(var(--v-theme-on-surface));
+  font-weight: 700;
+}
+.excel-splitter :deep(
+    .fy-wizard__step-button[data-status='pending'] .excel-step-title,
+    .fy-wizard__step-button[data-status='skipped'] .excel-step-title
+  ) {
+  opacity: 0.75;
+}
+.excel-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (min-width: 721px) {
+  main.excel-splitter {
+    padding: 20px 24px 40px;
+  }
+
+  .excel-splitter :deep(.fy-step-wizard) {
+    gap: 20px;
+  }
+
+  .excel-splitter :deep(.fy-step-wizard .fy-wizard__desktop-path) {
+    display: flex;
+    padding: 6px 4px 16px;
+    box-shadow: inset 0 -1px 0 rgba(var(--v-border-color), var(--v-border-opacity));
+  }
+  .excel-splitter :deep(.fy-step-wizard .fy-wizard__desktop-list) {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  .excel-splitter :deep(.fy-step-wizard .fy-wizard__step) {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    min-width: 0;
+  }
+  .excel-splitter :deep(.fy-step-wizard .fy-wizard__step:last-child) {
+    flex: 0 0 auto;
+  }
+  /* Connector line between steps; turns green once the step on its left completes. */
+  .excel-splitter :deep(.fy-step-wizard .fy-wizard__step:not(:last-child))::after {
+    content: "";
+    flex: 1 1 0;
+    height: 1px;
+    margin: 0 2px;
+    background: rgba(var(--v-border-color), var(--v-border-opacity));
+  }
+  .excel-splitter :deep(
+      .fy-step-wizard .fy-wizard__step:has(> .fy-wizard__step-button[data-status='complete'])
+    )::after {
+    background: rgb(var(--v-theme-tertiary));
+  }
+
+  /* Strip the toolchain's card chrome off each step button. */
+  .excel-splitter :deep(.fy-step-wizard .fy-wizard__step-button) {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    width: auto;
+    min-height: 0;
+    padding: 10px 14px;
+    text-align: start;
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    box-shadow: none;
+  }
+  .excel-splitter :deep(.fy-step-wizard .fy-wizard__step-button:not(:disabled):hover) {
+    background: rgba(var(--v-theme-on-surface), 0.05);
+  }
+  .excel-splitter :deep(.fy-step-wizard .fy-wizard__step-button--active) {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+  .excel-splitter :deep(.fy-step-wizard .fy-wizard__step-button:disabled) {
+    cursor: default;
+    opacity: 0.75;
+  }
+  .excel-splitter :deep(
+      .fy-step-wizard .fy-wizard__desktop-path .fy-wizard__status-icon,
+      .fy-step-wizard .fy-wizard__desktop-path .fy-wizard__step-number,
+      .fy-step-wizard .fy-wizard__desktop-path .fy-wizard__status-label
+    ) {
+    display: none;
+  }
+  .excel-splitter :deep(.fy-step-wizard .fy-wizard__step-copy) {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  /* Pill-shaped wizard action buttons (confirmed design). Vuetify's rounded-* utilities
+     (applied via the toolchain's global Vuetify defaults) carry !important, so matching
+     them requires !important here. */
+  .excel-splitter :deep(.fy-wizard__actions .v-btn),
+  .excel-splitter :deep(.excel-drop-zone .fy-file-picker .v-btn) {
+    padding-inline: 20px;
+    border-radius: 999px !important;
+  }
+}
+
+/* ===== Shared screen pieces ===== */
+.excel-card-title {
+  margin-bottom: 16px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.excel-grid-2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+.excel-panel {
+  padding: 16px 18px;
+  background: rgb(var(--v-theme-surface));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 10px;
+}
+.excel-panel__title {
+  margin-bottom: 12px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgb(var(--v-theme-secondary));
+}
+.excel-kv {
+  display: flex;
+  gap: 12px;
+  padding: 5px 0;
+  font-size: 0.875rem;
+}
+.excel-kv__k {
+  flex: 0 0 96px;
+  color: rgb(var(--v-theme-secondary));
+}
+.excel-kv__v {
+  min-width: 0;
+}
+.excel-count {
+  font-size: 1rem;
+  font-weight: 700;
+  color: rgb(var(--v-theme-tertiary));
+}
+
+/* ===== Source ===== */
+.excel-source-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
+}
+.excel-drop-zone {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 22px 24px;
+  background: rgba(var(--v-theme-surface), 0.6);
+  border: 2px dashed rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 12px;
+  transition: border-color 0.15s ease;
+}
+.excel-drop-zone:hover {
+  border-color: rgba(var(--v-theme-on-surface), 0.45);
+}
+.excel-drop-zone__icon {
+  flex: 0 0 auto;
+  color: rgb(var(--v-theme-tertiary));
+}
+.excel-drop-zone__copy {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 3px;
+  min-width: 0;
+}
+.excel-drop-zone__title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.excel-drop-zone__sub {
+  font-size: 0.78rem;
+  color: rgb(var(--v-theme-secondary));
+}
+.excel-drop-zone__picker {
+  margin-left: auto;
+}
+/* Blend the picker's selected-file row into the dashed zone. */
+.excel-splitter :deep(.excel-drop-zone__picker .fy-picker__selection) {
+  width: auto;
+  max-width: 320px;
+  min-height: 0;
+  padding: 4px 6px 4px 8px;
+  background: transparent;
+  border: 0;
+}
+.excel-source-tips {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  text-align: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px 18px;
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  color: rgb(var(--v-theme-on-tertiary-container));
+  background: rgb(var(--v-theme-tertiary-container));
+  border-radius: 12px;
 }
-/* Mode step: selectable cards with a clear selected state. */
+.excel-source-tips strong {
+  margin-bottom: 2px;
+  font-size: 0.84rem;
+}
+.excel-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.excel-tip__icon {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+
+/* ===== Mode ===== */
 .excel-mode-cards {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
-  margin-bottom: 8px;
+  margin-bottom: 20px;
 }
 .excel-mode-card {
   display: grid;
@@ -1019,43 +1456,151 @@ onBeforeUnmount(cancelRestore)
   border-color: rgb(var(--v-theme-primary));
   background: rgba(var(--v-theme-primary), 0.08);
 }
-.excel-mode-card--active .excel-mode-card__icon { color: rgb(var(--v-theme-primary)); }
-/* Output step: split-configuration summary + expected file count. */
-.excel-config-summary {
-  padding: 12px 14px;
-  background: rgb(var(--v-theme-surface-container-low));
-  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  border-radius: var(--fy-radius-md, 10px);
+.excel-mode-card--active .excel-mode-card__icon { color: rgb(var(--v-theme-tertiary)); }
+.excel-mode-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 9px 14px;
+  font-size: 0.8125rem;
+  color: rgb(var(--v-theme-tertiary));
+  background: rgba(var(--v-theme-tertiary), 0.1);
+  border: 1px solid rgba(var(--v-theme-tertiary), 0.35);
+  border-radius: 10px;
 }
-.excel-config-summary__row {
+.excel-rules-table :deep(th:nth-child(1)) { width: 30%; }
+.excel-rules-table :deep(th:nth-child(2)) { width: 16%; }
+.excel-rules-table :deep(th:nth-child(3)) { width: 16%; }
+.excel-rules-table :deep(th:nth-child(4)) { width: 14%; }
+.excel-complex-foot {
+  display: flex;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+/* ===== Output ===== */
+.excel-output-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 18px;
+}
+.excel-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.excel-chip {
+  padding: 3px 10px;
+  font-size: 0.75rem;
+  color: rgb(var(--v-theme-tertiary));
+  background: rgba(var(--v-theme-tertiary), 0.12);
+  border: 1px solid rgba(var(--v-theme-tertiary), 0.35);
+  border-radius: 999px;
+}
+.excel-hintbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: rgb(var(--v-theme-on-tertiary-container));
+  background: rgb(var(--v-theme-tertiary-container));
+  border-radius: 10px;
+}
+
+/* ===== Run ===== */
+.excel-run-box {
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+  padding: 46px 0 40px;
+  text-align: center;
+}
+.excel-run-box__label {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.excel-run-box__bar {
+  width: min(560px, 100%);
+}
+.excel-run-box__sub {
+  font-size: 0.8125rem;
+  color: rgb(var(--v-theme-secondary));
+}
+
+/* ===== Complete ===== */
+.excel-done-alert {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 2px 0;
+  padding: 14px 18px;
+  margin-bottom: 18px;
   font-size: 0.875rem;
+  color: rgb(var(--v-theme-on-tertiary-container));
+  background: rgb(var(--v-theme-tertiary-container));
+  border-radius: 12px;
 }
-.excel-config-summary__label {
-  flex: 0 0 120px;
-  color: rgb(var(--v-theme-secondary));
+.excel-done-alert strong {
+  font-size: 0.9375rem;
 }
-.excel-config-summary__list {
+.excel-done-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 18px;
+}
+.excel-file-list {
+  max-height: 220px;
   margin: 0;
-  padding-left: 18px;
-  max-height: 140px;
+  padding: 0;
   overflow-y: auto;
+  list-style: none;
 }
-.excel-config-summary__list li { padding: 1px 0; }
-.excel-config-summary__list li + li { margin-top: 2px; }
+.excel-file-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px;
+  font-size: 0.84rem;
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+.excel-file-list li:last-child { border-bottom: 0; }
+.excel-file-icon {
+  flex: 0 0 auto;
+  color: rgb(var(--v-theme-tertiary));
+}
+.excel-done-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
 
 @media (max-width: 600px) {
   .excel-mode-cards { grid-template-columns: 1fr; }
-  .excel-config-summary__row { align-items: flex-start; flex-direction: column; gap: 2px; }
-  .excel-config-summary__label { flex-basis: auto; }
+  .excel-drop-zone { flex-wrap: wrap; }
+  .excel-kv {
+    flex-direction: column;
+    gap: 2px;
+    align-items: flex-start;
+  }
+  .excel-kv__k { flex-basis: auto; }
 }
 
+@container fy-plugin-page (max-width: 960px) {
+  .excel-source-grid,
+  .excel-output-grid,
+  .excel-done-grid,
+  .excel-grid-2 { grid-template-columns: 1fr; }
+}
 @container fy-plugin-page (max-width: 600px) {
   .excel-mode-cards { grid-template-columns: 1fr; }
-  .excel-config-summary__row { align-items: flex-start; flex-direction: column; gap: 2px; }
-  .excel-config-summary__label { flex-basis: auto; }
+  .excel-drop-zone { flex-wrap: wrap; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .excel-avatar { transition: none; }
 }
 </style>

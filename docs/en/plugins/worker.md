@@ -95,7 +95,7 @@ goes away, regardless of how the host exits:
 
 Both paths converge on an explicit `System.exit(0)` so that non-daemon threads a plugin may have
 created (a HikariCP pool, a scheduled executor) cannot keep the JVM alive and hold embedded-database
-file locks after the host has gone. SDK 1.3.0 adds `JsonRpcWorker.onClose(AutoCloseable)`: registered
+file locks after the host has gone. SDK 2.0.0 adds `JsonRpcWorker.onClose(AutoCloseable)`: registered
 resources close once in reverse registration order before the forced exit. Register handler-owned
 job registries, pools, and stores there instead of relying only on process termination. The host also
 installs its own JVM shutdown hook that calls

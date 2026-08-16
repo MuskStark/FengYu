@@ -79,6 +79,30 @@ class PluginFileGrantServiceTest {
         assertEquals(source.toRealPath(), granted);
     }
 
+    /**
+     * Two live grants for the SAME shared scratch path revoked concurrently: each thread
+     * may see the other's grant already gone, so both can believe they hold the last grant
+     * and race deleteTree on the same tree. Entries vanishing mid-walk surface as
+     * UncheckedIOException — revoke must swallow that (never abort the caller's remaining
+     * revocations) and the tree must still end up reclaimed.
+     */
+    @Test
+    void concurrentRevokesOfTheLastSharedGrantsReclaimTheTreeWithoutThrowing() throws Exception {
+        PluginFileGrantService service = new PluginFileGrantService(temp.resolve("grants-shared"));
+        Path shared = service.createSharedDirectory();
+        Files.writeString(shared.resolve("handoff.txt"), "data");
+        var excelRef = service.grantLive("fan.summer.excel", shared, "directory", "read-write");
+        var emailRef = service.grantLive("fan.summer.email", shared, "directory", "read");
+
+        try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var a = executor.submit(() -> service.revoke("fan.summer.excel", excelRef.id()));
+            var b = executor.submit(() -> service.revoke("fan.summer.email", emailRef.id()));
+            a.get(10, java.util.concurrent.TimeUnit.SECONDS); // Future.get rethrows unexpected failures
+            b.get(10, java.util.concurrent.TimeUnit.SECONDS);
+        }
+        assertTrue(Files.notExists(shared), "the shared scratch tree must be reclaimed");
+    }
+
     private static MockMultipartFile file(String body, String name) {
         return new MockMultipartFile("files", name, "application/octet-stream", body.getBytes());
     }

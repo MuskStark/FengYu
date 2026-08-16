@@ -100,6 +100,25 @@ public final class JsonHelper {
     }
 
     /**
+     * Parses a JSON object with the SAME parser the tool executor uses (Jackson, as configured
+     * by Spring AI): duplicate keys resolve last-wins and numbers become Integer/Long/Double.
+     * Security decisions (the tool guard, permission rules) must evaluate exactly the value
+     * the executor will bind — Gson's extra leniency could otherwise diverge on malformed or
+     * ambiguous input. Returns null on null/blank input; malformed input throws.
+     */
+    public static Map<String, Object> parseObjectStrict(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            return JACKSON.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<>() {});
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalArgumentException("Malformed JSON: " + e.getMessage(), e);
+        }
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper JACKSON =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /**
      * Navigates a nested map structure using a dot-separated path, supporting
      * both map keys and zero-based list indices in the path.
      * <p>

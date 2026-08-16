@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, shell } from 'electron'
+import { ipcMain, BrowserWindow, dialog, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { app } from 'electron'
 import {
@@ -7,15 +7,17 @@ import {
   downloadAndExtractPortable,
   applyPortableUpdate,
 } from '../updater/portable-updater'
-import { configureUpdateFeed, updateApiBase, updateDownloadPageUrl } from '../updater/update-feed'
+import { configureUpdateFeed, updateApiBase, updateDownloadPageUrl, validateUpdateApiBase } from '../updater/update-feed'
+import { markUpdateInstallRestart } from '../desktop/graceful-quit'
 
 /**
  * Renderer-driven update flow, distinct from the startup check in `auto-updater.ts`.
  *
  * P0-9 boundary: this module ONLY acts on an explicit renderer request (the user clicked
  * "update now" in the UI). It never auto-downloads on a bare check, and it leaves the
- * signedRelease flag from `auto-updater.ts` untouched. The consent that authorizes an
- * unsigned install comes from the user gesture, not from flipping the signed flag.
+ * signedRelease flag from `auto-updater.ts` untouched. The renderer's click is only a
+ * request: every download+install path re-confirms with a NATIVE dialog
+ * (confirmNativeInstall) so a compromised renderer cannot drive an install alone.
  *
  * Platform split: on Windows/Linux, a user-consented FY-Proxy update calls downloadUpdate() +
  * quitAndInstall() (the OS may warn about an unsigned binary — expected). The shared public
@@ -34,6 +36,9 @@ export type UpdateInstallResult =
   | { action: 'manual'; releaseUrl: string }
 
 let progressWired = false
+// One install at a time: double-invoking would run two checks + two consent dialogs and race
+// two downloads (the portable path would even apply twice via two detached replace bats).
+let installInFlight = false
 
 export function registerUpdateIpc(): void {
   // Wire progress/state pushes once. autoUpdater is a process-wide singleton, so the listeners
@@ -47,10 +52,24 @@ export function registerUpdateIpc(): void {
 
   // Push the update-channel proxy URL from the renderer into the main process. The next update
   // check reads `process.env.FENGYU_UPDATE_API_BASE` fresh (see update-feed.ts), so this takes
-  // effect immediately without a restart. In-process IPC — works offline. Only the env var is
-  // mutated; validation happens lazily in updateApiBase() at check time.
+  // effect immediately without a restart. In-process IPC — works offline. The FULL rule set
+  // (not just the scheme) is validated HERE via the shared `validateUpdateApiBase` — the same
+  // rules `updateApiBase()` applies at check time — so a compromised renderer cannot smuggle
+  // file:/other schemes or credential/query-bearing URLs into the updater. Plain http stays
+  // allowed: intranet FY-Proxy feeds over HTTP are an intentionally supported deployment.
   ipcMain.handle('update:set-api-base', (_event, url: unknown) => {
-    process.env.FENGYU_UPDATE_API_BASE = typeof url === 'string' ? url : ''
+    if (url === '') {
+      process.env.FENGYU_UPDATE_API_BASE = ''
+      console.log('[updater] update api-base cleared (public GitHub feed)')
+      return
+    }
+    if (typeof url !== 'string') {
+      throw new Error('update api-base must be a string (or empty string to clear)')
+    }
+    const parsed = validateUpdateApiBase(url)
+    process.env.FENGYU_UPDATE_API_BASE = url
+    // Log the origin only — never echo a URL that could carry credentials or a noisy path.
+    console.log(`[updater] update api-base set to ${parsed.origin}`)
   })
 
   // Check only — never downloads. The startup check (auto-updater.ts) keeps its own notify-only
@@ -91,59 +110,153 @@ export function registerUpdateIpc(): void {
   })
 
   // User-consented install. Reaches here only after the renderer's "update now" click.
+  // Re-entry guard: a second invoke while one is in flight fails fast — no second check,
+  // consent dialog, download, or portable replace bat.
   ipcMain.handle('update:download-install', async (): Promise<UpdateInstallResult> => {
-    // Windows portable zip: download + extract + spawn the replace-and-restart bat.
-    if (isWindowsPortable()) {
-      try {
-        const info = await checkPortableUpdate()
-        if (!info) return { action: 'manual', releaseUrl: releasePageUrl() }
-        broadcast('update:state', { state: 'downloading' })
-        const extractDir = await downloadAndExtractPortable(info, (percent) =>
-          broadcast('update:progress', { percent, transferred: 0, total: 0, bytesPerSecond: 0 }),
-        )
-        applyPortableUpdate(extractDir)
-        // app.quit() triggers before-quit → killBackend (tree-kill of the JVM) → the detached
-        // bat waits for this PID to exit, robocopies the new tree, and relaunches Infinia.exe.
-        app.quit()
-        return { action: 'restarting' }
-      } catch (err) {
-        console.error('[updater] portable download-install failed:', err)
-        broadcast('update:state', { state: 'error', message: String(err) })
-        return { action: 'manual', releaseUrl: releasePageUrl() }
-      }
+    if (installInFlight) {
+      throw new Error('an update download/install is already in progress')
     }
-
-    autoUpdater.autoDownload = false
-    autoUpdater.autoInstallOnAppQuit = false
-
-    // GitHub publishes one shared latest*.yml for lite + JRE and the last build overwrites it.
-    // Installing from that ambiguous feed can switch variants. FY-Proxy has separate feeds and
-    // is the only electron-updater source that is safe to install automatically at runtime.
+    installInFlight = true
     try {
-      if (!updateApiBase()) {
-        await shell.openExternal(releasePageUrl())
-        return { action: 'manual', releaseUrl: releasePageUrl() }
-      }
-      configureUpdateFeed()
-    } catch (err) {
-      console.error('[updater] invalid intranet update feed:', err)
-      await shell.openExternal(releasePageUrl())
-      return { action: 'manual', releaseUrl: releasePageUrl() }
+      return await downloadAndInstall()
+    } finally {
+      installInFlight = false
     }
-
-    // macOS: an unsigned quitAndInstall leaves the app unable to relaunch (Gatekeeper). Open the
-    // releases page for a manual download + drag-in until a signed+notarized build exists.
-    if (process.platform === 'darwin') {
-      await shell.openExternal(releasePageUrl())
-      return { action: 'manual', releaseUrl: releasePageUrl() }
-    }
-
-    await autoUpdater.downloadUpdate()
-    // quitAndInstall fires before-quit AFTER closing windows (per electron-updater docs), so the
-    // backend-kill cleanup in main.ts still runs.
-    autoUpdater.quitAndInstall()
-    return { action: 'restarting' }
   })
+}
+
+async function downloadAndInstall(): Promise<UpdateInstallResult> {
+  // Windows portable zip: download + extract + spawn the replace-and-restart bat.
+  if (isWindowsPortable()) {
+    try {
+      const info = await checkPortableUpdate()
+      if (!info) return { action: 'manual', releaseUrl: releasePageUrl() }
+      if (!confirmNativeInstall(info.version, info.releaseName)) {
+        return { action: 'manual', releaseUrl: info.releaseUrl }
+      }
+      broadcast('update:state', { state: 'downloading' })
+      const extractDir = await downloadAndExtractPortable(info, (percent) =>
+        broadcast('update:progress', { percent, transferred: 0, total: 0, bytesPerSecond: 0 }),
+      )
+      applyPortableUpdate(extractDir)
+      // app.quit() triggers before-quit → the backend tree is force-killed (the graceful-quit
+      // handler skips its wait for update restarts via markUpdateInstallRestart) → the detached
+      // bat waits for this PID to exit, robocopies the new tree, and relaunches Infinia.exe.
+      markUpdateInstallRestart()
+      app.quit()
+      return { action: 'restarting' }
+    } catch (err) {
+      console.error('[updater] portable download-install failed:', err)
+      broadcast('update:state', { state: 'error', message: String(err) })
+      return { action: 'manual', releaseUrl: releasePageUrl() }
+    }
+  }
+
+  autoUpdater.autoDownload = false
+  autoUpdater.autoInstallOnAppQuit = false
+
+  // GitHub publishes one shared latest*.yml for lite + JRE and the last build overwrites it.
+  // Installing from that ambiguous feed can switch variants. FY-Proxy has separate feeds and
+  // is the only electron-updater source that is safe to install automatically at runtime.
+  try {
+    if (!updateApiBase()) {
+      await shell.openExternal(releasePageUrl())
+      return { action: 'manual', releaseUrl: releasePageUrl() }
+    }
+    configureUpdateFeed()
+  } catch (err) {
+    console.error('[updater] invalid intranet update feed:', err)
+    await shell.openExternal(releasePageUrl())
+    return { action: 'manual', releaseUrl: releasePageUrl() }
+  }
+
+  // macOS: an unsigned quitAndInstall leaves the app unable to relaunch (Gatekeeper). Open the
+  // releases page for a manual download + drag-in until a signed+notarized build exists.
+  if (process.platform === 'darwin') {
+    await shell.openExternal(releasePageUrl())
+    return { action: 'manual', releaseUrl: releasePageUrl() }
+  }
+
+  // Native consent gate — the renderer's click is a request, not authorization. A
+  // main-process dialog (mirroring offerAutoInstall in auto-updater.ts) must confirm
+  // before anything is downloaded and installed into the app directory.
+  const version = await latestFeedVersion()
+  if (!confirmNativeInstall(version)) {
+    return { action: 'manual', releaseUrl: releasePageUrl() }
+  }
+
+  await autoUpdater.downloadUpdate()
+  // quitAndInstall fires before-quit AFTER closing windows (per electron-updater docs), so the
+  // backend cleanup in main.ts still runs — as a force-kill, not a graceful wait
+  // (markUpdateInstallRestart), so the installer is not delayed behind a shutdown.
+  markUpdateInstallRestart()
+  autoUpdater.quitAndInstall()
+  return { action: 'restarting' }
+}
+
+/**
+ * Native confirmation for a download+install (mirrors `offerAutoInstall` in auto-updater.ts,
+ * but synchronous — the decision must be made before any destructive step). The message names
+ * the feed host the code would come from; `notes` is a short release-name/notes summary shown
+ * under the version.
+ */
+function confirmNativeInstall(version: string | null, notes?: string): boolean {
+  const detail = notesSummary(notes)
+  const source = installSourceHost()
+  const fromSource = source ? ` from ${source}` : ''
+  const choice = dialog.showMessageBoxSync({
+    type: 'question',
+    buttons: ['Install', 'Cancel'],
+    defaultId: 0,
+    cancelId: 1,
+    title: 'Update Infinia',
+    message: version
+      ? `Download and install Infinia ${version}${fromSource} now?`
+      : `Download and install the update${fromSource} now?`,
+    ...(detail ? { detail } : {}),
+  })
+  return choice === 0
+}
+
+/**
+ * Host of the feed an install would download from: the configured FY-Proxy host, or the GitHub
+ * default when no proxy is set. Shown in the consent dialog so the user can see where code
+ * would be installed from. Null when the configured override is malformed (that is surfaced
+ * separately at check time).
+ */
+function installSourceHost(): string | null {
+  try {
+    const base = updateApiBase()
+    return base ? new URL(base).host : 'github.com'
+  } catch {
+    return null
+  }
+}
+
+/** Resolve the version the current feed would install (null when the feed has no update info). */
+async function latestFeedVersion(): Promise<string | null> {
+  try {
+    const result = await autoUpdater.checkForUpdates()
+    const info = result?.updateInfo
+    if (!info) return null
+    return typeof info.version === 'string' ? info.version : null
+  } catch (err) {
+    console.error('[updater] pre-consent version check failed:', err)
+    return null
+  }
+}
+
+/** Flatten release notes (string or electron-updater's array form) into a short one-liner. */
+function notesSummary(notes: unknown): string {
+  let text: string
+  if (typeof notes === 'string') {
+    text = notes
+  } else if (Array.isArray(notes) && typeof (notes[0] as { note?: unknown } | undefined)?.note === 'string') {
+    text = (notes[0] as { note: string }).note
+  } else {
+    return ''
+  }
+  return text.replace(/\s+/g, ' ').trim().slice(0, 200)
 }
 
 /** Extract a GitHub release tag URL from electron-updater's UpdateInfo when present. */

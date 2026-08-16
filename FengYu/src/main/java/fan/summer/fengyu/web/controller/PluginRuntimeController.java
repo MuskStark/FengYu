@@ -161,7 +161,9 @@ public class PluginRuntimeController {
         if (!Files.isRegularFile(path)) return ResponseEntity.notFound().build();
         return ResponseEntity.ok()
             .contentType(contentType(path.getFileName().toString()))
-            .header("Access-Control-Allow-Origin", "*")
+            // No Access-Control-Allow-Origin: the iframe embedding this page runs same-site
+            // (loopback shell) and needs no CORS; a wildcard here would let any website read
+            // installed-plugin package bytes (UI code, worker.jar) cross-origin.
             .header("Content-Security-Policy", PLUGIN_CONTENT_SECURITY_POLICY)
             .header("X-Content-Type-Options", "nosniff")
             .body(new FileSystemResource(path));

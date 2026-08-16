@@ -6,7 +6,9 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -20,6 +22,9 @@ import java.util.Map;
 /** Reads the configured catalog and merges it with packages installed on this host. */
 @Service
 public class PluginMarketplaceService {
+
+    private static final long MAX_CATALOG_BYTES = 8L * 1024 * 1024;
+
     private final ObjectMapper json;
     private final PluginPackageService packages;
     private final String catalogUrl;
@@ -58,7 +63,7 @@ public class PluginMarketplaceService {
         if (entry.downloadUrl() == null || entry.downloadUrl().isBlank()) {
             throw new IllegalArgumentException("Catalog entry has no download URL: " + id);
         }
-        return packages.installFromUrl(entry.downloadUrl());
+        return packages.installFromUrl(entry.downloadUrl(), entry.sha256());
     }
 
     private List<MarketplaceCatalogEntry> fetchCatalog() {
@@ -69,11 +74,27 @@ public class PluginMarketplaceService {
                 throw new IllegalStateException("Marketplace catalog URL must use HTTP(S)");
             }
             HttpRequest request = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(20)).GET().build();
-            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<InputStream> response =
+                    http.send(request, HttpResponse.BodyHandlers.ofInputStream());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new IllegalStateException("Marketplace catalog returned HTTP " + response.statusCode());
             }
-            return json.readValue(response.body(), new TypeReference<>() {});
+            // Cap the catalog body: an unbounded ofString() would let a broken/hostile
+            // catalog URL OOM the host. 8 MB is orders of magnitude above a real catalog.
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream(64 * 1024);
+            byte[] buffer = new byte[8 * 1024];
+            long total = 0;
+            try (InputStream body = response.body()) {
+                for (int count; (count = body.read(buffer)) >= 0;) {
+                    total += count;
+                    if (total > MAX_CATALOG_BYTES) {
+                        throw new IllegalStateException("Marketplace catalog exceeds 8 MB");
+                    }
+                    bytes.write(buffer, 0, count);
+                }
+            }
+            return json.readValue(bytes.toString(java.nio.charset.StandardCharsets.UTF_8),
+                    new TypeReference<>() {});
         } catch (IOException e) {
             throw new IllegalStateException("Cannot read marketplace catalog", e);
         } catch (InterruptedException e) {

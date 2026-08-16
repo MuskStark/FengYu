@@ -70,6 +70,15 @@ final class SafeWebTextClient implements WebTextClient {
         return uri;
     }
 
+    /**
+     * Resolves the host and rejects private/loopback/link-local targets. KNOWN RESIDUAL GAP
+     * (accepted, tracked): this validates the DNS answer, then {@code HttpClient} re-resolves
+     * the hostname at connect time — a rebinding DNS answer can race between the two lookups
+     * (TOCTOU). Closing it fully needs a pinned-IP transport (custom socket layer or a
+     * resolver-pinning HTTP client), which is a tracked follow-up. Today's mitigations: the
+     * private-range check on every resolution, a redirect cap, and a response byte cap. Blast
+     * radius is bounded by the loopback-only, single-user deployment.
+     */
     static void assertPublicHost(URI uri) throws IOException {
         InetAddress[] addresses = InetAddress.getAllByName(uri.getHost());
         if (addresses.length == 0) throw new IOException("host did not resolve");

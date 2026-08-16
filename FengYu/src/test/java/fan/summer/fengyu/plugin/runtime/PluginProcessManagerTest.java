@@ -212,6 +212,75 @@ class PluginProcessManagerTest {
     }
 
     /**
+     * Regression (crash-loop guard bypass): a worker that dies during its FIRST invoke never
+     * reaches the ensure()-mismatch branch (invoke's catch removes it from the map before the
+     * next call can see a cached-but-dead Worker), so the "spawn → EOF → respawn per invoke"
+     * attrition loop must be counted on the INVOKE teardown path itself: after 3 rapid deaths
+     * the guard pauses spawns for the cooldown window.
+     */
+    @Test
+    void eofOnFirstInvokeEngagesCrashLoopGuard() throws Exception {
+        PluginProcessManager manager = manager();
+        try {
+            for (int i = 0; i < 3; i++) {
+                var error = assertThrows(IllegalStateException.class,
+                    () -> manager.invoke("com.example.worker", "eof", Map.of()));
+                assertTrue(error.getMessage().contains("stopped unexpectedly"),
+                    "iteration " + i + " unexpected failure: " + error.getMessage());
+            }
+            var blocked = assertThrows(IllegalStateException.class,
+                () -> manager.invoke("com.example.worker", "eof", Map.of()));
+            assertTrue(blocked.getMessage().contains("crash-loop"),
+                "rapid first-invoke deaths must engage the crash-loop guard: " + blocked.getMessage());
+        } finally {
+            manager.close();
+        }
+    }
+
+    /**
+     * Regression (CQ-03): a DELIBERATE restart — an alive, healthy worker replaced because
+     * the file-grant version changed — must NOT count toward the crash-loop guard. Under the
+     * old counting a user granting files three times inside the 20s window hit the 30s spawn
+     * cooldown with a lying "worker crashed" log. Only a worker that actually died counts;
+     * the worker must still restart on every grant-version change.
+     */
+    @Test
+    void deliberateGrantVersionRestartsDoNotEngageCrashLoopGuard() throws Exception {
+        PluginPackageService packages = new PluginPackageService(temp.resolve("plugins-grant").toString());
+        packages.install(new MockMultipartFile("file", "worker.fyp", "application/zip",
+            archive(echoManifest("com.example.worker", "1.0.0", "test", List.of()))));
+        DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host-grant").toString());
+        PluginRuntimeEnvironmentService runtimeEnvironment = new PluginRuntimeEnvironmentService(
+            dataSources, temp.resolve("plugin-data-grant").toString());
+        PluginFileGrantService files = new PluginFileGrantService(temp.resolve("grants-crash"));
+        PluginProcessManager manager = new PluginProcessManager(
+            packages, files, runtimeEnvironment, new PluginLogStore());
+        try {
+            String id = "com.example.worker";
+            long pid = pidOf(manager, id); // starts the worker at grant version 0
+            for (int i = 0; i < 3; i++) {
+                // A new grant bumps the plugin's grant version (what a user granting files does).
+                files.outputDirectory(id);
+                long restarted = pidOf(manager, id); // alive-but-stale → deliberate restart
+                assertNotEquals(pid, restarted, "grant-version change must restart the worker");
+                pid = restarted;
+            }
+            // Three deliberate restarts inside the crash window must NOT have engaged the
+            // guard — the next invoke succeeds instead of throwing the crash-loop cooldown.
+            long pidAfter = pidOf(manager, id);
+            assertTrue(pidAfter > 0);
+        } finally {
+            manager.close();
+        }
+    }
+
+    private static long pidOf(PluginProcessManager manager, String id) throws Exception {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) manager.invoke(id, "pid", Map.of());
+        return ((Number) result.get("value")).longValue();
+    }
+
+    /**
      * Regression (P0-1): the Worker process must NOT inherit arbitrary host environment variables —
      * a plugin would otherwise read host secrets (OPENAI_API_KEY, GH_TOKEN, proxy creds, ...). The
      * allowlist is positive: only named essentials survive, everything else is dropped by
@@ -624,6 +693,7 @@ class PluginProcessManagerTest {
                "stderr-secret":{"inputSchema":{"type":"object","properties":{}}},
                "command":{"inputSchema":{"type":"object","properties":{}}},
               "environment":{"inputSchema":{"type":"object","properties":{}}},
+              "headless-probe":{"inputSchema":{"type":"object","properties":{}}},
               "env-probe":{"inputSchema":{"type":"object","properties":{}}},
               "locale-probe":{"inputSchema":{"type":"object","properties":{}}},
               "temporary-file":{"inputSchema":{"type":"object","properties":{}}},
@@ -643,6 +713,15 @@ class PluginProcessManagerTest {
         // than the host's literal value.
         String workerUrl = String.valueOf(result.get("value"));
         assertTrue(workerUrl.startsWith("jdbc:h2:"), "worker should receive an h2 DB url, got: " + workerUrl);
+        manager.close();
+    }
+
+    @Test
+    void launchesPluginWorkersInHeadlessModeOnEveryPlatform() throws Exception {
+        PluginProcessManager manager = manager();
+        @SuppressWarnings("unchecked") Map<String, Object> result =
+            (Map<String, Object>) manager.invoke("com.example.worker", "headless-probe", Map.of());
+        assertEquals("true", result.get("value"));
         manager.close();
     }
 
@@ -718,7 +797,13 @@ class PluginProcessManagerTest {
             manager.invoke("com.example.worker", "stderr-secret", Map.of());
             waitForLog(appender, "database password", Duration.ofSeconds(2));
             assertFalse(appender.list.isEmpty(), "no forwarded event captured");
-            ILoggingEvent event = appender.list.getLast();
+            // Take the last MATCHING event, not the last event overall: the stderr forwarder
+            // runs on the worker reader thread, so an unrelated host-side line can land on the
+            // shared logger after ours (without the pluginId MDC) and race this assertion.
+            ILoggingEvent event = appender.list.stream()
+                    .filter(e -> e.getFormattedMessage().contains("database password"))
+                    .reduce((first, second) -> second)
+                    .orElseThrow();
             assertEquals("com.example.worker", event.getMDCPropertyMap().get("pluginId"),
                 "forwarded plugin log must carry MDC pluginId for SiftingAppender routing");
             // The MDC key must be cleared after the forwarded event so the surrounding host thread
@@ -988,6 +1073,10 @@ class PluginProcessManagerTest {
                         String url = System.getenv("FENGYU_DB_URL");
                         System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
                             + "\",\"result\":{\"value\":\"" + url + "\"}}");
+                    } else if (line.contains("\"method\":\"headless-probe\"")) {
+                        System.out.println("{\"jsonrpc\":\"2.0\",\"id\":\"" + id
+                            + "\",\"result\":{\"value\":\""
+                            + System.getProperty("java.awt.headless") + "\"}}");
                     } else if (line.contains("\"method\":\"locale-probe\"")) {
                         // Reflect where the locale actually arrived: the reserved `_fengyu` envelope
                         // (host request locale) vs a `locale` key inside `params` (a plugin method's

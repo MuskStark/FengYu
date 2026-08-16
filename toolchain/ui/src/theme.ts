@@ -24,6 +24,14 @@ export const fengyuCodexLight: ThemeDefinition = {
     'surface-container-low': '#fafaf8',
     'surface-container-high': '#f0f0f0',
     'surface-container-highest': '#e9e9e9',
+    // Vuetify component styles also reference these tokens (v-snackbar text, field labels…).
+    // When a theme omits them, Vuetify's normalization fills the on-* pairs with BLACK, which
+    // renders e.g. notification text invisible on dark surfaces. Define them explicitly.
+    'surface-light': '#f5f5f5',
+    'on-background': '#0d0d0d',
+    'on-surface-variant': '#333333',
+    'on-surface-bright': '#0d0d0d',
+    'on-surface-light': '#0d0d0d',
     // Inverted primary — dark button / light text, Codex light-mode style.
     primary: '#0d0d0d',
     'on-primary': '#ffffff',
@@ -63,6 +71,13 @@ export const fengyuCodexDark: ThemeDefinition = {
     'surface-container-low': '#141413',
     'surface-container-high': '#1c1c1c',
     'surface-container-highest': '#232323',
+    // See the note in fengyuCodexLight: without these, Vuetify fills the on-* pairs with
+    // black and e.g. snackbar text becomes invisible on dark surfaces.
+    'surface-light': '#1c1c1c',
+    'on-background': '#ededed',
+    'on-surface-variant': '#cccccc',
+    'on-surface-bright': '#ededed',
+    'on-surface-light': '#ededed',
     // Light "primary" — near-white button / dark text, Codex dark-mode style.
     primary: '#ededed',
     'on-primary': '#0d0d0d',

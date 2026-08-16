@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import fsSync from 'node:fs'
 import path from 'node:path'
+import { uiPackageManager } from './commands.mjs'
 
 const LOCKFILES = ['package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml']
 
@@ -103,9 +104,10 @@ export async function checkLockfile(project) {
   const hasLock = LOCKFILES.some((name) => fsSync.existsSync(path.join(uiRoot, name)))
   if (!hasLock) {
     const rel = path.relative(project.root, uiRoot) || '.'
+    const pm = uiPackageManager(uiRoot)
     errors.push(
       `ui dependencies are installed (node_modules present) without a committed lockfile; ` +
-        `run \`npm install\` in ${rel} to generate package-lock.json for reproducible builds`,
+        `run \`${pm.bootstrap.join(' ')}\` in ${rel} to generate ${pm.lockfile} for reproducible builds`,
     )
   }
   return errors

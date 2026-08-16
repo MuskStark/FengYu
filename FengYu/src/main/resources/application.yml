@@ -19,9 +19,28 @@ spring:
         jdbc:
           time_zone: UTC
     open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # Existing installs already have a ddl-auto-created schema and no flyway_schema_history:
+    # baseline them at V1 instead of failing. Fresh installs run V1 (an empty baseline) from
+    # zero. From V2 on, migrations are the versioned channel for what ddl-auto=update cannot
+    # express (column renames/drops, data backfills) — see db/migration/V1__baseline.sql.
+    baseline-on-migrate: true
+    baseline-version: 1
+    # Flyway runs BEFORE Hibernate's ddl-auto pass (Boot orders the EntityManagerFactory
+    # after the Flyway initializer), so additive entity changes and V2+ migrations compose.
 
 management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,metrics
+  # Production usage export: point an OTLP collector at FengYu and per-run/per-tool
+  # metrics (fengyu.agent.*) stream out automatically; with no URL configured the
+  # OTLP registry stays dormant and metrics are readable at /actuator/metrics.
+  # otlp:
+  #   metrics:
+  #     export:
+  #       url: http://your-collector:4318/v1/metrics
+  #       step: 60s

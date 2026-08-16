@@ -14,7 +14,7 @@ test('published tooling and generated consumers use the @infinia scope', async (
   assert.equal(cli.name, '@infinia/plugin-cli')
   assert.equal(sdk.name, '@infinia/plugin-sdk')
   assert.equal(ui.name, '@infinia/plugin-ui')
-  assert.equal(ui.peerDependencies['@infinia/plugin-sdk'], '^1.0.0')
+  assert.equal(ui.peerDependencies['@infinia/plugin-sdk'], '^2.0.0')
   assert.match(template, /@infinia\/plugin-sdk/)
   assert.match(template, /@infinia\/plugin-ui/)
   // The consumer-smoke job must re-resolve the freshly-published CLI (and plugin-dev) from the
