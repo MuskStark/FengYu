@@ -1067,9 +1067,28 @@
         },
         {
           "name": "filePath",
-          "widget": "analyze",
+          "widget": "text",
           "title": "文件路径",
-          "description": "工作簿绝对路径；分析按钮解析 sheet/列供选择。"
+          "description": "工作簿绝对路径；分析按钮解析 sheet/列供选择。",
+          "context": {
+            "method": "analyze",
+            "params": {
+              "sourceFile": "{{value}}"
+            },
+            "sessionScope": "node",
+            "feeds": {
+              "sheets": {
+                "list": "sheets",
+                "item": "name"
+              },
+              "columns": {
+                "list": "sheets",
+                "key": "name",
+                "items": "columns",
+                "itemField": "header"
+              }
+            }
+          }
         },
         {
           "name": "entries",
@@ -1080,7 +1099,9 @@
               "name": "sheetName",
               "widget": "text",
               "title": "Sheet 名称",
-              "optionsFrom": "workbook-sheets"
+              "optionsFromContext": {
+                "set": "sheets"
+              }
             },
             {
               "name": "headerIndex",

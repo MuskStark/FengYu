@@ -21,6 +21,18 @@ CHANGELOG.md instead.
 ## [Unreleased]
 
 ### ✨ Added
+- **Unified option-source standard for flow-node inputs.** Three declarative candidate kinds
+  replace the excel-only vocabulary: static `options`; CATALOG `source` (a plugin list method
+  the host fetches and maps through value/label/labelSecondary, single- or multi-select); and
+  CONTEXT `context` (datasets derived at edit time from another input's value — e.g. the
+  workbook path → sheets/columns via the analyze RPC — consumed through `optionsFromContext`
+  references, including row-field keying). The node inspector loads catalogs on focus with a
+  manual fallback, renders context triggers beside their input, and feeds datalists; the run
+  form's x-fengyu-enum annotations now share the same fetch path. Excel migrated to
+  context/optionsFromContext (the analyze widget and workbook-sheets/workbook-columns
+  annotations retire); Email declares catalog sources for 发件账号 and 收件/抄送分组.
+
+### ♻️ Changed
 - **Explicit flow-node declarations (canvas no longer derives node forms from AI-tool schemas).**
   Plugins declare nodes in `manifest.flowNodes[]` (tool binding, label, color, icon, typed
   `inputs` with widget configs — text/number/switch/select/textarea/json/analyze/rows — and
