@@ -40,6 +40,12 @@ public class AiConfigServiceHeadless {
     private static final String PLUGIN_UNSANDBOXED_KEY = "plugin.unsandboxed";
     /** Update-channel proxy base (e.g. {@code http://10.0.0.5:8088}). Empty → default GitHub feed. */
     private static final String UPDATE_API_BASE_KEY = "update.api_base";
+    /** User permission-rule table: {@code {"allow":[…],"ask":[…],"deny":[…]}} rule strings. */
+    private static final String AI_PERMISSION_RULES_KEY = "ai.permission_rules";
+    /** User hook list: {@code [{"name","event","matcher","type","command"/"url","timeoutSeconds","enabled"}]}. */
+    private static final String AI_HOOKS_KEY = "ai.hooks";
+    /** When true, plugin uploads must carry a matching .sha256 sidecar (supply-chain hardening). */
+    private static final String MARKETPLACE_REQUIRE_CHECKSUM_KEY = "marketplace.require_checksum";
     /**
      * Master switch for the {@code computer_*} screen-control tools (ChatGPT-desktop-style
      * computer use). Default {@code true}: the desktop build ships the capability on, and every
@@ -88,6 +94,11 @@ public class AiConfigServiceHeadless {
         return INSTANCE.readSetting(key, defaultValue);
     }
 
+    /** Writes any setting by key (null-safe against an uninitialized instance). */
+    public static void setSetting(String key, String value) {
+        INSTANCE.writeSetting(key, value == null ? "" : value);
+    }
+
     public static String getTheme()    { return INSTANCE.readSetting(THEME_KEY, "dark"); }
     public static String getLanguage() { return INSTANCE.readSetting(LANGUAGE_KEY, "en"); }
     public static boolean getSidebarCollapsed() {
@@ -117,6 +128,36 @@ public class AiConfigServiceHeadless {
 
     public static void setUnsandboxedPluginsEnabled(boolean enabled) {
         INSTANCE.writeSetting(PLUGIN_UNSANDBOXED_KEY, String.valueOf(enabled));
+    }
+
+    /** The stored permission-rule table JSON ({@code {"allow":[…],"ask":[…],"deny":[…]}}); null-safe. */
+    public static String getPermissionRulesJson() {
+        if (INSTANCE == null) return "{}";
+        return INSTANCE.readSetting(AI_PERMISSION_RULES_KEY, "{}");
+    }
+
+    public static void setPermissionRulesJson(String json) {
+        INSTANCE.writeSetting(AI_PERMISSION_RULES_KEY, json == null || json.isBlank() ? "{}" : json);
+    }
+
+    /** The stored hook-list JSON; null-safe (pure unit tests see {@code "[]"}). */
+    public static String getHooksJson() {
+        if (INSTANCE == null) return "[]";
+        return INSTANCE.readSetting(AI_HOOKS_KEY, "[]");
+    }
+
+    public static void setHooksJson(String json) {
+        INSTANCE.writeSetting(AI_HOOKS_KEY, json == null || json.isBlank() ? "[]" : json);
+    }
+
+    /** True when plugin installs must present a matching checksum sidecar. Null-safe, default off. */
+    public static boolean isMarketplaceChecksumRequired() {
+        if (INSTANCE == null) return false;
+        return Boolean.parseBoolean(INSTANCE.readSetting(MARKETPLACE_REQUIRE_CHECKSUM_KEY, "false"));
+    }
+
+    public static void setMarketplaceChecksumRequired(boolean required) {
+        INSTANCE.writeSetting(MARKETPLACE_REQUIRE_CHECKSUM_KEY, String.valueOf(required));
     }
 
     /**
@@ -195,11 +236,19 @@ public class AiConfigServiceHeadless {
 
     // ── Instance implementation (uses injected repo + security context) ───────
 
+    /** Settings whose values are provider credentials — encrypted at rest with the
+     *  machine-bound key (CryptoUtil's ENC(...) envelope; historical plaintext rows still
+     *  decrypt transparently, and a stolen database does not yield usable keys off-machine). */
+    private static final java.util.Set<String> SECRET_SETTING_KEYS = java.util.Set.of(
+            AI_OPENAI_API_KEY_KEY, AI_ANTHROPIC_API_KEY_KEY, AI_DEEPSEEK_API_KEY_KEY);
+
     private String readSetting(String key, String defaultValue) {
         Long uid = securityContext.currentUserId();
         return appSettingRepo.findByUserIdAndSettingKey(uid, key)
                 .filter(e -> e.getSettingValue() != null && !e.getSettingValue().isBlank())
                 .map(AppSettingEntity::getSettingValue)
+                .map(value -> SECRET_SETTING_KEYS.contains(key)
+                        ? fan.summer.fengyu.setup.CryptoUtil.decrypt(value) : value)
                 .orElse(defaultValue);
     }
 
@@ -212,6 +261,9 @@ public class AiConfigServiceHeadless {
                     e.setUserId(uid);
                     return e;
                 });
+        if (SECRET_SETTING_KEYS.contains(key) && value != null && !value.isBlank()) {
+            value = fan.summer.fengyu.setup.CryptoUtil.encrypt(value);
+        }
         entity.setSettingValue(value);
         appSettingRepo.save(entity);
     }

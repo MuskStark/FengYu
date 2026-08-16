@@ -3,6 +3,9 @@ import { getApiBase, getToken } from './config'
 import { i18n } from '@/i18n'
 import type {
   AgentPlan,
+  AgentScheduleSummary,
+  AgentTaskSummary,
+  PermissionRuleTable,
   AgentBatchResponse,
   AgentRunDetail,
   AgentRunRequest,
@@ -194,6 +197,20 @@ export const api = {
     await http.post('/api/ai/files/revoke', { pluginId, refId })
   },
 
+  /** Invokes one plugin RPC method directly (run-form dynamic option sources). */
+  async invokePluginMethod<T = Record<string, unknown>>(
+    pluginId: string,
+    method: string,
+    params: Record<string, unknown> = {},
+  ): Promise<T> {
+    const { data } = await http.post<T>(`/api/plugin-runtime/${encodeURIComponent(pluginId)}/invoke`, {
+      callId: `ui_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+      method,
+      params,
+    })
+    return data
+  },
+
   async createRuntimeOutput(id: string): Promise<PluginFileRef> {
     const { data } = await http.post<PluginFileRef>(`/api/plugin-runtime/${encodeURIComponent(id)}/files/output`)
     return data
@@ -255,11 +272,20 @@ export const api = {
     await http.post(`/api/plugin-runtime/${encodeURIComponent(id)}/invoke/${encodeURIComponent(callId)}/cancel`)
   },
 
-  async aiChat(messages: ChatMessage[], activeFileRefs?: ActiveFileEntry[], permissionMode = 'ask-for-approval'): Promise<ChatStartResponse> {
+  async aiChat(
+    messages: ChatMessage[],
+    activeFileRefs?: ActiveFileEntry[],
+    permissionMode = 'ask-for-approval',
+    workflowId?: string | null,
+  ): Promise<ChatStartResponse> {
     const { data } = await http.post<ChatStartResponse>('/api/ai/chat', {
       messages,
       activeFileRefs: activeFileRefs ?? [],
       permissionMode,
+      // Flowise-style chat binding: attaching a workflowId binds this turn to that flow
+      // (draft or published) — the backend exposes it to the model as `run_current_flow`
+      // inside the ordinary chat tool-call loop.
+      ...(workflowId ? { workflowId } : {}),
     })
     return data
   },
@@ -274,6 +300,16 @@ export const api = {
 
   async cancelAiGeneration(streamId: string): Promise<void> {
     await http.post('/api/ai/cancel', undefined, { params: { streamId } })
+  },
+
+  /**
+   * Mints the one-time ticket the SSE EventSource redeems as `?ticket=` (EventSource cannot
+   * send the header token, and the full credential must not ride in a URL that logs capture).
+   */
+  async issueStreamTicket(kind: 'ai' | 'agent'): Promise<string> {
+    const { data } = await http.post<{ ticket: string; expiresAt: string }>(
+      kind === 'ai' ? '/api/ai/stream-ticket' : '/api/agent/stream-ticket')
+    return data.ticket
   },
 
   // ── AI conversation history (persisted) ──────────────────────
@@ -350,9 +386,18 @@ export const api = {
       .post(`/api/agent/${encodeURIComponent(runId)}/cancel`)
       .then((r) => r.data),
 
-  /** The orchestrable tool list (name/description/inputSchema). */
+  /**
+   * The orchestrable tool list (name/description/inputSchema). The backend
+   * serializes the flow-node descriptor as a JSON string — parse it here so
+   * callers always see the object form.
+   */
   agentTools: () =>
-    http.get<AgentTool[]>('/api/agent/tools').then((r) => r.data),
+    http.get<AgentTool[]>('/api/agent/tools').then((r) => r.data.map((tool) => ({
+      ...tool,
+      flowNode: typeof tool.flowNode === 'string'
+        ? (JSON.parse(tool.flowNode) as AgentTool['flowNode'])
+        : tool.flowNode ?? null,
+    }))),
 
   /** Durable agent history and event audit trail. */
   agentRuns: () =>
@@ -369,6 +414,27 @@ export const api = {
       .post<AgentRunResponse>(`/api/agent/runs/${encodeURIComponent(runId)}/resume`)
       .then((r) => r.data),
 
+  agentRunsQuery: (q: string, limit = 50) =>
+    http.get<AgentRunSummary[]>(`/api/agent/runs?q=${encodeURIComponent(q)}&limit=${limit}`).then((r) => r.data),
+  agentForkRun: (runId: string) =>
+    http.post<{ runId: string }>(`/api/agent/runs/${encodeURIComponent(runId)}/fork`).then((r) => r.data),
+  agentRewindRun: (runId: string, keepSteps: number) =>
+    http.post<{ runId: string }>(`/api/agent/runs/${encodeURIComponent(runId)}/rewind`,
+      { keepSteps }).then((r) => r.data),
+  agentTasks: () =>
+    http.get<AgentTaskSummary[]>('/api/agent/tasks').then((r) => r.data),
+  agentKillTask: (taskId: string) =>
+    http.delete<{ ok: boolean }>(`/api/agent/tasks/${encodeURIComponent(taskId)}`).then((r) => r.data),
+  agentSchedules: () =>
+    http.get<AgentScheduleSummary[]>('/api/agent/schedules').then((r) => r.data),
+  agentDeleteSchedule: (scheduleId: string) =>
+    http.delete<{ ok: boolean }>(`/api/agent/schedules/${encodeURIComponent(scheduleId)}`).then((r) => r.data),
+  putPermissionRules: (rules: PermissionRuleTable) =>
+    http.put<{ ok: boolean; rules: number }>('/api/settings/permission-rules', rules).then((r) => r.data),
+  putHooks: (json: string) =>
+    http.put<{ ok: boolean; hooks: number }>('/api/settings/hooks', json, {
+      headers: { 'Content-Type': 'application/json' },
+    }).then((r) => r.data),
   workflows: () =>
     http.get<WorkflowDefinition[]>('/api/workflows').then((r) => r.data),
 

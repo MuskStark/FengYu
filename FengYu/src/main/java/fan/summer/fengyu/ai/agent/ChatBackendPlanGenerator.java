@@ -32,6 +32,9 @@ public class ChatBackendPlanGenerator implements AgentRunner.PlanGenerator {
     /** Default budget (seconds) for the model to finish a planning response. */
     static final int DEFAULT_PLANNING_TIMEOUT_SECONDS = 180;
 
+    /** Step ceiling for generated plans — mirrors WorkflowService.MAX_STEPS. */
+    static final int MAX_STEPS = 64;
+
     static final String SYSTEM_PROMPT = """
             You are Infinia's workflow planner. Convert the user's goal into the smallest safe,
             executable plan using only the supplied tools. You plan only; you never execute tools.
@@ -81,16 +84,36 @@ public class ChatBackendPlanGenerator implements AgentRunner.PlanGenerator {
     private final AiModeService aiModeService;
     private final int planningTimeoutSeconds;
     private final ReentrantLock planningLock = new ReentrantLock(true);
+    /** Optional cross-session memory (experimental; injected lazily, off by default). */
+    private final org.springframework.beans.factory.ObjectProvider<fan.summer.fengyu.ai.memory.AiMemoryService> memoryProvider;
 
     @org.springframework.beans.factory.annotation.Autowired
-    public ChatBackendPlanGenerator(AiModeService aiModeService) {
-        this(aiModeService, DEFAULT_PLANNING_TIMEOUT_SECONDS);
+    public ChatBackendPlanGenerator(AiModeService aiModeService,
+            org.springframework.beans.factory.ObjectProvider<fan.summer.fengyu.ai.memory.AiMemoryService> memoryProvider) {
+        this(aiModeService, DEFAULT_PLANNING_TIMEOUT_SECONDS, memoryProvider);
     }
 
     /** Test seam: inject a shorter timeout so the cancellation path can be exercised quickly. */
     ChatBackendPlanGenerator(AiModeService aiModeService, int planningTimeoutSeconds) {
+        this(aiModeService, planningTimeoutSeconds, null);
+    }
+
+    ChatBackendPlanGenerator(AiModeService aiModeService, int planningTimeoutSeconds,
+            org.springframework.beans.factory.ObjectProvider<fan.summer.fengyu.ai.memory.AiMemoryService> memoryProvider) {
         this.aiModeService = aiModeService;
         this.planningTimeoutSeconds = planningTimeoutSeconds;
+        this.memoryProvider = memoryProvider;
+    }
+
+    /** First-use injection: relevant long-term memories ride along with the goal. */
+    private String memoryContextFor(String goal) {
+        if (memoryProvider == null) return "";
+        try {
+            fan.summer.fengyu.ai.memory.AiMemoryService memory = memoryProvider.getIfAvailable();
+            return memory == null ? "" : memory.injectionFor(goal, 3);
+        } catch (Exception unavailable) {
+            return ""; // memory must never break planning
+        }
     }
 
     @Override
@@ -128,7 +151,9 @@ public class ChatBackendPlanGenerator implements AgentRunner.PlanGenerator {
             }
         }
 
-        String prompt = "GOAL:\n" + safe(goal) + "\n\nAVAILABLE_TOOLS:\n" + toolCatalog(tools);
+        String memoryContext = memoryContextFor(goal);
+        String prompt = (memoryContext == null || memoryContext.isBlank() ? "" : memoryContext + "\n")
+                + "GOAL:\n" + safe(goal) + "\n\nAVAILABLE_TOOLS:\n" + toolCatalog(tools);
         CompletableFuture<String> completion = new CompletableFuture<>();
         StringBuilder streamed = new StringBuilder();
 
@@ -180,6 +205,13 @@ public class ChatBackendPlanGenerator implements AgentRunner.PlanGenerator {
         Object rawSteps = root.get("steps");
         if (!(rawSteps instanceof List<?> stepList)) {
             throw new IllegalArgumentException("Planner response has no steps array");
+        }
+        // Same ceiling as user-authored workflows (WorkflowService.MAX_STEPS): a looping
+        // model must not generate an unbounded plan even though only the prompt asks it
+        // to stay small.
+        if (stepList.size() > MAX_STEPS) {
+            throw new IllegalArgumentException(
+                    "Planner workflow must not exceed " + MAX_STEPS + " steps");
         }
 
         Set<String> toolNames = tools == null ? Set.of() : tools.stream()

@@ -172,8 +172,13 @@ class SettingsControllerTest {
         availability.put("available", true);
         availability.put("reason", null);
         when(tool.availability()).thenReturn(availability);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<fan.summer.fengyu.ai.tools.ToolGuardService> guardProvider =
+                mock(ObjectProvider.class);
+        when(guardProvider.getIfAvailable()).thenReturn(null);
         SettingsController controller = new SettingsController(
-            config, newService(), logging, mock(PluginProcessManager.class), provider, () -> {});
+            config, newService(), logging, mock(PluginProcessManager.class), provider,
+            guardProvider, () -> {});
 
         try (var mockedAi = mockStatic(AiConfigServiceHeadless.class)) {
             mockedAi.when(AiConfigServiceHeadless::isComputerUseEnabled).thenReturn(true);

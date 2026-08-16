@@ -1,196 +1,338 @@
 <script setup lang="ts">
-import { Handle, Position, type NodeProps } from '@vue-flow/core'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useTheme } from 'vuetify'
+import { Handle, Position, type NodeProps } from '@vue-flow/core'
 import {
-  missingRequiredWorkflowInputs,
   humanizeWorkflowToolName,
+  missingRequiredWorkflowInputs,
   workflowInputSummaries,
-  workflowOutputSummaries,
+  workflowNodeColor,
+  workflowToolCategory,
   type WorkflowNodeData,
 } from './workflow'
 
+/**
+ * 1:1 Vue port of Flowise's AgentFlowNode (packages/agentflow/src/features/canvas/).
+ * Every value below traces to source: the card mirrors CardWrapper (radius 8 /
+ * padding 12 / width max-content) tinted by useNodeColors' MUI formulas
+ * (dark: darken(color, 0.8), hover 0.7; border alpha .5 / hover .8 / selected 1),
+ * the input handle is NodeInputHandle's 5×20 color bar, the output handle is
+ * NodeOutputHandles' hover-revealed chevron circle, and the icon badge is
+ * NodeIcon's 40px rounded square (radius 15) filled with the node color.
+ */
 const props = defineProps<NodeProps<WorkflowNodeData>>()
+const emit = defineEmits<{ 'open-editor': [] }>()
 
+const theme = useTheme()
 const { t } = useI18n()
-const inputs = computed(() => workflowInputSummaries(props.data.tool.inputSchema, props.data.argsText))
-const outputs = computed(() => workflowOutputSummaries(props.data.tool.outputSchema))
-const missingRequired = computed(() => missingRequiredWorkflowInputs(props.data.tool.inputSchema, props.data.argsText))
-const configuredCount = computed(() => inputs.value.filter((field) => field.configured).length)
+const isDark = computed(() => theme.current.value.dark)
+const isHovered = ref(false)
+const nodeColor = computed(() => props.data.descriptor?.color
+  || props.data.color
+  || workflowNodeColor(props.data.tool)
+  || '#666666')
+const nodeLabel = computed(() => props.data.descriptor?.label || humanizeWorkflowToolName(props.data.tool.name))
+/** Named output ports from the declaration; single/default port when undeclared. */
+const outputPorts = computed(() => props.data.descriptor?.outputs?.length
+  ? props.data.descriptor.outputs
+  : null)
+const missingRequired = computed(() =>
+  missingRequiredWorkflowInputs(props.data.tool.inputSchema, props.data.argsText))
+const inputs = computed(() =>
+  workflowInputSummaries(props.data.tool.inputSchema, props.data.argsText))
+const configuredCount = computed(() =>
+  inputs.value.filter((field) => field.configured).length)
+
+// ── MUI color math (verbatim semantics from @mui/material/styles) ───────────
+function hexToRgb(hex: string): [number, number, number] {
+  const value = hex.replace('#', '')
+  const full = value.length === 3 ? value.split('').map((c) => c + c).join('') : value
+  const num = parseInt(full, 16)
+  return [(num >> 16) & 255, (num >> 8) & 255, num & 255]
+}
+
+/** MUI darken(color, k): channel * (1 - k). */
+function darken(hex: string, coefficient: number): string {
+  const [r, g, b] = hexToRgb(hex)
+  const f = 1 - coefficient
+  return `rgb(${Math.round(r * f)}, ${Math.round(g * f)}, ${Math.round(b * f)})`
+}
+
+/** MUI alpha(color, a). */
+function alpha(hex: string, value: number): string {
+  const [r, g, b] = hexToRgb(hex)
+  return `rgba(${r}, ${g}, ${b}, ${value})`
+}
+
+/** MUI lighten(color, k): channel + (255 - channel) * k. */
+function lighten(hex: string, coefficient: number): string {
+  const [r, g, b] = hexToRgb(hex)
+  return `rgb(${Math.round(r + (255 - r) * coefficient)}, ${Math.round(g + (255 - g) * coefficient)}, ${Math.round(b + (255 - b) * coefficient)})`
+}
+
+// ── useNodeColors: stateColor drives border + selected ring ──────────────────
+const stateColor = computed(() => {
+  if (props.selected) return nodeColor.value
+  if (isHovered.value) return alpha(nodeColor.value, 0.8)
+  return alpha(nodeColor.value, 0.5)
+})
+/** useNodeColors: dark tints the color, light washes it — following the app theme. */
+const backgroundColor = computed(() => isDark.value
+  ? darken(nodeColor.value, isHovered.value ? 0.7 : 0.8)
+  : lighten(nodeColor.value, isHovered.value ? 0.8 : 0.9))
+
+const cardStyle = computed(() => ({
+  backgroundColor: backgroundColor.value,
+  borderColor: props.data.available === false ? '#f44336' : stateColor.value,
+  borderWidth: '1px',
+  boxShadow: props.selected ? `0 0 0 1px ${stateColor.value}` : 'none',
+}))
+
+const icon = computed(() => props.data.descriptor?.icon || (() => {
+  const category = workflowToolCategory(props.data.tool)
+  const icons: Record<string, string> = {
+    browser: 'mdi-web',
+    email: 'mdi-email-outline',
+    excel: 'mdi-table',
+    python: 'mdi-language-python',
+    skills: 'mdi-lightbulb-outline',
+    content: 'mdi-text-box-outline',
+    other: 'mdi-cog-outline',
+  }
+  return icons[category] ?? 'mdi-cog-outline'
+})())
 </script>
 
 <template>
-  <div class="workflow-tool-node" :class="{ selected, unavailable: !data.available, incomplete: missingRequired.length }" :title="data.tool.localizedDescription || data.tool.description">
-    <Handle
-      type="target"
-      :position="Position.Left"
-      :connectable="connectable"
-      :title="t('agent.canvasConnectHere')"
-    />
-    <div class="workflow-tool-node__head">
-      <span class="workflow-tool-node__icon"><i class="mdi mdi-hammer-wrench" /></span>
-      <span class="workflow-tool-node__title">
-        <strong>{{ humanizeWorkflowToolName(data.tool.name) }}</strong>
-        <small>{{ data.tool.pluginId || 'FengYu' }}</small>
-      </span>
-      <i v-if="!data.available" class="mdi mdi-alert-circle-outline workflow-tool-node__warning" />
-      <span v-else-if="missingRequired.length" class="workflow-tool-node__state workflow-tool-node__state--warn"><i class="mdi mdi-alert-outline" /> {{ missingRequired.length }}</span>
-      <span v-else class="workflow-tool-node__state workflow-tool-node__state--ready"><i class="mdi mdi-check" /></span>
-    </div>
-    <div class="workflow-tool-node__body">
-      <div class="workflow-tool-node__section-head">
-        <span>{{ t('agent.nodeInput') }}</span>
-        <small>{{ configuredCount }}/{{ inputs.length }} {{ t('agent.configured') }}</small>
-      </div>
-      <div v-if="inputs.length" class="workflow-tool-node__fields">
-        <div v-for="field in inputs.slice(0, 3)" :key="field.name" class="workflow-tool-node__field">
-          <span><i class="mdi" :class="field.source === 'node' ? 'mdi-link-variant' : field.source === 'workflow' ? 'mdi-form-textbox' : 'mdi-circle-small'" /> {{ field.label }}</span>
-          <small :class="{ empty: !field.configured }">{{ field.value || (field.required ? t('agent.requiredInput') : t('agent.optionalInput')) }}</small>
+  <div
+    class="afn"
+    @mouseenter="isHovered = true"
+    @mouseleave="isHovered = false"
+    @dblclick="emit('open-editor')"
+  >
+    <div class="afn__card" :style="cardStyle">
+      <!-- NodeWarningIndicator (restored): 22px white circle, orange alert, top-left -10 -->
+      <span
+        v-if="missingRequired.length || !data.available"
+        class="afn__warn"
+        :title="data.available
+          ? t('agent.requiredInputsMissing', { count: missingRequired.length })
+          : t('agent.toolUnavailableShort')"
+      ><i class="mdi mdi-alert-circle" /></span>
+
+      <div class="afn__inner">
+        <!-- Input handle: a small node-colored dot. No inner content — children of a
+             handle intercept vue-flow's elementFromPoint hit test and break drops. -->
+        <Handle type="target" :position="Position.Left" class="afn__in" :connectable="connectable" />
+
+        <div class="afn__row">
+          <div class="afn__iconbox">
+            <!-- NodeIcon colored branch: 40×40, radius 15px, filled with node color -->
+            <div class="afn__badge" :style="{ backgroundColor: nodeColor }">
+              <i class="mdi" :class="icon" />
+            </div>
+          </div>
+          <div class="afn__meta">
+            <div class="afn__label" :title="data.tool.localizedDescription || data.tool.description">
+              {{ nodeLabel }}
+            </div>
+            <div class="afn__sub">{{ data.tool.pluginId || 'FengYu' }} · {{ configuredCount }}/{{ inputs.length }}</div>
+          </div>
         </div>
-        <small v-if="inputs.length > 3" class="workflow-tool-node__more">+{{ inputs.length - 3 }} {{ t('agent.moreFields') }}</small>
-      </div>
-      <div v-else class="workflow-tool-node__empty-field">{{ t('agent.noInputRequired') }}</div>
-      <div class="workflow-tool-node__outputs">
-        <span>{{ t('agent.nodeOutput') }}</span>
-        <span v-if="outputs.length" class="workflow-tool-node__output-pills"><small v-for="field in outputs.slice(0, 2)" :key="field.name">{{ field.label }}</small><small v-if="outputs.length > 2">+{{ outputs.length - 2 }}</small></span>
-        <small v-else>{{ t('agent.completeResult') }}</small>
+
+        <!-- Output ports: explicit declarations render NAMED handles (Flowise
+             outputAnchors); undeclared nodes keep the single default dot. No inner
+             content — children of a handle intercept vue-flow's elementFromPoint
+             hit test and break drops. -->
+        <template v-if="outputPorts">
+          <div
+            v-for="(port, portIndex) in outputPorts"
+            :key="port.name"
+            class="afn__port"
+            :style="{ top: `${((portIndex + 1) / (outputPorts.length + 1)) * 100}%` }"
+          >
+            <span class="afn__port-label">{{ port.title || port.name }}</span>
+            <Handle
+              type="source"
+              :id="port.name"
+              :position="Position.Right"
+              class="afn__out"
+              :connectable="connectable"
+            />
+          </div>
+        </template>
+        <Handle
+          v-else
+          type="source"
+          :position="Position.Right"
+          class="afn__out"
+          :connectable="connectable"
+        />
       </div>
     </div>
-    <Handle
-      type="source"
-      :position="Position.Right"
-      :connectable="connectable"
-      :title="t('agent.canvasStartConnection')"
-    />
   </div>
 </template>
 
 <style scoped>
-.workflow-tool-node {
-  width: 240px;
-  min-height: 154px;
-  color: rgb(var(--v-theme-on-surface));
-  border: 1px solid rgb(var(--v-theme-outline));
-  border-radius: 11px;
-  background: rgb(var(--v-theme-surface));
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .16);
-  cursor: grab;
-  user-select: none;
+.afn {
+  font-family: inherit;
 }
 
-.workflow-tool-node:active {
+/* CardWrapper: radius 8, padding 12, width max-content, overflow visible */
+.afn__card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: max-content;
+  min-width: 180px;
+  height: auto;
+  padding: 12px;
+  border-style: solid;
+  border-radius: 8px;
+  color: rgb(var(--v-theme-on-surface));
+  cursor: grab;
+  overflow: visible;
+}
+
+.afn__card:active {
   cursor: grabbing;
 }
 
-.workflow-tool-node.selected {
-  border-color: rgb(var(--v-theme-primary));
-  box-shadow: 0 0 0 2px rgba(var(--v-theme-primary), .2), 0 5px 16px rgba(0, 0, 0, .2);
-}
-
-.workflow-tool-node.incomplete:not(.unavailable) { border-color: rgba(var(--v-theme-warning), .75); }
-
-.workflow-tool-node.unavailable {
-  border-color: rgb(var(--v-theme-error));
-  background: rgba(var(--v-theme-error), .08);
-}
-
-.workflow-tool-node__warning {
-  color: rgb(var(--v-theme-error));
-}
-
-.workflow-tool-node__head {
+.afn__inner {
+  /* No positioning context — handles resolve against .afn__card so they sit on
+     the card's edges, exactly like vue-flow's default offsetParent contract. */
   display: flex;
-  gap: 7px;
+  flex-direction: column;
+  width: 100%;
+}
+
+.afn__row {
+  display: flex;
+  flex-direction: row;
   align-items: center;
-  min-height: 51px;
-  padding: 9px 10px 7px;
-  border-bottom: 1px solid rgb(var(--v-theme-outline-variant));
 }
 
-.workflow-tool-node__icon {
-  display: grid;
-  place-items: center;
+/* NODE_ICON_CONTAINER_WIDTH = 50 */
+.afn__iconbox {
+  width: 50px;
   flex: 0 0 auto;
-  width: 31px;
-  height: 31px;
-  color: rgb(var(--v-theme-primary));
-  border-radius: 8px;
-  background: rgba(var(--v-theme-primary), .12);
 }
 
-.workflow-tool-node__title {
+.afn__badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 15px;
+  color: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08) inset;
+  cursor: grab;
+}
+
+.afn__badge i {
+  font-size: 22px;
+}
+
+.afn__meta {
   display: flex;
   min-width: 0;
-  flex: 1;
   flex-direction: column;
-  gap: 2px;
+  padding-right: 8px;
 }
 
-.workflow-tool-node__title strong {
+/* AgentFlowNode Typography: 0.85rem / 500 */
+.afn__label {
+  max-width: 180px;
   overflow: hidden;
-  font-size: 12px;
+  font-size: 13.6px;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.workflow-tool-node__title small {
-  color: rgba(var(--v-theme-on-surface), .58);
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: .05em;
+.afn__sub {
+  max-width: 180px;
+  overflow: hidden;
+  color: rgba(var(--v-theme-on-surface), .55); /* tokens text.secondary */
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.workflow-tool-node__state {
-  display: inline-flex;
-  gap: 2px;
-  align-items: center;
-  justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 5px;
-  font-size: 9px;
-  border-radius: 11px;
-}
-.workflow-tool-node__state--ready { color: rgb(var(--v-theme-success)); background: rgba(var(--v-theme-success), .12); }
-.workflow-tool-node__state--warn { color: rgb(var(--v-theme-warning)); background: rgba(var(--v-theme-warning), .14); }
-
-.workflow-tool-node__body { padding: 8px 10px 9px; }
-.workflow-tool-node__section-head,
-.workflow-tool-node__outputs {
+.afn__port {
+  position: absolute;
+  right: -14px;
   display: flex;
-  gap: 8px;
   align-items: center;
-  justify-content: space-between;
-  color: rgba(var(--v-theme-on-surface), .62);
-  font-size: 9px;
-  font-weight: 650;
-  text-transform: uppercase;
-  letter-spacing: .045em;
+  gap: 3px;
+  transform: translateY(-50%);
 }
-.workflow-tool-node__section-head small { font-size: 8px; font-weight: 500; text-transform: none; letter-spacing: 0; }
-.workflow-tool-node__fields { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
-.workflow-tool-node__field { display: flex; gap: 7px; align-items: center; justify-content: space-between; min-width: 0; font-size: 9px; }
-.workflow-tool-node__field > span { display: flex; min-width: 0; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.workflow-tool-node__field > span i { color: rgb(var(--v-theme-primary)); }
-.workflow-tool-node__field > small { max-width: 95px; overflow: hidden; color: rgba(var(--v-theme-on-surface), .64); text-overflow: ellipsis; white-space: nowrap; }
-.workflow-tool-node__field > small.empty { color: rgb(var(--v-theme-warning)); font-style: italic; }
-.workflow-tool-node__more { color: rgba(var(--v-theme-on-surface), .5); font-size: 8px; }
-.workflow-tool-node__empty-field { margin-top: 5px; color: rgba(var(--v-theme-on-surface), .5); font-size: 9px; }
-.workflow-tool-node__outputs { margin-top: 8px; padding-top: 7px; border-top: 1px solid rgb(var(--v-theme-outline-variant)); }
-.workflow-tool-node__outputs > small { color: rgba(var(--v-theme-on-surface), .5); font-size: 8px; font-weight: 500; text-transform: none; letter-spacing: 0; }
-.workflow-tool-node__output-pills { display: flex; min-width: 0; gap: 3px; }
-.workflow-tool-node__output-pills small { max-width: 70px; padding: 2px 5px; overflow: hidden; color: rgb(var(--v-theme-primary)); font-size: 8px; font-weight: 500; text-overflow: ellipsis; text-transform: none; white-space: nowrap; letter-spacing: 0; border-radius: 8px; background: rgba(var(--v-theme-primary), .1); }
 
-:deep(.vue-flow__handle) {
+.afn__port-label {
+  color: rgba(var(--v-theme-on-surface), 0.75);
+  font-size: 9px;
+  white-space: nowrap;
+  background: rgb(var(--v-theme-surface));
+  border-radius: 6px;
+  padding: 1px 5px;
+  box-shadow: 0 0 0 1px rgba(var(--v-theme-on-surface), 0.12);
+}
+
+/* Input handle: a filled node-colored dot pinned to the card's left edge.
+   Explicit left/top override vue-flow's centered .vue-flow__handle-left default
+   (which landed mid-card and looked like a stray checkbox beside the icon). */
+.afn__in {
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  transform: translate(0, -50%);
   width: 12px;
   height: 12px;
-  border: 2px solid rgb(var(--v-theme-primary));
-  background: rgb(var(--v-theme-surface));
+  border-radius: 50%;
+  border: 2px solid rgb(var(--v-theme-surface));
+  background: v-bind(nodeColor);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+  cursor: crosshair;
 }
 
-:deep(.vue-flow__handle:hover),
-:deep(.vue-flow__handle.connecting),
-:deep(.vue-flow__handle.valid) {
-  background: rgb(var(--v-theme-primary));
+/* Output handle: a filled node-colored dot pinned to the card's right edge,
+   the mirror of .afn__in. Explicit right/top override vue-flow's
+   .vue-flow__handle-right geometry so the dot centers on the edge. */
+.afn__out {
+  position: absolute;
+  left: auto;
+  right: -6px;
+  top: 50%;
+  transform: translate(0, -50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgb(var(--v-theme-surface));
+  background: v-bind(nodeColor);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+  cursor: crosshair;
+}
+
+/* NodeWarningIndicator: 22px white circle, orange alert, top-left -10 */
+.afn__warn {
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  color: orange;
+  cursor: default;
+  pointer-events: all;
+}
+
+.afn__warn i {
+  font-size: 18px;
 }
 </style>

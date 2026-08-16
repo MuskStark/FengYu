@@ -46,7 +46,7 @@
              1.1.0 added the RpcTransport abstraction (StdioTransport + the
              socket-transport contract fengyu-plugin-devkit implements), so the same
              dispatch loop serves production stdio and IDE loopback-TCP debugging. -->
-        <fengyu.plugin.sdk.version>1.3.0</fengyu.plugin.sdk.version>
+        <fengyu.plugin.sdk.version>2.0.0</fengyu.plugin.sdk.version>
         <fesod.version>2.0.1-incubating</fesod.version>
         <h2.version>2.4.240</h2.version>
         <simplejavamail.version>8.12.6</simplejavamail.version>

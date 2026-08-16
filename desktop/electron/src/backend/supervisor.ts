@@ -32,6 +32,11 @@ export function isAppCrash(_exitCode: number | null, shuttingDown: boolean): boo
 export interface BackendChild {
   process: ChildProcess
   kill(): void
+  /**
+   * Synchronous last-resort escalation for the quit path: SIGKILL the tree immediately
+   * instead of waiting for kill()'s 5s timer, which never fires once the shell exits.
+   */
+  forceKill(): void
 }
 
 /**

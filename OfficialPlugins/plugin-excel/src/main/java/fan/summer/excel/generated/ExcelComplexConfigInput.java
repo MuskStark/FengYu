@@ -2,11 +2,15 @@
 package fan.summer.excel.generated;
 
 import com.google.gson.annotations.SerializedName;
+import java.util.List;
 
 public record ExcelComplexConfigInput(
     @SerializedName("action") ExcelComplexConfigInputAction action,
     @SerializedName("columnIndex") Integer columnIndex,
+    @SerializedName("entries") List<ExcelComplexConfigInputEntries> entries,
+    @SerializedName("filePath") String filePath,
     @SerializedName("headerIndex") Integer headerIndex,
+    @SerializedName("sessionId") String sessionId,
     @SerializedName("sheetName") String sheetName
 ) {
   public enum ExcelComplexConfigInputAction {
@@ -14,4 +18,12 @@ public record ExcelComplexConfigInput(
     list,
     clear
   }
+
+  public record ExcelComplexConfigInputEntries(
+      @SerializedName("columnIndex") Integer columnIndex,
+      @SerializedName("columnName") String columnName,
+      @SerializedName("copyEntireSheet") Boolean copyEntireSheet,
+      @SerializedName("headerIndex") Integer headerIndex,
+      @SerializedName("sheetName") String sheetName
+  ) {}
 }

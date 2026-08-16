@@ -1,29 +1,30 @@
 #!/usr/bin/env bash
-# Build every official plugin, stage the resulting .fyp + checksum pair, and
-# install it into a running local FengYu development backend.
+# Build every official plugin and stage the resulting .fyp + checksum pair into the
+# official-plugin seeder directory.
+#
+# Official plugins (official:true / fan.summer.*) can ONLY be installed through the
+# host-trusted seeder path (P0-8 anti-impersonation): the upload/marketplace API rejects
+# them by design. The seeder scans fengyu.plugins.official-directory — for an IDE-started
+# dev backend that defaults to <repo>/OfficialPlugins/target/packages — AT STARTUP,
+# verifies each .sha256 sidecar, upgrades newer versions, and refreshes same-version
+# bundles whose bytes changed. So local "installation" = stage below + restart the backend.
 #
 # Usage:
-#   ./dev-install-official-plugins.sh [--base-url URL] [--token TOKEN] [--skip-tests]
-#
-# Environment alternatives:
-#   FENGYU_BASE_URL  Backend URL (default: http://127.0.0.1:24056)
-#   FENGYU_TOKEN     Value for the X-FengYu-Token header (default: empty)
+#   ./dev-install-official-plugins.sh [--skip-tests]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BASE_URL="${FENGYU_BASE_URL:-http://127.0.0.1:24056}"
-TOKEN="${FENGYU_TOKEN:-}"
 SKIP_TESTS=0
 OFFICIAL_PLUGINS=(markdown excel email offlinepython)
 PACKAGE_DIR="$ROOT/OfficialPlugins/target/packages"
 CLI="$ROOT/toolchain/cli/bin/fengyu.mjs"
 
 usage() {
-  echo "Usage: $0 [--base-url URL] [--token TOKEN] [--skip-tests]"
+  echo "Usage: $0 [--skip-tests]"
   echo
-  echo "Environment:"
-  echo "  FENGYU_BASE_URL  Backend URL (default: http://127.0.0.1:24056)"
-  echo "  FENGYU_TOKEN     Value for the X-FengYu-Token header"
+  echo "Builds all official plugins and stages them into $PACKAGE_DIR."
+  echo "Restart your dev backend afterwards — the official-plugin seeder installs"
+  echo "them from that directory at startup (trusted path; uploads cannot do this)."
 }
 
 fail() {
@@ -33,16 +34,6 @@ fail() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --base-url)
-      [[ $# -ge 2 ]] || fail "--base-url requires a value"
-      BASE_URL="$2"
-      shift 2
-      ;;
-    --token)
-      [[ $# -ge 2 ]] || fail "--token requires a value"
-      TOKEN="$2"
-      shift 2
-      ;;
     --skip-tests)
       SKIP_TESTS=1
       shift
@@ -57,31 +48,14 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-BASE_URL="${BASE_URL%/}"
-
 command -v node >/dev/null 2>&1 || fail "node is required"
-command -v curl >/dev/null 2>&1 || fail "curl is required"
 [[ -f "$CLI" ]] || fail "plugin CLI not found: $CLI"
+# Official plugin UIs install with Yarn 4 through corepack (Node >=25 dropped the
+# bundled corepack — install it standalone there: `npm install -g corepack`).
+command -v corepack >/dev/null 2>&1 \
+  || fail "corepack is required (npm install -g corepack)"
+corepack enable >/dev/null 2>&1 || true
 
-# Keep this array non-empty for macOS Bash 3.2: with `set -u`, expanding an
-# empty array raises "unbound variable". curl treats an empty-value header as
-# a request to omit that header, which is correct when the backend has no token.
-AUTH_HEADERS=(-H "X-FengYu-Token: $TOKEN")
-
-RESPONSE_FILE="$(mktemp)"
-trap 'rm -f "$RESPONSE_FILE"' EXIT
-
-echo "Checking FengYu backend at $BASE_URL ..."
-HEALTH_STATUS="$(curl -sS -o "$RESPONSE_FILE" -w '%{http_code}' \
-  "${AUTH_HEADERS[@]}" "$BASE_URL/api/health" || true)"
-if [[ "$HEALTH_STATUS" != "200" ]]; then
-  if [[ "$HEALTH_STATUS" == "401" ]]; then
-    fail "backend requires a token; pass --token or set FENGYU_TOKEN"
-  fi
-  fail "backend health check returned HTTP ${HEALTH_STATUS:-unreachable}: $(<"$RESPONSE_FILE")"
-fi
-
-echo
 echo "Building ${#OFFICIAL_PLUGINS[@]} official plugins ..."
 for plugin in "${OFFICIAL_PLUGINS[@]}"; do
   PLUGIN_DIR="$ROOT/OfficialPlugins/plugin-$plugin"
@@ -100,7 +74,7 @@ mkdir -p "$PACKAGE_DIR"
 shopt -s nullglob
 
 echo
-echo "Staging and installing official plugins ..."
+echo "Staging official plugins into $PACKAGE_DIR ..."
 for plugin in "${OFFICIAL_PLUGINS[@]}"; do
   PLUGIN_DIR="$ROOT/OfficialPlugins/plugin-$plugin"
   MANIFEST_VALUES="$(node -e '
@@ -123,9 +97,9 @@ for plugin in "${OFFICIAL_PLUGINS[@]}"; do
     fail "neither sha256sum nor shasum is available"
   fi
 
-  # Keep exactly the current development package for this id. The backend seeder
-  # reads this directory on restart, so leaving an older same-version archive here
-  # could overwrite the package that this script just installed.
+  # Keep exactly the current development package for this id. The seeder keeps only the
+  # highest version per id anyway, but an older same-version archive left here would
+  # carry a stale checksum pair and could win the scan nondeterministically.
   STALE_PACKAGES=(
     "$PACKAGE_DIR/$PLUGIN_ID"-*.fyp
     "$PACKAGE_DIR/$PLUGIN_ID"-*.fyp.sha256
@@ -134,23 +108,20 @@ for plugin in "${OFFICIAL_PLUGINS[@]}"; do
     rm -f -- "${STALE_PACKAGES[@]}"
   fi
 
-  STAGED_ARCHIVE="$PACKAGE_DIR/$(basename "$ARCHIVE")"
   cp "$ARCHIVE" "$SIDECAR" "$PACKAGE_DIR/"
-
-  PAYLOAD="$(node -e \
-    'process.stdout.write(JSON.stringify({ path: process.argv[1] }))' \
-    "$STAGED_ARCHIVE")"
-  HTTP_STATUS="$(curl -sS -o "$RESPONSE_FILE" -w '%{http_code}' \
-    "${AUTH_HEADERS[@]}" \
-    -H 'Content-Type: application/json' \
-    -X POST "$BASE_URL/api/plugin-market/upload-native" \
-    --data "$PAYLOAD" || true)"
-
-  if [[ ! "$HTTP_STATUS" =~ ^2[0-9][0-9]$ ]]; then
-    fail "installing $PLUGIN_ID returned HTTP ${HTTP_STATUS:-unreachable}: $(<"$RESPONSE_FILE")"
-  fi
-  echo "==> Installed $PLUGIN_ID $PLUGIN_VERSION"
+  echo "==> Staged $PLUGIN_ID $PLUGIN_VERSION"
 done
 
 echo
-echo "All official plugins were built, staged, and installed successfully."
+echo "All official plugins were built and staged successfully."
+echo
+echo "To activate them:"
+echo "  1. Restart your dev backend (IDE run config). At startup the official-plugin"
+echo "     seeder scans $PACKAGE_DIR, verifies each .sha256 sidecar, and"
+echo "     installs/upgrades/refreshes the staged packages through the trusted path."
+echo "  2. The desktop shell is NOT affected by this directory — it points the seeder"
+echo "     at its own bundled plugins directory via -Dfengyu.plugins.official-directory."
+echo
+echo "Note: a plugin you uninstalled in the host UI stays skipped while its uninstall"
+echo "tombstone exists (<runtime data root>/manifest-digests/<id>.uninstalled); reinstall"
+echo "it through the UI (or delete the tombstone) to let the seeder manage it again."

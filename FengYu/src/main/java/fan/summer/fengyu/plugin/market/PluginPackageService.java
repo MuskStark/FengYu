@@ -36,6 +36,10 @@ public class PluginPackageService {
     private static final long MAX_PACKAGE_BYTES = 100L * 1024 * 1024;
     private static final long MAX_EXPANDED_BYTES = 300L * 1024 * 1024;
     static final int MAX_MANIFEST_BYTES = 1024 * 1024;
+    /** Entry-count ceiling for one package — bounds inode exhaustion from empty entries. */
+    static final int MAX_PACKAGE_ENTRIES = 10_000;
+    /** Ceiling for an uploaded {@code .fyp.sha256} sidecar — one digest line is under 100 bytes. */
+    private static final long MAX_SIDECAR_BYTES = 1024 * 1024;
     private static final long MIN_TIMEOUT_SECONDS = 1L;
     private static final long MAX_TIMEOUT_SECONDS = 600L;
     /**
@@ -77,10 +81,11 @@ public class PluginPackageService {
 
     /** Test seam for verifying uninstall data-retention policy without touching the real runtime. */
     PluginPackageService(String directory, Path dataRoot) {
-        // The manifest schema declares `additionalProperties: true`, so third-party packages may
-        // carry forward-compatible fields the host doesn't model yet (e.g. a future `i18n` block
-        // before the host upgraded). Tolerate unknown fields on read instead of failing the whole
-        // install — a strict mapper would crash a package whose only offense is shipping a new field.
+        // DELIBERATELY more lenient than toolchain/spec/manifest.schema.json (which declares
+        // `additionalProperties: false` to keep the contract total for generators/CLI): the
+        // host tolerates unknown fields on read so a package validated by a NEWER spec still
+        // installs on an older host instead of failing over a field this build doesn't model.
+        // The divergence is one-directional and safe (host-accepted ⊇ spec-valid).
         this.json = JsonMapper.builder().findAndAddModules().build()
                 .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         this.root = directory == null || directory.isBlank()
@@ -153,14 +158,60 @@ public class PluginPackageService {
     }
 
     public PluginManifest install(MultipartFile file) throws IOException {
+        return install(file, null);
+    }
+
+    /**
+     * Installs an uploaded package, optionally verifying a packager-written
+     * {@code .sha256} sidecar. When the user enabled the supply-chain policy
+     * ({@code marketplace.require_checksum}), a missing or mismatching sidecar rejects
+     * the install — the pin can only tighten, mirroring pinned-source policies.
+     */
+    public PluginManifest install(MultipartFile file, MultipartFile checksumSidecar) throws IOException {
         if (file.isEmpty()) throw new IllegalArgumentException("Plugin package is empty");
         if (file.getSize() > MAX_PACKAGE_BYTES) throw new IllegalArgumentException("Plugin package exceeds 100 MB");
         String name = Optional.ofNullable(file.getOriginalFilename()).orElse("");
         if (!name.toLowerCase(Locale.ROOT).endsWith(".fyp")) {
             throw new IllegalArgumentException("Expected a .fyp plugin package");
         }
+        boolean enforcement = fan.summer.fengyu.ai.service.AiConfigServiceHeadless
+                .isMarketplaceChecksumRequired();
+        boolean sidecarPresent = checksumSidecar != null && !checksumSidecar.isEmpty();
+        if (enforcement || sidecarPresent) {
+            // A PRESENT sidecar is always verified (mismatch rejects even with enforcement
+            // off); with enforcement on, its presence is also mandatory.
+            verifySidecar(file, checksumSidecar);
+        }
         try (InputStream input = file.getInputStream()) {
             return installArchive(input);
+        }
+    }
+
+    /**
+     * Sidecar format is the sha256sum convention: {@code <hex>  <filename>}. The sidecar is
+     * read with an explicit size ceiling — the digest line is under a hundred bytes, so
+     * anything larger is a malformed upload and must not rely on the global multipart limits
+     * to be rejected.
+     */
+    private static void verifySidecar(MultipartFile archive, MultipartFile sidecar) throws IOException {
+        if (sidecar == null || sidecar.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Checksum enforcement is enabled: the package must be uploaded together with "
+                            + "its .fyp.sha256 sidecar (produced by the fengyu CLI packager)");
+        }
+        if (sidecar.getSize() > MAX_SIDECAR_BYTES) {
+            throw new IllegalArgumentException(
+                    "The .fyp.sha256 sidecar exceeds " + MAX_SIDECAR_BYTES
+                            + " bytes — a checksum file is one digest line");
+        }
+        String expected = PluginIntegrityStore.sha256Hex(archive.getInputStream());
+        String declared = new String(sidecar.getInputStream().readAllBytes(),
+                java.nio.charset.StandardCharsets.UTF_8).trim();
+        String declaredHex = declared.split("\\s+")[0];
+        if (!declaredHex.equalsIgnoreCase(expected)) {
+            throw new IllegalArgumentException(
+                    "Checksum mismatch: package digest " + expected + " does not match sidecar "
+                            + declaredHex + " — refusing to install");
         }
     }
 
@@ -169,15 +220,31 @@ public class PluginPackageService {
             throw new IllegalArgumentException("Expected a .fyp plugin package");
         }
         if (Files.size(archive) > MAX_PACKAGE_BYTES) throw new IllegalArgumentException("Plugin package exceeds 100 MB");
-        // A matching `.fyp.sha256` sidecar (written by the CLI packager, verified by the official
-        // seeder) is the trust credential that lets a local install claim official identity /
-        // the fan.summer.* namespace. Without it the install stays untrusted, so the existing
-        // validate() reservation blocks official/namespace-squatting. Multipart upload cannot
-        // carry a sidecar and stays untrusted; official plugins are installed via this native path.
-        boolean trusted = verifySidecar(archive);
+        // A matching `.fyp.sha256` sidecar is an INTEGRITY credential only: anyone
+        // distributing a package can produce both files, so a locally installed package can
+        // never claim official identity or the fan.summer.* namespace — those come
+        // exclusively from the host-bundled seeder (installTrusted). Asymmetric signatures
+        // over a published key are the tracked follow-up for downloadable officials.
+        //
+        // P1-5: the require-checksum policy applies on EVERY untrusted install path. A
+        // PRESENT sidecar is always verified — a mismatch rejects the install even when
+        // enforcement is off (a broken pin must never install silently).
+        Path sidecarPath = Path.of(archive + ".sha256");
+        boolean sidecarPresent = Files.isRegularFile(sidecarPath);
+        if (sidecarPresent) {
+            if (!verifySidecar(archive)) {
+                throw new IllegalArgumentException(
+                        "Checksum mismatch for " + archive.getFileName() + ": the .sha256 sidecar "
+                                + "does not match the package — refusing to install");
+            }
+        } else if (fan.summer.fengyu.ai.service.AiConfigServiceHeadless.isMarketplaceChecksumRequired()) {
+            throw new IllegalArgumentException(
+                    "Checksum enforcement is enabled: " + archive.getFileName() + " must carry a "
+                            + ".fyp.sha256 sidecar next to it");
+        }
         String archiveSha256 = PluginIntegrityStore.sha256Hex(archive);
         try (InputStream input = Files.newInputStream(archive)) {
-            return installArchive(input, trusted, archiveSha256);
+            return installArchive(input, false, archiveSha256);
         }
     }
 
@@ -237,9 +304,41 @@ public class PluginPackageService {
     }
 
     public PluginManifest installFromUrl(String url) throws IOException, InterruptedException {
+        return installFromUrl(url, null);
+    }
+
+    /**
+     * Installs a {@code .fyp} downloaded from {@code url}, optionally verified against
+     * {@code expectedSha256} (the catalog entry's {@code sha256}).
+     *
+     * <p>Verification policy — every combination must fail closed:
+     * <ul>
+     *   <li>checksum enforcement ON: a digest must be supplied and match (the download
+     *       itself satisfies the policy; no sidecar exists on this path).</li>
+     *   <li>enforcement OFF, {@code https} URL: allowed (transport integrity), digest still
+     *       verified when supplied.</li>
+     *   <li>enforcement OFF, plain {@code http} URL: allowed only with a supplied digest —
+     *       otherwise a network attacker could substitute the package bytes.</li>
+     * </ul>
+     */
+    public PluginManifest installFromUrl(String url, String expectedSha256)
+            throws IOException, InterruptedException {
         URI uri = URI.create(url);
         if (!List.of("https", "http").contains(uri.getScheme())) {
             throw new IllegalArgumentException("Plugin download URL must use HTTP(S)");
+        }
+        boolean digestSupplied = expectedSha256 != null && !expectedSha256.isBlank();
+        boolean enforcementOn =
+                fan.summer.fengyu.ai.service.AiConfigServiceHeadless.isMarketplaceChecksumRequired();
+        if (enforcementOn && !digestSupplied) {
+            throw new IllegalArgumentException(
+                    "Checksum enforcement is enabled and the catalog entry carries no sha256 — "
+                            + "download the .fyp with its .sha256 sidecar and install it locally");
+        }
+        if ("http".equals(uri.getScheme()) && !digestSupplied) {
+            throw new IllegalArgumentException(
+                    "Plain-http plugin downloads require a sha256 digest in the catalog entry "
+                            + "(an unverified http download can be substituted on the wire)");
         }
         HttpRequest request = HttpRequest.newBuilder(uri).timeout(Duration.ofMinutes(2)).GET().build();
         HttpResponse<InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
@@ -248,8 +347,43 @@ public class PluginPackageService {
         }
         long size = response.headers().firstValueAsLong("content-length").orElse(-1);
         if (size > MAX_PACKAGE_BYTES) throw new IllegalArgumentException("Plugin package exceeds 100 MB");
-        try (InputStream body = response.body()) {
-            return installArchive(body);
+        if (!digestSupplied) {
+            try (InputStream body = response.body()) {
+                return installArchive(body);
+            }
+        }
+        // Digest-verified path: the bytes must be pinned to a file so the digest and the
+        // installed archive are exactly the same bytes.
+        Path staging = Files.createTempFile("fengyu-plugin-download-", ".fyp");
+        try {
+            long total = 0;
+            byte[] buffer = new byte[16 * 1024];
+            try (InputStream body = response.body();
+                    var out = Files.newOutputStream(staging)) {
+                int count;
+                while ((count = body.read(buffer)) >= 0) {
+                    total += count;
+                    if (total > MAX_PACKAGE_BYTES) {
+                        throw new IllegalArgumentException("Plugin package exceeds 100 MB");
+                    }
+                    out.write(buffer, 0, count);
+                }
+            }
+            String actual = PluginIntegrityStore.sha256Hex(staging);
+            if (!actual.equalsIgnoreCase(expectedSha256.trim())) {
+                throw new IllegalArgumentException(
+                        "SHA-256 mismatch for the downloaded plugin (catalog pins " + expectedSha256.trim()
+                                + ", download hashes " + actual + ") — refusing to install");
+            }
+            try (InputStream input = Files.newInputStream(staging)) {
+                return installArchive(input, false, actual);
+            }
+        } finally {
+            try {
+                Files.deleteIfExists(staging);
+            } catch (IOException ignored) {
+                // Temp-file cleanup only.
+            }
         }
     }
 
@@ -371,9 +505,16 @@ public class PluginPackageService {
 
     private void extract(InputStream input, Path staging) throws IOException {
         long total = 0;
+        int entries = 0;
         byte[] buffer = new byte[16 * 1024];
         try (ZipInputStream zip = new ZipInputStream(input)) {
             for (ZipEntry entry; (entry = zip.getNextEntry()) != null;) {
+                // Entry-count cap: the expanded-bytes cap cannot see zero-byte entries, and a
+                // zip of millions of empty entries would exhaust inodes long before bytes.
+                if (++entries > MAX_PACKAGE_ENTRIES) {
+                    throw new IllegalArgumentException("Package contains more than "
+                            + MAX_PACKAGE_ENTRIES + " entries");
+                }
                 Path target = staging.resolve(entry.getName()).normalize();
                 if (!target.startsWith(staging)) throw new IllegalArgumentException("Package contains an unsafe path");
                 if (entry.isDirectory()) {

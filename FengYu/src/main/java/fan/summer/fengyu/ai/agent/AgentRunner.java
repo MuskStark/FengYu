@@ -2,8 +2,11 @@ package fan.summer.fengyu.ai.agent;
 
 import fan.summer.fengyu.ai.util.JsonHelper;
 import fan.summer.fengyu.ai.tools.ToolApprovalPolicy;
+import fan.summer.fengyu.ai.tools.ToolGuardService;
 import fan.summer.fengyu.ai.tools.ToolResultStatus;
 import fan.summer.fengyu.ai.tools.AiPermissionContext;
+import fan.summer.fengyu.ai.tools.AiRunContext;
+import fan.summer.fengyu.ai.tools.ToolEffect;
 import fan.summer.fengyu.ai.tools.AiPermissionMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -75,6 +78,10 @@ public class AgentRunner {
     private final Supplier<List<ToolCallback>> toolProvider;
     private final PlanGenerator planGenerator;
     private final StepExecutor stepExecutor;
+    /** Optional layered guard (PreToolUse hooks + permission rules); null keeps legacy policy. */
+    private final ToolGuardService guard;
+    /** Optional usage metrics; null in tests keeps the runner fully side-effect free. */
+    private final fan.summer.fengyu.ai.metrics.AiUsageMetrics metrics;
 
     /**
      * Fully-injected constructor (used by tests and by production wiring alike).
@@ -86,15 +93,30 @@ public class AgentRunner {
      * @param stepExecutor  the step-execution seam; runs one step's tool
      */
     public AgentRunner(List<ToolCallback> tools, PlanGenerator planGenerator, StepExecutor stepExecutor) {
-        this(() -> tools == null ? List.of() : tools, planGenerator, stepExecutor);
+        this(() -> tools == null ? List.of() : tools, planGenerator, stepExecutor, null, null);
     }
 
     /** Production constructor for a tool catalog that can change between agent runs. */
     public AgentRunner(Supplier<List<ToolCallback>> toolProvider, PlanGenerator planGenerator,
                        StepExecutor stepExecutor) {
+        this(toolProvider, planGenerator, stepExecutor, null, null);
+    }
+
+    /** Production constructor — the guard layers hooks + permission rules over the mode default. */
+    public AgentRunner(Supplier<List<ToolCallback>> toolProvider, PlanGenerator planGenerator,
+                       StepExecutor stepExecutor, ToolGuardService guard) {
+        this(toolProvider, planGenerator, stepExecutor, guard, null);
+    }
+
+    /** Widest constructor — guard plus usage metrics. */
+    public AgentRunner(Supplier<List<ToolCallback>> toolProvider, PlanGenerator planGenerator,
+                       StepExecutor stepExecutor, ToolGuardService guard,
+                       fan.summer.fengyu.ai.metrics.AiUsageMetrics metrics) {
         this.toolProvider = toolProvider == null ? List::of : toolProvider;
         this.planGenerator = planGenerator;
         this.stepExecutor = stepExecutor;
+        this.guard = guard;
+        this.metrics = metrics;
     }
 
     // ── Public seam interfaces ─────────────────────────────────────────
@@ -170,9 +192,27 @@ public class AgentRunner {
     // ── The state machine ──────────────────────────────────────────────
 
     private void drive(AgentRun run, AgentEventSink sink) {
+        final java.util.concurrent.atomic.AtomicBoolean metricsClosed =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
+        try {
+            driveGuarded(run, sink, metricsClosed);
+        } finally {
+            // Every terminal transition funnels through finishXxx helpers that close the
+            // metrics EXACTLY once; abnormal exits (interrupt/unexpected) still record a
+            // terminal status here so no run leaks its started-state (P2-5).
+            if (metrics != null && metricsClosed.compareAndSet(false, true)) {
+                recordRunMetrics(run.getRunId(),
+                        run.getStatus() == AgentRunStatus.CANCELLED ? "cancelled" : "failed");
+            }
+        }
+    }
+
+    private void driveGuarded(AgentRun run, AgentEventSink sink,
+                              java.util.concurrent.atomic.AtomicBoolean metricsClosed) {
         // One consistent catalog per run. Plugin callbacks re-check enabled/installed state at call
         // time, so disabling a plugin also safely stops a later step in an already-running plan.
         List<ToolCallback> tools = List.copyOf(toolProvider.get());
+        if (metrics != null) metrics.runStarted(run.getRunId());
         AgentRunConfig cfg = run.getConfig();
         int replansRemaining = cfg.maxReplans();
         AgentPlan suppliedWorkflow = run.getPlan();
@@ -191,7 +231,7 @@ public class AgentRunner {
                         plan = planGenerator.generate(planningGoal, tools,
                                 delta -> safe(sink, s -> s.onPlanToken(delta)));
                     }
-                    validatePlan(plan, tools);
+                    validatePlan(plan, tools, cfg.isReadOnly());
                 } catch (Exception e) {
                     log.error("agent {}: planning failed", run.getRunId(), e);
                     run.setStatus(AgentRunStatus.FAILED);
@@ -222,7 +262,7 @@ public class AgentRunner {
                 // run plan rather than the stale pre-approval local variable.
                 plan = run.getPlan();
                 try {
-                    validatePlan(plan, tools);
+                    validatePlan(plan, tools, cfg.isReadOnly());
                 } catch (Exception e) {
                     run.setStatus(AgentRunStatus.FAILED);
                     safe(sink, s -> s.onError("Invalid workflow: " + e.getMessage()));
@@ -235,7 +275,10 @@ public class AgentRunner {
                     // All steps completed → terminal success.
                     String summary = "Completed " + plan.steps().size() + " step(s) for goal: " + plan.goal();
                     run.setStatus(AgentRunStatus.COMPLETED);
+                    closeRunMetrics(metricsClosed, run.getRunId(), "completed");
                     safe(sink, s -> s.onComplete(summary));
+                    final String goalAtCompletion = plan.goal();
+                    fireGuard(() -> guard.observeRunComplete(run.getRunId(), goalAtCompletion, summary, false));
                     return;
                 }
                 if (run.isCancelled()) {
@@ -254,9 +297,13 @@ public class AgentRunner {
 
                 // No replan possible → terminal failure.
                 run.setStatus(AgentRunStatus.FAILED);
-                safe(sink, s -> s.onError(
-                        "Step " + failure.stepIndex + " failed: " + failure.message
-                                + " (replans exhausted)"));
+                closeRunMetrics(metricsClosed, run.getRunId(), "failed");
+                String failureMessage = "Step " + failure.stepIndex + " failed: " + failure.message
+                        + " (replans exhausted)";
+                safe(sink, s -> s.onError(failureMessage));
+                final String goalAtFailure = plan.goal();
+                fireGuard(() -> guard.observeRunComplete(run.getRunId(), goalAtFailure,
+                        failureMessage, true));
                 return;
             }
         } catch (InterruptedException e) {
@@ -308,8 +355,48 @@ public class AgentRunner {
                     return new StepFailure(ready.getFirst().index(), "cancelled before step");
                 }
 
-                // The run owns one approval latch, so approval checkpoints remain deterministic.
+                // Resolve {{steps.N.result}}/{{last.result}} ONCE, before any guard or
+                // approval decision: the guard, the legacy approval policy, the executor,
+                // and the PostToolUse audit hooks must all see the SAME effective
+                // arguments. Checking templates ("{{steps.0.result}}") would let a
+                // previous step's output smuggle a denied command past the rules.
+                Map<Integer, AgentStep> effectiveSteps = new LinkedHashMap<>();
                 for (AgentStep step : ready) {
+                    effectiveSteps.put(step.index(), new AgentStep(step.index(), step.toolName(),
+                            resolveArgs(step.args(), results, results.get(step.index() - 1)),
+                            step.description(), step.requiresApproval(), step.dependsOn()));
+                }
+
+                // The run owns one approval latch, so approval checkpoints remain deterministic.
+                // Layered pipeline per step: guard (hooks + rules) first — a deny fails the
+                // step with its reason (visible + replan-able), an allow skips the gate —
+                // then the legacy per-step/mode approval.
+                for (AgentStep step : effectiveSteps.values()) {
+                    if (guard != null) {
+                        ToolCallback stepTool = findTool(step.toolName(), tools);
+                        ToolGuardService.GuardDecision guarded =
+                                guard.decide(step.toolName(), stepTool, toJsonArgs(step.args()),
+                                        cfg.effectivePermissionMode(), run.getRunId());
+                        if (guarded.verdict() == ToolGuardService.Verdict.DENY) {
+                            // Record the denial like any other failed step so history/UI
+                            // show it — the model sees the reason and can replan around it.
+                            run.addExecution(new StepExecution(step.index(),
+                                    StepStatus.FAILED, guarded.reason()));
+                            return new StepFailure(step.index(), guarded.reason());
+                        }
+                        // A step flagged requiresApproval always pauses — an allow rule or a
+                        // full-access mode default must not silently skip an explicit
+                        // per-step approval flag. ASK from a rule or hook forces the gate the
+                        // same way (an explicit ask outranks the mode default).
+                        if (step.requiresApproval() || guarded.verdict() == ToolGuardService.Verdict.ASK) {
+                            run.requestApproval(AgentRunStatus.AWAITING_STEP_APPROVAL);
+                            safe(sink, s -> s.onStepApprovalRequested(step.index()));
+                            if (!awaitApprovalOrCancel(run)) {
+                                return new StepFailure(step.index(), "cancelled awaiting step approval");
+                            }
+                        }
+                        continue;
+                    }
                     if ((cfg.requireStepApproval() && step.requiresApproval())
                             || toolRequiresApproval(step, tools, cfg.effectivePermissionMode())) {
                         run.requestApproval(AgentRunStatus.AWAITING_STEP_APPROVAL);
@@ -320,14 +407,15 @@ public class AgentRunner {
                     }
                 }
 
-                List<Callable<StepOutcome>> tasks = ready.stream()
+                List<Callable<StepOutcome>> tasks = effectiveSteps.values().stream()
                         .<Callable<StepOutcome>>map(step ->
                                 () -> executeStep(run, sink, step, results, tools))
                         .toList();
                 List<Future<StepOutcome>> futures = executor.invokeAll(tasks);
                 List<StepFailure> failures = new ArrayList<>();
+                List<AgentStep> orderedSteps = List.copyOf(effectiveSteps.values());
                 for (int i = 0; i < futures.size(); i++) {
-                    AgentStep step = ready.get(i);
+                    AgentStep step = orderedSteps.get(i);
                     try {
                         StepOutcome outcome = futures.get(i).get();
                         if (outcome.failure() == null) {
@@ -363,22 +451,51 @@ public class AgentRunner {
         safe(sink, s -> s.onStepStart(step.index()));
 
         try {
-            AgentStep resolved = new AgentStep(step.index(), step.toolName(),
-                    resolveArgs(step.args(), results, results.get(step.index() - 1)),
-                    step.description(), step.requiresApproval(), step.dependsOn());
+            // The step arrives pre-resolved (executeSteps resolved every ready step before
+            // the guard/approval pass), so guard decisions and execution agree exactly.
             AiPermissionContext.set(run.getConfig().effectivePermissionMode());
+            AiRunContext.set(run.getRunId());
+            fan.summer.fengyu.ai.tools.RunFileContext.set(run.getFileRefs().isEmpty()
+                    ? null : run.getFileRefs());
             String result;
-            try { result = stepExecutor.execute(resolved, tools); }
-            finally { AiPermissionContext.clear(); }
+            try { result = stepExecutor.execute(step, tools); }
+            finally {
+                AiPermissionContext.clear();
+                AiRunContext.clear();
+                fan.summer.fengyu.ai.tools.RunFileContext.clear();
+            }
             results.put(step.index(), result);
             run.addExecution(new StepExecution(step.index(), StepStatus.COMPLETED, result));
+            if (metrics != null) metrics.stepFinished(step.toolName(), "completed");
             safe(sink, s -> s.onStepComplete(step.index(), result));
+            fireGuard(() -> guard.observeToolResult(step.toolName(),
+                    toJsonArgs(step.args()), result, false, run.getRunId()));
             return new StepOutcome(null);
         } catch (Exception e) {
             String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             run.addExecution(new StepExecution(step.index(), StepStatus.FAILED, msg));
+            if (metrics != null) metrics.stepFinished(step.toolName(), "failed");
+            fireGuard(() -> guard.observeToolResult(step.toolName(),
+                    toJsonArgs(step.args()), msg, true, run.getRunId()));
             return new StepOutcome(new StepFailure(step.index(), msg));
         }
+    }
+
+    /** Hook observation must never break a run — the guard itself also fails open. */
+    private void fireGuard(Runnable observation) {
+        if (guard == null) return;
+        try {
+            observation.run();
+        } catch (Exception e) {
+            log.warn("guard observation failed", e);
+        }
+    }
+
+    private static ToolCallback findTool(String name, List<ToolCallback> tools) {
+        for (ToolCallback tool : tools) {
+            if (tool.getToolDefinition().name().equals(name)) return tool;
+        }
+        return null;
     }
 
     private static Set<Integer> dependencies(AgentStep step) {
@@ -432,6 +549,23 @@ public class AgentRunner {
     private void finishCancelled(AgentRun run, AgentEventSink sink) {
         run.setStatus(AgentRunStatus.CANCELLED);
         safe(sink, s -> s.onError("Run cancelled"));
+    }
+
+    private void recordRunMetrics(String runId, String status) {
+        if (metrics == null) return;
+        try {
+            metrics.runFinished(runId, status);
+        } catch (Exception ignored) {
+            // Metrics must never influence a run.
+        }
+    }
+
+    /** Records the terminal metric exactly once per run (P2-5). */
+    private void closeRunMetrics(java.util.concurrent.atomic.AtomicBoolean metricsClosed,
+                                 String runId, String status) {
+        if (metricsClosed.compareAndSet(false, true)) {
+            recordRunMetrics(runId, status);
+        }
     }
 
     // ── Misc helpers ───────────────────────────────────────────────────
@@ -497,6 +631,15 @@ public class AgentRunner {
 
     /** Validates workflows from both the model and the HTTP API before any tool is called. */
     static void validatePlan(AgentPlan plan, List<ToolCallback> tools) {
+        validatePlan(plan, tools, false);
+    }
+
+    /**
+     * Full validation; a read-only run additionally rejects every step whose tool is not a
+     * known {@code read}-effect tool — the declared "research/review only" capability, so
+     * planning/review sub-tasks can never mutate anything even with full permissions granted.
+     */
+    static void validatePlan(AgentPlan plan, List<ToolCallback> tools, boolean readOnly) {
         if (plan == null) throw new IllegalArgumentException("workflow is required");
         if (plan.steps() == null) throw new IllegalArgumentException("workflow steps are required");
 
@@ -514,6 +657,10 @@ public class AgentRunner {
                 throw new IllegalArgumentException(
                         "step " + i + " references unavailable tool '" + step.toolName() + "'");
             }
+            if (readOnly && !toolIsReadEffect(step.toolName(), tools)) {
+                throw new IllegalArgumentException("step " + i + " uses non-read tool '"
+                        + step.toolName() + "'; this run is read-only (research/review)");
+            }
             for (Integer dependency : step.dependsOn()) {
                 if (dependency == null || dependency < 0 || dependency >= i) {
                     throw new IllegalArgumentException(
@@ -522,6 +669,15 @@ public class AgentRunner {
             }
             validateReferences(step.args(), i);
         }
+    }
+
+    private static boolean toolIsReadEffect(String toolName, List<ToolCallback> tools) {
+        for (ToolCallback tool : tools) {
+            if (!tool.getToolDefinition().name().equals(toolName)) continue;
+            return tool instanceof fan.summer.fengyu.ai.tools.AuditedToolCallback audited
+                    && audited.effect() == ToolEffect.READ;
+        }
+        return false;
     }
 
     private static void validateReferences(Object value, int currentIndex) {

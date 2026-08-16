@@ -151,7 +151,31 @@ POST /api/settings/database/reset
 
 This backs up the current `datasource.properties`, clears it, and restarts the backend into SETUP mode so the first-launch wizard can collect new parameters. Functionally equivalent to deleting `datasource.properties` and restarting manually — see [Database — Reconfigure](/en/guide/database#reconfigure).
 
+## Secret storage at rest
+
+Local secrets (the datasource password, AI provider API keys, MCP server credentials) are
+encrypted with a machine-bound key before they are written to disk. By default that key is a
+random value stored at `.fengyu/config/.machineid` — this binds every encrypted value to the
+machine (a stolen config file is useless elsewhere) but does not protect against a reader
+running as the same OS user.
+
+Deployments that keep secrets in the operating system's credential store can inject the key
+instead of using the file. Set `FENGYU_MACHINE_KEY` (system property or environment variable,
+16+ characters, stable across restarts) before launching the backend — for example from the
+macOS Keychain:
+
+```bash
+export FENGYU_MACHINE_KEY="$(security find-generic-password -s FengYu -a machine-key -w)"
+java -jar Infinia.jar --token=...
+```
+
+Equivalent lookups: `secret-tool lookup fengyu machine-key` on Linux, or a Credential Manager
+read in the Windows run script. Every encrypted value is bound to the injected key — switching
+or losing it makes the stored ciphertexts undecryptable (reset them via the settings UI).
+While `FENGYU_MACHINE_KEY` is set, the `.machineid` file is not used or created.
+
 ## Next steps
+
 
 - [Database](/en/guide/database) — the first-launch wizard and the four backends.
 - [AI Chat](/en/guide/ai-chat) — using the backend you just configured.

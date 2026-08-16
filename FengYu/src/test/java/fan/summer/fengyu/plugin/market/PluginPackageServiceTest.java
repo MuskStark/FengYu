@@ -206,14 +206,14 @@ class PluginPackageServiceTest {
     }
 
     /**
-     * Feature: a local install via the native path may claim official identity when it ships a
-     * matching {@code .sha256} sidecar (the CLI packager's trust credential, the same one the
-     * official seeder verifies). This lets a user install a rebuilt official plugin locally through
-     * the same trust level as the seeder. The sidecar format is GNU coreutils {@code sha256sum -c}:
-     * {@code <hex>  <basename>}.
+     * Contract (P0-8 hardening): a local install via the native path can NEVER claim official
+     * identity — the {@code .sha256} sidecar is an integrity credential only (anyone distributing
+     * a package can produce both files). Official identity and the {@code fan.summer.*} namespace
+     * come exclusively from the host-bundled seeder ({@code installTrusted}). The sidecar format
+     * is GNU coreutils {@code sha256sum -c}: {@code <hex>  <basename>}.
      */
     @Test
-    void nativeInstallWithMatchingSidecarInstallsOfficialPlugin() throws Exception {
+    void nativeInstallWithMatchingSidecarStillRejectsOfficialClaim() throws Exception {
         PluginPackageService service = new PluginPackageService(temp.toString());
         Path archive = writeArchive(temp.resolve("official.fyp"),
             """
@@ -224,9 +224,28 @@ class PluginPackageServiceTest {
             "ui/index.html", "<html>official</html>");
         writeSidecar(archive);
 
+        IllegalArgumentException rejected = org.junit.jupiter.api.Assertions.assertThrows(
+            IllegalArgumentException.class, () -> service.install(archive));
+        org.junit.jupiter.api.Assertions.assertTrue(rejected.getMessage().contains("official"),
+            "got: " + rejected.getMessage());
+    }
+
+    /** The sidecar still carries integrity value for ordinary third-party packages: a
+     *  matching sidecar installs (verified), a mismatched one is rejected. */
+    @Test
+    void nativeInstallWithMatchingSidecarInstallsThirdPartyPackage() throws Exception {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        Path archive = writeArchive(temp.resolve("third.fyp"),
+            """
+            {"schemaVersion":2,"id":"com.example.third","name":"Third","description":"d",
+             "version":"1.0.0","author":"a","icon":"puzzle-outline","category":"dev",
+             "ui":{"entry":"ui/index.html"},"permissions":[]}
+            """,
+            "ui/index.html", "<html>third</html>");
+        writeSidecar(archive);
         PluginManifest manifest = service.install(archive);
-        assertEquals("fan.summer.demo", manifest.id());
-        assertTrue(manifest.official(), "a sidecar-verified local install may claim official");
+        assertEquals("com.example.third", manifest.id());
+        assertFalse(manifest.official());
     }
 
     /**
@@ -402,5 +421,105 @@ class PluginPackageServiceTest {
         }
         Files.write(path, bytes.toByteArray());
         return path;
+    }
+
+    // ── P1-5: the require-checksum policy must hold on EVERY untrusted install path ──
+
+    /**
+     * With enforcement on: a native (upload-native) install without a sidecar is rejected;
+     * a wrong sidecar is rejected even with enforcement OFF (a broken pin never installs);
+     * a matching sidecar still installs (and may claim official identity).
+     */
+    @Test
+    void checksumPolicyCoversNativeInstallPath() throws Exception {
+        Path archive = writeArchive(temp.resolve("native-check.fyp"),
+            """
+            {"schemaVersion":2,"id":"com.example.nativecheck","name":"NC","description":"d",
+             "version":"1.0.0","author":"a","icon":"i","category":"dev",
+             "ui":{"entry":"ui/index.html"},"permissions":[]}
+            """, "ui/index.html", "<html></html>");
+        PluginPackageService service = new PluginPackageService(temp.toString());
+
+        try (var config = org.mockito.Mockito.mockStatic(
+                fan.summer.fengyu.ai.service.AiConfigServiceHeadless.class)) {
+            config.when(() -> fan.summer.fengyu.ai.service.AiConfigServiceHeadless
+                    .isMarketplaceChecksumRequired()).thenReturn(true);
+            // No sidecar → rejected under enforcement.
+            org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                    () -> service.install(archive),
+                    "enforcement must reject a sidecar-less native install");
+
+            // Wrong sidecar → rejected (even later, with enforcement off).
+            Files.writeString(Path.of(archive + ".sha256"), "deadbeef  native-check.fyp\n");
+            config.when(() -> fan.summer.fengyu.ai.service.AiConfigServiceHeadless
+                    .isMarketplaceChecksumRequired()).thenReturn(false);
+            IllegalArgumentException mismatch = org.junit.jupiter.api.Assertions.assertThrows(
+                    IllegalArgumentException.class, () -> service.install(archive));
+            org.junit.jupiter.api.Assertions.assertTrue(mismatch.getMessage().contains("mismatch"));
+
+            // Matching sidecar → installs (and is trusted for the official namespace).
+            String digest = PluginIntegrityStore.sha256Hex(archive);
+            Files.writeString(Path.of(archive + ".sha256"), digest + "  native-check.fyp\n");
+            PluginManifest manifest = service.install(archive);
+            org.junit.jupiter.api.Assertions.assertEquals("com.example.nativecheck", manifest.id());
+        }
+    }
+
+    /** With enforcement on, a URL install without a catalog sha256 is refused — the download
+     *  itself must satisfy the policy (no sidecar exists on this path). */
+    @Test
+    void checksumPolicyBlocksUrlInstallsWithoutADigest() {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        try (var config = org.mockito.Mockito.mockStatic(
+                fan.summer.fengyu.ai.service.AiConfigServiceHeadless.class)) {
+            config.when(() -> fan.summer.fengyu.ai.service.AiConfigServiceHeadless
+                    .isMarketplaceChecksumRequired()).thenReturn(true);
+            IllegalArgumentException rejected = org.junit.jupiter.api.Assertions.assertThrows(
+                    IllegalArgumentException.class,
+                    () -> service.installFromUrl("https://example.com/plugin.fyp"));
+            org.junit.jupiter.api.Assertions.assertTrue(rejected.getMessage().contains("sha256"),
+                    "got: " + rejected.getMessage());
+        }
+    }
+
+    /** Plain-http downloads are only accepted when the catalog pins a digest — an unverified
+     *  http download can be substituted on the wire. */
+    @Test
+    void plainHttpUrlInstallRequiresADigestEvenWithoutEnforcement() {
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        try (var config = org.mockito.Mockito.mockStatic(
+                fan.summer.fengyu.ai.service.AiConfigServiceHeadless.class)) {
+            config.when(() -> fan.summer.fengyu.ai.service.AiConfigServiceHeadless
+                    .isMarketplaceChecksumRequired()).thenReturn(false);
+            IllegalArgumentException rejected = org.junit.jupiter.api.Assertions.assertThrows(
+                    IllegalArgumentException.class,
+                    () -> service.installFromUrl("http://example.com/plugin.fyp"));
+            org.junit.jupiter.api.Assertions.assertTrue(rejected.getMessage().contains("sha256"),
+                    "got: " + rejected.getMessage());
+        }
+    }
+
+    /** A multipart upload with a MISMATCHED sidecar is rejected even with enforcement off. */
+    @Test
+    void mismatchedMultipartSidecarRejectsEvenWithoutEnforcement() throws Exception {
+        Path archive = writeArchive(temp.resolve("mm.fyp"),
+            """
+            {"schemaVersion":2,"id":"com.example.mm","name":"MM","description":"d",
+             "version":"1.0.0","author":"a","icon":"i","category":"dev",
+             "ui":{"entry":"ui/index.html"},"permissions":[]}
+            """, "ui/index.html", "<html></html>");
+        byte[] body = Files.readAllBytes(archive);
+        MockMultipartFile file = new MockMultipartFile("file", "mm.fyp", "application/zip", body);
+        MockMultipartFile bad = new MockMultipartFile("sidecar", "mm.fyp.sha256",
+                "text/plain", "0000000000000000000000000000000000000000000000000000000000000000  mm.fyp\n".getBytes(StandardCharsets.UTF_8));
+        PluginPackageService service = new PluginPackageService(temp.toString());
+        try (var config = org.mockito.Mockito.mockStatic(
+                fan.summer.fengyu.ai.service.AiConfigServiceHeadless.class)) {
+            config.when(() -> fan.summer.fengyu.ai.service.AiConfigServiceHeadless
+                    .isMarketplaceChecksumRequired()).thenReturn(false);
+            IllegalArgumentException mismatch = org.junit.jupiter.api.Assertions.assertThrows(
+                    IllegalArgumentException.class, () -> service.install(file, bad));
+            org.junit.jupiter.api.Assertions.assertTrue(mismatch.getMessage().toLowerCase().contains("mismatch"));
+        }
     }
 }

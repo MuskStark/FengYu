@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { isWindowsPortable } from './portable-updater'
 import { configureUpdateFeed, updateDownloadPageUrl } from './update-feed'
+import { markUpdateInstallRestart } from '../desktop/graceful-quit'
 
 /**
  * Check for updates (async, non-blocking). Source: GitHub Releases by default, or FY-Proxy's
@@ -125,6 +126,9 @@ async function offerAutoInstall(version: string): Promise<void> {
   })
   if (choice.response === 0) {
     await autoUpdater.downloadUpdate()
+    // Tell the before-quit graceful-shutdown handler to skip its wait: this quit hands over to
+    // the installer, which must not sit behind a backend shutdown grace window.
+    markUpdateInstallRestart()
     autoUpdater.quitAndInstall()
   }
 }

@@ -47,6 +47,8 @@ public final class PluginDevServer {
     private final String host;
     private final int port;
     private final Consumer<String> onDiag;
+    private final String devToken;
+    private final java.nio.file.Path tokenFile;
     private volatile boolean closed = false;
     private final Thread acceptThread;
 
@@ -56,12 +58,15 @@ public final class PluginDevServer {
     }
 
     private PluginDevServer(ServerSocket serverSocket, Supplier<JsonRpcWorker> workerSource,
-                            String host, int port, Consumer<String> onDiag) {
+                            String host, int port, Consumer<String> onDiag,
+                            String devToken, java.nio.file.Path tokenFile) {
         this.serverSocket = serverSocket;
         this.workerSource = workerSource;
         this.host = host;
         this.port = port;
         this.onDiag = onDiag;
+        this.devToken = devToken;
+        this.tokenFile = tokenFile;
         this.acceptThread = Thread.ofPlatform().name("fengyu-dev-accept", 0).daemon(false).start(this::acceptLoop);
     }
 
@@ -71,9 +76,13 @@ public final class PluginDevServer {
     /** The bound port (useful when {@link Builder#port(int)} was given 0 for an ephemeral port). */
     public int port() { return port; }
 
+    /** The file the per-session auth token was written to (the dev Vite client reads it). */
+    public java.nio.file.Path tokenFile() { return tokenFile; }
+
     private void acceptLoop() {
         onDiag.accept("FengYu dev server listening on " + host + ":" + port
             + " (attach your IDE PluginDevMain; @infinia/plugin-dev Vite plugin connects here)");
+        onDiag.accept("dev auth token: " + tokenFile + " (connections must start with 'AUTH <token>')");
         while (!closed) {
             Socket client;
             try {
@@ -95,6 +104,19 @@ public final class PluginDevServer {
 
     private void handle(Socket client) {
         try (client; LineFramedSocketTransport transport = new LineFramedSocketTransport(client, onDiag)) {
+            // Dev-session handshake: the first inbound line must present this session's token.
+            // Loopback binding alone left the full RPC surface open to ANY local process (the
+            // production host API is token-gated); the per-session token closes that gap while
+            // staying a dev-tool-grade control (random per start, shared via a user-only file).
+            String first = transport.readFrame();
+            if (first == null || !first.equals("AUTH " + devToken)) {
+                onDiag.accept("dev server: rejected connection without a valid AUTH token");
+                transport.writeFrame("{\"jsonrpc\":\"2.0\",\"id\":null,"
+                        + "\"error\":{\"code\":-32001,\"message\":\"dev auth required: "
+                        + "start the connection with 'AUTH <token>' (see the token file printed at startup)\"}}");
+                transport.close();
+                return;
+            }
             JsonRpcWorker worker = workerSource.get();
             worker.serve(transport);
         } catch (Exception e) {
@@ -109,6 +131,7 @@ public final class PluginDevServer {
         if (closed) return;
         closed = true;
         try { serverSocket.close(); } catch (IOException ignored) {}
+        try { java.nio.file.Files.deleteIfExists(tokenFile); } catch (IOException ignored) {}
         acceptThread.interrupt();
     }
 
@@ -227,7 +250,32 @@ public final class PluginDevServer {
                     + e.getMessage(), e);
             }
             int boundPort = socket.getLocalPort();
-            return new PluginDevServer(socket, source, host, boundPort, onDiag);
+
+            // Per-session auth token: random on every start, shared with the dev Vite client
+            // through a user-scoped file (the production host API is token-gated; the dev
+            // server's RPC surface gets the same treatment at dev-tool strength).
+            byte[] tokenBytes = new byte[24];
+            new java.security.SecureRandom().nextBytes(tokenBytes);
+            String devToken = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(tokenBytes);
+            java.nio.file.Path tokenFile = java.nio.file.Path.of(
+                    System.getProperty("user.home"), ".fengyu", "dev-token-" + boundPort);
+            try {
+                java.nio.file.Files.createDirectories(tokenFile.getParent());
+                // Create the file owner-only from the start: writing first and tightening the
+                // mode afterwards would leave a brief default-permissions window holding the
+                // token. A stale file from a crashed previous run is replaced the same way the
+                // old truncate-on-write behaviour handled it.
+                java.nio.file.Files.deleteIfExists(tokenFile);
+                java.nio.file.Files.createFile(tokenFile,
+                        java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+                                java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")));
+                java.nio.file.Files.writeString(tokenFile, devToken);
+            } catch (UnsupportedOperationException unsupportedPlatform) {
+                // Non-POSIX (Windows): the file still sits under the user profile directory.
+                // Token secrecy then relies on the profile's ACLs — acceptable for a dev tool.
+                java.nio.file.Files.writeString(tokenFile, devToken);
+            }
+            return new PluginDevServer(socket, source, host, boundPort, onDiag, devToken, tokenFile);
         }
     }
 }

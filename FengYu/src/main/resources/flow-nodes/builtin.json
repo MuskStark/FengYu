@@ -1,0 +1,13 @@
+[
+  {
+    "tool": "json_format",
+    "label": "JSON 格式化",
+    "icon": "mdi-code-json",
+    "inputs": [
+      { "name": "json", "widget": "json", "title": "JSON 文本" }
+    ],
+    "outputs": [
+      { "name": "result", "title": "格式化结果", "type": "string" }
+    ]
+  }
+]

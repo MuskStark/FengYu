@@ -21,6 +21,7 @@ const accountArea = ref<HTMLElement | null>(null)
 const primaryNav = [
   { key: 'chat', to: '/', labelKey: 'sidebar.newChat', icon: 'mdi-message-outline' },
   { key: 'tools', to: '/tools', labelKey: 'sidebar.all', icon: 'mdi-view-grid-outline' },
+  { key: 'flows', to: '/flows', labelKey: 'sidebar.flows', icon: 'mdi-vector-polyline' },
   { key: 'plugins', to: '/plugins', labelKey: 'sidebar.plugins', icon: 'mdi-shopping-outline' },
   { key: 'agent', to: '/agent', labelKey: 'sidebar.agent', icon: 'mdi-source-branch' },
 ]
@@ -59,7 +60,9 @@ function openConversation(id: number) {
 
 function setCollapsed(collapsed: boolean) {
   accountMenuOpen.value = false
-  void settings.setSidebarCollapsed(collapsed)
+  // The store reverts the collapse state when the save fails; the sidebar has no
+  // error surface of its own, so the rejection is deliberately swallowed here.
+  settings.setSidebarCollapsed(collapsed).catch(() => {})
 }
 
 function toggleAccountMenu() {
@@ -99,7 +102,7 @@ function closeAccountMenuOnEscape(event: KeyboardEvent) {
         v-for="item in primaryNav"
         :key="item.key"
         class="cx-nav-item sidebar-nav-button"
-        :class="{ rail, active: route.path === item.to }"
+        :class="{ rail, active: route.path === item.to || (item.key === 'flows' && route.path.startsWith('/flows/')) }"
         :title="rail ? $t(item.labelKey) : undefined"
         @click="openPrimary(item)"
       >

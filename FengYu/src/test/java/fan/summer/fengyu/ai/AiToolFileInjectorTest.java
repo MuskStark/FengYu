@@ -9,6 +9,8 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AiToolFileInjectorTest {
 
@@ -175,5 +177,105 @@ class AiToolFileInjectorTest {
 
         assertEquals("BY_SHEET", out.get("mode"));
         assertNull(out.get("filePath"));
+    }
+
+    // ── blank write-dir default (canvas workflows) ──────────────────
+
+    private static final String WRITE_DIR_SCHEMA =
+        "{\"type\":\"object\",\"properties\":{"
+        + "\"outputDir\":{\"type\":\"string\",\"description\":\"Resolved absolute path of a writable FengYu DirectoryRef; leave empty to write into the plugin default output folder.\"}"
+        + "},\"required\":[\"outputDir\"]}";
+
+    @Test
+    void blankWriteDirParamDetectedAndFilled() {
+        assertEquals("outputDir", AiToolFileInjector.blankWriteDirParam(Map.of(), WRITE_DIR_SCHEMA));
+        assertEquals("outputDir",
+            AiToolFileInjector.blankWriteDirParam(Map.of("outputDir", "  "), WRITE_DIR_SCHEMA));
+
+        // A plain path is injected (not a FileRef): registering a grant here would restart
+        // stateful plugin workers, so the default must stay grant-free.
+        Map<String, Object> filled = AiToolFileInjector.fillDefaultOutputDir(
+            new java.util.LinkedHashMap<>(Map.of("filePrefix", "p")),
+            WRITE_DIR_SCHEMA, "/data/plugin-x/default-output");
+        assertEquals("/data/plugin-x/default-output", filled.get("outputDir"));
+        assertEquals("p", filled.get("filePrefix"));
+        assertNull(AiToolFileInjector.fillDefaultOutputDir(
+            new java.util.LinkedHashMap<>(Map.of()), WRITE_DIR_SCHEMA, null).get("outputDir"));
+    }
+
+    @Test
+    void blankWriteDirParamNotFilledWhenValueOrRefPresent() {
+        // A typed path stays — the sandbox may allow it, and the user asked for it.
+        assertNull(AiToolFileInjector.blankWriteDirParam(
+            Map.of("outputDir", "/tmp/out"), WRITE_DIR_SCHEMA));
+        // An already-injected FileRef map stays.
+        assertNull(AiToolFileInjector.blankWriteDirParam(
+            Map.of("outputDir", Map.of("id", "ref_x")), WRITE_DIR_SCHEMA));
+        // No file params at all → nothing to default.
+        assertNull(AiToolFileInjector.blankWriteDirParam(Map.of(),
+            "{\"type\":\"object\",\"properties\":{\"mode\":{\"type\":\"string\"}}}"));
+    }
+
+    // ── run file placeholder binding ────────────────────────────────
+
+    @Test
+    void bindsPlaceholderToCurrentPluginsFileRef() {
+        ActiveFileRef excelRef = new ActiveFileRef("fan.summer.excel",
+            new FileRef("ref_wb", "report.xlsx", "file", "read", 10L));
+        ActiveFileRef emailRef = new ActiveFileRef("fan.summer.email",
+            new FileRef("ref_wb2", "report.xlsx", "file", "read", 10L));
+        Map<String, Object> params = new java.util.LinkedHashMap<>(
+            Map.of("filePath", "@file:workbook", "mode", "COMPLEX"));
+
+        Map<String, Object> bound = AiToolFileInjector.bindRunFilePlaceholders(
+            params, "fan.summer.excel", Map.of("workbook", List.of(excelRef, emailRef)));
+
+        @SuppressWarnings("unchecked") Map<String, Object> ref = (Map<String, Object>) bound.get("filePath");
+        assertEquals("ref_wb", ref.get("id"));
+        assertEquals("read", ref.get("access"));
+        assertEquals("COMPLEX", bound.get("mode"));
+    }
+
+    @Test
+    void bindsNestedPlaceholdersAndLeavesPlainArgsUntouched() {
+        ActiveFileRef shared = new ActiveFileRef("fan.summer.email",
+            new FileRef("ref_dir", "out", "directory", "read", 0L));
+        Map<String, Object> params = new java.util.LinkedHashMap<>();
+        params.put("inputDirectory", "@file:outputDir");
+        params.put("subject", "Monthly report");
+        params.put("entries", List.of(Map.of("sheetName", "Sales", "columnName", "部门")));
+
+        Map<String, Object> bound = AiToolFileInjector.bindRunFilePlaceholders(
+            params, "fan.summer.email", Map.of("outputDir", List.of(shared)));
+
+        @SuppressWarnings("unchecked") Map<String, Object> ref = (Map<String, Object>) bound.get("inputDirectory");
+        assertEquals("ref_dir", ref.get("id"));
+        assertEquals("Monthly report", bound.get("subject"));
+        assertEquals(1, ((List<?>) bound.get("entries")).size());
+    }
+
+    @Test
+    void unknownInputOrPluginFailsLoudly() {
+        Map<String, Object> params = new java.util.LinkedHashMap<>(Map.of("filePath", "@file:workbook"));
+
+        var missingInput = assertThrows(IllegalArgumentException.class,
+            () -> AiToolFileInjector.bindRunFilePlaceholders(params, "fan.summer.excel", Map.of()));
+        assertTrue(missingInput.getMessage().contains("workbook"));
+
+        ActiveFileRef otherPlugin = new ActiveFileRef("fan.summer.excel",
+            new FileRef("ref_wb", "report.xlsx", "file", "read", 10L));
+        var wrongPlugin = assertThrows(IllegalArgumentException.class,
+            () -> AiToolFileInjector.bindRunFilePlaceholders(params, "fan.summer.email",
+                Map.of("workbook", List.of(otherPlugin))));
+        assertTrue(wrongPlugin.getMessage().contains("fan.summer.email"));
+    }
+
+    @Test
+    void nonPlaceholderStringsPassThroughUnchanged() {
+        Map<String, Object> params = new java.util.LinkedHashMap<>(
+            Map.of("path", "@file:with spaces/odd chars", "note", "@file:"));
+        Map<String, Object> bound = AiToolFileInjector.bindRunFilePlaceholders(
+            params, "fan.summer.excel", Map.of());
+        assertEquals(params, bound);
     }
 }

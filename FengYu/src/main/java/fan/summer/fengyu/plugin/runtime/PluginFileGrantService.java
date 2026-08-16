@@ -111,6 +111,35 @@ public class PluginFileGrantService {
         return register(pluginId, dir, "directory", "write", true);
     }
 
+    /** Name of the host-owned cross-plugin scratch root under {@link #root}. */
+    private static final String SHARED_DIRECTORY_NAME = "_shared";
+
+    /**
+     * Creates an empty host-owned scratch directory for cross-plugin workflow hand-offs (e.g. an
+     * Excel split step whose outputs a later Email step reads). Lives under the runtime-files
+     * root; the LAST revoke of a grant pointing here deletes the tree (see {@link #revoke}).
+     */
+    public Path createSharedDirectory() throws IOException {
+        return Files.createDirectories(root.resolve(SHARED_DIRECTORY_NAME).resolve(UUID.randomUUID().toString()));
+    }
+
+    /**
+     * Grants an existing path LIVE — no read snapshot — for host-created shared scratch dirs.
+     * Unlike a {@code read} {@link #grantNative}, later writes by one grantee stay visible to the
+     * others, which is exactly the hand-off semantics a multi-step workflow needs.
+     */
+    public FileRef grantLive(String pluginId, Path path, String kind, String access) throws IOException {
+        Path real = path.toRealPath();
+        if (!List.of("file", "directory").contains(kind)
+                || !List.of("read", "read-write").contains(access)) {
+            throw new IllegalArgumentException("Invalid live file grant");
+        }
+        if ("directory".equals(kind) != Files.isDirectory(real)) {
+            throw new IllegalArgumentException("Selected path kind does not match");
+        }
+        return register(pluginId, real, kind, access, false);
+    }
+
     public Path resolve(String pluginId, String id) {
         Grant grant = grants.get(id);
         if (grant == null || !grant.pluginId.equals(pluginId)) throw new IllegalArgumentException("Unknown or unauthorized file reference");
@@ -150,9 +179,29 @@ public class PluginFileGrantService {
         if (grant == null || !grant.pluginId.equals(pluginId) || !grants.remove(id, grant)) return;
         versions.computeIfAbsent(pluginId, ignored -> new AtomicLong()).incrementAndGet();
         if (grant.owned) {
-            try { deleteTree(ownedGrantRoot(grant.path)); }
-            catch (IOException ignored) { }
+            deleteTree(ownedGrantRoot(grant.path));
+        } else if (isSharedScratch(grant.path) && lastGrantFor(grant.path)) {
+            // The final live grant for a host-created cross-plugin scratch directory is gone —
+            // reclaim the directory itself. grantLive grants are not owned (nothing else would
+            // ever delete them), and a native writable path is never under `_shared`, so this
+            // branch only ever reclaims what createSharedDirectory produced.
+            deleteTree(grant.path);
         }
+    }
+
+    /** True for paths inside the host-owned `_shared` scratch root (see {@link #createSharedDirectory()}). */
+    private boolean isSharedScratch(Path path) {
+        try {
+            return path.toAbsolutePath().normalize()
+                    .startsWith(root.resolve(SHARED_DIRECTORY_NAME).toRealPath());
+        } catch (IOException noSharedRootYet) {
+            return false;
+        }
+    }
+
+    /** True when no other active grant still resolves to {@code path}. */
+    private boolean lastGrantFor(Path path) {
+        return grants.values().stream().noneMatch(grant -> grant.path.equals(path));
     }
 
     private FileRef register(String pluginId, Path path, String kind, String access, boolean owned) throws IOException {
@@ -217,10 +266,30 @@ public class PluginFileGrantService {
         }
     }
 
-    private static void deleteTree(Path directory) throws IOException {
-        if (!Files.exists(directory)) return;
-        try (var paths = Files.walk(directory)) {
-            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
+    /**
+     * Best-effort recursive delete; never throws. Two revokes racing on the last grants of
+     * the same {@code _shared} scratch directory, or a live worker still writing into the
+     * tree, can make entries vanish mid-walk — that surfaces as {@code UncheckedIOException},
+     * which the previous {@code throws IOException} shape let escape and abort the caller's
+     * remaining revocations (worst case: the {@code @PreDestroy} sweep stopped early). A tree
+     * that vanished mid-walk is already reclaimed; per-entry failures are skipped.
+     */
+    private static void deleteTree(Path directory) {
+        List<Path> entries;
+        try {
+            if (!Files.exists(directory)) return;
+            try (var paths = Files.walk(directory)) {
+                entries = paths.sorted(Comparator.reverseOrder()).toList();
+            }
+        } catch (IOException | java.io.UncheckedIOException raced) {
+            return; // deleted concurrently — nothing left to reclaim
+        }
+        for (Path path : entries) {
+            try {
+                Files.deleteIfExists(path);
+            } catch (IOException ignored) {
+                // A busy entry (locked by a live writer) must not abort the rest of the tree.
+            }
         }
     }
 

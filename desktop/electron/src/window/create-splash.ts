@@ -17,7 +17,7 @@ interface CreateSplashOptions {
  * Resolve splash.html on disk.
  *
  * Dev: <cwd>/resources/splash.html (cwd is desktop/electron when running via
- *      `npm run dev` / `electron .`).
+ *      `yarn run dev` / `electron .`).
  * Packaged: this file compiles to <asar>/dist/window/create-splash.js, so
  *           __dirname is <asar>/dist/window/. Two `..` climb to <asar>/, then
  *           resources/splash.html — which is where electron-builder.yml's

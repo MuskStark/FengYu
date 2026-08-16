@@ -1,0 +1,15 @@
+-- V1 — schema baseline (intentionally EMPTY).
+--
+-- Migration workflow (P3: versioned migrations alongside ddl-auto=update):
+--   * Fresh installs run this no-op V1 and get the flyway_schema_history table.
+--   * Existing installs (schema created by Hibernate ddl-auto=update, no history table)
+--     are baselined at V1 via spring.flyway.baseline-on-migrate — their schema is untouched.
+--   * V2 and beyond are the versioned channel for everything ddl-auto=update CANNOT express:
+--     column renames/drops, type changes, index drops, and data backfills. Write them as
+--     V<N>__<description>.sql here, ANSI-portable across H2 / SQLite / MySQL / PostgreSQL
+--     (or use per-database folders when a change genuinely cannot be portable).
+--
+-- ddl-auto=update remains enabled and still creates NEW entity tables/columns additively;
+-- Flyway runs first on every boot, so a failed migration halts startup before Hibernate
+-- touches the schema (fail-fast instead of silent drift).
+SELECT 1;

@@ -45,15 +45,12 @@ test(`all GitHub Actions setup-node steps pin Node ${expected}`, () => {
   }
 })
 
-test('plugin-cli package and lockfile require the pinned Node baseline', () => {
+test('plugin-cli package requires the pinned Node baseline', () => {
   const pkg = JSON.parse(
     readFileSync(new URL('../toolchain/cli/package.json', import.meta.url), 'utf8'),
   )
-  const lock = JSON.parse(
-    readFileSync(new URL('../toolchain/cli/package-lock.json', import.meta.url), 'utf8'),
-  )
+  // The npm lockfile mirrored engines.node; yarn.lock does not, so package.json is the pin.
   assert.equal(pkg.engines.node, `>=${expected}`)
-  assert.equal(lock.packages[''].engines.node, `>=${expected}`)
 })
 
 test('README documents the pinned Node baseline', () => {

@@ -36,9 +36,11 @@ test('runs release contract tests in the shared runtime job', () => {
 })
 
 test('installs toolchain/cli dependencies before building plugins', () => {
+  // Yarn 4 (via corepack) installs the toolchain; the pinned release lives in package.json.
+  assert.match(workflow, /- name: Enable corepack \(pinned Yarn 4 for toolchain \+ plugins\)\s+run: corepack enable/)
   assert.match(
     workflow,
-    /- name: Install toolchain\/cli deps\s+run: npm ci\s+working-directory: toolchain\/cli/,
+    /- name: Install toolchain\/cli deps\s+run: yarn install --immutable\s+working-directory: toolchain\/cli/,
   )
 })
 
@@ -149,12 +151,12 @@ test('end-to-end smoke stages official plugin checksum sidecars', () => {
 
 test('desktop job builds two variants and runs unit plus launch tests', () => {
   assert.match(desktopJob, /FENGYU_RELEASE_VERSION: \${{ needs\.setup\.outputs\.version }}/)
-  assert.match(desktopJob, /- name: Install frontend deps\s+run: npm ci\s+working-directory: frontend/)
+  assert.match(desktopJob, /- name: Install frontend deps\s+run: corepack yarn install --immutable\s+working-directory: frontend/)
   assert.match(desktopJob, /- name: Install Electron binary\s+run: npx install-electron --no\s+working-directory: desktop\/electron\s+timeout-minutes: 15/)
-  assert.match(desktopJob, /- name: Run desktop unit tests\s+run: npm test\s+working-directory: desktop\/electron/)
+  assert.match(desktopJob, /- name: Run desktop unit tests\s+run: corepack yarn test\s+working-directory: desktop\/electron/)
   assert.match(desktopJob, /FENGYU_DESKTOP_BUILD: '1'/)
-  assert.match(desktopJob, /- name: Verify file-compatible frontend asset paths\s+run: npm run verify:frontend-dist/)
-  assert.match(desktopJob, /xvfb-run -a npm run test:e2e/)
+  assert.match(desktopJob, /- name: Verify file-compatible frontend asset paths\s+run: corepack yarn run verify:frontend-dist/)
+  assert.match(desktopJob, /xvfb-run -a corepack yarn run test:e2e/)
   // Windows E2E stalls post-launch (see run 30332280958); it is non-blocking so the
   // Windows desktop bundles still ship, while macOS E2E stays gating.
   assert.match(desktopJob, /- name: Run Electron launch E2E\s+if: runner\.os != 'Linux'\s+continue-on-error: \$\{\{ runner\.os == 'Windows' \}\}/)

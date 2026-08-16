@@ -57,6 +57,8 @@ public class AgentRunPersistenceService {
         entity.setPlanJson(run.getPlan() == null ? null : write(run.getPlan()));
         entity.setExecutionsJson(write(run.getExecutions()));
         entity.setResumedFrom(resumedFrom);
+        entity.setSandboxProfile(fan.summer.fengyu.ai.service.AiConfigServiceHeadless
+                .isUnsandboxedPluginsEnabled() ? "unsandboxed" : "sandboxed");
         entity.setCreatedAt(now);
         entity.setUpdatedAt(now);
         runs.save(entity);
@@ -135,7 +137,13 @@ public class AgentRunPersistenceService {
         if (summary != null) entity.setSummary(summary);
         if (error != null) entity.setErrorMessage(error);
         entity.setUpdatedAt(LocalDateTime.now());
-        if (!NON_TERMINAL.contains(run.getStatus())) entity.setCompletedAt(LocalDateTime.now());
+        if (!NON_TERMINAL.contains(run.getStatus())) {
+            entity.setCompletedAt(LocalDateTime.now());
+            // Terminal snapshot — drop the in-memory seq counter so the map cannot grow
+            // unboundedly over the process lifetime; a later append (none is expected for a
+            // terminal run) re-derives the counter from the events table.
+            sequences.remove(run.getRunId());
+        }
         runs.save(entity);
     }
 
@@ -162,6 +170,23 @@ public class AgentRunPersistenceService {
                 .toList();
     }
 
+    /**
+     * Case-insensitive search over goal, summary, and error text. Run history is a
+     * personal-scale collection, so an in-memory scan keeps the query portable across
+     * H2/MySQL/PostgreSQL instead of depending on a database-specific full-text index.
+     */
+    public List<RunSummary> search(String query, int limit) {
+        java.util.stream.Stream<RunSummary> stream = list().stream();
+        if (query != null && !query.isBlank()) {
+            String needle = query.trim().toLowerCase(java.util.Locale.ROOT);
+            stream = stream.filter(run ->
+                    (run.goal() != null && run.goal().toLowerCase(java.util.Locale.ROOT).contains(needle))
+                            || (run.summary() != null && run.summary().toLowerCase(java.util.Locale.ROOT).contains(needle))
+                            || (run.error() != null && run.error().toLowerCase(java.util.Locale.ROOT).contains(needle)));
+        }
+        return stream.limit(Math.max(1, limit)).toList();
+    }
+
     public RunDetail detail(String id) {
         AgentRunEntity entity = runs.findByIdAndUserId(id, currentUserId())
                 .orElseThrow(() -> new IllegalArgumentException("Unknown persisted run: " + id));
@@ -176,11 +201,13 @@ public class AgentRunPersistenceService {
                 readNullable(entity.getPlanJson(), AgentPlan.class),
                 readExecutions(entity.getExecutionsJson()),
                 entity.getSummary(), entity.getErrorMessage(), entity.getResumedFrom(),
+                entity.getSandboxProfile(),
                 entity.getCreatedAt(), entity.getUpdatedAt(), entity.getCompletedAt(), eventList);
     }
 
     public ResumeState resumeState(String id) {
         RunDetail detail = detail(id);
+        requireIsolationNotWeakened(detail);
         if (detail.plan() == null) {
             throw new IllegalStateException("Persisted run has no executable plan");
         }
@@ -194,11 +221,85 @@ public class AgentRunPersistenceService {
                 original.requireStepApproval(),
                 original.replanOnFailure(),
                 original.maxReplans(),
-                original.effectivePermissionMode());
+                original.effectivePermissionMode(),
+                original.capabilityMode());
         List<StepExecution> completed = detail.executions().stream()
                 .filter(execution -> execution.status() == StepStatus.COMPLETED)
                 .toList();
         return new ResumeState(detail.goal(), reviewed, detail.plan(), completed, detail.id());
+    }
+
+    /**
+     * A peer copy of a terminal run: the same goal/config/plan, executed from scratch.
+     * Unlike {@link #resumeState(String)}, completed steps are NOT inherited — a fork
+     * re-runs the whole graph (the "try a different approach" path).
+     */
+    public ResumeState forkState(String id) {
+        RunDetail detail = detail(id);
+        requireIsolationNotWeakened(detail);
+        if (detail.plan() == null) {
+            throw new IllegalStateException("Persisted run has no executable plan");
+        }
+        requireTerminal(detail);
+        AgentRunConfig original = detail.config();
+        return new ResumeState(detail.goal(),
+                new AgentRunConfig(true, original.requireStepApproval(),
+                        original.replanOnFailure(), original.maxReplans(),
+                        original.effectivePermissionMode(), original.capabilityMode()),
+                detail.plan(), List.of(), detail.id());
+    }
+
+    /**
+     * Rewinds a terminal run to re-run from step {@code rewindFrom}: the FULL original
+     * plan is preserved, but only the completed executions strictly BELOW the boundary
+     * are inherited — the runner skips those completed steps and re-executes from the
+     * boundary onward. (Truncating the plan instead would leave nothing to run: the
+     * steps below the boundary are already marked completed.) The rewound run pauses
+     * for plan review first; side effects already performed by the re-run steps are
+     * NOT rolled back — the review gate exists so a human can account for them.
+     */
+    public ResumeState rewindState(String id, int rewindFrom) {
+        RunDetail detail = detail(id);
+        requireIsolationNotWeakened(detail);
+        if (detail.plan() == null) {
+            throw new IllegalStateException("Persisted run has no executable plan");
+        }
+        requireTerminal(detail);
+        if (rewindFrom < 0 || rewindFrom >= detail.plan().steps().size()) {
+            throw new IllegalArgumentException("rewind step must be within 0.."
+                    + (detail.plan().steps().size() - 1));
+        }
+        List<StepExecution> completed = detail.executions().stream()
+                .filter(execution -> execution.index() < rewindFrom
+                        && execution.status() == StepStatus.COMPLETED)
+                .toList();
+        AgentRunConfig original = detail.config();
+        return new ResumeState(detail.goal(),
+                new AgentRunConfig(true, original.requireStepApproval(),
+                        original.replanOnFailure(), original.maxReplans(),
+                        original.effectivePermissionMode(), original.capabilityMode()),
+                detail.plan(),
+                completed, detail.id());
+    }
+
+    /**
+     * A run recorded under the sandboxed posture must not be replayed while the host now
+     * runs plugins unsandboxed — that would silently weaken the isolation the run was
+     * approved under. Tightening (unsandboxed → sandboxed) stays allowed.
+     */
+    private static void requireIsolationNotWeakened(RunDetail detail) {
+        if ("sandboxed".equals(detail.sandboxProfile())
+                && fan.summer.fengyu.ai.service.AiConfigServiceHeadless.isUnsandboxedPluginsEnabled()) {
+            throw new IllegalStateException(
+                    "This run was recorded with the plugin sandbox enabled; re-enable the "
+                            + "sandbox before resuming, forking, or rewinding it");
+        }
+    }
+
+    private static void requireTerminal(RunDetail detail) {
+        if (NON_TERMINAL.contains(detail.status())) {
+            throw new IllegalStateException("Run is still active; wait for it to finish first");
+        }
     }
 
     /** Converts process-local in-flight states into explicit recoverable failures on restart. */
@@ -270,6 +371,7 @@ public class AgentRunPersistenceService {
     public record RunDetail(
             String id, String goal, String status, AgentRunConfig config, AgentPlan plan,
             List<StepExecution> executions, String summary, String error, String resumedFrom,
+            String sandboxProfile,
             LocalDateTime createdAt, LocalDateTime updatedAt, LocalDateTime completedAt,
             List<PersistedEvent> events) {}
 

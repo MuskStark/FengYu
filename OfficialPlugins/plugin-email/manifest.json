@@ -2458,6 +2458,12 @@
       "effect": "external",
       "description": "Test the IMAP connection for a saved account without fetching mail.",
       "method": "email_account_test_imap"
+    },
+    {
+      "name": "confirm_send",
+      "effect": "external",
+      "description": "Dispatch a previously prepared send by confirmation id. Runs only with explicit approval: agents and visual workflows pause for a human go-ahead before this step executes.",
+      "method": "confirm_send"
     }
   ],
   "i18n": {
@@ -2494,5 +2500,85 @@
         }
       }
     }
-  }
+  },
+  "flowNodes": [
+    {
+      "tool": "email_send_batch",
+      "label": "邮件批量发送",
+      "color": "#4DDBBB",
+      "icon": "mdi-email-send-outline",
+      "inputs": [
+        {
+          "name": "accountId",
+          "widget": "number",
+          "title": "发件账号 ID"
+        },
+        {
+          "name": "recipientGroupTagIds",
+          "widget": "json",
+          "title": "收件人分组标签",
+          "description": "整数数组；组内成员各收一份附件。"
+        },
+        {
+          "name": "ccGroupTagIds",
+          "widget": "json",
+          "title": "抄送分组标签"
+        },
+        {
+          "name": "inputDirectory",
+          "widget": "text",
+          "title": "附件目录",
+          "description": "按收件人准备的附件文件所在目录。"
+        },
+        {
+          "name": "commonAttachments",
+          "widget": "json",
+          "title": "公共附件"
+        },
+        {
+          "name": "subject",
+          "widget": "text",
+          "title": "主题"
+        },
+        {
+          "name": "body",
+          "widget": "textarea",
+          "title": "正文"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "summary",
+          "title": "汇总",
+          "type": "string"
+        },
+        {
+          "name": "confirmation",
+          "title": "确认单",
+          "type": "object"
+        }
+      ]
+    },
+    {
+      "tool": "confirm_send",
+      "label": "放行发送",
+      "color": "#4DDBBB",
+      "icon": "mdi-email-check-outline",
+      "inputs": [
+        {
+          "name": "confirmationId",
+          "widget": "text",
+          "title": "确认单 ID",
+          "description": "email_send_batch 返回的 confirmation.confirmationId。"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "title": "结果",
+          "type": "object"
+        }
+      ]
+    }
+  ]
 }

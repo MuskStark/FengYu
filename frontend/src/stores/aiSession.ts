@@ -264,6 +264,10 @@ export const useAiSessionStore = defineStore('aiSession', () => {
       })
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to start chat'
+      // The request never opened a stream — drop the placeholder assistant turn instead of
+      // leaving an empty bubble in the transcript.
+      const placeholder = conv.turns.indexOf(assistant)
+      if (placeholder >= 0) conv.turns.splice(placeholder, 1)
       assistant.streaming = false
       busy.value = false
     }
@@ -284,7 +288,11 @@ export const useAiSessionStore = defineStore('aiSession', () => {
 
   async function resolveConfirmation(item: ToolConfirmation, approve: boolean) {
     await actOnConfirmation(item, approve)
-    const activity = active.value?.turns.flatMap(turn => turn.activities)
+    // The confirmation belongs to the turn that produced it, which may not be the active
+    // conversation (approvals surfaced in the composer can be resolved after switching).
+    // Search every conversation so the originating activity row leaves its "waiting" state.
+    const activity = conversations.value
+      .flatMap(conv => conv.turns.flatMap(turn => turn.activities))
       .find(value => value.id === item.toolCallId)
     if (activity && item.status === 'rejected') activity.status = 'rejected'
     if (activity && item.status === 'error') activity.status = 'failed'

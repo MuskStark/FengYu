@@ -109,6 +109,107 @@ public final class AiToolFileInjector {
         return out;
     }
 
+    /** Exact-match placeholder a workflow run uses for a file-class input: {@code @file:<name>}. */
+    public static final String FILE_PLACEHOLDER_PREFIX = "@file:";
+
+    /**
+     * Replaces every {@code @file:<inputName>} placeholder in the dispatched args with the
+     * current plugin's {@code FileRef} for that run-granted input, so
+     * {@code PluginProcessManager.resolveRefs} can rewrite it into an absolute path the worker's
+     * sandbox already covers. A placeholder without a matching grant fails the call loudly at
+     * the host — a worker receiving the literal placeholder could only report a confusing
+     * "file not found" from deep inside its own IO.
+     *
+     * @throws IllegalArgumentException when a placeholder names an input the run never granted,
+     *         or one this plugin received no grant for
+     */
+    public static Map<String, Object> bindRunFilePlaceholders(Map<String, Object> params,
+            String pluginId, Map<String, List<ActiveFileRef>> runRefs) {
+        if (params == null || params.isEmpty()) return params == null ? Map.of() : params;
+        if (!containsPlaceholder(params)) return params;
+        Map<String, Object> bound = new LinkedHashMap<>(params);
+        bindPlaceholders(bound, pluginId, runRefs);
+        return bound;
+    }
+
+    private static void bindPlaceholders(Map<String, Object> params, String pluginId,
+            Map<String, List<ActiveFileRef>> runRefs) {
+        for (Map.Entry<String, Object> entry : params.entrySet()) {
+            entry.setValue(bindValuePlaceholder(entry.getValue(), pluginId, runRefs));
+        }
+    }
+
+    private static Object bindValuePlaceholder(Object value, String pluginId,
+            Map<String, List<ActiveFileRef>> runRefs) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> bound = new LinkedHashMap<>();
+            map.forEach((key, child) -> bound.put(String.valueOf(key),
+                    bindValuePlaceholder(child, pluginId, runRefs)));
+            return bound;
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().map(child -> bindValuePlaceholder(child, pluginId, runRefs)).toList();
+        }
+        if (!(value instanceof String text) || !text.startsWith(FILE_PLACEHOLDER_PREFIX)) return value;
+        String name = text.substring(FILE_PLACEHOLDER_PREFIX.length());
+        if (name.isEmpty() || !name.matches("[A-Za-z0-9_-]+")) return value;
+        if (runRefs == null || !runRefs.containsKey(name)) {
+            throw new IllegalArgumentException("Workflow file input '" + name
+                    + "' has no granted file for this run");
+        }
+        for (ActiveFileRef ref : runRefs.get(name)) {
+            if (pluginId.equals(ref.pluginId())) return toMap(ref.ref());
+        }
+        throw new IllegalArgumentException("Workflow file input '" + name
+                + "' was not granted to plugin " + pluginId);
+    }
+
+    private static boolean containsPlaceholder(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            return map.values().stream().anyMatch(AiToolFileInjector::containsPlaceholder);
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().anyMatch(AiToolFileInjector::containsPlaceholder);
+        }
+        return value instanceof String text && text.startsWith(FILE_PLACEHOLDER_PREFIX)
+                && text.substring(FILE_PLACEHOLDER_PREFIX.length()).matches("[A-Za-z0-9_-]+");
+    }
+
+    /**
+     * Returns the name of the schema's single write-directory parameter when its current value
+     * is blank — the signal for the host to substitute the plugin's default output staging dir
+     * (canvas workflows and direct tool calls pass a typed path or nothing). {@code null} when
+     * the schema has no such parameter or a value/ref is already present.
+     */
+    public static String blankWriteDirParam(Map<String, Object> params, String inputSchema) {
+        if (params == null) params = Map.of();
+        List<String> fileParamNames = fileParamNames(inputSchema);
+        if (fileParamNames.size() != 1) return null;
+        String name = fileParamNames.get(0);
+        if (classifyParam(name, paramSchema(inputSchema, name)) != FileParamClass.WRITE_DIR) {
+            return null;
+        }
+        Object value = params.get(name);
+        if (value instanceof Map<?, ?> || value instanceof List<?>) return null;
+        if (value instanceof String text && !text.isBlank()) return null;
+        return name;
+    }
+
+    /**
+     * Copies {@code params} with the default output {@code path} injected into the blank
+     * write-dir parameter. A plain path — not a FileRef — on purpose: registering a grant here
+     * would bump the grant version and restart stateful plugin workers mid-flow, while the
+     * plugin-data root (where the default folder lives) is already sandbox-writable.
+     */
+    public static Map<String, Object> fillDefaultOutputDir(Map<String, Object> params,
+            String inputSchema, String path) {
+        String name = blankWriteDirParam(params, inputSchema);
+        if (name == null || path == null || path.isBlank()) return params;
+        Map<String, Object> out = new LinkedHashMap<>(params);
+        out.put(name, path);
+        return out;
+    }
+
     /** Collect the names of file-class properties declared in the tool's inputSchema. */
     @SuppressWarnings("unchecked")
     private static List<String> fileParamNames(String inputSchema) {

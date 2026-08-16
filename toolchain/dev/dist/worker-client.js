@@ -1,4 +1,7 @@
 import net from 'node:net';
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 export function createWorkerClient(options) {
     const defaultTimeout = options.timeoutMs ?? 30_000;
     return {
@@ -12,6 +15,20 @@ export function createWorkerClient(options) {
             });
         },
     };
+}
+/**
+ * The per-session token PluginDevServer writes to ~/.fengyu/dev-token-<port> on every start.
+ * Every connection must lead with `AUTH <token>` — loopback binding alone left the dev RPC
+ * surface open to any local process. Undefined when no token file exists (pre-auth devkit);
+ * connections then skip the handshake and rely on the server being an older build.
+ */
+function devTokenFor(port) {
+    try {
+        return readFileSync(join(homedir(), '.fengyu', `dev-token-${port}`), 'utf8').trim();
+    }
+    catch {
+        return undefined;
+    }
 }
 function invokeOnce(args) {
     return new Promise((resolve, reject) => {
@@ -42,6 +59,9 @@ function invokeOnce(args) {
         timer = setTimeout(() => fail(new Error(`dev worker request timed out: ${args.method}`)), args.timeoutMs);
         socket.once('error', (err) => fail(new Error(`dev worker connect failed (${args.host}:${args.port}): ${err.message}. Start PluginDevMain in your IDE, or set mockWorker:true to stub responses.`)));
         socket.once('connect', () => {
+            const token = devTokenFor(args.port);
+            if (token)
+                socket.write(`AUTH ${token}\n`);
             socket.write(JSON.stringify({ jsonrpc: '2.0', id, method: args.method, params: args.params }) + '\n');
         });
         let buffer = '';

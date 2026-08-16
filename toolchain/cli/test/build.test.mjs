@@ -68,10 +68,14 @@ function tagFor(command, args, cwd) {
   if (joined.startsWith('node ')) return 'ui-prepare'
   // A fresh project installs via `npm install` (no lockfile yet); once a lockfile
   // exists the configured `npm ci` runs. Either way this is the install phase.
+  // Yarn projects mirror this: `yarn install` bootstraps, `--immutable` pins.
   if ((joined === 'npm ci' || joined === 'npm install') && cwd.endsWith('ui-src')) return 'ui-install'
+  if ((joined === 'yarn install --immutable' || joined === 'yarn install') && cwd.endsWith('ui-src')) return 'ui-install'
   if (joined === 'npm test' && cwd.endsWith('ui-src')) return 'ui-test'
+  if (joined === 'yarn test' && cwd.endsWith('ui-src')) return 'ui-test'
   if (isMvnw && args.includes('test')) return 'worker-test'
   if (joined === 'npm run build') return 'ui-build'
+  if (joined === 'yarn run build') return 'ui-build'
   if (isMvnw && args.includes('package')) return 'worker-build'
   return joined
 }
@@ -100,6 +104,21 @@ test('standard lifecycle runs npm and Maven phases in order', async () => {
   ])
   assert.ok(result.output.endsWith('.fyp'))
   assert.ok(await fs.stat(result.output))
+})
+
+test('a yarn.lock ui-src drives the lifecycle through yarn', async () => {
+  await fs.writeFile(path.join(root, 'ui-src/yarn.lock'), '# yarn lockfile\n')
+  const commands = []
+  await buildPlugin(root, {
+    run: async (command, args, options) => {
+      const joined = [command, ...args].join(' ')
+      if (options?.cwd?.endsWith('ui-src')) commands.push(joined)
+      return fakeRunner([], root)(command, args, options)
+    },
+  })
+  assert.deepEqual(commands, [
+    'yarn install --immutable', 'yarn test', 'yarn run build',
+  ])
 })
 
 test('skipTests omits both test phases but keeps build/package', async () => {

@@ -66,6 +66,16 @@ import java.util.Map;
 public final class ExcelRpcHandlers implements AutoCloseable {
     static final String AI_SESSION = "ai";
 
+    /**
+     * Session key for an AI call: the host injects a per-run {@code sessionId} so
+     * concurrent agent runs / background workflows keep INDEPENDENT analyze→configure→
+     * execute state (P1-3). Chat calls arrive without one and share the "ai" session,
+     * which is safe because chat generation is single-flight.
+     */
+    static String sessionKey(String sessionId) {
+        return sessionId == null || sessionId.isBlank() ? AI_SESSION : "run:" + sessionId.trim();
+    }
+
     private final ExcelSessionStore sessions;
     private final ExcelPlugin plugin;
     private final Jobs jobs;
@@ -175,8 +185,7 @@ public final class ExcelRpcHandlers implements AutoCloseable {
             String session = in.session();
             if (session == null || session.isBlank()) return new SplitStartOutput(null, false, t("ex.err.sessionRequired"));
             SplitConfig cfg = sessions.get(session);
-            if (cfg.analysisResult == null) return new SplitStartOutput(null, false, t("ex.err.callAnalyzeFirst"));
-            JobLaunch launched = startSplitJob(cfg, in.outputDir(), in.filePrefix(), ctx);
+            JobLaunch launched = startSplitJob(cfg, in.outputDir(), in.filePrefix(), t("ex.err.callAnalyzeFirst"), ctx);
             return new SplitStartOutput(launched.jobId(), launched.success(), launched.summary());
         } catch (Exception e) {
             ctx.logger().warn("split_start failed: {}", e.getClass().getSimpleName(), e);
@@ -214,17 +223,23 @@ public final class ExcelRpcHandlers implements AutoCloseable {
             if (filePath == null || filePath.isBlank()) return new ExcelAnalyzeOutput(null, false, t("ex.err.notFileRef", "filePath"));
             Path file = Paths.get(filePath.trim());
             if (!Files.exists(file) || !Files.isReadable(file)) return new ExcelAnalyzeOutput(null, false, t("ex.err.fileNotFound", filePath));
-            SplitConfig cfg = sessions.get(AI_SESSION);
-            cfg.sourceFile = file;
-            try {
-                cfg.analysisResult = ExcelSplitter.analyze(file);
-            } catch (Exception e) {
-                ctx.logger().warn("excel analyze body failed: {}", e.getClass().getSimpleName(), e);
-                return new ExcelAnalyzeOutput(null, false, t("ex.err.analyzeFailed", safeMessage(e)));
+            SplitConfig cfg = sessions.get(sessionKey(in.sessionId()));
+            // Atomic under the session lock: another AI call must never observe the
+            // new sourceFile paired with the PREVIOUS analysis (P1-3 half-state).
+            synchronized (cfg) {
+                Map<String, Map<Integer, String>> analysis;
+                try {
+                    analysis = ExcelSplitter.analyze(file);
+                } catch (Exception e) {
+                    ctx.logger().warn("excel analyze body failed: {}", e.getClass().getSimpleName(), e);
+                    return new ExcelAnalyzeOutput(null, false, t("ex.err.analyzeFailed", safeMessage(e)));
+                }
+                cfg.sourceFile = file;
+                cfg.analysisResult = analysis;
+                ctx.logger().info("analyzed {} sheet(s) from {}", analysis.size(), file.getFileName());
+                return new ExcelAnalyzeOutput(new ArrayList<>(analysis.keySet()), true,
+                    t("ex.analyzed", analysis.size()));
             }
-            ctx.logger().info("analyzed {} sheet(s) from {}", cfg.analysisResult.size(), file.getFileName());
-            return new ExcelAnalyzeOutput(new ArrayList<>(cfg.analysisResult.keySet()), true,
-                t("ex.analyzed", cfg.analysisResult.size()));
         } catch (Exception e) {
             ctx.logger().warn("excel_analyze failed: {}", e.getClass().getSimpleName(), e);
             return new ExcelAnalyzeOutput(null, false, safeMessage(e));
@@ -233,39 +248,41 @@ public final class ExcelRpcHandlers implements AutoCloseable {
 
     public ExcelConfigureOutput aiConfigure(ExcelConfigureInput in, RpcContext ctx) {
         try {
-            SplitConfig cfg = sessions.active().orElse(null);
-            if (cfg == null || cfg.analysisResult == null) return new ExcelConfigureOutput(false, t("ex.err.callAiAnalyzeFirst"));
-            String modeText = in.mode() == null ? null : in.mode().name();
-            SplitConfig.SplitMode mode;
-            try { mode = SplitConfig.SplitMode.valueOf(modeText); }
-            catch (Exception e) { return new ExcelConfigureOutput(false, t("ex.err.invalidMode", modeText)); }
-            cfg.mode = mode;
-            switch (mode) {
-                case BY_SHEET -> {
-                    List<String> sheets = in.sheets();
-                    cfg.selectedSheets = (sheets != null && !sheets.isEmpty())
-                        ? new ArrayList<>(sheets) : new ArrayList<>(cfg.analysisResult.keySet());
-                }
-                case BY_COLUMN -> {
-                    String splitSheet = in.splitSheet();
-                    String splitColumn = in.splitColumn();
-                    if (splitSheet == null || splitColumn == null) return new ExcelConfigureOutput(false, t("ex.err.byColumnMissing"));
-                    Map<Integer, String> headers = cfg.analysisResult.get(splitSheet);
-                    if (headers == null) return new ExcelConfigureOutput(false, t("ex.err.unknownSheet", splitSheet));
-                    Integer idx = null;
-                    for (Map.Entry<Integer, String> e : headers.entrySet()) {
-                        if (splitColumn.equals(e.getValue())) { idx = e.getKey(); break; }
+            SplitConfig cfg = sessions.get(sessionKey(in.sessionId()));
+            synchronized (cfg) {
+                if (cfg.analysisResult == null) return new ExcelConfigureOutput(false, t("ex.err.callAiAnalyzeFirst"));
+                String modeText = in.mode() == null ? null : in.mode().name();
+                SplitConfig.SplitMode mode;
+                try { mode = SplitConfig.SplitMode.valueOf(modeText); }
+                catch (Exception e) { return new ExcelConfigureOutput(false, t("ex.err.invalidMode", modeText)); }
+                cfg.mode = mode;
+                switch (mode) {
+                    case BY_SHEET -> {
+                        List<String> sheets = in.sheets();
+                        cfg.selectedSheets = (sheets != null && !sheets.isEmpty())
+                            ? new ArrayList<>(sheets) : new ArrayList<>(cfg.analysisResult.keySet());
                     }
-                    if (idx == null) return new ExcelConfigureOutput(false, t("ex.err.unknownColumn", splitColumn));
-                    cfg.splitSheet = splitSheet;
-                    cfg.splitColumn = splitColumn;
-                    cfg.splitColumnIndex = idx;
+                    case BY_COLUMN -> {
+                        String splitSheet = in.splitSheet();
+                        String splitColumn = in.splitColumn();
+                        if (splitSheet == null || splitColumn == null) return new ExcelConfigureOutput(false, t("ex.err.byColumnMissing"));
+                        Map<Integer, String> headers = cfg.analysisResult.get(splitSheet);
+                        if (headers == null) return new ExcelConfigureOutput(false, t("ex.err.unknownSheet", splitSheet));
+                        Integer idx = null;
+                        for (Map.Entry<Integer, String> e : headers.entrySet()) {
+                            if (splitColumn.equals(e.getValue())) { idx = e.getKey(); break; }
+                        }
+                        if (idx == null) return new ExcelConfigureOutput(false, t("ex.err.unknownColumn", splitColumn));
+                        cfg.splitSheet = splitSheet;
+                        cfg.splitColumn = splitColumn;
+                        cfg.splitColumnIndex = idx;
+                    }
+                    case COMPLEX -> {
+                        if (cfg.complexEntries.isEmpty()) return new ExcelConfigureOutput(false, t("ex.err.addViaComplexConfig"));
+                    }
                 }
-                case COMPLEX -> {
-                    if (cfg.complexEntries.isEmpty()) return new ExcelConfigureOutput(false, t("ex.err.addViaComplexConfig"));
-                }
+                return new ExcelConfigureOutput(true, t("ex.configured", mode));
             }
-            return new ExcelConfigureOutput(true, t("ex.configured", mode));
         } catch (Exception e) {
             ctx.logger().warn("excel_configure failed: {}", e.getClass().getSimpleName(), e);
             return new ExcelConfigureOutput(false, safeMessage(e));
@@ -274,31 +291,91 @@ public final class ExcelRpcHandlers implements AutoCloseable {
 
     public ExcelComplexConfigOutput aiComplexConfig(ExcelComplexConfigInput in, RpcContext ctx) {
         try {
-            SplitConfig cfg = sessions.active().orElse(null);
-            if (cfg == null) return new ExcelComplexConfigOutput(null, false, t("ex.err.callAiAnalyzeFirst"));
             String action = in.action() == null ? null : in.action().name();
             String a = action == null ? "" : action.trim().toLowerCase(Locale.ROOT);
             switch (a) {
                 case "add" -> {
-                    String sheetName = in.sheetName();
-                    if (sheetName == null || sheetName.isBlank())
-                        return new ExcelComplexConfigOutput(null, false, t("ex.err.sheetNameRequired"));
-                    int headerIndex = in.headerIndex() != null ? in.headerIndex() : -1;
-                    int columnIndex = in.columnIndex() != null ? in.columnIndex() : -1;
-                    String field = cfg.sourceFile != null ? cfg.sourceFile.getFileName().toString() : "";
-                    cfg.complexEntries.add(new ComplexSplitEntry(field, sheetName, headerIndex, columnIndex));
-                    return new ExcelComplexConfigOutput(null, true, t("ex.complexAdded", cfg.complexEntries.size()));
+                    // Session is run-scoped when the host injected a sessionId (concurrent
+                    // workflows stay independent); chat shares the "ai" session.
+                    SplitConfig cfg = sessions.get(sessionKey(in.sessionId()));
+                    // Workflow steps may run concurrently; the whole read-analyze/add sequence is
+                    // atomic against aiConfigure/aiExecute touching the same session.
+                    synchronized (cfg) {
+                        // A filePath input (re)analyzes in the same call, so one canvas node can
+                        // configure a complete complex split without a prior excel_analyze step.
+                        // The new file/analysis are held in LOCALS until every entry validated:
+                        // a later validation failure must leave the session (sourceFile,
+                        // analysis, rules) exactly as it was — never the new file/analysis
+                        // committed while the rules stay old.
+                        Map<String, Map<Integer, String>> analysis = cfg.analysisResult;
+                        Path file = cfg.sourceFile;
+                        if (in.filePath() != null && !in.filePath().isBlank()) {
+                            Path newFile = Paths.get(in.filePath().trim());
+                            if (!Files.exists(newFile) || !Files.isReadable(newFile)) {
+                                return new ExcelComplexConfigOutput(null, false, t("ex.err.fileNotFound", in.filePath()));
+                            }
+                            try {
+                                analysis = ExcelSplitter.analyze(newFile);
+                                file = newFile;
+                            } catch (Exception e) {
+                                ctx.logger().warn("excel complex-config analyze failed: {}", e.getClass().getSimpleName(), e);
+                                return new ExcelComplexConfigOutput(null, false, t("ex.err.analyzeFailed", safeMessage(e)));
+                            }
+                        }
+                        if (analysis == null) {
+                            return new ExcelComplexConfigOutput(null, false, t("ex.err.callAiAnalyzeFirst"));
+                        }
+                        int added;
+                        if (in.entries() != null && !in.entries().isEmpty()) {
+                            // entries declare the COMPLETE rule set. Validate and resolve the
+                            // whole batch into a TEMP list first: a mid-batch failure must
+                            // leave the session exactly as it was (P2-3), so a later execute
+                            // can never run half-installed rules.
+                            List<ComplexSplitEntry> batch = new ArrayList<>();
+                            for (int i = 0; i < in.entries().size(); i++) {
+                                ExcelComplexConfigInput.ExcelComplexConfigInputEntries entry = in.entries().get(i);
+                                String error = buildComplexEntry(analysis, file, entry.sheetName(), entry.headerIndex(),
+                                        entry.columnIndex(), entry.columnName(), entry.copyEntireSheet(), i, batch);
+                                if (error != null) return new ExcelComplexConfigOutput(null, false, error);
+                            }
+                            // Everything validated — commit file, analysis and rules together.
+                            cfg.sourceFile = file;
+                            cfg.analysisResult = analysis;
+                            cfg.complexEntries.clear();
+                            cfg.complexEntries.addAll(batch);
+                            added = batch.size();
+                        } else {
+                            List<ComplexSplitEntry> single = new ArrayList<>();
+                            String error = buildComplexEntry(analysis, file, in.sheetName(), in.headerIndex(),
+                                    in.columnIndex(), null, null, 0, single);
+                            if (error != null) return new ExcelComplexConfigOutput(null, false, error);
+                            cfg.sourceFile = file;
+                            cfg.analysisResult = analysis;
+                            cfg.complexEntries.addAll(single);
+                            added = 1;
+                        }
+                        // Rules are in: skip the separate excel_configure(COMPLEX) step.
+                        cfg.mode = SplitConfig.SplitMode.COMPLEX;
+                        return new ExcelComplexConfigOutput(null, true,
+                                t("ex.complexEntriesAdded", added, cfg.complexEntries.size()));
+                    }
                 }
                 case "list" -> {
-                    List<ExcelComplexConfigOutput.ExcelComplexConfigOutputEntries> entries = cfg.complexEntries.stream()
-                        .map(e -> new ExcelComplexConfigOutput.ExcelComplexConfigOutputEntries(
-                            e.columnIndex(), e.headerIndex(), e.sheetName()))
-                        .toList();
-                    return new ExcelComplexConfigOutput(entries, true, t("ex.complexEntries", cfg.complexEntries.size()));
+                    SplitConfig cfg = sessions.get(sessionKey(in.sessionId()));
+                    synchronized (cfg) {
+                        List<ExcelComplexConfigOutput.ExcelComplexConfigOutputEntries> entries = cfg.complexEntries.stream()
+                            .map(e -> new ExcelComplexConfigOutput.ExcelComplexConfigOutputEntries(
+                                e.columnIndex(), e.headerIndex(), e.sheetName()))
+                            .toList();
+                        return new ExcelComplexConfigOutput(entries, true, t("ex.complexEntries", cfg.complexEntries.size()));
+                    }
                 }
                 case "clear" -> {
-                    cfg.complexEntries.clear();
-                    return new ExcelComplexConfigOutput(null, true, t("ex.cleared"));
+                    SplitConfig cfg = sessions.get(sessionKey(in.sessionId()));
+                    synchronized (cfg) {
+                        cfg.complexEntries.clear();
+                        return new ExcelComplexConfigOutput(null, true, t("ex.cleared"));
+                    }
                 }
                 default -> {
                     return new ExcelComplexConfigOutput(null, false, t("ex.err.invalidAction", action));
@@ -310,36 +387,86 @@ public final class ExcelRpcHandlers implements AutoCloseable {
         }
     }
 
+    /**
+     * Validates and resolves one rule into {@code into} WITHOUT touching live state, so a
+     * batch either fully validates or leaves everything unchanged. Resolution runs against
+     * the caller-provided {@code analysis}/{@code sourceFile} (which may be the LOCALS of an
+     * add-with-filePath call that has not committed yet). A {@code columnName} is resolved to
+     * a 1-based column index against the analysis (whose header map is 0-based), so callers
+     * (model or canvas) never need to know raw indexes.
+     */
+    private String buildComplexEntry(Map<String, Map<Integer, String>> analysis, Path sourceFile,
+                                     String sheetName, Integer headerIndex, Integer columnIndex,
+                                     String columnName, Boolean copyEntireSheet, int position, List<ComplexSplitEntry> into) {
+        if (sheetName == null || sheetName.isBlank()) {
+            return t("ex.err.entrySheetRequired", position + 1);
+        }
+        Map<Integer, String> headers = analysis.get(sheetName);
+        if (headers == null) return t("ex.err.unknownSheet", sheetName);
+        // Canvas-friendly shorthand: copyEntireSheet selects the (-1, -1) copy-whole-sheet
+        // convention without the caller needing to know the sentinel indexes.
+        if (Boolean.TRUE.equals(copyEntireSheet)) {
+            for (ComplexSplitEntry existing : into) {
+                if (existing.sheetName().equals(sheetName)) return t("ex.err.duplicateSheetRule", sheetName);
+            }
+            String field = sourceFile != null ? sourceFile.getFileName().toString() : "";
+            into.add(new ComplexSplitEntry(field, sheetName, -1, -1));
+            return null;
+        }
+        // An omitted headerIndex means "the usual first row" — model and canvas callers
+        // name a column by its header text and should not need to pass a row number.
+        // Only an EXPLICIT -1 (with columnIndex -1) keeps the copy-entire-sheet meaning.
+        int headerIdx = headerIndex != null ? headerIndex : 1;
+        int columnIdx = columnIndex != null ? columnIndex : -1;
+        if (columnIdx < 0 && columnName != null && !columnName.isBlank()) {
+            for (Map.Entry<Integer, String> header : headers.entrySet()) {
+                if (columnName.equals(header.getValue())) { columnIdx = header.getKey() + 1; break; }
+            }
+            if (columnIdx < 0) return t("ex.err.unknownColumn", columnName);
+        }
+        // The engine writes one output sheet per source sheet name; a second rule on the
+        // same sheet always fails late ("workbook already contains a sheet") — reject it
+        // here, against the batch being built.
+        for (ComplexSplitEntry existing : into) {
+            if (existing.sheetName().equals(sheetName)) return t("ex.err.duplicateSheetRule", sheetName);
+        }
+        String field = sourceFile != null ? sourceFile.getFileName().toString() : "";
+        into.add(new ComplexSplitEntry(field, sheetName, headerIdx, columnIdx));
+        return null;
+    }
+
     public ExcelExecuteOutput aiExecute(ExcelExecuteInput in, RpcContext ctx) {
         try {
-            SplitConfig cfg = sessions.active().orElse(null);
-            if (cfg == null || cfg.analysisResult == null) return new ExcelExecuteOutput(null, false, t("ex.err.callAiAnalyzeFirst"));
-            if (cfg.mode == null) return new ExcelExecuteOutput(null, false, t("ex.err.callAiConfigureFirst"));
-            String outputDir = in.outputDir();
-            if (outputDir == null || outputDir.isBlank()) return new ExcelExecuteOutput(null, false, t("ex.err.notFileRef", "outputDir"));
-            cfg.outputDir = Paths.get(outputDir.trim());
-            cfg.filePrefix = trimmed(in.filePrefix());
-            // Cooperative checkpoint before the long split so a transport cancel returns CANCELLED.
-            ctx.cancellation().throwIfCancelled();
-            ExcelSplitter.SplitResult res;
-            try {
-                Files.createDirectories(cfg.outputDir);
-                // Wire the transport cancellation token into the engine so it aborts mid-split too.
-                res = new ExcelSplitter(cfg, null, ctx.cancellation()::isCancelled).split();
-            } catch (RpcException cancel) {
-                throw cancel;
-            } catch (Exception e) {
-                // If the engine aborted because the call was cancelled, surface CANCELLED, not a failure.
-                if (ctx.cancellation().isCancelled()) ctx.cancellation().throwIfCancelled();
-                ctx.logger().warn("excel execute body failed: {}", e.getClass().getSimpleName(), e);
-                return new ExcelExecuteOutput(null, false, t("ex.err.splitFailed", safeMessage(e)));
+            SplitConfig cfg = sessions.get(sessionKey(in.sessionId()));
+            synchronized (cfg) {
+                if (cfg.analysisResult == null) return new ExcelExecuteOutput(null, false, t("ex.err.callAiAnalyzeFirst"));
+                if (cfg.mode == null) return new ExcelExecuteOutput(null, false, t("ex.err.callAiConfigureFirst"));
+                String outputDir = in.outputDir();
+                if (outputDir == null || outputDir.isBlank()) return new ExcelExecuteOutput(null, false, t("ex.err.notFileRef", "outputDir"));
+                cfg.outputDir = Paths.get(outputDir.trim());
+                cfg.filePrefix = trimmed(in.filePrefix());
+                // Cooperative checkpoint before the long split so a transport cancel returns CANCELLED.
+                ctx.cancellation().throwIfCancelled();
+                ExcelSplitter.SplitResult res;
+                try {
+                    Files.createDirectories(cfg.outputDir);
+                    // Wire the transport cancellation token into the engine so it aborts mid-split too.
+                    res = new ExcelSplitter(cfg, null, ctx.cancellation()::isCancelled).split();
+                } catch (RpcException cancel) {
+                    throw cancel;
+                } catch (Exception e) {
+                    // If the engine aborted because the call was cancelled, surface CANCELLED, not a failure.
+                    if (ctx.cancellation().isCancelled()) ctx.cancellation().throwIfCancelled();
+                    ctx.logger().warn("excel execute body failed: {}", e.getClass().getSimpleName(), e);
+                    return new ExcelExecuteOutput(null, false, t("ex.err.splitFailed", safeMessage(e)));
+                }
+                ctx.cancellation().throwIfCancelled();
+                ctx.logger().info("split produced {} file(s) into {}", res.fileCount(), cfg.outputDir);
+                ExcelExecuteOutput.ExcelExecuteOutputFiles files = new ExcelExecuteOutput.ExcelExecuteOutputFiles(
+                    res.fileCount(),
+                    res.outputFiles().stream().map(p -> p.getFileName().toString()).toList());
+                return new ExcelExecuteOutput(files, true, t("ex.wrote", res.fileCount()));
             }
-            ctx.cancellation().throwIfCancelled();
-            ctx.logger().info("split produced {} file(s) into {}", res.fileCount(), cfg.outputDir);
-            ExcelExecuteOutput.ExcelExecuteOutputFiles files = new ExcelExecuteOutput.ExcelExecuteOutputFiles(
-                res.fileCount(),
-                res.outputFiles().stream().map(p -> p.getFileName().toString()).toList());
-            return new ExcelExecuteOutput(files, true, t("ex.wrote", res.fileCount()));
         } catch (RpcException cancel) {
             throw cancel;
         } catch (Exception e) {
@@ -351,9 +478,8 @@ public final class ExcelRpcHandlers implements AutoCloseable {
     public ExcelExecuteStartOutput aiExecuteStart(ExcelExecuteStartInput in, RpcContext ctx) {
         try {
             // AI tools share the fixed "ai" session; aiAnalyze has populated it.
-            SplitConfig cfg = sessions.get(AI_SESSION);
-            if (cfg.analysisResult == null) return new ExcelExecuteStartOutput(null, false, t("ex.err.callAiAnalyzeFirst"));
-            JobLaunch launched = startSplitJob(cfg, in.outputDir(), in.filePrefix(), ctx);
+            SplitConfig cfg = sessions.get(sessionKey(in.sessionId()));
+            JobLaunch launched = startSplitJob(cfg, in.outputDir(), in.filePrefix(), t("ex.err.callAiAnalyzeFirst"), ctx);
             return new ExcelExecuteStartOutput(launched.jobId(), launched.success(), launched.summary());
         } catch (Exception e) {
             ctx.logger().warn("excel_execute_start failed: {}", e.getClass().getSimpleName(), e);
@@ -373,18 +499,21 @@ public final class ExcelRpcHandlers implements AutoCloseable {
 
     public ExcelQueryOutput aiQuery(ExcelQueryInput in, RpcContext ctx) {
         try {
-            SplitConfig cfg = sessions.active().orElse(null);
-            if (cfg == null) return new ExcelQueryOutput(null, false, t("ex.err.noActiveSession"));
-            ExcelQueryOutput.ExcelQueryOutputState state = new ExcelQueryOutput.ExcelQueryOutputState(
-                cfg.complexEntries.size(),
-                cfg.mode != null ? cfg.mode.name() : null,
-                cfg.outputDir != null ? cfg.outputDir.toString() : null,
-                cfg.selectedSheets,
-                cfg.sourceFile != null ? cfg.sourceFile.toString() : null,
-                cfg.splitColumnIndex,
-                cfg.splitSheet);
-            String summary = cfg.mode != null ? t("ex.modeIs", cfg.mode.name()) : t("ex.modeUnset");
-            return new ExcelQueryOutput(state, true, summary);
+            SplitConfig cfg = sessions.get(sessionKey(in.sessionId()));
+            // Read under the session lock so concurrent writers (aiConfigure / aiComplexConfig /
+            // the startSplitJob snapshot) are never observed mid-mutation.
+            synchronized (cfg) {
+                ExcelQueryOutput.ExcelQueryOutputState state = new ExcelQueryOutput.ExcelQueryOutputState(
+                    cfg.complexEntries.size(),
+                    cfg.mode != null ? cfg.mode.name() : null,
+                    cfg.outputDir != null ? cfg.outputDir.toString() : null,
+                    cfg.selectedSheets,
+                    cfg.sourceFile != null ? cfg.sourceFile.toString() : null,
+                    cfg.splitColumnIndex,
+                    cfg.splitSheet);
+                String summary = cfg.mode != null ? t("ex.modeIs", cfg.mode.name()) : t("ex.modeUnset");
+                return new ExcelQueryOutput(state, true, summary);
+            }
         } catch (Exception e) {
             ctx.logger().warn("excel_query failed: {}", e.getClass().getSimpleName(), e);
             return new ExcelQueryOutput(null, false, safeMessage(e));
@@ -393,7 +522,7 @@ public final class ExcelRpcHandlers implements AutoCloseable {
 
     public ExcelCancelOutput aiCancel(ExcelCancelInput in, RpcContext ctx) {
         try {
-            sessions.remove(AI_SESSION);
+            sessions.remove(sessionKey(in.sessionId()));
             return new ExcelCancelOutput(true, t("ex.sessionReset"));
         } catch (Exception e) {
             ctx.logger().warn("excel_cancel failed: {}", e.getClass().getSimpleName(), e);
@@ -412,15 +541,28 @@ public final class ExcelRpcHandlers implements AutoCloseable {
         static JobLaunch fail(String summary) { return new JobLaunch(false, null, summary); }
     }
 
-    private JobLaunch startSplitJob(SplitConfig cfg, String outputDir, String filePrefix, RpcContext ctx) {
-        if (cfg.mode == null) return JobLaunch.fail(t("ex.err.callUiConfigureFirst"));
+    private JobLaunch startSplitJob(SplitConfig cfg, String outputDir, String filePrefix,
+                                    String analyzeFirstError, RpcContext ctx) {
         if (outputDir == null || outputDir.isBlank()) return JobLaunch.fail(t("ex.err.paramRequired", "outputDir"));
-        cfg.outputDir = Paths.get(outputDir.trim());
-        cfg.filePrefix = trimmed(filePrefix);
-        try { Files.createDirectories(cfg.outputDir); } catch (Exception ignored) {}
+        Path dir = Paths.get(outputDir.trim());
+        String prefix = trimmed(filePrefix);
+
+        // Snapshot the session config under its lock and run the job entirely off the private
+        // copy. The session cfg is never mutated with per-job values (a second split_start on
+        // the same session used to redirect the first job's remaining outputs), and a
+        // concurrent aiComplexConfig clear / re-configure can no longer corrupt a running job.
+        final SplitConfig jobCfg;
+        synchronized (cfg) {
+            if (cfg.mode == null) return JobLaunch.fail(t("ex.err.callUiConfigureFirst"));
+            if (cfg.analysisResult == null) return JobLaunch.fail(analyzeFirstError);
+            jobCfg = cfg.snapshot();
+        }
+        jobCfg.outputDir = dir;
+        jobCfg.filePrefix = prefix;
+        try { Files.createDirectories(dir); } catch (Exception ignored) {}
 
         Jobs.Job job = jobs.start("SPLIT", handle -> {
-            ExcelSplitter splitter = new ExcelSplitter(cfg, (pct, msg) -> handle.log(msg), handle::isCancelled);
+            ExcelSplitter splitter = new ExcelSplitter(jobCfg, (pct, msg) -> handle.log(msg), handle::isCancelled);
             try {
                 // Cooperative checkpoint: honour a transport cancel that arrived before the job spun up.
                 ctx.cancellation().throwIfCancelled();
@@ -432,7 +574,7 @@ public final class ExcelRpcHandlers implements AutoCloseable {
                 // Jobs.start flattens exceptions to a one-line markFailed without a stack trace; log the
                 // full stack here so the host log surface has diagnostics, then rethrow. Raw workbook
                 // contents are never logged — only the source path, mode, and exception toString.
-                ctx.logger().error("split job failed for {} (mode={}): {}", cfg.sourceFile, cfg.mode, e.toString(), e);
+                ctx.logger().error("split job failed for {} (mode={}): {}", jobCfg.sourceFile, jobCfg.mode, e.toString(), e);
                 throw e;
             }
         });

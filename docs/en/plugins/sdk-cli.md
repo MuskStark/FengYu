@@ -1,6 +1,6 @@
 ---
 title: SDK & CLI
-description: Reference for the protocol-based TypeScript client, Java Worker SDK 1.3.0, IDE simulator, and Toolchain 2 CLI.
+description: Reference for the protocol-based TypeScript client, Java Worker SDK 2.0.0, IDE simulator, and Toolchain 2 CLI.
 lang: en
 ---
 
@@ -8,12 +8,12 @@ lang: en
 
 Plugin authors use two SDKs, a Vite simulator + DevKit, and the `fengyu` CLI. The TypeScript SDK
 speaks the shared protocol from the sandbox iframe; the Java SDK runs the out-of-process Worker.
-The Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.3.0`) is independently versioned
+The Java Worker SDK (`fan.summer.fengyu.sdk:fengyu-plugin-sdk:2.0.0`) is independently versioned
 from the host app and published to GitHub Packages.
 
 ## `@infinia/plugin-sdk` (TypeScript)
 
-Source: `toolchain/sdk-ts/src/index.ts`. The current plugin-tooling version is `1.3.0`. Import the singleton client and the helper/types:
+Source: `toolchain/sdk-ts/src/index.ts`. The current plugin-tooling version is `2.0.0`. Import the singleton client and the helper/types:
 
 ```ts
 import { fengyu, FengYuClient, createId, type FileRef, type Environment } from '@infinia/plugin-sdk'
@@ -56,7 +56,7 @@ interface InvokeOptions { signal?: AbortSignal; timeoutMs?: number }
 
 ## Java Worker SDK
 
-Artifact `fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.3.0` (independently versioned, published to GitHub Packages). Package `fan.summer.fengyu.sdk`. The runtime is `JsonRpcWorker`; handlers are typed `(Input input, RpcContext ctx) -> Output`, where `Input`/`Output` are records generated from the manifest's `rpc.methods` and `PluginMethods` holds a constant per method name:
+Artifact `fan.summer.fengyu.sdk:fengyu-plugin-sdk:2.0.0` (independently versioned, published to GitHub Packages). Package `fan.summer.fengyu.sdk`. The runtime is `JsonRpcWorker`; handlers are typed `(Input input, RpcContext ctx) -> Output`, where `Input`/`Output` are records generated from the manifest's `rpc.methods` and `PluginMethods` holds a constant per method name:
 
 ```java
 Output handle(Input input, RpcContext ctx) throws Exception

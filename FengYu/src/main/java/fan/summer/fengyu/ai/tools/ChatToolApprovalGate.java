@@ -28,14 +28,39 @@ public class ChatToolApprovalGate {
 
     private final Map<String, PendingApproval> pending = new ConcurrentHashMap<>();
 
+    /** Optional layered guard (hooks + permission rules); null keeps the legacy mode-only policy. */
+    private final ToolGuardService guard;
+
+    public ChatToolApprovalGate() {
+        this(null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ChatToolApprovalGate(ToolGuardService guard) {
+        this.guard = guard;
+    }
+
     /**
      * Requests approval for every sensitive call in a model response before any tool runs.
+     * A configured deny (hook veto or permission rule) rejects the call outright with its
+     * reason; an explicit allow skips the prompt.
      */
     public void awaitRequiredApprovals(AssistantMessage assistantMessage,
                                        List<ToolCallback> availableTools,
                                        AiStreamCallback callback) {
         if (assistantMessage == null || !assistantMessage.hasToolCalls()) return;
         for (AssistantMessage.ToolCall call : assistantMessage.getToolCalls()) {
+            ToolCallback tool = resolve(call, availableTools);
+            if (guard != null) {
+                ToolGuardService.GuardDecision decision = guard.decide(call.name(), tool,
+                        call.arguments(), AiPermissionContext.current(), null);
+                if (decision.verdict() == ToolGuardService.Verdict.DENY) {
+                    throw new ToolApprovalException(decision.reason());
+                }
+                if (decision.verdict() == ToolGuardService.Verdict.ALLOW) continue;
+                awaitApproval(call, callback);
+                continue;
+            }
             if (!requiresApproval(call, availableTools)) continue;
             awaitApproval(call, callback);
         }
@@ -95,12 +120,16 @@ public class ChatToolApprovalGate {
     }
 
     static boolean requiresApproval(AssistantMessage.ToolCall call, List<ToolCallback> tools) {
-        if (tools == null) return false;
-        ToolCallback tool = tools.stream()
-            .filter(candidate -> candidate.getToolDefinition().name().equals(call.name()))
-            .findFirst().orElse(null);
+        ToolCallback tool = resolve(call, tools);
         return ToolApprovalPolicy.requiresApproval(
                 tool, AiPermissionContext.current(), call.arguments());
+    }
+
+    private static ToolCallback resolve(AssistantMessage.ToolCall call, List<ToolCallback> tools) {
+        if (tools == null) return null;
+        return tools.stream()
+            .filter(candidate -> candidate.getToolDefinition().name().equals(call.name()))
+            .findFirst().orElse(null);
     }
 
     public static boolean commandPotentiallyUnsafe(String arguments) {

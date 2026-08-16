@@ -5,30 +5,35 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
+# The toolchain packages install with Yarn 4 through corepack (Node >=25 dropped the
+# bundled corepack — install it standalone there: `npm install -g corepack`).
+command -v corepack >/dev/null 2>&1 \
+  || { echo "FAIL: corepack is required (npm install -g corepack)" >&2; exit 1; }
+
 cd "$ROOT"
 ./mvnw -f toolchain/sdk-java/pom.xml install -DskipTests
 ./mvnw -f toolchain/devkit-java/pom.xml install -DskipTests
 
 cd "$ROOT/toolchain/sdk-ts"
-npm ci
-npm test
+corepack yarn install --immutable
+corepack yarn test
 SDK_TGZ="$(npm pack --ignore-scripts --silent --pack-destination "$WORK")"
 
 cd "$ROOT/toolchain/ui"
-npm ci
-npm run typecheck
-npm test
-npm run build
+corepack yarn install --immutable
+corepack yarn run typecheck
+corepack yarn test
+corepack yarn run build
 UI_TGZ="$(npm pack --ignore-scripts --silent --pack-destination "$WORK")"
 
 cd "$ROOT/toolchain/dev"
-npm ci
-npm test
+corepack yarn install --immutable
+corepack yarn test
 DEV_TGZ="$(npm pack --ignore-scripts --silent --pack-destination "$WORK")"
 
 cd "$ROOT/toolchain/cli"
-npm ci
-npm test
+corepack yarn install --immutable
+corepack yarn test
 CLI_TGZ="$(npm pack --ignore-scripts --silent --pack-destination "$WORK")"
 
 cd "$WORK"

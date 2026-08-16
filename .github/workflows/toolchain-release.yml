@@ -48,22 +48,24 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24.18.0
-          cache: npm
+          cache: yarn
           cache-dependency-path: |
-            toolchain/sdk-ts/package-lock.json
-            toolchain/ui/package-lock.json
-            toolchain/dev/package-lock.json
-            toolchain/cli/package-lock.json
+            toolchain/sdk-ts/yarn.lock
+            toolchain/ui/yarn.lock
+            toolchain/dev/yarn.lock
+            toolchain/cli/yarn.lock
       - uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: temurin
           cache: maven
+      # Yarn 4 (pinned via packageManager) manages the toolchain packages.
+      - run: corepack enable
       # SDK + dev plugin + CLI + UI tests.
-      - run: cd toolchain/sdk-ts && npm ci && npm test
-      - run: cd toolchain/dev && npm ci && npm test
-      - run: cd toolchain/ui && npm ci && npm run typecheck && npm test && npm run build
-      - run: cd toolchain/cli && npm ci && npm test
+      - run: cd toolchain/sdk-ts && yarn install --immutable && yarn test
+      - run: cd toolchain/dev && yarn install --immutable && yarn test
+      - run: cd toolchain/ui && yarn install --immutable && yarn run typecheck && yarn test && yarn run build
+      - run: cd toolchain/cli && yarn install --immutable && yarn test
       # Test and install the Java SDK + DevKit, then build every official plugin through the CLI.
       - run: ./mvnw -pl toolchain/devkit-java -am install
       - run: node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-markdown
@@ -84,7 +86,7 @@ jobs:
       # toolchain-artifact concern, and is tracked separately. The true end-to-end toolchain proof
       # is the `consumer-smoke` job below, which scaffolds and builds a plugin from the *published*
       # packages on a clean machine.
-      - run: npm ci --prefix docs && npm run build --prefix docs
+      - run: cd docs && corepack yarn install --immutable && corepack yarn run build
 
   publish-java:
     needs: [resolve-version, verify]
@@ -136,27 +138,32 @@ jobs:
         with:
           node-version: 24.18.0
           registry-url: 'https://registry.npmjs.org'
-          cache: npm
+          cache: yarn
           cache-dependency-path: |
-            toolchain/sdk-ts/package-lock.json
-            toolchain/ui/package-lock.json
-            toolchain/dev/package-lock.json
-            toolchain/cli/package-lock.json
+            toolchain/sdk-ts/yarn.lock
+            toolchain/ui/yarn.lock
+            toolchain/dev/yarn.lock
+            toolchain/cli/yarn.lock
+      - run: corepack enable
       # Publish order respects the dependency graph: SDK → UI (peers SDK) → dev (peers SDK) → CLI.
       # Authentication is a long-lived NPM_TOKEN (repo secret, Automation type so it bypasses 2FA):
       # actions/setup-node wires it into ~/.npmrc as NODE_AUTH_TOKEN. `--provenance` still works
       # because id-token: write is granted at the workflow level, but requires the token to permit
       # provenance (granular access tokens or classic Automation tokens both work).
-      - run: cd toolchain/sdk-ts && npm ci && npm publish --provenance --access public
+      # Yarn installs (prepack runs the test+build gates); npm publishes with provenance.
+      - run: cd toolchain/sdk-ts && yarn install --immutable && npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - run: cd toolchain/ui && npm ci && npm publish --provenance --access public
+      # Yarn installs (prepack runs the test+build gates); npm publishes with provenance.
+      - run: cd toolchain/ui && yarn install --immutable && npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - run: cd toolchain/dev && npm ci && npm publish --provenance --access public
+      # Yarn installs (prepack runs the test+build gates); npm publishes with provenance.
+      - run: cd toolchain/dev && yarn install --immutable && npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - run: cd toolchain/cli && npm ci && npm publish --provenance --access public
+      # Yarn installs (prepack runs the test+build gates); npm publishes with provenance.
+      - run: cd toolchain/cli && yarn install --immutable && npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

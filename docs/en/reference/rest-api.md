@@ -89,7 +89,7 @@ Chat invocation and the streaming endpoint. See [AI Chat](/en/guide/ai-chat).
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `POST` | `/api/ai/chat` | token | Start a chat turn. Body `{messages:[{role, content}]}` → `{streamId}`. |
+| `POST` | `/api/ai/chat` | token | Start a chat turn. Body `{messages:[{role, content}], permissionMode?, workflowId?}` → `{streamId}`. A `workflowId` binds the turn to that flow (draft or published): the model receives it as the `run_current_flow` tool inside the ordinary chat tool-call loop. |
 | `GET` | `/api/ai/stream?streamId=` | token | SSE stream for the chat turn. See [SSE Events — Chat](/en/reference/sse-events#chat-stream). |
 
 ## AI config
@@ -142,14 +142,17 @@ The plan-and-execute agent. See [AI Agent](/en/guide/ai-agent).
 ## Workflows
 
 Reusable workflow definitions use the same `AgentPlan` DAG as the agent runner. `inputSchema` is a
-JSON Schema object; runtime inputs bind to <code v-pre>{{inputs.name}}</code> placeholders. Published definitions
-are added to the live AI tool catalog.
+JSON Schema object; runtime inputs bind to <code v-pre>{{inputs.name}}</code> placeholders. `layout`
+maps compiled step indexes to canvas positions, and `graph` (optional) stores the authored canvas
+graph verbatim — `{nodes, edges}` with sticky-note nodes included — so the flow builder reopens the
+exact arrangement (definitions without `graph` reconstruct from `plan` + `layout`). Published
+definitions are added to the live AI tool catalog.
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | `GET` | `/api/workflows` | token | List the current user's workflow definitions. |
 | `GET` | `/api/workflows/{workflowId}` | token | Read one definition. |
-| `POST` | `/api/workflows` | token | Create from `{name, description, inputSchema, plan}`. |
+| `POST` | `/api/workflows` | token | Create from `{name, description, inputSchema, plan, layout?, graph?}`. |
 | `PUT` | `/api/workflows/{workflowId}` | token | Replace the editable definition and increment its revision. |
 | `POST` | `/api/workflows/{workflowId}/publish` | token | Set publication with `{published}`; published workflows become AI tools. |
 | `DELETE` | `/api/workflows/{workflowId}` | token | Delete a definition. |

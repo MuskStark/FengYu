@@ -10,6 +10,50 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const PORTABLE_MARKER_EXISTS = { value: false }
 const NSIS_UNINSTALLER_EXISTS = { value: false }
+// When set, the next fake write stream fails its first write through BOTH channels a real
+// stream uses (write-callback error + 'error' event); see makeFakeWriteStream.
+const STREAM_WRITE_FAILS_WITH = { err: null as Error | null }
+// Every fake write stream handed out by the mocked createWriteStream, newest last.
+const fakeStreams: FakeWriteStream[] = []
+
+interface FakeWriteStream {
+  write: ReturnType<typeof vi.fn>
+  end: ReturnType<typeof vi.fn>
+  destroy: ReturnType<typeof vi.fn>
+  once: ReturnType<typeof vi.fn>
+  emit: (event: string, ...args: unknown[]) => void
+}
+
+/** Minimal fs.WriteStream double with just enough surface for downloadFile: write/end/destroy
+ * plus a tiny once/emit pair so the 'error' wiring can be exercised. Callbacks fire async. */
+function makeFakeWriteStream(): FakeWriteStream {
+  const errorListeners: ((...args: unknown[]) => void)[] = []
+  const failWith = STREAM_WRITE_FAILS_WITH.err
+  const stream: FakeWriteStream = {
+    write: vi.fn((_chunk: Buffer, cb?: (err?: Error | null) => void) => {
+      if (!cb) return
+      queueMicrotask(() => {
+        if (failWith) {
+          cb(failWith)
+          stream.emit('error', failWith)
+        } else {
+          cb()
+        }
+      })
+    }),
+    end: vi.fn((cb?: () => void) => {
+      if (cb) queueMicrotask(cb)
+    }),
+    destroy: vi.fn(),
+    once: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+      if (event === 'error') errorListeners.push(cb)
+    }),
+    emit: (event: string, ...args: unknown[]) => {
+      if (event === 'error') for (const cb of [...errorListeners]) cb(...args)
+    },
+  }
+  return stream
+}
 
 vi.mock('electron', () => ({
   app: {
@@ -27,7 +71,11 @@ vi.mock('node:fs', () => ({
   readdirSync: vi.fn(() => []),
   mkdirSync: vi.fn(),
   mkdtempSync: vi.fn(() => 'C:\\Temp\\fengyu-update'),
-  createWriteStream: vi.fn(() => ({ write: vi.fn(), end: vi.fn((cb: () => void) => cb()) })),
+  createWriteStream: vi.fn(() => {
+    const stream = makeFakeWriteStream()
+    fakeStreams.push(stream)
+    return stream
+  }),
   writeFileSync: vi.fn(),
   rmSync: vi.fn(),
 }))
@@ -36,6 +84,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   PORTABLE_MARKER_EXISTS.value = false
   NSIS_UNINSTALLER_EXISTS.value = false
+  STREAM_WRITE_FAILS_WITH.err = null
+  fakeStreams.length = 0
   // process.resourcesPath is undefined outside a packaged Electron — pin it so existsSync joins work.
   ;(process as { resourcesPath?: string }).resourcesPath = 'C:\\Infinia\\resources'
 })
@@ -212,5 +262,125 @@ describe('checkPortableUpdate', () => {
     } finally {
       delete process.env.FENGYU_UPDATE_API_BASE
     }
+  })
+
+  it('refuses a plain-HTTP artifact without a digest even off the FY-Proxy channel', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    // No FENGYU_UPDATE_API_BASE: the generic gate must still refuse http:// artifacts that
+    // publish no digest, because the bytes are tamperable in transit.
+    const fakeRelease = {
+      tag_name: 'v4.0.0',
+      name: 'Infinia 4.0.0',
+      html_url: 'https://github.com/MuskStark/FengYu/releases/tag/v4.0.0',
+      assets: [{
+        name: 'Infinia-4.0.0-win32-x64-portable.zip',
+        browser_download_url: 'http://mirror.example.org/portable.zip',
+      }],
+    }
+    const fakeFetch = vi.fn(async () => ({ ok: true, json: async () => [fakeRelease] })) as unknown as typeof fetch
+    const { checkPortableUpdate } = await import('../src/updater/portable-updater')
+    await expect(checkPortableUpdate('MuskStark/FengYu', fakeFetch)).rejects.toThrow(
+      /plain HTTP without a SHA-256 digest/,
+    )
+  })
+
+  it('keeps an HTTPS artifact digest-optional (GitHub status quo)', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    const fakeRelease = {
+      tag_name: 'v4.0.0',
+      name: 'Infinia 4.0.0',
+      html_url: 'https://github.com/MuskStark/FengYu/releases/tag/v4.0.0',
+      // GitHub's API does not publish asset digests; https downloads stay allowed without one.
+      assets: [{ name: 'Infinia-4.0.0-win32-x64-portable.zip', browser_download_url: 'https://x/portable.zip' }],
+    }
+    const fakeFetch = vi.fn(async () => ({ ok: true, json: async () => [fakeRelease] })) as unknown as typeof fetch
+    const { checkPortableUpdate } = await import('../src/updater/portable-updater')
+    const result = await checkPortableUpdate('MuskStark/FengYu', fakeFetch)
+    expect(result).not.toBeNull()
+    expect(result!.sha256).toBeNull()
+  })
+})
+
+describe('downloadAndExtractPortable — download hardening (512 MB cap + stream errors)', () => {
+  const INFO = {
+    version: '4.0.0',
+    zipUrl: 'https://example.com/Infinia-4.0.0-win32-x64-portable.zip',
+    sha256: null,
+    releaseUrl: 'https://example.com/rel',
+    releaseName: 'Infinia 4.0.0',
+  }
+
+  /** fetch double whose single GET serves `chunks` sequentially; exposes the body reader + cancel. */
+  function fakeDownloadFetch(opts: { contentLength?: string | null; chunks?: Uint8Array[] }) {
+    const reads: { done: boolean; value?: Uint8Array }[] = (opts.chunks ?? []).map((value) => ({ done: false, value }))
+    reads.push({ done: true })
+    const reader = {
+      read: vi.fn(async () => reads.shift() ?? { done: true }),
+      cancel: vi.fn(async () => {}),
+    }
+    const bodyCancel = vi.fn(async () => {})
+    const fetchFn = vi.fn(async () => ({
+      ok: true,
+      headers: {
+        get: (name: string) => (name.toLowerCase() === 'content-length' ? opts.contentLength ?? null : null),
+      },
+      body: { getReader: () => reader, cancel: bodyCancel },
+    })) as unknown as typeof fetch
+    return { fetchFn, reader, bodyCancel }
+  }
+
+  it('refuses an over-cap Content-Length before streaming anything', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    const { fetchFn, reader, bodyCancel } = fakeDownloadFetch({
+      contentLength: String(600 * 1024 * 1024),
+      chunks: [new Uint8Array(8)],
+    })
+    const { downloadAndExtractPortable } = await import('../src/updater/portable-updater')
+
+    await expect(downloadAndExtractPortable(INFO, () => {}, fetchFn)).rejects.toThrow(/exceeds the 512 MB cap/)
+
+    const fs = await import('node:fs')
+    expect(reader.read).not.toHaveBeenCalled() // nothing streamed
+    expect(bodyCancel).toHaveBeenCalled() // the connection is released best-effort
+    expect(fs.createWriteStream).not.toHaveBeenCalled() // no staging file ever opened
+  })
+
+  it('aborts mid-flight when the received bytes cross the cap (absent/lying Content-Length)', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    // A Uint8Array subclass that reports a 600 MB byteLength without allocating it.
+    class FatChunk extends Uint8Array {
+      override get byteLength(): number {
+        return 600 * 1024 * 1024
+      }
+    }
+    const { fetchFn, reader } = fakeDownloadFetch({ contentLength: null, chunks: [new Uint8Array(10), new FatChunk(4)] })
+    const { downloadAndExtractPortable } = await import('../src/updater/portable-updater')
+
+    await expect(downloadAndExtractPortable(INFO, () => {}, fetchFn)).rejects.toThrow(/exceeds the 512 MB cap/)
+
+    expect(reader.read).toHaveBeenCalledTimes(2) // the fat chunk was read, then the download aborted
+    expect(reader.cancel).toHaveBeenCalled() // transfer aborted, not drained
+    expect(fakeStreams.length).toBe(1)
+    expect(fakeStreams[0].write).toHaveBeenCalledTimes(1) // only the first (under-cap) chunk hit disk
+    const fs = await import('node:fs')
+    const { join } = await import('node:path')
+    expect(fs.rmSync).toHaveBeenCalledWith(join('C:\\Temp\\fengyu-update', 'portable.zip'), { force: true })
+  })
+
+  it('rejects and deletes the staging zip when the write stream fails', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    STREAM_WRITE_FAILS_WITH.err = new Error('ENOSPC: no space left on device')
+    const { fetchFn, reader } = fakeDownloadFetch({ contentLength: '10', chunks: [new Uint8Array(10)] })
+    const { downloadAndExtractPortable } = await import('../src/updater/portable-updater')
+
+    await expect(downloadAndExtractPortable(INFO, () => {}, fetchFn)).rejects.toThrow(/ENOSPC/)
+
+    // A write failure falls back to the manual-update path as a rejection (not an unhandled
+    // stream 'error' event) and leaves no half-written zip behind.
+    expect(reader.cancel).toHaveBeenCalled()
+    expect(fakeStreams[0].destroy).toHaveBeenCalled()
+    const fs = await import('node:fs')
+    const { join } = await import('node:path')
+    expect(fs.rmSync).toHaveBeenCalledWith(join('C:\\Temp\\fengyu-update', 'portable.zip'), { force: true })
   })
 })

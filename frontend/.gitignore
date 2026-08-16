@@ -4,3 +4,8 @@ public/vendor
 .env
 *.local
 .DS_Store
+
+.yarn/*
+!.yarn/releases
+!.yarn/plugins
+.yarn/install-state.gz

@@ -22,6 +22,11 @@ const expectedLight: ThemeDefinition = {
     'surface-container-low': '#fafaf8',
     'surface-container-high': '#f0f0f0',
     'surface-container-highest': '#e9e9e9',
+    'surface-light': '#f5f5f5',
+    'on-background': '#0d0d0d',
+    'on-surface-variant': '#333333',
+    'on-surface-bright': '#0d0d0d',
+    'on-surface-light': '#0d0d0d',
     // Inverted primary — dark button / light text, Codex light-mode style.
     primary: '#0d0d0d',
     'on-primary': '#ffffff',
@@ -61,6 +66,11 @@ const expectedDark: ThemeDefinition = {
     'surface-container-low': '#141413',
     'surface-container-high': '#1c1c1c',
     'surface-container-highest': '#232323',
+    'surface-light': '#1c1c1c',
+    'on-background': '#ededed',
+    'on-surface-variant': '#cccccc',
+    'on-surface-bright': '#ededed',
+    'on-surface-light': '#ededed',
     // Light "primary" — near-white button / dark text, Codex dark-mode style.
     primary: '#ededed',
     'on-primary': '#0d0d0d',

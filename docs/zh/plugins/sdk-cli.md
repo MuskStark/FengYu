@@ -1,6 +1,6 @@
 ---
 title: SDK 与 CLI
-description: 共享协议 TypeScript 客户端、Java Worker SDK 1.3.0、IDE 模拟器与 Toolchain 2 CLI 参考。
+description: 共享协议 TypeScript 客户端、Java Worker SDK 2.0.0、IDE 模拟器与 Toolchain 2 CLI 参考。
 lang: zh
 ---
 
@@ -8,11 +8,11 @@ lang: zh
 
 插件作者使用两套 SDK、一套 Vite 模拟器 + DevKit，以及 `fengyu` CLI。TypeScript SDK 从 sandbox
 iframe 使用共享协议；Java SDK 运行进程外 Worker。Java Worker SDK
-（`fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.3.0`）相对于宿主应用独立版本化，并发布到 GitHub Packages。
+（`fan.summer.fengyu.sdk:fengyu-plugin-sdk:2.0.0`）相对于宿主应用独立版本化，并发布到 GitHub Packages。
 
 ## `@infinia/plugin-sdk`（TypeScript）
 
-源码：`toolchain/sdk-ts/src/index.ts`。当前插件工具链版本为 `1.3.0`。导入单例 client 以及辅助方法/类型：
+源码：`toolchain/sdk-ts/src/index.ts`。当前插件工具链版本为 `2.0.0`。导入单例 client 以及辅助方法/类型：
 
 ```ts
 import { fengyu, FengYuClient, createId, type FileRef, type Environment } from '@infinia/plugin-sdk'
@@ -55,7 +55,7 @@ interface InvokeOptions { signal?: AbortSignal; timeoutMs?: number }
 
 ## Java Worker SDK
 
-制品 `fan.summer.fengyu.sdk:fengyu-plugin-sdk:1.3.0`（独立版本化，发布到 GitHub Packages）。包 `fan.summer.fengyu.sdk`。运行时是 `JsonRpcWorker`；处理器实现类型化 `@FunctionalInterface RpcHandler<I, O>`：
+制品 `fan.summer.fengyu.sdk:fengyu-plugin-sdk:2.0.0`（独立版本化，发布到 GitHub Packages）。包 `fan.summer.fengyu.sdk`。运行时是 `JsonRpcWorker`；处理器实现类型化 `@FunctionalInterface RpcHandler<I, O>`：
 
 ```java
 O handle(I input, RpcContext ctx) throws Exception

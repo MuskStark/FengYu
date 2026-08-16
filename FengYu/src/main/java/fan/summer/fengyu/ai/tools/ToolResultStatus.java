@@ -12,8 +12,7 @@ public final class ToolResultStatus {
     public static AiToolResult toAiResult(String value) {
         Map<String, Object> object = object(value);
         if (Boolean.FALSE.equals(object.get("success"))) {
-            Object error = object.get("error");
-            return AiToolResult.error(error == null ? value : String.valueOf(error));
+            return AiToolResult.error(failureMessage(object, value));
         }
         return AiToolResult.success(value);
     }
@@ -21,10 +20,22 @@ public final class ToolResultStatus {
     public static String requireSuccess(String value) {
         Map<String, Object> object = object(value);
         if (Boolean.FALSE.equals(object.get("success"))) {
-            Object error = object.get("error");
-            throw new IllegalStateException(error == null ? "Tool reported failure" : String.valueOf(error));
+            throw new IllegalStateException(failureMessage(object, value));
         }
         return value;
+    }
+
+    /**
+     * Most official plugin methods report failure as {@code success:false} plus a localized
+     * {@code summary} with no {@code error} field; without this fallback every such failure
+     * surfaced as the useless "Tool reported failure" in agent runs and workflows.
+     */
+    private static String failureMessage(Map<String, Object> object, String raw) {
+        Object error = object.get("error");
+        if (error != null) return String.valueOf(error);
+        Object summary = object.get("summary");
+        if (summary != null && !String.valueOf(summary).isBlank()) return String.valueOf(summary);
+        return raw == null ? "Tool reported failure" : raw;
     }
 
     private static Map<String, Object> object(String value) {

@@ -9,6 +9,11 @@ set -euo pipefail
 PORT="${1:-8899}"
 TOKEN="${2:-e2e-smoke-token}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Plugin UIs install with Yarn 4 through corepack (Node >=25 dropped the bundled
+# corepack — install it standalone there: `npm install -g corepack`).
+command -v corepack >/dev/null 2>&1 \
+  || { echo "FAIL: corepack is required (npm install -g corepack)" >&2; exit 1; }
+corepack enable >/dev/null 2>&1 || true
 # Resolve the built jar by glob so this script does not break on every version bump.
 # Exactly one jar must match; zero or multiple is an error (avoids ambiguity).
 JAR_GLOB="$ROOT/FengYu/target/FengYu-*.jar"
@@ -55,6 +60,7 @@ trap '
   if [ -n "${SRV:-}" ]; then
     pkill -P "$SRV" 2>/dev/null || true
   fi
+  kill ${SMTP_SINK:-} 2>/dev/null || true
   rm -rf "${WORK:-}" "$OFFICIAL_DIR"
 ' EXIT
 
@@ -221,7 +227,267 @@ curl -s "${AUTH[@]}" -H 'Content-Type: application/json' \
   && echo "PASS: excel split" || fail "excel split"
 
 curl -s "${AUTH[@]}" "$H/api/plugin-runtime/fan.summer.excel/files/export/$OUT_REF" -o "$WORK/r.zip"
-unzip -l "$WORK/r.zip" | grep -q '\.xlsx' && echo "PASS: excel archive" || fail "excel archive"
+# List to a file first: grep -q closing the pipe early can SIGPIPE unzip under pipefail.
+unzip -l "$WORK/r.zip" > "$WORK/r-zip-list.txt" 2>&1
+grep -q '\.xlsx' "$WORK/r-zip-list.txt" && echo "PASS: excel archive" \
+  || fail "excel archive (zip bytes=$(wc -c < "$WORK/r.zip" | tr -d ' '), listing: $(cat "$WORK/r-zip-list.txt"))"
+
+# --- FengyuFlow (visual workflows): CRUD, layout round-trip, deterministic manual run ---
+# The plan runs json_format — a built-in tool that needs no LLM and no plugin — so this
+# probes persistence, input binding and the agent execution path end to end.
+WF_CREATE="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST "$H/api/workflows" -d '{
+  "name": "Smoke flow",
+  "description": "smoke",
+  "inputSchema": {"type":"object","properties":{"payload":{"type":"string"}},"required":["payload"]},
+  "plan": {
+    "goal": "Format {{inputs.payload}}",
+    "steps": [
+      {"index": 0, "toolName": "json_format", "args": {"json": "{{inputs.payload}}"},
+       "description": "Format", "requiresApproval": false}
+    ],
+    "reasoning": ""
+  },
+  "layout": {"0": {"x": 10, "y": 20}}
+}')"
+echo "$WF_CREATE" | grep -q '"id"' || fail "workflow create: $WF_CREATE"
+echo "$WF_CREATE" | grep -q '"x":10.0' || fail "workflow layout round-trip: $WF_CREATE"
+WF_ID="$(printf '%s' "$WF_CREATE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+
+curl -s "${AUTH[@]}" "$H/api/workflows" | grep -q 'Smoke flow' || fail "workflow list after create"
+
+WF_RUN="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' \
+  -X POST "$H/api/workflows/$WF_ID/run" -d '{
+    "inputs": {"payload": "{\"a\":1}"},
+    "config": {"requirePlanApproval": false, "requireStepApproval": false,
+               "replanOnFailure": false, "maxReplans": 0, "permissionMode": "full-access"}
+  }')"
+echo "$WF_RUN" | grep -q '"runId"' || fail "workflow run start: $WF_RUN"
+WF_RUN_ID="$(printf '%s' "$WF_RUN" | python3 -c 'import json,sys; print(json.load(sys.stdin)["runId"])')"
+
+wf_done=""
+for _ in $(seq 1 30); do
+  WF_DETAIL="$(curl -s "${AUTH[@]}" "$H/api/agent/runs/$WF_RUN_ID")"
+  WF_STATUS="$(printf '%s' "$WF_DETAIL" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status",""))' 2>/dev/null || true)"
+  case "$WF_STATUS" in COMPLETED|FAILED|CANCELLED) wf_done=1; break ;; esac
+  sleep 1
+done
+[ -n "$wf_done" ] || fail "workflow run never reached a terminal state"
+[ "$WF_STATUS" = "COMPLETED" ] || fail "workflow run failed ($WF_STATUS): $WF_DETAIL"
+# The step result is JSON-escaped inside the detail payload, so assert on the extracted text.
+# executions records both the RUNNING and the terminal entry per step — take the terminal one.
+WF_RESULT="$(printf '%s' "$WF_DETAIL" | python3 -c '
+import json,sys
+d = json.load(sys.stdin)
+results = [e.get("result") for e in d.get("executions") or [] if e.get("result")]
+print(results[-1] if results else "")')"
+printf '%s' "$WF_RESULT" | grep -q '"a"' || fail "workflow run result missing formatted JSON: $WF_DETAIL"
+echo "PASS: workflow create + manual run + result binding"
+
+# Publish exposes the workflow as a run_workflow_* AI tool.
+curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+  "$H/api/workflows/$WF_ID/publish" -d '{"published": true}' | grep -q '"published":true' \
+  || fail "workflow publish"
+curl -s "${AUTH[@]}" "$H/api/agent/tools" | grep -q 'run_workflow_' || fail "published workflow not in AI tool catalog"
+echo "PASS: published workflow discovered as AI tool"
+
+# Deleting removes the definition (run history is intentionally kept).
+curl -s "${AUTH[@]}" -X DELETE "$H/api/workflows/$WF_ID" | grep -q '"ok":true' || fail "workflow delete"
+curl -s "${AUTH[@]}" "$H/api/workflows" | grep -q 'Smoke flow' && fail "workflow still listed after delete"
+echo "PASS: workflow delete"
+
+# --- FengyuFlow × Excel complex split: one node configures ALL rules + the file path ---
+# The canvas shape users actually build: complex_config(filePath + entries[]) chained into
+# excel_execute. outputDir is left EMPTY on purpose — the host must default it to the plugin's
+# output staging folder (a typed arbitrary path would be rejected by the worker sandbox).
+# Also proves plugin failures surface their localized reason in run details.
+CX_RUN="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' \
+  -X POST "$H/api/agent/run" -d '{
+    "goal": "complex split",
+    "config": {"requirePlanApproval": false, "requireStepApproval": false,
+               "replanOnFailure": false, "maxReplans": 0, "permissionMode": "full-access"},
+    "workflow": {"goal": "complex split", "reasoning": "", "steps": [
+      {"index": 0, "toolName": "excel_complex_config",
+       "args": {"action": "add", "filePath": "'"$XLSX"'",
+                "entries": [{"sheetName": "Alpha", "headerIndex": 1, "columnName": "region"}]},
+       "description": "rules", "requiresApproval": false, "dependsOn": []},
+      {"index": 1, "toolName": "excel_execute",
+       "args": {},
+       "description": "split", "requiresApproval": false, "dependsOn": [0]}
+    ]}
+  }')"
+echo "$CX_RUN" | grep -q '"runId"' || fail "complex-split run start: $CX_RUN"
+CX_RUN_ID="$(printf '%s' "$CX_RUN" | python3 -c 'import json,sys; print(json.load(sys.stdin)["runId"])')"
+cx_done=""
+for _ in $(seq 1 30); do
+  CX_DETAIL="$(curl -s "${AUTH[@]}" "$H/api/agent/runs/$CX_RUN_ID")"
+  CX_STATUS="$(printf '%s' "$CX_DETAIL" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status",""))' 2>/dev/null || true)"
+  case "$CX_STATUS" in COMPLETED|FAILED|CANCELLED) cx_done=1; break ;; esac
+  sleep 1
+done
+[ -n "$cx_done" ] || fail "complex-split run never reached a terminal state"
+[ "$CX_STATUS" = "COMPLETED" ] || fail "complex-split run failed ($CX_STATUS): $CX_DETAIL"
+CX_RESULT="$(printf '%s' "$CX_DETAIL" | python3 -c '
+import json,sys
+d = json.load(sys.stdin)
+results = [e.get("result") for e in d.get("executions") or [] if e.get("result")]
+print(results[-1] if results else "")')"
+printf '%s' "$CX_RESULT" | grep -q 'sample_east' || fail "complex-split output missing sample_east: $CX_DETAIL"
+echo "PASS: excel complex split via single workflow node (filePath + multi-rule entries)"
+
+# --- FengyuFlow × Excel split → Email batch send (the ordinary-user template chain) ---
+# Full chain through ONE workflow run with run-scoped file grants: an uploaded workbook
+# (@file:workbook placeholder), a host-minted cross-plugin shared dir (@file:outputDir),
+# the excel complex split writing into it, the email batch prepare reading from it, and
+# confirm_send dispatching to a local SMTP sink. Proves the whole template scenario.
+cat > "$WORK/smtp_sink.py" << 'PYEOF'
+import socket, sys, threading
+
+port, log_path = int(sys.argv[1]), sys.argv[2]
+
+def handle(conn):
+    f = conn.makefile('rb')
+    conn.sendall(b'220 e2e-sink\r\n')
+    in_data = False
+    while True:
+        line = f.readline()
+        if not line:
+            break
+        text = line.decode('utf-8', 'replace').rstrip('\r\n')
+        if in_data:
+            if text == '.':
+                in_data = False
+                with open(log_path, 'a') as log:
+                    log.write('MSG\n')
+                conn.sendall(b'250 accepted\r\n')
+            continue
+        upper = text.upper()
+        if upper.startswith('EHLO'):
+            conn.sendall(b'250-e2e-sink\r\n250 8BITMIME\r\n')
+        elif upper.startswith('HELO'):
+            conn.sendall(b'250 e2e-sink\r\n')
+        elif upper.startswith('DATA'):
+            in_data = True
+            conn.sendall(b'354 end\r\n')
+        elif upper.startswith('RCPT'):
+            with open(log_path, 'a') as log:
+                log.write(text + '\n')
+            conn.sendall(b'250 OK\r\n')
+        elif upper.startswith('QUIT'):
+            conn.sendall(b'221 bye\r\n')
+            break
+        else:
+            conn.sendall(b'250 OK\r\n')
+    conn.close()
+
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.bind(('127.0.0.1', port))
+server.listen(8)
+while True:
+    conn, _ = server.accept()
+    threading.Thread(target=handle, args=(conn,), daemon=True).start()
+PYEOF
+SMTP_PORT=8898
+python3 "$WORK/smtp_sink.py" "$SMTP_PORT" "$WORK/smtp.log" >/dev/null 2>&1 &
+SMTP_SINK=$!
+
+# Sender account pointing at the sink (plain SMTP; password is required by the plugin).
+SMTP_ACCOUNT="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+  "$H/api/plugin-runtime/fan.summer.email/invoke" \
+  -d '{"callId":"smoke","method":"email_account_save","params":{"displayName":"Smoke","email":"sender@example.com","password":"sink","smtpHost":"127.0.0.1","smtpPort":'"$SMTP_PORT"',"smtpSecurity":"NONE"}}')"
+echo "$SMTP_ACCOUNT" | grep -q '"success":true' || fail "email account save: $SMTP_ACCOUNT"
+ACCOUNT_ID="$(printf '%s' "$SMTP_ACCOUNT" | python3 -c 'import json,sys; print(json.load(sys.stdin)["account"]["id"])')"
+
+# The workflow definition mirrors the built-in canvas template: four steps, {{inputs.*}}
+# placeholders, and the send step mapped to the prepare step's nested confirmation id.
+AI_UPLOAD="$(curl -s "${AUTH[@]}" -F "file=@$XLSX" "$H/api/ai/files/upload")"
+echo "$AI_UPLOAD" | grep -q 'fan.summer.excel' || fail "ai file upload fan-out: $AI_UPLOAD"
+cat > "$WORK/flow-create.json" << 'JSONEOF'
+{
+  "name": "Split then batch email",
+  "description": "e2e",
+  "inputSchema": {"type":"object","required":["workbook","rules","accountId","recipientTagIds","subject"],
+    "properties":{"workbook":{"type":"string","format":"fengyu-file"},
+      "rules":{"type":"array","items":{"type":"object","required":["sheetName","columnName"],
+        "properties":{"sheetName":{"type":"string"},"columnName":{"type":"string"}}}},
+      "outputDir":{"type":"string"},"accountId":{"type":"integer"},
+      "recipientTagIds":{"type":"array"},"subject":{"type":"string"},"body":{"type":"string"}}},
+  "plan": {"goal": "Split the workbook by the configured rules, then batch email", "reasoning": "",
+    "steps": [
+      {"index": 0, "toolName": "excel_complex_config",
+       "args": {"action": "add", "filePath": "{{inputs.workbook}}", "entries": "{{inputs.rules}}"},
+       "description": "rules", "requiresApproval": false, "dependsOn": []},
+      {"index": 1, "toolName": "excel_execute",
+       "args": {"outputDir": "{{inputs.outputDir}}"},
+       "description": "split", "requiresApproval": false, "dependsOn": [0]},
+      {"index": 2, "toolName": "email_send_batch",
+       "args": {"accountId": "{{inputs.accountId}}", "recipientGroupTagIds": "{{inputs.recipientTagIds}}",
+                "ccGroupTagIds": [], "inputDirectory": "{{inputs.outputDir}}",
+                "subject": "{{inputs.subject}}", "plainText": "{{inputs.body}}"},
+       "description": "prepare batch", "requiresApproval": false, "dependsOn": [1]},
+      {"index": 3, "toolName": "confirm_send",
+       "args": {"confirmationId": "{{steps.2.result.confirmation.confirmationId}}"},
+       "description": "send batch", "requiresApproval": true, "dependsOn": [2]}
+    ]}
+}
+JSONEOF
+SE_CREATE="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST "$H/api/workflows" -d @"$WORK/flow-create.json")"
+SE_ID="$(printf '%s' "$SE_CREATE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+[ -n "$SE_ID" ] || fail "split+email workflow create: $SE_CREATE"
+
+# Two split rules — one per worksheet — exercising the multi-rule complex split the
+# canvas template ships; the plugin defaults an omitted headerIndex to the first row.
+SE_RUN_BODY="$(python3 -c 'import json,sys; print(json.dumps({
+  "inputs": {"rules": [{"sheetName": "Alpha", "columnName": "region"},
+                       {"sheetName": "Beta", "columnName": "dept"}],
+             "accountId": int(sys.argv[1]), "recipientTagIds": [int(sys.argv[2])],
+             "subject": "E2E split batch", "body": "hello from the workflow",
+             "workbook": "@file:workbook", "outputDir": "@file:outputDir"},
+  "config": {"requirePlanApproval": False, "requireStepApproval": False,
+             "replanOnFailure": False, "maxReplans": 0, "permissionMode": "full-access"},
+  "files": [{"name": "workbook", "refs": json.loads(sys.argv[3])},
+            {"name": "outputDir", "createSharedDirectory": True}]
+}))' "$ACCOUNT_ID" "$GROUP_ID" "$AI_UPLOAD")"
+SE_RUN="$(curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+  "$H/api/workflows/$SE_ID/run" -d "$SE_RUN_BODY")"
+SE_RUN_ID="$(printf '%s' "$SE_RUN" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("runId",""))')"
+[ -n "$SE_RUN_ID" ] || fail "split+email run start: $SE_RUN"
+
+se_done=""
+for _ in $(seq 1 90); do
+  SE_DETAIL="$(curl -s "${AUTH[@]}" "$H/api/agent/runs/$SE_RUN_ID")"
+  SE_STATUS="$(printf '%s' "$SE_DETAIL" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status",""))' 2>/dev/null || true)"
+  case "$SE_STATUS" in
+    # The send step is authored requiresApproval — the human go-ahead the two-phase
+    # email protocol needs. Play the user clicking 批准 in the run panel.
+    AWAITING_PLAN_APPROVAL|AWAITING_STEP_APPROVAL)
+      curl -s "${AUTH[@]}" -H 'Content-Type: application/json' -X POST \
+        "$H/api/agent/$SE_RUN_ID/approve" -d '{}' >/dev/null ;;
+    COMPLETED|FAILED|CANCELLED) se_done=1; break ;;
+  esac
+  sleep 1
+done
+[ -n "$se_done" ] || fail "split+email run never reached a terminal state (last: $SE_STATUS): $SE_DETAIL"
+[ "$SE_STATUS" = "COMPLETED" ] || fail "split+email run failed ($SE_STATUS): $SE_DETAIL"
+printf '%s' "$SE_DETAIL" > "$WORK/se-detail.json"
+python3 -c 'import json,sys
+d = json.load(open(sys.argv[1]))
+steps = {e["index"]: e.get("status") for e in d.get("executions") or []}
+assert all(steps.get(i) == "COMPLETED" for i in range(4)), steps
+results = [e.get("result") for e in d.get("executions") or [] if e.get("result")]
+assert any("sample_east" in r for r in results), results
+assert any("sample_sales" in r for r in results), results
+assert any("confirmationId" in r for r in results), results' "$WORK/se-detail.json" \
+  || fail "split+email step assertions: $SE_DETAIL"
+# The send step dispatched to the local sink: the east file's recipient received mail.
+sleep 1
+grep -q 'RCPT TO:<smoke@example.com>' "$WORK/smtp.log" \
+  || fail "split+email SMTP sink saw no recipient (log: $(cat "$WORK/smtp.log" 2>/dev/null))"
+grep -c '^MSG$' "$WORK/smtp.log" | grep -q '^[1-9]' \
+  || fail "split+email SMTP sink accepted no messages"
+echo "PASS: excel split → email batch prepare → confirm_send through one workflow run (shared dir + file grants)"
+kill "$SMTP_SINK" 2>/dev/null || true
+SMTP_SINK=""
 
 # Active orphan check (graceful-shutdown reap): SIGTERM the backend and assert its @PreDestroy
 # reaps every plugin worker — no worker JVM may outlive the backend (a survivor would orphan and
@@ -231,7 +497,10 @@ unzip -l "$WORK/r.zip" | grep -q '\.xlsx' && echo "PASS: excel archive" || fail 
 kill "${SRV:-}" 2>/dev/null || true
 SRV=""
 sleep 3
-ORPHANS="$(pgrep -f 'backend/worker.jar' 2>/dev/null || true)"
+# Scope the scan to THIS run's temp plugins dir: a developer's long-running backend
+# elsewhere on the machine also spawns backend/worker.jar processes that are none of
+# this test's business (a global pgrep made the check fail on any active dev host).
+ORPHANS="$(pgrep -f "$WORK/.fengyu/plugins/.*/backend/worker.jar" 2>/dev/null || true)"
 if [ -n "$ORPHANS" ]; then
   echo "FAIL: orphan plugin-worker process(es) survived backend shutdown: $ORPHANS" >&2
   exit 1

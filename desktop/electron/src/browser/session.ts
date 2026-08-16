@@ -1,4 +1,4 @@
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
 import { mkdirSync } from 'node:fs'
 import { runtimeRoot } from '../desktop/runtime-paths'
@@ -54,6 +54,21 @@ export class BrowserSession {
     // replaced), so drop the registry so callers do not resolve stale refs into nothing.
     const reset = (): void => { this.refSeq = 0 }
     this.win.webContents.on('did-start-loading', reset)
+    // Navigation guard, same posture as the main window (create-window.ts): this window
+    // renders untrusted web content, so deny all window.open (otherwise a page could spawn
+    // unguarded child windows) and delegate http(s) to the system browser. The will-navigate
+    // guard is deliberately narrower than the main window's same-origin rule: cross-origin
+    // link clicks ARE the browsing this window exists for — it only blocks escapes from the
+    // web (file:, chrome:, ...) which loadURL-driven browser_navigate never needs.
+    this.win.webContents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:\/\//.test(url)) {
+        void shell.openExternal(url)
+      }
+      return { action: 'deny' }
+    })
+    this.win.webContents.on('will-navigate', (e, url) => {
+      if (!/^https?:\/\//i.test(url)) e.preventDefault()
+    })
     return this.win
   }
 

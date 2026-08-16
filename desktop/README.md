@@ -13,7 +13,7 @@ the former Tauri shell; the backend lifecycle it implements is **unchanged**.
 
 | Tool | Version | Used for |
 | --- | --- | --- |
-| Node.js + npm | 24.18.0 | Electron main process + build toolchain |
+| Node.js + Yarn 4 (corepack) | 24.18.0 | Electron main process + build toolchain |
 | JDK | 21+ (Eclipse Temurin recommended) | Backend JAR (and the bundled JRE build, if any) |
 
 The desktop shell does **not** require Rust or a system WebView runtime — Electron ships its own
@@ -48,21 +48,22 @@ server (`http://localhost:5173`):
 
 ```bash
 cd desktop/electron
-npm install
-npm run dev      # = npm run build:ts && electron .
+corepack enable  # once per machine: activates the pinned Yarn 4
+yarn install
+yarn run dev     # = yarn build:ts && electron .
 ```
 
 The desktop shell **auto-starts the Vite frontend** in dev (the old Tauri shell did this via
-`beforeDevCommand`). When you run `npm run dev`, the shell spawns `npm run dev` in `frontend/` itself,
+`beforeDevCommand`). When you run `yarn run dev`, the shell spawns `yarn run dev` in `frontend/` itself,
 waits for Vite to be ready on `127.0.0.1:5173`, then opens the window pointed at it — you don't need a
 separate terminal for the frontend. (Vite is forced to `--host 127.0.0.1 --port 5173 --strictPort` so
 the bind is deterministic; if 5173 is busy, the shell errors clearly instead of letting Vite silently
 move ports.) If you already have Vite running, the shell detects it and reuses it. You only need a
-separate `cd frontend && npm run dev` terminal if you want browser-only frontend work without the shell.
+separate `cd frontend && yarn run dev` terminal if you want browser-only frontend work without the shell.
 
 ### Default dev — connect to an IDE-started backend (no env vars needed)
 
-By default, `npm run dev` connects to a backend you started yourself in the IDE (or
+By default, `yarn run dev` connects to a backend you started yourself in the IDE (or
 `mvn -pl FengYu spring-boot:run`) at `127.0.0.1:24056`. The shell does NOT spawn java, generate a
 token, run the SETUP→APP supervisor, or manage the backend lifetime — you own it. Start the backend
 **without** `--token=` so `TokenAuthFilter` disables auth (convenient for dev); the shell then passes
@@ -73,7 +74,7 @@ an empty token that lines up with the SPA's empty-token fallback.
 ./mvnw -pl FengYu spring-boot:run        # binds 127.0.0.1:24056, no token → auth disabled
 
 # Terminal 2: desktop shell (auto-starts Vite, no env vars needed)
-cd desktop/electron && npm run dev
+cd desktop/electron && yarn run dev
 ```
 
 If the IDE backend isn't running, the shell waits up to 30s for `/api/health`, then shows an error
@@ -99,7 +100,7 @@ the shell env:
 cd desktop/electron && \
   FENGYU_BROWSER_BRIDGE_PORT=9123 \
   FENGYU_BROWSER_BRIDGE_TOKEN=dev-token \
-  npm run dev
+  yarn run dev
 # The startup log prints the effective port/token — confirm they match what the IDE got.
 ```
 
@@ -135,7 +136,7 @@ loaded from the dev Vite server instead of the bundled SPA:
 
    ```bash
    export FENGYU_JAR=/path/to/FengYu/target/FengYu-4.0.0.jar
-   npm run dev
+   yarn run dev
    ```
 
    This path requires `FENGYU_JAR` set explicitly (or `FENGYU_DEV_BACKEND=disabled`); the default
@@ -157,15 +158,15 @@ desktop/electron/resources/jre/                  # only for the with-JRE variant
 
 ```bash
 cd desktop/electron
-npm run build            # = npm run build:ts && electron-builder (host platform)
-npm run build:win        # build for Windows (NSIS)
-npm run build:mac        # build for macOS (dmg, arm64 + x64)
-npm run build:linux      # build for Linux (AppImage)
+yarn run build           # = yarn build:ts && electron-builder (host platform)
+yarn run build:win       # build for Windows (NSIS)
+yarn run build:mac       # build for macOS (dmg, arm64 + x64)
+yarn run build:linux     # build for Linux (AppImage)
 ```
 
 Output lands in `desktop/dist-electron/`. The frontend SPA must be built first and copied into
 `desktop/electron/frontend-dist/` (CI does this; for a local build run
-`cd frontend && npm run build` and copy `frontend/dist` → `desktop/electron/frontend-dist`).
+`cd frontend && yarn run build` and copy `frontend/dist` → `desktop/electron/frontend-dist`).
 
 ### Two installer variants
 
@@ -227,8 +228,8 @@ through to env vars unchanged.
 
 ```bash
 cd desktop/electron
-npm test            # vitest unit tests (runtime-layout, supervisor, handshake, token, health)
-npm run test:e2e    # @playwright/test + electron launch spec (needs a prebuilt backend JAR)
+yarn test           # vitest unit tests (runtime-layout, supervisor, handshake, token, health)
+yarn run test:e2e   # @playwright/test + electron launch spec (needs a prebuilt backend JAR)
 ```
 
 ## Next steps

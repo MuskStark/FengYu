@@ -159,7 +159,7 @@ public class ProcessSandbox {
      * unless the user explicitly approved it.
      */
     public Launch command(List<String> raw, Path workingDirectory, boolean allowNetwork) {
-        return wrap(raw, workingDirectory, List.of(workingDirectory), List.of(), false, allowNetwork);
+        return wrap(raw, workingDirectory, List.of(workingDirectory), List.of(), allowNetwork);
     }
 
     /** Explicit full-access profile: run without the native sandbox after the user selected it. */
@@ -168,26 +168,27 @@ public class ProcessSandbox {
     }
 
     /**
-     * Sandbox a plugin Worker according to its installed permissions. Plugins declaring
-     * {@code files.write} retain broad write compatibility; otherwise writes are limited to the
-     * plugin-owned roots. Network is isolated unless declared by the manifest.
+     * Sandbox a plugin Worker according to its installed permissions: writes are limited to the
+     * caller-authorized roots (the plugin-owned data dir plus explicit FileRef grants) —
+     * {@code files.write} grants FileRef write access, not a broad filesystem write. Network is
+     * isolated unless declared by the manifest.
      */
     public Launch plugin(List<String> raw, Path pluginRoot, List<Path> writableRoots,
-                         boolean broadFileWrite, boolean allowNetwork) {
-        return plugin(raw, pluginRoot, writableRoots, List.of(), broadFileWrite, allowNetwork);
+                         boolean allowNetwork) {
+        return plugin(raw, pluginRoot, writableRoots, List.of(), allowNetwork);
     }
 
     /** Sandbox a plugin with separate read-only and read-write authorized file roots. */
     public Launch plugin(List<String> raw, Path pluginRoot, List<Path> writableRoots,
-                         List<Path> readableRoots, boolean broadFileWrite, boolean allowNetwork) {
+                         List<Path> readableRoots, boolean allowNetwork) {
         if (backend == Backend.NONE) {
             throw new IllegalStateException("Plugin workers require a supported native process sandbox");
         }
-        return wrap(raw, pluginRoot, writableRoots, readableRoots, broadFileWrite, allowNetwork);
+        return wrap(raw, pluginRoot, writableRoots, readableRoots, allowNetwork);
     }
 
     private Launch wrap(List<String> raw, Path workdir, List<Path> writableRoots,
-                        List<Path> readableRoots, boolean broadFileWrite, boolean allowNetwork) {
+                        List<Path> readableRoots, boolean allowNetwork) {
         if (backend == Backend.NONE) return new Launch(raw, backend);
         if (backend == Backend.WINDOWS_JOB) {
             // Job Objects are assigned AFTER the process starts; the command itself is unchanged.
