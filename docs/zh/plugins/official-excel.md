@@ -194,7 +194,9 @@ lang: zh-CN
 | `BY_COLUMN` | 按某一选定列的唯一值对行分组；每个值一个文件。 |
 | `COMPLEX` | 应用多配置规则（通过 `excel_complex_config` 的 add/list/clear）以做更细粒度的拆分。 |
 
-`excel_configure` 设置 `mode`（枚举 `BY_SHEET | BY_COLUMN | COMPLEX`）加上随模式而异的字段（`sheets`、`splitSheet`、`splitColumn`）；`excel_complex_config` 用 `action` 枚举 `add | list | clear` 和整型 `headerIndex` / `columnIndex` 管理 `COMPLEX` 模式的规则列表。
+`excel_configure` 设置 `mode`（枚举 `BY_SHEET | BY_COLUMN | COMPLEX`）加上随模式而异的字段（`sheets`、`splitSheet`、`splitColumn`）；`excel_complex_config` 用 `action` 枚举 `add | list | clear` 管理 `COMPLEX` 模式的规则列表。
+
+`excel_complex_config` 对工作流友好：`action: "add"` 支持用 `entries` 数组在**一次调用**中声明完整规则集（每个工作表一条规则；`columnName` 会依据分析结果解析为列索引，无需手填索引），可选的 `filePath` 会在同一次调用中完成工作簿分析——添加成功后会话已处于 `COMPLEX` 模式，因此 FengyuFlow 画布只需 `excel_complex_config → excel_execute` 两个节点。`excel_execute` 的 `outputDir` 留空时写入插件的默认输出目录（沙箱内始终可写，无需授权）；仍可填写显式路径，但该路径必须能通过 worker 沙箱。
 
 ## 文件 I/O 用法
 

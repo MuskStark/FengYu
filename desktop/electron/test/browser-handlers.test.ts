@@ -14,15 +14,20 @@ const attach = vi.fn()
 const detach = vi.fn()
 const isAttached = vi.fn(() => false)
 const createFromBuffer = vi.fn()
+const shellOpenExternal = vi.fn()
 const cdpCalls: Array<{ method: string; params: Record<string, unknown> }> = []
 const sendCommand = vi.fn(async (method: string, params: Record<string, unknown> = {}) => {
   cdpCalls.push({ method, params })
   // Accessibility.getFullAXTree is the normal non-Input caller; return an empty tree.
   return { nodes: [] }
 })
+// Guards registered on the automation window's webContents (session.ts ensureWindow).
+let openHandler: ((details: { url: string }) => { action: string }) | null = null
+const wcEvents: Record<string, (e: { preventDefault: () => void }, url?: string) => void> = {}
 
 vi.mock('electron', () => ({
   nativeImage: { createFromBuffer },
+  shell: { openExternal: shellOpenExternal },
   BrowserWindow: vi.fn().mockImplementation(() => ({
     isDestroyed: () => false,
     destroy: vi.fn(),
@@ -32,7 +37,12 @@ vi.mock('electron', () => ({
       capturePage,
       isLoading: () => false,
       once: vi.fn(),
-      on: vi.fn(),
+      on: vi.fn((evt: string, fn: (e: { preventDefault: () => void }, url?: string) => void) => {
+        wcEvents[evt] = fn
+      }),
+      setWindowOpenHandler: vi.fn((fn: (details: { url: string }) => { action: string }) => {
+        openHandler = fn
+      }),
       debugger: {
         attach,
         detach,
@@ -378,5 +388,46 @@ describe('handleBrowserOp', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('BrowserSession automation-window guards', () => {
+  beforeEach(() => {
+    openHandler = null
+    for (const k of Object.keys(wcEvents)) delete wcEvents[k]
+    shellOpenExternal.mockClear()
+  })
+
+  it('registers an open handler and a will-navigate guard on ensureWindow', () => {
+    const s = new BrowserSession()
+    s.ensureWindow()
+    expect(openHandler).not.toBeNull()
+    expect(wcEvents['will-navigate']).toBeDefined()
+  })
+
+  it('denies window.open and delegates http(s) to the system browser', () => {
+    const s = new BrowserSession()
+    s.ensureWindow()
+    expect(openHandler!({ url: 'https://example.com/ads' })).toEqual({ action: 'deny' })
+    expect(shellOpenExternal).toHaveBeenCalledWith('https://example.com/ads')
+  })
+
+  it('denies window.open for non-http(s) without shell.openExternal', () => {
+    const s = new BrowserSession()
+    s.ensureWindow()
+    expect(openHandler!({ url: 'file:///etc/passwd' })).toEqual({ action: 'deny' })
+    expect(shellOpenExternal).not.toHaveBeenCalled()
+  })
+
+  it('blocks will-navigate escapes from the web but allows cross-origin http(s)', () => {
+    const s = new BrowserSession()
+    s.ensureWindow()
+    const blocked = vi.fn()
+    wcEvents['will-navigate']!({ preventDefault: blocked }, 'file:///etc/passwd')
+    expect(blocked).toHaveBeenCalledTimes(1)
+    // Cross-origin browsing is this window's purpose — only non-web schemes are stopped.
+    const allowed = vi.fn()
+    wcEvents['will-navigate']!({ preventDefault: allowed }, 'https://accounts.example.com/login')
+    expect(allowed).not.toHaveBeenCalled()
   })
 })

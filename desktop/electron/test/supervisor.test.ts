@@ -51,6 +51,7 @@ function child(): BackendChild {
   return {
     process: new EventEmitter() as ChildProcess,
     kill: vi.fn(),
+    forceKill: vi.fn(),
   }
 }
 

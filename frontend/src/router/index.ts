@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { isAxiosError } from 'axios'
 import { api } from '@/api/client'
 
 const routes: RouteRecordRaw[] = [
@@ -6,6 +7,12 @@ const routes: RouteRecordRaw[] = [
   { path: '/', name: 'ai', component: () => import('@/views/AiChat.vue') },
   { path: '/tools', name: 'tools', component: () => import('@/views/ToolGrid.vue') },
   { path: '/agent', name: 'agent', component: () => import('@/views/AiAgent.vue') },
+  { path: '/flows', name: 'flows', component: () => import('@/views/FlowLibrary.vue') },
+  {
+    path: '/flows/:id',
+    name: 'flow-builder',
+    component: () => import('@/views/FlowBuilder.vue'),
+  },
   { path: '/plugins', name: 'plugin-market', component: () => import('@/views/PluginMarket.vue') },
   { path: '/account', name: 'account', component: () => import('@/views/AccountProfile.vue') },
   { path: '/settings', name: 'settings', component: () => import('@/views/Settings.vue') },
@@ -15,6 +22,11 @@ const routes: RouteRecordRaw[] = [
     name: 'plugin',
     component: () => import('@/views/PluginView.vue'),
     props: true,
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'not-found',
+    component: () => import('@/views/NotFound.vue'),
   },
 ]
 
@@ -37,6 +49,10 @@ let initialDesktopSetupMode = hasDesktopBridge ? window.fengyu!.setupMode() : nu
 
 // Global guard: redirect to /setup when the backend reports uninitialized.
 // The setup route itself is always allowed; initialized backends bounce /setup back to /.
+// In APP mode the /api/setup/** surface is intentionally not served (it is token-bypassed,
+// so it only exists in SETUP mode) — a 404 there confirms APP mode and is remembered so we
+// stop re-probing on every navigation. A full reload (e.g. after backend restart) resets it.
+let appModeConfirmed = false
 router.beforeEach(async (to) => {
   if (to.name === 'setup') return true
   if (initialDesktopSetupMode !== null) {
@@ -44,12 +60,17 @@ router.beforeEach(async (to) => {
     initialDesktopSetupMode = null
     return setupMode ? { name: 'setup' } : true
   }
+  if (appModeConfirmed) return true
   try {
     const status = await api.getSetupStatus()
     if (!status.initialized) {
       return { name: 'setup' }
     }
-  } catch {
+  } catch (err) {
+    if (isAxiosError(err) && err.response?.status === 404) {
+      appModeConfirmed = true
+      return true
+    }
     // Backend unreachable — allow navigation; StatusBar surfaces connectivity.
   }
   return true

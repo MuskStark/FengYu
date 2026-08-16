@@ -79,7 +79,7 @@ See [Worker (JSON-RPC)](/en/plugins/worker) and [Pitfalls — Logging to stdout]
 
 - **CSP:** put all JavaScript in external files loaded via `<script src>` (the scaffolder writes `<script type="module" src="app.js">`), and load every asset from the plugin's own `/plugin-runtime/{id}/**` tree. Do not inline scripts or inline event handlers.
 - **Bridge setup:** bundle the plugin's declared Vue/Vuetify dependencies, create Vuetify with `createFengYuVuetify`, and call `bindFengYuEnvironment(vuetify, fengyu)`. Check the `host.ready` error for an exact protocol-version mismatch.
-- For "module not found" errors, install the dependencies declared by the plugin UI and rebuild it with the standard `npm run build` path.
+- For "module not found" errors, install the dependencies declared by the plugin UI and rebuild it with the standard `yarn run build` path (npm for third-party scaffolds).
 
 See [UI Micro-frontend](/en/plugins/ui-microfrontend) and [Pitfalls](/en/plugins/pitfalls).
 

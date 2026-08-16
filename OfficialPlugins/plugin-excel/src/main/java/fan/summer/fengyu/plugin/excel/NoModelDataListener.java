@@ -1,5 +1,6 @@
 package fan.summer.fengyu.plugin.excel;
 
+import fan.summer.fengyu.sdk.PluginMessages;
 import org.apache.fesod.sheet.context.AnalysisContext;
 import org.apache.fesod.sheet.event.AnalysisEventListener;
 import org.slf4j.Logger;
@@ -10,12 +11,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Apache FESOD event listener for batch-reading Excel data without intermediate model mapping.
+ * Apache FESOD event listener for reading Excel data without intermediate model mapping.
  * Each row is captured as {@code Map<Integer, Object>} (column index → cell value) and held
- * in an in-memory list, which is periodically flushed via {@link #saveData()}.
+ * in an in-memory list, bounded by {@link #MAX_ROWS} to keep the listener memory-bounded.
  *
- * <p>Subclass this and override {@link #saveData()} to implement custom persistence logic.
- * The {@link #clear()} method must be called between successive read operations.
+ * <p>A sheet with more than {@link #MAX_ROWS} rows fails loudly with a localized
+ * {@link IllegalStateException} instead of being silently truncated — the previous
+ * batch-flush behaviour dropped every row past the cap (the log-only {@code saveData} was
+ * never overridden) while the split still reported success, producing outputs with missing
+ * data. The {@link #clear()} method must be called between successive read operations.
  *
  * @since 3.0.0
  * @see AnalysisEventListener
@@ -24,10 +28,15 @@ public class NoModelDataListener extends AnalysisEventListener<Map<Integer, Obje
 
     private static final Logger log = LoggerFactory.getLogger(NoModelDataListener.class);
 
-    /** Number of rows to accumulate before triggering a flush. */
-    private static final int BATCH_COUNT = 500_000;
-    private List<Map<Integer, Object>> cachedDataList = new ArrayList<>(BATCH_COUNT);
-    private boolean usedDataBase;
+    /** Hard cap on rows buffered per read; keeps the listener memory-bounded. */
+    public static final int MAX_ROWS = 500_000;
+
+    /** Localized message resolver for the row-limit error. */
+    private static final PluginMessages MSGS =
+            PluginMessages.forClassLoader(PluginMessages.DEFAULT_BASE_NAME, NoModelDataListener.class);
+
+    private List<Map<Integer, Object>> cachedDataList = new ArrayList<>();
+    private int totalRows;
 
     /**
      * Returns the accumulated row data captured since the last {@link #clear()} call.
@@ -43,12 +52,14 @@ public class NoModelDataListener extends AnalysisEventListener<Map<Integer, Obje
      * Call this before each new sheet read to avoid cross-contamination between sheets.
      */
     public void clear() {
-        cachedDataList = new ArrayList<>(BATCH_COUNT);
+        cachedDataList = new ArrayList<>();
+        totalRows = 0;
     }
 
     /**
-     * Invoked by FESOD for every row parsed. Logs the row at DEBUG level and appends
-     * it to the internal list. Triggers a flush when the batch size is reached.
+     * Invoked by FESOD for every row parsed. Appends the row to the in-memory list, or fails
+     * loudly once the sheet would exceed {@link #MAX_ROWS} — the caller surfaces the error
+     * instead of producing output files with silently missing rows.
      *
      * @param data    the parsed row as a column-index → value map
      * @param context the FESOD analysis context (unused)
@@ -56,37 +67,19 @@ public class NoModelDataListener extends AnalysisEventListener<Map<Integer, Obje
     @Override
     public void invoke(Map<Integer, Object> data, AnalysisContext context) {
         log.debug("Parsed one data row: {}", data);
-        usedDataBase = false;
-        cachedDataList.add(data);
-        if (cachedDataList.size() >= BATCH_COUNT) {
-            saveData();
-            cachedDataList = new ArrayList<>(BATCH_COUNT);
+        if (++totalRows > MAX_ROWS) {
+            throw new IllegalStateException(MSGS.format("ex.err.rowLimitExceeded", MAX_ROWS));
         }
+        cachedDataList.add(data);
     }
 
     /**
-     * Invoked by FESOD after all sheets have been fully parsed. Any remaining rows in
-     * the cache are flushed by calling {@link #saveData()}.
+     * Invoked by FESOD after all rows have been fully parsed.
      *
      * @param context the FESOD analysis context (unused)
      */
     @Override
     public void doAfterAllAnalysed(AnalysisContext context) {
-        if (usedDataBase) {
-            saveData();
-            usedDataBase = false;
-        }
         log.info("All data parsing completed!");
-    }
-
-    /**
-     * Called when the row cache reaches {@link #BATCH_COUNT} or at end-of-sheet.
-     * Default implementation logs the row count. Override this in a subclass to
-     * persist batches to a database or file.
-     */
-    protected void saveData() {
-        log.info("{} rows of data, starting to save to database!", cachedDataList.size());
-        usedDataBase = true;
-        log.info("Database save successful!");
     }
 }

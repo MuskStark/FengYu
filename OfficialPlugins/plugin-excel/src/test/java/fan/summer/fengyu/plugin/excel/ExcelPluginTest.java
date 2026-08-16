@@ -97,6 +97,27 @@ class ExcelPluginTest {
     }
 
     @Test
+    void failedAnalyzeKeepsPreviousSessionState() throws Exception {
+        ExcelSessionStore store = new ExcelSessionStore();
+        plugin = new ExcelPlugin(store);
+        String sess = "keep-state";
+        plugin.invoke("analyze", Map.of("session", sess, "sourceFile", src.toString()));
+
+        // A non-workbook file: analyze fails; the session must keep the OLD source + analysis.
+        // Under the bug the NEW sourceFile was committed before the analysis threw, leaving it
+        // paired with the stale analysis of the previous file.
+        Path junk = tmp.resolve("junk.xlsx");
+        Files.writeString(junk, "not an excel workbook");
+        assertThrows(IllegalArgumentException.class,
+            () -> plugin.invoke("analyze", Map.of("session", sess, "sourceFile", junk.toString())));
+
+        SplitConfig cfg = store.get(sess);
+        assertEquals(src, cfg.sourceFile, "failed analyze must not swap the session sourceFile");
+        assertTrue(cfg.analysisResult.containsKey("Alpha"),
+            "failed analyze must not leave a stale analysis");
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void configureByColumnResolvesIndex() throws Exception {
         // Build a workbook whose header row has "region" at column index 1 (not 0),

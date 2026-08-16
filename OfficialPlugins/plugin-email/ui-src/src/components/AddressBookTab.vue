@@ -49,29 +49,31 @@ function confirmDelete(): void {
 </script>
 
 <template>
-  <section class="panel-grid">
-    <v-card class="fy-surface" variant="flat"><v-card-title>{{ t('contacts.title') }}</v-card-title><v-card-text>
+  <section class="panel-grid contact-layout">
+    <v-card class="fy-surface contact-list-card" variant="flat"><v-card-title>{{ t('contacts.title') }}</v-card-title><v-card-text>
       <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
       <div class="inline-fields"><v-text-field v-model="store.query" data-testid="contact-search" hide-details :label="t('common.search')" @keyup.enter="store.load" /><v-select v-model="store.selectedTagIds" :items="store.tags" item-title="name" item-value="id" multiple chips hide-details :label="t('contacts.filterTag')" /><v-btn @click="store.load">{{ t('common.search') }}</v-btn></div>
       <div class="mt-4"><v-btn data-testid="contact-import" variant="outlined" @click="showImport = true">{{ t('contacts.importButton') }}</v-btn></div>
-      <div class="contact-row" v-for="item in store.contacts" :key="item.id" data-testid="contact-row" @click="edit(item)">
-        <v-checkbox-btn v-model="selectedContacts" :value="item.id" @click.stop />
-        <div class="contact-avatar">{{ initials(item) }}</div>
-        <div class="contact-row__main">
-          <div class="contact-row__name">{{ item.nickname || item.email }}</div>
-          <div class="contact-row__email">{{ item.email }}</div>
-          <div class="tag-overflow" v-if="(item.tagIds ?? []).length">
-            <v-chip v-for="id in visibleTags(item)" :key="id" size="x-small" label>{{ tagLabel(id) }}</v-chip>
-            <v-chip v-if="hiddenTagCount(item) > 0" size="x-small" label :title="(item.tagIds ?? []).slice(2).map(tagLabel).join(', ')">
-              {{ t('contacts.tagsMore', { count: hiddenTagCount(item) }) }}
-            </v-chip>
+      <div class="contact-list-scroll" data-testid="contact-list-scroll">
+        <div class="contact-row" v-for="item in store.contacts" :key="item.id" data-testid="contact-row" @click="edit(item)">
+          <v-checkbox-btn v-model="selectedContacts" :value="item.id" @click.stop />
+          <div class="contact-avatar">{{ initials(item) }}</div>
+          <div class="contact-row__main">
+            <div class="contact-row__name">{{ item.nickname || item.email }}</div>
+            <div class="contact-row__email">{{ item.email }}</div>
+            <div class="tag-overflow" v-if="(item.tagIds ?? []).length">
+              <v-chip v-for="id in visibleTags(item)" :key="id" size="x-small" label>{{ tagLabel(id) }}</v-chip>
+              <v-chip v-if="hiddenTagCount(item) > 0" size="x-small" label :title="(item.tagIds ?? []).slice(2).map(tagLabel).join(', ')">
+                {{ t('contacts.tagsMore', { count: hiddenTagCount(item) }) }}
+              </v-chip>
+            </div>
           </div>
+          <v-btn variant="text" color="error" size="small" @click.stop="deleteContact(item.id)">{{ t('common.delete') }}</v-btn>
         </div>
-        <v-btn variant="text" color="error" size="small" @click.stop="deleteContact(item.id)">{{ t('common.delete') }}</v-btn>
       </div>
       <div data-testid="contact-bulk-tags" class="inline-fields mt-4"><v-select v-model="assignTagIds" :items="store.tags" item-title="name" item-value="id" multiple chips hide-details :label="t('contacts.assignTags')" /><v-btn :disabled="!selectedContacts.length" @click="assign">{{ t('contacts.assignTags') }}</v-btn></div>
     </v-card-text></v-card>
-    <div class="d-flex flex-column ga-4">
+    <div class="d-flex flex-column ga-4 contact-side-column">
       <v-card class="fy-surface" variant="flat"><v-card-title>{{ contactId ? t('contacts.editContact') : t('contacts.newContact') }}</v-card-title><v-card-text>
         <v-text-field v-model="email" data-testid="contact-email" :label="t('contacts.email')" />
         <v-text-field v-model="nickname" :label="t('contacts.name')" />

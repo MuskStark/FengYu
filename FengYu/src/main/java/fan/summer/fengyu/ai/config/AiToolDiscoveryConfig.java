@@ -56,10 +56,12 @@ public class AiToolDiscoveryConfig {
             ObjectProvider<SyncMcpToolCallbackProvider> mcpProvider,
             McpRuntimeManager mcpRuntime,
             ObjectProvider<WorkflowService> workflowProvider,
-            ObjectProvider<WorkflowExecutionService> workflowExecutionProvider) {
+            ObjectProvider<WorkflowExecutionService> workflowExecutionProvider,
+            ObjectProvider<fan.summer.fengyu.ai.tools.ToolGuardService> guardProvider) {
         seeder.seed();
         return new AiToolRegistry(tools, packages, processes, mcpProvider,
-                workflowProvider, workflowExecutionProvider, mcpRuntime);
+                workflowProvider, workflowExecutionProvider, mcpRuntime,
+                guardProvider.getIfAvailable());
     }
 
     /** Startup snapshot retained for chat-backend compatibility; Agent uses the live registry. */

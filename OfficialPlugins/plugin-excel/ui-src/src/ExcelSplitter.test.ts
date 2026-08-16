@@ -268,6 +268,22 @@ describe('ExcelSplitter stateful wizard', () => {
     expect(step(wrapper, 'source').attributes('data-status')).toBe('complete')
   })
 
+  it('renders numbered step avatars with a check mark once a step completes', async () => {
+    const wrapper = mountSplitter(fakeClient())
+    await chooseSource(wrapper) // → Mode; Source completes
+
+    const sourceButton = step(wrapper, 'source')
+    expect(sourceButton.find('.excel-avatar--complete').exists()).toBe(true)
+    expect(sourceButton.find('.excel-avatar--complete svg').exists()).toBe(true)
+
+    const modeButton = step(wrapper, 'mode')
+    expect(modeButton.find('.excel-avatar--active').exists()).toBe(true)
+    expect(modeButton.find('.excel-avatar--active').text()).toBe('2')
+
+    expect(step(wrapper, 'output').find('.excel-avatar--pending').text()).toBe('3')
+    expect(step(wrapper, 'run').find('.excel-avatar--pending').text()).toBe('4')
+  })
+
   it('renders an analyze summary failure on Source and retries exactly once', async () => {
     const invoke = vi.fn()
       .mockResolvedValueOnce({ success: false, summary: 'Workbook grant expired' })
@@ -545,8 +561,7 @@ describe('ExcelSplitter stateful wizard', () => {
     await chooseSource(wrapper)
     await next(wrapper)
     await chooseOutput(wrapper)
-    await next(wrapper)
-    await next(wrapper)
+    await next(wrapper) // Output → Run auto-runs the split, which fails
 
     expect(step(wrapper, 'run').attributes('aria-current')).toBe('step')
     expect(wrapper.get('[data-wizard-error]').text()).toContain('Output directory is full')
@@ -580,7 +595,20 @@ describe('ExcelSplitter stateful wizard', () => {
     expect(wrapper.text()).not.toContain('Old configure failure')
   })
 
-  it('clears a stale split error when a replacement output invalidates Run', async () => {
+  it('executes the split automatically when advancing from Output to Run', async () => {
+    const client = fakeClient()
+    const invoke = client.invoke as ReturnType<typeof vi.fn>
+    const wrapper = mountSplitter(client)
+    await chooseSource(wrapper)
+    await next(wrapper) // Mode → Output
+    await chooseOutput(wrapper)
+    await next(wrapper) // Output → Run: the split must run without another click
+
+    expect(invoke.mock.calls.filter(([method]) => method === 'split')).toHaveLength(1)
+    expect(wrapper.text()).toContain('2 file(s) written')
+  })
+
+  it('clears a stale split error when the output is re-picked, then re-runs automatically', async () => {
     const invoke = vi.fn().mockImplementation((method: string) => {
       if (method === 'analyze') return Promise.resolve(analyzeSuccess)
       if (method === 'configure') return Promise.resolve({ success: true })
@@ -593,16 +621,21 @@ describe('ExcelSplitter stateful wizard', () => {
     await chooseSource(wrapper)
     await next(wrapper)
     await chooseOutput(wrapper)
-    await next(wrapper)
-    await next(wrapper)
+    await next(wrapper) // Output → Run auto-runs the split, which fails
     expect(wrapper.text()).toContain('Old split failure')
 
     await step(wrapper, 'output').trigger('click')
-    await chooseOutput(wrapper)
-    await next(wrapper)
+    await chooseOutput(wrapper) // re-pick invalidates Run and clears the stale error
+
+    expect(step(wrapper, 'output').attributes('aria-current')).toBe('step')
+    expect(step(wrapper, 'run').attributes('data-status')).toBe('pending')
+    expect(wrapper.find('[data-wizard-error]').exists()).toBe(false)
+
+    await next(wrapper) // Output → Run auto-runs the split again
 
     expect(step(wrapper, 'run').attributes('aria-current')).toBe('step')
-    expect(wrapper.text()).not.toContain('Old split failure')
+    expect(invoke.mock.calls.filter(([method]) => method === 'split')).toHaveLength(2)
+    expect(wrapper.get('[data-wizard-error]').text()).toContain('Old split failure')
   })
 
   it('continues without persistence and reports an unavailable Storage once', async () => {

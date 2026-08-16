@@ -14,8 +14,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -27,6 +29,9 @@ public class WorkflowService {
             Pattern.compile("\\{\\{inputs\\.([A-Za-z0-9_.-]+)}}");
     private static final Map<String, Object> EMPTY_SCHEMA = Map.of(
             "type", "object", "properties", Map.of());
+    private static final int MAX_STEPS = 64;
+    private static final int MAX_GRAPH_NODES = 512;
+    private static final int MAX_GRAPH_EDGES = 1024;
 
     private final WorkflowRepository workflows;
     private final SecurityContext securityContext;
@@ -119,6 +124,9 @@ public class WorkflowService {
         entity.setDescription(draft.description() == null ? "" : draft.description().trim());
         entity.setInputSchemaJson(write(draft.inputSchema() == null ? EMPTY_SCHEMA : draft.inputSchema()));
         entity.setPlanJson(write(draft.plan()));
+        entity.setLayoutJson(write(draft.layout() == null ? Map.of() : draft.layout()));
+        entity.setGraphJson(draft.graph() == null || draft.graph().isEmpty()
+                ? null : write(draft.graph()));
     }
 
     private void validateDraft(WorkflowDraft draft) {
@@ -132,6 +140,9 @@ public class WorkflowService {
         if (draft.plan() == null || draft.plan().steps() == null) {
             throw new IllegalArgumentException("Workflow plan and steps are required");
         }
+        if (draft.plan().steps().size() > MAX_STEPS) {
+            throw new IllegalArgumentException("Workflow must not exceed " + MAX_STEPS + " steps");
+        }
         for (int index = 0; index < draft.plan().steps().size(); index++) {
             AgentStep step = draft.plan().steps().get(index);
             if (step == null || step.index() != index) {
@@ -144,6 +155,97 @@ public class WorkflowService {
         Object type = draft.inputSchema() == null ? "object" : draft.inputSchema().get("type");
         if (type != null && !"object".equals(type)) {
             throw new IllegalArgumentException("Workflow input schema must describe an object");
+        }
+        validateInputReferences(draft);
+        validateLayout(draft.layout(), draft.plan().steps().size());
+        validateGraph(draft.graph());
+    }
+
+    /**
+     * The graph is editor metadata: it must be shaped like {@code {nodes: [...], edges: [...]}}
+     * within sane caps so a corrupt client cannot store unbounded payloads. The backend never
+     * interprets node internals — the flow builder owns that contract.
+     */
+    private void validateGraph(Map<String, Object> graph) {
+        if (graph == null) return;
+        Object nodes = graph.get("nodes");
+        Object edges = graph.get("edges");
+        if (nodes != null && !(nodes instanceof List<?>)) {
+            throw new IllegalArgumentException("Workflow graph nodes must be a list");
+        }
+        if (edges != null && !(edges instanceof List<?>)) {
+            throw new IllegalArgumentException("Workflow graph edges must be a list");
+        }
+        if (nodes instanceof List<?> list && list.size() > MAX_GRAPH_NODES) {
+            throw new IllegalArgumentException("Workflow graph must not exceed "
+                    + MAX_GRAPH_NODES + " nodes");
+        }
+        if (edges instanceof List<?> list && list.size() > MAX_GRAPH_EDGES) {
+            throw new IllegalArgumentException("Workflow graph must not exceed "
+                    + MAX_GRAPH_EDGES + " edges");
+        }
+    }
+
+    /**
+     * Fails a save (not a later run) when a step or the goal references an input the schema
+     * never declares — a graph that could only ever fail at binding time. Only fields the
+     * compiler actually binds are checked (goal + step args), so prose descriptions may
+     * legitimately mention the template syntax.
+     */
+    private void validateInputReferences(WorkflowDraft draft) {
+        Set<String> declared = new LinkedHashSet<>();
+        Object properties = draft.inputSchema() == null ? null : draft.inputSchema().get("properties");
+        if (properties instanceof Map<?, ?> map) {
+            for (Object key : map.keySet()) declared.add(String.valueOf(key));
+        }
+        List<String> missing = new ArrayList<>();
+        if (draft.plan().goal() instanceof String goal) {
+            collectMissingInputs(goal, declared, missing);
+        }
+        for (AgentStep step : draft.plan().steps()) {
+            if (step == null) continue;
+            collectMissingInputs(step.args(), declared, missing);
+        }
+        if (!missing.isEmpty()) {
+            throw new IllegalArgumentException("Workflow references undeclared input(s): "
+                    + String.join(", ", new LinkedHashSet<>(missing)));
+        }
+    }
+
+    private void collectMissingInputs(Object value, Set<String> declared, List<String> missing) {
+        if (value instanceof Map<?, ?> map) {
+            for (Object child : map.values()) collectMissingInputs(child, declared, missing);
+        } else if (value instanceof List<?> list) {
+            for (Object child : list) collectMissingInputs(child, declared, missing);
+        } else if (value instanceof String text) {
+            Matcher matcher = INPUT_REFERENCE.matcher(text);
+            while (matcher.find()) {
+                String root = matcher.group(1).split("\\.")[0];
+                if (!declared.contains(root)) missing.add(root);
+            }
+        }
+    }
+
+    /** Layout is optional metadata; when present it must address real steps with finite coordinates. */
+    private void validateLayout(Map<String, WorkflowDefinition.NodeLayout> layout, int stepCount) {
+        if (layout == null || layout.isEmpty()) return;
+        for (Map.Entry<String, WorkflowDefinition.NodeLayout> entry : layout.entrySet()) {
+            int index;
+            try {
+                index = Integer.parseInt(entry.getKey());
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Workflow layout key is not a step index: "
+                        + entry.getKey());
+            }
+            if (index < 0 || index >= stepCount) {
+                throw new IllegalArgumentException("Workflow layout references unknown step: "
+                        + entry.getKey());
+            }
+            WorkflowDefinition.NodeLayout position = entry.getValue();
+            if (position == null || !Double.isFinite(position.x()) || !Double.isFinite(position.y())) {
+                throw new IllegalArgumentException("Workflow layout has an invalid position for step "
+                        + entry.getKey());
+            }
         }
     }
 
@@ -229,7 +331,9 @@ public class WorkflowService {
     private WorkflowDefinition toDefinition(WorkflowEntity entity) {
         return new WorkflowDefinition(entity.getId(), entity.getName(), entity.getDescription(),
                 readMap(entity.getInputSchemaJson()), read(entity.getPlanJson(), AgentPlan.class),
-                entity.isPublished(), entity.getRevision(), entity.getCreatedAt(), entity.getUpdatedAt());
+                readLayout(entity.getLayoutJson()), readMapOrEmpty(entity.getGraphJson()),
+                entity.isPublished(), entity.getRevision(),
+                entity.getCreatedAt(), entity.getUpdatedAt());
     }
 
     private long currentUserId() {
@@ -262,7 +366,33 @@ public class WorkflowService {
         }
     }
 
+    private Map<String, WorkflowDefinition.NodeLayout> readLayout(String value) {
+        if (value == null || value.isBlank()) return Map.of();
+        try {
+            Map<String, WorkflowDefinition.NodeLayout> layout =
+                    json.readValue(value, new TypeReference<>() {});
+            return layout == null ? Map.of() : layout;
+        } catch (Exception error) {
+            // Layout is presentational metadata — a corrupted one must never block the
+            // definition from loading; the canvas falls back to its default grid.
+            return Map.of();
+        }
+    }
+
+    /** Graph is presentational like layout: a corrupted one falls back to plan reconstruction. */
+    private Map<String, Object> readMapOrEmpty(String value) {
+        if (value == null || value.isBlank()) return Map.of();
+        try {
+            Map<String, Object> graph = json.readValue(value, new TypeReference<>() {});
+            return graph == null ? Map.of() : graph;
+        } catch (Exception error) {
+            return Map.of();
+        }
+    }
+
     public record WorkflowDraft(String name, String description,
-                                Map<String, Object> inputSchema, AgentPlan plan) {
+                                Map<String, Object> inputSchema, AgentPlan plan,
+                                Map<String, WorkflowDefinition.NodeLayout> layout,
+                                Map<String, Object> graph) {
     }
 }

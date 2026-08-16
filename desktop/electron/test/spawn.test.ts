@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import type { ChildProcess } from 'node:child_process'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createBackendChild, spawnBackend } from '../src/backend/spawn'
+import { backendJavaArgs, createBackendChild, spawnBackend } from '../src/backend/spawn'
 import type { RuntimeLayout } from '../src/backend/runtime-layout'
 import { runtimeRoot } from '../src/desktop/runtime-paths'
 
@@ -52,6 +52,23 @@ const FAKE_LAYOUT: RuntimeLayout = {
   jar: '/fake/FengYu.jar',
   plugins: '/fake/plugins',
 }
+
+describe('backend JVM arguments', () => {
+  it('hides the headful AWT sidecar from the macOS Dock', () => {
+    expect(backendJavaArgs(FAKE_LAYOUT, 24056, 'darwin')).toContain(
+      '-Dapple.awt.UIElement=true',
+    )
+  })
+
+  it.each(['win32', 'linux'] as const)(
+    'does not pass the Apple UIElement property on %s',
+    platform => {
+      expect(backendJavaArgs(FAKE_LAYOUT, 24056, platform)).not.toContain(
+        '-Dapple.awt.UIElement=true',
+      )
+    },
+  )
+})
 
 // Emit a stdout line after readPort has had a chance to attach its listeners.
 // spawnBackend awaits one setImmediate (the spawn-error wait) before readPort
@@ -107,6 +124,36 @@ describe('backend child shutdown', () => {
     child.kill()
     child.kill()
     expect(treeKillFn).toHaveBeenCalledTimes(1)
+  })
+
+  it('forceKill escalates synchronously to SIGKILL and disarms the timer', () => {
+    vi.useFakeTimers()
+    const proc = fakeProcess()
+    Object.assign(proc, { pid: 4242 })
+    const treeKillFn = vi.fn()
+    const child = createBackendChild(proc, 50, treeKillFn)
+
+    child.kill()
+    child.forceKill()
+    // The quit path must not depend on the 5s timer: SIGKILL goes out immediately, both to
+    // the tree and (synchronously) to the direct child.
+    expect(treeKillFn).toHaveBeenLastCalledWith(4242, 'SIGKILL')
+    expect(proc.kill).toHaveBeenCalledWith('SIGKILL')
+
+    vi.advanceTimersByTime(50)
+    // Timer was cleared by forceKill — no further signal attempts.
+    expect(treeKillFn).toHaveBeenCalledTimes(2)
+  })
+
+  it('forceKill skips an already-exited backend', () => {
+    const proc = fakeProcess()
+    Object.assign(proc, { pid: 4242, exitCode: 0 })
+    const treeKillFn = vi.fn()
+    const child = createBackendChild(proc, 50, treeKillFn)
+
+    child.forceKill()
+    expect(treeKillFn).not.toHaveBeenCalled()
+    expect(proc.kill).not.toHaveBeenCalled()
   })
 
   it('skips an already-exited backend', () => {

@@ -21,7 +21,8 @@ backend/
   worker.jar
 ```
 
-UI 命令来自标准 npm scripts：`dev`、可选的 `test`、`build`。Worker 使用 Maven `test` 与
+UI 命令来自项目标准 scripts：`dev`、可选的 `test`、`build` —— 脚手架项目用 npm，仓库内官方插件用
+Yarn 4（经 `packageManager` 锁定版本）。Worker 使用 Maven `test` 与
 `package` 生命周期，并始终通过最近的 Maven Wrapper 执行。Worker 构建必须产出唯一的
 `target/*-worker.jar`。
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { usePluginsStore } from '@/stores/plugins'
@@ -7,7 +7,7 @@ import { useThemeStore } from '@/stores/theme'
 import { useSettingsStore } from '@/stores/settings'
 import { api } from '@/api/client'
 import { makeDesktop } from '@/mf/desktop'
-import { pluginAssetUrl } from '@/api/config'
+import { pluginAssetIsolated, pluginAssetUrl } from '@/api/config'
 import {
   HOST_CAPABILITIES,
   HOST_MESSAGE_SOURCE,
@@ -38,13 +38,32 @@ const pluginUrl = () => {
   const entry = plugins.byId(props.id)?.uiEntry
   return entry ? pluginAssetUrl(entry) : undefined
 }
+/**
+ * True when the plugin document cannot be resolved onto an origin distinct from the shell's
+ * (shared-origin web deployment). The iframe then drops `allow-same-origin` so the third-party
+ * plugin JS runs in an opaque origin instead of reaching the parent DOM / host bridge.
+ */
+const pluginSandboxed = () => {
+  const entry = plugins.byId(props.id)?.uiEntry
+  return entry ? !pluginAssetIsolated(entry) : false
+}
 const pluginOrigin = () => {
   const url = pluginUrl()
   return url ? new URL(url, window.location.href).origin : undefined
 }
+/**
+ * postMessage target for the frame. Without allow-same-origin the document's origin is opaque,
+ * so the only deliverable target is '*' — delivery stays constrained to the pinned
+ * activeFrameWindow, and the plugin SDK validates `event.source === window.parent` on its side.
+ */
+const pluginTargetOrigin = () => (pluginSandboxed() ? '*' : pluginOrigin())
+/** allow-same-origin is granted only when the plugin document sits on a distinct origin. */
+const frameSandbox = computed(() => pluginSandboxed()
+  ? 'allow-scripts allow-forms allow-downloads'
+  : 'allow-scripts allow-same-origin allow-forms allow-downloads')
 
 function respond(id: string, result?: unknown, error?: HostError, target: Window | null = activeFrameWindow) {
-  const targetOrigin = pluginOrigin()
+  const targetOrigin = pluginTargetOrigin()
   if (!targetOrigin || !target) return
   target.postMessage(
     { source: HOST_MESSAGE_SOURCE, type: 'response', protocolVersion: PROTOCOL_VERSION, id, result, error },
@@ -53,7 +72,9 @@ function respond(id: string, result?: unknown, error?: HostError, target: Window
 }
 
 async function onMessage(event: MessageEvent) {
-  if (event.origin !== pluginOrigin()) return
+  // An allow-same-origin-less sandbox gives the frame an opaque origin serialized as "null".
+  const expectedOrigin = pluginSandboxed() ? 'null' : pluginOrigin()
+  if (event.origin !== expectedOrigin) return
   if (!isPluginMessage(event.data)) return
   const request = event.data
   // WebKit can replace the iframe's WindowProxy while navigating away from about:blank. Adopt the
@@ -174,7 +195,7 @@ async function onMessage(event: MessageEvent) {
 }
 
 function sendEnvironment() {
-  const targetOrigin = pluginOrigin()
+  const targetOrigin = pluginTargetOrigin()
   if (!targetOrigin || !activeFrameWindow) return
   activeFrameWindow.postMessage(
     { source: HOST_MESSAGE_SOURCE, type: 'event', protocolVersion: PROTOCOL_VERSION, event: 'environment', data: { theme: theme.theme, locale: settings.language } },
@@ -188,7 +209,15 @@ function onFrameLoad() {
   loading.value = false
 }
 
+/** Abort every in-flight host invoke; used when the plugin is re-bound or the host unmounts. */
+function abortActiveInvokes() {
+  activeInvokes.forEach(controller => controller.abort())
+  activeInvokes.clear()
+}
+
 async function retryPlugin() {
+  // The frame is about to be recreated; invokes belonging to the outgoing plugin must not linger.
+  abortActiveInvokes()
   error.value = null
   loading.value = true
   bridgeReady.value = false
@@ -219,8 +248,7 @@ watch(() => theme.theme, sendEnvironment)
 watch(() => settings.language, sendEnvironment)
 watch(() => props.id, () => void retryPlugin())
 onBeforeUnmount(() => {
-  activeInvokes.forEach(controller => controller.abort())
-  activeInvokes.clear()
+  abortActiveInvokes()
   activeFrameWindow = null
   window.removeEventListener('message', onMessage)
 })
@@ -244,7 +272,7 @@ onBeforeUnmount(() => {
         ref="frame"
         class="plugin-frame"
         :src="frameUrl"
-        sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"
+        :sandbox="frameSandbox"
         referrerpolicy="no-referrer"
         @load="onFrameLoad"
       />

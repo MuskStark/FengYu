@@ -7,7 +7,7 @@ description: Cut a main FengYu/Infinia application release (tag vX.Y.Z or vX.Y.Z
 
 Cut a **main application** release. The app version is the Maven `${revision}` property, mirrored in
 `.mvn/maven.config`, `frontend/package.json`, `desktop/electron/package.json` plus its lockfile, and
-each of the five official plugins' `manifest.json` files.
+each of the four official plugins' `manifest.json` files.
 
 This skill does **not** touch the plugin toolchain version (`toolchain/sdk-java/pom.xml` /
 `@infinia/*`). Use the `toolchain-release` skill for that.
@@ -38,8 +38,8 @@ agree a valid tag with the user.
 
 Read the current app version from root `pom.xml` (`<revision>`) and confirm every mirror is
 consistent: `.mvn/maven.config`, `frontend/package.json`, `desktop/electron/package.json` and
-`desktop/electron/package-lock.json`, plus the `markdown`, `excel`, `email`, `offlinepython`, and
-`browser` official manifests. Decide with the user whether the `${revision}` property and mirrors
+`desktop/electron/yarn.lock`, plus the `markdown`, `excel`, `email`, and
+`offlinepython` official manifests. Decide with the user whether the `${revision}` property and mirrors
 should be bumped to the release version; do not edit yet. Do not rewrite unrelated version strings
 in test fixtures or historical changelog entries.
 
@@ -47,7 +47,7 @@ in test fixtures or historical changelog entries.
 
 Invoke the **`docs-updater`** skill for the range from the last app tag to `HEAD`: CHANGELOG entry,
 EN/ZH doc sections mapped to the code changes, and version-number replacement. Confirm
-`npm --prefix docs run build` passes if the published site is affected.
+`cd docs && yarn run build` passes if the published site is affected.
 
 ## Step 4 — Review the release workflow and its contract tests
 
@@ -75,16 +75,16 @@ Run the focused set the release depends on (do not skip to save time):
 ./mvnw clean package -f FengYu/pom.xml -DskipTests
 
 # Frontend (audit + build + typecheck + tests)
-cd frontend && npm install && npm audit --omit=dev && npm run build && npm run test:unit && npm run typecheck && cd ..
+cd frontend && corepack yarn install && corepack yarn npm audit --environment production && corepack yarn run build && corepack yarn run test:unit && corepack yarn run typecheck && cd ..
 
 # Desktop shell (audit + unit tests + TypeScript; cross-platform packaging stays in CI)
-cd desktop/electron && npm install && npm audit --omit=dev && npm test && npm run build:ts && cd ../..
+cd desktop/electron && corepack yarn install && corepack yarn npm audit --environment production && corepack yarn test && corepack yarn run build:ts && cd ../..
 
 # End-to-end smoke
 scripts/e2e-smoke.sh
 
 # Portable web distribution self-check (used by the release's web job)
-# Stage the five freshly-built `.fyp` + `.fyp.sha256` pairs in a temporary plugin directory,
+# Stage the four freshly-built `.fyp` + `.fyp.sha256` pairs in a temporary plugin directory,
 # then pass VERSION, the shaded JAR, that directory, and an output directory explicitly.
 scripts/package-web-release.sh VERSION JAR PLUGIN_DIR OUTPUT_DIR
 scripts/test-web-release.sh OUTPUT_DIR/Infinia-VERSION-web.zip

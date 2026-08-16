@@ -8,3 +8,8 @@ coverage/
 test-results/
 playwright-report/
 playwright/.cache/
+
+.yarn/*
+!.yarn/releases
+!.yarn/plugins
+.yarn/install-state.gz

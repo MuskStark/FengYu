@@ -42,6 +42,7 @@ export type EstimateOutput = {
 
 export type ExcelAnalyzeInput = {
   filePath: string
+  sessionId?: string | null
 }
 
 export type ExcelAnalyzeOutput = {
@@ -50,7 +51,9 @@ export type ExcelAnalyzeOutput = {
   summary: string
 }
 
-export type ExcelCancelInput = {}
+export type ExcelCancelInput = {
+  sessionId?: string | null
+}
 
 export type ExcelCancelOutput = {
   success: boolean
@@ -60,7 +63,10 @@ export type ExcelCancelOutput = {
 export type ExcelComplexConfigInput = {
   action: "add" | "list" | "clear"
   columnIndex?: number
+  entries?: { columnIndex?: number; columnName?: string; copyEntireSheet?: boolean; headerIndex?: number; sheetName: string }[]
+  filePath?: string
   headerIndex?: number
+  sessionId?: string | null
   sheetName?: string
 }
 
@@ -72,6 +78,7 @@ export type ExcelComplexConfigOutput = {
 
 export type ExcelConfigureInput = {
   mode: "BY_SHEET" | "BY_COLUMN" | "COMPLEX"
+  sessionId?: string | null
   sheets?: string[]
   splitColumn?: string
   splitSheet?: string
@@ -85,6 +92,7 @@ export type ExcelConfigureOutput = {
 export type ExcelExecuteInput = {
   filePrefix?: string
   outputDir: string
+  sessionId?: string | null
 }
 
 export type ExcelExecuteOutput = {
@@ -96,6 +104,7 @@ export type ExcelExecuteOutput = {
 export type ExcelExecuteStartInput = {
   filePrefix?: string
   outputDir: string
+  sessionId?: string | null
 }
 
 export type ExcelExecuteStartOutput = {
@@ -107,6 +116,7 @@ export type ExcelExecuteStartOutput = {
 export type ExcelExecuteStatusInput = {
   cursor?: number
   jobId: string
+  sessionId?: string | null
 }
 
 export type ExcelExecuteStatusOutput = {
@@ -124,7 +134,9 @@ export type ExcelExecuteStatusOutput = {
   type?: string
 }
 
-export type ExcelQueryInput = {}
+export type ExcelQueryInput = {
+  sessionId?: string | null
+}
 
 export type ExcelQueryOutput = {
   state?: { complexEntries?: number; mode?: string | null; outputDir?: string | null; selectedSheets?: string[]; sourceFile?: string | null; splitColumnIndex?: number; splitSheet?: string | null }

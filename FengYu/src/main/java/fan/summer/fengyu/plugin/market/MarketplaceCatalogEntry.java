@@ -14,5 +14,9 @@ public record MarketplaceCatalogEntry(
     List<String> permissions,
     String homepage,
     String downloadUrl,
-    boolean official
+    boolean official,
+    /** Optional SHA-256 of the {@code .fyp} at {@code downloadUrl}. When present the host
+     *  verifies the download against it — the only way a plain-http download URL or an
+     *  install under checksum enforcement is accepted. */
+    String sha256
 ) {}

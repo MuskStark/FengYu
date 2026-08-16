@@ -29,7 +29,7 @@ class ManifestI18nTest {
                 "FengYu", "file-excel", "file",
                 new PluginManifest.Ui("ui/index.html"),
                 new PluginManifest.Backend(60L),
-                List.of("files.read"), "https://example.com", true, null, tools, i18n);
+                List.of("files.read"), "https://example.com", true, null, tools, i18n, null);
     }
 
     @Test

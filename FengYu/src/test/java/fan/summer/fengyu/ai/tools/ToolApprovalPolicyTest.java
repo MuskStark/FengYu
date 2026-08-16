@@ -27,6 +27,18 @@ class ToolApprovalPolicyTest {
                 audited(ToolEffect.WRITE), AiPermissionMode.ASK_FOR_APPROVAL, "{}"));
     }
 
+    @Test
+    void fullAccessStillReviewsUnverifiableCommandText() {
+        ToolCallback command = audited(ToolEffect.COMMAND);
+        assertTrue(ToolApprovalPolicy.requiresApproval(command, AiPermissionMode.FULL_ACCESS,
+                "{\"command\":\"rm -rf ${HOME}\"}"));
+        assertTrue(ToolApprovalPolicy.requiresApproval(command, AiPermissionMode.FULL_ACCESS,
+                "{\"command\":\"ls $(pwd)\"}"));
+        // Verifiable commands keep the FULL_ACCESS no-prompt behavior.
+        assertFalse(ToolApprovalPolicy.requiresApproval(command, AiPermissionMode.FULL_ACCESS,
+                "{\"command\":\"git status\"}"));
+    }
+
     private static AuditedToolCallback audited(ToolEffect effect) {
         ToolDefinition definition = DefaultToolDefinition.builder()
                 .name("test_" + effect.name().toLowerCase())

@@ -48,6 +48,8 @@ public final class AiToolRegistry {
     private final ObjectProvider<WorkflowService> workflowProvider;
     private final ObjectProvider<WorkflowExecutionService> workflowExecutionProvider;
     private final java.util.function.BooleanSupplier computerUseEnabled;
+    /** Optional guard whose PostToolUse hooks observe every chat-driven tool call. */
+    private final fan.summer.fengyu.ai.tools.ToolGuardService toolGuard;
     private final ObjectMapper json = JsonMapper.builder().findAndAddModules().build();
 
     /** When the desktop shell provides built-in browser tools, suppress the legacy plugin's tools to avoid name collisions. */
@@ -63,6 +65,17 @@ public final class AiToolRegistry {
     public AiToolRegistry(List<FengYuTool> tools, PluginPackageService packages,
             PluginProcessManager processes, ObjectProvider<SyncMcpToolCallbackProvider> mcpProvider) {
         this(tools, packages, processes, mcpProvider, null, null, null);
+    }
+
+    /** Production constructor — the guard fires PostToolUse hooks for chat-driven calls. */
+    public AiToolRegistry(List<FengYuTool> tools, PluginPackageService packages,
+            PluginProcessManager processes, ObjectProvider<SyncMcpToolCallbackProvider> mcpProvider,
+            ObjectProvider<WorkflowService> workflowProvider,
+            ObjectProvider<WorkflowExecutionService> workflowExecutionProvider,
+            McpRuntimeManager mcpRuntime,
+            fan.summer.fengyu.ai.tools.ToolGuardService toolGuard) {
+        this(tools, packages, processes, mcpProvider, workflowProvider, workflowExecutionProvider,
+                mcpRuntime, AiConfigServiceHeadless::isComputerUseEnabled, toolGuard);
     }
 
     public AiToolRegistry(List<FengYuTool> tools, PluginPackageService packages,
@@ -87,13 +100,24 @@ public final class AiToolRegistry {
             ObjectProvider<WorkflowService> workflowProvider,
             ObjectProvider<WorkflowExecutionService> workflowExecutionProvider,
             McpRuntimeManager mcpRuntime, java.util.function.BooleanSupplier computerUseEnabled) {
+        this(tools, packages, processes, mcpProvider, workflowProvider, workflowExecutionProvider,
+                mcpRuntime, computerUseEnabled, null);
+    }
+
+    /** Widest constructor — the guard observes finished chat tool calls (agent runs fire their own). */
+    AiToolRegistry(List<FengYuTool> tools, PluginPackageService packages,
+            PluginProcessManager processes, ObjectProvider<SyncMcpToolCallbackProvider> mcpProvider,
+            ObjectProvider<WorkflowService> workflowProvider,
+            ObjectProvider<WorkflowExecutionService> workflowExecutionProvider,
+            McpRuntimeManager mcpRuntime, java.util.function.BooleanSupplier computerUseEnabled,
+            fan.summer.fengyu.ai.tools.ToolGuardService toolGuard) {
         List<ToolCallback> callbacks = new ArrayList<>();
         for (FengYuTool toolBean : tools) {
             for (ToolCallback callback : ToolCallbacks.from(toolBean)) {
                 if (toolBean instanceof ToolEffectProvider effects) {
                     ToolEffect effect = effects.effectFor(callback.getToolDefinition().name());
                     callbacks.add(audited(callback,
-                            effect == null ? ToolEffect.EXTERNAL : effect));
+                            effect == null ? ToolEffect.EXTERNAL : effect, toolGuard));
                 } else {
                     callbacks.add(toolBean instanceof ApprovalRequiredTool
                             ? approvalRequired(callback) : callback);
@@ -108,6 +132,7 @@ public final class AiToolRegistry {
         this.workflowProvider = workflowProvider;
         this.workflowExecutionProvider = workflowExecutionProvider;
         this.computerUseEnabled = computerUseEnabled;
+        this.toolGuard = toolGuard;
     }
 
     /** True when {@code computer_*} tools may appear in this snapshot (Settings master switch). */
@@ -135,12 +160,12 @@ public final class AiToolRegistry {
         SyncMcpToolCallbackProvider provider = mcpProvider.getIfAvailable();
         if (provider != null) {
             for (ToolCallback callback : provider.getToolCallbacks()) {
-                callbacks.add(audited(callback, ToolEffect.EXTERNAL));
+                callbacks.add(audited(callback, ToolEffect.EXTERNAL, toolGuard));
             }
         }
         if (mcpRuntime != null) {
             for (ToolCallback callback : mcpRuntime.callbacks()) {
-                callbacks.add(audited(callback, ToolEffect.EXTERNAL));
+                callbacks.add(audited(callback, ToolEffect.EXTERNAL, toolGuard));
             }
         }
         WorkflowService workflowService = workflowProvider == null ? null : workflowProvider.getIfAvailable();
@@ -173,6 +198,7 @@ public final class AiToolRegistry {
                 // re-parsing a stored string.
                 String inputSchema = schemaToString(manifest.inputSchemaFor(tool.method()));
                 String outputSchema = schemaToString(manifest.outputSchemaFor(tool.method()));
+                String flowNode = nodeToString(manifest.flowNodeFor(tool.name()));
                 ToolDefinition definition = ToolDefinition.builder()
                         .name(tool.name()).description(tool.description()).inputSchema(inputSchema).build();
                 // Localized description is for frontend display only; the LLM still sees the English
@@ -180,7 +206,7 @@ public final class AiToolRegistry {
                 // when the manifest ships no i18n override for this tool.
                 String localized = ManifestI18n.aiToolDescription(manifest, tool.name(), locale);
                 descriptors.add(descriptor(manifest.id() + ":" + tool.name(), manifest.id(),
-                        definition, outputSchema, localized));
+                        definition, outputSchema, localized, flowNode));
             }
         }
         SyncMcpToolCallbackProvider provider = mcpProvider.getIfAvailable();
@@ -235,6 +261,53 @@ public final class AiToolRegistry {
         };
     }
 
+    /**
+     * The request-bound flow tool of the Flowise-style builder chat: exposes the flow the
+     * conversation is attached to as {@code run_current_flow} — DRAFT or published — so the
+     * model converses with the flow under construction in the ordinary chat tool-call loop.
+     * User-scoped like every workflow read; unknown ids throw IllegalArgumentException
+     * (the controller fails the chat request fast).
+     */
+    public ToolCallback boundWorkflowTool(String workflowId) {
+        WorkflowService workflowService = workflowProvider == null ? null : workflowProvider.getIfAvailable();
+        WorkflowExecutionService executionService = workflowExecutionProvider == null
+                ? null : workflowExecutionProvider.getIfAvailable();
+        if (workflowService == null || executionService == null) {
+            throw new IllegalArgumentException("Workflow tools are not available");
+        }
+        var workflow = workflowService.get(workflowId);
+        return new AuditedToolCallback() {
+            private final ToolDefinition definition = ToolDefinition.builder()
+                    .name("run_current_flow")
+                    .description(boundWorkflowToolDescription(workflow))
+                    .inputSchema(workflowService.inputSchemaJson(workflow))
+                    .build();
+
+            @Override public ToolDefinition getToolDefinition() { return definition; }
+            @Override public ToolEffect effect() { return ToolEffect.EXTERNAL; }
+            @Override public String call(String input) {
+                try {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> args = json.readValue(input == null ? "{}" : input, Map.class);
+                    return executionService.executeForAi(workflow.id(), args, false);
+                } catch (Exception error) {
+                    return "{\"success\":false,\"error\":" + quote(String.valueOf(error.getMessage())) + "}";
+                }
+            }
+        };
+    }
+
+    private static String boundWorkflowToolDescription(
+            fan.summer.fengyu.ai.workflow.WorkflowDefinition workflow) {
+        String publication = workflow.published() ? "published" : "draft";
+        String detail = workflow.description() == null || workflow.description().isBlank()
+                ? "" : ": " + workflow.description();
+        return "Run the CURRENT flow '" + workflow.name() + "' (" + publication
+                + ") the user is working on" + detail
+                + ". Prefer this over other workflow tools when the user refers to 'the flow'"
+                + " or 'this flow'; execute it with the inputs it declares.";
+    }
+
     private static String workflowToolName(String id) {
         return "run_workflow_" + id.replace('-', '_');
     }
@@ -246,10 +319,43 @@ public final class AiToolRegistry {
 
     private ToolDescriptor descriptor(String id, String pluginId, ToolDefinition definition,
             String outputSchema, String localizedDescription) {
+        return descriptor(id, pluginId, definition, outputSchema, localizedDescription, null);
+    }
+
+    private ToolDescriptor descriptor(String id, String pluginId, ToolDefinition definition,
+            String outputSchema, String localizedDescription, String flowNode) {
         String revision = Integer.toUnsignedString(Objects.hash(
                 definition.description(), definition.inputSchema(), outputSchema), 36);
         return new ToolDescriptor(id, pluginId, definition.name(), definition.description(),
-                definition.inputSchema(), outputSchema, revision, localizedDescription);
+                definition.inputSchema(), outputSchema, revision, localizedDescription,
+                flowNode != null ? flowNode : hostFlowNode(definition.name()));
+    }
+
+    /** Host-authored flow-node declarations for built-in tools (flow-nodes/builtin.json). */
+    private final Map<String, String> hostFlowNodes = loadHostFlowNodes();
+
+    private Map<String, String> loadHostFlowNodes() {
+        try (var stream = getClass().getResourceAsStream("/flow-nodes/builtin.json")) {
+            if (stream == null) return Map.of();
+            List<com.fasterxml.jackson.databind.JsonNode> nodes = json.readValue(stream,
+                    new com.fasterxml.jackson.core.type.TypeReference<>() {});
+            var byTool = new java.util.LinkedHashMap<String, String>();
+            for (var node : nodes) {
+                byTool.put(node.path("tool").asText(), node.toString());
+            }
+            return java.util.Collections.unmodifiableMap(byTool);
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
+    private String hostFlowNode(String toolName) {
+        return hostFlowNodes.get(toolName);
+    }
+
+    private static String nodeToString(com.fasterxml.jackson.databind.JsonNode node) {
+        if (node == null || node.isNull()) return null;
+        return node.toString();
     }
 
     private ToolCallback pluginCallback(String pluginId,
@@ -279,11 +385,49 @@ public final class AiToolRegistry {
                     // restart is needed: the staging root entered the sandbox at the first invoke.
                     var injected = AiToolFileInjector.injectFileRefs(
                             params, pluginId, inputSchema, ChatFileContext.current());
+                    // Workflow runs carry file-class inputs as @file:<name> placeholders bound to
+                    // run-scoped grants; swap in this plugin's FileRef just before dispatch.
+                    injected = AiToolFileInjector.bindRunFilePlaceholders(injected, pluginId,
+                            fan.summer.fengyu.ai.tools.RunFileContext.current());
+                    // Canvas workflows and direct tool calls may leave the write-dir blank (the
+                    // user has no granted path to type). Default it to the plugin's fixed output
+                    // folder under its sandbox-writable data root — injectable as a plain path
+                    // WITHOUT registering a grant, which would restart stateful plugin workers
+                    // and destroy their in-memory sessions mid-flow. The blank-param check runs
+                    // FIRST so tools without a write-dir parameter never pay the directory
+                    // creation (defaultOutputPath createDirectories on every call).
+                    if (AiToolFileInjector.blankWriteDirParam(injected, inputSchema) != null) {
+                        try {
+                            injected = AiToolFileInjector.fillDefaultOutputDir(injected, inputSchema,
+                                    processes.defaultOutputPath(pluginId).toString());
+                        } catch (Exception defaultDirUnavailable) {
+                            // Leave the value as typed; the worker reports the write failure.
+                        }
+                    }
+                    // Run-scoped state isolation for stateful plugins (P1-3): the runner
+                    // stamps the run id around every step; plugins that accept a sessionId
+                    // (the Excel AI tools) keep concurrent runs independent. Chat calls
+                    // carry no run id and share the plugin's default session.
+                    String runId = fan.summer.fengyu.ai.tools.AiRunContext.current();
+                    if (runId != null && !injected.containsKey("sessionId")) {
+                        injected = new java.util.LinkedHashMap<>(injected);
+                        injected.put("sessionId", runId);
+                    }
                     long timeout = tool.timeoutSeconds() == null ? -1 : tool.timeoutSeconds();
                     Object result = processes.invoke(pluginId, tool.method(), injected, timeout, AiToolLocaleContext.current());
-                    return result instanceof String text ? text : json.writeValueAsString(result);
+                    String text = result instanceof String value ? value : json.writeValueAsString(result);
+                    // Agent runs stamp AiRunContext and fire their own richer events — chat
+                    // binds AiPermissionContext too, so isBound() is NOT the discriminator.
+                    if (toolGuard != null && fan.summer.fengyu.ai.tools.AiRunContext.current() == null) {
+                        toolGuard.observeToolResult(tool.name(), input, text, false, null);
+                    }
+                    return text;
                 } catch (Exception error) {
-                    return "{\"success\":false,\"error\":" + quote(String.valueOf(error.getMessage())) + "}";
+                    String message = String.valueOf(error.getMessage());
+                    if (toolGuard != null && fan.summer.fengyu.ai.tools.AiRunContext.current() == null) {
+                        toolGuard.observeToolResult(tool.name(), input, message, true, null);
+                    }
+                    return "{\"success\":false,\"error\":" + quote(message) + "}";
                 }
             }
         };
@@ -323,17 +467,37 @@ public final class AiToolRegistry {
         };
     }
 
-    private static AuditedToolCallback audited(ToolCallback delegate, ToolEffect effect) {
+    private static AuditedToolCallback audited(ToolCallback delegate, ToolEffect effect,
+            fan.summer.fengyu.ai.tools.ToolGuardService toolGuard) {
         return new AuditedToolCallback() {
             @Override public ToolDefinition getToolDefinition() { return delegate.getToolDefinition(); }
             @Override public org.springframework.ai.tool.metadata.ToolMetadata getToolMetadata() {
                 return delegate.getToolMetadata();
             }
-            @Override public String call(String input) { return delegate.call(input); }
+            @Override public String call(String input) {
+                // Outside agent runs (chat, workflows invoked as AI tools) this wrapper is the
+                // only chokepoint that sees the finished result — fire observe hooks here.
+                // Agent runs stamp AiRunContext around their steps and fire their own, richer
+                // events (with runId), so skip to avoid double delivery. Chat binds
+                // AiPermissionContext as well — that is NOT an agent run, so hooks must fire.
+                if (toolGuard == null || fan.summer.fengyu.ai.tools.AiRunContext.current() != null) {
+                    return delegate.call(input);
+                }
+                String name = delegate.getToolDefinition().name();
+                try {
+                    String result = delegate.call(input);
+                    toolGuard.observeToolResult(name, input, result, false, null);
+                    return result;
+                } catch (RuntimeException failure) {
+                    toolGuard.observeToolResult(name, input, failure.getMessage(), true, null);
+                    throw failure;
+                }
+            }
             @Override public ToolEffect effect() { return effect; }
         };
     }
 
     public record ToolDescriptor(String id, String pluginId, String name, String description,
-            String inputSchema, String outputSchema, String revision, String localizedDescription) {}
+            String inputSchema, String outputSchema, String revision, String localizedDescription,
+            String flowNode) {}
 }

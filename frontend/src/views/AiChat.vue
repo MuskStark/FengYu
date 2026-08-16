@@ -62,8 +62,27 @@ interface PendingAttach {
 const pendingFile = ref<PendingAttach | null>(null)
 const granting = ref(false)
 
+// Memoized markdown: streaming re-runs md() for every turn on each token delta, and the
+// marked + DOMPurify pipeline is far too costly to repeat for unchanged content. Insertion-
+// order LRU keyed by the source string (identical content dedupes across turns), capped so
+// long conversations don't accumulate every intermediate streaming snapshot.
+const MD_CACHE_LIMIT = 64
+const mdCache = new Map<string, string>()
+
 function md(src: string): string {
-  return renderMarkdown(src)
+  const cached = mdCache.get(src)
+  if (cached !== undefined) {
+    mdCache.delete(src)
+    mdCache.set(src, cached)
+    return cached
+  }
+  const html = renderMarkdown(src)
+  mdCache.set(src, html)
+  if (mdCache.size > MD_CACHE_LIMIT) {
+    const oldest = mdCache.keys().next().value
+    if (oldest !== undefined) mdCache.delete(oldest)
+  }
+  return html
 }
 
 /** Copy a whole message turn to the clipboard with a transient "copied" state. */

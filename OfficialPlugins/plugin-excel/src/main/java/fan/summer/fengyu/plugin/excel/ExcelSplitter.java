@@ -16,9 +16,11 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
@@ -163,6 +165,61 @@ public class ExcelSplitter {
         }
     }
 
+    /** {@link #checkCancelled()} for use inside stream lambdas, which cannot throw checked exceptions. */
+    private void checkCancelledUnchecked() {
+        try {
+            checkCancelled();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Resolves {@code fileName} under the configured output directory and defensively verifies
+     * the normalized result stays inside it. Split keys are cell values sanitized into filename
+     * segments, so escaping should be impossible — this containment check is the second line
+     * of defence against a regression in the sanitization.
+     */
+    private Path resolveOutput(String fileName) {
+        Path dir = config.outputDir.normalize();
+        Path out = dir.resolve(fileName).normalize();
+        if (!out.startsWith(dir)) {
+            throw new RuntimeException(msgs.format("ex.err.outputOutsideDir", fileName));
+        }
+        return out;
+    }
+
+    /**
+     * Bookkeeping of a split's planned output paths, so a failed or cancelled run can remove
+     * every file the split created — successfully written outputs AND files abandoned mid-write
+     * when the failure hit (an interrupted writer's partial file never reaches the caller's
+     * completed-files list). Paths that already existed before the split are never deleted: the
+     * split does not own them.
+     */
+    private static final class OutputPlan {
+        private final Set<Path> planned = new LinkedHashSet<>();
+        private final Set<Path> preExisting = new HashSet<>();
+
+        /** Registers a planned output path, snapshotting whether it already exists. */
+        void add(Path p) {
+            if (!planned.add(p)) return; // already planned (e.g. two keys sanitize to one name)
+            if (Files.exists(p)) preExisting.add(p);
+        }
+
+        /** Best-effort removal of planned outputs this split created; deletion failures are
+         *  logged and swallowed (the original error wins). */
+        void deleteCreated() {
+            for (Path p : planned) {
+                if (preExisting.contains(p)) continue;
+                try {
+                    Files.deleteIfExists(p);
+                } catch (Exception e) {
+                    logger.warn("could not delete partial output {}: {}", p, e.toString());
+                }
+            }
+        }
+    }
+
     private SplitResult splitBySheet() throws Exception {
         List<String> sheets = (config.selectedSheets != null && !config.selectedSheets.isEmpty())
                 ? config.selectedSheets
@@ -171,12 +228,19 @@ public class ExcelSplitter {
         logger.info("Split by sheet | file={}, sheets={}", config.sourceFile.getFileName(), sheets.size());
 
         List<Path> outputs = new ArrayList<>();
+        OutputPlan plan = new OutputPlan();
         NoModelDataListener listener = new NoModelDataListener();
 
         try (ExcelReader reader = FesodSheet.read(config.sourceFile.toFile()).build()) {
             for (int i = 0; i < sheets.size(); i++) {
                 String sheetName = sheets.get(i);
                 checkCancelled();
+                Map<Integer, String> headerMap = config.analysisResult.get(sheetName);
+                if (headerMap == null) {
+                    // Stale selection (e.g. the sheet list outlived a re-analyze): fail with a
+                    // clear localized error instead of an NPE from TreeMap(null) in buildHeaders.
+                    throw new RuntimeException(msgs.format("ex.err.unknownSheet", sheetName));
+                }
                 onProgress((double) i / sheets.size(), msgs.format("ex.progress.processingSheet", sheetName));
 
                 ReadSheet readSheet = FesodSheet.readSheet(sheetName)
@@ -184,9 +248,9 @@ public class ExcelSplitter {
                 reader.read(readSheet);
 
                 List<Map<Integer, Object>> rows = listener.getCachedDataList();
-                Map<Integer, String> headerMap = config.analysisResult.get(sheetName);
 
-                Path out = config.outputDir.resolve(outputFileName(sheetName));
+                Path out = resolveOutput(outputFileName(sheetName));
+                plan.add(out);
                 FesodSheet.write(out.toFile())
                         .sheet(sheetName)
                         .head(buildHeaders(headerMap))
@@ -195,6 +259,10 @@ public class ExcelSplitter {
                 outputs.add(out);
                 listener.clear();
             }
+        } catch (Exception e) {
+            // A failed/cancelled run must not leave partial outputs that look complete.
+            plan.deleteCreated();
+            throw e;
         }
 
         onProgress(1.0, msgs.format("ex.progress.done"));
@@ -222,6 +290,19 @@ public class ExcelSplitter {
                                 ExcelUtil.normalizeOrInvalid(row.getOrDefault(colIdx, null)))));
         listener.clear();
 
+        // Plan every output path BEFORE any write: on failure the cleanup must also remove
+        // files abandoned mid-write by an interrupted sibling writer (which never reach
+        // `outputs`), while never touching files that pre-date this split.
+        Map<Object, Path> plannedByKey = new LinkedHashMap<>();
+        OutputPlan plan = new OutputPlan();
+        for (Object key : groups.keySet()) {
+            String suffix = FileNameUtil.getFileName(config.sourceFile.getFileName().toString())
+                    + "_" + FileNameUtil.sanitizeSegment(key.toString());
+            Path out = resolveOutput(outputFileName(suffix));
+            plannedByKey.put(key, out);
+            plan.add(out);
+        }
+
         int total = groups.size();
         AtomicInteger current = new AtomicInteger(0);
         List<Path> outputs = Collections.synchronizedList(new ArrayList<>());
@@ -232,9 +313,11 @@ public class ExcelSplitter {
         try {
             pool.submit(() ->
                 groups.entrySet().parallelStream().forEach(e -> {
+                    // Cooperative checkpoint inside the write loop so a cancel is honoured
+                    // per group, not only once for the whole parallel phase.
+                    checkCancelledUnchecked();
                     Object key = e.getKey();
-                    String suffix = FileNameUtil.getFileName(config.sourceFile.getFileName().toString()) + "_" + key;
-                    Path out = config.outputDir.resolve(outputFileName(suffix));
+                    Path out = plannedByKey.get(key);
                     FesodSheet.write(out.toFile())
                             .sheet(sheetName)
                             .head(buildHeaders(headerMap))
@@ -244,6 +327,19 @@ public class ExcelSplitter {
                     onProgress((double) n / total, msgs.format("ex.progress.writing", key));
                 })
             ).get();
+        } catch (Exception e) {
+            // A failed/cancelled run must not leave completed partial outputs: stop sibling
+            // writers still in flight (an interrupted writer abandons a partial file that
+            // never reaches `outputs`), wait for the pool to quiesce, then remove every
+            // planned output this split created (best-effort).
+            pool.shutdownNow();
+            try {
+                pool.awaitTermination(5, TimeUnit.SECONDS);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            }
+            plan.deleteCreated();
+            throw e;
         } finally {
             pool.shutdown();
         }
@@ -293,7 +389,7 @@ public class ExcelSplitter {
                             ExcelUtil.normalizeOrInvalid(row.getOrDefault(colKey, null))))
                     .forEach((key, rows) -> {
                         String baseName = FileNameUtil.getFileName(config.sourceFile.getFileName().toString())
-                                + "_" + key + ".xlsx";
+                                + "_" + FileNameUtil.sanitizeSegment(key) + ".xlsx";
                         plan.computeIfAbsent(baseName, k -> new ArrayList<>())
                                 .add(new WriteTask(cfg, rows));
                     });
@@ -306,14 +402,19 @@ public class ExcelSplitter {
 
         // Track only the files we create, so Phase 3 doesn't corrupt pre-existing files
         List<Path> createdFiles = new ArrayList<>();
+        // Cleanup bookkeeping: covers completed files AND the one abandoned mid-write when a
+        // failure hits (createdFiles only records successful writes).
+        OutputPlan outputPlan = new OutputPlan();
 
         try (FileInputStream srcFis = new FileInputStream(config.sourceFile.toFile());
              Workbook srcWb = WorkbookFactory.create(srcFis)) {
 
             // Phase 2: one XSSFWorkbook per output file, flushed to disk once
             for (Map.Entry<String, List<WriteTask>> entry : plan.entrySet()) {
+                checkCancelled();
                 String baseName = entry.getKey();
-                Path outPath = config.outputDir.resolve(baseName);
+                Path outPath = resolveOutput(baseName);
+                outputPlan.add(outPath);
 
                 try (XSSFWorkbook tgtWb = new XSSFWorkbook()) {
                     for (WriteTask task : entry.getValue()) {
@@ -339,6 +440,7 @@ public class ExcelSplitter {
             // Phase 3: copyAll sheets — only merge into files created by Phase 2
             if (!copyAllConfigs.isEmpty()) {
                 for (int i = 0; i < createdFiles.size(); i++) {
+                    checkCancelled();
                     File targetFile = createdFiles.get(i).toFile();
                     try (FileInputStream tgtFis = new FileInputStream(targetFile);
                          Workbook tgtWb = WorkbookFactory.create(tgtFis)) {
@@ -356,6 +458,11 @@ public class ExcelSplitter {
                             msgs.format("ex.progress.copyingSheets", targetFile.getName()));
                 }
             }
+        } catch (Exception e) {
+            // A failed/cancelled run must not leave partial outputs that look complete —
+            // files mid-rewrite in Phase 3 are still partial (missing copy-all sheets).
+            outputPlan.deleteCreated();
+            throw e;
         }
 
         List<Path> outputPaths = createdFiles.stream()

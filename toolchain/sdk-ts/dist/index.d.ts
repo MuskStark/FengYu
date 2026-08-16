@@ -1,4 +1,4 @@
-export declare const SDK_VERSION = "1.3.0";
+export declare const SDK_VERSION = "2.0.0";
 import { type HostEnvironment, type HostError } from './protocol.js';
 export * from './protocol.js';
 export type FileAccess = 'read' | 'write' | 'read-write';
@@ -35,6 +35,13 @@ export declare class FengYuClient {
     private readonly target;
     private readonly timeoutMs;
     private readonly allowedOrigin;
+    /**
+     * False when no origin could be resolved (no option, no ?shellOrigin param): the client
+     * then refuses every request and ignores every message instead of bridging to '*' —
+     * a wildcard would hand everything the user types into this frame, and forged
+     * "responses", to ANY website that embeds this loopback-served page.
+     */
+    private readonly bridging;
     private readonly pending;
     private readonly handlers;
     private readyPromise?;

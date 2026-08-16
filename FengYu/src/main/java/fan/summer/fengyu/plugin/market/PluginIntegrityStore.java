@@ -279,6 +279,24 @@ public class PluginIntegrityStore {
         return root.resolve(id + ".json");
     }
 
+    /** Digests a stream without buffering the whole package in memory. */
+    static String sha256Hex(java.io.InputStream input) throws IOException {
+        try (input) {
+            java.security.MessageDigest digest =
+                    java.security.MessageDigest.getInstance("SHA-256");
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = input.read(buffer)) > 0) {
+                digest.update(buffer, 0, read);
+            }
+            StringBuilder hex = new StringBuilder();
+            for (byte b : digest.digest()) hex.append(String.format("%02x", b));
+            return hex.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 unavailable", e);
+        }
+    }
+
     /** Compute the SHA-256 hex digest of a file's bytes. */
     static String sha256Hex(Path file) throws IOException {
         MessageDigest digest;

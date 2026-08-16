@@ -30,7 +30,14 @@ public class AppSettingEntity {
     @Column(name = "setting_key", nullable = false)
     private String settingKey;
 
-    @Column(name = "setting_value", length = 1000)
+    /**
+     * TEXT (not VARCHAR(1000)): values like the AI permission-rule table and the hook
+     * list are serialized JSON that routinely exceeds 1000 characters — a capped column
+     * would truncate them into unparseable JSON and silently empty the guard config,
+     * which for deny rules weakens the user's security intent (P2-6). TEXT is portable
+     * across H2/MySQL/PostgreSQL; {@code ddl-auto=update} widens existing columns.
+     */
+    @Column(name = "setting_value", columnDefinition = "TEXT")
     private String settingValue;
 
     /** User isolation field. Local offline mode = 1 (virtual user). */

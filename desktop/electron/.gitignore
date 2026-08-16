@@ -6,3 +6,8 @@ resources/jre/
 *.log
 .playwright/
 test-results/
+
+.yarn/*
+!.yarn/releases
+!.yarn/plugins
+.yarn/install-state.gz

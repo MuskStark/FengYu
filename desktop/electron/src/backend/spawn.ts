@@ -26,6 +26,31 @@ export interface SpawnedBackend {
 }
 
 /**
+ * Build the backend JVM arguments for the current desktop platform.
+ *
+ * macOS registers a headful AWT JVM as a foreground application as soon as
+ * java.awt.Robot is initialized. Marking it as a UIElement keeps Robot usable
+ * while preventing the sidecar JVM from acquiring its own Dock icon. The
+ * Apple-specific property is deliberately omitted on Windows and Linux.
+ */
+export function backendJavaArgs(
+  layout: RuntimeLayout,
+  requestedPort: number,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  return [
+    `-Dfengyu.runtime.dir=${runtimeRoot()}`,
+    `-Dfengyu.plugins.official-directory=${layout.plugins}`,
+    '-Dfengyu.desktop=true',
+    ...(platform === 'darwin' ? ['-Dapple.awt.UIElement=true'] : []),
+    '-cp',
+    layout.jar,
+    'fan.summer.fengyu.HeadlessLauncher',
+    `--port=${requestedPort}`,
+  ]
+}
+
+/**
  * Wrap a Java child with graceful shutdown followed by a hard-kill fallback.
  * ChildProcess.killed only records that kill() was called; it does not mean the
  * process exited, so liveness must be checked through exitCode/signalCode.
@@ -68,6 +93,16 @@ export function createBackendChild(
       }, forceKillDelayMs)
       forceKillTimer.unref()
     },
+    forceKill() {
+      if (proc.exitCode !== null || proc.signalCode !== null) return
+      if (proc.pid === undefined) return
+      if (forceKillTimer) clearTimeout(forceKillTimer)
+      // tree-kill enumerates the tree asynchronously, so it may not get to run after a
+      // will-quit handler returns; the direct-child signal below is the synchronous
+      // guarantee that the backend JVM itself dies before this process exits.
+      treeKillFn(proc.pid, 'SIGKILL')
+      proc.kill('SIGKILL')
+    },
   }
 }
 
@@ -90,15 +125,7 @@ export async function spawnBackend(opts: SpawnOptions): Promise<SpawnedBackend> 
   }
   const javaBin = resolveJava(layout)
 
-  const args = [
-    `-Dfengyu.runtime.dir=${runtimeRoot()}`,
-    `-Dfengyu.plugins.official-directory=${layout.plugins}`,
-    '-Dfengyu.desktop=true',
-    '-cp',
-    layout.jar,
-    'fan.summer.fengyu.HeadlessLauncher',
-    `--port=${requestedPort}`,
-  ]
+  const args = backendJavaArgs(layout, requestedPort)
 
   const proc = spawn(javaBin, args, {
     cwd: runtimeRoot(),

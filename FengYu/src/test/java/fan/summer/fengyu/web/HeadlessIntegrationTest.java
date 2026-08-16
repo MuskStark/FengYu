@@ -2,8 +2,10 @@ package fan.summer.fengyu.web;
 
 import fan.summer.fengyu.FengYuApplication;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.net.URI;
@@ -12,6 +14,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -32,6 +35,9 @@ class HeadlessIntegrationTest {
 
     @LocalServerPort
     int port;
+
+    @Autowired
+    ApplicationContext context;
 
     private final HttpClient http = HttpClient.newHttpClient();
 
@@ -57,6 +63,27 @@ class HeadlessIntegrationTest {
         HttpResponse<String> resp = get("/api/health");
         assertEquals(200, resp.statusCode());
         assertTrue(resp.body().contains("\"status\":\"ok\""), "got: " + resp.body());
+    }
+
+    /**
+     * The setup wizard endpoints are token-bypassed, so they must only be served by the
+     * SETUP-mode context. In APP mode the whole {@code /api/setup/**} surface has to 404 —
+     * otherwise unauthenticated database reconfiguration stays reachable forever
+     * ({@code FengYuApplication} excludes {@code SetupController} for exactly this reason).
+     */
+    @Test
+    void setupEndpoints_notServedInAppMode() throws Exception {
+        assertFalse(context.containsBean("setupController"),
+                "SetupController must not load in the APP-mode context");
+        assertEquals(404, get("/api/setup/types").statusCode(),
+                "GET /api/setup/types must 404 in APP mode");
+        assertEquals(404, get("/api/setup/status").statusCode(),
+                "GET /api/setup/status must 404 in APP mode");
+        HttpResponse<String> deleted = http.send(HttpRequest.newBuilder()
+                .uri(URI.create(base() + "/api/setup/config"))
+                .DELETE().build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(404, deleted.statusCode(),
+                "DELETE /api/setup/config must 404 in APP mode (token-protected Settings reset is the APP-mode path)");
     }
 
     @Test

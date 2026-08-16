@@ -75,10 +75,11 @@ Use the repository wrappers and package scripts that already exist. Run the exac
 java -jar FengYu/target/FengYu-*.jar --token=<t>     # loopback, port 24056 by default
 
 # Frontend (dev)
-cd frontend && npm install && npm run dev            # Vite proxies /api + /plugin-runtime → :24056
+corepack enable                            # once per machine: activates the pinned Yarn 4
+cd frontend && yarn install && yarn run dev            # Vite proxies /api + /plugin-runtime → :24056
 
 # Desktop (dev)
-cd desktop/electron && npm install && npm run dev   # DEFAULT: connects to an IDE-started backend at
+cd desktop/electron && yarn install && yarn run dev  # DEFAULT: connects to an IDE-started backend at
                                                     #   http://127.0.0.1:24056 (start it without --token → auth disabled)
                                                     # To spawn its own backend: FENGYU_JAR=<built shaded jar> or FENGYU_DEV_BACKEND=disabled
 
@@ -86,7 +87,7 @@ cd desktop/electron && npm install && npm run dev   # DEFAULT: connects to an ID
 scripts/e2e-smoke.sh
 
 # Docs site (VitePress, EN + ZH)
-npm --prefix docs run build
+cd docs && yarn run build
 ```
 
 Prefer `./mvnw` over a system Maven when running from a shell.
@@ -95,7 +96,9 @@ Prefer `./mvnw` over a system Maven when running from a shell.
 
 - **Preserve user work.** Do not delete or rewrite files outside the requested change.
 - **Focused verification.** Run the smallest check that proves the change (the relevant module
-  build, the relevant `npm` script, `scripts/e2e-smoke.sh`, or `git diff --check`). Do not run the
+  build, the relevant `yarn` script — every JS area of the repo now installs with Yarn 4 through
+  corepack (only `fengyu init` scaffolds for third parties still target npm), `scripts/e2e-smoke.sh`,
+  or `git diff --check`). Do not run the
   whole reactor "just in case."
 - **No unrelated rewrites.** Match surrounding style, naming, and comment density.
 - **Commit convention:** conventional commits with emojis — `✨` feat, `🐛` fix, `♻️` refactor,
@@ -138,7 +141,7 @@ These cost real release cycles; do not repeat them.
   `fengyu-release.yml`, which overwrites the GitHub Release's assets. Only do this for prereleases
   not yet promoted to a real audience; otherwise cut the next prerelease (e.g. beta.2).
 - **The docs changelog mirrors are generated, not hand-edited.** After editing root `CHANGELOG.md`,
-  run `npm --prefix docs run sync:changelog` to regenerate `docs/{en,zh}/reference/changelog.md`.
+  run `cd docs && yarn run sync:changelog` to regenerate `docs/{en,zh}/reference/changelog.md`.
   That script is also a pre-hook for docs dev/build/preview, but run it explicitly in a release so
   the mirrors land in the same commit as the CHANGELOG change.
 

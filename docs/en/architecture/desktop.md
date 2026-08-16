@@ -23,7 +23,7 @@ The shell behaves differently depending on whether it is packaged:
 | **Dev — spawned** (`!app.isPackaged`, `FENGyu_JAR` set or `FENGyu_DEV_BACKEND=disabled`) | Spawned as a jar sidecar by the shell, using the jar at `FENGyu_JAR` | Opens immediately, loads `localhost:5173` |
 | **Release** (`app.isPackaged`) | Spawned as a jar sidecar by the shell | Opens after the backend is healthy, loads the bundled SPA |
 
-By default, `npm run dev` connects to a backend you started in your IDE **without** `--token=` —
+By default, `yarn run dev` connects to a backend you started in your IDE **without** `--token=` —
 `TokenAuthFilter` then disables auth, and the shell passes an empty token so the SPA's empty-token
 fallback lines up. The shell does NOT spawn java, generate a token, or run the SETUP→APP supervisor;
 you own the backend's lifetime. If you started the backend with `--token=<t>`, also set
@@ -164,4 +164,4 @@ The with-JRE variant bundles a **jlink-minimized** JRE (generated in CI from JDK
 
 - [Backend](/en/architecture/backend) — what the sidecar is actually running, and the SETUP/APP modes the shell drives it through.
 - [Frontend](/en/architecture/frontend) — how the SPA consumes the `window.fengyu` bridge.
-- [Quick Start](/en/quickstart) — `cd desktop/electron && npm run dev` and `npm run build`.
+- [Quick Start](/en/quickstart) — `cd desktop/electron && yarn run dev` and `yarn run build`.
