@@ -130,6 +130,11 @@ public class PluginProcessManager {
         return invoke(pluginId, method, params, -1);
     }
 
+    /** The plugin's sandbox-writable default output folder (see {@link PluginRuntimeEnvironmentService#defaultOutputPath}). */
+    public java.nio.file.Path defaultOutputPath(String pluginId) throws java.io.IOException {
+        return runtimeEnvironment.defaultOutputPath(pluginId);
+    }
+
     /** Invoke with the plugin-wide default timeout and a request locale (e.g. {@code "zh"}/{@code "en"}). */
     public Object invoke(String pluginId, String method, Map<String, Object> params, String locale) {
         return invoke(pluginId, method, params, -1, locale);
@@ -275,7 +280,21 @@ public class PluginProcessManager {
                         && java.util.Objects.equals(current.packageDigest(), packageDigest)) {
                     return current;
                 }
-                if (current != null) current.close();
+                if (current != null) {
+                    // CQ-03: only a worker that actually DIED counts toward the crash-loop
+                    // guard. An alive worker replaced because the grant version, sandbox
+                    // mode, or package identity changed is a deliberate host restart, not
+                    // a crash — counting it engaged the 30s spawn cooldown for a user
+                    // merely re-granting files, with a misleading "worker crashed" log.
+                    if (!current.alive()) {
+                        recordRapidDeath(id, current);
+                    } else {
+                        log.info("Plugin {}: restarting worker ({})", id, restartReason(current,
+                                grantVersion, unsandboxed, manifest.version(), packageDigest));
+                    }
+                    current.close();
+                }
+                ensureNotCrashBlocked(id);
                 return start(id, manifest, unsandboxed, packageDigest);
             });
         } finally {
@@ -318,6 +337,16 @@ public class PluginProcessManager {
             // the worker intact for the next call. failAll() drains every pending caller so the
             // stuck handler's siblings learn about the failure instead of hanging.
             if (e instanceof IllegalStateException) {
+                // Count the teardown as a candidate rapid death BEFORE the removal: the most
+                // common crash-loop shape dies during its FIRST invoke (spawn → EOF → remove →
+                // respawn), which the cached-mismatch branch in ensure() can never see. Only a
+                // worker that is STILL the map's entry counts — stop()/beginUpdate() remove the
+                // Worker before closing it, so a deliberate host teardown (update, disable,
+                // shutdown) never accrues crash-loop strikes. A healthy worker torn down by a
+                // mere call timeout has usually outlived the crash window and resets the counter.
+                if (workers.get(pluginId) == worker) {
+                    recordRapidDeath(pluginId, worker);
+                }
                 worker.failAll("Plugin worker tearing down: " + e.getMessage());
                 workers.remove(pluginId, worker);
                 worker.close();
@@ -332,6 +361,20 @@ public class PluginProcessManager {
         if (effective < 1) effective = 1;
         if (effective > MAX_TIMEOUT_SECONDS) effective = MAX_TIMEOUT_SECONDS;
         return effective;
+    }
+
+    /** Why an ALIVE cached worker is being deliberately restarted (CQ-03 log fidelity). */
+    private static String restartReason(Worker current, long grantVersion, boolean unsandboxed,
+                                        String manifestVersion, String packageDigest) {
+        if (current.grantVersion() != grantVersion) return "file-grant version changed";
+        if (current.fullAccess() != unsandboxed) return "sandbox mode changed";
+        if (!java.util.Objects.equals(current.manifestVersion(), manifestVersion)) {
+            return "manifest version changed";
+        }
+        if (!java.util.Objects.equals(current.packageDigest(), packageDigest)) {
+            return "package digest changed";
+        }
+        return "worker state stale";
     }
 
     private Object resolveRefs(String pluginId, Object value) {
@@ -383,6 +426,57 @@ public class PluginProcessManager {
     /** Re-enable invokes for a plugin after an update attempt (success or failure). */
     public void endUpdate(String pluginId) {
         updating.remove(pluginId);
+    }
+
+    // ── crash-loop guard ────────────────────────────────────────────────
+
+    /**
+     * Crash-loop guard: a plugin whose worker dies within {@link #RAPID_CRASH_WINDOW_NANOS} of
+     * spawning is counted; {@link #MAX_RAPID_CRASHES} consecutive rapid deaths pause spawns for
+     * {@link #CRASH_COOLDOWN_NANOS}. Without this, a worker that dies instantly costs one JVM
+     * spawn per invoke — a local fork-bomb-by-attrition. A worker that outlives the window
+     * resets its plugin's counter (it served, so the plugin is not crash-looping).
+     */
+    private static final long RAPID_CRASH_WINDOW_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(20);
+    private static final int MAX_RAPID_CRASHES = 3;
+    private static final long CRASH_COOLDOWN_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
+
+    private final java.util.concurrent.ConcurrentHashMap<String, RapidCrashState> crashStates =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static final class RapidCrashState {
+        // Atomic: recordRapidDeath is also called from invoke's teardown catch, OUTSIDE the
+        // per-plugin update lock, so concurrent failed invokes on the same worker must not
+        // lose increments on the shared counter.
+        final java.util.concurrent.atomic.AtomicInteger rapidDeaths =
+                new java.util.concurrent.atomic.AtomicInteger();
+        volatile long blockedUntilNanos = 0;
+    }
+
+    private void recordRapidDeath(String pluginId, Worker dead) {
+        RapidCrashState state = crashStates.computeIfAbsent(pluginId, id -> new RapidCrashState());
+        long lifetime = System.nanoTime() - dead.startedAtNanos();
+        if (lifetime > RAPID_CRASH_WINDOW_NANOS) {
+            state.rapidDeaths.set(0);
+            return;
+        }
+        if (state.rapidDeaths.incrementAndGet() >= MAX_RAPID_CRASHES) {
+            state.blockedUntilNanos = System.nanoTime() + CRASH_COOLDOWN_NANOS;
+            log.warn("Plugin {} worker crashed {} times within {}s of spawn — pausing spawns for {}s",
+                    pluginId, state.rapidDeaths.get(),
+                    RAPID_CRASH_WINDOW_NANOS / 1_000_000_000,
+                    CRASH_COOLDOWN_NANOS / 1_000_000_000);
+        }
+    }
+
+    private void ensureNotCrashBlocked(String pluginId) {
+        RapidCrashState state = crashStates.get(pluginId);
+        if (state != null && state.blockedUntilNanos > System.nanoTime()) {
+            throw new IllegalStateException("Plugin " + pluginId
+                    + " worker crashed repeatedly on startup; spawns are paused for crash-loop "
+                    + "protection — retry in "
+                    + ((state.blockedUntilNanos - System.nanoTime()) / 1_000_000_000 + 1) + "s");
+        }
     }
 
     /** The per-plugin update lock (lazily created, one per id, retained for the manager's life). */
@@ -443,14 +537,16 @@ public class PluginProcessManager {
                         + "the installed record (a file was added/removed/modified). Reinstall the plugin.");
             }
         }
-        // T2-04: the worker command is fixed to `java -jar backend/worker.jar` (schema v2 dropped
-        // backend.command/protocol — the channel is always JSON-RPC 2.0 over the bundled JAR).
+        // T2-04: the worker command is fixed to a headless `java -jar backend/worker.jar`
+        // invocation (schema v2 dropped backend.command/protocol — the channel is always JSON-RPC
+        // 2.0 over the bundled JAR). Workers have no desktop surface on any supported platform;
+        // forcing headless also prevents spreadsheet/font libraries from registering a second
+        // foreground Java application in the macOS Dock.
         List<String> command = fixedWorkerCommand(root);
         Map<String, String> environment = runtimeEnvironment.environmentFor(manifest);
         SensitiveValueRedactor redactor = SensitiveValueRedactor.fromEnvironment(environment);
         try {
             List<String> permissions = manifest.permissions() == null ? List.of() : manifest.permissions();
-            boolean broadFileWrite = false;
             // Network gating (P1-9 honest model): `network.email` and `database` are currently treated
             // as full network egress — same as `network` — because the host does not yet broker
             // SMTP/IMAP or restrict DB connections to a specific host. A real mail/DB proxy is a
@@ -478,7 +574,7 @@ public class PluginProcessManager {
                     .filter(path -> !writableRoots.contains(path)).toList();
             ProcessSandbox.Launch launch = fullAccess
                     ? sandbox.unrestricted(command)
-                    : sandbox.plugin(command, root, writableRoots, readableRoots, broadFileWrite, allowNetwork);
+                    : sandbox.plugin(command, root, writableRoots, readableRoots, allowNetwork);
             ProcessBuilder builder = new ProcessBuilder(launch.command()).directory(root.toFile());
             // A Worker must NOT inherit the host JVM's full environment — that would hand the
             // plugin every host secret (OPENAI_API_KEY, GH_TOKEN, proxy creds, CI secrets, ...).
@@ -544,7 +640,6 @@ public class PluginProcessManager {
             logStore.append(id, "INFO", "Worker started (pid=" + process.pid() + ")");
             String isolation = "sandbox=" + launch.backend().id()
                     + ", network=" + (fullAccess || allowNetwork ? "allowed" : "isolated")
-                    + ", broadFileWrite=" + broadFileWrite
                     + (AiConfigServiceHeadless.isUnsandboxedPluginsEnabled() ? ", unsandboxedOverride=true" : "");
             log.info("Plugin {} worker isolation: {}", id, isolation);
             logStore.append(id, launch.sandboxed() ? "INFO" : "WARN", isolation);
@@ -556,13 +651,15 @@ public class PluginProcessManager {
 
     /**
      * The fixed v2 worker launch command: the current JVM's {@code java} executable running the
-     * plugin's {@code backend/worker.jar}. Schema v2 dropped the manifest's {@code backend.command}
-     * / {@code backend.protocol} — the worker is always a JSON-RPC 2.0 JAR at this conventional path.
+     * plugin's {@code backend/worker.jar} with AWT headless mode forced on. Schema v2 dropped the
+     * manifest's {@code backend.command} / {@code backend.protocol} — the worker is always a
+     * JSON-RPC 2.0 JAR at this conventional path.
      */
     private static List<String> fixedWorkerCommand(Path root) {
         String javaExe = Path.of(System.getProperty("java.home"), "bin",
                 isWindows() ? "java.exe" : "java").toString();
-        return List.of(javaExe, "-jar", root.resolve("backend/worker.jar").toString());
+        return List.of(javaExe, "-Djava.awt.headless=true", "-jar",
+                root.resolve("backend/worker.jar").toString());
     }
 
     private static List<String> withJavaTempDirectory(List<String> command, Path tempDirectory) {
@@ -777,6 +874,8 @@ public class PluginProcessManager {
         private final ProcessSandbox sandbox;
         /** Windows Job Object handle (0 on non-Windows / NONE backend → terminate/close no-op). */
         private final long jobHandle;
+        /** Spawn time — feeds the crash-loop guard's "died too young" heuristic. */
+        private final long startedAtNanos = System.nanoTime();
 
         Worker(String pluginId, Process process, ObjectMapper json, SensitiveValueRedactor redactor,
                 PluginLogStore logStore, long grantVersion, boolean fullAccess,
@@ -800,6 +899,7 @@ public class PluginProcessManager {
         boolean fullAccess() { return fullAccess; }
         String manifestVersion() { return manifestVersion; }
         String packageDigest() { return packageDigest; }
+        long startedAtNanos() { return startedAtNanos; }
 
         /** Test-only: number of in-flight/unreaped invoke slots. Must return to 0 after every
          *  successful response so successful invokes do not leak entries (P0-5 regression guard). */

@@ -8,6 +8,14 @@ import { dirname, join, win32 as windowsPath } from 'node:path'
 const PORTABLE_MARKER = 'fengyu-portable-zip'
 
 /**
+ * Hard cap on the portable zip download, mirroring the backend's MAX_JAR_BYTES (512 MB) in
+ * SelfUpdateService: a corrupt or malicious feed must never stream unbounded bytes into the temp
+ * staging area. Enforced twice — against a declared Content-Length before any byte is read, and
+ * against the bytes actually received (the header is a claim, not a fact).
+ */
+const MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024
+
+/**
  * Windows portable-zip self-update.
  *
  * electron-updater cannot update a portable/zip build — its NsisUpdater is hardcoded to run a
@@ -106,6 +114,15 @@ export async function checkPortableUpdate(
   if (process.env.FENGYU_UPDATE_API_BASE && !sha256) {
     throw new Error('FY-Proxy portable update metadata is missing a valid SHA-256 digest')
   }
+  // Integrity gate for any remaining plain-HTTP source: bytes fetched over http:// are
+  // tamperable in transit, so download+install is refused unless the feed publishes a digest
+  // to verify against (downloadFile checks it). HTTPS keeps the digest-optional status quo —
+  // the GitHub API path does not publish asset digests at all.
+  if (!sha256 && !/^https:\/\//i.test(asset.browser_download_url)) {
+    throw new Error(
+      `Refusing portable update served over plain HTTP without a SHA-256 digest: ${asset.browser_download_url}`,
+    )
+  }
   return {
     version: latest,
     zipUrl: asset.browser_download_url,
@@ -203,29 +220,69 @@ async function downloadFile(
   const resp = await fetchImpl(url, { headers: { 'User-Agent': 'FengYu-Updater' } })
   if (!resp.ok || !resp.body) throw new Error(`Download failed: HTTP ${resp.status}`)
   const total = Number(resp.headers.get('content-length') || 0)
+  if (total > MAX_DOWNLOAD_BYTES) {
+    // Declared over the cap: refuse before a single byte is streamed (release the connection
+    // best-effort on the way out).
+    try { void resp.body.cancel().catch(() => {}) } catch { /* body already closed */ }
+    throw new Error(
+      `Portable update download refused: Content-Length ${total} exceeds the ` +
+        `${MAX_DOWNLOAD_BYTES / (1024 * 1024)} MB cap`,
+    )
+  }
   let received = 0
   const sha256 = createHash('sha256')
   const stream = createWriteStream(dest)
   const reader = (
-    resp.body as unknown as { getReader: () => { read: () => Promise<{ done: boolean; value?: Uint8Array }> } }
+    resp.body as unknown as {
+      getReader: () => {
+        read: () => Promise<{ done: boolean; value?: Uint8Array }>
+        cancel: () => Promise<void>
+      }
+    }
   ).getReader()
+  // A write failure must surface as a rejected promise, not an unhandled 'error' event: the
+  // first stream error settles this promise, and every write/end below races against it.
+  const streamFailed = new Promise<never>((_, reject) => stream.once('error', reject))
   try {
     for (;;) {
       const { done, value } = await reader.read()
       if (done) break
-      if (value) {
-        received += value.byteLength
-        sha256.update(value)
-        if (total > 0) onProgress(Math.min(100, Math.round((received / total) * 100)))
-        await new Promise<void>((resolve) => stream.write(Buffer.from(value), () => resolve()))
+      if (!value) continue
+      received += value.byteLength
+      if (received > MAX_DOWNLOAD_BYTES) {
+        // The header lied or is absent: abort mid-flight instead of filling the disk.
+        throw new Error(
+          `Portable update download aborted: ${received} bytes received exceeds the ` +
+            `${MAX_DOWNLOAD_BYTES / (1024 * 1024)} MB cap`,
+        )
       }
+      sha256.update(value)
+      if (total > 0) onProgress(Math.min(100, Math.round((received / total) * 100)))
+      await Promise.race([
+        new Promise<void>((resolve, reject) => {
+          stream.write(Buffer.from(value), (err) => (err ? reject(err) : resolve()))
+        }),
+        streamFailed,
+      ])
     }
-  } finally {
-    await new Promise<void>((resolve) => stream.end(resolve))
-  }
-  const actualSha256 = sha256.digest('hex')
-  if (expectedSha256 && actualSha256 !== expectedSha256) {
-    throw new Error(`Portable update SHA-256 mismatch: expected ${expectedSha256}, got ${actualSha256}`)
+    await Promise.race([
+      new Promise<void>((resolve) => {
+        stream.end(() => resolve()) // a flush failure surfaces via 'error' → streamFailed
+      }),
+      streamFailed,
+    ])
+    const actualSha256 = sha256.digest('hex')
+    if (expectedSha256 && actualSha256 !== expectedSha256) {
+      throw new Error(`Portable update SHA-256 mismatch: expected ${expectedSha256}, got ${actualSha256}`)
+    }
+  } catch (err) {
+    // Controlled failure on every path (cap hit, network error, write error, digest mismatch):
+    // abort the transfer, tear down the stream, and drop the half-written zip so nothing
+    // corrupt lingers in staging. The caller's finally repeats the file cleanup harmlessly.
+    try { void reader.cancel().catch(() => {}) } catch { /* reader already closed */ }
+    stream.destroy()
+    try { rmSync(dest, { force: true }) } catch { /* ignore */ }
+    throw err
   }
 }
 

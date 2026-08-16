@@ -236,6 +236,33 @@ public class ChatFileGrantService {
         return List.copyOf(result);
     }
 
+    /**
+     * Creates one host-owned shared scratch directory and grants it LIVE to every eligible
+     * backend plugin: files a write-capable plugin produces there in one workflow step are
+     * immediately readable by the others' later steps (the cross-plugin hand-off a
+     * split-then-email workflow needs). Never a snapshot — the aliasing is the point.
+     */
+    public List<ActiveFileRef> grantSharedDirectory() {
+        List<ActiveFileRef> result = new ArrayList<>();
+        try {
+            Path dir = files.createSharedDirectory();
+            for (PluginManifest plugin : eligiblePlugins()) {
+                List<String> permissions = plugin.permissions() == null ? List.of() : plugin.permissions();
+                if (!permissions.contains("files.read")) continue;
+                String access = permissions.contains("files.write") ? "read-write" : "read";
+                result.add(new ActiveFileRef(plugin.id(),
+                        files.grantLive(plugin.id(), dir, "directory", access)));
+            }
+        } catch (IOException e) {
+            revokeAll(result);
+            throw new IllegalArgumentException("Cannot create shared workflow directory: " + e.getMessage(), e);
+        } catch (RuntimeException e) {
+            revokeAll(result);
+            throw e;
+        }
+        return List.copyOf(result);
+    }
+
     private List<PluginManifest> eligiblePlugins() {
         return packages.installed().stream()
             .filter(plugin -> packages.isEnabled(plugin.id()))

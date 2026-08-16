@@ -28,9 +28,14 @@ test('keeps loading state until the plugin completes its ready handshake', () =>
 })
 
 test('loads same-origin sandbox scripts from an isolated plugin origin', () => {
-  assert.match(source, /import \{ pluginAssetUrl \} from '@\/api\/config'/)
-  assert.match(source, /sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"/)
+  assert.match(source, /import \{ pluginAssetIsolated, pluginAssetUrl \} from '@\/api\/config'/)
+  assert.match(source, /:sandbox="frameSandbox"/)
   assert.match(source, /return entry \? pluginAssetUrl\(entry\) : undefined/)
+  // allow-same-origin is granted only when the plugin document sits on an origin distinct
+  // from the shell's; a shared-origin resolution degrades to an opaque-origin sandbox
+  // instead of collapsing the sandbox onto the shell origin.
+  assert.match(source, /const pluginSandboxed = \(\) => \{[\s\S]*!pluginAssetIsolated\(entry\) : false/)
+  assert.match(source, /const frameSandbox = computed\(\(\) => pluginSandboxed\(\)[\s\S]*'allow-scripts allow-forms allow-downloads'[\s\S]*'allow-scripts allow-same-origin allow-forms allow-downloads'\)/)
 })
 
 test('advertises and handles the official input-directory capability', () => {

@@ -46,6 +46,18 @@ marked.use({
 })
 
 /**
+ * Open rendered links away from the shell: model-authored markdown must never navigate the
+ * app window itself. In-page anchors (href^="#") keep their default in-document behavior.
+ */
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (!(node instanceof HTMLAnchorElement)) return
+  const href = node.getAttribute('href')
+  if (!href || href.startsWith('#')) return
+  node.setAttribute('target', '_blank')
+  node.setAttribute('rel', 'noopener noreferrer')
+})
+
+/**
  * Render untrusted Markdown from models and marketplace packages.
  *
  * Marked intentionally preserves raw HTML, so its output must never reach v-html directly.

@@ -38,11 +38,33 @@ class PluginRuntimeEnvironmentServiceTest {
         // Embedded H2: the worker must NOT receive the host's URL (the host holds an exclusive file
         // lock on it). It gets its own DB file under its plugin data dir.
         String workerUrl = first.get(PluginWorkerProtocol.DB_URL_ENV);
-        assertEquals("secret", first.get(PluginWorkerProtocol.DB_PASSWORD_ENV));
-        assertEquals(first, second);
+        // ...and NOT the host's credentials: a derived, per-plugin credential reaches the worker
+        // (the file's user is created with it on first connect), stable across restarts.
+        assertEquals("fy_fan_summer_email", first.get(PluginWorkerProtocol.DB_USERNAME_ENV));
+        String workerPassword = first.get(PluginWorkerProtocol.DB_PASSWORD_ENV);
+        assertNotEquals("secret", workerPassword,
+            "the host's global DB password must never reach a worker, even embedded");
+        assertTrue(workerPassword.startsWith("fy_"), "derived secret: " + workerPassword);
+        assertEquals(first, second, "derived credential must be stable across calls");
         assertTrue(Files.isDirectory(Path.of(first.get(PluginWorkerProtocol.PLUGIN_DATA_DIR_ENV))));
         assertTrue(workerUrl.startsWith("jdbc:h2:file:"),
             "embedded H2 worker URL must be file-based, was: " + workerUrl);
+    }
+
+    @Test
+    void embeddedWorkerCredentialsAreDistinctPerPlugin() {
+        DataSourceConfigService dataSources = new DataSourceConfigService(temp.resolve("host").toString());
+        dataSources.save(new DataSourceConfig(DbType.H2, "jdbc:h2:file:host", "org.h2.Driver",
+            "org.hibernate.dialect.H2Dialect", "sa", "secret", null));
+        PluginRuntimeEnvironmentService service =
+            new PluginRuntimeEnvironmentService(dataSources, temp.resolve("plugin-data").toString());
+
+        Map<String, String> email = service.environmentFor(manifest("fan.summer.email", List.of("database")));
+        Map<String, String> excel = service.environmentFor(manifest("fan.summer.excel", List.of("database")));
+        assertNotEquals(email.get(PluginWorkerProtocol.DB_USERNAME_ENV),
+            excel.get(PluginWorkerProtocol.DB_USERNAME_ENV));
+        assertNotEquals(email.get(PluginWorkerProtocol.DB_PASSWORD_ENV),
+            excel.get(PluginWorkerProtocol.DB_PASSWORD_ENV));
     }
 
     @Test
@@ -260,6 +282,6 @@ class PluginRuntimeEnvironmentServiceTest {
         return new PluginManifest(2, id, "Test", "Test", "1.0.0", "FengYu", "email", "net",
             new PluginManifest.Ui("ui/index.html"),
             new PluginManifest.Backend(60L),
-            permissions, null, true, null, List.of());
+            permissions, null, true, null, List.of(), null, null);
     }
 }

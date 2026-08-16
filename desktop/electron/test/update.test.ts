@@ -38,6 +38,7 @@ vi.mock('node:fs', () => ({
 }))
 vi.mock('electron', () => ({
   app: { quit: vi.fn() },
+  dialog: { showMessageBoxSync: vi.fn(() => 0) },
   ipcMain: {
     handle: vi.fn((channel: string, fn: (...args: unknown[]) => unknown) => handlers.set(channel, fn)),
   },
@@ -57,6 +58,19 @@ vi.mock('../src/updater/portable-updater', () => ({
 }))
 
 const UPDATE_AVAILABLE = { updateInfo: { version: '9.9.9', releaseNotes: '' } }
+
+/**
+ * Invoke a captured handler the way ipcMain.handle presents it to the renderer: a
+ * synchronous throw inside the handler becomes a rejected invoke() promise.
+ */
+const invoke = (channel: string, ...args: unknown[]) =>
+  new Promise<unknown>((resolve, reject) => {
+    try {
+      resolve(handlers.get(channel)!(...args))
+    } catch (err) {
+      reject(err)
+    }
+  })
 
 beforeEach(async () => {
   // Reset the module under test so the process-wide `progressWired` guard re-registers listeners
@@ -130,18 +144,84 @@ describe('update:download-install (Windows/Linux)', () => {
     process.env.FENGYU_UPDATE_API_BASE = 'http://proxy.local:8088'
   })
 
-  it('downloads and installs a deb update on user consent', async () => {
+  it('downloads and installs a deb update after native consent', async () => {
     autoUpdater.downloadUpdate.mockResolvedValue(['/tmp/pkg'])
+    autoUpdater.checkForUpdates.mockResolvedValue(UPDATE_AVAILABLE)
     const { registerUpdateIpc } = await import('../src/ipc/update')
     registerUpdateIpc()
 
     const result = (await handlers.get('update:download-install')!({ sender: {} })) as { action: string }
 
+    // The renderer click alone is not authorization: a main-process dialog must confirm first.
+    const { dialog } = await import('electron')
+    expect(dialog.showMessageBoxSync).toHaveBeenCalledTimes(1)
+    expect(dialog.showMessageBoxSync).toHaveBeenCalledWith(
+      expect.objectContaining({ buttons: ['Install', 'Cancel'], message: expect.stringContaining('9.9.9') }),
+    )
+    // The consent dialog names the feed host so the user sees where the code would come from.
+    expect(dialog.showMessageBoxSync).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('from proxy.local:8088') }),
+    )
     expect(autoUpdater.autoDownload).toBe(false)
     expect(autoUpdater.autoInstallOnAppQuit).toBe(false)
     expect(autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1)
     expect(autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1)
     expect(result.action).toBe('restarting')
+  })
+
+  it('rejects a second install while one is already in flight (no second dialog/download)', async () => {
+    autoUpdater.downloadUpdate.mockResolvedValue(['/tmp/pkg'])
+    let releaseCheck!: (value: unknown) => void
+    autoUpdater.checkForUpdates.mockImplementation(
+      () => new Promise((resolve) => { releaseCheck = resolve }),
+    )
+    const { registerUpdateIpc } = await import('../src/ipc/update')
+    registerUpdateIpc()
+
+    const first = handlers.get('update:download-install')!({ sender: {} })
+    await expect(handlers.get('update:download-install')!({ sender: {} })).rejects.toThrow(
+      /already in progress/,
+    )
+
+    releaseCheck(UPDATE_AVAILABLE)
+    const result = (await first) as { action: string }
+    expect(result.action).toBe('restarting')
+    const { dialog } = await import('electron')
+    expect(dialog.showMessageBoxSync).toHaveBeenCalledTimes(1)
+    expect(autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1)
+    expect(autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1)
+
+    // The guard resets after completion — a later install runs normally.
+    autoUpdater.checkForUpdates.mockResolvedValue(UPDATE_AVAILABLE)
+    const second = (await handlers.get('update:download-install')!({ sender: {} })) as { action: string }
+    expect(second.action).toBe('restarting')
+    expect(dialog.showMessageBoxSync).toHaveBeenCalledTimes(2)
+  })
+
+  it('aborts the install when the native consent dialog is cancelled', async () => {
+    autoUpdater.downloadUpdate.mockResolvedValue(['/tmp/pkg'])
+    autoUpdater.checkForUpdates.mockResolvedValue(UPDATE_AVAILABLE)
+    const { dialog } = await import('electron')
+    ;(dialog.showMessageBoxSync as ReturnType<typeof vi.fn>).mockReturnValueOnce(1)
+    const { registerUpdateIpc } = await import('../src/ipc/update')
+    registerUpdateIpc()
+
+    const result = (await handlers.get('update:download-install')!({ sender: {} })) as { action: string }
+
+    expect(result.action).toBe('manual')
+    expect(autoUpdater.downloadUpdate).not.toHaveBeenCalled()
+    expect(autoUpdater.quitAndInstall).not.toHaveBeenCalled()
+  })
+
+  it('still prompts for consent when the pre-consent version check fails', async () => {
+    autoUpdater.downloadUpdate.mockResolvedValue(['/tmp/pkg'])
+    autoUpdater.checkForUpdates.mockRejectedValue(new Error('feed hiccup'))
+    const { registerUpdateIpc } = await import('../src/ipc/update')
+    registerUpdateIpc()
+
+    const result = (await handlers.get('update:download-install')!({ sender: {} })) as { action: string }
+    expect(result.action).toBe('restarting')
+    expect(autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1)
   })
 
   it('uses manual download for the ambiguous shared GitHub feed', async () => {
@@ -209,6 +289,60 @@ describe('progress / state broadcasts', () => {
   })
 })
 
+describe('update:download-install (Windows portable)', () => {
+  const PORTABLE_INFO = {
+    version: '9.9.9',
+    zipUrl: 'http://proxy.local:8088/fengyu-releases/download/portable.zip',
+    sha256: 'b'.repeat(64),
+    releaseUrl: 'http://proxy.local:8088/files',
+    releaseName: 'Infinia 9.9.9',
+  }
+
+  beforeEach(() => {
+    portableMode.value = true
+    portableCheck.mockResolvedValue(PORTABLE_INFO)
+    // Match PORTABLE_INFO's proxy URLs — the portable pipeline is FY-Proxy driven.
+    process.env.FENGYU_UPDATE_API_BASE = 'http://proxy.local:8088'
+  })
+
+  it('downloads and applies the portable update after native consent', async () => {
+    const { downloadAndExtractPortable, applyPortableUpdate } = await import('../src/updater/portable-updater')
+    const { dialog, app } = await import('electron')
+    const { registerUpdateIpc } = await import('../src/ipc/update')
+    registerUpdateIpc()
+
+    const result = (await handlers.get('update:download-install')!({ sender: {} })) as { action: string }
+
+    expect(result.action).toBe('restarting')
+    // The portable consent dialog also names the source host.
+    expect(dialog.showMessageBoxSync).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('from proxy.local:8088') }),
+    )
+    expect(downloadAndExtractPortable).toHaveBeenCalledTimes(1)
+    expect(applyPortableUpdate).toHaveBeenCalledTimes(1)
+    expect(app.quit).toHaveBeenCalled()
+  })
+
+  it('aborts the robocopy/relaunch pipeline when consent is cancelled', async () => {
+    const { downloadAndExtractPortable, applyPortableUpdate } = await import('../src/updater/portable-updater')
+    const { dialog, app } = await import('electron')
+    ;(dialog.showMessageBoxSync as ReturnType<typeof vi.fn>).mockReturnValueOnce(1)
+    const { registerUpdateIpc } = await import('../src/ipc/update')
+    registerUpdateIpc()
+
+    const result = (await handlers.get('update:download-install')!({ sender: {} })) as {
+      action: string
+      releaseUrl: string
+    }
+
+    expect(result.action).toBe('manual')
+    expect(result.releaseUrl).toBe(PORTABLE_INFO.releaseUrl)
+    expect(downloadAndExtractPortable).not.toHaveBeenCalled()
+    expect(applyPortableUpdate).not.toHaveBeenCalled()
+    expect(app.quit).not.toHaveBeenCalled()
+  })
+})
+
 describe('update:set-api-base', () => {
   it('writes the renderer-supplied URL into process.env.FENGYU_UPDATE_API_BASE', async () => {
     const { registerUpdateIpc } = await import('../src/ipc/update')
@@ -218,12 +352,90 @@ describe('update:set-api-base', () => {
     expect(process.env.FENGYU_UPDATE_API_BASE).toBe('http://10.0.0.5:8088')
   })
 
-  it('coerces a non-string argument to an empty string (clears the override)', async () => {
+  it('also accepts https URLs (plain http stays allowed for intranet feeds)', async () => {
+    const { registerUpdateIpc } = await import('../src/ipc/update')
+    registerUpdateIpc()
+
+    await handlers.get('update:set-api-base')!({}, 'https://proxy.corp.example')
+    expect(process.env.FENGYU_UPDATE_API_BASE).toBe('https://proxy.corp.example')
+  })
+
+  it('rejects non-http(s) schemes without touching the current override', async () => {
     process.env.FENGYU_UPDATE_API_BASE = 'http://preexisting:9999'
     const { registerUpdateIpc } = await import('../src/ipc/update')
     registerUpdateIpc()
 
-    await handlers.get('update:set-api-base')!({}, 123)
+    await expect(invoke('update:set-api-base', {}, 'file:///etc/passwd')).rejects.toThrow(/HTTP or HTTPS/)
+    await expect(invoke('update:set-api-base', {}, 'javascript:alert(1)')).rejects.toThrow(/HTTP or HTTPS/)
+    expect(process.env.FENGYU_UPDATE_API_BASE).toBe('http://preexisting:9999')
+  })
+
+  it('rejects a non-URL string without touching the current override', async () => {
+    process.env.FENGYU_UPDATE_API_BASE = 'http://preexisting:9999'
+    const { registerUpdateIpc } = await import('../src/ipc/update')
+    registerUpdateIpc()
+
+    await expect(invoke('update:set-api-base', {}, 'not a url')).rejects.toThrow(/absolute HTTP/)
+    expect(process.env.FENGYU_UPDATE_API_BASE).toBe('http://preexisting:9999')
+  })
+
+  it('rejects a non-string argument instead of silently clearing the channel', async () => {
+    process.env.FENGYU_UPDATE_API_BASE = 'http://preexisting:9999'
+    const { registerUpdateIpc } = await import('../src/ipc/update')
+    registerUpdateIpc()
+
+    await expect(invoke('update:set-api-base', {}, 123)).rejects.toThrow(/must be a string/)
+    expect(process.env.FENGYU_UPDATE_API_BASE).toBe('http://preexisting:9999')
+  })
+
+  it('rejects URLs with embedded credentials at the IPC boundary without touching env', async () => {
+    // Same rule updateApiBase() applies at check time — enforced HERE so the renderer cannot
+    // store a URL that every later check would reject with a confusing error.
+    process.env.FENGYU_UPDATE_API_BASE = 'http://preexisting:9999'
+    const { registerUpdateIpc } = await import('../src/ipc/update')
+    registerUpdateIpc()
+
+    await expect(invoke('update:set-api-base', {}, 'http://user:pass@proxy:8088')).rejects.toThrow(
+      /credentials/,
+    )
+    expect(process.env.FENGYU_UPDATE_API_BASE).toBe('http://preexisting:9999')
+  })
+
+  it('rejects URLs with query parameters or fragments at the IPC boundary without touching env', async () => {
+    process.env.FENGYU_UPDATE_API_BASE = 'http://preexisting:9999'
+    const { registerUpdateIpc } = await import('../src/ipc/update')
+    registerUpdateIpc()
+
+    await expect(invoke('update:set-api-base', {}, 'http://proxy:8088?token=x')).rejects.toThrow(
+      /query parameters/,
+    )
+    await expect(invoke('update:set-api-base', {}, 'http://proxy:8088#latest')).rejects.toThrow(
+      /fragment/,
+    )
+    expect(process.env.FENGYU_UPDATE_API_BASE).toBe('http://preexisting:9999')
+  })
+
+  it('logs the accepted api-base in credential-free origin form', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      const { registerUpdateIpc } = await import('../src/ipc/update')
+      registerUpdateIpc()
+
+      await handlers.get('update:set-api-base')!({}, 'http://10.0.0.5:8088/fengyu-updates')
+      // Exactly the origin — no path detail that could ever echo sensitive URL parts.
+      expect(logSpy).toHaveBeenCalledWith('[updater] update api-base set to http://10.0.0.5:8088')
+      expect(process.env.FENGYU_UPDATE_API_BASE).toBe('http://10.0.0.5:8088/fengyu-updates')
+    } finally {
+      logSpy.mockRestore()
+    }
+  })
+
+  it('clears the override on an explicit empty string', async () => {
+    process.env.FENGYU_UPDATE_API_BASE = 'http://preexisting:9999'
+    const { registerUpdateIpc } = await import('../src/ipc/update')
+    registerUpdateIpc()
+
+    await handlers.get('update:set-api-base')!({}, '')
     expect(process.env.FENGYU_UPDATE_API_BASE).toBe('')
   })
 })

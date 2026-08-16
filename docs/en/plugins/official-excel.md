@@ -159,7 +159,15 @@ The action methods and the `excel_*` AI-tool methods share the same underlying s
 | `BY_COLUMN` | Group rows by the unique values of a chosen column; one file per value. |
 | `COMPLEX` | Apply multi-config rules (add/list/clear via `excel_complex_config`) for finer-grained splits. |
 
-`excel_configure` sets `mode` (enum `BY_SHEET | BY_COLUMN | COMPLEX`) plus mode-specific fields (`sheets`, `splitSheet`, `splitColumn`); `excel_complex_config` manages the rule list for `COMPLEX` mode with `action` enum `add | list | clear` and integer `headerIndex` / `columnIndex`.
+`excel_configure` sets `mode` (enum `BY_SHEET | BY_COLUMN | COMPLEX`) plus mode-specific fields (`sheets`, `splitSheet`, `splitColumn`); `excel_complex_config` manages the rule list for `COMPLEX` mode with `action` enum `add | list | clear`.
+
+`excel_complex_config` is workflow-friendly: `action: "add"` accepts an `entries` array declaring the
+**complete** rule set in one call (one rule per sheet; `columnName` resolves to a column index
+against the analysis, so raw indexes are never required), and an optional `filePath` analyzes the
+workbook in the same call — after a successful add the session is already in `COMPLEX` mode, so a
+FengyuFlow canvas needs just `excel_complex_config → excel_execute`. `excel_execute` with a blank
+`outputDir` writes into the plugin's default output folder (always sandbox-writable, no grant
+needed); a typed arbitrary path is still allowed but must survive the worker sandbox.
 
 ## File I/O usage
 

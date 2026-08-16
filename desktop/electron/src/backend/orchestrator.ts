@@ -50,7 +50,7 @@ export async function startBackend(opts: StartBackendOptions): Promise<StartedBa
     throw err
   }
 
-  const setupMode = await checkSetupMode(port, token, opts.fetchImpl).catch((err) => {
+  const setupMode = await probeSetupMode(port, token, opts.fetchImpl, opts.shouldCancel).catch((err) => {
     child.kill()
     throw err
   })
@@ -63,6 +63,29 @@ export async function startBackend(opts: StartBackendOptions): Promise<StartedBa
   return { child, port, setupMode }
 }
 
+/**
+ * Probe SETUP mode with one retry. By the time this runs the backend has already been answering
+ * /api/health for a while, so a merely *slow* first /api/setup/status response (GC pause, lazy
+ * handler init) must never get a healthy backend killed: each attempt gets a generous 10s timeout
+ * and a failure is retried once before startBackend treats the probe as genuinely broken.
+ */
+async function probeSetupMode(
+  port: number,
+  token: string,
+  fetchImpl: typeof fetch = fetch,
+  shouldCancel?: () => boolean,
+): Promise<boolean> {
+  try {
+    return await checkSetupMode(port, token, fetchImpl)
+  } catch (err) {
+    if (shouldCancel?.()) throw err
+    console.warn(
+      `[desktop] setup status probe failed (${err instanceof Error ? err.message : String(err)}); retrying once`,
+    )
+    return await checkSetupMode(port, token, fetchImpl)
+  }
+}
+
 async function checkSetupMode(
   port: number,
   token: string,
@@ -70,7 +93,7 @@ async function checkSetupMode(
 ): Promise<boolean> {
   const url = `http://127.0.0.1:${port}/api/setup/status`
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 2_000)
+  const timer = setTimeout(() => controller.abort(), 10_000)
   try {
     const resp = await fetchImpl(url, {
       headers: { 'X-FengYu-Token': token },

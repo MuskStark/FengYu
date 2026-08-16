@@ -157,6 +157,90 @@ class ChatFileGrantServiceTest {
         assertEquals("read", refs.getFirst().ref().access());
     }
 
+    @Test
+    void sharedDirectoryGrantsLiveCrossPluginAccess() throws Exception {
+        Path pluginRoot = Files.createDirectories(temp.resolve("shared-plugins"));
+        installManifest(pluginRoot, "test.writer", List.of("files.read", "files.write"), true);
+        installManifest(pluginRoot, "test.reader", List.of("files.read"), true);
+        PluginFileGrantService files = new PluginFileGrantService(temp.resolve("shared-grants").toString());
+        ChatFileGrantService service = new ChatFileGrantService(
+            new PluginPackageService(pluginRoot.toString()), files);
+
+        var refs = service.grantSharedDirectory();
+
+        assertEquals(List.of("test.reader", "test.writer"),
+            refs.stream().map(ChatFileContext.ActiveFileRef::pluginId).sorted().toList());
+        var writer = refs.stream().filter(ref -> ref.pluginId().equals("test.writer")).findFirst().orElseThrow();
+        var reader = refs.stream().filter(ref -> ref.pluginId().equals("test.reader")).findFirst().orElseThrow();
+        assertEquals("read-write", writer.ref().access());
+        assertEquals("read", reader.ref().access());
+        // LIVE grants: both plugins resolve to the SAME physical directory (no read snapshot),
+        // so files the writer produces are visible to the reader in a later workflow step.
+        Path writerPath = files.resolve("test.writer", writer.ref().id());
+        assertEquals(writerPath, files.resolve("test.reader", reader.ref().id()));
+        assertTrue(Files.isDirectory(writerPath));
+        // The scratch dir lives under the runtime-files root so cleanup can reclaim it.
+        assertTrue(writerPath.startsWith(
+            temp.resolve("shared-grants").resolve("_shared").toRealPath()));
+    }
+
+    /**
+     * M3 regression: a shared scratch directory is reclaimed only when the LAST grant pointing
+     * at it is revoked — while any grantee still holds a live grant the directory (and whatever
+     * the workflow wrote into it) must stay on disk.
+     */
+    @Test
+    void revokingTheLastSharedGrantReclaimsTheScratchDirectory() throws Exception {
+        Path pluginRoot = Files.createDirectories(temp.resolve("reclaim-plugins"));
+        installManifest(pluginRoot, "test.writer", List.of("files.read", "files.write"), true);
+        installManifest(pluginRoot, "test.reader", List.of("files.read"), true);
+        PluginFileGrantService files = new PluginFileGrantService(temp.resolve("reclaim-grants").toString());
+        ChatFileGrantService service = new ChatFileGrantService(
+            new PluginPackageService(pluginRoot.toString()), files);
+
+        var refs = service.grantSharedDirectory();
+        var writer = refs.stream().filter(ref -> ref.pluginId().equals("test.writer")).findFirst().orElseThrow();
+        var reader = refs.stream().filter(ref -> ref.pluginId().equals("test.reader")).findFirst().orElseThrow();
+        Path dir = files.resolve("test.writer", writer.ref().id());
+        // A step's output riding in the shared dir must survive until every grantee is done.
+        Files.writeString(dir.resolve("step-output.csv"), "a,b");
+
+        files.revoke("test.reader", reader.ref().id());
+        assertTrue(Files.isDirectory(dir), "one live grant keeps the shared directory");
+        assertTrue(Files.exists(dir.resolve("step-output.csv")));
+
+        files.revoke("test.writer", writer.ref().id());
+        assertTrue(Files.notExists(dir), "the last revoke must reclaim the scratch tree");
+        assertEquals(0, files.readablePaths("test.writer").size());
+        assertEquals(0, files.readablePaths("test.reader").size());
+    }
+
+    /**
+     * Safety net for the reclaim logic: a native WRITABLE grant is also registered un-owned, but
+     * its path is the user's real directory (never under `_shared`) — revoking it must remove
+     * the grant WITHOUT deleting the user's data.
+     */
+    @Test
+    void revokingANativeWritableGrantNeverDeletesTheRealDirectory() throws Exception {
+        Path pluginRoot = Files.createDirectories(temp.resolve("native-plugins"));
+        installManifest(pluginRoot, "test.writer", List.of("files.read", "files.write"), true);
+        PluginFileGrantService files = new PluginFileGrantService(temp.resolve("native-grants").toString());
+        ChatFileGrantService service = new ChatFileGrantService(
+            new PluginPackageService(pluginRoot.toString()), files);
+        Path selected = Files.createDirectories(temp.resolve("real folder"));
+        Files.writeString(selected.resolve("keep.txt"), "user data");
+
+        var refs = service.grantNative(selected.toString(), "directory", true);
+        Path granted = files.resolve("test.writer", refs.getFirst().ref().id());
+        assertEquals(selected.toRealPath(), granted);
+
+        files.revoke("test.writer", refs.getFirst().ref().id());
+
+        assertTrue(Files.isDirectory(selected), "the user's real directory must never be deleted");
+        assertTrue(Files.exists(selected.resolve("keep.txt")));
+        assertEquals(0, files.readablePaths("test.writer").size());
+    }
+
     private static void installManifest(Path root, String id, List<String> permissions,
             boolean backend) throws Exception {
         Path directory = Files.createDirectories(root.resolve(id));

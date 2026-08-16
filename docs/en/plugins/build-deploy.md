@@ -22,7 +22,8 @@ backend/
   worker.jar
 ```
 
-UI commands come from the standard npm scripts `dev`, optional `test`, and `build`. Worker commands
+UI commands come from the project's standard scripts `dev`, optional `test`, and `build` — npm for
+scaffolded projects, Yarn 4 (pinned via `packageManager`) for the in-repo official plugins. Worker commands
 are Maven `test` and `package`, run through the nearest Maven Wrapper. A Worker build must produce
 exactly one `target/*-worker.jar`.
 

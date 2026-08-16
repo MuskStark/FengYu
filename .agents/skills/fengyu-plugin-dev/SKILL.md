@@ -104,9 +104,9 @@ partial events into the last environment and apply both the document attributes 
 
 Do not fix this independently in each business plugin. Fix the shared `@infinia/plugin-ui` binding,
 add a regression test that emits an environment event while `ready()` is still pending, then rebuild
-and refresh every affected plugin's local `file:` dependency before packaging. `npm install` may
-reuse the old copied package; verify `ui-src/node_modules/@infinia/plugin-ui/dist/index.js` contains
-the new ordering and use a targeted forced reinstall when it does not.
+`toolchain/ui`. Official plugins consume the library through a Yarn `link:` (live symlink), so a
+rebuild is picked up on their next build without reinstalling — only the Vite dev server needs a
+restart (or `vite --force`) because its dependency pre-bundle cache predates the rebuild.
 
 **Worker (UI + Java Worker only):** a Java `main()` that links `toolchain/sdk-java` and speaks
 newline-delimited JSON-RPC 2.0 over stdin/stdout (one request object per line, responses matched by
@@ -121,7 +121,7 @@ payloads.
 so handler breakpoints remain native:
 
 ```bash
-# UI terminal or IDE npm run configuration
+# UI terminal or IDE run configuration
 fengyu dev                                 # simulator: http://127.0.0.1:5173/__fengyu
 
 # Java IDE Debug configuration
@@ -256,24 +256,26 @@ Install the resulting `.fyp` through the host plugin marketplace UI. For automat
 verification, use the authenticated `POST /api/plugin-market/upload` path exercised by
 `scripts/e2e-smoke.sh`; do not invent a `fengyu plugin install` command.
 
-For official plugins, the CLI runs the plugin's standard npm scripts and Maven lifecycle so the
-Worker JAR is fresh before packaging.
+For official plugins, the CLI runs the plugin's standard package-manager scripts (Yarn 4 via the
+committed `yarn.lock`) and Maven lifecycle so the Worker JAR is fresh before packaging. Scaffolded
+third-party projects stay on npm (`package-lock.json`).
 
 ## Step 6 — Focused verification
 
-- **UI-only:** `cd ui-src && npm ci && npm test && npm run build` — verify the UI builds
-  and its unit/visual tests pass.
+- **UI-only (official plugin):** `cd ui-src && yarn install --immutable && yarn test && yarn run build`
+  (scaffolded projects: `npm ci && npm test && npm run build`) — verify the UI builds and its
+  unit/visual tests pass.
 - **Toolchain UI contract:** for changes to CLI UI templates, theme definitions, icons, or public
   components, run the exact scaffold/component regression tests plus
-  `cd toolchain/ui && npm test && npm run typecheck && npm run build`. Run
-  `npm run test:visual` when rendered presentation changes.
+  `cd toolchain/ui && yarn test && yarn run typecheck && yarn run build`. Run
+  `yarn run test:visual` when rendered presentation changes.
 - **Environment synchronization:** test an `environment` event both after ready and while the ready
   promise is pending. Package at least one representative plugin, inspect the installed bundle (not
   only source/dist), and verify a live host theme + language switch updates the open iframe without
   reloading it.
 - **UI + Java Worker:** also build/test the worker (`mvn -f OfficialPlugins/<name>/pom.xml test`)
   and confirm the worker's JSON-RPC methods round-trip.
-- **IDE integration:** start `PluginDevMain` with the IDE and `npm run dev` in `ui-src`; call a real
+- **IDE integration:** start `PluginDevMain` with the IDE and `yarn dev` (scaffolds: `npm run dev`) in `ui-src`; call a real
   Worker method through `/__fengyu/rpc` and verify its non-mock result or expected domain error.
 - **Package:** run `fengyu build <path>` without `--skip-tests` and inspect the resulting
   `.fyp` when package contents are in question.
@@ -283,20 +285,21 @@ Worker JAR is fresh before packaging.
 When the user asks for thorough local verification before publishing the plugin toolchain, also run:
 
 ```bash
-cd toolchain/cli && npm run prepack
-cd ../dev && npm run prepack
-cd ../sdk-ts && npm run prepack
-cd ../ui && npm run prepack && npm run test:visual
+cd toolchain/cli && corepack yarn run prepack
+cd ../dev && corepack yarn run prepack
+cd ../sdk-ts && corepack yarn run prepack
+cd ../ui && corepack yarn run prepack && corepack yarn run test:visual
 cd ../.. && ./mvnw -pl toolchain/devkit-java -am test
 scripts/check-plugin-dependency-boundaries.sh
 scripts/plugin-tooling-local-smoke.sh
-npm --prefix docs run build
+cd docs && corepack yarn run build
 ```
 
-Build all five official plugins (`markdown`, `excel`, `email`, `offlinepython`, `browser`) through
+Build all four official plugins (`markdown`, `excel`, `email`, `offlinepython`) through
 `node toolchain/cli/bin/fengyu.mjs build <plugin>` and verify every `.fyp.sha256` sidecar. Run
-`npm audit` for every publishable npm package. Treat any schema drift, dependency-boundary
-failure, high/critical audit finding, missing `npm run dev`, mock response from a configured Worker,
+`corepack yarn npm audit` for every publishable toolchain package. Treat any schema drift,
+dependency-boundary failure, high/critical audit finding, missing `yarn dev`, mock response from a
+configured Worker,
 or dirty generated package content as a release blocker. Never publish, tag, or push unless the user
 explicitly asks after all blockers are resolved.
 

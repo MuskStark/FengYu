@@ -31,7 +31,7 @@ class EmailManifestTest {
 
         List<String> expected = List.of("email_accounts_list", "email_contacts_query", "email_send_single",
             "email_send_batch", "email_send_status", "email_archive_fetch", "email_archive_query",
-            "email_account_test", "email_account_test_imap");
+            "email_account_test", "email_account_test_imap", "confirm_send");
         var tools = manifest.getAsJsonArray("aiTools").asList();
         assertEquals(expected.size(), tools.size());
         var names = tools.stream().map(value -> value.getAsJsonObject().get("name").getAsString()).toList();
@@ -39,6 +39,9 @@ class EmailManifestTest {
         assertEquals(expected, names);
         assertEquals(expected, methods);
         assertEquals(names.size(), new HashSet<>(names).size());
+        // confirm_send stays human-gated: its workflow/chat step is an external-effect tool,
+        // so every permission mode except full-access pauses for an explicit approval.
+        assertTrue("external".equals(tools.get(9).getAsJsonObject().get("effect").getAsString()));
         // v2 manifest: each aiTool references a method by name; the input/output schemas live as
         // inline objects under rpc.methods.<method> (v1 embedded inputSchema as a JSON string in
         // each aiTool entry).

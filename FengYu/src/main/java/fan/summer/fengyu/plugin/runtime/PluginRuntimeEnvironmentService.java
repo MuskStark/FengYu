@@ -78,19 +78,26 @@ public class PluginRuntimeEnvironmentService {
         if (config == null) {
             throw new IllegalStateException("Host database is not configured");
         }
-
         // Embedded file-based databases (H2/SQLite) hold an exclusive OS file lock and have no
         // server to connect to, so RBAC/provisioning does not apply: each worker keeps the
         // host-allocated independent file under its plugin data dir. H2 running as a TCP server
         // (jdbc:h2:tcp:/ssl:) is NOT file-locked — it is treated like any server DB below.
         if (config.type().embedded && !isH2ServerUrl(config.url())) {
             String workerDbUrl = resolveWorkerDbUrl(config, pluginData);
+            // The worker's file is exclusively its own, so it gets a per-plugin, machine-bound
+            // DERIVED credential (the file's user is created with it on first connect). The
+            // host's global DB username/password must never cross the worker boundary even
+            // here — they would also open the host's own database file. SQLite ignores
+            // credentials entirely, so it gets empty values rather than a meaningless secret.
+            boolean sqlite = config.type() == DbType.SQLITE;
+            String workerDbUser = sqlite ? "" : pluginDbUser(manifest.id());
+            String workerDbPassword = sqlite ? "" : dataSources.derivePluginDbCredential(manifest.id());
             environment.putAll(Map.of(
                 PluginWorkerProtocol.DB_TYPE_ENV, config.type().name().toLowerCase(Locale.ROOT),
                 PluginWorkerProtocol.DB_DRIVER_ENV, config.driver(),
                 PluginWorkerProtocol.DB_URL_ENV, workerDbUrl,
-                PluginWorkerProtocol.DB_USERNAME_ENV, nullToEmpty(config.username()),
-                PluginWorkerProtocol.DB_PASSWORD_ENV, nullToEmpty(config.password())));
+                PluginWorkerProtocol.DB_USERNAME_ENV, workerDbUser,
+                PluginWorkerProtocol.DB_PASSWORD_ENV, workerDbPassword));
             return Map.copyOf(environment);
         }
 
@@ -111,6 +118,20 @@ public class PluginRuntimeEnvironmentService {
             }
         }
         return Map.copyOf(environment);
+    }
+
+    /**
+     * The plugin's fixed default output folder, as a plain path under the same data root the
+     * worker sandbox always lists as writable (FENGYU_PLUGIN_DATA_DIR). Deliberately NOT
+     * registered as a file grant: registering would bump the grant version and restart
+     * stateful plugin workers mid-flow. Used to default a blank write-dir tool parameter.
+     */
+    public java.nio.file.Path defaultOutputPath(String pluginId) throws java.io.IOException {
+        java.nio.file.Path pluginData = dataRoot.resolve(pluginId).normalize();
+        if (!pluginData.startsWith(dataRoot)) {
+            throw new IllegalArgumentException("Invalid plugin id for data directory");
+        }
+        return java.nio.file.Files.createDirectories(pluginData.resolve("default-output"));
     }
 
     /**
@@ -156,7 +177,8 @@ public class PluginRuntimeEnvironmentService {
         return url != null && (url.startsWith("jdbc:h2:tcp:") || url.startsWith("jdbc:h2:ssl:"));
     }
 
-    private static String nullToEmpty(String value) {
-        return value == null ? "" : value;
+    /** H2-safe username derived from the plugin id (unquoted identifiers: [A-Z0-9_]). */
+    private static String pluginDbUser(String pluginId) {
+        return "fy_" + pluginId.replaceAll("[^a-zA-Z0-9_]", "_");
     }
 }

@@ -1,6 +1,6 @@
 // Package version for diagnostics and release consistency. Wire compatibility is governed by the
 // independently explicit PROTOCOL_VERSION exported from the side-effect-free protocol module.
-export const SDK_VERSION = '1.3.0';
+export const SDK_VERSION = '2.0.0';
 import { HOST_METHODS, PLUGIN_MESSAGE_SOURCE, PROTOCOL_VERSION, isHostMessage, } from './protocol.js';
 export * from './protocol.js';
 export class FengYuHostError extends Error {
@@ -14,6 +14,43 @@ export class FengYuHostError extends Error {
     }
 }
 let fallbackIdSequence = 0;
+/**
+ * Resolves the single origin this client may bridge with. Order:
+ *  1. an explicit {@link FengYuClientOptions.allowedOrigin} (tests, custom embeds);
+ *  2. the embedding shell's `?shellOrigin=<urlencoded origin>` query parameter;
+ *  3. nothing → bridging disabled with a console error. The historical default of `'*'`
+ *     let any website that iframed this loopback-served page silently receive every
+ *     invoke response (and everything the user typed into plugin forms).
+ *
+ * The parameter removes that unsafe wildcard default and pins the bridge to the host
+ * shell for well-behaved hosts — it is NOT an authenticity guarantee: whoever controls
+ * the iframe URL (the embedder) can append a forged `?shellOrigin=` and thus choose the
+ * pinned origin, and a client-side script cannot tell the real shell from that embedder.
+ * Genuine origin assurance has to be enforced server-side (by the host serving this
+ * page), not by this client-side parameter.
+ */
+function resolveAllowedOrigin(explicit) {
+    if (explicit)
+        return { origin: explicit, bridging: true };
+    if (typeof window === 'undefined')
+        return { origin: '*', bridging: false };
+    try {
+        const param = new URLSearchParams(window.location.search).get('shellOrigin');
+        if (param) {
+            // Used verbatim (must be a serialized origin exactly as window.location.origin
+            // produces it) — normalizing through URL().origin would corrupt the "file://"
+            // origin Electron shells run under into the string "null".
+            return { origin: param, bridging: true };
+        }
+    }
+    catch {
+        // Malformed param — fall through to disabled.
+    }
+    console.error('[fengyu-sdk] no allowedOrigin resolved: the embedding shell must append ' +
+        '?shellOrigin=<its origin> to the plugin URL (or the option must be passed). ' +
+        'Refusing to bridge — no wildcard postMessage.');
+    return { origin: '*', bridging: false };
+}
 /** Correlation id that also works in opaque sandbox origins where Web Crypto is unavailable. */
 export function createId() {
     const secureUuid = globalThis.crypto?.randomUUID;
@@ -50,6 +87,13 @@ export class FengYuClient {
     target;
     timeoutMs;
     allowedOrigin;
+    /**
+     * False when no origin could be resolved (no option, no ?shellOrigin param): the client
+     * then refuses every request and ignores every message instead of bridging to '*' —
+     * a wildcard would hand everything the user types into this frame, and forged
+     * "responses", to ANY website that embeds this loopback-served page.
+     */
+    bridging;
     pending = new Map();
     handlers = new Map();
     readyPromise;
@@ -59,7 +103,9 @@ export class FengYuClient {
     constructor(options = {}) {
         this.target = options.target ?? window.parent;
         this.timeoutMs = options.timeoutMs ?? 30_000;
-        this.allowedOrigin = options.allowedOrigin ?? '*';
+        const resolved = resolveAllowedOrigin(options.allowedOrigin);
+        this.allowedOrigin = resolved.origin;
+        this.bridging = resolved.bridging;
         window.addEventListener('message', this.onMessage);
     }
     async ready(options = {}) {
@@ -106,6 +152,12 @@ export class FengYuClient {
     request(method, params = {}, options = {}) {
         if (this.disposed)
             return Promise.reject(new Error('FengYu client is disposed'));
+        if (!this.bridging) {
+            return Promise.reject(new FengYuHostError({
+                code: 'PERMISSION_DENIED',
+                message: 'FengYu bridge disabled: no allowedOrigin (shell must append ?shellOrigin=<its origin>)',
+            }));
+        }
         if (options.signal?.aborted)
             return Promise.reject(new FengYuHostError({ code: 'ABORTED', message: 'Aborted' }));
         // Capability pre-check (bullet 2): validate the host advertised the capability BEFORE we
@@ -179,6 +231,8 @@ export class FengYuClient {
         this.handlers.clear();
     }
     onMessage = (event) => {
+        if (!this.bridging)
+            return;
         if (event.source !== this.target || (this.allowedOrigin !== '*' && event.origin !== this.allowedOrigin))
             return;
         const message = event.data;

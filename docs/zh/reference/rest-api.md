@@ -89,7 +89,7 @@ SSE 端点通过 `X-FengYu-Token` 头进行鉴权——**没有** `?token=` 查�
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `POST` | `/api/ai/chat` | token | 启动一轮对话。请求体 `{messages:[{role, content}]}` → `{streamId}`。 |
+| `POST` | `/api/ai/chat` | token | 启动一轮对话。请求体 `{messages:[{role, content}], permissionMode?, workflowId?}` → `{streamId}`。携带 `workflowId` 可把该轮对话绑定到对应流程（草稿或已发布）：模型会在普通聊天工具调用循环中获得 `run_current_flow` 工具。 |
 | `GET` | `/api/ai/stream?streamId=` | token | 该轮对话对应的 SSE 流。参见 [SSE 事件——对话](/zh/reference/sse-events#对话流)。 |
 
 ## AI 配置
@@ -142,13 +142,15 @@ SSE 端点通过 `X-FengYu-Token` 头进行鉴权——**没有** `?token=` 查�
 ## 工作流
 
 可复用工作流定义与智能体运行器使用同一份 `AgentPlan` DAG。`inputSchema` 是 JSON Schema
-对象，运行时输入会绑定到 <code v-pre>{{inputs.name}}</code> 占位符；已发布定义会加入实时 AI 工具目录。
+对象，运行时输入会绑定到 <code v-pre>{{inputs.name}}</code> 占位符；`layout` 把编译后的步骤索引映射为
+画布位置，`graph`（可选）则原样保存编写时的画布图——含便签节点的 `{nodes, edges}`——使流程
+构建器能按原样重开（无 `graph` 的定义从 `plan` + `layout` 重建画布）。已发布定义会加入实时 AI 工具目录。
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | `GET` | `/api/workflows` | token | 列出当前用户的工作流定义。 |
 | `GET` | `/api/workflows/{workflowId}` | token | 读取一个定义。 |
-| `POST` | `/api/workflows` | token | 通过 `{name, description, inputSchema, plan}` 创建。 |
+| `POST` | `/api/workflows` | token | 通过 `{name, description, inputSchema, plan, layout?, graph?}` 创建。 |
 | `PUT` | `/api/workflows/{workflowId}` | token | 替换可编辑定义并递增修订号。 |
 | `POST` | `/api/workflows/{workflowId}/publish` | token | 通过 `{published}` 设置发布状态；发布后成为 AI 工具。 |
 | `DELETE` | `/api/workflows/{workflowId}` | token | 删除定义。 |

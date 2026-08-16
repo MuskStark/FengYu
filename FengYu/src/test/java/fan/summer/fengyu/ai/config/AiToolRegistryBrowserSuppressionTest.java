@@ -31,7 +31,7 @@ class AiToolRegistryBrowserSuppressionTest {
                 2, id, "Browser", "browser automation", "1.0.0", "test", null, "automation",
                 null,
                 new PluginManifest.Backend(60L),
-                List.of("network"), null, true, null, List.of(tool), null);
+                List.of("network"), null, true, null, List.of(tool), null, null);
     }
 
     @SuppressWarnings("unchecked")

@@ -107,7 +107,7 @@ class AiToolRegistryTest {
         WorkflowDefinition workflow = new WorkflowDefinition(
                 "flow-1", "Daily report", "Build the daily report",
                 Map.of("type", "object", "properties", Map.of("date", Map.of("type", "string"))),
-                new AgentPlan("report", List.of(), ""), true, 3,
+                new AgentPlan("report", List.of(), ""), Map.of(), Map.of(), true, 3,
                 LocalDateTime.now(), LocalDateTime.now());
         when(workflows.published()).thenReturn(List.of(workflow));
         when(workflows.inputSchemaJson(workflow)).thenReturn(
@@ -128,6 +128,62 @@ class AiToolRegistryTest {
                 registry.descriptors(null).getFirst().name());
         assertEquals("report ready",
                 registry.callbacks().getFirst().call("{\"date\":\"2026-08-13\"}"));
+    }
+
+    @Test
+    void boundWorkflowToolExposesDraftFlowsAsRunCurrentFlow() {
+        PluginPackageService packages = new PluginPackageService(temp.toString());
+        @SuppressWarnings("unchecked")
+        ObjectProvider<SyncMcpToolCallbackProvider> mcp = mock(ObjectProvider.class);
+        WorkflowService workflows = mock(WorkflowService.class);
+        WorkflowExecutionService execution = mock(WorkflowExecutionService.class);
+        WorkflowDefinition draft = new WorkflowDefinition(
+                "flow-2", "Split report", "Split then email",
+                Map.of("type", "object", "properties", Map.of()),
+                new AgentPlan("split", List.of(), ""), Map.of(), Map.of(), false, 1,
+                LocalDateTime.now(), LocalDateTime.now());
+        when(workflows.get("flow-2")).thenReturn(draft);
+        when(workflows.inputSchemaJson(draft)).thenReturn("{\"type\":\"object\",\"properties\":{}}");
+        when(execution.executeForAi("flow-2", Map.of(), false)).thenReturn("done");
+        @SuppressWarnings("unchecked")
+        ObjectProvider<WorkflowService> workflowProvider = mock(ObjectProvider.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<WorkflowExecutionService> executionProvider = mock(ObjectProvider.class);
+        when(workflowProvider.getIfAvailable()).thenReturn(workflows);
+        when(executionProvider.getIfAvailable()).thenReturn(execution);
+
+        AiToolRegistry registry = new AiToolRegistry(List.of(), packages,
+                mock(PluginProcessManager.class), mcp, workflowProvider, executionProvider);
+
+        var bound = registry.boundWorkflowTool("flow-2");
+        assertEquals("run_current_flow", bound.getToolDefinition().name());
+        assertEquals(ToolEffect.EXTERNAL, ((AuditedToolCallback) bound).effect());
+        assertTrue(bound.getToolDefinition().description().contains("draft"));
+        // A draft never enters the published catalog — only the request-bound tool can run it.
+        assertTrue(registry.callbacks().isEmpty());
+        assertEquals("done", bound.call("{}"));
+        verify(execution).executeForAi("flow-2", Map.of(), false);
+    }
+
+    @Test
+    void boundWorkflowToolRejectsUnknownFlowsFast() {
+        PluginPackageService packages = new PluginPackageService(temp.toString());
+        @SuppressWarnings("unchecked")
+        ObjectProvider<SyncMcpToolCallbackProvider> mcp = mock(ObjectProvider.class);
+        WorkflowService workflows = mock(WorkflowService.class);
+        when(workflows.get("missing")).thenThrow(new IllegalArgumentException("Unknown workflow: missing"));
+        @SuppressWarnings("unchecked")
+        ObjectProvider<WorkflowService> workflowProvider = mock(ObjectProvider.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<WorkflowExecutionService> executionProvider = mock(ObjectProvider.class);
+        when(workflowProvider.getIfAvailable()).thenReturn(workflows);
+        when(executionProvider.getIfAvailable()).thenReturn(mock(WorkflowExecutionService.class));
+
+        AiToolRegistry registry = new AiToolRegistry(List.of(), packages,
+                mock(PluginProcessManager.class), mcp, workflowProvider, executionProvider);
+
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> registry.boundWorkflowTool("missing"));
     }
 
     @Test

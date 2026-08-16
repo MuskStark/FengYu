@@ -78,6 +78,12 @@ export interface ComputerUseStatus {
   reason?: string | null
 }
 
+export interface PermissionRuleTable {
+  allow: string[]
+  ask: string[]
+  deny: string[]
+}
+
 export interface AppSettings {
   sidebarCollapsed: boolean
   theme: ThemeName
@@ -87,7 +93,13 @@ export interface AppSettings {
   updateApiBase: string
   computerUseEnabled: boolean
   computerUse?: ComputerUseStatus | null
+  memoryEnabled?: boolean
+  marketplaceRequireChecksum?: boolean
+  permissionRules?: PermissionRuleTable | Record<string, unknown>
+  invalidPermissionRules?: string[]
+  hooks?: string
 }
+
 
 export type PartialSettings = Partial<AppSettings>
 
@@ -119,7 +131,16 @@ export interface AiSettings {
   ready: boolean
 }
 
-export type PartialAiSettings = Partial<Omit<AiSettings, 'activeMode' | 'ready'>>
+/**
+ * Partial PUT body for /api/ai/config — every key is optional and the backend persists only
+ * the keys present. Provider sub-objects are partial too (the write side never sends the
+ * GET-only `apiKeySet` flag).
+ */
+export type PartialAiSettings = Partial<Omit<AiSettings, 'activeMode' | 'ready' | 'openai' | 'anthropic' | 'deepseek'>> & {
+  openai?: Partial<AiProviderConfig>
+  anthropic?: Partial<AiProviderConfig>
+  deepseek?: Partial<AiProviderConfig>
+}
 
 export interface AiConfigTestRequest {
   mode: AiMode
@@ -317,12 +338,27 @@ export interface AgentRunConfig {
   permissionMode: AiPermissionMode
 }
 
+/** One file-class workflow input resolved into per-plugin grants for a run. */
+export interface AgentRunFile {
+  name: string
+  /** Pass-through grants minted earlier via POST /api/ai/files/*. */
+  refs?: ActiveFileEntry[]
+  /** Grants a native path at run start (advanced escape hatch when no picker is available). */
+  nativePath?: string
+  kind?: 'file' | 'directory'
+  writableDirectory?: boolean
+  /** Mints a host-managed cross-plugin scratch directory (no user interaction). */
+  createSharedDirectory?: boolean
+}
+
 /** POST /api/agent/run body: the user goal + optional config. */
 export interface AgentRunRequest {
   goal: string
   config: AgentRunConfig
   /** Optional deterministic workflow. Omit to let the active model plan from `goal`. */
   workflow?: AgentPlan
+  /** File-class workflow inputs, keyed by input name; args carry `@file:<name>` placeholders. */
+  files?: AgentRunFile[]
 }
 
 /** POST /api/agent/run response: the id used to open the SSE stream. */
@@ -344,6 +380,28 @@ export interface AgentRunSummary {
   createdAt: string
   updatedAt: string
   completedAt?: string | null
+}
+
+export interface AgentTaskSummary {
+  taskId: string
+  kind: string
+  description: string
+  status: string
+  createdAt: string
+  output: string
+  cancelRequested: boolean
+}
+
+export interface AgentScheduleSummary {
+  scheduleId: string
+  workflowId: string
+  intervalSeconds: number
+  recurring: boolean
+  nextFireAt: string
+  fires: number
+  lastTaskId?: string | null
+  lastError?: string | null
+  expiresAt: string
 }
 
 export interface AgentStepExecution {
@@ -384,6 +442,37 @@ export interface AgentPlan {
   reasoning: string
 }
 
+/** Canvas position of one node, keyed by compiled step index (persisted layout). */
+export interface WorkflowNodeLayout {
+  x: number
+  y: number
+}
+
+/**
+ * The persisted canvas graph (Flowise's flowData equivalent): the exact nodes and
+ * edges the author arranged. Tool nodes reference tools by name; the builder
+ * rehydrates full descriptors from the live tool catalog. `plan` + `layout`
+ * remain the compiled execution contract; `graph` is the round-trip source of
+ * truth for the editor.
+ */
+export interface FlowGraphNode {
+  id: string
+  type: string
+  position: { x: number; y: number }
+  data?: Record<string, unknown>
+}
+
+export interface FlowGraphEdge {
+  id: string
+  source: string
+  target: string
+}
+
+export interface FlowGraph {
+  nodes: FlowGraphNode[]
+  edges: FlowGraphEdge[]
+}
+
 /** A reusable workflow definition. Published definitions are also exposed as AI tools. */
 export interface WorkflowDefinition {
   id: string
@@ -391,6 +480,8 @@ export interface WorkflowDefinition {
   description: string
   inputSchema: Record<string, unknown>
   plan: AgentPlan
+  layout?: Record<string, WorkflowNodeLayout> | null
+  graph?: FlowGraph | null
   published: boolean
   revision: number
   createdAt: string
@@ -402,16 +493,59 @@ export interface WorkflowDraft {
   description: string
   inputSchema: Record<string, unknown>
   plan: AgentPlan
+  layout?: Record<string, WorkflowNodeLayout> | null
+  graph?: FlowGraph | null
 }
 
 export interface WorkflowRunRequest {
   inputs: Record<string, unknown>
   config: AgentRunConfig
+  files?: AgentRunFile[]
+}
+
+/** One declared input of a flow node (widget-driven, explicit canvas config). */
+export interface FlowNodeInput {
+  name: string
+  widget: 'text' | 'number' | 'switch' | 'select' | 'textarea' | 'json' | 'analyze' | 'rows'
+  title?: string
+  description?: string
+  options?: string[]
+  default?: unknown
+  optionsFrom?: 'workbook-sheets' | 'workbook-columns'
+  fields?: Array<{
+    name: string
+    widget: 'text' | 'number' | 'switch' | 'select'
+    title?: string
+    optionsFrom?: 'workbook-sheets' | 'workbook-columns'
+  }>
+}
+
+/** One named output port of a flow node. */
+export interface FlowNodeOutput {
+  name: string
+  title?: string
+  type?: string
+}
+
+/**
+ * Explicit flow-canvas node declaration (plugin manifest `flowNodes` or the host's
+ * flow-nodes/builtin.json). The builder renders node inputs/outputs from this
+ * configuration; execution still targets the bound aiTool by name.
+ */
+export interface FlowNodeDescriptor {
+  tool: string
+  label?: string
+  color?: string
+  icon?: string
+  inputs?: FlowNodeInput[]
+  outputs?: FlowNodeOutput[]
 }
 
 /** A Spring AI-discovered orchestrable tool (GET /api/agent/tools). */
 export interface AgentTool {
   id: string
+  /** Explicit canvas node declaration; nodes exist on the canvas only when present. */
+  flowNode?: FlowNodeDescriptor | null
   pluginId?: string | null
   name: string
   /** English description — the one sent to the LLM. */

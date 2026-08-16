@@ -23,11 +23,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24.18.0
-          cache: npm
-          cache-dependency-path: docs/package-lock.json
-      - run: npm ci
+          cache: yarn
+          cache-dependency-path: docs/yarn.lock
+      - run: corepack enable
+      - run: corepack yarn install --immutable
         working-directory: docs
-      - run: npm run build
+      - run: corepack yarn run build
         working-directory: docs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

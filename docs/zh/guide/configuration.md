@@ -147,7 +147,21 @@ POST /api/settings/database/reset
 
 这会备份当前的 `datasource.properties`、清空它，并重启后端进入 SETUP 模式，以便首次启动向导收集新参数。功能上等价于删除 `datasource.properties` 并手动重启——参见[数据库 —— 重新配置](/zh/guide/database#reconfigure)。
 
+## 静态秘密的存储
+
+本地敏感信息（数据源口令、AI 供应商 API Key、MCP 服务器凭据）写入磁盘前都会用机器绑定密钥加密。默认该密钥是 `.fengyu/config/.machineid` 中的随机值——它把密文绑定到本机（被窃走的配置文件在其他机器上无法解密），但无法防御同一操作系统用户下的读取。
+
+使用操作系统凭据库保管秘密的部署，可以注入该密钥而不使用文件。在启动后端前设置 `FENGYU_MACHINE_KEY`（系统属性或环境变量，至少 16 个字符，重启间保持不变）——例如从 macOS 钥匙串读取：
+
+```bash
+export FENGYU_MACHINE_KEY="$(security find-generic-password -s FengYu -a machine-key -w)"
+java -jar Infinia.jar --token=...
+```
+
+等价命令：Linux 上 `secret-tool lookup fengyu machine-key`，Windows 在启动脚本中读取凭据管理器。所有密文都与注入的密钥绑定——切换或丢失该密钥将导致已存密文无法解密（可通过设置界面重录）。设置 `FENGYU_MACHINE_KEY` 后，`.machineid` 文件不再使用也不会被创建。
+
 ## 下一步
+
 
 - [数据库](/zh/guide/database)——首次启动向导与四种后端。
 - [AI 对话](/zh/guide/ai-chat)——使用你刚配置好的后端。

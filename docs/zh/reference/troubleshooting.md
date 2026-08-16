@@ -79,7 +79,7 @@ lang: zh-CN
 
 - **CSP：** 把所有 JavaScript 放进通过 `<script src>` 加载的外部文件（脚手架写的是 `<script type="module" src="app.js">`），并且从插件自身的 `/plugin-runtime/{id}/**` 树加载每一份资产。不要内联脚本或内联事件处理器。
 - **桥梁初始化：** 打包插件所声明的 Vue/Vuetify 依赖，用 `createFengYuVuetify` 创建 Vuetify，并调用 `bindFengYuEnvironment(vuetify, fengyu)`。如果 `host.ready` 失败，检查是否为协议版本不完全匹配。
-- 对于「module not found」错误，请安装插件 UI 声明的依赖，再通过标准的 `npm run build` 路径重新构建。
+- 对于「module not found」错误，请安装插件 UI 声明的依赖，再通过标准的 `yarn run build` 路径重新构建（第三方脚手架项目用 npm）。
 
 参见 [UI 微前端](/zh/plugins/ui-microfrontend) 与 [常见陷阱](/zh/plugins/pitfalls)。
 

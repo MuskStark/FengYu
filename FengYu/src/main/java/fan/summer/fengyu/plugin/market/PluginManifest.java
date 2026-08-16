@@ -31,7 +31,8 @@ public record PluginManifest(
     boolean official,
     Rpc rpc,
     List<AiTool> aiTools,
-    Map<String, LocaleOverride> i18n
+    Map<String, LocaleOverride> i18n,
+    JsonNode flowNodes
 ) {
     public record Ui(String entry) {}
 
@@ -96,6 +97,21 @@ public record PluginManifest(
         return m == null ? null : m.inputSchema();
     }
 
+    /**
+     * The flow-node descriptor bound to one aiTool name, or null when the plugin declares
+     * no {@code flowNodes} entry for it. The canvas renders node inputs/outputs from this
+     * explicit configuration instead of deriving a form from the tool's JSON Schema.
+     */
+    public JsonNode flowNodeFor(String toolName) {
+        if (flowNodes == null || !flowNodes.isArray()) return null;
+        for (JsonNode node : flowNodes) {
+            if (node.isObject() && toolName != null && toolName.equals(node.path("tool").asText())) {
+                return node;
+            }
+        }
+        return null;
+    }
+
     /** Resolve the output-schema node for an rpc method, null-safe (mirrors {@link #inputSchemaFor}). */
     public JsonNode outputSchemaFor(String method) {
         if (rpc() == null || rpc().methods() == null) return null;
@@ -112,6 +128,6 @@ public record PluginManifest(
             String author, String icon, String category, Ui ui, Backend backend, List<String> permissions,
             String homepage, boolean official, Rpc rpc, List<AiTool> aiTools) {
         this(schemaVersion, id, name, description, version, author, icon, category, ui, backend,
-                permissions, homepage, official, rpc, aiTools, null);
+                permissions, homepage, official, rpc, aiTools, null, null);
     }
 }

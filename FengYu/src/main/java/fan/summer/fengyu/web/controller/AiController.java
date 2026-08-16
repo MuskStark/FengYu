@@ -15,6 +15,7 @@ import fan.summer.fengyu.ai.tools.ChatToolApprovalGate;
 import fan.summer.fengyu.ai.tools.AiPermissionContext;
 import fan.summer.fengyu.ai.tools.AiPermissionMode;
 import fan.summer.fengyu.ai.tools.AiToolLocaleContext;
+import fan.summer.fengyu.ai.tools.BoundToolsContext;
 import fan.summer.fengyu.plugin.market.ManifestI18n;
 import fan.summer.fengyu.plugin.runtime.PluginFileGrantService;
 import org.slf4j.Logger;
@@ -29,6 +30,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.ai.tool.ToolCallback;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -62,13 +65,38 @@ public class AiController {
     private final ChatToolApprovalGate toolApprovalGate;
     private final ChatFileGrantService fileGrants;
     private final PluginFileGrantService pluginFiles;
+    private final fan.summer.fengyu.web.StreamTicketService streamTickets;
+    /** Source of the request-bound {@code run_current_flow} tool; optional in headless test contexts. */
+    private final ObjectProvider<fan.summer.fengyu.ai.config.AiToolRegistry> toolRegistry;
 
     public AiController(AiModeService aiMode, ChatToolApprovalGate toolApprovalGate,
-            ChatFileGrantService fileGrants, PluginFileGrantService pluginFiles) {
+            ChatFileGrantService fileGrants, PluginFileGrantService pluginFiles,
+            fan.summer.fengyu.web.StreamTicketService streamTickets) {
+        this(aiMode, toolApprovalGate, fileGrants, pluginFiles, streamTickets, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AiController(AiModeService aiMode, ChatToolApprovalGate toolApprovalGate,
+            ChatFileGrantService fileGrants, PluginFileGrantService pluginFiles,
+            fan.summer.fengyu.web.StreamTicketService streamTickets,
+            ObjectProvider<fan.summer.fengyu.ai.config.AiToolRegistry> toolRegistry) {
         this.aiMode = aiMode;
         this.toolApprovalGate = toolApprovalGate;
         this.fileGrants = fileGrants;
         this.pluginFiles = pluginFiles;
+        this.streamTickets = streamTickets;
+        this.toolRegistry = toolRegistry;
+    }
+
+    /**
+     * Mints the one-time ticket {@code GET /api/ai/stream} redeems via {@code ?ticket=}
+     * (EventSource cannot send the header token; a ticket authorizes exactly one stream
+     * connection and never reaches URL logs as the full credential).
+     */
+    @org.springframework.web.bind.annotation.PostMapping("/stream-ticket")
+    public Map<String, Object> streamTicket() {
+        var issued = streamTickets.issue(fan.summer.fengyu.web.StreamTicketService.AI_STREAM_ENDPOINT);
+        return Map.of("ticket", issued.ticket(), "expiresAt", issued.expiresAt().toString());
     }
 
     /** Pending turns keyed by streamId; consumed once when the SSE opens. */
@@ -94,7 +122,10 @@ public class AiController {
             }
             return true;
         });
-        if (pending.size() >= 100) throw new IllegalStateException("Too many pending AI streams");
+        // 429 (not a 500): the cap is load shedding against the caller, and the message must
+        // read as "retry later", not "server bug".
+        if (pending.size() >= 100) throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.TOO_MANY_REQUESTS, "Too many pending AI streams");
         List<AiChatMessage> history = new ArrayList<>();
         if (req.messages() != null) {
             for (ChatMessageDto m : req.messages()) {
@@ -106,6 +137,25 @@ public class AiController {
             for (ActiveFileRefDto dto : req.activeFileRefs()) {
                 pluginFiles.validate(dto.pluginId(), dto.ref());
                 refs.add(new ActiveFileRef(dto.pluginId(), dto.ref()));
+            }
+        }
+        // Flowise-style chat binding: a workflowId attaches this conversation turn to that
+        // flow (draft or published); its run_current_flow tool then rides the ordinary
+        // chat tool-call loop with the same approval gate and SSE tool events. Built BEFORE
+        // any grant/staging side effect below: an invalid workflowId must fail the request
+        // without leaving issued grants or staging directories behind.
+        List<ToolCallback> boundTools = List.of();
+        if (req.workflowId() != null && !req.workflowId().isBlank()) {
+            var registry = toolRegistry == null ? null : toolRegistry.getIfAvailable();
+            if (registry == null) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST, "Workflow tools are not available");
+            }
+            try {
+                boundTools = List.of(registry.boundWorkflowTool(req.workflowId().trim()));
+            } catch (RuntimeException e) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST, e.getMessage());
             }
         }
         // A path typed into the composer is just as explicit as a picker selection. Resolve only
@@ -129,7 +179,8 @@ public class AiController {
         }
         String streamId = UUID.randomUUID().toString();
         pending.put(streamId, new PendingTurn(history, refs, staged,
-                AiPermissionMode.from(req.permissionMode()), ManifestI18n.resolveLocale(acceptLanguage), Instant.now()));
+                AiPermissionMode.from(req.permissionMode()), ManifestI18n.resolveLocale(acceptLanguage),
+                Instant.now(), boundTools));
         List<ActiveFileRefDto> responseRefs = refs.stream()
             .map(ref -> new ActiveFileRefDto(ref.pluginId(), ref.ref())).toList();
         return Map.of("streamId", streamId, "activeFileRefs", responseRefs);
@@ -163,7 +214,11 @@ public class AiController {
         SseEmitter emitter = new SseEmitter(0L); // no timeout — chat length is unbounded
         PendingTurn turn = pending.remove(streamId);
         if (turn == null) {
-            completeWithError(emitter, "Unknown or expired streamId");
+            // Terminal + machine-distinguishable (CQ-02): a consumed/expired streamId can
+            // never be replayed (the first connection consumed it and a transport
+            // disconnect cancelled the generation), so the client must STOP retrying the
+            // same id — the code carries that decision.
+            completeWithError(emitter, "Unknown or expired streamId", "unknown_stream");
             return emitter;
         }
         List<AiChatMessage> history = turn.history();
@@ -225,6 +280,7 @@ public class AiController {
             ChatFileContext.set(turn.activeFileRefs());
             AiPermissionContext.set(turn.permissionMode());
             AiToolLocaleContext.set(turn.locale());
+            BoundToolsContext.set(turn.boundTools());
             streamCallback.start(() -> {
                 svc.get().chat(history,
                         AiConfigServiceHeadless.getAiTemperature(),
@@ -243,6 +299,7 @@ public class AiController {
             ChatFileContext.clear();
             AiPermissionContext.clear();
             AiToolLocaleContext.clear();
+            BoundToolsContext.clear();
         }
         return emitter;
     }
@@ -381,10 +438,24 @@ public class AiController {
         }
     }
 
+    /** Sends a terminal {@code error} event then completes the emitter. */
     private void completeWithError(SseEmitter emitter, String message) {
+        completeWithError(emitter, message, null);
+    }
+
+    /**
+     * Sends a terminal {@code error} event then completes the emitter. {@code code} is a
+     * machine-readable discriminator added to the payload (null for plain human-readable
+     * errors) so a client can react programmatically — e.g. {@code unknown_stream} means
+     * the streamId is consumed/expired and retrying it can never succeed.
+     */
+    private void completeWithError(SseEmitter emitter, String message, String code) {
+        Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("message", message == null ? "unknown" : message);
+        if (code != null) payload.put("code", code);
         try {
             emitter.send(SseEmitter.event().name("error")
-                .data(Map.of("message", message == null ? "unknown" : message), MediaType.APPLICATION_JSON));
+                .data(payload, MediaType.APPLICATION_JSON));
         } catch (IOException e) {
             log.debug("SSE error send failed: {}", e.getMessage());
         }
@@ -415,17 +486,26 @@ public class AiController {
     // ── DTOs ────────────────────────────────────────────────────────────────────────────
 
     public record ChatRequest(List<ChatMessageDto> messages, List<ActiveFileRefDto> activeFileRefs,
-                              String permissionMode) {
+                              String permissionMode, String workflowId) {
         public ChatRequest(List<ChatMessageDto> messages, List<ActiveFileRefDto> activeFileRefs) {
-            this(messages, activeFileRefs, null);
+            this(messages, activeFileRefs, null, null);
+        }
+        public ChatRequest(List<ChatMessageDto> messages, List<ActiveFileRefDto> activeFileRefs,
+                           String permissionMode) {
+            this(messages, activeFileRefs, permissionMode, null);
         }
     }
     public record ChatMessageDto(String role, String content) {}
     public record ToolApprovalDecision(boolean approved) {}
     public record ActiveFileRefDto(String pluginId, PluginFileGrantService.FileRef ref) {}
 
-    /** Carries a stashed turn's history + active file refs from {@code POST /chat} to {@code GET /stream}. */
+    /**
+     * Carries a stashed turn's history + active file refs from {@code POST /chat} to
+     * {@code GET /stream}. {@code boundTools} holds the request-scoped tool callbacks
+     * (the flow-bound {@code run_current_flow}) built and validated eagerly at POST time.
+     */
     private record PendingTurn(List<AiChatMessage> history, List<ActiveFileRef> activeFileRefs,
                                List<ChatFileGrantService.StagedOutput> staged,
-                               AiPermissionMode permissionMode, String locale, Instant createdAt) {}
+                               AiPermissionMode permissionMode, String locale, Instant createdAt,
+                               List<ToolCallback> boundTools) {}
 }

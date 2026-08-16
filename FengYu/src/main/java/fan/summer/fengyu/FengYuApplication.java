@@ -1,6 +1,7 @@
 package fan.summer.fengyu;
 
 import fan.summer.fengyu.setup.SetupApplication;
+import fan.summer.fengyu.setup.SetupController;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
@@ -29,6 +30,12 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * the merged auto-config and suppress DataSource/Hibernate auto-config here, removing the
  * {@code entityManagerFactory} bean. Its setup-package {@code @Component}s (e.g.
  * {@code DataSourceConfigService}) are still picked up individually.
+ *
+ * <p>{@link SetupController} is excluded alongside it: the wizard endpoints are unauthenticated
+ * ({@code TokenAuthFilter} whitelists {@code /api/setup/**}) and must only exist in the SETUP-mode
+ * context. In APP mode the equivalent reset path is the token-protected
+ * {@code SettingsController} endpoint, so serving {@code /api/setup/**} here would expose
+ * unauthenticated database reconfiguration (and deletion) forever after setup completes.
  */
 @SpringBootApplication
 @EnableScheduling
@@ -36,6 +43,6 @@ import org.springframework.scheduling.annotation.EnableScheduling;
         basePackages = "fan.summer.fengyu",
         excludeFilters = @ComponentScan.Filter(
                 type = FilterType.ASSIGNABLE_TYPE,
-                classes = SetupApplication.class))
+                classes = {SetupApplication.class, SetupController.class}))
 public class FengYuApplication {
 }

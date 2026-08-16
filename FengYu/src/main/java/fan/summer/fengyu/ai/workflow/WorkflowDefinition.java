@@ -12,8 +12,13 @@ public record WorkflowDefinition(
         String description,
         Map<String, Object> inputSchema,
         AgentPlan plan,
+        Map<String, NodeLayout> layout,
+        Map<String, Object> graph,
         boolean published,
         int revision,
         LocalDateTime createdAt,
         LocalDateTime updatedAt) {
+
+    /** Canvas position of one node, keyed by compiled step index in {@link #layout()}. */
+    public record NodeLayout(double x, double y) {}
 }

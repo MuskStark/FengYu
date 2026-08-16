@@ -40,10 +40,26 @@ it('renders structured send records without retry controls or raw JSON', async (
   const wrapper = mount(SendRecordsView, options())
   await wrapper.get('[data-testid="record-search"]').setValue('c1')
   await wrapper.get('[data-testid="record-search-submit"]').trigger('click')
-  await vi.waitFor(() => expect(wrapper.text()).toContain('PARTIAL_FAILED'))
+  await vi.waitFor(() => expect(wrapper.text()).toContain('Partially failed'))
   expect(bridge.invoke).toHaveBeenCalledWith('email_send_records_query', expect.objectContaining({ query: 'c1', offset: 0 }), undefined)
   expect(wrapper.find('pre').exists()).toBe(false)
   expect(wrapper.text().toLowerCase()).not.toContain('retry')
+})
+
+it('expands a task row and folds its recipients beyond the first three', async () => {
+  bridge.invoke.mockImplementation((_method: string, input?: { confirmationId?: string }) =>
+    input?.confirmationId
+      ? Promise.resolve({ success: true, tasks: [], messages: [{ id: 9, confirmationId: input.confirmationId, subject: 'Quarterly', status: 'SUCCESS', accountEmail: 'mail@example.com', sentAt: '2026-07-14T11:00:00Z', recipientsJson: '{"to":["a@example.com","b@example.com","c@example.com","d@example.com"],"cc":[],"bcc":[]}' }] })
+      : Promise.resolve({ success: true, tasks: [{ confirmationId: 'c1', status: 'SENDING', mode: 'SINGLE', updatedAt: '2026-07-14T10:00:00Z' }], messages: [] }))
+  const wrapper = mount(SendRecordsView, options())
+  await vi.waitFor(() => expect(wrapper.findAll('[data-testid="task-toggle"]')).toHaveLength(1))
+  await wrapper.get('[data-testid="task-toggle"]').trigger('click')
+  await vi.waitFor(() => expect(bridge.invoke).toHaveBeenCalledWith('email_send_records_query',
+    expect.objectContaining({ confirmationId: 'c1' }), undefined))
+  await vi.waitFor(() => expect(wrapper.text()).toContain('a@example.com'))
+  expect(wrapper.text()).toContain('+1')
+  expect(wrapper.text()).not.toContain('d@example.com')
+  expect(wrapper.text()).toContain('Sent')
 })
 
 it('keeps account passwords write-only and separates test from save', async () => {
@@ -67,6 +83,7 @@ it('keeps account passwords write-only and separates test from save', async () =
 it('keeps bulk contact actions separate from tag management', () => {
   bridge.invoke.mockResolvedValue({ success: true, contacts: [], tags: [] })
   const wrapper = mount(AddressBookTab, options())
+  expect(wrapper.get('[data-testid="contact-list-scroll"]').classes()).toContain('contact-list-scroll')
   expect(wrapper.get('[data-testid="contact-bulk-tags"]').element).toBeTruthy()
   // tag manager is now a always-visible card, not a dialog opened by a button
   expect(wrapper.get('[data-testid="tag-manager-card"]').element).toBeTruthy()

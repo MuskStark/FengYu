@@ -13,8 +13,8 @@ lang: zh-CN
 | 工具 | 版本 | 用途 |
 | --- | --- | --- |
 | JDK | 21+（推荐 Eclipse Temurin） | 后端（`Java 21`） |
-| Node.js + npm | 20+ | 前端开发服务器 |
-| Node.js + npm | 24.18.0 | 仅桌面端外壳需要（只用 Web 可跳过） |
+| Node.js + Yarn 4 (corepack) | 24.18.0 | 前端开发服务器 |
+| Node.js + Yarn 4 (corepack) | 24.18.0 | 仅桌面端外壳需要（只用 Web 可跳过） |
 
 ## 从源码构建
 
@@ -43,9 +43,10 @@ java -jar FengYu/target/FengYu-*.jar --token=<your-token>
 Vue 3 + Vuetify 3 前端通过 Vite 连接后端，Vite 会把 `/api` 和 `/plugin-runtime` 代理到 `localhost:24056`。
 
 ```bash
+corepack enable   # once per machine: activates the pinned Yarn 4
 cd frontend
-npm install
-npm run dev
+yarn install
+yarn run dev
 ```
 
 打开打印出的本地 URL，UI 就会与你刚才启动的后端通信。
@@ -66,8 +67,8 @@ Electron 桌面外壳会以 sidecar 方式拉起 Java 后端。在仓库根目�
 
 ```bash
 cd desktop/electron
-npm install
-npm run dev       # 默认：连接 IDE 启动的后端 http://127.0.0.1:24056
+yarn install
+yarn run dev       # 默认：连接 IDE 启动的后端 http://127.0.0.1:24056
                   #   （后端不带 --token 启动以禁用认证；外壳不拉起 java）
                   # 改为外壳自行拉起后端：设置 FENGYU_JAR=<已构建的 shaded jar>
                   #   （先用 ./mvnw -pl FengYu -am package -DskipTests -Drevision=4.0.0 构建）
@@ -77,7 +78,7 @@ npm run dev       # 默认：连接 IDE 启动的后端 http://127.0.0.1:24056
 构建可分发包：
 
 ```bash
-npm run build     # = npm run build:ts && electron-builder（当前平台）
+yarn run build    # = yarn build:ts && electron-builder（当前平台）
 ```
 
 ::: tip

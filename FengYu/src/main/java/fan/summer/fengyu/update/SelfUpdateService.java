@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.management.ManagementFactory;
 import java.net.URI;
 import java.net.URL;
@@ -36,6 +37,14 @@ import java.util.List;
  *
  * <p>In desktop/Electron deployments this bean's {@link #applyUpdate} throws — the shell owns
  * updates via electron-updater, and {@link UpdateCheckService#isPortableMode()} is false.
+ *
+ * <p>Integrity note: the SHA-256 is fetched from the same release as the artifact (the
+ * {@code checksums.txt} sibling asset), so it guards against corruption and partial
+ * downloads, not against a compromised release source; the trust root is the configured
+ * GitHub repository reached over HTTPS. When a release-signing Ed25519 public key is bundled
+ * (see {@link #SIGNING_PUBLIC_KEY_RESOURCE}), the checksums must additionally carry a valid
+ * signature — closing the compromised-source gap asymmetrically. Downloads are byte-capped
+ * ({@link #MAX_JAR_BYTES}) so a corrupted feed cannot fill the disk.
  */
 @Service
 public class SelfUpdateService {
@@ -44,6 +53,13 @@ public class SelfUpdateService {
     private static final String PORTABLE_JAR_NAME = "Infinia.jar";
     private static final String CHECKSUMS_ASSET = "checksums.txt";
     private static final String BACKUP_SUFFIX = ".bak";
+    /** Optional classpath resource carrying the Ed25519 verification key (base64 SPKI PEM).
+     *  Absent = this build does not enforce signed releases; present = signatures required. */
+    static final String SIGNING_PUBLIC_KEY_RESOURCE = "/update/release-signing-public.pem";
+    /** Hard ceiling for the shaded-JAR download — the artifact is a few hundred MB at most;
+     *  anything larger is a corrupted or hostile feed and must abort, not fill the disk. */
+    private static final long MAX_JAR_BYTES = 512L * 1024 * 1024;
+    private static final long MAX_CHECKSUMS_BYTES = 1024 * 1024;
 
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private final UpdateCheckService updateCheck;
@@ -117,17 +133,10 @@ public class SelfUpdateService {
      * Format is GNU coreutils {@code "<hex>  Infinia.jar"}.
      */
     private String resolveExpectedHash(UpdateInfo info) throws IOException, InterruptedException {
-        URI checksumsUrl = buildAssetUrl(info, CHECKSUMS_ASSET);
-        HttpRequest req = HttpRequest.newBuilder(checksumsUrl)
-                .timeout(Duration.ofSeconds(20))
-                .header("User-Agent", "FengYu-Updater")
-                .header("Accept", "application/octet-stream")
-                .GET().build();
-        HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-        if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
-            throw new IllegalStateException("checksums.txt returned HTTP " + resp.statusCode());
-        }
-        for (String raw : resp.body().split("\\R")) {
+        String body = downloadChecksums(info);
+        byte[] releaseSignature = downloadReleaseSignature(info);
+        verifyReleaseSignature(body.getBytes(StandardCharsets.UTF_8), releaseSignature);
+        for (String raw : body.split("\\R")) {
             String line = raw.trim();
             if (line.isEmpty()) continue;
             int ws = firstWhitespace(line);
@@ -139,6 +148,117 @@ public class SelfUpdateService {
             if (PORTABLE_JAR_NAME.equals(namePart)) return hash;
         }
         throw new IllegalStateException("checksums.txt has no entry for " + PORTABLE_JAR_NAME);
+    }
+
+    /**
+     * Ed25519 signature verification over the checksums bytes (P3: asymmetric update-source
+     * signing). The verification PUBLIC key ships as an optional classpath resource
+     * ({@value #SIGNING_PUBLIC_KEY_RESOURCE}, a base64 SPKI Ed25519 public key):
+     * <ul>
+     *   <li><b>Key present</b> — every self-update REQUIRES a valid
+     *       {@code checksums.txt.sig} (base64 Ed25519 over the exact checksums bytes) from the
+     *       release. A missing or invalid signature aborts the update: a compromised release
+     *       source can no longer pair a malicious JAR with a matching "checksum".</li>
+     *   <li><b>Key absent</b> — the historical behavior stands (checksum guards against
+     *       corruption; the trust root is the configured GitHub repository over HTTPS — see
+     *       the class javadoc). Releases that adopt signing bundle the public key; the private
+     *       key never enters the repository.</li>
+     * </ul>
+     * Package-private and static for direct unit testing.
+     */
+    static void verifyReleaseSignature(byte[] checksums, byte[] signature) {
+        byte[] publicKeyBytes = loadSigningPublicKey();
+        if (publicKeyBytes == null) {
+            log.debug("[self-update] no bundled signing key — checksum verification only");
+            return;
+        }
+        verifyReleaseSignature(publicKeyBytes, checksums, signature);
+    }
+
+    /** Key-explicit variant (package-private for direct unit testing of the verify path). */
+    static void verifyReleaseSignature(byte[] publicKeyBytes, byte[] checksums, byte[] signature) {
+        if (signature == null || signature.length == 0) {
+            throw new IllegalStateException("Update signature required: this build verifies "
+                    + "releases with a bundled Ed25519 key but the release ships no "
+                    + "checksums.txt.sig — refusing the update");
+        }
+        try {
+            java.security.PublicKey publicKey = java.security.KeyFactory.getInstance("Ed25519")
+                    .generatePublic(new java.security.spec.X509EncodedKeySpec(publicKeyBytes));
+            java.security.Signature verifier = java.security.Signature.getInstance("Ed25519");
+            verifier.initVerify(publicKey);
+            verifier.update(checksums);
+            if (!verifier.verify(signature)) {
+                throw new IllegalStateException("Update signature INVALID: checksums.txt.sig "
+                        + "does not verify against the bundled Ed25519 public key — refusing "
+                        + "the update (possible tampered or mis-built release)");
+            }
+            log.info("[self-update] release signature verified (Ed25519)");
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException("Update signature verification failed: " + e.getMessage(), e);
+        }
+    }
+
+    /** The bundled verification key (SPKI bytes), or null when this build opts out of signing. */
+    static byte[] loadSigningPublicKey() {
+        try (InputStream in = SelfUpdateService.class
+                .getResourceAsStream(SIGNING_PUBLIC_KEY_RESOURCE)) {
+            if (in == null) return null;
+            String pem = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            String base64 = pem.replaceAll("-----(BEGIN|END) PUBLIC KEY-----", "")
+                    .replaceAll("\\s", "");
+            return java.util.Base64.getDecoder().decode(base64);
+        } catch (Exception e) {
+            throw new IllegalStateException("Cannot read " + SIGNING_PUBLIC_KEY_RESOURCE, e);
+        }
+    }
+
+    private String downloadChecksums(UpdateInfo info) throws IOException, InterruptedException {
+        URI checksumsUrl = buildAssetUrl(info, CHECKSUMS_ASSET);
+        HttpRequest req = HttpRequest.newBuilder(checksumsUrl)
+                .timeout(Duration.ofSeconds(20))
+                .header("User-Agent", "FengYu-Updater")
+                .header("Accept", "application/octet-stream")
+                .GET().build();
+        HttpResponse<java.io.InputStream> resp =
+                http.send(req, HttpResponse.BodyHandlers.ofInputStream());
+        if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+            try (var ignored = resp.body()) {
+                throw new IllegalStateException("checksums.txt returned HTTP " + resp.statusCode());
+            }
+        }
+        try {
+            return readCapped(resp, MAX_CHECKSUMS_BYTES, "checksums.txt");
+        } catch (IOException e) {
+            throw new IllegalStateException("checksums.txt download failed: " + e.getMessage(), e);
+        }
+    }
+
+    /** Base64 Ed25519 signature over the checksums bytes, or null when the release has none. */
+    private byte[] downloadReleaseSignature(UpdateInfo info) throws IOException, InterruptedException {
+        URI sigUrl = buildAssetUrl(info, CHECKSUMS_ASSET + ".sig");
+        HttpRequest req = HttpRequest.newBuilder(sigUrl)
+                .timeout(Duration.ofSeconds(20))
+                .header("User-Agent", "FengYu-Updater")
+                .GET().build();
+        HttpResponse<java.io.InputStream> resp =
+                http.send(req, HttpResponse.BodyHandlers.ofInputStream());
+        if (resp.statusCode() == 404) {
+            try (var ignored = resp.body()) { return null; }
+        }
+        if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+            try (var ignored = resp.body()) {
+                throw new IllegalStateException("checksums.txt.sig returned HTTP " + resp.statusCode());
+            }
+        }
+        try {
+            String base64 = readCapped(resp, 16 * 1024, "checksums.txt.sig").trim();
+            return java.util.Base64.getDecoder().decode(base64);
+        } catch (IOException | IllegalArgumentException e) {
+            throw new IllegalStateException("checksums.txt.sig is not valid base64: " + e.getMessage(), e);
+        }
     }
 
     private URI buildAssetUrl(UpdateInfo info, String assetName) {
@@ -165,11 +285,72 @@ public class SelfUpdateService {
                 .timeout(Duration.ofMinutes(5))
                 .header("User-Agent", "FengYu-Updater")
                 .GET().build();
-        HttpResponse<Path> resp = http.send(req, HttpResponse.BodyHandlers.ofFile(staging));
+        HttpResponse<java.io.InputStream> resp =
+                http.send(req, HttpResponse.BodyHandlers.ofInputStream());
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
-            throw new IllegalStateException("Infinia.jar download returned HTTP " + resp.statusCode());
+            try (var ignored = resp.body()) {
+                throw new IllegalStateException("Infinia.jar download returned HTTP " + resp.statusCode());
+            }
         }
-        return resp.body();
+        try {
+            return copyCapped(resp, staging, MAX_JAR_BYTES, "Infinia.jar");
+        } catch (IOException e) {
+            tryDelete(staging);
+            throw e;
+        }
+    }
+
+    /**
+     * Streams the response body to {@code target} with a hard byte cap — {@code BodyHandlers.ofFile}
+     * would happily fill the disk on a corrupted or hostile feed. The declared Content-Length is
+     * checked first, but the cap is enforced on the actual bytes copied.
+     */
+    private static Path copyCapped(HttpResponse<java.io.InputStream> resp, Path target,
+                                   long cap, String what) throws IOException {
+        String declared = resp.headers().firstValue("Content-Length").orElse(null);
+        if (declared != null) {
+            try {
+                if (Long.parseLong(declared.trim()) > cap) {
+                    throw new IOException(what + " exceeds the " + (cap / (1024 * 1024))
+                            + " MB download cap (declared " + declared.trim() + " bytes)");
+                }
+            } catch (NumberFormatException ignored) {
+                // Malformed header — the byte-capped copy below is the real guard.
+            }
+        }
+        try (java.io.InputStream in = resp.body();
+             java.io.OutputStream out = Files.newOutputStream(target)) {
+            byte[] buffer = new byte[64 * 1024];
+            long total = 0;
+            int count;
+            while ((count = in.read(buffer)) >= 0) {
+                total += count;
+                if (total > cap) {
+                    throw new IOException(what + " download exceeded the "
+                            + (cap / (1024 * 1024)) + " MB cap — corrupted or hostile update feed?");
+                }
+                out.write(buffer, 0, count);
+            }
+        }
+        return target;
+    }
+
+    private static String readCapped(HttpResponse<java.io.InputStream> resp, long cap,
+                                     String what) throws IOException {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        byte[] buffer = new byte[8 * 1024];
+        long total = 0;
+        int count;
+        try (java.io.InputStream in = resp.body()) {
+            while ((count = in.read(buffer)) >= 0) {
+                total += count;
+                if (total > cap) {
+                    throw new IOException(what + " exceeds the " + cap + " byte cap");
+                }
+                out.write(buffer, 0, count);
+            }
+        }
+        return out.toString(StandardCharsets.UTF_8);
     }
 
     private Path writeRestartScript(Path currentJar, Path downloadedJar, String newVersion) throws IOException {

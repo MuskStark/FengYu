@@ -5,5 +5,6 @@ import com.google.gson.annotations.SerializedName;
 
 public record ExcelExecuteStartInput(
     @SerializedName("filePrefix") String filePrefix,
-    @SerializedName("outputDir") String outputDir
+    @SerializedName("outputDir") String outputDir,
+    @SerializedName("sessionId") String sessionId
 ) {}

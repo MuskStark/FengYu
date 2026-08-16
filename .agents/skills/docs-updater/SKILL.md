@@ -74,7 +74,8 @@ the formatting of the nearest existing entry.
   other. Preserve all historical changelog entries — never rewrite past releases.
 - **The changelog mirror pages are auto-generated.** `docs/{en,zh}/reference/changelog.md` are
   regenerated from the root `CHANGELOG.md` by `docs/scripts/sync-changelog.mjs` on every
-  `npm --prefix docs run dev/build/preview` (via `predev`/`prebuild`/`prepreview` hooks). Only edit
+  `cd docs && yarn run dev/build/preview` (each inlines the changelog sync first; Yarn 4 does not
+  run `pre*` hooks). Only edit
   the root `CHANGELOG.md`; never hand-edit the two mirror pages. The docs build regenerates them, so
   the "Latest release" callout and body are always in sync.
 
@@ -100,7 +101,7 @@ syncing an app release). Skip matches inside historical CHANGELOG entries for pa
 - **Docs build (when the change affects the published site):** from the repo root,
 
   ```bash
-  npm --prefix docs run build      # VitePress; builds docs/ → docs/.vitepress/dist/
+  cd docs && yarn run build        # VitePress; builds docs/ → docs/.vitepress/dist/
   ```
 
   Skip this for changes confined to `CHANGELOG.md` or `docs/superpowers/`.

@@ -5,5 +5,6 @@ import com.google.gson.annotations.SerializedName;
 
 public record ExcelExecuteStatusInput(
     @SerializedName("cursor") Integer cursor,
-    @SerializedName("jobId") String jobId
+    @SerializedName("jobId") String jobId,
+    @SerializedName("sessionId") String sessionId
 ) {}

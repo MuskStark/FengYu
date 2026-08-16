@@ -1,5 +1,6 @@
 package fan.summer.fengyu.web.controller;
 
+import fan.summer.fengyu.ai.ChatFileContext;
 import fan.summer.fengyu.ai.agent.AgentEventSink;
 import fan.summer.fengyu.ai.agent.AgentPlan;
 import fan.summer.fengyu.ai.agent.AgentRun;
@@ -66,6 +67,8 @@ import java.util.function.Consumer;
 public class AgentController {
 
     private static final long TERMINAL_RETENTION_MINUTES = 10;
+    /** Server-side ceiling for the /runs list — a caller asking for more gets this. */
+    private static final int MAX_RUNS_QUERY_LIMIT = 500;
 
     private final AgentRunner runner;
     private final AgentRunRegistry registry;
@@ -73,9 +76,12 @@ public class AgentController {
     private final AiToolRegistry toolRegistry;
     private final WorkflowService workflows;
     private final WorkflowExecutionService workflowExecution;
+    private final fan.summer.fengyu.web.StreamTicketService streamTickets;
+    private final fan.summer.fengyu.ai.ChatFileGrantService chatFiles;
+    private final fan.summer.fengyu.plugin.runtime.PluginFileGrantService files;
 
     /**
-     * Per-run SSE sinks. Created on {@code /run} (one sink per run), consumed by the
+     * Per-run SSE sinks. Created on {@code /run} (one sink per run), consumed on the
      * {@code GET /stream} handler. A run that never streams just accumulates events until
      * the registry evicts it; a run whose client connects late replays the buffered events.
      */
@@ -83,13 +89,39 @@ public class AgentController {
 
     public AgentController(AgentRunner runner, AgentRunRegistry registry,
             AgentRunPersistenceService persistence, AiToolRegistry toolRegistry,
-            WorkflowService workflows, WorkflowExecutionService workflowExecution) {
+            WorkflowService workflows, WorkflowExecutionService workflowExecution,
+            fan.summer.fengyu.web.StreamTicketService streamTickets) {
+        this(runner, registry, persistence, toolRegistry, workflows, workflowExecution,
+                streamTickets, null, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AgentController(AgentRunner runner, AgentRunRegistry registry,
+            AgentRunPersistenceService persistence, AiToolRegistry toolRegistry,
+            WorkflowService workflows, WorkflowExecutionService workflowExecution,
+            fan.summer.fengyu.web.StreamTicketService streamTickets,
+            fan.summer.fengyu.ai.ChatFileGrantService chatFiles,
+            fan.summer.fengyu.plugin.runtime.PluginFileGrantService files) {
         this.runner = runner;
         this.registry = registry;
         this.persistence = persistence;
         this.toolRegistry = toolRegistry;
         this.workflows = workflows;
         this.workflowExecution = workflowExecution;
+        this.streamTickets = streamTickets;
+        this.chatFiles = chatFiles;
+        this.files = files;
+    }
+
+    /**
+     * Mints the one-time ticket {@code GET /api/agent/stream} redeems via {@code ?ticket=}
+     * (EventSource cannot send the header token; a ticket authorizes exactly one stream
+     * connection and never reaches URL logs as the full credential).
+     */
+    @PostMapping("/api/agent/stream-ticket")
+    public Map<String, Object> streamTicket() {
+        var issued = streamTickets.issue(fan.summer.fengyu.web.StreamTicketService.AGENT_STREAM_ENDPOINT);
+        return Map.of("ticket", issued.ticket(), "expiresAt", issued.expiresAt().toString());
     }
 
     // ── /run ───────────────────────────────────────────────────────────
@@ -103,13 +135,28 @@ public class AgentController {
     public Map<String, String> run(@RequestBody AgentRunRequest req) {
         String goal = req.goal() == null ? "" : req.goal();
         AgentRun run = registry.create(goal, req.config(), req.workflow());
-        return start(run, null);
+        ResolvedRunFiles resolved = resolveRunFiles(req.files());
+        run.attachFileRefs(resolved.fileRefs());
+        issuedRunFileGrants.put(run.getRunId(), resolved.issuedGrants());
+        try {
+            return start(run, null);
+        } catch (RuntimeException e) {
+            // start() only registers the terminal cleanup once it has wired the sink; a failure
+            // before that point (e.g. persistence) must not leak the grants minted above.
+            revokeRunFileGrants(run.getRunId());
+            throw e;
+        }
     }
 
     /**
      * Starts up to eight independent agent runs together. Each child has its own lifecycle,
      * persistence record, approval gates, cancellation flag, and SSE stream; runners execute
      * concurrently on virtual threads.
+     */
+    /**
+     * Starts up to eight independent agent runs together. {@code capabilityMode:"read-only"}
+     * restricts every child to read-effect tools — the declared shape for parallel
+     * research/review tasks (children cannot spawn further runs, so depth is one by design).
      */
     @PostMapping("/api/agent/batch")
     public Map<String, List<String>> batch(@RequestBody AgentBatchRequest req) {
@@ -120,9 +167,18 @@ public class AgentController {
         if (goals.isEmpty() || goals.size() > 8) {
             throw new IllegalArgumentException("Batch requires between 1 and 8 non-empty goals");
         }
+        String capability = req.capabilityMode() == null || req.capabilityMode().isBlank()
+                ? null : req.capabilityMode().trim().toLowerCase(java.util.Locale.ROOT);
+        if (capability != null && !AgentRunConfig.CAPABILITY_READ_ONLY.equals(capability)) {
+            throw new IllegalArgumentException("capabilityMode must be '"
+                    + AgentRunConfig.CAPABILITY_READ_ONLY + "' (or omitted)");
+        }
         List<String> runIds = new ArrayList<>(goals.size());
         for (String goal : goals) {
-            AgentRun child = registry.create(goal, req.config(), null);
+            AgentRunConfig config = req.config() == null
+                    ? new AgentRunConfig(false, true, false, 0) : req.config();
+            if (capability != null) config = config.withCapabilityMode(capability);
+            AgentRun child = registry.create(goal, config, null);
             runIds.add(start(child, null).get("runId"));
         }
         return Map.of("runIds", List.copyOf(runIds));
@@ -142,8 +198,11 @@ public class AgentController {
     }
 
     @GetMapping("/api/agent/runs")
-    public List<AgentRunPersistenceService.RunSummary> persistedRuns() {
-        return persistence.list();
+    public List<AgentRunPersistenceService.RunSummary> persistedRuns(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false, defaultValue = "200") Integer limit) {
+        int effective = limit == null ? 200 : Math.max(1, Math.min(limit, MAX_RUNS_QUERY_LIMIT));
+        return persistence.search(q, effective);
     }
 
     @GetMapping("/api/agent/runs/{runId}")
@@ -154,6 +213,30 @@ public class AgentController {
     @PostMapping("/api/agent/runs/{runId}/resume")
     public Map<String, String> resume(@PathVariable String runId) {
         AgentRunPersistenceService.ResumeState state = persistence.resumeState(runId);
+        AgentRun run = registry.create(
+                state.goal(), state.config(), state.plan(), state.completedExecutions());
+        return start(run, state.resumedFrom());
+    }
+
+    /** Forks a terminal run into a peer copy that executes the same plan from scratch. */
+    @PostMapping("/api/agent/runs/{runId}/fork")
+    public Map<String, String> fork(@PathVariable String runId) {
+        AgentRunPersistenceService.ResumeState state = persistence.forkState(runId);
+        AgentRun run = registry.create(
+                state.goal(), state.config(), state.plan(), state.completedExecutions());
+        return start(run, state.resumedFrom());
+    }
+
+    /**
+     * Rewinds a terminal run to its first {@code keepSteps} steps and resumes from there.
+     * Side effects of the dropped steps are not rolled back — the resumed run pauses for
+     * plan review so a human can account for them.
+     */
+    @PostMapping("/api/agent/runs/{runId}/rewind")
+    public Map<String, String> rewind(@PathVariable String runId,
+                                      @RequestBody RewindRequest request) {
+        AgentRunPersistenceService.ResumeState state =
+                persistence.rewindState(runId, request == null ? 0 : request.keepSteps());
         AgentRun run = registry.create(
                 state.goal(), state.config(), state.plan(), state.completedExecutions());
         return start(run, state.resumedFrom());
@@ -275,8 +358,152 @@ public class AgentController {
         Map<String, Object> inputs = request == null || request.inputs() == null
                 ? Map.of() : request.inputs();
         AgentRunConfig config = request == null ? null : request.config();
-        AgentRun run = workflowExecution.createManual(workflowId, inputs, config);
-        return start(run, null);
+        ResolvedRunFiles resolved = resolveRunFiles(request == null ? null : request.files());
+        AgentRun run;
+        try {
+            run = workflowExecution.createManual(workflowId, inputs, config, resolved.fileRefs());
+        } catch (RuntimeException e) {
+            // createManual validates + compiles before registering the run — a bad workflowId or
+            // inputs must not leak the grants minted by resolveRunFiles.
+            revokeIssuedGrants(resolved.issuedGrants());
+            throw e;
+        }
+        issuedRunFileGrants.put(run.getRunId(), resolved.issuedGrants());
+        try {
+            return start(run, null);
+        } catch (RuntimeException e) {
+            revokeRunFileGrants(run.getRunId());
+            throw e;
+        }
+    }
+
+    /**
+     * Resolves the file-class workflow inputs of one run into per-plugin grants: picker/upload
+     * grants minted earlier via {@code /api/ai/files/*} are validated and passed through, a
+     * native path is granted now, and {@code createSharedDirectory} mints one host-owned
+     * cross-plugin scratch directory. Keyed by input name — the runner exposes them to tool
+     * dispatch as {@code @file:<name>} placeholder replacements.
+     *
+     * <p>{@code issuedGrants} carries ONLY the grants this call minted (native + shared) — the
+     * pass-through picker refs stay owned by their original holder — so the run's terminal
+     * cleanup can revoke exactly what the run allocated (see {@link #revokeRunFileGrants}).
+     */
+    private ResolvedRunFiles resolveRunFiles(List<RunFile> runFiles) {
+        if (runFiles == null || runFiles.isEmpty()) return ResolvedRunFiles.EMPTY;
+        if (chatFiles == null || files == null) {
+            throw new IllegalArgumentException("File inputs are not available in this deployment");
+        }
+        Map<String, List<ChatFileContext.ActiveFileRef>> resolved = new java.util.LinkedHashMap<>();
+        List<ChatFileContext.ActiveFileRef> issued = new ArrayList<>();
+        try {
+            for (RunFile file : runFiles) {
+                if (file == null || file.name() == null || !file.name().matches("[A-Za-z0-9_-]{1,64}")) {
+                    throw new IllegalArgumentException("Run file input has an invalid name");
+                }
+                List<ChatFileContext.ActiveFileRef> refs = new ArrayList<>();
+                if (Boolean.TRUE.equals(file.createSharedDirectory())) {
+                    List<ChatFileContext.ActiveFileRef> shared = chatFiles.grantSharedDirectory();
+                    refs.addAll(shared);
+                    issued.addAll(shared);
+                } else if (file.nativePath() != null && !file.nativePath().isBlank()) {
+                    String kind = file.kind() == null ? "file" : file.kind();
+                    List<ChatFileContext.ActiveFileRef> nativeRefs = chatFiles.grantNative(
+                            file.nativePath(), kind, Boolean.TRUE.equals(file.writableDirectory()));
+                    refs.addAll(nativeRefs);
+                    issued.addAll(nativeRefs);
+                } else if (file.refs() != null && !file.refs().isEmpty()) {
+                    for (AiFileController.ActiveFileRefDto dto : file.refs()) {
+                        if (dto == null || dto.pluginId() == null || dto.ref() == null) {
+                            throw new IllegalArgumentException(
+                                    "Run file input '" + file.name() + "' carries an invalid grant");
+                        }
+                        files.validate(dto.pluginId(), dto.ref());
+                        refs.add(new ChatFileContext.ActiveFileRef(dto.pluginId(), dto.ref()));
+                    }
+                }
+                if (refs.isEmpty()) {
+                    throw new IllegalArgumentException(
+                            "Run file input '" + file.name() + "' resolved to no file grant");
+                }
+                resolved.put(file.name(), List.copyOf(refs));
+            }
+        } catch (RuntimeException e) {
+            // A later input failing must not leak the grants an earlier input already minted.
+            revokeIssuedGrants(issued);
+            throw e;
+        }
+        return new ResolvedRunFiles(Map.copyOf(resolved), List.copyOf(issued));
+    }
+
+    /**
+     * A run's resolved file inputs plus the grants this controller minted for them. Pass-through
+     * picker/upload refs are intentionally absent from {@code issuedGrants}.
+     */
+    private record ResolvedRunFiles(Map<String, List<ChatFileContext.ActiveFileRef>> fileRefs,
+                                    List<ChatFileContext.ActiveFileRef> issuedGrants) {
+        static final ResolvedRunFiles EMPTY = new ResolvedRunFiles(Map.of(), List.of());
+    }
+
+    // ── background tasks ────────────────────────────────────────────────
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private fan.summer.fengyu.ai.tasks.BackgroundTaskRegistry backgroundTasks;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private fan.summer.fengyu.ai.tasks.BackgroundTaskScheduler taskScheduler;
+
+    /** Lists background tasks (workflow runs launched by the model or the UI), newest first. */
+    @GetMapping("/api/agent/tasks")
+    public List<java.util.Map<String, Object>> backgroundTaskList() {
+        return backgroundTasks.list();
+    }
+
+    /** One background task's snapshot; {@code timeoutMs} optionally blocks for completion. */
+    @GetMapping("/api/agent/tasks/{taskId}")
+    public java.util.Map<String, Object> backgroundTask(@PathVariable String taskId,
+            @RequestParam(required = false) Long timeoutMs) {
+        try {
+            java.util.Map<String, Object> snapshot =
+                    backgroundTasks.awaitOutput(taskId, timeoutMs == null ? 0 : timeoutMs);
+            if (snapshot == null) throw new IllegalArgumentException("Unknown task: " + taskId);
+            return snapshot;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while waiting for task " + taskId);
+        }
+    }
+
+    /** Kills a running background task (cooperative first, SIGKILL escalation for processes). */
+    @org.springframework.web.bind.annotation.DeleteMapping("/api/agent/tasks/{taskId}")
+    public java.util.Map<String, Object> killBackgroundTask(@PathVariable String taskId) {
+        boolean killed = backgroundTasks.kill(taskId);
+        return java.util.Map.of("ok", killed, "taskId", taskId);
+    }
+
+    // ── workflow schedules ──────────────────────────────────────────────
+
+    @GetMapping("/api/agent/schedules")
+    public List<java.util.Map<String, Object>> schedules() {
+        return taskScheduler.list();
+    }
+
+    /** Creates a recurring (or one-shot delayed) workflow schedule. */
+    @PostMapping("/api/agent/schedules")
+    public java.util.Map<String, Object> createSchedule(@RequestBody ScheduleRequest request) {
+        if (request == null || request.workflowId() == null || request.workflowId().isBlank()) {
+            throw new IllegalArgumentException("workflowId is required");
+        }
+        fan.summer.fengyu.ai.tasks.BackgroundTaskScheduler.Schedule created =
+                taskScheduler.create(request.workflowId(), request.inputs(),
+                        request.intervalSeconds() == null ? 3600 : request.intervalSeconds(),
+                        request.recurring() == null || request.recurring(),
+                        Boolean.TRUE.equals(request.fireImmediately()));
+        return taskScheduler.summary(created);
+    }
+
+    @org.springframework.web.bind.annotation.DeleteMapping("/api/agent/schedules/{scheduleId}")
+    public java.util.Map<String, Object> deleteSchedule(@PathVariable String scheduleId) {
+        return java.util.Map.of("ok", taskScheduler.delete(scheduleId), "scheduleId", scheduleId);
     }
 
     private void scheduleCleanup(String runId, AgentStreamSink sink) {
@@ -284,7 +511,34 @@ public class AgentController {
                 .execute(() -> {
                     sinks.remove(runId, sink);
                     registry.remove(runId);
+                    revokeRunFileGrants(runId);
                 });
+    }
+
+    /** Grants this controller minted for a run (native + shared), keyed by run id. Pass-through
+     *  picker/upload refs stay with their original holder and are never tracked here. */
+    private final java.util.Map<String, List<ChatFileContext.ActiveFileRef>> issuedRunFileGrants =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Revokes the file grants a run allocated at creation time. Called from the terminal
+     * cleanup (and the failure paths of the run endpoints) so repeated file-bearing runs cannot
+     * exhaust PluginFileGrantService's active-grant cap; revoking the last grant of a shared
+     * scratch directory also reclaims its disk tree.
+     */
+    void revokeRunFileGrants(String runId) {
+        revokeIssuedGrants(issuedRunFileGrants.remove(runId));
+    }
+
+    private void revokeIssuedGrants(List<ChatFileContext.ActiveFileRef> issued) {
+        if (issued == null || files == null) return;
+        for (ChatFileContext.ActiveFileRef ref : issued) {
+            try {
+                files.revoke(ref.pluginId(), ref.ref().id());
+            } catch (RuntimeException ignored) {
+                // An unknown/already-revoked grant must not block the rest of the cleanup.
+            }
+        }
     }
 
     // ── SSE sink + buffering ──────────────────────────────────────────
@@ -292,7 +546,15 @@ public class AgentController {
     /**
      * An {@link AgentEventSink} that buffers every event until an {@link SseEmitter} is
      * attached (by the {@code GET /stream} handler), then forwards live events to it. Each
-     * event is sent as a named SSE event whose {@code data} is a small JSON map.
+     * event is sent as a named SSE event whose {@code data} is a small JSON map stamped with
+     * a monotonic {@code "seq"} (1-based per run) so a client that re-attaches can skip
+     * events it already received.
+     *
+     * <p>If the attached client dies mid-run (a send fails), the sink detaches and returns
+     * to buffering — every event of the dead window is re-buffered (under the same
+     * {@link #MAX_BUFFERED_EVENTS} cap) and replayed, in order, to the next client that
+     * attaches. The client combines the replay with {@code seq} to skip anything it did
+     * already receive before the connection broke.
      *
      * <p>The two terminal events ({@link #onComplete} / {@link #onError}) both complete the
      * emitter, so the {@code EventSource} on the client closes cleanly.
@@ -304,15 +566,34 @@ public class AgentController {
         private final Consumer<AgentStreamSink> onTerminated;
         private final AtomicBoolean terminationNotified = new AtomicBoolean(false);
 
+        /**
+         * Ceiling for pre-attach buffering. A run paused on an approval gate (or one whose
+         * client never connects) would otherwise accumulate every event indefinitely; past the
+         * cap the OLDEST events are dropped and a {@code buffer_truncated} marker leads the
+         * replay so the client knows it joined mid-history.
+         */
+        static final int MAX_BUFFERED_EVENTS = 2_000;
+
         /** Buffered events that arrived before the client connected to /stream. */
         private final List<BufferedEvent> buffer = new CopyOnWriteArrayList<>();
+
+        /** Set when the buffer overflowed and oldest events were dropped. */
+        private volatile boolean bufferTruncated = false;
 
         /** The emitter once attached; null until /stream opens. Volatile so the runner's
          *  virtual thread reliably sees the attach from the controller's request thread. */
         private volatile SseEmitter emitter;
 
-        /** True once the buffered events have been drained (so we only drain once). */
+        /** True once a send failed — the client is gone, so stop pushing and release the
+         *  connection instead of throwing for the rest of the run. Reset by a re-attach. */
+        private volatile boolean clientDead = false;
+
+        /** True once the buffered events have been drained to the CURRENT client; a client
+         *  death resets it so the dead window re-buffers for the next attach. */
         private volatile boolean drained = false;
+
+        /** Monotonic per-run event counter backing the {@code seq} payload field (1-based). */
+        private long seq = 0;
 
         /**
          * True once the run reached a terminal state (onComplete / onError). Read by
@@ -342,6 +623,7 @@ public class AgentController {
         /** Called by the /stream handler: registers the emitter and replays the buffer. */
         synchronized void attach(SseEmitter emitter) {
             this.emitter = emitter;
+            this.clientDead = false;
             emitter.onCompletion(() -> log.debug("agent {}: SSE stream completed", runId));
             emitter.onTimeout(() -> {
                 log.debug("agent {}: SSE stream timed out", runId);
@@ -361,14 +643,24 @@ public class AgentController {
             }
         }
 
-        /** Drains the buffer to the emitter under the lock so new events can't interleave. */
+        /** Drains the buffer to the emitter under the lock so new events can't interleave.
+         *  If the client dies mid-replay the unsent tail stays buffered (a re-attach drains
+         *  again; {@code seq} lets that client skip what it did receive). */
         private synchronized void drain() {
             if (drained) return;
-            for (BufferedEvent e : buffer) {
-                send(e);
+            if (bufferTruncated) {
+                send(new BufferedEvent("buffer_truncated", Map.of(
+                        "kept", buffer.size(), "cap", MAX_BUFFERED_EVENTS)));
             }
-            buffer.clear();
-            drained = true;
+            int sent = 0;
+            for (BufferedEvent e : buffer) {
+                if (clientDead) break;
+                send(e);
+                if (clientDead) break;
+                sent++;
+            }
+            buffer.subList(0, sent).clear();
+            if (!clientDead && buffer.isEmpty()) drained = true;
         }
 
         @Override public void onPlanToken(String delta) {
@@ -421,13 +713,15 @@ public class AgentController {
 
         /**
          * Routes an event to either the live emitter (if attached and drained) or the buffer
-         * (otherwise). Once drained, {@code send} is called directly. Synchronized so a
+         * (otherwise). Every payload is stamped with the next monotonic {@code seq}. A live
+         * send that fails (client died) re-buffers its event — the emitter was detached by
+         * {@link #send}, so the dead window replays to the next attach. Synchronized so a
          * late-arriving buffer entry can't be missed during the drain window.
          */
         private synchronized void emit(String event, Object data) {
-            BufferedEvent be = new BufferedEvent(event, data);
+            BufferedEvent be = new BufferedEvent(event, withSeq(data));
             if (emitter == null || !drained) {
-                buffer.add(be);
+                addToBuffer(be);
                 // The emitter may have appeared while we were appending; re-check under the lock
                 // so events produced during the drain window still get delivered live.
                 if (emitter != null && !drained) {
@@ -436,16 +730,58 @@ public class AgentController {
                 return;
             }
             send(be);
+            if (clientDead) {
+                // The live send failed — the event never reached the client. Keep it for the
+                // reconnecting client (seq dedupes it if the send somehow did land).
+                addToBuffer(be);
+            }
         }
 
-        /** Sends one buffered event to the live emitter; swallows transport errors. */
+        /** Buffers one event, enforcing the oldest-drop cap with a truncation marker. */
+        private void addToBuffer(BufferedEvent be) {
+            buffer.add(be);
+            if (buffer.size() > MAX_BUFFERED_EVENTS) {
+                // Drop the oldest entry — the replay leads with a truncation marker, so
+                // a late client knows the beginning of the run is not being delivered.
+                buffer.remove(0);
+                bufferTruncated = true;
+            }
+        }
+
+        /** Copies a map payload with this run's next monotonic {@code seq} stamped in
+         *  (1-based). Non-map payloads (none today) pass through unchanged. */
+        private Object withSeq(Object data) {
+            long eventSeq = ++seq;
+            if (data instanceof Map<?, ?> map) {
+                Map<String, Object> stamped = new java.util.LinkedHashMap<>();
+                for (Map.Entry<?, ?> entry : map.entrySet()) {
+                    stamped.put(String.valueOf(entry.getKey()), entry.getValue());
+                }
+                stamped.put("seq", eventSeq);
+                return stamped;
+            }
+            return data;
+        }
+
+        /** Sends one buffered event to the live emitter. A failed send means the client is
+         *  gone — mark it dead (idempotently), complete the emitter so the container reclaims
+         *  the connection, and DETACH: back to buffering, so the dead window's events are
+         *  replayed to the next client that attaches. */
         private void send(BufferedEvent be) {
             SseEmitter em = emitter;
-            if (em == null) return;
+            if (em == null || clientDead) return;
             try {
                 em.send(SseEmitter.event().name(be.event()).data(be.data(), MediaType.APPLICATION_JSON));
             } catch (IOException | IllegalStateException e) {
                 log.debug("agent {}: SSE send failed ({}): {}", runId, be.event(), e.getMessage());
+                clientDead = true;
+                try {
+                    em.completeWithError(e);
+                } catch (Exception ignored) {
+                    // Already completed by the container.
+                }
+                emitter = null;
+                drained = false;
             }
         }
 
@@ -500,8 +836,18 @@ public class AgentController {
      * {@code POST /api/agent/run} body. When {@code workflow} is supplied it is executed
      * deterministically; otherwise the active AI backend plans a workflow from {@code goal}.
      */
-    public record AgentRunRequest(String goal, AgentRunConfig config, AgentPlan workflow) {}
-    public record AgentBatchRequest(List<String> goals, AgentRunConfig config) {}
-    public record WorkflowRunRequest(Map<String, Object> inputs, AgentRunConfig config) {}
+    public record AgentRunRequest(String goal, AgentRunConfig config, AgentPlan workflow,
+                                  List<RunFile> files) {}
+    /** One file-class workflow input: pass-through grants, a native path, or a shared scratch dir. */
+    public record RunFile(String name, List<AiFileController.ActiveFileRefDto> refs,
+                          String nativePath, String kind, Boolean writableDirectory,
+                          Boolean createSharedDirectory) {}
+    public record AgentBatchRequest(List<String> goals, AgentRunConfig config, String capabilityMode) {}
+    public record WorkflowRunRequest(Map<String, Object> inputs, AgentRunConfig config,
+                                     List<RunFile> files) {}
     public record PublishRequest(boolean published) {}
+    public record RewindRequest(int keepSteps) {}
+    public record ScheduleRequest(String workflowId, java.util.Map<String, Object> inputs,
+                                  Integer intervalSeconds, Boolean recurring,
+                                  Boolean fireImmediately) {}
 }
