@@ -285,9 +285,21 @@
                   "workbook-sheets",
                   "workbook-columns"
                 ]
+              },
+              "optionsFromContext": {
+                "$ref": "#/definitions/flowNodeOptionsFromContext"
               }
             }
           }
+        },
+        "source": {
+          "$ref": "#/definitions/flowNodeOptionSource"
+        },
+        "context": {
+          "$ref": "#/definitions/flowNodeContext"
+        },
+        "optionsFromContext": {
+          "$ref": "#/definitions/flowNodeOptionsFromContext"
         }
       }
     },
@@ -341,6 +353,116 @@
               }
             }
           }
+        }
+      }
+    },
+    "flowNodeOptionSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "value",
+        "label"
+      ],
+      "properties": {
+        "method": {
+          "type": "string",
+          "description": "Plugin RPC list method backing the options."
+        },
+        "items": {
+          "type": "string",
+          "description": "Result field holding the option list."
+        },
+        "value": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "labelSecondary": {
+          "type": "string"
+        },
+        "multiple": {
+          "type": "boolean",
+          "description": "Render a multi-select (array value)."
+        }
+      }
+    },
+    "flowNodeContextFeed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "list"
+      ],
+      "properties": {
+        "list": {
+          "type": "string",
+          "description": "Result field holding the list."
+        },
+        "item": {
+          "type": "string",
+          "description": "Flat feed: field of each entry."
+        },
+        "key": {
+          "type": "string",
+          "description": "Keyed feed: field to group entries by."
+        },
+        "items": {
+          "type": "string",
+          "description": "Keyed feed: nested list field of each entry."
+        },
+        "itemField": {
+          "type": "string",
+          "description": "Keyed feed: field within each nested item."
+        }
+      }
+    },
+    "flowNodeContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "feeds"
+      ],
+      "properties": {
+        "method": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Call params; \"{{value}}\" templates the input value."
+        },
+        "sessionScope": {
+          "type": "string",
+          "enum": [
+            "node"
+          ]
+        },
+        "feeds": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/flowNodeContextFeed"
+          }
+        }
+      }
+    },
+    "flowNodeOptionsFromContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "set"
+      ],
+      "properties": {
+        "set": {
+          "type": "string",
+          "description": "Feed name to read options from."
+        },
+        "keyedBy": {
+          "type": "string",
+          "description": "Row field whose value selects the keyed bucket."
         }
       }
     }
