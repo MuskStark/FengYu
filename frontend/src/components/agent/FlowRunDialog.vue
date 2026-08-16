@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '@/api/client'
+import { fetchCatalogOptions } from '@/components/agent/optionSource'
 import type {
   ActiveFileEntry,
   AgentRunFile,
@@ -184,18 +185,11 @@ async function loadEnumOptions(name: string, source: WorkflowEnumSource) {
   enumLoading.value = { ...enumLoading.value, [name]: true }
   enumError.value = { ...enumError.value, [name]: null }
   try {
-    const result = await api.invokePluginMethod<Record<string, unknown>>(source.plugin, source.method)
-    const list = Array.isArray(result?.[source.items])
-      ? result[source.items] as Array<Record<string, unknown>>
-      : []
+    // Same catalog fetch the node inspector uses (unified option-source standard):
+    // x-fengyu-enum annotations and flowNodes `source` declarations share one path.
     enumOptions.value = {
       ...enumOptions.value,
-      [name]: list.map((item) => ({
-        value: item[source.value],
-        label: [item[source.label], source.labelSecondary ? item[source.labelSecondary] : undefined]
-          .filter((part) => part !== undefined && part !== null && part !== '')
-          .join(' · '),
-      })),
+      [name]: await fetchCatalogOptions(source.plugin, source),
     }
   } catch (e) {
     enumError.value = { ...enumError.value, [name]: e instanceof Error ? e.message : t('agent.failed') }

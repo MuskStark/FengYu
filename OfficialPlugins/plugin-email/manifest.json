@@ -2510,19 +2510,41 @@
       "inputs": [
         {
           "name": "accountId",
-          "widget": "number",
-          "title": "发件账号 ID"
+          "widget": "select",
+          "title": "发件账号 ID",
+          "source": {
+            "method": "email_accounts_list",
+            "items": "accounts",
+            "value": "id",
+            "label": "email",
+            "labelSecondary": "displayName"
+          }
         },
         {
           "name": "recipientGroupTagIds",
-          "widget": "json",
+          "widget": "select",
           "title": "收件人分组标签",
-          "description": "整数数组；组内成员各收一份附件。"
+          "source": {
+            "method": "email_tags_list",
+            "items": "tags",
+            "value": "id",
+            "label": "name",
+            "multiple": true
+          },
+          "description": "标签组成员各收一份附件。"
         },
         {
           "name": "ccGroupTagIds",
-          "widget": "json",
-          "title": "抄送分组标签"
+          "widget": "select",
+          "title": "抄送分组标签",
+          "source": {
+            "method": "email_tags_list",
+            "items": "tags",
+            "value": "id",
+            "label": "name",
+            "multiple": true
+          },
+          "description": "标签组成员抄送所有邮件。"
         },
         {
           "name": "inputDirectory",

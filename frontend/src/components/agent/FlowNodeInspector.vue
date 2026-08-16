@@ -1,8 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { api } from '@/api/client'
 import type { FlowNodeInput } from '@/api/types'
+import {
+  contextFeedOptions,
+  fetchCatalogOptions,
+  runNodeContext,
+  type CatalogOption,
+  type ContextFeedValue,
+} from './optionSource'
 import {
   flattenWorkflowOutputFields,
   humanizeWorkflowField,
@@ -50,6 +56,8 @@ interface InputSchema {
   'x-fengyu-analyze'?: string
   /** `workbook-sheets` / `workbook-columns` — datalist candidates from the analysis. */
   'x-fengyu-options-from'?: string
+  /** Datalist candidates from a context feed (unified option-source standard). */
+  'x-fengyu-options-from-context'?: { set: string; keyedBy?: string }
 }
 
 const inputSchema = computed<InputSchema>(() => {
@@ -64,13 +72,14 @@ const inputSchema = computed<InputSchema>(() => {
  * declaration its inputs (widget config) drive the form, mapped onto the same
  * editor machinery; only legacy nodes fall back to the tool's JSON Schema.
  */
-const inputFields = computed<Array<[string, InputSchema]>>(() => {
+const inputFields = computed<Array<[string, InputSchema, FlowNodeInput | undefined]>>(() => {
   const declared = props.node.data.descriptor?.inputs
   if (declared?.length) {
-    return declared.map((input) => [input.name, widgetSchema(input)])
+    return declared.map((input) => [input.name, widgetSchema(input), input])
   }
-  return Object.entries(inputSchema.value.properties ?? {})
-    .filter(([, schema]) => !schema['x-fengyu-advanced']) as Array<[string, InputSchema]>
+  return (Object.entries(inputSchema.value.properties ?? {})
+    .filter(([, schema]) => !schema['x-fengyu-advanced']) as Array<[string, InputSchema]>)
+    .map(([name, schema]) => [name, schema, undefined])
 })
 
 /** Maps a declared widget onto the editor schema vocabulary. */
@@ -89,7 +98,8 @@ function widgetSchema(input: FlowNodeInput): InputSchema {
       // mono JSON editor: parses on change, so array/object args stay typed.
       return { ...base, type: 'object' }
     case 'analyze':
-      return { ...base, type: 'string', 'x-fengyu-analyze': 'excel' }
+      // Legacy alias: plain text — a `context` declaration drives the trigger now.
+      return { ...base, type: 'string' }
     case 'rows': {
       const properties: Record<string, InputSchema> = {}
       for (const field of input.fields ?? []) {
@@ -99,7 +109,8 @@ function widgetSchema(input: FlowNodeInput): InputSchema {
             ? { type: 'boolean', title: field.title }
             : field.widget === 'select'
               ? { type: 'string', title: field.title }
-              : { type: 'string', title: field.title, 'x-fengyu-options-from': field.optionsFrom }
+              : { type: 'string', title: field.title, 'x-fengyu-options-from': field.optionsFrom,
+                  'x-fengyu-options-from-context': field.optionsFromContext }
       }
       return { ...base, type: 'array', items: { type: 'object', properties } }
     }
@@ -126,53 +137,94 @@ const downstreamNodes = computed(() => {
   const targetIds = new Set(props.edges.filter((edge) => edge.source === props.node.id).map((edge) => edge.target))
   return props.nodes.filter((node) => targetIds.has(node.id))
 })
-/** Sheet → header columns of the workbook analyzed from the node's filePath input. */
-const workbookAnalysis = ref<Record<string, string[]>>({})
-const workbookAnalyzing = ref(false)
-const workbookAnalysisError = ref<string | null>(null)
+/** Datasets produced by this node's context sources, keyed by feed name. */
+const contextFeeds = ref<Record<string, ContextFeedValue>>({})
+const contextRunning = ref(false)
+const contextError = ref<string | null>(null)
+/** Catalog options per source method, cached for the inspector's lifetime. */
+const catalogCache = ref<Record<string, CatalogOption[]>>({})
 
-// Analysis is per node — reset when the inspector switches targets.
+// Option sources are per node — reset when the inspector switches targets.
 watch(() => props.node.id, () => {
-  workbookAnalysis.value = {}
-  workbookAnalyzing.value = false
-  workbookAnalysisError.value = null
+  contextFeeds.value = {}
+  contextRunning.value = false
+  contextError.value = null
+  catalogCache.value = {}
 })
 
-/**
- * Analyzes the workbook currently typed into filePath through the Excel plugin
- * (run-dialog parity), so entry rows can pick real sheet/column names instead
- * of typing blind. A dedicated canvas-<nodeId> session keeps the analysis from
- * touching chat/run split sessions.
- */
-async function analyzeNodeWorkbook() {
-  const raw = arguments_.value['filePath']
-  const filePath = typeof raw === 'string' ? raw.trim() : ''
-  if (!filePath || workbookAnalyzing.value) return
-  workbookAnalyzing.value = true
-  workbookAnalysisError.value = null
+/** Runs one input's context source (the unified analyze-style trigger). */
+async function runContext(input: FlowNodeInput) {
+  const context = input.context
+  if (!context || contextRunning.value) return
+  const raw = arguments_.value[input.name]
+  const value = typeof raw === 'string' ? raw.trim() : raw
+  if (value === '' || value === undefined || value === null) return
+  contextRunning.value = true
+  contextError.value = null
   try {
-    // The UI-facing `analyze` RPC returns the full sheet→columns map (the AI-facing
-    // excel_analyze tool returns sheet names only).
-    const result = await api.invokePluginMethod<{
-      success?: boolean
-      sheets?: Array<{ name: string; columns?: Array<{ header?: string }> }>
-    }>('fan.summer.excel', 'analyze', {
-      session: `canvas-${props.node.id}`,
-      sourceFile: filePath,
+    contextFeeds.value = await runNodeContext({
+      pluginId: props.node.data.tool.pluginId,
+      nodeId: props.node.id,
+      context,
+      value,
     })
-    const sheets: Record<string, string[]> = {}
-    for (const sheet of result?.sheets ?? []) {
-      sheets[sheet.name] = (sheet.columns ?? [])
-        .map((column) => column.header ?? '')
-        .filter(Boolean)
-    }
-    workbookAnalysis.value = sheets
   } catch (e) {
-    workbookAnalysis.value = {}
-    workbookAnalysisError.value = e instanceof Error ? e.message : String(e)
+    contextFeeds.value = {}
+    contextError.value = e instanceof Error ? e.message : String(e)
   } finally {
-    workbookAnalyzing.value = false
+    contextRunning.value = false
   }
+}
+
+/** Loads (and caches) one input's catalog options from its plugin. */
+async function loadCatalogOptions(input: FlowNodeInput): Promise<CatalogOption[]> {
+  const source = input.source
+  if (!source) return []
+  if (catalogCache.value[source.method]) return catalogCache.value[source.method]
+  try {
+    const options = await fetchCatalogOptions(props.node.data.tool.pluginId, source)
+    catalogCache.value = { ...catalogCache.value, [source.method]: options }
+    return options
+  } catch {
+    return []
+  }
+}
+
+const catalogOptions = ref<Record<string, CatalogOption[]>>({})
+async function ensureCatalog(input: FlowNodeInput) {
+  if (!input.source || catalogOptions.value[input.name]) return
+  catalogOptions.value = { ...catalogOptions.value, [input.name]: await loadCatalogOptions(input) }
+}
+
+function catalogSelected(input: FlowNodeInput, option: CatalogOption): boolean {
+  const current = arguments_.value[input.name]
+  return Array.isArray(current)
+    ? current.some((item) => String(item) === String(option.value))
+    : String(current) === String(option.value)
+}
+
+function toggleCatalogOption(input: FlowNodeInput, option: CatalogOption) {
+  const source = input.source!
+  const current = arguments_.value[input.name]
+  if (source.multiple) {
+    const list = Array.isArray(current) ? current : []
+    const next = catalogSelected(input, option)
+      ? list.filter((item) => String(item) !== String(option.value))
+      : [...list, option.value]
+    setNodeArgument(input.name, next)
+    return
+  }
+  setNodeArgument(input.name, option.value)
+}
+
+function selectCatalogOption(input: FlowNodeInput, event: Event) {
+  const value = (event.target as HTMLSelectElement).value
+  const option = catalogOptions.value[input.name]?.find((item) => String(item.value) === value)
+  setNodeArgument(input.name, option ? option.value : value)
+}
+
+function feedCount(): number {
+  return Object.keys(contextFeeds.value).length
 }
 
 /** Row layout: the first non-boolean field shares its line with boolean switches. */
@@ -188,17 +240,23 @@ function rowParts(schema: InputSchema): {
   return { first: others[0] ?? null, rest: others.slice(1), booleans }
 }
 
-/** Datalist candidates for an annotated field; column lists follow the row's sheet. */
+/** Datalist candidates from a context feed (legacy workbook-* annotations
+ *  map onto the same resolution for old schema-fallback graphs). */
 function rowOptions(source: string | undefined, rowSheet?: unknown): string[] {
-  if (source === 'workbook-sheets') return Object.keys(workbookAnalysis.value)
+  if (source === 'workbook-sheets') {
+    return contextFeedOptions(contextFeeds.value, { set: Object.keys(contextFeeds.value)[0] }, rowSheet)
+  }
   if (source === 'workbook-columns') {
-    const sheet = typeof rowSheet === 'string' ? rowSheet : ''
-    const columns = sheet ? workbookAnalysis.value[sheet] : undefined
-    // A row whose sheet is not (yet) picked still sees the union, so the user can
-    // pre-fill a column and the sheet name after.
-    return columns ?? [...new Set(Object.values(workbookAnalysis.value).flat())]
+    const sets = Object.keys(contextFeeds.value)
+    const columnsSet = sets.find((name) => typeof contextFeeds.value[name] === 'object' && !Array.isArray(contextFeeds.value[name]))
+    return contextFeedOptions(contextFeeds.value, columnsSet ? { set: columnsSet, keyedBy: 'sheetName' } : undefined, rowSheet)
   }
   return []
+}
+
+/** Unified: an optionsFromContext reference resolves against the node's feeds. */
+function feedOptions(spec: { set: string; keyedBy?: string } | undefined, rowKeyValue?: unknown): string[] {
+  return contextFeedOptions(contextFeeds.value, spec, rowKeyValue)
 }
 
 const missingInputs = computed(() =>
@@ -389,7 +447,7 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
       <div v-if="!inputFields.length" class="cx-muted flow-config-empty">
         {{ t('agent.noInputRequired') }}
       </div>
-      <div v-for="([name, schema]) in inputFields" :key="name" class="flow-argument">
+      <div v-for="([name, schema, declared]) in inputFields" :key="name" class="flow-argument">
         <div class="flow-argument__label">
           <span>{{ schema.title || humanizeWorkflowField(name) }}</span>
           <span v-if="requiredInputs.has(name)" class="flow-required">{{ t('agent.required') }}</span>
@@ -425,7 +483,33 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
 
         <template v-if="inputSource(name) === 'manual'">
           <select
-            v-if="schema.enum?.length"
+            v-if="declared?.source && !declared.source.multiple"
+            class="cx-input"
+            :value="String(arguments_[name] ?? '')"
+            :disabled="disabled"
+            @focus="ensureCatalog(declared)"
+            @change="selectCatalogOption(declared, $event)"
+          >
+            <option value="">{{ t('agent.notSet') }}</option>
+            <option v-for="option in catalogOptions[name] ?? []" :key="String(option.value)" :value="String(option.value)">{{ option.label || String(option.value) }}</option>
+          </select>
+          <div v-else-if="declared?.source?.multiple" class="flow-enum-list">
+            <label v-for="option in catalogOptions[name] ?? []" :key="String(option.value)">
+              <input
+                type="checkbox"
+                :checked="catalogSelected(declared, option)"
+                :disabled="disabled"
+                @focus="ensureCatalog(declared)"
+                @change="toggleCatalogOption(declared, option)"
+              >
+              <span>{{ option.label || String(option.value) }}</span>
+            </label>
+            <button v-if="!(catalogOptions[name] ?? []).length" class="flow-add-item" :disabled="disabled" @click="ensureCatalog(declared)">
+              <i class="mdi mdi-refresh" /> {{ t('agent.loadingOptions') }}
+            </button>
+          </div>
+          <select
+            v-else-if="schema.enum?.length"
             class="cx-input"
             :value="arguments_[name] ?? ''"
             :disabled="disabled"
@@ -468,12 +552,13 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
                     class="cx-input"
                     :type="rowParts(schema).first![1].type === 'number' || rowParts(schema).first![1].type === 'integer' ? 'number' : 'text'"
                     :value="item[rowParts(schema).first![0]] ?? ''"
-                    :list="rowOptions(rowParts(schema).first![1]['x-fengyu-options-from'], item.sheetName).length ? `dl-${node.id}-${name}-${rowParts(schema).first![0]}` : undefined"
+                    :list="(feedOptions(rowParts(schema).first![1]['x-fengyu-options-from-context'], item[rowParts(schema).first![1]['x-fengyu-options-from-context']?.keyedBy ?? 'sheetName']).length
+                      || rowOptions(rowParts(schema).first![1]['x-fengyu-options-from'], item.sheetName).length) ? `dl-${node.id}-${name}-${rowParts(schema).first![0]}` : undefined"
                     :disabled="disabled"
                     @input="updateArrayObjectField(name, itemIndex, rowParts(schema).first![0], rowParts(schema).first![1], $event)"
                   >
-                  <datalist v-if="rowOptions(rowParts(schema).first![1]['x-fengyu-options-from'], item.sheetName).length" :id="`dl-${node.id}-${name}-${rowParts(schema).first![0]}`">
-                    <option v-for="option in rowOptions(rowParts(schema).first![1]['x-fengyu-options-from'], item.sheetName)" :key="option" :value="option" />
+                  <datalist v-if="feedOptions(rowParts(schema).first![1]['x-fengyu-options-from-context'], item[rowParts(schema).first![1]['x-fengyu-options-from-context']?.keyedBy ?? 'sheetName']).length || rowOptions(rowParts(schema).first![1]['x-fengyu-options-from'], item.sheetName).length" :id="`dl-${node.id}-${name}-${rowParts(schema).first![0]}`">
+                    <option v-for="option in [...feedOptions(rowParts(schema).first![1]['x-fengyu-options-from-context'], item[rowParts(schema).first![1]['x-fengyu-options-from-context']?.keyedBy ?? 'sheetName']), ...rowOptions(rowParts(schema).first![1]['x-fengyu-options-from'], item.sheetName)]" :key="option" :value="option" />
                   </datalist>
                 </label>
                 <label
@@ -493,12 +578,13 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
                   class="cx-input"
                   :type="childSchema.type === 'number' || childSchema.type === 'integer' ? 'number' : 'text'"
                   :value="item[childName] ?? ''"
-                  :list="rowOptions(childSchema['x-fengyu-options-from'], item.sheetName).length ? `dl-${node.id}-${name}-${childName}` : undefined"
+                  :list="(feedOptions(childSchema['x-fengyu-options-from-context'], item[childSchema['x-fengyu-options-from-context']?.keyedBy ?? 'sheetName']).length
+                    || rowOptions(childSchema['x-fengyu-options-from'], item.sheetName).length) ? `dl-${node.id}-${name}-${childName}` : undefined"
                   :disabled="disabled"
                   @input="updateArrayObjectField(name, itemIndex, childName, childSchema, $event)"
                 >
-                <datalist v-if="rowOptions(childSchema['x-fengyu-options-from'], item.sheetName).length" :id="`dl-${node.id}-${name}-${childName}`">
-                  <option v-for="option in rowOptions(childSchema['x-fengyu-options-from'], item.sheetName)" :key="option" :value="option" />
+                <datalist v-if="feedOptions(childSchema['x-fengyu-options-from-context'], item[childSchema['x-fengyu-options-from-context']?.keyedBy ?? 'sheetName']).length || rowOptions(childSchema['x-fengyu-options-from'], item.sheetName).length" :id="`dl-${node.id}-${name}-${childName}`">
+                  <option v-for="option in [...feedOptions(childSchema['x-fengyu-options-from-context'], item[childSchema['x-fengyu-options-from-context']?.keyedBy ?? 'sheetName']), ...rowOptions(childSchema['x-fengyu-options-from'], item.sheetName)]" :key="option" :value="option" />
                 </datalist>
               </label>
             </div>
@@ -513,7 +599,7 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
             :disabled="disabled"
             @input="updateSimpleInput(name, schema, $event)"
           />
-          <div v-else-if="schema['x-fengyu-analyze'] === 'excel'" class="flow-analyze-input">
+          <div v-else-if="declared?.context" class="flow-analyze-input">
             <input
               class="cx-input"
               :value="displayInputValue(name, schema)"
@@ -523,13 +609,13 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
             >
             <button
               class="flow-analyze-button"
-              :disabled="disabled || workbookAnalyzing || !displayInputValue(name, schema)"
+              :disabled="disabled || contextRunning || !displayInputValue(name, schema)"
               :title="t('flows.analyzeWorkbook')"
-              @click="analyzeNodeWorkbook"
-            ><span v-if="workbookAnalyzing" class="cx-spin" /><i v-else class="mdi mdi-table-search" /></button>
-            <small v-if="workbookAnalysisError" class="flow-analyze-error">{{ workbookAnalysisError }}</small>
-            <small v-else-if="Object.keys(workbookAnalysis).length" class="flow-analyze-done">
-              <i class="mdi mdi-check-circle-outline" /> {{ Object.keys(workbookAnalysis).length }} sheet(s)
+              @click="runContext(declared)"
+            ><span v-if="contextRunning" class="cx-spin" /><i v-else class="mdi mdi-magnify" /></button>
+            <small v-if="contextError" class="flow-analyze-error">{{ contextError }}</small>
+            <small v-else-if="feedCount()" class="flow-analyze-done">
+              <i class="mdi mdi-check-circle-outline" /> {{ feedCount() }} set(s)
             </small>
           </div>
           <textarea
@@ -546,10 +632,14 @@ function displayInputValue(name: string, schema: InputSchema): string | number {
             class="cx-input"
             :type="schema.type === 'integer' || schema.type === 'number' ? 'number' : 'text'"
             :value="displayInputValue(name, schema)"
+            :list="feedOptions(declared?.optionsFromContext).length ? `dl-${node.id}-${name}` : undefined"
             :placeholder="schema.description || t('agent.enterValue')"
             :disabled="disabled"
             @input="updateSimpleInput(name, schema, $event)"
           >
+          <datalist v-if="feedOptions(declared?.optionsFromContext).length" :id="`dl-${node.id}-${name}`">
+            <option v-for="option in feedOptions(declared?.optionsFromContext)" :key="option" :value="option" />
+          </datalist>
         </template>
         <div v-else class="flow-linked-input">
           <i class="mdi" :class="inputSource(name).startsWith('input::') ? 'mdi-form-textbox' : 'mdi-link-variant'" />

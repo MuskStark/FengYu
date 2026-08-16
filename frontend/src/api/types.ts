@@ -503,6 +503,51 @@ export interface WorkflowRunRequest {
   files?: AgentRunFile[]
 }
 
+/** Catalog option source: a plugin list method the host fetches options from. */
+export interface FlowNodeOptionSource {
+  method: string
+  /** Field of the result holding the option list (e.g. "accounts"). */
+  items?: string
+  value: string
+  label: string
+  labelSecondary?: string
+  multiple?: boolean
+}
+
+/** How one named dataset is extracted from a context method's result. */
+export interface FlowNodeContextFeed {
+  /** Result field holding the list (e.g. "sheets"). */
+  list: string
+  /** Flat feed: field of each entry to extract (e.g. "name"). */
+  item?: string
+  /** Keyed feed: field of each entry to group by (e.g. sheet "name"). */
+  key?: string
+  /** Keyed feed: nested list field of each entry (e.g. "columns"). */
+  items?: string
+  /** Keyed feed: field within each nested item to extract (e.g. "header"). */
+  itemField?: string
+}
+
+/**
+ * Context source: options derived at edit time from ANOTHER input's current
+ * value (e.g. the workbook path → sheet/column datasets via the analyze RPC).
+ */
+export interface FlowNodeContext {
+  method: string
+  /** Call params; "{{value}}" templates this input's current value. */
+  params?: Record<string, string>
+  /** "node" → the host mints a canvas-<nodeId> session (default). */
+  sessionScope?: 'node'
+  feeds: Record<string, FlowNodeContextFeed>
+}
+
+/** Reference to a dataset produced by a context source on another input. */
+export interface FlowNodeOptionsFromContext {
+  set: string
+  /** Row field whose current value selects the keyed bucket (e.g. sheetName). */
+  keyedBy?: string
+}
+
 /** One declared input of a flow node (widget-driven, explicit canvas config). */
 export interface FlowNodeInput {
   name: string
@@ -512,11 +557,15 @@ export interface FlowNodeInput {
   options?: string[]
   default?: unknown
   optionsFrom?: 'workbook-sheets' | 'workbook-columns'
+  source?: FlowNodeOptionSource
+  context?: FlowNodeContext
+  optionsFromContext?: FlowNodeOptionsFromContext
   fields?: Array<{
     name: string
     widget: 'text' | 'number' | 'switch' | 'select'
     title?: string
     optionsFrom?: 'workbook-sheets' | 'workbook-columns'
+    optionsFromContext?: FlowNodeOptionsFromContext
   }>
 }
 
