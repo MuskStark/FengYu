@@ -34,9 +34,24 @@ public class DataSourceConfigService {
 
     /** Production constructor — uses {@code .fengyu} under the program working directory. */
     public DataSourceConfigService() {
-        this(RuntimePaths.root(), List.of(
+        this(RuntimePaths.root(), legacyBaseDirs(Boolean.getBoolean(RuntimePaths.PINNED_MARKER_PROPERTY)));
+    }
+
+    /**
+     * Legacy config locations probed when the runtime root has no config yet. An explicitly
+     * pinned runtime root ({@code -Dfengyu.runtime.dir=...} — the desktop shell pins it on
+     * every launch) means the operator chose where state lives, so a fresh pinned root must
+     * STAY fresh: a new portable-extraction directory shows the setup wizard instead of
+     * silently adopting the config from {@code <cwd>} or {@code ~/.fengyu}. Unpinned runs
+     * keep the legacy probes so upgrades from the old layouts continue to migrate.
+     */
+    static List<Path> legacyBaseDirs(boolean runtimeDirPinned) {
+        if (runtimeDirPinned) {
+            return List.of();
+        }
+        return List.of(
                 Path.of(System.getProperty("user.dir")),
-                Path.of(System.getProperty("user.home"), ".fengyu")));
+                Path.of(System.getProperty("user.home"), ".fengyu"));
     }
 
     /** Test constructor — injects base dir (temp dir). */

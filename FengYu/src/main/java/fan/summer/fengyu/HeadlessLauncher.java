@@ -52,6 +52,13 @@ public final class HeadlessLauncher {
     static final String MAC_UI_ELEMENT_PROPERTY = "apple.awt.UIElement";
 
     static {
+        // Must run before primeRuntimeDirectories: that call normalizes ROOT_PROPERTY by setting
+        // it unconditionally, after which an operator-provided pin is indistinguishable from the
+        // programmatic default. DataSourceConfigService needs exactly that distinction to keep a
+        // pinned runtime root (every desktop launch, any explicit -Dfengyu.runtime.dir) isolated
+        // instead of silently adopting a legacy config from <cwd> or ~/.fengyu.
+        System.setProperty(RuntimePaths.PINNED_MARKER_PROPERTY,
+                Boolean.toString(System.getProperty(RuntimePaths.ROOT_PROPERTY) != null));
         primeRuntimeDirectories(RuntimePaths.root());
     }
 
