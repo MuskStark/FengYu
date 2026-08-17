@@ -55,6 +55,17 @@ jobs:
           ref: ${{ needs.setup.outputs.ref }}
           fetch-depth: 0
 
+      # Must run BEFORE setup-node: its `cache: yarn` probe runs bare `yarn`
+      # inside each cache-dependency-path directory, and the runner images'
+      # global yarn 1.22.22 refuses to execute in a project whose package.json
+      # pins "packageManager" (broke on 2026-08-16 when the images stopped
+      # shipping a corepack-managed yarn shim). Enabling corepack first makes
+      # the probe — and every later `corepack yarn ...` — resolve the pinned
+      # Yarn 4.18.0. Runs against the image's preinstalled Node, whose bundled
+      # corepack is enough to install the shims.
+      - name: Enable corepack (pinned Yarn 4 across the repo)
+        run: corepack enable
+
       - name: Set up Node 24.18.0
         uses: actions/setup-node@v5
         with:
@@ -78,9 +89,6 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           bwrap --unshare-all --ro-bind / / --proc /proc --dev-bind /dev /dev -- /bin/true
-
-      - name: Enable corepack (pinned Yarn 4 across the repo)
-        run: corepack enable
 
       - name: Install frontend deps
         run: corepack yarn install --immutable
@@ -161,6 +169,11 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ needs.setup.outputs.ref }}
+
+      # Before setup-node for the same yarn-1-vs-packageManager reason as in
+      # build-runtime above.
+      - name: Enable corepack (pinned Yarn 4 across the repo)
+        run: corepack enable
 
       - name: Set up Node 24.18.0
         uses: actions/setup-node@v5
