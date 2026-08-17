@@ -80,6 +80,22 @@ http.interceptors.request.use((config) => {
   return config
 })
 
+// Carry the backend's own error text ({"error": "..."} / {"message": "..."}) on the
+// AxiosError message so catch blocks can surface the real failure reason (e.g. the
+// update channel's 503 body) instead of axios's generic "Request failed with status
+// code N". The error object itself is rejected unchanged — isAxiosError callers
+// (router 404 handling) keep working.
+http.interceptors.response.use(undefined, (error) => {
+  const data = error?.response?.data
+  let message: string | undefined
+  if (data && typeof data === 'object') {
+    if (typeof data.error === 'string' && data.error) message = data.error
+    else if (typeof data.message === 'string' && data.message) message = data.message
+  }
+  if (message) error.message = message
+  return Promise.reject(error)
+})
+
 export const api = {
   async health(): Promise<HealthResponse> {
     const { data } = await http.get<HealthResponse>('/api/health')
