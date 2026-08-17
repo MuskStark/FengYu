@@ -80,6 +80,17 @@ jobs:
           ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
 
+      # Must run BEFORE setup-node: its `cache: yarn` probe runs bare `yarn`
+      # inside each cache-dependency-path directory, and the runner images'
+      # global yarn 1.22.22 refuses to execute in a project whose package.json
+      # pins "packageManager" (the images stopped shipping a corepack-managed
+      # yarn shim on 2026-08-16). Enabling corepack first makes the probe — and
+      # every later `corepack yarn ...` — resolve the pinned Yarn 4.18.0.
+      # Yarn 4 manages the toolchain + official plugins; corepack supplies the pinned
+      # release (see the packageManager field in each package.json).
+      - name: Enable corepack (pinned Yarn 4 for toolchain + plugins)
+        run: corepack enable
+
       - name: Set up Node 24.18.0
         uses: actions/setup-node@v5
         with:
@@ -109,11 +120,6 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           bwrap --unshare-all --ro-bind / / --proc /proc --dev-bind /dev /dev -- /bin/true
-
-      # Yarn 4 manages the toolchain + official plugins; corepack supplies the pinned
-      # release (see the packageManager field in each package.json).
-      - name: Enable corepack (pinned Yarn 4 for toolchain + plugins)
-        run: corepack enable
 
       - name: Install toolchain/cli deps
         run: yarn install --immutable
@@ -152,6 +158,16 @@ jobs:
       # also installs them runs only later in this job.
       - name: Install Java plugin toolchain (sdk + devkit) to local Maven repo
         run: ./mvnw -B -pl toolchain/sdk-java,toolchain/devkit-java -am install -DskipTests
+
+      # Plugin ui-src builds portal @infinia/plugin-dev (link:../../../toolchain/dev).
+      # Its committed dist runtime-imports @infinia/plugin-sdk and vite, which Node
+      # resolves through the portal symlink's real path — i.e. from toolchain/dev's
+      # own node_modules. Required since the ui-src deps moved from npm file:-copies
+      # to Yarn link: portals; without this install every plugin vite config fails
+      # with ERR_MODULE_NOT_FOUND: @infinia/plugin-sdk.
+      - name: Install plugin dev-kit deps (portaled by plugin ui-src builds)
+        run: yarn install --immutable
+        working-directory: toolchain/dev
 
       - name: Build official plugins (.fyp via toolchain/cli)
         run: |
@@ -284,17 +300,23 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref }}
 
+      # Before setup-node for the same yarn-1-vs-packageManager reason as in
+      # build-runtime above. The cache itself is disabled on Windows: the
+      # setup-node probe resolves C:\npm\prefix\yarn.cmd (bare Yarn 1.22.22)
+      # before any corepack shim there — unlike ubuntu/macos, where
+      # `corepack enable` overwrites the global yarn the probe finds.
+      - name: Enable corepack (pinned Yarn 4 across the repo)
+        run: corepack enable
+
       - name: Set up Node 24.18.0
         uses: actions/setup-node@v5
         with:
           node-version: '24.18.0'
-          cache: yarn
+          cache: ${{ runner.os != 'Windows' && 'yarn' || '' }}
           cache-dependency-path: |
             frontend/yarn.lock
             desktop/electron/yarn.lock
             toolchain/cli/yarn.lock
-      - name: Enable corepack (pinned Yarn 4 across the repo)
-        run: corepack enable
 
       - name: Set up JDK 21 (for jlink)
         uses: actions/setup-java@v5
@@ -302,8 +324,16 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      # --no-immutable (not just omitting --immutable): Yarn defaults
+      # enableImmutableInstalls to true whenever CI=true. The override is
+      # needed because the @infinia/plugin-sdk file: hash is OS-dependent —
+      # the same pristine checkout resolves hash=88230d on ubuntu/macos
+      # (where build-runtime's --immutable passes) but a different hash on
+      # windows, so no single lock entry can satisfy the whole matrix. The
+      # runner rewrites just that entry in its own copy; every registry
+      # dependency stays pinned by yarn.lock.
       - name: Install frontend deps
-        run: corepack yarn install --immutable
+        run: corepack yarn install --no-immutable
         working-directory: frontend
 
       - name: Build frontend SPA
@@ -320,12 +350,15 @@ jobs:
           cp -R frontend/dist desktop/electron/frontend-dist
           ls desktop/electron/frontend-dist
 
-      - name: Verify file-compatible frontend asset paths
-        run: corepack yarn run verify:frontend-dist
-        working-directory: desktop/electron
-
+      # Must precede verify:frontend-dist: Yarn 4's `yarn run` needs the
+      # install state (Yarn 1 didn't), so the verify script cannot run before
+      # desktop/electron's deps are installed.
       - name: Install desktop deps
         run: corepack yarn install --immutable
+        working-directory: desktop/electron
+
+      - name: Verify file-compatible frontend asset paths
+        run: corepack yarn run verify:frontend-dist
         working-directory: desktop/electron
 
       - name: Install plugin CLI deps
