@@ -224,12 +224,15 @@ jobs:
           rm -rf desktop/electron/frontend-dist
           cp -R frontend/dist desktop/electron/frontend-dist
 
-      - name: Verify file-compatible frontend asset paths
-        run: corepack yarn run verify:frontend-dist
-        working-directory: desktop/electron
-
+      # Must precede verify:frontend-dist: Yarn 4's `yarn run` needs the
+      # install state (Yarn 1 didn't), so the verify script cannot run before
+      # desktop/electron's deps are installed.
       - name: Install desktop deps
         run: corepack yarn install --immutable
+        working-directory: desktop/electron
+
+      - name: Verify file-compatible frontend asset paths
+        run: corepack yarn run verify:frontend-dist
         working-directory: desktop/electron
 
       - name: Install Electron binary
