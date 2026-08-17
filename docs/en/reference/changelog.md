@@ -257,6 +257,13 @@ CHANGELOG.md instead.
   candidates narrow to the chosen sheet.
 
 ### 🐛 Fixed
+- **Setup wizard's restart detection raced the dying SETUP backend (main shell dead on
+  arrival after setup).** The wizard polled `/api/setup/status` for `initialized:true`, but
+  the still-exiting SETUP backend answers exactly that for its ~1s grace period (the config
+  was just persisted), so the SPA navigated to the main shell while every app API still 404'd
+  — and once APP mode came up the endpoint 404s by design, so the poll could also never
+  succeed and timed out. The wizard now treats that 404 as the "restarted into APP mode"
+  signal (same contract as the SPA router guard) and ignores the ambiguous 200.
 - **Desktop: launching on a configured machine (or right after finishing the setup wizard)
   killed the healthy backend with "setup status request failed: HTTP 404".** `/api/setup/**`
   is token-bypassed and therefore only mapped in SETUP mode, so an APP-mode backend answers
