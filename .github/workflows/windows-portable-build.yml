@@ -185,14 +185,15 @@ jobs:
       - name: Enable corepack (pinned Yarn 4 across the repo)
         run: corepack enable
 
+      # No `cache: yarn` here on purpose: on windows-latest the setup-node probe
+      # resolves C:\npm\prefix\yarn.cmd (bare Yarn 1.22.22) before any corepack
+      # shim — unlike ubuntu, where `corepack enable` overwrites the global yarn
+      # the probe finds. Every yarn call in this job is explicitly
+      # `corepack yarn ...`, so only the cache (seconds) is lost.
       - name: Set up Node 24.18.0
         uses: actions/setup-node@v5
         with:
           node-version: '24.18.0'
-          cache: yarn
-          cache-dependency-path: |
-            frontend/yarn.lock
-            desktop/electron/yarn.lock
 
       - name: Set up JDK 21 (for jlink)
         uses: actions/setup-java@v5
