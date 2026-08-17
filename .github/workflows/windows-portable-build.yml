@@ -111,6 +111,16 @@ jobs:
         run: yarn install --immutable
         working-directory: toolchain/cli
 
+      # Plugin ui-src builds portal @infinia/plugin-dev (link:../../../toolchain/dev).
+      # Its committed dist runtime-imports @infinia/plugin-sdk and vite, which Node
+      # resolves through the portal symlink's real path — i.e. from toolchain/dev's
+      # own node_modules. Required since the ui-src deps moved from npm file:-copies
+      # to Yarn link: portals; without this install every plugin vite config fails
+      # with ERR_MODULE_NOT_FOUND: @infinia/plugin-sdk.
+      - name: Install plugin dev-kit deps (portaled by plugin ui-src builds)
+        run: yarn install --immutable
+        working-directory: toolchain/dev
+
       - name: Build official plugins (.fyp via toolchain/cli)
         run: |
           for plugin in markdown excel email offlinepython; do
