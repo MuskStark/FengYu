@@ -257,6 +257,13 @@ CHANGELOG.md instead.
   candidates narrow to the chosen sheet.
 
 ### 🐛 Fixed
+- **A "fresh" directory silently adopted the config from `~/.fengyu` — the setup wizard never
+  appeared.** `DataSourceConfigService` probed legacy locations (`<cwd>`, `~/.fengyu`) and
+  migrated their `datasource.properties` into the runtime root on load, so once any run had
+  saved a config under `~/.fengyu`, every new portable extraction (or any directory the
+  desktop shell pins via `-Dfengyu.runtime.dir`) booted straight into APP mode and the main
+  window. An explicitly pinned runtime root now stays isolated — fresh directory, fresh
+  setup wizard; unpinned `java -jar` runs keep the legacy migration for upgrades.
 - **Setup wizard's restart detection raced the dying SETUP backend (main shell dead on
   arrival after setup).** The wizard polled `/api/setup/status` for `initialized:true`, but
   the still-exiting SETUP backend answers exactly that for its ~1s grace period (the config
