@@ -201,8 +201,13 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      # No --immutable here: Yarn's hash for the @infinia/plugin-sdk file:
+      # dependency is OS-dependent (fresh ubuntu checkout → hash=88230d, windows
+      # → hash=a38bab), so the single committed lock entry can never satisfy
+      # --immutable on both. The runner rewrites just that entry in its own
+      # copy; every registry dependency stays locked by yarn.lock.
       - name: Install frontend deps
-        run: corepack yarn install --immutable
+        run: corepack yarn install
         working-directory: frontend
 
       - name: Build frontend SPA
