@@ -64,6 +64,20 @@ describe('startBackend setup-mode probe', () => {
     expect(started.child.kill).not.toHaveBeenCalled()
   })
 
+  it('treats 404 as an already-configured APP-mode backend (definitive: no retry, no kill)', async () => {
+    // APP mode intentionally does not map /api/setup/** (token-bypassed wizard surface), so a
+    // healthy backend answering 404 there IS the "configured" answer — same contract as the
+    // SPA router guard. It must not be retried (it can never turn into a 200) nor kill the child.
+    const { startBackend } = await import('../src/backend/orchestrator')
+    const fetchImpl = vi.fn(async () => ({ ok: false, status: 404 })) as unknown as typeof fetch
+
+    const started = await startBackend({ layout: FAKE_LAYOUT, token: 't', requestedPort: 24056, fetchImpl })
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(started.setupMode).toBe(false)
+    expect(started.child.kill).not.toHaveBeenCalled()
+  })
+
   it('retries a failed probe instead of killing the healthy backend', async () => {
     const { startBackend } = await import('../src/backend/orchestrator')
     const fetchImpl = vi
