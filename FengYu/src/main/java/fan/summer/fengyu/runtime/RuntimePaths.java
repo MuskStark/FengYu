@@ -13,6 +13,14 @@ public final class RuntimePaths {
 
     public static final String ROOT_PROPERTY = "fengyu.runtime.dir";
 
+    /**
+     * Marker set once at JVM startup recording whether {@link #ROOT_PROPERTY} was provided by
+     * the operator (vs normalized programmatically by {@code HeadlessLauncher}'s static init,
+     * which sets it unconditionally). An explicitly pinned runtime root must stay isolated —
+     * {@code DataSourceConfigService} suppresses legacy-config adoption for pinned roots.
+     */
+    public static final String PINNED_MARKER_PROPERTY = "fengyu.runtime.pinned";
+
     private RuntimePaths() {}
 
     public static Path root() {

@@ -248,6 +248,25 @@ class DataSourceConfigServiceTest {
         assertTrue(Files.isRegularFile(stableRoot.resolve("config/datasource.properties")));
     }
 
+    @Test
+    void legacyBaseDirs_pinnedRuntimeRoot_isEmpty() {
+        // The desktop shell pins fengyu.runtime.dir on every launch; a fresh pinned root
+        // (e.g. a new portable-extraction directory) must not adopt any legacy config.
+        assertTrue(DataSourceConfigService.legacyBaseDirs(true).isEmpty());
+    }
+
+    @Test
+    void legacyBaseDirs_unpinned_probesWorkingDirectoryAndUserHome() {
+        List<Path> dirs = DataSourceConfigService.legacyBaseDirs(false);
+        assertEquals(2, dirs.size());
+        assertEquals(
+                Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize(),
+                dirs.get(0).toAbsolutePath().normalize());
+        assertEquals(
+                Path.of(System.getProperty("user.home"), ".fengyu").toAbsolutePath().normalize(),
+                dirs.get(1).toAbsolutePath().normalize());
+    }
+
     // ---- URL-component injection hardening ----------------------------------------------
 
     @Test
