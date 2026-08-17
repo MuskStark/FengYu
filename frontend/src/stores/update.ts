@@ -22,14 +22,21 @@ export const useUpdateStore = defineStore('update', () => {
   const downloading = ref(false)
   const downloadPercent = ref(0)
   const error = ref(false)
+  /** Real failure reason from the last check/install (backend 4xx/5xx body or IPC error). */
+  const errorMessage = ref('')
   const lastChecked = ref<number | undefined>(undefined)
   /** Set when a user-initiated install returns the macOS manual path (unsigned Gatekeeper). */
   const manualRequired = ref(false)
+
+  function describe(e: unknown): string {
+    return e instanceof Error ? e.message : String(e)
+  }
 
   async function check(force = false): Promise<void> {
     if (checking.value) return
     checking.value = true
     error.value = false
+    errorMessage.value = ''
     try {
       if (isDesktop()) {
         const r = await window.fengyu!.checkForUpdates()
@@ -48,9 +55,12 @@ export const useUpdateStore = defineStore('update', () => {
         portableMode.value = r.portableMode
       }
       lastChecked.value = Date.now()
-    } catch {
+    } catch (e) {
       // Update check must never disrupt the UI — degrade silently (badge stays hidden).
+      // The reason is kept so the About page can show WHY the check failed (e.g. a
+      // 503 from the update proxy) instead of a bare "failed".
       error.value = true
+      errorMessage.value = describe(e)
     } finally {
       checking.value = false
     }
@@ -60,6 +70,7 @@ export const useUpdateStore = defineStore('update', () => {
   async function agreeAndUpdate(): Promise<{ action: string; releaseUrl?: string } | void> {
     if (downloading.value) return
     error.value = false
+    errorMessage.value = ''
     manualRequired.value = false
 
     if (isDesktop()) {
@@ -75,8 +86,9 @@ export const useUpdateStore = defineStore('update', () => {
           return result
         }
         return result // 'restarting' — the app will quit and relaunch on its own
-      } catch {
+      } catch (e) {
         error.value = true
+        errorMessage.value = describe(e)
       } finally {
         offP()
         downloading.value = false
@@ -95,8 +107,9 @@ export const useUpdateStore = defineStore('update', () => {
     try {
       const result = await api.applyPortableUpdate()
       return result
-    } catch {
+    } catch (e) {
       error.value = true
+      errorMessage.value = describe(e)
     } finally {
       downloading.value = false
     }
@@ -112,6 +125,7 @@ export const useUpdateStore = defineStore('update', () => {
     downloading,
     downloadPercent,
     error,
+    errorMessage,
     lastChecked,
     manualRequired,
     check,
