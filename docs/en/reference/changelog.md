@@ -257,6 +257,14 @@ CHANGELOG.md instead.
   candidates narrow to the chosen sheet.
 
 ### 🐛 Fixed
+- **Settings page was a blank screen in production builds (dev worked).** Four i18n messages
+  (`settings.mcp.placeholderEnvironment/placeholderHeaders/placeholderArgumentsObject` and
+  `settings.guardHooksHint`) embed literal JSON examples, and their `{`/`}` was parsed by
+  vue-i18n's message compiler as placeholder syntax — INVALID_TOKEN_IN_PLACEHOLDER. The dev
+  build tolerates the compile error (warn + raw-message fallback), but the production build
+  throws `SyntaxError: 2` from the vendored Vue bundle, killing the whole Settings view (the
+  shell survives, the page body dies). The literal braces are now escaped with vue-i18n's
+  `{'{'}`/`{'}'}` literal syntax in both locales.
 - **A "fresh" directory silently adopted the config from `~/.fengyu` — the setup wizard never
   appeared.** `DataSourceConfigService` probed legacy locations (`<cwd>`, `~/.fengyu`) and
   migrated their `datasource.properties` into the runtime root on load, so once any run had
