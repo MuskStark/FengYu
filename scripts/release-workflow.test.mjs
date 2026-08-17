@@ -67,6 +67,39 @@ test('installs the Java plugin toolchain (sdk + devkit) before packaging officia
   assert.ok(install < pluginBuild, 'sdk + devkit must be installed before plugins are packaged')
 })
 
+test('installs toolchain/dev deps before building plugins (ui-src link: portals)', () => {
+  // Plugin ui-src builds portal @infinia/plugin-dev via a Yarn link: into toolchain/dev,
+  // whose committed dist runtime-imports @infinia/plugin-sdk and vite — resolved from
+  // toolchain/dev's own node_modules through the portal symlink's real path. Before the
+  // Yarn migration the ui-src deps were npm file:-copies (self-contained), so no workflow
+  // installed toolchain/dev; every plugin vite config then dies with
+  // ERR_MODULE_NOT_FOUND (2026-08-17 windows-portable run 31986878462).
+  const devInstall = buildRuntimeJob.indexOf("working-directory: toolchain/dev")
+  const pluginBuild = buildRuntimeJob.indexOf('Build official plugins')
+  assert.notEqual(devInstall, -1, 'build-runtime must install toolchain/dev deps')
+  assert.ok(devInstall < pluginBuild, 'toolchain/dev must be installed before plugins are packaged')
+})
+
+test('enables corepack before setup-node runs its yarn cache probe', () => {
+  // The runner images' global yarn is bare 1.22.22 (since 2026-08-16) and refuses to run in
+  // a project whose package.json pins "packageManager". setup-node's `cache: yarn` probe
+  // runs bare `yarn` inside each cache-dependency-path directory BEFORE any later
+  // `corepack enable` step, so corepack must come first in every job that enables the
+  // yarn cache (windows cannot be fixed this way — the desktop job disables the cache
+  // there instead).
+  for (const job of [buildRuntimeJob, desktopJob]) {
+    const corepack = job.indexOf('corepack enable')
+    // Plain `cache: yarn` (build-runtime) or the Windows-conditional cache
+    // expression (desktop matrix) both trigger the probe inside setup-node.
+    // Anchored to the line-start YAML attribute so explanatory comments
+    // mentioning "cache: yarn" don't match.
+    const cacheProbe = job.search(/^\s+cache: (\$\{\{|yarn)/m)
+    assert.notEqual(cacheProbe, -1, 'job must set up the yarn cache')
+    assert.notEqual(corepack, -1, 'job enabling the yarn cache must run corepack enable')
+    assert.ok(corepack < cacheProbe, 'corepack enable must precede setup-node (cache: yarn)')
+  }
+})
+
 test('builds Maven artifacts with the full release version', () => {
   assert.match(workflow, /\.\/mvnw -am test package -Drevision="\$VERSION"/)
   assert.doesNotMatch(workflow, /\.\/mvnw -am test package -Drevision="\$APP_VERSION"/)
@@ -151,11 +184,18 @@ test('end-to-end smoke stages official plugin checksum sidecars', () => {
 
 test('desktop job builds two variants and runs unit plus launch tests', () => {
   assert.match(desktopJob, /FENGYU_RELEASE_VERSION: \${{ needs\.setup\.outputs\.version }}/)
-  assert.match(desktopJob, /- name: Install frontend deps\s+run: corepack yarn install --immutable\s+working-directory: frontend/)
+  assert.match(desktopJob, /- name: Install frontend deps\s+run: corepack yarn install --no-immutable\s+working-directory: frontend/)
   assert.match(desktopJob, /- name: Install Electron binary\s+run: npx install-electron --no\s+working-directory: desktop\/electron\s+timeout-minutes: 15/)
   assert.match(desktopJob, /- name: Run desktop unit tests\s+run: corepack yarn test\s+working-directory: desktop\/electron/)
   assert.match(desktopJob, /FENGYU_DESKTOP_BUILD: '1'/)
   assert.match(desktopJob, /- name: Verify file-compatible frontend asset paths\s+run: corepack yarn run verify:frontend-dist/)
+  // Yarn 4's `yarn run` requires the project's install state (Yarn 1 didn't), so the
+  // verify script cannot run before desktop/electron's deps are installed
+  // (2026-08-17 windows-portable run 31989356980).
+  const desktopInstall = desktopJob.indexOf('- name: Install desktop deps')
+  const verify = desktopJob.indexOf('- name: Verify file-compatible frontend asset paths')
+  assert.notEqual(desktopInstall, -1, 'desktop job must install desktop deps')
+  assert.ok(desktopInstall < verify, 'desktop deps must be installed before verify:frontend-dist')
   assert.match(desktopJob, /xvfb-run -a corepack yarn run test:e2e/)
   // Windows E2E stalls post-launch (see run 30332280958); it is non-blocking so the
   // Windows desktop bundles still ship, while macOS E2E stays gating.
