@@ -114,6 +114,7 @@ const frontendDeps = [
             <template v-else-if="update.error">
               <span class="about-value about-value--error">{{ $t('update.error') }}</span>
               <button class="cx-btn cx-btn--tonal about-update__btn" @click="update.check(true)">{{ $t('update.retry') }}</button>
+              <span v-if="update.errorMessage" class="about-update__err-msg">{{ update.errorMessage }}</span>
             </template>
             <template v-else-if="update.updateAvailable">
               <span class="about-value">{{ $t('update.available', { version: update.latestVersion }) }}</span>
@@ -275,6 +276,15 @@ const frontendDeps = [
   color: #d9a441;
   max-width: 240px;
   text-align: right;
+}
+/* Failure reason from the update store — own line so long backend messages wrap. */
+.about-update__err-msg {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: rgb(var(--v-theme-error));
+  opacity: 0.85;
+  text-align: right;
+  word-break: break-word;
 }
 
 /* Reusable themed external link (matches cx-btn--tonal text color) */
