@@ -45,6 +45,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Before setup-node: its `cache: yarn` probe runs bare `yarn` in each
+      # cache-dependency-path directory, and the runner images' global yarn
+      # 1.22.22 refuses to run in a project pinning "packageManager" —
+      # corepack must be enabled first so the probe resolves Yarn 4.18.0.
+      # Yarn 4 (pinned via packageManager) manages the toolchain packages.
+      - run: corepack enable
       - uses: actions/setup-node@v4
         with:
           node-version: 24.18.0
@@ -59,8 +65,6 @@ jobs:
           java-version: '21'
           distribution: temurin
           cache: maven
-      # Yarn 4 (pinned via packageManager) manages the toolchain packages.
-      - run: corepack enable
       # SDK + dev plugin + CLI + UI tests.
       - run: cd toolchain/sdk-ts && yarn install --immutable && yarn test
       - run: cd toolchain/dev && yarn install --immutable && yarn test
@@ -134,6 +138,8 @@ jobs:
     environment: npm-publish
     steps:
       - uses: actions/checkout@v4
+      # Before setup-node (yarn-1 cache probe — see the verify job above).
+      - run: corepack enable
       - uses: actions/setup-node@v4
         with:
           node-version: 24.18.0
@@ -144,7 +150,6 @@ jobs:
             toolchain/ui/yarn.lock
             toolchain/dev/yarn.lock
             toolchain/cli/yarn.lock
-      - run: corepack enable
       # Publish order respects the dependency graph: SDK → UI (peers SDK) → dev (peers SDK) → CLI.
       # Authentication is a long-lived NPM_TOKEN (repo secret, Automation type so it bypasses 2FA):
       # actions/setup-node wires it into ~/.npmrc as NODE_AUTH_TOKEN. `--provenance` still works

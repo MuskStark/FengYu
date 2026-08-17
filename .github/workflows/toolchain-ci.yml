@@ -39,6 +39,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Before setup-node: its `cache: yarn` probe runs bare `yarn` in each
+      # cache-dependency-path directory, and the runner images' global yarn
+      # 1.22.22 refuses to run in a project pinning "packageManager" —
+      # corepack must be enabled first so the probe resolves Yarn 4.18.0.
+      - run: corepack enable
+
       - uses: actions/setup-node@v4
         with:
           node-version: 24.18.0
@@ -55,8 +61,6 @@ jobs:
           java-version: '21'
           distribution: temurin
           cache: maven
-
-      - run: corepack enable
 
       # --- SDK: typecheck-free, vitest unit tests ---
       - run: cd toolchain/sdk-ts && yarn install --immutable && yarn test
@@ -109,6 +113,8 @@ jobs:
         plugin: [markdown, excel, email, offlinepython]
     steps:
       - uses: actions/checkout@v4
+      # Before setup-node (yarn-1 cache probe — see the build job above).
+      - run: corepack enable
       - uses: actions/setup-node@v4
         with:
           node-version: 24.18.0
@@ -122,7 +128,6 @@ jobs:
           java-version: '21'
           distribution: temurin
           cache: maven
-      - run: corepack enable
       # The Java SDK is independently versioned (1.0.0) but stays in the reactor,
       # so a local install makes it resolvable without a GitHub Packages token.
       - run: ./mvnw -pl toolchain/sdk-java install -DskipTests
@@ -130,6 +135,10 @@ jobs:
       # resolves to ./dist/index.js — dist/ is gitignored, so build it here first.
       - run: cd toolchain/ui && yarn install --immutable && yarn run build
       - run: cd toolchain/cli && yarn install --immutable
+      # Plugin ui-src builds portal @infinia/plugin-dev (link: into toolchain/dev),
+      # whose committed dist runtime-imports @infinia/plugin-sdk and vite from
+      # toolchain/dev's own node_modules — install them before the CLI builds.
+      - run: cd toolchain/dev && yarn install --immutable
       - run: node toolchain/cli/bin/fengyu.mjs build OfficialPlugins/plugin-${{ matrix.plugin }}
       - name: Upload .fyp
         uses: actions/upload-artifact@v4
@@ -143,6 +152,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Before setup-node (yarn-1 cache probe — see the build job above).
+      - run: corepack enable
       - uses: actions/setup-node@v4
         with:
           node-version: 24.18.0
@@ -154,5 +165,4 @@ jobs:
             toolchain/cli/yarn.lock
       - uses: actions/setup-java@v5
         with: { java-version: '21', distribution: temurin, cache: maven }
-      - run: corepack enable
       - run: scripts/plugin-tooling-local-smoke.sh
