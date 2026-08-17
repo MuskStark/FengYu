@@ -20,12 +20,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Before setup-node: its `cache: yarn` probe runs bare `yarn` in the
+      # cache-dependency-path directory, and the runner images' global yarn
+      # 1.22.22 refuses to run in a project pinning "packageManager" —
+      # corepack must be enabled first so the probe resolves Yarn 4.18.0.
+      - run: corepack enable
       - uses: actions/setup-node@v4
         with:
           node-version: 24.18.0
           cache: yarn
           cache-dependency-path: docs/yarn.lock
-      - run: corepack enable
       - run: corepack yarn install --immutable
         working-directory: docs
       - run: corepack yarn run build
