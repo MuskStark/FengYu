@@ -68,6 +68,11 @@ export async function startBackend(opts: StartBackendOptions): Promise<StartedBa
  * /api/health for a while, so a merely *slow* first /api/setup/status response (GC pause, lazy
  * handler init) must never get a healthy backend killed: each attempt gets a generous 10s timeout
  * and a failure is retried once before startBackend treats the probe as genuinely broken.
+ *
+ * A 404 is NOT a failure: /api/setup/** is token-bypassed and therefore only mapped in the
+ * SETUP-mode context (FengYuApplication excludes SetupController). A backend that just passed
+ * the health probe on the same port+token yet 404s here is an already-configured APP-mode
+ * backend — definitive, no retry. Mirrors the SPA router guard's 404 handling.
  */
 async function probeSetupMode(
   port: number,
@@ -99,6 +104,10 @@ async function checkSetupMode(
       headers: { 'X-FengYu-Token': token },
       signal: controller.signal,
     })
+    if (resp.status === 404) {
+      // APP mode does not serve /api/setup/** — see probeSetupMode. Already configured.
+      return false
+    }
     if (!resp.ok) {
       throw new Error(`setup status request failed: HTTP ${resp.status}`)
     }

@@ -243,6 +243,13 @@ All notable changes to FengYu. Format based on [Keep a Changelog](https://keepac
   candidates narrow to the chosen sheet.
 
 ### 🐛 Fixed
+- **Desktop: launching on a configured machine (or right after finishing the setup wizard)
+  killed the healthy backend with "setup status request failed: HTTP 404".** `/api/setup/**`
+  is token-bypassed and therefore only mapped in SETUP mode, so an APP-mode backend answers
+  404 there by design — the desktop shell's startup probe treated that as fatal (and the
+  SETUP→APP restart after the wizard hit the same probe), while the SPA router guard already
+  read 404 as "already configured". The desktop probe now does the same: 404 → APP mode,
+  other statuses stay fatal.
 - **Drag-connect on the canvas.** Flowise's NodeInputHandle color bar (the 5×20 vertical strip)
   broke vue-flow's drop hit-test — `elementFromPoint` landed on the bar's inner div instead of
   the handle, so no connection ever fired. The input handle is now a small node-colored dot
