@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { useSetupStore } from '@/stores/setup'
 import { useConnectionStore } from '@/stores/connection'
 import { api } from '@/api/client'
+import { isAxiosError } from 'axios'
 
 const router = useRouter()
 const setup = useSetupStore()
@@ -66,12 +67,18 @@ async function waitForRestart() {
     try {
       const h = await api.health()
       if (h.status !== 'ok') continue
-      const status = await api.getSetupStatus()
-      if (status.initialized) {
+      // A 200 from /api/setup/status is NOT success: APP mode does not serve /api/setup/**
+      // (token-bypassed wizard surface — same contract the router guard relies on), while
+      // the still-exiting SETUP backend answers 200 `initialized:true` for its ~1s grace
+      // period because the config was just persisted. Navigating on that signal mounts the
+      // main shell against a backend that 404s every app API. Only the 404 confirms the
+      // restarted backend is in APP mode.
+      await api.getSetupStatus()
+    } catch (err) {
+      if (isAxiosError(err) && err.response?.status === 404) {
         back = true
         break
       }
-    } catch {
       // Backend still down — keep polling.
     }
   }
