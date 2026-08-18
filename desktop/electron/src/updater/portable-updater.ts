@@ -2,14 +2,15 @@ import { app } from 'electron'
 import { spawn, spawnSync } from 'node:child_process'
 import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { tmpdir } from 'node:os'
 import { dirname, join, win32 as windowsPath } from 'node:path'
+import { runtimeRoot } from '../desktop/runtime-paths'
+import { logUpdate, updateLogPath } from './update-log'
 
 const PORTABLE_MARKER = 'fengyu-portable-zip'
 
 /**
  * Hard cap on the portable zip download, mirroring the backend's MAX_JAR_BYTES (512 MB) in
- * SelfUpdateService: a corrupt or malicious feed must never stream unbounded bytes into the temp
+ * SelfUpdateService: a corrupt or malicious feed must never stream unbounded bytes into the
  * staging area. Enforced twice — against a declared Content-Length before any byte is read, and
  * against the bytes actually received (the header is a claim, not a fact).
  */
@@ -21,9 +22,13 @@ const MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024
  * electron-updater cannot update a portable/zip build — its NsisUpdater is hardcoded to run a
  * `-setup.exe` installer with `elevate.exe` + `app-update.yml`, none of which exist in a
  * portable zip. This module implements the full pipeline ourselves: check the latest GitHub
- * release, download the new portable zip, extract it (via the system `tar`, available on
- * Windows 10 1803+), then spawn a detached `.bat` that waits for this app to exit, robocopies
- * the new tree over the old one, and relaunches `Infinia.exe`.
+ * release (or FY-Proxy mirror), download the new portable zip, extract it (via the system
+ * `tar`, available on Windows 10 1803+), then spawn a detached `.bat` that waits for this app
+ * to exit, robocopies the new tree over the old one, and relaunches `Infinia.exe`.
+ *
+ * Every step appends to `<cwd>/.fengyu/logs/update.log` (see updater/update-log.ts); the
+ * replace script and the download staging dir live under the app's own runtime tree, never
+ * %TEMP% — intranet machines commonly block executing scripts from temp directories.
  */
 
 export interface PortableUpdateInfo {
@@ -96,7 +101,9 @@ export async function checkPortableUpdate(
   repo = 'MuskStark/FengYu',
   fetchImpl: typeof fetch = fetch,
 ): Promise<PortableUpdateInfo | null> {
-  const resp = await fetchImpl(RELEASES_API(repo), {
+  const feedUrl = RELEASES_API(repo)
+  logUpdate(`[check] probing latest release: current ${currentVersion()}, feed ${feedUrl}`)
+  const resp = await fetchImpl(feedUrl, {
     headers: { 'User-Agent': 'FengYu-Updater', Accept: 'application/vnd.github+json' },
   })
   if (!resp.ok) throw new Error(`Release check returned HTTP ${resp.status}`)
@@ -105,12 +112,21 @@ export async function checkPortableUpdate(
   const release: GitHubRelease | null = Array.isArray(body)
     ? body.length > 0 ? body[0] : null
     : body
-  if (!release) return null
+  if (!release) {
+    logUpdate('[check] feed returned no release — no update')
+    return null
+  }
   const latest = stripLeadingV(release.tag_name)
   const expectedName = `Infinia-${latest}-win32-x64-portable.zip`
   const asset = (release.assets ?? []).find((a) => a.name === expectedName)
-  if (!asset) return null
-  if (compareVersions(latest, currentVersion()) <= 0) return null
+  if (!asset) {
+    logUpdate(`[check] release ${release.tag_name} has no ${expectedName} asset — no update`)
+    return null
+  }
+  if (compareVersions(latest, currentVersion()) <= 0) {
+    logUpdate(`[check] latest ${latest} is not newer than current ${currentVersion()} — up to date`)
+    return null
+  }
   const sha256 = parseSha256Digest(asset.digest)
   if (process.env.FENGYU_UPDATE_API_BASE && !sha256) {
     throw new Error('FY-Proxy portable update metadata is missing a valid SHA-256 digest')
@@ -124,6 +140,7 @@ export async function checkPortableUpdate(
       `Refusing portable update served over plain HTTP without a SHA-256 digest: ${asset.browser_download_url}`,
     )
   }
+  logUpdate(`[check] update available: ${currentVersion()} -> ${latest} (${expectedName})`)
   return {
     version: latest,
     zipUrl: asset.browser_download_url,
@@ -136,31 +153,56 @@ export async function checkPortableUpdate(
 /**
  * Download the portable zip and extract it into a staging dir. `onProgress(percent)` fires
  * during download (0–100). Returns the extracted directory (which contains `Infinia.exe`).
+ *
+ * The staging dir lives under the app's runtime tree (`.fengyu/update-staging-*`), NOT %TEMP%:
+ * the replace script robocopies from it after the shell exits, and temp-cleaning policies or
+ * script-execution blocks on intranet machines would break the copy mid-flight.
  */
 export async function downloadAndExtractPortable(
   info: PortableUpdateInfo,
   onProgress: (percent: number) => void = () => {},
   fetchImpl: typeof fetch = fetch,
 ): Promise<string> {
-  const staging = mkdtempSync(join(tmpdir(), 'fengyu-portable-update-'))
+  const staging = mkdtempSync(windowsPath.join(runtimeRoot(), 'update-staging-'))
   const zipPath = join(staging, 'portable.zip')
   const extractDir = join(staging, 'extracted')
+  logUpdate(`[extract] staging dir ${staging}`)
 
   try {
-    await downloadFile(info.zipUrl, zipPath, info.sha256, onProgress, fetchImpl)
+    // Progress milestones are logged at 25% steps (the renderer gets every tick); enough to
+    // see a stall in the log without one line per chunk.
+    let lastMilestone = 0
+    const progress = (percent: number) => {
+      onProgress(percent)
+      const milestone = Math.floor(percent / 25) * 25
+      if (milestone > lastMilestone) {
+        lastMilestone = milestone
+        logUpdate(`[download] ${percent}%`)
+      }
+    }
+    await downloadFile(info.zipUrl, zipPath, info.sha256, progress, fetchImpl)
     mkdirSync(extractDir, { recursive: true })
+    logUpdate(`[extract] extracting zip via tar into ${extractDir}`)
     // Windows 10 1803+ ships bsdtar as tar.exe; it handles .zip archives natively.
     const result = spawnSync('tar', ['-xf', zipPath, '-C', extractDir], { windowsHide: true })
     if (result.status !== 0) {
+      logUpdate(`[extract] FAILED: tar exit ${result.status}: ${String(result.stderr || result.stdout).slice(0, 500)}`)
       throw new Error(
         `tar extraction failed (status ${result.status}): ${String(result.stderr || result.stdout)}`,
       )
     }
     // The zip may extract into a top-level folder (Infinia-<version>-win-x64-portable/) or flat.
     const exeFlat = join(extractDir, 'Infinia.exe')
-    if (existsSync(exeFlat)) return extractDir
+    if (existsSync(exeFlat)) {
+      logUpdate(`[extract] staged new tree (flat layout) at ${extractDir}`)
+      return extractDir
+    }
     const nested = findNestedExe(extractDir)
-    if (nested) return dirname(nested)
+    if (nested) {
+      logUpdate(`[extract] staged new tree (nested layout) at ${dirname(nested)}`)
+      return dirname(nested)
+    }
+    logUpdate(`[extract] FAILED: no Infinia.exe in the extracted archive`)
     throw new Error('Extracted archive does not contain Infinia.exe')
   } finally {
     // The zip file itself is no longer needed; keep the extracted dir for applyPortableUpdate.
@@ -169,11 +211,17 @@ export async function downloadAndExtractPortable(
 }
 
 /**
- * Spawn a detached `.bat` that waits for this app's PID to exit, robocopies the new tree over
- * the old directory, then relaunches Infinia.exe. Call `app.quit()` immediately after — the
- * script owns the rest. Waiting for PID death is mandatory: before-quit's tree-kill of the
- * backend JVM is fire-and-forget, and the JAR/exe file locks are not released until those
- * processes are actually gone.
+ * Write the replace script into the APP ROOT and spawn it detached. The script waits for this
+ * app's PID to exit, robocopies the new tree over the old directory, then relaunches
+ * Infinia.exe. Call `app.quit()` immediately after — the script owns the rest. Waiting for PID
+ * death is mandatory: before-quit's tree-kill of the backend JVM is fire-and-forget, and the
+ * JAR/exe file locks are not released until those processes are actually gone.
+ *
+ * The script lives at `<appRoot>/fengyu-portable-update.bat` (NOT %TEMP%): intranet/EDR
+ * policies commonly block executing scripts from temp directories — the silent killer where
+ * the replace never even starts. A fixed name lets the next attempt overwrite a stale script.
+ * Every step of the script appends to `.fengyu/logs/update.log` — the SAME file the
+ * main-process stages wrote to, so one file reconstructs the entire update.
  *
  * The wait loop is hardened against the two field failures of a bare `tasklist | find <pid>`
  * loop (seen as an install stuck on a "find <pid>" console):
@@ -185,43 +233,49 @@ export async function downloadAndExtractPortable(
  * tasklist/find/taskkill are invoked by absolute path: a PATH-shadowing `find.exe` (Git for
  * Windows, GnuWin) sits ahead of System32 and breaks the match. Delays use `ping`, not
  * `timeout`, which errors immediately without a console input handle and would busy-spin the
- * loop. Every step appends to a log beside the script for post-mortem.
+ * loop.
  */
 export function applyPortableUpdate(extractDir: string): void {
   const appRoot = resolveAppRoot()
   const exeName = windowsPath.basename(app.getPath('exe'))
   const pid = process.pid
-  const logFile = join(tmpdir(), `fengyu-portable-update-${pid}.log`)
-  const scriptPath = join(tmpdir(), `fengyu-portable-update-${pid}.bat`)
+  const scriptPath = windowsPath.join(appRoot, 'fengyu-portable-update.bat')
+  const logPath = updateLogPath()
+  logUpdate(
+    `[apply] replace script written to ${scriptPath}; it will wait on PID ${pid} (${exeName}), ` +
+      `robocopy from ${extractDir} into ${appRoot}, then relaunch. Script steps continue in this log.`,
+  )
 
   const bat = [
     '@echo off',
-    `REM Auto-generated portable self-update. PID ${pid}.`,
+    `REM Auto-generated Infinia portable self-update. Old PID ${pid}, generated ${new Date().toISOString()}.`,
     'chcp 65001 >nul',
-    `set "LOG=${logFile}"`,
-    `echo [%DATE% %TIME%] waiting for PID ${pid} (${exeName}) to exit >> "%LOG%"`,
+    `set "LOG=${logPath}"`,
+    `echo [%DATE% %TIME%] [replace] waiting for old PID ${pid} (${exeName}) to exit >> "%LOG%"`,
     'set /a tries=0',
     ':waitold',
     `%SystemRoot%\\System32\\tasklist.exe /FI "PID eq ${pid}" /FI "IMAGENAME eq ${exeName}" 2>nul | %SystemRoot%\\System32\\find.exe "${pid}" >nul`,
     'if errorlevel 1 goto waitdone',
     'set /a tries+=1',
+    'if %tries% equ 1 echo [%DATE% %TIME%] [replace] old process still present (poll 1) >> "%LOG%"',
     'if %tries% geq 90 (',
-    `  echo [%DATE% %TIME%] PID ${pid} still alive after ~90 polls, force-killing >> "%LOG%"`,
+    `  echo [%DATE% %TIME%] [replace] PID ${pid} still alive after ~90 polls, force-killing process tree >> "%LOG%"`,
     `  %SystemRoot%\\System32\\taskkill.exe /F /T /PID ${pid} >> "%LOG%" 2>&1`,
     '  goto waitdone',
     ')',
     'ping -n 2 127.0.0.1 >nul',
     'goto waitold',
     ':waitdone',
-    'REM Give the OS a beat to release file handles after the process exited.',
+    'echo [%DATE% %TIME%] [replace] old process gone after %tries% polls, holding 2s for file handles >> "%LOG%"',
     'ping -n 3 127.0.0.1 >nul',
-    `echo [%DATE% %TIME%] robocopy "${extractDir}" into "${appRoot}" >> "%LOG%"`,
+    `echo [%DATE% %TIME%] [replace] robocopy "${extractDir}" into "${appRoot}" starting (retries bounded: 5 x 2s) >> "%LOG%"`,
     // /R:5 /W:2 bounds robocopy's DEFAULT of a million retries x 30s — a still-locked file
     // must fail within seconds (and be logged) instead of hanging the script for days.
     `robocopy "${extractDir}" "${appRoot}" /E /R:5 /W:2 /NFL /NDL /NJH /NJS /NP >> "%LOG%" 2>&1`,
-    'echo [%DATE% %TIME%] robocopy exit code %ERRORLEVEL% >> "%LOG%"',
-    `echo [%DATE% %TIME%] relaunching ${exeName} >> "%LOG%"`,
+    'echo [%DATE% %TIME%] [replace] robocopy finished, exit code %ERRORLEVEL% (0-7 are success levels) >> "%LOG%"',
+    `echo [%DATE% %TIME%] [replace] relaunching ${exeName} >> "%LOG%"`,
     `start "" "${windowsPath.join(appRoot, 'Infinia.exe')}"`,
+    'echo [%DATE% %TIME%] [replace] update complete, removing script >> "%LOG%"',
     'del "%~f0"',
   ].join('\r\n')
   writeFileSync(scriptPath, bat, 'utf8')
@@ -233,6 +287,7 @@ export function applyPortableUpdate(extractDir: string): void {
     stdio: 'ignore',
   })
   child.unref()
+  logUpdate(`[apply] replace script spawned (cmd /c, hidden, detached); shell will quit next`)
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────
@@ -244,9 +299,11 @@ async function downloadFile(
   onProgress: (percent: number) => void,
   fetchImpl: typeof fetch,
 ): Promise<void> {
+  const startedAt = Date.now()
   const resp = await fetchImpl(url, { headers: { 'User-Agent': 'FengYu-Updater' } })
   if (!resp.ok || !resp.body) throw new Error(`Download failed: HTTP ${resp.status}`)
   const total = Number(resp.headers.get('content-length') || 0)
+  logUpdate(`[download] fetching ${url} (declared size ${total || 'unknown'} bytes)`)
   if (total > MAX_DOWNLOAD_BYTES) {
     // Declared over the cap: refuse before a single byte is streamed (release the connection
     // best-effort on the way out).
@@ -299,10 +356,16 @@ async function downloadFile(
       streamFailed,
     ])
     const actualSha256 = sha256.digest('hex')
+    logUpdate(
+      `[download] complete: ${received} bytes in ${Date.now() - startedAt} ms, sha256 ${actualSha256}` +
+        (expectedSha256 ? ` (feed declared ${expectedSha256})` : ' (no digest declared)'),
+    )
     if (expectedSha256 && actualSha256 !== expectedSha256) {
+      logUpdate(`[download] FAILED: sha256 mismatch — expected ${expectedSha256}, got ${actualSha256}`)
       throw new Error(`Portable update SHA-256 mismatch: expected ${expectedSha256}, got ${actualSha256}`)
     }
   } catch (err) {
+    logUpdate(`[download] FAILED after ${received} bytes: ${err instanceof Error ? err.message : String(err)}`)
     // Controlled failure on every path (cap hit, network error, write error, digest mismatch):
     // abort the transfer, tear down the stream, and drop the half-written zip so nothing
     // corrupt lingers in staging. The caller's finally repeats the file cleanup harmlessly.

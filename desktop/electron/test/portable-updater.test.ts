@@ -62,6 +62,11 @@ vi.mock('electron', () => ({
     getPath: vi.fn((name: string) => (name === 'exe' ? 'C:\\Infinia\\Infinia.exe' : 'C:\\Temp')),
   },
 }))
+// update-log writes into runtimeRoot()/logs; pin the runtime root so the generated bat's LOG
+// path is deterministic (and so tests never touch the real .fengyu tree).
+vi.mock('../src/desktop/runtime-paths', () => ({
+  runtimeRoot: () => 'C:\\Infinia\\.fengyu',
+}))
 vi.mock('node:child_process', () => ({
   spawn: vi.fn(() => ({ unref: vi.fn() })),
   spawnSync: vi.fn(() => ({ status: 0, stdout: '', stderr: '' })),
@@ -81,6 +86,7 @@ vi.mock('node:fs', () => ({
     return stream
   }),
   writeFileSync: vi.fn(),
+  appendFileSync: vi.fn(),
   rmSync: vi.fn(),
 }))
 
@@ -309,19 +315,26 @@ describe('applyPortableUpdate — replace-bat contract', () => {
   /**
    * The bat is the whole portable update engine once the shell exits; regressions here show up
    * in the field as an install stuck on a "find <pid>" console. Pin the load-bearing lines:
-   * PID+image wait, force-kill backstop, console-free delay, bounded robocopy retries, log.
+   * script lives in the app root (never %TEMP%), logs to .fengyu/logs/update.log, PID+image
+   * wait, force-kill backstop, console-free delay, bounded robocopy retries.
    */
-  it('waits on PID + image name with a force-kill backstop and bounded robocopy retries', async () => {
+  it('writes the script into the app root and logs every step to update.log', async () => {
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
     const { applyPortableUpdate } = await import('../src/updater/portable-updater')
-    applyPortableUpdate('C:\\Temp\\fengyu-update\\extracted')
+    applyPortableUpdate('C:\\Infinia\\.fengyu\\update-staging-x\\extracted')
 
     const fs = await import('node:fs')
     const batCall = (fs.writeFileSync as ReturnType<typeof vi.fn>).mock.calls.find(([p]) =>
       String(p).endsWith('.bat'),
     ) as [string, string]
     expect(batCall).toBeDefined()
+    // Script in the portable app root, NOT %TEMP% (intranet/EDR machines block temp scripts).
+    expect(batCall[0]).toBe('C:\\Infinia\\fengyu-portable-update.bat')
     const bat = batCall[1]
+
+    // All script steps append to the app's update.log — same file the main-process stages use.
+    expect(bat).toContain('set "LOG=C:\\Infinia\\.fengyu\\logs\\update.log"')
+    expect((bat.match(/>> "%LOG%"/g) || []).length).toBeGreaterThanOrEqual(6)
 
     // Match on PID AND image name so a reused PID can't pin the wait loop; absolute paths so a
     // PATH-shadowing find.exe (Git for Windows) can't break the match.
@@ -341,11 +354,9 @@ describe('applyPortableUpdate — replace-bat contract', () => {
     expect(bat).toContain('/R:5 /W:2')
     expect(bat).toContain('robocopy')
     expect(bat).toContain('start "" "C:\\Infinia\\Infinia.exe"')
-    // Steps are logged beside the script for post-mortem.
-    expect(bat).toContain('>> "%LOG%"')
 
     const cp = await import('node:child_process')
-    expect(cp.spawn).toHaveBeenCalledWith('cmd', ['/c', expect.stringContaining('.bat')], {
+    expect(cp.spawn).toHaveBeenCalledWith('cmd', ['/c', 'C:\\Infinia\\fengyu-portable-update.bat'], {
       detached: true,
       windowsHide: true,
       shell: false,
