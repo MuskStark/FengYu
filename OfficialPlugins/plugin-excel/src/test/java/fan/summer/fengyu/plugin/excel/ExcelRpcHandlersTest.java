@@ -372,6 +372,12 @@ class ExcelRpcHandlersTest {
             assertTrue(Files.exists(out1.resolve("race_r" + i + ".xlsx")),
                 "job 1 output redirected away from out1: race_r" + i + ".xlsx missing");
         }
+
+        // Job 2 must also be terminal before the test returns: its worker keeps writing into
+        // race-out-2 afterwards, which races JUnit's @TempDir cleanup (DirectoryNotEmptyException
+        // seen on CI even though job 1 was already awaited).
+        ExcelExecuteStatusOutput s2 = awaitTerminal(second.jobId());
+        assertEquals("DONE", s2.status(), "job 2 must finish independently: " + s2.error());
     }
 
     /** Poll a job to its terminal state (mirrors the host's status polling); fails on timeout. */
