@@ -60,6 +60,10 @@ vi.mock('../src/updater/portable-updater', () => ({
   downloadAndExtractPortable: vi.fn(),
   applyPortableUpdate: vi.fn(),
 }))
+// The ipc handler logs each portable-install step to update.log; keep unit tests off the real FS.
+vi.mock('../src/updater/update-log', () => ({
+  logUpdate: vi.fn(),
+}))
 
 const UPDATE_AVAILABLE = { updateInfo: { version: '9.9.9', releaseNotes: '' } }
 
