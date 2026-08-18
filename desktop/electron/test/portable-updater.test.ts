@@ -62,6 +62,10 @@ vi.mock('electron', () => ({
     getPath: vi.fn((name: string) => (name === 'exe' ? 'C:\\Infinia\\Infinia.exe' : 'C:\\Temp')),
   },
 }))
+vi.mock('node:child_process', () => ({
+  spawn: vi.fn(() => ({ unref: vi.fn() })),
+  spawnSync: vi.fn(() => ({ status: 0, stdout: '', stderr: '' })),
+}))
 vi.mock('node:fs', () => ({
   existsSync: vi.fn((p: string) => {
     if (typeof p === 'string' && p.endsWith('fengyu-portable-zip')) return PORTABLE_MARKER_EXISTS.value
@@ -298,6 +302,55 @@ describe('checkPortableUpdate', () => {
     const result = await checkPortableUpdate('MuskStark/FengYu', fakeFetch)
     expect(result).not.toBeNull()
     expect(result!.sha256).toBeNull()
+  })
+})
+
+describe('applyPortableUpdate — replace-bat contract', () => {
+  /**
+   * The bat is the whole portable update engine once the shell exits; regressions here show up
+   * in the field as an install stuck on a "find <pid>" console. Pin the load-bearing lines:
+   * PID+image wait, force-kill backstop, console-free delay, bounded robocopy retries, log.
+   */
+  it('waits on PID + image name with a force-kill backstop and bounded robocopy retries', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    const { applyPortableUpdate } = await import('../src/updater/portable-updater')
+    applyPortableUpdate('C:\\Temp\\fengyu-update\\extracted')
+
+    const fs = await import('node:fs')
+    const batCall = (fs.writeFileSync as ReturnType<typeof vi.fn>).mock.calls.find(([p]) =>
+      String(p).endsWith('.bat'),
+    ) as [string, string]
+    expect(batCall).toBeDefined()
+    const bat = batCall[1]
+
+    // Match on PID AND image name so a reused PID can't pin the wait loop; absolute paths so a
+    // PATH-shadowing find.exe (Git for Windows) can't break the match.
+    expect(bat).toContain(
+      `%SystemRoot%\\System32\\tasklist.exe /FI "PID eq ${process.pid}" /FI "IMAGENAME eq Infinia.exe"`,
+    )
+    expect(bat).toContain(`%SystemRoot%\\System32\\find.exe "${process.pid}"`)
+    // The wait is bounded: a stuck old process is force-killed after ~90 polls, not waited on
+    // forever.
+    expect(bat).toContain('if %tries% geq 90')
+    expect(bat).toContain(`%SystemRoot%\\System32\\taskkill.exe /F /T /PID ${process.pid}`)
+    // ping works without a console; timeout.exe errors immediately when the bat is spawned
+    // with a hidden/detached console and would busy-spin the loop.
+    expect(bat).toContain('ping -n 2 127.0.0.1')
+    expect(bat).not.toContain('timeout /t')
+    // robocopy's default is a million retries x 30s — a locked file must fail fast instead.
+    expect(bat).toContain('/R:5 /W:2')
+    expect(bat).toContain('robocopy')
+    expect(bat).toContain('start "" "C:\\Infinia\\Infinia.exe"')
+    // Steps are logged beside the script for post-mortem.
+    expect(bat).toContain('>> "%LOG%"')
+
+    const cp = await import('node:child_process')
+    expect(cp.spawn).toHaveBeenCalledWith('cmd', ['/c', expect.stringContaining('.bat')], {
+      detached: true,
+      windowsHide: true,
+      shell: false,
+      stdio: 'ignore',
+    })
   })
 })
 

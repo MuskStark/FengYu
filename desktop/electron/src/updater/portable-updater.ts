@@ -82,7 +82,8 @@ export function isWindowsPortable(): boolean {
 
 /** The directory containing `Infinia.exe` (the portable app root). */
 export function resolveAppRoot(): string {
-  return dirname(app.getPath('exe'))
+  // windowsPath (not the platform default) so the bat pipeline is testable off-Windows.
+  return windowsPath.dirname(app.getPath('exe'))
 }
 
 /** The current app version, e.g. `4.0.0-beta.1`. */
@@ -173,9 +174,22 @@ export async function downloadAndExtractPortable(
  * script owns the rest. Waiting for PID death is mandatory: before-quit's tree-kill of the
  * backend JVM is fire-and-forget, and the JAR/exe file locks are not released until those
  * processes are actually gone.
+ *
+ * The wait loop is hardened against the two field failures of a bare `tasklist | find <pid>`
+ * loop (seen as an install stuck on a "find <pid>" console):
+ *   - PID reuse — after the old process exits, Windows can hand its PID to an unrelated
+ *     process; the loop would then pin on a stranger that never exits. Matching the image
+ *     name too (`/FI "IMAGENAME eq ..."`) makes the loop end when OUR process is gone.
+ *   - A stuck old process (e.g. the quit was vetoed) — after ~90 polls the script force-kills
+ *     the old PID tree (`taskkill /F /T`) so file locks release and the update proceeds.
+ * tasklist/find/taskkill are invoked by absolute path: a PATH-shadowing `find.exe` (Git for
+ * Windows, GnuWin) sits ahead of System32 and breaks the match. Delays use `ping`, not
+ * `timeout`, which errors immediately without a console input handle and would busy-spin the
+ * loop. Every step appends to a log beside the script for post-mortem.
  */
 export function applyPortableUpdate(extractDir: string): void {
   const appRoot = resolveAppRoot()
+  const exeName = windowsPath.basename(app.getPath('exe'))
   const pid = process.pid
   const logFile = join(tmpdir(), `fengyu-portable-update-${pid}.log`)
   const scriptPath = join(tmpdir(), `fengyu-portable-update-${pid}.bat`)
@@ -184,17 +198,31 @@ export function applyPortableUpdate(extractDir: string): void {
     '@echo off',
     `REM Auto-generated portable self-update. PID ${pid}.`,
     'chcp 65001 >nul',
+    `set "LOG=${logFile}"`,
+    `echo [%DATE% %TIME%] waiting for PID ${pid} (${exeName}) to exit >> "%LOG%"`,
+    'set /a tries=0',
     ':waitold',
-    `tasklist /FI "PID eq ${pid}" 2>nul | find "${pid}" >nul`,
-    'if not errorlevel 1 (',
-    '  timeout /t 1 /nobreak >nul',
-    '  goto waitold',
+    `%SystemRoot%\\System32\\tasklist.exe /FI "PID eq ${pid}" /FI "IMAGENAME eq ${exeName}" 2>nul | %SystemRoot%\\System32\\find.exe "${pid}" >nul`,
+    'if errorlevel 1 goto waitdone',
+    'set /a tries+=1',
+    'if %tries% geq 90 (',
+    `  echo [%DATE% %TIME%] PID ${pid} still alive after ~90 polls, force-killing >> "%LOG%"`,
+    `  %SystemRoot%\\System32\\taskkill.exe /F /T /PID ${pid} >> "%LOG%" 2>&1`,
+    '  goto waitdone',
     ')',
+    'ping -n 2 127.0.0.1 >nul',
+    'goto waitold',
+    ':waitdone',
     'REM Give the OS a beat to release file handles after the process exited.',
-    'timeout /t 2 /nobreak >nul',
-    `robocopy "${extractDir}" "${appRoot}" /E /NFL /NDL /NJH /NJS /NP >nul 2>&1`,
-    `start "" "${join(appRoot, 'Infinia.exe')}"`,
-    `del "%~f0"`,
+    'ping -n 3 127.0.0.1 >nul',
+    `echo [%DATE% %TIME%] robocopy "${extractDir}" into "${appRoot}" >> "%LOG%"`,
+    // /R:5 /W:2 bounds robocopy's DEFAULT of a million retries x 30s — a still-locked file
+    // must fail within seconds (and be logged) instead of hanging the script for days.
+    `robocopy "${extractDir}" "${appRoot}" /E /R:5 /W:2 /NFL /NDL /NJH /NJS /NP >> "%LOG%" 2>&1`,
+    'echo [%DATE% %TIME%] robocopy exit code %ERRORLEVEL% >> "%LOG%"',
+    `echo [%DATE% %TIME%] relaunching ${exeName} >> "%LOG%"`,
+    `start "" "${windowsPath.join(appRoot, 'Infinia.exe')}"`,
+    'del "%~f0"',
   ].join('\r\n')
   writeFileSync(scriptPath, bat, 'utf8')
 
@@ -205,7 +233,6 @@ export function applyPortableUpdate(extractDir: string): void {
     stdio: 'ignore',
   })
   child.unref()
-  void logFile // log path reserved for debugging; bat output is suppressed via /NJS
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────
