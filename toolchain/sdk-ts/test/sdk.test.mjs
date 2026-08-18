@@ -167,3 +167,33 @@ test('a serialized file:// shellOrigin pins the bridge verbatim (packaged deskto
   c.dispose();
   fake.location.search=previousSearch;
 });
+test('a file:// pin also accepts the null serialization of inbound host messages (Electron)',async()=>{
+  // Inside packaged Electron builds (installed AND portable, every platform) the shell page
+  // runs on file:// and appends ?shellOrigin=file://, but Chromium serializes that parent's
+  // origin as the string 'null' in MessageEvent.origin seen by the iframe. Before this
+  // regression test the strict equality check dropped every host response and environment
+  // event: ready() fell back after its timeout, every invoke timed out, and theme/locale
+  // never followed the host. Both serializations must bridge; unrelated origins must not.
+  const previousSearch=fake.location.search;
+  fake.location.search='?shellOrigin=file%3A%2F%2F';
+  const shell=fake;
+  const c=new FengYuClient({target:shell,timeoutMs:100});
+  const ready=c.ready();
+  const sent=shell.sent.at(-1);
+  shell.emit({source:'fengyu-host',type:'response',id:sent.id,result:{protocolVersion:'3.0.0',pluginId:'demo',pluginVersion:'1.0.0',permissions:[],theme:'dark',locale:'zh-CN',platform:'desktop',capabilities:Object.values(HOST_METHODS)}},'null');
+  assert.equal((await ready).locale,'zh-CN');
+  shell.emit({source:'fengyu-host',type:'event',event:'environment',data:{theme:'light'}},'null');
+  assert.equal(c.currentEnvironment().theme,'light');
+  assert.equal(document.documentElement.dataset.theme,'light');
+  const p=c.invoke('ping',{});
+  const request=shell.sent.at(-1);
+  assert.equal(shell.lastTargetOrigin,'file://','outbound posts still target file://, never the literal "null"');
+  shell.emit({source:'fengyu-host',type:'response',id:request.id,result:{ok:true}},'null');
+  assert.deepEqual(await p,{ok:true});
+  const p2=c.invoke('ping',{});
+  const request2=shell.sent.at(-1);
+  shell.emit({source:'fengyu-host',type:'response',id:request2.id,result:{evil:true}},'https://evil.example');
+  await assert.rejects(p2,error=>error.code==='TIMEOUT');
+  c.dispose();
+  fake.location.search=previousSearch;
+});
