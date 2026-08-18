@@ -1,7 +1,9 @@
 name: Windows-Portable-Build
 
-# Build ONLY the Windows portable desktop packages (with + without bundled JRE)
-# and upload them as workflow artifacts. Never creates or touches a GitHub Release.
+# Build ONLY the Windows portable desktop packages and upload them as workflow
+# artifacts. Never creates or touches a GitHub Release. By default builds both
+# the lite (system-JRE) and bundled-JRE zips; dispatch with with_jre=false to
+# skip the jlink pass and ship only the lite zip.
 #
 # Mirrors the build-runtime + desktop jobs of fengyu-release.yml, trimmed to
 # Windows and with the release job replaced by artifact upload. When a step
@@ -14,6 +16,11 @@ on:
         description: 'Branch / tag to build (default: current branch)'
         required: false
         default: ''
+      with_jre:
+        description: 'Also build the bundled-JRE portable zip'
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -265,6 +272,7 @@ jobs:
         run: npx electron-builder --win zip --publish never --config.directories.output=../dist-electron-lite
 
       - name: Generate jlink JRE
+        if: ${{ inputs.with_jre }}
         shell: bash
         run: |
           desktop/electron/scripts/build-jre.sh \
@@ -272,17 +280,29 @@ jobs:
             desktop/electron/resources/jre
 
       - name: Build Electron bundle (with JRE)
+        if: ${{ inputs.with_jre }}
         working-directory: desktop/electron
         shell: bash
         env:
           FENGYU_WINDOWS_PORTABLE_ZIP: '1'
         run: npx electron-builder --win zip --publish never --config electron-builder.jre.yml
 
+      # Same artifact name either way, so artifact consumers don't care which
+      # dispatch mode produced it.
       - name: Upload Windows portable zips
+        if: ${{ inputs.with_jre }}
         uses: actions/upload-artifact@v4
         with:
           name: infinia-windows-portable
           path: |
             desktop/dist-electron-lite/*-portable.zip
             desktop/dist-electron-jre/*-portable.zip
+          if-no-files-found: error
+
+      - name: Upload Windows portable zip (lite only)
+        if: ${{ !inputs.with_jre }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: infinia-windows-portable
+          path: desktop/dist-electron-lite/*-portable.zip
           if-no-files-found: error
