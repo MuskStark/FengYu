@@ -28,31 +28,35 @@ const wcEvents: Record<string, (e: { preventDefault: () => void }, url?: string)
 vi.mock('electron', () => ({
   nativeImage: { createFromBuffer },
   shell: { openExternal: shellOpenExternal },
-  BrowserWindow: vi.fn().mockImplementation(() => ({
-    isDestroyed: () => false,
-    destroy: vi.fn(),
-    webContents: {
-      loadURL,
-      executeJavaScript: execJs,
-      capturePage,
-      isLoading: () => false,
-      once: vi.fn(),
-      on: vi.fn((evt: string, fn: (e: { preventDefault: () => void }, url?: string) => void) => {
-        wcEvents[evt] = fn
-      }),
-      setWindowOpenHandler: vi.fn((fn: (details: { url: string }) => { action: string }) => {
-        openHandler = fn
-      }),
-      debugger: {
-        attach,
-        detach,
-        isAttached,
-        sendCommand,
+  // Vitest 4 spies no longer construct when the implementation is an arrow function,
+  // and the SUT calls `new BrowserWindow(...)` — keep the implementation constructible.
+  BrowserWindow: vi.fn().mockImplementation(function () {
+    return {
+      isDestroyed: () => false,
+      destroy: vi.fn(),
+      webContents: {
+        loadURL,
+        executeJavaScript: execJs,
+        capturePage,
+        isLoading: () => false,
+        once: vi.fn(),
+        on: vi.fn((evt: string, fn: (e: { preventDefault: () => void }, url?: string) => void) => {
+          wcEvents[evt] = fn
+        }),
+        setWindowOpenHandler: vi.fn((fn: (details: { url: string }) => { action: string }) => {
+          openHandler = fn
+        }),
+        debugger: {
+          attach,
+          detach,
+          isAttached,
+          sendCommand,
+        },
+        getURL: () => 'https://example.com',
+        getTitle: () => 'Example',
       },
-      getURL: () => 'https://example.com',
-      getTitle: () => 'Example',
-    },
-  })),
+    }
+  }),
 }))
 
 // Import AFTER mocks are registered.
