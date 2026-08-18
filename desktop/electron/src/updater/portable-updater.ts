@@ -223,13 +223,23 @@ export async function downloadAndExtractPortable(
  * Every step of the script appends to `.fengyu/logs/update.log` — the SAME file the
  * main-process stages wrote to, so one file reconstructs the entire update.
  *
+ * The script is launched THROUGH `wscript.exe` + a generated .vbs that runs it with a HIDDEN
+ * window — never `cmd` directly, even with windowsHide. Field evidence (2026-08-18): Electron
+ * spawns that ignore windowsHide leave a VISIBLE console; the moment anyone clicks it,
+ * QuickEdit selection suspends its conhost, and every console-subsystem child of the script
+ * (tasklist, find) then blocks forever in console init — the script froze on poll 1 with a
+ * zombie old shell still holding the app dir. wscript is GUI-subsystem (no console to click),
+ * and the .vbs `Run ..., 0` keeps cmd's own window invisible. Falls back to a direct cmd
+ * spawn only if wscript cannot be spawned at all.
+ *
  * The wait loop is hardened against the two field failures of a bare `tasklist | find <pid>`
  * loop (seen as an install stuck on a "find <pid>" console):
  *   - PID reuse — after the old process exits, Windows can hand its PID to an unrelated
  *     process; the loop would then pin on a stranger that never exits. Matching the image
  *     name too (`/FI "IMAGENAME eq ..."`) makes the loop end when OUR process is gone.
- *   - A stuck old process (e.g. the quit was vetoed) — after ~90 polls the script force-kills
- *     the old PID tree (`taskkill /F /T`) so file locks release and the update proceeds.
+ *   - A stuck old process (field-confirmed zombie main at ~5 MB surviving the quit) — after
+ *     ~15 polls the script force-kills the old PID tree (`taskkill /F /T`) so file locks
+ *     release and the update proceeds.
  * tasklist/find/taskkill are invoked by absolute path: a PATH-shadowing `find.exe` (Git for
  * Windows, GnuWin) sits ahead of System32 and breaks the match. Delays use `ping`, not
  * `timeout`, which errors immediately without a console input handle and would busy-spin the
@@ -241,10 +251,6 @@ export function applyPortableUpdate(extractDir: string): void {
   const pid = process.pid
   const scriptPath = windowsPath.join(appRoot, 'fengyu-portable-update.bat')
   const logPath = updateLogPath()
-  logUpdate(
-    `[apply] replace script written to ${scriptPath}; it will wait on PID ${pid} (${exeName}), ` +
-      `robocopy from ${extractDir} into ${appRoot}, then relaunch. Script steps continue in this log.`,
-  )
 
   const bat = [
     '@echo off',
@@ -258,8 +264,8 @@ export function applyPortableUpdate(extractDir: string): void {
     'if errorlevel 1 goto waitdone',
     'set /a tries+=1',
     'if %tries% equ 1 echo [%DATE% %TIME%] [replace] old process still present (poll 1) >> "%LOG%"',
-    'if %tries% geq 90 (',
-    `  echo [%DATE% %TIME%] [replace] PID ${pid} still alive after ~90 polls, force-killing process tree >> "%LOG%"`,
+    'if %tries% geq 15 (',
+    `  echo [%DATE% %TIME%] [replace] PID ${pid} still alive after ~15 polls, force-killing process tree >> "%LOG%"`,
     `  %SystemRoot%\\System32\\taskkill.exe /F /T /PID ${pid} >> "%LOG%" 2>&1`,
     '  goto waitdone',
     ')',
@@ -275,19 +281,47 @@ export function applyPortableUpdate(extractDir: string): void {
     'echo [%DATE% %TIME%] [replace] robocopy finished, exit code %ERRORLEVEL% (0-7 are success levels) >> "%LOG%"',
     `echo [%DATE% %TIME%] [replace] relaunching ${exeName} >> "%LOG%"`,
     `start "" "${windowsPath.join(appRoot, 'Infinia.exe')}"`,
-    'echo [%DATE% %TIME%] [replace] update complete, removing script >> "%LOG%"',
+    'echo [%DATE% %TIME%] [replace] update complete, removing script and launcher >> "%LOG%"',
+    'del "%~dp0fengyu-portable-update.vbs" 2>nul',
     'del "%~f0"',
   ].join('\r\n')
   writeFileSync(scriptPath, bat, 'utf8')
 
-  const child = spawn('cmd', ['/c', scriptPath], {
-    detached: true,
-    windowsHide: true,
-    shell: false,
-    stdio: 'ignore',
+  // UTF-16 LE + BOM: wscript reads ANSI unless the file carries a BOM — a non-ASCII app path
+  // (Chinese directory names are common on field machines) would mojibake in ANSI.
+  const vbsPath = windowsPath.join(appRoot, 'fengyu-portable-update.vbs')
+  const vbs =
+    `' Auto-generated Infinia portable self-update launcher: runs the replace bat with a HIDDEN\r\n` +
+    `' window so its console can never be clicked/suspended (QuickEdit freeze).\r\n` +
+    `CreateObject("WScript.Shell").Run "cmd.exe /c ""${scriptPath}""", 0, False\r\n`
+  writeFileSync(vbsPath, `\ufeff${vbs}`, 'utf16le')
+
+  logUpdate(
+    `[apply] replace script written to ${scriptPath} (launched via ${vbsPath}, hidden); it will wait on ` +
+      `PID ${pid} (${exeName}), robocopy from ${extractDir} into ${appRoot}, then relaunch. ` +
+      `Script steps continue in this log.`,
+  )
+
+  const wscript = windowsPath.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'wscript.exe')
+  const spawnOpts = { detached: true, windowsHide: true, shell: false, stdio: 'ignore' } as const
+  const spawnDirect = () => {
+    const fallback = spawn('cmd', ['/c', scriptPath], spawnOpts)
+    fallback.unref()
+    logUpdate(`[apply] wscript launcher failed — replace script spawned directly (cmd /c); console may be visible`)
+  }
+  let child
+  try {
+    child = spawn(wscript, ['//B', '//Nologo', vbsPath], spawnOpts)
+  } catch {
+    spawnDirect()
+    return
+  }
+  child.once('error', () => {
+    // Async spawn failure (wscript missing): fall back to a direct cmd spawn.
+    spawnDirect()
   })
   child.unref()
-  logUpdate(`[apply] replace script spawned (cmd /c, hidden, detached); shell will quit next`)
+  logUpdate(`[apply] replace script launched via wscript (hidden, detached); shell will quit next`)
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────
